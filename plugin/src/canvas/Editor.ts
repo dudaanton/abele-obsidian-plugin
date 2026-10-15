@@ -2033,8 +2033,15 @@ export class CanvasEditor {
     input.type = 'file'
     input.accept = 'image/*'
     input.multiple = true
+    // In the page while it is open: a detached field can lose the choice on some WebKit builds.
+    input.className = 'abele-canvas-picture-input'
+    input.hidden = true
+    this.viewer.el.append(input)
+    const done = () => input.remove()
+    input.addEventListener('cancel', done)
     input.addEventListener('change', () => {
       const files = Array.from(input.files ?? [])
+      done()
       if (!files.length) return
       const v = this.viewer.visible()
       void this.place(files, '', [v.x + v.width / 2, v.y + v.height / 2]).catch((error) =>

@@ -387,4 +387,161 @@ describe.skipIf(!available)('the canvas by hand', () => {
       run<number[]>(`const n=(await read()).nodes.find(n=>n.id==='reading');return [n.x,n.y]`)
     ).toEqual([0, 460])
   }, 120_000)
+
+  it('adds a picture chosen from this device as a card, saved with the attachments', async () => {
+    if (onPhone()) return // The system's picker is the phone's own; the desktop drives it here.
+    await reopen()
+    const before = run<number>('return (await read()).nodes.length')
+    const slot = `view().contentEl.querySelector('.abele-canvas-chrome__tools [aria-label^="Picture from this device"]')`
+    await until(slot)
+    const at = center(slot)!
+    // A small picture on disk, and Chromium's own chooser answered with it instead of the
+    // system's dialog, all within one attachment of the debugger.
+    await cdp(`
+      const os=require('os'),fs=require('fs'),p=require('path').join(os.tmpdir(),'sample-picture-'+Date.now()+'.png')
+      const c=document.createElement('canvas');c.width=60;c.height=30;const x=c.getContext('2d');x.fillStyle='#3a7';x.fillRect(0,0,60,30)
+      fs.writeFileSync(p,Buffer.from(c.toDataURL('image/png').split(',')[1],'base64'))
+      window.__canvasChrome.picture=p
+      await cdp.sendCommand('Page.enable')
+      await cdp.sendCommand('Page.setInterceptFileChooserDialog',{enabled:true})
+      const opened=new Promise((r,j)=>{const t=setTimeout(()=>j(Error('No file chooser opened')),10000);const on=(e,m,params)=>{if(m==='Page.fileChooserOpened'){clearTimeout(t);cdp.removeListener('message',on);r(params)}};cdp.on('message',on)})
+      try{
+        await mouse({type:'mousePressed',x:${at[0]},y:${at[1]},buttons:1,clickCount:1})
+        await mouse({type:'mouseReleased',x:${at[0]},y:${at[1]},buttons:0,clickCount:1})
+        const o=await opened
+        await cdp.sendCommand('DOM.setFileInputFiles',{files:[p],backendNodeId:o.backendNodeId})
+      }finally{await cdp.sendCommand('Page.setInterceptFileChooserDialog',{enabled:false})}`)
+    await saved()
+    await until(`(await read()).nodes.length===${before + 1}`)
+    await chrome.click('Undo canvas change')
+    await saved()
+    await until(`(await read()).nodes.length===${before}`)
+  }, 120_000)
+
+  it('draws with a pen, two strokes running, each kept', async () => {
+    await reopen()
+    const before = run<number>('return ((await read()).abele?.ink??[]).length')
+    const a = screen(40, 200),
+      b = screen(240, 230)
+    if (onPhone()) {
+      await chrome.click('Draw with pen')
+      swipe(a[0], a[1], b[0], b[1])
+      await saved()
+      swipe(a[0], a[1] + 40, b[0], b[1] + 40)
+    } else {
+      await chrome.click('Select canvas objects')
+      // A Pencil draws whatever tool is in hand; the second stroke lands while the first saves.
+      await cdp(`
+        const pen=(o)=>mouse({pointerType:'pen',force:0.5,...o})
+        for(const dy of [0,40]){
+          await pen({type:'mousePressed',x:${a[0]},y:${a[1]}+dy,buttons:1,clickCount:1})
+          for(let i=1;i<=10;i++){await pen({type:'mouseMoved',x:${a[0]}+(${b[0] - a[0]})*i/10,y:${a[1]}+dy+(${b[1] - a[1]})*i/10,buttons:1});await wait(12)}
+          await pen({type:'mouseReleased',x:${b[0]},y:${b[1]}+dy,buttons:0,clickCount:1})
+        }`)
+    }
+    await saved()
+    await until(`((await read()).abele?.ink??[]).length===${before + 2}`)
+    if (!onPhone()) {
+      expect(run<string>('return view().editor.controls.tool()')).toBe('select')
+      // The pen's colours stand in the tools' one row on a desktop; the zoom column stays put.
+      const row = run<{ bar: number; column: number; stage: number }>(`
+        const v=view(),bar=v.contentEl.querySelector('.abele-canvas-chrome__tools').getBoundingClientRect()
+        return {bar:bar.height,column:v.contentEl.querySelector('.abele-canvas-chrome__view').getBoundingClientRect().top-bar.bottom,stage:0}`)
+      expect(row.bar).toBeLessThan(48)
+      expect(row.column).toBeLessThan(20)
+    }
+    shot('pencil')
+  }, 120_000)
+
+  it('reads on in a picked note under a finger or the wheel, the note staying where it is', async () => {
+    await reopen()
+    await chrome.click('Select canvas objects')
+    const body = `view().contentEl.querySelector('[data-node-id="reading"]')`
+    await until(`${body}&&${body}.scrollHeight>${body}.clientHeight+8`)
+    const at = middle('reading')
+    const camera = run<number[]>(`const c=view().viewer.camera;return [c.x,c.y]`)
+    // Picked first; a quick swipe or the wheel on it then reads on rather than carrying it.
+    await input(at)
+    await until(`view().viewer.selection.has('reading')`)
+    if (onPhone()) {
+      // Within the note's words, clear of the points on its edges a connection is pulled from.
+      driver(swipeDriverArgs(at[0], at[1] + 15, at[0], at[1] - 25, 600))
+    } else
+      await cdp(
+        `await mouse({type:'mouseWheel',x:${at[0]},y:${at[1]},deltaX:0,deltaY:240,buttons:0})`
+      )
+    await until(`${body}.scrollTop>0`)
+    shot('note-scrolled')
+    expect(run<number[]>(`const c=view().viewer.camera;return [c.x,c.y]`)).toEqual(camera)
+    expect(
+      run<number[]>(`const n=(await read()).nodes.find(n=>n.id==='reading');return [n.x,n.y]`)
+    ).toEqual([0, 460])
+  }, 120_000)
+
+  it('adds a picture chosen from this device as a card, saved with the attachments', async () => {
+    if (onPhone()) return // The system's picker is the phone's own; the desktop drives it here.
+    await reopen()
+    const before = run<number>('return (await read()).nodes.length')
+    // A small picture on disk, and Chromium's own chooser answered with it instead of the
+    // system's dialog.
+    await cdp(`
+      const os=require('os'),fs=require('fs'),p=require('path').join(os.tmpdir(),'sample-picture-'+Date.now()+'.png')
+      const c=document.createElement('canvas');c.width=60;c.height=30;const x=c.getContext('2d');x.fillStyle='#3a7';x.fillRect(0,0,60,30)
+      fs.writeFileSync(p,Buffer.from(c.toDataURL('image/png').split(',')[1],'base64'))
+      window.__canvasChrome.picture=p
+      await cdp.sendCommand('Page.enable')
+      await cdp.sendCommand('Page.setInterceptFileChooserDialog',{enabled:true})
+      window.__canvasChrome.chooser=new Promise(r=>{const on=(e,m,params)=>{if(m==='Page.fileChooserOpened'){cdp.removeListener('message',on);r(params)}};cdp.on('message',on)})`)
+    await cdp(`
+      const opened=await window.__canvasChrome.chooser
+      await cdp.sendCommand('DOM.setFileInputFiles',{files:[window.__canvasChrome.picture],backendNodeId:opened.backendNodeId})
+      await cdp.sendCommand('Page.setInterceptFileChooserDialog',{enabled:false})`)
+    await saved()
+    await until(`(await read()).nodes.length===${before + 1}`)
+    const made = run<{ file: string; width: number; height: number; exists: boolean }>(`
+      const n=(await read()).nodes.find(n=>n.type==='file'&&/sample-picture-.*\\.png$/.test(n.file))
+      return {...n,exists:!!app.vault.getAbstractFileByPath(n.file)}`)
+    expect(made.exists).toBe(true)
+    // In the picture's proportions.
+    expect(Math.round((made.width / made.height) * 10)).toBe(20)
+    shot('picture')
+    run(`require('fs').rmSync(window.__canvasChrome.picture,{force:true});return true`)
+  }, 120_000)
+
+  it('carries a frame with the strokes drawn in it, its name going along', async () => {
+    if (onPhone()) return // Carrying is one gesture on both; its name's place is measured here.
+    await reopen()
+    const frame = run<{ id: string; x: number; y: number }>(
+      `return (await read()).nodes.find(n=>n.type==='group')`
+    )
+    // A stroke in the frame's room between its two cards.
+    await chrome.click('Draw with pen')
+    const a = screen(240, 20),
+      b = screen(280, 100)
+    await input(a, b)
+    await saved()
+    const stroke = run<string>(
+      `return ((await read()).abele?.ink??[]).find(e=>e.points[0]>=230&&e.points[0]<=290&&e.points[1]<=120)?.id`
+    )
+    expect(stroke).toBeTruthy()
+    await chrome.click('Select canvas objects')
+    const name = `view().contentEl.querySelector('[data-frame-id="${frame.id}"]')`
+    const before = run<number>(`return ${name}.getBoundingClientRect().left`)
+    const start = screen(250, 135)
+    await cdp(`
+      await mouse({type:'mousePressed',x:${start[0]},y:${start[1]},buttons:1,clickCount:1})
+      for(let i=1;i<=8;i++){await mouse({type:'mouseMoved',x:${start[0]}+i*8,y:${start[1]},buttons:1});await wait(30)}`)
+    // Held mid-carry: the name has gone along with the frame before it is let go.
+    await until(`${name}.getBoundingClientRect().left>${before}+40`)
+    await cdp(
+      `await mouse({type:'mouseReleased',x:${start[0] + 64},y:${start[1]},buttons:0,clickCount:1})`
+    )
+    await saved()
+    const after = run<{ x: number; dx: number }>(`
+      const g=await read(),f=g.nodes.find(n=>n.id===${JSON.stringify(frame.id)}),s=(g.abele?.ink??[]).find(e=>e.id===${JSON.stringify(stroke)})
+      return {x:f.x,dx:s.transform?.x??0}`)
+    expect(after.x).toBeGreaterThan(frame.x)
+    expect(after.dx).toBe(after.x - frame.x)
+    shot('frame-carried')
+  }, 120_000)
 })

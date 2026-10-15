@@ -79,6 +79,10 @@ const ADDS: Record<string, { slot: string; title: string }> = {
     title: 'Note or file from the vault',
   },
   'Add link': { slot: 'Web page (W)', title: 'Web page' },
+  'Add a picture': {
+    slot: 'Picture from this device; or paste one, or drop it on the canvas',
+    title: 'Picture from this device; or paste one, or drop it on the canvas',
+  },
 }
 /** Glyphs on the bar over what is picked, by the editor's label for what they do. */
 const PICKED: Record<string, string> = {
