@@ -34,6 +34,15 @@
           class="clickable-icon"
           role="button"
           tabindex="0"
+          icon="panel-left"
+          tooltip="Show in the node panel"
+          @click="showInPanel"
+          @keydown.enter.prevent="showInPanel"
+        />
+        <Icon
+          class="clickable-icon"
+          role="button"
+          tabindex="0"
           icon="folder-git-2"
           tooltip="Repository actions"
           :disabled="offline || settingsBusy"
@@ -97,7 +106,7 @@ import { basePins } from '@/github/comparison/pins'
 import { NodeService, type NodeConnection } from '@/node/NodeService'
 import { NodeRepositorySource, WORKING_TREE } from '@/repository/node'
 import { parseNodeRepositoryLink } from '@/repository/nodeLinks'
-import { openNodeRepositoryTarget } from '@/node/openRepository'
+import { openNodeRepositoryTarget, revealNodePlace } from '@/node/openRepository'
 import { GlobalStore } from '@/stores/GlobalStore'
 import type { GithubViewModel } from '@/github/model'
 import type { GithubTarget } from '@/github/urls'
@@ -171,10 +180,14 @@ const target = computed(() =>
 const location = computed<RepositoryLocation>(() => {
   const at = target.value!.location,
     revision = target.value?.revision
+  // A node has no home page of its own (its places are the node panel's): an old link to one
+  // shows the folder's top level.
+  const shown: RepositoryLocation =
+    at.kind === 'home' ? { kind: 'folder', ref: at.ref ?? WORKING_TREE, path: '' } : at
   // Explicit frozen state stays fixed through a restart. Working tree aliases remain live.
-  return revision?.kind === 'commit' && 'ref' in at && at.ref !== WORKING_TREE
-    ? { ...at, ref: revision.commit }
-    : at
+  return revision?.kind === 'commit' && 'ref' in shown && shown.ref !== WORKING_TREE
+    ? { ...shown, ref: revision.commit }
+    : shown
 })
 const offline = computed(() => connection.value?.state.value !== 'connected')
 const selected = computed(() =>
@@ -364,6 +377,14 @@ const open = (url: string, pane: PaneType | false = false) => {
   const next = parseNodeRepositoryLink(url)
   if (next) void openNodeRepositoryTarget(GlobalStore.getInstance().app, next, pane)
 }
+/** The place this tab is in, opened in the node panel, where its files and changes are. */
+const showInPanel = () => {
+  const at = target.value?.source
+  if (at)
+    void revealNodePlace(at.node, at.workspace).catch(
+      (e: unknown) => new Notice(e instanceof Error ? e.message : String(e))
+    )
+}
 const settingsBusy = ref(false)
 const externalMenu = (event?: MouseEvent | KeyboardEvent) => {
   if (offline.value || settingsBusy.value) return
@@ -398,10 +419,7 @@ const externalMenu = (event?: MouseEvent | KeyboardEvent) => {
     }
   }
   menu.addItem((item) =>
-    item
-      .setTitle('Repository home')
-      .setIcon('home')
-      .onClick(() => open(source.value!.navigation.home()))
+    item.setTitle('Show in the node panel').setIcon('panel-left').onClick(showInPanel)
   )
   menu.addItem((item) =>
     item

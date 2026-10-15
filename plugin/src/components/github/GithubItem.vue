@@ -1,5 +1,9 @@
 <template>
-  <GithubLayout :panel="panelShown" @dismiss="setPanel(false)">
+  <!-- A node's files are in its own side panel: the tab has no tree beside it. -->
+  <GithubLayout
+    :panel="panelShown && source?.identity.provider !== 'node'"
+    @dismiss="setPanel(false)"
+  >
     <template #panel>
       <GithubTreePanel
         :repo="repoRef!"

@@ -11,6 +11,7 @@
         <!-- What the page itself offers (a file's blame), first in the row. -->
         <slot name="actions" />
         <Icon
+          v-if="!node"
           v-bind="nativeAction"
           icon="folder-tree"
           :active="tree"

@@ -6,6 +6,8 @@ import type { RepositoryLocation, RepositoryRevision } from '@/repository/source
 import type { NodeRepositoryTarget } from '@/repository/nodeLinks'
 import { NodeRepositorySource, WORKING_TREE } from '@/repository/node'
 import { NodeService } from './NodeService'
+import { NodePathService } from './NodePathService'
+import { NODE_SIDEBAR_VIEW, revealNodeDrawer } from './nodePathNavigation'
 
 export interface OpenNodeRepositoryOptions {
   path?: string
@@ -43,6 +45,9 @@ export async function openNodeRepository(
   const selected = catalog.find((row) => row.id === workspace || row.workspaceId === workspace)
   if (!selected)
     throw new Error('This workspace is no longer registered. Choose another workspace.')
+  // A folder or worktree as a whole is the node panel's; the tab shows files, commits and
+  // comparisons in it.
+  if (!options.path && !options.location) return revealNodePlace(node, selected.id)
   const revision = typeof options.revision === 'object' ? options.revision : undefined
   const ref =
     typeof options.revision === 'string'
@@ -72,6 +77,18 @@ export async function openNodeRepository(
     ...(revision ? { revision } : {}),
   }
   return openNodeRepositoryTarget(GlobalStore.getInstance().app, target, options.pane)
+}
+
+/** Opens the node panel on one of its places: the worktree (or folder) by its catalogue id. */
+export async function revealNodePlace(node: string, worktree: string): Promise<WorkspaceLeaf> {
+  const app = GlobalStore.getInstance().app
+  await revealNodeDrawer(app.workspace, node)
+  const model = NodePathService.getInstance().model(node)
+  if (!model.targets.value.some((t) => t.id === worktree)) await model.refresh()
+  await model.select(worktree)
+  const leaf = app.workspace.getLeavesOfType(NODE_SIDEBAR_VIEW)[0]
+  if (!leaf) throw new Error('The node panel could not be opened.')
+  return leaf
 }
 
 /** Restore/navigation does not discover a replacement for an old worktree ID. */
@@ -147,7 +164,7 @@ export function chooseNodeRepository(app: App): void {
           } while (after)
           if (!projects.length) {
             new Notice(
-              'This node has no registered projects. Add a project in its workspace dialog.'
+              'This node has no registered folders. Open one in the node panel.'
             )
             return
           }

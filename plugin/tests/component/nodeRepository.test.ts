@@ -329,9 +329,12 @@ describe('node-backed shared repository tab', () => {
   it('uses named keyboard actions and does not open a fake commit for uncommitted blame', async () => {
     const { wrapper, source, onOpen } = fixture({ kind: 'file', ref: WORKING_TREE, path: 'app.ts' })
     await flushPromises()
-    expect(
-      wrapper.findAll('.abele-github-header [role="button"][tabindex="0"]').length
-    ).toBeGreaterThan(3)
+    // Every header action of a node file is a named, focusable button; the file tree's toggle
+    // is not among them, the node's files being in its own side panel.
+    const actions = wrapper.findAll('.abele-github-header [role="button"][tabindex="0"]')
+    expect(actions.length).toBeGreaterThanOrEqual(3)
+    expect(actions.every((a) => !!a.attributes('aria-label'))).toBe(true)
+    expect(wrapper.find('.abele-github-header [aria-label="Show the repository\'s files beside this"]').exists()).toBe(false)
     await wrapper.find('[aria-label="Toggle line blame"]').trigger('click')
     await flushPromises()
     await wrapper.findComponent(GithubBlameRange).find('button').trigger('click')

@@ -10,7 +10,7 @@ import { WORKING_TREE } from '@/repository/node'
 import { nodeRepositoryFixture, identity } from '../helpers/nodeRepositoryFixture'
 import { useVault } from '../helpers/testEnv'
 
-it('refreshes file, tree, search, catalogue and editing permission after a redacted catalogue hint', async () => {
+it('refreshes file, search, catalogue and editing permission after a redacted catalogue hint, reading no tree of its own', async () => {
   useVault([])
   const f = nodeRepositoryFixture(),
     store = new MemoryClientStore()
@@ -87,7 +87,9 @@ it('refreshes file, tree, search, catalogue and editing permission after a redac
     expect(wrapper.findAllComponents(GithubCode).at(-1)!.props('text')).toContain('84')
     expect(wrapper.findAllComponents(GithubCode).at(-1)!.props('editable')).toBe(false)
     expect(count('.blob')).toBeGreaterThan(before.blob)
-    expect(count('.tree')).toBeGreaterThan(before.tree)
+    // The node's files are in its side panel; the tab has no tree to read again.
+    expect(count('.tree')).toBe(before.tree)
+    expect(wrapper.find('.abele-github-tree').exists()).toBe(false)
     expect(count('.search')).toBeGreaterThan(before.search)
     expect(count('.worktrees')).toBeGreaterThan(before.catalog)
     expect(onTitle).toHaveBeenCalledWith('project · updated-worktree-label')

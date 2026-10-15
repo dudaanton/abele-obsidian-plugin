@@ -10,7 +10,7 @@ import { WORKING_TREE } from '@/repository/node'
 import { nodeRepositoryFixture, identity } from '../helpers/nodeRepositoryFixture'
 import { useVault } from '../helpers/testEnv'
 
-it('patches the file tree from a change batch and rereads the open file only when it changed', async () => {
+it('rereads the open file from a change batch only when it changed, and reads no tree of its own', async () => {
   useVault([])
   const f = nodeRepositoryFixture({ changes: true }),
     store = new MemoryClientStore()
@@ -50,9 +50,9 @@ it('patches the file tree from a change batch and rereads the open file only whe
   const wrapper = mount(NodeRepositoryItem, { props: { model, onTitle: vi.fn() } })
   try {
     await flushPromises()
-    const rowOf = (path: string) => wrapper.find(`.abele-github-tree [data-path="${path}"]`)
-    expect(rowOf('app.ts').exists()).toBe(true)
-    const readme = rowOf('README.md').element
+    // The node's files are in its side panel (its batches are applied there, see
+    // nodePathChanges.test.ts); the tab has no tree beside the file.
+    expect(wrapper.find('.abele-github-tree').exists()).toBe(false)
     const count = (suffix: string) => f.calls.filter((c) => c.method.endsWith(suffix)).length
     const before = { blob: count('.blob'), tree: count('.tree') }
     f.batch(1, {
@@ -66,8 +66,7 @@ it('patches the file tree from a change batch and rereads the open file only whe
       git: null,
     })
     await flushPromises()
-    expect(rowOf('other.ts').exists()).toBe(true)
-    expect(rowOf('README.md').element).toBe(readme)
+    // A file that is not the open one changed: nothing is read again.
     expect(count('.blob')).toBe(before.blob)
     expect(count('.tree')).toBe(before.tree)
     f.change()
@@ -83,9 +82,8 @@ it('patches the file tree from a change batch and rereads the open file only whe
     })
     await flushPromises()
     expect(wrapper.findAllComponents(GithubCode).at(-1)!.props('text')).toContain('84')
-    expect(rowOf('README.md').element).toBe(readme)
-    expect(rowOf('other.ts').exists()).toBe(true)
-    // The open file is read again; the file tree, kept current by the batches, is not.
+    // The open file is read again; no tree is.
+    expect(count('.blob')).toBeGreaterThan(before.blob)
     expect(count('.tree')).toBe(before.tree)
   } finally {
     wrapper.unmount()
