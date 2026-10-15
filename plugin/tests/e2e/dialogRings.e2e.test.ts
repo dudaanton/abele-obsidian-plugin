@@ -392,6 +392,10 @@ describe.skipIf(!available)('human Canvas focus rings', () => {
         }
       }
       const close=async()=>{document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await wait(200)}
+      // Canvas work is written by itself, and native handoff writes it first; only a failed write
+      // leaves work for the handoff choice and Discard to act on, so the write fails on purpose.
+      const process=app.vault.process
+      const failWrites=()=>{app.vault.process=async function(target,fn){if(target.path===path)throw Error('Sample known-unwritten save failure');return process.call(this,target,fn)}}
       try{
         await leaf.setViewState({type:'abele-canvas',state:{file:path},active:true});await app.workspace.revealLeaf(leaf);await until(()=>leaf.view.editor)
         const root=leaf.view.contentEl
@@ -414,12 +418,15 @@ describe.skipIf(!available)('human Canvas focus rings', () => {
         root.querySelector('.abele-canvas-connection-properties').open=true;measure('connection style',root)
         root.querySelector('.abele-canvas-connection-properties').open=false
         root.querySelector('[aria-label="Add link"]').click();await until(()=>document.querySelector('.abele-canvas-input'));measure('link',document.querySelector('.abele-canvas-input'));await close()
+        failWrites()
         root.querySelector('[aria-label="Add text card"]').click();measure('text',root)
+        await until(()=>!root.querySelector('[aria-label="Retry save"]').hidden)
         leaf.view.containerEl.querySelector('[aria-label="Open in Obsidian Canvas"]').click();await until(()=>document.querySelector('.abele-canvas-choice'));measure('native',document.querySelector('.abele-canvas-choice'));await close()
         root.querySelector('[aria-label="Discard local draft"]').click();await until(()=>document.querySelector('.abele-canvas-choice'));measure('discard',document.querySelector('.abele-canvas-choice'));await close()
+        app.vault.process=process
         app.commands.executeCommandById('abele:new-canvas');await until(()=>document.querySelector('.abele-canvas-input'));measure('creation',document.querySelector('.abele-canvas-input'))
         return cuts
-      } finally {await close();leaf.view.documentLease?.document.discardDraft();leaf.detach();await app.vault.delete(file);await app.workspace.changeLayout(layout)}
+      } finally {app.vault.process=process;await close();leaf.view.documentLease?.document.discardDraft();leaf.detach();await app.vault.delete(file);await app.workspace.changeLayout(layout)}
     })()`)
     expect(result).toEqual([])
   })
