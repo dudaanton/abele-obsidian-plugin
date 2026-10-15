@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { accessCovers } from '@/ai/tools/node/accessRefusal'
-import { nodeScopeSentence, nodeScopeTitle } from '@/ai/tools/node/scopeNames'
+import { nodeScopeSentence, nodeScopeTitle, shortBranch } from '@/ai/tools/node/scopeNames'
 
 const want = {
   node_id: 'n1',
@@ -39,5 +39,13 @@ describe('a refused node call and the access that lets it through', () => {
     expect(nodeScopeSentence(names, 'read')).toBe(
       'sample-node node · sample-folder · worktree sample-branch · can read files'
     )
+  })
+})
+
+describe('a branch on screen', () => {
+  it('is said the way people say it, not as its full ref', () => {
+    expect(shortBranch('refs/heads/main')).toBe('main')
+    expect(shortBranch('sample-branch')).toBe('sample-branch')
+    expect(shortBranch(null)).toBe('')
   })
 })

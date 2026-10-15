@@ -167,7 +167,11 @@ export async function validateNodeTarget(
         limit: 256,
       })
       guard()
-      known.push(...result.entries.map((entry) => entry.branch ?? entry.worktree_id))
+      known.push(
+        ...result.entries.map(
+          (entry) => entry.branch?.replace(/^refs\/heads\//, '') || entry.worktree_id
+        )
+      )
       const found = result.entries.find(
         (entry) => entry.worktree_id === nodeTargetId(target.target)
       )

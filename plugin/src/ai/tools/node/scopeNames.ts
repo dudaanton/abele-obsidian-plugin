@@ -18,6 +18,10 @@ type Place = { node_id: string; project_id?: string; target?: NodeChatTarget }
 const folders = new Map<string, Promise<Map<string, { name: string; git: boolean }>>>()
 const branches = new Map<string, Promise<Map<string, string>>>()
 
+/** A branch as people say it: `main`, not `refs/heads/main`. */
+export const shortBranch = (ref: string | null | undefined): string =>
+  (ref ?? '').replace(/^refs\/heads\//, '')
+
 const lastPart = (path: string) =>
   path
     .replace(/[\\/]+$/, '')
@@ -56,7 +60,7 @@ function branchNames(nodeId: string, projectId: string, git: boolean) {
       if (!client.connected) return names
       if (git) {
         const { entries } = await client.repository.worktrees({ project_id: projectId })
-        for (const w of entries) names.set(w.worktree_id, w.branch || w.path_label)
+        for (const w of entries) names.set(w.worktree_id, shortBranch(w.branch) || w.path_label)
       } else {
         for (const w of await client.listWorkspaces(projectId))
           names.set(w.workspace_id, lastPart(w.path))

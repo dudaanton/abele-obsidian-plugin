@@ -86,7 +86,9 @@ export async function resolveNodeTarget(
       node_id: target.node_id,
       project_id: target.project_id,
       wanted: id,
-      known: allowed.map((entry) => entry.branch ?? entry.worktree_id),
+      known: allowed.map(
+        (entry) => entry.branch?.replace(/^refs\/heads\//, '') || entry.worktree_id
+      ),
     }
   )
 }
