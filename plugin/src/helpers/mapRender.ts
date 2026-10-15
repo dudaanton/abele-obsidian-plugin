@@ -4,7 +4,8 @@ import { formatLatLon, reverseGeocode } from '@/services/GeoService'
 import { mapBounds, type MapConfig, type MapPoint } from './mapConfig'
 import { MapLocationControl } from './mapLocationControl'
 import { loadMaplibre } from './loadMaplibre'
-import MapPlacePopup, { type PlaceState } from '@/components/map/MapPlacePopup.vue'
+import MapPlacePopup from '@/components/map/MapPlacePopup.vue'
+import type { PlaceState } from '@/components/map/placeState'
 import { renderKit, unrenderKit } from '@/components/obsidian/mount'
 
 /**
