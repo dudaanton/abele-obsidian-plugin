@@ -140,6 +140,14 @@ watch(() => props.collapsible, draw, { flush: 'post' })
   margin-inline-start: calc(-1 * var(--size-2-3));
 }
 
+// Under a section's heading a list's title is a group's heading, a step below it: never bigger
+// than the heading it stands under.
+.abele-section > .abele-fold-heading {
+  color: var(--abele-text-heading-color);
+  font-size: var(--abele-text-heading-size);
+  font-weight: var(--abele-text-heading-weight);
+}
+
 .abele-fold-heading__count {
   color: var(--abele-text-count-color);
   font-weight: var(--font-normal);

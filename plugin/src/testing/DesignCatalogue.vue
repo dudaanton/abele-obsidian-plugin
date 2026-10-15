@@ -894,8 +894,10 @@ const renderChart = (chart: EChartsType) =>
   min-width: 0;
   padding-block: var(--size-4-1);
 }
+/* Sections stand far enough apart that a heading is plainly nearer its own line than the block
+   above, a tall phone control under it included (design rule 7). */
 .abele-design-catalogue > .abele-section {
-  margin-top: var(--size-4-4);
+  margin-top: var(--size-4-6);
 }
 .abele-design-catalogue > .abele-section:first-child {
   margin-top: 0;

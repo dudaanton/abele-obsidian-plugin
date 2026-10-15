@@ -40,6 +40,11 @@ const long = computed(() => props.text.length > 240 || props.text.split('\n').le
   margin: 0;
   min-width: 0;
 }
+/* With no passage the line saying so stands where the passage would, close under its heading,
+   not a list's empty state padded off it. */
+.abele-quote > .abele-empty-state {
+  padding-block: 0;
+}
 /* Over a note's own blockquote rule, which would paint the line in the accent and step the words
    far in: here the line is Obsidian's grey one and the words sit a step from it. */
 .abele-quote blockquote.abele-quote__text {
