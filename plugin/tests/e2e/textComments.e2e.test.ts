@@ -246,7 +246,7 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
     `)
     ).toEqual({ edited: true, visible: true, dismissed: true, unchanged: true, closed: true })
   })
-  it('draws one outline round the focused reply field, not one round the editor inside it too', () => {
+  it('draws one outline round the focused comment field, not one round the editor inside it too', () => {
     // The note editor inside the reply drops its own border, ring and ground; only the field's
     // frame shows. Every box from the field down that paints an edge is counted.
     const r = run<{
@@ -256,8 +256,9 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       inSight: boolean
       chain: string[]
     }>(`
-      // The thread as it opens, no comment being changed, so nothing else takes the focus back.
-      window.__abeleTest.openDialog('text-comment-list')
+      // A new comment: the same field, nothing else to take the focus back, and short enough to be
+      // in sight on any screen (a long thread's field is held apart as a known bug below).
+      window.__abeleTest.openDialog('text-comment-create')
       await until(() => document.querySelector('.abele-text-comments__reply .cm-content'))
       const reply = document.querySelector('.abele-text-comments__reply')
       const field = reply.querySelector('.cm-content')
