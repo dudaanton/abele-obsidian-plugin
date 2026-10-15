@@ -87,7 +87,7 @@ it('compares the current files of a branch with another version, committed and u
       const node=await nodes.add('Sample compare node','http://127.0.0.1:${ready.port}',${JSON.stringify(enrolled.token)});
       window.__sampleCompareNode=node.id;
       const client=nodes.connection(node.id).client,project=await client.registerProject(${JSON.stringify(projectPath)},'trusted');
-      await client.setRepositorySettings({project_id:project.project_id,default_branch:'main'});
+      await client.setRepositorySettings({project_id:project.project_id,external_read:false,default_branch:'main'});
       const workspace=(await client.repository.worktrees({project_id:project.project_id})).entries.find(w=>w.kind==='root');
       window.__sampleCompareProject=project.project_id;window.__sampleCompareWorkspace=workspace.worktree_id;
       await api.openNodeRepository(node.id,project.project_id,workspace.worktree_id);
