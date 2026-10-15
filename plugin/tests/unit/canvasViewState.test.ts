@@ -115,3 +115,26 @@ it('starts the walkthrough for Play on a node embed while Open still frames only
     viewer.destroy()
   }
 })
+
+it('does not call ordinary unwritten work unsaved, since the canvas writes it by itself', async () => {
+  const view = Object.create(CanvasView.prototype) as CanvasView
+  const load = vi.fn(),
+    setText = vi.fn()
+  view.viewer = { load, status: { setText } } as unknown as CanvasViewer
+  const app = buildFakeVault([{ path: 'sample-pending.canvas', raw: '{"nodes":[],"edges":[]}' }])
+  const file = app.vault.getAbstractFileByPath('sample-pending.canvas') as TFile
+  ;(view as unknown as { app: unknown; refreshToken: number }).app = app
+  ;(view as unknown as { refreshToken: number }).refreshToken = 0
+  await view.onLoadFile(file)
+  const document = (view as unknown as { documentLease: { document: CanvasDocumentLike } })
+    .documentLease.document
+  document.beginDraft()
+  document.updateDraft((graph) => ({
+    ...graph,
+    nodes: [{ id: 'sample', type: 'text', text: 'Typed', x: 0, y: 0, width: 200, height: 100 }],
+  }))
+  document.finishDraft()
+  expect(document.session.dirty).toBe(true)
+  expect(setText).not.toHaveBeenCalledWith(expect.stringMatching(/not been saved|pending/i))
+})
+type CanvasDocumentLike = import('@/canvas/documentRegistry').CanvasDocument
