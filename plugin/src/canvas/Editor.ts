@@ -513,6 +513,8 @@ export class CanvasEditor {
       },
       hold: (op) => {
         this.held.push(op)
+        // The last change may have been written while this stroke was still being drawn.
+        if (!this.waiting) void this.addHeld()
       },
       selection: () => this.selected,
       select: (ids) => {

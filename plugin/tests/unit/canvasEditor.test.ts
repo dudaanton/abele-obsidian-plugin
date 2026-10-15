@@ -1469,6 +1469,23 @@ describe('a Pencil on a tablet', () => {
     // Each stroke is its own step to take back.
     expect(s.document.session.history.undo).toBe(2)
   })
+  it('keeps a stroke begun while the last one saved and finished after it was written', async () => {
+    const s = setup()
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    let release = () => {}
+    const plain = s.publish.getMockImplementation()!
+    s.publish.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (release = () => resolve(plain())))
+    )
+    stroke(s, 400)
+    await vi.waitFor(() => expect(s.publish).toHaveBeenCalledTimes(1))
+    pointer(s, 'pointerdown', 40, 300, { ...pen, buttons: 1, pointerId: 5 })
+    pointer(s, 'pointermove', 120, 310, { ...pen, buttons: 1, pointerId: 5 })
+    release()
+    await vi.waitFor(() => expect(inkCount(s)).toBe(1))
+    pointer(s, 'pointerup', 200, 320, { ...pen, pointerId: 5 })
+    await vi.waitFor(() => expect(inkCount(s)).toBe(2))
+  })
   it('never moves the canvas with a pen, even when the canvas cannot take a stroke', () => {
     const s = setup()
     s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
