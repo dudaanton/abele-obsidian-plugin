@@ -297,6 +297,9 @@ it('on a phone: the menu, the picker, the attached panel and the empty list fit 
       press(mark);
       await until(()=>api.DebuggerService.instance.active.value?.controller.session.status==='paused','stopped at the breakpoint',600);
       const leaf=app.workspace.getLeavesOfType('abele-debug-view')[0];await app.workspace.revealLeaf(leaf);
+      // As the plugin's own sidebar reveal does: a phone's drawer can count as open with nothing of
+      // it on screen, and is closed and opened again then.
+      const rs=app.workspace.rightSplit;await wait(500);if(!rs.containerEl.offsetWidth){rs.collapse();await wait(500);rs.expand()}
       // The drawer slides in: the picture waits until the panel has stood still inside the screen
       // for several looks in a row.
       let last='',still=0;await until(()=>{const r=document.querySelector('.abele-debug-panel').getBoundingClientRect(),now=r.left+','+r.width;still=now===last&&r.left>=0&&r.right<=innerWidth+1&&r.width>200?still+1:0;last=now;return still>=6},'debug drawer open',200).catch(()=>{throw Error('drawer: '+JSON.stringify({inner:innerWidth,leaves:app.workspace.getLeavesOfType('abele-debug-view').map(l=>({root:l.getRoot()===app.workspace.rightSplit?'right':l.getRoot()===app.workspace.leftSplit?'left':'main',shown:!!l.containerEl.offsetParent})),panels:[...document.querySelectorAll('.abele-debug-panel')].map(p=>{const r=p.getBoundingClientRect();return [Math.round(r.left),Math.round(r.width)]}),right:document.querySelector('.workspace-drawer.mod-right')?.className,rightRect:(()=>{const r=document.querySelector('.workspace-drawer.mod-right')?.getBoundingClientRect();return r&&[Math.round(r.left),Math.round(r.width)]})(),collapsed:app.workspace.rightSplit.collapsed}))});
