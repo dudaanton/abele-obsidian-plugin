@@ -9,7 +9,8 @@
       <Icon class="abele-attachment-rules__add" icon="plus" tooltip="Add a rule" @click="add" />
     </template>
 
-    <template v-for="(row, index) in rows" :key="row.key">
+    <!-- A box of its own per rule: the kit draws a run of sibling rows as one box. -->
+    <div v-for="(row, index) in rows" :key="row.key" class="abele-attachment-rules__rule">
       <Setting class="abele-attachment-rules__notes" name="Notes in">
         <Search
           :model-value="row.notesText"
@@ -43,13 +44,15 @@
           @update:model-value="(value: string) => change(row, 'subfolder', value)"
         />
       </Setting>
-    </template>
+    </div>
 
-    <EmptyState v-if="rows.length === 0" text="No rules: attachments follow Obsidian's setting.">
-      <template #action>
-        <Button text="Add a rule" tooltip="Add a folder rule" @click="add" />
-      </template>
-    </EmptyState>
+    <Setting
+      v-if="rows.length === 0"
+      class="abele-attachment-rules__empty"
+      name="No rules: attachments follow Obsidian's setting."
+    >
+      <Button text="Add a rule" tooltip="Add a folder rule" @click="add" />
+    </Setting>
   </Section>
 </template>
 
@@ -75,7 +78,6 @@ import Input from '../obsidian/Input.vue'
 import Dropdown from '../obsidian/Dropdown.vue'
 import Icon from '../obsidian/Icon.vue'
 import Button from '../obsidian/Button.vue'
-import EmptyState from '../obsidian/EmptyState.vue'
 import { FolderSuggest } from '@/helpers/suggesters/FolderSuggester'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import {
@@ -187,5 +189,10 @@ watch(rows, () => void nextTick(showPathEnds), { deep: true, flush: 'post' })
 .abele-attachment-rules__notes .abele-obsidian-search {
   flex: 1 0 0;
   min-width: 0;
+}
+
+// Off the phone the choice stands on its label's row, the field it needs under it.
+body:not(.is-phone) .abele-attachment-rules__place {
+  grid-template-columns: auto minmax(0, 1fr);
 }
 </style>

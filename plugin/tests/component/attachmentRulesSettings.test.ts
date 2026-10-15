@@ -62,17 +62,33 @@ const settle = async () => {
 }
 
 describe('attachment folder rules settings', () => {
-  it('says rules are absent in one muted line with a button to add one', async () => {
+  it('says rules are absent in one settings row whose control adds one', async () => {
     view = mount(AttachmentRulesSettings)
     expect(notesRows(view)).toHaveLength(0)
-    const empty = view.findComponent(EmptyState)
-    expect(empty.props('text')).toBe("No rules: attachments follow Obsidian's setting.")
-    const button = empty.findComponent(Button)
+    const empty = rowsOf(view, 'empty')
+    expect(empty).toHaveLength(1)
+    expect(empty[0].props('name')).toBe("No rules: attachments follow Obsidian's setting.")
+    const button = empty[0].findComponent(Button)
     expect(button.props('text')).toBe('Add a rule')
+    expect(button.props('accent')).toBeFalsy()
+    expect(view.findComponent(EmptyState).exists()).toBe(false)
     await button.vm.$emit('click')
     await nextTick()
     expect(notesRows(view)).toHaveLength(1)
-    expect(view.findComponent(EmptyState).exists()).toBe(false)
+    expect(rowsOf(view, 'empty')).toHaveLength(0)
+  })
+
+  it('gives every rule a box of its own, its two rows together and nothing else in it', () => {
+    config.attachmentRules = [rule('A', 'note'), rule('B', 'folder', 'b files')]
+    view = mount(AttachmentRulesSettings)
+    const boxes = view.findAll('.abele-attachment-rules__rule')
+    expect(boxes).toHaveLength(2)
+    for (const box of boxes) {
+      const rows = [...box.element.children].map((child) => child.className)
+      expect(rows).toHaveLength(2)
+      expect(rows[0]).toContain('abele-attachment-rules__notes')
+      expect(rows[1]).toContain('abele-attachment-rules__place')
+    }
   })
 
   it('puts the group description and a plus beside the heading', () => {

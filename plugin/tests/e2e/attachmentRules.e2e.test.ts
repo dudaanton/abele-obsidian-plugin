@@ -50,6 +50,9 @@ interface Result {
       overflow: string[]
       binBeside: boolean[]
       endsShown: boolean[]
+      alignedWithMaps: boolean
+      boxesApart: boolean
+      choiceOnLabelLine: boolean[]
     }
   >
   ruleKept: unknown
@@ -140,7 +143,22 @@ const probe = (mobile: boolean) => `(async () => {
     // A long path shows its end, with the whole of it in the tooltip.
     const endsShown = [...group.querySelectorAll('.abele-attachment-rules__path')].map(input =>
       input.title === input.value && (input.scrollWidth <= input.clientWidth || input.scrollLeft + input.clientWidth >= input.scrollWidth - 2))
-    out.rows[state] = { fields, places, overflow, binBeside, endsShown }
+    // Every row of the group, the empty one too, starts where the next group's rows start, and so
+    // does its heading.
+    const maps = [...doc.querySelectorAll('.abele-section')].find(s => s.querySelector('.abele-section__heading')?.textContent.trim() === 'Maps')
+    const left = el => Math.round(el.getBoundingClientRect().left)
+    const ours = [...group.querySelectorAll('.setting-item')]
+    const alignedWithMaps = !!maps && ours.length > 0 && ours.every(row => left(row) === left(maps.querySelector('.setting-item')))
+      && left(group.querySelector('.abele-section__heading')) === left(maps.querySelector('.abele-section__heading'))
+    // Each rule a box of its own, a gap between one box and the next.
+    const boxes = [...group.querySelectorAll('.abele-attachment-rules__rule')].map(b => b.getBoundingClientRect())
+    const boxesApart = boxes.every((b, i) => i === 0 || b.top > boxes[i - 1].bottom + 1)
+    // Off the phone the choice stands on its label's line; on the phone under it.
+    const choiceOnLabelLine = [...group.querySelectorAll('.abele-attachment-rules__place')].map(row => {
+      const name = row.querySelector('.setting-item-name').getBoundingClientRect(), select = row.querySelector('select').getBoundingClientRect()
+      return select.top < name.bottom && select.bottom > name.top
+    })
+    out.rows[state] = { fields, places, overflow, binBeside, endsShown, alignedWithMaps, boxesApart, choiceOnLabelLine }
     const win = settingsWindow()
     const image = await win.webContents.capturePage()
     require('fs').writeFileSync(${JSON.stringify(SHOTS + '/')} + (${mobile} ? 'phone' : 'desktop') + '-' + state + '.png',
@@ -215,6 +233,11 @@ describe.skipIf(!available)('attachment folder rules in the running app', () => 
         expect(result.rows[state].overflow, state).toEqual([])
         expect(result.rows[state].binBeside.every(Boolean), state).toBe(true)
         expect(result.rows[state].endsShown.every(Boolean), state).toBe(true)
+        expect(result.rows[state].alignedWithMaps, state).toBe(true)
+        expect(result.rows[state].boxesApart, state).toBe(true)
+        expect(result.rows[state].choiceOnLabelLine, state).toEqual(
+          result.rows[state].places.map(() => !mobile)
+        )
       }
       expect(result.folderKept).toBe(true)
     },
