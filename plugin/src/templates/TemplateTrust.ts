@@ -1,4 +1,4 @@
-import { Notice } from 'obsidian'
+import { noticeWithActions, type ActionNotice } from '@/components/obsidian/notice'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ScriptTrust, sha256 } from '@/scripting/ScriptTrust'
 import { reviewScript } from '@/scripting/reviewScript'
@@ -6,7 +6,7 @@ import { parseTemplateVariables } from './TemplateParser'
 import type { UserTemplate } from './UserTemplate'
 
 /** Reuse a still-visible review notice, but never suppress one that the user dismissed. */
-const pending = new WeakMap<ScriptTrust, Map<string, Notice>>()
+const pending = new WeakMap<ScriptTrust, Map<string, ActionNotice>>()
 
 export type TemplateExecutionSettings = Pick<
   UserTemplate,
@@ -42,32 +42,32 @@ export async function allowTemplateExecution(
   let notices = pending.get(trust)
   if (!notices) pending.set(trust, (notices = new Map()))
   const key = `${path}\0${hash}`
-  if (notices.get(key)?.containerEl.isConnected) return false
-  const button = createEl('button', { text: 'Review', cls: 'mod-cta' })
-  const fragment = createFragment()
-  fragment.append(
-    createDiv({
-      text: `Template "${name}": commands and plugin methods were not run. The note can still be made. Review and confirm this version on this device to enable them next time.`,
-    }),
-    button
+  if (notices.get(key)?.notice.containerEl.isConnected) return false
+  const shown = noticeWithActions(
+    `Template "${name}": commands and plugin methods were not run. The note can still be made. Review and confirm this version on this device to enable them next time.`,
+    [
+      {
+        text: 'Review',
+        tooltip: 'Review and confirm this version of the template',
+        accent: true,
+        // Review exactly the held-back snapshot, never approve whatever arrived during the dialog.
+        run: () =>
+          void reviewScript(GlobalStore.getInstance().app, {
+            template: { path, name, source },
+            previous: trust.lastConfirmed(path),
+          })
+            .then((yes) => {
+              if (yes) {
+                trust.confirm({ path, hash, text: source })
+                notices.delete(key)
+                shown.hide()
+              }
+            })
+            .catch((error) => console.error('Could not review template', error)),
+      },
+    ]
   )
-  const notice = new Notice(fragment, 0)
-  notices.set(key, notice)
-  button.addEventListener('click', () => {
-    // Review exactly the held-back snapshot, never approve whatever arrived during the dialog.
-    void reviewScript(GlobalStore.getInstance().app, {
-      template: { path, name, source },
-      previous: trust.lastConfirmed(path),
-    })
-      .then((yes) => {
-        if (yes) {
-          trust.confirm({ path, hash, text: source })
-          notices.delete(key)
-          notice.hide()
-        }
-      })
-      .catch((error) => console.error('Could not review template', error))
-  })
+  notices.set(key, shown)
   return false
 }
 

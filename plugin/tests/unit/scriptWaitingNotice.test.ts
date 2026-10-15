@@ -73,4 +73,16 @@ describe('the notice for scripts waiting to be confirmed', () => {
     notice.hide()
     expect(onScreen()).toEqual([])
   })
+
+  it('opens the review from its kit button and closes on the way', () => {
+    const { service } = fakeService([script('sample.js')])
+    const notice = new WaitingScriptsNotice(service)
+    notice.announce()
+    const button = document.querySelector<HTMLButtonElement>('.notice .abele-notice-actions button')
+    expect(button?.textContent).toBe('Review')
+    expect(button?.classList.contains('mod-cta')).toBe(true)
+    button!.click()
+    expect(service.reviewWaiting).toHaveBeenCalledOnce()
+    expect(onScreen()).toEqual([])
+  })
 })

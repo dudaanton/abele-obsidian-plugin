@@ -1,4 +1,5 @@
-import { ButtonComponent, Notice, type App, type Plugin } from 'obsidian'
+import type { App, Plugin } from 'obsidian'
+import { noticeWithActions } from '@/components/obsidian/notice'
 import { startChangelog } from './startup'
 import { CHANGELOG_VIEW_TYPE, ChangelogView, openChangelog } from './ChangelogView'
 import { runningVersion } from 'virtual:abele-changelog'
@@ -30,23 +31,22 @@ export function registerChangelog(plugin: Plugin): void {
 }
 
 export function showOffer(app: App, range: Range): () => void {
-  const notice = new Notice(
+  // Built in the Notice's own document. No focus is requested and no leaf opens on arrival.
+  const shown = noticeWithActions(
     `Abele updated to ${range.to}. See what's new since ${range.from}.`,
+    [
+      {
+        text: "What's new",
+        tooltip: 'Open changes since the previous version',
+        accent: true,
+        run: () => {
+          shown.hide()
+          void openChangelog(app, range)
+        },
+      },
+      { text: 'Dismiss', tooltip: 'Dismiss this update notice', run: () => shown.hide() },
+    ],
     12_000
   )
-  // Build in the Notice's own document. No focus is requested and no leaf opens on arrival.
-  const actions = notice.messageEl.createDiv({ cls: 'abele-changelog-notice__actions' })
-  new ButtonComponent(actions)
-    .setButtonText("What's new")
-    .setCta()
-    .setTooltip('Open changes since the previous version')
-    .onClick(() => {
-      notice.hide()
-      void openChangelog(app, range)
-    })
-  new ButtonComponent(actions)
-    .setButtonText('Dismiss')
-    .setTooltip('Dismiss this update notice')
-    .onClick(() => notice.hide())
-  return () => notice.hide()
+  return () => shown.hide()
 }

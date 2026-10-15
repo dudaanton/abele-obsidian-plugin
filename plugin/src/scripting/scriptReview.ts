@@ -4,6 +4,7 @@
  * `reviewScript.ts`; the gate that sends a script here is `ScriptService.admit`.
  */
 import { Notice } from 'obsidian'
+import { noticeWithActions, type ActionNotice } from '@/components/obsidian/notice'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ScriptTrust } from './ScriptTrust'
 import { reviewScript } from './reviewScript'
@@ -67,7 +68,7 @@ export async function reviewWaiting(service: ScriptService): Promise<void> {
 export class WaitingScriptsNotice {
   /** Versions of waiting scripts already announced this session, `path\0hash`. */
   private readonly announced = new Set<string>()
-  private notice: Notice | null = null
+  private notice: ActionNotice | null = null
 
   constructor(private readonly service: Pick<ScriptService, 'waitingScripts' | 'reviewWaiting'>) {}
 
@@ -87,16 +88,17 @@ export class WaitingScriptsNotice {
         ? `Script ${names} changed without being written on this device. It will not run until you confirm it here.`
         : `${named.length} scripts changed without being written on this device: ${names}. They will not run until you confirm them here.`
     this.hide()
-    // A notice lives in the main window, so the bare factories — which build there — are right.
-    const button = createEl('button', { text: 'Review', cls: 'mod-cta' })
-    const fragment = createFragment()
-    fragment.append(createDiv({ text: message }), button)
-    const notice = new Notice(fragment, 0)
-    this.notice = notice
-    button.addEventListener('click', () => {
-      this.hide()
-      void this.service.reviewWaiting()
-    })
+    this.notice = noticeWithActions(message, [
+      {
+        text: 'Review',
+        tooltip: 'Review and confirm the waiting scripts',
+        accent: true,
+        run: () => {
+          this.hide()
+          void this.service.reviewWaiting()
+        },
+      },
+    ])
   }
 
   /** Closes the notice once nothing it could review is waiting any more. */

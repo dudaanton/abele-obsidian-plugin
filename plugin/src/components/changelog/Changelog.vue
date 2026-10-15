@@ -202,10 +202,4 @@ watch(
     margin-block: var(--size-4-6);
   }
 }
-.abele-changelog-notice__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--size-4-2);
-  margin-top: var(--size-4-1);
-}
 </style>
