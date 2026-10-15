@@ -65,7 +65,10 @@
 
     <template v-else-if="node">
       <div class="nav-header">
-        <div class="nav-buttons-container">
+        <!-- Where the panel chooses what it shows, its modes stand here as the file explorer's
+             buttons do, and the actions move to the place's menu. -->
+        <div v-if="$slots.nav" class="nav-buttons-container"><slot name="nav" /></div>
+        <div v-else class="nav-buttons-container">
           <Icon
             class="nav-action-button"
             icon="message-square-plus"
@@ -80,6 +83,7 @@
             @click="emit('new-chat')"
           />
           <Icon
+            v-if="!historyInPanel"
             class="nav-action-button"
             icon="history"
             :tooltip="here ? `History of ${here}` : 'Open a folder first'"
@@ -102,7 +106,8 @@
         </div>
       </div>
 
-      <div class="abele-node-panel__node">
+      <!-- With the modes in the header the node is named in the place's own line instead. -->
+      <div v-if="!$slots.nav" class="abele-node-panel__node">
         <Icon icon="server" size="xs" :interactive="false" />
         <span class="abele-node-panel__node-name">{{ node.name }}</span>
         <StatusDot :tone="nodeTone" :label="nodeLabel" :pulse="node.status === 'connecting'" />
@@ -171,6 +176,8 @@ const props = withDefaults(
     updated?: string
     installCommand?: string
     chatAvailable?: boolean
+    /** History is one of the panel's own modes, so the header has no glyph for it. */
+    historyInPanel?: boolean
     error?: string
   }>(),
   {

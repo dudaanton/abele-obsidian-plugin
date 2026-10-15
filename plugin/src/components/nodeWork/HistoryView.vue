@@ -26,9 +26,10 @@
 
     <!-- The list: where the branch stands, then commits by day, newest first, on one line of
          history. A commit not in the main branch yet stands solid on it, one already there hollow;
-         what came in since you last looked has the accent dot; the agent's own carry its glyph. -->
+         what came in since you last looked has the accent dot. The author is the git account that
+         made it, whoever was typing. -->
     <template v-else>
-      <div class="abele-history__branch">
+      <div v-if="head" class="abele-history__branch">
         <Icon :icon="copy ? copyIcon(copy) : 'git-branch'" :interactive="false" />
         <span class="abele-history__branch-name">{{ copy?.branch }}</span>
         <span v-if="copy && copy.kind !== 'project'" class="abele-history__drift">
@@ -75,11 +76,8 @@
             <span class="abele-history__body">
               <span class="abele-history__row-subject">{{ c.subject }}</span>
               <span class="abele-history__row-meta">
-                <span v-if="c.agent" class="abele-history__agent" :data-tip="`Made by ${c.agent}`"
-                  ><Icon icon="bot" size="xs" :interactive="false"
-                /></span>
-                <Avatar v-else :name="c.author" />
-                <span>{{ c.agent ?? c.author }}</span>
+                <Avatar :name="c.author" />
+                <span>{{ c.author }}</span>
                 <span class="abele-history__sep">·</span>
                 <span>{{ c.when }}</span>
                 <template v-if="statsOf(c)">
@@ -137,8 +135,10 @@ const props = withDefaults(
     more?: boolean
     /** The folder's main branch, for the ahead and behind tooltips. */
     base?: string
+    /** The branch and its arrows over the list; off where the page above already says them. */
+    head?: boolean
   }>(),
-  { copy: undefined, open: undefined, more: false, base: undefined }
+  { copy: undefined, open: undefined, more: false, base: undefined, head: true }
 )
 
 const emit = defineEmits<{
@@ -429,22 +429,6 @@ watch(() => [props.copy, props.open, props.commits], tips, { flush: 'post' })
 }
 .abele-history__sep {
   color: var(--text-faint);
-}
-// The agent's commits wear its glyph where a person's face would be.
-.abele-history__agent {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--icon-s);
-  height: var(--icon-s);
-  border-radius: 50%;
-  background-color: color-mix(in oklch, var(--interactive-accent) 18%, transparent);
-  color: var(--text-accent);
-
-  .abele-obsidian-icon {
-    padding: 0;
-    --icon-size: var(--icon-xs);
-  }
 }
 .abele-history__tag {
   display: inline-flex;

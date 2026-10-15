@@ -3,6 +3,13 @@
     v-for="entry in entries"
     :key="entry.path"
     :text="entry.name"
+    :icon="
+      entry.kind === 'folder'
+        ? folded.has(entry.path)
+          ? 'folder'
+          : 'folder-open'
+        : fileIcon(entry.name)
+    "
     :path="entry.path"
     :label="entry.path"
     :collapsible="entry.kind === 'folder'"
@@ -23,6 +30,27 @@
           /> </span
       ></span>
     </template>
+    <template v-if="stage && entry.kind === 'file' && entry.change" #actions>
+      <Icon
+        v-if="stage === 'unstaged' && entry.change.kind !== 'conflict'"
+        icon="undo-2"
+        size="xs"
+        tooltip="Discard the changes to this file…"
+        @click.stop="emit('discard', entry.path)"
+      />
+      <Icon
+        :icon="stage === 'staged' ? 'minus' : 'plus'"
+        size="xs"
+        :tooltip="
+          stage === 'staged'
+            ? 'Unstage'
+            : entry.change.kind === 'conflict'
+              ? 'Mark resolved and stage'
+              : 'Stage'
+        "
+        @click.stop="emit(stage === 'staged' ? 'unstage' : 'stage', entry.path)"
+      />
+    </template>
     <FileTreeLevel
       v-if="entry.kind === 'folder'"
       :entries="entry.children ?? []"
@@ -30,10 +58,14 @@
       :folded="folded"
       :cursors="cursors"
       :changes="changes"
+      :stage="stage"
       @more="(p) => emit('more', p)"
       @toggle="(p) => emit('toggle', p)"
       @open="(p) => emit('open', p)"
       @menu="(e, p) => emit('menu', e, p)"
+      @stage="(p) => emit('stage', p)"
+      @unstage="(p) => emit('unstage', p)"
+      @discard="(p) => emit('discard', p)"
     />
     <TreeItem
       v-if="entry.kind === 'folder' && cursors?.[entry.path]"
@@ -45,11 +77,13 @@
 
 <script setup lang="ts">
 // One level of the file tree; folders hold the next level and open in place. A folded folder
-// with changes inside carries a dot, accent when some of them are new to you.
+// with changes inside carries a dot, accent when some of them are new to you. Under a group of the
+// working tree each changed file stages, unstages or discards from glyphs under the pointer.
+import Icon from '../obsidian/Icon.vue'
 import TreeItem from '../obsidian/TreeItem.vue'
 import StatusDot from '../obsidian/StatusDot.vue'
 import ChangeCodes from './ChangeCodes.vue'
-import { plural } from './codes'
+import { fileIcon, plural } from './codes'
 import type { TreeEntry, FileChange } from './types'
 
 const props = defineProps<{
@@ -58,9 +92,11 @@ const props = defineProps<{
   folded: Set<string>
   cursors?: Record<string, string | null>
   changes?: FileChange[]
+  /** The working tree's group these files are in, for their stage glyphs; none outside one. */
+  stage?: 'unstaged' | 'staged'
 }>()
 const emit = defineEmits<{
-  (e: 'toggle', path: string): void
+  (e: 'toggle' | 'stage' | 'unstage' | 'discard', path: string): void
   (e: 'open', path: string): void
   (e: 'menu', event: MouseEvent, path: string): void
   (e: 'more', path: string): void

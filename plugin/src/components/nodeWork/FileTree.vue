@@ -10,7 +10,7 @@
       <!-- A phone's panel has no room for three glyphs beside the field: one, the view shown,
            and the three in its menu, opened at the glyph. -->
       <Icon
-        v-if="git && phone"
+        v-if="git && modes && phone"
         class="abele-file-tree__mode"
         :icon="MODES.find((m) => m.id === mode)?.icon ?? 'folder-tree'"
         tooltip="Which files to show"
@@ -18,7 +18,7 @@
         @click="modeMenu"
       />
       <Icon
-        v-if="git && !phone"
+        v-if="git && modes && !phone"
         class="abele-file-tree__mode"
         :class="{ 'is-active': mode === 'all' }"
         icon="folder-tree"
@@ -27,7 +27,7 @@
         @click="emit('update:mode', 'all')"
       />
       <Icon
-        v-if="git && !phone"
+        v-if="git && modes && !phone"
         class="abele-file-tree__mode"
         :class="{ 'is-active': mode === 'changed-tree' }"
         icon="folder-git-2"
@@ -36,7 +36,7 @@
         @click="emit('update:mode', 'changed-tree')"
       />
       <Icon
-        v-if="git && !phone"
+        v-if="git && modes && !phone"
         class="abele-file-tree__mode"
         :class="{ 'is-active': mode === 'changed' }"
         icon="file-diff"
@@ -100,6 +100,7 @@
           v-for="hit in found"
           :key="hit.path"
           :text="hit.name"
+          :icon="fileIcon(hit.name)"
           :where="dirName(hit.path)"
           :active="selected === hit.path"
           :path="hit.path"
@@ -130,45 +131,117 @@
             v-if="group.files.length"
             class="abele-file-tree__group"
             :text="group.title"
+            :label="group.tip"
             :flair="String(group.files.length)"
             collapsible
             :collapsed="folded.has(group.id)"
             @click="toggle(group.id)"
           >
+            <template v-if="actions && group.id !== 'committed'" #actions>
+              <Icon
+                :icon="group.id === 'staged' ? 'minus' : 'plus'"
+                size="xs"
+                :tooltip="group.id === 'staged' ? 'Unstage all' : 'Stage all'"
+                @click.stop="emit(group.id === 'staged' ? 'unstage-all' : 'stage-all')"
+              />
+            </template>
             <TreeItem
               v-for="change in group.files"
               :key="change.path"
               :text="fileName(change.path)"
+              :icon="fileIcon(fileName(change.path))"
               :where="dirName(change.path)"
               :active="selected === change.path"
               :path="change.path"
               :class="{ 'abele-file-tree__deleted': change.kind === 'deleted' }"
-              @click="emit('open', change.path, group.id === 'staged' ? 'staged' : 'unstaged')"
+              @click="emit('open', change.path, group.id)"
               @contextmenu.prevent.stop="emit('menu', $event, change.path)"
             >
               <template #end><ChangeCodes :change="change" /></template>
+              <template v-if="actions && group.id !== 'committed'" #actions>
+                <Icon
+                  v-if="group.id === 'unstaged' && change.kind !== 'conflict'"
+                  icon="undo-2"
+                  size="xs"
+                  tooltip="Discard the changes to this file…"
+                  @click.stop="emit('discard', change.path)"
+                />
+                <Icon
+                  :icon="group.id === 'staged' ? 'minus' : 'plus'"
+                  size="xs"
+                  :tooltip="
+                    group.id === 'staged'
+                      ? 'Unstage'
+                      : change.kind === 'conflict'
+                        ? 'Mark resolved and stage'
+                        : 'Stage'
+                  "
+                  @click.stop="emit(group.id === 'staged' ? 'unstage' : 'stage', change.path)"
+                />
+              </template>
             </TreeItem>
           </TreeItem>
         </template>
-        <div v-if="!changes.length" class="search-empty-state">Nothing changed.</div>
+        <div v-if="!changes.length && !branchChanges.length" class="search-empty-state">
+          {{ base ? `Nothing differs from ${base}.` : 'Nothing changed.' }}
+        </div>
+        <div v-if="more" class="abele-file-tree__note">
+          {{ more }}
+        </div>
       </template>
 
       <!-- Only what changed, but where it lies: the folders that hold changes, a folder with one
            folder in it named as one path, and each file with its codes. -->
       <template v-else-if="git && mode === 'changed-tree'">
+        <!-- With staging at hand the same trees go under their groups, as a source control
+             panel splits them: what is not staged, what is, what the branch committed. -->
+        <template v-if="actions">
+          <template v-for="group in groups" :key="group.id">
+            <TreeItem
+              v-if="group.files.length"
+              class="abele-file-tree__group"
+              :text="group.title"
+              :label="group.tip"
+              :flair="String(group.files.length)"
+              collapsible
+              :collapsed="folded.has(group.id)"
+              @click="toggle(group.id)"
+            >
+              <template v-if="group.id !== 'committed'" #actions>
+                <Icon
+                  :icon="group.id === 'staged' ? 'minus' : 'plus'"
+                  size="xs"
+                  :tooltip="group.id === 'staged' ? 'Unstage all' : 'Stage all'"
+                  @click.stop="emit(group.id === 'staged' ? 'unstage-all' : 'stage-all')"
+                />
+              </template>
+              <FileTreeLevel
+                :entries="groupTrees[group.id]"
+                :selected="selected"
+                :folded="changedFolded"
+                :stage="group.id === 'committed' ? undefined : group.id"
+                @toggle="toggleChanged"
+                @open="(path) => emit('open', path, group.id)"
+                @menu="(e, path) => emit('menu', e, path)"
+                @stage="(p) => emit('stage', p)"
+                @unstage="(p) => emit('unstage', p)"
+                @discard="(p) => emit('discard', p)"
+              />
+            </TreeItem>
+          </template>
+        </template>
         <FileTreeLevel
+          v-else
           :entries="changedTree"
           :selected="selected"
           :folded="changedFolded"
-          :changes="changes"
-          @toggle="
-            (path) =>
-              changedFolded.has(path) ? changedFolded.delete(path) : changedFolded.add(path)
-          "
+          @toggle="toggleChanged"
           @open="openChanged"
           @menu="(e, path) => emit('menu', e, path)"
         />
-        <div v-if="!changes.length" class="search-empty-state">Nothing changed.</div>
+        <div v-if="!allChanges.length" class="search-empty-state">
+          {{ base ? `Nothing differs from ${base}.` : 'Nothing changed.' }}
+        </div>
       </template>
 
       <!-- The whole folder, as the file explorer draws it; changes marked where they are. -->
@@ -210,7 +283,7 @@ import TreeItem from '../obsidian/TreeItem.vue'
 import ResultMark from '../obsidian/ResultMark.vue'
 import ChangeCodes from './ChangeCodes.vue'
 import FileTreeLevel from './FileTreeLevel.vue'
-import { dirName, fileName } from './codes'
+import { dirName, fileIcon, fileName } from './codes'
 import type { FileChange, FileTreeMode, TreeEntry } from './types'
 import { changedTree as buildChangedTree } from './changedTree'
 
@@ -228,6 +301,19 @@ const props = withDefaults(
     label?: string
     progress?: { state: 'reading' | 'failed'; count?: number; error?: string }
     cursors?: Record<string, string | null>
+    /**
+     * Files committed on this branch and not in its base, for a third group under the two of the
+     * working tree: what the branch would bring in, as a pull request lists it.
+     */
+    branchChanges?: FileChange[]
+    /** The branch the committed group is compared with. */
+    base?: string
+    /** The view switches beside the search; off where the page around it chooses the view. */
+    modes?: boolean
+    /** Stage, unstage and discard on each changed row, shown under the pointer. */
+    actions?: boolean
+    /** What the list leaves out, said under it ("200 of 1 240 files · show more"). */
+    more?: string
   }>(),
   {
     selected: undefined,
@@ -236,12 +322,19 @@ const props = withDefaults(
     label: 'Files',
     cursors: undefined,
     progress: undefined,
+    branchChanges: () => [],
+    base: undefined,
+    modes: true,
+    actions: false,
+    more: undefined,
   }
 )
 
 const emit = defineEmits<{
   (e: 'update:mode', mode: FileTreeMode): void
-  (e: 'open', path: string, stage?: 'staged' | 'unstaged'): void
+  (e: 'open', path: string, stage?: 'staged' | 'unstaged' | 'committed'): void
+  (e: 'stage' | 'unstage' | 'discard', path: string): void
+  (e: 'stage-all' | 'unstage-all'): void
   (e: 'menu', event: MouseEvent, path: string): void
   (e: 'expand', path: string): void
   (e: 'more', path: string): void
@@ -313,26 +406,48 @@ const toggle = (id: string) => {
 
 const groups = computed(() => [
   {
-    id: 'unstaged',
+    id: 'unstaged' as const,
     title: 'Changes',
+    tip: 'Changed in the working tree, not staged',
     files: props.changes.filter((c) => c.stage !== 'staged'),
   },
   {
-    id: 'staged',
+    id: 'staged' as const,
     title: 'Staged',
+    tip: 'Staged for the next commit',
     files: props.changes.filter((c) => c.stage === 'staged' || c.stage === 'partly'),
   },
+  {
+    id: 'committed' as const,
+    title: 'Committed',
+    tip: `Committed on this branch, not in ${props.base ?? 'its base'}`,
+    files: props.branchChanges,
+  },
 ])
+/** Everything that differs from the base: the working tree over what the branch committed. */
+const allChanges = computed(() => {
+  const working = new Set(props.changes.map((c) => c.path))
+  return [...props.changes, ...props.branchChanges.filter((c) => !working.has(c.path))]
+})
 
-const changedTree = computed(() => buildChangedTree(props.changes))
+const changedTree = computed(() => buildChangedTree(allChanges.value))
+const groupTrees = computed(() =>
+  Object.fromEntries(groups.value.map((g) => [g.id, buildChangedTree(g.files)]))
+)
 // Its folders stand open, since only changes are in them; folding one here leaves the whole tree be.
 const changedFolded = reactive(new Set<string>())
+const toggleChanged = (path: string) =>
+  changedFolded.has(path) ? changedFolded.delete(path) : changedFolded.add(path)
 // A file staged whole opens its staged change; any other, what is in the working tree.
 const openChanged = (path: string) =>
   emit(
     'open',
     path,
-    props.changes.find((c) => c.path === path)?.stage === 'staged' ? 'staged' : 'unstaged'
+    props.changes.find((c) => c.path === path)?.stage === 'staged'
+      ? 'staged'
+      : props.changes.some((c) => c.path === path)
+        ? 'unstaged'
+        : 'committed'
   )
 
 const files = computed(() => {
@@ -384,7 +499,7 @@ const found = computed(() => matches.value.slice(0, 50))
   color: var(--text-error);
 }
 .abele-file-tree__body {
-  padding: 0 var(--size-4-2) var(--size-4-4);
+  padding: var(--size-2-2) var(--size-4-2) var(--size-4-4);
 }
 .abele-file-tree__group > .tree-item-self {
   --abele-tree-item-weight: var(--font-semibold);

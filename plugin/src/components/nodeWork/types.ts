@@ -124,12 +124,42 @@ export interface CommitSummary {
   files?: FileChange[]
   /** How much it changed, when its files are not loaded: files, lines added, lines removed. */
   stats?: { files: number; added: number; removed: number }
-  /** The agent that made it; none for a person. */
-  agent?: string
   /** Not in the folder's main branch yet. */
   only?: boolean
   /** Came in since this history was last looked at. */
   unseen?: boolean
+}
+
+/** A pull request opened from a branch, as the forge reports it. */
+export interface PullRequestSummary {
+  number: number
+  title: string
+  state: 'open' | 'draft' | 'merged' | 'closed'
+  /** The checks run on its last commit: none run, still running, all passed, or one failed. */
+  checks?: 'none' | 'pending' | 'passing' | 'failing'
+  /** Reviews: someone asked for changes, or approved. */
+  review?: 'approved' | 'changes'
+  url?: string
+}
+
+/**
+ * Where a worktree's branch stands, the way a pull request page says it: the branch it is
+ * compared with, how far apart they are, what is not on the remote yet, its pull request, and a
+ * rebase or merge that stopped half way.
+ */
+export interface BranchState {
+  /** The branch it is compared with; null when none could be found. */
+  base: string | null
+  /** Commits on this branch and not on the base, and the other way round. */
+  ahead: number
+  behind: number
+  /** The branch on the remote it pushes to; none before the first push. */
+  upstream?: string
+  /** Commits not pushed yet. */
+  unpushed: number
+  pr?: PullRequestSummary
+  /** A rebase or merge stopped on conflicts, with how many files still conflict. */
+  stopped?: { kind: 'rebase' | 'merge'; onto: string; conflicts: number }
 }
 
 /** One folder on the node as the Open folder dialog lists it. */
