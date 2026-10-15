@@ -4,6 +4,8 @@ import { formatLatLon, reverseGeocode } from '@/services/GeoService'
 import { mapBounds, type MapConfig, type MapPoint } from './mapConfig'
 import { MapLocationControl } from './mapLocationControl'
 import { loadMaplibre } from './loadMaplibre'
+import MapPlacePopup, { type PlaceState } from '@/components/map/MapPlacePopup.vue'
+import { renderKit, unrenderKit } from '@/components/obsidian/mount'
 
 /**
  * The map itself: MapLibre, on tiles that cost the person nothing.
@@ -72,22 +74,6 @@ function featurePriority(feature: MapFeature): number {
       transportation_name: 10,
     }[feature.sourceLayer || ''] || 0
   )
-}
-
-function popupContent(
-  el: HTMLElement,
-  title: string,
-  details: string[],
-  coordinates: string
-): HTMLElement {
-  const doc = el.ownerDocument || document
-  const content = doc.win.createDiv({ cls: 'abele-map__place' })
-  content.appendChild(doc.win.createEl('strong', { text: title }))
-  for (const detail of details) {
-    content.appendChild(doc.win.createDiv({ text: detail }))
-  }
-  content.appendChild(doc.win.createDiv({ cls: 'abele-map__coordinates', text: coordinates }))
-  return content
 }
 
 function isDark(el: HTMLElement): boolean {
@@ -197,30 +183,33 @@ export async function renderMap(el: HTMLElement, config: MapConfig): Promise<Map
           !fromTile || ['building', 'housenumber'].includes(first?.sourceLayer || '')
 
         placePopup?.remove()
-        placePopup = new maplibre.Popup({ closeButton: true, offset: 8 })
+        // One element per popup, filled with the kit's popup and patched as the lookup goes:
+        // synchronously, so MapLibre measures a filled popup when it places it.
+        const content = (el.ownerDocument || document).win.createDiv({ cls: 'abele-map__place' })
+        const show = (place: PlaceState) =>
+          renderKit(content, MapPlacePopup, { place, coordinates })
+        show(needsLookup ? { kind: 'loading' } : { kind: 'place', ...fromTile })
+        const popup = new maplibre.Popup({ closeButton: true, offset: 8 })
           .setLngLat(event.lngLat)
-          .setDOMContent(
-            popupContent(
-              el,
-              needsLookup ? 'Looking up this place…' : fromTile.title,
-              needsLookup ? [] : fromTile.details,
-              coordinates
-            )
-          )
+          .setDOMContent(content)
           .addTo(map)
+        // By its button, by the next press or with the map.
+        popup.on('close', () => unrenderKit(content))
+        placePopup = popup
 
         if (!needsLookup) return
 
         try {
           const place = await reverseGeocode({ lat: event.lngLat.lat, lon: event.lngLat.lng })
-          if (disposed || mine !== lookup || !placePopup) return
-          const details = [place?.address || '', place?.kind || ''].filter(Boolean)
-          placePopup.setDOMContent(
-            popupContent(el, place?.name || 'Selected place', details, coordinates)
-          )
+          if (disposed || mine !== lookup || placePopup !== popup) return
+          show({
+            kind: 'place',
+            title: place?.name || 'Selected place',
+            details: [place?.address || '', place?.kind || ''].filter(Boolean),
+          })
         } catch {
-          if (disposed || mine !== lookup || !placePopup) return
-          placePopup.setDOMContent(popupContent(el, 'Place details unavailable', [], coordinates))
+          if (disposed || mine !== lookup || placePopup !== popup) return
+          show({ kind: 'unavailable' })
         }
       })()
     })

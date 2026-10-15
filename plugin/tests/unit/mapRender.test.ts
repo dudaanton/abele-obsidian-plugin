@@ -59,8 +59,17 @@ const maplibre = vi.hoisted(() => {
       return this
     }
   }
+  const popups: Popup[] = []
   class Popup {
     content: HTMLElement | null = null
+    private readonly listeners = new Map<string, Array<() => void>>()
+    constructor() {
+      popups.push(this)
+    }
+    on(name: string, listener: () => void) {
+      this.listeners.set(name, [...(this.listeners.get(name) ?? []), listener])
+      return this
+    }
     setLngLat() {
       return this
     }
@@ -75,10 +84,15 @@ const maplibre = vi.hoisted(() => {
     addTo() {
       return this
     }
-    remove() {}
+    /** MapLibre's popup says `close` when it is taken off the map, by its button or by code. */
+    remove() {
+      for (const listener of this.listeners.get('close') ?? []) listener()
+      return this
+    }
   }
 
   return {
+    popups,
     markers,
     controls,
     positions,
@@ -131,6 +145,7 @@ beforeEach(() => {
   maplibre.setFeatures([])
   geo.reverseGeocode.mockReset()
   maplibre.markers.length = 0
+  maplibre.popups.length = 0
 })
 
 describe('map controls', () => {
@@ -233,5 +248,81 @@ describe('a place already drawn by the base map', () => {
     expect(
       mapFeatureInfo({ sourceLayer: 'building', properties: { render_height: 12 } })
     ).toBeNull()
+  })
+})
+
+describe('the place popup', () => {
+  const building = [
+    { sourceLayer: 'building', layer: { id: 'building' }, properties: { render_height: 12 } },
+  ]
+  const press = () =>
+    maplibre.handlers.get('click')?.({ point: {}, lngLat: { lat: 56.95, lng: 24.1 } })
+  const settle = async () => {
+    await Promise.resolve()
+    await Promise.resolve()
+  }
+
+  it('says it is looking the place up, then fills the same popup with what was found', async () => {
+    maplibre.setFeatures(building)
+    let found: (place: unknown) => void = () => {}
+    geo.reverseGeocode.mockReturnValue(new Promise((resolve) => (found = resolve)))
+    const handle = await renderMap(document.createElement('div'), config)
+    press()
+    await Promise.resolve()
+
+    const content = maplibre.popupContent!
+    expect(content.classList.contains('abele-map__place')).toBe(true)
+    expect(content.querySelector('strong')?.textContent).toBe('Looking up this place…')
+    expect(content.querySelector('.abele-map__coordinates')?.textContent).toBe('56.95, 24.1')
+
+    found({ name: 'Sample street 1', address: 'Sample town', kind: 'house' })
+    await settle()
+    expect(maplibre.popupContent).toBe(content)
+    expect(content.querySelector('strong')?.textContent).toBe('Sample street 1')
+    expect([...content.querySelectorAll(':scope > div')].map((d) => d.textContent)).toEqual([
+      'Sample town',
+      'house',
+      '56.95, 24.1',
+    ])
+    handle.destroy()
+  })
+
+  it('says the details are unavailable when the lookup fails', async () => {
+    maplibre.setFeatures(building)
+    geo.reverseGeocode.mockRejectedValue(new Error('offline'))
+    const handle = await renderMap(document.createElement('div'), config)
+    press()
+    await settle()
+
+    expect(maplibre.popupContent?.querySelector('strong')?.textContent).toBe(
+      'Place details unavailable'
+    )
+    handle.destroy()
+  })
+
+  it('takes its content out when it closes, when another place is pressed and with the map', async () => {
+    maplibre.setFeatures([
+      { sourceLayer: 'poi', layer: { id: 'poi_r20' }, properties: { name: 'Sample cafe' } },
+    ])
+    const handle = await renderMap(document.createElement('div'), config)
+
+    press()
+    await Promise.resolve()
+    const first = maplibre.popupContent!
+    expect(first.textContent).toContain('Sample cafe')
+    maplibre.popups[0].remove()
+    expect(first.childNodes).toHaveLength(0)
+
+    press()
+    await Promise.resolve()
+    const second = maplibre.popupContent!
+    press()
+    await Promise.resolve()
+    expect(second.childNodes).toHaveLength(0)
+
+    const third = maplibre.popupContent!
+    expect(third.textContent).toContain('Sample cafe')
+    handle.destroy()
+    expect(third.childNodes).toHaveLength(0)
   })
 })
