@@ -1,5 +1,6 @@
 <template>
   <span
+    ref="rootEl"
     class="abele-comment-marker"
     :class="{
       [`abele-comment-marker_${state}`]: state !== 'idle',
@@ -11,9 +12,6 @@
     role="button"
     tabindex="0"
     :aria-label="`${kind === 'human' ? 'Open text comments' : 'Open Ask here'}${unresolved ? ' (unresolved passage)' : ''}`"
-    @click.prevent.stop="onPress(ids)"
-    @keydown.enter.prevent.stop="onPress(ids)"
-    @keydown.space.prevent.stop="onPress(ids)"
   >
     <span ref="iconEl" class="abele-comment-marker__icon" />
     <!-- A count only earns its space when there is something to count. A comment nobody has
@@ -52,9 +50,23 @@ const props = withDefaults(
   { count: 0, state: 'idle', open: false, kind: 'ai', unresolved: false }
 )
 
+const rootEl = ref<HTMLElement>()
 const iconEl = ref<HTMLElement>()
 
+const press = (event: Event) => {
+  if (event instanceof KeyboardEvent && event.key !== 'Enter' && event.key !== ' ') return
+  event.preventDefault()
+  event.stopPropagation()
+  props.onPress(props.ids)
+}
+
 onMounted(() => {
+  // Listened to directly rather than through `@click`. A chat answer captures clicks through
+  // Vue, and Vue then drops the event at a listener of its own attached no earlier than the
+  // event began — which is every press in the millisecond a marker was redrawn in. The element
+  // goes with the marker, so nothing needs taking off.
+  rootEl.value?.addEventListener('click', press)
+  rootEl.value?.addEventListener('keydown', press)
   if (iconEl.value)
     setIcon(iconEl.value, props.kind === 'human' ? 'message-square' : 'message-circle')
 })

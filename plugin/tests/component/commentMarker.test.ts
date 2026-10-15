@@ -4,6 +4,7 @@
  * `data-comment-ids` the e2e harness finds it by, an inline `span` that is pressed like a button.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createApp, h } from 'vue'
 import CommentMarker from '@/components/CommentMarker.vue'
 import { renderKitRoot } from '@/components/obsidian/mount'
 
@@ -70,5 +71,26 @@ describe('CommentMarker', () => {
     expect(outside).toHaveBeenCalledOnce()
     document.body.removeEventListener('click', outside)
     document.body.removeEventListener('keydown', outside)
+  })
+
+  /**
+   * A chat answer listens for clicks in the capture phase, through Vue. Vue drops an event its
+   * own listener on the target was attached no earlier than — meant for listeners added while
+   * the event travels — so a marker redrawn in the very millisecond of a press lost the press.
+   */
+  it('answers a press in the same millisecond it was drawn, under a Vue listener that captures', () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_000)
+    const onPress = vi.fn()
+    const host = document.body.createDiv()
+    const app = createApp({ render: () => h('div', { class: 'answer', onClickCapture: () => {} }) })
+    app.mount(host)
+    const marker = draw({ onPress })
+    host.querySelector('.answer')!.appendChild(marker)
+
+    marker.click()
+
+    expect(onPress).toHaveBeenCalledWith(['k7d2ph'])
+    app.unmount()
+    now.mockRestore()
   })
 })
