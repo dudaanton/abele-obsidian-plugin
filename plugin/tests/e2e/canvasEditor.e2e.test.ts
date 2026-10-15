@@ -116,8 +116,7 @@ const type = async (text: string) => {
        innerHeight - (window.visualViewport?.height ?? innerHeight) > 1)`)
     const expected = run<string>(`const field=document.activeElement;
       return field.value.slice(0,field.selectionStart)+${JSON.stringify(text)}+field.value.slice(field.selectionEnd)`)
-    // The keyboard-keys way has no key for Backspace; the field's own typing deletes.
-    if (text === '\b') typeText(text, 'focus')
+    if (text === '\b') typeText(text)
     else {
       typeText(text, 'keys')
       await expect
@@ -304,7 +303,9 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
     await press('document.querySelector(".prompt-input")')
     // Select the query, then delete through the native keyboard; never assign the DOM value.
     run('document.querySelector(".prompt-input").select();return true')
-    await type('\b')
+    // The phone's keys have no Backspace; an empty query needs none.
+    if (!onPhone() || run<string>('return document.querySelector(".prompt-input").value'))
+      await type('\b')
     await until('document.querySelector(".prompt-input")?.value === ""')
     await type('new canvas')
     await until('document.querySelector(".prompt-input")?.value === "new canvas"')
