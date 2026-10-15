@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
+import dayjs from 'dayjs'
 import TimeSidebar from '@/components/TimeTrackingSidebar.vue'
 import GalleryView from '@/components/Gallery.vue'
 import EmptyState from '@/components/obsidian/EmptyState.vue'
@@ -16,14 +17,13 @@ afterEach(() => {
 })
 
 describe('small UI states', () => {
-  it('shows no-data copy rather than a blank cleared chart in an empty time period', () => {
+  it('says once that an empty time period has nothing tracked, rather than a blank cleared chart', () => {
     useVault([])
     GlobalStore.getInstance().timeEntryList.value = null
     view = mount(TimeSidebar, { global: { stubs: { Chart: true } } })
     expect(view.findComponent(Chart).exists()).toBe(false)
     expect(view.findAllComponents(EmptyState).map((one) => one.props('text'))).toEqual([
-      'No data',
-      'No entries found',
+      `Nothing tracked in ${dayjs().format('MMMM YYYY')}`,
     ])
   })
   it.each([false, true])(
