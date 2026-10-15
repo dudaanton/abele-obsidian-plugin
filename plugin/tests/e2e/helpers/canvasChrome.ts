@@ -107,7 +107,7 @@ const SAVE: Record<string, string> = {
   'Keep text draft': 'Keep the draft',
   'Discard local draft': 'Discard the draft…',
 }
-/** The editor's old rows that opened a panel of tools: the row shows every tool now. */
+/** The editor's old toggles of a panel of tools, which put Select back in hand. */
 const GONE = new Set(['Canvas drawing tools', 'Shapes and connections'])
 
 export function canvasChrome(d: CanvasChromeDriver) {
@@ -154,21 +154,30 @@ export function canvasChrome(d: CanvasChromeDriver) {
         return [x,y]}
       return null`)
   }
+  /** A card or shape in hand is put down where the canvas is next pressed: an empty place. */
+  async function putDown() {
+    const placing = d.run<string>(`return view().editor.controls.tool()`)
+    if (placing === 'card' || placing === 'shape') await d.at(emptySpot())
+  }
   return {
     emptySpot,
     at: d.at,
     tool,
     /** Presses whatever does `label` now; `allowDisabled` presses it even while it may not run. */
     async click(label: string, allowDisabled = false) {
-      if (GONE.has(label)) return
+      // Closing the old panels put Select back in hand; the row shows every tool now.
+      if (GONE.has(label)) return tool('Select canvas objects')
       if (TOOLS[label]) return tool(label)
       if (ADDS[label]) {
         const a = ADDS[label]
-        if (shown(tools(a.slot))) return d.press(tools(a.slot))
-        return menu(tools('More tools'), a.title)
+        if (shown(tools(a.slot))) await d.press(tools(a.slot))
+        else await menu(tools('More tools'), a.title)
+        return putDown()
       }
-      if (label === 'Add canvas shape')
-        return d.press(startsWith('.abele-canvas-chrome__tools', 'Shape: '))
+      if (label === 'Add canvas shape') {
+        await d.press(startsWith('.abele-canvas-chrome__tools', 'Shape: '))
+        return putDown()
+      }
       if (PICKED[label]) {
         await d.until(
           allowDisabled

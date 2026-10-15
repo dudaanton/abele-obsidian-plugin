@@ -1755,6 +1755,9 @@ export class CanvasEditor {
     } else if (event.key === 'Enter') label = 'Edit card text'
     const command = label ? null : canvasKey(event, this.tool)
     if (!label && !command) return false
+    // With nothing picked, or a walkthrough running, the arrows go through its steps.
+    if (command?.kind === 'nudge' && (!this.selected.size || this.viewer.step !== null))
+      return false
     event.preventDefault()
     event.stopPropagation()
     if (label) {
