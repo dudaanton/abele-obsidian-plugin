@@ -11,7 +11,13 @@
     :class="{ 'is-phone-layout': phone }"
     :style="{ '--abele-canvas-bar': `${barHeight}px` }"
     @pointerdown.stop
+    @touchstart.stop
+    @touchmove.stop
+    @touchend.stop
+    @touchcancel.stop
   >
+    <!-- Touches on the controls stop here: the canvas under them cancels every touch so the page
+         does not scroll under a pen, and a cancelled touch never becomes a tap on a button. -->
     <div v-if="saveState" class="canvas-controls abele-canvas-chrome__state">
       <div class="canvas-control-group">
         <div
