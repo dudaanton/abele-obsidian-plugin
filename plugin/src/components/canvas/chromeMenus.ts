@@ -270,8 +270,8 @@ export function moreEntries(c: Controls, p: PickedView, host?: CanvasHostActions
   return out
 }
 /**
- * Which part of a note its card shows: the whole note, the part scrolled to, or a part from one
- * of its headings on; each part can also be put beside it as a card of its own.
+ * Which part of a note its card shows: the whole note or a part from one of its headings on;
+ * each part can also be put beside it as a card of its own.
  */
 export async function partMenu(
   e: MouseEvent | { currentTarget: EventTarget | null },
@@ -283,7 +283,6 @@ export async function partMenu(
   const node = p.node
   if (!node?.file) return
   const headings = await c.headings(node.file)
-  const inView = adding ? null : c.partInView(node.id)
   const menu = new Menu()
   const current = node.subpath ?? ''
   const run = (subpath: string): void =>
@@ -295,13 +294,6 @@ export async function partMenu(
         .setIcon('file-text')
         .setChecked(!current)
         .onClick(() => run(''))
-    )
-  if (inView)
-    menu.addItem((item) =>
-      item
-        .setTitle(`Keep the part in view: ${inView}`)
-        .setIcon('pin')
-        .onClick(() => run(`#${inView}`))
     )
   if (headings.length && !adding) menu.addSeparator()
   const top = Math.min(...headings.map((h) => h.level))

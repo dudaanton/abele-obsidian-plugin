@@ -243,7 +243,6 @@ export class CanvasEditor {
     /** Adds one part of a note as a card of its own beside the note's card. */
     addPart: (id: string, subpath: string): Promise<void> => this.addPart(id, subpath),
     /** The heading the picked note's card has scrolled to, if it has scrolled past one. */
-    partInView: (id: string): string | null => this.partInView(id),
     foldFrame: (id: string, collapsed: boolean): Promise<void> =>
       this.frameOp(id, collapsed ? 'collapse' : 'expand'),
     /**
@@ -2277,15 +2276,6 @@ export class CanvasEditor {
       ],
       new Set([fresh])
     )
-  }
-  /** The last heading a note's card has scrolled past: the part to keep on the card. */
-  private partInView(id: string): string | null {
-    const body = this.viewer.scroller(id)
-    if (!body || body.scrollTop < 4) return null
-    let found: string | null = null
-    for (const h of Array.from(body.querySelectorAll<HTMLElement>('h1,h2,h3,h4,h5,h6')))
-      if (h.offsetTop <= body.scrollTop + 8) found = h.textContent?.trim() || found
-    return found
   }
   destroy(): void {
     void this.close()
