@@ -24,6 +24,8 @@ export function tokenStatus(
           ? 'paused'
           : 'idle'
   status.pending = rows.reduce((sum, one) => sum + (activity[one.id]?.pending ?? 0), 0)
+  status.heldDeletes = rows.reduce((sum, one) => sum + (activity[one.id]?.heldDeletes ?? 0), 0)
+  status.deferred = rows.reduce((sum, one) => sum + (activity[one.id]?.deferred ?? 0), 0)
   status.conflicts = rows.reduce((sum, one) => sum + (activity[one.id]?.conflicts?.length ?? 0), 0)
   status.review = ui.candidates.value.length + ui.questions.value.length
   status.lastError = rows.map((one) => activity[one.id]?.error).find(Boolean) ?? null

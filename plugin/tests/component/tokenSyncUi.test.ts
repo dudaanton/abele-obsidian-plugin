@@ -1,4 +1,8 @@
 import { expect, it, vi } from 'vitest'
+import type { Plugin } from 'obsidian'
+import { renderStatus } from '@/sync/status'
+import { tokenStatus } from '@/sync/tokenStatus'
+import { mountPhoneSyncAction } from '@/sync/phoneSyncAction'
 import { mount, flushPromises } from '@vue/test-utils'
 import TokenDialogs from '@/components/sync/TokenDialogs.vue'
 import { TokenUi } from '@/sync/tokenUi'
@@ -16,6 +20,49 @@ import { AttachmentConsent } from '@/sync/attachmentConsent'
 import { Notice } from '../mocks/obsidian'
 import { SyncDriver } from '../e2e/helpers/syncDriver'
 vi.mock('../e2e/helpers/syncVault', () => ({ waitFor: vi.fn() }))
+
+it('renders held-only warnings in the status bar and phone header until resolved', () => {
+  const ui = tokenUiFixture()
+  const first = ui.rows.value[0]
+  for (const row of ui.rows.value) ui.registry.setStatus(row.id, 'idle')
+  ui.rows.value = [{ ...first, status: 'idle' }]
+  ui.activity.value = { [first.id]: { heldDeletes: 2 } }
+  ui.candidates.value = []
+  ui.questions.value = []
+  const bar = document.createElement('div')
+  const header = document.createElement('div')
+  const open = vi.fn()
+  const view = {
+    addAction(icon: string, tooltip: string, action: () => void) {
+      const button = document.createElement('button')
+      button.dataset.icon = icon
+      button.setAttribute('aria-label', tooltip)
+      button.onclick = action
+      header.append(button)
+      return button
+    },
+  }
+  const plugin = {
+    app: { workspace: { getLeavesOfType: () => [{ view }], on: vi.fn() } },
+    registerEvent: vi.fn(),
+    register: vi.fn(),
+  }
+  const paint = mountPhoneSyncAction(plugin as unknown as Plugin, open)
+  const status = tokenStatus(ui)
+  renderStatus(bar, status)
+  paint(status)
+  expect(bar.textContent).toBe('Deletions held (2)')
+  expect(bar.classList.contains('abele-sync-status_warning')).toBe(true)
+  const action = header.querySelector('button')!
+  expect(action.dataset.icon).toBe('cloud-alert')
+  expect(action.classList.contains('mod-warning')).toBe(true)
+  expect(action.getAttribute('aria-label')).toBe('Sync: deletions are held back')
+  action.click()
+  expect(open).toHaveBeenCalledOnce()
+  ui.publish(first.id, { heldDeletes: 0 })
+  paint(tokenStatus(ui))
+  expect(header.children).toHaveLength(0)
+})
 
 it('issues a token through the live driver selectors in the sharing dialog', async () => {
   const ui = shareFixture(),

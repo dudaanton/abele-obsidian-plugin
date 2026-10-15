@@ -34,6 +34,28 @@ describe('a connection row', () => {
 })
 
 describe('the status bar across connections', () => {
+  it('counts held deletes and deferred changes only for attached connections', () => {
+    const ui = tokenUiFixture()
+    const [first, second] = ui.rows.value
+    ui.rows.value = [first, second].map((row) => ({ ...row, status: 'idle' }))
+    ui.candidates.value = []
+    ui.questions.value = []
+    ui.activity.value = {
+      [first.id]: { heldDeletes: 3, deferred: 2 },
+      [second.id]: { heldDeletes: 4, deferred: 1 },
+      detached: { heldDeletes: 100, deferred: 100 },
+    }
+    const status = tokenStatus(ui)
+    expect(status.heldDeletes).toBe(7)
+    expect(status.deferred).toBe(3)
+    expect(statusText(status)).toBe('Deletions held (7)')
+    expect(statusWarns(status)).toBe(true)
+    expect(statusTooltip(status)).toContain('Settings waiting (3)')
+    ui.publish(first.id, { heldDeletes: 0, deferred: 0 })
+    expect(tokenStatus(ui)).toMatchObject({ heldDeletes: 4, deferred: 1 })
+    ui.publish(second.id, { heldDeletes: 0, deferred: 0 })
+    expect(statusWarns(tokenStatus(ui))).toBe(false)
+  })
   it('leads with conflict copies in the warning colour, then with what waits for a decision', () => {
     const ui = tokenUiFixture()
     const status = tokenStatus(ui)
