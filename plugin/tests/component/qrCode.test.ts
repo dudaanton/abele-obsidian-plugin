@@ -59,4 +59,10 @@ describe('a QR code', () => {
 
     expect(forgiving).not.toBe(usual)
   })
+
+  it('uses compact modes when the alphabet allows them', () => {
+    const side = (text: string) => Number(drawn(text).attributes('viewBox').split(' ')[2])
+    expect(side('A'.repeat(270))).toBeLessThan(side('a'.repeat(270)))
+    expect(side('1'.repeat(270))).toBeLessThan(side('A'.repeat(270)))
+  })
 })

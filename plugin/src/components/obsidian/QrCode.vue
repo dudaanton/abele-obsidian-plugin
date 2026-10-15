@@ -32,7 +32,14 @@ const QUIET_ZONE = 4
 const code = computed(() => {
   // Type number 0 lets the library pick the smallest version the data fits into.
   const built = qr(0, props.level)
-  built.addData(props.text)
+  // Base64url tokens need Byte mode; numeric and uppercase transfer payloads
+  // can use fewer modules without changing the text a reader receives.
+  const mode = /^\d+$/.test(props.text)
+    ? 'Numeric'
+    : /^[0-9A-Z $%*+./:-]+$/.test(props.text)
+      ? 'Alphanumeric'
+      : 'Byte'
+  built.addData(props.text, mode)
   built.make()
   return built
 })

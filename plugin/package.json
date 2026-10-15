@@ -64,6 +64,7 @@
     "eslint-plugin-vue": "10.10.0",
     "fake-indexeddb": "6.2.5",
     "happy-dom": "20.11.6",
+    "jpeg-js": "0.4.4",
     "obsidian": "1.13.1",
     "postcss": "8.5.29",
     "prettier": "3.6.2",
@@ -108,7 +109,8 @@
     "nanoid": "5.1.16",
     "qrcode-generator": "2.0.4",
     "vue": "3.5.43",
-    "zod": "4.6.5"
+    "zod": "4.6.5",
+    "zxing-wasm": "3.1.5"
   },
   "overrides": {
     "moment": "2.31.0"

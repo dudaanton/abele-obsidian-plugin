@@ -17,7 +17,7 @@
 import { ref } from 'vue'
 import Setting from '../obsidian/Setting.vue'
 import Button from '../obsidian/Button.vue'
-import { readCodes, readableSize, closerLooks } from '@/transfer/scan'
+import { readPhoto } from '@/transfer/photo'
 import { decodeAccessToken } from '@/sync/v2/client'
 const emit = defineEmits<{ token: [text: string] }>()
 const picker = ref<HTMLInputElement>(),
@@ -37,36 +37,40 @@ async function read(event: Event) {
     const canvas = input.doc.win.createEl('canvas'),
       context = canvas.getContext('2d', { willReadFrequently: true })
     if (!context) throw new Error('No image reader')
-    const looks = [
-      { x: 0, y: 0, width: image.naturalWidth, height: image.naturalHeight },
-      ...closerLooks(image.naturalWidth, image.naturalHeight),
-    ]
-    for (const look of looks) {
-      const size = readableSize(look.width, look.height)
-      canvas.width = size.width
-      canvas.height = size.height
-      context.drawImage(
-        image,
-        look.x,
-        look.y,
-        look.width,
-        look.height,
-        0,
-        0,
-        size.width,
-        size.height
-      )
-      for (const text of await readCodes(context.getImageData(0, 0, size.width, size.height))) {
+    const token = await readPhoto(
+      image.naturalWidth,
+      image.naturalHeight,
+      (look, size) => {
+        canvas.width = size.width
+        canvas.height = size.height
+        context.drawImage(
+          image,
+          look.x,
+          look.y,
+          look.width,
+          look.height,
+          0,
+          0,
+          size.width,
+          size.height
+        )
+        return context.getImageData(0, 0, size.width, size.height)
+      },
+      (text) => {
         try {
           decodeAccessToken(text)
+          return true
         } catch {
-          continue
+          return false
         }
-        emit('token', text)
-        return
       }
+    )
+    if (token) {
+      emit('token', token)
+      return
     }
-    error.value = 'No connection token found. Take a clearer picture or paste the token.'
+    error.value =
+      'No connection token found. Hold the camera closer so the code fills most of the picture, or paste the token.'
   } catch {
     error.value = 'The picture could not be read. Try another picture or paste the token.'
   } finally {
