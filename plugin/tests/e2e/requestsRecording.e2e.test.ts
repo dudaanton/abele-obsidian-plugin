@@ -297,10 +297,17 @@ it('on a phone: the recording said in the drawer, the switch beside Send, the st
     openChat()
     rmSync(join(repo, 'src/port.txt'), { force: true })
     inApp<{ ok: boolean }>(`(async()=>{${prelude}
-      ${RUN('src/server.js')}
-      await recordPoint(9,['order']);
-      await goOn();
-      return {ok:true}
+      try{
+        ${RUN('src/server.js')}
+        await recordPoint(9,['order']);
+        await goOn();
+        return {ok:true}
+      }catch(e){
+        // The phone's layout is saved apart from the desktop's: leave no tab of this file in it.
+        for(const t of ['abele-trace-run','abele-trace-value','abele-node-file','abele-debug-view','abele-request','abele-requests'])for(const l of app.workspace.getLeavesOfType(t))l.detach();
+        await app.workspace.requestSaveLayout.run();
+        throw e
+      }
     })()`)
     await serviceListening()
     const seen = inApp<{ steps: string; top: string[] }>(`(async()=>{${prelude}

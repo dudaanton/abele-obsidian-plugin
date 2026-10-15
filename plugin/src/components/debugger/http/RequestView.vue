@@ -287,7 +287,7 @@
           role="status"
         >
           <Icon icon="key-round" size="xs" no-hover />
-          <span>{{ blocked }}</span>
+          <span class="abele-http-request__why">{{ blocked }}</span>
           <Button
             v-if="missingKey"
             class="abele-http-request__open-keys"

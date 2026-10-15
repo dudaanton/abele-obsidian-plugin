@@ -343,7 +343,7 @@ it('keeps Send off while a key the plugin does not have is named, and says which
     await openRequest('Signed sample');
     const b=tab().querySelector('.abele-http-request__send');
     const missing=!!tab().querySelector('.abele-http-pairs__row_missing');
-    const said=tab().querySelector('.abele-http-request__answer .abele-http-request__notice > span')?.textContent.trim()??'';
+    const said=tab().querySelector('.abele-http-request__why')?.textContent.trim()??'';
     const openKeys=!!tab().querySelector('.abele-http-request__open-keys');
     await shot('2026-10-15-http-missing-key-desktop');
     return {said,openKeys,disabled:b.disabled||b.classList.contains('is-disabled')||b.getAttribute('aria-disabled')==='true',missing,key:tab().querySelector('.abele-http-pairs__secret')?.textContent.trim()??''}
@@ -461,8 +461,8 @@ it('works the same on a phone: the list in the drawer, a request on the whole sc
       const root=tab(),overflow=root.scrollWidth-root.clientWidth,f=facts();
       (await until(()=>answerTab('History'),'History on the phone')).click();
       const latest=await until(()=>tab().querySelectorAll('.abele-http-request__answer .tree-item')[1],'two sends');
-      latest.querySelector('[aria-label="Compare with the answer shown"]').click();
-      await until(()=>tab().querySelector('.abele-http-request__compare'),'compared on the phone');
+      // Pressed until it takes: the row's actions settle in on a phone after the tab redraws.
+      await until(()=>{if(tab().querySelector('.abele-http-request__compare'))return true;tab().querySelectorAll('.abele-http-request__answer .tree-item')[1]?.querySelector('[aria-label="Compare with the answer shown"]')?.click();return false},'compared on the phone');
       tab().closest('.view-content').scrollTop=tab().querySelector('.abele-http-request__answer').offsetTop;
       await shot('2026-10-15-http-compare-phone');
       const compared=true;
