@@ -315,6 +315,10 @@ export class ObsidianFileSystem implements FileSystem {
     this.runtimeFence?.assertReady()
     return this.directories.list()
   }
+  [Symbol.for('abele.sync.directory-identity-v1')](path: string): Promise<string> {
+    this.runtimeFence?.assertReady()
+    return this.directories.identity(path)
+  }
   async mkdir(path: string): Promise<void> {
     this.runtimeFence?.assertReady()
     await this.beforeEngineMutation?.([path])

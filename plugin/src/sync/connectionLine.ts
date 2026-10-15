@@ -67,6 +67,7 @@ export function connectionProgress(
   const one =
     activity?.startup ??
     activity?.inspection ??
+    activity?.pull ??
     activity?.comparison ??
     (activity?.total !== undefined
       ? { completed: activity.completed ?? 0, total: activity.total }

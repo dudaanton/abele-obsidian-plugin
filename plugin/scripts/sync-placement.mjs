@@ -124,6 +124,21 @@ export function syncPlacementPlugin() {
       } else if (file.endsWith('/v2Directories.js')) {
         code = replaceOnce(
           code,
+          `const local = [];
+        for await (const dir of this.fs.listDirectories())
+            local.push(dir);
+        const identity = local.find((d) => d.path === item.path).identity;`,
+          `const identify = this.fs[Symbol.for('abele.sync.directory-identity-v1')];
+        let identity;
+        if (identify) identity = await identify(item.path);
+        else {
+          for await (const dir of this.fs.listDirectories())
+            if (dir.path === item.path) { identity = dir.identity; break; }
+          if (!identity) throw new Error('Received directory identity is unavailable');
+        }`
+        )
+        code = replaceOnce(
+          code,
           'const op = moved\n',
           `// A recursive server delete must not bypass the ordinary file delete guard.
             // Settle tracked children (or hold/restore them) before deleting their parent.

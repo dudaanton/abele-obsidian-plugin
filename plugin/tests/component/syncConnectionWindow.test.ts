@@ -43,3 +43,18 @@ it('gives held deletes and staged settings the opened connection port', async ()
     view.unmount()
   }
 })
+
+it('shows first-pull stage and counts as quiet visible text', () => {
+  const ui = tokenUiFixture(),
+    id = ui.rows.value[0].id
+  ui.publish(id, { pull: { stage: 'Receiving files', completed: 3, total: 12 } })
+  const view = mount(ConnectionWindow, {
+    props: { ui, connectionId: id },
+    global: { stubs: { Modal: { template: '<div><slot /></div>' }, SelectiveSync: true } },
+  })
+  try {
+    expect(view.find('.abele-sync-window__progress').text()).toBe('Receiving files · 3 of 12')
+  } finally {
+    view.unmount()
+  }
+})

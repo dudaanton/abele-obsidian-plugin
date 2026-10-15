@@ -542,6 +542,7 @@ export class TokenEngines {
           transferBudget: transferBudgetOf(this.app.vault),
           id: record.id,
           comparing: (comparison) => this.ui.publish(record.id, { comparison }),
+          pulling: (pull) => this.ui.publish(record.id, { pull }),
           encoded: encodeAccessToken({
             v: 1,
             address: record.address,

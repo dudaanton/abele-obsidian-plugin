@@ -13,6 +13,7 @@
         :value="progress.completed"
         :max="progress.total"
       />
+      <p v-if="counts" class="abele-sync-window__progress" role="status">{{ counts }}</p>
       <p v-if="failure" class="abele-sync-window__error mod-warning" role="alert">{{ failure }}</p>
 
       <Section v-if="refused.length" title="Not sent">
@@ -114,6 +115,14 @@ const host = computed(() => (row.value ? new URL(row.value.address).host : ''))
 const line = computed(() => (row.value ? connectionLine(row.value, activity.value) : ''))
 const tone = computed(() => (row.value ? connectionTone(row.value, activity.value) : 'faint'))
 const progress = computed(() => connectionProgress(activity.value))
+const counts = computed(() => {
+  const one = activity.value
+  if (one?.pull) return `${one.pull.stage} · ${one.pull.completed} of ${one.pull.total}`
+  const stage =
+    one?.startup?.stage ??
+    (one?.inspection ? 'Checking the vault' : one?.comparison ? 'Comparing files' : 'Syncing')
+  return progress.value ? `${stage} · ${progress.value.completed} of ${progress.value.total}` : ''
+})
 const failure = computed(() => props.error || activity.value?.error || '')
 const refused = computed(() => activity.value?.refused ?? [])
 const conflicts = computed(() => activity.value?.conflicts ?? [])
@@ -163,6 +172,11 @@ onMounted(async () => {
 .abele-sync-window__server {
   color: var(--text-muted);
   font-size: var(--font-ui-small);
+}
+.abele-sync-window__progress {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  margin-block: var(--size-2-2);
 }
 .abele-sync-window__error {
   margin-block: var(--size-4-2) 0;

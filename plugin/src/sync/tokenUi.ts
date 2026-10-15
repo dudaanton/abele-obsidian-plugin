@@ -124,6 +124,7 @@ export const statusName = (status: string) =>
     }) as Record<string, string>
   )[status] ?? 'Needs attention'
 export interface ConnectionActivity {
+  pull?: { stage: string; completed: number; total: number }
   comparison?: { completed: number; total: number }
   startup?: {
     stage: string

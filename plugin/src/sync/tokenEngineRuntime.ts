@@ -70,6 +70,7 @@ export interface TokenEngineOptions {
   assertHeld?(): void
   changed(status: EngineStatus, report?: SyncReport): void
   comparing?(progress?: { completed: number; total: number }): void
+  pulling?(progress?: { stage: string; completed: number; total: number }): void
   failed(error: unknown): void
   covers(path: string): Promise<boolean>
   expectedSource?: ReviewSource
@@ -121,6 +122,23 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   private held = new Set<string>()
   private readonly manifestIds = new Set<string>()
   private readonly assetPaths = new Map<string, string>()
+  private pulling = false
+  private readonly pullPaths = new Set<string>()
+  private readonly pulledPaths = new Set<string>()
+  private pullProgress(stage = 'Receiving files'): void {
+    if (this.pulling)
+      this.options.pulling?.({
+        stage,
+        completed: this.pulledPaths.size,
+        total: this.pullPaths.size,
+      })
+  }
+  private pulled(path: string): void {
+    if (this.pulling && this.pullPaths.has(path)) {
+      this.pulledPaths.add(path)
+      this.pullProgress()
+    }
+  }
   private unstatus: () => void
   private readonly token
   private readonly selective: SelectiveSettings
@@ -197,6 +215,12 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
               throw new EngineError('protocol', 'Token selector identity changed')
           } else if (url.pathname === '/v2/manifest') {
             const page = V2ManifestSchema.parse(await response.json())
+            if (this.pulling) {
+              // A following page is requested only after the preceding page was settled.
+              for (const path of this.pullPaths) this.pulledPaths.add(path)
+              for (const item of page.items) this.pullPaths.add(item.path)
+              this.pullProgress('Receiving files')
+            }
             if (!url.searchParams.get('next')) this.manifestIds.clear()
             for (const item of page.items) this.manifestIds.add(item.file_id)
             const incomingPaths: string[] = []
@@ -268,6 +292,10 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
           await state.setMeta('scope', input.key)
         }
       }
+      this.pulling = (await state.getCursor()) === 0
+      this.pullPaths.clear()
+      this.pulledPaths.clear()
+      this.pullProgress('Reading server inventory')
       const localExcluded = (path: string, size: number) => this.localExcluded(path, size)
       await prepare(
         new Proxy(fs, {
@@ -322,11 +350,20 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
             return async (path: string, bytes: Uint8Array, mtime: number) => {
               await target.writeAtomic(path, bytes, mtime)
               this.actions.written(path)
+              this.pulled(path)
+            }
+          if (name === 'mkdir' && target.mkdir)
+            return async (path: string) => {
+              await target.mkdir(path)
+              this.pulled(path)
             }
           if (name === 'beginAtomicWrite' && target.beginAtomicWrite)
             return async (...args: Parameters<NonNullable<FileSystem['beginAtomicWrite']>>) => {
               const stage = await target.beginAtomicWrite(...args)
-              const written = () => this.actions.written(args[0])
+              const written = () => {
+                this.actions.written(args[0])
+                this.pulled(args[0])
+              }
               return new Proxy(stage, {
                 get(target, key) {
                   if (key === 'commit')
@@ -393,12 +430,16 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       ...(options.paths?.scriptsFolder ? { scriptsFolder: options.paths.scriptsFolder } : {}),
       ...(options.fallbackMs ? { fallbackMs: options.fallbackMs } : {}),
       onSync: (report) => {
+        this.pulling = false
+        options.pulling?.()
         options.comparing?.()
         this.trace.finishFirstSync()
         options.changed(this.engine.status, report)
         void this.outbox.drain().catch(() => options.publicationChanged?.())
       },
       onFail: (error) => {
+        this.pulling = false
+        options.pulling?.()
         options.comparing?.()
         options.failed(error)
       },

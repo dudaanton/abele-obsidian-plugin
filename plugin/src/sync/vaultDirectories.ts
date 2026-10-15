@@ -188,6 +188,21 @@ export class VaultDirectories {
     await this.adapter.mkdir(path)
     this.saveRemovals(this.removals().filter((one) => one.path !== path))
   }
+  /** A received directory needs only its own identity, not another walk of the vault. */
+  async identity(path: string): Promise<string> {
+    const stat = await this.adapter.stat(path)
+    if (stat?.type !== 'folder' || (await this.symlink(path)))
+      throw new EngineError('io', 'Received directory is unavailable')
+    const records = this.records()
+    const same = records.find((one) => one.path === path && one.birth === stat.ctime)
+    if (same) return same.identity
+    const identity = crypto.randomUUID()
+    this.save([
+      ...records.filter((one) => one.path !== path),
+      { path, birth: stat.ctime, identity },
+    ])
+    return identity
+  }
   async move(from: string, to: string): Promise<void> {
     if (await this.adapter.stat(to))
       throw new EngineError('conflict', 'Directory destination is occupied')
