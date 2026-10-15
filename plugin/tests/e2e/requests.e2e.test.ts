@@ -5,7 +5,6 @@
 // a picture of each state. The requests are files the node reads from the project.
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
-import { createServer, type Server } from 'node:http'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { evalAsync } from './helpers/githubLive'
@@ -39,7 +38,7 @@ const send=async()=>{
 };`
 
 let child: ChildProcess | undefined
-let service: Server | undefined
+let service: ChildProcess | undefined
 let dir = ''
 let port = 0
 let token = ''
@@ -50,7 +49,41 @@ let closedPort = 0
 let registration = ''
 let project = ''
 let emptyProject = ''
+/** The fixture service: prints the port it listens on and one nothing listens on. */
+const SERVICE = `
+import { createServer } from 'node:http'
 let created = 0
+const server = createServer((req, res) => {
+  let body = ''
+  req.on('data', (c) => (body += c))
+  req.on('end', () => {
+    const json = (status, value) => {
+      res.writeHead(status, { 'content-type': 'application/json' })
+      res.end(JSON.stringify(value, null, 2))
+    }
+    if (req.url.startsWith('/samples/missing')) return json(404, { error: 'No such sample' })
+    if (req.method === 'POST' && req.url.startsWith('/samples')) {
+      const sent = JSON.parse(body || '{}')
+      created++
+      return json(201, {
+        id: 'sample-' + created,
+        qty: sent.qty,
+        label: sent.label,
+        created,
+        items: Array.from({ length: created + 1 }, (_, i) => ({ line: i + 1 })),
+      })
+    }
+    json(200, { url: req.url })
+  })
+})
+const closed = createServer()
+closed.listen(0, '127.0.0.1', () => {
+  const free = closed.address().port
+  closed.close(() =>
+    server.listen(0, '127.0.0.1', () => console.log(server.address().port + ' ' + free))
+  )
+})
+`
 
 const httpFile = (lines: string[]) => lines.join('\n') + '\n'
 
@@ -128,39 +161,23 @@ function makeRepo(path: string) {
 beforeAll(async () => {
   const cli = process.env.ABELE_NODE_CLI
   if (!cli) throw new Error('Set ABELE_NODE_CLI to the built daemon CLI')
-  // The service the requests go to: it numbers what it creates, so two answers differ.
-  service = createServer((req, res) => {
-    let body = ''
-    req.on('data', (c) => (body += c))
-    req.on('end', () => {
-      const json = (status: number, value: unknown) => {
-        res.writeHead(status, { 'content-type': 'application/json' })
-        res.end(JSON.stringify(value, null, 2))
-      }
-      if (req.url?.startsWith('/samples/missing')) return json(404, { error: 'No such sample' })
-      if (req.method === 'POST' && req.url?.startsWith('/samples')) {
-        const sent = JSON.parse(body || '{}') as { qty?: number; label?: string }
-        created++
-        return json(201, {
-          id: `sample-${created}`,
-          qty: sent.qty,
-          label: sent.label,
-          created,
-          items: Array.from({ length: created + 1 }, (_, i) => ({ line: i + 1 })),
-        })
-      }
-      json(200, { url: req.url })
-    })
-  })
-  await new Promise<void>((r) => service!.listen(0, '127.0.0.1', r))
-  base = `http://127.0.0.1:${(service.address() as { port: number }).port}`
-  const closed = createServer()
-  await new Promise<void>((r) => closed.listen(0, '127.0.0.1', r))
-  closedPort = (closed.address() as { port: number }).port
-  await new Promise((r) => closed.close(r))
-
   mkdirSync('../.scratch', { recursive: true })
   dir = realpathSync(mkdtempSync(resolve('../.scratch/requests-')))
+  // The service the requests go to, in a process of its own: this one stands still while it waits
+  // on the app. It numbers what it creates, so two answers differ.
+  const script = resolve(dir, 'service.mjs')
+  writeFileSync(script, SERVICE)
+  service = spawn(process.execPath, [script], { stdio: ['ignore', 'pipe', 'pipe'] })
+  let said = ''
+  service.stdout!.on('data', (b) => (said += b))
+  for (let i = 0; !/^\d+ \d+$/m.test(said); i++) {
+    if (i > 250 || service.exitCode !== null) throw Error('Fixture service did not start')
+    await wait(20)
+  }
+  const [open, closed] = said.trim().split(/\s+/).map(Number)
+  base = `http://127.0.0.1:${open}`
+  closedPort = closed!
+
   repo = resolve(dir, 'repo')
   empty = resolve(dir, 'empty-repo')
   makeRepo(repo)
@@ -202,7 +219,7 @@ afterAll(async () => {
     child.kill('SIGTERM')
     await stopped
   }
-  if (service) await new Promise((r) => service!.close(r))
+  if (service && service.exitCode === null) service.kill('SIGTERM')
   if (dir) rmSync(dir, { recursive: true, force: true })
 })
 
