@@ -407,9 +407,14 @@ const externalMenu = (event?: MouseEvent | KeyboardEvent) => {
     item
       .setTitle('Compare with another version')
       .setIcon('git-compare')
-      .onClick(() =>
-        new BasePicker(GlobalStore.getInstance().app, source.value!, presentation.target!).open()
-      )
+      .onClick(() => {
+        const at = location.value,
+          head = 'ref' in at ? at.ref : WORKING_TREE
+        // A node tab has no base bar to show or undo a pinned base: open the comparison itself.
+        new BasePicker(GlobalStore.getInstance().app, source.value!, presentation.target!, (pin) =>
+          open(source.value!.navigation.comparison(pin.baseSha, head, true))
+        ).open()
+      })
   )
   menu.addItem((item) =>
     item

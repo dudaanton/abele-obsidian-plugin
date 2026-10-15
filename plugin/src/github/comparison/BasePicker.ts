@@ -22,7 +22,9 @@ export class BasePicker extends SuggestModal<Row> {
   constructor(
     app: App,
     private readonly client: GithubClient | RepositorySource,
-    private readonly repo: Repository
+    private readonly repo: Repository,
+    /** Instead of pinning the base for the repository's views, go somewhere with it. */
+    private readonly choose?: (pin: BasePin) => void
   ) {
     super(app)
     this.modalEl.addClass('abele-github-base-picker')
@@ -103,7 +105,8 @@ export class BasePicker extends SuggestModal<Row> {
     super.selectSuggestion(row, event)
   }
   onChooseSuggestion(row: Row): void {
-    if (row.pin) basePins(this.app).save(row.pin)
+    if (row.pin && this.choose) this.choose(row.pin)
+    else if (row.pin) basePins(this.app).save(row.pin)
   }
   onClose(): void {
     this.closed = true

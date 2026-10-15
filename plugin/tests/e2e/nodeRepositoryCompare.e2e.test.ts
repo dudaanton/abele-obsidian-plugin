@@ -5,9 +5,11 @@ import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { evalLong } from './helpers/obsidianCli'
 import { targets } from './helpers/target'
+import { shotPath } from './helpers/shots'
 
 targets('desktop')
 const cli = process.env.ABELE_NODE_CLI
+const SHOTS = shotPath('abele-node-compare')
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const prelude = `const api=window.__abeleTest,nodes=api.NodeService.getInstance();const wait=ms=>new Promise(r=>setTimeout(r,ms));const until=async(f,what)=>{for(let i=0;i<300;i++){if(f())return;await wait(50)}throw Error('Comparison UI did not settle: '+(what??f.toString()))};const tab=()=>app.workspace.getLeavesOfType('abele-github').find(l=>l.view.model?.sourceTarget?.source?.node===window.__sampleCompareNode)?.view.contentEl;`
 // The base has files the current files no longer have: one the branch deleted, one added to the
@@ -95,7 +97,7 @@ it('compares the current files of a branch with another version, committed and u
       return node.id;
     })()`)
     // The owner's path: the tab's actions, «Compare with another version», then a branch.
-    const panel = await evalLong(`(async()=>{${prelude}
+    const page = await evalLong(`(async()=>{${prelude}
       const root=tab();
       root.querySelector('[aria-label="Repository actions"]').click();
       await until(()=>[...document.querySelectorAll('.menu-item')].some(el=>el.textContent.trim()==='Compare with another version'),'menu');
@@ -104,38 +106,30 @@ it('compares the current files of a branch with another version, committed and u
       const input=document.querySelector('.abele-github-base-picker input');input.value='main';input.dispatchEvent(new Event('input',{bubbles:true}));
       const row=()=>[...document.querySelectorAll('.abele-github-base-picker .suggestion-item')].find(el=>el.textContent.includes('Compare against commit'));
       await until(row,'resolved base row');row().click();
-      const based=()=>root.querySelector('.abele-github-base')?.textContent.includes('Base: main');
-      await until(()=>based()||!row(),'row chosen').catch(()=>{});
-      if(!based()&&row())document.querySelector('.abele-github-base-picker input').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
-      await until(based,'base bar').catch(e=>{throw Error(e.message+' · picker: '+(document.querySelector('.abele-github-base-picker')?.textContent??'closed')+' · tab: '+root.textContent.slice(0,300))});
-      if(!root.querySelector('.abele-github-tree'))root.querySelector('[aria-label="Show the repository\\'s files beside this"]').click();
-      const tree=()=>root.querySelector('.abele-github-tree');
-      await until(()=>tree()?.querySelector('.abele-github-tree__error')||tree()?.querySelector('[role="tree"]')?.textContent.includes('feature.ts'),'comparison tree');
-      const error=tree().querySelector('.abele-github-tree__error');if(error)throw Error('Comparison failed: '+error.textContent);
-      const changed=[...tree().querySelectorAll('.abele-tabs__tab,[role="tab"],button')].find(el=>el.textContent.trim()==='Changed files');
-      if(changed)changed.click();
-      await until(()=>['feature.ts','app.ts','draft.txt','removed.txt','later'].every(name=>tree().textContent.includes(name)),'changed files');
-      const text=root.textContent;
-      if(/stale/i.test(text))throw Error('A bare error code is on screen: '+text.slice(0,400));
-      const file=[...tree().querySelectorAll('.tree-item-self')].find(el=>el.textContent.includes('app.ts'));file.click();
-      await until(()=>root.querySelector('.abele-github-blob')?.textContent.includes('value = 2'),'file diff');
-      const shown=tree().textContent;
-      [...root.querySelectorAll('.abele-github-base button')].find(b=>b.textContent.includes('Unpin'))?.click();
-      return shown;
-    })()`)
-    expect(panel).toContain('removed.txt')
-    // The comparison page of the same two versions lists every kind of change and opens a diff.
-    const page = await evalLong(`(async()=>{${prelude}
-      await api.openNodeRepository(window.__sampleCompareNode,window.__sampleCompareProject,window.__sampleCompareWorkspace,{location:{kind:'comparison',base:'main',head:'Working tree',direct:true}});
-      const compare=()=>[...document.querySelectorAll('.abele-github-compare')].find(el=>el.getBoundingClientRect().width);
-      await until(()=>compare()?.textContent.includes('feature.ts')||document.querySelector('.abele-github-notice'),'comparison page');
-      const text=compare()?.textContent??'';
-      if(/stale/i.test(text)||!compare())throw Error('Comparison page failed: '+(document.querySelector('.abele-github-notice')?.textContent??text));
+      const compare=()=>tab()?.querySelector('.abele-github-compare');
+      await until(()=>compare()?.textContent.includes('feature.ts')||tab()?.querySelector('.abele-github-notice'),'comparison page');
+      const failed=tab().querySelector('.abele-github-notice');
+      if(!compare()||/stale/i.test(tab().textContent))throw Error('Comparison page failed: '+(failed?.textContent??tab().textContent.slice(0,400)));
       await until(()=>compare().textContent.includes('value = 2'),'diff of app.ts');
+      const image=await require('@electron/remote').getCurrentWebContents().capturePage();
+      require('fs').mkdirSync(${JSON.stringify(SHOTS)},{recursive:true});require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/compare-main.png',image.toPNG());
       return compare().textContent;
     })()`)
     for (const name of ['feature.ts', 'app.ts', 'draft.txt', 'removed.txt', 'later/main-only.txt'])
       expect(page).toContain(name)
+    // A base chosen in a node tab opens the comparison; the tab's own file tree stays the files.
+    const tree = await evalLong(`(async()=>{${prelude}
+      await api.openNodeRepository(window.__sampleCompareNode,window.__sampleCompareProject,window.__sampleCompareWorkspace);
+      const home=()=>app.workspace.getLeavesOfType('abele-github').map(l=>l.view.contentEl).find(el=>el.querySelector('.abele-github-home')?.textContent.includes('draft.txt')&&el.getBoundingClientRect().width);
+      await until(home,'home again');
+      const root=home();
+      if(!root.querySelector('.abele-github-tree'))root.querySelector('[aria-label="Show the repository\\'s files beside this"]').click();
+      await until(()=>root.querySelector('.abele-github-tree [role="tree"]')?.textContent.includes('README.md')||root.querySelector('.abele-github-tree__error'),'file tree');
+      if(root.querySelector('.abele-github-tree__error'))throw Error('File tree failed: '+root.querySelector('.abele-github-tree__error').textContent);
+      root.querySelector('[aria-label="Close the file tree"]')?.click();
+      return root.querySelector('.abele-github-tree')?.textContent??'closed';
+    })()`)
+    expect(tree).not.toMatch(/stale/i)
   } finally {
     try {
       await evalLong(
