@@ -152,9 +152,21 @@ const setup = `(async () => {
 
 const closeSetup = `(async () => {
   ${prelude}
-  for (const button of [...document.querySelectorAll('.modal .modal-close-button')].reverse()) button.click()
+  const open = () => qa('.modal-container').filter((c) => c.querySelector('.abele-chat-setup'))
+  const tried = []
+  for (const way of ['button', 'escape', 'background']) {
+    const box = open()[0]
+    if (!box) break
+    tried.push(way)
+    if (way === 'button') box.querySelector('.modal-close-button')?.click()
+    if (way === 'escape') box.querySelector('.modal')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    if (way === 'background') box.querySelector('.modal-bg')?.click()
+    for (let i = 0; i < 30 && open().length; i++) await wait(100)
+  }
+  if (open().length) throw new Error('the chat settings did not close; tried ' + tried.join(', '))
+  await chats.revealSidebar()
   await wait(400)
-  return 'ok'
+  return JSON.stringify({ tried })
 })()`
 
 const checking = `(async () => {
@@ -297,7 +309,8 @@ describe.runIf(available)('the interceptor checking the agent’s answer', () =>
   it('offers what it checks in the chat’s settings, without Reply only for answers', async () => {
     const report = await run<{ checks: string; desc: string; replyOnlyShown: boolean }>(setup)
     shot('setting')
-    await evalLong(closeSetup, 20_000)
+    const closed = await run<{ tried: string[] }>(closeSetup)
+    console.debug('[interceptorAnswer e2e] settings closed by', closed.tried)
     expect(report.checks).toBe('answer')
     expect(report.desc).toContain("The agent's answers")
     expect(report.replyOnlyShown).toBe(false)
