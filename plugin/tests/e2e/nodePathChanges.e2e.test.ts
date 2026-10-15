@@ -80,8 +80,10 @@ it('patches an opened folder of the node path sidebar in place without reading i
       await app.workspace.revealLeaf(leaf);
       const service=api.NodePathService.getInstance(),model=service.model(node.id);
       await service.ready(node.id);await model.refresh();await model.select(workspace.worktree_id);
-      model.mode.value='all';
-      await until(()=>row('src'));
+      // Every file, from the panel's Files mode in its header.
+      await until(()=>document.querySelector('.abele-node-modes [role="tab"][aria-label="Files"]'));
+      document.querySelector('.abele-node-modes [role="tab"][aria-label="Files"]').click();
+      await until(()=>model.panelMode.value==='files'&&row('src'));
       row('src').click();
       await until(()=>row('src/sample-29.ts'));
       window.__samplePathRow=row('src/sample-15.ts');window.__samplePathFolder=row('src');

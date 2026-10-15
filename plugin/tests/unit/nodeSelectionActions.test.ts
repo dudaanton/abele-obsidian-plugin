@@ -129,9 +129,15 @@ describe('selected node file context', () => {
     const chat = f.items.find((i) => i.kind === 'Chat')!
     expect(chat).toMatchObject({ title: 'Sample chat', note: 'sample-app / trunk · Today' })
     // Only places and chats are listed: no rows standing for unsupported chat actions.
-    expect(f.items.map((i) => i.kind)).toEqual(['Folder', 'Chat'])
+    expect(f.items.map((i) => i.kind)).toEqual(['The folder itself', 'Chat'])
     f.choose!(chat)
     expect(opened).toHaveBeenCalledWith('sample-session')
+  })
+  it('marks a worktree gone from disk by its glyph and words', () => {
+    const m = model() as unknown as { folders: { value: { copies: { missing?: boolean }[] }[] } }
+    m.folders.value[0].copies[0].missing = true
+    pickNodePathPlace(m as never, vi.fn())
+    expect(f.items[0]).toMatchObject({ icon: 'folder-x', kind: 'Not found on the node' })
   })
   it('lists each worktree with its changed files and shows the chosen one in the panel', async () => {
     const m = model() as unknown as { select: ReturnType<typeof vi.fn> }

@@ -13,7 +13,7 @@ targets('desktop')
 const cli = process.env.ABELE_NODE_CLI
 const shots = process.env.ABELE_NODE_PATH_SCREENSHOTS ?? process.env.ABELE_E2E_SHOTS
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
-const prelude = `const api=window.__abeleTest,nodes=api.NodeService.getInstance();const wait=ms=>new Promise(r=>setTimeout(r,ms));const until=async f=>{for(let i=0;i<400;i++){if(f())return;await wait(50)}throw Error('Node path did not settle: '+f.toString())};const visible=selector=>[...document.querySelectorAll(selector)].find(el=>el.getBoundingClientRect().width>0&&getComputedStyle(el).visibility!=='hidden'&&!el.closest('.workspace-leaf.mod-hidden')); const button=(root,text)=>[...root.querySelectorAll('button')].find(b=>b.textContent.trim()===text);const VIEW_ICONS={'All files':'folder-tree','Changed files in their folders':'folder-git-2','Only changed files':'file-diff'};const shownView=t=>{const tree=visible('.abele-file-tree');if(!tree)return false;const modes=tree.querySelectorAll('.abele-file-tree__mode');if(!document.body.classList.contains('is-phone'))return modes.length===3&&!!tree.querySelector('.abele-file-tree__mode.is-active[aria-label^="'+t+'"]');return modes.length===1&&!!modes[0].querySelector('svg.lucide-'+VIEW_ICONS[t])};const pickView=async t=>{const tree=visible('.abele-file-tree'),own=tree.querySelector('[aria-label^="'+t+'"]');if(own)own.click();else{tree.querySelector('[aria-label="Which files to show"]').click();await until(()=>[...document.querySelectorAll('.menu-item')].some(i=>i.textContent.startsWith(t)));[...document.querySelectorAll('.menu-item')].find(i=>i.textContent.startsWith(t)).click()}await until(()=>shownView(t))};`
+const prelude = `const api=window.__abeleTest,nodes=api.NodeService.getInstance();const wait=ms=>new Promise(r=>setTimeout(r,ms));const until=async f=>{for(let i=0;i<400;i++){if(f())return;await wait(50)}throw Error('Node path did not settle: '+f.toString())};const visible=selector=>[...document.querySelectorAll(selector)].find(el=>el.getBoundingClientRect().width>0&&getComputedStyle(el).visibility!=='hidden'&&!el.closest('.workspace-leaf.mod-hidden')); const button=(root,text)=>[...root.querySelectorAll('button')].find(b=>b.textContent.trim()===text);const tab=m=>visible('.abele-node-modes [role="tab"][aria-label^="'+m+'"]');const shownMode=m=>tab(m)?.getAttribute('aria-selected')==='true';const pickMode=async m=>{await until(()=>tab(m));if(!shownMode(m))tab(m).click();await until(()=>shownMode(m))};const menuItem=t=>[...document.querySelectorAll('.menu-item')].find(i=>i.textContent.includes(t));const placeMenu=async t=>{visible('.abele-node-place > .abele-obsidian-icon').click();await until(()=>menuItem(t));return menuItem(t)};const nodeMenu=async t=>{const own=visible('.abele-node-panel__node-menu');if(own)own.click();else visible('.abele-node-place > .abele-obsidian-icon').click();await until(()=>menuItem(t));return menuItem(t)};const closePrompt=async()=>{const input=document.querySelector('.prompt-input');input?.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}));await wait(150);if(document.querySelector('.prompt'))document.querySelector('.modal-container .modal-bg')?.click();await until(()=>!document.querySelector('.prompt'))};`
 async function capture(name: string) {
   if (!shots) return
   await evalLong(
@@ -31,7 +31,7 @@ async function checkDiffColours() {
 async function reopenNodePane(name: string) {
   try {
     await evalLong(
-      `(async()=>{${prelude}for(const leaf of app.workspace.getLeavesOfType('abele-node-sidebar'))leaf.detach();app.commands.executeCommandById('abele:open-node');await until(()=>app.workspace.getLeavesOfType('abele-node-sidebar').length===1);await until(()=>visible('.abele-node-panel_ready .abele-status-dot_green'));const view=app.workspace.getLeavesOfType('abele-node-sidebar')[0].view;if(!nodes.nodes.value.some(n=>n.id===view.getState().registrationId))throw Error('Reopened pane lost its registered node');if(visible('.abele-node-panel_found,.abele-node-panel_remote'))throw Error('Reopened pane asks to connect again');return 'registered pane reopened'})()`
+      `(async()=>{${prelude}for(const leaf of app.workspace.getLeavesOfType('abele-node-sidebar'))leaf.detach();app.commands.executeCommandById('abele:open-node');await until(()=>app.workspace.getLeavesOfType('abele-node-sidebar').length===1);const view=app.workspace.getLeavesOfType('abele-node-sidebar')[0].view;await until(()=>visible('.abele-node-panel_ready .abele-status-dot_green')||(visible('.abele-node-panel_ready .abele-node-place__row')&&nodes.connection(view.getState().registrationId).state.value==='connected'));if(!nodes.nodes.value.some(n=>n.id===view.getState().registrationId))throw Error('Reopened pane lost its registered node');if(visible('.abele-node-panel_found,.abele-node-panel_remote'))throw Error('Reopened pane asks to connect again');return 'registered pane reopened'})()`
     )
   } catch (error) {
     await capture(name + '-error')
@@ -44,7 +44,7 @@ async function reopenNodePane(name: string) {
 }
 async function checkFileLookup(prefix: string) {
   await evalLong(
-    `(async()=>{${prelude}await pickView('All files');await until(()=>visible('.abele-file-tree')?.textContent.includes('Ignored files are not shown.'));if(visible('.abele-file-tree').textContent.includes('hidden.txt'))throw Error('Ignored content was included');return 'all files'})()`
+    `(async()=>{${prelude}await pickMode('Files');await until(()=>visible('.abele-file-tree')?.textContent.includes('Ignored files are not shown.'));if(visible('.abele-file-tree').textContent.includes('hidden.txt'))throw Error('Ignored content was included');return 'all files'})()`
   )
   await capture(prefix + '-all-files')
   // The fixture's nested entries are now loaded by expansion, not by an eager repository walk.
@@ -64,7 +64,7 @@ async function checkFileLookup(prefix: string) {
   )
   await capture(prefix + '-lookup-missing')
   await evalLong(
-    `(async()=>{${prelude}const input=visible('.abele-file-tree input');input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));await pickView('Only changed files');return 'changes restored'})()`
+    `(async()=>{${prelude}const input=visible('.abele-file-tree input');input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));await pickMode('Changes');return 'changes restored'})()`
   )
 }
 async function checkMixedCommit() {
@@ -77,9 +77,10 @@ async function selectText(selector: string) {
     `(async()=>{${prelude}await until(()=>visible(${JSON.stringify(selector)}));const text=visible(${JSON.stringify(selector)});if(getComputedStyle(text).userSelect!=='text')throw Error('File text is not selectable');const range=document.createRange();range.selectNodeContents(text);window.getSelection().removeAllRanges();window.getSelection().addRange(range);document.dispatchEvent(new Event('selectionchange'));await until(()=>visible('.abele-selection-bar_placed'));const bar=visible('.abele-selection-bar_placed').getBoundingClientRect();if(bar.left<0||bar.right>innerWidth||bar.top<0||bar.bottom>innerHeight)throw Error('Selection actions are clipped');const header=text.closest('.abele-file-view').querySelector('.abele-file-view__header,.abele-diff__header');if(header&&bar.top<header.getBoundingClientRect().bottom)throw Error('Selection actions cover the file header');if(document.body.classList.contains('is-phone')&&bar.top<range.getBoundingClientRect().bottom)throw Error('Phone actions overlap the native selection menu');return 'selected'})()`
   )
 }
-async function checkPanelColumns() {
+/** The place search lists each worktree with the chats that work there under it, in one column. */
+async function checkPlaceSearch() {
   await evalLong(
-    `(()=>{${prelude}const panel=visible('.abele-folder-tree');for(const selector of ['.abele-copy-codes__dot','.abele-copy-codes__count','.abele-tree-item__actions']){const columns=[...panel.querySelectorAll(selector)].map(el=>el.getBoundingClientRect().left);if(Math.max(...columns)-Math.min(...columns)>1)throw Error('Nested row codes are not aligned: '+selector+' '+columns.join(','))}return 'aligned'})()`
+    `(()=>{${prelude}const items=[...document.querySelectorAll('.prompt .suggestion-item')],titles=items.map(i=>i.querySelector('.suggestion-title')?.textContent);const copy=titles.indexOf('sample-repository / topic'),chat=titles.indexOf('Sample fake chat');if(copy<0||chat<0)throw Error('The worktree or its chat is not listed: '+titles.join(' | '));if(chat<copy)throw Error('The chat is not listed under its worktree: '+titles.join(' | '));if(!items[chat].querySelector('.suggestion-note')?.textContent.startsWith('sample-repository / topic'))throw Error('The chat does not say where it works: '+items[chat].textContent);if(items[chat].querySelector('.abele-node-suggestion__kind')?.getAttribute('aria-label')!=='Chat')throw Error('The chat row is not marked as a chat');const columns=items.map(i=>i.querySelector('.abele-node-suggestion__kind').getBoundingClientRect().left);if(Math.max(...columns)-Math.min(...columns)>1)throw Error('Place and chat glyphs are not aligned: '+columns.join(','));return 'aligned'})()`
   )
 }
 async function clearSelection() {
@@ -276,7 +277,7 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     await capture('desktop-empty')
     const invitation = await command('pair', '--node-name', 'Sample node')
     await evalLong(
-      `(async()=>{${prelude}api.pairedLoopbackTransport(nodes,'ws://127.0.0.1:${port}/channel');visible('.abele-node-panel__node-menu').click();await until(()=>[...document.querySelectorAll('.menu-item')].some(i=>i.textContent.includes('Connect another node')));[...document.querySelectorAll('.menu-item')].find(i=>i.textContent.includes('Connect another node')).click();await until(()=>visible('.abele-pair'));return 'pair open'})()`
+      `(async()=>{${prelude}api.pairedLoopbackTransport(nodes,'ws://127.0.0.1:${port}/channel');(await nodeMenu('Connect another node')).click();await until(()=>visible('.abele-pair'));return 'pair open'})()`
     )
     await capture('desktop-pair-empty')
     await evalLong(
@@ -340,7 +341,7 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     await capture('desktop-changes')
     await checkFileLookup('desktop')
     await evalLong(
-      `(async()=>{${prelude}const chats=api.ChatService.getInstance();const id=chats.newTab();const chat=chats.getAllSessions().find(s=>s.id===id);if(!chat)throw Error('Chat was not created');chat.chatTitle.value='Sample Obsidian chat '+id;window.__nodePathScopeChat=id;const row=[...visible('.abele-folder-tree').querySelectorAll('.abele-folder-tree__copy > .tree-item-self')].find(r=>r.textContent.includes('trunk'));row.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:row.getBoundingClientRect().left,clientY:row.getBoundingClientRect().bottom}));await until(()=>[...document.querySelectorAll('.menu-item')].some(i=>i.textContent.includes('Give a chat access')));[...document.querySelectorAll('.menu-item')].find(i=>i.textContent.includes('Give a chat access')).click();await until(()=>[...document.querySelectorAll('.suggestion-item')].some(i=>i.textContent.includes(id)));[...document.querySelectorAll('.suggestion-item')].find(i=>i.textContent.includes(id)).click();await until(()=>[...document.querySelectorAll('.modal button')].some(b=>b.textContent.trim()==='Give access'));[...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Give access').click();await until(()=>chat.overrides.value.nodeScope?.length===1&&!visible('.modal'));await chats.revealSidebar({focus:false});try{await until(()=>visible('.abele-ai-chat .abele-chat-input__scope')?.getAttribute('aria-label')?.includes('worktree trunk'))}catch(e){throw Error(e.message+' label: '+visible('.abele-ai-chat .abele-chat-input__scope')?.getAttribute('aria-label'))}return 'scope granted by row menu'})()`
+      `(async()=>{${prelude}const chats=api.ChatService.getInstance();const id=chats.newTab();const chat=chats.getAllSessions().find(s=>s.id===id);if(!chat)throw Error('Chat was not created');chat.chatTitle.value='Sample Obsidian chat '+id;window.__nodePathScopeChat=id;if(visible('.abele-node-place__name')?.textContent!=='trunk')throw Error('The place shown is not the root worktree');(await placeMenu('Give a chat access')).click();await until(()=>[...document.querySelectorAll('.suggestion-item')].some(i=>i.textContent.includes(id)));[...document.querySelectorAll('.suggestion-item')].find(i=>i.textContent.includes(id)).click();await until(()=>[...document.querySelectorAll('.modal button')].some(b=>b.textContent.trim()==='Give access'));[...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Give access').click();await until(()=>chat.overrides.value.nodeScope?.length===1&&!visible('.modal'));await chats.revealSidebar({focus:false});try{await until(()=>visible('.abele-ai-chat .abele-chat-input__scope')?.getAttribute('aria-label')?.includes('worktree trunk'))}catch(e){throw Error(e.message+' label: '+visible('.abele-ai-chat .abele-chat-input__scope')?.getAttribute('aria-label'))}return 'scope granted by place menu'})()`
     )
     await capture('desktop-chat-scope-header')
     await evalLong(
@@ -397,15 +398,15 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     )
     await capture('desktop-image')
     await evalLong(
-      `(async()=>{${prelude}const leaf=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.getState().path==='src/sample.ts'&&!l.view.getState().debug);await app.workspace.revealLeaf(leaf);const action=leaf.containerEl.querySelector('[aria-label="Open in code editor"]');if(!action)throw Error('Code editor action missing');action.click();await until(()=>visible('.abele-node-main .cm-content')?.contentEditable==='true');return 'editor action'})()`
+      `(async()=>{${prelude}const leaf=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.getState().path==='src/sample.ts'&&!l.view.getState().debug);await app.workspace.revealLeaf(leaf);if(leaf.containerEl.querySelector('[aria-label="Open in code editor"]'))throw Error('The code editor action is back');const action=leaf.containerEl.querySelector('.view-action[aria-label="Edit the file"]');if(!action)throw Error('Edit action missing');action.click();await until(()=>visible('.abele-node-main .cm-content')?.contentEditable==='true');if(leaf.view.getState().edit!==true||app.workspace.getLeavesOfType('abele-node-editor').length)throw Error('The file is not edited in its own tab');return 'editor action'})()`
     )
     await evalLong(
-      `(async()=>{${prelude}await until(()=>visible('.abele-node-main .cm-content')?.contentEditable==='true');const editor=api.codeView(visible('.abele-node-main .cm-content'));editor.dispatch({changes:{from:0,to:editor.state.doc.length,insert:${JSON.stringify('export const value = 4\n')}}});await until(()=>button(visible('.abele-node-save'),'Save file')&&!button(visible('.abele-node-save'),'Save file').disabled);button(visible('.abele-node-save'),'Save file').click();await until(()=>visible('.abele-node-save')?.textContent.includes('Saved ·'));return 'saved'})()`
+      `(async()=>{${prelude}await until(()=>visible('.abele-node-main .cm-content')?.contentEditable==='true');const editor=api.codeView(visible('.abele-node-main .cm-content'));editor.dispatch({changes:{from:0,to:editor.state.doc.length,insert:${JSON.stringify('export const value = 4\n')}}});const leaf=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.getState().edit===true);const save=()=>leaf.containerEl.querySelector('.view-action[aria-label="Save to the node · ⌘ S"]');await until(save);save().click();await until(()=>visible('.abele-node-save')?.textContent.includes('Saved ·'));return 'saved'})()`
     )
     await checkCodeGeometry()
     await capture('desktop-editor')
     await evalLong(
-      `(async()=>{${prelude}const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});await model.select(${JSON.stringify(ids.root)});visible('.abele-node-panel [aria-label="Open folder"]').click();await until(()=>visible('.abele-folder-picker'));return 'picker'})()`
+      `(async()=>{${prelude}const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});await model.select(${JSON.stringify(ids.root)});if(visible('.abele-node-panel [aria-label="Open folder"]'))throw Error('The header glyphs stand beside the modes');(await placeMenu('Open a folder…')).click();await until(()=>visible('.abele-folder-picker'));return 'picker'})()`
     )
     await capture('desktop-folder-picker')
     await evalLong(
@@ -413,7 +414,7 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     )
     await capture('desktop-new-folder')
     await evalLong(
-      `(async()=>{${prelude}button(visible('.abele-folder-picker'),'Create').click();await until(()=>!visible('.abele-folder-picker'));const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});if(!model.folders.value.some(f=>f.name==='created-folder'))throw Error('Created folder was not registered');await model.select(${JSON.stringify(ids.root)});const row=[...visible('.abele-folder-tree').querySelectorAll('.abele-folder-tree__copy > .tree-item-self')].find(r=>r.textContent.includes('trunk'));row.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:row.getBoundingClientRect().left,clientY:row.getBoundingClientRect().bottom}));await until(()=>[...document.querySelectorAll('.menu-item')].some(i=>i.textContent.includes('New worktree')));[...document.querySelectorAll('.menu-item')].find(i=>i.textContent.includes('New worktree')).click();await until(()=>visible('.abele-worktree-dialog'));const branch=visible('.abele-worktree-dialog input');branch.value='created-topic';branch.dispatchEvent(new Event('input',{bubbles:true}));await wait(100);return 'named worktree'})()`
+      `(async()=>{${prelude}button(visible('.abele-folder-picker'),'Create').click();await until(()=>!visible('.abele-folder-picker'));const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});if(!model.folders.value.some(f=>f.name==='created-folder'))throw Error('Created folder was not registered');await model.select(${JSON.stringify(ids.root)});await until(()=>visible('.abele-node-place__name')?.textContent==='trunk');(await placeMenu('New worktree')).click();await until(()=>visible('.abele-worktree-dialog'));const branch=visible('.abele-worktree-dialog input');branch.value='created-topic';branch.dispatchEvent(new Event('input',{bubbles:true}));await wait(100);return 'named worktree'})()`
     )
     await capture('desktop-new-worktree')
     await evalLong(
@@ -432,12 +433,13 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     )
     await capture('desktop-chat-switch')
     await evalLong(
-      `(async()=>{${prelude}const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});model.selectedChat.value=${JSON.stringify(sessionId)};await model.select(${JSON.stringify(ids.external)});await until(()=>visible('.abele-chat-row'));visible('.abele-chat-row').scrollIntoView({block:'nearest'});return 'nested rows'})()`
+      `(async()=>{${prelude}const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});model.selectedChat.value=${JSON.stringify(sessionId)};await model.select(${JSON.stringify(ids.external)});await until(()=>visible('.abele-node-place__name')?.textContent==='topic');visible('.abele-node-place__row').click();await until(()=>[...document.querySelectorAll('.prompt .suggestion-title')].some(t=>t.textContent==='Sample fake chat'));return 'nested rows'})()`
     )
-    await checkPanelColumns()
+    await checkPlaceSearch()
     await capture('desktop-nested-panel')
+    await evalLong(`(async()=>{${prelude}await closePrompt();return 'search closed'})()`)
     await evalLong(
-      `(async()=>{${prelude}const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});await model.select(${JSON.stringify(ids.plain)});return 'plain'})()`
+      `(async()=>{${prelude}const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});await model.select(${JSON.stringify(ids.plain)});await until(()=>visible('.abele-node-place__name')?.textContent==='plain-folder');if(tab('Changes')||tab('History'))throw Error('A plain folder shows git modes');return 'plain'})()`
     )
     await capture('desktop-plain')
     // A phone registry contains paired nodes, not a desktop-only loopback registration.
@@ -469,15 +471,16 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     await capture('phone-changes')
     await checkFileLookup('phone')
     await evalLong(
-      `(async()=>{${prelude}const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});model.selectedChat.value=${JSON.stringify(sessionId)};await model.select(${JSON.stringify(ids.external)});await until(()=>visible('.abele-chat-row'));visible('.abele-chat-row').scrollIntoView({block:'nearest'});return 'nested phone rows'})()`
+      `(async()=>{${prelude}const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});model.selectedChat.value=${JSON.stringify(sessionId)};await model.select(${JSON.stringify(ids.external)});await until(()=>visible('.abele-node-place__name')?.textContent==='topic');visible('.abele-node-place__row').click();await until(()=>[...document.querySelectorAll('.prompt .suggestion-title')].some(t=>t.textContent==='Sample fake chat'));return 'nested phone rows'})()`
     )
-    await checkPanelColumns()
+    await checkPlaceSearch()
     await capture('phone-nested-panel')
+    await evalLong(`(async()=>{${prelude}await closePrompt();return 'search closed'})()`)
     await evalLong(
       `(async()=>{${prelude}await api.NodePathService.getInstance().model(${JSON.stringify(registration)}).select(${JSON.stringify(ids.root)});return 'root'})()`
     )
     await evalLong(
-      `(async()=>{${prelude}visible('.abele-node-panel__node-menu').click();await until(()=>[...document.querySelectorAll('.menu-item')].some(i=>i.textContent.includes('Connect another node')));[...document.querySelectorAll('.menu-item')].find(i=>i.textContent.includes('Connect another node')).click();await until(()=>visible('.abele-pair'));return 'phone pair'})()`
+      `(async()=>{${prelude}(await nodeMenu('Connect another node')).click();await until(()=>visible('.abele-pair'));return 'phone pair'})()`
     )
     await capture('phone-pair-empty')
     await evalLong(
@@ -493,7 +496,7 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     )
     await capture('phone-pair-error')
     await evalLong(
-      `(async()=>{${prelude}const modal=visible('.abele-pair').closest('.modal');const close=modal.closest('.modal-container').querySelector('.modal-close-button, .modal-close, .modal-header-button, [aria-label="Close"]');if(!close)throw Error('Native modal dismiss control missing: '+[...modal.closest('.modal-container').querySelectorAll('button,.clickable-icon')].map(el=>el.className+' '+el.getAttribute('aria-label')).join('|'));close.click();await until(()=>!visible('.abele-pair'));visible('.abele-node-panel [aria-label="Open folder"]').click();await until(()=>visible('.abele-folder-picker'));return 'phone folder picker'})()`
+      `(async()=>{${prelude}const modal=visible('.abele-pair').closest('.modal');const close=modal.closest('.modal-container').querySelector('.modal-close-button, .modal-close, .modal-header-button, [aria-label="Close"]');if(!close)throw Error('Native modal dismiss control missing: '+[...modal.closest('.modal-container').querySelectorAll('button,.clickable-icon')].map(el=>el.className+' '+el.getAttribute('aria-label')).join('|'));close.click();await until(()=>!visible('.abele-pair'));(await placeMenu('Open a folder…')).click();await until(()=>visible('.abele-folder-picker'));return 'phone folder picker'})()`
     )
     await capture('phone-folder-picker')
     await evalLong(
@@ -557,12 +560,12 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     await capture('phone-chat')
     await open('editor', { path: 'src/sample.ts' })
     await evalLong(
-      `(async()=>{${prelude}app.workspace.leftSplit.collapse();await until(()=>visible('.abele-node-main .cm-content'));return 'phone editor'})()`
+      `(async()=>{${prelude}app.workspace.leftSplit.collapse();await until(()=>app.workspace.getLeavesOfType('abele-node-file').some(l=>l.view.getState().path==='src/sample.ts'&&l.view.getState().edit===true));if(app.workspace.getLeavesOfType('abele-node-editor').length)throw Error('The editor tab stayed an editor tab');await until(()=>visible('.abele-node-main .cm-content'));return 'phone editor'})()`
     )
     await checkCodeGeometry()
     await capture('phone-editor')
     await evalLong(
-      `(async()=>{${prelude}app.workspace.leftSplit.expand();const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});await model.select(${JSON.stringify(ids.plain)});return 'phone plain'})()`
+      `(async()=>{${prelude}app.workspace.leftSplit.expand();const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});await model.select(${JSON.stringify(ids.plain)});await until(()=>visible('.abele-node-place__name')?.textContent==='plain-folder');return 'phone plain'})()`
     )
     await capture('phone-plain')
     child.kill('SIGTERM')
@@ -572,7 +575,7 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     })
     child = undefined
     await evalLong(
-      `(async()=>{${prelude}await until(()=>nodes.connection(${JSON.stringify(registration)}).state.value!=='connected');if(!visible('.abele-folder-tree_stale'))throw Error('Offline rows lost their retained state');return 'offline'})()`
+      `(async()=>{${prelude}await until(()=>nodes.connection(${JSON.stringify(registration)}).state.value!=='connected');if(!visible('.abele-file-tree_stale'))throw Error('Offline rows lost their retained state');return 'offline'})()`
     )
     await capture('phone-offline')
   } finally {

@@ -24,6 +24,7 @@ import type { NodePathModel, PathTarget } from './NodePathModel'
 import { showNodePairingDialog } from './NodePairingDialogHost'
 import { h } from 'vue'
 import { shortRef } from './presentation'
+import { copyIcon, copyKind } from '@/components/nodeWork/codes'
 
 const app = () => GlobalStore.getInstance().app
 export const nodePathAction = (run: () => Promise<unknown> | void): void => {
@@ -590,8 +591,9 @@ export function pickNodePathPlace(model: NodePathModel, openChat: (id: string) =
       ? folder.copies.flatMap((copy) => [
           {
             id: copy.id,
-            icon: copy.kind === 'project' ? 'folder-git-2' : 'git-branch',
-            kind: copy.kind === 'project' ? 'Folder' : 'Worktree',
+            // A worktree gone from disk says so by its glyph and in its tooltip, as everywhere.
+            icon: copyIcon(copy),
+            kind: copyKind(copy),
             title: `${folder.name} / ${copy.branch}`,
             note: copy.path,
             ...(copy.changed ? { count: { value: copy.changed, label: 'changed files' } } : {}),
