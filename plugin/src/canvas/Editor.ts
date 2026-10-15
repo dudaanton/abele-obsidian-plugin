@@ -1637,7 +1637,10 @@ export class CanvasEditor {
       'Group selected cards',
       'Ungroup selected group',
     ])
-      this.buttons.get(label).hidden = !this.inkControls.hidden
+      this.buttons.get(label).hidden = !this.inkControls.hidden || active
+    // While card text is typed these are disabled anyway. Folding them gives a phone's keyboard
+    // back the canvas, which is what a tap ends the typing on (there is no Save button).
+    this.buttons.get('Canvas drawing tools').hidden = active
     const ink = allInkEntries(graph ?? { nodes: [], edges: [] }).filter((e) =>
         this.selected.has(e.stroke.id)
       ),

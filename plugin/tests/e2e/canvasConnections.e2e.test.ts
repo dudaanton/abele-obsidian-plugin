@@ -6,6 +6,7 @@ import { tap, swipe, screenshot, driver, swipeDriverArgs, typeText } from './hel
 import { withNativeInput } from './helpers/nativeInput'
 import { shotDir } from './helpers/shots'
 import { canvasChrome, menuItem } from './helpers/canvasChrome'
+import { CANVAS_TRACE_DUMP, CANVAS_TRACE_INSTALL } from './helpers/canvasTrace'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -20,8 +21,23 @@ const PRELUDE = `
 const run = <T>(body: string): T =>
   evalAsync<T>(`(async()=>{${PRELUDE} return JSON.stringify(await (async()=>{${body}})())})()`)
 const until = async (expression: string) => {
-  await expect.poll(() => run<boolean>(`return !!(${expression})`), { timeout: 15_000 }).toBe(true)
+  try {
+    await expect
+      .poll(() => run<boolean>(`return !!(${expression})`), { timeout: 15_000 })
+      .toBe(true)
+  } catch (error) {
+    console.info('Canvas trace at a failed wait:', expression, JSON.stringify(traced()))
+    throw error
+  }
 }
+const traced = () => {
+  try {
+    return run<unknown>(CANVAS_TRACE_DUMP)
+  } catch (error) {
+    return String(error)
+  }
+}
+const trace = () => run<boolean>(CANVAS_TRACE_INSTALL)
 const saved = () =>
   until(
     "view()?.documentLease&&!view().documentLease.document.session.dirty&&!button('Add text card').disabled"
@@ -158,6 +174,7 @@ const reopen = async () => {
     `const leaf=app.workspace.getLeaf('tab');await leaf.setViewState({type:'abele-canvas',state:{file:path},active:true});await app.workspace.revealLeaf(leaf);return true`
   )
   await until('view()?.editor')
+  trace()
 }
 
 describe.skipIf(!available)('shapes and connections with real pointer input', () => {

@@ -6,6 +6,7 @@ import { onPhone, targets } from './helpers/target'
 import { tap, typeText, screenshot } from './helpers/phone'
 import { withNativeInput } from './helpers/nativeInput'
 import { shotDir } from './helpers/shots'
+import { CANVAS_TRACE_DUMP, CANVAS_TRACE_INSTALL } from './helpers/canvasTrace'
 import { dismissOwnNotices } from './helpers/ownNotices'
 import { canvasChrome, menuItem } from './helpers/canvasChrome'
 
@@ -24,8 +25,23 @@ const run = <T>(body: string): T =>
     `(async () => { ${PRELUDE} return JSON.stringify(await (async () => { ${body} })()) })()`
   )
 const until = async (expression: string) => {
-  await expect.poll(() => run<boolean>(`return !!(${expression})`), { timeout: 10_000 }).toBe(true)
+  try {
+    await expect
+      .poll(() => run<boolean>(`return !!(${expression})`), { timeout: 10_000 })
+      .toBe(true)
+  } catch (error) {
+    console.info('Canvas trace at a failed wait:', expression, JSON.stringify(traced()))
+    throw error
+  }
 }
+const traced = () => {
+  try {
+    return run<unknown>(CANVAS_TRACE_DUMP)
+  } catch (error) {
+    return String(error)
+  }
+}
+const trace = () => run<boolean>(CANVAS_TRACE_INSTALL)
 // Direct driver touches avoid an in-page HTTP request being cancelled when a native mobile
 // prompt closes. No touch is retried. Desktop down/up still hold the shared native-input lock.
 const press = async (expression: string, corner = false) => {
@@ -41,7 +57,21 @@ const press = async (expression: string, corner = false) => {
   const reach = `const at=(()=>{${geometry}})();if(!at){const el=${expression};if(el?.closest('.menu'))el.scrollIntoView({block:'nearest'})}return at`
   // The place found when it was first reachable, not asked again: a control can move between.
   let found: number[] | null = null
-  await expect.poll(() => (found = run<number[] | null>(reach)), { timeout: 10_000 }).not.toBeNull()
+  await expect
+    .poll(() => (found = run<number[] | null>(reach)), { timeout: 10_000 })
+    .not.toBeNull()
+    .catch((error: unknown) => {
+      console.info(
+        'Canvas press found no reachable point:',
+        expression,
+        JSON.stringify(
+          run(`const el=${expression},r=el?.getBoundingClientRect();return {rect:r?.toJSON(),inner:[innerWidth,innerHeight],
+            hit:r&&document.elementFromPoint(Math.round(r.left+${corner ? '10' : 'r.width/2'}),Math.round(r.top+${corner ? '10' : 'r.height/2'}))?.outerHTML?.slice(0,160)}`)
+        ),
+        JSON.stringify(traced())
+      )
+      throw error
+    })
   const [x, y] = found!
   if (onPhone()) tap(x, y)
   else
@@ -227,6 +257,7 @@ const reopen = async () => {
     `const leaf=app.workspace.getLeaf('tab');await leaf.setViewState({type:'abele-canvas',state:{file:path},active:true});await app.workspace.revealLeaf(leaf);return true`
   )
   await until('view()?.editor')
+  trace()
 }
 
 describe.skipIf(!available)('human canvas creation and editing with real input', () => {
@@ -285,6 +316,7 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
     await type('Sample diagram')
     await press(textButton('.abele-canvas-input', 'Create'))
     await until('view()?.editor')
+    trace()
     const empty = run<boolean>('return (await read()).nodes.length===0')
     await beginText()
     const focused = run<boolean>(

@@ -930,6 +930,29 @@ describe('card text saves itself', () => {
     expect(s.el.querySelector('[aria-label="Save text"]')).toBeNull()
     expect(s.el.querySelector('[aria-label="Keep text draft"]')).toBeNull()
   })
+  it('folds the card controls while text is typed, so a phone keyboard leaves the canvas to tap', () => {
+    const s = setup()
+    const folded = [
+      'Shapes and connections',
+      'Canvas drawing tools',
+      'Add text card',
+      'Add note or attachment',
+      'Add link',
+      'Edit card text',
+      'Open selected card',
+      'Delete selected card',
+      'Toggle multiple selection',
+      'Group selected cards',
+      'Ungroup selected group',
+    ]
+    s.button('Add text card').click()
+    s.input('Typed text')
+    for (const label of folded) expect(s.button(label).hidden, label).toBe(true)
+    expect(s.button('Undo canvas change').hidden).toBe(false)
+    expect(s.button('Redo canvas change').hidden).toBe(false)
+    s.done()
+    for (const label of folded) expect(s.button(label).hidden, label).toBe(false)
+  })
   it('writes typed text a moment after the last keystroke, with the card still open', async () => {
     const s = setup(emptyCanvas(), { textSchedule: { idle: 40, max: 1000 } })
     s.button('Add text card').click()
