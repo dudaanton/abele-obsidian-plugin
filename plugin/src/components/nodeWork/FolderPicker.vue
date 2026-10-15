@@ -336,4 +336,21 @@ body.is-phone .abele-folder-picker__row {
 .abele-folder-picker .modal-button-container {
   margin-top: var(--size-4-2);
 }
+
+// A desktop dialog is as tall as the list and its buttons, the way Obsidian's own pickers are. On
+// a phone it is their sheet, the height of the screen: the list takes the room the field, the line
+// and the buttons leave, and the buttons stand at the bottom of the sheet, not half way up it.
+body.is-phone .modal.mod-lg .abele-folder-picker-dialog {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+body.is-phone .modal.mod-lg .abele-folder-picker {
+  flex: 1 1 auto;
+}
+body.is-phone .modal.mod-lg .abele-folder-picker__list {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: calc(var(--touch-size-m) * 4);
+}
 </style>

@@ -15,7 +15,7 @@ export function nodePathDialog(
   title: string,
   render: (close: () => void) => ReturnType<typeof h>,
   cleanup = () => {},
-  tall = false
+  phoneSheet = false
 ): () => void {
   const host = GlobalStore.getInstance().app.workspace.containerEl.ownerDocument.body.createDiv()
   let closed = false
@@ -27,12 +27,7 @@ export function nodePathDialog(
     host.remove()
   }
   const ui = createApp({
-    render: () =>
-      h(
-        Modal,
-        { title, size: tall ? 'tall' : undefined, onClose: close },
-        { default: () => render(close) }
-      ),
+    render: () => h(Modal, { title, phoneSheet, onClose: close }, { default: () => render(close) }),
   })
   ui.mount(host)
   return close
@@ -150,7 +145,7 @@ export async function openNodeFolderPicker(
   nodePathDialog(
     'Open folder on node',
     (close) =>
-      h('div', { 'aria-busy': busy.value }, [
+      h('div', { class: 'abele-folder-picker-dialog', 'aria-busy': busy.value }, [
         actionError.value ? h('div', { role: 'alert' }, actionError.value) : null,
         h(FolderPicker, {
           browse,
