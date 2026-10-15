@@ -46,7 +46,7 @@ const PRELUDE = `
 const run = <T>(body: string): T =>
   evalAsync<T>(
     `(async () => { ${PRELUDE}
-      try { ${body} } catch (e) { return { error: String((e && e.stack) || e) } }
+      try { ${body} } catch (e) { return { error: String(e && e.message ? e.message + ' ' + (e.stack || '') : e) } }
     })()`,
     120_000
   )
@@ -96,7 +96,9 @@ describe.skipIf(!available)('a drawing in a note, under a finger on a phone', ()
       buttons?: string[]
       text?: string
     }>(`
-      const b = box()
+      // The editor may have drawn the embed again since the setup: wait for the one on screen now.
+      const b = await until(() => { const b = box(); return b && b.clientWidth > 0 && b.querySelector('.abele-drawing-embed__adjust') && b }, 10000)
+      if (!b) throw new Error('the drawing with its buttons is not in the note')
       const actions = b.querySelector('.abele-drawing-embed__actions')
       await until(() => getComputedStyle(actions).opacity === '0')
       const hidden = getComputedStyle(actions).opacity
