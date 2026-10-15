@@ -26,6 +26,7 @@ export type SyncState =
   | 'error'
 
 export interface SyncStatus {
+  progressText?: string
   state: SyncState
   /** How much the last scan found still to send; 0 when everything is through. */
   pending: number
@@ -153,12 +154,11 @@ export function statusLabel(status: SyncStatus): string {
 /**
  * What the status bar says: the word, and how much is waiting while nothing is being sent.
  *
- * No number while a sync runs. The engine counts what its scan found and says nothing more
- * until the whole push is recorded, so a number here would stand still for the length of a
- * big push and then drop to nothing — which reads as stuck. It is in the tooltip instead, as
- * what the run found rather than what is left.
+ * A running connection supplies its short phase and progress line. Hosts without live
+ * progress retain the state label; their pending count is a scan result, not a transfer count.
  */
 export function statusText(status: SyncStatus): string {
+  if (status.state === 'syncing' && status.progressText) return status.progressText
   const label = statusLabel(status)
   if (leadsWithHeld(status)) return `${label} (${status.heldDeletes})`
   if (leadsWithConflicts(status)) return label

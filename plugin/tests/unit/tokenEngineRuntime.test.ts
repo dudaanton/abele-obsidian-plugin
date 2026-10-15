@@ -1,7 +1,8 @@
 import { expect, it, vi } from 'vitest'
 import { EngineError, MemoryFileSystem, MemoryStateStore, sha256 } from '@abele/sync-core'
 import { encodeAccessToken } from '@abele/sync-protocol'
-import { TokenEngineRuntime } from '@/sync/tokenEngineRuntime'
+import { TokenEngineRuntime, type TokenEngineOptions } from '@/sync/tokenEngineRuntime'
+import type { TransferSnapshot } from '@/sync/transferProgress'
 import { PathCoordinator, coordinatedFileSystem } from '@/sync/pathCoordinator'
 import { ExecutableReview } from '@/sync/executableReview'
 import { AttachmentConsent } from '@/sync/attachmentConsent'
@@ -331,7 +332,8 @@ function runtime(
   fs: MemoryFileSystem,
   state = new MemoryStateStore(),
   locks = new PathCoordinator(),
-  ignoreText: string | null = null
+  ignoreText: string | null = null,
+  progressOptions: Partial<Pick<TokenEngineOptions, 'progress' | 'event'>> = {}
 ) {
   const metadata = new MemoryStateStore()
   const reviews = {
@@ -348,6 +350,7 @@ function runtime(
       reviews,
       fetch: wire.fetch,
       changed: () => {},
+      ...progressOptions,
       failed: () => {},
       covers: async () => false,
       scopeInput: async () => ({ key: 'sample-scope', ignore: ignoreFor('.obsidian', ignoreText) }),
@@ -356,6 +359,162 @@ function runtime(
     reviews,
   }
 }
+it('publishes growing inventory, settled files and received bytes across a paginated first pull', async () => {
+  const wire = await server('Notes/first.md', 'first')
+  const secondBytes = new TextEncoder().encode('second')
+  const second = {
+    ...wire.item,
+    file_id: 'second-file',
+    version_id: 'second-version',
+    path: 'Notes/second.md',
+    sha: await sha256(secondBytes),
+    size: secondBytes.length,
+  }
+  const send = wire.fetch.getMockImplementation()!
+  wire.fetch.mockImplementation(async (input, init) => {
+    const url = new URL(String(input))
+    if (url.pathname === '/v2/manifest')
+      return Response.json({
+        items: [url.searchParams.has('next') ? second : wire.item],
+        cursor: 2,
+        next: url.searchParams.has('next') ? null : 'second-page',
+      })
+    if (url.pathname === '/v2/changes') return Response.json({ items: [], cursor: 2, next: null })
+    if (url.pathname === '/v2/files/second-file/content') return new Response(secondBytes)
+    return send(input, init)
+  })
+  const updates: (TransferSnapshot | undefined)[] = []
+  const events: string[] = []
+  const fs = new MemoryFileSystem()
+  const one = runtime(wire, fs, new MemoryStateStore(), new PathCoordinator(), null, {
+    progress: (value) => updates.push(value),
+    event: (text) => events.push(text),
+  })
+  try {
+    await one.runtime.sync()
+    expect(updates).toContainEqual(
+      expect.objectContaining({ stage: 'Downloading', total: 1, completed: 0, totalKnown: false })
+    )
+    expect(updates).toContainEqual(
+      expect.objectContaining({
+        stage: 'Downloading',
+        total: 2,
+        completed: 1,
+        bytes: 5,
+        totalBytes: 11,
+        totalKnown: true,
+      })
+    )
+    expect(updates).toContainEqual(
+      expect.objectContaining({ stage: 'Downloading', total: 2, completed: 2, bytes: 11 })
+    )
+    expect(events).toContain('Downloaded Notes/second.md')
+    expect(updates.at(-1)).toBeUndefined()
+    expect(new TextDecoder().decode(await fs.read(second.path))).toBe('second')
+  } finally {
+    await one.runtime.close()
+  }
+})
+it('reports a later changes-feed download with fresh byte and file counts', async () => {
+  const wire = await server('Notes/sample.md', 'first')
+  const send = wire.fetch.getMockImplementation()!
+  const bytes = new TextEncoder().encode('second')
+  const item = {
+    ...wire.item,
+    version_id: 'updated-version',
+    sha: await sha256(bytes),
+    size: bytes.length,
+    mtime: 2000,
+  }
+  let updated = false
+  wire.fetch.mockImplementation(async (input, init) => {
+    const url = new URL(String(input))
+    if (updated && url.pathname === '/v2/changes')
+      return Response.json({
+        items:
+          Number(url.searchParams.get('since')) < 2
+            ? [
+                {
+                  type: 'content',
+                  item,
+                  file_id: item.file_id,
+                  path: item.path,
+                  cursor: 2,
+                  prev_path: null,
+                  at: '2025-01-01T00:00:00Z',
+                },
+              ]
+            : [],
+        cursor: 2,
+        next: null,
+      })
+    if (updated && url.pathname.endsWith('/content')) return new Response(bytes)
+    return send(input, init)
+  })
+  const updates: TransferSnapshot[] = []
+  const one = runtime(
+    wire,
+    new MemoryFileSystem(),
+    new MemoryStateStore(),
+    new PathCoordinator(),
+    null,
+    {
+      progress: (value) => {
+        if (value) updates.push(value)
+      },
+    }
+  )
+  try {
+    await one.runtime.sync()
+    updates.length = 0
+    updated = true
+    await one.runtime.sync()
+    expect(updates).toContainEqual(
+      expect.objectContaining({
+        stage: 'Downloading',
+        completed: 0,
+        total: 1,
+        bytes: 0,
+        totalBytes: 6,
+      })
+    )
+    expect(updates).toContainEqual(
+      expect.objectContaining({ stage: 'Downloading', completed: 1, total: 1, bytes: 6 })
+    )
+  } finally {
+    await one.runtime.close()
+  }
+})
+
+it.each([true, false])(
+  'counts upload bytes only after acknowledgement (acknowledged=%s)',
+  async (acknowledged) => {
+    const wire = await server('Notes/remote.md', 'remote')
+    const send = wire.fetch.getMockImplementation()!
+    wire.fetch.mockImplementation(async (input, init) => {
+      if (!acknowledged && new URL(String(input)).pathname.startsWith('/v2/uploads/'))
+        throw new EngineError('offline', 'sample interruption')
+      return send(input, init)
+    })
+    const fs = new MemoryFileSystem()
+    await fs.writeAtomic('Notes/local.md', new TextEncoder().encode('local'), 2000)
+    const updates: TransferSnapshot[] = []
+    const one = runtime(wire, fs, new MemoryStateStore(), new PathCoordinator(), null, {
+      progress: (value) => {
+        if (value?.stage === 'Uploading') updates.push(value)
+      },
+    })
+    try {
+      if (acknowledged) await one.runtime.sync()
+      else await expect(one.runtime.sync()).rejects.toMatchObject({ code: 'offline' })
+      expect(updates).toContainEqual(expect.objectContaining({ total: 1, totalBytes: 5, bytes: 0 }))
+      expect(Math.max(...updates.map((one) => one.bytes ?? 0))).toBe(acknowledged ? 5 : 0)
+    } finally {
+      await one.runtime.close()
+    }
+  }
+)
+
 it('captures only included local edits, leaving ignored installed code outside every destination', async () => {
   const wire = await server('sample.md', 'incoming'),
     fs = new MemoryFileSystem()

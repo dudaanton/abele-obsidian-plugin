@@ -14,6 +14,9 @@
         :max="progress.total"
       />
       <p v-if="counts" class="abele-sync-window__progress" role="status">{{ counts }}</p>
+      <p v-if="activity?.transfer?.currentFile" class="abele-sync-window__progress">
+        {{ activity.transfer.currentFile }}
+      </p>
       <p v-if="failure" class="abele-sync-window__error mod-warning" role="alert">{{ failure }}</p>
 
       <Section v-if="refused.length" title="Not sent">
@@ -56,6 +59,10 @@
       </Setting>
 
       <Section v-if="events.length" title="Recent">
+        <p class="abele-sync-window__progress">
+          Recent activity is kept here for this session. Open sync settings from the command palette
+          for diagnostics.
+        </p>
         <ol class="abele-sync-window__events">
           <li v-for="(event, i) in events" :key="i">
             <span class="abele-sync-window__time">{{ when(event.at) }}</span>
@@ -135,6 +142,7 @@ const tone = computed(() => (row.value ? connectionTone(row.value, activity.valu
 const progress = computed(() => connectionProgress(activity.value))
 const counts = computed(() => {
   const one = activity.value
+  if (one?.transfer) return ''
   if (one?.pull) return `${one.pull.stage} · ${one.pull.completed} of ${one.pull.total}`
   const stage =
     one?.startup?.stage ??
@@ -144,7 +152,7 @@ const counts = computed(() => {
 const failure = computed(() => trustError.value || props.error || activity.value?.error || '')
 const refused = computed(() => activity.value?.refused ?? [])
 const conflicts = computed(() => activity.value?.conflicts ?? [])
-const events = computed(() => [...(activity.value?.events ?? [])].reverse().slice(0, 8))
+const events = computed(() => [...(activity.value?.events ?? [])].reverse())
 const port = shallowRef<TokenSettingsPort>()
 const held = shallowRef<HeldDelete[]>([])
 const changes = ref<ChangeItem[]>([])

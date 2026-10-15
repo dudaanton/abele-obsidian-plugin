@@ -11,6 +11,42 @@ afterEach(() => {
   historyConnection.value = null
 })
 
+it('shows the shared transfer line, current path and timed recent activity', () => {
+  const ui = tokenUiFixture()
+  const id = ui.rows.value[0].id
+  ui.publish(id, {
+    transfer: {
+      stage: 'Downloading',
+      completed: 2,
+      total: 3,
+      totalKnown: true,
+      bytes: 2048,
+      totalBytes: 4096,
+      currentFile: 'Notes/sample.md',
+    },
+    events: [
+      { at: 1000, text: 'Downloaded Notes/earlier.md' },
+      { at: 2000, text: 'Not sent Notes/unsent.md: quota_exceeded' },
+    ],
+  })
+  const view = mount(ConnectionWindow, {
+    props: { ui, connectionId: id },
+    global: { stubs: { Modal: { template: '<div><slot /></div>' }, SelectiveSync: true } },
+  })
+  try {
+    expect(view.find('.abele-sync-window__line').text()).toBe(
+      'Downloading · 2 of 3 files · 2 of 4 KB'
+    )
+    expect(view.text()).toContain('Notes/sample.md')
+    expect(view.findAll('.abele-sync-window__time')).toHaveLength(2)
+    expect(view.text()).toContain('Downloaded Notes/earlier.md')
+    expect(view.text()).toContain('Not sent Notes/unsent.md')
+    expect(view.text()).toContain('command palette')
+  } finally {
+    view.unmount()
+  }
+})
+
 it('gives held deletes and staged settings the opened connection port', async () => {
   const ui = tokenUiFixture(),
     id = ui.rows.value[0].id

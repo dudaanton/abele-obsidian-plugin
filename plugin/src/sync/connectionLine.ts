@@ -1,6 +1,7 @@
 import type { TokenConnectionRecord } from './tokenConnectionRegistry'
 import { connectionStatusText, type ConnectionActivity } from './tokenUi'
 import { formatWhen } from './format'
+import { transferText } from './transferProgress'
 
 /**
  * What one connection row says, as a code and one line: a dot coloured by its state and the one
@@ -23,6 +24,8 @@ export function connectionBusy(row: Row, activity?: ConnectionActivity): boolean
     !!activity?.startup ||
     !!activity?.inspection ||
     !!activity?.comparison ||
+    !!activity?.transfer ||
+    !!activity?.pull ||
     (activity?.total !== undefined && (activity.completed ?? 0) < activity.total)
   )
 }
@@ -44,11 +47,24 @@ const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : 
 /** The one line under the connection's name: what it is doing, or what it waits on. */
 export function connectionLine(row: Row, activity?: ConnectionActivity): string {
   if (row.paused) return 'Paused'
-  if (activity?.startup || activity?.inspection || activity?.comparison)
-    return connectionStatusText(row, activity)
+  const phase = activity?.startup ?? activity?.inspection
+  const numbered = (stage: string, completed: number, total: number) =>
+    stage +
+    (total > 0
+      ? ` · ${completed.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} of ${total.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}`
+      : '')
+  if (phase)
+    return (
+      numbered(activity?.startup?.stage ?? 'Checking the vault', phase.completed, phase.total) +
+      (activity?.startup?.outcome === 'failed' ? ' · Needs attention' : '')
+    )
   if (row.status === 'offline') return 'Server unavailable, retrying'
   if (ATTENTION.includes(row.status) || row.status === 'scope_updating')
     return connectionStatusText(row, activity)
+  if (activity?.transfer) return transferText(activity.transfer)
+  if (activity?.comparison)
+    return numbered('Comparing files', activity.comparison.completed, activity.comparison.total)
+  if (activity?.pull) return transferText({ ...activity.pull, totalKnown: false })
   if (activity?.total !== undefined && (activity.completed ?? 0) < activity.total)
     return `${activity.completed ?? 0} of ${activity.total} files`
   if (row.status === 'syncing') return 'Syncing'
@@ -67,12 +83,13 @@ export function connectionProgress(
   const one =
     activity?.startup ??
     activity?.inspection ??
+    activity?.transfer ??
     activity?.pull ??
     activity?.comparison ??
     (activity?.total !== undefined
       ? { completed: activity.completed ?? 0, total: activity.total }
       : null)
-  return one && one.total > 0 && one.completed < one.total
+  return one && one.total !== undefined && one.total > 0 && one.completed < one.total
     ? { completed: one.completed, total: one.total }
     : null
 }

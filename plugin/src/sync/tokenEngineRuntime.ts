@@ -23,7 +23,7 @@ import {
   type PathMatcher,
 } from '@abele/sync-core'
 import { ExchangeTrace } from './exchangeTrace'
-import { connectStage } from './tokenUi'
+import { connectStage, connectionError } from './tokenUi'
 import {
   V2ManifestSchema,
   V2ChangesSchema,
@@ -47,6 +47,7 @@ import { TokenActions } from './tokenActions'
 import { TokenAssetOutbox, ASSET_IDENTITIES, assetIdentitiesSchema } from './tokenAssetOutbox'
 import { PLACEMENT } from './pathCoordinator'
 import { reviewFileSystem } from './reviewFileSystem'
+import { TransferProgress, type TransferSnapshot } from './transferProgress'
 
 export interface TokenEngineOptions {
   id: string
@@ -72,6 +73,8 @@ export interface TokenEngineOptions {
   changed(status: EngineStatus, report?: SyncReport): void
   comparing?(progress?: { completed: number; total: number }): void
   pulling?(progress?: { stage: string; completed: number; total: number }): void
+  progress?(progress?: TransferSnapshot): void
+  event?(text: string): void
   failed(error: unknown): void
   covers(path: string): Promise<boolean>
   expectedSource?: ReviewSource
@@ -120,12 +123,18 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   private ignore: PathMatcher | null = null
   private authority: V2Connection | null = null
   private readonly compared = new Set<string>()
+  private inventoryTotal = 0
+  private comparisonPublished = 0
   private held = new Set<string>()
   private readonly manifestIds = new Set<string>()
   private readonly assetPaths = new Map<string, string>()
   private pulling = false
   private readonly pullPaths = new Set<string>()
   private readonly pulledPaths = new Set<string>()
+  private readonly progress: TransferProgress
+  private readonly incomingNames = new Map<string, string>()
+  private readonly receivedPaths = new Set<string>()
+  private readonly uploadNames = new Map<string, string>()
   private pullProgress(stage = 'Receiving files'): void {
     if (this.pulling)
       this.options.pulling?.({
@@ -135,6 +144,10 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       })
   }
   private pulled(path: string): void {
+    const received = this.receivedPaths.has(path)
+    if (!received) this.progress.reused(path)
+    if (this.progress.done(path))
+      this.options.event?.((received ? 'Downloaded ' : 'Matched local file ') + path)
     if (this.pulling && this.pullPaths.has(path)) {
       this.pulledPaths.add(path)
       this.pullProgress()
@@ -144,6 +157,14 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   private readonly token
   private readonly selective: SelectiveSettings
   constructor(private readonly options: TokenEngineOptions) {
+    this.progress = new TransferProgress(
+      (one) => options.progress?.(one),
+      Date.now,
+      (work, delay) => {
+        const timer = window.setTimeout(work, delay)
+        return () => window.clearTimeout(timer)
+      }
+    )
     this.transferBudget = options.transferBudget ?? new TransferBudget()
     this.selective = structuredClone(options.selective ?? selectiveDefaults())
     this.token = decodeAccessToken(options.encoded)
@@ -206,6 +227,15 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
             }
             return response
           }
+          if (url.pathname.startsWith('/v2/uploads/') && init?.method === 'PUT') {
+            const body = init.body
+            const size = ArrayBuffer.isView(body)
+              ? body.byteLength
+              : body instanceof ArrayBuffer
+                ? body.byteLength
+                : 0
+            this.progress.bytes(url.pathname, 0, size)
+          }
           if (url.pathname === '/v2/connection') {
             this.authority = V2ConnectionSchema.parse(await response.clone().json())
             this.permitted = this.authority.status === 'active'
@@ -217,8 +247,6 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
           } else if (url.pathname === '/v2/manifest') {
             const page = V2ManifestSchema.parse(await response.json())
             if (this.pulling) {
-              // A following page is requested only after the preceding page was settled.
-              for (const path of this.pullPaths) this.pulledPaths.add(path)
               for (const item of page.items) this.pullPaths.add(item.path)
               this.pullProgress('Receiving files')
             }
@@ -228,18 +256,38 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
             for (const item of page.items)
               if ((await options.state.byFileId(item.file_id))?.versionId !== item.version_id)
                 incomingPaths.push(item.path)
+            const incoming = new Set(incomingPaths)
+            for (const item of page.items)
+              if (
+                item.kind !== 'directory' &&
+                incoming.has(item.path) &&
+                !this.localExcluded(item.path, item.size)
+              ) {
+                this.incomingNames.set(item.file_id, item.path)
+                this.progress.add(item.path, item.size)
+              }
+            this.progress.inventoryComplete(page.next === null)
             await options.preparePlacement?.(incomingPaths)
             const items: V2ManifestItem[] = []
             for (const item of page.items)
               if (!(await this.reviewItem(item, null, page.cursor))) {
                 await this.joinItem(item)
                 items.push(item)
+                if (!incoming.has(item.path)) this.pulled(item.path)
+              } else {
+                this.progress.done(item.path)
+                if (this.pulling) {
+                  this.pulledPaths.add(item.path)
+                  this.pullProgress()
+                }
+                options.event?.('Received for review ' + item.path)
               }
             if (page.next === null) await this.reviewMissingExecutables()
             await this.refreshHolds()
             return Response.json({ ...page, items }, { headers: response.headers })
           } else if (url.pathname === '/v2/changes') {
             const page = V2ChangesSchema.parse(await response.json())
+            if (this.progress.stage !== 'Downloading') this.progress.begin('Downloading')
             const incomingPaths: string[] = []
             for (const one of page.items)
               if (
@@ -251,6 +299,18 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
                     ? [one.item.path, ...(one.prev_path ? [one.prev_path] : [])]
                     : [one.path])
                 )
+            const incoming = new Set(incomingPaths)
+            for (const event of page.items)
+              if (
+                event.type === 'content' &&
+                event.item.kind !== 'directory' &&
+                incoming.has(event.item.path) &&
+                !this.localExcluded(event.item.path, event.item.size)
+              ) {
+                this.incomingNames.set(event.item.file_id, event.item.path)
+                this.progress.add(event.item.path, event.item.size)
+              }
+            this.progress.inventoryComplete(page.next === null)
             await options.preparePlacement?.(incomingPaths)
             const items: V2Change[] = []
             for (const event of page.items) {
@@ -262,6 +322,10 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
                   ? await this.reviewItem(event.item, event.prev_path, event.cursor)
                   : await this.reviewDeparture(event)
               if (!reviewed) items.push(event)
+              else if (event.type === 'content') {
+                this.progress.done(event.item.path)
+                options.event?.('Received for review ' + event.item.path)
+              }
             }
             await this.refreshHolds()
             return Response.json({ ...page, items }, { headers: response.headers })
@@ -294,6 +358,10 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
         }
       }
       this.pulling = (await state.getCursor()) === 0
+      this.progress.begin('Downloading')
+      this.incomingNames.clear()
+      this.receivedPaths.clear()
+      this.uploadNames.clear()
       this.pullPaths.clear()
       this.pulledPaths.clear()
       this.pullProgress('Reading server inventory')
@@ -331,6 +399,98 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       }
     }
     this.client.onRemoval = (_id, path) => options.covers(path)
+    const openVersion = this.client.openVersion.bind(this.client)
+    this.client.openVersion = async (fileId, versionId, expected, signal) => {
+      const path = this.incomingNames.get(fileId) ?? (await options.state.byFileId(fileId))?.path
+      if (path) this.progress.current(path)
+      const source = await openVersion(fileId, versionId, expected, signal)
+      return new Proxy(source, {
+        get: (target, key) => {
+          if (key === 'read')
+            return async (offset: number, length: number, signal?: AbortSignal) => {
+              const bytes = await target.read(offset, length, signal)
+              if (path) this.receivedPaths.add(path)
+              this.progress.bytes(fileId + ':' + versionId, offset, bytes.length)
+              return bytes
+            }
+          const value = Reflect.get(target, key)
+          return typeof value === 'function' ? value.bind(target) : value
+        },
+      })
+    }
+    const versionBytes = this.client.versionBytes.bind(this.client)
+    this.client.versionBytes = async (fileId, versionId) => {
+      const path = this.incomingNames.get(fileId)
+      if (path) this.progress.current(path)
+      const bytes = await versionBytes(fileId, versionId)
+      if (path) this.receivedPaths.add(path)
+      this.progress.bytes(fileId + ':' + versionId, 0, bytes.length)
+      return bytes
+    }
+    const finishPull = this.client.finishPull.bind(this.client)
+    this.client.finishPull = async () => {
+      await finishPull()
+      this.progress.clear()
+      options.comparing?.()
+    }
+    const putBlob = this.client.putBlob.bind(this.client)
+    this.client.putBlob = async (sha, bytes) => {
+      if (this.progress.stage !== 'Uploading') this.progress.begin('Uploading')
+      const path = this.uploadNames.get(sha)
+      if (path) this.progress.current(path)
+      await putBlob(sha, bytes)
+    }
+    const putBlobSource = this.client.putBlobSource.bind(this.client)
+    this.client.putBlobSource = async (...args) => {
+      if (this.progress.stage !== 'Uploading') this.progress.begin('Uploading')
+      const path = this.uploadNames.get(args[0].sha)
+      if (path) this.progress.current(path)
+      await putBlobSource(...args)
+    }
+    let pushTotal = 0
+    const uploadOps = new Map<string, number>()
+    const uploadHashes = new Set<string>()
+    const progressState = new Proxy(options.engineState ?? options.state, {
+      get: (target, name) => {
+        if (name === 'put')
+          return async (entry: Parameters<StateStore['put']>[0]) => {
+            await target.put(entry)
+            if (this.progress.stage === 'Downloading') this.pulled(entry.path)
+          }
+        if (name === 'setJournal')
+          return async (journal: Awaited<ReturnType<StateStore['getJournal']>>) => {
+            await target.setJournal(journal)
+            if (!journal) return
+            if (this.progress.stage !== 'Uploading') {
+              this.progress.begin('Uploading')
+              uploadOps.clear()
+              uploadHashes.clear()
+              pushTotal = Math.max(this.engine.status.pending, journal.ops.length)
+            }
+            for (const [index, op] of journal.ops.entries()) {
+              const path =
+                'path' in op
+                  ? op.path
+                  : 'to_path' in op
+                    ? op.to_path
+                    : await this.pathFor(op.file_id)
+              if (path) this.progress.current(path)
+              if (path && 'sha' in op) this.uploadNames.set(op.sha, path)
+              const id = journal.idempotencyKey + ':' + index
+              if (!uploadOps.has(id)) {
+                const size = 'sha' in op && !uploadHashes.has(op.sha) && 'size' in op ? op.size : 0
+                if ('sha' in op) uploadHashes.add(op.sha)
+                uploadOps.set(id, size)
+                this.progress.add(id, uploadOps.get(id))
+              }
+            }
+            if (uploadOps.size >= pushTotal) this.progress.inventoryComplete()
+            this.progress.counts(Math.max(0, pushTotal - this.engine.status.pending), pushTotal)
+          }
+        const value = Reflect.get(target, name)
+        return typeof value === 'function' ? value.bind(target) : value
+      },
+    })
     this.engine = new SyncEngine({
       transferBudget: this.transferBudget,
       client: options.engineClient?.(this.client) ?? this.client,
@@ -380,6 +540,9 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
           const value = Reflect.get(target, name)
           if ((name === 'list' || name === 'listDirectories') && typeof value === 'function') {
             const trace = this.trace
+            const inventoried = (completed: number) => {
+              if (name === 'list') this.inventoryTotal = completed
+            }
             return async function* () {
               const finish = trace.begin('fs ' + String(name))
               let completed = 0
@@ -389,6 +552,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
                   yield info
                 }
               } finally {
+                inventoried(completed)
                 trace.inventory(completed)
                 finish(completed)
               }
@@ -397,30 +561,34 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
           if (name === PLACEMENT && typeof value === 'function')
             return (paths: string[], work: () => Promise<unknown>) =>
               this.trace.run('placement ' + paths.join(', '), () => value.call(target, paths, work))
-          if ((name === 'read' || name === 'stat') && typeof value === 'function')
+          if (
+            (name === 'read' || name === 'stat' || name === 'fingerprint') &&
+            typeof value === 'function'
+          )
             return (path: string) =>
               this.trace.run('fs ' + String(name) + ' ' + path, async () => {
                 if (name === 'stat') return value.call(target, path)
-                const total = this.trace.snapshot().firstSync.total
+                const total = this.inventoryTotal
                 if (this.compared.size === 0) options.comparing?.({ completed: 0, total })
-                const bytes = await connectStage(
-                  'Comparing files',
-                  'Comparing a local file could not finish. Try syncing again.',
-                  () => value.call(target, path)
-                )
+                const bytes =
+                  name === 'fingerprint'
+                    ? await value.call(target, path)
+                    : await connectStage(
+                        'Comparing files',
+                        'Comparing a local file could not finish. Try syncing again.',
+                        () => value.call(target, path)
+                      )
                 this.compared.add(path)
-                if (
-                  this.compared.size <= 8 ||
-                  this.compared.size % 128 === 0 ||
-                  this.compared.size === total
-                )
+                if (Date.now() - this.comparisonPublished >= 250 || this.compared.size === total) {
+                  this.comparisonPublished = Date.now()
                   options.comparing?.({ completed: this.compared.size, total })
+                }
                 return bytes
               })
           return typeof value === 'function' ? value.bind(target) : value
         },
       }),
-      state: options.engineState ?? options.state,
+      state: progressState,
       selective: this.selective,
       stillHeld: () => this.active,
       ignore: { ignores: (path) => this.blocked(path) },
@@ -431,6 +599,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       ...(options.paths?.scriptsFolder ? { scriptsFolder: options.paths.scriptsFolder } : {}),
       ...(options.fallbackMs ? { fallbackMs: options.fallbackMs } : {}),
       onSync: (report) => {
+        this.progress.clear()
         this.pulling = false
         options.pulling?.()
         options.comparing?.()
@@ -439,14 +608,25 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
         void this.outbox.drain().catch(() => options.publicationChanged?.())
       },
       onFail: (error) => {
+        options.event?.('Error: ' + connectionError(error))
+        this.progress.clear()
         this.pulling = false
         options.pulling?.()
         options.comparing?.()
         options.failed(error)
       },
-      log: (line) => this.trace.log(line),
+      log: (line) => {
+        this.trace.log(line)
+        options.event?.(line)
+      },
     })
-    this.unstatus = this.engine.onStatus((status) => options.changed(status))
+    this.unstatus = this.engine.onStatus((status) => {
+      if (status.state === 'syncing' && this.progress.stage === 'Uploading') {
+        pushTotal = Math.max(pushTotal, status.pending)
+        this.progress.counts(pushTotal - status.pending, pushTotal)
+      }
+      options.changed(status)
+    })
     this.actions = new TokenActions(this.engine, options.state, this.client)
     this.outbox = new TokenAssetOutbox({
       state: options.state,
@@ -481,6 +661,19 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     const commit = this.client.commitRaw.bind(this.client)
     this.client.commitRaw = async (ops, key) => {
       const outcome = await commit(ops, key)
+      for (const [index, result] of outcome.body.results.entries()) {
+        const op = ops[index]
+        const path =
+          'path' in op ? op.path : 'to_path' in op ? op.to_path : await this.pathFor(op.file_id)
+        if (path) {
+          this.progress.current(path)
+          options.event?.(
+            result.status === 'rejected'
+              ? 'Not sent ' + path + ': ' + result.code
+              : 'Uploaded ' + path
+          )
+        }
+      }
       this.actions.recordDeleteResults(this.client, ops, outcome.body.results)
       return outcome
     }
@@ -901,6 +1094,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   }
   invalidate(): void {
     this.active = false
+    this.progress.clear()
     this.requests.abort()
   }
   async close(): Promise<void> {
@@ -926,6 +1120,9 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     this.held.clear()
     this.manifestIds.clear()
     this.assetPaths.clear()
+    this.incomingNames.clear()
+    this.receivedPaths.clear()
+    this.uploadNames.clear()
     this.authority = null
     this.ignore = null
     if (failures.length === 1) throw failures[0]
