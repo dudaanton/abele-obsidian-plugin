@@ -27,10 +27,10 @@ const run = <T>(body: string): T =>
 const until = async (expression: string, timeout = 30_000) => {
   await expect.poll(() => run<boolean>(`return !!(${expression})`), { timeout }).toBe(true)
 }
-/** Every change made, queued ones included, is written and nothing waits any more. */
+/** Every change made is written and nothing waits any more. */
 const settled = () =>
   until(
-    'view()?.documentLease&&!view().documentLease.document.session.dirty&&!view().documentLease.document.session.busy&&!view().editor.waiting&&!view().editor.queue.length'
+    'view()?.documentLease&&!view().documentLease.document.session.dirty&&!view().documentLease.document.session.busy'
   )
 /** Gestures one after another, with no pause for the save between them. */
 const gestures = async (list: number[][][]) => {
@@ -137,15 +137,19 @@ describe.skipIf(!available)('fast canvas actions are all saved', () => {
     expect(run<number>('return ink(await read())')).toBe(3)
     expect(undo()).toBe(3)
     // Now with each write held open, so every later stroke is made during a save.
-    slowWrites(onPhone() ? 2500 : 600)
-    await gestures(strokes(1))
-    expect(run<number>('return ink(view().viewer.graph)'), 'queued strokes stay on screen').toBe(6)
-    shot('strokes-during-save')
-    await settled()
-    slowWrites(0)
+    slowWrites(onPhone() ? 4000 : 1500)
+    try {
+      await gestures(strokes(1))
+      // All six are on screen at once, while the file is still behind.
+      await until('ink(view().viewer.graph)===6&&ink(await read())<6', 10_000)
+      shot('strokes-during-save')
+      await settled()
+    } finally {
+      slowWrites(0)
+      await click('Canvas drawing tools')
+    }
     expect(run<number>('return ink(await read())')).toBe(6)
     expect(undo()).toBe(6)
-    await click('Canvas drawing tools')
   }, 180_000)
 
   it('saves a resize made right after a move', async () => {
@@ -153,15 +157,18 @@ describe.skipIf(!available)('fast canvas actions are all saved', () => {
     const before = run<{ x: number; y: number; width: number; height: number }>(
       'return (await read()).nodes[0]'
     )
-    slowWrites(onPhone() ? 2500 : 600)
-    const start = at(0.5, 0.5)
-    const move: number[][] = [start, [start[0] + 30, start[1] + 20]]
-    await gestures([move])
-    // The corner of the card where it now is on screen, before its move is saved.
-    const corner = at(1, 1)
-    await gestures([[corner, [corner[0] + 40, corner[1] + 30]]])
-    await settled()
-    slowWrites(0)
+    slowWrites(onPhone() ? 4000 : 1500)
+    try {
+      const start = at(0.5, 0.5)
+      await gestures([[start, [start[0] + 30, start[1] + 20]]])
+      await until('view().documentLease.document.session.writing', 10_000)
+      // The corner of the card where it now is on screen, before its move is saved.
+      const corner = at(1, 1)
+      await gestures([[corner, [corner[0] + 40, corner[1] + 30]]])
+      await settled()
+    } finally {
+      slowWrites(0)
+    }
     const after = run<typeof before>('return (await read()).nodes[0]')
     expect(after.x).toBeGreaterThan(before.x)
     expect(after.y).toBeGreaterThan(before.y)
@@ -170,13 +177,29 @@ describe.skipIf(!available)('fast canvas actions are all saved', () => {
     shot('move-then-resize')
   }, 180_000)
 
+  it('writes local changes before an agent reads the canvas', async () => {
+    await click('Canvas drawing tools')
+    await click('Draw with pen')
+    const before = run<number>('return ink(await read())')
+    await gestures(strokes(0).slice(0, 1))
+    await until('ink(view().viewer.graph)===' + (before + 1))
+    const read = run<{ ink: number; file: number }>(
+      `const scope=new window.__abeleTest.ScopeResolver();scope.setFullVaultAccess(true);const tools=Object.fromEntries(window.__abeleTest.createAgentTools().map(t=>[t.name,t]))
+      const result=await tools.canvas_read.execute('sample-read',{path},undefined,{scope,interactive:true})
+      return {ink:JSON.stringify(result).split('"points"').length-1,file:ink(await read())}`
+    )
+    expect(read.file).toBe(before + 1)
+    await settled()
+    await click('Canvas drawing tools')
+  }, 120_000)
+
   it('shows all of it again after the canvas is reopened', async () => {
     const saved = run<{ nodes: unknown[] }>('return await read()')
     run(
       `const leaf=view().leaf;await leaf.setViewState({type:'empty'});await leaf.setViewState({type:'abele-canvas',state:{file:path},active:true});await app.workspace.revealLeaf(leaf);return true`
     )
     await until('view()?.editor')
-    expect(run<number>('return ink(view().viewer.graph)')).toBe(6)
+    expect(run<number>('return ink(view().viewer.graph)')).toBe(7)
     expect(run<unknown>('return view().viewer.graph.nodes[0]')).toMatchObject(
       saved.nodes[0] as object
     )
