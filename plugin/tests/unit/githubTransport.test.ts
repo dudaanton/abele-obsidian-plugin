@@ -22,6 +22,27 @@ describe('single-hop GitHub native transport', () => {
     }
   })
 
+  it('names itself on desktop, where Node sends no User-Agent and GitHub refuses a request without one', async () => {
+    const agents: Array<string | undefined> = []
+    const server = createServer((req, res) => {
+      agents.push(req.headers['user-agent'])
+      res.end('ok')
+    })
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    try {
+      const port = (server.address() as { port: number }).port
+      await singleHopRequest({ url: `http://127.0.0.1:${port}/a` })
+      await singleHopRequest({
+        url: `http://127.0.0.1:${port}/b`,
+        headers: { 'user-agent': 'sample-agent/1.0' },
+      })
+      expect(agents[0]).toMatch(/\S/)
+      expect(agents[1]).toBe('sample-agent/1.0')
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    }
+  })
+
   it('decodes HTTP gzip on desktop without confusing it with a gzip archive file', async () => {
     const body = Buffer.from('{"login":"sample-account"}')
     const server = createServer((req, res) => {

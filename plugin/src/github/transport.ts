@@ -63,10 +63,19 @@ function nodeBuiltin(name: string): unknown {
   return require(name)
 }
 
+/**
+ * What the desktop adapter calls itself. Node HTTP, unlike a browser or the phone's native HTTP,
+ * sends no User-Agent at all, and GitHub refuses every such request with a 403.
+ */
+const USER_AGENT = 'Abele-Obsidian-Plugin (+https://github.com/dudaanton/abele-obsidian-plugin)'
+
 /** Node HTTP does not follow redirects; keep this request bound to its exact URL. */
 function desktopRequest(request: RequestUrlParam): Promise<RequestUrlResponse> {
   return new Promise((resolve, reject) => {
     const url = new URL(request.url)
+    const headers = { ...request.headers }
+    if (!Object.keys(headers).some((name) => name.toLowerCase() === 'user-agent'))
+      headers['User-Agent'] = USER_AGENT
     // Runtime-only Node adapter: importing it statically breaks mobile plugin loading.
     const protocol = url.protocol === 'https:' ? 'https' : 'http'
     const http = nodeBuiltin(protocol) as typeof import('node:http')
@@ -76,56 +85,48 @@ function desktopRequest(request: RequestUrlParam): Promise<RequestUrlResponse> {
       reject(new Error('Node HTTP is unavailable.'))
       return
     }
-    const call = http.request(
-      url,
-      { method: request.method ?? 'GET', headers: request.headers },
-      (r) => {
-        const chunks: Uint8Array[] = []
-        let length = 0
-        r.on('data', (chunk: Uint8Array) => {
-          chunks.push(chunk)
-          length += chunk.length
-        })
-        r.on('error', reject)
-        r.on('end', () => {
-          const bytes = new Uint8Array(length)
-          let at = 0
-          for (const chunk of chunks) {
-            bytes.set(chunk, at)
-            at += chunk.length
-          }
-          const headers = Object.fromEntries(
-            Object.entries(r.headers)
-              .filter(([, v]) => v !== undefined)
-              .map(([k, v]) => [k, Array.isArray(v) ? v.join(', ') : String(v)])
-          )
-          try {
-            const encoding = headers['content-encoding']?.toLowerCase().trim()
-            let decoded = bytes
-            if (encoding && encoding !== 'identity') {
-              const zlib = nodeBuiltin('zlib') as typeof import('node:zlib')
-              for (const method of encoding
-                .split(',')
-                .map((s) => s.trim())
-                .reverse()) {
-                if (method === 'gzip' || method === 'x-gzip')
-                  decoded = new Uint8Array(zlib.gunzipSync(decoded))
-                else if (method === 'deflate') decoded = new Uint8Array(zlib.inflateSync(decoded))
-                else if (method === 'br')
-                  decoded = new Uint8Array(zlib.brotliDecompressSync(decoded))
-                else if (method !== 'identity')
-                  throw new Error('Unsupported HTTP content encoding.')
-              }
+    const call = http.request(url, { method: request.method ?? 'GET', headers }, (r) => {
+      const chunks: Uint8Array[] = []
+      let length = 0
+      r.on('data', (chunk: Uint8Array) => {
+        chunks.push(chunk)
+        length += chunk.length
+      })
+      r.on('error', reject)
+      r.on('end', () => {
+        const bytes = new Uint8Array(length)
+        let at = 0
+        for (const chunk of chunks) {
+          bytes.set(chunk, at)
+          at += chunk.length
+        }
+        const headers = Object.fromEntries(
+          Object.entries(r.headers)
+            .filter(([, v]) => v !== undefined)
+            .map(([k, v]) => [k, Array.isArray(v) ? v.join(', ') : String(v)])
+        )
+        try {
+          const encoding = headers['content-encoding']?.toLowerCase().trim()
+          let decoded = bytes
+          if (encoding && encoding !== 'identity') {
+            const zlib = nodeBuiltin('zlib') as typeof import('node:zlib')
+            for (const method of encoding
+              .split(',')
+              .map((s) => s.trim())
+              .reverse()) {
+              if (method === 'gzip' || method === 'x-gzip')
+                decoded = new Uint8Array(zlib.gunzipSync(decoded))
+              else if (method === 'deflate') decoded = new Uint8Array(zlib.inflateSync(decoded))
+              else if (method === 'br') decoded = new Uint8Array(zlib.brotliDecompressSync(decoded))
+              else if (method !== 'identity') throw new Error('Unsupported HTTP content encoding.')
             }
-            resolve(response(r.statusCode ?? 0, headers, decoded))
-          } catch (error) {
-            reject(
-              error instanceof Error ? error : new Error('Could not decode the HTTP response.')
-            )
           }
-        })
-      }
-    )
+          resolve(response(r.statusCode ?? 0, headers, decoded))
+        } catch (error) {
+          reject(error instanceof Error ? error : new Error('Could not decode the HTTP response.'))
+        }
+      })
+    })
     call.setTimeout(60_000, () => call.destroy(new Error('Request timed out')))
     call.on('error', reject)
     if (request.body !== undefined)
