@@ -548,7 +548,11 @@ describe('the interceptor an agent carries', () => {
 
     expect(migrateAgents(ai)).toBe(true)
     const agent = ai.agents[0]
-    expect(agent.interceptors?.map((e) => e.id)).toEqual(['y', 'z'])
+    expect(agent.interceptors?.map((e) => [e.id, e.agentId])).toEqual([
+      ['x', ''],
+      ['y', 'r1'],
+      ['z', ''],
+    ])
     expect(agent).toMatchObject({
       interceptorAgentId: '',
       interceptorScript: 'Guard',

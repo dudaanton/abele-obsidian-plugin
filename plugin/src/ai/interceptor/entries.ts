@@ -97,9 +97,19 @@ export function entriesOf(
   return single ? [single] : []
 }
 
+/**
+ * The entry the single fields stand for: the first switched-on one that names someone, else the
+ * first switched-on one at all — a chat that switched its interceptor off and kept its settings —
+ * and then they say "none".
+ */
+function mirrored(list: readonly InterceptorEntry[]): number {
+  const named = list.findIndex((e) => e.enabled && hasReader(e))
+  return named >= 0 ? named : list.findIndex((e) => e.enabled)
+}
+
 /** The single fields an older build reads: the first switched-on entry, or none. */
 export function legacyFields(list: readonly InterceptorEntry[]): Required<LegacyInterceptorFields> {
-  const first = list.find((e) => e.enabled && hasReader(e))
+  const first = list[mirrored(list)] as InterceptorEntry | undefined
   return {
     interceptorAgentId: first ? (first.script ? '' : first.agentId) : '',
     interceptorContextDepth: first?.contextDepth ?? 0,
@@ -111,17 +121,16 @@ export function legacyFields(list: readonly InterceptorEntry[]): Required<Legacy
 }
 
 /**
- * `list` with a change written in the single fields applied to the entry they mirror. Naming
- * nobody removes that entry; naming someone where the list has no switched-on entry puts a new
- * one first. Choosing an agent drops a script and the other way round, as before.
+ * `list` with a change written in the single fields applied to the entry they mirror, or to a new
+ * first one when nothing is switched on. Choosing an agent drops a script and the other way
+ * round, as before; naming nobody keeps the entry's other settings, as switching off did.
  */
 export function withLegacyPatch(
   list: readonly InterceptorEntry[],
   patch: LegacyInterceptorFields
 ): InterceptorEntry[] {
-  const at = list.findIndex((e) => e.enabled && hasReader(e))
-  const current = at >= 0 ? list[at] : newEntry()
-  const next: InterceptorEntry = { ...current }
+  const at = mirrored(list)
+  const next: InterceptorEntry = { ...(at >= 0 ? list[at] : newEntry()) }
   if (patch.interceptorScript !== undefined) {
     next.script = patch.interceptorScript
     if (patch.interceptorScript) next.agentId = ''
@@ -135,8 +144,6 @@ export function withLegacyPatch(
   if (patch.interceptorReplyOnly !== undefined) next.replyOnly = patch.interceptorReplyOnly
   if (patch.interceptorContextDepth !== undefined)
     next.contextDepth = normaliseContextDepth(patch.interceptorContextDepth)
-
-  if (!hasReader(next)) return at >= 0 ? list.filter((_, i) => i !== at) : [...list]
   if (at >= 0) return list.map((e, i) => (i === at ? next : e))
   return [next, ...list]
 }
@@ -152,8 +159,9 @@ export function chainFor(list: readonly InterceptorEntry[], side: ChainSide): In
 }
 
 /**
- * A stored list made well-formed: entries that are not objects or name nobody are dropped, each
- * field falls back to its default, ids are made unique, and an agent never reads for itself.
+ * A stored list made well-formed: what is not an object is dropped, each field falls back to its
+ * default, ids are made unique, and an agent never reads for itself. An entry naming nobody keeps
+ * its place and its settings; it reads nothing.
  * `changed` says whether anything that was there had to be corrected.
  */
 export function normaliseEntries(
@@ -174,10 +182,6 @@ export function normaliseEntries(
     let agentId = typeof e.agentId === 'string' ? e.agentId : ''
     if (script) agentId = ''
     if (selfId && agentId === selfId) agentId = ''
-    if (!script && !agentId) {
-      changed = true
-      continue
-    }
     let id = typeof e.id === 'string' && e.id ? e.id : newEntryId()
     if (seen.has(id)) id = newEntryId()
     seen.add(id)

@@ -141,7 +141,7 @@ describe('the list an agent or a chat runs', () => {
 
   it('mirrors its first switched-on entry into the single fields for older builds', () => {
     const list = [
-      entry('off', { enabled: false }),
+      newEntry({ id: 'off', script: 'Sample off', enabled: false }),
       newEntry({ id: 'r', agentId: 'reviewer', checks: 'answer', contextDepth: -1 }),
       entry('s'),
     ]
@@ -169,12 +169,21 @@ describe('the list an agent or a chat runs', () => {
       agentId: '',
       script: 'Sample g',
     })
-    expect(withLegacyPatch(list, { interceptorAgentId: '' }).map((e) => e.id)).toEqual(['s'])
+    expect(withLegacyPatch(list, { interceptorAgentId: '' })[0]).toMatchObject({
+      id: 'r',
+      agentId: '',
+    })
     // A list with nothing switched on gets a new first entry.
     const added = withLegacyPatch([entry('off', { enabled: false })], {
       interceptorAgentId: 'reviewer',
     })
     expect(added.map((e) => e.agentId)).toEqual(['reviewer', ''])
+    // Settings written before anyone is named are kept for when someone is.
+    const pending = withLegacyPatch([], { interceptorPattern: '^/x' })
+    expect(withLegacyPatch(pending, { interceptorAgentId: 'reviewer' })).toMatchObject([
+      { agentId: 'reviewer', pattern: '^/x' },
+    ])
+    expect(chainFor(pending, 'message')).toEqual([])
   })
 
   it('makes a stored list well-formed and says when it had to correct it', () => {
@@ -191,10 +200,11 @@ describe('the list an agent or a chat runs', () => {
     )
     expect(odd.changed).toBe(true)
     expect(odd.entries.map((e) => [e.agentId, e.script, e.checks, e.contextDepth])).toEqual([
+      ['', '', 'message', 0],
       ['reviewer', '', 'message', 0],
       ['', 'Sample s', 'message', 0],
     ])
-    expect(new Set(odd.entries.map((e) => e.id)).size).toBe(2)
+    expect(new Set(odd.entries.map((e) => e.id)).size).toBe(3)
     expect(normaliseEntries('nonsense').changed).toBe(true)
   })
 })
