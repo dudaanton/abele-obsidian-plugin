@@ -260,8 +260,7 @@ export function reparentOps(
     const was = parents.get(id) ?? null
     if (was && moving.has(was)) continue
     const now = landingFrame(after, new Set([id]), moving)
-    if (now !== was && now !== id)
-      ops.push({ op: 'update', id, patch: { abele: { parent: now } } })
+    if (now !== was && now !== id) ops.push({ op: 'update', id, patch: { abele: { parent: now } } })
   }
   return ops
 }
@@ -441,7 +440,11 @@ export class CanvasInput implements CanvasViewerInput {
     // A finger on a picked note whose words run past its foot scrolls them; held still a moment,
     // it carries the card instead.
     const body =
-      node && node.type === 'file' && !corner && event.pointerType === 'touch' && selected.has(node.id)
+      node &&
+      node.type === 'file' &&
+      !corner &&
+      event.pointerType === 'touch' &&
+      selected.has(node.id)
         ? this.viewer.scroller(node.id)
         : null
     const scroll =
@@ -553,7 +556,7 @@ export class CanvasInput implements CanvasViewerInput {
     let preview: CanvasGraph
     this.guides = []
     if (g.corner) {
-      const node = g.graph.nodes.find((n) => n.id === g.node)!,
+      const node = g.graph.nodes.find((n) => n.id === g.node),
         rect = event.shiftKey
           ? keepRatio(node, g.corner, resizeRect(node, g.corner, dx, dy))
           : resizeRect(node, g.corner, dx, dy)
@@ -795,10 +798,7 @@ export class CanvasInput implements CanvasViewerInput {
     }
     if (this.marquee) box(this.marquee)
     for (const guide of this.gesture?.active ? this.guides : []) {
-      const el = this.overlay.ownerDocument.createElementNS(
-          'http://www.w3.org/1999/xhtml',
-          'div'
-        ) as HTMLElement,
+      const el = this.overlay.ownerDocument.createElementNS('http://www.w3.org/1999/xhtml', 'div'),
         cam = this.viewer.camera,
         [x, y] =
           guide.axis === 'x'

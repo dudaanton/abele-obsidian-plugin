@@ -1,6 +1,6 @@
 /**
- * Finding things on a canvas: its cards by their words, a note's or a link's name, and its frames
- * and walkthrough steps as its contents. Chosen, the canvas shows that place.
+ * A canvas's contents: its frames and walkthrough steps, by name. Chosen, the canvas shows that
+ * place.
  */
 import { FuzzySuggestModal, type App } from 'obsidian'
 import type { CanvasGraph, CanvasNode } from './core/model'
@@ -26,11 +26,6 @@ function title(node: CanvasNode): string {
     )
   if (node.type === 'file') return `${node.file ?? ''}${node.subpath ?? ''}`
   return node.url ?? 'Link'
-}
-
-/** Every card and frame, by what it says. */
-export function canvasPlaces(graph: CanvasGraph): CanvasPlace[] {
-  return graph.nodes.map((node) => ({ title: title(node), node }))
 }
 
 /** The canvas's frames, then its walkthrough's steps, in their order. */

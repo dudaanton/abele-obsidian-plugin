@@ -229,7 +229,10 @@ export function moreEntries(c: Controls, p: PickedView, host?: CanvasHostActions
       })
     )
   if (p.one && p.kind === 'text')
-    out.push('-', entry('Turn into a note', 'file-plus-2', () => c.act('turn-into-note')))
+    out.push(
+      '-',
+      entry('Turn into a note', 'file-plus-2', () => c.act('turn-into-note'))
+    )
   out.push('-', ...agent, '-')
   out.push(
     entry(

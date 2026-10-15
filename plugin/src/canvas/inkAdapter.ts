@@ -124,7 +124,7 @@ export class CanvasInkInput {
   }
   /** The edits that put the recognized shape where the stroke was, in the stroke's colour. */
   private shapeOps(g: InkGesture): CanvasOperation[] {
-    const snap = g.snap!,
+    const snap = g.snap,
       ox = g.entry.node?.x ?? 0,
       oy = g.entry.node?.y ?? 0,
       color = g.entry.stroke.color

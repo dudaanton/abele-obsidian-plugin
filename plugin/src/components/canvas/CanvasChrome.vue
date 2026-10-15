@@ -401,7 +401,10 @@ const away = computed(() => {
   const box = bounds(nodes),
     v = props.viewer.visible()
   const overlap =
-    box.x < v.x + v.width && box.x + box.width > v.x && box.y < v.y + v.height && box.y + box.height > v.y
+    box.x < v.x + v.width &&
+    box.x + box.width > v.x &&
+    box.y < v.y + v.height &&
+    box.y + box.height > v.y
   if (overlap) return null
   const cx = v.x + v.width / 2,
     cy = v.y + v.height / 2,

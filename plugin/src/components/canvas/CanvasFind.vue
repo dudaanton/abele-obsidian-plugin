@@ -3,7 +3,10 @@
        its count, the steps to the previous and next match, and a way out. -->
   <div ref="root" class="document-search-container abele-canvas-find" @keydown.stop>
     <div class="document-search">
-      <div class="document-search-input abele-canvas-find__field" :class="{ 'mod-no-match': !!query && !matches.length }">
+      <div
+        class="document-search-input abele-canvas-find__field"
+        :class="{ 'mod-no-match': !!query && !matches.length }"
+      >
         <Search
           ref="field"
           :model-value="query"
@@ -18,8 +21,18 @@
         </div>
       </div>
       <div class="document-search-buttons">
-        <Icon icon="arrow-up" tooltip="Previous match (Shift+Enter)" :disabled="!matches.length" @click="step(-1)" />
-        <Icon icon="arrow-down" tooltip="Next match (Enter)" :disabled="!matches.length" @click="step(1)" />
+        <Icon
+          icon="arrow-up"
+          tooltip="Previous match (Shift+Enter)"
+          :disabled="!matches.length"
+          @click="step(-1)"
+        />
+        <Icon
+          icon="arrow-down"
+          tooltip="Next match (Enter)"
+          :disabled="!matches.length"
+          @click="step(1)"
+        />
         <Icon icon="x" tooltip="Close (Esc)" @click="close" />
       </div>
     </div>

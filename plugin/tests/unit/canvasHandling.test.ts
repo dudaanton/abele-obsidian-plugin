@@ -169,22 +169,6 @@ describe('the bar over a connection', () => {
 
 vi.setConfig({ testTimeout: 10_000 })
 
-describe('a card turned into a note', () => {
-  it('stands where the card stood, as one step to take back', async () => {
-    const s = setup(cards())
-    await s.editor.controls.replaceWithNote('alpha', 'Sample idea.md')
-    expect(s.document.session.graph.nodes[0]).toMatchObject({
-      id: 'alpha',
-      type: 'file',
-      file: 'Sample idea.md',
-      x: 0,
-      width: 260,
-    })
-    expect(s.document.session.graph.nodes[0].text).toBeUndefined()
-    expect(s.document.session.history.undo).toBe(1)
-  })
-})
-
 describe('a card being written', () => {
   it('is saved and left with Esc', async () => {
     const s = setup(cards())

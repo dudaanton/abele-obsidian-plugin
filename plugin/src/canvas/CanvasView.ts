@@ -23,7 +23,7 @@ import { askName } from '../modal/askName'
 import { mountCanvasChrome } from './chrome'
 import { canvasHostActions, type CanvasHostActions } from './pickedActions'
 import { paneEntries } from '../components/canvas/chromeMenus'
-import { CanvasPlaceModal, canvasContents, canvasPlaces, type CanvasPlace } from './canvasFind'
+import { CanvasPlaceModal, canvasContents, type CanvasPlace } from './canvasFind'
 
 /** Shared human editor; no view save hook ever publishes a transient preview. */
 export class CanvasView extends FileView {
@@ -66,10 +66,6 @@ export class CanvasView extends FileView {
         this.viewer?.handleKey(event)
         return event.defaultPrevented ? false : undefined
       })
-    this.scope.register(['Mod'], 'f', () => {
-      this.find()
-      return false
-    })
     this.registerEvent(
       this.app.vault.on('modify', (file) => {
         if (
@@ -247,14 +243,9 @@ export class CanvasView extends FileView {
     viewer.focusRegion(place.node, true)
     viewer.onSelect?.(place.node)
   }
+  /** Obsidian's own find bar over the canvas, as Cmd+F opens it. */
   find(): void {
-    if (this.viewer)
-      new CanvasPlaceModal(
-        this.app,
-        canvasPlaces(this.viewer.graph),
-        'Find a card, note or frame on the canvas',
-        (p) => this.show(p)
-      ).open()
+    this.editor?.controls.setFinding(true)
   }
   contents(): void {
     if (this.viewer)

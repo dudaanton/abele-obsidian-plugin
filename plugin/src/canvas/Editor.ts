@@ -257,8 +257,6 @@ export class CanvasEditor {
     /** A card pinned in place is picked but not carried or resized by hand. */
     setPinned: (id: string, pinned: boolean): Promise<void> =>
       this.patchNode(id, { abele: { pinned: pinned || undefined } }),
-    /** A text card's place taken by a note, made from its words, in one step. */
-    replaceWithNote: (id: string, path: string): Promise<void> => this.replaceWithNote(id, path),
     /** A connection let go over nothing, waiting to be told what to make there. */
     drop: (): CanvasDrop | null => this.drop,
     /** Makes a card, a note or a shape at the end of the dropped connection, or nothing. */
@@ -616,7 +614,11 @@ export class CanvasEditor {
     // unless something else already has them.
     queueMicrotask(() => {
       const doc = viewer.el.ownerDocument
-      if (!this.destroyed && viewer.el.isConnected && (!doc.activeElement || doc.activeElement === doc.body))
+      if (
+        !this.destroyed &&
+        viewer.el.isConnected &&
+        (!doc.activeElement || doc.activeElement === doc.body)
+      )
         viewer.el.focus({ preventScroll: true })
     })
     viewer.onWheel = (event) => this.wheel(event)
@@ -1295,18 +1297,7 @@ export class CanvasEditor {
     document.finishDraft()
     await this.saving(() => this.ports.publish())
   }
-  private async replaceWithNote(id: string, path: string): Promise<void> {
-    const document = this.ready(),
-      node = document.session.graph.nodes.find((n) => n.id === id)
-    if (node?.type !== 'text') return
-    document.beginDraft()
-    this.update(document, [
-      { op: 'update', id, patch: { type: 'file', file: path, text: undefined } },
-    ])
-    document.finishDraft()
-    this.selected = new Set([id])
-    await this.saving(() => this.ports.publish())
-  }
+
   /** Renames, folds or unfolds one frame as a single step to undo. */
   private async frameOp(
     id: string,
@@ -1861,12 +1852,23 @@ export class CanvasEditor {
     const text = node.text ?? ''
     const first = text
       .split('\n')
-      .map((l) => l.replace(/^[#>*\-\s]+/, '').replace(/[*_`[\]]/g, '').trim())
+      .map((l) =>
+        l
+          .replace(/^[#>*\-\s]+/, '')
+          .replace(/[*_`[\]]/g, '')
+          .trim()
+      )
       .find(Boolean)
-    const name = (first ?? 'Untitled').replace(/[\\/:*?"<>|#^]/g, ' ').slice(0, 60).trim() || 'Untitled'
+    const name =
+      (first ?? 'Untitled')
+        .replace(/[\\/:*?"<>|#^]/g, ' ')
+        .slice(0, 60)
+        .trim() || 'Untitled'
     const file = await this.ports.createNote(name, text)
     if (!file) return
-    await this.apply([{ op: 'update', id: node.id, patch: { type: 'file', file, text: undefined } }])
+    await this.apply([
+      { op: 'update', id: node.id, patch: { type: 'file', file, text: undefined } },
+    ])
   }
   /**
    * After writing a name or a label the keys go back to the canvas, so the next Cmd+Z or letter
@@ -1875,7 +1877,7 @@ export class CanvasEditor {
   private regainKeys(): void {
     // Looked at once the focus has settled: a click into another field during a blur has not
     // moved the focus yet.
-    setTimeout(() => {
+    window.setTimeout(() => {
       const doc = this.viewer.el.ownerDocument,
         active = doc.activeElement
       if (this.destroyed || this.naming || this.labelling || this.editing) return
@@ -2029,7 +2031,9 @@ export class CanvasEditor {
         const data = await file.arrayBuffer()
         const ext = PICTURE_TYPES[file.type]
         const name =
-          file.name && file.name !== 'image.png' ? file.name : `Pasted image ${stamp()}.${ext ?? 'png'}`
+          file.name && file.name !== 'image.png'
+            ? file.name
+            : `Pasted image ${stamp()}.${ext ?? 'png'}`
         const path = await this.ports.saveAttachment(name, data)
         if (!path) continue
         paths.push(path)

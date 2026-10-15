@@ -15,11 +15,9 @@ function controls() {
     state: vi.fn(() => ({ disabled: false, hidden: false, on: false })),
     act: vi.fn(async () => {}),
     editLabel: vi.fn(),
-    replaceWithNote: vi.fn(async () => {}),
   } as unknown as Controls & {
     press: ReturnType<typeof vi.fn>
     editLabel: ReturnType<typeof vi.fn>
-    replaceWithNote: ReturnType<typeof vi.fn>
   }
 }
 function host(): CanvasHostActions & Record<string, ReturnType<typeof vi.fn>> {
@@ -72,11 +70,9 @@ describe("the picked things' more menu", () => {
     expect(h.copyEmbed).toHaveBeenCalledWith({ region })
   })
   it("turns a card's words into a note standing where the card stood", async () => {
-    const c = controls(),
-      h = host()
-    await run(moreEntries(c, picked('text', { text: '# Idea\nmore' }), h), 'Turn into a note')
-    expect(h.makeNote).toHaveBeenCalledWith('# Idea\nmore')
-    expect(c.replaceWithNote).toHaveBeenCalledWith('one', 'Sample idea.md')
+    const c = controls()
+    await run(moreEntries(c, picked('text', { text: '# Idea\nmore' }), host()), 'Turn into a note')
+    expect(c.act).toHaveBeenCalledWith('turn-into-note')
   })
   it('takes a note to the trash and off the canvas only once it is confirmed', async () => {
     const c = controls(),
@@ -112,8 +108,8 @@ describe("the picked things' more menu", () => {
 })
 
 describe('finding things on the canvas', () => {
-  it('names cards by their first words, notes by their path and frames by their name', async () => {
-    const { canvasPlaces, canvasContents } = await import('@/canvas/canvasFind')
+  it('lists the frames by their name', async () => {
+    const { canvasContents } = await import('@/canvas/canvasFind')
     const graph = {
       nodes: [
         { id: 'f', type: 'group' as const, label: 'Kitchen', x: 0, y: 0, width: 400, height: 300 },
@@ -122,7 +118,6 @@ describe('finding things on the canvas', () => {
       ],
       edges: [],
     }
-    expect(canvasPlaces(graph).map((p) => p.title)).toEqual(['Kitchen', 'Sample plan', 'Sample.md#Part'])
     expect(canvasContents(graph).map((p) => p.title)).toEqual(['Frame: Kitchen'])
   })
   it('puts the tab\'s own items first, with drawing by finger only on a tablet', async () => {

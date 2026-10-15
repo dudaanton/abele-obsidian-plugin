@@ -39,6 +39,7 @@ export function findOnCanvas(
     if (a && b) found.push({ id: e.id, x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 })
   }
   for (const l of linesOf(graph))
-    if (has(l.label)) found.push({ id: l.id, x: (l.from.x + l.to.x) / 2, y: (l.from.y + l.to.y) / 2 })
+    if (has(l.label))
+      found.push({ id: l.id, x: (l.from.x + l.to.x) / 2, y: (l.from.y + l.to.y) / 2 })
   return found.sort((a, b) => a.y - b.y || a.x - b.x)
 }
