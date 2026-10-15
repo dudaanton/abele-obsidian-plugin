@@ -29,6 +29,7 @@ interface EarlierReport {
   hiddenBranch: boolean
   clickGrew: boolean
   clickDrift: number
+  openTookCursor: boolean
   clickBoxChange: number
   clickLog: string[]
   clickSteps: number
@@ -95,23 +96,14 @@ const script = (layout: string) => `(async () => {
   const files = []
   const report = {}
   // Opened the way the history list opens a chat: into a tab of its own.
-  // PROBE: where the focus is at each step of opening, and who moved it.
-  report.openLog = []
-  const where = step => { const a = document.activeElement; report.openLog.push(step + ': ' + (a?.tagName + '.' + String(a?.className).slice(0, 60)) + ' kb=' + [...document.body.classList].filter(c => /keyboard|toolbar/.test(c)).join(',') + ' box=' + (box()?.clientHeight ?? '-')) }
-  const onFocusIn = e => report.openLog.push('focusin ' + e.target?.tagName + '.' + String(e.target?.className).slice(0, 40) + ' ' + String(new Error().stack).split('\\n').slice(1, 9).map(l => l.trim().slice(0, 90)).join(' | '))
-  document.addEventListener('focusin', onFocusIn, true)
+  // In the chat's own field: on a phone, the keyboard is up.
+  const composerFocused = () => !!document.activeElement?.closest('.abele-chat-input')
   const openAsHistory = async fixture => {
     const file = files.find(f => f.path === fixture.path)
     if (!chats.canCreateTab) throw Error('no room for a scratch chat tab')
-    where('before ' + fixture.path)
     const tab = chats.createTab()
-    where('created')
     await chats.openChatInTab(tab, file)
-    where('opened')
     await chats.revealSidebar({ focus: false })
-    where('revealed')
-    await wait(1500)
-    where('later')
   }
   try {
     for (const fixture of fixtures) {
@@ -119,9 +111,16 @@ const script = (layout: string) => `(async () => {
       files.push(await app.vault.create(fixture.path, [meta(fixture.title, fixture.leaf), ...fixture.records].map(JSON.stringify).join('\\n') + '\\n'))
     }
 
-    // Scrolling to the top, again and again, until the conversation starts.
+    // Opened from history into a closed panel, which mounts the chat afresh: a conversation to
+    // read leaves the field alone, so a phone's keyboard does not come up over it.
+    document.activeElement?.blur()
+    app.workspace.detachLeavesOfType('abele-ai-sidebar-view')
+    await wait(300)
     await openAsHistory(fixtures[0])
     if (!(await until(() => item('a149')))) throw Error('The long sample chat did not open')
+    // The panel tries for a second to put the cursor in; a moment past that.
+    await wait(1500)
+    report.openTookCursor = composerFocused()
     await settle()
     report.markerButton = marker()?.tagName === 'BUTTON'
     await capture('opened')
@@ -190,7 +189,6 @@ const script = (layout: string) => `(async () => {
     await capture('short')
   } catch (e) { report.error = String(e?.message || e) }
   finally {
-    document.removeEventListener('focusin', onFocusIn, true)
     for (const id of [...chats.tabOrder.value]) if (!tabs.includes(id)) await chats.closeTab(id)
     if (active) chats.activeTabId.value = active
     chats.saveTabs()
@@ -210,6 +208,8 @@ describe.skipIf(!available)('earlier messages of a chat', () => {
       const result = layout === 'emulated phone' ? await withEmulatedPhone(run) : await run()
       console.warn(`Earlier messages on ${layout}: ${JSON.stringify(result)}`)
       expect(result.error).toBeUndefined()
+      // A computer gets the cursor in the field on opening; a phone would get the keyboard.
+      if (layout === 'phone') expect(result.openTookCursor).toBe(false)
       expect(result.markerButton).toBe(true)
       // 300 messages, 30 mounted: nine more pages to the start.
       expect(result.scrollSteps).toBe(9)
