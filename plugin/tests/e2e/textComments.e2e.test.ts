@@ -278,6 +278,8 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
         require('fs').writeFileSync(${JSON.stringify(shotPath)}, image.toPNG())
         shot = !image.isEmpty()
       }
+      // Give the focus back, so the next case starts with no field and no keyboard up.
+      document.activeElement?.blur?.()
       return JSON.stringify({ edges, focused, shot })
     `)
     expect(r.focused).toBe(true)
