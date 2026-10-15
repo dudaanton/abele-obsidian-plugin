@@ -219,3 +219,18 @@ describe("in an agent's editor", () => {
       expect(registry.get(agent.id)?.toolModes[tool.name], tool.name).toBe('auto')
   })
 })
+
+describe('on a large vault', () => {
+  it('makes the tools once for the whole list, and not again as modes are set', async () => {
+    const specs = Array.from({ length: 1000 }, (_, i) => ({ path: `Notes/Sample note ${i}.md` }))
+    const vault = useVault(specs)
+    vault.resetStats()
+    const { view } = mountHost()
+    // What `skill` says of itself lists the vault's skills: one pass over its notes.
+    expect(vault.stats.getMarkdownFiles).toBe(1)
+    await press(rowNamed(view, 'All tools'), 'Ask')
+    await view.findAll('select.dropdown-stub')[0].setValue('auto')
+    expect(vault.stats.getMarkdownFiles).toBe(1)
+    view.unmount()
+  })
+})

@@ -17,6 +17,9 @@ const ICONS: Record<ScopeEntry['type'], string> = {
   pattern: 'regex',
 }
 
+/** How many places the list shows. */
+const LIMIT = 100
+
 /** A glob, rather than a name: the field takes it as a pattern as typed. */
 const GLOB = /[*?]/
 
@@ -37,10 +40,14 @@ export class ScopeSuggest extends TextInputSuggest<ScopeChoice> {
 
   getSuggestions(query: string): ScopeChoice[] {
     const q = query.trim().toLowerCase()
-    const has = (e: ScopeEntry) => this.taken().some((t) => t.type === e.type && t.path === e.path)
+    const key = (e: ScopeEntry) => `${e.type}:${e.path}`
+    const taken = new Set(this.taken().map(key))
     const out: ScopeChoice[] = []
+    // The list holds a hundred; once they are found the rest of the vault is not looked through,
+    // and group sizes, the costly part, are not asked for while folders alone fill it.
+    const full = () => out.length >= LIMIT
     const push = (choice: ScopeChoice) => {
-      if (!has(choice.entry)) out.push(choice)
+      if (!full() && !taken.has(key(choice.entry))) out.push(choice)
     }
 
     if (GLOB.test(q)) push({ entry: { type: 'pattern', path: query.trim() }, kind: 'pattern' })
@@ -50,9 +57,12 @@ export class ScopeSuggest extends TextInputSuggest<ScopeChoice> {
 
     const files = this.app.vault.getAllLoadedFiles()
     const match = (path: string) => !q || GLOB.test(q) || path.toLowerCase().includes(q)
-    for (const f of files)
+    for (const f of files) {
+      if (full()) return out
       if (f instanceof TFolder && !f.isRoot() && match(f.path))
         push({ entry: { type: 'folder', path: f.path }, kind: 'folder' })
+    }
+    if (full()) return out
     for (const [path, size] of ScopeResolver.getInstance().groupSizes())
       if (match(path))
         push({
@@ -61,7 +71,8 @@ export class ScopeSuggest extends TextInputSuggest<ScopeChoice> {
         })
     // A chat log is never in reach through a scope, so it is not offered; the open note is
     // listed once, at the top, while nothing is typed, and by its name once something is.
-    for (const f of files)
+    for (const f of files) {
+      if (full()) return out
       if (
         f instanceof TFile &&
         !(!q && f.path === open?.path) &&
@@ -69,7 +80,8 @@ export class ScopeSuggest extends TextInputSuggest<ScopeChoice> {
         match(f.path)
       )
         push({ entry: { type: 'file', path: f.path }, kind: '' })
-    return out.slice(0, 100)
+    }
+    return out
   }
 
   renderSuggestion(choice: ScopeChoice, el: HTMLElement): void {

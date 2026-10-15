@@ -21,6 +21,12 @@ export class ScopeResolver {
 
   /** Cached resolved paths — invalidated on scope change */
   private _cache: Set<string> | null = null
+  /**
+   * Group membership of the whole vault, kept until the vault or its metadata changes. The
+   * access screen asks for it on every render of a group row and every letter typed into its
+   * field; one pass on a large vault is a frozen window, so it is not paid again for nothing.
+   */
+  private _groupIndex: Map<string, string[]> | null = null
   private watchedApp: App | null = null
   private vaultEvents: EventRef[] = []
   private metadataEvents: EventRef[] = []
@@ -172,7 +178,7 @@ export class ScopeResolver {
       return result
     }
 
-    // Built at most once per resolve() and shared by every group entry — see buildGroupIndex.
+    // Built at most once until the vault changes and shared by every group entry — see buildGroupIndex.
     let groupIndex: Map<string, string[]> | null = null
 
     for (const entry of this.entries.value) {
@@ -193,7 +199,7 @@ export class ScopeResolver {
           break
         }
         case 'group': {
-          groupIndex ??= this.buildGroupIndex()
+          groupIndex ??= this.groupIndex()
           this.resolveGroup(entry.path, result, groupIndex)
           break
         }
@@ -256,6 +262,7 @@ export class ScopeResolver {
   /** Invalidate cache (call after vault changes) */
   invalidate(): void {
     this._cache = null
+    this._groupIndex = null
     this.ceiling?.invalidate()
   }
 
@@ -289,6 +296,11 @@ export class ScopeResolver {
    * one note links to another, not which property produced the link, so a note merely
    * mentioning a group note in its body would be indexed as a member of it.
    */
+  private groupIndex(): Map<string, string[]> {
+    this.watchVault()
+    return (this._groupIndex ??= this.buildGroupIndex())
+  }
+
   private buildGroupIndex(): Map<string, string[]> {
     const { app } = GlobalStore.getInstance()
     const index = new Map<string, string[]>()
@@ -353,12 +365,12 @@ export class ScopeResolver {
   /** Resolve a group entry and return just its paths (for preview) */
   /** Every group note with how many notes name it in their `groups`, for the access picker. */
   groupSizes(): Map<string, number> {
-    return new Map([...this.buildGroupIndex()].map(([path, members]) => [path, members.length]))
+    return new Map([...this.groupIndex()].map(([path, members]) => [path, members.length]))
   }
 
   resolveGroupPaths(groupPath: string): string[] {
     const result = new Set<string>()
-    this.resolveGroup(groupPath, result, this.buildGroupIndex())
+    this.resolveGroup(groupPath, result, this.groupIndex())
     return [...result].sort()
   }
 

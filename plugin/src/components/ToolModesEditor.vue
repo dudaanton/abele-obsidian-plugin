@@ -290,10 +290,15 @@ const mixedSaid = (tools: ToolEntry[]): string | undefined => {
   return [...by].map(([mode, names]) => `${label(mode)}: ${names.join(', ')}`).join(' · ')
 }
 const openAction = ref<string | null>(null)
+/**
+ * Every tool once per screen: making them all reads the whole vault (the skills, for what
+ * `skill` says of itself), so the lists below share one copy rather than making their own.
+ */
+const registry = computed(() => getToolRegistry())
 /** The node section's tools by action, in the order a person thinks of them: read, edit, worktrees. */
 /** The old node names: never listed, set with the Read action, whose work they do. */
 const legacyNodeTools = computed<ToolEntry[]>(() =>
-  getToolRegistry()
+  registry.value
     .filter((t) => LEGACY_NODE_TOOLS.has(t.name))
     .map((t) => ({ name: t.name, permissionKey: t.permissionKey, label: t.label }))
 )
@@ -315,7 +320,7 @@ const modeOptions = [
 
 /** What each tool says of itself: shown when there is no override, and the text one is measured against. */
 const defaultDescs = computed<Record<string, string>>(() =>
-  Object.fromEntries(getToolRegistry().map((tool) => [tool.name, tool.description]))
+  Object.fromEntries(registry.value.map((tool) => [tool.name, tool.description]))
 )
 
 const isCore = (name: string) => CORE_TOOLS.has(name)
@@ -385,10 +390,9 @@ const setAll = (tools: ToolEntry[], mode: string) => {
 }
 
 const visibleGroups = computed<ToolGroup[]>(() => {
-  const registry = getToolRegistry()
   const groups = new Map<string, ToolEntry[]>()
 
-  for (const tool of registry) {
+  for (const tool of registry.value) {
     // In descriptions-only mode every tool has a description worth editing, core included.
     if (!props.descriptionsOnly && !showAll.value && isCore(tool.name)) continue
     // Old node names are answered when called but never offered or listed.

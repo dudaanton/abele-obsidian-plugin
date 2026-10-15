@@ -150,3 +150,61 @@ describe('group sizes', () => {
     )
   })
 })
+
+/**
+ * The field is typed into, a letter at a time, on a vault of thousands of notes. Every group
+ * note's size comes from one pass over the whole vault's metadata — a link resolved for each
+ * `groups` value of every note — so that pass is the cost to count: once while the field stays
+ * open and nothing in the vault changes, and none at all while folders already fill the list.
+ */
+describe('on a large vault', () => {
+  const big = () => {
+    const specs = [{ path: 'Hub/Sample hub.md' }, { path: 'Hub/Other hub.md' }]
+    for (let i = 0; i < 2000; i++)
+      specs.push({
+        path: `Area ${i % 150}/Sample note ${i}.md`,
+        frontmatter: { groups: [i % 2 ? '[[Sample hub]]' : '[[Other hub]]'] },
+      } as never)
+    const vault = useVault(specs)
+    const input = document.createElement('input')
+    document.body.append(input)
+    const app = { ...vault, workspace: { ...vault.workspace, getActiveFile: () => null } }
+    const suggest = new ScopeSuggest(
+      app as unknown as App,
+      input,
+      () => taken,
+      (e) => chosen.push(e)
+    )
+    vault.resetStats()
+    return { vault, suggest }
+  }
+  beforeEach(() => vi.restoreAllMocks())
+
+  it('learns the group sizes once for all the letters typed', () => {
+    const { vault, suggest } = big()
+    for (const q of ['s', 'sa', 'sam', 'samp', 'sample']) suggest.getSuggestions(q)
+    const once = 2002
+    expect(vault.stats.getFileCache).toBeLessThanOrEqual(once)
+    expect(vault.stats.getFirstLinkpathDest).toBeLessThanOrEqual(once)
+  })
+
+  it('learns them again once a note changes the groups it is in', () => {
+    const { vault, suggest } = big()
+    const sizeOf = () =>
+      suggest.getSuggestions('hub').find((c) => c.entry.path === 'Hub/Sample hub.md')?.kind
+    expect(sizeOf()).toBe('group · 1000 notes')
+    vault.setFrontmatter('Area 0/Sample note 0.md', { groups: ['[[Sample hub]]'] })
+    vault.emit(
+      'metadataCache',
+      'changed',
+      vault.vault.getAbstractFileByPath('Area 0/Sample note 0.md')
+    )
+    expect(sizeOf()).toBe('group · 1001 notes')
+  })
+
+  it('reads no note metadata while folders alone fill the list', () => {
+    const { vault, suggest } = big()
+    expect(suggest.getSuggestions('')).toHaveLength(100)
+    expect(vault.stats.getFileCache).toBe(0)
+  })
+})

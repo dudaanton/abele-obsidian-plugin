@@ -66,6 +66,8 @@ export interface FakeVaultStats {
   getFileCache: number
   getFirstLinkpathDest: number
   getAbstractFileByPath: number
+  /** Calls to `vault.getAllLoadedFiles`, the folders and files of the whole vault at once. */
+  getAllLoadedFiles: number
   read: number
   /** Files created, whole-file rewrites, and appends — what a save costs the disk. */
   create: number
@@ -367,6 +369,7 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
     getFileCache: 0,
     getFirstLinkpathDest: 0,
     getAbstractFileByPath: 0,
+    getAllLoadedFiles: 0,
     read: 0,
     create: 0,
     modify: 0,
@@ -648,6 +651,10 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
         // Obsidian allocates a fresh array per call; mirroring that keeps callers honest
         // about treating this as an expensive operation.
         return files.slice()
+      },
+      getAllLoadedFiles() {
+        stats.getAllLoadedFiles++
+        return [...folders.values(), ...files]
       },
       getMarkdownFiles() {
         stats.getMarkdownFiles++
@@ -980,6 +987,7 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
       stats.getFileCache = 0
       stats.getFirstLinkpathDest = 0
       stats.getAbstractFileByPath = 0
+      stats.getAllLoadedFiles = 0
       stats.read = 0
       stats.resolvedLinks = 0
     },

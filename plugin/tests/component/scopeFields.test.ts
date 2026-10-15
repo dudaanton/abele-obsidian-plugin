@@ -111,3 +111,34 @@ describe('scope entries', () => {
     view.unmount()
   })
 })
+
+/**
+ * Each group row says how many notes the group holds, and the vault's whole metadata is what
+ * answers it. One pass serves every row and every render after it, until the vault changes.
+ */
+describe('group rows on a large vault', () => {
+  it('learns the members of every group in reach in one pass, kept across renders', async () => {
+    const specs = [{ path: 'Sample hub.md' }, { path: 'Other hub.md' }, { path: 'Third hub.md' }]
+    for (let i = 0; i < 1500; i++)
+      specs.push({
+        path: `Notes/Sample note ${i}.md`,
+        frontmatter: { groups: [['[[Sample hub]]', '[[Other hub]]', '[[Third hub]]'][i % 3]] },
+      } as never)
+    const vault = useVault(specs)
+    const groups: ScopeEntry[] = ['Sample hub.md', 'Other hub.md', 'Third hub.md'].map((path) => ({
+      type: 'group',
+      path,
+    }))
+    vault.resetStats()
+    const view = mount(ScopeEditor, { props: { entries: groups, fullVaultAccess: false } })
+    expect(view.findAll('.abele-scope-mgr__entry-type').map((n) => n.text())).toEqual([
+      '501',
+      '501',
+      '501',
+    ])
+    await view.findAll('[role="listitem"]')[0].trigger('click')
+    await view.setProps({ entries: [...groups] })
+    expect(vault.stats.getFileCache).toBeLessThanOrEqual(specs.length)
+    view.unmount()
+  })
+})
