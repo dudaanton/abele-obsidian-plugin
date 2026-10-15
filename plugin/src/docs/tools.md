@@ -1142,7 +1142,7 @@ turn on external browsing/editing, project trust or execution on the daemon.
 
 The person gives a chat node access in two places: in the chat, the access button at the
 bottom left of the message box, then **Node access**, choose the node, folder and worktree,
-**Add access**; or in the Node panel, right-click a folder, **Give a chat access**,
+**Add access**; or in the Node panel, open the place's **…** menu, **Give a chat access**,
 choose the chat, **Give access**. Access copied or synced from another device is approved
 once on this one with **Approve on this device** in the same Node access section. A tool that
 cannot reach a file says which of these is missing.
