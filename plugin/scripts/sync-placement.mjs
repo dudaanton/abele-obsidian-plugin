@@ -8,9 +8,9 @@ function replaceOnce(code, before, after) {
   return code.replace(before, after)
 }
 const helper = `
-async function coordinatePlacement(fs, paths, work) {
+async function coordinatePlacement(fs, paths, work, preserve = true) {
   const run = fs[Symbol.for('abele.sync.placement-v1')];
-  return run ? run(paths, work) : work();
+  return run ? run(paths, work, preserve) : work();
 }
 `
 export function syncPlacementPlugin() {
@@ -27,8 +27,9 @@ export function syncPlacementPlugin() {
             code,
             `async ${name}(change, entry) {`,
             `async ${name}(change, entry) {
+            // Adoption verifies existing bytes and records metadata; it never overwrites files.
             return coordinatePlacement(this.fs, [change.path, ...(entry ? [entry.path] : [])],
-              () => this.${name}Unlocked(change, entry));
+              () => this.${name}Unlocked(change, entry), false);
           }
           async ${name}Unlocked(change, entry) {`
           )
@@ -155,8 +156,11 @@ export function syncPlacementPlugin() {
           code,
           'async receive(item) {',
           `async receive(item) {
+          if (!this.includes(item.path)) return;
           const previous = (await this.read()).directories.find(one => one.file_id === item.file_id);
-          return coordinatePlacement(this.fs, [item.path, ...(previous ? [previous.path] : [])], () => this.receiveUnlocked(item));
+          // mkdir refuses an occupied file and never rewrites descendants. Keep the lease,
+          // but do not recursively archive a directory that this receipt cannot overwrite.
+          return coordinatePlacement(this.fs, [item.path, ...(previous ? [previous.path] : [])], () => this.receiveUnlocked(item), false);
         }
         async receiveUnlocked(item) {`
         )

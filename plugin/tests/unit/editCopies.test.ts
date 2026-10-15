@@ -3,6 +3,26 @@ import { MemoryFileSystem, MemoryStateStore } from '@abele/sync-core'
 import { vi } from 'vitest'
 import { EditCopies, EDIT_COPIES_KEY } from '@/sync/editCopies'
 
+it('validates retained history once for a batch and rechecks it once inside the durable transaction', async () => {
+  const fs = new MemoryFileSystem(),
+    store = new MemoryStateStore(),
+    copies = new EditCopies()
+  copies.expect(['sample'])
+  copies.register('sample', store, () => true)
+  await fs.writeAtomic('retained.md', new Uint8Array([1]), 10)
+  await copies.capture(fs, ['retained.md'])
+  const paths = Array.from({ length: 8 }, (_, i) => 'changed-' + i + '.md')
+  for (const path of paths) await fs.writeAtomic(path, new Uint8Array([2]), 20)
+  const read = vi.spyOn(store, 'getMeta'),
+    write = vi.spyOn(store, 'setMeta')
+  await copies.capture(fs, paths)
+  expect(read.mock.calls.filter(([key]) => key === EDIT_COPIES_KEY)).toHaveLength(2)
+  expect(write.mock.calls.filter(([key]) => key === EDIT_COPIES_KEY)).toHaveLength(1)
+  expect((await copies.list(store)).map((copy) => copy.path).sort()).toEqual(
+    ['retained.md', ...paths].sort()
+  )
+})
+
 it('preserves a large placement batch without rewriting every accumulated byte for each file', async () => {
   const fs = new MemoryFileSystem(),
     store = new MemoryStateStore(),

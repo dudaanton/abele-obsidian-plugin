@@ -1,6 +1,35 @@
 import { expect, it } from 'vitest'
-import { PathCoordinator } from '@/sync/pathCoordinator'
+import { PathCoordinator, PLACEMENT, coordinatedFileSystem } from '@/sync/pathCoordinator'
+import { MemoryFileSystem } from '@abele/sync-core'
+import { vi } from 'vitest'
 import { deferred } from '../helpers/deferred'
+
+it('keeps directory creation leased while retaining preservation for a queued file replacement', async () => {
+  const gate = deferred<void>(),
+    preserve = vi.fn(async () => {})
+  const fs = coordinatedFileSystem(
+    new MemoryFileSystem(),
+    new PathCoordinator(),
+    () => {},
+    preserve
+  )
+  const place = Reflect.get(fs, PLACEMENT) as (
+    paths: string[],
+    work: () => Promise<void>,
+    preserve?: boolean
+  ) => Promise<void>
+  const directory = place(['Shared'], () => gate.promise, false)
+  let replaced = false
+  const file = place(['Shared/sample.md'], async () => {
+    replaced = true
+  })
+  expect(preserve).not.toHaveBeenCalled()
+  expect(replaced).toBe(false)
+  gate.resolve()
+  await Promise.all([directory, file])
+  expect(preserve).toHaveBeenCalledExactlyOnceWith(['Shared/sample.md'])
+  expect(replaced).toBe(true)
+})
 
 it('serializes case aliases and directory overlaps, while unrelated paths continue', async () => {
   const locks = new PathCoordinator()

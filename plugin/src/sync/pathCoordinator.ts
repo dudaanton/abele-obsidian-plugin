@@ -68,11 +68,12 @@ export function coordinatedFileSystem<T extends FileSystem>(
   assertHeld: () => void = () => {},
   beforePlacement: (paths: readonly string[]) => Promise<void> = async () => {}
 ): T {
-  const run = <R>(paths: string[], work: () => Promise<R>) =>
+  const run = <R>(paths: string[], work: () => Promise<R>, preserve = true) =>
     locks.run(
       paths,
       async () => {
-        await beforePlacement(paths)
+        // Directory creation and byte adoption keep their leases without replacing file bytes.
+        if (preserve) await beforePlacement(paths)
         assertHeld()
         return work()
       },

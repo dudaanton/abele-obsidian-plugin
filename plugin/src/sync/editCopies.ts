@@ -105,6 +105,7 @@ export class EditCopies {
       }[]
     >()
     let retainedBytes = 0
+    const histories = new Map<Destination, Promise<EditCopy[]>>()
     for (const path of new Set(paths)) {
       if (path === '.abele-sync' || path.startsWith('.abele-sync/')) continue
       const before = await fs.stat(path)
@@ -125,7 +126,12 @@ export class EditCopies {
         if (base?.sha === sha && base.mtime === before.mtime && base.size === before.size) continue
         // Already kept, e.g. by an offload that preserved it before reserving the path:
         // staging it again would be refused under that reservation.
-        const kept = destination.store.getMeta ? await this.list(destination.store) : []
+        if (!histories.has(destination))
+          histories.set(
+            destination,
+            destination.store.getMeta ? this.list(destination.store) : Promise.resolve([])
+          )
+        const kept = await histories.get(destination)
         if (
           kept.some(
             (copy) =>
