@@ -115,12 +115,15 @@ const offersNoGlyphsWhileOff = () => {
   const r = evalAsync<{ off: boolean; glyphs: string[]; shot: string }>(`(async () => {
     ${PRELUDE}
     ${PANEL}
+    // The panel is open, and GitHub is turned off under it: the command itself is not offered
+    // while it is off.
+    app.commands.executeCommandById('abele:show-github-notifications')
+    await until(() => panel(), 20000)
     const config = window.__abeleTest.AbeleConfig.getInstance()
     const github = config.github
     config.github = { ...github, enabled: false }
     config.version.value++
     try {
-      app.commands.executeCommandById('abele:show-github-notifications')
       const off = !!(await until(() => panel()?.textContent.includes('GitHub is off'), 20000))
       await wait(500)
       const glyphs = [...panel().querySelectorAll('.abele-github-notifications__refresh, .abele-github-notifications__read-all, .abele-github-notifications__on-github')]
@@ -162,9 +165,6 @@ describe.skipIf(!available)('GitHub notifications', () => {
       useNotificationsToken()
   })
 
-  it('while GitHub is off, offers no refresh, mark-all-read or open-on-GitHub glyph', () =>
-    offersNoGlyphsWhileOff())
-
   it('without a notifications token, says the main token cannot read them and names the field for one', () => {
     const r = evalAsync<{ error?: string; text?: string }>(`(async () => {
       ${PRELUDE}
@@ -182,6 +182,9 @@ describe.skipIf(!available)('GitHub notifications', () => {
     expect(r.text).toContain('Notifications token')
     expect(r.text).toContain('classic')
   })
+
+  it('while GitHub is off, offers no refresh, mark-all-read or open-on-GitHub glyph', () =>
+    offersNoGlyphsWhileOff())
 
   // The old unread-default/check-to-read expectations are intentionally replaced with the
   // documented GitHub inbox contract: read rows stay in All, the check is Done, and opens do not write.

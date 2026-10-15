@@ -531,7 +531,8 @@ describe.skipIf(!available)('design catalogue desktop keyboard contracts', () =>
         win.webContents.sendInputEvent({type:'char',keyCode:String.fromCharCode(13)});
         win.webContents.sendInputEvent({type:'keyUp',keyCode:'Enter'}); await wait();
         if (!document.querySelector('.abele-design-catalogue > [role="status"]')?.textContent.includes('sample.md')) throw Error('Native Enter did not open row');
-        const control = document.querySelector('.abele-disclosure__control');
+        // A row that opens carries its fold once per platform, only one of them shown: the shown one.
+        const control = [...document.querySelectorAll('.abele-disclosure__control')].find(el => el.getClientRects().length);
         control.focus();
         win.webContents.sendInputEvent({type:'keyDown',keyCode:'Space'});
         win.webContents.sendInputEvent({type:'char',keyCode:' '});
