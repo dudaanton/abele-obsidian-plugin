@@ -4,12 +4,24 @@ import { promisify } from 'node:util'
 import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { evalLong, evalRaw } from './helpers/obsidianCli'
+import { withEmulatedPhone } from './helpers/emulatedPhone'
+import { shotDir } from './helpers/shots'
 import { targets } from './helpers/target'
 
 targets('desktop')
 const cli = process.env.ABELE_NODE_CLI
 const draftText = 'export const value = 5\n' + '// Sample context line\n'.repeat(100)
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+const SHOTS = shotDir('abele-node-repository')
+// The files and the README of a node home span its whole width, as a GitHub home's main column does.
+const homeFills = `const homeFills=async(root,shot)=>{
+  await until(()=>root.querySelector('.abele-github-folder__readme')?.textContent.includes('Sample repository'));
+  const capture=await require('@electron/remote').getCurrentWebContents().capturePage();
+  require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/'+shot,capture.toPNG());
+  const width=root.getBoundingClientRect().width;
+  for(const [name,el] of [['files',root.querySelector('.abele-github-folder__list')],['README',root.querySelector('.abele-github-folder__readme')]])
+    if(Math.abs(el.getBoundingClientRect().width-width)>4)throw Error('Node home '+name+' does not fill the tab: '+el.getBoundingClientRect().width+' of '+width);
+};`
 const prelude = `const api=window.__abeleTest,nodes=api.NodeService.getInstance();const wait=ms=>new Promise(r=>setTimeout(r,ms));const until=async f=>{for(let i=0;i<200;i++){if(f())return;await wait(50)}throw Error('Repository UI did not settle: '+f.toString())};`
 it('opens the real node repository in the shared tab, follows history, compares, searches and refreshes external edits', async () => {
   if (!cli) throw new Error('Set ABELE_NODE_CLI to the built node CLI')
@@ -90,6 +102,7 @@ it('opens the real node repository in the shared tab, follows history, compares,
       const root=document.querySelector('.abele-github-home');
       if(!root.textContent.includes('Partly ready'))throw Error('Missing independent status columns');
       const view=app.workspace.getLeavesOfType('abele-github').find(l=>l.view.model?.sourceTarget?.provider==='node').view;
+      ${homeFills}await homeFills(root,'desktop-home.png');
       const state=view.getState();if(JSON.stringify(state).includes('127.0.0.1')||JSON.stringify(state).includes(${JSON.stringify(enrolled.token)}))throw Error('Credentials leaked into state');
       const fileRow=[...root.querySelectorAll('.abele-github-folder__list .tree-item-self')].find(el=>el.textContent.includes('app.ts'));
       if(!fileRow)throw Error('Ordinary repository file navigation is missing');fileRow.click();
@@ -105,6 +118,11 @@ it('opens the real node repository in the shared tab, follows history, compares,
     })()`)
     )
     expect(state.sourceTarget.provider).toBe('node')
+    const ids = JSON.parse(
+      evalRaw(
+        `JSON.stringify({project:window.__sampleRepositoryProject,workspace:window.__sampleRepositoryWorkspace})`
+      )
+    )
     writeFileSync(resolve(projectPath, 'app.ts'), 'export const value = 4\n')
     await evalLong(
       `(async()=>{${prelude}await until(()=>document.querySelector('.abele-github-blob')?.textContent.includes('value = 4'));return 'refreshed'})()`
@@ -209,6 +227,14 @@ it('opens the real node repository in the shared tab, follows history, compares,
       await until(()=>document.querySelector('.abele-github-compare')?.textContent.includes('value = 2'));
       return 'compared';
     })()`)
+    await withEmulatedPhone(() =>
+      evalLong(`(async()=>{${prelude}${homeFills}
+        await api.openNodeRepository(${JSON.stringify(registration)},${JSON.stringify(ids.project)},${JSON.stringify(ids.workspace)});
+        await until(()=>[...document.querySelectorAll('.abele-github-home')].some(el=>el.getBoundingClientRect().width));
+        await homeFills([...document.querySelectorAll('.abele-github-home')].find(el=>el.getBoundingClientRect().width),'phone-home.png');
+        return 'phone home fills';
+      })()`)
+    )
   } finally {
     try {
       await evalLong(
