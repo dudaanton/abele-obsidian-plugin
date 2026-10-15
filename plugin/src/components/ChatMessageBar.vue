@@ -130,9 +130,9 @@ const timeTooltip = computed(() => {
   align-items: center;
   gap: var(--size-2-1);
 }
-// The time right after the actions, as one group. What stays — the branches, an edit's pencil —
-// is on the message's own edge, so it does not float apart from it while the group is hidden:
-// an answer's on the left, a question's on the right.
+// The time right after the actions, as one group. What sits apart from it — the branches, an
+// edit's pencil — is on the message's own edge, so it does not float apart from it while the
+// group is hidden: an answer's on the left, a question's on the right.
 .abele-chat-msg__bar > .abele-chat-msg__time {
   order: 1;
 }
@@ -157,11 +157,16 @@ const timeTooltip = computed(() => {
 body.is-mobile .abele-chat-msg__bar button.abele-chat-msg__icon {
   margin-block: 0;
 }
-// Under the pointer, or with the keyboard in it, a message shows what can be done with it.
+// Under the pointer, or with the keyboard in it, a message shows what can be done with it, and
+// the pencil of an answer the interceptor replaced; the glyph of one still being checked stays.
 body:not(.is-mobile)
   .abele-chat-msg:not(:hover):not(:focus-within)
   > .abele-chat-msg__bar
-  :is(.abele-chat-msg__quick, .abele-chat-msg__time:not([aria-expanded='true'])) {
+  :is(
+    .abele-chat-msg__quick,
+    .abele-chat-msg__edited,
+    .abele-chat-msg__time:not([aria-expanded='true'])
+  ) {
   opacity: 0;
 }
 </style>
