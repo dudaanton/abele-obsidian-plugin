@@ -161,7 +161,6 @@ describe.skipIf(!available)('fast canvas actions are all saved', () => {
     try {
       const start = at(0.5, 0.5)
       await gestures([[start, [start[0] + 30, start[1] + 20]]])
-      await until('view().documentLease.document.session.writing', 10_000)
       // The corner of the card where it now is on screen, before its move is saved.
       const corner = at(1, 1)
       await gestures([[corner, [corner[0] + 40, corner[1] + 30]]])
