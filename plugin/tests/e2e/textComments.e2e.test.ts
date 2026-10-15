@@ -249,9 +249,10 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
   it('draws one outline round the focused reply field, not one round the editor inside it too', () => {
     // The note editor inside the reply drops its own border, ring and ground; only the field's
     // frame shows. Every box from the field down that paints an edge is counted.
-    const shot = `${SHOTS}/reply-field-${onPhone() ? 'phone' : 'desktop'}.png`
+    const shotPath = `${SHOTS}/reply-field-${onPhone() ? 'phone' : 'desktop'}.png`
     const r = run<{ edges: string[]; focused: boolean; shot: boolean }>(`
-      window.__abeleTest.openDialog('text-comment-edit')
+      // The thread as it opens, no comment being changed, so nothing else takes the focus back.
+      window.__abeleTest.openDialog('text-comment-list')
       await until(() => document.querySelector('.abele-text-comments__reply .cm-content'))
       const reply = document.querySelector('.abele-text-comments__reply')
       const field = reply.querySelector('.cm-content')
@@ -268,9 +269,16 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
         if (box.width < reply.getBoundingClientRect().width * 0.6 || box.height < 16) continue
         if (paints(getComputedStyle(el))) edges.push(el.className.split(' ')[0] || el.tagName)
       }
-      const image = await require('@electron/remote').getCurrentWebContents().capturePage()
-      require('fs').writeFileSync(${JSON.stringify(shot)}, image.toPNG())
-      return JSON.stringify({ edges, focused: reply.contains(document.activeElement), shot: !image.isEmpty() })
+      const focused = reply.contains(document.activeElement)
+      // The real phone has no Node in its page: its host takes the picture.
+      let shot = false
+      if (window.__e2eHost) shot = !(await window.__e2eHost.shot(${JSON.stringify(shotPath)})).startsWith('no picture')
+      else {
+        const image = await require('@electron/remote').getCurrentWebContents().capturePage()
+        require('fs').writeFileSync(${JSON.stringify(shotPath)}, image.toPNG())
+        shot = !image.isEmpty()
+      }
+      return JSON.stringify({ edges, focused, shot })
     `)
     expect(r.focused).toBe(true)
     expect(r.edges).toHaveLength(1)
