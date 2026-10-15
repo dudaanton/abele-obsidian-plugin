@@ -201,7 +201,8 @@ const probe = (scene: 'rates' | 'stale' | 'none') => `(async () => {
       el.scrollTop = 0
       await wait(200)
       if (scene === 'rates') {
-        divider.scrollIntoView({ block: 'end' })
+        // Centred, so the phone's floating toolbar does not cover the totals.
+        divider.scrollIntoView({ block: 'center' })
         await wait(300)
         await shot('heading')
         el.scrollTop = 0
