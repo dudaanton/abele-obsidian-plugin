@@ -195,20 +195,6 @@ body {
   background: none !important;
 }
 
-/* Color picker modal */
-.abele-color-picker-item {
-  display: flex;
-  align-items: center;
-  gap: var(--size-4-2);
-}
-
-.abele-color-picker-swatch {
-  display: inline-block;
-  width: 16px;
-  height: 16px;
-  border-radius: var(--radius-s);
-}
-
 /* Margin overlay — one layer per editor view, inside cm-scroller, out of document flow.
    Footnotes hang here, and comments join them; the element also keeps the older
    `abele-footnotes-overlay` class so anything addressing it by that name still matches. */

@@ -4,7 +4,8 @@
  * GitHub's repository search for anything typed that none of them holds. A choice opens the
  * repository's front page.
  */
-import { Keymap, Notice, SuggestModal, setIcon, type App } from 'obsidian'
+import { Keymap, Notice, SuggestModal, type App } from 'obsidian'
+import { SuggestionRows } from '@/components/obsidian/suggestionRows'
 import { githubClient, githubSettings, openGithubUrl, connectionClient } from '../GithubService'
 import { preferredConnection } from '../connections'
 import { sameConnectionServer } from '../connectionRouting'
@@ -49,6 +50,7 @@ const problemOf = (e: unknown): string =>
 const OWNER_REPO = /^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/
 
 export class RepoPicker extends SuggestModal<RepoRow> {
+  private readonly rows = new SuggestionRows()
   private readonly client: GithubClient
   private readonly connectionId?: string
   private stopWatching?: WatchStopHandle
@@ -117,6 +119,7 @@ export class RepoPicker extends SuggestModal<RepoRow> {
   }
 
   onClose(): void {
+    this.rows.clear()
     this.stopWatching?.()
     this.stopWatching = undefined
     super.onClose?.()
@@ -205,19 +208,13 @@ export class RepoPicker extends SuggestModal<RepoRow> {
   }
 
   renderSuggestion(row: RepoRow, el: HTMLElement): void {
-    el.addClass('mod-complex')
-    const icon = el.createDiv({ cls: 'suggestion-icon' })
     const pinned = row.repo && row.group !== 'pinned' && isPinned(row.repo)
-    setIcon(icon.createSpan({ cls: 'suggestion-flair' }), pinned ? 'pin' : ICONS[row.group])
-    const content = el.createDiv({ cls: 'suggestion-content' })
-    content.createDiv({ cls: 'suggestion-title', text: row.title })
-    if (row.note) content.createDiv({ cls: 'suggestion-note', text: row.note })
-    if (row.group !== 'note') {
-      el.createDiv({ cls: 'suggestion-aux' }).createEl('kbd', {
-        cls: 'suggestion-hotkey',
-        text: groupName(row.group),
-      })
-    }
+    this.rows.draw(el, {
+      icon: pinned ? 'pin' : ICONS[row.group],
+      title: row.title,
+      note: row.note,
+      aux: row.group !== 'note' ? [{ kbd: groupName(row.group) }] : [],
+    })
   }
 
   /** A line that only says something keeps the picker open. */

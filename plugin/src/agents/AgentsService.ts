@@ -1,6 +1,7 @@
 import { computed, ref, shallowRef, watch, type WatchStopHandle } from 'vue'
 import dayjs from 'dayjs'
 import { Notice, SuggestModal, TFile, setTooltip, type App } from 'obsidian'
+import { SuggestionRows } from '@/components/obsidian/suggestionRows'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ChatService } from '@/ai/ChatService'
 import { ChatStorage } from '@/ai/ChatStorage'
@@ -960,28 +961,36 @@ export function chooseAttentionTab(
   return new Promise((resolve) => {
     let picked = false
     const modal = new (class extends SuggestModal<ClosableTab> {
+      rows = new SuggestionRows()
       getSuggestions(query: string): ClosableTab[] {
         const q = query.trim().toLowerCase()
         return q ? order.filter((tab) => tab.label.toLowerCase().includes(q)) : order
       }
       renderSuggestion(tab: ClosableTab, el: HTMLElement): void {
-        el.classList.add('mod-complex', 'abele-close-tab__item')
-        const content = el.createDiv('suggestion-content')
-        content.createDiv({ cls: 'suggestion-title', text: tab.label })
-        const aux = el.createDiv('suggestion-aux')
-        if (tab.at)
-          aux.createSpan({
-            cls: 'suggestion-flair abele-close-tab__time',
-            text: dayjs(tab.at).isSame(dayjs(), 'day')
-              ? dayjs(tab.at).format('HH:mm')
-              : dayjs(tab.at).format('D MMM'),
-          })
-        if (tab.waiting || tab.working) {
-          const dot = aux.createSpan({
-            cls: `abele-close-tab__dot ${tab.waiting ? 'abele-close-tab__dot_waiting' : ''}`,
-          })
-          setTooltip(dot, tab.waiting ? 'Waiting for you' : 'The agent is working')
-        }
+        el.classList.add('abele-close-tab__item')
+        this.rows.draw(el, {
+          title: tab.label,
+          aux: [
+            ...(tab.at
+              ? [
+                  {
+                    flair: dayjs(tab.at).isSame(dayjs(), 'day')
+                      ? dayjs(tab.at).format('HH:mm')
+                      : dayjs(tab.at).format('D MMM'),
+                    cls: 'abele-close-tab__time',
+                  },
+                ]
+              : []),
+            ...(tab.waiting || tab.working
+              ? [
+                  {
+                    dot: tab.waiting ? 'Waiting for you' : 'The agent is working',
+                    cls: `abele-close-tab__dot ${tab.waiting ? 'abele-close-tab__dot_waiting' : ''}`,
+                  },
+                ]
+              : []),
+          ],
+        })
       }
       onChooseSuggestion(tab: ClosableTab): void {
         picked = true
@@ -995,6 +1004,7 @@ export function chooseAttentionTab(
       }
       onClose(): void {
         super.onClose()
+        this.rows.clear()
         // Obsidian closes the list before it hands over the choice: wait that moment out, so
         // only a dismissal resolves here; a choice resolves once its tab is closed.
         window.setTimeout(() => {

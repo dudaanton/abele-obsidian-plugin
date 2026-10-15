@@ -1,4 +1,4 @@
-import { App, TFile, TFolder, setIcon } from 'obsidian'
+import { App, TFile, TFolder } from 'obsidian'
 import { TextInputSuggest } from './suggest'
 import { ScopeResolver, type ScopeEntry } from '@/ai/ScopeResolver'
 import { isChatLog } from '@/ai/chatText'
@@ -85,18 +85,11 @@ export class ScopeSuggest extends TextInputSuggest<ScopeChoice> {
   }
 
   renderSuggestion(choice: ScopeChoice, el: HTMLElement): void {
-    el.addClass('mod-complex')
-    const icon = el.createDiv({ cls: 'suggestion-icon' }).createSpan({ cls: 'suggestion-flair' })
-    setIcon(icon, ICONS[choice.entry.type])
-    el.createDiv({ cls: 'suggestion-content' }).createDiv({
-      cls: 'suggestion-title',
-      text: choice.entry.path,
+    this.rows.draw(el, {
+      icon: ICONS[choice.entry.type],
+      title: choice.entry.path,
+      aux: choice.kind ? [{ flair: choice.kind, cls: 'abele-scope-suggest__kind' }] : [],
     })
-    if (choice.kind)
-      el.createDiv({ cls: 'suggestion-aux' }).createSpan({
-        cls: 'suggestion-flair abele-scope-suggest__kind',
-        text: choice.kind,
-      })
   }
 
   /**

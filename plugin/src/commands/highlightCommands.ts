@@ -1,5 +1,6 @@
 import { App, Editor, SuggestModal } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { SuggestionRows } from '@/components/obsidian/suggestionRows'
 import {
   HIGHLIGHT_COLORS,
   type HighlightColor,
@@ -9,6 +10,7 @@ import {
 class ColorPickerModal extends SuggestModal<HighlightColor> {
   private resolve: (color: HighlightColor | null) => void = () => {}
   private picked = false
+  private readonly rows = new SuggestionRows()
 
   getSuggestions(query: string): HighlightColor[] {
     const q = query.toLowerCase()
@@ -16,10 +18,7 @@ class ColorPickerModal extends SuggestModal<HighlightColor> {
   }
 
   renderSuggestion(color: HighlightColor, el: HTMLElement): void {
-    const container = el.createDiv({ cls: 'abele-color-picker-item' })
-    const swatch = container.createSpan({ cls: 'abele-color-picker-swatch' })
-    swatch.style.backgroundColor = `var(--abele-highlight-${color})`
-    container.createSpan({ text: color })
+    this.rows.draw(el, { swatch: `var(--abele-highlight-${color})`, title: color })
   }
 
   onChooseSuggestion(color: HighlightColor): void {
@@ -28,6 +27,7 @@ class ColorPickerModal extends SuggestModal<HighlightColor> {
   }
 
   onClose(): void {
+    this.rows.clear()
     window.setTimeout(() => {
       if (!this.picked) this.resolve(null)
     }, 0)

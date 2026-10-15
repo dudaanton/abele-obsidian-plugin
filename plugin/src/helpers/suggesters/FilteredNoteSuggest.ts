@@ -37,16 +37,12 @@ export class FilteredNoteSuggest extends TextInputSuggest<NotePick> {
   }
 
   renderSuggestion(pick: NotePick, el: HTMLElement): void {
-    el.addClass('mod-complex')
-    const content = el.createDiv({ cls: 'suggestion-content' })
-    if ('create' in pick) {
-      content.createDiv({ cls: 'suggestion-title', text: `Create "${pick.create}"` })
-      content.createDiv({ cls: 'suggestion-note', text: 'New note' })
-      return
-    }
-    content.createDiv({ cls: 'suggestion-title', text: titleOf(this.vaultApp, pick.file) })
-    const folder = folderOf(pick.file)
-    if (folder) content.createDiv({ cls: 'suggestion-note', text: folder })
+    this.rows.draw(
+      el,
+      'create' in pick
+        ? { title: `Create "${pick.create}"`, note: 'New note' }
+        : { title: titleOf(this.vaultApp, pick.file), note: folderOf(pick.file) }
+    )
   }
 
   selectSuggestion(pick: NotePick): void {

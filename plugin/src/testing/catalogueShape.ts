@@ -19,6 +19,7 @@ export const CATALOGUE_PAGES = [
   'confirm',
   'prompt',
   'choice',
+  'suggestions',
 ] as const
 export type CataloguePage = (typeof CATALOGUE_PAGES)[number]
 export const CATALOGUE_COMPONENTS = [
@@ -76,6 +77,7 @@ export const CATALOGUE_COMPONENTS = [
   'SidebarPanel',
   'Slider',
   'StatusDot',
+  'SuggestionRow',
   'SwatchPicker',
   'Table',
   'Tabs',

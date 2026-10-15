@@ -1,4 +1,7 @@
-import { FuzzySuggestModal, Notice, setIcon, type App, type FuzzyMatch } from 'obsidian'
+import { FuzzySuggestModal, Notice, type App, type FuzzyMatch } from 'obsidian'
+import { h } from 'vue'
+import { SuggestionRows } from '@/components/obsidian/suggestionRows'
+import SelectionScriptPin from './SelectionScriptPin.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { readerSettingsFrom } from '@/reader/settings'
 import {
@@ -38,6 +41,8 @@ export async function setOnSelectionMenu(
 
 /** Native searchable suggestions, shared by reader and chat; long lists scroll natively. */
 export class SelectionScriptPicker extends FuzzySuggestModal<ParsedScript> {
+  private readonly rows = new SuggestionRows()
+
   constructor(
     app: App,
     private readonly scripts: ParsedScript[],
@@ -71,47 +76,18 @@ export class SelectionScriptPicker extends FuzzySuggestModal<ParsedScript> {
   renderSuggestion(match: FuzzyMatch<ParsedScript>, el: HTMLElement): void {
     const s = match.item
     el.addClass('mod-complex', 'abele-book-script-choice', 'abele-selection-script-choice')
-    const content = el.createDiv({ cls: 'suggestion-content' })
-    content.createDiv({ cls: 'suggestion-title', text: s.meta.name })
-    if (s.meta.description) content.createDiv({ cls: 'suggestion-note', text: s.meta.description })
-    const pin = el.createDiv({ cls: 'suggestion-aux' }).createEl('button', {
-      cls: 'clickable-icon abele-book-script-pin',
-      attr: { type: 'button' },
-    })
-    const draw = () => {
-      const place = selectionMenuPlace(s, chosen(this.surface), this.surface)
-      pin.empty()
-      setIcon(pin, place === 'setting' ? 'pin-off' : 'pin')
-      pin.toggleClass('is-active', place !== null)
-      pin.toggleClass('is-disabled', place === 'header')
-      pin.dataset.place = place ?? ''
-      pin.setAttribute(
-        'aria-label',
-        place === 'setting'
-          ? `Take it off the ${this.surface} menu`
-          : place === 'header'
-            ? `On the ${this.surface} menu by its header`
-            : `Keep it on the ${this.surface} menu`
-      )
-    }
-    draw()
-    // The native suggestion scope uses Enter to run the selected row. A focused pin owns
-    // Enter/Space instead, just like its pointer click, and leaves that scope untouched.
-    pin.addEventListener('keydown', (evt) => {
-      if (evt.key !== 'Enter' && evt.key !== ' ') return
-      evt.preventDefault()
-      evt.stopPropagation()
-      pin.click()
-    })
-    pin.addEventListener('click', (evt) => {
-      evt.preventDefault()
-      evt.stopPropagation()
-      const place = selectionMenuPlace(s, chosen(this.surface), this.surface)
-      if (place === 'header') return
-      void setOnSelectionMenu(s.meta.name, place !== 'setting', this.surface)
-        .then(draw)
-        .catch((error) => new Notice(error instanceof Error ? error.message : String(error)))
-    })
+    this.rows.draw(el, { title: s.meta.name, note: s.meta.description }, () =>
+      h(SelectionScriptPin, {
+        surface: this.surface,
+        placeOf: () => selectionMenuPlace(s, chosen(this.surface), this.surface),
+        setOnMenu: (on: boolean) => setOnSelectionMenu(s.meta.name, on, this.surface),
+      })
+    )
+  }
+
+  onClose(): void {
+    this.rows.clear()
+    super.onClose()
   }
 
   onChooseItem(s: ParsedScript): void {

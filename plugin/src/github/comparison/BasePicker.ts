@@ -1,4 +1,5 @@
-import { SuggestModal, setIcon, type App } from 'obsidian'
+import { SuggestModal, type App } from 'obsidian'
+import { SuggestionRows } from '@/components/obsidian/suggestionRows'
 import type { GithubClient } from '../client'
 import type { RepositorySource } from '@/repository/source'
 import { githubRepositorySource } from '@/repository/github'
@@ -15,6 +16,7 @@ interface Row {
 
 /** Choosing a name resolves it; only a second, SHA-labelled choice saves the frozen base. */
 export class BasePicker extends SuggestModal<Row> {
+  private readonly rows = new SuggestionRows()
   private refs: Promise<Row[]> | undefined
   private readonly resolved = new Map<string, Promise<BasePin>>()
   private queryGeneration = 0
@@ -76,22 +78,18 @@ export class BasePicker extends SuggestModal<Row> {
    */
   renderSuggestion(row: Row, el: HTMLElement): void {
     el.addClass('mod-complex', 'abele-ref-suggestion')
-    const icon = el.createDiv({ cls: 'suggestion-icon' })
-    setIcon(
-      icon.createSpan({ cls: 'suggestion-flair' }),
-      row.pin
+    this.rows.draw(el, {
+      icon: row.pin
         ? 'git-commit-horizontal'
         : row.note
           ? 'circle-alert'
           : row.kind === 'tag'
             ? 'tag'
-            : 'git-branch'
-    )
-    const content = el.createDiv({ cls: 'suggestion-content' })
-    content.createDiv({ cls: 'suggestion-title', text: row.name })
-    // Only what is worth reading: the commit a name was found at, or why it was not.
-    const note = row.pin ? `Compare against commit ${row.pin.baseSha.slice(0, 7)}` : row.note
-    if (note) content.createDiv({ cls: 'suggestion-note', text: note })
+            : 'git-branch',
+      title: row.name,
+      // Only what is worth reading: the commit a name was found at, or why it was not.
+      note: row.pin ? `Compare against commit ${row.pin.baseSha.slice(0, 7)}` : row.note,
+    })
   }
   selectSuggestion(row: Row, event: MouseEvent | KeyboardEvent): void {
     if (!row.pin) {
@@ -109,6 +107,7 @@ export class BasePicker extends SuggestModal<Row> {
     else if (row.pin) basePins(this.app).save(row.pin)
   }
   onClose(): void {
+    this.rows.clear()
     this.closed = true
     this.queryGeneration++
     super.onClose()

@@ -133,6 +133,7 @@ state and accessibility tests before screens adopt them.
 | `Tabs`, `Breadcrumbs` | Native navigation; phone tabs may intentionally scroll with focused tab in view. Breadcrumbs expose folded trails. |
 | `NotePicker`, `IconPicker` | Host-styled choices with keyboard operation and named options. |
 | `Modal`, `ConfirmModal`, `PromptModal`, `ChoiceModal` | Shared shell / explicit destructive confirmation / one line of text / one of a few answers. Code that is not a component asks and awaits them through `confirmDialog`, `promptDialog`, `choiceDialog` (or `openDialog` for any kit dialog with an `answer` event) in `components/obsidian/dialogs.ts`, never a dialog filled by hand. |
+| `SuggestionRow` | A row of an Obsidian picker in its own markup (icon or swatch, title, note, hotkey/flair/dot, a slot at the end). Pickers keep Obsidian's `SuggestModal`/`AbstractInputSuggest` and draw each row through `SuggestionRows` from `renderSuggestion`; flat props only, since it is drawn per row per keystroke. |
 | `Table` | Structured columns; intentional horizontal scrolling, not a substitute for a flat list. |
 | `Avatar`, `QrCode`, `FloatingButton` | Decorative identity fallback / scanner contrast / native raised quick action. |
 
@@ -140,6 +141,11 @@ Noninteractive primitives do not acquire artificial focus/loading states. Statef
 distinguish empty, loading, missing and failed, retain content on refresh and expose selection
 programmatically. Specialized editors, tables, calendars, trees and forms remain documented
 alternatives to `ListRow`.
+
+A kit screen goes into an element Obsidian, CodeMirror or a library hands over through
+`components/obsidian/mount.ts`: `mountKit` for an app of its own (a view, a block, a dialog body),
+unmounted by its handle or its owner's unload; `renderKit`/`unrenderKit` for one small component
+patched in synchronously (a picker row, a marker). Never `createApp` and `mount` by hand.
 
 ## Dialog sizing and shell
 

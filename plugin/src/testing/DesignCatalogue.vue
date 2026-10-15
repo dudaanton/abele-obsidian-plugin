@@ -49,6 +49,16 @@
           interactive
           @open="emit('navigate', entry.id)"
       /></template>
+      <div v-else-if="page === 'suggestions'" class="suggestion-container">
+        <div
+          v-for="(row, index) in suggestionRows"
+          :key="row.title"
+          class="suggestion-item mod-complex"
+          :class="{ 'is-selected': index === 0 }"
+        >
+          <SuggestionRow v-bind="row" />
+        </div>
+      </div>
       <template v-else-if="page === 'rows' || page === 'artifact'">
         <SheetHeaderActions
           :context="{ id: 'attach', label: 'Attach…', icon: 'plus' }"
@@ -655,6 +665,7 @@ import Modal from '@/components/obsidian/Modal.vue'
 import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
 import PromptModal from '@/components/obsidian/PromptModal.vue'
 import ChoiceModal from '@/components/obsidian/ChoiceModal.vue'
+import SuggestionRow from '@/components/obsidian/SuggestionRow.vue'
 import ListRow from '@/components/obsidian/ListRow.vue'
 import ListSectionHeader from '@/components/obsidian/ListSectionHeader.vue'
 import SheetHeaderActions from '@/components/obsidian/SheetHeaderActions.vue'
@@ -734,7 +745,19 @@ const titles: Record<CataloguePage, string> = {
   confirm: 'Delete note',
   prompt: 'New script',
   choice: 'Remove discussion',
+  suggestions: 'Picker rows',
 }
+const suggestionRows = [
+  {
+    icon: 'git-branch',
+    title: 'sample-branch',
+    note: 'shown now · default',
+    aux: [{ kbd: 'Branch' }],
+  },
+  { icon: 'tag', title: 'v1.0.0', aux: [{ kbd: 'Tag' }] },
+  { title: 'Sample note', note: 'Projects/Samples', aux: [{ flair: '10:30' }] },
+  { swatch: 'var(--color-yellow)', title: 'yellow' },
+]
 const entries = CATALOGUE_PAGES.filter((id) => id !== 'index').map((id) => ({
   id,
   label: titles[id],

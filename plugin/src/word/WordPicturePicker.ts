@@ -2,6 +2,7 @@
 // type to filter, arrows to move, Enter to put it in. Each row is the file's name with its folder
 // under it, as the quick switcher shows a note.
 import { App, SuggestModal } from 'obsidian'
+import { SuggestionRows } from '@/components/obsidian/suggestionRows'
 
 export interface WordPictureFile {
   path: string
@@ -13,6 +14,7 @@ const IMAGE = /\.(png|jpe?g|gif|webp)$/i
 export const isPicture = (path: string) => IMAGE.test(path)
 
 export class WordPicturePicker extends SuggestModal<WordPictureFile> {
+  private readonly rows = new SuggestionRows()
   constructor(
     app: App,
     private files: WordPictureFile[],
@@ -36,11 +38,16 @@ export class WordPicturePicker extends SuggestModal<WordPictureFile> {
   }
 
   renderSuggestion(file: WordPictureFile, el: HTMLElement): void {
-    el.addClass('mod-complex')
-    const content = el.createDiv({ cls: 'suggestion-content' })
     const slash = file.path.lastIndexOf('/')
-    content.createDiv({ cls: 'suggestion-title', text: file.path.slice(slash + 1) })
-    if (slash > 0) content.createDiv({ cls: 'suggestion-note', text: file.path.slice(0, slash) })
+    this.rows.draw(el, {
+      title: file.path.slice(slash + 1),
+      note: slash > 0 ? file.path.slice(0, slash) : undefined,
+    })
+  }
+
+  onClose(): void {
+    this.rows.clear()
+    super.onClose()
   }
 
   onChooseSuggestion(file: WordPictureFile): void {

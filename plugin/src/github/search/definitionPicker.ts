@@ -5,8 +5,10 @@
  */
 import { Keymap, SuggestModal, type App } from 'obsidian'
 import type { DefinitionHit } from './definitions'
+import { SuggestionRows } from '@/components/obsidian/suggestionRows'
 
 export class DefinitionPicker extends SuggestModal<DefinitionHit> {
+  private readonly rows = new SuggestionRows()
   constructor(
     app: App,
     private readonly hits: DefinitionHit[],
@@ -26,8 +28,17 @@ export class DefinitionPicker extends SuggestModal<DefinitionHit> {
 
   renderSuggestion(hit: DefinitionHit, el: HTMLElement): void {
     el.addClass('abele-github-definition')
-    el.createDiv({ cls: 'abele-github-definition__place', text: `${hit.path}:${hit.line}` })
-    el.createDiv({ cls: 'abele-github-definition__line', text: hit.text.trim() })
+    this.rows.draw(el, {
+      title: `${hit.path}:${hit.line}`,
+      note: hit.text.trim(),
+      titleClass: 'abele-github-definition__place',
+      noteClass: 'abele-github-definition__line',
+    })
+  }
+
+  onClose(): void {
+    this.rows.clear()
+    super.onClose()
   }
 
   onChooseSuggestion(hit: DefinitionHit, evt: MouseEvent | KeyboardEvent): void {

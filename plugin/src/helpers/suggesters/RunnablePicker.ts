@@ -1,5 +1,6 @@
 import { App, FuzzySuggestModal, type Command, type FuzzyMatch } from 'obsidian'
 import type { ParsedScript } from '@/scripting/types'
+import { SuggestionRows } from '@/components/obsidian/suggestionRows'
 
 /**
  * Choosing what a header button or a link runs, by typing part of its name.
@@ -11,6 +12,7 @@ import type { ParsedScript } from '@/scripting/types'
  * which a free-text field with suggestions could not promise.
  */
 class RunnablePicker<T> extends FuzzySuggestModal<T> {
+  private readonly rows = new SuggestionRows()
   private resolve: (item: T | null) => void = () => {}
   private picked = false
 
@@ -42,13 +44,9 @@ class RunnablePicker<T> extends FuzzySuggestModal<T> {
    * main window — and settings, since 1.13, can be a window of its own.
    */
   renderSuggestion(match: FuzzyMatch<T>, el: HTMLElement): void {
-    // `mod-complex` is what gives the note its quieter, smaller line under the name.
-    el.addClass('mod-complex')
-    const content = el.createDiv({ cls: 'suggestion-content' })
-    content.createDiv({ cls: 'suggestion-title', text: this.title(match.item) })
-
-    const subtitle = this.subtitle(match.item)
-    if (subtitle) content.createDiv({ cls: 'suggestion-note', text: subtitle })
+    // `mod-complex`, which the rows add, is what gives the note its quieter, smaller line under
+    // the name.
+    this.rows.draw(el, { title: this.title(match.item), note: this.subtitle(match.item) })
   }
 
   onChooseItem(item: T): void {
@@ -57,6 +55,7 @@ class RunnablePicker<T> extends FuzzySuggestModal<T> {
   }
 
   onClose(): void {
+    this.rows.clear()
     window.setTimeout(() => {
       if (!this.picked) this.resolve(null)
     }, 0)

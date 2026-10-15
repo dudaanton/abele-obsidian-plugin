@@ -7,7 +7,8 @@
  * this session; else the default repository in the settings. Anything typed as `owner/repo…`
  * names its own.
  */
-import { Keymap, Notice, SuggestModal, setIcon, type App } from 'obsidian'
+import { Keymap, Notice, SuggestModal, type App } from 'obsidian'
+import { SuggestionRows } from '@/components/obsidian/suggestionRows'
 import { watch, type WatchStopHandle } from 'vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { secrets } from '@/secrets/SecretStore'
@@ -86,6 +87,7 @@ export function pickerRepo(app: App): RepoRef | null {
 }
 
 export class OpenPicker extends SuggestModal<OpenRow> {
+  private readonly rows = new SuggestionRows()
   private readonly search: OpenSearch
   private stopWatching?: WatchStopHandle
   private invalidated = false
@@ -169,6 +171,7 @@ export class OpenPicker extends SuggestModal<OpenRow> {
   }
 
   onClose(): void {
+    this.rows.clear()
     this.stopWatching?.()
     this.stopWatching = undefined
     super.onClose?.()
@@ -212,17 +215,12 @@ export class OpenPicker extends SuggestModal<OpenRow> {
   renderSuggestion(row: OpenRow, el: HTMLElement): void {
     el.addClass('mod-complex', 'abele-github-open__row')
     if (row.kind === 'note') el.addClass('abele-github-open__note')
-    const icon = el.createDiv({ cls: 'suggestion-icon' })
-    setIcon(icon.createSpan({ cls: 'suggestion-flair' }), ICONS[row.kind])
-    const content = el.createDiv({ cls: 'suggestion-content' })
-    content.createDiv({ cls: 'suggestion-title', text: row.title })
-    if (row.note) content.createDiv({ cls: 'suggestion-note', text: row.note })
-    if (row.kind !== 'note') {
-      el.createDiv({ cls: 'suggestion-aux' }).createEl('kbd', {
-        cls: 'suggestion-hotkey',
-        text: kindName(row.kind),
-      })
-    }
+    this.rows.draw(el, {
+      icon: ICONS[row.kind],
+      title: row.title,
+      note: row.note,
+      aux: row.kind !== 'note' ? [{ kbd: kindName(row.kind) }] : [],
+    })
   }
 
   /** A line that only says something — searching, a refusal — keeps the picker open. */

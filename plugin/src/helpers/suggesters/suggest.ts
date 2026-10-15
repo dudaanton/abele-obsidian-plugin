@@ -1,4 +1,5 @@
 import { AbstractInputSuggest, App } from 'obsidian'
+import { SuggestionRows } from '@/components/obsidian/suggestionRows'
 
 /**
  * Base for the plugin's path pickers.
@@ -13,6 +14,9 @@ import { AbstractInputSuggest, App } from 'obsidian'
  * how to draw one, and what to do when the user takes it.
  */
 export abstract class TextInputSuggest<T> extends AbstractInputSuggest<T> {
+  /** The kit's rows a picker draws its lines with, taken out when the list closes. */
+  protected readonly rows = new SuggestionRows()
+
   constructor(
     app: App,
     protected readonly inputEl: HTMLInputElement
@@ -39,6 +43,11 @@ export abstract class TextInputSuggest<T> extends AbstractInputSuggest<T> {
     this.inputEl.value = value
     this.inputEl.trigger('input')
     this.close()
+  }
+
+  close(): void {
+    this.rows.clear()
+    super.close()
   }
 
   abstract getSuggestions(inputStr: string): T[]

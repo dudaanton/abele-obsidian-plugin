@@ -3,7 +3,8 @@
  * branches and tags, filtered as it is typed into. The first hundred of each are asked for once;
  * past that, what is typed is looked up by its start as well.
  */
-import { SuggestModal, setIcon, type App } from 'obsidian'
+import { SuggestModal, type App } from 'obsidian'
+import { SuggestionRows } from '@/components/obsidian/suggestionRows'
 import type { GithubClient } from '../client'
 import type { RepositorySource } from '@/repository/source'
 import { githubRepositorySource } from '@/repository/github'
@@ -34,6 +35,7 @@ export function refRows(lists: RefList[], query: string, limit = 50): RefRow[] {
 }
 
 export class RefPicker extends SuggestModal<RefRow> {
+  private readonly rows = new SuggestionRows()
   private listed: Promise<RefList> | null = null
   private readonly byPrefix = new Map<string, Promise<RefList>>()
   private problem = ''
@@ -91,25 +93,26 @@ export class RefPicker extends SuggestModal<RefRow> {
   }
 
   renderSuggestion(row: RefRow, el: HTMLElement): void {
-    el.addClass('mod-complex')
-    const icon = el.createDiv({ cls: 'suggestion-icon' })
-    setIcon(
-      icon.createSpan({ cls: 'suggestion-flair' }),
-      row.kind === 'tag' ? 'tag' : row.kind === 'note' ? 'info' : 'git-branch'
-    )
-    const content = el.createDiv({ cls: 'suggestion-content' })
-    content.createDiv({ cls: 'suggestion-title', text: row.name })
     const notes = [
       row.name === this.current && row.kind !== 'note' ? 'shown now' : '',
       row.kind === 'branch' && row.name === this.defaultBranch ? 'default' : '',
     ].filter(Boolean)
-    if (notes.length) content.createDiv({ cls: 'suggestion-note', text: notes.join(' · ') })
+    this.rows.draw(el, {
+      icon: row.kind === 'tag' ? 'tag' : row.kind === 'note' ? 'info' : 'git-branch',
+      title: row.name,
+      note: notes.join(' · '),
+    })
   }
 
   /** A line that only says something — a refusal — keeps the picker open. */
   selectSuggestion(row: RefRow, evt: MouseEvent | KeyboardEvent): void {
     if (row.kind === 'note') return
     super.selectSuggestion(row, evt)
+  }
+
+  onClose(): void {
+    this.rows.clear()
+    super.onClose()
   }
 
   onChooseSuggestion(row: RefRow): void {

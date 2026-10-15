@@ -1,4 +1,5 @@
-import { SuggestModal, setIcon, type App } from 'obsidian'
+import { SuggestModal, type App } from 'obsidian'
+import { SuggestionRows } from '@/components/obsidian/suggestionRows'
 import type { RepositorySource, RepositoryWorkspace } from '@/repository/source'
 import { nodeRevisionLabel } from '@/repository/node'
 interface Choice {
@@ -9,6 +10,7 @@ interface Choice {
 }
 /** One native picker for a repository's workspace and version. */
 export class RepositoryPicker extends SuggestModal<Choice> {
+  private readonly rows = new SuggestionRows()
   private versions?: Promise<Choice[]>
   constructor(
     app: App,
@@ -56,21 +58,21 @@ export class RepositoryPicker extends SuggestModal<Choice> {
     }
   }
   renderSuggestion(row: Choice, el: HTMLElement) {
-    el.addClass('mod-complex')
-    setIcon(
-      el.createDiv({ cls: 'suggestion-icon' }),
-      row.kind === 'workspace' ? 'folder-git-2' : 'git-branch'
-    )
-    const content = el.createDiv({ cls: 'suggestion-content' })
-    content.createDiv({ cls: 'suggestion-title', text: row.label })
-    content.createDiv({
-      cls: 'suggestion-note',
-      text: row.meta || (row.kind === 'version' ? 'Version' : ''),
+    this.rows.draw(el, {
+      icon: row.kind === 'workspace' ? 'folder-git-2' : 'git-branch',
+      title: row.label,
+      note: row.meta || (row.kind === 'version' ? 'Version' : ''),
+      keepNote: true,
     })
   }
   selectSuggestion(row: Choice, event: MouseEvent | KeyboardEvent) {
     if (row.kind !== 'note') super.selectSuggestion(row, event)
   }
+  onClose(): void {
+    this.rows.clear()
+    super.onClose()
+  }
+
   onChooseSuggestion(row: Choice) {
     this.source.assertCurrent()
     if (row.kind === 'workspace') this.choose(this.source.navigation.workspace!(row.id))
