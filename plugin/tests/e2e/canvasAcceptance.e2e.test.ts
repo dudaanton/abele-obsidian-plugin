@@ -178,7 +178,16 @@ describe.skipIf(!available)('shared human and agent canvas acceptance', () => {
     `)
     // A new canvas goes beside the note in front. After the reload the restored layout can take
     // the front back for a moment, and the canvas then lands in the vault's root.
-    await until(`app.workspace.getActiveFile()?.path===${JSON.stringify(`${DIR}/sample-note.md`)}`)
+    // Waited for by hand: expect.poll belongs to a test, not to its setup.
+    for (let i = 0; i < 100; i++) {
+      if (
+        run<boolean>(
+          `return app.workspace.getActiveFile()?.path===${JSON.stringify(`${DIR}/sample-note.md`)}`
+        )
+      )
+        break
+      await new Promise((r) => setTimeout(r, 150))
+    }
   }, 120_000)
   afterAll(async () => {
     try {
