@@ -9,7 +9,7 @@ import type {
 } from './chatAnchorStore'
 import type { TFile } from 'obsidian'
 import type { DraftImports } from './draftImports'
-import type { AgentDefinition, SessionOverrides } from './agents/types'
+import type { AgentDefinition, InterceptorEntry, SessionOverrides } from './agents/types'
 import type { MapBlock } from '@/helpers/mapConfig'
 import type { McpServer, McpLegacyToolMap } from './mcp/types'
 import type { StartupScript } from '@/scripting/types'
@@ -205,6 +205,8 @@ export interface InterceptorChatMessage {
   role: 'user' | 'assistant'
   content: string
   timestamp: number
+  /** Which interceptor said it, when several read the message. */
+  by?: string
 }
 
 export interface VoiceSettings {
@@ -703,11 +705,19 @@ export interface ChatMessage {
   /** The interceptor was a script: there is nobody to reply to in the side conversation. */
   interceptorScript?: boolean
   /**
+   * Where a held message stands in its interceptors: the one it waits at (`at` counts from 1 among
+   * the `of` that read messages, `entry` is its id) and, when that one failed or was stopped, why.
+   * Send goes on with the next one; after a failure Retry runs that one again and Send as is skips
+   * the rest. Absent on drafts held before lists, which Send sends.
+   */
+  interceptorWait?: { entry: string; at: number; of: number; error?: string }
+  /**
    * The interceptor is reading this finished answer and may replace it. Set only on the copy the
    * chat view draws while it reads, never stored; the replacement lands as a revision by the
-   * interceptor, a failure in the side conversation.
+   * interceptor, a failure in the side conversation. With several in a row, `at` of `of` says
+   * which one is reading now.
    */
-  answerCheck?: { by: string }
+  answerCheck?: { by: string; at?: number; of?: number }
   subAgentRun?: SubAgentRunRef
   /** Owner annotations and accepted versions travel with this message record. */
   highlights?: ReplyHighlight[]
@@ -848,4 +858,9 @@ export interface ChatMetadata {
   interceptorPattern?: string
   /** @deprecated pre-agent chats stored the interceptor id here; migrated on load. */
   activeInterceptorId?: string
+  /**
+   * This chat's own interceptors, in their order; absent follows the agent, empty is Off. The
+   * single `interceptor*` fields above mirror its first switched-on entry for older builds.
+   */
+  interceptors?: InterceptorEntry[]
 }

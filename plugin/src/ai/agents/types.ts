@@ -73,6 +73,13 @@ export interface AgentDefinition {
   interceptorScript: string
   /** Only messages matching this regular expression go to the interceptor; empty means all. */
   interceptorPattern: string
+  /**
+   * The interceptors in the order they run, each given what the one before returned. Unset on
+   * agents saved before lists: the single interceptor the fields above describe is the list. Set,
+   * it wins, and the fields above only mirror its first switched-on entry for older builds; see
+   * `src/ai/interceptor/entries.ts`.
+   */
+  interceptors?: InterceptorEntry[]
 
   /** Concatenated in order, blank line between blocks. */
   prompts: AgentPrompt[]
@@ -135,6 +142,26 @@ export type InterceptorChecks = 'message' | 'answer' | 'both'
 /** A stored choice of what is checked; anything unknown means messages, as before answers. */
 export function normaliseChecks(value: unknown): InterceptorChecks {
   return value === 'answer' || value === 'both' ? value : 'message'
+}
+
+/**
+ * One interceptor in an agent's or a chat's list: who reads (a script by its `@name`, which wins,
+ * or a reviewing agent), what it reads and how. Switched off, it keeps its place and is skipped.
+ */
+export interface InterceptorEntry {
+  id: string
+  /** The reviewing agent; empty with a script. */
+  agentId: string
+  /** The interceptor script by its `@name`; set, it wins over `agentId`. */
+  script: string
+  checks: InterceptorChecks
+  /** Only text matching this regular expression is read; empty means all. */
+  pattern: string
+  /** Comments beside the person's message without holding or changing it. */
+  replyOnly: boolean
+  /** 0 the text alone, -1 the whole visible history, N the last N messages. */
+  contextDepth: number
+  enabled: boolean
 }
 
 export const INTERCEPTOR_CHECKS_OPTIONS: { value: InterceptorChecks; display: string }[] = [
