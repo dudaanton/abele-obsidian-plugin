@@ -205,6 +205,7 @@ export const SECTIONS: Section[] = [
     (p: Identified & { apiKeyId?: string }) => (p.apiKeyId ? [p.apiKeyId] : [])
   ),
   // Whole agent definitions travel, including identity-based MCP toolModes, toolDiscovery,
+  // toolSectionOpening, toolSectionDescriptions,
   // interceptorReplyOnly and the other review settings.
   aiList('ai-agents', 'Agents', 'agents'),
   // Each server travels with the tools it was last seen offering, so the other device tells

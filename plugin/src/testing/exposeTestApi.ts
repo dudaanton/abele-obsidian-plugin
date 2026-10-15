@@ -281,7 +281,7 @@ interface AbeleTestApi {
   NodeDeviceKeyStore: typeof NodeDeviceKeyStore
   nodePairingCrypto: typeof nodePairingCrypto
   pairedLoopbackTransport: typeof pairedLoopbackTransport
-  /** The owner's "Give the Obsidian chat access" action, without its chat picker. */
+  /** The owner's "Give a chat access" action, without its chat picker. */
   giveNodeChatAccess: typeof giveObsidianChatAccess
   ChatStorage: typeof ChatStorage
   /** The words of every chat, for timing a search across them. */

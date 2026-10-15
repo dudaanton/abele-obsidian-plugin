@@ -221,8 +221,8 @@
               always available and governed by the permission mode above."
           >
             <Setting
-              name="Tool discovery"
-              desc="By section: the agent sees one entry per tool group with what it is for, and opens a group's tools when it needs them. All at once: every enabled tool is offered from the start."
+              name="Offer tools"
+              desc="By section: the agent sees one entry per section with what it is for, and opens a section when it needs it. All at once: every enabled tool is offered from the start."
             >
               <Dropdown
                 :model-value="toolDiscoveryMode(agent)"
@@ -236,8 +236,21 @@
             <ToolModesEditor
               :tool-modes="agent.toolModes"
               hide-show-all
+              :by-section="toolDiscoveryMode(agent) === 'sections'"
+              :section-opening="agent.toolSectionOpening ?? {}"
+              :section-descriptions="agent.toolSectionDescriptions ?? {}"
               @update="setToolMode"
               @update-many="setToolModes"
+              @update-opening="
+                (section: string, opening: 'always' | 'on-request') =>
+                  patch({ toolSectionOpening: { ...agent.toolSectionOpening, [section]: opening } })
+              "
+              @update-section-description="
+                (section: string, text: string) =>
+                  patch({
+                    toolSectionDescriptions: own(agent.toolSectionDescriptions, section, text),
+                  })
+              "
             />
           </Section>
         </template>
@@ -306,6 +319,7 @@ import CardGrid from '../../obsidian/CardGrid.vue'
 import EmptyState from '../../obsidian/EmptyState.vue'
 import AiScopeEditor from '../../AiScopeEditor.vue'
 import ToolModesEditor from '../../ToolModesEditor.vue'
+
 import AgentMemoryEditor from './AgentMemoryEditor.vue'
 import { FileSuggest } from '@/helpers/suggesters/FileSuggester'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
@@ -316,6 +330,14 @@ import { interceptorScripts } from '@/ai/interceptor/runScript'
 import InterceptorSettings from './InterceptorSettings.vue'
 import { interceptorChoices, PERMISSION_OPTIONS, SCRIPT_KEY } from './options'
 import type { PermissionMode, ToolMode } from '@/ai/types'
+
+/** A map with one key set, or taken out when its value is empty. */
+function own(map: Record<string, string> | undefined, key: string, value: string) {
+  const next = { ...map }
+  if (value) next[key] = value
+  else delete next[key]
+  return next
+}
 
 type SkillsMode = AgentDefinition['skillsMode']
 

@@ -1,5 +1,6 @@
 import { nanoid } from 'nanoid'
 import type { NodeScopeEntry, NodeScopeTarget } from '../nodeScope'
+import type { SectionOpening } from '../toolSections'
 import {
   BOOK_TOOL_MODES,
   DOCX_TOOL_MODES,
@@ -82,6 +83,13 @@ export interface AgentDefinition {
    * absent are older saves and mean sections too; see `toolDiscoveryMode`.
    */
   toolDiscovery?: ToolDiscoverySetting
+  /**
+   * By section: which sections stand open from the first request, by section id (`toolSections.ts`).
+   * Absent means the section's default: Files and Basics always, every other on request.
+   */
+  toolSectionOpening?: Record<string, SectionOpening>
+  /** The owner's own words for what a section is for, by section id, in place of its default. */
+  toolSectionDescriptions?: Record<string, string>
   /** Per-connection GitHub access. Absent IDs are Off, including newly added connections. */
   githubConnections?: Record<string, ToolMode>
   scope: ScopeEntry[]

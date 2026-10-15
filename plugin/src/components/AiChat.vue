@@ -179,7 +179,9 @@
             :calls="block.calls"
             :open="runOpen(block)"
             :forks="runForks(block)"
+            :node-access-given="(r: NodeAccessRefusal) => accessCovers(nodeAccess, r)"
             @update:open="(open) => setRunOpen(block.id, open)"
+            @node-access="onNodeAccess"
           >
             <AiChatMessage
               v-for="msg in block.messages"
@@ -494,7 +496,7 @@ import TemplateVariablesModal from './TemplateVariablesModal.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { ChatService, type PendingInput } from '@/ai/ChatService'
 import AiNodeScopeChips from './AiNodeScopeChips.vue'
-import { NodeScopeEntriesSchema, nodeTargetId } from '@/ai/nodeScope'
+import { nodeScopeNames, nodeScopeSentence } from '@/ai/tools/node/scopeNames'
 import { fileMentions } from '@/ai/fileMentions'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { parseTemplateVariables, applyTemplateVariables } from '@/templates/TemplateParser'
@@ -512,6 +514,11 @@ import { discoverSkills } from '@/ai/tools/SkillTool'
 import { isChatLog } from '@/ai/chatText'
 import { insertMessageCard } from '@/ai/messageCards'
 import ChatArtifacts from './ChatArtifacts.vue'
+import { NodeScopeEntriesSchema } from '@/ai/nodeScope'
+import { setObsidianChatNodeScope } from '@/ai/tools/node/owner'
+import { accessCovers, type NodeAccessRefusal } from '@/ai/tools/node/accessRefusal'
+import { pendingNodeAccess } from './chat/nodeAccessPending'
+import { NODE_SIDEBAR_VIEW } from '@/node/nodePathNavigation'
 import type { ChatSession } from '@/ai/ChatSession'
 
 const chatService = ChatService.getInstance()
@@ -662,6 +669,10 @@ const messageProps = (msg: ChatMessage) => ({
   replyGone: msg.replyTo
     ?.filter((to) => !messages.value.some((m) => m.id === to.messageId))
     .map((to) => to.messageId),
+  nodeAccessGiven:
+    msg.nodeAccessRefusal?.kind === 'no-access'
+      ? accessCovers(nodeAccess.value, msg.nodeAccessRefusal)
+      : undefined,
   captureLink,
   captureScript,
   scriptMenu: selectionScripts,
@@ -691,6 +702,7 @@ const messageHandlers = {
   'ask-here': (...a: Parameters<typeof onAskHere>) => onAskHere(...a),
   reply: (to: ChatReplyTo) => onReply(to),
   'show-reply': (to: ChatReplyTo) => onShowReply(to),
+  'node-access': (refusal: NodeAccessRefusal) => onNodeAccess(refusal),
   highlight: (...a: Parameters<typeof onHighlight>) => onHighlight(...a),
   'remove-highlight': (...a: Parameters<typeof onRemoveHighlight>) => onRemoveHighlight(...a),
   'recolor-highlight': (...a: Parameters<typeof onRecolorHighlight>) => onRecolorHighlight(...a),
@@ -791,6 +803,42 @@ const onShowReply = (to: ChatReplyTo) =>
     true,
     true
   )
+
+/**
+ * A refused node call's way through: access opens this chat's Node access with the place the agent
+ * wanted already chosen; a missing local approval is given here at once; an offline node sends
+ * to the Node panel.
+ */
+const onNodeAccess = (refusal: NodeAccessRefusal) => {
+  const s = session.value
+  if (!s) return
+  if (refusal.kind === 'not-approved') {
+    void setObsidianChatNodeScope(s, [...nodeAccess.value]).catch(
+      (e: unknown) => new Notice(e instanceof Error ? e.message : 'Could not approve node access')
+    )
+    return
+  }
+  if (refusal.kind === 'offline') {
+    void revealNodePanel()
+    return
+  }
+  pendingNodeAccess.value = {
+    node_id: refusal.node_id,
+    project_id: refusal.project_id,
+    target: refusal.target,
+    access: refusal.access,
+  }
+  openSetup('scope')
+}
+
+/** The Node panel in the left sidebar, opened where it already is or made there. */
+const revealNodePanel = async () => {
+  const workspace = GlobalStore.getInstance().app.workspace
+  const leaf = workspace.getLeavesOfType(NODE_SIDEBAR_VIEW)[0] ?? workspace.getLeftLeaf(false)
+  if (!leaf) return
+  await leaf.setViewState({ type: NODE_SIDEBAR_VIEW, active: true })
+  await workspace.revealLeaf(leaf)
+}
 
 const onAskHere = (messageId: string, quote?: string, start?: number) => {
   const s = session.value
@@ -1007,6 +1055,17 @@ const nodeAccess = computed(() => {
   const parsed = NodeScopeEntriesSchema.safeParse(session.value?.overrides?.value.nodeScope ?? [])
   return parsed.success ? parsed.data : []
 })
+/** Each node place said by its names — node, folder, branch — and what may be done there. */
+const nodeSaid = ref<string[]>([])
+watch(
+  nodeAccess,
+  async (list) => {
+    nodeSaid.value = await Promise.all(
+      list.map(async (entry) => nodeScopeSentence(await nodeScopeNames(entry), entry.access))
+    )
+  },
+  { immediate: true }
+)
 const access = computed(() => {
   const scope = session.value?.scopeResolver
   const summary = scope?.summary.value ?? ''
@@ -1015,10 +1074,7 @@ const access = computed(() => {
   const files = full
     ? summary
     : (scope.entries?.value ?? []).map((entry) => `${entry.type}: ${entry.path}`).join(' · ')
-  const nodes = nodeAccess.value.map(
-    (entry) =>
-      `${[entry.node_id, entry.kind === 'node' ? '' : entry.project_id, entry.kind === 'target' ? nodeTargetId(entry.target) : ''].filter(Boolean).join(' / ')}, ${entry.access}`
-  )
+  const nodes = nodeSaid.value.slice(0, nodeAccess.value.length)
   const said = [files, ...nodes].filter(Boolean).join(' · ') || 'No files'
   const places = (full ? 0 : (scope?.entries?.value.length ?? 0)) + nodes.length
   return {

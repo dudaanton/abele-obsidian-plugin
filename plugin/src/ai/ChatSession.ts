@@ -22,7 +22,8 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import type { MapBlock } from '@/helpers/mapConfig'
 import { DEFAULT_RETRY, backoffDelay, isTransient } from './retry'
-import { AgentLoop } from './client/AgentLoop'
+import { AgentLoop, failedToolResult } from './client/AgentLoop'
+import { nodeAccessRefusalOf } from './tools/node/accessRefusal'
 import { mobileBackground } from './mobileBackground'
 import type {
   AgentEvent,
@@ -81,7 +82,13 @@ import {
   openSectionsOnPath,
   type ToolOffer,
 } from './ToolDiscovery'
-import { isSectionToolName, nodeSectionLive, sectionsOfLegacyGroups } from './toolSections'
+import {
+  agentSectionOverrides,
+  alwaysOpenSections,
+  isSectionToolName,
+  nodeSectionLive,
+  sectionsOfLegacyGroups,
+} from './toolSections'
 import { inspectMainChat, readChat } from './chatCopy'
 import {
   compatibleReplyHistory,
@@ -1266,6 +1273,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       ? getPathToLeaf(this.allChatMessages, this.activeLeafId)
       : this.allChatMessages
     return mergeOpen(
+      alwaysOpenSections(this.agent.value),
       this.overrides.value.nodeScope?.length ? ['nodes'] : [],
       this.initialSections,
       openSectionsOnPath(path)
@@ -1387,7 +1395,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
               this.permissionMode.value
             )
           : undefined,
-      overrides: AbeleConfig.getInstance().ai.prompts?.toolDescriptions,
+      // The agent's own words for a section win over the vault-wide ones.
+      overrides: {
+        ...AbeleConfig.getInstance().ai.prompts?.toolDescriptions,
+        ...agentSectionOverrides(agent),
+      },
     })
     this.lastOffer = offer
     return this.wrapToolsForSession(emulatedTools(offer))
@@ -1704,6 +1716,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
               toolMap: (event.result.details as ToolMapDetails)?.map,
               replyProposal: (event.result.details as { replyProposal?: ReplyProposal })
                 ?.replyProposal,
+              nodeAccessRefusal: event.isError
+                ? nodeAccessRefusalOf(event.result.details)
+                : undefined,
               toolStatus: event.isError ? 'rejected' : 'approved',
             }
           }
@@ -2349,9 +2364,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         this.settleInterruptedCall(tc, 'interrupted')
         return
       }
-      toolResult = {
-        content: [{ type: 'text', text: err instanceof Error ? err.message : String(err) }],
-      }
+      toolResult = failedToolResult(err)
       isError = true
     }
 
@@ -2373,6 +2386,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
           toolDiff: diff ? { old: diff.old, new: diff.new } : undefined,
           toolMap: (toolResult.details as ToolMapDetails)?.map,
           replyProposal: (toolResult.details as { replyProposal?: ReplyProposal })?.replyProposal,
+          nodeAccessRefusal: isError ? nodeAccessRefusalOf(toolResult.details) : undefined,
           toolStatus: isError ? ('rejected' as const) : ('approved' as const),
         }
       }

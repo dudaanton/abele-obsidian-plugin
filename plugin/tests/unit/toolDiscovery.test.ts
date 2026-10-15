@@ -201,7 +201,7 @@ describe('node section live state', () => {
   it('says plainly when the chat has no node access, and where the person gives it', () => {
     const text = nodeSectionLive(undefined, undefined, 'confirm-all')
     expect(text).toContain('no node access')
-    expect(text).toContain('Give the Obsidian chat access')
+    expect(text).toContain('Give a chat access')
   })
 
   it('says calls without IDs reach the one folder a chat was given', () => {

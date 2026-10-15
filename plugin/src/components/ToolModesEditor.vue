@@ -24,10 +24,100 @@
     </Setting>
 
     <template v-for="group in visibleGroups" :key="group.category">
-      <h4 class="abele-tool-modes__heading">{{ group.category }}</h4>
+      <!-- A section's head: its name and, offered by section, whether it stands open from the
+           first question or opens when the agent asks; under it what it is for, editable. -->
+      <div class="abele-tool-modes__head">
+        <h4 class="abele-tool-modes__heading">{{ group.category }}</h4>
+        <Dropdown
+          v-if="bySection && !descriptionsOnly && !ALWAYS_LOADED_GROUPS.has(group.category)"
+          class="abele-tool-modes__opening"
+          :model-value="opening(group.category)"
+          :options="OPENING_OPTIONS"
+          :aria-label="`When ${group.category} is open`"
+          @update:model-value="
+            emit('updateOpening', sectionIdOfGroup(group.category), $event as SectionOpening)
+          "
+        />
+      </div>
+      <div
+        v-if="
+          !descriptionsOnly && (sectionText(group.category) || editingSection === group.category)
+        "
+        class="abele-tool-modes__about"
+      >
+        <template v-if="editingSection !== group.category">
+          <span class="abele-tool-modes__about-text">{{ sectionText(group.category) }}</span>
+          <Icon
+            icon="pencil"
+            size="xs"
+            :tooltip="`Change what ${group.category} is said to be for`"
+            @click="editingSection = group.category"
+          />
+        </template>
+        <template v-else>
+          <Input
+            :model-value="sectionText(group.category)"
+            as-text-area
+            @update:model-value="emitSectionText(group.category, $event)"
+          />
+          <div class="abele-tool-modes__desc-reset">
+            <Button
+              v-if="props.sectionDescriptions[sectionIdOfGroup(group.category)]"
+              text="Reset to default"
+              icon="rotate-ccw"
+              tooltip="Use the section's own description again"
+              @click="emitSectionText(group.category, '')"
+            />
+            <Button text="Done" @click="editingSection = null" />
+          </div>
+        </template>
+      </div>
+      <!-- The node's tools by what they do, one choice each; the tools themselves on asking. -->
+      <template v-if="group.category === NODE_SECTION && !descriptionsOnly">
+        <div v-for="action in nodeActions(group)" :key="action.id" class="abele-tool-modes__row">
+          <Setting :name="action.label">
+            <template #desc>
+              {{ action.desc }}
+              <Icon
+                class="abele-tool-modes__members-toggle"
+                :icon="openAction === action.id ? 'chevron-down' : 'chevron-right'"
+                size="xs"
+                :text-right="`${action.tools.length} tools`"
+                :tooltip="
+                  openAction === action.id
+                    ? 'Hide its tools'
+                    : 'Show its tools, each with its own choice'
+                "
+                @click="openAction = openAction === action.id ? null : action.id"
+              />
+            </template>
+            <Dropdown
+              :model-value="sharedMode(action.tools) ?? 'mixed'"
+              :options="
+                sharedMode(action.tools)
+                  ? modeOptions
+                  : [...modeOptions, { value: 'mixed', display: 'Mixed' }]
+              "
+              @update:model-value="$event !== 'mixed' && setAll(action.tools, $event)"
+            />
+          </Setting>
+          <div v-if="openAction === action.id" class="abele-tool-modes__members">
+            <Setting v-for="tool in action.tools" :key="tool.name">
+              <template #name
+                ><code>{{ tool.name }}</code></template
+              >
+              <Dropdown
+                :model-value="getMode(tool.permissionKey ?? tool.name)"
+                :options="modeOptions"
+                @update:model-value="setMode(tool.permissionKey ?? tool.name, $event as ToolMode)"
+              />
+            </Setting>
+          </div>
+        </div>
+      </template>
 
       <Setting
-        v-if="!descriptionsOnly && optionalOf(group).length > 1"
+        v-if="!descriptionsOnly && group.category !== NODE_SECTION && optionalOf(group).length > 1"
         name="All in this section"
         class="abele-tool-modes__bulk abele-tool-modes__bulk--section"
         :data-section="group.category"
@@ -51,7 +141,11 @@
         <Checkbox :is-enabled="serverInUse(group)" @toggle="toggleServer(group)" />
       </Setting>
 
-      <div v-for="tool in group.tools" :key="tool.name" class="abele-tool-modes__row">
+      <div
+        v-for="tool in group.category === NODE_SECTION && !descriptionsOnly ? [] : group.tools"
+        :key="tool.name"
+        class="abele-tool-modes__row"
+      >
         <Setting :name="tool.label">
           <Icon
             v-if="showDescriptions"
@@ -106,6 +200,16 @@ import { CORE_TOOLS } from '@/ai/types'
 import { isDefaultDescription } from '@/ai/tools/toolDescriptionOverrides'
 import type { ToolMode } from '@/ai/types'
 import { isMcpToolName } from '@/ai/mcp/names'
+import {
+  ALWAYS_LOADED_GROUPS,
+  NODE_ACTIONS,
+  NODE_GROUP as NODE_SECTION,
+  nodeAction,
+  sectionDefaultDescription,
+  sectionIdOfGroup,
+  sectionOpening,
+  type SectionOpening,
+} from '@/ai/toolSections'
 
 const props = withDefaults(
   defineProps<{
@@ -115,8 +219,15 @@ const props = withDefaults(
     hideShowAll?: boolean
     /** Edit only what each tool tells the model, with no per-agent mode dropdowns. */
     descriptionsOnly?: boolean
+    /** Tools are offered by section: each section's head says when it is open. */
+    bySection?: boolean
+    sectionOpening?: Record<string, SectionOpening>
+    sectionDescriptions?: Record<string, string>
   }>(),
   {
+    bySection: false,
+    sectionOpening: () => ({}),
+    sectionDescriptions: () => ({}),
     showDescriptions: false,
     toolDescriptions: () => ({}),
     hideShowAll: false,
@@ -129,7 +240,34 @@ const emit = defineEmits<{
   /** Several tools at once, from the shortcuts: one change for the host to save, not one each. */
   (e: 'updateMany', modes: Record<string, ToolMode>): void
   (e: 'updateDescription', toolName: string, description: string): void
+  (e: 'updateOpening', section: string, opening: SectionOpening): void
+  (e: 'updateSectionDescription', section: string, description: string): void
 }>()
+
+const OPENING_OPTIONS = [
+  { value: 'always', display: 'Always open' },
+  { value: 'on-request', display: 'On request' },
+]
+const opening = (group: string): SectionOpening =>
+  sectionOpening(group, { toolSectionOpening: props.sectionOpening })
+const editingSection = ref<string | null>(null)
+const sectionText = (group: string) =>
+  props.sectionDescriptions[sectionIdOfGroup(group)] || sectionDefaultDescription(group)
+/** An own description only when it differs from the default; the same words are none. */
+const emitSectionText = (group: string, text: string) =>
+  emit(
+    'updateSectionDescription',
+    sectionIdOfGroup(group),
+    text.trim() === sectionDefaultDescription(group) ? '' : text
+  )
+
+const openAction = ref<string | null>(null)
+/** The node section's tools by action, in the order a person thinks of them: read, edit, worktrees. */
+const nodeActions = (group: ToolGroup) =>
+  NODE_ACTIONS.map((action) => ({
+    ...action,
+    tools: optionalOf(group).filter((t) => nodeAction(t.name) === action.id),
+  })).filter((a) => a.tools.length)
 
 const showAll = ref(false)
 const editingDesc = ref<string | null>(null)
@@ -234,17 +372,58 @@ const visibleGroups = computed<ToolGroup[]>(() => {
   min-height: 2.4em;
 }
 
-h4.abele-tool-modes__heading {
-  margin: var(--size-4-3) 0 0 !important;
+// A section's head: the name, and when it is open at the row's end, one hairline above it.
+.abele-tool-modes__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--size-4-1) var(--size-4-2);
+  margin-top: var(--size-4-3);
   padding-top: var(--size-4-4);
   padding-bottom: var(--size-4-1);
   border-top: 1px solid var(--background-modifier-border);
 
   &:first-child {
-    margin-top: 0 !important;
+    margin-top: 0;
     padding-top: 0;
     border-top: none;
   }
+}
+
+h4.abele-tool-modes__heading {
+  margin: 0 !important;
+}
+
+// What the section is for: a quiet line under its name, with the glyph that edits it.
+.abele-tool-modes__about {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--size-2-2);
+  padding-bottom: var(--size-4-2);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+
+  > .abele-input,
+  > textarea {
+    flex: 1 1 auto;
+  }
+}
+.abele-tool-modes__about:has(textarea) {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+// «10 tools» after the action's words: what it holds, pressed open under it.
+.abele-tool-modes__members-toggle {
+  display: flex;
+  width: fit-content;
+  margin-top: var(--size-2-1);
+}
+
+// The tools of one action, stepped in under it as its own detail.
+.abele-tool-modes__members {
+  padding-inline-start: var(--size-4-6);
 }
 
 // Off, Ask and Auto side by side, even on a phone, where Obsidian would stack each button

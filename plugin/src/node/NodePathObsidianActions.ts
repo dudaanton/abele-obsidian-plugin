@@ -1,4 +1,5 @@
 import { h, shallowRef } from 'vue'
+import { Notice } from 'obsidian'
 import type { ChatSession } from '@/ai/ChatSession'
 import { NodeSuggestModal } from '@/components/nodeWork/NodeSuggestModal'
 import Setting from '@/components/obsidian/Setting.vue'
@@ -10,6 +11,9 @@ import { NodePathService } from './NodePathService'
 import { wirePathTarget } from './nodePathChat'
 import type { NodePathContext, NodePathOwnerActions } from './NodePathOwnerActions'
 import { giveObsidianChatAccess, revokeObsidianNodeScopeApprovals } from '@/ai/tools/node/owner'
+import { NodeScopeEntriesSchema } from '@/ai/nodeScope'
+import { accessCovers } from '@/ai/tools/node/accessRefusal'
+import { nodeScopeNames, nodeScopeTitle } from '@/ai/tools/node/scopeNames'
 import {
   addNodeContextToObsidianChat,
   askNodeContextInObsidianChat,
@@ -20,9 +24,44 @@ import {
 export async function revokeNodePathChatApprovals(nodeId: string): Promise<void> {
   await revokeObsidianNodeScopeApprovals(nodeId)
 }
-export async function chooseNodePathChat(): Promise<ChatSession | undefined> {
+/** The last thing asked in a chat, cut to a line: what tells ten chats named «Chat» apart. */
+function lastQuestion(session: ChatSession): string {
+  const asked = [...(session.messages?.value ?? [])]
+    .reverse()
+    .find((m) => m.role === 'user' && m.content)
+  const words = (asked?.content ?? '')
+    .replace(/\[↩ ([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return words.length > 60 ? `${words.slice(0, 59).trimEnd()}…` : words
+}
+/** How long ago, in the fewest words: «5 min ago», «3 h ago», «2 days ago». */
+function ago(at: number, now = Date.now()): string {
+  const min = Math.round((now - at) / 60_000)
+  if (min < 1) return 'just now'
+  if (min < 60) return `${min} min ago`
+  const h = Math.round(min / 60)
+  if (h < 24) return `${h} h ago`
+  const d = Math.round(h / 24)
+  return d === 1 ? 'yesterday' : `${d} days ago`
+}
+const lastTime = (session: ChatSession) =>
+  Math.max(0, ...(session.messages?.value ?? []).map((m) => m.timestamp ?? 0))
+
+/**
+ * Which Obsidian chat: the one open now first and marked, then the rest by when they were last
+ * used. Each row says its agent, when it was last used and what was last asked in it, so chats
+ * with one name are told apart; one that already reaches `has` says so under its name.
+ */
+export async function chooseNodePathChat(
+  has?: (session: ChatSession) => string | undefined
+): Promise<ChatSession | undefined> {
   const { ChatService } = await import('@/ai/ChatService')
-  const sessions = ChatService.getInstance().getAllSessions()
+  const service = ChatService.getInstance()
+  const open = service.activeSession?.value
+  const sessions = [...service.getAllSessions()].sort(
+    (a, b) => Number(b === open) - Number(a === open) || lastTime(b) - lastTime(a)
+  )
   return new Promise((resolve) => {
     class Picker extends NodeSuggestModal {
       onClose(): void {
@@ -33,13 +72,26 @@ export async function chooseNodePathChat(): Promise<ChatSession | undefined> {
     }
     new Picker(
       GlobalStore.getInstance().app,
-      sessions.map((session) => ({
-        id: session.id,
-        title: session.chatTitle.value || 'Chat',
-        icon: 'messages-square',
-        kind: 'Obsidian chat',
-      })),
-      'Choose the Obsidian chat',
+      sessions.map((session) => {
+        const when = lastTime(session)
+        const already = has?.(session)
+        return {
+          id: session.id,
+          title: session.chatTitle.value || 'Chat',
+          icon: already ? 'folder-check' : 'messages-square',
+          kind: already ? `Already has access to ${already}` : 'Obsidian chat',
+          current: session === open,
+          note: [
+            session === open ? 'Open now' : '',
+            session.agent?.value?.name ?? '',
+            when ? ago(when) : '',
+            lastQuestion(session),
+          ]
+            .filter(Boolean)
+            .join(' · '),
+        }
+      }),
+      'Which chat gets access',
       (item) => resolve(sessions.find((session) => session.id === item.id)),
       'Open an Obsidian chat first'
     ).open()
@@ -48,26 +100,46 @@ export async function chooseNodePathChat(): Promise<ChatSession | undefined> {
 export function createNodePathObsidianActions(): NodePathOwnerActions {
   return {
     async grant(context) {
-      const session = await chooseNodePathChat()
+      const place = {
+        node_id: context.target.registrationId,
+        project_id: context.target.projectId,
+        target: wirePathTarget(context.target),
+      }
+      const names = await nodeScopeNames(place)
+      const where = nodeScopeTitle(names)
+      const reach = (session: ChatSession) => {
+        const parsed = NodeScopeEntriesSchema.safeParse(session.overrides?.value.nodeScope ?? [])
+        return parsed.success ? parsed.data : []
+      }
+      const session = await chooseNodePathChat((s) =>
+        accessCovers(reach(s), place) ? where : undefined
+      )
       if (!session) return
-      const access = shallowRef<'read' | 'edit'>('edit'),
+      const chat = session.chatTitle.value || 'Chat'
+      const had = reach(session).find((e) => accessCovers([e], place))
+      const access = shallowRef<'read' | 'edit'>(had?.access ?? 'edit'),
         error = shallowRef(''),
         busy = shallowRef(false)
       return new Promise<void>((resolve) => {
         nodePathDialog(
-          'Give chat access to node target',
+          'Give a chat access',
           (close) =>
             h('div', [
-              h(Setting, { name: 'Chat', desc: session.chatTitle.value || 'Chat' }),
               h(Setting, {
-                name: 'Target',
-                desc: `${context.target.nodeId} · ${context.target.id}`,
+                name: chat,
+                desc: [
+                  `Folder: ${names.folder ?? where}`,
+                  ...(names.branch ? [`Worktree: ${names.branch}`] : []),
+                  `on the ${names.node} node`,
+                ].join(' · '),
               }),
               h(
                 Setting,
                 {
                   name: 'Access',
-                  desc: 'Whether file changes ask first still follows this chat’s existing permission mode.',
+                  desc: had
+                    ? `Already has ${had.access === 'edit' ? 'read and edit' : 'read'} access. Whether changes ask first follows the chat's permission mode.`
+                    : 'Whether file changes ask first still follows this chat’s permission mode.',
                 },
                 {
                   default: () =>
@@ -83,11 +155,11 @@ export function createNodePathObsidianActions(): NodePathOwnerActions {
                     }),
                 }
               ),
-              error.value ? h('div', { role: 'alert' }, error.value) : null,
+              error.value ? h('div', { role: 'alert', class: 'mod-warning' }, error.value) : null,
               h('div', { class: 'modal-button-container' }, [
                 h(Button, { text: 'Cancel', onClick: close }),
                 h(Button, {
-                  text: 'Give access',
+                  text: had ? 'Save' : 'Give access',
                   accent: true,
                   loading: busy.value,
                   onClick: () => {
@@ -95,12 +167,15 @@ export function createNodePathObsidianActions(): NodePathOwnerActions {
                     busy.value = true
                     void giveObsidianChatAccess(session, {
                       kind: 'target',
-                      node_id: context.target.registrationId,
-                      project_id: context.target.projectId,
-                      target: wirePathTarget(context.target),
+                      ...place,
                       access: access.value,
                     })
-                      .then(close)
+                      .then(() => {
+                        close()
+                        new Notice(
+                          `${chat} can ${access.value === 'edit' ? 'read and edit' : 'read'} ${where}`
+                        )
+                      })
                       .catch((failure: unknown) => {
                         error.value =
                           failure instanceof Error

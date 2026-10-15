@@ -1,5 +1,5 @@
 <template>
-  <div class="abele-node-scope-editor">
+  <div ref="root" class="abele-node-scope-editor">
     <Setting
       class="abele-node-scope-editor__head"
       name="Node access"
@@ -74,7 +74,13 @@
           :options="accessOptions"
           @update:model-value="access = $event as 'read' | 'edit'"
         />
-        <Button text="Add access" :disabled="busy || loading" @click="add" />
+        <Button
+          class="abele-node-scope-editor__add"
+          text="Add access"
+          :accent="wanted"
+          :disabled="busy || loading"
+          @click="add"
+        />
       </Setting>
     </template>
     <EmptyState
@@ -92,7 +98,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, nextTick, ref, onMounted, onUnmounted, watch } from 'vue'
+import { nodeScopeNames, nodeScopeTitle, type NodeScopeNames } from '@/ai/tools/node/scopeNames'
+import { pendingNodeAccess } from './chat/nodeAccessPending'
 import type { ChatSession } from '@/ai/ChatSession'
 import {
   NodeScopeEntriesSchema,
@@ -125,6 +133,9 @@ const node = ref(''),
   project = ref(''),
   target = ref(''),
   access = ref<'read' | 'edit'>('edit')
+/** The form holds the place a refused call wanted. */
+const wanted = ref(false)
+const root = ref<HTMLElement>()
 const loading = ref(false),
   busy = ref(false),
   error = ref('')
@@ -142,24 +153,22 @@ const accessOptions = [
   { value: 'read', display: 'Read' },
   { value: 'edit', display: 'Read and edit' },
 ]
+/** Each entry by its names — node, folder, branch — looked up from the node, never its ids. */
+const names = ref<Record<string, NodeScopeNames>>({})
+watch(
+  entries,
+  async (list) => {
+    const found = await Promise.all(
+      list.map(async (e) => [nodeScopeKey(e), await nodeScopeNames(e)] as const)
+    )
+    names.value = Object.fromEntries(found)
+  },
+  { immediate: true }
+)
 function label(entry: NodeScopeEntry) {
-  const parts = [
-    nodes.value.find((node) => node.id === entry.node_id || node.node_id === entry.node_id)
-      ?.label ?? entry.node_id,
-  ]
-  if (entry.kind !== 'node')
-    parts.push(
-      projects.value.find((project) => project.id === entry.project_id)?.label ?? entry.project_id
-    )
-  if (entry.kind === 'target')
-    parts.push(
-      targets.value.find(
-        (target) =>
-          target.identity.kind === entry.target.kind &&
-          nodeTargetId(target.identity) === nodeTargetId(entry.target)
-      )?.display ?? nodeTargetId(entry.target)
-    )
-  return parts.join(' / ')
+  const n = names.value[nodeScopeKey(entry)]
+  if (!n) return entry.node_id
+  return n.folder ? `${n.node} / ${nodeScopeTitle(n)}` : n.node
 }
 async function loadNodes() {
   try {
@@ -295,7 +304,28 @@ function remove(entry: NodeScopeEntry) {
   const chat = props.session
   void perform(() => removeObsidianChatNodeAccess(chat, entry))
 }
-onMounted(loadNodes)
+/**
+ * Opened from a refused node call: the place the agent wanted is chosen already, read and edit,
+ * and the section is brought into view with its Add button ready — one press gives the access.
+ */
+onMounted(async () => {
+  await loadNodes()
+  const want = pendingNodeAccess.value
+  if (!want) return
+  pendingNodeAccess.value = null
+  // A chat with no node access at all named no place: the form opens empty for the person to fill.
+  if (want.node_id) await chooseNode(want.node_id)
+  if (want.node_id && want.project_id) await chooseProject(want.project_id)
+  if (want.node_id && want.target) target.value = nodeTargetId(want.target)
+  access.value = 'edit'
+  wanted.value = true
+  await nextTick()
+  // The press that opened the dialog was for this: the Add button takes the focus from the
+  // vault's search field, which would otherwise open its list over the form.
+  const add = root.value?.querySelector<HTMLElement>('.abele-node-scope-editor__add')
+  root.value?.scrollIntoView({ block: 'start' })
+  add?.focus({ preventScroll: true })
+})
 onUnmounted(() => {
   generation++
 })

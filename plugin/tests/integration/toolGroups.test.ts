@@ -227,6 +227,22 @@ describe('tools offered by section', () => {
     run.destroy()
   })
 
+  it('has an agent’s Always open sections open from the first request', () => {
+    AgentRegistry.getInstance().update(session.agentId.value, {
+      toolSectionOpening: { maps: 'always' },
+    })
+    expect(names(session)).toContain('geocode')
+    expect(names(session)).not.toContain('chart_docs')
+  })
+
+  it('tells the agent what a section is for in the agent’s own words when it has some', () => {
+    AgentRegistry.getInstance().update(session.agentId.value, {
+      toolSectionDescriptions: { maps: 'Sample own words about maps.' },
+    })
+    const open = tools(session).find((t) => t.name === 'open_maps')!
+    expect(open.description).toContain('Sample own words about maps.')
+  })
+
   it('keeps the whole list in All at once mode', () => {
     AgentRegistry.getInstance().update(session.agentId.value, { toolDiscovery: 'all-at-once' })
     const all = names(session)

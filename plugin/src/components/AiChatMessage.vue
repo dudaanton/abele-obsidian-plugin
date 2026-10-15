@@ -124,6 +124,13 @@
           <code>{{ message.toolName }}</code
           ><span>{{ toolSummary }}</span>
         </span>
+        <!-- A node call refused for want of access: the reason by name and the way through. -->
+        <NodeAccessRefusal
+          v-if="message.nodeAccessRefusal"
+          :refusal="message.nodeAccessRefusal"
+          :given="nodeAccessGiven"
+          @act="emit('node-access', $event)"
+        />
         <AiChatMessageDetails
           v-if="expanded"
           :message="message"
@@ -369,6 +376,8 @@ import Icon from './obsidian/Icon.vue'
 import TreeItem from './obsidian/TreeItem.vue'
 import StatusDot from './obsidian/StatusDot.vue'
 import AiReplyOriginalDialog from './AiReplyOriginalDialog.vue'
+import NodeAccessRefusal from './chat/NodeAccessRefusal.vue'
+import type { NodeAccessRefusal as Refusal } from '@/ai/tools/node/accessRefusal'
 import AiChatMessageDetails from './AiChatMessageDetails.vue'
 import AiChatMessageInterceptor from './AiChatMessageInterceptor.vue'
 import { HIGHLIGHT_COLORS, type HighlightColor } from '@/reader/highlights'
@@ -419,6 +428,8 @@ const props = defineProps<{
   canReply?: boolean
   /** Messages this question replies to that are not in the branch on screen. */
   replyGone?: string[]
+  /** The chat has since been given the access a refused node call wanted. */
+  nodeAccessGiven?: boolean
   /** Whether "Rewind" is offered on a user message: a chat that keeps a rewind log. */
   canRewind?: boolean
   /** This user message's turn changed files that can still be put back. */
@@ -454,6 +465,8 @@ const emit = defineEmits<{
   (e: 'reply', to: ChatReplyTo): void
   /** Go to the words a place in this question replies to. */
   (e: 'show-reply', to: ChatReplyTo): void
+  /** A refused node call's way through was pressed. */
+  (e: 'node-access', refusal: Refusal): void
   /** Take back file changes: everything from this message on, or this turn's alone. */
   (e: 'rewind', messageId: string, mode: 'since' | 'turn'): void
   (e: 'highlight', messageId: string, quote: string, start: number, color: HighlightColor): void

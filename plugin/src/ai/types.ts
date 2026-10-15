@@ -1,3 +1,4 @@
+import type { NodeAccessRefusal } from './tools/node/accessRefusal'
 import { DEFAULT_REQUEST_TIMEOUT_SECONDS } from './requestTimeout'
 import { DEFAULT_MEMORY_TEMPLATE } from './agents/memory'
 import type { ReplyHighlight, ReplyProposal, ReplyRevision } from './replyAnnotations'
@@ -702,6 +703,11 @@ export interface ChatMessage {
   decorationOperations?: ChatDecorationOperation[]
   /** A side agent's proposal; never applied by the tool itself. */
   replyProposal?: ReplyProposal
+  /**
+   * A node tool refused for want of access, with where it wanted to go: the call's line offers
+   * what would let it through (`ai/tools/node/accessRefusal.ts`).
+   */
+  nodeAccessRefusal?: NodeAccessRefusal
 }
 
 /** Where a comment chat sits: the note holding its marker, and the text it was made on. */

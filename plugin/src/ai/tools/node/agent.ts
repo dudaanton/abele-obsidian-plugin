@@ -8,6 +8,7 @@ import type { AgentTool, AgentToolResult } from '../../client'
 import type { ChatSession } from '../../ChatSession'
 import { readNodeText } from '@/node/NodeFilesModel'
 import { NodeMutationStore, nodeMutationKey, type NodeMutationRecord } from './mutations'
+import { NodeAccessRefusalError, type NodeAccessWant } from './accessRefusal'
 import {
   type NodeScopeLedger,
   type NodeScopeTarget,
@@ -119,7 +120,8 @@ const targetOf = (session: NodeScopeChat, params: Record<string, unknown>): Node
     }
     // A chat given one folder or worktree reads there without naming it.
     const scopes = nodeScopeEntries(session)
-    if (!scopes.length) throw new Error(NO_NODE_ACCESS)
+    if (!scopes.length)
+      throw new NodeAccessRefusalError(NO_NODE_ACCESS, { kind: 'no-access', node_id: '' })
     const [only] = scopes
     if (scopes.length === 1 && only.kind === 'target')
       return { node_id: only.node_id, project_id: only.project_id, target: only.target }
@@ -156,6 +158,7 @@ export async function validateNodeTarget(
       throw new Error('The selected plain folder is missing or changed identity')
   } else {
     let cursor: string | undefined
+    const known: string[] = []
     for (let page = 0; page < 64; page++) {
       guard()
       const result = await client.repository.worktrees({
@@ -164,6 +167,7 @@ export async function validateNodeTarget(
         limit: 256,
       })
       guard()
+      known.push(...result.entries.map((entry) => entry.branch ?? entry.worktree_id))
       const found = result.entries.find(
         (entry) => entry.worktree_id === nodeTargetId(target.target)
       )
@@ -176,7 +180,13 @@ export async function validateNodeTarget(
       if (result.cursor === cursor) throw new Error('Invalid node catalogue cursor')
       cursor = result.cursor
     }
-    throw new Error('The selected worktree is not in this registered project')
+    throw new NodeAccessRefusalError('The selected worktree is not in this registered project', {
+      kind: 'no-worktree',
+      node_id: target.node_id,
+      project_id: target.project_id,
+      wanted: nodeTargetId(target.target),
+      known,
+    })
   }
 }
 
@@ -288,19 +298,26 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
         return page({ host, session, tool: name, guard, text: value, expires: Date.now() + 600000 })
       }
       const scopes = nodeScopeEntries(session)
-      const admittedConnection = (node: string) => {
-        if (!scopes.length) throw new Error(NO_NODE_ACCESS)
+      // Where the call wanted to go, for a refusal the chat can act on.
+      const admittedConnection = (node: string, want: Omit<NodeAccessWant, 'node_id'> = {}) => {
+        const place = { node_id: node, ...want }
+        if (!scopes.length)
+          throw new NodeAccessRefusalError(NO_NODE_ACCESS, { kind: 'no-access', ...place })
         if (!scopes.some((entry) => entry.node_id === node))
-          throw new Error(
+          throw new NodeAccessRefusalError(
             `Node ${JSON.stringify(node)} is not in this chat's node access. This chat may use ${[
               ...new Set(scopes.map((entry) => JSON.stringify(entry.node_id))),
-            ].join(', ')}; node_nodes lists them. ${GIVE_ACCESS}`
+            ].join(', ')}; node_nodes lists them. ${GIVE_ACCESS}`,
+            { kind: 'no-access', ...place }
           )
         const connection = host.connection(node, session),
           principal = connection.principal(),
           generation = connection.authorizationGeneration
         if (!host.ledger.approvedNode(session, node, principal))
-          throw new Error(NODE_ACCESS_NOT_APPROVED)
+          throw new NodeAccessRefusalError(NODE_ACCESS_NOT_APPROVED, {
+            kind: 'not-approved',
+            ...place,
+          })
         checks.push(host.ledger.guardNode(session, node, principal))
         const identity = session.nodeScopeIdentity,
           conversation = session.conversationVersion.value,
@@ -308,7 +325,10 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
         const scope = JSON.stringify(scopes)
         checks.push(() => {
           if (!connection.client.connected)
-            throw new Error('Node offline; reconnect before agent file operations')
+            throw new NodeAccessRefusalError(
+              'Node offline; reconnect before agent file operations. The person connects it from the Node panel.',
+              { kind: 'offline', node_id: node }
+            )
           if (
             principal !== connection.principal() ||
             generation !== connection.authorizationGeneration ||
@@ -460,7 +480,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
         const requested = text(params, 'node', selected?.node_id)
         const node = host.nodeId?.(requested) ?? requested,
           project = text(params, 'project', selected?.project_id)
-        const connection = admittedConnection(node)
+        const connection = admittedConnection(node, { project_id: project })
         const scopes = host.ledger.approvedEntries(session, node, connection.principal())
         if (
           !scopes.some(
@@ -468,7 +488,10 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
               entry.node_id === node && (entry.kind === 'node' || entry.project_id === project)
           )
         )
-          throw new Error('Folder is outside node scope')
+          throw new NodeAccessRefusalError(
+            `Folder ${JSON.stringify(project)} is not in this chat's node access. ${GIVE_ACCESS}`,
+            { kind: 'no-access', node_id: node, project_id: project }
+          )
         const entries = [],
           omissions: string[] = []
         let cursor: string | undefined,
@@ -533,7 +556,12 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
         if (retry && (!candidate.client.connected || candidate.principal() !== retry.principal))
           return pendingMutation(retry, 'outcome_unknown')
       }
-      const connection = admittedConnection(target.node_id),
+      const wanted = {
+        project_id: target.project_id,
+        target: target.target,
+        ...(NODE_MUTATION_TOOLS.includes(name) ? { access: 'edit' as const } : {}),
+      }
+      const connection = admittedConnection(target.node_id, wanted),
         client = connection.client
       // The node is asked about a folder only once this chat may reach it.
       if (
@@ -541,8 +569,9 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
           .approvedEntries(session, target.node_id, connection.principal())
           .some((entry) => entry.kind === 'node' || entry.project_id === target.project_id)
       )
-        throw new Error(
-          `Folder ${JSON.stringify(target.project_id)} is not in this chat's node access. ${CHOOSE_TARGET}`
+        throw new NodeAccessRefusalError(
+          `Folder ${JSON.stringify(target.project_id)} is not in this chat's node access. ${CHOOSE_TARGET} ${GIVE_ACCESS}`,
+          { kind: 'no-access', node_id: target.node_id, ...wanted }
         )
       await safe(() => resolveNodeTarget(client, target, scopes, guard))
       const id = nodeTargetId(target.target),

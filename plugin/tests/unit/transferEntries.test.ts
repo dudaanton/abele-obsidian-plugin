@@ -91,6 +91,23 @@ describe('tool discovery travelling with agents', () => {
       )
     }
   })
+
+  it('carries when each section is open and the agent’s own words for it', () => {
+    const source = settings()
+    source.ai.agents = [
+      createAgent({
+        id: 'sample-section-agent',
+        toolSectionOpening: { nodes: 'always' },
+        toolSectionDescriptions: { maps: 'Sample words.' },
+      }),
+    ]
+    const entry = find(collectEntries(source), 'ai-agents', 'sample-section-agent')!
+    const agent = applyEntries([entry], settings()).ai.agents.find(
+      (a) => a.id === 'sample-section-agent'
+    )
+    expect(agent?.toolSectionOpening).toEqual({ nodes: 'always' })
+    expect(agent?.toolSectionDescriptions).toEqual({ maps: 'Sample words.' })
+  })
 })
 
 describe('the skills folder travelling', () => {

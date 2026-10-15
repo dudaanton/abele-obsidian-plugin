@@ -1074,6 +1074,10 @@ sections open before the chat's own history — those a delegated run inherited 
 or those carried over from `revealedToolGroups`, the legacy list of tool groups revealed before
 sections existed. These are discovery state, not permissions; every request still filters tools
 by the current agent's and chat's settings. Starting a new chat clears them.
+With sections an agent may also keep `toolSectionOpening` (section id, such as `nodes`, →
+`always` or `on-request`; absent means the section's default, on request) and
+`toolSectionDescriptions` (section id → the owner's own words for what the section is for, used
+in place of the default and of a global description override). Both travel with the agent.
 Do not edit these records by hand.
 
 Chat metadata `overrides.nodeScope` stores remote scope separately from vault paths:
@@ -1394,6 +1398,14 @@ or orange). They are owner annotations, not markdown inserted in `content`. They
 chat file and survive reopen and file sync. Provider history does not include their colours or
 turn them into instructions or emphasis. A highlight whose exact anchor no longer matches is
 not relocated to another occurrence; its removal remains available in the message actions.
+
+A node tool-call `msg` refused for want of access may carry `nodeAccessRefusal`: `kind`
+(`no-access`, `not-approved`, `no-worktree` or `offline`), `node_id` (empty when the chat had no
+node access at all), and where known `project_id`, `target` (`kind` with `worktree_id` or
+`workspace_id`), `access` (`edit` when the call would have changed files where the chat may only
+read), `wanted` and `known` (the worktree asked for and the branches there are). It is what the
+chat shows under the call with its way through; it grants nothing, and the agent reads the call's
+text result only. Giving access afterwards never repeats the call.
 
 A comment tool-call `msg` may carry `replyProposal`: `id`, `parent` (chat path), `message` (parent
 reply id), `before` (expected full source), `from` and `old` (verified source passage), `text`

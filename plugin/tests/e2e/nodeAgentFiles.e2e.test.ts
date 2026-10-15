@@ -165,12 +165,12 @@ it('lets an ordinary chat find, read and edit project files on a node once the c
     expect(without.tools).toEqual(expect.arrayContaining(['node_nodes', 'node_read', 'node_edit']))
     expect(without.calls.map((c) => c.name)).toEqual(['open_nodes', 'node_nodes', 'node_read'])
     expect(without.calls[0].result, JSON.stringify(without)).toMatch(
-      /Give the Obsidian chat access/
+      /Give a chat access/
     )
     for (const call of without.calls.slice(1))
       expect(call.result, JSON.stringify(without)).toMatch(/access/i)
     for (const call of without.calls.slice(1))
-      expect(call.result, JSON.stringify(without)).toMatch(/Give the Obsidian chat access/)
+      expect(call.result, JSON.stringify(without)).toMatch(/Give a chat access/)
 
     // The access the node panel's row menu gives: one worktree, read and edit.
     evalAsync(`(async()=>{

@@ -212,7 +212,8 @@ describe('conversation presentation', () => {
     const input = chat.findComponent({ name: 'AiChatInput' })
     expect(input.props('scopeCode')).toBe('3')
     expect(input.props('scopeLabel')).toBe(
-      'Access: file: Sample/reference.md · folder: Sample/Pages · sample-node / sample-project / sample-workspace, read'
+      // Node places are said by name; with no node here to ask, the ids stand in for the names.
+      'Access: file: Sample/reference.md · folder: Sample/Pages · sample-node node · sample-project · worktree sample-workspace · can read files'
     )
   })
   it('passes background question and approval state to the tab dots', async () => {

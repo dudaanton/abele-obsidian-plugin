@@ -163,7 +163,7 @@ describe('the node tools a person switches on in the agent settings', () => {
   it('says how the person gives node access when a chat without it names no open repository tab', async () => {
     const { call } = setup()
     await expect(call('node_read', { project: 'unknown-project' })).rejects.toThrow(
-      /Give the Obsidian chat access/
+      /Give a chat access/
     )
   })
 })

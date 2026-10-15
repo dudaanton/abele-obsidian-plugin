@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { SessionOverrides } from './agents/types'
+import { NodeAccessRefusalError } from './tools/node/accessRefusal'
 
 const id = z.string().min(1).max(128)
 // Chat configuration, not an RPC or a daemon authorization grant.
@@ -159,13 +160,16 @@ export class NodeScopeLedger {
       conversation = chat.conversationVersion.value,
       branch = chat.branchSelectionVersion
     const check = () => {
+      // No approval here at all is what the person can fix with one press on this device.
+      if (!identity || !approval || !this.approvedNode(chat, node, principal))
+        throw new NodeAccessRefusalError(
+          'Local owner node scope approval is missing, changed or revoked for this chat',
+          { kind: 'not-approved', node_id: node }
+        )
       if (
-        !identity ||
         chat.nodeScopeIdentity !== identity ||
-        !approval ||
         this.approvals[identity] !== approval ||
         normalized(chat) !== scope ||
-        !this.approvedNode(chat, node, principal) ||
         chat.conversationVersion.value !== conversation ||
         chat.branchSelectionVersion !== branch
       )
@@ -190,7 +194,18 @@ export class NodeScopeLedger {
           coversNodeScope(entry, target, access)
         )
       )
-        throw new Error('Local owner node scope approval is missing or revoked for this target')
+        throw new NodeAccessRefusalError(
+          access === 'edit'
+            ? 'This chat may only read here, not change files. The person gives it read and edit access with Give this chat access under this call, or in Node access.'
+            : 'Local owner node scope approval is missing or revoked for this target',
+          {
+            kind: 'no-access',
+            node_id: target.node_id,
+            project_id: target.project_id,
+            target: target.target,
+            ...(access === 'edit' ? { access } : {}),
+          }
+        )
     }
     check()
     return check

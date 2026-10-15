@@ -32,6 +32,15 @@
       <slot />
     </div>
   </TreeItem>
+  <!-- A node call in the run was refused for want of access: its way through stays in sight
+       with the run folded; opened, it is on the call's own line. -->
+  <NodeAccessRefusal
+    v-if="!open && refused"
+    class="abele-chat-run__refusal"
+    :refusal="refused"
+    :given="nodeAccessGiven?.(refused)"
+    @act="emit('node-access', $event)"
+  />
 </template>
 
 <script setup lang="ts">
@@ -39,6 +48,8 @@ import { computed, ref, watchEffect } from 'vue'
 import { setTooltip } from 'obsidian'
 import TreeItem from './obsidian/TreeItem.vue'
 import Icon from './obsidian/Icon.vue'
+import NodeAccessRefusal from './chat/NodeAccessRefusal.vue'
+import type { NodeAccessRefusal as NodeAccessRefusalData } from '@/ai/tools/node/accessRefusal'
 import type { ChatMessage } from '@/ai/types'
 import { KIND_ICON, runKind, runState, runSummary, type RunState } from '@/ai/toolRuns'
 
@@ -48,8 +59,17 @@ const props = defineProps<{
   open: boolean
   /** Ways the chat went from a call inside the run, when it branched there. */
   forks?: number
+  /** Whether the chat has since been given what a refused node call wanted. */
+  nodeAccessGiven?: (refusal: NodeAccessRefusalData) => boolean
 }>()
-const emit = defineEmits<{ (e: 'update:open', open: boolean): void }>()
+const emit = defineEmits<{
+  (e: 'update:open', open: boolean): void
+  (e: 'node-access', refusal: NodeAccessRefusalData): void
+}>()
+/** The last node call in the run refused for want of access. */
+const refused = computed(
+  () => [...props.calls].reverse().find((c) => c.nodeAccessRefusal)?.nodeAccessRefusal
+)
 
 const STATE_LABEL: Record<RunState, string> = {
   running: 'The agent is working on it',

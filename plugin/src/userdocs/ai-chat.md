@@ -308,7 +308,7 @@ pushing, editing files and automatic repair of jobs needing attention are not of
 ## Offering tools by section
 
 Open an agent on **Settings → Abele → AI Agent → Agents**, then its **Access** tab.
-Under **Tools**, **Tool discovery** chooses between **By section** (the default) and
+Under **Tools**, **Offer tools** chooses between **By section** (the default) and
 **All at once**. By section starts with the file tools, skills, the reference and questions,
 plus one entry per tool group — Nodes, Tasks, Finance, Canvas, Maps and so on — that says what
 the group is for. When the conversation needs one, the agent opens it and gets its tools, how
@@ -318,9 +318,26 @@ gives the agent every enabled tool immediately, which costs more on every messag
 A section is listed only if at least one of its tools is enabled. Opening it never turns on an
 Off tool, and Ask tools still ask for approval. Open sections stay with the branch of the
 conversation: going back to before the agent opened one closes it again. A chat with node scope
-has Nodes open from the start. The words each section tells the agent can be changed under
-**Tool descriptions**, like any tool's. The choice travels with the agent when you transfer
-settings.
+has Nodes open from the start. Beside each section's name, **Always open** gives the agent its
+tools from the first message and **On request** (the default) waits for the agent to open it.
+Under the name is what the section tells the agent; the pencil puts it in this agent's own
+words, and **Reset to default** brings back the original. The words can also be changed for
+every agent under **Tool descriptions**; an agent's own words win. All of this travels with the
+agent when you transfer settings.
+
+Nodes shows three actions instead of a row per tool: **Read files and search**, **Edit files**
+and **Worktrees**, each with Off, Ask or Auto. The count under an action opens its tools, each
+with its own choice; **Mixed** means they differ. These say what the agent may do at all; where
+it may do it is each chat's node access.
+
+When a node call is refused because the chat cannot reach that place, a line under the call
+says what was missing by name. **Give this chat access** opens the chat's node access with the
+node, folder and worktree already chosen; **Approve on this device** confirms access that
+arrived from another device; **Open the Node panel** is for a node that is not connected. After
+access is given the line says so; ask the agent to try again, it does not retry by itself. In
+the Node panel, right-click a folder or worktree and choose **Give a chat access…** to pick a
+chat: the open one first, then the rest by when they were last used, each with its agent and
+last question.
 
 ## Saved keys in requests
 

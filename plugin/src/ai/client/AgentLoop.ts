@@ -532,8 +532,7 @@ export class AgentLoop {
       toolResult = await tool.execute(tc.id, args, signal)
     } catch (err: unknown) {
       if (signal.aborted) return this.interruptTool(tc, started ? 'interrupted' : 'not-run')
-      const msg = err instanceof Error ? err.message : String(err)
-      toolResult = { content: [{ type: 'text', text: msg }] }
+      toolResult = failedToolResult(err)
       isError = true
     }
 
@@ -557,4 +556,14 @@ export class AgentLoop {
       ...(toolResult.stored ? { stored: toolResult.stored } : {}),
     }
   }
+}
+
+/**
+ * What a tool that threw answers: its message for the model, and whatever the error carries for
+ * the chat to show beside the call (a node refusal's place and way through).
+ */
+export function failedToolResult(err: unknown): AgentToolResult {
+  const text = err instanceof Error ? err.message : String(err)
+  const details = (err as { toolDetails?: unknown } | null)?.toolDetails
+  return { content: [{ type: 'text', text }], ...(details ? { details } : {}) }
 }

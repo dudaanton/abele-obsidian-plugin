@@ -314,3 +314,87 @@ export function nodeSectionLive(
   )
   return lines.join('\n')
 }
+
+/** The settings group every node tool is listed under, and the node section opens. */
+export const NODE_GROUP = 'Nodes'
+
+/** Whether a section stands open from the first request or opens when the agent asks. */
+export type SectionOpening = 'always' | 'on-request'
+
+interface SectionSettings {
+  toolSectionOpening?: Readonly<Record<string, SectionOpening>>
+  toolSectionDescriptions?: Readonly<Record<string, string>>
+}
+
+/**
+ * When a group's section is open for an agent. The always-loaded groups are open whatever it
+ * says; every other section opens on request unless the agent set it to always.
+ */
+export function sectionOpening(
+  group: string,
+  agent: SectionSettings | null | undefined
+): SectionOpening {
+  if (ALWAYS_LOADED_GROUPS.has(group)) return 'always'
+  return agent?.toolSectionOpening?.[sectionIdOfGroup(group)] === 'always' ? 'always' : 'on-request'
+}
+
+/** The section ids an agent keeps open from the first request, in a stable order. */
+export function alwaysOpenSections(agent: SectionSettings | null | undefined): string[] {
+  return Object.entries(agent?.toolSectionOpening ?? {})
+    .filter(([, opening]) => opening === 'always')
+    .map(([id]) => id)
+    .sort()
+}
+
+/** An agent's own words for its sections, as description overrides keyed by the open tool. */
+export function agentSectionOverrides(
+  agent: SectionSettings | null | undefined
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(agent?.toolSectionDescriptions ?? {})
+      .filter(([, text]) => text.trim())
+      .map(([id, text]) => [sectionToolName(id), text])
+  )
+}
+
+/** What a group's section says of itself by default; nothing for the always-loaded groups. */
+export function sectionDefaultDescription(group: string): string {
+  return TOOL_SECTIONS.find((s) => s.group === group)?.description ?? ''
+}
+
+/**
+ * What the node section's tools do, by action: one choice of Off, Ask or Auto each, instead of a
+ * row per tool. In the order a person thinks of them; a tool no other action claims is reading,
+ * the safe side.
+ */
+export const NODE_ACTIONS: readonly {
+  id: 'read' | 'edit' | 'worktrees'
+  label: string
+  desc: string
+}[] = [
+  {
+    id: 'read',
+    label: 'Read files and search',
+    desc: 'Open, list and search files; status, diffs and history in git.',
+  },
+  {
+    id: 'edit',
+    label: 'Edit files',
+    desc: 'Create, change, move, copy and delete files.',
+  },
+  {
+    id: 'worktrees',
+    label: 'Worktrees',
+    desc: 'List a folder’s worktrees and switch between them.',
+  },
+]
+
+const NODE_EDIT_TOOL = /^node_(write|edit|replace|mv|cp|rm|path_file_operations|propose_edit)$/
+const NODE_WORKTREE_TOOL = /^(list_node_worktrees|node_worktree_switch)$/
+
+/** The action a node tool belongs to. */
+export function nodeAction(name: string): (typeof NODE_ACTIONS)[number]['id'] {
+  if (NODE_EDIT_TOOL.test(name)) return 'edit'
+  if (NODE_WORKTREE_TOOL.test(name)) return 'worktrees'
+  return 'read'
+}

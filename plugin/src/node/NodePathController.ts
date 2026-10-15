@@ -282,7 +282,7 @@ function rowMenu(
         if (root) await model.select(root.id)
       }
     )
-  add('Give the Obsidian chat access', 'messages-square', !!owner, () =>
+  add('Give a chat access…', 'folder-key', !!owner, () =>
     owner!.grant(freezeNodePathContext({ target }))
   )
   add('Copy path', 'copy', true, () =>
