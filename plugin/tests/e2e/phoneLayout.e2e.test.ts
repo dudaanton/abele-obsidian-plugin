@@ -685,7 +685,7 @@ const probeScript = `(async () => {
         await screen('setup ' + label, modal, modal && modal.querySelector('.abele-modal__body'))
         report['setup ' + label].clipped = clipped
         if (label === 'chat' && modal) {
-          report['setup chat'].pattern = !!modal.querySelector('input[placeholder="Every message"]')
+          report['setup chat'].pattern = !!modal.querySelector('input[placeholder="Everything"]')
           const replyRow = () => [...modal.querySelectorAll('.setting-item')].find(r => r.querySelector('.setting-item-name')?.textContent.trim() === 'Reply only')
           report['setup chat'].replyToggle = !!replyRow()?.querySelector('.checkbox-container')
           guardedChat.interceptor.agentId.value = replyReviewer.id

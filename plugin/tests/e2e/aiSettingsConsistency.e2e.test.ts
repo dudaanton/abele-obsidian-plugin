@@ -140,7 +140,7 @@ it.skipIf(!available).each([
       await wait()
       qa(document, '.abele-chat-setup .abele-tabs__tab').find(tab => tab.textContent.trim() === 'Chat').click()
       await wait()
-      const field = document.querySelector('input[placeholder="Every message"]')
+      const field = document.querySelector('input[placeholder="Everything"]')
       field.value = '['; field.dispatchEvent(new Event('input', { bubbles: true }))
       await wait()
       report.patternKept = session.interceptor.pattern.value === '^sample' && !!document.querySelector('.mod-warning')
