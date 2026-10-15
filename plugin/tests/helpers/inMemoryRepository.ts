@@ -215,10 +215,17 @@ export class InMemoryRepository implements RepositorySource {
       text,
     }
   }
-  async compare(base: string | undefined, head: string, direct = false) {
+  async compare(
+    base: string | undefined,
+    head: string,
+    direct = false,
+    _mode?: unknown,
+    baseName?: string
+  ) {
     const index = await this.comparison(base ?? 'main', head)
     return {
       base: base ?? 'main',
+      ...(baseName ? { baseName } : {}),
       head,
       direct,
       status: index.changes.length ? 'ahead' : 'identical',

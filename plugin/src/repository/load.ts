@@ -13,6 +13,12 @@ export function loadRepositoryLocation(source: RepositorySource, location: Repos
     case 'commit':
       return source.commit(location.commit)
     case 'comparison':
-      return source.compare(location.base, location.head, location.direct, location.mode)
+      return source.compare(
+        location.base,
+        location.head,
+        location.direct,
+        location.mode,
+        location.baseName
+      )
   }
 }

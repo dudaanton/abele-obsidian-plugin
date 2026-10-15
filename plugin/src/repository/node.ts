@@ -159,8 +159,15 @@ export class NodeRepositorySource implements RepositorySource {
         link({ kind: 'file', ref, path, ...(line ? { lines: { from: line, to: line } } : {}) }),
       folder: (ref, path) => link({ kind: 'folder', ref, path }),
       commit: (commit) => link({ kind: 'commit', commit }),
-      comparison: (base, head, direct = true, mode) =>
-        link({ kind: 'comparison', base, head, direct, ...(mode ? { mode } : {}) }),
+      comparison: (base, head, direct = true, mode, baseName) =>
+        link({
+          kind: 'comparison',
+          base,
+          ...(baseName && baseName !== base ? { baseName } : {}),
+          head,
+          direct,
+          ...(mode ? { mode } : {}),
+        }),
       blobLink: (ref, path, lines) => ({
         label: `${path} · ${nodeRevisionLabel(ref)} · ${lines.from}–${lines.to}`,
         url: link({ kind: 'file', ref, path, lines }),
@@ -723,6 +730,7 @@ export class NodeRepositorySource implements RepositorySource {
           : {}),
         additions: 0,
         deletions: 0,
+        countsPending: true,
         hash: e.path,
         blobUrl: this.navigation.file(
           e.status.startsWith('D') && manifest.base.kind !== 'empty'
@@ -749,6 +757,8 @@ export class NodeRepositorySource implements RepositorySource {
           const lines = patch ? parsePatch(patch) : []
           file.additions = lines.filter((l) => l.type === 'add').length
           file.deletions = lines.filter((l) => l.type === 'del').length
+          // A file with no text patch has no lines to count: its counts stay unknown, never 0.
+          file.countsPending = !patch
         }).catch((error) => {
           pending = undefined
           throw isStale(error) ? staleComparison() : error
@@ -760,7 +770,8 @@ export class NodeRepositorySource implements RepositorySource {
     base: string | undefined,
     head: string,
     direct = true,
-    mode?: RepositoryComparisonMode
+    mode?: RepositoryComparisonMode,
+    baseName?: string
   ): Promise<CompareData> {
     const from = base ?? (await this.defaultBranch()),
       manifest = await this.manifest(from, head, mode ?? (direct ? 'endpoint' : 'merge-base'))
@@ -800,6 +811,7 @@ export class NodeRepositorySource implements RepositorySource {
     }
     return {
       base: baseSha,
+      ...(baseName && baseName !== baseSha ? { baseName } : {}),
       head: headSha,
       direct: manifest.mode !== 'merge-base',
       mode: manifest.mode,
@@ -819,7 +831,7 @@ export class NodeRepositorySource implements RepositorySource {
       deletions: 0,
       headSha,
       mergeBaseSha: baseSha,
-      url: this.navigation.comparison(baseSha, headSha, direct, manifest.mode),
+      url: this.navigation.comparison(baseSha, headSha, direct, manifest.mode, baseName),
       note:
         manifest.head.kind === 'working'
           ? 'Files can change while you look. Refresh to update.'

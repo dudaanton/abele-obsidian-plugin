@@ -47,9 +47,12 @@
         </template>
         <template v-else>{{ file.path }}</template>
       </span>
+      <!-- Counts a node only learns from the diff stay out until it has loaded: never a false 0. -->
       <span class="abele-github-file__stats">
-        <span class="abele-github-file__add">+{{ file.additions }}</span>
-        <span class="abele-github-file__del">−{{ file.deletions }}</span>
+        <template v-if="!countsPending">
+          <span class="abele-github-file__add">+{{ file.additions }}</span>
+          <span class="abele-github-file__del">−{{ file.deletions }}</span>
+        </template>
       </span>
       <span v-if="file.staged || file.unstaged || file.untracked" class="abele-github-file__note">{{
         file.untracked
@@ -219,6 +222,10 @@ watch(
 )
 onBeforeUnmount(() => {
   ++patchGeneration
+})
+const countsPending = computed(() => {
+  void patchEpoch.value
+  return !!props.file.countsPending
 })
 const lines = computed(() => {
   void patchEpoch.value

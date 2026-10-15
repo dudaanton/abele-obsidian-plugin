@@ -49,9 +49,12 @@ export function useItemPresentation(options: PresentationOptions) {
     if (source.value?.identity.provider === 'node' && compared.value)
       return {
         ...head,
-        title: `${shortNodeRef(compared.value.base)} → ${shortNodeRef(compared.value.head)}`,
+        // The name the base was chosen by; the commit it is held at goes into the muted line.
+        title: `${compared.value.baseName ?? shortNodeRef(compared.value.base)} → ${shortNodeRef(compared.value.head)}`,
         state: undefined,
-        meta: [],
+        meta: compared.value.baseName
+          ? [`${compared.value.baseName} at ${shortNodeRef(compared.value.base)}`]
+          : [],
       }
     return head
   })

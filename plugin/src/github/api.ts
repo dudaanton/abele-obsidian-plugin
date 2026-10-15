@@ -112,6 +112,8 @@ export interface DiffFile {
   status: string
   additions: number
   deletions: number
+  /** The counts are not known until the diff loads (a node lists files without them). */
+  countsPending?: boolean
   /** Absent for binary files and for a file whose diff GitHub will not send whole. */
   patch?: string
   /** SHA-256 of the path, as in `#diff-<hash>`. */

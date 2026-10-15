@@ -225,6 +225,29 @@ describe('node repository source through the validated client contract', () => {
     )
     source.dispose()
   })
+  it('leaves line counts unknown until the diff of a file loads, then counts every added and removed line', async () => {
+    const { source } = fixture()
+    const compared = await source.compare(BASE, WORKING_TREE, true)
+    const [file] = compared.files
+    expect(file.countsPending).toBe(true)
+    await file.loadPatch!()
+    expect(file).toMatchObject({ countsPending: false, additions: 1, deletions: 1 })
+    source.dispose()
+  })
+  it('keeps the name a version was chosen by beside the commit it is compared at', async () => {
+    const { source } = fixture()
+    const url = source.navigation.comparison(BASE, WORKING_TREE, true, undefined, 'main')
+    const at = parseNodeRepositoryLink(url)!.location
+    expect(at).toMatchObject({ kind: 'comparison', base: BASE, baseName: 'main' })
+    const compared = await source.compare(BASE, WORKING_TREE, true, undefined, 'main')
+    expect(compared.base).toBe(BASE)
+    expect(compared.baseName).toBe('main')
+    expect(parseNodeRepositoryLink(compared.url)!.location).toMatchObject({ baseName: 'main' })
+    expect(() =>
+      source.navigation.comparison(BASE, WORKING_TREE, true, undefined, 'bad\nname')
+    ).toThrow('Invalid node repository location')
+    source.dispose()
+  })
   it('never retries a comparison of two commits with a fresh observation', async () => {
     let stale = 1
     const f = nodeRepositoryFixture({

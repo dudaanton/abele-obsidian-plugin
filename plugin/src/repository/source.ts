@@ -34,7 +34,15 @@ export type RepositoryLocation =
   | { kind: 'home'; ref?: string }
   | { kind: 'file' | 'folder'; ref: string; path: string; lines?: LineSpan; contentId?: string }
   | { kind: 'commit'; commit: string }
-  | { kind: 'comparison'; base?: string; head: string; direct?: boolean; mode?: RepositoryComparisonMode }
+  | {
+      kind: 'comparison'
+      base?: string
+      /** The name `base` was chosen by; the comparison itself stays at `base`. */
+      baseName?: string
+      head: string
+      direct?: boolean
+      mode?: RepositoryComparisonMode
+    }
 export interface RepositoryTarget {
   source: RepositoryIdentity
   revision?: RepositoryRevision
@@ -88,7 +96,13 @@ export interface RepositoryNavigation {
   file(ref: string, path: string, line?: number): string
   folder(ref: string, path: string): string
   commit(commit: string): string
-  comparison(base: string, head: string, direct?: boolean, mode?: RepositoryComparisonMode): string
+  comparison(
+    base: string,
+    head: string,
+    direct?: boolean,
+    mode?: RepositoryComparisonMode,
+    baseName?: string
+  ): string
   blobLink(commit: string, path: string, lines: LineSpan): RepositoryLink
 }
 export interface GithubRepositoryCapabilities {
@@ -127,7 +141,13 @@ export interface RepositorySource {
   /** Identity of the bytes just read; never a new mutable read. */
   contentIdentity?(ref: string, path: string): Promise<string | undefined>
   status(): Promise<RepositoryStatus>
-  compare(base: string | undefined, head: string, direct?: boolean, mode?: RepositoryComparisonMode): Promise<CompareData>
+  compare(
+    base: string | undefined,
+    head: string,
+    direct?: boolean,
+    mode?: RepositoryComparisonMode,
+    baseName?: string
+  ): Promise<CompareData>
   comparison(base: string, head: string, signal?: AbortSignal): Promise<ComparisonIndex>
   comparisonFile(
     index: ComparisonIndex,

@@ -58,6 +58,8 @@ export interface CompareData {
   mode?: RepositoryComparisonMode
   /** The base as compared: for `compare/<head>`, the default branch it was compared with. */
   base: string
+  /** The name the base was chosen by, when `base` is the commit it was resolved to. */
+  baseName?: string
   head: string
   direct: boolean
   /** `ahead`, `behind`, `diverged` or `identical`. */

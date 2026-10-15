@@ -138,7 +138,8 @@ const chooseMode = (event?: MouseEvent | KeyboardEvent) => {
               props.data.base,
               props.data.head,
               mode.value !== 'merge-base',
-              mode.value as RepositoryComparisonMode
+              mode.value as RepositoryComparisonMode,
+              props.data.baseName
             ),
             false
           )

@@ -416,7 +416,9 @@ const externalMenu = (event?: MouseEvent | KeyboardEvent) => {
           repo = presentation.target!
         new BasePicker(app, source.value!, repo, (pin) => {
           basePins(app).unpin(repo, source.value!.identity)
-          open(source.value!.navigation.comparison(pin.baseSha, head, true))
+          open(
+            source.value!.navigation.comparison(pin.baseSha, head, true, undefined, pin.enteredRef)
+          )
         }).open()
       })
   )

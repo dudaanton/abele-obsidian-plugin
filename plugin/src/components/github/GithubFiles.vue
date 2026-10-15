@@ -2,8 +2,10 @@
   <div class="abele-github-files">
     <div class="abele-github-files__summary">
       {{ files.length }} {{ files.length === 1 ? 'file' : 'files' }} changed
-      <span class="abele-github-file__add">+{{ additions }}</span>
-      <span class="abele-github-file__del">−{{ deletions }}</span>
+      <template v-if="!countsPending">
+        <span class="abele-github-file__add">+{{ additions }}</span>
+        <span class="abele-github-file__del">−{{ deletions }}</span>
+      </template>
     </div>
     <div v-if="anchor && !anchored" class="abele-github-files__missing">
       The file this link points at is not among the changed files.
@@ -58,6 +60,11 @@ const holdsComment = (file: DiffFile) =>
   !!props.commentAnchor && file.reviewComments.some((c) => c.anchor === props.commentAnchor)
 
 const patchEpoch = ref(0)
+/** A total over files whose counts are not all known yet would understate the change. */
+const countsPending = computed(() => {
+  void patchEpoch.value
+  return props.files.some((f) => f.countsPending)
+})
 const additions = computed(() => { void patchEpoch.value; return props.files.reduce((n, f) => n + f.additions, 0) })
 const deletions = computed(() => { void patchEpoch.value; return props.files.reduce((n, f) => n + f.deletions, 0) })
 const anchored = computed(() => props.files.some((f) => f.hash === props.anchor?.hash))

@@ -208,6 +208,30 @@ describe('shared repository components with an in-memory source', () => {
     ])
     wrapper.unmount()
   })
+  it('titles a comparison by the name its base was chosen by and keeps the commit beside it', async () => {
+    const source = new InMemoryRepository(HEAD, { 'app.ts': 'after' })
+    source.revisions.set(BASE, { 'app.ts': 'before' })
+    const model: GithubViewModel = reactive({
+      url: '',
+      target: { ...repo, kind: 'compare', base: BASE, head: HEAD, direct: true },
+      nonce: 0,
+      tree: false,
+      screen: emptyScreen(),
+    })
+    const wrapper = mount(GithubItem, {
+      props: {
+        model,
+        enabled: true,
+        source,
+        sourceLocation: { kind: 'comparison', base: BASE, baseName: 'main', head: HEAD },
+      },
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain(`main → ${HEAD.slice(0, 7)}`)
+    expect(wrapper.text()).toContain(`main at ${BASE.slice(0, 7)}`)
+    expect(wrapper.text()).not.toContain(`${BASE.slice(0, 7)} →`)
+    wrapper.unmount()
+  })
   it('opens comparison commits through source navigation', async () => {
     const source = new InMemoryRepository(HEAD, { 'app.ts': 'after' })
     source.revisions.set(BASE, { 'app.ts': 'before' })

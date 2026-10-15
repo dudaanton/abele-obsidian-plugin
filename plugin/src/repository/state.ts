@@ -119,6 +119,11 @@ export function savedNodeTarget(
     if (!id(location.commit)) return null
   } else if (location.kind === 'comparison') {
     if (!text(location.head) || (location.base !== undefined && !text(location.base))) return null
+    if (
+      location.baseName !== undefined &&
+      (!text(location.baseName) || location.baseName.length > 255 || !location.base)
+    )
+      return null
     if (location.mode !== undefined && !['endpoint', 'merge-base', 'staged', 'unstaged'].includes(location.mode as string)) return null
   } else return null
   const selection = location.lines as Record<string, unknown> | undefined
@@ -163,6 +168,7 @@ export function savedNodeTarget(
               kind: 'comparison' as const,
               head: location.head as string,
               ...(location.base ? { base: location.base as string } : {}),
+              ...(location.baseName ? { baseName: location.baseName as string } : {}),
               direct: location.direct !== false,
               ...(location.mode ? { mode: location.mode as 'endpoint' | 'merge-base' | 'staged' | 'unstaged' } : {}),
             }
