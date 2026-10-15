@@ -76,7 +76,11 @@ function choose(value: string | null): void {
 </script>
 
 <style>
-/* Message and quote are plain paragraphs, spaced as Obsidian spaces a dialog's text. */
+/* Plain paragraphs, spaced as Obsidian spaces a dialog's text; an address breaks anywhere. */
+.abele-choice__message,
+.abele-choice__quote {
+  overflow-wrap: anywhere;
+}
 .abele-choice__items {
   display: flex;
   flex-direction: column;

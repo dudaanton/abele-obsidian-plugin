@@ -65,6 +65,8 @@ describe.skipIf(!isObsidianRunning() || !hasTestApi())(
         out.visiblePair = [...modal.bodyEl.querySelectorAll('[data-key-destination]')].some(row => row.textContent.includes(name) && row.textContent.includes(origin))
         const reopenedPicker = modal.bodyEl.querySelector('select[aria-label="Saved key"]')
         reopenedPicker.value = id; reopenedPicker.dispatchEvent(new Event('change', { bubbles: true }))
+        // The dialog redraws on its next render, as a person sees it after a pick.
+        await wait(0)
         out.reusableAddress = modal.bodyEl.querySelector('input[aria-label="Recipient address"]').value === origin
         out.reopenShot = await shot('reopened-pair')
         try {
@@ -80,7 +82,9 @@ describe.skipIf(!isObsidianRunning() || !hasTestApi())(
         }
         const errorPicker = modal.bodyEl.querySelector('select[aria-label="Saved key"]')
         errorPicker.value = 'new'; errorPicker.dispatchEvent(new Event('change', { bubbles: true }))
+        await wait(0)
         field('New key name', name); field('New key value', 'fake-unused-collision-value')
+        await wait(0)
         ;[...modal.footerEl.querySelectorAll('button')].find(b => b.textContent === 'Allow key and address').click()
         await until(() => modal.bodyEl.textContent.includes('already has that name'))
         out.actionableError = !modal.bodyEl.textContent.includes('fake-unused-collision-value') && store.get(id) === password

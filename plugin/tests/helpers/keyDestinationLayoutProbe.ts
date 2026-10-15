@@ -79,9 +79,13 @@ export const recipientLayoutProbe = String.raw`
     for (const button of body.querySelectorAll('button')) if (!button.closest('.setting-item')) unpairedActions.push(button.textContent.trim())
     for (const row of body.querySelectorAll('.setting-item')) {
       if (!row.querySelector('button')) continue
-      let sibling = row
-      while (sibling.parentElement !== body) sibling = sibling.parentElement
-      while (sibling && sibling.tagName !== 'H3') sibling = sibling.previousElementSibling
+      // The group's heading: the kit Section's own, or an h3 before the row in a hand-built body.
+      let sibling = row.closest('.abele-section')?.querySelector('.abele-section__heading')
+      if (!sibling) {
+        sibling = row
+        while (sibling.parentElement !== body) sibling = sibling.parentElement
+        while (sibling && sibling.tagName !== 'H3') sibling = sibling.previousElementSibling
+      }
       const label = row.querySelector('.setting-item-name')?.textContent.trim() ?? ''
       const description = row.querySelector('.setting-item-description')?.textContent.trim() ?? ''
       const recipient = (description.match(/https?:\/\/[^\s]+/) || label.match(/^https?:\/\/[^\s]+/) || [''])[0]
