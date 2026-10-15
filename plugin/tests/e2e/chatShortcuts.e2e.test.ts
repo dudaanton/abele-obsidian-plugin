@@ -36,6 +36,7 @@ type Mod = 'Mod' | 'Ctrl' | 'Alt' | 'Shift'
 const KEYS: Record<string, { code: string; vk: number; key?: string; shifted?: string }> = {
   w: { code: 'KeyW', vk: 87 },
   t: { code: 'KeyT', vk: 84 },
+  c: { code: 'KeyC', vk: 67 },
   '1': { code: 'Digit1', vk: 49, shifted: '!' },
   '2': { code: 'Digit2', vk: 50, shifted: '@' },
   '9': { code: 'Digit9', vk: 57, shifted: '(' },
@@ -293,9 +294,20 @@ describe.skipIf(!available)('the chat tab keys, pressed in the running app', () 
     )
   }, 60_000)
 
-  it('stops a working agent with Esc in the composer, and only then', async () => {
-    await switchTo(CHATS[0])
-    await evalLong(
+  /** The chat in front's agent made to look busy, or idle; its stop is counted, not run. */
+  const working = (on: boolean) =>
+    evalLong(
+      `(async () => {
+      const session = window.__abeleTest.ChatService.getInstance().getSessionByFile(${JSON.stringify(CHATS[0])})
+      session.isStreaming.value = ${on}
+      await new Promise((r) => setTimeout(r, 200))
+      return 'set'
+    })()`,
+      15_000
+    )
+
+  const stubAbort = () =>
+    evalLong(
       `(async () => {
       const chats = window.__abeleTest.ChatService.getInstance()
       const session = chats.getSessionByFile(${JSON.stringify(CHATS[0])})
@@ -305,31 +317,125 @@ describe.skipIf(!available)('the chat tab keys, pressed in the running app', () 
     })()`,
       15_000
     )
-    await focusComposer()
-    await press([], 'Escape')
-    expect(state().aborted).toBe(0)
 
-    await evalLong(
-      `(async () => {
-      const session = window.__abeleTest.ChatService.getInstance().getSessionByFile(${JSON.stringify(CHATS[0])})
-      session.isStreaming.value = true
-      await new Promise((r) => setTimeout(r, 200))
-      return 'working'
-    })()`,
-      15_000
-    )
-    await focusComposer()
-    await press([], 'Escape')
-    expect(state().aborted).toBe(1)
-    await evalLong(
+  const restoreAbort = () =>
+    evalLong(
       `(async () => {
       const session = window.__abeleTest.ChatService.getInstance().getSessionByFile(${JSON.stringify(CHATS[0])})
       session.isStreaming.value = false
       session.abort = window.__chatShortcuts.abort
+      window.getSelection()?.removeAllRanges()
+      window.__abeleTest.composer().set('')
       return 'restored'
     })()`,
       15_000
     )
+
+  // This case stopped the agent with Esc until the owner asked for Ctrl+C instead: the same
+  // presses, the expectation turned round — Esc stops nothing now, Ctrl+C does.
+  it('stops a working agent with Ctrl+C in the composer, and only then; Esc stops nothing', async () => {
+    await switchTo(CHATS[0])
+    await stubAbort()
+    try {
+      await focusComposer()
+      await press(['Ctrl'], 'c')
+      expect(state().aborted).toBe(0)
+
+      await working(true)
+      await focusComposer()
+      await press([], 'Escape')
+      expect(state().aborted).toBe(0)
+      await focusComposer()
+      await press(['Ctrl'], 'c')
+      expect(state().aborted).toBe(1)
+
+      // Cmd+C is copy on a Mac, never a stop.
+      if (mac) {
+        await working(true)
+        await focusComposer()
+        await press(['Mod'], 'c')
+        expect(state().aborted).toBe(1)
+      }
+    } finally {
+      await restoreAbort()
+    }
+  }, 60_000)
+
+  it('copies rather than stops while text is selected in the composer', async () => {
+    await switchTo(CHATS[0])
+    await stubAbort()
+    try {
+      await working(true)
+      await focusComposer()
+      const selected = await evalLong(
+        `(async () => {
+        const composer = window.__abeleTest.composer()
+        composer.set('several sample words')
+        const view = window.__abeleTest.noteFieldView(composer.field)
+        if (view) view.dispatch({ selection: { anchor: 0, head: 7 } })
+        else composer.keyTarget.setSelectionRange(0, 7)
+        composer.focus()
+        await new Promise((r) => setTimeout(r, 200))
+        return String(composer.hasFocus())
+      })()`,
+        15_000
+      )
+      expect(selected).toBe('true')
+      await press(['Ctrl'], 'c')
+      expect(state().aborted).toBe(0)
+      // The selection let go, the same key stops.
+      await evalLong(
+        `(async () => {
+        const composer = window.__abeleTest.composer()
+        const view = window.__abeleTest.noteFieldView(composer.field)
+        if (view) view.dispatch({ selection: { anchor: 7 } })
+        else composer.keyTarget.setSelectionRange(7, 7)
+        await new Promise((r) => setTimeout(r, 200))
+        return 'collapsed'
+      })()`,
+        15_000
+      )
+      await press(['Ctrl'], 'c')
+      expect(state().aborted).toBe(1)
+    } finally {
+      await restoreAbort()
+    }
+  }, 60_000)
+
+  it('stops from the conversation too, and copies there while text is selected', async () => {
+    await switchTo(CHATS[0])
+    await stubAbort()
+    /** The cursor on the conversation, out of the composer, with its words selected or not. */
+    const onConversation = (select: boolean) =>
+      evalLong(
+        `(async () => {
+        const leaf = app.workspace.getLeavesOfType('abele-ai-sidebar-view')[0]
+        document.activeElement?.blur?.()
+        app.workspace.setActiveLeaf(leaf, { focus: true })
+        await new Promise((r) => setTimeout(r, 300))
+        const selection = window.getSelection()
+        selection.removeAllRanges()
+        if (${select}) {
+          const label = leaf.view.containerEl.querySelector('.abele-chat-tabs__label')
+          const range = document.createRange()
+          range.selectNodeContents(label)
+          selection.addRange(range)
+        }
+        return String(!window.__abeleTest.composer().hasFocus() && app.workspace.activeLeaf === leaf)
+      })()`,
+        15_000
+      )
+    try {
+      await working(true)
+      expect(await onConversation(true)).toBe('true')
+      await press(['Ctrl'], 'c')
+      expect(state().aborted).toBe(0)
+      expect(await onConversation(false)).toBe('true')
+      await press(['Ctrl'], 'c')
+      expect(state().aborted).toBe(1)
+    } finally {
+      await restoreAbort()
+    }
   }, 60_000)
 
   it('leaves the keys to Obsidian once the cursor is in a note', async () => {
