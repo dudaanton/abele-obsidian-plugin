@@ -5,7 +5,7 @@ import { ExternalVerifyResponseSchema, kindOf } from '@abele/sync-protocol'
 import { ExternalFileHost } from './ObsidianExternalFileHost'
 import { ExternalFilePortError } from './filesystem'
 import { ExternalState } from './state'
-import { projectionPath, serializeProjection } from './projection'
+import { projectionPath, projectionMime, serializeProjection } from './projection'
 import type {
   ConnectionBinding,
   ExternalDocument,
@@ -464,7 +464,7 @@ export class AttachmentStore {
           observedVersionId: head.versionId,
           sha256: head.sha,
           size: head.size,
-          mime: 'application/octet-stream',
+          mime: projectionMime(head.wirePath),
           mtime: head.mtime,
         })
         const digest = await sha256(bytes),

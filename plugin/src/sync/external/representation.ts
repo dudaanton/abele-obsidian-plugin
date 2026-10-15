@@ -30,6 +30,7 @@ import {
   serializeProjection,
   MAX_PROJECTION_BYTES,
   projectionPath,
+  projectionMime,
 } from './projection'
 import { ExternalRecoveryRequired } from './recovery'
 import { stagingDirectory } from '../stagingDirectory'
@@ -592,7 +593,7 @@ export class ExternalRepresentation {
             observedVersionId: expected.versionId,
             sha256: expected.sha,
             size: expected.size,
-            mime: 'application/octet-stream',
+            mime: projectionMime(expected.path),
             mtime: change.mtime ?? entry.mtime,
           })
     const cut = expected.path.lastIndexOf('/')
@@ -784,7 +785,7 @@ export class ExternalRepresentation {
         )
         return
       }
-      const bytes = serializeProjection({
+      const descriptor = {
         format: 'abele.external',
         schema: 1,
         vaultId: this.document.binding.vaultId,
@@ -793,13 +794,19 @@ export class ExternalRepresentation {
         observedVersionId: expected.versionId,
         sha256: expected.sha,
         size: expected.size,
-        mime: 'application/octet-stream',
+        mime: projectionMime(expected.path),
         mtime: mtime ?? entry.mtime,
-      })
+      }
+      let bytes = serializeProjection(descriptor)
       // No replace/remove permission is inferred from equal old projection bytes. Hosts
       // without conditional retirement leave unchanged/changed originals and sidecars intact.
-      if (op.projectionDigest !== (await sha256(bytes)))
-        throw new ExternalRecoveryRequired('recorded projection bytes changed')
+      if (op.projectionDigest !== (await sha256(bytes))) {
+        // Previously journalled projections retain their exact immutable byte basis.
+        const legacy = serializeProjection({ ...descriptor, mime: 'application/octet-stream' })
+        if (op.projectionDigest !== (await sha256(legacy)))
+          throw new ExternalRecoveryRequired('recorded projection bytes changed')
+        bytes = legacy
+      }
       installationIssued = true
       const result = await this.options.installProjection(op.targetPath, bytes, op.operationId)
       this.owned()

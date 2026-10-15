@@ -4,6 +4,40 @@ import { z } from 'zod'
 export const MAX_PROJECTION_BYTES = 16 * 1024
 export const MAX_ATTACHMENT_BYTES = 200 * 1024 * 1024
 const encoder = new TextEncoder()
+const extensionMimes: Record<string, string> = {
+  pdf: 'application/pdf',
+  epub: 'application/epub+zip',
+  zip: 'application/zip',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  svg: 'image/svg+xml',
+  avif: 'image/avif',
+  heic: 'image/heic',
+  heif: 'image/heif',
+  bmp: 'image/bmp',
+  tif: 'image/tiff',
+  tiff: 'image/tiff',
+  mp3: 'audio/mpeg',
+  m4a: 'audio/mp4',
+  aac: 'audio/aac',
+  ogg: 'audio/ogg',
+  wav: 'audio/wav',
+  flac: 'audio/flac',
+  mp4: 'video/mp4',
+  m4v: 'video/mp4',
+  webm: 'video/webm',
+  mov: 'video/quicktime',
+  txt: 'text/plain',
+}
+export function projectionMime(path: string): string {
+  return (
+    extensionMimes[path.split('/').at(-1)?.split('.').at(-1)?.toLowerCase() ?? ''] ??
+    'application/octet-stream'
+  )
+}
 const mimeTypes = new Set([
   'application/octet-stream',
   'application/pdf',
@@ -20,6 +54,7 @@ const mimeTypes = new Set([
   'image/bmp',
   'image/tiff',
   'audio/mpeg',
+  'audio/aac',
   'audio/mp4',
   'audio/ogg',
   'audio/wav',
