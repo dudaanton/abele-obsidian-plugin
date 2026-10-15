@@ -199,6 +199,7 @@ describe.skipIf(!available)('canvas selection and geometry with real pointer inp
 
   it('uses two fingers for navigation without leaving an accidental card move', async () => {
     await fit()
+    shot('before-pinch')
     const before = run<string>('return await app.vault.read(app.vault.getAbstractFileByPath(path))')
     const history = run<number>('return view().documentLease.document.session.history.undo')
     const zoom = run<number>('return view().viewer.camera.zoom')
