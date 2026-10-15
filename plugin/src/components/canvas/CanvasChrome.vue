@@ -271,20 +271,6 @@
         />
       </ToolBarGroup>
       <template v-if="penStrip">
-        <!-- With a Pencil about and another tool in hand, which of pen and marker the Pencil
-             draws with: pressed, it takes the other. -->
-        <ToolBarGroup v-if="!drawing && !phone" label="Pencil">
-          <ChromeIcon
-            :key="pencilInk"
-            icon="pen-tool"
-            :tooltip="
-              pencilInk === 'marker'
-                ? 'Pencil: draws with the marker. Press for the pen'
-                : 'Pencil: draws with the pen. Press for the marker'
-            "
-            @click="c.setPencilInk(pencilInk === 'marker' ? 'pen' : 'marker')"
-          />
-        </ToolBarGroup>
         <ToolBarGroup class="abele-canvas-chrome__pen" label="Colours">
           <!-- Where the row has no room for every colour, the colour in hand stands for them and
                offers the rest; a desktop keeps one row, so the zoom column stays where it is. -->
@@ -501,9 +487,6 @@ function labelKey(e: KeyboardEvent) {
 }
 const barEl = ref<HTMLElement>()
 const drawing = computed(() => ['pen', 'marker', 'eraser', 'partial-eraser'].includes(tool.value))
-/** Once a Pencil has touched the canvas it draws whatever is in hand, so its colours stay out. */
-const pencil = computed(() => (tick.value, c.pencil()))
-const pencilInk = computed(() => (tick.value, c.pencilInk()))
 /** The tools' row: the column of zoom and undo stands under it, however tall it wraps. */
 const toolsBar = ref<{ $el: HTMLElement }>()
 /** On a desktop the row stays one row: without room for every colour, one glyph stands for them. */
@@ -559,11 +542,8 @@ function widthMenu(e: MouseEvent) {
   const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
   menu.showAtPosition({ x: r.left, y: r.bottom })
 }
-const penStrip = computed(
-  () =>
-    !['eraser', 'partial-eraser', 'lasso'].includes(tool.value) &&
-    (drawing.value || (pencil.value && !editing.value && !naming.value))
-)
+/** The pen's colours and width stand out while a pen or marker is in hand, Pencil or not. */
+const penStrip = computed(() => tool.value === 'pen' || tool.value === 'marker')
 // The colours come and go with the pen, inside a row whose own size stays the same.
 watch(
   () => [penStrip.value, compactColours.value],

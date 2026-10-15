@@ -1460,25 +1460,29 @@ describe('a Pencil on a tablet', () => {
   }
   const inkCount = (s: ReturnType<typeof setup>) =>
     ((s.document.session.graph.abele?.ink as unknown[]) ?? []).length
-  it('draws whatever tool is in hand', async () => {
+  /** A canvas with the pen in hand: the Pencil does what the tool in hand does. */
+  const drawing = () => {
     const s = setup()
     s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    s.editor.controls.useTool('pen')
+    return s
+  }
+  it('draws with the pen in hand and knows the device has a Pencil', async () => {
+    const s = drawing()
     stroke(s, 400)
     await vi.waitFor(() => expect(inkCount(s)).toBe(1))
-    expect(s.editor.controls.tool()).toBe('select')
+    expect(s.editor.controls.tool()).toBe('pen')
     expect(s.editor.controls.pencil()).toBe(true)
   })
   it('erases with its other end', async () => {
-    const s = setup()
-    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    const s = drawing()
     stroke(s, 400)
     await vi.waitFor(() => expect(inkCount(s)).toBe(1))
     stroke(s, 400, { buttons: 33 })
     await vi.waitFor(() => expect(inkCount(s)).toBe(0))
   })
   it('lets a finger move the canvas rather than draw once a pen has been seen', async () => {
-    const s = setup()
-    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    const s = drawing()
     stroke(s, 400)
     await vi.waitFor(() => expect(inkCount(s)).toBe(1))
     s.button('Draw with pen').click()
@@ -1495,18 +1499,19 @@ describe('a Pencil on a tablet', () => {
     s.editor.controls.setFingerDraws(false)
   })
   it('lets go of a hand already resting on the screen when the pen lands', async () => {
-    const s = setup()
-    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    const s = drawing()
+    // The pen has been seen, so a finger moves the canvas.
+    stroke(s, 500)
+    await vi.waitFor(() => expect(inkCount(s)).toBe(1))
     pointer(s, 'pointerdown', 300, 300, { buttons: 1, pointerId: 3 })
     pointer(s, 'pointermove', 330, 320, { buttons: 1, pointerId: 3 })
     expect(s.viewer.camera.x).not.toBe(0)
     stroke(s, 400)
     expect(s.viewer.camera).toMatchObject({ x: 0, y: 0 })
-    await vi.waitFor(() => expect(inkCount(s)).toBe(1))
+    await vi.waitFor(() => expect(inkCount(s)).toBe(2))
   })
   it('keeps a stroke drawn while the last one saves, without moving the canvas', async () => {
-    const s = setup()
-    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    const s = drawing()
     let release = () => {}
     const plain = s.publish.getMockImplementation()!
     s.publish.mockImplementationOnce(
@@ -1524,8 +1529,7 @@ describe('a Pencil on a tablet', () => {
     expect(s.document.session.history.undo).toBe(2)
   })
   it('keeps a stroke begun while the last one saved and finished after it was written', async () => {
-    const s = setup()
-    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    const s = drawing()
     let release = () => {}
     const plain = s.publish.getMockImplementation()!
     s.publish.mockImplementationOnce(
@@ -1541,16 +1545,14 @@ describe('a Pencil on a tablet', () => {
     await vi.waitFor(() => expect(inkCount(s)).toBe(2))
   })
   it('never moves the canvas with a pen, even when the canvas cannot take a stroke', () => {
-    const s = setup()
-    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    const s = drawing()
     s.document.beginDraft()
     stroke(s, 400)
     expect(s.viewer.camera).toMatchObject({ x: 0, y: 0 })
     s.document.discardDraft()
   })
   it('undoes on a tap of two fingers', async () => {
-    const s = setup()
-    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    const s = drawing()
     stroke(s, 400)
     await vi.waitFor(() => expect(inkCount(s)).toBe(1))
     pointer(s, 'pointerdown', 300, 300, { buttons: 1, pointerId: 11 })

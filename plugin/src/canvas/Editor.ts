@@ -156,8 +156,6 @@ export class CanvasEditor {
   private editing: string | null = null
   /** A connection let go over empty canvas, waiting for what to make at its end. */
   private drop: CanvasDrop | null = null
-  /** Which of pen and marker the Pencil draws with: the one last taken in hand. */
-  private pencilInk: 'pen' | 'marker' = 'pen'
   /** A pen has touched this canvas, so it is a device with a Pencil. */
   private penSeen = false
   /** On a device with a Pencil, whether a finger draws too; kept on this device. */
@@ -270,14 +268,8 @@ export class CanvasEditor {
     drop: (): CanvasDrop | null => this.drop,
     /** Makes a card, a note or a shape at the end of the dropped connection, or nothing. */
     dropAdd: (kind: 'card' | 'note' | 'shape' | null): Promise<void> => this.dropAdd(kind),
-    /** A pen has touched the canvas: the pen's colours stay out for it whatever is in hand. */
+    /** A pen has touched the canvas, so a finger moves it rather than drawing unless told to. */
     pencil: (): boolean => this.penSeen,
-    /** Which of pen and marker the Pencil draws with; pressed, it takes the other. */
-    pencilInk: (): 'pen' | 'marker' => this.pencilInk,
-    setPencilInk: (ink: 'pen' | 'marker'): void => {
-      this.pencilInk = ink
-      this.refresh()
-    },
     fingerDraws: (): boolean => this.fingerDraws,
     setFingerDraws: (on: boolean): void => {
       this.fingerDraws = on
@@ -386,7 +378,6 @@ export class CanvasEditor {
           this.inputAdapter.cancel()
           this.selected.clear()
           this.tool = tool
-          if (tool === 'pen' || tool === 'marker') this.pencilInk = tool
           this.multiple = false
           this.refresh()
         },
@@ -566,7 +557,7 @@ export class CanvasEditor {
           this.inkSize.value as Thickness
         ],
       }),
-      pencil: () => ({ ink: this.pencilInk, eraser: 'eraser', fingerDraws: this.fingerDraws }),
+      pencil: () => ({ eraser: 'eraser', fingerDraws: this.fingerDraws }),
       sawPen: () => {
         this.penSeen = true
         this.refresh()
@@ -2030,7 +2021,6 @@ export class CanvasEditor {
     this.inputAdapter.cancel()
     if (['pen', 'marker', 'eraser', 'partial-eraser', 'lasso'].includes(tool)) this.selected.clear()
     this.tool = tool
-    if (tool === 'pen' || tool === 'marker') this.pencilInk = tool
     this.multiple = false
     this.refresh()
   }

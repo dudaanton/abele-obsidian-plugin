@@ -47,6 +47,10 @@ export type CanvasInputTool =
   | 'frame'
   | 'card'
   | 'shape'
+/** A pen touching the screen, as the ink router reads which of its ends it is. */
+const PEN_UP = { finger: false, penDown: false }
+/** A hovering pen sends moves all the time; this long without one, it is gone. */
+const PEN_QUIET = 1000
 /** A frame drawn with a click and no drag: about two cards wide. */
 export const FRAME_SIZE = { width: 480, height: 320 }
 /** The smallest a frame is drawn, in the canvas's own units: the least a resize leaves too. */
@@ -157,10 +161,10 @@ export interface InputPorts {
   brush(tool?: 'pen' | 'marker'): { color: string; size: number }
   tool(): CanvasInputTool
   /**
-   * The Pencil: which of pen and marker it draws with, which eraser its other end is, whether a
-   * finger draws too once a pen has been seen, and a word that one just was.
+   * The Pencil: which eraser its other end is, whether a finger draws too once a pen has been
+   * seen, and a word that one just was.
    */
-  pencil?(): { ink: 'pen' | 'marker'; eraser: 'eraser' | 'partial-eraser'; fingerDraws: boolean }
+  pencil?(): { eraser: 'eraser' | 'partial-eraser'; fingerDraws: boolean }
   sawPen?(): void
   enabled(): boolean
   /** The canvas is only writing the last change: a stroke may still be drawn, to add after it. */
@@ -342,6 +346,8 @@ export class CanvasInput implements CanvasViewerInput {
   private hovered: string | null = null
   /** Where a pen hovers over the screen without touching it, in screen space. */
   private penHover: [number, number] | null = null
+  /** Lets the hovering tip go when the pen goes quiet: a pen taken away may say nothing. */
+  private penHoverTimer = 0
   /** Once a pen has touched the canvas, a finger moves it rather than drawing. */
   private penSeen = false
   constructor(
@@ -374,11 +380,7 @@ export class CanvasInput implements CanvasViewerInput {
   private inkFor(event: PointerEvent): 'pen' | 'marker' | null {
     const tool = this.ports.tool(),
       pencil = this.ports.pencil?.()
-    if (event.pointerType === 'pen' && pencil) {
-      if (routePointer({ finger: false, penDown: false }, event) === 'erase') return null
-      if (tool === 'eraser' || tool === 'partial-eraser' || tool === 'lasso') return null
-      return tool === 'pen' || tool === 'marker' ? tool : pencil.ink
-    }
+    if (event.pointerType === 'pen' && pencil && routePointer(PEN_UP, event) === 'erase') return null
     if (tool !== 'pen' && tool !== 'marker') return null
     if (event.pointerType === 'touch' && this.penSeen && !pencil?.fingerDraws) return null
     return tool
@@ -392,17 +394,15 @@ export class CanvasInput implements CanvasViewerInput {
     }
     const tool = this.ports.tool(),
       pencil = this.ports.pencil?.()
-    this.penHover = null
+    this.dropPenHover()
     if (event.pointerType === 'pen' && pencil) {
-      // The Pencil draws whatever tool is in hand; its other end erases.
+      // The Pencil does what the tool in hand does, as a finger or a mouse would; its other end
+      // erases whatever is in hand.
       if (!this.penSeen) {
         this.penSeen = true
         this.ports.sawPen?.()
       }
-      if (routePointer({ finger: false, penDown: false }, event) === 'erase')
-        return this.inkEdit.down(event, pencil.eraser)
-      if (tool !== 'eraser' && tool !== 'partial-eraser' && tool !== 'lasso')
-        return this.ink.down(event, tool === 'pen' || tool === 'marker' ? tool : pencil.ink)
+      if (routePointer(PEN_UP, event) === 'erase') return this.inkEdit.down(event, pencil.eraser)
     }
     if (tool === 'pen' || tool === 'marker') {
       // With a pen about, a finger moves the canvas, and a hand resting on it does nothing.
@@ -840,9 +840,9 @@ export class CanvasInput implements CanvasViewerInput {
       else el.style.width = `${length}px`
       this.overlay.append(el)
     }
-    if (this.penHover && this.ports.pencil) {
-      const tool = this.ports.tool(),
-        ink = tool === 'pen' || tool === 'marker' ? tool : this.ports.pencil().ink,
+    const tool = this.ports.tool()
+    if (this.penHover && (tool === 'pen' || tool === 'marker')) {
+      const ink = tool,
         size = Math.max(6, this.ports.brush(ink).size * this.viewer.camera.zoom),
         ring = this.overlay.ownerDocument.createElementNS('http://www.w3.org/1999/xhtml', 'div')
       ring.className = 'abele-canvas-pen-hover'
@@ -871,14 +871,18 @@ export class CanvasInput implements CanvasViewerInput {
   }
   /** A mouse moving over the canvas with nothing pressed: the card under it shows its points. */
   hover(event: PointerEvent): void {
+    const tool = this.ports.tool()
     if (event.pointerType === 'pen') {
-      // A pen held over the screen shows the size of its tip where it would touch.
+      // A pen held over the screen shows the size of its tip where it would touch, while it
+      // would draw.
+      if (tool !== 'pen' && tool !== 'marker') return this.dropPenHover()
       const r = this.viewer.stage.getBoundingClientRect()
       this.penHover = [event.clientX - r.left, event.clientY - r.top]
+      window.clearTimeout(this.penHoverTimer)
+      this.penHoverTimer = window.setTimeout(() => this.leave(), PEN_QUIET)
       this.viewer.draw()
       return
     }
-    const tool = this.ports.tool()
     if (event.pointerType !== 'mouse' || (tool !== 'select' && tool !== 'connect')) return
     const [x, y] = this.point(event),
       over = hitNode(this.viewer.graph, x, y),
@@ -887,6 +891,23 @@ export class CanvasInput implements CanvasViewerInput {
     if (id === this.hovered) return
     this.hovered = id
     this.viewer.draw()
+  }
+  /** A pointer left the canvas, or a pen its reach above the screen: what it hovered is let go. */
+  leave(): void {
+    this.dropPenHover()
+    if (!this.hovered) return
+    this.hovered = null
+    this.viewer.draw()
+  }
+  private dropPenHover(): void {
+    window.clearTimeout(this.penHoverTimer)
+    if (!this.penHover) return
+    this.penHover = null
+    this.viewer.draw()
+  }
+  /** A pen carries the canvas only with the Navigate tool in hand; else it draws or does nothing. */
+  penPans(): boolean {
+    return this.ports.tool() === 'pan'
   }
   /** The card whose edges show their points: the one under the mouse, else the one picked. */
   private pointsCard(): CanvasNode | null {
@@ -1170,6 +1191,7 @@ export class CanvasInput implements CanvasViewerInput {
   }
   destroy(): void {
     this.cancel()
+    this.dropPenHover()
     if (this.viewer.input === this) this.viewer.input = undefined
     this.overlay.remove()
   }

@@ -47,6 +47,10 @@ export interface CanvasViewerInput {
   ignores?(event: PointerEvent): boolean
   /** A pointer moving over the stage with nothing pressed. */
   hover?(event: PointerEvent): void
+  /** A pointer with nothing pressed left the stage, or a pen its reach above the screen. */
+  leave?(): void
+  /** Whether a pen that neither draws nor edits carries the canvas, as with Navigate in hand. */
+  penPans?(): boolean
 }
 export class CanvasViewer {
   readonly stage: HTMLElement
@@ -161,8 +165,18 @@ export class CanvasViewer {
     this.listen(this.stage, 'pointerdown', (e) => this.down(e as PointerEvent))
     this.listen(this.stage, 'pointermove', (e) => this.move(e as PointerEvent))
     this.listen(this.stage, 'pointerup', (e) => this.up(e as PointerEvent, false))
-    this.listen(this.stage, 'pointercancel', (e) => this.up(e as PointerEvent, true))
+    this.listen(this.stage, 'pointercancel', (e) => {
+      this.leave(e as PointerEvent)
+      this.up(e as PointerEvent, true)
+    })
     this.listen(this.stage, 'lostpointercapture', (e) => this.up(e as PointerEvent, true))
+    // A pen lifted out of reach above an iPad may end with a leave, an out or a cancel, or with
+    // nothing at all, which the input notices by the moves stopping.
+    this.listen(this.stage, 'pointerleave', (e) => this.leave(e as PointerEvent))
+    this.listen(this.stage, 'pointerout', (e) => {
+      const to = (e as PointerEvent).relatedTarget
+      if (!(to instanceof Node) || !this.stage.contains(to)) this.leave(e as PointerEvent)
+    })
     this.listen(this.stage, 'wheel', (e) => this.wheel(e as WheelEvent), { passive: false })
     this.resize = new ResizeObserver(() => {
       if (this.stage.clientWidth && this.stage.clientHeight && this.pendingFocus)
@@ -532,8 +546,9 @@ export class CanvasViewer {
       this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
       return
     }
-    // A pen draws or does nothing: it never carries the canvas, even when it could not draw.
-    if (this.gesture?.pen && !this.gesture.multi) {
+    // A pen draws or does nothing: it never carries the canvas, even when it could not draw,
+    // unless Navigate is in hand.
+    if (this.gesture?.pen && !this.gesture.multi && !this.input?.penPans?.()) {
       this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
       return
     }
@@ -560,6 +575,10 @@ export class CanvasViewer {
     )
     this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
     this.draw()
+  }
+  /** A pointer with nothing pressed went away: whatever it hovered is let go. */
+  private leave(e: PointerEvent): void {
+    if (!this.pointers.has(e.pointerId)) this.input?.leave?.()
   }
   private up(e: PointerEvent, cancel: boolean): void {
     if (!this.pointers.has(e.pointerId)) return
