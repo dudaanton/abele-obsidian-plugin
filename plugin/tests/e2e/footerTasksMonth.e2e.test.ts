@@ -105,11 +105,10 @@ const script = (label: string) => String.raw`(async function* () {
     return root
   }
   // The section header stands over the month's own row (month name, arrows, Today), never under it.
-  const order = async name => {
+  const order = async (name, root) => {
     await wait(300)
-    const head = root => root.querySelector('.abele-timeline__pinned')?.getBoundingClientRect()
+    const h = root.querySelector('.abele-timeline__pinned')?.getBoundingClientRect()
     const nav = root.querySelector('.abele-tasks-calendar .abele-calendar__header')?.getBoundingClientRect()
-    const h = head(root)
     if (!h || !nav) return report.headerAbove.push(name + ': missing')
     if (h.bottom > nav.top + 1) report.headerAbove.push(name + ': header ' + Math.round(h.top) + '..' + Math.round(h.bottom) + ', month row ' + Math.round(nav.top))
   }
@@ -152,7 +151,7 @@ const script = (label: string) => String.raw`(async function* () {
     await until(() => marks()[String(doneDay)] === 'done', 'done day shown')
     report.marksShown = marks()
     reveal(root)
-    await order('month')
+    await order('month', root)
     yield 'shoot:' + (await shoot('month') ?? '')
 
     yield 'chosen day'
@@ -170,7 +169,7 @@ const script = (label: string) => String.raw`(async function* () {
       .map(el => String(el.className) + ' +' + Math.round(el.getBoundingClientRect().right - right) + 'px').slice(0, 5)
     report.overflow = spill(month, edge)
     reveal(root)
-    await order('chosen day')
+    await order('chosen day', root)
     yield 'shoot:' + (await shoot('chosen-day') ?? '')
 
     cell(emptyDay).click()
@@ -182,7 +181,7 @@ const script = (label: string) => String.raw`(async function* () {
     await until(() => month.querySelector('.abele-tasks-calendar__none')?.textContent.includes('Nothing planned in'), 'empty month')
     report.emptyMonth = month.querySelector('.abele-tasks-calendar__none').textContent.trim()
     reveal(root)
-    await order('empty month')
+    await order('empty month', root)
     yield 'shoot:' + (await shoot('empty-month') ?? '')
 
     yield 'reopen'
