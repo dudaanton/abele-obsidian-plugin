@@ -49,6 +49,8 @@ export type CanvasInputTool =
   | 'shape'
 /** A frame drawn with a click and no drag: about two cards wide. */
 export const FRAME_SIZE = { width: 480, height: 320 }
+/** The smallest a frame is drawn, in the canvas's own units: the least a resize leaves too. */
+const MIN_FRAME = 40
 /** A card or shape put down with a click and no drag. */
 export const CARD_SIZE = { width: 260, height: 120 }
 export const SHAPE_SIZE = { width: 200, height: 120 }
@@ -96,6 +98,22 @@ export function nodesTouching(graph: CanvasGraph, box: Rect): string[] {
         n.y + n.height > box.y
     )
     .map((n) => n.id)
+}
+/**
+ * The free strokes and lines whole inside the frames being carried and not picked themselves:
+ * drawn in a frame, they belong to it as its cards do.
+ */
+function freeInFrames(
+  graph: CanvasGraph,
+  moving: ReadonlySet<string>,
+  picked: ReadonlySet<string>
+): string[] {
+  const frames = graph.nodes.filter((n) => n.type === 'group' && moving.has(n.id))
+  const free = new Set<string>()
+  for (const frame of frames)
+    for (const id of objectsInBox(graph, frame, false))
+      if (!picked.has(id) && !graph.nodes.some((n) => n.id === id)) free.add(id)
+  return [...free]
 }
 /**
  * What a selection box picks: cards whole inside it, and the free lines and strokes whole inside
@@ -186,6 +204,8 @@ interface Gesture {
   graph: CanvasGraph
   ids: Set<string>
   moving: Set<string>
+  /** Free strokes and lines standing whole inside a frame being carried: they go with it. */
+  free: string[]
   node: string | null
   corner: ResizeCorner | null
   box: boolean
@@ -462,6 +482,7 @@ export class CanvasInput implements CanvasViewerInput {
       graph,
       ids,
       moving: moveIds(graph, ids),
+      free: freeInFrames(graph, moveIds(graph, ids), ids),
       node: node?.id ?? null,
       corner,
       box: !node,
@@ -579,8 +600,10 @@ export class CanvasInput implements CanvasViewerInput {
         my = Math.round(snapped.dy)
       this.guides = snapped.guides
       preview = movePreview(g.graph, g.moving, mx, my)
+      if (g.free.length && (mx || my))
+        preview = editCanvas(preview, [{ op: 'move', ids: g.free, dx: mx, dy: my }]).graph
       g.ops = [
-        { op: 'move', ids: [...g.ids], dx: mx, dy: my },
+        { op: 'move', ids: [...g.ids, ...g.free], dx: mx, dy: my },
         ...reparentOps(g.graph, preview, g.ids, g.moving),
       ]
     }
@@ -613,10 +636,15 @@ export class CanvasInput implements CanvasViewerInput {
       this.move(event)
       const f = this.framing
       this.framing = null
-      const rect =
-        f.rect && f.rect.width >= 40 && f.rect.height >= 40
-          ? f.rect
-          : {
+      // A frame dragged out is as small as it was drawn, down to a sliver that can still be
+      // picked; a press without a drag puts down one of the usual size.
+      const rect = f.rect
+        ? {
+            ...f.rect,
+            width: Math.max(MIN_FRAME, f.rect.width),
+            height: Math.max(MIN_FRAME, f.rect.height),
+          }
+        : {
               x: f.start[0] - FRAME_SIZE.width / 2,
               y: f.start[1] - FRAME_SIZE.height / 2,
               ...FRAME_SIZE,

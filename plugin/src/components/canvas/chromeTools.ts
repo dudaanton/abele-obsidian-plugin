@@ -85,6 +85,17 @@ export const SLOTS: Slot[][] = [
       ],
     },
     {
+      id: 'picture',
+      members: [
+        {
+          id: 'picture',
+          label: 'Add a picture',
+          icon: 'image-plus',
+          tooltip: 'Picture from this device; or paste one, or drop it on the canvas',
+        },
+      ],
+    },
+    {
       id: 'link',
       members: [{ id: 'link', label: 'Add link', icon: 'globe', tooltip: 'Web page (W)' }],
     },

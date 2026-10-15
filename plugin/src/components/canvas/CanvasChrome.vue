@@ -831,11 +831,15 @@ const placeField = () => {
 }
 let frame = 0
 let seen = ''
+let seenGraph: unknown = null
+// The camera and the scene drawn: a frame carried or resized is a new scene each frame, and its
+// name over the corner, drawn here rather than on the canvas, has to go with it.
 const watchCamera = () => {
   const cam = props.viewer.camera,
     key = `${cam.x}|${cam.y}|${cam.zoom}|${props.viewer.step}`
-  if (key !== seen) {
+  if (key !== seen || props.viewer.graph !== seenGraph) {
     seen = key
+    seenGraph = props.viewer.graph
     tick.value++
     placeField()
   }

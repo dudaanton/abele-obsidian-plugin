@@ -492,6 +492,7 @@ export class CanvasEditor {
     this.button('Add text card', 'Text', () => this.addText())
     this.button('Add note or attachment', 'File', () => this.pick('file'))
     this.button('Add link', 'Link', () => this.pick('link'))
+    this.button('Add a picture', 'Picture', () => this.pickPictures())
     this.button('Edit card text', 'Edit text', () => this.editText())
     this.button('Open selected card', 'Open', () => {
       const node = this.node()
@@ -1560,6 +1561,7 @@ export class CanvasEditor {
       'Add text card',
       'Add note or attachment',
       'Add link',
+      'Add a picture',
       'Edit card text',
       'Open selected card',
       'Delete selected card',
@@ -1681,7 +1683,13 @@ export class CanvasEditor {
       this.buttons.get(label).disabled = blocked
       this.buttons.get(label).setAttribute('aria-pressed', String(this.tool === tool))
     }
-    for (const label of ['Add text card', 'Add note or attachment', 'Add link', 'Add canvas shape'])
+    for (const label of [
+      'Add text card',
+      'Add note or attachment',
+      'Add link',
+      'Add a picture',
+      'Add canvas shape',
+    ])
       this.buttons.get(label).disabled = blocked
     this.buttons.get('Edit card text').disabled =
       !document ||
@@ -2016,6 +2024,25 @@ export class CanvasEditor {
     await this.apply(copy.ops, copy.picked)
   }
   /** Where something pasted or dropped lands: at the pointer, else in the middle of the view. */
+  /**
+   * Pictures chosen from this device, saved beside the canvas's attachments as a pasted one is,
+   * each a card at the middle of what is in sight.
+   */
+  private pickPictures(): void {
+    const input = this.viewer.el.ownerDocument.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*'
+    input.multiple = true
+    input.addEventListener('change', () => {
+      const files = Array.from(input.files ?? [])
+      if (!files.length) return
+      const v = this.viewer.visible()
+      void this.place(files, '', [v.x + v.width / 2, v.y + v.height / 2]).catch((error) =>
+        this.fail(error)
+      )
+    })
+    input.click()
+  }
   private landing(): [number, number] {
     if (this.pointerAt) {
       const v = this.viewer.visible(),
