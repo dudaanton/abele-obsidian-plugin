@@ -1,5 +1,9 @@
 <template>
-  <article class="tree-item abele-list-row" :aria-busy="state === 'loading'">
+  <article
+    class="tree-item abele-list-row"
+    :class="{ 'abele-list-row_opens': interactive, 'abele-list-row_drill': drill }"
+    :aria-busy="state === 'loading'"
+  >
     <div class="tree-item-self abele-list-row__line" :class="{ 'is-active': selected }">
       <span class="abele-list-row__leading"
         ><slot name="leading"><Icon v-if="icon" :icon="icon" no-hover /></slot
@@ -35,6 +39,18 @@
           <slot v-if="!mainInteractive" name="metadata" />
         </component>
         <slot v-if="mainInteractive" name="metadata" />
+        <!-- A phone keeps one glyph at a row's end, its menu: the details of a row that opens
+             fold from their own words under it instead of from a second arrow there. -->
+        <Disclosure
+          v-if="interactive && expanded !== undefined"
+          class="abele-list-row__inline-fold"
+          control-only
+          :target-id="detailId"
+          :label="detailsLabel"
+          :count="detailsCount"
+          :model-value="expanded"
+          @update:model-value="emit('update:expanded', $event)"
+        />
         <div v-if="snippet" class="abele-list-row__snippet">{{ snippet }}</div>
         <p
           v-if="state !== 'ready'"
@@ -60,6 +76,7 @@
           <slot name="actions" />
           <Disclosure
             v-if="expanded !== undefined"
+            class="abele-list-row__fold"
             compact
             control-only
             :target-id="detailId"
@@ -94,6 +111,8 @@ const props = withDefaults(
     expanded?: boolean
     detailsLabel?: string
     detailsCount?: number
+    /** Opening goes a level deeper, into a list of its own: on a phone too it keeps its arrow. */
+    drill?: boolean
   }>(),
   { state: 'ready', selected: undefined, expanded: undefined, detailsLabel: 'Details' }
 )
@@ -201,6 +220,14 @@ const stateIcon = {
   align-self: flex-start;
   padding: 0;
   margin-inline-start: auto;
+}
+/* On a phone a row ends in one glyph, its menu; the row itself opens. Only a row that goes a
+   level deeper keeps the arrow saying so, and the details of a row that opens fold from their
+   words under it, not from a second arrow at its end. */
+body.is-phone .abele-list-row:not(.abele-list-row_drill) .abele-list-row__opener,
+body.is-phone .abele-list-row_opens .abele-list-row__fold,
+body:not(.is-phone) .abele-list-row__inline-fold {
+  display: none;
 }
 .abele-list-row__state {
   display: flex;

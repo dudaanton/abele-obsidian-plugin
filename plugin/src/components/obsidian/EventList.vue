@@ -94,7 +94,6 @@ const toggle = (id: string, open: boolean) => {
   list-style: none;
   padding: 0;
   margin: 0;
-  border-inline-start: var(--size-2-1) solid var(--background-modifier-border);
 }
 .abele-event-list > li + li {
   margin-top: var(--size-4-1);
