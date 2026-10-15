@@ -12,7 +12,8 @@ it('drains queued server output and distinguishes profile batches from other Gra
           `${gh.origin}/api/graphql`,
           {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            // Named, as the app's own requests are: the fake GitHub refuses a nameless one.
+            headers: { 'Content-Type': 'application/json', 'User-Agent': 'sample-client' },
           },
           (response) => {
             response.resume()
