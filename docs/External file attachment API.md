@@ -1,5 +1,13 @@
 # External file attachment API
 
+The offloaded-file card and reading/live-preview embeds use the same token hydration seam.
+Their progress is the number of bytes actually read from the bounded source. Cancel stops
+the source; Retry never reuses an uncertain installation. A network failure or rejected bytes
+before staging completes the intent without a local write and releases the pending pointer.
+A stopped/failed staging transfer can release that pointer only after its unique incoming
+copy has been preserved privately. Its recorded evidence remains available; retries use a
+new operation and incoming name. Installation and sidecar-retirement uncertainty remain held.
+
 Stage 2 provides explicit, code-only `AttachmentStore` access through the personal engine build's `attachments()` and the scoped host's `attachments()`. Calling the factory activates durable external state and the downgrade marker; construction and ordinary sync never evict. The token host now exposes these operations through native file menus, commands and explicitly confirmed rule previews. No automatic policy invokes eviction. Pinning an absent file hydrates it; content consumers use the shared external-file access seam.
 
 Eviction inspects the selected identity/version and local bytes under engine exclusivity, releases the queue to finish ordinary sync, then reserves the original, projection and staging paths, checks pin/open/use state, verifies the exact live server head and decrypted bytes, commits a prepared operation, installs a verified projection and commits delete intent. Immediately before deletion it hashes the original again; a mismatch leaves the original intact. Reclaimed bytes count only a confirmed original deletion. The server check is point-in-time, not a server lease. An independent program can write the original in the instant between the final hash and unconditional removal; that edit can be lost. The verified previous bytes remain subject to ordinary server access and retention. No claim of exclusion of independent writers is made.

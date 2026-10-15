@@ -2,8 +2,8 @@ import { IDBFactory } from 'fake-indexeddb'
 import { sha256 } from '@abele/sync-core'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { tokenOffloadConnection } from '@/sync/tokenOffloadConnection'
-import { TokenOffloadCoordinator } from '@/sync/tokenOffloadCoordinator'
-import { PathCoordinator } from '@/sync/pathCoordinator'
+import { tokenOffloadsOf } from '@/sync/tokenOffloadCoordinator'
+import { pathCoordinatorOf } from '@/sync/pathCoordinator'
 import { RuntimeFence } from '@/sync/external/recovery'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
@@ -44,6 +44,7 @@ export async function externalFileFixture(
     credentialAssociation: 'sample-slot',
   }
   const fs = new ObsidianFileSystem(app as never)
+  const manager = tokenOffloadsOf(app.vault, pathCoordinatorOf(app.vault))
   const port = await tokenOffloadConnection({
     app: app as never,
     factory,
@@ -52,7 +53,7 @@ export async function externalFileFixture(
     fence,
     binding,
     fs,
-    manager: new TokenOffloadCoordinator(new PathCoordinator()),
+    manager,
     scriptsFolder: () => 'Scripts',
     client: () =>
       ({
@@ -77,6 +78,7 @@ export async function externalFileFixture(
   })
   return {
     app,
+    manager,
     port,
     path,
     state,

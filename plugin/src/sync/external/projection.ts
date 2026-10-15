@@ -93,6 +93,11 @@ export const ProjectionSchema = z
     width: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
     height: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
     duration: z.number().nonnegative().optional(),
+    preview: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .optional(),
+    offloadedAt: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
   })
   .strict()
 export type Projection = z.infer<typeof ProjectionSchema>

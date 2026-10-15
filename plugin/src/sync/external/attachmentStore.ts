@@ -36,6 +36,7 @@ export type OperationResult = {
   reclaimedBytes: number
 }
 export type EvictOptions = {
+  preview?: string
   operationId: string
   expectedRevision: number
   expectedVersionId: string
@@ -469,6 +470,8 @@ export class AttachmentStore {
           size: head.size,
           mime: projectionMime(head.wirePath),
           mtime: head.mtime,
+          preview: opts.preview,
+          offloadedAt: Date.now(),
         })
         const digest = await sha256(bytes),
           stagedPath = this.stagingPath(head.path, opts.operationId)
@@ -761,14 +764,42 @@ export class AttachmentStore {
         }
         await this.commit(pending, op)
         phase = 'download-intent'
-        if (opts.signal?.aborted) return this.result('recovery-required')
         let bytes: Uint8Array | undefined
         let source: ChunkSource | undefined
+        // No staging effect has run yet. A failed network open can safely return to
+        // remote-only so Retry starts a new operation, retaining the completed intent.
+        const noDownload = async () => {
+          const latest = await this.document()
+          const current = latest.files.find((one) => one.fileId === id)
+          const intent = latest.operations.find((one) => one.operationId === opts.operationId)
+          if (!current || !intent || current.pendingOperationId !== opts.operationId)
+            throw new ExternalFilePortError('recovery-required')
+          await this.commit(
+            {
+              ...current,
+              representation: 'remote-only',
+              localRevision: current.localRevision + 1,
+              pendingOperationId: null,
+              blockingReason: null,
+            },
+            { ...intent, revision: intent.revision + 1, phase: 'complete', cleanupReason: null }
+          )
+        }
+        const abandonStaging = async () => {
+          if (!this.options.preservePrivateArtifacts) return
+          await this.options.preservePrivateArtifacts([artifact.path])
+          await noDownload()
+        }
+        if (opts.signal?.aborted) {
+          await noDownload()
+          return this.result('busy')
+        }
         try {
           if (this.options.openVersion)
             source = await this.options.openVersion(id, head.versionId, head, opts.signal)
           else bytes = await this.options.download(id, head.versionId, head.sha, opts.signal)
         } catch (error) {
+          await noDownload()
           if (opts.signal?.aborted) return this.result('recovery-required')
           return this.reason(error)
         }
@@ -780,23 +811,36 @@ export class AttachmentStore {
         }
         if (opts.signal?.aborted) {
           await source?.close()
+          await noDownload()
           return this.result('recovery-required')
         }
-        if (bytes && (bytes.length !== head.size || (await sha256(bytes)) !== head.sha))
+        if (bytes && (bytes.length !== head.size || (await sha256(bytes)) !== head.sha)) {
+          await noDownload()
           return this.result('version-changed')
+        }
         const stagingWork = source
           ? effects.stageSource(artifact, source, opts.signal)
           : effects.stage(artifact, bytes)
         bytes = undefined
         const staged = await stagingWork
-        if (staged.status !== 'staged') return this.result('recovery-required')
+        if (staged.status !== 'staged') {
+          // Installation has not been attempted. Keep the entire staging copy, including
+          // any uncertain writer, before allowing a retry in a fresh artifact namespace.
+          await abandonStaging()
+          return this.result('recovery-required')
+        }
         // A second disk read ensures the installer consumes the bytes recorded in the intent.
-        if (!(await this.options.host.matches({ path: staging, size: head.size, sha: head.sha })))
+        if (!(await this.options.host.matches({ path: staging, size: head.size, sha: head.sha }))) {
+          await abandonStaging()
           return this.result('local-changed')
+        }
         const ready = { ...op, phase: 'ready-to-install' as const, revision: 1 }
         await this.commit({ ...pending, localRevision: pending.localRevision + 1 }, ready)
         phase = 'ready-to-install'
-        if (opts.signal?.aborted) return this.result('recovery-required')
+        if (opts.signal?.aborted) {
+          await abandonStaging()
+          return this.result('recovery-required')
+        }
         let installed
         try {
           installed = await effects.install(artifact, head.path)

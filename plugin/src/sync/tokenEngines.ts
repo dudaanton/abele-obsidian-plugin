@@ -840,6 +840,7 @@ export class TokenEngines {
   }
   private async changed(id: string, status: EngineStatus, report?: SyncReport): Promise<void> {
     if (this.closed || !this.ui.registry.records().some((one) => one.id === id)) return
+    tokenOffloadsOf(this.app.vault, pathCoordinatorOf(this.app.vault)).changed()
     const epoch = (this.activityEpoch.get(id) ?? 0) + 1
     this.activityEpoch.set(id, epoch)
     const reportEpoch = (this.activityReports.get(id) ?? 0) + (report ? 1 : 0)

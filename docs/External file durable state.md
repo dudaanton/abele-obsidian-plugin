@@ -84,7 +84,9 @@ is tested; arbitrary power-loss survival and mobile adapter flush guarantees are
 `projection.ts` separates marker recognition, strict schema validation, placement and local
 ownership. Schema 1 is UTF-8 JSON, at most 16 KiB, with `format: "abele.external"`, vault/file
 identity, logical path, observed version, SHA-256, size, MIME, mtime and optional width/height/
-duration. Unknown MIME falls back to `application/octet-stream`. Extra fields (including
+duration. New offloads may also carry `offloadedAt` (device timestamp) and `preview` (a
+SHA-256 key into local app storage, never a URL or vault path). Older stubs need neither.
+Unknown MIME falls back to `application/octet-stream`. Extra fields (including
 credentials, URLs, preferences and recovery paths) are rejected.
 
 Wire paths normalize to NFC; physical spelling remains separate. The original and extra

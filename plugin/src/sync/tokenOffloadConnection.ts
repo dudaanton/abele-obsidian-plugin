@@ -17,8 +17,10 @@ import { pluginRepresentation } from './external/pluginRepresentation'
 import type { ConnectionBinding } from './external/records'
 import type { RuntimeFence } from './external/recovery'
 import type { IndexedDbStateStore } from './IndexedDbStateStore'
-import type { TokenOffloadCoordinator } from './tokenOffloadCoordinator'
+import type { ExternalDescription, TokenOffloadCoordinator } from './tokenOffloadCoordinator'
 import { retryTransientOperation } from './transientOperation'
+import { parseProjection } from './external/projection'
+import { saveExternalPreview } from './external/preview'
 
 /** Composition of the existing durable external-file state machine with token authority. */
 export async function tokenOffloadConnection(input: {
@@ -75,9 +77,34 @@ export async function tokenOffloadConnection(input: {
     },
     stagingMtime: (path) => stagingMtimes.get(path) ?? Date.now(),
   })
+  const describe = async (path: string): Promise<ExternalDescription | null> => {
+    const file = (await external?.snapshot())?.files.find(
+      (one) => one.lastProvenLocalBase?.path === path && one.representation !== 'hydrated'
+    )
+    if (!file?.projectionPath || !file.projectionSha) return null
+    const bytes = await host.read(file.projectionPath)
+    if ((await sha256(bytes)) !== file.projectionSha) throw new Error('The local stub changed')
+    const projection = parseProjection(bytes)
+    const current = await state.get(path)
+    fence.assertReady()
+    return {
+      ...projection,
+      changed: !!current && current.versionId !== projection.observedVersionId,
+      available: input.available?.() ?? true,
+    }
+  }
   const refresh = async () => {
     await representation.refresh()
     const document = external ? await external.snapshot() : null
+    for (const file of document?.files ?? []) {
+      if (file.representation === 'hydrated' || !file.lastProvenLocalBase) continue
+      try {
+        const detail = await describe(file.lastProvenLocalBase.path)
+        if (detail) manager.rememberDescription(detail)
+      } catch (error) {
+        console.debug('[abele-sync] external description is unavailable', error)
+      }
+    }
     manager.remember(
       ledgerId,
       (document?.files ?? [])
@@ -104,6 +131,7 @@ export async function tokenOffloadConnection(input: {
     )
   }
   const unbind = manager.register(ledgerId, {
+    describe,
     ledger: state,
     available: () => input.available?.() ?? true,
     includes: (path) => input.includes(path),
@@ -231,18 +259,31 @@ export async function tokenOffloadConnection(input: {
       stagingMtimes.delete(staging)
     }
   }
-  const hydrate = async (path: string) => {
+  const hydrate = async (path: string, signal?: AbortSignal) => {
     const entry = await head(path),
       api = await store()
-    const result = await operation(entry, (operationId) =>
-      api.hydrate(entry.fileId, {
-        operationId,
-        expectedVersionId: entry.versionId,
-      })
-    )
-    if (result.status !== 'complete') throw new Error(result.status)
-    await refresh()
-    input.hydratedIdentity(path)
+    const controller = new AbortController()
+    const cancel = () => controller.abort()
+    signal?.addEventListener('abort', cancel, { once: true })
+    if (signal?.aborted) cancel()
+    const stop = manager.cancellable(path, cancel)
+    manager.progress(path, { done: 0, total: entry.size })
+    try {
+      const result = await operation(entry, (operationId) =>
+        api.hydrate(entry.fileId, {
+          operationId,
+          expectedVersionId: entry.versionId,
+          signal: controller.signal,
+        })
+      )
+      if (result.status !== 'complete') throw new Error(result.status)
+      await refresh()
+      input.hydratedIdentity(path)
+    } finally {
+      stop()
+      signal?.removeEventListener('abort', cancel)
+      manager.progress(path)
+    }
   }
   manager.hydrator(ledgerId, hydrate)
   await refresh()
@@ -301,11 +342,13 @@ export async function tokenOffloadConnection(input: {
         snapshot = await api.get(entry.fileId)
       if (version && entry.versionId !== version)
         return { status: 'version-changed' as const, reclaimedBytes: 0 }
+      const preview = await saveExternalPreview(input.app, path, entry.sha)
       const result = await operation(entry, (operationId) =>
         api.evict(entry.fileId, {
           operationId,
           expectedRevision: snapshot?.localRevision ?? 0,
           expectedVersionId: entry.versionId,
+          preview,
         })
       ).catch((error: unknown) => {
         if (error instanceof ExternalFilePortError && error.reason === 'pinned')

@@ -8,6 +8,10 @@ import {
 } from '@abele/sync-core'
 import { caseKey } from '@abele/sync-protocol'
 import type { PathCoordinator } from './pathCoordinator'
+import type { Projection } from './external/projection'
+
+export type ExternalDescription = Projection & { changed: boolean; available: boolean }
+export type TransferProgress = { done: number; total: number }
 
 type Provider = {
   ledger: StateStore
@@ -17,26 +21,82 @@ type Provider = {
   verify(head: StateEntry): Promise<void>
   download(head: StateEntry): Promise<Uint8Array>
   openVersion?(head: StateEntry, signal?: AbortSignal): Promise<ChunkSource>
+  describe?(path: string): Promise<ExternalDescription | null>
 }
 /** A shared view of journalled intentional absence. Sources remain independently authorized;
  * content is never selected by digest alone and network work never owns a placement lease. */
 export class TokenOffloadCoordinator {
   private providers = new Map<string, Provider>()
   private absent = new Map<string, { files: FileInfo[]; artifacts: string[] }>()
-  private hydration = new Map<string, (path: string) => Promise<void>>()
+  private hydration = new Map<string, (path: string, signal?: AbortSignal) => Promise<void>>()
   private inflight = new Map<string, Promise<void>>()
+  private listeners = new Set<() => void>()
+  private transfers = new Map<string, TransferProgress>()
+  private cancellations = new Map<string, () => void>()
+  private descriptions = new Map<string, ExternalDescription>()
+  rememberDescription(description: ExternalDescription): void {
+    this.descriptions.set(caseKey(description.path), { ...description })
+  }
+  cancellable(path: string, cancel: () => void): () => void {
+    const key = caseKey(path)
+    this.cancellations.set(key, cancel)
+    return () => {
+      if (this.cancellations.get(key) === cancel) this.cancellations.delete(key)
+    }
+  }
+  cancel(path: string): void {
+    this.cancellations.get(caseKey(path))?.()
+  }
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener)
+    return () => this.listeners.delete(listener)
+  }
+  changed(): void {
+    for (const listener of this.listeners) listener()
+  }
+  transfer(path: string): TransferProgress | undefined {
+    return this.transfers.get(caseKey(path))
+  }
+  progress(path: string, value?: TransferProgress): void {
+    if (value) this.transfers.set(caseKey(path), value)
+    else this.transfers.delete(caseKey(path))
+    this.changed()
+  }
+  async describe(path: string): Promise<ExternalDescription | null> {
+    const providers = [...this.providers.values()].sort(
+      (a, b) => Number(b.available?.() ?? true) - Number(a.available?.() ?? true)
+    )
+    for (const provider of providers) {
+      if (provider.includes(path) && provider.describe) {
+        try {
+          provider.assertOwned()
+        } catch {
+          continue
+        }
+        const detail = await provider.describe(path)
+        if (detail) {
+          this.rememberDescription(detail)
+          return detail
+        }
+      }
+    }
+    const cached = this.descriptions.get(caseKey(path))
+    return cached ? { ...cached, available: false } : null
+  }
   constructor(readonly locks: PathCoordinator) {}
   register(id: string, provider: Provider): () => void {
     this.providers.set(id, provider)
     return () => {
       if (this.providers.get(id) === provider) this.providers.delete(id)
       this.hydration.delete(id)
+      this.changed()
     }
   }
   remember(id: string, files: FileInfo[], artifacts: string[]): void {
     this.absent.set(id, { files: structuredClone(files), artifacts: [...artifacts] })
+    this.changed()
   }
-  hydrator(id: string, work: (path: string) => Promise<void>): void {
+  hydrator(id: string, work: (path: string, signal?: AbortSignal) => Promise<void>): void {
     this.hydration.set(id, work)
   }
   originalPath(path: string): string {
@@ -103,7 +163,20 @@ export class TokenOffloadCoordinator {
         const source = await provider.openVersion(own, signal)
         try {
           provider.assertOwned()
-          return source
+          let done = 0
+          return {
+            size: source.size,
+            signal: source.signal,
+            ...(source.stamp ? { stamp: source.stamp } : {}),
+            read: async (offset, length, cancellation) => {
+              const bytes = await source.read(offset, length, cancellation)
+              done = Math.max(done, offset + bytes.length)
+              this.progress(head.path, { done, total: head.size })
+              return bytes
+            },
+            assertUnchanged: () => source.assertUnchanged(),
+            close: () => source.close(),
+          }
         } catch (error) {
           await source.close()
           throw error
@@ -133,7 +206,7 @@ export class TokenOffloadCoordinator {
     }
     throw new Error('File content is unavailable through the current connections')
   }
-  async prepare(paths: readonly string[]): Promise<void> {
+  async prepare(paths: readonly string[], signal?: AbortSignal): Promise<void> {
     for (const [id, snapshot] of this.absent)
       for (const file of snapshot.files)
         if (
@@ -149,7 +222,7 @@ export class TokenOffloadCoordinator {
             const hydrate = this.hydration.get(id)
             if (!hydrate)
               throw new Error('File content is unavailable until its connection recovers')
-            running = hydrate(file.path)
+            running = signal ? hydrate(file.path, signal) : hydrate(file.path)
             this.inflight.set(key, running)
             void running
               .finally(() => {

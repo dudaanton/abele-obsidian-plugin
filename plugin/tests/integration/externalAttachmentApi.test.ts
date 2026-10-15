@@ -1402,7 +1402,19 @@ describe('manual attachment store', () => {
           ).status
         ).toBe('version-changed')
         expect(await s.fake.vault.adapter.exists(path)).toBe(false)
-        expect((await s.state.snapshot()).operations.at(-1)?.phase).toBe('download-intent')
+        // Rejected network bytes never reached staging. Keep the rejected intent, but
+        // release its pending pointer so an explicit retry can fetch a valid version.
+        expect((await s.state.snapshot()).operations.at(-1)?.phase).toBe('complete')
+        expect((await s.api.get(s.base.fileId))?.pendingOperationId).toBeNull()
+        expect(
+          (
+            await s.api.hydrate(s.base.fileId, {
+              operationId: 'sample-retry',
+              expectedVersionId: s.base.versionId,
+            })
+          ).status
+        ).toBe('complete')
+        expect(new Uint8Array(await s.fake.vault.adapter.readBinary(path))).toEqual(content)
       } finally {
         s.close()
       }
