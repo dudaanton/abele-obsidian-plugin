@@ -193,13 +193,21 @@ async function refusalToGrant(form: 'desktop' | 'phone') {
         try{await until(()=>[...editor.querySelectorAll('select')].some(s=>s.value===${JSON.stringify(setup.worktree)}),'place chosen')}catch(e){throw Error(e.message+' '+JSON.stringify({want:${JSON.stringify(setup.worktree)},selects:[...editor.querySelectorAll('select')].map(s=>({value:s.value,options:[...s.options].map(o=>o.value+'='+o.textContent)})),text:editor.textContent.slice(0,400)}))}
         const shown=[...editor.querySelectorAll('select')].map(s=>s.selectedOptions[0]?.textContent);
         if(!shown.includes('Sample workstation'))throw Error('Node not chosen: '+shown);if(!shown.includes('sample-app')||!shown.includes('main · sample-app'))throw Error('Folder and worktree are not named as the node panel names them: '+shown);
-        await wait(400);const body=add.closest('.abele-chat-setup__body'),box=body.getBoundingClientRect(),inner={left:box.left+body.clientLeft,right:box.left+body.clientLeft+body.clientWidth,top:box.top,bottom:box.top+body.clientHeight};
-        for(const el of [add,...editor.querySelectorAll('select')]){const r=el.getBoundingClientRect();if(r.right>inner.right+0.5||r.left<inner.left-0.5)throw Error('Runs under the scrollbar or past the edge: '+(el.textContent||el.value)+' '+JSON.stringify({r,inner}))}
-        const a=add.getBoundingClientRect();if(a.top<inner.top||a.bottom>inner.bottom)throw Error('Add access is not in view when the place lands: '+JSON.stringify({a,inner}));if(shown.some(t=>t&&t.includes('refs/heads/')))throw Error('A branch is shown as its full ref: '+shown);
+        if(shown.some(t=>t&&t.includes('refs/heads/')))throw Error('A branch is shown as its full ref: '+shown);
         return JSON.stringify(shown)
       })()`
       )
       await capture(`grant-dialog-${form}`)
+      // Where the form landed: every field clear of the scrollbar, and Add access in view.
+      evalAsync(
+        `(async()=>{${prelude}
+        const add=visible('.abele-node-scope-editor__add'),editor=add.closest('.abele-node-scope-editor');
+        await wait(400);const body=add.closest('.abele-chat-setup__body'),box=body.getBoundingClientRect(),inner={left:box.left+body.clientLeft,right:box.left+body.clientLeft+body.clientWidth,top:box.top,bottom:box.top+body.clientHeight};
+        for(const el of [add,...editor.querySelectorAll('select')]){const r=el.getBoundingClientRect();if(r.right>inner.right+0.5||r.left<inner.left-0.5)throw Error('Runs under the scrollbar or past the edge: '+(el.textContent||el.value)+' '+JSON.stringify({r,inner}))}
+        const a=add.getBoundingClientRect();if(a.top<inner.top||a.bottom>inner.bottom)throw Error('Add access is not in view when the place lands: '+JSON.stringify({a,inner}));
+        return JSON.stringify('in view')
+      })()`
+      )
       evalAsync(
         `(async()=>{${prelude}
         visible('.abele-node-scope-editor__add').click();
