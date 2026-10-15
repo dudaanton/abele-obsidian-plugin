@@ -143,7 +143,7 @@ describe.skipIf(!available)('canvas pen with real mouse and finger input', () =>
     await click('Draw with marker')
     await until('button("Draw with marker").getAttribute("aria-pressed")==="true"')
     const [background, end] = run<number[][]>(`const v=view().viewer;
-      return (${canvasBackgroundGesture.toString()})(v.stage.getBoundingClientRect(),v.camera,v.graph.nodes,55,-8)`)
+      return (${canvasBackgroundGesture.toString()})(v.stage.getBoundingClientRect(),v.camera,v.graph.nodes,55,-8,[...view().contentEl.querySelectorAll('.abele-canvas-chrome__tools,.abele-canvas-chrome__view,.abele-canvas-chrome__picked,.abele-canvas-chrome__state')].map(e=>e.getBoundingClientRect()))`)
     expect(
       run<boolean>(
         `return [${JSON.stringify(background)},${JSON.stringify(end)}].every(([x,y])=>view().viewer.stage.contains(document.elementFromPoint(x,y)))`

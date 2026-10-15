@@ -22,6 +22,15 @@ describe('native Canvas background-stroke fixture', () => {
     expect(to[1] - from[1]).toBe(-8)
   })
 
+  it('keeps clear of the controls floating over the canvas', () => {
+    const stage = { left: 0, top: 0, width: 800, height: 600 }
+    const bar = { left: 0, top: 0, right: 800, bottom: 44 }
+    const [from, to] = canvasBackgroundGesture(stage, { x: 2000, y: 2000, zoom: 1 }, [], 55, -8, [
+      bar,
+    ])
+    for (const [, sy] of [from, to]) expect(sy).toBeGreaterThan(bar.bottom + 4)
+  })
+
   it('refuses a filled stage instead of silently annotating a card', () => {
     expect(() =>
       canvasBackgroundGesture(

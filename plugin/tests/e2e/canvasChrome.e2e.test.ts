@@ -145,7 +145,7 @@ describe.skipIf(!available)('the canvas by hand', () => {
       if(app.vault.getAbstractFileByPath(${JSON.stringify(DIR)}))throw Error('Synthetic folder already exists')
       window.__canvasChrome={layout:app.workspace.getLayout()}
       await app.vault.createFolder(${JSON.stringify(DIR)});window.__canvasChrome.owned=true
-      await app.vault.create(${JSON.stringify(`${DIR}/Sample long note.md`)},Array.from({length:60},(_,i)=>'Sample line '+(i+1)).join('\n\n'))
+      await app.vault.create(${JSON.stringify(`${DIR}/Sample long note.md`)},Array.from({length:60},(_,i)=>'Sample line '+(i+1)).join('\\n\\n'))
       await app.vault.create(path,JSON.stringify({nodes:[
         {id:'alpha',type:'text',text:'Sample input',x:0,y:0,width:220,height:120},
         {id:'beta',type:'text',text:'Sample step',x:300,y:0,width:220,height:120},

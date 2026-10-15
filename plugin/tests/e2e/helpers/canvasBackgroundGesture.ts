@@ -4,10 +4,18 @@ export function canvasBackgroundGesture(
   camera: { x: number; y: number; zoom: number },
   nodes: { x: number; y: number; width: number; height: number; type?: string }[],
   dx: number,
-  dy: number
+  dy: number,
+  /** Screen boxes of the controls floating over the canvas: no gesture starts or ends there. */
+  avoid: { left: number; top: number; right: number; bottom: number }[] = []
 ): [number[], number[]] {
   const clear = (point: number[]) => {
     const [sx, sy] = point
+    if (
+      avoid.some(
+        (r) => sx >= r.left - 4 && sx <= r.right + 4 && sy >= r.top - 4 && sy <= r.bottom + 4
+      )
+    )
+      return false
     if (
       sx <= stage.left + 2 ||
       sx >= stage.left + stage.width - 2 ||
