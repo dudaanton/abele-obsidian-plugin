@@ -15,6 +15,7 @@ import Icon from '@/components/obsidian/Icon.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { ChatService } from '@/ai/ChatService'
+import { newEntry } from '@/ai/interceptor/entries'
 import { ChatInterceptor } from '@/ai/ChatInterceptor'
 import { ScriptService } from '@/scripting/ScriptService'
 import { collectEntries } from '@/transfer/entries'
@@ -67,7 +68,7 @@ function seed() {
     findMessage: () => undefined,
     updateVisibleMessages: () => {},
     save: async () => {},
-    defaultInterceptor: () => ({ agentId: reviewer.id, contextDepth: 0 }),
+    defaultInterceptors: () => [newEntry({ id: 'agent-entry', agentId: reviewer.id })],
   })
   const overridden = ref(true)
   const clearOverride = vi.fn(() => {

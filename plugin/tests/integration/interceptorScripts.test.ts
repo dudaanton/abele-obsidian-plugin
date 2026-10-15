@@ -7,8 +7,8 @@
  * (running one is `tests/unit/interceptorScripts.test.ts`); the model's loop is faked just far
  * enough to call the approval hook the way the real one does.
  *
- * The one rule over all of it: the message is never lost. A script that fails sends it as
- * written and says why; a script that is stopped keeps it back for the person.
+ * The one rule over all of it: the message is never lost. A script that fails or is stopped keeps
+ * it back for the person, saying why; Send then sends it as it is.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { Notice } from 'obsidian'
@@ -301,19 +301,23 @@ describe('a script interceptor', () => {
     expect(asked).toEqual(['the password is swordfish'])
   })
 
-  it('sends the message as written when the script fails, and says why', async () => {
+  it('keeps the message back when the script fails, says why, and sends it as is on Send', async () => {
     setup()
     session.interceptor.script.value = 'Guard'
     decides({ kind: 'failed', reason: 'the script did not decide within 30 s' })
 
     await session.sendMessage('as typed')
 
-    expect(asked).toEqual(['as typed'])
+    expect(asked).toEqual([])
     const [user] = bubbles()
-    expect(user.draft).toBe(false)
+    expect(user.draft).toBe(true)
     expect(user.interceptorCollapsed).toBe(false)
-    expect(user.interceptorChat?.[0]?.content).toContain('did not decide within 30 s')
+    expect(user.interceptorWait?.error).toContain('did not decide within 30 s')
     expect(Notice.shown.join('\n')).toContain('did not decide within 30 s')
+
+    await session.confirmDraft(user.id)
+    expect(asked).toEqual(['as typed'])
+    expect(bubbles()[0].draft).toBe(false)
   })
 
   it('keeps the message back when the person stops it', async () => {

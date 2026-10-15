@@ -14,6 +14,7 @@ import AiChatSettings from '@/components/AiChatSettings.vue'
 import Button from '@/components/obsidian/Button.vue'
 import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
 import { ChatService } from '@/ai/ChatService'
+import { newEntry } from '@/ai/interceptor/entries'
 import { ChatInterceptor } from '@/ai/ChatInterceptor'
 import { ScriptService } from '@/scripting/ScriptService'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
@@ -34,7 +35,7 @@ function interceptorFor(defaultId: string) {
     findMessage: () => undefined,
     updateVisibleMessages: () => {},
     save: async () => {},
-    defaultInterceptor: () => ({ agentId: defaultId, contextDepth: 0 }),
+    defaultInterceptors: () => (defaultId ? [newEntry({ id: 'agent-entry', agentId: defaultId })] : []),
   })
 }
 

@@ -235,3 +235,8 @@ export function interceptorPatch<P extends LegacyInterceptorFields & { intercept
   const interceptors = withLegacyPatch(holder.interceptors, single)
   return { ...patch, interceptors, ...legacyFields(interceptors) }
 }
+
+/** A field of an agent's or a chat's that is its list or mirrors it. */
+export function isInterceptorKey(key: string): boolean {
+  return key === 'interceptors' || (LEGACY_INTERCEPTOR_KEYS as readonly string[]).includes(key)
+}

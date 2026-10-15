@@ -106,8 +106,6 @@ import { CommentService } from './CommentService'
 import { ChatSummarizer, type SummarizerHost } from './ChatSummarizer'
 import {
   ChatInterceptor,
-  NO_INTERCEPTOR,
-  type InterceptorChoice,
   type InterceptorHost,
 } from './ChatInterceptor'
 import {
@@ -171,8 +169,18 @@ import { agentReplyText, composerText } from './replyLinks'
 import { TurnPolicy } from './interceptor/turnPolicy'
 import type { ToolPolicy } from './interceptor/policy'
 import { buildAnswerInput, buildInterceptInput, type InterceptSource } from './interceptor/context'
-import { sendThroughScript, type ScriptSendHost } from './interceptor/scriptSend'
-import type { InterceptRoute } from './ChatInterceptor'
+import { retryHeld, sendHeld, sendThroughChain, type ScriptSendHost } from './interceptor/scriptSend'
+import { anyReads, runChain } from './interceptor/chain'
+import {
+  copyEntries,
+  entriesOf,
+  legacyFields,
+  normaliseEntries,
+  SINGLE_ENTRY_ID,
+  withLegacyPatch,
+} from './interceptor/entries'
+import type { InterceptorEntry } from './agents/types'
+import { matchesPattern } from './interceptor/pattern'
 import {
   getPathToLeaf,
   findDeepestLeaf,
@@ -880,21 +888,12 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
    * The reviewer this chat's agent asks for. A delegated run has none whatever its agent says:
    * nobody is there to read a draft, and a run that waited for one would never finish.
    */
-  defaultInterceptor(): InterceptorChoice {
-    if (this.kind === 'run') return NO_INTERCEPTOR
+  defaultInterceptors(): InterceptorEntry[] {
+    if (this.kind === 'run') return []
     const agent = this.agent.value
-    if (!agent) return NO_INTERCEPTOR
-    const agentId = agent.interceptorAgentId === agent.id ? '' : agent.interceptorAgentId || ''
-    const script = agent.interceptorScript || ''
-    if (!agentId && !script) return NO_INTERCEPTOR
-    return {
-      agentId,
-      contextDepth: normaliseContextDepth(agent.interceptorContextDepth),
-      replyOnly: agent.interceptorReplyOnly === true,
-      checks: normaliseChecks(agent.interceptorChecks),
-      script,
-      pattern: agent.interceptorPattern || '',
-    }
+    if (!agent) return []
+    // Never the agent reading for itself, whatever the settings say.
+    return entriesOf(agent).filter((e) => e.script || e.agentId !== agent.id)
   }
 
   private setOverride<K extends OverrideKey>(key: K, value: SessionOverrides[K]): void {
@@ -2562,11 +2561,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
 
     // The interceptor looks first, when there is one and the message is its kind. Never in a
     // run, where nobody is there to send a draft on.
-    const route = isCurrent ? { kind: 'none' as const } : this.interceptRoute(content)
-    if (route.kind === 'agent' && !route.replyOnly)
-      return this.sendDraftMessage(content, attachments, replyTo)
-    if (route.kind === 'script' && !route.replyOnly)
-      return this.sendThroughScript(route, content, attachments, replyTo)
+    if (!isCurrent && this.interceptorHolds(content)) {
+      this.error.value = null
+      return sendThroughChain(this.scriptSendHost(), content, attachments, replyTo)
+    }
 
     const gen = this.generation
     this.error.value = null
@@ -2597,10 +2595,17 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     }
   }
 
-  /** Where a message goes: straight to the agent, or first to this chat's interceptor. */
-  private interceptRoute(content: string): InterceptRoute {
-    if (this.kind === 'run') return { kind: 'none' }
-    return this.interceptor.route(content)
+  /** The interceptors that would read a message as typed, in their order. Never in a run. */
+  private messageReaders(content: string): InterceptorEntry[] {
+    if (this.kind === 'run') return []
+    return this.interceptor
+      .chain('message')
+      .filter((e) => matchesPattern(e.pattern, content).matches)
+  }
+
+  /** Some interceptor would hold the message, rather than only comment beside it. */
+  private interceptorHolds(content: string): boolean {
+    return this.messageReaders(content).some((e) => !e.replyOnly)
   }
 
   /**
@@ -2616,41 +2621,56 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     const answer = this.messages.value.at(-1)
     if (answer?.role !== 'assistant' || answer.draft || !answer.content.trim()) return
     if (answer.timestamp < this.turnStartedAt || this.answersChecked.has(answer.id)) return
-    const route = this.interceptor.answerRoute(answer.content)
-    if (route.kind === 'none') return
+    const chain = this.interceptor.chain('answer')
+    if (!anyReads(chain, answer.content)) return
     this.answersChecked.add(answer.id)
 
     const generation = this.generation
-    const by = this.interceptor.agentName
-    const input =
-      route.kind === 'script'
-        ? buildAnswerInput(answer, this.interceptSource(this.messages.value))
-        : null
-    this.answerCheck.value = { id: answer.id, by }
+    const gone = () => this.destroyed || generation !== this.generation
     try {
       await this.save()
-      const outcome = await this.interceptor.checkAnswer(route, answer, input)
-      if (this.destroyed || generation !== this.generation) return
-      console.debug('[Abele interceptor] answer', { by, outcome: outcome.kind })
-      const lines = route.broken
-        ? [`The pattern does not compile (${route.broken}), so every answer is checked.`]
-        : []
-      if ('note' in outcome && outcome.note) lines.push(outcome.note)
-      if (outcome.kind === 'replace') {
-        try {
-          await this.writeReplyChange(answer.id, (message) =>
-            interceptorRevision(message, outcome.text, by, Date.now())
-          )
-        } catch (err) {
-          const reason = err instanceof Error ? err.message : String(err)
-          lines.push(`Not replaced: ${reason} The answer stays as it was.`)
+      // One after another, each given the answer as the one before left it. One that fails or is
+      // stopped keeps the answer as it stands, and the ones after it do not read it.
+      await runChain<null>(chain, 0, answer.content, async ({ entry, at, of, broken }, text) => {
+        if (gone()) return { kind: 'stop', result: null }
+        const by = this.interceptor.nameOf(entry)
+        const { replyOnly: _held, ...route } = this.interceptor.routeOf(entry, broken)
+        const current = this.findMessage(answer.id) ?? answer
+        const input =
+          route.kind === 'script'
+            ? buildAnswerInput(current, this.interceptSource(this.messages.value))
+            : null
+        this.answerCheck.value = { id: answer.id, by, ...(of > 1 ? { at, of } : {}) }
+        const outcome = await this.interceptor.checkAnswer(route, current, input)
+        if (gone()) return { kind: 'stop', result: null }
+        console.debug('[Abele interceptor] answer', { by, at, of, outcome: outcome.kind })
+        const lines = broken
+          ? [`The pattern does not compile (${broken}), so every answer is checked.`]
+          : []
+        if ('note' in outcome && outcome.note) lines.push(outcome.note)
+        let next: string | null = text
+        if (outcome.kind === 'replace') {
+          try {
+            await this.writeReplyChange(answer.id, (message) =>
+              interceptorRevision(message, outcome.text, by, Date.now())
+            )
+            next = outcome.text
+          } catch (err) {
+            const reason = err instanceof Error ? err.message : String(err)
+            lines.push(`Not replaced: ${reason} The answer stays as it was.`)
+            next = null
+          }
+        } else if (outcome.kind === 'failed') {
+          lines.push(`Not checked: ${outcome.reason}. The answer stays as it was.`)
+          next = null
+        } else if (outcome.kind === 'stopped') {
+          lines.push('Not checked: stopped. The answer stays as it was.')
+          next = null
         }
-      } else if (outcome.kind === 'failed') {
-        lines.push(`Not checked: ${outcome.reason}. The answer stays as it was.`)
-      } else if (outcome.kind === 'stopped') {
-        lines.push('Not checked: stopped. The answer stays as it was.')
-      }
-      if (lines.length) await this.noteUnderAnswer(answer.id, by, route.kind === 'script', lines)
+        if (next === null && at < of) lines.push('The interceptors after it did not read it.')
+        if (lines.length) await this.noteUnderAnswer(answer.id, by, route.kind === 'script', lines)
+        return next === null ? { kind: 'stop', result: null } : { kind: 'pass', text: next }
+      })
     } finally {
       this.answerCheck.value = null
     }
@@ -2678,6 +2698,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
             role: 'assistant' as const,
             content,
             timestamp: at,
+            by,
           })),
         ],
       })
@@ -2780,23 +2801,24 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       ...(replyTo?.length ? { replyTo: replyTo.map((to) => ({ ...to })) } : {}),
       timestamp: Date.now(),
     }
-    const route = this.interceptRoute(content)
+    // Reply-only interceptors comment beside it, one after another, the turn never waiting.
+    const readers = review ? this.messageReaders(content).filter((e) => e.replyOnly) : []
     // Snapshot before this bubble joins the conversation, just like a blocking script sees it.
-    const input =
-      review && route.kind === 'script' && route.replyOnly
-        ? buildInterceptInput(
-            { text: content, attachments: attachments ?? [] },
-            this.interceptSource(this.messages.value)
-          )
-        : null
+    const input = readers.some((e) => e.script)
+      ? buildInterceptInput(
+          { text: content, attachments: attachments ?? [] },
+          this.interceptSource(this.messages.value)
+        )
+      : null
     this.appendChatMessage(userMsg)
     this.updateVisibleMessages()
-    if (review && route.kind !== 'none' && route.replyOnly) {
+    for (const entry of readers) {
+      const route = this.interceptor.routeOf(entry)
       // A separate request, never awaited by the main turn (including queued injections).
       const reviewing =
         route.kind === 'script' && input
           ? this.interceptor.reviewScriptReply(userMsg.id, route, input)
-          : this.interceptor.reviewReply(userMsg.id)
+          : this.interceptor.reviewReply(userMsg.id, entry)
       void reviewing.catch((err) => {
         console.error('[Abele interceptor save]', err)
       })
@@ -2852,11 +2874,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     // Only the run of messages at the front that the interceptor would not look at: one it
     // would look at waits for its own turn, through `drainQueue` and `sendMessage`, rather
     // than slipping into this one past it. Order is kept, so nothing behind it goes first.
-    const cut = queued.findIndex((q) => {
-      if (q.delegationWake) return false
-      const route = this.interceptRoute(q.content)
-      return route.kind !== 'none' && !route.replyOnly
-    })
+    const cut = queued.findIndex((q) => !q.delegationWake && this.interceptorHolds(q.content))
     const taken = cut === -1 ? queued : queued.slice(0, cut)
     if (!taken.length) return []
     this.queuedMessages.value = cut === -1 ? [] : queued.slice(cut)
@@ -3309,20 +3327,28 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
    * own id as its agent id, so the old value maps across unchanged.
    */
   private restoreInterceptor(metadata: ChatMetadata | null | undefined): void {
+    // A chat saved with a list of its own runs that list.
+    if (metadata && metadata.interceptors !== undefined) {
+      this.interceptor.override.value = normaliseEntries(metadata.interceptors).entries
+      return
+    }
     const stored = metadata?.interceptorAgentId ?? (metadata?.activeInterceptorId || undefined)
     const script = metadata?.interceptorScript
     if (typeof stored !== 'string' && typeof script !== 'string') {
       this.interceptor.followAgent()
       return
     }
-    this.interceptor.override.value = {
-      agentId: typeof stored === 'string' ? stored : '',
-      contextDepth: normaliseContextDepth(metadata?.interceptorContextDepth),
-      replyOnly: metadata?.interceptorReplyOnly === true,
-      checks: normaliseChecks(metadata?.interceptorChecks),
-      script: typeof script === 'string' ? script : '',
-      pattern: typeof metadata?.interceptorPattern === 'string' ? metadata.interceptorPattern : '',
-    }
+    // The single interceptor of before lists, as a list of one; naming nobody, it is Off and
+    // keeps its settings for when someone is chosen again.
+    this.interceptor.override.value = withLegacyPatch([], {
+      interceptorAgentId: typeof stored === 'string' ? stored : '',
+      interceptorContextDepth: normaliseContextDepth(metadata?.interceptorContextDepth),
+      interceptorReplyOnly: metadata?.interceptorReplyOnly === true,
+      interceptorChecks: normaliseChecks(metadata?.interceptorChecks),
+      interceptorScript: typeof script === 'string' ? script : '',
+      interceptorPattern:
+        typeof metadata?.interceptorPattern === 'string' ? metadata.interceptorPattern : '',
+    }).map((e) => ({ ...e, id: SINGLE_ENTRY_ID }))
   }
 
   /** Converts a pre-agent chat's stored snapshot into overrides. */
@@ -4055,18 +4081,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       customSystemPrompt: this.customSystemPrompt.value || undefined,
       customSystemPromptNotePath: this.customSystemPromptNotePath.value || undefined,
       // Only a choice this chat made; a chat following its agent says nothing, and picks up
-      // whatever the agent's reviewer is the next time it is opened. An empty id is Off.
-      interceptorAgentId: this.interceptor.override.value?.agentId,
-      interceptorContextDepth: this.interceptor.override.value?.contextDepth,
-      interceptorReplyOnly: this.interceptor.override.value?.replyOnly,
-      // Absent means messages, what every chat checked before answers could be.
-      interceptorChecks:
-        this.interceptor.override.value?.checks &&
-        this.interceptor.override.value.checks !== 'message'
-          ? this.interceptor.override.value.checks
-          : undefined,
-      interceptorScript: this.interceptor.override.value?.script || undefined,
-      interceptorPattern: this.interceptor.override.value?.pattern || undefined,
+      // whatever the agent's list is the next time it is opened. An empty list is Off.
+      ...this.interceptorMetadata(),
     }
 
     return {
@@ -4623,40 +4639,22 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
 
   // ── Interceptor ────────────────────────────────────────────────
 
-  private async sendDraftMessage(
-    content: string,
-    attachments?: string[],
-    replyTo?: ChatReplyTo[]
-  ): Promise<void> {
-    this.error.value = null
-
-    const userMsg: ChatMessage = {
-      id: nanoid(),
-      role: 'user',
-      content,
-      attachments: attachments?.length ? attachments : undefined,
-      ...(replyTo?.length ? { replyTo } : {}),
-      timestamp: Date.now(),
-      draft: true,
-      interceptorName: this.interceptor.agentName,
-      interceptorChat: [],
+  /** This chat's own interceptors as it saves them, the single fields mirroring the first. */
+  private interceptorMetadata(): Partial<ChatMetadata> {
+    const own = this.interceptor.override.value
+    if (!own) return {}
+    const single = legacyFields(own)
+    return {
+      interceptors: copyEntries(own),
+      interceptorAgentId: single.interceptorAgentId,
+      interceptorContextDepth: single.interceptorContextDepth,
+      interceptorReplyOnly: single.interceptorReplyOnly,
+      // Absent means messages, what every chat checked before answers could be.
+      interceptorChecks:
+        single.interceptorChecks !== 'message' ? single.interceptorChecks : undefined,
+      interceptorScript: single.interceptorScript || undefined,
+      interceptorPattern: single.interceptorPattern || undefined,
     }
-    this.appendChatMessage(userMsg)
-    this.updateVisibleMessages()
-
-    await this.interceptor.review(userMsg.id)
-    this.markDirty()
-  }
-
-  /** A message an interceptor script decides about; see `interceptor/scriptSend.ts`. */
-  private sendThroughScript(
-    route: Extract<InterceptRoute, { kind: 'script' }>,
-    content: string,
-    attachments?: string[],
-    replyTo?: ChatReplyTo[]
-  ): Promise<void> {
-    this.error.value = null
-    return sendThroughScript(this.scriptSendHost(), route, content, attachments, replyTo)
   }
 
   private scriptSendHost(): ScriptSendHost {
@@ -4713,6 +4711,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       await this.interceptor.reviewReply(messageId)
       return
     }
+    // A message stopped by a failure: that interceptor again, and the ones after it.
+    const draft = messageId ? this.findMessage(messageId) : this.getDraftMessage()
+    if (draft && (await retryHeld(this.scriptSendHost(), draft.id))) return
     await this.interceptor.retry()
   }
 
@@ -4741,14 +4742,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
 
     const draftMsg = this.allChatMessages.find((m) => m.id === draftMsgId)
     if (!draftMsg || !draftMsg.draft) return
+    if (this.interceptor.streaming.value) return
 
-    // Mark as confirmed and collapse interceptor chat
-    this.updateChatMessage(
-      (m) => m.id === draftMsgId,
-      (m) => ({ ...m, draft: false, interceptorCollapsed: true })
-    )
-
-    await this.runTurnFor(this.findMessage(draftMsgId) ?? draftMsg)
+    // Held by an interceptor's say, it goes on with the next one; stopped by a failure, it is
+    // sent as it is. Either way the interceptors' side conversation folds away once it is sent.
+    await sendHeld(this.scriptSendHost(), draftMsgId)
   }
 
   /**

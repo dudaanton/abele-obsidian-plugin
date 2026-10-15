@@ -23,6 +23,7 @@ import type { AbeleSettings } from '@/services/AbeleConfig'
 import { DEFAULT_READER_SETTINGS } from '@/reader/settings'
 import type { AiSettings } from '@/ai/types'
 import { createAgent } from '@/ai/agents/types'
+import { newEntry } from '@/ai/interceptor/entries'
 import { TRANSFER_SECTIONS, isSpecialSection, type TransferEntry } from '@/transfer/types'
 import { FIREFLY_TOKEN_KEY_ID } from '@/secrets/legacy'
 import { defaultSyncSettings } from '@/sync/settings'
@@ -330,6 +331,21 @@ describe('settings that arrived later than the transfer did', () => {
     destination.ai.agents = []
     expect(applyEntries([entry], destination).ai.agents[0].interceptorChecks).toBe('answer')
     expect(createAgent().interceptorChecks).toBe('message')
+  })
+
+  it("carries an agent's interceptor list whole, in its order, with the switched-off ones", () => {
+    const base = settings()
+    const interceptors = [
+      { ...newEntry({ id: 'ic-a', script: 'Sample guard', checks: 'both' as const }) },
+      { ...newEntry({ id: 'ic-b', agentId: 'sample-reviewer', enabled: false, pattern: '^/x' }) },
+      { ...newEntry({ id: 'ic-c', agentId: 'sample-editor', replyOnly: true, contextDepth: 4 }) },
+    ]
+    base.ai.agents = [createAgent({ id: 'sample-listing-agent', interceptors })]
+    const entry = find(collectEntries(base), 'ai-agents', 'sample-listing-agent')!
+    expect(entry.data).toMatchObject({ interceptors })
+    const destination = settings()
+    destination.ai.agents = []
+    expect(applyEntries([entry], destination).ai.agents[0].interceptors).toEqual(interceptors)
   })
 
   it('carries both map settings', () => {

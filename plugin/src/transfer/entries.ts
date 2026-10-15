@@ -206,7 +206,8 @@ export const SECTIONS: Section[] = [
   ),
   // Whole agent definitions travel, including identity-based MCP toolModes, toolDiscovery,
   // toolSectionOpening, toolSectionDescriptions,
-  // interceptorReplyOnly, interceptorChecks and the other review settings.
+  // the ordered `interceptors` list (switched-off entries included) and the single
+  // interceptorReplyOnly, interceptorChecks and other review settings that mirror its first.
   aiList('ai-agents', 'Agents', 'agents'),
   // Each server travels with the tools it was last seen offering, so the other device tells
   // its agents the same thing without fetching first. There is no command to carry: servers are

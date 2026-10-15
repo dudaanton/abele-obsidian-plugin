@@ -1,5 +1,7 @@
 import { AbeleConfig } from '@/services/AbeleConfig'
 import type { AgentTool } from '../client'
+import type { AgentDefinition } from '../agents/types'
+import { interceptorPatch, isInterceptorKey } from '../interceptor/entries'
 import {
   deviceNext,
   deviceTypes,
@@ -17,6 +19,7 @@ import {
   isAgent,
   moveItem,
   refuseInterceptor,
+  refuseInterceptorList,
   refusePattern,
   removeItem,
   updateItem,
@@ -324,12 +327,20 @@ function setValue(
     const refused = refusePattern(parsed)
     if (refused) return { text: refused, changed: false }
   }
+  if (found.key === 'interceptors' && isAgent(found.parent)) {
+    const refused = refuseInterceptorList(found.parent, parsed)
+    if (refused) return { text: refused, changed: false }
+  }
 
   // A value read, changed and written back whole still reads `<hidden>` where a keychain id
   // was; that id stays rather than being replaced by the placeholder.
   const next = restoreHidden(parsed, found.value)
   const before = JSON.stringify(redact(found.value, found.key))
-  ;(found.parent as Record<string, unknown>)[found.key] = next
+  // An agent's list and the single fields that mirror its first entry are written together.
+  if (isAgent(found.parent) && isInterceptorKey(found.key)) {
+    const agent = found.parent as unknown as AgentDefinition
+    Object.assign(agent, interceptorPatch(agent, { [found.key]: next }))
+  } else (found.parent as Record<string, unknown>)[found.key] = next
 
   return { text: `${path}: ${before} → ${JSON.stringify(redact(next, found.key))}`, changed: true }
 }

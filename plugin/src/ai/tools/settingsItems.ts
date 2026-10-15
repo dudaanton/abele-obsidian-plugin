@@ -59,10 +59,26 @@ export function refusePattern(next: unknown): string | null {
     : null
 }
 
-/** Both checks on the fields of an agent being written. */
+/** Both checks on every entry of an agent's interceptor list, said with the entry's place. */
+export function refuseInterceptorList(self: unknown, next: unknown): string | null {
+  if (!Array.isArray(next)) return null
+  for (const [i, entry] of next.entries()) {
+    if (!isRecord(entry)) return `Interceptor ${i + 1} is not an object.`
+    const bad =
+      (entry.script ? null : refuseInterceptor(self, entry.agentId)) ?? refusePattern(entry.pattern)
+    if (bad) return `Interceptor ${i + 1}: ${bad}`
+  }
+  return null
+}
+
+/** The checks on the fields of an agent being written. */
 export function refuseInterceptorFields(self: unknown, fields: Record<string, unknown>): string | null {
   if ('interceptorAgentId' in fields) {
     const bad = refuseInterceptor(self, fields.interceptorAgentId)
+    if (bad) return bad
+  }
+  if ('interceptors' in fields) {
+    const bad = refuseInterceptorList(self, fields.interceptors)
     if (bad) return bad
   }
   if ('interceptorPattern' in fields) return refusePattern(fields.interceptorPattern)

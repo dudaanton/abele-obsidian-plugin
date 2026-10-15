@@ -83,6 +83,7 @@ export function cloneChatPath(source: ChatSnapshot, messageId: string): ChatSnap
     interceptorChecks: setup.interceptorChecks,
     interceptorScript: setup.interceptorScript,
     interceptorPattern: setup.interceptorPattern,
+    interceptors: setup.interceptors,
     activeLeafId: messages.at(-1).id,
     pendingBranchCut: pendingCut ? ids.get(pendingCut) : undefined,
   })
