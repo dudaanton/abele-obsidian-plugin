@@ -423,7 +423,10 @@ export class CanvasInput implements CanvasViewerInput {
       single = selected.size === 1 ? graph.nodes.find((n) => selected.has(n.id)) : null,
       multiple = event.shiftKey || this.ports.multiple(),
       corner =
-        !multiple && single
+        !multiple &&
+        single &&
+        single.width * this.viewer.camera.zoom >= 72 &&
+        single.height * this.viewer.camera.zoom >= 48
           ? hitResize(single, x, y, this.viewer.camera.zoom, event.pointerType !== 'mouse')
           : null,
       node = corner ? single : (named ?? hitNode(graph, x, y))
@@ -710,7 +713,11 @@ export class CanvasInput implements CanvasViewerInput {
     }
     for (const node of graph.nodes.filter((n) => selected.has(n.id))) {
       box(node)
-      if (!single || !this.ports.enabled() || node.abele?.pinned === true) continue
+      // A card too small on the screen for its corners to stand apart keeps them hidden, so they
+      // do not cover it: zoomed in, they come back.
+      const roomy =
+        node.width * this.viewer.camera.zoom >= 72 && node.height * this.viewer.camera.zoom >= 48
+      if (!single || !this.ports.enabled() || !roomy || node.abele?.pinned === true) continue
       for (const corner of RESIZE_CORNERS) {
         const handle = this.overlay.ownerDocument.createElementNS(
             'http://www.w3.org/1999/xhtml',
