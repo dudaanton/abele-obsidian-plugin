@@ -11,7 +11,12 @@ afterEach(() => cleanups.splice(0).forEach((fn) => fn()))
 /** `delay` holds every write open, as a vault write does, so actions can land during a save. */
 export function setup(
   graph: CanvasGraph = emptyCanvas(),
-  { delay = 0, schedule = { idle: 0, max: 0 } } = {}
+  {
+    delay = 0,
+    schedule = { idle: 0, max: 0 },
+    // Long by default, so a test decides when typing has paused.
+    textSchedule = { idle: 60_000, max: 60_000 },
+  } = {}
 ) {
   const settle = () => (delay ? new Promise((resolve) => setTimeout(resolve, delay)) : undefined)
   const el = document.createElement('div')
@@ -58,6 +63,7 @@ export function setup(
     document: () => documentState,
     publish,
     schedule,
+    textSchedule,
     pickFile: async () => 'sample-note.md',
     pickLink: async () => 'https://sample.example',
     confirmDiscard: async () => true,
@@ -75,6 +81,11 @@ export function setup(
     field().value = text
     field().dispatchEvent(new Event('input', { bubbles: true }))
   }
+  /** Leaves the card the way a person does: Escape in the field. */
+  const done = () =>
+    field().dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    )
   cleanups.push(() => {
     editor.destroy()
     viewer.destroy()
@@ -90,6 +101,7 @@ export function setup(
     button,
     field,
     input,
+    done,
     openNode,
   }
 }

@@ -159,8 +159,8 @@ and **Marker** (P), the **Eraser** for whole strokes or part of one (E), and the
 Pressing the tool already in hand offers the rest of its family. With a pen in hand its colours
 and width stand in the same row. Zoom, fit and Undo/Redo stand in a column at the top right; on
 a phone two fingers zoom and the column keeps only Undo and Redo, and the tools that do not fit
-wait under **More tools**. A dot in that column says when a change has not been saved, and
-opens Retry, Keep the draft or Discard the draft.
+wait under **More tools**. A dot in that column says when a change could not be saved, and
+opens Retry or Discard the draft.
 
 **Select** picks with a click; Shift-click adds or takes away. Dragging over empty canvas with
 the mouse draws a box and picks everything wholly inside it; a finger there moves the canvas.
@@ -244,10 +244,15 @@ preview; an agent or another tab cannot publish over the active gesture. Escape,
 touch, or Fit cancels the preview. Adding a second finger cancels a card move or resize and
 switches to pan and pinch, without saving an accidental move.
 
-Leaving a card's words completes one change, including creating a new text card. Until then,
-typing and IME composition are drafts, not writes. **Keep the draft**, under the not-saved dot,
-leaves text unsaved in this running session. **Delete**, **Undo** and **Redo** work on cards and the shared history, including agent
-changes. Saving existing text without changes writes nothing and keeps redo available.
+Card text saves itself, like a note: there is no save button. About a second after you stop
+typing, the text so far is written to the file and becomes one Undo item; while you keep typing it
+is written every few seconds. Leaving the field, closing the tab, switching files or opening native
+Canvas writes it at once, and so does an agent reading the canvas. IME composition is never written
+half-finished. Tap the canvas, or press Escape or Cmd+Enter, to finish editing the card. If a
+write fails, the canvas says so and offers **Retry save** and **Discard draft…**; leaving the field
+or the app then waits for your choice instead of writing. Nothing else asks you to save.
+**Delete**, **Undo** and **Redo** work on cards and the shared history, including agent
+changes. Opening a card's text and leaving it unchanged writes nothing and keeps redo available.
 If the shared history changes while an Undo/Redo click is waiting, the action is refused;
 read the updated diagram and try again. Outside a text field, Delete/Backspace deletes a selected card, Enter edits its text,
 and Ctrl or ⌘+Z / Shift+Z undo and redo. Inside fields those keys belong to the text input.

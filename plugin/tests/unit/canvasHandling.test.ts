@@ -393,9 +393,10 @@ describe('a card left in the middle of writing a composed word', () => {
     s.field().dispatchEvent(new Event('input'))
     // A phone's keyboard dismissed: the field is left with no composition end.
     s.field().dispatchEvent(new Event('blur'))
-    expect(s.button('Save text').disabled).toBe(false)
-    s.button('Save text').click()
-    await vi.waitFor(() => expect(s.document.session.graph.nodes[0].text).toBe('alpha, composed'))
+    // There is no Save button: leaving the field writes the words by itself.
+    await vi.waitFor(() =>
+      expect(s.document.session.committed.graph.nodes[0].text).toBe('alpha, composed')
+    )
   })
 })
 

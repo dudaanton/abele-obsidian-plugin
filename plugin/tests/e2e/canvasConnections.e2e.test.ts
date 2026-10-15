@@ -197,7 +197,10 @@ describe.skipIf(!available)('shapes and connections with real pointer input', ()
       })
       .toBe('A new shape')
     shot('shape-keyboard')
-    await click('Save text')
+    // Card text saves itself: the file gets it while the card is open; tapping the card leaves it.
+    await until("view().editor.editing&&(await read()).nodes.some(n=>n.text==='A new shape')")
+    await input(point(run<string>('return view().editor.editing')))
+    await until('!view().editor.editing')
     await saved()
     expect(
       run<boolean>(

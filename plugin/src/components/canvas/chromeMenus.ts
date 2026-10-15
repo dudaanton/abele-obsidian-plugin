@@ -379,12 +379,6 @@ export function saveMenu(e: MouseEvent, c: Controls): void {
   )
   menu.addItem((i) =>
     i
-      .setTitle('Keep the draft')
-      .setIcon('archive')
-      .onClick(() => c.press('Keep text draft'))
-  )
-  menu.addItem((i) =>
-    i
       .setTitle('Discard the draft…')
       .setIcon('trash-2')
       .setWarning(true)

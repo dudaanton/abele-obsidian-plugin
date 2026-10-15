@@ -698,8 +698,7 @@ function connectionEnds(): { x: number; y: number }[] {
 
 const saveState = computed(() => {
   tick.value
-  // Words being written on a card are not unsaved work yet: they are saved when the card is left.
-  if (c.editing()) return null
+  // Words on a card are written as they are typed, so a write that fails says so while typing too.
   if (!state('Retry save').hidden || !state('Discard local draft').hidden) return 'unsaved'
   return null
 })
@@ -862,9 +861,6 @@ const leaveFields = (e: Event) => {
   )
     active.blur()
 }
-const blur = () => {
-  if (c.editing() && !state('Save text').disabled) press('Save text')
-}
 onMounted(() => {
   props.viewer.el.classList.add('abele-canvas-view_chrome')
   props.viewer.groupLabels = true
@@ -879,13 +875,11 @@ onMounted(() => {
       menus.dropMenu(c)
     } else if (!drop) dropShown = null
   })
-  c.textField().addEventListener('blur', blur)
   c.textField().addEventListener('input', placeField)
   frame = window.requestAnimationFrame(watchCamera)
 })
 onBeforeUnmount(() => {
   off.value?.()
-  c.textField().removeEventListener('blur', blur)
   c.textField().removeEventListener('input', placeField)
   cancelAnimationFrame(frame)
   props.viewer.el.classList.remove('abele-canvas-view_chrome')

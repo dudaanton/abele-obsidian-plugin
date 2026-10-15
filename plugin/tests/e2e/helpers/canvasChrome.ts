@@ -108,7 +108,6 @@ const COLUMN: Record<string, string> = {
 /** What the not-saved dot's menu offers. */
 const SAVE: Record<string, string> = {
   'Retry save': 'Retry',
-  'Keep text draft': 'Keep the draft',
   'Discard local draft': 'Discard the draft…',
 }
 /** The editor's old toggles of a panel of tools, which put Select back in hand. */

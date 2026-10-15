@@ -143,3 +143,40 @@ it('frames the part of the canvas an embed of a part opens', async () => {
     viewer.destroy()
   }
 })
+
+it.each(['writing', 'failed', 'none'] as const)(
+  'calls unwritten work unsaved only in a leaf without an editor (editor: %s)',
+  async (editing) => {
+    const view = Object.create(CanvasView.prototype) as CanvasView
+    const load = vi.fn(),
+      setText = vi.fn()
+    view.viewer = { load, status: { setText } } as unknown as CanvasViewer
+    const app = buildFakeVault([{ path: 'sample-pending.canvas', raw: '{"nodes":[],"edges":[]}' }])
+    const file = app.vault.getAbstractFileByPath('sample-pending.canvas') as TFile
+    ;(view as unknown as { app: unknown; refreshToken: number }).app = app
+    ;(view as unknown as { refreshToken: number }).refreshToken = 0
+    await view.onLoadFile(file)
+    // The editing leaf writes by itself; a read-only one still says another session holds work.
+    view.editor =
+      editing === 'none'
+        ? null
+        : ({
+            refresh: vi.fn(),
+            writeFailing: editing === 'failed',
+          } as unknown as CanvasView['editor'])
+    const document = (view as unknown as { documentLease: { document: CanvasDocumentLike } })
+      .documentLease.document
+    document.beginDraft()
+    document.updateDraft((graph) => ({
+      ...graph,
+      nodes: [{ id: 'sample', type: 'text', text: 'Typed', x: 0, y: 0, width: 200, height: 100 }],
+    }))
+    document.finishDraft()
+    expect(document.session.dirty).toBe(true)
+    if (editing === 'writing') {
+      expect(setText).toHaveBeenCalledWith(expect.stringMatching(/saving automatically/i))
+      expect(setText).not.toHaveBeenCalledWith(expect.stringMatching(/not been saved/i))
+    } else expect(setText).toHaveBeenCalledWith(expect.stringMatching(/not been saved/i))
+  }
+)
+type CanvasDocumentLike = import('@/canvas/documentRegistry').CanvasDocument

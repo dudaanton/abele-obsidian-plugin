@@ -39,6 +39,7 @@ export class CanvasView extends FileView {
   editor: CanvasEditor | null = null
   private refreshToken = 0
   private loaded = false
+  private documentStatus = ''
   private renderedGeneration: number | null = null
   private documentLease: CanvasDocumentLease | null = null
   private requestedFile: TFile | null = null
@@ -310,16 +311,25 @@ export class CanvasView extends FileView {
     this.editor?.refresh()
     this.place()
     const state = document.state
-    if (document.session.publicationOutcome)
-      this.viewer.status.setText(
-        canvasPublicationStatus(document.session.publicationOutcome) +
-          (state.error ? ` Persisted source could not be read: ${state.error}` : '')
-      )
-    else if (state.error) this.viewer.status.setText(`Diagram could not be read: ${state.error}`)
-    else if (state.conflict)
-      this.viewer.status.setText('Diagram changed outside this session; pending work is retained')
-    else if (state.dirty)
-      this.viewer.status.setText('Diagram has pending session work; it has not been saved')
+    // Where it is edited, unwritten work is written by itself (a failed write shows Retry in the
+    // editor), so it is not called unsaved there. A leaf without an editor still says so.
+    const status = document.session.publicationOutcome
+      ? canvasPublicationStatus(document.session.publicationOutcome) +
+        (state.error ? ` Persisted source could not be read: ${state.error}` : '')
+      : state.error
+        ? `Diagram could not be read: ${state.error}`
+        : state.conflict
+          ? 'Diagram changed outside this session; pending work is retained'
+          : state.dirty
+            ? this.editor && !this.editor.writeFailing
+              ? 'Changes pending; saving automatically'
+              : 'Diagram has pending session work; it has not been saved'
+            : ''
+    if (status) this.viewer.status.setText(status)
+    // A settled state clears its own message, never someone else's (walkthrough steps).
+    else if (this.documentStatus && this.viewer.status.textContent === this.documentStatus)
+      this.viewer.status.setText('')
+    this.documentStatus = status
   }
   private place(): void {
     const state = this.pending,
