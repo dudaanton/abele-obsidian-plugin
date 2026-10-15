@@ -460,8 +460,9 @@ export class CanvasInput implements CanvasViewerInput {
     if (!g.active && Math.hypot(event.clientX - g.screen[0], event.clientY - g.screen[1]) < 6)
       return
     const [x, y] = this.point(event),
-      dx = x - g.start[0],
-      dy = y - g.start[1]
+      // Cards stand on whole units, as Obsidian Canvas keeps them.
+      dx = Math.round(x - g.start[0]),
+      dy = Math.round(y - g.start[1])
     if (g.box) {
       this.marquee = {
         x: Math.min(x, g.start[0]),
@@ -671,7 +672,10 @@ export class CanvasInput implements CanvasViewerInput {
     }
     // The four points on a card's edges a connection is pulled from, and while one is pulled,
     // the points of the card it would stick to, the nearest one lit.
-    const pulling = this.connection?.active && this.connection.source ? this.connection : null
+    const pulling =
+      this.connection?.active && (this.connection.source || this.connection.end)
+        ? this.connection
+        : null
     const pointsOf = (node: CanvasNode, lit: Side | null) => {
       for (const side of SIDES) {
         const el = this.overlay.ownerDocument.createElementNS(
@@ -801,7 +805,22 @@ export class CanvasInput implements CanvasViewerInput {
       end: 'from' | 'to' | null = null,
       line: CanvasLine | null = null,
       creating = tool !== 'select'
-    const pulled = this.pointHit(x, y, event.pointerType !== 'mouse')
+    // The ends of a picked connection come first: one often sits on a card's edge point, and
+    // pulling it moves that end rather than starting a new connection from the card.
+    const picked = selected.size === 1 && tool === 'select' ? [...selected][0] : null,
+      pickedEdge = picked ? graph.edges.find((e) => e.id === picked) : undefined,
+      pickedLine = picked && !pickedEdge ? linesOf(graph).find((l) => l.id === picked) : undefined,
+      pickedEnds = pickedEdge
+        ? paintedRoute(pickedEdge, graph).points
+        : pickedLine
+          ? [pickedLine.from, pickedLine.to]
+          : [],
+      onEnd =
+        pickedEnds.length > 0 &&
+        [pickedEnds[0], pickedEnds[pickedEnds.length - 1]].some(
+          (p) => Math.hypot(x - p.x, y - p.y) <= tolerance
+        )
+    const pulled = onEnd ? null : this.pointHit(x, y, event.pointerType !== 'mouse')
     if (pulled) {
       // Pulled from a point on a card's edge: a new connection, whatever the tool.
       source = pulled.node.id
@@ -900,23 +919,20 @@ export class CanvasInput implements CanvasViewerInput {
       const edge = g.graph.edges.find((e) => e.id === g.id),
         node = g.source ? g.graph.nodes.find((n) => n.id === g.source) : undefined,
         points = edge ? paintedRoute(edge, g.graph).points : [],
-        over = g.source ? hitNode(g.graph, x, y) : null,
+        over = g.source || g.end ? hitNode(g.graph, x, y) : null,
         target = over && over.id !== g.source && over.type !== 'group' ? over : null
-      // Over another card, a line pulled from an edge point sticks to the target's edge nearest
-      // the pointer; one dragged from a card's body to the edge facing where it started.
+      // Over another card, a line pulled from an edge point, or an end of a picked connection
+      // carried to it, sticks to the target's edge nearest the pointer; one dragged from a
+      // card's body to the edge facing where it started.
       g.target = target?.id ?? null
-      g.toSide = target ? sideAt(target, g.fromSide ? g.point : g.start) : null
+      g.toSide = target ? sideAt(target, g.fromSide || g.end ? g.point : g.start) : null
+      const at = target && g.toSide ? endpoint(target, g.toSide) : g.point
       const from = node
           ? endpoint(node, g.fromSide ?? sideAt(node, g.point))
           : g.end === 'from'
-            ? g.point
+            ? at
             : (points[0] ?? g.start),
-        to =
-          g.end === 'from'
-            ? points[points.length - 1]
-            : target && g.toSide
-              ? endpoint(target, g.toSide)
-              : g.point,
+        to = g.end === 'from' ? points[points.length - 1] : at,
         preview: CanvasLine = {
           version: 1,
           id: g.id,
@@ -950,9 +966,7 @@ export class CanvasInput implements CanvasViewerInput {
         if (changed && canvasFingerprint(this.viewer.graph) !== canvasFingerprint(g.graph))
           ops = [{ op: 'update', id: g.id, patch: { from: changed.from, to: changed.to } }]
       } else if (g.source || g.end) {
-        const target = g.source
-          ? g.graph.nodes.find((n) => n.id === g.target)
-          : hitNode(g.graph, g.point.x, g.point.y)
+        const target = g.graph.nodes.find((n) => n.id === g.target)
         const home = hitNode(g.graph, g.point.x, g.point.y)?.id === g.source
         if (!target && !home && g.source && g.fromSide && this.ports.dropped) {
           // Let go over nothing: the host offers what to make there; the draft waits for it.
@@ -986,7 +1000,7 @@ export class CanvasInput implements CanvasViewerInput {
                 id: g.id,
                 patch: {
                   [g.end === 'from' ? 'fromNode' : 'toNode']: target.id,
-                  [g.end === 'from' ? 'fromSide' : 'toSide']: sideAt(target, g.point),
+                  [g.end === 'from' ? 'fromSide' : 'toSide']: g.toSide ?? sideAt(target, g.point),
                 },
               },
             ]

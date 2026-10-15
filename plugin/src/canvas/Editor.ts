@@ -831,6 +831,13 @@ export class CanvasEditor {
       for (const op of ops) {
         if (op.op === 'connect') this.selected = new Set([op.edge.id])
         if (op.op === 'add_line') this.selected = new Set([op.line.id])
+        // A connection or line drawn with its tool, the hand goes back to picking, as in
+        // Excalidraw and tldraw: the next press picks what was just drawn.
+        if (
+          (op.op === 'connect' || op.op === 'add_line') &&
+          ['connect', 'line', 'arrow'].includes(this.tool)
+        )
+          this.tool = 'select'
         const frame =
           op.op === 'add_node' && op.node.kind === 'group'
             ? op.node.id

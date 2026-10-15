@@ -155,6 +155,26 @@ describe('the Select tool with a mouse', () => {
   })
 })
 
+describe('connections', () => {
+  it('pulling a picked connection’s end that sits on a card’s edge point moves that end', async () => {
+    const graph = cards()
+    graph.nodes.push({ id: 'gamma', type: 'text', text: 'gamma', x: 0, y: 300, width: 200, height: 100 })
+    const s = setup(graph)
+    s.pointer('pointerdown', 300, 50)
+    s.pointer('pointerup', 300, 50)
+    expect(s.editor.controls.picked().ids).toEqual(['link'])
+    // The mouse rests on the end, over the card's left edge point, then pulls it.
+    s.pointer('pointermove', 400, 50, { buttons: 0 })
+    s.pointer('pointerdown', 400, 50)
+    s.pointer('pointermove', 300, 200)
+    s.pointer('pointermove', 100, 390)
+    s.pointer('pointerup', 100, 390)
+    await flush()
+    expect(s.graphNow().edges).toHaveLength(1)
+    expect(s.graphNow().edges[0]).toMatchObject({ fromNode: 'alpha', toNode: 'gamma', toSide: 'bottom' })
+  })
+})
+
 describe('double clicks', () => {
   it('on empty canvas puts a card there, open for writing', async () => {
     const s = setup(cards())
