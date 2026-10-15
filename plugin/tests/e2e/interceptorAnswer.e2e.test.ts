@@ -6,7 +6,8 @@
  * checked: muted, a turning glyph by its time, Stop in the composer, and a message typed then
  * waiting above the field. Opened to replace, the answer takes the script's text by itself, with
  * the edited-reply pencil naming the interceptor; the queued message's turn reads the
- * replacement; the pencil opens the agent's own words with Undo. Opened to fail, the answer stays
+ * replacement; the pencil, there only under the pointer on a computer and always on a phone as
+ * the rest of the message's bar, opens the agent's own words with Undo. Opened to fail, the answer stays
  * with the reason under it; Stop during a check keeps it too.
  *
  * No real model is asked: `window.fetch` answers the fake provider's address alone with a
@@ -57,6 +58,13 @@ const prelude = `
   const answers = () => session().messages.value.filter((m) => m.role === 'assistant')
   const qa = (sel) => [...document.querySelectorAll(sel)]
   const lastAnswerEl = () => qa('.abele-chat-msg_assistant').at(-1)
+  // Moves the window's own pointer onto an element's middle, or to the window's corner for null.
+  const pointAt = async (target) => {
+    const r = target?.getBoundingClientRect()
+    const x = r ? Math.round(r.left + r.width / 2) : 1, y = r ? Math.round(r.top + r.height / 2) : 1
+    require('@electron/remote').getCurrentWebContents().sendInputEvent({ type: 'mouseMove', x, y })
+    await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))
+  }
 `
 
 const setup = `(async () => {
@@ -198,6 +206,7 @@ const replaced = `(async () => {
   const first = answers()[0]
   const el = document.querySelector('[data-message-id="' + first.id + '"]') ?? qa('.abele-chat-msg_assistant')[0]
   el.scrollIntoView({ block: 'center' })
+  ${onPhone() ? '' : 'await pointAt(null)'}
   await wait(400)
   const second = P.requests[1]
   const file = app.vault.getAbstractFileByPath(${JSON.stringify(CHAT)})
@@ -207,11 +216,30 @@ const replaced = `(async () => {
     original: first.revisions?.[0]?.before ?? '',
     by: first.revisions?.[0]?.by ?? '',
     pencil: el.querySelector('.abele-chat-msg__edited')?.getAttribute('aria-label') ?? '',
+    pencilOpacity: getComputedStyle(el.querySelector('.abele-chat-msg__edited')).opacity,
     muted: qa('.abele-chat-msg_checking').length,
     nextTurnSaw: second.filter((m) => m.role === 'assistant').map((m) => m.text),
     secondKept: answers()[1].content,
     onDisk: disk.includes('The lamp is on the shelf') && disk.includes('"by":"interceptor"'),
   })
+})()`
+
+/** The real pointer over the replaced answer's middle (a computer only): a hover, not a class. */
+const hovered = `(async () => {
+  ${prelude}
+  const el = document.querySelector('[data-message-id="' + answers()[0].id + '"]') ?? qa('.abele-chat-msg_assistant')[0]
+  await pointAt(el)
+  await wait(300)
+  return JSON.stringify({
+    hover: el.matches(':hover'),
+    pencilOpacity: getComputedStyle(el.querySelector('.abele-chat-msg__edited')).opacity,
+  })
+})()`
+
+const pointerAway = `(async () => {
+  ${prelude}
+  await pointAt(null)
+  return JSON.stringify({ ok: true })
 })()`
 
 const original = `(async () => {
@@ -338,12 +366,23 @@ describe.runIf(available)('the interceptor checking the agent’s answer', () =>
       original: string
       by: string
       pencil: string
+      pencilOpacity: string
       muted: number
       nextTurnSaw: string[]
       secondKept: string
       onDisk: boolean
     }>(replaced)
     shot('replaced')
+    // The pencil is one of the bar's hover-only things: away from the pointer on a computer it is
+    // hidden; a phone, which cannot point, keeps it like the time.
+    expect(report.pencilOpacity).toBe(onPhone() ? '1' : '0')
+    if (!onPhone()) {
+      const over = await run<{ hover: boolean; pencilOpacity: string }>(hovered)
+      shot('replaced-hover')
+      await run(pointerAway)
+      expect(over.hover).toBe(true)
+      expect(over.pencilOpacity).toBe('1')
+    }
     expect(report.content).toMatch(/^The lamp is on the shelf/)
     expect(report.original).toMatch(/^The lantern is on the shelf/)
     expect(report.by).toBe('interceptor')
