@@ -6,6 +6,7 @@ import { resolve } from 'node:path'
 import { evalLong } from './helpers/obsidianCli'
 import { targets } from './helpers/target'
 import { shotPath } from './helpers/shots'
+import { withEmulatedPhone } from './helpers/emulatedPhone'
 
 targets('desktop')
 const cli = process.env.ABELE_NODE_CLI
@@ -94,8 +95,10 @@ it('compares the current files of a branch with another version, committed and u
       window.__sampleCompareProject=project.project_id;window.__sampleCompareWorkspace=workspace.worktree_id;
       await api.openNodeRepository(node.id,project.project_id,workspace.worktree_id);
       await until(()=>tab()?.querySelector('.abele-github-home')?.textContent.includes('draft.txt'),'repository home');
-      return node.id;
+      return JSON.stringify({node:node.id,project:project.project_id,workspace:workspace.worktree_id});
     })()`)
+    const ids = JSON.parse(registration)
+    registration = ids.node
     // The owner's path: the tab's actions, «Compare with another version», then a branch.
     const page = await evalLong(`(async()=>{${prelude}
       const root=tab();
@@ -112,12 +115,36 @@ it('compares the current files of a branch with another version, committed and u
       if(!compare()||/stale/i.test(tab().textContent))throw Error('Comparison page failed: '+(failed?.textContent??tab().textContent.slice(0,400)));
       await until(()=>compare().textContent.includes('value = 2'),'diff of app.ts');
       await until(()=>['Removed on the branch','Only on main','Untracked sample'].every(line=>compare().textContent.includes(line)),'diffs of deleted and untracked files');
+      await until(()=>!compare().textContent.includes('Loading the file changes'),'every diff loaded');
+      await wait(300);
       const image=await require('@electron/remote').getCurrentWebContents().capturePage();
       require('fs').mkdirSync(${JSON.stringify(SHOTS)},{recursive:true});require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/compare-main.png',image.toPNG());
-      return compare().textContent;
+      const leaf=app.workspace.getLeavesOfType('abele-github').find(l=>l.view.contentEl===tab());
+      return JSON.stringify({
+        title:tab().querySelector('.abele-github-header')?.textContent??'',
+        total:compare().querySelector('.abele-github-files__summary').textContent.replace(/\\s+/g,''),
+        counts:Object.fromEntries([...compare().querySelectorAll('.abele-github-file')].map(el=>[el.dataset.path,el.querySelector('.abele-github-file__stats').textContent.replace(/\\s+/g,'')])),
+        text:compare().textContent,
+        location:leaf.view.model.sourceTarget.location,
+      });
     })()`)
+    const shown = JSON.parse(page)
     for (const name of ['feature.ts', 'app.ts', 'draft.txt', 'removed.txt', 'later/main-only.txt'])
-      expect(page).toContain(name)
+      expect(shown.text).toContain(name)
+    // The name the version was chosen by, not the commit it resolved to; that stays muted beside it.
+    expect(shown.title).toContain('main → Current files')
+    expect(shown.title).toMatch(/main at [0-9a-f]{7}/)
+    expect(shown.location).toMatchObject({ kind: 'comparison', baseName: 'main' })
+    expect(shown.location.base).toMatch(/^[0-9a-f]{40}$/)
+    // Real line counts for every kind of change, never a placeholder zero.
+    expect(shown.counts).toEqual({
+      'app.ts': '+1−1',
+      'feature.ts': '+1−0',
+      'later/main-only.txt': '+0−1',
+      'removed.txt': '+0−1',
+      'draft.txt': '+1−0',
+    })
+    expect(shown.total).toBe('5fileschanged+3−3')
     // A base chosen in a node tab opens the comparison; the tab's own file tree stays the files.
     const tree = await evalLong(`(async()=>{${prelude}
       await api.openNodeRepository(window.__sampleCompareNode,window.__sampleCompareProject,window.__sampleCompareWorkspace);
@@ -131,6 +158,21 @@ it('compares the current files of a branch with another version, committed and u
       return root.querySelector('.abele-github-tree')?.textContent??'closed';
     })()`)
     expect(tree).not.toMatch(/stale/i)
+    // The same comparison on a phone.
+    await withEmulatedPhone(() =>
+      evalLong(`(async()=>{${prelude}
+        await api.openNodeRepository(${JSON.stringify(registration)},${JSON.stringify(ids.project)},${JSON.stringify(ids.workspace)},{location:${JSON.stringify(shown.location)}});
+        const compare=()=>[...document.querySelectorAll('.abele-github-compare')].find(el=>el.getBoundingClientRect().width);
+        await until(()=>compare()&&['Removed on the branch','Only on main','Untracked sample','value = 2'].every(line=>compare().textContent.includes(line))&&!compare().textContent.includes('Loading the file changes'),'phone comparison');
+        await wait(300);
+        const image=await require('@electron/remote').getCurrentWebContents().capturePage();
+        require('fs').mkdirSync(${JSON.stringify(SHOTS)},{recursive:true});require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/compare-main-phone.png',image.toPNG());
+        // The phone keeps a layout of its own; the tab this probe opened must not stay saved in it.
+        for(const leaf of app.workspace.getLeavesOfType('abele-github'))leaf.detach();
+        await app.workspace.requestSaveLayout.run();
+        return 'phone comparison';
+      })()`)
+    )
   } finally {
     try {
       await evalLong(
@@ -144,4 +186,4 @@ it('compares the current files of a branch with another version, committed and u
       rmSync(dir, { recursive: true, force: true })
     }
   }
-}, 120000)
+}, 240000)
