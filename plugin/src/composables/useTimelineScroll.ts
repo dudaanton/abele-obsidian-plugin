@@ -276,6 +276,11 @@ export function useTimelineScroll(
         if (patchSpace || Math.abs(shift) > 0.5) {
           patchSpace = false
           placeScroll(owner, owner.scrollTop + shift, !!requested)
+          console.debug('[Abele timeline] row held', {
+            shift,
+            scrollTop: owner.scrollTop,
+            scrollHeight: owner.scrollHeight,
+          })
           heldTop = owner.scrollTop
           heldHeight = owner.scrollHeight
         }
@@ -390,7 +395,14 @@ export function useTimelineScroll(
           // An explicit drop anchor wins until new reader input releases the short hold.
           // During dragging, real scrolling (including edge scrolling) still wins.
           if (realignDrop && !dragging()) realignDrop()
-          else stopHolding()
+          else {
+            if (owner.classList.contains('abele-timeline__scroll-hold'))
+              console.debug('[Abele timeline] hold released: a scroll it did not write', {
+                scrollTop: owner.scrollTop,
+                scrollHeight: owner.scrollHeight,
+              })
+            stopHolding()
+          }
         }
         followChrome()
         releaseUnusedSpace(owner)
