@@ -38,6 +38,12 @@ const label = computed(() => {
 .abele-date-divider {
   margin-top: var(--size-4-6);
 
+  // Measured glyph to glyph: under an entry with a line of times below its name, that step read
+  // as close to the entry above as to the day's own first entry.
+  .abele-entry-row + & {
+    margin-top: var(--size-4-9);
+  }
+
   &:first-child {
     margin-top: 0;
   }

@@ -219,8 +219,9 @@ function renderChart(chart: EChartsType) {
 .abele-time-entries-list__chart {
   width: 100%;
   height: calc(var(--size-4-12) + var(--size-4-8));
-  // Apart from the days under it by more than a day's heading is from its entries.
-  margin-bottom: var(--size-4-8);
+  // Apart from the days under it by more than a day's heading is from its entries, and by the
+  // same step as one day from the next.
+  margin-bottom: var(--size-4-9);
 }
 
 .abele-time-entries-list__items {

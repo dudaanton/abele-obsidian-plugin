@@ -297,10 +297,10 @@ onBeforeUnmount(() => viewer?.destroy())
     box-shadow: inset 0 0 0 var(--border-width) var(--text-faint);
   }
 }
-// The line the program stands on: the highlight colour across the line, an accent edge.
+// The line the program stands on: Obsidian's own highlight across the whole line, as a marked
+// passage in a note. No edge down its side: a stripe there is the one mark these screens never use.
 .abele-debug-source .cm-content .cm-line.abele-debug-source__line_here {
-  background-color: color-mix(in oklch, var(--interactive-accent) 14%, transparent);
-  box-shadow: inset var(--size-2-1) 0 var(--interactive-accent);
+  background-color: var(--text-highlight-bg, color-mix(in srgb, var(--color-yellow) 35%, transparent));
 }
 // What a record point took, after its line: quiet, the size of a line number, pressable.
 .abele-debug-source .abele-debug-source__tail {

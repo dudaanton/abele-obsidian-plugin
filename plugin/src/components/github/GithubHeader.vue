@@ -296,7 +296,9 @@ const stateTone = (state: string) =>
     font-size: var(--font-ui-large);
   }
 
+  // The template drops the space between the title and its number; it is given back here.
   &__number {
+    margin-inline-start: var(--size-2-3);
     color: var(--text-faint);
     font-weight: var(--font-normal);
   }

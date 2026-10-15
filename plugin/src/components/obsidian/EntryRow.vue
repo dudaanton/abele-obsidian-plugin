@@ -177,9 +177,19 @@ const emit = defineEmits<{ 'update:more': [open: boolean] }>()
     display: none;
   }
 
+  // A glyph before a code's words has no baseline of its own, so its bottom stood on the name's
+  // and the glyph rode above the line where glyphs are larger, on a phone: the words give the
+  // baseline and the glyph stands in the middle of their line, lifted by the step a smaller
+  // size on the name's baseline sits lower than the name's middle.
   .abele-obsidian-icon {
     height: auto;
     padding: 0;
+    align-items: baseline;
+  }
+  .abele-obsidian-icon__icon {
+    align-self: center;
+    position: relative;
+    top: calc(-1 * var(--size-2-1));
   }
 
   svg {

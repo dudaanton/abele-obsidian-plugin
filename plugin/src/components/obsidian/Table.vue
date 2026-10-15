@@ -104,25 +104,41 @@ const text = (value: unknown): string => {
 /** Deliberate, and the one element allowed it: see the note in the template. */
 .abele-table__scroll {
   overflow-x: auto;
+  // Every table looks one way, the kit's own pages included: a rounded frame, a full grid, a
+  // head at the cells' size on a band, all at the top of its cell.
+  border: var(--border-width) solid var(--background-modifier-border);
+  border-radius: var(--radius-l);
+  // The frame goes round the table's own columns, never round empty room beside them.
+  width: fit-content;
+  max-width: 100%;
 }
 
 .abele-table {
   width: 100%;
+  margin: 0;
   border-collapse: collapse;
+  // The frame is the scroller's; the cells' own outer edges would draw it twice.
+  border-style: hidden;
+  font-size: var(--font-ui-small);
 }
 
 .abele-table__head,
 .abele-table__cell {
-  padding: var(--size-4-1) var(--size-4-2);
-  text-align: left;
-  border-bottom: 1px solid var(--background-modifier-border);
+  padding: var(--size-4-2) var(--size-4-3);
+  text-align: start;
+  border: var(--border-width) solid var(--background-modifier-border);
   vertical-align: top;
+
+  body.is-phone & {
+    padding: var(--size-4-2);
+  }
 }
 
-/* The head reads apart by its colour and weight, at the cells' own size (rule 15). */
+/* The head reads apart by its weight and band, at the cells' own size (rule 15). */
 .abele-table__head {
-  color: var(--text-muted);
+  color: var(--text-normal);
   font-weight: var(--font-semibold);
+  background-color: var(--background-secondary);
 }
 
 .abele-table__row_clickable {
