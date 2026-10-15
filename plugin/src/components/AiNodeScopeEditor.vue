@@ -339,7 +339,7 @@ onMounted(async () => {
   // vault's search field, which would otherwise open its list over the form.
   // It lands with the button in view: the place above it was chosen for the person already.
   const add = root.value?.querySelector<HTMLElement>('.abele-node-scope-editor__add')
-  add?.scrollIntoView({ block: 'nearest' })
+  add?.scrollIntoView({ block: 'center' })
   add?.focus({ preventScroll: true })
 })
 onUnmounted(() => {
