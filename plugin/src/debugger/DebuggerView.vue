@@ -2,7 +2,9 @@
   <div class="abele-debug-view">
     <EmptyState
       v-if="!binding"
-      text="No debug session. Open Debug from a node chat to select a session."
+      icon="bug"
+      title="No debug session"
+      text="Open Debug from a node chat."
     />
     <template v-else>
       <div v-if="error" class="abele-debug-view__error" role="alert">{{ error }}</div>

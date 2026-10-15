@@ -77,7 +77,13 @@ describe('debugger panel', () => {
   it('explains how to open a session when the sidebar is empty', () => {
     DebuggerService.instance.destroy()
     const w = mount(DebuggerView)
-    expect(w.text()).toContain('Open Debug from a node chat')
+    // The kit's empty pane: the bug glyph, what is missing, then how to get one.
+    const empty = w.find('.abele-empty-state')
+    expect(empty.find('.abele-empty-state__icon').exists()).toBe(true)
+    expect(empty.find('.abele-empty-state__title').text()).toBe('No debug session')
+    expect(empty.find('.abele-empty-state__description').text()).toBe(
+      'Open Debug from a node chat.'
+    )
     w.unmount()
   })
   it('disables every mutation while disconnected, keeping last values', () => {
