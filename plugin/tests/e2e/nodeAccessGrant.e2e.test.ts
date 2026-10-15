@@ -237,7 +237,7 @@ async function refusalToGrant(form: 'desktop' | 'phone') {
         if(!rows[0].textContent.includes('Sample second chat')||!rows[0].textContent.includes('Open now'))throw Error('Open chat is not first: '+rows[0].textContent);
         const first=rows.find(r=>r.textContent.includes('Sample node access'));
         if(!first||!first.textContent.includes('Sample node access agent')||!first.textContent.includes('Read the sample file'))throw Error('Chats are not told apart: '+(first&&first.textContent));
-        if(!first.textContent.includes('Already has access to sample-app / main'))throw Error('Existing access not marked: '+first.textContent);
+        if(![...first.querySelectorAll('[aria-label]')].some(el=>el.getAttribute('aria-label').includes('Already has access to sample-app / main')))throw Error('Existing access not marked: '+first.textContent);
         return JSON.stringify(id)
       })()`
       )
