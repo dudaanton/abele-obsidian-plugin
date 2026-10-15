@@ -18,6 +18,14 @@ import { singleZodV3Plugin } from './scripts/single-zod-v3.mjs'
  * import one embedded shared asset, rewritten to the same Blob URL on first use. Bundling
  * the shared code into both realms instead would store roughly half a megabyte twice.
  */
+/**
+ * The oldest engines Obsidian still runs on: iOS 15 (Safari 15) is the mobile app's minimum,
+ * desktop installers from 1.5.8 carry Chrome 120, and Chrome 91 leaves room for Android's
+ * separately updated WebView. Below Chrome 91 or Safari 15, private `#field in` checks are
+ * rewritten into WeakMaps, which costs about 150 KB.
+ */
+const BUILD_TARGET = ['es2022', 'chrome91', 'safari15']
+
 function maplibreAssetsPlugin(prod: boolean) {
   const virtualId = 'virtual:maplibre-assets'
   const resolvedId = '\0' + virtualId
@@ -42,7 +50,7 @@ function maplibreAssetsPlugin(prod: boolean) {
           format: 'esm',
           platform: 'browser',
           minify: prod,
-          target: 'es2020',
+          target: BUILD_TARGET,
           plugins: [
             {
               name: 'abele-maplibre-shared-external',
@@ -139,6 +147,7 @@ export default defineConfig(async ({ mode }) => {
         : []),
     ],
     build: {
+      target: BUILD_TARGET,
       minify: prod ? 'esbuild' : false,
       lib: {
         entry: resolve(__dirname, 'src/main.ts'),

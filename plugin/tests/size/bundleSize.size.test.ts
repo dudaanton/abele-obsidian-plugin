@@ -90,6 +90,15 @@ describe('bundle size', () => {
     expect(report.packageCopies).toEqual({ zod: 2 })
   })
 
+  it('keeps private class members native rather than down-levelled for engines Obsidian dropped', () => {
+    // Below Chrome 91 / Safari 15 esbuild rewrites `#field` into WeakMap helpers whose error
+    // text survives minification; the build target keeps them out (about 150 KB).
+    const dir = path.resolve(root, process.env.ABELE_BUILD_ARTIFACT ?? 'build')
+    const code = readFileSync(path.join(dir, 'main.js'), 'utf8')
+    expect(code.includes('read from private field')).toBe(false)
+    expect(code.includes('Cannot add the same private member')).toBe(false)
+  })
+
   it('attributes the bundle to packages, so a jump can be traced to what caused it', () => {
     expect(report.byPackage.length).toBeGreaterThan(5)
     expect(report.byPackage.some((p) => p.name === '@vue/runtime-core')).toBe(true)
