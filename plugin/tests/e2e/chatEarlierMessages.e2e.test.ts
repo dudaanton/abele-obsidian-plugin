@@ -29,6 +29,8 @@ interface EarlierReport {
   hiddenBranch: boolean
   clickGrew: boolean
   clickDrift: number
+  clickBoxChange: number
+  clickLog: string[]
   clickSteps: number
   clickReachedStart: boolean
   shortReachedStart: boolean
@@ -139,21 +141,27 @@ const script = (layout: string) => `(async () => {
     button.focus({ preventScroll: true })
     report.markerFocusable = document.activeElement === button
     button.blur()
-    let clicks = 0, clickDrift = 0
+    let clicks = 0, clickDrift = 0, boxChange = 0
+    report.clickLog = []
     while (marker() && clicks < 20) {
       clicks++
       const before = mounted()
       const anchor = firstInView()
       const at = offset(anchor)
+      const height = box().clientHeight
+      const focused = document.activeElement?.className || document.activeElement?.tagName
       marker().click()
       if (!(await until(() => mounted() > before, 3000))) break
       await settle()
+      boxChange = Math.max(boxChange, Math.abs(box().clientHeight - height))
+      report.clickLog.push(clicks + ': ' + anchor.dataset.messageId + ' at ' + Math.round(at) + ' -> ' + Math.round(offset(anchor)) + ', box ' + height + ' -> ' + box().clientHeight + ', focus ' + focused)
       if (anchor.isConnected) clickDrift = Math.max(clickDrift, Math.abs(offset(anchor) - at))
       if (clicks === 1) report.clickGrew = true
     }
     report.clickGrew = !!report.clickGrew
     report.clickSteps = clicks
     report.clickDrift = clickDrift
+    report.clickBoxChange = boxChange
     report.clickReachedStart = !!item('q0') && !marker()
 
     // A page too short to scroll: the earlier pages come by themselves.
