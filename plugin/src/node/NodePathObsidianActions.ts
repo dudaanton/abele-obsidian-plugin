@@ -10,7 +10,11 @@ import { nodePathDialog } from './NodePathDialogs'
 import { NodePathService } from './NodePathService'
 import { wirePathTarget } from './nodePathChat'
 import type { NodePathContext, NodePathOwnerActions } from './NodePathOwnerActions'
-import { giveObsidianChatAccess, revokeObsidianNodeScopeApprovals } from '@/ai/tools/node/owner'
+import {
+  giveObsidianChatAccess,
+  nodeAgentHost,
+  revokeObsidianNodeScopeApprovals,
+} from '@/ai/tools/node/owner'
 import { NodeScopeEntriesSchema } from '@/ai/nodeScope'
 import { accessCovers } from '@/ai/tools/node/accessRefusal'
 import { nodeScopeNames, nodeScopeTitle } from '@/ai/tools/node/scopeNames'
@@ -106,17 +110,20 @@ export function createNodePathObsidianActions(): NodePathOwnerActions {
         target: wirePathTarget(context.target),
       }
       const names = await nodeScopeNames(place)
+      // A chat's access is kept under the node's own id, not this device's registration of it.
+      const host = await nodeAgentHost()
+      const stored = { ...place, node_id: host.nodeId?.(place.node_id) ?? place.node_id }
       const where = nodeScopeTitle(names)
       const reach = (session: ChatSession) => {
         const parsed = NodeScopeEntriesSchema.safeParse(session.overrides?.value.nodeScope ?? [])
         return parsed.success ? parsed.data : []
       }
       const session = await chooseNodePathChat((s) =>
-        accessCovers(reach(s), place) ? where : undefined
+        accessCovers(reach(s), stored) ? where : undefined
       )
       if (!session) return
       const chat = session.chatTitle.value || 'Chat'
-      const had = reach(session).find((e) => accessCovers([e], place))
+      const had = reach(session).find((e) => accessCovers([e], stored))
       const access = shallowRef<'read' | 'edit'>(had?.access ?? 'edit'),
         error = shallowRef(''),
         busy = shallowRef(false)
