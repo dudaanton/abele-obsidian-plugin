@@ -101,7 +101,7 @@ describe.skipIf(!available)('fast canvas actions are all saved', () => {
     window.__canvasFast={layout:app.workspace.getLayout()}
     if(!${onPhone()}){app.workspace.leftSplit.collapse();app.workspace.rightSplit.collapse()}
     await app.vault.createFolder(${JSON.stringify(DIR)});window.__canvasFast.owned=true
-    await app.vault.create(path,JSON.stringify({nodes:[{id:'card',type:'text',text:'Sample card',x:0,y:0,width:400,height:300}],edges:[]}))
+    await app.vault.create(path,JSON.stringify({nodes:[{id:'card',type:'text',text:'Sample card',x:0,y:0,width:400,height:300},{id:'far',type:'text',text:'Far card',x:900,y:700,width:100,height:80}],edges:[]}))
     const leaf=app.workspace.getLeaf('tab');await leaf.setViewState({type:'abele-canvas',state:{file:path},active:true});await app.workspace.revealLeaf(leaf);return true
   `),
     120_000
@@ -163,6 +163,12 @@ describe.skipIf(!available)('fast canvas actions are all saved', () => {
       await gestures([[start, [start[0] + 30, start[1] + 20]]])
       // The corner of the card where it now is on screen, before its move is saved.
       const corner = at(1, 1)
+      expect(
+        run<boolean>(
+          `return view().viewer.stage.contains(document.elementFromPoint(${corner[0]},${corner[1]}))`
+        ),
+        'the corner is on the canvas'
+      ).toBe(true)
       await gestures([[corner, [corner[0] + 40, corner[1] + 30]]])
       await settled()
     } finally {
