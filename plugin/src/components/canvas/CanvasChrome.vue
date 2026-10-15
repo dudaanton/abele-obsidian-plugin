@@ -772,10 +772,10 @@ const placeField = () => {
     fontSize: `calc(var(--font-text-size) * ${cam.zoom})`,
   })
   if (shaped) {
-    text.style.setProperty('padding-top', '0px')
+    text.setCssProps({ '--abele-shape-pad': '0px' })
     const room = box.height * cam.zoom
-    text.style.setProperty('padding-top', `${Math.max(0, (room - text.scrollHeight) / 2)}px`)
-  } else text.style.removeProperty('padding-top')
+    text.setCssProps({ '--abele-shape-pad': `${Math.max(0, (room - text.scrollHeight) / 2)}px` })
+  } else text.style.removeProperty('--abele-shape-pad')
 }
 let frame = 0
 let seen = ''
@@ -862,6 +862,8 @@ onBeforeUnmount(() => {
       height: 100%;
       resize: none;
       padding: var(--size-4-2) var(--size-4-3);
+      // A shape's words stand in its middle: the room above them is set as they are written.
+      padding-top: var(--abele-shape-pad, var(--size-4-2));
       border: 2px solid var(--interactive-accent);
       border-radius: var(--radius-m);
       background: var(--background-primary);
