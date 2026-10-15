@@ -79,6 +79,15 @@ export function acceptRevision(
     message.content.slice(0, proposal.from) +
     proposal.text +
     message.content.slice(proposal.from + proposal.old.length)
+  return revised(message, after, { proposal: proposal.id, author: proposal.author, at })
+}
+
+/** `message` with `after` in place of its text, the version it replaces kept as a revision. */
+function revised(
+  message: ChatMessage,
+  after: string,
+  entry: Pick<ReplyRevision, 'proposal' | 'author' | 'at' | 'by'>
+): ChatMessage {
   const beforeRevisionId = message.selection?.revisionId
   const afterRevisionId = beforeRevisionId ? nanoid() : undefined
   return {
@@ -93,17 +102,30 @@ export function acceptRevision(
     revisions: [
       ...(message.revisions ?? []),
       {
-        proposal: proposal.id,
+        ...entry,
         before: message.content,
         after,
-        author: proposal.author,
-        at,
         highlights: message.highlights ?? [],
         beforeRevisionId,
         afterRevisionId,
       },
     ],
   }
+}
+
+/**
+ * The chat's interceptor puts its own text in place of a finished answer. The same record as an
+ * accepted proposal, so the reply window, undo and the history every later turn reads treat it
+ * alike; `by` and an empty `proposal` say it came from no proposal.
+ */
+export function interceptorRevision(
+  message: ChatMessage,
+  text: string,
+  author: string,
+  at: number
+): ChatMessage {
+  if (message.role !== 'assistant') throw new Error('The model reply is unavailable.')
+  return revised(message, text, { proposal: '', by: 'interceptor', author, at })
 }
 
 export function undoRevision(message: ChatMessage, at: number): ChatMessage {

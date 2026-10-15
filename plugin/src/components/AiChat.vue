@@ -359,7 +359,13 @@
       <AiChatInput
         ref="chatInput"
         v-model:expanded="composing"
-        :is-streaming="isStreaming || isExecutingTool || interceptorWorking || interceptorStreaming"
+        :is-streaming="
+          isStreaming ||
+          isExecutingTool ||
+          interceptorWorking ||
+          interceptorStreaming ||
+          !!answerCheck
+        "
         :is-busy="isBusy"
         :attachment-owner="attachmentOwner"
         :conversation-draft="session?.draft.value"
@@ -566,6 +572,8 @@ const replyReviews = computed(() => session.value?.interceptor.replyReviews.valu
 /** A script deciding about a message: the composer offers stop, which keeps the message back. */
 const interceptorWorking = computed(() => session.value?.interceptor.working?.value ?? false)
 const draftMessage = computed(() => session.value?.getDraftMessage() ?? null)
+/** The finished answer the interceptor is reading: muted, a turning glyph by its time, Stop on. */
+const answerCheck = computed(() => session.value?.answerCheck.value ?? null)
 
 // Questions tool
 const pendingQuestions = computed(() => session.value?.pendingQuestions.value ?? null)
@@ -667,7 +675,8 @@ const showInRun = (messageId: string): boolean => {
 }
 
 const messageProps = (msg: ChatMessage) => ({
-  message: msg,
+  message:
+    answerCheck.value?.id === msg.id ? { ...msg, answerCheck: { by: answerCheck.value.by } } : msg,
   branches: branchSwitchMap.value.get(msg.id),
   interceptorStreaming: msg.draft
     ? interceptorStreaming.value || interceptorWorking.value

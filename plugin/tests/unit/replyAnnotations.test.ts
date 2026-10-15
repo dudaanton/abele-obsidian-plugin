@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   acceptRevision,
+  interceptorRevision,
   undoRevision,
   sourcePassage,
   projectReplyHistory,
@@ -129,5 +130,57 @@ describe('reviewed reply revisions', () => {
       })
     )
     expect(parsed.messages[0].highlights).toEqual(message.highlights)
+  })
+})
+
+describe('an answer the interceptor replaced', () => {
+  const internal = (): Message[] => [
+    {
+      role: 'assistant',
+      chatMessageId: 'reply',
+      content: [{ type: 'text', text: reply().content }],
+      timestamp: 1,
+      model: 'sample',
+      stopReason: 'stop',
+      usage: EMPTY_USAGE,
+    },
+  ]
+
+  it('carries the replacement as a revision by the interceptor, the original kept', () => {
+    const replaced = interceptorRevision(reply(), 'A bright lamp glows.', 'Sample checker', 5)
+    expect(replaced.content).toBe('A bright lamp glows.')
+    expect(replaced.revisions).toEqual([
+      expect.objectContaining({
+        proposal: '',
+        by: 'interceptor',
+        before: 'A small lantern glows.',
+        after: 'A bright lamp glows.',
+        author: 'Sample checker',
+        at: 5,
+      }),
+    ])
+    const [round] = parseChat(
+      serializeChat({
+        metadata: { type: 'abele-chat', providerId: '', modelId: '', created: '' },
+        messages: [replaced],
+        internalMessages: [],
+      })
+    ).messages
+    expect(round.revisions?.[0].by).toBe('interceptor')
+  })
+
+  it('is what the next turn reads, and undone gives the agent its own answer back', () => {
+    const replaced = interceptorRevision(reply(), 'A bright lamp glows.', 'Sample checker', 5)
+    const text = (m: Message) => (m.content as { text: string }[])[0].text
+    expect(text(projectReplyHistory([replaced], internal())[0])).toBe('A bright lamp glows.')
+    const undone = undoRevision(replaced, 6)
+    expect(undone.content).toBe('A small lantern glows.')
+    expect(text(projectReplyHistory([undone], internal())[0])).toBe('A small lantern glows.')
+  })
+
+  it('refuses anything but the agent’s answer', () => {
+    expect(() =>
+      interceptorRevision({ ...reply(), role: 'user' }, 'x', 'Sample checker', 5)
+    ).toThrow()
   })
 })

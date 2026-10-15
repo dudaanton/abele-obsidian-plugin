@@ -8,7 +8,7 @@
 import { ScriptService } from '@/scripting/ScriptService'
 import { INTERCEPTOR_DEFAULT_SECONDS } from '@/scripting/ScriptParser'
 import type { ParsedScript } from '@/scripting/types'
-import { readInterceptResult, type InterceptResult } from './result'
+import { readAnswerResult, readInterceptResult, type InterceptResult } from './result'
 import { toolPolicy, type ToolPolicy } from './policy'
 import type { InterceptInput } from './context'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -25,6 +25,13 @@ export type InterceptOutcome =
       policy?: ToolPolicy
     }
   | Exclude<InterceptResult, { kind: 'send' } | { kind: 'invalid' }>
+  | { kind: 'failed'; reason: string }
+  | { kind: 'stopped' }
+
+/** What a script decided about the agent's finished answer; see `readAnswerResult`. */
+export type AnswerOutcome =
+  | { kind: 'keep'; note?: string }
+  | { kind: 'replace'; text: string; note?: string }
   | { kind: 'failed'; reason: string }
   | { kind: 'stopped' }
 
@@ -50,11 +57,63 @@ function find(name: string): ParsedScript | string {
   return `there is no script named "${name}"`
 }
 
-export async function runInterceptorScript(
+export function runInterceptorScript(
   name: string,
   input: InterceptInput,
   signal: AbortSignal
 ): Promise<InterceptOutcome> {
+  return runScript(name, input, signal, (value, run): InterceptOutcome => {
+    const read = readInterceptResult(value, input.message)
+    if (read.kind === 'invalid') return { kind: 'failed', reason: read.reason }
+    if (read.kind !== 'send') return read
+    const { policy, ...rest } = read
+    const fields = value as Record<string, unknown> | null | undefined
+    const rewriteRequested =
+      typeof value === 'string' ||
+      (typeof value === 'object' &&
+        fields != null &&
+        (fields.text !== undefined || fields.attachments !== undefined))
+    return {
+      ...rest,
+      ...(rewriteRequested ? { rewriteRequested: true } : {}),
+      ...(policy
+        ? {
+            policy: toolPolicy(
+              policy,
+              name,
+              { signal: run.signal, onTimeout: run.abort },
+              run.policyTools
+            ),
+          }
+        : {}),
+    }
+  })
+}
+
+/** Runs the chosen script on the agent's finished answer, under the same clock and Stop. */
+export function runAnswerScript(
+  name: string,
+  input: InterceptInput,
+  signal: AbortSignal
+): Promise<AnswerOutcome> {
+  return runScript(name, input, signal, (value): AnswerOutcome => {
+    const read = readAnswerResult(value, input.message.text)
+    return read.kind === 'invalid' ? { kind: 'failed', reason: read.reason } : read
+  })
+}
+
+interface ScriptRun {
+  signal: AbortSignal
+  abort(): void
+  policyTools: ReturnType<typeof mcpToolBindings>
+}
+
+async function runScript<T>(
+  name: string,
+  input: InterceptInput,
+  signal: AbortSignal,
+  read: (value: unknown, run: ScriptRun) => T
+): Promise<T | { kind: 'failed'; reason: string } | { kind: 'stopped' }> {
   const service = ScriptService.getInstance()
   const controller = new AbortController()
   const runSignal = AbortSignal.any([signal, controller.signal])
@@ -109,33 +168,11 @@ export async function runInterceptorScript(
       }),
     ])
 
-    const read = readInterceptResult(value, input.message)
-    if (read.kind === 'invalid') return { kind: 'failed', reason: read.reason }
-    if (read.kind !== 'send') return read
-    const { policy, ...rest } = read
-    const fields = value as Record<string, unknown> | null | undefined
-    const rewriteRequested =
-      typeof value === 'string' ||
-      (typeof value === 'object' &&
-        fields != null &&
-        (fields.text !== undefined || fields.attachments !== undefined))
-    return {
-      ...rest,
-      ...(rewriteRequested ? { rewriteRequested: true } : {}),
-      ...(policy
-        ? {
-            policy: toolPolicy(
-              policy,
-              name,
-              {
-                signal: runSignal,
-                onTimeout: () => controller.abort(),
-              },
-              policyTools
-            ),
-          }
-        : {}),
-    }
+    return read(value, {
+      signal: runSignal,
+      abort: () => controller.abort(),
+      policyTools,
+    })
   } catch (err) {
     if (timedOut) {
       return { kind: 'failed', reason: `the script did not decide within ${seconds} s` }

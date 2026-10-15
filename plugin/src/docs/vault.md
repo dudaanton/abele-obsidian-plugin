@@ -1187,7 +1187,8 @@ location** action keeps its position only in the live map and discards it when t
 
 A chat that chose its own interceptor rather than following its agent's keeps the choice in its
 metadata: `interceptorAgentId` and `interceptorContextDepth` for a reviewing agent,
-`interceptorScript` for a script, `interceptorPattern` for the messages it is shown, and
+`interceptorScript` for a script, `interceptorPattern` for the messages it is shown,
+`interceptorChecks` (`answer` or `both`; absent means the person's messages only), and
 `interceptorReplyOnly` for either kind. `interceptorReplyOnly: true` sends the message at once
 while the agent reviewer or script may answer beside it; absent or false keeps draft review
 or the script's blocking decision. The reply is stored on the reviewed message in
@@ -1195,7 +1196,12 @@ or the script's blocking decision. The reply is stored on the reviewed message i
 in the main conversation. A script's side reply also has `interceptorScript: true`; ignored
 rewrites, holds and tool policies, or failures and timeouts, leave notes in `interceptorChat`.
 Following the agent stores no interceptor override. Agent definitions in the plugin's settings also
-hold `interceptorReplyOnly` (false by default), and it travels with the agent in settings transfer. A message a
+hold `interceptorReplyOnly` (false by default) and `interceptorChecks` (`message` by default), and
+both travel with the agent in settings transfer. An answer the interceptor replaced is an assistant
+`msg` with a `revisions` entry whose `by` is `"interceptor"`, `proposal` empty and `author` the
+interceptor's name (see Reply highlights and revisions); a note, failure or stop of an answer check
+is stored in that answer's `interceptorChat`, with `interceptorName`, `interceptorCollapsed: false`
+and, for a script, `interceptorScript: true`. Nothing marks an answer that was checked and kept. A message a
 script held back, or one it was stopped on, stays in the chat as a draft (`draft: true`,
 `interceptorScript: true`), with the script's lines beside it in `interceptorChat`; so do the
 lines a script left on a message it rewrote or failed on.
@@ -1425,6 +1431,8 @@ rejected comment or failed initial decision write never changes the parent.
 
 An accepted parent reply keeps its id and timestamp, replaces `content`, and appends a
 `revisions` entry: `proposal`, `before`, `after`, `author`, `at`, and the previous `highlights`.
+A replacement written by the chat's interceptor is the same entry with `by: "interceptor"` and an
+empty `proposal`; it is projected into the agent's history and undone the same way.
 Rendered annotations are retained with the previous version, not guessed onto changed text.
 Undo restores that version and its highlights, marking the revision with `undoneAt`. The oldest
 `before` remains the original. These fields survive log compaction and file sync. Accepted revisions and undo also update linked assistant `int` text in the same parent-file

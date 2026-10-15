@@ -7,7 +7,7 @@
  */
 import type { AgentDefinition } from '@/ai/agents/types'
 import type { ChatMessage, PermissionMode, ToolMode } from '@/ai/types'
-import type { InterceptedMessage } from './result'
+import type { InterceptedMessage, InterceptedToolCall } from './result'
 
 export interface InterceptChatMessage {
   role: 'user' | 'assistant'
@@ -121,7 +121,34 @@ export function buildInterceptInput(
   }
 
   return deepFreeze({
-    message: { text: message.text, attachments: [...message.attachments] },
+    message: { kind: 'message', text: message.text, attachments: [...message.attachments] },
+    chat,
+  })
+}
+
+/**
+ * What a script checking the agent's finished answer is shown: the answer, the tool calls of the
+ * turn that produced it (read-only; the check never undoes them), and the chat before the answer.
+ */
+export function buildAnswerInput(answer: ChatMessage, source: InterceptSource): InterceptInput {
+  const at = source.messages.findIndex((m) => m.id === answer.id)
+  const before = at < 0 ? source.messages : source.messages.slice(0, at)
+  const turnStart = before.findLastIndex((m) => m.role === 'user' && !m.draft)
+  const tools: InterceptedToolCall[] = before
+    .slice(turnStart + 1)
+    .filter((m) => m.role === 'tool-call' && m.toolName)
+    .map((m) => ({
+      name: m.toolName!,
+      args: JSON.parse(JSON.stringify(m.toolParams ?? {})) as Record<string, unknown>,
+      result: m.toolResult ?? null,
+      refused: m.toolStatus === 'rejected',
+    }))
+  const { chat } = buildInterceptInput(
+    { text: answer.content, attachments: [] },
+    { ...source, messages: before }
+  )
+  return deepFreeze({
+    message: { kind: 'answer', text: answer.content, attachments: [], tools },
     chat,
   })
 }

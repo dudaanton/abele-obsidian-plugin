@@ -1,4 +1,9 @@
-import { createAgent, normaliseContextDepth, type AgentDefinition } from './types'
+import {
+  createAgent,
+  normaliseChecks,
+  normaliseContextDepth,
+  type AgentDefinition,
+} from './types'
 import { REMEMBER_TOOL, FORGET_TOOL } from './memory'
 import {
   BOOK_TOOL_MODES,
@@ -321,6 +326,7 @@ function normaliseInterceptors(ai: AiSettings): boolean {
       interceptorAgentId?: unknown
       interceptorContextDepth?: unknown
       interceptorReplyOnly?: unknown
+      interceptorChecks?: unknown
       interceptorScript?: unknown
       interceptorPattern?: unknown
     }
@@ -338,6 +344,13 @@ function normaliseInterceptors(ai: AiSettings): boolean {
       agent.interceptorAgentId = ''
     } else if (typeof raw.interceptorAgentId !== 'string' || raw.interceptorAgentId === agent.id) {
       agent.interceptorAgentId = ''
+      changed = true
+    }
+
+    // Absent on agents from before answers could be checked: they checked messages.
+    if (raw.interceptorChecks === undefined) agent.interceptorChecks = 'message'
+    else if (normaliseChecks(raw.interceptorChecks) !== raw.interceptorChecks) {
+      agent.interceptorChecks = 'message'
       changed = true
     }
 

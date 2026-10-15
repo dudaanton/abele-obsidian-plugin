@@ -80,6 +80,7 @@ export function cloneChatPath(source: ChatSnapshot, messageId: string): ChatSnap
     interceptorAgentId: setup.interceptorAgentId,
     interceptorContextDepth: setup.interceptorContextDepth,
     interceptorReplyOnly: setup.interceptorReplyOnly,
+    interceptorChecks: setup.interceptorChecks,
     interceptorScript: setup.interceptorScript,
     interceptorPattern: setup.interceptorPattern,
     activeLeafId: messages.at(-1).id,

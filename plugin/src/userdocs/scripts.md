@@ -289,6 +289,11 @@ under the message, or nothing to stay silent. Rewrites, holds and tool approvals
 with an explanation under the message; the script cannot replace the main agent's answer.
 Failures and timeouts also show their reason there without affecting the main turn.
 
+With **Checks** set to the agent's answers, the script also reads each finished answer, with
+`message.kind` set to `'answer'` and the turn's tool calls in `message.tools`. Return nothing to
+keep it, a text to put in its place, and `{ note }` for a line under it. The replacement happens
+by itself; the original stays a press away on the answer's pencil.
+
 The number after `@interceptor` is how many seconds the script may take, 30 if you leave it out.
 A script that fails, takes longer, or waits to be confirmed on this device never loses your
 message: it goes to the agent as you wrote it, with the reason under it. An interceptor script is

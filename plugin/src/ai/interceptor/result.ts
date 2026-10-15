@@ -13,8 +13,20 @@
 import type { ToolPolicySpec } from './policy'
 
 export interface InterceptedMessage {
+  /** The person's message before the agent reads it, or the agent's finished answer. */
+  kind?: 'message' | 'answer'
   text: string
   attachments: string[]
+  /** For an answer: the tool calls of the turn that produced it, oldest first. */
+  tools?: InterceptedToolCall[]
+}
+
+export interface InterceptedToolCall {
+  name: string
+  args: Record<string, unknown>
+  /** What the tool answered, or null when it never ran (refused, stopped). */
+  result: string | null
+  refused: boolean
 }
 
 export type InterceptResult =
@@ -115,4 +127,55 @@ export function readInterceptResult(value: unknown, original: InterceptedMessage
     rewritten: text !== original.text || !sameList(attachments, original.attachments),
     ...(policy ? { policy } : {}),
   }
+}
+
+/**
+ * What an interceptor script's return value means for the agent's finished answer.
+ *
+ *   return                     → the answer stays
+ *   return 'text'              → this text takes the answer's place
+ *   return { text, note? }     → the same, with a line under the answer
+ *   return { note: 'text' }    → the answer stays, with this line under it
+ *
+ * What only a person's message can take (`reply`, `hold`, attachments, tool approvals) is
+ * `invalid` here, and the answer stays as it was.
+ */
+export type AnswerResult =
+  | { kind: 'keep'; note?: string }
+  | { kind: 'replace'; text: string; note?: string }
+  | { kind: 'invalid'; reason: string }
+
+const ANSWER_KEYS = new Set(['text', 'note'])
+
+export function readAnswerResult(value: unknown, original: string): AnswerResult {
+  const invalidAnswer = (why: string): AnswerResult => ({
+    kind: 'invalid',
+    reason: `the script returned something an answer check cannot use: ${why}`,
+  })
+  if (value === undefined || value === null || value === true) return { kind: 'keep' }
+
+  if (typeof value === 'string') {
+    if (!value.trim()) return invalidAnswer('an empty text (return nothing to keep the answer)')
+    return value === original ? { kind: 'keep' } : { kind: 'replace', text: value }
+  }
+
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    return invalidAnswer(Array.isArray(value) ? 'a list' : `a ${typeof value}`)
+  }
+
+  const out = value as Record<string, unknown>
+  const unknown = Object.keys(out).filter((k) => !ANSWER_KEYS.has(k))
+  if (unknown.length) {
+    return invalidAnswer(
+      `${unknown.map((k) => `"${k}"`).join(', ')}, which only a message takes; an answer takes "text" and "note"`
+    )
+  }
+  for (const key of ['text', 'note'] as const) {
+    if (out[key] !== undefined && (typeof out[key] !== 'string' || !out[key].trim()))
+      return invalidAnswer(`"${key}" that is not a non-empty text`)
+  }
+  const note = out.note as string | undefined
+  const text = out.text as string | undefined
+  if (text === undefined || text === original) return { kind: 'keep', ...(note ? { note } : {}) }
+  return { kind: 'replace', text, ...(note ? { note } : {}) }
 }

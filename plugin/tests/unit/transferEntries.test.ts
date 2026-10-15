@@ -321,6 +321,17 @@ describe('settings that arrived later than the transfer did', () => {
     expect(createAgent().interceptorReplyOnly).toBe(false)
   })
 
+  it('round-trips what an agent interceptor checks with the agent', () => {
+    const base = settings()
+    base.ai.agents = [createAgent({ id: 'sample-checking-agent', interceptorChecks: 'answer' })]
+    const entry = find(collectEntries(base), 'ai-agents', 'sample-checking-agent')!
+    expect(entry.data).toMatchObject({ interceptorChecks: 'answer' })
+    const destination = settings()
+    destination.ai.agents = []
+    expect(applyEntries([entry], destination).ai.agents[0].interceptorChecks).toBe('answer')
+    expect(createAgent().interceptorChecks).toBe('message')
+  })
+
   it('carries both map settings', () => {
     const entries = collectEntries(
       settings({

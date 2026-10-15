@@ -132,6 +132,11 @@ export function normaliseContextDepth(value: unknown): number {
 /** The person's message before it is sent, the agent's answer once its turn ends, or both. */
 export type InterceptorChecks = 'message' | 'answer' | 'both'
 
+/** A stored choice of what is checked; anything unknown means messages, as before answers. */
+export function normaliseChecks(value: unknown): InterceptorChecks {
+  return value === 'answer' || value === 'both' ? value : 'message'
+}
+
 export const INTERCEPTOR_CHECKS_OPTIONS: { value: InterceptorChecks; display: string }[] = [
   { value: 'message', display: 'Your messages' },
   { value: 'answer', display: "The agent's answers" },

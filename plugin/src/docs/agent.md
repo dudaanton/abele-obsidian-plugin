@@ -70,6 +70,25 @@ bare (`^/todo`) or as `/pattern/flags`; the rest go straight to the agent. Empty
 message. A pattern that does not compile is refused when set and, if one arrives anyway, lets
 every message through to the interceptor.
 
+**Checks** (`interceptorChecks`) says what the interceptor reads: `message` (the person's messages,
+the default and what every interceptor did before), `answer` (the agent's finished answers) or
+`both`. Checking an answer is automatic and asks nobody: when the agent's turn ends with a final
+answer, the interceptor reads it before anything else happens in the chat; the answer is muted
+with a turning glyph meanwhile, and Stop cancels the check. A script returns nothing to keep the
+answer, a text (or `{ text }`) to put in its place, and may add `{ note }`, a line shown under
+the answer. An agent reviewer is given the answer with the configured context, and its whole
+reply takes the answer's place; an empty reply, or the same text, keeps it. A replacement is
+stored as a revision of the reply (`by: "interceptor"`): the chat shows it with the edited-reply
+pencil naming the interceptor, the original stays in the reply window with **Undo last change**,
+and the next turn, a retry, a branch and an edit all read the replacement as what the agent
+said; undone, they read the agent's own text again. Only the final text changes; tool calls and
+file changes made during the turn stay done. A failure, a timeout or Stop keeps the answer and
+says why under it. A message typed during the check waits until it is over. **Reply only** is
+about messages and is hidden when only answers are checked. The pattern is tried on whatever is
+being checked. Delegated runs never check answers. Only the plugin's own agents have an
+interceptor: node sessions (Claude Code, Codex, pi) keep their own history on the node, and
+neither kind of check runs there yet.
+
 A chat follows its agent's interceptor until the person picks another one or Off in the chat's
 settings; that choice is the chat's own, and switching the chat to a different agent keeps it.
 A chat that never chose follows whichever agent it is on now. Interceptors never chain: the
@@ -82,6 +101,7 @@ messages join the running turn as usual, reviewing each independently.
 The settings on the agent are `interceptorAgentId` (an agent id, or empty for none),
 `interceptorContextDepth` (0 the draft, -1 everything, N the last N messages; an agent reviewer
 only), `interceptorReplyOnly` (boolean, false by default; agents and scripts),
+`interceptorChecks` (`message`, `answer` or `both`; `message` by default),
 `interceptorScript` (a script's `@name`, or empty; set, it wins over the agent) and
 `interceptorPattern` (the regular expression, or empty).
 

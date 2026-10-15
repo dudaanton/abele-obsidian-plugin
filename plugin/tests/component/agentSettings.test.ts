@@ -416,6 +416,24 @@ describe("the agent's interceptor", () => {
     view.unmount()
   })
 
+  it('chooses what the interceptor checks, and hides Reply only for answers alone', async () => {
+    const { main, helper } = seedAgents()
+    const registry = AgentRegistry.getInstance()
+    registry.update(main.id, { interceptorAgentId: helper.id })
+    const view = mountEditor(main.id)
+    const row = (name: string) =>
+      view.findAll('.setting-item').find((s) => s.find('.setting-item-name').text() === name)
+    const checks = () => row('Checks')!.findComponent(Dropdown)
+    expect(checks().props('modelValue')).toBe('message')
+    await checks().vm.$emit('update:model-value', 'answer')
+    expect(registry.get(main.id)?.interceptorChecks).toBe('answer')
+    expect(row('Reply only')).toBeUndefined()
+    await checks().vm.$emit('update:model-value', 'both')
+    expect(registry.get(main.id)?.interceptorChecks).toBe('both')
+    expect(row('Reply only')).toBeDefined()
+    view.unmount()
+  })
+
   it('turns review off again', async () => {
     const { main, helper } = seedAgents()
     AgentRegistry.getInstance().update(main.id, { interceptorAgentId: helper.id })

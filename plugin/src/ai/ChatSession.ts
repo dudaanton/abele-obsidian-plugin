@@ -93,6 +93,7 @@ import {
 import { inspectMainChat, readChat } from './chatCopy'
 import {
   compatibleReplyHistory,
+  interceptorRevision,
   isReplyCorrection,
   projectReplyHistory,
   undoRevision,
@@ -118,6 +119,7 @@ import {
 import { notifyMcpPermissionReset } from './mcp/settings'
 import { AgentRegistry } from './agents/AgentRegistry'
 import {
+  normaliseChecks,
   normaliseContextDepth,
   type AgentDefinition,
   type OverrideKey,
@@ -168,7 +170,7 @@ import { linkedNotesNote } from './linkedNotes'
 import { agentReplyText, composerText } from './replyLinks'
 import { TurnPolicy } from './interceptor/turnPolicy'
 import type { ToolPolicy } from './interceptor/policy'
-import { buildInterceptInput, type InterceptSource } from './interceptor/context'
+import { buildAnswerInput, buildInterceptInput, type InterceptSource } from './interceptor/context'
 import { sendThroughScript, type ScriptSendHost } from './interceptor/scriptSend'
 import type { InterceptRoute } from './ChatInterceptor'
 import {
@@ -347,6 +349,15 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   }
   /** What an interceptor script said about the tool calls of the turn running now. */
   private readonly turnPolicy = new TurnPolicy()
+  /**
+   * The finished answer the interceptor is reading now, and who reads it. The chat is busy for
+   * that long: what is typed waits, and Stop cancels the check and keeps the answer.
+   */
+  public readonly answerCheck = ref<{ id: string; by: string } | null>(null)
+  /** When the latest agent loop started; only an answer written since then is checked. */
+  private turnStartedAt = 0
+  /** Answers already checked here, so a turn resumed twice never checks one twice. */
+  private readonly answersChecked = new Set<string>()
   private lastModelId = ''
 
   /** What the chat's file already holds, so a save writes only the difference. */
@@ -555,7 +566,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       this.isExecutingTool.value ||
       this.retrying.value !== null ||
       // A script deciding about a message: what is sent meanwhile waits for its decision.
-      this.interceptor.working.value
+      this.interceptor.working.value ||
+      // The interceptor reading the finished answer: the next message waits for what stays.
+      this.answerCheck.value !== null
     )
   }
 
@@ -572,7 +585,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   get isMidTurn(): boolean {
     if (this.preparingClone.value) return true
     if (this.replyChanging || this.isStreaming.value || this.isCompacting.value) return true
-    if (this.interceptor.working.value) return true
+    if (this.interceptor.working.value || this.answerCheck.value) return true
     return this.pendingToolCalls.value.length > 0 || this.pendingQuestions.value !== null
   }
 
@@ -878,6 +891,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       agentId,
       contextDepth: normaliseContextDepth(agent.interceptorContextDepth),
       replyOnly: agent.interceptorReplyOnly === true,
+      checks: normaliseChecks(agent.interceptorChecks),
       script,
       pattern: agent.interceptorPattern || '',
     }
@@ -1210,6 +1224,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       await this.runAgentLoop()
       // A turn just ended: a natural point to be sure the disk has it.
       await this.save()
+      await this.checkAnswer()
     } finally {
       await this.drainQueue()
     }
@@ -1869,6 +1884,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
    * refusal five times over with a growing wait between them.
    */
   private async runAgentLoop(): Promise<void> {
+    this.turnStartedAt = Date.now()
     this.activeAgentTurns.value++
     const endBackgroundTurn = mobileBackground.beginTurn()
     const interruptedTools = Object.entries(this.attention.value.tools ?? {})
@@ -2571,6 +2587,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       // A turn just ended: a natural point to be sure the disk has it.
       await this.save()
 
+      await this.checkAnswer()
       await this.afterTurn()
     } finally {
       this.endTurnPolicy()
@@ -2584,6 +2601,89 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   private interceptRoute(content: string): InterceptRoute {
     if (this.kind === 'run') return { kind: 'none' }
     return this.interceptor.route(content)
+  }
+
+  /**
+   * The interceptor reads the answer a turn just finished and may put its own text in its place,
+   * by itself, asking nobody. The replacement is a revision of the reply, so the next turn, a
+   * retry, a branch and the reply window all see it, and the agent's own text stays beside it.
+   * A failure, a timeout or Stop keeps the answer and says why under it. Only the final text
+   * changes; what the turn's tools did stays done. Delegated runs never check: nobody is there.
+   */
+  private async checkAnswer(): Promise<void> {
+    if (this.kind === 'run' || this.destroyed || this.turnAborted || this.error.value) return
+    if (this.pendingToolCalls.value.length || this.pendingQuestions.value) return
+    const answer = this.messages.value.at(-1)
+    if (answer?.role !== 'assistant' || answer.draft || !answer.content.trim()) return
+    if (answer.timestamp < this.turnStartedAt || this.answersChecked.has(answer.id)) return
+    const route = this.interceptor.answerRoute(answer.content)
+    if (route.kind === 'none') return
+    this.answersChecked.add(answer.id)
+
+    const generation = this.generation
+    const by = this.interceptor.agentName
+    const input =
+      route.kind === 'script'
+        ? buildAnswerInput(answer, this.interceptSource(this.messages.value))
+        : null
+    this.answerCheck.value = { id: answer.id, by }
+    try {
+      await this.save()
+      const outcome = await this.interceptor.checkAnswer(route, answer, input)
+      if (this.destroyed || generation !== this.generation) return
+      console.debug('[Abele interceptor] answer', { by, outcome: outcome.kind })
+      const lines = route.broken
+        ? [`The pattern does not compile (${route.broken}), so every answer is checked.`]
+        : []
+      if ('note' in outcome && outcome.note) lines.push(outcome.note)
+      if (outcome.kind === 'replace') {
+        try {
+          await this.writeReplyChange(answer.id, (message) =>
+            interceptorRevision(message, outcome.text, by, Date.now())
+          )
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : String(err)
+          lines.push(`Not replaced: ${reason} The answer stays as it was.`)
+        }
+      } else if (outcome.kind === 'failed') {
+        lines.push(`Not checked: ${outcome.reason}. The answer stays as it was.`)
+      } else if (outcome.kind === 'stopped') {
+        lines.push('Not checked: stopped. The answer stays as it was.')
+      }
+      if (lines.length) await this.noteUnderAnswer(answer.id, by, route.kind === 'script', lines)
+    } finally {
+      this.answerCheck.value = null
+    }
+  }
+
+  /** The interceptor's lines under an answer it checked, in the side conversation messages use. */
+  private async noteUnderAnswer(
+    id: string,
+    by: string,
+    script: boolean,
+    lines: string[]
+  ): Promise<void> {
+    const at = Date.now()
+    this.updateChatMessage(
+      (m) => m.id === id,
+      (m) => ({
+        ...m,
+        interceptorName: by,
+        ...(script ? { interceptorScript: true } : {}),
+        interceptorCollapsed: false,
+        interceptorChat: [
+          ...(m.interceptorChat ?? []),
+          ...lines.map((content) => ({
+            id: nanoid(),
+            role: 'assistant' as const,
+            content,
+            timestamp: at,
+          })),
+        ],
+      })
+    )
+    this.updateVisibleMessages()
+    await this.save()
   }
 
   /**
@@ -2818,6 +2918,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     try {
       await this.processAllPendingToolCalls(identityRefusal ? undefined : { id: tc.id, args })
       this.markDirty()
+      await this.checkAnswer()
     } finally {
       this.endTurnPolicy()
       // The agent carries on after the answer and may finish there: whatever was typed
@@ -2871,6 +2972,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     try {
       await this.processAllPendingToolCalls()
       this.markDirty()
+      await this.checkAnswer()
     } finally {
       this.endTurnPolicy()
       await this.drainQueue()
@@ -3217,6 +3319,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       agentId: typeof stored === 'string' ? stored : '',
       contextDepth: normaliseContextDepth(metadata?.interceptorContextDepth),
       replyOnly: metadata?.interceptorReplyOnly === true,
+      checks: normaliseChecks(metadata?.interceptorChecks),
       script: typeof script === 'string' ? script : '',
       pattern: typeof metadata?.interceptorPattern === 'string' ? metadata.interceptorPattern : '',
     }
@@ -3257,6 +3360,21 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   async changeReply(id: string, change: (message: ChatMessage) => ChatMessage): Promise<void> {
     if (this.isMidTurn || this.isBusy || this.moving.value)
       throw new Error('This chat is working. Wait for its turn to finish.')
+    try {
+      await this.writeReplyChange(id, change)
+    } finally {
+      void this.drainQueue()
+    }
+  }
+
+  /**
+   * Writes a changed reply and the history the model reads from it in one write. The caller
+   * owns the moment: the person between turns, or the interceptor inside the turn it checks.
+   */
+  private async writeReplyChange(
+    id: string,
+    change: (message: ChatMessage) => ChatMessage
+  ): Promise<void> {
     this.replyChanging = true
     try {
       const file = this.currentChatFile.value
@@ -3296,7 +3414,6 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       }
     } finally {
       this.replyChanging = false
-      void this.drainQueue()
     }
   }
 
@@ -3942,6 +4059,12 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       interceptorAgentId: this.interceptor.override.value?.agentId,
       interceptorContextDepth: this.interceptor.override.value?.contextDepth,
       interceptorReplyOnly: this.interceptor.override.value?.replyOnly,
+      // Absent means messages, what every chat checked before answers could be.
+      interceptorChecks:
+        this.interceptor.override.value?.checks &&
+        this.interceptor.override.value.checks !== 'message'
+          ? this.interceptor.override.value.checks
+          : undefined,
       interceptorScript: this.interceptor.override.value?.script || undefined,
       interceptorPattern: this.interceptor.override.value?.pattern || undefined,
     }
@@ -4648,6 +4771,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
 
       await this.save()
 
+      await this.checkAnswer()
       await this.afterTurn()
     } finally {
       this.endTurnPolicy()

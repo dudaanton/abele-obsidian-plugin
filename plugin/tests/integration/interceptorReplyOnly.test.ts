@@ -217,6 +217,7 @@ describe('reply-only script interceptors', () => {
     expect(session.getDraftMessage()).toBeNull()
     expect(session.interceptor.working.value).toBe(false)
     expect(pending.get('First question')!.input.message).toEqual({
+      kind: 'message',
       text: 'First question',
       attachments: [],
     })

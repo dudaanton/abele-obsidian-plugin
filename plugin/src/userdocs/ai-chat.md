@@ -895,8 +895,20 @@ nothing appears. It cannot rewrite or hold the message, replace the main agent's
 approve or refuse its actions in this mode. An attempted rewrite, hold or approval leaves a
 small explanation under the message, as does a failure or timeout. Neither stops the main turn.
 
-**Only messages matching** limits the interceptor to messages that match a regular expression,
-such as `^/todo`. Everything else goes straight to the agent. Leave it empty for every message.
+**Checks**, under the interceptor, says what it reads: your messages (as above), the agent's
+answers, or both. An answer is checked by itself when the agent finishes, without asking you:
+the text stays a little muted with a turning icon by its time, and if the interceptor writes
+something else, that takes the answer's place. A pencil by the time says who replaced it; press
+it to see the agent's own answer and the difference, and **Undo last change** to put it back.
+The agent's next turn reads whichever text is there. What the agent did with its tools stays
+done. If the check fails or you press **Stop**, the answer stays as it was and the reason is shown
+under it. A message you send while the check runs waits for it. A reviewing agent's reply
+becomes the new answer; a script returns the new text, or nothing to keep it. Checks work for
+the plugin's own agents; chats with Claude Code, Codex or pi on a node have no interceptor.
+
+**Only messages matching** limits the interceptor to text that matches a regular expression,
+such as `^/todo`, whether a message or an answer. Everything else passes unchecked. Leave it
+empty for everything.
 
 ## Delegation
 

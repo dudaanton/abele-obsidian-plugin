@@ -6,7 +6,12 @@ import { AgentRegistry } from './agents/AgentRegistry'
 import type { InterceptorChecks } from './agents/types'
 import type { ChatMessage, InterceptorChatMessage } from './types'
 import { matchesPattern } from './interceptor/pattern'
-import { runInterceptorScript, type InterceptOutcome } from './interceptor/runScript'
+import {
+  runAnswerScript,
+  runInterceptorScript,
+  type AnswerOutcome,
+  type InterceptOutcome,
+} from './interceptor/runScript'
 import type { InterceptInput } from './interceptor/context'
 
 /**
@@ -175,7 +180,7 @@ export class ChatInterceptor {
    * one that does not compile intercepts it anyway and says why (`broken`).
    */
   route(text: string): InterceptRoute {
-    if (!this.isActive) return { kind: 'none' }
+    if (!this.isActive || this.checks.value === 'answer') return { kind: 'none' }
     const { matches, broken } = matchesPattern(this.pattern.value, text)
     if (!matches) return { kind: 'none' }
     const extra = {
@@ -185,6 +190,53 @@ export class ChatInterceptor {
     return this.script.value
       ? { kind: 'script', script: this.script.value, ...extra }
       : { kind: 'agent', ...extra }
+  }
+
+  /**
+   * Where the agent's finished answer goes: nowhere when the interceptor checks only messages or
+   * the pattern does not match it. Reply only is about messages; an answer is always held.
+   */
+  answerRoute(text: string): InterceptRoute {
+    if (!this.isActive || this.checks.value === 'message') return { kind: 'none' }
+    const { matches, broken } = matchesPattern(this.pattern.value, text)
+    if (!matches) return { kind: 'none' }
+    const extra = broken ? { broken } : {}
+    return this.script.value
+      ? { kind: 'script', script: this.script.value, ...extra }
+      : { kind: 'agent', ...extra }
+  }
+
+  private answerController: AbortController | null = null
+
+  /**
+   * Reads the agent's finished answer and says what takes its place. A script decides by what it
+   * returns; a reviewing agent's whole reply is the new text, and an empty one keeps the answer.
+   * Stopped by `abort()`; the caller keeps the answer then, as on any failure.
+   */
+  async checkAnswer(
+    route: Exclude<InterceptRoute, { kind: 'none' }>,
+    answer: ChatMessage,
+    input: InterceptInput | null
+  ): Promise<AnswerOutcome> {
+    const controller = new AbortController()
+    this.answerController = controller
+    try {
+      if (route.kind === 'script') {
+        if (!input) return { kind: 'failed', reason: 'the answer could not be read' }
+        return await runAnswerScript(route.script, input, controller.signal)
+      }
+      const agent = this.agent
+      if (!agent) return { kind: 'failed', reason: 'the reviewing agent is gone' }
+      const said = await this.complete(agent, this.buildContext(answer), controller.signal).catch(
+        (err: unknown) => ({ error: err instanceof Error ? err.message : String(err) })
+      )
+      if (controller.signal.aborted) return { kind: 'stopped' }
+      if ('error' in said) return { kind: 'failed', reason: said.error }
+      const text = said.text.trim()
+      return text && text !== answer.content.trim() ? { kind: 'replace', text } : { kind: 'keep' }
+    } finally {
+      if (this.answerController === controller) this.answerController = null
+    }
   }
 
   /** True while a script decides about a message; the chat is busy for that long. */
@@ -368,6 +420,7 @@ export class ChatInterceptor {
   abort(): void {
     this.abortController?.abort()
     this.scriptController?.abort()
+    this.answerController?.abort()
     for (const controller of this.replyControllers.values()) controller.abort()
     this.replyControllers.clear()
     this.replyReviews.value = {}
@@ -396,39 +449,15 @@ export class ChatInterceptor {
     progress.streamingContent.value = ''
     progress.error.value = null
     try {
-      const registry = AgentRegistry.getInstance()
-      const model = registry.resolveModel(agent)
-      if (!model) {
-        progress.error.value = `Interceptor "${agent.name}" has no usable model configured`
+      const said = await this.complete(agent, messages, controller.signal, (text) => {
+        progress.streamingContent.value = text
+      })
+      if (controller.signal.aborted) return
+      if ('error' in said) {
+        progress.error.value = said.error
         return
       }
-
-      const systemPrompt = await registry.buildSystemPrompt(agent)
-
-      console.debug('[Abele interceptor]', {
-        agent: agent.name,
-        modelId: model.id,
-        baseUrl: model.baseUrl,
-        hasKey: !!model.apiKey,
-      })
-
-      if (controller.signal.aborted) return
-      const client = new OpenAIClient()
-      let response = ''
-      for await (const event of client.stream(model, systemPrompt, messages, [], {
-        signal: controller.signal,
-      })) {
-        if (controller.signal.aborted) return
-        if (event.type === 'error') {
-          progress.error.value =
-            event.error || event.message?.errorMessage || 'Interceptor request failed'
-          return
-        }
-        if (event.type === 'text_delta') {
-          response += event.delta
-          progress.streamingContent.value = response
-        }
-      }
+      const response = said.text
 
       const current = this.host.findMessage(draft.id)
       if (!controller.signal.aborted && current && response.trim()) {
@@ -451,6 +480,45 @@ export class ChatInterceptor {
       progress.streamingContent.value = ''
       if (foreground && this.abortController === controller) this.abortController = null
     }
+  }
+
+  /**
+   * One streamed reply from `agent`: its text, or why there is none. An aborted stream returns
+   * whatever had arrived; the caller reads its own signal.
+   */
+  private async complete(
+    agent: NonNullable<ChatInterceptor['agent']>,
+    messages: Message[],
+    signal: AbortSignal,
+    onText?: (text: string) => void
+  ): Promise<{ text: string } | { error: string }> {
+    const registry = AgentRegistry.getInstance()
+    const model = registry.resolveModel(agent)
+    if (!model) return { error: `Interceptor "${agent.name}" has no usable model configured` }
+
+    const systemPrompt = await registry.buildSystemPrompt(agent)
+
+    console.debug('[Abele interceptor]', {
+      agent: agent.name,
+      modelId: model.id,
+      baseUrl: model.baseUrl,
+      hasKey: !!model.apiKey,
+    })
+
+    let text = ''
+    if (signal.aborted) return { text }
+    const client = new OpenAIClient()
+    for await (const event of client.stream(model, systemPrompt, messages, [], { signal })) {
+      if (signal.aborted) return { text }
+      if (event.type === 'error') {
+        return { error: event.error || event.message?.errorMessage || 'Interceptor request failed' }
+      }
+      if (event.type === 'text_delta') {
+        text += event.delta
+        onText?.(text)
+      }
+    }
+    return { text }
   }
 
   /**

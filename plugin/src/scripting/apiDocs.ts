@@ -325,7 +325,7 @@ await v.open()
 | \`books\` | \`object\` | Reader-file library, saved progress and navigation (see below); not available in lint rules |
 | \`analytics\` | \`object\` | Statistics over finance, notes and bases (see Analytics above) |
 | \`vocabulary\` | \`object\` | Words a note's properties or a highlight name, underlined in books (see below) |
-| \`message\` | \`object \\| null\` | The message an interceptor script decides about (see below) |
+| \`message\` | \`object \\| null\` | The message, or the agent's answer, an interceptor script decides about (see below) |
 | \`chat\` | \`object \\| null\` | The chat that message is sent in, read-only (see below) |
 | \`signal\` | \`AbortSignal\` | Cancellation signal — check \`signal.aborted\` in long loops |
 | \`dayjs\` | \`function\` | [Day.js](https://day.js.org) date library — \`dayjs()\`, \`dayjs('2026-01-01').add(7, 'day')\`, \`.format('YYYY-MM-DD')\`, etc. |
@@ -541,6 +541,7 @@ the message in \`message\` and the chat around it in \`chat\`; any other run fin
 Both are read-only copies: changing them throws.
 
 \`\`\`js
+message.kind         // 'message' here; 'answer' when it checks the agent's answer (below)
 message.text         // what was typed
 message.attachments  // vault paths attached to it
 chat.id, chat.title, chat.path    // the chat, and its file (null before it has one)
@@ -606,6 +607,35 @@ const text = await read('Tasks.md').catch(() => null)
 if (text === null) await create('Tasks.md', line)
 else await write('Tasks.md', text + line)
 return { reply: 'Added: ' + task }
+\`\`\`
+
+#### Checking the agent's answers
+
+With **Checks** set to the agent's answers (or both), the script also runs when the agent's turn
+ends with a final answer, before anything else happens in the chat. Then \`message.kind\` is
+\`'answer'\` (it is \`'message'\` for the person's message), \`message.text\` is the answer,
+\`message.attachments\` is empty, and \`message.tools\` lists the turn's tool calls, read-only:
+\`[{ name, args, result, refused }]\` (\`result\` is null for a call that never ran). \`chat.messages\`
+ends with the person's message the answer replies to. What it returns decides, by itself, with
+nobody asked:
+
+| return | what happens |
+|---|---|
+| nothing, \`null\`, \`true\` | the answer stays |
+| \`'text'\` or \`{ text }\` | this text takes the answer's place; the original stays in the reply's window, a press away |
+| \`{ note: 'text' }\` | the answer stays, with this line under it (beside \`text\` too) |
+
+Anything else — \`reply\`, \`hold\`, \`attachments\`, \`approve\`, \`deny\` — is refused, and the
+answer stays with the reason under it, as it does when the script throws, times out or is
+stopped. The replacement is what the agent is told it said in later turns. Tool calls and file
+changes made during the turn are not undone. Messages the person sends during the check wait.
+
+\`\`\`js
+// @name Units
+// @interceptor 10
+if (message.kind !== 'answer') return
+const fixed = message.text.replace(/(\\d+) ?mi\\b/g, (_, n) => Math.round(n * 1.609) + ' km')
+if (fixed !== message.text) return { text: fixed, note: 'Miles turned into kilometres.' }
 \`\`\`
 
 \`message\` and \`chat\` are not reserved names: a script with its own \`const message\` has its own.

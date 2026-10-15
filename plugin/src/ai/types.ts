@@ -694,9 +694,9 @@ export interface ChatMessage {
   /** The interceptor was a script: there is nobody to reply to in the side conversation. */
   interceptorScript?: boolean
   /**
-   * The interceptor is reading this finished answer and may replace it. Present only while it
-   * reads; the replacement lands as a revision by the interceptor, a failure in the side
-   * conversation, and either way this goes.
+   * The interceptor is reading this finished answer and may replace it. Set only on the copy the
+   * chat view draws while it reads, never stored; the replacement lands as a revision by the
+   * interceptor, a failure in the side conversation.
    */
   answerCheck?: { by: string }
   subAgentRun?: SubAgentRunRef
