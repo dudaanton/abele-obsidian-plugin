@@ -383,8 +383,8 @@ export async function startHost(): Promise<void> {
       run(args).then(
         // No keep-alive: a connection the phone kept for its next request was one the reversed
         // port had already closed, and that request timed out.
-        () => {
-          hostLog(`${what} ok ${Date.now() - started} ms`)
+        (out) => {
+          hostLog(`${what} ok ${Date.now() - started} ms${what === 'type' ? ' ' + out.trim() : ''}`)
           res
             .writeHead(200, { 'Content-Type': 'application/json', Connection: 'close' })
             .end(answer)

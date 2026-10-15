@@ -178,7 +178,8 @@ export function typeText(text: string, via?: 'focus' | 'keys'): void {
     30_000
   )
   if (ready !== '=> ready') throw new Error('The phone keyboard is not ready: ' + ready)
-  driver(['type', text, ...(via ? ['--via', via] : [])])
+  // Which way the driver typed (the field's focus or the keyboard's keys), for a loss to be read.
+  console.debug('[phone-type]', driver(['type', text, ...(via ? ['--via', via] : [])]))
 }
 
 /** The system or app dialog on screen: its text and buttons, or null when there is none. */

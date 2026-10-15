@@ -44,19 +44,32 @@ describe('keyboardReady', () => {
     const { calls, type } = keyboardInto(input, 2)
     await keyboardReady(type, 10_000, (n) => void type('\b'.repeat(n)))
     expect(input.value).toBe('Sample')
-    expect(calls).toEqual(['x', 'x', 'x', '\b'])
+    expect(calls).toEqual(['x', 'x', 'x', 'x', '\b\b'])
     await type(' diagram')
     expect(input.value).toBe('Sample diagram')
   }, 15_000)
 
-  it('keeps a selection, so the text typed next still replaces it', async () => {
+  it('leaves a selection for the text to replace, probing nothing', async () => {
     const input = field('old name')
     input.setSelectionRange(0, 3)
-    const { type } = keyboardInto(input, 0)
+    const { calls, type } = keyboardInto(input, 0)
     await keyboardReady(type, 5_000, (n) => void type('\b'.repeat(n)))
-    expect(input.value).toBe('old name')
-    expect([input.selectionStart, input.selectionEnd]).toEqual([0, 3])
+    expect(calls).toEqual([])
+    expect([input.value, input.selectionStart, input.selectionEnd]).toEqual(['old name', 0, 3])
   })
+
+  it('wants two probes in a row: one lost after a delivered one starts the count again', async () => {
+    const input = field('')
+    const calls: string[] = []
+    const type = async (text: string) => {
+      calls.push(text)
+      if (calls.length === 2) return
+      input.value += text
+    }
+    await keyboardReady(type, 10_000, (n) => void (input.value = input.value.slice(0, -n)))
+    expect(calls).toEqual(['x', 'x', 'x', 'x'])
+    expect(input.value).toBe('')
+  }, 15_000)
 
   it('reads an editor field without its placeholder', async () => {
     const editor = document.createElement('div')
@@ -81,7 +94,7 @@ describe('keyboardReady', () => {
       }
     }
     await keyboardReady(type, 5_000, (n) => void type('\b'.repeat(n)))
-    expect(calls).toEqual(['x', '\b'])
+    expect(calls).toEqual(['x', 'x', '\b\b'])
     expect(editor.querySelector('.cm-placeholder')).not.toBeNull()
   })
 

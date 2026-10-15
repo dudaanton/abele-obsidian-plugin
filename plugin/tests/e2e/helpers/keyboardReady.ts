@@ -5,7 +5,7 @@
  * character is typed until it shows up in the field, then erased, and the field reads as before.
  *
  * Runs inside the page: `installPhoneHost` injects its source, so it uses nothing from outside.
- * `type` is the phone's own typing (through the host); a selection is kept across the probe.
+ * `type` is the phone's own typing (through the host).
  */
 export async function keyboardReady(
   type: (text: string) => Promise<unknown>,
@@ -44,32 +44,24 @@ export async function keyboardReady(
       value: editable() ? read(editable()!).slice(-40) : null,
     })
 
-  // The focused field and the keyboard over it, as far as the page can tell.
-  for (const shown = Date.now() + timeoutMs / 2; Date.now() < shown; await wait(50))
-    if (editable() && keyboard() > 1) break
+  // The focused field and the keyboard over it, its height holding still (no longer sliding in).
+  let height = -1,
+    still = 0
+  for (const shown = Date.now() + timeoutMs / 2; Date.now() < shown; await wait(100)) {
+    const now = editable() ? keyboard() : 0
+    still = now > 1 && now === height ? still + 1 : 0
+    height = now
+    if (still >= 3) break
+  }
   const el = editable()
   if (!el) throw new Error('No focused field to type into: ' + evidence())
 
-  // The probe goes at the end of a selection, so typing it replaces nothing.
-  let restore = () => {}
+  // A selection is the caller's to replace and a probe would replace it first: there the settled
+  // keyboard is all the evidence there is.
   if (plain(el)) {
     const input = el as HTMLInputElement
-    const { selectionStart: start, selectionEnd: stop, selectionDirection: dir } = input
-    if (start !== null && stop !== null && start !== stop) {
-      input.setSelectionRange(stop, stop)
-      restore = () => input.setSelectionRange(start, stop, dir ?? undefined)
-    }
-  } else {
-    const selection = getSelection()
-    if (selection && selection.rangeCount && !selection.isCollapsed) {
-      const range = selection.getRangeAt(0).cloneRange()
-      selection.collapseToEnd()
-      restore = () => {
-        selection.removeAllRanges()
-        selection.addRange(range)
-      }
-    }
-  }
+    if (input.selectionStart !== null && input.selectionStart !== input.selectionEnd) return
+  } else if (getSelection()?.isCollapsed === false) return
   const before = read(el)
   const until = async (done: () => boolean, ms: number) => {
     for (const stop = Math.min(end, Date.now() + ms); Date.now() < stop; await wait(50))
@@ -77,14 +69,17 @@ export async function keyboardReady(
     return done()
   }
 
-  let sent = 0
-  for (;;) {
+  // One probe can get through while the next text still loses its start: two in a row must.
+  let sent = 0,
+    delivered = 0
+  while (delivered < 2) {
     if (document.activeElement !== el) throw new Error('The field lost focus: ' + evidence())
     if (Date.now() >= end)
       throw new Error(`The keyboard took no input in ${timeoutMs} ms: ` + evidence())
+    const was = read(el)
     await type('x')
     sent++
-    if (await until(() => read(el) !== before, 1500)) break
+    delivered = (await until(() => read(el) !== was, 1500)) ? delivered + 1 : 0
   }
   // A probe sent earlier may still be on its way: read until two readings agree.
   let last = read(el)
@@ -100,5 +95,4 @@ export async function keyboardReady(
   erase(extra)
   if (!(await until(() => read(el) === before, 5000)))
     throw new Error('The probe could not be erased: ' + evidence())
-  restore()
 }
