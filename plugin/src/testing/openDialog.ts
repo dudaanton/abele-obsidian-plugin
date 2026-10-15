@@ -694,6 +694,47 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
     }),
   'agent-editor': () =>
     mountAlone(AgentEditorModal, { agentId: AgentRegistry.getInstance().list()[0]?.id ?? '' }),
+  // An agent's tools offered by section, on its Access tab with the node section in view: one
+  // section standing open, one in the agent's own words, the node's actions set unevenly.
+  'agent-tools': () => {
+    const config = AbeleConfig.getInstance(),
+      registry = AgentRegistry.getInstance()
+    const save = config.saveSettings
+    config.saveSettings = async () => {
+      config.version.value++
+    }
+    const agent = registry.create({
+      name: 'Sample tools by section',
+      toolDiscovery: 'sections',
+      toolModes: { node_read: 'auto', node_search: 'auto', node_edit: 'ask', geocode: 'ask' },
+      toolSectionOpening: { maps: 'always' },
+      toolSectionDescriptions: { maps: 'Sample places and routes, in the agent’s own words.' },
+    })
+    mountAlone(
+      defineComponent({
+        emits: ['close'],
+        setup(_props, { emit }) {
+          onUnmounted(() => {
+            registry.remove(agent.id)
+            config.saveSettings = save
+          })
+          onMounted(() => {
+            void nextTick(() => {
+              Array.from(document.querySelectorAll('.abele-agent-editor .abele-tabs__tab'))
+                .find((el) => el.textContent === 'Access')
+                ?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+              void nextTick(() =>
+                Array.from(document.querySelectorAll('.abele-tool-modes__heading'))
+                  .find((el) => el.textContent === 'Nodes')
+                  ?.scrollIntoView({ block: 'start' })
+              )
+            })
+          })
+          return () => h(AgentEditorModal, { agentId: agent.id, onClose: () => emit('close') })
+        },
+      })
+    )
+  },
   // A rule with settings of its own, its changes going nowhere.
   'lint-rule': () => {
     const rule = BUILTIN_RULES.find((r) => r.params.length) ?? BUILTIN_RULES[0]

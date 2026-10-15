@@ -1,0 +1,304 @@
+import { expect, it } from 'vitest'
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
+import { mkdtempSync, mkdirSync, writeFileSync, realpathSync, rmSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { evalAsync } from './helpers/githubLive'
+import { evalRaw } from './helpers/obsidianCli'
+import { withEmulatedPhone } from './helpers/emulatedPhone'
+import { shotDir } from './helpers/shots'
+import { targets } from './helpers/target'
+
+// The node daemon runs beside the app under test, so the phone is its emulated layout here.
+targets('desktop')
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+const shots = shotDir('abele-node-access')
+const NODE_TOOLS = [
+  'node_nodes',
+  'node_folders',
+  'list_node_worktrees',
+  'node_ls',
+  'node_read',
+  'node_edit',
+  'node_search',
+  'node_worktree_switch',
+]
+const prelude = `const T=window.__abeleTest,chats=T.ChatService.getInstance(),nodes=T.NodeService.getInstance();const wait=ms=>new Promise(r=>setTimeout(r,ms));const until=async(f,what)=>{for(let i=0;i<300;i++){const v=f();if(v)return v;await wait(50)}throw Error('Did not settle: '+(what||f.toString()))};const visible=s=>[...document.querySelectorAll(s)].find(el=>el.getBoundingClientRect().width>0&&getComputedStyle(el).visibility!=='hidden'&&!el.closest('.workspace-leaf.mod-hidden'));const button=(root,text)=>[...root.querySelectorAll('button')].find(b=>b.textContent.trim()===text&&b.getBoundingClientRect().width>0);`
+
+/** A picture of the whole window, as the person would see it now. */
+const capture = (name: string) =>
+  evalAsync<string>(
+    `(async()=>{await new Promise(r=>setTimeout(r,300));const image=await require('@electron/remote').getCurrentWebContents().capturePage();require('fs').writeFileSync(${JSON.stringify(resolve(shots, `2026-10-15-node-access-${name}.png`))},image.toPNG());return JSON.stringify('captured')})()`
+  )
+
+interface Turn {
+  calls: { name: string; result: string; refusal?: { kind: string; node_id: string } }[]
+  error?: string
+}
+
+/** One turn of the chat, driven by a scripted model that makes these calls in order. */
+const chatTurn = (path: string, steps: string) => `(async()=>{
+  const T=window.__abeleTest,session=T.ChatService.getInstance().getSessionByFile(${JSON.stringify(path)});
+  const realFetch=window.fetch,endpoint='https://sample-node-access-model.invalid/v1',out={calls:[]};
+  const steps=${steps};let n=0;
+  session.resolveModel=()=>({id:'sample',name:'Sample',baseUrl:endpoint,apiKey:'none',contextWindow:100000,maxTokens:1000,supportsReasoning:false});
+  for(const key of ['generateTitle','generateSummary','generateRecap','autoCompactIfNeeded'])session.summarizer[key]=async()=>{};
+  window.fetch=async(url,init)=>{
+    if(typeof url!=='string'||!url.startsWith(endpoint))return realFetch(url,init);
+    const step=n<steps.length?steps[n]:null;n++;
+    const delta=step?{tool_calls:[{index:0,id:'sample-call-'+Date.now()+'-'+n,type:'function',function:{name:step.name,arguments:JSON.stringify(step.params)}}]}:{content:'Done.'};
+    const enc=new TextEncoder();
+    return new Response(new ReadableStream({start(c){for(const chunk of [{choices:[{delta}]},{choices:[{delta:{},finish_reason:step?'tool_calls':'stop'}]}])c.enqueue(enc.encode('data: '+JSON.stringify(chunk)+'\\n\\n'));c.enqueue(enc.encode('data: [DONE]\\n\\n'));c.close()}}),{status:200,headers:{'Content-Type':'text/event-stream'}});
+  };
+  try{
+    const before=session.allMessages.value.length;
+    await session.sendMessage('Read the sample file in the project on the node.');
+    if(session.error.value)out.error=String(session.error.value);
+    for(const m of session.allMessages.value.slice(before))if(m.role==='tool-call'&&m.toolResult!==undefined)out.calls.push({name:m.toolName,result:String(m.toolResult),refusal:m.nodeAccessRefusal});
+  }finally{window.fetch=realFetch}
+  return JSON.stringify(out)
+})()`
+
+/** A git folder on a node the app is connected to, and nothing in this vault that reaches it. */
+async function withNode(
+  work: (node: { port: number; token: string; repo: string }) => Promise<void>
+) {
+  const cli = process.env.ABELE_NODE_CLI
+  if (!cli) throw new Error('Set ABELE_NODE_CLI to the built daemon CLI')
+  mkdirSync('../.scratch', { recursive: true })
+  const dir = realpathSync(mkdtempSync(resolve('../.scratch/node-access-'))),
+    repo = resolve(dir, 'sample-app'),
+    state = resolve(dir, 'state')
+  mkdirSync(repo)
+  writeFileSync(resolve(repo, 'sample.txt'), 'first line\nsecond line\n')
+  const git = (...args: string[]) => {
+    const r = spawnSync('/usr/bin/git', args, { cwd: repo, encoding: 'utf8' })
+    if (r.status) throw Error(r.stderr)
+  }
+  git('init', '-b', 'main')
+  git('add', '.')
+  git(
+    '-c',
+    'user.name=Fixture',
+    '-c',
+    'user.email=fixture@example.invalid',
+    '-c',
+    'commit.gpgsign=false',
+    'commit',
+    '-m',
+    'fixture'
+  )
+  const fake = resolve('tests/fixtures/nodeClaude.mjs')
+  const token = spawnSync(
+    process.execPath,
+    [cli, 'token', 'create', 'fixture', '--state-dir', state, '--claude-path', fake, '--json'],
+    { encoding: 'utf8' }
+  )
+  expect(token.status, token.stderr).toBe(0)
+  let child: ChildProcess | undefined
+  try {
+    child = spawn(
+      process.execPath,
+      [cli, 'start', '--state-dir', state, '--port', '0', '--claude-path', fake, '--json'],
+      { stdio: ['ignore', 'pipe', 'pipe'] }
+    )
+    let output = '',
+      errors = ''
+    child.stdout!.on('data', (b) => (output += b))
+    child.stderr!.on('data', (b) => (errors += b))
+    for (let i = 0; !output.includes('"listening"'); i++) {
+      if (i > 500 || child.exitCode !== null) throw Error(errors || 'Daemon startup deadline')
+      await wait(20)
+    }
+    const { port } = JSON.parse(output.split('\n').find((l) => l.includes('"listening"'))!) as {
+      port: number
+    }
+    await work({ port, token: (JSON.parse(token.stdout) as { token: string }).token, repo })
+  } finally {
+    if (child && child.exitCode === null && child.signalCode === null) {
+      const stopped = new Promise<void>((r) => child!.once('exit', () => r()))
+      child.kill('SIGTERM')
+      await stopped
+    }
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+/**
+ * The whole way from a refusal to a working call, as the person goes it: the agent is refused,
+ * the line under its call says where by name, one press opens this chat's node access with that
+ * place chosen, Add gives it, the line says so, and the agent asked again reads the file. Then
+ * the other way in: the node panel's row menu gives a second chat access, chosen from a list that
+ * puts the open chat first and tells chats apart.
+ */
+async function refusalToGrant(form: 'desktop' | 'phone') {
+  await withNode(async ({ port, token, repo }) => {
+    const stamp = Date.now()
+    const chat = `Sample node access ${stamp}.abchat`
+    let registration = '',
+      agentId = '',
+      second = ''
+    try {
+      const setup = evalAsync<{
+        registration: string
+        project: string
+        worktree: string
+        agent: string
+      }>(
+        `(async()=>{${prelude}
+        const node=await nodes.add('Sample workstation','http://127.0.0.1:${port}',${JSON.stringify(token)}),client=nodes.connection(node.id).client;
+        await until(()=>client.connected,'node connected');
+        const project=await client.registerProject(${JSON.stringify(repo)},'untrusted');
+        const worktree=(await client.repository.worktrees({project_id:project.project_id})).entries[0];
+        const agent=T.AgentRegistry.getInstance().create({name:'Sample node access agent',toolModes:Object.fromEntries(${JSON.stringify(NODE_TOOLS)}.map(n=>[n,'auto']))});
+        await chats.openChatFile(await app.vault.create(${JSON.stringify(chat)},JSON.stringify({v:2,k:'meta',type:'abele-chat',agentId:agent.id,providerId:'',modelId:'',title:'Sample node access',created:'2026-01-01'})+'\\n'));
+        const session=chats.getSessionByFile(${JSON.stringify(chat)});session.permissionMode.value='allow-all';
+        await chats.revealSidebar({focus:false});
+        return JSON.stringify({registration:node.id,project:project.project_id,worktree:worktree.worktree_id,agent:agent.id})
+      })()`
+      )
+      registration = setup.registration
+      agentId = setup.agent
+      const read = `{name:'node_read',params:{node:${JSON.stringify(registration)},project:${JSON.stringify(setup.project)},workspace:${JSON.stringify(setup.worktree)},target_kind:'worktree',path:'sample.txt'}}`
+
+      // Refused: the agent reads why in words, the call keeps the coded refusal.
+      const refused = evalAsync<Turn>(chatTurn(chat, `[{name:'open_nodes',params:{}},${read}]`))
+      expect(refused.error, JSON.stringify(refused)).toBeUndefined()
+      const call = refused.calls.at(-1)!
+      expect(call.name).toBe('node_read')
+      expect(call.result).toMatch(/not in this chat's node access/)
+      expect(call.refusal?.kind, JSON.stringify(refused)).toBe('no-access')
+
+      // The line under the call names the place, not its ids, and offers the one press.
+      const line = evalAsync<string>(
+        `(async()=>{${prelude}
+        const line=await until(()=>[...document.querySelectorAll('.abele-ai-chat .abele-node-refusal')].find(el=>el.getBoundingClientRect().width>0&&el.textContent.includes('sample-app')),'refusal line');
+        line.scrollIntoView({block:'center'});
+        const box=line.getBoundingClientRect();if(box.right>innerWidth+1||box.left<-1)throw Error('Refusal line leaves the window: '+JSON.stringify(box));
+        const press=button(line,'Give this chat access');if(!press)throw Error('No way through on the line: '+line.textContent);
+        if(document.body.classList.contains('is-phone')&&press.getBoundingClientRect().width<box.width*0.6)throw Error('Phone button is not the row wide');
+        return JSON.stringify(line.textContent.trim())
+      })()`
+      )
+      expect(line).toContain('No access to sample-app / main on the Sample workstation node')
+      expect(line).not.toContain(setup.project)
+      await capture(`refusal-${form}`)
+
+      // One press: this chat's node access opens with the node, the folder and the worktree chosen.
+      evalAsync(
+        `(async()=>{${prelude}
+        const line=[...document.querySelectorAll('.abele-ai-chat .abele-node-refusal')].find(el=>el.getBoundingClientRect().width>0);
+        button(line,'Give this chat access').click();
+        const add=await until(()=>visible('.abele-node-scope-editor__add'),'node access opened');
+        const editor=add.closest('.abele-node-scope-editor');
+        await until(()=>[...editor.querySelectorAll('select')].length>=3&&[...editor.querySelectorAll('select')][2].value===${JSON.stringify(setup.worktree)},'place chosen');
+        const shown=[...editor.querySelectorAll('select')].map(s=>s.selectedOptions[0]?.textContent);
+        if(shown[0]!=='Sample workstation')throw Error('Node not chosen: '+shown);
+        return JSON.stringify(shown)
+      })()`
+      )
+      await capture(`grant-dialog-${form}`)
+      evalAsync(
+        `(async()=>{${prelude}
+        visible('.abele-node-scope-editor__add').click();
+        const session=chats.getSessionByFile(${JSON.stringify(chat)});
+        await until(()=>session.overrides.value.nodeScope?.length===1,'access added');
+        const modal=visible('.modal');modal?.querySelector('.modal-close-button')?.click();
+        await until(()=>!visible('.abele-node-scope-editor'),'dialog closed');
+        await until(()=>[...document.querySelectorAll('.abele-ai-chat .abele-node-refusal')].some(el=>el.getBoundingClientRect().width>0&&el.textContent.includes('Access given. Ask the agent to try again')),'line says given');
+        const access=visible('.abele-ai-chat .abele-chat-input__scope')?.getAttribute('aria-label')||'';
+        if(!access.includes('sample-app')||!access.includes('worktree main')||access.includes(${JSON.stringify(setup.project)}))throw Error('Access button does not name the place: '+access);
+        return JSON.stringify(access)
+      })()`
+      )
+      await capture(`refusal-given-${form}`)
+
+      // Asked again, the same call reads the file.
+      const retried = evalAsync<Turn>(chatTurn(chat, `[${read}]`))
+      expect(retried.error, JSON.stringify(retried)).toBeUndefined()
+      expect(retried.calls[0].result, JSON.stringify(retried)).toContain('first line')
+      expect(retried.calls[0].refusal).toBeUndefined()
+
+      // The node panel's way in, for another chat: the open one first and marked, each told
+      // apart by its agent and last question; the folder and branch by name; a notice after.
+      second = evalAsync<string>(
+        `(async()=>{${prelude}
+        const id=chats.newTab();const other=chats.getAllSessions().find(s=>s.id===id);other.chatTitle.value='Sample second chat';
+        await chats.revealSidebar({focus:false});
+        for(const leaf of app.workspace.getLeavesOfType('abele-node-sidebar'))leaf.detach();
+        app.commands.executeCommandById('abele:open-node');
+        const leaf=await until(()=>app.workspace.getLeavesOfType('abele-node-sidebar')[0],'node pane');
+        await leaf.view.setState({registrationId:${JSON.stringify(registration)}},{});
+        await app.workspace.revealLeaf(leaf);
+        const row=await until(()=>[...document.querySelectorAll('.abele-folder-tree .abele-folder-tree__copy > .tree-item-self')].find(r=>r.getBoundingClientRect().width>0&&r.textContent.includes('main')),'worktree row');
+        row.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:row.getBoundingClientRect().left+8,clientY:row.getBoundingClientRect().bottom-4}));
+        const item=await until(()=>[...document.querySelectorAll('.menu-item')].find(i=>i.textContent.includes('Give a chat access…')),'menu item');
+        item.click();
+        const rows=await until(()=>{const r=[...document.querySelectorAll('.suggestion-item')];return r.length>=2&&r},'chat picker');
+        if(!rows[0].textContent.includes('Sample second chat')||!rows[0].textContent.includes('Open now'))throw Error('Open chat is not first: '+rows[0].textContent);
+        const first=rows.find(r=>r.textContent.includes('Sample node access'));
+        if(!first||!first.textContent.includes('Sample node access agent')||!first.textContent.includes('Read the sample file'))throw Error('Chats are not told apart: '+(first&&first.textContent));
+        if(!first.textContent.includes('Already has access to sample-app / main'))throw Error('Existing access not marked: '+first.textContent);
+        return JSON.stringify(id)
+      })()`
+      )
+      await capture(`chat-picker-${form}`)
+      evalAsync(
+        `(async()=>{${prelude}
+        document.querySelector('.suggestion-item').click();
+        const dialog=await until(()=>[...document.querySelectorAll('.modal')].find(m=>m.getBoundingClientRect().width>0&&m.textContent.includes('Give a chat access')),'grant dialog');
+        if(!dialog.textContent.includes('Folder: sample-app')||!dialog.textContent.includes('Worktree: main')||!dialog.textContent.includes('Sample workstation'))throw Error('Grant dialog does not name the place: '+dialog.textContent);
+        if(dialog.textContent.includes(${JSON.stringify(setup.worktree)}))throw Error('Grant dialog shows an id: '+dialog.textContent);
+        return JSON.stringify('dialog')
+      })()`
+      )
+      await capture(`panel-grant-dialog-${form}`)
+      evalAsync(
+        `(async()=>{${prelude}
+        const dialog=[...document.querySelectorAll('.modal')].find(m=>m.getBoundingClientRect().width>0&&m.textContent.includes('Give a chat access'));
+        button(dialog,'Give access').click();
+        const other=chats.getAllSessions().find(s=>s.id===${JSON.stringify(second)});
+        await until(()=>other.overrides.value.nodeScope?.length===1,'second chat given access');
+        await until(()=>[...document.querySelectorAll('.notice')].some(n=>n.textContent.includes('Sample second chat can read and edit sample-app / main')),'notice');
+        return JSON.stringify('given')
+      })()`
+      )
+      await capture(`panel-notice-${form}`)
+
+      // The agent's tools, offered by section, with the node section as three actions.
+      evalAsync(
+        `(async()=>{${prelude}
+        await T.openDialog('agent-tools');
+        const heading=await until(()=>[...document.querySelectorAll('.abele-tool-modes__heading')].find(h=>h.textContent==='Nodes'&&h.getBoundingClientRect().width>0),'node section');
+        const text=heading.closest('.abele-tool-modes').textContent;
+        for(const words of ['Read files and search','Edit files','Worktrees','Always open','Offer tools'])if(!text.includes(words)&&!document.querySelector('.abele-agent-editor').textContent.includes(words))throw Error('Missing '+words);
+        heading.scrollIntoView({block:'start'});
+        return JSON.stringify('tools')
+      })()`
+      )
+      await capture(`agent-tools-${form}`)
+      evalAsync(
+        `(async()=>{${prelude}for(const b of [...document.querySelectorAll('.modal .modal-close-button')].reverse())b.click();await until(()=>!visible('.abele-agent-editor'),'tools closed');return JSON.stringify(true)})()`
+      )
+    } finally {
+      evalRaw(`(async()=>{
+        const T=window.__abeleTest,chats=T.ChatService.getInstance(),s=chats.getSessionByFile(${JSON.stringify(chat)});
+        for(const b of [...document.querySelectorAll('.modal .modal-close-button')].reverse())b.click();
+        if(s){s.abort();await chats.closeTab(s.id)}
+        if(${JSON.stringify(second)})await chats.closeTab(${JSON.stringify(second)});
+        if(app.vault.getAbstractFileByPath(${JSON.stringify(chat)}))await T.ChatStorage.getInstance().deleteChat(${JSON.stringify(chat)});
+        for(const leaf of app.workspace.getLeavesOfType('abele-node-sidebar'))leaf.detach();
+        if(${JSON.stringify(agentId)})T.AgentRegistry.getInstance().remove(${JSON.stringify(agentId)});
+        if(${JSON.stringify(registration)})T.NodeService.getInstance().remove(${JSON.stringify(registration)});
+        return true
+      })()`)
+    }
+  })
+}
+
+it('takes a refused node call to a working one in two presses, and gives a chat access from the node panel', async () => {
+  await refusalToGrant('desktop')
+}, 180000)
+
+it('does the same in the phone layout', async () => {
+  await withEmulatedPhone(() => refusalToGrant('phone'))
+}, 240000)
