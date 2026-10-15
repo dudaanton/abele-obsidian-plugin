@@ -135,19 +135,22 @@ const beginText = async () => {
  * Card text saves itself, with no Save button: the file gets the typed text while the card is
  * still open, and tapping the card leaves it.
  */
-const leaveText = async (text?: string) => {
-  if (text !== undefined)
+const leaveText = async (text?: string, written = true) => {
+  if (text !== undefined && written)
     await until(
       `view().editor.editing && (await read()).nodes.some(n=>n.text?.includes(${JSON.stringify(text)}))`
     )
+  // A write that fails while typing offers Retry with the card still open.
+  if (!written)
+    await until("view().editor.editing && button('Retry save') && !button('Retry save').hidden")
   await press(`view().contentEl.querySelector('[data-card-id="'+view().editor.editing+'"]')`, true)
   await until('!view().editor.editing')
 }
-const addText = async (text: string) => {
+const addText = async (text: string, written = true) => {
   await beginText()
   await press('view().contentEl.querySelector("textarea")')
   await type(text)
-  await leaveText(text)
+  await leaveText(text, written)
 }
 const reopen = async () => {
   run(
@@ -367,7 +370,7 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
   it('retries a known-unwritten human save on the same source and reopens saved content', async () => {
     failSave()
     // Use ordinary words: the native keyboard autocorrects a made-up adjective on space.
-    await addText('Pending human text')
+    await addText('Pending human text', false)
     // Retry shows once the write has failed.
     await until(
       "button('Retry save')&&!button('Retry save').hidden&&!button('Retry save').disabled"
@@ -412,7 +415,7 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
           'return await app.vault.read(app.vault.getAbstractFileByPath(path))'
         )
         failSave()
-        await addText('Retained human text')
+        await addText('Retained human text', false)
         await until("button('Retry save')&&!button('Retry save').hidden")
         const unsaved = run<boolean>(
           "return view().contentEl.textContent.includes('not saved')&&view().viewer.graph.nodes.some(node=>node.text==='Retained human text')"
