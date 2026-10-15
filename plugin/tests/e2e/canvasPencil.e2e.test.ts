@@ -186,9 +186,12 @@ for (const mobile of onPhone() ? [false] : [false, true])
       // The eraser sweeps across the pen's row and takes its stroke away.
       await use('eraser')
       was = before()
-      const [x] = at(0.3, 0)
-      await stroke(at(0.3, 0.17), [x, at(0, 0.25)[1]])
-      await until(`ink()===${was.ink - 1}`)
+      // The pen's row crosses x 0.3 at y 0.21 and the marker's at 0.27: the sweep meets only the first.
+      const penStroke = run<string>("return graph().abele.ink.find(i=>i.tool==='pen').id")
+      await stroke(at(0.3, 0.18), at(0.3, 0.24))
+      await until(
+        `ink()===${was.ink - 1}&&!graph().abele.ink.some(i=>i.id===${JSON.stringify(penStroke)})`
+      )
 
       // With Navigate in hand the pen carries the canvas.
       await use('pan')
