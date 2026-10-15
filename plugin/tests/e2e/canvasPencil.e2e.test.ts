@@ -184,6 +184,8 @@ for (const mobile of onPhone() ? [false] : [false, true])
       shot('every-tool')
 
       // The eraser sweeps across the pen's row and takes its stroke away.
+      // A card put down on a phone is brought into view, which moves the canvas: back to the start.
+      run(`view().viewer.setCamera({x:0,y:0,zoom:1});return true`)
       await use('eraser')
       was = before()
       // The pen's row crosses x 0.3 at y 0.21 and the marker's at 0.27: the sweep meets only the first.
