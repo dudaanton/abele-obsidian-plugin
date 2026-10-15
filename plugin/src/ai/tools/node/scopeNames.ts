@@ -34,7 +34,7 @@ function folderNames(nodeId: string) {
     found = (async () => {
       const names = new Map<string, { name: string; git: boolean }>()
       const client = (await nodeAgentHost()).connection(nodeId).client
-      if (!client.connected) return names
+      if (!client.connected) throw new Error('Node not connected yet')
       let after: string | undefined
       for (let page = 0; page < 64; page++) {
         const batch = await client.listProjects(after)
@@ -44,7 +44,11 @@ function folderNames(nodeId: string) {
         after = batch.at(-1)?.project_id
       }
       return names
-    })().catch(() => new Map())
+    })().catch(() => {
+      // Nothing learned: ask again next time rather than keep ids for the page's life.
+      folders.delete(nodeId)
+      return new Map<string, { name: string; git: boolean }>()
+    })
     folders.set(nodeId, found)
   }
   return found
@@ -57,7 +61,7 @@ function branchNames(nodeId: string, projectId: string, git: boolean) {
     found = (async () => {
       const names = new Map<string, string>()
       const client = (await nodeAgentHost()).connection(nodeId).client
-      if (!client.connected) return names
+      if (!client.connected) throw new Error('Node not connected yet')
       if (git) {
         const { entries } = await client.repository.worktrees({ project_id: projectId })
         for (const w of entries) names.set(w.worktree_id, shortBranch(w.branch) || w.path_label)
@@ -66,7 +70,10 @@ function branchNames(nodeId: string, projectId: string, git: boolean) {
           names.set(w.workspace_id, lastPart(w.path))
       }
       return names
-    })().catch(() => new Map())
+    })().catch(() => {
+      branches.delete(key)
+      return new Map<string, string>()
+    })
     branches.set(key, found)
   }
   return found
@@ -83,12 +90,21 @@ export async function nodeScopeNames(place: Place | NodeScopeEntry): Promise<Nod
   }
   const projectId = 'project_id' in place ? place.project_id : undefined
   if (!projectId) return { node }
-  const folder = (await folderNames(place.node_id)).get(projectId)
+  // A folder or worktree added since the names were looked up is asked about once more.
+  let folder = (await folderNames(place.node_id)).get(projectId)
+  if (!folder) {
+    folders.delete(place.node_id)
+    folder = (await folderNames(place.node_id)).get(projectId)
+  }
   const target = 'target' in place ? place.target : undefined
   if (!target) return { node, folder: folder?.name ?? projectId }
-  const branch = (await branchNames(place.node_id, projectId, folder?.git ?? true)).get(
-    nodeTargetId(target)
-  )
+  const git = folder?.git ?? true,
+    key = `${place.node_id}\u0000${projectId}`
+  let branch = (await branchNames(place.node_id, projectId, git)).get(nodeTargetId(target))
+  if (branch === undefined) {
+    branches.delete(key)
+    branch = (await branchNames(place.node_id, projectId, git)).get(nodeTargetId(target))
+  }
   return { node, folder: folder?.name ?? projectId, branch: branch ?? nodeTargetId(target) }
 }
 

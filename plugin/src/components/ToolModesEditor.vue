@@ -415,10 +415,12 @@ h4.abele-tool-modes__heading {
 }
 
 // «10 tools» after the action's words: what it holds, pressed open under it.
+// Stepped in by the ring's width, so the description's box, which clips, leaves its focus ring
+// whole.
 .abele-tool-modes__members-toggle {
   display: flex;
   width: fit-content;
-  margin-top: var(--size-2-1);
+  margin: var(--size-2-2) var(--size-2-2) var(--size-2-2);
 }
 
 // The tools of one action, stepped in under it as its own detail.

@@ -174,6 +174,7 @@ const DIALOGS = [
   'github-connections',
   'github-connection',
   'agent-editor',
+  'agent-tools',
   'lint-rule',
   'ask-name',
   'confirm-action',
