@@ -65,6 +65,7 @@ import { createGeocodeTool, createPlacesTool, createRouteTool } from '@/ai/tools
 import { createGithubTools } from '@/ai/tools/github'
 import { createAgentTools } from '@/ai/tools'
 import { renderMap } from '@/helpers/mapRender'
+import { blockProbes } from './blockProbes'
 import { normalizeMapBlock } from '@/helpers/mapConfig'
 import { reviewKeyDestinations } from '@/secrets/destinationReview'
 import { approveScriptKeyRequest } from '@/secrets/requestApproval'
@@ -354,6 +355,8 @@ interface AbeleTestApi {
   }
   /** The renderer shared by note maps and AbeleMap, for control/layout probes. */
   renderMap: typeof renderMap
+  /** Notices with buttons, the sync item and the branch menu, on their own. */
+  blockProbes: typeof blockProbes
   /** A vault picture as it goes to a model. */
   prepareImageForApi: typeof prepareImageForApi
   importExternalFile: typeof importExternalFile
@@ -993,6 +996,7 @@ export function exposeTestApi(plugin: Plugin): void {
       getDesktopNet,
     },
     renderMap,
+    blockProbes,
     prepareImageForApi,
     importExternalFile,
     resolveAttachmentsForApi,
