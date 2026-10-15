@@ -34,6 +34,8 @@ interface Layout {
   actions: number
   /** Where the dialog's body ends, short of its padding: what is under it is the dialog's frame. */
   body: number
+  /** Obsidian's own margin under a button row: on a phone the home indicator's inset. */
+  inset: number
   listTop: number
   listBottom: number
   /** Rows the list holds and rows it shows whole. */
@@ -63,7 +65,8 @@ describe.skipIf(!available)('node folder dialog layout', () => {
       try {
         const box = modal.getBoundingClientRect()
         const list = modal.querySelector('.abele-folder-picker__list').getBoundingClientRect()
-        const actions = modal.querySelector('.abele-folder-picker .modal-button-container').getBoundingClientRect()
+        const row = modal.querySelector('.abele-folder-picker .modal-button-container')
+        const actions = row.getBoundingClientRect()
         const rows = [...modal.querySelectorAll('.abele-folder-picker__row')]
         const shown = rows.filter(row => {
           const r = row.getBoundingClientRect()
@@ -79,6 +82,7 @@ describe.skipIf(!available)('node folder dialog layout', () => {
           top: Math.round(box.top),
           bottom: Math.round(box.bottom),
           actions: Math.round(actions.bottom),
+          inset: Math.round(parseFloat(getComputedStyle(row).marginBottom)),
           body: (() => {
             const el = modal.querySelector('.abele-modal__body')
             return Math.round(el.getBoundingClientRect().bottom - parseFloat(getComputedStyle(el).paddingBottom))
@@ -98,10 +102,10 @@ describe.skipIf(!available)('node folder dialog layout', () => {
     expect(layout.window).toBe(size[1])
     // Everything the made-up home folder holds, plus the row that goes up.
     expect(layout.rows).toBe(13)
-    // The buttons are the last thing in the dialog: nothing empty under them in its body, and
-    // under the body only its frame (on a phone with the home indicator's inset), never a
-    // stretch of empty sheet.
-    expect(layout.body - layout.actions).toBeLessThanOrEqual(4)
+    // The buttons are the last thing in the dialog: under them in its body only the margin
+    // Obsidian keeps for the home indicator, under the body only its frame, never a stretch of
+    // empty sheet.
+    expect(layout.body - layout.actions).toBeLessThanOrEqual(layout.inset + 4)
     expect(layout.bottom - layout.body).toBeLessThanOrEqual(64)
     // And they are on the screen, not under its bottom edge.
     expect(layout.actions).toBeLessThanOrEqual(layout.window)
