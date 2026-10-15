@@ -114,9 +114,12 @@ providers with their models; `ai.activeProviderId` and `ai.activeModelId` are th
 chat starts on, and `ai.auxiliaryModelId` is the background model that writes titles, recaps,
 summaries and compactions. `ai.agents` are the agents themselves — each with its own prompt, scope, tools
 and model, its own background model (`auxiliaryProviderId`, `auxiliaryModelId`) and its own
-interceptor (`interceptorAgentId`, another agent's id or empty, and `interceptorContextDepth`; or
-`interceptorScript`, the name of a script marked `@interceptor`; and `interceptorPattern`, a
-regular expression narrowing which messages it sees, refused when it does not compile) —
+interceptors (`interceptors`, the list in running order, each entry naming another agent's id
+in `agentId` or a script marked `@interceptor` in `script`, with `checks`, `pattern`, `replyOnly`,
+`contextDepth` and `enabled`; an entry naming the agent itself or a pattern that does not compile
+is refused; agents saved before lists keep one interceptor in `interceptorAgentId`,
+`interceptorContextDepth`, `interceptorScript` and `interceptorPattern`, which otherwise mirror
+the list's first switched-on entry and, written, change it) —
 and `ai.defaultAgentId` is the one a new chat opens with. `ai.commentAgentId` is
 the agent a comment starts on, and `ai.commentFolder` and `ai.chatFolder` are where comments
 and chats are written.

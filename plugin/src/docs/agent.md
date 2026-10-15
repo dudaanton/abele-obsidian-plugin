@@ -28,9 +28,25 @@ When a request fails on something transient — 429, a 5xx, a dropped connection
 retry on its own with a growing delay, if that is switched on. A rejected key or a malformed
 request is not retried.
 
-## Interceptor
+## Interceptors
 
-An agent can name another agent as its **interceptor**: a reviewer that reads each message the
+An agent has a list of **interceptors**, run one after another in the list's order; each is set
+up as described below for one. Over the person's message, the first is given the text as typed,
+the second what the first returned, and the agent reads what the last one returned. Over the
+agent's answer the same happens. An interceptor that is switched off, does not check that side or
+whose pattern does not match the text it would be given (judged after the ones before it changed
+it) is skipped. A reply-only one comments beside the message and passes the text on unchanged; it
+never holds it. A reviewing agent holds the message for the person, and **Send** goes on with the
+next interceptor. One that fails or is stopped stops the message there: it waits as a draft with
+the reason, naming the interceptor and its place ("2 of 3"); what the ones before it changed is
+kept; **Retry** runs that one again and the rest after it, **Send as is** sends it as it is without
+the rest. Over an answer, one that fails or is stopped keeps the answer as it stands and the ones
+after it do not read it. While several read an answer, the turning glyph by its time counts which
+one reads now ("2/3"); a held message says which one it waits at. An answer replaced by several
+has one mark among the bar's actions (its own glyph, not the Edit pencil) that opens its versions:
+the original and one tab per interceptor, each showing what that one changed and what it said.
+
+An agent can name another agent as an **interceptor**: a reviewer that reads each message the
 person writes in that agent's chats before it is sent, and answers it in a side conversation.
 The person then sends the draft on, edits it, or talks it over with the reviewer first. Any agent
 can be one, utility agents included, except the agent itself. **Interceptor context** says how
@@ -52,10 +68,11 @@ send a rewritten one, answer it itself without asking the agent, or hold it back
 the person. Beside a send it can answer for the person on the tool calls of the turn that
 message starts — approve or refuse them where the person would have been asked. Such approval
 reaches the actual tool, including a foreign skill and calls behind a manually approved queue
-head; it applies only to that turn's decided calls, not other skills or later turns. A script that
-fails, runs out of time or waits to be confirmed on this device never stops the message: it is
-sent as written, and the reason is shown under it. The script API reference (`script_api_docs`)
-has the whole contract under `message` and `chat`.
+head; it applies only to that turn's decided calls, not other skills or later turns; with several
+scripts, the last one that answered for tool calls is the one whose answers apply. A script that
+fails, runs out of time, is stopped or waits to be confirmed on this device holds the message with
+the reason shown under it, never losing it: Retry asks it again, Send as is sends it unchanged.
+The script API reference (`script_api_docs`) has the whole contract under `message` and `chat`.
 
 With **Reply only**, the script receives the same read-only inputs, but the message and its
 attachments go to the main agent immediately and unchanged. Returning `{ reply: 'text' }` adds
@@ -78,8 +95,8 @@ with a turning glyph meanwhile, and Stop cancels the check. A script returns not
 answer, a text (or `{ text }`) to put in its place, and may add `{ note }`, a line shown under
 the answer. An agent reviewer is given the answer with the configured context, and its whole
 reply takes the answer's place; an empty reply, or the same text, keeps it. A replacement is
-stored as a revision of the reply (`by: "interceptor"`): the chat shows it with the edited-reply
-pencil naming the interceptor, the original stays in the reply window with **Undo last change**,
+stored as a revision of the reply (`by: "interceptor"`), one per interceptor that replaced it:
+the chat shows it with the replaced-answer mark naming the interceptor, the original stays in the reply window with **Undo last change**,
 and the next turn, a retry, a branch and an edit all read the replacement as what the agent
 said; undone, they read the agent's own text again. Only the final text changes; tool calls and
 file changes made during the turn stay done. A failure, a timeout or Stop keeps the answer and
@@ -89,21 +106,25 @@ being checked. Delegated runs never check answers. Only the plugin's own agents 
 interceptor: node sessions (Claude Code, Codex, pi) keep their own history on the node, and
 neither kind of check runs there yet.
 
-A chat follows its agent's interceptor until the person picks another one or Off in the chat's
-settings; that choice is the chat's own, and switching the chat to a different agent keeps it.
-A chat that never chose follows whichever agent it is on now. Interceptors never chain: the
-reviewer answers as one plain reply, so the reviewer's own interceptor is never asked. Delegated
+A chat follows its agent's list until the person gives it a list of its own (**Own for this
+chat**, which starts as a copy of the agent's) or Off in the chat's settings; that choice is the
+chat's own, and switching the chat to a different agent keeps it. A chat that never chose follows
+whichever agent it is on now. A reviewer's own interceptors are never asked: it answers as one
+plain reply. Delegated
 runs and scripts never use one — nobody is there to read the review. A message typed while the
 agent is working waits for its own turn when a blocking script or a hold-for-review agent
 interceptor would take it, rather than joining the running one past it. Reply-only review lets queued
 messages join the running turn as usual, reviewing each independently.
 
-The settings on the agent are `interceptorAgentId` (an agent id, or empty for none),
-`interceptorContextDepth` (0 the draft, -1 everything, N the last N messages; an agent reviewer
-only), `interceptorReplyOnly` (boolean, false by default; agents and scripts),
-`interceptorChecks` (`message`, `answer` or `both`; `message` by default),
-`interceptorScript` (a script's `@name`, or empty; set, it wins over the agent) and
-`interceptorPattern` (the regular expression, or empty).
+The list on the agent is `interceptors`, in running order. Each entry has `id`, `agentId` (a
+reviewing agent's id, never the agent's own), `script` (a script's `@name`; set, it wins over the
+agent), `checks` (`message`, `answer` or `both`), `pattern` (the regular expression, or empty),
+`replyOnly` (boolean), `contextDepth` (0 the text alone, -1 everything, N the last N messages; an
+agent reviewer only) and `enabled` (false keeps its place and skips it). An agent saved before
+lists has no `interceptors`; its single fields `interceptorAgentId`, `interceptorContextDepth`,
+`interceptorReplyOnly`, `interceptorChecks`, `interceptorScript` and `interceptorPattern` are then
+its list of one. With a list, those single fields mirror its first switched-on entry for older
+builds, and writing one of them changes that entry.
 
 ## Permissions
 

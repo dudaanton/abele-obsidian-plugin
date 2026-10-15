@@ -922,9 +922,26 @@ the agent's **Access** tab if an older agent should ask too. The model sees reme
 as its own notes for context, not as your standing instructions. Custom memory templates stay
 as written; saved copies of the former default use the new wording.
 
-## Interceptor
+## Interceptors
 
-An agent can name another agent as its interceptor: a reviewer that reads each message you write
+An agent can have several interceptors, listed in its **Basic** settings in the order they run.
+Each has the settings below. Your message goes through them one after another: the first reads
+what you typed, the second what the first returned, and the agent reads what the last one
+returned. The agent's answer goes through them the same way. One that is switched off, does not
+check that side or whose pattern does not match is skipped. Add one with **Add interceptor**,
+open its settings with the pencil (or by pressing its name on a phone), and move or remove it
+from its **…** menu; on a computer you can also drag it.
+
+While several read an answer, a small count by the turning icon says which one is reading
+("2/3"). A held message says which one it waits at. If one of them fails, your message waits
+with the reason and the work of the ones before it kept: **Retry** asks that one again and goes
+on with the rest, **Send as is** sends it without the rest. An answer replaced by several has one
+mark by its time; it opens a tab per interceptor, each showing what that one changed.
+
+A chat's **Settings** tab says whose list the chat uses: the agent's, its own (which starts as a
+copy of the agent's and is edited the same way), or none.
+
+An agent can name another agent as an interceptor: a reviewer that reads each message you write
 in that agent's chats before it is sent, and answers it on the side. You then send the draft,
 change it, or talk it over first. While the reviewer is thinking, Send/Edit stay hidden;
 **Stop** cancels the review and makes them available again without discarding your draft.
@@ -940,9 +957,9 @@ agent again. The switch works for both agent reviewers and scripts.
 The interceptor can also be one of your [scripts](scripts#chat-interceptors). With **Reply only**
 off, a script decides by itself: it lets the message through, rewrites it, answers it without asking the agent, or holds
 it back for you. It can also approve or refuse the actions the agent takes while answering that
-message, where you would otherwise be asked. If the script breaks or takes too long, your message
-is sent as you wrote it and the reason is shown under it. Stop it from the chat and the message
-waits as a draft.
+message, where you would otherwise be asked. If the script breaks or takes too long, or you stop
+it from the chat, your message waits as a draft with the reason under it: **Retry** asks it again,
+**Send as is** sends it as it is.
 
 With **Reply only** on, the script runs in parallel while your message goes straight to the main
 agent unchanged. If the script returns a reply, it appears under your message; if it says nothing,
@@ -953,7 +970,7 @@ small explanation under the message, as does a failure or timeout. Neither stops
 **Checks**, under the interceptor, says what it reads: your messages (as above), the agent's
 answers, or both. An answer is checked by itself when the agent finishes, without asking you:
 the text stays a little muted with a turning icon by its time, and if the interceptor writes
-something else, that takes the answer's place. A pencil by the time says who replaced it; press
+something else, that takes the answer's place. A mark by the time says who replaced it; press
 it to see the agent's own answer and the difference, and **Undo last change** to put it back.
 The agent's next turn reads whichever text is there. What the agent did with its tools stays
 done. If the check fails or you press **Stop**, the answer stays as it was and the reason is shown

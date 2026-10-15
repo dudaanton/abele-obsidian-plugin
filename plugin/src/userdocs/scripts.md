@@ -292,11 +292,12 @@ Failures and timeouts also show their reason there without affecting the main tu
 With **Checks** set to the agent's answers, the script also reads each finished answer, with
 `message.kind` set to `'answer'` and the turn's tool calls in `message.tools`. Return nothing to
 keep it, a text to put in its place, and `{ note }` for a line under it. The replacement happens
-by itself; the original stays a press away on the answer's pencil.
+by itself; the original stays a press away on the mark by the answer's time.
 
 The number after `@interceptor` is how many seconds the script may take, 30 if you leave it out.
 A script that fails, takes longer, or waits to be confirmed on this device never loses your
-message: it goes to the agent as you wrote it, with the reason under it. An interceptor script is
+message: it waits as a draft with the reason under it, and **Retry** or **Send as is** sends it
+on. With several interceptors, each script is given what the one before it returned. An interceptor script is
 not a command and not a tool for the agent.
 
 ## Scripts around a request

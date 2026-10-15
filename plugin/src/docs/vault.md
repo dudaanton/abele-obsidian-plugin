@@ -1185,8 +1185,11 @@ and compaction redact this tool-result content before sending their transcript t
 model; the original chat record is retained. The map's **Show my
 location** action keeps its position only in the live map and discards it when the map is closed.
 
-A chat that chose its own interceptor rather than following its agent's keeps the choice in its
-metadata: `interceptorAgentId` and `interceptorContextDepth` for a reviewing agent,
+A chat that chose its own interceptors rather than following its agent's keeps the choice in its
+metadata as `interceptors`, the list in running order, each entry with `id`, `agentId`, `script`,
+`checks`, `pattern`, `replyOnly`, `contextDepth` and `enabled` (an empty list is Off). Beside it,
+and alone in chats saved before lists, are the single fields of its first switched-on entry:
+`interceptorAgentId` and `interceptorContextDepth` for a reviewing agent,
 `interceptorScript` for a script, `interceptorPattern` for the messages it is shown,
 `interceptorChecks` (`answer` or `both`; absent means the person's messages only), and
 `interceptorReplyOnly` for either kind. `interceptorReplyOnly: true` sends the message at once
@@ -1196,8 +1199,13 @@ or the script's blocking decision. The reply is stored on the reviewed message i
 in the main conversation. A script's side reply also has `interceptorScript: true`; ignored
 rewrites, holds and tool policies, or failures and timeouts, leave notes in `interceptorChat`.
 Following the agent stores no interceptor override. Agent definitions in the plugin's settings also
-hold `interceptorReplyOnly` (false by default) and `interceptorChecks` (`message` by default), and
-both travel with the agent in settings transfer. An answer the interceptor replaced is an assistant
+hold their `interceptors` list (absent on agents saved before lists) and the single
+`interceptorReplyOnly` (false by default) and `interceptorChecks` (`message` by default) fields
+that mirror its first entry, and all of it travels with the agent in settings transfer. A line in
+`interceptorChat` may carry `by`, the name of the interceptor that said it, when several read the
+message. A message held among several interceptors carries `interceptorWait`: the `entry` id it
+waits at, its place `at` among the `of` that read messages, and `error`, the reason, when that one
+failed or was stopped. An answer the interceptor replaced is an assistant
 `msg` with a `revisions` entry whose `by` is `"interceptor"`, `proposal` empty and `author` the
 interceptor's name (see Reply highlights and revisions); a note, failure or stop of an answer check
 is stored in that answer's `interceptorChat`, with `interceptorName`, `interceptorCollapsed: false`

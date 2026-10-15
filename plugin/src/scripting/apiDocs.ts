@@ -593,9 +593,10 @@ later reviews finish first; they never enter the main agent's conversation. Stop
 does not turn an already-sent message into a draft or undo the script's earlier side effects.
 
 A script that throws, returns something else, is not confirmed on this device or runs out of
-time does not stop the message: it is sent as written, and the reason is shown beside it. With
-**Reply only** off, stopping from the chat keeps the message back as a draft. A stop or a timeout does not undo what the
-script already did.
+time never loses the message: with **Reply only** off it is kept back as a draft with the reason
+beside it, and the person retries the script or sends it as is. So does stopping from the chat.
+With several interceptors, the script is given what the one before it returned, and what it
+returns is what the next one gets. A stop or a timeout does not undo what the script already did.
 
 \`\`\`js
 // @name Quick tasks
