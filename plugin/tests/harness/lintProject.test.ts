@@ -65,6 +65,16 @@ describe('lint concurrency', () => {
     expect(lintConcurrency({ ABELE_LINT_CONCURRENCY: '2' })).toBe(2)
     expect(lintConcurrency({ ABELE_LINT_CONCURRENCY: 'auto' })).toBe('auto')
   })
+  it('builds one TypeScript program for the typed tier unless told otherwise', () => {
+    // Each typed worker holds a whole program: four of them outgrew a 10 GB check container.
+    expect(lintConcurrency({}, 'typed')).toBe(1)
+    expect(lintConcurrency({ ABELE_LINT_CONCURRENCY: '4' }, 'typed')).toBe(1)
+    expect(lintConcurrency({ ABELE_TYPED_LINT_CONCURRENCY: '2' }, 'typed')).toBe(2)
+    expect(lintConcurrency({ ABELE_TYPED_LINT_CONCURRENCY: '2' })).toBe(4)
+    expect(() => lintConcurrency({ ABELE_TYPED_LINT_CONCURRENCY: '0' }, 'typed')).toThrow(
+      'ABELE_TYPED_LINT_CONCURRENCY'
+    )
+  })
   it.each(['', '0', '-1', '1.5', 'NaN', 'off', '9007199254740992'])(
     'rejects invalid worker limit %s',
     (value) => {

@@ -8,12 +8,15 @@ import { cacheEntry, lintCacheKeys } from './check-cache.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 
-export function lintConcurrency(env = process.env) {
-  const value = env.ABELE_LINT_CONCURRENCY ?? '4'
+export function lintConcurrency(env = process.env, tier = 'untyped') {
+  // Every typed worker builds the whole TypeScript program for itself, so four of them take four
+  // times the memory of one (over 10 GB in a check container) for a few seconds of speed.
+  const name = tier === 'typed' ? 'ABELE_TYPED_LINT_CONCURRENCY' : 'ABELE_LINT_CONCURRENCY'
+  const value = env[name] ?? (tier === 'typed' ? '1' : '4')
   if (value === 'auto') return value
   const workers = Number(value)
   if (!/^\d+$/.test(value) || !Number.isSafeInteger(workers) || workers < 1)
-    throw new Error('ABELE_LINT_CONCURRENCY must be a positive integer or auto')
+    throw new Error(`${name} must be a positive integer or auto`)
   return workers
 }
 
@@ -60,7 +63,7 @@ export function runLint(checkout = root, env = process.env) {
 }
 
 async function lintOnce(checkout = root, env = process.env) {
-  const concurrency = lintConcurrency(env)
+  const concurrency = { untyped: lintConcurrency(env), typed: lintConcurrency(env, 'typed') }
   const previousCwd = process.cwd()
   process.chdir(checkout)
   const leases = []
@@ -88,7 +91,7 @@ async function lintOnce(checkout = root, env = process.env) {
         cached && reusable ? cacheEntry(checkout, `lint-${tier}`, before[tier], env) : null
       if (cache) leases.push(cache)
       const eslint = new ESLint({
-        concurrency,
+        concurrency: concurrency[tier],
         cwd: checkout,
         overrideConfigFile: resolve(checkout, 'plugin/eslint.config.mjs'),
         // These optional non-type blocks need not all exist in every checkout.
