@@ -263,6 +263,7 @@ describe('names and times', () => {
   it('makes a file name of a request name inside its collection', () => {
     expect(requestIdFor('', 'Ping')).toBe('Ping.http')
     expect(requestIdFor('A/B', ' .hidden: x ')).toBe('A/B/hidden- x.http')
+    expect(requestIdFor('../up/./.dot/ok', 'x')).toBe('up/dot/ok/x.http')
   })
   it('says when a send went as it reads', () => {
     const now = new Date(2026, 9, 15, 12, 0)

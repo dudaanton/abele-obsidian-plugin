@@ -6,7 +6,7 @@ import { importCurl } from './curl'
 import { importHar } from './har'
 import { importHttp } from './http'
 import { importOpenApi } from './openapi'
-import type { Imported } from './shared'
+import { scrubSecrets, type Imported } from './shared'
 
 export type { Imported, ImportedRequest } from './shared'
 export type ImportFormat = 'http' | 'curl' | 'har' | 'openapi' | 'bruno'
@@ -39,6 +39,10 @@ export function detectFormat(text: string): ImportFormat | undefined {
 }
 
 export function importRequests(text: string, format = detectFormat(text)): Imported {
+  return scrubSecrets(readAs(text, format))
+}
+
+function readAs(text: string, format: ImportFormat | undefined): Imported {
   switch (format) {
     case 'http':
       return importHttp(text)

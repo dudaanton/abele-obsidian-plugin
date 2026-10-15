@@ -201,6 +201,61 @@ describe('importing requests from other clients', () => {
     })
   })
 
+  it('turns every secret written out in a query or a body into a value kept in memory', () => {
+    const har = JSON.stringify({
+      log: {
+        entries: [
+          {
+            request: {
+              method: 'POST',
+              url: 'https://shop.example.test/login?api_key=k-123&page=1',
+              headers: [{ name: 'Authorization', value: 'Bearer {{token}}' }],
+              queryString: [
+                { name: 'api_key', value: 'k-123' },
+                { name: 'page', value: '1' },
+              ],
+              postData: {
+                mimeType: 'application/json',
+                text: '{"user":"sample","password":"p-456","nested":{"client_secret":"c-789"}}',
+              },
+            },
+          },
+          {
+            request: {
+              method: 'POST',
+              url: 'https://shop.example.test/form',
+              headers: [{ name: 'X-Api-Key', value: '{{token}}extra' }],
+              postData: { mimeType: 'application/x-www-form-urlencoded', text: 'user=a&pass=b-1' },
+            },
+          },
+        ],
+      },
+    })
+    const r = importRequests(har)
+    const text = JSON.stringify(r.requests)
+    for (const secret of ['k-123', 'p-456', 'c-789', 'b-1', 'extra'])
+      expect(text).not.toContain(secret)
+    expect(r.requests[0]!.doc.params).toEqual([
+      { key: 'api_key', value: '{{api_key}}' },
+      { key: 'page', value: '1' },
+    ])
+    // A variable and the scheme's word are not a credential written out.
+    expect(r.requests[0]!.doc.headers).toEqual([
+      { key: 'Authorization', value: 'Bearer {{token}}' },
+    ])
+    expect(r.requests[1]!.doc.body?.text).toBe('user=a&pass={{pass}}')
+    expect(r.vars).toEqual(
+      expect.arrayContaining([
+        { key: 'api_key', secret: true },
+        { key: 'password', secret: true },
+        { key: 'client_secret', secret: true },
+        { key: 'pass', secret: true },
+      ])
+    )
+    expect(r.leftOut).toContain('X-Api-Key')
+    expect(r.leftOut).toContain('the value of password')
+  })
+
   it('says plainly what it cannot read', () => {
     expect(() => importRequests('hello there')).toThrow(
       'Not a .http file, a curl line, a HAR file, an OpenAPI description or a Bruno request'

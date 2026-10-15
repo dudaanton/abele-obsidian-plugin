@@ -23,9 +23,78 @@ const SENSITIVE =
 /** A variable whose name says it holds a secret: imported without its value. */
 export const SECRET_NAME = /(token|secret|password|passwd|api[_-]?key|auth|cookie|session)/i
 
-/** A header that carries a credential written out, not as a variable or a key by name. */
+/** A header that carries a credential written out: anything in it besides variables, keys by name
+ * and the scheme's word. */
 export function credential(key: string, value: string) {
-  return SENSITIVE.test(key.trim()) && !/\{\{|\$\{abele_key:/.test(value)
+  if (!SENSITIVE.test(key.trim())) return false
+  const rest = value
+    .replace(/\{\{[^}]*\}\}|\$\{abele_key:[^}]*\}/g, '')
+    .replace(/^\s*(Bearer|Basic|Token|Digest)\b/i, '')
+    .trim()
+  return rest.length > 0
+}
+
+/** A query or body field whose name says it holds a secret. */
+export const SECRET_FIELD =
+  /^(.*[_-])?(token|access[_-]?token|refresh[_-]?token|api[_-]?key|apikey|key|secret|client[_-]?secret|password|passwd|pass|sig|signature|auth|session|sid)$/i
+
+const literal = (v: unknown) =>
+  typeof v === 'string' && v !== '' && !/^\{\{[^}]*\}\}$|^\$\{abele_key:[^}]*\}$/.test(v)
+
+/** Every secret written out in a request's query or body becomes a variable kept in memory,
+ * `{{name}}`, and is named as left out: what a project's files hold never carries one. */
+export function scrubSecrets(imported: Imported): Imported {
+  const vars = [...imported.vars]
+  const leftOut = [...imported.leftOut]
+  const secret = (name: string) => {
+    if (!vars.some((v) => v.key === name)) vars.push({ key: name, secret: true })
+    leave(leftOut, `the value of ${name}`)
+    return `{{${name}}}`
+  }
+  const requests = imported.requests.map((r) => {
+    const doc = { ...r.doc }
+    doc.params = doc.params.map((p) =>
+      SECRET_FIELD.test(p.key) && literal(p.value) ? { ...p, value: secret(p.key) } : p
+    )
+    if (doc.body?.format === 'form')
+      doc.body = {
+        ...doc.body,
+        text: doc.body.text
+          .split('&')
+          .map((part) => {
+            const eq = part.indexOf('=')
+            const key = eq < 0 ? part : decodeURIComponent(part.slice(0, eq))
+            return eq >= 0 && SECRET_FIELD.test(key) && literal(part.slice(eq + 1))
+              ? `${part.slice(0, eq)}=${secret(key)}`
+              : part
+          })
+          .join('&'),
+      }
+    else if (doc.body?.format === 'json') {
+      try {
+        let changed = false
+        const walk = (v: unknown): unknown => {
+          if (Array.isArray(v)) return v.map(walk)
+          if (!v || typeof v !== 'object') return v
+          return Object.fromEntries(
+            Object.entries(v as Record<string, unknown>).map(([k, x]) => {
+              if (SECRET_FIELD.test(k) && literal(x)) {
+                changed = true
+                return [k, secret(k)]
+              }
+              return [k, walk(x)]
+            })
+          )
+        }
+        const value = walk(JSON.parse(doc.body.text))
+        if (changed) doc.body = { ...doc.body, text: JSON.stringify(value, null, 2) }
+      } catch {
+        // Not JSON after all: left as it is.
+      }
+    }
+    return { ...r, doc }
+  })
+  return { ...imported, requests, vars, leftOut }
 }
 
 export function leave(leftOut: string[], what: string) {

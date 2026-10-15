@@ -413,7 +413,7 @@ async function importFromClipboard() {
   const service = RequestsService.instance()
   const c = service.context.value
   if (!c) {
-    new Notice('Choose a project in Requests first')
+    new Notice('Choose a project in the requests view first')
     return
   }
   try {
