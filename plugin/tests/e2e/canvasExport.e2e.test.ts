@@ -148,7 +148,6 @@ describe.skipIf(!available)('whole canvas export through real pointer and touch 
     await press('menuItem("Insert exported file into note…")')
     await press('document.querySelector(".prompt-input")')
     if (onPhone()) {
-      await new Promise((r) => setTimeout(r, 500))
       typeText(TARGET)
     } else
       await withNativeInput(() =>

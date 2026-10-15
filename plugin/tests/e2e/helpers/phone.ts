@@ -19,6 +19,7 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
+import { keyboardReady } from './keyboardReady'
 
 export const DRIVER = process.env.ABELE_PHONE_DRIVER ?? 'iphone'
 
@@ -166,8 +167,19 @@ export const longPress = (x: number, y: number): void =>
   void driver(['longpress', String(x), String(y)])
 export const swipe = (x1: number, y1: number, x2: number, y2: number): void =>
   void driver(['swipe', String(x1), String(y1), String(x2), String(y2)])
-/** Types on the system keyboard into whatever has the focus. */
-export const typeText = (text: string): void => void driver(['type', text])
+/**
+ * Types on the system keyboard into the focused field, once the keyboard is proven to take
+ * input (`keyboardReady`): typed at once, the first characters were lost. `via` is the
+ * driver's `--via` (`keys` taps the keyboard's keys one by one).
+ */
+export function typeText(text: string, via?: 'focus' | 'keys'): void {
+  const ready = phoneEval(
+    `window.__e2eHost.ready(${JSON.stringify(via ?? null)}).then(() => 'ready')`,
+    30_000
+  )
+  if (ready !== '=> ready') throw new Error('The phone keyboard is not ready: ' + ready)
+  driver(['type', text, ...(via ? ['--via', via] : [])])
+}
 
 /** The system or app dialog on screen: its text and buttons, or null when there is none. */
 export function dialog(): { text: string[]; buttons: string[] } | null {
@@ -282,8 +294,8 @@ export async function waitForPhoneRoute(
 /**
  * The page side of the harness on a phone: `window.__e2eHost`, which a probe running inside
  * the page calls for what only this machine can do — `shot(path)` saves a screenshot here,
- * `tap(x, y)`, `swipe(x1, y1, x2, y2)`, `longPress(x, y)`, `type(text)`, `pinch(scale)` touch
- * the screen for real, and `orientation('landscape' | 'portrait')` turns the phone. Each is a request to the host server `phoneHost.ts` runs, through a reversed port. A
+ * `tap(x, y)`, `swipe(x1, y1, x2, y2)`, `longPress(x, y)`, `type(text, { via })`, `pinch(scale)`
+ * touch the screen for real (`type` first waits for the keyboard: `ready(via)`), and `orientation('landscape' | 'portrait')` turns the phone. Each is a request to the host server `phoneHost.ts` runs, through a reversed port. A
  * reload takes it away, so `reloadApp` puts it back. Absent on the desktop, which is how a
  * probe tells the two apart.
  */
@@ -315,6 +327,7 @@ export function installPhoneHost(): void {
           throw new Error('Phone host transport (' + what + '): ' + String(error && error.message || error))
         }
       }
+      const keyboardReady = ${keyboardReady.toString()}
       window.__e2eHost = {
         // Answers where the picture went: see SHOTS in phoneHost.ts. A picture that could not
         // be taken does not stop what is being measured: it answers why, in place of a path.
@@ -322,7 +335,11 @@ export function installPhoneHost(): void {
         tap: (x, y) => call('tap', { x, y }),
         swipe: (x1, y1, x2, y2, options = {}) => call('swipe', { x1, y1, x2, y2, velocity: options.velocity, hold: options.hold }),
         longPress: (x, y) => call('longpress', { x, y }),
-        type: (text) => call('type', { text }),
+        ready: (via) => keyboardReady((text) => call('type', { text, via })),
+        type: async (text, options = {}) => {
+          await keyboardReady((probe) => call('type', { text: probe, via: options.via }))
+          return call('type', { text, via: options.via })
+        },
         pinch: (scale) => call('pinch', { scale }),
         orientation: (value) => call('orientation', { value }),
       }

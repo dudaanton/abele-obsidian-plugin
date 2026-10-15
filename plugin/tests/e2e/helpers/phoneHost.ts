@@ -370,7 +370,8 @@ export async function startHost(): Promise<void> {
           b.velocity === undefined ? undefined : Number(b.velocity),
           b.hold === undefined ? undefined : Number(b.hold)
         )
-      else if (what === 'type') args = ['type', String(b.text)]
+      else if (what === 'type')
+        args = ['type', String(b.text), ...(b.via ? ['--via', String(b.via)] : [])]
       else if (what === 'pinch') args = ['pinch', String(Number(b.scale))]
       else if (what === 'orientation') args = ['orientation', String(b.value)]
       else {

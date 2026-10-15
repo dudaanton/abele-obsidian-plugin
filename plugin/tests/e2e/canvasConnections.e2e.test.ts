@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { evalAsync } from './helpers/githubLive'
 import { hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
-import { tap, swipe, screenshot, driver, swipeDriverArgs } from './helpers/phone'
+import { tap, swipe, screenshot, driver, swipeDriverArgs, typeText } from './helpers/phone'
 import { withNativeInput } from './helpers/nativeInput'
 import { shotDir } from './helpers/shots'
 
@@ -103,7 +103,7 @@ const type = async (text: string) => {
     const expected = before.value.slice(0, before.start) + text + before.value.slice(before.end)
     // One native key path: the generic focused-field helper may partially type before a
     // fallback, dropping a prefix or duplicating delivered input. Never replay uncertain text.
-    driver(['type', text, '--via', 'keys'])
+    typeText(text, 'keys')
     console.info('Canvas native typing:', {
       before,
       after: run(

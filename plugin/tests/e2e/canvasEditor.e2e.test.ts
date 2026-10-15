@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { evalAsync } from './helpers/githubLive'
 import { hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
-import { driver, tap, typeText, screenshot } from './helpers/phone'
+import { tap, typeText, screenshot } from './helpers/phone'
 import { withNativeInput } from './helpers/nativeInput'
 import { shotDir } from './helpers/shots'
 import { dismissOwnNotices } from './helpers/ownNotices'
@@ -69,15 +69,15 @@ const type = async (text: string) => {
   if (onPhone()) {
     // DOM focus precedes the native keyboard. Wait for it, then use its keys directly:
     // a failed XCUITest focused-field attempt can partially type before falling back.
+    // `typeText` itself waits until the keyboard takes input.
     await until(`document.activeElement?.matches('input,textarea') &&
       (parseFloat(getComputedStyle(document.body).getPropertyValue('--keyboard-height')) > 1 ||
        innerHeight - (window.visualViewport?.height ?? innerHeight) > 1)`)
-    await new Promise((resolve) => setTimeout(resolve, 500))
     const expected = run<string>(`const field=document.activeElement;
       return field.value.slice(0,field.selectionStart)+${JSON.stringify(text)}+field.value.slice(field.selectionEnd)`)
     if (text === '\b') typeText(text)
     else {
-      driver(['type', text, '--via', 'keys'])
+      typeText(text, 'keys')
       await expect
         .poll(() => run<string>('return document.activeElement?.value'), { timeout: 10_000 })
         .toBe(expected)
