@@ -219,13 +219,13 @@ describe.skipIf(!available)('shapes and connections with real pointer input', ()
       `const v=view().viewer,c=v.camera,r=v.stage.getBoundingClientRect(),edge=v.graph.edges[0],a=v.graph.nodes.find(n=>n.id===edge.fromNode),b=v.graph.nodes.find(n=>n.id===edge.toNode),end=(n,side)=>({top:[n.x+n.width/2,n.y],right:[n.x+n.width,n.y+n.height/2],bottom:[n.x+n.width/2,n.y+n.height],left:[n.x,n.y+n.height/2]})[side],p=end(a,edge.fromSide??'right'),q=end(b,edge.toSide??'left');return [Math.round(r.left+((p[0]+q[0])/2-c.x)*c.zoom),Math.round(r.top+((p[1]+q[1])/2-c.y)*c.zoom)]`
     )
     await double(middle)
-    await until(`document.activeElement?.matches('[aria-label="Label of the connection"]')`)
+    await until(`document.activeElement?.matches('.abele-canvas-chrome__label')`)
     await type('Next step')
     await expect
       .poll(
         () =>
           run<string>(
-            'return view().contentEl.querySelector(\'[aria-label="Label of the connection"]\')?.value'
+            'return view().contentEl.querySelector(".abele-canvas-chrome__label")?.textContent.trim()'
           ),
         { timeout: 15_000 }
       )

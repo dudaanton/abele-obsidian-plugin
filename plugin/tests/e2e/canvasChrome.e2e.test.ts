@@ -239,7 +239,7 @@ describe.skipIf(!available)('the canvas by hand', () => {
       const v=view().viewer,c=v.camera,r=v.stage.getBoundingClientRect(),b=v.graph.nodes.find(n=>n.id==='beta'),g=v.graph.nodes.find(n=>n.id==='gamma')
       return [Math.round(r.left+(b.x+b.width/2-c.x)*c.zoom),Math.round(r.top+((b.y+b.height+g.y)/2-c.y)*c.zoom)]`)
     await double(gap)
-    await until(`document.activeElement?.matches('[aria-label="Label of the connection"]')`)
+    await until(`document.activeElement?.matches('.abele-canvas-chrome__label')`)
     await type('Sample feeds')
     await key('Enter')
     await saved()
