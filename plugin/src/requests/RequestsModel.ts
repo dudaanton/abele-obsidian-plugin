@@ -8,11 +8,20 @@
 // checks are read. Secrets of the environment (a token from an answer) live only in memory here.
 import { reactive } from 'vue'
 import type { HttpOutcome, HttpSend } from '@/components/debugger/http/types'
-import { evaluateChecks, outgoing, varsOf, whyBlocked, type Outgoing } from './resolve'
+import {
+  evaluateChecks,
+  fill,
+  missingVars,
+  outgoing,
+  varsOf,
+  whyBlocked,
+  type Outgoing,
+} from './resolve'
 import {
   SECRETS,
   collectionOf,
   followSend,
+  originOf,
   outcomeOf,
   reasonOf,
   requestIdFor,
@@ -124,9 +133,15 @@ export class RequestsModel {
   }
 
   async saveEnvironment(env: EnvironmentDoc) {
-    // A secret's value never leaves memory: what was typed for it is kept here, not written.
+    // A secret's value never leaves memory: what was typed for it is kept here, not written, and
+    // goes only to the environment's own `base`, when it has one.
     const secrets = this.secretsOf(env.name)
-    for (const v of env.vars) if (v.secret && v.value !== undefined) secrets[v.key] = v.value
+    const base = env.vars.find((v) => v.key === 'base' && !v.secret)?.value
+    for (const v of env.vars)
+      if (v.secret && v.value !== undefined && secrets[v.key]?.value !== v.value)
+        secrets[v.key] = { value: v.value, origin: base ? originOf(base) : undefined }
+    for (const key of Object.keys(secrets))
+      if (!env.vars.some((v) => v.secret && v.key === key)) delete secrets[key]
     const saved = await this.rpc.saveEnvironment(this.projectId, {
       ...env,
       vars: env.vars.map(({ value, ...v }) => (v.secret ? v : { ...v, value: value ?? '' })),
@@ -151,15 +166,25 @@ export class RequestsModel {
   }
   /** The secret values of the environment in use, held in memory. */
   secrets(): Record<string, string> {
-    return this.state.environment ? { ...this.secretsOf(this.state.environment) } : {}
+    if (!this.state.environment) return {}
+    return Object.fromEntries(
+      Object.entries(this.secretsOf(this.state.environment)).map(([k, h]) => [k, h.value])
+    )
   }
-  setSecret(key: string, value: string) {
-    if (this.state.environment) this.secretsOf(this.state.environment)[key] = value
+  /** Holds a secret for the environment in use; with an origin, it goes only there. */
+  setSecret(key: string, value: string, origin?: string) {
+    if (this.state.environment)
+      this.secretsOf(this.state.environment)[key] = { value, ...(origin ? { origin } : {}) }
   }
 
-  /** The values the environment in use puts into requests. */
-  vars(): Record<string, string> {
-    return varsOf(this.state.env, this.secrets())
+  /** The values the environment in use puts into this request: secrets only for their origin. */
+  vars(doc?: RequestDoc): Record<string, string> {
+    if (!doc || !this.state.environment) return varsOf(this.state.env, {})
+    const to = originOf(fill(doc.url, varsOf(this.state.env, {})))
+    const held = Object.entries(this.secretsOf(this.state.environment)).filter(
+      ([, h]) => !h.origin || h.origin === to
+    )
+    return varsOf(this.state.env, Object.fromEntries(held.map(([k, h]) => [k, h.value])))
   }
 
   // ── A request ──
@@ -296,7 +321,8 @@ export class RequestsModel {
     await this.refreshList()
   }
 
-  /** The request as it would go now, keys by name: for the curl line and the agent's card. */
+  /** The request as it would go now, keys and secrets by name: for the curl line and the
+   * agent's card, so neither puts a value anywhere. */
   async prepared(id: string): Promise<Outgoing> {
     const doc = this.entry(id).doc ?? (await this.rpc.get(this.projectId, id))
     return outgoing(doc, this.vars())
@@ -304,7 +330,12 @@ export class RequestsModel {
 
   /** Why it cannot go as it is, in words; nothing when it can. */
   blocked(doc: RequestDoc): string | undefined {
-    return whyBlocked(doc, this.vars(), this.state.environment, (name) => this.ports.keys.has(name))
+    const vars = this.vars(doc)
+    const held = this.state.environment ? this.secretsOf(this.state.environment) : {}
+    const elsewhere = missingVars(doc, vars).find((name) => held[name]?.origin)
+    if (elsewhere)
+      return `${elsewhere} is kept for ${held[elsewhere]!.origin} and is not sent anywhere else`
+    return whyBlocked(doc, vars, this.state.environment, (name) => this.ports.keys.has(name))
   }
 
   // ── Sending ──
@@ -321,15 +352,16 @@ export class RequestsModel {
     entry.shown = undefined
     entry.compare = undefined
     try {
-      let out = outgoing(doc, this.vars())
+      const vars = this.vars(doc)
+      let out = outgoing(doc, vars)
       if (doc.scripts.before) {
         const r = await this.ports.scripts.run(
           doc.scripts.before,
-          { environment, vars: this.vars(), request: out },
+          { environment, vars, request: out },
           options.interactive,
           options.signal
         )
-        if (r?.vars) await this.keepVars(r.vars)
+        if (r?.vars) await this.keepVars(r.vars, originOf(out.url))
         if (r?.request) out = { ...out, ...r.request, headers: r.request.headers ?? out.headers }
       }
       const keyed = await this.ports.keys.prepare(out, options.interactive, options.signal)
@@ -366,7 +398,7 @@ export class RequestsModel {
               doc.scripts.after,
               {
                 environment,
-                vars: this.vars(),
+                vars,
                 request: out,
                 response: {
                   status: response.status,
@@ -382,7 +414,7 @@ export class RequestsModel {
               console.debug('[requests] Script after the answer failed', e)
               return undefined
             })
-          if (r?.vars) await this.keepVars(r.vars)
+          if (r?.vars) await this.keepVars(r.vars, originOf(keyed.out.url))
         }
         if (outcome.kind === 'answered' && doc.checks.length)
           outcome = {
@@ -410,7 +442,7 @@ export class RequestsModel {
 
   /** Values a script hands back: a secret of the environment, or one it does not have, stays in
    * memory; a plain one the environment keeps is written. */
-  private async keepVars(values: Record<string, string>) {
+  private async keepVars(values: Record<string, string>, origin: string | undefined) {
     const env = this.state.env
     if (!env || !this.state.environment) return
     const secrets = this.secretsOf(env.name)
@@ -419,11 +451,13 @@ export class RequestsModel {
     for (const [key, value] of Object.entries(values)) {
       if (typeof value !== 'string') continue
       const known = vars.find((v) => v.key === key)
+      // A token from an answer goes back only where it came from.
+      const held = { value, ...(origin ? { origin } : {}) }
       if (!known) {
         vars.push({ key, secret: true })
-        secrets[key] = value
+        secrets[key] = held
         changed = true
-      } else if (known.secret) secrets[key] = value
+      } else if (known.secret) secrets[key] = held
       else if (known.value !== value) {
         known.value = value
         changed = true

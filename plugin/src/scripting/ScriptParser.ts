@@ -12,6 +12,7 @@ import type { ScriptMeta, ScriptParam, StartupDevices } from './types'
  *   // @startup mobile
  *   // @lint warning
  *   // @interceptor 60
+ *   // @request
  *
  * Returns null if @name is missing.
  */
@@ -29,6 +30,7 @@ export function parseScriptHeader(source: string): ScriptMeta | null {
   let startup: StartupDevices | undefined
   let lint: 'error' | 'warning' | undefined
   let interceptor: number | undefined
+  let request = false
 
   for (const line of lines) {
     const trimmed = line.trim()
@@ -57,6 +59,8 @@ export function parseScriptHeader(source: string): ScriptMeta | null {
       lint = content.slice(5).trim() === 'warning' ? 'warning' : 'error'
     } else if (content === '@interceptor' || content.startsWith('@interceptor ')) {
       interceptor = interceptorSeconds(content.slice(12).trim())
+    } else if (content === '@request' || content.startsWith('@request ')) {
+      request = true
     } else if (content.startsWith('@param ')) {
       const param = parseParam(content.slice(7).trim())
       if (param) params.push(param)
@@ -77,6 +81,7 @@ export function parseScriptHeader(source: string): ScriptMeta | null {
     ...(startup ? { startup } : {}),
     ...(lint ? { lint } : {}),
     ...(interceptor ? { interceptor } : {}),
+    ...(request ? { request } : {}),
   }
 }
 

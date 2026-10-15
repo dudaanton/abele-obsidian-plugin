@@ -311,6 +311,10 @@ export class ScriptExecutor {
   ): Promise<unknown> {
     await this.admit(path, interactive ? 'request' : 'agent', signal)
     const script = await scriptForExecution(GlobalStore.getInstance().app, path)
+    if (!script.meta.request || script.meta.interceptor)
+      throw new Error(
+        `Script "${script.meta.name}" does not run around requests: it needs a @request line`
+      )
     signal?.throwIfAborted()
     const { value } = await this.run(script, params, {
       signal,

@@ -46,6 +46,11 @@ describe('the startup header line', () => {
     expect(parseScriptHeader('// @name A\n// @startup always')?.startup).toBe('both')
   })
 
+  it('marks a script a saved request may run around its send', () => {
+    expect(parseScriptHeader('// @name A\n// @request\nreturn 1')?.request).toBe(true)
+    expect(parseScriptHeader('// @name A\nreturn 1')).not.toHaveProperty('request')
+  })
+
   it('is absent from a script that does not say it', () => {
     expect(parseScriptHeader('// @name A\nreturn 1')?.startup).toBeUndefined()
   })

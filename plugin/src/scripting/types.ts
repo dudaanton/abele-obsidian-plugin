@@ -33,6 +33,12 @@ export interface ScriptMeta {
    * agent tool. The number after it is how many seconds it may take, 30 unless it says.
    */
   interceptor?: number
+  /**
+   * `@request`: a saved request may run it before it is sent or after its answer comes, with the
+   * request, the answer and the environment as its `params`. A request names a script by name, and
+   * a request's file is written on the node, so only a script that says so can be named.
+   */
+  request?: boolean
 }
 
 /** Which devices a startup script runs on. */

@@ -4,7 +4,22 @@ import type { HttpOutcome, HttpPair, HttpResponse } from '@/components/debugger/
 import type { HttpRpc, SendStatus, WireOutcome } from './wire'
 
 /** Secrets of environments, by project and environment: they outlive a closed view. */
-export const SECRETS = new Map<string, Record<string, string>>()
+/** A secret held in memory, and the origin it came from: it goes only there. */
+export interface HeldSecret {
+  value: string
+  origin?: string
+}
+export const SECRETS = new Map<string, Record<string, HeldSecret>>()
+
+/** `https://host:port` of an address, or nothing when it is not one. */
+export function originOf(url: string): string | undefined {
+  try {
+    const u = new URL(url)
+    return /^https?:$/.test(u.protocol) ? u.origin : undefined
+  } catch {
+    return undefined
+  }
+}
 
 /** Forgets every secret held in memory: when the plugin unloads, and between tests. */
 export function forgetRequestSecrets() {

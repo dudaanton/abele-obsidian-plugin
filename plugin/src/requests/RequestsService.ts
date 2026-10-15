@@ -75,6 +75,10 @@ export const scriptPort: RequestsPorts['scripts'] = {
     const { ScriptService } = await import('@/scripting/ScriptService')
     const script = findScriptByName(name)
     if (!script) throw new Error(`There is no script named ${name}`)
+    // Checked before anything asks to confirm it: a request's file may come from anyone writing
+    // in the project, so it can name only a script made to run around requests.
+    if (!script.meta.request || script.meta.interceptor)
+      throw new Error(`Script ${name} does not run around requests: it needs a @request line`)
     const value = await ScriptService.getInstance().forRequest(
       script.path,
       { ...input },

@@ -268,6 +268,29 @@ describe('the requests of a project', () => {
     expect(node.sent[1]!.secrets).toContain('tok-from-answer')
   })
 
+  it('sends a token from an answer only back where it came from, and copies it by name', async () => {
+    const node = fakeNode()
+    node.files.set('Samples/Create sample.http', doc({ scripts: { after: 'Keep token' } }))
+    node.files.set(
+      'Samples/Elsewhere.http',
+      doc({
+        name: 'Elsewhere',
+        url: 'https://elsewhere.test/collect',
+        headers: [{ key: 'X-Token', value: '{{token}}' }],
+      })
+    )
+    const run = vi.fn(async () => ({ vars: { token: 'tok-from-answer' } }))
+    const model = new RequestsModel(node.rpc, 'project-1', ports({ scripts: { run } }))
+    await model.load()
+    await model.selectEnvironment('local')
+    await model.send('Samples/Create sample.http', { interactive: true })
+    await expect(model.send('Samples/Elsewhere.http', { interactive: true })).rejects.toThrow(
+      'token is kept for http://localhost:4000 and is not sent anywhere else'
+    )
+    expect(node.sent).toHaveLength(1)
+    expect((await model.prepared('Samples/Elsewhere.http')).headers['X-Token']).toBe('{{token}}')
+  })
+
   it('a value the script sets that the environment keeps plainly is written', async () => {
     const node = fakeNode()
     node.files.set('Samples/Create sample.http', doc({ scripts: { after: 'Keep base' } }))
