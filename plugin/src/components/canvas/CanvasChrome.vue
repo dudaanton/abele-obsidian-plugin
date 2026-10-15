@@ -441,6 +441,8 @@ const labelAt = computed(() => {
       left: `${(mid.x - cam.x) * cam.zoom}px`,
       top: `${(mid.y - cam.y) * cam.zoom}px`,
       '--zoom-multiplier': String(Math.max(0.6, Math.min(cam.zoom, 2))),
+      // The words the size the line draws them, so writing does not jump to another size.
+      fontSize: `calc(var(--font-text-size) * ${cam.zoom})`,
       '--canvas-color': 'var(--interactive-accent)',
     },
   }
@@ -864,10 +866,13 @@ onBeforeUnmount(() => {
       font-size: inherit;
     }
     // On a shape the words sit in its middle with no box of their own: the shape is the box.
-    &.is-shape textarea {
+    &.is-shape textarea,
+    &.is-shape textarea:focus,
+    &.is-shape textarea:focus-visible {
       padding-inline: 0;
       padding-bottom: 0;
       border: none;
+      box-shadow: none;
       background: transparent;
       text-align: center;
       overflow: hidden;
@@ -926,6 +931,10 @@ onBeforeUnmount(() => {
   --canvas-color: var(--text-normal);
 }
 
+// A label written on its line in the size the line draws it.
+.abele-canvas-chrome__label.canvas-path-label {
+  font-size: inherit;
+}
 // The way back to the contents: faint until pointed at, as Obsidian's quiet glyphs are.
 .abele-canvas-chrome__away {
   position: absolute;

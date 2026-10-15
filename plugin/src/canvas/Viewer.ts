@@ -67,6 +67,8 @@ export class CanvasViewer {
   /** The last press that was a tap, for telling a double tap. */
   private lastTap: { x: number; y: number; time: number; type: string } | null = null
   input?: CanvasViewerInput
+  /** The connection whose label is being written over it by the host. */
+  writingLabel: string | null = null
   /** The host draws each frame's name as a label of its own; the surface paints only the frame. */
   groupLabels = false
   /** Screen height at the stage's top covered by the host's tools: framing keeps clear of it. */
@@ -409,6 +411,7 @@ export class CanvasViewer {
       skipCards: true,
       skipInk: true,
       skipGroupLabels: this.groupLabels,
+      omitLabel: this.writingLabel,
     })
     this.paintInk()
     this.input?.paint()

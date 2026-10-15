@@ -60,6 +60,8 @@ export interface CanvasAssets {
   skipInk?: boolean
   /** A frame's name is drawn by the host as a label of its own, over the frame's corner. */
   skipGroupLabels?: boolean
+  /** A connection or line whose label is being written over it, so it is not drawn twice. */
+  omitLabel?: string | null
 }
 export function withoutLiveCardAssets(
   assets: CanvasAssets,
@@ -354,7 +356,7 @@ export function paintCanvas(
         [...points.slice(0, -1)].reverse().find((p) => p.x !== end.x || p.y !== end.y) ?? points[0]
     if (edge.toEnd !== 'none') arrow(ctx, before, end, edge.styleAttributes?.arrow)
     if (edge.fromEnd === 'arrow') arrow(ctx, points[1], points[0], edge.styleAttributes?.arrow)
-    if (edge.label) {
+    if (edge.label && assets.omitLabel !== edge.id) {
       const middle = labelPoint(route)
       ctx.font = `${theme.size}px ${theme.font}`
       const width = ctx.measureText(edge.label).width
@@ -393,7 +395,7 @@ export function paintCanvas(
     ctx.stroke()
     if (line.fromEnd === 'arrow') arrow(ctx, line.to, line.from, undefined)
     if (line.toEnd === 'arrow') arrow(ctx, line.from, line.to, undefined)
-    if (line.label) {
+    if (line.label && assets.omitLabel !== line.id) {
       ctx.font = `${theme.size}px ${theme.font}`
       const width = ctx.measureText(line.label).width,
         middle = { x: (line.from.x + line.to.x) / 2, y: (line.from.y + line.to.y) / 2 },

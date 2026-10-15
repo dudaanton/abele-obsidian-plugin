@@ -1492,6 +1492,7 @@ export class CanvasEditor {
       )
     this.selected = new Set([...this.selected].filter((id) => ids.has(id)))
     this.viewer.selection = this.selected
+    this.viewer.writingLabel = this.labelling
     this.viewer.draw()
     if (document && this.flushHook?.document !== document) {
       // The store writes this document's unwritten work before anyone else reads or writes it.
