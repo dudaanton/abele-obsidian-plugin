@@ -16,34 +16,37 @@ vi.mock('@/ai/client/OpenAIClient', () => ({
     async *stream(_model: unknown, _prompt: string, messages: Message[]) {
       const previous = messages.findLast((message) => message.role === 'toolResult')
       const step = previous?.role === 'toolResult' ? previous.toolName : ''
+      // The settings tools are a section: a model opens it before it writes a setting.
       const content =
         step === ''
-          ? [
-              {
-                type: 'toolCall',
-                id: 'raise-mode',
-                name: 'write_settings',
-                arguments: { path: targetPath, value: 'allow-all' },
-              },
-            ]
-          : step === 'write_settings'
+          ? [{ type: 'toolCall', id: 'open-settings', name: 'open_settings', arguments: {} }]
+          : step === 'open_settings'
             ? [
                 {
                   type: 'toolCall',
-                  id: 'delete-note',
-                  name: 'rm',
-                  arguments: { path: 'Project/sample-note.md' },
+                  id: 'raise-mode',
+                  name: 'write_settings',
+                  arguments: { path: targetPath, value: 'allow-all' },
                 },
               ]
-            : [
-                {
-                  type: 'text',
-                  text:
-                    previous?.role === 'toolResult'
-                      ? previous.content.map((part) => part.text).join('')
-                      : '',
-                },
-              ]
+            : step === 'write_settings'
+              ? [
+                  {
+                    type: 'toolCall',
+                    id: 'delete-note',
+                    name: 'rm',
+                    arguments: { path: 'Project/sample-note.md' },
+                  },
+                ]
+              : [
+                  {
+                    type: 'text',
+                    text:
+                      previous?.role === 'toolResult'
+                        ? previous.content.map((part) => part.text).join('')
+                        : '',
+                  },
+                ]
       yield {
         type: 'done',
         message: {
