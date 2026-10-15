@@ -7,7 +7,8 @@ import { clipOf, copyOps, parseClip } from '@/canvas/core/copy'
 import { editCanvas } from '@/canvas/core/edit'
 import { labelPoint, paintedRoute } from '@/canvas/core/scene'
 import { canvasKey, frameAround, pastedUrl, pictureSize } from '@/canvas/editorKeys'
-import { dragRect, objectsInBox } from '@/canvas/input'
+import { dragRect, keepRatio, objectsInBox } from '@/canvas/input'
+import { snapMove } from '@/canvas/core/snap'
 import { TFile } from 'obsidian'
 
 const cleanups: (() => void)[] = []
@@ -525,6 +526,36 @@ describe('notes on the canvas', () => {
     })
     await s.editor.controls.showPart('note', '')
     expect(s.graphNow().nodes[0].subpath).toBeUndefined()
+  })
+})
+
+describe('lining up', () => {
+  it('a carried card sticks to a neighbour’s edge within reach and shows the line', () => {
+    const graph = cards()
+    const r = snapMove(graph, new Set(['beta']), new Set(['beta']), 3, 104, 6)
+    // Its top would land at 104, four units under alpha's foot: it sticks to the foot.
+    expect(r.dy).toBe(100)
+    expect(r.guides.some((g) => g.axis === 'y' && g.at === 100)).toBe(true)
+    expect(r.dx).toBe(3)
+  })
+  it('out of reach, the card goes where the pointer takes it', () => {
+    const r = snapMove(cards(), new Set(['beta']), new Set(['beta']), 0, 130, 6)
+    expect(r).toMatchObject({ dx: 0, dy: 130, guides: [] })
+  })
+  it('a corner pulled with Shift keeps the card’s shape', () => {
+    const node = { x: 0, y: 0, width: 200, height: 100 }
+    expect(keepRatio(node, 'se', { x: 0, y: 0, width: 300, height: 110 })).toEqual({
+      x: 0,
+      y: 0,
+      width: 300,
+      height: 150,
+    })
+    expect(keepRatio(node, 'nw', { x: -10, y: -90, width: 210, height: 190 })).toEqual({
+      x: -180,
+      y: -90,
+      width: 380,
+      height: 190,
+    })
   })
 })
 

@@ -263,3 +263,15 @@
 .abele-canvas-chrome-host {
   display: contents;
 }
+/* A line of alignment while cards are carried: one pixel of the accent, across both cards. */
+.abele-canvas-guide {
+  position: absolute;
+  background: var(--interactive-accent);
+  pointer-events: none;
+}
+.abele-canvas-guide.is-x {
+  width: 1px;
+}
+.abele-canvas-guide.is-y {
+  height: 1px;
+}

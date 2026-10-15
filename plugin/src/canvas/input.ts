@@ -3,6 +3,7 @@ import { toScreen, toWorld } from '../drawing/camera'
 import { nanoid } from 'nanoid'
 import { lineBounds, linesOf, rawLines, segmentDistance, type CanvasLine } from './core/primitives'
 import { inkBounds, inkEntries } from './core/ink'
+import { snapMove, type Guide } from './core/snap'
 import { endpoint, paintedRoute, routeSamples, sideAt, type Point } from './core/scene'
 import { editCanvas } from './core/edit'
 import { type CanvasOperation } from './core/edit'
@@ -70,6 +71,18 @@ export function dragRect(start: [number, number], end: [number, number], square:
     y: Math.min(start[1], start[1] + h),
     width: Math.abs(w),
     height: Math.abs(h),
+  }
+}
+/** A corner pulled with Shift: the card keeps its shape, the larger change winning. */
+export function keepRatio(node: Rect, corner: ResizeCorner, rect: Rect): Rect {
+  const ratio = node.width / node.height,
+    width = Math.max(rect.width, rect.height * ratio),
+    height = width / ratio
+  return {
+    x: corner.endsWith('w') ? node.x + node.width - width : node.x,
+    y: corner.startsWith('n') ? node.y + node.height - height : node.y,
+    width: Math.round(width),
+    height: Math.round(height),
   }
 }
 /** Every card any part of which lies in a box, for a selection box drawn with Alt. */
@@ -304,6 +317,8 @@ export class CanvasInput implements CanvasViewerInput {
   } | null = null
   /** The frame a card being carried would land in, lit while it is over it. */
   private dropFrame: string | null = null
+  /** Lines of alignment with neighbours while cards are carried. */
+  private guides: Guide[] = []
   /** The card under a mouse that is not pressed, which shows its connection points. */
   private hovered: string | null = null
   /** Where a pen hovers over the screen without touching it, in screen space. */
@@ -533,9 +548,12 @@ export class CanvasInput implements CanvasViewerInput {
       g.active = true
     }
     let preview: CanvasGraph
+    this.guides = []
     if (g.corner) {
-      const node = g.graph.nodes.find((n) => n.id === g.node),
-        rect = resizeRect(node, g.corner, dx, dy)
+      const node = g.graph.nodes.find((n) => n.id === g.node)!,
+        rect = event.shiftKey
+          ? keepRatio(node, g.corner, resizeRect(node, g.corner, dx, dy))
+          : resizeRect(node, g.corner, dx, dy)
       preview = {
         ...g.graph,
         nodes: g.graph.nodes.map((n) => (n.id === node.id ? { ...n, ...rect } : n)),
@@ -545,8 +563,20 @@ export class CanvasInput implements CanvasViewerInput {
         ...(node.type === 'group' ? resizedFrameOps(g.graph, preview, node.id) : []),
       ]
     } else {
-      preview = movePreview(g.graph, g.moving, dx, dy)
-      g.ops = [{ op: 'move', ids: [...g.ids], dx, dy }, ...reparentOps(g.graph, preview, g.ids, g.moving)]
+      // Lined up with a neighbour within a few pixels, the cards stick there; Cmd or Ctrl held,
+      // they go exactly where the pointer takes them.
+      const snapped =
+        event.metaKey || event.ctrlKey
+          ? { dx, dy, guides: [] }
+          : snapMove(g.graph, g.ids, g.moving, dx, dy, 6 / this.viewer.camera.zoom)
+      const mx = Math.round(snapped.dx),
+        my = Math.round(snapped.dy)
+      this.guides = snapped.guides
+      preview = movePreview(g.graph, g.moving, mx, my)
+      g.ops = [
+        { op: 'move', ids: [...g.ids], dx: mx, dy: my },
+        ...reparentOps(g.graph, preview, g.ids, g.moving),
+      ]
     }
     this.dropFrame = landingFrame(preview, g.ids, g.moving)
     // Avoid validation, asset reloads and full session cloning on every pointer event.
@@ -596,6 +626,7 @@ export class CanvasInput implements CanvasViewerInput {
     this.gesture = null
     this.marquee = null
     this.dropFrame = null
+    this.guides = []
     if (g.scroll) window.clearTimeout(g.scroll.timer)
     if (g.active && g.copy) {
       // The originals go back where they were; the copy stands where they were let go.
@@ -756,6 +787,24 @@ export class CanvasInput implements CanvasViewerInput {
       if (card) pointsOf(card, null)
     }
     if (this.marquee) box(this.marquee)
+    for (const guide of this.gesture?.active ? this.guides : []) {
+      const el = this.overlay.ownerDocument.createElementNS(
+          'http://www.w3.org/1999/xhtml',
+          'div'
+        ) as HTMLElement,
+        cam = this.viewer.camera,
+        [x, y] =
+          guide.axis === 'x'
+            ? toScreen(cam, guide.at, guide.from)
+            : toScreen(cam, guide.from, guide.at),
+        length = (guide.to - guide.from) * cam.zoom
+      el.className = `abele-canvas-guide is-${guide.axis}`
+      el.style.left = `${x}px`
+      el.style.top = `${y}px`
+      if (guide.axis === 'x') el.style.height = `${length}px`
+      else el.style.width = `${length}px`
+      this.overlay.append(el)
+    }
     if (this.penHover && this.ports.pencil) {
       const tool = this.ports.tool(),
         ink = tool === 'pen' || tool === 'marker' ? tool : this.ports.pencil().ink,
