@@ -12,6 +12,7 @@ import {
   type SyncStatus,
 } from '@/sync/status'
 import { formatWhen, reasonOf } from '@/sync/format'
+import { unrenderKit } from '@/components/obsidian/mount'
 
 /**
  * The words and the one line of DOM the status bar is made of. Everything a person reads about
@@ -162,6 +163,27 @@ describe('renderStatus', () => {
 
     expect(el.textContent).toBe('Fully synced')
     expect(el.querySelectorAll('[data-icon]')).toHaveLength(1)
+  })
+
+  it('updates the same glyph and words in place on every change', () => {
+    const el = document.createElement('div')
+    renderStatus(el, status({ state: 'syncing' }))
+    const text = el.querySelector('.abele-sync-status-text')
+    const icon = el.querySelector('.abele-sync-status-icon')
+    renderStatus(el, status({ state: 'idle', pending: 3 }))
+
+    expect(el.querySelector('.abele-sync-status-text')).toBe(text)
+    expect(el.querySelector('.abele-sync-status-icon')).toBe(icon)
+    expect(text?.textContent).toBe('Waiting (3)')
+    expect(icon?.querySelector('[data-icon]')?.getAttribute('data-icon')).toBe('clock')
+  })
+
+  it('leaves nothing in the item once taken out with the plugin', () => {
+    const el = document.createElement('div')
+    renderStatus(el, status({ state: 'syncing' }))
+    unrenderKit(el)
+
+    expect(el.childNodes).toHaveLength(0)
   })
 })
 

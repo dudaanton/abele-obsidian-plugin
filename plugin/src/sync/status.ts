@@ -1,5 +1,6 @@
-import { setIcon } from 'obsidian'
 import type { EngineStatus } from '@abele/sync-core'
+import SyncStatusItem from '@/components/sync/SyncStatusItem.vue'
+import { renderKit } from '@/components/obsidian/mount'
 import { formatWhen } from './format'
 
 /**
@@ -142,7 +143,8 @@ export function heldLine(count: number): string {
  */
 export function statusLabel(status: SyncStatus): string {
   if (leadsWithHeld(status)) return HELD_LABEL
-  if (leadsWithConflicts(status)) return status.conflicts === 1 ? '1 conflict' : `${status.conflicts} conflicts`
+  if (leadsWithConflicts(status))
+    return status.conflicts === 1 ? '1 conflict' : `${status.conflicts} conflicts`
   if (leadsWithReview(status)) return 'To review'
   if (status.state === 'idle' && status.pending > 0) return 'Waiting'
   return STATUS_LABEL[status.state]
@@ -202,29 +204,24 @@ export function statusTooltip(status: SyncStatus): string {
   return lines.join('\n')
 }
 
+/** The glyph beside the word: a tick beside *Waiting* would say the opposite of the word. */
+function statusIcon(status: SyncStatus): string {
+  if (statusWarns(status)) return 'alert-triangle'
+  if (leadsWithReview(status)) return 'eye'
+  if (status.state === 'idle' && status.pending > 0) return 'clock'
+  return STATUS_ICON[status.state]
+}
+
 /**
- * Draws the status into a status-bar item.
- *
- * Built from Obsidian's own element helpers rather than from markup, so nothing here can put a
- * string from a server into the DOM as HTML; the icon is `setIcon`, which is the one way a
- * plugin gets a Lucide glyph that follows the theme.
+ * Draws the status into a status-bar item: the item's own class and tooltip, and inside it the
+ * kit's glyph and word, patched in place on every change. Text, never markup, so nothing here
+ * can put a string from a server into the DOM as HTML. Taken out with `unrenderKit` when the
+ * plugin unloads.
  */
 export function renderStatus(el: HTMLElement, status: SyncStatus): void {
-  el.empty()
   el.addClass('abele-sync-status')
   el.toggleClass('abele-sync-status_warning', statusWarns(status))
-  const icon = el.createSpan({ cls: 'abele-sync-status-icon' })
-  // A tick beside *Waiting* would say the opposite of the word.
-  setIcon(
-    icon,
-    statusWarns(status)
-      ? 'alert-triangle'
-      : leadsWithReview(status)
-        ? 'eye'
-        : status.state === 'idle' && status.pending > 0
-        ? 'clock'
-        : STATUS_ICON[status.state]
-  )
-  el.createSpan({ cls: 'abele-sync-status-text', text: statusText(status) })
-  el.setAttribute('aria-label', statusTooltip(status))
+  const tooltip = statusTooltip(status)
+  el.setAttribute('aria-label', tooltip)
+  renderKit(el, SyncStatusItem, { icon: statusIcon(status), text: statusText(status), tooltip })
 }

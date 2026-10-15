@@ -125,6 +125,7 @@ import { transportOf } from './sync/environment'
 import { watchTheFront } from './sync/phone'
 import { TokenEngines } from './sync/tokenEngines'
 import { renderStatus, type SyncStatus } from './sync/status'
+import { unrenderKit } from './components/obsidian/mount'
 import { tokenStatus } from './sync/tokenStatus'
 import { mountPhoneSyncAction } from './sync/phoneSyncAction'
 import { openAbeleSettings } from './components/settings/settingsTab'
@@ -204,6 +205,7 @@ export default class AbelePlugin extends Plugin {
 
     const statusEl = this.addStatusBarItem()
     statusEl.addClass('mod-clickable')
+    this.register(() => unrenderKit(statusEl))
     // The log rather than a sync: the indicator already says what sync is doing, so the
     // question a click carries is *why* — which is what the log answers. Syncing on demand is
     // a command and a button in the settings, neither of which is one stray click away.
