@@ -86,7 +86,6 @@ const probe = `(async () => {
       root().scrollTop = 0
       await wait(200)
       await shot(picture + '-' + target)
-      leaf.detach()
     } catch (e) {
       pane.error = String((e && e.message) || e)
     }
@@ -117,7 +116,7 @@ const probe = `(async () => {
       const accounts = await open('abele-accounts-sidebar-view')
       const pane = () => accounts.view.containerEl.querySelector('.abele-accounts-sidebar')
       const probeRows = () => [...pane().querySelectorAll('.abele-accounts-sidebar__row')].filter((r) => r.textContent.includes('Empty probe'))
-      await until(() => pane() && probeRows().length === 4, 30000)
+      await until(() => pane() && probeRows().length === 4 && probeRows().every((r) => r.getBoundingClientRect().height > 0), 30000)
       await wait(500)
       probeRows()[0].scrollIntoView({ block: 'center' })
       await wait(300)
