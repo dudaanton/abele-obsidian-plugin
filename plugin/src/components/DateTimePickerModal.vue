@@ -9,6 +9,14 @@
       @cancel="emit('cancel')"
     />
     <template #footer>
+      <!-- As Obsidian orders them: the one that takes the value off apart, the answer last. -->
+      <Button
+        class="abele-modal__apart"
+        text="Clear"
+        tooltip="Take the date off"
+        @click="emit('clear')"
+      />
+      <Button text="Cancel" tooltip="Close this and change nothing" @click="emit('cancel')" />
       <Button
         text="Confirm"
         accent
@@ -16,8 +24,6 @@
         tooltip="Set this date"
         @click="picker?.confirm()"
       />
-      <Button text="Clear" tooltip="Take the date off" @click="emit('clear')" />
-      <Button text="Cancel" tooltip="Close this and change nothing" @click="emit('cancel')" />
     </template>
   </ObsidianModal>
 </template>

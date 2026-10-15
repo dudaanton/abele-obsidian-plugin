@@ -263,3 +263,9 @@ body.is-phone .modal.abele-modal_tall {
 .modal-container.abele-keyboard-lift .abele-keyboard-scroller > * {
   flex-shrink: 0;
 }
+
+/* A button that does something other than answer the dialog — Clear, Delete — stands apart at the
+   start of the row, as Obsidian's own; the answer stays last. */
+.abele-modal__footer > .abele-modal__apart {
+  margin-inline-end: auto;
+}
