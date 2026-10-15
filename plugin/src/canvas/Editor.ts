@@ -21,6 +21,8 @@ import {
   type CanvasInputTool,
 } from './input'
 import { paintedRoute, routeSamples } from './core/scene'
+import { pasteOps, type Pasted } from './paste'
+import { toWorld } from '../drawing/camera'
 import { WIDTHS } from '../drawing/model'
 import { THICKNESSES, type Thickness } from '../ink/thickness'
 
@@ -52,6 +54,8 @@ export interface CanvasEditorPorts {
   confirmDiscard(): Promise<boolean>
   handoffChoice(): Promise<'stay' | 'retain' | 'discard'>
   notice(message: string): void
+  /** Pasted files saved with the vault's attachments: their paths, and a picture's size. */
+  saveFiles?(files: File[]): Promise<{ path: string; width?: number; height?: number }[]>
 }
 /** What is picked, for a bar of actions standing over it. */
 export interface CanvasPicked {
@@ -131,6 +135,8 @@ export class CanvasEditor {
   private labeling: string | null = null
   /** The tool to go back to when a held Space lets go of the canvas. */
   private spaceFrom: CanvasInputTool | null = null
+  /** Where the pointer last was over the canvas, in its own units: where a paste lands. */
+  private pointer: { x: number; y: number } | null = null
   private ownedDraft: CanvasEditorDocument | null = null
   /** Strokes drawn while the last change was being written, added one by one after it. */
   private held: CanvasOperation[] = []
@@ -556,6 +562,31 @@ export class CanvasEditor {
       doc.addEventListener('visibilitychange', hidden)
       this.off.push(() => doc.removeEventListener('visibilitychange', hidden))
     }
+    this.listen(viewer.stage, 'pointermove', (e) => {
+      const event = e as PointerEvent,
+        r = viewer.stage.getBoundingClientRect(),
+        [x, y] = toWorld(viewer.camera, event.clientX - r.left, event.clientY - r.top)
+      this.pointer = { x, y }
+    })
+    this.listen(viewer.el, 'paste', (e) => {
+      const event = e as ClipboardEvent,
+        target = event.target as Element | null
+      if (
+        !event.clipboardData ||
+        this.editing ||
+        this.labeling ||
+        this.naming ||
+        target?.closest?.('input,textarea,[contenteditable="true"]')
+      )
+        return
+      // What was pasted is read now: the clipboard is gone once the event is over.
+      const files = Array.from(event.clipboardData.files),
+        text = event.clipboardData.getData('text/plain')
+      if (!files.length && !text.trim()) return
+      event.preventDefault()
+      event.stopPropagation()
+      void this.paste(files, text).catch((error) => this.fail(error))
+    })
     this.listen(viewer.el, 'keyup', (event) => {
       if ((event as KeyboardEvent).key !== ' ' || this.spaceFrom === null) return
       this.tool = this.spaceFrom
@@ -798,6 +829,38 @@ export class CanvasEditor {
     this.tool = 'select'
     this.palette.hidden = true
     this.showText(id)
+  }
+  /** What was pasted, on the canvas where the pointer was, or in the middle of the view. */
+  private async paste(files: File[], text: string): Promise<void> {
+    const view = this.viewer.visible(),
+      p = this.pointer,
+      inside =
+        p && p.x >= view.x && p.y >= view.y && p.x <= view.x + view.width && p.y <= view.y + view.height
+    const at = inside ? p : { x: view.x + view.width / 2, y: view.y + view.height / 2 }
+    let pasted: Pasted = { kind: 'text', text }
+    if (files.length) {
+      const save = this.ports.saveFiles
+      if (!save) return
+      this.ready()
+      let saved: Awaited<ReturnType<typeof save>> = []
+      await this.saving(async () => {
+        saved = await save(files)
+      })
+      if (!saved.length) return
+      pasted = { kind: 'files', files: saved }
+    }
+    const document = this.ready(),
+      { ops, ids } = pasteOps(pasted, { x: Math.round(at.x), y: Math.round(at.y) })
+    document.beginDraft()
+    try {
+      this.update(document, ops)
+    } catch (error) {
+      document.discardDraft()
+      throw error
+    }
+    document.finishDraft()
+    this.selected = new Set(ids)
+    await this.saving(() => this.ports.publish())
   }
   /** Two presses on one place open what is there for writing, or make a card on empty canvas. */
   private double(target: CanvasDouble): void {

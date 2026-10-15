@@ -194,3 +194,38 @@ describe('a card being written', () => {
     expect(s.document.session.graph.nodes[0].text).toBe('alpha, written')
   })
 })
+
+describe('a paste', () => {
+  const paste = (s: Harness, text: string, files: File[] = []) => {
+    const event = new Event('paste', { bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'clipboardData', {
+      value: { files, getData: (type: string) => (type === 'text/plain' ? text : '') },
+    })
+    s.el.dispatchEvent(event)
+    return event
+  }
+  it('puts words where the pointer is, as one step', async () => {
+    const s = setup(cards())
+    // A stage with room on it, as the app's has, so the pointer is over the shown part.
+    Object.defineProperty(s.viewer.stage, 'clientWidth', { value: 1000 })
+    Object.defineProperty(s.viewer.stage, 'clientHeight', { value: 800 })
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    pointer(s, 'pointermove', 400, 500, mouse)
+    expect(paste(s, 'A sample thought').defaultPrevented).toBe(true)
+    await vi.waitFor(() => expect(s.publish).toHaveBeenCalledOnce())
+    const made = s.document.session.graph.nodes.find((n) => n.text === 'A sample thought')!
+    expect(made.x + made.width / 2).toBe(400)
+    expect(s.document.session.history.undo).toBe(1)
+    expect(s.editor.controls.picked().ids).toEqual([made.id])
+  })
+  it('leaves a paste into a card\'s words to the field', () => {
+    const s = setup(cards())
+    s.button('Add text card').click()
+    const event = new Event('paste', { bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'clipboardData', {
+      value: { files: [], getData: () => 'words' },
+    })
+    s.field().dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+  })
+})
