@@ -192,7 +192,10 @@ async function refusalToGrant(form: 'desktop' | 'phone') {
         const editor=add.closest('.abele-node-scope-editor');
         try{await until(()=>[...editor.querySelectorAll('select')].some(s=>s.value===${JSON.stringify(setup.worktree)}),'place chosen')}catch(e){throw Error(e.message+' '+JSON.stringify({want:${JSON.stringify(setup.worktree)},selects:[...editor.querySelectorAll('select')].map(s=>({value:s.value,options:[...s.options].map(o=>o.value+'='+o.textContent)})),text:editor.textContent.slice(0,400)}))}
         const shown=[...editor.querySelectorAll('select')].map(s=>s.selectedOptions[0]?.textContent);
-        if(!shown.includes('Sample workstation'))throw Error('Node not chosen: '+shown);if(shown.some(t=>t&&t.includes('refs/heads/')))throw Error('A branch is shown as its full ref: '+shown);
+        if(!shown.includes('Sample workstation'))throw Error('Node not chosen: '+shown);if(!shown.includes('sample-app')||!shown.includes('main · sample-app'))throw Error('Folder and worktree are not named as the node panel names them: '+shown);
+        await wait(400);const body=add.closest('.abele-chat-setup__body'),box=body.getBoundingClientRect(),inner={left:box.left+body.clientLeft,right:box.left+body.clientLeft+body.clientWidth,top:box.top,bottom:box.top+body.clientHeight};
+        for(const el of [add,...editor.querySelectorAll('select')]){const r=el.getBoundingClientRect();if(r.right>inner.right+0.5||r.left<inner.left-0.5)throw Error('Runs under the scrollbar or past the edge: '+(el.textContent||el.value)+' '+JSON.stringify({r,inner}))}
+        const a=add.getBoundingClientRect();if(a.top<inner.top||a.bottom>inner.bottom)throw Error('Add access is not in view when the place lands: '+JSON.stringify({a,inner}));if(shown.some(t=>t&&t.includes('refs/heads/')))throw Error('A branch is shown as its full ref: '+shown);
         return JSON.stringify(shown)
       })()`
       )
@@ -234,7 +237,7 @@ async function refusalToGrant(form: 'desktop' | 'phone') {
         const item=await until(()=>[...document.querySelectorAll('.menu-item')].find(i=>i.textContent.includes('Give a chat access…')),'menu item');
         item.click();
         const rows=await until(()=>{const r=[...document.querySelectorAll('.suggestion-item')];return r.length>=2&&r},'chat picker');
-        if(!rows[0].textContent.includes('Sample second chat')||!rows[0].textContent.includes('Open now'))throw Error('Open chat is not first: '+rows[0].textContent);
+        if(!rows[0].textContent.includes('Sample second chat')||!rows[0].textContent.includes('Open now')||!rows[0].textContent.includes('no questions yet'))throw Error('Open chat is not first: '+rows[0].textContent);
         const first=rows.find(r=>r.textContent.includes('Sample node access'));
         if(!first||!first.textContent.includes('Sample node access agent')||!first.textContent.includes('Read the sample file'))throw Error('Chats are not told apart: '+(first&&first.textContent));
         if(![...first.querySelectorAll('[aria-label]')].some(el=>el.getAttribute('aria-label').includes('Already has access to sample-app / main')))throw Error('Existing access not marked: '+first.textContent);
@@ -268,10 +271,12 @@ async function refusalToGrant(form: 'desktop' | 'phone') {
       evalAsync(
         `(async()=>{${prelude}
         await T.openDialog('agent-tools');
-        const heading=await until(()=>[...document.querySelectorAll('.abele-tool-modes__heading')].find(h=>h.textContent==='Nodes'&&h.getBoundingClientRect().width>0),'node section');
+        const heading=await until(()=>[...document.querySelectorAll('.abele-tool-modes__heading')].find(h=>h.textContent==='Node'&&h.getBoundingClientRect().width>0),'node section');
         const text=heading.closest('.abele-tool-modes').textContent;
         for(const words of ['Read files and search','Edit files','Worktrees','Hand work to a node agent','Debugger runs','Always open','Offer tools'])if(!text.includes(words)&&!document.querySelector('.abele-agent-editor').textContent.includes(words))throw Error('Missing '+words);
-        if(!document.querySelector('.abele-agent-editor .abele-tool-modes__opening-fixed')?.textContent.includes('Always open'))throw Error('Files is not said to be always open');for(const old of ['node_file','node_tree','node_grep','node_blame','node_commits'])if(document.querySelector('.abele-agent-editor').textContent.includes(old))throw Error('Old name listed: '+old);heading.scrollIntoView({block:'start'});
+        if(!document.querySelector('.abele-agent-editor .abele-tool-modes__opening-fixed')?.textContent.includes('Always open'))throw Error('Files is not said to be always open');for(const old of ['node_file','node_tree','node_grep','node_blame','node_commits'])if(document.querySelector('.abele-agent-editor').textContent.includes(old))throw Error('Old name listed: '+old);const about=heading.closest('.abele-tool-modes__head').nextElementSibling;if(!about||about.textContent.trim()!=='Files, search and git history on folders this chat was given on a node. What it can reach is set per chat in Node access.')throw Error('Node section is not said in one short line: '+(about&&about.textContent));
+        if(document.body.classList.contains('is-phone')){const row=[...document.querySelectorAll('.abele-tool-modes__action')].find(r=>r.textContent.includes('Read files and search'));const name=row.querySelector('.setting-item-name').getBoundingClientRect(),choice=row.querySelector('select').getBoundingClientRect(),count=row.querySelector('.abele-tool-modes__members-toggle').getBoundingClientRect();if(!(choice.top>=name.bottom-1&&count.top>=choice.bottom-1))throw Error('On a phone the choice is not under the name with the count below: '+JSON.stringify({name,choice,count}))}
+        heading.scrollIntoView({block:'start'});
         return JSON.stringify('tools')
       })()`
       )

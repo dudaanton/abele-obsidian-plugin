@@ -113,6 +113,38 @@ describe('the node section’s actions and the old names', () => {
   })
 })
 
+describe('the node section as a person reads it', () => {
+  it('is headed Node and says in one short line what it is for, the agent’s long text behind the pencil', async () => {
+    const { view } = mountHost()
+    const head = view.findAll('.abele-tool-modes__head').find((h) => h.text().includes('Node'))!
+    expect(head.find('h4').text()).toBe('Node')
+    const about = view
+      .findAll('.abele-tool-modes__about')
+      .find((a) => a.text().includes('this chat was given on a node'))!
+    expect(about.text()).toBe(
+      'Files, search and git history on folders this chat was given on a node. What it can reach is set per chat in Node access.'
+    )
+    await about.find('button.clickable-icon').trigger('click')
+    expect(
+      (view.find('.abele-tool-modes__about textarea').element as HTMLTextAreaElement).value
+    ).toContain("Projects on the person's paired computers")
+  })
+
+  it('says which tools differ when an action is Mixed', async () => {
+    const { view, modes } = mountHost()
+    modes.value = { node_read: 'auto', node_search: 'ask' }
+    await nextTick()
+    const read = view
+      .findAll('.abele-tool-modes__row')
+      .find((r) => r.text().includes('Read files and search'))!
+    const select = read.find('select')
+    expect((select.element as HTMLSelectElement).value).toBe('mixed')
+    const said = select.attributes('aria-label') ?? ''
+    expect(said).toMatch(/Auto: [^·]*node_read/)
+    expect(said).toMatch(/Ask: [^·]*node_search/)
+  })
+})
+
 describe('a section’s head, offered by section', () => {
   it('says Files and Basics are always open, as words, not a choice', () => {
     const { view } = mountHost()

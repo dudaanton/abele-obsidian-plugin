@@ -102,6 +102,7 @@ import { computed, nextTick, ref, onMounted, onUnmounted, watch } from 'vue'
 import {
   nodeScopeNames,
   nodeScopeTitle,
+  folderLabels,
   shortBranch,
   type NodeScopeNames,
 } from '@/ai/tools/node/scopeNames'
@@ -149,10 +150,14 @@ const nodeOptions = computed(() => [
   { value: '', display: 'Choose a node' },
   ...nodes.value.map((entry) => ({ value: entry.id, display: entry.label })),
 ])
-const projectOptions = computed(() => [
-  { value: '', display: 'Whole node' },
-  ...projects.value.map((entry) => ({ value: entry.id, display: entry.label })),
-])
+const projectOptions = computed(() => {
+  // By name, as the node panel says a folder; its `~` path only where two share a name.
+  const labels = folderLabels(projects.value.map((entry) => entry.label))
+  return [
+    { value: '', display: 'Whole node' },
+    ...projects.value.map((entry, i) => ({ value: entry.id, display: labels[i] })),
+  ]
+})
 const targetOptions = computed(() => [{ value: '', display: 'Whole folder' }, ...targets.value])
 const accessOptions = [
   { value: 'read', display: 'Read' },
@@ -332,8 +337,9 @@ onMounted(async () => {
   await nextTick()
   // The press that opened the dialog was for this: the Add button takes the focus from the
   // vault's search field, which would otherwise open its list over the form.
+  // It lands with the button in view: the place above it was chosen for the person already.
   const add = root.value?.querySelector<HTMLElement>('.abele-node-scope-editor__add')
-  root.value?.scrollIntoView({ block: 'start' })
+  add?.scrollIntoView({ block: 'nearest' })
   add?.focus({ preventScroll: true })
 })
 onUnmounted(() => {

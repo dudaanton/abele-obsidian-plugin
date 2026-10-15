@@ -725,7 +725,7 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
                 ?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
               void nextTick(() =>
                 Array.from(document.querySelectorAll('.abele-tool-modes__heading'))
-                  .find((el) => el.textContent === 'Nodes')
+                  .find((el) => el.textContent === 'Node')
                   ?.scrollIntoView({ block: 'start' })
               )
             })

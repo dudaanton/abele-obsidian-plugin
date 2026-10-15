@@ -46,10 +46,10 @@
             key: 'lastCommit',
             label: 'Last commit',
             value: model.currentCopy.value.lastCommit,
-            required: true,
           },
-          { key: 'ahead', value: model.currentCopy.value.ahead, required: true },
-          { key: 'behind', value: model.currentCopy.value.behind, required: true },
+          // What is not known is left out, not printed as «Unknown».
+          { key: 'ahead', value: model.currentCopy.value.ahead },
+          { key: 'behind', value: model.currentCopy.value.behind },
         ]"
       />
       <FileTree

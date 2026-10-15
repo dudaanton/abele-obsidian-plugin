@@ -27,7 +27,7 @@
       <!-- A section's head: its name and, offered by section, whether it stands open from the
            first question or opens when the agent asks; under it what it is for, editable. -->
       <div class="abele-tool-modes__head">
-        <h4 class="abele-tool-modes__heading">{{ group.category }}</h4>
+        <h4 class="abele-tool-modes__heading">{{ sectionLabel(group.category) }}</h4>
         <span
           v-if="bySection && !descriptionsOnly && ALWAYS_LOADED_GROUPS.has(group.category)"
           class="abele-tool-modes__opening-fixed"
@@ -46,12 +46,12 @@
       </div>
       <div
         v-if="
-          !descriptionsOnly && (sectionText(group.category) || editingSection === group.category)
+          !descriptionsOnly && (sectionSaid(group.category) || editingSection === group.category)
         "
         class="abele-tool-modes__about"
       >
         <template v-if="editingSection !== group.category">
-          <span class="abele-tool-modes__about-text">{{ sectionText(group.category) }}</span>
+          <span class="abele-tool-modes__about-text">{{ sectionSaid(group.category) }}</span>
           <Icon
             icon="pencil"
             size="xs"
@@ -79,23 +79,12 @@
       </div>
       <!-- The node's tools by what they do, one choice each; the tools themselves on asking. -->
       <template v-if="group.category === NODE_SECTION && !descriptionsOnly">
-        <div v-for="action in nodeActions(group)" :key="action.id" class="abele-tool-modes__row">
-          <Setting :name="action.label">
-            <template #desc>
-              {{ action.desc }}
-              <Icon
-                class="abele-tool-modes__members-toggle"
-                :icon="openAction === action.id ? 'chevron-down' : 'chevron-right'"
-                size="xs"
-                :text-right="`${action.tools.length} tools`"
-                :tooltip="
-                  openAction === action.id
-                    ? 'Hide its tools'
-                    : 'Show its tools, each with its own choice'
-                "
-                @click="openAction = openAction === action.id ? null : action.id"
-              />
-            </template>
+        <div
+          v-for="action in nodeActions(group)"
+          :key="action.id"
+          class="abele-tool-modes__row abele-tool-modes__action"
+        >
+          <Setting :name="action.label" :desc="action.desc">
             <Dropdown
               :model-value="sharedMode(action.tools) ?? 'mixed'"
               :options="
@@ -103,11 +92,26 @@
                   ? modeOptions
                   : [...modeOptions, { value: 'mixed', display: 'Mixed' }]
               "
+              :aria-label="mixedSaid(action.tools)"
               @update:model-value="
                 $event !== 'mixed' && setAll([...action.tools, ...action.carried], $event)
               "
             />
           </Setting>
+          <!-- Under the row, not in its words: on a phone the choice stays right under the
+               action's name and what it holds opens below. -->
+          <Icon
+            class="abele-tool-modes__members-toggle"
+            :icon="openAction === action.id ? 'chevron-down' : 'chevron-right'"
+            size="xs"
+            :text-right="`${action.tools.length} tools`"
+            :tooltip="
+              openAction === action.id
+                ? 'Hide its tools'
+                : 'Show its tools, each with its own choice'
+            "
+            @click="openAction = openAction === action.id ? null : action.id"
+          />
           <div v-if="openAction === action.id" class="abele-tool-modes__members">
             <Setting v-for="tool in action.tools" :key="tool.name">
               <template #name
@@ -215,7 +219,9 @@ import {
   nodeAction,
   sectionDefaultDescription,
   sectionIdOfGroup,
+  sectionLabel,
   sectionOpening,
+  sectionSummary,
   type SectionOpening,
 } from '@/ai/toolSections'
 
@@ -269,6 +275,20 @@ const emitSectionText = (group: string, text: string) =>
     text.trim() === sectionDefaultDescription(group) ? '' : text
   )
 
+/** What a person reads under a section's name: the agent's own words if any, else one short line. */
+const sectionSaid = (group: string) =>
+  props.sectionDescriptions[sectionIdOfGroup(group)] || sectionSummary(group)
+/** For a Mixed action, which of its tools are at which mode: «Auto: a, b · Ask: c». */
+const mixedSaid = (tools: ToolEntry[]): string | undefined => {
+  if (sharedMode(tools)) return undefined
+  const by = new Map<string, string[]>()
+  for (const t of tools) {
+    const mode = getMode(t.permissionKey ?? t.name)
+    by.set(mode, [...(by.get(mode) ?? []), t.name])
+  }
+  const label = (mode: string) => modeOptions.find((o) => o.value === mode)?.display ?? mode
+  return [...by].map(([mode, names]) => `${label(mode)}: ${names.join(', ')}`).join(' · ')
+}
 const openAction = ref<string | null>(null)
 /** The node section's tools by action, in the order a person thinks of them: read, edit, worktrees. */
 /** The old node names: never listed, set with the Read action, whose work they do. */
@@ -441,6 +461,28 @@ h4.abele-tool-modes__heading {
 }
 
 // «10 tools» after the action's words: what it holds, pressed open under it.
+// On a phone an action reads top to bottom: its name, the choice right under it, then its words;
+// the count of its tools opens below the row.
+body.is-phone .abele-tool-modes__action > .setting-item {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--size-2-3);
+
+  > .setting-item-info {
+    display: contents;
+  }
+  .setting-item-name {
+    order: 0;
+  }
+  > .setting-item-control {
+    order: 1;
+    width: 100%;
+  }
+  .setting-item-description {
+    order: 2;
+  }
+}
+
 // Stepped in by the ring's width, so the description's box, which clips, leaves its focus ring
 // whole.
 .abele-tool-modes__members-toggle {

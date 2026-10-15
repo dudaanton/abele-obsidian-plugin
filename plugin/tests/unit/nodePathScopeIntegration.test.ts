@@ -76,4 +76,33 @@ describe('node row scope integration', () => {
     await vi.waitFor(() => expect(f.picker).toBeDefined())
     expect(f.items[0].kind).toMatch(/^Already has access to /)
   })
+  it('tells chats apart even when one has nothing asked yet, and marks access only by its tooltip glyph', async () => {
+    const fresh = {
+      id: 'sample-fresh',
+      chatTitle: ref('Chat'),
+      messages: ref([]),
+      overrides: ref({}),
+    }
+    const used = {
+      id: 'sample-used',
+      chatTitle: ref('Chat'),
+      messages: ref([
+        { role: 'user', content: 'Sample question about the app', timestamp: Date.now() - 120000 },
+      ]),
+      overrides: ref({}),
+    }
+    f.sessions = [fresh, used]
+    f.picker = undefined
+    void chooseNodePathChat()
+    await vi.waitFor(() => expect(f.picker).toBeDefined())
+    const a = f.items.find((i: { id: string }) => i.id === 'sample-fresh')
+    const b = f.items.find((i: { id: string }) => i.id === 'sample-used')
+    expect(a.note).toContain('no questions yet')
+    expect(b.note).toContain('2 min ago')
+    expect(b.note).toContain('Sample question about the app')
+    for (const item of f.items) {
+      expect(item.icon).toBe('messages-square')
+      expect(item.kind).toBe('Obsidian chat')
+    }
+  })
 })

@@ -89,7 +89,8 @@ export async function chooseNodePathChat(
             session === open ? 'Open now' : '',
             session.agent?.value?.name ?? '',
             when ? ago(when) : '',
-            lastQuestion(session),
+            // A chat nothing was asked in yet says so, rather than standing there unnamed.
+            lastQuestion(session) || 'no questions yet',
           ]
             .filter(Boolean)
             .join(' · '),

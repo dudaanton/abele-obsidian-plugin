@@ -113,6 +113,43 @@ describe('node scope beside vault scope and in the header', () => {
     expect(pendingNodeAccess.value).toBeNull()
     view.unmount()
   })
+  it('names folders and worktrees the way the node panel does, not by absolute path or full ref', async () => {
+    const session = setup()
+    session.overrides.value.nodeScope = []
+    mocks.host.mockResolvedValue({
+      nodes: () => [{ id: 'sample-registration', node_id: 'sample-node', label: 'Sample node' }],
+      connection: () => ({
+        client: {
+          connected: true,
+          listProjects: async () => [
+            {
+              project_id: 'p1',
+              root_path: '/Users/sample-user/work/sample-app',
+              repository_path: '/x',
+            },
+            { project_id: 'p2', root_path: '/Users/sample-user/a/twin', repository_path: null },
+            { project_id: 'p3', root_path: '/Users/sample-user/b/twin', repository_path: null },
+          ],
+          listWorkspaces: async () => [],
+          repository: {
+            worktrees: async () => ({
+              entries: [{ worktree_id: 'w1', branch: 'refs/heads/main', path_label: 'sample-app' }],
+              cursor: null,
+            }),
+          },
+        },
+      }),
+    })
+    pendingNodeAccess.value = { node_id: 'sample-node', project_id: 'p1' }
+    const view = mount(AiNodeScopeEditor, { props: { session } })
+    await flushPromises()
+    const [, folder, worktree] = view.findAllComponents(Dropdown)
+    const shown = (d: typeof folder) =>
+      (d.props('options') as { display: string }[]).map((o) => o.display)
+    expect(shown(folder)).toEqual(['Whole node', 'sample-app', '~/a/twin', '~/b/twin'])
+    expect(shown(worktree)).toEqual(['Whole folder', 'main · sample-app'])
+    view.unmount()
+  })
   it('renders removable header access without silently approving it', async () => {
     const session = setup()
     const view = mount(AiNodeScopeChips, { props: { session } })

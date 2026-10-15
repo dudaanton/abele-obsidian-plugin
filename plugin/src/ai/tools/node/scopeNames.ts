@@ -28,6 +28,21 @@ const lastPart = (path: string) =>
     .split(/[\\/]/)
     .pop() || path
 
+/** A path under a home folder said from `~`, the way a person reads it. */
+export const tildePath = (path: string): string =>
+  path.replace(/^(\/Users\/[^/]+|\/home\/[^/]+|[A-Za-z]:\\Users\\[^\\]+)(?=[\\/]|$)/, '~')
+
+/**
+ * What each folder is called in a list: its own name, as the node panel says it, or its `~` path
+ * when two folders share a name.
+ */
+export function folderLabels(paths: readonly string[]): string[] {
+  const names = paths.map(lastPart)
+  return paths.map((path, i) =>
+    names.filter((name) => name === names[i]).length > 1 ? tildePath(path) : names[i]
+  )
+}
+
 /**
  * A connected client for a node named by either id. One node can be registered here more than
  * once (paired again, or by token and by pairing); asking by the node's own id then has no single

@@ -76,5 +76,10 @@ const title = computed(
   overflow-y: auto;
   padding: var(--size-2-2);
   margin: calc(-1 * var(--size-2-2));
+  // The scrollbar takes room of its own on the right, so a full-width field or a button at the
+  // row's end never runs under it.
+  scrollbar-gutter: stable;
+  padding-inline-end: var(--size-4-3);
+  margin-inline-end: 0;
 }
 </style>

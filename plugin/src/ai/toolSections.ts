@@ -29,6 +29,10 @@ export interface ToolSectionDefinition {
   howTo: string
   /** Tools of another group this section opens too, when they serve it. */
   also?: readonly string[]
+  /** What a person reads in the agent's settings: one short line; the description is the agent's. */
+  summary?: string
+  /** The section's name on screen, when it differs from its group. */
+  label?: string
 }
 
 /** In this order the section tools are offered, and the settings screen lists the groups. */
@@ -36,6 +40,9 @@ export const TOOL_SECTIONS: readonly ToolSectionDefinition[] = [
   {
     id: 'nodes',
     group: 'Nodes',
+    label: 'Node',
+    summary:
+      'Files, search and git history on folders this chat was given on a node. What it can reach is set per chat in Node access.',
     description:
       "Projects on the person's paired computers (nodes): reading and searching code in a project folder or Git worktree, editing files there, checking Git status, diffs, branches and history, the open repository tabs, handing a task to a coding agent that runs on a node, and reading a run the debugger recorded there. Open this whenever the person talks about a project, repository, branch, worktree, commit or a source file that is not a vault note. Not for vault notes — the file tools handle those.",
     howTo: [
@@ -424,4 +431,22 @@ export function nodeAction(name: string): (typeof NODE_ACTIONS)[number]['id'] {
   if (NODE_DELEGATE_TOOL.test(name)) return 'delegate'
   if (NODE_DEBUGGER_TOOL.test(name)) return 'debugger'
   return 'read'
+}
+
+/** A section's name as the settings show it. */
+export function sectionLabel(group: string): string {
+  return TOOL_SECTIONS.find((s) => s.group === group)?.label ?? group
+}
+
+/**
+ * The one line a person reads under a section's name in the settings: its own summary, or the
+ * first sentence of what it tells the agent. The full text is what the pencil edits.
+ */
+export function sectionSummary(group: string): string {
+  const def = TOOL_SECTIONS.find((s) => s.group === group)
+  if (!def) return ''
+  if (def.summary) return def.summary
+  const flat = def.description.replace(/\s+/g, ' ').trim()
+  const end = flat.search(/[.!?](\s|$)/)
+  return end >= 0 ? flat.slice(0, end + 1) : flat
 }

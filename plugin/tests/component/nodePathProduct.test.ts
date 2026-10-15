@@ -63,6 +63,9 @@ describe('product node sidebar', () => {
     expect(view.find('.abele-file-tree_stale').exists()).toBe(true)
     expect(view.text()).toContain('sample.ts')
     expect(view.text()).toContain('As of Today, 12:00')
+    // A copy whose last commit and distance are unknown says nothing of them.
+    expect(view.text()).not.toContain('Unknown')
+    expect(view.find('.abele-node-sidebar__facts').exists()).toBe(false)
     await view.find('.abele-node-panel__node-menu').trigger('click')
     expect(view.emitted('node-menu')).toHaveLength(1)
     view.unmount()
