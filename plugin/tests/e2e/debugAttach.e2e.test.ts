@@ -281,7 +281,7 @@ it('on a phone: the menu, the picker, the attached panel and the empty list fit 
   await withEmulatedPhone(async () => {
     openChat()
     await program(repo, 'src/serve.js')
-    const seen = inApp<{ offered: string[]; detach: string; overflow: number; empty: string }>(
+    const seen = inApp<{ offered: string[]; detach: string; overflow: number }>(
       `(async()=>{${prelude}
       try{
       document.querySelector('.abele-node-chat [aria-label="Node session menu"]').click();
@@ -303,7 +303,7 @@ it('on a phone: the menu, the picker, the attached panel and the empty list fit 
       press(document.querySelector('.abele-debug-panel [aria-label^="Detach"]'));
       await until(()=>api.DebuggerService.instance.active.value?.controller.session.status==='exited','detached',600);
       const detach=detachButton.getAttribute('aria-label');
-      return {offered,detach,overflow,empty:''}
+      return {offered,detach,overflow}
       }finally{
         for(const t of ['abele-node-file','abele-debug-view'])for(const l of app.workspace.getLeavesOfType(t))l.detach();
         await app.workspace.requestSaveLayout.run();
@@ -311,17 +311,20 @@ it('on a phone: the menu, the picker, the attached panel and the empty list fit 
     })()`
     )
     await stopPrograms()
-    const empty = inApp<string>(`(async()=>{${prelude}
+    const empty = inApp<{ text: string; rows: string[] }>(`(async()=>{${prelude}
       await openPicker();
       await wait(500);
       await shot('2026-10-16-debug-attach-empty-phone');
       const text=document.querySelector('.modal-container .prompt .suggestion-empty')?.textContent.trim()??'';
+      const listed=rows().map(r=>r.title);
       closePicker();
-      return text
+      return {text,rows:listed}
     })()`)
     expect(seen.offered.some((t) => t.includes('src/serve.js'))).toBe(true)
     expect(seen.detach).toBe('Detach (Shift+F5): the program runs on')
     expect(seen.overflow).toBeLessThanOrEqual(1)
-    expect(typeof empty).toBe('string')
+    // Other programs of this machine may wait too; none of this test's does.
+    expect(empty.rows.filter((t) => /serve\.js|tool\.js/.test(t))).toEqual([])
+    if (!empty.rows.length) expect(empty.text).toContain('node --inspect app.js')
   })
 }, 240000)
