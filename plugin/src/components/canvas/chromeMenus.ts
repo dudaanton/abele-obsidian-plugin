@@ -229,19 +229,7 @@ export function moreEntries(c: Controls, p: PickedView, host?: CanvasHostActions
       })
     )
   if (p.one && p.kind === 'text')
-    out.push(
-      '-',
-      entry(
-        'Turn into a note',
-        'file-plus-2',
-        host
-          ? async () => {
-              const path = await host.makeNote(p.node?.text ?? '')
-              if (path) await c.replaceWithNote(p.ids[0], path)
-            }
-          : later('Turn into a note')
-      )
-    )
+    out.push('-', entry('Turn into a note', 'file-plus-2', () => c.act('turn-into-note')))
   out.push('-', ...agent, '-')
   out.push(
     entry(

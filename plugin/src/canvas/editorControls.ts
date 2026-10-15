@@ -137,6 +137,13 @@ export function hostCanvasEditor(
       )
       return (await app.vault.createBinary(path, data)).path
     },
+    createNote: async (name, text) => {
+      const parent = app.fileManager.getNewFileParent(requireDocument().file.path)
+      const base = parent.path === '/' ? '' : `${parent.path}/`
+      let path = `${base}${name}.md`
+      for (let i = 1; app.vault.getAbstractFileByPath(path); i++) path = `${base}${name} ${i}.md`
+      return (await app.vault.create(path, text)).path
+    },
     noteHeadings: async (path) =>
       (app.metadataCache.getCache(path)?.headings ?? []).map((h) => ({
         heading: h.heading,

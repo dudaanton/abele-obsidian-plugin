@@ -66,6 +66,8 @@ export interface CanvasEditorPorts {
   saveAttachment?(name: string, data: ArrayBuffer): Promise<string | null>
   /** The headings of a note, for showing one part of it on a card. */
   noteHeadings?(path: string): Promise<{ heading: string; level: number }[]>
+  /** Makes a new note beside the canvas holding these words, and gives back its path. */
+  createNote?(name: string, text: string): Promise<string | null>
   /** What a drop from the host's own file list carries, as paths in the vault. */
   droppedPaths?(event: DragEvent): string[]
 }
@@ -94,7 +96,13 @@ export type CanvasField =
   | 'connection-color'
 
 /** The picked things' actions that need no field of their own. */
-export type CanvasAction = 'duplicate' | 'copy' | 'front' | 'back' | 'delete-with-contents'
+export type CanvasAction =
+  | 'duplicate'
+  | 'copy'
+  | 'front'
+  | 'back'
+  | 'delete-with-contents'
+  | 'turn-into-note'
 /** The gap between what is copied and its copy, which stands beside it to the right. */
 const COPY_GAP = 40
 
@@ -1237,6 +1245,7 @@ export class CanvasEditor {
       await this.copy()
       return
     }
+    if (action === 'turn-into-note') return this.turnIntoNote()
     const document = this.ready()
     let ops: CanvasOperation[]
     let after: Set<string> | null = null
@@ -1835,6 +1844,23 @@ export class CanvasEditor {
         break
     }
     return true
+  }
+  /**
+   * A text card's words become a note of their own, and the card the live note, in the same place
+   * with the same connections: one step to undo on the canvas, the note itself left in the vault.
+   */
+  private async turnIntoNote(): Promise<void> {
+    const node = this.node()
+    if (node?.type !== 'text' || node.styleAttributes?.shape || !this.ports.createNote) return
+    const text = node.text ?? ''
+    const first = text
+      .split('\n')
+      .map((l) => l.replace(/^[#>*\-\s]+/, '').replace(/[*_`[\]]/g, '').trim())
+      .find(Boolean)
+    const name = (first ?? 'Untitled').replace(/[\\/:*?"<>|#^]/g, ' ').slice(0, 60).trim() || 'Untitled'
+    const file = await this.ports.createNote(name, text)
+    if (!file) return
+    await this.apply([{ op: 'update', id: node.id, patch: { type: 'file', file, text: undefined } }])
   }
   /** One thing picked and brought into view, at the zoom it is read at. */
   private show(id: string): void {

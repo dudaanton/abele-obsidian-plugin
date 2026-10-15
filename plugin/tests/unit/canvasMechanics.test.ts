@@ -491,6 +491,17 @@ describe('pasting and dropping', () => {
 })
 
 describe('notes on the canvas', () => {
+  it('a text card turns into a note in the same place, keeping its connections', async () => {
+    const createNote = vi.fn(async (name: string) => `${name}.md`)
+    const s = setup(cards(), { createNote })
+    s.pointer('pointerdown', 50, 50)
+    s.pointer('pointerup', 50, 50)
+    await s.editor.controls.act('turn-into-note')
+    expect(createNote).toHaveBeenCalledWith('alpha', 'alpha')
+    expect(s.graphNow().nodes[0]).toMatchObject({ id: 'alpha', type: 'file', file: 'alpha.md', x: 0 })
+    expect(s.graphNow().nodes[0].text).toBeUndefined()
+    expect(s.graphNow().edges[0].fromNode).toBe('alpha')
+  })
   it('the wheel over a picked note scrolls its words rather than the canvas', () => {
     const graph: CanvasGraph = {
       nodes: [
