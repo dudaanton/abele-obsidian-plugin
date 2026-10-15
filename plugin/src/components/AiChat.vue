@@ -515,7 +515,7 @@ import { discoverSkills } from '@/ai/tools/SkillTool'
 import { isChatLog } from '@/ai/chatText'
 import { insertMessageCard } from '@/ai/messageCards'
 import ChatArtifacts from './ChatArtifacts.vue'
-import { NodeScopeEntriesSchema } from '@/ai/nodeScope'
+import { NodeScopeEntriesSchema, type NodeScopeEntry } from '@/ai/nodeScope'
 import { approveObsidianChatNodeAccess } from '@/ai/tools/node/owner'
 import { accessCovers, type NodeAccessRefusal } from '@/ai/tools/node/accessRefusal'
 import { pendingNodeAccess } from './chat/nodeAccessPending'
@@ -701,7 +701,8 @@ const messageHandlers = {
   'ask-here': (...a: Parameters<typeof onAskHere>) => onAskHere(...a),
   reply: (to: ChatReplyTo) => onReply(to),
   'show-reply': (to: ChatReplyTo) => onShowReply(to),
-  'node-access': (refusal: NodeAccessRefusal) => onNodeAccess(refusal),
+  'node-access': (refusal: NodeAccessRefusal, named?: NodeScopeEntry[]) =>
+    onNodeAccess(refusal, named),
   highlight: (...a: Parameters<typeof onHighlight>) => onHighlight(...a),
   'remove-highlight': (...a: Parameters<typeof onRemoveHighlight>) => onRemoveHighlight(...a),
   'recolor-highlight': (...a: Parameters<typeof onRecolorHighlight>) => onRecolorHighlight(...a),
@@ -808,13 +809,15 @@ const onShowReply = (to: ChatReplyTo) =>
  * wanted already chosen; a missing local approval is given here at once; an offline node sends
  * to the Node panel.
  */
-const onNodeAccess = (refusal: NodeAccessRefusal) => {
+const onNodeAccess = (refusal: NodeAccessRefusal, named?: NodeScopeEntry[]) => {
   const s = session.value
   if (!s) return
   if (refusal.kind === 'not-approved') {
     // Only the places the line named before the press: this node's entries, nothing else synced.
+    // Access that changed since the line was drawn is looked at again, not approved blind.
     const chosen = refusalApproves(refusal)
-    if (!chosen.length) return openSetup('scope')
+    if (!chosen.length || JSON.stringify(named) !== JSON.stringify(chosen))
+      return openSetup('scope')
     void approveObsidianChatNodeAccess(s, chosen)
       .then(() => (approvedHere.value = new Set([...approvedHere.value, refusal.node_id])))
       .catch(

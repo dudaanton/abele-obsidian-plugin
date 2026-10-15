@@ -40,7 +40,7 @@
     :refusal="refused"
     :given="nodeAccessGiven?.(refused)"
     :approves="nodeAccessApproves?.(refused)"
-    @act="emit('node-access', $event)"
+    @act="(r: NodeAccessRefusalData, named?: NodeScopeEntry[]) => emit('node-access', r, named)"
   />
 </template>
 
@@ -68,7 +68,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   (e: 'update:open', open: boolean): void
-  (e: 'node-access', refusal: NodeAccessRefusalData): void
+  (e: 'node-access', refusal: NodeAccessRefusalData, named?: NodeScopeEntry[]): void
 }>()
 /** The last node call in the run refused for want of access. */
 const refused = computed(

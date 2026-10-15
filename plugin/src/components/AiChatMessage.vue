@@ -130,7 +130,7 @@
           :refusal="message.nodeAccessRefusal"
           :given="nodeAccessGiven"
           :approves="nodeAccessApproves"
-          @act="emit('node-access', $event)"
+          @act="(r: Refusal, named?: NodeScopeEntry[]) => emit('node-access', r, named)"
         />
         <AiChatMessageDetails
           v-if="expanded"
@@ -470,7 +470,7 @@ const emit = defineEmits<{
   /** Go to the words a place in this question replies to. */
   (e: 'show-reply', to: ChatReplyTo): void
   /** A refused node call's way through was pressed. */
-  (e: 'node-access', refusal: Refusal): void
+  (e: 'node-access', refusal: Refusal, named?: NodeScopeEntry[]): void
   /** Take back file changes: everything from this message on, or this turn's alone. */
   (e: 'rewind', messageId: string, mode: 'since' | 'turn'): void
   (e: 'highlight', messageId: string, quote: string, start: number, color: HighlightColor): void

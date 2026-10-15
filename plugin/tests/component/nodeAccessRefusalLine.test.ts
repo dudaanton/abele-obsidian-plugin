@@ -39,7 +39,7 @@ describe('a refused node call’s line', () => {
     const view = await line(refusal)
     expect(view.text()).toContain(words)
     await view.get('button').trigger('click')
-    expect(view.emitted('act')).toEqual([[refusal]])
+    expect(view.emitted('act')?.[0][0]).toEqual(refusal)
   })
 
   it('offers nothing to press for a worktree that is not there, and names the one wanted', async () => {
@@ -64,6 +64,8 @@ describe('a refused node call’s line', () => {
     })
     await flushPromises()
     expect(view.text()).toContain('Not approved on this device: sample-project, read and edit')
+    await view.get('button').trigger('click')
+    expect(view.emitted('act')?.[0][1]).toEqual(view.props('approves'))
   })
 
   it('says to ask again once the access is given, with nothing left to press', async () => {
@@ -90,7 +92,7 @@ describe('where the line stands', () => {
     await flushPromises()
     expect(view.find('.abele-node-refusal').exists()).toBe(true)
     await view.get('.abele-node-refusal button').trigger('click')
-    expect(view.emitted('node-access')).toEqual([[call.nodeAccessRefusal]])
+    expect(view.emitted('node-access')?.[0][0]).toEqual(call.nodeAccessRefusal)
   })
 
   it('stays in sight under a folded run and is not repeated when the run is open', async () => {

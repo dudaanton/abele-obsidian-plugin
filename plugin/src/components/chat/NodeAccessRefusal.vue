@@ -10,7 +10,8 @@
       class="abele-node-refusal__action"
       :text="action"
       :tooltip="actionTooltip"
-      @click="emit('act', refusal)"
+      :disabled="refusal.kind === 'not-approved' && !namedInTime"
+      @click="emit('act', refusal, refusal.kind === 'not-approved' ? named : undefined)"
     />
   </div>
 </template>
@@ -31,7 +32,10 @@ const props = defineProps<{
   /** For a missing approval: the places its button confirms, named before it is pressed. */
   approves?: NodeScopeEntry[]
 }>()
-const emit = defineEmits<{ (e: 'act', refusal: NodeAccessRefusal): void }>()
+const emit = defineEmits<{
+  /** For a missing approval, with the entries the line named: exactly those are confirmed. */
+  (e: 'act', refusal: NodeAccessRefusal, named?: NodeScopeEntry[]): void
+}>()
 
 const ICONS: Record<NodeAccessRefusal['kind'], string> = {
   'no-access': 'folder-lock',
@@ -49,15 +53,27 @@ watch(
 const place = computed(() => nodeScopeTitle(names.value))
 /** What Approve would confirm, each place by name with what it allows. */
 const approving = ref<string[]>([])
+/** The entries those names belong to; the button waits until they are the current ones. */
+const named = ref<NodeScopeEntry[]>([])
+const namedInTime = computed(
+  () => JSON.stringify(named.value) === JSON.stringify(props.approves ?? [])
+)
+let naming = 0
 watch(
   () => props.approves,
-  async (list) =>
-    (approving.value = await Promise.all(
-      (list ?? []).map(
+  async (list) => {
+    const turn = ++naming,
+      entries = [...(list ?? [])]
+    const said = await Promise.all(
+      entries.map(
         async (e) =>
           `${nodeScopeTitle(await nodeScopeNames(e))}, ${e.access === 'edit' ? 'read and edit' : 'read'}`
       )
-    )),
+    )
+    if (turn !== naming) return
+    approving.value = said
+    named.value = entries
+  },
   { immediate: true }
 )
 
