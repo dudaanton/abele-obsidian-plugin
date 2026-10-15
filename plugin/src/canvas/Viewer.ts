@@ -144,10 +144,7 @@ export class CanvasViewer {
     // Said to a screen reader, not shown: Obsidian turns an aria-label into a tooltip that
     // would follow the pen and mouse over the whole canvas.
     this.canvas.setAttribute('role', 'img')
-    this.canvas.setAttribute(
-      'aria-description',
-      'Diagram; drag to pan, pinch or wheel to zoom, swipe to change step'
-    )
+
     this.inkCanvas = make(
       'canvas',
       'abele-canvas-surface abele-canvas-ink',
@@ -239,6 +236,13 @@ export class CanvasViewer {
     this.narration.textContent = this.step === null ? '' : (this.steps[this.step - 1]?.say ?? '')
     this.status.textContent = this.error
     this.el.dataset.step = this.step === null ? 'all' : String(this.step)
+    // What the canvas does under a finger, said for its mode: steps change only in a walkthrough.
+    this.canvas.setAttribute(
+      'aria-description',
+      this.step === null
+        ? 'Diagram; drag to pan, pinch or wheel to zoom'
+        : 'Diagram walkthrough; swipe or use the arrow keys to change step'
+    )
   }
   fit(animate = true): void {
     this.cancelInput()

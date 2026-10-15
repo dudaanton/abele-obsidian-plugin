@@ -411,3 +411,15 @@ describe('a card added without a place on a narrow screen', () => {
     expect(card.y + card.height).toBeLessThanOrEqual(v.y + v.height)
   })
 })
+
+describe('the canvas surface', () => {
+  it('is described for a screen reader, not shown as a tooltip, by what a finger does now', () => {
+    const graph = cards()
+    graph.abele = { steps: [{ id: 'one', reveal: ['alpha'], focus: 'alpha', say: 'Sample step' }] }
+    const s = setup(graph)
+    expect(s.viewer.canvas.hasAttribute('aria-label')).toBe(false)
+    expect(s.viewer.canvas.getAttribute('aria-description')).not.toMatch(/step/)
+    s.viewer.go(1, false)
+    expect(s.viewer.canvas.getAttribute('aria-description')).toMatch(/change step/)
+  })
+})

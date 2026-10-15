@@ -244,7 +244,12 @@
     <!-- The tools, the kit's tool bar across the tab's top as over a drawing: one slot for each
          family, wearing the glyph of the member last used; with a pen in hand, its colours and
          width in the same row. -->
-    <ToolBar ref="toolsBar" class="abele-canvas-chrome__tools" label="Canvas tools">
+    <ToolBar
+      ref="toolsBar"
+      class="abele-canvas-chrome__tools"
+      :class="{ 'abele-canvas-chrome__tools_one-row': !phone }"
+      label="Canvas tools"
+    >
       <ToolBarGroup v-for="(group, g) in shownGroups" :key="g">
         <ChromeIcon
           v-for="slot in group"
@@ -271,18 +276,29 @@
         <ToolBarGroup v-if="!drawing && !phone" label="Pencil">
           <ChromeIcon
             :key="pencilInk"
-            :icon="pencilInk === 'marker' ? 'highlighter' : 'pen-line'"
+            icon="pen-tool"
             :tooltip="
               pencilInk === 'marker'
-                ? 'The Pencil draws with the marker; press for the pen'
-                : 'The Pencil draws with the pen; press for the marker'
+                ? 'Pencil: draws with the marker. Press for the pen'
+                : 'Pencil: draws with the pen. Press for the marker'
             "
             @click="c.setPencilInk(pencilInk === 'marker' ? 'pen' : 'marker')"
           />
         </ToolBarGroup>
         <ToolBarGroup class="abele-canvas-chrome__pen" label="Colours">
+          <!-- Where the row has no room for every colour, the colour in hand stands for them and
+               offers the rest; a desktop keeps one row, so the zoom column stays where it is. -->
           <ChromeIcon
-            v-for="col in COLOURS"
+            v-if="compactColours"
+            icon="circle"
+            :color="SWATCH_COLOURS[value('ink-color')]"
+            :tooltip="`Colour: ${COLOUR_NAMES[value('ink-color')]}`"
+            class="abele-canvas-chrome__swatch"
+            :class="{ 'abele-canvas-chrome__swatch_ink': !value('ink-color') }"
+            @click="inkColourMenu($event)"
+          />
+          <ChromeIcon
+            v-for="col in compactColours ? [] : COLOURS"
             :key="col"
             icon="circle"
             :color="SWATCH_COLOURS[col]"
@@ -490,12 +506,36 @@ const pencil = computed(() => (tick.value, c.pencil()))
 const pencilInk = computed(() => (tick.value, c.pencilInk()))
 /** The tools' row: the column of zoom and undo stands under it, however tall it wraps. */
 const toolsBar = ref<{ $el: HTMLElement }>()
+/** On a desktop the row stays one row: without room for every colour, one glyph stands for them. */
+const compactColours = ref(false)
+let fullWidth = 0
+function fitColours(el: HTMLElement) {
+  if (phone) return
+  if (!compactColours.value && el.scrollWidth > el.clientWidth + 1) {
+    fullWidth = el.scrollWidth
+    compactColours.value = true
+  } else if (compactColours.value && el.clientWidth >= fullWidth) compactColours.value = false
+}
+/** The pen's colours, from the one glyph standing for them: Obsidian's menu under it. */
+function inkColourMenu(e: MouseEvent) {
+  const menu = new Menu()
+  for (const col of COLOURS)
+    menu.addItem((item) =>
+      item
+        .setTitle(`Draw in ${COLOUR_NAMES[col]}`)
+        .setIcon('circle')
+        .setChecked(value('ink-color') === col)
+        .onClick(() => set('ink-color', col))
+    )
+  menus.showAt(menu, e)
+}
 const barHeight = ref(0)
 let barSize: ResizeObserver | undefined
 onMounted(() => {
   const el = toolsBar.value?.$el
   if (!el || typeof ResizeObserver === 'undefined') return
   barSize = new ResizeObserver(() => {
+    fitColours(el)
     barHeight.value = el.offsetHeight
     // Fitting and revealing keep what they show clear of the row of tools.
     props.viewer.insetTop = el.offsetHeight
@@ -523,6 +563,15 @@ const penStrip = computed(
   () =>
     !['eraser', 'partial-eraser', 'lasso'].includes(tool.value) &&
     (drawing.value || (pencil.value && !editing.value && !naming.value))
+)
+// The colours come and go with the pen, inside a row whose own size stays the same.
+watch(
+  () => [penStrip.value, compactColours.value],
+  () =>
+    void nextTick(() => {
+      const el = toolsBar.value?.$el
+      if (el) fitColours(el)
+    })
 )
 const steps = computed(() => (tick.value, stepsOf(props.viewer.graph).length))
 const percent = computed(() => (tick.value, Math.round(props.viewer.camera.zoom * 100)))
@@ -976,6 +1025,11 @@ onBeforeUnmount(() => {
 
 // The tools' row across the tab's top, over the canvas as a drawing's is over its paper; the
 // column of zoom and undo stands under it.
+// A desktop keeps the tools in one row; a phone's narrow row may wrap.
+.abele-canvas-chrome__tools_one-row.abele-tool-bar {
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
 .abele-canvas-chrome__tools {
   position: absolute;
   inset-inline: 0;
