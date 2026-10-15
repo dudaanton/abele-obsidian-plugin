@@ -154,7 +154,11 @@ describe.skipIf(!available)('the chat tab keys, pressed in the running app', () 
         const file = await app.vault.create(path, JSON.stringify({
           v: 2, k: 'meta', type: 'abele-chat', title: 'Sample shortcuts ' + i,
           providerId: '', modelId: '', created: '2020-01-01',
-        }) + '\\n')
+          activeLeafId: i === 0 ? 'a1' : undefined,
+        }) + '\\n' + (i === 0
+          // One answer on the first, for Ctrl+C to have conversation words to copy.
+          ? JSON.stringify({ k: 'msg', id: 'a1', role: 'assistant', content: 'Several sample words to copy.', timestamp: 1790000000000 }) + '\\n'
+          : ''))
         await chats.openChatFile(file)
       }
       await chats.revealSidebar()
@@ -417,10 +421,11 @@ describe.skipIf(!available)('the chat tab keys, pressed in the running app', () 
         const selection = window.getSelection()
         selection.removeAllRanges()
         if (${select}) {
-          const label = leaf.view.containerEl.querySelector('.abele-chat-tabs__label')
+          const words = leaf.view.containerEl.querySelector('[data-message-id="a1"]')
           const range = document.createRange()
-          range.selectNodeContents(label)
+          range.selectNodeContents(words)
           selection.addRange(range)
+          if (!selection.toString().includes('sample words')) return 'nothing selected'
         }
         return String(!window.__abeleTest.composer().hasFocus() && app.workspace.activeLeaf === leaf)
       })()`,
