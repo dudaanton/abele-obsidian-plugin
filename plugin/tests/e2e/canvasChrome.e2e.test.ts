@@ -101,8 +101,9 @@ const middle = (id: string) =>
 const chrome = canvasChrome({ run, press, until, at: (p) => input(p), phone: onPhone() })
 const reopen = async () => {
   run(
-    `for(const l of app.workspace.getLeavesOfType('abele-canvas'))if(l.view.file?.path===path)l.detach()
-    const leaf=app.workspace.getLeaf('tab');await leaf.setViewState({type:'abele-canvas',state:{file:path},active:true});await app.workspace.revealLeaf(leaf);return true`
+    `const old=app.workspace.getLeavesOfType('abele-canvas').filter(l=>l.view.file?.path===path)
+    const leaf=app.workspace.getLeaf('tab');await leaf.setViewState({type:'abele-canvas',state:{file:path},active:true});await app.workspace.revealLeaf(leaf)
+    for(const l of old)l.detach();return true`
   )
   await until('view()?.editor&&view().contentEl.querySelector(".abele-canvas-chrome__tools")')
   // The cards stand in the middle third of the stage, under the tools and clear of its edges.
@@ -139,12 +140,13 @@ describe.skipIf(!available)('the canvas by hand', () => {
 
   it('stands the tools across the top of the tab, with the old rows out of sight', async () => {
     await reopen()
-    const layout = run<{ bar: number[]; stage: number[]; old: string }>(`
-      const bar=view().contentEl.querySelector('.abele-canvas-chrome__tools').getBoundingClientRect(),s=view().viewer.stage.getBoundingClientRect()
-      return {bar:[bar.top,bar.height,bar.width],stage:[s.top,s.width],old:getComputedStyle(view().contentEl.querySelector('.abele-canvas-editor-controls')).display}`)
+    const layout = run<{ bar: number[]; content: number[]; old: string }>(`
+      const bar=view().contentEl.querySelector('.abele-canvas-chrome__tools').getBoundingClientRect(),c=view().contentEl.getBoundingClientRect()
+      return {bar:[bar.top,bar.width],content:[c.top,c.width],old:getComputedStyle(view().contentEl.querySelector('.abele-canvas-editor-controls')).display}`)
     expect(layout.old).toBe('none')
-    expect(Math.abs(layout.bar[0] - layout.stage[0])).toBeLessThan(2)
-    expect(layout.bar[2]).toBeGreaterThan(layout.stage[1] - 2)
+    // Across the whole top of the tab, under its header, as a drawing's tools are.
+    expect(Math.abs(layout.bar[0] - layout.content[0])).toBeLessThan(2)
+    expect(layout.bar[1]).toBeGreaterThan(layout.content[1] - 2)
     shot('toolbar')
   }, 120_000)
 
