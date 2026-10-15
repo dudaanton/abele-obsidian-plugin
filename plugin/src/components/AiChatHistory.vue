@@ -138,7 +138,7 @@ import {
 import { DATE_FORMAT } from '@/constants/dates'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { ChatService } from '@/ai/ChatService'
-import { confirmAction } from '@/modal/confirm'
+import { confirmDialog } from '@/components/obsidian/dialogs'
 import { CommentService } from '@/ai/CommentService'
 import { SummaryBackfill } from '@/ai/ChatDigest'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -409,7 +409,7 @@ const select = (path: string) => {
 const remove = async (path: string) => {
   const { app } = GlobalStore.getInstance()
   if (
-    !(await confirmAction(app, {
+    !(await confirmDialog({
       title: 'Delete chat',
       message: 'Delete this chat and its comments? This cannot be undone.',
     }))

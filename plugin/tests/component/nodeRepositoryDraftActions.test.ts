@@ -4,13 +4,13 @@ import { MemoryClientStore, NodeClient } from '@abele/node-client'
 import GithubBlob from '@/components/github/GithubBlob.vue'
 import GithubCode from '@/components/github/GithubCode.vue'
 import { NodeDocumentSource, NodeFilesModel } from '@/node/NodeFilesModel'
-import { confirmAction } from '@/modal/confirm'
+import { confirmDialog } from '@/components/obsidian/dialogs'
 import { WORKING_TREE } from '@/repository/node'
 import { useVault } from '../helpers/testEnv'
-vi.mock('@/modal/confirm', () => ({ confirmAction: vi.fn(async () => true) }))
+vi.mock('@/components/obsidian/dialogs', () => ({ confirmDialog: vi.fn(async () => true) }))
 beforeEach(() => {
   useVault([])
-  vi.mocked(confirmAction).mockReset().mockResolvedValue(true)
+  vi.mocked(confirmDialog).mockReset().mockResolvedValue(true)
 })
 async function fixture() {
   const client = new NodeClient(
@@ -218,7 +218,7 @@ it('does not discard another view’s draft after it changed while confirmation 
     await f.wrapper.setProps({ text: 'external', contentId: 'b'.repeat(64) })
     await flushPromises()
     let approve!: (value: boolean) => void
-    vi.mocked(confirmAction).mockImplementationOnce(
+    vi.mocked(confirmDialog).mockImplementationOnce(
       () =>
         new Promise((resolve) => {
           approve = resolve
@@ -276,10 +276,10 @@ it('confirms discarding a changed draft, preserves it on cancellation, and reloa
     f.setDisk()
     await f.wrapper.setProps({ text: 'external', contentId: 'b'.repeat(64) })
     await flushPromises()
-    vi.mocked(confirmAction).mockResolvedValueOnce(false)
+    vi.mocked(confirmDialog).mockResolvedValueOnce(false)
     await f.button('Reload').trigger('click')
     await flushPromises()
-    expect(confirmAction).toHaveBeenCalled()
+    expect(confirmDialog).toHaveBeenCalled()
     expect(f.model.draftText.value).toBe('mine')
     expect(f.model.draft.value).toBeDefined()
     await f.button('Reload').trigger('click')

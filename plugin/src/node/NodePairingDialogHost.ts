@@ -8,7 +8,7 @@ import { NodePairingModel } from './NodePairingModel'
 import { nodePathDialog } from './NodePathDialogs'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { formatTimestamp } from '@/helpers/displayFormat'
-import { confirmAction } from '@/modal/confirm'
+import { confirmDialog } from '@/components/obsidian/dialogs'
 import PairDialog from '@/components/nodeWork/PairDialog.vue'
 import type { PairingCode } from '@/components/nodeWork/types'
 
@@ -122,7 +122,7 @@ export function showNodePairingDialog(): void {
     const stored = await service.deviceKeys.load(payload.invite.node_id)
     if (stored && stored.node_fingerprint !== payload.invite.node_fingerprint) {
       if (
-        !(await confirmAction(app, {
+        !(await confirmDialog({
           title: 'Replace this node key?',
           message: `Previously known key: ${stored.node_fingerprint}. New key: ${payload.invite.node_fingerprint}. Continue only after independently verifying this full new key.`,
           confirmText: 'Use verified key',
@@ -133,7 +133,7 @@ export function showNodePairingDialog(): void {
       await service.pairedConnector.authorizeNodeKeyChange(payload.invite, stored.node_fingerprint)
     } else if (stored && stored.endpoint !== payload.invite.endpoint) {
       if (
-        !(await confirmAction(app, {
+        !(await confirmDialog({
           title: 'Change the node’s canonical endpoint?',
           message: `The same node key moved from ${stored.endpoint} to ${payload.invite.endpoint}. The device key and principal stay unchanged.`,
           confirmText: 'Use verified endpoint',

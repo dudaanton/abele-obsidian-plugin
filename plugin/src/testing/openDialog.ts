@@ -78,8 +78,7 @@ import { githubSettingsFrom } from '@/github/settings'
 import { BUILTIN_RULES } from '@/linter/rules'
 import { DEFAULT_LINTER_SETTINGS, ruleSetting } from '@/linter/settings'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
-import { askName } from '@/modal/askName'
-import { confirmAction } from '@/modal/confirm'
+import { confirmDialog, promptDialog } from '@/components/obsidian/dialogs'
 import { askWhatToRemove } from '@/reader/bookDiscussions'
 import { askToRepairLinks } from '@/reader/highlightRepairDialog'
 import type { HighlightRepairCandidate } from '@/reader/highlightRepair'
@@ -195,7 +194,7 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
     }
   },
   'text-comment-delete': () => {
-    void confirmAction(GlobalStore.getInstance().app, {
+    void confirmDialog({
       title: 'Delete comment?',
       message:
         'This is the last entry. Its marker and thread will also be removed. The note text will stay.',
@@ -780,9 +779,9 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
     const rule = BUILTIN_RULES.find((r) => r.params.length) ?? BUILTIN_RULES[0]
     mountAlone(LintRuleModal, { rule, setting: ruleSetting(DEFAULT_LINTER_SETTINGS, rule) })
   },
-  'ask-name': () => void askName(GlobalStore.getInstance().app, { title: 'New script' }),
+  'ask-name': () => void promptDialog({ title: 'New script' }),
   'confirm-action': () =>
-    void confirmAction(GlobalStore.getInstance().app, {
+    void confirmDialog({
       title: 'Remove footnote [^1]?',
       message: 'The footnote and every reference to it are removed from this note.',
       confirmText: 'Remove',

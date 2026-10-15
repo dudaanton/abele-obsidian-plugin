@@ -15,7 +15,7 @@ import TraceRunView from '@/components/debugger/trace/TraceRunView.vue'
 import TraceValueTab from '@/components/debugger/trace/TraceValueTab.vue'
 import EmptyState from '@/components/obsidian/EmptyState.vue'
 import type { TraceValue } from '@/components/debugger/trace/types'
-import { askName } from '@/modal/askName'
+import { promptDialog } from '@/components/obsidian/dialogs'
 import { NodeService } from '@/node/NodeService'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { DebuggerService } from '../DebuggerService'
@@ -56,7 +56,7 @@ function rpcFor(registrationId: string) {
 }
 
 async function markWith(mark: (comment: string) => Promise<unknown>) {
-  const comment = await askName(GlobalStore.getInstance().app, {
+  const comment = await promptDialog({
     title: 'Mark',
     placeholder: 'What is worth noting here',
     submitText: 'Mark',

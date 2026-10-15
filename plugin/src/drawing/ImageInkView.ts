@@ -17,7 +17,7 @@ import {
   type WorkspaceLeaf,
 } from 'obsidian'
 import { createApp, reactive, type App as VueApp } from 'vue'
-import { confirmAction } from '@/modal/confirm'
+import { confirmDialog } from '@/components/obsidian/dialogs'
 import { ChatService } from '@/ai/ChatService'
 import { DrawingSession } from './DrawingSession'
 import { drawingKeys, mountDrawingBar } from './drawingTab'
@@ -289,7 +289,7 @@ function anchorOf(value: unknown): EmbedAnchor | null {
 
 /** Asks before a picture is written over. */
 function confirmOver(app: App, name: string): Promise<boolean> {
-  return confirmAction(app, {
+  return confirmDialog({
     title: 'Save over the picture?',
     message: `${name} is replaced by the picture with the drawing on it. The picture as it is now is lost.`,
     confirmText: 'Save over it',

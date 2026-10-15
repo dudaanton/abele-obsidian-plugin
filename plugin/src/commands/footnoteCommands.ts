@@ -1,5 +1,5 @@
 import { App, Editor, MarkdownView, Notice } from 'obsidian'
-import { confirmAction } from '@/modal/confirm'
+import { confirmDialog } from '@/components/obsidian/dialogs'
 import { GlobalStore } from '@/stores/GlobalStore'
 
 const FOOTNOTE_REF_RE = /\[\^(\d+)\]/g
@@ -160,7 +160,7 @@ export function withoutFootnote(content: string, label: string): string {
 
 /** Asks before a footnote goes. Resolves false if the user closes it any other way. */
 function askToRemove(app: App, label: string): Promise<boolean> {
-  return confirmAction(app, {
+  return confirmDialog({
     title: `Remove footnote [^${label}]?`,
     message: 'The footnote and every reference to it are removed from this note.',
     confirmText: 'Remove',

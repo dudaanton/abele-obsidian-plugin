@@ -255,7 +255,7 @@ import { setCoverFromMedia } from '@/commands/setCover'
 import { Choice, useMenu } from '@/composables/useMenu'
 import { reduceImageFile, formatBytes } from '@/helpers/reduceImage'
 import { isMediaPath } from '@/helpers/galleryUtils'
-import { confirmAction } from '@/modal/confirm'
+import { confirmDialog } from '@/components/obsidian/dialogs'
 
 const props = defineProps<{
   gallery: Gallery
@@ -499,7 +499,7 @@ async function handleDeleteMenu(event: string) {
     const n = localFiles.length
     if (
       n &&
-      !(await confirmAction(app, {
+      !(await confirmDialog({
         title: 'Remove the gallery and its pictures?',
         message: `The gallery goes from the note and ${n} ${n === 1 ? 'picture goes' : 'pictures go'} to the trash. They can be taken back from there.`,
         confirmText: 'Move to the trash',

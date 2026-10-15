@@ -1,8 +1,8 @@
 import type { NodeClient } from '@abele/node-client'
 import type { RepositorySource } from '@/repository/source'
-import type { confirmAction } from '@/modal/confirm'
+import type { confirmDialog } from '@/components/obsidian/dialogs'
 
-type ConfirmOptions = Parameters<typeof confirmAction>[1]
+type ConfirmOptions = Parameters<typeof confirmDialog>[0]
 
 /** What the person is asked before a project's other worktrees are opened to browsing, or closed. */
 export const externalBrowsingConfirm = (enabled: boolean): ConfirmOptions => ({

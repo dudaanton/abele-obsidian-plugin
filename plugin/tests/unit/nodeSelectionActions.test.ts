@@ -49,7 +49,7 @@ vi.mock('@/components/nodeWork/NodeSuggestModal', () => ({
     open() {}
   },
 }))
-vi.mock('@/modal/confirm', () => ({ confirmAction: async () => true }))
+vi.mock('@/components/obsidian/dialogs', () => ({ confirmDialog: async () => true }))
 vi.mock('@/node/NodePathMutations', () => ({
   NodePathMutations: class {
     trust = vi.fn()

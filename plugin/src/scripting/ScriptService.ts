@@ -1,4 +1,4 @@
-import { askName } from '@/modal/askName'
+import { promptDialog } from '@/components/obsidian/dialogs'
 import { TFile, TAbstractFile, debounce, Notice, EventRef, normalizePath } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { scriptSlug } from './scriptSlug'
@@ -166,7 +166,7 @@ export class ScriptService {
     }
 
     const { app } = GlobalStore.getInstance()
-    const name = await askName(app, { title: 'New script' })
+    const name = await promptDialog({ title: 'New script' })
 
     if (!name) return
 

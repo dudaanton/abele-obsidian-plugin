@@ -38,6 +38,8 @@ const props = defineProps<{
    * sized to what it holds; `tall` and `full` ask for it already.
    */
   phoneSheet?: boolean
+  /** Extra classes on the dialog, for its own rules and for a test to find it by. */
+  modalClass?: string | string[]
 }>()
 
 const modal = ref<ShellModal | null>(null)
@@ -83,6 +85,7 @@ onBeforeMount(() => {
     size: props.size ?? 'default',
     footer: !!slots.footer,
     closeInFooter: props.closeInFooter,
+    cls: props.modalClass ? [props.modalClass].flat() : [],
   })
 
   modal.value.modalEl.addClass('abele-modal')

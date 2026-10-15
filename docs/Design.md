@@ -132,7 +132,7 @@ state and accessibility tests before screens adopt them.
 | `Progress` | Named native progress control in host colours; zero/completion are determinate, unknown totals omit the value. Screens never build percentage-width bars. |
 | `Tabs`, `Breadcrumbs` | Native navigation; phone tabs may intentionally scroll with focused tab in view. Breadcrumbs expose folded trails. |
 | `NotePicker`, `IconPicker` | Host-styled choices with keyboard operation and named options. |
-| `Modal`, `ConfirmModal` | Shared shell / explicit destructive confirmation. |
+| `Modal`, `ConfirmModal`, `PromptModal`, `ChoiceModal` | Shared shell / explicit destructive confirmation / one line of text / one of a few answers. Code that is not a component asks and awaits them through `confirmDialog`, `promptDialog`, `choiceDialog` (or `openDialog` for any kit dialog with an `answer` event) in `components/obsidian/dialogs.ts`, never a dialog filled by hand. |
 | `Table` | Structured columns; intentional horizontal scrolling, not a substitute for a flat list. |
 | `Avatar`, `QrCode`, `FloatingButton` | Decorative identity fallback / scanner contrast / native raised quick action. |
 

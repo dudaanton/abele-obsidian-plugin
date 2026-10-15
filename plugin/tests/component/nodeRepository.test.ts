@@ -18,7 +18,7 @@ import { emptyScreen } from '@/github/screen'
 import type { RepositoryLocation } from '@/repository/source'
 import type { GithubViewModel } from '@/github/model'
 
-vi.mock('@/modal/confirm', () => ({ confirmAction: vi.fn(async () => true) }))
+vi.mock('@/components/obsidian/dialogs', () => ({ confirmDialog: vi.fn(async () => true) }))
 const repo = { host: 'node.invalid', owner: 'Sample node', repo: 'Sample project' }
 beforeEach(() => useVault([]))
 function fixture(location: RepositoryLocation = { kind: 'home', ref: WORKING_TREE }) {

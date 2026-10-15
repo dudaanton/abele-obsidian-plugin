@@ -18,7 +18,6 @@ import {
 } from 'vue'
 import { NodeService } from '@/node/NodeService'
 import { DebuggerService } from '@/debugger/DebuggerService'
-import { confirmAction } from '@/modal/confirm'
 import { pathPages } from '@/node/NodePathClientPort'
 import { NodePathService } from '@/node/NodePathService'
 import { NodePathFileModel, pathTargetKey } from '@/node/NodePathModel'

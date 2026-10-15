@@ -83,7 +83,7 @@ import EntryRow from './obsidian/EntryRow.vue'
 import FileThumb from './obsidian/FileThumb.vue'
 import FoundList from './obsidian/FoundList.vue'
 import ResultMark from './obsidian/ResultMark.vue'
-import { confirmAction } from '@/modal/confirm'
+import { confirmDialog } from '@/components/obsidian/dialogs'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { vaultUrl } from '@/helpers/vaultUrl'
 import { collectMediaReferences } from '@/helpers/mediaReferences'
@@ -227,7 +227,7 @@ const deleteAll = async () => {
 
 const askToDelete = async () => {
   const n = chosenPending.value.length
-  const yes = await confirmAction(app, {
+  const yes = await confirmDialog({
     title: 'Move to the trash?',
     message: `${n} ${n === 1 ? 'file' : 'files'} nothing links to will go to the trash. They can be taken back from there.`,
     confirmText: 'Move to the trash',

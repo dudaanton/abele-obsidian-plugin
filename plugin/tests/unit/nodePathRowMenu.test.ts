@@ -28,7 +28,7 @@ vi.mock('@/node/NodePathOwnerActions', () => ({
   nodePathOwnerActions: () => ({ ask: vi.fn(), add: vi.fn(), grant: vi.fn() }),
   freezeNodePathContext: (c: unknown) => c,
 }))
-vi.mock('@/modal/confirm', () => ({ confirmAction: async () => true }))
+vi.mock('@/components/obsidian/dialogs', () => ({ confirmDialog: async () => true }))
 afterEach(() => {
   vi.restoreAllMocks()
   vi.clearAllMocks()

@@ -4,7 +4,7 @@ import { defineComponent, nextTick } from 'vue'
 import TextCommentDialog from '@/components/TextCommentDialog.vue'
 import { memoryComments } from '../helpers/textComments'
 
-vi.mock('@/modal/confirm', () => ({ confirmAction: vi.fn(async () => true) }))
+vi.mock('@/components/obsidian/dialogs', () => ({ confirmDialog: vi.fn(async () => true) }))
 // Both shells hold the same comments: a card by the passage, or Obsidian's sheet.
 const Shell = defineComponent({
   props: ['canClose', 'anchor', 'label', 'title', 'phoneSheet'],

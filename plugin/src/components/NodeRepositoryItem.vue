@@ -91,7 +91,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, shallowRef, watch } from 'vue'
 import { Menu, Notice, type PaneType } from 'obsidian'
-import { confirmAction } from '@/modal/confirm'
+import { confirmDialog } from '@/components/obsidian/dialogs'
 import { changeExternalBrowsing, externalBrowsingConfirm } from '@/node/repositorySettings'
 import GithubItem from './github/GithubItem.vue'
 import GithubCommits from './github/GithubCommits.vue'
@@ -152,7 +152,7 @@ const toggleEditing = async () => {
   settingsBusy.value = true
   try {
     if (
-      !(await confirmAction(GlobalStore.getInstance().app, {
+      !(await confirmDialog({
         title: enabled ? 'Allow editing in this worktree?' : 'Turn off worktree editing?',
         message: enabled
           ? `Allow current files in ${selected.value?.label || 'this external worktree'} to be saved by confirmed node owners? This applies only to this worktree identity, not agent execution or Git actions. Chat edits still require per-edit approval.`
@@ -396,7 +396,7 @@ const externalMenu = (event?: MouseEvent | KeyboardEvent) => {
     settingsBusy.value = true
     try {
       const changed = await changeExternalBrowsing(transport.client, current, enabled, () =>
-        confirmAction(GlobalStore.getInstance().app, externalBrowsingConfirm(enabled))
+        confirmDialog(externalBrowsingConfirm(enabled))
       )
       if (changed && alive) await load()
     } catch (error) {

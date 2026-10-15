@@ -60,8 +60,7 @@
 </template>
 
 <script setup lang="ts">
-import { confirmAction } from '@/modal/confirm'
-import { GlobalStore } from '@/stores/GlobalStore'
+import { confirmDialog } from '@/components/obsidian/dialogs'
 import { Transaction } from '@/entities/Transaction'
 import { computed, onMounted, ref, watch } from 'vue'
 import EntryRow from './obsidian/EntryRow.vue'
@@ -119,7 +118,7 @@ const onContextMenu = (e: MouseEvent) => {
       .setIcon('trash')
       .onClick(async () => {
         if (
-          await confirmAction(GlobalStore.getInstance().app, {
+          await confirmDialog({
             title: 'Delete transaction',
             message: 'Are you sure you want to delete this transaction?',
           })

@@ -1,4 +1,4 @@
-import { askName } from '@/modal/askName'
+import { promptDialog } from '@/components/obsidian/dialogs'
 import { TAbstractFile, TFile, EventRef, Notice, normalizePath } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from './AbeleConfig'
@@ -120,7 +120,7 @@ export class SnippetService {
     }
 
     const { app } = GlobalStore.getInstance()
-    const name = await askName(app, { title: 'New CSS snippet' })
+    const name = await promptDialog({ title: 'New CSS snippet' })
 
     if (!name) return
 

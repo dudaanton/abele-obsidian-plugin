@@ -121,8 +121,7 @@
 import { computed, ref } from 'vue'
 import type { NodeFilesModel } from '@/node/NodeFilesModel'
 import type { FileDraftSnapshot } from '@/node/fileDrafts'
-import { confirmAction } from '@/modal/confirm'
-import { GlobalStore } from '@/stores/GlobalStore'
+import { confirmDialog } from '@/components/obsidian/dialogs'
 import Button from './obsidian/Button.vue'
 import Icon from './obsidian/Icon.vue'
 import GithubCode from './github/GithubCode.vue'
@@ -174,7 +173,7 @@ const reload = () =>
         model.draftText.value !== model.document.value?.text)
     if (
       hasChanges &&
-      !(await confirmAction(GlobalStore.getInstance().app, {
+      !(await confirmDialog({
         title: 'Discard local draft?',
         message: `Discard your unsaved text in ${path} and load the version now on disk?`,
         confirmText: 'Reload',

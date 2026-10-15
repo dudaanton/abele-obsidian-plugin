@@ -406,11 +406,6 @@ body.is-mobile .abele-footnote-ref-link {
   display: none;
 }
 
-/* Single-field name prompt inside a modal. */
-.abele-name-input {
-  width: 100%;
-}
-
 /* Comment markers — the icon that stands where %%c:…%% is in live preview */
 .abele-comment-marker {
   display: inline-flex;

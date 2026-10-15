@@ -45,8 +45,7 @@
 </template>
 
 <script setup lang="ts">
-import { confirmAction } from '@/modal/confirm'
-import { GlobalStore } from '@/stores/GlobalStore'
+import { confirmDialog } from '@/components/obsidian/dialogs'
 import { TimeEntry } from '@/entities/TimeEntry'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import ObsidianIcon from './obsidian/Icon.vue'
@@ -118,7 +117,7 @@ const onContextMenu = (e: MouseEvent) => {
       .setIcon('trash')
       .onClick(async () => {
         if (
-          await confirmAction(GlobalStore.getInstance().app, {
+          await confirmDialog({
             title: 'Delete time entry',
             message: 'Are you sure you want to delete this time entry?',
           })

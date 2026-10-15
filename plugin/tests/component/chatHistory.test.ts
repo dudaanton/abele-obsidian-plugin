@@ -28,9 +28,9 @@ import { ChatSearchIndex } from '@/ai/ChatSearchIndex'
 import dayjs from 'dayjs'
 import { DISPLAY_DATE_FORMAT } from '@/constants/dates'
 import Icon from '@/components/obsidian/Icon.vue'
-import { confirmAction } from '@/modal/confirm'
+import { confirmDialog } from '@/components/obsidian/dialogs'
 
-vi.mock('@/modal/confirm', () => ({ confirmAction: vi.fn() }))
+vi.mock('@/components/obsidian/dialogs', () => ({ confirmDialog: vi.fn() }))
 
 vi.mock('@/editor/CommentPlugin', () => ({
   dispatchCommentsChanged: vi.fn(),
@@ -108,7 +108,7 @@ const cardOf = (view: VueWrapper, path: string) =>
   view.findAllComponents(Card).find((c) => c.attributes('data-path') === path)!
 
 beforeEach(() => {
-  vi.mocked(confirmAction).mockResolvedValue(false)
+  vi.mocked(confirmDialog).mockResolvedValue(false)
   prompts.length = 0
   resetFakeIntersectionObservers()
   installFakeIntersectionObserver()
@@ -158,13 +158,13 @@ describe('a card in the chat history', () => {
       .find((icon) => icon.props('icon') === 'trash')!
       .vm.$emit('click')
     await flushPromises()
-    expect(confirmAction).toHaveBeenCalledOnce()
+    expect(confirmDialog).toHaveBeenCalledOnce()
     expect(remove).not.toHaveBeenCalled()
     expect(app.vault.getFileByPath(NEW)).not.toBeNull()
   })
 
   it('closes a live tab before deleting its file after confirmation', async () => {
-    vi.mocked(confirmAction).mockResolvedValue(true)
+    vi.mocked(confirmDialog).mockResolvedValue(true)
     const service = ChatService.getInstance()
     const id = service.createTab()
     const session = service.getSession(id)!

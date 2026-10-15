@@ -1,8 +1,7 @@
 // What the debugger's panel and a source's margin do about recording: menus, the runs folder,
 // the record point editor's moves. The panel and the margin stay presentational; this is their host.
 import { Menu, Notice } from 'obsidian'
-import { confirmAction } from '@/modal/confirm'
-import { askName } from '@/modal/askName'
+import { confirmDialog, promptDialog } from '@/components/obsidian/dialogs'
 import { GlobalStore } from '@/stores/GlobalStore'
 import type { DebuggerBinding } from '../DebuggerService'
 import { openTraceRun } from './TraceTabs'
@@ -16,7 +15,7 @@ const fail = (e: unknown) =>
 async function askFolderOnce(binding: DebuggerBinding) {
   const trace = binding.trace
   if (!trace?.status || trace.status.chosen || trace.runs.length) return
-  const folder = await askName(app(), {
+  const folder = await promptDialog({
     title: 'Where to keep recorded runs',
     placeholder: trace.status.folder,
     value: trace.status.folder,
@@ -133,7 +132,7 @@ export function runMenu(binding: DebuggerBinding, runId: string, event: MouseEve
       .setTitle('Rename')
       .setIcon('pencil')
       .onClick(async () => {
-        const name = await askName(app(), {
+        const name = await promptDialog({
           title: 'Rename the run',
           value: run.name,
           submitText: 'Rename',
@@ -158,7 +157,7 @@ export function runMenu(binding: DebuggerBinding, runId: string, event: MouseEve
       .setIcon('trash-2')
       .setWarning(true)
       .onClick(async () => {
-        const sure = await confirmAction(app(), {
+        const sure = await confirmDialog({
           title: 'Delete the run',
           message: `“${run.name}” and every value it took are deleted from the node’s disk. Notes about it stay, their links lead nowhere.`,
         })
@@ -176,7 +175,7 @@ export function runMenu(binding: DebuggerBinding, runId: string, event: MouseEve
 export async function folderMenu(binding: DebuggerBinding) {
   const trace = binding.trace
   if (!trace) return
-  const folder = await askName(app(), {
+  const folder = await promptDialog({
     title: 'Where to keep recorded runs',
     value: trace.folder,
     submitText: 'Keep them here',

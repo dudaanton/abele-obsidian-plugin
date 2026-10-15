@@ -165,8 +165,7 @@ import Icon from './obsidian/Icon.vue'
 import Markdown from './obsidian/Markdown.vue'
 import Quote from './obsidian/Quote.vue'
 import NoteEditorField from './NoteEditorField.vue'
-import { confirmAction } from '@/modal/confirm'
-import { GlobalStore } from '@/stores/GlobalStore'
+import { confirmDialog } from '@/components/obsidian/dialogs'
 import { COMMENT_APPEARANCES, type CommentAppearance } from '@/comments/model'
 import type {
   CommentDraft,
@@ -175,8 +174,7 @@ import type {
   ThreadSnapshot,
 } from '@/comments/service'
 
-const confirm = (options: Parameters<typeof confirmAction>[1]) =>
-  confirmAction(GlobalStore.getInstance().app, options)
+const confirm = confirmDialog
 
 const props = defineProps<{
   service: TextCommentService

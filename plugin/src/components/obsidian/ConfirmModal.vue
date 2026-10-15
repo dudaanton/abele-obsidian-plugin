@@ -44,12 +44,15 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   (e: 'confirm'): void
+  /** The same yes, for `confirmDialog()`, which awaits every kit dialog's answer alike. */
+  (e: 'answer', value: true): void
   (e: 'close'): void
 }>()
 
 function onConfirm(): void {
   if (props.readOnly) return
   emit('confirm')
+  emit('answer', true)
   emit('close')
 }
 </script>

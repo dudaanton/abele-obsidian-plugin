@@ -1,7 +1,7 @@
 import { Menu, Notice, Platform } from 'obsidian'
 import type { WorktreeEntry } from '@abele/node-protocol'
 import { NodeSuggestModal } from '@/components/nodeWork/NodeSuggestModal'
-import { confirmAction } from '@/modal/confirm'
+import { confirmDialog } from '@/components/obsidian/dialogs'
 import {
   changeProjectExternalBrowsing,
   externalBrowsingConfirm,
@@ -216,7 +216,7 @@ function rowMenu(
             connection.client,
             target.projectId,
             enabled,
-            () => confirmAction(app(), externalBrowsingConfirm(enabled))
+            () => confirmDialog(externalBrowsingConfirm(enabled))
           )
           if (changed) await model.refresh()
         },
@@ -259,7 +259,7 @@ function rowMenu(
           if (!selected || selected.kind === 'root')
             throw new Error('This worktree is no longer available for deletion.')
           if (
-            !(await confirmAction(app(), {
+            !(await confirmDialog({
               title: 'Delete worktree?',
               message: `Delete ${selected.path_label}? This removes the working copy, not its branch. Dirty, ignored and untracked files block deletion.`,
               confirmText: 'Delete worktree',
@@ -291,7 +291,7 @@ function rowMenu(
       online && model.capabilities.value.includes('node_path_v2'),
       async () => {
         if (
-          !(await confirmAction(app(), {
+          !(await confirmDialog({
             title: 'Initialize Git repository?',
             message: `Initialize Git in ${folder.path}? No first commit is created.`,
             confirmText: 'Initialize Git',
@@ -404,7 +404,7 @@ function nodeItems(model: NodePathModel, menu: Menu): Menu {
         .onClick(() =>
           nodePathAction(async () => {
             if (
-              await confirmAction(app(), {
+              await confirmDialog({
                 title: 'Disconnect node?',
                 message:
                   'Remove this device’s saved connection. This does not delete folders, worktrees or node sessions.',
@@ -557,7 +557,7 @@ async function approveNodePathExecution(
   const folder = model.folders.value.find((f) => f.id === target.projectId),
     copy = model.copy(target)
   if (
-    !(await confirmAction(app(), {
+    !(await confirmDialog({
       title: 'Allow agent execution in this target?',
       message: `Allow the node agent to execute in ${copy?.path ?? folder?.path ?? 'this target'}? This trusts its registered project and enables execution for this exact folder or worktree identity. Reading, listing or attaching alone never enables execution.`,
       confirmText: 'Allow execution',

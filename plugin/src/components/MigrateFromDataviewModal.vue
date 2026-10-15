@@ -95,7 +95,7 @@
 </template>
 
 <script setup lang="ts">
-import { confirmAction } from '@/modal/confirm'
+import { confirmDialog } from '@/components/obsidian/dialogs'
 import ObsidianModal from './obsidian/Modal.vue'
 import ObsidianButton from './obsidian/Button.vue'
 import Setting from './obsidian/Setting.vue'
@@ -267,7 +267,7 @@ const parseTask = (line: string): ParsedTask => {
 
 const promptProceeding = async () => {
   if (
-    await confirmAction(GlobalStore.getInstance().app, {
+    await confirmDialog({
       title: 'Migrate from Dataview',
       message: 'Do you have backups of your notes? Proceeding will remove tasks from your notes.',
       confirmText: 'Proceed',

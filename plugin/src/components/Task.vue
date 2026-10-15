@@ -136,7 +136,7 @@
 </template>
 
 <script setup lang="ts">
-import { confirmAction } from '@/modal/confirm'
+import { confirmDialog } from '@/components/obsidian/dialogs'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { DISPLAY_DATE_FORMAT } from '@/constants/dates'
 import { compactDate } from '@/helpers/datesHelper'
@@ -397,7 +397,7 @@ const onContextMenu = (e: MouseEvent) => {
       .setIcon('trash')
       .onClick(async () => {
         if (
-          await confirmAction(GlobalStore.getInstance().app, {
+          await confirmDialog({
             title: 'Delete task',
             message: 'Are you sure you want to delete this task?',
           })

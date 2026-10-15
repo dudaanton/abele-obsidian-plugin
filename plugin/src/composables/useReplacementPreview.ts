@@ -9,7 +9,7 @@ import {
   replacementFrontmatter,
   type ReplacementPreview,
 } from '@/helpers/bulkReplacement'
-import { confirmAction } from '@/modal/confirm'
+import { confirmDialog } from '@/components/obsidian/dialogs'
 
 /** Both entry points preview the same source snapshot and apply the same checked writes. */
 export function useReplacementPreview() {
@@ -83,7 +83,7 @@ export function useReplacementPreview() {
   const replace = async () => {
     const results = [...searchResults.value]
     if (
-      await confirmAction(GlobalStore.getInstance().app, {
+      await confirmDialog({
         title: 'Apply changes',
         message: `Are you sure you want to apply the changes to ${results.length} notes?`,
         confirmText: 'Apply changes',
