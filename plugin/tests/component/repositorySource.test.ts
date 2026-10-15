@@ -26,7 +26,7 @@ const globalFor = (source: InMemoryRepository) => ({
 beforeEach(() => useVault([]))
 
 describe('shared repository components with an in-memory source', () => {
-  it('loads the whole repository tab, its tree and source breadcrumbs without a client', async () => {
+  it('loads the whole repository tab and its source breadcrumbs without a client, its files tree being the node panel’s', async () => {
     const source = new InMemoryRepository(HEAD, { 'src/app.ts': 'export const value = 42\n' })
     const model: GithubViewModel = reactive({
       url: '',
@@ -45,7 +45,8 @@ describe('shared repository components with an in-memory source', () => {
     })
     await flushPromises()
     expect(wrapper.text()).toContain('export const value = 42')
-    expect(wrapper.find('.tree-item-self[data-path="src/app.ts"]').exists()).toBe(true)
+    // A node-backed source has no tree beside the tab: its files are in the node's side panel.
+    expect(wrapper.find('.abele-github-tree').exists()).toBe(false)
     expect(
       wrapper.findAll('.abele-github-crumbs__link').map((link) => link.attributes('href'))
     ).toEqual(['memory:tree/main/', 'memory:tree/main/src'])

@@ -9,6 +9,7 @@ import * as publication from '../e2e/helpers/canvasPublicationReview'
 import { outwardBoxShadowReach } from '../helpers/focusRingPaint'
 import { recipientLayoutProbe } from '../helpers/keyDestinationLayoutProbe'
 import * as chatProbeInteractions from '../helpers/chatProbeInteractions'
+import { NODE_PANEL, NODE_PANEL_FIXTURE } from '../e2e/helpers/nodePanelFixture'
 
 it.each([
   ['dialogRings', 'script'],
@@ -39,6 +40,9 @@ it.each([
     WORD_SAMPLE: '',
     fixtureId: 'sample-fixture',
     CANVAS_SCREENS: ['sample review', 'sample confirmation'],
+    NODE_PANEL,
+    NODE_PANEL_FIXTURE,
+    NODE_PANEL_SCREENS: ['node panel', 'node panel files'],
   }
   const script = new Function(...Object.keys(scope), `return ${template}`)(...Object.values(scope))
   expect(() => new Function(`return ${script}`)).not.toThrow()

@@ -125,6 +125,7 @@ it.each([
     how: '',
     desktopChecks: true,
     baseUrl: 'http://127.0.0.1:1234/v1',
+    realpathSync: (path: string) => path,
   }
   const values = new Proxy(scope, {
     has: () => true,
