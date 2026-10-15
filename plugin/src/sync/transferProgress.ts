@@ -24,13 +24,13 @@ export class TransferProgress {
     private readonly now = Date.now,
     private readonly schedule?: (work: () => void, delay: number) => () => void
   ) {}
-  begin(stage: string): void {
+  begin(stage: string, countBytes = true): void {
     this.paths.clear()
     this.completed.clear()
     this.ranges.clear()
     this.started = this.now()
     this.samples = 0
-    this.snapshot = { stage, completed: 0, bytes: 0 }
+    this.snapshot = { stage, completed: 0, ...(countBytes ? { bytes: 0 } : {}) }
     this.publish(true)
   }
   get stage(): string | undefined {
@@ -48,9 +48,10 @@ export class TransferProgress {
     if (!this.snapshot) return
     this.snapshot.total = this.paths.size
     this.snapshot.totalKnown = known
-    this.snapshot.totalBytes = known
-      ? [...this.paths.values()].reduce((a, b) => a + b, 0)
-      : undefined
+    this.snapshot.totalBytes =
+      known && this.snapshot.bytes !== undefined
+        ? [...this.paths.values()].reduce((a, b) => a + b, 0)
+        : undefined
     this.publish(true)
   }
   counts(completed: number, total: number): void {
@@ -106,6 +107,9 @@ export class TransferProgress {
     this.snapshot = undefined
     this.changed()
   }
+  refresh(): void {
+    this.publish(true)
+  }
   private publish(force = false): void {
     const now = this.now()
     if (!this.snapshot) return
@@ -140,13 +144,15 @@ export class TransferProgress {
 }
 
 export function transferText(one: TransferSnapshot): string {
+  const [single, plural] =
+    one.stage === 'Preparing folders' ? ['folder', 'folders'] : ['file', 'files']
   const total = one.total
   let text =
     one.stage +
     ' · ' +
     (total === undefined
-      ? `${one.completed} files`
-      : `${one.completed} of ${one.totalKnown === false ? 'at least ' : ''}${total} ${total === 1 ? 'file' : 'files'}`)
+      ? `${one.completed} ${one.completed === 1 ? single : plural}`
+      : `${one.completed} of ${one.totalKnown === false ? 'at least ' : ''}${total} ${total === 1 ? single : plural}`)
   if (one.bytes !== undefined) {
     const units = ['B', 'KB', 'MB', 'GB']
     const size = Math.max(one.bytes, one.totalBytes ?? 0)

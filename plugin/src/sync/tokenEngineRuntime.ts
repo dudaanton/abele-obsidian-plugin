@@ -132,6 +132,34 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   private readonly pullPaths = new Set<string>()
   private readonly pulledPaths = new Set<string>()
   private readonly progress: TransferProgress
+  private readonly folderProgress: TransferProgress
+  private readonly pendingFolders = new Set<string>()
+  private preparingFolders(paths: string[]): void {
+    paths = paths.filter(
+      (path) =>
+        this.client.includes(path) &&
+        !this.ignore?.ignores(path + '/') &&
+        !this.selective.excludedFolders.some(
+          (folder) => path === folder || path.startsWith(folder + '/')
+        )
+    )
+    if (!paths.length) return
+    this.pendingFolders.clear()
+    this.folderProgress.begin('Preparing folders', false)
+    for (const path of paths) {
+      this.pendingFolders.add(path)
+      this.folderProgress.add(path, 0)
+    }
+    this.folderProgress.inventoryComplete()
+  }
+  private folderPrepared(path: string): void {
+    if (!this.pendingFolders.delete(path)) return
+    this.folderProgress.done(path)
+    if (!this.pendingFolders.size) {
+      this.folderProgress.clear()
+      this.progress.refresh()
+    }
+  }
   private readonly incomingNames = new Map<string, string>()
   private readonly receivedPaths = new Set<string>()
   private readonly uploadNames = new Map<string, string>()
@@ -158,7 +186,19 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   private readonly selective: SelectiveSettings
   constructor(private readonly options: TokenEngineOptions) {
     this.progress = new TransferProgress(
-      (one) => options.progress?.(one),
+      (one) => {
+        if (!this.pendingFolders.size) options.progress?.(one)
+      },
+      Date.now,
+      (work, delay) => {
+        const timer = window.setTimeout(work, delay)
+        return () => window.clearTimeout(timer)
+      }
+    )
+    this.folderProgress = new TransferProgress(
+      (one) => {
+        if (one) options.progress?.(one)
+      },
       Date.now,
       (work, delay) => {
         const timer = window.setTimeout(work, delay)
@@ -267,6 +307,9 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
                 this.progress.add(item.path, item.size)
               }
             this.progress.inventoryComplete(page.next === null)
+            this.preparingFolders(
+              page.items.filter((item) => item.kind === 'directory').map((item) => item.path)
+            )
             await options.preparePlacement?.(incomingPaths)
             const items: V2ManifestItem[] = []
             for (const item of page.items)
@@ -275,6 +318,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
                 items.push(item)
                 if (!incoming.has(item.path)) this.pulled(item.path)
               } else {
+                if (item.kind === 'directory') this.folderPrepared(item.path)
                 this.progress.done(item.path)
                 if (this.pulling) {
                   this.pulledPaths.add(item.path)
@@ -311,6 +355,11 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
                 this.progress.add(event.item.path, event.item.size)
               }
             this.progress.inventoryComplete(page.next === null)
+            this.preparingFolders(
+              page.items.flatMap((event) =>
+                event.type === 'content' && event.item.kind === 'directory' ? [event.item.path] : []
+              )
+            )
             await options.preparePlacement?.(incomingPaths)
             const items: V2Change[] = []
             for (const event of page.items) {
@@ -323,6 +372,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
                   : await this.reviewDeparture(event)
               if (!reviewed) items.push(event)
               else if (event.type === 'content') {
+                if (event.item.kind === 'directory') this.folderPrepared(event.item.path)
                 this.progress.done(event.item.path)
                 options.event?.('Received for review ' + event.item.path)
               }
@@ -358,6 +408,8 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
         }
       }
       this.pulling = (await state.getCursor()) === 0
+      this.folderProgress.clear()
+      this.pendingFolders.clear()
       this.progress.begin('Downloading')
       this.incomingNames.clear()
       this.receivedPaths.clear()
@@ -515,7 +567,8 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
             }
           if (name === 'mkdir' && target.mkdir)
             return async (path: string) => {
-              await target.mkdir(path)
+              await this.trace.run('mkdir ' + path, () => target.mkdir(path), true)
+              this.folderPrepared(path)
               this.pulled(path)
             }
           if (name === 'beginAtomicWrite' && target.beginAtomicWrite)
@@ -538,6 +591,12 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
               })
             }
           const value = Reflect.get(target, name)
+          if (
+            name === Symbol.for('abele.sync.directory-identity-v1') &&
+            typeof value === 'function'
+          )
+            return (path: string) =>
+              this.trace.run('directory identity ' + path, () => value.call(target, path), true)
           if ((name === 'list' || name === 'listDirectories') && typeof value === 'function') {
             const trace = this.trace
             const inventoried = (completed: number) => {
@@ -599,6 +658,8 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       ...(options.paths?.scriptsFolder ? { scriptsFolder: options.paths.scriptsFolder } : {}),
       ...(options.fallbackMs ? { fallbackMs: options.fallbackMs } : {}),
       onSync: (report) => {
+        this.pendingFolders.clear()
+        this.folderProgress.clear()
         this.progress.clear()
         this.pulling = false
         options.pulling?.()
@@ -608,6 +669,8 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
         void this.outbox.drain().catch(() => options.publicationChanged?.())
       },
       onFail: (error) => {
+        this.pendingFolders.clear()
+        this.folderProgress.clear()
         options.event?.('Error: ' + connectionError(error))
         this.progress.clear()
         this.pulling = false
@@ -743,6 +806,10 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   private isRoot(): boolean {
     const scope = this.authority?.scope ?? this.token.scope
     return scope.kind === 'folder' && scope.path === '/'
+  }
+  folderScope(): string | undefined {
+    const scope = this.authority?.scope ?? this.token.scope
+    return scope.kind === 'folder' ? scope.path : undefined
   }
   private async refreshHolds(): Promise<void> {
     const latest = new Map<string, ExecutableCandidate>()
@@ -1094,7 +1161,9 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   }
   invalidate(): void {
     this.active = false
+    this.pendingFolders.clear()
     this.progress.clear()
+    this.folderProgress.clear()
     this.requests.abort()
   }
   async close(): Promise<void> {

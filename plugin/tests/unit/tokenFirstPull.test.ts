@@ -12,6 +12,7 @@ import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { ExecutableReview } from '@/sync/executableReview'
 import { AttachmentConsent } from '@/sync/attachmentConsent'
 import { buildFakeVault } from '../helpers/fakeVault'
+import type { TransferSnapshot } from '@/sync/transferProgress'
 
 it.each([
   { host: false, reconnect: false, count: 1003 },
@@ -113,14 +114,22 @@ it.each([
       throw new Error('Unexpected request: ' + url.pathname + ' ' + String(init?.body))
     }
     const app = buildFakeVault(
-      Array.from({ length: 120 }, (_, i) => ({
-        path: 'Existing/section-' + i + '/local.md',
+      Array.from({ length: host ? 120 : 4096 }, (_, i) => ({
+        path: host
+          ? 'Existing/section-' + i + '/local.md'
+          : 'Existing/section-' + (i % 64) + '/local-' + i + '.md',
         content: 'untouched',
       }))
     )
-    const fs = new ObsidianFileSystem(app as unknown as App, { preserveEmptyDirectories: true })
+    const fs = new ObsidianFileSystem(app as unknown as App, {
+      preserveEmptyDirectories: true,
+      fileScope: scope.path,
+    })
+    const globalFiles = vi.spyOn(app.vault, 'getFiles')
+    const reads = vi.spyOn(app.vault.adapter, 'readBinary')
     const scans = vi.spyOn(ObsidianFileSystem.prototype, 'listDirectories')
     const progress: { stage: string; completed: number; total: number }[] = []
+    const transfers: TransferSnapshot[] = []
     const metadata = new MemoryStateStore()
     const reviews = {
       executables: new ExecutableReview(metadata),
@@ -140,6 +149,9 @@ it.each([
       reviews,
       pulling: (one) => {
         if (one) progress.push(one)
+      },
+      progress: (one) => {
+        if (one) transfers.push(one)
       },
       fetch: fetchPort,
       changed: () => {},
@@ -162,6 +174,7 @@ it.each([
           fetchPort
         )
       } else await runtime.sync()
+      const syncReads = [...reads.mock.calls]
       expect(await app.vault.adapter.exists(code.path)).toBe(false)
       const activeReviews = fixture?.ui.reviews ?? reviews
       const [candidate] = await activeReviews.executables.pending()
@@ -170,18 +183,41 @@ it.each([
         expect(await app.vault.adapter.read(item.path)).toBe(new TextDecoder().decode(bytes))
       for (const item of directories)
         expect(await app.vault.adapter.stat(item.path)).toMatchObject({ type: 'folder' })
-      expect(await app.vault.adapter.read('Existing/section-0/local.md')).toBe('untouched')
+      expect(
+        await app.vault.adapter.read(
+          host ? 'Existing/section-0/local.md' : 'Existing/section-0/local-0.md'
+        )
+      ).toBe('untouched')
       expect(
         requests
           .filter((url) => url.pathname === '/v2/manifest')
           .map((url) => url.searchParams.get('next'))
       ).toEqual(count > 1000 ? [null, '1000'] : [null])
-      if (!host)
+      if (!host) {
+        expect(globalFiles).not.toHaveBeenCalled()
+        expect(syncReads.some(([path]) => path.startsWith('Existing/'))).toBe(false)
+        expect(
+          transfers.some((one) => one.stage === 'Preparing folders' && one.completed > 0)
+        ).toBe(true)
+        expect(
+          transfers.some(
+            (one) => one.stage === 'Downloading' && (one.total ?? 0) > 0 && !one.totalKnown
+          )
+        ).toBe(true)
+        expect(
+          transfers.some(
+            (one) =>
+              one.stage === 'Downloading' &&
+              one.completed === files.length + 1 &&
+              (one.bytes ?? 0) > 0
+          )
+        ).toBe(true)
         expect(progress.at(-1)).toEqual({
           stage: 'Receiving files',
           completed: items.length,
           total: items.length,
         })
+      }
       expect(scans.mock.calls.length).toBeLessThanOrEqual(2)
       if (fixture && reconnect) {
         const firstScans = scans.mock.calls.length
@@ -206,6 +242,8 @@ it.each([
       else await activeReviews.executables.approve([candidate.id], runtime)
       expect(await app.vault.adapter.read(code.path)).toBe(new TextDecoder().decode(bytes))
     } finally {
+      globalFiles.mockRestore()
+      reads.mockRestore()
       await fixture?.close()
       await runtime.disconnect()
       vi.restoreAllMocks()

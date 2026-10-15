@@ -11,6 +11,7 @@ import type { ExecutableCandidate, ExecutableApplyPort } from './executableRevie
 import type { ConsentResolvePort, AttachmentQuestion } from './attachmentConsent'
 import type { openDeviceReviews } from './openDeviceReviews'
 import { reviewSourceOf, sourceIdentity, type ReviewSource } from './reviewState'
+import { transferText } from './transferProgress'
 
 export function connectionError(error: unknown): string {
   const native = nativeSyncFailure(error)
@@ -164,6 +165,8 @@ export function connectionStatusText(
   }
   if (activity?.inspection)
     return `Checking the vault… ${activity.inspection.completed}/${activity.inspection.total}`
+  if (!row.paused && row.status === 'syncing' && activity?.transfer)
+    return transferText(activity.transfer)
   if (activity?.comparison)
     return `Comparing files ${activity.comparison.completed}/${activity.comparison.total}`
   if (

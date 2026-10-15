@@ -448,6 +448,12 @@ export class TokenEngines {
       )
       assertActive()
       const ordinary = new ObsidianFileSystem(this.app, {
+        fileScope: () =>
+          runtime
+            ? runtime.folderScope()
+            : record.scope.kind === 'folder'
+              ? record.scope.path
+              : undefined,
         startupInventory: () => inventory,
         runtimeFence: fence,
         ledger: state,
@@ -530,9 +536,13 @@ export class TokenEngines {
           pathCoordinatorOf(this.app.vault),
           () => fence.assertReady(),
           async (paths) => {
-            const affected = new Set(paths)
-            for await (const info of ordinary.placementFiles(paths)) affected.add(info.path)
-            await editCopiesOf(this.app.vault).capture(ordinary, [...affected])
+            const capture = async () => {
+              const affected = new Set(paths)
+              for await (const info of ordinary.placementFiles(paths)) affected.add(info.path)
+              await editCopiesOf(this.app.vault).capture(ordinary, [...affected])
+            }
+            if (runtime) await runtime.trace.run('preserve local edit copies', capture, true)
+            else await capture()
           }
         )
         if (!this.ui.reviews) throw new Error('Device reviews are not available')

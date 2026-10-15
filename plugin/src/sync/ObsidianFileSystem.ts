@@ -1,6 +1,7 @@
 import { privateRecoveryDirectory } from './privateRecovery'
 import { sha256 } from './external/hash'
 import type { App, DataAdapter, ListedFiles, Stat } from 'obsidian'
+import { TFile, TFolder } from 'obsidian'
 import {
   EngineError,
   type FileInfo,
@@ -52,6 +53,8 @@ const IGNORE_FILE = '.abele-sync-ignore'
 const stageOperations = new WeakMap<object, Set<string>>()
 
 export interface ObsidianFileSystemOptions {
+  /** Ordinary enumeration is bounded before representation inspection for folder tokens. */
+  fileScope?: string | (() => string | undefined)
   startupInventory?: () => ReadonlyMap<string, FileInfo> | undefined
   preserveEmptyDirectories?: boolean
   /** The startup/ownership fence, owned by the engine host. */
@@ -127,6 +130,7 @@ export interface ObsidianFileSystemOptions {
  * paths it hands over; they go to the adapter exactly as they came.
  */
 export class ObsidianFileSystem implements FileSystem {
+  private readonly fileScope?: ObsidianFileSystemOptions['fileScope']
   private readonly directories: VaultDirectories
   private readonly preserveEmptyDirectories: boolean
   private readonly pollMs: number
@@ -172,6 +176,7 @@ export class ObsidianFileSystem implements FileSystem {
     this.configRevision = adapterConfigRevision(app.vault.adapter, app.vault.configDir)
     this.cachedConfigRevision = this.configRevision()
     this.preserveEmptyDirectories = options.preserveEmptyDirectories ?? false
+    this.fileScope = options.fileScope
     this.startupInventory = options.startupInventory
     this.runtimeFence = options.runtimeFence ?? null
     this.externalCoordination = externalCoordinationOf(app.vault)
@@ -384,13 +389,23 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   async *list(): AsyncIterable<FileInfo> {
+    const requestedScope = typeof this.fileScope === 'function' ? this.fileScope() : this.fileScope
+    const scope = requestedScope && requestedScope !== '/' ? requestedScope : undefined
     this.runtimeFence?.assertReady()
     await this.recover()
     const mutations = folderMutations(this.app.vault)
     await mutations.settled()
     const revision = mutations.revision
     const indexed = new Set<string>()
-    for (const file of this.app.vault.getFiles()) {
+    const withinScope = (path: string) =>
+      !scope || caseKey(path) === caseKey(scope) || caseKey(path).startsWith(caseKey(scope) + '/')
+    const walk = function* (entry: TFile | TFolder): Generator<TFile> {
+      if (entry instanceof TFile) yield entry
+      else for (const child of entry.children) yield* walk(child as TFile | TFolder)
+    }
+    const root = scope ? this.app.vault.getAbstractFileByPath(scope) : null
+    const files = scope ? (root ? walk(root as TFile | TFolder) : []) : this.app.vault.getFiles()
+    for (const file of files) {
       if (isAdapterTemp(file.path)) continue
       if (this.awaitingIndex.has(file.path)) {
         const actual = await this.rawStat(file.path)
@@ -411,6 +426,7 @@ export class ObsidianFileSystem implements FileSystem {
       for await (const entry of this.ledger.all()) candidates.add(entry.path)
     }
     for (const path of candidates) {
+      if (!withinScope(path)) continue
       if (indexed.has(caseKey(path)) || path.startsWith(`${this.configDir}/`)) {
         continue
       }
@@ -425,29 +441,31 @@ export class ObsidianFileSystem implements FileSystem {
       if ((info === null || actual !== path) && !this.app.vault.getFileByPath(path))
         this.awaitingIndex.delete(path)
     }
-    const configRevision = this.configRevision()
-    if (this.cachedConfigRevision !== configRevision) {
-      this.configInventory = null
-      this.inventoryConsumed = true
+    if (!scope) {
+      const configRevision = this.configRevision()
+      if (this.cachedConfigRevision !== configRevision) {
+        this.configInventory = null
+        this.inventoryConsumed = true
+      }
+      if (!this.startupInventory) this.configInventory = null
+      if (this.configInventory === null) {
+        const inventory = this.inventoryConsumed ? undefined : this.startupInventory?.()
+        this.inventoryConsumed = true
+        this.configInventory = inventory
+          ? [...inventory.values()]
+              .filter(
+                (info) =>
+                  info.path.startsWith(this.configDir + '/') &&
+                  !isAdapterTemp(info.path) &&
+                  !info.path.startsWith(stagingDirectory(this.configDir) + '/') &&
+                  !info.path.startsWith(privateRecoveryDirectory(this.configDir) + '/')
+              )
+              .map((info) => ({ ...info, mtime: stamp(info.mtime) }))
+          : await this.readConfigInventory()
+        this.cachedConfigRevision = configRevision
+      }
+      for (const info of this.configInventory) yield await this.told(info, true)
     }
-    if (!this.startupInventory) this.configInventory = null
-    if (this.configInventory === null) {
-      const inventory = this.inventoryConsumed ? undefined : this.startupInventory?.()
-      this.inventoryConsumed = true
-      this.configInventory = inventory
-        ? [...inventory.values()]
-            .filter(
-              (info) =>
-                info.path.startsWith(this.configDir + '/') &&
-                !isAdapterTemp(info.path) &&
-                !info.path.startsWith(stagingDirectory(this.configDir) + '/') &&
-                !info.path.startsWith(privateRecoveryDirectory(this.configDir) + '/')
-            )
-            .map((info) => ({ ...info, mtime: stamp(info.mtime) }))
-        : await this.readConfigInventory()
-      this.cachedConfigRevision = configRevision
-    }
-    for (const info of this.configInventory) yield await this.told(info, true)
     if (mutations.revision !== revision) {
       throw new EngineError(
         'io',

@@ -4,6 +4,25 @@ import { connectionLine } from '@/sync/connectionLine'
 import { tokenUiFixture } from '@/testing/tokenUiFixture'
 import { tokenStatus } from '@/sync/tokenStatus'
 import { statusText } from '@/sync/status'
+import { connectionStatusText } from '@/sync/tokenUi'
+
+it('reports transfer facts through the synchronous status snapshot formatter too', () => {
+  expect(
+    connectionStatusText(
+      { status: 'syncing', paused: false },
+      {
+        transfer: {
+          stage: 'Downloading',
+          completed: 20,
+          total: 100,
+          totalKnown: true,
+          bytes: 1024,
+          totalBytes: 2048,
+        },
+      }
+    )
+  ).toBe('Downloading · 20 of 100 files · 1 of 2 KB')
+})
 
 it('uses the short transfer form in the status bar', () => {
   const ui = tokenUiFixture()
