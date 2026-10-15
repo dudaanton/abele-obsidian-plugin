@@ -4,6 +4,7 @@ import { openSyncedFile } from './sync/openSyncedFile'
 import { MarkdownPostProcessorContext, Notice, Plugin, Platform } from 'obsidian'
 import { setKeyboardDiagnostics } from '@/helpers/keyboardDiagnostics'
 import { applySettingsLook } from '@/helpers/settingsLook'
+import { enlargeSettingsWindow } from '@/helpers/settingsWindowSize'
 import './styles.css'
 import { GlobalStore } from './stores/GlobalStore'
 import { registerFocusRelease } from './helpers/fieldFocus'
@@ -472,6 +473,11 @@ export default class AbelePlugin extends Plugin {
       // Announce before layout-ready so cold-start links wait for the first pull.
 
       startupStep('settings look', () => applySettingsLook(AbeleConfig.getInstance()))
+      // Obsidian opens its settings window at 900×700 on any screen; ask for more where there is room.
+      startupStep('settings window', () => {
+        if (Platform.isDesktopApp)
+          this.register(enlargeSettingsWindow((this.app as any).setting ?? {}, window))
+      })
       this.app.workspace.onLayoutReady(() => startupStep('sync', () => this.initSync()))
 
       // The store takes the week start and the rest of what it draws from out of the settings.
