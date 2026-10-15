@@ -4,6 +4,7 @@ import { NodeScopeLedger } from '@/ai/nodeScope'
 import type { ChatSession } from '@/ai/ChatSession'
 import type { RepositorySource } from '@/repository/source'
 import type { NodeAgentHost } from '@/ai/tools/node/agent'
+import { NodeAccessRefusalError } from '@/ai/tools/node/accessRefusal'
 
 function setup() {
   const session = {
@@ -159,6 +160,17 @@ describe('the node tools a person switches on in the agent settings', () => {
     expect(Object.keys(read.parameters.properties)).toEqual(
       expect.arrayContaining(['path', 'start_line', 'ref', 'target_kind'])
     )
+  })
+  it('refuses with the place it wanted when a chat without node access names no open repository tab', async () => {
+    const { call } = setup()
+    const failure = await call('node_read', { project: 'unknown-project' }).catch((e: unknown) => e)
+    expect(failure).toBeInstanceOf(NodeAccessRefusalError)
+    expect((failure as NodeAccessRefusalError).refusal).toEqual({
+      kind: 'no-access',
+      node_id: 'sample-node',
+      project_id: 'unknown-project',
+      target: { kind: 'worktree', worktree_id: 'other-tree' },
+    })
   })
   it('says how the person gives node access when a chat without it names no open repository tab', async () => {
     const { call } = setup()

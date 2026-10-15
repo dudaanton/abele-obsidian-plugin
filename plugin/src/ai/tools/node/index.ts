@@ -5,6 +5,7 @@ import { RepositoryWriteSchema } from '@abele/node-protocol'
 import { createNodeAgentTools, type NodeAgentHostFactory } from './agent'
 import { GIVE_ACCESS } from './guidance'
 import { nodeAgentHost } from './owner'
+import { NodeAccessRefusalError } from './accessRefusal'
 import { hasNodeScope } from '../../nodeScope'
 const scopeState = (session: ChatSession) =>
   JSON.stringify([hasNodeScope(session), session.overrides?.value.nodeScope])
@@ -434,10 +435,24 @@ export function createNodeTools(
               i.workspace === workspace
             )
           })
-          if (!tab)
-            throw new Error(
-              `No repository source open in Obsidian has these IDs; node_views lists the open repository tabs. To reach node files without an open tab this chat needs node access: ${GIVE_ACCESS}`
+          if (!tab) {
+            // The place the call named, as the node knows itself, for the line under the call.
+            let nodeId = node
+            try {
+              nodeId = (await factory()).nodeId?.(node) ?? node
+            } catch {
+              /* No node host here: the id as called is all there is. */
+            }
+            throw new NodeAccessRefusalError(
+              `No repository source open in Obsidian has these IDs; node_views lists the open repository tabs. To reach node files without an open tab this chat needs node access: ${GIVE_ACCESS}`,
+              {
+                kind: 'no-access',
+                node_id: nodeId,
+                project_id: project,
+                target: { kind: 'worktree', worktree_id: workspace },
+              }
             )
+          }
           checks.push(await scopedSourceGuard(tab))
           guard()
           if (

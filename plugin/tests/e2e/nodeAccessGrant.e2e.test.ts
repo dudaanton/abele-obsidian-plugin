@@ -165,7 +165,7 @@ async function refusalToGrant(form: 'desktop' | 'phone') {
       expect(refused.error, JSON.stringify(refused)).toBeUndefined()
       const call = refused.calls.at(-1)!
       expect(call.name).toBe('node_read')
-      expect(call.result).toMatch(/not in this chat's node access/)
+      expect(call.result).toMatch(/this chat needs node access|not in this chat's node access/)
       expect(call.refusal?.kind, JSON.stringify(refused)).toBe('no-access')
 
       // The line under the call names the place, not its ids, and offers the one press.
