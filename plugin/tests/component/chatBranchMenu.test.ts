@@ -26,15 +26,12 @@ const choices: BranchChoice[] = [
   },
 ]
 
-let shown: Menu | null = null
-const show = vi.spyOn(Menu.prototype, 'showAtPosition').mockImplementation(function (this: Menu) {
-  // eslint-disable-next-line @typescript-eslint/no-this-alias
-  shown = this
-  return this
-})
+const show = vi.spyOn(Menu.prototype, 'showAtPosition')
+
+/** The menu the switch placed last: the `this` of its `showAtPosition` call. */
+const shownMenu = () => (show.mock.contexts.at(-1) as Menu | undefined) ?? null
 
 afterEach(() => {
-  shown = null
   show.mockClear()
 })
 
@@ -51,6 +48,7 @@ async function openMenu() {
     attachTo: document.body,
   })
   await wrapper.find('.abele-chat-branch__count').trigger('click')
+  const shown = shownMenu()
   expect(shown).not.toBeNull()
   return { wrapper, menu: shown!, titles: shown!.items.slice(0, 2).map(titleOf) }
 }
