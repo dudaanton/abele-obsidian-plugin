@@ -216,8 +216,9 @@ describe.skipIf(!available)('the canvas by hand', () => {
     await input(middle('beta'))
     const point = `view().contentEl.querySelector('.abele-canvas-connect-point[data-side="bottom"]')`
     await until(point)
+    // Let go just inside the shape's top: the connection sticks to the edge nearest the pointer.
     const from = mark(point)!,
-      to = middle('gamma')
+      to = screen(410, 275)
     if (onPhone()) swipe(from[0], from[1], to[0], to[1])
     else
       await cdp(`
@@ -232,7 +233,7 @@ describe.skipIf(!available)('the canvas by hand', () => {
     }
     await saved()
     await until(
-      `(await read()).edges.some(e=>e.fromNode==='beta'&&e.toNode==='gamma'&&e.fromSide==='bottom')`
+      `(await read()).edges.some(e=>e.fromNode==='beta'&&e.toNode==='gamma'&&e.fromSide==='bottom'&&e.toSide==='top')`
     )
     const gap = run<number[]>(`
       const v=view().viewer,c=v.camera,r=v.stage.getBoundingClientRect(),b=v.graph.nodes.find(n=>n.id==='beta'),g=v.graph.nodes.find(n=>n.id==='gamma')
