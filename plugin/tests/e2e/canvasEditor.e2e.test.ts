@@ -37,11 +37,12 @@ const press = async (expression: string, corner = false) => {
     // action rather than tapping the Notice. Card frames intentionally pass input to the stage.
     if(!el.contains(hit)&&!(el.matches('.abele-canvas-card-frame')&&el.closest('.abele-canvas-stage')?.contains(hit)))return null;
     return [x,y]`
+  // A long menu is a sheet on a phone that scrolls: an item below its fold (Remove from canvas,
+  // last in a card's More) is scrolled to, as a person swipes the sheet up, then pressed in sight.
+  const reach = `const at=(()=>{${geometry}})();if(!at){const el=${expression};if(el?.closest('.menu'))el.scrollIntoView({block:'nearest'})}return at`
   // The place found when it was first reachable, not asked again: a control can move between.
   let found: number[] | null = null
-  await expect
-    .poll(() => (found = run<number[] | null>(geometry)), { timeout: 10_000 })
-    .not.toBeNull()
+  await expect.poll(() => (found = run<number[] | null>(reach)), { timeout: 10_000 }).not.toBeNull()
   const [x, y] = found!
   if (onPhone()) tap(x, y)
   else

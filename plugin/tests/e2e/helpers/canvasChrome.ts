@@ -159,8 +159,91 @@ export function canvasChrome(d: CanvasChromeDriver) {
     const placing = d.run<string>(`return view().editor.controls.tool()`)
     if (placing === 'card' || placing === 'shape') await d.at(emptySpot())
   }
+  /** Waits in the app, up to `ms`, for `expression`; says whether it came. Never throws. */
+  const waitFor = (expression: string, ms = 3000) =>
+    d.run<boolean>(
+      `const end=Date.now()+${ms};while(Date.now()<end){if(${expression})return true;await new Promise(r=>setTimeout(r,100))}return !!(${expression})`
+    )
+  /**
+   * The tool in hand becomes `label`'s, each press let settle before the next is decided. On a
+   * phone a menu slides away before its choice runs, so a choice read too early was pressed twice
+   * and the second press put the tool down again.
+   */
+  async function take(label: string) {
+    const t = TOOLS[label]
+    const holding = `view().editor.controls.tool()===${JSON.stringify(t.tool)}`
+    const gone = `!document.querySelector('.menu')`
+    for (let i = 0; i < 5; i++) {
+      if (d.run<boolean>(`return ${holding}`)) break
+      if (menuOpen()) {
+        if (d.run<boolean>(`return !!${menuItem(t.title)}`)) {
+          await d.press(menuItem(t.title))
+          await waitFor(`${gone}&&${holding}`)
+        } else {
+          closeMenu()
+          await waitFor(gone)
+        }
+        continue
+      }
+      const slot = t.slot.find((s) => shown(tools(s)))
+      await d.press(slot ? tools(slot) : tools('More tools'))
+      await waitFor(`(${holding})||!!${menuItem(t.title)}`)
+    }
+    await d.until(holding)
+  }
+  /**
+   * Where a person puts down something `width` by `height` (in the canvas's units, at its middle):
+   * a free place nearest the stage's middle with room for it whole on the screen, clear of the
+   * controls and of anything standing over the canvas (a phone's floating navigation bar).
+   */
+  function roomFor(width: number, height: number): number[] | null {
+    return d.run<number[] | null>(`
+      const v=view().viewer,s=v.stage.getBoundingClientRect(),c=v.camera,g=v.graph
+      const w=${width / 2}*c.zoom+12,h=${height / 2}*c.zoom+12
+      const left=Math.max(s.left,0),right=Math.min(s.right,innerWidth),top=Math.max(s.top,0),bottom=Math.min(s.bottom,innerHeight)
+      const clear=(x,y)=>{const hit=document.elementFromPoint(x,y);return !!hit&&v.stage.contains(hit)&&!hit.closest('.abele-canvas-chrome,[data-frame-id],[data-card-id]')}
+      const spots=[];for(let fy=0.1;fy<0.95;fy+=0.05)for(let fx=0.1;fx<0.95;fx+=0.05)spots.push([Math.round(s.left+s.width*fx),Math.round(s.top+s.height*fy)])
+      const mid=[(left+right)/2,(top+bottom)/2];spots.sort((a,b)=>Math.hypot(a[0]-mid[0],a[1]-mid[1])-Math.hypot(b[0]-mid[0],b[1]-mid[1]))
+      for(const [x,y] of spots){
+        if(x-w<left||x+w>right||y-h<top||y+h>bottom)continue
+        const x0=c.x+(x-w-s.left)/c.zoom,x1=c.x+(x+w-s.left)/c.zoom,y0=c.y+(y-h-s.top)/c.zoom,y1=c.y+(y+h-s.top)/c.zoom
+        if(g.nodes.some(n=>n.x-20<x1&&n.x+n.width+20>x0&&n.y-20<y1&&n.y+n.height+20>y0))continue
+        if(![[x,y],[x-w,y-h],[x+w,y-h],[x-w,y+h],[x+w,y+h]].every(([px,py])=>clear(px,py)))continue
+        return [x,y]}
+      return null`)
+  }
+  /** Default sizes of what the placing tools put down, as the editor puts them. */
+  const PLACED: Record<string, { tool: string; width: number; height: number }> = {
+    'Add canvas shape': { tool: 'shape', width: 200, height: 120 },
+    'Add text card': { tool: 'card', width: 260, height: 120 },
+  }
+  /**
+   * A card or shape taken in hand and put down where it fits whole on the screen, so its field can
+   * be pressed and written in; only when no such place is left, on any empty place.
+   */
+  async function put(label: string) {
+    const p = PLACED[label]
+    const placing = `view().editor.controls.tool()===${JSON.stringify(p.tool)}`
+    if (!d.run<boolean>(`return ${placing}`)) {
+      if (label === 'Add canvas shape')
+        await d.press(startsWith('.abele-canvas-chrome__tools', 'Shape: '))
+      else if (shown(tools(ADDS[label].slot))) await d.press(tools(ADDS[label].slot))
+      else await menu(tools('More tools'), ADDS[label].title)
+      await d.until(placing)
+    }
+    await d.at(roomFor(p.width, p.height) ?? emptySpot())
+  }
   return {
     emptySpot,
+    roomFor,
+    take,
+    put,
+    /** As `click`, but a tool is taken and a card or shape put down by `take` and `put`. */
+    act(label: string, allowDisabled = false): Promise<void> {
+      if (TOOLS[label]) return take(label)
+      if (PLACED[label]) return put(label)
+      return this.click(label, allowDisabled)
+    },
     at: d.at,
     tool,
     /** Presses whatever does `label` now; `allowDisabled` presses it even while it may not run. */

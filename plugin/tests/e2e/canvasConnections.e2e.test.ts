@@ -43,9 +43,13 @@ const input = async (from: number[], to = from) => {
     )
 }
 const press = async (expression: string) => {
+  // A long menu is a sheet on a phone that scrolls: an item below its fold is scrolled to, as a
+  // person swipes it up, and pressed once it is in sight.
   const geometry = `const el=${expression};if(!el)return null;const r=el.getBoundingClientRect();
     const x=Math.round(r.left+r.width/2),y=Math.round(r.top+r.height/2),hit=document.elementFromPoint(x,y);
-    if(!r.width||!r.height||r.left<0||r.top<0||r.right>innerWidth||r.bottom>innerHeight||!el.contains(hit))return null;return [x,y]`
+    if(!r.width||!r.height||r.left<0||r.top<0||r.right>innerWidth||r.bottom>innerHeight||!el.contains(hit)){
+      if(el.closest('.menu'))el.scrollIntoView({block:'nearest'});return null}
+    return [x,y]`
   await expect.poll(() => run<number[] | null>(geometry), { timeout: 15_000 }).not.toBeNull()
   await input(run<number[]>(geometry))
 }
@@ -66,8 +70,11 @@ const double = async (at: number[]) => {
     )
 }
 const chrome = canvasChrome({ run, press, until, at: (p) => input(p), phone: onPhone() })
-/** Presses what does `label` on the canvas's tool bar, its column or the bar over the picked. */
-const click = (label: string) => chrome.click(label)
+/**
+ * Presses what does `label` on the canvas's tool bar, its column or the bar over the picked; a
+ * tool is taken and a shape put down with each press let settle, as a phone needs.
+ */
+const click = (label: string) => chrome.act(label)
 const point = (id: string, corner = false): number[] =>
   run(`
   const v=view().viewer,n=v.graph.nodes.find(n=>n.id===${JSON.stringify(id)}),c=v.camera,r=v.stage.getBoundingClientRect()
@@ -91,7 +98,7 @@ const type = async (text: string) => {
       .poll(
         () => {
           const height =
-            run<number>(`return view().contentEl.contains(document.activeElement)&&document.activeElement.matches('input,textarea')?Math.max(
+            run<number>(`return view().contentEl.contains(document.activeElement)&&document.activeElement.matches('input,textarea,[contenteditable="true"]')?Math.max(
         parseFloat(getComputedStyle(document.body).getPropertyValue('--keyboard-height'))||0,
         window.visualViewport?Math.max(0,innerHeight-visualViewport.height-visualViewport.offsetTop):0):0`)
           stable = height > 1 && height === previous ? stable + 1 : 0
@@ -225,6 +232,9 @@ describe.skipIf(!available)('shapes and connections with real pointer input', ()
     )
     await double(middle)
     await until(`document.activeElement?.matches('.abele-canvas-chrome__label')`)
+    // The field takes the focus after the double tap has ended, which a phone does not answer
+    // with its keyboard: a person taps the field they see to bring the keyboard up.
+    if (onPhone()) await press('view().contentEl.querySelector(".abele-canvas-chrome__label")')
     await type('Next step')
     await expect
       .poll(

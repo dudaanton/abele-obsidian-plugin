@@ -321,7 +321,12 @@ export class CanvasViewer {
       zoom = this.camera.zoom
     if (!width || !height) return
     const top = (inset.top ?? 16) + this.insetTop,
-      bottom = inset.bottom ?? 16,
+      // A phone's floating navigation bar stands over the canvas's foot: kept clear of too.
+      navbar = this.el.ownerDocument.querySelector('.mobile-navbar')?.getBoundingClientRect(),
+      under = navbar?.height
+        ? Math.max(0, this.stage.getBoundingClientRect().bottom - navbar.top)
+        : 0,
+      bottom = (inset.bottom ?? 16) + under,
       side = inset.side ?? 16
     const sx = (region.x - this.camera.x) * zoom,
       sy = (region.y - this.camera.y) * zoom,
