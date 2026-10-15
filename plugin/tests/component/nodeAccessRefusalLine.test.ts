@@ -53,6 +53,19 @@ describe('a refused node call’s line', () => {
     expect(view.find('button').exists()).toBe(false)
   })
 
+  it('names the places Approve confirms before it is pressed', async () => {
+    const view = mount(NodeAccessRefusal, {
+      props: {
+        refusal: { kind: 'not-approved', node_id: 'sample-node' },
+        approves: [
+          { kind: 'project', node_id: 'sample-node', project_id: 'sample-project', access: 'edit' },
+        ],
+      },
+    })
+    await flushPromises()
+    expect(view.text()).toContain('Not approved on this device: sample-project, read and edit')
+  })
+
   it('says to ask again once the access is given, with nothing left to press', async () => {
     const view = await line({ kind: 'no-access', ...place }, true)
     expect(view.text()).toContain('Access given. Ask the agent to try again')

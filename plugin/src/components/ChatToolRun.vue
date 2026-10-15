@@ -39,6 +39,7 @@
     class="abele-chat-run__refusal"
     :refusal="refused"
     :given="nodeAccessGiven?.(refused)"
+    :approves="nodeAccessApproves?.(refused)"
     @act="emit('node-access', $event)"
   />
 </template>
@@ -51,6 +52,7 @@ import Icon from './obsidian/Icon.vue'
 import NodeAccessRefusal from './chat/NodeAccessRefusal.vue'
 import type { NodeAccessRefusal as NodeAccessRefusalData } from '@/ai/tools/node/accessRefusal'
 import type { ChatMessage } from '@/ai/types'
+import type { NodeScopeEntry } from '@/ai/nodeScope'
 import { KIND_ICON, runKind, runState, runSummary, type RunState } from '@/ai/toolRuns'
 
 const props = defineProps<{
@@ -61,6 +63,8 @@ const props = defineProps<{
   forks?: number
   /** Whether the chat has since been given what a refused node call wanted. */
   nodeAccessGiven?: (refusal: NodeAccessRefusalData) => boolean
+  /** What approving a refused call here would confirm: the chat's entries on that node. */
+  nodeAccessApproves?: (refusal: NodeAccessRefusalData) => NodeScopeEntry[]
 }>()
 const emit = defineEmits<{
   (e: 'update:open', open: boolean): void

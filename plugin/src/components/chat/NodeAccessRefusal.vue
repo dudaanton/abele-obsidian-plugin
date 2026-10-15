@@ -21,12 +21,15 @@ import { setTooltip } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'
 import Button from '../obsidian/Button.vue'
 import type { NodeAccessRefusal } from '@/ai/tools/node/accessRefusal'
+import type { NodeScopeEntry } from '@/ai/nodeScope'
 import { nodeScopeNames, nodeScopeTitle, type NodeScopeNames } from '@/ai/tools/node/scopeNames'
 
 const props = defineProps<{
   refusal: NodeAccessRefusal
   /** The chat has since been given what the call wanted. */
   given?: boolean
+  /** For a missing approval: the places its button confirms, named before it is pressed. */
+  approves?: NodeScopeEntry[]
 }>()
 const emit = defineEmits<{ (e: 'act', refusal: NodeAccessRefusal): void }>()
 
@@ -44,6 +47,19 @@ watch(
   { immediate: true }
 )
 const place = computed(() => nodeScopeTitle(names.value))
+/** What Approve would confirm, each place by name with what it allows. */
+const approving = ref<string[]>([])
+watch(
+  () => props.approves,
+  async (list) =>
+    (approving.value = await Promise.all(
+      (list ?? []).map(
+        async (e) =>
+          `${nodeScopeTitle(await nodeScopeNames(e))}, ${e.access === 'edit' ? 'read and edit' : 'read'}`
+      )
+    )),
+  { immediate: true }
+)
 
 const text = computed(() => {
   const r = props.refusal,
@@ -52,7 +68,10 @@ const text = computed(() => {
   if (r.kind === 'no-access' && !r.node_id) return 'This chat has no node access'
   if (r.kind === 'no-access')
     return `No ${r.access === 'edit' ? 'edit ' : ''}access to ${place.value} on the ${n.node} node`
-  if (r.kind === 'not-approved') return 'Not approved on this device'
+  if (r.kind === 'not-approved')
+    return approving.value.length
+      ? `Not approved on this device: ${approving.value.join(' · ')}`
+      : 'Not approved on this device'
   if (r.kind === 'no-worktree')
     return `${n.folder ?? place.value} has no worktree named ${r.wanted ?? 'that'}`
   return `The ${n.node} node is not connected`
@@ -78,7 +97,7 @@ const actionTooltip = computed(() =>
       ? `Open this chat's Node access with ${place.value} chosen`
       : "Open this chat's Node access"
     : props.refusal.kind === 'not-approved'
-      ? 'This chat’s node access came from another device; confirm it here'
+      ? 'This chat’s node access came from another device; confirm these places here'
       : 'Connect or wake the node'
 )
 </script>

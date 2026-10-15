@@ -114,6 +114,16 @@ export function setObsidianChatNodeScope(
 ): Promise<void> {
   return saveNodeScope(session, entries, entries)
 }
+/**
+ * Owner UI only: confirms on this device the chosen entries the chat already has, leaving its
+ * access as it is. A refused call's Approve names exactly these before it is pressed.
+ */
+export function approveObsidianChatNodeAccess(
+  session: ChatSession,
+  chosen: NodeScopeEntry[]
+): Promise<void> {
+  return saveNodeScope(session, nodeScopeEntries(session), chosen)
+}
 async function saveNodeScope(
   session: ChatSession,
   entries: NodeScopeEntry[],

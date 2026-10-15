@@ -129,6 +129,7 @@
           v-if="message.nodeAccessRefusal"
           :refusal="message.nodeAccessRefusal"
           :given="nodeAccessGiven"
+          :approves="nodeAccessApproves"
           @act="emit('node-access', $event)"
         />
         <AiChatMessageDetails
@@ -378,6 +379,7 @@ import StatusDot from './obsidian/StatusDot.vue'
 import AiReplyOriginalDialog from './AiReplyOriginalDialog.vue'
 import NodeAccessRefusal from './chat/NodeAccessRefusal.vue'
 import type { NodeAccessRefusal as Refusal } from '@/ai/tools/node/accessRefusal'
+import type { NodeScopeEntry } from '@/ai/nodeScope'
 import AiChatMessageDetails from './AiChatMessageDetails.vue'
 import AiChatMessageInterceptor from './AiChatMessageInterceptor.vue'
 import { HIGHLIGHT_COLORS, type HighlightColor } from '@/reader/highlights'
@@ -430,6 +432,8 @@ const props = defineProps<{
   replyGone?: string[]
   /** The chat has since been given the access a refused node call wanted. */
   nodeAccessGiven?: boolean
+  /** What approving a refused node call here would confirm, by entry. */
+  nodeAccessApproves?: NodeScopeEntry[]
   /** Whether "Rewind" is offered on a user message: a chat that keeps a rewind log. */
   canRewind?: boolean
   /** This user message's turn changed files that can still be put back. */

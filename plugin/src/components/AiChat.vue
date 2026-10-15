@@ -179,7 +179,8 @@
             :calls="block.calls"
             :open="runOpen(block)"
             :forks="runForks(block)"
-            :node-access-given="(r: NodeAccessRefusal) => accessCovers(nodeAccess, r)"
+            :node-access-given="refusalGiven"
+            :node-access-approves="refusalApproves"
             @update:open="(open) => setRunOpen(block.id, open)"
             @node-access="onNodeAccess"
           >
@@ -515,7 +516,7 @@ import { isChatLog } from '@/ai/chatText'
 import { insertMessageCard } from '@/ai/messageCards'
 import ChatArtifacts from './ChatArtifacts.vue'
 import { NodeScopeEntriesSchema } from '@/ai/nodeScope'
-import { setObsidianChatNodeScope } from '@/ai/tools/node/owner'
+import { approveObsidianChatNodeAccess } from '@/ai/tools/node/owner'
 import { accessCovers, type NodeAccessRefusal } from '@/ai/tools/node/accessRefusal'
 import { pendingNodeAccess } from './chat/nodeAccessPending'
 import { NODE_SIDEBAR_VIEW } from '@/node/nodePathNavigation'
@@ -669,10 +670,8 @@ const messageProps = (msg: ChatMessage) => ({
   replyGone: msg.replyTo
     ?.filter((to) => !messages.value.some((m) => m.id === to.messageId))
     .map((to) => to.messageId),
-  nodeAccessGiven:
-    msg.nodeAccessRefusal?.kind === 'no-access'
-      ? accessCovers(nodeAccess.value, msg.nodeAccessRefusal)
-      : undefined,
+  nodeAccessGiven: msg.nodeAccessRefusal ? refusalGiven(msg.nodeAccessRefusal) : undefined,
+  nodeAccessApproves: msg.nodeAccessRefusal ? refusalApproves(msg.nodeAccessRefusal) : undefined,
   captureLink,
   captureScript,
   scriptMenu: selectionScripts,
@@ -813,9 +812,14 @@ const onNodeAccess = (refusal: NodeAccessRefusal) => {
   const s = session.value
   if (!s) return
   if (refusal.kind === 'not-approved') {
-    void setObsidianChatNodeScope(s, [...nodeAccess.value]).catch(
-      (e: unknown) => new Notice(e instanceof Error ? e.message : 'Could not approve node access')
-    )
+    // Only the places the line named before the press: this node's entries, nothing else synced.
+    const chosen = refusalApproves(refusal)
+    if (!chosen.length) return openSetup('scope')
+    void approveObsidianChatNodeAccess(s, chosen)
+      .then(() => (approvedHere.value = new Set([...approvedHere.value, refusal.node_id])))
+      .catch(
+        (e: unknown) => new Notice(e instanceof Error ? e.message : 'Could not approve node access')
+      )
     return
   }
   if (refusal.kind === 'offline') {
@@ -1055,6 +1059,18 @@ const nodeAccess = computed(() => {
   const parsed = NodeScopeEntriesSchema.safeParse(session.value?.overrides?.value.nodeScope ?? [])
   return parsed.success ? parsed.data : []
 })
+/** Nodes whose access was approved here from a refused call's line, in this window's life. */
+const approvedHere = ref<ReadonlySet<string>>(new Set())
+/** Whether what a refused call lacked has since been given: access there, or approval here. */
+const refusalGiven = (r: NodeAccessRefusal): boolean =>
+  r.kind === 'no-access'
+    ? accessCovers(nodeAccess.value, r)
+    : r.kind === 'not-approved'
+      ? approvedHere.value.has(r.node_id)
+      : false
+/** What a refused call's Approve confirms on this device: the chat's entries on that node. */
+const refusalApproves = (r: NodeAccessRefusal) =>
+  r.kind === 'not-approved' ? nodeAccess.value.filter((e) => e.node_id === r.node_id) : []
 /** Each node place said by its names — node, folder, branch — and what may be done there. */
 const nodeSaid = ref<string[]>([])
 watch(
