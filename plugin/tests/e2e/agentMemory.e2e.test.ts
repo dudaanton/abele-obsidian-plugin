@@ -72,7 +72,7 @@ const script = `(async () => {
     }
     report.chatMemory = (registry.get(chatAgent.id).memory || []).map((m) => m.text)
     report.otherMemory = other ? (registry.get(other.id).memory || []).map((m) => m.text) : []
-    report.promptHasItem = (await t.resolvedSystemPrompt()).includes('${MARK}')
+    report.promptHasItem = (await service.getSystemPrompt(session)).includes('${MARK}')
     report.otherPromptHasItem = other ? (await registry.buildSystemPrompt(other)).includes('${MARK}') : false
 
     const forget = offered('forget') ? bound.find((x) => x.name === 'forget') : undefined
@@ -81,12 +81,12 @@ const script = `(async () => {
       const changed = await tool.execute('e2e', { text: '${CHANGED}', replace: 'probe item' })
       report.changedResult = changed.content[0].text
       report.afterChange = (registry.get(chatAgent.id).memory || []).map((m) => m.text)
-      const prompt = await t.resolvedSystemPrompt()
+      const prompt = await service.getSystemPrompt(session)
       report.promptHasChanged = prompt.includes('${CHANGED}') && !prompt.includes('${MARK}')
       const gone = await forget.execute('e2e', { text: '${CHANGED}' })
       report.forgetResult = gone.content[0].text
       report.afterForget = (registry.get(chatAgent.id).memory || []).map((m) => m.text)
-      report.promptAfterForget = (await t.resolvedSystemPrompt()).includes('${CHANGED}')
+      report.promptAfterForget = (await service.getSystemPrompt(session)).includes('${CHANGED}')
     }
   } finally {
     for (const agent of registry.list({ includeUtility: true })) {
