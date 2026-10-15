@@ -212,6 +212,8 @@ export async function renderMap(el: HTMLElement, config: MapConfig): Promise<Map
           if (disposed || mine !== lookup || placePopup !== popup) return
           show({ kind: 'unavailable' })
         }
+        // The same element handed back, so MapLibre places the popup again for its new size.
+        popup.setDOMContent(content)
       })()
     })
 
