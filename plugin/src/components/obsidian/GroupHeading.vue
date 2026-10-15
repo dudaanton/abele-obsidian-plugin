@@ -24,9 +24,13 @@ defineProps<{
 <style lang="scss">
 .abele-group-heading {
   display: flex;
+  // Totals that do not fit beside the name go under it as a whole, rather than squeezing the
+  // name onto two lines.
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  gap: var(--size-4-2);
+  column-gap: var(--size-4-2);
+  row-gap: var(--size-2-1);
   // In line with the words of the rows under it, which keep their own inset for the light.
   padding-inline: var(--size-2-3);
   // As far from its first row as the rows are from each other, so every row reads as the
@@ -44,11 +48,6 @@ defineProps<{
     padding-inline: 0;
   }
 
-  // In a window, in line with the window's text, as the rows under it are there.
-  .modal-content & {
-    padding-inline: 0;
-  }
-
   &_strong {
     color: var(--abele-text-title-color);
   }
@@ -59,8 +58,10 @@ defineProps<{
   overflow-wrap: anywhere;
 }
 
-// Several totals — one per currency — each kept whole and wrapped when there is no room.
+// Several totals — one per currency — each kept whole and wrapped when there is no room: beside
+// the name when they fit, otherwise on a line of their own, still at the right edge.
 .abele-group-heading__summary {
+  flex: 1 1 auto;
   // What the group adds up to is a fact, not the heading: in the heading's size, not its weight.
   color: var(--abele-text-count-color);
   font-weight: var(--font-normal);

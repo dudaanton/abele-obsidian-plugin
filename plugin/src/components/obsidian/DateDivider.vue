@@ -43,6 +43,12 @@ const label = computed(() => {
   }
 }
 
+// A day is one name: "Today · 15.10.2026" never breaks, the totals give way instead.
+.abele-date-divider .abele-group-heading__label {
+  flex: none;
+  white-space: nowrap;
+}
+
 .abele-date-divider__summary {
   display: contents;
 }
