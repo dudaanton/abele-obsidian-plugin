@@ -5,6 +5,7 @@ import {
   type AgentDefinition,
 } from './types'
 import { REMEMBER_TOOL, FORGET_TOOL } from './memory'
+import { LEGACY_INTERCEPTOR_KEYS, legacyFields, normaliseEntries } from '../interceptor/entries'
 import {
   BOOK_TOOL_MODES,
   DOCX_TOOL_MODES,
@@ -366,6 +367,21 @@ function normaliseInterceptors(ai: AiSettings): boolean {
       const depth = normaliseContextDepth(raw.interceptorContextDepth)
       if (depth !== raw.interceptorContextDepth) {
         agent.interceptorContextDepth = depth
+        changed = true
+      }
+    }
+
+    // An agent with no list reads its single interceptor as a list of one; nothing to write.
+    // One with a list runs that, and the single fields say what an older build should run.
+    const rawList = (agent as { interceptors?: unknown }).interceptors
+    if (rawList !== undefined) {
+      const { entries, changed: corrected } = normaliseEntries(rawList, agent.id)
+      agent.interceptors = entries
+      if (corrected) changed = true
+      const mirror = legacyFields(entries)
+      for (const key of LEGACY_INTERCEPTOR_KEYS) {
+        if (agent[key] === mirror[key]) continue
+        ;(agent as unknown as Record<string, unknown>)[key] = mirror[key]
         changed = true
       }
     }

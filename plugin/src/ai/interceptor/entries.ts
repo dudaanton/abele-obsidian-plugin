@@ -81,12 +81,19 @@ export function legacyEntry(fields: LegacyInterceptorFields, id?: string): Inter
   }
 }
 
-/** The list an agent or a chat runs: its own, or the single interceptor as a list of one. */
+/** The id the single interceptor has as a list of one, the same on every read. */
+export const SINGLE_ENTRY_ID = 'ic-single'
+
+/**
+ * The list an agent or a chat runs: its own, or the single interceptor as a list of one. This is
+ * the whole migration: nothing is rewritten on load, so settings an older build shares stay as
+ * they were until the list is first edited, which writes `interceptors`.
+ */
 export function entriesOf(
   holder: LegacyInterceptorFields & { interceptors?: InterceptorEntry[] }
 ): InterceptorEntry[] {
   if (Array.isArray(holder.interceptors)) return holder.interceptors
-  const single = legacyEntry(holder)
+  const single = legacyEntry(holder, SINGLE_ENTRY_ID)
   return single ? [single] : []
 }
 
@@ -203,4 +210,24 @@ export function normaliseEntries(
 /** Copies, so that editing one list never reaches another. */
 export function copyEntries(list: readonly InterceptorEntry[]): InterceptorEntry[] {
   return list.map((e) => ({ ...e }))
+}
+
+/**
+ * What writing `patch` to an agent or a chat that may have a list really writes: a new list keeps
+ * the single fields mirroring it, and the single fields written alone, on a holder with a list,
+ * change the entry they mirror. A holder with no list keeps the single fields as they come.
+ */
+export function interceptorPatch<P extends LegacyInterceptorFields & { interceptors?: InterceptorEntry[] }>(
+  holder: LegacyInterceptorFields & { interceptors?: InterceptorEntry[] },
+  patch: P
+): P {
+  if (patch.interceptors) return { ...patch, ...legacyFields(patch.interceptors) }
+  if (!Array.isArray(holder.interceptors)) return patch
+  const single: LegacyInterceptorFields = {}
+  for (const key of LEGACY_INTERCEPTOR_KEYS) {
+    if (key in patch) (single as Record<string, unknown>)[key] = patch[key]
+  }
+  if (!Object.keys(single).length) return patch
+  const interceptors = withLegacyPatch(holder.interceptors, single)
+  return { ...patch, interceptors, ...legacyFields(interceptors) }
 }

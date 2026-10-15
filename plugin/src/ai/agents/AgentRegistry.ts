@@ -7,6 +7,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { getNoteBody } from '@/helpers/notesUtils'
 import { createAgent, type AgentDefinition, type AgentPrompt } from './types'
 import { renderMemory } from './memory'
+import { copyEntries, interceptorPatch } from '../interceptor/entries'
 import { CORE_TOOLS } from '@/ai/types'
 import { requestTimeoutSeconds } from '@/ai/requestTimeout'
 import type { ModelConfig } from '@/ai/client'
@@ -102,7 +103,7 @@ export class AgentRegistry {
 
   create(overrides: Partial<AgentDefinition> = {}): AgentDefinition {
     const agents = this.agents
-    agents.push(createAgent(overrides))
+    agents.push(createAgent(interceptorPatch({}, overrides)))
     this.version.value++
     // Returns the proxy rather than the raw object, so a caller that holds on to it and edits
     // it later still reaches everyone reading through the registry.
@@ -112,7 +113,7 @@ export class AgentRegistry {
   update(id: string, patch: Partial<AgentDefinition>): void {
     const agent = this.get(id)
     if (!agent) return
-    Object.assign(agent, patch)
+    Object.assign(agent, interceptorPatch(agent, patch))
   }
 
   duplicate(id: string): AgentDefinition | null {
@@ -130,6 +131,7 @@ export class AgentRegistry {
       scope: source.scope.map((s) => ({ ...s })),
       skills: [...source.skills],
       memory: (source.memory ?? []).map((m) => ({ ...m })),
+      ...(source.interceptors ? { interceptors: copyEntries(source.interceptors) } : {}),
     })
   }
 
@@ -145,7 +147,10 @@ export class AgentRegistry {
 
     // An agent that reviewed for others stops doing so, rather than leaving them naming a gap.
     for (const other of this.agents) {
-      if (other.interceptorAgentId === id) other.interceptorAgentId = ''
+      if (other.interceptors?.some((e) => e.agentId === id)) {
+        const interceptors = other.interceptors.filter((e) => e.agentId !== id)
+        Object.assign(other, interceptorPatch(other, { interceptors }))
+      } else if (other.interceptorAgentId === id) other.interceptorAgentId = ''
     }
 
     const ai = AbeleConfig.getInstance().ai

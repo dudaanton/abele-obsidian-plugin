@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { migrateAgents } from '@/ai/agents/migration'
 import { createAgent } from '@/ai/agents/types'
+import { entriesOf } from '@/ai/interceptor/entries'
 import {
   DEFAULT_AI_SETTINGS,
   EDIT_SELECTION_TOOL,
@@ -525,6 +526,36 @@ describe('the interceptor an agent carries', () => {
     expect(migrateAgents(odd)).toBe(true)
     expect(odd.agents[0].interceptorScript).toBe('')
     expect(odd.agents[0].interceptorPattern).toBe('')
+  })
+
+  it('reads a single interceptor as a list of one without rewriting the file', () => {
+    const ai = withAgent({ interceptorAgentId: 'r1', interceptorChecks: 'both' })
+
+    expect(migrateAgents(ai)).toBe(false)
+    expect(ai.agents[0].interceptors).toBeUndefined()
+    expect(entriesOf(ai.agents[0])).toMatchObject([{ agentId: 'r1', checks: 'both' }])
+  })
+
+  it('keeps a list well-formed and mirrors its first switched-on entry for older builds', () => {
+    const ai = withAgent({
+      interceptorAgentId: 'stale',
+      interceptors: [
+        { id: 'x', agentId: 'a1' },
+        { id: 'y', agentId: 'r1', enabled: false },
+        { id: 'z', script: 'Guard', checks: 'answer', pattern: '^/x' },
+      ],
+    })
+
+    expect(migrateAgents(ai)).toBe(true)
+    const agent = ai.agents[0]
+    expect(agent.interceptors?.map((e) => e.id)).toEqual(['y', 'z'])
+    expect(agent).toMatchObject({
+      interceptorAgentId: '',
+      interceptorScript: 'Guard',
+      interceptorChecks: 'answer',
+      interceptorPattern: '^/x',
+    })
+    expect(migrateAgents(ai)).toBe(false)
   })
 
   it('takes an impossible depth as the draft only', () => {
