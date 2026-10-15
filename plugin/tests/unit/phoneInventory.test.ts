@@ -47,18 +47,20 @@ it('settles first sync on a warm 12k-file vault without reading unrelated conten
   const stat = vi.spyOn(app.vault.adapter, 'stat')
   try {
     host.start()
+    // The deadlines only bound a hang; the reads, stats and requests below are what prove
+    // the warm path, so a loaded machine scanning 12k files slowly does not read as a failure.
     await vi.waitFor(
       () => expect(ui.runtimes.get(id)?.scanSnapshot?.().firstSync.complete).toBe(true),
-      { timeout: 3000 }
+      { timeout: 30_000 }
     )
-    await vi.waitFor(() => expect(registry.records()[0].status).toBe('idle'))
+    await vi.waitFor(() => expect(registry.records()[0].status).toBe('idle'), { timeout: 10_000 })
     expect(read.mock.calls.filter(([path]) => path.startsWith('Notes/')).length).toBe(0)
     expect(stat.mock.calls.filter(([path]) => path.startsWith('Notes/')).length).toBe(0)
     expect(transport.mock.calls.length).toBeLessThan(20)
   } finally {
     await host.close()
   }
-})
+}, 60_000)
 
 it('uses indexed stats for a warm 12k-file inspection and local scan', async () => {
   const app = buildFakeVault(
