@@ -939,7 +939,17 @@ export class CanvasEditor {
           y < n.y + n.height + gap &&
           y + height + gap > n.y
       )
-    // Rings of places round the middle, nearest first; inside the view when it can be.
+    // Whole in the view, clear of the tools across its top, with a margin at the edges.
+    const margin = 16 / this.viewer.camera.zoom,
+      top = region.y + this.viewer.insetTop / this.viewer.camera.zoom + margin,
+      fits = width + 2 * margin <= region.width && height + 2 * margin <= region.height,
+      shown = (x: number, y: number) =>
+        !fits ||
+        (x >= region.x + margin &&
+          y >= top &&
+          x + width <= region.x + region.width - margin &&
+          y + height <= region.y + region.height - margin)
+    // Rings of places round the middle, nearest first.
     const step = Math.max(40, Math.min(width, height) / 2)
     let best: { x: number; y: number } | null = null
     for (let ring = 0; ring <= 24 && !best; ring++)
@@ -952,7 +962,7 @@ export class CanvasEditor {
         ]) {
           const x = Math.round(cx + dx * step),
             y = Math.round(cy + dy * step)
-          if (!taken(x, y)) {
+          if (!taken(x, y) && shown(x, y)) {
             best = { x, y }
             break
           }

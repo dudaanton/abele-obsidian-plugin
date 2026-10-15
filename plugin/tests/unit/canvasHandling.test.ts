@@ -395,3 +395,19 @@ describe('a card left in the middle of writing a composed word', () => {
     await vi.waitFor(() => expect(s.document.session.graph.nodes[0].text).toBe('alpha, composed'))
   })
 })
+
+describe('a card added without a place on a narrow screen', () => {
+  it('stands whole inside the view', () => {
+    const s = setup(cards())
+    Object.defineProperty(s.viewer.stage, 'clientWidth', { value: 390 })
+    Object.defineProperty(s.viewer.stage, 'clientHeight', { value: 700 })
+    s.viewer.setCamera({ x: 430 - 195, y: 80 - 350, zoom: 1 })
+    s.button('Add text card').click()
+    const card = s.document.session.graph.nodes.find((n) => n.id === s.editor.controls.editing())!
+    const v = s.viewer.visible()
+    expect(card.x).toBeGreaterThanOrEqual(v.x)
+    expect(card.x + card.width).toBeLessThanOrEqual(v.x + v.width)
+    expect(card.y).toBeGreaterThanOrEqual(v.y)
+    expect(card.y + card.height).toBeLessThanOrEqual(v.y + v.height)
+  })
+})
