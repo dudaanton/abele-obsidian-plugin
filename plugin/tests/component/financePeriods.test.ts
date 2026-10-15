@@ -131,6 +131,17 @@ afterEach(() => {
   vi.unstubAllEnvs()
   mountConfig.global.stubs = originalStubs
 })
+function revault(specs: FakeFileSpec[]) {
+  store.balanceIndex.value!.cleanup()
+  store.transactionsList.value!.cleanup()
+  store.accountsList.value!.cleanup()
+  store.balanceIndex.value = null
+  store.transactionsList.value = null
+  store.accountsList.value = null
+  VaultWatcherWrapper.destroy()
+  useVault(specs)
+  store.initFinance()
+}
 async function settle() {
   await nextTick()
   await flushPromises()
@@ -146,13 +157,17 @@ async function sidebar() {
 }
 function summary() {
   return Object.fromEntries(
-    wrapper!
-      .findAll('.abele-finance-sidebar__summary-row')
-      .map((row) => [
-        row.find('.abele-finance-sidebar__summary-label').text(),
-        row.find('.abele-finance-sidebar__summary-value').text(),
-      ])
+    wrapper!.findAll('.abele-finance-sidebar__summary-row').map((row) => [
+      row.find('.abele-finance-sidebar__summary-label').text(),
+      // The number alone; a currency's code beside it is read by currencyCodes().
+      row.find('.abele-finance-sidebar__summary-value').element.firstChild!.textContent!.trim(),
+    ])
   )
+}
+function currencyCodes() {
+  return wrapper!
+    .findAll('.abele-finance-sidebar__summary-value .abele-finance-sidebar__card-currency')
+    .map((c) => c.text())
 }
 function shown() {
   return wrapper!
@@ -376,16 +391,55 @@ describe('finance sidebar — period money and charts', () => {
     expect(option().legend.selected).toEqual({ EUR: false, USD: true })
   })
 
-  it('renders zero/no data for an empty period while keeping older recent transactions', async () => {
+  it('says once that an empty period has nothing in it, instead of zero rows, a chart and its switcher', async () => {
     await sidebar()
     await period('2024-05-01', '2024-05-31')
+    expect(wrapper!.findAll('.abele-finance-sidebar__summary-row')).toHaveLength(0)
+    expect(
+      wrapper!
+        .findAllComponents(Tabs)
+        .some((c) => c.classes().includes('abele-finance-sidebar__chart-tabs'))
+    ).toBe(false)
+    expect(wrapper!.find('.abele-finance-sidebar__pie-empty').exists()).toBe(false)
+    expect(charts.instances.filter((c) => c.setOption.mock.calls.length)).toHaveLength(1)
+    expect(wrapper!.find('.abele-finance-sidebar__period-empty').text()).toBe('Nothing in May 2024')
+    // Recent means through the period's end, so older transactions are still listed under it.
+    expect(shown()).toContain('after.md')
+    // A month with money in it brings the summary and the charts back.
+    await period('2024-03-01', '2024-03-31')
+    expect(wrapper!.find('.abele-finance-sidebar__period-empty').exists()).toBe(false)
+    expect(summary()).toMatchObject({ Income: formatAmount(100) })
+  })
+
+  it('names a custom range with nothing in it the way the period picker does', async () => {
+    await sidebar()
+    await period('2024-05-03', '2024-05-20')
+    expect(wrapper!.find('.abele-finance-sidebar__period-empty').text()).toBe(
+      'Nothing in May 3, 2024 — May 20, 2024'
+    )
+  })
+
+  it('keeps the rows of a period of transfers only, which is not empty', async () => {
+    revault([
+      account('Cash', 'asset', { currency: 'EUR' }),
+      account('Savings', 'asset', { currency: 'EUR' }),
+      tx('transfer', 'Cash', 'Savings', 20),
+    ])
+    await sidebar()
+    expect(wrapper!.find('.abele-finance-sidebar__period-empty').exists()).toBe(false)
+    expect(Object.keys(summary())).toEqual(['Income', 'Expenses', 'Savings'])
+  })
+
+  it('puts the code of the one currency of a period beside its amounts, as the balances do', async () => {
+    await sidebar()
+    expect(currencyCodes()).toEqual([])
+    await period('2024-02-01', '2024-02-29')
     expect(summary()).toEqual({
       Income: formatAmount(0),
-      Expenses: formatAmount(0),
-      Savings: formatAmount(0),
+      Expenses: formatAmount(5),
+      Savings: formatAmount(-5),
     })
-    expect(wrapper!.find('.abele-finance-sidebar__pie-empty').text()).toBe('No data')
-    expect(shown()).toContain('after.md')
+    expect(currencyCodes()).toEqual(['EUR', 'EUR', 'EUR'])
   })
 })
 
