@@ -87,7 +87,8 @@ export function checkScreen(scope: ScreenScope = {}): ScreenCheck {
       const th = t.querySelector('th')
       const td = t.querySelector('td')
       if (!th || !td) continue
-      const frame = t.closest('.proto-table-frame, .proto-doc__preview') || t
+      // The frame is drawn by what holds the table: the kit's frame, or the plugin table's scroller.
+      const frame = t.closest('.proto-table-frame, .proto-doc__preview, .abele-table__scroll') || t
       const fc = cs(frame)
       const h = cs(th)
       const d = cs(td)
@@ -718,6 +719,16 @@ export function checkScreen(scope: ScreenScope = {}): ScreenCheck {
           f37.push(
             `${name(el)}: полоса сбоку ${w}px${colour ? ', цветная' : ''}${round ? ', со скруглением' : ''}`
           )
+      }
+      // The same bar drawn by an inset shadow offset to one side only, as a line's edge once was.
+      for (const m of st.boxShadow.matchAll(
+        /(rgba?\([^)]*\))\s+(-?[\d.]+)px\s+(-?[\d.]+)px(?:\s+(-?[\d.]+)px)?(?:\s+(-?[\d.]+)px)?\s+inset/g
+      )) {
+        const [, colour, x, y, blur = '0', spread = '0'] = m
+        const w = Math.abs(parseFloat(x))
+        if (w < 2 || parseFloat(y) !== 0 || parseFloat(blur) !== 0 || parseFloat(spread) !== 0)
+          continue
+        if (tinted(colour)) f37.push(`${name(el)}: полоса сбоку тенью ${w}px, цветная`)
       }
     }
     rule('Р37', 'Нет цветной полосы сбоку и полосы сбоку со скруглением', f37)
