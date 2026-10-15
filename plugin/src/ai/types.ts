@@ -477,7 +477,8 @@ export const CANVAS_TOOL_MODES: Record<string, ToolMode> = {
 
 /**
  * The tools over runs the debugger recorded: reading a run's bounded views is on its own; a mark,
- * a record point and a note about a run ask first, as editing a note does.
+ * a record point and a note about a run ask first, as editing a note does. The saved requests'
+ * tools stand with them.
  */
 export const TRACE_TOOL_MODES: Record<string, ToolMode> = {
   trace_runs: 'auto',
@@ -490,6 +491,13 @@ export const TRACE_TOOL_MODES: Record<string, ToolMode> = {
   trace_mark: 'ask',
   trace_point_add: 'ask',
   trace_note: 'ask',
+  // The project's saved requests, in the same section: reading them is on its own, saving one and
+  // sending one ask first, the send showing exactly what goes.
+  http_requests: 'auto',
+  http_request_read: 'auto',
+  http_send_result: 'auto',
+  http_request_save: 'ask',
+  http_send: 'ask',
 }
 
 /** Personal device data: ask before every request unless the person chooses another mode. */

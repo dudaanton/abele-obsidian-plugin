@@ -129,6 +129,11 @@
       </div>
     </template>
 
+    <!-- http_send: exactly what goes, keys by name -->
+    <template v-else-if="message.toolName === 'http_send'">
+      <HttpSendPreview :params="params" :read="readHttpSend" />
+    </template>
+
     <!-- One thing asked, a command or a path: that thing, as code. -->
     <template v-else-if="soleParam !== null">
       <pre class="abele-tool-approval__code"><code>{{ soleParam }}</code></pre>
@@ -219,6 +224,10 @@ import { prepareWorkbookChange } from '@/spreadsheet/vaultAdapter'
 import type { WorkbookEdit } from '@/spreadsheet/edit'
 import { prepareDeckCreate, prepareSlideEdit, type SlideEdit } from '@/slides/core/edit'
 import { describeSettingsWrite } from '@/ai/tools/SettingsTools'
+import HttpSendPreview from './debugger/http/HttpSendPreview.vue'
+/** A saved request as an agent's send would put it on the wire, for its card. */
+const readHttpSend = (id: string, environment?: string) =>
+  import('@/requests/agentContext').then((m) => m.sendPreview(id, environment))
 
 const props = defineProps<{
   message: ChatMessage

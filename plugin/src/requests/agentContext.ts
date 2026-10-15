@@ -1,0 +1,35 @@
+// The saved requests the agent's tools work on: the project the Requests view shows.
+import type { RequestToolContext } from '@/ai/tools/RequestTools'
+import { RequestsService } from './RequestsService'
+import { outgoing, varsOf } from './resolve'
+
+export function activeRequestsContext(): RequestToolContext | undefined {
+  const service = RequestsService.instance()
+  const c = service.context.value
+  if (!c) return undefined
+  return { model: service.model(c), project: c.label ?? c.projectId }
+}
+
+/** The request an agent's send would put on the wire, for the card asking the person: keys and
+ * values kept in memory still by name. */
+export async function sendPreview(
+  id: string,
+  environment?: string
+): Promise<{ environment: string; text: string } | undefined> {
+  const c = activeRequestsContext()
+  if (!c || !id) return undefined
+  const m = c.model
+  const name = environment ?? m.state.environment
+  const env =
+    name && name !== m.state.environment ? await m.rpc.environment(m.projectId, name) : m.state.env
+  const doc = m.entry(id).doc ?? (await m.rpc.get(m.projectId, id))
+  const out = outgoing(doc, varsOf(env, {}))
+  return {
+    environment: name ?? 'No environment',
+    text: [
+      `${out.method} ${out.url}`,
+      ...Object.entries(out.headers).map(([k, v]) => `${k}: ${v}`),
+      ...(out.body !== undefined ? ['', out.body] : []),
+    ].join('\n'),
+  }
+}

@@ -1,0 +1,115 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createRequestTools } from '@/ai/tools/RequestTools'
+import { forgetRequestSecrets, RequestsModel } from '@/requests/RequestsModel'
+import { doc, fakeNode, ports } from '../helpers/requestsFakeNode'
+
+beforeEach(() => forgetRequestSecrets())
+
+function setup(over: Parameters<typeof ports>[0] = {}) {
+  const node = fakeNode()
+  const p = ports(over)
+  const model = new RequestsModel(node.rpc, 'project-1', p)
+  const tools = createRequestTools(() => ({ model, project: 'sample-project' }))
+  const call = async (name: string, params: Record<string, unknown> = {}) => {
+    const tool = tools.find((t) => t.name === name)!
+    return (await tool.execute('call-1', params)).content[0]!.text
+  }
+  return { node, p, model, tools, call }
+}
+
+describe('the agent’s tools over saved requests', () => {
+  it('says plainly when no project’s requests are open', async () => {
+    const tools = createRequestTools(() => undefined)
+    await expect(tools[0]!.execute('call-1', {})).rejects.toThrow(/open Requests/)
+  })
+
+  it('lists the requests with the environments, and reads one with its last sends', async () => {
+    const { call, model } = setup()
+    const list = await call('http_requests')
+    expect(list).toContain('Project sample-project. Environment: local (also staging)')
+    expect(list).toContain('Samples/Create sample.http · POST {{base}}/samples')
+    await model.send('Samples/Create sample.http', { interactive: true })
+    const read = await call('http_request_read', { id: 'Samples/Create sample.http' })
+    expect(read).toContain('Create sample · POST {{base}}/samples')
+    expect(read).toContain('Authorization: Bearer ${abele_key:sample-key}')
+    expect(read).toMatch(/Last sends:\n {2}s\d+ · .* · local · 201/)
+  })
+
+  it('makes a request and replaces one, keys only by name', async () => {
+    const { call, node } = setup()
+    expect(
+      await call('http_request_save', {
+        collection: 'Orders',
+        name: 'Place order',
+        method: 'post',
+        url: '{{base}}/orders',
+        headers: [{ key: 'X-Key', value: '${abele_key:sample-key}' }],
+        body: '{"qty":1}',
+        checks: ['status == 201'],
+      })
+    ).toBe('Made Orders/Place order.http.')
+    expect(node.files.get('Orders/Place order.http')).toMatchObject({
+      method: 'POST',
+      body: { format: 'json', text: '{"qty":1}' },
+      checks: ['status == 201'],
+    })
+    await call('http_request_save', {
+      id: 'Orders/Place order.http',
+      name: 'Place order',
+      method: 'GET',
+      url: '{{base}}/orders/1',
+    })
+    expect(node.files.get('Orders/Place order.http')!.method).toBe('GET')
+    await expect(
+      call('http_request_save', { name: 'x', method: 'BREW', url: '/' })
+    ).rejects.toThrow('Not a method: BREW')
+  })
+
+  it('sends without asking the person anything and answers within its ceiling', async () => {
+    const { call, node, p } = setup()
+    const answer = await call('http_send', { id: 'Samples/Create sample.http' })
+    expect(answer).toMatch(/^Send s\d+ in local\.\n201 Created · 12 ms/)
+    expect(answer).toContain('Checks: ✓ status == 201')
+    expect(answer).toContain('tok-from-answer')
+    expect(p.keys.prepare).toHaveBeenCalledWith(expect.anything(), false, undefined)
+    expect(node.sent).toHaveLength(1)
+    const sendId = /Send (s\d+)/.exec(answer)![1]
+    expect(
+      await call('http_send_result', { id: 'Samples/Create sample.http', send: sendId })
+    ).toContain('201 Created')
+  })
+
+  it('switches to the environment it names, and refuses one that is not there', async () => {
+    const { call, node, model } = setup()
+    await call('http_send', { id: 'Samples/Create sample.http', environment: 'staging' })
+    expect(model.state.environment).toBe('staging')
+    expect(node.sent[0]!.url).toBe('https://staging.test/samples')
+    await expect(
+      call('http_send', { id: 'Samples/Create sample.http', environment: 'nowhere' })
+    ).rejects.toThrow('No environment named nowhere')
+  })
+
+  it('stops at a key not yet allowed at the address, instead of asking', async () => {
+    const prepare = vi.fn(async () => {
+      throw new Error('A key in this request is not allowed at http://localhost:4000 yet.')
+    })
+    const { call, node } = setup({ keys: { has: () => true, prepare } })
+    await expect(call('http_send', { id: 'Samples/Create sample.http' })).rejects.toThrow(
+      'not allowed'
+    )
+    expect(node.sent).toEqual([])
+  })
+
+  it('never takes a secret no person has sent anywhere yet', async () => {
+    const { call, node, model } = setup()
+    node.files.set(
+      'Samples/Create sample.http',
+      doc({ headers: [{ key: 'X-Token', value: '{{token}}' }] })
+    )
+    await model.load()
+    model.setSecret('token', 'typed-1')
+    await expect(call('http_send', { id: 'Samples/Create sample.http' })).rejects.toThrow(
+      'has not been sent anywhere yet'
+    )
+  })
+})

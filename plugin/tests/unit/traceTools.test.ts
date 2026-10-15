@@ -248,6 +248,12 @@ describe('the agent reading a recorded run', () => {
       trace_mark: 'ask',
       trace_point_add: 'ask',
       trace_note: 'ask',
+      // The saved requests' tools stand in the same section.
+      http_requests: 'auto',
+      http_request_read: 'auto',
+      http_send_result: 'auto',
+      http_request_save: 'ask',
+      http_send: 'ask',
     })
   })
 

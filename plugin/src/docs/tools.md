@@ -963,6 +963,30 @@ default; `trace_mark`, `trace_point_add` and `trace_note` ask first.
   (see [Vault](vault)) and answers with its path. Write your own account of the flow under its
   last heading with ordinary file tools, citing steps and paths as `t0042 · result · $.items[7]`.
 
+## Saved requests
+
+`http_requests`, `http_request_read`, `http_request_save`, `http_send`, `http_send_result`.
+
+The project's saved HTTP requests, the ones the Requests view shows: files in the project on the
+node, in collections, with environments. They stand with the recorded-run tools: a send may go
+into the recording of a program running under the debugger, and its run is then read with
+`trace_timeline` and the rest. Reading runs on its own by default; `http_request_save` and
+`http_send` ask first, and the send's card shows exactly what goes.
+
+- `http_requests` lists every request by collection with its id (its path, `Orders/Create
+order.http`), method, address as written and last status, and the environments.
+- `http_request_read(id)` gives one request as written and its last sends with their ids.
+- `http_request_save(name, method, url, …)` makes a request in `collection`, or replaces the one
+  `id` names. `{{name}}` takes a value of the environment. Name keys only as `${abele_key:name}`;
+  never put a key's value in a request. `checks` are lines like `status == 201`,
+  `body.items[0].qty == 2`, `header content-type contains json`, `ms < 500`; `script_before` and
+  `script_after` name scripts marked `@request`.
+- `http_send(id, environment?, into_recording?)` sends it from the node and answers with the
+  status, the checks and the body up to 80 lines or 6 KB. A key goes in only where the person has
+  already allowed its address; a script waiting to be confirmed stops the send. An unknown
+  outcome may have reached the service: never send again to find out.
+- `http_send_result(id, send, from?)` reads what came of a send, a page at a time.
+
 ## Scripts
 
 `create_script`, `answer_form`, plus one tool per script the vault has, named `script_<name>`.
