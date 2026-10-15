@@ -29,7 +29,7 @@ const run = <T>(body: string): T =>
 const state = () =>
   run(`const v=view(),e=v?.editor,d=v?.documentLease?.document
     return {tool:e?.controls.tool(),picked:e?.controls.picked().ids,camera:v?.viewer.camera,dirty:d?.session.dirty,busy:d?.session.busy,
-      waiting:e?.waiting,error:d?.error,ink:(v?.viewer.graph.abele?.ink??[]).length,events:(window.__canvasChrome?.events??[]).slice(-24),moves:window.__canvasChrome?.moves}`)
+      waiting:e?.waiting,error:d?.error,ink:(v?.viewer.graph.abele?.ink??[]).length,events:(window.__canvasChrome?.events??[]).slice(-24),moves:window.__canvasChrome?.moves,stage:v?.viewer.stage.getBoundingClientRect().toJSON(),nodes:v?.viewer.graph.nodes.map(n=>[n.id,n.type,n.x,n.y,n.width,n.height]),corners:v&&[[363,166],[734,280]].map(([x,y])=>v.viewer.input.point({clientX:x,clientY:y})),zoom:document.body.style.zoom||getComputedStyle(document.body).zoom,dpr:devicePixelRatio}`)
 const until = async (expression: string) => {
   try {
     await expect
