@@ -175,6 +175,13 @@ export class ExecutableReview {
   async state(): Promise<ExecutableCandidate[]> {
     return (await this.documents.read(EXECUTABLE_REVIEW_KEY, schema, initial)).candidates
   }
+  /** A local disconnect retires this source's review copies, never installed vault files. */
+  async forgetSource(connectionId: string): Promise<void> {
+    await this.documents.update(EXECUTABLE_REVIEW_KEY, schema, initial, (doc): null => {
+      doc.candidates = doc.candidates.filter((one) => one.source.id !== connectionId)
+      return null
+    })
+  }
   async heldPaths(connectionId: string): Promise<string[]> {
     return [
       ...new Set(

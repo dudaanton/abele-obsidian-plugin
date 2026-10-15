@@ -2,7 +2,7 @@ import { expect, it, vi } from 'vitest'
 import { TokenUi, connectionError } from '@/sync/tokenUi'
 import { TokenConnectionRegistry, TOKEN_REGISTRY_KEY } from '@/sync/tokenConnectionRegistry'
 import { encodeAccessToken } from '@/sync/v2/contract'
-import { MemoryStateStore } from '@abele/sync-core'
+import { MemoryStateStore, sha256 } from '@abele/sync-core'
 import { ExecutableReview } from '@/sync/executableReview'
 import { AttachmentConsent } from '@/sync/attachmentConsent'
 import { tokenUiFixture } from '@/testing/tokenUiFixture'
@@ -461,3 +461,64 @@ it.each([
   await expect(ui.disconnect(id)).rejects.toThrow('Connection changed while disconnecting')
   if (change !== 'removed connection') expect(registry.records()).toHaveLength(1)
 })
+
+it.each([false, true])(
+  'retires disconnected executable candidates without touching another connection (legacy=%s)',
+  async (legacy) => {
+    const { registry, keys, transport } = setup()
+    const metadata = new MemoryStateStore()
+    const reviews = {
+      executables: new ExecutableReview(metadata),
+      attachments: new AttachmentConsent(metadata),
+      close: () => {},
+    }
+    const ui = new TokenUi(
+      registry,
+      {
+        get: (id) => keys.get(id) ?? null,
+        set: (id, value) => {
+          keys.set(id, value)
+        },
+        remove: (id) => {
+          keys.delete(id)
+        },
+      },
+      transport,
+      reviews
+    )
+    await ui.connect(token)
+    await ui.connect(secondToken)
+    const [first, other] = registry.records()
+    const bytes = new TextEncoder().encode('// pending code'),
+      sha = await sha256(bytes)
+    for (const record of [first, other])
+      await reviews.executables.stage({
+        source: {
+          id: record.id,
+          address: record.address,
+          spaceId: record.spaceId,
+          tokenId: record.tokenId,
+          scope: record.scope!,
+        },
+        fileId: 'sample-code',
+        versionId: 'sample-version',
+        path: 'Assets/sample.js',
+        previousPath: null,
+        operation: 'create',
+        directory: false,
+        receivedAt: 1000,
+        mtime: 1000,
+        kind: 'attachment',
+        bytes,
+        sha,
+      })
+    await ui.refreshReviews()
+    expect(ui.candidates.value).toHaveLength(2)
+    if (legacy) {
+      registry.forget(first.id)
+      await ui.refreshReviews()
+    } else await ui.disconnect(first.id)
+    expect((await reviews.executables.pending()).map((one) => one.source.id)).toEqual([other.id])
+    expect(ui.candidates.value.map((one) => one.source.id)).toEqual([other.id])
+  }
+)

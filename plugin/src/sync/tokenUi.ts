@@ -239,6 +239,13 @@ export class TokenUi {
   }
   async refreshReviews(): Promise<void> {
     if (!this.reviews) return
+    // Also retire reviews left by older builds. Snapshot only orphan IDs: a new
+    // connection may stage its own deliveries while these durable writes wait.
+    const candidates = await this.reviews.executables.state()
+    const connected = new Set(this.registry.records().map((one) => one.id))
+    for (const id of new Set(candidates.map((one) => one.source.id)))
+      if (!connected.has(id) && !this.runtimes.has(id))
+        await this.reviews.executables.forgetSource(id)
     this.candidates.value = await this.reviews.executables.pending()
     this.questions.value = await this.reviews.attachments.pending()
   }
@@ -510,11 +517,13 @@ export class TokenUi {
     this.registry.beginForget(id)
     this.refresh()
     await this.runtimes.get(id)?.disconnect()
+    await this.reviews?.executables.forgetSource(id)
     // Local disconnect is not revocation: other tokens and all local files remain untouched.
     this.registry.finishForgotten(this.secrets, id)
     this.runtimes.delete(id)
     this.available.value = this.runtimes.size > 0
     this.refresh()
+    await this.refreshReviews()
   }
   async choices(id: string): Promise<V2Scope[]> {
     const record = this.registry.records().find((one) => one.id === id)

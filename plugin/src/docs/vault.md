@@ -2208,6 +2208,9 @@ paths, exact bytes/hash, original mtime, receipt time and review/apply status.
 Only explicitly selected IDs are approved; interrupted application retains the
 same candidate. Later versions stay pending and active files are unchanged by
 staging or rejection. Answered receipts remain stored for delivery deduplication.
+Disconnect retires that connection's code candidates after its runtime stops. Review
+refresh also removes candidates whose connection no longer exists; reconnecting stages
+fresh candidates under the new connection rather than transferring old approvals.
 
 `token-attachment-consent-v1` stores observed note references, received provenance,
 questions and allow/deny decisions by connection plus stable **local** file ID.
