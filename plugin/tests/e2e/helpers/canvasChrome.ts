@@ -236,7 +236,9 @@ export function canvasChrome(d: CanvasChromeDriver) {
   /**
    * As `emptySpot`, but only where a person can see it: above a phone's keyboard. The page does not
    * know the keyboard covers its lower part, so a place found there is a press on a key, which
-   * never leaves the field being written in. With no keyboard up it is the same place.
+   * never leaves the field being written in. With no keyboard up it is the same place. It is
+   * given as the point a finger presses on the screen: with the keyboard up a phone shows the
+   * page moved by the visual viewport's offset.
    */
   function emptySpotInSight(): number[] {
     return d.run<number[]>(`
@@ -245,11 +247,11 @@ export function canvasChrome(d: CanvasChromeDriver) {
       const vv=window.visualViewport,seen=Math.min(innerHeight-kb,vv?vv.offsetTop+vv.height:innerHeight)
       for(let fy=0.9;fy>0.05;fy-=0.1)for(let fx=0.1;fx<0.95;fx+=0.1){
         const x=Math.round(s.left+s.width*fx),y=Math.round(s.top+s.height*fy),wx=c.x+(x-s.left)/c.zoom,wy=c.y+(y-s.top)/c.zoom
-        if(y>seen-12)continue
+        if(y>seen-12||(vv&&y<vv.offsetTop+12))continue
         const hit=document.elementFromPoint(x,y)
         if(!hit||!v.stage.contains(hit)||hit.closest('.abele-canvas-chrome,[data-frame-id]'))continue
         if(g.nodes.some(n=>wx>=n.x-20&&wx<=n.x+n.width+20&&wy>=n.y-20&&wy<=n.y+n.height+20))continue
-        return [x,y]}
+        return [x-(vv?.offsetLeft??0),y-(vv?.offsetTop??0)]}
       return null`)
   }
   return {
