@@ -16,6 +16,9 @@
  * - `menu()` — the place's `…` menu, built; `items(menu)` its titles; `places()` the place search;
  *   `newChat()` the agent choice `New chat here` opens; `dismiss()` closes a menu or prompt;
  * - `close()` — removes the panel, the registration and the connection.
+ * - `variant` — set before `open` for the states a picture needs: `{ git }` (the node offers git
+ *   writes), `{ staged: false }` (nothing staged), `{ conflict }` (a rebase stopped on a file),
+ *   `{ many: n }` (n more changed files), `{ empty }` (no folder opened yet), `{ offline }`.
  */
 export const NODE_PANEL = {
   node: 'Sample node',
@@ -31,6 +34,7 @@ export const NODE_PANEL = {
 export const NODE_PANEL_FIXTURE = `
 const nodePanel = (() => {
   const names = ${JSON.stringify(NODE_PANEL)}
+  const variant = {}
   const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const waitFor = async (fn, what, ms = 10000) => {
     for (const end = Date.now() + ms; Date.now() < end; ) {
@@ -57,10 +61,11 @@ const nodePanel = (() => {
     worktree(ids.feature, 'managed', names.featureFolder, names.feature),
     worktree(ids.unlisted, 'external', 'sample-unlisted-worktree', 'sample-unlisted', { workspace_id: null, listed: false, dirty: false }),
   ]
-  const projects = [
+  const allProjects = [
     { project_id: ids.project, root_path: '/sample/projects/' + names.repository, repository_path: '/sample/projects/' + names.repository, trust: 'trusted', use_repository_claude_permissions: false, created_at: at },
     { project_id: ids.folder, root_path: '/sample/notes/' + names.notes, repository_path: null, trust: 'trusted', use_repository_claude_permissions: false, created_at: at },
   ]
+  const projects = () => (variant.empty ? [] : allProjects)
   const sessions = [
     { session_id: 'sample-layout-chat', title: names.chat, provider: 'claude', workspace_id: ids.feature + '-workspace', created_at: at, updated_at: at },
     { session_id: 'sample-notes-chat', title: 'Sample notes chat', provider: 'pi', workspace_id: ids.notes, created_at: at, updated_at: at },
@@ -70,18 +75,18 @@ const nodePanel = (() => {
   const client = {
     connected: true,
     describe: async () => ({
-      capabilities: { capabilities: { node_path_v2: supported, node_path_worktrees: supported, node_path_execution: supported } },
+      capabilities: { capabilities: { node_path_v2: supported, node_path_worktrees: supported, node_path_execution: supported, ...(variant.git ? { repository_git_write_v1: supported } : {}) } },
       providers: [
         { provider: 'pi', available: true, diagnostic: names.diagnostic, configuration: { profile: 'isolated', model: 'sample-model' }, capabilities: { compaction: { status: 'unverified', reason: 'Compaction not accepted' } } },
         { provider: 'claude', available: true, configuration: { profile: 'inherited' }, capabilities: { steering: { status: 'unsupported', reason: 'Serialized follow-ups only' } } },
       ],
     }),
-    listProjects: async (after) => (after ? [] : projects),
+    listProjects: async (after) => (after ? [] : projects()),
     listSessions: async (after) => (after ? [] : sessions),
     listWorkspaces: async (project, after) =>
-      after || project !== ids.folder ? [] : [{ workspace_id: ids.notes, project_id: ids.folder, path: projects[1].root_path, kind: 'root', state: 'ready', created_at: at }],
+      after || project !== ids.folder ? [] : [{ workspace_id: ids.notes, project_id: ids.folder, path: allProjects[1].root_path, kind: 'root', state: 'ready', created_at: at }],
     listFiles: async (_id, path) => ({ entries: path ? [] : [{ name: 'sample-note.md', path: 'sample-note.md', kind: 'file' }, { name: 'drafts', path: 'drafts', kind: 'directory' }], next: null }),
-    getProject: async (id) => projects.find((p) => p.project_id === id),
+    getProject: async (id) => allProjects.find((p) => p.project_id === id),
     request: async (method) => {
       if (method === 'project.repository_settings.get') return { external_read: false }
       throw Error('Unsupported fixture call: ' + method)
@@ -107,9 +112,10 @@ const nodePanel = (() => {
       status: async ({ worktree_id }) =>
         page(worktree_id === ids.feature
           ? [
-              { path: 'src/sample-panel.ts', index: ' ', worktree: 'M' },
+              { path: 'src/sample-panel.ts', index: variant.conflict ? 'U' : ' ', worktree: variant.conflict ? 'U' : 'M' },
               { path: 'src/components/sample-new-file-with-a-rather-long-name.vue', index: '?', worktree: '?' },
-              { path: 'docs/sample-guide.md', index: 'M', worktree: 'M' },
+              { path: 'docs/sample-guide.md', index: variant.staged === false ? ' ' : 'M', worktree: 'M' },
+              ...Array.from({ length: variant.many ?? 0 }, (_, i) => ({ path: 'src/many/sample-file-' + String(i).padStart(3, '0') + '.ts', index: ' ', worktree: 'M' })),
             ]
           : []),
       history: async () => page([commit(HEAD, 'Sample change to the panel layout'), commit(BASE, 'Sample first commit')]),
@@ -138,8 +144,27 @@ const nodePanel = (() => {
         page([{ path: 'src/sample-committed.ts', status: 'M' }], { comparison_id: 'sample-comparison', base, head, mode: mode || 'endpoint' }),
       watch: async () => ({ subscription_id: 'sample-worktree-watch', expires_at: new Date(Date.now() + 600000).toISOString(), refresh_required: false }),
       unwatch: async () => ({ removed: true }),
+      git: {
+        info: async () => ({
+          head: HEAD, branch: 'refs/heads/' + names.feature, detached: false,
+          operation: variant.conflict ? { kind: 'rebase', conflicted_paths: ['src/sample-panel.ts'] } : null,
+          upstream: { ref: 'refs/remotes/origin/' + names.feature, remote: 'origin', branch: 'refs/heads/' + names.feature, ahead: 1, behind: 0 },
+          default_branch: 'refs/heads/' + names.root,
+          remotes: [{ name: 'origin', url: 'https://example.invalid/sample.git', forge: null }],
+          author: { name: 'Sample author', email: 'sample@example.invalid' },
+        }),
+        stage: async () => ({ state: 'applied', head: HEAD }),
+        unstage: async () => ({ state: 'applied', head: HEAD }),
+        discard: async () => ({ state: 'applied', head: HEAD, discarded: [] }),
+        commit: async () => ({ state: 'committed', commit: HEAD, parent: BASE, author: { name: 'Sample author', email: 'sample@example.invalid' } }),
+        update: async () => ({ state: 'updated', strategy: 'rebase', previous_head: HEAD, head: HEAD, base_ref: names.root, base_commit: BASE, changed: false }),
+        continue: async () => ({ state: 'continued', head: HEAD }),
+        abort: async () => ({ state: 'aborted', head: HEAD }),
+        push: async () => ({ state: 'pushed', remote: 'origin', branch: 'refs/heads/' + names.feature, upstream: 'refs/remotes/origin/' + names.feature, set_upstream: false, commit: HEAD }),
+      },
     },
   }
+  if (!variant.git) delete client.repository.git
   const connection = {
     client, state: { value: 'connected' }, error: { value: '' }, authorizationGeneration: 0,
     delegationCards: { value: {} }, connect: async () => {}, start: () => {}, destroy: () => {},
@@ -179,6 +204,7 @@ const nodePanel = (() => {
   }
   return {
     names,
+    variant,
     root,
     select,
     dismiss,

@@ -185,18 +185,36 @@ it('pairs through the real node UI, confirms locally, runs fake prompts and fenc
       const provision=await client.createWorkspace(project.project_id);
       for(let i=0;i<200;i++){const job=await client.getJob(provision.job_id);if(job.state==='succeeded')break;if(job.state==='failed')throw Error('Workspace provisioning failed');await wait(50)}
       chat().querySelector('[aria-label="Node session menu"]').click();
-      await until(()=>[...document.querySelectorAll('.menu-item')].some(item=>item.querySelector('.menu-item-title')?.textContent.trim()==='Projects and workspaces'));
-      [...document.querySelectorAll('.menu-item')].find(item=>item.querySelector('.menu-item-title')?.textContent.trim()==='Projects and workspaces').click();
-      await until(()=>document.querySelector('select[aria-label="Node provider"] option[value="pi"]'));
-      const select=document.querySelector('select[aria-label="Node provider"]');
-      if(select.querySelector('option[value="pi"]').disabled)throw Error('Built pi SDK was not reported available');
-      select.value='pi';select.dispatchEvent(new Event('change',{bubbles:true}));await wait(50);
-      [...document.querySelectorAll('.abele-node-workspaces button')].find(b=>b.textContent.trim()==='Start session in workspace').click();
-      await until(()=>chats.tabOrder.value.some(id=>chats.getNodeSession(id)?.provider.value==='pi'));
-      const piTab=chats.tabOrder.value.find(id=>chats.getNodeSession(id)?.provider.value==='pi');
-      if(!chat().querySelector('.abele-node-chat__title').title.endsWith(' · pi'))throw Error('Pi session was not labelled');
+      await until(()=>[...document.querySelectorAll('.menu-item')].some(item=>item.querySelector('.menu-item-title')?.textContent.trim()==='Folders and worktrees'));
+      [...document.querySelectorAll('.menu-item')].find(item=>item.querySelector('.menu-item-title')?.textContent.trim()==='Folders and worktrees').click();
+      // The node panel: choose the managed workspace as its place, then start a chat there with pi.
+      const panel=()=>document.querySelector('.abele-node-sidebar'),model=api.NodePathService.getInstance().model(node.id);
+      for(let i=0;i<100&&!model.folders.value.some(f=>f.name==='sample-project'&&f.copies.some(c=>c.kind!=='project'));i++){await model.refresh();await wait(50)}
+      await until(()=>panel()?.querySelector('.abele-node-place__row'));
+      const workspace=model.folders.value.find(f=>f.name==='sample-project')?.copies.find(c=>c.kind!=='project');
+      if(!workspace)throw Error('The managed workspace is not in the node panel');
+      panel().querySelector('.abele-node-place__row').click();
+      const placeTitle='sample-project / '+workspace.branch;
+      await until(()=>[...document.querySelectorAll('.suggestion-item')].some(item=>item.querySelector('.suggestion-title')?.textContent===placeTitle));
+      [...document.querySelectorAll('.suggestion-item')].find(item=>item.querySelector('.suggestion-title')?.textContent===placeTitle).click();
+      await until(()=>model.current.value?.id===workspace.id&&panel().querySelector('.abele-node-place__name')?.textContent.trim()===workspace.branch);
+      const before=new Set(app.workspace.getLeavesOfType('abele-node-chat').map(l=>l.getViewState().state?.sessionId));
+      panel().querySelector('.abele-node-place > .abele-obsidian-icon').click();
+      await until(()=>[...document.querySelectorAll('.menu-item')].some(item=>item.querySelector('.menu-item-title')?.textContent.trim()==='New chat here'&&!item.classList.contains('is-disabled')));
+      [...document.querySelectorAll('.menu-item')].find(item=>item.querySelector('.menu-item-title')?.textContent.trim()==='New chat here').click();
+      // The agent list offers only providers the node reports available.
+      await until(()=>document.querySelector('.prompt .suggestion-item'));
+      await until(()=>[...document.querySelectorAll('.suggestion-item')].some(item=>item.querySelector('.suggestion-title')?.textContent==='pi'));
+      [...document.querySelectorAll('.suggestion-item')].find(item=>item.querySelector('.suggestion-title')?.textContent==='pi').click();
+      await until(()=>[...document.querySelectorAll('.modal button')].some(b=>b.textContent.trim()==='Allow execution'));
+      [...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Allow execution').click();
+      const piLeaf=()=>app.workspace.getLeavesOfType('abele-node-chat').find(l=>!before.has(l.getViewState().state?.sessionId)&&l.view.presenter?.provider.value==='pi');
+      await until(()=>piLeaf());
+      await until(()=>piLeaf().view.containerEl.querySelector('.abele-node-chat__title')?.title.endsWith(' · pi'));
+      if(piLeaf().getViewState().state?.target?.id!==workspace.id)throw Error('Pi session is not bound to the managed workspace');
       // Session creation/opening is metadata only. Never send a real-provider turn.
-      await chats.closeTab(piTab);
+      piLeaf().detach();
+      for(const leaf of app.workspace.getLeavesOfType('abele-node-sidebar'))leaf.detach();
       return JSON.stringify({registration:node.id,tab,pin:await nodes.deviceFingerprint(node.expectedNodeId)});
     })()`,
         60000

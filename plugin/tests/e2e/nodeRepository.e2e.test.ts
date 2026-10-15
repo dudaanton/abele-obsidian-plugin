@@ -100,15 +100,42 @@ it('opens the real node repository in the shared tab, follows history, compares,
       const workspace=catalogue.entries.find(w=>w.kind==='root');
       window.__sampleRepositoryProject=project.project_id;window.__sampleRepositoryWorkspace=workspace.worktree_id;
       window.__sampleRepositoryExternal=catalogue.entries.find(w=>w.kind==='external').worktree_id;
+      // A folder as a whole opens in the node panel, with that place chosen, not in a tab.
       await api.openNodeRepository(node.id,project.project_id,workspace.worktree_id);
-      await until(()=>document.querySelector('.abele-github-home')?.textContent.includes('external-worktree'));
+      const panel=()=>document.querySelector('.abele-node-sidebar');
+      await until(()=>panel()?.querySelector('.abele-node-place__name')?.textContent.trim()==='main'&&panel().querySelector('.abele-node-place__where')?.textContent.trim()==='sample-project');
+      if(app.workspace.getLeavesOfType('abele-github').some(l=>l.view.model?.sourceTarget?.source?.node===node.id))throw Error('The folder opened a repository tab');
       return node.id;
+    })()`)
+    // The worktrees and the independent status columns are the node panel's: a partly staged file
+    // is both a change and staged, an untracked one only a change, and the external worktree is
+    // offered to attach from the place's menu.
+    await evalLong(`(async()=>{${prelude}
+      const panel=()=>document.querySelector('.abele-node-sidebar');
+      const changes=panel().querySelector('.abele-node-modes [role="tab"][aria-label^="Changes"]');
+      if(changes.getAttribute('aria-selected')!=='true')changes.click();
+      const group=title=>[...panel().querySelectorAll('.abele-file-tree__group')].find(g=>g.querySelector(':scope > .tree-item-self .abele-tree-item__text')?.textContent.trim()===title);
+      const paths=title=>[...(group(title)?.querySelectorAll('.tree-item-self[data-path]')??[])].map(r=>r.dataset.path);
+      await until(()=>paths('Changes').includes('app.ts')&&paths('Changes').includes('new.txt')&&paths('Staged').includes('app.ts'));
+      if(paths('Staged').includes('new.txt'))throw Error('An untracked file is shown as staged');
+      panel().querySelector('.abele-node-place > .abele-obsidian-icon').click();
+      await until(()=>[...document.querySelectorAll('.menu-item')].some(el=>el.querySelector('.menu-item-title')?.textContent.trim()==='Attach a worktree'&&!el.classList.contains('is-disabled')));
+      [...document.querySelectorAll('.menu-item')].find(el=>el.querySelector('.menu-item-title')?.textContent.trim()==='Attach a worktree').click();
+      await until(()=>[...document.querySelectorAll('.prompt .suggestion-item')].some(el=>el.querySelector('.suggestion-title')?.textContent==='feature'&&el.querySelector('.suggestion-note')?.textContent.includes('external-worktree')));
+      (document.querySelector('.prompt .prompt-input')??document.body).dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}));
+      await wait(200);document.querySelector('.modal-container .modal-bg')?.click();
+      await until(()=>!document.querySelector('.prompt'));
+      return 'panel status';
     })()`)
     const state = JSON.parse(
       await evalLong(`(async()=>{${prelude}
-      const root=document.querySelector('.abele-github-home');
-      if(!root.textContent.includes('Partly ready'))throw Error('Missing independent status columns');
-      const view=app.workspace.getLeavesOfType('abele-github').find(l=>l.view.model?.sourceTarget?.provider==='node').view;
+      // The tab's home is the folder's top level, with no file tree beside it.
+      await api.openNodeRepository(window.__sampleRepositoryNode,window.__sampleRepositoryProject,window.__sampleRepositoryWorkspace,{location:{kind:'home'}});
+      const view=await (async()=>{let found;await until(()=>(found=app.workspace.getLeavesOfType('abele-github').find(l=>l.view.model?.sourceTarget?.provider==='node')?.view)?.contentEl.querySelector('.abele-github-folder')?.textContent.includes('app.ts'));return found})();
+      const root=view.contentEl.querySelector('.abele-github-folder');
+      if(view.contentEl.querySelector('.abele-github-home'))throw Error('A node tab still has a home page');
+      if(view.contentEl.querySelector('.abele-github-tree'))throw Error('A node tab still has a file tree beside it');
+      if(!view.contentEl.querySelector('[aria-label="Show in the node panel"]'))throw Error('Show in the node panel is missing');
       ${homeFills}await homeFills(root,'desktop-home.png',true);
       const state=view.getState();if(JSON.stringify(state).includes('127.0.0.1')||JSON.stringify(state).includes(${JSON.stringify(enrolled.token)}))throw Error('Credentials leaked into state');
       const fileRow=[...root.querySelectorAll('.abele-github-folder__list .tree-item-self')].find(el=>el.textContent.includes('app.ts'));
@@ -236,9 +263,9 @@ it('opens the real node repository in the shared tab, follows history, compares,
     })()`)
     await withEmulatedPhone(() =>
       evalLong(`(async()=>{${prelude}${homeFills}
-        await api.openNodeRepository(${JSON.stringify(registration)},${JSON.stringify(ids.project)},${JSON.stringify(ids.workspace)});
-        await until(()=>[...document.querySelectorAll('.abele-github-home')].some(el=>el.getBoundingClientRect().width));
-        await homeFills([...document.querySelectorAll('.abele-github-home')].find(el=>el.getBoundingClientRect().width),'phone-home.png',false);
+        await api.openNodeRepository(${JSON.stringify(registration)},${JSON.stringify(ids.project)},${JSON.stringify(ids.workspace)},{location:{kind:'home'}});
+        await until(()=>[...document.querySelectorAll('.abele-github-folder')].some(el=>el.getBoundingClientRect().width));
+        await homeFills([...document.querySelectorAll('.abele-github-folder')].find(el=>el.getBoundingClientRect().width),'phone-home.png',false);
         // The phone keeps a layout of its own; the tab this probe opened must not stay saved in it.
         for(const leaf of app.workspace.getLeavesOfType('abele-github'))leaf.detach();
         await app.workspace.requestSaveLayout.run();
@@ -248,7 +275,7 @@ it('opens the real node repository in the shared tab, follows history, compares,
   } finally {
     try {
       await evalLong(
-        `(async()=>{const id=${JSON.stringify(registration)}||window.__sampleRepositoryNode;for(const leaf of app.workspace.getLeavesOfType('abele-github'))if((leaf.view.model?.sourceTarget??leaf.getViewState().state?.sourceTarget)?.source?.node===id)leaf.detach();if(id)window.__abeleTest.NodeService.getInstance().remove(id);delete window.__sampleRepositoryNode;delete window.__sampleRepositoryProject;delete window.__sampleRepositoryWorkspace;delete window.__sampleRepositoryExternal;delete window.__sampleRepositoryCursor;delete window.__sampleRepositoryScroll;document.querySelector('.modal-close-button')?.click();return 'restored'})()`
+        `(async()=>{const id=${JSON.stringify(registration)}||window.__sampleRepositoryNode;for(const leaf of app.workspace.getLeavesOfType('abele-github'))if((leaf.view.model?.sourceTarget??leaf.getViewState().state?.sourceTarget)?.source?.node===id)leaf.detach();for(const leaf of app.workspace.getLeavesOfType('abele-node-sidebar'))leaf.detach();if(id)window.__abeleTest.NodeService.getInstance().remove(id);delete window.__sampleRepositoryNode;delete window.__sampleRepositoryProject;delete window.__sampleRepositoryWorkspace;delete window.__sampleRepositoryExternal;delete window.__sampleRepositoryCursor;delete window.__sampleRepositoryScroll;document.querySelector('.modal-close-button')?.click();return 'restored'})()`
       )
     } finally {
       if (child?.exitCode === null) {

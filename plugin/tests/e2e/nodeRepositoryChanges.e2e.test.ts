@@ -9,7 +9,7 @@ import { targets } from './helpers/target'
 targets('desktop')
 const cli = process.env.ABELE_NODE_CLI
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
-const prelude = `const api=window.__abeleTest,nodes=api.NodeService.getInstance();const wait=ms=>new Promise(r=>setTimeout(r,ms));const until=async f=>{for(let i=0;i<200;i++){if(f())return;await wait(50)}throw Error('Repository tree did not settle: '+f.toString())};const tree=()=>document.querySelector('.abele-github-tree');const row=p=>tree()?.querySelector('.tree-item-self[data-path="'+p+'"]');`
+const prelude = `const api=window.__abeleTest,nodes=api.NodeService.getInstance();const wait=ms=>new Promise(r=>setTimeout(r,ms));const until=async f=>{for(let i=0;i<200;i++){if(f())return;await wait(50)}throw Error('Repository tree did not settle: '+f.toString())};const tree=()=>document.querySelector('.abele-node-sidebar .abele-file-tree');const row=p=>tree()?.querySelector('.tree-item-self[data-path="'+p+'"]');`
 it('patches the node file tree in place from the change stream without reading it again', async () => {
   if (!cli) throw new Error('Set ABELE_NODE_CLI to the built node CLI')
   mkdirSync('../.scratch', { recursive: true })
@@ -69,22 +69,22 @@ it('patches the node file tree in place from the change stream without reading i
     }
     const ready = JSON.parse(output.split('\n').find((line) => line.includes('"listening"'))!)
     await evalLong(`(async()=>{${prelude}
-      window.__sampleStreamLog=[];const debug=console.debug;window.__sampleStreamDebug=debug;console.debug=(...a)=>{if(/node repository|file tree/.test(String(a[0])))window.__sampleStreamLog.push(a.map(v=>{try{return typeof v==='string'?v:JSON.stringify(v)}catch{return String(v)}}).join(' '));return debug.apply(console,a)};
+      window.__sampleStreamLog=[];const debug=console.debug;window.__sampleStreamDebug=debug;console.debug=(...a)=>{if(/node repository|node path|file tree/.test(String(a[0])))window.__sampleStreamLog.push(a.map(v=>{try{return typeof v==='string'?v:JSON.stringify(v)}catch{return String(v)}}).join(' '));return debug.apply(console,a)};
       const node=await nodes.add('Sample stream node','http://127.0.0.1:${ready.port}',${JSON.stringify(enrolled.token)});
       window.__sampleStreamNode=node.id;
       const client=nodes.connection(node.id).client,project=await client.registerProject(${JSON.stringify(projectPath)},'trusted');
       const catalogue=await client.repository.worktrees({project_id:project.project_id});
       const workspace=catalogue.entries.find(w=>w.kind==='root');
+      // The folder as a whole opens in the node panel, whose Files mode is its whole file tree.
       await api.openNodeRepository(node.id,project.project_id,workspace.worktree_id);
-      await until(()=>document.querySelector('.abele-github-home'));
-      if(!tree()){
-        const toggle=document.querySelector('[aria-label="Show the repository\\'s files beside this"],[aria-label="Show the repository\\'s file tree beside the page"]');
-        if(!toggle)throw Error('No file tree toggle');toggle.click();
-      }
+      await until(()=>document.querySelector('.abele-node-sidebar .abele-node-place__name')?.textContent.trim()==='main');
+      const files=document.querySelector('.abele-node-sidebar .abele-node-modes [role="tab"][aria-label="Files"]');
+      if(!files)throw Error('No Files mode in the node panel');
+      if(files.getAttribute('aria-selected')!=='true')files.click();
       await until(()=>row('src'));
       row('src').click();
       await until(()=>row('src/sample-89.ts'));
-      const body=tree().querySelector('.abele-github-tree__body');
+      const body=tree().querySelector('.abele-file-tree__body');
       if(body.scrollHeight-body.clientHeight<200)throw Error('The tree is not tall enough to scroll');
       body.scrollTop=200;await wait(100);
       window.__sampleStreamScroll=body.scrollTop;const first=[...body.querySelectorAll('.tree-item-self[data-path]')].find(r=>r.getBoundingClientRect().top>=body.getBoundingClientRect().top);window.__sampleStreamFirst=first.dataset.path;window.__sampleStreamTop=first.getBoundingClientRect().top-body.getBoundingClientRect().top;window.__sampleStreamRow=row('src/sample-50.ts');window.__sampleStreamBody=body;
@@ -106,14 +106,14 @@ it('patches the node file tree in place from the change stream without reading i
       await evalLong(`(async()=>{${prelude}
       await until(()=>row('src/sample-99.ts')&&row('src/renamed-20.ts')&&!row('src/sample-30.ts')&&!row('src/sample-20.ts'));
       await wait(2500);
-      const body=tree().querySelector('.abele-github-tree__body');
+      const body=tree().querySelector('.abele-file-tree__body');
       return JSON.stringify({
         open:!!row('src/sample-10.ts'),
         sameRow:row('src/sample-50.ts')===window.__sampleStreamRow&&window.__sampleStreamRow.isConnected,
         sameBody:body===window.__sampleStreamBody,
         scroll:body.scrollTop,expected:window.__sampleStreamScroll,
         first:window.__sampleStreamFirst,top:row(window.__sampleStreamFirst).getBoundingClientRect().top-body.getBoundingClientRect().top,expectedTop:window.__sampleStreamTop,
-        loading:tree().textContent.includes('Loading the files'),
+        loading:tree().textContent.includes('Reading the files'),
         reads:window.__sampleStreamReads,
         // Where a read of the opened folder came from, should one happen.
         readsFrom:window.__sampleStreamReadsFrom,
@@ -135,7 +135,7 @@ it('patches the node file tree in place from the change stream without reading i
   } finally {
     try {
       await evalLong(
-        `(async()=>{const id=window.__sampleStreamNode;for(const leaf of app.workspace.getLeavesOfType('abele-github'))if(leaf.view.model?.sourceTarget?.source?.node===id)leaf.detach();if(id)window.__abeleTest.NodeService.getInstance().remove(id);delete window.__sampleStreamNode;delete window.__sampleStreamScroll;delete window.__sampleStreamTop;delete window.__sampleStreamFirst;delete window.__sampleStreamRow;delete window.__sampleStreamBody;delete window.__sampleStreamReads;delete window.__sampleStreamReadsFrom;if(window.__sampleStreamDebug)console.debug=window.__sampleStreamDebug;delete window.__sampleStreamDebug;delete window.__sampleStreamLog;return 'restored'})()`
+        `(async()=>{const id=window.__sampleStreamNode;for(const leaf of app.workspace.getLeavesOfType('abele-node-sidebar'))leaf.detach();if(id)window.__abeleTest.NodeService.getInstance().remove(id);delete window.__sampleStreamNode;delete window.__sampleStreamScroll;delete window.__sampleStreamTop;delete window.__sampleStreamFirst;delete window.__sampleStreamRow;delete window.__sampleStreamBody;delete window.__sampleStreamReads;delete window.__sampleStreamReadsFrom;if(window.__sampleStreamDebug)console.debug=window.__sampleStreamDebug;delete window.__sampleStreamDebug;delete window.__sampleStreamLog;return 'restored'})()`
       )
     } finally {
       if (child?.exitCode === null) {

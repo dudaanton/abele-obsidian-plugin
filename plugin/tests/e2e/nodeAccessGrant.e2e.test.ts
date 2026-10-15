@@ -240,8 +240,16 @@ async function refusalToGrant(form: 'desktop' | 'phone') {
         const leaf=await until(()=>app.workspace.getLeavesOfType('abele-node-sidebar')[0],'node pane');
         await leaf.view.setState({registrationId:${JSON.stringify(registration)}},{});
         await app.workspace.revealLeaf(leaf);
-        const row=await until(()=>[...document.querySelectorAll('.abele-folder-tree .abele-folder-tree__copy > .tree-item-self')].find(r=>r.getBoundingClientRect().width>0&&r.textContent.includes('main')),'worktree row');
-        row.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:row.getBoundingClientRect().left+8,clientY:row.getBoundingClientRect().bottom-4}));
+        // The panel's one place, the worktree main of sample-app, and its menu beside it.
+        const place=await until(()=>[...document.querySelectorAll('.abele-node-sidebar .abele-node-place')].find(p=>p.getBoundingClientRect().width>0),'place row');
+        const isMain=()=>place.querySelector('.abele-node-place__name')?.textContent.trim()==='main'&&place.querySelector('.abele-node-place__where')?.textContent.trim()==='sample-app';
+        if(!isMain()){
+          place.querySelector('.abele-node-place__row').click();
+          const pick=await until(()=>[...document.querySelectorAll('.suggestion-item')].find(i=>i.querySelector('.suggestion-title')?.textContent==='sample-app / main'),'place search');
+          pick.click();
+          await until(isMain,'worktree main chosen');
+        }
+        place.querySelector(':scope > .abele-obsidian-icon').click();
         const item=await until(()=>[...document.querySelectorAll('.menu-item')].find(i=>i.textContent.includes('Give a chat access…')),'menu item');
         item.click();
         const rows=await until(()=>{const r=[...document.querySelectorAll('.suggestion-item')];return r.length>=2&&r},'chat picker');

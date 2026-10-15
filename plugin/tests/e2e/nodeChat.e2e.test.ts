@@ -8,6 +8,7 @@ import {
   chmodSync,
   writeFileSync,
   readFileSync,
+  realpathSync,
 } from 'node:fs'
 import { resolve } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -288,62 +289,124 @@ it('restores unsent offline drafts without auto-sending, then sends explicitly a
       prompt: 'allow',
       controls: [],
     })
+    // Folders, worktrees and chats live in the node panel: open the folder there, make a managed
+    // worktree in it, and start a Claude Code chat in that worktree, all from the place's menu.
+    const PANEL = `const panel = () => document.querySelector('.abele-node-sidebar');
+const model = window.__abeleTest.NodePathService.getInstance().model(${JSON.stringify(registrationId)});
+const menuItem = async title => {
+  await until(() => [...document.querySelectorAll('.menu-item')].some(item => item.querySelector('.menu-item-title')?.textContent.trim() === title && !item.classList.contains('is-disabled')));
+  [...document.querySelectorAll('.menu-item')].find(item => item.querySelector('.menu-item-title')?.textContent.trim() === title).click();
+  await wait(100);
+};
+const placeMenu = async title => { panel().querySelector('.abele-node-place > .abele-obsidian-icon').click(); await menuItem(title) };
+const button = (root, text) => [...root.querySelectorAll('button')].find(b => b.textContent.trim() === text);
+const chatLeaf = id => app.workspace.getLeavesOfType('abele-node-chat').find(l => l.getViewState().state?.sessionId === id);
+const placeIs = (folder, branch) => panel()?.querySelector('.abele-node-place__name')?.textContent.trim() === branch && panel().querySelector('.abele-node-place__where')?.textContent.trim() === folder;
+const showPlace = async (folder, branch) => {
+  await until(() => panel()?.querySelector('.abele-node-place__row'));
+  if (!placeIs(folder, branch)) {
+    panel().querySelector('.abele-node-place__row').click();
+    const title = folder + ' / ' + branch;
+    await until(() => [...document.querySelectorAll('.suggestion-item')].some(item => item.querySelector('.suggestion-title')?.textContent === title));
+    [...document.querySelectorAll('.suggestion-item')].find(item => item.querySelector('.suggestion-title')?.textContent === title).click();
+  }
+  await until(() => placeIs(folder, branch));
+};`
     for (let i = 0; i < projectPaths.length; i++) {
-      evalAsync(`(async () => {
+      const folderName = i === 0 ? 'one' : 'two',
+        branch = `sample-task-${i + 1}`
+      const sessionId = evalAsync<string>(`(async () => {
         ${PRELUDE}
-        const press = text => [...document.querySelectorAll('.abele-node-workspaces button')].find(b => b.textContent.trim() === text).click();
-        const fill = (label, value) => { const field = document.querySelector('input[aria-label="' + label + '"]'); field.value = value; field.dispatchEvent(new Event('input', {bubbles:true})) };
-        await nodeMenu('Projects and workspaces');
-        await until(() => document.querySelector('.abele-node-workspaces'));
-        await until(() => ![...document.querySelectorAll('.abele-node-workspaces button')].find(b => b.textContent.trim() === 'Refresh').disabled);
-        const registration = [...document.querySelectorAll('.abele-node-workspaces details')].find(d => d.querySelector('summary')?.textContent === 'Register a project');
-        registration.open = true;
-        fill('Project path', ${JSON.stringify(projectPaths[i])});
-        registration.querySelector('.checkbox-container').click();
-        await wait(100); press('Register project');
-        await until(() => document.querySelector('select[aria-label="Project"]')?.getAttribute('title')?.includes(${JSON.stringify(projectPaths[i])}));
-        await until(() => ![...document.querySelectorAll('.abele-node-workspaces button')].find(b => b.textContent.trim() === 'Create workspace').disabled);
-        press('Create workspace');
-        await until(() => { const selected = document.querySelector('select[aria-label="Workspace"] option:checked')?.textContent; return selected?.includes('abele/') && selected.includes('Ready') });
-        await until(() => ![...document.querySelectorAll('.abele-node-workspaces button')].find(b => b.textContent.trim() === 'Start session in workspace').disabled);
-        fill('Node session title', 'Sample coding task ${i + 1}');
-        await wait(100); press('Start session in workspace');
-        await until(() => !document.querySelector('.abele-node-workspaces') && document.querySelector('.abele-node-chat__title')?.getAttribute('title').includes('Claude Code'));
-        const presenter = chats.getNodeSession(chats.activeTabId.value);
-        const send = text => { const field = document.querySelector('.abele-node-chat textarea'); field.value = text; field.dispatchEvent(new Event('input', {bubbles:true})); field.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter',shiftKey:true,bubbles:true})) };
+        ${PANEL}
+        await nodeMenu('Folders and worktrees');
+        await until(() => nodes.connection(${JSON.stringify(registrationId)}).state.value === 'connected');
+        await model.refresh(); await wait(100);
+        await until(() => panel()?.querySelector('.abele-node-place, .abele-node-panel__intro_empty'));
+        const empty = panel().querySelector('.abele-node-panel__intro_empty');
+        if (empty) button(empty, 'Open folder').click(); else await placeMenu('Open a folder…');
+        const picker = await until(() => document.querySelector('.abele-folder-picker'));
+        const path = picker.querySelector('input'); path.value = ${JSON.stringify(realpathSync(projectPaths[i]) + '/')}; path.dispatchEvent(new Event('input', {bubbles:true}));
+        await until(() => button(picker, 'Open') && !button(picker, 'Open').disabled);
+        button(picker, 'Open').click();
+        await until(() => !document.querySelector('.abele-folder-picker') && model.currentFolder.value?.name === ${JSON.stringify(folderName)});
+        await showPlace(${JSON.stringify(folderName)}, 'main');
+        await placeMenu('New worktree');
+        const dialog = await until(() => document.querySelector('.abele-worktree-dialog'));
+        const name = dialog.querySelector('input'); name.value = ${JSON.stringify(branch)}; name.dispatchEvent(new Event('input', {bubbles:true}));
+        await until(() => button(dialog, 'Create') && !button(dialog, 'Create').disabled);
+        button(dialog, 'Create').click();
+        await until(() => !document.querySelector('.abele-worktree-dialog'));
+        for (let n = 0; n < 100 && !model.folders.value.flatMap(f => f.copies).some(c => c.branch === ${JSON.stringify(branch)}); n++) { await model.refresh(); await wait(100) }
+        await showPlace(${JSON.stringify(folderName)}, ${JSON.stringify(branch)});
+        const worktree = model.current.value.id;
+        const before = new Set(app.workspace.getLeavesOfType('abele-node-chat').map(l => l.getViewState().state?.sessionId));
+        await placeMenu('New chat here');
+        await until(() => [...document.querySelectorAll('.suggestion-item')].some(item => item.querySelector('.suggestion-title')?.textContent === 'Claude Code'));
+        [...document.querySelectorAll('.suggestion-item')].find(item => item.querySelector('.suggestion-title')?.textContent === 'Claude Code').click();
+        await until(() => [...document.querySelectorAll('.modal button')].some(b => b.textContent.trim() === 'Allow execution'));
+        [...document.querySelectorAll('.modal button')].find(b => b.textContent.trim() === 'Allow execution').click();
+        const leaf = await until(() => app.workspace.getLeavesOfType('abele-node-chat').find(l => !before.has(l.getViewState().state?.sessionId) && l.getViewState().state?.target?.id === worktree && l.view.presenter));
+        const root = leaf.view.containerEl;
+        await until(() => root.querySelector('.abele-node-chat__title')?.getAttribute('title').includes('Claude Code'));
+        const presenter = leaf.view.presenter;
+        const send = text => { const field = root.querySelector('.abele-node-chat textarea'); field.value = text; field.dispatchEvent(new Event('input', {bubbles:true})); field.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter',shiftKey:true,bubbles:true})) };
         send(${JSON.stringify(i === 0 ? 'edit' : 'deny')});
         await until(() => presenter.projection.value.prompts.some(p => p.state === 'pending'));
         ${i === 0 ? "send('followup'); await until(() => presenter.projection.value.queuedInputs.length === 1);" : ''}
-        return JSON.stringify(true)
+        return JSON.stringify(leaf.getViewState().state.sessionId)
       })()`)
       reloadPlugin()
       const result = evalAsync<{
         provider: string
         prompt: string
+        changes: string[]
+        empty: string
         diff: string
         evidenceCollapsed: boolean
       }>(`(async () => {
         ${PRELUDE}
-        await until(() => chats.getNodeSession(chats.activeTabId.value)?.projection.value.prompts.some(p => p.state === 'pending'));
-        const presenter = chats.getNodeSession(chats.activeTabId.value);
-        await until(() => [...document.querySelectorAll('.abele-node-chat button')].some(b => b.textContent.trim() === ${JSON.stringify(i === 0 ? 'Approve' : 'Deny')} && !b.disabled));
-        [...document.querySelectorAll('.abele-node-chat button')].find(b => b.textContent.trim() === ${JSON.stringify(i === 0 ? 'Approve' : 'Deny')}).click();
+        ${PANEL}
+        const leaf = await until(() => chatLeaf(${JSON.stringify(sessionId)}));
+        await app.workspace.revealLeaf(leaf);
+        await until(() => leaf.view.presenter?.projection.value.prompts.some(p => p.state === 'pending'));
+        const presenter = leaf.view.presenter, root = leaf.view.containerEl;
+        await until(() => [...root.querySelectorAll('.abele-node-chat button')].some(b => b.textContent.trim() === ${JSON.stringify(i === 0 ? 'Approve' : 'Deny')} && !b.disabled));
+        [...root.querySelectorAll('.abele-node-chat button')].find(b => b.textContent.trim() === ${JSON.stringify(i === 0 ? 'Approve' : 'Deny')}).click();
         await until(() => presenter.messages.value.some(m => m.content === ${JSON.stringify(i === 0 ? '**Finished:** followup' : '**Finished:** deny')}));
-        await nodeMenu('Projects and workspaces');
-        await until(() => document.querySelector('.abele-node-workspaces'));
-        await until(() => ![...document.querySelectorAll('.abele-node-workspaces button')].find(b => b.textContent.trim() === 'Preview status and diff').disabled);
-        [...document.querySelectorAll('.abele-node-workspaces button')].find(b => b.textContent.trim() === 'Preview status and diff').click();
-        await until(() => document.querySelector('.abele-node-workspaces details[open] pre'));
-        const diff = [...document.querySelectorAll('.abele-node-workspaces details[open] pre')].map(p => p.textContent).join('');
-        document.body.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape',bubbles:true}));
-        const rawControls = [...document.querySelectorAll('.abele-node-chat button')].filter(b => b.textContent.trim() === 'Read stored record');
-        return JSON.stringify({ provider: presenter.provider.value, prompt: presenter.projection.value.prompts[0].choice, diff, evidenceCollapsed: rawControls.length > 0 && rawControls.every(b => b.closest('details') && !b.closest('details').open) })
+        const rawControls = [...root.querySelectorAll('.abele-node-chat button')].filter(b => b.textContent.trim() === 'Read stored record');
+        const evidenceCollapsed = rawControls.length > 0 && rawControls.every(b => b.closest('details') && !b.closest('details').open);
+        // What the chat changed in its worktree: the panel's changes, and the file's diff in its tab.
+        await nodeMenu('Folders and worktrees');
+        await showPlace(${JSON.stringify(folderName)}, ${JSON.stringify(branch)});
+        await model.refreshCurrent();
+        panel().querySelector('.abele-node-modes [role="tab"][aria-label^="Changes"]').click();
+        const tree = () => panel().querySelector('.abele-file-tree');
+        const group = () => [...(tree()?.querySelectorAll('.abele-file-tree__group') ?? [])].find(g => g.querySelector(':scope > .tree-item-self .tree-item-inner')?.textContent.trim() === 'Changes');
+        ${
+          i === 0
+            ? 'await until(() => group()?.querySelector(\'.tree-item-self[data-path="sample.txt"]\'));'
+            : "await until(() => !tree()?.textContent.includes('Reading the files') && tree()?.querySelector('.search-empty-state'));"
+        }
+        const changes = [...(group()?.querySelectorAll('.tree-item-self[data-path]') ?? [])].map(r => r.dataset.path);
+        const empty = tree().querySelector('.search-empty-state')?.textContent.trim() ?? '';
+        let diff = '';
+        if (changes.includes('sample.txt')) {
+          group().querySelector('.tree-item-self[data-path="sample.txt"]').click();
+          const file = await until(() => app.workspace.getLeavesOfType('abele-node-file').find(l => l.view.getState().path === 'sample.txt' && l.view.containerEl.querySelector('.abele-diff__line')));
+          diff = [...file.view.containerEl.querySelectorAll('.abele-diff__line')].map(l => (l.querySelector('.abele-diff__sign')?.textContent ?? '') + (l.querySelector('.abele-diff__text')?.textContent ?? '')).join('\\n');
+        }
+        return JSON.stringify({ provider: presenter.provider.value, prompt: presenter.projection.value.prompts[0].choice, changes, empty, diff, evidenceCollapsed })
       })()`)
       expect(result.evidenceCollapsed).toBe(true)
       expect(result.provider).toBe('claude')
       expect(result.prompt).toBe(i === 0 ? 'allow' : 'deny')
-      if (i === 0) expect(result.diff).toContain('+after')
-      else expect(result.diff).toBe('No tracked changes')
+      if (i === 0) {
+        expect(result.changes).toEqual(['sample.txt'])
+        expect(result.diff).toContain('+after')
+      } else {
+        expect(result.changes).toEqual([])
+        expect(result.empty).toMatch(/^Nothing (changed|differs from \S+)\.$/)
+      }
       expect(readFileSync(resolve(projectPaths[i], 'sample.txt'), 'utf8')).toBe('before\n')
     }
   } finally {
@@ -352,8 +415,10 @@ it('restores unsent offline drafts without auto-sending, then sends explicitly a
         ${PRELUDE}
         for (const node of [...nodes.nodes.value].filter(n => n.id === ${JSON.stringify(registrationId)} || n.label === 'Sample acceptance node')) {
           for (const id of [...chats.tabOrder.value]) if (chats.getNodeSession(id)?.reference.registrationId === node.id) await chats.closeTab(id);
+          for (const type of ['abele-node-chat', 'abele-node-file']) for (const leaf of app.workspace.getLeavesOfType(type)) if (leaf.getViewState().state?.target?.registrationId === node.id) leaf.detach();
           nodes.remove(node.id);
         }
+        for (const leaf of app.workspace.getLeavesOfType('abele-node-sidebar')) leaf.detach();
         app.setting.close();
         return JSON.stringify(true)
       })()`)

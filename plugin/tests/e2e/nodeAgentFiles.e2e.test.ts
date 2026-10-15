@@ -164,9 +164,7 @@ it('lets an ordinary chat find, read and edit project files on a node once the c
     expect(without.error).toBeUndefined()
     expect(without.tools).toEqual(expect.arrayContaining(['node_nodes', 'node_read', 'node_edit']))
     expect(without.calls.map((c) => c.name)).toEqual(['open_nodes', 'node_nodes', 'node_read'])
-    expect(without.calls[0].result, JSON.stringify(without)).toMatch(
-      /Give a chat access/
-    )
+    expect(without.calls[0].result, JSON.stringify(without)).toMatch(/Give a chat access/)
     for (const call of without.calls.slice(1))
       expect(call.result, JSON.stringify(without)).toMatch(/access/i)
     for (const call of without.calls.slice(1))
