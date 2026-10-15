@@ -332,6 +332,18 @@ makes a header button for it, pins it to the toolbar, or puts it on the startup 
 (its **Startup** tab orders that list and holds the switch that skips it). That header is therefore also how a script presents
 itself to the person: a script without `@description` shows up saying it has none.
 
+## Around a saved request
+
+`// @request` marks a script a saved HTTP request may name to run before it is sent or after its
+answer. Only such a script can be named: a request's file lives in a node project, where others
+can write. It reads `params.request` (`method`, `url`, `headers`, `body`; keys still as
+`${abele_key:name}`), `params.vars`, `params.environment` and, after the send, `params.response`
+(`status`, `ms`, `headers`, `body`, keys blanked). It may return `{ request: { url?, method?,
+headers?, body? } }` before the send and `{ vars: { name: value } }` either way. A value the
+environment keeps plainly is written into its file; any other is held in memory and is put only
+into requests to the origin the answer came from. A send an agent makes never asks to confirm a
+script, so an unconfirmed one fails it.
+
 ## Lint rules
 
 A script whose header has `// @lint` (or `// @lint warning`) is a rule of the linter, listed in

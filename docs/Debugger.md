@@ -84,6 +84,9 @@ filesystem read. Dispose both registrations when the host closes.
 
 ## Recording a run
 
+A [saved request](Requests.md) can be sent into the run being recorded: it heads the steps the
+code took while it was out.
+
 Where the node advertises `trace_v1`, a breakpoint can be a **record point**: right-click a
 line's margin and choose *Add record point*, then name what to take under the line (names in
 scope, offered from the line, or expressions written `expression as name`), an optional

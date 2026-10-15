@@ -305,6 +305,48 @@ apart from creation and refresh, with confirmation. **Unregister project** retai
 checkout and requires removing its managed workspaces first. Git initialization, merging,
 pushing, editing files and automatic repair of jobs needing attention are not offered here.
 
+## Saved requests
+
+**Open requests** shows a project's saved HTTP requests in the left sidebar, beside the file
+explorer. The first row picks the project and the node it is on; the requests are files in that
+project, in `.abele/requests/`, so they are there only while the node is online. The row under
+it is the environment the requests go out in: its menu switches between them, makes a new one
+and edits the one in use. Collections are folders, and each request shows its method as a code
+and, faintly, the status it got the last time, red when that was an error or it did not get
+through.
+
+A request opens in a tab: the method, the address and **Send** on one line, what the address
+comes to in this environment under it, then **Params**, **Headers**, **Body**, **Scripts** and
+**Checks**. Write `{{name}}` for a value of the environment and `${abele_key:name}` for a saved
+key: the key's value is never shown or written anywhere, and the first time a key goes to an
+address you are asked to allow it, the same as for a script. A key that is not on this device
+keeps **Send** off and says which. **Copy as curl** in a request's menu copies it with keys still
+by name.
+
+The node sends the request, so a service running on the node's machine answers. The answer is
+beside the request on a wide tab and under it on a narrow one or a phone: the status, the time,
+the size, the body, the headers and how the checks went. **History** lists every send with its
+environment and time; pick one to see its answer again, or press the compare icon on one to see
+how its body differs from the answer shown. A request that gets no answer in 30 seconds may still
+have reached the service, and it is never sent again by itself.
+
+Values that must not be written, a token taken from an answer most often, go under **Kept in
+memory** in the environment's dialog: they are blanked wherever they show and forgotten when
+Obsidian closes. A token a script takes from an answer is kept that way and goes back only to
+the address it came from. **Scripts** runs a script of yours before the request goes or after
+its answer comes, when its header says `// @request` (see [Scripts around a request](scripts#scripts-around-a-request)).
+Checks are lines in the request file, such as `status == 201` or `body.items[0].qty == 2`.
+
+While a program of the project is recorded under the debugger, the view says so at the top and
+**Send** gets a switch beside it. Switched on, the send goes into the recording: its answer says
+how many steps the code took while the request was out, and pressing that opens the run with the
+request heading those steps. A clock beside a step means it was put there by time. When the
+environment has **Say the step** on, the request carries an `X-Abele-Step` header a record point
+can take.
+
+On a phone the view is in the left drawer and a request opens on the whole screen; it is sent
+from the node all the same.
+
 ## Offering tools by section
 
 Open an agent on **Settings → Abele → AI Agent → Agents**, then its **Access** tab.

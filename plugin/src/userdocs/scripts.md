@@ -299,6 +299,28 @@ A script that fails, takes longer, or waits to be confirmed on this device never
 message: it goes to the agent as you wrote it, with the reason under it. An interceptor script is
 not a command and not a tool for the agent.
 
+## Scripts around a request
+
+A script whose header says `// @request` can run around a [saved request](ai-chat#saved-requests):
+named under the request's **Scripts**, before it goes or after its answer comes. Only such a
+script can be named there, since a request's file can be written by anyone working in the
+project. It gets `params.request` (method, url, headers, body, with keys still by name),
+`params.vars`, `params.environment`, and after the send `params.response` (status, ms, headers,
+body). It may return `{ request }` to change what goes, and `{ vars }` to set values of the
+environment:
+
+```js
+// @name Keep the token
+// @request
+
+const token = JSON.parse(params.response.body).token
+return { vars: { token } }
+```
+
+A value the environment keeps plainly is written into it; any other is kept in memory only and
+goes back only to the address the answer came from. A request you send yourself may ask you to
+confirm a script from another device; one an agent sends never asks, and refuses the script.
+
 ## CSS snippets
 
 Choose a snippets folder in **Settings → Abele → Other**. The CSS files in it are loaded, and
