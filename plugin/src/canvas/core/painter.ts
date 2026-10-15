@@ -25,6 +25,8 @@ import {
   type Point,
   type TextMetricsPort,
 } from './scene'
+/** A file a card shows as a picture, filling the card. */
+const PICTURE_FILE = /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i
 export interface CanvasTheme {
   paper: string
   card: string
@@ -434,6 +436,29 @@ export function paintCanvas(
       ctx.beginPath()
       ctx.ellipse(node.x + node.width / 2, node.y + 12, node.width / 2, 12, 0, 0, Math.PI * 2)
       ctx.stroke()
+    }
+    const picture =
+      node.type === 'file' && PICTURE_FILE.test(node.file ?? '')
+        ? assets.images?.get(node.id)?.[0]
+        : undefined
+    if (picture) {
+      // A picture on the canvas is the card: it fills it whole, its own shape kept, as Obsidian
+      // Canvas shows one.
+      const scale = Math.min(node.width / picture.width, node.height / picture.height),
+        width = picture.width * scale,
+        height = picture.height * scale
+      ctx.beginPath()
+      ctx.rect(node.x, node.y, node.width, node.height)
+      ctx.clip()
+      ctx.drawImage(
+        picture.source,
+        node.x + (node.width - width) / 2,
+        node.y + (node.height - height) / 2,
+        width,
+        height
+      )
+      ctx.restore()
+      continue
     }
     const box = contentBox(node)
     ctx.beginPath()

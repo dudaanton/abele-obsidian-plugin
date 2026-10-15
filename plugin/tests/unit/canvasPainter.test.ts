@@ -149,11 +149,10 @@ describe('the shared canvas picture plan', () => {
       theme,
       { contents: new Map([['image', '']]), images: new Map([['image', [image]]]) }
     )
-    const box = contentBox(node),
-      draw = calls.find((call) => call.name === 'drawImage')!.args
-    expect(draw[2]).toBe(box.y)
-    expect(Number(draw[3])).toBeLessThanOrEqual(box.width)
-    expect(Number(draw[4])).toBeLessThanOrEqual(box.height)
+    // A picture card is now the picture itself, filling the card as Obsidian Canvas shows one,
+    // rather than a smaller picture inside the card's padded text box; it still fits both ways.
+    const draw = calls.find((call) => call.name === 'drawImage')!.args
+    expect(draw.slice(1)).toEqual([0, 0, 180, 90])
     expect(result.warnings.filter((w) => w.code === 'clipped-image')).toEqual([])
   })
   it.each(SHAPES)('fits long %s labels into the actual inner content box', (shape) => {

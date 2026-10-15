@@ -10,7 +10,8 @@
 import type { App, TFile } from 'obsidian'
 
 export function versionedUrl(url: string, file: TFile): string {
-  if (url.includes('?')) return url
+  // A blob or data address is already one of a kind, and anything added to it breaks it.
+  if (url.includes('?') || /^(blob|data):/i.test(url)) return url
   return `${url}?${file.stat.mtime}-${file.stat.size}`
 }
 

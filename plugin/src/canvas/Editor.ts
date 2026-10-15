@@ -1927,7 +1927,10 @@ export class CanvasEditor {
    * canvas cards lands with its middle at the point; a web address becomes a link card, and
    * other words a text card.
    */
-  private async place(files: File[], text: string, [x, y]: [number, number]): Promise<void> {
+  private async place(files: File[], text: string, at: [number, number]): Promise<void> {
+    // Whole units, as everything put down by hand is.
+    const x = Math.round(at[0]),
+      y = Math.round(at[1])
     if (files.length) {
       if (!this.ports.saveAttachment) throw new Error('Files cannot be saved here')
       const paths: string[] = [],
@@ -1936,9 +1939,7 @@ export class CanvasEditor {
         const data = await file.arrayBuffer()
         const ext = PICTURE_TYPES[file.type]
         const name =
-          file.name && file.name !== 'image.png'
-            ? file.name
-            : `Pasted image ${new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19)}.${ext ?? 'png'}`
+          file.name && file.name !== 'image.png' ? file.name : `Pasted image ${stamp()}.${ext ?? 'png'}`
         const path = await this.ports.saveAttachment(name, data)
         if (!path) continue
         paths.push(path)
@@ -1949,7 +1950,11 @@ export class CanvasEditor {
     const clip = parseClip(text)
     if (clip && clip.nodes.length + (clip.abele ? 1 : 0)) {
       const box = clip.nodes.length ? bounds(clip.nodes) : { x, y, width: 0, height: 0 }
-      const copy = copyOps(clip, x - (box.x + box.width / 2), y - (box.y + box.height / 2))
+      const copy = copyOps(
+        clip,
+        Math.round(x - (box.x + box.width / 2)),
+        Math.round(y - (box.y + box.height / 2))
+      )
       return this.apply(copy.ops, copy.picked)
     }
     const url = pastedUrl(text)
@@ -1974,7 +1979,7 @@ export class CanvasEditor {
     sizes: { width: number; height: number }[] = []
   ): Promise<void> {
     if (!paths.length) return
-    let left = x - (sizes[0]?.width ?? 320) / 2
+    let left = Math.round(x - (sizes[0]?.width ?? 320) / 2)
     const ops: CanvasOperation[] = [],
       ids = new Set<string>()
     paths.forEach((file, i) => {
@@ -1985,7 +1990,7 @@ export class CanvasEditor {
       ids.add(id)
       ops.push({
         op: 'add_node',
-        node: { id, kind: 'note', file, x: left, y: y - size.height / 2, ...size },
+        node: { id, kind: 'note', file, x: left, y: Math.round(y - size.height / 2), ...size },
       })
       left += size.width + 40
     })
@@ -2164,4 +2169,11 @@ async function pictureDimensions(
   } finally {
     URL.revokeObjectURL(url)
   }
+}
+
+/** The local time as Obsidian names a pasted picture: 20261015093042. */
+function stamp(): string {
+  const d = new Date(),
+    two = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}${two(d.getMonth() + 1)}${two(d.getDate())}${two(d.getHours())}${two(d.getMinutes())}${two(d.getSeconds())}`
 }
