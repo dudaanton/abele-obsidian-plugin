@@ -176,6 +176,27 @@ describe('running a program under the debugger', () => {
     expect(savePoint).toHaveBeenCalledWith('s2', 4, { take: ['sum'], note: 'the running total' })
   })
 
+  it('carries the points only once the new run is held, so they name the state it stopped in', async () => {
+    fakeWorkspace()
+    const { presenter } = fakePresenter()
+    const binding = DebuggerService.instance.binding(presenter)
+    const setBreakpoint = vi
+      .spyOn(binding.controller, 'setBreakpoint')
+      .mockImplementation(async () => undefined as never)
+    // The node answers the start before the program's first-line stop has reached the panel.
+    binding.controller.session.status = 'starting'
+    const started = startProgram(presenter, 'src/page.js', [], target, async () => {}, [
+      { path: 'src/page.js', line: 3 },
+    ])
+    for (let i = 0; i < 20; i++) await Promise.resolve()
+    await new Promise((r) => setTimeout(r, 20))
+    expect(setBreakpoint).not.toHaveBeenCalled()
+    binding.controller.session.status = 'paused'
+    ++binding.revision.value
+    await started
+    expect(setBreakpoint).toHaveBeenCalledWith(expect.any(String), 's1', 3, undefined)
+  })
+
   it('starts it, shows the session its code runs in and opens its file with the margin', async () => {
     const { opened } = fakeWorkspace()
     const { presenter, calls } = fakePresenter()

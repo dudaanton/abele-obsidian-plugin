@@ -2,6 +2,7 @@
 // Node and holds it on its first line; the program's file opens with its margin, so record points
 // and breakpoints go in before it goes on. Files open from the same folder take breakpoints too.
 import { Notice, Platform, type Workspace } from 'obsidian'
+import { watch } from 'vue'
 import { z } from 'zod'
 import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import type { PathTarget } from '@/node/NodePathModel'
@@ -91,6 +92,31 @@ export function carriedPoints(binding: DebuggerBinding): CarriedPoint[] {
   })
 }
 
+/** How long a new run may take to stop on its first line before its points are sent anyway. */
+const HOLD_MS = 10_000
+
+/** Resolves once the session stands still (held, ended or cut off), or after HOLD_MS. */
+function untilHeld(binding: DebuggerBinding): Promise<void> {
+  const still = () =>
+    binding.controller.session.status !== 'starting' &&
+    binding.controller.session.status !== 'running'
+  if (still()) return Promise.resolve()
+  return new Promise((resolve) => {
+    const done = () => {
+      stop()
+      window.clearTimeout(timer)
+      resolve()
+    }
+    const stop = watch(binding.revision, () => {
+      if (still()) done()
+    })
+    const timer = window.setTimeout(() => {
+      console.debug('[debugger] New run not held yet; carrying its points anyway')
+      done()
+    }, HOLD_MS)
+  })
+}
+
 export async function startProgram(
   presenter: NodeChatPresenter,
   program: string,
@@ -136,7 +162,10 @@ export async function startProgram(
     return startProgram(presenter, program, [...new Set(taken)], target, show, carried)
   }
   await show(sessionId)
-  // Held on its first line, the new run takes the points before any of its code runs.
+  // Held on its first line, the new run takes the points before any of its code runs. The node
+  // can answer the start before that stop reaches the panel, and a point sent meanwhile names
+  // a state the program has already left: the node refuses it and the run goes on without it.
+  if (carry.length) await untilHeld(binding)
   for (const c of carry) {
     const sourceId = started.sources.find((s) => s.path === c.path)?.source_id
     if (!sourceId) {
