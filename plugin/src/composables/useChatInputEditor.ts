@@ -119,6 +119,13 @@ export function useChatInputEditor(options: InputEditorOptions) {
     return !!el && !!active && el.contains(active)
   }
 
+  /** Some of the field's text is selected — what Ctrl+C copies. */
+  function hasSelection(): boolean {
+    if (editor) return editor.hasSelection()
+    const el = inputEl.value
+    return !!el && el.selectionStart !== el.selectionEnd
+  }
+
   const onKeydown = (e: KeyboardEvent) => {
     // Alt+Enter is Enter without the model, and only where there is a note to keep.
     if (e.key === 'Enter' && e.altKey && props.canNote) {
@@ -265,6 +272,7 @@ export function useChatInputEditor(options: InputEditorOptions) {
     focus,
     placeLine,
     hasFocus,
+    hasSelection,
     onKeydown,
     onEmptyPress,
     onEditorDrop,

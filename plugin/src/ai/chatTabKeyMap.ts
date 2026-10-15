@@ -94,3 +94,8 @@ export function keyLabel({ modifiers, key }: ChatTabKey, mac = Platform.isMacOS)
 export function withShortcut(name: string, action: ChatTabAction): string {
   return `${name} (${keyLabel(CHAT_TAB_KEYS[action][0])})`
 }
+
+/** The stop control's name with its key: «Stop (⌃C)» on a Mac, «Stop (Ctrl+C)» elsewhere. */
+export function stopTooltip(mac = Platform.isMacOS): string {
+  return `Stop (${keyLabel({ modifiers: ['Ctrl'], key: 'c' }, mac)})`
+}

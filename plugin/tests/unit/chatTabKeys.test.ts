@@ -14,8 +14,9 @@ import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import {
   CHAT_TAB_KEYS,
   keyLabel,
-  onEscapeStop,
+  onStopKey,
   registerChatTabKeys,
+  stopTooltip,
   tabAlong,
   tabAt,
   withShortcut,
@@ -282,28 +283,96 @@ describe('closing and reopening a tab', () => {
   })
 })
 
-describe('Esc in a chat', () => {
-  it('stops the agent when a chat on screen says there is one to stop', () => {
-    let stopping = false
-    const stopped: string[] = []
-    const withdraw = onEscapeStop(() => {
-      if (!stopping) return false
-      stopped.push('stop')
+describe('Ctrl+C in a chat', () => {
+  /** A chat on screen with an agent to stop, or not; what it was asked to stop is `stopped`. */
+  const offerStop = () => {
+    const chat = { working: false, stopped: 0 }
+    const withdraw = onStopKey(() => {
+      if (!chat.working) return false
+      chat.stopped++
       return true
     })
+    return { chat, withdraw }
+  }
+
+  // Esc stopped the agent until the owner asked for Ctrl+C instead: the expectation turned
+  // round, Esc now goes on where it went before the chat had keys, even with an agent working.
+  it('leaves Esc alone, even while the agent is working', () => {
+    const { chat, withdraw } = offerStop()
     try {
-      // Nothing to stop: Esc goes on where it always went.
       expect(press([], 'Escape')).toBe(false)
       expect(parentHeard).toEqual(['+Escape'])
-      stopping = true
+      chat.working = true
       expect(press([], 'Escape')).toBe(false)
-      expect(stopped).toEqual(['stop'])
-      expect(parentHeard).toEqual(['+Escape'])
-      // Shift+Esc is not Esc.
+      expect(chat.stopped).toBe(0)
+      expect(parentHeard).toEqual(['+Escape', '+Escape'])
+      // Shift+Esc is not Esc, and is no stop either.
       press(['Shift'], 'Escape')
-      expect(stopped).toEqual(['stop'])
+      expect(chat.stopped).toBe(0)
     } finally {
       withdraw()
     }
+  })
+
+  it('stops the working agent with Control+C, on a Mac too, and passes it on otherwise', () => {
+    const { chat, withdraw } = offerStop()
+    try {
+      // Nothing to stop: the key goes on where it always went.
+      expect(press(['Ctrl'], 'c')).toBe(false)
+      expect(parentHeard).toEqual(['Ctrl+c'])
+      chat.working = true
+      expect(press(['Ctrl'], 'c')).toBe(false)
+      expect(chat.stopped).toBe(1)
+      expect(parentHeard).toEqual(['Ctrl+c'])
+      // Cmd+C is copy on a Mac and never a stop; nor is Ctrl with another modifier held.
+      press(['Meta'], 'c')
+      press(['Ctrl', 'Shift'], 'c')
+      press(['Ctrl', 'Alt'], 'c')
+      expect(chat.stopped).toBe(1)
+      expect(parentHeard).toEqual(['Ctrl+c', 'Meta+c', 'Ctrl,Shift+c', 'Ctrl,Alt+c'])
+    } finally {
+      withdraw()
+    }
+  })
+
+  it('is Control+C elsewhere too', () => {
+    platform.isMacOS = false
+    const { chat, withdraw } = offerStop()
+    try {
+      chat.working = true
+      press(['Ctrl'], 'c')
+      expect(chat.stopped).toBe(1)
+    } finally {
+      withdraw()
+    }
+  })
+
+  it('copies rather than stops while text is selected', () => {
+    const { chat, withdraw } = offerStop()
+    const text = document.body.appendChild(document.createElement('p'))
+    text.textContent = 'several sample words'
+    try {
+      chat.working = true
+      const range = document.createRange()
+      range.selectNodeContents(text)
+      document.getSelection()!.removeAllRanges()
+      document.getSelection()!.addRange(range)
+      expect(press(['Ctrl'], 'c')).toBe(false)
+      expect(chat.stopped).toBe(0)
+      expect(parentHeard).toEqual(['Ctrl+c'])
+      // The selection gone, the same key stops.
+      document.getSelection()!.removeAllRanges()
+      press(['Ctrl'], 'c')
+      expect(chat.stopped).toBe(1)
+    } finally {
+      document.getSelection()!.removeAllRanges()
+      text.remove()
+      withdraw()
+    }
+  })
+
+  it('names Control+C on the stop control, as the platform writes it', () => {
+    expect(stopTooltip(true)).toBe('Stop (⌃C)')
+    expect(stopTooltip(false)).toBe('Stop (Ctrl+C)')
   })
 })

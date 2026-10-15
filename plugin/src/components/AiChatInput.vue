@@ -136,7 +136,7 @@
             />
             <Icon
               icon="square"
-              tooltip="Stop"
+              :tooltip="stopTip"
               class="abele-chat-input__stop"
               @click="emit('abort')"
             />
@@ -198,6 +198,7 @@
 import { ref, computed, inject, nextTick, watch } from 'vue'
 import { TFile, type Scope } from 'obsidian'
 import { CHAT_KEY_SCOPE } from '@/ai/chatKeyScope'
+import { stopTooltip } from '@/ai/chatTabKeyMap'
 import Icon from './obsidian/Icon.vue'
 import ChatSlashSuggest, { type SlashItem } from './ChatSlashSuggest.vue'
 import VoiceRecorder from './VoiceRecorder.vue'
@@ -317,6 +318,7 @@ const {
   focus,
   placeLine,
   hasFocus,
+  hasSelection,
   onKeydown,
   onEmptyPress,
   onEditorDrop,
@@ -331,6 +333,7 @@ const {
   // Only inside a chat pane, whose tabs the keys work: a comment or a node's own view has none.
   parentScope: inject<Scope | undefined>(CHAT_KEY_SCOPE, undefined),
 })
+const stopTip = stopTooltip()
 const expandLabel = computed(() =>
   expanded.value ? 'Collapse the message field' : 'Expand the message field'
 )
@@ -572,11 +575,8 @@ watch(text, (value) => {
 const splitPlaces = (value: string) =>
   fallback.value ? splitMarkedText(value, marked.value) : splitComposerText(value)
 
-/** The «/» list is open over the field, and Esc is its to take. */
-const suggesting = () => slashQuery.value !== null && !slashDismissed.value && !!slash.value?.open
-
 defineExpose({
-  suggesting,
+  hasSelection,
   quote,
   setText,
   addAttachment,

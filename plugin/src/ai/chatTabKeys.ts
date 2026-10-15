@@ -12,7 +12,14 @@ import { Scope, type App } from 'obsidian'
 import { ChatService } from './ChatService'
 import { CHAT_TAB_KEYS, tabAlong, tabAt, type ChatTabAction } from './chatTabKeyMap'
 
-export { CHAT_TAB_KEYS, keyLabel, tabAlong, tabAt, withShortcut } from './chatTabKeyMap'
+export {
+  CHAT_TAB_KEYS,
+  keyLabel,
+  stopTooltip,
+  tabAlong,
+  tabAt,
+  withShortcut,
+} from './chatTabKeyMap'
 export type { ChatTabAction, ChatTabKey } from './chatTabKeyMap'
 
 /**
@@ -52,13 +59,32 @@ export function runChatTabAction(action: ChatTabAction, chats = ChatService.getI
   }
 }
 
-/** Stops the agent on Esc, when the chat on screen says it is the one to stop. */
-const escapeStops = new Set<() => boolean>()
+/** Stops the agent on Ctrl+C, when the chat on screen says it is the one to stop. */
+const stopKeys = new Set<() => boolean>()
 
-/** A chat on screen offers Esc a way to stop its agent; the returned function withdraws it. */
-export function onEscapeStop(stop: () => boolean): () => void {
-  escapeStops.add(stop)
-  return () => escapeStops.delete(stop)
+/** A chat on screen offers Ctrl+C a way to stop its agent; the returned function withdraws it. */
+export function onStopKey(stop: () => boolean): () => void {
+  stopKeys.add(stop)
+  return () => stopKeys.delete(stop)
+}
+
+/**
+ * Control+C alone, as a terminal stops what runs in it. The Control key on every platform, a
+ * Mac's included, so Cmd+C stays copy there. A Latin letter is read as typed; any other layout
+ * by the key's place, where the C is.
+ */
+function isStopKey(evt: KeyboardEvent): boolean {
+  if (!evt.ctrlKey || evt.metaKey || evt.altKey || evt.shiftKey) return false
+  const key = evt.key.toLowerCase()
+  return /^[a-z]$/.test(key) ? key === 'c' : evt.code === 'KeyC'
+}
+
+/** Text is selected somewhere on the page: Ctrl+C is its copy, never a stop. */
+function textSelected(evt: KeyboardEvent): boolean {
+  const target = evt.target as Node | null
+  const doc = target?.ownerDocument ?? (target as Document | null)?.defaultView?.document
+  const selection = (doc ?? activeDocument).getSelection()
+  return !!selection && !selection.isCollapsed && selection.toString().length > 0
 }
 
 /** Registers every chat-tab key on `scope`. */
@@ -78,12 +104,12 @@ export function registerChatTabKeys(scope: Scope, chats = () => ChatService.getI
       return false
     })
   }
-  // Esc with no modifier, and only when a chat stops something; otherwise the key goes on
-  // where it went before. A catch-all, because a binding for Escape itself would end the key's
-  // way through the scopes even when it did nothing.
+  // Ctrl+C, and only when a chat stops something and no text is selected; otherwise the key
+  // goes on where it went before. A catch-all, because a binding for the key itself would end
+  // its way through the scopes even when it did nothing.
   scope.register(null, null, (evt: KeyboardEvent) => {
-    if (evt.key !== 'Escape' || evt.metaKey || evt.ctrlKey || evt.altKey || evt.shiftKey) return
-    for (const stop of escapeStops) if (stop()) return false
+    if (!isStopKey(evt) || textSelected(evt)) return
+    for (const stop of stopKeys) if (stop()) return false
     return
   })
 }

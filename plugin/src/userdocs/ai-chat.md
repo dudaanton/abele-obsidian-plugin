@@ -444,12 +444,15 @@ with a keyboard uses **Cmd**.
 | **Cmd+Alt+→** / **Ctrl+Tab** / **Cmd+Shift+]** / **Ctrl+PageDown** | Next chat tab                          |
 | **Cmd+Alt+←** / **Ctrl+Shift+Tab** / **Cmd+Shift+[** / **Ctrl+PageUp** | Previous chat tab                  |
 | **Cmd+1** … **Cmd+8**                                      | Go to that chat tab; **Cmd+9** goes to the last |
-| **Esc**                                                    | Stop the agent while it is working             |
+| **Ctrl+C**                                                 | Stop the agent while it is working             |
 
 Closing a tab never deletes the chat: it is saved, stays in the history, and **Cmd+Shift+T**
 brings it back. On the last tab, **Cmd+W** leaves a fresh empty chat; once that tab is already
-empty the key does nothing, rather than closing the chat pane. **Esc** does not stop the agent
-while the **/** list is open or the cursor is in another field, such as find. **Alt+arrows**
+empty the key does nothing, rather than closing the chat pane. **Ctrl+C** is the Control key
+on a Mac too, so **Cmd+C** still copies. While text is selected, in the message box or in the
+conversation, **Ctrl+C** copies it and the agent carries on; it does not stop the agent either
+while the cursor is in another field, such as find, and does what it always did when the agent
+is not working. **Esc** does not stop the agent. **Alt+arrows**
 still move by word in the message box. Outside the chat these keys do what Obsidian makes
 them do.
 

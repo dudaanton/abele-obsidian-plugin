@@ -166,6 +166,8 @@ export interface EmbeddedEditor {
   focusEnd(): void
   /** Where the cursor is, as an offset into the text. */
   cursor(): number
+  /** Some of the text is selected. */
+  hasSelection(): boolean
   /** Focus with the cursor at an offset into the text. */
   focusAt(offset: number): void
   /** The editor's own content element — what the keyboard comes up for. */
@@ -440,6 +442,7 @@ export function createEmbeddedEditor(
       cm.focus()
     },
     cursor: () => controller.editor.cm.state.selection.main.head,
+    hasSelection: () => controller.editor.cm.state.selection.ranges.some((r) => !r.empty),
     focusAt: (offset: number) => {
       const cm = controller.editor.cm
       cm.dispatch({ selection: { anchor: Math.min(offset, cm.state.doc.length) } })

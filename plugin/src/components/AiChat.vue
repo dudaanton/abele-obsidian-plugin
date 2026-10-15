@@ -483,7 +483,7 @@ import type { HighlightColor } from '@/reader/highlights'
 import ChatFindBar from './ChatFindBar.vue'
 import { useChatFind } from '@/composables/useChatFind'
 import { useFindKey } from '@/composables/useFindKey'
-import { chatTabScope, onEscapeStop } from '@/ai/chatTabKeys'
+import { chatTabScope, onStopKey } from '@/ai/chatTabKeys'
 import { CHAT_KEY_SCOPE } from '@/ai/chatKeyScope'
 import type { FindPart } from '@/ai/chatFind'
 import { useChatScroll } from '@/composables/useChatScroll'
@@ -1429,18 +1429,18 @@ useFindKey(chatContainer, () => {
 provide(CHAT_KEY_SCOPE, chatTabScope(GlobalStore.getInstance().app))
 
 /**
- * Esc stops the agent, as the stop button does, while the cursor is in this chat's composer or
- * on its conversation. Not from another field in the chat (find, a message being edited) nor
- * while the «/» list is open: Esc there closes what it is in.
+ * Ctrl+C stops the agent, as the stop button does, while the cursor is in this chat's composer
+ * or on its conversation. Not from another field in the chat (find, a message being edited),
+ * and not while text is selected in the composer: the key copies it there.
  */
-const stopOnEscape = () => {
+const stopOnKey = () => {
   const root = chatContainer.value
   const focused = root?.ownerDocument.activeElement
   if (!root || !focused || !root.contains(focused)) return false
   const inComposer = !!chatInput.value?.hasFocus()
   const typing = focused.closest('input, textarea, select, [contenteditable="true"]')
   if (!inComposer && typing) return false
-  if (inComposer && chatInput.value?.suggesting()) return false
+  if (inComposer && chatInput.value?.hasSelection()) return false
   const working =
     isStreaming.value ||
     isExecutingTool.value ||
@@ -1450,7 +1450,7 @@ const stopOnEscape = () => {
   onAbort()
   return true
 }
-onUnmounted(onEscapeStop(stopOnEscape))
+onUnmounted(onStopKey(stopOnKey))
 
 // Another chat loaded into this tab: the words were looked for in the one it replaced.
 watch(
