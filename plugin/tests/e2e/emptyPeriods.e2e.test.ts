@@ -9,13 +9,14 @@
  *
  * Requires Obsidian running with the plugin installed — see docs/Testing.md.
  */
-import { describe, it, expect } from 'vitest'
-import { evalLong, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { evalLong, evalRaw, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { onPhone, targets, TARGET } from './helpers/target'
 import { shotDir } from './helpers/shots'
 
 targets('desktop', 'phone')
 
+const FOLDER = 'EmptyPeriodsProbe'
 const SHOTS = shotDir(onPhone() ? 'abele-phone' : 'abele-empty-periods')
 
 interface Pane {
@@ -46,6 +47,7 @@ const probe = `(async () => {
     return false
   }
   const ws = app.workspace
+  const FOLDER = ${JSON.stringify(FOLDER)}
   const target = ${JSON.stringify(TARGET)}
   const leaves = []
   const shot = async (name) => {
@@ -107,11 +109,19 @@ const probe = `(async () => {
       'time-empty'
     )
     try {
+      // Rows of its own, so the check does not lean on what the vault holds; removed afterwards.
+      if (!app.vault.getAbstractFileByPath(FOLDER)) await app.vault.createFolder(FOLDER)
+      for (const [name, balance] of [['Wallet', 120], ['Savings', 5000], ['Card', -40], ['Cash', 15]]) {
+        await app.vault.create(FOLDER + '/Empty probe ' + name + '.md', '---\ntype: account\naccountType: asset\ncurrency: EUR\nstartingBalance: ' + balance + '\nstartingBalanceDate: 2020-01-01\n---\n')
+      }
       const accounts = await open('abele-accounts-sidebar-view')
       const pane = () => accounts.view.containerEl.querySelector('.abele-accounts-sidebar')
-      await until(() => pane() && pane().querySelectorAll('.abele-accounts-sidebar__row').length > 2, 30000)
+      const probeRows = () => [...pane().querySelectorAll('.abele-accounts-sidebar__row')].filter((r) => r.textContent.includes('Empty probe'))
+      await until(() => pane() && probeRows().length === 4, 30000)
       await wait(500)
-      for (const row of [...pane().querySelectorAll('.abele-accounts-sidebar__row')].filter(visible).slice(0, 12)) {
+      probeRows()[0].scrollIntoView({ block: 'center' })
+      await wait(300)
+      for (const row of probeRows()) {
         const box = row.getBoundingClientRect()
         const name = row.querySelector('.abele-accounts-sidebar__name').getBoundingClientRect()
         state.rows.heights.push(Math.round(box.height * 10) / 10)
@@ -123,6 +133,8 @@ const probe = `(async () => {
     }
   } finally {
     for (const leaf of leaves) leaf.detach()
+    const folder = app.vault.getAbstractFileByPath(FOLDER)
+    if (folder) await app.vault.delete(folder, true)
   }
   return JSON.stringify(state)
 })()`
@@ -132,6 +144,21 @@ const available = isObsidianRunning() && hasTestApi()
 describe.skipIf(!available)('a month with nothing in it, and account rows a finger can hit', () => {
   let state: State | undefined
   const run = async () => (state ??= JSON.parse(await evalLong(probe, 180_000)) as State)
+
+  beforeAll(async () => {
+    // A run cut short by a crash can leave the probe accounts behind.
+    await evalLong(
+      `(async () => { const f = app.vault.getAbstractFileByPath(${JSON.stringify(FOLDER)}); if (f) await app.vault.delete(f, true); return 'ok' })()`,
+      30_000
+    )
+  })
+
+  afterAll(() => {
+    if (!available) return
+    expect(
+      evalRaw(`String(!!app.vault.getAbstractFileByPath(${JSON.stringify(FOLDER)}))`)
+    ).toContain('false')
+  })
 
   it('finance: one muted line naming the month, nothing of a full month under it', async () => {
     const { finance } = await run()
@@ -155,7 +182,7 @@ describe.skipIf(!available)('a month with nothing in it, and account rows a fing
     async () => {
       const { rows } = await run()
       expect(rows.error).toBe('')
-      expect(rows.heights.length).toBeGreaterThan(2)
+      expect(rows.heights).toHaveLength(4)
       if (onPhone()) {
         expect(Math.min(...rows.heights)).toBeGreaterThanOrEqual(44)
         expect(Math.max(...rows.offCentre)).toBeLessThanOrEqual(1.5)
