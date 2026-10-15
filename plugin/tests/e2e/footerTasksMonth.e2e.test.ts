@@ -48,6 +48,7 @@ interface Report {
   dayRows?: number
   mixedRows?: number
   stacked?: boolean
+  headerAbove?: string[]
   overflow?: string[]
   listOverflow?: string[]
   searchInMonth?: boolean
@@ -71,7 +72,7 @@ const script = (label: string) => String.raw`(async function* () {
   const shots = ${JSON.stringify(SHOTS)}
   const label = ${JSON.stringify(label)}
   const phone = ${JSON.stringify(onPhone())}
-  const report = { label, shots: [] }
+  const report = { label, shots: [], headerAbove: [] }
   const config = window.__abeleTest.AbeleConfig.getInstance()
   const remembered = config.rememberNotePlaces
   const memory = app.loadLocalStorage('abele-footer-view')
@@ -102,6 +103,15 @@ const script = (label: string) => String.raw`(async function* () {
     const s = await until(() => leaf.view.containerEl.querySelector('.cm-scroller'), 'editor')
     const root = await until(() => { s.scrollTop = s.scrollHeight; return leaf.view.containerEl.querySelector('.abele-timeline') }, 'footer timeline')
     return root
+  }
+  // The section header stands over the month's own row (month name, arrows, Today), never under it.
+  const order = async name => {
+    await wait(300)
+    const head = root => root.querySelector('.abele-timeline__pinned')?.getBoundingClientRect()
+    const nav = root.querySelector('.abele-tasks-calendar .abele-calendar__header')?.getBoundingClientRect()
+    const h = head(root)
+    if (!h || !nav) return report.headerAbove.push(name + ': missing')
+    if (h.bottom > nav.top + 1) report.headerAbove.push(name + ': header ' + Math.round(h.top) + '..' + Math.round(h.bottom) + ', month row ' + Math.round(nav.top))
   }
   const reveal = el => { el.scrollIntoView({ block: 'start' }) }
   try {
@@ -142,6 +152,7 @@ const script = (label: string) => String.raw`(async function* () {
     await until(() => marks()[String(doneDay)] === 'done', 'done day shown')
     report.marksShown = marks()
     reveal(root)
+    await order('month')
     yield 'shoot:' + (await shoot('month') ?? '')
 
     yield 'chosen day'
@@ -159,6 +170,7 @@ const script = (label: string) => String.raw`(async function* () {
       .map(el => String(el.className) + ' +' + Math.round(el.getBoundingClientRect().right - right) + 'px').slice(0, 5)
     report.overflow = spill(month, edge)
     reveal(root)
+    await order('chosen day')
     yield 'shoot:' + (await shoot('chosen-day') ?? '')
 
     cell(emptyDay).click()
@@ -170,6 +182,7 @@ const script = (label: string) => String.raw`(async function* () {
     await until(() => month.querySelector('.abele-tasks-calendar__none')?.textContent.includes('Nothing planned in'), 'empty month')
     report.emptyMonth = month.querySelector('.abele-tasks-calendar__none').textContent.trim()
     reveal(root)
+    await order('empty month')
     yield 'shoot:' + (await shoot('empty-month') ?? '')
 
     yield 'reopen'
@@ -248,6 +261,7 @@ const check = (r: Report, phone: boolean) => {
   expect(r.searchInMonth).toBe(false)
   expect(r.stacked).toBe(phone)
   expect(r.overflow).toEqual([])
+  expect(r.headerAbove).toEqual([])
   expect(r.listOverflow).toEqual([])
   expect(r.emptyDay).toBe('Nothing planned this day.')
   expect(r.emptyMonth).toMatch(/^Nothing planned in /)

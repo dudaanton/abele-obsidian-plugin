@@ -2,7 +2,11 @@
   <div ref="clockEl" class="abele-timeline" data-abele-anchor="section:calendar">
     <!-- Pinned while the days scroll under it, so the search, the label filter and the completed
          switch are always at hand; its count is what the list shows now. -->
-    <div ref="headerEl" class="abele-timeline__pinned">
+    <div
+      ref="headerEl"
+      class="abele-timeline__pinned"
+      :class="{ 'abele-timeline__pinned_month': calendar }"
+    >
       <ListSectionHeader
         class-prefix="abele-timeline"
         :text="title ?? 'Timeline'"
@@ -502,6 +506,12 @@ const getDateWikilink = (dateStr: string) => {
 
   > .abele-list-section-header {
     margin-block: 0;
+  }
+
+  // The month is no list scrolling under it, and its pinning offset is kept only for the list's
+  // rows: on a phone a stale one pushed the header down past the month's own row.
+  &.abele-timeline__pinned_month {
+    position: static;
   }
 }
 
