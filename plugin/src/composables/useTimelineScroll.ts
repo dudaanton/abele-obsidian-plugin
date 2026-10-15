@@ -226,6 +226,7 @@ export function useTimelineScroll(
     owner.style.removeProperty('overflow-anchor')
     owner.classList.add('abele-timeline__scroll-hold')
     let heldTop = owner.scrollTop
+    let heldHeight = owner.scrollHeight
     // A shrinking patch can clamp scrollTop before nextTick aligns the surviving row.
     // Reserve range only across that patch; align replaces it with the exact needed room.
     // An editor which already owns anchoring also owns its patch-time scroll range.
@@ -246,11 +247,11 @@ export function useTimelineScroll(
       if (!live || !items.value) return
       // Native scrolling can move before its scroll event is delivered. A resize callback
       // or queued nextTick must not mistake that movement for a layout insertion.
-      // A shorter list clamps scrollTop to its new end during the patch (an editor gets no room
-      // reserved for it); that is the layout moving, not the reader.
+      // A shorter list clamps scrollTop during the patch (an editor gets no room reserved for
+      // it), mid-patch even below where the list ends up. A list that lost at least as much as the
+      // scroll moved up is the layout moving, not the reader: reading never shortens the list.
       const clamped =
-        owner.scrollTop < heldTop &&
-        owner.scrollTop >= owner.scrollHeight - owner.clientHeight - 0.5
+        owner.scrollTop < heldTop && heldHeight - owner.scrollHeight >= heldTop - owner.scrollTop
       if (Math.abs(owner.scrollTop - heldTop) > 0.5 && !clamped && (!requested || dragging())) {
         stopHolding()
         return
@@ -267,6 +268,7 @@ export function useTimelineScroll(
           patchSpace = false
           placeScroll(owner, owner.scrollTop + shift, !!requested)
           heldTop = owner.scrollTop
+          heldHeight = owner.scrollHeight
         }
       } else {
         patchSpace = false

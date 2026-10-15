@@ -653,7 +653,11 @@ describe('timeline scroll ownership', () => {
   // and today away. In an editor, which gets no room reserved for the patch, the shorter list
   // clamps the scroll at its new end; that is the layout, not the reader, and the nearest row
   // left still comes to the read place.
-  it('holds the nearest remaining row through an editor clamping its scroll at the new end', async () => {
+  it.each([
+    ['at the new end', 60],
+    // Mid-patch the list can be shorter than it ends up, and the clamp goes further than its end.
+    ['to the top while the list is briefly empty', 0],
+  ])('holds the nearest remaining row through an editor clamping its scroll %s', async (_, clamp) => {
     let hiding = false
     const p = await pane(50, (key) => !hiding || key !== 'sample-task')
     p.owner.classList.add('cm-scroller')
@@ -672,8 +676,8 @@ describe('timeline scroll ownership', () => {
       p.row.remove()
       nextTop = 120
       shortened = true
-      // The browser clamps scrollTop during the DOM patch to the shorter list's end.
-      p.owner.scrollTop = 60
+      // The browser clamps scrollTop during the DOM patch.
+      p.owner.scrollTop = clamp
     })
     expect(next.getBoundingClientRect().top).toBe(50)
   })
