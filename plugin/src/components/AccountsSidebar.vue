@@ -257,6 +257,12 @@ const emptyText = computed(() =>
   }
 }
 
+// On a phone a row is a finger's height, the kit's touch floor, its words in the middle of it.
+body.is-phone .abele-accounts-sidebar__row {
+  min-height: var(--abele-touch-min);
+  align-items: center;
+}
+
 .abele-accounts-sidebar__amount {
   color: var(--text-normal);
   font-size: var(--font-ui-small);

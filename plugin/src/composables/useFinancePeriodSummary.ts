@@ -221,6 +221,16 @@ export function useFinancePeriodSummary(options: PeriodSummaryOptions) {
     return periodByCurrency.value.get(selectedPeriodCurrency.value) || emptyPeriodData
   })
 
+  // Nothing at all dated in the period, transfers included: the summary then says so once.
+  const periodEmpty = computed(() => {
+    const startStr = periodStart.value.format(DATE_FORMAT)
+    const endStr = periodEnd.value.format(DATE_FORMAT)
+    return !ledger.value.some(
+      (entry) =>
+        entry.amount != null && !!entry.currency && entry.date >= startStr && entry.date <= endStr
+    )
+  })
+
   const periodIncome = computed(() => periodTotals.value.income)
   const periodExpenses = computed(() => periodTotals.value.expenses)
   const periodLent = computed(() => periodTotals.value.lent)
@@ -228,6 +238,7 @@ export function useFinancePeriodSummary(options: PeriodSummaryOptions) {
   const periodSavings = computed(() => addMoney(periodIncome.value, -periodExpenses.value))
 
   return {
+    periodEmpty,
     periodCurrencies,
     selectedPeriodCurrency,
     currencyTabs,

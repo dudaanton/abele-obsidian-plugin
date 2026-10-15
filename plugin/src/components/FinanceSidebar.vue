@@ -107,7 +107,14 @@
         level="secondary"
         class="abele-finance-sidebar__currency-tabs"
       />
+      <!-- A period with nothing in it says so once, in place of zero rows and an empty chart. -->
+      <EmptyState
+        v-if="periodEmpty"
+        class="abele-finance-sidebar__period-empty"
+        :text="`Nothing in ${periodName(periodStart, periodEnd)}`"
+      />
       <div
+        v-else
         class="abele-finance-sidebar__summary"
         :class="{ 'abele-finance-sidebar__summary_approx': approxPeriod }"
       >
@@ -116,7 +123,10 @@
           <span
             class="abele-finance-sidebar__summary-value abele-finance-sidebar__summary-value--income"
           >
-            {{ formatAmount(periodIncome) }}
+            {{ formatAmount(periodIncome)
+            }}<span v-if="periodCode" class="abele-finance-sidebar__card-currency">
+              {{ periodCode }}</span
+            >
           </span>
         </div>
         <div class="abele-finance-sidebar__summary-row">
@@ -124,7 +134,10 @@
           <span
             class="abele-finance-sidebar__summary-value abele-finance-sidebar__summary-value--expense"
           >
-            {{ formatAmount(periodExpenses) }}
+            {{ formatAmount(periodExpenses)
+            }}<span v-if="periodCode" class="abele-finance-sidebar__card-currency">
+              {{ periodCode }}</span
+            >
           </span>
         </div>
         <div class="abele-finance-sidebar__summary-row abele-finance-sidebar__summary-row--total">
@@ -136,7 +149,10 @@
               'abele-finance-sidebar__summary-value--expense': periodSavings < 0,
             }"
           >
-            {{ formatAmount(periodSavings) }}
+            {{ formatAmount(periodSavings)
+            }}<span v-if="periodCode" class="abele-finance-sidebar__card-currency">
+              {{ periodCode }}</span
+            >
           </span>
         </div>
         <!-- Added up at today's rates, the tab says so. Only what is wrong gets a line: rates
@@ -179,39 +195,41 @@
           </span>
         </div>
       </div>
-      <Tabs
-        v-model="chartTab"
-        :tabs="chartTabs"
-        level="secondary"
-        class="abele-finance-sidebar__chart-tabs"
-      />
-      <template v-if="chartTab === 'expenses' || chartTab === 'income'">
-        <Chart
-          v-if="pieData.length"
-          :active="active"
-          :source="pieData"
-          :render="renderPieChart"
-          :created="createPieChart"
-          class="abele-finance-sidebar__pie-chart"
+      <template v-if="!periodEmpty">
+        <Tabs
+          v-model="chartTab"
+          :tabs="chartTabs"
+          level="secondary"
+          class="abele-finance-sidebar__chart-tabs"
         />
-        <EmptyState v-else class="abele-finance-sidebar__pie-empty" text="No data" />
-      </template>
-      <template v-else-if="chartTab === 'calendar'">
-        <Chart
-          :active="active"
-          :source="[calendarData, store.weekStartsOnMonday.value]"
-          :render="renderCalendarChart"
-          class="abele-finance-sidebar__calendar-chart"
-        />
-      </template>
-      <template v-else-if="chartTab === 'networth'">
-        <Chart
-          :active="active"
-          :source="networthData"
-          :render="renderNetworthChart"
-          :created="createNetworthChart"
-          class="abele-finance-sidebar__networth-chart"
-        />
+        <template v-if="chartTab === 'expenses' || chartTab === 'income'">
+          <Chart
+            v-if="pieData.length"
+            :active="active"
+            :source="pieData"
+            :render="renderPieChart"
+            :created="createPieChart"
+            class="abele-finance-sidebar__pie-chart"
+          />
+          <EmptyState v-else class="abele-finance-sidebar__pie-empty" text="No data" />
+        </template>
+        <template v-else-if="chartTab === 'calendar'">
+          <Chart
+            :active="active"
+            :source="[calendarData, store.weekStartsOnMonday.value]"
+            :render="renderCalendarChart"
+            class="abele-finance-sidebar__calendar-chart"
+          />
+        </template>
+        <template v-else-if="chartTab === 'networth'">
+          <Chart
+            :active="active"
+            :source="networthData"
+            :render="renderNetworthChart"
+            :created="createNetworthChart"
+            class="abele-finance-sidebar__networth-chart"
+          />
+        </template>
       </template>
     </section>
 
@@ -278,6 +296,7 @@ import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianSearch from './obsidian/Search.vue'
 import Tabs from './obsidian/Tabs.vue'
 import PeriodSelector from './obsidian/PeriodSelector.vue'
+import { periodName } from '@/helpers/periodName'
 import DateDivider from './obsidian/DateDivider.vue'
 import TransactionItem from './TransactionItem.vue'
 import ApproxAmount from './finance/ApproxAmount.vue'
@@ -388,6 +407,7 @@ function onCustomApplied() {
 }
 
 const {
+  periodEmpty,
   periodCurrencies,
   selectedPeriodCurrency,
   currencyTabs,
@@ -407,6 +427,10 @@ const {
   rates: () => ({ table: ratesTable(), display: exchangeRates.display }),
 })
 const approxPeriod = computed(() => selectedPeriodCurrency.value === ALL_CURRENCIES)
+// One currency in the period has no tab to name it: its code stands beside the amounts instead.
+const periodCode = computed(() =>
+  periodCurrencies.value.length === 1 ? periodCurrencies.value[0] : ''
+)
 const ratesStale = computed(() => ratesStatus() === 'stale')
 const ratesDay = computed(() =>
   exchangeRates.table ? dayjs(exchangeRates.table.fetchedOn).format('D MMM') : ''

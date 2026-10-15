@@ -42,51 +42,60 @@
     <!-- Period selector -->
     <PeriodSelector v-model:start="periodStart" v-model:end="periodEnd" />
 
-    <!-- Total time for period -->
-    <div class="abele-time-tracking-sidebar__summary">
-      <div class="abele-time-tracking-sidebar__summary-row">
-        <span class="abele-time-tracking-sidebar__summary-label">Total</span>
-        <span class="abele-time-tracking-sidebar__summary-value">{{ totalTimeText }}</span>
+    <!-- A period with nothing tracked says so once, in place of a zero total, empty charts and
+         an empty list. -->
+    <EmptyState
+      v-if="!periodEntries.length"
+      class="abele-time-tracking-sidebar__period-empty"
+      :text="`Nothing tracked in ${periodName(periodStart, periodEnd)}`"
+    />
+    <template v-else>
+      <!-- Total time for period -->
+      <div class="abele-time-tracking-sidebar__summary">
+        <div class="abele-time-tracking-sidebar__summary-row">
+          <span class="abele-time-tracking-sidebar__summary-label">Total</span>
+          <span class="abele-time-tracking-sidebar__summary-value">{{ totalTimeText }}</span>
+        </div>
       </div>
-    </div>
 
-    <!-- Charts -->
-    <Tabs v-model="chartTab" :tabs="chartTabs" level="secondary" />
-    <template v-if="chartTab === 'daily'">
-      <Chart
-        v-if="dailyChartData.some(([, total]) => total > 0)"
-        :active="active"
-        :source="dailyChartData"
-        :render="renderDailyChart"
-        class="abele-time-tracking-sidebar__chart"
-      />
-      <EmptyState v-else text="No data" />
-    </template>
-    <template v-else-if="chartTab === 'groups'">
-      <Chart
-        v-if="groupsPieData.length"
-        :active="active"
-        :source="groupsPieData"
-        :render="renderGroupsPieChart"
-        :created="createGroupsPieChart"
-        class="abele-time-tracking-sidebar__chart"
-      />
-      <EmptyState v-else text="No data" />
-    </template>
+      <!-- Charts -->
+      <Tabs v-model="chartTab" :tabs="chartTabs" level="secondary" />
+      <template v-if="chartTab === 'daily'">
+        <Chart
+          v-if="dailyChartData.some(([, total]) => total > 0)"
+          :active="active"
+          :source="dailyChartData"
+          :render="renderDailyChart"
+          class="abele-time-tracking-sidebar__chart"
+        />
+        <EmptyState v-else text="No data" />
+      </template>
+      <template v-else-if="chartTab === 'groups'">
+        <Chart
+          v-if="groupsPieData.length"
+          :active="active"
+          :source="groupsPieData"
+          :render="renderGroupsPieChart"
+          :created="createGroupsPieChart"
+          class="abele-time-tracking-sidebar__chart"
+        />
+        <EmptyState v-else text="No data" />
+      </template>
 
-    <!-- Entries list -->
-    <Section title="Entries" class="abele-time-tracking-sidebar__section">
-      <div v-if="visibleEntries.length" class="abele-time-tracking-sidebar__entries">
-        <template v-for="(entry, idx) in visibleEntries" :key="entry.id">
-          <DateDivider v-if="showDateBefore(idx)" :date="entryDate(entry)">
-            {{ dayDuration(entryDate(entry)) }}
-          </DateDivider>
-          <TimeEntryItem :entry="entry" />
-        </template>
-        <div ref="scrollSentinel" class="abele-time-tracking-sidebar__sentinel" />
-      </div>
-      <EmptyState v-else text="No entries found" />
-    </Section>
+      <!-- Entries list -->
+      <Section title="Entries" class="abele-time-tracking-sidebar__section">
+        <div v-if="visibleEntries.length" class="abele-time-tracking-sidebar__entries">
+          <template v-for="(entry, idx) in visibleEntries" :key="entry.id">
+            <DateDivider v-if="showDateBefore(idx)" :date="entryDate(entry)">
+              {{ dayDuration(entryDate(entry)) }}
+            </DateDivider>
+            <TimeEntryItem :entry="entry" />
+          </template>
+          <div ref="scrollSentinel" class="abele-time-tracking-sidebar__sentinel" />
+        </div>
+        <EmptyState v-else text="No entries found" />
+      </Section>
+    </template>
   </SidebarPanel>
 </template>
 
@@ -116,6 +125,7 @@ import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianMarkdown from './obsidian/Markdown.vue'
 import Tabs from './obsidian/Tabs.vue'
 import PeriodSelector from './obsidian/PeriodSelector.vue'
+import { periodName } from '@/helpers/periodName'
 import DateDivider from './obsidian/DateDivider.vue'
 import TimeEntryItem from './TimeEntryItem.vue'
 import ElapsedTime from './ElapsedTime.vue'
