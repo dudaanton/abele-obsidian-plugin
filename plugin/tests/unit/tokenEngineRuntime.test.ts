@@ -445,6 +445,89 @@ it('rechecks automatic code approval inside the engine lock before installing by
   }
 })
 
+it.each(['cursor', 'file check'])(
+  'revoking trust during a late %s await prevents executable installation',
+  async (pause) => {
+    const wire = await server('Scripts/sample.js', 'sample executable'),
+      fs = new MemoryFileSystem(),
+      one = runtime(wire, fs)
+    try {
+      await one.runtime.sync()
+      const [candidate] = await one.reviews.executables.pending()
+      let trusted = true
+      if (pause === 'cursor') {
+        const getCursor = one.state.getCursor.bind(one.state)
+        vi.spyOn(one.state, 'getCursor').mockImplementation(async () => {
+          trusted = false
+          return getCursor()
+        })
+      } else {
+        const stat = fs.stat.bind(fs)
+        vi.spyOn(fs, 'stat').mockImplementation(async (path) => {
+          trusted = false
+          return stat(path)
+        })
+      }
+      await expect(
+        one.runtime.apply(candidate, () => {
+          if (!trusted) throw new Error('Trust revoked')
+        })
+      ).rejects.toThrow('Trust revoked')
+      expect(await fs.stat(candidate.path)).toBeNull()
+      expect(await one.reviews.executables.pending()).toHaveLength(1)
+    } finally {
+      await one.runtime.disconnect()
+    }
+  }
+)
+
+it('revoking trust during directory metadata reads prevents directory publication', async () => {
+  const wire = await server('Scripts/sample.js', 'sample executable')
+  let created = false
+  const mkdir = vi.fn(async () => {
+    created = true
+  })
+  const fs = Object.assign(new MemoryFileSystem(), {
+    mkdir,
+    listDirectories: async function* () {
+      if (created) yield { path: 'Scripts/new', identity: 'sample-folder', mtime: 1000 }
+    },
+  })
+  const one = runtime(wire, fs)
+  try {
+    await one.runtime.sync()
+    const [script] = await one.reviews.executables.pending()
+    const { candidate } = await one.reviews.executables.stage({
+      source: script.source,
+      fileId: 'sample-directory',
+      versionId: 'directory-version',
+      path: 'Scripts/new',
+      previousPath: 'Scripts/old',
+      operation: 'move_directory',
+      directory: true,
+      receivedAt: 1000,
+      mtime: 1000,
+      sha: null,
+      bytes: null,
+    })
+    let trusted = true
+    const getMeta = one.state.getMeta.bind(one.state)
+    vi.spyOn(one.state, 'getMeta').mockImplementation(async (key) => {
+      if (key === 'v2-directories') trusted = false
+      return getMeta(key)
+    })
+    mkdir.mockClear()
+    await expect(
+      one.runtime.apply(candidate!, () => {
+        if (!trusted) throw new Error('Trust revoked')
+      })
+    ).rejects.toThrow('Trust revoked')
+    expect(mkdir).not.toHaveBeenCalled()
+  } finally {
+    await one.runtime.disconnect()
+  }
+})
+
 it('stages ordinary root settings for an explicit reload decision while normal notes keep moving', async () => {
   const wire = await server('.obsidian/app.json', '{"sample":true}'),
     fs = new MemoryFileSystem(),

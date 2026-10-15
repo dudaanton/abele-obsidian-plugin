@@ -46,6 +46,7 @@ import type { ConsentTarget } from './attachmentConsent'
 import { TokenActions } from './tokenActions'
 import { TokenAssetOutbox, ASSET_IDENTITIES, assetIdentitiesSchema } from './tokenAssetOutbox'
 import { PLACEMENT } from './pathCoordinator'
+import { reviewFileSystem } from './reviewFileSystem'
 
 export interface TokenEngineOptions {
   id: string
@@ -1085,8 +1086,9 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       const key = 'token-reviewed-apply:' + candidate.id
       if (await this.options.state.getMeta(key)) return
       assertAllowed()
+      const fs = reviewFileSystem(this.options.fs, assertAllowed)
       if (candidate.directory) {
-        await this.applyDirectory(candidate)
+        await this.applyDirectory(candidate, fs)
       } else {
         const prior = await this.options.state.byFileId(candidate.fileId)
         if (prior?.versionId !== candidate.versionId) {
@@ -1153,18 +1155,12 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
             if (prior) await this.options.state.delete(prior.path)
           } else {
             assertAllowed()
-            const result = await applyStaged(
-              localClient,
-              this.options.fs,
-              this.options.state,
-              [change],
-              {
-                filter: { excluded: () => false },
-                dirty: new Set(),
-                expected: new ExpectedWrites(),
-                preserveMissing: new Set(prior ? [prior.fileId] : []),
-              }
-            )
+            const result = await applyStaged(localClient, fs, this.options.state, [change], {
+              filter: { excluded: () => false },
+              dirty: new Set(),
+              expected: new ExpectedWrites(),
+              preserveMissing: new Set(prior ? [prior.fileId] : []),
+            })
             if (result.held.length)
               throw new Error('The local file changed; this version remains pending')
           }
@@ -1174,7 +1170,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     })
     await this.refreshHolds()
   }
-  private async applyDirectory(candidate: ExecutableCandidate): Promise<void> {
+  private async applyDirectory(candidate: ExecutableCandidate, fs: FileSystem): Promise<void> {
     const work = async () => {
       const local = new V2EngineClient(this.options.encoded, {
         fetch: async (input) => {
@@ -1222,7 +1218,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
           throw new Error('Approval cannot make a network request')
         },
       })
-      await local.prepare(this.options.fs, this.options.state)
+      await local.prepare(fs, this.options.state)
       if (candidate.operation === 'delete_directory') await local.changes(0)
       else await local.manifest(null)
       await local.finishPull()
