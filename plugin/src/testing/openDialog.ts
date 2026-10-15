@@ -502,12 +502,14 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
       })
     }),
   'key-destinations-new': () =>
-    destinationFixture('new', () => {
+    destinationFixture('new', async () => {
       const modal = reviewKeyDestinations()
       modal.modalEl.dataset.abeleFixture = 'key-destinations-new'
       const select = modal.bodyEl.querySelector('select')
       select.value = 'new'
       select.dispatchEvent(new Event('change', { bubbles: true }))
+      // The new key's fields are drawn on the dialog's next render.
+      await nextTick()
       for (const [label, value] of [
         ['Recipient address', 'http://192.168.42.12:8123/status'],
         ['New key name', 'Sample local key'],

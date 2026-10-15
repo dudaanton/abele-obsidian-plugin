@@ -18,6 +18,8 @@ const askCanvasText = (title: string, label: string, validate: (value: string) =
     submitText: 'Create',
     validate,
     modalClass: 'abele-canvas-input',
+    // As before: the field waits for a tap, which on a phone is what brings the keyboard up.
+    autofocus: false,
   })
 const askCanvasChoice = <T extends string>(
   title: string,

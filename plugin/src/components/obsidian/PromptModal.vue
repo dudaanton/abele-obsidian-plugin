@@ -45,8 +45,11 @@ const props = withDefaults(
     cancelTooltip?: string
     validate?: (value: string) => string
     modalClass?: string | string[]
+    /** Puts the caret in the field on open; off where the person taps the field first. */
+    autofocus?: boolean
   }>(),
   {
+    autofocus: true,
     placeholder: 'filename',
     value: '',
     submitText: 'Create',
@@ -81,7 +84,7 @@ function submit(): void {
   }
 }
 
-onMounted(() => void nextTick(() => field.value?.focus()))
+onMounted(() => void nextTick(() => props.autofocus && field.value?.focus()))
 </script>
 
 <style>

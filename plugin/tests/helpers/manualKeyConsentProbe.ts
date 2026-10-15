@@ -77,7 +77,10 @@ export function manualKeyConsentProbe(shots: string, token: string, physical: bo
     field('Recipient address',origin+'/status')
     const picker=s.modal.bodyEl.querySelector('select[aria-label="Saved key"]')||s.modal.bodyEl.querySelector('select:not(.is-measuring)')
     picker.value='new';picker.dispatchEvent(new Event('change',{bubbles:true}))
+    // The dialog draws the new key's fields, and then its summary, on its next render.
+    await wait(0)
     field('New key name',name);field('New key value',value)
+    await wait(0)
     s.out.masked=s.modal.bodyEl.querySelector('input[aria-label="New key value"]').type==='password'
     s.out.summary=s.modal.footerEl.textContent.includes(name)&&s.modal.footerEl.textContent.includes(origin)&&s.modal.footerEl.textContent.includes('Unencrypted')
     s.out.secretAbsentFromText=!s.modal.modalEl.textContent.includes(value)

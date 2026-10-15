@@ -132,6 +132,12 @@ describe('promptDialog', () => {
     await expect(reply).resolves.toBe('sample-script')
   })
 
+  it('leaves the caret out of the field when asked to', async () => {
+    void promptDialog({ title: 'Add link', autofocus: false })
+    await flushPromises()
+    expect(document.activeElement).not.toBe(field())
+  })
+
   it('answers on Enter and ignores an empty field', async () => {
     const reply = promptDialog({ title: 'New CSS snippet' })
     await flushPromises()

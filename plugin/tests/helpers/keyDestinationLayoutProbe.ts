@@ -46,6 +46,8 @@ export const recipientLayoutProbe = String.raw`
     }
     const picker = body.querySelector('select[aria-label="Saved key"]')
     picker.value = 'new'; picker.dispatchEvent(new Event('change', { bubbles: true }))
+    // The dialog draws the new key's fields on its next render.
+    await wait(0)
     set('Recipient address', 'https://primary.sample.example/status')
     set('New key name', 'Sample primary key'); set('New key value', 'fake-layout-only-value')
     const fullyVisible = (element, container = body) => {

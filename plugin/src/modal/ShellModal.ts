@@ -53,6 +53,18 @@ export class ShellModal extends Modal {
   /** The pinned row for the dialog's buttons, when asked for. */
   readonly footerEl: HTMLElement | null
   private detachKeyboard: (() => void) | null = null
+  /** Dialogs asked to close whose close has not finished yet: Obsidian animates it first. */
+  private static closing = new Set<Promise<void>>()
+  private finishClose: (() => void) | null = null
+
+  /**
+   * Resolves once every shell dialog that was closing has gone from the page. Code awaiting an
+   * answer gets it after its dialog is gone, as a dialog that settles in its own `onClose` does,
+   * so the next question it asks is not mistaken for the old one still fading out.
+   */
+  static whenClosed(): Promise<void> {
+    return Promise.all([...ShellModal.closing]).then(() => {})
+  }
 
   constructor(app: App, options: ShellOptions = {}) {
     super(app)
@@ -83,7 +95,25 @@ export class ShellModal extends Modal {
   close(): void {
     this.detachKeyboard?.()
     this.detachKeyboard = null
+    if ((this as { isOpen?: boolean }).isOpen && !this.finishClose) {
+      const done = new Promise<void>((resolve) => {
+        // A close Obsidian never finishes must not hold every later answer.
+        const timer = window.setTimeout(resolve, 1000)
+        this.finishClose = () => {
+          window.clearTimeout(timer)
+          resolve()
+        }
+      })
+      ShellModal.closing.add(done)
+      void done.then(() => ShellModal.closing.delete(done))
+    }
     super.close()
+  }
+
+  onClose(): void {
+    super.onClose()
+    this.finishClose?.()
+    this.finishClose = null
   }
 
   /**

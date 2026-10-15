@@ -1,5 +1,6 @@
 import type { Component } from 'vue'
 import { openComponentDialog } from '@/modal/componentDialog'
+import { ShellModal } from '@/modal/ShellModal'
 import ConfirmModal from './ConfirmModal.vue'
 import PromptModal from './PromptModal.vue'
 import ChoiceModal from './ChoiceModal.vue'
@@ -42,7 +43,7 @@ export function openDialog<T = string>(
         document: options.document,
         onClosed: (error) => {
           signal?.removeEventListener('abort', cancel)
-          if (error === undefined) resolve(answer)
+          if (error === undefined) void ShellModal.whenClosed().then(() => resolve(answer))
           else
             reject(
               error instanceof Error
@@ -91,6 +92,7 @@ export async function promptDialog(
     submitTooltip?: string
     validate?: (value: string) => string
     modalClass?: string | string[]
+    autofocus?: boolean
   },
   dialog: DialogOptions = {}
 ): Promise<string | null> {
