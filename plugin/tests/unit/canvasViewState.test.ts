@@ -116,8 +116,8 @@ it('starts the walkthrough for Play on a node embed while Open still frames only
   }
 })
 
-it.each([true, false])(
-  'calls unwritten work pending only in a read-only leaf (editing leaf: %s)',
+it.each(['writing', 'failed', 'none'] as const)(
+  'calls unwritten work unsaved only in a leaf without an editor (editor: %s)',
   async (editing) => {
     const view = Object.create(CanvasView.prototype) as CanvasView
     const load = vi.fn(),
@@ -129,7 +129,13 @@ it.each([true, false])(
     ;(view as unknown as { refreshToken: number }).refreshToken = 0
     await view.onLoadFile(file)
     // The editing leaf writes by itself; a read-only one still says another session holds work.
-    view.editor = editing ? ({ refresh: vi.fn() } as unknown as CanvasView['editor']) : null
+    view.editor =
+      editing === 'none'
+        ? null
+        : ({
+            refresh: vi.fn(),
+            writeFailing: editing === 'failed',
+          } as unknown as CanvasView['editor'])
     const document = (view as unknown as { documentLease: { document: CanvasDocumentLike } })
       .documentLease.document
     document.beginDraft()
@@ -139,9 +145,10 @@ it.each([true, false])(
     }))
     document.finishDraft()
     expect(document.session.dirty).toBe(true)
-    if (editing)
-      expect(setText).not.toHaveBeenCalledWith(expect.stringMatching(/not been saved|pending/i))
-    else expect(setText).toHaveBeenCalledWith(expect.stringMatching(/pending/i))
+    if (editing === 'writing') {
+      expect(setText).toHaveBeenCalledWith(expect.stringMatching(/saving automatically/i))
+      expect(setText).not.toHaveBeenCalledWith(expect.stringMatching(/not been saved/i))
+    } else expect(setText).toHaveBeenCalledWith(expect.stringMatching(/not been saved/i))
   }
 )
 type CanvasDocumentLike = import('@/canvas/documentRegistry').CanvasDocument

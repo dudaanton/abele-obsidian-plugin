@@ -36,6 +36,8 @@ export interface CanvasEditorDocument {
   redoLocal(): void
   discardDraft(): void
   releaseWriter(retainPending?: boolean): void
+  /** Redraws every view of the document, its status line included. */
+  notify?(): void
 }
 export interface CanvasEditorPorts {
   document(): CanvasEditorDocument | null
@@ -119,8 +121,10 @@ export class CanvasEditor {
           // One failure is told once; later attempts that fail the same way stay quiet.
           const repeated = this.writeFailed === document
           this.writeFailed = document
-          if (repeated) this.refresh()
-          else this.fail(error)
+          if (!repeated) this.fail(error)
+          // The views were redrawn before the failure reached here; their status says it now.
+          if (document.notify) document.notify()
+          else this.refresh()
         },
       },
       {
@@ -511,6 +515,10 @@ export class CanvasEditor {
     if (this.writeFailed === document && !document.session.dirty) this.writeFailed = null
     this.writes.changed(document)
     this.refresh()
+  }
+  /** The last write of this document failed and its work waits for Retry or Discard. */
+  get writeFailing(): boolean {
+    return !!this.writeFailed && this.writeFailed === this.ports.document()
   }
   /** Writes all unwritten work now; false when some is still only in memory. */
   async flush(): Promise<boolean> {

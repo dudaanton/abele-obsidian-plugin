@@ -214,8 +214,8 @@ export class CanvasView extends FileView {
     this.editor?.refresh()
     this.place()
     const state = document.state
-    // Unwritten work is not news where it is edited: the editor writes it by itself and shows a
-    // failed write with Retry. A read-only leaf has no editor, so it still says so.
+    // Where it is edited, unwritten work is written by itself (a failed write shows Retry in the
+    // editor), so it is not called unsaved there. A leaf without an editor still says so.
     const status = document.session.publicationOutcome
       ? canvasPublicationStatus(document.session.publicationOutcome) +
         (state.error ? ` Persisted source could not be read: ${state.error}` : '')
@@ -223,8 +223,10 @@ export class CanvasView extends FileView {
         ? `Diagram could not be read: ${state.error}`
         : state.conflict
           ? 'Diagram changed outside this session; pending work is retained'
-          : state.dirty && !this.editor
-            ? 'Diagram has pending session work; it has not been saved'
+          : state.dirty
+            ? this.editor && !this.editor.writeFailing
+              ? 'Changes pending; saving automatically'
+              : 'Diagram has pending session work; it has not been saved'
             : ''
     if (status) this.viewer.status.setText(status)
     // A settled state clears its own message, never someone else's (walkthrough steps).
