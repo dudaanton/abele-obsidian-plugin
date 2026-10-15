@@ -165,7 +165,7 @@ not the size of its contents. Delete removes the selection; deleting a group alo
 
 **Shapes and lines** opens the drawing controls. Choose a rectangle, pill, diamond,
 parallelogram, circle, predefined process, document or database, and **Add shape**; enter its
-text and **Save text**. The colours are the theme's ordinary Canvas colours. Select a text card,
+its text. The colours are the theme's ordinary Canvas colours. Select a text card,
 choose a shape and colour, and **Change shape** changes it in one undo item.
 
 **Connect**: drag from one card to another with the mouse or one finger. An unfinished
@@ -233,10 +233,14 @@ Escape, a cancelled
 touch, or Fit cancels the preview. Adding a second finger cancels a card move or resize and
 switches to pan/pinch, without saving an accidental move. Drag empty space to pan as before.
 
-**Save text** completes one change, including creating a new text card. Until then, typing and
-IME composition are drafts, not writes. **Keep draft** leaves the text unsaved in this running
-session. **Delete**, **Undo** and **Redo** work on cards and the shared history, including agent
-changes. Saving existing text without changes writes nothing and keeps redo available.
+Card text saves itself, like a note: there is no save button. About a second after you stop
+typing, the text so far is written to the file and becomes one Undo item; while you keep typing it
+is written every few seconds. Leaving the field, closing the tab, switching files or opening native
+Canvas writes it at once, and so does an agent reading the canvas. IME composition is never written
+half-finished. Tap the canvas or press Escape to finish editing the card. If a write fails, the
+canvas says so and offers **Retry save** and **Discard draft…**; nothing else asks you to save.
+**Delete**, **Undo** and **Redo** work on cards and the shared history, including agent
+changes. Opening a card's text and leaving it unchanged writes nothing and keeps redo available.
 If the shared history changes while an Undo/Redo click is waiting, the action is refused;
 read the updated diagram and try again. Outside a text field, Delete/Backspace deletes a selected card, Enter edits its text,
 and Ctrl or ⌘+Z / Shift+Z undo and redo. Inside fields those keys belong to the text input.

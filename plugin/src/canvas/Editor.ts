@@ -10,7 +10,11 @@ import { allInkEntries, inkEntries } from './core/ink'
 import { canvasVisibility } from './core/visibility'
 import type { CanvasSession, GraphTransform } from './core/session'
 import { CanvasSessionError } from './core/session'
-import { CanvasWriteScheduler, type CanvasWriteSchedule } from './core/writeScheduler'
+import {
+  CANVAS_TEXT_SCHEDULE,
+  CanvasWriteScheduler,
+  type CanvasWriteSchedule,
+} from './core/writeScheduler'
 import type { CanvasViewer } from './Viewer'
 import { CanvasInput, type CanvasInputTool } from './input'
 import { WIDTHS } from '../drawing/model'
@@ -39,6 +43,8 @@ export interface CanvasEditorPorts {
   publish(document: CanvasEditorDocument): Promise<unknown>
   /** When unwritten work is written; tests shorten it. */
   schedule?: CanvasWriteSchedule
+  /** When typed card text becomes a step and is written; tests lengthen or shorten it. */
+  textSchedule?: CanvasWriteSchedule
   pickFile(): Promise<string | null>
   pickLink(): Promise<string | null>
   confirmDiscard(): Promise<boolean>
@@ -71,6 +77,8 @@ export class CanvasEditor {
   private editing: string | null = null
   private ownedDraft: CanvasEditorDocument | null = null
   private composing = false
+  private textTimer: number | null = null
+  private textFirst: number | null = null
   private waiting = false
   private destroyed = false
   private readonly writes: CanvasWriteScheduler<CanvasEditorDocument>
@@ -306,8 +314,6 @@ export class CanvasEditor {
     this.button('Ungroup selected group', 'Ungroup', () => this.group(true))
     this.button('Undo canvas change', 'Undo', () => this.history('undo'))
     this.button('Redo canvas change', 'Redo', () => this.history('redo'))
-    this.button('Save text', 'Save text', () => this.complete())
-    this.button('Keep text draft', 'Keep draft', () => this.keep())
     this.button('Retry save', 'Retry save', () => this.retry())
     this.button('Discard local draft', 'Discard draft…', () => this.discard())
     this.listen(this.text, 'compositionstart', () => {
@@ -320,6 +326,14 @@ export class CanvasEditor {
       this.refresh()
     })
     this.listen(this.text, 'input', () => this.input())
+    // Leaving the field writes the text; the card stays open until the canvas is tapped.
+    this.listen(this.text, 'blur', () => void this.saveText())
+    this.listen(this.text, 'keydown', (event) => {
+      if (!(event instanceof KeyboardEvent) || event.key !== 'Escape' || event.isComposing) return
+      event.preventDefault()
+      event.stopPropagation()
+      void this.finishText()
+    })
     this.inputAdapter = new CanvasInput(viewer, {
       tool: () => this.tool,
       brush: () => ({
@@ -359,7 +373,12 @@ export class CanvasEditor {
       invalid: (error) => this.fail(error),
     })
     viewer.onSelect = (node) => {
-      if (this.editing || this.waiting) return
+      if (this.waiting) return
+      // Tapping the canvas ends text editing, as leaving a note does; the text is written.
+      if (this.editing) {
+        if (this.composing) return
+        void this.finishText()
+      }
       this.selected = new Set(node ? [node.id] : [])
       this.refresh()
     }
@@ -617,34 +636,101 @@ export class CanvasEditor {
     this.ownedDraft = document
     this.showText(node.id)
   }
+  /** The field's text goes into the open draft at once; it is written after a pause. */
   private input(): void {
-    if (!this.editing || !this.ownedDraft || this.ports.document() !== this.ownedDraft) return
+    if (!this.applyText()) return
+    if (this.composing) return
+    const now = Date.now(),
+      schedule = this.ports.textSchedule ?? CANVAS_TEXT_SCHEDULE,
+      view = this.viewer.el.ownerDocument.defaultView
+    this.textFirst ??= now
+    if (this.textTimer !== null) view.clearTimeout(this.textTimer)
+    const delay = Math.max(0, Math.min(schedule.idle, this.textFirst + schedule.max - now))
+    this.textTimer = view.setTimeout(() => {
+      this.textTimer = null
+      void this.saveText()
+    }, delay)
+  }
+  private applyText(): boolean {
+    if (!this.editing || !this.ownedDraft || this.ports.document() !== this.ownedDraft) return false
     try {
       this.update(this.ownedDraft, [
         { op: 'update', id: this.editing, patch: { text: this.text.value } },
       ])
+      return true
+    } catch (error) {
+      this.fail(error)
+      return false
+    }
+  }
+  private clearText(): void {
+    if (this.textTimer !== null)
+      this.viewer.el.ownerDocument.defaultView.clearTimeout(this.textTimer)
+    this.textTimer = null
+    this.textFirst = null
+  }
+  /**
+   * The text typed so far becomes one undo step, and editing goes on in a new draft of the same
+   * card. An unchanged text adds no step, so it neither writes nor clears redo.
+   */
+  private settleText(): CanvasEditorDocument | null {
+    const document = this.ownedDraft
+    if (
+      !this.editing ||
+      this.composing ||
+      !document ||
+      this.ports.document() !== document ||
+      !document.session.draft?.active
+    )
+      return null
+    this.clearText()
+    this.applyText()
+    try {
+      document.finishDraft()
+    } catch (error) {
+      this.fail(error)
+      return null
+    }
+    try {
+      document.beginDraft()
+    } catch (error) {
+      // The card cannot stay open (another writer is landing); what was typed is kept.
+      this.editing = null
+      this.ownedDraft = null
+      this.text.blur()
+      this.fail(error)
+    }
+    this.changed(document)
+    return document
+  }
+  /** Typing paused or the field was left: write the text now, keep the card open. */
+  private async saveText(): Promise<void> {
+    if (this.waiting || this.destroyed || !this.settleText()) return
+    await this.flush()
+  }
+  /** Ends text editing: the text is one last step, if it changed since the previous one. */
+  private endText(): CanvasEditorDocument | null {
+    if (!this.editing) return null
+    this.clearText()
+    this.applyText()
+    const document = this.ownedDraft
+    this.editing = null
+    this.ownedDraft = null
+    this.composing = false
+    try {
+      if (document?.session.draft?.active) document.finishDraft()
     } catch (error) {
       this.fail(error)
     }
-  }
-  private keep(): void {
-    if (!this.editing || this.composing || this.waiting) return
-    this.input()
-    const document = this.ownedDraft
-    if (document?.session.draft?.active) document.finishDraft()
-    this.editing = null
-    this.ownedDraft = null
     this.text.blur()
     if (document) this.changed(document)
     else this.refresh()
+    return document
   }
-  /** Save text: the card's text is one step, written at once rather than with the next batch. */
-  private async complete(): Promise<void> {
-    if (this.composing || this.waiting || !this.editing) return
-    const document = this.ownedDraft
-    this.keep()
-    // An unchanged text adds no step, so it neither writes nor clears redo.
-    if (document && this.ports.document() === document) await this.flush()
+  private async finishText(): Promise<void> {
+    if (this.waiting || this.composing) return
+    const document = this.endText()
+    if (document && this.ports.document() === document && !this.destroyed) await this.flush()
   }
   private async saving(action: () => Promise<unknown>): Promise<void> {
     this.waiting = true
@@ -841,6 +927,7 @@ export class CanvasEditor {
         throw new Error('Canvas changed while confirmation was open; draft was kept')
       document.discardDraft()
       if (this.writeFailed === document) this.writeFailed = null
+      this.clearText()
       this.editing = null
       this.ownedDraft = null
       this.text.blur()
@@ -852,7 +939,7 @@ export class CanvasEditor {
     if (!document) return !this.waiting
     if (this.waiting || this.composing) return false
     this.inputAdapter.cancel()
-    if (this.editing) this.keep()
+    if (this.editing) this.endText()
     // Native Canvas reads the file: write what is only in memory first.
     await this.writes.flush(document)
     if (this.destroyed || this.ports.document() !== document) return false
@@ -910,7 +997,14 @@ export class CanvasEditor {
       // The store writes this document's unwritten work before anyone else reads or writes it.
       if (this.flushHook && this.flushHook.document.writes === this.flushHook)
         this.flushHook.document.writes = null
-      this.flushHook = { document, flush: () => this.writes.flush(document) }
+      this.flushHook = {
+        document,
+        flush: () => {
+          // A reader or a closing tab gets the text typed so far, too.
+          if (this.ownedDraft === document) this.settleText()
+          return this.writes.flush(document)
+        },
+      }
       document.writes = this.flushHook
       // Work left unwritten by an earlier tab is written like a new change.
       if (this.writable(document)) this.writes.changed(document)
@@ -1076,22 +1170,14 @@ export class CanvasEditor {
       this.buttons.get(
         direction === 'undo' ? 'Undo canvas change' : 'Redo canvas change'
       ).disabled = blocked || !session?.localHistory[direction]
-    for (const label of ['Save text', 'Keep text draft']) {
-      const button = this.buttons.get(label)
-      button.hidden = !active
-      button.disabled = this.composing || this.waiting
-    }
     this.panel.hidden = !active
     const retry = this.buttons.get('Retry save'),
       discard = this.buttons.get('Discard local draft')
     // A live gesture is a preview, not retained work to retry/discard. On a narrow screen
     // these extra buttons wrap and move the stage underneath the captured pointer.
+    // Text being typed is written as it goes, so a failed write offers Retry while typing too.
     retry.hidden =
-      !!this.geometry ||
-      !retained ||
-      active ||
-      !!document?.recovery ||
-      !!session?.publicationOutcome
+      !!this.geometry || !retained || !!document?.recovery || !!session?.publicationOutcome
     retry.disabled = this.waiting || !document || !this.writable(document)
     discard.hidden =
       !!this.geometry || !retained || !!document?.recovery || !!session?.publicationOutcome
@@ -1169,10 +1255,8 @@ export class CanvasEditor {
     if (this.destroyed) return Promise.resolve(true)
     const document = this.ports.document()
     this.inputAdapter.destroy()
-    if (this.ownedDraft === document && this.ownedDraft?.session.draft?.active) {
-      this.input()
-      this.ownedDraft.finishDraft()
-    }
+    if (this.ownedDraft === document) this.endText()
+    this.clearText()
     const written = document ? this.writes.flush(document) : Promise.resolve(true)
     this.writes.dispose()
     this.destroyed = true

@@ -131,11 +131,23 @@ const beginText = async () => {
     'view().editor.editing && !view().contentEl.querySelector(".abele-canvas-text-editor").hidden && document.activeElement===view().contentEl.querySelector("textarea")'
   )
 }
+/**
+ * Card text saves itself, with no Save button: the file gets the typed text while the card is
+ * still open, and tapping the card leaves it.
+ */
+const leaveText = async (text?: string) => {
+  if (text !== undefined)
+    await until(
+      `view().editor.editing && (await read()).nodes.some(n=>n.text?.includes(${JSON.stringify(text)}))`
+    )
+  await press(`view().contentEl.querySelector('[data-card-id="'+view().editor.editing+'"]')`, true)
+  await until('!view().editor.editing')
+}
 const addText = async (text: string) => {
   await beginText()
   await press('view().contentEl.querySelector("textarea")')
   await type(text)
-  await click('Save text')
+  await leaveText(text)
 }
 const reopen = async () => {
   run(
@@ -208,7 +220,8 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
     await press('view().contentEl.querySelector("textarea")')
     await type('Human concept')
     shot('text-keyboard')
-    await click('Save text')
+    expect(run<boolean>('return !button("Save text") && !button("Keep text draft")')).toBe(true)
+    await leaveText('Human concept')
     await saved()
     const result = run<{ text: string; undo: number }>(
       'return {text:(await read()).nodes[0].text,undo:view().documentLease.document.session.history.undo}'
@@ -263,7 +276,7 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
     })
   }, 120_000)
 
-  it('saves unchanged text without writing and keeps redo available', async () => {
+  it('leaves unchanged text without writing and keeps redo available', async () => {
     const before = run<string>('return await app.vault.read(app.vault.getAbstractFileByPath(path))')
     const history = run<{ undo: number; redo: number }>(
       'return view().documentLease.document.session.history'
@@ -278,7 +291,8 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
       true
     )
     await click('Edit card text')
-    await click('Save text')
+    await until('view().editor.editing')
+    await leaveText()
     await saved()
     const result = run<{ same: boolean; writes: number; history: typeof history }>(
       `return {same:${JSON.stringify(before)}===await app.vault.read(app.vault.getAbstractFileByPath(path)),writes:window.__humanCanvas.noopWrites,history:view().documentLease.document.session.history}`
@@ -303,7 +317,7 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
     await click('Edit card text')
     await press('view().contentEl.querySelector("textarea")')
     await type(' revised')
-    await click('Save text')
+    await leaveText(' revised')
     await saved()
     const text = run<string>("return (await read()).nodes.find(node=>node.type==='text').text")
     const note = run<string>(
@@ -355,7 +369,9 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
     // Use ordinary words: the native keyboard autocorrects a made-up adjective on space.
     await addText('Pending human text')
     // Retry shows once the write has failed.
-    await until("button('Retry save')&&!button('Retry save').hidden&&!button('Retry save').disabled")
+    await until(
+      "button('Retry save')&&!button('Retry save').hidden&&!button('Retry save').disabled"
+    )
     const pending = run<boolean>(
       "return view().viewer.graph.nodes.some(node=>node.text==='Pending human text')&&view().contentEl.textContent.includes('not saved')"
     )
