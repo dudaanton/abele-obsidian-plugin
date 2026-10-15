@@ -414,7 +414,7 @@ describe.skipIf(!available)('human Canvas focus rings', () => {
         {id:'beta',type:'text',text:'Result',x:360,y:0,width:220,height:120}
       ],edges:[{id:'flow',fromNode:'alpha',toNode:'beta',label:'Next'}]})),leaf=app.workspace.getLeaf('tab'),cuts=[]
       const wait=ms=>new Promise(r=>setTimeout(r,ms))
-      const until=async fn=>{for(let i=0;i<60;i++){if(fn())return;await wait(50)}throw Error('Canvas ring inventory did not open')}
+      const until=async fn=>{for(let i=0;i<60;i++){if(fn())return;await wait(50)}throw Error('Canvas ring inventory did not open: '+String(fn).slice(0,90))}
       const measure=(label,root)=>{
         for(const field of root.querySelectorAll('input,textarea,select,button,summary')){
           if(!field.getBoundingClientRect().width)continue
