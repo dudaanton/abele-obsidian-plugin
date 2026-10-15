@@ -7,7 +7,6 @@ import { tap, typeText, screenshot } from './helpers/phone'
 import { withNativeInput } from './helpers/nativeInput'
 import { shotDir } from './helpers/shots'
 import { dismissOwnNotices } from './helpers/ownNotices'
-import { canvasChrome } from './helpers/canvasChrome'
 import { canvasChrome, menuItem } from './helpers/canvasChrome'
 
 targets('desktop', 'phone')

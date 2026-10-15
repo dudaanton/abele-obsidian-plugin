@@ -904,7 +904,9 @@ onBeforeUnmount(() => {
   }
 }
 
-.abele-canvas-chrome__state {
+// Beside the column of undo and redo, never under it: outweighs Obsidian's own place for
+// .canvas-controls on a phone, which put the dot beneath Undo where it could not be pressed.
+.abele-canvas-chrome > .canvas-controls.abele-canvas-chrome__state {
   inset-inline-end: calc(
     var(--size-4-2) * 2 + var(--canvas-controls-icon-size, 18px) + var(--size-4-4)
   );
