@@ -1,6 +1,12 @@
 import { preservePrivateArtifacts, privateArtifactRecovered } from './privateRecovery'
 import type { App } from 'obsidian'
-import type { FileSystem, StateEntry, V2EngineClient } from '@abele/sync-core'
+import {
+  fingerprintFile,
+  type FileSystem,
+  type StateEntry,
+  type V2EngineClient,
+} from '@abele/sync-core'
+import { sha256 } from './external/hash'
 import { AttachmentStore } from './external/attachmentStore'
 import { ExternalFileHost } from './external/ObsidianExternalFileHost'
 import { activateExternalFiles, recoverOrphanPrivateArtifacts } from './external/pluginSafety'
@@ -41,8 +47,8 @@ export async function tokenOffloadConnection(input: {
     (await state.getExternalState()) === null
       ? null
       : await ExternalState.open(state, ledgerId, input.binding)
-  let attachments: AttachmentStore | null = null,
-    mtime = 0
+  let attachments: AttachmentStore | null = null
+  const stagingMtimes = new Map<string, number>()
   let serial = Promise.resolve()
   const run = <T>(work: () => Promise<T>): Promise<T> => {
     const next = serial.then(work)
@@ -62,7 +68,7 @@ export async function tokenOffloadConnection(input: {
     effect: (work) => fence.effect(work),
     placement: manager.locks,
     beforeRemoval: (path) => input.capture([path]),
-    stagingMtime: () => mtime,
+    stagingMtime: (path) => stagingMtimes.get(path) ?? Date.now(),
   })
   const refresh = async () => {
     await representation.refresh()
@@ -207,39 +213,96 @@ export async function tokenOffloadConnection(input: {
   const head = async (path: string): Promise<StateEntry> => {
     fence.assertReady()
     const entry = await state.get(path)
-    if (!entry) throw new Error('File has no retained identity in this connection')
-    mtime = entry.mtime
+    if (!entry) throw new Error('not-on-server')
     return entry
+  }
+  const operation = async <T>(entry: StateEntry, work: (operationId: string) => Promise<T>) => {
+    const id = crypto.randomUUID()
+    const staging = host.artifactPath(`.abele-external-${id}.incoming`)
+    stagingMtimes.set(staging, entry.mtime)
+    try {
+      return await work(id)
+    } finally {
+      stagingMtimes.delete(staging)
+    }
   }
   const hydrate = async (path: string) => {
     const entry = await head(path),
       api = await store()
-    const result = await api.hydrate(entry.fileId, {
-      operationId: crypto.randomUUID(),
-      expectedVersionId: entry.versionId,
-    })
-    if (result.status !== 'complete') throw new Error('File hydration: ' + result.status)
+    const result = await operation(entry, (operationId) =>
+      api.hydrate(entry.fileId, {
+        operationId,
+        expectedVersionId: entry.versionId,
+      })
+    )
+    if (result.status !== 'complete') throw new Error(result.status)
     await refresh()
     input.hydratedIdentity(path)
   }
   manager.hydrator(ledgerId, hydrate)
   await refresh()
   return {
+    includes: (path: string) => input.includes(path),
+    pinned: async (path: string) => {
+      const entry = await head(path)
+      if (!external) return false
+      return (
+        (await external.snapshot()).files.find((file) => file.fileId === entry.fileId)?.pinned ??
+        false
+      )
+    },
+    inspect: async (path: string) => {
+      if (!input.includes(path)) throw new Error('File is outside this connection')
+      const entry = await head(path),
+        api = await store()
+      const snapshot = await api.get(entry.fileId)
+      const check = await api.inspectEviction(entry.fileId)
+      let blocked: string | null = check.status === 'complete' ? null : check.status
+      if (snapshot && snapshot.representation !== 'hydrated') blocked = 'already-offloaded'
+      if (snapshot?.pendingOperationId) blocked = 'busy'
+      if (input.available?.() === false) blocked = 'offline'
+      if (!blocked) {
+        const local = await fingerprintFile(input.fs, path, sha256)
+        if (local.sha !== entry.sha || local.size !== entry.size) blocked = 'local-changed'
+      }
+      return {
+        path,
+        size: entry.size,
+        version: entry.versionId,
+        pinned: snapshot?.pinned ?? false,
+        blocked,
+      }
+    },
+    setPinned: async (path: string, pinned: boolean) => {
+      if (!input.includes(path)) throw new Error('File is outside this connection')
+      const entry = await head(path),
+        api = await store()
+      const result = await api.setPinned(entry.fileId, pinned)
+      await refresh()
+      if (pinned && result.status === 'cleanup-pending') await hydrate(path)
+      return result.status === 'cleanup-pending'
+        ? { ...result, status: 'complete' as const }
+        : result
+    },
     fs: manager.fileSystem(representation.fileSystem(), (path) => input.includes(path), ledgerId),
     state: representation.stateStore(),
     client: representation.engineClient.bind(representation),
     hydrate,
-    evict: async (path: string) => {
+    evict: async (path: string, version?: string) => {
       if (!input.includes(path)) throw new Error('File is outside this connection')
       input.rememberIdentity(path)
       const entry = await head(path),
         api = await store(),
         snapshot = await api.get(entry.fileId)
-      const result = await api.evict(entry.fileId, {
-        operationId: crypto.randomUUID(),
-        expectedRevision: snapshot?.localRevision ?? 0,
-        expectedVersionId: entry.versionId,
-      })
+      if (version && entry.versionId !== version)
+        return { status: 'version-changed' as const, reclaimedBytes: 0 }
+      const result = await operation(entry, (operationId) =>
+        api.evict(entry.fileId, {
+          operationId,
+          expectedRevision: snapshot?.localRevision ?? 0,
+          expectedVersionId: entry.versionId,
+        })
+      )
       await refresh()
       return result
     },

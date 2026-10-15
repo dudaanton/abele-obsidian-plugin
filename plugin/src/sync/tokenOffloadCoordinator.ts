@@ -51,6 +51,12 @@ export class TokenOffloadCoordinator {
       one.files.some((file) => caseKey(file.path) === caseKey(path))
     )
   }
+  files(): FileInfo[] {
+    const files = new Map<string, FileInfo>()
+    for (const snapshot of this.absent.values())
+      for (const file of snapshot.files) files.set(caseKey(file.path), { ...file })
+    return [...files.values()]
+  }
   async download(preferred: string, head: StateEntry): Promise<Uint8Array> {
     const candidates = [...this.providers].sort(
       ([a, first], [b, second]) =>

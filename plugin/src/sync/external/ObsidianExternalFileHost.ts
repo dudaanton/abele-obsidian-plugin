@@ -45,7 +45,7 @@ export interface ExternalHostOptions {
   reconciled?(path: string): void
   placement?: PathCoordinator
   beforeRemoval?(path: string): Promise<void>
-  stagingMtime?(): number
+  stagingMtime?(path: string): number
 }
 export interface ExternalHostRequest extends ExternalReservationRequest {
   /** Backed by the committed operation and server-verified basis in the later attachment API. */
@@ -255,7 +255,7 @@ export class ExternalFileHost {
           assertEffect()
           if (this.options.stagingMtime)
             await mutateAdapter.writeBinary(path, bytesOf(bytes), {
-              mtime: this.options.stagingMtime(),
+              mtime: this.options.stagingMtime(path),
             })
           else await mutateAdapter.writeBinary(path, bytesOf(bytes))
           return
@@ -267,7 +267,7 @@ export class ExternalFileHost {
           await this.effect(() =>
             at === 0
               ? this.options.stagingMtime
-                ? mutateAdapter.writeBinary(path, chunk, { mtime: this.options.stagingMtime() })
+                ? mutateAdapter.writeBinary(path, chunk, { mtime: this.options.stagingMtime(path) })
                 : mutateAdapter.writeBinary(path, chunk)
               : mutateAdapter.appendBinary(path, chunk)
           )
@@ -286,7 +286,7 @@ export class ExternalFileHost {
             this.app.vault.adapter,
             this.app.vault.configDir
           )
-          const mtime = this.options.stagingMtime?.() ?? Date.now()
+          const mtime = this.options.stagingMtime?.(path) ?? Date.now()
           assertEffect()
           await io.create(path, mtime)
           const hash = incremental.create()

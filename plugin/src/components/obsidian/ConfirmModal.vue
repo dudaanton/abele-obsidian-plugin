@@ -1,6 +1,6 @@
 <template>
-  <ObsidianModal :title="title" close-in-footer @close="emit('close')">
-    <p class="abele-confirm__message">{{ message }}</p>
+  <ObsidianModal :title="title" :size="size" close-in-footer @close="emit('close')">
+    <p v-for="(line, i) in lines" :key="i" class="abele-confirm__message">{{ line }}</p>
     <template #footer>
       <Button text="Cancel" :tooltip="cancelTooltip" @click="emit('close')" />
       <Button
@@ -15,8 +15,10 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import ObsidianModal from './Modal.vue'
 import Button from './Button.vue'
+import type { ShellSize } from '@/modal/ShellModal'
 
 /**
  * Asks before something is destroyed.
@@ -27,7 +29,9 @@ import Button from './Button.vue'
 const props = withDefaults(
   defineProps<{
     title: string
-    /** What will be lost, named. */
+    /** The shell's size; `tall` for a message as long as its data, a list of paths. */
+    size?: ShellSize
+    /** What will be lost, named. Each line is its own paragraph. */
     message: string
     confirmText?: string
     confirmTooltip?: string
@@ -41,6 +45,8 @@ const props = withDefaults(
     cancelTooltip: 'Close this and change nothing',
   }
 )
+
+const lines = computed(() => props.message.split('\n'))
 
 const emit = defineEmits<{
   (e: 'confirm'): void

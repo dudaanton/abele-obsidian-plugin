@@ -1,6 +1,6 @@
 import type { Component } from 'vue'
 import { openComponentDialog } from '@/modal/componentDialog'
-import { ShellModal } from '@/modal/ShellModal'
+import { ShellModal, type ShellSize } from '@/modal/ShellModal'
 import ConfirmModal from './ConfirmModal.vue'
 import PromptModal from './PromptModal.vue'
 import ChoiceModal from './ChoiceModal.vue'
@@ -66,7 +66,8 @@ export function openDialog<T = string>(
 export async function confirmDialog(
   options: {
     title: string
-    /** What will be lost, named. */
+    size?: ShellSize
+    /** What will be lost, named. Each line is its own paragraph. */
     message: string
     confirmText?: string
     confirmTooltip?: string

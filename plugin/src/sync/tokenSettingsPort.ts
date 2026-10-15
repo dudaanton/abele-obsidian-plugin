@@ -34,6 +34,9 @@ export class TokenSettingsPort {
     return port
   }
   readonly connection
+  get connectionId(): string {
+    return this.id
+  }
   readonly status
   readonly heldPrompt: HeldDeletesPrompt
   readonly settingsPrompt: StagedSettingsPrompt

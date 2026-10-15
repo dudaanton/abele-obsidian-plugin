@@ -25,6 +25,7 @@
         @commit="commitCap"
       />
     </Setting>
+    <ExternalFileRules />
   </Section>
 
   <Section title="Obsidian settings" :desc="settingsDesc">
@@ -97,6 +98,7 @@
  * walks the manifest, and editing 50 into 100 passes through an empty field on the way.
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import ExternalFileRules from './ExternalFileRules.vue'
 import type { SelectiveSettings } from '@abele/sync-core'
 import Section from '../../obsidian/Section.vue'
 import Setting from '../../obsidian/Setting.vue'

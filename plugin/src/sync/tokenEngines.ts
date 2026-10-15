@@ -36,6 +36,8 @@ import { TokenAttachmentHost } from './tokenAttachmentHost'
 import type { IndexedDbStateStore } from './IndexedDbStateStore'
 import { readIgnore, ignoreFor, scopeKey } from './scope'
 import { OwnSettingsWatch } from './ownSettings'
+import { ExternalFileActions } from './external/fileActions'
+import { externalActionsOf } from './external/actionHost'
 
 /** One native host, independent durable engines, and one vault-wide placement coordinator. */
 export class TokenEngines {
@@ -63,6 +65,7 @@ export class TokenEngines {
     private scriptsFolder = 'Scripts',
     private readonly ownSettings?: { path: string; arrived(): void }
   ) {
+    externalActionsOf.set(app.vault, this)
     this.localFiles = new TokenAttachmentHost(app, (path) =>
       tokenOffloadsOf(app.vault, pathCoordinatorOf(app.vault)).isOffloaded(path)
     )
@@ -758,9 +761,60 @@ export class TokenEngines {
     if (!port) throw new Error('Connection is unavailable')
     return port.evict(path)
   }
-  hydrate(path: string): Promise<void> {
+  private offloadPort(path: string, connection?: string) {
+    const candidates = [...this.offloadPorts].filter(
+      ([id, port]) => (!connection || id === connection) && port.includes(path)
+    )
+    // Prefer the narrowest live scope. Each port still verifies its own retained identity
+    // and authority; a refusal never retries deletion through another connection.
+    candidates.sort(([a], [b]) => {
+      const depth = (id: string) =>
+        this.ui.registry.records().find((row) => row.id === id)?.scope?.path.length ?? 0
+      return depth(b) - depth(a) || a.localeCompare(b)
+    })
+    const selected = candidates[0]
+    if (!selected) throw new Error('No available connection holds this file')
+    return selected[1]
+  }
+  actions(connection?: string): ExternalFileActions {
+    const selected = new Map<string, Awaited<ReturnType<typeof tokenOffloadConnection>>>()
+    const portFor = (path: string) => {
+      let port = selected.get(path)
+      if (!port) selected.set(path, (port = this.offloadPort(path, connection)))
+      return port
+    }
+    return new ExternalFileActions({
+      inspect: async (path) => {
+        const chosen = portFor(path)
+        const result = await chosen.inspect(path)
+        for (const port of this.offloadPorts.values())
+          if (port !== chosen && port.includes(path) && (await port.pinned(path)))
+            result.pinned = true
+        for (const activity of Object.values(this.ui.activity.value))
+          if (activity.refused?.some((item) => item.path === path)) result.blocked = 'refused'
+        this.app.workspace.iterateAllLeaves((leaf) => {
+          const view = leaf.view as typeof leaf.view & { file?: { path: string } }
+          if (view.file?.path === path || view.getState?.()?.file === path) result.blocked = 'busy'
+        })
+        return result
+      },
+      evict: (path, version) => portFor(path).evict(path, version),
+    })
+  }
+  async pin(path: string, pinned: boolean): Promise<void> {
+    const ports = [...this.offloadPorts.values()].filter((port) => port.includes(path))
+    if (!ports.length) throw new Error('No available connection holds this file')
+    for (const port of ports) {
+      const result = await port.setPinned(path, pinned)
+      if (result.status !== 'complete') throw new Error(result.status)
+    }
+  }
+  async hydrate(path: string): Promise<void> {
     const manager = tokenOffloadsOf(this.app.vault, pathCoordinatorOf(this.app.vault))
-    return manager.prepare([manager.originalPath(path)])
+    const original = manager.originalPath(path)
+    if (original === path && path.endsWith('.abele-ref')) throw new Error('unavailable')
+    await manager.prepare([original])
+    if (!(await this.app.vault.adapter.exists(original))) throw new Error('unavailable')
   }
   private async changed(id: string, status: EngineStatus, report?: SyncReport): Promise<void> {
     if (this.closed || !this.ui.registry.records().some((one) => one.id === id)) return
@@ -855,6 +909,7 @@ export class TokenEngines {
     if (this.closing !== undefined) return this.closing
     const prior = pendingTeardown(this.app)
     this.closed = true
+    if (externalActionsOf.get(this.app.vault) === this) externalActionsOf.delete(this.app.vault)
     this.cancelStartup()
     this.app.vault.offref(this.renameEvent)
     this.ui.connectionsChanged = async () => {}
