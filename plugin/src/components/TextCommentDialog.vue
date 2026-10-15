@@ -683,4 +683,16 @@ const drafts = new Map<string, string>()
 .abele-text-comments_card {
   flex: 1 1 auto;
 }
+
+// In the dialog too the thread is no taller than the dialog lets it be: the body is a column the
+// comments shrink into, so the list scrolls and the reply field stays in sight under it, where a
+// long thread pushed it below the dialog's edge.
+.abele-modal__body:has(> .abele-text-comments) {
+  display: flex;
+  flex-direction: column;
+}
+
+.abele-modal__body > .abele-text-comments {
+  flex: 0 1 auto;
+}
 </style>

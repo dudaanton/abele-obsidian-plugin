@@ -257,7 +257,7 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       chain: string[]
     }>(`
       // A new comment: the same field, nothing else to take the focus back, and short enough to be
-      // in sight on any screen (a long thread's field is held apart as a known bug below).
+      // in sight on any screen (a long thread's field has its own case below).
       window.__abeleTest.openDialog('text-comment-create')
       await until(() => document.querySelector('.abele-text-comments__reply .cm-content'))
       const reply = document.querySelector('.abele-text-comments__reply')
@@ -304,10 +304,9 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
     expect(r.edges).toHaveLength(1)
     expect(r.shot).toBe(true)
   })
-  // BUG: on the desktop a thread long enough to scroll grows past its dialog instead of scrolling
-  // its list, so the reply field under it lies below the dialog's edge and cannot be scrolled to.
-  // Present before the reply field's redesign too; a phone shows the field.
-  ;(onPhone() ? it.skip : it.fails)('keeps the reply field of a long thread in sight', () => {
+  // A thread long enough to scroll scrolls its list inside the dialog; the reply field under it
+  // stays in sight, on the desktop as on a phone.
+  it('keeps the reply field of a long thread in sight', () => {
     const r = run<{ inSight: boolean; chain: string[] }>(`
       window.__abeleTest.openDialog('text-comment-list')
       await until(() => document.querySelector('.abele-text-comments__reply .cm-content'))
