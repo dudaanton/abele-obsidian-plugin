@@ -219,7 +219,7 @@ describe('the interceptor picker', () => {
     expect(picker(view).text()).not.toContain('missing')
     expect(interceptor.agentId.value).toBe('')
 
-    const field = view.find('input[placeholder="Every message"]')
+    const field = view.find('input[placeholder="Everything"]')
     await field.setValue('^/todo')
     expect(interceptor.pattern.value).toBe('^/todo')
     await field.setValue('([a-')

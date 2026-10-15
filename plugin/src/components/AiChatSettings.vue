@@ -42,10 +42,12 @@
       :agent-active="!!activeInterceptorId && !activeScript"
       :pattern="session?.interceptor.pattern.value ?? ''"
       :reply-only="session?.interceptor.replyOnly.value ?? false"
+      :checks="session?.interceptor.checks?.value ?? 'message'"
       :context-depth="session?.interceptor.contextDepth.value ?? 0"
       @update:model-value="setInterceptor"
       @update:pattern="setInterceptorPattern"
       @update:reply-only="setInterceptorReplyOnly"
+      @update:checks="setInterceptorChecks"
       @update:context-depth="setInterceptorContextDepth"
     />
     <Setting name="Hide reasoning" desc="Show only a spinner while the model is thinking.">
@@ -78,6 +80,7 @@ import { ChatService } from '@/ai/ChatService'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { interceptorScripts } from '@/ai/interceptor/runScript'
 import InterceptorSettings from './settings/ai/InterceptorSettings.vue'
+import type { InterceptorChecks } from '@/ai/agents/types'
 import { interceptorChoices, SCRIPT_KEY } from './settings/ai/options'
 import AgentOverrideNotice from './AgentOverrideNotice.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -154,6 +157,13 @@ function setInterceptorReplyOnly(value: boolean) {
   void s.save()
 }
 
+function setInterceptorChecks(value: InterceptorChecks) {
+  const s = session.value
+  if (!s) return
+  s.interceptor.checks.value = value
+  void s.save()
+}
+
 /** Not an agent id — nanoid never produces a colon — so it cannot collide with one. */
 const FOLLOW_AGENT = ':agent'
 
@@ -177,8 +187,8 @@ const agentDefaultLabel = computed(() => {
 
 const interceptorDesc = computed(() =>
   followsAgent.value
-    ? "Reviews messages. Follows the agent's choice."
-    : "Reviews messages. Chosen for this chat; the agent's choice no longer applies here."
+    ? "Checks your messages, the agent's answers or both. Follows the agent's choice."
+    : "Checks your messages, the agent's answers or both. Chosen for this chat; the agent's choice no longer applies here."
 )
 
 function setInterceptor(value: string) {

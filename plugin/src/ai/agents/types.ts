@@ -64,6 +64,8 @@ export interface AgentDefinition {
   interceptorContextDepth: number
   /** Agent or script review runs alongside the main turn without holding the message. */
   interceptorReplyOnly: boolean
+  /** What the interceptor checks: the person's messages, the agent's finished answers, or both. */
+  interceptorChecks: InterceptorChecks
   /**
    * A script that decides about each message instead of a reviewing agent, by its `@name`; see
    * `src/ai/interceptor/`. Empty means none. Set, it wins over `interceptorAgentId`.
@@ -127,6 +129,15 @@ export function normaliseContextDepth(value: unknown): number {
 }
 
 /** The context depths an interceptor can be given, as both pickers offer them. */
+/** The person's message before it is sent, the agent's answer once its turn ends, or both. */
+export type InterceptorChecks = 'message' | 'answer' | 'both'
+
+export const INTERCEPTOR_CHECKS_OPTIONS: { value: InterceptorChecks; display: string }[] = [
+  { value: 'message', display: 'Your messages' },
+  { value: 'answer', display: "The agent's answers" },
+  { value: 'both', display: 'Both' },
+]
+
 export const INTERCEPTOR_CONTEXT_OPTIONS = [
   { value: '0', display: 'Draft only' },
   { value: '4', display: 'Last 4 messages' },
@@ -178,6 +189,7 @@ export function createAgent(overrides: Partial<AgentDefinition> = {}): AgentDefi
     interceptorAgentId: '',
     interceptorContextDepth: 0,
     interceptorReplyOnly: false,
+    interceptorChecks: 'message',
     interceptorScript: '',
     interceptorPattern: '',
   }

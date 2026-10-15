@@ -17,6 +17,8 @@ export interface ReplyRevision {
   before: string
   after: string
   author: string
+  /** Who wrote `after`: an accepted proposal (absent) or the chat's interceptor. */
+  by?: 'interceptor'
   at: number
   highlights: ReplyHighlight[]
   undoneAt?: number

@@ -298,3 +298,10 @@ body.is-phone
     margin-block: var(--p-spacing);
   }
 }
+
+// An answer the interceptor is still reading is not settled yet: its words a step quieter until
+// they stay or give way to the interceptor's text.
+.abele-chat-msg_checking > .abele-chat-msg__body {
+  color: var(--text-muted);
+  transition: color 0.2s ease;
+}

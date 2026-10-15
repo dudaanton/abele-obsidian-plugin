@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid'
 import { OpenAIClient } from './client/OpenAIClient'
 import type { Message } from './client'
 import { AgentRegistry } from './agents/AgentRegistry'
+import type { InterceptorChecks } from './agents/types'
 import type { ChatMessage, InterceptorChatMessage } from './types'
 import { matchesPattern } from './interceptor/pattern'
 import { runInterceptorScript, type InterceptOutcome } from './interceptor/runScript'
@@ -19,6 +20,8 @@ export interface InterceptorChoice {
   contextDepth: number
   /** Review without holding the message. Absent on older choices means hold. */
   replyOnly?: boolean
+  /** What it checks; absent on older choices means the person's messages only. */
+  checks?: InterceptorChecks
   /** The interceptor script, by its `@name`. Set, it wins over `agentId`. */
   script: string
   /** Only messages matching this regular expression are intercepted; empty means all. */
@@ -128,6 +131,12 @@ export class ChatInterceptor {
   public readonly replyOnly: WritableComputedRef<boolean> = computed({
     get: () => this.choice.value.replyOnly === true,
     set: (replyOnly) => this.choose({ replyOnly }),
+  })
+
+  /** The person's messages, the agent's answers, or both. */
+  public readonly checks: WritableComputedRef<InterceptorChecks> = computed({
+    get: () => this.choice.value.checks ?? 'message',
+    set: (checks) => this.choose({ checks }),
   })
 
   /** Independent progress keyed by the message reviewed, never by the last chat bubble. */

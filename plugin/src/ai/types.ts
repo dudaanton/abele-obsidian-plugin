@@ -693,6 +693,12 @@ export interface ChatMessage {
   interceptorCollapsed?: boolean
   /** The interceptor was a script: there is nobody to reply to in the side conversation. */
   interceptorScript?: boolean
+  /**
+   * The interceptor is reading this finished answer and may replace it. Present only while it
+   * reads; the replacement lands as a revision by the interceptor, a failure in the side
+   * conversation, and either way this goes.
+   */
+  answerCheck?: { by: string }
   subAgentRun?: SubAgentRunRef
   /** Owner annotations and accepted versions travel with this message record. */
   highlights?: ReplyHighlight[]
@@ -825,6 +831,8 @@ export interface ChatMetadata {
   interceptorContextDepth?: number
   /** Agent or script review without holding the message; stored only for a chat's explicit override. */
   interceptorReplyOnly?: boolean
+  /** What this chat's interceptor checks; stored only for a chat's explicit override. */
+  interceptorChecks?: 'message' | 'answer' | 'both'
   /** The interceptor script this chat chose, by name; with `interceptorAgentId`, only as an override. */
   interceptorScript?: string
   /** Only messages matching this regular expression go to the interceptor; empty means all. */

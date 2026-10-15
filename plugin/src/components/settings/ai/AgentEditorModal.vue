@@ -65,18 +65,20 @@
           <InterceptorSettings
             :model-value="interceptorKey"
             :options="interceptorOptions"
-            desc="Sees each message in this agent's chats before the agent does. An agent reads it
-              and says what it thinks; a script decides what becomes of it. A chat can pick
-              another one or turn it off."
+            desc="Reads this agent's chats: your messages before the agent does, its answers
+              before they stay, or both. An agent says what it thinks; a script decides. A chat
+              can pick another one or turn it off."
             :active="!!interceptorKey"
             :agent-active="!!agent.interceptorAgentId && !agent.interceptorScript"
             :pattern="agent.interceptorPattern ?? ''"
             pattern-placeholder="^/todo"
             :reply-only="agent.interceptorReplyOnly ?? false"
+            :checks="agent.interceptorChecks ?? 'message'"
             :context-depth="agent.interceptorContextDepth ?? 0"
             @update:model-value="selectInterceptor"
             @update:pattern="patch({ interceptorPattern: $event })"
             @update:reply-only="patch({ interceptorReplyOnly: $event })"
+            @update:checks="patch({ interceptorChecks: $event })"
             @update:context-depth="patch({ interceptorContextDepth: $event })"
           />
         </template>

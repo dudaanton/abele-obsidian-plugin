@@ -3,7 +3,11 @@
     class="abele-chat-msg"
     :class="[
       `abele-chat-msg_${message.role}`,
-      { 'abele-chat-msg--draft': message.draft, 'abele-chat-msg_line': ownLine(message) },
+      {
+        'abele-chat-msg--draft': message.draft,
+        'abele-chat-msg_line': ownLine(message),
+        'abele-chat-msg_checking': !!message.answerCheck,
+      },
     ]"
     @click.capture="onMessageClick"
   >
@@ -297,9 +301,9 @@
         !message.draft
       "
       :message="message"
-      :read-only="readOnlyHistory"
-      :can-comment="canComment"
-      :can-reply="answerable"
+      :read-only="readOnlyHistory || !!message.answerCheck"
+      :can-comment="canComment && !message.answerCheck"
+      :can-reply="answerable && !message.answerCheck"
       :expanded="expanded"
       :capture-selection="comments.capture"
       :ask-here="comments.askHere"
@@ -311,6 +315,16 @@
       @insert-into-note="emit('insert-into-note', $event)"
       @details="expanded = !expanded"
     >
+      <!-- The interceptor is reading the finished answer and may put its own text in its place:
+           the turning glyph of work under way, beside the time; who reads it, in its tooltip. -->
+      <Icon
+        v-if="message.answerCheck"
+        class="abele-chat-msg__checking abele-chat-msg__tool-spinner"
+        icon="loader"
+        size="xs"
+        :tooltip="`${message.answerCheck.by} is checking this answer`"
+      />
+      <!-- Changed after it was written: a pencil beside the time; pressed, the reply before. -->
       <Icon
         v-if="lastRevision"
         class="abele-chat-msg__edited"
@@ -620,7 +634,11 @@ const diffPath = computed(() => {
 const editedLabel = computed(() => {
   const revision = lastRevision.value
   if (!revision) return ''
-  const state = revision.undoneAt ? 'Change undone' : `Edited by ${revision.author}`
+  const state = revision.undoneAt
+    ? 'Change undone'
+    : revision.by === 'interceptor'
+      ? `Replaced by ${revision.author}`
+      : `Edited by ${revision.author}`
   return `${state} · ${formatTimestamp(revision.at, { diagnostic: true }).exact} · the reply before`
 })
 const proposalOpen = (proposal: ReplyProposal) =>
