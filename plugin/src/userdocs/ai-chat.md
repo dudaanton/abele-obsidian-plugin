@@ -430,6 +430,33 @@ does not count as a new model reply that has read your latest message or tool re
 Results not yet included in reported usage are estimated; if the provider
 returns no usage, the text of the context is estimated instead.
 
+### Keyboard shortcuts for chat tabs
+
+While the cursor is in the chat (in the message box or on the conversation), the keys work the
+chat's tabs the way they work a browser's. **Cmd** is **Ctrl** on Windows and Linux; an iPad
+with a keyboard uses **Cmd**.
+
+| Keys                                                       | What they do                                   |
+| ---------------------------------------------------------- | ---------------------------------------------- |
+| **Cmd+W**                                                  | Close the chat tab in front                    |
+| **Cmd+T**                                                  | Start a new chat in a new tab                  |
+| **Cmd+Shift+T**                                            | Reopen the chat tab closed last                |
+| **Cmd+Alt+→** / **Ctrl+Tab** / **Cmd+Shift+]** / **Ctrl+PageDown** | Next chat tab                          |
+| **Cmd+Alt+←** / **Ctrl+Shift+Tab** / **Cmd+Shift+[** / **Ctrl+PageUp** | Previous chat tab                  |
+| **Cmd+1** … **Cmd+8**                                      | Go to that chat tab; **Cmd+9** goes to the last |
+| **Esc**                                                    | Stop the agent while it is working             |
+
+Closing a tab never deletes the chat: it is saved, stays in the history, and **Cmd+Shift+T**
+brings it back. On the last tab, **Cmd+W** leaves a fresh empty chat; once that tab is already
+empty the key does nothing, rather than closing the chat pane. **Esc** does not stop the agent
+while the **/** list is open or the cursor is in another field, such as find. **Alt+arrows**
+still move by word in the message box. Outside the chat these keys do what Obsidian makes
+them do.
+
+Closing, reopening and switching tabs are also commands (**Close the current chat tab**,
+**Reopen the last closed chat tab**, **Go to the next chat tab**, **Go to the previous chat
+tab**), which can be given keys of your own in **Settings → Hotkeys**.
+
 ## Reading the conversation
 
 The header keeps the agent, find, outline, history, new chat and **More chat actions** together.
