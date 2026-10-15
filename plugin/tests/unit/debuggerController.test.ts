@@ -4,7 +4,7 @@ import {
   DebuggerReceiptSchema,
   DebuggerGrantSchema,
 } from '@abele/node-protocol'
-import { DebuggerController, debuggerKey } from '@/debugger/DebuggerController'
+import { DebuggerController, debuggerKey, receiptMessage } from '@/debugger/DebuggerController'
 
 export function snapshot(patch = {}) {
   return DebuggerSnapshotSchema.parse({
@@ -419,6 +419,10 @@ describe('debugger shared control', () => {
     rpc.mockResolvedValueOnce(grant({ grant_id: 'sample-other-grant' }) as never)
     await expect(model.setMode('allow')).rejects.toThrow()
     expect(model.session.mode).toBe('ask')
+  })
+  it('says in words why breakpoints are refused on a file not proven to be what runs', () => {
+    expect(receiptMessage('build_identity_unverified')).toContain('Restart the program')
+    expect(receiptMessage('stale_state')).toBe('stale_state')
   })
   it('stops an externally owned target by detaching, never terminating it', async () => {
     const { model, command } = fixture()

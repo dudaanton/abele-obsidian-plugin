@@ -32,6 +32,11 @@ const ProgramsSchema = z.object({ programs: z.array(ProgramSchema).max(256) })
 export const NOTHING_WAITS =
   'No Node.js program on this node is waiting for a debugger. Start one with node --inspect app.js and open this again.'
 
+/** A long folder by its last two names: the confirmation names it in full. */
+const shortPath = (path: string) => {
+  const parts = path.split('/').filter(Boolean)
+  return parts.length > 3 ? '…/' + parts.slice(-2).join('/') : path
+}
 const lastPart = (path: string) => path.split('/').filter(Boolean).pop() ?? path
 
 /** One row per program: its command, then where it runs, its process and its port. */
@@ -41,7 +46,9 @@ export function programSuggestions(programs: WaitingProgram[]): NodeSuggestion[]
       ? "This chat's folder"
       : p.project
         ? `Project ${lastPart(p.project.path)}`
-        : (p.cwd ?? 'Folder unknown')
+        : p.cwd
+          ? shortPath(p.cwd)
+          : 'Folder unknown'
     return {
       id: `${p.pid}:${p.port}`,
       icon: p.in_chat_folder ? 'plug' : 'folder-output',

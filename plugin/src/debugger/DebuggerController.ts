@@ -46,6 +46,13 @@ export interface DebuggerTransport {
   rpc(method: string, params: unknown): Promise<unknown>
   command(method: string, params: unknown): Promise<unknown>
 }
+/** What a refused or uncertain command says in the panel: words for the codes a person can act
+ * on, the code itself for the rest. */
+export function receiptMessage(code: string): string {
+  if (code === 'build_identity_unverified')
+    return 'Breakpoints are off here: the file is not proven to be the code that runs. It changed after the program started, or it was built without a source map. Restart the program to set them.'
+  return code
+}
 const empty = (): DebugSession => ({
   program: 'Debug',
   status: 'starting',
@@ -502,7 +509,7 @@ export class DebuggerController {
       const result = DebuggerReceiptSchema.parse(await this.transport.command(method, params))
       if (!this.current || generation !== this.serial) return
       this.observe({ observation: 'current', snapshot: result.snapshot })
-      if (result.outcome !== 'completed') this.error = result.code ?? result.outcome
+      if (result.outcome !== 'completed') this.error = receiptMessage(result.code ?? result.outcome)
       this.notify()
     })
   }
@@ -584,7 +591,7 @@ export class DebuggerController {
       )
       if (!this.current || generation !== this.serial) return
       this.observe({ observation: 'current', snapshot: result.snapshot })
-      if (result.outcome !== 'completed') this.error = result.code ?? result.outcome
+      if (result.outcome !== 'completed') this.error = receiptMessage(result.code ?? result.outcome)
       this.notify()
     })
   }

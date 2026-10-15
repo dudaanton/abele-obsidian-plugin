@@ -136,6 +136,10 @@ describe('attaching the debugger to a running program', () => {
       programSuggestions([{ ...elsewhere, project: { project_id: 'p', path: '/work/kit' } }])[0]!
         .note
     ).toBe('Project kit · pid 4202 · port 9230')
+    // A long folder by its last names; the confirmation names it whole.
+    expect(
+      programSuggestions([{ ...elsewhere, cwd: '/home/someone/work/tools/other-tool' }])[0]!.note
+    ).toBe('…/tools/other-tool · pid 4202 · port 9230')
   })
 
   it('says how to start a program that waits for a debugger when none does', async () => {
