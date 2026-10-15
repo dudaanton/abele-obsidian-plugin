@@ -9,8 +9,6 @@ export interface CanvasWriteSchedule {
   max: number
 }
 export const CANVAS_WRITE_SCHEDULE: CanvasWriteSchedule = { idle: 1500, max: 5000 }
-/** Card text becomes an undo step and is written once typing pauses, like a note. */
-export const CANVAS_TEXT_SCHEDULE: CanvasWriteSchedule = { idle: 1000, max: 3000 }
 
 /** The host's timers, so popout windows and tests keep their own. */
 export interface CanvasWriteTimers {
