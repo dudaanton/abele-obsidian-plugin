@@ -603,7 +603,7 @@ export class ChatService {
    * Nothing would be lost by starting over in it: an ordinary chat, never saved, with no
    * messages and no turn under way.
    */
-  private static isBlank(s: ChatSession | null | undefined): s is ChatSession {
+  static isBlank(s: ChatSession | null | undefined): s is ChatSession {
     return (
       !!s &&
       s.kind === 'chat' &&

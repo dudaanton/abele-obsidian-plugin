@@ -10,6 +10,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { ref, nextTick } from 'vue'
 import AiChat from '@/components/AiChat.vue'
+import { Platform, TFile } from 'obsidian'
 import { ChatService } from '@/ai/ChatService'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type ChatMessage } from '@/ai/types'
@@ -36,6 +37,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  Platform.isPhone = false
   for (const w of mounted.splice(0)) w.unmount()
   vi.restoreAllMocks()
 })
@@ -73,6 +75,47 @@ describe('the cursor in the composer', () => {
   it('is put there when the chat opens, even if the first tries are dropped', async () => {
     const wrapper = open()
     refuseFocus(textarea(wrapper), 3)
+
+    await wait(600)
+
+    expect(document.activeElement).toBe(textarea(wrapper))
+  })
+
+  it('is put there when the chat panel opens over a new chat on a phone', async () => {
+    Platform.isPhone = true
+    const wrapper = open()
+
+    await wait(600)
+
+    expect(document.activeElement).toBe(textarea(wrapper))
+  })
+
+  // The keyboard would come up over half the conversation somebody opened the panel to read.
+  it('is left out when the chat panel opens over a saved conversation on a phone', async () => {
+    Platform.isPhone = true
+    const saved = fakeChatSession({
+      kind: 'chat',
+      messages: ref<ChatMessage[]>([
+        { id: 'q1', role: 'user', content: 'Sample question', timestamp: 1 },
+        { id: 'a1', role: 'assistant', content: 'Sample answer', timestamp: 2 },
+      ]),
+    })
+    saved.currentChatFile.value = Object.assign(new TFile(), { path: 'sample-chat.abchat' })
+    vi.spyOn(service, 'activeSession', 'get').mockReturnValue({ value: saved } as never)
+    const wrapper = open()
+
+    await wait(1200)
+
+    expect(document.activeElement).not.toBe(textarea(wrapper))
+  })
+
+  it('is put there when the chat panel opens over a saved conversation on a computer', async () => {
+    const saved = fakeChatSession({
+      kind: 'chat',
+      messages: ref<ChatMessage[]>([{ id: 'q1', role: 'user', content: 'Sample', timestamp: 1 }]),
+    })
+    vi.spyOn(service, 'activeSession', 'get').mockReturnValue({ value: saved } as never)
+    const wrapper = open()
 
     await wait(600)
 

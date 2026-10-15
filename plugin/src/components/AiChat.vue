@@ -1588,7 +1588,15 @@ function focusComposer() {
   attempt()
 }
 
-onMounted(() => void nextTick(focusComposer))
+/**
+ * The panel opening puts the cursor in the composer, except over a conversation on a phone: there
+ * the keyboard comes up with the cursor and covers half of what the panel was opened to read. A
+ * new chat is for writing, so it still gets the cursor there.
+ */
+onMounted(() => {
+  if (Platform.isPhone && !ChatService.isBlank(session.value)) return
+  void nextTick(focusComposer)
+})
 onUnmounted(stopFocusing)
 
 // A new chat or a new comment, and somebody about to type into it. After the tab has rendered.
