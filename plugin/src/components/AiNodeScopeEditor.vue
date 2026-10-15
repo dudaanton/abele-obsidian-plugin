@@ -99,7 +99,12 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, onMounted, onUnmounted, watch } from 'vue'
-import { nodeScopeNames, nodeScopeTitle, type NodeScopeNames } from '@/ai/tools/node/scopeNames'
+import {
+  nodeScopeNames,
+  nodeScopeTitle,
+  shortBranch,
+  type NodeScopeNames,
+} from '@/ai/tools/node/scopeNames'
 import { pendingNodeAccess } from './chat/nodeAccessPending'
 import type { ChatSession } from '@/ai/ChatSession'
 import {
@@ -241,7 +246,9 @@ async function chooseProject(value: string) {
           'worktree_id' in entry
             ? {
                 value: entry.worktree_id,
-                display: entry.branch ? `${entry.branch} · ${entry.path_label}` : entry.path_label,
+                display: entry.branch
+                  ? `${shortBranch(entry.branch)} · ${entry.path_label}`
+                  : entry.path_label,
                 identity: { kind: 'worktree' as const, worktree_id: entry.worktree_id },
               }
             : {

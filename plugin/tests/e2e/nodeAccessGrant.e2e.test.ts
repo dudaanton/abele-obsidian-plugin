@@ -192,7 +192,7 @@ async function refusalToGrant(form: 'desktop' | 'phone') {
         const editor=add.closest('.abele-node-scope-editor');
         try{await until(()=>[...editor.querySelectorAll('select')].some(s=>s.value===${JSON.stringify(setup.worktree)}),'place chosen')}catch(e){throw Error(e.message+' '+JSON.stringify({want:${JSON.stringify(setup.worktree)},selects:[...editor.querySelectorAll('select')].map(s=>({value:s.value,options:[...s.options].map(o=>o.value+'='+o.textContent)})),text:editor.textContent.slice(0,400)}))}
         const shown=[...editor.querySelectorAll('select')].map(s=>s.selectedOptions[0]?.textContent);
-        if(!shown.includes('Sample workstation'))throw Error('Node not chosen: '+shown);
+        if(!shown.includes('Sample workstation'))throw Error('Node not chosen: '+shown);if(shown.some(t=>t&&t.includes('refs/heads/')))throw Error('A branch is shown as its full ref: '+shown);
         return JSON.stringify(shown)
       })()`
       )
