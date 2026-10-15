@@ -40,6 +40,7 @@ import { nodeWorkspaceFixture } from './nodeWorkspaceFixture'
 import NodePairingDialog from '@/components/NodePairingDialog.vue'
 import NodePermissionCard from '@/components/NodePermissionCard.vue'
 import { nodePairingFixture } from './nodePairingFixture'
+import { nodeFolderPickerFixture } from './nodeFolderPickerFixture'
 import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
 import Modal from '@/components/obsidian/Modal.vue'
 import AiReplyRevisionDialog from '@/components/AiReplyRevisionDialog.vue'
@@ -299,6 +300,7 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
   'node-pairing-endpoint': () => mountAlone(NodePairingDialog, nodePairingFixture('endpoint')),
   'node-question': () => mountNodeQuestion('select'),
   'node-question-input': () => mountNodeQuestion('input'),
+  'node-folder-picker': () => nodeFolderPickerFixture(),
   'node-workspaces': () => mountAlone(NodeWorkspaceDialog, nodeWorkspaceFixture()),
   'node-delegation-grants': () =>
     mountAlone(NodeDelegationGrantsDialog, nodeDelegationGrantsFixture()),

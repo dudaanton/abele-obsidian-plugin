@@ -112,6 +112,7 @@ const DIALOGS = [
   'node-pairing-endpoint',
   'node-question',
   'node-question-input',
+  'node-folder-picker',
   'node-workspaces',
   'node-delegation-grants',
   'node-delegation-card',
