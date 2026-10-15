@@ -665,28 +665,19 @@ export function checkScreen(scope: ScreenScope = {}): ScreenCheck {
     }
     rule('Р35', 'Под заголовком группы первая строка не ближе к нему, чем строки друг к другу', f35)
 
-    // Р36: rows of two lines and more are told apart by the eye: a hairline or a faint fill marks
-    // where one entry ends and the next begins. Whitespace alone ran the line under one name into
-    // the name of the next.
+    // Р36: entries of a list stand apart by space alone, as the task list's do: no hairline and no
+    // fill between them. A table keeps its lines; its rows are not entries.
     const f36: string[] = []
     for (const row of rowsIn.querySelectorAll('.abele-entry-row + .abele-entry-row')) {
       const prev = row.previousElementSibling as Element
       if (!visible(row) || !visible(prev)) continue
-      // Two lines and more as drawn: a quiet line under the name, or codes moved under it.
-      const tall = (r: Element) => {
-        const title = r.querySelector(':scope .abele-entry-row__title')
-        const lh = title ? parseFloat(cs(title).lineHeight) || 20 : 20
-        return r.getBoundingClientRect().height > lh * 1.6
-      }
-      if (!tall(row) && !tall(prev)) continue
       const line = cs(row, '::before')
       const drawn =
         parseFloat(cs(row).borderTopWidth) > 0 ||
-        (line.content !== 'none' && parseFloat(line.borderTopWidth) > 0) ||
-        cs(row).backgroundColor !== cs(prev).backgroundColor
-      if (!drawn) f36.push(`${name(prev)} и ${name(row)}: между записями ни линии, ни фона`)
+        (line.content !== 'none' && parseFloat(line.borderTopWidth) > 0)
+      if (drawn) f36.push(`${name(prev)} и ${name(row)}: между записями линия`)
     }
-    rule('Р36', 'Записи в две строки и больше разделены линией или фоном', f36.slice(0, 6))
+    rule('Р36', 'Записи списка разделены только отступом, без линий', f36.slice(0, 6))
     rule('Р7', 'Заголовок ближе к своему, чем к предыдущему, в 1.2 раза и больше', f7)
     rule(
       'Р34',

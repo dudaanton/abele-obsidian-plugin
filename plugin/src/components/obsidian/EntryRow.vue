@@ -87,26 +87,10 @@ const emit = defineEmits<{ 'update:more': [open: boolean] }>()
   }
 
   // Entries stand apart by a margin, not by room inside their light, so two lit rows never run
-  // together and the light stays close around the words.
+  // together and the light stays close around the words. No line between them: the task list's
+  // space alone, the same everywhere.
   & + & {
     margin-top: var(--abele-entry-gap);
-  }
-
-  // Entries end at a hairline, from the words' edge to the row's end, as Obsidian's own group of
-  // settings does between rows: whitespace alone ran the line under one name into the name of the
-  // next, and in a narrow pane every entry is two lines, its codes under the name. Drawn in the
-  // margin between the rows, under neither one's light.
-  & + & {
-    position: relative;
-
-    &::before {
-      content: '';
-      position: absolute;
-      top: calc(-1 * var(--abele-entry-gap) / 2);
-      inset-inline: var(--size-2-3);
-      border-top: 1px solid var(--background-modifier-border);
-      pointer-events: none;
-    }
   }
 }
 
