@@ -93,35 +93,47 @@ export function showNodePathFileMenu(event: MouseEvent, raw: NodePathContext): v
   )
   menu.showAtPosition(position(event))
 }
-export function showNodePathRowMenu(model: NodePathModel, event: MouseEvent, id: string): void {
+/** The folder's or worktree's menu, built once the node said whether outside worktrees are open. */
+function withRowMenu(
+  model: NodePathModel,
+  id: string,
+  show: (menu: Menu) => void,
+  into?: Menu,
+  panel = false
+): void {
   const folder = model.folders.value.find((f) => f.id === id || f.copies.some((c) => c.id === id))
   if (!folder) return
   const target = { ...model.target(id === folder.id ? (folder.copies[0]?.id ?? id) : id) }
   const connection = NodeService.getInstance().connection(model.registrationId)
   // A repository's menu shows whether its other worktrees are open, so it asks the node first.
   if (!folder.git || connection.state.value !== 'connected')
-    return rowMenu(model, event, folder, target)
+    return show(rowMenu(model, folder, target, undefined, into, panel))
   nodePathAction(async () =>
-    rowMenu(
-      model,
-      event,
-      folder,
-      target,
-      await projectExternalBrowsing(connection.client, target.projectId)
+    show(
+      rowMenu(
+        model,
+        folder,
+        target,
+        await projectExternalBrowsing(connection.client, target.projectId),
+        into,
+        panel
+      )
     )
   )
 }
 function rowMenu(
   model: NodePathModel,
-  event: MouseEvent,
   folder: NodePathModel['folders']['value'][number],
   target: PathTarget,
-  external?: boolean
-): void {
+  external?: boolean,
+  into?: Menu,
+  /** In the panel's place menu: new chat, history and refresh are already there. */
+  panel = false
+): Menu {
   const connection = NodeService.getInstance().connection(model.registrationId)
   const online = connection.state.value === 'connected',
     git = folder.git
-  const menu = new Menu(),
+  const menu = into ?? new Menu(),
     owner = nodePathOwnerActions()
   const add = (
     title: string,
@@ -137,11 +149,13 @@ function rowMenu(
         .onClick(() => nodePathAction(run))
       if (checked) i.setChecked(true)
     })
-  add('New chat', 'message-square-plus', online, () => newNodePathChat(model, target))
-  add('History', 'history', git, () =>
-    openNodePathTab(app().workspace, { kind: 'history', target }, Platform.isMobile)
-  )
-  add('Refresh folder', 'refresh-cw', online, () => model.reloadTarget(target))
+  if (!panel) {
+    add('New chat', 'message-square-plus', online, () => newNodePathChat(model, target))
+    add('History', 'history', git, () =>
+      openNodePathTab(app().workspace, { kind: 'history', target }, Platform.isMobile)
+    )
+    add('Refresh folder', 'refresh-cw', online, () => model.reloadTarget(target))
+  }
   if (git) {
     add(
       'New worktree',
@@ -290,37 +304,13 @@ function rowMenu(
       folder.copies.find((c) => c.id === target.id)?.path ?? folder.path
     )
   )
-  menu.showAtPosition(position(event))
-}
-export function showNodePathChatMenu(model: NodePathModel, event: MouseEvent, id: string): void {
-  const session = model.sessions.value.find((s) => s.session.session_id === id)
-  if (!session?.target) return
-  const target = Object.freeze({ ...session.target })
-  const menu = new Menu()
-  menu.addItem((item) =>
-    item
-      .setTitle('Open')
-      .setIcon('message-square')
-      .onClick(() =>
-        nodePathAction(() =>
-          openNodePathTab(
-            app().workspace,
-            {
-              kind: 'chat',
-              target,
-              sessionId: id,
-              title: session.session.title,
-            },
-            Platform.isMobile
-          )
-        )
-      )
-  )
-  menu.showAtPosition(position(event))
+  return menu
 }
 export function showNodePathNodeMenu(model: NodePathModel, event: MouseEvent): void {
-  const menu = new Menu(),
-    service = NodeService.getInstance()
+  nodeItems(model, new Menu()).showAtPosition(position(event))
+}
+function nodeItems(model: NodePathModel, menu: Menu): Menu {
+  const service = NodeService.getInstance()
   menu.addItem((i) =>
     i.setTitle('Connect another node').setIcon('server').onClick(openNodePathPairing)
   )
@@ -377,7 +367,7 @@ export function showNodePathNodeMenu(model: NodePathModel, event: MouseEvent): v
         )
     )
   }
-  menu.showAtPosition(position(event))
+  return menu
 }
 export async function attachNodePathWorktree(
   model: NodePathModel,
@@ -532,3 +522,112 @@ async function approveNodePathExecution(
 }
 export const openFolderForNode = (model: NodePathModel) =>
   openNodeFolderPicker(model, NodeService.getInstance().connection(model.registrationId))
+/**
+ * The panel's place search: every folder on the node, each worktree of a repository with its
+ * changed files, and under each the node agent's chats that work there. Choosing a place shows
+ * it in the panel; choosing a chat opens it.
+ */
+export function pickNodePathPlace(model: NodePathModel, openChat: (id: string) => void): void {
+  const node = NodeService.getInstance().nodes.value.find((n) => n.id === model.registrationId)
+  const chats = (list: NodePathModel['folders']['value'][number]['chats'], where: string) =>
+    (list ?? []).map((chat) => ({
+      id: `chat:${chat.id}`,
+      icon: 'message-square',
+      kind: 'Chat',
+      title: chat.title,
+      note: [where, chat.when].filter(Boolean).join(' · '),
+    }))
+  const items = model.folders.value.flatMap((folder) =>
+    folder.git
+      ? folder.copies.flatMap((copy) => [
+          {
+            id: copy.id,
+            icon: copy.kind === 'project' ? 'folder-git-2' : 'git-branch',
+            kind: copy.kind === 'project' ? 'Folder' : 'Worktree',
+            title: `${folder.name} / ${copy.branch}`,
+            note: copy.path,
+            ...(copy.changed ? { count: { value: copy.changed, label: 'changed files' } } : {}),
+            current: copy.id === model.selected.value,
+          },
+          ...chats(copy.chats, `${folder.name} / ${copy.branch}`),
+        ])
+      : [
+          {
+            id: folder.id,
+            icon: 'folder',
+            kind: 'Folder',
+            title: folder.name,
+            note: folder.path,
+            current: folder.id === model.selected.value,
+          },
+          ...chats(folder.chats, folder.name),
+        ]
+  )
+  new NodeSuggestModal(
+    app(),
+    items,
+    `Folder, branch or chat on ${node?.label ?? 'the node'}`,
+    (item) =>
+      item.id.startsWith('chat:')
+        ? openChat(item.id.slice(5))
+        : nodePathAction(() => model.select(item.id)),
+    'No folder or branch matches'
+  ).open()
+}
+/**
+ * The place's menu: what stood as glyphs in the panel's header (new chat, open a folder,
+ * refresh), switching place, then what can be done with this folder or worktree, then the node.
+ */
+export function showNodePathPlaceMenu(
+  model: NodePathModel,
+  event: MouseEvent,
+  openChat: (id: string) => void
+): void {
+  const online =
+    NodeService.getInstance().connection(model.registrationId).state.value === 'connected'
+  const menu = new Menu()
+  const tail = (m: Menu) => {
+    m.addSeparator()
+    m.addItem((i) =>
+      i
+        .setTitle('Open a folder…')
+        .setIcon('folder-plus')
+        .setDisabled(!online)
+        .onClick(() => nodePathAction(() => openFolderForNode(model)))
+    )
+    m.addItem((i) =>
+      i
+        .setTitle('Refresh')
+        .setIcon('refresh-cw')
+        .onClick(() =>
+          nodePathAction(() =>
+            NodeService.getInstance()
+              .connection(model.registrationId)
+              .connect()
+              .then(() => model.refreshCurrent())
+          )
+        )
+    )
+    m.addSeparator()
+    nodeItems(model, m)
+    m.showAtPosition(position(event))
+  }
+  const id = model.selected.value
+  if (!id || !model.current.value) return tail(menu)
+  const git = model.currentFolder.value?.git ?? false
+  menu.addItem((i) =>
+    i
+      .setTitle('New chat here')
+      .setIcon('message-square-plus')
+      .setDisabled(!online || !model.capabilities.value.includes('node_path_execution'))
+      .onClick(() => nodePathAction(() => newNodePathChat(model)))
+  )
+  menu.addItem((i) =>
+    i
+      .setTitle(git ? 'Switch to another branch…' : 'Choose another folder…')
+      .setIcon(git ? 'git-branch' : 'folder')
+      .onClick(() => pickNodePathPlace(model, openChat))
+  )
+  menu.addSeparator()
+  withRowMenu(model, id, tail, menu, true)
+}

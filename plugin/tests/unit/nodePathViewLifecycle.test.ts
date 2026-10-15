@@ -190,6 +190,25 @@ it.each(['file', 'history'])(
   }
 )
 
+it('opens the commit chosen in the panel, and another one in the same history tab', async () => {
+  fixture.connect.mockResolvedValue(undefined)
+  const commit = vi.fn(async (_t: unknown, hash: string) => ({ hash, subject: hash, files: [] }))
+  fixture.model = {
+    online: shallowRef(true),
+    port: { history: vi.fn(async () => ({ entries: [], cursor: null })), commit },
+    copy: () => undefined,
+    inspections: shallowRef({}),
+  }
+  const view = new NodePathMainView({} as WorkspaceLeaf, 'abele-node-history')
+  views.push(view)
+  view.app = { workspace: { requestSaveLayout() {} } } as any
+  await view.setState({ kind: 'history', target, commit: 'a1b2c3' }, {})
+  await vi.waitFor(() => expect(commit).toHaveBeenCalledWith(target, 'a1b2c3'))
+  await view.setState({ kind: 'history', target, commit: 'd4e5f6' }, {})
+  await vi.waitFor(() => expect(commit).toHaveBeenCalledWith(target, 'd4e5f6'))
+  expect(fixture.model.port.history).toHaveBeenCalledTimes(1)
+})
+
 it('keeps phone file actions in the pane menu', () => {
   const previous = Platform.isPhone
   Platform.isPhone = true

@@ -6,7 +6,15 @@ import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import NodePanel from '@/components/nodeWork/NodePanel.vue'
 import FolderPicker from '@/components/nodeWork/FolderPicker.vue'
-import FolderTree from '@/components/nodeWork/FolderTree.vue'
+import { pickNodePathPlace } from '@/node/NodePathController'
+import { NodeSuggestModal } from '@/components/nodeWork/NodeSuggestModal'
+import { ref } from 'vue'
+import { vi } from 'vitest'
+
+vi.mock('@/node/NodeService', () => ({
+  NodeService: { getInstance: () => ({ nodes: { value: [] } }) },
+}))
+vi.mock('@/stores/GlobalStore', () => ({ GlobalStore: { getInstance: () => ({ app: {} }) } }))
 import FileTree from '@/components/nodeWork/FileTree.vue'
 import type { FileChange, FolderSummary, NodeSummary } from '@/components/nodeWork/types'
 
@@ -40,16 +48,23 @@ describe('NodePanel', () => {
   })
 })
 
-describe('FolderTree', () => {
+describe('place search', () => {
   it('lists worktrees under their folder, with the count of changed files, and picks one', async () => {
-    const view = mount(FolderTree, { props: { folders: [folder] } })
-    const rows = view.findAll('.abele-tree-item__self').slice(1)
-    expect(rows.map((r) => r.get('.abele-tree-item__text').text())).toEqual(['main', 'feature'])
-    expect(rows[0].get('.abele-copy-codes__count').text()).toBe('2')
-    // Empty counts reserve the same column as populated counts.
-    expect(rows[1].get('.abele-copy-codes__count').text()).toBe('')
-    await rows[1].trigger('click')
-    expect(view.emitted('select')).toEqual([['c2']])
+    let items: { id: string; title: string; count?: { value: number } }[] = []
+    let choose: (item: { id: string }) => void = () => {}
+    vi.spyOn(NodeSuggestModal.prototype, 'open').mockImplementation(function (this: never) {
+      items = (this as unknown as { items: typeof items }).items
+      choose = (this as unknown as { onChoose: typeof choose }).onChoose
+    })
+    const select = vi.fn(async () => {})
+    const model = { registrationId: 'r', folders: ref([folder]), selected: ref('c1'), select }
+    pickNodePathPlace(model as never, () => {})
+    expect(items.map((i) => i.title)).toEqual(['sample-repo / main', 'sample-repo / feature'])
+    expect(items[0].count?.value).toBe(2)
+    // No count for a worktree with nothing changed, rather than a zero.
+    expect(items[1].count).toBeUndefined()
+    choose(items[1])
+    await vi.waitFor(() => expect(select).toHaveBeenCalledWith('c2'))
   })
 })
 

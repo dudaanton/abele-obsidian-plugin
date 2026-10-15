@@ -100,6 +100,8 @@ export interface FolderEntry {
 
 /** How the side panel lists a copy's files: all of them, the changed ones in their folders, or the changed ones as a list. */
 export type FileTreeMode = 'all' | 'changed-tree' | 'changed'
+/** What the node panel shows of its place: files, changes, history or pull requests. */
+export type NodePanelMode = 'files' | 'changes' | 'history' | 'pulls'
 
 /** One file or folder of a copy's tree; a file carries its git change, if it has one. */
 export interface TreeEntry {

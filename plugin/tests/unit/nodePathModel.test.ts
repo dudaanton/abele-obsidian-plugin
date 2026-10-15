@@ -317,6 +317,34 @@ describe('node path model', () => {
     first.model.destroy()
     restored.model.destroy()
   })
+  it('opens a worktree with changes on its changes and keeps history across another place', async () => {
+    const { model } = fake()
+    await model.refresh()
+    await model.select('one')
+    expect(model.panelMode.value).toBe('changes')
+    model.panelMode.value = 'history'
+    await model.select('two')
+    expect(model.panelMode.value).toBe('history')
+    model.destroy()
+  })
+  it('keeps the panel mode in the snapshot, and an older snapshot without one still loads', async () => {
+    const first = fake()
+    await first.model.refresh()
+    await first.model.select('one')
+    first.model.panelMode.value = 'history'
+    const raw = first.model.snapshot() as Record<string, unknown>
+    const restored = fake()
+    restored.model.restoreSnapshot(raw)
+    expect(restored.model.panelMode.value).toBe('history')
+    const older = fake()
+    const { panelMode: _dropped, ...withoutMode } = raw
+    older.model.restoreSnapshot(withoutMode)
+    expect(older.model.selected.value).toBe('one')
+    expect(older.model.panelMode.value).toBe('files')
+    first.model.destroy()
+    restored.model.destroy()
+    older.model.destroy()
+  })
   it('retains the last known catalogue and files when a read fails; never labels it refreshed', async () => {
     const { model, port } = fake()
     await model.refresh()

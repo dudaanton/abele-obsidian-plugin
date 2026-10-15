@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 import { Menu } from 'obsidian'
-import { showNodePathRowMenu } from '@/node/NodePathController'
+import { showNodePathPlaceMenu } from '@/node/NodePathController'
 
 const f = vi.hoisted(() => ({
   request: vi.fn<(method: string, params: unknown) => Promise<unknown>>(),
@@ -12,6 +12,7 @@ vi.mock('@/stores/GlobalStore', () => ({ GlobalStore: { getInstance: () => ({ ap
 vi.mock('@/node/NodeService', () => ({
   NodeService: {
     getInstance: () => ({
+      nodes: ref([]),
       connection: () => ({
         state: ref('connected'),
         client: { request: f.request, setRepositorySettings: f.settings },
@@ -49,20 +50,38 @@ function model() {
       },
     ]),
     target: () => target,
+    selected: ref('sample-root'),
+    current: ref(target),
+    currentFolder: ref({ id: 'sample-project', git: true }),
     refresh: f.refresh,
   } as never
 }
 type Shown = { items: { title: string; checked: boolean | null; handler: (() => void) | null }[] }
 async function opened(): Promise<Shown> {
   const show = vi.spyOn(Menu.prototype, 'showAtPosition')
-  showNodePathRowMenu(model(), new MouseEvent('contextmenu'), 'sample-project')
+  showNodePathPlaceMenu(model(), new MouseEvent('click'), () => {})
   await vi.waitFor(() => expect(show).toHaveBeenCalled())
   return show.mock.instances[0] as unknown as Shown
 }
 const allow = (menu: Shown) =>
   menu.items.find((i) => i.title === 'Allow external workspace browsing')!
 
-describe('the folder menu’s external-worktrees item', () => {
+describe('the place menu', () => {
+  it('starts with a new chat and switching place, then the folder’s items, then the node', async () => {
+    f.request.mockResolvedValue({ project_id: 'sample-project', external_read: false })
+    const titles = (await opened()).items.map((i) => i.title)
+    expect(titles.slice(0, 2)).toEqual(['New chat here', 'Switch to another branch…'])
+    expect(titles).toContain('New worktree')
+    expect(titles).toContain('Open a folder…')
+    expect(titles).toContain('Refresh')
+    expect(titles).toContain('Connect another node')
+    // History and refreshing the folder are the panel's own now, not repeated in the menu.
+    expect(titles).not.toContain('History')
+    expect(titles).not.toContain('Refresh folder')
+  })
+})
+
+describe('the place menu’s external-worktrees item', () => {
   const switchOf = (menu: Shown) =>
     menu.items.find((i) => i.title === 'Browse external workspaces')!
   const twoWays = (menu: Shown) =>

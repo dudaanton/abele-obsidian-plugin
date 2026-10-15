@@ -190,6 +190,9 @@ export class NodePathMainView extends ItemView {
       nodePathTabKey(this.saved) === nodePathTabKey(parsed)
     this.saved = parsed
     if (!same) this.startBinding(parsed)
+    // The same history tab, asked for another commit from the panel: it opens that one.
+    else if (parsed.kind === 'history' && parsed.commit && this.history)
+      this.act(() => this.history?.open(parsed.commit!))
     await super.setState(raw, result)
   }
   /** The margin of the file shown: the one this tab was opened for, or any file a running
@@ -386,6 +389,7 @@ export class NodePathMainView extends ItemView {
       history.busy.value = true
       await connection.connect().catch(() => {})
       if (lifetime === this.lifetime) await history.load().catch(() => {})
+      if (lifetime === this.lifetime && state.commit) await history.open(state.commit).catch(() => {})
     } else if (state.kind === 'editor') {
       const editor = (this.editor = new NodeFilesModel(
         connection.client,

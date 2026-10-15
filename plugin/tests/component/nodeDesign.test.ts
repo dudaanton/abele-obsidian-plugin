@@ -6,7 +6,8 @@ import { EditorView } from '@codemirror/view'
 import { EditorState } from '@codemirror/state'
 import FileView from '@/components/nodeWork/FileView.vue'
 import PairDialog from '@/components/nodeWork/PairDialog.vue'
-import FolderTree from '@/components/nodeWork/FolderTree.vue'
+import NodePlace from '@/components/nodeWork/NodePlace.vue'
+import NodeModes from '@/components/nodeWork/NodeModes.vue'
 import HistoryView from '@/components/nodeWork/HistoryView.vue'
 import FileTree from '@/components/nodeWork/FileTree.vue'
 import NodePathEditorPane from '@/components/nodeWork/NodePathEditorPane.vue'
@@ -297,30 +298,19 @@ describe('node design corrections', () => {
     await view.get('[data-path="src/sample.ts"]').trigger('contextmenu')
     expect(view.emitted('menu')?.map((e) => e[1])).toEqual(['src/sample.ts'])
   })
-  it('shares enough count-column space for large counts and folded folder totals', async () => {
-    const large = {
-      ...folder,
-      copies: [
-        { ...folder.copies[0], changed: 6200 },
-        { ...folder.copies[0], id: 'second-tree', branch: 'topic', changed: 6200 },
-      ],
-    }
-    const view = keep(mount(FolderTree, { props: { folders: [large] } }))
-    expect(view.attributes('style') ?? '').toContain('--abele-copy-count-digits: 5')
-    await view.get('.tree-item-self').trigger('click')
-    expect(view.get('.abele-copy-codes__count').text()).toBe('12400')
-    await view.setProps({ folders: [folder] })
-    expect(view.attributes('style') ?? '').toContain('--abele-copy-count-digits: 3')
+  it('writes a large count of changes whole beside its mode', () => {
+    const view = keep(mount(NodeModes, { props: { mode: 'files', git: true, pulls: false, changes: 12400 } }))
+    const changes = view.findAll('[role="tab"]')[1]
+    expect(changes.text()).toBe('12400')
+    expect(changes.attributes('aria-label')).toBe('Changes: 12400 files')
   })
-  it('reserves empty count and dot slots, exposes chat actions and stops nested context menus', async () => {
-    const view = keep(mount(FolderTree, { props: { folders: [folder], selected: 'tree' } }))
-    expect(view.get('.abele-copy-codes__count').text()).toBe('')
-    expect(view.findAll('.abele-copy-codes__dot')).toHaveLength(3)
-    await view.get('.abele-folder-tree__copy').trigger('contextmenu')
-    expect(view.emitted('menu')?.map((e) => e[1])).toEqual(['tree'])
-    await view.get('.abele-chat-row .abele-obsidian-icon').trigger('click')
-    expect(view.emitted('chat-menu')?.[0]?.[1]).toBe('chat')
-    expect(view.emitted('open-chat')).toBeUndefined()
+  it('keeps the place menu apart from the place search: its glyph opens only the menu', async () => {
+    const view = keep(
+      mount(NodePlace, { props: { node: 'Sample node', folder: folder.name, branch: 'trunk' } })
+    )
+    await view.get('.abele-node-place > .abele-obsidian-icon').trigger('click')
+    expect(view.emitted('menu')).toHaveLength(1)
+    expect(view.emitted('pick')).toBeUndefined()
   })
 })
 

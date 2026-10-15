@@ -31,7 +31,14 @@ export const NodePathTabSchema = z.discriminatedUnion('kind', [
     })
     .strict(),
   z.object({ kind: z.literal('editor'), target, path: z.string().min(1).max(4096) }).strict(),
-  z.object({ kind: z.literal('history'), target }).strict(),
+  z
+    .object({
+      kind: z.literal('history'),
+      target,
+      /** The commit to open, chosen in the panel's history. */
+      commit: z.string().min(1).max(128).optional(),
+    })
+    .strict(),
   z.object({ kind: z.literal('chat'), target, sessionId: id, title: z.string().max(256) }).strict(),
 ])
 export type NodePathTabState = z.infer<typeof NodePathTabSchema>

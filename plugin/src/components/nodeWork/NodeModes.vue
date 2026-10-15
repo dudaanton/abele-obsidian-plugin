@@ -49,7 +49,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { setTooltip } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'
 
-export type NodeMode = 'files' | 'changes' | 'history' | 'pulls'
+import type { NodePanelMode as NodeMode } from './types'
 
 const props = defineProps<{
   mode: NodeMode

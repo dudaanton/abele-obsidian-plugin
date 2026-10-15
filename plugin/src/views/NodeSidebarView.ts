@@ -1,4 +1,4 @@
-import { ItemView, Platform, type ViewStateResult, type WorkspaceLeaf } from 'obsidian'
+import { ItemView, Notice, Platform, type ViewStateResult, type WorkspaceLeaf } from 'obsidian'
 import { createApp, h, shallowRef, watch, type App as VueApp, type WatchStopHandle } from 'vue'
 import { z } from 'zod'
 import { NodeService } from '@/node/NodeService'
@@ -17,9 +17,9 @@ import {
   openNodePathPairing,
   newNodePathChat,
   showNodePathNodeMenu,
-  showNodePathRowMenu,
-  showNodePathChatMenu,
   showNodePathFileMenu,
+  showNodePathPlaceMenu,
+  pickNodePathPlace,
 } from '@/node/NodePathController'
 import NodePathSidebar from '@/components/nodeWork/NodePathSidebar.vue'
 
@@ -78,6 +78,25 @@ export class NodeSidebarView extends ItemView {
           : undefined
         const connection = node ? service.connection(node.id) : undefined
         const selected = () => model?.current.value
+        // A chat chosen in the place search opens in its tab, as its row in the panel did.
+        const openChat = (id: string) => {
+          const session = model?.sessions.value.find((s) => s.session.session_id === id)
+          if (session?.target && model) {
+            model.selectedChat.value = id
+            nodePathAction(() =>
+              openNodePathTab(
+                this.app.workspace,
+                {
+                  kind: 'chat',
+                  target: session.target!,
+                  sessionId: id,
+                  title: session.session.title,
+                },
+                Platform.isMobile
+              )
+            )
+          }
+        }
         return h(NodePathSidebar, {
           model,
           phase: node ? 'ready' : this.localPhase.value,
@@ -99,9 +118,6 @@ export class NodeSidebarView extends ItemView {
                   }
                 : undefined,
           onPair: openNodePathPairing,
-          onSelect: (id: string) => {
-            if (model) nodePathAction(() => model.select(id))
-          },
           onOpenFolder: () => {
             if (model) nodePathAction(() => openFolderForNode(model))
           },
@@ -126,24 +142,25 @@ export class NodeSidebarView extends ItemView {
                 )
               )
           },
-          onOpenChat: (id: string) => {
-            const session = model?.sessions.value.find((s) => s.session.session_id === id)
-            if (session?.target && model) {
-              model.selectedChat.value = id
+          onPickPlace: () => {
+            if (model) pickNodePathPlace(model, openChat)
+          },
+          onPlaceMenu: (event: MouseEvent) => {
+            if (model) showNodePathPlaceMenu(model, event, openChat)
+          },
+          onOpenCommit: (hash: string) => {
+            const target = selected()
+            if (target)
               nodePathAction(() =>
                 openNodePathTab(
                   this.app.workspace,
-                  {
-                    kind: 'chat',
-                    target: session.target!,
-                    sessionId: id,
-                    title: session.session.title,
-                  },
+                  { kind: 'history', target, commit: hash },
                   Platform.isMobile
                 )
               )
-            }
           },
+          onOpenPull: (number: number) => new Notice(`Pull request #${number}`),
+          onConnectService: () => new Notice('Connect a git service in Abele settings.'),
           onRefresh: () => {
             if (model && connection)
               nodePathAction(() => connection.connect().then(() => model.refreshCurrent()))
@@ -154,12 +171,6 @@ export class NodeSidebarView extends ItemView {
           },
           onNodeMenu: (event: MouseEvent) => {
             if (model) showNodePathNodeMenu(model, event)
-          },
-          onRowMenu: (event: MouseEvent, id: string) => {
-            if (model) showNodePathRowMenu(model, event, id)
-          },
-          onChatMenu: (event: MouseEvent, id: string) => {
-            if (model) showNodePathChatMenu(model, event, id)
           },
           onFileMenu: (event: MouseEvent, path: string) => {
             const target = selected()

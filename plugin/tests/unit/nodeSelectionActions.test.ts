@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
-import { Menu, MenuItem } from 'obsidian'
-import { newNodePathChat, showNodePathChatMenu } from '@/node/NodePathController'
+import { newNodePathChat, pickNodePathPlace } from '@/node/NodePathController'
 import { selectionQuote } from '@/components/nodeWork/fileSelection'
 
 const f = vi.hoisted(() => ({
   choose: undefined as undefined | ((item: { id: string }) => void),
+  items: [] as { id: string; title: string; note?: string; kind: string }[],
   append: vi.fn(),
   open: vi.fn(),
   refresh: vi.fn(async () => {}),
@@ -32,6 +32,7 @@ vi.mock('@/node/nodePathNavigation', () => ({ openNodePathTab: f.open }))
 vi.mock('@/node/NodeService', () => ({
   NodeService: {
     getInstance: () => ({
+      nodes: ref([]),
       connection: () => ({
         state: ref('connected'),
         client: { describe: async () => ({ providers: [{ provider: 'fake', available: true }] }) },
@@ -41,7 +42,8 @@ vi.mock('@/node/NodeService', () => ({
 }))
 vi.mock('@/components/nodeWork/NodeSuggestModal', () => ({
   NodeSuggestModal: class {
-    constructor(_app: unknown, _items: unknown, _text: string, choose: typeof f.choose) {
+    constructor(_app: unknown, items: typeof f.items, _text: string, choose: typeof f.choose) {
+      f.items = items
       f.choose = choose
     }
     open() {}
@@ -72,7 +74,26 @@ function model() {
     registrationId: target.registrationId,
     capabilities: ref(['node_path_execution']),
     current: ref(target),
-    folders: ref([]),
+    selected: ref('sample-tree'),
+    select: vi.fn(async () => {}),
+    folders: ref([
+      {
+        id: 'sample-project',
+        name: 'sample-app',
+        path: '/sample/app',
+        git: true,
+        copies: [
+          {
+            id: 'sample-tree',
+            kind: 'project',
+            branch: 'trunk',
+            path: '/sample/app',
+            changed: 2,
+            chats: [{ id: 'sample-session', title: 'Sample chat', when: 'Today' }],
+          },
+        ],
+      },
+    ]),
     copy: () => undefined,
     refresh: f.refresh,
     report: vi.fn(),
@@ -102,30 +123,30 @@ describe('selected node file context', () => {
       false
     )
   })
-  it('offers a bound chat menu without fabricating unsupported mutations', () => {
-    const disable = vi.spyOn(MenuItem.prototype, 'setDisabled')
-    const show = vi.spyOn(Menu.prototype, 'showAtPosition')
-    showNodePathChatMenu(model(), new MouseEvent('contextmenu'), 'sample-session')
-    const menu = show.mock.instances[0] as unknown as {
-      items: { title: string; handler: (() => void) | null }[]
-    }
-    // Only supported actions belong in the menu, not disabled placeholders.
-    expect(menu.items.map((i) => i.title)).toEqual(['Open'])
-    expect(menu.items[0].handler).toBeTruthy()
-    expect(disable).not.toHaveBeenCalled()
+  it('finds a chat in the place search under its branch and opens it, offering nothing it cannot do', () => {
+    const opened = vi.fn()
+    pickNodePathPlace(model(), opened)
+    const chat = f.items.find((i) => i.kind === 'Chat')!
+    expect(chat).toMatchObject({ title: 'Sample chat', note: 'sample-app / trunk · Today' })
+    // Only places and chats are listed: no rows standing for unsupported chat actions.
+    expect(f.items.map((i) => i.kind)).toEqual(['Folder', 'Chat'])
+    f.choose!(chat)
+    expect(opened).toHaveBeenCalledWith('sample-session')
+  })
+  it('lists each worktree with its changed files and shows the chosen one in the panel', async () => {
+    const m = model() as unknown as { select: ReturnType<typeof vi.fn> }
+    pickNodePathPlace(m as never, vi.fn())
+    const place = f.items[0] as (typeof f.items)[number] & { count?: { value: number } }
+    expect(place).toMatchObject({ title: 'sample-app / trunk', count: { value: 2 } })
+    f.choose!(place)
+    await vi.waitFor(() => expect(m.select).toHaveBeenCalledWith('sample-tree'))
   })
   it.fails(
     'BUG: chat rename and delete require session mutations not yet exposed by the node protocol',
     () => {
-      const show = vi.spyOn(Menu.prototype, 'showAtPosition')
-      showNodePathChatMenu(model(), new MouseEvent('contextmenu'), 'sample-session')
-      const menu = show.mock.instances[0] as unknown as {
-        items: { title: string; handler: (() => void) | null }[]
-      }
+      pickNodePathPlace(model(), vi.fn())
       expect(
-        ['Rename', 'Delete'].every((title) =>
-          menu.items.some((item) => item.title === title && !!item.handler)
-        )
+        ['Rename', 'Delete'].every((word) => f.items.some((item) => item.title.startsWith(word)))
       ).toBe(true)
     }
   )

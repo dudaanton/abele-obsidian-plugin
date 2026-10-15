@@ -3,15 +3,17 @@ import { ChannelError } from '@abele/channel-protocol'
 import { formatTimestamp } from '@/helpers/displayFormat'
 import { NodePathSnapshotSchema, emptySnapshotChange } from './nodePathSnapshot'
 import { applyPathChanges, type PathTreeBatch } from './nodePathChanges'
+import { NodePathHistoryModel } from './NodePathHistoryModel'
 import type { NodeClient } from '@abele/node-client'
 import type { RepositoryRevision } from '@abele/node-protocol'
 import type {
   CommitSummary,
   CopySummary,
   FileChange,
-  FileTreeMode,
   FolderSummary,
+  NodePanelMode,
   NodeImagePreview,
+  PullRequestSummary,
   TreeEntry,
 } from '@/components/nodeWork/types'
 
@@ -111,6 +113,16 @@ export interface NodePathPort {
     changed?: (batch: PathTreeBatch) => void
   ): Promise<() => void>
   subscribe(notify: () => void): Promise<() => void>
+  /** Where the node reports the folder's remote; absent, the panel says none is known. */
+  pulls?(target: PathTarget): Promise<PathPulls>
+}
+/** The pull requests of a place, from the git service its remote lives on. */
+export interface PathPulls {
+  /** The remote the folder pushes to, as the node reports it; null when it reports none. */
+  remote: string | null
+  /** An account of that git service is connected, so its pull requests can be read. */
+  connected: boolean
+  pulls: (PullRequestSummary & { branch: string })[]
 }
 export interface SeenChanges {
   get(key: string): string | undefined
@@ -121,7 +133,8 @@ export class NodePathModel {
   readonly folders = shallowRef<FolderSummary[]>([])
   readonly selected = ref('')
   readonly selectedChat = ref('')
-  readonly mode = ref<FileTreeMode>('changed')
+  /** What the side panel shows of the selected place; kept in the snapshot. */
+  readonly panelMode = ref<NodePanelMode>('files')
   readonly receivedAt = ref('')
   readonly error = ref('')
   readonly busy = ref(false)
@@ -140,6 +153,9 @@ export class NodePathModel {
   readonly inspection = computed(() =>
     this.current.value ? this.inspections.value[pathTargetKey(this.current.value)] : undefined
   )
+  /** The selected place's history and pull requests, read while their mode is shown. */
+  readonly panelHistory = shallowRef<NodePathHistoryModel>()
+  readonly panelPulls = shallowRef<PathPulls>()
   private readonly progress = shallowRef<Record<string, TreeProgress | undefined>>({})
   private readonly cursors = shallowRef<Record<string, Record<string, string | null>>>({})
   readonly treeProgress = computed(() =>
@@ -207,6 +223,7 @@ export class NodePathModel {
     }))
     this.targets.value = value.targets
     this.selected.value = value.selected
+    if (value.panelMode) this.panelMode.value = value.panelMode
     this.receivedAt.value = value.receivedAt
     const selected = this.current.value
     if (selected && value.inspection)
@@ -226,6 +243,7 @@ export class NodePathModel {
       registrationId: this.registrationId,
       receivedAt: this.receivedAt.value,
       selected: this.selected.value,
+      panelMode: this.panelMode.value,
       folders: this.folders.value,
       targets: this.targets.value,
       ...(inspection
@@ -281,7 +299,36 @@ export class NodePathModel {
   }
   async refreshCurrent(): Promise<void> {
     const target = this.current.value
-    await Promise.all([this.refresh(), target ? this.reloadTarget(target) : Promise.resolve()])
+    await Promise.all([
+      this.refresh(),
+      target ? this.reloadTarget(target) : Promise.resolve(),
+      this.panelMode.value === 'history' ? this.loadPanelHistory() : Promise.resolve(),
+      this.panelMode.value === 'pulls' ? this.loadPanelPulls() : Promise.resolve(),
+    ])
+  }
+  /** The selected worktree's commits for the panel, the first page read again. */
+  async loadPanelHistory(): Promise<void> {
+    const target = this.current.value
+    if (!target || target.kind !== 'worktree' || !this.online.value) return
+    let history = this.panelHistory.value
+    if (!history || pathTargetKey(history.target) !== pathTargetKey(target)) {
+      history?.destroy()
+      history = new NodePathHistoryModel(this.port, target)
+      this.panelHistory.value = history
+    }
+    await history.load()
+  }
+  async loadPanelPulls(): Promise<void> {
+    const target = this.current.value
+    if (!target || target.kind !== 'worktree') return
+    if (!this.port.pulls) {
+      this.panelPulls.value = { remote: null, connected: false, pulls: [] }
+      return
+    }
+    const key = pathTargetKey(target)
+    const pulls = await this.port.pulls(target)
+    if (!this.disposed && this.current.value && pathTargetKey(this.current.value) === key)
+      this.panelPulls.value = pulls
   }
   async refresh(): Promise<void> {
     const generation = ++this.catalogueGeneration
@@ -339,8 +386,7 @@ export class NodePathModel {
     if (!this.online.value) {
       if (!this.inspections.value[pathTargetKey(target)])
         throw new Error('This target’s files were not retained. Reconnect to load them.')
-      this.mode.value =
-        target.kind === 'worktree' && this.changes.value.length ? 'changed-tree' : 'all'
+      this.openMode(target)
       return
     }
     // The watch comes first and the files are read after it, once: a read before it could miss
@@ -371,9 +417,17 @@ export class NodePathModel {
     const pending = this.treeLoads.get(pathTargetKey(target))
     await (pending?.promise ?? this.reloadTarget(target))
     if (this.disposed || generation !== this.selectionGeneration) return
-    this.mode.value =
-      target.kind === 'worktree' && this.changes.value.length ? 'changed-tree' : 'all'
+    this.openMode(target)
     if (watchError) throw watchError
+  }
+  /**
+   * A place opens on its files, or on its changes when it has some. History and pull requests
+   * are kept when the person moves to another place; a folder without git has files only.
+   */
+  private openMode(target: PathTarget): void {
+    if (target.kind !== 'worktree') this.panelMode.value = 'files'
+    else if (this.panelMode.value === 'files' || this.panelMode.value === 'changes')
+      this.panelMode.value = this.changes.value.length ? 'changes' : 'files'
   }
   async reloadTarget(target: PathTarget, files = true): Promise<void> {
     if (this.disposed) return
@@ -877,6 +931,7 @@ export class NodePathModel {
     this.stopWatch?.()
     this.stopCatalog?.()
     this.stopWatch = this.stopCatalog = undefined
+    this.panelHistory.value?.destroy()
     this.retained.clear()
     this.retainedBytes = 0
   }

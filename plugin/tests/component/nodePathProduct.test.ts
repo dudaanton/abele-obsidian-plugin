@@ -15,7 +15,7 @@ const parse = () => ({
   expires: 'Today, 12:00',
 })
 describe('product node sidebar', () => {
-  it('composes the folder and file trees and retains their content with a disconnected dot', async () => {
+  it('composes the place and its files and retains their content with a disconnected dot', async () => {
     const model = {
       folders: shallowRef([
         {
@@ -47,7 +47,12 @@ describe('product node sidebar', () => {
           removed: 0,
         },
       ]),
-      mode: ref('changed'),
+      panelMode: ref('changes'),
+      panelHistory: shallowRef(undefined),
+      panelPulls: shallowRef(undefined),
+      inspection: shallowRef(undefined),
+      loadPanelHistory: vi.fn(async () => {}),
+      loadPanelPulls: vi.fn(async () => {}),
       error: ref(''),
       busy: ref(false),
       capabilities: shallowRef<string[]>([]),
@@ -59,15 +64,34 @@ describe('product node sidebar', () => {
         node: { name: 'Sample node', status: 'offline', seen: 'Today, 12:00' },
       },
     })
-    expect(view.find('.abele-folder-tree_stale').exists()).toBe(true)
+    expect(view.get('.abele-node-place__name').text()).toBe('trunk')
+    expect(view.get('.abele-node-place__where').text()).toBe('Sample')
     expect(view.find('.abele-file-tree_stale').exists()).toBe(true)
     expect(view.text()).toContain('sample.ts')
     expect(view.text()).toContain('As of Today, 12:00')
     // A copy whose last commit and distance are unknown says nothing of them.
     expect(view.text()).not.toContain('Unknown')
     expect(view.find('.abele-node-sidebar__facts').exists()).toBe(false)
-    await view.find('.abele-node-panel__node-menu').trigger('click')
-    expect(view.emitted('node-menu')).toHaveLength(1)
+    // The node's items are in the place's menu, with the modes in the header.
+    await view.get('.abele-node-place > .abele-obsidian-icon').trigger('click')
+    expect(view.emitted('place-menu')).toHaveLength(1)
+    await view.get('.abele-node-place__row').trigger('click')
+    expect(view.emitted('pick-place')).toHaveLength(1)
+    const modes = view.findAll('.abele-node-modes [role="tab"]')
+    expect(modes.map((m) => m.attributes('aria-label'))).toEqual([
+      'Files',
+      'Changes: 1 file',
+      'History',
+      'Pull requests: none open',
+    ])
+    await modes[2].trigger('click')
+    expect(model.panelMode.value).toBe('history')
+    await flushPromises()
+    expect(model.loadPanelHistory).toHaveBeenCalled()
+    await view.findAll('.abele-node-modes [role="tab"]')[3].trigger('click')
+    await flushPromises()
+    expect(model.loadPanelPulls).toHaveBeenCalled()
+    expect(view.text()).toContain('does not say which remote')
     view.unmount()
   })
   it('keeps an expanded file directory expanded across a live tree refresh', async () => {
