@@ -297,16 +297,6 @@ body:not(.is-phone) .abele-settings__content > * {
   max-width: var(--setting-group-max-width);
 }
 
-// Obsidian's in-app settings dialog stops at 1100px and 85% of the window: ours gets up to 1280px
-// and 88%, on a desktop only. A phone and a tablet draw it as a full-screen sheet, and in a window
-// of its own it fills that window, which the plugin sizes when it opens (settingsWindowSize).
-body:not(.is-mobile):not(.is-popout-modal) .modal.mod-settings {
-  --modal-width: 90vw;
-  --modal-height: 88vh;
-  --modal-max-width: 1280px;
-  --modal-max-height: 1000px;
-}
-
 // The native phone pane otherwise extends behind its floating header. Keep that header's
 // own theme and geometry, but give the scrolling pane only the room below it.
 body.is-phone .modal.mod-settings .vertical-tab-content.abele-settings-pane_phone {

@@ -13,6 +13,19 @@ body.is-tablet.abele-half-width-sidebars {
   --mobile-sidebar-max-width: 50vw;
 }
 
+/*
+ * Obsidian's settings dialog in the main window stops at 1100px and 85% of the window: on a
+ * desktop it may take up to 1280px and 88%. A phone and a tablet draw it as a full-screen sheet,
+ * and in a window of its own it fills that window, which the plugin sizes as it opens
+ * (`helpers/settingsWindowSize.ts`).
+ */
+body:not(.is-mobile):not(.is-popout-modal) .modal.mod-settings {
+  --modal-width: 90vw;
+  --modal-height: 88vh;
+  --modal-max-width: 1280px;
+  --modal-max-height: 1000px;
+}
+
 /* Which chat tab to close: the quick switcher's list, with a dot for a chat that waits or
  * works, the time of its last message, and how full the tabs are in the field's corner. */
 .abele-close-tab .prompt-input-container {
