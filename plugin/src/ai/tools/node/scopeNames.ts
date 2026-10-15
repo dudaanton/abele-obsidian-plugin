@@ -28,13 +28,34 @@ const lastPart = (path: string) =>
     .split(/[\\/]/)
     .pop() || path
 
+/**
+ * A connected client for a node named by either id. One node can be registered here more than
+ * once (paired again, or by token and by pairing); asking by the node's own id then has no single
+ * answer, so the registrations are tried one by one until one is connected.
+ */
+async function clientOf(nodeId: string) {
+  const host = await nodeAgentHost()
+  const ids = host
+    .nodes()
+    .filter((n) => n.id === nodeId || n.node_id === nodeId)
+    .map((n) => n.id)
+  for (const id of ids.length ? ids : [nodeId]) {
+    try {
+      const client = host.connection(id).client
+      if (client.connected) return client
+    } catch {
+      /* That registration cannot be reached; try the next. */
+    }
+  }
+  throw new Error('Node not connected yet')
+}
+
 function folderNames(nodeId: string) {
   let found = folders.get(nodeId)
   if (!found) {
     found = (async () => {
       const names = new Map<string, { name: string; git: boolean }>()
-      const client = (await nodeAgentHost()).connection(nodeId).client
-      if (!client.connected) throw new Error('Node not connected yet')
+      const client = await clientOf(nodeId)
       let after: string | undefined
       for (let page = 0; page < 64; page++) {
         const batch = await client.listProjects(after)
@@ -60,8 +81,7 @@ function branchNames(nodeId: string, projectId: string, git: boolean) {
   if (!found) {
     found = (async () => {
       const names = new Map<string, string>()
-      const client = (await nodeAgentHost()).connection(nodeId).client
-      if (!client.connected) throw new Error('Node not connected yet')
+      const client = await clientOf(nodeId)
       if (git) {
         const { entries } = await client.repository.worktrees({ project_id: projectId })
         for (const w of entries) names.set(w.worktree_id, shortBranch(w.branch) || w.path_label)

@@ -10,24 +10,33 @@ const node = vi.hoisted(() => ({
 }))
 vi.mock('@/ai/tools/node/owner', () => ({
   nodeAgentHost: async () => ({
-    nodes: () => [{ id: 'sample-registration', node_id: 'sample-node', label: 'Sample node' }],
-    connection: () => ({
-      client: {
-        get connected() {
-          return node.connected
-        },
-        listProjects: async () => [
-          {
-            project_id: 'sample-project',
-            root_path: '/work/sample-app',
-            repository_path: '/work/sample-app',
-          },
-        ],
-        repository: { worktrees: async () => ({ entries: node.worktrees }) },
-      },
-    }),
+    nodes: () => [
+      { id: 'sample-old-registration', node_id: 'sample-node', label: 'Sample node' },
+      { id: 'sample-registration', node_id: 'sample-node', label: 'Sample node' },
+    ],
+    connection: (id: string) => {
+      // Asked by the node's own id with two registrations, the host has no single answer.
+      if (id === 'sample-node') throw new Error('Choose the node installation explicitly')
+      if (id === 'sample-old-registration') return { client: { connected: false } }
+      return sampleConnection()
+    },
   }),
 }))
+const sampleConnection = () => ({
+  client: {
+    get connected() {
+      return node.connected
+    },
+    listProjects: async () => [
+      {
+        project_id: 'sample-project',
+        root_path: '/work/sample-app',
+        repository_path: '/work/sample-app',
+      },
+    ],
+    repository: { worktrees: async () => ({ entries: node.worktrees }) },
+  },
+})
 import { forgetNodeScopeNames, nodeScopeNames } from '@/ai/tools/node/scopeNames'
 
 const place = {
@@ -55,6 +64,12 @@ describe('the names of a place on a node', () => {
       folder: 'sample-app',
       branch: 'main',
     })
+  })
+
+  it('finds the connected one when the node is registered here twice', async () => {
+    node.connected = true
+    node.worktrees = [{ worktree_id: 'sample-tree', branch: 'refs/heads/main', path_label: '/x' }]
+    expect((await nodeScopeNames(place)).folder).toBe('sample-app')
   })
 
   it('names a worktree added after the folder’s names were looked up', async () => {
