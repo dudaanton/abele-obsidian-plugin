@@ -169,18 +169,16 @@ export const swipe = (x1: number, y1: number, x2: number, y2: number): void =>
   void driver(['swipe', String(x1), String(y1), String(x2), String(y2)])
 /**
  * Types on the system keyboard into the focused field, once the keyboard is proven to take
- * input (`keyboardReady`). By default through the keyboard's own keys: the driver's other way,
- * XCUITest's typing into the element it believes has the focus, sometimes answers success while
- * the text goes nowhere, and that lost the first characters of a field. A Backspace has no key
- * there, so text holding one keeps the driver's own choice. `via` overrides.
+ * input (`keyboardReady`), and the way its probes proved: the driver's own choice first, the
+ * keyboard's keys when that way's probes go nowhere. `via` fixes the way.
  */
 export function typeText(text: string, via?: 'focus' | 'keys'): void {
-  const path = via ?? (text.includes('\b') ? undefined : 'keys')
   const ready = phoneEval(
-    `window.__e2eHost.ready(${JSON.stringify(path ?? null)}).then(() => 'ready')`,
+    `window.__e2eHost.ready(${JSON.stringify(via ?? null)}).then((path) => 'ready ' + (path ?? ''))`,
     30_000
   )
-  if (ready !== '=> ready') throw new Error('The phone keyboard is not ready: ' + ready)
+  if (!ready.startsWith('=> ready')) throw new Error('The phone keyboard is not ready: ' + ready)
+  const path = ready.slice('=> ready '.length)
   // Which way the driver typed (the field's focus or the keyboard's keys), for a loss to be read.
   console.debug('[phone-type]', driver(['type', text, ...(path ? ['--via', path] : [])]))
 }
@@ -339,11 +337,11 @@ export function installPhoneHost(): void {
         tap: (x, y) => call('tap', { x, y }),
         swipe: (x1, y1, x2, y2, options = {}) => call('swipe', { x1, y1, x2, y2, velocity: options.velocity, hold: options.hold }),
         longPress: (x, y) => call('longpress', { x, y }),
-        ready: (via) => keyboardReady((text) => call('type', { text, via })),
-        // The keyboard's keys unless told otherwise, as typeText does and for its reason.
+        // Resolves to the way the probes got through: the driver's own choice (null) or 'keys'.
+        ready: (via) => keyboardReady((text, path) => call('type', { text, via: path }), via ? [via] : [null, 'keys']),
         type: async (text, options = {}) => {
-          const via = options.via ?? (text.includes('\\b') ? undefined : 'keys')
-          await keyboardReady((probe) => call('type', { text: probe, via }))
+          const via = await keyboardReady((probe, path) => call('type', { text: probe, via: path }),
+            options.via ? [options.via] : [null, 'keys'])
           return call('type', { text, via })
         },
         pinch: (scale) => call('pinch', { scale }),

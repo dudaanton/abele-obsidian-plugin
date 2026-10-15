@@ -4,18 +4,24 @@
  * text typed at once loses its first characters. Readiness is proven, not timed: a probe
  * character is typed until it shows up in the field, then erased, and the field reads as before.
  *
+ * The driver can type two ways, and one of them (XCUITest typing into the element it believes
+ * has the focus) sometimes answers success while nothing arrives. `paths` lists the ways to try,
+ * in order; one whose probes keep going nowhere gives way to the next, and the way that worked
+ * is the answer, for the text to be typed the same way.
+ *
  * Runs inside the page: `installPhoneHost` injects its source, so it uses nothing from outside.
  * `type` is the phone's own typing (through the host).
  */
-export async function keyboardReady(
-  type: (text: string) => Promise<unknown>,
+export async function keyboardReady<P>(
+  type: (text: string, path: P) => Promise<unknown>,
+  paths: P[],
   timeoutMs = 20_000,
   // The probe is erased from the page, as a backward delete: the keys path has no Backspace,
   // and on some fields a typed one is not delivered.
   erase = (count: number) => {
     for (let i = 0; i < count; i++) document.execCommand('delete')
   }
-): Promise<void> {
+): Promise<P> {
   const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
   const end = Date.now() + timeoutMs
   const editable = (): HTMLElement | null => {
@@ -60,8 +66,9 @@ export async function keyboardReady(
   // keyboard is all the evidence there is.
   if (plain(el)) {
     const input = el as HTMLInputElement
-    if (input.selectionStart !== null && input.selectionStart !== input.selectionEnd) return
-  } else if (getSelection()?.isCollapsed === false) return
+    if (input.selectionStart !== null && input.selectionStart !== input.selectionEnd)
+      return paths[0]
+  } else if (getSelection()?.isCollapsed === false) return paths[0]
   const before = read(el)
   const until = async (done: () => boolean, ms: number) => {
     for (const stop = Math.min(end, Date.now() + ms); Date.now() < stop; await wait(50))
@@ -71,15 +78,24 @@ export async function keyboardReady(
 
   // One probe can get through while the next text still loses its start: two in a row must.
   let sent = 0,
-    delivered = 0
+    delivered = 0,
+    lost = 0,
+    at = 0
   while (delivered < 2) {
     if (document.activeElement !== el) throw new Error('The field lost focus: ' + evidence())
     if (Date.now() >= end)
       throw new Error(`The keyboard took no input in ${timeoutMs} ms: ` + evidence())
+    // Three lost in a row on one way: the next way, while there is one.
+    if (lost >= 3 && at < paths.length - 1) {
+      at++
+      lost = 0
+    }
     const was = read(el)
-    await type('x')
+    await type('x', paths[at])
     sent++
-    delivered = (await until(() => read(el) !== was, 1500)) ? delivered + 1 : 0
+    const arrived = await until(() => read(el) !== was, 1500)
+    delivered = arrived ? delivered + 1 : 0
+    lost = arrived ? 0 : lost + 1
   }
   // A probe sent earlier may still be on its way: read until two readings agree.
   let last = read(el)
@@ -95,4 +111,5 @@ export async function keyboardReady(
   erase(extra)
   if (!(await until(() => read(el) === before, 5000)))
     throw new Error('The probe could not be erased: ' + evidence())
+  return paths[at]
 }

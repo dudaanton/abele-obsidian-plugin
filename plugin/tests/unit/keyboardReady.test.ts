@@ -42,7 +42,7 @@ describe('keyboardReady', () => {
   it('probes until the keyboard takes input, then leaves the field as it was', async () => {
     const input = field('Sample')
     const { calls, type } = keyboardInto(input, 2)
-    await keyboardReady(type, 10_000, (n) => void type('\b'.repeat(n)))
+    await keyboardReady(type, [null], 10_000, (n) => void type('\b'.repeat(n)))
     expect(input.value).toBe('Sample')
     expect(calls).toEqual(['x', 'x', 'x', 'x', '\b\b'])
     await type(' diagram')
@@ -53,7 +53,7 @@ describe('keyboardReady', () => {
     const input = field('old name')
     input.setSelectionRange(0, 3)
     const { calls, type } = keyboardInto(input, 0)
-    await keyboardReady(type, 5_000, (n) => void type('\b'.repeat(n)))
+    await keyboardReady(type, [null], 5_000, (n) => void type('\b'.repeat(n)))
     expect(calls).toEqual([])
     expect([input.value, input.selectionStart, input.selectionEnd]).toEqual(['old name', 0, 3])
   })
@@ -66,7 +66,7 @@ describe('keyboardReady', () => {
       if (calls.length === 2) return
       input.value += text
     }
-    await keyboardReady(type, 10_000, (n) => void (input.value = input.value.slice(0, -n)))
+    await keyboardReady(type, [null], 10_000, (n) => void (input.value = input.value.slice(0, -n)))
     expect(calls).toEqual(['x', 'x', 'x', 'x'])
     expect(input.value).toBe('')
   }, 15_000)
@@ -93,27 +93,42 @@ describe('keyboardReady', () => {
         if (!editor.textContent) placeholder()
       }
     }
-    await keyboardReady(type, 5_000, (n) => void type('\b'.repeat(n)))
+    await keyboardReady(type, [null], 5_000, (n) => void type('\b'.repeat(n)))
     expect(calls).toEqual(['x', 'x', '\b\b'])
     expect(editor.querySelector('.cm-placeholder')).not.toBeNull()
   })
 
+  it('gives way to the next path when probes on the first keep going nowhere', async () => {
+    const input = field('')
+    const paths: (string | null)[] = []
+    const type = async (text: string, path: string | null) => {
+      paths.push(path)
+      if (path === 'keys') input.value += text
+    }
+    const used = await keyboardReady(type, [null, 'keys'], 15_000, (n) => {
+      input.value = input.value.slice(0, -n)
+    })
+    expect(used).toBe('keys')
+    expect(paths).toEqual([null, null, null, 'keys', 'keys'])
+    expect(input.value).toBe('')
+  }, 20_000)
+
   it('fails with what it saw when nothing is focused', async () => {
     const type = async () => {}
-    await expect(keyboardReady(type, 400)).rejects.toThrow(/No focused field/)
+    await expect(keyboardReady(type, [null], 400)).rejects.toThrow(/No focused field/)
   })
 
   it('fails instead of letting a deaf keyboard swallow the text', async () => {
     const input = field('')
     const { type } = keyboardInto(input, Infinity)
-    await expect(keyboardReady(type, 2_000, () => {})).rejects.toThrow(/took no input/)
+    await expect(keyboardReady(type, [null], 2_000, () => {})).rejects.toThrow(/took no input/)
   })
 
   it('runs from its own source alone, as the page receives it', async () => {
     const input = field('')
     const { type } = keyboardInto(input, 1)
     const injected = new Function(`return ${keyboardReady.toString()}`)() as typeof keyboardReady
-    await injected(type, 5_000, (n) => void type('\b'.repeat(n)))
+    await injected(type, [null], 5_000, (n) => void type('\b'.repeat(n)))
     expect(input.value).toBe('')
   })
 })
