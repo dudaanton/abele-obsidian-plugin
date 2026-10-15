@@ -146,6 +146,9 @@ export default defineConfig(async ({ mode }) => {
           ]
         : []),
     ],
+    // Licence headers once each, at the end of the file, instead of repeated per module
+    // (HyperFormula alone repeats one in 171 files).
+    esbuild: { legalComments: 'eof' },
     build: {
       target: BUILD_TARGET,
       minify: prod ? 'esbuild' : false,
