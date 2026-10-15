@@ -5,6 +5,9 @@
       text="Backlinks"
       :count="notes.length"
       :fold="fold"
+      :search="search"
+      search-tooltip="Search backlinks by name and text"
+      placeholder="Search backlinks…"
     >
       <!-- The order as a glyph, as in the chat history; the words are in its menu. -->
       <template #actions>
@@ -18,7 +21,7 @@
       </template>
     </ListSectionHeader>
     <template v-if="!fold.collapsed.value">
-      <div class="abele-notes-list__notes">
+      <div ref="itemsEl" class="abele-notes-list__notes">
         <Card
           v-for="note in visible"
           :key="note.filePath"
@@ -34,13 +37,15 @@
         />
         <div v-if="hasMore" ref="sentinel" class="abele-notes-list__sentinel" />
       </div>
-      <div v-if="!props.notes.length" class="abele-notes-list__no-notes">No notes to show.</div>
+      <div v-if="!sortedNotes.length" class="abele-notes-list__no-notes">
+        {{ props.notes.length ? 'Nothing matches the search.' : 'No notes to show.' }}
+      </div>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Note } from '@/entities/Note'
 import { openFile } from '@/helpers/vaultUtils'
 import { compactDate } from '@/helpers/datesHelper'
@@ -52,6 +57,8 @@ import ListSectionHeader from './obsidian/ListSectionHeader.vue'
 import { useFooterFold } from '@/composables/useFooterFold'
 import { usePagedList } from '@/composables/usePagedList'
 import { useFooterPages } from '@/composables/useFooterView'
+import { noteSearch, useListSearch } from '@/composables/useListSearch'
+import { useSearchHighlight } from '@/composables/useSearchHighlight'
 
 /**
  * Larger than the other footer lists: a row here is a card of plain text — a title, a
@@ -69,8 +76,13 @@ const fold = useFooterFold('backlinks')
 type SortBy = 'created' | 'updated'
 const sortBy = ref<SortBy>('created')
 
+const search = useListSearch(() => props.notes, noteSearch)
+
+const itemsEl = ref<HTMLElement | null>(null)
+useSearchHighlight(itemsEl, search.terms)
+
 const sortedNotes = computed(() => {
-  return [...props.notes].sort((a, b) => {
+  return [...search.results.value].sort((a, b) => {
     if (sortBy.value === 'updated') {
       const aDate = a.updatedAt ?? a.createdAt
       const bDate = b.updatedAt ?? b.createdAt
@@ -80,11 +92,14 @@ const sortedNotes = computed(() => {
   })
 })
 
-const { visible, hasMore, sentinel, reset } = usePagedList(
+const { visible, hasMore, sentinel, reset, followSearch } = usePagedList(
   () => sortedNotes.value,
   PAGE_SIZE,
   useFooterPages('backlinks')
 )
+
+// A new query is a different list; closing the search gives back the pages drawn before it.
+watch(search.terms, followSearch)
 
 const ORDERS: { value: SortBy; title: string }[] = [
   { value: 'created', title: 'Newest written first' },

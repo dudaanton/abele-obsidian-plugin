@@ -6,6 +6,7 @@ import { matchesTerms, searchTerms } from '@/helpers/listSearch'
 import type { Task } from '@/entities/Task'
 import type { Log } from '@/entities/Log'
 import type { Transaction } from '@/entities/Transaction'
+import type { Note } from '@/entities/Note'
 
 /** How long typing has to pause before the list is filtered again. */
 export const SEARCH_DELAY_MS = 200
@@ -176,4 +177,13 @@ export const transactionSearch: ListSearchOptions<Transaction> = {
     ]
       .filter(Boolean)
       .join('\n'),
+}
+
+/**
+ * A backlink is found by its note's name and its whole body; its description stands in for the
+ * body until the note has been read.
+ */
+export const noteSearch: ListSearchOptions<Note> = {
+  pathOf: (note) => note.filePath,
+  textOf: (note, body) => `${note.name}\n${body ?? note.description ?? ''}`,
 }

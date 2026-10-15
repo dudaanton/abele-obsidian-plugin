@@ -37,8 +37,8 @@ in it:
 - **Logs**: paragraphs written about this note elsewhere. See [Logs](logs-and-journals#logs).
 - **Chats**: AI chats that changed this note or were attached to it.
 
-The task, transaction and log lists have a search box, which looks through everything in that
-list, and tasks can be filtered by label.
+The task, transaction, backlink and log lists have a search box, which looks through everything
+in that list, and tasks can be filtered by label.
 
 Each list folds away to its title: click or tap the title, or focus it and press Enter or Space.
 A folded list shows how many entries it holds, so a long list of transactions no longer keeps
