@@ -16,6 +16,14 @@ export function packageOf(id) {
   return clean
 }
 
+/** The installed directory a module comes from, so nested copies of one package count apart. */
+export function packageRootOf(id) {
+  const clean = id.replace(/^\0/, '').split('?')[0]
+  const nm = clean.lastIndexOf('node_modules/')
+  if (nm === -1) return null
+  return clean.slice(0, nm) + 'node_modules/' + packageOf(clean)
+}
+
 export function runtimeElements(code) {
   const count = (tag) =>
     [
@@ -35,11 +43,14 @@ export function reportBundle(bundle) {
   const css = outputs.find((o) => o.type === 'asset' && o.fileName === 'main.css')
   if (!js || !css) throw new Error('Missing emitted JavaScript or CSS')
   const rendered = new Map()
+  const roots = new Map()
   for (const file of outputs) {
     if (file.type !== 'chunk') continue
     for (const [id, mod] of Object.entries(file.modules)) {
       const name = packageOf(id)
       rendered.set(name, (rendered.get(name) ?? 0) + mod.renderedLength)
+      const root = mod.renderedLength ? packageRootOf(id) : null
+      if (root) roots.set(name, (roots.get(name) ?? new Set()).add(root))
     }
   }
   const mainJsBytes = Buffer.byteLength(js.code)
@@ -56,5 +67,9 @@ export function reportBundle(bundle) {
       }))
       .sort((a, b) => b.bytes - a.bytes),
     runtimeElements: runtimeElements(js.code),
+    // Packages bundled from more than one installed directory: each extra copy ships again.
+    packageCopies: Object.fromEntries(
+      [...roots.entries()].filter(([, dirs]) => dirs.size > 1).map(([n, dirs]) => [n, dirs.size])
+    ),
   }
 }

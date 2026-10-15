@@ -24,6 +24,7 @@ interface Report {
   files: string[]
   runtimeElements: { script: number; style: number }
   byPackage: Array<{ name: string; bytes: number; share: number }>
+  packageCopies: Record<string, number>
 }
 
 const root = path.resolve(__dirname, '../..')
@@ -82,6 +83,11 @@ describe('bundle size', () => {
   it('excludes the test-only catalogue and its entire fixture graph from production', () => {
     // The production graph guard additionally checks individual rendered module IDs.
     expect(report.byPackage.some((p) => p.name === 'src/testing')).toBe(false)
+  })
+
+  it('ships each package once, apart from zod 4 beside the one zod 3 the vendored packages share', () => {
+    // npm nests a zod 3 under every vendored `@abele/*` package; the build resolves them to one.
+    expect(report.packageCopies).toEqual({ zod: 2 })
   })
 
   it('attributes the bundle to packages, so a jump can be traced to what caused it', () => {

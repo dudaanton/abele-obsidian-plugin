@@ -11,6 +11,7 @@ import { EVAL_START_INTRO } from './src/helpers/loadMarks'
 import { assertNoTestingModules } from './scripts/production-test-guard.mjs'
 import { buildArtifactPlugin } from './scripts/build-artifact.mjs'
 import { syncPlacementPlugin } from './scripts/sync-placement.mjs'
+import { singleZodV3Plugin } from './scripts/single-zod-v3.mjs'
 
 /**
  * Carry MapLibre's three ESM assets in the single plugin file. The main and worker assets
@@ -91,6 +92,7 @@ export default defineConfig(async ({ mode }) => {
     },
     plugins: [
       syncPlacementPlugin(),
+      singleZodV3Plugin(__dirname),
       buildArtifactPlugin(path.resolve(__dirname, '..'), mode),
       vue(),
       maplibreAssetsPlugin(prod),
