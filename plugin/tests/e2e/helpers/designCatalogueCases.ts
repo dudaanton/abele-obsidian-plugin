@@ -19,4 +19,7 @@ export const DESIGN_CASES: { page: CataloguePage; bug?: string }[] = [
   { page: 'specialized' },
   { page: 'icon-picker' },
   { page: 'confirm' },
+  { page: 'prompt' },
+  { page: 'choice' },
+  { page: 'suggestions' },
 ]

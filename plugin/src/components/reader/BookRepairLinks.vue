@@ -1,5 +1,5 @@
 <template>
-  <DialogShell
+  <ObsidianModal
     :title="
       items.length === 1 ? 'Repair highlight link?' : `Repair ${items.length} highlight links?`
     "
@@ -30,11 +30,11 @@
         @click="repair"
       />
     </template>
-  </DialogShell>
+  </ObsidianModal>
 </template>
 
 <script setup lang="ts">
-import DialogShell from '@/components/obsidian/Modal.vue'
+import ObsidianModal from '@/components/obsidian/Modal.vue'
 import Button from '@/components/obsidian/Button.vue'
 import type { HighlightRepairCandidate } from '@/reader/highlightRepair'
 

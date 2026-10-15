@@ -1,5 +1,5 @@
 <template>
-  <DialogShell :title="title" close-in-footer @close="emit('close')">
+  <ObsidianModal :title="title" close-in-footer @close="emit('close')">
     <p class="abele-confirm__message">{{ message }}</p>
     <template #footer>
       <Button text="Cancel" :tooltip="cancelTooltip" @click="emit('close')" />
@@ -11,11 +11,11 @@
         @click="onConfirm"
       />
     </template>
-  </DialogShell>
+  </ObsidianModal>
 </template>
 
 <script setup lang="ts">
-import DialogShell from './Modal.vue'
+import ObsidianModal from './Modal.vue'
 import Button from './Button.vue'
 
 /**

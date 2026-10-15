@@ -24,7 +24,7 @@
         splitMessage(commit.message).title
       }}</span>
     </Button>
-    <DialogShell v-if="detailsOpen" title="Line blame" @close="detailsOpen = false">
+    <ObsidianModal v-if="detailsOpen" title="Line blame" @close="detailsOpen = false">
       <div class="abele-github-blame-detail-body">
         <p>{{ commit.author }} · {{ formatDate(commit.date) }}</p>
         <p>{{ commit.sha }}</p>
@@ -35,7 +35,7 @@
           @click="openCommit"
         />
       </div>
-    </DialogShell>
+    </ObsidianModal>
   </div>
 </template>
 
@@ -46,7 +46,7 @@ import type { CommitSummary } from '@/repository/model'
 import GithubUser from './GithubUser.vue'
 import Avatar from '../obsidian/Avatar.vue'
 import Button from '../obsidian/Button.vue'
-import DialogShell from '../obsidian/Modal.vue'
+import ObsidianModal from '../obsidian/Modal.vue'
 
 const props = defineProps<{ commit: CommitSummary }>()
 const emit = defineEmits<{ (e: 'open', sha: string): void }>()

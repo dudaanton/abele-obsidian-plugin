@@ -1,5 +1,5 @@
 <template>
-  <DialogShell :title="title" :modal-class="modalClass" close-in-footer @close="emit('close')">
+  <ObsidianModal :title="title" :modal-class="modalClass" close-in-footer @close="emit('close')">
     <p v-if="message" class="abele-prompt__message">{{ message }}</p>
     <Input
       ref="field"
@@ -15,12 +15,12 @@
       <Button text="Cancel" :tooltip="cancelTooltip" @click="emit('close')" />
       <Button :text="submitText" :tooltip="submitTooltip" accent @click="submit" />
     </template>
-  </DialogShell>
+  </ObsidianModal>
 </template>
 
 <script setup lang="ts">
 import { nextTick, onMounted, ref } from 'vue'
-import DialogShell from './Modal.vue'
+import ObsidianModal from './Modal.vue'
 import Input from './Input.vue'
 import Button from './Button.vue'
 

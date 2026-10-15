@@ -62,8 +62,8 @@ onMounted(() => {
 <style>
 .abele-suggestion-row__swatch {
   display: inline-block;
-  width: 16px;
-  height: 16px;
+  width: var(--icon-size);
+  height: var(--icon-size);
   border-radius: var(--radius-s);
 }
 </style>
