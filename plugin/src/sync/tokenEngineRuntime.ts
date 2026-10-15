@@ -1072,7 +1072,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   publications() {
     return this.outbox.state()
   }
-  async apply(candidate: ExecutableCandidate): Promise<void> {
+  async apply(candidate: ExecutableCandidate, assertAllowed: () => void = () => {}): Promise<void> {
     this.assertHeld()
     if (candidate.source.id !== this.options.id) throw new Error('Review connection changed')
     if (
@@ -1084,6 +1084,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       this.assertHeld()
       const key = 'token-reviewed-apply:' + candidate.id
       if (await this.options.state.getMeta(key)) return
+      assertAllowed()
       if (candidate.directory) {
         await this.applyDirectory(candidate)
       } else {
@@ -1148,8 +1149,10 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
             at: new Date(candidate.receivedAt).toISOString(),
           }
           if (candidate.operation === 'removal' && (await this.options.covers(candidate.path))) {
+            assertAllowed()
             if (prior) await this.options.state.delete(prior.path)
           } else {
+            assertAllowed()
             const result = await applyStaged(
               localClient,
               this.options.fs,

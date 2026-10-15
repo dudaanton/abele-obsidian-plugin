@@ -10,7 +10,7 @@ import type { V2Scope, V2TokenInfo } from './v2/contract'
 import type { ExecutableCandidate, ExecutableApplyPort } from './executableReview'
 import type { ConsentResolvePort, AttachmentQuestion } from './attachmentConsent'
 import type { openDeviceReviews } from './openDeviceReviews'
-import type { ReviewSource } from './reviewState'
+import { reviewSourceOf, sourceIdentity, type ReviewSource } from './reviewState'
 
 export function connectionError(error: unknown): string {
   const native = nativeSyncFailure(error)
@@ -237,7 +237,25 @@ export class TokenUi {
   refresh(): void {
     this.rows.value = this.registry.records()
   }
+  setTrusted(id: string, trusted: boolean): void {
+    this.registry.setTrusted(id, trusted)
+    this.refresh()
+  }
+  private trusted(source: ReviewSource): boolean {
+    const row = this.registry.records().find((one) => one.id === source.id)
+    return (
+      !!row?.trusted &&
+      !!row.scope &&
+      sourceIdentity(reviewSourceOf(row)) === sourceIdentity(source)
+    )
+  }
+  private reviewRefresh: Promise<void> = Promise.resolve()
   async refreshReviews(): Promise<void> {
+    const next = this.reviewRefresh.then(() => this.refreshReviewsNow())
+    this.reviewRefresh = next.catch(() => {})
+    return next
+  }
+  private async refreshReviewsNow(): Promise<void> {
     if (!this.reviews) return
     // Also retire reviews left by older builds. Snapshot only orphan IDs: a new
     // connection may stage its own deliveries while these durable writes wait.
@@ -248,6 +266,51 @@ export class TokenUi {
         await this.reviews.executables.forgetSource(id)
     this.candidates.value = await this.reviews.executables.pending()
     this.questions.value = await this.reviews.attachments.pending()
+    for (const candidate of this.candidates.value) {
+      const runtime = this.runtimes.get(candidate.source.id)
+      if (!runtime || !this.trusted(candidate.source)) continue
+      const revoked = new Error('Connection trust changed')
+      const assertAllowed = () => {
+        if (!this.trusted(candidate.source)) throw revoked
+      }
+      try {
+        await this.reviews.executables.approve([candidate.id], {
+          apply: async (one) => {
+            assertAllowed()
+            await runtime.apply(one, assertAllowed)
+          },
+        })
+        this.reviewEvent(
+          candidate.source.id,
+          `Installed code from ${scopeName(candidate.source.scope)}: ${candidate.path}`
+        )
+      } catch (error) {
+        if (error !== revoked) throw error
+      }
+    }
+    for (const question of this.questions.value) {
+      const runtime = this.runtimes.get(question.source.id)
+      if (!runtime || !this.trusted(question.source)) continue
+      if (
+        await this.reviews.attachments.decide(question.id, true, runtime, () =>
+          this.trusted(question.source)
+        )
+      ) {
+        await runtime.publishAttachment?.(question.fileId)
+        this.reviewEvent(question.source.id, `Shared ${question.path}`)
+      }
+    }
+    this.candidates.value = await this.reviews.executables.pending()
+    this.questions.value = await this.reviews.attachments.pending()
+  }
+  private reviewEvent(id: string, text: string): void {
+    this.activity.value = {
+      ...this.activity.value,
+      [id]: {
+        ...this.activity.value[id],
+        events: [...(this.activity.value[id]?.events ?? []), { at: Date.now(), text }].slice(-100),
+      },
+    }
   }
   bind(id: string, runtime: TokenUiRuntime): () => void {
     this.runtimes.set(id, runtime)

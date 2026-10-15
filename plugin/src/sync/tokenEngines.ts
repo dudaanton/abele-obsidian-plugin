@@ -624,7 +624,7 @@ export class TokenEngines {
           deferred: () => runtime.deferred(),
           applyDeferred: (ids) => runtime.applyDeferred(ids),
           keepLocal: (paths, ids) => runtime.keepLocal(paths, ids),
-          apply: (candidate) => runtime.apply(candidate),
+          apply: (candidate, assertAllowed) => runtime.apply(candidate, assertAllowed),
           disconnect: async () => {
             active = false
             fence?.release()

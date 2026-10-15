@@ -39,6 +39,10 @@ it('gives held deletes and staged settings the opened connection port', async ()
     await flushPromises()
     expect(view.findComponent({ name: 'HeldDeletesBlock' }).props('port')).toBe(port)
     expect(view.findComponent({ name: 'StagedSettingsBlock' }).props('port')).toBe(port)
+    const trust = view.findAll('.setting-item').find((one) => one.text().includes('Trusted'))!
+    expect(trust.text()).toContain('incoming code')
+    await trust.find('[role="checkbox"]').trigger('click')
+    expect(ui.registry.records().find((one) => one.id === id)?.trusted).toBe(true)
   } finally {
     view.unmount()
   }

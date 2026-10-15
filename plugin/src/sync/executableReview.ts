@@ -77,7 +77,7 @@ export interface IncomingExecutable {
 }
 export interface ExecutableApplyPort {
   /** No network: coordinate paths + baseline, recheck local edits, and apply idempotently by candidate.id. */
-  apply(candidate: ExecutableCandidate): Promise<void>
+  apply(candidate: ExecutableCandidate, assertAllowed?: () => void): Promise<void>
 }
 const initial = { version: 1 as const, candidates: [] as ExecutableCandidate[] }
 const pending = (one: ExecutableCandidate) => one.status === 'pending' || one.status === 'applying'

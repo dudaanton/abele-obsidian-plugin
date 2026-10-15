@@ -9,6 +9,14 @@ Note frontmatter reads use `js-yaml` 4's default schema. An unquoted time such a
 `0755` are decimal (`755`), not legacy octal. Quote a numeric-looking value when its
 exact text, including leading zeros, matters.
 
+## Device-local connection trust
+
+Connection trust is an optional, default-off `trusted` flag in the device-local
+`abele-sync-connections-v2` registry. Only the connection window changes it; settings
+tools and transfers do not expose it. Trusted connections automatically approve incoming
+executable reviews and linked private attachment questions. Scope, size limits, server
+refusals and held-delete reviews still apply. Automatic actions appear in the connection log.
+
 ## Device-local external-file state foundation
 
 The sync ledger reserves a schema-1 external-file document at `plugin:external-files` in its

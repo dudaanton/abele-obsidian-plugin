@@ -423,6 +423,28 @@ it('stages immutable executable bytes before cursor advance and approves without
     await a.runtime.disconnect()
   }
 })
+it('rechecks automatic code approval inside the engine lock before installing bytes', async () => {
+  const wire = await server('Scripts/sample.js', 'sample executable'),
+    fs = new MemoryFileSystem(),
+    one = runtime(wire, fs)
+  try {
+    await one.runtime.sync()
+    const [candidate] = await one.reviews.executables.pending()
+    const revoked = new Error('Trust revoked')
+    await expect(
+      one.runtime.apply(candidate, () => {
+        throw revoked
+      })
+    ).rejects.toBe(revoked)
+    expect(await fs.stat(candidate.path)).toBeNull()
+    expect(await one.reviews.executables.pending()).toHaveLength(1)
+    await one.reviews.executables.approve([candidate.id], one.runtime)
+    expect(await fs.read(candidate.path)).toEqual(wire.bytes)
+  } finally {
+    await one.runtime.disconnect()
+  }
+})
+
 it('stages ordinary root settings for an explicit reload decision while normal notes keep moving', async () => {
   const wire = await server('.obsidian/app.json', '{"sample":true}'),
     fs = new MemoryFileSystem(),

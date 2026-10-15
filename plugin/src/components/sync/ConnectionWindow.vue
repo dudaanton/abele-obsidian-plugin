@@ -48,6 +48,13 @@
 
       <SelectiveSync />
 
+      <Setting
+        name="Trusted"
+        desc="Automatically installs incoming code and shares linked private files without asking on this device."
+      >
+        <Checkbox :is-enabled="!!row?.trusted" @toggle="toggleTrusted" />
+      </Setting>
+
       <Section v-if="events.length" title="Recent">
         <ol class="abele-sync-window__events">
           <li v-for="(event, i) in events" :key="i">
@@ -85,6 +92,7 @@ import { computed, onMounted, ref, shallowRef } from 'vue'
 import Modal from '../obsidian/Modal.vue'
 import Section from '../obsidian/Section.vue'
 import Setting from '../obsidian/Setting.vue'
+import Checkbox from '../obsidian/Checkbox.vue'
 import Button from '../obsidian/Button.vue'
 import Icon from '../obsidian/Icon.vue'
 import EntryRow from '../obsidian/EntryRow.vue'
@@ -109,6 +117,16 @@ const emit = defineEmits<{
 }>()
 
 const row = computed(() => props.ui.rows.value.find((one) => one.id === props.connectionId))
+const trustError = ref('')
+async function toggleTrusted(): Promise<void> {
+  trustError.value = ''
+  try {
+    props.ui.setTrusted(props.connectionId, !row.value?.trusted)
+    await props.ui.refreshReviews()
+  } catch {
+    trustError.value = 'The action could not finish. Pending changes have been kept.'
+  }
+}
 const activity = computed(() => props.ui.activity.value[props.connectionId])
 const name = computed(() => (row.value ? connectionName(row.value).split(' · ')[0] : ''))
 const host = computed(() => (row.value ? new URL(row.value.address).host : ''))
@@ -123,7 +141,7 @@ const counts = computed(() => {
     (one?.inspection ? 'Checking the vault' : one?.comparison ? 'Comparing files' : 'Syncing')
   return progress.value ? `${stage} · ${progress.value.completed} of ${progress.value.total}` : ''
 })
-const failure = computed(() => props.error || activity.value?.error || '')
+const failure = computed(() => trustError.value || props.error || activity.value?.error || '')
 const refused = computed(() => activity.value?.refused ?? [])
 const conflicts = computed(() => activity.value?.conflicts ?? [])
 const events = computed(() => [...(activity.value?.events ?? [])].reverse().slice(0, 8))

@@ -216,7 +216,12 @@ export class AttachmentConsent {
   state(): Promise<Document> {
     return this.documents.read(ATTACHMENT_CONSENT_KEY, documentSchema, initial)
   }
-  async decide(id: string, allow: boolean, port: ConsentResolvePort): Promise<boolean> {
+  async decide(
+    id: string,
+    allow: boolean,
+    port: ConsentResolvePort,
+    allowed: () => boolean = () => true
+  ): Promise<boolean> {
     const before = await this.documents.read(ATTACHMENT_CONSENT_KEY, documentSchema, initial),
       question = before.questions.find((one) => one.id === id)
     if (!question || !linked(before, question)) return false
@@ -225,6 +230,7 @@ export class AttachmentConsent {
     const target = targetSchema.parse(resolved)
     if (target.id !== question.fileId || !this.eligible(question.source, target)) return false
     return this.documents.update(ATTACHMENT_CONSENT_KEY, documentSchema, initial, (doc) => {
+      if (!allowed()) return false
       const current = doc.questions.find((one) => one.id === id)
       if (!current || !linked(doc, current)) return false
       doc.decisions = doc.decisions.filter((one) => !sameFile(current.source, current.fileId)(one))

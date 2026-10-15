@@ -54,6 +54,7 @@ const recordSchema = z
     secretReference: z.string(),
     ledgerId: id,
     paused: z.boolean(),
+    trusted: z.boolean().optional(),
     selective: z
       .custom<SelectiveSettings>((value) => selectiveProblem(value, defaultSelective()) === null)
       .optional(),
@@ -246,6 +247,12 @@ export class TokenConnectionRegistry {
     record.paused = paused
     if (record.status === 'idle' || record.status === 'paused')
       record.status = paused ? 'paused' : 'idle'
+    this.write(TOKEN_REGISTRY_KEY, doc)
+  }
+  /** Person-only preference; never part of selective settings or engine state. */
+  setTrusted(localId: string, trusted: boolean): void {
+    const doc = this.document()
+    this.record(doc, localId).trusted = trusted
     this.write(TOKEN_REGISTRY_KEY, doc)
   }
   setSelective(localId: string, selective: SelectiveSettings): void {
