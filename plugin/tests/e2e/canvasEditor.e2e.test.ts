@@ -67,8 +67,16 @@ const at = async ([x, y]: number[]) => {
     )
 }
 const chrome = canvasChrome({ run, press: (e) => press(e), until, at, phone: onPhone() })
-/** Presses what does `label` on the canvas's tool bar, its column, the bar over the picked or a menu. */
-const click = (label: string, allowDisabled = false) => chrome.click(label, allowDisabled)
+/**
+ * Presses what does `label` on the canvas's tool bar, its column, the bar over the picked or a menu.
+ * Leaving a field is a press on empty canvas in sight: on a phone, not on the keyboard over it.
+ */
+const click = (label: string, allowDisabled = false) =>
+  label === 'Save text'
+    ? at(chrome.emptySpotInSight() ?? chrome.emptySpot())
+    : chrome.click(label, allowDisabled)
+/** How far down the page a person sees: above a phone's keyboard when it is up. */
+const SEEN = `Math.min(innerHeight-(parseFloat(getComputedStyle(document.body).getPropertyValue('--keyboard-height'))||0),window.visualViewport?visualViewport.offsetTop+visualViewport.height:innerHeight)`
 const type = async (text: string) => {
   if (onPhone()) {
     // DOM focus precedes the native keyboard. Wait for it, then use its keys directly:
@@ -145,7 +153,7 @@ const roomForCard = () =>
   run<number[] | null>(`
     const v=view().viewer,s=v.stage.getBoundingClientRect(),c=v.camera,g=v.graph
     const w=130*c.zoom+12,h=60*c.zoom+12
-    const left=Math.max(s.left,0),right=Math.min(s.right,innerWidth),top=Math.max(s.top,0),bottom=Math.min(s.bottom,innerHeight)
+    const left=Math.max(s.left,0),right=Math.min(s.right,innerWidth),top=Math.max(s.top,0),bottom=Math.min(s.bottom,${SEEN})
     const clear=(x,y)=>{const hit=document.elementFromPoint(x,y);return !!hit&&v.stage.contains(hit)&&!hit.closest('.abele-canvas-chrome,[data-frame-id],[data-card-id]')}
     const spots=[];for(let fy=0.1;fy<0.95;fy+=0.05)for(let fx=0.1;fx<0.95;fx+=0.05)spots.push([Math.round(s.left+s.width*fx),Math.round(s.top+s.height*fy)])
     const mid=[(left+right)/2,(top+bottom)/2];spots.sort((a,b)=>Math.hypot(a[0]-mid[0],a[1]-mid[1])-Math.hypot(b[0]-mid[0],b[1]-mid[1]))
@@ -160,11 +168,19 @@ const roomForCard = () =>
 /**
  * Presses the card's text field where it is on screen. A card put down near an edge, or wider
  * than a phone at the canvas's zoom, has part of its field off screen; a person presses the part
- * they see, so only that part has to be reachable.
+ * they see, so only that part has to be reachable. On a phone the press is what brings the
+ * keyboard up: a field opened by a tap (Edit text) already has it and its caret, and a person
+ * just types; the part of a field under the keyboard is not in sight.
  */
 const pressField = async () => {
+  if (
+    onPhone() &&
+    run<boolean>(`const field=view().contentEl.querySelector("textarea"),up=()=>document.activeElement===field&&innerHeight-(${SEEN})>1
+      const end=Date.now()+2000;while(Date.now()<end&&!up())await new Promise(r=>setTimeout(r,100));return up()`)
+  )
+    return
   const geometry = `const el=view().contentEl.querySelector("textarea");if(!el)return null;const r=el.getBoundingClientRect()
-    const l=Math.max(r.left,0),t=Math.max(r.top,0),rr=Math.min(r.right,innerWidth),b=Math.min(r.bottom,innerHeight)
+    const l=Math.max(r.left,0),t=Math.max(r.top,0),rr=Math.min(r.right,innerWidth),b=Math.min(r.bottom,${SEEN})
     if(rr-l<20||b-t<20)return null
     const x=Math.round((l+rr)/2),y=Math.round((t+b)/2);return el.contains(document.elementFromPoint(x,y))?[x,y]:null`
   await expect.poll(() => run<number[] | null>(geometry), { timeout: 10_000 }).not.toBeNull()
