@@ -99,6 +99,13 @@ describe('bundle size', () => {
     expect(code.includes('Cannot add the same private member')).toBe(false)
   })
 
+  it('leaves out HyperFormula’s function descriptions, which only its unused list API reads', () => {
+    const dir = path.resolve(root, process.env.ABELE_BUILD_ARTIFACT ?? 'build')
+    const code = readFileSync(path.join(dir, 'main.js'), 'utf8')
+    expect(code.includes('Returns the average deviation of the arguments')).toBe(false)
+    expect(code.includes('hyperformula.handsontable.com/docs/guide/built-in-functions')).toBe(false)
+  })
+
   it('attributes the bundle to packages, so a jump can be traced to what caused it', () => {
     expect(report.byPackage.length).toBeGreaterThan(5)
     expect(report.byPackage.some((p) => p.name === '@vue/runtime-core')).toBe(true)
