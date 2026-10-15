@@ -32,8 +32,8 @@ interface Layout {
   top: number
   bottom: number
   actions: number
-  /** The dialog's own bottom padding: on a phone the home indicator's inset. */
-  inset: number
+  /** Where the dialog's body ends, short of its padding: what is under it is the dialog's frame. */
+  body: number
   listTop: number
   listBottom: number
   /** Rows the list holds and rows it shows whole. */
@@ -79,7 +79,10 @@ describe.skipIf(!available)('node folder dialog layout', () => {
           top: Math.round(box.top),
           bottom: Math.round(box.bottom),
           actions: Math.round(actions.bottom),
-          inset: Math.round(parseFloat(getComputedStyle(modal).paddingBottom)),
+          body: (() => {
+            const el = modal.querySelector('.abele-modal__body')
+            return Math.round(el.getBoundingClientRect().bottom - parseFloat(getComputedStyle(el).paddingBottom))
+          })(),
           listTop: Math.round(list.top),
           listBottom: Math.round(list.bottom),
           rows: rows.length,
@@ -95,9 +98,11 @@ describe.skipIf(!available)('node folder dialog layout', () => {
     expect(layout.window).toBe(size[1])
     // Everything the made-up home folder holds, plus the row that goes up.
     expect(layout.rows).toBe(13)
-    // The buttons are the last thing in the dialog: under them only its own padding (on a phone
-    // the home indicator's inset) and a row's worth of margin, never a stretch of empty sheet.
-    expect(layout.bottom - layout.actions).toBeLessThanOrEqual(layout.inset + 24)
+    // The buttons are the last thing in the dialog: nothing empty under them in its body, and
+    // under the body only its frame (on a phone with the home indicator's inset), never a
+    // stretch of empty sheet.
+    expect(layout.body - layout.actions).toBeLessThanOrEqual(4)
+    expect(layout.bottom - layout.body).toBeLessThanOrEqual(64)
     // And they are on the screen, not under its bottom edge.
     expect(layout.actions).toBeLessThanOrEqual(layout.window)
     if (mobile) {
