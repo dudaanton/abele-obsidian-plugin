@@ -211,7 +211,10 @@ export function useTimelineScroll(
               : nearest,
           undefined
         ))
-    if (!row && !requested) return () => (read ? releaseSpace() : releaseUnusedSpace(owner))
+    if (!row && !requested) {
+      console.debug('[Abele timeline] no row to hold', { read: !!read, top, rows: candidates.length })
+      return () => (read ? releaseSpace() : releaseUnusedSpace(owner))
+    }
     const key = requested?.key ?? row.dataset.timelineItem
     const day = requested ? 'date:' + requested.day : dayOf(row)
     const offset = requested
@@ -253,6 +256,12 @@ export function useTimelineScroll(
       const clamped =
         owner.scrollTop < heldTop && heldHeight - owner.scrollHeight >= heldTop - owner.scrollTop
       if (Math.abs(owner.scrollTop - heldTop) > 0.5 && !clamped && (!requested || dragging())) {
+        console.debug('[Abele timeline] hold released: the pane moved', {
+          scrollTop: owner.scrollTop,
+          heldTop,
+          scrollHeight: owner.scrollHeight,
+          heldHeight,
+        })
         stopHolding()
         return
       }
@@ -271,6 +280,7 @@ export function useTimelineScroll(
           heldHeight = owner.scrollHeight
         }
       } else {
+        console.debug('[Abele timeline] hold released: its row is gone', { key, day })
         patchSpace = false
         releaseSpace()
         stopHolding()

@@ -404,11 +404,15 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
           space?.style.height ?? '', items?.style.paddingTop ?? '', Math.round(rowBy(id)?.getBoundingClientRect().top ?? -1)])
         if (tracing && trace.length < 90) requestAnimationFrame(sample)
       }
+      const logged = [], debug = console.debug
+      console.debug = (...args) => { if (String(args[0]).startsWith('[Abele timeline]')) logged.push(JSON.stringify(args)); return debug.apply(console, args) }
       sample()
-      await toggleCompleted()
-      await settleUI()
+      try {
+        await toggleCompleted()
+        await settleUI()
+      } finally { console.debug = debug }
       tracing = false
-      ;(report.anchorFrames ??= []).push(['switch', id, was, frame(), trace])
+      ;(report.anchorFrames ??= []).push(['switch', id, was, frame(), trace.slice(0, 4), logged])
       return [expected, rowBy(id)?.getBoundingClientRect().top ?? -9999]
     }
     const shot = async name => {
