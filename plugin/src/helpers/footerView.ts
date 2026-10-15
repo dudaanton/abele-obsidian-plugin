@@ -21,6 +21,8 @@ export interface NoteFooterView {
   calendarOverdue?: true
   /** The note's logs shown as a month with marks rather than as a list. */
   logsCalendar?: true
+  /** The note's calendar tasks shown as a month with marks rather than as days in a list. */
+  tasksCalendar?: true
 }
 
 /** Note path → how its lists were left. Insertion order is recency: oldest first. */
@@ -40,7 +42,8 @@ const isEmpty = (v: NoteFooterView) =>
   !(v.open && v.open.length) &&
   !v.calendarPast &&
   !v.calendarOverdue &&
-  !v.logsCalendar
+  !v.logsCalendar &&
+  !v.tasksCalendar
 
 export function logsCalendarOf(state: FooterViewState, path: string): boolean {
   return state[path]?.logsCalendar === true
@@ -56,6 +59,23 @@ export function setLogsCalendar(
   const view = { ...state[path] }
   if (calendar) view.logsCalendar = true
   else delete view.logsCalendar
+  return put(state, path, view)
+}
+
+export function tasksCalendarOf(state: FooterViewState, path: string): boolean {
+  return state[path]?.tasksCalendar === true
+}
+
+/** The record with `path`'s calendar tasks shown as a month or as a list; a list leaves none. */
+export function setTasksCalendar(
+  state: FooterViewState,
+  path: string,
+  calendar: boolean
+): FooterViewState {
+  if (tasksCalendarOf(state, path) === calendar) return state
+  const view = { ...state[path] }
+  if (calendar) view.tasksCalendar = true
+  else delete view.tasksCalendar
   return put(state, path, view)
 }
 
@@ -168,6 +188,7 @@ export function footerViewFrom(raw: unknown): FooterViewState {
       calendarOverdue?: unknown
       calendarStart?: unknown
       logsCalendar?: unknown
+      tasksCalendar?: unknown
     }
     const view: NoteFooterView = {}
     if (v.pages && typeof v.pages === 'object') {
@@ -190,6 +211,7 @@ export function footerViewFrom(raw: unknown): FooterViewState {
       view.calendarPast = true
     if (v.calendarOverdue === true) view.calendarOverdue = true
     if (v.logsCalendar === true) view.logsCalendar = true
+    if (v.tasksCalendar === true) view.tasksCalendar = true
     if (!isEmpty(view)) state[path] = view
   }
   return state

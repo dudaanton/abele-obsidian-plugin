@@ -9,6 +9,8 @@ import {
   footerViewFrom,
   isOpen,
   logsCalendarOf,
+  setTasksCalendar,
+  tasksCalendarOf,
   pagesOf,
   renameFooterView,
   setLogsCalendar,
@@ -125,5 +127,21 @@ describe('a note whose logs are read as a calendar', () => {
   it('follows the note when it moves', () => {
     const moved = renameFooterView(setLogsCalendar({}, 'a.md', true), 'a.md', 'b.md')
     expect(logsCalendarOf(moved, 'b.md')).toBe(true)
+  })
+})
+
+describe('a note whose calendar tasks are read as a month', () => {
+  it('is remembered apart from its logs, and forgotten when switched back to the list', () => {
+    const on = setTasksCalendar({}, 'Projects/Balcony.md', true)
+    expect(tasksCalendarOf(on, 'Projects/Balcony.md')).toBe(true)
+    expect(logsCalendarOf(on, 'Projects/Balcony.md')).toBe(false)
+    const read = footerViewFrom(JSON.parse(JSON.stringify(on)))
+    expect(tasksCalendarOf(read, 'Projects/Balcony.md')).toBe(true)
+    expect(setTasksCalendar(on, 'Projects/Balcony.md', false)).toEqual({})
+  })
+
+  it('follows the note when it moves', () => {
+    const moved = renameFooterView(setTasksCalendar({}, 'a.md', true), 'a.md', 'b.md')
+    expect(tasksCalendarOf(moved, 'b.md')).toBe(true)
   })
 })

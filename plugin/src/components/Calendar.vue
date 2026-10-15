@@ -166,18 +166,17 @@ const props = defineProps<{
   showTasks?: boolean
   /** A mark for each day by `YYYY-MM-DD`: the days a note's log was written on. */
   marks?: Map<string, LogDayMark>
+  /** What the marks stand for, read out with each day: a note's logs or its calendar tasks. */
+  marksOf?: 'logs' | 'tasks'
 }>()
 /** What a log month's day says when read out: its date, and what its mark shows. */
 const dayLabel = (date: dayjs.Dayjs, key: string): string => {
   const mark = props.marks?.get(key)
-  const status =
-    mark === 'done'
-      ? 'Checked log'
-      : mark === 'open'
-        ? 'Unchecked log'
-        : mark === 'entry'
-          ? 'Log entry'
-          : 'No log entries'
+  const words =
+    props.marksOf === 'tasks'
+      ? { done: 'All tasks done', open: 'Tasks to do', entry: 'Events', none: 'Nothing planned' }
+      : { done: 'Checked log', open: 'Unchecked log', entry: 'Log entry', none: 'No log entries' }
+  const status = mark ? words[mark] : words.none
   return `${date.format('ddd D MMMM YYYY')}: ${status}`
 }
 const selectedMonth = ref(

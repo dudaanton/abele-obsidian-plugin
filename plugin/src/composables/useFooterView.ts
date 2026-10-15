@@ -9,6 +9,8 @@ import {
   pagesOf,
   renameFooterView,
   setLogsCalendar,
+  setTasksCalendar,
+  tasksCalendarOf,
   setOpen,
   setPages,
   setTimelineOverdue,
@@ -84,6 +86,24 @@ export function useFooterLogsView(): { initial: boolean; record: (calendar: bool
   return {
     initial: logsCalendarOf(current(), path()),
     record: (calendar) => write(setLogsCalendar(current(), path(), calendar)),
+  }
+}
+
+/**
+ * Whether a note's calendar tasks open as a month, remembered the same way as its logs. Only
+ * under a note: `available` is false for the timeline anywhere else, which stays a list.
+ */
+export function useFooterTasksView(): {
+  available: boolean
+  initial: boolean
+  record: (calendar: boolean) => void
+} {
+  const path = inject(FOOTER_FOLD, null)
+  if (!path) return { available: false, initial: false, record: () => {} }
+  return {
+    available: true,
+    initial: tasksCalendarOf(current(), path()),
+    record: (calendar) => write(setTasksCalendar(current(), path(), calendar)),
   }
 }
 

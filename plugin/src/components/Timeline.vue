@@ -8,7 +8,7 @@
         :text="title ?? 'Timeline'"
         :count="shownCount"
         :fold="fold"
-        :search="search"
+        :search="calendar ? undefined : search"
         search-tooltip="Search tasks by title and description"
         placeholder="Search tasks…"
         group-actions
@@ -34,10 +34,23 @@
             :label="hideCompleted ? 'Show completed tasks' : 'Hide completed tasks'"
             @click="hideCompleted = !hideCompleted"
           />
+          <!-- Under a note, list or month, remembered for it as the logs' are. -->
+          <ObsidianIcon
+            v-if="tasksView.available"
+            class="abele-timeline__view"
+            :icon="calendar ? 'list' : 'calendar-days'"
+            :tooltip="calendar ? 'Show as a list' : 'Show as a calendar'"
+            @click="setCalendar(!calendar)"
+          />
         </template>
       </ListSectionHeader>
     </div>
-    <template v-if="!fold.collapsed.value">
+    <TasksCalendar
+      v-if="calendar && !fold.collapsed.value"
+      :tasks="calendarTasks"
+      :events="calendarEvents"
+    />
+    <template v-else-if="!fold.collapsed.value">
       <div ref="itemsEl" class="abele-timeline__blocks">
         <template v-for="group in groups" :key="group.id">
           <!-- Above today there is one fold, what was left undone, said in red with the flame the
@@ -157,7 +170,8 @@ import { useDate } from '@/composables/useDate'
 import { useTimelineDays } from '@/composables/useTimelineDays'
 import { useTimelineScroll } from '@/composables/useTimelineScroll'
 import { useTimelineDrag } from '@/composables/useTimelineDrag'
-import { useFooterTimeline } from '@/composables/useFooterView'
+import { useFooterTasksView, useFooterTimeline } from '@/composables/useFooterView'
+import TasksCalendar from './TasksCalendar.vue'
 import { createTask } from '@/commands/createTask'
 import { useLabelFilter } from '@/composables/useLabelFilter'
 import { taskSearch, useListSearch } from '@/composables/useListSearch'
@@ -207,6 +221,27 @@ const {
 
 const search = useListSearch(() => filtered.value, taskSearch)
 
+const tasksView = useFooterTasksView()
+const calendar = ref(tasksView.available && tasksView.initial)
+const setCalendar = (on: boolean) => {
+  calendar.value = on
+  tasksView.record(on)
+}
+/** The month shows what the list would: by label, and done tasks and events only while shown. */
+const calendarTasks = computed(() =>
+  hideCompleted.value ? filtered.value.filter((task) => !task.completedAt) : filtered.value
+)
+const calendarEvents = computed(() => {
+  if (!props.events || labelSelection.value.kind !== 'all') return undefined
+  if (!hideCompleted.value) return props.events
+  const shown = new Map<string, ShownEvent[]>()
+  for (const [day, items] of props.events) {
+    const open = items.filter((item) => !calendars().isDone(item.event))
+    if (open.length) shown.set(day, open)
+  }
+  return shown
+})
+
 useSearchHighlight(itemsEl, search.terms)
 
 /** One row of a day: a task, or an event of an external calendar. */
@@ -219,8 +254,9 @@ interface DayItem {
 }
 
 const dates = computed(() => {
-  // A folded footer must not build the date ranges, even as tasks arrive in separate batches.
-  if (fold.collapsed.value) return []
+  // A folded footer must not build the date ranges, even as tasks arrive in separate batches;
+  // nor does the month, which lays out its own days.
+  if (fold.collapsed.value || calendar.value) return []
   const datesSet = new Map<string, DayItem[]>()
   const itemsOf = (date: string) => {
     let items = datesSet.get(date)
@@ -304,7 +340,7 @@ const {
   () => search.terms.value,
   PAGE_SIZE,
   memory,
-  () => !fold.collapsed.value,
+  () => !fold.collapsed.value && !calendar.value,
   () => !hideCompleted.value
 )
 // Gesture dates never change pagination/history memory. Only this rendered window expands.
@@ -368,6 +404,8 @@ const shownCount = computed(() => {
       const last = task.due ?? task.date
       return !!last && last.format(DATE_FORMAT) >= today()
     }).length
+  // The month counts every task it marks.
+  if (calendar.value) return calendarTasks.value.length
   if (search.terms.value.length) return tasksIn(dates.value).size
   const keys = tasksIn(forward.value)
   for (const key of tasksIn(history.value)) keys.add(key)
