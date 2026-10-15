@@ -13,7 +13,11 @@
       ]"
       :style="f.style"
     >
+      <!-- A name being written is a fresh element, put in place whole and taken away whole:
+           the words typed into it are the browser's, and patching inside them would find the
+           text Vue drew gone. -->
       <div
+        :key="f.naming ? 'naming' : 'name'"
         :ref="(el) => label(el as HTMLElement | null, f)"
         class="canvas-group-label abele-canvas-frame__label"
         :class="
