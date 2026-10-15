@@ -104,7 +104,15 @@ for (const mobile of onPhone() ? [false] : [false, true])
     await app.vault.create(path,JSON.stringify({nodes:[],edges:[]}))
     const leaf=app.workspace.getLeaf('tab');await leaf.setViewState({type:'abele-canvas',state:{file:path},active:true});await app.workspace.revealLeaf(leaf);return true
   `)
-      await until('view()?.editor&&view().viewer.stage.clientWidth>0')
+      // Outside a test there is no expect.poll: wait for the open canvas by hand.
+      for (
+        let i = 0;
+        !run<boolean>(`return !!(view()?.editor&&view().viewer.stage.clientWidth>0)`);
+        i++
+      ) {
+        if (i > 80) throw new Error('The sample canvas never opened')
+        await new Promise((r) => setTimeout(r, 250))
+      }
       run(`view().viewer.setCamera({x:0,y:0,zoom:1});return true`)
     }, 180_000)
     afterAll(async () => {
