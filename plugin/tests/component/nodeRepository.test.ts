@@ -262,20 +262,14 @@ describe('node-backed shared repository tab', () => {
     expect(editor.draft.value?.status).toBe('saved')
     wrapper.unmount()
   })
-  it('shows workspace identities, dirty state, recent commits, changes and a safe README', async () => {
+  it('keeps worktrees, changes and commits to the node panel, and shows a safe README', async () => {
     const { wrapper, source } = fixture()
     await flushPromises()
-    expect(wrapper.text()).toContain('sample-project')
-    expect(wrapper.text()).toContain('worktrees-feature')
-    expect(wrapper.text()).toContain('External')
-    expect(wrapper.text()).toContain('Partly ready')
-    expect(wrapper.find('.abele-github-home__bar').exists()).toBe(false)
-    const row = wrapper.find('.abele-repository-row')
-    expect(row.find('.abele-repository-row__title').element.parentElement).toBe(
-      row.find('.abele-repository-row__meta').element.parentElement
-    )
-    expect(row.find('.tree-item-flair-outer').text()).toBe('Changes')
-    expect(wrapper.text()).toContain('Recent commits')
+    // The worktrees with their changes are the panel's place search and its changes; the
+    // commits are its history (nodeSelectionActions, nodeWork and nodePathProduct tests).
+    expect(wrapper.find('[aria-label="Workspaces"]').exists()).toBe(false)
+    expect(wrapper.find('[aria-label="Uncommitted changes"]').exists()).toBe(false)
+    expect(wrapper.find('[aria-label="Recent commits"]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('0 stars')
     expect(wrapper.findAll('img')).toHaveLength(0)
     expect(wrapper.text()).not.toContain('Open pull requests')
