@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 import { ButtonComponent, DropdownComponent, TextComponent } from 'obsidian'
 import { reviewKeyDestinations } from '@/secrets/destinationReview'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -50,15 +51,18 @@ vi.mock('obsidian', async (original) => {
   }
 })
 const config = () => AbeleConfig.getInstance()
-const input = (root: HTMLElement, label: string, value: string) => {
+// The dialog is Vue: what a field changes is on screen after the next tick, so each waits for it.
+const input = async (root: HTMLElement, label: string, value: string) => {
   const el = root.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!
   el.value = value
   el.dispatchEvent(new Event('input'))
+  await nextTick()
 }
-const selectNew = (root: HTMLElement) => {
+const selectNew = async (root: HTMLElement) => {
   const el = root.querySelector('select')!
   el.value = 'new'
   el.dispatchEvent(new Event('change'))
+  await nextTick()
 }
 const approve = (root: HTMLElement) =>
   [...root.querySelectorAll('button')].find((b) => b.textContent === 'Allow key and address')!
@@ -82,10 +86,10 @@ describe('manual recipient form in an empty review', () => {
     try {
       expect(modal.bodyEl.querySelector('input[aria-label="Recipient address"]')).not.toBeNull()
       expect(modal.bodyEl.querySelector('select')).not.toBeNull()
-      input(modal.bodyEl, 'Recipient address', 'http://192.168.42.12:8123/status')
-      selectNew(modal.bodyEl)
-      input(modal.bodyEl, 'New key name', 'Sample created')
-      input(modal.bodyEl, 'New key value', 'fake-created-key')
+      await input(modal.bodyEl, 'Recipient address', 'http://192.168.42.12:8123/status')
+      await selectNew(modal.bodyEl)
+      await input(modal.bodyEl, 'New key name', 'Sample created')
+      await input(modal.bodyEl, 'New key value', 'fake-created-key')
       expect(
         modal.bodyEl.querySelector<HTMLInputElement>('input[aria-label="New key value"]')!.type
       ).toBe('password')
@@ -137,11 +141,11 @@ describe('manual recipient form in an empty review', () => {
       modal.close()
     }
   })
-  it('close without approving never writes a key or permission', () => {
+  it('close without approving never writes a key or permission', async () => {
     const modal = reviewKeyDestinations()
-    selectNew(modal.bodyEl)
-    input(modal.bodyEl, 'New key name', 'Cancelled sample')
-    input(modal.bodyEl, 'New key value', 'fake-cancelled-key')
+    await selectNew(modal.bodyEl)
+    await input(modal.bodyEl, 'New key name', 'Cancelled sample')
+    await input(modal.bodyEl, 'New key value', 'fake-cancelled-key')
     modal.close()
     expect(config().ai.secrets).toEqual([])
     expect(config().saveSettings).not.toHaveBeenCalled()
@@ -151,10 +155,10 @@ describe('manual recipient form in an empty review', () => {
     vi.mocked(config().saveSettings).mockRejectedValueOnce(new Error('fake-sensitive-error'))
     const modal = reviewKeyDestinations()
     try {
-      selectNew(modal.bodyEl)
-      input(modal.bodyEl, 'Recipient address', 'http://192.168.42.12:8123')
-      input(modal.bodyEl, 'New key name', 'Failed sample')
-      input(modal.bodyEl, 'New key value', 'fake-failed-key')
+      await selectNew(modal.bodyEl)
+      await input(modal.bodyEl, 'Recipient address', 'http://192.168.42.12:8123')
+      await input(modal.bodyEl, 'New key name', 'Failed sample')
+      await input(modal.bodyEl, 'New key value', 'fake-failed-key')
       approve(modal.modalEl).click()
       await vi.waitFor(() => expect(modal.bodyEl.textContent).toContain('Could not save'))
       expect(modal.modalEl.textContent).not.toMatch(/fake-sensitive-error|fake-failed-key/)

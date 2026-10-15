@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 import { TFile, WorkspaceLeaf, Menu, Modal, type App } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '@/ai/ScopeResolver'
@@ -7,6 +8,7 @@ import { buildFakeVault } from '../helpers/fakeVault'
 import { deferred } from '../helpers/deferred'
 import { CanvasView } from '@/canvas/CanvasView'
 import { CanvasPublicationReviewModal } from '@/canvas/CanvasPublicationReviewModal'
+import { ShellModal } from '@/modal/ShellModal'
 import { canvasDocuments } from '@/canvas/documentRegistry'
 import { planCanvasEdit } from '@/canvas/core/service'
 import { emptyCanvas, serializeCanvas } from '@/canvas/core/model'
@@ -112,15 +114,19 @@ describe('Abele canvas leaf session lifecycle', () => {
     const close = vi.spyOn(Modal.prototype, 'close').mockImplementation(() => {
       // The host can defer onClose and removal while its mobile sheet animates away.
     })
+    const shown = vi.spyOn(ShellModal.prototype, 'open')
     try {
       modal.open()
       modal.close()
       expect(keep).toHaveBeenCalledOnce()
-      modal.onClose()
+      // The kit dialog's host modal, whose deferred onClose arrives after the choice.
+      const shell = shown.mock.contexts[0] as ShellModal
+      shell.onClose()
       expect(keep).toHaveBeenCalledOnce()
     } finally {
       close.mockRestore()
-      modal.containerEl.remove()
+      for (const shell of shown.mock.contexts as ShellModal[]) shell.containerEl.remove()
+      shown.mockRestore()
     }
   })
 
@@ -246,6 +252,8 @@ describe('Abele canvas leaf session lifecycle', () => {
         expect(document.querySelector('.abele-canvas-publication-review')).not.toBeNull()
       )
       click('Discard local pending copy…')
+      // The kit dialog draws its next screen on Vue's next tick.
+      await nextTick()
       expect(document.querySelector('.abele-canvas-publication-review')!.textContent).toMatch(
         /does not undo/i
       )
@@ -257,6 +265,7 @@ describe('Abele canvas leaf session lifecycle', () => {
         expect(document.querySelector('.abele-canvas-publication-review')).not.toBeNull()
       )
       click('Discard local pending copy…')
+      await nextTick()
       click('Discard local pending copy')
       await vi.waitFor(() => expect(session.dirty).toBe(false))
       expect(session.publicationEvidence).toBeNull()

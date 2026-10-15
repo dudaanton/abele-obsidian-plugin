@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 import { ButtonComponent, type TextComponent, type DropdownComponent } from 'obsidian'
 import { reviewKeyDestinations } from '@/secrets/destinationReview'
 import { approveScriptKeyRequest } from '@/secrets/requestApproval'
@@ -115,6 +116,7 @@ const request = {
 }
 const buttons = (root: ParentNode) => [...root.querySelectorAll<HTMLButtonElement>('button')]
 const footer = () => document.querySelector<HTMLElement>('.abele-modal__footer')!
+// The kit dialogs are Vue: what a click changes is on screen after the next tick, not at once.
 const click = (text: string) =>
   buttons(document.querySelector('.modal')!)
     .find((button) => button.textContent === text)!
@@ -141,7 +143,7 @@ beforeEach(() => {
 afterEach(() => document.body.replaceChildren())
 
 describe('security dialogs share the scrolling body and pinned actions', () => {
-  it('reviews destinations without destroying the shell when an action renders again', () => {
+  it('reviews destinations without destroying the shell when an action renders again', async () => {
     const modal = reviewKeyDestinations()
     try {
       expect(modal.modalEl.classList.contains('abele-modal')).toBe(true)
@@ -169,6 +171,7 @@ describe('security dialogs share the scrolling body and pinned actions', () => {
       }
       const secure = state.pending[0]
       click('Allow on this device')
+      await nextTick()
       expect(state.accept).toHaveBeenCalledWith([secure])
       expect(modal.modalEl.querySelector('.abele-modal__body')).toBe(body)
       expect(footer()).toBe(pinned)
@@ -176,12 +179,14 @@ describe('security dialogs share the scrolling body and pinned actions', () => {
       expect(buttons(body).map((b) => b.textContent)).toEqual(['Allow unencrypted HTTP'])
       const home = state.pending[0]
       click('Allow unencrypted HTTP')
+      await nextTick()
       expect(state.allowHttp).toHaveBeenCalledWith(home.origin)
       expect(state.accept).toHaveBeenLastCalledWith([home])
       expect(body.textContent).toContain('HTTP transport on this device')
       expect(buttons(pinned).map((b) => b.textContent)).toEqual(['Allow key and address'])
       expect(buttons(body).map((b) => b.textContent)).toEqual(['Remove HTTP exception'])
       click('Remove HTTP exception')
+      await nextTick()
       expect(state.forgetHttp).toHaveBeenCalledWith(home.origin)
       expect(buttons(pinned).map((b) => b.textContent)).toEqual(['Allow key and address'])
     } finally {
@@ -240,6 +245,7 @@ describe('security dialogs share the scrolling body and pinned actions', () => {
     try {
       for (let attempt = 0; attempt < 2; attempt++) {
         click('Allow address and send')
+        await nextTick()
         await vi.waitFor(() => {
           expect(
             buttons(footer()).find((button) => button.textContent === 'Allow address and send')!
