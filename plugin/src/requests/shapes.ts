@@ -31,11 +31,11 @@ export function requestIdFor(collection: string, name: string) {
   // A folder is plain names: nothing that climbs out of the requests folder or hides in it.
   collection = collection
     .split(/[\\/]/)
-    .map((part) => part.trim().replace(FORBIDDEN, '-').replace(/^\.+/, '').trim())
-    .filter(Boolean)
+    .map((part) => part.replace(FORBIDDEN, '-').replace(/^[\s.]+/, '').trim())
+    .filter((part) => part && part !== '.' && part !== '..')
     .join('/')
   const file =
-    name.trim().replace(FORBIDDEN, '-').replace(/^\.+/, '').trim().slice(0, 120) || 'Request'
+    name.replace(FORBIDDEN, '-').replace(/^[\s.]+/, '').trim().slice(0, 120) || 'Request'
   return `${collection ? `${collection}/` : ''}${file}.http`
 }
 export const collectionOf = (id: string) =>
