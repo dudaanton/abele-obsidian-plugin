@@ -393,30 +393,34 @@ describe.skipIf(!available)('the canvas by hand', () => {
     if (onPhone()) return // The system's picker is the phone's own; the desktop drives it here.
     await reopen()
     const before = run<number>('return (await read()).nodes.length')
-    // A small picture on disk, and Chromium's own chooser answered with it instead of the
-    // system's dialog.
-    await cdp(`
-      const os=require('os'),fs=require('fs'),p=require('path').join(os.tmpdir(),'sample-picture-'+Date.now()+'.png')
-      const c=document.createElement('canvas');c.width=60;c.height=30;const x=c.getContext('2d');x.fillStyle='#3a7';x.fillRect(0,0,60,30)
-      fs.writeFileSync(p,Buffer.from(c.toDataURL('image/png').split(',')[1],'base64'))
-      window.__canvasChrome.picture=p
-      await cdp.sendCommand('Page.enable')
-      await cdp.sendCommand('Page.setInterceptFileChooserDialog',{enabled:true})
-      window.__canvasChrome.chooser=new Promise(r=>{const on=(e,m,params)=>{if(m==='Page.fileChooserOpened'){cdp.removeListener('message',on);r(params)}};cdp.on('message',on)})`)
-    await cdp(`
-      const opened=await window.__canvasChrome.chooser
-      await cdp.sendCommand('DOM.setFileInputFiles',{files:[window.__canvasChrome.picture],backendNodeId:opened.backendNodeId})
-      await cdp.sendCommand('Page.setInterceptFileChooserDialog',{enabled:false})`)
-    await saved()
+    const slot = `view().contentEl.querySelector('.abele-canvas-chrome__tools [aria-label^="Picture from this device"]')`
+    await until(slot)
+    const at = center(slot)!
+    // The device's own file dialog is answered by the test: the picture field, once it opens,
+    // is given a small picture as if it had been chosen there. Pressing the tool is real input.
+    run(`const c=document.createElement('canvas');c.width=60;c.height=30;const x=c.getContext('2d');x.fillStyle='#3a7';x.fillRect(0,0,60,30)
+      const bytes=Uint8Array.from(atob(c.toDataURL('image/png').split(',')[1]),ch=>ch.charCodeAt(0))
+      const file=new File([bytes],'sample-picture-'+Date.now()+'.png',{type:'image/png'})
+      const own=HTMLInputElement.prototype.click
+      window.__canvasChrome.ownClick=own
+      HTMLInputElement.prototype.click=function(){
+        if(this.type!=='file')return own.call(this)
+        HTMLInputElement.prototype.click=own
+        const dt=new DataTransfer();dt.items.add(file);this.files=dt.files
+        setTimeout(()=>this.dispatchEvent(new Event('change')),50)
+      }
+      return true`)
+    await input(at)
     await until(`(await read()).nodes.length===${before + 1}`)
+    await saved()
+    run(`HTMLInputElement.prototype.click=window.__canvasChrome.ownClick;return true`)
     const made = run<{ file: string; width: number; height: number; exists: boolean }>(`
-      const n=(await read()).nodes.find(n=>n.type==='file'&&/sample-picture-.*\\.png$/.test(n.file))
+      const n=(await read()).nodes.find(n=>n.type==='file'&&/sample-picture-/.test(n.file))
       return {...n,exists:!!app.vault.getAbstractFileByPath(n.file)}`)
     expect(made.exists).toBe(true)
     // In the picture's proportions.
     expect(Math.round((made.width / made.height) * 10)).toBe(20)
     shot('picture')
-    run(`HTMLInputElement.prototype.click=window.__canvasChrome.ownClick;return true`)
   }, 120_000)
 
   it('carries a frame with the strokes drawn in it, its name going along', async () => {
