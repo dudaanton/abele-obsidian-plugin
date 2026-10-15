@@ -90,6 +90,11 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
   node worktrees and opted-in external worktrees. Working tree shows local changes above HEAD;
   branches and commits stay frozen until deliberately refreshed. Human browsing does not grant
   an agent access. The workspace files dialog offers the same entry point
+- Open requests — the project's saved HTTP requests in the left sidebar: pick the project of a
+  node, the environment, then open a request in a tab to send it from the node.
+- Import requests from the clipboard — a copied `.http` file, curl line, HAR file, OpenAPI
+  description or Bruno request becomes saved requests of the project Requests shows; credentials
+  in it are left out and named.
 - Open GitHub repository… — a picker of repositories: pinned ones (`github.pinnedRepos`), the ones
   opened lately on this device, the account's own and the starred ones (with a token, asked of
   GitHub once an hour), and GitHub's repository search for what is typed; `owner/repo` typed whole
