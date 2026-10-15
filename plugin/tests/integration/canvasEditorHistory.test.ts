@@ -5,7 +5,6 @@ import { deferred } from '../helpers/deferred'
 import { CanvasViewer } from '@/canvas/Viewer'
 import { hostCanvasEditor } from '@/canvas/editorControls'
 import { ObsidianCanvasStore } from '@/canvas/obsidianStore'
-import { canvasDocuments } from '@/canvas/documentRegistry'
 import { parseCanvas, serializeCanvas } from '@/canvas/core/model'
 import { planCanvasEdit } from '@/canvas/core/service'
 
