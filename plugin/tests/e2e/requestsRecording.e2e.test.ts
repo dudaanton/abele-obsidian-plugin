@@ -314,6 +314,8 @@ it('on a phone: the recording said in the drawer, the switch beside Send, the st
       try{
         ${SEND_INTO('2026-10-15-http-phone')}
         ${STOP}
+        // A stopped program's run opens by itself: wait for it, so the cleanup below takes it too.
+        await until(()=>app.workspace.getLeavesOfType('abele-trace-run').length>1,'ended run opened',60).catch(()=>{});
         return {steps,top}
       }finally{
         for(const t of ['abele-trace-run','abele-trace-value','abele-node-file','abele-debug-view','abele-request','abele-requests'])for(const l of app.workspace.getLeavesOfType(t))l.detach();
