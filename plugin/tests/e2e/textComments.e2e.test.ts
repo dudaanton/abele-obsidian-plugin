@@ -249,7 +249,6 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
   it('draws one outline round the focused reply field, not one round the editor inside it too', () => {
     // The note editor inside the reply drops its own border, ring and ground; only the field's
     // frame shows. Every box from the field down that paints an edge is counted.
-    const shotPath = `${SHOTS}/reply-field-${onPhone() ? 'phone' : 'desktop'}.png`
     const r = run<{
       edges: string[]
       focused: boolean
@@ -288,11 +287,12 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
         chain.push((n.className.split(' ')[0] || n.tagName) + ':' + Math.round(b.top) + '-' + Math.round(b.bottom) + '/' + cs.overflowY + '/' + n.scrollTop + '/' + n.scrollHeight)
       }
       // The real phone has no Node in its page: its host takes the picture.
+      const shotPath = ${JSON.stringify(SHOTS)} + '/reply-field-' + (window.__e2eHost ? 'phone' : 'desktop') + '.png'
       let shot = false
-      if (window.__e2eHost) shot = !(await window.__e2eHost.shot(${JSON.stringify(shotPath)})).startsWith('no picture')
+      if (window.__e2eHost) shot = !(await window.__e2eHost.shot(shotPath)).startsWith('no picture')
       else {
         const image = await require('@electron/remote').getCurrentWebContents().capturePage()
-        require('fs').writeFileSync(${JSON.stringify(shotPath)}, image.toPNG())
+        require('fs').writeFileSync(shotPath, image.toPNG())
         shot = !image.isEmpty()
       }
       // Give the focus back, so the next case starts with no field and no keyboard up.
