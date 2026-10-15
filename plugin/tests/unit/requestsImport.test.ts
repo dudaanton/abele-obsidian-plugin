@@ -265,6 +265,7 @@ describe('importing requests from other clients', () => {
       variable: [
         { key: 'base', value: 'https://shop.example.test' },
         { key: 'apiToken', value: 'sk-1' },
+        { key: 'tenant', value: 'tn-2', type: 'secret' },
       ],
       item: [
         {
@@ -322,6 +323,13 @@ describe('importing requests from other clients', () => {
           _type: 'environment',
           parentId: 'wrk_1',
           data: { base: 'http://localhost:4000' },
+        },
+        {
+          _id: 'env_2',
+          _type: 'environment',
+          parentId: 'env_1',
+          isPrivate: true,
+          data: { tenant: 'private-1' },
         },
         {
           _id: 'req_1',
