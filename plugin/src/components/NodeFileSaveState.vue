@@ -1,6 +1,7 @@
 <template>
   <div class="abele-node-save" aria-label="File save state">
-    <div class="abele-node-save__actions">
+    <!-- Where the tab's header saves and discards, only an unresolved save keeps its check here. -->
+    <div v-if="actions || model.draft.value?.pending" class="abele-node-save__actions">
       <Button
         v-if="!model.editing.value"
         text="Edit file"
@@ -125,14 +126,19 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import Button from './obsidian/Button.vue'
 import Icon from './obsidian/Icon.vue'
 import GithubCode from './github/GithubCode.vue'
-const props = defineProps<{
-  model: NodeFilesModel
-  offline?: boolean
-  locked?: boolean
-  changedOnDisk?: boolean
-  reload?: (shown: FileDraftSnapshot | null) => Promise<unknown>
-  keepMine?: (shown: FileDraftSnapshot | null) => Promise<unknown>
-}>()
+const props = withDefaults(
+  defineProps<{
+    model: NodeFilesModel
+    /** Its own edit, save, reload and discard buttons; off where the tab's header has them. */
+    actions?: boolean
+    offline?: boolean
+    locked?: boolean
+    changedOnDisk?: boolean
+    reload?: (shown: FileDraftSnapshot | null) => Promise<unknown>
+    keepMine?: (shown: FileDraftSnapshot | null) => Promise<unknown>
+  }>(),
+  { actions: true, reload: undefined, keepMine: undefined }
+)
 const busy = ref(false),
   error = ref('')
 const emit = defineEmits<{ reconciled: [] }>()

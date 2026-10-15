@@ -3,10 +3,9 @@
     <div v-if="error" role="alert">{{ error }}</div>
     <div v-if="offline" role="status">Offline · your local draft is retained.</div>
     <div v-if="locked" role="status">
-      Editing is not enabled for this target. Use the header action to approve this external
-      worktree.
+      Saving is not allowed in this worktree yet. Allow it with the lock in the tab's header.
     </div>
-    <NodeFileSaveState :model="model" :offline="offline" :locked="locked" />
+    <NodeFileSaveState :model="model" :offline="offline" :locked="locked" :actions="false" />
     <GithubCode
       v-if="model.document.value"
       :text="model.editing.value ? model.draftText.value : (model.document.value.text ?? '')"

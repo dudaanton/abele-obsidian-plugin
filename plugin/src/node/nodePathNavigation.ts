@@ -28,8 +28,11 @@ export const NodePathTabSchema = z.discriminatedUnion('kind', [
       path: z.string().min(1).max(4096),
       stage: z.enum(['staged', 'unstaged']).optional(),
       debug: NodePathDebugMappingSchema.optional(),
+      /** Being edited in this tab. */
+      edit: z.boolean().optional(),
     })
     .strict(),
+  // The editor tab of earlier versions: kept only so a saved layout reopens it as an edited file.
   z.object({ kind: z.literal('editor'), target, path: z.string().min(1).max(4096) }).strict(),
   z
     .object({
@@ -77,12 +80,17 @@ export async function revealNodeDrawer(
   await workspace.revealLeaf(leaf)
   workspace.leftSplit.expand()
 }
+/** A file is edited in its own tab: the old editor tab becomes that file's tab, editing. */
+export const editedFileTab = (state: NodePathTabState): NodePathTabState =>
+  state.kind === 'editor'
+    ? { kind: 'file', target: state.target, path: state.path, edit: true }
+    : state
 export async function openNodePathTab(
   workspace: Workspace,
   raw: NodePathTabState,
   mobile: boolean
 ): Promise<void> {
-  const state = NodePathTabSchema.parse(raw),
+  const state = editedFileTab(NodePathTabSchema.parse(raw)),
     type = nodePathViewType(state)
   const key = nodePathTabKey(state)
   const existing = workspace.getLeavesOfType(type).find((leaf) => {

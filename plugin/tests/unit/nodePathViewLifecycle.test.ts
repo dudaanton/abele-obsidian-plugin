@@ -242,10 +242,54 @@ it('keeps phone file actions in the pane menu', () => {
     expect(titles).toEqual([
       'Previous changed file',
       'Next changed file',
-      'Open in code editor',
+      'Edit the file',
       'Back to node',
     ])
   } finally {
     Platform.isPhone = previous
   }
+})
+
+it('turns the file tab’s header into save, discard and stop while editing, and saves on Cmd+S', async () => {
+  const view = new NodePathMainView({} as WorkspaceLeaf, 'abele-node-file')
+  views.push(view)
+  view.app = { workspace: {} } as any
+  const shown: { title: string; lit: boolean }[] = []
+  ;(view as any).addAction = (_icon: string, title: string) => {
+    const entry = { title, lit: false }
+    shown.push(entry)
+    return {
+      toggleClass: (cls: string, on: boolean) => {
+        if (cls === 'is-active') entry.lit = on
+      },
+      remove: () => shown.splice(shown.indexOf(entry), 1),
+    }
+  }
+  const save = vi.fn(async () => {})
+  const editing = {
+    active: shallowRef(false),
+    dirty: shallowRef(false),
+    locked: shallowRef(false),
+    save,
+  }
+  ;(view as any).editing = editing
+  ;(view as any).fileTab.render()
+  expect(shown.map((a) => a.title)).toContain('Edit the file')
+  editing.active.value = true
+  editing.dirty.value = true
+  ;(view as any).fileTab.render()
+  expect(shown.map((a) => a.title)).toEqual([
+    'Stop editing; the edits stay until you save or discard them',
+    'Discard the edits',
+    'Save to the node · ⌘ S',
+  ])
+  expect(shown.find((a) => a.title.startsWith('Save'))!.lit).toBe(true)
+  await view.onOpen()
+  const { Scope } = await import('obsidian')
+  const answer = (view as any).scope.handleKey(new KeyboardEvent('keydown', { key: 's' }), {
+    modifiers: Scope.compile(['Mod']),
+    key: 's',
+  })
+  expect(answer).toBe(false)
+  await vi.waitFor(() => expect(save).toHaveBeenCalledOnce())
 })

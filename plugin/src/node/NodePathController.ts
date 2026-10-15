@@ -56,14 +56,14 @@ export function showNodePathFileMenu(event: MouseEvent, raw: NodePathContext): v
     )
     menu.addItem((i) =>
       i
-        .setTitle('Open in code editor')
-        .setIcon('file-code')
+        .setTitle('Edit')
+        .setIcon('pencil')
         .setDisabled(context.revision?.kind === 'commit')
         .onClick(() =>
           nodePathAction(() =>
             openNodePathTab(
               app().workspace,
-              { kind: 'editor', target: context.target, path: context.path! },
+              { kind: 'file', target: context.target, path: context.path!, edit: true },
               Platform.isMobile
             )
           )

@@ -60,4 +60,24 @@ describe('main area node leaves', () => {
     expect(workspace.leftSplit.collapse).toHaveBeenCalledOnce()
     expect(workspace.revealLeaf).toHaveBeenCalledWith(leaf)
   })
+  it('opens what was the editor tab as the file’s own tab, editing', async () => {
+    const leaf = { getViewState: () => ({ state: {} }), setViewState: vi.fn(async () => {}) }
+    const workspace = {
+      getLeavesOfType: vi.fn(() => [leaf]),
+      getLeaf: vi.fn(() => leaf),
+      revealLeaf: vi.fn(async () => {}),
+      leftSplit: { collapse: vi.fn() },
+    }
+    await openNodePathTab(
+      workspace as never,
+      { kind: 'editor', target: target(), path: 'sample.ts' },
+      false
+    )
+    expect(workspace.getLeavesOfType).toHaveBeenCalledWith('abele-node-file')
+    expect(leaf.setViewState).toHaveBeenCalledWith({
+      type: 'abele-node-file',
+      active: true,
+      state: { kind: 'file', target: target(), path: 'sample.ts', edit: true },
+    })
+  })
 })

@@ -3,6 +3,7 @@ import {
   type Menu,
   Notice,
   Platform,
+  Scope,
   type ViewStateResult,
   type WorkspaceLeaf,
 } from 'obsidian'
@@ -23,10 +24,14 @@ import { NodePathService } from '@/node/NodePathService'
 import { NodePathFileModel, pathTargetKey } from '@/node/NodePathModel'
 import { NodePathHistoryModel } from '@/node/NodePathHistoryModel'
 import { NodeFilesModel, NodeDocumentSource, nodeResourceTarget } from '@/node/NodeFilesModel'
+import { NodePathFileEditing } from '@/node/NodePathFileEditing'
+import { NodeFileTabActions } from './nodeFileTabActions'
 import { nodeChatSwitches, bindPathTarget } from '@/node/nodePathChat'
 import { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import {
   NodePathTabSchema,
+  NODE_FILE_VIEW,
+  editedFileTab,
   nodePathViewType,
   nodePathTabKey,
   openNodePathTab,
@@ -54,11 +59,19 @@ export class NodePathMainView extends ItemView {
   private history?: NodePathHistoryModel
   private presenter?: NodeChatPresenter
   private chatLoad?: Promise<void>
-  private editor?: NodeFilesModel
+  private editing?: NodePathFileEditing
+  /** The file tab's header actions and editing, kept apart from the binding. */
+  private readonly fileTab = new NodeFileTabActions({
+    addAction: (icon, title, run) => this.addAction(icon, title, run),
+    app: () => this.app,
+    file: () => this.file,
+    editing: () => this.editing,
+    saved: () => this.saved,
+    act: (run) => this.act(run),
+  })
   private saved?: NodePathTabState
   private lifetime = 0
   private readonly error = shallowRef('')
-  private readonly editorAllowed = shallowRef(false)
   constructor(
     leaf: WorkspaceLeaf,
     private readonly viewType: string
@@ -68,34 +81,7 @@ export class NodePathMainView extends ItemView {
     // own menu (onPaneMenu), and the way back to the node is the drawer's button on the left.
     if (Platform.isMobile && !Platform.isPhone)
       this.addAction('arrow-left', 'Back to node', () => this.backToNode())
-    if (viewType === 'abele-node-file') {
-      this.addAction('file-diff', 'Toggle whole file / comparison', () => {
-        if (this.file) this.file.mode.value = this.file.mode.value === 'diff' ? 'file' : 'diff'
-      })
-      if (!Platform.isPhone) {
-        this.addAction('chevron-left', 'Previous changed file', () =>
-          this.act(() => this.file?.step(-1))
-        )
-        this.addAction('chevron-right', 'Next changed file', () =>
-          this.act(() => this.file?.step(1))
-        )
-        this.addAction('pencil', 'Open in code editor', () => {
-          const file = this.file?.document.value
-          if (file)
-            this.act(() =>
-              openNodePathTab(
-                this.app.workspace,
-                { kind: 'editor', target: file.target, path: file.path },
-                Platform.isMobile
-              )
-            )
-        })
-      }
-    }
-    if (viewType === 'abele-node-editor')
-      this.addAction('shield-check', 'Toggle external worktree editing', () =>
-        this.act(() => this.toggleEditing())
-      )
+    if (viewType === 'abele-node-file') this.fileTab.render()
     if (viewType === 'abele-node-history')
       this.addAction('arrow-left', 'Back to commits', () => this.history?.back())
   }
@@ -105,41 +91,10 @@ export class NodePathMainView extends ItemView {
   private step(by: 1 | -1): void {
     this.act(() => this.file?.step(by))
   }
-  private openEditor(): void {
-    const file = this.file?.document.value
-    if (file)
-      this.act(() =>
-        openNodePathTab(
-          this.app.workspace,
-          { kind: 'editor', target: file.target, path: file.path },
-          Platform.isMobile
-        )
-      )
-  }
   onPaneMenu(menu: Menu, source: string): void {
     if (Platform.isPhone && source === 'more-options') {
       if (this.viewType === 'abele-node-file') {
-        menu.addItem((i) =>
-          i
-            .setTitle('Previous changed file')
-            .setIcon('chevron-left')
-            .setSection('action')
-            .onClick(() => this.step(-1))
-        )
-        menu.addItem((i) =>
-          i
-            .setTitle('Next changed file')
-            .setIcon('chevron-right')
-            .setSection('action')
-            .onClick(() => this.step(1))
-        )
-        menu.addItem((i) =>
-          i
-            .setTitle('Open in code editor')
-            .setIcon('file-code')
-            .setSection('action')
-            .onClick(() => this.openEditor())
-        )
+        this.fileTab.paneMenu(menu)
       }
       menu.addItem((i) =>
         i
@@ -176,6 +131,13 @@ export class NodePathMainView extends ItemView {
   }
   async onOpen(): Promise<void> {
     this.contentEl.addClass('abele-node-content')
+    // ⌘ S saves while editing, as Obsidian's own save command does in a note.
+    this.scope = new Scope((this.app as { scope?: Scope }).scope)
+    this.scope.register(['Mod'], 's', () => {
+      if (!this.editing?.active.value) return true
+      this.act(() => this.editing?.save())
+      return false
+    })
     if (this.saved && !this.ui) this.startBinding(this.saved)
   }
   async setState(raw: unknown, result: ViewStateResult): Promise<void> {
@@ -229,7 +191,7 @@ export class NodePathMainView extends ItemView {
     this.history = undefined
     this.presenter = undefined
     this.chatLoad = undefined
-    this.editor = undefined
+    this.editing = undefined
     this.contentEl.empty()
   }
   /** Obsidian's deferred leaf admission must never wait for remote reads. */
@@ -265,60 +227,107 @@ export class NodePathMainView extends ItemView {
     this.error.value = ''
     if (state.kind === 'file') {
       const file = (this.file = new NodePathFileModel(model, state.target))
+      const allowed = async () =>
+        state.target.kind !== 'worktree' ||
+        (await connection.client.repository.editingStatus({ worktree_id: state.target.id })).enabled
+      const editing = (this.editing = new NodePathFileEditing(
+        state.target,
+        () =>
+          new NodeFilesModel(
+            connection.client,
+            node.expectedNodeId,
+            state.target.id,
+            undefined,
+            new NodeDocumentSource(
+              connection.client,
+              state.target.id,
+              state.target.kind === 'worktree',
+              () => connection.state.value === 'connected' && connection.client.connected
+            )
+          ),
+        allowed
+      ))
+      // The owner may open or close the worktree to saves elsewhere; the lock follows.
+      this.stops.push(
+        connection.client.onEvent(() => {
+          if (editing.active.value)
+            void allowed()
+              .then((enabled) => editing.unlock(enabled))
+              .catch(() => {})
+        })
+      )
+      this.stops.push(
+        watch([editing.active, editing.dirty, editing.locked], ([active]) => {
+          this.fileTab.render()
+          if (this.saved?.kind === 'file' && !!this.saved.edit !== active) {
+            const { edit: _edit, ...rest } = this.saved
+            this.saved = active ? { ...rest, edit: true } : rest
+            this.app.workspace.requestSaveLayout()
+          }
+        })
+      )
+      this.fileTab.render()
       this.ui = createApp({
         render: () =>
-          h(NodePathFilePane, {
-            model: file,
-            offline: offline(),
-            debug: this.debugOf(state, file),
-            onAsk: (selection: FileSelection) => {
-              const doc = file.document.value
-              if (doc)
-                this.act(() =>
-                  newNodePathChat(
-                    model,
-                    Object.freeze({ ...doc.target }),
-                    selectionQuote(doc.path, selection)
-                  )
-                )
-            },
-            onAdd: (selection: FileSelection) => {
-              const doc = file.document.value
-              const owner = nodePathOwnerActions()
-              if (doc && owner) {
-                const context = freezeNodePathContext({
-                  target: doc.target,
-                  path: doc.path,
-                  revision: doc.revision,
-                  contentId: doc.contentId,
-                  text: doc.text,
-                  selection: selection.text,
-                  lines: {
-                    start: Math.min(selection.from, selection.to),
-                    end: Math.max(selection.from, selection.to),
-                  },
-                  side: selection.side,
-                })
-                this.act(() => owner.add(context))
-              }
-            },
-            onNote: (selection: FileSelection) => {
-              const doc = file.document.value
-              if (doc) insertCodeSelection(this.app, doc.path, selection)
-            },
-            onMenu: (event: MouseEvent, selection: string) => {
-              const doc = file.document.value
-              if (doc)
-                showNodePathFileMenu(event, {
-                  target: doc.target,
-                  path: doc.path,
-                  revision: doc.revision,
-                  contentId: doc.contentId,
-                  text: doc.text,
-                  selection,
-                })
-            },
-          }),
+          editing.active.value && editing.editor.value
+            ? h(NodePathEditorPane, {
+                model: editing.editor.value as NodeFilesModel,
+                offline: offline(),
+                error: this.error.value,
+                locked: editing.locked.value,
+              })
+            : h(NodePathFilePane, {
+                model: file,
+                offline: offline(),
+                debug: this.debugOf(state, file),
+                onAsk: (selection: FileSelection) => {
+                  const doc = file.document.value
+                  if (doc)
+                    this.act(() =>
+                      newNodePathChat(
+                        model,
+                        Object.freeze({ ...doc.target }),
+                        selectionQuote(doc.path, selection)
+                      )
+                    )
+                },
+                onAdd: (selection: FileSelection) => {
+                  const doc = file.document.value
+                  const owner = nodePathOwnerActions()
+                  if (doc && owner) {
+                    const context = freezeNodePathContext({
+                      target: doc.target,
+                      path: doc.path,
+                      revision: doc.revision,
+                      contentId: doc.contentId,
+                      text: doc.text,
+                      selection: selection.text,
+                      lines: {
+                        start: Math.min(selection.from, selection.to),
+                        end: Math.max(selection.from, selection.to),
+                      },
+                      side: selection.side,
+                    })
+                    this.act(() => owner.add(context))
+                  }
+                },
+                onNote: (selection: FileSelection) => {
+                  const doc = file.document.value
+                  if (doc) insertCodeSelection(this.app, doc.path, selection)
+                },
+                onMenu: (event: MouseEvent, selection: string) => {
+                  const doc = file.document.value
+                  if (doc)
+                    showNodePathFileMenu(event, {
+                      target: doc.target,
+                      path: doc.path,
+                      revision: doc.revision,
+                      contentId: doc.contentId,
+                      text: doc.text,
+                      selection,
+                    })
+                },
+              }),
       })
       this.stops.push(
         watch(file.document, (doc) => {
@@ -337,6 +346,10 @@ export class NodePathMainView extends ItemView {
         await file.open(state.path, state.stage).catch(() => {})
         if (state.debug) file.mode.value = 'file'
       }
+      if (lifetime === this.lifetime && state.edit)
+        await editing.start(state.path).catch((error: unknown) => {
+          this.error.value = error instanceof Error ? error.message : 'Could not start editing'
+        })
     } else if (state.kind === 'history') {
       const history = (this.history = new NodePathHistoryModel(model.port, state.target))
       this.ui = createApp({
@@ -389,69 +402,16 @@ export class NodePathMainView extends ItemView {
       history.busy.value = true
       await connection.connect().catch(() => {})
       if (lifetime === this.lifetime) await history.load().catch(() => {})
-      if (lifetime === this.lifetime && state.commit) await history.open(state.commit).catch(() => {})
+      if (lifetime === this.lifetime && state.commit)
+        await history.open(state.commit).catch(() => {})
     } else if (state.kind === 'editor') {
-      const editor = (this.editor = new NodeFilesModel(
-        connection.client,
-        node.expectedNodeId,
-        state.target.id,
-        undefined,
-        new NodeDocumentSource(
-          connection.client,
-          state.target.id,
-          state.target.kind === 'worktree',
-          () => connection.state.value === 'connected' && connection.client.connected
-        )
-      ))
-      this.editorAllowed.value = state.target.kind === 'workspace'
-      const permission = async () => {
-        if (state.target.kind !== 'worktree') return
-        const result = await connection.client.repository.editingStatus({
-          worktree_id: state.target.id,
-        })
-        if (lifetime === this.lifetime) this.editorAllowed.value = result.enabled
-      }
-      const stopEvents = connection.client.onEvent(() => {
-        void permission().catch(() => {
-          if (lifetime === this.lifetime) this.editorAllowed.value = false
-        })
+      // An editor tab from an earlier version opens as the file's own tab, editing.
+      await this.leaf.setViewState({
+        type: NODE_FILE_VIEW,
+        active: true,
+        state: editedFileTab(state),
       })
-      this.stops.push(stopEvents)
-      this.ui = createApp({
-        render: () =>
-          h(NodePathEditorPane, {
-            model: editor,
-            offline: offline(),
-            error: this.error.value,
-            locked: !this.editorAllowed.value,
-          }),
-      })
-      this.ui.mount(host)
-      try {
-        await connection.connect().catch(() => {})
-        if (lifetime !== this.lifetime) return
-        await editor.openFile(state.path)
-        if (lifetime !== this.lifetime) return
-        if (!offline()) await permission()
-        if (lifetime === this.lifetime && editor.fileEditable.value && this.editorAllowed.value)
-          await editor.beginEditing()
-        if (!offline())
-          await model
-            .openFile(
-              state.target,
-              state.path,
-              undefined,
-              undefined,
-              (document) =>
-                lifetime === this.lifetime &&
-                document.contentId === editor.document.value?.contentId &&
-                editor.draftText.value === editor.document.value?.text
-            )
-            .catch(() => {})
-      } catch (error) {
-        if (lifetime === this.lifetime)
-          this.error.value = error instanceof Error ? error.message : 'Could not open code editor'
-      }
+      return
     } else {
       const presenter = (this.presenter = markRaw(
         new NodeChatPresenter(
@@ -543,36 +503,6 @@ export class NodePathMainView extends ItemView {
     // restoration overwrite newly quoted context, or append it to a subsequently rebound tab.
     if (this.chatLoad !== undefined) void this.chatLoad.then(append).catch(() => {})
     else append()
-  }
-  private async toggleEditing(): Promise<void> {
-    const state = this.saved
-    if (state?.kind !== 'editor' || state.target.kind !== 'worktree') return
-    const connection = NodeService.getInstance().connection(state.target.registrationId)
-    const rows = await pathPages((cursor) =>
-      connection.client.repository.worktrees({ project_id: state.target.projectId, cursor })
-    )
-    const row = rows.find((r) => r.worktree_id === state.target.id)
-    if (!row || row.kind !== 'external') {
-      new Notice('This is not an external worktree.')
-      return
-    }
-    const enabled = !this.editorAllowed.value
-    if (
-      !(await confirmAction(this.app, {
-        title: enabled ? 'Allow editing in this worktree?' : 'Turn off worktree editing?',
-        message: enabled
-          ? `Allow current files in ${row.path_label} to be saved by confirmed node owners? This grants neither chat scope nor agent execution.`
-          : 'Stop new saves in this external worktree? Local drafts and unresolved evidence are kept.',
-        confirmText: enabled ? 'Allow editing' : 'Turn off editing',
-      }))
-    )
-      return
-    await connection.client.repository.editing({ worktree_id: state.target.id, enabled })
-    if (this.saved === state) {
-      this.editorAllowed.value = enabled
-      if (enabled && this.editor?.fileEditable.value && !this.editor.editing.value)
-        await this.editor.beginEditing()
-    }
   }
   private refreshHeader(): void {
     ;(this.leaf as unknown as { updateHeader?: () => void }).updateHeader?.()
