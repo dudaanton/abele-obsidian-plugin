@@ -42,6 +42,20 @@ retention. An observed historical version may expire.
 
 ## Eviction
 
+A device pin is checked again after server verification and synchronously at the final
+locked removal boundary, after awaited preservation work. A pin saved through another
+connection revokes removal permission too. Retained offloaded identities continue to occupy
+their logical names: tool creation, copy, move, rename and parent-folder creation cannot
+reuse them. Generated imports choose another available name instead.
+
+Projections record the extension's media type (including PNG, PDF, MP4, M4A and EPUB), with
+an octet-stream fallback for unknown extensions. Previously journalled projection bytes
+remain bound to their recorded digest when work resumes.
+
+Routine unchanged evidence retained by completed operations does not produce a recovery
+Notice. Its device-local size/SHA inventory is rechecked before suppressing the Notice;
+unknown or changed copies still warn, and no retained bytes are deleted by this distinction.
+
 Evict only an attachment that is not being edited. The API finishes ordinary
 publication, refuses open, pinned or in-use files, verifies the exact live server
 version and actual decrypted size/SHA, reserves paths against this runtime's sync,

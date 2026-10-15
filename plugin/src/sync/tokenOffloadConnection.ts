@@ -178,8 +178,8 @@ export async function tokenOffloadConnection(input: {
         ledger: state,
         host,
         artifactPath: (name) => host.artifactPath(name),
-        preservePrivateArtifacts: (paths) =>
-          preservePrivateArtifacts(input.app, paths, () => fence.assertReady()),
+        preservePrivateArtifacts: (paths, ordinary) =>
+          preservePrivateArtifacts(input.app, paths, () => fence.assertReady(), ordinary),
         privateArtifactRecovered: (path) => privateArtifactRecovered(input.app, path),
         cleanupPrivateArtifacts: () =>
           recoverOrphanPrivateArtifacts(input.app, input.factory, () => fence.assertReady()),

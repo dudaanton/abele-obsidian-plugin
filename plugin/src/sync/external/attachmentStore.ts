@@ -80,7 +80,10 @@ export class AttachmentStore {
       host: ExternalFileHost
       artifactPath?(name: string): string
       cleanupPrivateArtifacts?(): Promise<void>
-      preservePrivateArtifacts?(paths: string[]): Promise<void>
+      preservePrivateArtifacts?(
+        paths: string[],
+        ordinary?: readonly { path: string; sha: string; size: number }[]
+      ): Promise<void>
       privateArtifactRecovered?(path: string): Promise<boolean>
       binding: ConnectionBinding
       serial: ExternalSerialization
@@ -1156,7 +1159,25 @@ export class AttachmentStore {
           ...doc.operations.flatMap((other) => other.ownedArtifacts),
         ]
           .filter((artifact) => !keep(artifact))
-          .map((artifact) => artifact.path)
+          .map((artifact) => artifact.path),
+        [
+          ...doc.files
+            .filter(
+              (file) =>
+                !file.pendingOperationId &&
+                !file.blockingReason &&
+                file.representation === 'hydrated'
+            )
+            .flatMap((file) => file.retained),
+          ...doc.operations
+            .filter(
+              (other) =>
+                ['hydrated', 'remote-only', 'complete'].includes(other.phase) &&
+                !other.unresolvedOutcome &&
+                !other.cleanupReason
+            )
+            .flatMap((other) => other.ownedArtifacts),
+        ]
       )
       this.owned()
       const check = await this.disconnectInventory()

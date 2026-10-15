@@ -29,6 +29,10 @@ fresh file-list preview and confirmation. Last-opened timestamps are device-loca
 ages are excluded from age rules. No background policy runs.
 Device pin intentions also live in a separate local-storage inventory, survive connection
 pauses/replacement and follow ordinary file/folder renames.
+The device-local `abele-sync-ordinary-retained-v1` inventory records the size and SHA of
+unchanged, completed-operation evidence moved into private retention. It suppresses recovery
+Notices only while those bytes still match; unknown or changed copies remain visible recovery
+work. Empty recovery directories do not produce a Notice. Retention never deletes these bytes.
 Reader, gallery, canvas and agent
 content reads can hydrate absent originals; listings show original paths, size and offloaded
 state. Stub cards and in-note embed previews are not implemented.

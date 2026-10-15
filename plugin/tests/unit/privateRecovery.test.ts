@@ -3,6 +3,32 @@ import { Notice, type App } from 'obsidian'
 import { preservePrivateArtifacts, showPrivateRecoveryNotice } from '@/sync/privateRecovery'
 import { makeParents } from '@/sync/vaultFolders'
 import { buildFakeVault } from '../helpers/fakeVault'
+import { sha256 } from '@abele/sync-core'
+
+it('does not announce an empty recovery directory or byte-verified routine evidence, but detects later edits', async () => {
+  const app = buildFakeVault([]) as unknown as App
+  const count = Notice.shown.length
+  const recovery = '.obsidian/plugins/abele/sync-recovery'
+  await app.vault.adapter.mkdir(recovery)
+  await showPrivateRecoveryNotice(app)
+  expect(Notice.shown.length).toBe(count)
+  const path = '.obsidian/plugins/abele/sync-staging/sample-evidence.bin'
+  await makeParents(app.vault.adapter, path)
+  await app.vault.adapter.write(path, 'ordinary retained bytes')
+  const expected = {
+    path,
+    sha: await sha256(new TextEncoder().encode('ordinary retained bytes')),
+    size: 23,
+  }
+  await preservePrivateArtifacts(app, [path], () => {}, [expected])
+  await showPrivateRecoveryNotice(app)
+  expect(Notice.shown.length).toBe(count)
+  const kept = path.replace('/sync-staging/', '/sync-recovery/')
+  await app.vault.adapter.write(kept, 'a unique later edit')
+  await showPrivateRecoveryNotice(app)
+  expect(Notice.shown.length).toBe(count + 1)
+  expect(await app.vault.adapter.read(kept)).toBe('a unique later edit')
+})
 
 it('notifies again when new copies are preserved after the first notice is dismissed', async () => {
   const app = buildFakeVault([]) as unknown as App
@@ -27,6 +53,27 @@ it('notifies again when new copies are preserved after the first notice is dismi
   expect(await app.vault.adapter.read(second.replace('/sync-staging/', '/sync-recovery/'))).toBe(
     'sample second edit'
   )
+})
+
+it('retains the classification of concurrent routine copies from independent connections', async () => {
+  const app = buildFakeVault([]) as unknown as App
+  const count = Notice.shown.length
+  const paths = ['sample-a.bin', 'sample-b.bin'].map(
+    (name) => '.obsidian/plugins/abele/sync-staging/' + name
+  )
+  const bytes = new TextEncoder().encode('ordinary retained bytes')
+  const sha = await sha256(bytes)
+  for (const path of paths) {
+    await makeParents(app.vault.adapter, path)
+    await app.vault.adapter.write(path, 'ordinary retained bytes')
+  }
+  await Promise.all(
+    paths.map((path) =>
+      preservePrivateArtifacts(app, [path], () => {}, [{ path, sha, size: bytes.length }])
+    )
+  )
+  await showPrivateRecoveryNotice(app)
+  expect(Notice.shown.length).toBe(count)
 })
 
 it('notifies about preserved copies even when a later move in the batch fails', async () => {
