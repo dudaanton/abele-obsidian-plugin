@@ -203,7 +203,7 @@ async function refusalToGrant(form: 'desktop' | 'phone') {
         `(async()=>{${prelude}
         const add=visible('.abele-node-scope-editor__add'),editor=add.closest('.abele-node-scope-editor');
         await wait(400);const body=add.closest('.abele-chat-setup__body'),box=body.getBoundingClientRect(),inner={left:box.left+body.clientLeft,right:box.left+body.clientLeft+body.clientWidth,top:box.top,bottom:box.top+body.clientHeight};
-        for(const el of [add,...editor.querySelectorAll('select')]){const r=el.getBoundingClientRect();if(r.right>inner.right+0.5||r.left<inner.left-0.5)throw Error('Runs under the scrollbar or past the edge: '+(el.textContent||el.value)+' '+JSON.stringify({r,inner}))}
+        for(const el of [add,...editor.querySelectorAll('select.abele-obsidian-dropdown__base')]){const r=el.getBoundingClientRect();if(r.right>inner.right+0.5||r.left<inner.left-0.5)throw Error('Runs under the scrollbar or past the edge: '+(el.textContent||el.value)+' '+JSON.stringify({r,inner}))}
         const a=add.getBoundingClientRect();if(a.top<inner.top||a.bottom>inner.bottom)throw Error('Add access is not in view when the place lands: '+JSON.stringify({a,inner}));
         return JSON.stringify('in view')
       })()`
