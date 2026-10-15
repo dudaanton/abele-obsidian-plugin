@@ -49,6 +49,7 @@ interface Report {
   mixedRows?: number
   stacked?: boolean
   overflow?: string[]
+  listOverflow?: string[]
   searchInMonth?: boolean
   emptyDay?: string
   emptyMonth?: string
@@ -149,7 +150,9 @@ const script = (label: string) => String.raw`(async function* () {
     const dayBox = month.querySelector('.abele-tasks-calendar__day').getBoundingClientRect()
     report.stacked = dayBox.top >= monthBox.bottom - 1
     const edge = month.getBoundingClientRect().right
-    report.overflow = [...month.querySelectorAll('*')].filter(el => el.getBoundingClientRect().right > edge + 1).map(el => String(el.className)).slice(0, 5)
+    const spill = (scope, right) => [...scope.querySelectorAll('*')].filter(el => el.getBoundingClientRect().right > right + 1)
+      .map(el => String(el.className) + ' +' + Math.round(el.getBoundingClientRect().right - right) + 'px').slice(0, 5)
+    report.overflow = spill(month, edge)
     reveal(root)
     yield 'shoot:' + (await shoot('chosen-day') ?? '')
 
@@ -180,6 +183,7 @@ const script = (label: string) => String.raw`(async function* () {
       root.querySelector('.abele-timeline__completed-toggle').click()
     const rows = await until(() => { const r = root.querySelectorAll('.abele-entry-row + .abele-entry-row'); return r.length ? r : null }, 'list rows')
     report.listRows = root.querySelectorAll('.abele-entry-row').length
+    report.listOverflow = spill(root, root.getBoundingClientRect().right)
     report.lines = [...rows].filter(row => {
       const before = getComputedStyle(row, '::before')
       return parseFloat(getComputedStyle(row).borderTopWidth) > 0 ||
@@ -254,17 +258,14 @@ describe.skipIf(!available)('calendar tasks as a month in the note footer', () =
   let phone: Report | null = null
 
   beforeAll(async () => {
-    if (!onPhone()) {
-      size = JSON.parse(
-        evalRaw(`JSON.stringify(require('@electron/remote').getCurrentWindow().getContentSize())`)
-      ) as number[]
-      evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(1440, 1000); 'ok'`)
-      desktop = await runProbe('desktop')
-      await enterPhone(390, 844)
-    }
-    phone = await runProbe('phone')
-    console.info(JSON.stringify({ desktop, phone }))
-  }, 600_000)
+    if (onPhone()) return
+    size = JSON.parse(
+      evalRaw(`JSON.stringify(require('@electron/remote').getCurrentWindow().getContentSize())`)
+    ) as number[]
+    evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(1440, 1000); 'ok'`)
+    desktop = await runProbe('desktop')
+    console.info(JSON.stringify({ desktop }))
+  }, 300_000)
 
   afterAll(async () => {
     if (size) {
@@ -282,7 +283,16 @@ describe.skipIf(!available)('calendar tasks as a month in the note footer', () =
     }
   )
 
-  it('on a phone: the same, the chosen day under the month', () => {
-    check(phone!, true)
+  // Its own block: where the real phone covers the emulated one, entering it skips only this.
+  describe('on a phone', () => {
+    beforeAll(async () => {
+      await enterPhone(390, 844)
+      phone = await runProbe('phone')
+      console.info(JSON.stringify({ phone }))
+    }, 300_000)
+
+    it('the same, the chosen day under the month', () => {
+      check(phone!, true)
+    })
   })
 })
