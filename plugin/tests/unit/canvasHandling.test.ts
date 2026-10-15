@@ -426,3 +426,19 @@ describe('the canvas surface', () => {
     expect(s.viewer.canvas.getAttribute('aria-description')).toMatch(/change step/)
   })
 })
+
+describe('work whose write failed', () => {
+  it('waits for Retry or Discard: leaving the window does not write it behind the person', async () => {
+    const s = setup(cards())
+    s.publish.mockRejectedValueOnce(new Error('Sample write failure'))
+    ;(s.editor as unknown as { selected: Set<string> }).selected = new Set(['gamma'])
+    await s.editor.controls.act('back')
+    await vi.waitFor(() => expect(s.button('Retry save').hidden).toBe(false))
+    const calls = s.publish.mock.calls.length
+    // The person opens a menu to choose; a phone's sheet takes the window's focus.
+    window.dispatchEvent(new Event('blur'))
+    await new Promise((r) => setTimeout(r, 30))
+    expect(s.publish.mock.calls.length).toBe(calls)
+    expect(s.document.session.dirty).toBe(true)
+  })
+})

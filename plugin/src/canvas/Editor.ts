@@ -672,11 +672,16 @@ export class CanvasEditor {
     // Leaving the window or the app writes at once: a phone may stop it in the background.
     const view = doc.defaultView
     if (view) {
-      const leave = (): void => void this.flush()
+      // Work whose write failed waits for the person's own Retry or Discard: a write on the way
+      // out, as a phone's menu sheet takes the window's focus, would choose for them.
+      const leave = (): void => {
+        if (this.writeFailed !== this.ports.document()) void this.flush()
+      }
       view.addEventListener('blur', leave)
       this.off.push(() => view.removeEventListener('blur', leave))
       const hidden = (): void => {
-        if (doc.visibilityState === 'hidden') void this.flush()
+        if (doc.visibilityState === 'hidden' && this.writeFailed !== this.ports.document())
+          void this.flush()
       }
       doc.addEventListener('visibilitychange', hidden)
       this.off.push(() => doc.removeEventListener('visibilitychange', hidden))
