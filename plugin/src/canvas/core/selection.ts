@@ -26,6 +26,15 @@ export function hitResize(
   touch: boolean
 ): ResizeCorner | null {
   const radius = (touch ? 22 : 12) / zoom
+  // The card's middle is its body, however far the camera is zoomed out.
+  const inset = Math.min(node.width, node.height) * 0.25
+  if (
+    x > node.x + inset &&
+    x < node.x + node.width - inset &&
+    y > node.y + inset &&
+    y < node.y + node.height - inset
+  )
+    return null
   return (
     RESIZE_CORNERS.find((corner) => {
       const [cx, cy] = cornerPoint(node, corner)

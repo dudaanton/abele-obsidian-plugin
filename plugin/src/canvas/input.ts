@@ -438,11 +438,11 @@ export class CanvasInput implements CanvasViewerInput {
     // A finger on a picked note whose words run past its foot scrolls them; held still a moment,
     // it carries the card instead.
     const body =
-      node && !corner && event.pointerType === 'touch' && selected.has(node.id)
+      node && node.type === 'file' && !corner && event.pointerType === 'touch' && selected.has(node.id)
         ? this.viewer.scroller(node.id)
         : null
     const scroll =
-      body && body.scrollHeight > body.clientHeight + 1
+      body && body.scrollHeight > body.clientHeight + 8
         ? {
             el: body,
             top: body.scrollTop,
@@ -868,6 +868,16 @@ export class CanvasInput implements CanvasViewerInput {
     const node = this.pointsCard()
     if (!node) return null
     const reach = (touch ? 22 : 10) / this.viewer.camera.zoom
+    // The card's middle stays its body, to carry it: on a small card far zoomed out a finger's
+    // reach around its points would otherwise cover the whole card.
+    const inset = Math.min(node.width, node.height) * 0.25
+    if (
+      x > node.x + inset &&
+      x < node.x + node.width - inset &&
+      y > node.y + inset &&
+      y < node.y + node.height - inset
+    )
+      return null
     const side = SIDES.find((s) => {
       const p = endpoint(node, s)
       return Math.hypot(x - p.x, y - p.y) <= reach

@@ -2078,7 +2078,7 @@ export class CanvasEditor {
     const node = graph && hitNode(graph, x, y)
     if (!node || !this.selected.has(node.id) || node.type === 'group') return false
     const body = this.viewer.scroller(node.id)
-    if (!body || body.scrollHeight <= body.clientHeight + 1) return false
+    if (!body || body.scrollHeight <= body.clientHeight + 8) return false
     const dy = (event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY) / cam.zoom,
       before = body.scrollTop
     body.scrollTop = before + dy

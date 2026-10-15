@@ -227,6 +227,23 @@ describe('drawing', () => {
   })
 })
 
+describe('a finger far zoomed out', () => {
+  it('carries a small picked card by its middle rather than pulling a connection or a corner', async () => {
+    const s = setup(cards())
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 0.25 })
+    const touch = { pointerType: 'touch' as const }
+    s.pointer('pointerdown', 25, 12, touch)
+    s.pointer('pointerup', 25, 12, touch)
+    s.pointer('pointerdown', 25, 12, touch)
+    s.pointer('pointermove', 35, 30, touch)
+    s.pointer('pointermove', 45, 52, touch)
+    s.pointer('pointerup', 45, 52, touch)
+    await flush()
+    expect(s.graphNow().edges).toHaveLength(1)
+    expect(s.graphNow().nodes[0]).toMatchObject({ x: 80, y: 160, width: 200, height: 100 })
+  })
+})
+
 describe('double clicks', () => {
   it('on empty canvas puts a card there, open for writing', async () => {
     const s = setup(cards())
