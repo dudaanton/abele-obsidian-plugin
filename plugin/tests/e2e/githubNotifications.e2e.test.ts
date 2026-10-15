@@ -364,9 +364,6 @@ describe.skipIf(!available || onPhone())('GitHub notifications on a phone', () =
     await reloadApp('app.emulateMobile(false)')
   }, 180_000)
 
-  it('while GitHub is off, offers no refresh, mark-all-read or open-on-GitHub glyph on a phone', () =>
-    offersNoGlyphsWhileOff())
-
   it('fits the screen, and a row opens its item', () => {
     const r = evalAsync<{
       error?: string
@@ -421,4 +418,8 @@ describe.skipIf(!available || onPhone())('GitHub notifications on a phone', () =
     expect(r.opened).toMatch(/\/issues\/7#issuecomment-7011$/)
     expect(r.drawerClosed).toBe(true)
   })
+
+  // Last: it opens the drawer itself, and the case above needs it to start shut.
+  it('while GitHub is off, offers no refresh, mark-all-read or open-on-GitHub glyph on a phone', () =>
+    offersNoGlyphsWhileOff())
 })
