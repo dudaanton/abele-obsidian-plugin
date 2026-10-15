@@ -44,7 +44,9 @@ const recordPoint=async (line,takes,root)=>{
     input.focus();input.value=t;input.dispatchEvent(new Event('input',{bubbles:true}));await wait(100);
     input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',bubbles:true,cancelable:true}));await wait(100);
   }
-  await until(()=>takes.every(t=>[...document.querySelectorAll('.abele-trace-point .multi-select-pill-content')].some(p=>p.textContent.trim()===t)),'takes listed');
+  const pills=()=>[...document.querySelectorAll('.abele-trace-point .multi-select-pill-content')].map(p=>p.textContent.trim());
+  // Says whether the editor was rebuilt under the typing (its input no longer in the page) or kept.
+  await until(()=>takes.every(t=>pills().includes(t)),'takes listed').catch(()=>{throw Error('takes not listed: '+JSON.stringify({pills:pills(),editors:document.querySelectorAll('.abele-trace-point').length,inputKept:input.isConnected,typed:input.value,offered:[...document.querySelectorAll('.abele-trace-point__offer')].map(b=>b.textContent.trim())})+' '+debugState())});
   press(document.querySelector('.abele-trace-point [aria-label="Keep (Enter)"]'));
   // The first record point of a project asks once where its runs go: the offered folder.
   for(let i=0;i<40;i++){const keep=[...document.querySelectorAll('.modal-container .modal button')].find(b=>b.textContent.trim()==='Keep them here');if(keep){press(keep);break}if(document.querySelector('.abele-breakpoint-mark_record'))break;await wait(50)}
