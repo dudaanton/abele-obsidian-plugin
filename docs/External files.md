@@ -24,7 +24,11 @@ confirmation saves that rule and applies that exact selection after rechecking i
 There is no timer or automatic application. An age rule excludes files with no recorded
 opening; modification time is never substituted for use history.
 
-Ordinary file links download before opening and retain their fragments. The book reader
+Ordinary links and file-explorer entries for offloaded originals open an information card
+without downloading and retain their position fragments. The card names the kind, size and
+offload date, with Download and Keep on this device actions. It shows actual transfer bytes,
+Cancel, offline availability, a newer known version and failed-download Retry. Completion
+opens the ordinary file in the same tab. The book reader
 and book tools request content before reading; positions and highlights keep their
 original paths. Gallery images load when their rows enter the viewport and can retry on
 open. Canvas opening requests content, and canvas export warnings name unavailable
@@ -32,8 +36,14 @@ offloaded paths. Agent listings include absent originals with size and state, wh
 image preparation, office tools, copying and ZIP creation request real bytes after their
 existing scope checks. Projection text is not returned as the original content.
 
-The stub card and in-note embed rendering remain separate design work. Existing file
-links are never rewritten. Selective sync remains a separate participation policy. Code and settings retain
+Reading view and live preview replace offloaded attachment embeds with a saved image preview
+or a file row. Pressing a row opens the card; pressing an image preview does nothing. Only the
+download glyph fetches bytes. After download Obsidian renders that embed normally, without
+reloading or writing the note. Raster previews are generated at up to 512 pixels on their long
+side and about 42 KiB, stored in a bounded device-local cache, never as synced vault files.
+Unsupported images, originals above the mobile whole-read limit, failed previews and older
+stubs fall back to a row. Existing file links are never rewritten.
+Selective sync remains a separate participation policy. Code and settings retain
 their approval requirements. The file-size limit is **200 MiB**, or
 `200 * 1024 * 1024` bytes. Downloads use bounded streams where the connection and storage
 support them; legacy/custom providers retain a size-limited whole-file fallback.

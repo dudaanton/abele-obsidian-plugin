@@ -13,12 +13,14 @@ import { openChat } from '@/ai/openChat'
 
 import { tokenUi } from '@/sync/tokenUi'
 import { registerExternalFileActions } from '@/sync/external/registerActions'
+import { registerExternalPresentation } from '@/sync/external/registerPresentation'
 import { historyConnection } from '@/sync/tokenHistory'
 import type { Plugin } from 'obsidian'
 
 /** Startup section; called at its original lifecycle position. */
 export function registerWorkspaceEvents(plugin: Plugin) {
   registerExternalFileActions(plugin)
+  registerExternalPresentation(plugin)
   const orphanCleanup = deferredCleanup(() => GlobalStore.getInstance().cleanupOrphanedWidgets())
   plugin.register(() => orphanCleanup.stop())
   plugin.registerEvent(

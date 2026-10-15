@@ -78,3 +78,7 @@ All covering ports are checked for pins, and a pin change is sent to each coveri
 Rule previews are bound to their selected connection. Retained versions and local bytes are
 rechecked before removal; a matching path or digest never grants another connection authority.
 Desktop and phone scenario acceptance remains a separate live validation gate.
+Offloaded links and stub explorer entries route to the registered `abele-external-file` view.
+The shared offload coordinator supplies verified stub metadata, connection availability and
+bounded-source byte progress to that card and the reading/live-preview embed adapters.
+Only their explicit actions hydrate; note rendering never rewrites the source note.

@@ -63,6 +63,10 @@ async function setup(workspaceEvents = false) {
   const plugin = Object.assign(Object.create(AbelePlugin.prototype) as AbelePlugin, {
     app: env.app,
     addSettingTab: vi.fn(),
+    registerView: vi.fn(),
+    registerExtensions: vi.fn(),
+    registerMarkdownPostProcessor: vi.fn(),
+    registerEditorExtension: vi.fn(),
     addCommand: vi.fn(),
     registerEvent: vi.fn(),
     register: (dispose: () => void) => disposals.push(dispose),

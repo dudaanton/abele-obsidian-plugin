@@ -4,7 +4,8 @@ import { externalActionsOf } from './actionHost'
 import { tokenOffloadsOf } from '../tokenOffloadCoordinator'
 import { pathCoordinatorOf } from '../pathCoordinator'
 import type { OffloadPreview } from './fileActions'
-import { externalLinkPath, prepareExternalFile, recordExternalOpening } from './fileAccess'
+import { externalLinkPath, recordExternalOpening } from './fileAccess'
+import { openExternalFile } from './opening'
 
 export const actionTitles = {
   evict: 'Keep only on the server',
@@ -79,24 +80,20 @@ export function registerExternalFileActions(plugin: Plugin): void {
     const href = link.getAttribute('data-href') ?? link.getAttribute('href') ?? ''
     const hash = href.indexOf('#')
     const target = hash < 0 ? href : href.slice(0, hash)
-    const fragment = hash < 0 ? '' : href.slice(hash)
     const source = app.workspace.getActiveFile()?.path ?? ''
     const path = externalLinkPath(app, target, source)
     if (!path || !manager.isOffloaded(path)) return
     event.preventDefault()
     event.stopImmediatePropagation()
-    void prepareExternalFile(app, path)
-      .then(() =>
-        app.workspace.openLinkText(
-          path + fragment,
-          source,
-          event.metaKey || event.ctrlKey ? 'tab' : false
-        )
-      )
-      .catch((error) => {
-        console.debug('[abele-sync] linked external file could not be downloaded', error)
-        new Notice('Unavailable offline or through current connections: ' + path)
-      })
+    void openExternalFile(
+      app,
+      path,
+      app.workspace.getLeaf(event.metaKey || event.ctrlKey ? 'tab' : false),
+      hash < 0 ? '' : href.slice(hash)
+    ).catch((error) => {
+      console.debug('[abele-sync] linked external file could not be downloaded', error)
+      new Notice('Could not open the external file card: ' + path)
+    })
   }
   const listen = (doc: Document) =>
     plugin.registerDomEvent(doc, 'click', followLink, { capture: true })

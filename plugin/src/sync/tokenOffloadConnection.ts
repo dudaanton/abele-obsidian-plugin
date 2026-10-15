@@ -14,7 +14,7 @@ import { ExternalFileHost } from './external/ObsidianExternalFileHost'
 import { activateExternalFiles, recoverOrphanPrivateArtifacts } from './external/pluginSafety'
 import { ExternalState } from './external/state'
 import { pluginRepresentation } from './external/pluginRepresentation'
-import type { ConnectionBinding } from './external/records'
+import type { ConnectionBinding, ExternalRecord } from './external/records'
 import type { RuntimeFence } from './external/recovery'
 import type { IndexedDbStateStore } from './IndexedDbStateStore'
 import type { ExternalDescription, TokenOffloadCoordinator } from './tokenOffloadCoordinator'
@@ -77,10 +77,15 @@ export async function tokenOffloadConnection(input: {
     },
     stagingMtime: (path) => stagingMtimes.get(path) ?? Date.now(),
   })
-  const describe = async (path: string): Promise<ExternalDescription | null> => {
-    const file = (await external?.snapshot())?.files.find(
-      (one) => one.lastProvenLocalBase?.path === path && one.representation !== 'hydrated'
-    )
+  const describe = async (
+    path: string,
+    record?: ExternalRecord
+  ): Promise<ExternalDescription | null> => {
+    const file =
+      record ??
+      (await external?.snapshot())?.files.find(
+        (one) => one.lastProvenLocalBase?.path === path && one.representation !== 'hydrated'
+      )
     if (!file?.projectionPath || !file.projectionSha) return null
     const bytes = await host.read(file.projectionPath)
     if ((await sha256(bytes)) !== file.projectionSha) throw new Error('The local stub changed')
@@ -99,7 +104,7 @@ export async function tokenOffloadConnection(input: {
     for (const file of document?.files ?? []) {
       if (file.representation === 'hydrated' || !file.lastProvenLocalBase) continue
       try {
-        const detail = await describe(file.lastProvenLocalBase.path)
+        const detail = await describe(file.lastProvenLocalBase.path, file)
         if (detail) manager.rememberDescription(detail)
       } catch (error) {
         console.debug('[abele-sync] external description is unavailable', error)

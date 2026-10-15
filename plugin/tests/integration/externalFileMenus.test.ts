@@ -12,20 +12,19 @@ import { flushPromises } from '@vue/test-utils'
 
 vi.mock('@/components/obsidian/dialogs', () => ({ confirmDialog: vi.fn(async () => false) }))
 
-it('downloads ordinary linked books before opening while retaining the position fragment', async () => {
+it('opens offloaded linked books as a card without downloading and retains the position fragment', async () => {
   const app = useVault([])
   const open = vi.fn(async () => {})
-  Object.assign(app.workspace, { getActiveFile: () => null, openLinkText: open })
+  const setViewState = vi.fn(async () => {})
+  Object.assign(app.workspace, {
+    getActiveFile: () => null,
+    openLinkText: open,
+    getLeaf: () => ({ setViewState }),
+  })
   const manager = tokenOffloadsOf(app.vault, pathCoordinatorOf(app.vault))
   manager.remember('sample', [{ path: 'Books/sample.epub', size: 100, mtime: 1 }], [])
-  let finish!: () => void
-  manager.hydrator(
-    'sample',
-    () =>
-      new Promise<void>((resolve) => {
-        finish = resolve
-      })
-  )
+  const hydrate = vi.fn(async () => {})
+  manager.hydrator('sample', hydrate)
   let follow!: (event: MouseEvent) => void
   registerExternalFileActions({
     app,
@@ -43,9 +42,13 @@ it('downloads ordinary linked books before opening while retaining the position 
   follow(event)
   expect(event.defaultPrevented).toBe(true)
   expect(open).not.toHaveBeenCalled()
-  finish()
   await flushPromises()
-  expect(open).toHaveBeenCalledWith('Books/sample.epub#page=4', '', false)
+  expect(hydrate).not.toHaveBeenCalled()
+  expect(setViewState).toHaveBeenCalledWith({
+    type: 'abele-external-file',
+    active: true,
+    state: { path: 'Books/sample.epub', subpath: '#page=4' },
+  })
 })
 
 it('previews folders and selections without effects; cancel keeps files; pin toggles and download does not open', async () => {

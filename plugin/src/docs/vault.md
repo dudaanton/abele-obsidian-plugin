@@ -35,7 +35,13 @@ Notices only while those bytes still match; unknown or changed copies remain vis
 work. Empty recovery directories do not produce a Notice. Retention never deletes these bytes.
 Reader, gallery, canvas and agent
 content reads can hydrate absent originals; listings show original paths, size and offloaded
-state. Stub cards and in-note embed previews are not implemented.
+state. Offloaded paths open an information card, and reading/live-preview embeds show a
+local image preview or file row. Only explicit download actions fetch an embed's content;
+rendering and hydration do not rewrite the note.
+The `abele-external-previews-v1` app-local cache holds at most 128 JPEG data URLs, each
+at most 56 KiB encoded and 512 pixels on the long side. The optional projection `preview`
+field references a cache entry by SHA-256; `offloadedAt` records the local offload time.
+Previews are never separate vault files or sync inputs. Missing previews fall back to a row.
 
 Records bind to the local ledger, normalized endpoint, vault, personal/scoped mode, principal,
 grant, connection generation and credential association. They separate local representation

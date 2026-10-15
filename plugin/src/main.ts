@@ -1,6 +1,8 @@
 import { ChangeTracker } from '@/ai/rewind/ChangeTracker'
 import '@/helpers/deferredCleanup'
 import { openSyncedFile } from './sync/openSyncedFile'
+import { tokenOffloadsOf } from './sync/tokenOffloadCoordinator'
+import { pathCoordinatorOf } from './sync/pathCoordinator'
 import { MarkdownPostProcessorContext, Notice, Plugin, Platform } from 'obsidian'
 import { setKeyboardDiagnostics } from '@/helpers/keyboardDiagnostics'
 import { applySettingsLook } from '@/helpers/settingsLook'
@@ -446,7 +448,8 @@ export default class AbelePlugin extends Plugin {
           })
           this.registerEvent(
             this.app.workspace.on('file-open', (file) => {
-              if (file)
+              const offloads = tokenOffloadsOf(this.app.vault, pathCoordinatorOf(this.app.vault))
+              if (file && !offloads.isOffloaded(offloads.originalPath(file.path)))
                 void Promise.resolve(this.tokenEngines?.hydrate(file.path))
                   .then(() => ui.opened(file.path))
                   .catch(
