@@ -98,7 +98,7 @@ const script = (layout: string) => `(async () => {
   // PROBE: where the focus is at each step of opening, and who moved it.
   report.openLog = []
   const where = step => { const a = document.activeElement; report.openLog.push(step + ': ' + (a?.tagName + '.' + String(a?.className).slice(0, 60)) + ' kb=' + [...document.body.classList].filter(c => /keyboard|toolbar/.test(c)).join(',') + ' box=' + (box()?.clientHeight ?? '-')) }
-  const onFocusIn = e => report.openLog.push('focusin ' + e.target?.tagName + '.' + String(e.target?.className).slice(0, 40) + ' ' + String(new Error().stack).split('\n').slice(1, 9).map(l => l.trim().slice(0, 90)).join(' | '))
+  const onFocusIn = e => report.openLog.push('focusin ' + e.target?.tagName + '.' + String(e.target?.className).slice(0, 40) + ' ' + String(new Error().stack).split('\\n').slice(1, 9).map(l => l.trim().slice(0, 90)).join(' | '))
   document.addEventListener('focusin', onFocusIn, true)
   const openAsHistory = async fixture => {
     const file = files.find(f => f.path === fixture.path)
