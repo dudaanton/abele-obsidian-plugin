@@ -395,9 +395,20 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       const id = rowId(target)
       const frame = () => [scroller.getBoundingClientRect().top, chromeBottom(), scroller.scrollTop, scroller.scrollHeight, pinned()?.getBoundingClientRect().top, scroller.clientHeight]
       const was = frame()
+      // Every painted frame of the switch, so a row that lands elsewhere says who moved it.
+      const trace = []
+      let tracing = true
+      const sample = () => {
+        const space = root.querySelector('.abele-timeline__anchor-space'), items = root.querySelector('.abele-timeline__blocks')
+        trace.push([Math.round(scroller.scrollTop), scroller.scrollHeight, scroller.classList.contains('abele-timeline__scroll-hold') ? 1 : 0,
+          space?.style.height ?? '', items?.style.paddingTop ?? '', Math.round(rowBy(id)?.getBoundingClientRect().top ?? -1)])
+        if (tracing && trace.length < 90) requestAnimationFrame(sample)
+      }
+      sample()
       await toggleCompleted()
       await settleUI()
-      ;(report.anchorFrames ??= []).push(['switch', id, was, frame()])
+      tracing = false
+      ;(report.anchorFrames ??= []).push(['switch', id, was, frame(), trace])
       return [expected, rowBy(id)?.getBoundingClientRect().top ?? -9999]
     }
     const shot = async name => {
