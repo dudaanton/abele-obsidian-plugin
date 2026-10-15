@@ -115,6 +115,54 @@ describe('go to definition', () => {
     expect(request.mock.calls.some(([r]) => r.url.includes('tarball'))).toBe(false)
   })
 
+  it('opens a name declared in the file shown without downloading the repository', async () => {
+    const { code, open, request } = source(100, {
+      blob: () => ({ path: 'src/app.ts', text: 'const a = helper()\n\nfunction helper() {}' }),
+    })
+    await code.goToDefinition('helper', 'src/app.ts')
+    expect(open).toHaveBeenCalledWith(
+      `https://github.com/acme/widgets/blob/${SHA}/src/app.ts#L3`,
+      false
+    )
+    expect(request.mock.calls.some(([r]) => /tarball|git\/trees/.test(r.url))).toBe(false)
+  })
+
+  it('looks in the file shown when the repository cannot be downloaded, and says why', async () => {
+    const { client } = clientWith({
+      [`/repos/acme/widgets/git/trees/${SHA}`]: {
+        json: { truncated: false, tree: [{ path: 'src/app.ts', type: 'blob', size: 100 }] },
+      },
+      [`/repos/acme/widgets/tarball/${SHA}`]: { status: 403, json: { message: 'Forbidden' } },
+    })
+    const { code, open, pick } = source(100, {
+      client: () => client,
+      blob: () => ({ path: 'src/app.ts', text: 'import { other } from "./b"\nother()' }),
+    })
+    await code.goToDefinition('other', 'src/app.ts')
+    expect(open).not.toHaveBeenCalled()
+    expect(pick).not.toHaveBeenCalled()
+    expect(Notice.shown.at(-1)).toMatch(/No definition of other found in the files open in this tab/)
+    expect(Notice.shown.at(-1)).toMatch(/could not be downloaded/)
+  })
+
+  it('looks in the file shown when the provider cannot look the name up', async () => {
+    const { code, open } = source(100, {
+      source: () =>
+        ({
+          identity: { provider: 'github' },
+          cacheNamespace: 'sample',
+          navigation: { file: (ref: string, path: string, line?: number) => `${ref}/${path}#${line}` },
+          assertCurrent: () => {},
+          definitions: async () => {
+            throw new Error('Could not reach the sample host.')
+          },
+        }) as never,
+      blob: () => ({ path: 'lib/x.ts', text: 'export class Thing {}\nnew Thing()' }),
+    })
+    await code.goToDefinition('Thing', 'lib/x.ts')
+    expect(open).toHaveBeenCalledWith(`${SHA}/lib/x.ts#1`, false)
+  })
+
   it("offers the choice, from a pull request's changed lines numbered as in the file, when too large", async () => {
     const { code, pick } = source(10_000, {
       changes: async () => ({

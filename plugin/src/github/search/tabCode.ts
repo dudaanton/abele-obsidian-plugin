@@ -309,35 +309,63 @@ export class TabCode implements CodeNav {
     }
   }
 
-  /** Go to definition: one candidate opens, several are offered, none is said. */
+  /**
+   * Go to definition: one candidate opens, several are offered, none is said. A name declared in
+   * the file it was clicked in is answered from that file, without downloading the repository;
+   * the rest is looked up in the whole repository, or — when that cannot be had, too large or
+   * refused or out of reach — in what the tab already shows.
+   */
   async goToDefinition(name: string, fromPath: string): Promise<void> {
     if (!this.captured) return this.snapshot().code.goToDefinition(name, fromPath)
     const repo = this.src.repo()
     let notice: Notice | null = null
+    const onStage = (stage: Stage) => {
+      notice ??= new Notice(`Looking for ${name}…`, 0)
+      notice.setMessage(`Looking for ${name}: ${STAGE_TEXT[stage].toLowerCase()}`)
+    }
     try {
       const sha = await this.src.sha()
-      let hits: DefinitionHit[]
+      let hits: DefinitionHit[] = []
       let where = `${repo.owner}/${repo.repo} at ${this.src.refLabel()}`
-      try {
-        const index = this.src.source
-          ? null
-          : (cachedIndex(this.src.client(), repo, sha) ??
-            (await this.index((stage) => {
-              notice ??= new Notice(`Looking for ${name}…`, 0)
-              notice.setMessage(`Looking for ${name}: ${STAGE_TEXT[stage].toLowerCase()}`)
-            })))
-        hits = this.src.source
-          ? await this.src
+      // The whole file is on screen: a name it declares needs nothing else.
+      const shown = this.src.blob()
+      const sameFile = shown?.path === fromPath ? findDefinitions([shown], name, fromPath) : []
+      if (sameFile.length) {
+        console.debug('[Abele] go to definition: declared in the same file', {
+          name,
+          fromPath,
+          hits: sameFile.length,
+        })
+        hits = sameFile
+      } else {
+        try {
+          if (this.src.source) {
+            hits = await this.src
               .source()
-              .definitions(sha, name, fromPath, this.src.limitBytes(), (stage) => {
-                notice ??= new Notice(`Looking for ${name}…`, 0)
-                notice.setMessage(`Looking for ${name}: ${STAGE_TEXT[stage].toLowerCase()}`)
-              })
-          : findDefinitions(index.files, name, fromPath)
-      } catch (e) {
-        if (!(e instanceof TooLargeError)) throw e
-        hits = await this.definitionsInTab(name, fromPath)
-        where = 'the files open in this tab (the repository is too large to download)'
+              .definitions(sha, name, fromPath, this.src.limitBytes(), onStage)
+          } else {
+            const index = cachedIndex(this.src.client(), repo, sha) ?? (await this.index(onStage))
+            hits = findDefinitions(index.files, name, fromPath)
+          }
+          console.debug('[Abele] go to definition: looked up in the repository', {
+            name,
+            fromPath,
+            hits: hits.length,
+          })
+        } catch (e) {
+          if (e instanceof DOMException && e.name === 'AbortError') throw e
+          console.debug(
+            '[Abele] go to definition: the repository is out of reach, looking in the tab',
+            e
+          )
+          hits = await this.definitionsInTab(name, fromPath)
+          where =
+            e instanceof TooLargeError
+              ? 'the files open in this tab (the repository is too large to download)'
+              : `the files open in this tab (the repository could not be downloaded: ${
+                  e instanceof Error ? e.message : String(e)
+                })`
+        }
       }
       notice?.hide()
       notice = null
