@@ -534,16 +534,17 @@ export class CanvasEditor {
       this.refresh()
     })
     this.listen(this.text, 'input', () => this.input())
-    // Leaving the field writes the text; the card stays open until the canvas is tapped. A field
-    // left mid-composition, as a phone's keyboard can be dismissed, has finished it: the words
-    // written so far are kept. Work whose write failed waits for Retry or Discard instead.
+    // The field stands on its card, so a press anywhere else leaves it: the card's words are
+    // written and editing ends. A field left mid-composition, as a phone's keyboard can be
+    // dismissed, has finished it: the words written so far are kept. After a failed write the
+    // card stays open with its words and waits for the person's Retry or Discard.
     this.listen(this.text, 'blur', () => {
       if (this.composing) {
         this.composing = false
         this.input()
         this.refresh()
       }
-      void this.saveText(true)
+      if (!this.writeFailing) void this.finishText()
     })
     // Esc, or Cmd+Enter, finishes writing on a card, as a tap beside it does.
     this.listen(this.text, 'keydown', (event) => {
@@ -1085,10 +1086,8 @@ export class CanvasEditor {
     return document
   }
   /** Typing paused or the field was left: write the text now, keep the card open. */
-  private async saveText(leaving = false): Promise<void> {
-    // After a failed write, leaving the field (a phone's menu sheet takes the focus too) keeps the
-    // typed text in the open card and waits for the person's own Retry or Discard.
-    if (this.waiting || this.destroyed || (leaving && this.writeFailing)) return
+  private async saveText(): Promise<void> {
+    if (this.waiting || this.destroyed) return
     if (this.settleText()) await this.flush()
   }
   /** Ends text editing: the text is one last step, if it changed since the previous one. */

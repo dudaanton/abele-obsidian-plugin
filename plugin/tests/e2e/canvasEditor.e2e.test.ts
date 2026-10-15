@@ -242,8 +242,8 @@ const leaveText = async (text?: string, written = true) => {
   // A write that fails while typing offers Retry with the card still open.
   if (!written)
     await until("view().editor.editing && button('Retry save') && !button('Retry save').hidden")
-  // The canvas's own corner: the card itself can sit below the window once Retry shows.
-  await press('view().viewer.stage', true)
+  // A press on empty canvas in sight leaves the card, as a person taps beside it.
+  await at(chrome.emptySpotInSight() ?? chrome.emptySpot())
   await until('!view().editor.editing')
 }
 const addText = async (text: string, written = true) => {

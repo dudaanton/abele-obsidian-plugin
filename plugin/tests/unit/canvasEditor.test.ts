@@ -1002,16 +1002,18 @@ describe('card text saves itself', () => {
     s.input('Read by an agent, then more')
     expect(s.document.session.draft?.active).toBe(true)
   })
-  it('writes on leaving the field and ends editing on Escape or a canvas tap', async () => {
+  it('writes and ends editing on leaving the field, Escape or a canvas tap', async () => {
     const s = setup(emptyCanvas(), { schedule: { idle: 60_000, max: 60_000 } })
     s.button('Add text card').click()
     s.input('Written on blur')
+    // The field stands on the card: a press anywhere else leaves it, as Save text once did.
     s.field().blur()
+    expect(s.el.querySelector<HTMLElement>('.abele-canvas-text-editor')!.hidden).toBe(true)
     await vi.waitFor(() =>
       expect(s.document.session.committed.graph.nodes[0]?.text).toBe('Written on blur')
     )
-    expect(s.el.querySelector<HTMLElement>('.abele-canvas-text-editor')!.hidden).toBe(false)
-    s.field().focus()
+    s.viewer.onSelect!(s.document.session.graph.nodes[0])
+    s.button('Edit card text').click()
     s.input('Written on tap')
     s.viewer.onSelect!(null)
     expect(s.el.querySelector<HTMLElement>('.abele-canvas-text-editor')!.hidden).toBe(true)
@@ -1024,6 +1026,24 @@ describe('card text saves itself', () => {
     expect(s.el.querySelector<HTMLElement>('.abele-canvas-text-editor')!.hidden).toBe(true)
     await vi.waitFor(() =>
       expect(s.document.session.committed.graph.nodes[0].text).toBe('Written on Escape')
+    )
+  })
+  it('after a failed write, leaving the field keeps the card open and waits for Retry', async () => {
+    const s = setup(emptyCanvas(), { textSchedule: { idle: 20, max: 1000 } })
+    s.publish.mockRejectedValueOnce(new Error('Sample storage unavailable'))
+    s.button('Add text card').click()
+    s.input('Typed before a failure')
+    await vi.waitFor(() => expect(s.button('Retry save').hidden).toBe(false))
+    const calls = s.publish.mock.calls.length
+    // A phone's menu sheet takes the focus too: that is not the person choosing to write again.
+    s.field().blur()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(s.publish).toHaveBeenCalledTimes(calls)
+    expect(s.el.querySelector<HTMLElement>('.abele-canvas-text-editor')!.hidden).toBe(false)
+    expect(s.field().value).toBe('Typed before a failure')
+    s.button('Retry save').click()
+    await vi.waitFor(() =>
+      expect(s.document.session.committed.graph.nodes[0]?.text).toBe('Typed before a failure')
     )
   })
   it('tells about a failing write once, not again at every later attempt', async () => {
