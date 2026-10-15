@@ -32,6 +32,7 @@ export function liveSuite(peer = true): () => TokenSyncLive {
 export const liveSyncFiles = [
   'sync',
   'syncJoin',
+  'syncFirstFolder',
   'syncDevices',
   'syncDeletes',
   'syncSettings',
@@ -65,9 +66,10 @@ export function liveCase(
   name: string,
   scenarios: number[],
   body: () => Promise<void>,
-  fixture: () => TokenSyncLive
+  fixture: () => TokenSyncLive,
+  timeoutMs = 180000
 ): void {
-  it(name, () => runLiveCase(file, name, scenarios, body, fixture), 180000)
+  it(name, () => runLiveCase(file, name, scenarios, body, fixture), timeoutMs)
 }
 export async function runLiveCase(
   file: string,

@@ -1094,6 +1094,25 @@ checks the sync live sources and their imported helpers. The fixture-backed
 `tests/unit/syncLiveServer.test.ts` checks real CLI provisioning and v2 issuance; it never
 drives a desktop or phone. `syncLiveContracts.test.ts` checks the retired-flow fence and mappings.
 
+The **first folder connection** release check is `tests/e2e/syncFirstFolder.e2e.test.ts`.
+Run it in the paired sync-live tier before releasing a sync change. Its seeded fixture has
+1,024 files across 60 nested directories, exactly 20 MiB, mixed Cyrillic/Latin Markdown names,
+PNG/PDF attachments, canvases and ordinary-folder JavaScript. The owner uploads through a
+root connection and issues folder access through Share; the recipient already has 4,000
+unrelated notes. The check requires a paginated server manifest, identical paths and byte
+hashes, existing directories, explicit code approval, advancing counts in the visible
+connection window, no unrelated server uploads, and creation/edit/rename/deletion both ways.
+Both leases use the normal owned-fixture cleanup, including their prior ignore files.
+
+`FIRST_FOLDER_PULL_LIMIT_MS` is provisionally **120,000 ms** and is explicitly marked for
+calibration before landing. No live timing has been measured yet. The manager records the
+logged `elapsedMs` from the first paired run (Connect through initial settled sync), then sets
+generous headroom while keeping the limit below a whole-vault rescan costing about ten
+seconds per directory. Seeding, owner upload, approval and later edits are outside that
+measurement. The NFD case is skipped pending the NFD names task; enable it when that fix lands.
+The external sync-live runner must include this peer file; its `e2e-sync-live.json` list is
+not stored in this repository.
+
 Every connection is made by pasting the token into the native Connect dialog. Remote fixture
 edits use v2 commits; local edits use Obsidian's vault API. Reviews, consent, history, trash,
 pause and disconnect use the actual native controls. The hydration cases exercise the
