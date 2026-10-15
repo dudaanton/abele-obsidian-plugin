@@ -7,12 +7,13 @@
  * page, a Vue side (`BookReader.vue`) shows the contents, the progress and the dialogs.
  */
 import { FileView, Platform, TFile, type Menu, type WorkspaceLeaf } from 'obsidian'
-import { createApp, reactive, watch, type App as VueApp, type WatchStopHandle } from 'vue'
+import { reactive, watch, type WatchStopHandle } from 'vue'
 import { frameOptions } from '@/vendor/foliate-js/frame-options.js'
 import { tagName } from '@/vendor/foliate-js/elements.js'
 import type { FoliateLocation, View as FoliateView } from '@/vendor/foliate-js/view.js'
 import { FootnoteHandler } from '@/vendor/foliate-js/footnotes.js'
 import BookReader from '@/components/reader/BookReader.vue'
+import { mountKit, type KitMount } from '@/components/obsidian/mount'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { settingsSlice } from '@/composables/settingsSlice'
 import { auditDocument, blankDocument, frameSandbox } from './bookSafety'
@@ -85,7 +86,7 @@ export class BookView extends FileView {
   private reader: FoliateView | null = null
   private opened: OpenedBook | null = null
   private loadToken = 0
-  private vue: VueApp | null = null
+  private vue: KitMount | null = null
   private stage: HTMLElement | null = null
   private stageReady: Promise<HTMLElement>
   private resolveStage!: (el: HTMLElement) => void
@@ -175,8 +176,12 @@ export class BookView extends FileView {
     this.contentEl.addClass('abele-book')
     const mount = this.contentEl.createDiv({ cls: 'abele-book__mount' })
     this.model.panel = !Platform.isPhone && this.app.loadLocalStorage(PANEL_KEY) === '1'
-    this.vue = createApp(BookReader, { model: this.model, ...bookCallbacks(this.actions()) })
-    this.vue.mount(mount)
+    this.vue = mountKit(
+      mount,
+      BookReader,
+      { model: this.model, ...bookCallbacks(this.actions()) },
+      { owner: this }
+    )
     this.zenChrome = new ZenChrome({
       containerEl: this.containerEl,
       model: this.model,

@@ -1,5 +1,5 @@
-import { createApp } from 'vue'
 import IconPicker from '@/components/obsidian/IconPicker.vue'
+import { mountKit } from '@/components/obsidian/mount'
 
 /**
  * Opens the icon picker on its own, for the layout probes. In the plugin it opens from a header
@@ -7,14 +7,11 @@ import IconPicker from '@/components/obsidian/IconPicker.vue'
  * either way. Closing it (Escape, or picking an icon) takes it down again.
  */
 export function openIconPicker(current = 'play'): void {
-  const host = document.body.createDiv()
-  let open = true
-  const close = () => {
-    if (!open) return
-    open = false
-    app.unmount()
-    host.remove()
-  }
-  const app = createApp(IconPicker, { current, onClose: close, onChoose: close })
-  app.mount(host)
+  const close = () => app.unmount()
+  const app = mountKit(
+    document.body.createDiv(),
+    IconPicker,
+    { current, onClose: close, onChoose: close },
+    { remove: true }
+  )
 }

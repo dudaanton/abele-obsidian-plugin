@@ -1,6 +1,7 @@
 import { ItemView, type App, type ViewStateResult } from 'obsidian'
-import { createApp, reactive, type App as VueApp } from 'vue'
+import { reactive } from 'vue'
 import Changelog from '@/components/changelog/Changelog.vue'
+import { mountKit, type KitMount } from '@/components/obsidian/mount'
 import releases from 'virtual:abele-changelog'
 import { normalizeRange, type Range } from './model'
 
@@ -9,7 +10,7 @@ const current = releases[0]?.version ?? '0.0.0'
 
 export class ChangelogView extends ItemView {
   readonly model: { range: Range | null } = reactive({ range: null })
-  private vue: VueApp | null = null
+  private vue: KitMount | null = null
   getViewType(): string {
     return CHANGELOG_VIEW_TYPE
   }
@@ -22,8 +23,12 @@ export class ChangelogView extends ItemView {
   async onOpen(): Promise<void> {
     this.contentEl.empty()
     this.contentEl.addClass('abele-changelog-view')
-    this.vue = createApp(Changelog, { releases, model: this.model })
-    this.vue.mount(this.contentEl.createDiv())
+    this.vue = mountKit(
+      this.contentEl.createDiv(),
+      Changelog,
+      { releases, model: this.model },
+      { owner: this }
+    )
   }
   async onClose(): Promise<void> {
     this.vue?.unmount()

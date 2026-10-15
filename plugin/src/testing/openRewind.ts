@@ -1,6 +1,6 @@
-import { createApp } from 'vue'
 import { TFile } from 'obsidian'
 import AiRewindDialog from '@/components/AiRewindDialog.vue'
+import { mountKit } from '@/components/obsidian/mount'
 import { ChatRewind } from '@/ai/rewind/ChatRewind'
 import { memoryStore } from '@/ai/rewind/RewindStore'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -41,21 +41,18 @@ export async function openRewind(
     if (file instanceof TFile) await app.vault.append(file, '\nA later edit from another writer.\n')
   }
 
-  const host = document.body.createDiv()
-  let open = true
-  const close = () => {
-    if (!open) return
-    open = false
-    view.unmount()
-    host.remove()
-  }
-  const view = createApp(AiRewindDialog, {
-    rewind,
-    mode: 'since',
-    messageId: 'probe-turn',
-    since: 0,
-    onClose: close,
-  })
-  view.mount(host)
+  const close = () => view.unmount()
+  const view = mountKit(
+    document.body.createDiv(),
+    AiRewindDialog,
+    {
+      rewind,
+      mode: 'since',
+      messageId: 'probe-turn',
+      since: 0,
+      onClose: close,
+    },
+    { remove: true }
+  )
   return rewind
 }

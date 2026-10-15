@@ -1,4 +1,3 @@
-import { createApp } from 'vue'
 import { MarkdownView, Notice, Platform, SuggestModal, TFile, type App } from 'obsidian'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { newCommentId, parseMarkers, resolveQuote, stripMarkers } from '@/editor/commentMarkers'
@@ -8,6 +7,7 @@ import {
   type CommentInfoSource,
 } from '@/editor/CommentPlugin'
 import TextCommentDialog from '@/components/TextCommentDialog.vue'
+import { mountKit } from '@/components/obsidian/mount'
 import type { CommentSelection } from './service'
 import { TextCommentService, type ThreadSnapshot } from './service'
 import { VaultCommentRepository, vaultCommentDocuments } from './vaultRepository'
@@ -195,25 +195,28 @@ export class TextComments implements CommentInfoSource {
     const close = () => {
       if (!this.dialogs.delete(close)) return
       vue.unmount()
-      host.remove()
     }
     const note = initial?.thread.anchor.note ?? options.selection?.note ?? ''
-    const vue = createApp(TextCommentDialog, {
-      service: this.service,
-      ...options,
-      unresolved,
-      orphan,
-      anchor,
-      beforeWrite: options.beforeWrite ?? (() => this.flushNote(note)),
-      changed: (saved: ThreadSnapshot | null) => {
-        const id = saved?.thread.id ?? initial?.thread.id
-        if (id) this.invalidate(id)
-        dispatchCommentsChanged(note)
-      },
-      onClose: close,
-    })
     this.dialogs.add(close)
-    vue.mount(host)
+    const vue = mountKit(
+      host,
+      TextCommentDialog,
+      {
+        service: this.service,
+        ...options,
+        unresolved,
+        orphan,
+        anchor,
+        beforeWrite: options.beforeWrite ?? (() => this.flushNote(note)),
+        changed: (saved: ThreadSnapshot | null) => {
+          const id = saved?.thread.id ?? initial?.thread.id
+          if (id) this.invalidate(id)
+          dispatchCommentsChanged(note)
+        },
+        onClose: close,
+      },
+      { remove: true }
+    )
   }
   /** Where the passage is: the selected words, else the mark that was pressed; a phone has
    * no place beside it and opens the sheet. The card lines up with the start of the text. */

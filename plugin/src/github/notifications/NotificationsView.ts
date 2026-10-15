@@ -5,7 +5,8 @@
  */
 import { openExternal } from '@/helpers/openExternal'
 import { ItemView, type PaneType, type ViewStateResult, type WorkspaceLeaf } from 'obsidian'
-import { createApp, reactive, h, type App as VueApp } from 'vue'
+import { reactive, h } from 'vue'
+import { mountKit, type KitMount } from '@/components/obsidian/mount'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { secrets } from '@/secrets/SecretStore'
 import GithubNotifications from '@/components/github/GithubNotifications.vue'
@@ -16,7 +17,7 @@ export const GITHUB_NOTIFICATIONS_VIEW_TYPE = 'abele-github-notifications'
 
 export class NotificationsView extends ItemView {
   readonly state: NotificationsState = reactive({ which: 'all', repo: '' })
-  private vue: VueApp | null = null
+  private vue: KitMount | null = null
 
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
@@ -51,27 +52,31 @@ export class NotificationsView extends ItemView {
     this.contentEl.empty()
     this.contentEl.addClass('abele-github-notifications-view')
     const mountPoint = this.contentEl.createDiv()
-    this.vue = createApp({
-      render: () => {
-        void AbeleConfig.getInstance().version.value
-        return h(GithubNotifications, {
-          enabled: githubSettings().enabled,
-          // The token's own server: notifications belong to the account, not to a repository. Read
-          // with the notifications token when one is set, the main token otherwise.
-          clientFor: () => {
-            void AbeleConfig.getInstance().version.value
-            void secrets().version.value
-            return notificationsClient()
-          },
-          state: this.state,
-          onOpen: (url: string, pane: PaneType | false): void =>
-            void openGithubUrl(this.app, url, pane),
-          onExternal: (url: string): void => void openExternal(url),
-          onState: () => this.app.workspace.requestSaveLayout(),
-        })
+    this.vue = mountKit(
+      mountPoint,
+      {
+        render: () => {
+          void AbeleConfig.getInstance().version.value
+          return h(GithubNotifications, {
+            enabled: githubSettings().enabled,
+            // The token's own server: notifications belong to the account, not to a repository. Read
+            // with the notifications token when one is set, the main token otherwise.
+            clientFor: () => {
+              void AbeleConfig.getInstance().version.value
+              void secrets().version.value
+              return notificationsClient()
+            },
+            state: this.state,
+            onOpen: (url: string, pane: PaneType | false): void =>
+              void openGithubUrl(this.app, url, pane),
+            onExternal: (url: string): void => void openExternal(url),
+            onState: () => this.app.workspace.requestSaveLayout(),
+          })
+        },
       },
-    })
-    this.vue.mount(mountPoint)
+      null,
+      { owner: this }
+    )
   }
 
   async onClose() {

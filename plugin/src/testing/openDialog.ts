@@ -1,14 +1,7 @@
-import {
-  createApp,
-  defineComponent,
-  h,
-  onUnmounted,
-  onMounted,
-  nextTick,
-  type Component,
-} from 'vue'
+import { defineComponent, h, onUnmounted, onMounted, nextTick, type Component } from 'vue'
 import dayjs from 'dayjs'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { mountKit } from '@/components/obsidian/mount'
 import { networkDecision } from '@/slides/liveAdapter'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { reviewKeyDestinations } from '@/secrets/destinationReview'
@@ -115,17 +108,14 @@ function mountAlone(
   props: Record<string, unknown> = {},
   fixtureName?: string
 ): void {
-  const host = document.body.createDiv()
-  let open = true
-  const close = () => {
-    if (!open) return
-    open = false
-    app.unmount()
-    host.remove()
-  }
+  const close = () => app.unmount()
   const endings = Object.fromEntries(ENDINGS.map((name) => [name, close]))
-  const app = createApp(component, { ...endings, ...props })
-  app.mount(host)
+  const app = mountKit(
+    document.body.createDiv(),
+    component,
+    { ...endings, ...props },
+    { remove: true }
+  )
   // Promise-returning fixtures participate in the inventory's owned-modal cleanup protocol.
   if (fixtureName)
     Array.from(document.querySelectorAll('.modal.abele-modal'))

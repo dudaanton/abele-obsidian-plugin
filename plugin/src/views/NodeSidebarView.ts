@@ -1,5 +1,5 @@
 import { ItemView, Notice, Platform, type ViewStateResult, type WorkspaceLeaf } from 'obsidian'
-import { createApp, h, shallowRef, watch, type App as VueApp, type WatchStopHandle } from 'vue'
+import { h, shallowRef, watch, type WatchStopHandle } from 'vue'
 import { z } from 'zod'
 import { NodeService } from '@/node/NodeService'
 import { NodePathService } from '@/node/NodePathService'
@@ -25,10 +25,11 @@ import {
 import { discardNodePathFile, takeNodePathStep } from '@/node/nodePathGitActions'
 import type { BranchStep } from '@/components/nodeWork/branchStep'
 import NodePathSidebar from '@/components/nodeWork/NodePathSidebar.vue'
+import { mountKit, type KitMount } from '@/components/obsidian/mount'
 
 const State = z.object({ registrationId: z.string().min(1).max(128).optional() }).strict()
 export class NodeSidebarView extends ItemView {
-  private ui?: VueApp
+  private ui?: KitMount
   private stop?: WatchStopHandle
   private readonly registrationId = shallowRef('')
   private readonly local = shallowRef<LocalNode>()
@@ -73,126 +74,134 @@ export class NodeSidebarView extends ItemView {
       },
       { immediate: true }
     )
-    this.ui = createApp({
-      render: () => {
-        const node = service.nodes.value.find((n) => n.id === this.registrationId.value)
-        const model: NodePathModel | undefined = node
-          ? NodePathService.getInstance().model(node.id)
-          : undefined
-        const connection = node ? service.connection(node.id) : undefined
-        const selected = () => model?.current.value
-        // A chat chosen in the place search opens in its tab, as its row in the panel did.
-        const openChat = (id: string) => {
-          const session = model?.sessions.value.find((s) => s.session.session_id === id)
-          if (session?.target && model) {
-            model.selectedChat.value = id
-            nodePathAction(() =>
-              openNodePathTab(
-                this.app.workspace,
-                {
-                  kind: 'chat',
-                  target: session.target!,
-                  sessionId: id,
-                  title: session.session.title,
-                },
-                Platform.isMobile
+    this.ui = mountKit(
+      this.contentEl,
+      {
+        render: () => {
+          const node = service.nodes.value.find((n) => n.id === this.registrationId.value)
+          const model: NodePathModel | undefined = node
+            ? NodePathService.getInstance().model(node.id)
+            : undefined
+          const connection = node ? service.connection(node.id) : undefined
+          const selected = () => model?.current.value
+          // A chat chosen in the place search opens in its tab, as its row in the panel did.
+          const openChat = (id: string) => {
+            const session = model?.sessions.value.find((s) => s.session.session_id === id)
+            if (session?.target && model) {
+              model.selectedChat.value = id
+              nodePathAction(() =>
+                openNodePathTab(
+                  this.app.workspace,
+                  {
+                    kind: 'chat',
+                    target: session.target!,
+                    sessionId: id,
+                    title: session.session.title,
+                  },
+                  Platform.isMobile
+                )
               )
-            )
+            }
           }
-        }
-        return h(NodePathSidebar, {
-          model,
-          phase: node ? 'ready' : this.localPhase.value,
-          error: this.localError.value || undefined,
-          onConnect: () => this.connectLocal(),
-          node:
-            node && connection && model
-              ? {
-                  name: node.label,
-                  address: node.url,
-                  status: connection.state.value,
-                  seen: formatTimestamp(model.receivedAt.value).label,
-                }
-              : this.local.value
+          return h(NodePathSidebar, {
+            model,
+            phase: node ? 'ready' : this.localPhase.value,
+            error: this.localError.value || undefined,
+            onConnect: () => this.connectLocal(),
+            node:
+              node && connection && model
                 ? {
-                    name: this.local.value.nodeName,
-                    status: 'offline',
-                    address: this.local.value.endpoint,
+                    name: node.label,
+                    address: node.url,
+                    status: connection.state.value,
+                    seen: formatTimestamp(model.receivedAt.value).label,
                   }
-                : undefined,
-          onPair: openNodePathPairing,
-          onOpenFolder: () => {
-            if (model) nodePathAction(() => openFolderForNode(model))
-          },
-          onNewChat: () => {
-            if (model) nodePathAction(() => newNodePathChat(model))
-          },
-          onHistory: () => {
-            const target = selected()
-            if (target)
-              nodePathAction(() =>
-                openNodePathTab(this.app.workspace, { kind: 'history', target }, Platform.isMobile)
-              )
-          },
-          onOpenFile: (path: string, stage?: 'staged' | 'unstaged') => {
-            const target = selected()
-            if (target)
-              nodePathAction(() =>
-                openNodePathTab(
-                  this.app.workspace,
-                  { kind: 'file', target, path, ...(stage ? { stage } : {}) },
-                  Platform.isMobile
+                : this.local.value
+                  ? {
+                      name: this.local.value.nodeName,
+                      status: 'offline',
+                      address: this.local.value.endpoint,
+                    }
+                  : undefined,
+            onPair: openNodePathPairing,
+            onOpenFolder: () => {
+              if (model) nodePathAction(() => openFolderForNode(model))
+            },
+            onNewChat: () => {
+              if (model) nodePathAction(() => newNodePathChat(model))
+            },
+            onHistory: () => {
+              const target = selected()
+              if (target)
+                nodePathAction(() =>
+                  openNodePathTab(
+                    this.app.workspace,
+                    { kind: 'history', target },
+                    Platform.isMobile
+                  )
                 )
-              )
-          },
-          onPickPlace: () => {
-            if (model) pickNodePathPlace(model, openChat)
-          },
-          onPlaceMenu: (event: MouseEvent) => {
-            if (model) showNodePathPlaceMenu(model, event, openChat)
-          },
-          onOpenCommit: (hash: string) => {
-            const target = selected()
-            if (target)
-              nodePathAction(() =>
-                openNodePathTab(
-                  this.app.workspace,
-                  { kind: 'history', target, commit: hash },
-                  Platform.isMobile
+            },
+            onOpenFile: (path: string, stage?: 'staged' | 'unstaged') => {
+              const target = selected()
+              if (target)
+                nodePathAction(() =>
+                  openNodePathTab(
+                    this.app.workspace,
+                    { kind: 'file', target, path, ...(stage ? { stage } : {}) },
+                    Platform.isMobile
+                  )
                 )
-              )
-          },
-          onCompare: () => {
-            if (model) chooseNodePathBase(model)
-          },
-          onStep: (id: BranchStep['id']) => {
-            if (model) nodePathAction(() => takeNodePathStep(model, id))
-          },
-          onDiscard: (path: string) => {
-            if (model) nodePathAction(() => discardNodePathFile(model, path))
-          },
-          onOpenPull: (number: number) => new Notice(`Pull request #${number}`),
-          onConnectService: () => new Notice('Connect a Git service in Abele settings.'),
-          onRefresh: () => {
-            if (model && connection)
-              nodePathAction(() => connection.connect().then(() => model.refreshCurrent()))
-          },
-          onRetry: () => {
-            if (connection && model)
-              nodePathAction(() => connection.connect().then(() => model.refreshCurrent()))
-          },
-          onNodeMenu: (event: MouseEvent) => {
-            if (model) showNodePathNodeMenu(model, event)
-          },
-          onFileMenu: (event: MouseEvent, path: string) => {
-            const target = selected()
-            if (target) showNodePathFileMenu(event, { target, path })
-          },
-          onCopy: (text: string) => nodePathAction(() => navigator.clipboard.writeText(text)),
-        })
+            },
+            onPickPlace: () => {
+              if (model) pickNodePathPlace(model, openChat)
+            },
+            onPlaceMenu: (event: MouseEvent) => {
+              if (model) showNodePathPlaceMenu(model, event, openChat)
+            },
+            onOpenCommit: (hash: string) => {
+              const target = selected()
+              if (target)
+                nodePathAction(() =>
+                  openNodePathTab(
+                    this.app.workspace,
+                    { kind: 'history', target, commit: hash },
+                    Platform.isMobile
+                  )
+                )
+            },
+            onCompare: () => {
+              if (model) chooseNodePathBase(model)
+            },
+            onStep: (id: BranchStep['id']) => {
+              if (model) nodePathAction(() => takeNodePathStep(model, id))
+            },
+            onDiscard: (path: string) => {
+              if (model) nodePathAction(() => discardNodePathFile(model, path))
+            },
+            onOpenPull: (number: number) => new Notice(`Pull request #${number}`),
+            onConnectService: () => new Notice('Connect a Git service in Abele settings.'),
+            onRefresh: () => {
+              if (model && connection)
+                nodePathAction(() => connection.connect().then(() => model.refreshCurrent()))
+            },
+            onRetry: () => {
+              if (connection && model)
+                nodePathAction(() => connection.connect().then(() => model.refreshCurrent()))
+            },
+            onNodeMenu: (event: MouseEvent) => {
+              if (model) showNodePathNodeMenu(model, event)
+            },
+            onFileMenu: (event: MouseEvent, path: string) => {
+              const target = selected()
+              if (target) showNodePathFileMenu(event, { target, path })
+            },
+            onCopy: (text: string) => nodePathAction(() => navigator.clipboard.writeText(text)),
+          })
+        },
       },
-    })
-    this.ui.mount(this.contentEl)
+      null,
+      { owner: this }
+    )
     if (!Platform.isMobile) {
       const configured: unknown = this.app.loadLocalStorage('abele-node-local-state-dir')
       this.local.value = this.discovery.discover(

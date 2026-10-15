@@ -1,4 +1,5 @@
-import { createApp, h, ref } from 'vue'
+import { h, ref } from 'vue'
+import { mountKit } from '@/components/obsidian/mount'
 import type { CodeSelection } from '@/views/codeSelectionHost'
 import DebugSource from '@/components/debugger/DebugSource.vue'
 import TracePointEditor from '@/components/debugger/trace/TracePointEditor.vue'
@@ -37,7 +38,7 @@ export function mountDebugSource(
     context.debugSessionId,
     context.incarnation
   )
-  const app = createApp({
+  const app = mountKit(host, {
     render() {
       void service.active.value // also refresh when a previously unopened binding becomes active
       const binding = service.forSource(context.registrationId, context.conversationId)
@@ -132,7 +133,6 @@ export function mountDebugSource(
       )
     },
   })
-  app.mount(host)
   return {
     update(value) {
       text.value = value

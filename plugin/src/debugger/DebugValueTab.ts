@@ -1,14 +1,15 @@
 import { ItemView, Notice, type Plugin, type WorkspaceLeaf } from 'obsidian'
-import { createApp, h, reactive, type App as VueApp } from 'vue'
+import { h, reactive } from 'vue'
 import DebugValueView from '@/components/debugger/DebugValueView.vue'
 import EmptyState from '@/components/obsidian/EmptyState.vue'
+import { mountKit, type KitMount } from '@/components/obsidian/mount'
 import { GlobalStore } from '@/stores/GlobalStore'
 
 export const DEBUG_VALUE_VIEW_TYPE = 'abele-debug-value'
 
 /** Retained observations live only in this tab, never in the saved workspace layout. */
 export class DebugValueTab extends ItemView {
-  private vue?: VueApp
+  private vue?: KitMount
   private available = false
   private readonly model = reactive<{
     name: string
@@ -60,9 +61,10 @@ export class DebugValueTab extends ItemView {
     this.vue?.unmount()
     this.contentEl.replaceChildren()
     this.vue = this.available
-      ? createApp({ render: () => h(DebugValueView, { ...this.model }) })
-      : createApp(EmptyState, { text: 'Value unavailable. Open it again from the debugger.' })
-    this.vue.mount(this.contentEl)
+      ? mountKit(this.contentEl, { render: () => h(DebugValueView, { ...this.model }) })
+      : mountKit(this.contentEl, EmptyState, {
+          text: 'Value unavailable. Open it again from the debugger.',
+        })
   }
   async onOpen() {
     this.draw()

@@ -1,16 +1,14 @@
-import { createApp, h, type App as VueApp } from 'vue'
+import { h } from 'vue'
+import { mountKit, type KitMount } from '@/components/obsidian/mount'
 import DesignCatalogue from './DesignCatalogue.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 
 import { CATALOGUE_PAGES, type CataloguePage } from './catalogueShape'
 export { CATALOGUE_PAGES, CATALOGUE_COMPONENTS, type CataloguePage } from './catalogueShape'
-let mounted: VueApp | undefined
-let host: HTMLElement | undefined
+let mounted: KitMount | undefined
 export function closeDesignCatalogue() {
   mounted?.unmount()
   mounted = undefined
-  host?.remove()
-  host = undefined
 }
 /** Only reachable through the fenced test API/command. Fixtures perform no vault writes. */
 export function openDesignCatalogue(
@@ -21,17 +19,21 @@ export function openDesignCatalogue(
   closeDesignCatalogue()
   const { app } = GlobalStore.getInstance()
   const doc = app.workspace.containerEl.ownerDocument
-  host = doc.win.createDiv()
+  const host = doc.win.createDiv()
   doc.body.appendChild(host)
-  mounted = createApp({
-    render: () =>
-      h(DesignCatalogue, {
-        page,
-        variant,
-        onClose: closeDesignCatalogue,
-        onNavigate: (next: CataloguePage) => openDesignCatalogue(next, variant),
-      }),
-  })
-  mounted.mount(host)
+  mounted = mountKit(
+    host,
+    {
+      render: () =>
+        h(DesignCatalogue, {
+          page,
+          variant,
+          onClose: closeDesignCatalogue,
+          onNavigate: (next: CataloguePage) => openDesignCatalogue(next, variant),
+        }),
+    },
+    null,
+    { remove: true }
+  )
   return { page, variant, synthetic: true }
 }

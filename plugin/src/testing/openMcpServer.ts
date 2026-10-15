@@ -1,5 +1,5 @@
-import { createApp } from 'vue'
 import McpServerModal from '@/components/settings/ai/McpServerModal.vue'
+import { mountKit } from '@/components/obsidian/mount'
 import { createMcpServer } from '@/ai/mcp/types'
 
 /**
@@ -9,15 +9,12 @@ import { createMcpServer } from '@/ai/mcp/types'
  * closing it, Save included, only takes it down again.
  */
 export function openMcpServer(url = 'https://mcp.example.com/mcp'): void {
-  const host = document.body.createDiv()
-  let open = true
-  const close = () => {
-    if (!open) return
-    open = false
-    app.unmount()
-    host.remove()
-  }
+  const close = () => app.unmount()
   const server = createMcpServer({ id: 'probe', name: 'probe', url })
-  const app = createApp(McpServerModal, { server, servers: [], isNew: true, onClose: close })
-  app.mount(host)
+  const app = mountKit(
+    document.body.createDiv(),
+    McpServerModal,
+    { server, servers: [], isNew: true, onClose: close },
+    { remove: true }
+  )
 }

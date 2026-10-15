@@ -10,8 +10,9 @@
  * where it is and Obsidian carries on as if the plugin were not there.
  */
 import { MarkdownRenderChild, type MarkdownPostProcessorContext } from 'obsidian'
-import { createApp, h } from 'vue'
+import { h } from 'vue'
 import MermaidDiagram from '@/components/mermaid/MermaidDiagram.vue'
+import { mountKit } from '@/components/obsidian/mount'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { mermaidViewerActive } from './mermaidGate'
 
@@ -26,9 +27,7 @@ export interface MermaidMount {
 
 /** Mounts the viewer into `host`. Returns what unmounts it. */
 export function mountMermaid(host: HTMLElement, props: MermaidMount): () => void {
-  const app = createApp({ render: () => h(MermaidDiagram, props) })
-  app.mount(host)
-  return () => app.unmount()
+  return mountKit(host, { render: () => h(MermaidDiagram, props) }).unmount
 }
 
 class MermaidChild extends MarkdownRenderChild {

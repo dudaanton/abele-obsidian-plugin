@@ -16,11 +16,12 @@ import {
   type ViewStateResult,
   type WorkspaceLeaf,
 } from 'obsidian'
-import { createApp, reactive, type App as VueApp } from 'vue'
+import { reactive } from 'vue'
 import { confirmDialog } from '@/components/obsidian/dialogs'
 import { ChatService } from '@/ai/ChatService'
 import { DrawingSession } from './DrawingSession'
 import { drawingKeys, mountDrawingBar } from './drawingTab'
+import type { KitMount } from '@/components/obsidian/mount'
 import { drawnPath, flatten, formatOf } from './imageInk'
 import { emptyDrawingModel, type DrawingModel } from './model'
 import { keptDrawingThickness } from './penThickness'
@@ -38,7 +39,7 @@ export class ImageInkView extends ItemView {
     thickness: keptDrawingThickness(),
   })
   session: DrawingSession | null = null
-  private vue: VueApp | null = null
+  private vue: KitMount | null = null
   private path = ''
   /** The chat the picture came from, to send it back to; empty when it came from the vault. */
   private chat = ''
@@ -83,7 +84,8 @@ export class ImageInkView extends ItemView {
       bar,
       this.model,
       () => this.session,
-      (e) => this.moreMenu(e)
+      (e) => this.moreMenu(e),
+      this
     )
   }
 
@@ -95,7 +97,13 @@ export class ImageInkView extends ItemView {
   }
 
   async setState(state: unknown, result: ViewStateResult): Promise<void> {
-    const s = (state ?? {}) as { path?: unknown; chat?: unknown; embed?: unknown; replaceAttachment?: unknown; chatVersion?: unknown }
+    const s = (state ?? {}) as {
+      path?: unknown
+      chat?: unknown
+      embed?: unknown
+      replaceAttachment?: unknown
+      chatVersion?: unknown
+    }
     const path = typeof s.path === 'string' ? s.path : ''
     this.chat = typeof s.chat === 'string' ? s.chat : ''
     this.chatVersion = typeof s.chatVersion === 'number' ? s.chatVersion : null
@@ -109,7 +117,13 @@ export class ImageInkView extends ItemView {
   }
 
   getState(): Record<string, unknown> {
-    return { path: this.path, chat: this.chat, chatVersion: this.chatVersion, embed: this.embed, replaceAttachment: this.replaceAttachment }
+    return {
+      path: this.path,
+      chat: this.chat,
+      chatVersion: this.chatVersion,
+      embed: this.embed,
+      replaceAttachment: this.replaceAttachment,
+    }
   }
 
   /** The picture, under an empty sheet of ink, ready to draw on. */
@@ -252,21 +266,32 @@ export class ImageInkView extends ItemView {
     const tabId = this.chat || chats.activeTabId.value || undefined
     const origin = tabId ? chats.getSession(tabId) : undefined
     const version = this.chat ? this.chatVersion : origin?.conversationVersion.value
-    const owns = () => !tabId || (!!origin && !origin.isDestroyed &&
-      chats.getSession(tabId) === origin && origin.conversationVersion.value === version)
+    const owns = () =>
+      !tabId ||
+      (!!origin &&
+        !origin.isDestroyed &&
+        chats.getSession(tabId) === origin &&
+        origin.conversationVersion.value === version)
     if (!owns()) {
-      new Notice('The original conversation changed. Save the picture and attach it to the intended chat.')
+      new Notice(
+        'The original conversation changed. Save the picture and attach it to the intended chat.'
+      )
       return false
     }
     const made = await this.saveNew(file, false)
     if (!made) return false
     if (!owns()) {
-      new Notice(`Saved as ${made.path}. The conversation changed; attach the picture to the intended chat.`)
+      new Notice(
+        `Saved as ${made.path}. The conversation changed; attach the picture to the intended chat.`
+      )
       return false
     }
     if (tabId) chats.switchTab(tabId)
     chats.pendingInput.value = {
-      text: '', tabId, attachments: [made.path], focus: true,
+      text: '',
+      tabId,
+      attachments: [made.path],
+      focus: true,
       replaceAttachment: this.replaceAttachment || undefined,
       conversationVersion: typeof version === 'number' ? version : undefined,
     }

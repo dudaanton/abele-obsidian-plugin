@@ -7,15 +7,7 @@ import {
   type ViewStateResult,
   type WorkspaceLeaf,
 } from 'obsidian'
-import {
-  createApp,
-  h,
-  shallowRef,
-  watch,
-  markRaw,
-  type App as VueApp,
-  type WatchStopHandle,
-} from 'vue'
+import { h, shallowRef, watch, markRaw, type WatchStopHandle } from 'vue'
 import { NodeService } from '@/node/NodeService'
 import { DebuggerService } from '@/debugger/DebuggerService'
 import { pathPages } from '@/node/NodePathClientPort'
@@ -49,10 +41,11 @@ import NodePathFilePane from '@/components/nodeWork/NodePathFilePane.vue'
 import NodePathHistoryPane from '@/components/nodeWork/NodePathHistoryPane.vue'
 import NodePathEditorPane from '@/components/nodeWork/NodePathEditorPane.vue'
 import NodeChatView from '@/components/NodeChatView.vue'
+import { mountKit, type KitMount } from '@/components/obsidian/mount'
 
 /** Thin ItemView adapter; every callback is bound to this tab, not the sidebar selection. */
 export class NodePathMainView extends ItemView {
-  private ui?: VueApp
+  private ui?: KitMount
   private stops: WatchStopHandle[] = []
   private file?: NodePathFileModel
   private history?: NodePathHistoryModel
@@ -285,7 +278,7 @@ export class NodePathMainView extends ItemView {
         })
       )
       this.fileTab.render()
-      this.ui = createApp({
+      const root = {
         render: () =>
           editing.active.value && editing.editor.value
             ? h(NodePathEditorPane, {
@@ -346,7 +339,7 @@ export class NodePathMainView extends ItemView {
                     })
                 },
               }),
-      })
+      }
       this.stops.push(
         watch(file.document, (doc) => {
           if (doc && this.saved?.kind === 'file') {
@@ -356,7 +349,7 @@ export class NodePathMainView extends ItemView {
           }
         })
       )
-      this.ui.mount(host)
+      this.ui = mountKit(host, root)
       file.busy.value = true
       if (model.online.value || !model.hasRetained(state.target, state.path, state.stage))
         await connection.connect().catch(() => {})
@@ -370,7 +363,7 @@ export class NodePathMainView extends ItemView {
         })
     } else if (state.kind === 'history') {
       const history = (this.history = new NodePathHistoryModel(model.port, state.target))
-      this.ui = createApp({
+      const root = {
         render: () =>
           h(NodePathHistoryPane, {
             model: history,
@@ -415,8 +408,8 @@ export class NodePathMainView extends ItemView {
               })
             },
           }),
-      })
-      this.ui.mount(host)
+      }
+      this.ui = mountKit(host, root)
       history.busy.value = true
       await connection.connect().catch(() => {})
       if (lifetime === this.lifetime) await history.load().catch(() => {})
@@ -437,7 +430,7 @@ export class NodePathMainView extends ItemView {
           connection
         )
       ))
-      this.ui = createApp({
+      const root = {
         render: () => {
           const binding = presenter.binding.value
           const target = binding
@@ -485,7 +478,7 @@ export class NodePathMainView extends ItemView {
               ),
           })
         },
-      })
+      }
       this.stops.push(
         watch(model.sessions, (sessions) => {
           const current = sessions.find((s) => s.session.session_id === state.sessionId)?.target
@@ -495,7 +488,7 @@ export class NodePathMainView extends ItemView {
           }
         })
       )
-      this.ui.mount(host)
+      this.ui = mountKit(host, root)
       this.chatLoad = presenter.load()
       await this.chatLoad
     }

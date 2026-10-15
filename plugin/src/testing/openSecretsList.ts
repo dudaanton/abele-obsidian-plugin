@@ -1,5 +1,5 @@
-import { createApp } from 'vue'
 import SecretsListModal from '@/components/settings/SecretsListModal.vue'
+import { mountKit } from '@/components/obsidian/mount'
 
 /**
  * Opens the list of keys on its own, for the layout probes. In the plugin it opens from
@@ -7,14 +7,11 @@ import SecretsListModal from '@/components/settings/SecretsListModal.vue'
  * same either way. Closing it takes it down again.
  */
 export function openSecretsList(): void {
-  const host = document.body.createDiv()
-  let open = true
-  const close = () => {
-    if (!open) return
-    open = false
-    app.unmount()
-    host.remove()
-  }
-  const app = createApp(SecretsListModal, { onClose: close })
-  app.mount(host)
+  const close = () => app.unmount()
+  const app = mountKit(
+    document.body.createDiv(),
+    SecretsListModal,
+    { onClose: close },
+    { remove: true }
+  )
 }

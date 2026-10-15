@@ -39,8 +39,9 @@ import { css } from '@codemirror/lang-css'
 import { html } from '@codemirror/lang-html'
 import { xml } from '@codemirror/lang-xml'
 import { yaml } from '@codemirror/lang-yaml'
-import { createApp, h, reactive } from 'vue'
+import { h, reactive } from 'vue'
 import SelectionBar from '@/components/obsidian/SelectionBar.vue'
+import { mountKit } from '@/components/obsidian/mount'
 import { ASK, ADD, NOTE } from '@/components/obsidian/selectionActions'
 import { chatCodeSelection, insertCodeSelection, type CodeSelection } from './codeSelectionHost'
 import { isScriptPath } from '@/scripting/scriptPath'
@@ -412,7 +413,7 @@ export class CodeView extends TextFileView {
     if (this.chatsEl) this.contentEl.appendChild(this.chatsEl)
     const scope = this.editor.dom
     const host = this.contentEl.createDiv()
-    const bar = createApp({
+    const bar = mountKit(host, {
       render: () =>
         h(SelectionBar, {
           scope,
@@ -435,7 +436,6 @@ export class CodeView extends TextFileView {
           },
         }),
     })
-    bar.mount(host)
-    this.unmountSelection = () => bar.unmount()
+    this.unmountSelection = bar.unmount
   }
 }

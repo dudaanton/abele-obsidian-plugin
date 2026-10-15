@@ -1,6 +1,7 @@
-import { createApp, h, shallowRef } from 'vue'
+import { h, shallowRef } from 'vue'
 import { Notice } from 'obsidian'
 import Modal from '@/components/obsidian/Modal.vue'
+import { mountKit } from '@/components/obsidian/mount'
 import FolderPicker from '@/components/nodeWork/FolderPicker.vue'
 import WorktreeDialog from '@/components/nodeWork/WorktreeDialog.vue'
 import { NodeSuggestModal } from '@/components/nodeWork/NodeSuggestModal'
@@ -24,12 +25,16 @@ export function nodePathDialog(
     closed = true
     cleanup()
     ui.unmount()
-    host.remove()
   }
-  const ui = createApp({
-    render: () => h(Modal, { title, phoneSheet, onClose: close }, { default: () => render(close) }),
-  })
-  ui.mount(host)
+  const ui = mountKit(
+    host,
+    {
+      render: () =>
+        h(Modal, { title, phoneSheet, onClose: close }, { default: () => render(close) }),
+    },
+    null,
+    { remove: true }
+  )
   return close
 }
 export async function openNodeFolderPicker(

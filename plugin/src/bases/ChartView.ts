@@ -2,8 +2,9 @@ import { escapeHtml } from '@/helpers/escapeHtml'
 import { BasesView, BasesPropertyId, NullValue, QueryController } from 'obsidian'
 import { echartsInit, themePalette, EChartsType } from './echarts'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { createApp, watch, type App } from 'vue'
+import { watch } from 'vue'
 import EmptyState from '@/components/obsidian/EmptyState.vue'
+import { mountKit, type KitMount } from '@/components/obsidian/mount'
 import dayjs from 'dayjs'
 
 export const CHART_VIEW_ID = 'abele-chart'
@@ -413,7 +414,7 @@ export class ChartView extends BasesView {
     )
   }
 
-  private empty: App | null = null
+  private empty: KitMount | null = null
 
   /** In place of the chart, what is missing and where to put it right, as an empty pane says. */
   private showEmpty(title: string, text: string): void {
@@ -421,8 +422,7 @@ export class ChartView extends BasesView {
     this.chart = null
     this.clear()
     const host = this.containerEl.createDiv({ cls: 'abele-bases-chart__empty' })
-    this.empty = createApp(EmptyState, { icon: 'chart-line', title, text, centered: true })
-    this.empty.mount(host)
+    this.empty = mountKit(host, EmptyState, { icon: 'chart-line', title, text, centered: true })
   }
 
   private clear(): void {

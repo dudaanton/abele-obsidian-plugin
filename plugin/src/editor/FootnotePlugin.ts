@@ -6,8 +6,8 @@ import { genid } from '@/helpers/vueUtils'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { setWidgetMount } from '@/helpers/widgetMounts'
 import { reliableScrollTo } from '@/helpers/scrollUtils'
-import { createApp, type App as VueApp } from 'vue'
 import FootnotePeek from '@/components/FootnotePeek.vue'
+import { mountKit, type KitMount } from '@/components/obsidian/mount'
 import { marginOverlayFor, marginOverlayIfAny, type MarginEntry } from './MarginOverlay'
 
 const FOOTNOTE_REF_RE = /\[\^([^\]]+)\]/g
@@ -211,7 +211,7 @@ export class FootnoteProvider {
   private parsedFootnotes: ParsedFootnote[] = []
   private parsedDefinitions: ParsedDefinition[] = []
   /** The footnote read where it is cited, when there is no margin to set it in. */
-  private peek: { label: string; app: VueApp; host: HTMLElement } | null = null
+  private peek: { label: string; ui: KitMount } | null = null
   /** A press outside closes the card before the click lands: the same number then must not reopen it. */
   private peekClosed: { label: string; at: number } | null = null
 
@@ -286,13 +286,17 @@ export class FootnoteProvider {
       definitionFrom: fn.definitionFrom,
       refFrom: fn.refFrom,
     })
-    const app = createApp(FootnotePeek, {
-      footnote,
-      anchor: { left, top: box.top, bottom: box.bottom },
-      onClose: () => this.closePeek(),
-    })
-    app.mount(host)
-    this.peek = { label: fn.label, app, host }
+    const ui = mountKit(
+      host,
+      FootnotePeek,
+      {
+        footnote,
+        anchor: { left, top: box.top, bottom: box.bottom },
+        onClose: () => this.closePeek(),
+      },
+      { remove: true }
+    )
+    this.peek = { label: fn.label, ui }
     this.view.scrollDOM.addEventListener('scroll', this.closePeekOnScroll, { passive: true })
   }
 
@@ -302,8 +306,7 @@ export class FootnoteProvider {
     if (!this.peek) return
     this.peekClosed = { label: this.peek.label, at: Date.now() }
     this.view.scrollDOM.removeEventListener('scroll', this.closePeekOnScroll)
-    this.peek.app.unmount()
-    this.peek.host.remove()
+    this.peek.ui.unmount()
     this.peek = null
   }
 

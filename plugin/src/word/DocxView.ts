@@ -1,5 +1,6 @@
 import { FileView, Platform, TFile, type WorkspaceLeaf, type Plugin } from 'obsidian'
-import { createApp, h, shallowReactive, type App as VueApp, type VNode } from 'vue'
+import { h, shallowReactive, type VNode } from 'vue'
+import { mountKit, type KitMount } from '@/components/obsidian/mount'
 import { applyWordEdit, type WordEdit } from './edit'
 import { readOfficeBytes } from '@/ooxml/vaultAdapter'
 import { loadWordBytes, vaultWordResources, writeWordChange } from './vaultAdapter'
@@ -23,8 +24,8 @@ export class DocxView extends FileView {
   private editing = false
   private saving = false
   private externalChange = false
-  private vue: VueApp | null = null
-  private controls: VueApp | null = null
+  private vue: KitMount | null = null
+  private controls: KitMount | null = null
   /** Closes the window open over the page, if one is. */
   private closeDialog: (() => void) | null = null
   private pending: Promise<void> = Promise.resolve()
@@ -155,16 +156,14 @@ export class DocxView extends FileView {
       closed = true
       if (this.closeDialog === close) this.closeDialog = null
       app.unmount()
-      host.remove()
       if (this.controls === app) this.controls = null
       this.editing = false
       if (this.externalChange && this.file) void this.onLoadFile(this.file)
     }
-    const app = createApp({ render: () => render(close) })
+    const app = mountKit(host, { render: () => render(close) }, null, { remove: true })
     this.controls = app
     this.closeDialog = close
     this.editing = true
-    app.mount(host)
   }
   /** What the ribbon has no room for, about the paragraph or the picture chosen on the page. */
   private async advanced(paragraph: number, picture = false): Promise<void> {
@@ -263,7 +262,7 @@ export class DocxView extends FileView {
       : model
     this.state.save = { state: 'idle' }
     const host = this.contentEl.createDiv({ cls: 'abele-word-page-host' })
-    this.vue = createApp({
+    this.vue = mountKit(host, {
       render: () =>
         h(WordPage, {
           model: this.state.model,
@@ -290,7 +289,6 @@ export class DocxView extends FileView {
           },
         }),
     })
-    this.vue.mount(host)
   }
 }
 export function registerWord(plugin: Plugin): void {

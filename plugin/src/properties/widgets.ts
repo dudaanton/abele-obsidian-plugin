@@ -30,7 +30,8 @@
  * Every patch is guarded. When the table is not there or not the shape it was in 1.13, nothing
  * is patched; when a patched render throws, the stock one draws the row instead.
  */
-import { createApp, h, reactive, watch, type App as VueApp } from 'vue'
+import { h, reactive, watch } from 'vue'
+import { mountKit, type KitMount } from '@/components/obsidian/mount'
 import type { App } from 'obsidian'
 import PropertyFiles from '@/components/properties/PropertyFiles.vue'
 import { evaluateAmount } from '@/helpers/calculator'
@@ -77,7 +78,7 @@ const log = (...args: unknown[]) => console.debug('[Abele] property widgets:', .
  * it held; a row taken off the page is swept a little later. Not at once: the panel draws a new
  * row before putting it on the page, so a row not yet on the page is not a row that has gone.
  */
-const mounted = new Map<HTMLElement, VueApp>()
+const mounted = new Map<HTMLElement, KitMount>()
 let sweepTimer: number | null = null
 
 function sweep(all = false): void {
@@ -116,7 +117,7 @@ function renderFiles(
   el.empty()
   const host = el.createDiv({ cls: 'abele-property-widget' })
   const state = reactive({ entries: fileEntries(value) })
-  const vue = createApp({
+  const vue = mountKit(host, {
     render: () =>
       h(PropertyFiles, {
         entries: state.entries,
@@ -129,7 +130,6 @@ function renderFiles(
         },
       }),
   })
-  vue.mount(host)
   mounted.set(el, vue)
   sweepSoon()
   return {

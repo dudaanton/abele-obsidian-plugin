@@ -1,7 +1,8 @@
 import type { App } from 'obsidian'
 import { ShellModal } from '@/modal/ShellModal'
-import { createApp, shallowReactive } from 'vue'
+import { shallowReactive } from 'vue'
 import ScriptViewComponent from '@/components/ScriptView.vue'
+import { mountKit, type KitMount } from '@/components/obsidian/mount'
 import { ScriptService } from '@/scripting/ScriptService'
 import { showFormModal } from '@/scripting/formModal'
 import { scriptParams, findScriptByName } from '@/scripting/runScript'
@@ -72,8 +73,7 @@ export function liveRenderer(app: App, path: () => string, markdown: BlockRender
       let view: View | null = null
       const created = new Set<View>()
       const shown: (() => void)[] = []
-      let mounted: ReturnType<typeof createApp> | null = null
-      let mountEl: HTMLElement | null = null
+      let mounted: KitMount | null = null
       const model: ScriptViewModel = shallowReactive({
         id: `slide-${Math.random().toString(36).slice(2)}`,
         el: target,
@@ -93,10 +93,9 @@ export function liveRenderer(app: App, path: () => string, markdown: BlockRender
           view = opened
           opened.leafId = model.id
           model.view = opened
-          mounted = createApp(ScriptViewComponent, { model })
-          mountEl = target.ownerDocument.win.createDiv()
+          const mountEl = target.ownerDocument.win.createDiv()
           target.append(mountEl)
-          mounted.mount(mountEl)
+          mounted = mountKit(mountEl, ScriptViewComponent, { model }, { remove: true })
           await opened.emit('focus')
         },
         close() {
@@ -107,8 +106,6 @@ export function liveRenderer(app: App, path: () => string, markdown: BlockRender
         shown.splice(0).forEach((release) => release())
         mounted?.unmount()
         mounted = null
-        mountEl?.remove()
-        mountEl = null
         for (const view of created) void view.dispose()
         created.clear()
         view = null

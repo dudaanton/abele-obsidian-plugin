@@ -13,7 +13,8 @@ import {
   type ViewStateResult,
   type WorkspaceLeaf,
 } from 'obsidian'
-import { createApp, reactive, h, type App as VueApp } from 'vue'
+import { reactive, h } from 'vue'
+import { mountKit, type KitMount } from '@/components/obsidian/mount'
 import { secrets } from '@/secrets/SecretStore'
 import { readConnectionItem } from './connectionRead'
 import { GithubError } from './client'
@@ -51,7 +52,7 @@ export class GithubView extends ItemView {
     screen: emptyScreen(),
   })
   private title = ''
-  private vue: VueApp | null = null
+  private vue: KitMount | null = null
   /** Keys the tab handles itself; the Vue side watches them move. */
   private readonly keys = reactive({ find: 0 })
 
@@ -137,7 +138,12 @@ export class GithubView extends ItemView {
       this.model.connectionId = undefined
       this.model.sourceRevision = node.revision
       Object.assign(this.model.screen, emptyScreen())
-      const saved = state as { mode?: unknown; tree?: unknown; originalFile?: unknown; title?: unknown }
+      const saved = state as {
+        mode?: unknown
+        tree?: unknown
+        originalFile?: unknown
+        title?: unknown
+      }
       this.model.mode = saved.mode === 'code' || saved.mode === 'preview' ? saved.mode : undefined
       if (this.model.tree === undefined && typeof saved.tree === 'boolean')
         this.model.tree = saved.tree
@@ -338,112 +344,116 @@ export class GithubView extends ItemView {
     this.contentEl.empty()
     this.contentEl.addClass('abele-github-view')
     const mountPoint = this.contentEl.createDiv({ cls: 'abele-github-view__mount' })
-    this.vue = createApp({
-      render: () => {
-        if (this.model.sourceTarget?.provider === 'node')
-          return h(NodeRepositoryItem, {
+    this.vue = mountKit(
+      mountPoint,
+      {
+        render: () => {
+          if (this.model.sourceTarget?.provider === 'node')
+            return h(NodeRepositoryItem, {
+              model: this.model,
+              keys: this.keys,
+              onTitle: (title: string) => {
+                this.title = title
+                this.refreshHeader()
+              },
+              onState: () => this.app.workspace.requestSaveLayout(),
+            })
+          if (!this.model.target && !this.model.url && this.model.screen.error)
+            return h(
+              'div',
+              { class: 'abele-github-view__source-unavailable' },
+              this.model.screen.error
+            )
+          void AbeleConfig.getInstance().version.value
+          void secrets().version.value
+          const id = this.model.connectionId
+          const row = githubSettings().connections?.find((c) => c.id === id)
+          if (id && !row && this.model.target) {
+            const chosen = resolveConnectionCandidates(this.model.target)[0]
+            this.model.connectionId = chosen?.id || undefined
+            this.model.connectionNotice =
+              'The connection was removed; selected another using the link rules.'
+            Object.assign(this.model.screen, emptyScreen())
+          }
+          const rawClient = this.model.connectionId
+            ? connectionClient(this.model.connectionId)
+            : githubClient(this.model.target?.host)
+          const agentOpened = this.model.allowedConnections !== undefined
+          const client = clientForTab(this.model, this.model.connectionId ?? '', rawClient)
+          if (this.model.screenNamespace && this.model.screenNamespace !== client.cacheNamespace) {
+            Object.assign(this.model.screen, emptyScreen())
+            this.title = ''
+            this.refreshHeader()
+          }
+          return h(GithubItem, {
+            key: client.cacheNamespace,
             model: this.model,
-            keys: this.keys,
+            enabled: githubSettings().enabled,
+            clientFor: () => client,
+            peopleClient: () => {
+              // A tool may grant only this account, not the server default. Every profile,
+              // picture and secondary section of that tab uses its guarded operation client.
+              if (agentOpened) return client
+              const target = this.model.target
+              const row =
+                target &&
+                githubSettings().connections.find(
+                  (c) => c.isDefault && sameConnectionServer(c, target)
+                )
+              return row ? connectionClient(row.id) : githubClient(target?.host)
+            },
+            accountName: (githubSettings().connections ?? []).length
+              ? row
+                ? `${row.name}${row.account ? ` · ${row.account.login}` : ''}`
+                : 'Anonymous'
+              : undefined,
+            onChooseAccount: () => {
+              const menu = new Menu()
+              this.accountMenu(menu)
+              const rect = this.containerEl
+                .querySelector('.abele-github__account')
+                ?.getBoundingClientRect()
+              menu.showAtPosition(
+                { x: rect?.left ?? 0, y: rect?.bottom ?? 0 },
+                this.containerEl.ownerDocument
+              )
+            },
+            primaryLoad: (githubSettings().connections ?? []).length
+              ? async (
+                  target: GithubTarget,
+                  promote: (target: GithubTarget) => void,
+                  retry = false,
+                  pinned: PinnedLoad = {}
+                ) => {
+                  const startedId = this.model.connectionId,
+                    startedUrl = this.model.url
+                  const result = await readConnectionItem(this.model, target, retry, pinned)
+                  if (this.model.connectionId !== startedId || this.model.url !== startedUrl)
+                    throw new GithubError('other', 'The tab changed while loading.')
+                  promote(result.shown)
+                  if (result.notice) this.model.connectionNotice = result.notice
+                  this.model.connectionId = result.connectionId || undefined
+                  this.app.workspace.requestSaveLayout()
+                  return result.data
+                }
+              : undefined,
             onTitle: (title: string) => {
               this.title = title
               this.refreshHeader()
             },
+            onOpen: (url: string, pane?: PaneType | false): void =>
+              void openGithubUrl(this.app, url, pane ?? false, {
+                sourceId: this.model.connectionId,
+                sourceIntent: this.model.connectionIntent,
+              }),
+            keys: this.keys,
             onState: () => this.app.workspace.requestSaveLayout(),
           })
-        if (!this.model.target && !this.model.url && this.model.screen.error)
-          return h(
-            'div',
-            { class: 'abele-github-view__source-unavailable' },
-            this.model.screen.error
-          )
-        void AbeleConfig.getInstance().version.value
-        void secrets().version.value
-        const id = this.model.connectionId
-        const row = githubSettings().connections?.find((c) => c.id === id)
-        if (id && !row && this.model.target) {
-          const chosen = resolveConnectionCandidates(this.model.target)[0]
-          this.model.connectionId = chosen?.id || undefined
-          this.model.connectionNotice =
-            'The connection was removed; selected another using the link rules.'
-          Object.assign(this.model.screen, emptyScreen())
-        }
-        const rawClient = this.model.connectionId
-          ? connectionClient(this.model.connectionId)
-          : githubClient(this.model.target?.host)
-        const agentOpened = this.model.allowedConnections !== undefined
-        const client = clientForTab(this.model, this.model.connectionId ?? '', rawClient)
-        if (this.model.screenNamespace && this.model.screenNamespace !== client.cacheNamespace) {
-          Object.assign(this.model.screen, emptyScreen())
-          this.title = ''
-          this.refreshHeader()
-        }
-        return h(GithubItem, {
-          key: client.cacheNamespace,
-          model: this.model,
-          enabled: githubSettings().enabled,
-          clientFor: () => client,
-          peopleClient: () => {
-            // A tool may grant only this account, not the server default. Every profile,
-            // picture and secondary section of that tab uses its guarded operation client.
-            if (agentOpened) return client
-            const target = this.model.target
-            const row =
-              target &&
-              githubSettings().connections.find(
-                (c) => c.isDefault && sameConnectionServer(c, target)
-              )
-            return row ? connectionClient(row.id) : githubClient(target?.host)
-          },
-          accountName: (githubSettings().connections ?? []).length
-            ? row
-              ? `${row.name}${row.account ? ` · ${row.account.login}` : ''}`
-              : 'Anonymous'
-            : undefined,
-          onChooseAccount: () => {
-            const menu = new Menu()
-            this.accountMenu(menu)
-            const rect = this.containerEl
-              .querySelector('.abele-github__account')
-              ?.getBoundingClientRect()
-            menu.showAtPosition(
-              { x: rect?.left ?? 0, y: rect?.bottom ?? 0 },
-              this.containerEl.ownerDocument
-            )
-          },
-          primaryLoad: (githubSettings().connections ?? []).length
-            ? async (
-                target: GithubTarget,
-                promote: (target: GithubTarget) => void,
-                retry = false,
-                pinned: PinnedLoad = {}
-              ) => {
-                const startedId = this.model.connectionId,
-                  startedUrl = this.model.url
-                const result = await readConnectionItem(this.model, target, retry, pinned)
-                if (this.model.connectionId !== startedId || this.model.url !== startedUrl)
-                  throw new GithubError('other', 'The tab changed while loading.')
-                promote(result.shown)
-                if (result.notice) this.model.connectionNotice = result.notice
-                this.model.connectionId = result.connectionId || undefined
-                this.app.workspace.requestSaveLayout()
-                return result.data
-              }
-            : undefined,
-          onTitle: (title: string) => {
-            this.title = title
-            this.refreshHeader()
-          },
-          onOpen: (url: string, pane?: PaneType | false): void =>
-            void openGithubUrl(this.app, url, pane ?? false, {
-              sourceId: this.model.connectionId,
-              sourceIntent: this.model.connectionIntent,
-            }),
-          keys: this.keys,
-          onState: () => this.app.workspace.requestSaveLayout(),
-        })
+        },
       },
-    })
-    this.vue.mount(mountPoint)
+      null,
+      { owner: this }
+    )
   }
 
   async onClose() {

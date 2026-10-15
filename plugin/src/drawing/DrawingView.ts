@@ -14,8 +14,9 @@ import {
   type ViewStateResult,
   type WorkspaceLeaf,
 } from 'obsidian'
-import { reactive, type App as VueApp } from 'vue'
+import { reactive } from 'vue'
 import { drawingKeys, mountDrawingBar } from './drawingTab'
+import type { KitMount } from '@/components/obsidian/mount'
 import { drawingSvg, parseDrawingSvg } from './drawingFile'
 import { cameraFrom, type Camera } from './camera'
 import { DrawingSession } from './DrawingSession'
@@ -38,7 +39,7 @@ export class DrawingView extends TextFileView {
     thickness: keptDrawingThickness(),
   })
   session: DrawingSession | null = null
-  private vue: VueApp | null = null
+  private vue: KitMount | null = null
   /** What was last read or written, so the vault's news of our own write is not a change. */
   private known = ''
   /** A camera from the tab's saved state, waiting for the drawing to be read. */
@@ -87,7 +88,8 @@ export class DrawingView extends TextFileView {
       bar,
       this.model,
       () => this.session,
-      (e) => this.moreMenu(e)
+      (e) => this.moreMenu(e),
+      this
     )
     // The drawing to the chat in front, as a picture, from the tab's header.
     if (AbeleConfig.getInstance().ai.enabled)

@@ -9,11 +9,11 @@
  */
 import type { App } from 'obsidian'
 import { ShellModal } from '@/modal/ShellModal'
-import { createApp, type App as VueApp } from 'vue'
 import VoiceRecorder from '@/components/VoiceRecorder.vue'
+import { mountKit, type KitMount } from '@/components/obsidian/mount'
 
 class VoiceModal extends ShellModal {
-  private vue: VueApp | null = null
+  private vue: KitMount | null = null
 
   constructor(
     app: App,
@@ -27,7 +27,7 @@ class VoiceModal extends ShellModal {
     const mount = this.bodyEl.doc.win.createDiv()
     this.bodyEl.appendChild(mount)
 
-    this.vue = createApp(VoiceRecorder, {
+    this.vue = mountKit(mount, VoiceRecorder, {
       autoStart: true,
       closable: false,
       onText: (text: string) => {
@@ -36,7 +36,6 @@ class VoiceModal extends ShellModal {
       },
       onClose: () => this.close(),
     })
-    this.vue.mount(mount)
   }
 
   onClose(): void {

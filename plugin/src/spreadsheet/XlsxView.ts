@@ -1,5 +1,5 @@
 import { FileView, Platform, TFile, type WorkspaceLeaf, type Plugin } from 'obsidian'
-import { createApp, type App as VueApp } from 'vue'
+import { mountKit, type KitMount } from '@/components/obsidian/mount'
 import { readOfficeBytes } from '@/ooxml/vaultAdapter'
 import { sameBytes } from '@/ooxml/write'
 import WorkbookGrid from './WorkbookGrid.vue'
@@ -17,7 +17,7 @@ export class XlsxView extends FileView {
   private editing = false
   private externalChange = false
   private loadedPath = ''
-  private vue: VueApp | null = null
+  private vue: KitMount | null = null
   private token = 0
   private saving = false
   constructor(leaf: WorkspaceLeaf) {
@@ -89,7 +89,7 @@ export class XlsxView extends FileView {
       this.workbook = book
       book.calculationNote = calculationNote
       status.remove()
-      this.vue = createApp(WorkbookGrid, {
+      this.vue = mountKit(this.contentEl, WorkbookGrid, {
         book,
         mobile: Platform.isMobile,
         initialSheet: this.sheetName,
@@ -122,7 +122,6 @@ export class XlsxView extends FileView {
           await this.onLoadFile(file, calculated.note)
         },
       })
-      this.vue.mount(this.contentEl)
     } catch (e) {
       if (token === this.token) status.setText(`Could not open workbook: ${(e as Error).message}`)
     }

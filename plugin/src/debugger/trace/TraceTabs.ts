@@ -9,9 +9,10 @@ import {
   type ViewStateResult,
   type WorkspaceLeaf,
 } from 'obsidian'
-import { createApp, h, reactive, ref, shallowRef, type App as VueApp } from 'vue'
+import { h, reactive, ref, shallowRef } from 'vue'
 import { z } from 'zod'
 import TraceRunView from '@/components/debugger/trace/TraceRunView.vue'
+import { mountKit, type KitMount } from '@/components/obsidian/mount'
 import TraceValueTab from '@/components/debugger/trace/TraceValueTab.vue'
 import EmptyState from '@/components/obsidian/EmptyState.vue'
 import type { TraceValue } from '@/components/debugger/trace/types'
@@ -66,7 +67,7 @@ async function markWith(mark: (comment: string) => Promise<unknown>) {
 
 export class TraceRunTab extends ItemView {
   private state?: TraceRunState
-  private vue?: VueApp
+  private vue?: KitMount
   private model?: TraceRunModel
   private readonly revision = ref(0)
   private readonly view = shallowRef<{ back(): void } | null>(null)
@@ -140,16 +141,15 @@ export class TraceRunTab extends ItemView {
         }
       )
     } catch (e) {
-      this.vue = createApp(EmptyState, {
+      this.vue = mountKit(this.contentEl, EmptyState, {
         text: e instanceof Error ? e.message : 'Node unavailable',
       })
-      this.vue.mount(this.contentEl)
       return
     }
     const act = (work: Promise<unknown>): void => {
       void work.catch((e) => new Notice(e instanceof Error ? e.message : 'The node did not answer'))
     }
-    this.vue = createApp({
+    this.vue = mountKit(this.contentEl, {
       render: () => {
         void this.revision.value
         if (!model.run) return h(EmptyState, { text: model.error || 'Reading the run…' })
@@ -183,7 +183,6 @@ export class TraceRunTab extends ItemView {
         })
       },
     })
-    this.vue.mount(this.contentEl)
     void model.load()
   }
 }
@@ -194,7 +193,7 @@ export class TraceValueView extends ItemView {
   private get state() {
     return this.current.value
   }
-  private vue?: VueApp
+  private vue?: KitMount
   private readonly model = reactive<{
     value?: TraceValue
     runName: string
@@ -256,7 +255,7 @@ export class TraceValueView extends ItemView {
     this.vue?.unmount()
     this.contentEl.replaceChildren()
     this.contentEl.addClass('abele-trace-value-view')
-    this.vue = createApp({
+    this.vue = mountKit(this.contentEl, {
       render: () => {
         const s = this.state
         const m = this.model
@@ -292,7 +291,6 @@ export class TraceValueView extends ItemView {
         })
       },
     })
-    this.vue.mount(this.contentEl)
   }
   private async read() {
     const s = this.state

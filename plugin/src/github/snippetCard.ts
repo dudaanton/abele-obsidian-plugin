@@ -4,22 +4,10 @@
  * in it reads without GitHub.
  */
 import { MarkdownRenderChild, type MarkdownPostProcessorContext } from 'obsidian'
-import { createApp, h } from 'vue'
+import { h } from 'vue'
 import GithubSnippet from '@/components/github/GithubSnippet.vue'
+import { mountKit } from '@/components/obsidian/mount'
 import { SNIPPET_BLOCK, parseSnippet } from './snippetBlock'
-
-class SnippetChild extends MarkdownRenderChild {
-  constructor(
-    el: HTMLElement,
-    private readonly dispose: () => void
-  ) {
-    super(el)
-  }
-
-  onunload(): void {
-    this.dispose()
-  }
-}
 
 export function registerSnippetBlock(
   register: (
@@ -30,10 +18,13 @@ export function registerSnippetBlock(
   register(SNIPPET_BLOCK, (source, el, ctx) => {
     const snippet = parseSnippet(source)
     const host = el.createDiv()
-    const app = createApp({
-      render: () => h(GithubSnippet, { snippet, source, filePath: ctx.sourcePath }),
-    })
-    app.mount(host)
-    ctx.addChild(new SnippetChild(host, () => app.unmount()))
+    const child = new MarkdownRenderChild(host)
+    mountKit(
+      host,
+      { render: () => h(GithubSnippet, { snippet, source, filePath: ctx.sourcePath }) },
+      null,
+      { owner: child }
+    )
+    ctx.addChild(child)
   })
 }

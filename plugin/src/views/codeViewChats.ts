@@ -1,5 +1,5 @@
-import { createApp } from 'vue'
 import FileChats from '@/components/FileChats.vue'
+import { mountKit } from '@/components/obsidian/mount'
 
 /** What the code view hands the list: the file it holds, rewritten as that changes. */
 export interface FileChatsModel {
@@ -15,7 +15,5 @@ export interface FileChatsModel {
  * tab where it is. `model` must be reactive. Answers the unmount.
  */
 export function mountFileChats(parent: HTMLElement, model: FileChatsModel): () => void {
-  const app = createApp(FileChats, { model })
-  app.mount(parent)
-  return () => app.unmount()
+  return mountKit(parent, FileChats, { model }).unmount
 }

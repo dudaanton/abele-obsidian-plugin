@@ -1,11 +1,12 @@
 import { MarkdownRenderChild, MarkdownView, Notice, TFile } from 'obsidian'
 import type { MarkdownPostProcessorContext } from 'obsidian'
-import { createApp, h } from 'vue'
+import { h } from 'vue'
 import dayjs from 'dayjs'
 import customParseFormat from 'dayjs/plugin/customParseFormat'
 import Card from '@/components/obsidian/Card.vue'
 import Icon from '@/components/obsidian/Icon.vue'
 import Markdown from '@/components/obsidian/Markdown.vue'
+import { mountKit } from '@/components/obsidian/mount'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { insertBlockOnOwnLine } from '@/helpers/editorHelpers'
@@ -259,19 +260,6 @@ function cardMeta(block: MessageBlock): string[] | undefined {
   return date.isValid() ? [date.format('D MMM YYYY, HH:mm')] : undefined
 }
 
-class MessageCardChild extends MarkdownRenderChild {
-  constructor(
-    el: HTMLElement,
-    private readonly dispose: () => void
-  ) {
-    super(el)
-  }
-
-  onunload(): void {
-    this.dispose()
-  }
-}
-
 /** The card, built from the kit's own `Card` and `Markdown`: nothing drawn here is new. */
 export function registerMessageCardBlock(
   register: (
@@ -286,25 +274,31 @@ export function registerMessageCardBlock(
       return
     }
     const host = el.createDiv({ cls: 'abele-message-card' })
-    const remove = (): void => void removeCard(block, ctx.sourcePath, ctx.getSectionInfo(el)?.lineStart)
-    const app = createApp({
-      render: () =>
-        h(
-          Card,
-          {
-            title: cardTitle(block),
-            meta: cardMeta(block),
-            clickable: true,
-            onClick: () => void openMessage(block, ctx.sourcePath),
-          },
-          {
-            // The delete icon a chat's own card has in the history, in the same place.
-            actions: () => h(Icon, { icon: 'trash', tooltip: 'Remove card', onClick: remove }),
-            default: () => h(Markdown, { text: block.text, filePath: ctx.sourcePath }),
-          }
-        ),
-    })
-    app.mount(host)
-    ctx.addChild(new MessageCardChild(host, () => app.unmount()))
+    const remove = (): void =>
+      void removeCard(block, ctx.sourcePath, ctx.getSectionInfo(el)?.lineStart)
+    const child = new MarkdownRenderChild(host)
+    mountKit(
+      host,
+      {
+        render: () =>
+          h(
+            Card,
+            {
+              title: cardTitle(block),
+              meta: cardMeta(block),
+              clickable: true,
+              onClick: () => void openMessage(block, ctx.sourcePath),
+            },
+            {
+              // The delete icon a chat's own card has in the history, in the same place.
+              actions: () => h(Icon, { icon: 'trash', tooltip: 'Remove card', onClick: remove }),
+              default: () => h(Markdown, { text: block.text, filePath: ctx.sourcePath }),
+            }
+          ),
+      },
+      null,
+      { owner: child }
+    )
+    ctx.addChild(child)
   })
 }

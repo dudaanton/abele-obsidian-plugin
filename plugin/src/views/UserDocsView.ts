@@ -1,6 +1,7 @@
 import { ItemView, type App, type ViewStateResult, type WorkspaceLeaf } from 'obsidian'
-import { createApp, reactive, type App as VueApp } from 'vue'
+import { reactive } from 'vue'
 import UserDocs from '@/components/docs/UserDocs.vue'
+import { mountKit, type KitMount } from '@/components/obsidian/mount'
 import { findPage, type DocTarget } from '@/userdocs'
 
 export const USER_DOCS_VIEW_TYPE = 'abele-user-docs'
@@ -14,7 +15,7 @@ export const USER_DOCS_VIEW_TYPE = 'abele-user-docs'
  */
 export class UserDocsView extends ItemView {
   readonly model: DocTarget = reactive({ page: 'getting-started', heading: '' })
-  private vue: VueApp | null = null
+  private vue: KitMount | null = null
 
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
@@ -40,8 +41,7 @@ export class UserDocsView extends ItemView {
     this.contentEl.empty()
     this.contentEl.addClass('abele-user-docs-view')
     const mount = this.contentEl.createDiv({ cls: 'abele-user-docs-view__mount' })
-    this.vue = createApp(UserDocs, { model: this.model })
-    this.vue.mount(mount)
+    this.vue = mountKit(mount, UserDocs, { model: this.model }, { owner: this })
   }
 
   async onClose(): Promise<void> {

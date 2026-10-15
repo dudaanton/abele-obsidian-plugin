@@ -1,6 +1,6 @@
 import { ItemView, type App, type WorkspaceLeaf } from 'obsidian'
-import { createApp, type App as VueApp } from 'vue'
 import LinterPanel from '@/components/linter/LinterPanel.vue'
+import { mountKit, type KitMount } from '@/components/obsidian/mount'
 import { LinterService } from './LinterService'
 import type { LintTarget } from './types'
 import { LINTER_VIEW_TYPE } from './viewType'
@@ -15,7 +15,7 @@ export { LINTER_VIEW_TYPE }
  * the report lives in `LinterService`, so closing the tab loses nothing.
  */
 export class LinterView extends ItemView {
-  private vue: VueApp | null = null
+  private vue: KitMount | null = null
 
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
@@ -41,8 +41,7 @@ export class LinterView extends ItemView {
     this.contentEl.empty()
     this.contentEl.addClass('abele-linter-view')
     const mount = this.contentEl.createDiv({ cls: 'abele-linter-view__mount' })
-    this.vue = createApp(LinterPanel)
-    this.vue.mount(mount)
+    this.vue = mountKit(mount, LinterPanel, null, { owner: this })
   }
 
   async onClose(): Promise<void> {

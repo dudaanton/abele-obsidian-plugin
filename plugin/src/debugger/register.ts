@@ -1,5 +1,5 @@
 import { ItemView, SuggestModal, Notice, type Plugin } from 'obsidian'
-import { createApp, type App as VueApp } from 'vue'
+import { mountKit, type KitMount } from '@/components/obsidian/mount'
 import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import type { DebuggerSnapshot } from '@abele/node-protocol'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -10,7 +10,7 @@ import { registerDebugValues } from './DebugValueTab'
 import { registerTraceTabs } from './trace/TraceTabs'
 export const DEBUG_VIEW_TYPE = 'abele-debug-view'
 export class DebugView extends ItemView {
-  private vue?: VueApp
+  private vue?: KitMount
   getViewType() {
     return DEBUG_VIEW_TYPE
   }
@@ -22,8 +22,7 @@ export class DebugView extends ItemView {
   }
   async onOpen() {
     this.contentEl.replaceChildren()
-    this.vue = createApp(DebuggerView)
-    this.vue.mount(this.contentEl)
+    this.vue = mountKit(this.contentEl, DebuggerView, null, { owner: this })
   }
   async onClose() {
     this.vue?.unmount()
