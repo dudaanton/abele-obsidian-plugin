@@ -111,6 +111,7 @@ it('compares the current files of a branch with another version, committed and u
       const failed=tab().querySelector('.abele-github-notice');
       if(!compare()||/stale/i.test(tab().textContent))throw Error('Comparison page failed: '+(failed?.textContent??tab().textContent.slice(0,400)));
       await until(()=>compare().textContent.includes('value = 2'),'diff of app.ts');
+      await until(()=>['Removed on the branch','Only on main','Untracked sample'].every(line=>compare().textContent.includes(line)),'diffs of deleted and untracked files');
       const image=await require('@electron/remote').getCurrentWebContents().capturePage();
       require('fs').mkdirSync(${JSON.stringify(SHOTS)},{recursive:true});require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/compare-main.png',image.toPNG());
       return compare().textContent;
