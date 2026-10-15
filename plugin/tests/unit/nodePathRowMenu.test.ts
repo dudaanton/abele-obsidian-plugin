@@ -53,6 +53,7 @@ function model() {
     selected: ref('sample-root'),
     current: ref(target),
     currentFolder: ref({ id: 'sample-project', git: true }),
+    port: { branch: vi.fn() },
     refresh: f.refresh,
   } as never
 }
@@ -70,7 +71,11 @@ describe('the place menu', () => {
   it('starts with a new chat and switching place, then the folder’s items, then the node', async () => {
     f.request.mockResolvedValue({ project_id: 'sample-project', external_read: false })
     const titles = (await opened()).items.map((i) => i.title)
-    expect(titles.slice(0, 2)).toEqual(['New chat here', 'Switch to another branch…'])
+    expect(titles.slice(0, 3)).toEqual([
+      'New chat here',
+      'Switch to another branch…',
+      'Compare with…',
+    ])
     expect(titles).toContain('New worktree')
     expect(titles).toContain('Open a folder…')
     expect(titles).toContain('Refresh')

@@ -23,6 +23,7 @@ import {
 import type { NodePathModel, PathTarget } from './NodePathModel'
 import { showNodePairingDialog } from './NodePairingDialogHost'
 import { h } from 'vue'
+import { shortRef } from './presentation'
 
 const app = () => GlobalStore.getInstance().app
 export const nodePathAction = (run: () => Promise<unknown> | void): void => {
@@ -575,6 +576,38 @@ export function pickNodePathPlace(model: NodePathModel, openChat: (id: string) =
   ).open()
 }
 /**
+ * Compare with…: every branch, remote branch and tag the worktree can be set against. The
+ * branch's codes and its committed changes then count against the one chosen.
+ */
+export function chooseNodePathBase(model: NodePathModel): void {
+  nodePathAction(async () => {
+    if (!model.panelBranch.value) await model.loadPanelBranch()
+    const branch = model.panelBranch.value
+    if (!branch) throw new Error('This place has no branch to compare.')
+    const kind = (ref: string) =>
+      ref.startsWith('refs/tags/')
+        ? { icon: 'tag', kind: 'Tag' }
+        : ref.startsWith('refs/remotes/')
+          ? { icon: 'cloud', kind: 'Remote branch' }
+          : { icon: 'git-branch', kind: 'Branch' }
+    new NodeSuggestModal(
+      app(),
+      branch.refs.map((ref) => ({
+        id: ref,
+        ...kind(ref),
+        title: shortRef(ref),
+        current: ref === (model.panelBase.value || branch.state.baseRef),
+      })),
+      'Compare with a branch or tag',
+      (item) => {
+        model.panelBase.value = item.id
+        model.panelMode.value = 'changes'
+      },
+      'No branch or tag matches'
+    ).open()
+  })
+}
+/**
  * The place's menu: what stood as glyphs in the panel's header (new chat, open a folder,
  * refresh), switching place, then what can be done with this folder or worktree, then the node.
  */
@@ -628,6 +661,14 @@ export function showNodePathPlaceMenu(
       .setIcon(git ? 'git-branch' : 'folder')
       .onClick(() => pickNodePathPlace(model, openChat))
   )
+  if (git && model.current.value.kind === 'worktree')
+    menu.addItem((i) =>
+      i
+        .setTitle('Compare with…')
+        .setIcon('git-compare')
+        .setDisabled(!model.port.branch)
+        .onClick(() => chooseNodePathBase(model))
+    )
   menu.addSeparator()
   withRowMenu(model, id, tail, menu, true)
 }

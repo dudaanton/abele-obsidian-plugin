@@ -87,3 +87,5 @@ export function nodeQueueView(
   }
   return { messages: shown, states }
 }
+/** A ref as people say it: `main` for a branch, `origin/main` for a remote's, a tag by its name. */
+export const shortRef = (ref: string) => ref.replace(/^refs\/(heads|remotes|tags)\//, '')

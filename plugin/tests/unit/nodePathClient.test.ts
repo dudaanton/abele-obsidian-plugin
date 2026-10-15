@@ -741,3 +741,91 @@ describe('exact reverse patch for staged and unstaged comparisons', () => {
     )
   })
 })
+describe('a branch as a pull request would see it', () => {
+  const target = {
+    nodeId: identity.node,
+    registrationId: identity.installation,
+    projectId: identity.project,
+    kind: 'worktree' as const,
+    id: identity.workspace,
+  }
+  function branchFake(upstream: boolean) {
+    const f = fake()
+    f.client.describe.mockResolvedValue({
+      capabilities: { capabilities: { node_path_v2: { status: 'supported' } } },
+    })
+    const divergence = vi.fn(async (params: { base_ref?: string }) =>
+      params.base_ref === 'refs/remotes/origin/main'
+        ? { base_ref: params.base_ref, base_commit: BASE, head_commit: HEAD, ahead: 2, behind: 0, reason: 'ok' }
+        : {
+            base_ref: params.base_ref ?? 'refs/remotes/origin/trunk',
+            base_commit: BASE,
+            head_commit: HEAD,
+            ahead: 3,
+            behind: 1,
+            reason: 'ok',
+          }
+    )
+    const request = async (method: string, params: any) => {
+      if (method === 'repository.v1.divergence') return divergence(params)
+      if (method === 'repository.v1.refs')
+        return {
+          entries: [
+            { name: 'refs/heads/main', commit: HEAD, symbolic: null },
+            { name: 'refs/heads/other', commit: BASE, symbolic: null },
+            ...(upstream ? [{ name: 'refs/remotes/origin/main', commit: BASE, symbolic: null }] : []),
+            { name: 'refs/remotes/origin/trunk', commit: BASE, symbolic: null },
+            { name: 'refs/remotes/origin/HEAD', commit: BASE, symbolic: 'refs/remotes/origin/trunk' },
+          ],
+          default_branch: 'refs/remotes/origin/trunk',
+          cursor: null,
+          incomplete: false,
+          omissions: [],
+        }
+      if (method === 'repository.v1.compare') {
+        const page = (await f.request(method, params)) as object
+        return { ...page, entries: [{ path: 'src/sample.ts', status: 'M' }] }
+      }
+      return f.request(method, params)
+    }
+    f.client.repository = new RepositoryClient(request)
+    f.client.nodePath = new NodePathClient(request, async () => {
+      throw new Error('No mutation')
+    })
+    const port = new NodePathClientPort(f.client, {
+      nodeId: identity.node,
+      registrationId: identity.installation,
+    })
+    return { port, divergence, calls: f.calls }
+  }
+  it('says the base, ahead and behind, what is not pushed, and what the branch committed', async () => {
+    const { port } = branchFake(true)
+    await port.catalogue()
+    const branch = await port.branch(target)
+    expect(branch.state).toMatchObject({
+      base: 'origin/trunk',
+      baseRef: 'refs/remotes/origin/trunk',
+      ahead: 3,
+      behind: 1,
+      upstream: 'origin/main',
+      unpushed: 2,
+    })
+    expect(branch.committed.map((c) => [c.path, c.kind])).toEqual([['src/sample.ts', 'modified']])
+    expect(branch.refs).toEqual([
+      'refs/heads/other',
+      'refs/remotes/origin/main',
+      'refs/remotes/origin/trunk',
+    ])
+  })
+  it('has no upstream before the first push, and counts against a chosen base', async () => {
+    const { port, divergence } = branchFake(false)
+    await port.catalogue()
+    const branch = await port.branch(target, 'refs/heads/other')
+    expect(divergence).toHaveBeenCalledWith(
+      expect.objectContaining({ base_ref: 'refs/heads/other' })
+    )
+    expect(branch.state.upstream).toBeUndefined()
+    expect(branch.state.unpushed).toBe(0)
+    expect(branch.state.base).toBe('other')
+  })
+})

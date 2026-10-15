@@ -195,7 +195,7 @@
       <template v-else-if="git && mode === 'changed-tree'">
         <!-- With staging at hand the same trees go under their groups, as a source control
              panel splits them: what is not staged, what is, what the branch committed. -->
-        <template v-if="actions">
+        <template v-if="actions || grouped">
           <template v-for="group in groups" :key="group.id">
             <TreeItem
               v-if="group.files.length"
@@ -207,7 +207,7 @@
               :collapsed="folded.has(group.id)"
               @click="toggle(group.id)"
             >
-              <template v-if="group.id !== 'committed'" #actions>
+              <template v-if="actions && group.id !== 'committed'" #actions>
                 <Icon
                   :icon="group.id === 'staged' ? 'minus' : 'plus'"
                   size="xs"
@@ -219,7 +219,7 @@
                 :entries="groupTrees[group.id]"
                 :selected="selected"
                 :folded="changedFolded"
-                :stage="group.id === 'committed' ? undefined : group.id"
+                :stage="!actions || group.id === 'committed' ? undefined : group.id"
                 @toggle="toggleChanged"
                 @open="(path) => emit('open', path, group.id)"
                 @menu="(e, path) => emit('menu', e, path)"
@@ -312,6 +312,8 @@ const props = withDefaults(
     modes?: boolean
     /** Stage, unstage and discard on each changed row, shown under the pointer. */
     actions?: boolean
+    /** The changed files under their groups (not staged, staged, committed) without the actions. */
+    grouped?: boolean
     /** What the list leaves out, said under it ("200 of 1 240 files · show more"). */
     more?: string
   }>(),
@@ -326,6 +328,7 @@ const props = withDefaults(
     base: undefined,
     modes: true,
     actions: false,
+    grouped: false,
     more: undefined,
   }
 )

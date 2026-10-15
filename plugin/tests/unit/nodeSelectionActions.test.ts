@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
-import { newNodePathChat, pickNodePathPlace } from '@/node/NodePathController'
+import { chooseNodePathBase, newNodePathChat, pickNodePathPlace } from '@/node/NodePathController'
 import { selectionQuote } from '@/components/nodeWork/fileSelection'
 
 const f = vi.hoisted(() => ({
@@ -150,4 +150,30 @@ describe('selected node file context', () => {
       ).toBe(true)
     }
   )
+})
+
+describe('compare with', () => {
+  it('offers the branches, remote branches and tags by name and counts against the one chosen', async () => {
+    const m = {
+      panelBase: ref(''),
+      panelMode: ref('files'),
+      panelBranch: ref({
+        state: { base: 'origin/trunk', baseRef: 'refs/remotes/origin/trunk', ahead: 1, behind: 0, unpushed: 0 },
+        committed: [],
+        refs: ['refs/heads/other', 'refs/remotes/origin/trunk', 'refs/tags/v1'],
+      }),
+      loadPanelBranch: vi.fn(async () => {}),
+    }
+    chooseNodePathBase(m as never)
+    await vi.waitFor(() => expect(f.items).toHaveLength(3))
+    expect(f.items.map((i) => [i.title, i.kind])).toEqual([
+      ['other', 'Branch'],
+      ['origin/trunk', 'Remote branch'],
+      ['v1', 'Tag'],
+    ])
+    expect((f.items[1] as { current?: boolean }).current).toBe(true)
+    f.choose!(f.items[0])
+    expect(m.panelBase.value).toBe('refs/heads/other')
+    expect(m.panelMode.value).toBe('changes')
+  })
 })

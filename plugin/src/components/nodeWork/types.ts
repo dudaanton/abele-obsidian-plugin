@@ -150,8 +150,10 @@ export interface PullRequestSummary {
  * rebase or merge that stopped half way.
  */
 export interface BranchState {
-  /** The branch it is compared with; null when none could be found. */
+  /** The branch it is compared with, as people say it; null when none could be found. */
   base: string | null
+  /** The same in full (`refs/remotes/origin/main`), for asking the node. */
+  baseRef?: string
   /** Commits on this branch and not on the base, and the other way round. */
   ahead: number
   behind: number

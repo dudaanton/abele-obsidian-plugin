@@ -12,8 +12,9 @@ import {
   type WorktreeEntry,
 } from '@abele/node-protocol'
 import type { PathTreeBatch } from './nodePathChanges'
-import type { CommitSummary, FileChange, TreeEntry } from '@/components/nodeWork/types'
+import type { BranchState, CommitSummary, FileChange, TreeEntry } from '@/components/nodeWork/types'
 import { formatTimestamp } from '@/helpers/displayFormat'
+import { shortRef } from './presentation'
 import { nodePages } from './NodeWorkspaceModel'
 import { readNodeText } from './NodeFilesModel'
 import { COMMIT_FILE_READS, eachBounded } from './bounded'
@@ -23,6 +24,7 @@ import type {
   PathCatalogue,
   PathChange,
   PathDocument,
+  PathBranch,
   PathInspection,
   PathTarget,
   PathTreePage,
@@ -64,6 +66,14 @@ export async function pathPages<T>(
   }
 }
 const branchName = (name: string | null) => name?.replace(/^refs\/heads\//, '') ?? 'Detached'
+const changeKind = (status: string): FileChange['kind'] =>
+  status.startsWith('A')
+    ? 'added'
+    : status.startsWith('D')
+      ? 'deleted'
+      : status.startsWith('R')
+        ? 'renamed'
+        : 'modified'
 export function pathStatus(
   entry: Awaited<ReturnType<NodeClient['repository']['status']>>['entries'][number]
 ): PathChange {
@@ -288,6 +298,68 @@ export class NodePathClientPort implements NodePathPort {
       ...(this.capabilities.includes('node_path_v2')
         ? await this.divergence(target)
         : { note: 'Change times and branch divergence require an updated node.' }),
+    }
+  }
+  /**
+   * Where the branch stands: its base (the default branch or the one chosen), how far apart they
+   * are, the remote branch of the same name and what is not on it yet, and the files the branch
+   * committed that its base does not have.
+   */
+  async branch(target: PathTarget, base?: string): Promise<PathBranch> {
+    if (target.kind !== 'worktree' || !this.capabilities.includes('node_path_v2'))
+      throw new Error('Branch state requires an updated node.')
+    const own = this.worktrees.get(target.id)?.branch ?? null
+    const name = own ? branchName(own) : null
+    const [divergence, refs] = await Promise.all([
+      this.client.nodePath.divergence({ worktree_id: target.id, ...(base ? { base_ref: base } : {}) }),
+      pathPages((cursor) => this.client.repository.refs({ worktree_id: target.id, cursor })),
+    ])
+    const remotes = name
+      ? refs.filter((r) => /^refs\/remotes\/[^/]+\//.test(r.name) && r.name.endsWith(`/${name}`))
+      : []
+    // The remote branch of the same name, origin's first: how far the branch is pushed.
+    const upstream = remotes.find((r) => r.name === `refs/remotes/origin/${name}`) ?? remotes[0]
+    const pushed = upstream
+      ? await this.client.nodePath.divergence({ worktree_id: target.id, base_ref: upstream.name })
+      : undefined
+    const ahead = divergence.ahead ?? 0
+    const committed =
+      ahead && divergence.base_commit && divergence.head_commit
+        ? (
+            await pathPages((cursor) =>
+              this.client.repository.compare({
+                worktree_id: target.id,
+                base: { kind: 'commit', commit: divergence.base_commit! },
+                head: { kind: 'commit', commit: divergence.head_commit! },
+                mode: 'merge-base',
+                cursor,
+              })
+            )
+          ).map(
+            (entry): PathChange => ({
+              path: entry.path,
+              kind: changeKind(entry.status),
+              before: '',
+              after: '',
+              added: 0,
+              removed: 0,
+            })
+          )
+        : []
+    const state: BranchState = {
+      base: divergence.base_ref ? shortRef(divergence.base_ref) : null,
+      ...(divergence.base_ref ? { baseRef: divergence.base_ref } : {}),
+      ahead,
+      behind: divergence.behind ?? 0,
+      ...(upstream ? { upstream: shortRef(upstream.name) } : {}),
+      unpushed: pushed?.ahead ?? 0,
+    }
+    return {
+      state,
+      committed,
+      refs: refs
+        .filter((r) => !r.symbolic && r.name !== own && !r.name.endsWith('/HEAD'))
+        .map((r) => r.name),
     }
   }
   protected status(target: PathTarget, revision: RepositoryRevision) {

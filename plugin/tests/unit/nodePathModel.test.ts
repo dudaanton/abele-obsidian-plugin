@@ -345,6 +345,26 @@ describe('node path model', () => {
     restored.model.destroy()
     older.model.destroy()
   })
+  it('reads the branch against its base, then against a chosen one, and forgets it on another place', async () => {
+    const { model, port } = fake()
+    const branch = vi.fn(async (_t: PathTarget, base?: string) => ({
+      state: { base: base ?? 'trunk', ahead: 1, behind: 0, unpushed: 0 },
+      committed: [],
+      refs: ['refs/heads/trunk'],
+    }))
+    port.branch = branch
+    await model.refresh()
+    await model.select('one')
+    await model.loadPanelBranch()
+    expect(model.panelBranch.value?.state.base).toBe('trunk')
+    model.panelBase.value = 'refs/heads/other'
+    await model.loadPanelBranch()
+    expect(branch).toHaveBeenLastCalledWith(target('one'), 'refs/heads/other')
+    await model.select('two')
+    expect(model.panelBase.value).toBe('')
+    expect(model.panelBranch.value).toBeUndefined()
+    model.destroy()
+  })
   it('retains the last known catalogue and files when a read fails; never labels it refreshed', async () => {
     const { model, port } = fake()
     await model.refresh()

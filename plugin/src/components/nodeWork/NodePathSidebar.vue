@@ -28,6 +28,9 @@
         :pulls="git"
         :changes="changeCount"
         :open-pulls="pulls?.pulls.length ?? 0"
+        :against="model.panelBase.value ? shortRef(model.panelBase.value) : undefined"
+        @compare="emit('compare')"
+        @stop-compare="model.panelBase.value = ''"
       />
     </template>
     <template v-if="model">
@@ -38,7 +41,17 @@
         :busy="model.busy.value"
         @pick="emit('pick-place')"
         @menu="emit('place-menu', $event)"
-      />
+      >
+        <!-- The branch against its base, in codes, close under its name. -->
+        <BranchCodes
+          v-if="branch && branchSays"
+          :state="branch.state"
+          :branch="model.currentCopy.value?.branch ?? ''"
+          size="panel"
+          pickable
+          @choose-base="emit('compare')"
+        />
+      </NodePlace>
       <div v-if="!model.current.value" class="search-empty-state">
         Choose a folder on {{ node?.name ?? 'the node' }} in the row above.
       </div>
@@ -49,6 +62,9 @@
         :cursors="model.treeCursors.value"
         :progress="model.treeProgress.value"
         :changes="model.changes.value"
+        :branch-changes="mode === 'changes' ? (branch?.committed ?? []) : []"
+        :base="branch?.state.base ?? undefined"
+        :grouped="mode === 'changes'"
         :mode="mode === 'files' ? 'all' : 'changed-tree'"
         :modes="false"
         :git="git"
@@ -97,6 +113,8 @@ import NodeModes from './NodeModes.vue'
 import NodePullList from './NodePullList.vue'
 import FileTree from './FileTree.vue'
 import HistoryView from './HistoryView.vue'
+import BranchCodes from './BranchCodes.vue'
+import { shortRef } from '@/node/presentation'
 import type { NodeSummary } from './types'
 const props = withDefaults(
   defineProps<{
@@ -125,6 +143,7 @@ const emit = defineEmits<{
   'open-commit': [hash: string]
   'open-pull': [number: number]
   'connect-service': []
+  compare: []
 }>()
 const git = computed(() => props.model?.currentFolder.value?.git ?? false)
 /** A folder without git has its files only, whatever mode was last chosen. */
@@ -133,6 +152,37 @@ const changeCount = computed(
   () => new Set((props.model?.changes.value ?? []).map((c) => c.path)).size
 )
 const history = computed(() => props.model?.panelHistory.value)
+const branch = computed(() => props.model?.panelBranch.value)
+/** A folder's own main branch, even with its remote and no other base, says nothing: no codes. */
+const branchSays = computed(() => {
+  const state = branch.value?.state
+  return (
+    !!state &&
+    !(
+      props.model?.currentCopy.value?.kind === 'project' &&
+      !props.model.panelBase.value &&
+      !state.ahead &&
+      !state.behind &&
+      !state.unpushed &&
+      !state.pr &&
+      !state.stopped
+    )
+  )
+})
+// The branch is read again whenever the node observes the worktree anew or another base is chosen.
+watch(
+  () =>
+    [
+      props.model,
+      props.model?.current.value?.id,
+      JSON.stringify(props.model?.inspection.value?.revision ?? null),
+      props.model?.panelBase.value,
+    ] as const,
+  ([model, id]) => {
+    if (model && id && git.value) void model.loadPanelBranch().catch((e) => model.report(e))
+  },
+  { immediate: true }
+)
 const pulls = computed(() => props.model?.panelPulls.value)
 // History and pull requests are read when their mode is shown, for the place shown.
 watch(

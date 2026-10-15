@@ -48,6 +48,9 @@ describe('product node sidebar', () => {
         },
       ]),
       panelMode: ref('changes'),
+      panelBase: ref(''),
+      panelBranch: shallowRef(undefined),
+      loadPanelBranch: vi.fn(async () => {}),
       panelHistory: shallowRef(undefined),
       panelPulls: shallowRef(undefined),
       inspection: shallowRef(undefined),
@@ -195,6 +198,68 @@ describe('native node installation', () => {
     expect(view.find('code').text()).toBe(command)
     await view.find('[aria-label="Copy the command"]').trigger('click')
     expect(view.emitted('copy')?.[0]).toEqual([command])
+    view.unmount()
+  })
+})
+describe('the branch in the panel', () => {
+  function branchModel(base = '') {
+    return {
+      folders: shallowRef([{ id: 'project', name: 'sample-app', path: '/sample', git: true, copies: [] }]),
+      selected: ref('tree'),
+      current: ref({ id: 'tree', kind: 'worktree' }),
+      selectedChat: ref(''),
+      currentFolder: ref({ name: 'sample-app', git: true }),
+      currentCopy: ref({ kind: 'worktree', branch: 'sample-branch' }),
+      entries: shallowRef([]),
+      treeCursors: shallowRef({}),
+      treeProgress: shallowRef(undefined),
+      changes: shallowRef([
+        { path: 'src/a.ts', kind: 'modified', stage: 'staged', before: '', after: '', added: 0, removed: 0 },
+      ]),
+      panelMode: ref('changes'),
+      panelBase: ref(base),
+      panelBranch: shallowRef({
+        state: { base: 'main', ahead: 2, behind: 1, unpushed: 0, upstream: 'origin/sample-branch' },
+        committed: [
+          { path: 'src/b.ts', kind: 'added', before: '', after: '', added: 0, removed: 0 },
+        ],
+        refs: [],
+      }),
+      panelHistory: shallowRef(undefined),
+      panelPulls: shallowRef(undefined),
+      inspection: shallowRef(undefined),
+      loadPanelBranch: vi.fn(async () => {}),
+      loadPanelHistory: vi.fn(async () => {}),
+      loadPanelPulls: vi.fn(async () => {}),
+      error: ref(''),
+      busy: ref(false),
+      capabilities: shallowRef<string[]>([]),
+    }
+  }
+  it('says the branch against its base under its name, and splits its changes into groups', async () => {
+    const model = branchModel()
+    const view = mount(NodePathSidebar, {
+      props: { model: model as never, phase: 'ready', node: { name: 'Sample node', status: 'connected' } },
+    })
+    await flushPromises()
+    expect(model.loadPanelBranch).toHaveBeenCalled()
+    expect(view.get('.abele-node-place__byline .abele-branch-codes__base').text()).toBe('main')
+    const groups = view.findAll('.abele-file-tree__group').map((g) => g.get('.abele-tree-item__text').text())
+    expect(groups).toEqual(['Staged', 'Committed'])
+    // No stage glyphs while the node cannot stage.
+    expect(view.find('[aria-label="Unstage"]').exists()).toBe(false)
+    await view.get('.abele-branch-codes__base').trigger('click')
+    expect(view.emitted('compare')).toHaveLength(1)
+    view.unmount()
+  })
+  it('names the chosen base over the files and goes back to the default with its cross', async () => {
+    const model = branchModel('refs/heads/other')
+    const view = mount(NodePathSidebar, {
+      props: { model: model as never, phase: 'ready', node: { name: 'Sample node', status: 'connected' } },
+    })
+    expect(view.get('.abele-node-modes__against-name').text()).toBe('vs other')
+    await view.get('.abele-node-modes__against [aria-label^="Stop comparing"]').trigger('click')
+    expect(model.panelBase.value).toBe('')
     view.unmount()
   })
 })

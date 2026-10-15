@@ -20,6 +20,7 @@ import {
   showNodePathFileMenu,
   showNodePathPlaceMenu,
   pickNodePathPlace,
+  chooseNodePathBase,
 } from '@/node/NodePathController'
 import NodePathSidebar from '@/components/nodeWork/NodePathSidebar.vue'
 
@@ -159,8 +160,11 @@ export class NodeSidebarView extends ItemView {
                 )
               )
           },
+          onCompare: () => {
+            if (model) chooseNodePathBase(model)
+          },
           onOpenPull: (number: number) => new Notice(`Pull request #${number}`),
-          onConnectService: () => new Notice('Connect a git service in Abele settings.'),
+          onConnectService: () => new Notice('Connect a Git service in Abele settings.'),
           onRefresh: () => {
             if (model && connection)
               nodePathAction(() => connection.connect().then(() => model.refreshCurrent()))

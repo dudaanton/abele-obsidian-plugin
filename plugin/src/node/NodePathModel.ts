@@ -14,6 +14,7 @@ import type {
   NodePanelMode,
   NodeImagePreview,
   PullRequestSummary,
+  BranchState,
   TreeEntry,
 } from '@/components/nodeWork/types'
 
@@ -113,8 +114,18 @@ export interface NodePathPort {
     changed?: (batch: PathTreeBatch) => void
   ): Promise<() => void>
   subscribe(notify: () => void): Promise<() => void>
+  /** A worktree's branch against its base, or against the one chosen. */
+  branch?(target: PathTarget, base?: string): Promise<PathBranch>
   /** Where the node reports the folder's remote; absent, the panel says none is known. */
   pulls?(target: PathTarget): Promise<PathPulls>
+}
+/** A worktree's branch against its base, as a pull request page says it. */
+export interface PathBranch {
+  state: BranchState
+  /** Files committed on the branch and not in its base. */
+  committed: PathChange[]
+  /** Every branch, remote branch and tag the branch can be compared with, in full. */
+  refs: string[]
 }
 /** The pull requests of a place, from the git service its remote lives on. */
 export interface PathPulls {
@@ -156,6 +167,10 @@ export class NodePathModel {
   /** The selected place's history and pull requests, read while their mode is shown. */
   readonly panelHistory = shallowRef<NodePathHistoryModel>()
   readonly panelPulls = shallowRef<PathPulls>()
+  /** The branch the selected worktree is compared with, when not its default; full ref. */
+  readonly panelBase = ref('')
+  readonly panelBranch = shallowRef<PathBranch>()
+  private branchGeneration = 0
   private readonly progress = shallowRef<Record<string, TreeProgress | undefined>>({})
   private readonly cursors = shallowRef<Record<string, Record<string, string | null>>>({})
   readonly treeProgress = computed(() =>
@@ -318,6 +333,14 @@ export class NodePathModel {
     }
     await history.load()
   }
+  /** The selected worktree's branch against its base (or the chosen one), and what it committed. */
+  async loadPanelBranch(): Promise<void> {
+    const target = this.current.value
+    if (!target || target.kind !== 'worktree' || !this.port.branch || !this.online.value) return
+    const generation = ++this.branchGeneration
+    const branch = await this.port.branch(target, this.panelBase.value || undefined)
+    if (!this.disposed && generation === this.branchGeneration) this.panelBranch.value = branch
+  }
   async loadPanelPulls(): Promise<void> {
     const target = this.current.value
     if (!target || target.kind !== 'worktree') return
@@ -380,7 +403,14 @@ export class NodePathModel {
           : folder
       )
     const generation = ++this.selectionGeneration
-    this.selected.value = target.kind === 'workspace' ? target.projectId : target.id
+    const next = target.kind === 'workspace' ? target.projectId : target.id
+    if (next !== this.selected.value) {
+      // Another place: its own base and branch, not the last one's.
+      this.panelBase.value = ''
+      this.panelBranch.value = undefined
+      ++this.branchGeneration
+    }
+    this.selected.value = next
     this.stopWatch?.()
     this.stopWatch = undefined
     if (!this.online.value) {
