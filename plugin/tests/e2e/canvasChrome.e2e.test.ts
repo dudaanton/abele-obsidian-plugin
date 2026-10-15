@@ -167,13 +167,15 @@ describe.skipIf(!available)('the canvas by hand', () => {
 
   it('stands the tools across the top of the tab, with the old rows out of sight', async () => {
     await reopen()
-    const layout = run<{ bar: number[]; content: number[]; old: string }>(`
-      const bar=view().contentEl.querySelector('.abele-canvas-chrome__tools').getBoundingClientRect(),c=view().contentEl.getBoundingClientRect()
-      return {bar:[bar.top,bar.width],content:[c.top,c.width],old:getComputedStyle(view().contentEl.querySelector('.abele-canvas-editor-controls')).display}`)
+    const layout = run<{ bar: number[]; content: number[]; stage: number; old: string }>(`
+      const bar=view().contentEl.querySelector('.abele-canvas-chrome__tools').getBoundingClientRect(),c=view().contentEl.getBoundingClientRect(),st=view().viewer.stage.getBoundingClientRect()
+      return {bar:[bar.top,bar.width],content:[c.top,c.width],stage:st.top,old:getComputedStyle(view().contentEl.querySelector('.abele-canvas-editor-controls')).display}`)
     expect(layout.old).toBe('none')
     // Across the whole top of the tab, under its header, as a drawing's tools are.
     expect(Math.abs(layout.bar[0] - layout.content[0])).toBeLessThan(2)
     expect(layout.bar[1]).toBeGreaterThan(layout.content[1] - 2)
+    // Nothing of the old rows keeps a strip over the canvas: it starts at the tab's top too.
+    expect(Math.abs(layout.stage - layout.content[0])).toBeLessThan(2)
     shot('toolbar')
   }, 120_000)
 

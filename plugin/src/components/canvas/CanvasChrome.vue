@@ -694,8 +694,10 @@ onBeforeUnmount(() => {
 </script>
 
 <style lang="scss">
-// The editor's old rows of words and its status line give way to the controls above.
-.abele-canvas-view_chrome {
+// The editor's old rows of words and its status line give way to the controls above. Doubled
+// with the viewer's own class to outweigh the status line's place kept in viewer.css, which
+// otherwise came and went with the order styles load in and moved the canvas under the pointer.
+.abele-canvas-viewer.abele-canvas-view_chrome {
   position: relative;
 
   > .abele-canvas-controls,
