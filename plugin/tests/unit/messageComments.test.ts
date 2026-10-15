@@ -12,7 +12,7 @@ import {
   selectionAnchor,
   locateQuote,
   paintMessageComments,
-  unpaintMessageComments,
+  unrenderMessageCommentMarkers,
   buildMessageCommentContext,
   type PaintedComment,
 } from '@/ai/messageComments'
@@ -134,17 +134,18 @@ describe('drawing comments over an answer', () => {
     expect(root.lastElementChild?.contains(icon)).toBe(true)
   })
 
-  it('is taken back whole when the answer goes', () => {
+  it('takes its markers out when the answer goes, and leaves the text nodes as they are', () => {
     const root = rendered('<p>Take the night train.</p>')
-    const before = root.textContent
     paintMessageComments(root, [comment({ id: 'a', quote: 'night', start: 9 })], vi.fn())
     const icon = root.querySelector('.abele-comment-marker')!
+    // An empty text node, as Vue leaves for a fragment it anchors there.
+    const anchor = root.querySelector('p')!.appendChild(document.createTextNode(''))
 
-    unpaintMessageComments(root)
+    unrenderMessageCommentMarkers(root)
 
     expect(kitRootRendered(icon)).toBe(false)
-    expect(root.querySelector('.abele-comment-marker, .abele-comment__quote')).toBeNull()
-    expect(root.textContent).toBe(before)
+    expect(root.querySelector('.abele-comment-marker')).toBeNull()
+    expect(anchor.isConnected).toBe(true)
   })
 
   it('puts a comment on the whole answer at its end', () => {

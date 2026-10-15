@@ -3,6 +3,7 @@
  * rendered synchronously (`renderKit`). Both are taken out by their handle and by the owner's
  * unload, once.
  */
+import 'obsidian'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, onUnmounted } from 'vue'
 import type { Component as ObsidianComponent } from 'obsidian'

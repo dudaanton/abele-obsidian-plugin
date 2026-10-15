@@ -128,14 +128,18 @@ export function locateQuote(
 }
 
 /**
- * Takes back everything a previous draw added, leaving the answer as it was rendered. Called
- * before every draw and when the answer leaves the page.
+ * Takes the drawn markers out, running their unmount; for an answer leaving the page, where the
+ * text is left alone — normalizing it then would drop the empty text nodes Vue anchors the reply
+ * chips' fragments on.
  */
-export function unpaintMessageComments(root: HTMLElement): void {
-  for (const el of Array.from(root.querySelectorAll(`.abele-comment-marker[${PAINTED}]`))) {
+export function unrenderMessageCommentMarkers(root: HTMLElement): void {
+  for (const el of Array.from(root.querySelectorAll(`.abele-comment-marker[${PAINTED}]`)))
     unrenderKitRoot(el)
-    el.remove()
-  }
+}
+
+/** Takes back everything a previous draw added, leaving the answer as it was rendered. */
+function unpaint(root: HTMLElement): void {
+  unrenderMessageCommentMarkers(root)
   for (const el of Array.from(root.querySelectorAll(`.abele-comment__quote[${PAINTED}]`))) {
     el.replaceWith(...Array.from(el.childNodes))
   }
@@ -196,7 +200,7 @@ export function paintMessageComments(
   comments: PaintedComment[],
   onOpen: (id: string) => void
 ): void {
-  unpaintMessageComments(root)
+  unpaint(root)
 
   for (const comment of comments) {
     const text = textOf(textNodes(root))
