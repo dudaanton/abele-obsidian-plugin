@@ -173,6 +173,13 @@ for (const mobile of onPhone() ? [false] : [false, true])
       await stroke(...row(7))
       await until(`kinds().includes('group')`)
       expect(before().ink).toBe(was.ink)
+      // The new frame's name opens for writing, and on a phone its keyboard covers the rows below:
+      // the name is left as it is and the keyboard put away before the next tool.
+      run(`view().editor.controls.name(null);document.activeElement?.blur?.();return true`)
+      await until(
+        '!view().editor.controls.naming()&&!document.activeElement?.matches?.("input,textarea")'
+      )
+      await new Promise((r) => setTimeout(r, 500))
 
       for (const [i, tool] of (['line', 'arrow'] as const).entries()) {
         await use(tool)
