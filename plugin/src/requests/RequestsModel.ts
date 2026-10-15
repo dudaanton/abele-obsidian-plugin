@@ -18,7 +18,6 @@ import {
   type Outgoing,
 } from './resolve'
 import {
-  SECRETS,
   collectionOf,
   followSend,
   originOf,
@@ -28,6 +27,8 @@ import {
   sentAtWords,
 } from './shapes'
 import type { RequestsPorts, SendOptions } from './ports'
+import { HeldSecrets } from './secrets'
+import { answerOf, wholeBody } from './history'
 export { forgetRequestSecrets, outcomeOf, requestIdFor, sentAtWords } from './shapes'
 export type { RequestScriptInput, RequestScriptResult, RequestsPorts, SendOptions } from './ports'
 import type { EnvironmentDoc, HttpRpc, RequestDoc, RequestList, SendSummary } from './wire'
@@ -45,8 +46,6 @@ export interface RequestEntry {
 }
 
 const SAVE_AFTER_MS = 400
-/** Of a body, what is read to show again or compare. */
-const BODY_READ = 1024 * 1024
 export class RequestsModel {
   readonly state = reactive<{
     loading: boolean
@@ -73,6 +72,7 @@ export class RequestsModel {
   })
   private readonly saves = new Map<string, { timer: number; work?: Promise<void> }>()
   private readonly wait: (ms: number) => Promise<void>
+  private readonly held: HeldSecrets
 
   constructor(
     readonly rpc: HttpRpc,
@@ -80,6 +80,7 @@ export class RequestsModel {
     private readonly ports: RequestsPorts
   ) {
     this.wait = ports.wait ?? ((ms) => new Promise((r) => window.setTimeout(r, ms)))
+    this.held = new HeldSecrets(projectId)
   }
 
   entry(id: string): RequestEntry {
@@ -133,15 +134,8 @@ export class RequestsModel {
   }
 
   async saveEnvironment(env: EnvironmentDoc) {
-    // A secret's value never leaves memory: what was typed for it is kept here, not written, and
-    // goes only to the environment's own `base`, when it has one.
-    const secrets = this.secretsOf(env.name)
-    const base = env.vars.find((v) => v.key === 'base' && !v.secret)?.value
-    for (const v of env.vars)
-      if (v.secret && v.value !== undefined && secrets[v.key]?.value !== v.value)
-        secrets[v.key] = { value: v.value, origin: base ? originOf(base) : undefined }
-    for (const key of Object.keys(secrets))
-      if (!env.vars.some((v) => v.secret && v.key === key)) delete secrets[key]
+    // A secret's value never leaves memory: what was typed for it is kept here, not written.
+    this.held.remember(env)
     const saved = await this.rpc.saveEnvironment(this.projectId, {
       ...env,
       vars: env.vars.map(({ value, ...v }) => (v.secret ? v : { ...v, value: value ?? '' })),
@@ -153,38 +147,31 @@ export class RequestsModel {
 
   async removeEnvironment(name: string) {
     await this.rpc.removeEnvironment(this.projectId, name)
-    SECRETS.delete(`${this.projectId}\n${name}`)
+    this.held.forget(name)
     this.state.environments = this.state.environments.filter((e) => e !== name)
     if (this.state.environment === name) await this.readEnvironment(this.state.environments[0])
   }
 
-  private secretsOf(env: string) {
-    const key = `${this.projectId}\n${env}`
-    let s = SECRETS.get(key)
-    if (!s) SECRETS.set(key, (s = {}))
-    return s
-  }
   /** The secret values of the environment in use, held in memory. */
   secrets(): Record<string, string> {
-    if (!this.state.environment) return {}
-    return Object.fromEntries(
-      Object.entries(this.secretsOf(this.state.environment)).map(([k, h]) => [k, h.value])
-    )
+    return this.state.environment ? this.held.values(this.state.environment) : {}
   }
   /** Holds a secret for the environment in use; with an origin, it goes only there. */
   setSecret(key: string, value: string, origin?: string) {
-    if (this.state.environment)
-      this.secretsOf(this.state.environment)[key] = { value, ...(origin ? { origin } : {}) }
+    if (this.state.environment) this.held.set(this.state.environment, key, value, origin)
   }
 
-  /** The values the environment in use puts into this request: secrets only for their origin. */
-  vars(doc?: RequestDoc): Record<string, string> {
+  /** Where a request goes, with the environment's plain values put in. */
+  private targetOf(doc: RequestDoc) {
+    return originOf(fill(doc.url, varsOf(this.state.env, {})))
+  }
+
+  /** The values the environment in use puts into this request: a secret only for its origin,
+   * see `HeldSecrets`. Without a request, none of the secrets. */
+  vars(doc?: RequestDoc, person = false): Record<string, string> {
     if (!doc || !this.state.environment) return varsOf(this.state.env, {})
-    const to = originOf(fill(doc.url, varsOf(this.state.env, {})))
-    const held = Object.entries(this.secretsOf(this.state.environment)).filter(
-      ([, h]) => !h.origin || h.origin === to
-    )
-    return varsOf(this.state.env, Object.fromEntries(held.map(([k, h]) => [k, h.value])))
+    const to = this.targetOf(doc)
+    return varsOf(this.state.env, this.held.forTarget(this.state.environment, to, person))
   }
 
   // ── A request ──
@@ -329,13 +316,20 @@ export class RequestsModel {
   }
 
   /** Why it cannot go as it is, in words; nothing when it can. */
-  blocked(doc: RequestDoc): string | undefined {
-    const vars = this.vars(doc)
-    const held = this.state.environment ? this.secretsOf(this.state.environment) : {}
-    const elsewhere = missingVars(doc, vars).find((name) => held[name]?.origin)
-    if (elsewhere)
-      return `${elsewhere} is kept for ${held[elsewhere]!.origin} and is not sent anywhere else`
+  blocked(doc: RequestDoc, person = true): string | undefined {
+    const vars = this.vars(doc, person)
+    const why = this.state.environment
+      ? this.held.why(this.state.environment, missingVars(doc, vars))
+      : undefined
+    if (why) return why
     return whyBlocked(doc, vars, this.state.environment, (name) => this.ports.keys.has(name))
+  }
+
+  /** Binds the secrets a person's send takes with no origin yet to where it goes. */
+  private bindSecrets(doc: RequestDoc) {
+    const to = this.targetOf(doc)
+    if (to && this.state.environment)
+      this.held.bind(this.state.environment, missingVars(doc, varsOf(this.state.env, {})), to)
   }
 
   // ── Sending ──
@@ -344,7 +338,7 @@ export class RequestsModel {
     await this.flush(id)
     const entry = this.entry(id)
     const doc = (entry.doc ??= await this.rpc.get(this.projectId, id))
-    const why = this.blocked(doc)
+    const why = this.blocked(doc, options.interactive)
     if (why) throw new Error(why)
     const environment = this.state.environment ?? ''
     this.state.sending = [...this.state.sending, id]
@@ -352,7 +346,8 @@ export class RequestsModel {
     entry.shown = undefined
     entry.compare = undefined
     try {
-      const vars = this.vars(doc)
+      const vars = this.vars(doc, options.interactive)
+      if (options.interactive) this.bindSecrets(doc)
       let out = outgoing(doc, vars)
       if (doc.scripts.before) {
         const r = await this.ports.scripts.run(
@@ -445,19 +440,17 @@ export class RequestsModel {
   private async keepVars(values: Record<string, string>, origin: string | undefined) {
     const env = this.state.env
     if (!env || !this.state.environment) return
-    const secrets = this.secretsOf(env.name)
     let changed = false
     const vars = env.vars.map((v) => ({ ...v }))
     for (const [key, value] of Object.entries(values)) {
       if (typeof value !== 'string') continue
       const known = vars.find((v) => v.key === key)
       // A token from an answer goes back only where it came from.
-      const held = { value, ...(origin ? { origin } : {}) }
       if (!known) {
         vars.push({ key, secret: true })
-        secrets[key] = held
+        this.held.set(env.name, key, value, origin)
         changed = true
-      } else if (known.secret) secrets[key] = held
+      } else if (known.secret) this.held.set(env.name, key, value, origin)
       else if (known.value !== value) {
         known.value = value
         changed = true
@@ -471,27 +464,7 @@ export class RequestsModel {
   /** Shows the answer of an earlier send. */
   async showSend(id: string, sendId: string) {
     const entry = this.entry(id)
-    const status = await this.rpc.status(this.projectId, sendId)
-    let outcome = outcomeOf(status.outcome)
-    if (outcome.kind === 'answered' && status.outcome.state === 'answered') {
-      if (status.outcome.response.more)
-        outcome = {
-          ...outcome,
-          response: { ...outcome.response, body: await this.wholeBody(sendId) },
-        }
-      if (entry.doc?.checks.length)
-        outcome = {
-          ...outcome,
-          response: {
-            ...outcome.response,
-            checks: evaluateChecks(entry.doc.checks, {
-              ...status.outcome.response,
-              body: outcome.response.body,
-            }),
-          },
-        }
-    }
-    entry.outcome = outcome
+    entry.outcome = await answerOf(this.rpc, this.projectId, sendId, entry.doc?.checks ?? [])
     entry.shown = sendId
     if (entry.compare?.id === sendId) entry.compare = undefined
   }
@@ -499,23 +472,9 @@ export class RequestsModel {
   /** Compares the answer shown with an earlier one; none stops comparing. */
   async compare(id: string, sendId: string | undefined) {
     const entry = this.entry(id)
-    if (!sendId) {
-      entry.compare = undefined
-      return
-    }
-    const send = entry.history.find((h) => h.id === sendId)
-    if (!send) return
-    entry.compare = { ...send, body: await this.wholeBody(sendId) }
-  }
-
-  private async wholeBody(sendId: string) {
-    let text = ''
-    let from: number | undefined = 0
-    while (from !== undefined && text.length < BODY_READ) {
-      const page = await this.rpc.body(this.projectId, sendId, from)
-      text += page.text
-      from = page.next
-    }
-    return from === undefined ? text : `${text}\n… the rest is on the node`
+    const send = sendId ? entry.history.find((h) => h.id === sendId) : undefined
+    entry.compare = send
+      ? { ...send, body: await wholeBody(this.rpc, this.projectId, send.id) }
+      : undefined
   }
 }

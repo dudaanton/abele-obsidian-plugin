@@ -291,6 +291,25 @@ describe('the requests of a project', () => {
     expect((await model.prepared('Samples/Elsewhere.http')).headers['X-Token']).toBe('{{token}}')
   })
 
+  it('binds a typed secret where a person first sends it; an agent never sends an unbound one', async () => {
+    const node = fakeNode()
+    node.files.set(
+      'Samples/Create sample.http',
+      doc({ headers: [{ key: 'X-Token', value: '{{token}}' }] })
+    )
+    const model = new RequestsModel(node.rpc, 'project-1', ports())
+    await model.load()
+    await model.selectEnvironment('local')
+    model.setSecret('token', 'typed-1')
+    await expect(model.send('Samples/Create sample.http', { interactive: false })).rejects.toThrow(
+      'token has not been sent anywhere yet'
+    )
+    await model.send('Samples/Create sample.http', { interactive: true })
+    expect(node.sent[0]!.headers).toContainEqual({ key: 'X-Token', value: 'typed-1' })
+    await model.send('Samples/Create sample.http', { interactive: false })
+    expect(node.sent).toHaveLength(2)
+  })
+
   it('a value the script sets that the environment keeps plainly is written', async () => {
     const node = fakeNode()
     node.files.set('Samples/Create sample.http', doc({ scripts: { after: 'Keep base' } }))
