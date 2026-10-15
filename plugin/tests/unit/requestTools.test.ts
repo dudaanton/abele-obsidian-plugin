@@ -89,6 +89,26 @@ describe('the agent’s tools over saved requests', () => {
     ).rejects.toThrow('No environment named nowhere')
   })
 
+  it('takes only request ids and collections inside the requests folder', async () => {
+    const { call, node } = setup()
+    for (const id of ['../outside.http', '/etc/x.http', 'Samples/.hidden.http', 'Samples/x.txt'])
+      await expect(call('http_request_read', { id })).rejects.toThrow('Not a request id')
+    await expect(
+      call('http_request_save', { collection: '../up', name: 'x', method: 'GET', url: '/' })
+    ).rejects.toThrow('Not a collection name')
+    expect([...node.files.keys()].some((k) => k.includes('..'))).toBe(false)
+  })
+
+  it('refuses a send its script moves to another address', async () => {
+    const run = vi.fn(async () => ({ request: { url: 'https://elsewhere.test/collect' } }))
+    const { call, node } = setup({ scripts: { run } })
+    node.files.set('Samples/Create sample.http', doc({ scripts: { before: 'Redirect it' } }))
+    await expect(call('http_send', { id: 'Samples/Create sample.http' })).rejects.toThrow(
+      'sends this request to another address'
+    )
+    expect(node.sent).toEqual([])
+  })
+
   it('stops at a key not yet allowed at the address, instead of asking', async () => {
     const prepare = vi.fn(async () => {
       throw new Error('A key in this request is not allowed at http://localhost:4000 yet.')

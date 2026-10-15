@@ -24,9 +24,14 @@ export async function sendPreview(
     name && name !== m.state.environment ? await m.rpc.environment(m.projectId, name) : m.state.env
   const doc = m.entry(id).doc ?? (await m.rpc.get(m.projectId, id))
   const out = outgoing(doc, varsOf(env, {}))
+  const scripts = [
+    doc.scripts.before ? `# The script ${doc.scripts.before} runs first and may change this.` : '',
+    doc.scripts.after ? `# The script ${doc.scripts.after} reads the answer.` : '',
+  ].filter(Boolean)
   return {
     environment: name ?? 'No environment',
     text: [
+      ...scripts,
       `${out.method} ${out.url}`,
       ...Object.entries(out.headers).map(([k, v]) => `${k}: ${v}`),
       ...(out.body !== undefined ? ['', out.body] : []),

@@ -22,14 +22,15 @@ const api=window.__abeleTest,nodes=api.NodeService.getInstance(),requests=api.re
 const shot=async name=>{await wait(400);const image=await require('@electron/remote').getCurrentWebContents().capturePage();require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/'+name+'.png',image.toPNG())};
 const panel=()=>document.querySelector('.abele-requests-panel');
 const row=name=>[...document.querySelectorAll('.abele-requests-panel__request')].find(r=>r.querySelector('.abele-tree-item__text')?.textContent.trim()===name);
-const tab=()=>document.querySelector('.workspace-leaf.mod-active .abele-http-request')??[...document.querySelectorAll('.abele-http-request')].find(e=>e.offsetParent);
+let shown;const leafOf=name=>app.workspace.getLeavesOfType('abele-request').find(l=>String(l.view.getState().id??'').endsWith('/'+name+'.http'));
+const tab=()=>shown?.view.containerEl.querySelector('.abele-http-request');
 const facts=()=>tab()?.querySelector('.abele-http-request__facts')?.textContent.replace(/\\s+/g,' ').trim()??'';
 const notice=()=>tab()?.querySelector('.abele-http-request__notice')?.textContent.trim()??'';
 const answerTab=label=>[...tab().querySelectorAll('.abele-http-request__answer [role="tab"]')].find(t=>t.querySelector('.abele-tabs__label')?.textContent.trim()===label);
 const openRequest=async name=>{
   const r=await until(()=>row(name),'row '+name);
   (r.querySelector('.tree-item-self')??r).click();
-  await until(()=>tab()?.querySelector('.abele-http-request__url')?.value!==undefined&&document.querySelector('.workspace-leaf.mod-active .view-header-title')?.textContent.trim()===name,'tab of '+name);
+  shown=await until(()=>{const l=leafOf(name);return l&&l.view.containerEl.querySelector('.abele-http-request__url')?l:null},'tab of '+name);
 };
 const send=async()=>{
   const b=await until(()=>{const x=tab()?.querySelector('.abele-http-request__send');return x&&!x.disabled&&!x.classList.contains('is-disabled')?x:null},'Send offered');

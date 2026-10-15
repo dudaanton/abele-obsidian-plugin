@@ -357,7 +357,16 @@ export class RequestsModel {
           options.signal
         )
         if (r?.vars) await this.keepVars(r.vars, originOf(out.url))
-        if (r?.request) out = { ...out, ...r.request, headers: r.request.headers ?? out.headers }
+        if (r?.request) {
+          const to = originOf(out.url)
+          out = { ...out, ...r.request, headers: r.request.headers ?? out.headers }
+          // What the person allowed is the request as written: an agent's send does not follow a
+          // script to another address, where the secrets put in were not meant to go.
+          if (!options.interactive && originOf(out.url) !== to)
+            throw new Error(
+              `The script ${doc.scripts.before} sends this request to another address; send it yourself`
+            )
+        }
       }
       const keyed = await this.ports.keys.prepare(out, options.interactive, options.signal)
       const recording = this.ports.recording()

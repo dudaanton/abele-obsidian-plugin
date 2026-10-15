@@ -68,6 +68,27 @@ function pairs(v: unknown) {
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const
 
+/** A request id as the node gives it: a path inside the requests folder ending in `.http`. */
+function requestId(v: unknown): string {
+  const id = req(v)
+  if (
+    !/\.http$/.test(id) ||
+    id.split(/[\\/]/).some((part) => !part || part === '..' || part.startsWith('.')) ||
+    /^[A-Za-z]:/.test(id)
+  )
+    throw new Error(`Not a request id: ${id}. Take one from http_requests.`)
+  return id
+}
+
+/** A collection: a folder inside the requests folder, its parts plain names. */
+function collectionName(v: unknown): string {
+  const name = (str(v) ?? '').trim() || 'Requests'
+  const parts = name.split(/[\\/]/).map((p) => p.trim())
+  if (parts.some((p) => !p || p === '..' || p.startsWith('.')) || /^[A-Za-z]:/.test(name))
+    throw new Error(`Not a collection name: ${name}`)
+  return parts.join('/')
+}
+
 export function createRequestTools(resolve: () => RequestToolContext | undefined): AgentTool[] {
   const context = () => {
     const c = resolve()
@@ -142,7 +163,7 @@ export function createRequestTools(resolve: () => RequestToolContext | undefined
       ['id'],
       async (c, p) => {
         const m = await loaded(c)
-        const id = req(p.id)
+        const id = requestId(p.id)
         await m.open(id)
         const e = m.entry(id)
         const d = e.doc
@@ -217,7 +238,7 @@ export function createRequestTools(resolve: () => RequestToolContext | undefined
             ? p.checks.filter((x): x is string => typeof x === 'string')
             : [],
         }
-        const existing = str(p.id)
+        const existing = p.id === undefined ? undefined : requestId(p.id)
         if (existing) {
           await m.flush(existing)
           await m.rpc.save(m.projectId, existing, doc)
@@ -225,7 +246,7 @@ export function createRequestTools(resolve: () => RequestToolContext | undefined
           await m.load()
           return `Saved ${existing}.`
         }
-        const id = await m.create(str(p.collection)?.trim() || 'Requests', doc.name, doc)
+        const id = await m.create(collectionName(p.collection), doc.name, doc)
         return `Made ${id}.`
       }
     ),
@@ -246,7 +267,7 @@ export function createRequestTools(resolve: () => RequestToolContext | undefined
           if (!m.state.environments.includes(env)) throw new Error(`No environment named ${env}`)
           await m.selectEnvironment(env)
         }
-        const id = req(p.id)
+        const id = requestId(p.id)
         const outcome = await m.send(id, {
           interactive: false,
           signal,
@@ -295,7 +316,7 @@ export function createRequestTools(resolve: () => RequestToolContext | undefined
       ['id', 'send'],
       async (c, p) => {
         const m = await loaded(c)
-        const id = req(p.id)
+        const id = requestId(p.id)
         await m.showSend(id, req(p.send))
         const o = m.entry(id).outcome
         if (!o) return 'Nothing known of that send.'

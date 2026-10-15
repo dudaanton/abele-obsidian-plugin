@@ -68,7 +68,7 @@ const goOn=async()=>{
 };
 const panel=()=>document.querySelector('.abele-requests-panel');
 const row=name=>[...document.querySelectorAll('.abele-requests-panel__request')].find(r=>r.querySelector('.abele-tree-item__text')?.textContent.trim()===name);
-const tab=()=>document.querySelector('.workspace-leaf.mod-active .abele-http-request')??[...document.querySelectorAll('.abele-http-request')].find(e=>e.offsetParent);
+const tab=()=>app.workspace.getLeavesOfType('abele-request')[0]?.view.containerEl.querySelector('.abele-http-request');
 const facts=()=>tab()?.querySelector('.abele-http-request__facts')?.textContent.replace(/\\s+/g,' ').trim()??'';`
 
 let child: ChildProcess | undefined
