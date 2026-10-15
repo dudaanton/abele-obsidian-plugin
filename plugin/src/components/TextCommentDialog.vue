@@ -392,6 +392,9 @@ async function edit(id: string) {
   if (!entry) return
   editing.value = id
   editBody.value = entry.body
+  // The comment being changed is where the reader looks now: the thread stops following its
+  // latest comment, or the field growing as it draws would scroll the list away from it.
+  pinned = false
   // A phone raises its keyboard only for a focus taken while the tap is handled. The field for
   // the change is drawn in this tap's own microtasks, so it takes the focus itself; focus passed
   // on from the reply field raised the keyboard and then lost it with the first keys.
