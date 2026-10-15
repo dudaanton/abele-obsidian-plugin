@@ -94,7 +94,9 @@ const script = (label: string) => String.raw`(async function* () {
     return null
   }
   const open = async () => {
-    leaf = app.workspace.getLeaf('tab')
+    // With every tab closed, the leaf Obsidian puts in their place has no group a new tab could
+    // join ("No tab group found"): that leaf is used instead.
+    try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.createLeafInParent(app.workspace.rootSplit, 0) }
     await leaf.setViewState({ type: 'markdown', state: { file: folder + '/Sample month group.md', mode: 'source', source: false }, active: true })
     app.workspace.setActiveLeaf(leaf, { focus: true })
     const s = await until(() => leaf.view.containerEl.querySelector('.cm-scroller'), 'editor')
@@ -150,7 +152,10 @@ const script = (label: string) => String.raw`(async function* () {
     const dayBox = month.querySelector('.abele-tasks-calendar__day').getBoundingClientRect()
     report.stacked = dayBox.top >= monthBox.bottom - 1
     const edge = month.getBoundingClientRect().right
-    const spill = (scope, right) => [...scope.querySelectorAll('*')].filter(el => el.getBoundingClientRect().right > right + 1)
+    // In a note a row's light, and the inset that keeps its words off the light's edge, hang out
+    // into the note's margin by that inset, the list's rows as much as the month's: past that is a spill.
+    const hang = parseFloat(getComputedStyle(document.body).getPropertyValue('--size-2-3')) || 6
+    const spill = (scope, right) => [...scope.querySelectorAll('*')].filter(el => el.getBoundingClientRect().right > right + hang + 1)
       .map(el => String(el.className) + ' +' + Math.round(el.getBoundingClientRect().right - right) + 'px').slice(0, 5)
     report.overflow = spill(month, edge)
     reveal(root)
@@ -243,6 +248,7 @@ const check = (r: Report, phone: boolean) => {
   expect(r.searchInMonth).toBe(false)
   expect(r.stacked).toBe(phone)
   expect(r.overflow).toEqual([])
+  expect(r.listOverflow).toEqual([])
   expect(r.emptyDay).toBe('Nothing planned this day.')
   expect(r.emptyMonth).toMatch(/^Nothing planned in /)
   expect(r.saved).toBe(true)
