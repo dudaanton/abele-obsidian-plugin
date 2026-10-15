@@ -366,12 +366,17 @@ export class ChatInterceptor {
 
   /** Each message's reply-only reviews, one after another in the list's order. */
   private readonly replyTails = new Map<string, Promise<void>>()
+  /** The reviewer each message's latest reply-only review was by. */
+  private readonly replyEntries = new Map<string, InterceptorEntry>()
 
   /**
    * Starts a non-blocking review with a snapshot of the reviewer and the text as it is now. A
    * second one on the same message waits for the first, so that they answer in their order.
    */
-  reviewReply(messageId: string, entry = this.firstAgentEntry()): Promise<void> {
+  reviewReply(
+    messageId: string,
+    entry = this.replyEntries.get(messageId) ?? this.firstAgentEntry()
+  ): Promise<void> {
     const message = this.host.findMessage(messageId)
     const agent = entry ? this.agentOf(entry) : null
     if (!message || !entry || !agent) return Promise.resolve()
@@ -384,6 +389,8 @@ export class ChatInterceptor {
     const name = agent.name
     const run = async () => {
       if (controller.signal.aborted) return
+      // Retry asks this one again, whichever of several it was.
+      this.replyEntries.set(messageId, entry)
       this.replyReviews.value[messageId] = { streaming: true, streamingContent: '', error: null }
       const progress = toRefs(this.replyReviews.value[messageId])
       const current = this.host.findMessage(messageId)

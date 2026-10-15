@@ -47,8 +47,9 @@ vi.mock('@/ai/client/OpenAIClient', () => {
     async *stream(_m: unknown, _s: unknown, messages: { content: unknown }[]) {
       const last = messages.at(-1)!.content
       reviewer.said.push(typeof last === 'string' ? last : JSON.stringify(last))
-      if (reviewer.fail) {
-        yield { type: 'error' as const, error: reviewer.fail }
+      const fail = reviewer.fail
+      if (fail) {
+        yield { type: 'error' as const, error: fail }
         return
       }
       yield { type: 'text_delta' as const, delta: 'Reads fine.' }
@@ -375,5 +376,29 @@ describe("a chat's own list", () => {
     expect(session.interceptor.entries.value).toMatchObject([
       { script: 'Sample guard', checks: 'both', enabled: true },
     ])
+  })
+})
+
+describe('reply-only reviewers', () => {
+  it('Retry after the second one failed asks that one again, not the first', async () => {
+    const second = registry().create({ name: 'Second reviewer', providerId: 'p1', modelId: 'big' })
+    setup((rev) => [
+      newEntry({ id: 'ic-a', agentId: rev, replyOnly: true }),
+      newEntry({ id: 'ic-b', agentId: second.id, replyOnly: true }),
+    ])
+    let calls = 0
+    reviewer.fail = null
+    const failSecond = vi.spyOn(reviewer, 'fail', 'get').mockImplementation(() =>
+      ++calls === 2 ? 'Sample second offline' : null
+    )
+    await session.sendMessage('typed')
+    const id = userBubble().id
+    await vi.waitFor(() =>
+      expect(session.interceptor.replyReviews.value[id]?.error).toBe('Sample second offline')
+    )
+    failSecond.mockRestore()
+    reviewer.fail = null
+    await session.retryInterceptor(id)
+    expect(userBubble().interceptorChat?.map((m) => m.by)).toEqual(['Reviewer', 'Second reviewer'])
   })
 })
