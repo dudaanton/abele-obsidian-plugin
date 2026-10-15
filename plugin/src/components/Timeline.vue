@@ -118,7 +118,14 @@
         </template>
       </div>
       <div ref="anchorSpaceEl" class="abele-timeline__anchor-space" aria-hidden="true" />
-      <div v-if="hasMore" ref="sentinel" class="abele-timeline__sentinel" />
+      <!-- A new sentinel for every page: a browser reports a watched element only when it comes
+           into sight, and one a pane kept in sight through a page would never ask for the next. -->
+      <div
+        v-if="hasMore"
+        ref="sentinel"
+        :key="pagedVisible.length"
+        class="abele-timeline__sentinel"
+      />
       <!-- With nothing from today on, the list says so rather than standing empty under Overdue,
            and while done tasks are hidden it offers the switch that brings the past back. -->
       <EmptyState v-if="emptyText" class="abele-timeline__no-tasks" :text="emptyText">

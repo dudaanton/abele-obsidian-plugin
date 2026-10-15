@@ -516,6 +516,27 @@ describe('folded timeline history', () => {
     expect(banner.attributes('aria-label')).toBe('Show overdue tasks')
   })
 
+  // A browser reports a watched element only when it comes into or leaves sight. Kept in sight
+  // through a page (a pane anchored at its end), the same sentinel would never report again and
+  // the list would stop growing; each page watches a new one, which reports where it stands.
+  it('watches a new sentinel for every page, so one left in sight still brings the next', async () => {
+    render(
+      Array.from({ length: 70 }, (_, i) =>
+        task(`sample-${i}`, dayjs('2030-06-15').add(i, 'day').format('YYYY-MM-DD'))
+      )
+    )
+    await flushPromises()
+    const first = view.find('.abele-timeline__sentinel').element
+    expect(scrollIntoView(first)).toBe(1)
+    await flushPromises()
+    expect(days()).toHaveLength(40)
+    const second = view.find('.abele-timeline__sentinel').element
+    expect(second).not.toBe(first)
+    expect(scrollIntoView(second)).toBe(1)
+    await flushPromises()
+    expect(days()).toHaveLength(60)
+  })
+
   it('keeps a late future day mounted when new completed-only dates appear before it', async () => {
     render(
       Array.from({ length: 80 }, (_, i) =>
