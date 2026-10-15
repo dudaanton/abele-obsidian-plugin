@@ -297,7 +297,10 @@ it('on a phone: the menu, the picker, the attached panel and the empty list fit 
       press(mark);
       await until(()=>api.DebuggerService.instance.active.value?.controller.session.status==='paused','stopped at the breakpoint',600);
       const leaf=app.workspace.getLeavesOfType('abele-debug-view')[0];await app.workspace.revealLeaf(leaf);
-      let last='';await until(()=>{const r=document.querySelector('.abele-debug-panel').getBoundingClientRect(),now=r.left+','+r.width;const still=now===last&&r.left>=0&&r.right<=innerWidth+1&&r.width>200;last=now;return still},'debug drawer open').catch(()=>console.debug('[debugger] the drawer did not settle before the picture'));
+      // The drawer slides in: the picture waits until the panel has stood still inside the screen
+      // for several looks in a row.
+      let last='',still=0;await until(()=>{const r=document.querySelector('.abele-debug-panel').getBoundingClientRect(),now=r.left+','+r.width;still=now===last&&r.left>=0&&r.right<=innerWidth+1&&r.width>200?still+1:0;last=now;return still>=6},'debug drawer open',200);
+      await wait(500);
       await shot('2026-10-16-debug-attach-attached-phone');
       const panel=document.querySelector('.abele-debug-panel'),overflow=panel.scrollWidth-panel.clientWidth;
       press(document.querySelector('.abele-debug-panel [aria-label^="Detach"]'));
