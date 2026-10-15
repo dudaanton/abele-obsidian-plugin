@@ -148,94 +148,105 @@ viewer lets you create, edit, move, resize and group cards by hand. Viewing, pan
 playing steps never save changes into the diagram.
 
 Abele's **New canvas** in the command palette, or **New Abele canvas** in a folder's menu,
-creates an empty diagram. Its
-bar offers **Text**, **File** (an Obsidian picker for a note or attachment), and **Link** (a web
-address). New cards appear near the centre of the current view. Tap a card to select it; **Edit
-text** edits a text card, while **Open** opens a linked note, attachment or web page separately.
-Editing a text card never edits the contents of a linked note.
+creates an empty diagram.
 
-Drag a card with the mouse or one finger to move it. A selected card has four corner handles;
-drag a corner to resize it without changing the linked note's contents. The touch targets stay
-large even after zooming. Shift-click adds or removes cards from a selection. On a phone,
-**Select multiple** does the same with taps; turn it off to drag the selected cards together.
-Drag a box on empty space while selecting multiple cards to select everything wholly inside.
-**Group** wraps the selected cards; drag the group's empty background to move it and all its
-nested cards once. **Ungroup** removes only the frame. Resizing a group changes its frame,
-not the size of its contents. Delete removes the selection; deleting a group alone keeps its cards.
+### The tools
 
-**Shapes and lines** opens the drawing controls. Choose a rectangle, pill, diamond,
-parallelogram, circle, predefined process, document or database, and **Add shape**; enter its
-text and **Save text**. The colours are the theme's ordinary Canvas colours. Select a text card,
-choose a shape and colour, and **Change shape** changes it in one undo item.
+A row of tools runs across the top of the canvas tab, as over a drawing: **Select** (V) and
+**Hand** (H, or hold Space); **Card** (T), **Note or file** (N), **Web page** (W), a **Shape**
+(R), **Connect** (A, with **Line** and **Arrow** in its family) and **Frame** (F); then **Pen**
+and **Marker** (P), the **Eraser** for whole strokes or part of one (E), and the **Lasso** (L).
+Pressing the tool already in hand offers the rest of its family. With a pen in hand its colours
+and width stand in the same row. Zoom, fit and Undo/Redo stand in a column at the top right; on
+a phone two fingers zoom and the column keeps only Undo and Redo, and the tools that do not fit
+wait under **More tools**. A dot in that column says when a change has not been saved, and
+opens Retry, Keep the draft or Discard the draft.
 
-**Connect**: drag from one card to another with the mouse or one finger. An unfinished
-connection is only a preview; releasing on empty space cancels it. **Line** and **Arrow** draw
-free primitives by dragging anywhere, without attaching them to cards. **Select** returns to
-selecting and moving. Tap a connection or free line to select it; drag either endpoint handle
-to reconnect to a card, or change the endpoint of a free line. Drag the middle of a selected
-free line to move it. Moving or resizing cards keeps their bound connections attached.
+**Select** picks with a click; Shift-click adds or takes away. Dragging over empty canvas with
+the mouse draws a box and picks everything wholly inside it; a finger there moves the canvas.
+Over what is picked stands a small bar of its actions: colour, shape, Edit text or Open, the
+arrows and line of a connection, attaching or detaching strokes, **Frame these**, **Pick
+several** (each press on a card then adds or takes it away, for screens with no Shift) and
+**More**. Delete removes the picked things; arrows move them a step (ten with Shift); Cmd+D
+makes a copy beside them, Cmd+C copies them, Cmd+A picks everything, Cmd+] and Cmd+[ bring
+them to the front or send them back, Shift+1 shows the whole canvas and Shift+2 what is picked.
 
-With a connection selected, open **Connection style** to edit its label, start/end arrows,
-colour and, for bound connections, curved, elbow or straight routing. **Apply** saves those
-choices together and closes the caption's keyboard so you can navigate by touch again. Emptying the label removes it. **Delete**, Undo and Redo work on connections
-and free lines too. Free primitives are kept in the same canvas file; native Canvas may not
-show them, but returning to Abele restores their display.
+A double click or double tap opens what it lands on: a card's words, a connection's label
+written where it stands, a frame's name; on empty canvas it makes a card there. Esc, or a press
+anywhere on the canvas, leaves the words saved.
 
-**Drawing** opens **Pen**, **Marker**, the ordinary Canvas colours and fine/medium/bold
-thicknesses. Draw with the mouse, a finger or a pen. Start over a card or group to attach the
-stroke to it: a dashed outline shows the attachment while you draw. The stroke can continue
-outside that card. Starting on empty background makes free ink. Attached ink follows the
-card when it moves and stretches with it when resized; free ink stays in place. **Navigate**
-lets you pan with one finger without drawing; close Drawing to select/move cards again.
+**More** offers, in the same order for every kind: Duplicate and Copy; Bring to front and Send
+to back; **Pin in place** (a pinned card is picked but not carried or resized until it is
+unpinned); Turn into a note (a text card's words become a note standing in its place); for a
+note, **Show a part of the note…** (a heading or a named block, or all of it); Attach to the
+chat as a picture and Ask the agent about this; Export the selection as a picture and Copy
+embed of the selection; and last, in red, Delete. A note or web page is only **Removed from
+canvas**; **Delete the note…** asks first and takes the note itself to the trash. A frame offers
+Duplicate with what is inside, Export frame, Copy embed of this frame and Delete frame and what
+is inside. Strokes offer **Read the handwriting**, which asks the agent to write them out.
 
-Each finished stroke is one Undo item, saved in the same canvas file. Two fingers interrupt
-drawing and switch to pan/pinch without saving a partial stroke. Escape, Fit and cancelled
-input discard the preview too. A pen ignores a resting finger while drawing; pressure changes
-its width. The marker is translucent. Drawings appear above live note cards and in saved
-embeds, agent pictures and whole-canvas exports. Native Canvas retains the strokes but does
-not draw them; return to Abele to see them.
+The tab's own **⋯** menu adds **Find on the canvas** (Cmd+F), **Show contents** (its frames and
+walkthrough steps), **Export…**, **Copy embed of what is shown**, **Open in Obsidian Canvas**
+and, on a tablet, **Draw with a finger**. The paperclip in the tab's header attaches the whole
+canvas to the chat as a picture.
 
-**Eraser** removes whole strokes that you pass over; **Partial eraser** cuts away only the
-part touched, keeping the remaining pieces and their colour, thickness and attachment.
-The eraser reaches the same distance on screen at any zoom and never deletes cards.
-One sweep is one Undo item. A cancelled gesture or a second finger restores the preview
-without changing the saved canvas; a resting finger is ignored while using a pen.
+### Cards, frames and connections
 
-**Lasso** circles both ink and cards. A tap selects a stroke or card; drag inside the
-selection to move it, or drag its bottom-right corner to scale it. Attached annotations
-selected together with their card move and scale only once. Open **Selection actions**
-for **Delete**, **Group**, **Ungroup** and **Apply color** (using the selected Canvas colour).
-**Select multiple** lets taps add/remove strokes and cards from the selection instead of
-dragging them. Turn it off again to move or scale the selection.
-**Detach ink** makes annotations independent; select one card together with the strokes,
-or choose an **Ink attachment card**, then use **Attach ink** to bind selected strokes to it.
-Both preserve the visible outline, including
-annotations stretched by a resized card. Grouping selected free ink attaches it to the new
-group; ink already owned by a selected card stays with that card. Ungrouping promotes the
-group's own ink to independent strokes without changing its appearance. Deleting a card
-also deletes its owned ink; Undo restores both. Each completed action uses the same shared
-history as cards and agent edits. A group containing unrecognized ink cannot be ungrouped
-safely: it is kept intact rather than guessing a new attachment or silently losing that ink.
+Drag a card to move it; a picked card has four corner handles to resize it, without changing a
+linked note's contents. A note on the canvas reads on under the mouse wheel before the canvas
+moves. Editing a text card never edits a linked note.
 
-The agent can read your strokes, change their points, colour or thickness, move/scale them,
-attach or detach them, erase them, and add its own pen or marker strokes. You can select and
-edit those strokes with the same lasso and eraser. An agent batch is one shared Undo item;
+**Frame** draws a frame around cards: drag around them, or click for one of ordinary size. Its
+name is asked for at once on the label over its corner. A picked frame can be renamed, folded
+to a dashed edge with the count hidden, or removed while keeping what is inside. A card carried
+over a frame lights the one it would land in.
+
+Each card shows a point in the middle of every edge under the mouse or when picked. Pull a
+connection from a point to another card: it sticks to the edge of that card nearest the
+pointer. Let go over nothing and a menu there offers a **Card**, a **Note or file** or the
+last **Shape**, made at the end of the connection and joined to it. **Connect** also joins two
+cards by dragging from one to the other. **Line** and **Arrow** draw free primitives. Drag a
+picked connection's end to reconnect it. Moving or resizing cards keeps their connections.
+
+**Paste** puts what was copied where the pointer is: a picture is saved with the vault's
+attachments and stands as a card in its proportions, an address becomes a web page card,
+cards copied from a canvas come back as copies with their connections, and words become a card.
+
+### Drawing
+
+**Pen** and **Marker** draw with the mouse, a finger or a pen, in the ordinary Canvas colours
+and fine, medium or bold. Start over a card or frame to attach the stroke to it: a dashed
+outline shows the attachment while you draw; starting on empty background makes free ink.
+Attached ink follows its card when it moves and stretches with it. Each finished stroke is one
+Undo item. A stroke drawn while the last one is still being saved is kept and saved after it.
+
+On a tablet a Pencil draws whatever tool is in hand and erases with its other end; once it has
+touched the canvas a finger moves the canvas instead of drawing, unless **Draw with a finger**
+is on, and a hand resting on the screen is let go of when the pen lands. A pen never moves the
+canvas. Two fingers tapped together undo; three redo. Two fingers moving interrupt drawing and
+switch to pan and pinch without saving a partial stroke.
+
+**Eraser** removes whole strokes it passes over, or with **part of a stroke** cuts away only
+the part touched. One sweep is one Undo item. **Lasso** circles both ink and cards; a tap picks
+one stroke or card. Drag inside the lassoed selection to move it, or its bottom-right corner to
+scale it. Detaching makes annotations independent; attaching binds free strokes to the card
+picked with them, or the one under them. Grouping free ink attaches it to the new frame;
+removing the frame keeps its ink as independent strokes.
+
+The agent can read your strokes, change their points, colour or thickness, move or scale them,
+attach or detach them, erase them, restack cards and connections, and add its own pen or marker
+strokes. You edit those strokes with the same tools. An agent batch is one shared Undo item;
 your unfinished gesture or text draft blocks it instead of being saved by the agent. Editing
-still uses the agent's own Ask permission, even when ordinary file writes are allowed.
-New strokes without an explicit style use the theme colours and medium pen/marker widths.
-Walkthroughs can focus and highlight strokes by name; an attached annotation stays hidden
-until its card is visible.
+still uses the agent's own Ask permission. Walkthroughs can focus and highlight strokes by name.
 
 Each finished drag or resize is one shared undo item. Until release the geometry is only a
-preview; an agent or another tab cannot publish over the active gesture. Retry and discard
-controls stay hidden during the gesture so they do not move the canvas under your finger.
-Escape, a cancelled
+preview; an agent or another tab cannot publish over the active gesture. Escape, a cancelled
 touch, or Fit cancels the preview. Adding a second finger cancels a card move or resize and
-switches to pan/pinch, without saving an accidental move. Drag empty space to pan as before.
+switches to pan and pinch, without saving an accidental move.
 
-**Save text** completes one change, including creating a new text card. Until then, typing and
-IME composition are drafts, not writes. **Keep draft** leaves the text unsaved in this running
-session. **Delete**, **Undo** and **Redo** work on cards and the shared history, including agent
+Leaving a card's words completes one change, including creating a new text card. Until then,
+typing and IME composition are drafts, not writes. **Keep the draft**, under the not-saved dot,
+leaves text unsaved in this running session. **Delete**, **Undo** and **Redo** work on cards and the shared history, including agent
 changes. Saving existing text without changes writes nothing and keeps redo available.
 If the shared history changes while an Undo/Redo click is waiting, the action is refused;
 read the updated diagram and try again. Outside a text field, Delete/Backspace deletes a selected card, Enter edits its text,
