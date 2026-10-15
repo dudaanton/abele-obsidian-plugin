@@ -18,5 +18,9 @@ export function assertExternalDestinationAvailable(app: App, path: string): void
     throw new Error(`Destination exists as an offloaded file: ${path}. Download it before editing.`)
 }
 export function logicalPathExists(app: App, path: string): boolean {
+  // Suffixing the basename cannot resolve an ancestor that is itself a file.
+  const manager = tokenOffloadsOf(app.vault, pathCoordinatorOf(app.vault))
+  if (manager.files().some((file) => caseKey(path).startsWith(caseKey(file.path) + '/')))
+    throw new Error(`Parent is an offloaded file: ${path}. Download it before editing.`)
   return !!app.vault.getAbstractFileByPath(path) || externalDestinationOccupied(app, path)
 }

@@ -8,6 +8,8 @@ it.each([
   ['png', 'image/png'],
   ['PNG', 'image/png'],
   ['custom', 'application/octet-stream'],
+  ['constructor', 'application/octet-stream'],
+  ['__proto__', 'application/octet-stream'],
   ['pdf', 'application/pdf'],
   ['mp4', 'video/mp4'],
   ['m4a', 'audio/mp4'],

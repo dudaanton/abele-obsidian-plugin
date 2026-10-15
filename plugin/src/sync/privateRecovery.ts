@@ -105,6 +105,8 @@ export async function preservePrivateArtifacts(
       if (!recovery) throw new Error('Recovery copy is outside private staging')
       if (!(await app.vault.adapter.exists(path))) continue
       if (await app.vault.adapter.exists(recovery)) {
+        if (!known[recovery] || !(await matchesCopy(app, recovery, known[recovery])))
+          needsNotice = true
         // Reused stage names must not overwrite earlier recovery or block new work.
         const previous = recovery + '.previous-' + crypto.randomUUID()
         if (await app.vault.adapter.exists(previous))

@@ -8,6 +8,22 @@ import { createMoveFileTool } from '@/ai/tools/MoveFileTool'
 import { createWriteFileTool } from '@/ai/tools/WriteFileTool'
 import { createImportedBinary } from '@/media/importImageFile'
 
+it('rejects imports beneath an offloaded file before suffix searching', async () => {
+  const app = useVault([])
+  const manager = tokenOffloadsOf(app.vault, pathCoordinatorOf(app.vault))
+  manager.remember('sample', [{ path: 'Media/reserved.pdf', size: 40, mtime: 1 }], [])
+  let probes = 0
+  const lookup = app.vault.getAbstractFileByPath.bind(app.vault)
+  vi.spyOn(app.vault, 'getAbstractFileByPath').mockImplementation((path) => {
+    if (++probes > 20) throw new Error('Unbounded filename search')
+    return lookup(path)
+  })
+  await expect(
+    createImportedBinary(app as never, 'Media/reserved.pdf/image.png', new Blob(['image']))
+  ).rejects.toThrow(/Parent.*offloaded/)
+  expect(probes).toBeLessThan(20)
+})
+
 it.each(['copy', 'create', 'move', 'write', 'parent folder'])(
   'keeps an offloaded identity occupied for %s',
   async (operation) => {

@@ -5,6 +5,27 @@ import { makeParents } from '@/sync/vaultFolders'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { sha256 } from '@abele/sync-core'
 
+it('announces a changed displaced routine copy even after an earlier notice', async () => {
+  const app = buildFakeVault([]) as unknown as App
+  const path = '.obsidian/plugins/abele/sync-staging/sample-reused.bin'
+  const kept = path.replace('/sync-staging/', '/sync-recovery/')
+  await makeParents(app.vault.adapter, path)
+  await app.vault.adapter.write(path, 'unique evidence')
+  await preservePrivateArtifacts(app, [path])
+  const expected = { path, sha: await sha256(new TextEncoder().encode('routine')), size: 7 }
+  await app.vault.adapter.write(path, 'routine')
+  await preservePrivateArtifacts(app, [path], () => {}, [expected])
+  await app.vault.adapter.write(kept, 'changed evidence')
+  const count = Notice.shown.length
+  await app.vault.adapter.write(path, 'routine')
+  await preservePrivateArtifacts(app, [path], () => {}, [expected])
+  expect(Notice.shown.length).toBe(count + 1)
+  const files = await app.vault.adapter.list(kept.slice(0, kept.lastIndexOf('/')))
+  expect(await Promise.all(files.files.map((file) => app.vault.adapter.read(file)))).toContain(
+    'changed evidence'
+  )
+})
+
 it('does not announce an empty recovery directory or byte-verified routine evidence, but detects later edits', async () => {
   const app = buildFakeVault([]) as unknown as App
   const count = Notice.shown.length

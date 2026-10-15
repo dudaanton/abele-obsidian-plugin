@@ -33,10 +33,10 @@ const extensionMimes: Record<string, string> = {
   txt: 'text/plain',
 }
 export function projectionMime(path: string): string {
-  return (
-    extensionMimes[path.split('/').at(-1)?.split('.').at(-1)?.toLowerCase() ?? ''] ??
-    'application/octet-stream'
-  )
+  const extension = path.split('/').at(-1)?.split('.').at(-1)?.toLowerCase() ?? ''
+  return Object.prototype.hasOwnProperty.call(extensionMimes, extension)
+    ? extensionMimes[extension]
+    : 'application/octet-stream'
 }
 const mimeTypes = new Set([
   'application/octet-stream',
