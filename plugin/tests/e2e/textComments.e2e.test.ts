@@ -246,6 +246,36 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
     `)
     ).toEqual({ edited: true, visible: true, dismissed: true, unchanged: true, closed: true })
   })
+  it('draws one outline round the focused reply field, not one round the editor inside it too', () => {
+    // The note editor inside the reply drops its own border, ring and ground; only the field's
+    // frame shows. Every box from the field down that paints an edge is counted.
+    const shot = `${SHOTS}/reply-field-${onPhone() ? 'phone' : 'desktop'}.png`
+    const r = run<{ edges: string[]; focused: boolean; shot: boolean }>(`
+      window.__abeleTest.openDialog('text-comment-edit')
+      await until(() => document.querySelector('.abele-text-comments__reply .cm-content'))
+      const reply = document.querySelector('.abele-text-comments__reply')
+      const field = reply.querySelector('.cm-content')
+      field.focus()
+      await still(() => reply.getBoundingClientRect().height, 600)
+      const edges = []
+      const paints = (s) =>
+        ['Top', 'Right', 'Bottom', 'Left'].some(side => parseFloat(s['border' + side + 'Width']) > 0 && s['border' + side + 'Style'] !== 'none' && !/rgba\\(.*, 0\\)$|transparent/.test(s['border' + side + 'Color'])) ||
+        (s.boxShadow && s.boxShadow !== 'none') ||
+        (s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) > 0)
+      for (const el of [reply, ...reply.querySelectorAll('*')]) {
+        const box = el.getBoundingClientRect()
+        // Only what frames the writing: the boxes as wide as the field, not its buttons or words.
+        if (box.width < reply.getBoundingClientRect().width * 0.6 || box.height < 16) continue
+        if (paints(getComputedStyle(el))) edges.push(el.className.split(' ')[0] || el.tagName)
+      }
+      const image = await require('@electron/remote').getCurrentWebContents().capturePage()
+      require('fs').writeFileSync(${JSON.stringify(shot)}, image.toPNG())
+      return JSON.stringify({ edges, focused: reply.contains(document.activeElement), shot: !image.isEmpty() })
+    `)
+    expect(r.focused).toBe(true)
+    expect(r.edges).toHaveLength(1)
+    expect(r.shot).toBe(true)
+  })
   it.skipIf(!onPhone())('native keyboard geometry, save and edit preserve the source note', () => {
     const result = run<{
       keyboard: boolean
