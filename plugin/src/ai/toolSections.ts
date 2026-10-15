@@ -44,7 +44,7 @@ export const TOOL_SECTIONS: readonly ToolSectionDefinition[] = [
     summary:
       'Files, search and git history on folders this chat was given on a node. What it can reach is set per chat in Node access.',
     description:
-      "Projects on the person's paired computers (nodes): reading and searching code in a project folder or Git worktree, editing files there, checking Git status, diffs, branches and history, the open repository tabs, handing a task to a coding agent that runs on a node, and reading a run the debugger recorded there. Open this whenever the person talks about a project, repository, branch, worktree, commit or a source file that is not a vault note. Not for vault notes — the file tools handle those.",
+      "Projects on the person's paired computers (nodes): reading and searching code in a project folder or Git worktree, editing files there, checking Git status, diffs, branches and history, the open repository tabs, handing a task to a coding agent that runs on a node, reading a run the debugger recorded there, and the project's saved HTTP requests. Open this whenever the person talks about a project, repository, branch, worktree, commit or a source file that is not a vault note. Not for vault notes — the file tools handle those.",
     howTo: [
       'Work in this order:',
       '1. `node_nodes` — the nodes this chat may use and whether each is online.',
@@ -58,6 +58,7 @@ export const TOOL_SECTIONS: readonly ToolSectionDefinition[] = [
       `Only the person gives this chat node access or widens it. ${GIVE_ACCESS} When a node, folder or worktree is out of reach, tell the person what to give; do not look for a way round.`,
       'The repository-tab tools (`node_views`, `node_open`, `node_changes`, `node_compare`, `node_commit`, `node_propose_edit`) work on a repository open in an Obsidian tab; without node access `node_read`, `node_search` and `list_node_worktrees` read such a tab too. `node_delegate` hands a whole task to a coding agent on a node; follow it with `node_delegation_status`, `node_delegation_send` and `node_delegation_cancel`.',
       "A run the debugger recorded in the open debug session: `trace_runs` lists the runs, `trace_timeline` its steps, `trace_shape` a value's shape before `trace_slice` reads part of it; `trace_find`, `trace_follow` and `trace_diff` search and compare, `trace_mark`, `trace_point_add` and `trace_note` mark steps, add a point and write the run up as a note. Each answer is bounded; page on rather than asking for everything.",
+      "A project's saved HTTP requests: `http_requests` lists them, `http_request_read` reads one, `http_request_save` and `http_import` add or change them, `http_send` sends one from the node and `http_send_result` reads its answer.",
     ].join('\n'),
   },
   {
@@ -372,7 +373,8 @@ export function sectionDefaultDescription(group: string): string {
 /**
  * What the node section's tools do, by action: one choice of Off, Ask or Auto each, instead of a
  * row per tool. In the order a person thinks of them. Each action holds only what its name says:
- * allowing Read never allows handing work to an agent or reading a debugger's runs.
+ * allowing Read never allows handing work to an agent, reading a debugger's runs or sending a
+ * saved request.
  */
 export const NODE_ACTIONS: readonly {
   id: 'read' | 'edit' | 'worktrees' | 'delegate' | 'debugger'
@@ -402,14 +404,14 @@ export const NODE_ACTIONS: readonly {
   {
     id: 'debugger',
     label: 'Debugger runs',
-    desc: 'Read the runs the debugger recorded, mark their steps, add record points and write them up.',
+    desc: 'Read the runs the debugger recorded, mark their steps, add record points and write them up; read, save, import and send the project’s saved requests.',
   },
 ]
 
 const NODE_EDIT_TOOL = /^node_(write|edit|replace|mv|cp|rm|path_file_operations|propose_edit)$/
 const NODE_WORKTREE_TOOL = /^(list_node_worktrees|node_worktree_switch)$/
 const NODE_DELEGATE_TOOL = /^node_delegat/
-const NODE_DEBUGGER_TOOL = /^trace_/
+const NODE_DEBUGGER_TOOL = /^(trace_|http_)/
 
 /**
  * Old names of the repository tools that do exactly what a node file tool does (the tool code

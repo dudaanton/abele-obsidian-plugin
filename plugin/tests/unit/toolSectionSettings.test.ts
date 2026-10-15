@@ -73,6 +73,8 @@ describe('the node section in an agent’s tools', () => {
     expect(nodeAction('list_node_worktrees')).toBe('worktrees')
     expect(nodeAction('node_git_log')).toBe('read')
     expect(nodeAction('node_some_new_reader')).toBe('read')
+    expect(nodeAction('http_send')).toBe('debugger')
+    expect(nodeAction('http_requests')).toBe('debugger')
   })
 })
 
@@ -132,6 +134,12 @@ describe('what each node action holds', () => {
     )
     expect(members('debugger')).toEqual(
       [
+        'http_import',
+        'http_request_read',
+        'http_request_save',
+        'http_requests',
+        'http_send',
+        'http_send_result',
         'trace_diff',
         'trace_find',
         'trace_follow',

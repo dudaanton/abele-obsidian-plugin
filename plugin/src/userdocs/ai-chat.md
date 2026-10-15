@@ -377,8 +377,9 @@ every agent under **Tool descriptions**; an agent's own words win. All of this t
 agent when you transfer settings.
 
 Nodes shows actions instead of a row per tool: **Read files and search**, **Edit files**,
-**Worktrees**, **Hand work to a node agent** and **Debugger runs**, each with Off, Ask or Auto.
-Allowing reading never allows handing work to an agent or reading the debugger's runs. The count
+**Worktrees**, **Hand work to a node agent** and **Debugger runs**, each with Off, Ask or Auto;
+**Debugger runs** holds the saved requests' tools too. Allowing reading never allows handing work
+to an agent, reading the debugger's runs or sending a saved request. The count
 under an action opens its tools, each with its own choice; **Mixed** means they differ. These say
 what the agent may do at all; where it may do it is each chat's node access. Old names of the
 repository tools that do what a file tool does are not listed or offered; an agent that still
