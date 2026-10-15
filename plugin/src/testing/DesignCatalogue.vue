@@ -49,6 +49,26 @@
           interactive
           @open="emit('navigate', entry.id)"
       /></template>
+      <div v-else-if="page === 'notices'" class="abele-design-catalogue__notices">
+        <div class="notice">
+          <NoticeActions
+            text="Abele updated to 1.1.0. See what's new since 1.0.0."
+            :actions="[
+              {
+                text: 'What\'s new',
+                tooltip: 'Open changes since the previous version',
+                accent: true,
+                run: () => announce('What\'s new'),
+              },
+              {
+                text: 'Dismiss',
+                tooltip: 'Dismiss this update notice',
+                run: () => announce('Dismiss'),
+              },
+            ]"
+          />
+        </div>
+      </div>
       <div v-else-if="page === 'suggestions'" class="suggestion-container">
         <div
           v-for="(row, index) in suggestionRows"
@@ -666,6 +686,7 @@ import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
 import PromptModal from '@/components/obsidian/PromptModal.vue'
 import ChoiceModal from '@/components/obsidian/ChoiceModal.vue'
 import SuggestionRow from '@/components/obsidian/SuggestionRow.vue'
+import NoticeActions from '@/components/obsidian/NoticeActions.vue'
 import ListRow from '@/components/obsidian/ListRow.vue'
 import ListSectionHeader from '@/components/obsidian/ListSectionHeader.vue'
 import SheetHeaderActions from '@/components/obsidian/SheetHeaderActions.vue'
@@ -746,6 +767,7 @@ const titles: Record<CataloguePage, string> = {
   prompt: 'New script',
   choice: 'Remove discussion',
   suggestions: 'Picker rows',
+  notices: 'Notices with buttons',
 }
 const suggestionRows = [
   {

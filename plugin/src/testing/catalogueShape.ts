@@ -20,6 +20,7 @@ export const CATALOGUE_PAGES = [
   'prompt',
   'choice',
   'suggestions',
+  'notices',
 ] as const
 export type CataloguePage = (typeof CATALOGUE_PAGES)[number]
 export const CATALOGUE_COMPONENTS = [
@@ -56,6 +57,7 @@ export const CATALOGUE_COMPONENTS = [
   'MetaLine',
   'Modal',
   'NotePicker',
+  'NoticeActions',
   'PanelResizeHandle',
   'PathLabel',
   'PeriodSelector',
