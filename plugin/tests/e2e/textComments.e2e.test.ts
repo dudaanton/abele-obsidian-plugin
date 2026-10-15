@@ -444,8 +444,18 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
   )
   it('reading mode paints formatted passages and reopens the same thread', () => {
     const result = run<{ icon: boolean; quote: string; reopened: boolean }>(`
+      // A picture of the marker in the editor and in reading view, on each target: look at them.
+      const picture = async (name) => {
+        const path = ${JSON.stringify(SHOTS)} + '/comment-marker-' + name + '-' + (window.__e2eHost ? 'phone' : 'desktop') + '.png'
+        await new Promise(r => setTimeout(r, 300))
+        if (window.__e2eHost) return window.__e2eHost.shot(path)
+        const image = await require('@electron/remote').getCurrentWebContents().capturePage()
+        require('fs').writeFileSync(path, image.toPNG())
+      }
+      if (await until(() => view.contentEl.querySelector('.markdown-source-view .abele-comment-marker'), 3000)) await picture('editor')
       await view.setState({ mode: 'preview' }, {})
       await until(() => view.contentEl.querySelector('.markdown-preview-view [data-comment-kind="human"]'))
+      await picture('reading')
       const preview = view.contentEl.querySelector('.markdown-preview-view')
       const icon = preview?.querySelector('[data-comment-kind="human"]')
       const quote = [...(preview?.querySelectorAll('[data-abele-note-comment-quote]') ?? [])].map(el => el.textContent).join('')
