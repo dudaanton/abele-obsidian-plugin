@@ -312,6 +312,7 @@ describe.skipIf(!available)('the chat tab keys, pressed in the running app', () 
       const chats = window.__abeleTest.ChatService.getInstance()
       const session = chats.getSessionByFile(${JSON.stringify(CHATS[0])})
       window.__chatShortcuts.abort = session.abort
+      window.__chatShortcuts.aborted = 0
       session.abort = () => { window.__chatShortcuts.aborted++; session.isStreaming.value = false }
       return 'stubbed'
     })()`,
