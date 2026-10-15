@@ -65,12 +65,7 @@ export function useGithubItem(props: GithubItemProps) {
   })
   const target = computed(() => props.model.target)
   const pins = basePins(GlobalStore.getInstance().app)
-  // Node tabs compare on the comparison page; a base pinned there earlier has no bar to undo it.
-  const pin = computed(() =>
-    target.value && props.source?.identity.provider !== 'node'
-      ? pins.get(target.value, props.source?.identity)
-      : null
-  )
+  const pin = computed(() => (target.value ? pins.get(target.value, props.source?.identity) : null))
   const setOriginal = (original: boolean) => {
     props.model.originalFile = original
     props.onState?.()

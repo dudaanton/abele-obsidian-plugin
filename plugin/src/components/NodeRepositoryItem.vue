@@ -410,10 +410,14 @@ const externalMenu = (event?: MouseEvent | KeyboardEvent) => {
       .onClick(() => {
         const at = location.value,
           head = 'ref' in at ? at.ref : WORKING_TREE
-        // A node tab has no base bar to show or undo a pinned base: open the comparison itself.
-        new BasePicker(GlobalStore.getInstance().app, source.value!, presentation.target!, (pin) =>
+        // A node tab has no base bar to show or undo a pinned base: open the comparison itself,
+        // and drop a base an earlier version of this menu pinned out of sight.
+        const app = GlobalStore.getInstance().app,
+          repo = presentation.target!
+        new BasePicker(app, source.value!, repo, (pin) => {
+          basePins(app).unpin(repo, source.value!.identity)
           open(source.value!.navigation.comparison(pin.baseSha, head, true))
-        ).open()
+        }).open()
       })
   )
   menu.addItem((item) =>
