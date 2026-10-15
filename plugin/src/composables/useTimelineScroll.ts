@@ -58,6 +58,7 @@ export function useTimelineScroll(
 ) {
   let stopHolding = () => {}
   let realignDrop: (() => void) | null = null
+  let replayedClamp: (() => boolean) | null = null
   let disposeInput = () => {}
   let alignedScroll: { owner: HTMLElement; top: number } | null = null
 
@@ -301,6 +302,7 @@ export function useTimelineScroll(
       if (!live) return
       live = false
       if (realignDrop === align) realignDrop = null
+      replayedClamp = null
       if (patchSpace && space) {
         if (previousSpace) space.style.height = previousSpace
         else space.style.removeProperty('height')
@@ -315,6 +317,30 @@ export function useTimelineScroll(
       window.clearTimeout(timeout)
     }
     realignDrop = requested ? align : null
+    // A phone's browser can replay the clamp of the shortened list after the row was put in the
+    // room reserved under it, pulling the pane back into the list's own range with no input. The
+    // reader never moved, so the row goes back, once; a second such scroll is not replayed layout.
+    let replayed = false
+    replayedClamp = requested
+      ? null
+      : () => {
+          const reserved = anchorSpace.value
+          if (replayed || !reserved?.style.height) return false
+          const naturalEnd = Math.max(
+            0,
+            owner.scrollHeight - owner.clientHeight - reserved.offsetHeight
+          )
+          if (owner.scrollTop >= heldTop || owner.scrollTop > naturalEnd + 0.5) return false
+          replayed = true
+          console.debug('[Abele timeline] row held again after a replayed clamp', {
+            scrollTop: owner.scrollTop,
+            heldTop,
+          })
+          heldTop = owner.scrollTop
+          heldHeight = owner.scrollHeight
+          align()
+          return true
+        }
     return align
   }
 
@@ -395,7 +421,7 @@ export function useTimelineScroll(
           // An explicit drop anchor wins until new reader input releases the short hold.
           // During dragging, real scrolling (including edge scrolling) still wins.
           if (realignDrop && !dragging()) realignDrop()
-          else {
+          else if (!replayedClamp?.()) {
             if (owner.classList.contains('abele-timeline__scroll-hold'))
               console.debug('[Abele timeline] hold released: a scroll it did not write', {
                 scrollTop: owner.scrollTop,

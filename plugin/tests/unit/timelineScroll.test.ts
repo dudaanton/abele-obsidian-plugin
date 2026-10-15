@@ -368,6 +368,32 @@ describe('timeline scroll ownership', () => {
     expect(p.owner.scrollTop).toBe(200)
   })
 
+  // A phone's browser can replay the clamp of a shortened list after the row was held in the
+  // room reserved under it; nobody touched the pane, so the row goes back, once.
+  it('puts a row held in reserved room back after one late clamp the reader did not make', async () => {
+    const resize = lateResize()
+    const p = await pane(50)
+    let height = 2000
+    Object.defineProperty(p.owner, 'clientHeight', { value: 400 })
+    Object.defineProperty(p.owner, 'scrollHeight', { get: () => height })
+    Object.defineProperty(p.space, 'offsetHeight', { get: () => parseFloat(p.space.style.height) || 0 })
+    await p.patch(() => p.shift(50))
+    expect(p.owner.scrollTop).toBe(150)
+    // The row now stands in room reserved under a list whose own end is at 60.
+    p.space.style.height = '200px'
+    height = 660
+    p.owner.scrollTop = 0
+    p.owner.dispatchEvent(new Event('scroll'))
+    expect(p.owner.scrollTop).toBe(150)
+    expect(p.row.getBoundingClientRect().top).toBe(50)
+    // A second one is not replayed layout any more; the hold gives way.
+    p.owner.scrollTop = 0
+    p.owner.dispatchEvent(new Event('scroll'))
+    p.shift(20)
+    resize()
+    expect(p.owner.scrollTop).toBe(0)
+  })
+
   it('leaves the whole upward touch gesture native without inserting history', async () => {
     const p = await pane(50)
     const strip = document.createElement('div')
