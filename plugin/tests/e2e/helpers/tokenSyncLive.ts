@@ -137,7 +137,8 @@ export class TokenSyncLive {
   async connect(
     device = this.primary,
     token = this.server.rootToken,
-    qrImage?: string
+    qrImage?: string,
+    timeoutMs?: number
   ): Promise<string> {
     const client = AccessClient.fromToken(token, { fetch: fixtureFetch })
     await waitFor(
@@ -157,7 +158,7 @@ export class TokenSyncLive {
     const before = new Set(device.rows().map((one) => one.id))
     let id: string
     try {
-      id = await device.connect(token, qrImage)
+      id = await device.connect(token, qrImage, timeoutMs)
     } finally {
       // Even a failed activation can have saved a native connection. Own it for teardown.
       const owned = this.ids.get(device)!

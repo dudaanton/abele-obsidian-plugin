@@ -5,14 +5,18 @@ export async function waitForStartup(
     | Promise<{ ready: boolean; progress: string; error?: string }>,
   stallMs = 30000,
   pause: () => Promise<void> = () => new Promise((resolve) => setTimeout(resolve, 100)),
-  now: () => number = () => Date.now()
+  now: () => number = () => Date.now(),
+  limitMs = Infinity
 ): Promise<void> {
   let previous = ''
   let advanced = now()
+  const started = advanced
   for (;;) {
     const state = await read()
     if (state.error) throw new Error(state.error)
     if (state.ready) return
+    if (now() - started >= limitMs)
+      throw new Error('Sync startup deadline exceeded: ' + state.progress)
     if (state.progress !== previous) {
       previous = state.progress
       advanced = now()

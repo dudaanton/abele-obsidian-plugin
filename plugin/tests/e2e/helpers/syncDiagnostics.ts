@@ -3,9 +3,11 @@ import { resolve, join } from 'node:path'
 import type { VaultCli } from './obsidianCli'
 import { onPhone } from './target'
 import { screenshot } from './phone'
+import { transferText } from '../../../src/sync/transferProgress'
 
 /** Synchronous snapshots must remain available while an engine or ledger read is stuck. */
 export const SYNC_SNAPSHOT = `
+const transferText = ${transferText.toString()};
 const syncSnapshot = () => {
  const host=app.plugins.plugins.abele?.tokenEngines, ui=host?.ui;
  const docs=[...new Set([document,app.setting.activeTab?.containerEl.ownerDocument].filter(Boolean))];
@@ -17,8 +19,8 @@ const syncSnapshot = () => {
   connections:(ui?.rows?.value||[]).map(row=>{
    const activity=ui.activity?.value[row.id]||{}, status=host.live?.get(row.id)?.engine.status;
    const startup=activity.startup, inspection=activity.inspection;
-   const statusText=startup?startup.stage+'… '+startup.completed+'/'+startup.total+(startup.outcome==='failed'?' · Needs attention':''):inspection?'Checking the vault… '+inspection.completed+'/'+inspection.total:({idle: "Ready", syncing: "Syncing", paused: "Paused", offline: "Server unavailable", error: "Needs attention", joining: "Connecting", scope_updating: "Updating access", scope_unavailable: "Access unavailable"})[row.status]||row.status;
-   return {id:row.id,status:row.status,statusText,startup:startup||null,inspection:inspection||null,startupTimings:activity.startupTimings||[],paused:row.paused,lastError:activity.error||null,pending:activity.pending,holds:activity.heldDeletes,deferred:activity.deferred,
+   const statusText=startup?startup.stage+'… '+startup.completed+'/'+startup.total+(startup.outcome==='failed'?' · Needs attention':''):inspection?'Checking the vault… '+inspection.completed+'/'+inspection.total:activity.transfer?transferText(activity.transfer):({idle: "Ready", syncing: "Syncing", paused: "Paused", offline: "Server unavailable", error: "Needs attention", joining: "Connecting", scope_updating: "Updating access", scope_unavailable: "Access unavailable"})[row.status]||row.status;
+   return {id:row.id,status:row.status,statusText,transfer:activity.transfer||null,startup:startup||null,inspection:inspection||null,startupTimings:activity.startupTimings||[],paused:row.paused,lastError:activity.error||null,pending:activity.pending,holds:activity.heldDeletes,deferred:activity.deferred,
     engine:status?{state:status.state,pending:status.pending,heldDeletes:status.heldDeletes,deferred:status.deferred,lastSyncAt:status.lastSyncAt,lastErrorCode:status.lastError?.code,exchange:host.live?.get(row.id)?.trace?.snapshot()}:null};
   }),
   candidates:(ui?.candidates?.value||[]).map(one=>({id:one.id,path:one.path,connectionId:one.source.id})),

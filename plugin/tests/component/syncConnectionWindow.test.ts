@@ -37,6 +37,7 @@ it('shows the shared transfer line, current path and timed recent activity', () 
     expect(view.find('.abele-sync-window__line').text()).toBe(
       'Downloading · 2 of 3 files · 2 of 4 KB'
     )
+    expect(view.find('progress').attributes('aria-label')).toBe('2 of 3')
     expect(view.text()).toContain('Notes/sample.md')
     expect(view.findAll('.abele-sync-window__time')).toHaveLength(2)
     expect(view.text()).toContain('Downloaded Notes/earlier.md')

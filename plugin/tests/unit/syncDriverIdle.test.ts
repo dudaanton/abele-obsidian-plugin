@@ -4,6 +4,49 @@ import { SyncDriver } from '../e2e/helpers/syncDriver'
 import * as diagnostics from '../e2e/helpers/syncDiagnostics'
 
 describe('waiting for a real sync state snapshot', () => {
+  it('serializes transfer counts and bytes into diagnostics without replacing them with a state label', () => {
+    const transfer = {
+      stage: 'Downloading',
+      completed: 2,
+      total: 8,
+      totalKnown: true,
+      bytes: 1024,
+      totalBytes: 4096,
+    }
+    const app = {
+      setting: { activeTab: null },
+      plugins: {
+        plugins: {
+          abele: {
+            tokenEngines: {
+              ui: {
+                rows: { value: [{ id: 'sample', status: 'syncing' }] },
+                activity: { value: { sample: { transfer } } },
+              },
+            },
+          },
+        },
+      },
+    }
+    const snapshot = new Function(
+      'app',
+      'document',
+      'window',
+      'performance',
+      diagnostics.SYNC_SNAPSHOT + ';return syncSnapshot()'
+    )(app, { querySelectorAll: () => [] }, {}, { timeOrigin: 0 })
+    expect(snapshot.connections[0].statusText).toBe('Downloading · 2 of 8 files · 1 of 4 KB')
+    expect(snapshot.connections[0].transfer).toEqual(transfer)
+  })
+  it('passes a caller timeout to the connect action and includes transfer progress in both waits', async () => {
+    const driver = new SyncDriver(() => {
+      throw new Error('No live vault expected')
+    })
+    const long = vi.spyOn(driver, 'long').mockResolvedValue('sample-connection')
+    await driver.connect('sample-token', undefined, 150000)
+    expect(long.mock.calls[0][3]).toBe(150000)
+    expect(long.mock.calls[0][1]).toContain('activity.transfer')
+  })
   it('captures a pending long operation before the test timeout can remove its connection', async () => {
     vi.useFakeTimers()
     let finished = false

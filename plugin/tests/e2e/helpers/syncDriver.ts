@@ -113,6 +113,7 @@ export class SyncDriver {
               startup?: { stage: string; completed: number; total: number }
               startupTimings?: unknown[]
               inspection?: { completed: number; total: number }
+              transfer?: { stage: string; completed: number; total?: number; bytes?: number }
               lastError?: string
             }[]
           }
@@ -129,13 +130,18 @@ export class SyncDriver {
               one.startupTimings?.length,
               one.inspection?.completed,
               one.inspection?.total,
+              one.transfer?.stage,
+              one.transfer?.completed,
+              one.transfer?.total,
+              one.transfer?.bytes,
             ])
           ),
         }
       }
       if (answer !== null) {
         /* answered within the first call */
-      } else if (startupProgress) await waitForStartup(check)
+      } else if (startupProgress)
+        await waitForStartup(check, 30000, undefined, undefined, timeoutMs)
       else
         await waitFor(
           what,
@@ -170,12 +176,12 @@ export class SyncDriver {
       'return svc.rows.value.map(({id,status,paused,address})=>({id,status,paused,address,error:svc.activity.value[id]?.error}))'
     )
   }
-  async connect(token: string, qrImage?: string): Promise<string> {
+  async connect(token: string, qrImage?: string, timeoutMs = 90000): Promise<string> {
     return this.long<string>(
       'connect by token',
-      `const before=new Set(svc.rows.value.map(one=>one.id)); const root=await openSyncTab(); await press(root,'Connect…'); await poll(()=>modal('Connect to a server')); const box=modal('Connect to a server'); ${qrImage ? `const picture=await (await fetch(${JSON.stringify(qrImage)})).blob();const files=new DataTransfer();files.items.add(new File([picture],'access.png',{type:'image/png'}));const input=box.querySelector('input[type=file]');input.files=files.files;input.dispatchEvent(new input.ownerDocument.defaultView.Event('change',{bubbles:true}));await poll(()=>box.querySelector('input[placeholder="Paste your token"]').value===${JSON.stringify(token)})` : `typeInto(box.querySelector('input[placeholder="Paste your token"]'),${JSON.stringify(token)})`}; await press(box,'Connect'); await poll(()=>!modal('Connect to a server')); const added=svc.rows.value.find(one=>!before.has(one.id)); if(!added) throw new Error('No connection added'); await waitForStartup(()=>{const current=app.plugins.plugins.abele.tokenEngines, ui=current.ui, row=ui.rows.value.find(one=>one.id===added.id), activity=ui.activity.value[added.id]||{}, phase=activity.startup, engine=current.live.get(added.id)?.engine.status;const ready=row?.status==='idle'&&engine?.state==='idle'&&!!engine.lastSyncAt&&!engine.lastError&&(!phase||phase.outcome==='complete');return {ready,progress:JSON.stringify([row?.status,engine?.state,!!engine?.lastSyncAt,phase?.stage,phase?.completed,phase?.total,phase?.outcome,activity.startupTimings?.length,activity.inspection?.completed,activity.inspection?.total]),error:ready?undefined:activity.error}}); await closeSettings(); return added.id`,
+      `const before=new Set(svc.rows.value.map(one=>one.id)); const root=await openSyncTab(); await press(root,'Connect…'); await poll(()=>modal('Connect to a server')); const box=modal('Connect to a server'); ${qrImage ? `const picture=await (await fetch(${JSON.stringify(qrImage)})).blob();const files=new DataTransfer();files.items.add(new File([picture],'access.png',{type:'image/png'}));const input=box.querySelector('input[type=file]');input.files=files.files;input.dispatchEvent(new input.ownerDocument.defaultView.Event('change',{bubbles:true}));await poll(()=>box.querySelector('input[placeholder="Paste your token"]').value===${JSON.stringify(token)})` : `typeInto(box.querySelector('input[placeholder="Paste your token"]'),${JSON.stringify(token)})`}; await press(box,'Connect'); await poll(()=>!modal('Connect to a server')); const added=svc.rows.value.find(one=>!before.has(one.id)); if(!added) throw new Error('No connection added'); await waitForStartup(()=>{const current=app.plugins.plugins.abele.tokenEngines, ui=current.ui, row=ui.rows.value.find(one=>one.id===added.id), activity=ui.activity.value[added.id]||{}, phase=activity.startup, engine=current.live.get(added.id)?.engine.status;const ready=row?.status==='idle'&&engine?.state==='idle'&&!!engine.lastSyncAt&&!engine.lastError&&(!phase||phase.outcome==='complete');return {ready,progress:JSON.stringify([row?.status,engine?.state,!!engine?.lastSyncAt,phase?.stage,phase?.completed,phase?.total,phase?.outcome,activity.startupTimings?.length,activity.inspection?.completed,activity.inspection?.total,activity.transfer?.stage,activity.transfer?.completed,activity.transfer?.total,activity.transfer?.bytes]),error:ready?undefined:activity.error}},30000,undefined,undefined,${timeoutMs}); await closeSettings(); return added.id`,
       true,
-      90000,
+      timeoutMs,
       false,
       true
     ).catch((error: unknown) => {

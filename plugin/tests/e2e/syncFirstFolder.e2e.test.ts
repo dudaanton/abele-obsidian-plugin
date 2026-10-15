@@ -3,6 +3,7 @@ import { expect, it } from 'vitest'
 import { liveCase, liveSuite } from './helpers/syncLiveCases'
 import { firstFolderFixture } from './helpers/syncFirstFolderFixture'
 import type { SyncDriver } from './helpers/syncDriver'
+import { syncProgressSamples } from './helpers/syncProgressSamples'
 
 // CALIBRATE BEFORE LANDING: provisional, not a measured budget. Manager records the first
 // live elapsedMs below and sets generous headroom, still below 60 directories * 10 seconds.
@@ -61,23 +62,31 @@ liveCase(
     )
     const token = await a.share(owner, 'Folder: ' + folder)
     // Observe the rendered connection window during Connect, not an internal progress signal.
-    b.run(`const samples=[];let opened=false;window.__firstFolderSamples=samples;
-      window.__firstFolderTimer=setInterval(()=>{const root=app.setting.activeTab?.containerEl;if(!opened&&svc.rows.value.length&&!modal('Connect to a server')&&root){opened=true;connectionRow(root,svc.rows.value[0].id).click()}
-      for(const doc of new Set([document,settingsDoc()]))for(const bar of doc.querySelectorAll('.abele-sync-window progress')){const label=bar.getAttribute('aria-label');if(bar.getBoundingClientRect().width>0&&/^\\d+ of \\d+$/.test(label||''))samples.push({label,value:Number(bar.getAttribute('value')),total:Number(bar.getAttribute('max'))})}},50);return true`)
+    b.run(`const samples=[], before=new Set(svc.rows.value.map(row=>row.id));let opened=false;window.__firstFolderSamples=samples;
+      window.__firstFolderTimer=setInterval(()=>{const root=app.setting.activeTab?.containerEl, added=svc.rows.value.find(row=>!before.has(row.id));if(!opened&&added&&!modal('Connect to a server')&&root){opened=true;connectionRow(root,added.id).click()}
+      samples.push(...(${syncProgressSamples.toString()})([document,settingsDoc()]))},50);return true`)
     let samples: { label: string; value: number; total: number }[] = []
     const started = Date.now()
+    let elapsedMs = 0
     try {
-      await s.connect(b, token)
+      await s.connect(b, token, undefined, FIRST_FOLDER_PULL_LIMIT_MS + 30000)
     } finally {
-      samples = b.run(
-        `clearInterval(window.__firstFolderTimer);delete window.__firstFolderTimer;const samples=window.__firstFolderSamples||[];delete window.__firstFolderSamples;return samples`
-      )
+      elapsedMs = Date.now() - started
+      try {
+        samples = b.run(
+          `clearInterval(window.__firstFolderTimer);delete window.__firstFolderTimer;const samples=window.__firstFolderSamples||[];delete window.__firstFolderSamples;return samples`
+        )
+      } finally {
+        console.log(
+          '[first folder connection]',
+          JSON.stringify({
+            elapsedMs,
+            limitMs: FIRST_FOLDER_PULL_LIMIT_MS,
+            samples,
+          })
+        )
+      }
     }
-    const elapsedMs = Date.now() - started
-    console.log(
-      '[first folder connection]',
-      JSON.stringify({ elapsedMs, limitMs: FIRST_FOLDER_PULL_LIMIT_MS, samples: samples.length })
-    )
     expect(elapsedMs).toBeLessThan(FIRST_FOLDER_PULL_LIMIT_MS)
     expect(samples.some((sample) => sample.total > 0 && sample.value < sample.total)).toBe(true)
     expect(

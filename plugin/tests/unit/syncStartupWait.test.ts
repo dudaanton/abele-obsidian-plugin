@@ -1,6 +1,23 @@
 import { expect, it } from 'vitest'
 import { waitForStartup, STARTUP_WAIT } from '../e2e/helpers/startupWait'
 
+it('honors the caller deadline even while progress keeps advancing', async () => {
+  let now = 0
+  await expect(
+    waitForStartup(
+      () => ({ ready: false, progress: String(now) }),
+      30000,
+      async () => {
+        now += 1000
+        if (now > 120000) throw new Error('wait exceeded its budget')
+      },
+      () => now,
+      120000
+    )
+  ).rejects.toThrow('deadline')
+  expect(now).toBe(120000)
+})
+
 it('runs the same self-contained wait when serialized into the phone evaluator', async () => {
   const browserWait = new Function(
     STARTUP_WAIT + ';return waitForStartup'
