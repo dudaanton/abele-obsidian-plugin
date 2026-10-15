@@ -202,7 +202,7 @@ async function refusalToGrant(form: 'desktop' | 'phone') {
         visible('.abele-node-scope-editor__add').click();
         const session=chats.getSessionByFile(${JSON.stringify(chat)});
         await until(()=>session.overrides.value.nodeScope?.length===1,'access added');
-        const modal=visible('.modal');modal?.querySelector('.modal-close-button')?.click();
+        const modal=document.querySelector('.abele-chat-setup').closest('.modal');const close=[...modal.querySelectorAll('.modal-close-button,.modal-header-button')].find(b=>b.getBoundingClientRect().width>0);if(close)close.click();else modal.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
         await until(()=>!visible('.abele-node-scope-editor'),'dialog closed');
         await until(()=>[...document.querySelectorAll('.abele-ai-chat .abele-node-refusal')].some(el=>el.getBoundingClientRect().width>0&&el.textContent.includes('Access given. Ask the agent to try again')),'line says given');
         const access=visible('.abele-ai-chat .abele-chat-input__scope')?.getAttribute('aria-label')||'';
@@ -277,12 +277,12 @@ async function refusalToGrant(form: 'desktop' | 'phone') {
       )
       await capture(`agent-tools-${form}`)
       evalAsync(
-        `(async()=>{${prelude}for(const b of [...document.querySelectorAll('.modal .modal-close-button')].reverse())b.click();await until(()=>!visible('.abele-agent-editor'),'tools closed');return JSON.stringify(true)})()`
+        `(async()=>{${prelude}for(const b of [...document.querySelectorAll('.modal .modal-close-button, .modal .modal-header-button')].reverse())b.click();await until(()=>!visible('.abele-agent-editor'),'tools closed');return JSON.stringify(true)})()`
       )
     } finally {
       evalRaw(`(async()=>{
         const T=window.__abeleTest,chats=T.ChatService.getInstance(),s=chats.getSessionByFile(${JSON.stringify(chat)});
-        for(const b of [...document.querySelectorAll('.modal .modal-close-button')].reverse())b.click();
+        for(const b of [...document.querySelectorAll('.modal .modal-close-button, .modal .modal-header-button')].reverse())b.click();
         if(s){s.abort();await chats.closeTab(s.id)}
         if(${JSON.stringify(second)})await chats.closeTab(${JSON.stringify(second)});
         if(app.vault.getAbstractFileByPath(${JSON.stringify(chat)}))await T.ChatStorage.getInstance().deleteChat(${JSON.stringify(chat)});
