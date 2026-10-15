@@ -113,7 +113,11 @@ const type = async (text: string) => {
       start: number
       end: number
       label: string
-    }>(`const el=document.activeElement;
+    }>(`const el=document.activeElement
+      // A label written on its line is an editable element, not a field: its words and the
+      // chosen part of them come from the page's selection.
+      if(el.isContentEditable){const text=el.textContent,sel=getSelection(),all=sel&&sel.toString()===text&&text.length>0
+        return {value:text,start:all?0:text.length,end:text.length,label:el.getAttribute('aria-label')}}
       return {value:el.value,start:el.selectionStart,end:el.selectionEnd,label:el.getAttribute('aria-label')}`)
     const expected = before.value.slice(0, before.start) + text + before.value.slice(before.end)
     // One native key path: the generic focused-field helper may partially type before a
@@ -122,11 +126,17 @@ const type = async (text: string) => {
     console.info('Canvas native typing:', {
       before,
       after: run(
-        `const el=document.activeElement;return {label:el?.getAttribute('aria-label'),value:el?.value}`
+        `const el=document.activeElement;return {label:el?.getAttribute('aria-label'),value:el?.isContentEditable?el.textContent:el?.value}`
       ),
     })
     await expect
-      .poll(() => run<string>('return document.activeElement?.value'), { timeout: 15_000 })
+      .poll(
+        () =>
+          run<string>(
+            'const el=document.activeElement;return el?.isContentEditable?el.textContent:el?.value'
+          ),
+        { timeout: 15_000 }
+      )
       .toBe(expected)
   } else
     await withNativeInput(() =>

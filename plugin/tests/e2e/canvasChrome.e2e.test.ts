@@ -274,7 +274,8 @@ describe.skipIf(!available)('the canvas by hand', () => {
     await press(menuItem('Card'))
     await until(`view().editor.controls.editing()`)
     await type('Sample made at the end')
-    if (onPhone()) await input(chrome.emptySpot())
+    // Leave the card by tapping canvas above the keyboard; Esc on a desktop.
+    if (onPhone()) await input(chrome.emptySpotInSight())
     else await key('Escape')
     await saved()
     await until(
@@ -338,7 +339,8 @@ describe.skipIf(!available)('the canvas by hand', () => {
     await input(at)
     await until(`view().viewer.selection.has('reading')`)
     if (onPhone()) {
-      driver(swipeDriverArgs(at[0], at[1] + 40, at[0], at[1] - 40, 600))
+      // Within the note's words, clear of the points on its edges a connection is pulled from.
+      driver(swipeDriverArgs(at[0], at[1] + 15, at[0], at[1] - 25, 600))
     } else
       await cdp(
         `await mouse({type:'mouseWheel',x:${at[0]},y:${at[1]},deltaX:0,deltaY:240,buttons:0})`
