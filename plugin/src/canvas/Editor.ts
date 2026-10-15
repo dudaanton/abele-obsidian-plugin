@@ -211,6 +211,7 @@ export class CanvasEditor {
     naming: (): string | null => this.naming,
     name: (id: string | null): void => {
       this.naming = id
+      if (!id) this.regainKeys()
       this.refresh()
     },
     renameFrame: (id: string, label: string): Promise<void> => this.frameOp(id, 'rename', label),
@@ -218,6 +219,7 @@ export class CanvasEditor {
     labelling: (): string | null => this.labelling,
     editLabel: (id: string | null): void => {
       this.labelling = id
+      if (!id) this.regainKeys()
       if (id) this.selected = new Set([id])
       this.refresh()
     },
@@ -1311,7 +1313,10 @@ export class CanvasEditor {
     action: 'rename' | 'collapse' | 'expand',
     label?: string
   ): Promise<void> {
-    if (action === 'rename') this.naming = null
+    if (action === 'rename') {
+      this.naming = null
+      this.regainKeys()
+    }
     const document = this.ready(),
       frame = document.session.graph.nodes.find((n) => n.id === id && n.type === 'group')
     if (!frame) return this.refresh()
@@ -1862,6 +1867,22 @@ export class CanvasEditor {
     if (!file) return
     await this.apply([{ op: 'update', id: node.id, patch: { type: 'file', file, text: undefined } }])
   }
+  /**
+   * After writing a name or a label the keys go back to the canvas, so the next Cmd+Z or letter
+   * works at once; unless the keys have moved somewhere else on purpose.
+   */
+  private regainKeys(): void {
+    // Looked at once the focus has settled: a click into another field during a blur has not
+    // moved the focus yet.
+    setTimeout(() => {
+      const doc = this.viewer.el.ownerDocument,
+        active = doc.activeElement
+      if (this.destroyed || this.naming || this.labelling || this.editing) return
+      const field = active?.closest?.('input,textarea,[contenteditable=true]')
+      if (!active || active === doc.body || (this.viewer.el.contains(active) && !field))
+        this.viewer.el.focus({ preventScroll: true })
+    }, 0)
+  }
   /** One thing picked and brought into view, at the zoom it is read at. */
   private show(id: string): void {
     const graph = this.ports.document()?.session.graph
@@ -2140,6 +2161,7 @@ export class CanvasEditor {
   }
   private async saveLabel(id: string, label: string): Promise<void> {
     this.labelling = null
+    this.regainKeys()
     const graph = this.ports.document()?.session.graph,
       element =
         graph?.edges.find((e) => e.id === id) ??

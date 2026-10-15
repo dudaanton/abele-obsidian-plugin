@@ -245,6 +245,24 @@ describe('a finger far zoomed out', () => {
   })
 })
 
+describe('the keys after writing', () => {
+  it('go back to the canvas once a frame is named or a label written', async () => {
+    const graph: CanvasGraph = {
+      nodes: [{ id: 'box', type: 'group', label: 'Box', x: 0, y: 0, width: 300, height: 200 }, ...cards().nodes],
+      edges: cards().edges,
+    }
+    const s = setup(graph)
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    await s.editor.controls.renameFrame('box', 'Tray')
+    await new Promise((r) => setTimeout(r, 5))
+    expect(document.activeElement).toBe(s.viewer.el)
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    await s.editor.controls.saveLabel('link', 'next')
+    await new Promise((r) => setTimeout(r, 5))
+    expect(document.activeElement).toBe(s.viewer.el)
+  })
+})
+
 describe('double clicks', () => {
   it('on empty canvas puts a card there, open for writing', async () => {
     const s = setup(cards())
