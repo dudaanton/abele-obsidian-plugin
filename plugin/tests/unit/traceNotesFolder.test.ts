@@ -41,21 +41,21 @@ describe('the folder for notes about recorded runs', () => {
     expect(isAbsoluteFolder('C:\\notes')).toBe(true)
     expect(notesFolder('')).toEqual({ kind: 'vault', path: 'Trace' })
     expect(notesFolder('Work/Runs/')).toEqual({ kind: 'vault', path: 'Work/Runs' })
-    expect(notesFolder('/srv/notes/', '/home/sample/vault')).toEqual({
+    expect(notesFolder('/srv/notes/', '/home/username/vault')).toEqual({
       kind: 'outside',
       path: '/srv/notes',
     })
-    expect(notesFolder('/home/sample/vault/Runs', '/home/sample/vault')).toEqual({
+    expect(notesFolder('/home/username/vault/Runs', '/home/username/vault')).toEqual({
       kind: 'vault',
       path: 'Runs',
     })
-    expect(notesFolder('/home/sample/vault', '/home/sample/vault/')).toEqual({
+    expect(notesFolder('/home/username/vault', '/home/username/vault/')).toEqual({
       kind: 'vault',
       path: '',
     })
-    expect(notesFolder('/home/sample/vault-other', '/home/sample/vault')).toEqual({
+    expect(notesFolder('/home/username/vault-other', '/home/username/vault')).toEqual({
       kind: 'outside',
-      path: '/home/sample/vault-other',
+      path: '/home/username/vault-other',
     })
   })
 

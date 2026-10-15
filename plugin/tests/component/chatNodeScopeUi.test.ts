@@ -124,11 +124,11 @@ describe('node scope beside vault scope and in the header', () => {
           listProjects: async () => [
             {
               project_id: 'p1',
-              root_path: '/Users/sample-user/work/sample-app',
+              root_path: '/Users/username/work/sample-app',
               repository_path: '/x',
             },
-            { project_id: 'p2', root_path: '/Users/sample-user/a/twin', repository_path: null },
-            { project_id: 'p3', root_path: '/Users/sample-user/b/twin', repository_path: null },
+            { project_id: 'p2', root_path: '/Users/username/a/twin', repository_path: null },
+            { project_id: 'p3', root_path: '/Users/username/b/twin', repository_path: null },
           ],
           listWorkspaces: async () => [],
           repository: {

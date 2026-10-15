@@ -16,7 +16,7 @@ import type { ChatReplyTo } from './types'
 /** Around a token in the composer. Private-use characters: nothing types them, markdown ignores them. */
 export const REPLY_OPEN = ''
 export const REPLY_CLOSE = ''
-const TOKEN = /([A-Za-z0-9_-]*)/g
+const REPLY_MARK = /([A-Za-z0-9_-]*)/g
 
 /** A whole answer is answered by its opening: more than this and the card says nothing more. */
 export const WHOLE_QUOTE_CHARS = 280
@@ -74,7 +74,7 @@ function readToken(payload: string): ChatReplyTo | null {
 /** The tokens in a composer's text, where each stands, and the place it is. */
 export function replyTokens(text: string): { from: number; to: number; reply: ChatReplyTo }[] {
   const found: { from: number; to: number; reply: ChatReplyTo }[] = []
-  for (const match of text.matchAll(TOKEN)) {
+  for (const match of text.matchAll(REPLY_MARK)) {
     const reply = readToken(match[1])
     if (reply) found.push({ from: match.index, to: match.index + match[0].length, reply })
   }
@@ -92,7 +92,7 @@ export function splitComposerText(text: string): { text: string; replyTo: ChatRe
   const replyTo: ChatReplyTo[] = []
   let words = ''
   let last = 0
-  for (const match of text.matchAll(TOKEN)) {
+  for (const match of text.matchAll(REPLY_MARK)) {
     words += text.slice(last, match.index)
     last = match.index + match[0].length
     const reply = readToken(match[1])
