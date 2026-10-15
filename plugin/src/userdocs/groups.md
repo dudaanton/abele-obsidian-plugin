@@ -28,7 +28,9 @@ Under every note, Abele draws what is connected to it. A list appears only when 
 in it:
 
 - **Tasks**: tasks linked to this note, open ones without a date first.
-- **Calendar tasks**: dated tasks, by day.
+- **Calendar tasks**: dated tasks, by day, or as a month. The calendar button beside the completed
+  switch shows the month: under each day a box, ticked once all its tasks are done, or a dot for a
+  day with only calendar events. Pick a day to see its tasks. The choice is kept for that note.
 - **Transactions** and, on an account note, a balance chart.
 - **Time entries**: time tracked against this note.
 - **Backlinks**: notes that link here or list it in `groups`, as cards.
