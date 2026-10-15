@@ -293,3 +293,23 @@ it('turns the file tab’s header into save, discard and stop while editing, and
   expect(answer).toBe(false)
   await vi.waitFor(() => expect(save).toHaveBeenCalledOnce())
 })
+
+it('reopens an editor tab of an earlier version as the file tab, editing, once it is admitted', async () => {
+  vi.useFakeTimers()
+  try {
+    const setViewState = vi.fn(async () => {})
+    const view = new NodePathMainView({ setViewState } as unknown as WorkspaceLeaf, 'abele-node-editor')
+    views.push(view)
+    view.app = { workspace: {} } as any
+    await view.setState({ kind: 'editor', target, path: 'sample.ts' }, {})
+    expect(setViewState).not.toHaveBeenCalled()
+    await vi.runAllTimersAsync()
+    expect(setViewState).toHaveBeenCalledWith({
+      type: 'abele-node-file',
+      active: true,
+      state: { kind: 'file', target, path: 'sample.ts', edit: true },
+    })
+  } finally {
+    vi.useRealTimers()
+  }
+})

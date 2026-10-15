@@ -199,7 +199,7 @@ const nodePanel = (() => {
   const contentOf = {
     Files: (panel) => panel.querySelector('.abele-file-tree .tree-item-self[data-path]'),
     Changes: (panel) => panel.querySelector('.abele-file-tree__group'),
-    History: (panel) => panel.querySelector('.abele-node-sidebar__history .abele-history__subject'),
+    History: (panel) => panel.querySelector('.abele-node-sidebar__history .abele-history__row-subject'),
     'Pull requests': (panel) => panel.querySelector('.abele-node-pulls'),
   }
   return {

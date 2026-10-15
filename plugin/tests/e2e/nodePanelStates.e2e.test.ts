@@ -36,7 +36,7 @@ const probe = (device: string) =>
       seen.aheadBehind = panel.querySelector('.abele-branch-codes__drift')?.textContent.replace(/\\s/g, '') === '21'
       await shot('changes-staged')
       await nodePanel.mode('Files'); seen.files = !!panel.querySelector('.abele-file-tree .tree-item-self[data-path]'); await shot('files')
-      await nodePanel.mode('History'); seen.history = !!panel.querySelector('.abele-node-sidebar__history .abele-history__subject'); await shot('history')
+      await nodePanel.mode('History'); seen.history = !!panel.querySelector('.abele-node-sidebar__history .abele-history__row-subject'); await shot('history')
       await nodePanel.mode('Pull requests'); seen.pulls = text(panel).includes('does not say which remote'); await shot('pulls')
       await nodePanel.mode('Changes')
       const places = await nodePanel.places(); seen.places = !!places.querySelector('.suggestion-item'); await shot('place-search'); await nodePanel.dismiss()

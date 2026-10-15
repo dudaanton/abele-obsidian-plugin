@@ -328,7 +328,12 @@ const showPlace = async (folder, branch) => {
         const path = picker.querySelector('input'); path.value = ${JSON.stringify(realpathSync(projectPaths[i]) + '/')}; path.dispatchEvent(new Event('input', {bubbles:true}));
         await until(() => button(picker, 'Open') && !button(picker, 'Open').disabled);
         button(picker, 'Open').click();
-        await until(() => !document.querySelector('.abele-folder-picker') && model.currentFolder.value?.name === ${JSON.stringify(folderName)});
+        // What the dialog refused, said, instead of a bare wait that runs out.
+        await until(() => {
+          const refused = document.querySelector('.abele-folder-picker')?.closest('.modal')?.querySelector('[role="alert"]')?.textContent;
+          if (refused) throw Error('Open folder refused: ' + refused);
+          return !document.querySelector('.abele-folder-picker') && model.currentFolder.value?.name === ${JSON.stringify(folderName)};
+        });
         await showPlace(${JSON.stringify(folderName)}, 'main');
         await placeMenu('New worktree');
         const dialog = await until(() => document.querySelector('.abele-worktree-dialog'));

@@ -144,6 +144,19 @@ export class NodePathMainView extends ItemView {
     const parsed = NodePathTabSchema.parse(raw)
     if (nodePathViewType(parsed) !== this.viewType)
       throw new Error('The node tab kind does not match its host.')
+    if (parsed.kind === 'editor') {
+      // An editor tab from an earlier version becomes the file's own tab, editing. The leaf is
+      // switched once Obsidian has finished admitting this state: switching it from inside its
+      // own setState is overridden by the admission still under way.
+      this.saved = parsed
+      await super.setState(raw, result)
+      window.setTimeout(() => {
+        void this.leaf
+          .setViewState({ type: NODE_FILE_VIEW, active: true, state: editedFileTab(parsed) })
+          .catch((error: unknown) => console.debug('[Abele node] editor tab not reopened', error))
+      }, 0)
+      return
+    }
     // Revealing an existing chat/history/editor must not destroy drafts, frozen views or scroll.
     const same =
       this.ui &&
@@ -405,12 +418,6 @@ export class NodePathMainView extends ItemView {
       if (lifetime === this.lifetime && state.commit)
         await history.open(state.commit).catch(() => {})
     } else if (state.kind === 'editor') {
-      // An editor tab from an earlier version opens as the file's own tab, editing.
-      await this.leaf.setViewState({
-        type: NODE_FILE_VIEW,
-        active: true,
-        state: editedFileTab(state),
-      })
       return
     } else {
       const presenter = (this.presenter = markRaw(
