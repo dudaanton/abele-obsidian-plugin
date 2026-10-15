@@ -6,6 +6,7 @@ import type { ExternalReservation } from './coordination'
 export type OwnedArtifact = ExternalOperation['ownedArtifacts'][number]
 export type ExternalFilePortReason =
   | 'busy'
+  | 'pinned'
   | 'collision'
   | 'local-changed'
   | 'unsupported-storage'
@@ -263,7 +264,8 @@ export class ExternalFileEffects {
         await this.fs.reconcile([copy.path])
         this.check([copy.path])
         return { status: 'deleted', reclaimedBytes: copy.size }
-      } catch {
+      } catch (error) {
+        if (error instanceof ExternalFilePortError && error.reason === 'pinned') throw error
         return this.ambiguous([copy.path])
       }
     })

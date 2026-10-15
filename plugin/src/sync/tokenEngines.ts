@@ -38,6 +38,7 @@ import { readIgnore, ignoreFor, scopeKey } from './scope'
 import { OwnSettingsWatch } from './ownSettings'
 import { ExternalFileActions } from './external/fileActions'
 import { externalActionsOf } from './external/actionHost'
+import { devicePins } from './external/devicePins'
 
 /** One native host, independent durable engines, and one vault-wide placement coordinator. */
 export class TokenEngines {
@@ -823,10 +824,7 @@ export class TokenEngines {
       this.saveDevicePins(this.devicePins().filter((pin) => caseKey(pin) !== caseKey(path)))
   }
   private devicePins(): string[] {
-    const saved: unknown = this.app.loadLocalStorage('abele-external-pins-v1') ?? []
-    if (!Array.isArray(saved) || saved.some((path) => typeof path !== 'string'))
-      throw new Error('Device pin preferences require recovery')
-    return saved as string[]
+    return devicePins(this.app)
   }
   private saveDevicePins(paths: string[]): void {
     this.app.saveLocalStorage('abele-external-pins-v1', paths)

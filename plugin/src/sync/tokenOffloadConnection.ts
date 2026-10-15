@@ -7,6 +7,8 @@ import {
   type V2EngineClient,
 } from '@abele/sync-core'
 import { sha256 } from './external/hash'
+import { devicePinned } from './external/devicePins'
+import { ExternalFilePortError } from './external/filesystem'
 import { AttachmentStore } from './external/attachmentStore'
 import { ExternalFileHost } from './external/ObsidianExternalFileHost'
 import { activateExternalFiles, recoverOrphanPrivateArtifacts } from './external/pluginSafety'
@@ -68,6 +70,9 @@ export async function tokenOffloadConnection(input: {
     effect: (work) => fence.effect(work),
     placement: manager.locks,
     beforeRemoval: (path) => input.capture([path]),
+    assertRemovalAllowed: (path) => {
+      if (devicePinned(input.app, path)) throw new ExternalFilePortError('pinned')
+    },
     stagingMtime: (path) => stagingMtimes.get(path) ?? Date.now(),
   })
   const refresh = async () => {
@@ -302,7 +307,11 @@ export async function tokenOffloadConnection(input: {
           expectedRevision: snapshot?.localRevision ?? 0,
           expectedVersionId: entry.versionId,
         })
-      )
+      ).catch((error: unknown) => {
+        if (error instanceof ExternalFilePortError && error.reason === 'pinned')
+          return { status: 'pinned' as const, reclaimedBytes: 0 }
+        throw error
+      })
       await refresh()
       return result
     },

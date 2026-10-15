@@ -45,6 +45,7 @@ export interface ExternalHostOptions {
   reconciled?(path: string): void
   placement?: PathCoordinator
   beforeRemoval?(path: string): Promise<void>
+  assertRemovalAllowed?(path: string): void
   stagingMtime?(path: string): number
 }
 export interface ExternalHostRequest extends ExternalReservationRequest {
@@ -165,6 +166,10 @@ export class ExternalFileHost {
     this.assertOwned()
     await this.options.beforeRemoval?.(path)
   }
+  assertRemovalAllowed(path: string): void {
+    this.assertOwned()
+    this.options.assertRemovalAllowed?.(path)
+  }
   close(): void {
     this.closed = true
     for (const lease of this.leases) lease.release()
@@ -191,7 +196,11 @@ export class ExternalFileHost {
         effects = new ExternalFileEffects(this.filesystem(), reservation, {
           assertOwned: this.assertOwned,
           assertUnused: () => this.assertUnused(reservation.request.paths),
-          assertIntent: intake.assertIntent,
+          assertIntent: (phase, paths, artifact) => {
+            if (phase === 'delete-original')
+              for (const path of paths) this.options.assertRemovalAllowed?.(path)
+            intake.assertIntent(phase, paths, artifact)
+          },
         })
         return await work(effects)
       } finally {
@@ -219,7 +228,11 @@ export class ExternalFileHost {
         return (...args: unknown[]) => {
           const work = async () => {
             this.assertOwned()
-            if (key === 'remove') await this.options.beforeRemoval?.(args[0] as string)
+            if (key === 'remove') {
+              await this.options.beforeRemoval?.(args[0] as string)
+              // Synchronous permission check inside the placement lock, after all awaits.
+              this.options.assertRemovalAllowed?.(args[0] as string)
+            }
             return this.effect(() => value.apply(target, args))
           }
           const paths =

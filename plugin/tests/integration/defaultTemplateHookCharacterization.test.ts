@@ -66,6 +66,15 @@ async function setup(workspaceEvents = false) {
     addCommand: vi.fn(),
     registerEvent: vi.fn(),
     register: (dispose: () => void) => disposals.push(dispose),
+    registerDomEvent: (
+      target: EventTarget,
+      type: string,
+      callback: EventListener,
+      options?: AddEventListenerOptions
+    ) => {
+      target.addEventListener(type, callback, options)
+      disposals.push(() => target.removeEventListener(type, callback, options))
+    },
     registerObsidianProtocolHandler: vi.fn(),
   })
   await plugin.onload()

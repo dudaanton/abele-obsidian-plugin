@@ -448,6 +448,11 @@ export class AttachmentStore {
           return this.reason(error)
         }
         if (opts.signal?.aborted) return this.result('busy')
+        try {
+          this.options.host.assertRemovalAllowed(head.path)
+        } catch (error) {
+          return this.reason(error)
+        }
         const sidecar = projectionPath(head.path)
         if (await this.options.host.exists(sidecar)) return this.result('collision')
         const bytes = serializeProjection({
