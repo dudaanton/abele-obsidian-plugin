@@ -7,6 +7,7 @@ import AiNodeScopeChips from '@/components/AiNodeScopeChips.vue'
 import Dropdown from '@/components/obsidian/Dropdown.vue'
 import Button from '@/components/obsidian/Button.vue'
 import Icon from '@/components/obsidian/Icon.vue'
+import { pendingNodeAccess } from '@/components/chat/nodeAccessPending'
 
 const mocks = vi.hoisted(() => ({ set: vi.fn(), give: vi.fn(), remove: vi.fn(), host: vi.fn() }))
 vi.mock('@/ai/tools/node/owner', () => ({
@@ -86,6 +87,30 @@ describe('node scope beside vault scope and in the header', () => {
     expect(
       view.findAllComponents(Button).some((button) => button.props('text') === 'Clear node access')
     ).toBe(true)
+    view.unmount()
+  })
+  it('opens on the place a refused call wanted, its node found by the id the node knows itself by', async () => {
+    const session = setup()
+    session.overrides.value.nodeScope = []
+    mocks.host.mockResolvedValue({
+      nodes: () => [{ id: 'sample-registration', node_id: 'sample-node', label: 'Sample node' }],
+      connection: () => ({
+        client: {
+          connected: true,
+          listProjects: async () => [
+            { project_id: 'sample-project', root_path: '/sample', repository_path: null },
+          ],
+          listWorkspaces: async () => [],
+        },
+      }),
+    })
+    pendingNodeAccess.value = { node_id: 'sample-node', project_id: 'sample-project' }
+    const view = mount(AiNodeScopeEditor, { props: { session } })
+    await flushPromises()
+    const [node, folder] = view.findAllComponents(Dropdown)
+    expect(node.props('modelValue')).toBe('sample-registration')
+    expect(folder.props('modelValue')).toBe('sample-project')
+    expect(pendingNodeAccess.value).toBeNull()
     view.unmount()
   })
   it('renders removable header access without silently approving it', async () => {

@@ -314,7 +314,10 @@ onMounted(async () => {
   if (!want) return
   pendingNodeAccess.value = null
   // A chat with no node access at all named no place: the form opens empty for the person to fill.
-  if (want.node_id) await chooseNode(want.node_id)
+  // A refusal names the node as the node knows itself; the list holds this device's registrations.
+  const registration =
+    nodes.value.find((n) => n.id === want.node_id || n.node_id === want.node_id)?.id ?? want.node_id
+  if (want.node_id) await chooseNode(registration)
   if (want.node_id && want.project_id) await chooseProject(want.project_id)
   if (want.node_id && want.target) target.value = nodeTargetId(want.target)
   access.value = 'edit'
