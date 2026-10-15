@@ -379,3 +379,19 @@ describe('a note inserted from the vault', () => {
       ).toBe(true)
   })
 })
+
+describe('a card left in the middle of writing a composed word', () => {
+  it('keeps the words and saves when its field loses the focus', async () => {
+    const s = setup(cards())
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    await double(s, 100, 80)
+    s.field().dispatchEvent(new Event('compositionstart'))
+    s.field().value = 'alpha, composed'
+    s.field().dispatchEvent(new Event('input'))
+    // A phone's keyboard dismissed: the field is left with no composition end.
+    s.field().dispatchEvent(new Event('blur'))
+    expect(s.button('Save text').disabled).toBe(false)
+    s.button('Save text').click()
+    await vi.waitFor(() => expect(s.document.session.graph.nodes[0].text).toBe('alpha, composed'))
+  })
+})

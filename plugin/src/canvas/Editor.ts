@@ -521,6 +521,14 @@ export class CanvasEditor {
       this.refresh()
     })
     this.listen(this.text, 'input', () => this.input())
+    // A field left mid-composition, as a phone's keyboard can be dismissed, has finished it: the
+    // words written so far are kept, and the card can be saved and left.
+    this.listen(this.text, 'blur', () => {
+      if (!this.composing) return
+      this.composing = false
+      this.input()
+      this.refresh()
+    })
     // Esc, or Cmd+Enter, finishes writing on a card and saves it, as a click beside it does.
     this.listen(this.text, 'keydown', (event) => {
       const e = event as KeyboardEvent
