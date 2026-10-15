@@ -2,9 +2,12 @@
  * The Access tab of an agent against a large vault: listing its groups and typing in the field
  * that adds a place must not walk the vault's group membership again for every row, render and
  * keystroke. In the running app one such walk resolves a link per `groups` value of every note,
- * which on thousands of notes is a frozen window, once per keystroke.
+ * which on thousands of notes is a frozen window, once per keystroke. Nor may a change to the
+ * agent measure its hundred tool dropdowns again: Obsidian sizes each one by a layout of the
+ * whole window.
  *
- * What is asserted is the work done — metadata reads and link resolutions counted in the page —
+ * What is asserted is the work done — metadata reads, link resolutions and dropdown
+ * measurements counted in the page —
  * never milliseconds; the times are printed beside them for the record.
  *
  * Requires a development build in a vault with `ScaleTest/` (the pool vaults) — docs/Testing.md.
@@ -23,11 +26,13 @@ interface Step {
   fileCache: number
   links: number
   listed: number
+  measured: number
 }
 
 interface Report {
   markdownFiles: number
   groups: number
+  dropdowns: number
   steps: Step[]
   error?: string
 }
@@ -38,8 +43,10 @@ const probe = `(async () => {
   const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
   const until = async (f, what) => { for (let i = 0; i < 200; i++) { const v = f(); if (v) return v; await wait(50) } throw Error('Did not settle: ' + what) }
   const real = { fileCache: mc.getFileCache, links: mc.getFirstLinkpathDest, listed: vault.getAllLoadedFiles }
-  const count = { fileCache: 0, links: 0, listed: 0 }
-  const report = { markdownFiles: vault.getMarkdownFiles().length, groups: 0, steps: [] }
+  const count = { fileCache: 0, links: 0, listed: 0, measured: 0 }
+  const report = { markdownFiles: vault.getMarkdownFiles().length, groups: 0, dropdowns: 0, steps: [] }
+  // Obsidian sizes a dropdown by reading the width of its hidden measuring select.
+  const width = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth')
   const registry = T.AgentRegistry.getInstance()
   let agent = null
   try {
@@ -51,15 +58,20 @@ const probe = `(async () => {
     mc.getFileCache = function (...a) { count.fileCache++; return real.fileCache.apply(this, a) }
     mc.getFirstLinkpathDest = function (...a) { count.links++; return real.links.apply(this, a) }
     vault.getAllLoadedFiles = function (...a) { count.listed++; return real.listed.apply(this, a) }
+    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, get() { if (this.classList.contains('is-measuring')) count.measured++; return width.get.call(this) } })
     const measure = async (step, work) => {
-      count.fileCache = count.links = count.listed = 0
+      count.fileCache = count.links = count.listed = count.measured = 0
       const start = performance.now()
       await work()
       await frame()
       report.steps.push({ step, ms: Math.round(performance.now() - start), ...count })
     }
-    T.openDialog('agent-tools')
-    const input = await until(() => document.querySelector('.modal .abele-agent-editor .abele-scope-mgr__field input'), 'the Access tab')
+    let input = null
+    await measure('open the Access tab', async () => {
+      T.openDialog('agent-tools')
+      input = await until(() => document.querySelector('.modal .abele-agent-editor .abele-scope-mgr__field input'), 'the Access tab')
+    })
+    report.dropdowns = document.querySelectorAll('.modal select.dropdown:not(.is-measuring)').length
     agent = registry.list({ includeUtility: true }).find((a) => a.name === 'Sample tools by section')
     await measure('list three groups', async () => {
       registry.update(agent.id, { scope: groups })
@@ -81,6 +93,7 @@ const probe = `(async () => {
     mc.getFileCache = real.fileCache
     mc.getFirstLinkpathDest = real.links
     vault.getAllLoadedFiles = real.listed
+    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', width)
     document.activeElement?.blur?.()
     document.querySelector('.modal-container .modal-close-button')?.click()
     await wait(300)
@@ -95,10 +108,10 @@ it.skipIf(!available)(
     console.info(
       [
         '',
-        `  markdown files ${report.markdownFiles}, groups in reach ${report.groups}`,
+        `  markdown files ${report.markdownFiles}, groups in reach ${report.groups}, dropdowns ${report.dropdowns}`,
         ...report.steps.map(
           (s) =>
-            `  ${s.step.padEnd(22)} ${String(s.ms).padStart(6)} ms  getFileCache ${s.fileCache}  links ${s.links}  file lists ${s.listed}`
+            `  ${s.step.padEnd(22)} ${String(s.ms).padStart(6)} ms  getFileCache ${s.fileCache}  links ${s.links}  file lists ${s.listed}  dropdowns measured ${s.measured}`
         ),
         '',
       ].join('\n')
@@ -107,8 +120,10 @@ it.skipIf(!available)(
     const step = (name: string) => report.steps.find((s) => s.step === name)!
     // One pass over the vault's metadata is enough to know every group's members.
     expect(step('list three groups').fileCache).toBeLessThanOrEqual(report.markdownFiles)
-    // A setting unrelated to the places costs no pass over the vault at all.
+    // A setting unrelated to the places costs no pass over the vault at all, and of the
+    // dropdowns only the one whose value changed is measured again.
     expect(step('change a tool mode').fileCache).toBe(0)
+    expect(step('change a tool mode').measured).toBeLessThanOrEqual(2)
     // Group sizes are known once the field has listed them; typing does not learn them again.
     const typing = report.steps.filter((s) => s.step.startsWith('type '))
     expect(typing.slice(1).map((s) => s.links)).toEqual(typing.slice(1).map(() => 0))

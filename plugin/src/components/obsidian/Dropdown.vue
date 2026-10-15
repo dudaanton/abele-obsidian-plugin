@@ -12,6 +12,7 @@
 // builds the element, so the attributes a caller gives (a label, an id) are handed to it.
 import { computed, ref, onMounted, watch, useAttrs } from 'vue'
 import { DropdownComponent } from 'obsidian'
+import { fitInBatches } from './dropdownFit'
 
 defineOptions({ inheritAttrs: false })
 
@@ -34,6 +35,7 @@ const updateDropdown = () => {
     el.value.empty()
 
     dropdown.value = new DropdownComponent(el.value)
+    fitInBatches(dropdown.value)
     dropdown.value.selectEl.classList.add('abele-obsidian-dropdown__base')
 
     props.options.forEach((option) => {
@@ -71,8 +73,9 @@ const applyAttrs = () => {
   }
 }
 
+// Setting a value sizes the select to it: not again for the value it already shows.
 const updateValue = () => {
-  if (props.modelValue !== undefined) {
+  if (props.modelValue !== undefined && dropdown.value?.getValue() !== props.modelValue) {
     dropdown.value?.setValue(props.modelValue)
   }
 }
@@ -80,7 +83,9 @@ const updateValue = () => {
 onMounted(() => {
   updateDropdown()
 })
-watch(() => props.options, updateDropdown)
+// The choices by what they say: a caller writing them inline hands a new array on every render
+// of its own, and rebuilding the select for the same choices is all cost and no change.
+watch(() => JSON.stringify(props.options), updateDropdown)
 watch(() => props.modelValue, updateValue)
 watch(
   () => props.disabled,
