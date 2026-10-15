@@ -7,7 +7,9 @@ import { TFile } from 'obsidian'
 
 const cleanups: (() => void)[] = []
 afterEach(() => cleanups.splice(0).forEach((fn) => fn()))
-function setup(graph: CanvasGraph = emptyCanvas()) {
+/** `delay` holds every write open, as a vault write does, so actions can land during a save. */
+function setup(graph: CanvasGraph = emptyCanvas(), { delay = 0 } = {}) {
+  const settle = () => (delay ? new Promise((resolve) => setTimeout(resolve, delay)) : undefined)
   const el = document.createElement('div')
   document.body.append(el)
   const openNode = vi.fn()
@@ -42,10 +44,12 @@ function setup(graph: CanvasGraph = emptyCanvas()) {
     const session = documentState.session,
       token = session.prepareDraft()
     const graph = session.apply(token, session.committed)
+    await settle()
     session.acknowledge(token, { graph, revision: `saved-${session.generation}` })
     documentState.clearRecovery()
     documentState.notify()
   })
+  const notice = vi.fn()
   const editor = new CanvasEditor(viewer, {
     document: () => documentState,
     publish,
@@ -53,6 +57,7 @@ function setup(graph: CanvasGraph = emptyCanvas()) {
       const session = documentState.session,
         token = direction === 'undo' ? session.prepareUndo() : session.prepareRedo()
       const graph = session.apply(token, session.committed)
+      await settle()
       session.acknowledge(token, { graph, revision: `history-${session.generation}` })
       documentState.notify()
     }),
@@ -60,7 +65,7 @@ function setup(graph: CanvasGraph = emptyCanvas()) {
     pickLink: async () => 'https://sample.example',
     confirmDiscard: async () => true,
     handoffChoice: async () => 'retain',
-    notice: vi.fn(),
+    notice,
   })
   documentState.owners.set(editor, (current) => {
     viewer.load(current.session.graph)
@@ -78,7 +83,18 @@ function setup(graph: CanvasGraph = emptyCanvas()) {
     viewer.destroy()
     el.remove()
   })
-  return { el, viewer, editor, document: documentState, publish, button, field, input, openNode }
+  return {
+    el,
+    viewer,
+    editor,
+    document: documentState,
+    publish,
+    notice,
+    button,
+    field,
+    input,
+    openNode,
+  }
 }
 
 const cards = (): CanvasGraph => ({
@@ -834,6 +850,151 @@ describe('human canvas geometry', () => {
     pointer(s, 'pointerup', 80, 70)
     expect(s.publish).not.toHaveBeenCalled()
     expect(s.document.session.graph).toEqual(external)
+  })
+})
+
+describe('canvas actions made while a save is in flight', () => {
+  const settled = async (s: ReturnType<typeof setup>, undo: number) => {
+    await vi.waitFor(() => expect(s.document.session.history.undo).toBe(undo))
+    await vi.waitFor(() => expect(s.document.session.busy || s.document.session.dirty).toBe(false))
+  }
+  it('saves two strokes drawn back to back, one undo step each, and keeps the second on screen', async () => {
+    const s = setup(emptyCanvas(), { delay: 50 })
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    s.button('Draw with pen').click()
+    pointer(s, 'pointerdown', 20, 20, { buttons: 1 })
+    pointer(s, 'pointermove', 80, 20, { buttons: 1 })
+    pointer(s, 'pointerup', 100, 20)
+    expect(s.document.session.busy).toBe(true)
+    pointer(s, 'pointerdown', 20, 120, { buttons: 1 })
+    pointer(s, 'pointermove', 80, 120, { buttons: 1 })
+    pointer(s, 'pointerup', 100, 120)
+    expect(s.viewer.graph.abele?.ink).toHaveLength(2)
+    await settled(s, 2)
+    expect(s.publish).toHaveBeenCalledTimes(2)
+    const ink = s.document.session.committed.graph.abele.ink as { points: number[] }[]
+    expect(ink.map((stroke) => stroke.points[1])).toEqual([20, 120])
+    expect(s.viewer.graph.abele?.ink).toHaveLength(2)
+    s.button('Undo canvas change').click()
+    await vi.waitFor(() => expect(s.document.session.graph.abele.ink).toHaveLength(1))
+    await vi.waitFor(() => expect(s.document.session.busy).toBe(false))
+    s.button('Undo canvas change').click()
+    await vi.waitFor(() => expect(s.document.session.graph.abele?.ink ?? []).toHaveLength(0))
+  })
+  it('saves a stroke begun during a save and finished after it', async () => {
+    const s = setup(emptyCanvas(), { delay: 50 })
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    s.button('Draw with pen').click()
+    pointer(s, 'pointerdown', 20, 20, { buttons: 1 })
+    pointer(s, 'pointerup', 100, 20)
+    pointer(s, 'pointerdown', 20, 120, { buttons: 1 })
+    pointer(s, 'pointermove', 60, 120, { buttons: 1 })
+    await settled(s, 1)
+    pointer(s, 'pointermove', 80, 120, { buttons: 1 })
+    pointer(s, 'pointerup', 100, 120)
+    await settled(s, 2)
+    expect(s.document.session.committed.graph.abele.ink).toHaveLength(2)
+  })
+  it('still refuses a gesture begun during a save when the source changes after it', async () => {
+    const s = setup(cards(), { delay: 50 })
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    pointer(s, 'pointerdown', 30, 30)
+    pointer(s, 'pointermove', 80, 70)
+    pointer(s, 'pointerup', 80, 70)
+    pointer(s, 'pointerdown', 450, 100)
+    pointer(s, 'pointermove', 500, 140)
+    await settled(s, 1)
+    const external = s.document.session.committed.graph
+    external.nodes[2].text = 'External content'
+    s.document.observe({ graph: external, revision: 'external' })
+    pointer(s, 'pointermove', 520, 150)
+    pointer(s, 'pointerup', 520, 150)
+    await Promise.resolve()
+    expect(s.publish).toHaveBeenCalledOnce()
+    expect(s.document.session.graph).toEqual(external)
+  })
+  it('saves a resize made right after a move, in order, as two undo steps', async () => {
+    const s = setup(cards(), { delay: 50 })
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    pointer(s, 'pointerdown', 30, 30)
+    pointer(s, 'pointermove', 80, 70)
+    pointer(s, 'pointerup', 80, 70)
+    expect(s.document.session.busy).toBe(true)
+    // The moved card's bottom-right corner is now at (310, 200).
+    pointer(s, 'pointerdown', 310, 200)
+    pointer(s, 'pointermove', 340, 230)
+    pointer(s, 'pointerup', 340, 230)
+    expect(s.viewer.graph.nodes[0]).toMatchObject({ x: 50, y: 40, width: 290, height: 190 })
+    await settled(s, 2)
+    expect(s.document.session.committed.graph.nodes[0]).toMatchObject({
+      x: 50,
+      y: 40,
+      width: 290,
+      height: 190,
+    })
+    s.button('Undo canvas change').click()
+    await vi.waitFor(() => expect(s.document.session.graph.nodes[0].width).toBe(260))
+    await vi.waitFor(() => expect(s.document.session.busy).toBe(false))
+    expect(s.document.session.graph.nodes[0].x).toBe(50)
+    s.button('Undo canvas change').click()
+    await vi.waitFor(() => expect(s.document.session.graph).toEqual(cards()))
+  })
+  it('applies keyboard and toolbar actions pressed during a save, in order', async () => {
+    const s = setup(cards(), { delay: 50 })
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    pointer(s, 'pointerdown', 30, 30)
+    pointer(s, 'pointermove', 80, 70)
+    pointer(s, 'pointerup', 80, 70)
+    expect(s.document.session.busy).toBe(true)
+    expect(s.button('Delete selected card').disabled).toBe(false)
+    s.el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }))
+    expect(s.viewer.graph.nodes.map((n) => n.id)).toEqual(['beta', 'gamma'])
+    s.button('Toggle multiple selection').click()
+    for (const x of [330, 630]) {
+      pointer(s, 'pointerdown', x, 30)
+      pointer(s, 'pointerup', x, 30)
+    }
+    s.button('Group selected cards').click()
+    await settled(s, 3)
+    expect(s.document.session.committed.graph.nodes.map((n) => n.type)).toEqual([
+      'text',
+      'text',
+      'group',
+    ])
+    s.el.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }))
+    s.el.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }))
+    await settled(s, 1)
+    expect(s.document.session.committed.graph.nodes.map((n) => n.id)).toEqual([
+      'alpha',
+      'beta',
+      'gamma',
+    ])
+    expect(s.document.session.committed.graph.nodes[0].x).toBe(50)
+  })
+  it('does not replay actions queued behind a save whose outcome is unknown', async () => {
+    const s = setup(cards(), { delay: 50 })
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    s.publish.mockImplementationOnce(async () => {
+      const session = s.document.session,
+        token = session.prepareDraft()
+      session.apply(token, session.committed)
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      session.quarantine(token, 'unknown')
+      s.document.notify()
+    })
+    pointer(s, 'pointerdown', 30, 30)
+    pointer(s, 'pointermove', 80, 70)
+    pointer(s, 'pointerup', 80, 70)
+    pointer(s, 'pointerdown', 450, 100)
+    pointer(s, 'pointermove', 500, 140)
+    pointer(s, 'pointerup', 500, 140)
+    expect(s.viewer.graph.nodes[1].x).toBe(350)
+    await vi.waitFor(() => expect(s.document.session.publicationOutcome).toBe('unknown'))
+    await vi.waitFor(() => expect(s.viewer.graph.nodes[1].x).toBe(300))
+    expect(s.publish).toHaveBeenCalledOnce()
+    expect(s.document.session.graph.nodes[1].x).toBe(300)
+    expect(s.editor['queue']).toEqual([])
+    expect(s.notice).toHaveBeenCalledWith(expect.stringContaining('were not applied'))
   })
 })
 

@@ -1,7 +1,7 @@
 /** Human interaction over the existing shared document; no storage or replay machinery. */
 import { nanoid } from 'nanoid'
 import { editCanvas, type CanvasOperation, type NodeInput } from './core/edit'
-import { canvasFingerprint, SHAPES, type Shape } from './core/model'
+import { canvasFingerprint, SHAPES, type CanvasGraph, type Shape } from './core/model'
 import { linesOf } from './core/primitives'
 import { allInkEntries, inkEntries } from './core/ink'
 import { canvasVisibility } from './core/visibility'
@@ -34,6 +34,8 @@ export interface CanvasEditorPorts {
   handoffChoice(): Promise<'stay' | 'retain' | 'discard'>
   notice(message: string): void
 }
+/** A change made while the editor's own save is in flight; applied, in order, once it settles. */
+type QueuedChange = { ops: CanvasOperation[] } | { history: 'undo' | 'redo' }
 export class CanvasEditor {
   private selected = new Set<string>()
   private multiple = false
@@ -55,8 +57,17 @@ export class CanvasEditor {
   private propertyBaseline = ''
   private propertyId = ''
   private readonly inputAdapter: CanvasInput
-  private geometry: { document: CanvasEditorDocument; generation: number; path: string } | null =
-    null
+  private geometry: {
+    document: CanvasEditorDocument
+    generation: number
+    path: string
+    queued?: boolean
+  } | null = null
+  private queue: QueuedChange[] = []
+  private queueVersion = 0
+  private flushing: CanvasEditorDocument | null = null
+  private effective: { generation: number; version: number; graph: CanvasGraph } | null = null
+  private previewed: CanvasGraph | null = null
   private editing: string | null = null
   private ownedDraft: CanvasEditorDocument | null = null
   private composing = false
@@ -289,6 +300,17 @@ export class CanvasEditor {
       },
       multiple: () => this.multiple,
       begin: () => {
+        if (this.queueable()) {
+          const document = this.ports.document()
+          if (this.viewer.step !== null) this.viewer.go(null, false)
+          this.geometry = {
+            document,
+            generation: document.session.generation,
+            path: document.file.path,
+            queued: true,
+          }
+          return true
+        }
         try {
           const document = this.ready()
           this.geometry = {
@@ -313,7 +335,7 @@ export class CanvasEditor {
       invalid: (error) => this.fail(error),
     })
     viewer.onSelect = (node) => {
-      if (this.editing || this.waiting) return
+      if (this.editing || (this.waiting && !this.queueable())) return
       this.selected = new Set(node ? [node.id] : [])
       this.refresh()
     }
@@ -384,11 +406,48 @@ export class CanvasEditor {
   }
   private node() {
     return this.selected.size === 1
-      ? this.ports.document()?.session.graph.nodes.find((node) => this.selected.has(node.id))
+      ? this.graph().nodes.find((node) => this.selected.has(node.id))
       : undefined
+  }
+  /** The session's graph with the changes still waiting for the current save on top. */
+  private graph(): CanvasGraph {
+    const session = this.ports.document()?.session
+    if (!session) return { nodes: [], edges: [] }
+    if (!this.queue.length) return session.graph
+    const e = this.effective
+    if (e?.generation === session.generation && e.version === this.queueVersion) return e.graph
+    let graph = session.graph
+    for (const change of this.queue)
+      if ('ops' in change)
+        try {
+          graph = editCanvas(graph, change.ops).graph
+        } catch {
+          // Refused again, and reported, when the change is applied.
+        }
+    this.effective = { generation: session.generation, version: this.queueVersion, graph }
+    return graph
+  }
+  /**
+   * The editor's own save is in flight on an otherwise clean document, so a new change can
+   * wait for it instead of being refused. Never behind a conflict or an uncertain publication.
+   */
+  private queueable(): boolean {
+    const document = this.ports.document()
+    return (
+      !!document &&
+      this.flushing === document &&
+      !this.editing &&
+      !this.destroyed &&
+      !document.state.native &&
+      !document.error &&
+      !document.recovery &&
+      !document.session.conflict &&
+      !document.session.publicationOutcome
+    )
   }
   private canGesture(): boolean {
     const document = this.ports.document()
+    if (this.queueable()) return true
     return (
       !!document &&
       !this.editing &&
@@ -405,8 +464,11 @@ export class CanvasEditor {
       !!g &&
       this.ports.document() === g.document &&
       g.path === g.document.file.path &&
-      g.generation === g.document.session.generation &&
+      // A gesture begun during a save follows that save, and then refuses later changes alike.
+      ((g.queued && this.flushing === g.document) ||
+        g.generation === g.document.session.generation) &&
       !g.document.session.conflict &&
+      !g.document.session.publicationOutcome &&
       !g.document.state.native &&
       !g.document.error
     )
@@ -414,7 +476,7 @@ export class CanvasEditor {
   private cancelGeometry(): void {
     const g = this.geometry
     this.geometry = null
-    if (g?.document.session.draft?.active) g.document.discardDraft()
+    if (!g?.queued && g?.document.session.draft?.active) g.document.discardDraft()
   }
   private async completeGeometry(ops: CanvasOperation[]): Promise<void> {
     const g = this.geometry
@@ -423,18 +485,136 @@ export class CanvasEditor {
       return
     }
     this.geometry = null
-    try {
-      this.update(g.document, ops)
+    const select = () => {
       for (const op of ops) {
         if (op.op === 'connect') this.selected = new Set([op.edge.id])
         if (op.op === 'add_line') this.selected = new Set([op.line.id])
       }
+    }
+    if (g.queued) {
+      select()
+      await this.enqueue({ ops })
+      return
+    }
+    try {
+      this.update(g.document, ops)
+      select()
       g.document.finishDraft()
     } catch (error) {
       if (g.document.session.draft?.active) g.document.discardDraft()
       throw error
     }
-    await this.saving(() => this.ports.publish())
+    await this.save(g.document, () => this.ports.publish())
+  }
+  /** Ready for a new change now, or able to queue it behind the save in flight. */
+  private target(): CanvasEditorDocument {
+    if (!this.queueable()) return this.ready()
+    if (this.viewer.step !== null) this.viewer.go(null, false)
+    return this.ports.document()
+  }
+  /** One undo step: published now, or after the save in flight when one is. */
+  private async commit(
+    document: CanvasEditorDocument,
+    ops: CanvasOperation[],
+    select?: Set<string>
+  ): Promise<void> {
+    if (this.queueable()) {
+      if (select) this.selected = select
+      return this.enqueue({ ops })
+    }
+    document.beginDraft()
+    try {
+      this.update(document, ops)
+      if (select) this.selected = select
+      document.finishDraft()
+    } catch (error) {
+      if (document.session.draft?.active) document.discardDraft()
+      throw error
+    }
+    await this.save(document, () => this.ports.publish())
+  }
+  private async enqueue(change: QueuedChange): Promise<void> {
+    this.queue.push(change)
+    this.queueVersion++
+    this.refresh()
+    if (!this.flushing) await this.drain()
+  }
+  /** The editor's own write; changes made meanwhile wait in the queue. */
+  private async run(document: CanvasEditorDocument, action: () => Promise<unknown>): Promise<void> {
+    this.flushing = document
+    try {
+      await this.saving(action)
+    } finally {
+      this.flushing = null
+      if (this.geometry?.queued && this.geometry.document === document)
+        this.geometry.generation = document.session.generation
+    }
+  }
+  private async save(
+    document: CanvasEditorDocument,
+    action: () => Promise<unknown>
+  ): Promise<void> {
+    try {
+      await this.run(document, action)
+    } finally {
+      await this.drain()
+    }
+  }
+  /**
+   * Apply queued changes one by one, each its own publication and undo step. A save that did
+   * not settle cleanly (failed, uncertain, conflicted) stops the queue: its changes were made
+   * on top of work that is not known to be saved, so they are dropped, never replayed blindly.
+   */
+  private async drain(): Promise<void> {
+    while (this.queue.length && !this.flushing) {
+      const document = this.ports.document(),
+        session = document?.session
+      if (
+        !document ||
+        this.destroyed ||
+        this.waiting ||
+        session.busy ||
+        session.dirty ||
+        session.conflict ||
+        session.publicationOutcome ||
+        document.error ||
+        document.recovery ||
+        document.state.native
+      ) {
+        const count = this.queue.length
+        this.queue = []
+        this.queueVersion++
+        if (document && !this.destroyed) this.viewer.load(session.graph)
+        this.ports.notice(
+          `${count} canvas ${count === 1 ? 'change' : 'changes'} made during the save ` +
+            'were not applied, because the save did not finish; make them again'
+        )
+        this.refresh()
+        return
+      }
+      const change = this.queue.shift()
+      this.queueVersion++
+      console.debug('[abele] canvas: applying a change made during the save', {
+        left: this.queue.length,
+      })
+      try {
+        // The draft opens inside the run, so a gesture following the save stays valid.
+        await this.run(document, async () => {
+          if ('history' in change) return this.ports.history(change.history)
+          document.beginDraft()
+          try {
+            this.update(document, change.ops)
+            document.finishDraft()
+          } catch (error) {
+            if (document.session.draft?.active) document.discardDraft()
+            throw error
+          }
+          return this.ports.publish()
+        })
+      } catch (error) {
+        this.fail(error)
+      }
+    }
   }
   private ready(): CanvasEditorDocument {
     const document = this.ports.document()
@@ -577,38 +757,35 @@ export class CanvasEditor {
       !document.session.dirty
     )
       return
-    await this.saving(() => this.ports.publish())
+    await this.save(document, () => this.ports.publish())
   }
   private async pick(kind: 'file' | 'link'): Promise<void> {
     const document = this.ready(),
       generation = document.session.generation,
       path = document.file.path
+    let value: string | null = null
     await this.saving(async () => {
-      const value = await (kind === 'file' ? this.ports.pickFile() : this.ports.pickLink())
-      if (!value) return
-      if (
-        this.destroyed ||
-        this.ports.document() !== document ||
-        document.session.generation !== generation ||
-        document.file.path !== path ||
-        document.state.native
-      )
-        throw new Error('Canvas changed while the picker was open; pick again')
-      const node: NodeInput = {
-        id: nanoid(),
-        kind: kind === 'file' ? 'note' : 'link',
-        ...this.location(),
-        ...(kind === 'file' ? { file: value } : { url: value }),
-      }
-      document.beginDraft()
-      this.update(document, [{ op: 'add_node', node }])
-      document.finishDraft()
-      this.selected = new Set([node.id])
-      await this.ports.publish()
+      value = await (kind === 'file' ? this.ports.pickFile() : this.ports.pickLink())
     })
+    if (!value) return
+    if (
+      this.destroyed ||
+      this.ports.document() !== document ||
+      document.session.generation !== generation ||
+      document.file.path !== path ||
+      document.state.native
+    )
+      throw new Error('Canvas changed while the picker was open; pick again')
+    const node: NodeInput = {
+      id: nanoid(),
+      kind: kind === 'file' ? 'note' : 'link',
+      ...this.location(),
+      ...(kind === 'file' ? { file: value } : { url: value }),
+    }
+    await this.commit(this.ready(), [{ op: 'add_node', node }], new Set([node.id]))
   }
   private async applyShape(): Promise<void> {
-    const document = this.ready(),
+    const document = this.target(),
       node = this.node()
     if (node?.type !== 'text') return
     const ops: CanvasOperation[] = [
@@ -618,26 +795,20 @@ export class CanvasEditor {
         patch: { color: this.shapeColor.value, styleAttributes: { shape: this.shape.value } },
       },
     ]
-    if (
-      canvasFingerprint(editCanvas(document.session.graph, ops).graph) ===
-      canvasFingerprint(document.session.graph)
-    )
-      return
-    document.beginDraft()
-    this.update(document, ops)
-    document.finishDraft()
-    await this.saving(() => this.ports.publish())
+    const graph = this.graph()
+    if (canvasFingerprint(editCanvas(graph, ops).graph) === canvasFingerprint(graph)) return
+    await this.commit(document, ops)
   }
   private connection() {
     if (this.selected.size !== 1) return undefined
-    const graph = this.ports.document()?.session.graph
+    const graph = this.graph()
     return (
-      graph?.edges.find((e) => this.selected.has(e.id)) ??
-      linesOf(graph ?? { nodes: [], edges: [] }).find((l) => this.selected.has(l.id))
+      graph.edges.find((e) => this.selected.has(e.id)) ??
+      linesOf(graph).find((l) => this.selected.has(l.id))
     )
   }
   private async applyConnection(): Promise<void> {
-    const document = this.ready(),
+    const document = this.target(),
       element = this.connection()
     if (!element) return
     if (JSON.stringify(element) !== this.propertyBaseline)
@@ -656,23 +827,20 @@ export class CanvasEditor {
       this.label.blur()
       return
     }
+    const graph = this.graph()
     if (
-      canvasFingerprint(
-        editCanvas(document.session.graph, [{ op: 'update', id: element.id, patch }]).graph
-      ) === canvasFingerprint(document.session.graph)
+      canvasFingerprint(editCanvas(graph, [{ op: 'update', id: element.id, patch }]).graph) ===
+      canvasFingerprint(graph)
     )
       return
     // Release the keyboard before draft notifications disable the field.
     this.label.blur()
-    document.beginDraft()
-    this.update(document, [{ op: 'update', id: element.id, patch }])
-    document.finishDraft()
-    await this.saving(() => this.ports.publish())
+    await this.commit(document, [{ op: 'update', id: element.id, patch }])
     this.propertyBaseline = JSON.stringify(this.connection())
   }
   private async inkAction(action: 'color' | 'detach' | 'attach'): Promise<void> {
-    const document = this.ready(),
-      graph = document.session.graph,
+    const document = this.target(),
+      graph = this.graph(),
       entries = allInkEntries(graph).filter((e) => this.selected.has(e.stroke.id)),
       cards = graph.nodes.filter((n) => this.selected.has(n.id)),
       target = this.inkAttachment.value || (cards.length === 1 ? cards[0].id : '')
@@ -701,46 +869,37 @@ export class CanvasEditor {
             }))
     if (!ops.length || (action === 'attach' && !target)) return
     if (canvasFingerprint(editCanvas(graph, ops).graph) === canvasFingerprint(graph)) return
-    document.beginDraft()
-    this.update(document, ops)
-    document.finishDraft()
-    await this.saving(() => this.ports.publish())
+    await this.commit(document, ops)
   }
   private async remove(): Promise<void> {
-    const document = this.ready()
+    const document = this.target()
     if (!this.selected.size) return
-    document.beginDraft()
     const owned = new Set(
-      allInkEntries(document.session.graph)
+      allInkEntries(this.graph())
         .filter((e) => e.node && this.selected.has(e.node.id))
         .map((e) => e.stroke.id)
     )
-    this.update(
-      document,
-      [...this.selected].filter((id) => !owned.has(id)).map((id) => ({ op: 'remove', id }))
-    )
-    document.finishDraft()
-    this.selected.clear()
-    await this.saving(() => this.ports.publish())
+    const ops: CanvasOperation[] = [...this.selected]
+      .filter((id) => !owned.has(id))
+      .map((id) => ({ op: 'remove', id }))
+    await this.commit(document, ops, new Set())
   }
   private async group(ungroup = false): Promise<void> {
-    const document = this.ready(),
+    const document = this.target(),
       node = this.node()
     if (ungroup ? node?.type !== 'group' : this.selected.size < 1) return
     const id = ungroup ? node.id : nanoid()
-    document.beginDraft()
-    this.update(document, [
+    const ops: CanvasOperation[] = [
       ungroup
         ? { op: 'ungroup', id }
         : { op: 'group', id, label: 'Group', ids: [...this.selected] },
-    ])
-    document.finishDraft()
-    this.selected = new Set(ungroup ? [] : [id])
-    await this.saving(() => this.ports.publish())
+    ]
+    await this.commit(document, ops, new Set(ungroup ? [] : [id]))
   }
   private async history(direction: 'undo' | 'redo'): Promise<void> {
-    this.ready()
-    await this.saving(() => this.ports.history(direction))
+    if (this.queueable()) return this.enqueue({ history: direction })
+    const document = this.ready()
+    await this.save(document, () => this.ports.history(direction))
   }
   private async discard(): Promise<void> {
     const document = this.ports.document()
@@ -813,7 +972,7 @@ export class CanvasEditor {
     const document = this.ports.document(),
       session = document?.session,
       node = this.node()
-    const graph = session?.graph,
+    const graph = session ? this.graph() : undefined,
       ids = new Set(
         [
           ...(graph?.nodes ?? []),
@@ -823,16 +982,18 @@ export class CanvasEditor {
         ].map((e) => e.id)
       )
     this.selected = new Set([...this.selected].filter((id) => ids.has(id)))
+    // A render of the session's graph would hide changes still waiting for the save.
+    if (this.queue.some((change) => 'ops' in change) && this.viewer.graph !== this.previewed)
+      this.viewer.graph = this.previewed = graph
     this.viewer.selection = this.selected
     this.viewer.draw()
     const active = !!this.editing,
+      queueable = this.queueable(),
       blocked =
         !document ||
-        this.waiting ||
         !!document.error ||
         document.state.native ||
-        !!session?.busy ||
-        !!session?.dirty
+        (!queueable && (this.waiting || !!session?.busy || !!session?.dirty))
     for (const label of [
       'Shapes and connections',
       'Add text card',
@@ -958,8 +1119,9 @@ export class CanvasEditor {
       this.buttons.get(label).disabled = blocked
       this.buttons.get(label).setAttribute('aria-pressed', String(this.tool === tool))
     }
+    // These hold a draft open for typing or a picker, which cannot wait behind a save.
     for (const label of ['Add text card', 'Add note or attachment', 'Add link', 'Add canvas shape'])
-      this.buttons.get(label).disabled = blocked
+      this.buttons.get(label).disabled = blocked || this.waiting
     this.buttons.get('Edit card text').disabled =
       !document ||
       this.waiting ||
@@ -987,7 +1149,7 @@ export class CanvasEditor {
     for (const direction of ['undo', 'redo'] as const)
       this.buttons.get(
         direction === 'undo' ? 'Undo canvas change' : 'Redo canvas change'
-      ).disabled = blocked || !session?.history[direction]
+      ).disabled = blocked || (!session?.history[direction] && !queueable)
     for (const label of ['Save text', 'Keep text draft']) {
       const button = this.buttons.get(label)
       button.hidden = !active
@@ -1054,7 +1216,7 @@ export class CanvasEditor {
   private key(event: KeyboardEvent): boolean {
     if (
       this.editing ||
-      this.waiting ||
+      (this.waiting && !this.queueable()) ||
       event.isComposing ||
       (event.target instanceof Element && event.target.closest('button'))
     )
