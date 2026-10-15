@@ -103,9 +103,18 @@ const prelude = `
   const session = () => chats.getSessionByFile(${JSON.stringify(CHAT)})
   const qa = (sel, root = document) => [...root.querySelectorAll(sel)]
   const entry = (patch) => ({ id: 'ic-' + Math.random().toString(36).slice(2, 10), agentId: '', script: '', checks: 'message', pattern: '', replyOnly: false, contextDepth: 0, enabled: true, ...patch })
+  // The close button first, then Escape, then the background: a phone's sheet answers one of them.
   const closeModals = async () => {
-    for (const button of qa('.modal .modal-close-button').reverse()) button.click()
-    await until(() => !document.querySelector('.modal'), 5000, 'the dialogs to close')
+    const open = () => qa('.modal-container')
+    for (const way of ['button', 'escape', 'background', 'button']) {
+      const box = open().at(-1)
+      if (!box) return
+      if (way === 'button') box.querySelector('.modal-close-button')?.click()
+      if (way === 'escape') box.querySelector('.modal')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      if (way === 'background') box.querySelector('.modal-bg')?.click()
+      for (let i = 0; i < 30 && open().includes(box); i++) await wait(100)
+    }
+    if (open().length) throw new Error('the dialogs did not close')
   }
   const showList = async () => {
     const list = await until(() => document.querySelector('.modal .abele-interceptors'), 5000, 'the interceptor list')

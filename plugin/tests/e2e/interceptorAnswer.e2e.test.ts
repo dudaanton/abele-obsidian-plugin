@@ -148,6 +148,10 @@ const setup = `(async () => {
   await until(() => qa('.abele-chat-setup .abele-tabs__tab').length, 5000, 'chat setup')
   qa('.abele-chat-setup .abele-tabs__tab').find((tab) => tab.textContent.trim() === 'Chat').click()
   await wait(400)
+  // The chat's own list keeps its entry closed; opened, it shows what it checks.
+  const name = await until(() => document.querySelector('.abele-chat-setup .abele-interceptors__name'), 5000, 'the chat list')
+  if (!document.querySelector('.abele-chat-setup .abele-interceptors__settings')) name.click()
+  await wait(300)
   const row = await until(() => qa('.setting-item').find((r) => r.querySelector('.setting-item-name')?.textContent === 'Checks'), 5000, 'the Checks row')
   row.scrollIntoView({ block: 'center' })
   await wait(400)

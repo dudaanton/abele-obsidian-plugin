@@ -203,10 +203,15 @@ function add() {
 }
 
 .abele-interceptors__number {
-  display: inline-block;
+  flex: none;
   min-width: var(--abele-interceptor-indent);
   color: var(--text-faint);
   font-variant-numeric: tabular-nums;
+}
+
+// A long name wraps beside its number, not under it.
+.abele-interceptors__entry > .setting-item .setting-item-name {
+  display: flex;
 }
 
 .abele-interceptors__name {
