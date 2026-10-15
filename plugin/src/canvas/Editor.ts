@@ -2029,7 +2029,7 @@ export class CanvasEditor {
    * each a card at the middle of what is in sight.
    */
   private pickPictures(): void {
-    const input = this.viewer.el.ownerDocument.createElement('input')
+    const input = this.viewer.el.ownerDocument.win.createEl('input')
     input.type = 'file'
     input.accept = 'image/*'
     input.multiple = true

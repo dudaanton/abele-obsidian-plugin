@@ -510,20 +510,21 @@ describe.skipIf(!available)('the canvas by hand', () => {
 
   it('carries a frame with the strokes drawn in it, its name going along', async () => {
     if (onPhone()) return // Carrying is one gesture on both; its name's place is measured here.
+    // A free stroke standing whole in the frame's room between its two cards, as one drawn before
+    // the frame was, or let go of a card: it belongs to no card, only to where it stands.
+    const stroke = 'sample-free-stroke'
+    run(`const f=app.vault.getAbstractFileByPath(path);await app.vault.process(f,t=>{const g=JSON.parse(t)
+      g.abele=g.abele??{};g.abele.ink=[...(g.abele.ink??[]),{version:1,id:${JSON.stringify(stroke)},tool:'pen',color:'',size:2,points:[240,20,0.5,280,100,0.5]}]
+      return JSON.stringify(g)});return true`)
     await reopen()
     const frame = run<{ id: string; x: number; y: number }>(
       `return (await read()).nodes.find(n=>n.type==='group')`
     )
-    // A stroke in the frame's room between its two cards.
-    await chrome.click('Draw with pen')
-    const a = screen(240, 20),
-      b = screen(280, 100)
-    await input(a, b)
-    await saved()
-    const stroke = run<string>(
-      `return ((await read()).abele?.ink??[]).find(e=>e.points[0]>=230&&e.points[0]<=290&&e.points[1]<=120)?.id`
-    )
-    expect(stroke).toBeTruthy()
+    expect(
+      run<boolean>(
+        `return ((await read()).abele?.ink??[]).some(e=>e.id===${JSON.stringify(stroke)})`
+      )
+    ).toBe(true)
     await chrome.click('Select canvas objects')
     const name = `view().contentEl.querySelector('[data-frame-id="${frame.id}"]')`
     const before = run<number>(`return ${name}.getBoundingClientRect().left`)
