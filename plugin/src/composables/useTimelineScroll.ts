@@ -213,7 +213,11 @@ export function useTimelineScroll(
           undefined
         ))
     if (!row && !requested) {
-      console.debug('[Abele timeline] no row to hold', { read: !!read, top, rows: candidates.length })
+      console.debug('[Abele timeline] no row to hold', {
+        read: !!read,
+        top,
+        rows: candidates.length,
+      })
       return () => (read ? releaseSpace() : releaseUnusedSpace(owner))
     }
     const key = requested?.key ?? row.dataset.timelineItem

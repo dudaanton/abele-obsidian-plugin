@@ -376,7 +376,9 @@ describe('timeline scroll ownership', () => {
     let height = 2000
     Object.defineProperty(p.owner, 'clientHeight', { value: 400 })
     Object.defineProperty(p.owner, 'scrollHeight', { get: () => height })
-    Object.defineProperty(p.space, 'offsetHeight', { get: () => parseFloat(p.space.style.height) || 0 })
+    Object.defineProperty(p.space, 'offsetHeight', {
+      get: () => parseFloat(p.space.style.height) || 0,
+    })
     await p.patch(() => p.shift(50))
     expect(p.owner.scrollTop).toBe(150)
     // The row now stands in room reserved under a list whose own end is at 60.
@@ -683,30 +685,33 @@ describe('timeline scroll ownership', () => {
     ['at the new end', 60],
     // Mid-patch the list can be shorter than it ends up, and the clamp goes further than its end.
     ['to the top while the list is briefly empty', 0],
-  ])('holds the nearest remaining row through an editor clamping its scroll %s', async (_, clamp) => {
-    let hiding = false
-    const p = await pane(50, (key) => !hiding || key !== 'sample-task')
-    p.owner.classList.add('cm-scroller')
-    let shortened = false
-    Object.defineProperty(p.owner, 'clientHeight', { value: 400 })
-    Object.defineProperty(p.owner, 'scrollHeight', { get: () => (shortened ? 460 : 4000) })
-    const next = document.createElement('div')
-    next.dataset.timelineItem = 'sample-next'
-    p.root.append(next)
-    let nextTop = 3000
-    vi.spyOn(next, 'getBoundingClientRect').mockImplementation(
-      () => new DOMRect(0, nextTop - (p.owner.scrollTop - 100), 300, 40)
-    )
-    hiding = true
-    await p.patch(() => {
-      p.row.remove()
-      nextTop = 120
-      shortened = true
-      // The browser clamps scrollTop during the DOM patch.
-      p.owner.scrollTop = clamp
-    })
-    expect(next.getBoundingClientRect().top).toBe(50)
-  })
+  ])(
+    'holds the nearest remaining row through an editor clamping its scroll %s',
+    async (_, clamp) => {
+      let hiding = false
+      const p = await pane(50, (key) => !hiding || key !== 'sample-task')
+      p.owner.classList.add('cm-scroller')
+      let shortened = false
+      Object.defineProperty(p.owner, 'clientHeight', { value: 400 })
+      Object.defineProperty(p.owner, 'scrollHeight', { get: () => (shortened ? 460 : 4000) })
+      const next = document.createElement('div')
+      next.dataset.timelineItem = 'sample-next'
+      p.root.append(next)
+      let nextTop = 3000
+      vi.spyOn(next, 'getBoundingClientRect').mockImplementation(
+        () => new DOMRect(0, nextTop - (p.owner.scrollTop - 100), 300, 40)
+      )
+      hiding = true
+      await p.patch(() => {
+        p.row.remove()
+        nextTop = 120
+        shortened = true
+        // The browser clamps scrollTop during the DOM patch.
+        p.owner.scrollTop = clamp
+      })
+      expect(next.getBoundingClientRect().top).toBe(50)
+    }
+  )
 
   it('keeps a visible surviving row at its own position when the first visible row is hidden', async () => {
     let hiding = false
