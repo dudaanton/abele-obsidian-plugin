@@ -103,6 +103,9 @@ it.skipIf(!available).each([
       qa(doc, '.abele-card').find(card => card.textContent.includes('Sample agent')).click()
       await wait()
       const editorDoc = doc.querySelector('.abele-agent-editor') ? doc : document
+      // The list keeps its entries closed; the agent's one interceptor is opened to show it.
+      editorDoc.querySelector('.abele-agent-editor .abele-interceptors__name').click()
+      await wait()
       const interceptorRow = qa(editorDoc, '.setting-item').find(row => row.querySelector('.setting-item-name')?.textContent === 'Interceptor')
       interceptorRow.scrollIntoView({ block: 'start' })
       measure(editorDoc.querySelector('.abele-agent-editor'))
@@ -140,6 +143,8 @@ it.skipIf(!available).each([
       await wait()
       qa(document, '.abele-chat-setup .abele-tabs__tab').find(tab => tab.textContent.trim() === 'Chat').click()
       await wait()
+      document.querySelector('.abele-chat-setup .abele-interceptors__name').click()
+      await wait()
       const field = document.querySelector('input[placeholder="Everything"]')
       field.value = '['; field.dispatchEvent(new Event('input', { bubbles: true }))
       await wait()
@@ -151,7 +156,7 @@ it.skipIf(!available).each([
       modelReset.closest('.setting-item').scrollIntoView({ block: 'center' })
       await shoot('chat-model-override')
       field.value = '^sample'; field.dispatchEvent(new Event('input', { bubbles: true }))
-      const picker = qa(document, '.setting-item').find(row => row.querySelector('.setting-item-name')?.textContent === 'Interceptor').querySelector('select:not(.is-measuring)')
+      const picker = qa(document, '.setting-item').find(row => row.querySelector('.setting-item-name')?.textContent === 'Interceptors').querySelector('select:not(.is-measuring)')
       picker.value = ''; picker.dispatchEvent(new Event('change', { bubbles: true }))
       await wait()
       report.offKept = picker.value === '' && !session.interceptor.isActive && !session.interceptor.followsAgent

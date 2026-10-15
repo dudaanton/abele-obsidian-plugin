@@ -232,7 +232,7 @@ function add() {
 }
 
 .abele-interceptors__entry.is-drop-before {
-  box-shadow: 0 -2px 0 var(--interactive-accent);
+  box-shadow: 0 calc(-1 * var(--size-2-1)) 0 var(--interactive-accent);
 }
 
 .abele-interceptors__add {

@@ -356,7 +356,7 @@ function setValue(
   const next = restoreHidden(parsed, found.value)
   const before = JSON.stringify(redact(found.value, found.key))
   // An agent's list and the single fields that mirror its first entry are written together.
-  if (isAgent(found.parent) && isInterceptorKey(found.key)) {
+  if (isInterceptorKey(found.key) && isAgent(found.parent)) {
     const agent = found.parent as unknown as AgentDefinition
     Object.assign(agent, interceptorPatch(agent, { [found.key]: next }))
   } else (found.parent as Record<string, unknown>)[found.key] = next

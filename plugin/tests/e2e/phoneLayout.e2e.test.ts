@@ -134,6 +134,7 @@ const DIALOGS = [
   'selection-unresolved',
   'reply-revision',
   'reply-original',
+  'reply-versions',
   'key-destinations',
   'key-destinations-new',
   'saved-key-request',
@@ -662,6 +663,12 @@ const probeScript = `(async () => {
         await wait(400)
         const modal = document.querySelector('.modal')
         const label = tab.textContent.trim().toLowerCase()
+        // The chat's own list keeps its entries closed; the one given here is opened, so the
+        // picture and the measures include its settings.
+        if (label === 'chat' && modal && !modal.querySelector('.abele-interceptors__settings')) {
+          modal.querySelector('.abele-interceptors__name')?.click()
+          await wait(300)
+        }
         // The picker takes focus itself; the picture is of the ring that comes with it, which
         // a scrolling box clips unless it is given room. Blurred before measuring.
         // Every focusable thing on the tab is focused and its ring measured, not only the
@@ -1492,6 +1499,9 @@ const probeScript = `(async () => {
           const was = { interceptorAgentId: agent.interceptorAgentId, interceptorScript: agent.interceptorScript, interceptorPattern: agent.interceptorPattern }
           try {
             registry.update(agent.id, { interceptorAgentId: replyReviewer.id, interceptorScript: '', interceptorPattern: '' })
+            // The list keeps its entries closed: the one interceptor is opened to show its settings.
+            await until(() => modal.querySelector('.abele-interceptors__name'), 3000)
+            if (!modal.querySelector('.abele-interceptors__settings')) modal.querySelector('.abele-interceptors__name')?.click()
             const replyRow = () => [...modal.querySelectorAll('.setting-item')].find(r => r.querySelector('.setting-item-name')?.textContent.trim() === 'Reply only')
             await until(() => replyRow(), 3000)
             const row = replyRow()

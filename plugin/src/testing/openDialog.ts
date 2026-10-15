@@ -461,6 +461,45 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
         ],
       },
     }),
+  // An answer replaced by two interceptors in a row: a version tab for each, with what it said.
+  'reply-versions': () =>
+    mountAlone(AiReplyOriginalDialog, {
+      message: {
+        id: 'sample-versions',
+        role: 'assistant',
+        timestamp: 1,
+        content: 'The lamp is on the high shelf, by the window.',
+        revisions: [
+          {
+            proposal: '',
+            by: 'interceptor',
+            before: 'The lantern is on the shelf.',
+            after: 'The lamp is on the shelf.',
+            author: 'Sample fact checker',
+            at: 1,
+            highlights: [],
+          },
+          {
+            proposal: '',
+            by: 'interceptor',
+            before: 'The lamp is on the shelf.',
+            after: 'The lamp is on the high shelf, by the window.',
+            author: 'Sample plain language',
+            at: 2,
+            highlights: [],
+          },
+        ],
+        interceptorChat: [
+          {
+            id: 'sample-note',
+            role: 'assistant',
+            content: 'Said where on the shelf.',
+            timestamp: 2,
+            by: 'Sample plain language',
+          },
+        ],
+      },
+    }),
   'key-destinations': (options) =>
     destinationFixture(options?.recipientRows ? 'layout' : 'review', () => {
       const modal = reviewKeyDestinations()
