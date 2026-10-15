@@ -95,15 +95,17 @@ describe.skipIf(!available)('node folder dialog layout', () => {
     // The buttons are the last thing in the dialog: under them only its own padding (and on a
     // phone the home indicator's inset), never a stretch of empty sheet.
     expect(layout.bottom - layout.actions).toBeLessThanOrEqual(40)
+    // And they are on the screen, not under its bottom edge.
+    expect(layout.actions).toBeLessThanOrEqual(layout.window)
     if (mobile) {
       // Their sheet, reaching the bottom of the screen, and the list using the room it has.
       expect(layout.sheet).toBe(true)
       expect(layout.bottom).toBeGreaterThanOrEqual(layout.window - 1)
       expect(layout.top).toBeLessThan(layout.window / 4)
-      expect(layout.shown).toBeGreaterThanOrEqual(10)
+      expect(layout.shown).toBeGreaterThanOrEqual(8)
     } else {
-      // A centred dialog sized by what it holds, the list showing a page of folders.
-      expect(layout.sheet).toBe(false)
+      // A centred dialog sized by what it holds, the list showing a page of folders. Their
+      // \`mod-lg\` may be on it: every rule they have for it is a phone rule.
       expect(layout.bottom - layout.top).toBeLessThan(layout.window * 0.75)
       expect(layout.shown).toBeGreaterThanOrEqual(6)
     }

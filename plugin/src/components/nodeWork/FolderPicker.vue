@@ -343,13 +343,15 @@ body.is-phone .abele-folder-picker__row {
 body.is-phone .modal.mod-lg .abele-folder-picker-dialog {
   display: flex;
   flex-direction: column;
-  min-height: 100%;
+  height: 100%;
 }
 body.is-phone .modal.mod-lg .abele-folder-picker {
-  flex: 1 1 auto;
+  flex: 1 1 0;
+  min-height: 0;
 }
+// From nothing, not from its rows: grown from all of them it pushed the buttons off the screen.
 body.is-phone .modal.mod-lg .abele-folder-picker__list {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   height: auto;
   min-height: calc(var(--touch-size-m) * 4);
 }
