@@ -42,10 +42,10 @@ function setup() {
     heldDeletes: async () => [{ fileId: 'sample-held-delete', path: 'Notes/retained.md' }],
   }
   ui.bind(source.id, runtime)
-  const stage = async (versionId: string) => {
+  const stage = async (versionId: string, from = source) => {
     const bytes = new TextEncoder().encode('sample()')
     return reviews.executables.stage({
-      source,
+      source: from,
       fileId: 'sample-script',
       versionId,
       path: 'Scripts/sample.js',
@@ -144,4 +144,25 @@ it('stops attachment auto-approval when trust is revoked during identity resolut
   expect(ui.questions.value).toHaveLength(1)
   expect(runtime.publishAttachment).not.toHaveBeenCalled()
   expect(await reviews.attachments.mayUpload(source, target)).toBe(false)
+})
+
+it('keeps a conflicting approval pending without starving other code or attachments', async () => {
+  const { ui, reviews, source, runtime, target, stage } = setup()
+  const other = reviewSourceOf(ui.rows.value[0])
+  const apply = vi.fn(async () => {})
+  ui.bind(other.id, { ...runtime, apply })
+  runtime.apply.mockRejectedValue(new Error('The local file changed; this version remains pending'))
+  await stage('conflicting')
+  await stage('valid', other)
+  await reviews.attachments.observeNote(source, 'sample-note', [target.id])
+  await ui.opened('Groups/sample.md')
+  ui.setTrusted(source.id, true)
+  ui.setTrusted(other.id, true)
+  await ui.refreshReviews()
+  expect(apply).toHaveBeenCalledOnce()
+  expect(runtime.publishAttachment).toHaveBeenCalledWith(target.id)
+  expect((await reviews.executables.pending()).map((one) => one.versionId)).toEqual(['conflicting'])
+  expect(ui.activity.value[source.id].error).toContain('local file changed')
+  await ui.refreshReviews()
+  expect(apply).toHaveBeenCalledOnce()
 })

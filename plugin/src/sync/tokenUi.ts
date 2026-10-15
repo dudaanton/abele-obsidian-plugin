@@ -285,23 +285,39 @@ export class TokenUi {
           `Installed code from ${scopeName(candidate.source.scope)}: ${candidate.path}`
         )
       } catch (error) {
-        if (error !== revoked) throw error
+        if (error !== revoked) this.reviewFailure(candidate.source.id, candidate.path, error)
       }
     }
     for (const question of this.questions.value) {
       const runtime = this.runtimes.get(question.source.id)
       if (!runtime || !this.trusted(question.source)) continue
-      if (
-        await this.reviews.attachments.decide(question.id, true, runtime, () =>
-          this.trusted(question.source)
-        )
-      ) {
-        await runtime.publishAttachment?.(question.fileId)
-        this.reviewEvent(question.source.id, `Shared ${question.path}`)
+      try {
+        if (
+          await this.reviews.attachments.decide(question.id, true, runtime, () =>
+            this.trusted(question.source)
+          )
+        ) {
+          await runtime.publishAttachment?.(question.fileId)
+          this.reviewEvent(question.source.id, `Shared ${question.path}`)
+        }
+      } catch (error) {
+        this.reviewFailure(question.source.id, question.path, error)
       }
     }
     this.candidates.value = await this.reviews.executables.pending()
     this.questions.value = await this.reviews.attachments.pending()
+  }
+  private reviewFailure(id: string, path: string, error: unknown): void {
+    const reason =
+      error instanceof Error &&
+      error.message === 'The local file changed; this version remains pending'
+        ? error.message
+        : connectionError(error)
+    this.activity.value = {
+      ...this.activity.value,
+      [id]: { ...this.activity.value[id], error: `${path}: ${reason}` },
+    }
+    console.debug('[Abele Sync] Automatic approval failed', path, error)
   }
   private reviewEvent(id: string, text: string): void {
     this.activity.value = {
