@@ -128,6 +128,10 @@ const reopen = async () => {
     let moves=0;st.addEventListener('pointermove',e=>{if(e.buttons)moves++;f.moves=moves},true)
     const input=view().viewer.input
     for(const m of ['down','up','cancel']){const fn=input[m].bind(input);input[m]=(e)=>{const r=fn(e);f.events.push(['input.'+m,r,!!input.gesture,!!input.connection]);return r}}
+    const ports=input.ports
+    for(const m of ['select','begin','complete','cancel','hold','dropped']){const fn=ports[m];if(!fn)continue;ports[m]=(...a)=>{const r=fn(...a);f.events.push(['ports.'+m,m==='select'?[...a[0]]:m==='complete'?a[0].map(o=>o.op):undefined,r]);return r}}
+    let n=0;st.addEventListener('pointermove',e=>{if(e.buttons&&n++<2)f.events.push(['move',e.pointerType,e.pointerId,Math.round(e.clientX),Math.round(e.clientY),input.gesture?.box,input.marquee&&Math.round(input.marquee.width)])},true)
+    view().editor.controls.watch(()=>{const ids=view().editor.controls.picked().ids.join(',');if(ids!==f.last){f.last=ids;f.events.push(['picked',ids])}})
     return true`)
   // The cards stand in the middle third of the stage, under the tools and clear of its edges.
   run(
