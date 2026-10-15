@@ -157,6 +157,9 @@ describe('throwing a chat away', () => {
 describe('the interceptor picker', () => {
   const picker = (view: ReturnType<typeof mountSettings>) =>
     view.findAll('select').find((one) => one.text().includes('Agent default'))!
+  /** The reader picker of the entry that is open in the chat's own list. */
+  const entryPicker = (view: ReturnType<typeof mountSettings>) =>
+    view.find('.abele-interceptors__settings').find('select')
 
   function withReviewer() {
     const registry = AgentRegistry.getInstance()
@@ -191,11 +194,15 @@ describe('the interceptor picker', () => {
     expect(interceptor.followsAgent).toBe(false)
   })
 
-  it('picks another reviewer, and goes back to the agent', async () => {
+  it('starts a list of its own from the agent’s, picks another reviewer there, and goes back', async () => {
     const { interceptor, other, reviewer } = withReviewer()
     const view = mountSettings()
 
-    await picker(view).setValue(other.id)
+    await picker(view).setValue(':own')
+    expect(interceptor.followsAgent).toBe(false)
+    expect(interceptor.entries.value.map((e) => e.agentId)).toEqual([reviewer.id])
+    await view.find('.abele-interceptors__name').trigger('click')
+    await entryPicker(view).setValue(other.id)
     expect(interceptor.agentId.value).toBe(other.id)
 
     await picker(view).setValue(':agent')
@@ -214,10 +221,12 @@ describe('the interceptor picker', () => {
       },
     ]
     const view = mountSettings()
+    await picker(view).setValue(':own')
+    await view.find('.abele-interceptors__name').trigger('click')
 
-    await picker(view).setValue('script:Guard')
+    await entryPicker(view).setValue('script:Guard')
     expect(interceptor.script.value).toBe('Guard')
-    expect(picker(view).text()).not.toContain('missing')
+    expect(entryPicker(view).text()).not.toContain('missing')
     expect(interceptor.agentId.value).toBe('')
 
     const field = view.find('input[placeholder="Everything"]')
@@ -229,9 +238,31 @@ describe('the interceptor picker', () => {
     ScriptService.getInstance().scriptList.value = []
   })
 
-  it('names a chosen script that is no longer there as missing', () => {
+  it('names a chosen script that is no longer there as missing', async () => {
     const { interceptor } = withReviewer()
     interceptor.script.value = 'Gone'
-    expect(picker(mountSettings()).text()).toContain('Script: Gone · missing')
+    const view = mountSettings()
+    expect(view.find('.abele-interceptors__name').text()).toBe('Script: Gone · missing')
+    await view.find('.abele-interceptors__name').trigger('click')
+    expect(entryPicker(view).text()).toContain('Script: Gone · missing')
+  })
+
+  it('names how many the agent runs when it runs several', () => {
+    const registry = AgentRegistry.getInstance()
+    const a = registry.create({ name: 'First reader', utility: true })
+    const b = registry.create({ name: 'Second reader', utility: true })
+    const interceptor = new ChatInterceptor({
+      conversationVersion: ref(0),
+      messages: ref([]),
+      findMessage: () => undefined,
+      updateVisibleMessages: () => {},
+      save: async () => {},
+      defaultInterceptors: () => [
+        newEntry({ id: 'ic-a', agentId: a.id }),
+        newEntry({ id: 'ic-b', agentId: b.id }),
+      ],
+    })
+    seed({ interceptor, save: vi.fn(async () => {}) })
+    expect(picker(mountSettings()).findAll('option')[0].text()).toBe('Agent default (2 in a row)')
   })
 })

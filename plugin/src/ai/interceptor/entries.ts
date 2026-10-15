@@ -109,7 +109,7 @@ function mirrored(list: readonly InterceptorEntry[]): number {
 
 /** The single fields an older build reads: the first switched-on entry, or none. */
 export function legacyFields(list: readonly InterceptorEntry[]): Required<LegacyInterceptorFields> {
-  const first = list[mirrored(list)] as InterceptorEntry | undefined
+  const first = list[mirrored(list)]
   return {
     interceptorAgentId: first ? (first.script ? '' : first.agentId) : '',
     interceptorContextDepth: first?.contextDepth ?? 0,
@@ -221,10 +221,9 @@ export function copyEntries(list: readonly InterceptorEntry[]): InterceptorEntry
  * the single fields mirroring it, and the single fields written alone, on a holder with a list,
  * change the entry they mirror. A holder with no list keeps the single fields as they come.
  */
-export function interceptorPatch<P extends LegacyInterceptorFields & { interceptors?: InterceptorEntry[] }>(
-  holder: LegacyInterceptorFields & { interceptors?: InterceptorEntry[] },
-  patch: P
-): P {
+export function interceptorPatch<
+  P extends LegacyInterceptorFields & { interceptors?: InterceptorEntry[] },
+>(holder: LegacyInterceptorFields & { interceptors?: InterceptorEntry[] }, patch: P): P {
   if (patch.interceptors) return { ...patch, ...legacyFields(patch.interceptors) }
   if (!Array.isArray(holder.interceptors)) return patch
   const single: LegacyInterceptorFields = {}

@@ -7,6 +7,8 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { Menu } from 'obsidian'
+import { newEntry } from '@/ai/interceptor/entries'
 import AgentsSettings from '@/components/settings/ai/AgentsSettings.vue'
 import AgentEditorModal from '@/components/settings/ai/AgentEditorModal.vue'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
@@ -318,21 +320,35 @@ describe('the agent editor', () => {
  * The agent's own reviewer, chosen beside its background model. Any agent may review — utility
  * ones are what most reviewers are — except the agent itself.
  */
-describe("the agent's interceptor", () => {
+describe("the agent's interceptors", () => {
   type Options = { value: string; display: string }[]
-  const dropdowns = (view: ReturnType<typeof mountEditor>) => view.findAllComponents(Dropdown)
-  const interceptorPicker = (view: ReturnType<typeof mountEditor>) =>
-    dropdowns(view).find((d) => (d.props('options') as Options)[0]?.display === 'No review')
-  const contextPicker = (view: ReturnType<typeof mountEditor>) =>
-    dropdowns(view).find((d) =>
-      (d.props('options') as Options).some((o) => o.display === 'Draft only')
-    )
+  type View = ReturnType<typeof mountEditor>
+  /** The settings of the entry that is open, under its row. */
+  const opened = (view: View) => view.find('.abele-interceptors__settings')
+  const interceptorPicker = (view: View) =>
+    opened(view).exists() ? opened(view).findAllComponents(Dropdown)[0] : undefined
+  const contextPicker = (view: View) =>
+    view
+      .findAllComponents(Dropdown)
+      .find((d) => (d.props('options') as Options).some((o) => o.display === 'Draft only'))
+  /** Opens the first entry's settings, adding one when the list is empty. */
+  async function openFirst(view: View) {
+    const name = view.find('.abele-interceptors__name')
+    if (name.exists()) await name.trigger('click')
+    else
+      await view
+        .findAll('button')
+        .find((b) => b.text().includes('Add interceptor'))!
+        .trigger('click')
+  }
 
-  it('offers every other agent, utility ones included, and not the agent itself', () => {
+  it('offers every other agent, utility ones included, and not the agent itself', async () => {
     const { main, helper } = seedAgents()
-    const options = interceptorPicker(mountEditor(main.id))!.props('options') as Options
+    const view = mountEditor(main.id)
+    await openFirst(view)
+    const options = interceptorPicker(view)!.props('options') as Options
 
-    expect(options.map((o) => o.value)).toEqual(['', helper.id])
+    expect(options.map((o) => o.value)).toEqual([helper.id])
   })
 
   it('stores the choice on the agent, and only then asks how much it sees', async () => {
@@ -340,10 +356,12 @@ describe("the agent's interceptor", () => {
     const view = mountEditor(main.id)
     expect(contextPicker(view)).toBeUndefined()
 
+    await openFirst(view)
     await interceptorPicker(view)!.vm.$emit('update:model-value', helper.id)
     await contextPicker(view)!.vm.$emit('update:model-value', '-1')
 
     const stored = AgentRegistry.getInstance().get(main.id)
+    expect(stored?.interceptors).toMatchObject([{ agentId: helper.id, contextDepth: -1 }])
     expect(stored?.interceptorAgentId).toBe(helper.id)
     expect(stored?.interceptorContextDepth).toBe(-1)
   })
@@ -366,6 +384,7 @@ describe("the agent's interceptor", () => {
     ]
     AgentRegistry.getInstance().update(main.id, { interceptorAgentId: helper.id })
     const view = mountEditor(main.id)
+    await openFirst(view)
     const options = interceptorPicker(view)!.props('options') as Options
     expect(options.map((o) => o.display)).toContain('Script: Guard')
     expect(options.map((o) => o.display)).not.toContain('Script: Plain')
@@ -383,6 +402,7 @@ describe("the agent's interceptor", () => {
     const { main, helper } = seedAgents()
     AgentRegistry.getInstance().update(main.id, { interceptorAgentId: helper.id })
     const view = mountEditor(main.id)
+    await openFirst(view)
     const field = () =>
       view.findAllComponents(Input).find((i) => i.props('placeholder') === '^/todo')!
 
@@ -394,11 +414,17 @@ describe("the agent's interceptor", () => {
     expect(view.find('.mod-warning').text()).toMatch(/Not saved/)
   })
 
-  it('offers reply-only mode for agents and scripts, but not Off', async () => {
+  it('offers reply-only mode for agents and scripts, and not once the entry is removed', async () => {
+    const shown: Menu[] = []
+    vi.spyOn(Menu.prototype, 'showAtMouseEvent').mockImplementation(function (this: Menu) {
+      shown.push(this)
+      return this
+    })
     const { main, helper } = seedAgents()
     const registry = AgentRegistry.getInstance()
     registry.update(main.id, { interceptorAgentId: helper.id })
     const view = mountEditor(main.id)
+    await openFirst(view)
     const row = () =>
       view
         .findAll('.setting-item')
@@ -411,8 +437,14 @@ describe("the agent's interceptor", () => {
     expect(row()?.find('.checkbox-container').classes()).toContain('is-enabled')
     await row()!.find('.checkbox-container').trigger('click')
     expect(registry.get(main.id)?.interceptorReplyOnly).toBe(false)
-    await interceptorPicker(view)!.vm.$emit('update:model-value', '')
+    await view.find('[aria-label="Move or remove"]').trigger('click')
+    const remove = (shown[0].items as unknown as { title: string; handler: () => void }[]).find(
+      (i) => i.title === 'Remove'
+    )!
+    remove.handler()
+    await view.vm.$nextTick()
     expect(row()).toBeUndefined()
+    expect(registry.get(main.id)?.interceptors).toEqual([])
     view.unmount()
   })
 
@@ -421,6 +453,7 @@ describe("the agent's interceptor", () => {
     const registry = AgentRegistry.getInstance()
     registry.update(main.id, { interceptorAgentId: helper.id })
     const view = mountEditor(main.id)
+    await openFirst(view)
     const row = (name: string) =>
       view.findAll('.setting-item').find((s) => s.find('.setting-item-name').text() === name)
     const checks = () => row('Checks')!.findComponent(Dropdown)
@@ -434,14 +467,35 @@ describe("the agent's interceptor", () => {
     view.unmount()
   })
 
-  it('turns review off again', async () => {
+  it('turns review off again, keeping the entry in its place', async () => {
     const { main, helper } = seedAgents()
     AgentRegistry.getInstance().update(main.id, { interceptorAgentId: helper.id })
     const view = mountEditor(main.id)
 
-    await interceptorPicker(view)!.vm.$emit('update:model-value', '')
+    await view.find('.abele-interceptors__entry .checkbox-container').trigger('click')
 
-    expect(AgentRegistry.getInstance().get(main.id)?.interceptorAgentId).toBe('')
+    const stored = AgentRegistry.getInstance().get(main.id)
+    expect(stored?.interceptorAgentId).toBe('')
+    expect(stored?.interceptors).toMatchObject([{ agentId: helper.id, enabled: false }])
+    expect(view.find('.abele-interceptors__entry').text()).toContain('Off')
+  })
+
+  it('runs them in the order the list shows, numbered', async () => {
+    const { main, helper } = seedAgents()
+    const other = AgentRegistry.getInstance().create({ name: 'Second reader', utility: true })
+    AgentRegistry.getInstance().update(main.id, {
+      interceptors: [
+        newEntry({ id: 'ic-1', agentId: helper.id }),
+        newEntry({ id: 'ic-2', agentId: other.id, checks: 'answer' }),
+      ],
+    })
+    const view = mountEditor(main.id)
+    const rows = view.findAll('.abele-interceptors__entry')
+    expect(rows.map((r) => r.find('.abele-interceptors__number').text())).toEqual(['1', '2'])
+    expect(rows.map((r) => r.find('.abele-interceptors__name').text())).toEqual([
+      'Titler',
+      'Second reader',
+    ])
   })
 })
 

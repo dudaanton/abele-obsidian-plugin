@@ -201,7 +201,9 @@ export class ChatInterceptor {
       ...(broken ? { broken } : {}),
       ...(entry.replyOnly ? { replyOnly: true } : {}),
     }
-    return entry.script ? { kind: 'script', script: entry.script, ...extra } : { kind: 'agent', ...extra }
+    return entry.script
+      ? { kind: 'script', script: entry.script, ...extra }
+      : { kind: 'agent', ...extra }
   }
 
   /** Independent progress keyed by the message reviewed, never by the last chat bubble. */

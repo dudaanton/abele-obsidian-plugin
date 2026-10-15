@@ -72,7 +72,10 @@ export function refuseInterceptorList(self: unknown, next: unknown): string | nu
 }
 
 /** The checks on the fields of an agent being written. */
-export function refuseInterceptorFields(self: unknown, fields: Record<string, unknown>): string | null {
+export function refuseInterceptorFields(
+  self: unknown,
+  fields: Record<string, unknown>
+): string | null {
   if ('interceptorAgentId' in fields) {
     const bad = refuseInterceptor(self, fields.interceptorAgentId)
     if (bad) return bad

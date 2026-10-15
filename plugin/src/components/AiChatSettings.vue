@@ -34,21 +34,21 @@
         @update:model-value="updateCustomText"
       />
     </Setting>
-    <InterceptorSettings
-      :model-value="interceptorKey"
-      :options="interceptorOptions"
-      :desc="interceptorDesc"
-      :active="interceptorActive"
-      :agent-active="!!activeInterceptorId && !activeScript"
-      :pattern="session?.interceptor.pattern.value ?? ''"
-      :reply-only="session?.interceptor.replyOnly.value ?? false"
-      :checks="session?.interceptor.checks?.value ?? 'message'"
-      :context-depth="session?.interceptor.contextDepth.value ?? 0"
-      @update:model-value="setInterceptor"
-      @update:pattern="setInterceptorPattern"
-      @update:reply-only="setInterceptorReplyOnly"
-      @update:checks="setInterceptorChecks"
-      @update:context-depth="setInterceptorContextDepth"
+    <!-- The agent's interceptors, this chat's own list, or none: the same list as the agent's. -->
+    <Setting name="Interceptors" :desc="interceptorDesc">
+      <Dropdown
+        :model-value="chatListMode"
+        :options="chatListOptions"
+        @update:model-value="chooseChatList"
+      />
+    </Setting>
+    <InterceptorList
+      v-if="chatListMode === OWN_LIST && session"
+      :entries="session.interceptor.entries.value"
+      :choices="interceptorOptions"
+      :narrow="Platform.isPhone"
+      :headed="false"
+      @update:entries="setChatEntries"
     />
     <Setting name="Hide reasoning" desc="Show only a spinner while the model is thinking.">
       <Checkbox :is-enabled="hideReasoning" @toggle="toggleHideReasoning" />
@@ -79,9 +79,10 @@ import { FileSuggest } from '@/helpers/suggesters/FileSuggester'
 import { ChatService } from '@/ai/ChatService'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { interceptorScripts } from '@/ai/interceptor/runScript'
-import InterceptorSettings from './settings/ai/InterceptorSettings.vue'
-import type { InterceptorChecks } from '@/ai/agents/types'
-import { interceptorChoices, SCRIPT_KEY } from './settings/ai/options'
+import InterceptorList from './settings/ai/InterceptorList.vue'
+import type { InterceptorEntry } from '@/ai/agents/types'
+import { interceptorChoices } from './settings/ai/options'
+import { Platform } from 'obsidian'
 import AgentOverrideNotice from './AgentOverrideNotice.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import Dropdown from './obsidian/Dropdown.vue'
@@ -130,84 +131,67 @@ function selectModel(key: string) {
 
 // Any agent may review a draft, utility ones included — that is what most of them are for —
 // and any script marked `@interceptor` may decide about one.
-const interceptorOptions = computed(() => [
-  { value: FOLLOW_AGENT, display: agentDefaultLabel.value },
-  { value: '', display: 'Off' },
-  ...interceptorChoices(
+const interceptorOptions = computed(() =>
+  interceptorChoices(
     AgentRegistry.getInstance().list({ includeUtility: true }),
-    interceptorScripts().map((script) => script.meta.name),
-    session.value?.interceptor.script.value
-  ),
-])
-const activeInterceptorId = computed(() => session.value?.interceptor.agentId.value ?? '')
-const activeScript = computed(() => session.value?.interceptor.script.value ?? '')
-const interceptorActive = computed(() => !!(activeInterceptorId.value || activeScript.value))
-
-function setInterceptorPattern(text: string) {
-  const s = session.value
-  if (!s) return
-  s.interceptor.pattern.value = text
-  void s.save()
-}
-
-function setInterceptorReplyOnly(value: boolean) {
-  const s = session.value
-  if (!s) return
-  s.interceptor.replyOnly.value = value
-  void s.save()
-}
-
-function setInterceptorChecks(value: InterceptorChecks) {
-  const s = session.value
-  if (!s) return
-  s.interceptor.checks.value = value
-  void s.save()
-}
+    interceptorScripts().map((script) => script.meta.name)
+  )
+)
 
 /** Not an agent id — nanoid never produces a colon — so it cannot collide with one. */
 const FOLLOW_AGENT = ':agent'
+const OWN_LIST = ':own'
 
-const followsAgent = computed(() => session.value?.interceptor.followsAgent ?? true)
-const interceptorKey = computed(() => {
-  if (followsAgent.value) return FOLLOW_AGENT
-  return activeScript.value ? `${SCRIPT_KEY}${activeScript.value}` : activeInterceptorId.value
+/** Following the agent, a list of this chat's own, or Off: an own list that is empty. */
+const chatListMode = computed(() => {
+  const own = session.value?.interceptor.override.value
+  if (!own) return FOLLOW_AGENT
+  return own.length ? OWN_LIST : ''
 })
 
 /** Names what "the agent's" means right now, so following it is not a blind choice. */
 const agentDefaultLabel = computed(() => {
-  const choice = session.value?.interceptor.agentDefault.value
-  const id = choice?.agentId ?? ''
-  const name = choice?.script
-    ? `script ${choice.script}`
-    : id
-      ? AgentRegistry.getInstance().get(id)?.name
+  const list = (session.value?.interceptor.agentDefault.value ?? []).filter((e) => e.enabled)
+  const one = list.length === 1 ? list[0] : null
+  const name = one
+    ? one.script
+      ? `script ${one.script}`
+      : AgentRegistry.getInstance().get(one.agentId)?.name
+    : list.length > 1
+      ? `${list.length} in a row`
       : ''
   return `Agent default (${name || 'off'})`
 })
 
+const chatListOptions = computed(() => [
+  { value: FOLLOW_AGENT, display: agentDefaultLabel.value },
+  { value: OWN_LIST, display: 'Own for this chat' },
+  { value: '', display: 'Off' },
+])
+
 const interceptorDesc = computed(() =>
-  followsAgent.value
-    ? "Checks your messages, the agent's answers or both. Follows the agent's choice."
-    : "Checks your messages, the agent's answers or both. Chosen for this chat; the agent's choice no longer applies here."
+  chatListMode.value === FOLLOW_AGENT
+    ? "Check your messages, the agent's answers or both, one after another. This chat uses the agent's list."
+    : chatListMode.value === OWN_LIST
+      ? "This chat's own list, in this order, each given what the one before returned. The agent's no longer applies here."
+      : "None for this chat; the agent's no longer applies here."
 )
 
-function setInterceptor(value: string) {
+function chooseChatList(mode: string) {
   const s = session.value
   if (!s) return
-  if (value === FOLLOW_AGENT) s.interceptor.followAgent()
-  else if (value.startsWith(SCRIPT_KEY)) s.interceptor.script.value = value.slice(SCRIPT_KEY.length)
-  else {
-    s.interceptor.script.value = ''
-    s.interceptor.agentId.value = value
-  }
+  if (mode === FOLLOW_AGENT) s.interceptor.followAgent()
+  // Starting its own list, the chat starts from the agent's, to change rather than retype.
+  else if (mode === OWN_LIST) s.interceptor.setEntries(s.interceptor.agentDefault.value)
+  else s.interceptor.setEntries([])
   void s.save()
 }
 
-function setInterceptorContextDepth(value: number) {
+function setChatEntries(entries: InterceptorEntry[]) {
   const s = session.value
   if (!s) return
-  s.interceptor.contextDepth.value = Number(value)
-  s.save()
+  s.interceptor.setEntries(entries)
+  void s.save()
 }
 
 // ── Hide reasoning ──

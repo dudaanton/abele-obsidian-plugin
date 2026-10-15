@@ -14,7 +14,6 @@ import { Notice } from 'obsidian'
 import { nanoid } from 'nanoid'
 import type { Message } from '@/ai/client'
 import type { ChatMessage, ChatReplyTo } from '@/ai/types'
-import type { InterceptorEntry } from '@/ai/agents/types'
 import type { ChatInterceptor } from '@/ai/ChatInterceptor'
 import { buildInterceptInput, type InterceptSource } from './context'
 import type { ToolPolicy } from './policy'
@@ -59,7 +58,7 @@ export async function sendThroughChain(
   attachments?: string[],
   replyTo?: ChatReplyTo[]
 ): Promise<void> {
-  const first = host.interceptor.chain('message')[0] as InterceptorEntry | undefined
+  const first = host.interceptor.chain('message')[0]
   const bubble: ChatMessage = {
     id: nanoid(),
     role: 'user',
@@ -138,7 +137,7 @@ async function continueChain(
       const notes = step.broken
         ? [`The pattern does not compile (${step.broken}), so every message goes to ${name}.`]
         : []
-      const bubble = host.find(id)!
+      const bubble = host.find(id)
       const route = interceptor.routeOf(entry, step.broken)
       const input = () =>
         buildInterceptInput(
@@ -174,7 +173,7 @@ async function continueChain(
       // Started before the save is awaited: the chat counts as busy from this moment, so nothing
       // sent meanwhile starts a turn of its own, and a stop or a reset reaches the script.
       const deciding = interceptor.runScript(route.script, input())
-      if (!saved) {
+      if (saved === null) {
         saved = host.save()
         await saved
       }
@@ -221,7 +220,7 @@ async function continueChain(
     }
   )
 
-  if (saved) await saved
+  if (saved !== null) await saved
   if (!live()) return
   if (result.kind === 'done') {
     const noted = Boolean(host.find(id)?.interceptorChat?.some((m) => m.role === 'assistant'))
@@ -246,7 +245,7 @@ async function continueChain(
         content: text,
         timestamp: Date.now(),
       }
-      host.remember(await host.modelMessage(host.find(id)!))
+      host.remember(await host.modelMessage(host.find(id)))
       host.append(answer)
       host.remember({
         role: 'assistant',

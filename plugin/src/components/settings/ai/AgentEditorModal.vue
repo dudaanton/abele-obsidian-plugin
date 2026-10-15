@@ -62,24 +62,16 @@
             />
           </Setting>
 
-          <InterceptorSettings
-            :model-value="interceptorKey"
-            :options="interceptorOptions"
-            desc="Reads this agent's chats: your messages before the agent does, its answers
-              before they stay, or both. An agent says what it thinks; a script decides. A chat
-              can pick another one or turn it off."
-            :active="!!interceptorKey"
-            :agent-active="!!agent.interceptorAgentId && !agent.interceptorScript"
-            :pattern="agent.interceptorPattern ?? ''"
+          <!-- The interceptors in the order they run, each given what the one before returned. -->
+          <InterceptorList
+            :entries="interceptorEntries"
+            :choices="interceptorOptions"
+            :narrow="Platform.isPhone"
             pattern-placeholder="^/todo"
-            :reply-only="agent.interceptorReplyOnly ?? false"
-            :checks="agent.interceptorChecks ?? 'message'"
-            :context-depth="agent.interceptorContextDepth ?? 0"
-            @update:model-value="selectInterceptor"
-            @update:pattern="patch({ interceptorPattern: $event })"
-            @update:reply-only="patch({ interceptorReplyOnly: $event })"
-            @update:checks="patch({ interceptorChecks: $event })"
-            @update:context-depth="patch({ interceptorContextDepth: $event })"
+            desc="They read this agent's chats in this order, each given what the one before
+              returned: your messages before the agent does, its answers before they stay, or
+              both. An agent says what it thinks; a script decides. A chat can keep its own list."
+            @update:entries="patch({ interceptors: $event })"
           />
         </template>
 
@@ -329,8 +321,10 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { discoverSkills } from '@/ai/tools/SkillTool'
 import { toolDiscoveryMode, type AgentDefinition } from '@/ai/agents/types'
 import { interceptorScripts } from '@/ai/interceptor/runScript'
-import InterceptorSettings from './InterceptorSettings.vue'
-import { interceptorChoices, PERMISSION_OPTIONS, SCRIPT_KEY } from './options'
+import InterceptorList from './InterceptorList.vue'
+import { entriesOf } from '@/ai/interceptor/entries'
+import { Platform } from 'obsidian'
+import { interceptorChoices, PERMISSION_OPTIONS } from './options'
 import type { PermissionMode, ToolMode } from '@/ai/types'
 
 /** A map with one key set, or taken out when its value is empty. */
@@ -458,34 +452,20 @@ function selectBackground(key: string): void {
 // ── Interceptor ──
 
 /**
- * Every other agent, utility ones included — reviewing is what most of them are for. Not this
- * one: an agent reviewing its own drafts is a loop with extra steps. A reviewer that was
- * deleted is not offered, so the picker shows "No review", which is what the chat will do.
+ * Every other agent, utility ones included — reviewing is what most of them are for — and the
+ * interceptor scripts. Not this one: an agent reviewing its own drafts is a loop with extra steps.
  */
-const interceptorOptions = computed(() => [
-  { value: '', display: 'No review' },
-  ...interceptorChoices(
+const interceptorOptions = computed(() =>
+  interceptorChoices(
     registry.list({ includeUtility: true }),
     interceptorScripts().map((script) => script.meta.name),
-    agent.value?.interceptorScript,
+    '',
     props.agentId
-  ),
-])
+  )
+)
 
-const interceptorKey = computed(() => {
-  const a = agent.value
-  if (!a) return ''
-  if (a.interceptorScript) return `${SCRIPT_KEY}${a.interceptorScript}`
-  return a.interceptorAgentId ?? ''
-})
-
-function selectInterceptor(key: string): void {
-  if (key.startsWith(SCRIPT_KEY)) {
-    patch({ interceptorScript: key.slice(SCRIPT_KEY.length), interceptorAgentId: '' })
-  } else {
-    patch({ interceptorAgentId: key, interceptorScript: '' })
-  }
-}
+/** The agent's interceptors in their order; one set before lists reads as a list of one. */
+const interceptorEntries = computed(() => (agent.value ? entriesOf(agent.value) : []))
 
 function selectFallback(key: string): void {
   if (!key) {

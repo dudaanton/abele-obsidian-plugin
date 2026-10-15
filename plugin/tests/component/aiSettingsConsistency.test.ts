@@ -95,22 +95,34 @@ function seed() {
   return { agent, reviewer, interceptor, clearOverride, session }
 }
 
+/** Opens the first entry of a list, adding one when there is none. */
+async function openFirst(screen: VueWrapper) {
+  const name = screen.find('.abele-interceptors__name')
+  if (name.exists()) await name.trigger('click')
+  else
+    await screen
+      .findAll('button')
+      .find((b) => b.text().includes('Add interceptor'))!
+      .trigger('click')
+}
+
 it('keeps agent exclusion, missing scripts, chat inheritance and valid patterns', async () => {
   const { agent, reviewer, interceptor } = seed()
   AgentRegistry.getInstance().update(agent.id, { interceptorScript: 'Missing sample' })
   const editor = open(AgentEditorModal, { agentId: agent.id })
+  await openFirst(editor)
   const options = row(editor, 'Interceptor').findComponent(Dropdown).props('options')
   expect(options.map((o: { value: string }) => o.value)).toEqual([
-    '',
     reviewer.id,
     'script:Missing sample',
   ])
   expect(options.at(-1).display).toBe('Script: Missing sample · missing')
   const chat = open(AiChatSettings)
-  const picker = row(chat, 'Interceptor').find('select')
+  const picker = row(chat, 'Interceptors').find('select')
   expect((picker.element as HTMLSelectElement).value).toBe(':agent')
-  await picker.setValue(reviewer.id)
+  await picker.setValue(':own')
   expect(interceptor.followsAgent).toBe(false)
+  await openFirst(chat)
   const pattern = row(chat, 'Only messages matching').findComponent(Input)
   await pattern.vm.$emit('update:model-value', '^sample')
   await pattern.vm.$emit('update:model-value', '[')
@@ -120,10 +132,13 @@ it('keeps agent exclusion, missing scripts, chat inheritance and valid patterns'
   expect(interceptor.followsAgent).toBe(true)
 })
 
-it('uses the same interceptor field descriptions in the agent and chat editors', () => {
-  const { agent } = seed()
+it('uses the same interceptor field descriptions in the agent and chat editors', async () => {
+  const { agent, interceptor } = seed()
   const editor = open(AgentEditorModal, { agentId: agent.id })
+  await openFirst(editor)
+  interceptor.setEntries(interceptor.agentDefault.value)
   const chat = open(AiChatSettings)
+  await openFirst(chat)
   for (const name of ['Only messages matching', 'Reply only', 'Interceptor context']) {
     expect(row(chat, name).props('desc')).toBe(row(editor, name).props('desc'))
   }

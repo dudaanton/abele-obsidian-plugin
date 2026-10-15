@@ -104,10 +104,7 @@ import { HIGHLIGHT_COLORS, type HighlightColor } from '@/reader/highlights'
 import { createReplyRevisionTool, REPLY_REVISION_TOOL } from './tools/ReplyRevisionTool'
 import { CommentService } from './CommentService'
 import { ChatSummarizer, type SummarizerHost } from './ChatSummarizer'
-import {
-  ChatInterceptor,
-  type InterceptorHost,
-} from './ChatInterceptor'
+import { ChatInterceptor, type InterceptorHost } from './ChatInterceptor'
 import {
   toolPermissionKey,
   migrateMcpModes,
@@ -169,7 +166,12 @@ import { agentReplyText, composerText } from './replyLinks'
 import { TurnPolicy } from './interceptor/turnPolicy'
 import type { ToolPolicy } from './interceptor/policy'
 import { buildAnswerInput, buildInterceptInput, type InterceptSource } from './interceptor/context'
-import { retryHeld, sendHeld, sendThroughChain, type ScriptSendHost } from './interceptor/scriptSend'
+import {
+  retryHeld,
+  sendHeld,
+  sendThroughChain,
+  type ScriptSendHost,
+} from './interceptor/scriptSend'
 import { anyReads, runChain } from './interceptor/chain'
 import {
   copyEntries,
@@ -3338,9 +3340,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       this.interceptor.followAgent()
       return
     }
-    // The single interceptor of before lists, as a list of one; naming nobody, it is Off and
-    // keeps its settings for when someone is chosen again.
-    this.interceptor.override.value = withLegacyPatch([], {
+    // The single interceptor of before lists, as a list of one; naming nobody, it was Off.
+    const single = withLegacyPatch([], {
       interceptorAgentId: typeof stored === 'string' ? stored : '',
       interceptorContextDepth: normaliseContextDepth(metadata?.interceptorContextDepth),
       interceptorReplyOnly: metadata?.interceptorReplyOnly === true,
@@ -3349,6 +3350,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       interceptorPattern:
         typeof metadata?.interceptorPattern === 'string' ? metadata.interceptorPattern : '',
     }).map((e) => ({ ...e, id: SINGLE_ENTRY_ID }))
+    this.interceptor.override.value = single.filter((e) => e.agentId || e.script)
   }
 
   /** Converts a pre-agent chat's stored snapshot into overrides. */
