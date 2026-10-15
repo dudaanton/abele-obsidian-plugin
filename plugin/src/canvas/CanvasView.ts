@@ -1,12 +1,4 @@
-import {
-  FileView,
-  Menu,
-  Notice,
-  Scope,
-  TFile,
-  type ViewStateResult,
-  type WorkspaceLeaf,
-} from 'obsidian'
+import { FileView, Notice, Scope, TFile, type ViewStateResult, type WorkspaceLeaf } from 'obsidian'
 import { cameraFrom } from '../drawing/camera'
 import { hostCanvasViewer } from './adapter'
 import { CANVAS_VIEW_TYPE, nativeCanvas } from './opening'
@@ -23,6 +15,7 @@ import type { CanvasViewer } from './Viewer'
 import type { CanvasEditor } from './Editor'
 import { hostCanvasEditor } from './editorControls'
 import { exportCanvas } from './exportAdapter'
+import { canvasMenu } from './menu'
 import type { CanvasExportFormat } from './core/export'
 import { pickAnyFile } from '../helpers/suggesters/VaultFilePicker'
 import { isChatLog } from '../ai/chatText'
@@ -306,7 +299,7 @@ export class CanvasView extends FileView {
         new Notice('No failed agent proposal; human work has not been changed')
         return
       }
-      const menu = new Menu()
+      const menu = canvasMenu()
       const labels = {
         retry: 'Retry failed change',
         reapply: 'Reapply failed change to current diagram',
@@ -335,7 +328,7 @@ export class CanvasView extends FileView {
     }
   }
   private exportMenu(e: MouseEvent): void {
-    const menu = new Menu()
+    const menu = canvasMenu()
     if (this.exportController)
       menu.addItem((item) =>
         item.setTitle('Cancel whole-canvas export').onClick(() => this.exportController?.abort())
