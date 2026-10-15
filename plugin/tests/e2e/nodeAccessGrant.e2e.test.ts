@@ -190,7 +190,7 @@ async function refusalToGrant(form: 'desktop' | 'phone') {
         button(line,'Give this chat access').click();
         const add=await until(()=>visible('.abele-node-scope-editor__add'),'node access opened');
         const editor=add.closest('.abele-node-scope-editor');
-        await until(()=>[...editor.querySelectorAll('select')].length>=3&&[...editor.querySelectorAll('select')][2].value===${JSON.stringify(setup.worktree)},'place chosen');
+        try{await until(()=>[...editor.querySelectorAll('select')].length>=3&&[...editor.querySelectorAll('select')][2].value===${JSON.stringify(setup.worktree)},'place chosen')}catch(e){throw Error(e.message+' '+JSON.stringify({want:${JSON.stringify(setup.worktree)},selects:[...editor.querySelectorAll('select')].map(s=>({value:s.value,options:[...s.options].map(o=>o.value+'='+o.textContent)})),text:editor.textContent.slice(0,400)}))}
         const shown=[...editor.querySelectorAll('select')].map(s=>s.selectedOptions[0]?.textContent);
         if(shown[0]!=='Sample workstation')throw Error('Node not chosen: '+shown);
         return JSON.stringify(shown)
