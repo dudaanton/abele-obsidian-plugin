@@ -290,11 +290,6 @@
 }
 /* A web page on its card: a bar with its title and Open over the page, or, where the page
    cannot be shown, the card saying what it is. The page takes input only once its card is picked. */
-.abele-canvas-card_web {
-  display: flex;
-  flex-direction: column;
-  gap: var(--size-4-1);
-}
 .abele-canvas-web {
   display: flex;
   flex-direction: column;
