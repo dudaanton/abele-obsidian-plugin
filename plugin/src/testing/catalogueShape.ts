@@ -75,6 +75,8 @@ export const CATALOGUE_COMPONENTS = [
   'SwatchPicker',
   'Table',
   'Tabs',
+  'ToolBar',
+  'ToolBarGroup',
   'TreeItem',
   'Waveform',
 ] as const
