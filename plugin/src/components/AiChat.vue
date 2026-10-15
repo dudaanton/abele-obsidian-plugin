@@ -463,7 +463,7 @@ import {
   provide,
   reactive,
 } from 'vue'
-import { Notice, Platform, TFile } from 'obsidian'
+import { ItemView, Notice, Platform, TFile } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
 import AgentsButton from './AgentsButton.vue'
 import { AgentsService } from '@/agents/AgentsService'
@@ -1436,7 +1436,15 @@ provide(CHAT_KEY_SCOPE, chatTabScope(GlobalStore.getInstance().app))
 const stopOnKey = () => {
   const root = chatContainer.value
   const focused = root?.ownerDocument.activeElement
-  if (!root || !focused || !root.contains(focused)) return false
+  if (!root || !focused) return false
+  // On the conversation the focus is on no element of the chat's own: the pane holding it, or
+  // the page itself once a click landed on plain text. That pane in front is the chat's focus.
+  const paneInFront = () =>
+    !!GlobalStore.getInstance()
+      .app.workspace.getActiveViewOfType(ItemView)
+      ?.containerEl.contains(root)
+  const onPane = focused === root.ownerDocument.body || focused.contains(root)
+  if (!root.contains(focused) && !(onPane && paneInFront())) return false
   const inComposer = !!chatInput.value?.hasFocus()
   const typing = focused.closest('input, textarea, select, [contenteditable="true"]')
   if (!inComposer && typing) return false
