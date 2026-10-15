@@ -141,8 +141,11 @@ export class CanvasViewer {
     button('Fit diagram', 'Fit', () => this.fit(false))
     this.stage = make('div', 'abele-canvas-stage', el)
     this.canvas = make('canvas', 'abele-canvas-surface', this.stage) as HTMLCanvasElement
+    // Said to a screen reader, not shown: Obsidian turns an aria-label into a tooltip that
+    // would follow the pen and mouse over the whole canvas.
+    this.canvas.setAttribute('role', 'img')
     this.canvas.setAttribute(
-      'aria-label',
+      'aria-description',
       'Diagram; drag to pan, pinch or wheel to zoom, swipe to change step'
     )
     this.inkCanvas = make(
