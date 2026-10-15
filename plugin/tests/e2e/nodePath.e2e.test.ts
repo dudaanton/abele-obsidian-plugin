@@ -593,6 +593,11 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     await evalLong(
       `(async()=>{for(const type of ['abele-node-sidebar','abele-node-file','abele-node-history','abele-node-chat','abele-node-editor'])for(const leaf of app.workspace.getLeavesOfType(type))leaf.detach();app.workspace.requestSaveLayout();await new Promise(r=>setTimeout(r,1000));return 'desktop roots cleared'})()`
     )
+    // The chat this file opened to give access from the row menu, so later files find the tabs
+    // the vault started with.
+    evalRaw(
+      `(async()=>{const chats=window.__abeleTest.ChatService.getInstance();for(const s of chats.getAllSessions())if(String(s.chatTitle.value).startsWith('Sample Obsidian chat '))await chats.closeTab(s.id);return 'chat closed'})()`
+    )
     evalRaw(
       `require('@electron/remote').getCurrentWindow().setContentSize(${oldSize[0]},${oldSize[1]});'restored'`
     )

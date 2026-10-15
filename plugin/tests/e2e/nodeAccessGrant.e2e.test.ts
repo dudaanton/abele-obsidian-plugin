@@ -284,7 +284,7 @@ async function refusalToGrant(form: 'desktop' | 'phone') {
         const T=window.__abeleTest,chats=T.ChatService.getInstance(),s=chats.getSessionByFile(${JSON.stringify(chat)});
         for(const b of [...document.querySelectorAll('.modal .modal-close-button, .modal .modal-header-button')].reverse())b.click();
         if(s){s.abort();await chats.closeTab(s.id)}
-        if(${JSON.stringify(second)})await chats.closeTab(${JSON.stringify(second)});
+        for(const t of chats.getAllSessions())if(t.chatTitle.value==='Sample second chat')await chats.closeTab(t.id);
         if(app.vault.getAbstractFileByPath(${JSON.stringify(chat)}))await T.ChatStorage.getInstance().deleteChat(${JSON.stringify(chat)});
         for(const leaf of app.workspace.getLeavesOfType('abele-node-sidebar'))leaf.detach();
         if(${JSON.stringify(agentId)})T.AgentRegistry.getInstance().remove(${JSON.stringify(agentId)});
