@@ -7,6 +7,7 @@ import { withNativeInput } from './helpers/nativeInput'
 import { shotDir } from './helpers/shots'
 import { randomUUID } from 'node:crypto'
 import { dismissOwnNotices } from './helpers/ownNotices'
+import { canvasChrome } from './helpers/canvasChrome'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -54,21 +55,27 @@ const gestures = async (list: number[][][]) => {
   `)
   )
 }
-const click = async (label: string) => {
-  await until(`button(${JSON.stringify(label)}) && !button(${JSON.stringify(label)}).disabled`)
-  const [x, y] = run<number[]>(
-    `const r=button(${JSON.stringify(label)}).getBoundingClientRect();return[Math.round(r.left+r.width/2),Math.round(r.top+r.height/2)]`
-  )
-  await gestures([
-    [
-      [x, y],
-      [x, y],
-    ],
-  ])
-}
-/** Picks a tool; a phone tap can land while its panel is still opening, so tap again. */
+/** Real input at one point: a tap on a phone, a click on the desktop. */
+const tapAt = (point: number[]) => gestures([[point, point]])
+const chrome = canvasChrome({
+  run,
+  press: async (expression) => {
+    await until(`${expression}&&!${expression}.disabled`)
+    await tapAt(
+      run<number[]>(
+        `const r=(${expression}).getBoundingClientRect();return[Math.round(r.left+r.width/2),Math.round(r.top+r.height/2)]`
+      )
+    )
+  },
+  at: tapAt,
+  until: (expression) => until(expression),
+  phone: onPhone(),
+})
+/** Presses what does `label` on the canvas's tool bar or its column, as the other canvas files do. */
+const click = (label: string) => chrome.click(label)
+/** Picks a tool; a phone tap can land while its row is still settling, so tap again. */
 const choose = async (label: string) => {
-  const pressed = `button(${JSON.stringify(label)})?.getAttribute("aria-pressed")==="true"`
+  const pressed = `view().editor.controls.state(${JSON.stringify(label)}).on`
   for (let attempt = 0; attempt < 3; attempt++) {
     await click(label)
     try {
