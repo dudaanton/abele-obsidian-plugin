@@ -76,18 +76,7 @@ function choose(value: string | null): void {
 </script>
 
 <style>
-.abele-choice__message,
-.abele-choice__quote {
-  margin: 0 0 var(--size-4-2);
-  overflow-wrap: anywhere;
-}
-.abele-choice__message:last-child {
-  margin-bottom: 0;
-}
-.abele-choice__quote {
-  font-style: italic;
-  color: var(--text-muted);
-}
+/* Message and quote are plain paragraphs, spaced as Obsidian spaces a dialog's text. */
 .abele-choice__items {
   display: flex;
   flex-direction: column;

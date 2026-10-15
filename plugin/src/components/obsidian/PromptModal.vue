@@ -85,14 +85,7 @@ onMounted(() => void nextTick(() => field.value?.focus()))
 </script>
 
 <style>
-.abele-prompt__message {
-  margin: 0 0 var(--size-4-2);
-  overflow-wrap: anywhere;
-}
 .abele-prompt__field {
   width: 100%;
-}
-.abele-prompt__error {
-  margin: var(--size-4-2) 0 0;
 }
 </style>

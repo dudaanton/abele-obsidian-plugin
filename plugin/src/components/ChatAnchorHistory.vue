@@ -60,9 +60,4 @@ function onRendered() {
   color: var(--text-muted);
   font-size: var(--font-ui-small);
 }
-.abele-anchor-source__choice {
-  white-space: normal;
-  overflow-wrap: anywhere;
-  height: auto;
-}
 </style>
