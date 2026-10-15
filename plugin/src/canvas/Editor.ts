@@ -1356,6 +1356,8 @@ export class CanvasEditor {
     if (action === 'rename') {
       this.naming = null
       this.regainKeys()
+      // The name's field closes, and the frame's bar comes back over it, before the name is saved.
+      this.refresh()
     }
     const document = this.ready(),
       frame = document.session.graph.nodes.find((n) => n.id === id && n.type === 'group')
