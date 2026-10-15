@@ -23,7 +23,7 @@ const panel=()=>document.querySelector('.abele-requests-panel');
 const row=name=>[...document.querySelectorAll('.abele-requests-panel__request')].find(r=>r.querySelector('.abele-tree-item__text')?.textContent.trim()===name);
 let shown;const leafOf=name=>app.workspace.getLeavesOfType('abele-request').find(l=>String(l.view.getState().id??'').endsWith('/'+name+'.http'));
 const tab=()=>shown?.view.containerEl.querySelector('.abele-http-request');
-const facts=()=>tab()?.querySelector('.abele-http-request__facts')?.textContent.replace(/\\s+/g,' ').trim()??'';
+const facts=()=>[...(tab()?.querySelector('.abele-http-request__facts')?.children??[])].map(e=>e.textContent.trim()).filter(Boolean).join(' ');
 const notice=()=>tab()?.querySelector('.abele-http-request__notice')?.textContent.trim()??'';
 const answerTab=label=>[...tab().querySelectorAll('.abele-http-request__answer [role="tab"]')].find(t=>t.querySelector('.abele-tabs__label')?.textContent.trim()===label);
 const openRequest=async name=>{
