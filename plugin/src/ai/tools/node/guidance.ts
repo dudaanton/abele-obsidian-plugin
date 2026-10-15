@@ -15,7 +15,7 @@ export const NODE_FILE_OPERATIONS = ['node_mv', 'node_cp', 'node_rm']
 export const NODE_MUTATION_TOOLS = [...NODE_EDIT_TOOLS, ...NODE_FILE_OPERATIONS]
 /** Where the person gives a chat node access, said in every answer that lacks it. */
 export const GIVE_ACCESS =
-  'The person gives it with Give this chat access under a refused node call, or in this chat: the access button at the bottom left of the message box, then Node access, choose the node, folder and worktree, Add access. Or in the Node panel: open the place's … menu, Give a chat access, choose this chat, Give access.'
+  'The person gives it with Give this chat access under a refused node call, or in this chat: the access button at the bottom left of the message box, then Node access, choose the node, folder and worktree, Add access. Or in the Node panel: open the place’s … menu, Give a chat access, choose this chat, Give access.'
 export const NO_NODE_ACCESS = `This chat has no node access yet, so it can see no node, folder or file. ${GIVE_ACCESS} Then call node_nodes again.`
 export const NODE_ACCESS_NOT_APPROVED =
   "This chat's node access is configured but has no approval on this device; copied or synced settings do not count. The person approves it in this chat: the access button at the bottom left of the message box, then Node access, Approve on this device. Then call node_nodes again."
