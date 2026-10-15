@@ -547,14 +547,18 @@ function familyMenu(slot: Slot, e: MouseEvent) {
 }
 function moreTools(e: MouseEvent) {
   const menu = new Menu()
-  for (const slot of hidden.value)
-    menu.addItem((item) =>
-      item
-        .setTitle(member(slot).tooltip.replace(/ \(.*\)$/, ''))
-        .setIcon(member(slot).icon)
-        .setChecked(slotActive(slot))
-        .onClick(() => run(slot, member(slot)))
-    )
+  // Every member of each family left out of the row, so a line or an arrow is in reach too.
+  hidden.value.forEach((slot, i) => {
+    if (i) menu.addSeparator()
+    for (const m of slot.members)
+      menu.addItem((item) =>
+        item
+          .setTitle(m.tooltip.replace(/ \(.*\)$/, ''))
+          .setIcon(m.icon)
+          .setChecked(m.id === tool.value)
+          .onClick(() => run(slot, m))
+      )
+  })
   menus.showAt(menu, e)
 }
 function zoom(factor: number) {
