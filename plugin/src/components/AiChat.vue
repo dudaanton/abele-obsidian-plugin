@@ -573,7 +573,7 @@ const replyReviews = computed(() => session.value?.interceptor.replyReviews.valu
 const interceptorWorking = computed(() => session.value?.interceptor.working?.value ?? false)
 const draftMessage = computed(() => session.value?.getDraftMessage() ?? null)
 /** The finished answer the interceptor is reading: muted, a turning glyph by its time, Stop on. */
-const answerCheck = computed(() => session.value?.answerCheck.value ?? null)
+const answerCheck = computed(() => session.value?.answerCheck?.value ?? null)
 
 // Questions tool
 const pendingQuestions = computed(() => session.value?.pendingQuestions.value ?? null)

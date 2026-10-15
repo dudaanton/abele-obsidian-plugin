@@ -71,6 +71,8 @@ export function fakeChatSession({
       if (isStreaming.value || isCompacting.value) return true
       return pendingToolCalls.value.length > 0 || pendingQuestions.value !== null
     },
+    /** The finished answer an interceptor is reading; none unless a test says so. */
+    answerCheck: ref<{ id: string; by: string } | null>(null),
     /** Set by `CommentService` for the length of a move; nothing here moves on its own. */
     moving: ref(false),
     scopeResolver: { summary: ref('No files'), addFile: () => {} },
