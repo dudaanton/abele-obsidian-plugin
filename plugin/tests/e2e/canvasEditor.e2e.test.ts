@@ -133,7 +133,7 @@ const beginText = async () => {
 }
 /**
  * Card text saves itself, with no Save button: the file gets the typed text while the card is
- * still open, and tapping the card leaves it.
+ * still open, and tapping the canvas leaves it.
  */
 const leaveText = async (text?: string, written = true) => {
   if (text !== undefined && written)
@@ -143,7 +143,8 @@ const leaveText = async (text?: string, written = true) => {
   // A write that fails while typing offers Retry with the card still open.
   if (!written)
     await until("view().editor.editing && button('Retry save') && !button('Retry save').hidden")
-  await press(`view().contentEl.querySelector('[data-card-id="'+view().editor.editing+'"]')`, true)
+  // The canvas's own corner: the card itself can sit below the window once Retry shows.
+  await press('view().viewer.stage', true)
   await until('!view().editor.editing')
 }
 const addText = async (text: string, written = true) => {
