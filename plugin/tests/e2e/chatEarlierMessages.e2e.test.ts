@@ -52,7 +52,7 @@ const script = (layout: string) => `(async () => {
   const settle = async (ms = 3000) => {
     let last = null, count = 0
     for (const end = Date.now() + ms; Date.now() < end; await wait(60)) {
-      const key = box() ? box().scrollTop + ':' + box().scrollHeight + ':' + mounted() : ''
+      const key = box() ? box().scrollTop + ':' + box().scrollHeight + ':' + box().clientHeight + ':' + mounted() : ''
       count = key === last ? count + 1 : 0
       last = key
       if (count >= 4) return
@@ -141,6 +141,12 @@ const script = (layout: string) => `(async () => {
     button.focus({ preventScroll: true })
     report.markerFocusable = document.activeElement === button
     button.blur()
+    // The chat opens with the cursor in its field, and on a phone that brings the keyboard up.
+    // Taking the focus away above sends it down again, and the box grows by its height while the
+    // reader at the end stays at the end: not the reveal moving anything. Settled before measuring.
+    await until(() => !document.body.classList.contains('keyboard-animating'), 2000)
+    await wait(400)
+    await settle()
     let clicks = 0, clickDrift = 0, boxChange = 0
     report.clickLog = []
     while (marker() && clicks < 20) {
@@ -200,6 +206,8 @@ describe.skipIf(!available)('earlier messages of a chat', () => {
       expect(result.hiddenBranch).toBe(true)
       expect(result.markerFocusable).toBe(true)
       expect(result.clickGrew).toBe(true)
+      // A box that changed height under a press would move the reader for another reason.
+      expect(result.clickBoxChange, result.clickLog.join('\n')).toBe(0)
       expect(result.clickDrift).toBeLessThan(2)
       expect(result.clickReachedStart).toBe(true)
       expect(result.shortMarkerGone).toBe(true)
