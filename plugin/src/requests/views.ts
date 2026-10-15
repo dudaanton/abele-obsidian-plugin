@@ -1,7 +1,14 @@
 // The saved requests in Obsidian: a view of their own in the left sidebar, as Bookmarks, and each
 // request a tab of the main area, its answer beside it. Both read one model per project; neither
 // keeps a request in the saved layout, only where it is: the node, the project and the file.
-import { ItemView, Notice, type Plugin, type ViewStateResult, type WorkspaceLeaf } from 'obsidian'
+import {
+  ItemView,
+  Notice,
+  type App,
+  type Plugin,
+  type ViewStateResult,
+  type WorkspaceLeaf,
+} from 'obsidian'
 import {
   computed,
   createApp,
