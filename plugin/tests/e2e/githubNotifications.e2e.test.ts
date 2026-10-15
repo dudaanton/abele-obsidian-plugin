@@ -117,6 +117,7 @@ const offersNoGlyphsWhileOff = () => {
     ${PANEL}
     // The panel is open, and GitHub is turned off under it: the command itself is not offered
     // while it is off.
+    const drawerWasClosed = app.workspace.rightSplit.collapsed
     app.commands.executeCommandById('abele:show-github-notifications')
     await until(() => panel(), 20000)
     const config = window.__abeleTest.AbeleConfig.getInstance()
@@ -134,6 +135,8 @@ const offersNoGlyphsWhileOff = () => {
       config.github = github
       config.version.value++
       for (const l of app.workspace.getLeavesOfType('abele-github-notifications')) l.detach()
+      // The sidebar, a drawer on a phone, is left as it was found for the next case.
+      if (drawerWasClosed) app.workspace.rightSplit.collapse()
     }
   })()`)
   expect(r.off).toBe(true)
