@@ -69,6 +69,7 @@ import Button from '../../obsidian/Button.vue'
 import ObsidianModal from '../../obsidian/Modal.vue'
 import { getSectionToolRegistry, getToolRegistry } from '@/ai/tools'
 import { isDefaultDescription } from '@/ai/tools/toolDescriptionOverrides'
+import { LEGACY_NODE_TOOLS } from '@/ai/toolSections'
 
 const props = defineProps<{
   /** The words changed so far, by tool name. */
@@ -89,6 +90,8 @@ const groups = computed(() => {
   const byCategory = new Map<string, Tool[]>()
   // A section's own entry heads its group: its words are what the agent reads before opening it.
   for (const tool of [...getSectionToolRegistry(), ...getToolRegistry()]) {
+    // Old node names are answered when called but never offered, so they have nothing to say.
+    if (LEGACY_NODE_TOOLS.has(tool.name)) continue
     const list = byCategory.get(tool.category) ?? []
     list.push({ name: tool.name, label: tool.label })
     byCategory.set(tool.category, list)

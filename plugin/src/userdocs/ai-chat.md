@@ -325,10 +325,15 @@ words, and **Reset to default** brings back the original. The words can also be 
 every agent under **Tool descriptions**; an agent's own words win. All of this travels with the
 agent when you transfer settings.
 
-Nodes shows three actions instead of a row per tool: **Read files and search**, **Edit files**
-and **Worktrees**, each with Off, Ask or Auto. The count under an action opens its tools, each
-with its own choice; **Mixed** means they differ. These say what the agent may do at all; where
-it may do it is each chat's node access.
+Nodes shows actions instead of a row per tool: **Read files and search**, **Edit files**,
+**Worktrees**, **Hand work to a node agent** and **Debugger runs**, each with Off, Ask or Auto.
+Allowing reading never allows handing work to an agent or reading the debugger's runs. The count
+under an action opens its tools, each with its own choice; **Mixed** means they differ. These say
+what the agent may do at all; where it may do it is each chat's node access. Old names of the
+repository tools that do what a file tool does are not listed or offered; an agent that still
+calls one is answered under **Read files and search**.
+
+Files and Basics are always open, which their headings say instead of offering the choice.
 
 When a node call is refused because the chat cannot reach that place, a line under the call
 says what was missing by name. **Give this chat access** opens the chat's node access with the

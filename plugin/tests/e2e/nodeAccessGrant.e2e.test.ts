@@ -270,8 +270,8 @@ async function refusalToGrant(form: 'desktop' | 'phone') {
         await T.openDialog('agent-tools');
         const heading=await until(()=>[...document.querySelectorAll('.abele-tool-modes__heading')].find(h=>h.textContent==='Nodes'&&h.getBoundingClientRect().width>0),'node section');
         const text=heading.closest('.abele-tool-modes').textContent;
-        for(const words of ['Read files and search','Edit files','Worktrees','Always open','Offer tools'])if(!text.includes(words)&&!document.querySelector('.abele-agent-editor').textContent.includes(words))throw Error('Missing '+words);
-        heading.scrollIntoView({block:'start'});
+        for(const words of ['Read files and search','Edit files','Worktrees','Hand work to a node agent','Debugger runs','Always open','Offer tools'])if(!text.includes(words)&&!document.querySelector('.abele-agent-editor').textContent.includes(words))throw Error('Missing '+words);
+        if(!document.querySelector('.abele-agent-editor .abele-tool-modes__opening-fixed')?.textContent.includes('Always open'))throw Error('Files is not said to be always open');for(const old of ['node_file','node_tree','node_grep','node_blame','node_commits'])if(document.querySelector('.abele-agent-editor').textContent.includes(old))throw Error('Old name listed: '+old);heading.scrollIntoView({block:'start'});
         return JSON.stringify('tools')
       })()`
       )

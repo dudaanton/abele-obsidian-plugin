@@ -9,7 +9,7 @@ import ToolModesEditor from '@/components/ToolModesEditor.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type ToolMode } from '@/ai/types'
 import { getToolRegistry } from '@/ai/tools'
-import { nodeAction, type SectionOpening } from '@/ai/toolSections'
+import { LEGACY_NODE_TOOLS, nodeAction, type SectionOpening } from '@/ai/toolSections'
 import { useVault } from '../helpers/testEnv'
 
 beforeEach(() => {
@@ -87,7 +87,41 @@ describe('the node section in an agent’s tools', () => {
   })
 })
 
+describe('the node section’s actions and the old names', () => {
+  it('shows delegation and debugger runs as actions of their own, so Read grants neither', async () => {
+    const { view, modes } = mountHost()
+    expect(view.text()).toContain('Hand work to a node agent')
+    expect(view.text()).toContain('Debugger runs')
+    const read = view
+      .findAll('.abele-tool-modes__row')
+      .find((r) => r.text().includes('Read files and search'))!
+    await read.find('select').setValue('auto')
+    expect(modes.value.node_read).toBe('auto')
+    expect(modes.value.node_delegate).toBeUndefined()
+    expect(modes.value.trace_runs).toBeUndefined()
+  })
+
+  it('never lists an old name, and setting Read sets it too', async () => {
+    const { view, modes } = mountHost()
+    const read = view
+      .findAll('.abele-tool-modes__row')
+      .find((r) => r.text().includes('Read files and search'))!
+    await read.find('.abele-tool-modes__members-toggle').trigger('click')
+    for (const name of LEGACY_NODE_TOOLS) expect(view.text()).not.toContain(name)
+    await read.find('select').setValue('ask')
+    for (const name of LEGACY_NODE_TOOLS) expect(modes.value[name]).toBe('ask')
+  })
+})
+
 describe('a section’s head, offered by section', () => {
+  it('says Files and Basics are always open, as words, not a choice', () => {
+    const { view } = mountHost()
+    const heads = view.findAll('.abele-tool-modes__head')
+    const files = heads.find((h) => h.find('h4').text() === 'Files')!
+    expect(files.find('select').exists()).toBe(false)
+    expect(files.find('.abele-tool-modes__opening-fixed').text()).toBe('Always open')
+  })
+
   it('says when the section is open, by default on request, and keeps the change by section id', async () => {
     const { view, opening } = mountHost()
     const select = view.find('select[aria-label="When Maps is open"]')

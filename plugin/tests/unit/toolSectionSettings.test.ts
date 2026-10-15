@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { emulatedTools, offerSections, type SectionOfferInput } from '@/ai/ToolDiscovery'
+import { getToolRegistry } from '@/ai/tools'
 import {
+  LEGACY_NODE_TOOLS,
   NODE_ACTIONS,
   NODE_GROUP,
   agentSectionOverrides,
@@ -71,6 +73,92 @@ describe('the node section in an agent’s tools', () => {
     expect(nodeAction('list_node_worktrees')).toBe('worktrees')
     expect(nodeAction('node_git_log')).toBe('read')
     expect(nodeAction('node_some_new_reader')).toBe('read')
-    expect(NODE_ACTIONS.map((a) => a.id)).toEqual(['read', 'edit', 'worktrees'])
+  })
+})
+
+describe('what each node action holds', () => {
+  const nodeTools = () =>
+    getToolRegistry()
+      .filter((t) => t.category === 'Nodes')
+      .map((t) => t.name)
+  const members = (id: string) =>
+    nodeTools()
+      .filter((n) => !LEGACY_NODE_TOOLS.has(n) && nodeAction(n) === id)
+      .sort()
+
+  it('reads and searches node files under Read, and nothing that delegates or debugs', () => {
+    expect(members('read')).toEqual(
+      [
+        'node_changes',
+        'node_commit',
+        'node_compare',
+        'node_folders',
+        'node_git_blame',
+        'node_git_branches',
+        'node_git_diff',
+        'node_git_log',
+        'node_git_status',
+        'node_ls',
+        'node_nodes',
+        'node_open',
+        'node_read',
+        'node_search',
+        'node_views',
+      ].sort()
+    )
+  })
+
+  it('pins every other action to its own tools', () => {
+    expect(members('edit')).toEqual(
+      [
+        'node_cp',
+        'node_edit',
+        'node_mv',
+        'node_propose_edit',
+        'node_replace',
+        'node_rm',
+        'node_write',
+      ].sort()
+    )
+    expect(members('worktrees')).toEqual(['list_node_worktrees', 'node_worktree_switch'])
+    expect(members('delegate')).toEqual(
+      [
+        'node_delegate',
+        'node_delegation_cancel',
+        'node_delegation_send',
+        'node_delegation_status',
+        'node_delegations',
+      ].sort()
+    )
+    expect(members('debugger')).toEqual(
+      [
+        'trace_diff',
+        'trace_find',
+        'trace_follow',
+        'trace_mark',
+        'trace_note',
+        'trace_point_add',
+        'trace_runs',
+        'trace_shape',
+        'trace_slice',
+        'trace_timeline',
+      ].sort()
+    )
+  })
+
+  it('keeps the old names that do what a file tool does out of every action, reading where they are called', () => {
+    expect([...LEGACY_NODE_TOOLS].sort()).toEqual(
+      ['node_blame', 'node_commits', 'node_file', 'node_grep', 'node_tree'].sort()
+    )
+    for (const name of LEGACY_NODE_TOOLS) {
+      expect(nodeTools()).toContain(name)
+      expect(nodeAction(name)).toBe('read')
+    }
+  })
+
+  it('leaves no node tool without an action, and no action reaching outside the node group', () => {
+    const ids = NODE_ACTIONS.map((a) => a.id)
+    for (const name of nodeTools()) expect(ids).toContain(nodeAction(name))
+    expect(ids).toEqual(['read', 'edit', 'worktrees', 'delegate', 'debugger'])
   })
 })

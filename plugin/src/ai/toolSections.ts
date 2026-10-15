@@ -49,7 +49,7 @@ export const TOOL_SECTIONS: readonly ToolSectionDefinition[] = [
       'Paths are relative to the folder or worktree: no absolute paths, nothing inside `.git`.',
       'A write whose outcome is unknown is retried with the same `operation_id`, never a new one.',
       `Only the person gives this chat node access or widens it. ${GIVE_ACCESS} When a node, folder or worktree is out of reach, tell the person what to give; do not look for a way round.`,
-      'The repository-tab tools (`node_views`, `node_tree`, `node_file`, `node_open`, `node_changes`, `node_compare`, `node_commit`, `node_propose_edit`) work on a repository open in an Obsidian tab; without node access `node_read`, `node_search` and `list_node_worktrees` read such a tab too. `node_delegate` hands a whole task to a coding agent on a node; follow it with `node_delegation_status`, `node_delegation_send` and `node_delegation_cancel`.',
+      'The repository-tab tools (`node_views`, `node_open`, `node_changes`, `node_compare`, `node_commit`, `node_propose_edit`) work on a repository open in an Obsidian tab; without node access `node_read`, `node_search` and `list_node_worktrees` read such a tab too. `node_delegate` hands a whole task to a coding agent on a node; follow it with `node_delegation_status`, `node_delegation_send` and `node_delegation_cancel`.',
       "A run the debugger recorded in the open debug session: `trace_runs` lists the runs, `trace_timeline` its steps, `trace_shape` a value's shape before `trace_slice` reads part of it; `trace_find`, `trace_follow` and `trace_diff` search and compare, `trace_mark`, `trace_point_add` and `trace_note` mark steps, add a point and write the run up as a note. Each answer is bounded; page on rather than asking for everything.",
     ].join('\n'),
   },
@@ -364,11 +364,11 @@ export function sectionDefaultDescription(group: string): string {
 
 /**
  * What the node section's tools do, by action: one choice of Off, Ask or Auto each, instead of a
- * row per tool. In the order a person thinks of them; a tool no other action claims is reading,
- * the safe side.
+ * row per tool. In the order a person thinks of them. Each action holds only what its name says:
+ * allowing Read never allows handing work to an agent or reading a debugger's runs.
  */
 export const NODE_ACTIONS: readonly {
-  id: 'read' | 'edit' | 'worktrees'
+  id: 'read' | 'edit' | 'worktrees' | 'delegate' | 'debugger'
   label: string
   desc: string
 }[] = [
@@ -387,14 +387,41 @@ export const NODE_ACTIONS: readonly {
     label: 'Worktrees',
     desc: 'List a folder’s worktrees and switch between them.',
   },
+  {
+    id: 'delegate',
+    label: 'Hand work to a node agent',
+    desc: 'Give a task to a coding agent on a node, follow it, send it more and cancel it.',
+  },
+  {
+    id: 'debugger',
+    label: 'Debugger runs',
+    desc: 'Read the runs the debugger recorded, mark their steps, add record points and write them up.',
+  },
 ]
 
 const NODE_EDIT_TOOL = /^node_(write|edit|replace|mv|cp|rm|path_file_operations|propose_edit)$/
 const NODE_WORKTREE_TOOL = /^(list_node_worktrees|node_worktree_switch)$/
+const NODE_DELEGATE_TOOL = /^node_delegat/
+const NODE_DEBUGGER_TOOL = /^trace_/
 
-/** The action a node tool belongs to. */
+/**
+ * Old names of the repository tools that do exactly what a node file tool does (the tool code
+ * treats them as aliases). They are not listed and not offered; an agent that still calls one is
+ * answered, under the Read action's permission.
+ */
+export const LEGACY_NODE_TOOLS: ReadonlySet<string> = new Set([
+  'node_file',
+  'node_tree',
+  'node_grep',
+  'node_blame',
+  'node_commits',
+])
+
+/** The action a node tool belongs to; one nothing else claims is reading, the safe side. */
 export function nodeAction(name: string): (typeof NODE_ACTIONS)[number]['id'] {
   if (NODE_EDIT_TOOL.test(name)) return 'edit'
   if (NODE_WORKTREE_TOOL.test(name)) return 'worktrees'
+  if (NODE_DELEGATE_TOOL.test(name)) return 'delegate'
+  if (NODE_DEBUGGER_TOOL.test(name)) return 'debugger'
   return 'read'
 }

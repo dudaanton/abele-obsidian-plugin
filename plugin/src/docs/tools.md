@@ -1009,6 +1009,14 @@ works on repository tabs open in Obsidian (`node_views`, `node_file`, `node_tree
 same way the node file tools do. `node_read`, `node_search` and `list_node_worktrees` belong to
 both and are listed under **Node files**.
 
+In an agent's settings both are one **Nodes** section of actions: **Read files and search**,
+**Edit files**, **Worktrees**, **Hand work to a node agent** (`node_delegate` and the
+`node_delegation*` tools) and **Debugger runs** (the `trace_*` tools). Reading never grants
+delegation or the debugger. `node_tree`, `node_file`, `node_grep`, `node_blame` and
+`node_commits` are old names for what `node_ls`, `node_read`, `node_search`, `node_git_blame` and
+`node_git_log` do: they are not offered to agents any more, but a call to one is still answered,
+under the Read permission. Use the new names.
+
 The legacy repository-tab workflow below remains available when the chat has no `nodeScope` override.
 A configured override, including an empty list, constrains every node tool and legacy alias.
 Scope changes retire previous tab read grants; legacy reads also require exact locally approved scope.

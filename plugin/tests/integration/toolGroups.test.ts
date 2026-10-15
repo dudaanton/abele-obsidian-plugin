@@ -243,6 +243,27 @@ describe('tools offered by section', () => {
     expect(open.description).toContain('Sample own words about maps.')
   })
 
+  it('never offers an old node name, but answers an agent that still calls one', async () => {
+    AgentRegistry.getInstance().update(session.agentId.value, {
+      toolSectionOpening: { nodes: 'always' },
+    })
+    session.toolModes.value = { ...session.toolModes.value, node_read: 'auto', node_file: 'auto' }
+    expect(names(session)).toContain('node_read')
+    expect(names(session)).not.toContain('node_file')
+    script(call('c1', 'node_file'))
+    await session.sendMessage('Read the sample file the old way')
+    const result = session.allMessages.value.find((m) => m.toolName === 'node_file')?.toolResult
+    expect(result).toBeDefined()
+    expect(result).not.toMatch(/not found|not open in this chat/)
+  })
+
+  it('offers no old node name when every tool is offered at once either', () => {
+    AgentRegistry.getInstance().update(session.agentId.value, { toolDiscovery: 'all-at-once' })
+    session.toolModes.value = { ...session.toolModes.value, node_read: 'auto', node_file: 'auto' }
+    expect(names(session)).toContain('node_read')
+    expect(names(session)).not.toContain('node_file')
+  })
+
   it('keeps the whole list in All at once mode', () => {
     AgentRegistry.getInstance().update(session.agentId.value, { toolDiscovery: 'all-at-once' })
     const all = names(session)

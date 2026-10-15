@@ -28,8 +28,13 @@
            first question or opens when the agent asks; under it what it is for, editable. -->
       <div class="abele-tool-modes__head">
         <h4 class="abele-tool-modes__heading">{{ group.category }}</h4>
+        <span
+          v-if="bySection && !descriptionsOnly && ALWAYS_LOADED_GROUPS.has(group.category)"
+          class="abele-tool-modes__opening-fixed"
+          >Always open</span
+        >
         <Dropdown
-          v-if="bySection && !descriptionsOnly && !ALWAYS_LOADED_GROUPS.has(group.category)"
+          v-else-if="bySection && !descriptionsOnly"
           class="abele-tool-modes__opening"
           :model-value="opening(group.category)"
           :options="OPENING_OPTIONS"
@@ -98,7 +103,9 @@
                   ? modeOptions
                   : [...modeOptions, { value: 'mixed', display: 'Mixed' }]
               "
-              @update:model-value="$event !== 'mixed' && setAll(action.tools, $event)"
+              @update:model-value="
+                $event !== 'mixed' && setAll([...action.tools, ...action.carried], $event)
+              "
             />
           </Setting>
           <div v-if="openAction === action.id" class="abele-tool-modes__members">
@@ -202,6 +209,7 @@ import type { ToolMode } from '@/ai/types'
 import { isMcpToolName } from '@/ai/mcp/names'
 import {
   ALWAYS_LOADED_GROUPS,
+  LEGACY_NODE_TOOLS,
   NODE_ACTIONS,
   NODE_GROUP as NODE_SECTION,
   nodeAction,
@@ -263,10 +271,17 @@ const emitSectionText = (group: string, text: string) =>
 
 const openAction = ref<string | null>(null)
 /** The node section's tools by action, in the order a person thinks of them: read, edit, worktrees. */
+/** The old node names: never listed, set with the Read action, whose work they do. */
+const legacyNodeTools = computed<ToolEntry[]>(() =>
+  getToolRegistry()
+    .filter((t) => LEGACY_NODE_TOOLS.has(t.name))
+    .map((t) => ({ name: t.name, permissionKey: t.permissionKey, label: t.label }))
+)
 const nodeActions = (group: ToolGroup) =>
   NODE_ACTIONS.map((action) => ({
     ...action,
     tools: optionalOf(group).filter((t) => nodeAction(t.name) === action.id),
+    carried: legacyNodeTools.value.filter((t) => nodeAction(t.name) === action.id),
   })).filter((a) => a.tools.length)
 
 const showAll = ref(false)
@@ -331,7 +346,10 @@ const toggleServer = (group: ToolGroup) => {
 /** The tools of a group a mode applies to: core tools are always on and have none. */
 const optionalOf = (group: ToolGroup) => group.tools.filter((t) => !isCore(t.name))
 
-const allTools = computed(() => visibleGroups.value.flatMap(optionalOf))
+const allTools = computed(() => [
+  ...visibleGroups.value.flatMap(optionalOf),
+  ...(props.descriptionsOnly ? [] : legacyNodeTools.value),
+])
 
 /** The mode every one of these tools is at, or null when they differ. */
 const sharedMode = (tools: ToolEntry[]): ToolMode | null => {
@@ -353,6 +371,8 @@ const visibleGroups = computed<ToolGroup[]>(() => {
   for (const tool of registry) {
     // In descriptions-only mode every tool has a description worth editing, core included.
     if (!props.descriptionsOnly && !showAll.value && isCore(tool.name)) continue
+    // Old node names are answered when called but never offered or listed.
+    if (LEGACY_NODE_TOOLS.has(tool.name)) continue
     if (!groups.has(tool.category)) groups.set(tool.category, [])
     groups
       .get(tool.category)
@@ -393,6 +413,12 @@ const visibleGroups = computed<ToolGroup[]>(() => {
 
 h4.abele-tool-modes__heading {
   margin: 0 !important;
+}
+
+// Files and Basics are always there: said in the place of the choice, quiet, not a control.
+.abele-tool-modes__opening-fixed {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
 }
 
 // What the section is for: a quiet line under its name, with the glyph that edits it.

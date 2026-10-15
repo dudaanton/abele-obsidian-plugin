@@ -83,6 +83,7 @@ import {
   type ToolOffer,
 } from './ToolDiscovery'
 import {
+  LEGACY_NODE_TOOLS,
   agentSectionOverrides,
   alwaysOpenSections,
   isSectionToolName,
@@ -1285,6 +1286,15 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.initialSections = mergeOpen(this.initialSections, ids)
   }
 
+  /** Tools this chat answers but does not offer: old names an agent may still call. */
+  private hiddenTools: AgentTool[] = []
+
+  /** An allowed tool that is answered without being offered, by name. */
+  hiddenTool(name: string): AgentTool | undefined {
+    this.getTools()
+    return this.hiddenTools.find((tool) => tool.name === name)
+  }
+
   /** Why a called tool is missing, when it only waits for its section to be opened. */
   missingToolHint(name: string): string | undefined {
     this.getTools()
@@ -1370,8 +1380,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         ]
       : withSelection
 
-    // Every agent can read on in a result it was sent only the start of.
-    const allowed = [...withBook, createReadResultTool(this.results)]
+    // Every agent can read on in a result it was sent only the start of. Old node names stay
+    // callable for an agent that still uses them, but are never offered (`LEGACY_NODE_TOOLS`).
+    const everything = [...withBook, createReadResultTool(this.results)]
+    this.hiddenTools = this.wrapToolsForSession(
+      everything.filter((tool) => LEGACY_NODE_TOOLS.has(tool.name))
+    )
+    const allowed = everything.filter((tool) => !LEGACY_NODE_TOOLS.has(tool.name))
     if (!sectioned) {
       this.lastOffer = null
       return this.wrapToolsForSession(allowed)
@@ -2004,6 +2019,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         systemPrompt,
         tools,
         getTools: () => this.getTools(),
+        hiddenTool: (name) => this.hiddenTool(name),
         missingTool: (name) => this.missingToolHint(name),
         messages: toSend,
         onHistory: (messages) => {
@@ -2309,6 +2325,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     // not in the current offer, as a call stopped for approval before the open was saved.
     const tool =
       tools.find((t) => t.name === tc.name) ??
+      this.hiddenTool(tc.name) ??
       this.wrapToolsForSession(
         (this.lastOffer?.sections ?? []).flatMap((s) => s.tools).filter((t) => t.name === tc.name)
       )[0]

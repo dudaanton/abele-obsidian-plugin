@@ -29,6 +29,8 @@ export interface AgentLoopOptions {
   getTools?: () => AgentTool[]
   /** Why a called tool is missing, when the conversation can say more than "not found". */
   missingTool?: (name: string) => string | undefined
+  /** A tool answered by name although it is not offered: an old name an agent may still call. */
+  hiddenTool?: (name: string) => AgentTool | undefined
   messages: Message[]
   streamOptions?: StreamOptions
   /** Publish accumulated history after each completed message, not only a whole tool batch. */
@@ -195,7 +197,9 @@ export class AgentLoop {
           if (signal.aborted) break
 
           const tc = toolCalls[ti]
-          const tool = (opts.getTools?.() ?? opts.tools).find((t) => t.name === tc.name)
+          const tool =
+            (opts.getTools?.() ?? opts.tools).find((t) => t.name === tc.name) ??
+            opts.hiddenTool?.(tc.name)
           const resultMsg = await this.executeTool(
             tool,
             tc,
