@@ -1,5 +1,22 @@
+import { existsSync } from 'node:fs'
 import { Server } from 'node:http'
 import { syncBuiltinESMExports } from 'node:module'
+
+/**
+ * Test-only freeze: while `file` exists, the server blocks before handling any request. A test
+ * stops the process as well, but the bench's CPU throttle stops and continues every process it
+ * owns, which also woke a server a test had stopped; the blocked loop stays down until the file
+ * is removed.
+ */
+export function installFixtureFreeze(file) {
+  const emit = Server.prototype.emit
+  const cell = new Int32Array(new SharedArrayBuffer(4))
+  Server.prototype.emit = function (event, ...args) {
+    if (event === 'request') while (existsSync(file)) Atomics.wait(cell, 0, 0, 20)
+    return emit.call(this, event, ...args)
+  }
+  syncBuiltinESMExports()
+}
 
 /** Test-only observation at the actual fixture HTTP server, before Fastify routing. */
 export function installFixtureHttpTrace(write, closeConnections = false) {
@@ -77,6 +94,8 @@ export function installFixtureHttpTrace(write, closeConnections = false) {
   }
 }
 
+if (process.env.ABELE_FIXTURE_FREEZE_FILE)
+  installFixtureFreeze(process.env.ABELE_FIXTURE_FREEZE_FILE)
 if (process.env.ABELE_FIXTURE_HTTP_TRACE === '1') {
   installFixtureHttpTrace(
     (entry) => console.log('[sync-fixture-http] ' + JSON.stringify(entry)),

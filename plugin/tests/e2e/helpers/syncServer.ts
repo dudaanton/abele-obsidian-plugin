@@ -9,7 +9,7 @@ export const fixtureFetch: typeof fetch = (input, init) =>
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { createInterface } from 'node:readline'
-import { existsSync, realpathSync } from 'node:fs'
+import { existsSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { join, resolve } from 'node:path'
@@ -93,6 +93,7 @@ export async function spawnSyncServer(dir: string): Promise<SyncServer> {
     throw new SiblingUnavailableError(`${SIBLING} has no built server or admin CLI`)
   }
   const port = await freePort()
+  const frozen = join(dir, 'frozen')
   const network = syncFixtureNetwork(port),
     backend = `http://127.0.0.1:${port}`,
     tls = network.phoneHost ? await syncFixtureTls(backend, network.phoneHost) : null
@@ -105,6 +106,7 @@ export async function spawnSyncServer(dir: string): Promise<SyncServer> {
     ABELE_PORT: String(port),
     ABELE_HOST: '127.0.0.1',
     ABELE_FIXTURE_HTTP_TRACE: '1',
+    ABELE_FIXTURE_FREEZE_FILE: frozen,
   }
 
   const child = spawn(
@@ -127,6 +129,7 @@ export async function spawnSyncServer(dir: string): Promise<SyncServer> {
   const kill = async (): Promise<void> => {
     if (!killed) {
       killed = true
+      rmSync(frozen, { force: true })
       child.kill('SIGTERM')
       await ended(child)
       await tls?.close()
@@ -167,9 +170,11 @@ export async function spawnSyncServer(dir: string): Promise<SyncServer> {
     kill,
     rootToken,
     suspend: () => {
+      writeFileSync(frozen, '')
       child.kill('SIGSTOP')
     },
     resume: () => {
+      rmSync(frozen, { force: true })
       child.kill('SIGCONT')
     },
     issue: async (scope, label = 'Sample shared access') =>
