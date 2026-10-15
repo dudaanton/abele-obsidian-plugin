@@ -256,6 +256,8 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       await until(() => document.querySelector('.abele-text-comments__reply .cm-content'))
       const reply = document.querySelector('.abele-text-comments__reply')
       const field = reply.querySelector('.cm-content')
+      // Under a long thread the field is at the end of the list: in sight for its picture.
+      reply.scrollIntoView({ block: 'end' })
       field.focus()
       await still(() => reply.getBoundingClientRect().height, 600)
       const edges = []
