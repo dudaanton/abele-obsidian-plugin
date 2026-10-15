@@ -18,6 +18,22 @@ function setup(over: Parameters<typeof ports>[0] = {}) {
 }
 
 describe('the agent’s tools over saved requests', () => {
+  it('imports a curl line into a collection, leaving its credential out', async () => {
+    const { call, node } = setup()
+    const said = await call('http_import', {
+      text: "curl -H 'Authorization: Bearer sk-sample-1' https://api.example.test/v1/items",
+      collection: 'Items',
+    })
+    expect(said).toContain('Imported 1 request.')
+    expect(said).toContain('Left out, as they carried credentials: Authorization.')
+    expect(node.files.get('Items/GET -v1-items.http')).toMatchObject({
+      method: 'GET',
+      url: 'https://api.example.test/v1/items',
+      headers: [],
+    })
+    expect(JSON.stringify([...node.files.values()])).not.toContain('sk-sample-1')
+  })
+
   it('says plainly when no project’s requests are open', async () => {
     const tools = createRequestTools(() => undefined)
     await expect(tools[0]!.execute('call-1', {})).rejects.toThrow(/open Requests/)

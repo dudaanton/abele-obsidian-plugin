@@ -965,7 +965,8 @@ default; `trace_mark`, `trace_point_add` and `trace_note` ask first.
 
 ## Saved requests
 
-`http_requests`, `http_request_read`, `http_request_save`, `http_send`, `http_send_result`.
+`http_requests`, `http_request_read`, `http_request_save`, `http_send`, `http_send_result`,
+`http_import`.
 
 The project's saved HTTP requests, the ones the Requests view shows: files in the project on the
 node, in collections, with environments. They stand with the recorded-run tools: a send may go
@@ -986,6 +987,9 @@ order.http`), method, address as written and last status, and the environments.
   already allowed its address; a script waiting to be confirmed stops the send. An unknown
   outcome may have reached the service: never send again to find out.
 - `http_send_result(id, send, from?)` reads what came of a send, a page at a time.
+- `http_import(text, format?, collection?)` brings requests in from the text of a `.http` file, a
+  curl line, a HAR file, an OpenAPI description or a Bruno request. Values the source names go
+  into the environment in use when it lacks them; credentials in it are left out and named.
 
 ## Scripts
 

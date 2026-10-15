@@ -498,6 +498,7 @@ export const TRACE_TOOL_MODES: Record<string, ToolMode> = {
   http_send_result: 'auto',
   http_request_save: 'ask',
   http_send: 'ask',
+  http_import: 'ask',
 }
 
 /** Personal device data: ask before every request unless the person chooses another mode. */

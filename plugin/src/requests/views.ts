@@ -389,6 +389,11 @@ export function registerRequests(plugin: Plugin) {
     name: 'Open requests',
     callback: () => void openRequestsView(plugin.app),
   })
+  plugin.addCommand({
+    id: 'import-requests',
+    name: 'Import requests from the clipboard',
+    callback: () => void importFromClipboard(),
+  })
   plugin.register(() => RequestsService.destroy())
 }
 
@@ -400,4 +405,25 @@ export async function openRequestsView(obsidian: App = app()) {
   if (leaf.getViewState().type !== REQUESTS_VIEW)
     await leaf.setViewState({ type: REQUESTS_VIEW, active: true })
   await revealSidebarView(obsidian, REQUESTS_VIEW)
+}
+
+/** A .http file, a curl line, a HAR file, an OpenAPI description or a Bruno request copied:
+ * into the project the Requests view shows. */
+async function importFromClipboard() {
+  const service = RequestsService.instance()
+  const c = service.context.value
+  if (!c) {
+    new Notice('Choose a project in Requests first')
+    return
+  }
+  try {
+    const text = await navigator.clipboard.readText()
+    const { importRequests } = await import('./importers')
+    const { importInto, importWords } = await import('./importInto')
+    const model = service.model(c)
+    const outcome = await importInto(model, importRequests(text))
+    new Notice(importWords(outcome, model.state.environment), 10000)
+  } catch (e) {
+    say(e, 'Nothing imported')
+  }
 }

@@ -55,8 +55,17 @@ node puts every step taken while the request is out under it, by time, and write
 an `http` step at the time it went. The answer's *N steps in code* opens that run on the
 request's step.
 
+## Import
+
+`src/requests/importers/` reads a `.http` file (several requests, `@name = value` file variables),
+a curl line, a HAR file, an OpenAPI 3 or Swagger 2 description (JSON or YAML) and a Bruno `.bru`
+request; `importInto` makes each a request under a name not yet taken and adds the values the
+source names to the environment in use where it lacks them. A credential written out (an
+`Authorization` or cookie header, `-u`, a Bruno bearer token) is never imported: it is left out and
+named. Offered as the command *Import requests from the clipboard* and the agent tool
+`http_import`; an import screen needs the designer first.
+
 ## Not here yet
 
-Client certificates (the owner said not now), sending from the device rather than the node,
-editing scripts and checks from the tab (they are lines in the request's file), and importing
-`.http`, curl, HAR, OpenAPI or Bruno collections.
+Client certificates (the owner said not now), sending from the device rather than the node, and
+editing scripts and checks from the tab (they are lines in the request's file).

@@ -254,6 +254,7 @@ describe('the agent reading a recorded run', () => {
       http_send_result: 'auto',
       http_request_save: 'ask',
       http_send: 'ask',
+      http_import: 'ask',
     })
   })
 

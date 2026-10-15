@@ -313,6 +313,32 @@ export function createRequestTools(resolve: () => RequestToolContext | undefined
       }
     ),
     tool(
+      'http_import',
+      'Import requests',
+      'Bring requests in from another client: the text of a .http file, a curl line, a HAR file, an OpenAPI description (JSON or YAML) or a Bruno request; the format is read off the text. Each becomes a saved request in collection (or the folder the source names); values the source names are added to the environment in use when it lacks them. Credentials in it are left out and named, never saved.',
+      {
+        text: { type: 'string' },
+        format: { type: 'string', enum: ['http', 'curl', 'har', 'openapi', 'bruno'] },
+        collection: { type: 'string' },
+      },
+      ['text'],
+      async (c, p) => {
+        const { importRequests } = await import('@/requests/importers')
+        const { importInto, importWords } = await import('@/requests/importInto')
+        const m = await loaded(c)
+        const imported = importRequests(
+          req(p.text),
+          str(p.format) as Parameters<typeof importRequests>[1]
+        )
+        const outcome = await importInto(
+          m,
+          imported,
+          p.collection === undefined ? undefined : collectionName(p.collection)
+        )
+        return bounded([importWords(outcome, m.state.environment), ...outcome.made])
+      }
+    ),
+    tool(
       'http_send_result',
       'Result of a send',
       'What came of an earlier send, by its id from http_send or http_request_read: the status and the body a page at a time, or that it never got through, or that its outcome is unknown. Read-only.',

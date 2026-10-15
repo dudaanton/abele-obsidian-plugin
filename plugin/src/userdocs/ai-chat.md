@@ -347,6 +347,12 @@ can take.
 On a phone the view is in the left drawer and a request opens on the whole screen; it is sent
 from the node all the same.
 
+**Import requests from the clipboard** brings in what you copied: a `.http` file, a curl line, a
+HAR file a browser saved, an OpenAPI description or a Bruno request. They go into the project the
+view shows, values they name are added to the environment in use where it lacks them, and
+anything that carried a credential (a cookie, an `Authorization` header, `-u user:password`) is
+left out and named, so you can put it back as a saved key.
+
 ## Offering tools by section
 
 Open an agent on **Settings → Abele → AI Agent → Agents**, then its **Access** tab.
