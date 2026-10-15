@@ -16,12 +16,12 @@ import {
   MarkdownRenderChild,
   Notice,
   TFile,
-  setIcon,
-  setTooltip,
   type App,
   type MarkdownPostProcessorContext,
 } from 'obsidian'
 import { guardSurface } from '@/ink/guard'
+import DrawingEmbedActions from '@/components/drawing/DrawingEmbedActions.vue'
+import { renderKit, unrenderKit } from '@/components/obsidian/mount'
 import { PAPER } from './drawingFile'
 import {
   DRAWING_CALLOUT,
@@ -362,6 +362,7 @@ export class DrawingEmbed extends MarkdownRenderChild {
     this.observer?.disconnect()
     this.children?.disconnect()
     this.unguard?.()
+    unrenderKit(this.actions)
     this.box.remove()
     this.embed.removeClass(HOST)
     claimed.delete(this.embed)
@@ -424,45 +425,24 @@ export class DrawingEmbed extends MarkdownRenderChild {
 
   // ————— The buttons —————
 
-  private button(icon: string, tooltip: string, cls: string, act: () => void): void {
-    const b = this.actions.createDiv({ cls: `clickable-icon abele-drawing-embed__${cls}` })
-    setIcon(b, icon)
-    setTooltip(b, tooltip)
-    b.setAttribute('role', 'button')
-    b.setAttribute('aria-label', tooltip)
-    // Not the note's: a click here neither moves the cursor into the embed nor opens it. Nor the
-    // box's, which while the part is changed cancels every touch it hears — and Safari makes no
-    // click out of a finger's lift that was cancelled, so the buttons would not answer a finger.
-    for (const type of ['mousedown', 'mouseup', 'pointerdown', 'touchstart', 'touchend'] as const)
-      this.registerDomEvent(b, type, (e) => e.stopPropagation())
-    this.registerDomEvent(b, 'click', (e) => {
-      e.preventDefault()
-      e.stopPropagation()
-      act()
-    })
-  }
-
   private buttons(): void {
-    this.actions.empty()
-    if (this.adjusting) {
-      this.button('maximize', 'Show the whole drawing', 'whole', () => {
+    renderKit(this.actions, DrawingEmbedActions, {
+      adjusting: this.adjusting,
+      onWhole: () => {
         this.view = null
         this.layout()
-      })
-      this.button('x', 'Leave the part as it was', 'cancel', () => this.endAdjust(false))
-      this.button('check', 'Keep this part', 'keep', () => this.endAdjust(true))
-      return
-    }
-    this.button('scan', 'Change the part of the drawing shown here', 'adjust', () =>
-      this.startAdjust()
-    )
-    this.button('pen-line', 'Open the drawing here to draw on', 'open', () => {
-      const area = this.shown()
-      void openDrawing(this.app, this.file, area ? { area, draw: true } : { draw: true })
-    })
-    this.button('arrow-up-right', 'Open the drawing', 'go', () => {
-      const area = this.view
-      void openDrawing(this.app, this.file, area ? { area } : {})
+      },
+      onCancel: () => this.endAdjust(false),
+      onKeep: () => this.endAdjust(true),
+      onAdjust: () => this.startAdjust(),
+      onDraw: () => {
+        const area = this.shown()
+        void openDrawing(this.app, this.file, area ? { area, draw: true } : { draw: true })
+      },
+      onOpen: () => {
+        const area = this.view
+        void openDrawing(this.app, this.file, area ? { area } : {})
+      },
     })
   }
 

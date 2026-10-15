@@ -24,3 +24,22 @@ it('does not reattach an embedded drawing after its pending file read finishes o
   expect(embed.querySelector('.abele-drawing-embed')).toBeNull()
   read.mockRestore()
 })
+
+it('takes its buttons out when the note lets the embed go', async () => {
+  const content = emptyDrawingSvg()
+  const app = useVault([{ path: 'sample-drawing.svg', content }])
+  const embed = document.body.createSpan()
+  embed.setAttribute('src', 'sample-drawing.svg')
+  const drawing = new DrawingEmbed(
+    app as never,
+    embed,
+    app.vault.getFileByPath('sample-drawing.svg')!,
+    { sourcePath: 'sample-note.md', callout: null, place: () => null }
+  )
+  drawing.load()
+  await vi.waitFor(() => expect(embed.querySelector('.abele-drawing-embed__go')).not.toBeNull())
+  const actions = embed.querySelector('.abele-drawing-embed__actions')!
+  drawing.unload()
+  expect(actions.childElementCount).toBe(0)
+  embed.remove()
+})
