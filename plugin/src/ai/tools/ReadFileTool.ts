@@ -1,3 +1,4 @@
+import { prepareExternalFile } from '@/sync/external/fileAccess'
 import type { AgentTool } from '../client'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { scopeOf } from '../toolContext'
@@ -59,6 +60,9 @@ export function createReadFileTool(opts?: {
         throw new Error(`Access denied: ${path} is not in workspace scope`)
       }
       const { app } = GlobalStore.getInstance()
+      await prepareExternalFile(app, path)
+      if (!opts?.skipScope && !scopeOf(ctx).isInScope(path))
+        throw new Error(`Access denied: ${path} is not in workspace scope`)
       const file = app.vault.getAbstractFileByPath(path)
       if (!(file instanceof TFile)) throw new Error(`File not found: ${path}`)
       const content = await app.vault.read(file)

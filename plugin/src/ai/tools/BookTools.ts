@@ -148,7 +148,7 @@ export function createBookContentsTool(): AgentTool {
       required: ['book'],
     },
     execute: async (_id, params, _signal, ctx) => {
-      const { file } = namedBook(params.book, ctx)
+      const { file } = await namedBook(params.book, ctx)
       const loaded = await loadBookText(app(), file)
       const out = [
         `${loaded.title}${loaded.author ? ` — ${loaded.author}` : ''}`,
@@ -197,7 +197,7 @@ export function createBookReadTool(): AgentTool {
       required: ['book'],
     },
     execute: async (_id, params, _signal, ctx) => {
-      const { file, place } = namedBook(params.book, ctx)
+      const { file, place } = await namedBook(params.book, ctx)
       const loaded = await loadBookText(app(), file)
       let index = typeof params.part === 'number' ? Math.round(params.part) - 1 : -1
       let start = typeof params.offset === 'number' ? Math.max(0, Math.round(params.offset)) : 0
@@ -304,7 +304,7 @@ export function createBookSearchTool(): AgentTool {
       required: ['book', 'query'],
     },
     execute: async (_id, params, _signal, ctx) => {
-      const { file } = namedBook(params.book, ctx)
+      const { file } = await namedBook(params.book, ctx)
       const query = typeof params.query === 'string' ? params.query.trim() : ''
       if (query.length < 2) throw new Error('Search for at least two letters.')
       const max = Math.min(
@@ -354,7 +354,7 @@ export function createBookOpenTool(): AgentTool {
       required: ['link'],
     },
     execute: async (_id, params, _signal, ctx) => {
-      const { file, place } = namedBook(params.link, ctx)
+      const { file, place } = await namedBook(params.link, ctx)
       const workspace = app().workspace
       const existing = workspace
         .getLeavesOfType(BOOK_VIEW_TYPE)

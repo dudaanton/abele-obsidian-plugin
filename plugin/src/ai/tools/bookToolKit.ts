@@ -2,6 +2,7 @@
  * What the book tools share: how a book is named and let be read, how a link to a place is
  * written, and how long an answer may be.
  */
+import { prepareExternalFile, externalLinkPath } from '@/sync/external/fileAccess'
 import { TFile, type App } from 'obsidian'
 import type { AgentToolResult } from '../client'
 import { scopeOf, type ToolContext } from '../toolContext'
@@ -34,10 +35,10 @@ export const inScope = (path: string, ctx?: ToolContext) => scopeOf(ctx).isInSco
  * The book a call names: a vault path, or a link to a place in it (`[[Book.epub#cfi=…]]`,
  * `Book.epub#page=4`). The place comes back too. A book outside the chat's scope is refused.
  */
-export function namedBook(
+export async function namedBook(
   input: unknown,
   ctx?: ToolContext
-): { file: TFile; place: BookPlace | null } {
+): Promise<{ file: TFile; place: BookPlace | null }> {
   let text = typeof input === 'string' ? input.trim() : ''
   if (!text) throw new Error('Name a book: its path in the vault, or a link to a place in it.')
   const wiki = /^!?\[\[([^\]|]+)(?:\|[^\]]*)?\]\]$/.exec(text)
@@ -52,6 +53,11 @@ export function namedBook(
   } catch {
     // A stray `%` written by hand: the path as it is.
   }
+  path = externalLinkPath(app(), path) ?? path
+  if (!externalLinkPath(app(), path) && !app().vault.getAbstractFileByPath(path))
+    throw new Error(`No book at ${path}.`)
+  if (!inScope(path, ctx)) throw new Error('Access denied: book is outside scope')
+  await prepareExternalFile(app(), path)
   const direct = app().vault.getAbstractFileByPath(path)
   const file = direct instanceof TFile ? direct : app().metadataCache.getFirstLinkpathDest(path, '')
   if (!(file instanceof TFile)) throw new Error(`No book at ${path}.`)

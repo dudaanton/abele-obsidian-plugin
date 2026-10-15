@@ -4,6 +4,7 @@
  * cleaning, the same PDF.js) and kept for a few minutes, so reading a book a part at a time
  * does not parse it again for every part.
  */
+import { prepareExternalFile } from '@/sync/external/fileAccess'
 import type { App, TFile } from 'obsidian'
 import { joinIndir, fromRange } from '@/vendor/foliate-js/epubcfi.js'
 import { textWalker } from '@/vendor/foliate-js/text-walker.js'
@@ -62,6 +63,7 @@ async function indexOfHref(book: Resolver, href: string): Promise<number> {
 }
 
 async function load(app: App, file: TFile): Promise<LoadedBook> {
+  await prepareExternalFile(app, file.path)
   const data = new Uint8Array(await app.vault.readBinary(file))
   const pdf = file.extension === 'pdf'
   const opened: OpenedBook = await openBookFile(file, data)

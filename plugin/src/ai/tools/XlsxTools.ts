@@ -1,3 +1,4 @@
+import { prepareExternalFile } from '@/sync/external/fileAccess'
 import { TFile } from 'obsidian'
 import type { AgentTool } from '../client'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -22,6 +23,12 @@ export function namedWorkbook(input: unknown, ctx?: ToolContext): TFile {
   if (!scope.isInScope(file.path))
     throw new Error(`Access denied: ${file.path} is outside this chat's scope`)
   return file
+}
+async function downloadedFile(input: unknown, ctx?: ToolContext): Promise<TFile> {
+  const path = typeof input === 'string' ? input : ''
+  if (!scopeOf(ctx).isInScope(path)) throw new Error('Access denied: file is outside scope')
+  await prepareExternalFile(GlobalStore.getInstance().app, path)
+  return namedWorkbook(input, ctx)
 }
 const answer = (text: string) => ({ content: [{ type: 'text' as const, text }] })
 const integer = (value: unknown, fallback: number, max: number) =>
@@ -79,7 +86,7 @@ export function createXlsxTools(): AgentTool[] {
         required: ['path', 'revision'],
       },
       execute: async (_id, params, signal, ctx) => {
-        const file = namedWorkbook(params.path, ctx)
+        const file = await downloadedFile(params.path, ctx)
         if (typeof params.revision !== 'string' || !params.revision)
           throw new Error('Read with xlsx_read first and pass its revision')
         const app = appOf(ctx)
@@ -113,7 +120,7 @@ export function createXlsxTools(): AgentTool[] {
         'List workbook sheet names, hidden state and used ranges, without opening a tab. Includes the revision for writes. Scope checked; read-only.',
       parameters: { type: 'object', properties, required: ['path'] },
       execute: async (_id, params, signal, ctx) => {
-        const file = namedWorkbook(params.path, ctx)
+        const file = await downloadedFile(params.path, ctx)
         const book = await openVaultWorkbook(file)
         const lines = []
         for (const info of book.sheets) {
@@ -147,7 +154,7 @@ export function createXlsxTools(): AgentTool[] {
         required: ['path', 'sheet'],
       },
       execute: async (_id, params, signal, ctx) => {
-        const file = namedWorkbook(params.path, ctx)
+        const file = await downloadedFile(params.path, ctx)
         const book = await openVaultWorkbook(file)
         signal?.throwIfAborted()
         const sheet = await book.sheet(textParameter(params.sheet))
@@ -178,7 +185,7 @@ export function createXlsxTools(): AgentTool[] {
         required: ['path', 'query'],
       },
       execute: async (_id, params, signal, ctx) => {
-        const file = namedWorkbook(params.path, ctx)
+        const file = await downloadedFile(params.path, ctx)
         const query = typeof params.query === 'string' ? params.query : ''
         if (!query || query.length > 1000) throw new Error('Search text must be 1–1000 characters')
         const book = await openVaultWorkbook(file)

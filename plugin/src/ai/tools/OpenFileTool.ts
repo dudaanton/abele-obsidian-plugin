@@ -1,3 +1,4 @@
+import { prepareExternalFile } from '@/sync/external/fileAccess'
 import type { AgentTool } from '../client'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { TFile } from 'obsidian'
@@ -18,6 +19,7 @@ export function createOpenFileTool(): AgentTool {
       const path = params.path as string
       if (!path) throw new Error('Missing required parameter: path')
       const { app } = GlobalStore.getInstance()
+      await prepareExternalFile(app, path)
       const file = app.vault.getAbstractFileByPath(path)
       if (!(file instanceof TFile)) throw new Error(`File not found: ${path}`)
       // A chat goes to the sidebar: opened in the editor it would take the note's leaf with it.

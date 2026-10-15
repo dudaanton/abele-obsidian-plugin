@@ -1,6 +1,9 @@
 import type { AgentTool } from '../client'
 import { scopeOf } from '../toolContext'
 import { pathTree } from './compactListing'
+import { GlobalStore } from '@/stores/GlobalStore'
+import { tokenOffloadsOf } from '@/sync/tokenOffloadCoordinator'
+import { pathCoordinatorOf } from '@/sync/pathCoordinator'
 
 const PAGE_SIZE = 100
 
@@ -38,6 +41,13 @@ export function createListWorkspaceTool(): AgentTool {
 
       // Grouped by folder: the folder said once instead of on every path.
       let text = `${total} accessible files (showing ${offset + 1}–${shown}):\n${pathTree(page)}`
+      const { app } = GlobalStore.getInstance()
+      const absent = tokenOffloadsOf(app.vault, pathCoordinatorOf(app.vault))
+        .files()
+        .filter((file) => page.includes(file.path))
+      if (absent.length)
+        text +=
+          '\n' + absent.map((file) => `${file.path} · ${file.size} bytes · offloaded`).join('\n')
       if (remaining > 0) {
         text += `\n\n... ${remaining} more files. Use offset=${shown} to see next page.`
       }

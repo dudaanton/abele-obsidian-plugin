@@ -1,3 +1,4 @@
+import { prepareExternalFile } from '@/sync/external/fileAccess'
 import { TFile } from 'obsidian'
 import type { AgentTool, UserContentPart } from '../client'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -30,6 +31,7 @@ export function createReadImageTool(): AgentTool {
       if (!path) throw new Error('Missing required parameter: path')
 
       const { app } = GlobalStore.getInstance()
+      await prepareExternalFile(app, path)
       const file = app.vault.getAbstractFileByPath(path)
       if (!(file instanceof TFile)) throw new Error(`File not found: ${path}`)
 

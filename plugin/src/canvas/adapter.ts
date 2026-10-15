@@ -1,5 +1,6 @@
 /** Obsidian is one client of the portable graph/presentation model and DOM viewer. */
-import { Component, MarkdownRenderer, TFile, type App } from 'obsidian'
+import { Component, MarkdownRenderer, Notice, TFile, type App } from 'obsidian'
+import { prepareExternalFile } from '@/sync/external/fileAccess'
 import { CanvasViewer, type ViewerCards } from './Viewer'
 import { canvasRegionAssets, canvasTheme, notePart } from './pictureAdapter'
 import { centredLabel, contentBox } from './core/scene'
@@ -202,9 +203,17 @@ export function hostCanvasViewer(app: App, el: HTMLElement, source: () => string
       canvasRegionAssets(app, graph, source(), () => true, el.ownerDocument, region, signal),
     openNode: (node) => {
       if (node.type === 'file' && node.file) {
-        const file = app.vault.getAbstractFileByPath(node.file)
-        if (file instanceof TFile && file.extension === 'canvas') void openCanvas(app, file)
-        else void app.workspace.openLinkText(`${node.file}${node.subpath ?? ''}`, source(), 'tab')
+        const path = node.file
+        void prepareExternalFile(app, path)
+          .then(async () => {
+            const file = app.vault.getAbstractFileByPath(path)
+            if (file instanceof TFile && file.extension === 'canvas') await openCanvas(app, file)
+            else await app.workspace.openLinkText(path + (node.subpath ?? ''), source(), 'tab')
+          })
+          .catch((error) => {
+            console.debug('[abele-sync] canvas file could not be opened', error)
+            new Notice('Unavailable offline or through current connections: ' + path)
+          })
       } else if (node.type === 'link' && node.url && /^https?:\/\//i.test(node.url))
         openExternal(node.url, '_blank')
     },

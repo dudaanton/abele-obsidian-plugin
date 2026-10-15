@@ -1,3 +1,4 @@
+import { prepareExternalFile } from '@/sync/external/fileAccess'
 import { TFile, type App } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { nanoid } from 'nanoid'
@@ -68,6 +69,7 @@ export async function saveImageToVault(
  */
 export async function readImageAsDataUrl(path: string): Promise<string> {
   const { app } = GlobalStore.getInstance()
+  await prepareExternalFile(app, path)
   const file = app.vault.getAbstractFileByPath(path)
   if (!(file instanceof TFile)) throw new Error(`File not found: ${path}`)
 

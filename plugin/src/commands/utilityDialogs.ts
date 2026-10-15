@@ -1,3 +1,4 @@
+import { prepareExternalFile } from '@/sync/external/fileAccess'
 import { Notice, TFile } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { vaultUrl } from '@/helpers/vaultUrl'
@@ -30,6 +31,12 @@ let preview: ComponentDialog | null = null
 /** The file menu's preview keeps the same folder ordering and selected starting picture. */
 export async function previewImage(path: string): Promise<void> {
   const { app } = GlobalStore.getInstance()
+  try {
+    path = await prepareExternalFile(app, path)
+  } catch {
+    new Notice('Unavailable offline or through current connections')
+    return
+  }
   const file = app.vault.getAbstractFileByPath(path)
   if (!(file instanceof TFile)) return
   const files = file.parent

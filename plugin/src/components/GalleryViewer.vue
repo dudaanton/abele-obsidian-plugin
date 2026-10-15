@@ -11,7 +11,7 @@
             icon="chevron-left"
             tooltip="Previous picture (←)"
             no-hover
-          class="abele-gallery-viewer__nav abele-gallery-viewer__nav--prev"
+            class="abele-gallery-viewer__nav abele-gallery-viewer__nav--prev"
             @click.stop="prev"
             @mousedown.prevent
           />
@@ -19,7 +19,7 @@
             icon="chevron-right"
             tooltip="Next picture (→)"
             no-hover
-          class="abele-gallery-viewer__nav abele-gallery-viewer__nav--next"
+            class="abele-gallery-viewer__nav abele-gallery-viewer__nav--next"
             @click.stop="next"
             @mousedown.prevent
           />
@@ -94,6 +94,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { externalLinkPath, recordExternalOpening } from '@/sync/external/fileAccess'
 import { FileSystemAdapter, Menu, Notice, Platform, TFile } from 'obsidian'
 import { request as requestUrl } from '@/helpers/http'
 import ObsidianIcon from './obsidian/Icon.vue'
@@ -132,6 +133,16 @@ const urlOverride = ref<string | null>(null)
 const imageEl = ref<HTMLImageElement | null>(null)
 
 const currentImage = computed(() => props.images[currentIndex.value])
+watch(
+  currentImage,
+  (image) => {
+    if (image?.type !== 'local') return
+    const { app } = GlobalStore.getInstance()
+    const path = externalLinkPath(app, image.path, props.galleryFilePath)
+    if (path) recordExternalOpening(app, path)
+  },
+  { immediate: true }
+)
 const isLocal = computed(() => currentImage.value.type === 'local')
 
 const fileInfo = computed(() => {

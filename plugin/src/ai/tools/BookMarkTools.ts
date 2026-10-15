@@ -85,7 +85,7 @@ const pageOf = (loaded: LoadedBook, place: BookPlace): number =>
 
 /** The highlight a link names, in the book it names. */
 async function namedHighlight(input: unknown, ctx?: ToolContext) {
-  const { file, place } = namedBook(input, ctx)
+  const { file, place } = await namedBook(input, ctx)
   if (!place || !('cfi' in place))
     throw new Error('Name the highlight by its link, as book_highlights lists it (#cfi=…).')
   const loaded = await loadBookText(app(), file)
@@ -123,7 +123,7 @@ export function createBookHighlightsTool(): AgentTool {
       required: ['book'],
     },
     execute: async (_id, params, _signal, ctx) => {
-      const { file } = namedBook(params.book, ctx)
+      const { file } = await namedBook(params.book, ctx)
       const color = colorFrom(params.color)
       const loaded = await loadBookText(app(), file)
       const where = whereOf(loaded)
@@ -196,7 +196,7 @@ export function createBookHighlightTool(): AgentTool {
       required: ['book', 'text'],
     },
     execute: async (_id, params, _signal, ctx) => {
-      const { file, place } = namedBook(params.book, ctx)
+      const { file, place } = await namedBook(params.book, ctx)
       const text = typeof params.text === 'string' ? params.text : ''
       if (quoteKey(text).length < MIN_QUOTE) throw new Error('Quote at least a few letters.')
       if (text.length > MAX_QUOTE)
@@ -391,7 +391,7 @@ export function createBookBookmarkTool(): AgentTool {
     execute: async (_id, params, _signal, ctx) => {
       const store = await bookBookmarkWriter(appOf(ctx))
       if (!store) throw new Error('Bookmarks are not available: the book reader is not loaded.')
-      const { file, place } = namedBook(params.book, ctx)
+      const { file, place } = await namedBook(params.book, ctx)
       const loaded = await loadBookText(app(), file)
       const key = keyOf(loaded)
       const marks = await store.list(key)

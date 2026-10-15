@@ -22,7 +22,16 @@ refusals and held-delete reviews still apply. Automatic actions appear in the co
 The sync ledger reserves a schema-1 external-file document at `plugin:external-files` in its
 IndexedDB `meta` store. The SQLite adapter uses `daemon:external-files` in the existing CLI
 ledger. The ledger can now classify existing external records during ordinary personal and scoped
-sync. There is still no production eviction/hydration caller, automatic policy or UI.
+sync. Native file/folder/selection actions and commands expose confirmed offload, pin toggling and
+download without opening. Per-connection device-local rules store folder, extensions, minimum
+bytes and unopened-day filters under a separate local-storage key; applying always requires a
+fresh file-list preview and confirmation. Last-opened timestamps are device-local too; unknown
+ages are excluded from age rules. No background policy runs.
+Device pin intentions also live in a separate local-storage inventory, survive connection
+pauses/replacement and follow ordinary file/folder renames.
+Reader, gallery, canvas and agent
+content reads can hydrate absent originals; listings show original paths, size and offloaded
+state. Stub cards and in-note embed previews are not implemented.
 
 Records bind to the local ledger, normalized endpoint, vault, personal/scoped mode, principal,
 grant, connection generation and credential association. They separate local representation
@@ -1357,7 +1366,7 @@ Metadata `bindingRecovery` journals `id`, `anchorId`, captured `snapshot`, actua
 optional published `operation`, optional `evidence`, and status (`pending`, `applied`,
 `known-not-written`, `uncertain`, `undone`). The actual created/existing card path is durable
 before message publication. If intent journaling fails the API reports the path but does not
-claim recoverability. The writer durably marks intent uncertain *before* attempting publication;
+claim recoverability. The writer durably marks intent uncertain _before_ attempting publication;
 message text, operation evidence and applied status publish atomically. Lost acknowledgement is
 settled only from operation identity in a valid log. An unresolved write blocks further local
 writes until reopen/inspection, so a later ordinary save cannot overwrite its evidence.

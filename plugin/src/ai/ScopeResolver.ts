@@ -3,6 +3,8 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { TFile, TFolder, type App, type EventRef } from 'obsidian'
 import { isWikilink } from '@/helpers/pathsHelpers'
 import { isChatLog } from './chatText'
+import { tokenOffloadsOf } from '@/sync/tokenOffloadCoordinator'
+import { pathCoordinatorOf } from '@/sync/pathCoordinator'
 
 export interface ScopeEntry {
   type: 'file' | 'folder' | 'pattern' | 'group'
@@ -27,6 +29,7 @@ export class ScopeResolver {
    * field; one pass on a large vault is a frozen window, so it is not paid again for nothing.
    */
   private _groupIndex: Map<string, string[]> | null = null
+  private externalInventory = ''
   private watchedApp: App | null = null
   private vaultEvents: EventRef[] = []
   private metadataEvents: EventRef[] = []
@@ -164,16 +167,29 @@ export class ScopeResolver {
   /** Resolve all scope entries to a set of file paths */
   resolve(): Set<string> {
     this.watchVault()
+    const { app } = GlobalStore.getInstance()
+    const offloads = tokenOffloadsOf(app.vault, pathCoordinatorOf(app.vault))
+    const absent = offloads.files()
+    const inventory = JSON.stringify(absent.map((file) => file.path).sort())
+    if (inventory !== this.externalInventory) {
+      this._cache = null
+      this.externalInventory = inventory
+    }
     if (this._cache) return this._cache
 
-    const { app } = GlobalStore.getInstance()
     const result = new Set<string>()
 
     if (this.fullVaultAccess.value) {
       for (const file of app.vault.getFiles()) {
-        if (file.extension !== 'abcomment' && (!this.ceiling || this.ceiling.isInScope(file.path)))
+        if (
+          file.extension !== 'abcomment' &&
+          offloads.originalPath(file.path) === file.path &&
+          (!this.ceiling || this.ceiling.isInScope(file.path))
+        )
           result.add(file.path)
       }
+      for (const file of absent)
+        if (!this.ceiling || this.ceiling.isInScope(file.path)) result.add(file.path)
       this._cache = result
       return result
     }
@@ -206,6 +222,20 @@ export class ScopeResolver {
       }
     }
 
+    for (const file of absent)
+      if (
+        this.entries.value.some((entry) =>
+          entry.type === 'file'
+            ? entry.path === file.path
+            : entry.type === 'folder'
+              ? !entry.path || file.path.startsWith(entry.path + '/')
+              : entry.type === 'pattern'
+                ? this.patternToRegex(entry.path).test(file.path)
+                : false
+        )
+      )
+        result.add(file.path)
+
     // Chat logs are never reachable through a scope, whatever entry would take them in. A log
     // holds everything its own agent was shown — the notes it read, what its tools returned —
     // and a scope over the chat folder is not a scope over those notes. A chat reaches another
@@ -213,6 +243,7 @@ export class ScopeResolver {
     for (const path of result) {
       if (
         isChatLog(path) ||
+        offloads.originalPath(path) !== path ||
         path.toLowerCase().endsWith('.abcomment') ||
         (this.ceiling && !this.ceiling.isInScope(path))
       )

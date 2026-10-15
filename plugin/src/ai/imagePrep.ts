@@ -1,3 +1,4 @@
+import { prepareExternalFile } from '@/sync/external/fileAccess'
 import { TFile } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 
@@ -105,6 +106,7 @@ async function svgToPng(binary: ArrayBuffer): Promise<string> {
 export async function prepareImageForApi(path: string): Promise<string | null> {
   try {
     const { app } = GlobalStore.getInstance()
+    await prepareExternalFile(app, path)
     const file = app.vault.getAbstractFileByPath(path)
     if (!(file instanceof TFile)) return null
 

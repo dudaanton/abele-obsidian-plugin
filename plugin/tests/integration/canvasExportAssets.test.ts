@@ -3,6 +3,8 @@ import { TFile, type App } from 'obsidian'
 import { canvasAssets } from '@/canvas/pictureAdapter'
 import { EXPORT_LIMITS } from '@/canvas/core/export'
 import { buildFakeVault } from '../helpers/fakeVault'
+import { tokenOffloadsOf } from '@/sync/tokenOffloadCoordinator'
+import { pathCoordinatorOf } from '@/sync/pathCoordinator'
 
 let app: App, file: TFile
 const createImage = vi.fn()
@@ -39,6 +41,20 @@ beforeEach(() => {
   Object.assign(app.vault, { readBinary: vi.fn(async () => png(100000, 100000)) })
 })
 describe('bounded whole-canvas asset loading', () => {
+  it('reports the original path and offloaded state when content is unavailable offline', async () => {
+    const manager = tokenOffloadsOf(app.vault, pathCoordinatorOf(app.vault))
+    manager.remember(
+      'sample',
+      [{ path: 'offline.png', size: 200, mtime: 1 }],
+      ['offline.png.abele-ref']
+    )
+    manager.hydrator('sample', async () => {
+      throw new Error('Unavailable offline')
+    })
+    const assets = await load({ ...graph, nodes: [{ ...graph.nodes[0], file: 'offline.png' }] })
+    expect(assets.warnings[0].message).toContain('offline.png')
+    expect(assets.warnings[0].message).toMatch(/offloaded|offline/i)
+  })
   it('never decodes a small compressed file advertising an enormous image', async () => {
     const assets = await load()
     expect(assets.images.size).toBe(0)

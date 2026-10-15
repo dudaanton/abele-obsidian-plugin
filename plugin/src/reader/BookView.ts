@@ -1,3 +1,4 @@
+import { prepareExternalFile } from '@/sync/external/fileAccess'
 /**
  * A tab showing one book from the vault.
  *
@@ -529,6 +530,7 @@ export class BookView extends FileView {
     this.model.kind = file.extension === 'pdf' ? 'pdf' : 'epub'
     try {
       const stage = await this.stageReady
+      await prepareExternalFile(this.app, file.path)
       const data = new Uint8Array(await this.app.vault.readBinary(file))
       if (token !== this.loadToken) return
       const settings = readerSettings()

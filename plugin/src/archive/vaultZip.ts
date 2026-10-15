@@ -1,3 +1,4 @@
+import { prepareExternalFile } from '@/sync/external/fileAccess'
 import { TFile, TFolder, type App, type EventRef } from 'obsidian'
 import type { ScopeResolver } from '@/ai/ScopeResolver'
 import { ChangeTracker } from '@/ai/rewind/ChangeTracker'
@@ -89,6 +90,11 @@ export async function createVaultZip(value: unknown, context: VaultZipContext): 
     // Whole selection checked BEFORE resolving metadata; ancestor-listing never grants bytes.
     if (request.files.some((file) => !scope.isInScope(file.path)))
       throw new Error('Selected files are not available in this scope')
+  }
+  checkScope()
+  for (const item of request.files) {
+    checkScope()
+    await prepareExternalFile(app, item.path)
   }
   checkScope()
   const selected = request.files.map((item) => {

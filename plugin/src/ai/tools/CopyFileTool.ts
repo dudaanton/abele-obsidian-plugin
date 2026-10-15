@@ -1,3 +1,4 @@
+import { prepareExternalFile } from '@/sync/external/fileAccess'
 import type { AgentTool } from '../client'
 import { guardChatWrite } from './chatWriteGuard'
 import { appOf } from '../toolContext'
@@ -31,6 +32,9 @@ export function createCopyFileTool(opts?: { skipScope?: boolean }): AgentTool {
         throw new Error(`Access denied: ${from} is not in workspace scope`)
       }
       const app = appOf(ctx)
+      await prepareExternalFile(app, from)
+      if (!opts?.skipScope && !scopeOf(ctx).isInScope(from))
+        throw new Error(`Access denied: ${from} is not in workspace scope`)
       const file = app.vault.getAbstractFileByPath(from)
       if (!(file instanceof TFile)) throw new Error(`File not found: ${from}`)
       if (app.vault.getAbstractFileByPath(safeTo)) {

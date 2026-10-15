@@ -3,7 +3,7 @@
 ## Scope
 
 This describes the state/projection foundation used by the explicit attachment API. It
-adds no UI or automatic eviction. Minimal filesystem ports are implemented separately
+is used by native actions and explicitly confirmed device-local rules; there is no automatic eviction. Minimal filesystem ports are implemented separately
 (see `External file filesystem ports.md`); representation classification and durable
 projection jobs participate in ordinary sync. Interrupted-operation recovery runs before
 engine activation under a runtime fence. IndexedDB uses schema version 2; the explicit

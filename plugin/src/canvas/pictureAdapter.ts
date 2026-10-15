@@ -1,4 +1,5 @@
 import { TFile, type App } from 'obsidian'
+import { externalLinkPath, prepareExternalFile } from '@/sync/external/fileAccess'
 import { stepScene } from './core/steps'
 import { canvasVisibility } from './core/visibility'
 import { rasterScale } from '../drawing/rasterize'
@@ -84,6 +85,19 @@ export async function canvasAssets(
     images = new Map<string, ImageAsset[]>(),
     warnings: { code: string; ids: string[]; message: string }[] = []
   const load = async (node: string, path: string, relative: string): Promise<void> => {
+    const original = externalLinkPath(app, path, relative)
+    if (original && inScope(original)) {
+      try {
+        await prepareExternalFile(app, original)
+      } catch {
+        warnings.push({
+          code: 'unavailable-image',
+          ids: [node],
+          message: `${original}: offloaded content is unavailable offline or through current connections`,
+        })
+        return
+      }
+    }
     const file = app.metadataCache.getFirstLinkpathDest(path, relative)
     if (!(file instanceof TFile) || !IMAGE.test(file.extension) || !inScope(file.path)) {
       warnings.push({
@@ -176,6 +190,17 @@ export async function canvasAssets(
             message: `${node.id}: linked file content is outside scope`,
           })
         } else {
+          try {
+            await prepareExternalFile(app, node.file)
+          } catch {
+            contents.set(node.id, '[Offloaded file unavailable]')
+            warnings.push({
+              code: 'missing-file',
+              ids: [node.id],
+              message: `${node.file}: offloaded content is unavailable offline or through current connections`,
+            })
+            continue
+          }
           const file = app.vault.getAbstractFileByPath(node.file)
           if (!(file instanceof TFile)) {
             text = '[Missing file]'

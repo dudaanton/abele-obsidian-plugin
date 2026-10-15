@@ -25,26 +25,26 @@ beforeEach(() => {
 })
 
 describe('a book named to a tool', () => {
-  it('is found by its path, and by a link with a place in it', () => {
-    expect(namedBook('Books/Dune.epub')).toMatchObject({
+  it('is found by its path, and by a link with a place in it', async () => {
+    expect(await namedBook('Books/Dune.epub')).toMatchObject({
       file: { path: 'Books/Dune.epub' },
       place: null,
     })
-    const linked = namedBook('[[Books/Dune.epub#cfi=/6/8!/4/2%5Bp%5D,/1:0,/1:22|Chapter 3]]')
+    const linked = await namedBook('[[Books/Dune.epub#cfi=/6/8!/4/2%5Bp%5D,/1:0,/1:22|Chapter 3]]')
     expect(linked.file.path).toBe('Books/Dune.epub')
     expect(linked.place).toEqual({ cfi: 'epubcfi(/6/8!/4/2[p],/1:0,/1:22)' })
-    expect(namedBook('[p. 4](Papers/Paper.pdf#page=4)').place).toEqual({ page: 4 })
-    expect(namedBook('Papers/Paper.pdf#page=2').place).toEqual({ page: 2 })
+    expect((await namedBook('[p. 4](Papers/Paper.pdf#page=4)')).place).toEqual({ page: 4 })
+    expect((await namedBook('Papers/Paper.pdf#page=2')).place).toEqual({ page: 2 })
   })
 
-  it('is refused outside the chat’s scope, as a note would be', () => {
-    expect(() => namedBook('Private/Diary.epub')).toThrow(/Access denied/)
+  it('is refused outside the chat’s scope, as a note would be', async () => {
+    await expect(namedBook('Private/Diary.epub')).rejects.toThrow(/Access denied/)
   })
 
-  it('is refused when it is not a book, or not there', () => {
-    expect(() => namedBook('Notes/Dune.md')).toThrow(/not a book/)
-    expect(() => namedBook('Books/Missing.epub')).toThrow(/No book/)
-    expect(() => namedBook('')).toThrow(/Name a book/)
+  it('is refused when it is not a book, or not there', async () => {
+    await expect(namedBook('Notes/Dune.md')).rejects.toThrow(/not a book/)
+    await expect(namedBook('Books/Missing.epub')).rejects.toThrow(/No book/)
+    await expect(namedBook('')).rejects.toThrow(/Name a book/)
   })
 })
 

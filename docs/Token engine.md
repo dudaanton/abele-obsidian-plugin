@@ -71,6 +71,10 @@ Removed core APIs and their production adapters have been deleted; the productio
 check passes. Regression porting remains incomplete: several retained tests still import
 retired fixtures, and server-backed external-file tests still use the old harness. Each
 connection keeps validated file filters and a device-only size cap; settings tools write
-these through the token controller without transferring credentials or ledger identity. Token hydration/eviction and its
-multi-connection ownership/forwarding fences are not yet integrated. No live desktop or
-phone evidence, completed multi-connection eviction, or complete scenario acceptance is claimed.
+these through the token controller without transferring credentials or ledger identity. Token hydration/eviction uses the existing per-connection authority and shared placement/
+forwarding fences. Native actions choose the narrowest covering live scope, with a stable
+connection order for ties; a destructive refusal is never retried through another connection.
+All covering ports are checked for pins, and a pin change is sent to each covering port.
+Rule previews are bound to their selected connection. Retained versions and local bytes are
+rechecked before removal; a matching path or digest never grants another connection authority.
+Desktop and phone scenario acceptance remains a separate live validation gate.

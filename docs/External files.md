@@ -9,11 +9,35 @@ publish a server deletion. Remote edits update the known version without downloa
 attachment bytes. Remote rename, deletion and restore preserve the file identity and
 recovery inventory; deleted or inaccessible files remain dependencies.
 
-This stage exposes explicit attachment APIs, not a new screen or automatic eviction
-rule. Selective sync remains a separate participation policy. Code and settings retain
+File and folder menus, multi-file selections and commands expose **Keep only on the
+server**, **Keep on this device** (toggle), and **Download to this device** (without
+opening). Offloading always previews the file list and estimated local space, then
+requires confirmation. Pinning downloads an absent original and protects it from rules.
+Batch pinning keeps every selected file; invoking it when all are pinned unpins them.
+Device pin intentions survive connection pauses or replacement; a failed download retains
+the pin so a later rule cannot remove the file through a different connection.
+Refused, changed, open, pinned and unavailable files stay here, with a Notice explaining why.
+
+The existing **What this device syncs** settings contain device-local, per-connection
+folder, extension, minimum-size and last-opened-age filters. **Preview** lists candidates;
+confirmation saves that rule and applies that exact selection after rechecking it.
+There is no timer or automatic application. An age rule excludes files with no recorded
+opening; modification time is never substituted for use history.
+
+Ordinary file links download before opening and retain their fragments. The book reader
+and book tools request content before reading; positions and highlights keep their
+original paths. Gallery images load when their rows enter the viewport and can retry on
+open. Canvas opening requests content, and canvas export warnings name unavailable
+offloaded paths. Agent listings include absent originals with size and state, while reads,
+image preparation, office tools, copying and ZIP creation request real bytes after their
+existing scope checks. Projection text is not returned as the original content.
+
+The stub card and in-note embed rendering remain separate design work. Existing file
+links are never rewritten. Selective sync remains a separate participation policy. Code and settings retain
 their approval requirements. The file-size limit is **200 MiB**, or
-`200 * 1024 * 1024` bytes. Downloads use full-file buffers, without streaming, Range
-requests or resumable transfer. Eviction does not reduce server quota or extend history
+`200 * 1024 * 1024` bytes. Downloads use bounded streams where the connection and storage
+support them; legacy/custom providers retain a size-limited whole-file fallback.
+Resumable transfer remains separate work. Eviction does not reduce server quota or extend history
 retention. An observed historical version may expire.
 
 ## Eviction

@@ -1,3 +1,4 @@
+import { prepareExternalFile } from '@/sync/external/fileAccess'
 import { TFile } from 'obsidian'
 import type { AgentTool } from '../client'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -18,6 +19,12 @@ export function namedDocx(input: unknown, ctx?: ToolContext): TFile {
   if (!scope.isInScope(file.path))
     throw new Error(`Access denied: ${file.path} is outside this chat's scope`)
   return file
+}
+async function downloadedFile(input: unknown, ctx?: ToolContext): Promise<TFile> {
+  const path = typeof input === 'string' ? input : ''
+  if (!scopeOf(ctx).isInScope(path)) throw new Error('Access denied: file is outside scope')
+  await prepareExternalFile(GlobalStore.getInstance().app, path)
+  return namedDocx(input, ctx)
 }
 const answer = (text: string) => ({ content: [{ type: 'text' as const, text }] })
 const integer = (value: unknown, fallback: number, max: number) =>
@@ -68,7 +75,7 @@ export function createDocxTools(): AgentTool[] {
         required: ['path', 'revision', 'operation', 'paragraph'],
       },
       execute: async (_id, params, signal, ctx) => {
-        const file = namedDocx(params.path, ctx)
+        const file = await downloadedFile(params.path, ctx)
         if (typeof params.revision !== 'string' || !params.revision)
           throw new Error('Read with docx_read first and pass its revision')
         if (
@@ -133,7 +140,7 @@ export function createDocxTools(): AgentTool[] {
         required: ['path'],
       },
       execute: async (_id, params, signal, ctx) => {
-        const file = namedDocx(params.path, ctx)
+        const file = await downloadedFile(params.path, ctx)
         const doc = await openDocx(await readOfficeBytes(GlobalStore.getInstance().app, file))
         signal?.throwIfAborted()
         const start = integer(params.start, 1, doc.paragraphs.length)
@@ -168,7 +175,7 @@ export function createDocxTools(): AgentTool[] {
         required: ['path', 'query'],
       },
       execute: async (_id, params, signal, ctx) => {
-        const file = namedDocx(params.path, ctx)
+        const file = await downloadedFile(params.path, ctx)
         const query = typeof params.query === 'string' ? params.query : ''
         if (!query || query.length > 1000) throw new Error('Search text must be 1–1000 characters')
         const doc = await openDocx(await readOfficeBytes(GlobalStore.getInstance().app, file))

@@ -9,6 +9,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { getEditorForFile } from '@/helpers/vaultUtils'
 import { TFile } from 'obsidian'
 import { vaultUrl } from '@/helpers/vaultUrl'
+import { externalLinkPath } from '@/sync/external/fileAccess'
 
 export class Gallery {
   public readonly id: string
@@ -68,7 +69,8 @@ export class Gallery {
     }
 
     const { app } = GlobalStore.getInstance()
-    const file = app.metadataCache.getFirstLinkpathDest(image.path, this.filePath)
+    const path = externalLinkPath(app, image.path, this.filePath)
+    const file = path ? app.vault.getFileByPath(path) : null
     if (file) {
       return vaultUrl(app, file)
     }

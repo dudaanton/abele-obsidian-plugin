@@ -1,5 +1,6 @@
 <template>
   <div
+    ref="galleryEl"
     class="abele-gallery"
     :class="{
       'abele-gallery_readonly': gallery.readonly,
@@ -53,6 +54,7 @@
         :key="index"
         role="listitem"
         class="abele-gallery__edit-item"
+        :data-gallery-index="index"
       >
         <template #leading>
           <FileThumb
@@ -106,7 +108,12 @@
     </div>
 
     <div v-else-if="gallery.layout === 'masonry'" class="abele-gallery__masonry">
-      <div v-for="(image, index) in resolvedImages" :key="index" class="abele-gallery__item">
+      <div
+        v-for="(image, index) in resolvedImages"
+        :key="index"
+        class="abele-gallery__item"
+        :data-gallery-index="index"
+      >
         <video
           v-if="image.url && image.mediaType === 'video'"
           :src="image.url"
@@ -127,9 +134,17 @@
           @click.stop.prevent="openViewer(index)"
           @keydown.enter.prevent="openViewer(index)"
         />
-        <div v-else class="abele-gallery__image-error">
+        <div
+          v-else
+          class="abele-gallery__image-error"
+          role="button"
+          tabindex="0"
+          :aria-label="`Download ${image.path}`"
+          @click.stop.prevent="openViewer(index)"
+          @keydown.enter.prevent="openViewer(index)"
+        >
           <ObsidianIcon icon="image-off" no-hover />
-          <span>{{ image.alt }}</span>
+          <span>{{ downloadErrors[image.path] || image.alt }}</span>
         </div>
       </div>
     </div>
@@ -143,6 +158,7 @@
           v-for="(image, index) in resolvedImages"
           :key="index"
           class="abele-gallery__slider-item"
+          :data-gallery-index="index"
           :style="{ height: gallery.height + 'px' }"
         >
           <video
@@ -165,6 +181,14 @@
             @click.stop.prevent="openViewer(index)"
             @keydown.enter.prevent="openViewer(index)"
           />
+          <div v-else class="abele-gallery__image-error">
+            <ObsidianIcon
+              icon="download"
+              tooltip="Download and open this image"
+              @click.stop="openViewer(index)"
+            />
+            <span>{{ downloadErrors[image.path] || image.alt }}</span>
+          </div>
         </div>
       </div>
       <template v-if="resolvedImages.length > 1">
@@ -186,7 +210,12 @@
     </div>
 
     <div v-else :class="['abele-gallery__grid', `abele-gallery__grid--${gallery.layout}`]">
-      <div v-for="(image, index) in resolvedImages" :key="index" class="abele-gallery__item">
+      <div
+        v-for="(image, index) in resolvedImages"
+        :key="index"
+        class="abele-gallery__item"
+        :data-gallery-index="index"
+      >
         <video
           v-if="image.url && image.mediaType === 'video'"
           :src="image.url"
@@ -207,9 +236,17 @@
           @click.stop.prevent="openViewer(index)"
           @keydown.enter.prevent="openViewer(index)"
         />
-        <div v-else class="abele-gallery__image-error">
+        <div
+          v-else
+          class="abele-gallery__image-error"
+          role="button"
+          tabindex="0"
+          :aria-label="`Download ${image.path}`"
+          @click.stop.prevent="openViewer(index)"
+          @keydown.enter.prevent="openViewer(index)"
+        >
           <ObsidianIcon icon="image-off" no-hover />
-          <span>{{ image.alt }}</span>
+          <span>{{ downloadErrors[image.path] || image.alt }}</span>
         </div>
       </div>
     </div>
@@ -240,8 +277,9 @@ const editModeFiles = new Set<string>()
 </script>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, nextTick, ref, watch } from 'vue'
 import { Notice, TFile } from 'obsidian'
+import { externalLinkPath, prepareExternalFile } from '@/sync/external/fileAccess'
 import { Gallery } from '@/entities/Gallery'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { useGalleryImports } from '@/composables/useGalleryImports'
@@ -261,7 +299,41 @@ const props = defineProps<{
   gallery: Gallery
 }>()
 
+const galleryEl = ref<HTMLElement | null>(null)
 const imageVersion = ref(0)
+const downloadErrors = ref<Record<string, string>>({})
+let observer: IntersectionObserver | null = null
+const attempted = new Set<string>()
+async function prepareImage(index: number, retry = false) {
+  const image = props.gallery.images[index]
+  if (!image || image.type !== 'local') return
+  const { app } = GlobalStore.getInstance()
+  const path = externalLinkPath(app, image.path, props.gallery.filePath)
+  if (!path || (!retry && attempted.has(path))) return
+  attempted.add(path)
+  try {
+    await prepareExternalFile(app, path)
+    imageVersion.value++
+  } catch {
+    downloadErrors.value[image.path] = 'Unavailable offline or through current connections'
+  }
+}
+async function observeImages() {
+  await nextTick()
+  observer?.disconnect()
+  if (typeof IntersectionObserver === 'undefined') return
+  observer = new IntersectionObserver((entries) => {
+    for (const entry of entries)
+      if (entry.isIntersecting) {
+        observer?.unobserve(entry.target)
+        void prepareImage(Number((entry.target as HTMLElement).dataset.galleryIndex))
+      }
+  })
+  galleryEl.value?.querySelectorAll('[data-gallery-index]').forEach((el) => observer?.observe(el))
+}
+onMounted(observeImages)
+watch(() => props.gallery.images, observeImages, { deep: true })
+onBeforeUnmount(() => observer?.disconnect())
 const editMode = ref(editModeFiles.has(props.gallery.filePath))
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const gridEl = ref<HTMLElement | null>(null)
@@ -333,7 +405,12 @@ const viewerImages = computed<ViewerImage[]>(() =>
     .filter((img): img is ViewerImage => !!img.url)
 )
 
-function openViewer(index: number) {
+async function openViewer(index: number) {
+  await prepareImage(index, true)
+  if (!resolvedImages.value[index]?.url) {
+    new Notice(downloadErrors.value[props.gallery.images[index].path] || 'File unavailable')
+    return
+  }
   let viewerIdx = 0
   for (let i = 0; i < index; i++) {
     if (resolvedImages.value[i].url) viewerIdx++
