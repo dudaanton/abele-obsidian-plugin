@@ -1,6 +1,8 @@
 <template>
   <div class="abele-github-notifications">
-    <div class="nav-header">
+    <!-- While GitHub is off there is nothing to refresh, mark or open: no glyphs, only the
+         empty pane saying so. -->
+    <div v-if="enabled" class="nav-header">
       <div class="nav-buttons-container abele-github-notifications__buttons">
         <Icon
           class="clickable-icon nav-action-button abele-github-notifications__refresh"

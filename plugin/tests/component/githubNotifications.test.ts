@@ -277,5 +277,8 @@ describe('the notifications panel', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('GitHub is off')
     expect(request).not.toHaveBeenCalled()
+    // Nothing to refresh, mark or open while it is off: its glyphs are not offered at all.
+    for (const glyph of ['refresh', 'read-all', 'on-github'])
+      expect(wrapper.find(`.abele-github-notifications__${glyph}`).exists()).toBe(false)
   })
 })
