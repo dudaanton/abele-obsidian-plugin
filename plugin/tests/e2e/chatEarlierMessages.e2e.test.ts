@@ -95,12 +95,23 @@ const script = (layout: string) => `(async () => {
   const files = []
   const report = {}
   // Opened the way the history list opens a chat: into a tab of its own.
+  // PROBE: where the focus is at each step of opening, and who moved it.
+  report.openLog = []
+  const where = step => { const a = document.activeElement; report.openLog.push(step + ': ' + (a?.tagName + '.' + String(a?.className).slice(0, 60)) + ' kb=' + [...document.body.classList].filter(c => /keyboard|toolbar/.test(c)).join(',') + ' box=' + (box()?.clientHeight ?? '-')) }
+  const onFocusIn = e => report.openLog.push('focusin ' + e.target?.tagName + '.' + String(e.target?.className).slice(0, 40) + ' ' + String(new Error().stack).split('\n').slice(1, 9).map(l => l.trim().slice(0, 90)).join(' | '))
+  document.addEventListener('focusin', onFocusIn, true)
   const openAsHistory = async fixture => {
     const file = files.find(f => f.path === fixture.path)
     if (!chats.canCreateTab) throw Error('no room for a scratch chat tab')
+    where('before ' + fixture.path)
     const tab = chats.createTab()
+    where('created')
     await chats.openChatInTab(tab, file)
+    where('opened')
     await chats.revealSidebar({ focus: false })
+    where('revealed')
+    await wait(1500)
+    where('later')
   }
   try {
     for (const fixture of fixtures) {
@@ -179,6 +190,7 @@ const script = (layout: string) => `(async () => {
     await capture('short')
   } catch (e) { report.error = String(e?.message || e) }
   finally {
+    document.removeEventListener('focusin', onFocusIn, true)
     for (const id of [...chats.tabOrder.value]) if (!tabs.includes(id)) await chats.closeTab(id)
     if (active) chats.activeTabId.value = active
     chats.saveTabs()
