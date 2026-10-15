@@ -4,6 +4,7 @@ import { formatTimestamp } from '@/helpers/displayFormat'
 import { NodePathSnapshotSchema, emptySnapshotChange } from './nodePathSnapshot'
 import { applyPathChanges, type PathTreeBatch } from './nodePathChanges'
 import { NodePathHistoryModel } from './NodePathHistoryModel'
+import type { PathGit } from './nodePathGit'
 import type { NodeClient } from '@abele/node-client'
 import type { RepositoryRevision } from '@abele/node-protocol'
 import type {
@@ -118,6 +119,17 @@ export interface NodePathPort {
   branch?(target: PathTarget, base?: string): Promise<PathBranch>
   /** Where the node reports the folder's remote; absent, the panel says none is known. */
   pulls?(target: PathTarget): Promise<PathPulls>
+  /** Opens a pull request on the remote's git service for the worktree's pushed branch. */
+  createPull?(target: PathTarget, pull: NewPull): Promise<{ number: number; url?: string }>
+  /** Git writes, where the node offers them. */
+  readonly git?: PathGit
+}
+export interface NewPull {
+  title: string
+  body: string
+  /** The branch it asks to be merged into, as people say it (`main`). */
+  base: string
+  draft: boolean
 }
 /** A worktree's branch against its base, as a pull request page says it. */
 export interface PathBranch {
@@ -171,6 +183,8 @@ export class NodePathModel {
   readonly panelBase = ref('')
   readonly panelBranch = shallowRef<PathBranch>()
   private branchGeneration = 0
+  /** The git action under way in the panel, one at a time: `stage`, `commit`, `push`… */
+  readonly gitBusy = ref('')
   private readonly progress = shallowRef<Record<string, TreeProgress | undefined>>({})
   private readonly cursors = shallowRef<Record<string, Record<string, string | null>>>({})
   readonly treeProgress = computed(() =>
@@ -340,6 +354,64 @@ export class NodePathModel {
     const generation = ++this.branchGeneration
     const branch = await this.port.branch(target, this.panelBase.value || undefined)
     if (!this.disposed && generation === this.branchGeneration) this.panelBranch.value = branch
+  }
+  /**
+   * One git write on the selected worktree, against the revision the panel shows, then the
+   * worktree and its branch read again. A second action waits for the first to finish.
+   */
+  private async gitAct<T>(
+    id: string,
+    run: (git: PathGit, target: PathTarget, seen: RepositoryRevision) => Promise<T>
+  ): Promise<T> {
+    const git = this.port.git,
+      target = this.current.value,
+      seen = this.inspection.value?.revision
+    if (!git || !target || target.kind !== 'worktree')
+      throw new Error('Git actions need an updated node.')
+    if (!seen) throw new Error('Refresh the folder first.')
+    if (this.gitBusy.value) throw new Error('Another git action is still running.')
+    this.gitBusy.value = id
+    try {
+      return await run(git, target, seen)
+    } finally {
+      this.gitBusy.value = ''
+      await this.reloadTarget(target, false).catch((error) => this.report(error))
+      void this.loadPanelBranch().catch((error) => this.report(error))
+    }
+  }
+  stage(paths: string[] | 'all'): Promise<void> {
+    return this.gitAct('stage', (git, target, seen) => git.stage(target, seen, paths))
+  }
+  unstage(paths: string[] | 'all'): Promise<void> {
+    return this.gitAct('unstage', (git, target, seen) => git.unstage(target, seen, paths))
+  }
+  /** Only after the person confirmed it. */
+  discard(paths: string[]): Promise<void> {
+    return this.gitAct('discard', (git, target, seen) => git.discard(target, seen, paths))
+  }
+  commit(message: string): Promise<{ commit: string; author: string }> {
+    return this.gitAct('commit', (git, target, seen) => git.commit(target, seen, message))
+  }
+  push(): Promise<void> {
+    return this.gitAct('push', (git, target, seen) => git.push(target, seen))
+  }
+  /** Rebases onto the branch's base; the files left in conflict, if it stopped on them. */
+  update(): Promise<{ conflicts: string[] }> {
+    const base = this.panelBranch.value?.state.baseRef
+    return this.gitAct('update', (git, target, seen) => git.update(target, seen, base))
+  }
+  continueStopped(operation: 'rebase' | 'merge'): Promise<{ conflicts: string[] }> {
+    return this.gitAct('continue', (git, target) => git.continue(target, operation))
+  }
+  abortStopped(operation: 'rebase' | 'merge'): Promise<void> {
+    return this.gitAct('abort', (git, target) => git.abort(target, operation))
+  }
+  async createPull(pull: NewPull): Promise<{ number: number; url?: string }> {
+    const target = this.current.value
+    if (!target || !this.port.createPull) throw new Error('Pull requests need an updated node.')
+    const made = await this.port.createPull(target, pull)
+    void this.loadPanelBranch().catch((error) => this.report(error))
+    return made
   }
   async loadPanelPulls(): Promise<void> {
     const target = this.current.value

@@ -2,6 +2,7 @@ import { watch, type WatchStopHandle } from 'vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { NodeService } from './NodeService'
 import { NodePathModel } from './NodePathModel'
+import { githubForge } from './nodePathForge'
 import { NodePathClientPort } from './NodePathClientPort'
 import { NodePathSnapshotSchema } from './nodePathSnapshot'
 
@@ -49,10 +50,11 @@ export class NodePathService {
     if (!node)
       throw new Error('This node registration is missing. Reconnect it from the Node panel.')
     const connection = service.connection(registrationId)
-    const port = new NodePathClientPort(connection.client, {
-      nodeId: node.expectedNodeId,
-      registrationId,
-    })
+    const port = new NodePathClientPort(
+      connection.client,
+      { nodeId: node.expectedNodeId, registrationId },
+      githubForge
+    )
     const model = new NodePathModel(node.expectedNodeId, registrationId, port, {
       get: (key) => this.seen.get(key),
       set: (key, id) => {

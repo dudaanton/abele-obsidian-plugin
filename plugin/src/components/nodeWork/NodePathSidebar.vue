@@ -52,6 +52,46 @@
           @choose-base="emit('compare')"
         />
       </NodePlace>
+      <!-- A rebase stopped on conflicts: go on once they are resolved and staged, or stop it. -->
+      <div v-if="stopped" class="abele-node-sidebar__stopped" role="status">
+        <span
+          >The {{ stopped.kind }} onto {{ stopped.onto }} stopped ·
+          {{ stopped.conflicts }} in conflict</span
+        >
+        <Button
+          text="Continue"
+          :disabled="!!model.gitBusy.value || offline"
+          :loading="model.gitBusy.value === 'continue'"
+          tooltip="Go on once the files in conflict are resolved and staged"
+          @click="act(() => model!.continueStopped(stopped!.kind))"
+        />
+        <Button
+          :text="`Stop the ${stopped.kind}`"
+          :disabled="!!model.gitBusy.value || offline"
+          :loading="model.gitBusy.value === 'abort'"
+          :tooltip="`Put the branch back as it was before the ${stopped.kind}`"
+          @click="act(() => model!.abortStopped(stopped!.kind))"
+        />
+      </div>
+      <!-- One action at a time: the commit while something is staged, else the branch's next step. -->
+      <CommitBox
+        v-if="canGit && mode === 'changes' && staged"
+        class="abele-node-sidebar__commit"
+        :staged="staged"
+        :conflicts="conflicts"
+        :disabled="!!model.gitBusy.value || offline"
+        @commit="(message) => act(() => model!.commit(message))"
+      />
+      <div v-else-if="step" class="abele-node-sidebar__step">
+        <Button
+          :text="step.text"
+          :icon="step.icon"
+          :tooltip="step.tooltip"
+          :disabled="!!model.gitBusy.value || offline"
+          :loading="model.gitBusy.value === (step.id === 'publish' ? 'push' : step.id)"
+          @click="emit('step', step.id)"
+        />
+      </div>
       <div v-if="!model.current.value" class="search-empty-state">
         Choose a folder on {{ node?.name ?? 'the node' }} in the row above.
       </div>
@@ -65,6 +105,7 @@
         :branch-changes="mode === 'changes' ? (branch?.committed ?? []) : []"
         :base="branch?.state.base ?? undefined"
         :grouped="mode === 'changes'"
+        :actions="canGit && mode === 'changes' && !offline"
         :mode="mode === 'files' ? 'all' : 'changed-tree'"
         :modes="false"
         :git="git"
@@ -76,6 +117,11 @@
         @more="(path) => model.loadMore(path).catch((error) => model.report(error))"
         @open="(path, stage) => emit('open-file', path, stage === 'committed' ? undefined : stage)"
         @menu="(event, path) => emit('file-menu', event, path)"
+        @stage="(path) => act(() => model!.stage([path]))"
+        @unstage="(path) => act(() => model!.unstage([path]))"
+        @stage-all="act(() => model!.stage('all'))"
+        @unstage-all="act(() => model!.unstage('all'))"
+        @discard="(path) => emit('discard', path)"
       />
       <div v-else-if="mode === 'history'" class="abele-node-sidebar__history">
         <div v-if="history?.error.value" class="abele-node-sidebar__error" role="alert">
@@ -114,6 +160,9 @@ import NodePullList from './NodePullList.vue'
 import FileTree from './FileTree.vue'
 import HistoryView from './HistoryView.vue'
 import BranchCodes from './BranchCodes.vue'
+import CommitBox from './CommitBox.vue'
+import Button from '../obsidian/Button.vue'
+import { nextStep, type BranchStep } from './branchStep'
 import { shortRef } from '@/node/presentation'
 import type { NodeSummary } from './types'
 const props = withDefaults(
@@ -144,6 +193,8 @@ const emit = defineEmits<{
   'open-pull': [number: number]
   'connect-service': []
   compare: []
+  step: [id: BranchStep['id']]
+  discard: [path: string]
 }>()
 const git = computed(() => props.model?.currentFolder.value?.git ?? false)
 /** A folder without git has its files only, whatever mode was last chosen. */
@@ -153,6 +204,33 @@ const changeCount = computed(
 )
 const history = computed(() => props.model?.panelHistory.value)
 const branch = computed(() => props.model?.panelBranch.value)
+const offline = computed(() => props.node?.status !== 'connected')
+/** The node can stage, commit and push in this worktree. */
+const canGit = computed(
+  () => !!props.model?.port?.git && props.model.current.value?.kind === 'worktree'
+)
+const staged = computed(
+  () =>
+    (props.model?.changes.value ?? []).filter((c) => c.stage === 'staged' || c.stage === 'partly')
+      .length
+)
+const conflicts = computed(
+  () => (props.model?.changes.value ?? []).filter((c) => c.kind === 'conflict').length
+)
+const stopped = computed(() => (canGit.value ? branch.value?.state.stopped : undefined))
+/** The one step the branch waits for, when the node (and the git service) can take it. */
+const step = computed(() => {
+  const copy = props.model?.currentCopy.value
+  if (!canGit.value || !branch.value || !copy) return null
+  const next = nextStep(branch.value.state, copy)
+  if (!next || next.id === 'create-branch') return null
+  if (next.id === 'create-pr' && !props.model?.port?.createPull) return null
+  return next
+})
+/** A git action from the panel; what went wrong is said in the panel's notice. */
+const act = (run: () => Promise<unknown>) => {
+  void run().catch((error: unknown) => props.model?.report(error))
+}
 /** A folder's own main branch, even with its remote and no other base, says nothing: no codes. */
 const branchSays = computed(() => {
   const state = branch.value?.state
@@ -196,6 +274,34 @@ watch(
 )
 </script>
 <style lang="scss">
+.abele-node-sidebar__step {
+  display: flex;
+  padding: var(--size-4-4) var(--size-4-2) 0;
+
+  > button {
+    flex: 1;
+  }
+}
+// The commit field on the search field's line, both a frame over the tree.
+.abele-node-sidebar__commit {
+  padding: var(--size-4-4) var(--size-4-2) 0;
+}
+.abele-node-sidebar__stopped {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--size-4-2);
+  margin: var(--size-4-4) var(--size-4-2) 0;
+  padding: var(--size-4-2);
+  border-radius: var(--radius-s);
+  background-color: var(--background-modifier-error);
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+
+  > span {
+    flex: 1 1 100%;
+  }
+}
 .abele-node-sidebar__error {
   padding: var(--size-4-2);
   color: var(--text-error);

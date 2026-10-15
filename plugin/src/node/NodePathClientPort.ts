@@ -19,7 +19,11 @@ import { nodePages } from './nodePages'
 import { readNodeText } from './NodeFilesModel'
 import { COMMIT_FILE_READS, eachBounded } from './bounded'
 import { readNodeImage, isNodeImagePath, NODE_IMAGE_MAX_BYTES } from './nodeImagePreview'
+import { GIT_WRITE_CAPABILITY, nodePathGit, type NodeGitClient, type PathGit } from './nodePathGit'
+import type { PathForge } from './nodePathForge'
 import type {
+  NewPull,
+  PathPulls,
   NodePathPort,
   PathCatalogue,
   PathChange,
@@ -144,8 +148,53 @@ export class NodePathClientPort implements NodePathPort {
   private statusReads = new Map<string, ReturnType<NodePathClientPort['readStatus']>>()
   constructor(
     readonly client: ReadClient,
-    readonly identity: { nodeId: string; registrationId: string }
+    readonly identity: { nodeId: string; registrationId: string },
+    /** The git service a folder's remote lives on, for its pull requests. */
+    private readonly forge?: PathForge
   ) {}
+  /** Git writes, once the node says it has them and its client speaks them. */
+  get git(): PathGit | undefined {
+    const git = (this.client.repository as unknown as { git?: NodeGitClient }).git
+    return git && this.capabilities.includes(GIT_WRITE_CAPABILITY) ? nodePathGit(git) : undefined
+  }
+  private forgePulls = new Map<string, { at: number; read: ReturnType<PathForge['pulls']> }>()
+  /** A service's open pull requests, read at most once a minute: every save observes anew. */
+  private readPulls(repo: Parameters<PathForge['pulls']>[0]): ReturnType<PathForge['pulls']> {
+    const key = `${repo.host}/${repo.owner}/${repo.name}`,
+      known = this.forgePulls.get(key)
+    if (known && Date.now() - known.at < 60000) return known.read
+    const read = this.forge!.pulls(repo)
+    this.forgePulls.set(key, { at: Date.now(), read })
+    read.catch(() => this.forgePulls.delete(key))
+    return read
+  }
+  /** Pull requests come from the remote's git service, which only the node's git can name. */
+  get pulls(): ((target: PathTarget) => Promise<PathPulls>) | undefined {
+    const git = this.git,
+      forge = this.forge
+    if (!git || !forge) return undefined
+    return async (target) => {
+      const info = await git.info(target)
+      if (!info.forge) return { remote: null, connected: false, pulls: [] }
+      const read = await this.readPulls(info.forge)
+      return { remote: `${info.forge.owner}/${info.forge.name}`, ...read }
+    }
+  }
+  get createPull():
+    | ((target: PathTarget, pull: NewPull) => Promise<{ number: number; url?: string }>)
+    | undefined {
+    const git = this.git,
+      forge = this.forge
+    if (!git || !forge) return undefined
+    return async (target, pull) => {
+      const info = await git.info(target)
+      if (!info.forge) throw new Error('The node does not say which remote this branch pushes to.')
+      if (!info.branch) throw new Error('A pull request needs a branch, not a detached commit.')
+      const made = await forge.create(info.forge, { ...pull, head: info.branch })
+      this.forgePulls.clear()
+      return made
+    }
+  }
   protected binding(projectId: string, kind: PathTarget['kind'], id: string): PathTarget {
     return { ...this.identity, projectId, kind, id }
   }
@@ -319,9 +368,19 @@ export class NodePathClientPort implements NodePathPort {
       : []
     // The remote branch of the same name, origin's first: how far the branch is pushed.
     const upstream = remotes.find((r) => r.name === `refs/remotes/origin/${name}`) ?? remotes[0]
-    const pushed = upstream
-      ? await this.client.nodePath.divergence({ worktree_id: target.id, base_ref: upstream.name })
-      : undefined
+    // The node's git names the real upstream and a rebase that stopped; without it, the remote
+    // branch of the same name stands in for the upstream.
+    const info = await this.git?.info(target)
+    const pr =
+      info?.forge && info.branch && this.forge
+        ? (await this.readPulls(info.forge).catch((): undefined => undefined))?.pulls.find(
+            (p) => p.branch === info.branch
+          )
+        : undefined
+    const pushed =
+      !info && upstream
+        ? await this.client.nodePath.divergence({ worktree_id: target.id, base_ref: upstream.name })
+        : undefined
     const ahead = divergence.ahead ?? 0
     const committed =
       ahead && divergence.base_commit && divergence.head_commit
@@ -351,8 +410,25 @@ export class NodePathClientPort implements NodePathPort {
       ...(divergence.base_ref ? { baseRef: divergence.base_ref } : {}),
       ahead,
       behind: divergence.behind ?? 0,
-      ...(upstream ? { upstream: shortRef(upstream.name) } : {}),
-      unpushed: pushed?.ahead ?? 0,
+      ...(info
+        ? {
+            ...(pr ? { pr } : {}),
+            ...(info.upstream ? { upstream: shortRef(info.upstream.ref) } : {}),
+            unpushed: info.upstream?.ahead ?? 0,
+            ...(info.operation && (info.operation.kind === 'rebase' || info.operation.kind === 'merge')
+              ? {
+                  stopped: {
+                    kind: info.operation.kind,
+                    onto: divergence.base_ref ? shortRef(divergence.base_ref) : '',
+                    conflicts: info.operation.conflicts.length,
+                  },
+                }
+              : {}),
+          }
+        : {
+            ...(upstream ? { upstream: shortRef(upstream.name) } : {}),
+            unpushed: pushed?.ahead ?? 0,
+          }),
     }
     return {
       state,

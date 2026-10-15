@@ -2,11 +2,18 @@
   <div class="abele-update-dialog">
     <p class="abele-update-dialog__text">
       {{ base }} has {{ plural(behind, 'commit') }} that {{ branch }} has not.
-      <template v-if="dirty"
+      <template v-if="dirty && clean"
+        >Commit or discard the {{ plural(dirty, 'changed file') }} first: only a branch with
+        nothing uncommitted is updated.</template
+      >
+      <template v-else-if="dirty"
         >The {{ plural(dirty, 'file') }} not committed stay as they are.</template
       >
     </p>
-    <Setting name="How" :desc="how === 'rebase' ? rebaseWords : mergeWords">
+    <p v-if="ways.length === 1" class="abele-update-dialog__text">
+      {{ how === 'rebase' ? rebaseWords : mergeWords }}
+    </p>
+    <Setting v-else name="How" :desc="how === 'rebase' ? rebaseWords : mergeWords">
       <Dropdown
         :options="[
           { value: 'rebase', display: `Rebase onto ${base}` },
@@ -22,6 +29,7 @@
       <Button
         text="Update"
         accent
+        :disabled="clean && dirty > 0"
         :tooltip="
           how === 'rebase' ? `Rebase ${branch} onto ${base}` : `Merge ${base} into ${branch}`
         "
@@ -50,16 +58,33 @@ const props = withDefaults(
     /** Already pushed: a rebase means the next push replaces the remote branch. */
     pushed?: boolean
     initial?: 'rebase' | 'merge'
+    /** The ways offered; one is said without a choice. */
+    ways?: ('rebase' | 'merge')[]
+    /** Only a branch with nothing uncommitted can be updated. */
+    clean?: boolean
+    /** A rebased branch that was pushed can be replaced on the remote by the next push. */
+    force?: boolean
   }>(),
-  { dirty: 0, pushed: false, initial: 'rebase' }
+  {
+    dirty: 0,
+    pushed: false,
+    initial: 'rebase',
+    ways: () => ['rebase', 'merge'],
+    clean: false,
+    force: true,
+  }
 )
 const emit = defineEmits<{
   (e: 'update', how: 'rebase' | 'merge'): void
   (e: 'cancel'): void
 }>()
-const how = ref(props.initial)
+const how = ref(props.ways.includes(props.initial) ? props.initial : props.ways[0])
 const rebaseWords = `The branch's own commits are replayed on top of ${props.base}; history stays one line.${
-  props.pushed ? ' The pushed branch will have to be replaced on the next push.' : ''
+  !props.pushed
+    ? ''
+    : props.force
+      ? ' The pushed branch will have to be replaced on the next push.'
+      : ' The pushed branch then differs from its copy on the remote, and pushing it is refused until that copy is replaced.'
 }`
 const mergeWords = `One merge commit brings ${props.base} in; the branch's commits stay as they are.`
 </script>

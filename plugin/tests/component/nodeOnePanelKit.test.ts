@@ -159,3 +159,26 @@ describe('nextStep', () => {
     ).toBeNull()
   })
 })
+
+describe('UpdateDialog as the node offers it', () => {
+  it('offers only the rebase, and waits for uncommitted files to be committed or discarded', async () => {
+    const { default: UpdateDialog } = await import('@/components/nodeWork/UpdateDialog.vue')
+    const view = mount(UpdateDialog, {
+      props: {
+        branch: 'sample-branch',
+        base: 'main',
+        behind: 2,
+        dirty: 1,
+        pushed: true,
+        ways: ['rebase'],
+        clean: true,
+        force: false,
+      },
+    })
+    expect(view.find('select').exists()).toBe(false)
+    expect(view.text()).toContain('Commit or discard the 1 changed file first')
+    expect(view.text()).toContain('pushing it is refused until that copy is replaced')
+    const update = view.findAll('button').find((b) => b.text() === 'Update')!
+    expect(update.attributes('disabled')).toBeDefined()
+  })
+})

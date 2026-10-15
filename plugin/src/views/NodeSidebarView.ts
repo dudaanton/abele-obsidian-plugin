@@ -22,6 +22,8 @@ import {
   pickNodePathPlace,
   chooseNodePathBase,
 } from '@/node/NodePathController'
+import { discardNodePathFile, takeNodePathStep } from '@/node/nodePathGitActions'
+import type { BranchStep } from '@/components/nodeWork/branchStep'
 import NodePathSidebar from '@/components/nodeWork/NodePathSidebar.vue'
 
 const State = z.object({ registrationId: z.string().min(1).max(128).optional() }).strict()
@@ -162,6 +164,12 @@ export class NodeSidebarView extends ItemView {
           },
           onCompare: () => {
             if (model) chooseNodePathBase(model)
+          },
+          onStep: (id: BranchStep['id']) => {
+            if (model) nodePathAction(() => takeNodePathStep(model, id))
+          },
+          onDiscard: (path: string) => {
+            if (model) nodePathAction(() => discardNodePathFile(model, path))
           },
           onOpenPull: (number: number) => new Notice(`Pull request #${number}`),
           onConnectService: () => new Notice('Connect a Git service in Abele settings.'),

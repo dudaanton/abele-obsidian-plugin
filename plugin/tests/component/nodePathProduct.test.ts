@@ -263,6 +263,86 @@ describe('the branch in the panel', () => {
     view.unmount()
   })
 })
+describe('git actions in the panel', () => {
+  function gitModel(staged: boolean, state: Record<string, unknown> = {}) {
+    const stage = vi.fn(async () => {})
+    const commit = vi.fn(async () => ({ commit: 'c', author: 'Sample Person' }))
+    const model = {
+      folders: shallowRef([{ id: 'project', name: 'sample-app', path: '/sample', git: true, copies: [] }]),
+      selected: ref('tree'),
+      current: ref({ id: 'tree', kind: 'worktree' }),
+      selectedChat: ref(''),
+      currentFolder: ref({ name: 'sample-app', git: true }),
+      currentCopy: ref({ kind: 'worktree', branch: 'sample-branch' }),
+      entries: shallowRef([]),
+      treeCursors: shallowRef({}),
+      treeProgress: shallowRef(undefined),
+      changes: shallowRef([
+        { path: 'src/a.ts', kind: 'modified', stage: staged ? 'staged' : 'unstaged', before: '', after: '', added: 0, removed: 0 },
+      ]),
+      panelMode: ref('changes'),
+      panelBase: ref(''),
+      panelBranch: shallowRef({
+        state: { base: 'main', ahead: 1, behind: 0, unpushed: 1, upstream: 'origin/sample-branch', ...state },
+        committed: [],
+        refs: [],
+      }),
+      panelHistory: shallowRef(undefined),
+      panelPulls: shallowRef(undefined),
+      inspection: shallowRef(undefined),
+      gitBusy: ref(''),
+      port: { git: {}, createPull: vi.fn() },
+      stage,
+      unstage: vi.fn(async () => {}),
+      commit,
+      continueStopped: vi.fn(async () => ({ conflicts: [] })),
+      abortStopped: vi.fn(async () => {}),
+      loadPanelBranch: vi.fn(async () => {}),
+      loadPanelHistory: vi.fn(async () => {}),
+      loadPanelPulls: vi.fn(async () => {}),
+      report: vi.fn(),
+      error: ref(''),
+      busy: ref(false),
+      capabilities: shallowRef<string[]>([]),
+    }
+    const view = mount(NodePathSidebar, {
+      props: { model: model as never, phase: 'ready', node: { name: 'Sample node', status: 'connected' } },
+    })
+    return { model, view }
+  }
+  it('stages a file from its row and shows the branch’s next step while nothing is staged', async () => {
+    const { model, view } = gitModel(false)
+    await view.get('[aria-label="Stage"]').trigger('click')
+    expect(model.stage).toHaveBeenCalledWith(['src/a.ts'])
+    expect(view.find('.abele-commit-box').exists()).toBe(false)
+    const step = view.get('.abele-node-sidebar__step button')
+    expect(step.text()).toBe('Push 1')
+    await step.trigger('click')
+    expect(view.emitted('step')?.[0]).toEqual(['push'])
+    await view.get('[aria-label="Discard the changes to this file…"]').trigger('click')
+    expect(view.emitted('discard')?.[0]).toEqual(['src/a.ts'])
+    view.unmount()
+  })
+  it('has one action while something is staged: the commit, and no step', async () => {
+    const { model, view } = gitModel(true)
+    expect(view.find('.abele-node-sidebar__step').exists()).toBe(false)
+    await view.get('textarea').setValue('Sample summary')
+    await view.get('textarea').trigger('keydown', { key: 'Enter', metaKey: true })
+    expect(model.commit).toHaveBeenCalledWith('Sample summary')
+    view.unmount()
+  })
+  it('offers to go on or stop a rebase that stopped, instead of a step', async () => {
+    const { model, view } = gitModel(false, {
+      stopped: { kind: 'rebase', onto: 'main', conflicts: 2 },
+    })
+    expect(view.find('.abele-node-sidebar__step').exists()).toBe(false)
+    const line = view.get('.abele-node-sidebar__stopped')
+    expect(line.text()).toContain('The rebase onto main stopped · 2 in conflict')
+    await line.findAll('button').find((b) => b.text() === 'Stop the rebase')!.trigger('click')
+    expect(model.abortStopped).toHaveBeenCalledWith('rebase')
+    view.unmount()
+  })
+})
 describe('unknown history divergence', () => {
   it('does not turn unavailable ahead and behind counts into zero', () => {
     const view = mount(HistoryView, {
