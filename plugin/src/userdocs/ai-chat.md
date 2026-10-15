@@ -454,8 +454,8 @@ still move by word in the message box. Outside the chat these keys do what Obsid
 them do.
 
 Closing, reopening and switching tabs are also commands (**Close the current chat tab**,
-**Reopen the last closed chat tab**, **Go to the next chat tab**, **Go to the previous chat
-tab**), which can be given keys of your own in **Settings → Hotkeys**.
+**Reopen the last closed chat tab**, **Go to the next chat tab**,
+**Go to the previous chat tab**), which can be given keys of your own in **Settings → Hotkeys**.
 
 ## Reading the conversation
 
