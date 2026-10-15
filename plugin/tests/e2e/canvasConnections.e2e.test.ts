@@ -232,9 +232,7 @@ describe.skipIf(!available)('shapes and connections with real pointer input', ()
     )
     await double(middle)
     await until(`document.activeElement?.matches('.abele-canvas-chrome__label')`)
-    // The field takes the focus after the double tap has ended, which a phone does not answer
-    // with its keyboard: a person taps the field they see to bring the keyboard up.
-    if (onPhone()) await press('view().contentEl.querySelector(".abele-canvas-chrome__label")')
+    // One double tap is enough: the phone's keyboard is up for the label without another tap.
     await type('Next step')
     await expect
       .poll(

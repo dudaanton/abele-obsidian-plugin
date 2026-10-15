@@ -275,3 +275,16 @@
 .abele-canvas-guide.is-y {
   height: 1px;
 }
+/* Holds the focus for a moment so a phone's keyboard rises for a label drawn after a touch. */
+.abele-canvas-keyboard-primer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  padding: 0;
+  border: 0;
+  pointer-events: none;
+  font-size: 16px;
+}

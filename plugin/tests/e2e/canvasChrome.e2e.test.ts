@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { evalAsync } from './helpers/githubLive'
 import { hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
-import { driver, screenshot, swipe, tap, typeText } from './helpers/phone'
+import { driver, screenshot, swipe, swipeDriverArgs, tap, typeText } from './helpers/phone'
 import { withNativeInput } from './helpers/nativeInput'
 import { shotDir } from './helpers/shots'
 import { canvasChrome, menuItem } from './helpers/canvasChrome'
@@ -145,10 +145,12 @@ describe.skipIf(!available)('the canvas by hand', () => {
       if(app.vault.getAbstractFileByPath(${JSON.stringify(DIR)}))throw Error('Synthetic folder already exists')
       window.__canvasChrome={layout:app.workspace.getLayout()}
       await app.vault.createFolder(${JSON.stringify(DIR)});window.__canvasChrome.owned=true
+      await app.vault.create(${JSON.stringify(`${DIR}/Sample long note.md`)},Array.from({length:60},(_,i)=>'Sample line '+(i+1)).join('\n\n'))
       await app.vault.create(path,JSON.stringify({nodes:[
         {id:'alpha',type:'text',text:'Sample input',x:0,y:0,width:220,height:120},
         {id:'beta',type:'text',text:'Sample step',x:300,y:0,width:220,height:120},
-        {id:'gamma',type:'text',text:'Sample result',x:300,y:260,width:220,height:120,styleAttributes:{shape:'diamond'}}
+        {id:'gamma',type:'text',text:'Sample result',x:300,y:260,width:220,height:120,styleAttributes:{shape:'diamond'}},
+        {id:'reading',type:'file',file:${JSON.stringify(`${DIR}/Sample long note.md`)},x:0,y:460,width:260,height:180}
       ],edges:[]}))
       return true
     `)
@@ -323,5 +325,29 @@ describe.skipIf(!available)('the canvas by hand', () => {
     await until(`((await read()).abele?.ink??[]).length===${before + 2}`)
     if (!onPhone()) expect(run<string>('return view().editor.controls.tool()')).toBe('select')
     shot('pencil')
+  }, 120_000)
+
+  it('reads on in a picked note under a finger or the wheel, the note staying where it is', async () => {
+    await reopen()
+    await chrome.click('Select canvas objects')
+    const body = `view().contentEl.querySelector('[data-node-id="reading"]')`
+    await until(`${body}&&${body}.scrollHeight>${body}.clientHeight+8`)
+    const at = middle('reading')
+    const camera = run<number[]>(`const c=view().viewer.camera;return [c.x,c.y]`)
+    // Picked first; a quick swipe or the wheel on it then reads on rather than carrying it.
+    await input(at)
+    await until(`view().viewer.selection.has('reading')`)
+    if (onPhone()) {
+      driver(swipeDriverArgs(at[0], at[1] + 40, at[0], at[1] - 40, 600))
+    } else
+      await cdp(
+        `await mouse({type:'mouseWheel',x:${at[0]},y:${at[1]},deltaX:0,deltaY:240,buttons:0})`
+      )
+    await until(`${body}.scrollTop>0`)
+    shot('note-scrolled')
+    expect(run<number[]>(`const c=view().viewer.camera;return [c.x,c.y]`)).toEqual(camera)
+    expect(
+      run<number[]>(`const n=(await read()).nodes.find(n=>n.id==='reading');return [n.x,n.y]`)
+    ).toEqual([0, 460])
   }, 120_000)
 })

@@ -912,19 +912,49 @@ export class CanvasEditor {
     }
     this.changed(document)
   }
-  private location(): { x: number; y: number } {
-    const region = this.viewer.visible()
-    // Small stagger prevents newly inserted cards hiding every previous card.
-    const offset = ((this.ports.document()?.session.graph.nodes.length ?? 0) % 5) * 32
-    return {
-      x: region.x + region.width / 2 - 130 + offset,
-      y: region.y + region.height / 2 - 80 + offset,
-    }
+  /**
+   * Where something new of this size goes: the free place nearest the middle of what is shown,
+   * clear of every card there, so a note inserted on a small screen never lands on a card.
+   */
+  private location(width = 260, height = 160): { x: number; y: number } {
+    const region = this.viewer.visible(),
+      graph = this.ports.document()?.session.graph,
+      gap = 24,
+      cx = region.x + region.width / 2 - width / 2,
+      cy = region.y + region.height / 2 - height / 2
+    const taken = (x: number, y: number) =>
+      !!graph?.nodes.some(
+        (n) =>
+          n.type !== 'group' &&
+          x < n.x + n.width + gap &&
+          x + width + gap > n.x &&
+          y < n.y + n.height + gap &&
+          y + height + gap > n.y
+      )
+    // Rings of places round the middle, nearest first; inside the view when it can be.
+    const step = Math.max(40, Math.min(width, height) / 2)
+    let best: { x: number; y: number } | null = null
+    for (let ring = 0; ring <= 24 && !best; ring++)
+      for (let i = -ring; i <= ring && !best; i++)
+        for (const [dx, dy] of [
+          [i, -ring],
+          [i, ring],
+          [-ring, i],
+          [ring, i],
+        ]) {
+          const x = Math.round(cx + dx * step),
+            y = Math.round(cy + dy * step)
+          if (!taken(x, y)) {
+            best = { x, y }
+            break
+          }
+        }
+    return best ?? { x: Math.round(cx), y: Math.round(cy) }
   }
   private addText(shape?: Shape, at?: Rect): void {
     const document = this.ready(),
       id = nanoid(),
-      place = at ?? { ...this.location(), width: 260, height: 160 },
+      place = at ?? { ...this.location(260, 160), width: 260, height: 160 },
       parent = frameAround(document.session.graph, place)
     document.beginDraft()
     this.ownedDraft = document
@@ -2097,6 +2127,27 @@ export class CanvasEditor {
   }
   /** A double click or double tap: write in the card, on the line or in the frame's name; on
    * empty canvas, or empty space inside a frame, a new card there. */
+  /** A field focused while the touch is still being handled, so a phone raises its keyboard. */
+  private primer: HTMLTextAreaElement | null = null
+  /**
+   * iOS raises its keyboard only for a field focused during the touch itself; a label or a
+   * frame's name is drawn a moment later. Focus moves on to it from this one with the keyboard up.
+   */
+  private primeKeyboard(): void {
+    if (!this.primer) {
+      const el = this.viewer.el.ownerDocument.createElementNS(
+        'http://www.w3.org/1999/xhtml',
+        'textarea'
+      ) as HTMLTextAreaElement
+      el.className = 'abele-canvas-keyboard-primer'
+      el.setAttribute('aria-hidden', 'true')
+      el.tabIndex = -1
+      this.viewer.el.append(el)
+      this.off.push(() => el.remove())
+      this.primer = el
+    }
+    this.primer.focus({ preventScroll: true })
+  }
   private doubleTap(event: PointerEvent): void {
     const document = this.ports.document()
     if (
@@ -2117,6 +2168,7 @@ export class CanvasEditor {
     if (label?.dataset.frameId) {
       this.selected = new Set([label.dataset.frameId])
       this.naming = label.dataset.frameId
+      this.primeKeyboard()
       return this.refresh()
     }
     const r = this.viewer.stage.getBoundingClientRect(),
@@ -2134,6 +2186,7 @@ export class CanvasEditor {
       if (line) {
         this.selected = new Set([line])
         this.labelling = line
+        this.primeKeyboard()
         return this.refresh()
       }
     }

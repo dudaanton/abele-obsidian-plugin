@@ -44,6 +44,8 @@ describe('a double press', () => {
     // The connection runs from alpha's right edge to beta's left one, at mid height.
     await double(s, 280, 80)
     expect(s.editor.controls.labelling()).toBe('connection')
+    // The keyboard's field is focused while the touch is still handled, for a phone to raise it.
+    expect(document.activeElement?.classList.contains('abele-canvas-keyboard-primer')).toBe(true)
     await s.editor.controls.saveLabel('connection', 'feeds')
     expect(s.document.session.graph.edges[0].label).toBe('feeds')
     expect(s.document.session.history.undo).toBe(1)
@@ -139,9 +141,9 @@ describe('keys', () => {
     s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
     await double(s, 100, 80)
     expect(s.editor.controls.editing()).toBe('alpha')
-    s.editor.controls.textField().dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'p', bubbles: true })
-    )
+    s.editor.controls
+      .textField()
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'p', bubbles: true }))
     expect(s.editor.controls.tool()).toBe('select')
   })
   it('move the canvas while Space is held, and give the tool back after', () => {
@@ -205,7 +207,7 @@ describe('a paste', () => {
     expect(s.document.session.history.undo).toBe(1)
     expect(s.editor.controls.picked().ids).toEqual([made.id])
   })
-  it('leaves a paste into a card\'s words to the field', () => {
+  it("leaves a paste into a card's words to the field", () => {
     const s = setup(cards())
     s.button('Add text card').click()
     const event = new Event('paste', { bubbles: true, cancelable: true })
@@ -262,7 +264,11 @@ describe('keys on what is picked', () => {
   })
   it('leave the arrows to the walkthrough when nothing is picked', () => {
     const s = setup(cards())
-    const event = new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true })
+    const event = new KeyboardEvent('keydown', {
+      key: 'ArrowRight',
+      bubbles: true,
+      cancelable: true,
+    })
     s.el.dispatchEvent(event)
     expect(s.document.session.dirty).toBe(false)
   })
@@ -350,5 +356,26 @@ describe('a card made by a double press near the edge', () => {
       { x, y, zoom } = s.viewer.camera
     expect((card.x + card.width - x) * zoom).toBeLessThanOrEqual(800)
     expect((card.y + card.height - y) * zoom).toBeLessThanOrEqual(600)
+  })
+})
+
+describe('a note inserted from the vault', () => {
+  it('stands in a free place nearest the middle, not on a card there', async () => {
+    const s = setup(cards())
+    Object.defineProperty(s.viewer.stage, 'clientWidth', { value: 390 })
+    Object.defineProperty(s.viewer.stage, 'clientHeight', { value: 700 })
+    // A phone's view centred on beta, the middle card.
+    s.viewer.setCamera({ x: 430 - 195, y: 80 - 350, zoom: 1 })
+    s.button('Add note or attachment').click()
+    await vi.waitFor(() => expect(s.document.session.graph.nodes).toHaveLength(4))
+    const note = s.document.session.graph.nodes.find((n) => n.type === 'file')!
+    for (const card of cards().nodes)
+      expect(
+        note.x + note.width <= card.x ||
+          card.x + card.width <= note.x ||
+          note.y + note.height <= card.y ||
+          card.y + card.height <= note.y,
+        card.id
+      ).toBe(true)
   })
 })
