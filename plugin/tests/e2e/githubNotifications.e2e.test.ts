@@ -107,6 +107,37 @@ const closeAll = () =>
     })()`
   )
 
+/**
+ * While GitHub is off the panel is the pane saying so and nothing else: no glyph to refresh, mark
+ * everything read or open GitHub, on a desktop and on a phone alike. The settings are put back.
+ */
+const offersNoGlyphsWhileOff = () => {
+  const r = evalAsync<{ off: boolean; glyphs: string[]; shot: string }>(`(async () => {
+    ${PRELUDE}
+    ${PANEL}
+    const config = window.__abeleTest.AbeleConfig.getInstance()
+    const github = config.github
+    config.github = { ...github, enabled: false }
+    config.version.value++
+    try {
+      app.commands.executeCommandById('abele:show-github-notifications')
+      const off = !!(await until(() => panel()?.textContent.includes('GitHub is off'), 20000))
+      await wait(500)
+      const glyphs = [...panel().querySelectorAll('.abele-github-notifications__refresh, .abele-github-notifications__read-all, .abele-github-notifications__on-github')]
+        .filter((el) => el.getClientRects().length)
+        .map((el) => el.className)
+      return { off, glyphs, shot: await shoot('github-off-' + (document.body.classList.contains('is-phone') ? 'phone' : 'desktop') + '.png') }
+    } finally {
+      config.github = github
+      config.version.value++
+      for (const l of app.workspace.getLeavesOfType('abele-github-notifications')) l.detach()
+    }
+  })()`)
+  expect(r.off).toBe(true)
+  expect(r.glyphs).toEqual([])
+  expect(r.shot).not.toBe('no picture')
+}
+
 describe.skipIf(!available)('GitHub notifications', () => {
   let gh: FakeGithub
 
@@ -130,6 +161,9 @@ describe.skipIf(!available)('GitHub notifications', () => {
     if (available && !context.task.name.startsWith('without a notifications token'))
       useNotificationsToken()
   })
+
+  it('while GitHub is off, offers no refresh, mark-all-read or open-on-GitHub glyph', () =>
+    offersNoGlyphsWhileOff())
 
   it('without a notifications token, says the main token cannot read them and names the field for one', () => {
     const r = evalAsync<{ error?: string; text?: string }>(`(async () => {
@@ -323,6 +357,9 @@ describe.skipIf(!available || onPhone())('GitHub notifications on a phone', () =
     if (size[0]) await setWindowSize(size[0], size[1])
     await reloadApp('app.emulateMobile(false)')
   }, 180_000)
+
+  it('while GitHub is off, offers no refresh, mark-all-read or open-on-GitHub glyph on a phone', () =>
+    offersNoGlyphsWhileOff())
 
   it('fits the screen, and a row opens its item', () => {
     const r = evalAsync<{
