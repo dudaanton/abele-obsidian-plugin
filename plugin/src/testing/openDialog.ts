@@ -300,7 +300,8 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
   'node-pairing-endpoint': () => mountAlone(NodePairingDialog, nodePairingFixture('endpoint')),
   'node-question': () => mountNodeQuestion('select'),
   'node-question-input': () => mountNodeQuestion('input'),
-  'node-folder-picker': () => nodeFolderPickerFixture(),
+  // Not its promise: that settles once the dialog is open, and the probes close it themselves.
+  'node-folder-picker': () => void nodeFolderPickerFixture(),
   'node-workspaces': () => mountAlone(NodeWorkspaceDialog, nodeWorkspaceFixture()),
   'node-delegation-grants': () =>
     mountAlone(NodeDelegationGrantsDialog, nodeDelegationGrantsFixture()),
