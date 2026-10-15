@@ -380,17 +380,17 @@ export function registerRequests(plugin: Plugin) {
   plugin.addCommand({
     id: 'open-requests',
     name: 'Open requests',
-    callback: () => void openRequestsView(plugin),
+    callback: () => void openRequestsView(plugin.app),
   })
   plugin.register(() => RequestsService.destroy())
 }
 
 /** Opens the Requests view in the left sidebar, as Bookmarks sits there. */
-export async function openRequestsView(plugin: Plugin) {
-  const { workspace } = plugin.app
+export async function openRequestsView(obsidian: App = app()) {
+  const { workspace } = obsidian
   const leaf = workspace.getLeavesOfType(REQUESTS_VIEW)[0] ?? workspace.getLeftLeaf(false)
   if (!leaf) return
   if (leaf.getViewState().type !== REQUESTS_VIEW)
     await leaf.setViewState({ type: REQUESTS_VIEW, active: true })
-  await revealSidebarView(plugin.app, REQUESTS_VIEW)
+  await revealSidebarView(obsidian, REQUESTS_VIEW)
 }
