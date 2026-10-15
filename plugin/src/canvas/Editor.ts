@@ -462,6 +462,8 @@ export class CanvasEditor {
       !session.conflict &&
       !session.publicationOutcome &&
       !session.draft?.active &&
+      // Someone else's write (an agent's) is landing; local edits would not build on it.
+      !session.foreignPublication &&
       (!session.dirty || document.draftPath === document.file.path)
     )
   }

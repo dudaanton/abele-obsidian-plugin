@@ -407,7 +407,7 @@ export class CanvasSession {
    * A write that is not the local draft's (an agent command or written history). Local edits
    * wait for it: they would not build on what it writes.
    */
-  private get foreignPublication(): boolean {
+  get foreignPublication(): boolean {
     return this.publishing && !this.prepared?.steps
   }
   private dropEmptyPreview(): void {
@@ -523,7 +523,8 @@ export class CanvasSession {
       this.preview.active ? (this.stepStart ?? this.baseline.graph) : this.preview.graph,
       'command'
     )
-    this.prepared.steps = [...this.steps]
+    // Retained work with no local steps (a failed agent proposal) is written as one command.
+    if (this.steps.length) this.prepared.steps = [...this.steps]
     return token
   }
   private prepareHistory(reverse: boolean): PreparedCanvasTransaction {

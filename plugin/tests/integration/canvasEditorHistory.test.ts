@@ -21,7 +21,7 @@ const edit = (text: string) => (current: typeof graph) =>
 
 describe('human history click at the shared publication queue', () => {
   it.each(['undo', 'redo'] as const)(
-    'refuses %s if an earlier queued save changes the history after the click',
+    '%s wins over an agent write not yet applied, which is refused, never undone',
     async (direction) => {
       const app = buildFakeVault([{ path, raw: serializeCanvas(graph) }])
       Object.assign(app, { workspace: { getLeavesOfType: () => [] } })
@@ -70,25 +70,21 @@ describe('human history click at the shared publication queue', () => {
         const button = el.querySelector<HTMLButtonElement>(
           `[aria-label="${direction === 'undo' ? 'Undo' : 'Redo'} canvas change"]`
         )!
+        // Undo runs in memory at once and wins over the agent write not yet applied, which is
+        // refused as stale rather than landing under the person's undo.
         expect(button.disabled).toBe(false)
         button.click()
         completion.resolve()
-        await writing
-        await canvasDocuments(host).flush(file)
-        await vi.waitFor(() =>
-          expect(
-            el.querySelector<HTMLButtonElement>('[aria-label="Add text card"]')!.disabled
-          ).toBe(false)
-        )
+        await expect(writing).rejects.toThrow(/stale|changed/i)
         expect(historySpy).not.toHaveBeenCalled()
-        await vi.waitFor(() =>
-          expect(Notice.shown).toContainEqual(expect.stringMatching(/canvas changed.*try again/i))
-        )
-        expect(parseCanvas(await app.vault.read(file)).nodes[0].text).toBe('New agent command')
-        expect(lease.document.session.history).toEqual({ undo: 2, redo: 0 })
+        // Written with the next batch, after its pause.
+        await vi.waitFor(() => expect(lease.document.session.dirty).toBe(false), { timeout: 5000 })
+        const text = parseCanvas(await app.vault.read(file)).nodes[0].text
+        expect(text).not.toBe('New agent command')
+        expect(text).toBe(direction === 'undo' ? 'Initial' : 'Seen later command')
       } finally {
         completion.resolve()
-        await writing
+        await writing.catch(() => undefined)
         processSpy.mockRestore()
         historySpy.mockRestore()
         editor.destroy()
