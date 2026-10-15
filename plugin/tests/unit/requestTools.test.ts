@@ -96,6 +96,14 @@ describe('the agent’s tools over saved requests', () => {
     await expect(
       call('http_request_save', { collection: '../up', name: 'x', method: 'GET', url: '/' })
     ).rejects.toThrow('Not a collection name')
+    await expect(
+      call('http_request_save', {
+        name: 'x',
+        method: 'GET',
+        url: '/',
+        script_before: 'Sign\nGET https://elsewhere.test/',
+      })
+    ).rejects.toThrow('Not a script name')
     expect([...node.files.keys()].some((k) => k.includes('..'))).toBe(false)
   })
 

@@ -80,6 +80,14 @@ function requestId(v: unknown): string {
   return id
 }
 
+/** A script's name as its header declares it: one plain line. */
+function scriptName(v: unknown): string {
+  const name = req(v).trim()
+  if (!name || name.length > 200 || /[\u0000-\u001f\u007f]/.test(name))
+    throw new Error(`Not a script name: ${JSON.stringify(name)}`)
+  return name
+}
+
 /** A collection: a folder inside the requests folder, its parts plain names. */
 function collectionName(v: unknown): string {
   const name = (str(v) ?? '').trim() || 'Requests'
@@ -231,8 +239,8 @@ export function createRequestTools(resolve: () => RequestToolContext | undefined
               }
             : {}),
           scripts: {
-            ...(str(p.script_before) ? { before: req(p.script_before) } : {}),
-            ...(str(p.script_after) ? { after: req(p.script_after) } : {}),
+            ...(str(p.script_before) ? { before: scriptName(p.script_before) } : {}),
+            ...(str(p.script_after) ? { after: scriptName(p.script_after) } : {}),
           },
           checks: Array.isArray(p.checks)
             ? p.checks.filter((x): x is string => typeof x === 'string')
