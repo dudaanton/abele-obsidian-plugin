@@ -21,7 +21,9 @@ export interface ViewerCards {
     height: number,
     highlight: ReadonlySet<string>,
     assets: CanvasAssets,
-    theme: CanvasTheme
+    theme: CanvasTheme,
+    /** The one card picked with nothing being dragged: a page on it takes input. */
+    focused?: string | null
   ): ReadonlySet<string>
   /** Scrolls a card's own words by screen pixels; whether they moved, so the canvas stays put. */
   scroll?(id: string, dx: number, dy: number): boolean
@@ -407,7 +409,11 @@ export class CanvasViewer {
       -this.camera.y * ratio * this.camera.zoom
     )
     const theme = this.ports.theme(),
-      highlight = new Set([...scene.highlight, ...this.selection])
+      highlight = new Set([...scene.highlight, ...this.selection]),
+      focused =
+        this.selection.size === 1 && !this.gesture && this.step === null
+          ? [...this.selection][0]
+          : null
     const live = this.ports.cards.sync(
       scene.graph,
       this.camera,
@@ -415,7 +421,8 @@ export class CanvasViewer {
       height,
       highlight,
       this.assets,
-      theme
+      theme,
+      focused
     )
     paintCanvas(ctx, scene.graph, region, theme, {
       ...withoutLiveCardAssets(this.assets, live),

@@ -288,3 +288,92 @@
   pointer-events: none;
   font-size: 16px;
 }
+/* A web page on its card: a bar with its title and Open over the page, or, where the page
+   cannot be shown, the card saying what it is. The page takes input only once its card is picked. */
+.abele-canvas-card_web {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-1);
+}
+.abele-canvas-web {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-1);
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+.abele-canvas-web__face {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  min-width: 0;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+.abele-canvas-web__face .abele-canvas-web__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.abele-canvas-web__icon {
+  display: flex;
+  flex-shrink: 0;
+  color: var(--icon-color);
+  --icon-size: var(--icon-s);
+}
+.abele-canvas-web__open {
+  pointer-events: auto;
+  flex-shrink: 0;
+}
+.abele-canvas-web__face_card {
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+  gap: var(--size-4-1);
+}
+.abele-canvas-web__face_card .abele-canvas-web__icon {
+  --icon-size: var(--icon-l);
+}
+.abele-canvas-web__face_card .abele-canvas-web__title {
+  flex: 0 0 auto;
+  max-width: 100%;
+  color: var(--text-normal);
+  font-size: var(--font-ui-medium);
+  font-weight: var(--font-semibold);
+}
+.abele-canvas-web__address,
+.abele-canvas-web__reason {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.abele-canvas-web__reason {
+  color: var(--text-faint);
+}
+.abele-canvas-web__face_card .abele-canvas-web__open {
+  margin-top: var(--size-4-1);
+}
+.abele-canvas-web__page {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: var(--radius-s);
+  border: var(--border-width) solid var(--background-modifier-border);
+  background: var(--background-primary);
+}
+.abele-canvas-web__frame {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  pointer-events: none;
+}
+.abele-canvas-web[data-web-live='true'] .abele-canvas-web__frame {
+  pointer-events: auto;
+}

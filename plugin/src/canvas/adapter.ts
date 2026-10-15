@@ -14,6 +14,7 @@ import { visibleRect, type Camera } from '../drawing/camera'
 import { openCanvas } from './opening'
 import { openExternal } from '../helpers/openExternal'
 import { canvasVisibility } from './core/visibility'
+import { WebCard, obsidianWebCardPorts, type WebCardPorts } from './webCard'
 
 interface CardLayer {
   el: HTMLElement
@@ -21,6 +22,7 @@ interface CardLayer {
   body: HTMLElement | null
   signature: string
   component: Component | null
+  web: WebCard | null
   paintKey: string
   assets: CanvasAssets | null
 }
@@ -29,6 +31,7 @@ class LiveCards implements ViewerCards {
   private cards = new Map<string, CardLayer>()
   private layer: HTMLElement | null = null
   stage: HTMLElement | null = null
+  private web: WebCardPorts | null = null
   constructor(
     private readonly app: App,
     private readonly source: () => string
@@ -40,7 +43,8 @@ class LiveCards implements ViewerCards {
     height: number,
     highlight: ReadonlySet<string>,
     assets: CanvasAssets,
-    theme: CanvasTheme
+    theme: CanvasTheme,
+    focused: string | null = null
   ): ReadonlySet<string> {
     if (!this.stage) return new Set()
     if (!this.layer) this.layer = this.stage.createDiv({ cls: 'abele-canvas-cards' })
@@ -56,25 +60,36 @@ class LiveCards implements ViewerCards {
       const file =
         node.type === 'file' && node.file ? this.app.vault.getAbstractFileByPath(node.file) : null
       const markdown = node.type === 'text' || (file instanceof TFile && file.extension === 'md')
+      const page = node.type === 'link' && !!node.url
       const signature = JSON.stringify([
         this.source(),
         markdown,
         node.text,
         node.file,
         node.subpath,
+        page ? node.url : null,
         file instanceof TFile ? file.stat.mtime : null,
       ])
       let card = this.cards.get(node.id)
       if (!card || card.signature !== signature) {
         card?.component?.unload()
+        card?.web?.destroy()
         card?.el.remove()
         const el = this.layer.createDiv({ cls: 'abele-canvas-card-frame' })
         el.dataset.cardId = node.id
         const canvas = el.createEl('canvas', { cls: 'abele-canvas-card-background' })
-        const body = markdown ? el.createDiv({ cls: 'abele-canvas-card markdown-rendered' }) : null
+        const body = markdown
+          ? el.createDiv({ cls: 'abele-canvas-card markdown-rendered' })
+          : page
+            ? el.createDiv({ cls: 'abele-canvas-card abele-canvas-card_web' })
+            : null
         const component = markdown ? new Component() : null
         component?.load()
-        card = { el, canvas, body, signature, component, paintKey: '', assets: null }
+        const web =
+          page && body
+            ? new WebCard(body, node.url, (this.web ??= obsidianWebCardPorts(this.app)))
+            : null
+        card = { el, canvas, body, signature, component, web, paintKey: '', assets: null }
         this.cards.set(node.id, card)
         if (body && component) {
           body.dataset.nodeId = node.id
@@ -98,7 +113,8 @@ class LiveCards implements ViewerCards {
           })
         }
       }
-      if (markdown) live.add(node.id)
+      if (markdown || page) live.add(node.id)
+      card.web?.setLive(focused === node.id)
       // A small transparent margin preserves the complete shape border without covering lower cards.
       const frame = bounds([node], 2),
         box = contentBox(node)
@@ -125,7 +141,7 @@ class LiveCards implements ViewerCards {
         if (ctx) {
           ctx.setTransform(scale, 0, 0, scale, -frame.x * scale, -frame.y * scale)
           paintCanvas(ctx, { nodes: [node], edges: [] }, frame, theme, {
-            ...withoutLiveCardAssets(assets, markdown ? new Set([node.id]) : new Set()),
+            ...withoutLiveCardAssets(assets, markdown || page ? new Set([node.id]) : new Set()),
             highlight,
             lint: false,
             transparent: true,
@@ -146,6 +162,7 @@ class LiveCards implements ViewerCards {
     for (const [id, card] of this.cards)
       if (!shown.has(id)) {
         card.component?.unload()
+        card.web?.destroy()
         card.el.remove()
         this.cards.delete(id)
       }
@@ -168,6 +185,7 @@ class LiveCards implements ViewerCards {
   destroy(): void {
     for (const card of this.cards.values()) {
       card.component?.unload()
+      card.web?.destroy()
       card.el.remove()
     }
     this.cards.clear()
