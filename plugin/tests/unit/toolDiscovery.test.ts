@@ -198,8 +198,28 @@ describe('node section live state', () => {
     expect(text).toContain('Only the person changes this scope.')
   })
 
-  it('says plainly when the chat has no node scope', () => {
-    expect(nodeSectionLive(undefined, undefined, 'confirm-all')).toContain('no node scope')
+  it('says plainly when the chat has no node access, and where the person gives it', () => {
+    const text = nodeSectionLive(undefined, undefined, 'confirm-all')
+    expect(text).toContain('no node access')
+    expect(text).toContain('Give the Obsidian chat access')
+  })
+
+  it('says calls without IDs reach the one folder a chat was given', () => {
+    const text = nodeSectionLive(
+      [
+        {
+          kind: 'target',
+          node_id: 'sample-node',
+          project_id: 'sample-project',
+          access: 'read',
+          target: { kind: 'workspace', workspace_id: 'sample-folder' },
+        },
+      ],
+      undefined,
+      'confirm-all'
+    )
+    expect(text).toContain('leave node, project and workspace out use this one folder')
+    expect(text).not.toContain('Nothing is selected')
   })
 })
 

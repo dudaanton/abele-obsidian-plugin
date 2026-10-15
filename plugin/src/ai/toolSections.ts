@@ -11,6 +11,7 @@
  */
 
 import type { NodeScopeEntry, NodeScopeTarget } from './nodeScope'
+import { GIVE_ACCESS } from './tools/node/guidance'
 
 export const SECTION_TOOL_PREFIX = 'open_'
 
@@ -36,19 +37,20 @@ export const TOOL_SECTIONS: readonly ToolSectionDefinition[] = [
     id: 'nodes',
     group: 'Nodes',
     description:
-      "Projects on the person's paired computers (nodes): reading and searching code in a project folder or Git worktree, editing files there, checking Git status, diffs, branches and history, the open repository tabs, and handing a task to a coding agent that runs on a node. Open this whenever the person talks about a project, repository, branch, worktree, commit or a source file that is not a vault note. Not for vault notes — the file tools handle those.",
+      "Projects on the person's paired computers (nodes): reading and searching code in a project folder or Git worktree, editing files there, checking Git status, diffs, branches and history, the open repository tabs, handing a task to a coding agent that runs on a node, and reading a run the debugger recorded there. Open this whenever the person talks about a project, repository, branch, worktree, commit or a source file that is not a vault note. Not for vault notes — the file tools handle those.",
     howTo: [
       'Work in this order:',
       '1. `node_nodes` — the nodes this chat may use and whether each is online.',
       '2. `node_folders` — the registered folders and projects on a node.',
       '3. `list_node_worktrees` — the Git worktrees of a project. Pick one by its branch, never by its place in the list. `node_worktree_switch` selects another one for this chat.',
-      "4. `node_ls`, `node_search`, `node_read` — look around and read. Leave node, project and worktree out to use the chat's selected target.",
+      '4. `node_ls`, `node_search`, `node_read` — look around and read. Pass node, project and workspace (the worktree ID with `target_kind` worktree for a Git folder, the workspace ID with `target_kind` workspace for a plain folder); leave all three out when this chat was given exactly one folder or worktree, or after `node_worktree_switch` chose one.',
       '5. `node_edit`, `node_replace`, `node_write`, `node_mv`, `node_cp`, `node_rm` — change files. Pass the `expected_content_id` from your last `node_read` of that file; if it is stale, read the file again rather than guessing.',
       '6. `node_git_status`, `node_git_diff`, `node_git_branches`, `node_git_log`, `node_git_blame` — Git, on worktrees only, not on plain folders.',
       'Paths are relative to the folder or worktree: no absolute paths, nothing inside `.git`.',
       'A write whose outcome is unknown is retried with the same `operation_id`, never a new one.',
-      "Only the person widens what this chat may reach, in the chat's scope settings. When a node, project or worktree is not in scope, say so and ask; do not look for a way round.",
-      'The repository-tab tools (`node_views`, `node_open`, `node_changes`, `node_compare`, `node_commit`, `node_propose_edit`) work on a repository open in a tab. `node_delegate` hands a whole task to a coding agent on a node; follow it with `node_delegation_status`, `node_delegation_send` and `node_delegation_cancel`.',
+      `Only the person gives this chat node access or widens it. ${GIVE_ACCESS} When a node, folder or worktree is out of reach, tell the person what to give; do not look for a way round.`,
+      'The repository-tab tools (`node_views`, `node_tree`, `node_file`, `node_open`, `node_changes`, `node_compare`, `node_commit`, `node_propose_edit`) work on a repository open in an Obsidian tab; without node access `node_read`, `node_search` and `list_node_worktrees` read such a tab too. `node_delegate` hands a whole task to a coding agent on a node; follow it with `node_delegation_status`, `node_delegation_send` and `node_delegation_cancel`.',
+      "A run the debugger recorded in the open debug session: `trace_runs` lists the runs, `trace_timeline` its steps, `trace_shape` a value's shape before `trace_slice` reads part of it; `trace_find`, `trace_follow` and `trace_diff` search and compare, `trace_mark`, `trace_point_add` and `trace_note` mark steps, add a point and write the run up as a note. Each answer is bounded; page on rather than asking for everything.",
     ].join('\n'),
   },
   {
@@ -295,7 +297,7 @@ export function nodeSectionLive(
   mode: string
 ): string {
   if (!entries?.length)
-    return "This chat has no node scope: the node tools can reach nothing yet. Only the person can add a node, project or worktree, in the chat's scope settings."
+    return `This chat has no node access: the node file tools can reach nothing yet. ${GIVE_ACCESS}`
   const lines = ['This chat may reach:', ...entries.map(scopeLine)]
   if (target) {
     const id =
@@ -303,7 +305,9 @@ export function nodeSectionLive(
     lines.push(
       `Selected: ${target.target.kind === 'worktree' ? 'worktree' : 'folder'} ${id} of project ${target.project_id} on ${target.node_id}. Calls that leave the target out use it.`
     )
-  } else lines.push('Nothing is selected: name the node, project and worktree in each call.')
+  } else if (entries.length === 1 && entries[0].kind === 'target')
+    lines.push('Calls that leave node, project and workspace out use this one folder or worktree.')
+  else lines.push('Nothing is selected: name the node, project and workspace in each call.')
   lines.push(`Writes: ${WRITE_MODES[mode] ?? mode}.`)
   lines.push(
     'Labels and whether each node is online: `node_nodes`. Only the person changes this scope.'

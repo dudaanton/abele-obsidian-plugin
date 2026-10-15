@@ -62,7 +62,7 @@ const chatTurn = (path: string, steps: string) => `(async()=>{
   window.fetch=async(url,init)=>{
     if(typeof url!=='string'||!url.startsWith(endpoint))return realFetch(url,init);
     const body=JSON.parse(init.body);
-    if(!out.tools.length)out.tools=(body.tools||[]).map(t=>t.function.name);
+    out.tools=(body.tools||[]).map(t=>t.function.name);
     const results=body.messages.filter(m=>m.role==='tool').map(m=>typeof m.content==='string'?m.content:JSON.stringify(m.content));
     const step=n<steps.length?steps[n](results):null;n++;
     const delta=step?{tool_calls:[{index:0,id:'sample-call-'+n,type:'function',function:{name:step.name,arguments:JSON.stringify(step.params)}}]}:{content:'Done.'};
@@ -152,20 +152,24 @@ it('lets an ordinary chat find, read and edit project files on a node once the c
     registration = setup.registration
     agentId = setup.agent
 
-    // Without node access the tools are offered, so each must say what is missing and how the
-    // person gives it, rather than an empty list or a bare refusal.
+    // Without node access the node section stays closed until the model opens it, the way a
+    // model reads its description; then the tools are offered, and each must say what is
+    // missing and how the person gives it, rather than an empty list or a bare refusal.
     const without = evalAsync<Turn>(
       chatTurn(
         chat,
-        `[()=>({name:'node_nodes',params:{}}),()=>({name:'node_read',params:{path:'sample.txt'}})]`
+        `[()=>({name:'open_nodes',params:{}}),()=>({name:'node_nodes',params:{}}),()=>({name:'node_read',params:{path:'sample.txt'}})]`
       )
     )
     expect(without.error).toBeUndefined()
     expect(without.tools).toEqual(expect.arrayContaining(['node_nodes', 'node_read', 'node_edit']))
-    expect(without.calls.map((c) => c.name)).toEqual(['node_nodes', 'node_read'])
-    for (const call of without.calls)
+    expect(without.calls.map((c) => c.name)).toEqual(['open_nodes', 'node_nodes', 'node_read'])
+    expect(without.calls[0].result, JSON.stringify(without)).toMatch(
+      /Give the Obsidian chat access/
+    )
+    for (const call of without.calls.slice(1))
       expect(call.result, JSON.stringify(without)).toMatch(/access/i)
-    for (const call of without.calls)
+    for (const call of without.calls.slice(1))
       expect(call.result, JSON.stringify(without)).toMatch(/Give the Obsidian chat access/)
 
     // The access the node panel's row menu gives: one worktree, read and edit.
