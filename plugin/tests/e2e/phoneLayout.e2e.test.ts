@@ -80,7 +80,24 @@ import {
 import { MESSAGE_ACTIONS_SETUP, MESSAGE_ACTIONS_CLEANUP } from './helpers/messageActions'
 import { SELECTION_PICKER_OPEN, SELECTION_PICKER_CLOSE } from './helpers/selectionScriptPicker'
 import { BINDING_SETUP, BINDING_PRELUDE, BINDING_CLEANUP } from './helpers/chatBindings'
+import { NODE_PANEL, NODE_PANEL_FIXTURE } from './helpers/nodePanelFixture'
 const CANVAS_SCREENS = ['canvas publication review', 'canvas publication confirmation']
+/**
+ * The node panel in the phone's drawer, which took over the node workspaces window: its place row
+ * and modes, a folder without git, the place search, the place menu of a worktree and of the
+ * folder's root (where the Claude permissions are), and the agent choice a new chat opens.
+ */
+const NODE_PANEL_SCREENS = [
+  'node panel',
+  'node panel files',
+  'node panel history',
+  'node panel pulls',
+  'node panel places',
+  'node panel place menu',
+  'node panel new chat',
+  'node panel folder menu',
+  'node panel folder',
+]
 const WORD_SAMPLE = Buffer.from(sampleDocx()).toString('base64')
 
 // Adapted for a real phone, not yet green there: see docs/Testing.md, "On a real phone".
@@ -113,7 +130,6 @@ const DIALOGS = [
   'node-question',
   'node-question-input',
   'node-folder-picker',
-  'node-workspaces',
   'node-delegation-grants',
   'node-delegation-card',
   'node-files',
@@ -1080,6 +1096,60 @@ const probeScript = `(async () => {
       }
     }
 
+    // The node panel in the drawer, on invented data with no node running: each screen is
+    // pictured, measured like a dialog (nothing past the edge, one scroller, the whole of it on the
+    // screen) and every field's ring checked.
+    const nodePanelScreens = async () => {
+      ${NODE_PANEL_FIXTURE}
+      const panelScreen = async (label, root) => {
+        await screen(label, root, root)
+        for (const f of root.querySelectorAll('input, textarea, select, button, summary, [tabindex="0"]')) {
+          const cs = getComputedStyle(f)
+          if (cs.display === 'none' || cs.visibility === 'hidden' || f.getBoundingClientRect().width === 0) continue
+          f.focus()
+          for (const cut of ringClipped(f)) report[label].clipped.push(name(f) + ': ' + cut)
+          f.blur()
+        }
+        const box = root.getBoundingClientRect()
+        report[label].edges = [Math.round(box.top), Math.round(box.bottom)]
+      }
+      try {
+        const panel = await nodePanel.open('feature')
+        await panelScreen('node panel', panel)
+        report['node panel'].place = [panel.querySelector('.abele-node-place__name')?.textContent.trim(), panel.querySelector('.abele-node-place__where')?.textContent.trim()]
+        report['node panel'].modes = [...panel.querySelectorAll('.abele-node-modes [role="tab"]')].map(t => t.getAttribute('aria-label'))
+        for (const [mode, label] of [['Files', 'node panel files'], ['History', 'node panel history'], ['Pull requests', 'node panel pulls']]) {
+          await nodePanel.mode(mode)
+          await panelScreen(label, panel)
+        }
+        const places = await nodePanel.places()
+        await panelScreen('node panel places', places)
+        await nodePanel.dismiss()
+        const menu = await nodePanel.menu()
+        await panelScreen('node panel place menu', menu)
+        report['node panel place menu'].items = nodePanel.items(menu).map(i => i.title)
+        await nodePanel.dismiss()
+        const agents = await nodePanel.newChat()
+        await panelScreen('node panel new chat', agents)
+        report['node panel new chat'].text = agents.textContent
+        await nodePanel.dismiss()
+        await nodePanel.select('root')
+        const folderMenu = await nodePanel.menu()
+        ;[...folderMenu.querySelectorAll('.menu-item')].find(i => i.textContent.includes('Claude permissions'))?.scrollIntoView({ block: 'center' })
+        await wait(200)
+        await panelScreen('node panel folder menu', folderMenu)
+        report['node panel folder menu'].items = nodePanel.items(folderMenu).map(i => i.title)
+        await nodePanel.dismiss()
+        await nodePanel.select('notes')
+        await panelScreen('node panel folder', panel)
+      } catch (e) {
+        for (const label of ${JSON.stringify(NODE_PANEL_SCREENS)})
+          if (!report[label]) report[label] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'node panel: ' + String((e && e.message) || e) }
+      } finally {
+        await nodePanel.close()
+      }
+    }
+
     // The MCP settings as a phone shows them: the tab with the seeded server, then its dialog.
     try {
       app.setting.open()
@@ -1454,18 +1524,6 @@ const probeScript = `(async () => {
               .filter((b) => { const r = b.getBoundingClientRect(); return r.width > 0 && (r.top < 0 || r.bottom > window.innerHeight) })
               .map((b) => b.textContent.trim())
           : []
-        if (dialogName === 'node-workspaces') {
-          for (const details of modal.querySelectorAll('details')) details.open = true
-            for (const row of modal.querySelectorAll('.tree-item.is-collapsed > .tree-item-self > .collapse-icon')) row.click()
-          const registration = [...modal.querySelectorAll('summary')].find(s => s.textContent.trim() === 'Register a project')
-          registration?.scrollIntoView({ block: 'start' })
-          await wait(200)
-          await screen('node workspace registration', modal, modal.querySelector('.abele-modal__body'))
-          const permissions = [...modal.querySelectorAll('summary')].find(s => s.textContent.trim() === 'Claude permission settings')
-          permissions?.scrollIntoView({ block: 'start' })
-          await wait(200)
-          await screen('node workspace permissions', modal, modal.querySelector('.abele-modal__body'))
-        }
         const clipped = []
         for (const f of modal.querySelectorAll('input, textarea, select, button, summary, [tabindex="0"], .cm-content[contenteditable="true"]')) {
           const cs = getComputedStyle(f)
@@ -1475,15 +1533,6 @@ const probeScript = `(async () => {
           f.blur()
         }
         report[label].clipped = clipped
-        if (dialogName === 'node-workspaces') {
-          const preview = [...modal.querySelectorAll('summary')].find(s => s.textContent.trim() === 'Read-only status and HEAD diff')
-          preview?.scrollIntoView({ block: 'start' })
-          await wait(200)
-          await screen('node workspace preview', modal, modal.querySelector('.abele-modal__body'))
-          modal.querySelector('input[aria-label="Node session title"]')?.scrollIntoView({ block: 'start' })
-          await wait(200)
-          await screen('node workspace actions', modal, modal.querySelector('.abele-modal__body'))
-        }
         if (dialogName === 'node-review') {
           const comment = modal.querySelector('textarea[aria-label="Review comment"]')
           comment?.scrollIntoView({ block: 'center' })
@@ -1578,6 +1627,7 @@ const probeScript = `(async () => {
     // The timeline's calendar opens in a main tab too, not only the right sidebar. Obsidian's
     // native floating view header must be above its calendar, not painted over the first week.
     await nodeScreens()
+    await nodePanelScreens()
     const timelineLeaf = app.workspace.getLeaf('tab')
     try {
       await timelineLeaf.setViewState({ type: 'abele-timeline-sidebar-view', active: true })
@@ -2144,11 +2194,8 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'node claude permission',
     'node answer sent',
     'node message code',
-    'node workspace preview',
-    'node workspace actions',
     'node review comment',
-    'node workspace registration',
-    'node workspace permissions',
+    ...NODE_PANEL_SCREENS,
     'settings nodes',
     'settings nodes overview',
     'settings selection book',
@@ -2388,6 +2435,50 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
       expect(d?.hidden ?? ['no report']).toEqual([])
     }
   )
+
+  it.each(NODE_PANEL_SCREENS)(
+    '%s: nothing past the edge, one scroller, no ring cut, and all of it on the screen',
+    (label) => {
+      const d = report[label] as Dialog
+      expect(d?.error ?? 'no report').toBe('')
+      expect(d?.over ?? ['no report']).toEqual([])
+      expect(d?.scrollers.length ?? 9).toBeLessThanOrEqual(1)
+      expect(d?.clipped ?? ['no report']).toEqual([])
+      expect(d?.edges?.[0] ?? -1).toBeGreaterThanOrEqual(0)
+      expect(d?.edges?.[1] ?? 9999).toBeLessThanOrEqual(PHONE.height)
+    }
+  )
+
+  it('node panel: the place, its modes, its menus and the agent choice keep what the node workspaces window offered', () => {
+    const panel = report['node panel'] as Screen & { place?: string[]; modes?: string[] }
+    expect(panel?.place).toEqual([NODE_PANEL.feature, NODE_PANEL.repository])
+    expect(panel?.modes).toEqual([
+      'Files',
+      'Changes: 3 files',
+      'History',
+      'Pull requests: none open',
+    ])
+    const menu = report['node panel place menu'] as Screen & { items?: string[] }
+    expect(menu?.items).toEqual(
+      expect.arrayContaining([
+        'New chat here',
+        'New worktree',
+        'Delete the worktree…',
+        'Open a folder…',
+      ])
+    )
+    const folder = report['node panel folder menu'] as Screen & { items?: string[] }
+    expect(folder?.items).toEqual(
+      expect.arrayContaining([
+        'Use the repository’s Claude permissions',
+        'Remove the folder from the node…',
+        'Open a folder…',
+      ])
+    )
+    const agents = report['node panel new chat'] as Screen & { text?: string }
+    expect(agents?.text).toContain('Claude Code')
+    expect(agents?.text).toContain(NODE_PANEL.diagnostic)
+  })
 
   it.each(CANVAS_SCREENS)(
     '%s: review and confirmation preserve source, pending work and history',

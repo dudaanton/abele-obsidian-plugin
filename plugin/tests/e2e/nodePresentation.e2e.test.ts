@@ -2,9 +2,10 @@ import { expect, it } from 'vitest'
 import { evalAsync } from './helpers/githubLive'
 import { targets } from './helpers/target'
 import { outwardBoxShadowReach } from '../helpers/focusRingPaint'
+import { NODE_PANEL, NODE_PANEL_FIXTURE } from './helpers/nodePanelFixture'
 targets('desktop')
 const shots = process.env.NODE_PRESENTATION_SHOTS ?? '/tmp/abele-node-presentation'
-it('keeps desktop node headers, approvals, queued inputs and workspace controls compact', () => {
+it('keeps desktop node headers, approvals, queued inputs and the node panel compact', () => {
   const result = evalAsync<{
     header: number
     hostWidth: number
@@ -22,6 +23,7 @@ it('keeps desktop node headers, approvals, queued inputs and workspace controls 
     const presenter={id:'desktop-node-fixture',reference:{kind:'node-session',nodeId:'sample-node',registrationId:'sample-registration',sessionId:'sample-session',title:'Sample node session'},label:{value:'Sample node session'},provider:{value:'claude'},state:{value:'needs-attention'},isStreaming:{value:true},connection:{state:{value:'connected'},error:{value:''}},error:{value:''},draft:{value:{text:'',attachments:[]}},queued:{value:[]},rejected:{value:[]},messages:{value:messages},projection:{value:{activeRuns:['sample-run'],queuedInputs:[{id:'followup',text:'Sample queued follow-up'}],children:{tool:[{id:'child',role:'assistant',content:'Sample nested work',timestamp:0}]},artifacts:[],unknown:[],prompts:[{prompt_id:'sample-prompt',state:'pending',tool_name:'Bash',input:{command:'printf sample > sample-file.txt'},expires_at:Date.now()+300000}]}},send:async()=>{},answer:async()=>{},cancelInput:async()=>{},interrupt:async()=>{},openResource:()=>{},destroy:()=>{}}
     const shot=async name=>fs.writeFileSync(${JSON.stringify(shots)}+'/'+name+'.png',(await win.webContents.capturePage()).toPNG())
     const cuts=[]
+    ${NODE_PANEL_FIXTURE}
     const rings=root=>{for(const field of root.querySelectorAll('input,textarea,button,[tabindex="0"]')){if(!field.getBoundingClientRect().width)continue;field.focus();const r=field.getBoundingClientRect(),reach=(${outwardBoxShadowReach.toString()})(getComputedStyle(field).boxShadow);for(let el=field.parentElement;el&&el!==document.documentElement;el=el.parentElement){const s=getComputedStyle(el);if(s.overflowX==='visible'&&s.overflowY==='visible')continue;const b=el.getBoundingClientRect(),left=b.left+el.clientLeft;if(Math.max(left-(r.left-reach),r.right+reach-(left+el.clientWidth))>.5)cuts.push(field.getAttribute('aria-label')||field.textContent)}field.blur()}}
     try {
       win.setSize(1200,900);await wait(200)
@@ -34,13 +36,20 @@ it('keeps desktop node headers, approvals, queued inputs and workspace controls 
       const approve=[...root.querySelectorAll('button')].find(b=>b.textContent.trim()==='Approve'),deny=[...root.querySelectorAll('button')].find(b=>b.textContent.trim()==='Deny')
       const sameActionRow=!!approve&&!!deny&&Math.abs(approve.getBoundingClientRect().top-deny.getBoundingClientRect().top)<2,accent=!!approve?.classList.contains('mod-cta')
       const queueCopies=[...root.querySelectorAll('.abele-chat-msg_user')].filter(e=>e.textContent.includes('Sample queued follow-up')).length
-      window.__abeleTest.openDialog('node-workspaces');await until(()=>document.querySelector('.abele-node-workspaces'));await wait(200)
-      const modal=document.querySelector('.modal.abele-modal');rings(modal);await shot('desktop-node-workspaces')
-      const paths=!!modal.querySelector('.abele-node-path summary[title]')
-      for(const d of modal.querySelectorAll('details'))d.open=true;rings(modal)
-      document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await wait(150)
+      // Folders, worktrees and their actions live in the node panel: its place row and modes, the
+      // place search and the place menu, each measured for rings and pictured.
+      const panel=await nodePanel.open('feature');rings(panel);await shot('desktop-node-panel')
+      for(const mode of ['Files','History','Pull requests']){await nodePanel.mode(mode);rings(panel)}
+      const row=panel.querySelector('.abele-node-place__row'),places=await nodePanel.places();rings(places);await shot('desktop-node-panel-places')
+      // The full place stays reachable from the compact row: its tooltip names folder and branch,
+      // the folder stands under the branch, and the search shows each worktree's folder.
+      const paths=!!row.getAttribute('aria-label')?.includes(${JSON.stringify(NODE_PANEL.repository + ' / ' + NODE_PANEL.feature)})&&panel.querySelector('.abele-node-place__where')?.textContent.trim()===${JSON.stringify(NODE_PANEL.repository)}&&[...places.querySelectorAll('.suggestion-note')].some(n=>n.textContent.includes(${JSON.stringify(NODE_PANEL.featureFolder)}))
+      await nodePanel.dismiss()
+      const menu=await nodePanel.menu();rings(menu);await shot('desktop-node-panel-menu');await nodePanel.dismiss()
+      await nodePanel.close()
       return {header,hostWidth:root.getBoundingClientRect().width,titleWidth:root.querySelector('.abele-node-chat__title')?.getBoundingClientRect().width ?? 0,queueCopies,sameActionRow,accent,cardsClipped:cuts,paths}
     } finally {
+      await nodePanel.close()
       document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));chats.nodeSessions.delete(presenter.id);chats.tabOrder.value=chats.tabOrder.value.filter(id=>id!==presenter.id);chats.activeTabId.value=active
       win.setBounds(bounds);await app.workspace.changeLayout(layout);app.workspace.rightSplit.setSize(sidebarSize)
     }

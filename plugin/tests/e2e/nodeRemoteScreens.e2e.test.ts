@@ -2,6 +2,7 @@ import { expect, it } from 'vitest'
 import { evalLong, reloadPlugin } from './helpers/obsidianCli'
 import { targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
+import { NODE_PANEL, NODE_PANEL_FIXTURE } from './helpers/nodePanelFixture'
 
 targets('desktop', 'phone')
 const shots = shotDir('abele-node-remote')
@@ -12,7 +13,6 @@ it.each([
   'node-pairing-endpoint',
   'node-question',
   'node-question-input',
-  'node-workspaces',
   'node-delegation-grants',
   'node-delegation-card',
 ])(
@@ -29,7 +29,6 @@ it.each([
       for (let i=0; i<100 && !modal; i++) { await wait(50); modal = document.querySelector('.modal.abele-modal') }
       if (!modal) throw Error('Node dialog did not open');
       await wait(400);
-      if (${JSON.stringify(name)} === 'node-workspaces') for (const details of modal.querySelectorAll('details')) details.open = true;
       const body = modal.querySelector('.abele-modal__body');
       const outside = [];
       for (const field of modal.querySelectorAll('input,textarea,select,button,code,[role="checkbox"]')) {
@@ -37,11 +36,6 @@ it.each([
         if (r.width && (r.left < 0 || r.right > innerWidth + 1)) outside.push(field.getAttribute('aria-label') || field.tagName);
       }
       const text = modal.textContent;
-      if (${JSON.stringify(name)} === 'node-workspaces') {
-        const provider=modal.querySelector('[aria-label="Node provider"]');
-        provider.value='pi';provider.dispatchEvent(new Event('change',{bubbles:true}));
-        provider.scrollIntoView({block:'center'});await wait(100);
-      }
       if (${JSON.stringify(name)} === 'node-delegation-grants') {
         const select=(label,value)=>{const field=modal.querySelector('select[aria-label="'+label+'"]');field.value=value;field.dispatchEvent(new Event('change',{bubbles:true}))};
         select('Delegation project','sample-project');select('Delegation provider','pi');await wait(100);
@@ -81,12 +75,159 @@ it.each([
       expect(result.text).toContain('wss://previous.example.ts.net:9443/channel')
       expect(result.text).toContain('wss://sample.example.ts.net:8443/channel')
     }
-    if (name === 'node-workspaces') expect(result.text).toContain('Compaction not accepted')
-    if (name === 'node-delegation-grants') expect(result.text).toContain('Owner approval for this device')
-    if (name === 'node-delegation-card') { expect(result.text).toContain('Open child chat'); expect(result.text).toContain('Result') }
+    if (name === 'node-delegation-grants')
+      expect(result.text).toContain('Owner approval for this device')
+    if (name === 'node-delegation-card') {
+      expect(result.text).toContain('Open child chat')
+      expect(result.text).toContain('Result')
+    }
   },
   90000
 )
+
+// The node workspaces window is gone: its folders, worktrees, chats and actions are the node
+// panel's place row, modes, place search and place menu, and a new chat's agent is chosen from
+// the menu. Each is measured on a real screen the way the window was.
+it('the node panel fits a real screen with readable identity and usable controls', async () => {
+  const result = JSON.parse(
+    await evalLong(
+      `(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    if (document.querySelector('.modal')) throw Error('Another dialog is open');
+    ${NODE_PANEL_FIXTURE}
+    const outsideOf = (root, where) => [...root.querySelectorAll('input,textarea,select,button,[role="button"],[role="tab"]')].flatMap(field => {
+      const r = field.getBoundingClientRect();
+      return r.width && (r.left < 0 || r.right > innerWidth + 1) ? [where + ': ' + (field.getAttribute('aria-label') || field.tagName)] : [];
+    });
+    const offscreen = (root, where) => { const r = root.getBoundingClientRect(); return r.width && (r.left < -1 || r.right > innerWidth + 1) ? [where] : [] };
+    const shot = async (file) => {
+      const path = ${JSON.stringify(shots)} + '/' + file + '.png';
+      if (window.__e2eHost) return window.__e2eHost.shot(path);
+      require('fs').writeFileSync(path, (await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG());
+      return 'saved';
+    };
+    try {
+      const panel = await nodePanel.open('feature');
+      const outside = [...offscreen(panel, 'panel'), ...outsideOf(panel, 'panel')];
+      const row = panel.querySelector('.abele-node-place__row');
+      const place = {
+        name: panel.querySelector('.abele-node-place__name')?.textContent.trim(),
+        where: panel.querySelector('.abele-node-place__where')?.textContent.trim(),
+        tooltip: row.getAttribute('aria-label') || '',
+        menu: panel.querySelector('.abele-node-place > .abele-obsidian-icon')?.getAttribute('aria-label') || '',
+        codes: !!panel.querySelector('.abele-branch-codes__drift'),
+      };
+      const modes = [...panel.querySelectorAll('.abele-node-modes [role="tab"]')].map(t => t.getAttribute('aria-label'));
+      const groups = [...panel.querySelectorAll('.abele-file-tree__group')].map(g => g.querySelector('.tree-item-inner')?.textContent.trim() ?? g.textContent.trim());
+      const controls = panel.querySelectorAll('button,[role="button"],[role="tab"],input').length;
+      const shotsTaken = [await shot('node-panel')];
+      const search = await nodePanel.places();
+      outside.push(...offscreen(search, 'place search'), ...outsideOf(search, 'place search'));
+      const places = [...search.querySelectorAll('.suggestion-item')].map(i => i.querySelector('.suggestion-title')?.textContent.trim());
+      shotsTaken.push(await shot('node-panel-places'));
+      await nodePanel.dismiss();
+      const worktreeMenu = await nodePanel.menu();
+      outside.push(...offscreen(worktreeMenu, 'worktree menu'));
+      const worktreeItems = nodePanel.items(worktreeMenu);
+      shotsTaken.push(await shot('node-panel-menu'));
+      await nodePanel.dismiss();
+      const agents = await nodePanel.newChat();
+      outside.push(...offscreen(agents, 'agent choice'), ...outsideOf(agents, 'agent choice'));
+      const agentText = agents.textContent;
+      shotsTaken.push(await shot('node-panel-new-chat'));
+      await nodePanel.dismiss();
+      await nodePanel.select('root');
+      const folderMenu = await nodePanel.menu();
+      outside.push(...offscreen(folderMenu, 'folder menu'));
+      const folderItems = nodePanel.items(folderMenu);
+      shotsTaken.push(await shot('node-panel-folder-menu'));
+      await nodePanel.dismiss();
+      return JSON.stringify({ outside, place, modes, groups, controls, places, worktreeItems, folderItems, agentText, shots: shotsTaken });
+    } finally {
+      await nodePanel.close();
+    }
+  })()`,
+      90000
+    )
+  ) as {
+    outside: string[]
+    place: { name: string; where: string; tooltip: string; menu: string; codes: boolean }
+    modes: string[]
+    groups: string[]
+    controls: number
+    places: string[]
+    worktreeItems: { title: string; warning: boolean; disabled: boolean }[]
+    folderItems: { title: string; warning: boolean; disabled: boolean }[]
+    agentText: string
+    shots: string[]
+  }
+  expect(result.outside).toEqual([])
+  expect(result.controls).toBeGreaterThan(0)
+  for (const shot of result.shots) expect(shot).not.toMatch(/^no picture:/)
+  // Readable identity: the branch, the folder it is checked out in, and the node, in the row.
+  expect(result.place.name).toBe(NODE_PANEL.feature)
+  expect(result.place.where).toBe(NODE_PANEL.repository)
+  expect(result.place.tooltip).toContain(`${NODE_PANEL.repository} / ${NODE_PANEL.feature}`)
+  expect(result.place.tooltip).toContain(NODE_PANEL.node)
+  expect(result.place.menu).toBe(`What can be done in ${NODE_PANEL.feature}`)
+  expect(result.place.codes).toBe(true)
+  // The working changes, in the header's modes and in their groups.
+  expect(result.modes).toEqual(['Files', 'Changes: 3 files', 'History', 'Pull requests: none open'])
+  expect(result.groups.join(' ')).toContain('Changes')
+  expect(result.groups.join(' ')).toContain('Staged')
+  expect(result.groups.join(' ')).toContain('Committed')
+  // Every folder, worktree and chat of the node, in the place search.
+  expect(result.places).toEqual(
+    expect.arrayContaining([
+      `${NODE_PANEL.repository} / ${NODE_PANEL.root}`,
+      `${NODE_PANEL.repository} / ${NODE_PANEL.feature}`,
+      NODE_PANEL.notes,
+      NODE_PANEL.chat,
+    ])
+  )
+  // What the window did, now in the place menu: start a chat, create, delete and unregister,
+  // register a folder, the repository's Claude permissions; what cannot be undone apart, last.
+  const titles = (items: { title: string }[]) => items.map((i) => i.title)
+  expect(titles(result.worktreeItems)).toEqual(
+    expect.arrayContaining([
+      'New chat here',
+      'Switch to another branch…',
+      'Compare with…',
+      'New worktree',
+      'Attach a worktree',
+      'Copy path',
+      'Remove from the list',
+      'Delete the worktree…',
+      'Open a folder…',
+      'Refresh',
+      NODE_PANEL.node,
+      'Node details',
+    ])
+  )
+  expect(titles(result.folderItems)).toEqual(
+    expect.arrayContaining([
+      'New chat here',
+      'New worktree',
+      'Use the repository’s Claude permissions',
+      'Remove the folder from the node…',
+      'Open a folder…',
+    ])
+  )
+  for (const items of [result.worktreeItems, result.folderItems]) {
+    const warnings = items.filter((i) => i.warning).map((i) => i.title)
+    expect(warnings.length).toBeGreaterThan(0)
+    const at = (title: string) => titles(items).indexOf(title)
+    for (const title of warnings) {
+      expect(at(title)).toBeGreaterThan(at('Copy path'))
+      expect(at(title)).toBeLessThan(at('Open a folder…'))
+    }
+  }
+  expect(result.worktreeItems.find((i) => i.title === 'New chat here')?.disabled).toBe(false)
+  // The node's own word on each agent it offers.
+  expect(result.agentText).toContain('pi')
+  expect(result.agentText).toContain('Claude Code')
+  expect(result.agentText).toContain(NODE_PANEL.diagnostic)
+}, 120000)
 
 it('persists a device-local non-extractable key across a real plugin restart', async () => {
   const namespace = 'test-' + crypto.randomUUID()

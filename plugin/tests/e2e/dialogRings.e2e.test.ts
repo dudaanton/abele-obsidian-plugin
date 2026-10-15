@@ -7,7 +7,8 @@ import { openChatSetup } from '../helpers/chatProbeInteractions'
  * element on the desktop — and the search field lost 2px off each side: «задолбала меня
  * обрезка содержимого в модалках». This focuses every focusable thing in every tab of the
  * setup dialog, the history, the icon picker, the MCP server form, the list of keys and every
- * other dialog `openDialog` knows, each of its tabs included, and measures its ring against every clipping ancestor. The
+ * other dialog `openDialog` knows, each of its tabs included, and the node panel with its place
+ * search, place menu and agent choice, and measures its ring against every clipping ancestor. The
  * phone probe does the same at 390×844.
  *
  * Publication confirmation uses a presentation-only fixture here. Other sync dialogs require
@@ -29,6 +30,7 @@ import {
 } from './helpers/githubLive'
 import { openBasePicker, basePickerGeometry } from './helpers/githubBasePicker'
 import { OPEN_LOCAL_NODE_FORM, CLOSE_LOCAL_NODE_FORM } from './helpers/nodeSettingsForm'
+import { NODE_PANEL_FIXTURE } from './helpers/nodePanelFixture'
 import { SELECTION_PICKER_OPEN, SELECTION_PICKER_CLOSE } from './helpers/selectionScriptPicker'
 import {
   SELECTION_MENUS_SETUP,
@@ -249,6 +251,41 @@ const script = `(async () => {
   } else cuts.push({ screen: 'settings nodes', field: '-', by: ['settings did not open'] })
   app.setting.close()
 
+  // The node panel, which took over the node workspaces window: its place row and modes in each
+  // mode, a folder without git, the place search, the place menu and the agent choice a new chat
+  // opens, on invented data with no node running.
+  {
+    ${NODE_PANEL_FIXTURE}
+    try {
+      const panel = await nodePanel.open('feature')
+      await settle(() => panel)
+      measureAll('node panel changes', panel)
+      for (const mode of ['Files', 'History', 'Pull requests']) {
+        await nodePanel.mode(mode)
+        await settle(() => panel)
+        measureAll('node panel ' + mode.toLowerCase(), panel)
+      }
+      const places = await nodePanel.places()
+      await settle(() => places)
+      measureAll('node panel places', places)
+      await nodePanel.dismiss()
+      const menu = await nodePanel.menu()
+      measureAll('node panel place menu', menu)
+      await nodePanel.dismiss()
+      const agents = await nodePanel.newChat()
+      await settle(() => agents)
+      measureAll('node panel new chat', agents)
+      await nodePanel.dismiss()
+      await nodePanel.select('notes')
+      await settle(() => panel)
+      measureAll('node panel folder', panel)
+    } catch (error) {
+      cuts.push({ screen: 'node panel', field: '-', by: [String(error?.message || error)] })
+    } finally {
+      await nodePanel.close()
+    }
+  }
+
   // Every other dialog of the plugin, including the agents search/open/seen buttons,
   // in the dialog shell, opened by name.
   for (const dialogName of window.__abeleTest.dialogNames()) {
@@ -268,10 +305,10 @@ const script = `(async () => {
           ? modal.querySelectorAll('.abele-chat-artifacts section').length === 0 && modal.querySelector('.abele-chat-artifacts .abele-empty-state')
           : modal.querySelectorAll('.abele-chat-artifacts section').length === 3))
           cuts.push({ screen: 'dialog ' + dialogName, field: '-', by: ['artifact sections did not open'] })
-        // Node registration and permission opt-in are disclosures, not separate tabs.
-        if (dialogName === 'node-workspaces' || dialogName === 'chat-navigation') {
+        // A chat's navigation opens fork by fork, not in separate tabs.
+        if (dialogName === 'chat-navigation') {
           // Each newly mounted continuation can reveal one further fork, just as a user expands it.
-          for (let level = 0; level < (dialogName === 'chat-navigation' ? 4 : 1); level++) {
+          for (let level = 0; level < 4; level++) {
             for (const details of modal.querySelectorAll('details')) details.open = true
             for (const row of modal.querySelectorAll('.tree-item.is-collapsed > .tree-item-self > .collapse-icon')) row.click()
             await settle(() => modal)
