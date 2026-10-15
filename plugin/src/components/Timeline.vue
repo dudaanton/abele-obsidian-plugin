@@ -119,9 +119,13 @@
       </div>
       <div ref="anchorSpaceEl" class="abele-timeline__anchor-space" aria-hidden="true" />
       <div v-if="hasMore" ref="sentinel" class="abele-timeline__sentinel" />
-      <div v-if="!dates.length" class="abele-timeline__no-tasks">
-        {{ search.terms.value.length ? 'Nothing matches the search.' : 'No tasks to show.' }}
-      </div>
+      <!-- With nothing from today on, the list says so rather than standing empty under Overdue,
+           and while done tasks are hidden it offers the switch that brings the past back. -->
+      <EmptyState v-if="emptyText" class="abele-timeline__no-tasks" :text="emptyText">
+        <template v-if="emptyText === NOTHING_AHEAD_HIDDEN" #action>
+          <Button text="Show completed tasks" @click="hideCompleted = false" />
+        </template>
+      </EmptyState>
     </template>
   </div>
 </template>
@@ -137,6 +141,8 @@ import { panelComputed as computed } from '@/composables/usePanelComputed'
 import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianMarkdown from './obsidian/Markdown.vue'
 import ListSectionHeader from './obsidian/ListSectionHeader.vue'
+import EmptyState from './obsidian/EmptyState.vue'
+import Button from './obsidian/Button.vue'
 import dayjs from 'dayjs'
 import { DATE_FORMAT } from '@/constants/dates'
 import { useOwnerVisibility } from '@/composables/useOwnerVisibility'
@@ -263,6 +269,14 @@ const overdue = computed(() =>
     .filter(([, items]) => items.length)
 )
 const forward = computed(() => dates.value.filter(([day]) => day >= today()))
+const NOTHING_AHEAD_HIDDEN = 'Nothing ahead. Past tasks are hidden'
+/** What stands in place of an empty list: no match, no task at all, or nothing from today on. */
+const emptyText = computed(() => {
+  if (search.terms.value.length) return dates.value.length ? '' : 'Nothing matches the search.'
+  if (forward.value.length) return ''
+  if (!filtered.value.length && !dates.value.length) return 'No tasks to show.'
+  return hideCompleted.value ? NOTHING_AHEAD_HIDDEN : 'Nothing ahead'
+})
 const memory = useFooterTimeline()
 // Remembered like the past days, so a saved place on an overdue row can be drawn again.
 const overdueOpen = ref(memory.overdueOpen ?? false)
@@ -467,6 +481,11 @@ const getDateWikilink = (dateStr: string) => {
     box-shadow: var(--input-shadow);
   }
 
+  // A phone's finger needs the room Obsidian gives its own tap rows; the words stay centred in it.
+  .is-phone & {
+    min-height: 44px;
+  }
+
   .abele-obsidian-icon {
     height: auto;
     padding: 0;
@@ -594,11 +613,6 @@ const getDateWikilink = (dateStr: string) => {
   margin-top: var(--abele-entry-heading-gap);
   display: flex;
   flex-direction: column;
-}
-
-.abele-timeline__no-tasks {
-  font-style: italic;
-  color: var(--text-muted);
 }
 
 .abele-timeline__completed-toggle {

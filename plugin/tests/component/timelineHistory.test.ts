@@ -8,6 +8,8 @@ import Timeline from '@/components/Timeline.vue'
 import TaskView from '@/components/Task.vue'
 import Markdown from '@/components/obsidian/Markdown.vue'
 import Search from '@/components/obsidian/Search.vue'
+import EmptyState from '@/components/obsidian/EmptyState.vue'
+import Button from '@/components/obsidian/Button.vue'
 import { Task } from '@/entities/Task'
 import { configureAbele, useVault } from '../helpers/testEnv'
 import { FOOTER_FOLD, FOOTER_FOLDS_KEY, resetFooterFolds } from '@/composables/useFooterFold'
@@ -41,7 +43,7 @@ const render = (tasks: Task[]) => {
 }
 const originalStubs = mountConfig.global.stubs
 beforeEach(() => {
-  mountConfig.global.stubs = { ...originalStubs, ListSectionHeader: false }
+  mountConfig.global.stubs = { ...originalStubs, ListSectionHeader: false, EmptyState: false }
   useVault([])
   configureAbele()
   installFakeIntersectionObserver()
@@ -451,6 +453,49 @@ describe('folded timeline history', () => {
     await view.find('.abele-timeline__completed-toggle').trigger('click')
     await flushPromises()
     expect(days()).toEqual(['date:2030-06-15'])
+  })
+
+  // Everything in the past and done tasks hidden used to leave an empty space under Overdue.
+  it('says nothing is ahead and offers the switch when every task is in the past', async () => {
+    render([
+      task('sample-old', '2030-06-12'),
+      task('sample-older', '2030-06-14'),
+      task('sample-done', '2030-06-13', true),
+    ])
+    await flushPromises()
+    const empty = () => view.findComponent(EmptyState)
+    expect(days()).toEqual([])
+    expect(empty().props('text')).toBe('Nothing ahead. Past tasks are hidden')
+    expect(empty().findComponent(Button).props('text')).toBe('Show completed tasks')
+    // Overdue still opens its own days; the list ahead is still empty.
+    await overdueRow().trigger('click')
+    await flushPromises()
+    expect(days()).toEqual(['date:2030-06-12', 'date:2030-06-14'])
+    expect(empty().props('text')).toBe('Nothing ahead. Past tasks are hidden')
+    empty().findComponent(Button).vm.$emit('click')
+    await flushPromises()
+    expect(days()).toEqual(['date:2030-06-13', 'date:2030-06-12', 'date:2030-06-14'])
+    expect(empty().props('text')).toBe('Nothing ahead')
+    expect(empty().findComponent(Button).exists()).toBe(false)
+  })
+
+  it('says nothing is ahead when every task is done and in the past', async () => {
+    render([task('sample-done', '2030-06-13', true)])
+    await flushPromises()
+    expect(overdueRow().exists()).toBe(false)
+    expect(view.findComponent(EmptyState).props('text')).toBe(
+      'Nothing ahead. Past tasks are hidden'
+    )
+  })
+
+  it('keeps the plain empty line without tasks, and no line with a day ahead', async () => {
+    render([])
+    await flushPromises()
+    expect(view.findComponent(EmptyState).props('text')).toBe('No tasks to show.')
+    view.unmount()
+    render([task('sample-old', '2030-06-12'), task('sample-today', '2030-06-15')])
+    await flushPromises()
+    expect(view.findComponent(EmptyState).exists()).toBe(false)
   })
 
   it.each(['Enter', ' '])('opens Overdue with the row keyboard action %s', async (key) => {

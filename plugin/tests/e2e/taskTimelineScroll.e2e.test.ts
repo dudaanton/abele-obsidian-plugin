@@ -42,6 +42,8 @@ interface Probe {
   daysBeforeReveal?: string[]
   daysAfterReveal?: string[]
   pastHidden?: boolean
+  foldHeight?: number
+  phoneLayout?: boolean
   historyWhileHidden?: number
   overdueRowsDoneShown?: number
   pastNoFold?: boolean
@@ -514,6 +516,9 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
     report.summary = foldState(overdueRow())
     // Done tasks are hidden, so no past day is in the list, and there is no fold for one.
     report.pastHidden = !pastRow() && !firstPastDay()
+    // The Overdue row is a tap target on a phone: as tall as Obsidian's own tap rows there.
+    report.foldHeight = overdueRow().getBoundingClientRect().height
+    report.phoneLayout = document.body.classList.contains('is-phone')
     // Bring today's unchanged block into sight even in the baseline (which starts in history).
     if (!row(0)) await scrollToRow(() => row(0), 6)
     await until(() => row(0)?.textContent.includes('Sample item 0 1'))
@@ -941,6 +946,8 @@ describe.skipIf(!available)('task timeline scrolling', () => {
           expect(p.error).toBeUndefined()
           expect(p.initial).toHaveLength(20)
           expect(p.summary).toBe('90 unfinished · Show overdue tasks')
+          if (p.phoneLayout) expect(p.foldHeight).toBeGreaterThanOrEqual(43.5)
+          else expect(p.foldHeight).toBeLessThan(44)
           expect(p.pastHidden).toBe(true)
           expect(p.scrollRevealed).toEqual(p.initial)
           expect(p.nativeInput).toBe(true)
