@@ -8,7 +8,10 @@ import { TFile } from 'obsidian'
 const cleanups: (() => void)[] = []
 afterEach(() => cleanups.splice(0).forEach((fn) => fn()))
 /** `delay` holds every write open, as a vault write does, so actions can land during a save. */
-function setup(graph: CanvasGraph = emptyCanvas(), { delay = 0 } = {}) {
+function setup(
+  graph: CanvasGraph = emptyCanvas(),
+  { delay = 0, schedule = { idle: 0, max: 0 } } = {}
+) {
   const settle = () => (delay ? new Promise((resolve) => setTimeout(resolve, delay)) : undefined)
   const el = document.createElement('div')
   document.body.append(el)
@@ -53,14 +56,7 @@ function setup(graph: CanvasGraph = emptyCanvas(), { delay = 0 } = {}) {
   const editor = new CanvasEditor(viewer, {
     document: () => documentState,
     publish,
-    history: vi.fn(async (direction) => {
-      const session = documentState.session,
-        token = direction === 'undo' ? session.prepareUndo() : session.prepareRedo()
-      const graph = session.apply(token, session.committed)
-      await settle()
-      session.acknowledge(token, { graph, revision: `history-${session.generation}` })
-      documentState.notify()
-    }),
+    schedule,
     pickFile: async () => 'sample-note.md',
     pickLink: async () => 'https://sample.example',
     confirmDiscard: async () => true,
@@ -528,7 +524,8 @@ describe('human shapes and connections', () => {
     pointer(s, 'pointerup', 215, 140)
     await vi.waitFor(() => expect(s.document.session.graph.edges).toHaveLength(1))
     expect(s.document.session.graph.edges[0]).toMatchObject({ fromNode: 'alpha', toNode: 'beta' })
-    expect(s.document.session.history.undo).toBe(1)
+    // Written history follows the batched write.
+    await vi.waitFor(() => expect(s.document.session.history.undo).toBe(1))
   })
   it('connects by touch with preview only, selects, reconnects and deletes an edge with atomic undo', async () => {
     const graph = cards()
@@ -782,7 +779,9 @@ describe('human canvas geometry', () => {
     pointer(s, 'pointerdown', 30, 30)
     pointer(s, 'pointermove', 80, 70)
     pointer(s, 'pointerup', 80, 70)
-    await vi.waitFor(() => expect(s.button('Retry save').disabled).toBe(false))
+    // Retry shows once the batched write has failed.
+    await vi.waitFor(() => expect(s.button('Retry save').hidden).toBe(false))
+    expect(s.button('Retry save').disabled).toBe(false)
     expect(s.document.session.committed.graph.nodes[0].x).toBe(0)
     expect(s.viewer.graph.nodes[0].x).toBe(50)
     expect(s.el.textContent).toContain('not saved')
@@ -853,125 +852,136 @@ describe('human canvas geometry', () => {
   })
 })
 
-describe('canvas actions made while a save is in flight', () => {
-  const settled = async (s: ReturnType<typeof setup>, undo: number) => {
+describe('canvas changes apply in memory at once and are written in batches', () => {
+  const written = async (s: ReturnType<typeof setup>, undo: number) => {
     await vi.waitFor(() => expect(s.document.session.history.undo).toBe(undo))
     await vi.waitFor(() => expect(s.document.session.busy || s.document.session.dirty).toBe(false))
   }
-  it('saves two strokes drawn back to back, one undo step each, and keeps the second on screen', async () => {
-    const s = setup(emptyCanvas(), { delay: 50 })
+  const stroke = (s: ReturnType<typeof setup>, y: number) => {
+    pointer(s, 'pointerdown', 20, y, { buttons: 1 })
+    pointer(s, 'pointermove', 80, y, { buttons: 1 })
+    pointer(s, 'pointerup', 100, y)
+  }
+  it('shows quick strokes and undoes them at once, then writes them together, one undo step each', async () => {
+    const s = setup(emptyCanvas(), { schedule: { idle: 30, max: 1000 } })
     s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
     s.button('Draw with pen').click()
-    pointer(s, 'pointerdown', 20, 20, { buttons: 1 })
-    pointer(s, 'pointermove', 80, 20, { buttons: 1 })
-    pointer(s, 'pointerup', 100, 20)
-    expect(s.document.session.busy).toBe(true)
-    pointer(s, 'pointerdown', 20, 120, { buttons: 1 })
-    pointer(s, 'pointermove', 80, 120, { buttons: 1 })
-    pointer(s, 'pointerup', 100, 120)
-    expect(s.viewer.graph.abele?.ink).toHaveLength(2)
-    await settled(s, 2)
-    expect(s.publish).toHaveBeenCalledTimes(2)
-    const ink = s.document.session.committed.graph.abele.ink as { points: number[] }[]
-    expect(ink.map((stroke) => stroke.points[1])).toEqual([20, 120])
-    expect(s.viewer.graph.abele?.ink).toHaveLength(2)
-    s.button('Undo canvas change').click()
-    await vi.waitFor(() => expect(s.document.session.graph.abele.ink).toHaveLength(1))
-    await vi.waitFor(() => expect(s.document.session.busy).toBe(false))
-    s.button('Undo canvas change').click()
-    await vi.waitFor(() => expect(s.document.session.graph.abele?.ink ?? []).toHaveLength(0))
-  })
-  it('saves a stroke begun during a save and finished after it', async () => {
-    const s = setup(emptyCanvas(), { delay: 50 })
-    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
-    s.button('Draw with pen').click()
-    pointer(s, 'pointerdown', 20, 20, { buttons: 1 })
-    pointer(s, 'pointerup', 100, 20)
-    pointer(s, 'pointerdown', 20, 120, { buttons: 1 })
-    pointer(s, 'pointermove', 60, 120, { buttons: 1 })
-    await settled(s, 1)
-    pointer(s, 'pointermove', 80, 120, { buttons: 1 })
-    pointer(s, 'pointerup', 100, 120)
-    await settled(s, 2)
-    expect(s.document.session.committed.graph.abele.ink).toHaveLength(2)
-  })
-  it('still refuses a gesture begun during a save when the source changes after it', async () => {
-    const s = setup(cards(), { delay: 50 })
-    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
-    pointer(s, 'pointerdown', 30, 30)
-    pointer(s, 'pointermove', 80, 70)
-    pointer(s, 'pointerup', 80, 70)
-    pointer(s, 'pointerdown', 450, 100)
-    pointer(s, 'pointermove', 500, 140)
-    await settled(s, 1)
-    const external = s.document.session.committed.graph
-    external.nodes[2].text = 'External content'
-    s.document.observe({ graph: external, revision: 'external' })
-    pointer(s, 'pointermove', 520, 150)
-    pointer(s, 'pointerup', 520, 150)
-    await Promise.resolve()
+    for (const y of [20, 120, 220]) stroke(s, y)
+    expect(s.document.session.graph.abele?.ink).toHaveLength(3)
+    expect(s.document.session.localHistory).toEqual({ undo: 3, redo: 0 })
+    expect(s.publish).not.toHaveBeenCalled()
+    await written(s, 3)
     expect(s.publish).toHaveBeenCalledOnce()
-    expect(s.document.session.graph).toEqual(external)
+    expect(s.document.session.committed.graph.abele.ink).toHaveLength(3)
+    s.button('Undo canvas change').click()
+    expect(s.document.session.graph.abele.ink).toHaveLength(2)
+    s.button('Undo canvas change').click()
+    expect(s.document.session.graph.abele.ink).toHaveLength(1)
+    await written(s, 1)
+    expect(s.document.session.history).toEqual({ undo: 1, redo: 2 })
   })
-  it('saves a resize made right after a move, in order, as two undo steps', async () => {
+  it('keeps drawing while a write is in flight and writes the later strokes next', async () => {
+    const s = setup(emptyCanvas(), { delay: 50 })
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    s.button('Draw with pen').click()
+    stroke(s, 20)
+    await vi.waitFor(() => expect(s.document.session.busy).toBe(true))
+    stroke(s, 120)
+    pointer(s, 'pointerdown', 20, 220, { buttons: 1 })
+    pointer(s, 'pointermove', 60, 220, { buttons: 1 })
+    expect(s.document.session.graph.abele?.ink).toHaveLength(2)
+    await vi.waitFor(() => expect(s.document.session.history.undo).toBe(1))
+    // The first write landing does not end the stroke being drawn.
+    pointer(s, 'pointerup', 100, 220)
+    await written(s, 3)
+    expect(s.document.session.committed.graph.abele.ink).toHaveLength(3)
+    // The second stroke is written while the third is drawn; the third goes last.
+    expect(s.publish).toHaveBeenCalledTimes(3)
+  })
+  it('keeps a resize made right after a move, both written, two undo steps', async () => {
     const s = setup(cards(), { delay: 50 })
     s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
     pointer(s, 'pointerdown', 30, 30)
     pointer(s, 'pointermove', 80, 70)
     pointer(s, 'pointerup', 80, 70)
-    expect(s.document.session.busy).toBe(true)
+    await vi.waitFor(() => expect(s.document.session.busy).toBe(true))
     // The moved card's bottom-right corner is now at (310, 200).
     pointer(s, 'pointerdown', 310, 200)
     pointer(s, 'pointermove', 340, 230)
     pointer(s, 'pointerup', 340, 230)
-    expect(s.viewer.graph.nodes[0]).toMatchObject({ x: 50, y: 40, width: 290, height: 190 })
-    await settled(s, 2)
-    expect(s.document.session.committed.graph.nodes[0]).toMatchObject({
-      x: 50,
-      y: 40,
-      width: 290,
-      height: 190,
-    })
+    const moved = { x: 50, y: 40, width: 290, height: 190 }
+    expect(s.document.session.graph.nodes[0]).toMatchObject(moved)
+    await written(s, 2)
+    expect(s.document.session.committed.graph.nodes[0]).toMatchObject(moved)
     s.button('Undo canvas change').click()
-    await vi.waitFor(() => expect(s.document.session.graph.nodes[0].width).toBe(260))
-    await vi.waitFor(() => expect(s.document.session.busy).toBe(false))
-    expect(s.document.session.graph.nodes[0].x).toBe(50)
+    expect(s.document.session.graph.nodes[0]).toMatchObject({ x: 50, width: 260 })
     s.button('Undo canvas change').click()
-    await vi.waitFor(() => expect(s.document.session.graph).toEqual(cards()))
+    expect(s.document.session.graph).toEqual(cards())
+    await written(s, 0)
+    expect(s.document.session.committed.graph).toEqual(cards())
   })
-  it('applies keyboard and toolbar actions pressed during a save, in order', async () => {
+  it('applies keyboard and toolbar actions pressed during a write, in order', async () => {
     const s = setup(cards(), { delay: 50 })
     s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
     pointer(s, 'pointerdown', 30, 30)
     pointer(s, 'pointermove', 80, 70)
     pointer(s, 'pointerup', 80, 70)
-    expect(s.document.session.busy).toBe(true)
+    await vi.waitFor(() => expect(s.document.session.busy).toBe(true))
     expect(s.button('Delete selected card').disabled).toBe(false)
     s.el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }))
-    expect(s.viewer.graph.nodes.map((n) => n.id)).toEqual(['beta', 'gamma'])
+    expect(s.document.session.graph.nodes.map((n) => n.id)).toEqual(['beta', 'gamma'])
     s.button('Toggle multiple selection').click()
     for (const x of [330, 630]) {
       pointer(s, 'pointerdown', x, 30)
       pointer(s, 'pointerup', x, 30)
     }
     s.button('Group selected cards').click()
-    await settled(s, 3)
-    expect(s.document.session.committed.graph.nodes.map((n) => n.type)).toEqual([
-      'text',
-      'text',
-      'group',
-    ])
     s.el.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }))
     s.el.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }))
-    await settled(s, 1)
-    expect(s.document.session.committed.graph.nodes.map((n) => n.id)).toEqual([
-      'alpha',
-      'beta',
-      'gamma',
-    ])
+    expect(s.document.session.graph.nodes.map((n) => n.id)).toEqual(['alpha', 'beta', 'gamma'])
+    await written(s, 1)
     expect(s.document.session.committed.graph.nodes[0].x).toBe(50)
+    expect(s.document.session.history).toEqual({ undo: 1, redo: 2 })
   })
-  it('does not replay actions queued behind a save whose outcome is unknown', async () => {
+  it('writes at the latest after the longest wait, even while changes keep coming', async () => {
+    const s = setup(emptyCanvas(), { schedule: { idle: 60, max: 120 } })
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    s.button('Draw with pen').click()
+    for (let i = 0; i < 8; i++) {
+      stroke(s, 20 + i * 30)
+      await new Promise((resolve) => setTimeout(resolve, 30))
+    }
+    expect(s.publish).toHaveBeenCalled()
+    await written(s, 8)
+  })
+  it('writes at once when the window loses focus, the page is hidden, or the canvas closes', async () => {
+    for (const exit of ['blur', 'hidden', 'close'] as const) {
+      const s = setup(emptyCanvas(), { schedule: { idle: 60_000, max: 60_000 } })
+      s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+      s.button('Draw with pen').click()
+      stroke(s, 20)
+      expect(s.publish).not.toHaveBeenCalled()
+      if (exit === 'blur') window.dispatchEvent(new Event('blur'))
+      else if (exit === 'hidden') {
+        const state = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+        document.dispatchEvent(new Event('visibilitychange'))
+        state.mockRestore()
+      } else expect(await s.editor.close()).toBe(true)
+      await vi.waitFor(() => expect(s.publish).toHaveBeenCalledOnce())
+      await vi.waitFor(() => expect(s.document.session.dirty).toBe(false))
+      expect(s.document.session.committed.graph.abele.ink).toHaveLength(1)
+      s.editor.destroy()
+    }
+  })
+  it('lets anyone else reading or writing the file wait for the local changes first', async () => {
+    const s = setup(emptyCanvas(), { schedule: { idle: 60_000, max: 60_000 } })
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    s.button('Draw with pen').click()
+    stroke(s, 20)
+    expect(await s.document.writes!.flush()).toBe(true)
+    expect(s.document.session.committed.graph.abele.ink).toHaveLength(1)
+  })
+  it('keeps changes made during a write whose outcome is unknown local, never replaying them', async () => {
     const s = setup(cards(), { delay: 50 })
     s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
     s.publish.mockImplementationOnce(async () => {
@@ -985,16 +995,37 @@ describe('canvas actions made while a save is in flight', () => {
     pointer(s, 'pointerdown', 30, 30)
     pointer(s, 'pointermove', 80, 70)
     pointer(s, 'pointerup', 80, 70)
+    await vi.waitFor(() => expect(s.document.session.busy).toBe(true))
     pointer(s, 'pointerdown', 450, 100)
     pointer(s, 'pointermove', 500, 140)
     pointer(s, 'pointerup', 500, 140)
-    expect(s.viewer.graph.nodes[1].x).toBe(350)
+    expect(s.document.session.graph.nodes[1].x).toBe(350)
     await vi.waitFor(() => expect(s.document.session.publicationOutcome).toBe('unknown'))
-    await vi.waitFor(() => expect(s.viewer.graph.nodes[1].x).toBe(300))
+    await new Promise((resolve) => setTimeout(resolve, 100))
     expect(s.publish).toHaveBeenCalledOnce()
-    expect(s.document.session.graph.nodes[1].x).toBe(300)
-    expect(s.editor['queue']).toEqual([])
-    expect(s.notice).toHaveBeenCalledWith(expect.stringContaining('were not applied'))
+    // Retained for the review exit, both changes; the file is not touched again.
+    expect(s.document.session.graph.nodes.map((n) => n.x)).toEqual([50, 350, 600])
+    expect(s.document.session.committed.graph).toEqual(cards())
+    expect(s.button('Draw with pen').disabled).toBe(true)
+  })
+  it('still refuses a gesture when the source changes under it', async () => {
+    const s = setup(cards(), { delay: 50 })
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    pointer(s, 'pointerdown', 30, 30)
+    pointer(s, 'pointermove', 80, 70)
+    pointer(s, 'pointerup', 80, 70)
+    pointer(s, 'pointerdown', 450, 100)
+    pointer(s, 'pointermove', 500, 140)
+    await vi.waitFor(() => expect(s.document.session.history.undo).toBe(1))
+    const external = s.document.session.committed.graph
+    external.nodes[2].text = 'External content'
+    s.document.observe({ graph: external, revision: 'external' })
+    pointer(s, 'pointermove', 520, 150)
+    pointer(s, 'pointerup', 520, 150)
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(s.publish).toHaveBeenCalledOnce()
+    expect(s.document.session.graph).toEqual(external)
+    expect(s.document.session.dirty).toBe(false)
   })
 })
 
@@ -1153,14 +1184,15 @@ describe('human canvas editor', () => {
     s.button('Add text card').click()
     s.input('Pending human text')
     s.button('Save text').click()
-    await vi.waitFor(() => expect(s.button('Retry save').disabled).toBe(false))
+    await vi.waitFor(() => expect(s.button('Retry save').hidden).toBe(false))
     expect(s.button('Edit card text').disabled).toBe(false)
     s.button('Edit card text').click()
     s.input('Revised human text')
     s.button('Save text').click()
     await vi.waitFor(() => expect(s.document.session.dirty).toBe(false))
     expect(s.document.session.committed.graph.nodes[0].text).toBe('Revised human text')
-    expect(s.document.session.history).toEqual({ undo: 1, redo: 0 })
+    // Adding the card and revising its text are two steps, written together.
+    expect(s.document.session.history).toEqual({ undo: 2, redo: 0 })
   })
 
   it.each(['untouched', 'restored'] as const)(
@@ -1236,25 +1268,25 @@ describe('human canvas editor', () => {
     expect(s.document.session.graph.nodes[0].text).toBe('Saved text')
   })
 
-  it('explicitly retains active text before native handoff, without silently saving it', async () => {
+  it('writes active text before native handoff, since native Canvas reads the file', async () => {
     const s = setup()
     s.button('Add text card').click()
-    s.input('Retained for later')
+    s.input('Written before handoff')
     expect(await s.editor.prepareNative()).toBe(true)
-    expect(s.document.session.draft?.active).toBe(false)
-    expect(s.document.session.graph.nodes[0].text).toBe('Retained for later')
+    expect(s.document.session.dirty).toBe(false)
+    expect(s.document.session.committed.graph.nodes[0].text).toBe('Written before handoff')
     expect(s.document.writer).toBe(false)
-    expect(s.publish).not.toHaveBeenCalled()
+    expect(s.publish).toHaveBeenCalledOnce()
   })
 
-  it('refuses a second leaf editing the active human draft and retains it on close', () => {
+  it('refuses a second leaf editing the active human draft and writes it on close', async () => {
     const s = setup()
     s.button('Add text card').click()
     s.input('Active draft')
     expect(() => s.document.beginDraft()).toThrow(/busy/i)
-    s.editor.destroy()
-    expect(s.document.session.draft?.active).toBe(false)
-    expect(s.document.session.graph.nodes[0].text).toBe('Active draft')
-    expect(s.publish).not.toHaveBeenCalled()
+    expect(await s.editor.close()).toBe(true)
+    expect(s.document.session.dirty).toBe(false)
+    expect(s.document.session.committed.graph.nodes[0].text).toBe('Active draft')
+    expect(s.publish).toHaveBeenCalledOnce()
   })
 })

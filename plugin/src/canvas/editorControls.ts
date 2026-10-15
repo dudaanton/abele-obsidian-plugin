@@ -83,30 +83,9 @@ export function hostCanvasEditor(
   current: () => CanvasDocument | null
 ): CanvasEditor {
   const store = new ObsidianCanvasStore(app)
-  const requireDocument = () => {
-    const document = current()
-    if (!document) throw new Error('Canvas is no longer open')
-    return document
-  }
   return new CanvasEditor(viewer, {
     document: current,
-    publish: () => store.publishDraft(requireDocument().file),
-    history: async (direction) => {
-      const document = requireDocument(),
-        file = document.file,
-        path = file.path,
-        generation = document.session.generation
-      const snapshot = await store.snapshotFile(file)
-      if (
-        current() !== document ||
-        file.path !== path ||
-        document.session.generation !== generation
-      )
-        throw new Error('Canvas changed; try again. History was not applied')
-      return direction === 'undo'
-        ? store.undo(path, snapshot.revision)
-        : store.redo(path, snapshot.revision)
-    },
+    publish: (document) => store.publishDraft((document as CanvasDocument).file),
     pickFile: async () => (await pickAnyFile(app))?.path ?? null,
     pickLink: () =>
       new CanvasInputModal(app, 'Add canvas link', 'Web address', (value) => {

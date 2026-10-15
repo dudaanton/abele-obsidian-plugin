@@ -79,6 +79,13 @@ export class CanvasView extends FileView {
       })
     )
     this.registerEvent(this.app.workspace.on('css-change', () => this.viewer?.draw()))
+    // Quitting writes what is still only in memory before the app goes away.
+    this.registerEvent(
+      this.app.workspace.on('quit', (tasks) => {
+        const editor = this.editor
+        if (editor) tasks.add(() => editor.flush())
+      })
+    )
   }
   getViewType(): string {
     return CANVAS_VIEW_TYPE
@@ -177,7 +184,8 @@ export class CanvasView extends FileView {
     this.exportController?.abort()
     this.exportController = null
     this.lastExport = null
-    this.editor?.destroy()
+    // Closing writes the unwritten changes; only work that could not be written stays in memory.
+    const written = this.editor?.close() ?? Promise.resolve(true)
     this.editor = null
     this.reviewRequest++
     this.publicationReviewModal?.close()
@@ -186,8 +194,13 @@ export class CanvasView extends FileView {
     this.documentLease = null
     if (lease?.document.recovery)
       new Notice('Failed canvas change retained; reopen and use the recovery action')
-    else if (lease?.document.session.dirty)
-      new Notice('Unsaved diagram work is retained in this running session')
+    else if (lease?.document.session.dirty) {
+      const document = lease.document
+      void written.then((ok) => {
+        if (!ok || document.session.dirty)
+          new Notice('Unsaved diagram work is retained in this running session')
+      })
+    }
     lease?.release()
   }
   private renderDocument(document: CanvasDocument): void {

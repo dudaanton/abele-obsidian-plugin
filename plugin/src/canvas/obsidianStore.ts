@@ -280,9 +280,14 @@ export class ObsidianCanvasStore implements GraphStore {
   async snapshot(key: string): Promise<CanvasStoreSnapshot> {
     return this.snapshotFile(this.file(key))
   }
-  snapshotFile(file: TFile): Promise<CanvasStoreSnapshot> {
+  async snapshotFile(file: TFile): Promise<CanvasStoreSnapshot> {
     this.canonical(file)
+    await this.settleLocal(file)
     return canvasDocuments(this.app).serial(file, async () => (await this.capture(file)).snapshot)
+  }
+  /** Human changes still waiting for their batched write are written before anyone else reads or writes. */
+  private async settleLocal(file: TFile): Promise<void> {
+    await canvasDocuments(this.app).find(file)?.writes?.flush()
   }
   async read(key: string): Promise<CanvasGraph> {
     return (await this.snapshot(key)).graph
@@ -354,7 +359,7 @@ export class ObsidianCanvasStore implements GraphStore {
   redo(key: string, revision: string, signal?: AbortSignal): Promise<CanvasWriteResult> {
     return this.publish(this.file(key), key, revision, 'redo', undefined, signal)
   }
-  private publish(
+  private async publish(
     file: TFile,
     path: string,
     revision: string | undefined,
@@ -365,6 +370,7 @@ export class ObsidianCanvasStore implements GraphStore {
     proposal?: string
   ): Promise<CanvasWriteResult> {
     const registry = canvasDocuments(this.app)
+    if (kind !== 'draft') await this.settleLocal(file)
     return registry.serial(file, async () => {
       const release = registry.retain(file),
         renameGeneration = registry.renameGeneration

@@ -52,12 +52,19 @@ interface GraphPatch {
   nodes: CollectionPatch<CanvasNode>
   edges: CollectionPatch<CanvasEdge>
 }
+/** One local change not yet written: its own undo step once the write that carries it lands. */
+interface Step {
+  kind: 'command' | 'undo' | 'redo'
+  patch: GraphPatch
+}
 interface Preparation {
   token: PreparedCanvasTransaction
   before: CanvasGraph
   after: CanvasGraph
   patch: GraphPatch
   kind: 'command' | 'undo' | 'redo'
+  /** The local steps a draft publication carries, in order. */
+  steps?: Step[]
 }
 
 function equal(a: unknown, b: unknown): boolean {
@@ -154,6 +161,25 @@ function applyPatch(current: CanvasGraph, patch: GraphPatch, reverse: boolean): 
   graph.edges = applyCollection(graph.edges, patch.edges, reverse)
   return cloneCanvas(graph)
 }
+/** History after `steps`, as it will be once they are written. */
+function replay(
+  undo: GraphPatch[],
+  redo: GraphPatch[],
+  steps: readonly Step[],
+  limit: number
+): { undo: GraphPatch[]; redo: GraphPatch[] } {
+  undo = [...undo]
+  redo = [...redo]
+  for (const step of steps) {
+    if (step.kind === 'command') {
+      undo.push(step.patch)
+      redo = []
+      if (undo.length > limit) undo.shift()
+    } else if (step.kind === 'undo') redo.push(undo.pop() ?? step.patch)
+    else undo.push(redo.pop() ?? step.patch)
+  }
+  return { undo, redo }
+}
 function copySnapshot(snapshot: GraphSnapshot): GraphSnapshot {
   if (!snapshot.revision) throw new CanvasSessionError('stale')
   return { graph: cloneCanvas(snapshot.graph), revision: snapshot.revision }
@@ -171,6 +197,8 @@ export class CanvasSession {
     outcome: CanvasPublicationOutcome
     preparation: Preparation
   } | null = null
+  private steps: Step[] = []
+  private stepStart: CanvasGraph | null = null
   private undoJournal: GraphPatch[] = []
   private redoJournal: GraphPatch[] = []
   private journalRevision: string
@@ -194,6 +222,10 @@ export class CanvasSession {
   }
   get graph(): CanvasGraph {
     return cloneCanvas(this.preview?.graph ?? this.baseline.graph)
+  }
+  /** A write is in flight. */
+  get writing(): boolean {
+    return this.publishing
   }
   get busy(): boolean {
     return this.publishing || !!this.preview?.active
@@ -233,8 +265,27 @@ export class CanvasSession {
       kind: preparation.kind,
     }
   }
+  /** Written history only. */
   get history(): { undo: number; redo: number } {
     return { undo: this.undoJournal.length, redo: this.redoJournal.length }
+  }
+  /** What a person can undo now: written history plus local steps not yet written. */
+  get localHistory(): { undo: number; redo: number } {
+    const { undo, redo } = this.effectiveHistory()
+    return { undo: undo.length, redo: redo.length }
+  }
+  /** Local steps waiting for a write, the active draft not included. */
+  get pendingSteps(): number {
+    return this.steps.length
+  }
+  private effectiveHistory(): { undo: GraphPatch[]; redo: GraphPatch[] } {
+    const current = this.journalRevision === this.baseline.revision
+    return replay(
+      current ? this.undoJournal : [],
+      current ? this.redoJournal : [],
+      this.steps,
+      this.historyLimit
+    )
   }
 
   /** Include deleted cards in history: undo must not bring their old paths back. */
@@ -245,7 +296,8 @@ export class CanvasSession {
       [this.baseline.graph, this.preview?.graph, this.prepared?.after].some((graph) =>
         graph?.nodes.some(matches)
       ) ||
-      [...this.undoJournal, ...this.redoJournal].some((patch) =>
+      (this.stepStart?.nodes.some(matches) ?? false) ||
+      [...this.undoJournal, ...this.redoJournal, ...this.steps.map((s) => s.patch)].some((patch) =>
         patch.nodes.changes.some((change) => [change.before, change.after].some(matches))
       )
     )
@@ -283,6 +335,8 @@ export class CanvasSession {
       }
     this.undoJournal = this.undoJournal.map(patchReferences)
     this.redoJournal = this.redoJournal.map(patchReferences)
+    this.steps = this.steps.map((step) => ({ ...step, patch: patchReferences(step.patch) }))
+    if (this.stepStart) this.stepStart = renameCanvasReferences(this.stepStart, renames)
     if (this.journalRevision === previous) this.journalRevision = snapshot.revision
     this.baseline = copySnapshot(snapshot)
     this.prepared = null
@@ -290,9 +344,11 @@ export class CanvasSession {
     return true
   }
 
+  /** A local edit may start while an earlier one is being written; it is written later. */
   beginDraft(): void {
-    if (this.busy) throw new CanvasSessionError('busy')
+    if (this.preview?.active || this.foreignPublication) throw new CanvasSessionError('busy')
     if (this.conflicted) throw new CanvasSessionError('conflict')
+    this.stepStart = cloneCanvas(this.preview?.graph ?? this.baseline.graph)
     this.preview = this.preview
       ? { ...this.preview, active: true }
       : {
@@ -303,20 +359,97 @@ export class CanvasSession {
     this.version++
   }
   updateDraft(transform: GraphTransform): void {
-    if (this.publishing) throw new CanvasSessionError('busy')
+    if (this.foreignPublication) throw new CanvasSessionError('busy')
     if (!this.preview?.active) throw new CanvasSessionError('no-draft')
     const graph = this.transform(this.preview.graph, transform)
     this.preview = { ...this.preview, graph }
     this.version++
   }
+  /** Ends the active draft as one local step. */
   finishDraft(): void {
-    if (this.publishing) throw new CanvasSessionError('busy')
+    if (this.foreignPublication) throw new CanvasSessionError('busy')
     if (!this.preview?.active) throw new CanvasSessionError('no-draft')
+    const start = this.stepStart ?? this.baseline.graph,
+      patch = graphPatch(start, this.preview.graph)
+    if (
+      patch.fields.length ||
+      patch.nodes.changes.length ||
+      patch.edges.changes.length ||
+      patch.nodes.order ||
+      patch.edges.order
+    )
+      this.steps.push({ kind: 'command', patch })
+    this.stepStart = null
     this.preview = { ...this.preview, active: false }
+    this.dropEmptyPreview()
+    this.version++
+  }
+  /** Drops only the active draft's change; earlier local steps stay. */
+  cancelDraft(): void {
+    if (this.foreignPublication) throw new CanvasSessionError('busy')
+    if (!this.preview?.active) throw new CanvasSessionError('no-draft')
+    this.preview = {
+      ...this.preview,
+      graph: this.stepStart ?? cloneCanvas(this.baseline.graph),
+      active: false,
+    }
+    this.stepStart = null
+    if (!this.steps.length && !this.publishing && !this.unsettledPublication) {
+      // The gesture was the only local change: nothing is retained, a conflict included.
+      this.preview = null
+      this.conflicted = false
+      this.prepared = null
+    }
+    this.dropEmptyPreview()
+    this.version++
+  }
+  /**
+   * A write that is not the local draft's (an agent command or written history). Local edits
+   * wait for it: they would not build on what it writes.
+   */
+  private get foreignPublication(): boolean {
+    return this.publishing && !this.prepared?.steps
+  }
+  private dropEmptyPreview(): void {
+    if (
+      this.preview &&
+      !this.preview.active &&
+      !this.steps.length &&
+      !this.publishing &&
+      !this.conflicted &&
+      !this.unsettledPublication &&
+      this.preview.baseRevision === this.baseline.revision &&
+      equal(this.preview.graph, this.baseline.graph)
+    )
+      this.preview = null
+  }
+  /** Undo in memory: the reversal is a local step like any other, written later. */
+  undoLocal(): void {
+    this.history$(true)
+  }
+  redoLocal(): void {
+    this.history$(false)
+  }
+  private history$(reverse: boolean): void {
+    if (this.preview?.active || this.foreignPublication) throw new CanvasSessionError('busy')
+    if (this.conflicted) throw new CanvasSessionError('conflict')
+    const { undo, redo } = this.effectiveHistory(),
+      patch = (reverse ? undo : redo).at(-1)
+    if (!patch) throw new CanvasSessionError('empty-history')
+    const graph = applyPatch(this.preview?.graph ?? this.baseline.graph, patch, reverse)
+    this.preview = {
+      graph,
+      baseRevision: this.preview?.baseRevision ?? this.baseline.revision,
+      active: false,
+    }
+    this.steps.push({ kind: reverse ? 'undo' : 'redo', patch })
+    this.dropEmptyPreview()
     this.version++
   }
   discardDraft(): void {
     if (this.publishing) throw new CanvasSessionError('busy')
+    this.steps = []
+    this.stepStart = null
     this.preview = null
     this.conflicted = false
     this.unsettledPublication = null
@@ -329,6 +462,7 @@ export class CanvasSession {
     if (!this.preview) throw new CanvasSessionError('no-draft')
     const graph = this.transform(this.baseline.graph, transform)
     this.preview = { graph, baseRevision: this.baseline.revision, active: false }
+    this.steps = [{ kind: 'command', patch: graphPatch(this.baseline.graph, graph) }]
     this.conflicted = false
     this.unsettledPublication = null
     this.version++
@@ -359,10 +493,15 @@ export class CanvasSession {
   }
   private transform(input: CanvasGraph, transform: GraphTransform): CanvasGraph {
     const generation = this.version,
-      preparation = this.prepared
+      preparation = this.prepared,
+      publishing = this.publishing
     const graph = cloneCanvas(transform(cloneCanvas(input)))
     // Preparation replacement and publication start need not change document generation.
-    if (generation !== this.version || preparation !== this.prepared || this.publishing)
+    if (
+      generation !== this.version ||
+      preparation !== this.prepared ||
+      publishing !== this.publishing
+    )
       throw new CanvasSessionError('stale')
     return graph
   }
@@ -371,12 +510,21 @@ export class CanvasSession {
     this.writable()
     return this.stage(this.transform(this.baseline.graph, transform), 'command')
   }
+  /** Stages the finished local steps; a draft still active is left out and written later. */
   prepareDraft(): PreparedCanvasTransaction {
-    this.writable(true)
+    if (this.publishing) throw new CanvasSessionError('busy')
+    if (this.conflicted) throw new CanvasSessionError('conflict')
     if (!this.preview) throw new CanvasSessionError('no-draft')
+    // Only an unfinished draft: nothing is ready to write.
+    if (this.preview.active && !this.steps.length) throw new CanvasSessionError('busy')
     if (this.preview.baseRevision !== this.baseline.revision)
       throw new CanvasSessionError('conflict')
-    return this.stage(this.preview.graph, 'command')
+    const token = this.stage(
+      this.preview.active ? (this.stepStart ?? this.baseline.graph) : this.preview.graph,
+      'command'
+    )
+    this.prepared.steps = [...this.steps]
+    return token
   }
   private prepareHistory(reverse: boolean): PreparedCanvasTransaction {
     this.writable()
@@ -410,7 +558,11 @@ export class CanvasSession {
   /** Call synchronously inside the storage transform, with its current effective snapshot. */
   apply(token: PreparedCanvasTransaction, current: GraphSnapshot): CanvasGraph {
     const prepared = this.matching(token)
-    this.writable(true)
+    if (this.publishing) throw new CanvasSessionError('busy')
+    if (this.conflicted) throw new CanvasSessionError('conflict')
+    // A local draft opened since preparation would have changed the generation; only one
+    // begun through a still-matching preparation is a later step, written after this one.
+    if (this.preview?.active && !prepared.steps) throw new CanvasSessionError('busy')
     if (current.revision !== token.revision || !equal(current.graph, prepared.before))
       throw new CanvasSessionError('stale')
     const graph = cloneCanvas(prepared.after)
@@ -432,7 +584,18 @@ export class CanvasSession {
     // Once publication began, a modify callback may have observed this write or a later one.
     // Confirmation still records this transaction, but must never restore an older baseline.
     const observedExternal = this.baseline.revision !== token.revision
-    if (prepared.kind === 'command') {
+    if (prepared.steps) {
+      const current = this.journalRevision === token.revision,
+        history = replay(
+          current ? this.undoJournal : [],
+          current ? this.redoJournal : [],
+          prepared.steps,
+          this.historyLimit
+        )
+      this.undoJournal = history.undo
+      this.redoJournal = history.redo
+      this.steps = this.steps.slice(prepared.steps.length)
+    } else if (prepared.kind === 'command') {
       if (this.journalRevision !== token.revision) this.undoJournal = []
       this.redoJournal = []
       if (!equal(prepared.before, prepared.after)) this.undoJournal.push(prepared.patch)
@@ -446,8 +609,16 @@ export class CanvasSession {
     }
     if (!observedExternal) this.baseline = snapshot
     this.journalRevision = confirmed.revision
-    this.preview = null
-    this.conflicted = false
+    // Local steps made during the write stay pending, now on top of what it wrote.
+    const later = !!prepared.steps && (this.steps.length > 0 || !!this.preview?.active)
+    this.preview = later
+      ? {
+          ...this.preview,
+          baseRevision: observedExternal ? this.preview.baseRevision : confirmed.revision,
+        }
+      : null
+    if (!later) this.stepStart = null
+    this.conflicted = later && observedExternal ? this.conflicted : false
     this.prepared = null
     this.publishing = false
     this.version++

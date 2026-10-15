@@ -67,6 +67,8 @@ export class CanvasDocument {
     return this.session.dirty ? this.humanDraftPath : null
   }
   readonly owners = new Map<object, Listener>()
+  /** Writes local human work now; set by the editor that batches it. */
+  writes: { flush(): Promise<boolean> } | null = null
   writer = false
   operations = 0
   error: string | null = null
@@ -192,6 +194,23 @@ export class CanvasDocument {
   }
   finishDraft(): void {
     this.session.finishDraft()
+    this.clearRecovery()
+    this.notify()
+  }
+  /** Drops only the active draft's change, keeping earlier unwritten steps. */
+  cancelDraft(): void {
+    this.session.cancelDraft()
+    this.notify()
+  }
+  undoLocal(): void {
+    this.session.undoLocal()
+    this.humanDraftPath ??= this.file.path
+    this.clearRecovery()
+    this.notify()
+  }
+  redoLocal(): void {
+    this.session.redoLocal()
+    this.humanDraftPath ??= this.file.path
     this.clearRecovery()
     this.notify()
   }

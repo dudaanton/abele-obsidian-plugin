@@ -643,7 +643,12 @@ Any desired change afterward is a new ordinary edit from a fresh read. No reload
 or automatic uncertain replay is provided.
 
 Human selection and drag/resize previews are transient and never stored as canvas fields.
-A completed gesture publishes one ordinary transaction in the existing shared history.
+A completed gesture, text edit, undo or redo applies at once in memory as its own undo step.
+Writing the file is batched: after a short pause (about 1.5 s) and at most about 5 s after the
+first unwritten change, and at once when the canvas tab closes or switches file, the window
+loses focus or the app goes to the background or quits, before native Canvas takes over, and
+before any agent tool or export reads or writes that canvas. Each batch is one file write; its
+steps keep their own undo entries. Until then the changes exist only in this running session.
 Group movement translates descendants once and refreshes the existing parent geometry anchors
 only after the entire translation. Group/ungroup use the same ordinary group nodes and hierarchy
 hints as agent edits. Resizing changes the standard node geometry, not linked file contents.
