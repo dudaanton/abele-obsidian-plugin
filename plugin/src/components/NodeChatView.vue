@@ -206,7 +206,7 @@ import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import { nodeQueueView } from '@/node/presentation'
 import { providerLabel, capabilityReason } from '@/node/providers'
 import { NodeService } from '@/node/NodeService'
-import { openNodeWorkspaces } from '@/node/openSession'
+import { openNodePanel } from '@/node/openSession'
 import { openNodeFiles } from '@/node/openFiles'
 import NodeMessageTree from './NodeMessageTree.vue'
 import NodePermissionCard from './NodePermissionCard.vue'
@@ -337,7 +337,7 @@ const workspaces = () => {
   const node = NodeService.getInstance().nodes.value.find(
     (n) => n.id === props.presenter.reference.registrationId
   )
-  if (node) openNodeWorkspaces(node, props.presenter.workspaceId?.value ?? undefined)
+  if (node) openNodePanel(node)
 }
 const openMenu = (event: MouseEvent | KeyboardEvent) => {
   const menu = new Menu()
@@ -366,7 +366,7 @@ const openMenu = (event: MouseEvent | KeyboardEvent) => {
         })
     )
   menu.addItem((i) =>
-    i.setTitle('Projects and workspaces').setIcon('git-branch').onClick(workspaces)
+    i.setTitle('Folders and worktrees').setIcon('server').onClick(workspaces)
   )
   menu.addItem((i) =>
     i

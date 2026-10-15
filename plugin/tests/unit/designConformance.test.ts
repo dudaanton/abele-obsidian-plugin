@@ -156,7 +156,7 @@ const MIGRATION_EXEMPTIONS = {
     'AiReplyRevisionDialog.vue',
   ], // Nested navigation and history, not all flat rows.
   stage4: ['settings/ai/AgentsSettings.vue'], // Rich-choice cards need comparison before replacing.
-  stage5: ['NodePath.vue', 'NodeFilesDialog.vue', 'NodeWorkspaceDialog.vue'], // Recovery and permission context.
+  stage5: ['NodePath.vue', 'NodeFilesDialog.vue'], // Recovery and permission context.
   stage6: walk(ROOT)
     .map(name)
     .filter((file) => !file.startsWith('obsidian/')), // Remaining legacy screens, settings, trees, tables and specialized editors. Legacy gate still applies where covered.

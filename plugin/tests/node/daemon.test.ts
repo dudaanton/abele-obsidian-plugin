@@ -15,7 +15,6 @@ import { IDBFactory } from 'fake-indexeddb'
 import { NodeClient } from '@abele/node-client'
 import { NodeClientStore } from '@/node/NodeClientStore'
 import { reduceTranscript } from '@/node/NodeTranscriptReducer'
-import { NodeWorkspaceModel } from '@/node/NodeWorkspaceModel'
 import { NodeDocumentSource, NodeFilesModel } from '@/node/NodeFilesModel'
 
 const cli = process.env.ABELE_NODE_CLI
@@ -238,18 +237,12 @@ it('provisions two projects, renders gated fake CLI edits, reloads approvals, qu
     ])
     projects.push(await client.registerProject(path, 'trusted'))
   }
-  const model = new NodeWorkspaceModel(client)
-  await model.load()
-  expect(model.projects.value).toHaveLength(2)
+  expect(await client.listProjects()).toHaveLength(2)
   const sessions = []
   for (const project of projects) {
-    model.projectId.value = project.project_id
-    await model.createWorkspace('HEAD')
-    await eventually(
-      async () => (await client.getJob(model.reservation.value!.job_id)).state === 'succeeded'
-    )
-    await model.load()
-    sessions.push(await model.startSession('Sample task', 'claude'))
+    const reservation = await client.createWorkspace(project.project_id, 'HEAD')
+    await eventually(async () => (await client.getJob(reservation.job_id)).state === 'succeeded')
+    sessions.push(await client.createSession('Sample task', reservation.workspace_id, 'claude'))
   }
   const session = sessions[0]
   await client.subscribe(session.session_id)
@@ -313,13 +306,8 @@ it('provisions two projects, renders gated fake CLI edits, reloads approvals, qu
     )
   )
   expect((await client.getSession(session.session_id)).native_session_id).toBe(native)
-  model.workspaceId.value = session.workspace_id!
-  // The old model is deliberately replaced after reconnect, just as a plugin reload replaces it.
-  const review = new NodeWorkspaceModel(client)
-  review.workspaceId.value = session.workspace_id!
-  await review.load()
-  await review.preview()
-  expect(review.diff.value?.diff).toContain('+after')
+  // Read afresh after reconnect, as a plugin reload would.
+  expect((await client.workspaceDiff(session.workspace_id!)).diff).toContain('+after')
   for (const project of projects) {
     expect(readFileSync(resolve(project.root_path, 'sample.txt'), 'utf8')).toBe('before\n')
     expect(

@@ -51,7 +51,8 @@ it('keeps secondary session actions in the menu and interrupts through one icon 
     expect(p.interrupt).toHaveBeenCalledWith('run')
     await wrapper.get('[aria-label="Node session menu"]').trigger('click')
     const menu = show.mock.contexts.at(-1) as Menu
-    expect(menu.items.map((i) => i.title)).toContain('Projects and workspaces')
+    // Folders and worktrees are the node panel's now; the menu opens it.
+    expect(menu.items.map((i) => i.title)).toContain('Folders and worktrees')
     menu.items.find((i) => i.title === 'Steer turn')!.handler!()
     await flushPromises()
     expect(wrapper.text()).toContain('not supported yet')

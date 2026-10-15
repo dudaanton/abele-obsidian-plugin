@@ -106,21 +106,17 @@ function withRowMenu(
   if (!folder) return
   const target = { ...model.target(id === folder.id ? (folder.copies[0]?.id ?? id) : id) }
   const connection = NodeService.getInstance().connection(model.registrationId)
-  // A repository's menu shows whether its other worktrees are open, so it asks the node first.
-  if (!folder.git || connection.state.value !== 'connected')
+  if (connection.state.value !== 'connected')
     return show(rowMenu(model, folder, target, undefined, into, panel))
-  nodePathAction(async () =>
-    show(
-      rowMenu(
-        model,
-        folder,
-        target,
-        await projectExternalBrowsing(connection.client, target.projectId),
-        into,
-        panel
-      )
-    )
-  )
+  // A repository's menu shows whether its other worktrees are open, and a folder's whether it
+  // takes the repository's Claude permissions, so it asks the node first.
+  nodePathAction(async () => {
+    const [external, project] = await Promise.all([
+      folder.git ? projectExternalBrowsing(connection.client, target.projectId) : undefined,
+      connection.client.getProject(folder.id).catch((): undefined => undefined),
+    ])
+    show(rowMenu(model, folder, target, external, into, panel, project))
+  })
 }
 function rowMenu(
   model: NodePathModel,
@@ -129,7 +125,9 @@ function rowMenu(
   external?: boolean,
   into?: Menu,
   /** In the panel's place menu: new chat, history and refresh are already there. */
-  panel = false
+  panel = false,
+  /** What the node says of the folder's settings, where it could be asked. */
+  project?: { use_repository_claude_permissions: boolean }
 ): Menu {
   const connection = NodeService.getInstance().connection(model.registrationId)
   const online = connection.state.value === 'connected',
@@ -150,6 +148,14 @@ function rowMenu(
         .onClick(() => nodePathAction(run))
       if (checked) i.setChecked(true)
     })
+  // What cannot be undone comes last, apart, in the warning colour.
+  const danger: [string, string, boolean, () => Promise<unknown> | void][] = []
+  const addDanger = (
+    title: string,
+    icon: string,
+    enabled: boolean,
+    run: () => Promise<unknown> | void
+  ) => danger.push([title, icon, enabled, run])
   if (!panel) {
     add('New chat', 'message-square-plus', online, () => newNodePathChat(model, target))
     add('History', 'history', git, () =>
@@ -221,7 +227,7 @@ function rowMenu(
     } else browsing(!external, 'Browse external workspaces', external)
     const row = folder.copies.find((c) => c.id === target.id)
     if (row?.kind !== 'project') {
-      add(
+      addDanger(
         'Remove from the list',
         'unlink',
         online && model.capabilities.value.includes('node_path_v2'),
@@ -236,7 +242,7 @@ function rowMenu(
             await model.select(folder.copies[0].id)
         }
       )
-      add(
+      addDanger(
         'Delete the worktree…',
         'trash',
         online && model.capabilities.value.includes('node_path_worktrees'),
@@ -305,6 +311,47 @@ function rowMenu(
       folder.copies.find((c) => c.id === target.id)?.path ?? folder.path
     )
   )
+  const root = !git || folder.copies.find((c) => c.id === target.id)?.kind === 'project'
+  if (project && root)
+    add(
+      'Use the repository’s Claude permissions',
+      'shield-check',
+      online,
+      async () => {
+        await connection.client.setProjectClaudePermissions(
+          folder.id,
+          !project.use_repository_claude_permissions
+        )
+        await model.refresh()
+      },
+      project.use_repository_claude_permissions
+    )
+  if (root)
+    addDanger('Remove the folder from the node…', 'list-x', online, async () => {
+      if (
+        !(await confirmAction(app(), {
+          title: 'Remove the folder from the node?',
+          message: `${folder.path} stays on disk, with its files and branches. Delete its worktrees first.`,
+          confirmText: 'Remove folder',
+        }))
+      )
+        return
+      // The folder confirmed, not whatever the panel shows by now.
+      await connection.client.removeProject(folder.id)
+      await model.refresh()
+      const next = model.targets.value[0]
+      if (model.current.value?.projectId === folder.id && next) await model.select(next.id)
+    })
+  if (danger.length) menu.addSeparator()
+  for (const [title, icon, enabled, run] of danger)
+    menu.addItem((i) =>
+      i
+        .setTitle(title)
+        .setIcon(icon)
+        .setWarning(true)
+        .setDisabled(!enabled)
+        .onClick(() => nodePathAction(run))
+    )
   return menu
 }
 export function showNodePathNodeMenu(model: NodePathModel, event: MouseEvent): void {

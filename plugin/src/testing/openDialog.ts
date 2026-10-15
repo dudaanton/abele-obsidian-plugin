@@ -33,11 +33,9 @@ import { agentsFixture } from './agentsFixture'
 import { chooseAttentionTab } from '@/agents/AgentsService'
 import NodeFilesDialog from '@/components/NodeFilesDialog.vue'
 import { nodeFilesFixture } from './nodeFilesFixture'
-import NodeWorkspaceDialog from '@/components/NodeWorkspaceDialog.vue'
 import NodeDelegationGrantsDialog from '@/components/NodeDelegationGrantsDialog.vue'
 import NodeDelegationCard from '@/components/NodeDelegationCard.vue'
 import { nodeDelegationGrantsFixture, nodeDelegationCardFixture } from './nodeDelegationFixture'
-import { nodeWorkspaceFixture } from './nodeWorkspaceFixture'
 import NodePairingDialog from '@/components/NodePairingDialog.vue'
 import NodePermissionCard from '@/components/NodePermissionCard.vue'
 import { nodePairingFixture } from './nodePairingFixture'
@@ -303,7 +301,6 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
   'node-question-input': () => mountNodeQuestion('input'),
   // Not its promise: that settles once the dialog is open, and the probes close it themselves.
   'node-folder-picker': () => void nodeFolderPickerFixture(),
-  'node-workspaces': () => mountAlone(NodeWorkspaceDialog, nodeWorkspaceFixture()),
   'node-delegation-grants': () =>
     mountAlone(NodeDelegationGrantsDialog, nodeDelegationGrantsFixture()),
   'node-delegation-card': () =>

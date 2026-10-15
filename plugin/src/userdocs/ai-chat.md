@@ -148,18 +148,27 @@ owner re-enrollment, not a copied key or transferable configuration.
 Foreground reconnect/replay is supported; background socket survival on a phone is not promised.
 
 After adding a node, **+** still opens an ordinary new chat; while it is empty, its agent list
-ends with **On <node>…** for each node. Pick an existing session, create a **fake session (non-executing)**, or open **Projects
-and workspaces…**. Register an existing absolute path on the node, choose whether you trust
-it for execution, and create a managed workspace from a branch or commit. Git provisioning
-is a durable job: its state and phase remain visible after restarting. A coding session can
-start only in a ready, unused managed workspace. Choose **Claude Code**, **pi** or **Fake** and a
+ends with **On <node>…** for each node. Pick an existing session, create a **fake session (non-executing)**, or open
+**Folders and worktrees in the node panel…**.
+
+The **Node** panel in the left sidebar is where a node's folders, worktrees and files are. The
+row under its header names the place shown, a branch with its folder under it; press it to
+search every folder, worktree and node chat, and its **…** menu for everything done with that
+place: a new chat, switching or comparing branches, new and attached worktrees, giving a chat
+access, opening a folder, refreshing, and the node itself. The header's four buttons switch
+between the place's **files**, its **changes** (not staged, staged, and committed on the branch
+but not in its base), its **history** and its **pull requests**. Under the branch name, codes say
+what it is compared with and how far ahead and behind it is; **Compare with…** picks another
+branch or tag, and the cross beside «vs …» goes back to the default. Opening a file shows it in
+its own tab, where the pencil edits it in place.
+Choose **Claude Code**, **pi** or **Fake** and a
 session title; an attached session can be reopened instead of starting another one. It uses the same
 chat tabs, message renderer and composer, but never runs the plugin's agents or vault tools.
 It accepts text only; local slash commands, attachments, history editing, branches and rewind
 are not offered. Node file links open the workspace's retained file view, never a
 coincidentally named vault file. Nested `abele-message` blocks in node replies remain plain code,
 including their note links and embeds; they do not open vault-backed message cards.
-Open **Projects and workspaces** from the node chat header's **…** menu. That menu also
+**Folders and worktrees** in the node chat header's **…** menu opens the Node panel. That menu also
 holds reconnection and native-session resume information. Unavailable providers are disabled;
 provider details list supported, unsupported and unverified capabilities with the node's reasons.
 Gated steering and question-initiation actions are disabled. Model login and endpoint availability
@@ -173,9 +182,11 @@ the preview is not an immutable snapshot. Refresh it to review newer work.
 The header's **Browse workspace files** opens a browser including dotfiles,
 ignored and untracked files. Symbolic links are listed but never followed. File views use
 numbered code with the same presentation as GitHub tabs; binary and oversized files show
-metadata instead of text. The workspace dialog also offers browsing without attaching a session.
+metadata instead of text. The Node panel also offers browsing without attaching a session.
 
-Choose **Edit file** to edit an existing small UTF-8 file in the same numbered code view.
+Choose **Edit file** (in a Node panel file's tab, the pencil in the tab's header) to edit an
+existing small UTF-8 file in the same numbered code view; the header then saves (also with
+⌘ S), discards the edits, or stops editing with the edits kept.
 Unsent text and its original version are stored only on this device, including across plugin
 reloads. **Save file** checks that original version before applying the change. Saving accepts
 at most 32,768 characters; larger local drafts remain stored but cannot be submitted. Binary
@@ -392,7 +403,7 @@ says what was missing by name. **Give this chat access** opens the chat's node a
 node, folder and worktree already chosen; **Approve on this device** confirms access that
 arrived from another device; **Open the Node panel** is for a node that is not connected. After
 access is given the line says so; ask the agent to try again, it does not retry by itself. In
-the Node panel, right-click a folder or worktree and choose **Give a chat access…** to pick a
+the Node panel, open the place's **…** menu and choose **Give a chat access…** to pick a
 chat: the open one first, then the rest by when they were last used, each with its agent and
 last question.
 

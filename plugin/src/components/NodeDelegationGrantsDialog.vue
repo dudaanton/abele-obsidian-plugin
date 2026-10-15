@@ -111,7 +111,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import type { DelegationGrant, Project } from '@abele/node-client'
 import type { NodeDelegationController } from '@/node/NodeDelegationController'
-import { nodePages } from '@/node/NodeWorkspaceModel'
+import { nodePages } from '@/node/nodePages'
 import {
   nodeProviders,
   providerAvailable,

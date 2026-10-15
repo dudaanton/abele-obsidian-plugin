@@ -1,6 +1,5 @@
-import { createApp } from 'vue'
-import NodeWorkspaceDialog from '@/components/NodeWorkspaceDialog.vue'
-import { NodeWorkspaceModel, type NodeSession } from './NodeWorkspaceModel'
+import type { NodeSession } from './nodePages'
+import { revealNodeDrawer } from './nodePathNavigation'
 import { FuzzySuggestModal, Menu, Notice, type App } from 'obsidian'
 import { ChatService } from '@/ai/ChatService'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -43,7 +42,7 @@ export async function pickNodeSession(node: RegisteredNode, after?: string): Pro
   await connection.connect()
   const sessions = await connection.client.listSessions(after)
   const choices: SessionChoice[] = [
-    { title: 'Projects and workspaces…', workspaces: true },
+    { title: 'Folders and worktrees in the node panel…', workspaces: true },
     ...(chats.canCreateTab ? [{ title: 'Create new fake session (non-executing)' }] : []),
     ...sessions,
   ]
@@ -53,7 +52,7 @@ export async function pickNodeSession(node: RegisteredNode, after?: string): Pro
   ;(app as unknown as { setting?: { close(): void } }).setting?.close()
   new SessionPicker(app, choices, async (choice) => {
     if (choice.workspaces) {
-      openNodeWorkspaces(node)
+      openNodePanel(node)
       return
     }
     if (choice.moreAfter) {
@@ -94,35 +93,11 @@ export async function revealNodeSession(
   await chats.revealSidebar({ focus: false })
 }
 
-/** The modal uses the same connector/client as the chat and has no filesystem access. */
-export function openNodeWorkspaces(node: RegisteredNode, workspaceId?: string): void {
-  const connection = NodeService.getInstance().connection(node.id)
-  const model = new NodeWorkspaceModel(connection.client, () => {
-    if (!ChatService.getInstance().canCreateTab) throw new Error(ChatService.TABS_FULL)
-  })
-  if (workspaceId) model.workspaceId.value = workspaceId
-  const host = document.body.createDiv()
-  let closed = false
-  const close = () => {
-    if (closed) return
-    closed = true
-    ui.unmount()
-    host.remove()
-  }
-  const ui = createApp(NodeWorkspaceDialog, {
-    model,
-    connection,
-    label: node.label,
-    onClose: close,
-    onSession: (session: NodeSession) => {
-      void revealNodeSession(node, session)
-        .then(close)
-        .catch(
-          (e: unknown) => new Notice(e instanceof Error ? e.message : 'Could not open session')
-        )
-    },
-  })
-  ui.mount(host)
+/** A node's folders, worktrees and chats live in its side panel, opened here for that node. */
+export function openNodePanel(node: RegisteredNode): void {
+  void revealNodeDrawer(GlobalStore.getInstance().app.workspace, node.id).catch(
+    (e: unknown) => new Notice(e instanceof Error ? e.message : 'Could not open the node panel')
+  )
 }
 
 /** Existing local action stays first; with no nodes this is exactly the original button. */

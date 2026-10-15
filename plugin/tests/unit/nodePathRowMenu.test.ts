@@ -15,7 +15,11 @@ vi.mock('@/node/NodeService', () => ({
       nodes: ref([]),
       connection: () => ({
         state: ref('connected'),
-        client: { request: f.request, setRepositorySettings: f.settings },
+        client: {
+          request: f.request,
+          setRepositorySettings: f.settings,
+          getProject: async () => ({ use_repository_claude_permissions: false }),
+        },
       }),
     }),
   },
