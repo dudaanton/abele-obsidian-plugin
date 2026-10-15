@@ -214,6 +214,8 @@ describe.skipIf(!available)('the mermaid viewer', () => {
       full?: { width: number; height: number; scale: number }
       shot?: string
       closed?: boolean
+      frameless?: boolean
+      underLights?: string[]
     }>(
       `(async () => {
       ${PRELUDE}
@@ -233,10 +235,21 @@ describe.skipIf(!available)('the mermaid viewer', () => {
       const frame = modal.querySelector('.abele-mermaid__frame').getBoundingClientRect()
       const full = { width: Math.round(frame.width), height: Math.round(frame.height),
         scale: scaleOf(modal.querySelector('.abele-mermaid__canvas')) }
+      // A frameless macOS window draws its three lights over the dialog's top left corner: the
+      // title's words and the close button stand clear of them (design check Р39).
+      const b = document.body.classList
+      const frameless = b.contains('mod-macos') && b.contains('is-hidden-frameless') && !b.contains('is-fullscreen')
+      const underLights = []
+      const title = modal.querySelector('.modal-title'), close = modal.querySelector('.modal-close-button')
+      const words = title && [...title.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim())
+      const range = document.createRange()
+      if (words) range.selectNodeContents(words)
+      for (const [name, r] of [['title', words ? range.getBoundingClientRect() : null], ['close', close?.getBoundingClientRect()]])
+        if (frameless && r && r.width && r.left < 78 && r.top < 38) underLights.push(name)
       const shot = await shoot('desktop-fullscreen')
       document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
       const closed = !!(await until(() => !document.querySelector('.modal.abele-modal_full'), 5000))
-      return { inNote, inNoteWidth, full, shot, closed }
+      return { inNote, inNoteWidth, full, shot, closed, frameless, underLights }
     })()`,
       90_000
     )
@@ -244,6 +257,7 @@ describe.skipIf(!available)('the mermaid viewer', () => {
     expect(r.full!.height).toBeGreaterThan(300)
     expect(r.full!.width).toBeGreaterThan(r.inNoteWidth!)
     expect(r.full!.scale).toBeGreaterThan(r.inNote!)
+    expect(r.underLights, `frameless window: ${r.frameless}`).toEqual([])
     expect(r.closed).toBe(true)
   })
 
