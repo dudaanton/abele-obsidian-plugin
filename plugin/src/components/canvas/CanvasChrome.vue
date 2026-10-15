@@ -214,6 +214,17 @@
       @height="findHeight = $event"
     />
 
+    <!-- Far from everything: a faint arrow at the edge, towards where the canvas's contents are;
+         pressed, the camera goes back to them. -->
+    <ChromeIcon
+      v-if="away"
+      icon="arrow-up"
+      tooltip="Back to what is on the canvas (Shift+1)"
+      class="abele-canvas-chrome__away"
+      :style="away"
+      @click="viewer.fit()"
+    />
+
     <!-- A connection's label written on the line itself, as Obsidian Canvas writes it. -->
     <div v-if="labelling && labelAt" class="canvas-path-label-wrapper" :style="labelAt.style">
       <div
@@ -310,6 +321,7 @@ import type { CanvasEditor, CanvasField } from '@/canvas/Editor'
 import type { CanvasViewer } from '@/canvas/Viewer'
 import { stepsOf } from '@/canvas/core/steps'
 import { allInkEntries } from '@/canvas/core/ink'
+import { bounds } from '@/canvas/core/model'
 import { linesOf } from '@/canvas/core/primitives'
 import { centredLabel, contentBox, labelPoint, paintedRoute } from '@/canvas/core/scene'
 import { zoomAt } from '@/drawing/camera'
@@ -381,6 +393,36 @@ const finding = computed(() => (tick.value, c.finding()))
 const findHeight = ref(0)
 const placing = computed(() => ['frame', 'card', 'shape'].includes(tool.value))
 const labelEl = ref<HTMLElement>()
+/** Where the arrow back to the contents stands when none of them is in view, and its turn. */
+const away = computed(() => {
+  tick.value
+  const nodes = graph().nodes
+  if (!nodes.length || props.viewer.step !== null) return null
+  const box = bounds(nodes),
+    v = props.viewer.visible()
+  const overlap =
+    box.x < v.x + v.width && box.x + box.width > v.x && box.y < v.y + v.height && box.y + box.height > v.y
+  if (overlap) return null
+  const cx = v.x + v.width / 2,
+    cy = v.y + v.height / 2,
+    dx = box.x + box.width / 2 - cx,
+    dy = box.y + box.height / 2 - cy
+  const w = props.viewer.stage.clientWidth,
+    h = props.viewer.stage.clientHeight,
+    top = barHeight.value + findHeight.value
+  // From the middle of the view towards the contents, stopped 28px inside the view's edge.
+  const k = Math.min(
+    Math.abs((w / 2 - 28) / (dx * props.viewer.camera.zoom || 1e-9)),
+    Math.abs(((h - top) / 2 - 28) / (dy * props.viewer.camera.zoom || 1e-9))
+  )
+  const x = w / 2 + dx * props.viewer.camera.zoom * k,
+    y = top + (h - top) / 2 + dy * props.viewer.camera.zoom * k
+  return {
+    left: `${x}px`,
+    top: `${y}px`,
+    transform: `translate(-50%, -50%) rotate(${(Math.atan2(dy, dx) * 180) / Math.PI + 90}deg)`,
+  }
+})
 /** Where the label being written stands: in the middle of its line, on the screen. */
 const labelAt = computed(() => {
   tick.value
@@ -884,6 +926,15 @@ onBeforeUnmount(() => {
   --canvas-color: var(--text-normal);
 }
 
+// The way back to the contents: faint until pointed at, as Obsidian's quiet glyphs are.
+.abele-canvas-chrome__away {
+  position: absolute;
+  z-index: var(--layer-cover);
+  opacity: 0.6;
+  &:hover {
+    opacity: 1;
+  }
+}
 // A card's words written over it hide its own copy of them.
 .abele-canvas-card-frame.is-being-written .abele-canvas-card {
   visibility: hidden;
