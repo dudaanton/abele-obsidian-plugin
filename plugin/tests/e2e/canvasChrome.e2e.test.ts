@@ -275,7 +275,8 @@ describe.skipIf(!available)('the canvas by hand', () => {
     await until(`view().editor.controls.editing()`)
     await type('Sample made at the end')
     // Leave the card by tapping canvas above the keyboard; Esc on a desktop.
-    if (onPhone()) await input(chrome.emptySpotInSight()) else await key('Escape')
+    if (onPhone()) await input(chrome.emptySpotInSight())
+    else await key('Escape')
     await saved()
     await until(
       `(await read()).nodes.some(n=>n.text==='Sample made at the end')&&(await read()).edges.length===2`
