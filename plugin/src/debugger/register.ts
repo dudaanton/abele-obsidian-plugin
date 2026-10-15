@@ -8,6 +8,7 @@ import { debuggerKey } from './DebuggerController'
 import DebuggerView from './DebuggerView.vue'
 import { registerDebugValues } from './DebugValueTab'
 import { registerTraceTabs } from './trace/TraceTabs'
+import { revealSidebarView } from '@/views/revealSidebarView'
 export const DEBUG_VIEW_TYPE = 'abele-debug-view'
 export class DebugView extends ItemView {
   private vue?: KitMount
@@ -78,14 +79,9 @@ async function showSession(presenter: NodeChatPresenter, sessionId: string) {
   const service = DebuggerService.instance,
     binding = service.binding(presenter)
   service.select(binding)
-  const { workspace } = GlobalStore.getInstance().app
-  const leaf = workspace.getLeavesOfType(DEBUG_VIEW_TYPE)[0] ?? workspace.getRightLeaf(false)
-  if (!leaf) {
-    new Notice('The debug sidebar is unavailable')
-    return
-  }
-  await leaf.setViewState({ type: DEBUG_VIEW_TYPE, active: true })
-  await workspace.revealLeaf(leaf)
+  // The shared reveal: on a phone a drawer can count as open while nothing of it is on screen,
+  // and only closing and opening it again shows the panel.
+  await revealSidebarView(GlobalStore.getInstance().app, DEBUG_VIEW_TYPE)
   await binding.open(sessionId)
 }
 /** Runs a program of the chat's folder under the debugger and shows its session. */
