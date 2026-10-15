@@ -244,7 +244,7 @@ describe('the real agent chat design', () => {
           'model',
           'access',
         ])
-        expect(report.shots).toHaveLength(9)
+        expect(report.shots).toHaveLength(10)
         expect(report.overflow).toEqual([])
         for (const target of report.touch) {
           expect(target.width, target.name).toBeGreaterThanOrEqual(44)
