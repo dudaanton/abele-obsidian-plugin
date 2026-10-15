@@ -78,17 +78,31 @@ describe('attachment folder rules settings', () => {
     expect(rowsOf(view, 'empty')).toHaveLength(0)
   })
 
-  it('gives every rule a box of its own, its two rows together and nothing else in it', () => {
-    config.attachmentRules = [rule('A', 'note'), rule('B', 'folder', 'b files')]
+  it("gives every rule a box of its own, its two rows together, as the group's own rows", () => {
+    config.attachmentRules = [rule('A', 'note'), rule('B', 'folder', 'b files'), rule('C', 'note')]
     view = mount(AttachmentRulesSettings)
-    const boxes = view.findAll('.abele-attachment-rules__rule')
-    expect(boxes).toHaveLength(2)
-    for (const box of boxes) {
-      const rows = [...box.element.children].map((child) => child.className)
-      expect(rows).toHaveLength(2)
-      expect(rows[0]).toContain('abele-attachment-rules__notes')
-      expect(rows[1]).toContain('abele-attachment-rules__place')
-    }
+    const section = view.findComponent(Section).element
+    const kinds = [...section.children]
+      .map((child) =>
+        child.classList.contains('abele-attachment-rules__notes')
+          ? 'notes'
+          : child.classList.contains('abele-attachment-rules__place')
+            ? 'place'
+            : child.classList.contains('abele-attachment-rules__between')
+              ? 'between'
+              : null
+      )
+      .filter(Boolean)
+    expect(kinds).toEqual([
+      'notes',
+      'place',
+      'between',
+      'notes',
+      'place',
+      'between',
+      'notes',
+      'place',
+    ])
   })
 
   it('puts the group description and a plus beside the heading', () => {

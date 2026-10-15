@@ -9,8 +9,11 @@
       <Icon class="abele-attachment-rules__add" icon="plus" tooltip="Add a rule" @click="add" />
     </template>
 
-    <!-- A box of its own per rule: the kit draws a run of sibling rows as one box. -->
-    <div v-for="(row, index) in rows" :key="row.key" class="abele-attachment-rules__rule">
+    <!-- A box of its own per rule: the kit draws a run of sibling rows as one box, so a mark
+         between rules ends one and starts the next. The rows stay the group's own children,
+         which is what lines its heading up with theirs. -->
+    <template v-for="(row, index) in rows" :key="row.key">
+      <div v-if="index > 0" class="abele-attachment-rules__between" aria-hidden="true" />
       <Setting class="abele-attachment-rules__notes" name="Notes in">
         <Search
           :model-value="row.notesText"
@@ -44,7 +47,7 @@
           @update:model-value="(value: string) => change(row, 'subfolder', value)"
         />
       </Setting>
-    </div>
+    </template>
 
     <Setting
       v-if="rows.length === 0"

@@ -151,8 +151,9 @@ const probe = (mobile: boolean) => `(async () => {
     const alignedWithMaps = !!maps && ours.length > 0 && ours.every(row => left(row) === left(maps.querySelector('.setting-item')))
       && left(group.querySelector('.abele-section__heading')) === left(maps.querySelector('.abele-section__heading'))
     // Each rule a box of its own, a gap between one box and the next.
-    const boxes = [...group.querySelectorAll('.abele-attachment-rules__rule')].map(b => b.getBoundingClientRect())
-    const boxesApart = boxes.every((b, i) => i === 0 || b.top > boxes[i - 1].bottom + 1)
+    const tops = [...group.querySelectorAll('.abele-attachment-rules__notes')].map(r => r.getBoundingClientRect().top)
+    const bottoms = [...group.querySelectorAll('.abele-attachment-rules__place')].map(r => r.getBoundingClientRect().bottom)
+    const boxesApart = tops.every((top, i) => i === 0 || top > bottoms[i - 1] + 1)
     // Off the phone the choice stands on its label's line; on the phone under it.
     const choiceOnLabelLine = [...group.querySelectorAll('.abele-attachment-rules__place')].map(row => {
       const name = row.querySelector('.setting-item-name').getBoundingClientRect(), select = row.querySelector('select').getBoundingClientRect()
