@@ -113,14 +113,31 @@ describe('finding things on the canvas', () => {
     const graph = {
       nodes: [
         { id: 'f', type: 'group' as const, label: 'Kitchen', x: 0, y: 0, width: 400, height: 300 },
-        { id: 't', type: 'text' as const, text: '## Sample plan\nmore', x: 10, y: 10, width: 100, height: 60 },
-        { id: 'n', type: 'file' as const, file: 'Sample.md', subpath: '#Part', x: 0, y: 400, width: 100, height: 60 },
+        {
+          id: 't',
+          type: 'text' as const,
+          text: '## Sample plan\nmore',
+          x: 10,
+          y: 10,
+          width: 100,
+          height: 60,
+        },
+        {
+          id: 'n',
+          type: 'file' as const,
+          file: 'Sample.md',
+          subpath: '#Part',
+          x: 0,
+          y: 400,
+          width: 100,
+          height: 60,
+        },
       ],
       edges: [],
     }
     expect(canvasContents(graph).map((p) => p.title)).toEqual(['Frame: Kitchen'])
   })
-  it('puts the tab\'s own items first, with drawing by finger only on a tablet', async () => {
+  it("puts the tab's own items first, with drawing by finger only on a tablet", async () => {
     const { paneEntries } = await import('@/components/canvas/chromeMenus')
     const handlers = {
       find: vi.fn(),
@@ -162,7 +179,7 @@ describe('the parts of a note', () => {
       { title: 'Block ^abc123', subpath: '#^abc123' },
     ])
   })
-  it('offer a part, and pinning, from a note\'s more menu', async () => {
+  it("offer a part, and pinning, from a note's more menu", async () => {
     const c = controls() as ReturnType<typeof controls> & Record<string, ReturnType<typeof vi.fn>>
     c.setSubpath = vi.fn(async () => {})
     c.setPinned = vi.fn(async () => {})

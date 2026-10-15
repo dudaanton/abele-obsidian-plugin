@@ -645,10 +645,10 @@ export class CanvasInput implements CanvasViewerInput {
             height: Math.max(MIN_FRAME, f.rect.height),
           }
         : {
-              x: f.start[0] - FRAME_SIZE.width / 2,
-              y: f.start[1] - FRAME_SIZE.height / 2,
-              ...FRAME_SIZE,
-            }
+            x: f.start[0] - FRAME_SIZE.width / 2,
+            y: f.start[1] - FRAME_SIZE.height / 2,
+            ...FRAME_SIZE,
+          }
       if (this.ports.begin()) this.ports.complete(frameOps(this.viewer.graph, roundRect(rect)))
       this.viewer.draw()
       return

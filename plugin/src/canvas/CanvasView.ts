@@ -1,4 +1,12 @@
-import { FileView, Notice, Scope, TFile, type ViewStateResult, type WorkspaceLeaf } from 'obsidian'
+import {
+  FileView,
+  Menu,
+  Notice,
+  Scope,
+  TFile,
+  type ViewStateResult,
+  type WorkspaceLeaf,
+} from 'obsidian'
 import { cameraFrom } from '../drawing/camera'
 import { hostCanvasViewer } from './adapter'
 import { CANVAS_VIEW_TYPE, nativeCanvas } from './opening'

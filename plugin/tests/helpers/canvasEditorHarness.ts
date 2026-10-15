@@ -8,7 +8,12 @@ import { TFile } from 'obsidian'
 
 const cleanups: (() => void)[] = []
 afterEach(() => cleanups.splice(0).forEach((fn) => fn()))
-export function setup(graph: CanvasGraph = emptyCanvas()) {
+/** `delay` holds every write open, as a vault write does, so actions can land during a save. */
+export function setup(
+  graph: CanvasGraph = emptyCanvas(),
+  { delay = 0, schedule = { idle: 0, max: 0 } } = {}
+) {
+  const settle = () => (delay ? new Promise((resolve) => setTimeout(resolve, delay)) : undefined)
   const el = document.createElement('div')
   document.body.append(el)
   const openNode = vi.fn()
@@ -43,25 +48,21 @@ export function setup(graph: CanvasGraph = emptyCanvas()) {
     const session = documentState.session,
       token = session.prepareDraft()
     const graph = session.apply(token, session.committed)
+    await settle()
     session.acknowledge(token, { graph, revision: `saved-${session.generation}` })
     documentState.clearRecovery()
     documentState.notify()
   })
+  const notice = vi.fn()
   const editor = new CanvasEditor(viewer, {
     document: () => documentState,
     publish,
-    history: vi.fn(async (direction) => {
-      const session = documentState.session,
-        token = direction === 'undo' ? session.prepareUndo() : session.prepareRedo()
-      const graph = session.apply(token, session.committed)
-      session.acknowledge(token, { graph, revision: `history-${session.generation}` })
-      documentState.notify()
-    }),
+    schedule,
     pickFile: async () => 'sample-note.md',
     pickLink: async () => 'https://sample.example',
     confirmDiscard: async () => true,
     handoffChoice: async () => 'retain',
-    notice: vi.fn(),
+    notice,
   })
   documentState.owners.set(editor, (current) => {
     viewer.load(current.session.graph)
@@ -79,7 +80,18 @@ export function setup(graph: CanvasGraph = emptyCanvas()) {
     viewer.destroy()
     el.remove()
   })
-  return { el, viewer, editor, document: documentState, publish, button, field, input, openNode }
+  return {
+    el,
+    viewer,
+    editor,
+    document: documentState,
+    publish,
+    notice,
+    button,
+    field,
+    input,
+    openNode,
+  }
 }
 
 export const cards = (): CanvasGraph => ({
@@ -94,7 +106,13 @@ export const cards = (): CanvasGraph => ({
   })),
   edges: [{ id: 'connection', fromNode: 'alpha', toNode: 'beta' }],
 })
-export function pointer(s: ReturnType<typeof setup>, type: string, x: number, y: number, extra = {}) {
+export function pointer(
+  s: ReturnType<typeof setup>,
+  type: string,
+  x: number,
+  y: number,
+  extra = {}
+) {
   s.viewer.stage.dispatchEvent(
     new PointerEvent(type, {
       pointerId: 1,
@@ -106,4 +124,3 @@ export function pointer(s: ReturnType<typeof setup>, type: string, x: number, y:
     })
   )
 }
-

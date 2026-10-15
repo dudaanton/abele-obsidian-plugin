@@ -681,37 +681,6 @@ export class CanvasEditor {
       doc.addEventListener('visibilitychange', hidden)
       this.off.push(() => doc.removeEventListener('visibilitychange', hidden))
     }
-    this.listen(viewer.stage, 'pointermove', (e) => {
-      const event = e as PointerEvent,
-        r = viewer.stage.getBoundingClientRect(),
-        [x, y] = toWorld(viewer.camera, event.clientX - r.left, event.clientY - r.top)
-      this.pointer = { x, y }
-    })
-    this.listen(viewer.el, 'paste', (e) => {
-      const event = e as ClipboardEvent,
-        target = event.target as Element | null
-      if (
-        !event.clipboardData ||
-        this.editing ||
-        this.labeling ||
-        this.naming ||
-        target?.closest?.('input,textarea,[contenteditable="true"]')
-      )
-        return
-      // What was pasted is read now: the clipboard is gone once the event is over.
-      const files = Array.from(event.clipboardData.files),
-        text = event.clipboardData.getData('text/plain')
-      if (!files.length && !text.trim()) return
-      event.preventDefault()
-      event.stopPropagation()
-      void this.paste(files, text).catch((error) => this.fail(error))
-    })
-    this.listen(viewer.el, 'keyup', (event) => {
-      if ((event as KeyboardEvent).key !== ' ' || this.spaceFrom === null) return
-      this.tool = this.spaceFrom
-      this.spaceFrom = null
-      this.refresh()
-    })
     viewer.onFingersTap = (fingers) =>
       this.buttons.get(fingers === 2 ? 'Undo canvas change' : 'Redo canvas change')?.click()
     this.refresh()
@@ -1067,17 +1036,14 @@ export class CanvasEditor {
     const op = this.held.shift()
     if (!op || op.op !== 'add_ink') return
     try {
-      const document = this.ready()
-      document.beginDraft()
-      this.update(document, [op])
-      document.finishDraft()
+      this.commit(this.ready(), [op])
     } catch (error) {
       for (const lost of [op, ...this.held.splice(0)])
         if (lost.op === 'add_ink') this.inputAdapter.released(lost.stroke.id)
       return this.fail(error)
     }
     this.inputAdapter.released(op.stroke.id)
-    await this.saving(() => this.ports.publish()).catch((error) => this.fail(error))
+    if (this.held.length) void this.addHeld()
   }
   private async retry(): Promise<void> {
     const document = this.ports.document()
@@ -1327,11 +1293,9 @@ export class CanvasEditor {
       after = copy.picked
     }
     if (!ops.length) return
-    document.beginDraft()
-    this.update(document, ops)
-    document.finishDraft()
+    this.commit(document, ops)
     if (after) this.selected = after
-    await this.saving(() => this.ports.publish())
+    this.refresh()
   }
   /** One change to one card, as a step of its own; one that changes nothing is no step. */
   private async patchNode(id: string, patch: Record<string, unknown>): Promise<void> {
@@ -1342,10 +1306,7 @@ export class CanvasEditor {
       canvasFingerprint(document.session.graph)
     )
       return this.refresh()
-    document.beginDraft()
-    this.update(document, ops)
-    document.finishDraft()
-    await this.saving(() => this.ports.publish())
+    this.commit(document, ops)
   }
 
   /** Renames, folds or unfolds one frame as a single step to undo. */
@@ -1990,11 +1951,9 @@ export class CanvasEditor {
       canvasFingerprint(document.session.graph)
     )
       return this.refresh()
-    document.beginDraft()
-    this.update(document, ops)
-    document.finishDraft()
+    this.commit(document, ops)
     if (select) this.selected = select
-    await this.saving(() => this.ports.publish())
+    this.refresh()
   }
   /** The picked things on the clipboard, as Obsidian Canvas's own JSON, so it pastes anywhere. */
   private async copy(): Promise<boolean> {

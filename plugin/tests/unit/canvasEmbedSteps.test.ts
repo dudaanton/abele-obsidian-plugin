@@ -29,15 +29,13 @@ it.each([
     Object.assign(app, { workspace: { on: vi.fn() } })
     const canvas = document.createElement('canvas')
     vi.spyOn(canvas, 'toDataURL').mockReturnValue('data:image/png;base64,c2FtcGxl')
-    const paint = vi
-      .spyOn(pictures, 'canvasPicture')
-      .mockResolvedValue({
-        canvas,
-        region: { x: 0, y: 0, width: 240, height: 120 },
-        warnings: [],
-        visible: ['alpha'],
-        say: undefined,
-      })
+    const paint = vi.spyOn(pictures, 'canvasPicture').mockResolvedValue({
+      canvas,
+      region: { x: 0, y: 0, width: 240, height: 120 },
+      warnings: [],
+      visible: ['alpha'],
+      say: undefined,
+    })
     const embed = document.createElement('span')
     embed.className = 'internal-embed'
     embed.setAttribute('src', 'sample.canvas')

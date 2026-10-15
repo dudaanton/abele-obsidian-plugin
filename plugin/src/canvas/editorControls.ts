@@ -95,6 +95,11 @@ export function hostCanvasEditor(
   current: () => CanvasDocument | null
 ): CanvasEditor {
   const store = new ObsidianCanvasStore(app)
+  const requireDocument = () => {
+    const document = current()
+    if (!document) throw new Error('Canvas is no longer open')
+    return document
+  }
   return new CanvasEditor(viewer, {
     document: current,
     publish: (document) => store.publishDraft((document as CanvasDocument).file),

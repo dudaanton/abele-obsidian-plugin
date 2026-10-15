@@ -48,7 +48,8 @@ describe('a double press', () => {
     expect(document.activeElement?.classList.contains('abele-canvas-keyboard-primer')).toBe(true)
     await s.editor.controls.saveLabel('connection', 'feeds')
     expect(s.document.session.graph.edges[0].label).toBe('feeds')
-    expect(s.document.session.history.undo).toBe(1)
+    // One step each, counted once the batch has been written.
+    await vi.waitFor(() => expect(s.document.session.history.undo).toBe(1))
     expect(s.editor.controls.labelling()).toBeNull()
   })
   it('leaves an unchanged label without a step', async () => {
@@ -249,7 +250,8 @@ describe('keys on what is picked', () => {
       // Shift moves it ten steps to the right.
       expect(s.document.session.graph.nodes.find((n) => n.id === copy)!.x).toBeGreaterThan(before)
     )
-    expect(s.document.session.history.undo).toBe(2)
+    // One step each, counted once the batch has been written.
+    await vi.waitFor(() => expect(s.document.session.history.undo).toBe(2))
   })
   it('send it back with Cmd+[ and pick all with Cmd+A', async () => {
     const s = setup(cards())
@@ -287,7 +289,8 @@ describe('a pinned card', () => {
     expect(s.document.session.graph.nodes[0]).toMatchObject({ x: 0, y: 0 })
     await s.editor.controls.setPinned('alpha', false)
     expect(s.document.session.graph.nodes[0].abele?.pinned).toBeUndefined()
-    expect(s.document.session.history.undo).toBe(2)
+    // One step each, counted once the batch has been written.
+    await vi.waitFor(() => expect(s.document.session.history.undo).toBe(2))
   })
 })
 

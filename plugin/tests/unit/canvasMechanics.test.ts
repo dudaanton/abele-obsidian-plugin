@@ -60,6 +60,8 @@ function setup(graph: CanvasGraph = emptyCanvas(), extra: Record<string, unknown
   const editor = new CanvasEditor(viewer, {
     document: () => documentState,
     publish,
+    // Written at once, so a test reads what a write leaves without waiting out the idle pause.
+    schedule: { idle: 0, max: 0 },
     history: vi.fn(async (direction) => {
       const session = documentState.session,
         token = direction === 'undo' ? session.prepareUndo() : session.prepareRedo()
@@ -160,7 +162,15 @@ describe('the Select tool with a mouse', () => {
 describe('connections', () => {
   it('pulling a picked connection’s end that sits on a card’s edge point moves that end', async () => {
     const graph = cards()
-    graph.nodes.push({ id: 'gamma', type: 'text', text: 'gamma', x: 0, y: 300, width: 200, height: 100 })
+    graph.nodes.push({
+      id: 'gamma',
+      type: 'text',
+      text: 'gamma',
+      x: 0,
+      y: 300,
+      width: 200,
+      height: 100,
+    })
     const s = setup(graph)
     s.pointer('pointerdown', 300, 50)
     s.pointer('pointerup', 300, 50)
@@ -173,7 +183,11 @@ describe('connections', () => {
     s.pointer('pointerup', 100, 390)
     await flush()
     expect(s.graphNow().edges).toHaveLength(1)
-    expect(s.graphNow().edges[0]).toMatchObject({ fromNode: 'alpha', toNode: 'gamma', toSide: 'bottom' })
+    expect(s.graphNow().edges[0]).toMatchObject({
+      fromNode: 'alpha',
+      toNode: 'gamma',
+      toSide: 'bottom',
+    })
   })
 })
 
@@ -248,7 +262,10 @@ describe('a finger far zoomed out', () => {
 describe('the keys after writing', () => {
   it('go back to the canvas once a frame is named or a label written', async () => {
     const graph: CanvasGraph = {
-      nodes: [{ id: 'box', type: 'group', label: 'Box', x: 0, y: 0, width: 300, height: 200 }, ...cards().nodes],
+      nodes: [
+        { id: 'box', type: 'group', label: 'Box', x: 0, y: 0, width: 300, height: 200 },
+        ...cards().nodes,
+      ],
       edges: cards().edges,
     }
     const s = setup(graph)
@@ -285,7 +302,8 @@ describe('double clicks', () => {
     expect(s.editor.controls.labelling()).toBe('link')
     await s.editor.controls.saveLabel('link', '  joins  ')
     expect(s.graphNow().edges[0].label).toBe('joins')
-    expect(s.publish).toHaveBeenCalledTimes(1)
+    // Written in batches: the steps are counted once written, however many writes it took.
+    await vi.waitFor(() => expect(s.document.session.history.undo).toBe(1))
   })
   it('on a text card writes in it', async () => {
     const s = setup(cards())
@@ -397,7 +415,8 @@ describe('keys', () => {
     s.key('ArrowDown', { shiftKey: true })
     await flush()
     expect(s.graphNow().nodes[0]).toMatchObject({ x: 10, y: 100 })
-    expect(s.publish).toHaveBeenCalledTimes(2)
+    // Written in batches: the steps are counted once written, however many writes it took.
+    await vi.waitFor(() => expect(s.document.session.history.undo).toBe(2))
   })
   it('Cmd+A picks everything, cards and connections', () => {
     const s = setup(cards())
@@ -516,7 +535,12 @@ describe('notes on the canvas', () => {
     s.pointer('pointerup', 50, 50)
     await s.editor.controls.act('turn-into-note')
     expect(createNote).toHaveBeenCalledWith('alpha', 'alpha')
-    expect(s.graphNow().nodes[0]).toMatchObject({ id: 'alpha', type: 'file', file: 'alpha.md', x: 0 })
+    expect(s.graphNow().nodes[0]).toMatchObject({
+      id: 'alpha',
+      type: 'file',
+      file: 'alpha.md',
+      x: 0,
+    })
     expect(s.graphNow().nodes[0].text).toBeUndefined()
     expect(s.graphNow().edges[0].fromNode).toBe('alpha')
   })
@@ -612,12 +636,30 @@ describe('finding on the canvas', () => {
       nodes: [
         { id: 'frame', type: 'group', label: 'Seed tray', x: 0, y: 0, width: 900, height: 600 },
         { id: 'low', type: 'text', text: 'sow seeds', x: 50, y: 400, width: 200, height: 100 },
-        { id: 'note', type: 'file', file: 'Plans/Seed list.md', x: 300, y: 100, width: 200, height: 100 },
-        { id: 'quiet', type: 'file', file: 'Plans/Other.md', x: 600, y: 100, width: 200, height: 100 },
+        {
+          id: 'note',
+          type: 'file',
+          file: 'Plans/Seed list.md',
+          x: 300,
+          y: 100,
+          width: 200,
+          height: 100,
+        },
+        {
+          id: 'quiet',
+          type: 'file',
+          file: 'Plans/Other.md',
+          x: 600,
+          y: 100,
+          width: 200,
+          height: 100,
+        },
       ],
       edges: [{ id: 'e', fromNode: 'low', toNode: 'note', label: 'no match here' }],
     }
-    const found = findOnCanvas(graph, 'SEED', (id) => (id === 'quiet' ? 'a seed inside' : undefined))
+    const found = findOnCanvas(graph, 'SEED', (id) =>
+      id === 'quiet' ? 'a seed inside' : undefined
+    )
     expect(found.map((f) => f.id)).toEqual(['frame', 'note', 'quiet', 'low'])
     expect(findOnCanvas(graph, '  ')).toEqual([])
     expect(findOnCanvas(graph, 'match').map((f) => f.id)).toEqual(['e'])

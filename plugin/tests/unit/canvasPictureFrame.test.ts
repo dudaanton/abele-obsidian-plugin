@@ -48,7 +48,8 @@ describe('a picture from this device', () => {
       ])
       // Around the middle of what is shown, not where the canvas began.
       for (const n of added) expect(n.x).toBeGreaterThan(2000)
-      expect(s.document.session.history.undo).toBe(1)
+      // One step each, counted once the batch has been written.
+      await vi.waitFor(() => expect(s.document.session.history.undo).toBe(1))
       // The field is gone once used.
       expect(s.el.querySelector('.abele-canvas-picture-input')).toBeNull()
     }
@@ -123,6 +124,7 @@ describe('a frame carried', () => {
     expect(ink.find((e) => e.id === 'outside')!.transform).toBeUndefined()
     const line = (s.document.session.graph.abele!.lines as { from: { x: number } }[])[0]
     expect(line.from.x).toBe(160)
-    expect(s.document.session.history.undo).toBe(1)
+    // One step each, counted once the batch has been written.
+    await vi.waitFor(() => expect(s.document.session.history.undo).toBe(1))
   })
 })
