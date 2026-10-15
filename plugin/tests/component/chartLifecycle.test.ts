@@ -70,4 +70,36 @@ describe('shared chart lifetime', () => {
     expect(observers[3].disconnect).toHaveBeenCalledTimes(1)
     expect(created[3].dispose).toHaveBeenCalledTimes(1)
   })
+
+  it('with waitForWidth starts no chart until its element has a width, then resizes', async () => {
+    const observers: { cb: ResizeObserverCallback; disconnect: ReturnType<typeof vi.fn> }[] = []
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        disconnect = vi.fn()
+        observe = vi.fn()
+        constructor(public cb: ResizeObserverCallback) {
+          observers.push(this)
+        }
+      }
+    )
+    const fire = (width: number) =>
+      observers.at(-1)!.cb([{ contentRect: { width } } as ResizeObserverEntry], {} as never)
+    const render = vi.fn()
+    const view = mount(Chart, { props: { source: [1], render, waitForWidth: true } })
+    await nextTick()
+    expect(created).toHaveLength(0)
+    expect(observers).toHaveLength(1)
+    fire(0)
+    expect(created).toHaveLength(0)
+    fire(300)
+    expect(created).toHaveLength(1)
+    expect(render).toHaveBeenCalledTimes(1)
+    fire(320)
+    expect(created).toHaveLength(1)
+    expect(created[0].resize).toHaveBeenCalledTimes(1)
+    view.unmount()
+    expect(created[0].dispose).toHaveBeenCalledTimes(1)
+    expect(observers.every((o) => o.disconnect.mock.calls.length > 0)).toBe(true)
+  })
 })

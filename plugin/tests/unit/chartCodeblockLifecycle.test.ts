@@ -10,11 +10,14 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import type { MarkdownPostProcessorContext } from 'obsidian'
+import { nextTick } from 'vue'
+import { GlobalStore } from '@/stores/GlobalStore'
 
 const dispose = vi.fn()
 const resize = vi.fn()
+const setOption = vi.fn()
 vi.mock('@/bases/echarts', () => ({
-  echartsInit: vi.fn(() => ({ setOption: vi.fn(), dispose, resize })),
+  echartsInit: vi.fn(() => ({ setOption, dispose, resize })),
 }))
 
 import { registerChartCodeblock } from '@/editor/ChartCodeblock'
@@ -53,6 +56,7 @@ beforeEach(() => {
   observers.length = 0
   children = []
   dispose.mockClear()
+  setOption.mockClear()
   vi.mocked(echartsInit).mockClear()
   vi.stubGlobal('ResizeObserver', FakeResizeObserver)
   registerChartCodeblock((_lang, h) => {
@@ -96,5 +100,64 @@ describe('a chart block', () => {
     fireResize(300)
 
     expect(echartsInit).not.toHaveBeenCalled()
+  })
+
+  it('keeps the container the slides and the chat look for, at the configured height', () => {
+    const el = document.body.createDiv()
+    handler('height: 220\n' + SOURCE, el, ctx())
+    const container = el.querySelector<HTMLElement>('.abele-chart-container')
+    expect(container).not.toBeNull()
+    expect(container!.style.height).toBe('220px')
+    children[0].onunload()
+    el.remove()
+  })
+
+  it('draws the chart again in the new colours when the theme changes', async () => {
+    const el = document.body.createDiv()
+    handler(SOURCE, el, ctx())
+    fireResize(300)
+    expect(echartsInit).toHaveBeenCalledTimes(1)
+    expect(setOption).toHaveBeenCalledTimes(1)
+
+    GlobalStore.getInstance().themeVersion.value++
+    await nextTick()
+    await nextTick()
+
+    expect(dispose).toHaveBeenCalledTimes(1)
+    expect(echartsInit).toHaveBeenCalledTimes(2)
+    expect(setOption).toHaveBeenCalledTimes(2)
+    children[0].onunload()
+    expect(dispose).toHaveBeenCalledTimes(2)
+    el.remove()
+  })
+
+  it.each([
+    ['a block that is not YAML', 'series: [', 'YAML parse error'],
+    ['a block with no series', 'type: bar', 'No series defined'],
+  ])('says what is wrong with %s', (_name, source, text) => {
+    const el = document.body.createDiv()
+    handler(source, el, ctx())
+    const error = el.querySelector('.abele-chart-error')
+    expect(error?.textContent).toContain(text)
+    expect(error?.getAttribute('role')).toBe('alert')
+    expect(el.querySelector('.abele-chart-container')).toBeNull()
+    children[0]?.onunload()
+    el.remove()
+  })
+
+  it('replaces the chart with the error when the chart cannot be drawn', async () => {
+    setOption.mockImplementationOnce(() => {
+      throw new Error('bad option')
+    })
+    const el = document.body.createDiv()
+    handler(SOURCE, el, ctx())
+    fireResize(300)
+    await nextTick()
+    const error = el.querySelector('.abele-chart-error')
+    expect(error?.textContent).toContain('Chart error: bad option')
+    expect(el.querySelector('.abele-chart-container')).toBeNull()
+    expect(dispose).toHaveBeenCalledTimes(1)
+    children[0].onunload()
+    el.remove()
   })
 })
