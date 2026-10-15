@@ -36,7 +36,7 @@ export function openDialog<T = string>(
     let answer: T | undefined
     const cancel = () => handle.close()
     const handle = openComponentDialog(
-      async () => component,
+      () => component,
       { ...props, onAnswer: (value: T) => (answer = value) },
       {
         document: options.document,

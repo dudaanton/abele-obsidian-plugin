@@ -103,6 +103,11 @@ describe('confirmDialog', () => {
     expect(modal()).toBeNull()
   })
 
+  it('is on screen as soon as it is asked, as the shell dialogs were', () => {
+    void confirmDialog({ title: 'Delete?', message: 'Sample' })
+    expect(document.querySelector('.abele-confirm__message')?.textContent).toBe('Sample')
+  })
+
   it('is a no when cancelled', async () => {
     const reply = confirmDialog({ title: 'Delete?', message: 'Sample' })
     await flushPromises()

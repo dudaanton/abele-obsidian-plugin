@@ -14,6 +14,7 @@ import {
   resetFakeIntersectionObservers,
   scrollIntoView,
 } from '../helpers/fakeIntersectionObserver'
+import { QUESTION_DIALOG } from '../helpers/questionDialog'
 
 const opened = vi.hoisted(() => vi.fn())
 vi.mock('@/helpers/vaultUtils', async (original) => ({
@@ -48,7 +49,7 @@ const render = async (atTimeline = false) => {
   view = mount(TaskCard, {
     props: { task, atTimeline },
     shallow: true,
-    global: { stubs: { EntryRow: false, LabelDot: false } },
+    global: { stubs: { EntryRow: false, LabelDot: false, ...QUESTION_DIALOG } },
   })
   await flushPromises()
   return view

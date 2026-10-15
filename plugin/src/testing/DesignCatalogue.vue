@@ -6,6 +6,26 @@
     @close="emit('close')"
     @confirm="announce('Note deleted')"
   />
+  <PromptModal
+    v-else-if="page === 'prompt'"
+    title="New script"
+    value="sample-script"
+    @close="emit('close')"
+    @answer="announce"
+  />
+  <ChoiceModal
+    v-else-if="page === 'choice'"
+    title="Remove this discussion from the book?"
+    quote="Sample words that were marked in a sample chapter"
+    message="The words stop being marked. Their chat can stay as an ordinary chat in the history, or go with the mark."
+    :choices="[
+      { value: 'keep', text: 'Keep the chat', cta: true },
+      { value: 'delete', text: 'Delete the chat too', warning: true },
+      { value: null, text: 'Cancel' },
+    ]"
+    @close="emit('close')"
+    @answer="announce"
+  />
   <IconPicker
     v-else-if="page === 'icon-picker'"
     current="folder"
@@ -212,11 +232,20 @@
         <Section title="Requests">
           <RequestCard waiting>
             <span>Read the sample page?</span>
-            <Button text="Allow" tooltip="Allow the sample request" accent @click="announce('Sample allowed')" />
+            <Button
+              text="Allow"
+              tooltip="Allow the sample request"
+              accent
+              @click="announce('Sample allowed')"
+            />
           </RequestCard>
           <RequestCard role="alert">
             <span>Sample connection unavailable</span>
-            <Button text="Retry" tooltip="Retry the sample request" @click="announce('Sample retry')" />
+            <Button
+              text="Retry"
+              tooltip="Retry the sample request"
+              @click="announce('Sample retry')"
+            />
           </RequestCard>
         </Section>
         <Section title="Compact states">
@@ -624,6 +653,8 @@ import type { EChartsType } from '@/bases/echarts'
 import type { KitEvent } from '@/components/obsidian/EventList.vue'
 import Modal from '@/components/obsidian/Modal.vue'
 import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
+import PromptModal from '@/components/obsidian/PromptModal.vue'
+import ChoiceModal from '@/components/obsidian/ChoiceModal.vue'
 import ListRow from '@/components/obsidian/ListRow.vue'
 import ListSectionHeader from '@/components/obsidian/ListSectionHeader.vue'
 import SheetHeaderActions from '@/components/obsidian/SheetHeaderActions.vue'
@@ -701,6 +732,8 @@ const titles: Record<CataloguePage, string> = {
   specialized: 'Recordings and links',
   'icon-picker': 'Choose an icon',
   confirm: 'Delete note',
+  prompt: 'New script',
+  choice: 'Remove discussion',
 }
 const entries = CATALOGUE_PAGES.filter((id) => id !== 'index').map((id) => ({
   id,

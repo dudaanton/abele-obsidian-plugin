@@ -130,7 +130,9 @@ describe('kit catalogue live design contract', () => {
       })()`)
         expect(opened).toBe('opened')
         report = await measureDesign(
-          page === 'icon-picker' || page === 'confirm' ? '.modal' : '.abele-design-catalogue',
+          ['icon-picker', 'confirm', 'prompt', 'choice'].includes(page)
+            ? '.modal'
+            : '.abele-design-catalogue',
           `${directory}/${page}`,
           { nativeSelector },
           { requireNative: true }

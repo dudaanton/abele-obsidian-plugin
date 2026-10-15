@@ -1,5 +1,5 @@
 <template>
-  <ObsidianModal
+  <DialogShell
     :title="title"
     :modal-class="modalClass"
     :close-in-footer="closeInFooter ?? choices.some((c) => c.value === null)"
@@ -28,12 +28,12 @@
         @click="choose(choice.value)"
       />
     </template>
-  </ObsidianModal>
+  </DialogShell>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import ObsidianModal from './Modal.vue'
+import DialogShell from './Modal.vue'
 import Button from './Button.vue'
 import type { Choice } from './choice'
 

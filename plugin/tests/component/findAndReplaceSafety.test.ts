@@ -9,6 +9,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import * as vaultUtils from '@/helpers/vaultUtils'
 import * as obsidian from 'obsidian'
 import { dump } from 'js-yaml'
+import { QUESTION_DIALOG } from '../helpers/questionDialog'
 
 const wrappers: VueWrapper[] = []
 afterEach(() => {
@@ -36,7 +37,8 @@ for (const [name, component] of [
       const wrapper = mount(component as any, {
         shallow: true,
         props: name === 'bases' ? { files: ref([file]) } : {},
-        global: { stubs: { ObsidianModal: { template: '<div><slot /></div>' } } },
+        // The question uses the same shell, and a stub is kept per component, so this one is real.
+        global: { stubs: { ObsidianModal: false, ...QUESTION_DIALOG } },
       })
       wrappers.push(wrapper)
       await flushPromises()
@@ -60,7 +62,7 @@ for (const [name, component] of [
         const applying = state.replace()
         expect(await app.vault.read(file)).toBe(before)
         expect(native).not.toHaveBeenCalled()
-        const dialog = document.querySelector('.abele-modal')!
+        const dialog = document.querySelector('.abele-confirm__message')!.closest('.abele-modal')!
         expect(dialog?.querySelector('.abele-confirm__message')?.textContent).toBe(
           'Are you sure you want to apply the changes to 1 notes?'
         )
@@ -77,7 +79,7 @@ for (const [name, component] of [
       await preview([action({ property: 'label', value: 'new' })])
       const applying = state.replace()
       state.searchResults = []
-      const dialog = document.querySelector('.abele-modal')!
+      const dialog = document.querySelector('.abele-confirm__message')!.closest('.abele-modal')!
       Array.from(dialog.querySelectorAll<HTMLButtonElement>('button'))
         .find((b) => b.textContent === 'Apply changes')!
         .click()

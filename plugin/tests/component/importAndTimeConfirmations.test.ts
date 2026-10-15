@@ -9,6 +9,7 @@ import { TimeEntry } from '@/entities/TimeEntry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { createTask } from '@/commands/createTask'
 import { useVault } from '../helpers/testEnv'
+import { QUESTION_DIALOG } from '../helpers/questionDialog'
 
 vi.mock('@/commands/createTask', () => ({
   createTask: vi.fn(async () => ({ wikilink: '[[sample-task]]' })),
@@ -35,7 +36,7 @@ afterEach(() => {
 })
 
 function answer(accepted: boolean, label: string, message: string) {
-  const dialog = document.querySelector('.abele-modal')!
+  const dialog = document.querySelector('.abele-confirm__message')!.closest('.abele-modal')!
   expect(dialog?.querySelector('.abele-confirm__message')?.textContent).toBe(message)
   Array.from(dialog.querySelectorAll<HTMLButtonElement>('button'))
     .find((b) => b.textContent === (accepted ? label : 'Cancel'))!
@@ -63,7 +64,11 @@ it.each([false, true])(
     const entry = sampleEntry()
     const remove = vi.spyOn(entry, 'remove').mockResolvedValue()
     const menu = vi.spyOn(Menu.prototype, 'showAtPosition')
-    view = mount(TimeEntryItem, { shallow: true, props: { entry } })
+    view = mount(TimeEntryItem, {
+      shallow: true,
+      props: { entry },
+      global: { stubs: QUESTION_DIALOG },
+    })
     await view.trigger('contextmenu')
     const shown = menu.mock.instances[0] as unknown as { items: { handler: () => void }[] }
     shown.items[0].handler()
@@ -93,7 +98,8 @@ it.each([false, true])(
     })
     view = mount(MigrateFromDataviewModal, {
       shallow: true,
-      global: { stubs: { ObsidianModal: { template: '<div><slot /></div>' } } },
+      // The question uses the same shell, and a stub is kept per component, so this one is real.
+      global: { stubs: { ObsidianModal: false, ...QUESTION_DIALOG } },
     })
     const state = (view.vm as unknown as { $: { setupState: Record<string, () => Promise<void>> } })
       .$.setupState
@@ -125,7 +131,11 @@ it('closing a confirmation without accepting cancels the pending action', async 
   const remove = vi.spyOn(entry, 'remove').mockResolvedValue()
   const menu = vi.spyOn(Menu.prototype, 'showAtPosition')
   const modal = vi.spyOn(Modal.prototype, 'open')
-  view = mount(TimeEntryItem, { shallow: true, props: { entry } })
+  view = mount(TimeEntryItem, {
+    shallow: true,
+    props: { entry },
+    global: { stubs: QUESTION_DIALOG },
+  })
   await view.trigger('contextmenu')
   ;(menu.mock.instances[0] as unknown as { items: { handler: () => void }[] }).items[0].handler()
   expect(modal).toHaveBeenCalledOnce()

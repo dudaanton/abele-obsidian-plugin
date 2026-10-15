@@ -14,6 +14,7 @@ import {
   resetFakeIntersectionObservers,
   scrollIntoView,
 } from '../helpers/fakeIntersectionObserver'
+import { QUESTION_DIALOG } from '../helpers/questionDialog'
 
 vi.mock('@/helpers/vaultUtils', async (original) => ({
   ...(await original<typeof import('@/helpers/vaultUtils')>()),
@@ -54,7 +55,7 @@ async function show(txType: 'income' | 'expense' | 'transfer' = 'expense') {
     shallow: true,
     props: { transaction: tx, txType },
     // The shared row draws the slots, so its codes, quiet line and chevron are on the page.
-    global: { stubs: { EntryRow: false } },
+    global: { stubs: { EntryRow: false, ...QUESTION_DIALOG } },
   })
   await nextTick()
   await flushPromises()

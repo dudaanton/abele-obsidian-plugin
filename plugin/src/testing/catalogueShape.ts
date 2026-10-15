@@ -17,6 +17,8 @@ export const CATALOGUE_PAGES = [
   'specialized',
   'icon-picker',
   'confirm',
+  'prompt',
+  'choice',
 ] as const
 export type CataloguePage = (typeof CATALOGUE_PAGES)[number]
 export const CATALOGUE_COMPONENTS = [
@@ -29,6 +31,7 @@ export const CATALOGUE_COMPONENTS = [
   'CardGrid',
   'Chart',
   'Checkbox',
+  'ChoiceModal',
   'ConfirmModal',
   'DateDivider',
   'Disclosure',
@@ -56,6 +59,7 @@ export const CATALOGUE_COMPONENTS = [
   'PathLabel',
   'PeriodSelector',
   'Progress',
+  'PromptModal',
   'QrCode',
   'Quote',
   'RelativeTime',

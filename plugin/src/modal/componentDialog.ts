@@ -8,9 +8,13 @@ export interface ComponentDialog {
 const open = new Set<ComponentDialog>()
 const keyed = new Map<string, ComponentDialog>()
 
-/** On-demand Vue content using the kit's own modal, not a flag in the plugin root. */
+/**
+ * On-demand Vue content using the kit's own modal, not a flag in the plugin root. A `load` that
+ * hands back the component itself, rather than a promise of it, mounts before this returns: a
+ * kit dialog already in the bundle is on screen at once, as the shell's own dialogs were.
+ */
 export function openComponentDialog(
-  load: () => Promise<Component>,
+  load: () => Promise<Component> | Component,
   props: Record<string, unknown> = {},
   options: {
     key?: string
@@ -48,28 +52,46 @@ export function openComponentDialog(
   }
   open.add(handle)
   if (options.key) keyed.set(options.key, handle)
-  handle.ready = Promise.resolve()
-    .then(load)
-    .then((component) => {
-      if (closed) return
-      container = doc.win.createDiv()
-      container.dataset.abeleDialogHost = ''
-      doc.body.appendChild(container)
-      vue = createApp(component, { ...props, onClose: handle.close })
-      mounting = true
-      try {
-        vue.mount(container)
-      } finally {
-        mounting = false
-        if (closed) dispose()
-      }
-    })
-    .catch((error: unknown) => {
+  const mount = (component: Component) => {
+    if (closed) return
+    container = doc.win.createDiv()
+    container.dataset.abeleDialogHost = ''
+    doc.body.appendChild(container)
+    vue = createApp(component, { ...props, onClose: handle.close })
+    mounting = true
+    try {
+      vue.mount(container)
+    } finally {
+      mounting = false
+      if (closed) dispose()
+    }
+  }
+  const fail = (error: unknown) => {
+    close(error)
+    throw error
+  }
+  let loaded: Promise<Component> | Component
+  try {
+    loaded = load()
+  } catch (error) {
+    loaded = Promise.reject(asError(error))
+  }
+  if (loaded instanceof Promise) {
+    handle.ready = loaded.then(mount).catch(fail)
+  } else {
+    try {
+      mount(loaded)
+      handle.ready = Promise.resolve()
+    } catch (error) {
+      handle.ready = Promise.reject(asError(error))
       close(error)
-      throw error
-    })
+    }
+  }
   return handle
 }
+
+const asError = (error: unknown): Error =>
+  error instanceof Error ? error : new Error('The dialog failed to open', { cause: error })
 
 /** Includes pending imports; none may put a dialog back after plugin unload. */
 export function closeComponentDialogs(): void {
