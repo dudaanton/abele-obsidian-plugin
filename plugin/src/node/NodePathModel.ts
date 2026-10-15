@@ -392,8 +392,28 @@ export class NodePathModel {
   commit(message: string): Promise<{ commit: string; author: string }> {
     return this.gitAct('commit', (git, target, seen) => git.commit(target, seen, message))
   }
-  push(): Promise<void> {
-    return this.gitAct('push', (git, target, seen) => git.push(target, seen))
+  /** `lease`: the remote branch as the person saw it, to replace it after a rebase. */
+  push(lease?: string): Promise<void> {
+    return this.gitAct('push', (git, target, seen) => git.push(target, seen, lease))
+  }
+  fetch(): Promise<void> {
+    return this.gitAct('fetch', (git, target) => git.fetch(target))
+  }
+  /** A branch at the commit the worktree is on, switched to. */
+  createBranch(name: string): Promise<void> {
+    return this.gitAct('create-branch', (git, target, seen) => {
+      const at = seen.kind === 'commit' ? seen.commit : seen.head
+      if (!at) throw new Error('There is no commit here to start a branch at.')
+      return git.createBranch(target, name, at, seen)
+    })
+  }
+  /** The remote branch as last fetched, to replace it only if it is still that. */
+  async upstreamLease(): Promise<{ commit: string; ahead: number; behind: number } | undefined> {
+    const target = this.current.value
+    const upstream = target && (await this.port.git?.info(target))?.upstream
+    return upstream?.commit
+      ? { commit: upstream.commit, ahead: upstream.ahead ?? 0, behind: upstream.behind ?? 0 }
+      : undefined
   }
   /** Rebases onto the branch's base; the files left in conflict, if it stopped on them. */
   update(): Promise<{ conflicts: string[] }> {

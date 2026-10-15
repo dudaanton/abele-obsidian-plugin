@@ -12,7 +12,14 @@ export interface PathGitInfo {
   branch: string | null
   /** A rebase or merge that stopped, with the files still in conflict. */
   operation: null | { kind: 'rebase' | 'merge' | 'cherry-pick' | 'revert'; conflicts: string[] }
-  upstream: null | { ref: string; remote: string; ahead: number | null; behind: number | null }
+  upstream: null | {
+    ref: string
+    remote: string
+    ahead: number | null
+    behind: number | null
+    /** The remote branch as last fetched: what the person saw, and the lease for replacing it. */
+    commit: string | null
+  }
   defaultBranch: string | null
   /** The git service of the remote the branch pushes to, when the node recognised it. */
   forge: null | { kind: 'github' | 'gitlab' | 'other'; host: string; owner: string; name: string }
@@ -43,7 +50,30 @@ export interface PathGit {
   ): Promise<{ conflicts: string[] }>
   continue(target: PathTarget, operation: 'rebase' | 'merge'): Promise<{ conflicts: string[] }>
   abort(target: PathTarget, operation: 'rebase' | 'merge'): Promise<void>
-  push(target: PathTarget, seen: RepositoryRevision): Promise<void>
+  /**
+   * Pushes the branch; with `lease`, replaces the remote branch only if it is still the commit
+   * the person saw (a branch rebased after it was pushed).
+   */
+  push(target: PathTarget, seen: RepositoryRevision, lease?: string): Promise<void>
+  /** Reads what is new on the remote; never removes remote branches. */
+  fetch(target: PathTarget): Promise<void>
+  /** A branch at a commit, switched to when `seen` is given and the worktree is clean. */
+  createBranch(
+    target: PathTarget,
+    name: string,
+    startPoint: string,
+    seen?: RepositoryRevision
+  ): Promise<void>
+}
+
+/** A git action the node refused, with its reason as a code (`push_rejected`, …). */
+export class GitRefusal extends Error {
+  constructor(
+    message: string,
+    readonly code: string
+  ) {
+    super(message)
+  }
 }
 
 type Failed = { state: 'failed'; code: string; message: string; output?: string }
@@ -65,6 +95,7 @@ export interface NodeGitClient {
       branch: string
       ahead: number | null
       behind: number | null
+      commit?: string | null
     }
     default_branch: string | null
     remotes: {
@@ -95,6 +126,8 @@ export interface NodeGitClient {
   ): Promise<Outcome<{ state: 'continued' } | { state: 'conflicts'; conflicted_paths: string[] }>>
   abort(params: object): Promise<Outcome<{ state: 'aborted' } | { state: 'not_in_progress' }>>
   push(params: object): Promise<Outcome<{ state: 'pushed' }>>
+  fetch?(params: object): Promise<Outcome<{ state: 'fetched' }>>
+  createBranch?(params: object): Promise<Outcome<{ state: 'created' }>>
 }
 
 const head = (seen: RepositoryRevision) => (seen.kind === 'commit' ? seen.commit : seen.head)
@@ -102,7 +135,10 @@ const head = (seen: RepositoryRevision) => (seen.kind === 'commit' ? seen.commit
 function settle<T extends { state: string }>(result: Outcome<T>): T {
   if (result.state === 'failed') {
     const failed = result as Failed
-    throw new Error(failed.output ? `${failed.message}\n\n${failed.output}` : failed.message)
+    throw new GitRefusal(
+      failed.output ? `${failed.message}\n\n${failed.output}` : failed.message,
+      failed.code
+    )
   }
   if (result.state === 'outcome_unknown')
     throw new Error(
@@ -135,6 +171,7 @@ export function nodePathGit(git: NodeGitClient): PathGit {
               remote: raw.upstream.remote,
               ahead: raw.upstream.ahead,
               behind: raw.upstream.behind,
+              commit: raw.upstream.commit ?? null,
             }
           : null,
         defaultBranch: raw.default_branch,
@@ -185,10 +222,31 @@ export function nodePathGit(git: NodeGitClient): PathGit {
     async abort(target, operation) {
       settle(await git.abort({ worktree_id: target.id, operation }))
     },
-    async push(target, seen) {
+    async push(target, seen, lease) {
       const at = head(seen)
       if (!at) throw new Error('There is nothing to push yet: the branch has no commits.')
-      settle(await git.push({ worktree_id: target.id, expected_head: at }))
+      settle(
+        await git.push({
+          worktree_id: target.id,
+          expected_head: at,
+          ...(lease ? { force_with_lease: lease } : {}),
+        })
+      )
+    },
+    async fetch(target) {
+      if (!git.fetch) throw new Error('Update the node to fetch from the remote.')
+      settle(await git.fetch({ worktree_id: target.id }))
+    },
+    async createBranch(target, name, startPoint, seen) {
+      if (!git.createBranch) throw new Error('Update the node to make a branch here.')
+      settle(
+        await git.createBranch({
+          worktree_id: target.id,
+          name,
+          start_point: startPoint,
+          ...(seen ? { switch: true, expected_head: head(seen) } : {}),
+        })
+      )
     },
   }
 }

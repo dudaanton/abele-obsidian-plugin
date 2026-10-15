@@ -710,6 +710,14 @@ export function showNodePathPlaceMenu(
       .setIcon(git ? 'git-branch' : 'folder')
       .onClick(() => pickNodePathPlace(model, openChat))
   )
+  if (git && model.port.git && model.current.value.kind === 'worktree')
+    menu.addItem((i) =>
+      i
+        .setTitle('Fetch from the remote')
+        .setIcon('cloud-download')
+        .setDisabled(!online || !!model.gitBusy.value)
+        .onClick(() => nodePathAction(() => model.fetch()))
+    )
   if (git && model.current.value.kind === 'worktree')
     menu.addItem((i) =>
       i

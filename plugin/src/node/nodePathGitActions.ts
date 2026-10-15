@@ -1,6 +1,8 @@
 import { h } from 'vue'
 import { Notice } from 'obsidian'
 import { confirmAction } from '@/modal/confirm'
+import { askName } from '@/modal/askName'
+import { GitRefusal } from './nodePathGit'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { openGithubUrl } from '@/github/GithubService'
 import UpdateDialog from '@/components/nodeWork/UpdateDialog.vue'
@@ -35,8 +37,36 @@ export async function takeNodePathStep(model: NodePathModel, id: BranchStep['id'
   const copy = model.currentCopy.value,
     state = model.panelBranch.value?.state
   if (!copy || !state) return
+  if (id === 'create-branch') {
+    const name = await askName(app(), {
+      title: 'Make a branch here',
+      placeholder: 'branch-name',
+      submitText: 'Make branch',
+    })
+    if (name) await model.createBranch(name)
+    return
+  }
   if (id === 'publish' || id === 'push') {
-    await model.push()
+    try {
+      await model.push()
+    } catch (error) {
+      // A branch rebased after it was pushed: replace the remote one, only if it is still what
+      // was last fetched, and only once asked.
+      const lease =
+        error instanceof GitRefusal && error.code === 'push_rejected'
+          ? await model.upstreamLease()
+          : undefined
+      if (!lease || !lease.ahead || !lease.behind) throw error
+      if (
+        !(await confirmAction(app(), {
+          title: 'Replace the branch on the remote?',
+          message: `${copy.branch} was rebased after it was pushed, so its copy on the remote has ${plural(lease.behind, 'commit')} it no longer has. Pushing replaces that copy, unless someone changed it since it was last fetched.`,
+          confirmText: 'Push and replace',
+        }))
+      )
+        return
+      await model.push(lease.commit)
+    }
     new Notice(id === 'publish' ? `${copy.branch} is on the remote now.` : 'Pushed.')
     return
   }
@@ -50,10 +80,10 @@ export async function takeNodePathStep(model: NodePathModel, id: BranchStep['id'
         behind: state.behind,
         dirty,
         pushed: !!state.upstream,
-        // The node rebases a clean branch only, and never replaces a pushed one.
+        // The node rebases a clean branch only; a pushed one is replaced on the next push, asked.
         ways: ['rebase'],
         clean: true,
-        force: false,
+        force: true,
         onCancel: close,
         onUpdate: () => {
           close()

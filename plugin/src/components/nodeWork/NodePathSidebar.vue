@@ -223,7 +223,7 @@ const step = computed(() => {
   const copy = props.model?.currentCopy.value
   if (!canGit.value || !branch.value || !copy) return null
   const next = nextStep(branch.value.state, copy)
-  if (!next || next.id === 'create-branch') return null
+  if (!next) return null
   if (next.id === 'create-pr' && !props.model?.port?.createPull) return null
   return next
 })

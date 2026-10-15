@@ -123,6 +123,37 @@ describe('git on a node worktree', () => {
       base_ref: 'refs/remotes/origin/main',
     })
   })
+  it('replaces the remote branch only with the lease the person saw, fetches, and makes a branch here', async () => {
+    const raw = client({
+      fetch: vi.fn(async () => ({ state: 'fetched' })),
+      createBranch: vi.fn(async () => ({ state: 'created' })),
+    })
+    const git = nodePathGit(raw as never)
+    await git.push(target, seen, 'c'.repeat(40))
+    expect(raw.push).toHaveBeenCalledWith({
+      worktree_id: target.id,
+      expected_head: seen.head,
+      force_with_lease: 'c'.repeat(40),
+    })
+    await git.fetch(target)
+    expect(raw.fetch).toHaveBeenCalledWith({ worktree_id: target.id })
+    await git.createBranch(target, 'sample-branch', seen.head!, seen)
+    expect(raw.createBranch).toHaveBeenCalledWith({
+      worktree_id: target.id,
+      name: 'sample-branch',
+      start_point: seen.head,
+      switch: true,
+      expected_head: seen.head,
+    })
+  })
+  it('keeps the node’s reason code on a refusal, so a rejected push can offer a replacement', async () => {
+    const git = nodePathGit(
+      client({
+        push: vi.fn(async () => ({ state: 'failed', code: 'push_rejected', message: 'Rejected.' })),
+      }) as never
+    )
+    await expect(git.push(target, seen)).rejects.toMatchObject({ code: 'push_rejected' })
+  })
   it('reads a service’s pull request as the panel lists it', () => {
     expect(
       pullSummary({ number: 7, title: 'Sample', draft: true, head: { ref: 'sample-branch' } })
