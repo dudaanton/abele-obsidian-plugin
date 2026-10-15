@@ -34,6 +34,7 @@ type Report = {
   rows: { title: string; opener: boolean; fold: boolean; inline: boolean }[]
   events: string[]
   shots: string[]
+  left: number
 }
 
 /** Opens each page, measures it, pictures it and closes it again. */
@@ -98,15 +99,19 @@ async function measure(mode: 'desktop' | 'phone'): Promise<Report> {
         for (let i = 0; i < 50 && !document.querySelector(ready); i++) await wait(100)
         await wait(500)
       }
-      const dismiss = () => document.querySelectorAll('.modal-container').forEach((c) => c.querySelector('.modal-close-button')?.click())
+      const dismiss = async () => {
+        for (const modal of document.querySelectorAll('.modal.abele-modal')) {
+          const cancel = [...modal.querySelectorAll('.abele-modal__footer button')].find((b) => b.textContent.trim() === 'Cancel')
+          ;(cancel ?? modal.querySelector('.modal-close-button, .modal-header-button.mod-raised'))?.click()
+        }
+        for (let i = 0; i < 30 && document.querySelector('.modal.abele-modal'); i++) await wait(100)
+      }
       await modal('text-comment-list', '.abele-text-comments__reply')
       await shoot('comment-thread')
-      dismiss()
-      await wait(300)
+      await dismiss()
       await modal('date', '.abele-modal__footer button')
       await shoot('date')
-      dismiss()
-      await wait(300)
+      await dismiss()
       const leaf = app.workspace.getRightLeaf(false)
       await leaf.setViewState({ type: 'abele-debug-view', active: true })
       app.workspace.revealLeaf(leaf)
@@ -114,6 +119,7 @@ async function measure(mode: 'desktop' | 'phone'): Promise<Report> {
       await shoot('debug-empty')
       leaf.detach()
       if (!document.body.classList.contains('is-phone')) app.workspace.rightSplit.collapse()
+      report.left = document.querySelectorAll('.modal.abele-modal').length
       return JSON.stringify(report)
     })()`)
   ) as Report
@@ -133,6 +139,8 @@ function assertReport(r: Report, mode: 'desktop' | 'phone') {
     expect(r.rows.some((row) => row.inline)).toBe(true)
   } else expect(r.rows.filter((row) => row.inline)).toEqual([])
   expect(r.shots).toHaveLength(7)
+  // Every dialog it opened is closed again, so the next picture and the next file start clean.
+  expect(r.left).toBe(0)
 }
 
 describe('the designer corrections to the kit screens', () => {
