@@ -52,6 +52,10 @@ export type NodeRepositoryClient = Pick<
 > &
   Partial<Pick<NodeClient, 'nodePath' | 'describe'>>
 type NodeIdentity = Extract<RepositoryIdentity, { provider: 'node' }>
+const isStale = (error: unknown) =>
+  !!error && typeof error === 'object' && (error as { code?: unknown }).code === 'stale_revision'
+const staleComparison = () =>
+  new Error('The current files changed while they were compared. Retry to compare them again.')
 type Page<T> = { entries: T[]; cursor: string | null; incomplete: boolean; omissions: string[] }
 type Commit = Awaited<ReturnType<RepositoryClient['commit']>>
 const summary = (c: Commit): CommitSummary => ({
@@ -663,11 +667,26 @@ export class NodeRepositorySource implements RepositorySource {
     return ranges
   }
   private async manifest(base: string, head: string, mode: RepositoryComparisonMode = 'endpoint') {
-    const from = base === EMPTY_TREE ? { kind: 'empty' as const } : await this.at(base),
-      to = await this.at(head)
-    const first = await this.read(() =>
-      this.client.repository.compare({ ...this.target, base: from, head: to, mode })
-    )
+    const from = base === EMPTY_TREE ? { kind: 'empty' as const } : await this.at(base)
+    let to = await this.at(head)
+    const ask = () =>
+      this.read(() =>
+        this.client.repository.compare({ ...this.target, base: from, head: to, mode })
+      )
+    let first: Awaited<ReturnType<typeof ask>>
+    try {
+      first = await ask()
+    } catch (error) {
+      if (!isStale(error)) throw error
+      if (to.kind !== 'working') throw staleComparison()
+      // The current files moved on since they were observed: compare them as they are now.
+      console.debug('[Abele] node comparison: the current files changed, observing them again')
+      this.aliases.delete(WORKING_TREE)
+      to = await this.at(WORKING_TREE)
+      first = await ask().catch((again) => {
+        throw isStale(again) ? staleComparison() : again
+      })
+    }
     const rest = first.cursor
       ? await this.pages((cursor) =>
           this.client.repository.compare({
@@ -677,7 +696,9 @@ export class NodeRepositorySource implements RepositorySource {
             mode,
             cursor: cursor ?? first.cursor!,
           })
-        )
+        ).catch((error) => {
+          throw isStale(error) ? staleComparison() : error
+        })
       : { entries: [], incomplete: false, omissions: [] }
     if (first.incomplete || rest.incomplete)
       throw new Error(
@@ -730,7 +751,7 @@ export class NodeRepositorySource implements RepositorySource {
           file.deletions = lines.filter((l) => l.type === 'del').length
         }).catch((error) => {
           pending = undefined
-          throw error
+          throw isStale(error) ? staleComparison() : error
         }))
       return file
     })

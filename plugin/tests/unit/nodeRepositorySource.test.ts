@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { ChannelError } from '@abele/channel-protocol'
 import { NodeRepositorySource, WORKING_TREE } from '@/repository/node'
 import { parseNodeRepositoryLink } from '@/repository/nodeLinks'
 import { nodeRepositoryFixture, identity, BASE, HEAD } from '../helpers/nodeRepositoryFixture'
@@ -199,6 +200,43 @@ describe('node repository source through the validated client contract', () => {
         status: 'deleted',
       }),
     ])
+  })
+  it('compares the files as they are now when they changed after they were observed', async () => {
+    let stale = 0
+    const f = nodeRepositoryFixture({
+      hold: (method) =>
+        method === 'repository.v1.compare' && stale-- > 0
+          ? Promise.reject(new ChannelError('stale_revision'))
+          : undefined,
+    })
+    const source = new NodeRepositorySource(f.client, identity, { node: 'S', project: 'S' })
+    const shown = await source.resolve(WORKING_TREE)
+    stale = 1
+    const compared = await source.compare(BASE, shown, true)
+    expect(compared.files.map((file) => file.path)).toEqual(['app.ts'])
+    expect(compared.headSha).not.toBe(shown)
+    expect(f.calls.filter((c) => c.method.endsWith('.observe'))).toHaveLength(2)
+    stale = 1
+    const index = await source.comparison(BASE, compared.headSha)
+    expect(index.targetSha).not.toBe(compared.headSha)
+    stale = 2
+    await expect(source.compare(BASE, WORKING_TREE, true)).rejects.toThrow(
+      'The current files changed while they were compared. Retry to compare them again.'
+    )
+    source.dispose()
+  })
+  it('never retries a comparison of two commits with a fresh observation', async () => {
+    let stale = 1
+    const f = nodeRepositoryFixture({
+      hold: (method) =>
+        method === 'repository.v1.compare' && stale-- > 0
+          ? Promise.reject(new ChannelError('stale_revision'))
+          : undefined,
+    })
+    const source = new NodeRepositorySource(f.client, identity, { node: 'S', project: 'S' })
+    await expect(source.compare(BASE, HEAD, true)).rejects.toThrow(/changed/)
+    expect(f.calls.filter((c) => c.method.endsWith('.observe'))).toHaveLength(0)
+    source.dispose()
   })
   it('uses node endpoint comparison and loads per-file patches only on demand', async () => {
     const { source, calls } = fixture()
