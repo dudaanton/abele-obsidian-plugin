@@ -9,7 +9,12 @@
  */
 export async function keyboardReady(
   type: (text: string) => Promise<unknown>,
-  timeoutMs = 20_000
+  timeoutMs = 20_000,
+  // The probe is erased from the page, as a backward delete: the keys path has no Backspace,
+  // and on some fields a typed one is not delivered.
+  erase = (count: number) => {
+    for (let i = 0; i < count; i++) document.execCommand('delete')
+  }
 ): Promise<void> {
   const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
   const end = Date.now() + timeoutMs
@@ -92,7 +97,7 @@ export async function keyboardReady(
   const extra = read(el).length - before.length
   if (extra < 1 || extra > sent)
     throw new Error(`The probe changed the field unexpectedly (sent ${sent}): ` + evidence())
-  await type('\b'.repeat(extra))
+  erase(extra)
   if (!(await until(() => read(el) === before, 5000)))
     throw new Error('The probe could not be erased: ' + evidence())
   restore()
