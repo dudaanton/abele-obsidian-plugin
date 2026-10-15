@@ -250,7 +250,13 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
     // The note editor inside the reply drops its own border, ring and ground; only the field's
     // frame shows. Every box from the field down that paints an edge is counted.
     const shotPath = `${SHOTS}/reply-field-${onPhone() ? 'phone' : 'desktop'}.png`
-    const r = run<{ edges: string[]; focused: boolean; shot: boolean }>(`
+    const r = run<{
+      edges: string[]
+      focused: boolean
+      shot: boolean
+      inSight: boolean
+      chain: string[]
+    }>(`
       // The thread as it opens, no comment being changed, so nothing else takes the focus back.
       window.__abeleTest.openDialog('text-comment-list')
       await until(() => document.querySelector('.abele-text-comments__reply .cm-content'))
@@ -272,6 +278,14 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
         if (paints(getComputedStyle(el))) edges.push(el.className.split(' ')[0] || el.tagName)
       }
       const focused = reply.contains(document.activeElement)
+      // The field being written in is in sight inside its dialog, not under its edge.
+      const modal = reply.closest('.modal').getBoundingClientRect(), field_ = reply.getBoundingClientRect()
+      const inSight = field_.top >= modal.top && field_.bottom <= modal.bottom + 1
+      const chain = []
+      for (let n = reply; n && !n.matches('.modal-container'); n = n.parentElement) {
+        const cs = getComputedStyle(n), b = n.getBoundingClientRect()
+        chain.push((n.className.split(' ')[0] || n.tagName) + ':' + Math.round(b.top) + '-' + Math.round(b.bottom) + '/' + cs.overflowY + '/' + n.scrollTop + '/' + n.scrollHeight)
+      }
       // The real phone has no Node in its page: its host takes the picture.
       let shot = false
       if (window.__e2eHost) shot = !(await window.__e2eHost.shot(${JSON.stringify(shotPath)})).startsWith('no picture')
@@ -282,9 +296,10 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       }
       // Give the focus back, so the next case starts with no field and no keyboard up.
       document.activeElement?.blur?.()
-      return JSON.stringify({ edges, focused, shot })
+      return JSON.stringify({ edges, focused, shot, inSight, chain })
     `)
     expect(r.focused).toBe(true)
+    expect(r.inSight, r.chain.join(' < ')).toBe(true)
     expect(r.edges).toHaveLength(1)
     expect(r.shot).toBe(true)
   })
