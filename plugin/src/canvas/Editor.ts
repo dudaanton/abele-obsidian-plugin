@@ -150,6 +150,8 @@ export class CanvasEditor {
   private naming: string | null = null
   /** A connection or line whose label is being written on the line itself. */
   private labelling: string | null = null
+  /** The find bar is open over the canvas. */
+  private finding = false
   /** Space held down: the hand, whatever tool is in hand, until it is let go. */
   private spaceHeld = false
   /** Where the pointer last was over the canvas, in its own units: where a paste lands. */
@@ -212,6 +214,15 @@ export class CanvasEditor {
       this.refresh()
     },
     saveLabel: (id: string, label: string): Promise<void> => this.saveLabel(id, label),
+    /** Whether the find bar is open, and opening or closing it. */
+    finding: (): boolean => this.finding,
+    setFinding: (on: boolean): void => {
+      this.finding = on
+      if (!on) this.viewer.el.focus({ preventScroll: true })
+      this.refresh()
+    },
+    /** Picks one thing found and brings it into view. */
+    show: (id: string): void => this.show(id),
     /** Takes a tool in hand, as its key or its button does. */
     useTool: (tool: CanvasInputTool): void => this.useTool(tool),
     /** The headings of the picked note, for showing one part of it. */
@@ -1819,10 +1830,27 @@ export class CanvasEditor {
         run(() => this.nudge(command.dx, command.dy))
         break
       case 'find':
-        this.ports.notice('Find on the canvas: not in this prototype yet')
+        this.finding = true
+        this.refresh()
         break
     }
     return true
+  }
+  /** One thing picked and brought into view, at the zoom it is read at. */
+  private show(id: string): void {
+    const graph = this.ports.document()?.session.graph
+    if (!graph) return
+    this.selected = new Set([id])
+    this.refresh()
+    const rect = this.picked().rect
+    if (!rect) return
+    const v = this.viewer.visible()
+    if (this.viewer.camera.zoom < 0.6 || rect.width > v.width || rect.height > v.height)
+      this.viewer.focusRegion(
+        { x: rect.x - 200, y: rect.y - 200, width: rect.width + 400, height: rect.height + 400 },
+        true
+      )
+    else this.viewer.reveal(rect, { top: 120, bottom: 48, side: 48 })
   }
   private useTool(tool: CanvasInputTool): void {
     this.inputAdapter.cancel()

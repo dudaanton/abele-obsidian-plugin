@@ -9,7 +9,7 @@
   <div
     class="abele-canvas-chrome"
     :class="{ 'is-phone-layout': phone }"
-    :style="{ '--abele-canvas-bar': `${barHeight}px` }"
+    :style="{ '--abele-canvas-bar': `${barHeight}px`, '--abele-canvas-find': `${findHeight}px` }"
     @pointerdown.stop
     @touchstart.stop
     @touchmove.stop
@@ -206,6 +206,14 @@
       />
     </div>
 
+    <CanvasFind
+      v-if="finding"
+      :editor="editor"
+      :viewer="viewer"
+      :tick="tick"
+      @height="findHeight = $event"
+    />
+
     <!-- A connection's label written on the line itself, as Obsidian Canvas writes it. -->
     <div v-if="labelling && labelAt" class="canvas-path-label-wrapper" :style="labelAt.style">
       <div
@@ -309,6 +317,7 @@ import ChromeIcon from '../obsidian/Icon.vue'
 import ToolBar from '../obsidian/ToolBar.vue'
 import ToolBarGroup from '../obsidian/ToolBarGroup.vue'
 import CanvasFrames from './CanvasFrames.vue'
+import CanvasFind from './CanvasFind.vue'
 import {
   COLOURS,
   COLOUR_NAMES,
@@ -368,6 +377,8 @@ const editing = computed(() => (tick.value, c.editing()))
 const gesturing = computed(() => (tick.value, c.gesturing()))
 const naming = computed(() => (tick.value, c.naming()))
 const labelling = computed(() => (tick.value, c.labelling()))
+const finding = computed(() => (tick.value, c.finding()))
+const findHeight = ref(0)
 const placing = computed(() => ['frame', 'card', 'shape'].includes(tool.value))
 const labelEl = ref<HTMLElement>()
 /** Where the label being written stands: in the middle of its line, on the screen. */
@@ -540,7 +551,7 @@ const pickedAt = computed(() => {
     half = width / 2,
     column = props.viewer.el.querySelector<HTMLElement>('.abele-canvas-chrome__view'),
     right = props.viewer.stage.clientWidth - (column ? column.offsetWidth + 24 : 8),
-    ceiling = barHeight.value + 8
+    ceiling = barHeight.value + findHeight.value + 8
   const x = Math.max(8 + half, Math.min(left, right - half))
   // A connection's bar never covers its two ends, which are pulled to reconnect it: above its
   // middle, else under it, else beside it.
@@ -902,7 +913,7 @@ onBeforeUnmount(() => {
   z-index: var(--layer-cover);
 }
 .abele-canvas-chrome > .canvas-controls {
-  top: calc(var(--abele-canvas-bar, 0px) + var(--size-4-2));
+  top: calc(var(--abele-canvas-bar, 0px) + var(--abele-canvas-find, 0px) + var(--size-4-2));
 }
 
 .abele-canvas-chrome__swatch svg {

@@ -9,6 +9,7 @@ import { labelPoint, paintedRoute } from '@/canvas/core/scene'
 import { canvasKey, frameAround, pastedUrl, pictureSize } from '@/canvas/editorKeys'
 import { dragRect, keepRatio, objectsInBox } from '@/canvas/input'
 import { snapMove } from '@/canvas/core/snap'
+import { findOnCanvas } from '@/canvas/core/find'
 import { TFile } from 'obsidian'
 
 const cleanups: (() => void)[] = []
@@ -573,6 +574,24 @@ describe('lining up', () => {
       width: 380,
       height: 190,
     })
+  })
+})
+
+describe('finding on the canvas', () => {
+  it('finds words in cards, labels, frame names, note names and what notes say, in reading order', () => {
+    const graph: CanvasGraph = {
+      nodes: [
+        { id: 'frame', type: 'group', label: 'Seed tray', x: 0, y: 0, width: 900, height: 600 },
+        { id: 'low', type: 'text', text: 'sow seeds', x: 50, y: 400, width: 200, height: 100 },
+        { id: 'note', type: 'file', file: 'Plans/Seed list.md', x: 300, y: 100, width: 200, height: 100 },
+        { id: 'quiet', type: 'file', file: 'Plans/Other.md', x: 600, y: 100, width: 200, height: 100 },
+      ],
+      edges: [{ id: 'e', fromNode: 'low', toNode: 'note', label: 'no match here' }],
+    }
+    const found = findOnCanvas(graph, 'SEED', (id) => (id === 'quiet' ? 'a seed inside' : undefined))
+    expect(found.map((f) => f.id)).toEqual(['frame', 'note', 'quiet', 'low'])
+    expect(findOnCanvas(graph, '  ')).toEqual([])
+    expect(findOnCanvas(graph, 'match').map((f) => f.id)).toEqual(['e'])
   })
 })
 
