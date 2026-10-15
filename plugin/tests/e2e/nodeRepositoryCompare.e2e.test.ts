@@ -104,7 +104,10 @@ it('compares the current files of a branch with another version, committed and u
       const input=document.querySelector('.abele-github-base-picker input');input.value='main';input.dispatchEvent(new Event('input',{bubbles:true}));
       const row=()=>[...document.querySelectorAll('.abele-github-base-picker .suggestion-item')].find(el=>el.textContent.includes('Compare against commit'));
       await until(row,'resolved base row');row().click();
-      await until(()=>root.querySelector('.abele-github-base')?.textContent.includes('Base: main'),'base bar');
+      const based=()=>root.querySelector('.abele-github-base')?.textContent.includes('Base: main');
+      await until(()=>based()||!row(),'row chosen').catch(()=>{});
+      if(!based()&&row())document.querySelector('.abele-github-base-picker input').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
+      await until(based,'base bar').catch(e=>{throw Error(e.message+' · picker: '+(document.querySelector('.abele-github-base-picker')?.textContent??'closed')+' · tab: '+root.textContent.slice(0,300))});
       if(!root.querySelector('.abele-github-tree'))root.querySelector('[aria-label="Show the repository\\'s files beside this"]').click();
       const tree=()=>root.querySelector('.abele-github-tree');
       await until(()=>tree()?.querySelector('.abele-github-tree__error')||tree()?.querySelector('[role="tree"]')?.textContent.includes('feature.ts'),'comparison tree');
