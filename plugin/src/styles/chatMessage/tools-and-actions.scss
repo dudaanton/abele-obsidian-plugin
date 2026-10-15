@@ -429,3 +429,21 @@ button.abele-chat-msg__icon:not(.abele-chat-msg__time) {
   overflow-y: visible;
   overflow-clip-margin: var(--size-2-2);
 }
+
+// Which of several interceptors is reading the answer, beside the turning glyph.
+.abele-chat-msg__check-count {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+}
+
+// Which of several a held message waits at, and whose each line under it is: quiet, above it.
+.abele-chat-msg__interceptor-step,
+.abele-chat-msg__interceptor-by {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+}
+.abele-chat-msg__interceptor-step {
+  margin-bottom: var(--size-4-1);
+}

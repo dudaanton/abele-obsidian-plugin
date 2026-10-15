@@ -322,13 +322,23 @@
         class="abele-chat-msg__checking abele-chat-msg__tool-spinner"
         icon="loader"
         size="xs"
-        :tooltip="`${message.answerCheck.by} is checking this answer`"
+        :tooltip="
+          message.answerCheck.of
+            ? `${message.answerCheck.by} is checking this answer · ${message.answerCheck.at} of ${message.answerCheck.of}`
+            : `${message.answerCheck.by} is checking this answer`
+        "
       />
-      <!-- Changed after it was written: a pencil beside the time; pressed, the reply before. -->
+      <!-- With several in a row, which one is reading: a quiet count beside the turning glyph. -->
+      <span v-if="message.answerCheck?.of" class="abele-chat-msg__check-count"
+        >{{ message.answerCheck.at }}/{{ message.answerCheck.of }}</span
+      >
+      <!-- Changed after it was written: a pencil beside the time; pressed, the reply before.
+           Replaced by an interceptor, it is its own glyph among the actions, there under the
+           pointer only: the pencil is Edit. -->
       <Icon
         v-if="lastRevision"
-        class="abele-chat-msg__edited"
-        icon="pencil-line"
+        :class="replaced ? 'abele-chat-msg__replaced' : 'abele-chat-msg__edited'"
+        :icon="replaced ? 'replace' : 'pencil-line'"
         size="xs"
         :label="editedLabel"
         @click="originalOpen = true"
@@ -360,7 +370,8 @@
         class="abele-chat-msg__draft-btn abele-chat-msg__draft-btn--send"
         @click="emit('confirm-draft', message.id)"
       >
-        Send
+        <!-- After a failed check, sending goes on without the interceptors still to come. -->
+        {{ interceptorError ? 'Send as is' : 'Send' }}
       </button>
       <button class="abele-chat-msg__draft-btn" @click="emit('edit-draft', message.id)">
         Edit
@@ -624,6 +635,7 @@ const {
 
 const originalOpen = ref(false)
 const lastRevision = computed(() => props.message.revisions?.at(-1))
+const replaced = computed(() => lastRevision.value?.by === 'interceptor')
 // The file an edit or a write changed — the plugin's own tools say `path`, Claude Code's
 // `file_path` — so its comparison is coloured as that file's code.
 const diffPath = computed(() => {

@@ -37,7 +37,7 @@ describe('an answer under the interceptor', () => {
     const view = mount(AiChatMessage, { attachTo: document.body, props: { message: replaced } })
     expect(view.classes()).not.toContain('abele-chat-msg_checking')
     expect(view.find('.abele-chat-msg__checking').exists()).toBe(false)
-    const pencil = view.find('.abele-chat-msg__edited')
+    const pencil = view.find('.abele-chat-msg__replaced')
     expect(pencil.exists()).toBe(true)
     expect(pencil.attributes('aria-label')).toMatch(/^Replaced by Sample checker · /)
     await pencil.trigger('click')

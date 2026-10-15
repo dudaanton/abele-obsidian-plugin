@@ -676,7 +676,15 @@ const showInRun = (messageId: string): boolean => {
 
 const messageProps = (msg: ChatMessage) => ({
   message:
-    answerCheck.value?.id === msg.id ? { ...msg, answerCheck: { by: answerCheck.value.by } } : msg,
+    answerCheck.value?.id === msg.id
+      ? {
+          ...msg,
+          answerCheck: {
+            by: answerCheck.value.by,
+            ...(answerCheck.value.of ? { at: answerCheck.value.at, of: answerCheck.value.of } : {}),
+          },
+        }
+      : msg,
   branches: branchSwitchMap.value.get(msg.id),
   interceptorStreaming: msg.draft
     ? interceptorStreaming.value || interceptorWorking.value
@@ -684,7 +692,10 @@ const messageProps = (msg: ChatMessage) => ({
   interceptorStreamingContent: msg.draft
     ? interceptorStreamingContent.value
     : replyReviews.value[msg.id]?.streamingContent,
-  interceptorError: msg.draft ? interceptorError.value : replyReviews.value[msg.id]?.error,
+  // A held message says which of its interceptors failed and why; one reviewing now, its own.
+  interceptorError: msg.draft
+    ? (msg.interceptorWait?.error ?? interceptorError.value)
+    : replyReviews.value[msg.id]?.error,
   comments: commentsOn.value.get(msg.id),
   canComment: canComment.value,
   canReply: canReply.value,

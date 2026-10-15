@@ -24,6 +24,8 @@
         <Icon icon="chevron-down" />
         <span>{{ message.interceptorName || 'Interceptor' }}</span>
       </div>
+      <!-- Several in a row: which one has the message now, while it waits there. -->
+      <div v-if="step" class="abele-chat-msg__interceptor-step">{{ step }}</div>
       <div class="abele-chat-msg__interceptor-messages" data-find-part="interceptor">
         <div
           v-for="icMsg in message.interceptorChat"
@@ -31,6 +33,13 @@
           class="abele-chat-msg__interceptor-msg"
           :class="`abele-chat-msg__interceptor-msg--${icMsg.role}`"
         >
+          <!-- With more than one speaking here, each line says whose it is. -->
+          <div
+            v-if="icMsg.role === 'assistant' && severalSpeak && icMsg.by"
+            class="abele-chat-msg__interceptor-by"
+          >
+            {{ icMsg.by }}
+          </div>
           <Markdown v-if="icMsg.role === 'assistant'" :text="icMsg.content" />
           <span v-else>{{ icMsg.content }}</span>
         </div>
@@ -75,11 +84,12 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import Icon from './obsidian/Icon.vue'
 import Markdown from './obsidian/Markdown.vue'
 import type { ChatMessage } from '@/ai/types'
 
-defineProps<{
+const props = defineProps<{
   message: ChatMessage
   interceptorStreaming?: boolean
   interceptorStreamingContent?: string
@@ -92,4 +102,14 @@ const emit = defineEmits<{
   (event: 'retry', id: string): void
   (event: 'reply'): void
 }>()
+
+const step = computed(() => {
+  const wait = props.message.draft ? props.message.interceptorWait : undefined
+  return wait && wait.of > 1
+    ? `${wait.at} of ${wait.of}: ${props.message.interceptorName ?? ''}`
+    : ''
+})
+const severalSpeak = computed(
+  () => new Set((props.message.interceptorChat ?? []).map((m) => m.by).filter(Boolean)).size > 1
+)
 </script>

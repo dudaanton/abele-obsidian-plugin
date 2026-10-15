@@ -1,8 +1,8 @@
 /**
- * The pencil of an answer the interceptor replaced comes up with the rest of the message's bar:
- * under the pointer or with the keyboard inside the message, never standing on its own. The
- * turning glyph of an answer still being checked stays, and a phone, which cannot point, keeps
- * the pencil like it keeps the time.
+ * The mark of an answer the interceptor replaced — its own glyph, the pencil being Edit — comes up
+ * with the rest of the message's bar: under the pointer or with the keyboard inside the message,
+ * never standing on its own. The turning glyph of an answer still being checked stays, and a
+ * phone, which cannot point, keeps the mark like it keeps the time.
  *
  * The bar's own stylesheet is loaded, translated for jsdom: it cannot hover, so `:hover` is read
  * as a class; its selector engine never matches `:focus-within`, so that is read as the
@@ -13,6 +13,7 @@ import { compileString } from 'sass-embedded'
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import AiChatMessage from '@/components/AiChatMessage.vue'
+import Icon from '@/components/obsidian/Icon.vue'
 import { interceptorRevision } from '@/ai/replyAnnotations'
 import type { ChatMessage } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
@@ -52,27 +53,34 @@ function replaced() {
   return view
 }
 
-describe('the pencil of a replaced answer', () => {
+describe('the mark of a replaced answer', () => {
   it('is hidden while the pointer is elsewhere', () => {
     replaced()
     expect(opacity('.abele-chat-msg__quick')).toBe('0')
-    expect(opacity('.abele-chat-msg__edited')).toBe('0')
+    expect(opacity('.abele-chat-msg__replaced')).toBe('0')
   })
 
   it('comes up under the pointer', () => {
     replaced().element.classList.add('test-hover')
-    expect(opacity('.abele-chat-msg__edited')).not.toBe('0')
+    expect(opacity('.abele-chat-msg__replaced')).not.toBe('0')
   })
 
   it('comes up with the keyboard inside the message', () => {
     ;(replaced().find('.abele-chat-msg__quick button').element as HTMLElement).focus()
-    expect(opacity('.abele-chat-msg__edited')).not.toBe('0')
+    expect(opacity('.abele-chat-msg__replaced')).not.toBe('0')
+  })
+
+  it('is not the pencil, which an edit by the owner keeps', () => {
+    replaced()
+    expect(view!.find('.abele-chat-msg__edited').exists()).toBe(false)
+    const mark = view!.findAllComponents(Icon).find((i) => i.classes('abele-chat-msg__replaced'))
+    expect(mark?.props('icon')).toBe('replace')
   })
 
   it('stays on a phone, beside the time', () => {
     document.body.classList.add('is-mobile')
     replaced()
-    expect(opacity('.abele-chat-msg__edited')).not.toBe('0')
+    expect(opacity('.abele-chat-msg__replaced')).not.toBe('0')
   })
 })
 

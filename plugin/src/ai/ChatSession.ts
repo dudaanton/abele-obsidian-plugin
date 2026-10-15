@@ -363,7 +363,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
    * The finished answer the interceptor is reading now, and who reads it. The chat is busy for
    * that long: what is typed waits, and Stop cancels the check and keeps the answer.
    */
-  public readonly answerCheck = ref<{ id: string; by: string } | null>(null)
+  public readonly answerCheck = ref<{ id: string; by: string; at?: number; of?: number } | null>(
+    null
+  )
   /** When the latest agent loop started; only an answer written since then is checked. */
   private turnStartedAt = 0
   /** Answers already checked here, so a turn resumed twice never checks one twice. */

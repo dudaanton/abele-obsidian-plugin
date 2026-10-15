@@ -215,8 +215,8 @@ const replaced = `(async () => {
     content: first.content,
     original: first.revisions?.[0]?.before ?? '',
     by: first.revisions?.[0]?.by ?? '',
-    pencil: el.querySelector('.abele-chat-msg__edited')?.getAttribute('aria-label') ?? '',
-    pencilOpacity: getComputedStyle(el.querySelector('.abele-chat-msg__edited')).opacity,
+    pencil: el.querySelector('.abele-chat-msg__replaced')?.getAttribute('aria-label') ?? '',
+    pencilOpacity: getComputedStyle(el.querySelector('.abele-chat-msg__replaced')).opacity,
     muted: qa('.abele-chat-msg_checking').length,
     nextTurnSaw: second.filter((m) => m.role === 'assistant').map((m) => m.text),
     secondKept: answers()[1].content,
@@ -232,7 +232,7 @@ const hovered = `(async () => {
   await wait(300)
   return JSON.stringify({
     hover: el.matches(':hover'),
-    pencilOpacity: getComputedStyle(el.querySelector('.abele-chat-msg__edited')).opacity,
+    pencilOpacity: getComputedStyle(el.querySelector('.abele-chat-msg__replaced')).opacity,
   })
 })()`
 
@@ -246,7 +246,7 @@ const original = `(async () => {
   ${prelude}
   const first = answers()[0]
   const el = document.querySelector('[data-message-id="' + first.id + '"]') ?? qa('.abele-chat-msg_assistant')[0]
-  el.querySelector('.abele-chat-msg__edited').click()
+  el.querySelector('.abele-chat-msg__replaced').click()
   const modal = await until(() => document.querySelector('.abele-reply-original'), 5000, 'the original reply window')
   await wait(400)
   const shown = modal.closest('.modal')?.textContent ?? ''
