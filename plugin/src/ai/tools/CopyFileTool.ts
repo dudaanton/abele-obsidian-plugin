@@ -1,3 +1,4 @@
+import { assertExternalDestinationAvailable } from '@/sync/external/destination'
 import { prepareExternalFile } from '@/sync/external/fileAccess'
 import type { AgentTool } from '../client'
 import { guardChatWrite } from './chatWriteGuard'
@@ -32,6 +33,7 @@ export function createCopyFileTool(opts?: { skipScope?: boolean }): AgentTool {
         throw new Error(`Access denied: ${from} is not in workspace scope`)
       }
       const app = appOf(ctx)
+      assertExternalDestinationAvailable(app, safeTo)
       await prepareExternalFile(app, from)
       if (!opts?.skipScope && !scopeOf(ctx).isInScope(from))
         throw new Error(`Access denied: ${from} is not in workspace scope`)
@@ -43,6 +45,7 @@ export function createCopyFileTool(opts?: { skipScope?: boolean }): AgentTool {
       const content = await app.vault.readBinary(file)
       signal?.throwIfAborted()
       // Copy the bytes, never a text-decoded version of an image or other attachment.
+      assertExternalDestinationAvailable(app, safeTo)
       await app.vault.createBinary(safeTo, content)
       scopeOf(ctx).invalidate()
       return {

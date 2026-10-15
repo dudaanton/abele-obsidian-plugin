@@ -1,3 +1,4 @@
+import { assertExternalDestinationAvailable } from '@/sync/external/destination'
 import type { AgentTool } from '../client'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { appOf } from '../toolContext'
@@ -58,6 +59,7 @@ export function createCreateScriptTool(): AgentTool {
 
       const path = normalizePath(`${config.scriptsFolder}/${name}.js`)
       const app = appOf(ctx)
+      assertExternalDestinationAvailable(app, path)
 
       // Ensure folder exists
       const folderPath = path.substring(0, path.lastIndexOf('/'))
@@ -71,6 +73,7 @@ export function createCreateScriptTool(): AgentTool {
       }
 
       await noteLocalScriptWrite(path, content)
+      assertExternalDestinationAvailable(app, path)
       await app.vault.create(path, content)
       scopeOf(ctx).addFile(path)
 

@@ -1,5 +1,6 @@
 /** Capture once, paint with the shared renderer, encode completely, then create a new file. */
 import { TFile, type App } from 'obsidian'
+import { assertExternalDestinationAvailable } from '@/sync/external/destination'
 import { ObsidianCanvasStore, canvasPath } from './obsidianStore'
 import { canvasPicture } from './pictureAdapter'
 import { imagePagePdf, planCanvasExport, type CanvasExportFormat } from './core/export'
@@ -28,6 +29,7 @@ export async function exportCanvas(
   const check = () => {
     signal?.throwIfAborted()
     if (!inScope(path)) throw new Error('Canvas is outside scope')
+    assertExternalDestinationAvailable(app, output)
     if (app.vault.getAbstractFileByPath(output)) throw new Error(`Output already exists: ${output}`)
   }
   check()

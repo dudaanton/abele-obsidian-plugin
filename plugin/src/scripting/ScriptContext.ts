@@ -1,3 +1,4 @@
+import { assertExternalDestinationAvailable } from '@/sync/external/destination'
 import { MarkdownView, Notice, TFile } from 'obsidian'
 import { request as requestUrl } from '@/helpers/http'
 import dayjs from 'dayjs'
@@ -728,10 +729,12 @@ export function buildScriptContext(opts: {
         folder,
         {
           write: async (path, data) => {
+            assertExternalDestinationAvailable(app, path)
             const dir = path.split('/').slice(0, -1).join('/')
             s.throwIfAborted()
             if (dir && !app.vault.getAbstractFileByPath(dir)) await app.vault.createFolder(dir)
             s.throwIfAborted()
+            assertExternalDestinationAvailable(app, path)
             await app.vault.createBinary(
               path,
               data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer

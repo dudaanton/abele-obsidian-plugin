@@ -1,5 +1,6 @@
 /** Thin vault adapter. All publishers share canonical-file queues and the final byte boundary. */
 import { TFile, type App, type TextFileView } from 'obsidian'
+import { assertExternalDestinationAvailable } from '@/sync/external/destination'
 import {
   canvasFingerprint,
   nativeCanvasFingerprint,
@@ -297,6 +298,7 @@ export class ObsidianCanvasStore implements GraphStore {
       text = serializeCanvas(graph)
     await canvasDocuments(this.app).serial(path, async () => {
       signal?.throwIfAborted()
+      assertExternalDestinationAvailable(this.app, path)
       if (this.app.vault.getAbstractFileByPath(path))
         throw new Error(`Canvas file already exists: ${path}`)
       const parts = path.split('/')
@@ -308,6 +310,7 @@ export class ObsidianCanvasStore implements GraphStore {
           await this.writeApp.vault.createFolder(folder)
       }
       signal?.throwIfAborted()
+      assertExternalDestinationAvailable(this.app, path)
       await this.writeApp.vault.create(path, text)
     })
   }

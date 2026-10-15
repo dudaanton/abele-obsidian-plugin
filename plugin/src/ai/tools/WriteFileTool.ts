@@ -1,3 +1,4 @@
+import { assertExternalDestinationAvailable } from '@/sync/external/destination'
 import type { AgentTool } from '../client'
 import { guardChatWrite } from './chatWriteGuard'
 import { NUMBERS_NOT_TEXT, READ_FIRST_WRITE } from './fileToolDescriptions'
@@ -36,6 +37,7 @@ export function createWriteFileTool(opts?: {
         throw new Error(`Access denied: ${path} is not in workspace scope`)
       }
       const app = appOf(ctx)
+      assertExternalDestinationAvailable(app, path)
       const file = app.vault.getAbstractFileByPath(path)
       if (!(file instanceof TFile)) throw new Error(`File not found: ${path}`)
       guardChatWrite(file.path)

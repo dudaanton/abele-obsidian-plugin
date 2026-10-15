@@ -1,3 +1,4 @@
+import { assertExternalDestinationAvailable } from '@/sync/external/destination'
 import type { AgentTool } from '../client'
 import { guardChatWrite } from './chatWriteGuard'
 import { appOf } from '../toolContext'
@@ -33,6 +34,7 @@ export function createMoveFileTool(opts?: { skipScope?: boolean }): AgentTool {
         throw new Error(`Access denied: ${from} is not in workspace scope`)
       }
       const app = appOf(ctx)
+      assertExternalDestinationAvailable(app, safeTo)
       const file = app.vault.getAbstractFileByPath(from)
       if (!(file instanceof TFile)) throw new Error(`File not found: ${from}`)
       if (app.vault.getAbstractFileByPath(safeTo)) {

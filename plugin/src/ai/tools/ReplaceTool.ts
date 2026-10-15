@@ -1,3 +1,4 @@
+import { assertExternalDestinationAvailable } from '@/sync/external/destination'
 import type { AgentTool } from '../client'
 import { guardChatWrite } from './chatWriteGuard'
 import { appOf } from '../toolContext'
@@ -135,6 +136,8 @@ export function createReplaceTool(opts?: { skipScope?: boolean }): AgentTool {
         }
       }
 
+      if (newPath !== path) assertExternalDestinationAvailable(app, newPath)
+
       // Apply frontmatter changes
       const fmChanged = JSON.stringify(frontmatter) !== JSON.stringify(newFrontmatter)
       if (fmChanged) {
@@ -173,6 +176,7 @@ export function createReplaceTool(opts?: { skipScope?: boolean }): AgentTool {
       // Move/rename
       if (newPath !== path) {
         signal?.throwIfAborted()
+        assertExternalDestinationAvailable(app, newPath)
         await app.fileManager.renameFile(file, newPath)
       }
 

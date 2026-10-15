@@ -1,3 +1,4 @@
+import { logicalPathExists } from '@/sync/external/destination'
 import { prepareExternalFile } from '@/sync/external/fileAccess'
 import { TFile, type App } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -48,7 +49,7 @@ export async function saveImageToVault(
   // Avoid name collisions
   let targetPath = basePath
   let counter = 1
-  while (app.vault.getAbstractFileByPath(targetPath)) {
+  while (logicalPathExists(app, targetPath)) {
     targetPath = folder
       ? `${folder}/${baseName} ${counter}.${ext}`
       : `${baseName} ${counter}.${ext}`

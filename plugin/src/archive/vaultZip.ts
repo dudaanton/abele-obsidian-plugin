@@ -1,3 +1,4 @@
+import { assertExternalDestinationAvailable } from '@/sync/external/destination'
 import { prepareExternalFile } from '@/sync/external/fileAccess'
 import { TFile, TFolder, type App, type EventRef } from 'obsidian'
 import type { ScopeResolver } from '@/ai/ScopeResolver'
@@ -155,6 +156,7 @@ export async function createVaultZip(value: unknown, context: VaultZipContext): 
   const checkDestination = () => {
     checkSources()
     guardChatWrite(request.path)
+    assertExternalDestinationAvailable(app, request.path)
     if (vault.getAbstractFileByPath(request.path) || destinationChanged)
       throw new Error('ZIP destination already exists or changed')
     for (const [path, parent] of parents) {

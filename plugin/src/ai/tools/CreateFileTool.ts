@@ -1,3 +1,4 @@
+import { assertExternalDestinationAvailable } from '@/sync/external/destination'
 import type { AgentTool } from '../client'
 import { guardChatWrite } from './chatWriteGuard'
 import { appOf } from '../toolContext'
@@ -33,6 +34,7 @@ export function createCreateFileTool(opts?: { skipScope?: boolean }): AgentTool 
       const renamed = describeRename(path, safePath)
 
       const app = appOf(ctx)
+      assertExternalDestinationAvailable(app, safePath)
       if (app.vault.getAbstractFileByPath(safePath)) {
         throw new Error(`File already exists: ${safePath}`)
       }
@@ -50,6 +52,7 @@ export function createCreateFileTool(opts?: { skipScope?: boolean }): AgentTool 
       signal?.throwIfAborted()
       await noteLocalScriptWrite(safePath, content)
       signal?.throwIfAborted()
+      assertExternalDestinationAvailable(app, safePath)
       await app.vault.create(safePath, content)
       // Add new file to scope so agent can read/edit it
       if (!opts?.skipScope) scopeOf(ctx).addFile(safePath)

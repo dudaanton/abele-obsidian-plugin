@@ -1,3 +1,4 @@
+import { assertExternalDestinationAvailable } from '@/sync/external/destination'
 import { TFile } from 'obsidian'
 import { dumpCalendarYaml as dump, loadCalendarYaml as load } from '@/helpers/yamlDates'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -380,9 +381,11 @@ export class TemplateService {
   ): Promise<TFile> {
     console.debug(content)
 
+    assertExternalDestinationAvailable(app, filePath)
     await ensureVaultFolder(app.vault, getFolderFromPath(filePath), signal)
 
     signal?.throwIfAborted()
+    assertExternalDestinationAvailable(app, filePath)
     return await app.vault.create(filePath, content)
   }
 
