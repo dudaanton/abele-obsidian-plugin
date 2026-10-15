@@ -29,7 +29,7 @@ const run = <T>(body: string): T =>
 const state = () =>
   run(`const v=view(),e=v?.editor,d=v?.documentLease?.document
     return {tool:e?.controls.tool(),picked:e?.controls.picked().ids,camera:v?.viewer.camera,dirty:d?.session.dirty,busy:d?.session.busy,
-      waiting:e?.waiting,error:d?.error,ink:(v?.viewer.graph.abele?.ink??[]).length,events:(window.__canvasChrome?.events??[]).slice(-14)}`)
+      waiting:e?.waiting,error:d?.error,ink:(v?.viewer.graph.abele?.ink??[]).length,events:(window.__canvasChrome?.events??[]).slice(-24),moves:window.__canvasChrome?.moves}`)
 const until = async (expression: string) => {
   try {
     await expect
@@ -124,7 +124,10 @@ const reopen = async () => {
   )
   await until('view()?.editor&&view().contentEl.querySelector(".abele-canvas-chrome__tools")')
   run(`const f=window.__canvasChrome;f.events=[];const st=view().viewer.stage
-    for(const t of ['pointerdown','pointerup','pointercancel'])st.addEventListener(t,e=>f.events.push([t,e.pointerType,e.button,e.buttons,Math.round(e.clientX),Math.round(e.clientY),e.target.className?.baseVal??e.target.className]),true)
+    for(const t of ['pointerdown','pointerup','pointercancel','gotpointercapture','lostpointercapture'])st.addEventListener(t,e=>f.events.push([t,e.pointerType,e.pointerId,e.buttons,Math.round(e.clientX),Math.round(e.clientY),e.target.className?.baseVal??e.target.className]),true)
+    let moves=0;st.addEventListener('pointermove',e=>{if(e.buttons)moves++;f.moves=moves},true)
+    const input=view().viewer.input
+    for(const m of ['down','up','cancel']){const fn=input[m].bind(input);input[m]=(e)=>{const r=fn(e);f.events.push(['input.'+m,r,!!input.gesture,!!input.connection]);return r}}
     return true`)
   // The cards stand in the middle third of the stage, under the tools and clear of its edges.
   run(

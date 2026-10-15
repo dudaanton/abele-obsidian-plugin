@@ -23,6 +23,8 @@ export interface ViewerCards {
     assets: CanvasAssets,
     theme: CanvasTheme
   ): ReadonlySet<string>
+  /** Scrolls a card's own words by screen pixels; whether they moved, so the canvas stays put. */
+  scroll?(id: string, dx: number, dy: number): boolean
   destroy(): void
 }
 export interface CanvasViewerPorts {
@@ -589,6 +591,17 @@ export class CanvasViewer {
     e.stopPropagation()
     this.stopAnimation()
     const rect = this.stage.getBoundingClientRect()
+    if (!e.ctrlKey && !e.metaKey && this.step === null && this.ports.cards.scroll) {
+      // Over a note or a card with more words than it shows, the wheel reads on in it first.
+      const [x, y] = toWorld(this.camera, e.clientX - rect.left, e.clientY - rect.top)
+      const node = canvasVisibility(this.graph)
+        .visible.reverse()
+        .find(
+          (n) =>
+            n.type !== 'group' && x >= n.x && x <= n.x + n.width && y >= n.y && y <= n.y + n.height
+        )
+      if (node && this.ports.cards.scroll(node.id, e.deltaX, e.deltaY)) return
+    }
     this.camera =
       e.ctrlKey || e.metaKey
         ? zoomAt(

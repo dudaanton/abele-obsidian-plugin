@@ -156,6 +156,7 @@ export function canvasChrome(d: CanvasChromeDriver) {
   }
   return {
     emptySpot,
+    at: d.at,
     tool,
     /** Presses whatever does `label` now; `allowDisabled` presses it even while it may not run. */
     async click(label: string, allowDisabled = false) {
@@ -192,6 +193,12 @@ export function canvasChrome(d: CanvasChromeDriver) {
           startsWith('.abele-canvas-chrome__view', 'Go through the canvas step by step')
         )
       if (SAVE[label]) return menu(q('.abele-canvas-chrome__save'), SAVE[label])
+      if (label === 'Recolor canvas selection') {
+        // The colour the pen draws with is the one the picked things take.
+        const colour = d.run<string>(`return view().editor.controls.value('ink-color')`)
+        const names = ['No colour', 'Red', 'Orange', 'Yellow', 'Green', 'Cyan', 'Purple']
+        return menu(picked('Colour'), names[Number(colour || 0)])
+      }
       if (label === 'Delete selected card' || label === 'Delete canvas selection') {
         if (menuOpen()) closeMenu()
         await d.press(picked('More'))

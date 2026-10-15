@@ -210,6 +210,24 @@ export function moreEntries(c: Controls, p: PickedView, host?: CanvasHostActions
       entry('Bring to front', 'bring-to-front', () => c.act('front')),
       entry('Send to back', 'send-to-back', () => c.act('back'))
     )
+  // A card pinned in place is picked, but stays where it was put until it is let go.
+  if (p.one && card(p.kind)) {
+    const pinned = p.node?.abele?.pinned === true
+    out.push(
+      entry(pinned ? 'Unpin' : 'Pin in place', pinned ? 'pin-off' : 'pin', () =>
+        c.setPinned(p.ids[0], !pinned)
+      )
+    )
+  }
+  const note = p.one && p.kind === 'file' && /\.md$/i.test(p.node?.file ?? '') ? p.node?.file : null
+  if (note && host)
+    out.push(
+      '-',
+      entry('Show a part of the note…', 'heading', async () => {
+        const part = await host.pickPart(note)
+        if (part !== null) await c.setSubpath(p.ids[0], part)
+      })
+    )
   if (p.one && p.kind === 'text')
     out.push(
       '-',

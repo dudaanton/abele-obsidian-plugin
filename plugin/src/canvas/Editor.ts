@@ -203,6 +203,12 @@ export class CanvasEditor {
      * clipboard, stacking, and taking a frame away together with what is inside it.
      */
     act: (action: CanvasAction): Promise<void> => this.act(action),
+    /** A note on the canvas shows one part of itself, a heading or a block, or all of it. */
+    setSubpath: (id: string, subpath: string): Promise<void> =>
+      this.patchNode(id, { subpath: subpath || undefined }),
+    /** A card pinned in place is picked but not carried or resized by hand. */
+    setPinned: (id: string, pinned: boolean): Promise<void> =>
+      this.patchNode(id, { abele: { pinned: pinned || undefined } }),
     /** A text card's place taken by a note, made from its words, in one step. */
     replaceWithNote: (id: string, path: string): Promise<void> => this.replaceWithNote(id, path),
     /** A connection let go over nothing, waiting to be told what to make there. */
@@ -1290,6 +1296,20 @@ export class CanvasEditor {
     this.update(document, ops)
     document.finishDraft()
     if (after) this.selected = after
+    await this.saving(() => this.ports.publish())
+  }
+  /** One change to one card, as a step of its own; one that changes nothing is no step. */
+  private async patchNode(id: string, patch: Record<string, unknown>): Promise<void> {
+    const document = this.ready(),
+      ops: CanvasOperation[] = [{ op: 'update', id, patch }]
+    if (
+      canvasFingerprint(editCanvas(document.session.graph, ops).graph) ===
+      canvasFingerprint(document.session.graph)
+    )
+      return this.refresh()
+    document.beginDraft()
+    this.update(document, ops)
+    document.finishDraft()
     await this.saving(() => this.ports.publish())
   }
   private async replaceWithNote(id: string, path: string): Promise<void> {

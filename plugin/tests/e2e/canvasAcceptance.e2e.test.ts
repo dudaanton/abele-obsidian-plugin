@@ -16,6 +16,7 @@ import { screenshot, swipe, tap, typeText } from './helpers/phone'
 import { withNativeInput } from './helpers/nativeInput'
 import { shotDir } from './helpers/shots'
 import { RESTORE_PHONE_SCRIPT } from './helpers/phoneState'
+import { canvasChrome } from './helpers/canvasChrome'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -88,7 +89,9 @@ const press = async (expression: string) => {
     .not.toBeNull()
   await input(point!)
 }
-const click = (label: string) => press(`button(${JSON.stringify(label)})`)
+const chrome = canvasChrome({ run, press, until, at: (p) => input(p), phone: onPhone() })
+/** Presses what does `label` on the canvas's tool bar, its column or the bar over the picked. */
+const click = (label: string) => chrome.click(label)
 const type = async (text: string, selector: string) => {
   if (onPhone()) {
     let previous = '',

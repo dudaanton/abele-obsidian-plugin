@@ -139,11 +139,20 @@
           @click="press('Reverse connection arrows')"
         />
       </template>
+      <!-- Strokes held by a card can be let go of; free ones, taken by the card picked with them
+           or the one under them. A mixed pick offers both. -->
       <ChromeIcon
-        v-if="kinds.includes('stroke')"
-        :icon="attachedInk ? 'unlink' : 'link'"
-        :tooltip="attachedInk ? 'Detach from its card' : 'Attach to the card under it'"
-        @click="press(attachedInk ? 'Detach selected ink' : 'Attach selected ink')"
+        v-if="attachedInk"
+        icon="unlink"
+        tooltip="Detach from its card"
+        @click="press('Detach selected ink')"
+      />
+      <ChromeIcon
+        v-if="freeInk"
+        icon="link"
+        tooltip="Attach to the card under it"
+        :disabled="state('Attach selected ink').disabled"
+        @click="press('Attach selected ink')"
       />
       <ChromeIcon
         v-if="!one || (kind !== 'group' && kind !== 'connection' && kind !== 'line')"
@@ -167,6 +176,14 @@
           @click="press('Ungroup selected group')"
         />
       </template>
+      <!-- A pinned card says so where it is picked, and lets go of its pin from here. -->
+      <ChromeIcon
+        v-if="one && pickedNode?.abele?.pinned === true"
+        icon="pin"
+        tooltip="Pinned in place: press to let it move"
+        :active="true"
+        @click="c.setPinned(picked.ids[0], false)"
+      />
       <!-- Where there is no Shift to hold: each press on a card then adds it or takes it away. -->
       <ChromeIcon
         icon="list-checks"
@@ -450,6 +467,12 @@ const attachedInk = computed(
   () => (
     tick.value,
     allInkEntries(graph()).some((e) => e.node && picked.value.ids.includes(e.stroke.id))
+  )
+)
+const freeInk = computed(
+  () => (
+    tick.value,
+    allInkEntries(graph()).some((e) => !e.node && picked.value.ids.includes(e.stroke.id))
   )
 )
 const pickedNode = computed(() => graph().nodes.find((n) => n.id === picked.value.ids[0]))

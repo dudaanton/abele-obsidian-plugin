@@ -142,6 +142,17 @@ class LiveCards implements ViewerCards {
       }
     return live
   }
+  scroll(id: string, dx: number, dy: number): boolean {
+    const body = this.cards.get(id)?.body
+    if (!body) return false
+    // The card is drawn scaled with the canvas; the wheel's pixels are the screen's.
+    const scale = body.getBoundingClientRect().height / (body.offsetHeight || 1) || 1,
+      top = body.scrollTop,
+      left = body.scrollLeft
+    body.scrollTop = top + dy / scale
+    body.scrollLeft = left + dx / scale
+    return body.scrollTop !== top || body.scrollLeft !== left
+  }
   destroy(): void {
     for (const card of this.cards.values()) {
       card.component?.unload()

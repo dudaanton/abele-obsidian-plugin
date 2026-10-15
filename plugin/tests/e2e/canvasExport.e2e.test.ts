@@ -113,7 +113,10 @@ describe.skipIf(!available)('whole canvas export through real pointer and touch 
       run<string>('return window.__canvasExport.source')
     )
     shot('mixed-canvas')
-    await press('view().contentEl.querySelector(\'[aria-label="Play walkthrough"]\')')
+    // The walkthrough starts from its glyph in the canvas's column of controls.
+    await press(
+      `[...view().contentEl.querySelectorAll('.abele-canvas-chrome__view [aria-label]')].find(e=>e.getAttribute('aria-label').startsWith('Go through the canvas step by step'))`
+    )
     await until('view().viewer.step===1')
     expect(run<string[]>('return view().viewer.scene().graph.nodes.map(n=>n.id)')).toEqual(['near'])
     shot('first-card')

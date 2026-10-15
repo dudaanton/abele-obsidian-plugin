@@ -6,6 +6,7 @@ import { driver, tap, swipe, screenshot } from './helpers/phone'
 import { withNativeInput } from './helpers/nativeInput'
 import { shotDir } from './helpers/shots'
 import { canvasBackgroundGesture } from './helpers/canvasBackgroundGesture'
+import { canvasChrome } from './helpers/canvasChrome'
 import { randomUUID } from 'node:crypto'
 import { dismissOwnNotices } from './helpers/ownNotices'
 
@@ -59,10 +60,9 @@ const press = async (expression: string) => {
   }
   await input(run<number[]>(geometry))
 }
-const click = async (label: string) => {
-  await until(`button(${JSON.stringify(label)}) && !button(${JSON.stringify(label)}).disabled`)
-  await press(`button(${JSON.stringify(label)})`)
-}
+const chrome = canvasChrome({ run, press, until, at: (p) => input(p), phone: onPhone() })
+/** Presses what does `label` on the canvas's tool bar, its column or the bar over the picked. */
+const click = (label: string) => chrome.click(label)
 const fit = async () => {
   await click('Fit diagram')
   await new Promise((r) => setTimeout(r, 350))

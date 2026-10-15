@@ -5,6 +5,7 @@ import { onPhone, targets } from './helpers/target'
 import { driver, tap, swipe, screenshot } from './helpers/phone'
 import { withNativeInput } from './helpers/nativeInput'
 import { shotDir } from './helpers/shots'
+import { canvasChrome } from './helpers/canvasChrome'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -46,13 +47,15 @@ const input = async (from: number[], to = from) => {
   `)
     )
 }
-const click = async (label: string) => {
-  await until(`button(${JSON.stringify(label)})&&!button(${JSON.stringify(label)}).disabled`)
-  const coords = run<number[]>(
-    `const r=button(${JSON.stringify(label)}).getBoundingClientRect();return [Math.round(r.left+r.width/2),Math.round(r.top+r.height/2)]`
-  )
-  await input(coords)
+/** A real press in the middle of what an expression finds, once it is on the screen. */
+const press = async (expression: string) => {
+  const at = `const el=${expression};if(!el)return null;const r=el.getBoundingClientRect();if(!r.width||!r.height)return null;return [Math.round(r.left+r.width/2),Math.round(r.top+r.height/2)]`
+  await expect.poll(() => run<number[] | null>(at), { timeout: 15_000 }).not.toBeNull()
+  await input(run<number[]>(at))
 }
+const chrome = canvasChrome({ run, press, until, at: (p) => input(p), phone: onPhone() })
+/** Presses what does `label` on the canvas's tool bar, its column or the bar over the picked. */
+const click = (label: string) => chrome.click(label)
 const fit = async () => {
   await click('Fit diagram')
   await new Promise((r) => setTimeout(r, 350))
@@ -142,11 +145,15 @@ describe.skipIf(!available)('canvas selection and geometry with real pointer inp
     await input(point('alpha'))
     await input(point('beta'))
     expect(run<number>('return view().viewer.selection.size')).toBe(3)
+    await click('Toggle multiple selection')
     await click('Group selected cards')
     await saved()
+    // A new frame asks for its name at once; a press on the canvas leaves it as it is.
+    await until(`view().editor.controls.naming()`)
+    await chrome.at(chrome.emptySpot())
+    await until(`!view().editor.controls.naming()`)
     const before = run<{ id: string; x: number; y: number }[]>('return (await read()).nodes')
     const group = before.find((n) => !['note', 'alpha', 'beta'].includes(n.id))!
-    await click('Toggle multiple selection')
     await fit()
     const coords = run<number[]>(
       `const v=view(),n=v.viewer.graph.nodes.find(n=>n.type==='group'),c=v.viewer.camera,r=v.viewer.stage.getBoundingClientRect();return [Math.round(r.left+(n.x+n.width/2-c.x)*c.zoom),Math.round(r.top+(n.y+20-c.y)*c.zoom)]`

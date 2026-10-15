@@ -5,6 +5,7 @@ import { onPhone, targets } from './helpers/target'
 import { driver, tap, screenshot, swipeDriverArgs } from './helpers/phone'
 import { withNativeInput } from './helpers/nativeInput'
 import { shotDir } from './helpers/shots'
+import { canvasChrome } from './helpers/canvasChrome'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -70,9 +71,17 @@ async function press(expression: string) {
   await expect.poll(() => run<number[] | null>(probe), { timeout: 15_000 }).not.toBeNull()
   await input([run<number[]>(probe)])
 }
-const click = (label: string) => press(`button(${JSON.stringify(label)})`)
-const actions = () =>
-  press('view().contentEl.querySelector(".abele-canvas-shape-controls details summary")')
+const chrome = canvasChrome({
+  run,
+  press,
+  until,
+  at: (p) => input([p]),
+  phone: onPhone(),
+})
+/** Presses what does `label` on the canvas's tool bar, its column or the bar over the picked. */
+const click = (label: string) => chrome.click(label)
+/** The selection's actions stand over it now, with nothing to open first. */
+const actions = async () => {}
 const fit = async () => {
   await click('Fit diagram')
   await new Promise((r) => setTimeout(r, 350))
@@ -97,15 +106,12 @@ async function selectMixed() {
   if (onPhone()) {
     // The physical driver supports straight drags, not a multi-segment loop. Real lasso taps
     // and its additive-selection control exercise mixed finger editing without synthetic events.
-    await actions()
-    await click('Toggle lasso multiple selection')
-    await actions()
     await fit()
     await input([point(100, 310)])
-    await input([point(200, 40)])
-    await actions()
+    // Pick several is over what is picked: one first, then each press adds another.
     await click('Toggle lasso multiple selection')
-    await actions()
+    await input([point(200, 40)])
+    await click('Toggle lasso multiple selection')
   } else
     await input(
       [
@@ -331,10 +337,8 @@ describe.skipIf(!available)('canvas eraser and lasso with real pointer input', (
     expect(edited.picture).toBe(true)
     await click('Lasso canvas objects')
     await fit()
-    await actions()
-    await click('Toggle lasso multiple selection')
-    await actions()
     await input([point(130, 250)])
+    await click('Toggle lasso multiple selection')
     await input([point(130, 280)])
     await until(
       `view().viewer.selection.has(${JSON.stringify(humanId)})&&view().viewer.selection.has('agent-ink')`

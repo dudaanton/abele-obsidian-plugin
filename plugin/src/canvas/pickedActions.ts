@@ -4,7 +4,7 @@
  * about there, a card's words made into a note of their own, and a note taken to the trash.
  * Changes to the canvas stay with the editor; these only make, copy and ask.
  */
-import { Notice, type App, type TFile } from 'obsidian'
+import { FuzzySuggestModal, Notice, type App, type TFile } from 'obsidian'
 import { ChatService } from '@/ai/ChatService'
 import { grantNote } from '@/commands/chatAboutNote'
 import { attachDrawingToChat } from '@/drawing/askAgent'
@@ -88,6 +88,52 @@ export interface CanvasHostActions {
   trashNote(path: string): Promise<boolean>
   /** Asks for a line of words, as a connection's label. */
   askText(title: string, value: string): Promise<string | null>
+  /**
+   * Which part of a note a card shows: '' for all of it, `#Heading` or `#^block`; null when
+   * nothing was chosen.
+   */
+  pickPart(path: string): Promise<string | null>
+}
+
+/** The parts of a note a card can show, by its headings and named blocks, all of it first. */
+export function noteParts(
+  headings: { heading: string; level: number }[],
+  blocks: string[]
+): { title: string; subpath: string }[] {
+  return [
+    { title: 'The whole note', subpath: '' },
+    ...headings.map((h) => ({
+      title: `${'  '.repeat(Math.max(0, h.level - 1))}${h.heading}`,
+      subpath: `#${h.heading}`,
+    })),
+    ...blocks.map((id) => ({ title: `Block ^${id}`, subpath: `#^${id}` })),
+  ]
+}
+
+class NotePartModal extends FuzzySuggestModal<{ title: string; subpath: string }> {
+  chosen: string | null = null
+  constructor(
+    app: App,
+    private readonly parts: { title: string; subpath: string }[],
+    private readonly done: (subpath: string | null) => void
+  ) {
+    super(app)
+    this.setPlaceholder('Which part of the note the card shows')
+  }
+  getItems() {
+    return this.parts
+  }
+  getItemText(part: { title: string; subpath: string }): string {
+    return part.title
+  }
+  onChooseItem(part: { title: string; subpath: string }): void {
+    this.chosen = part.subpath
+  }
+  onClose(): void {
+    super.onClose()
+    // Choosing closes the list first; the choice is read once it has been made.
+    window.setTimeout(() => this.done(this.chosen), 0)
+  }
 }
 
 type Chats = Pick<ChatService, 'openBlankChat' | 'pendingInput' | 'revealSidebar'>
@@ -196,5 +242,12 @@ export function canvasHostActions(
       return true
     },
     askText: ask,
+    pickPart(path) {
+      const note = app.vault.getFileByPath(path)
+      if (!note) return Promise.resolve(null)
+      const cache = app.metadataCache.getFileCache(note)
+      const parts = noteParts(cache?.headings ?? [], Object.keys(cache?.blocks ?? {}))
+      return new Promise((resolve) => new NotePartModal(app, parts, resolve).open())
+    },
   }
 }

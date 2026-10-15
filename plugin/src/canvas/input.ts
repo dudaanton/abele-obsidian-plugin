@@ -344,6 +344,8 @@ export class CanvasInput implements CanvasViewerInput {
       this.viewer.draw()
       return
     }
+    // A pinned card, or one inside what is carried, stays where it was put.
+    if (g.graph.nodes.some((n) => g.moving.has(n.id) && n.abele?.pinned === true)) return
     if (!g.active) {
       // Selection alone does not reserve a writer. Refuse a scene changed since pointer-down
       // before deriving resize coordinates from that old scene against a newer baseline.
@@ -479,7 +481,7 @@ export class CanvasInput implements CanvasViewerInput {
     }
     for (const node of graph.nodes.filter((n) => selected.has(n.id))) {
       box(node)
-      if (!single || !this.ports.enabled()) continue
+      if (!single || !this.ports.enabled() || node.abele?.pinned === true) continue
       for (const corner of RESIZE_CORNERS) {
         const handle = this.overlay.ownerDocument.createElementNS(
             'http://www.w3.org/1999/xhtml',
