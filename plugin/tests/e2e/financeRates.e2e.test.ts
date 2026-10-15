@@ -35,6 +35,17 @@ interface State {
   allExpensesAdded: number | null
   /** The probe's wallets in the accounts pane, top to bottom. */
   order: string[]
+  /** Today's heading over the recent transactions, carrying a total for each of four currencies. */
+  heading: {
+    /** Lines the day's name takes. */
+    labelLines: number
+    /** Totals shown beside or under it. */
+    totals: number
+    /** Distance from the last total's right edge to the heading's own text edge, px. */
+    rightGap: number
+    /** Whether a total that does not fit beside the name sits under it, never beside a broken one. */
+    wrappedBelow: boolean
+  } | null
 }
 
 const probe = (scene: 'rates' | 'stale' | 'none') => `(async () => {
@@ -51,7 +62,7 @@ const probe = (scene: 'rates' | 'stale' | 'none') => `(async () => {
   const scene = ${JSON.stringify(scene)}
   const ws = app.workspace
   const rates = window.__abeleTest.exchangeRates
-  const state = { error: '', total: null, totalAdded: null, totalFirst: false, totalMissingRing: false, totalStaleDot: false, tabs: [], allExpensesAdded: null, order: [] }
+  const state = { error: '', total: null, totalAdded: null, totalFirst: false, totalMissingRing: false, totalStaleDot: false, tabs: [], allExpensesAdded: null, order: [], heading: null }
   const kept = { table: rates.table, enabled: rates.enabled, display: rates.display }
   const leaves = []
   const shot = async (name) => {
@@ -164,6 +175,39 @@ const probe = (scene: 'rates' | 'stale' | 'none') => `(async () => {
       }
       state.allExpensesAdded = after === null ? null : Math.round((after - expensesBefore) * 100) / 100
     }
+    const divider = el.querySelector('.abele-finance-sidebar__transactions .abele-date-divider')
+    if (divider) {
+      divider.scrollIntoView({ block: 'center' })
+      await wait(300)
+      const label = divider.querySelector('.abele-date-divider__label')
+      const range = document.createRange()
+      range.selectNodeContents(label)
+      const tops = new Set([...range.getClientRects()].filter((r) => r.width > 0).map((r) => Math.round(r.top)))
+      const totals = [...divider.querySelectorAll('.abele-group-heading__summary span')].filter((e) => e.getBoundingClientRect().width > 0)
+      const box = divider.getBoundingClientRect()
+      const css = getComputedStyle(divider)
+      const inner = box.right - parseFloat(css.paddingRight)
+      const labelBox = label.getBoundingClientRect()
+      const lastRight = Math.max(...totals.map((t) => t.getBoundingClientRect().right))
+      state.heading = {
+        labelLines: tops.size,
+        totals: totals.length,
+        rightGap: Math.round((inner - lastRight) * 10) / 10,
+        wrappedBelow: totals.every((t) => {
+          const r = t.getBoundingClientRect()
+          return r.left >= labelBox.right - 0.5 || r.top >= labelBox.bottom - 0.5
+        }),
+      }
+      el.scrollTop = 0
+      await wait(200)
+      if (scene === 'rates') {
+        divider.scrollIntoView({ block: 'end' })
+        await wait(300)
+        await shot('heading')
+        el.scrollTop = 0
+        await wait(200)
+      }
+    }
     await shot(scene + '-sidebar')
 
     const accounts = await open('abele-accounts-sidebar-view')
@@ -237,6 +281,15 @@ describe.skipIf(!available)('money in several currencies, at a fixed table of ra
       'Rates probe USD',
       'Rates probe PTS',
     ])
+  })
+
+  it("keeps today's heading on one line and wraps four currency totals under it, at the right edge", async () => {
+    const s = await run('rates')
+    expect(s.heading).not.toBeNull()
+    expect(s.heading?.totals).toBeGreaterThanOrEqual(4)
+    expect(s.heading?.labelLines).toBe(1)
+    expect(s.heading?.wrappedBelow).toBe(true)
+    expect(Math.abs(s.heading?.rightGap ?? 99)).toBeLessThanOrEqual(1)
   })
 
   it('marks rates older than four days', async () => {

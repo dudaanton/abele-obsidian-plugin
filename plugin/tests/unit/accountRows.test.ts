@@ -129,6 +129,30 @@ describe('accountRows', () => {
     expect(both(null)).toMatchObject({ currency: 'EUR', balance: 120 })
   })
 
+  it('orders debts in different currencies by what they are worth in dollars, not by their own numbers', () => {
+    const { accounts, source } = world([
+      { name: 'Euro loan', type: 'liability', currency: 'EUR', balance: -8950 },
+      { name: 'Dollar loan', type: 'liability', currency: 'USD', balance: -11098 },
+    ])
+    // 0.5 EUR to the dollar: 8,950 EUR is 17,900 USD, more than the 11,098 USD loan.
+    const table: RateTable = {
+      base: 'USD',
+      fetchedAt: '2026-03-10T08:00:00Z',
+      fetchedOn: '2026-03-10',
+      rates: { EUR: { perUsd: 0.5, date: '2026-03-10', source: 'sample' } },
+    }
+    expect(names(accountRows(accounts, source, settings(), table))).toEqual([
+      'Euro loan',
+      'Dollar loan',
+    ])
+    expect(names(accountRows(accounts, source, settings({ sort: 'balance' }), table))).toEqual([
+      'Dollar loan',
+      'Euro loan',
+    ])
+    // Without rates their own numbers decide, and the dollars come first.
+    expect(names(accountRows(accounts, source, settings()))).toEqual(['Dollar loan', 'Euro loan'])
+  })
+
   it('sums a computed account with no currency of its own in the currency its sources share', () => {
     expect(
       computedSum(
