@@ -246,7 +246,12 @@ export function useTimelineScroll(
       if (!live || !items.value) return
       // Native scrolling can move before its scroll event is delivered. A resize callback
       // or queued nextTick must not mistake that movement for a layout insertion.
-      if (Math.abs(owner.scrollTop - heldTop) > 0.5 && (!requested || dragging())) {
+      // A shorter list clamps scrollTop to its new end during the patch (an editor gets no room
+      // reserved for it); that is the layout moving, not the reader.
+      const clamped =
+        owner.scrollTop < heldTop &&
+        owner.scrollTop >= owner.scrollHeight - owner.clientHeight - 0.5
+      if (Math.abs(owner.scrollTop - heldTop) > 0.5 && !clamped && (!requested || dragging())) {
         stopHolding()
         return
       }
