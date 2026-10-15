@@ -212,7 +212,7 @@ picked connection's end to reconnect it. Moving or resizing cards keeps their co
 attachments and stands as a card in its proportions, an address becomes a web page card,
 cards copied from a canvas come back as copies with their connections, and words become a card.
 
-### Drawing
+### Drawing on a canvas
 
 **Pen** and **Marker** draw with the mouse, a finger or a pen, in the ordinary Canvas colours
 and fine, medium or bold. Start over a card or frame to attach the stroke to it: a dashed
