@@ -44,7 +44,7 @@ export type HttpOutcome =
   /** It never reached the server: refused, no such host. */
   | { kind: 'failed'; reason: string }
   /** No answer in time: it may have gone through, and it is not sent again by itself. */
-  | { kind: 'unknown'; after: string }
+  | { kind: 'unknown'; after: string; reason?: string }
 
 export interface HttpRequest {
   id: string
@@ -88,4 +88,11 @@ export interface HttpSend {
   body?: string
   /** Sent into a recording: it is a step of that run. */
   intoRun?: boolean
+}
+
+/** An environment as its dialog edits it: plain values, secrets by name, the step header. */
+export interface HttpEnvironmentEdit {
+  name: string
+  vars: { key: string; value?: string; secret?: boolean; off?: boolean }[]
+  stepHeader?: boolean
 }

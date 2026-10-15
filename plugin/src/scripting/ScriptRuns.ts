@@ -26,6 +26,8 @@ export type RunSource =
   | 'chat-selection'
   | 'startup'
   | 'interceptor'
+  /** A saved request's script, around a send someone pressed. */
+  | 'request'
 
 export interface RunLogLine {
   at: number

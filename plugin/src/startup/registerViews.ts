@@ -16,6 +16,7 @@ import { openChat, openSelectionLink } from '@/ai/openChat'
 import { keepChatFilesOutOfLeaves, routeChatAnchorLinks } from '@/ai/chatFileLeaves'
 import type { Plugin } from 'obsidian'
 import { registerDebugger } from '@/debugger/register'
+import { registerRequests } from '@/requests/views'
 import { NodeSidebarView } from '@/views/NodeSidebarView'
 import { revealSidebarView } from '@/views/revealSidebarView'
 import { NodePathMainView } from '@/views/NodePathMainView'
@@ -33,6 +34,7 @@ import {
 /** Startup section; called at its original lifecycle position. */
 export function registerViews(plugin: Plugin) {
   registerDebugger(plugin)
+  registerRequests(plugin)
   plugin.registerView(NODE_SIDEBAR_VIEW, (leaf) => new NodeSidebarView(leaf))
   for (const type of [NODE_FILE_VIEW, NODE_HISTORY_VIEW, NODE_CHAT_VIEW, NODE_EDITOR_VIEW])
     plugin.registerView(type, (leaf) => new NodePathMainView(leaf, type))

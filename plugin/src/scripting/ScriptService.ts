@@ -35,6 +35,7 @@ const ASKS_A_PERSON = new Set<RunSource | 'lint'>([
   'link',
   'book',
   'chat-selection',
+  'request',
 ])
 
 /** The id of the command that walks through the scripts waiting to be confirmed. */
@@ -537,6 +538,15 @@ export class ScriptService {
     formHandler?: (fields: FormField[]) => Promise<Record<string, string> | null>
   ): Promise<string> {
     return this.execution.execute(path, params, options, formHandler)
+  }
+
+  forRequest(
+    path: string,
+    params: Record<string, unknown>,
+    interactive: boolean,
+    signal?: AbortSignal
+  ): Promise<unknown> {
+    return this.execution.forRequest(path, params, interactive, signal)
   }
 
   intercept(

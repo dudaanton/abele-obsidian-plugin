@@ -154,6 +154,7 @@ const SOURCE_WORD: Record<ScriptRun['source'], string> = {
   'chat-selection': 'chat selection',
   startup: 'startup',
   interceptor: 'interceptor',
+  request: 'request',
 }
 
 import { pausedWhileHidden } from '@/helpers/pausedWhileHidden'

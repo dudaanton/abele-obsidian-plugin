@@ -265,10 +265,10 @@
           role="status"
         >
           <Icon icon="circle-help" size="xs" no-hover />
-          <span
-            >No answer in {{ outcome.after }}. It may have gone through; it is not sent again by
-            itself.</span
-          >
+          <span>{{
+            outcome.reason ??
+            `No answer in ${outcome.after}. It may have gone through; it is not sent again by itself.`
+          }}</span>
         </div>
         <div
           v-else-if="outcome?.kind === 'sending'"

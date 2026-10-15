@@ -11,21 +11,33 @@
           class="nav-action-button"
           icon="file-plus"
           tooltip="New request"
-          :disabled="offline"
+          :disabled="offline || !!notice"
           @click="emit('new-request')"
         />
         <Icon
           class="nav-action-button"
           icon="folder-plus"
           tooltip="New collection"
-          :disabled="offline"
+          :disabled="offline || !!notice"
           @click="emit('new-collection')"
         />
       </div>
     </div>
 
-    <div v-if="offline" class="abele-requests-panel__empty">
-      Requests open while the node is online.
+    <!-- Which project's requests, of which node: the files live there. -->
+    <TreeItem
+      v-if="project !== undefined"
+      class="abele-requests-panel__project"
+      icon="folder-git-2"
+      :text="project || 'Choose a project'"
+      :note="node"
+      label="The project whose requests these are"
+      @click="(e: MouseEvent) => emit('project-menu', e)"
+    >
+      <template #end><Icon icon="chevrons-up-down" size="xs" no-hover /></template>
+    </TreeItem>
+    <div v-if="offline || notice" class="abele-requests-panel__empty">
+      {{ notice ?? 'Requests open while the node is online.' }}
     </div>
     <template v-else>
       <TreeItem
@@ -125,8 +137,17 @@ withDefaults(
     sending?: string
     /** The program being recorded now, when one is. */
     recording?: string
+    /** The project shown, when there is a choice of them; empty while none is chosen. */
+    project?: string
+    /** The node it is on. */
+    node?: string
+    /** Why nothing can be shown, in place of the list. */
+    notice?: string
   }>(),
   {
+    project: undefined,
+    node: undefined,
+    notice: undefined,
     environment: undefined,
     offline: false,
     open: undefined,
@@ -145,6 +166,8 @@ const emit = defineEmits<{
   (e: 'new-collection'): void
   /** The Debug view, where the recording is. */
   (e: 'show-recording'): void
+  /** The projects to pick from, a menu at the row. */
+  (e: 'project-menu', event: MouseEvent): void
 }>()
 
 const folded = reactive(new Set<string>())
@@ -169,7 +192,8 @@ const toggle = (name: string) => (folded.has(name) ? folded.delete(name) : folde
   color: var(--text-error);
 }
 
-.abele-requests-panel__environment .abele-obsidian-icon {
+.abele-requests-panel__environment .abele-obsidian-icon,
+.abele-requests-panel__project .abele-obsidian-icon {
   height: auto;
   padding: 0;
   color: var(--text-faint);

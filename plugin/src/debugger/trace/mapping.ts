@@ -85,6 +85,8 @@ export const step = (s: WireStep): TraceStep => ({
   ...(s.status !== undefined ? { status: s.status } : {}),
   ...(s.host ? { host: s.host } : {}),
   ...(s.chain ? { chain: s.chain } : {}),
+  ...(s.by_time ? { byTime: true } : {}),
+  ...(s.sent ? { sent: true } : {}),
   ...(s.marked ? { marked: true } : {}),
   values: s.values.map(value),
 })

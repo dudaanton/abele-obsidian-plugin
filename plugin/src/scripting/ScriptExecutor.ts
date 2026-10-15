@@ -298,6 +298,29 @@ export class ScriptExecutor {
     return value
   }
 
+  /**
+   * Runs a saved request's script before or after a send and hands back what it returned. The
+   * request, the answer and the environment's values arrive as its `params`. A person who pressed
+   * Send may be asked to confirm a script from elsewhere; an agent's send never asks.
+   */
+  async forRequest(
+    path: string,
+    params: Record<string, unknown>,
+    interactive: boolean,
+    signal?: AbortSignal
+  ): Promise<unknown> {
+    await this.admit(path, interactive ? 'request' : 'agent', signal)
+    const script = await scriptForExecution(GlobalStore.getInstance().app, path)
+    signal?.throwIfAborted()
+    const { value } = await this.run(script, params, {
+      signal,
+      source: interactive ? 'request' : 'agent',
+      ...(interactive ? { formHandler: showFormModal } : {}),
+      trigger: 'Saved request',
+    })
+    return value
+  }
+
   /** One run of an admitted script: its value as returned, and what it printed. */
   private async run(
     script: ParsedScript,

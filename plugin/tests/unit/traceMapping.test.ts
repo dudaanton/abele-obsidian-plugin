@@ -73,6 +73,32 @@ describe('a run as the views draw it', () => {
     ])
   })
 
+  it('keeps a sent request heading the steps placed under it by time', () => {
+    const r = run(
+      WireRunSchema.parse({
+        ...wireRun,
+        steps: [
+          {
+            id: 't0002',
+            kind: 'http',
+            ts: '2026-01-02T03:04:05.050Z',
+            at: 50,
+            label: 'POST /samples',
+            status: 201,
+            host: 'localhost:4000',
+            chain: 'h1',
+            sent: true,
+            values: [],
+          },
+          { ...wireRun.steps[0], chain: 'h1', by_time: true },
+        ],
+      })
+    )
+    expect(r.steps[0]).toMatchObject({ kind: 'http', sent: true, chain: 'h1', status: 201 })
+    expect(r.steps[1]).toMatchObject({ chain: 'h1', byTime: true })
+    expect(r.steps[0]).not.toHaveProperty('byTime')
+  })
+
   it('says how long a run went, and how long one still being recorded has gone', () => {
     expect(lengthWords(400)).toBe('0.4 s')
     expect(lengthWords(42_000)).toBe('42 s')
