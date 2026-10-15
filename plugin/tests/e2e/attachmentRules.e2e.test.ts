@@ -125,6 +125,8 @@ const probe = (mobile: boolean) => `(async () => {
     const overflow = []
     for (const el of group.querySelectorAll('*')) {
       const box = el.getBoundingClientRect()
+      // Obsidian measures a dropdown's options with a copy of it placed off screen on purpose.
+      if (el.closest('.is-measuring')) continue
       if (box.width > 0 && (box.left < -1 || box.right > width + 1)) overflow.push(el.className || el.tagName)
     }
     const notes = [...group.querySelectorAll('.abele-attachment-rules__notes')]
