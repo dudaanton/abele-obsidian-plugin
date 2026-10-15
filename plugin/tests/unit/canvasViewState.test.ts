@@ -129,7 +129,7 @@ it.each([true, false])(
     ;(view as unknown as { refreshToken: number }).refreshToken = 0
     await view.onLoadFile(file)
     // The editing leaf writes by itself; a read-only one still says another session holds work.
-    if (editing) view.editor = { refresh: vi.fn() } as unknown as CanvasView['editor']
+    view.editor = editing ? ({ refresh: vi.fn() } as unknown as CanvasView['editor']) : null
     const document = (view as unknown as { documentLease: { document: CanvasDocumentLike } })
       .documentLease.document
     document.beginDraft()
