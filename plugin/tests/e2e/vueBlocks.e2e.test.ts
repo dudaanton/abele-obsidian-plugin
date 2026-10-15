@@ -97,6 +97,8 @@ describe.each([
         const notices = () => [...document.querySelectorAll('.notice')].filter((n) =>
           /What's new|Sample script|Sample probe template/.test(n.textContent))
         await until('three notices', () => notices().length === 3)
+        // Notices fade in; picture them once they are there.
+        await new Promise((resolve) => setTimeout(resolve, 1000))
         await shoot('notices')
         return JSON.stringify(notices().map((n) => ({
           buttons: [...n.querySelectorAll('button')].map((b) => b.textContent.trim()),
@@ -132,6 +134,8 @@ describe.each([
       try {
         root.querySelector('.abele-chat-branch__count').click()
         await until('menu', () => document.querySelectorAll('.menu .menu-item').length >= 3)
+        // On a phone the menu is a sheet that slides up.
+        await new Promise((resolve) => setTimeout(resolve, 1000))
         await shoot('branch-menu')
         const items = [...document.querySelectorAll('.menu .menu-item')].slice(0, 3)
         const report = items.map((item) => {
@@ -190,12 +194,20 @@ describe.each([
         await shoot('map-place')
         const place = root.querySelector('.abele-map__place')
         const popup = root.querySelector('.maplibregl-popup-content')
+        const shell = popup.closest('.maplibregl-popup')
+        const map = root.getBoundingClientRect()
+        const drawn = popup.getBoundingClientRect()
+        const onMap = drawn.width > 0 && drawn.height > 0 && drawn.left >= map.left - 1 && drawn.right <= map.right + 1 && drawn.top >= map.top - 1 && drawn.bottom <= map.bottom + 1
+        const shown = getComputedStyle(shell).visibility !== 'hidden' && Number(getComputedStyle(shell).opacity) > 0
         const close = popup.querySelector('button')?.getBoundingClientRect()
         const title = place.querySelector('strong').getBoundingClientRect()
         return JSON.stringify({
           title: place.querySelector('strong').textContent,
           coordinates: place.querySelector('.abele-map__coordinates')?.textContent ?? '',
           inside: place.getBoundingClientRect().right <= popup.getBoundingClientRect().right + 1,
+          onMap,
+          shown,
+          popups: root.querySelectorAll('.maplibregl-popup').length,
           clearOfClose: !close || close.left >= title.right || close.bottom <= title.top || close.right <= title.left,
         })
       } finally {
@@ -203,7 +215,13 @@ describe.each([
         root.remove()
       }`
     )
-    expect(result).toMatchObject({ inside: true, clearOfClose: true })
+    expect(result).toMatchObject({
+      inside: true,
+      clearOfClose: true,
+      onMap: true,
+      shown: true,
+      popups: 1,
+    })
     expect(result.title).not.toBe('')
     expect(result.coordinates).toMatch(/\d/)
   }, 90000)
