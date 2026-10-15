@@ -239,6 +239,9 @@ it('opens the real node repository in the shared tab, follows history, compares,
         await api.openNodeRepository(${JSON.stringify(registration)},${JSON.stringify(ids.project)},${JSON.stringify(ids.workspace)});
         await until(()=>[...document.querySelectorAll('.abele-github-home')].some(el=>el.getBoundingClientRect().width));
         await homeFills([...document.querySelectorAll('.abele-github-home')].find(el=>el.getBoundingClientRect().width),'phone-home.png',false);
+        // The phone keeps a layout of its own; the tab this probe opened must not stay saved in it.
+        for(const leaf of app.workspace.getLeavesOfType('abele-github'))leaf.detach();
+        await app.workspace.requestSaveLayout.run();
         return 'phone home fills';
       })()`)
     )
