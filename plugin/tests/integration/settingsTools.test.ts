@@ -203,6 +203,31 @@ describe('changing a setting', () => {
     expect(config.ai.agents[0].interceptorAgentId).toBe('')
   })
 
+  it("writes an agent's interceptor list, refuses a bad entry, and keeps the single fields mirroring it", async () => {
+    const config = AbeleConfig.getInstance()
+    config.ai.agents = [
+      createAgent({ id: 'a1', name: 'Writer' }),
+      createAgent({ id: 'r1', name: 'Reviewer', utility: true }),
+    ]
+    const list = [
+      { id: 'ic-1', agentId: '', script: 'Sample guard', checks: 'answer', pattern: '', replyOnly: false, contextDepth: 0, enabled: true },
+      { id: 'ic-2', agentId: 'r1', script: '', checks: 'message', pattern: '', replyOnly: false, contextDepth: 0, enabled: true },
+    ]
+    await answer(write, { path: 'ai.agents.0.interceptors', value: JSON.stringify(list) })
+    expect(config.ai.agents[0].interceptors?.map((e) => e.id)).toEqual(['ic-1', 'ic-2'])
+    expect(config.ai.agents[0].interceptorScript).toBe('Sample guard')
+
+    const bad = [{ ...list[1], agentId: 'a1' }]
+    expect(
+      await answer(write, { path: 'ai.agents.0.interceptors', value: JSON.stringify(bad) })
+    ).toMatch(/Interceptor 1: An agent cannot be its own interceptor/)
+    expect(config.ai.agents[0].interceptors).toHaveLength(2)
+
+    // The single field, written on an agent with a list, changes the entry it mirrors.
+    await answer(write, { path: 'ai.agents.0.interceptorPattern', value: '^/x' })
+    expect(config.ai.agents[0].interceptors?.[0].pattern).toBe('^/x')
+  })
+
   it('refuses a setting that does not exist rather than inventing it', async () => {
     const text = await answer(write, { path: 'ai.temperatur', value: '0.5' })
 

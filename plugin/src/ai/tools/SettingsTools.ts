@@ -257,10 +257,11 @@ async function write(
     return 'Change `sync` one field at a time: `sync.serverUrl`, `sync.paused`, `sync.selective.images`, and so on.'
   }
 
-  const found = resolve(path)
+  const found = resolve(path) ?? newInterceptorList(path)
   // A path that resolves to nothing is a typo, and a typo that wrote would leave a key the
   // plugin never reads sitting in the settings for good.
-  if (!found || found.value === undefined) {
+  const listToStart = found?.key === 'interceptors' && isAgent(found.parent)
+  if (!found || (found.value === undefined && !listToStart)) {
     return `"${path}" is not a setting that exists. Read it first; this tool changes settings rather than inventing them.`
   }
 
@@ -303,6 +304,24 @@ async function write(
   }
   await AbeleConfig.getInstance().saveSettings()
   return result.text
+}
+
+/**
+ * An agent saved before lists has no `interceptors` yet, so the path finds nothing; writing one is
+ * how it gets a list, which is a setting that exists rather than a typo.
+ */
+function newInterceptorList(path: string): ReturnType<typeof resolve> {
+  const suffix = '.interceptors'
+  if (!path.endsWith(suffix)) return null
+  const parentPath = path.slice(0, -suffix.length)
+  const agent = resolve(parentPath)
+  if (!agent || !isAgent(agent.value)) return null
+  return {
+    parent: agent.value as Record<string, unknown>,
+    key: 'interceptors',
+    value: undefined,
+    parentPath,
+  }
 }
 
 function setValue(

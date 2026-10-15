@@ -5,6 +5,7 @@
  * keeps the answer and says why under it; a message typed meanwhile waits.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { watch } from 'vue'
 import { ChatSession } from '@/ai/ChatSession'
 import { ChatService } from '@/ai/ChatService'
 import { ChatStorage } from '@/ai/ChatStorage'
@@ -21,6 +22,7 @@ import {
   type ModelConfig,
   type StreamOptions,
 } from '@/ai/client'
+import { newEntry } from '@/ai/interceptor/entries'
 import { useVault } from '../helpers/testEnv'
 import { destroyChatsAfterEach } from '../helpers/chatTeardown'
 
@@ -496,3 +498,56 @@ describe('an interceptor checking the agent’s answers', () => {
     expect(reopened.interceptor.answerRoute('anything')).toMatchObject({ kind: 'script' })
   })
 })
+
+describe('several interceptors over an answer', () => {
+  /** The writer runs `Sample guard`, then the checking agent, over its answers. */
+  async function chainSetup() {
+    const state = await scriptSetup()
+    state.registry.update(state.writer.id, {
+      interceptors: [
+        newEntry({ id: 'ic-guard', script: 'Sample guard', checks: 'answer' }),
+        newEntry({ id: 'ic-checker', agentId: state.reviewer.id, checks: 'answer' }),
+      ],
+    })
+    return state
+  }
+
+  it('each reads the answer the one before left, counted, and each leaves a version', async () => {
+    const { session, pending } = await chainSetup()
+    reviewerReply = 'The lamp is on the high shelf.'
+    const readers: unknown[] = []
+    watch(session.answerCheck, (now) => now && readers.push(now), { flush: 'sync' })
+    const sent = session.sendMessage('Where is the lantern?')
+    await vi.waitFor(() => expect(pending).toHaveLength(1))
+    pending[0].resolve('The lamp is on the shelf.')
+    await sent
+    expect(readers).toEqual([
+      expect.objectContaining({ by: 'Sample guard', at: 1, of: 2 }),
+      expect.objectContaining({ by: 'Sample checker', at: 2, of: 2 }),
+    ])
+
+    expect(userText(reviews[0].at(-1)!)).toBe('The lamp is on the shelf.')
+    const [answer] = assistant(session)
+    expect(answer.content).toBe('The lamp is on the high shelf.')
+    expect(answer.revisions?.map((r) => [r.author, r.before, r.after])).toEqual([
+      ['Sample guard', 'The lantern is on the shelf.', 'The lamp is on the shelf.'],
+      ['Sample checker', 'The lamp is on the shelf.', 'The lamp is on the high shelf.'],
+    ])
+  })
+
+  it('one that fails keeps the answer as it stands, and the ones after it do not read it', async () => {
+    const { session, pending } = await chainSetup()
+    const sent = session.sendMessage('Where is the lantern?')
+    await vi.waitFor(() => expect(pending).toHaveLength(1))
+    pending[0].reject(new Error('Sample guard broke'))
+    await sent
+
+    expect(reviews).toHaveLength(0)
+    const [answer] = assistant(session)
+    expect(answer.content).toBe('The lantern is on the shelf.')
+    const said = answer.interceptorChat?.map((m) => m.content).join('\n') ?? ''
+    expect(said).toContain('The answer stays as it was')
+    expect(said).toContain('The interceptors after it did not read it.')
+  })
+})
+
