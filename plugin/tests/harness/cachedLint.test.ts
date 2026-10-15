@@ -62,8 +62,8 @@ export declare class MarkdownRenderer { static render(app: unknown, text: string
 export declare const sampleComponent: `
 
 describe('cached lint execution', () => {
-  // Setup retains a five-second deadline; a warm-plus-cold comparison of two real lints gets
-  // twenty, so a loaded check machine does not read as a regression. Seeding is a checked
+  // Setup seeds with one real lint and gets thirty seconds, a warm-plus-cold comparison of two
+  // gets twenty or thirty, so a loaded check machine does not read as a regression. Seeding is a checked
   // fixture prerequisite, not three serial full parser bootstraps inside one assertion phase.
   describe.each(['generated', 'external'])('Vue-only %s declarations', (location) => {
     let f: Fixture
