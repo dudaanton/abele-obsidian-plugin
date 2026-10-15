@@ -340,8 +340,8 @@ describe.skipIf(!available)('the canvas by hand', () => {
       await saved()
       swipe(a[0], a[1] + 40, b[0], b[1] + 40)
     } else {
-      await chrome.click('Select canvas objects')
-      // A Pencil draws whatever tool is in hand; the second stroke lands while the first saves.
+      await chrome.click('Draw with pen')
+      // A Pencil draws with the pen in hand; the second stroke lands while the first saves.
       await cdp(`
         const pen=(o)=>mouse({pointerType:'pen',force:0.5,...o})
         for(const dy of [0,40]){
@@ -353,7 +353,7 @@ describe.skipIf(!available)('the canvas by hand', () => {
     await saved()
     await until(`((await read()).abele?.ink??[]).length===${before + 2}`)
     if (!onPhone()) {
-      expect(run<string>('return view().editor.controls.tool()')).toBe('select')
+      expect(run<string>('return view().editor.controls.tool()')).toBe('pen')
       // The pen's colours stand in the tools' one row on a desktop; the zoom column stays put.
       const row = run<{ bar: number; column: number; stage: number }>(`
         const v=view(),bar=v.contentEl.querySelector('.abele-canvas-chrome__tools').getBoundingClientRect()
