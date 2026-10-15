@@ -66,6 +66,20 @@ const click = async (label: string) => {
     ],
   ])
 }
+/** Picks a tool; a phone tap can land while its panel is still opening, so tap again. */
+const choose = async (label: string) => {
+  const pressed = `button(${JSON.stringify(label)})?.getAttribute("aria-pressed")==="true"`
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await click(label)
+    try {
+      await until(pressed, 5_000)
+      return
+    } catch {
+      /* Tap again below. */
+    }
+  }
+  await until(pressed)
+}
 const fit = async () => {
   await click('Fit diagram')
   await new Promise((r) => setTimeout(r, 350))
@@ -128,8 +142,7 @@ describe.skipIf(!available)('fast canvas actions are all saved', () => {
   it('saves every stroke of a quick run, each its own undo step', async () => {
     await until('view()?.editor')
     await click('Canvas drawing tools')
-    await click('Draw with pen')
-    await until('button("Draw with pen").getAttribute("aria-pressed")==="true"')
+    await choose('Draw with pen')
     await fit()
     const undo = () => run<number>('return view().documentLease.document.session.history.undo')
     await gestures(strokes(0))
@@ -184,7 +197,7 @@ describe.skipIf(!available)('fast canvas actions are all saved', () => {
 
   it('writes local changes before an agent reads the canvas', async () => {
     await click('Canvas drawing tools')
-    await click('Draw with pen')
+    await choose('Draw with pen')
     const before = run<number>('return ink(await read())')
     await gestures(strokes(0).slice(0, 1))
     await until('ink(view().viewer.graph)===' + (before + 1))
