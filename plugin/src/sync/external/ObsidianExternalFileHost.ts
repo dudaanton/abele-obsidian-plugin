@@ -159,6 +159,12 @@ export class ExternalFileHost {
     this.leases.add(owned)
     return owned
   }
+  /** Runs the removal hook before an operation reserves `path`. Whatever the hook writes for
+   * the engine (a copy owed to another connection) is refused once the reservation holds it. */
+  async prepareRemoval(path: string): Promise<void> {
+    this.assertOwned()
+    await this.options.beforeRemoval?.(path)
+  }
   close(): void {
     this.closed = true
     for (const lease of this.leases) lease.release()

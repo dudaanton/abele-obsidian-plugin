@@ -353,6 +353,13 @@ export class AttachmentStore {
       return this.result('collision')
     }
     const staging = this.stagingPath(before.path, opts.operationId)
+    try {
+      await this.options.host.prepareRemoval(before.path)
+    } catch (error) {
+      // Nothing is committed yet: a copy that cannot be kept for another connection now
+      // leaves the file where it is, not a half-finished offload.
+      return this.result(error instanceof ExternalFilePortError ? error.reason : 'busy')
+    }
     let phase: 'none' | 'prepared' | 'delete-ready' = 'none'
     return this.options.host.run(
       this.options.serial,

@@ -122,8 +122,21 @@ export class EditCopies {
       const needed: Destination[] = []
       for (const destination of destinations) {
         const base = await destination.store.get(path)
-        if (base?.sha !== sha || base.mtime !== before.mtime || base.size !== before.size)
-          needed.push(destination)
+        if (base?.sha === sha && base.mtime === before.mtime && base.size === before.size) continue
+        // Already kept, e.g. by an offload that preserved it before reserving the path:
+        // staging it again would be refused under that reservation.
+        const kept = destination.store.getMeta ? await this.list(destination.store) : []
+        if (
+          kept.some(
+            (copy) =>
+              copy.path === path &&
+              copy.sha === sha &&
+              copy.mtime === before.mtime &&
+              copy.base?.versionId === base?.versionId
+          )
+        )
+          continue
+        needed.push(destination)
       }
       if (!needed.length) continue
       let source: { id: string; size: number } | undefined
