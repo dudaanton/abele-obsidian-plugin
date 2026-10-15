@@ -655,7 +655,9 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
     report.scrollRevealed = dates()
     yield 'pinned header far down, and the count of every open task'
     // Every page ahead drawn, the header still pinned and its switch still under the pointer.
-    await scrollToRow(() => row(45), 6)
+    // Three pages ahead; a busy machine can let a page come later than one scroll waits for, so
+    // the end is scrolled to again rather than the probe waiting on a page nobody asked for.
+    await scrollToRow(() => row(45), 30)
     await until(() => row(45), 'last fixture day drawn')
     scroller.scrollTop = scroller.scrollHeight
     await still()
