@@ -601,6 +601,8 @@ export class CanvasEditor {
       placed: (kind, rect) => {
         try {
           this.addText(kind === 'shape' ? (this.shape.value as Shape) : undefined, rect)
+          // Put down by an edge, it is brought whole into view so its words can be written.
+          this.viewer.reveal(rect)
         } catch (error) {
           this.fail(error)
         }
@@ -2142,11 +2144,13 @@ export class CanvasEditor {
     }
     if (node && node.type !== 'group') return
     try {
-      this.addText(undefined, {
+      const rect = {
         x: Math.round(x - CARD_SIZE.width / 2),
         y: Math.round(y - CARD_SIZE.height / 2),
         ...CARD_SIZE,
-      })
+      }
+      this.addText(undefined, rect)
+      this.viewer.reveal(rect)
     } catch (error) {
       this.fail(error)
     }

@@ -235,16 +235,31 @@ describe.skipIf(!available)('the canvas by hand', () => {
     await until(
       `(await read()).edges.some(e=>e.fromNode==='beta'&&e.toNode==='gamma'&&e.fromSide==='bottom'&&e.toSide==='top')`
     )
-    const gap = run<number[]>(`
-      const v=view().viewer,c=v.camera,r=v.stage.getBoundingClientRect(),b=v.graph.nodes.find(n=>n.id==='beta'),g=v.graph.nodes.find(n=>n.id==='gamma')
-      return [Math.round(r.left+(b.x+b.width/2-c.x)*c.zoom),Math.round(r.top+((b.y+b.height+g.y)/2-c.y)*c.zoom)]`)
-    await double(gap)
+    // The new connection is picked, and its bar stands at the line's middle (in a narrow tab, over
+    // it). A person comes in close and double-presses the line where it shows: clear of the bar
+    // and of the two ends, which a press would pull to reconnect.
+    const camera = run<object>(`return {...view().viewer.camera}`)
+    run(`const v=view().viewer,s=v.stage,b=v.graph.nodes.find(n=>n.id==='beta'),g=v.graph.nodes.find(n=>n.id==='gamma'),zoom=1.6
+      v.setCamera({x:b.x+b.width/2-s.clientWidth/2/zoom,y:(b.y+b.height+g.y)/2-s.clientHeight/2/zoom,zoom});return true`)
+    const onLine = () =>
+      run<number[] | null>(`
+        const v=view().viewer,c=v.camera,r=v.stage.getBoundingClientRect(),b=v.graph.nodes.find(n=>n.id==='beta'),g=v.graph.nodes.find(n=>n.id==='gamma')
+        const x=Math.round(r.left+(b.x+b.width/2-c.x)*c.zoom),top=r.top+(b.y+b.height-c.y)*c.zoom,bottom=r.top+(g.y-c.y)*c.zoom
+        for(const t of [0.5,0.4,0.6,0.3,0.7,0.25,0.75]){
+          const y=Math.round(top+(bottom-top)*t)
+          if(y-top<32||bottom-y<32)continue
+          const hit=document.elementFromPoint(x,y)
+          if(hit&&v.stage.contains(hit)&&!hit.closest('.abele-canvas-chrome,[data-frame-id],.abele-canvas-connect-point'))return [x,y]}
+        return null`)
+    await expect.poll(onLine, { timeout: 15_000 }).not.toBeNull()
+    await double(onLine()!)
     await until(`document.activeElement?.matches('.abele-canvas-chrome__label')`)
     await type('Sample feeds')
     await key('Enter')
     await saved()
     await until(`(await read()).edges.some(e=>e.label==='Sample feeds')`)
     shot('connection-labelled')
+    run(`view().viewer.setCamera(${JSON.stringify(camera)});return true`)
     // Let go over nothing: a menu there offers what to make at its end.
     await input(middle('alpha'))
     const right = `view().contentEl.querySelector('.abele-canvas-connect-point[data-side="right"]')`

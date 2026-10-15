@@ -327,3 +327,28 @@ describe('a note on the canvas', () => {
     expect(s.viewer.camera.y).toBe(40)
   })
 })
+
+describe('an empty canvas', () => {
+  it('opens at its own size rather than magnified', () => {
+    const s = setup()
+    Object.defineProperty(s.viewer.stage, 'clientWidth', { value: 390 })
+    Object.defineProperty(s.viewer.stage, 'clientHeight', { value: 700 })
+    s.viewer.fit(false)
+    expect(s.viewer.camera.zoom).toBeLessThanOrEqual(1)
+  })
+})
+
+describe('a card made by a double press near the edge', () => {
+  it('is brought whole into view', async () => {
+    const s = setup(cards())
+    Object.defineProperty(s.viewer.stage, 'clientWidth', { value: 800 })
+    Object.defineProperty(s.viewer.stage, 'clientHeight', { value: 600 })
+    s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+    await double(s, 790, 590)
+    const id = s.editor.controls.editing()!,
+      card = s.document.session.graph.nodes.find((n) => n.id === id)!,
+      { x, y, zoom } = s.viewer.camera
+    expect((card.x + card.width - x) * zoom).toBeLessThanOrEqual(800)
+    expect((card.y + card.height - y) * zoom).toBeLessThanOrEqual(600)
+  })
+})

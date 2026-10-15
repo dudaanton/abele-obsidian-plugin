@@ -272,7 +272,8 @@ export class CanvasViewer {
         { x: region.x, y: region.y, w: region.width, h: region.height },
         width,
         height - top,
-        2,
+        // An empty canvas opens at its own size, not magnified twice over.
+        this.graph.nodes.length ? 2 : 1,
         16
       )
     target.y -= top / target.zoom

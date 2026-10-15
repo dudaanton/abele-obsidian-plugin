@@ -615,8 +615,11 @@ const pickedAt = computed(() => {
     if (!covers(x, belowTop))
       return { left: `${x}px`, top: `${belowTop}px`, transform: 'translate(-50%, 0)' }
     const midY = (top + bottom) / 2
+    // Beside the middle, to its right where there is room, else to its left: never over the
+    // middle itself, where the line is double-clicked for its label.
+    const beside = left + 24 + width <= right ? left + 24 : Math.max(8, left - 24 - width)
     return {
-      left: `${Math.min(left + 24, right - width)}px`,
+      left: `${beside}px`,
       top: `${Math.max(ceiling, midY - height / 2)}px`,
       transform: 'none',
     }

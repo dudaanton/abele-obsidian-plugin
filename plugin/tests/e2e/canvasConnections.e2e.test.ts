@@ -187,8 +187,13 @@ describe.skipIf(!available)('shapes and connections with real pointer input', ()
         "return (await read()).nodes.some(n=>n.text==='A new shape'&&n.styleAttributes.shape==='rectangle')"
       )
     ).toBe(true)
+    // Leaving the field (a press on empty canvas) let go of the shape too: pick it, then delete.
+    const added = run<string>("return (await read()).nodes.find(n=>n.text==='A new shape').id")
+    await input(point(added))
+    await until(`view().viewer.selection.has(${JSON.stringify(added)})`)
     await click('Delete selected card')
     await saved()
+    expect(run<boolean>("return (await read()).nodes.some(n=>n.text==='A new shape')")).toBe(false)
     await fit()
     await input(point('alpha'))
     // The shape glyph over the picked card opens Obsidian's menu of shapes.
@@ -270,7 +275,10 @@ describe.skipIf(!available)('shapes and connections with real pointer input', ()
     expect(run<string>('return (await read()).edges[0].toNode')).toBe('gamma')
     await fit()
     shot('flowchart')
-    // Select the connection in its visible gap, then delete and restore it.
+    // Select the connection in its visible gap, then delete and restore it. The moved card is
+    // still picked and its bar stands over that gap: let go of it on empty canvas first.
+    await input(chrome.emptySpot())
+    await until('view().viewer.selection.size===0')
     const gap = run<number[]>(
       `const v=view().viewer,c=v.camera,r=v.stage.getBoundingClientRect(),edge=v.graph.edges[0],a=v.graph.nodes.find(n=>n.id===edge.fromNode),b=v.graph.nodes.find(n=>n.id===edge.toNode),end=(n,side)=>({top:[n.x+n.width/2,n.y],right:[n.x+n.width,n.y+n.height/2],bottom:[n.x+n.width/2,n.y+n.height],left:[n.x,n.y+n.height/2]})[side],p=end(a,edge.fromSide??'right'),q=end(b,edge.toSide??'left');return [Math.round(r.left+((p[0]+q[0])/2-c.x)*c.zoom),Math.round(r.top+((p[1]+q[1])/2-c.y)*c.zoom)]`
     )

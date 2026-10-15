@@ -174,8 +174,11 @@ describe.skipIf(!available)('shared human and agent canvas acceptance', () => {
       // Own the host's creation parent even if modal focus changes its active file.
       app.vault.setConfig('newFileLocation','folder');app.vault.setConfig('newFileFolderPath',${JSON.stringify(DIR)});app.vault.setConfig('attachmentFolderPath',${JSON.stringify(DIR)})
       const note=await app.vault.create(${JSON.stringify(`${DIR}/sample-note.md`)},${JSON.stringify('# Linked concept\n\nA person starts; an agent continues.\n')})
-      const leaf=app.workspace.getLeaf('tab');await leaf.openFile(note);await app.workspace.revealLeaf(leaf);return true
+      const leaf=app.workspace.getLeaf('tab');await leaf.openFile(note);app.workspace.setActiveLeaf(leaf,{focus:true});await app.workspace.revealLeaf(leaf);return true
     `)
+    // A new canvas goes beside the note in front. After the reload the restored layout can take
+    // the front back for a moment, and the canvas then lands in the vault's root.
+    await until(`app.workspace.getActiveFile()?.path===${JSON.stringify(`${DIR}/sample-note.md`)}`)
   }, 120_000)
   afterAll(async () => {
     try {

@@ -8,6 +8,7 @@ import { withNativeInput } from './helpers/nativeInput'
 import { shotDir } from './helpers/shots'
 import { dismissOwnNotices } from './helpers/ownNotices'
 import { canvasChrome } from './helpers/canvasChrome'
+import { canvasChrome, menuItem } from './helpers/canvasChrome'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -130,8 +131,58 @@ const failSave = () =>
   app.vault.process=async function(file,fn){if(file.path===path)throw Error('Sample known-unwritten save failure');return window.__humanCanvas.process.call(this,file,fn)}
   return true
 `)
+/** Card is the placing tool: in hand from its slot in the row, or from More tools on a phone. */
+const takeCard = async () => {
+  const slot = `view().contentEl.querySelector('.abele-canvas-chrome__tools [aria-label="Card (T)"]')`
+  if (run<boolean>(`const el=${slot};return !!el&&el.getBoundingClientRect().width>0`))
+    await press(slot)
+  else {
+    const more = `view().contentEl.querySelector('.abele-canvas-chrome__tools [aria-label="More tools"]')`
+    await press(more)
+    await until(menuItem('Card'))
+    await press(menuItem('Card'))
+  }
+  await until("view().editor.controls.tool()==='card'")
+}
+/**
+ * Where a person puts a card down: a free place with room for the whole card on screen, nearest
+ * the middle. A card is centred on the press at its default size (260 by 120 at zoom 1), and its
+ * text field is laid over it; pressed near the stage's edge, half the field hangs off the screen.
+ */
+const roomForCard = () =>
+  run<number[] | null>(`
+    const v=view().viewer,s=v.stage.getBoundingClientRect(),c=v.camera,g=v.graph
+    const w=130*c.zoom+12,h=60*c.zoom+12
+    const left=Math.max(s.left,0),right=Math.min(s.right,innerWidth),top=Math.max(s.top,0),bottom=Math.min(s.bottom,innerHeight)
+    const clear=(x,y)=>{const hit=document.elementFromPoint(x,y);return !!hit&&v.stage.contains(hit)&&!hit.closest('.abele-canvas-chrome,[data-frame-id],[data-card-id]')}
+    const spots=[];for(let fy=0.1;fy<0.95;fy+=0.05)for(let fx=0.1;fx<0.95;fx+=0.05)spots.push([Math.round(s.left+s.width*fx),Math.round(s.top+s.height*fy)])
+    const mid=[(left+right)/2,(top+bottom)/2];spots.sort((a,b)=>Math.hypot(a[0]-mid[0],a[1]-mid[1])-Math.hypot(b[0]-mid[0],b[1]-mid[1]))
+    for(const [x,y] of spots){
+      if(x-w<left||x+w>right||y-h<top||y+h>bottom)continue
+      const x0=c.x+(x-w-s.left)/c.zoom,x1=c.x+(x+w-s.left)/c.zoom,y0=c.y+(y-h-s.top)/c.zoom,y1=c.y+(y+h-s.top)/c.zoom
+      if(g.nodes.some(n=>n.x-20<x1&&n.x+n.width+20>x0&&n.y-20<y1&&n.y+n.height+20>y0))continue
+      if(![[x,y],[x-w,y-h],[x+w,y-h],[x-w,y+h],[x+w,y+h]].every(([px,py])=>clear(px,py)))continue
+      return [x,y]}
+    // A phone at the zoom a new canvas opens with has no room for a whole card: press the middle.
+    const x=Math.round(mid[0]),y=Math.round(mid[1]);return clear(x,y)?[x,y]:null`)
+/**
+ * Presses the card's text field where it is on screen. A card put down near an edge, or wider
+ * than a phone at the canvas's zoom, has part of its field off screen; a person presses the part
+ * they see, so only that part has to be reachable.
+ */
+const pressField = async () => {
+  const geometry = `const el=view().contentEl.querySelector("textarea");if(!el)return null;const r=el.getBoundingClientRect()
+    const l=Math.max(r.left,0),t=Math.max(r.top,0),rr=Math.min(r.right,innerWidth),b=Math.min(r.bottom,innerHeight)
+    if(rr-l<20||b-t<20)return null
+    const x=Math.round((l+rr)/2),y=Math.round((t+b)/2);return el.contains(document.elementFromPoint(x,y))?[x,y]:null`
+  await expect.poll(() => run<number[] | null>(geometry), { timeout: 10_000 }).not.toBeNull()
+  await at(run<number[]>(geometry))
+}
 const beginText = async () => {
-  await click('Add text card')
+  await takeCard()
+  const spot = roomForCard()
+  expect(spot, 'No free place on the canvas to put a card down').not.toBeNull()
+  await chrome.at(spot!)
   console.info(
     'Add text transition:',
     run(`const el=view().contentEl.querySelector('textarea'),r=el?.getBoundingClientRect();return {
@@ -144,7 +195,7 @@ const beginText = async () => {
 }
 const addText = async (text: string) => {
   await beginText()
-  await press('view().contentEl.querySelector("textarea")')
+  await pressField()
   await type(text)
   await click('Save text')
 }
@@ -216,7 +267,7 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
     const focused = run<boolean>(
       'return document.activeElement===view().contentEl.querySelector("textarea")'
     )
-    await press('view().contentEl.querySelector("textarea")')
+    await pressField()
     await type('Human concept')
     shot('text-keyboard')
     await click('Save text')
@@ -312,7 +363,7 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
       true
     )
     await click('Edit card text')
-    await press('view().contentEl.querySelector("textarea")')
+    await pressField()
     await type(' revised')
     await click('Save text')
     await saved()

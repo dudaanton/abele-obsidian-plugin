@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { evalAsync } from './helpers/githubLive'
 import { hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
-import { driver, tap, screenshot, swipeDriverArgs } from './helpers/phone'
+import { driver, tap, screenshot, swipeDriverArgs, typeText } from './helpers/phone'
 import { withNativeInput } from './helpers/nativeInput'
 import { shotDir } from './helpers/shots'
 import { canvasChrome } from './helpers/canvasChrome'
@@ -62,6 +62,19 @@ async function input(points: number[][]) {
         const a=points[j-1],b=points[j];await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseMoved',x:a[0]+(b[0]-a[0])*i/12,y:a[1]+(b[1]-a[1])*i/12,button:'left',buttons:1});await new Promise(r=>setTimeout(r,16))
       }
       const end=points.at(-1);await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseReleased',x:end[0],y:end[1],button:'left',buttons:0,clickCount:1})
+    }finally{if(owned)cdp.detach()}return true
+  `)
+  )
+}
+/** Enter on the keyboard: what accepts a name being written. */
+async function enter() {
+  if (onPhone()) return typeText('\n')
+  await withNativeInput(() =>
+    run(`
+    const cdp=require('@electron/remote').getCurrentWebContents().debugger,owned=!cdp.isAttached();if(owned)cdp.attach('1.3')
+    try{
+      await cdp.sendCommand('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13})
+      await cdp.sendCommand('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13})
     }finally{if(owned)cdp.detach()}return true
   `)
   )
@@ -251,6 +264,11 @@ describe.skipIf(!available)('canvas eraser and lasso with real pointer input', (
       )
     ).toBe(true)
     shot('mixed-group')
+    // A new frame asks for its name at once, and its picked bar waits until the name is written;
+    // Enter keeps the name it was given, adds no step to undo and leaves the frame picked.
+    await until(`document.activeElement?.matches('[data-frame-id][contenteditable="true"]')`)
+    await enter()
+    await until('!view().editor.controls.naming()')
     await click('Ungroup canvas selection')
     await saved()
     expect(run<boolean>('return (await read()).abele.ink.some(s=>s.id==="free"&&!s.frame)')).toBe(
