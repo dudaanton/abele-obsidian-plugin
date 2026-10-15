@@ -66,5 +66,8 @@ it('does not silently discard unsaved text when formatting is requested', async 
     .find((b) => b.textContent === 'Bold')!
     .click()
   expect(apply).not.toHaveBeenCalled()
-  expect(row.querySelector('[role="status"]')!.textContent).toContain('Save text changes')
+  // The form is a Vue component now and draws the message on its next render.
+  await vi.waitFor(() =>
+    expect(row.querySelector('[role="status"]')!.textContent).toContain('Save text changes')
+  )
 })
