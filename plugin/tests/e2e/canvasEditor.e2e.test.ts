@@ -116,7 +116,8 @@ const type = async (text: string) => {
        innerHeight - (window.visualViewport?.height ?? innerHeight) > 1)`)
     const expected = run<string>(`const field=document.activeElement;
       return field.value.slice(0,field.selectionStart)+${JSON.stringify(text)}+field.value.slice(field.selectionEnd)`)
-    if (text === '\b') typeText(text)
+    // The keyboard-keys way has no key for Backspace; the field's own typing deletes.
+    if (text === '\b') typeText(text, 'focus')
     else {
       typeText(text, 'keys')
       await expect
@@ -331,9 +332,13 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
     const result = run<{ text: string; undo: number }>(
       'return {text:(await read()).nodes[0].text,undo:view().documentLease.document.session.history.undo}'
     )
+    // Every pause in typing is its own undo step, written as it happens. Desktop input arrives
+    // at once, one step; the phone driver presses one key at a time, slower than the longest
+    // wait, so there it is a step per write: at least one, never more than one per key.
+    const undo = onPhone() ? Math.min(Math.max(result.undo, 1), 'Human concept'.length) : 1
     expect({ ...result, focused, empty }).toEqual({
       text: 'Human concept',
-      undo: 1,
+      undo,
       focused: true,
       empty: true,
     })
