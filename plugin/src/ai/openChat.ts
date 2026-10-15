@@ -16,35 +16,16 @@ import { inspectChat } from './chatCopy'
 import { CHAT_TEXT_PROJECTION_VERSION } from './messageComments'
 import { replyMarkdownText } from './replyMarkdown'
 import type { ChatSession } from './ChatSession'
-import { ShellModal } from '@/modal/ShellModal'
+import { choiceDialog } from '@/components/obsidian/dialogs'
 
 /** Every copy is an explicit choice, including the file at the link's path hint. */
 export function chooseAnchorSource(paths: string[]): Promise<string | null> {
-  const { app } = GlobalStore.getInstance()
-  return new Promise((resolve) => {
-    let chosen: string | null = null
-    const modal = new (class extends ShellModal {
-      onClose(): void {
-        super.onClose()
-        resolve(chosen)
-      }
-    })(app, { title: 'Choose selection source', footer: true })
-    modal.bodyEl.createEl('p', {
-      text: 'Several copies of this conversation have the same identity. Choose the source to open; none is selected automatically.',
-    })
-    for (const path of paths) {
-      const button = modal.bodyEl.createEl('button', {
-        text: path,
-        cls: 'abele-anchor-source__choice',
-      })
-      button.addEventListener('click', () => {
-        chosen = path
-        modal.close()
-      })
-      modal.bodyEl.createEl('p')
-    }
-    modal.addButton('Cancel', () => modal.close())
-    modal.open()
+  return choiceDialog({
+    title: 'Choose selection source',
+    message:
+      'Several copies of this conversation have the same identity. Choose the source to open; none is selected automatically.',
+    items: paths.map((path) => ({ value: path, text: path, tooltip: `Open ${path}` })),
+    choices: [{ value: null, text: 'Cancel', tooltip: 'Open none of them' }],
   })
 }
 

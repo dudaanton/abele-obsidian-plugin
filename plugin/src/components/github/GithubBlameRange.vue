@@ -24,18 +24,29 @@
         splitMessage(commit.message).title
       }}</span>
     </Button>
+    <DialogShell v-if="detailsOpen" title="Line blame" @close="detailsOpen = false">
+      <div class="abele-github-blame-detail-body">
+        <p>{{ commit.author }} · {{ formatDate(commit.date) }}</p>
+        <p>{{ commit.sha }}</p>
+        <div class="abele-github-blame-details">{{ commit.message }}</div>
+        <Button
+          text="Open commit"
+          tooltip="Open this commit in the GitHub tab"
+          @click="openCommit"
+        />
+      </div>
+    </DialogShell>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount } from 'vue'
-import { Modal, setTooltip } from 'obsidian'
-import { AbeleConfig } from '@/services/AbeleConfig'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { formatDate, splitMessage } from '@/github/format'
 import type { CommitSummary } from '@/repository/model'
 import GithubUser from './GithubUser.vue'
 import Avatar from '../obsidian/Avatar.vue'
 import Button from '../obsidian/Button.vue'
+import DialogShell from '../obsidian/Modal.vue'
 
 const props = defineProps<{ commit: CommitSummary }>()
 const emit = defineEmits<{ (e: 'open', sha: string): void }>()
@@ -61,7 +72,8 @@ const relativeDate = computed(() => {
 let timer: number | undefined
 let held = false
 let start = { x: 0, y: 0 }
-let modal: Modal | undefined
+/** The commit's author, date, sha and whole message, after a long press or a right click. */
+const detailsOpen = ref(false)
 const cancel = () => {
   window.clearTimeout(timer)
   timer = undefined
@@ -70,22 +82,11 @@ const showDetails = () => {
   if (!props.commit.sha) return
   cancel()
   held = true
-  modal?.close()
-  modal = new Modal(AbeleConfig.getInstance().plugin.app)
-  modal.setTitle('Line blame')
-  modal.contentEl.addClass('abele-github-blame-detail-body')
-  modal.contentEl.createEl('p', {
-    text: `${props.commit.author} · ${formatDate(props.commit.date)}`,
-  })
-  modal.contentEl.createEl('p', { text: props.commit.sha })
-  modal.contentEl.createDiv({ text: props.commit.message, cls: 'abele-github-blame-details' })
-  const open = modal.contentEl.createEl('button', { text: 'Open commit' })
-  setTooltip(open, 'Open this commit in the GitHub tab')
-  open.addEventListener('click', () => {
-    modal?.close()
-    emit('open', props.commit.sha)
-  })
-  modal.open()
+  detailsOpen.value = true
+}
+const openCommit = () => {
+  detailsOpen.value = false
+  emit('open', props.commit.sha)
 }
 const press = (e: PointerEvent) => {
   held = false
@@ -106,7 +107,6 @@ const open = () => {
 }
 onBeforeUnmount(() => {
   cancel()
-  modal?.close()
 })
 </script>
 

@@ -1332,16 +1332,18 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         this.kind === 'run'
           ? undefined
           : async (target, signal) =>
-              (await import('@/node/repositoryReadApproval')).repositoryReadApproval(
-                GlobalStore.getInstance().app
-              )(target, signal),
+              (await import('@/node/repositoryReadApproval')).repositoryReadApproval()(
+                target,
+                signal
+              ),
       githubApproval:
         this.kind === 'run'
           ? undefined
           : async (connection, signal) =>
-              (await import('@/github/approveConnection')).connectionApproval(
-                GlobalStore.getInstance().app
-              )(connection, signal),
+              (await import('@/github/approveConnection')).connectionApproval()(
+                connection,
+                signal
+              ),
     })
 
     // Overrides win over the agent's own tool modes, so a chat that narrowed its permissions

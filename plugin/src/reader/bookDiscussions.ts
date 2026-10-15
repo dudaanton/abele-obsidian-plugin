@@ -9,7 +9,7 @@
  * it. Nothing is ever written into the book.
  */
 import { App, Notice, type TFile } from 'obsidian'
-import { ShellModal } from '@/modal/ShellModal'
+import { choiceDialog } from '@/components/obsidian/dialogs'
 import { CommentService } from '@/ai/CommentService'
 import type { CommentAnchor } from '@/ai/types'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -108,30 +108,22 @@ export type RemoveChoice = 'keep' | 'delete' | null
  * chat in the history, no longer on the words — or delete it with the mark.
  */
 export function askWhatToRemove(h: Highlight): Promise<RemoveChoice> {
-  const { app } = GlobalStore.getInstance()
-  return new Promise((resolve) => {
-    let chosen: RemoveChoice = null
-    const modal = new (class extends ShellModal {
-      onClose(): void {
-        super.onClose()
-        resolve(chosen)
-      }
-    })(app, { title: 'Remove this discussion from the book?', footer: true })
-    modal.bodyEl.createEl('p', {
-      text: `“${h.text.length > 120 ? `${h.text.slice(0, 120)}…` : h.text}”`,
-      cls: 'abele-book-discussion-remove__quote',
-    })
-    modal.bodyEl.createEl('p', {
-      text: 'The words stop being marked. Their chat can stay as an ordinary chat in the history, or go with the mark.',
-    })
-    const choose = (choice: RemoveChoice) => () => {
-      chosen = choice
-      modal.close()
-    }
-    modal.addButton('Keep the chat', choose('keep'), { cta: true })
-    modal.addButton('Delete the chat too', choose('delete'), { warning: true })
-    modal.addButton('Cancel', choose(null))
-    modal.open()
+  return choiceDialog<'keep' | 'delete'>({
+    title: 'Remove this discussion from the book?',
+    quote: h.text.length > 120 ? `${h.text.slice(0, 120)}…` : h.text,
+    message:
+      'The words stop being marked. Their chat can stay as an ordinary chat in the history, or go with the mark.',
+    choices: [
+      { value: 'keep', text: 'Keep the chat', cta: true, tooltip: 'Keep the chat in the history' },
+      {
+        value: 'delete',
+        text: 'Delete the chat too',
+        warning: true,
+        tooltip: 'Delete the chat with the mark',
+      },
+      { value: null, text: 'Cancel', tooltip: 'Keep the mark and its chat' },
+    ],
+    modalClass: 'abele-book-discussion-remove',
   })
 }
 

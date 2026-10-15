@@ -1,5 +1,5 @@
 import type { App } from 'obsidian'
-import { ShellModal } from '@/modal/ShellModal'
+import { choiceDialog } from '@/components/obsidian/dialogs'
 import { shallowReactive } from 'vue'
 import ScriptViewComponent from '@/components/ScriptView.vue'
 import { mountKit, type KitMount } from '@/components/obsidian/mount'
@@ -24,34 +24,27 @@ export function networkDecision(app: App, path: string): Promise<boolean> {
   }
   const existing = pending.get(key)
   if (existing) return existing
-  const decision = new Promise<boolean>((resolve) => {
-    class NetworkDialog extends ShellModal {
-      private answered = false
-      constructor(app: App) {
-        super(app, { title: 'Allow network access?', footer: true })
-      }
-      onOpen(): void {
-        this.bodyEl.createEl('p', {
-          text: 'Interactive HTML can send data to websites, including by navigating inside its frame. Without permission only static HTML is shown, with scripts disabled. The frame cannot read the vault or Obsidian.',
-        })
-        const answer = (allowed: boolean) => {
-          this.answered = true
-          app.saveLocalStorage(key, allowed)
-          resolve(allowed)
-          this.close()
-        }
-        this.addButton('Keep offline', () => answer(false))
-        this.addButton('Allow network', () => answer(true), { cta: true })
-      }
-      onClose(): void {
-        if (!this.answered) {
-          app.saveLocalStorage(key, false)
-          resolve(false)
-        }
-      }
-    }
-    new NetworkDialog(app).open()
-  }).finally(() => pending!.delete(key))
+  const decision = choiceDialog<'offline' | 'network'>({
+    title: 'Allow network access?',
+    message:
+      'Interactive HTML can send data to websites, including by navigating inside its frame. Without permission only static HTML is shown, with scripts disabled. The frame cannot read the vault or Obsidian.',
+    choices: [
+      { value: 'offline', text: 'Keep offline', tooltip: 'Show only static HTML, scripts off' },
+      {
+        value: 'network',
+        text: 'Allow network',
+        cta: true,
+        tooltip: 'Let this HTML reach websites',
+      },
+    ],
+  })
+    // Closing it without an answer is the same as keeping it offline, and is remembered so.
+    .then((answer) => {
+      const allowed = answer === 'network'
+      app.saveLocalStorage(key, allowed)
+      return allowed
+    })
+    .finally(() => pending!.delete(key))
   pending.set(key, decision)
   return decision
 }

@@ -613,7 +613,7 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
   'sync-states': () => mountAlone(TokenUiFixture, { screen: 'states' }),
   'sync-disconnect': () => mountAlone(TokenUiFixture, { screen: 'disconnect' }),
   'github-connection-approval': () =>
-    void connectionApproval(GlobalStore.getInstance().app)({
+    void connectionApproval()({
       id: 'sample',
       name: 'Sample account with a long connection label',
       server: 'https://github.enterprise.sample.example.test:8443',
