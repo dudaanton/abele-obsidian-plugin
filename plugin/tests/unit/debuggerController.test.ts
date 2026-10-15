@@ -426,11 +426,20 @@ describe('debugger shared control', () => {
       observation: 'current',
       snapshot: snapshot({ target: { ...snapshot().target, process_ownership: 'external' } }),
     })
+    expect(model.session.attached).toBe(true)
     await model.command('stop')
     expect(command).toHaveBeenCalledWith(
       'detach',
       expect.objectContaining({ debug_session_id: 'sample-debug' })
     )
+    model.observe({
+      observation: 'current',
+      snapshot: snapshot({
+        lifecycle: 'detached',
+        target: { ...snapshot().target, process_ownership: 'external' },
+      }),
+    })
+    expect(model.session).toMatchObject({ status: 'exited', attached: true, detached: true })
   })
   it.each(['outcome_unknown', 'rejected', 'failed'])(
     'does not turn an uncertain decision into non-execution from %s history alone',

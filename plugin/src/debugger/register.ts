@@ -93,6 +93,11 @@ export async function startNodeProgram(presenter: NodeChatPresenter) {
   const { askAndStartProgram } = await import('./startProgram')
   await askAndStartProgram(presenter, (sessionId) => showSession(presenter, sessionId))
 }
+/** Attaches the debugger to a Node.js program already running on the node and shows its session. */
+export async function attachNodeProgram(presenter: NodeChatPresenter) {
+  const { askAndAttachProgram } = await import('./attachProgram')
+  await askAndAttachProgram(presenter, (sessionId) => showSession(presenter, sessionId))
+}
 /** The chat's debug sessions: one opens at once, several are offered to pick from. */
 export async function openNodeDebugger(presenter: NodeChatPresenter) {
   try {

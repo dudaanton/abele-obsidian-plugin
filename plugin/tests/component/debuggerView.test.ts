@@ -124,6 +124,28 @@ describe('debugger panel', () => {
     expect(w.get('.abele-debug-panel__mode').attributes('disabled')).toBeDefined()
     w.unmount()
   })
+  it('detaches from a program it attached to instead of stopping it, and says it runs on', async () => {
+    const w = mount(DebugPanel, {
+      props: { session: { ...session('running'), attached: true } },
+    })
+    const last = w.findAll('.nav-action-button').at(-1)!
+    expect(last.attributes('aria-label')).toBe('Detach (Shift+F5): the program runs on')
+    expect(w.findAll('.nav-action-button')[4].attributes('aria-label')).toContain(
+      'not for a program the debugger attached to'
+    )
+    await last.trigger('click')
+    expect(w.emitted('command')?.at(-1)).toEqual(['stop'])
+    await w.setProps({ session: { ...session('exited'), attached: true, detached: true } })
+    expect(w.get('[role="status"]').attributes('aria-label')).toBe('Detached · The program runs on')
+    expect(w.text()).not.toContain('Exit code unknown')
+    w.unmount()
+    // A program the node started keeps its Stop.
+    const own = mount(DebugPanel, { props: { session: session('running') } })
+    expect(own.findAll('.nav-action-button').at(-1)!.attributes('aria-label')).toBe(
+      'Stop (Shift+F5)'
+    )
+    own.unmount()
+  })
   it('opens Output on exit', () => {
     const w = mount(DebugPanel, { props: { session: session('exited') } })
     expect(w.get('.abele-debug-panel__output').isVisible()).toBe(true)

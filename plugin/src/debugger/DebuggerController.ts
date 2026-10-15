@@ -173,6 +173,8 @@ export class DebuggerController {
             ? 'running'
             : 'starting'
     this.session.program = s.target.launch_configuration_id
+    this.session.attached = s.target.process_ownership === 'external'
+    this.session.detached = s.lifecycle === 'detached'
     this.session.seen = formatTimestamp(s.observed_at, { diagnostic: true }).label
     const stop = s.threads.find((t) => t.thread_id === s.selected_thread_id)?.stop
     this.session.reason = stop?.description ?? stop?.reason

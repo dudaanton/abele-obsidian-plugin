@@ -324,7 +324,7 @@ export function createTraceTools(resolve: () => TraceToolContext | undefined): A
     tool(
       'trace_point_add',
       'Add record point',
-      'Set a record point in the open debug session: on a line of a source file open from the node, take the named values (names in scope or expressions, `expr as name`) each time the program passes and let it go on. The next launch records a run. Optional when (condition) and note (why the point is there).',
+      'Set a record point in the open debug session: on a line of a source file open from the node, take the named values (names in scope or expressions, `expr as name`) each time the program passes and let it go on. The session records a run from then on, whether the person started its program or attached to it. Optional when (condition) and note (why the point is there).',
       {
         file: { type: 'string', description: 'The source path as the debugger shows it.' },
         line: { type: 'number' },

@@ -324,9 +324,15 @@ it.each([false, true, undefined])(
     })
     try {
       await w.get('[aria-label="Node session menu"]').trigger('click')
-      expect((shown.mock.contexts.at(-1) as Menu).items.some((i) => i.title === 'Debug')).toBe(
-        available === true
-      )
+      const titles = (shown.mock.contexts.at(-1) as Menu).items.map((i) => i.title)
+      expect(titles.includes('Debug')).toBe(available === true)
+      // Attaching to a running program follows the same rule as running one, beside it.
+      expect(titles.includes('Run a program')).toBe(available === true)
+      expect(titles.includes('Attach to a running program')).toBe(available === true)
+      if (available)
+        expect(titles.indexOf('Attach to a running program')).toBe(
+          titles.indexOf('Run a program') + 1
+        )
     } finally {
       w.unmount()
       shown.mockRestore()

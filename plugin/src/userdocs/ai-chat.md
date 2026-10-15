@@ -367,6 +367,35 @@ GraphQL body) is skipped and counted in the message. They go into the project th
 anything that carried a credential (a cookie, an `Authorization` header, `-u user:password`) is
 left out and named, so you can put it back as a saved key.
 
+## Debugging a program on a node
+
+A node chat can debug a Node.js program on the node's machine, in the chat's folder. The items
+below appear once the node runs with `--debugger`, and work once its JavaScript debugger is
+installed (`abele-node debugger install js`). Everything starts from the chat's **⋯** menu:
+
+- **Run a program** starts a JavaScript file of the chat's folder under the debugger. Pick one of
+  the files open from that folder or type its path. It waits on its first line, so you can set
+  breakpoints before it goes on.
+- **Attach to a running program** connects to a program that is already running with its
+  debugger port open, for example a server you started with `node --inspect app.js` (or
+  `--inspect-brk` to hold it on its first line). The list shows each Node.js program on the
+  node's machine that waits for a debugger: its command, the folder it runs from, its process and
+  port. Nothing in the list means no program was started with `--inspect`: start one and open the
+  list again. A program that runs outside the chat's folder is attached only after you confirm it.
+- **Debug** opens the chat's debug sessions again.
+
+The session opens in the **Debug** panel on the right: Continue, step, pause, the call stack,
+variables and watches. The program's own file opens with a margin beside its lines: click it to
+set a breakpoint, or make it a **record point**, which takes the values you name each time the
+program passes and lets it go on, so a run can be read afterwards without stopping it. For an
+attached program, lines take breakpoints only while its file is unchanged since the program
+started; edit it and restart the program to debug the new code.
+
+The last button of the panel is **Stop** for a program the debugger started and **Detach** for
+one it attached to: detaching takes the debugger and its breakpoints away and the program runs
+on. **Restart** runs a started program again with its breakpoints; an attached one is restarted
+by whoever started it.
+
 ## Offering tools by section
 
 Open an agent on **Settings → Abele → AI Agent → Agents**, then its **Access** tab.

@@ -17,6 +17,7 @@ export const StartResultSchema = z.object({
   debug_session_id: id,
   sources: z.array(z.object({ source_id: id, path: z.string().max(4096) })).max(256),
 })
+export type StartResult = z.infer<typeof StartResultSchema>
 const StatusSchema = z.object({ snapshot: z.object({ incarnation: id }).loose() }).loose()
 
 const RUNNABLE = /\.[cm]?js$/
@@ -24,7 +25,7 @@ const RUNNABLE = /\.[cm]?js$/
 const SOURCE = /\.(?:[cm]?[jt]s|[jt]sx)$/
 
 /** The chat's folder as a node file tab addresses it; undefined while the chat has none. */
-async function chatTarget(presenter: NodeChatPresenter): Promise<PathTarget | undefined> {
+export async function chatTarget(presenter: NodeChatPresenter): Promise<PathTarget | undefined> {
   const binding = await readChatBinding(presenter.connection.client, presenter.reference.sessionId)
   if (!binding) return undefined
   const target = binding.target
@@ -38,7 +39,7 @@ async function chatTarget(presenter: NodeChatPresenter): Promise<PathTarget | un
   }
 }
 
-const sameFolder = (a: PathTarget, b: PathTarget) =>
+export const sameFolder = (a: PathTarget, b: PathTarget) =>
   a.registrationId === b.registrationId && a.kind === b.kind && a.id === b.id
 
 /** Code files open from this folder in node file tabs, the active one first. */
@@ -117,6 +118,70 @@ function untilHeld(binding: DebuggerBinding): Promise<void> {
   })
 }
 
+/** Tells the panel which file each source id of a new session is, so breakpoints read as files. */
+export async function registerSources(
+  presenter: NodeChatPresenter,
+  started: StartResult,
+  target: PathTarget
+) {
+  const { snapshot } = StatusSchema.parse(
+    await presenter.connection.client.request('debugger.v1.status', {
+      debug_session_id: started.debug_session_id,
+    })
+  )
+  for (const s of started.sources)
+    DebuggerService.instance.registerSource(
+      presenter.reference.registrationId,
+      presenter.reference.sessionId,
+      s.source_id,
+      s.path,
+      started.debug_session_id,
+      snapshot.incarnation,
+      target
+    )
+  return snapshot
+}
+
+/** Gives the files a new session took their margin: those already open from the chat's folder
+ * where they are, and `main` (the program's own file, else the first one taken) in a tab. */
+export async function openSources(
+  presenter: NodeChatPresenter,
+  started: StartResult,
+  incarnation: string,
+  target: PathTarget,
+  main?: string
+) {
+  const debugOf = (sourceId: string) => ({
+    conversationId: presenter.reference.sessionId,
+    sourceId,
+    debugSessionId: started.debug_session_id,
+    incarnation,
+  })
+  const source = started.sources.find((s) => s.path === main) ?? started.sources[0]
+  const { workspace } = GlobalStore.getInstance().app
+  for (const leaf of workspace.getLeavesOfType(NODE_FILE_VIEW)) {
+    const view = leaf.getViewState()
+    const parsed = NodePathTabSchema.safeParse(view.state)
+    const tab = parsed.success ? parsed.data : undefined
+    if (tab?.kind !== 'file' || !sameFolder(tab.target, target)) continue
+    const path = tab.path
+    const taken = started.sources.find((s) => s !== source && s.path === path)
+    if (taken)
+      await leaf.setViewState({ ...view, state: { ...tab, debug: debugOf(taken.source_id) } })
+  }
+  if (source)
+    await openNodePathTab(
+      workspace,
+      {
+        kind: 'file',
+        target,
+        path: source.path,
+        debug: debugOf(source.source_id),
+      },
+      Platform.isMobile
+    )
+}
+
 export async function startProgram(
   presenter: NodeChatPresenter,
   program: string,
@@ -138,20 +203,8 @@ export async function startProgram(
   // The node answers with the session the program's code runs in, not the adapter's own.
   const sessionId = started.debug_session_id
   console.debug('[debugger] Program started', program, sessionId)
-  const { snapshot } = StatusSchema.parse(
-    await client.request('debugger.v1.status', { debug_session_id: sessionId })
-  )
+  const snapshot = await registerSources(presenter, started, target)
   const service = DebuggerService.instance
-  for (const s of started.sources)
-    service.registerSource(
-      presenter.reference.registrationId,
-      presenter.reference.sessionId,
-      s.source_id,
-      s.path,
-      sessionId,
-      snapshot.incarnation,
-      target
-    )
   // The node has no restart of its own: Restart in the panel stops the program still going and
   // starts the same one again, with the points it had.
   const binding = service.binding(presenter)
@@ -180,36 +233,7 @@ export async function startProgram(
       })
     else await binding.controller.setBreakpoint(crypto.randomUUID(), sourceId, c.line, c.condition)
   }
-  const debugOf = (sourceId: string) => ({
-    conversationId: presenter.reference.sessionId,
-    sourceId,
-    debugSessionId: sessionId,
-    incarnation: snapshot.incarnation,
-  })
-  const source = started.sources.find((s) => s.path === program) ?? started.sources[0]
-  // The other files the node took, already open from this folder, take their margin where they are.
-  const { workspace } = GlobalStore.getInstance().app
-  for (const leaf of workspace.getLeavesOfType(NODE_FILE_VIEW)) {
-    const view = leaf.getViewState()
-    const parsed = NodePathTabSchema.safeParse(view.state)
-    const tab = parsed.success ? parsed.data : undefined
-    if (tab?.kind !== 'file' || !sameFolder(tab.target, target)) continue
-    const path = tab.path
-    const taken = started.sources.find((s) => s !== source && s.path === path)
-    if (taken)
-      await leaf.setViewState({ ...view, state: { ...tab, debug: debugOf(taken.source_id) } })
-  }
-  if (source)
-    await openNodePathTab(
-      workspace,
-      {
-        kind: 'file',
-        target,
-        path: source.path,
-        debug: debugOf(source.source_id),
-      },
-      Platform.isMobile
-    )
+  await openSources(presenter, started, snapshot.incarnation, target, program)
   return sessionId
 }
 

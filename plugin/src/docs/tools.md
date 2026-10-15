@@ -932,7 +932,9 @@ cursors are device/node-side, not transferable settings or synced secrets.
 
 A run is what the debugger recorded while a record point was set: a record point is a
 breakpoint that takes named values whole each time the program passes and lets it go on. The
-run lives on the node; these tools read it a little at a time from the debug session open in
+person starts the program from the chat's menu (**Run a program**) or attaches to one already
+running with `node --inspect` (**Attach to a running program**); no tool starts or attaches a
+program, and both kinds record the same way. The run lives on the node; these tools read it a little at a time from the debug session open in
 the Debug panel, and say so when there is none. Each answer stops at 80 lines or 6 KB, which no
 parameter lifts, and says where to continue. There is no tool that returns a run or a value
 whole.
@@ -957,7 +959,7 @@ default; `trace_mark`, `trace_point_add` and `trace_note` ask first.
 - `trace_mark(step, name?, path?, comment, tags?)` marks something for the person; the tag
   `question` puts it among the questions of a note about the run.
 - `trace_point_add(file, line, take, when?, note?)` sets a record point on a line of a file
-  the person opened from the node in this session; the next launch records. Only what `take`
+  the person opened from the node in this session; the session records from then on. Only what `take`
   names is taken; an empty list takes nothing.
 - `trace_note(run?)` writes a note about the run into the folder named in Settings → Nodes
   (see [Vault](vault)) and answers with its path. Write your own account of the flow under its

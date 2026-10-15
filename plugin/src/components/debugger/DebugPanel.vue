@@ -406,7 +406,11 @@ const stale = computed(() => props.session.status === 'lost')
 const top = computed(() => props.session.frames[props.session.frame] ?? props.session.frames[0])
 const frameName = computed(() => (live.value ? top.value?.name : undefined))
 const notPaused = computed(() =>
-  props.session.status === 'exited' ? 'The program has ended.' : 'Values show while it is paused.'
+  props.session.status === 'exited'
+    ? props.session.attached && props.session.detached
+      ? 'Detached from the program.'
+      : 'The program has ended.'
+    : 'Values show while it is paused.'
 )
 
 const tones: Record<DebugSession['status'], 'green' | 'orange' | 'red' | 'faint'> = {
@@ -426,9 +430,11 @@ const stateLabel = computed(() => {
       : s.status === 'starting'
         ? 'Starting…'
         : s.status === 'exited'
-          ? s.exitCode === undefined
-            ? 'Ended · Exit code unknown'
-            : `Ended with code ${s.exitCode}`
+          ? s.detached && s.attached
+            ? 'Detached · The program runs on'
+            : s.exitCode === undefined
+              ? 'Ended · Exit code unknown'
+              : `Ended with code ${s.exitCode}`
           : `No connection to the node · as of ${s.seen ?? 'a while ago'}`
 })
 
@@ -458,10 +464,20 @@ const buttons = computed(() => {
       icon: 'rotate-ccw',
       tooltip: props.restartAvailable
         ? 'Restart: the same program from its first line'
-        : 'Restart is not available on this node',
+        : props.session.attached
+          ? 'Restart: not for a program the debugger attached to'
+          : 'Restart is not available on this node',
       disabled: locked.value || !props.restartAvailable,
     },
-    { action: 'stop', icon: 'square', tooltip: 'Stop (Shift+F5)', disabled: !on },
+    // A program the node did not start is never stopped from here: the debugger lets go of it.
+    props.session.attached
+      ? {
+          action: 'stop',
+          icon: 'unplug',
+          tooltip: 'Detach (Shift+F5): the program runs on',
+          disabled: !on,
+        }
+      : { action: 'stop', icon: 'square', tooltip: 'Stop (Shift+F5)', disabled: !on },
   ]
 })
 

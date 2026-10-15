@@ -69,6 +69,10 @@ export interface DebugSession {
   output: string
   /** ask: the agent asks before each action; allow: it acts by itself, in this session only. */
   mode: 'ask' | 'allow' | 'unknown'
+  /** A program the debugger attached to, not one it started: ending the session detaches. */
+  attached?: boolean
+  /** Ended by detaching: the program itself runs on. */
+  detached?: boolean
 }
 
 /** An action the chat agent asks to take, or took, in the session. */
