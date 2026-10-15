@@ -13,7 +13,10 @@
  * file the contents API's JSON object with the file in base64, for a commit the whole commit —
  * and a file over `LEGACY_LARGE` bytes stands for one past the contents API's 1 MB: its object
  * carries no content, and only the git blobs API has it. `no-raw` is the same server ignoring
- * every raw type as well, so that the client's own decoding is what shows the file.
+ * every raw type as well, so that the client's own decoding is what shows the file. `no-archive`
+ * refuses the repository's archive, so nothing can index it.
+ *
+ * Like GitHub, it refuses every API request that does not name its client in a User-Agent.
  */
 import { createHash } from 'node:crypto'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
@@ -483,6 +486,8 @@ function rest(req: IncomingMessage, res: ServerResponse, url: URL, web: string) 
   if (m) {
     const files = filesAt(m[1])
     if (!files) return notFound(res)
+    // A repository whose archive is refused: what the tab can show, it shows; it cannot be indexed.
+    if (mode === 'no-archive') return send(res, 403, { message: 'Resource not accessible' })
     return send(
       res,
       200,
@@ -702,6 +707,12 @@ const server = createServer((req, res) => {
     console.log(
       `${req.method} ${url.pathname}${url.search}${mode === 'accounts' ? ` account=${accountOf(req)}` : ''}`
     )
+  // GitHub refuses an API request that does not name its client, as it does for real.
+  if (url.pathname.startsWith('/api/') && !req.headers['user-agent'])
+    return send(res, 403, {
+      message:
+        'Request forbidden by administrative rules. Please make sure your request has a User-Agent header.',
+    })
   if (
     mode === 'accounts' &&
     url.pathname.startsWith(`/api/v3/repos/${OWNER}/${REPO}/`) &&
