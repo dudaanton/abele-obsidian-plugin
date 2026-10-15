@@ -54,7 +54,7 @@ export function fileIcon(name: string): string {
   if (/^(ya?ml|toml|ini|cfg|conf)$/.test(ext) || name.startsWith('.')) return 'file-cog'
   if (/^(png|jpe?g|gif|svg|webp|avif|heic|bmp|ico)$/.test(ext)) return 'file-image'
   if (/^(mp4|mov|webm|mkv)$/.test(ext)) return 'file-video'
-  if (/^(mp3|wav|ogg|flac|m4a)$/.test(ext)) return 'file-audio'
+  if (/^(mp3|wav|ogg|flac|m4a)$/.test(ext)) return 'file-volume-2'
   if (/^(zip|gz|tgz|tar|7z|rar)$/.test(ext)) return 'file-archive'
   if (/^(csv|tsv|xlsx?|ods)$/.test(ext)) return 'file-spreadsheet'
   if (/^(sh|bash|zsh|fish|ps1)$/.test(ext)) return 'file-terminal'
