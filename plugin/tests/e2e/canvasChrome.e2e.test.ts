@@ -276,6 +276,21 @@ describe.skipIf(!available)('the canvas by hand', () => {
     await type('Sample made at the end')
     // Leave the card by tapping canvas above the keyboard; Esc on a desktop.
     if (onPhone()) {
+      // The keyboard rises while the words are typed and the canvas shrinks above it: the place
+      // to tap is chosen once the canvas has stopped changing size.
+      let last = -1,
+        still = 0
+      await expect
+        .poll(
+          () => {
+            const h = run<number>('return Math.round(view().viewer.stage.clientHeight)')
+            still = h === last ? still + 1 : 0
+            last = h
+            return still
+          },
+          { timeout: 15_000, interval: 250 }
+        )
+        .toBeGreaterThanOrEqual(4)
       const spot = chrome.emptySpotInSight()
       run(`window.__canvasChrome.spot=${JSON.stringify(spot)};return true`)
       await input(spot)
