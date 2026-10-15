@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CanvasEditor } from '@/canvas/Editor'
 import { CanvasViewer } from '@/canvas/Viewer'
 import { CanvasDocument } from '@/canvas/documentRegistry'
-import { emptyCanvas, type CanvasGraph } from '@/canvas/core/model'
+import { emptyCanvas, parentsOf, type CanvasGraph } from '@/canvas/core/model'
 import { clipOf, copyOps, parseClip } from '@/canvas/core/copy'
 import { editCanvas } from '@/canvas/core/edit'
 import { labelPoint, paintedRoute } from '@/canvas/core/scene'
@@ -172,6 +172,57 @@ describe('connections', () => {
     await flush()
     expect(s.graphNow().edges).toHaveLength(1)
     expect(s.graphNow().edges[0]).toMatchObject({ fromNode: 'alpha', toNode: 'gamma', toSide: 'bottom' })
+  })
+})
+
+describe('frames', () => {
+  const framed = (): CanvasGraph => ({
+    nodes: [
+      { id: 'box', type: 'group', label: 'Box', x: -20, y: -20, width: 300, height: 200 },
+      ...cards().nodes,
+    ],
+    edges: [],
+  })
+  it('a card carried out of a frame leaves it, and carried back in joins it again', async () => {
+    const s = setup(framed())
+    const parent = () => parentsOf(s.graphNow()).get('alpha') ?? null
+    expect(parent()).toBe('box')
+    s.pointer('pointerdown', 50, 50)
+    s.pointer('pointermove', 50, 300)
+    s.pointer('pointermove', 50, 450)
+    s.pointer('pointerup', 50, 450)
+    await flush()
+    expect(parent()).toBeNull()
+    s.pointer('pointerdown', 50, 450)
+    s.pointer('pointermove', 50, 200)
+    s.pointer('pointermove', 50, 50)
+    s.pointer('pointerup', 50, 50)
+    await flush()
+    expect(parent()).toBe('box')
+  })
+})
+
+describe('drawing', () => {
+  it('a line held still at its end becomes a straight line; let go at once, it stays as drawn', async () => {
+    vi.useFakeTimers()
+    try {
+      const s = setup()
+      s.editor.controls.useTool('pen')
+      s.pointer('pointerdown', 100, 100)
+      for (let i = 1; i <= 20; i++) s.pointer('pointermove', 100 + i * 10, 100 + (i % 2))
+      vi.advanceTimersByTime(600)
+      s.pointer('pointerup', 300, 101)
+      await vi.runAllTimersAsync()
+      expect(s.graphNow().abele?.ink ?? []).toHaveLength(0)
+      expect((s.graphNow().abele?.lines as unknown[]).length).toBe(1)
+      s.pointer('pointerdown', 100, 300)
+      for (let i = 1; i <= 20; i++) s.pointer('pointermove', 100 + i * 10, 300 + (i % 2))
+      s.pointer('pointerup', 300, 301)
+      await vi.runAllTimersAsync()
+      expect(s.graphNow().abele?.ink as unknown[]).toHaveLength(1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

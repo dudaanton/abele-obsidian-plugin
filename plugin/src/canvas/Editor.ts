@@ -591,6 +591,13 @@ export class CanvasEditor {
       },
     })
     viewer.onDoubleTap = (event) => this.doubleTap(event)
+    // A canvas opened in its tab takes the keys at once, so its letters work before any click,
+    // unless something else already has them.
+    queueMicrotask(() => {
+      const doc = viewer.el.ownerDocument
+      if (!this.destroyed && viewer.el.isConnected && (!doc.activeElement || doc.activeElement === doc.body))
+        viewer.el.focus({ preventScroll: true })
+    })
     viewer.onWheel = (event) => this.wheel(event)
     this.listen(viewer.el, 'keyup', (event) => {
       if ((event as KeyboardEvent).key === ' ' && this.spaceHeld) {

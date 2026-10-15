@@ -229,6 +229,49 @@ export function landingFrame(
     .sort((a, b) => a.width * a.height - b.width * b.height)
   return frames[0]?.id ?? null
 }
+/**
+ * Cards let go somewhere else join the frame they now stand whole inside, and leave the one
+ * they were carried out of: each carried card whose frame is not carried with it.
+ */
+export function reparentOps(
+  before: CanvasGraph,
+  after: CanvasGraph,
+  ids: ReadonlySet<string>,
+  moving: ReadonlySet<string>
+): CanvasOperation[] {
+  const parents = parentsOf(before),
+    ops: CanvasOperation[] = []
+  for (const id of ids) {
+    const node = after.nodes.find((n) => n.id === id)
+    if (!node) continue
+    const was = parents.get(id) ?? null
+    if (was && moving.has(was)) continue
+    const now = landingFrame(after, new Set([id]), moving)
+    if (now !== was && now !== id)
+      ops.push({ op: 'update', id, patch: { abele: { parent: now } } })
+  }
+  return ops
+}
+/**
+ * A frame resized takes in what now stands whole inside it and lets go of what no longer does;
+ * the cards themselves stay where they are.
+ */
+export function resizedFrameOps(
+  before: CanvasGraph,
+  after: CanvasGraph,
+  frame: string
+): CanvasOperation[] {
+  const parents = parentsOf(before),
+    ops: CanvasOperation[] = []
+  for (const node of after.nodes) {
+    if (node.id === frame) continue
+    const was = parents.get(node.id) ?? null
+    const now = landingFrame(after, new Set([node.id]), new Set([node.id]))
+    if ((was === frame || now === frame) && now !== was)
+      ops.push({ op: 'update', id: node.id, patch: { abele: { parent: now } } })
+  }
+  return ops
+}
 /** A frame drawn around a region takes in what lies whole inside it, nested frames intact. */
 export function frameOps(graph: CanvasGraph, rect: Rect): CanvasOperation[] {
   const id = nanoid(),
@@ -497,10 +540,13 @@ export class CanvasInput implements CanvasViewerInput {
         ...g.graph,
         nodes: g.graph.nodes.map((n) => (n.id === node.id ? { ...n, ...rect } : n)),
       }
-      g.ops = [{ op: 'update', id: node.id, patch: { ...rect } }]
+      g.ops = [
+        { op: 'update', id: node.id, patch: { ...rect } },
+        ...(node.type === 'group' ? resizedFrameOps(g.graph, preview, node.id) : []),
+      ]
     } else {
       preview = movePreview(g.graph, g.moving, dx, dy)
-      g.ops = [{ op: 'move', ids: [...g.ids], dx, dy }]
+      g.ops = [{ op: 'move', ids: [...g.ids], dx, dy }, ...reparentOps(g.graph, preview, g.ids, g.moving)]
     }
     this.dropFrame = landingFrame(preview, g.ids, g.moving)
     // Avoid validation, asset reloads and full session cloning on every pointer event.
