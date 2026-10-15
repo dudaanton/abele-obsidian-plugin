@@ -83,7 +83,7 @@ function requestId(v: unknown): string {
 /** A script's name as its header declares it: one plain line. */
 function scriptName(v: unknown): string {
   const name = req(v).trim()
-  if (!name || name.length > 200 || /[\u0000-\u001f\u007f]/.test(name))
+  if (!name || name.length > 200 || /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(name))
     throw new Error(`Not a script name: ${JSON.stringify(name)}`)
   return name
 }

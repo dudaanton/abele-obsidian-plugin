@@ -24,7 +24,7 @@ export async function sendPreview(
     name && name !== m.state.environment ? await m.rpc.environment(m.projectId, name) : m.state.env
   const doc = m.entry(id).doc ?? (await m.rpc.get(m.projectId, id))
   const out = outgoing(doc, varsOf(env, {}))
-  const plain = (t: string) => t.replace(/[\u0000-\u001f\u007f]+/g, ' ')
+  const plain = (t: string) => t.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+/gu, ' ')
   const scripts = [
     doc.scripts.before
       ? `# The script ${plain(doc.scripts.before)} runs first and may change this.`
