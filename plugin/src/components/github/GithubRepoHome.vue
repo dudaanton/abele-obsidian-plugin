@@ -123,7 +123,7 @@
     </template>
 
     <div class="abele-github-home__columns">
-      <div class="abele-github-home__side">
+      <div v-if="hasSide" class="abele-github-home__side">
         <GithubRepoList
           v-if="release.data.value || release.error.value"
           list="release"
@@ -311,6 +311,15 @@ const languages = useLoad(() => source.value?.github?.languages() ?? Promise.res
 const pulls = useLoad(() => source.value?.github?.pulls() ?? Promise.resolve([]))
 const issues = useLoad(() => source.value?.github?.issues() ?? Promise.resolve([]))
 const release = useLoad(() => source.value?.github?.release() ?? Promise.resolve(null))
+// A node has none of these lists; an empty column would still take its share of a wide page.
+const hasSide = computed(
+  () =>
+    !!source.value?.github ||
+    !!release.data.value ||
+    !!release.error.value ||
+    !!languages.data.value?.length ||
+    !!languages.error.value
+)
 
 // Asked again for another repository; the same one at another ref has the same lists.
 watch(
