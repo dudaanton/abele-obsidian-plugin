@@ -85,7 +85,7 @@ describe('a saved request made ready to go', () => {
       key: 'Authorization',
       value: 'Bearer ${abele_key:sample-key}',
       secret: true,
-      missing: 'There is no key named sample-key',
+      missing: 'The key sample-key is not on this device',
     })
     expect(pairsForView(doc().headers, () => true)[0]).not.toHaveProperty('missing')
   })

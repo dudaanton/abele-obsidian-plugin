@@ -209,8 +209,8 @@ it('opens a recorded run as a tab of steps, a step with its values by shape, and
     rows: string[]
     place: string
     values: string[]
-    wide: { em: number; beside: boolean; under: boolean; overflow: number }
-    narrow: { em: number; beside: boolean; under: boolean; overflow: number }
+    wide: { em: number; beside: boolean; under: boolean; overflow: number; rule: number }
+    narrow: { em: number; beside: boolean; under: boolean; overflow: number; rule: number }
     shape: boolean
     whole: string
   }>(`(async()=>{${prelude}
@@ -227,7 +227,7 @@ it('opens a recorded run as a tab of steps, a step with its values by shape, and
     const root=document.querySelector('.abele-trace-run'),list=root.querySelector('.abele-trace-run__list'),detail=root.querySelector('.abele-trace-run__detail');
     // Wide with both sidebars folded, narrow beside them: the tab's own width, nothing forced.
     const em=parseFloat(getComputedStyle(root).fontSize),sides=[app.workspace.leftSplit,app.workspace.rightSplit],wasCollapsed=sides.map(x=>x.collapsed);
-    const layout=async fold=>{for(const x of sides)fold?x.collapse():x.expand();await wait(600);const l=list.getBoundingClientRect(),d=detail.getBoundingClientRect();return {em:Math.round(root.clientWidth/em),beside:d.left>=l.right-1&&Math.abs(d.top-l.top)<2,under:d.top>=l.bottom-1&&Math.abs(d.left-l.left)<2,overflow:root.scrollWidth-root.clientWidth}};
+    const layout=async fold=>{for(const x of sides)fold?x.collapse():x.expand();await wait(600);const l=list.getBoundingClientRect(),d=detail.getBoundingClientRect();return {em:Math.round(root.clientWidth/em),beside:d.left>=l.right-1&&Math.abs(d.top-l.top)<2,under:d.top>=l.bottom-1&&Math.abs(d.left-l.left)<2,overflow:root.scrollWidth-root.clientWidth,rule:parseFloat(getComputedStyle(list).borderRightWidth)||0}};
     let wide,narrow;
     try{
       wide=await layout(true);
@@ -251,6 +251,9 @@ it('opens a recorded run as a tab of steps, a step with its values by shape, and
   expect(seen.wide).toMatchObject({ beside: true, under: false })
   expect(seen.narrow.em, JSON.stringify(seen.narrow)).toBeLessThan(44)
   expect(seen.narrow).toMatchObject({ beside: false, under: true })
+  // Under each other the panes are parted by a rule below the steps, none down their side.
+  expect(seen.narrow.rule).toBe(0)
+  expect(seen.wide.rule).toBeGreaterThan(0)
   expect(seen.wide.overflow).toBeLessThanOrEqual(1)
   expect(seen.narrow.overflow).toBeLessThanOrEqual(1)
 })

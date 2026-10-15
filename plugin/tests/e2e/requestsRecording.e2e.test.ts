@@ -286,7 +286,7 @@ it('sends a saved request into the recording of a running service and opens its 
     return {recording,steps,top,under,byTime}
   })()`)
   expect(seen.recording).toContain('server.js')
-  expect(seen.steps).toBe('1 steps in code')
+  expect(seen.steps).toBe('1 step in code')
   expect(seen.top[0]).toBe('POST /orders')
   expect(seen.under.length, JSON.stringify(seen)).toBeGreaterThanOrEqual(1)
   expect(seen.byTime).toBe(true)
@@ -313,7 +313,7 @@ it('on a phone: the recording said in the drawer, the switch beside Send, the st
         await app.workspace.requestSaveLayout.run();
       }
     })()`)
-    expect(seen.steps).toBe('1 steps in code')
+    expect(seen.steps).toBe('1 step in code')
     expect(seen.top[0]).toBe('POST /orders')
   })
 }, 240000)

@@ -3,6 +3,7 @@
 // keeps a request in the saved layout, only where it is: the node, the project and the file.
 import {
   ItemView,
+  Menu,
   Notice,
   type App,
   type Plugin,
@@ -40,8 +41,10 @@ import {
   newRequest,
   openRequestTab,
   projectMenu,
+  remove,
   rename,
   requestMenu,
+  revealRequest,
   say,
   sendFromView,
 } from './actions'
@@ -170,11 +173,12 @@ const Sidebar = defineComponent({
         environment: m?.state.environment,
         offline,
         notice,
-        project: c?.label ?? '',
+        project: c ? (c.label ?? c.projectId) : '',
         node: c?.node,
         open: open && c && open.projectId === c.projectId ? open.id : undefined,
         sending: m?.state.sending.at(-1),
         recording: recording.value?.name,
+        reveal: service.reveal.value,
         onOpenRequest: (id: string): void => {
           if (c) void openRequestTab(c, id).catch(say)
         },
@@ -241,14 +245,46 @@ export class RequestTab extends ItemView {
   private vue?: VueApp
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
+    // Obsidian puts each action before the last: added right to left, they read terminal,
+    // duplicate, reveal, then its own ⋯, where Rename and Delete are.
+    this.addAction('locate', 'Reveal in collection', () => {
+      const s = this.current.value
+      if (s) void revealRequest(s, s.id).catch(say)
+    })
+    this.addAction('copy-plus', 'Duplicate', () => {
+      const s = this.current.value
+      if (s)
+        void RequestsService.instance()
+          .model(s)
+          .duplicate(s.id)
+          .then((copy) => openRequestTab(s, copy))
+          .catch(say)
+    })
     this.addAction('terminal', 'Copy as curl', () => {
       const s = this.current.value
       if (s) void copyCurl(RequestsService.instance().model(s), s.id).catch(say)
     })
-    this.addAction('pencil', 'Rename', () => {
-      const s = this.current.value
-      if (s) void rename(s, s.id).catch(say)
-    })
+  }
+  onPaneMenu(menu: Menu, source: string) {
+    const s = this.current.value
+    if (s) {
+      menu.addItem((i) =>
+        i
+          .setTitle('Rename')
+          .setIcon('pencil')
+          .setSection('action')
+          .onClick(() => void rename(s, s.id).catch(say))
+      )
+      menu.addItem((i) =>
+        i
+          .setTitle('Delete')
+          .setIcon('trash-2')
+          .setSection('danger')
+          .setWarning(true)
+          .onClick(() => void remove(s, s.id).catch(say))
+      )
+    }
+    super.onPaneMenu(menu, source)
   }
   getViewType() {
     return REQUEST_TAB_VIEW
@@ -369,6 +405,11 @@ export class RequestTab extends ItemView {
                   else new Notice(`There is no script named ${name}`)
                 })
               },
+              onOpenKeys: (): void => {
+                void import('@/components/settings/settingsTab').then((m) =>
+                  m.openAbeleSettings(app(), 'ai')
+                )
+              },
               onIntoRecording: (on: boolean): void => {
                 model.state.intoRecording = on
               },
@@ -428,6 +469,15 @@ async function importFromClipboard() {
     const { importInto, importWords } = await import('./importInto')
     const model = service.model(c)
     const outcome = await importInto(model, importRequests(text))
+    // The view shows what came in: its collection unfolded, the new rows in sight.
+    await openRequestsView()
+    const main = outcome.collections[0]
+    if (main)
+      service.reveal.value = {
+        collection: main,
+        ids: outcome.made.filter((id) => id.startsWith(`${main}/`)),
+        at: Date.now(),
+      }
     new Notice(importWords(outcome, model.state.environment), 10000)
   } catch (e) {
     say(e, 'Nothing imported')

@@ -293,7 +293,7 @@ export function createRequestTools(resolve: () => RequestToolContext | undefined
               `${r.status} ${r.reason} · ${r.ms} ms · ${r.bytes} B${r.cut ? ' (cut)' : ''}`,
               ...(run
                 ? [
-                    `Into run ${run.runId}${run.step ? `, step ${run.step}` : ''}; ${r.steps ?? 0} steps in code.`,
+                    `Into run ${run.runId}${run.step ? `, step ${run.step}` : ''}; ${r.steps ?? 0} ${r.steps === 1 ? 'step' : 'steps'} in code.`,
                   ]
                 : []),
               ...(r.checks?.length
@@ -335,7 +335,11 @@ export function createRequestTools(resolve: () => RequestToolContext | undefined
           imported,
           p.collection === undefined ? undefined : collectionName(p.collection)
         )
-        return bounded([importWords(outcome, m.state.environment), ...outcome.made])
+        return bounded([
+          importWords(outcome, m.state.environment),
+          ...outcome.made,
+          ...(outcome.skipped.length ? ['Skipped:', ...outcome.skipped.map((x) => `  ${x}`)] : []),
+        ])
       }
     ),
     tool(

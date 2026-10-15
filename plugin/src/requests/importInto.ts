@@ -6,6 +6,10 @@ import { requestIdFor } from './shapes'
 
 export interface ImportOutcome {
   made: string[]
+  /** The collections they went into, the first the one most went into. */
+  collections: string[]
+  /** Requests of the source not brought in, each with why. */
+  skipped: string[]
   /** Values added to the environment, by name. */
   vars: string[]
   leftOut: string[]
@@ -19,8 +23,14 @@ export async function importInto(
   if (!model.state.collections.length && !model.state.environments.length) await model.load()
   const taken = new Set(model.state.collections.flatMap((c) => c.requests.map((r) => r.id)))
   const made: string[] = []
+  const into = new Map<string, number>()
   for (const r of imported.requests) {
-    const folder = collection ?? r.collection ?? imported.collection
+    const folder =
+      requestIdFor(collection ?? r.collection ?? imported.collection, 'x').replace(
+        /\/?x\.http$/,
+        ''
+      ) || 'Imported'
+    into.set(folder, (into.get(folder) ?? 0) + 1)
     let name = r.doc.name
     for (let n = 2; taken.has(requestIdFor(folder, name)); n++) name = `${r.doc.name} ${n}`
     taken.add(requestIdFor(folder, name))
@@ -38,13 +48,24 @@ export async function importInto(
       }
     if (added.length) await model.saveEnvironment({ ...env, vars })
   }
-  return { made, vars: added, leftOut: imported.leftOut }
+  return {
+    made,
+    collections: [...into].sort((a, b) => b[1] - a[1]).map(([c]) => c),
+    skipped: imported.skipped ?? [],
+    vars: added,
+    leftOut: imported.leftOut,
+  }
 }
 
-/** What an import did, in a line or two. */
+/** What an import did, in a line or two: `Imported 3 requests into Orders; 1 skipped.` */
 export function importWords(o: ImportOutcome, environment?: string): string {
+  const n = o.made.length
+  const where =
+    o.collections.length > 1
+      ? `${o.collections[0]} and ${o.collections.length - 1} more`
+      : (o.collections[0] ?? 'the project')
   return [
-    `Imported ${o.made.length} request${o.made.length === 1 ? '' : 's'}.`,
+    `Imported ${n} request${n === 1 ? '' : 's'} into ${where}${o.skipped.length ? `; ${o.skipped.length} skipped` : ''}.`,
     o.vars.length ? `Added to ${environment ?? 'the environment'}: ${o.vars.join(', ')}.` : '',
     o.leftOut.length
       ? `Left out, as they carried credentials: ${o.leftOut.join(', ')}. Put them back as saved keys, \${abele_key:name}.`

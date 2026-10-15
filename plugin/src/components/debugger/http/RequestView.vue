@@ -158,8 +158,9 @@
               tabindex="0"
               @click="emit('open-run')"
               @keydown.enter="emit('open-run')"
-              ><Icon icon="list-video" size="xs" no-hover />{{ outcome.response.steps }} steps in
-              code</a
+              ><Icon icon="list-video" size="xs" no-hover />{{
+                stepsInCode(outcome.response.steps)
+              }}</a
             >
           </div>
           <Tabs v-model="answerTab" level="secondary" :tabs="answerTabs" />
@@ -278,6 +279,22 @@
           <StatusDot tone="accent" label="Sending" pulse />
           <span>Waiting for the answer…</span>
         </div>
+        <!-- Nothing sent and it cannot go as it is: why, where the answer would be, with the way
+             to put it right when that is a key this device lacks. -->
+        <div
+          v-else-if="blocked"
+          class="abele-http-request__notice abele-http-request__notice_error"
+          role="status"
+        >
+          <Icon icon="key-round" size="xs" no-hover />
+          <span>{{ blocked }}</span>
+          <Button
+            v-if="missingKey"
+            class="abele-http-request__open-keys"
+            text="Open keys"
+            @click="emit('open-keys')"
+          />
+        </div>
         <EmptyState v-else text="Send it to see the answer here." />
       </div>
     </div>
@@ -348,6 +365,8 @@ const emit = defineEmits<{
   (e: 'into-recording', on: boolean): void
   (e: 'show-send', id: string): void
   (e: 'compare', id: string | undefined): void
+  /** The settings where this device's keys are kept. */
+  (e: 'open-keys'): void
 }>()
 
 const phone = Platform.isPhone
@@ -392,6 +411,13 @@ const blocked = computed(() => {
   if (missing) return missing.missing
   return unknownVar.value ? `${unknownVar.value} has no value in ${props.environment}` : undefined
 })
+/** A key this device does not have, by name, when that is what keeps it from going. */
+const missingKey = computed(() =>
+  [...props.request.params, ...props.request.headers].some((p) => !p.off && p.missing && p.secret)
+)
+/** `1 step in code`, `3 steps in code`. */
+const stepsInCode = (n: number) => `${n} ${n === 1 ? 'step' : 'steps'} in code`
+
 const resolved = computed(() => {
   const query = props.request.params
     .filter((p) => !p.off)

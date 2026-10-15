@@ -252,7 +252,8 @@ const StepEnd = defineComponent({
     grid-template-rows: minmax(8em, 2fr) minmax(0, 3fr);
     gap: 0;
   }
-  .abele-trace-run__list {
+  // Under the base rule below, which would otherwise win: one class more.
+  .abele-trace-run__body > .abele-trace-run__list {
     padding-inline-end: var(--size-2-2);
     border-inline-end: none;
     border-block-end: var(--border-width) solid var(--background-modifier-border);

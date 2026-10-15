@@ -84,7 +84,8 @@
         <TreeItem
           class="abele-debug-panel__folder"
           icon="folder"
-          :text="recording.folder"
+          :text="folderName(recording.folder)"
+          :label="recording.folder"
           @click="emit('show-folder')"
         />
       </TreeItem>
@@ -486,6 +487,8 @@ function watchIt() {
   if (e && !locked.value) emit('watch', e)
   expression.value = ''
 }
+/** The runs folder by its own name; the whole path is the row's tooltip. */
+const folderName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? path
 </script>
 
 <style lang="scss">

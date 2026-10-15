@@ -2,6 +2,7 @@
 // description or a Bruno request. The format is read off the text; credentials never come along.
 import yaml from 'js-yaml'
 import { importBruno } from './bruno'
+import { importBrunoExport, importInsomnia, importPostman } from './exports'
 import { importCurl } from './curl'
 import { importHar } from './har'
 import { importHttp } from './http'
@@ -9,7 +10,15 @@ import { importOpenApi } from './openapi'
 import { scrubSecrets, type Imported } from './shared'
 
 export type { Imported, ImportedRequest } from './shared'
-export type ImportFormat = 'http' | 'curl' | 'har' | 'openapi' | 'bruno'
+export type ImportFormat =
+  | 'http'
+  | 'curl'
+  | 'har'
+  | 'openapi'
+  | 'bruno'
+  | 'postman'
+  | 'insomnia'
+  | 'bruno-export'
 
 function parsed(text: string): unknown {
   const t = text.trim()
@@ -24,6 +33,10 @@ function parsed(text: string): unknown {
   }
 }
 
+/** What is said when the text holds no request this can read. */
+export const NOTHING =
+  'The clipboard holds no request: paste a curl command, a .http file, or a Postman, Insomnia or Bruno export'
+
 export function detectFormat(text: string): ImportFormat | undefined {
   const t = text.trim()
   const value = parsed(t) as Record<string, unknown> | undefined
@@ -31,6 +44,10 @@ export function detectFormat(text: string): ImportFormat | undefined {
     const log = value.log as { entries?: unknown } | undefined
     if (Array.isArray(log?.entries)) return 'har'
     if ('openapi' in value || 'swagger' in value) return 'openapi'
+    const schema = (value.info as { schema?: unknown } | undefined)?.schema
+    if (typeof schema === 'string' && /getpostman\.com/.test(schema)) return 'postman'
+    if (value._type === 'export' && Array.isArray(value.resources)) return 'insomnia'
+    if (Array.isArray(value.items) && 'version' in value && 'name' in value) return 'bruno-export'
   }
   if (/^curl\s/.test(t)) return 'curl'
   if (/^(meta|get|post|put|patch|delete|head|options)\s*\{\s*$/m.test(t)) return 'bruno'
@@ -39,7 +56,10 @@ export function detectFormat(text: string): ImportFormat | undefined {
 }
 
 export function importRequests(text: string, format = detectFormat(text)): Imported {
-  return scrubSecrets(readAs(text, format))
+  const imported = scrubSecrets(readAs(text, format))
+  // A source read whole that brings nothing is no request either.
+  if (!imported.requests.length && !imported.skipped?.length) throw new Error(NOTHING)
+  return imported
 }
 
 function readAs(text: string, format: ImportFormat | undefined): Imported {
@@ -54,9 +74,13 @@ function readAs(text: string, format: ImportFormat | undefined): Imported {
       return importOpenApi(parsed(text) as Record<string, unknown>)
     case 'bruno':
       return importBruno(text)
+    case 'postman':
+      return importPostman(parsed(text) as Record<string, unknown>)
+    case 'insomnia':
+      return importInsomnia(parsed(text) as Record<string, unknown>)
+    case 'bruno-export':
+      return importBrunoExport(parsed(text) as Record<string, unknown>)
     default:
-      throw new Error(
-        'Not a .http file, a curl line, a HAR file, an OpenAPI description or a Bruno request'
-      )
+      throw new Error(NOTHING)
   }
 }

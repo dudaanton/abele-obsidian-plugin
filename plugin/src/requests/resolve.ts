@@ -103,7 +103,7 @@ export function whyBlocked(
   const missing = missingVars(doc, vars)[0]
   if (missing) return `${missing} has no value in ${environment ?? 'any environment'}`
   const absent = keyNamesOf(doc).find((name) => !hasKey(name))
-  return absent ? `There is no key named ${absent}` : undefined
+  return absent ? `The key ${absent} is not on this device` : undefined
 }
 
 /** Lines as the tab draws them: a key's line says so, and why it cannot go when it cannot. */
@@ -116,7 +116,7 @@ export function pairsForView(pairs: Pair[], hasKey: (name: string) => boolean): 
       value: p.value,
       ...(p.off ? { off: true } : {}),
       ...(names.length ? { secret: true } : {}),
-      ...(absent ? { missing: `There is no key named ${absent}` } : {}),
+      ...(absent ? { missing: `The key ${absent} is not on this device` } : {}),
     }
   })
 }

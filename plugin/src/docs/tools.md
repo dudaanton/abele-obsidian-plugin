@@ -988,7 +988,8 @@ order.http`), method, address as written and last status, and the environments.
   outcome may have reached the service: never send again to find out.
 - `http_send_result(id, send, from?)` reads what came of a send, a page at a time.
 - `http_import(text, format?, collection?)` brings requests in from the text of a `.http` file, a
-  curl line, a HAR file, an OpenAPI description or a Bruno request. Values the source names go
+  curl line, a HAR file, an OpenAPI description, a Bruno request, or a Postman, Insomnia or Bruno
+  export; its answer lists what was skipped and why. Values the source names go
   into the environment in use when it lacks them; credentials in it are left out and named.
 
 ## Scripts

@@ -33,6 +33,7 @@ function serverOf(doc: Obj): string {
 export function importOpenApi(doc: Obj): Imported {
   const title = text(obj(doc.info).title) || 'Imported'
   const leftOut: string[] = []
+  const skipped: string[] = []
   const base = serverOf(doc)
   const vars: EnvVar[] = base ? [{ key: 'base', value: base }] : []
   const requests: ImportedRequest[] = []
@@ -40,6 +41,8 @@ export function importOpenApi(doc: Obj): Imported {
     const shared = list(obj(item).parameters).map(obj)
     for (const [verb, raw] of Object.entries(obj(item))) {
       const method = verb.toUpperCase()
+      if (verb === 'trace')
+        skipped.push(`${verb.toUpperCase()} ${path}: TRACE is not a method a request can have`)
       if (!isMethod(method)) continue
       const op = obj(raw)
       const parameters = [...shared, ...list(op.parameters).map(obj)]
@@ -91,5 +94,5 @@ export function importOpenApi(doc: Obj): Imported {
       })
     }
   }
-  return { collection: title, requests, vars, leftOut }
+  return { collection: title, requests, vars, leftOut, skipped }
 }

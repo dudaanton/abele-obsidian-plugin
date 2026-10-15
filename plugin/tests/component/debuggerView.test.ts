@@ -74,6 +74,24 @@ describe('debugger panel', () => {
     expect(w.emitted('frame')?.at(-1)).toEqual([3])
     w.unmount()
   })
+  it('names the runs folder by its own name, the whole path in its tooltip', () => {
+    const folder = '/Users/sample/projects/sample-service/.abele/runs'
+    const w = mount(DebugPanel, {
+      props: {
+        session: session('running'),
+        recording: {
+          elapsed: '0:01',
+          steps: 2,
+          browser: { state: 'none', via: 'chrome', hosts: [] },
+          folder,
+        },
+      },
+    })
+    const row = w.find('.abele-debug-panel__folder')
+    expect(row.find('.abele-tree-item__text').text()).toBe('runs')
+    expect(row.html()).toContain(folder)
+  })
+
   it('explains how to open a session when the sidebar is empty', () => {
     DebuggerService.instance.destroy()
     const w = mount(DebuggerView)

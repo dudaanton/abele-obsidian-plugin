@@ -24,7 +24,7 @@ describe('the agent’s tools over saved requests', () => {
       text: "curl -H 'Authorization: Bearer sk-sample-1' https://api.example.test/v1/items",
       collection: 'Items',
     })
-    expect(said).toContain('Imported 1 request.')
+    expect(said).toContain('Imported 1 request into Items.')
     expect(said).toContain('Left out, as they carried credentials: Authorization.')
     expect(node.files.get('Items/GET -v1-items.http')).toMatchObject({
       method: 'GET',
@@ -32,6 +32,27 @@ describe('the agent’s tools over saved requests', () => {
       headers: [],
     })
     expect(JSON.stringify([...node.files.values()])).not.toContain('sk-sample-1')
+  })
+
+  it('names in its answer what an import skipped and why', async () => {
+    const { call } = setup()
+    const said = await call('http_import', {
+      text: JSON.stringify({
+        info: {
+          name: 'Sample',
+          schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json',
+        },
+        item: [
+          { name: 'Ping', request: 'https://api.example.test/ping' },
+          {
+            name: 'Upload',
+            request: { method: 'POST', url: 'https://api.example.test/u', body: { mode: 'file' } },
+          },
+        ],
+      }),
+    })
+    expect(said).toContain('Imported 1 request into Sample; 1 skipped.')
+    expect(said).toContain('Skipped:\n  Upload: a file body')
   })
 
   it('says plainly when no project’s requests are open', async () => {

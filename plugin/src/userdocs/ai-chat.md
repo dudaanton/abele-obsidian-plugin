@@ -320,8 +320,9 @@ comes to in this environment under it, then **Params**, **Headers**, **Body**, *
 **Checks**. Write `{{name}}` for a value of the environment and `${abele_key:name}` for a saved
 key: the key's value is never shown or written anywhere, and the first time a key goes to an
 address you are asked to allow it, the same as for a script. A key that is not on this device
-keeps **Send** off and says which. **Copy as curl** in a request's menu copies it with keys still
-by name.
+keeps **Send** off and says which where the answer would be, with **Open keys** beside it.
+The tab's header copies the request as curl (keys still by name), duplicates it and reveals it in
+its collection; **Rename** and **Delete** are in its **⋯**.
 
 The node sends the request, so a service running on the node's machine answers. The answer is
 beside the request on a wide tab and under it on a narrow one or a phone: the status, the time,
@@ -348,8 +349,10 @@ On a phone the view is in the left drawer and a request opens on the whole scree
 from the node all the same.
 
 **Import requests from the clipboard** brings in what you copied: a `.http` file, a curl line, a
-HAR file a browser saved, an OpenAPI description or a Bruno request. They go into the project the
-view shows, values they name are added to the environment in use where it lacks them, and
+Postman, Insomnia or Bruno export, a HAR file a browser saved or an OpenAPI description. The view
+opens on the collection they went into, the new rows in sight; a name already taken gets a number
+after it and nothing is overwritten. A request that cannot be carried over (a file upload, a
+GraphQL body) is skipped and counted in the message. They go into the project the view shows, values they name are added to the environment in use where it lacks them, and
 anything that carried a credential (a cookie, an `Authorization` header, `-u user:password`) is
 left out and named, so you can put it back as a saved key.
 

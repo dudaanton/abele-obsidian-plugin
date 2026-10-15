@@ -237,3 +237,19 @@ export async function newCollection(context: RequestsContext) {
   })
   if (name) await RequestsService.instance().model(context).createCollection(name)
 }
+
+/** Brings a request into sight in the Requests view: its project shown, its collection unfolded. */
+export async function revealRequest(context: RequestsContext, id: string) {
+  const service = RequestsService.instance()
+  const shown = service.context.value
+  if (shown?.registrationId !== context.registrationId || shown.projectId !== context.projectId)
+    service.choose({ registrationId: context.registrationId, projectId: context.projectId })
+  service.openRequest.value = { ...context, id }
+  const { openRequestsView } = await import('./views')
+  await openRequestsView(app())
+  service.reveal.value = {
+    collection: id.includes('/') ? id.slice(0, id.lastIndexOf('/')) : 'Requests',
+    ids: [id],
+    at: Date.now(),
+  }
+}

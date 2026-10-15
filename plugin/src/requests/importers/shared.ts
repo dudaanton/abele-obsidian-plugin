@@ -16,6 +16,8 @@ export interface Imported {
   vars: EnvVar[]
   /** What was left out because it carried a credential: headers by name, flags in words. */
   leftOut: string[]
+  /** Requests of the source not brought in, each with why: `Upload avatar: a file body`. */
+  skipped?: string[]
 }
 
 const SENSITIVE =

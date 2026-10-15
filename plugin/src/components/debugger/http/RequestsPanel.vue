@@ -4,7 +4,7 @@
        collections as folders and each request as a row, its method a code before the name and its
        last status faint at the end. A recording going on is one quiet line at the top: a request
        can then be sent into it, from the request's own tab. -->
-  <div class="abele-requests-panel">
+  <div ref="root" class="abele-requests-panel">
     <div class="nav-header">
       <div class="nav-buttons-container">
         <Icon
@@ -76,6 +76,7 @@
           class="abele-requests-panel__request"
           :text="r.name"
           :active="r.id === open"
+          :data-request="r.id"
           @click="emit('open-request', r.id)"
           @contextmenu.prevent="(e: MouseEvent) => emit('request-menu', r.id, e)"
         >
@@ -117,14 +118,14 @@
 <script setup lang="ts">
 // The requests stand on their own: collections, environments, keys by name, scripts and the
 // answers. Nothing here needs the debugger; a recording only adds a place a request may go into.
-import { reactive } from 'vue'
+import { nextTick, reactive, ref, watch } from 'vue'
 import Icon from '../../obsidian/Icon.vue'
 import StatusDot from '../../obsidian/StatusDot.vue'
 import TreeItem from '../../obsidian/TreeItem.vue'
 import MethodMark from './MethodMark.vue'
 import type { HttpCollection } from './types'
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     collections: HttpCollection[]
     /** The environment they go out in. */
@@ -143,8 +144,12 @@ withDefaults(
     node?: string
     /** Why nothing can be shown, in place of the list. */
     notice?: string
+    /** Requests to bring into sight, their collection unfolded: one just revealed or imported.
+     * A new `at` asks again for the same ones. */
+    reveal?: { collection: string; ids: string[]; at: number }
   }>(),
   {
+    reveal: undefined,
     project: undefined,
     node: undefined,
     notice: undefined,
@@ -171,6 +176,22 @@ const emit = defineEmits<{
 }>()
 
 const folded = reactive(new Set<string>())
+const root = ref<HTMLElement>()
+watch(
+  () => props.reveal?.at,
+  async () => {
+    const r = props.reveal
+    if (!r) return
+    folded.delete(r.collection)
+    await nextTick()
+    const rows = r.ids
+      .map((id) => root.value?.querySelector(`[data-request="${CSS.escape(id)}"]`))
+      .filter((e): e is Element => !!e)
+    rows.at(-1)?.scrollIntoView({ block: 'nearest' })
+    rows[0]?.scrollIntoView({ block: 'nearest' })
+  },
+  { immediate: true }
+)
 const toggle = (name: string) => (folded.has(name) ? folded.delete(name) : folded.add(name))
 </script>
 

@@ -46,6 +46,31 @@ describe('a saved request in its tab', () => {
     expect(view.find('.abele-http-request__to_missing').exists()).toBe(true)
   })
 
+  it('says where the answer would be that a key is not on this device, with the way to the keys', async () => {
+    const why = 'The key sample-key is not on this device'
+    const view = mount(RequestView, {
+      props: { request: request(why), environment: 'local', vars },
+    })
+    const notice = view.find('.abele-http-request__answer .abele-http-request__notice')
+    expect(notice.text()).toContain(why)
+    expect(view.text()).not.toContain('Send it to see the answer here.')
+    await notice.find('.abele-http-request__open-keys').trigger('click')
+    expect(view.emitted('open-keys')).toHaveLength(1)
+  })
+
+  it('counts the steps of the code in words that agree', async () => {
+    const answer = (steps: number) => ({
+      kind: 'answered' as const,
+      response: { status: 201, reason: 'Created', ms: 3, bytes: 2, headers: [], body: '{}', steps },
+    })
+    const view = mount(RequestView, {
+      props: { request: request(), environment: 'local', vars, outcome: answer(1) },
+    })
+    expect(view.find('.abele-http-request__steps').text()).toBe('1 step in code')
+    await view.setProps({ outcome: answer(3) })
+    expect(view.find('.abele-http-request__steps').text()).toBe('3 steps in code')
+  })
+
   it('says a request that may have gone through is not sent again by itself', () => {
     const view = mount(RequestView, {
       props: {
@@ -124,6 +149,21 @@ describe('the requests view', () => {
     expect(view.find('.abele-requests-panel__recording').exists()).toBe(false)
     await view.find('.abele-requests-panel__request .tree-item-self').trigger('click')
     expect(view.emitted('open-request')?.[0]).toEqual(['sample-create'])
+  })
+
+  it('unfolds a collection to bring the requests asked for into sight', async () => {
+    const view = mount(RequestsPanel, {
+      attachTo: document.body,
+      props: { collections: [{ name: 'Samples', requests: [request()] }], environment: 'local' },
+    })
+    await view
+      .find('.tree-item:not(.abele-requests-panel__environment) > .tree-item-self')
+      .trigger('click')
+    expect(view.find('[data-request="sample-create"]').exists()).toBe(false)
+    await view.setProps({ reveal: { collection: 'Samples', ids: ['sample-create'], at: 1 } })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(view.find('[data-request="sample-create"]').exists()).toBe(true)
+    view.unmount()
   })
 
   it('says the requests open while the node is online', () => {

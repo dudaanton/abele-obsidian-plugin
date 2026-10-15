@@ -34,7 +34,8 @@ export function importHar(value: { log: { entries: { request?: HarRequest }[] } 
     }
   }
   const base = [...origins].sort((a, b) => b[1] - a[1])[0]?.[0]
-  const requests = entries.map((r) => {
+  const skipped: string[] = []
+  const requests = entries.flatMap((r) => {
     const { url: whole } = splitQuery(r.url!)
     const url = base && whole.startsWith(base) ? `{{base}}${whole.slice(base.length)}` : whole
     const headers: Pair[] = []
@@ -51,27 +52,34 @@ export function importHar(value: { log: { entries: { request?: HarRequest }[] } 
         .map((p) => `${encodeURIComponent(p.name ?? '')}=${encodeURIComponent(p.value ?? '')}`)
         .join('&')
     const method = (r.method ?? 'GET').toUpperCase()
+    if (!isMethod(method)) {
+      skipped.push(`${method} ${whole}: ${method} is not a method a request can have`)
+      return []
+    }
     let path = whole
     try {
       path = new URL(whole).pathname
     } catch {
       // As written.
     }
-    return {
-      doc: request({
-        name: `${method} ${path}`,
-        method: isMethod(method) ? method : 'GET',
-        url,
-        params,
-        headers,
-        ...(text ? { body: { format: bodyFormat(headers, text), text } } : {}),
-      }),
-    }
+    return [
+      {
+        doc: request({
+          name: `${method} ${path}`,
+          method,
+          url,
+          params,
+          headers,
+          ...(text ? { body: { format: bodyFormat(headers, text), text } } : {}),
+        }),
+      },
+    ]
   })
   return {
     collection: 'Imported',
     requests,
     vars: base ? [{ key: 'base', value: base }] : [],
     leftOut,
+    skipped,
   }
 }

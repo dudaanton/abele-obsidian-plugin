@@ -256,9 +256,135 @@ describe('importing requests from other clients', () => {
     expect(r.leftOut).toContain('the value of password')
   })
 
+  it('reads a Postman collection: folders as collections, its variables, unusable bodies skipped', () => {
+    const postman = JSON.stringify({
+      info: {
+        name: 'Sample shop',
+        schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json',
+      },
+      variable: [
+        { key: 'base', value: 'https://shop.example.test' },
+        { key: 'apiToken', value: 'sk-1' },
+      ],
+      item: [
+        {
+          name: 'Orders',
+          item: [
+            {
+              name: 'Create order',
+              request: {
+                method: 'POST',
+                header: [{ key: 'Content-Type', value: 'application/json' }],
+                url: { raw: '{{base}}/orders?dry=1' },
+                body: { mode: 'raw', raw: '{"qty":2}' },
+              },
+            },
+            {
+              name: 'Upload receipt',
+              request: {
+                method: 'POST',
+                url: '{{base}}/receipts',
+                body: { mode: 'formdata', formdata: [] },
+              },
+            },
+          ],
+        },
+        { name: 'Ping', request: '{{base}}/ping' },
+      ],
+    })
+    expect(detectFormat(postman)).toBe('postman')
+    const r = importRequests(postman)
+    expect(r.collection).toBe('Sample shop')
+    expect(r.requests.map((x) => [x.collection, x.doc.name, x.doc.method, x.doc.url])).toEqual([
+      ['Orders', 'Create order', 'POST', '{{base}}/orders'],
+      [undefined, 'Ping', 'GET', '{{base}}/ping'],
+    ])
+    expect(r.requests[0]!.doc.body).toEqual({ format: 'json', text: '{"qty":2}' })
+    expect(r.skipped).toEqual(['Upload receipt: a formdata body'])
+    expect(r.vars).toEqual([
+      { key: 'base', value: 'https://shop.example.test' },
+      { key: 'apiToken', secret: true },
+    ])
+    expect(JSON.stringify(r)).not.toContain('sk-1')
+  })
+
+  it('reads an Insomnia export with its groups and environment', () => {
+    const insomnia = JSON.stringify({
+      _type: 'export',
+      __export_format: 4,
+      resources: [
+        { _id: 'wrk_1', _type: 'workspace', name: 'Sample API' },
+        { _id: 'fld_1', _type: 'request_group', parentId: 'wrk_1', name: 'Items' },
+        {
+          _id: 'env_1',
+          _type: 'environment',
+          parentId: 'wrk_1',
+          data: { base: 'http://localhost:4000' },
+        },
+        {
+          _id: 'req_1',
+          _type: 'request',
+          parentId: 'fld_1',
+          name: 'List items',
+          method: 'GET',
+          url: '{{ _.base }}/items',
+          parameters: [{ name: 'page', value: '2' }],
+          headers: [{ name: 'Accept', value: 'application/json' }],
+          body: {},
+        },
+      ],
+    })
+    expect(detectFormat(insomnia)).toBe('insomnia')
+    const r = importRequests(insomnia)
+    expect(r.collection).toBe('Sample API')
+    expect(r.requests[0]).toEqual({
+      collection: 'Items',
+      doc: expect.objectContaining({
+        name: 'List items',
+        url: '{{base}}/items',
+        params: [{ key: 'page', value: '2' }],
+        headers: [{ key: 'Accept', value: 'application/json' }],
+      }),
+    })
+    expect(r.vars).toEqual([{ key: 'base', value: 'http://localhost:4000' }])
+  })
+
+  it('reads a Bruno collection export', () => {
+    const bruno = JSON.stringify({
+      name: 'Sample bruno',
+      version: '1',
+      items: [
+        {
+          type: 'folder',
+          name: 'Samples',
+          items: [
+            {
+              type: 'http-request',
+              name: 'Create sample',
+              request: {
+                method: 'POST',
+                url: '{{base}}/samples',
+                headers: [{ name: 'Content-Type', value: 'application/json', enabled: true }],
+                params: [],
+                body: { mode: 'json', json: '{"qty":2}' },
+              },
+            },
+            { type: 'graphql-request', name: 'Query samples', request: {} },
+          ],
+        },
+      ],
+    })
+    expect(detectFormat(bruno)).toBe('bruno-export')
+    const r = importRequests(bruno)
+    expect(r.requests.map((x) => [x.collection, x.doc.name])).toEqual([
+      ['Samples', 'Create sample'],
+    ])
+    expect(r.skipped).toEqual(['Query samples: a graphql-request request'])
+  })
+
   it('says plainly what it cannot read', () => {
     expect(() => importRequests('hello there')).toThrow(
-      'Not a .http file, a curl line, a HAR file, an OpenAPI description or a Bruno request'
+      'The clipboard holds no request: paste a curl command, a .http file, or a Postman, Insomnia or Bruno export'
     )
   })
 })
@@ -290,7 +416,7 @@ describe('bringing imported requests into the project', () => {
     expect(node.envs.get('local')!.vars).toContainEqual({ key: 'port', value: '4000' })
     expect(node.envs.get('local')!.vars[0]).toEqual({ key: 'base', value: 'http://localhost:4000' })
     expect(importWords(outcome, 'local')).toBe(
-      'Imported 1 request. Added to local: port. Left out, as they carried credentials: Cookie. Put them back as saved keys, ${abele_key:name}.'
+      'Imported 1 request into Samples. Added to local: port. Left out, as they carried credentials: Cookie. Put them back as saved keys, ${abele_key:name}.'
     )
   })
 })

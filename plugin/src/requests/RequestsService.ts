@@ -152,6 +152,8 @@ export class RequestsService {
   /** The request whose tab was looked at last: the view marks it, a new request goes beside it. */
   readonly openRequest = shallowRef<{ registrationId: string; projectId: string; id: string }>()
   private readonly chosen = shallowRef<RequestsContext | undefined>(this.remembered())
+  /** Requests the view should bring into sight next: revealed from a tab, or just imported. */
+  readonly reveal = shallowRef<{ collection: string; ids: string[]; at: number }>()
   /** The project the Requests view shows; none once its node has been removed from this device. */
   readonly context = computed(() => {
     const c = this.chosen.value

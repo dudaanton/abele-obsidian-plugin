@@ -58,12 +58,14 @@ request's step.
 ## Import
 
 `src/requests/importers/` reads a `.http` file (several requests, `@name = value` file variables),
-a curl line, a HAR file, an OpenAPI 3 or Swagger 2 description (JSON or YAML) and a Bruno `.bru`
-request; `importInto` makes each a request under a name not yet taken and adds the values the
+a curl line, a HAR file, an OpenAPI 3 or Swagger 2 description (JSON or YAML), a Bruno `.bru`
+request, and Postman (v2.x), Insomnia (v4) and Bruno collection exports; what one cannot carry is
+skipped with its reason; `importInto` makes each a request under a name not yet taken and adds the values the
 source names to the environment in use where it lacks them. A credential written out (an
 `Authorization` or cookie header, `-u`, a Bruno bearer token) is never imported: it is left out and
-named. Offered as the command *Import requests from the clipboard* and the agent tool
-`http_import`; an import screen needs the designer first.
+named. Offered as the command *Import requests from the clipboard*, after which the view unfolds the
+collection and brings the new rows into sight, and the agent tool `http_import`, whose answer
+lists what was skipped and why; an import screen needs the designer first.
 
 ## Not here yet
 

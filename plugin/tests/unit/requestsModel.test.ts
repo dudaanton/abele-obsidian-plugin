@@ -71,7 +71,7 @@ describe('the requests of a project', () => {
       'nowhere has no value in local'
     )
     await expect(model.send('Samples/No key.http', { interactive: true })).rejects.toThrow(
-      'There is no key named absent'
+      'The key absent is not on this device'
     )
     expect(node.sent).toEqual([])
   })
