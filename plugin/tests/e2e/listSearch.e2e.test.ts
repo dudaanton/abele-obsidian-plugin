@@ -1,5 +1,5 @@
 /**
- * Search in the task, log and transaction lists, in the running app, on the scale vault.
+ * Search in the task, backlink, log and transaction lists, in the running app, on the scale vault.
  *
  * The component tier proves the search reaches entries far past the first page and reads each
  * note once. What it cannot show is how long that takes against a real vault — the group note
@@ -9,8 +9,9 @@
  * For the footer of a group note, on the desktop and then in the layout Obsidian gives a phone
  * (`app.emulateMobile(true)`, 390×844):
  *
- * - the search finds the last task in the calendar list and the oldest log, both far past the
- *   first page, and the time from typing to their showing is recorded;
+ * - the search finds the last task in the calendar list, the oldest backlink and the oldest log,
+ *   all far past the first page, and the time from typing to their showing is recorded;
+ * - a query nothing holds empties the backlink list and says so;
  * - under an account note, its chart's period widened back to its first transaction, it finds
  *   that oldest transaction, and in the finance sidebar,
  *   which lists every transaction up to the end of this month, it finds the oldest in the vault;
@@ -70,6 +71,10 @@ interface ListReport {
   /** Elements of the header and the field past the right edge of the screen. */
   over: string[]
   shot: string
+  /** For a list probed for it: what it says, and its entries, for a query nothing holds. */
+  nothing?: { text: string; entries: number; shot: string }
+  /** The picture of the field just opened, before anything is typed. */
+  openShot?: string
   error: string
 }
 
@@ -172,7 +177,20 @@ const probeScript = (tag: string): string => `(async () => {
   // latest date and the oldest log both sort last, far past the first page.
   const body = async (path) => (await app.vault.cachedRead(app.vault.getAbstractFileByPath(path))).replace(/^---\\n[\\s\\S]*?\\n---\\n/, '')
 
-  const probe = async (label, listSel, entrySel, query, isTarget, holds, expectedPaths) => {
+  // The lists above one being pictured grow a page whenever the scroll passes their end — the
+  // backlinks run to thousands — which keeps pushing it down. Hidden for the picture.
+  const shootList = async (list, label) => {
+    const above = []
+    for (let el = list.previousElementSibling; el; el = el.previousElementSibling) above.push(el)
+    for (const el of above) el.style.display = 'none'
+    list.scrollIntoView({ block: 'start' })
+    await wait(300)
+    const path = await shoot(label)
+    for (const el of above) el.style.display = ''
+    return path
+  }
+
+  const probe = async (label, listSel, entrySel, query, isTarget, holds, expectedPaths, emptySel) => {
     const entry = { before: 0, after: 0, found: false, strays: [], marked: 0, ms: 0, restored: 0, closed: false, over: [], shot: '', error: '' }
     report[label] = entry
     window.__abeleListSearchStep = label
@@ -187,6 +205,7 @@ const probeScript = (tag: string): string => `(async () => {
       if (!(await until(() => list.querySelector('input[type="search"]'), 3000))) throw new Error('no search field')
       const input = list.querySelector('input[type="search"]')
       entry.over = overEdge([list.firstElementChild, input.closest('.abele-obsidian-search')])
+      if (emptySel) entry.openShot = await shootList(list, label + '-open')
       const started = performance.now()
       type(input, query)
       if (!(await until(() => entries().some(isTarget), 20000))) throw new Error('the entry searched for never showed')
@@ -217,15 +236,18 @@ const probeScript = (tag: string): string => `(async () => {
         entry.shownPaths = [...new Set(entries().map((e) => e.getAttribute('data-abele-anchor')?.replace(/^task:/, '') ?? 'missing task path'))].sort()
       }
       window.__abeleListSearchStep = label + ' shoot'
-      // The lists above this one grow a page whenever the scroll passes their end — the
-      // backlinks run to thousands — which keeps pushing this one down. Hidden for the picture.
-      const above = []
-      for (let el = list.previousElementSibling; el; el = el.previousElementSibling) above.push(el)
-      for (const el of above) el.style.display = 'none'
-      list.scrollIntoView({ block: 'start' })
-      await wait(300)
-      entry.shot = await shoot(label)
-      for (const el of above) el.style.display = ''
+      entry.shot = await shootList(list, label)
+      if (emptySel) {
+        window.__abeleListSearchStep = label + ' nothing'
+        type(input, 'qqzx nothing holds this')
+        await until(() => !entries().length && list.querySelector(emptySel), 10000)
+        await wait(600)
+        entry.nothing = {
+          text: list.querySelector(emptySel)?.textContent.trim() ?? '',
+          entries: entries().length,
+          shot: await shootList(list, label + '-nothing'),
+        }
+      }
       window.__abeleListSearchStep = label + ' escape'
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }))
       await until(() => !list.querySelector('input[type="search"]'), 3000)
@@ -274,6 +296,23 @@ const probeScript = (tag: string): string => `(async () => {
       expectedPaths
     )
     report['tasks'].query = taskQuery
+
+    // The backlink sorted last: the one written first, or written on no day at all.
+    const backlinks = [...relations.notes.values()].filter((n) => n.filePath !== ${JSON.stringify(GROUP_NOTE)})
+    backlinks.sort((a, b) => (b.createdAt?.unix() ?? 0) - (a.createdAt?.unix() ?? 0))
+    const firstWritten = backlinks[backlinks.length - 1]
+    if (!firstWritten) throw new Error('the footer holds no backlink')
+    await probe(
+      'backlinks',
+      '.abele-notes-list',
+      '.abele-notes-list__item',
+      firstWritten.name,
+      (e) => e.querySelector('.abele-card__name')?.textContent.trim() === firstWritten.name,
+      () => true,
+      undefined,
+      '.abele-notes-list__no-notes'
+    )
+    report['backlinks'].query = firstWritten.name
 
     const logs = [...relations.logs.values()].filter((l) => !l.noteNotFound)
     logs.sort((a, b) => a.getLogDateOrToday().unix() - b.getLogDateOrToday().unix())
@@ -390,7 +429,7 @@ const run = async (tag: string): Promise<Report> => {
 
 const available = isObsidianRunning() && hasTestApi()
 
-describe.skipIf(!available)('searching the task, log and transaction lists', () => {
+describe.skipIf(!available)('searching the task, backlink, log and transaction lists', () => {
   let desktop: Report = {}
   let phone: Report = {}
   let size: [number, number] = [0, 0]
@@ -430,7 +469,7 @@ describe.skipIf(!available)('searching the task, log and transaction lists', () 
   it('runs through both lists on both layouts', () => {
     expect(desktop.run?.error ?? '').toBe('')
     expect(phone.run?.error ?? '').toBe('')
-    for (const key of ['tasks', 'logs', 'transactions', 'finance']) {
+    for (const key of ['tasks', 'backlinks', 'logs', 'transactions', 'finance']) {
       expect(desktop[key]?.error, key).toBe('')
       expect(phone[key]?.error, `phone ${key}`).toBe('')
     }
@@ -458,6 +497,13 @@ describe.skipIf(!available)('searching the task, log and transaction lists', () 
     }
   })
 
+  it('says nothing matches when no backlink holds the words', () => {
+    for (const r of [desktop.backlinks, phone.backlinks]) {
+      expect(r?.nothing?.entries).toBe(0)
+      expect(r?.nothing?.text).toBe('Nothing matches the search.')
+    }
+  })
+
   it('brings the whole list back on Escape', () => {
     for (const [label, r] of both()) {
       expect(r.closed, label).toBe(true)
@@ -467,6 +513,7 @@ describe.skipIf(!available)('searching the task, log and transaction lists', () 
 
   it('keeps the header and the field inside a phone screen', () => {
     expect(phone.tasks?.over ?? ['no report']).toEqual([])
+    expect(phone.backlinks?.over ?? ['no report']).toEqual([])
     expect(phone.logs?.over ?? ['no report']).toEqual([])
     expect(phone.transactions?.over ?? ['no report']).toEqual([])
     expect(phone.finance?.over ?? ['no report']).toEqual([])
