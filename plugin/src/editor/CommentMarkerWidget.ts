@@ -1,12 +1,15 @@
 /**
- * The icon that replaces `%%c:…%%` in live preview.
+ * The icon that replaces `%%c:…%%` in live preview: `CommentMarker.vue`, rendered as the
+ * widget's own element. The reading view and chat answers draw the same marker through `toDOM`
+ * and take it out with `unrenderKitRoot` where they remove it.
  *
  * `CommentState` is imported as a type only: the field constructs the widget, so a value
  * import would close a cycle between the two modules.
  */
 import { WidgetType } from '@codemirror/view'
-import { setIcon } from 'obsidian'
 import type { CommentState } from './CommentPlugin'
+import CommentMarker from '@/components/CommentMarker.vue'
+import { renderKitRoot, unrenderKitRoot } from '@/components/obsidian/mount'
 
 export class CommentMarkerWidget extends WidgetType {
   constructor(
@@ -23,48 +26,19 @@ export class CommentMarkerWidget extends WidgetType {
   }
 
   toDOM(): HTMLElement {
-    const el = createSpan({
-      cls: 'abele-comment-marker',
-      attr: {
-        'data-comment-ids': this.ids.join(','),
-        'data-comment-kind': this.kind,
-        role: 'button',
-        tabindex: '0',
-        'aria-label': `${this.kind === 'human' ? 'Open text comments' : 'Open Ask here'}${this.unresolved ? ' (unresolved passage)' : ''}`,
-      },
-    })
+    return renderKitRoot(CommentMarker, {
+      ids: this.ids,
+      count: this.count,
+      state: this.state,
+      open: this.open,
+      kind: this.kind,
+      unresolved: this.unresolved,
+      onPress: this.onClick,
+    }).el
+  }
 
-    if (this.state !== 'idle') el.addClass(`abele-comment-marker_${this.state}`)
-    if (this.open) el.addClass('abele-comment-marker_open')
-
-    const icon = createSpan({ cls: 'abele-comment-marker__icon', parent: el })
-    setIcon(icon, this.kind === 'human' ? 'message-square' : 'message-circle')
-    if (this.unresolved) el.addClass('abele-comment-marker_orphan')
-
-    // A count only earns its space when there is something to count. A comment nobody has
-    // said anything in yet is a marker and no digit — a "0" beside an icon is not information.
-    if (this.count > 0) {
-      createSpan({
-        cls: 'abele-comment-marker__count',
-        text: String(this.count),
-        parent: el,
-      })
-    }
-
-    el.addEventListener('click', (event) => {
-      event.preventDefault()
-      event.stopPropagation()
-      this.onClick(this.ids)
-    })
-
-    el.addEventListener('keydown', (event) => {
-      if (event.key !== 'Enter' && event.key !== ' ') return
-      event.preventDefault()
-      event.stopPropagation()
-      this.onClick(this.ids)
-    })
-
-    return el
+  destroy(dom: HTMLElement): void {
+    unrenderKitRoot(dom)
   }
 
   eq(other: CommentMarkerWidget): boolean {

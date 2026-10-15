@@ -6,7 +6,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, onUnmounted } from 'vue'
 import type { Component as ObsidianComponent } from 'obsidian'
-import { mountKit, renderKit, unrenderKit } from '@/components/obsidian/mount'
+import {
+  mountKit,
+  renderKit,
+  renderKitRoot,
+  unrenderKit,
+  unrenderKitRoot,
+} from '@/components/obsidian/mount'
 
 /** An owner that runs what was registered when it unloads, as Obsidian's `Component` does. */
 function owner() {
@@ -74,5 +80,34 @@ describe('renderKit', () => {
     dispose()
     expect(unmounted).toHaveBeenCalledTimes(2)
     expect(el.childElementCount).toBe(0)
+  })
+})
+
+describe('renderKitRoot', () => {
+  /**
+   * For a caller that has to hand an element on rather than fill one — a CodeMirror widget's
+   * `toDOM`, an icon put between words. The component's own root is that element: no wrapper
+   * box, so the page holds exactly what the component draws.
+   */
+  it('hands back the root itself, filled, and takes it out of wherever it was put', () => {
+    const { el, dispose } = renderKitRoot(Sample, { text: 'Inline' })
+    expect(el.className).toBe('sample')
+    expect(el.textContent).toBe('Inline')
+    const line = document.body.appendChild(document.createElement('p'))
+    line.append('before ', el, ' after')
+    dispose()
+    dispose()
+    expect(unmounted).toHaveBeenCalledOnce()
+    expect(el.isConnected).toBe(false)
+    expect(line.textContent).toBe('before  after')
+  })
+
+  it('finds the handle again from the element alone', () => {
+    const { el } = renderKitRoot(Sample, { text: 'Found' })
+    document.body.appendChild(el)
+    unrenderKitRoot(el)
+    unrenderKitRoot(el)
+    expect(unmounted).toHaveBeenCalledOnce()
+    expect(el.isConnected).toBe(false)
   })
 })

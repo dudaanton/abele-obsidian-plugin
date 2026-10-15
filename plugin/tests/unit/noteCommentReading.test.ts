@@ -12,6 +12,7 @@ import {
   type MarkdownRenderChild,
 } from 'obsidian'
 import { setTextCommentInfoSource, setTextCommentClickHandler } from '@/editor/CommentPlugin'
+import { kitRootRendered } from '@/components/obsidian/mount'
 
 const source = (quotes: Record<string, string>) =>
   setTextCommentInfoSource({
@@ -83,9 +84,22 @@ describe('ordinary-note reading comments', () => {
       },
     } as MarkdownPostProcessorContext)
     child!.load()
-    expect(el.querySelector('[data-comment-kind="human"]')).not.toBeNull()
+    const icon = el.querySelector('[data-comment-kind="human"]')
+    expect(icon).not.toBeNull()
+    expect(kitRootRendered(icon!)).toBe(true)
     child!.unload()
     expect(el.querySelector('[data-comment-kind="human"]')).toBeNull()
+    expect(kitRootRendered(icon!)).toBe(false)
+  })
+  it('takes out the icons of a previous paint when it paints again', () => {
+    const text = 'sample%%c:aaaaaa%%'
+    source({ aaaaaa: 'sample' })
+    const el = root('<p>sample</p>')
+    paintNoteComments(el, text, 0, text.length, 'sample.md')
+    const first = el.querySelector('.abele-comment-marker')!
+    paintNoteComments(el, text, 0, text.length, 'sample.md')
+    expect(kitRootRendered(first)).toBe(false)
+    expect(el.querySelectorAll('.abele-comment-marker')).toHaveLength(1)
   })
   it('maps formatted multiline source to DOM text, preserving links and using separate targets', () => {
     const text = 'First **bold [label](sample.md)**\nand `code`%%c:aaaaaa%%'

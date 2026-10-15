@@ -1,4 +1,5 @@
 import { CommentMarkerWidget } from '@/editor/CommentMarkerWidget'
+import { unrenderKitRoot } from '@/components/obsidian/mount'
 import type { CommentState } from '@/editor/CommentPlugin'
 import { parseChat } from './ChatLog'
 import { getPathToLeaf } from './chatTree'
@@ -126,9 +127,13 @@ export function locateQuote(
   return best === -1 ? null : { from: best, to: best + quote.length }
 }
 
-/** Takes back everything a previous draw added, leaving the answer as it was rendered. */
-function unpaint(root: HTMLElement): void {
+/**
+ * Takes back everything a previous draw added, leaving the answer as it was rendered. Called
+ * before every draw and when the answer leaves the page.
+ */
+export function unpaintMessageComments(root: HTMLElement): void {
   for (const el of Array.from(root.querySelectorAll(`.abele-comment-marker[${PAINTED}]`))) {
+    unrenderKitRoot(el)
     el.remove()
   }
   for (const el of Array.from(root.querySelectorAll(`.abele-comment__quote[${PAINTED}]`))) {
@@ -191,7 +196,7 @@ export function paintMessageComments(
   comments: PaintedComment[],
   onOpen: (id: string) => void
 ): void {
-  unpaint(root)
+  unpaintMessageComments(root)
 
   for (const comment of comments) {
     const text = textOf(textNodes(root))
@@ -211,10 +216,11 @@ export function paintMessageComments(
       comment.count,
       comment.state,
       comment.open,
-      (ids) => onOpen(ids[0])
+      (ids) => onOpen(ids[0]),
+      'ai',
+      !!comment.quote && !found
     ).toDOM()
     icon.setAttribute(PAINTED, '')
-    if (comment.quote && !found) icon.classList.add('abele-comment-marker_orphan')
 
     if (after) after.after(icon)
     else endOf(root).appendChild(icon)

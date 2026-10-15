@@ -12,11 +12,13 @@ import {
   selectionAnchor,
   locateQuote,
   paintMessageComments,
+  unpaintMessageComments,
   buildMessageCommentContext,
   type PaintedComment,
 } from '@/ai/messageComments'
 import { serializeChat } from '@/ai/ChatLog'
 import type { ChatMessage } from '@/ai/types'
+import { kitRootRendered } from '@/components/obsidian/mount'
 
 function rendered(html: string): HTMLElement {
   const root = document.createElement('div')
@@ -115,7 +117,9 @@ describe('drawing comments over an answer', () => {
     expect(root.querySelectorAll('.abele-comment-marker')).toHaveLength(1)
     expect(root.querySelectorAll('.abele-comment__quote')).toHaveLength(1)
     expect(root.querySelector('.abele-comment__quote_busy')).not.toBeNull()
+    const icon = root.querySelector('.abele-comment-marker')!
     paintMessageComments(root, [], vi.fn())
+    expect(kitRootRendered(icon)).toBe(false)
     expect(root.textContent).toBe(before)
     expect(root.querySelector('.abele-comment__quote')).toBeNull()
   })
@@ -128,6 +132,19 @@ describe('drawing comments over an answer', () => {
     const icon = root.querySelector('.abele-comment-marker')!
     expect(icon.classList.contains('abele-comment-marker_orphan')).toBe(true)
     expect(root.lastElementChild?.contains(icon)).toBe(true)
+  })
+
+  it('is taken back whole when the answer goes', () => {
+    const root = rendered('<p>Take the night train.</p>')
+    const before = root.textContent
+    paintMessageComments(root, [comment({ id: 'a', quote: 'night', start: 9 })], vi.fn())
+    const icon = root.querySelector('.abele-comment-marker')!
+
+    unpaintMessageComments(root)
+
+    expect(kitRootRendered(icon)).toBe(false)
+    expect(root.querySelector('.abele-comment-marker, .abele-comment__quote')).toBeNull()
+    expect(root.textContent).toBe(before)
   })
 
   it('puts a comment on the whole answer at its end', () => {

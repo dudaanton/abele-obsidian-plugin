@@ -8,6 +8,8 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 import { CommentMarkerWidget } from '@/editor/CommentMarkerWidget'
+import { MixedCommentMarkerWidget } from '@/editor/MixedCommentMarkerWidget'
+import { kitRootRendered } from '@/components/obsidian/mount'
 const noop = () => {}
 /** The four arguments before the handler, spelled once: ids, what was said, state, open. */
 const widget = (
@@ -80,5 +82,27 @@ describe('the comment marker widget', () => {
     expect(first.eq(widget(['k7d2ph'], 2, 'busy'))).toBe(false)
     expect(first.eq(widget(['k7d2ph'], 2, 'idle', true))).toBe(false)
     expect(first.eq(widget(['k7d2ph', '3mq0xa'], 2))).toBe(false)
+  })
+
+  it('is taken out when CodeMirror drops it', () => {
+    const one = widget(['k7d2ph'])
+    const el = one.toDOM()
+    expect(kitRootRendered(el)).toBe(true)
+
+    one.destroy(el)
+
+    expect(kitRootRendered(el)).toBe(false)
+  })
+
+  it('takes out both markers of a mixed token with it', () => {
+    const mixed = new MixedCommentMarkerWidget([widget(['k7d2ph']), widget(['3mq0xa'])])
+    const el = mixed.toDOM()
+    const markers = Array.from(el.querySelectorAll('.abele-comment-marker'))
+    expect(markers).toHaveLength(2)
+    expect(markers.every(kitRootRendered)).toBe(true)
+
+    mixed.destroy(el)
+
+    expect(markers.some(kitRootRendered)).toBe(false)
   })
 })

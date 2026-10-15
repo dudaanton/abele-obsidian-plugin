@@ -10,6 +10,7 @@ import { Menu } from 'obsidian'
 import { CommentService } from '@/ai/CommentService'
 import {
   paintMessageComments,
+  unpaintMessageComments,
   paintReplyHighlights,
   selectionAnchor,
   messageRenderedText,
@@ -212,6 +213,9 @@ export function useMessageComments(
 
   onBeforeUnmount(() => {
     held = null
+    // The answer leaves the page with its markers in it; take them out while it is still there.
+    const el = root()
+    if (el) unpaintMessageComments(el)
   })
 
   return { content, paint, capture, captureFresh, askHere, replyHere, onContentMenu }

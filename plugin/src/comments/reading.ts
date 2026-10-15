@@ -1,4 +1,5 @@
 import { MarkdownRenderChild, type MarkdownPostProcessorContext } from 'obsidian'
+import { unrenderKitRoot } from '@/components/obsidian/mount'
 import { appearanceClass } from './model'
 import { sourceCharacters, type SourceCharacter } from './sourceProjection'
 import { parseMarkers, resolveQuote } from '@/editor/commentMarkers'
@@ -46,7 +47,10 @@ function mapping(root: HTMLElement, text: string, from: number, to: number) {
   return { projected, dom }
 }
 function unpaint(root: HTMLElement): void {
-  for (const icon of Array.from(root.querySelectorAll(`[${ICON}]`))) icon.remove()
+  for (const icon of Array.from(root.querySelectorAll(`[${ICON}]`))) {
+    unrenderKitRoot(icon)
+    icon.remove()
+  }
   for (const quote of Array.from(root.querySelectorAll(`[${QUOTE}]`)))
     quote.replaceWith(...Array.from(quote.childNodes))
   root.normalize()
