@@ -30,6 +30,14 @@ describe('indent guides', () => {
 })
 
 describe('drawReadingGuides', () => {
+  it('retains the terminal line break as selectable layout without adding source text', () => {
+    const code = document.createElement('code')
+    code.textContent = 'a\n  b\n\n  c\n'
+    drawReadingGuides(code, 4)
+    expect(code.querySelectorAll('.abele-code-newline')).toHaveLength(1)
+    expect(code.querySelector('.abele-code-line:last-child > br.abele-code-newline')).not.toBeNull()
+    expect(code.textContent).toBe('a\n  b\n\n  c\n')
+  })
   it('guides a single indented line and aligns tabs to the vault size', () => {
     const code = document.createElement('code')
     code.textContent = '\tvalue\n'

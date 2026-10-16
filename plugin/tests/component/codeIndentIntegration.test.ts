@@ -59,9 +59,22 @@ it('decorates parsed editor lines, blanks and edits while preserving selection a
       changes: { from: doc.indexOf('        c'), to: doc.indexOf('        c') + 8, insert: '  ' },
     })
     expect(rows()[2].style.getPropertyValue('--abele-guide-depth')).toBe('1')
+    // Live Preview can still report the closed block's visible ranges during the
+    // selection update which opens it. The viewport includes its source lines.
+    Object.defineProperty(view, 'visibleRanges', {
+      configurable: true,
+      get: () => [{ from: 0, to: 5 }],
+    })
+    view.dispatch({ selection: { anchor: doc.indexOf('\tb') } })
+    expect(rows()).toHaveLength(3)
+    delete (view as unknown as { visibleRanges?: unknown }).visibleRanges
     enabled = false
     view.dispatch({ effects: refreshCodeGuides.of(null) })
     expect(rows()).toHaveLength(0)
+    enabled = true
+    view.dispatch({ selection: { anchor: 1 } })
+    expect(rows()).toHaveLength(3)
+    view.dispatch({ selection: { anchor: 0 } })
     expect(view.state.doc.toString()).toBe(doc.replace('        c', '  c'))
     expect(view.state.selection.main.anchor).toBe(0)
   } finally {

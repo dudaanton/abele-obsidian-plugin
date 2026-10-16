@@ -24,6 +24,13 @@ export function drawReadingGuides(code: HTMLElement, tabSize: number): void {
       return row
     })
   )
+  if (text.endsWith('\n')) {
+    // Chromium omits a terminal preformatted newline from selection unless there
+    // is a following line break in layout. This adds no text or visible line height.
+    const end = code.ownerDocument.win.createEl('br')
+    end.className = 'abele-code-newline'
+    rows.at(-1).append(end)
+  }
 }
 
 /** The code's nodes cut at each newline into one span per line, ancestors cloned on both sides. */

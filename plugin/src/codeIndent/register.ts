@@ -71,26 +71,34 @@ export function codeGuideExtension(settings: Settings) {
     class {
       decorations: DecorationSet = Decoration.none
       blocks: { start: number; end: number; depths: number[]; step: number }[] = []
+      tree: ReturnType<typeof syntaxTree> | undefined
+      config = ''
       constructor(view: EditorView) {
         this.draw(view)
       }
       update(update: ViewUpdate) {
-        if (
-          update.docChanged ||
-          syntaxTree(update.startState) !== syntaxTree(update.state) ||
-          update.transactions.some((t) => t.effects.some((e) => e.is(refreshCodeGuides)))
+        // HyperMD may advance the parse context used by both states. Compare with
+        // the tree we actually drew, rather than reading the old state again.
+        const changed =
+          this.tree !== syntaxTree(update.state) || this.config !== JSON.stringify(settings())
+        const refreshed = update.transactions.some((t) =>
+          t.effects.some((e) => e.is(refreshCodeGuides))
         )
-          this.blocks = []
+        if (update.docChanged || changed || refreshed) this.blocks = []
         if (
           update.docChanged ||
           update.viewportChanged ||
-          syntaxTree(update.startState) !== syntaxTree(update.state) ||
-          update.transactions.some((t) => t.effects.some((e) => e.is(refreshCodeGuides)))
+          update.selectionSet ||
+          update.focusChanged ||
+          changed ||
+          refreshed
         )
           this.draw(update.view)
       }
       draw(view: EditorView) {
         const config = settings()
+        this.tree = syntaxTree(view.state)
+        this.config = JSON.stringify(config)
         if (!config.enabled) {
           this.decorations = Decoration.none
           return
@@ -120,7 +128,22 @@ export function codeGuideExtension(settings: Settings) {
           }
           return kinds.get(n)
         }
-        for (const range of view.visibleRanges) {
+        // When a selection opens a Live Preview block, visibleRanges can still
+        // describe its replacement widget. Include the selected code block now;
+        // do not wait for a subsequent viewport or parser update to expose it.
+        const selected = view.state.selection.ranges
+          .flatMap((r) => [r.anchor, r.head])
+          .filter(
+            (p) =>
+              p >= view.viewport.from &&
+              p <= view.viewport.to &&
+              at(view.state.doc.lineAt(p).number) === 'code'
+          )
+        const ranges = [
+          ...view.visibleRanges,
+          ...selected.map((p) => ({ from: p, to: p, selected: true })),
+        ]
+        for (const range of ranges) {
           const first = view.state.doc.lineAt(range.from).number
           const last = view.state.doc.lineAt(range.to).number
           for (let n = first; n <= last; n++) {
@@ -144,7 +167,16 @@ export function codeGuideExtension(settings: Settings) {
               if (this.blocks.length > 16) this.blocks.shift()
             }
             const { start, end, depths, step } = block
-            for (let i = n; i <= Math.min(end, last); i++) {
+            const markFrom =
+              'selected' in range
+                ? Math.max(start, view.state.doc.lineAt(view.viewport.from).number)
+                : n
+            const markTo =
+              'selected' in range
+                ? Math.min(end, view.state.doc.lineAt(view.viewport.to).number)
+                : Math.min(end, last)
+            for (let i = markFrom; i <= markTo; i++) {
+              if (seen.has(i)) continue
               seen.add(i)
               const depth = depths[i - start]
               if (depth)
@@ -210,6 +242,7 @@ export function registerCodeIndentGuides(plugin: Plugin): void {
           continue
         }
         // Unwrap only our line containers. Prism nodes and all original text survive.
+        for (const end of Array.from(code.querySelectorAll('.abele-code-newline'))) end.remove()
         for (const row of Array.from(code.querySelectorAll(':scope > .abele-code-line')))
           row.replaceWith(...Array.from(row.childNodes))
         code.style.removeProperty('--abele-guide-step')

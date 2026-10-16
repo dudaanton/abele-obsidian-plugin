@@ -8,6 +8,10 @@
   display: block;
   line-height: calc(var(--line-height-normal) * var(--font-text-size));
 }
+.markdown-rendered pre > code .abele-code-newline {
+  font-size: 0;
+  line-height: 0;
+}
 .markdown-rendered.show-indentation-guide pre > code .abele-code-line {
   position: relative;
 
