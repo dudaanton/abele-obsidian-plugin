@@ -44,6 +44,7 @@ export function connectionError(error: unknown, startup = false): string {
           'The server is full. The file stays here and can be sent after space is available.',
         forbidden: 'This connection does not allow that action.',
         scope_unavailable: 'This folder or group is no longer available.',
+        scope_deleted: 'This folder or group is no longer available.',
       } as Record<string, string>
     )[code ?? ''] ??
     (startup && error instanceof Error && error.message
@@ -104,14 +105,18 @@ export async function connectStage<T>(
     )
   }
 }
+/** The server's stand-in path for a grant whose folder or group has left the caller's scope. */
+const UNAVAILABLE_SCOPE_PATH = '(unavailable)'
 export const scopeName = (scope: V2Scope | null) =>
   !scope
     ? 'Not connected'
-    : scope.kind === 'group'
-      ? 'Group: ' + scope.path.split('/').pop().replace(/\.md$/i, '')
-      : scope.path === '/'
-        ? 'Whole vault'
-        : 'Folder: ' + scope.path
+    : scope.path === UNAVAILABLE_SCOPE_PATH
+      ? (scope.kind === 'group' ? 'Group' : 'Folder') + ' outside this connection'
+      : scope.kind === 'group'
+        ? 'Group: ' + scope.path.split('/').pop().replace(/\.md$/i, '')
+        : scope.path === '/'
+          ? 'Whole vault'
+          : 'Folder: ' + scope.path
 export const connectionName = (record: Pick<TokenConnectionRecord, 'scope' | 'address'>) =>
   scopeName(record.scope) + ' · ' + new URL(record.address).host
 export const statusName = (status: string) =>
@@ -130,7 +135,10 @@ export const statusName = (status: string) =>
     }) as Record<string, string>
   )[status] ?? 'Needs attention'
 export interface ConnectionActivity {
+  /** Diagnostics only: the code and original message behind `error`'s friendly text. */
+  failure?: { code?: string; message: string }
   transfer?: import('./transferProgress').TransferSnapshot
+  reconciliation?: import('@abele/sync-core').ReconciliationState | null
   pull?: { stage: string; completed: number; total: number }
   comparison?: { completed: number; total: number }
   startup?: {
@@ -164,6 +172,10 @@ export function connectionStatusText(
   row: Pick<TokenConnectionRecord, 'status' | 'paused'>,
   activity?: ConnectionActivity
 ): string {
+  if (activity?.reconciliation && activity.reconciliation.phase !== 'complete')
+    return activity.reconciliation.reason.startsWith('server generation changed')
+      ? 'The server was restored from a backup — checking files'
+      : 'Checking restored files'
   if (activity?.startup) {
     const one = activity.startup
     return `${one.stage}… ${one.completed}/${one.total}${one.outcome === 'failed' ? ' · Needs attention' : ''}`
@@ -185,6 +197,7 @@ export interface TokenUiRuntime extends ExecutableApplyPort, ConsentResolvePort 
   scanSnapshot?(): ReturnType<import('./exchangeTrace').ExchangeTrace['snapshot']>
   assertCurrent?(): void
   sync(): Promise<void>
+  reconcile?(): Promise<void>
   pause(paused: boolean): Promise<void>
   disconnect(): Promise<void>
   /** Stable local identities already recorded by the engine, never derived from a path. */
@@ -383,7 +396,12 @@ export class TokenUi {
     this.startupProgress(id, completed, total)
     this.activity.value = {
       ...this.activity.value,
-      [id]: { ...this.activity.value[id], inspection: { completed, total }, error: undefined },
+      [id]: {
+        ...this.activity.value[id],
+        inspection: { completed, total },
+        error: undefined,
+        failure: undefined,
+      },
     }
   }
   startupStage(id: string, stage: string): void {

@@ -27,6 +27,13 @@ export const DEFAULT_SCRIPTS_FOLDER = 'Scripts'
 /** The vault's ignore file, read from its root. */
 export const IGNORE_FILE = '.abele-sync-ignore'
 
+/** Wire identity comparison only; callers retain physical spellings for I/O. */
+export function withinSyncPath(path: string, prefix: string): boolean {
+  path = path.normalize('NFC')
+  prefix = prefix.normalize('NFC')
+  return path === prefix || path.startsWith(prefix + '/')
+}
+
 /**
  * Whether this vault's config folder is the one the wire knows.
  *

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { decodeAccessToken, V2Client, V2ClientError } from '@/sync/v2/client'
+import { V2EventSchema } from '@/sync/v2/contract'
 
 const token = {
   v: 1,
@@ -45,6 +46,39 @@ describe('v2 token client', () => {
       Response.json({ error: { code: 'unauthorized' } }, { status: 401 })
     )
     await expect(revoked.connection()).rejects.toMatchObject({ code: 'revoked' })
+  })
+  it('keeps a server-side scope deletion apart from an ordinary revocation', async () => {
+    const deleted = new V2Client(token as ReturnType<typeof decodeAccessToken>, async () =>
+      Response.json(
+        { error: { code: 'scope_deleted', message: 'Deleted on the server' } },
+        { status: 401 }
+      )
+    )
+    await expect(deleted.connection()).rejects.toMatchObject({ code: 'scope_deleted', status: 401 })
+  })
+  it('accepts read-only flags and grants whose target left the issuer scope', async () => {
+    const escaped = {
+      id: 'child',
+      scope: { kind: 'folder', id: 'moved', path: '(unavailable)' },
+      label: 'Sample device',
+      issued_by_token_id: 'parent',
+      read_only: true,
+      created_at: '2026-01-01T00:00:00Z',
+      revoked_at: null,
+    }
+    const client = new V2Client(token as ReturnType<typeof decodeAccessToken>, async (url) =>
+      Response.json(
+        new URL(String(url)).pathname === '/v2/connection'
+          ? { ...authority, read_only: true }
+          : { items: [escaped] }
+      )
+    )
+    expect((await client.tokens()).items).toEqual([escaped])
+    expect((await client.connection()).read_only).toBe(true)
+    expect(V2EventSchema.parse({ type: 'connection', status: 'scope_deleted' })).toEqual({
+      type: 'connection',
+      status: 'scope_deleted',
+    })
   })
   it('preserves the idempotency key and rejects malformed server replies', async () => {
     let headers = new Headers()

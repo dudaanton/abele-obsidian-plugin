@@ -2,7 +2,15 @@ import { connectionAdapter, connectionInspectionApp, connectionJournalApp } from
 import { connectionPrivateRoot } from './connectionPaths'
 import { Platform, type App, type EventRef } from 'obsidian'
 import { caseKey, encodeAccessToken } from '@abele/sync-protocol'
-import type { EngineStatus, SyncReport } from '@abele/sync-core'
+import {
+  V2EngineClient,
+  GENERATION_KEY,
+  reconcileGeneration,
+  fenceRestoredJournal,
+  type EngineStatus,
+  type SyncReport,
+} from '@abele/sync-core'
+import { RESTORE_HEADER, fenceHostGeneration, assertResponseGeneration } from './restoreFence'
 import { ConnectionEngines, type ConnectionRuntime } from './connectionEngines'
 import { TokenEngineRuntime } from './tokenEngineRuntime'
 import type { TokenConnectionRecord } from './tokenConnectionRegistry'
@@ -36,7 +44,7 @@ import { tokenExternalBinding } from './tokenExternalBinding'
 import { TokenSettingsPort } from './tokenSettingsPort'
 import { TokenAttachmentHost } from './tokenAttachmentHost'
 import type { IndexedDbStateStore } from './IndexedDbStateStore'
-import { readIgnore, ignoreFor, scopeKey } from './scope'
+import { readIgnore, ignoreFor, scopeKey, withinSyncPath } from './scope'
 import { OwnSettingsWatch } from './ownSettings'
 import { ExternalFileActions } from './external/fileActions'
 import { externalActionsOf } from './external/actionHost'
@@ -272,14 +280,20 @@ export class TokenEngines {
       id,
       code === 'unauthorized' || code === 'forbidden'
         ? 'needs-token'
-        : code === 'scope_updating' || code === 'scope_unavailable'
-          ? code
+        : code === 'scope_updating' || code === 'scope_unavailable' || code === 'scope_deleted'
+          ? code === 'scope_deleted'
+            ? 'scope_unavailable'
+            : code
           : code === 'offline' || code === 'unreachable'
             ? 'offline'
             : 'error'
     )
     this.ui.publish(id, {
       error: connectionError(error, !this.ui.runtimes.has(id)),
+      failure: {
+        ...(code ? { code } : {}),
+        message: error instanceof Error ? error.message : (JSON.stringify(error) ?? 'unknown'),
+      },
       inspection: undefined,
     })
   }
@@ -520,6 +534,62 @@ export class TokenEngines {
           runtime?.written(path)
         },
       })
+      if (ordinary.needsRecoveryHandshake() || (await state.getExternalState()) !== null)
+        await stage('Checking server restore generation', async () => {
+          const transport = transportOf(this.deps)
+          const client = new V2EngineClient(
+            encodeAccessToken({
+              v: 1,
+              address: record.address,
+              key,
+              scope: record.scope,
+            }),
+            {
+              fetch: async (input, init) => {
+                assertActive()
+                const connection =
+                  new URL(
+                    typeof input === 'string'
+                      ? input
+                      : input instanceof URL
+                        ? input.href
+                        : input.url
+                  ).pathname === '/v2/connection'
+                const headers = new Headers(init?.headers)
+                const expected = await state.getMeta(GENERATION_KEY)
+                if (!connection && expected) headers.set(RESTORE_HEADER, expected)
+                const response = await transport(input, {
+                  ...init,
+                  headers,
+                  signal: startup.signal,
+                })
+                assertActive()
+                if (!connection) assertResponseGeneration(response, expected)
+                if (response.ok && connection) {
+                  const generation = response.headers.get(RESTORE_HEADER)
+                  await fenceHostGeneration(
+                    state,
+                    generation,
+                    (archive) => ordinary.retireGeneration(generation, archive),
+                    async (archive) => {
+                      const reviews = this.ui.reviews?.executables
+                      if (!reviews) return
+                      await archive(
+                        (await reviews.state()).filter((one) => one.source.id === record.id)
+                      )
+                      await reviews.forgetSource(record.id)
+                    }
+                  )
+                  await reconcileGeneration(state, generation ?? undefined)
+                }
+                return response
+              },
+            }
+          )
+          const head = await client.state()
+          await fenceRestoredJournal(state, head.head_seq, ordinary, undefined, client)
+          await ordinary.fenceRecovery(state, head.head_seq)
+        })
       await stage('Recovering local files', () => ordinary.recover())
       // Validate retained recovery bytes here. recoverExternalState below owns the
       // single full projection inspection, including configuration/control files.
@@ -534,7 +604,10 @@ export class TokenEngines {
             undefined,
             assertActive,
             inspection,
-            false
+            false,
+            false,
+            false,
+            true
           ),
         true
       )
@@ -578,9 +651,7 @@ export class TokenEngines {
               runtime
                 ? runtime.covers(path)
                 : record.scope.kind === 'folder' &&
-                  (record.scope.path === '/' ||
-                    path === record.scope.path ||
-                    path.startsWith(record.scope.path + '/')),
+                  (record.scope.path === '/' || withinSyncPath(path, record.scope.path)),
             capture: (paths) => editCopiesOf(this.app.vault).capture(ordinary, paths),
             rememberIdentity: (path) => this.localFiles.remember(path),
             hydratedIdentity: (path) => this.localFiles.hydrated(path),
@@ -624,6 +695,8 @@ export class TokenEngines {
           engineClient: offloads.client,
           preparePlacement: (paths) => manager.prepareIncoming(record.ledgerId, paths),
           recoverPlacement: () => ordinary.recover(),
+          retirePlacement: (generation, archive) => ordinary.retireGeneration(generation, archive),
+          fencePlacement: (head) => ordinary.fenceRecovery(state, head),
           scopeInput: async (selective) => {
             const text = await readIgnore(connectionApp)
             return {
@@ -682,6 +755,7 @@ export class TokenEngines {
           scanSnapshot: () => runtime.trace.snapshot(),
           assertCurrent: () => fence.assertReady(),
           sync: () => runtime.sync(),
+          reconcile: () => runtime.reconcile(),
           pause: (paused) => runtime.pause(paused),
           updateSelective: (selective) => runtime.updateSelective(selective),
           opened: (path) => runtime.opened(path),
@@ -723,7 +797,11 @@ export class TokenEngines {
       startup = new AbortController()
       this.startupCancels.set(record.id, cancel)
       this.ui.registry.setStatus(record.id, 'joining')
-      this.ui.publish(record.id, { inspection: { completed: 0, total: 0 }, error: undefined })
+      this.ui.publish(record.id, {
+        inspection: { completed: 0, total: 0 },
+        error: undefined,
+        failure: undefined,
+      })
       draining = start().catch(async (error) => {
         const cancelled = startup.signal.aborted
         const failure = cancelled ? startup.signal.reason : error
@@ -748,7 +826,7 @@ export class TokenEngines {
       if (this.ui.runtimes.has(record.id)) return
       assertCurrent()
       this.ui.startupStage(record.id, 'Waiting to retry sync')
-      this.ui.publish(record.id, { error: undefined })
+      this.ui.publish(record.id, { error: undefined, failure: undefined })
       let barrierError: unknown
       try {
         await connectStage(
@@ -895,6 +973,7 @@ export class TokenEngines {
       pending: status.pending,
       heldDeletes: status.heldDeletes ?? 0,
       deferred: status.deferred ?? 0,
+      reconciliation: status.reconciliation,
     }
     const unsent = status.state === 'offline' ? await runtime?.pendingLocalDetails() : undefined
     if (unsent) activity.pending = unsent.count
@@ -938,6 +1017,22 @@ export class TokenEngines {
         }))
       )
       activity.refused = [...activity.refused, ...refused]
+      const points = (path: string) =>
+        Array.from(path)
+          .map((char) => 'U+' + char.codePointAt(0).toString(16).toUpperCase().padStart(4, '0'))
+          .join(' ')
+      for (const collision of report.collisions) {
+        const kind =
+          collision.path.normalize('NFC') === collision.with.normalize('NFC')
+            ? 'Normalization'
+            : 'Case'
+        activity.refused.push({
+          path: collision.path,
+          reason: `${kind} collision: ${collision.path} (${points(collision.path)}); ${collision.with} (${points(collision.with)})`,
+        })
+      }
+      activity.pending += report.collisions.length
+      activity.total += report.collisions.length
       activity.conflicts = results.flatMap((one) =>
         one.status === 'conflict' ? [one.conflict_path] : []
       )

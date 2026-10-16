@@ -33,7 +33,7 @@ const entry = {
   mtime: 1000,
 }
 const cleanups: (() => void)[] = []
-it('retains startup evidence across repeated 12k-file engine listings without rereading', async () => {
+async function checkStartupInspection(withoutListings: boolean) {
   const app = buildFakeVault(
     Array.from({ length: 12000 }, (_, i) => ({ path: `Notes/${i}.md`, content: 'ordinary' }))
   )
@@ -71,7 +71,8 @@ it('retains startup evidence across repeated 12k-file engine listings without re
     expect(count).toBe(12000)
   }
   expect(read.mock.calls.length).toBe(0)
-  expect(list.mock.calls.length).toBe(0)
+  if (withoutListings) expect(list.mock.calls.length).toBe(0)
+  else expect(list.mock.calls.length).toBeLessThanOrEqual(12)
   expect(save.mock.calls.length).toBe(0)
   const sha = await sha256(new TextEncoder().encode('ordinary'))
   for (const file of entries)
@@ -90,8 +91,13 @@ it('retains startup evidence across repeated 12k-file engine listings without re
     ).ops
   ).toEqual([])
   expect(read.mock.calls.length).toBe(0)
-  expect(list.mock.calls.length).toBe(0)
-})
+  if (withoutListings) expect(list.mock.calls.length).toBe(0)
+  else expect(list.mock.calls.length).toBeLessThanOrEqual(12)
+}
+it('reuses byte inspection evidence while enumerating raw directories in bounded scans', () =>
+  checkStartupInspection(false))
+it('retains startup evidence across repeated 12k-file engine listings without rereading', () =>
+  checkStartupInspection(true))
 it('holds predecessor recovery bytes without adopting their file identity on a new connection', async () => {
   const retained = 'Media/.abele-external-sample-predecessor.incoming'
   const fake = buildFakeVault([{ path: retained, content: 'sample retained bytes' }])

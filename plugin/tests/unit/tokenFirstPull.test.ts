@@ -17,6 +17,7 @@ import { assertSmallPullBounds } from '../helpers/smallPullBounds'
 import { ExchangeTrace } from '@/sync/exchangeTrace'
 
 const snapshotFiles = 1003
+const directoryScanCounts: number[] = []
 
 it.each([
   { host: false, reconnect: false, count: snapshotFiles, native: false },
@@ -375,6 +376,7 @@ it.each([
           total: items.length,
         })
       }
+      directoryScanCounts.push(scans.mock.calls.length)
       expect(scans.mock.calls.length).toBeLessThanOrEqual(2)
       if (fixture && reconnect) {
         const firstScans = scans.mock.calls.length
@@ -394,6 +396,7 @@ it.each([
         expect(fresh.id).not.toBe(candidate.id)
         await expect(fixture.ui.approve(candidate)).rejects.toThrow()
         await fixture.ui.approve(fresh)
+        directoryScanCounts.push(scans.mock.calls.length - firstScans)
         expect(scans.mock.calls.length - firstScans).toBeLessThanOrEqual(2)
       } else if (fixture) await fixture.ui.approve(candidate)
       else await activeReviews.executables.approve([candidate.id], runtime)
@@ -411,6 +414,11 @@ it.each([
   // Bound fixture work by its size, and prove scan complexity with the spy above.
   20_000 + snapshotFiles * 200
 )
+
+it('keeps the initial and reconnected token pull within two directory scans', () => {
+  expect(directoryScanCounts).toHaveLength(5)
+  for (const count of directoryScanCounts) expect(count).toBeLessThanOrEqual(2)
+})
 
 async function productionHost(
   app: ReturnType<typeof buildFakeVault>,

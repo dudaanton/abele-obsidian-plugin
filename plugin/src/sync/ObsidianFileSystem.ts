@@ -1,12 +1,15 @@
 import { connectionPrivateRoot, privateDownload, withinRoot } from './connectionPaths'
 import { assertPhysicalPath } from './external/projection'
 import { privateRecoveryDirectory } from './privateRecovery'
+import { crossesSymlink } from './symlinkChain'
 import { sha256 } from './external/hash'
 import type { App, DataAdapter, ListedFiles, Stat } from 'obsidian'
 import { TFile, TFolder } from 'obsidian'
 import {
   EngineError,
   MAX_CHUNK_BYTES,
+  readReconciliation,
+  requestReconciliation,
   type FileInfo,
   type FileSystem,
   type StateStore,
@@ -57,6 +60,18 @@ const CONFIG_WALK_DEPTH = 32
  */
 const IGNORE_FILE = '.abele-sync-ignore'
 const stageOperations = new WeakMap<object, Set<string>>()
+type DirectoryInfo = { path: string; identity: string; mtime: number }
+type InventoryChild = { path: string; kind: 'file' | 'directory'; identity?: string }
+interface InventoryPass {
+  directories?: Promise<DirectoryInfo[]>
+  listings: Map<string, Promise<ListedFiles>>
+  mutations: Set<string>
+  children: Map<string, Promise<InventoryChild[]>>
+  indexedChildren: Map<string, Promise<InventoryChild[]>>
+}
+const INVENTORY_DIRECTORIES = Symbol.for('abele.sync.inventory-directories-v1')
+const normalizationPossible = (path: string) =>
+  path !== path.normalize('NFC') || path.normalize('NFD') !== path
 
 export interface ObsidianFileSystemOptions {
   adapter?: DataAdapter
@@ -120,12 +135,10 @@ export interface ObsidianFileSystemOptions {
 /**
  * The vault as the engine touches it, over Obsidian's own plugin API.
  *
- * Two halves of the vault are read two ways. Everything the user can see is in Obsidian's
- * file index, so `list` takes it from `vault.getFiles()` with the size and mtime the index
- * already holds — no stat per file on a vault of thousands. The config folder is invisible
- * to that index, so it is walked through `vault.adapter`, which is also what every read and
- * write goes through: the index has no bytes, and `vault.read` would hand back text where
- * the engine wants the file as it is on disk.
+ * Raw adapter listings retain physical aliases the file index can hide. Exact indexed
+ * spellings still supply size and mtime without a stat per file. Configuration files are
+ * walked separately. Reads and writes also use the adapter: the index has no bytes, and
+ * vault text reads would not preserve binary content.
  *
  * **Writes are whole or not at all** (`vaultWrites.ts`): the new bytes go to a hidden temp
  * name beside the file and take its name only once they are all there, so a crash leaves the
@@ -147,6 +160,194 @@ export interface ObsidianFileSystemOptions {
 export class ObsidianFileSystem implements FileSystem {
   private readonly diagnostic?: ObsidianFileSystemOptions['diagnostic']
   private readonly fileScope?: ObsidianFileSystemOptions['fileScope']
+  private inventory: InventoryPass | null = null
+  private inventoryDepth = 0
+
+  async [Symbol.for('abele.sync.inventory-pass-v1')]<T>(work: () => Promise<T>): Promise<T> {
+    // Shared filesystem instances may have overlapping engines. Never share their snapshots.
+    this.inventory =
+      ++this.inventoryDepth === 1
+        ? {
+            listings: new Map(),
+            mutations: new Set(),
+            children: new Map(),
+            indexedChildren: new Map(),
+          }
+        : null
+    const inventory = this.inventory
+    const invalidate = (file: { path: string; children?: unknown[] }, previous?: string) => {
+      if (!inventory) return
+      for (const path of [file.path, ...(previous ? [previous] : [])]) {
+        if (inventory.mutations.has(path)) {
+          if (file.children) inventory.mutations.delete(path)
+          continue
+        }
+        for (const cache of [inventory.listings, inventory.children, inventory.indexedChildren]) {
+          cache.delete(folderOf(path).replace(/^\/$/, ''))
+          for (const key of cache.keys())
+            if (key === path || (file.children && key.startsWith(path + '/'))) cache.delete(key)
+        }
+        if (file.children) inventory.directories = undefined
+      }
+    }
+    const refs = [
+      this.app.vault.on('create', (file) => invalidate(file)),
+      this.app.vault.on('delete', (file) => invalidate(file)),
+      this.app.vault.on('rename', (file, previous) => invalidate(file, previous)),
+    ]
+    try {
+      return await work()
+    } finally {
+      try {
+        await inventory?.directories
+        await Promise.all([
+          ...(inventory?.listings.values() ?? []),
+          ...(inventory?.children.values() ?? []),
+          ...(inventory?.indexedChildren.values() ?? []),
+        ])
+      } finally {
+        for (const ref of refs) this.app.vault.offref(ref)
+        this.inventoryDepth--
+        this.inventory = null
+      }
+    }
+  }
+  async [INVENTORY_DIRECTORIES](): Promise<DirectoryInfo[]> {
+    const read = async () => {
+      const result = []
+      for await (const directory of this.listDirectories()) result.push(directory)
+      return result
+    }
+    if (!this.inventory) return read()
+    return (this.inventory.directories ??= read())
+  }
+  async [Symbol.for('abele.sync.inventory-children-v1')](
+    parent: string,
+    target: string
+  ): Promise<InventoryChild[]> {
+    const inventory = this.inventory
+    if (!inventory || normalizationPossible(target) || inventory.listings.has(parent))
+      return this.listChildren(parent)
+    let children = inventory.indexedChildren.get(parent)
+    if (children === undefined) {
+      children = (async () => {
+        const directories = await this[INVENTORY_DIRECTORIES]()
+        // Discovery may itself have revealed a Unicode alias at this parent.
+        if (inventory.listings.has(parent)) return this.listChildren(parent)
+        const node = (
+          parent === '' ? this.app.vault.getRoot() : this.app.vault.getAbstractFileByPath(parent)
+        ) as {
+          children?: { path: string; children?: unknown[] }[]
+        } | null
+        const files = new Set(
+          (node?.children ?? []).filter((one) => !one.children).map((one) => one.path)
+        )
+        for (const path of this.awaitingIndex)
+          if (
+            folderOf(path).replace(/^\/$/, '') === parent &&
+            (await this.rawStat(path))?.type === 'file'
+          )
+            files.add(path)
+        return [
+          ...[...files].map((path) => ({ path, kind: 'file' as const })),
+          ...directories
+            .filter((one) => folderOf(one.path).replace(/^\/$/, '') === parent)
+            .map((one) => ({ path: one.path, kind: 'directory' as const, identity: one.identity })),
+        ]
+      })()
+      inventory.indexedChildren.set(parent, children)
+    }
+    return (await children).map((one) => ({ ...one }))
+  }
+  private inventoryListing(parent: string): Promise<ListedFiles> {
+    const prior = this.inventory?.listings.get(parent)
+    if (prior !== undefined) return prior
+    const inventory = this.inventory
+    const listing = this.adapter.list(parent).catch((error) => {
+      if (inventory?.listings.get(parent) === listing) inventory.listings.delete(parent)
+      throw error
+    })
+    this.inventory?.listings.set(parent, listing)
+    return listing
+  }
+  private updateInventory(paths: readonly string[], known?: 'file' | null): void {
+    const inventory = this.inventory
+    if (!inventory) return
+    for (const path of paths) {
+      const parent = folderOf(path) === '/' ? '' : folderOf(path)
+      if (
+        !inventory.children.has(parent) &&
+        !inventory.indexedChildren.has(parent) &&
+        !inventory.listings.has(parent)
+      )
+        continue
+      const stat =
+        known === undefined
+          ? this.rawStat(path)
+          : Promise.resolve(known === null ? null : { type: known })
+      for (const cache of [inventory.children, inventory.indexedChildren]) {
+        const children = cache.get(parent)
+        if (children !== undefined)
+          cache.set(
+            parent,
+            Promise.all([children, stat]).then(async ([rows, standing]) => [
+              ...rows.filter((one) => one.path !== path),
+              ...(standing?.type === 'file'
+                ? [{ path, kind: 'file' as const }]
+                : standing?.type === 'folder'
+                  ? [
+                      {
+                        path,
+                        kind: 'directory' as const,
+                        identity: await this.directories.identity(path),
+                      },
+                    ]
+                  : []),
+            ])
+          )
+      }
+      const prior = inventory.listings.get(parent)
+      if (prior !== undefined)
+        inventory.listings.set(
+          parent,
+          Promise.all([prior, stat]).then(([listing, stat]) => ({
+            files: [
+              ...listing.files.filter((one) => one !== path),
+              ...(stat?.type === 'file' ? [path] : []),
+            ],
+            folders: [
+              ...listing.folders.filter((one) => one !== path),
+              ...(stat?.type === 'folder' ? [path] : []),
+            ],
+          }))
+        )
+    }
+  }
+  private async rememberInventoryParents(path: string): Promise<void> {
+    if (!path) return
+    const inventory = this.inventory
+    if (inventory?.directories === undefined) return
+    const before = inventory.directories
+    inventory.directories = before.then(async (directories) => {
+      const result = [...directories]
+      const segments = path.split('/')
+      for (let length = 1; length <= segments.length; length++) {
+        const parent = segments.slice(0, length).join('/')
+        if (!this.withinFileScope(parent)) continue
+        if (result.some((one) => one.path === parent)) continue
+        const stat = await this.rawStat(parent)
+        if (stat?.type !== 'folder') continue
+        result.push({
+          path: parent,
+          identity: await this.directories.identity(parent),
+          mtime: stamp(stat.mtime),
+        })
+        this.updateInventory([parent])
+      }
+      return result
+    })
+    await inventory.directories
+  }
   private readonly directories: VaultDirectories
   private readonly preserveEmptyDirectories: boolean
   private readonly pollMs: number
@@ -293,6 +494,7 @@ export class ObsidianFileSystem implements FileSystem {
         }
         const wrapped = (...args: unknown[]) => {
           const paths = args.slice(0, key === 'rename' || key === 'copy' ? 2 : 1) as string[]
+          for (const path of paths) this.inventory?.mutations.add(path)
           this.externalCoordination.assertEnginePaths(paths)
           return bound(...args)
         }
@@ -303,21 +505,18 @@ export class ObsidianFileSystem implements FileSystem {
     this.directories = new VaultDirectories(
       this.guardedAdapter,
       storageOf(app),
-      async (path) => {
-        const adapter = this.scopedAdapter as DataAdapter & {
-          getFullPath?(path: string): string
-          fsPromises?: { lstat(path: string): Promise<{ isSymbolicLink(): boolean }> }
-        }
-        return adapter.getFullPath && adapter.fsPromises?.lstat
-          ? (await adapter.fsPromises.lstat(adapter.getFullPath(path))).isSymbolicLink()
-          : false
-      },
+      (path) => this.isSymlink(path),
       async (path) => {
         const native = this.native
         if (native) await native.rmdirEmpty(path)
         else await this.guardedAdapter.rmdir(path, false)
+        this.updateInventory([path])
+        if (this.inventory?.directories !== undefined)
+          this.inventory.directories = this.inventory.directories.then((directories) =>
+            directories.filter((one) => one.path !== path && !one.path.startsWith(path + '/'))
+          )
       },
-      () => (typeof this.fileScope === 'function' ? this.fileScope() : this.fileScope)
+      () => this.scopedRoot()
     )
     this.beforeEngineMutation = options.beforeEngineMutation ?? null
     this.ledger = options.ledger ?? null
@@ -351,7 +550,7 @@ export class ObsidianFileSystem implements FileSystem {
       makeParents: (path) => makeParents(this.adapter, path),
       installed: (path) => {
         this.awaitingIndex.add(path)
-        this.wrote(path)
+        this.wrote([path], 'file')
       },
     })
   }
@@ -361,6 +560,7 @@ export class ObsidianFileSystem implements FileSystem {
     const native = nativeOf(
       this.adapter,
       (paths = []) => {
+        for (const path of paths) this.inventory?.mutations.add(path)
         this.runtimeFence?.assertOwned()
         this.externalCoordination.assertEnginePaths(paths)
       },
@@ -415,9 +615,50 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   /** Existing installation recovery runs before scanner/watcher activation. */
-  listDirectories() {
+  async *listDirectories() {
     this.runtimeFence?.assertReady()
-    return this.directories.list()
+    const scope = this.scopedRoot()
+    if (scope) {
+      yield* this.directories.list()
+      return
+    }
+    const folders = (await this.physicalPaths()).folders
+    yield* this.directories.list([...folders])
+  }
+  /** A folder token's subtree, or undefined when the whole vault is enumerated. */
+  private boundedScope(): string | undefined {
+    const requested = typeof this.fileScope === 'function' ? this.fileScope() : this.fileScope
+    return requested && requested !== '/' ? requested : undefined
+  }
+  /** Bounded alias recheck inside an existing placement lease; recovery runs before it. */
+  async listChildren(parent: string) {
+    this.runtimeFence?.assertReady()
+    const prior = this.inventory?.children.get(parent)
+    if (prior !== undefined) return (await prior).map((one) => ({ ...one }))
+    const children = this.readInventoryChildren(parent)
+    this.inventory?.children.set(parent, children)
+    return (await children).map((one) => ({ ...one }))
+  }
+  private async readInventoryChildren(parent: string): Promise<InventoryChild[]> {
+    const scope = this.scopedRoot()
+    if (scope && (parent === '' || scope.startsWith(parent + '/'))) {
+      const path = scope
+        .split('/')
+        .slice(0, parent ? parent.split('/').length + 1 : 1)
+        .join('/')
+      return [{ path, kind: 'directory' }]
+    }
+    if (scope && !this.withinFileScope(parent))
+      throw new EngineError('protocol', 'Inventory path is outside this connection')
+    const listing = await this.inventoryListing(parent)
+    const children: InventoryChild[] = listing.files
+      .filter((path) => !isAdapterTemp(path))
+      .map((path) => ({ path, kind: 'file' }))
+    for (const path of listing.folders) {
+      if (await this.isSymlink(path)) continue
+      children.push({ path, kind: 'directory', identity: await this.directories.identity(path) })
+    }
+    return children
   }
   [Symbol.for('abele.sync.directory-identity-v1')](path: string): Promise<string> {
     this.runtimeFence?.assertReady()
@@ -426,17 +667,50 @@ export class ObsidianFileSystem implements FileSystem {
   async mkdir(path: string): Promise<void> {
     this.runtimeFence?.assertReady()
     await this.beforeEngineMutation?.([path])
+    const parts = path.split('/')
+    const prefixes = parts.map((_, index) => parts.slice(0, index + 1).join('/'))
+    const missing: string[] = []
+    for (const prefix of prefixes.filter((one) => this.withinFileScope(one)))
+      if (!(await this.rawStat(prefix))) missing.push(prefix)
     await this.directories.mkdir(path)
+    // Obsidian indexes what its adapter makes only when its file watcher reports it. Remember
+    // each folder this made, parents included, so the inventory finds them before the index.
+    for (const made of missing)
+      if ((await this.rawStat(made))?.type === 'folder') await this.directories.identity(made)
+    // Every cached listing above the new folder has to learn about them, including raw
+    // listings read before the folder existed.
+    this.updateInventory(prefixes.filter((one) => this.withinFileScope(one)))
+    await this.rememberInventoryParents(path)
   }
   async moveDirectory(from: string, to: string): Promise<void> {
     this.runtimeFence?.assertReady()
     await this.beforeEngineMutation?.([from, to])
     await this.directories.move(from, to)
+    if (this.inventory) {
+      this.inventory.directories = undefined
+      this.inventory.listings.clear()
+      this.inventory.children.clear()
+      this.inventory.indexedChildren.clear()
+    }
   }
-  async removeDirectory(path: string): Promise<void> {
+  async removeDirectory(path: string, expectedIdentity?: string): Promise<void> {
     this.runtimeFence?.assertReady()
     await this.beforeEngineMutation?.([path])
-    await this.directories.remove(path)
+    await this.directories.remove(path, expectedIdentity)
+    if (this.inventory) {
+      this.inventory.directories = undefined
+      this.inventory.listings.clear()
+      this.inventory.children.clear()
+      this.inventory.indexedChildren.clear()
+    }
+  }
+  needsRecoveryHandshake(): boolean {
+    return (
+      this.journal
+        .entries()
+        .some((entry) => !entry.retiredGeneration && (!entry.streaming || entry.backup)) ||
+      this.journal.vaultRecovered().length > 0
+    )
   }
   async recover(): Promise<void> {
     this.runtimeFence?.assertOwned()
@@ -484,6 +758,7 @@ export class ObsidianFileSystem implements FileSystem {
     if (!this.privateRoot) return
     for (const entry of this.journal.entries())
       if (
+        !entry.retiredGeneration &&
         entry.streaming &&
         !entry.backup &&
         entry.temp &&
@@ -498,6 +773,39 @@ export class ObsidianFileSystem implements FileSystem {
       }
   }
 
+  async retireGeneration(
+    generation: string,
+    archive: (value: unknown) => Promise<void>
+  ): Promise<void> {
+    this.runtimeFence?.assertOwned()
+    this.io.retireReceipts()
+    await this.journal.retireGeneration(generation, archive)
+  }
+
+  /** A retained streaming source is not a pending destructive installation. */
+  async fenceRecovery(state: StateStore, head: number): Promise<void> {
+    const entries = this.journal
+      .entries()
+      .filter((entry) => !entry.retiredGeneration && (!entry.streaming || entry.backup))
+    if (!entries.length) return
+    const reconciliation = await readReconciliation(state)
+    if (
+      head <= (await state.getCursor()) &&
+      (!reconciliation || reconciliation.phase === 'complete')
+    )
+      return
+    await requestReconciliation(
+      state,
+      'server advanced with pending local writes; possible restored profile'
+    )
+    const key =
+      'reconciliation-host-writes:' +
+      (await sha256(new TextEncoder().encode(JSON.stringify(entries))))
+    await this.retireGeneration('local-reconciliation', async (value) => {
+      if (!(await state.getMeta(key))) await state.setMeta(key, JSON.stringify(value))
+    })
+  }
+
   /** Placement needs immutable copies of its targets, not another full vault scan. */
   async *placementFiles(paths: readonly string[]): AsyncIterable<FileInfo> {
     this.runtimeFence?.assertReady()
@@ -505,6 +813,7 @@ export class ObsidianFileSystem implements FileSystem {
     // run before placement; a different connection may have a live journal meanwhile.
     for (const entry of this.journal.entries())
       if (
+        !entry.retiredGeneration &&
         (!entry.streaming || entry.backup !== undefined) &&
         paths.some((path) => {
           const target = caseKey(entry.target),
@@ -524,6 +833,23 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   async *list(): AsyncIterable<FileInfo> {
+    const own = this.inventory === null && this.inventoryDepth === 0
+    const inventory = own
+      ? {
+          listings: new Map(),
+          mutations: new Set<string>(),
+          children: new Map(),
+          indexedChildren: new Map(),
+        }
+      : this.inventory
+    if (own) this.inventory = inventory
+    try {
+      yield* this.listUnlocked()
+    } finally {
+      if (own && this.inventory === inventory) this.inventory = null
+    }
+  }
+  private async *listUnlocked(): AsyncIterable<FileInfo> {
     const scope = this.scopedRoot()
     this.runtimeFence?.assertReady()
     await this.recover()
@@ -532,13 +858,7 @@ export class ObsidianFileSystem implements FileSystem {
     const revision = mutations.revision
     const indexed = new Set<string>()
     const withinScope = (path: string) => this.withinFileScope(path)
-    const walk = function* (entry: TFile | TFolder): Generator<TFile> {
-      if (entry instanceof TFile) yield entry
-      else for (const child of entry.children) yield* walk(child as TFile | TFolder)
-    }
-    const root = scope ? this.app.vault.getAbstractFileByPath(scope) : null
-    const files = scope ? (root ? walk(root as TFile | TFolder) : []) : this.app.vault.getFiles()
-    for (const file of files) {
+    for await (const file of this.rawVaultFiles(scope)) {
       if (!withinScope(file.path)) continue
       if (isAdapterTemp(file.path)) continue
       if (this.awaitingIndex.has(file.path)) {
@@ -605,6 +925,194 @@ export class ObsidianFileSystem implements FileSystem {
         'io',
         'a folder deletion started during the scan; scan again after it finishes'
       )
+    }
+  }
+
+  /** Indexed files, bounded to a folder token's subtree without touching the whole index. */
+  private indexedFiles(scope?: string): TFile[] {
+    if (!scope) return this.app.vault.getFiles()
+    const walk = function* (entry: TFile | TFolder): Generator<TFile> {
+      if (entry instanceof TFile) yield entry
+      else for (const child of entry.children) yield* walk(child as TFile | TFolder)
+    }
+    const root = this.app.vault.getAbstractFileByPath(scope)
+    return root ? [...walk(root as TFile | TFolder)] : []
+  }
+
+  /** Expand only components that can have a distinct canonical spelling. */
+  private async physicalPaths(
+    scope?: string
+  ): Promise<{ files: Set<string>; folders: Set<string> }> {
+    const files = new Set(this.indexedFiles(scope).map((file) => file.path))
+    const folders = new Set<string>()
+    const within = (path: string) => !scope || path === scope || path.startsWith(scope + '/')
+    // A folder token reads only its own subtree and the folders leading down to it.
+    const relevant = (path: string) => within(path)
+    const visible = (path: string) =>
+      !path.split('/').some((part) => part.startsWith('.')) ||
+      path === this.configDir ||
+      path.startsWith(this.configDir + '/')
+    const root =
+      scope === undefined ? this.app.vault.getRoot() : this.app.vault.getAbstractFileByPath(scope)
+    const index = (node: { path: string; children?: unknown[] }) => {
+      if (node.path && !visible(node.path)) return
+      if (!node.children) return
+      if (node.path) folders.add(node.path)
+      for (const child of node.children) index(child as typeof node)
+    }
+    // The vault root has path '/', not ''. It is a traversal anchor, never a sync item.
+    if (scope === undefined) {
+      for (const child of (root as { children?: unknown[] } | null)?.children ?? [])
+        index(child as { path: string; children?: unknown[] })
+    } else if (root) index(root)
+    for (const path of files)
+      for (let cut = path.indexOf('/'); cut !== -1; cut = path.indexOf('/', cut + 1))
+        if (within(path.slice(0, cut))) folders.add(path.slice(0, cut))
+    const indexedFiles = new Set(files)
+    const indexedFolders = new Set(folders)
+    // Built once per listing: a walk must not rescan every vault path for every folder it
+    // visits, which made large vaults with many accented names stall the app.
+    const parentOf = (path: string) => folderOf(path).replace(/^\/$/, '')
+    const byParent = new Map<string, Set<string>>()
+    const addFile = (path: string) => {
+      files.add(path)
+      const parent = parentOf(path)
+      let group = byParent.get(parent)
+      if (!group) byParent.set(parent, (group = new Set()))
+      group.add(path)
+    }
+    const dropFile = (path: string) => {
+      files.delete(path)
+      byParent.get(parentOf(path))?.delete(path)
+    }
+    for (const path of files) addFile(path)
+    const under = (paths: Iterable<string>, self: boolean) => {
+      const result = new Map<string, string[]>()
+      const put = (key: string, path: string) => {
+        const list = result.get(key)
+        if (list) list.push(path)
+        else result.set(key, [path])
+      }
+      for (const path of paths) {
+        const key = caseKey(path)
+        for (let cut = key.indexOf('/'); cut !== -1; cut = key.indexOf('/', cut + 1))
+          put(key.slice(0, cut), path)
+        if (self) put(key, path)
+      }
+      return result
+    }
+    const filesUnder = under(indexedFiles, false)
+    const foldersAt = under(indexedFolders, true)
+    const parents = new Set<string>()
+    for (const path of [...files, ...folders]) {
+      const segments = path.split('/')
+      const risk = segments.findIndex(normalizationPossible)
+      if (risk !== -1) {
+        const parent = segments.slice(0, risk).join('/')
+        parents.add(scope && !within(parent) ? scope : parent)
+      }
+    }
+    const visited = new Set<string>()
+    const links = new Map<string, Promise<boolean | null>>()
+    const linked = (path: string) => crossesSymlink(path, (one) => this.isSymlink(one), links)
+    const walk = async (parent: string, recursive: boolean, depth = 0): Promise<void> => {
+      if (depth > CONFIG_WALK_DEPTH) {
+        if (!parent.startsWith(this.configDir + '/'))
+          throw new EngineError('io', 'Directory tree is too deep')
+        console.debug(`[abele-sync] not following ${parent} any further`)
+        return
+      }
+      if (visited.has(parent)) return
+      visited.add(parent)
+      // Raw discovery never reaches past a symlink; a linked parent keeps its indexed view.
+      if (await linked(parent)) return
+      let listing: ListedFiles
+      try {
+        listing = await this.inventoryListing(parent)
+      } catch (cause) {
+        throw new EngineError('io', 'Cannot enumerate physical vault names', cause)
+      }
+      const priorFiles = [...(byParent.get(parent) ?? [])]
+      const candidatesByWire = new Map<string, string[]>()
+      for (const path of priorFiles) {
+        const key = path.normalize('NFC')
+        const candidates = candidatesByWire.get(key) ?? []
+        candidates.push(path)
+        candidatesByWire.set(key, candidates)
+      }
+      const listedFiles = new Set(listing.files)
+      for (const path of priorFiles) dropFile(path)
+      for (const listedPath of listing.files) {
+        const candidates = candidatesByWire.get(listedPath.normalize('NFC')) ?? []
+        const preferred =
+          candidates.length === 1 &&
+          !listedFiles.has(candidates[0]) &&
+          (await this.rawStat(candidates[0]))
+            ? candidates[0]
+            : listedPath
+        const path = preferred
+        if (
+          visible(path) &&
+          !isAdapterTemp(path) &&
+          within(path) &&
+          (indexedFiles.has(path) || !(await this.isSymlink(path)))
+        )
+          addFile(path)
+      }
+      const expanded = listing.folders.filter(
+        (child) => relevant(child) && (recursive || normalizationPossible(child))
+      )
+      for (const child of expanded) {
+        const key = caseKey(child)
+        for (const path of filesUnder.get(key) ?? []) if (indexedFiles.delete(path)) dropFile(path)
+        for (const path of foldersAt.get(key) ?? [])
+          if (indexedFolders.delete(path)) folders.delete(path)
+      }
+      for (const child of listing.folders) {
+        if (
+          !visible(child) ||
+          child === stagingDirectory(this.configDir) ||
+          child === privateRecoveryDirectory(this.configDir) ||
+          !relevant(child)
+        )
+          continue
+        if (await this.isSymlink(child)) continue
+        if (recursive || normalizationPossible(child)) {
+          if (within(child)) folders.add(child)
+          await walk(child, recursive || within(child), depth + 1)
+        } else if (within(child)) folders.add(child)
+      }
+    }
+    for (const parent of parents) await walk(parent, false)
+    // A folder connection's own folder can be on disk before Obsidian indexes it, as right
+    // after a pull made it. Read it from the disk then, or it would look empty.
+    if (scope !== undefined && !root && (await this.rawStat(scope))?.type === 'folder') {
+      folders.add(scope)
+      await walk(scope, true)
+    }
+    if (
+      !scope &&
+      !this.startupInventory &&
+      !visited.has(this.configDir) &&
+      (await this.rawStat(this.configDir))
+    ) {
+      folders.add(this.configDir)
+      await walk(this.configDir, true)
+    }
+    return { files, folders }
+  }
+  private async *rawVaultFiles(scope?: string): AsyncIterable<{
+    path: string
+    stat: { size: number; mtime: number }
+  }> {
+    const indexed = new Map(this.indexedFiles(scope).map((file) => [file.path, file]))
+    for (const path of (await this.physicalPaths(scope)).files) {
+      if (path.split('/').some((part) => part.startsWith('.'))) continue
+      const file = indexed.get(path)
+      // An indexed row keeps the index's own stat: the caller compares it with the disk to
+      // learn whether Obsidian has caught up with a write it is still waiting on.
+      const stat = file ? file.stat : await this.rawStat(path)
+      if (stat) yield { path, stat }
     }
   }
 
@@ -686,9 +1194,12 @@ export class ObsidianFileSystem implements FileSystem {
     return this.io.canReplayStage()
   }
   async fingerprint(path: string, signal?: AbortSignal) {
-    const identity = await this.io.fingerprint(path, signal)
+    const identity = await this.io.fingerprint(path, signal, false, true)
     this.observedBases.set(caseKey(path), { sha: identity.sha })
     return identity
+  }
+  async [Symbol.for('abele.sync.fingerprint-fresh-v1')](path: string) {
+    return this.fingerprint(path)
   }
   async [Symbol.for('abele.sync.fingerprint-pull-v1')](path: string) {
     let identity
@@ -741,7 +1252,7 @@ export class ObsidianFileSystem implements FileSystem {
   async reopenStage(id: string): Promise<AtomicStage & { readonly target: string }> {
     let entry =
       this.journal.entries().find((one) => one.temp === id && one.streaming) ?? this.stages.get(id)
-    if (!entry?.streaming || entry.backup)
+    if (!entry?.streaming || entry.backup || entry.retiredGeneration)
       throw new EngineError('io', 'streaming stage is unavailable or awaiting recovery')
     const stat = await this.rawStat(id)
     if (!stat || stat.type !== 'file') throw new EngineError('io', 'streaming stage is missing')
@@ -755,7 +1266,11 @@ export class ObsidianFileSystem implements FileSystem {
       this.stageOperations.add(id)
       try {
         this.runtimeFence?.assertReady()
-        if (this.journal.entries().some((one) => one.temp === id && one.backup))
+        if (
+          this.journal
+            .entries()
+            .some((one) => one.temp === id && (one.backup || one.retiredGeneration))
+        )
           throw new EngineError('io', 'stage publication is awaiting recovery')
         return await work()
       } finally {
@@ -956,7 +1471,7 @@ export class ObsidianFileSystem implements FileSystem {
       await this.rename(from, to)
       this.awaitingIndex.add(from)
       this.awaitingIndex.add(to)
-      this.wrote(from, to)
+      this.wrote([from, to])
       // Only a listing that says outright that the old spelling is still there sends this
       // round again; a listing that would not answer leaves the rename as done.
       if ((await this.spelledExactly(to)) !== false) return
@@ -967,7 +1482,7 @@ export class ObsidianFileSystem implements FileSystem {
     await this.rename(from, to)
     this.awaitingIndex.add(from)
     this.awaitingIndex.add(to)
-    this.wrote(from, to)
+    this.wrote([from, to])
     await this.directories.removedChild(from)
     if (!this.preserveEmptyDirectories)
       await pruneAbove(this.adapter, this.native, this.configDir, from)
@@ -998,14 +1513,20 @@ export class ObsidianFileSystem implements FileSystem {
     }
     if (this.privateRoot && withinRoot(path, this.privateRoot)) return
     this.awaitingIndex.add(path)
-    this.wrote(path)
+    this.wrote([path], null)
     await this.directories.removedChild(path)
     if (!this.preserveEmptyDirectories)
       await pruneAbove(this.adapter, this.native, this.configDir, path)
   }
 
   /** Tell the host what the engine changed on disk (`onEngineWrite`). */
-  private wrote(...paths: string[]): void {
+  private wrote(paths: readonly string[], known?: 'file' | null): void {
+    this.updateInventory(paths, known)
+    for (const path of paths)
+      void this.rememberInventoryParents(
+        known === 'file' ? folderOf(path).replace(/^\/$/, '') : path
+      ).catch((error) => console.debug('[abele-sync] inventory update failed', error))
+
     if (paths.some((path) => path.startsWith(this.configDir + '/'))) this.configInventory = null
     this.runtimeFence?.assertOwned()
     if (this.onEngineWrite === null) return
@@ -1122,7 +1643,7 @@ export class ObsidianFileSystem implements FileSystem {
 
     let listed: ListedFiles
     try {
-      listed = await this.adapter.list(folder)
+      listed = await this.inventoryListing(folder)
     } catch (cause) {
       // Asked only when the listing failed, which is the one moment the answer matters.
       if (!(await this.there(folder))) return
@@ -1199,11 +1720,21 @@ export class ObsidianFileSystem implements FileSystem {
     return files
   }
 
+  private async isSymlink(path: string): Promise<boolean> {
+    const adapter = this.adapter as DataAdapter & {
+      getFullPath?(path: string): string
+      fsPromises?: { lstat(path: string): Promise<{ isSymbolicLink(): boolean }> }
+    }
+    return adapter.getFullPath && adapter.fsPromises?.lstat
+      ? (await adapter.fsPromises.lstat(adapter.getFullPath(path))).isSymbolicLink()
+      : false
+  }
+
   private async spellingOnDisk(path: string): Promise<string | null> {
     const cut = path.lastIndexOf('/')
-    const parent = cut === -1 ? '/' : path.slice(0, cut)
+    const parent = cut === -1 ? '' : path.slice(0, cut)
     try {
-      const listing = await this.adapter.list(parent)
+      const listing = await this.inventoryListing(parent)
       return listing.files.includes(path)
         ? path
         : (listing.files.find((file) => caseKey(file) === caseKey(path)) ?? null)

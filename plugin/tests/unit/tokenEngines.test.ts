@@ -566,6 +566,12 @@ it.each(['revoked', 'forbidden', '503', 'network'] as const)(
       await vi.waitFor(() =>
         expect(registry.records()[0].status).toBe(revoked ? 'needs-token' : 'offline')
       )
+      // The friendly text hides the cause; diagnostics keep the code and the original message.
+      if (revoked)
+        expect(ui.activity.value[registry.records()[0].id]?.failure).toMatchObject({
+          code: failure === 'forbidden' ? 'forbidden' : 'unauthorized',
+          message: expect.any(String),
+        })
       let stopped = transport.mock.calls.length
       if (!revoked) {
         await vi.waitFor(() =>

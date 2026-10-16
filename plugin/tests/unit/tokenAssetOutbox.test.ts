@@ -52,6 +52,36 @@ async function fixture() {
   }
   return { state, input, send, options, requests, receipt }
 }
+it('retains an NFD physical candidate and source locator across restart while recording an NFC receipt', async () => {
+  const one = await fixture()
+  const path = 'й-folder/ё-image.png'.normalize('NFD')
+  const source = 'й-folder'.normalize('NFD') + '/.sample-stage.tmp'
+  const openSource = vi.fn(async () => ({
+    size: one.input.bytes.length,
+    read: async (offset: number, length: number) => one.input.bytes.slice(offset, offset + length),
+    assertUnchanged: async () => {},
+    close: async () => {},
+  }))
+  const sendSource = vi.fn(async () => ({
+    ...one.receipt,
+    results: [{ ...one.receipt.results[0], path: path.normalize('NFC') }],
+  }))
+  const options = { ...one.options, maxBytes: () => 100, openSource, sendSource }
+  const outbox = new TokenAssetOutbox(options)
+  await outbox.enqueue({
+    ...one.input,
+    path,
+    bytes: new Uint8Array(),
+    source: { id: source, size: 3 },
+  })
+  const saved = await one.state.getMeta('token-asset-outbox')
+  expect(JSON.parse(saved!)[0]).toMatchObject({ path, source: { id: source } })
+  const reopened = new TokenAssetOutbox(options)
+  await reopened.restore()
+  await reopened.drain()
+  expect(openSource).toHaveBeenCalledWith(source)
+  expect(await one.state.get(path)).toMatchObject({ path, wirePath: path.normalize('NFC') })
+})
 it('retains a source locator across restart and sends the same immutable request after a lost answer', async () => {
   const one = await fixture()
   const openSource = vi.fn(async () => ({
@@ -151,4 +181,51 @@ it('replays an uncertain request with its original key and body after the server
   expect(one.send).toHaveBeenCalledTimes(3)
   expect(one.requests[2]).toEqual(one.requests[0])
   expect(reopened.state()).toEqual([])
+})
+it('restores inside an exclusive engine cycle while a sent publication waits to be recorded', async () => {
+  const one = await fixture()
+  // The engine's exclusive lane: a cycle and the outbox's recording never run together.
+  let lane: Promise<unknown> = Promise.resolve()
+  let waiting = 0
+  const serial = <T>(work: () => Promise<T>): Promise<T> => {
+    waiting++
+    const next = lane.then(work)
+    lane = next.then(
+      () => {},
+      () => {}
+    )
+    return next
+  }
+  let answer!: () => void
+  const answered = new Promise<void>((resolve) => (answer = resolve))
+  let sent!: () => void
+  const sending = new Promise<void>((resolve) => (sent = resolve))
+  const send = vi.fn(async () => {
+    sent()
+    await answered
+    return one.receipt
+  })
+  const outbox = new TokenAssetOutbox({ ...one.options, maxBytes: () => 100, serial, send })
+  const key = await outbox.enqueue(one.input)
+  const drained = outbox.drain(false, key)
+  await sending
+  // A sync cycle holds the engine when the answer arrives; recording it waits for the
+  // cycle, and the cycle's handshake then restores the outbox.
+  let handshake!: () => void
+  const handshaking = new Promise<void>((resolve) => (handshake = resolve))
+  const cycle = serial(async () => {
+    await handshaking
+    await outbox.restore()
+    return 'restored'
+  })
+  const before = waiting
+  answer()
+  await vi.waitFor(() => expect(waiting).toBeGreaterThan(before))
+  handshake()
+  const settled = await Promise.race([
+    Promise.all([cycle, drained]).then(() => 'settled'),
+    new Promise((resolve) => setTimeout(() => resolve('deadlocked'), 1000)),
+  ])
+  expect(settled).toBe('settled')
+  expect(await one.state.get(one.input.path)).toMatchObject({ sha: one.input.sha })
 })

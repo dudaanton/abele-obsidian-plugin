@@ -796,7 +796,8 @@ export async function requireExternalLifecycleSafety(
   inspection: ProjectionInspection = {},
   inspectProjections = true,
   metadataOnly = false,
-  recoverInstallation = false
+  recoverInstallation = false,
+  allowRetiredInstallations = false
 ): Promise<void> {
   if (app.loadLocalStorage(EXTERNAL_SWITCH_KEY) != null) throw new ExternalRecoveryRequired()
   const marker = activation(app)
@@ -804,7 +805,13 @@ export async function requireExternalLifecycleSafety(
   // Startup validates intents here, then recovers them before inspecting vault bytes.
   // Enrollment and departure still require an empty installation journal.
   if (
-    (installation.entries().some((entry) => !entry.streaming || entry.backup) &&
+    (installation
+      .entries()
+      .some(
+        (entry) =>
+          (!allowRetiredInstallations || !entry.retiredGeneration) &&
+          (!entry.streaming || entry.backup)
+      ) &&
       !recoverInstallation) ||
     installation.recovered().length
   )

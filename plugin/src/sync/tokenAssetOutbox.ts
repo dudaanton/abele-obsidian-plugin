@@ -79,8 +79,20 @@ export class TokenAssetOutbox {
       }
     })
   }
+  /**
+   * Validates the durable queue after a connection handshake. It runs inside the engine's
+   * exclusive cycle, so it must not wait behind a queued recording, which itself waits for
+   * that cycle to finish. Nothing can commit to the queue while the cycle holds the engine.
+   */
   async restore(): Promise<void> {
-    await this.read()
+    try {
+      this.cached = await this.list()
+      this.recovery = null
+    } catch (error) {
+      this.recovery = error instanceof Error ? error.message : 'Publication recovery required'
+      this.options.changed()
+      throw error
+    }
   }
   async close(): Promise<void> {
     await Promise.allSettled([...this.flights.values()])

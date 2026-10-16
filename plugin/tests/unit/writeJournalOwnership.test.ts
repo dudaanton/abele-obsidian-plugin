@@ -2,6 +2,23 @@ import { expect, it } from 'vitest'
 import { JOURNAL_KEY, RECOVERED_WRITES_KEY, WriteJournal } from '@/sync/writeJournal'
 import { buildFakeVault } from '../helpers/fakeVault'
 
+it('retires only its owner while preserving foreign work appended during archival', async () => {
+  const app = buildFakeVault([])
+  const owned = new WriteJournal(app, undefined, 'sample')
+  const foreign = new WriteJournal(app, undefined, 'other')
+  owned.add({ target: 'Shared/sample.md', temp: 'Shared/sample.tmp' })
+  foreign.add({ target: 'Other/first.md' })
+  await owned.retireGeneration('next', async (entries) => {
+    expect(entries).toEqual(owned.entries())
+    foreign.add({ target: 'Other/second.md' })
+  })
+  expect(foreign.entries()).toEqual([
+    { owner: 'other', target: 'Other/first.md' },
+    { owner: 'other', target: 'Other/second.md' },
+  ])
+  expect(owned.entries()[0].retiredGeneration).toBe('next')
+})
+
 it('preserves other owners and legacy work across journal updates and retention decisions', () => {
   const app = buildFakeVault([])
   const pending = {

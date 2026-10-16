@@ -86,6 +86,74 @@ it('scopes the directory walk and retains foreign pending removals without touch
   expect(app.loadLocalStorage('abele-sync-empty-directory-removals-v1')).toEqual(pending)
 })
 
+it('refuses directory cleanup when the retained spelling now has a different identity', async () => {
+  const { buildFakeVault } = await import('../helpers/fakeVault')
+  const app = buildFakeVault([], { sensitiveNames: true })
+  const path = 'й-empty'.normalize('NFD')
+  await app.vault.adapter.mkdir(path)
+  const dirs = new VaultDirectories(app.vault.adapter, app)
+  const identity = await dirs.identity(path)
+  const stat = app.vault.adapter.stat.bind(app.vault.adapter)
+  app.vault.adapter.stat = async (path) => {
+    const value = await stat(path)
+    return value ? { ...value, ctime: value.ctime + 1 } : null
+  }
+  const remove = vi.spyOn(app.vault.adapter, 'rmdir')
+  await expect(dirs.remove(path, identity)).rejects.toMatchObject({ code: 'conflict' })
+  expect(remove).not.toHaveBeenCalled()
+  expect(await app.vault.adapter.exists(path)).toBe(true)
+})
+
+it('matches normalized child notifications while removing only the retained physical folder', async () => {
+  const { buildFakeVault } = await import('../helpers/fakeVault')
+  const path = 'й-folder/ё-note.md'.normalize('NFD')
+  const folder = path.slice(0, path.lastIndexOf('/'))
+  const app = buildFakeVault([{ path, content: 'retained' }], { sensitiveNames: true })
+  const rmdir = app.vault.adapter.rmdir.bind(app.vault.adapter)
+  app.vault.adapter.rmdir = async (path, recursive) => {
+    expect(recursive).toBe(false)
+    expect(await app.vault.adapter.list(path)).toEqual({ files: [], folders: [] })
+    await rmdir(path, true)
+  }
+  const dirs = new VaultDirectories(app.vault.adapter, app)
+  await expect(dirs.remove(folder)).rejects.toMatchObject({ code: 'ENOTEMPTY' })
+  await app.vault.adapter.remove(path)
+  await dirs.removedChild(path.normalize('NFC'))
+  expect(await app.vault.adapter.exists(folder)).toBe(false)
+})
+
+it('recovers an offline normalization rename with equal sibling birth times without conflating twins', async () => {
+  const { buildFakeVault } = await import('../helpers/fakeVault')
+  const original = 'й-folder'.normalize('NFD')
+  const app = buildFakeVault(
+    [
+      { path: original + '/one.md', content: 'one' },
+      { path: 'Other/two.md', content: 'two' },
+    ],
+    { sensitiveNames: true }
+  )
+  const stat = app.vault.adapter.stat.bind(app.vault.adapter)
+  app.vault.adapter.stat = async (path) => {
+    const value = await stat(path)
+    return value?.type === 'folder' ? { ...value, ctime: 7 } : value
+  }
+  const list = async () => {
+    const result = []
+    for await (const dir of new VaultDirectories(app.vault.adapter, app).list()) result.push(dir)
+    return result
+  }
+  const before = (await list()).find((one) => one.path === original)!
+  await app.vault.rename(app.vault.getAbstractFileByPath(original)!, original.normalize('NFC'))
+  expect((await list()).find((one) => one.path === original.normalize('NFC'))?.identity).toBe(
+    before.identity
+  )
+  await app.vault.adapter.mkdir(original)
+  const twins = (await list()).filter(
+    (one) => one.path.normalize('NFC') === original.normalize('NFC')
+  )
+  expect(new Set(twins.map((one) => one.identity)).size).toBe(2)
+})
+
 it.each(['local delete', 'empty child', 'missing', 'recreated', 'new content'])(
   'reconciles pending directory removal on a scan: %s',
   async (change) => {
@@ -270,4 +338,88 @@ it('keeps native folder rename identity even when sibling birth times are equal'
   } finally {
     stop()
   }
+})
+
+it('keeps folders under a symlinked ancestor out of the inventory and refuses effects there', async () => {
+  const { buildFakeVault } = await import('../helpers/fakeVault')
+  const app = buildFakeVault([{ path: 'Plain/note.md', content: 'sample' }])
+  await app.vault.adapter.mkdir('Linked')
+  await app.vault.adapter.mkdir('Linked/Empty')
+  await app.vault.adapter.mkdir('Plain/Kept')
+  // `Linked` points outside the vault: nothing below it is the vault's to publish or remove.
+  const dirs = new VaultDirectories(app.vault.adapter, app, async (path) => path === 'Linked')
+  const listed = []
+  for await (const one of dirs.list(['Linked', 'Linked/Empty', 'Plain', 'Plain/Kept']))
+    listed.push(one.path)
+  expect(listed.sort()).toEqual(['Plain', 'Plain/Kept'])
+  const rmdir = vi.spyOn(app.vault.adapter, 'rmdir')
+  const mkdir = vi.spyOn(app.vault.adapter, 'mkdir')
+  const rename = vi.spyOn(app.vault.adapter, 'rename')
+  await expect(dirs.remove('Linked/Empty')).rejects.toMatchObject({ code: 'conflict' })
+  await expect(dirs.identity('Linked/Empty')).rejects.toMatchObject({ code: 'io' })
+  await expect(dirs.mkdir('Linked/New')).rejects.toMatchObject({ code: 'conflict' })
+  await expect(dirs.mkdir('Linked/Empty')).rejects.toMatchObject({ code: 'conflict' })
+  await expect(dirs.move('Linked/Empty', 'Plain/Moved')).rejects.toMatchObject({
+    code: 'conflict',
+  })
+  await expect(dirs.move('Plain/Kept', 'Linked/Moved')).rejects.toMatchObject({
+    code: 'conflict',
+  })
+  expect(rmdir).not.toHaveBeenCalled()
+  expect(mkdir).not.toHaveBeenCalled()
+  expect(rename).not.toHaveBeenCalled()
+  expect(await app.vault.adapter.exists('Linked/Empty')).toBe(true)
+})
+
+it('keeps a received folder Obsidian has not indexed yet in the inventory and removes it by identity', async () => {
+  const { buildFakeVault } = await import('../helpers/fakeVault')
+  const app = buildFakeVault([{ path: 'Plain/note.md', content: 'sample' }])
+  await app.vault.adapter.mkdir('Received')
+  // The fake adapter's rmdir is recursive-only; the folder is empty, as the real removal requires.
+  const dirs = new VaultDirectories(
+    app.vault.adapter,
+    app,
+    async () => false,
+    (path) => app.vault.adapter.rmdir(path, true)
+  )
+  const identity = await dirs.identity('Received')
+  // The index lags behind the pull that created the folder: the indexed inventory omits it.
+  const listed = []
+  for await (const one of dirs.list(['Plain'])) listed.push(one)
+  expect(listed).toContainEqual(expect.objectContaining({ path: 'Received', identity }))
+  await dirs.remove('Received', identity)
+  expect(await app.vault.adapter.exists('Received')).toBe(false)
+})
+
+it('a folder connection inventory leaves other connections’ folder identities alone without reading them', async () => {
+  const { buildFakeVault } = await import('../helpers/fakeVault')
+  const app = buildFakeVault([{ path: 'Shared/note.md', content: 'sample' }])
+  await app.vault.adapter.mkdir('Elsewhere')
+  const dirs = new VaultDirectories(app.vault.adapter, app)
+  const elsewhere = await dirs.identity('Elsewhere')
+  const stat = vi.spyOn(app.vault.adapter, 'stat')
+  const listed = []
+  for await (const one of dirs.list(
+    ['Shared'],
+    (path) => path === 'Shared' || path.startsWith('Shared/')
+  ))
+    listed.push(one.path)
+  expect(listed).toEqual(['Shared'])
+  expect(stat.mock.calls.some(([path]) => path === 'Elsewhere')).toBe(false)
+  stat.mockRestore()
+  expect(await dirs.identity('Elsewhere')).toBe(elsewhere)
+})
+
+it('never brings a remembered folder back from a hidden place such as the trash', async () => {
+  const { buildFakeVault } = await import('../helpers/fakeVault')
+  const app = buildFakeVault([{ path: 'Plain/note.md', content: 'sample' }])
+  const dirs = new VaultDirectories(app.vault.adapter, app)
+  // Obsidian's own trash moves a deleted folder under a hidden folder, and the rename record
+  // follows it there: the remembered identity now names a hidden path that still exists.
+  await app.vault.adapter.mkdir('.trash')
+  await app.vault.adapter.mkdir('.trash/Gone')
+  await dirs.identity('.trash/Gone')
+  const listed = []
+  for await (const one of dirs.list(['Plain'])) listed.push(one.path)
+  expect(listed).toEqual(['Plain'])
 })

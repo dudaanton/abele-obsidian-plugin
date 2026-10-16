@@ -1914,6 +1914,17 @@ an agent only a version it has. Nothing about it is stored in the vault: a scrip
 its text. A script the agent writes or edits with its file tools counts as written on this
 device; on another device the same change waits to be confirmed there.
 
+## Sync path identity
+
+Sync directory metadata (`v2-directories` in the device ledger) uses schema version 2. Server
+paths remain NFC; `localPath` retains each physical spelling alongside its directory identity.
+Existing records migrate without resetting file entries or the feed cursor. Pending directory
+requests retain their original operation and idempotency key. Legacy removals without identity
+evidence remain held. Downgrading this metadata to an older client is unsupported; preserve the
+ledger rather than resetting it. Normalization collision evidence is retained in
+`normalization-collisions` and `normalization-directory-collisions` across restarts. Physical
+paths in write journals, projections and retained artifacts remain unchanged.
+
 ## Synced keys
 
 The plugin's settings file (`data.json` in its folder under the config directory) holds, when
@@ -2361,6 +2372,28 @@ publication; append resumes from the actual disk length, and seal verifies the f
 Publication still uses the write journal and the local-save fence or backup swap. A stage
 with an unresolved backup remains an installation blocker. Sealed retained sources are
 separate from unfinished publication, and are verified again before use.
+
+Each token ledger persists the server restore generation, content reconciliation phase and
+reason, missing-file evidence, and the rolling content-sweep cursor. Normal sweeps rehash up
+to 16 tracked files and 16 MiB per cycle (one oversized file can advance alone); metadata-only
+inspection does not advance that cursor. Reconciliation performs a full selected rehash once
+and routes outgoing deletes to the existing held-deletes review, including single deletes.
+Filesystem fingerprints and content revalidation bypass process-local write receipts.
+Generation retirement clears the adapter's live receipts, including those shared by another
+filesystem instance. Ordinary pull verification
+can still use a live incremental receipt on append-only hosts. Fresh reads retain the ordinary
+50 MiB whole-file fallback limit; larger files require bounded readers. A persisted digest
+never substitutes for current bytes.
+
+Before startup recovery or publication, the host handshakes the server generation. A changed
+generation archives old publication authority under `retired-host-generation:` in the ledger,
+alongside the core's `retired-generation:` evidence. Local write intents are archived before
+being marked with `retiredGeneration`; their temporary files and backups remain protected and
+are never replayed or swept. Possible local restores likewise retain write evidence under
+`reconciliation-host-writes:`. External-file documents from a retired generation remain intact
+and archived; those connections stop with the existing recovery status pending reconciliation
+of their retained external records. Neither restore path discards local files or resets the
+ledger on an ordinary plugin upgrade.
 
 Streaming pulls of at most one transfer chunk retain verified bytes in memory before acquiring
 placement paths, without an extra private source stage. New one-chunk placements use the ordinary

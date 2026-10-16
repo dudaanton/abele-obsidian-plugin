@@ -12,6 +12,15 @@ async function coordinatePlacement(fs, paths, work, preserve = true) {
   const run = fs[Symbol.for('abele.sync.placement-v1')];
   return run ? run(paths, work, preserve) : work();
 }
+async function* inventoryDirectories(fs) {
+  const read = fs[Symbol.for('abele.sync.inventory-directories-v1')];
+  if (read) yield* await read.call(fs);
+  else yield* fs.listDirectories();
+}
+async function inventoryChildren(fs, parent, path) {
+  const read = fs[Symbol.for('abele.sync.inventory-children-v1')];
+  return read ? read.call(fs, parent, path) : fs.listChildren(parent);
+}
 `
 export function syncPlacementPlugin() {
   return {
@@ -21,15 +30,55 @@ export function syncPlacementPlugin() {
       const file = id.split('?')[0]
       if (!file.includes('/node_modules/@abele/sync-core/dist/')) return null
       let code = input
-      if (file.endsWith('/pullPlace.js')) {
+      if (file.endsWith('/cycle.js')) {
+        code = replaceOnce(
+          code,
+          'async cycle() {',
+          `async cycle() {
+          const pass = this.ctx.opts.fs[Symbol.for('abele.sync.inventory-pass-v1')];
+          return pass ? pass.call(this.ctx.opts.fs, () => this.cycleUnlocked()) : this.cycleUnlocked();
+        }
+        async cycleUnlocked() {`
+        )
+      } else if (file.endsWith('/scanner.js')) {
+        code = replaceOnce(
+          code,
+          'const fingerprint = await fingerprintFile(fs, info.path, hash);',
+          `const fresh = fs[Symbol.for('abele.sync.fingerprint-fresh-v1')];
+            const fingerprint = fresh && (revalidate.has(wirePath) || opts.verifyPaths?.has(wirePath))
+              ? await fresh.call(fs, info.path) : await fingerprintFile(fs, info.path, hash);`
+        )
+      } else if (file.endsWith('/localPaths.js')) {
+        code = replaceOnce(
+          code,
+          'for await (const dir of fs.listDirectories())',
+          'for await (const dir of inventoryDirectories(fs))'
+        )
+        code = replaceOnce(
+          code,
+          'await fs.listChildren(parent)',
+          'await inventoryChildren(fs, parent, path)'
+        )
+      } else if (file.endsWith('/pullPlace.js')) {
         code = `import { receiveToStage as receivePlacementSource } from './streaming.js';\n` + code
         if (!code.includes('fingerprintFile(this.fs,'))
           throw new Error('Unsupported pull fingerprint boundary')
         code = code.replaceAll('fingerprintFile(this.fs,', 'fingerprintPlacementFile(this.fs,')
+        code = replaceOnce(
+          code,
+          'settledStat(this.fs, target, sha, wrote, this.hash)',
+          'settledPlacementStat(this.fs, target, sha, wrote, this.hash)'
+        )
         code += `
         async function fingerprintPlacementFile(fs, path, hash) {
           const bounded = fs[Symbol.for('abele.sync.fingerprint-pull-v1')];
           return bounded ? bounded(path) : fingerprintFile(fs, path, hash);
+        }
+        async function settledPlacementStat(fs, path, sha, wrote, hash) {
+          return settledStat({
+            stat: (path) => fs.stat(path),
+            fingerprint: (path) => fingerprintPlacementFile(fs, path, hash),
+          }, path, sha, wrote, hash);
         }
         `
         code = replaceOnce(
@@ -329,18 +378,8 @@ export function syncPlacementPlugin() {
       } else if (file.endsWith('/v2Directories.js')) {
         code = replaceOnce(
           code,
-          `const local = [];
-        for await (const dir of this.fs.listDirectories())
-            local.push(dir);
-        const identity = local.find((d) => d.path === item.path).identity;`,
-          `const identify = this.fs[Symbol.for('abele.sync.directory-identity-v1')];
-        let identity;
-        if (identify) identity = await identify(item.path);
-        else {
-          for await (const dir of this.fs.listDirectories())
-            if (dir.path === item.path) { identity = dir.identity; break; }
-          if (!identity) throw new Error('Received directory identity is unavailable');
-        }`
+          'for await (const dir of this.fs.listDirectories())',
+          'for await (const dir of inventoryDirectories(this.fs))'
         )
         code = replaceOnce(
           code,
@@ -364,14 +403,14 @@ export function syncPlacementPlugin() {
           const previous = (await this.read()).directories.find(one => one.file_id === item.file_id);
           // mkdir refuses an occupied file and never rewrites descendants. Keep the lease,
           // but do not recursively archive a directory that this receipt cannot overwrite.
-          return coordinatePlacement(this.fs, [item.path, ...(previous ? [previous.path] : [])], () => this.receiveUnlocked(item), false);
+          return coordinatePlacement(this.fs, [item.path, ...(previous ? [previous.localPath ?? previous.path] : [])], () => this.receiveUnlocked(item), false);
         }
         async receiveUnlocked(item) {`
         )
         code = replaceOnce(
           code,
-          'await this.fs.removeDirectory(path);',
-          'await coordinatePlacement(this.fs, [path], () => this.fs.removeDirectory(path));'
+          'await this.fs.removeDirectory(path, removal.identity);',
+          'await coordinatePlacement(this.fs, [path], () => this.fs.removeDirectory(path, removal.identity));'
         )
       } else if (file.endsWith('/v2Client.js')) {
         code = replaceOnce(

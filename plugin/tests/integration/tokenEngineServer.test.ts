@@ -6,6 +6,7 @@ import { AccessClient, MemoryStateStore, V2EngineClient, sha256 } from '@abele/s
 import type { App } from 'obsidian'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
+import { withDesktopFs } from '../helpers/fakeDesktopFs'
 import { TokenEngineRuntime } from '@/sync/tokenEngineRuntime'
 import { coordinatedFileSystem, PathCoordinator } from '@/sync/pathCoordinator'
 import { ExecutableReview } from '@/sync/executableReview'
@@ -21,6 +22,447 @@ import { nativeTokenFixture } from '../helpers/nativeTokenFixture'
 import { resetSyncTokenState } from '@/testing/resetSyncTokenState'
 import type { Plugin } from 'obsidian'
 import { projectionPath } from '@/sync/external/projection'
+import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
+import { V2SyncClient } from '@abele/sync-server/tests/helpers/v2SyncClient.js'
+import { createDb } from '@abele/sync-server/src/db/connect.js'
+import { bumpGeneration } from '@abele/sync-server/src/restoreGeneration.js'
+import { GENERATION_KEY, readReconciliation } from '@abele/sync-core'
+import { JOURNAL_KEY } from '@/sync/writeJournal'
+import { holdTokenDownload } from '@/testing/holdTokenDownload'
+
+it('handshakes before startup write recovery and resumes ordinary sync with retired artifacts retained', async () => {
+  const server = await v2Server(),
+    factory = new IDBFactory()
+  vi.stubGlobal('window', {
+    indexedDB: factory,
+    setTimeout,
+    clearTimeout,
+    setInterval,
+    clearInterval,
+  })
+  vi.stubGlobal('document', { visibilityState: 'visible' })
+  const app = buildFakeVault([{ path: 'sample.bin', content: 'current local bytes', mtime: 1000 }])
+  let fixture: Awaited<ReturnType<typeof nativeTokenFixture>> | undefined
+  let restarted: TokenEngines | undefined
+  try {
+    const user = await createUser(
+      { db: server.db, pepper: server.config.tokenPepper },
+      'Sample user',
+      server.address
+    )
+    fixture = await nativeTokenFixture(app, user.token, globalThis.fetch, factory)
+    await fixture.host.close()
+    const temp = '.obsidian/plugins/abele/sync-staging/.abele-sync-abcd1234.tmp'
+    const backup = '.obsidian/plugins/abele/sync-staging/.abele-sync-abcd1234.old'
+    await app.vault.adapter.mkdir('.obsidian/plugins/abele/sync-staging')
+    await app.vault.adapter.write(temp, 'pending obsolete bytes')
+    await app.vault.adapter.write(backup, 'previous local bytes')
+    app.saveLocalStorage(JOURNAL_KEY, [
+      ...((app.loadLocalStorage(JOURNAL_KEY) as unknown[]) ?? []),
+      { owner: fixture.id, target: 'sample.bin', temp, backup },
+    ])
+    await server.restart(async () => {
+      const db = createDb(server.databaseUrl)
+      try {
+        await bumpGeneration(db.db)
+      } finally {
+        await db.close()
+      }
+    })
+    restarted = new TokenEngines(
+      app as unknown as App,
+      fixture.ui,
+      (reference) => fixture!.keys.get(reference) ?? null,
+      {
+        indexedDB: factory,
+        fetch: globalThis.fetch,
+        fallbackMs: 60000,
+        pollMs: 60000,
+        WebSocket: class {
+          constructor() {
+            throw new Error('Fixture uses polling')
+          }
+        } as never,
+      }
+    )
+    restarted.start()
+    await fixture.ui.connectionsChanged()
+    await fixture.ui.sync(fixture.id)
+    expect(app.loadLocalStorage(JOURNAL_KEY)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          target: 'sample.bin',
+          temp,
+          backup,
+          retiredGeneration: expect.any(String),
+        }),
+      ])
+    )
+    expect(await app.vault.adapter.read('sample.bin')).toBe('current local bytes')
+    expect(await app.vault.adapter.read(temp)).toBe('pending obsolete bytes')
+    expect(await app.vault.adapter.read(backup)).toBe('previous local bytes')
+    expect(fixture.ui.rows.value.find((row) => row.id === fixture!.id)?.status).toBe('idle')
+  } finally {
+    await restarted?.close()
+    await fixture?.host.close()
+    await server.close()
+    vi.unstubAllGlobals()
+  }
+})
+
+it.each(['server-generation', 'local-backup'] as const)(
+  'preserves both binary variants across %s and a ledger restart',
+  async (kind) => {
+    const server = await v2Server()
+    const factory = new IDBFactory()
+    const path = 'й-folder/ё-data.bin'
+    const physical = path.normalize('NFD')
+    const app = buildFakeVault(
+      [
+        { path: physical, content: 'initial local bytes', mtime: 1000 },
+        { path: 'keep.md', content: 'keep these bytes', mtime: 1000 },
+      ],
+      { sensitiveNames: true }
+    )
+    let state = await IndexedDbStateStore.open(factory, 'restore-sample-' + kind)
+    let engine: TokenEngineRuntime | undefined
+    try {
+      const user = await createUser(
+        { db: server.db, pepper: server.config.tokenPepper },
+        'Sample user',
+        server.address
+      )
+      const owner = new V2SyncClient(user.token)
+      const statuses: import('@abele/sync-core').EngineStatus[] = []
+      const make = () => {
+        const metadata = new MemoryStateStore()
+        return new TokenEngineRuntime({
+          id: 'restore-sample',
+          encoded: user.token,
+          fs: coordinatedFileSystem(
+            new ObsidianFileSystem(app as unknown as App, {
+              ledger: state,
+              preserveEmptyDirectories: true,
+            }),
+            new PathCoordinator()
+          ),
+          state,
+          reviews: {
+            executables: new ExecutableReview(metadata),
+            attachments: new AttachmentConsent(metadata),
+            close: () => {},
+          },
+          fetch: globalThis.fetch,
+          changed: (status) => {
+            statuses.push(structuredClone(status))
+          },
+          failed: () => {},
+          covers: async () => false,
+        })
+      }
+      engine = make()
+      await engine.sync()
+      const generation = await state.getMeta(GENERATION_KEY)
+      const entry = (await state.get(physical))!
+      const blob = await owner.upload(Buffer.from('newer remote bytes'))
+      await owner.commit([
+        {
+          op: 'modify',
+          file_id: entry.fileId,
+          base_version_id: entry.versionId,
+          ...blob,
+          mtime: 5000,
+        },
+      ])
+      const keep = (await state.get('keep.md'))!
+      const journal = {
+        batchId: 'stale-batch',
+        idempotencyKey: crypto.randomUUID(),
+        startedAt: new Date().toISOString(),
+        ops: [{ op: 'delete' as const, file_id: keep.fileId, base_version_id: keep.versionId }],
+      }
+      await state.setJournal(journal)
+      if (kind === 'server-generation') {
+        // Keep the original bytes equal to the retired ledger digest: they still survive.
+        await server.restart(async () => {
+          const db = createDb(server.databaseUrl)
+          try {
+            await bumpGeneration(db.db)
+          } finally {
+            await db.close()
+          }
+        })
+      } else {
+        await app.vault.adapter.writeBinary(
+          physical,
+          new TextEncoder().encode('restored local bytes').buffer,
+          { mtime: 1 }
+        )
+        await app.vault.adapter.remove('keep.md')
+      }
+      await engine.sync()
+      if (kind === 'local-backup') {
+        const held = await engine.heldDeletes()
+        expect(held.map((one) => one.fileId)).toEqual([keep.fileId])
+        expect((await readReconciliation(state))?.phase).toBe('review')
+        // The existing held-delete review survives closing and reopening the ledger.
+        await engine.disconnect()
+        state.close()
+        state = await IndexedDbStateStore.open(factory, 'restore-sample-' + kind)
+        engine = make()
+        expect((await engine.heldDeletes()).map((one) => one.fileId)).toEqual([keep.fileId])
+        await engine.decideDeletes('restore', [keep.fileId])
+        await engine.sync()
+      }
+      const expected = kind === 'server-generation' ? 'initial local bytes' : 'restored local bytes'
+      const local = await Promise.all(
+        app.vault.getFiles().map((file) => app.vault.adapter.read(file.path))
+      )
+      expect(local).toEqual(
+        expect.arrayContaining([expected, 'newer remote bytes', 'keep these bytes'])
+      )
+      const items = (await owner.manifest()).items.filter((item) => item.kind !== 'directory')
+      const remote = await Promise.all(
+        items.map(async (item) => (await owner.content(item.file_id)).toString())
+      )
+      expect(remote).toEqual(
+        expect.arrayContaining([expected, 'newer remote bytes', 'keep these bytes'])
+      )
+      expect(await state.getJournal()).toBeNull()
+      if (kind === 'server-generation') {
+        expect(await state.getMeta(GENERATION_KEY)).not.toBe(generation)
+        expect(await state.getMeta('retired-generation:' + generation)).toContain(
+          journal.idempotencyKey
+        )
+      } else {
+        expect(
+          await state.getMeta('reconciliation-journal:' + journal.idempotencyKey)
+        ).not.toBeNull()
+      }
+      expect(
+        statuses.some(
+          (status) => status.reconciliation && status.reconciliation.phase !== 'complete'
+        )
+      ).toBe(true)
+      const sweep = await state.getMeta('content-sweep-after')
+      const count = (await server.db.selectFrom('versions').select('id').execute()).length
+      await engine.disconnect()
+      state.close()
+      state = await IndexedDbStateStore.open(factory, 'restore-sample-' + kind)
+      expect(await state.getMeta('content-sweep-after')).toBe(sweep)
+      expect((await readReconciliation(state))?.phase).toBe('complete')
+      engine = make()
+      await engine.sync()
+      expect((await server.db.selectFrom('versions').select('id').execute()).length).toBe(count)
+      expect(await app.vault.adapter.exists(physical)).toBe(true)
+    } finally {
+      await engine?.disconnect()
+      state.close()
+      await server.close()
+    }
+  }
+)
+
+it('shows normalization collisions as pending refusals while unrelated files sync', async () => {
+  const server = await v2Server()
+  const factory = new IDBFactory()
+  vi.stubGlobal('window', {
+    indexedDB: factory,
+    setTimeout,
+    clearTimeout,
+    setInterval,
+    clearInterval,
+  })
+  let fixture: Awaited<ReturnType<typeof nativeTokenFixture>> | undefined
+  const path = 'ё-note.md'
+  const app = buildFakeVault(
+    [
+      { path, content: 'composed bytes' },
+      { path: path.normalize('NFD'), content: 'decomposed bytes' },
+      { path: 'unrelated.md', content: 'unrelated bytes' },
+    ],
+    { sensitiveNames: true }
+  )
+  try {
+    const user = await createUser(
+      { db: server.db, pepper: server.config.tokenPepper },
+      'Sample user',
+      server.address
+    )
+    expect(await app.vault.adapter.read(path)).toBe('composed bytes')
+    fixture = await nativeTokenFixture(app, user.token, globalThis.fetch, factory)
+    await fixture.ui.sync(fixture.id)
+    const activity = fixture.ui.activity.value[fixture.id]
+    expect(activity.pending).toBeGreaterThan(0)
+    expect(activity.refused).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ reason: expect.stringMatching(/normalization collision.*U\+/i) }),
+      ])
+    )
+    expect(await app.vault.adapter.read(path)).toBe('composed bytes')
+    expect(await app.vault.adapter.read(path.normalize('NFD'))).toBe('decomposed bytes')
+    expect(
+      (await new V2SyncClient(user.token).manifest()).items.some(
+        (one) => one.path === 'unrelated.md'
+      )
+    ).toBe(true)
+  } finally {
+    await fixture?.host.close()
+    await server.close()
+    vi.unstubAllGlobals()
+  }
+})
+
+it.each([
+  { scoped: false, existing: 'empty' },
+  { scoped: true, existing: 'empty' },
+  { scoped: false, existing: 'same' },
+  { scoped: false, existing: 'different' },
+])(
+  'syncs raw NFD names both ways and reloads their ledger (folder token=$scoped, existing=$existing)',
+  async ({ scoped, existing }) => {
+    const server = await v2Server()
+    const factory = new IDBFactory()
+    const folder = scoped ? 'Shared/й-folder' : 'й-folder'
+    const path = folder + '/ё-note.md'
+    const physical = path.normalize('NFD')
+    const secondPath = existing === 'empty' ? path : folder.normalize('NFD') + '/ё-note.md'
+    const apps = [
+      buildFakeVault([{ path: physical, content: 'initial\nbytes\u0000' }], {
+        sensitiveNames: true,
+      }),
+      buildFakeVault(
+        existing === 'empty'
+          ? []
+          : [
+              {
+                path: secondPath,
+                content: existing === 'same' ? 'initial\nbytes\u0000' : 'different local bytes',
+              },
+            ],
+        { sensitiveNames: true }
+      ),
+    ]
+    let states = await Promise.all(
+      ['nfd-a', 'nfd-b'].map((name) => IndexedDbStateStore.open(factory, name))
+    )
+    let engines: TokenEngineRuntime[] = []
+    try {
+      const user = await createUser(
+        { db: server.db, pepper: server.config.tokenPepper },
+        'Sample user',
+        server.address
+      )
+      const remote = new V2EngineClient(user.token, { fetch: globalThis.fetch })
+      const inventory = new V2SyncClient(user.token)
+      let encoded = user.token
+      if (scoped) {
+        // The selected physical root is exact; Unicode round trips happen inside it.
+        await remote.commitRaw([{ op: 'mkdir', path: 'Shared' }], crypto.randomUUID())
+        const directory = (await inventory.manifest()).items.find((one) => one.path === 'Shared')!
+        encoded = (
+          await AccessClient.fromToken(user.token, { fetch: globalThis.fetch }).issue({
+            scope: { kind: 'folder', id: directory.file_id },
+            label: 'sample folder',
+          })
+        ).token
+      }
+      const make = () =>
+        apps.map((app, index) => {
+          const metadata = new MemoryStateStore()
+          return new TokenEngineRuntime({
+            id: 'nfd-' + index,
+            encoded,
+            fs: coordinatedFileSystem(
+              new ObsidianFileSystem(app as unknown as App, {
+                fileScope: scoped ? 'Shared' : undefined,
+                preserveEmptyDirectories: true,
+                ledger: states[index],
+              }),
+              new PathCoordinator()
+            ),
+            state: states[index],
+            reviews: {
+              executables: new ExecutableReview(metadata),
+              attachments: new AttachmentConsent(metadata),
+              close: () => {},
+            },
+            fetch: globalThis.fetch,
+            changed: () => {},
+            failed: (error) => {
+              throw error
+            },
+            covers: async () => false,
+          })
+        })
+      engines = make()
+      await apps[0].vault.adapter.mkdir(folder.normalize('NFD') + '/ё-empty'.normalize('NFD'))
+      await apps[0].vault.adapter.mkdir('й-folder-other'.normalize('NFD'))
+      await apps[0].vault.adapter.write(
+        'й-folder-other/outside.md'.normalize('NFD'),
+        'outside scope'
+      )
+      await engines[0].sync()
+      await engines[1].sync()
+      expect(new Uint8Array(await apps[1].vault.adapter.readBinary(secondPath))).toEqual(
+        new Uint8Array(await apps[0].vault.adapter.readBinary(physical))
+      )
+      if (existing === 'different') {
+        const copies = apps[1].vault
+          .getFiles()
+          .filter((file) => file.path.includes('(Conflicted copy local'))
+        expect(copies).toHaveLength(1)
+        expect(await apps[1].vault.adapter.read(copies[0].path)).toBe('different local bytes')
+      }
+      expect(
+        await apps[1].vault.adapter.exists(
+          (existing === 'empty' ? folder : folder.normalize('NFD')) + '/ё-empty'
+        )
+      ).toBe(true)
+      if (scoped)
+        expect(
+          (await inventory.manifest()).items.some((one) => one.path.includes('outside.md'))
+        ).toBe(false)
+      await apps[1].vault.adapter.write(secondPath, 'edited from second\n\u0000', { mtime: 2000 })
+      await engines[1].sync()
+      await engines[0].sync()
+      expect(new Uint8Array(await apps[0].vault.adapter.readBinary(physical))).toEqual(
+        new Uint8Array(await apps[1].vault.adapter.readBinary(secondPath))
+      )
+      const before = (await inventory.manifest()).items
+      const entry = await states[0].get(physical)
+      expect(entry).not.toBeNull()
+      await Promise.all(engines.map((one) => one.disconnect()))
+      for (const state of states) state.close()
+      states = await Promise.all(
+        ['nfd-a', 'nfd-b'].map((name) => IndexedDbStateStore.open(factory, name))
+      )
+      expect(await states[0].get(physical)).toEqual(entry)
+      expect(JSON.parse((await states[0].getMeta('v2-directories'))!).schemaVersion).toBe(2)
+      await apps[0].vault.rename(
+        apps[0].vault.getAbstractFileByPath(folder.normalize('NFD'))!,
+        folder
+      )
+      const renamedFile = folder + '/ё-note.md'.normalize('NFD')
+      await apps[0].vault.adapter.rename(renamedFile, path)
+      engines = make()
+      await engines[0].sync()
+      await engines[1].sync()
+      await engines[0].sync()
+      expect((await inventory.manifest()).items).toEqual(before)
+      expect(await engines[0].heldDeletes()).toEqual([])
+      expect((await states[0].get(path))?.fileId).toBe(entry!.fileId)
+      expect((await engines[0].entryFor(physical))?.path).toBe(path)
+      const entries = []
+      for await (const one of states[0].all()) entries.push(one)
+      expect(entries.filter((one) => one.fileId === entry!.fileId)).toHaveLength(1)
+    } finally {
+      await Promise.all(engines.map((one) => one.disconnect()))
+      for (const state of states) state.close()
+      await server.close()
+    }
+  }
+)
 
 // The app's timer host is explicit; source type imports must not initialize it accidentally.
 beforeAll(() => {
@@ -281,6 +723,308 @@ it('connects two real servers before editing, then hydrates offloaded bytes from
     vi.unstubAllGlobals()
   }
 }, 15000)
+
+it.each([
+  ['none', 'folder'],
+  ['parent', 'folder'],
+  ['folder', 'folder'],
+  ['none', 'root'],
+] as const)(
+  'connects and places nested folders while the index lags (local=%s, token=%s)',
+  async (local, kind) => {
+    const existing = local === 'folder'
+    const server = await v2Server()
+    const factory = new IDBFactory()
+    vi.stubGlobal('window', {
+      indexedDB: factory,
+      setTimeout,
+      clearTimeout,
+      setInterval,
+      clearInterval,
+    })
+    const app = buildFakeVault([
+      ...(local === 'none'
+        ? []
+        : [{ path: 'Fixtures/local.md', content: 'outside the folder token' }]),
+      ...(existing ? [{ path: 'Fixtures/Shared/kept.md', content: 'kept' }] : []),
+    ])
+    Object.assign(app.workspace, { iterateAllLeaves: () => {} })
+    // Obsidian indexes what the adapter creates later, from its file watcher: until then a
+    // folder a pull just made is on disk and absent from the index.
+    const indexed = new Set(['', ...app.vault.getFiles().map((one) => one.path)])
+    if (local !== 'none') indexed.add('Fixtures')
+    if (existing) indexed.add('Fixtures/Shared')
+    const lookup = app.vault.getAbstractFileByPath.bind(app.vault)
+    const files = app.vault.getFiles.bind(app.vault)
+    app.vault.getAbstractFileByPath = (path: string) => (indexed.has(path) ? lookup(path) : null)
+    app.vault.getFiles = () => files().filter((one) => indexed.has(one.path))
+    const user = await createUser(
+      { db: server.db, pepper: server.config.tokenPepper },
+      'Sample user',
+      server.address
+    )
+    const remote = new V2EngineClient(user.token, { fetch: globalThis.fetch })
+    await remote.commitRaw(
+      [
+        { op: 'mkdir', path: 'Fixtures' },
+        { op: 'mkdir', path: 'Fixtures/Shared' },
+        { op: 'mkdir', path: 'Fixtures/Shared/Inner' },
+        { op: 'mkdir', path: 'Fixtures/Shared/Inner/Empty' },
+      ],
+      crypto.randomUUID()
+    )
+    const bytes = new TextEncoder().encode('shared note'),
+      sha = await sha256(bytes)
+    await remote.putBlob(sha, bytes)
+    await remote.commitRaw(
+      [
+        {
+          op: 'create',
+          path: 'Fixtures/Shared/Inner/note.md',
+          sha,
+          size: bytes.length,
+          mtime: 1000,
+        },
+      ],
+      crypto.randomUUID()
+    )
+    const folder = (await new V2SyncClient(user.token).manifest()).items.find(
+      (one) => one.path === 'Fixtures/Shared'
+    )!
+    const encoded =
+      kind === 'root'
+        ? user.token
+        : (
+            await AccessClient.fromToken(user.token, { fetch: globalThis.fetch }).issue({
+              scope: { kind: 'folder', id: folder.file_id },
+              label: 'nested folder',
+            })
+          ).token
+    const s = await nativeTokenFixture(app, encoded, globalThis.fetch, factory)
+    try {
+      expect(s.registry.records().find((one) => one.id === s.id)!.status).toBe('idle')
+      expect(await app.vault.adapter.read('Fixtures/Shared/Inner/note.md')).toBe('shared note')
+      expect(await app.vault.adapter.exists('Fixtures/Shared/Inner/Empty')).toBe(true)
+      await app.vault.adapter.mkdir('Fixtures/Shared/Made here')
+      // The index catches up with everything on disk before the next exchange.
+      for (const path of [
+        'Fixtures',
+        'Fixtures/Shared',
+        'Fixtures/Shared/Inner',
+        'Fixtures/Shared/Inner/Empty',
+        'Fixtures/Shared/Inner/note.md',
+        'Fixtures/Shared/Made here',
+      ])
+        indexed.add(path)
+      await s.syncNow()
+      expect(
+        (await new V2SyncClient(user.token).manifest()).items.some(
+          (one) => one.path === 'Fixtures/Shared/Made here'
+        )
+      ).toBe(true)
+    } finally {
+      await s.host.close()
+      await server.close()
+      vi.unstubAllGlobals()
+    }
+  },
+  20000
+)
+
+it.each([false, true])(
+  'an empty nested folder made on one device appears on the other (accented root name=%s)',
+  async (accented) => {
+    const server = await v2Server()
+    vi.stubGlobal('window', {
+      indexedDB: new IDBFactory(),
+      setTimeout,
+      clearTimeout,
+      setInterval,
+      clearInterval,
+    })
+    const extra = [
+      ...(accented ? [{ path: 'Café.md'.normalize('NFD'), content: 'accented' }] : []),
+      // The live fixture's rules: everything but its own folder is ignored.
+      { path: '.abele-sync-ignore', content: '*\n!Fixtures/\n!Fixtures/**\n.obsidian/\n' },
+    ]
+    const apps = [
+      buildFakeVault([{ path: 'Fixtures/shared/sample.md', content: 'one' }, ...extra], {
+        sensitiveNames: true,
+      }),
+      buildFakeVault([...extra], { sensitiveNames: true }),
+    ]
+    for (const app of apps) {
+      withDesktopFs(app)
+      Object.assign(app.workspace, { iterateAllLeaves: () => {} })
+      // Obsidian's root is '/', available through getRoot(), not an empty-path lookup.
+      const root = app.vault.getRoot()
+      const lookup = app.vault.getAbstractFileByPath.bind(app.vault)
+      app.vault.getRoot = () => Object.assign(Object.create(root), { path: '/' })
+      app.vault.getAbstractFileByPath = (path: string) => (path === '' ? null : lookup(path))
+      // Obsidian announces every folder its adapter makes, parents included, as it indexes it.
+      const mkdir = app.vault.adapter.mkdir.bind(app.vault.adapter)
+      app.vault.adapter.mkdir = async (path: string) => {
+        const parts = path.split('/')
+        const fresh = []
+        for (let length = 1; length <= parts.length; length++) {
+          const prefix = parts.slice(0, length).join('/')
+          if (!(await app.vault.adapter.exists(prefix))) fresh.push(prefix)
+        }
+        await mkdir(path)
+        for (const one of fresh) {
+          const folder = app.vault.getAbstractFileByPath(one)
+          if (folder) app.emit('vault', 'create', folder)
+        }
+      }
+      const createFolder = app.vault.createFolder.bind(app.vault)
+      app.vault.createFolder = async (path: string) => {
+        const parts = path.split('/')
+        const fresh = []
+        for (let length = 1; length <= parts.length; length++) {
+          const prefix = parts.slice(0, length).join('/')
+          if (!(await app.vault.adapter.exists(prefix))) fresh.push(prefix)
+        }
+        const made = await createFolder(path)
+        for (const one of fresh) {
+          const folder = app.vault.getAbstractFileByPath(one)
+          if (folder) app.emit('vault', 'create', folder)
+        }
+        return made
+      }
+    }
+    const user = await createUser(
+      { db: server.db, pepper: server.config.tokenPepper },
+      'Sample user',
+      server.address
+    )
+    const devices = []
+    try {
+      for (const app of apps)
+        devices.push(await nativeTokenFixture(app, user.token, globalThis.fetch, new IDBFactory()))
+      await devices[1].syncNow()
+      expect(await apps[1].vault.adapter.read('Fixtures/shared/sample.md')).toBe('one')
+      const cycle = async () => {
+        for (const device of [...devices, ...devices]) await device.syncNow()
+      }
+      // The same history the live case has: an edit, a rename on one side and a move on the other.
+      await apps[1].vault.adapter.write('Fixtures/shared/sample.md', 'remote')
+      await cycle()
+      expect(await apps[0].vault.adapter.read('Fixtures/shared/sample.md')).toBe('remote')
+      await apps[0].vault.rename(
+        apps[0].vault.getFileByPath('Fixtures/shared/sample.md')!,
+        'Fixtures/shared/renamed.md'
+      )
+      await cycle()
+      await apps[1].vault.adapter.mkdir('Fixtures/moved')
+      await apps[1].vault.rename(
+        apps[1].vault.getFileByPath('Fixtures/shared/renamed.md')!,
+        'Fixtures/moved/sample.md'
+      )
+      await cycle()
+      expect(await apps[0].vault.adapter.read('Fixtures/moved/sample.md')).toBe('remote')
+      for (const device of devices)
+        expect(device.ui.activity.value[device.id]?.reconciliation?.phase ?? 'complete').toBe(
+          'complete'
+        )
+      // The receiving index has not caught up with folders a pull makes there.
+      const lookup = apps[1].vault.getAbstractFileByPath.bind(apps[1].vault)
+      apps[1].vault.getAbstractFileByPath = (path: string) =>
+        path.startsWith('Fixtures/empty') ? null : lookup(path)
+      const parent = lookup('Fixtures') as unknown as { children: { path: string }[] }
+      let real = parent.children
+      Object.defineProperty(parent, 'children', {
+        get: () => real.filter((one) => !one.path.startsWith('Fixtures/empty')),
+        set: (value: { path: string }[]) => (real = value),
+      })
+      await apps[0].vault.createFolder('Fixtures/empty/child')
+      await devices[0].syncNow()
+      expect((await new V2SyncClient(user.token).manifest()).items.map((one) => one.path)).toEqual(
+        expect.arrayContaining(['Fixtures/empty', 'Fixtures/empty/child'])
+      )
+      await devices[1].syncNow()
+      await devices[1].syncNow()
+      await devices[0].syncNow()
+      expect(await apps[1].vault.adapter.exists('Fixtures/empty/child')).toBe(true)
+      expect(await apps[0].vault.adapter.exists('Fixtures/empty/child')).toBe(true)
+      await apps[0].vault.adapter.rmdir('Fixtures/empty', true)
+      expect(await apps[0].vault.adapter.exists('Fixtures/empty')).toBe(false)
+      await cycle()
+      expect(await apps[1].vault.adapter.exists('Fixtures/empty')).toBe(false)
+    } finally {
+      for (const device of devices) await device.host.close()
+      await server.close()
+      vi.unstubAllGlobals()
+    }
+  },
+  30000
+)
+
+it('hydrates through a held download while an edit lands and another connection transfers', async () => {
+  const servers = await Promise.all([v2Server(), v2Server()])
+  const factory = new IDBFactory()
+  vi.stubGlobal('window', {
+    indexedDB: factory,
+    setTimeout,
+    clearTimeout,
+    setInterval,
+    clearInterval,
+  })
+  const app = buildFakeVault([])
+  Object.assign(app.workspace, { iterateAllLeaves: () => {} })
+  const users = await Promise.all(
+    servers.map((server) =>
+      createUser(
+        { db: server.db, pepper: server.config.tokenPepper },
+        'Sample user',
+        server.address
+      )
+    )
+  )
+  const s = await nativeTokenFixture(app, users[0].token, globalThis.fetch, factory)
+  try {
+    await s.ui.connect(users[1].token)
+    const other = s.registry.records().find((one) => one.id !== s.id)!.id
+    await s.ui.sync(other)
+    await app.vault.adapter.mkdir('Race')
+    await app.vault.adapter.write('Race/race.bin', 'old retained version')
+    await s.ui.sync(s.id)
+    await s.ui.sync(other)
+    expect(await s.host.evict(s.id, 'Race/race.bin')).toMatchObject({ status: 'complete' })
+    await s.ui.pause(s.id, true)
+    await s.ui.pause(other, true)
+    const host = s.host as unknown as { live: Map<string, TokenEngineRuntime> }
+    const binding = s.ui.runtimes.get(s.id)!
+    const gate = holdTokenDownload(host.live.get(s.id)!, () => binding.assertCurrent())
+    try {
+      const opened = s.host.hydrate('Race/race.bin').then(
+        () => true,
+        () => false
+      )
+      await Promise.race([
+        gate.ready,
+        opened.then((hydrated) => {
+          throw new Error('hydration finished without downloading: ' + hydrated)
+        }),
+      ])
+      await app.vault.create('Race/race.bin', 'newest local edit')
+      await s.ui.pause(other, false)
+      const transfer = host.live
+        .get(other)!
+        .sync()
+        .catch(() => {})
+      gate.release()
+      await opened
+      await transfer
+      expect(await app.vault.adapter.read('Race/race.bin')).toBe('newest local edit')
+    } finally {
+      gate.close()
+    }
+  } finally {
+    await s.host.close()
+    await Promise.all(servers.map((server) => server.close()))
+    vi.unstubAllGlobals()
+  }
+}, 30000)
 
 it('holds all children of a deleted folder before any recursive directory commit, then restores them', async () => {
   const server = await v2Server()

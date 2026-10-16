@@ -404,6 +404,24 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     return result
   }
 
+  /**
+   * Plugin metadata keys under `prefix`, as `getMeta` spells them, the open transaction's writes
+   * included. The core retires every durable download intent after a server restore through it.
+   */
+  async metadataKeys(prefix: string): Promise<string[]> {
+    this.assertRecovery()
+    const stored = await this.read('cannot list plugin metadata', [META], async (tx) =>
+      wait<IDBValidKey[]>(tx.objectStore(META).getAllKeys())
+    )
+    const keys = new Set(stored.filter((key): key is string => typeof key === 'string'))
+    for (const [key, value] of this.overlay?.meta ?? []) {
+      if (value === null) keys.delete(key)
+      else keys.add(key)
+    }
+    const scoped = own(prefix)
+    return [...keys].filter((key) => key.startsWith(scoped)).map((key) => key.slice(7))
+  }
+
   async setMeta(key: string, value: string | null): Promise<void> {
     this.assertRecovery()
     await this.setMetaValue(`cannot record ${key}`, own(key), value)

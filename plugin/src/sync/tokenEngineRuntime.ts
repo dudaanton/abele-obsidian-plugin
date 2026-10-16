@@ -1,6 +1,8 @@
 import { connectionPrivateRoot } from './connectionPaths'
 import { assertPhysicalPath } from './external/projection'
 import { scopedFileSystem, FolderScopeError } from './scopedFileSystem'
+import { withinSyncPath } from './scope'
+import { LocalPaths } from '@abele/sync-core'
 import { sha256 } from './external/hash'
 import { nativeSyncFailure } from './mobileTransport'
 import {
@@ -16,6 +18,9 @@ import {
   downloadToStage,
   TransferBudget,
   receiveToStage,
+  GENERATION_KEY,
+  readReconciliation,
+  fenceRestoredJournal,
   type FileSystem,
   type ChunkSource,
   type StateStore,
@@ -52,6 +57,7 @@ import { TokenAssetOutbox, ASSET_IDENTITIES, assetIdentitiesSchema } from './tok
 import { PLACEMENT } from './pathCoordinator'
 import { reviewFileSystem } from './reviewFileSystem'
 import { TransferProgress, type TransferSnapshot } from './transferProgress'
+import { RESTORE_HEADER, assertResponseGeneration, fenceHostGeneration } from './restoreFence'
 
 export interface TokenEngineOptions {
   id: string
@@ -67,6 +73,8 @@ export interface TokenEngineOptions {
   ownSettingsPath?: string
   preparePlacement?(paths: readonly string[]): Promise<void>
   recoverPlacement?(): Promise<void>
+  retirePlacement?(generation: string, archive: (value: unknown) => Promise<void>): Promise<void>
+  fencePlacement?(head: number): Promise<void>
   engineClient?(client: EngineClient): EngineClient
   engineState?: StateStore
   publicationChanged?(): void
@@ -126,6 +134,9 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     }
   }
   private permitted = true
+  private generation: string | null = null
+  private readyToPublish = false
+  private acceptHandshake = false
   private ignore: PathMatcher | null = null
   private authority: V2Connection | null = null
   private readonly compared = new Set<string>()
@@ -219,7 +230,8 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
         options.fs,
         (path) => this.assertLocalPaths([path]),
         (path) => !this.outsideScope(path),
-        connectionPrivateRoot(options.id)
+        connectionPrivateRoot(options.id),
+        options.localRoot ?? this.token.scope.path
       )
     const transport: typeof fetch = (input, init) =>
       this.trace.run(
@@ -241,6 +253,14 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
             typeof init?.body === 'string'
           )
             this.assertScopedPayload(JSON.parse(init.body))
+          const expectedGeneration =
+            this.generation ?? (await options.state.getMeta(GENERATION_KEY))
+          const handshake = path === '/v2/connection' && this.acceptHandshake
+          const headers = new Headers(
+            init?.headers ?? (input instanceof Request ? input.headers : undefined)
+          )
+          if (!handshake && expectedGeneration) headers.set(RESTORE_HEADER, expectedGeneration)
+          if (handshake) headers.delete(RESTORE_HEADER)
           const range = /^bytes=(\d+)-\d+$/.exec(new Headers(init?.headers).get('range') ?? '')
           const rangeOffset = range ? Number(range[1]) : undefined
           this.observeRequest(path, true, undefined, rangeOffset)
@@ -252,7 +272,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
             else signal?.addEventListener('abort', abort, { once: true })
           }
           try {
-            response = await options.fetch(input, { ...init, signal: request.signal })
+            response = await options.fetch(input, { ...init, headers, signal: request.signal })
             successful = response.ok
           } catch (error) {
             const native = nativeSyncFailure(error)
@@ -269,6 +289,8 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
           const url = new URL(
             typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
           )
+          if (url.pathname !== '/v2/connection')
+            assertResponseGeneration(response, expectedGeneration)
           if (!response.ok) {
             if (response.status === 401 || response.status === 403) this.permitted = false
             if (response.status >= 500) {
@@ -297,6 +319,23 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
             this.progress.bytes(url.pathname, 0, size)
           }
           if (url.pathname === '/v2/connection') {
+            const generation = response.headers.get(RESTORE_HEADER)
+            // A connection GET during state()/publication is not a fresh prepare handshake.
+            if (!handshake) assertResponseGeneration(response, expectedGeneration)
+            this.acceptHandshake = false
+            await fenceHostGeneration(
+              options.state,
+              generation,
+              (save) => options.retirePlacement?.(generation, save) ?? Promise.resolve(),
+              async (save) => {
+                await save(
+                  (await options.reviews.executables.state()).filter(
+                    (one) => one.source.id === options.id
+                  )
+                )
+                await options.reviews.executables.forgetSource(options.id)
+              }
+            )
             this.authority = V2ConnectionSchema.parse(await response.clone().json())
             this.permitted = this.authority.status === 'active'
             if (
@@ -436,10 +475,9 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     this.client.includes = (path) =>
       includes(path) || (this.active && this.permitted && this.assetPaths.has(path))
     this.client.prepare = async (fs, state, excluded) => {
+      this.readyToPublish = false
+      this.acceptHandshake = true
       this.compared.clear()
-      await this.trace.run('write recovery before placement', async () =>
-        options.recoverPlacement?.()
-      )
       this.assetPaths.clear()
       if (options.scopeInput) {
         const input = await options.scopeInput(this.selective)
@@ -474,9 +512,21 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
             return typeof value === 'function' ? value.bind(target) : value
           },
         }),
-        state,
+        options.state,
         excluded
       )
+      this.generation = await options.state.getMeta(GENERATION_KEY)
+      const reconciliation = await readReconciliation(options.state)
+      options.changed({ ...this.engine.status, reconciliation })
+      // state() includes an effects-capable changes decoder; replay stays fenced here.
+      const head = await this.client.state()
+      await fenceRestoredJournal(options.state, head.head_seq, fs, undefined, this.client)
+      await options.fencePlacement?.(head.head_seq)
+      await this.outbox.restore()
+      await this.trace.run('write recovery after restore handshake', async () =>
+        options.recoverPlacement?.()
+      )
+      this.readyToPublish = true
       if (this.token.scope.kind === 'group') {
         const identities = assetIdentitiesSchema.parse(
           JSON.parse((await options.state.getMeta(ASSET_IDENTITIES)) ?? '[]')
@@ -600,7 +650,8 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
                 // They cannot change this connection's inventory; keep the ignore
                 // control file itself observable so scope changes still take effect.
                 const relevant = paths.filter(
-                  (path) => path === '.abele-sync-ignore' || !this.ignore?.ignores(path)
+                  (path) =>
+                    path === '.abele-sync-ignore' || !this.ignore?.ignores(path.normalize('NFC'))
                 )
                 if (relevant.length) notify(relevant)
               })
@@ -776,6 +827,9 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       assertOwned: () => this.assertHeld(),
       serial: (work) => this.engine.runExclusive(work),
       approved: async (id) => {
+        if (!this.readyToPublish) return false
+        const reconciliation = await readReconciliation(options.state)
+        if (reconciliation && reconciliation.phase !== 'complete') return false
         const target = await this.resolve(id)
         return !!target && (await options.reviews.attachments.mayUpload(this.source(), target))
       },
@@ -852,10 +906,12 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
           authorization: 'Bearer ' + this.token.key,
           'content-type': 'application/json',
           'idempotency-key': one.key,
+          ...(this.generation ? { [RESTORE_HEADER]: this.generation } : {}),
         },
         body: JSON.stringify({ path: normalisePath(one.path), ...expected, mtime: one.mtime }),
       })
       this.assertHeld()
+      assertResponseGeneration(response, this.generation)
       if (!response.ok)
         throw new EngineError('protocol', 'File publication response is unavailable')
       const result: unknown = await response.json()
@@ -901,6 +957,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     }
   }
   private assertIncomingPaths(paths: readonly string[]): void {
+    if (this.token.scope.kind !== 'folder' || this.token.scope.path === '/') return
     for (const path of paths) {
       try {
         validatePath(path)
@@ -926,11 +983,12 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     }
   }
   private blocked(path: string): boolean {
+    path = path.normalize('NFC')
     return (
       this.outsideScope(path.replace(/\/$/, '')) ||
       (this.ignore?.ignores(path) ?? false) ||
       (!this.isRoot() && configurationPath(path, this.options.paths)) ||
-      [...this.held].some((held) => path === held || path.startsWith(held + '/'))
+      [...this.held].some((held) => withinSyncPath(path, held))
     )
   }
   private isRoot(): boolean {
@@ -1128,6 +1186,9 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   }
   private async joinItem(item: V2ManifestItem): Promise<void> {
     this.assertIncomingPaths([item.path])
+    if (this.localExcluded(item.path, item.kind === 'directory' ? 0 : item.size)) return
+    const reconciliation = await readReconciliation(this.options.state)
+    if (reconciliation && reconciliation.phase !== 'complete') return
     if (
       configurationPath(item.path, this.options.paths) &&
       item.path !== this.options.ownSettingsPath
@@ -1140,6 +1201,16 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       return
     }
     if (item.kind === 'directory' || (await this.options.state.get(item.path))) return
+    const inventory = await LocalPaths.forPath(this.options.fs, item.path, this.options.state)
+    if (inventory.blocked(item.path)) return
+    try {
+      item = { ...item, path: inventory.resolve(item.path, 'file') }
+    } catch (error) {
+      // The ordinary core scan reports aliases; first-contact preservation must not
+      // select or overwrite one of them before that scan has run.
+      if ((error as { code?: string }).code === 'path_taken') return
+      throw error
+    }
     const before = await this.options.fs.stat(item.path)
     if (!before) return
     if (
@@ -1160,10 +1231,16 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       slash = item.path.lastIndexOf('/')
     const stem = dot > slash ? item.path.slice(0, dot) : item.path,
       ext = dot > slash ? item.path.slice(dot) : ''
-    const copy =
+    const copyName =
       stem + ' (Conflicted copy local ' + before.mtime + ' ' + hash.slice(0, 12) + ')' + ext
+    const copy = (await LocalPaths.forPath(this.options.fs, copyName, this.options.state)).resolve(
+      copyName,
+      'file'
+    )
     const work = async () => {
       this.assertHeld()
+      await this.assertJoinPlacement(item.path)
+      await this.assertJoinPlacement(copy)
       if (await this.options.state.get(item.path)) return
       const current = await this.options.fs.stat(item.path)
       if (
@@ -1189,12 +1266,18 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       this.assertHeld()
       if ((await sha256(await this.options.fs.read(item.path))) !== hash)
         throw new EngineError('lost', 'Local file changed; preserved conflict copy remains')
+      await this.assertJoinPlacement(item.path)
       await this.options.fs.writeAtomic(item.path, incoming, item.mtime)
     }
     const lease = (this.options.fs as FileSystem & { [key: symbol]: unknown })[
       Symbol.for('abele.sync.placement-v1')
     ] as ((paths: string[], work: () => Promise<void>) => Promise<void>) | undefined
     await (lease ? lease([item.path, copy], work) : work())
+  }
+  private async assertJoinPlacement(path: string): Promise<void> {
+    const inventory = await LocalPaths.forPath(this.options.fs, path, this.options.state)
+    if (inventory.blocked(path) || inventory.resolve(path, 'file') !== path)
+      throw new EngineError('conflict', 'First-connection placement has a normalization collision')
   }
   private async joinStreamingItem(
     item: Exclude<V2ManifestItem, { kind: 'directory' }>,
@@ -1207,10 +1290,16 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       slash = item.path.lastIndexOf('/')
     const stem = dot > slash ? item.path.slice(0, dot) : item.path,
       ext = dot > slash ? item.path.slice(dot) : ''
-    const copy =
+    const copyName =
       stem + ' (Conflicted copy local ' + before.mtime + ' ' + local.sha.slice(0, 12) + ')' + ext
+    const copy = (await LocalPaths.forPath(fs, copyName, this.options.state)).resolve(
+      copyName,
+      'file'
+    )
     const work = async () => {
       this.assertHeld()
+      await this.assertJoinPlacement(item.path)
+      await this.assertJoinPlacement(copy)
       if (await this.options.state.get(item.path)) return
       const actual = await fs.fingerprint(item.path)
       if (actual.sha !== local.sha || actual.generation !== local.generation)
@@ -1259,6 +1348,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       this.assertHeld()
       if ((await fs.fingerprint(item.path)).sha !== local.sha)
         throw new EngineError('lost', 'Local file changed; preserved conflict copy remains')
+      await this.assertJoinPlacement(item.path)
       await incomingStage.commit(this.requests.signal)
     }
     const placement = Reflect.get(fs, PLACEMENT) as
@@ -1303,6 +1393,10 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     this.assertHeld()
     await this.engine.sync()
     await this.outbox.drain(retryHeld)
+  }
+  async reconcile(): Promise<void> {
+    this.assertHeld()
+    await this.engine.reconcile()
   }
   invalidate(): void {
     this.active = false
@@ -1367,6 +1461,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     return this.covers(path) && !this.localExcluded(path, size)
   }
   private localExcluded(path: string, size: number): boolean {
+    path = path.normalize('NFC')
     return (
       this.outsideScope(path.replace(/\/$/, '')) ||
       (this.ignore?.ignores(path) ?? false) ||
@@ -1377,8 +1472,18 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   async pathFor(fileId: string): Promise<string | null> {
     return (await this.options.state.byFileId(fileId))?.path ?? null
   }
-  entryFor(path: string) {
-    return this.options.state.get(path)
+  async entryFor(path: string) {
+    const exact = await this.options.state.get(path)
+    if (exact) return exact
+    const key = path.normalize('NFC')
+    let match = null
+    for await (const entry of this.options.state.all()) {
+      if (entry.wirePath === key) {
+        if (match) return null
+        match = entry
+      }
+    }
+    return match
   }
   heldDeletes() {
     return this.engine.heldDeletes()
@@ -1503,6 +1608,8 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       this.assertHeld()
       const key = 'token-reviewed-apply:' + candidate.id
       if (await this.options.state.getMeta(key)) return
+      if (!(await this.options.reviews.executables.state()).some((one) => one.id === candidate.id))
+        throw new EngineError('lost', 'Review belongs to a retired server generation')
       assertAllowed()
       const fs = reviewFileSystem(this.options.fs, assertAllowed)
       if (candidate.directory) {

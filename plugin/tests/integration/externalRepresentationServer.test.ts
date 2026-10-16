@@ -2,7 +2,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
 import type { App } from 'obsidian'
-import { AccessClient, V2EngineClient, SyncEngine, RecoveryBarrier, sha256 } from '@abele/sync-core'
+import {
+  AccessClient,
+  V2EngineClient,
+  SyncEngine,
+  RecoveryBarrier,
+  MemoryFileSystem,
+  sha256,
+} from '@abele/sync-core'
 import { create, blob, seed } from '@abele/sync-test-seed'
 import { v2Server, type V2Server } from '@abele/sync-server/tests/helpers/v2Server.js'
 import { createUser } from '@abele/sync-server/src/access/tokens.js'
@@ -151,9 +158,12 @@ describe('two-device external attachment matrix', () => {
         mtime: initial.mtime,
       }
       store = await IndexedDbStateStore.open(factory, 'sample-a-matrix')
+      // This fixture adopts an already known baseline, after the device handshake.
+      await client.prepare(new MemoryFileSystem(), store)
       await store.put(base)
       await store.setCursor(initial.seq)
       store.close()
+      await other.prepare(new MemoryFileSystem(), otherStore)
       await otherStore.put(base)
       await otherStore.setCursor(initial.seq)
       const ordinary = new SyncEngine({
@@ -363,6 +373,7 @@ describe('external representation against the selected real server input', () =>
         credentialAssociation: 'sample-slot',
       }
       store = await IndexedDbStateStore.open(new IDBFactory(), 'sample-round-trip')
+      await client.prepare(new MemoryFileSystem(), store)
       await store.put({
         path: head.path,
         wirePath: head.path,

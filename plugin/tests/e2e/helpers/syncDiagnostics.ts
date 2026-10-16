@@ -24,13 +24,42 @@ const syncSnapshot = () => {
    const activity=ui.activity?.value[row.id]||{}, status=host.live?.get(row.id)?.engine.status;
    const startup=activity.startup, inspection=activity.inspection;
    const statusText=startup?startup.stage+'… '+startup.completed+'/'+startup.total+(startup.outcome==='failed'?' · Needs attention':''):inspection?'Checking the vault… '+inspection.completed+'/'+inspection.total:activity.transfer?transferText(activity.transfer):({idle: "Ready", syncing: "Syncing", paused: "Paused", offline: "Server unavailable", error: "Needs attention", joining: "Connecting", scope_updating: "Updating access", scope_unavailable: "Access unavailable"})[row.status]||row.status;
-   return {id:row.id,status:row.status,statusText,transfer:activity.transfer||null,startup:startup||null,inspection:inspection||null,startupTimings:activity.startupTimings||[],paused:row.paused,lastError:activity.error||null,pending:activity.pending,holds:activity.heldDeletes,deferred:activity.deferred,
+   return {id:row.id,status:row.status,statusText,transfer:activity.transfer||null,startup:startup||null,inspection:inspection||null,startupTimings:activity.startupTimings||[],paused:row.paused,lastError:activity.error||null,failure:activity.failure||null,reconciliation:activity.reconciliation||null,pending:activity.pending,holds:activity.heldDeletes,deferred:activity.deferred,
     engine:status?{state:status.state,pending:status.pending,heldDeletes:status.heldDeletes,deferred:status.deferred,lastSyncAt:status.lastSyncAt,lastErrorCode:status.lastError?.code,exchange:host.live?.get(row.id)?.trace?.snapshot()}:null};
   }),
   candidates:(ui?.candidates?.value||[]).map(one=>({id:one.id,path:one.path,connectionId:one.source.id})),
   consents:(ui?.questions?.value||[]).map(one=>({path:one.path,connectionId:one.source.id})),
   dialogs:docs.flatMap(doc=>[...doc.querySelectorAll('.modal')].map(box=>({title:box.querySelector('.modal-title')?.textContent?.trim(),errors:[...box.querySelectorAll('[role="alert"]')].map(one=>one.textContent?.trim()),buttons:[...box.querySelectorAll('button')].map(one=>({text:one.textContent?.trim(),disabled:one.disabled}))})))
  };
+};`
+
+/**
+ * Each connection's folder bookkeeping under the live fixture folders, bounded in time: what
+ * the core believes the server has, what it is waiting to publish, the collision holds, and
+ * what the local folder listing reports. A stuck ledger read answers "timed out" instead.
+ */
+export const DIRECTORY_SNAPSHOT = `
+const directorySnapshot = async () => {
+ const host=app.plugins.plugins.abele?.tokenEngines, within=(path)=>path.startsWith('Sync fixtures');
+ const bounded=(work)=>Promise.race([work.catch((error)=>({error:String(error?.message||error)})),new Promise((done)=>setTimeout(()=>done({error:'timed out'}),2000))]);
+ const result={};
+ for (const [id,runtime] of host?.live??[]) {
+  const state=runtime.options?.state, fs=runtime.options?.fs;
+  result[id]=await bounded((async()=>{
+   const doc=JSON.parse((await state.getMeta('v2-directories'))??'{}');
+   const local=[];
+   if (fs?.listDirectories) for await (const dir of fs.listDirectories()) if (within(dir.path)) local.push(dir.path);
+   return {
+    pending:doc.pending?.op??null,
+    known:(doc.directories??[]).map((one)=>one.path).filter(within),
+    incoming:(doc.incoming??[]).map((one)=>one.path),
+    removals:(doc.removals??[]).map((one)=>typeof one==='string'?one:one.path),
+    holds:JSON.parse((await state.getMeta('normalization-directory-collisions'))??'[]'),
+    local,
+   };
+  })());
+ }
+ return result;
 };`
 
 /** Never evaluate or print the failed command again: it can contain a private pasted token. */
@@ -44,7 +73,9 @@ export function captureSyncFailure(cli: VaultCli, label: string): string {
   mkdirSync(directory, { recursive: true })
   let snapshot: unknown
   try {
-    snapshot = cli.evalAwait(`(async()=>{${SYNC_SNAPSHOT}return syncSnapshot()})()`)
+    snapshot = cli.evalAwait(
+      `(async()=>{${SYNC_SNAPSHOT}${DIRECTORY_SNAPSHOT}const one=syncSnapshot();one.directories=await directorySnapshot();return one})()`
+    )
   } catch {
     snapshot = { unavailable: 'Vault did not answer diagnostic evaluation' }
   }

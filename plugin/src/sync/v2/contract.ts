@@ -61,6 +61,7 @@ export const V2ConnectionSchema = z
   .object({
     protocol: z.literal(2),
     token_id: id,
+    read_only: z.boolean().optional(),
     space_id: id,
     scope: V2ScopeSchema,
     status: z.enum(['active', 'scope_unavailable', 'scope_updating']),
@@ -71,7 +72,11 @@ export const V2ConnectionSchema = z
   .strict()
 export type V2Connection = z.infer<typeof V2ConnectionSchema>
 export const V2IssueTokenRequestSchema = z
-  .object({ scope: V2SelectorSchema, label: z.string().trim().min(1).max(200) })
+  .object({
+    scope: V2SelectorSchema,
+    label: z.string().trim().min(1).max(200),
+    read_only: z.boolean().optional(),
+  })
   .strict()
 export type V2IssueTokenRequest = z.infer<typeof V2IssueTokenRequestSchema>
 export const V2TokenInfoSchema = z
@@ -80,6 +85,7 @@ export const V2TokenInfoSchema = z
     scope: V2ScopeSchema,
     label: z.string(),
     issued_by_token_id: id.nullable(),
+    read_only: z.boolean().optional(),
     created_at: timestamp,
     revoked_at: timestamp.nullable(),
   })
@@ -143,7 +149,7 @@ export const V2EventSchema = z.discriminatedUnion('type', [
   z
     .object({
       type: z.literal('connection'),
-      status: z.enum(['revoked', 'scope_unavailable', 'scope_updating']),
+      status: z.enum(['revoked', 'scope_deleted', 'scope_unavailable', 'scope_updating']),
     })
     .strict(),
 ])

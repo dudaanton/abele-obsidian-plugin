@@ -16,6 +16,425 @@ import { withDesktopFs } from '../helpers/fakeDesktopFs'
 
 const POLL_MS = 1000
 
+it('never admits a symlink or a file under a symlinked folder found by raw Unicode discovery', async () => {
+  const accented = 'é'.normalize('NFD')
+  const app = buildFakeVault(
+    [
+      { path: `Notes/${accented}.md`, content: 'indexed' },
+      { path: 'Notes/leak.md', content: 'outside' },
+      { path: `Linked/${accented}.md`, content: 'indexed' },
+      { path: 'Linked/other.md', content: 'outside' },
+    ],
+    { sensitiveNames: true }
+  )
+  const hidden = new Set(['Notes/leak.md', 'Linked/other.md'])
+  const files = app.vault.getFiles.bind(app.vault)
+  // Neither link target is in Obsidian's index; only the raw listing can see them.
+  app.vault.getFiles = () => files().filter((file) => !hidden.has(file.path))
+  const links = new Set(['Notes/leak.md', 'Linked'])
+  Object.assign(app.vault.adapter, {
+    getFullPath: (path: string) => '/vault/' + path,
+    fsPromises: {
+      lstat: async (full: string) => ({
+        isSymbolicLink: () => links.has(full.slice('/vault/'.length)),
+      }),
+    },
+  })
+  const fs = new ObsidianFileSystem(app as unknown as App)
+  const paths = (await listed(fs)).map((info) => info.path)
+  expect(paths).toContain(`Notes/${accented}.md`)
+  expect(paths).not.toContain('Notes/leak.md')
+  expect(paths).not.toContain('Linked/other.md')
+})
+
+it('inventories only the connection subtree and synthesizes ancestors when the index lags', async () => {
+  const app = buildFakeVault([
+    { path: 'Fixtures/local.md', content: 'outside' },
+    { path: 'Fixtures/Shared/Inner/note.md', content: 'inside' },
+  ])
+  // The index has not caught up with the connection's own folder yet.
+  const lookup = app.vault.getAbstractFileByPath.bind(app.vault)
+  app.vault.getAbstractFileByPath = (path: string) =>
+    path === 'Fixtures/Shared' ? null : lookup(path)
+  const fs = new ObsidianFileSystem(app as unknown as App, { fileScope: 'Fixtures/Shared' })
+  const paths: string[] = []
+  for await (const one of fs.listDirectories()) paths.push(one.path)
+  expect(paths).toEqual(['Fixtures/Shared', 'Fixtures/Shared/Inner'])
+  expect(await fs.listChildren('')).toEqual([{ path: 'Fixtures', kind: 'directory' }])
+  expect(await fs.listChildren('Fixtures')).toEqual([
+    { path: 'Fixtures/Shared', kind: 'directory' },
+  ])
+})
+
+it.each([
+  ['none', false],
+  ['indexed', false],
+  ['raw', false],
+  ['none', true],
+  ['indexed', true],
+  ['raw', true],
+] as const)(
+  'finds a folder made with its missing parents (looked first=%s, indexed and announced=%s)',
+  async (looked, announced) => {
+    const lookedFirst = looked !== 'none'
+    // A root name with a decomposable letter makes the pass list the vault root from disk.
+    const accented = 'Café.md'.normalize('NFD')
+    const app = buildFakeVault([
+      { path: 'Other/note.md', content: 'sample' },
+      ...(looked === 'raw' ? [{ path: accented, content: 'sample' }] : []),
+    ])
+    const lookup = app.vault.getAbstractFileByPath.bind(app.vault)
+    if (announced) {
+      // Obsidian's desktop adapter indexes what it makes, parents included, and announces it.
+      const mkdir = app.vault.adapter.mkdir.bind(app.vault.adapter)
+      app.vault.adapter.mkdir = async (path: string) => {
+        const parts = path.split('/')
+        const fresh: string[] = []
+        for (let length = 1; length <= parts.length; length++)
+          if (!(await app.vault.adapter.exists(parts.slice(0, length).join('/'))))
+            fresh.push(parts.slice(0, length).join('/'))
+        await mkdir(path)
+        for (const one of fresh) app.emit('vault', 'create', lookup(one))
+      }
+    } else {
+      const indexed = new Set(['', 'Other', 'Other/note.md', accented])
+      app.vault.getAbstractFileByPath = (path: string) => (indexed.has(path) ? lookup(path) : null)
+      const files = app.vault.getFiles.bind(app.vault)
+      app.vault.getFiles = () => files().filter((one) => indexed.has(one.path))
+    }
+    const fs = new ObsidianFileSystem(app as unknown as App, { preserveEmptyDirectories: true })
+    const pass = Reflect.get(fs, Symbol.for('abele.sync.inventory-pass-v1')) as (
+      work: () => Promise<void>
+    ) => Promise<void>
+    const children = Reflect.get(fs, Symbol.for('abele.sync.inventory-children-v1')) as (
+      parent: string,
+      target: string
+    ) => Promise<{ path: string; kind: string }[]>
+    await pass.call(fs, async () => {
+      if (looked === 'raw') for await (const _ of fs.list()) void _
+      if (lookedFirst) await children.call(fs, '', 'Made/inner')
+      await fs.mkdir('Made/inner')
+      expect(await children.call(fs, '', 'Made/inner')).toContainEqual(
+        expect.objectContaining({ path: 'Made', kind: 'directory' })
+      )
+      expect(await children.call(fs, 'Made', 'Made/inner')).toContainEqual(
+        expect.objectContaining({ path: 'Made/inner', kind: 'directory' })
+      )
+    })
+    const listed: string[] = []
+    for await (const one of fs.listDirectories()) listed.push(one.path)
+    expect(listed).toEqual(expect.arrayContaining(['Made', 'Made/inner']))
+  }
+)
+
+it('lets Obsidian make a nested empty folder through the wrapped adapter and lists both levels', async () => {
+  const { adapterConfigRevision } = await import('@/sync/adapterConfigChanges')
+  const app = buildFakeVault([{ path: 'Root/note.md', content: 'sample' }])
+  const fs = new ObsidianFileSystem(app as unknown as App, { preserveEmptyDirectories: true })
+  adapterConfigRevision(app.vault.adapter, app.vault.configDir)
+  await app.vault.createFolder('Root/empty/child')
+  expect(await app.vault.adapter.exists('Root/empty/child')).toBe(true)
+  const listed: string[] = []
+  for await (const one of fs.listDirectories()) listed.push(one.path)
+  expect(listed).toEqual(expect.arrayContaining(['Root/empty', 'Root/empty/child']))
+})
+
+it.each([
+  ['indexed', false],
+  ['raw', false],
+  ['indexed', true],
+  ['raw', true],
+  ['indexed', 'deepest'],
+  ['raw', 'deepest'],
+] as const)(
+  'finds a new folder and its new parent under an existing folder (root %s, announced=%s)',
+  async (root, announced) => {
+    const accented = 'Café.md'.normalize('NFD')
+    const app = buildFakeVault([
+      { path: 'Existing/note.md', content: 'sample' },
+      ...(root === 'raw' ? [{ path: accented, content: 'sample' }] : []),
+    ])
+    const lookup = app.vault.getAbstractFileByPath.bind(app.vault)
+    if (announced) {
+      const mkdir = app.vault.adapter.mkdir.bind(app.vault.adapter)
+      app.vault.adapter.mkdir = async (path: string) => {
+        const parts = path.split('/')
+        const fresh: string[] = []
+        for (let length = 1; length <= parts.length; length++)
+          if (!(await app.vault.adapter.exists(parts.slice(0, length).join('/'))))
+            fresh.push(parts.slice(0, length).join('/'))
+        await mkdir(path)
+        for (const one of announced === 'deepest' ? fresh.slice(-1) : fresh)
+          app.emit('vault', 'create', lookup(one))
+      }
+    } else {
+      const indexed = new Set(['', 'Existing', 'Existing/note.md', accented])
+      app.vault.getAbstractFileByPath = (path: string) => (indexed.has(path) ? lookup(path) : null)
+      const files = app.vault.getFiles.bind(app.vault)
+      app.vault.getFiles = () => files().filter((one) => indexed.has(one.path))
+      const parent = lookup('Existing') as unknown as { children: { path: string }[] }
+      let real = parent.children
+      Object.defineProperty(parent, 'children', {
+        get: () => real.filter((one) => indexed.has(one.path)),
+        set: (value: { path: string }[]) => (real = value),
+      })
+    }
+    const fs = new ObsidianFileSystem(app as unknown as App, { preserveEmptyDirectories: true })
+    const pass = Reflect.get(fs, Symbol.for('abele.sync.inventory-pass-v1')) as (
+      work: () => Promise<void>
+    ) => Promise<void>
+    const children = Reflect.get(fs, Symbol.for('abele.sync.inventory-children-v1')) as (
+      parent: string,
+      target: string
+    ) => Promise<{ path: string; kind: string }[]>
+    const target = 'Existing/empty/child'
+    await pass.call(fs, async () => {
+      if (root === 'raw') for await (const _ of fs.list()) void _
+      // The placement walk before the folder exists, as the core resolves its path.
+      await children.call(fs, '', target)
+      await children.call(fs, 'Existing', target)
+      await fs.mkdir(target)
+      expect(await children.call(fs, '', target)).toContainEqual(
+        expect.objectContaining({ path: 'Existing', kind: 'directory' })
+      )
+      expect(await children.call(fs, 'Existing', target)).toContainEqual(
+        expect.objectContaining({ path: 'Existing/empty', kind: 'directory' })
+      )
+      expect(await children.call(fs, 'Existing/empty', target)).toContainEqual(
+        expect.objectContaining({ path: target, kind: 'directory' })
+      )
+    })
+  }
+)
+
+it.each([false, true])(
+  'lists folders a pull made before Obsidian indexes any of them (inside a pass=%s)',
+  async (inPass) => {
+    const app = buildFakeVault([{ path: 'Existing/note.md', content: 'sample' }])
+    // Obsidian's desktop adapter indexes what it makes only when its file watcher reports it.
+    const known = new Set(['', 'Existing', 'Existing/note.md'])
+    const lookup = app.vault.getAbstractFileByPath.bind(app.vault)
+    app.vault.getAbstractFileByPath = (path: string) => (known.has(path) ? lookup(path) : null)
+    const files = app.vault.getFiles.bind(app.vault)
+    app.vault.getFiles = () => files().filter((one) => known.has(one.path))
+    for (const path of ['', 'Existing']) {
+      const folder = lookup(path) as unknown as { children: { path: string }[] }
+      let real = folder.children
+      Object.defineProperty(folder, 'children', {
+        get: () => real.filter((one) => known.has(one.path)),
+        set: (value: { path: string }[]) => (real = value),
+      })
+    }
+    const fs = new ObsidianFileSystem(app as unknown as App, { preserveEmptyDirectories: true })
+    const pass = Reflect.get(fs, Symbol.for('abele.sync.inventory-pass-v1')) as (
+      work: () => Promise<void>
+    ) => Promise<void>
+    const children = Reflect.get(fs, Symbol.for('abele.sync.inventory-children-v1')) as (
+      parent: string,
+      target: string
+    ) => Promise<{ path: string; kind: string }[]>
+    const made = ['New', 'New/inner', 'Existing/empty', 'Existing/empty/child']
+    const check = async () => {
+      await fs.mkdir('New/inner')
+      await fs.mkdir('Existing/empty/child')
+      expect(await children.call(fs, '', 'New/inner')).toContainEqual(
+        expect.objectContaining({ path: 'New', kind: 'directory' })
+      )
+      expect(await children.call(fs, 'New', 'New/inner')).toContainEqual(
+        expect.objectContaining({ path: 'New/inner', kind: 'directory' })
+      )
+      expect(await children.call(fs, 'Existing', 'Existing/empty/child')).toContainEqual(
+        expect.objectContaining({ path: 'Existing/empty', kind: 'directory' })
+      )
+      expect(await children.call(fs, 'Existing/empty', 'Existing/empty/child')).toContainEqual(
+        expect.objectContaining({ path: 'Existing/empty/child', kind: 'directory' })
+      )
+    }
+    if (inPass) await pass.call(fs, check)
+    else await check()
+    const listed: string[] = []
+    for await (const one of fs.listDirectories()) listed.push(one.path)
+    expect(listed).toEqual(expect.arrayContaining(made))
+  }
+)
+
+it('lists a large vault with many decomposable folder names in work proportional to its size', async () => {
+  const entries = Array.from({ length: 6000 }, (_, index) => ({
+    path: ('Café ' + (index % 300)).normalize('NFD') + '/note-' + index + '.md',
+    content: 'x',
+  }))
+  const app = buildFakeVault(entries, { sensitiveNames: true })
+  const fs = new ObsidianFileSystem(app as unknown as App)
+  expect(await listed(fs)).toHaveLength(entries.length)
+  const normalize = vi.spyOn(String.prototype, 'normalize')
+  try {
+    expect(await listed(fs)).toHaveLength(entries.length)
+    // Matching every file against every expanded folder would be millions of calls.
+    expect(normalize.mock.calls.length).toBeLessThan(entries.length * 40)
+  } finally {
+    normalize.mockRestore()
+  }
+})
+
+it('resolves ordinary indexed paths without raw listings inside a pass', async () => {
+  const app = buildFakeVault([{ path: 'Sample/note.md', content: 'sample' }])
+  const fs = new ObsidianFileSystem(app as unknown as App)
+  const list = vi.spyOn(app.vault.adapter, 'list')
+  const pass = Reflect.get(fs, Symbol.for('abele.sync.inventory-pass-v1')) as (
+    work: () => Promise<void>
+  ) => Promise<void>
+  const children = Reflect.get(fs, Symbol.for('abele.sync.inventory-children-v1')) as (
+    parent: string,
+    target: string
+  ) => Promise<{ path: string }[]>
+  await pass.call(fs, async () => {
+    for (let index = 0; index < 1000; index++) {
+      expect(await children.call(fs, '', 'Sample/note.md')).toContainEqual(
+        expect.objectContaining({ path: 'Sample' })
+      )
+      expect(await children.call(fs, 'Sample', 'Sample/note.md')).toContainEqual(
+        expect.objectContaining({ path: 'Sample/note.md' })
+      )
+    }
+    expect(list).not.toHaveBeenCalled()
+  })
+})
+
+it('lists an unindexed ledger parent once for a thousand files', async () => {
+  const paths = Array.from({ length: 1000 }, (_, index) => 'Sample/note-' + index + '.md')
+  const app = buildFakeVault(paths.map((path) => ({ path, content: 'sample' })))
+  app.vault.getFiles = () => []
+  const list = vi.spyOn(app.vault.adapter, 'list')
+  const fs = new ObsidianFileSystem(app as unknown as App, {
+    ledger: {
+      async *all() {
+        for (const path of paths)
+          yield {
+            path,
+            wirePath: path,
+            fileId: path,
+            versionId: 'sample-version',
+            sha: 'a'.repeat(64),
+            size: 6,
+            mtime: 0,
+          }
+      },
+    },
+  })
+  expect(await listed(fs)).toHaveLength(1000)
+  expect(list.mock.calls.filter(([path]) => path === 'Sample')).toHaveLength(1)
+})
+
+it('shares raw Unicode parent listings within a pass and refreshes them for the next pass', async () => {
+  const folder = 'й-folder'.normalize('NFD')
+  const app = buildFakeVault(
+    Array.from({ length: 1000 }, (_, index) => ({
+      path: folder + '/sample-' + index + '.md',
+      content: 'sample',
+    })),
+    { sensitiveNames: true }
+  )
+  const fs = new ObsidianFileSystem(app as unknown as App)
+  const list = vi.spyOn(app.vault.adapter, 'list')
+  const pass = Reflect.get(fs, Symbol.for('abele.sync.inventory-pass-v1')) as (
+    work: () => Promise<void>
+  ) => Promise<void>
+  await pass.call(fs, async () => {
+    for (let index = 0; index < 3; index++) expect(await listed(fs)).toHaveLength(1000)
+    for (let index = 0; index < 1000; index++)
+      expect(await fs.listChildren(folder)).toHaveLength(1000)
+    expect(list.mock.calls.filter(([path]) => path === folder)).toHaveLength(1)
+    expect(list.mock.calls.filter(([path]) => path === '')).toHaveLength(1)
+  })
+  await app.vault.adapter.write(folder + '/new.md', 'new')
+  await pass.call(fs, async () => {
+    expect(await fs.listChildren(folder)).toHaveLength(1001)
+    expect(list.mock.calls.filter(([path]) => path === folder)).toHaveLength(2)
+    const path = folder + '/ё-new.md'.normalize('NFD')
+    await app.vault.adapter.write(path, 'external edit')
+    app.emit('vault', 'create', { path })
+    expect(await fs.listChildren(folder)).toHaveLength(1002)
+    expect(list.mock.calls.filter(([path]) => path === folder)).toHaveLength(3)
+  })
+})
+
+it('keeps every nested physical tree when normalization aliases share child names', async () => {
+  const composed = 'й-folder/Deep/note.md'
+  const decomposed = composed.normalize('NFD')
+  const app = buildFakeVault(
+    [
+      { path: composed, content: 'first' },
+      { path: decomposed, content: 'second' },
+    ],
+    { sensitiveNames: true }
+  )
+  const fs = new ObsidianFileSystem(app as unknown as App)
+  expect((await listed(fs)).map((one) => one.path).sort()).toEqual([composed, decomposed].sort())
+})
+
+it('updates a pass inventory after engine writes and invalidates descendants after a folder event', async () => {
+  const folder = 'й-folder'.normalize('NFD')
+  const app = buildFakeVault([{ path: folder + '/Deep/old.md', content: 'old' }], {
+    sensitiveNames: true,
+  })
+  const fs = new ObsidianFileSystem(app as unknown as App)
+  const list = vi.spyOn(app.vault.adapter, 'list')
+  const directories = vi.spyOn(fs, 'listDirectories')
+  const pass = Reflect.get(fs, Symbol.for('abele.sync.inventory-pass-v1')) as (
+    work: () => Promise<void>
+  ) => Promise<void>
+  const inventory = Reflect.get(
+    fs,
+    Symbol.for('abele.sync.inventory-directories-v1')
+  ) as () => Promise<{ path: string }[]>
+  await pass.call(fs, async () => {
+    await inventory.call(fs)
+    await fs.mkdir(folder + '/Empty')
+    await fs.writeAtomic(folder + '/new.md', text('new'), 1000)
+    expect(await fs.listChildren(folder)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: folder + '/Empty', kind: 'directory' }),
+        expect.objectContaining({ path: folder + '/new.md', kind: 'file' }),
+      ])
+    )
+    expect(await inventory.call(fs)).toContainEqual(
+      expect.objectContaining({ path: folder + '/Empty' })
+    )
+    expect(directories).toHaveBeenCalledTimes(1)
+    expect(list.mock.calls.filter(([path]) => path === folder)).toHaveLength(1)
+    await fs.listChildren(folder + '/Deep')
+    await app.vault.adapter.write(folder + '/Deep/external.md', 'external')
+    app.emit('vault', 'create', { path: folder, children: [] })
+    expect(await fs.listChildren(folder + '/Deep')).toContainEqual({
+      path: folder + '/Deep/external.md',
+      kind: 'file',
+    })
+    expect(list.mock.calls.filter(([path]) => path === folder + '/Deep')).toHaveLength(2)
+  })
+})
+
+it('enumerates raw normalization twins hidden by the file index', async () => {
+  const composed = 'й-folder/ё-note.md'
+  const decomposed = composed.normalize('NFD')
+  const app = buildFakeVault(
+    [
+      { path: composed, content: 'first' },
+      { path: decomposed, content: 'second' },
+    ],
+    { sensitiveNames: true }
+  )
+  const index = app.vault.getFiles.bind(app.vault)
+  app.vault.getFiles = () => index().filter((file) => file.path === composed)
+  const fs = new ObsidianFileSystem(app as unknown as App)
+  expect((await fs.listChildren('')).map((one) => one.path).sort()).toEqual(
+    ['й-folder'.normalize('NFD'), 'й-folder'].sort()
+  )
+  expect(await fs.listChildren('й-folder')).toEqual([{ path: composed, kind: 'file' }])
+  expect((await listed(fs)).map((one) => one.path).sort()).toEqual([composed, decomposed].sort())
+  expect(read(await fs.read(composed))).toBe('first')
+  expect(read(await fs.read(decomposed))).toBe('second')
+})
+
 let app: FakeApp
 
 function useVault(specs: FakeFileSpec[]): ObsidianFileSystem {

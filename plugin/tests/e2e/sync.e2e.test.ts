@@ -28,7 +28,10 @@ liveCase(
     a.run(
       `await app.vault.createFolder(${JSON.stringify(s.root + '/empty/child')}).catch(()=>{});return true`
     )
+    // A refused or vanished folder on the sending device is that device's failure.
+    expect(a.exists(s.root + '/empty/child')).toBe(true)
     await s.cycle()
+    expect(a.exists(s.root + '/empty/child')).toBe(true)
     expect(b.exists(s.root + '/empty/child')).toBe(true)
     a.rename(s.root + '/moved', s.root + '/renamed-folder')
     await s.cycle()

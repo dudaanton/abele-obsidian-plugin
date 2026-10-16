@@ -281,7 +281,7 @@ export async function tokenOffloadConnection(input: {
           signal: controller.signal,
         })
       )
-      if (result.status !== 'complete') throw new Error(result.status)
+      if (result.status !== 'complete') throw new Error('File hydration stopped: ' + result.status)
       await refresh()
       input.hydratedIdentity(path)
     } finally {

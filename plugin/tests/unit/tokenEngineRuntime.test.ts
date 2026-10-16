@@ -1,5 +1,11 @@
 import { expect, it, vi } from 'vitest'
-import { EngineError, MemoryFileSystem, MemoryStateStore, sha256 } from '@abele/sync-core'
+import {
+  EngineError,
+  GENERATION_KEY,
+  MemoryFileSystem,
+  MemoryStateStore,
+  sha256,
+} from '@abele/sync-core'
 import { encodeAccessToken } from '@abele/sync-protocol'
 import { TokenEngineRuntime, type TokenEngineOptions } from '@/sync/tokenEngineRuntime'
 import type { TransferSnapshot } from '@/sync/transferProgress'
@@ -10,6 +16,173 @@ import { ignoreFor } from '@/sync/scope'
 import { TokenAttachmentHost } from '@/sync/tokenAttachmentHost'
 import { useVault } from '../helpers/testEnv'
 import { NativeSyncFailure } from '@/sync/mobileTransport'
+import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
+import { buildFakeVault } from '../helpers/fakeVault'
+import type { App } from 'obsidian'
+import { IDBFactory } from 'fake-indexeddb'
+import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
+
+it('rejects a changed manifest generation before placement and reviews, then handshakes again', async () => {
+  const wire = await server('Notes/sample.md', 'remote bytes')
+  const original = wire.fetch.getMockImplementation()!
+  let generation = 'first'
+  let changeManifest = true
+  wire.fetch.mockImplementation(async (input, init) => {
+    const path = new URL(String(input)).pathname
+    const response = await original(input, init)
+    if (path === '/v2/manifest' && changeManifest) generation = 'second'
+    response.headers.set('abele-restore-generation', generation)
+    return response
+  })
+  const state = new MemoryStateStore(),
+    metadata = new MemoryStateStore(),
+    fs = new MemoryFileSystem()
+  const placement = vi.fn(async () => {})
+  const recover = vi.fn(async () => {
+    expect(await state.getMeta(GENERATION_KEY)).toBe(generation)
+  })
+  const one = new TokenEngineRuntime({
+    id: 'restore-sample',
+    encoded: token(wire.address),
+    state,
+    fs,
+    reviews: {
+      executables: new ExecutableReview(metadata),
+      attachments: new AttachmentConsent(metadata),
+      close: () => {},
+    },
+    fetch: wire.fetch,
+    preparePlacement: placement,
+    recoverPlacement: recover,
+    changed: () => {},
+    failed: () => {},
+    covers: async () => false,
+  })
+  try {
+    await expect(one.sync()).rejects.toMatchObject({ code: 'conflict' })
+    expect(placement).not.toHaveBeenCalled()
+    expect(await fs.stat('Notes/sample.md')).toBeNull()
+    expect(await state.getMeta(GENERATION_KEY)).toBe('first')
+    changeManifest = false
+    await one.sync()
+    expect(await state.getMeta(GENERATION_KEY)).toBe('second')
+    expect(await state.getMeta('retired-generation:first')).not.toBeNull()
+    expect(new TextDecoder().decode(await fs.read('Notes/sample.md'))).toBe('remote bytes')
+  } finally {
+    await one.disconnect()
+  }
+})
+
+it.each([
+  { size: 10, readsPerCycle: 16 },
+  { size: 2 * 1024 * 1024, readsPerCycle: 8 },
+  { size: 20 * 1024 * 1024, readsPerCycle: 1 },
+])(
+  'bounds rolling reads in a 12000-file vault and resumes the durable sweep (size=$size)',
+  async ({ size, readsPerCycle }) => {
+    const wire = await server('unused.md', 'unused')
+    const original = wire.fetch.getMockImplementation()!
+    wire.fetch.mockImplementation(async (input, init) => {
+      const response = await original(input, init)
+      if (new URL(String(input)).pathname !== '/v2/connection') return response
+      const body = await response.json()
+      body.limits.max_file_bytes = 64 * 1024 * 1024
+      return Response.json(body)
+    })
+    const app = buildFakeVault(
+      Array.from({ length: 12000 }, (_, i) => ({
+        path: `file-${String(i).padStart(5, '0')}.bin`,
+        content: 'same bytes',
+      }))
+    )
+    // Virtual files share one payload instead of allocating a multi-gigabyte fixture.
+    const payload = new Uint8Array(size).fill(90)
+    for (const file of app.vault.getFiles()) file.stat.size = size
+    const originalStat = app.vault.adapter.stat.bind(app.vault.adapter)
+    vi.spyOn(app.vault.adapter, 'stat').mockImplementation(async (path) => {
+      const stat = await originalStat(path)
+      return stat?.type === 'file' && path.startsWith('file-') ? { ...stat, size } : stat
+    })
+    const originalRead = app.vault.adapter.readBinary.bind(app.vault.adapter)
+    vi.spyOn(app.vault.adapter, 'readBinary').mockImplementation((path) =>
+      path.startsWith('file-') ? Promise.resolve(payload.slice().buffer) : originalRead(path)
+    )
+    const fs = new ObsidianFileSystem(app as unknown as App)
+    const state = new MemoryStateStore()
+    // Keep large synthetic row setup independent of fake-indexeddb's index insertion cost.
+    // Exercise sweep-cursor persistence through the production durable adapter.
+    const factory = new IDBFactory()
+    let durableMetadata = await IndexedDbStateStore.open(factory, 'rolling-metadata')
+    const getMeta = state.getMeta.bind(state),
+      setMeta = state.setMeta.bind(state)
+    state.getMeta = (key) =>
+      key === 'content-sweep-after' ? durableMetadata.getMeta(key) : getMeta(key)
+    state.setMeta = (key, value) =>
+      key === 'content-sweep-after' ? durableMetadata.setMeta(key, value) : setMeta(key, value)
+    const sha = await sha256(payload)
+    await state.transaction(async () => {
+      for (const file of app.vault.getFiles())
+        await state.put({
+          path: file.path,
+          wirePath: file.path,
+          fileId: file.path,
+          versionId: 'version',
+          sha,
+          size: file.stat.size,
+          mtime: file.stat.mtime,
+        })
+      await state.setCursor(1)
+    })
+    const metadata = new MemoryStateStore()
+    const make = () =>
+      new TokenEngineRuntime({
+        id: 'rolling-sample',
+        encoded: token(wire.address),
+        fs,
+        state,
+        reviews: {
+          executables: new ExecutableReview(metadata),
+          attachments: new AttachmentConsent(metadata),
+          close: () => {},
+        },
+        fetch: wire.fetch,
+        changed: () => {},
+        failed: () => {},
+        covers: async () => false,
+      })
+    let one = make()
+    const reads = vi.spyOn(app.vault.adapter, 'readBinary')
+    const listings = vi.spyOn(app.vault.adapter, 'list')
+    try {
+      for (let cycle = 0; cycle < 3; cycle++) {
+        reads.mockClear()
+        const previous = await state.getMeta('content-sweep-after')
+        await one.sync()
+        expect(reads.mock.calls.length).toBe(readsPerCycle)
+        expect(
+          reads.mock.calls.reduce(
+            (bytes, [path]) =>
+              bytes + (app.vault.getAbstractFileByPath(path) as import('obsidian').TFile).stat.size,
+            0
+          )
+        ).toBeLessThanOrEqual(Math.max(16 * 1024 * 1024, size))
+        expect(await state.getMeta('content-sweep-after')).not.toBe(previous)
+        if (cycle === 0) {
+          const cursor = await state.getMeta('content-sweep-after')
+          await one.disconnect()
+          durableMetadata.close()
+          durableMetadata = await IndexedDbStateStore.open(factory, 'rolling-metadata')
+          expect(await state.getMeta('content-sweep-after')).toBe(cursor)
+          one = make()
+        }
+      }
+      expect(listings.mock.calls.every(([path]) => path === '.obsidian')).toBe(true)
+    } finally {
+      await one.disconnect()
+      durableMetadata.close()
+    }
+  }
+)
 
 it('keeps attachments offline while a reconnect is in flight and restores availability after success', async () => {
   const wire = await server('Notes/sample.md', 'note')

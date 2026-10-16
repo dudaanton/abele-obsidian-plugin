@@ -5,6 +5,8 @@ export const JOURNAL_KEY = 'abele-sync-writes'
 export const RECOVERED_WRITES_KEY = 'abele-sync-recovered-writes'
 export interface JournalEntry {
   owner?: string
+  /** Retained evidence from a server restore; never replayed or swept. */
+  retiredGeneration?: string
   target: string
   temp?: string
   backup?: string
@@ -81,6 +83,7 @@ export class WriteJournal {
         typeof entry.target === 'string' &&
         (entry.owner === undefined ||
           (typeof entry.owner === 'string' && entry.owner.length > 0)) &&
+        (entry.retiredGeneration === undefined || typeof entry.retiredGeneration === 'string') &&
         (entry.temp === undefined || typeof entry.temp === 'string') &&
         (entry.backup === undefined || typeof entry.backup === 'string') &&
         (entry.preserveBackup === undefined || typeof entry.preserveBackup === 'boolean') &&
@@ -114,6 +117,25 @@ export class WriteJournal {
     if (entries.length !== raw.length)
       throw new EngineError('io', 'the preserved-copy journal contains an unreadable entry')
     return entries
+  }
+  async retireGeneration(
+    generation: string,
+    archive: (value: unknown) => Promise<void>
+  ): Promise<void> {
+    const entries = this.entries()
+    await archive(entries)
+    // Re-read after the asynchronous durable archive; another connection may have appended.
+    this.save(
+      JOURNAL_KEY,
+      this.read(JOURNAL_KEY).map((value) =>
+        this.owns(value) && entries.some((saved) => JSON.stringify(saved) === JSON.stringify(value))
+          ? {
+              ...(value as JournalEntry),
+              retiredGeneration: (value as JournalEntry).retiredGeneration ?? generation,
+            }
+          : value
+      )
+    )
   }
   protects(backup: string): boolean {
     return this.recovered().some((entry) => entry.backup === backup)

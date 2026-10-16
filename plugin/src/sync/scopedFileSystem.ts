@@ -14,7 +14,8 @@ export function scopedFileSystem(
   fs: FileSystem,
   assertPath: (path: string) => void,
   includes: (path: string) => boolean,
-  privateRoot?: string
+  privateRoot?: string,
+  scopeRoot?: string
 ): FileSystem {
   const handles = new Set<string>()
   const stages = privatePlacementStages(fs, privateRoot)
@@ -45,12 +46,44 @@ export function scopedFileSystem(
       if (key === PRIVATE_PLACEMENT_STAGES) return stages
       const value = Reflect.get(target, key)
       if (typeof value !== 'function') return value
+      if (key === Symbol.for('abele.sync.inventory-pass-v1')) return value.bind(target)
+      if (key === Symbol.for('abele.sync.inventory-directories-v1'))
+        return async () =>
+          (await value.call(target)).filter((info: { path: string }) => includes(info.path))
+      if (key === 'listChildren' || key === Symbol.for('abele.sync.inventory-children-v1'))
+        return async (parent: string, ...args: unknown[]) => {
+          if (scopeRoot && (parent === '' || scopeRoot.startsWith(parent + '/'))) {
+            const path = scopeRoot
+              .split('/')
+              .slice(0, parent ? parent.split('/').length + 1 : 1)
+              .join('/')
+            if (path === scopeRoot) {
+              const read = Reflect.get(target, Symbol.for('abele.sync.inventory-directories-v1'))
+              const directories = read
+                ? await read.call(target)
+                : await (async () => {
+                    const result = []
+                    for await (const entry of target.listDirectories?.() ?? []) result.push(entry)
+                    return result
+                  })()
+              const directory = directories.find((one: { path: string }) => one.path === path)
+              return directory ? [{ ...directory, kind: 'directory' }] : []
+            }
+            return [{ path, kind: 'directory' }]
+          }
+          assertPath(parent)
+          const children = await value.call(target, parent, ...args)
+          return children.filter((info: { path: string }) => includes(info.path))
+        }
       if (
         key === Symbol.for('abele.sync.diagnostic-v1') ||
         key === Symbol.for('abele.sync.replay-stage-v1')
       )
         return value.bind(target)
-      if (key === Symbol.for('abele.sync.fingerprint-pull-v1'))
+      if (
+        key === Symbol.for('abele.sync.fingerprint-pull-v1') ||
+        key === Symbol.for('abele.sync.fingerprint-fresh-v1')
+      )
         return (path: string) => {
           assertPath(path)
           return value.call(target, path)

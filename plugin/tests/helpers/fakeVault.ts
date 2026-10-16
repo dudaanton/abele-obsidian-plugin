@@ -128,6 +128,7 @@ export interface FakeApp {
     getFiles(): TFile[]
     getMarkdownFiles(): TFile[]
     getAbstractFileByPath(path: string): TAbstractFile | null
+    getRoot(): TFolder
     getFileByPath(path: string): TFile | null
     read(file: TFile): Promise<string>
     cachedRead(file: TFile): Promise<string>
@@ -219,7 +220,10 @@ function quote(value: unknown): string {
   return /[[\]:#'"]/.test(str) || str === '' ? `'${str.replace(/'/g, "''")}'` : str
 }
 
-export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
+export function buildFakeVault(
+  specs: FakeFileSpec[],
+  options: { sensitiveNames?: boolean } = {}
+): FakeApp {
   const delays = new OperationDelays<'frontmatter' | 'metadata'>()
   const files: TFile[] = []
   const byPath = new Map<string, TFile>()
@@ -290,7 +294,8 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
    * stops code that means to tell a case-only rename from a collision leaning on a lookup,
    * and what lets a decomposed name on disk answer to the composed one Obsidian lists.
    */
-  const fold = (path: string): string => path.normalize('NFC').toLowerCase()
+  const fold = (path: string): string =>
+    options.sensitiveNames ? path : path.normalize('NFC').toLowerCase()
 
   /** The spelling this disk actually holds for a name, or null when it holds none. */
   const actualPath = (path: string): string | null => {
@@ -559,6 +564,18 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
     const from = entry.path
     if (entry instanceof TFolder) {
       const children = [...entry.children]
+      for (const path of [...diskFolders]) {
+        if (path === from || path.startsWith(from + '/')) {
+          diskFolders.delete(path)
+          diskFolders.add(to + path.slice(from.length))
+        }
+      }
+      for (const [path, value] of [...disk]) {
+        if (path.startsWith(from + '/')) {
+          disk.delete(path)
+          disk.set(to + path.slice(from.length), value)
+        }
+      }
       folders.delete(from)
       if (entry.parent) {
         const idx = entry.parent.children.indexOf(entry)
@@ -668,6 +685,9 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
       getAbstractFileByPath(path: string) {
         stats.getAbstractFileByPath++
         return byPath.get(path) ?? folders.get(path) ?? null
+      },
+      getRoot() {
+        return ensureFolder('')
       },
       // Narrower than the above: a folder at this path is not a file, so it reads as absent.
       getFileByPath(path: string) {
@@ -797,7 +817,8 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
           for (const held of folders.keys()) consider(held, true)
           // Obsidian composes every name it lists, whatever the volume keeps underneath, so
           // a decomposed name on disk is listed composed and found again by `stat`.
-          const composed = (held: string): string => held.normalize('NFC')
+          const composed = (held: string): string =>
+            options.sensitiveNames ? held : held.normalize('NFC')
           return {
             files: [...listedFiles].map(composed),
             folders: [...listedFolders].map(composed),

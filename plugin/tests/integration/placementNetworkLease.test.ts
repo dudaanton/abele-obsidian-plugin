@@ -336,7 +336,12 @@ it.each([
     expect(wholeRead).not.toHaveBeenCalled()
     expect(reads).toHaveLength(Math.ceil(size / (1024 * 1024)))
     expect(reads.map((one) => one.offset)).toEqual(reads.map((_, i) => i * 1024 * 1024))
-    if (size) expect(await disk.fingerprint(change.path)).toMatchObject({ size, sha })
+    // This host cannot rehash installed bytes; only the pull's live receipt can verify them.
+    if (size)
+      expect(await disk[Symbol.for('abele.sync.fingerprint-pull-v1')](change.path)).toMatchObject({
+        size,
+        sha,
+      })
     else expect(await disk.stat(change.path)).toMatchObject({ size: 0 })
     expect((await state.get(change.path))?.sha).toBe(sha)
     expect(app.loadLocalStorage(JOURNAL_KEY) ?? []).toEqual([])
@@ -383,7 +388,7 @@ it.each([
       ).toBe(true)
       expect(atomic).not.toHaveBeenCalled()
       expect(wholeRead).not.toHaveBeenCalled()
-      expect(await disk.fingerprint(change.path)).toMatchObject({
+      expect(await disk[Symbol.for('abele.sync.fingerprint-pull-v1')](change.path)).toMatchObject({
         size: replacement.length,
         sha: replacementSha,
       })

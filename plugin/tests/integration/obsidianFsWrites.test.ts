@@ -9,7 +9,7 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 import { Platform, type App } from 'obsidian'
-import { EngineError, type FileInfo } from '@abele/sync-core'
+import { EngineError, MemoryStateStore, readReconciliation, type FileInfo } from '@abele/sync-core'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { JOURNAL_KEY } from '@/sync/vaultWrites'
 import { RuntimeFence } from '@/sync/external/recovery'
@@ -18,6 +18,77 @@ import { withDesktopFs } from '../helpers/fakeDesktopFs'
 
 const text = (value: string): Uint8Array => new TextEncoder().encode(value)
 const read = (bytes: Uint8Array | ArrayBuffer): string => new TextDecoder().decode(bytes)
+
+it('never replays or sweeps retired write intents and retains all three physical variants', async () => {
+  const target = 'sample.bin',
+    temp = '.obsidian/plugins/abele/.abele-sync-abcd1234.tmp',
+    backup = '.obsidian/plugins/abele/.abele-sync-abcd1234.old'
+  const app = buildFakeVault([
+    { path: target, content: 'current local bytes' },
+    { path: temp, content: 'pending remote bytes' },
+    { path: backup, content: 'previous local bytes' },
+  ])
+  app.saveLocalStorage(JOURNAL_KEY, [{ target, temp, backup }])
+  const fs = new ObsidianFileSystem(app as unknown as App)
+  let archive: unknown
+  await fs.retireGeneration('new-generation', async (value) => {
+    archive = structuredClone(value)
+  })
+  expect(archive).toEqual([{ target, temp, backup }])
+  await fs.recover()
+  for await (const _ of fs.list()) {
+    /* Exercise the temporary-file sweep too. */
+  }
+  expect(await app.vault.adapter.read(target)).toBe('current local bytes')
+  expect(await app.vault.adapter.read(temp)).toBe('pending remote bytes')
+  expect(await app.vault.adapter.read(backup)).toBe('previous local bytes')
+  const restarted = new ObsidianFileSystem(app as unknown as App)
+  await restarted.recover()
+  expect(await app.vault.adapter.read(target)).toBe('current local bytes')
+})
+
+it('does not mistake a retained streaming source for destructive startup recovery', async () => {
+  const app = buildFakeVault([])
+  const fs = new ObsidianFileSystem(app as unknown as App)
+  const state = new MemoryStateStore()
+  await state.setCursor(1)
+  const stage = await fs.beginAtomicWrite('sample.bin', 1000, null)
+  await stage.append(0, text('retained bytes'))
+  expect(fs.needsRecoveryHandshake()).toBe(false)
+  await fs.fenceRecovery(state, 2)
+  expect(await readReconciliation(state)).toBeNull()
+  expect((await fs.reopenStage(stage.id)).offset).toBe(14)
+})
+
+it.each(['ordinary fingerprint', 'pull after generation retirement'])(
+  'rehashes restored bytes even when a mobile write receipt has the same metadata: %s',
+  async (mode) => {
+    const app = buildFakeVault([])
+    const fs = new ObsidianFileSystem(app as unknown as App)
+    const stage = await fs.beginAtomicWrite('sample.bin', 1000, null)
+    await stage.append(0, text('before'))
+    await stage.seal({
+      size: 6,
+      sha: await import('@abele/sync-core').then((core) => core.sha256(text('before'))),
+    })
+    await stage.commit()
+    const before = await app.vault.adapter.stat('sample.bin')
+    await app.vault.adapter.writeBinary('sample.bin', text('after!').buffer, { mtime: 1000 })
+    const stat = app.vault.adapter.stat.bind(app.vault.adapter)
+    vi.spyOn(app.vault.adapter, 'stat').mockImplementation((path) =>
+      path === 'sample.bin' ? Promise.resolve(before) : stat(path)
+    )
+    if (mode === 'pull after generation retirement')
+      await new ObsidianFileSystem(app as unknown as App).retireGeneration('next', async () => {})
+    const identity =
+      mode === 'ordinary fingerprint'
+        ? await fs.fingerprint('sample.bin')
+        : await fs[Symbol.for('abele.sync.fingerprint-pull-v1')]('sample.bin')
+    expect(identity.sha).toBe(
+      await import('@abele/sync-core').then((core) => core.sha256(text('after!')))
+    )
+  }
+)
 
 it('stages mobile writes in 1 MiB bridge buffers before installing the complete file', async () => {
   const app = buildFakeVault([]),

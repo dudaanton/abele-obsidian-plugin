@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest'
-import { TokenUi, connectionError } from '@/sync/tokenUi'
+import { TokenUi, connectionError, connectionStatusText, scopeName } from '@/sync/tokenUi'
 import { TokenConnectionRegistry, TOKEN_REGISTRY_KEY } from '@/sync/tokenConnectionRegistry'
 import { encodeAccessToken } from '@/sync/v2/contract'
 import { MemoryStateStore, sha256 } from '@abele/sync-core'
@@ -21,6 +21,38 @@ it('does not resurrect departed activity when an older review refresh fails', as
   pending.reject(new Error('old refresh failed'))
   await Promise.resolve()
   expect(ui.activity.value).toEqual({})
+})
+
+it('uses the connection status line for restored server and local files', () => {
+  const row = { status: 'syncing', paused: false }
+  expect(
+    connectionStatusText(row, {
+      reconciliation: { phase: 'requested', reason: 'server generation changed' },
+    })
+  ).toBe('The server was restored from a backup — checking files')
+  expect(
+    connectionStatusText(row, {
+      reconciliation: { phase: 'review', reason: 'explicit reconciliation' },
+    })
+  ).toBe('Checking restored files')
+  expect(
+    connectionStatusText(row, {
+      reconciliation: { phase: 'complete', reason: 'explicit reconciliation' },
+    })
+  ).toBe('Syncing')
+  expect(connectionError({ code: 'scope_deleted' })).toBe(
+    'This folder or group is no longer available.'
+  )
+})
+
+it('names a granted folder or group the server no longer shows to its issuer', () => {
+  expect(scopeName({ kind: 'folder', id: 'moved', path: '(unavailable)' })).toBe(
+    'Folder outside this connection'
+  )
+  expect(scopeName({ kind: 'group', id: 'moved', path: '(unavailable)' })).toBe(
+    'Group outside this connection'
+  )
+  expect(scopeName({ kind: 'folder', id: 'kept', path: 'Shared' })).toBe('Folder: Shared')
 })
 
 it('distinguishes a cut-off response body from an unreachable server', () => {

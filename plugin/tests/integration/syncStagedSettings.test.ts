@@ -209,6 +209,25 @@ describe('settings changed on another device', () => {
     expect(service.ui.candidates.value).toEqual([])
     expect(reloads).toBe(0)
   })
+  it('after a rejected version and a restart, approving applies the newest reviewed code', async () => {
+    const code = 'Fixtures/sample.js'
+    await seed(other, [await create(other, code, '// one', Date.now())])
+    await service.syncNow()
+    await service.ui.approve(service.ui.candidates.value.find((one) => one.path === code)!)
+    expect(await read(code)).toBe('// one')
+    await modify(code, '// two')
+    await service.syncNow()
+    await service.ui.reject(service.ui.candidates.value.find((one) => one.path === code)!)
+    expect(await read(code)).toBe('// one')
+    await modify(code, '// three')
+    await service.syncNow()
+    await service.destroy()
+    await start()
+    await service.ui.refreshReviews()
+    const candidate = service.ui.candidates.value.find((one) => one.path === code)!
+    await service.ui.approve(candidate)
+    expect(await read(code)).toBe('// three')
+  })
   it('applies the exact reviewed code version while a newer candidate stays pending', async () => {
     const code = '.obsidian/plugins/sample-tool/main.js'
     await seed(other, [await create(other, code, 'first', Date.now())])

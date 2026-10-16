@@ -397,6 +397,7 @@ export class VaultWriter {
       }
     }
     for (const entry of this.deps.journal.entries()) {
+      if (entry.retiredGeneration) continue
       if (entry.streaming && !entry.backup) {
         if (!entry.disposableSource && !entry.target.startsWith('.abele-sync/placement-inbox/'))
           continue

@@ -108,6 +108,9 @@ export class BoundedVaultIo {
     if (!receipts) writeReceipts.set(this.receiptScope, (receipts = new Map()))
     return receipts
   }
+  retireReceipts(): void {
+    this.receipts.clear()
+  }
   async requireWrite(size: number): Promise<void> {
     if (
       size <= PHONE_FALLBACK_BYTES ||
@@ -350,7 +353,8 @@ export class BoundedVaultIo {
       },
     }
   }
-  async fingerprint(path: string, signal?: AbortSignal, boundedOnly = false) {
+  async fingerprint(path: string, signal?: AbortSignal, boundedOnly = false, fresh = false) {
+    if (fresh) this.receipts.delete(path)
     if (this.raw.fsPromises?.open && this.raw.getFullPath) {
       const before = stampOf(await this.stat(path))
       const handle = await this.raw.fsPromises.open(this.raw.getFullPath(path), 'r')
@@ -378,7 +382,7 @@ export class BoundedVaultIo {
       }
     }
     signal?.throwIfAborted()
-    const receipt = this.receipts.get(path)
+    const receipt = fresh ? undefined : this.receipts.get(path)
     if (receipt) {
       const stamp = stampOf(await this.stat(path))
       if (stamp.generation === receipt.stamp.generation)

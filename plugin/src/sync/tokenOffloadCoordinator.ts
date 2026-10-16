@@ -264,6 +264,30 @@ export class TokenOffloadCoordinator {
       )
     return new Proxy(fs, {
       get: (target, method) => {
+        if (
+          (method === 'listChildren' ||
+            method === Symbol.for('abele.sync.inventory-children-v1')) &&
+          Reflect.get(target, method)
+        )
+          return async (parent: string, path?: string) => {
+            const children = (
+              (await Reflect.get(target, method).call(target, parent, path)) as {
+                path: string
+                kind: 'file' | 'directory'
+                identity?: string
+              }[]
+            ).filter((one) => !artifact(one.path))
+            const seen = new Set(children.map((one) => caseKey(one.path)))
+            for (const info of virtual())
+              if (
+                info.path.slice(0, Math.max(0, info.path.lastIndexOf('/'))) === parent &&
+                !seen.has(caseKey(info.path))
+              ) {
+                seen.add(caseKey(info.path))
+                children.push({ path: info.path, kind: 'file' })
+              }
+            return children
+          }
         if (method === 'list')
           return async function* () {
             const seen = new Set<string>()

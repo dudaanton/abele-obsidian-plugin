@@ -91,7 +91,11 @@ export class V2Client {
       } catch {
         /* A proxy response cannot provide a server error code. */
       }
-      throw new V2ClientError(response.status === 401 ? 'revoked' : code, response.status)
+      // A scope deleted on the server is not an ordinary revocation: say which one it was.
+      throw new V2ClientError(
+        response.status === 401 && code !== 'scope_deleted' ? 'revoked' : code,
+        response.status
+      )
     }
     return response
   }

@@ -25,6 +25,16 @@ const path = `${projection.path}.abele-ref`
 const bytes = (value: unknown): Uint8Array => new TextEncoder().encode(JSON.stringify(value))
 const owned = { fileId: projection.fileId, projectionPath: path, projectionSha: 'b'.repeat(64) }
 
+it('retains mixed physical spellings and rejects a normalization alias occupying a projection', () => {
+  const physical = 'й-folder'.normalize('NFD') + '/ё-image.jpg'
+  const sidecar = projectionPath(physical)
+  expect(sidecar).toBe(physical + '.abele-ref')
+  const logical = { ...projection, path: physical.normalize('NFC') }
+  expect(validateProjectionPlacement(logical, sidecar)).toBe(true)
+  expect(() => projectionPath(physical, [sidecar.normalize('NFC')])).toThrow(/collision/i)
+  expect(() => projectionPath(physical, [physical.normalize('NFC')])).toThrow(/collision/i)
+})
+
 describe('external projection schema and local ownership', () => {
   it('does not recognize an ordinary document merely quoting a projection example', () => {
     const guide = new TextEncoder().encode(
