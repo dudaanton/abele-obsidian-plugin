@@ -21,12 +21,19 @@ const probe = (device: string) =>
     const fs = require('fs'), win = require('@electron/remote').getCurrentWindow()
     // A picture is of the panel only when the panel is what is on screen: a phone's drawer that
     // closed under a dismissed menu leaves the DOM in place and the picture an empty tab.
-    const onScreen = () => {
+    // A menu or search opened from the panel is pictured over it: then the overlay is what must be
+    // on top and whole inside the window, with the panel's drawer still open beneath it.
+    const inside = (box) => box.left >= 0 && box.top >= 0 && box.right <= innerWidth + 1 && box.bottom <= innerHeight + 1
+    const onScreen = (overlay) => {
       const el = nodePanel.root(), box = el?.getBoundingClientRect()
       if (!box || box.width < 50 || box.height < 50) return false
-      return !!el.contains(document.elementFromPoint(box.left + box.width / 2, box.top + Math.min(box.height / 2, 200)))
+      if (!overlay) return !!el.contains(document.elementFromPoint(box.left + box.width / 2, box.top + Math.min(box.height / 2, 200)))
+      const over = overlay.getBoundingClientRect()
+      if (app.workspace.leftSplit.collapsed || box.left < 0 || box.right > innerWidth + 1) return false
+      if (over.width < 50 || over.height < 50 || !inside(over)) return false
+      return !!overlay.contains(document.elementFromPoint(over.left + over.width / 2, over.top + Math.min(over.height / 2, 200)))
     }
-    const shot = async (name) => { await wait(300); seen['onScreen ' + name] = onScreen(); fs.writeFileSync(${JSON.stringify(SHOTS)} + '/${device}-' + name + '.png', (await win.webContents.capturePage()).toPNG()) }
+    const shot = async (name, overlay) => { await wait(300); seen['onScreen ' + name] = onScreen(overlay); fs.writeFileSync(${JSON.stringify(SHOTS)} + '/${device}-' + name + '.png', (await win.webContents.capturePage()).toPNG()) }
     const until = async (fn) => { for (let i = 0; i < 100; i++) { if (fn()) return true; await wait(50) } return false }
     const seen = {}
     ${NODE_PANEL_FIXTURE}
@@ -56,8 +63,8 @@ const probe = (device: string) =>
       await nodePanel.mode('History'); seen.history = !!panel.querySelector('.abele-node-sidebar__history .abele-history__row-subject'); await shot('history')
       await nodePanel.mode('Pull requests'); seen.pulls = text(panel).includes('does not say which remote'); await shot('pulls')
       await nodePanel.mode('Changes')
-      const places = await nodePanel.places(); seen.places = !!places.querySelector('.suggestion-item'); await shot('place-search'); await nodePanel.dismiss()
-      await nodePanel.menu(); await shot('place-menu'); await nodePanel.dismiss()
+      const places = await nodePanel.places(); seen.places = !!places.querySelector('.suggestion-item'); await shot('place-search', places); await nodePanel.dismiss()
+      await shot('place-menu', await nodePanel.menu()); await nodePanel.dismiss()
       panel = await reopen({ git: true })
       seen.commitBox = await until(() => panel.querySelector('.abele-commit-box textarea'))
       seen.stageGlyphs = !!panel.querySelector('[aria-label="Unstage"]')

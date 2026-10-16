@@ -188,13 +188,17 @@ const nodePanel = (() => {
     }
     if (open()) throw Error('Node panel fixture: a menu or prompt did not close')
   }
+  // On a phone the panel is a drawer, and a menu dismissed by a press outside closes it too;
+  // a person presses the panel's own controls only with the drawer open.
+  const reveal = async () => {
+    if (!app.workspace.leftSplit.collapsed) return
+    await app.workspace.revealLeaf(fixture().leaf)
+    app.workspace.leftSplit.expand()
+    await pause(300)
+  }
   const select = async (place) => {
-    const { model, leaf } = fixture()
-    // On a phone the panel is a drawer, and a menu dismissed by a press outside closes it too.
-    if (app.workspace.leftSplit.collapsed) {
-      await app.workspace.revealLeaf(leaf)
-      app.workspace.leftSplit.expand()
-    }
+    const { model } = fixture()
+    await reveal()
     // A place is pictured from its first view: history and pull requests carry over from the
     // last place by design, so the mode is set back as a new panel would open it.
     model.panelMode.value = 'files'
@@ -248,6 +252,7 @@ const nodePanel = (() => {
       return panel
     },
     async menu() {
+      await reveal()
       root().querySelector('.abele-node-place > .abele-obsidian-icon').click()
       const menu = await waitFor(() => [...document.querySelectorAll('.menu')].find((m) => shown(m) && m.textContent.includes('Open a folder…')), 'place menu')
       await pause(250)
@@ -259,6 +264,7 @@ const nodePanel = (() => {
       disabled: item.classList.contains('is-disabled'),
     })),
     async places() {
+      await reveal()
       root().querySelector('.abele-node-place__row').click()
       const prompt = await waitFor(() => [...document.querySelectorAll('.modal-container > .prompt')].find((p) => shown(p) && p.querySelector('.suggestion-item')), 'place search')
       await pause(250)
