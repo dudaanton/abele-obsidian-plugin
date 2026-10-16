@@ -72,6 +72,7 @@ export class CanvasViewer {
   onWheel?: (event: WheelEvent) => boolean
   /** The last press that was a tap, for telling a double tap. */
   private lastTap: { x: number; y: number; time: number; type: string } | null = null
+  private panelPress: { target: HTMLElement; x: number; y: number; moved: boolean } | null = null
   input?: CanvasViewerInput
   /** The connection whose label is being written over it by the host. */
   writingLabel: string | null = null
@@ -162,6 +163,41 @@ export class CanvasViewer {
     this.status.setAttribute('role', 'status')
     this.off.push(guardSurface(this.stage))
     this.listen(el, 'keydown', (e) => this.handleKey(e as KeyboardEvent))
+    this.listen(
+      this.stage,
+      'pointerdown',
+      (event) => {
+        const e = event as PointerEvent
+        const target = (e.target as Element | null)?.closest<HTMLElement>(
+          '.abele-canvas-card_panels :is(button,a,input,.clickable-icon,.abele-fold-heading,.tree-item-self), .abele-canvas-card-codes .clickable-icon'
+        )
+        if (!target) return
+        if (e.pointerType !== 'pen' && this.el.dataset.canvasTool === 'select') {
+          this.panelPress = { target, x: e.clientX, y: e.clientY, moved: false }
+        }
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        this.down(e)
+      },
+      { capture: true }
+    )
+    this.listen(
+      this.stage,
+      'click',
+      (e) => {
+        if (
+          e.isTrusted &&
+          (e as MouseEvent).detail !== 0 &&
+          (e.target as Element | null)?.closest(
+            '.abele-canvas-card_panels, .abele-canvas-card-codes'
+          )
+        ) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+        }
+      },
+      { capture: true }
+    )
     this.listen(this.stage, 'pointerdown', (e) => this.down(e as PointerEvent))
     this.listen(this.stage, 'pointermove', (e) => this.move(e as PointerEvent))
     this.listen(this.stage, 'pointerup', (e) => this.up(e as PointerEvent, false))
@@ -535,6 +571,11 @@ export class CanvasViewer {
     }
   }
   private move(e: PointerEvent): void {
+    if (
+      this.panelPress &&
+      Math.hypot(e.clientX - this.panelPress.x, e.clientY - this.panelPress.y) > 8
+    )
+      this.panelPress.moved = true
     const was = this.pointers.get(e.pointerId)
     if (!was) {
       if (!this.pointers.size && this.step === null) this.input?.hover?.(e)
@@ -590,8 +631,10 @@ export class CanvasViewer {
       if (gesture) gesture.multi = true
     }
     if (this.pointers.size || !gesture) return
+    const panel = this.panelPress
+    this.panelPress = null
     this.gesture = null
-    this.tapped(e, gesture, cancel)
+    if (!panel) this.tapped(e, gesture, cancel)
     if (
       !cancel &&
       gesture.touch &&
@@ -609,6 +652,15 @@ export class CanvasViewer {
     if (cancel || gesture.multi) return
     if (gesture.editing) {
       this.input?.up(e)
+      if (
+        panel &&
+        !panel.moved &&
+        Math.hypot(e.clientX - panel.x, e.clientY - panel.y) <= 8 &&
+        panel.target.isConnected
+      ) {
+        panel.target.focus({ preventScroll: true })
+        panel.target.click()
+      }
       return
     }
     const dx = e.clientX - gesture.x,

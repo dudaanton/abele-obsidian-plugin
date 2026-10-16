@@ -2,7 +2,58 @@ import { expect, it, vi } from 'vitest'
 import { MarkdownRenderer } from 'obsidian'
 import { hostCanvasViewer } from '@/canvas/adapter'
 import * as painter from '@/canvas/core/painter'
-import { useVault } from '../helpers/testEnv'
+import { configureAbele, useVault } from '../helpers/testEnv'
+import { nextTick } from 'vue'
+import { DEFAULT_AI_SETTINGS } from '@/ai/types'
+
+it('changes panel level on camera moves without rendering Markdown again', async () => {
+  const config = configureAbele()
+  config.ai = { ...DEFAULT_AI_SETTINGS, chatHistory: [] }
+  config.headerButtons = []
+  const app = useVault([{ path: 'sample.md', content: 'Sample words' }])
+  const el = document.createElement('div')
+  document.body.append(el)
+  const render = vi.spyOn(MarkdownRenderer, 'render')
+  const viewer = hostCanvasViewer(app as never, el, () => 'sample.canvas')
+  viewer.load({
+    nodes: [{ id: 'sample', type: 'file', file: 'sample.md', x: 0, y: 0, width: 400, height: 500 }],
+    edges: [],
+    abele: { notePanels: true },
+  })
+  Object.defineProperties(viewer.stage, {
+    clientWidth: { value: 600 },
+    clientHeight: { value: 600 },
+  })
+  const context = vi
+    .spyOn(viewer.canvas, 'getContext')
+    .mockReturnValue({ setTransform: vi.fn() } as never)
+  const paint = vi.spyOn(painter, 'paintCanvas').mockReturnValue({ visible: [], warnings: [] })
+  const draw = async (zoom: number) => {
+    viewer.camera = { x: 0, y: 0, zoom }
+    ;(viewer as unknown as { paint(): void }).paint()
+    await nextTick()
+  }
+  try {
+    await draw(1)
+    const body = el.querySelector('.abele-canvas-card')
+    expect(body?.classList.contains('abele-canvas-card_panels')).toBe(true)
+    const top = body?.querySelector('.abele-header-widget-container')
+    await draw(0.9)
+    expect(body?.querySelector('.abele-header-widget-container')).toBe(top)
+    await draw(0.5)
+    expect(body?.classList.contains('abele-canvas-card_codes')).toBe(true)
+    expect(body?.querySelector('.abele-header-widget-container')).toBe(top)
+    await draw(0.1)
+    expect(body?.querySelector('.abele-header-widget-container')).toBeNull()
+    expect(render).toHaveBeenCalledTimes(1)
+  } finally {
+    viewer.destroy()
+    el.remove()
+    render.mockRestore()
+    paint.mockRestore()
+    context.mockRestore()
+  }
+})
 
 it('rerenders text-card links against the new source when a canvas moves', async () => {
   const app = useVault([]),

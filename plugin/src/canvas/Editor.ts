@@ -160,8 +160,6 @@ export class CanvasEditor {
   private penSeen = false
   /** On a device with a Pencil, whether a finger draws too; kept on this device. */
   private fingerDraws = readFingerDraws()
-  /** The canvas's default for showing Abele's header and footer in its notes; off until asked. */
-  private notePanels = false
   /** A frame whose name is being written on its label. */
   private naming: string | null = null
   /** A connection or line whose label is being written on the line itself. */
@@ -270,10 +268,21 @@ export class CanvasEditor {
     setPanels: (id: string, shown: boolean): Promise<void> =>
       this.patchNode(id, { abele: { panels: shown } }),
     /** Whether the canvas's notes show Abele's header and footer when a card has no choice of its own. */
-    notePanels: (): boolean => this.notePanels,
+    notePanels: (): boolean => this.ports.document()?.session.graph.abele?.notePanels === true,
     setNotePanels: (on: boolean): void => {
-      this.notePanels = on
-      this.refresh()
+      const document = this.ready()
+      document.beginDraft()
+      try {
+        document.updateDraft((graph) => ({
+          ...graph,
+          abele: { ...graph.abele, notePanels: on },
+        }))
+        document.finishDraft()
+      } catch (error) {
+        if (document.session.draft?.active) document.cancelDraft()
+        throw error
+      }
+      this.changed(document)
     },
     /** A connection let go over nothing, waiting to be told what to make there. */
     drop: (): CanvasDrop | null => this.drop,

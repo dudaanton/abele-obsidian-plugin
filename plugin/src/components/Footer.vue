@@ -26,7 +26,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, provide, ref } from 'vue'
 import { Footer } from '@/entities/Footer'
 import dayjs from 'dayjs'
 import Timeline from './Timeline.vue'
@@ -40,10 +40,12 @@ import ChatsList from './ChatsList.vue'
 import { useChatLinks } from '@/composables/useChatLinks'
 import { useCalendarDays } from '@/composables/useCalendarDays'
 import { DATE_FORMAT } from '@/constants/dates'
-import { provideFooterFold } from '@/composables/useFooterFold'
+import { CARD_FOLDS, provideFooterFold } from '@/composables/useFooterFold'
+import type { FooterSection } from '@/helpers/footerFolds'
 
 const props = defineProps<{
   footer: Footer
+  canvasCard?: boolean
 }>()
 
 // Each list below folds to its heading, remembered for this note: a long one would otherwise
@@ -111,8 +113,23 @@ const logs = computed(() => {
 // that field in place on a rename, and the list has to follow the note.
 const chats = useChatLinks(() => props.footer.filePath)
 
+// Card defaults are local to this mounted footer; reading a card never folds the note's tab.
+if (props.canvasCard) {
+  provide(CARD_FOLDS, () => {
+    const lists: FooterSection[] = []
+    if (todoTasks.value.length) lists.push('tasks')
+    if (timelineTasks.value.length || dayEvents.value.size) lists.push('calendar')
+    if (transactions.value.length) lists.push('transactions')
+    if (timeEntries.value.length) lists.push('time')
+    if (notes.value.length) lists.push('backlinks')
+    if (logs.value.length) lists.push('logs')
+    if (chats.value.length) lists.push('chats')
+    return lists.slice(1)
+  })
+}
+
 onMounted(() => {
-  props.footer.load()
+  void props.footer.load()
 })
 </script>
 

@@ -223,6 +223,10 @@ export class CanvasView extends EditableFileView {
       openNative: () => void this.openNative(),
       ...(editor
         ? {
+            notePanels: {
+              on: editor.controls.notePanels(),
+              toggle: () => editor.controls.setNotePanels(!editor.controls.notePanels()),
+            },
             fingerDraws: {
               on: editor.controls.fingerDraws(),
               toggle: () => editor.controls.setFingerDraws(!editor.controls.fingerDraws()),

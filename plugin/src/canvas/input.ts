@@ -380,7 +380,8 @@ export class CanvasInput implements CanvasViewerInput {
   private inkFor(event: PointerEvent): 'pen' | 'marker' | null {
     const tool = this.ports.tool(),
       pencil = this.ports.pencil?.()
-    if (event.pointerType === 'pen' && pencil && routePointer(PEN_UP, event) === 'erase') return null
+    if (event.pointerType === 'pen' && pencil && routePointer(PEN_UP, event) === 'erase')
+      return null
     if (tool !== 'pen' && tool !== 'marker') return null
     if (event.pointerType === 'touch' && this.penSeen && !pencil?.fingerDraws) return null
     return tool
@@ -463,6 +464,9 @@ export class CanvasInput implements CanvasViewerInput {
       node &&
       node.type === 'file' &&
       !corner &&
+      !(event.target as Element | null)?.closest?.(
+        '.abele-canvas-card_panels button, .abele-canvas-card_panels a, .abele-canvas-card_panels .abele-fold-heading, .abele-canvas-card-codes'
+      ) &&
       event.pointerType === 'touch' &&
       selected.has(node.id)
         ? this.viewer.scroller(node.id)

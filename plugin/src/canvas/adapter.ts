@@ -26,6 +26,10 @@ import { canvasVisibility } from './core/visibility'
 import { WebCard, obsidianWebCardPorts, type WebCardPorts } from './webCard'
 import { bindCanvasLinks } from './links'
 
+import { createApp, h, shallowRef } from 'vue'
+import CardPanelView from '@/components/canvas/CardPanels.vue'
+import { cardPanels, panelsShown, type CardPanels } from './cardPanels'
+
 interface CardLayer {
   el: HTMLElement
   canvas: HTMLCanvasElement
@@ -35,6 +39,7 @@ interface CardLayer {
   web: WebCard | null
   paintKey: string
   assets: CanvasAssets | null
+  panels?: { level: ReturnType<typeof shallowRef<CardPanels>>; destroy(): void }
 }
 /** One compositing layer per card: its opaque shape and live contents share the same stacking. */
 class LiveCards implements ViewerCards {
@@ -82,6 +87,7 @@ class LiveCards implements ViewerCards {
       ])
       let card = this.cards.get(node.id)
       if (!card || card.signature !== signature) {
+        card?.panels?.destroy()
         card?.component?.unload()
         card?.web?.destroy()
         card?.el.remove()
@@ -130,6 +136,7 @@ class LiveCards implements ViewerCards {
               },
             })
           )
+          const textBody = body.createDiv()
           const current = card
           const render = async () => {
             const text =
@@ -140,16 +147,71 @@ class LiveCards implements ViewerCards {
             await MarkdownRenderer.render(
               this.app,
               text,
-              body,
+              textBody,
               file instanceof TFile ? file.path : this.source(),
               component
             )
           }
           void render().catch((error) => {
-            if (this.cards.get(node.id) === current) body.setText(String(error))
+            if (this.cards.get(node.id) === current) textBody.setText(String(error))
           })
         }
       }
+      const level = panelsShown(node, graph.abele?.notePanels === true)
+        ? cardPanels({ width: node.width * camera.zoom, height: node.height * camera.zoom })
+        : 'none'
+      if (level === 'none') {
+        card.panels?.destroy()
+        card.panels = undefined
+      } else if (card.body && file instanceof TFile) {
+        if (!card.panels) {
+          const top = card.body.createDiv({ cls: 'abele-header-widget-container' })
+          card.body.prepend(top)
+          const bottom = card.body.createDiv({ cls: 'abele-footer-widget-container' })
+          const state = shallowRef<CardPanels>(level)
+          const panelApp = createApp({
+            render: () =>
+              h(CardPanelView, {
+                path: file.path,
+                top,
+                level: state.value,
+                open: async (section: string) => {
+                  const leaf = this.app.workspace.getLeaf('tab')
+                  // An explicit place takes precedence over the note's remembered scroll position.
+                  await leaf.openFile(file, { eState: { line: 0 } })
+                  const root = leaf.view.containerEl
+                  const reveal = () => {
+                    const row = root.querySelector(`[data-abele-anchor="section:${section}"]`)
+                    if (!row) return false
+                    row.scrollIntoView({ block: 'start' })
+                    return true
+                  }
+                  if (reveal()) return
+                  // The footer is mounted after openFile resolves. Stop watching once it is drawn.
+                  const observer = new MutationObserver(() => {
+                    if (reveal()) {
+                      observer.disconnect()
+                      window.clearTimeout(timer)
+                    }
+                  })
+                  const timer = window.setTimeout(() => observer.disconnect(), 3000)
+                  observer.observe(root, { childList: true, subtree: true })
+                },
+              }),
+          })
+          panelApp.mount(bottom)
+          card.panels = {
+            level: state,
+            destroy: () => {
+              panelApp.unmount()
+              top.remove()
+              bottom.remove()
+            },
+          }
+        } else if (card.panels.level.value !== level) card.panels.level.value = level
+      }
+      card.body?.toggleClass('abele-canvas-card_panels', level === 'full')
+      card.body?.toggleClass('abele-canvas-card_codes', level === 'codes')
       if (markdown || page) live.add(node.id)
       card.web?.setLive(focused === node.id)
       // A small transparent margin preserves the complete shape border without covering lower cards.
@@ -161,6 +223,7 @@ class LiveCards implements ViewerCards {
         transform: `translate(${(frame.x - camera.x) * camera.zoom}px, ${(frame.y - camera.y) * camera.zoom}px) scale(${camera.zoom})`,
       })
       card.body?.toggleClass('abele-canvas-card_centred', centredLabel(node))
+      card.body?.style.setProperty('--abele-card-zoom', String(camera.zoom))
       card.body?.setCssStyles({
         width: `${box.width}px`,
         height: `${box.height}px`,
@@ -198,6 +261,7 @@ class LiveCards implements ViewerCards {
     }
     for (const [id, card] of this.cards)
       if (!shown.has(id)) {
+        card.panels?.destroy()
         card.component?.unload()
         card.web?.destroy()
         card.el.remove()
@@ -221,6 +285,7 @@ class LiveCards implements ViewerCards {
   }
   destroy(): void {
     for (const card of this.cards.values()) {
+      card.panels?.destroy()
       card.component?.unload()
       card.web?.destroy()
       card.el.remove()

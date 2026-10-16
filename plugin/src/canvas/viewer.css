@@ -391,7 +391,8 @@
 /* A note that shows Abele's header and footer in its card: the lists are its own, as in a tab, and
    what in them is pressed answers a clean click; a press that moves on carries the card. With a pen
    or an eraser in hand nothing in a card answers and the pen draws over it. */
-.abele-canvas-card_panels :is(button, a, input, .clickable-icon, .abele-fold-heading, .tree-item-self) {
+.abele-canvas-card_panels :is(button, a, input, .clickable-icon, .abele-fold-heading, .tree-item-self),
+.abele-canvas-card-codes .clickable-icon {
   pointer-events: auto;
 }
 :is([data-canvas-tool='pen'], [data-canvas-tool='marker'], [data-canvas-tool='eraser'], [data-canvas-tool='partial-eraser'])

@@ -14,6 +14,8 @@ import {
  * else — the task or finance sidebar, where it is the only list — finds none and does not fold.
  */
 export const FOOTER_FOLD: InjectionKey<() => string> = Symbol('abele-footer-fold')
+export const CARD_FOLDS: InjectionKey<() => readonly FooterSection[]> =
+  Symbol('canvas-footer-folds')
 
 /** The app's local-storage key: per vault, on this device. */
 export const FOOTER_FOLDS_KEY = 'abele-footer-folds'
@@ -47,6 +49,18 @@ export interface Fold {
 }
 
 export function useFooterFold(section: FooterSection): Fold {
+  const card = inject(CARD_FOLDS, null)
+  if (card) {
+    const own = shallowRef<boolean | null>(null)
+    const collapsed = computed(() => own.value ?? card().includes(section))
+    return {
+      enabled: true,
+      collapsed,
+      toggle: () => {
+        own.value = !collapsed.value
+      },
+    }
+  }
   const path = inject(FOOTER_FOLD, null)
   if (!path) return { enabled: false, collapsed: computed(() => false), toggle: () => {} }
   const collapsed = computed(() => isFolded(current(), path(), section))

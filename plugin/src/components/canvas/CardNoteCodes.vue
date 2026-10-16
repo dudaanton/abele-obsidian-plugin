@@ -35,6 +35,7 @@ const emit = defineEmits<{ open: [key: string] }>()
 
 <style>
 .abele-canvas-card-codes {
+  zoom: calc(1 / var(--abele-card-zoom, 1));
   position: absolute;
   inset-inline: 0;
   bottom: 0;

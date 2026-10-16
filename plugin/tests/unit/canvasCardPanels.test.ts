@@ -3,6 +3,12 @@ import { cardFolds, cardPanels, panelsShown } from '@/canvas/cardPanels'
 
 describe("a note card's header and footer", () => {
   it('shows them whole, as codes or not at all by the size on the screen', () => {
+    expect(cardPanels({ width: 280, height: 320 })).toBe('full')
+    expect(cardPanels({ width: 279, height: 320 })).toBe('codes')
+    expect(cardPanels({ width: 280, height: 319 })).toBe('codes')
+    expect(cardPanels({ width: 120, height: 96 })).toBe('codes')
+    expect(cardPanels({ width: 119, height: 96 })).toBe('none')
+    expect(cardPanels({ width: 120, height: 95 })).toBe('none')
     expect(cardPanels({ width: 420, height: 640 })).toBe('full')
     expect(cardPanels({ width: 300, height: 170 })).toBe('codes')
     expect(cardPanels({ width: 230, height: 350 })).toBe('codes')

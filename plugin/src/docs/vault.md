@@ -677,6 +677,14 @@ Any desired change afterward is a new ordinary edit from a fresh read. No reload
 or automatic uncertain replay is provided.
 
 Human selection and drag/resize previews are transient and never stored as canvas fields.
+Note panels are off by default. The canvas menu's “Notes show header and footer” choice is
+stored as the boolean `abele.notePanels` in the `.canvas` document. A markdown card's
+“Show header and footer” choice is stored as `nodes[].abele.panels`; an explicit `false`
+overrides a canvas-wide `true`. Both use ordinary document undo and batched publication.
+At an on-screen size of at least 280×320 CSS pixels a card shows the normal header and footer,
+with all lists after the first folded locally. At least 120×96 pixels shows task, linked-note,
+log and time-entry counts instead; below that, panels are hidden. Camera changes do not
+rewrite the canvas. These panels are live card controls, not part of exported canvas pictures.
 A completed gesture, text edit, undo or redo applies at once in memory as its own undo step.
 Writing the file is batched: after a short pause (about 1.5 s) and at most about 5 s after the
 first unwritten change, and at once when the canvas tab closes or switches file, the window
