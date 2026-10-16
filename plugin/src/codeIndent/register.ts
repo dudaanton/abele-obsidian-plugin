@@ -10,6 +10,7 @@ import {
 import { MarkdownPreviewRenderer, type Plugin } from 'obsidian'
 import { guideDepths, indentStep } from './indentGuides'
 import { drawReadingGuides } from './readingGuides'
+import { nativeCodeLines } from './nativeLines'
 
 interface GuideSettings {
   enabled: boolean
@@ -75,6 +76,8 @@ export function codeGuideExtension(settings: Settings) {
       tree: ReturnType<typeof syntaxTree> | undefined
       config = ''
       destroyed = false
+      native: ReturnType<typeof nativeCodeLines> | undefined
+      nativeDoc: EditorState['doc'] | undefined
       constructor(view: EditorView) {
         this.draw(view)
         this.settle(view)
@@ -113,7 +116,7 @@ export function codeGuideExtension(settings: Settings) {
           key: this,
           read: () => {
             const before = this.decorations
-            this.draw(view)
+            this.draw(view, true)
             const next = this.decorations
             this.decorations = before
             return { decorations: next, state: view.state }
@@ -134,8 +137,20 @@ export function codeGuideExtension(settings: Settings) {
       destroy() {
         this.destroyed = true
       }
-      draw(view: EditorView) {
+      draw(view: EditorView, measured = false) {
         const config = settings()
+        if (this.nativeDoc !== view.state.doc) this.native = undefined
+        if (measured) {
+          const next = nativeCodeLines(view, config.tabSize, (n) => kind(view.state, n))
+          if (
+            JSON.stringify(Array.from(next.kinds)) !==
+              JSON.stringify(Array.from(this.native?.kinds ?? [])) ||
+            JSON.stringify(next.blocks) !== JSON.stringify(this.native?.blocks)
+          )
+            this.blocks = []
+          this.native = next
+          this.nativeDoc = view.state.doc
+        }
         this.tree = syntaxTree(view.state)
         this.config = JSON.stringify(config)
         if (!config.enabled) {
@@ -147,7 +162,11 @@ export function codeGuideExtension(settings: Settings) {
         const kinds = new Map<number, ReturnType<typeof kind>>()
         const at = (n: number) => {
           if (!kinds.has(n)) {
-            let value = kind(view.state, n)
+            let value =
+              this.native?.kinds.get(n) ??
+              (this.native?.blocks.some((b) => n >= b.start && n <= b.end)
+                ? 'code'
+                : kind(view.state, n))
             if (!view.state.doc.line(n).text.trim()) {
               let before = n - 1
               let after = n + 1
@@ -206,6 +225,9 @@ export function codeGuideExtension(settings: Settings) {
               if (this.blocks.length > 16) this.blocks.shift()
             }
             const { start, end, depths, step } = block
+            const blockMetric = Array.from(this.native?.metrics ?? []).find(
+              ([n]) => n >= start && n <= end
+            )?.[1]
             const markFrom =
               'selected' in range
                 ? Math.max(start, view.state.doc.lineAt(view.viewport.from).number)
@@ -218,12 +240,13 @@ export function codeGuideExtension(settings: Settings) {
               if (seen.has(i)) continue
               seen.add(i)
               const depth = depths[i - start]
+              const metric = this.native?.metrics.get(i) ?? blockMetric
               if (depth)
                 marks.push(
                   Decoration.line({
                     attributes: {
                       class: 'abele-code-guides',
-                      style: `--abele-guide-depth: ${depth}; --abele-guide-step: ${step}ch`,
+                      style: `--abele-guide-depth: ${depth}; --abele-guide-step: ${metric ? `${metric.cell * step}px` : `${step}ch`}${metric ? `; --abele-guide-inset: ${metric.inset}px` : ''}`,
                     },
                   }).range(view.state.doc.line(i).from)
                 )

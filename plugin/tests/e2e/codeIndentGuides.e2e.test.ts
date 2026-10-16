@@ -86,6 +86,7 @@ describe.skipIf(!available)('code indentation guides', () => {
         hanging: boolean
         height: number[]
         width: number
+        snapshot: unknown
       }>(`(async () => {
       ${PRELUDE}
       app.vault.setConfig('showIndentGuide', true)
@@ -93,6 +94,7 @@ describe.skipIf(!available)('code indentation guides', () => {
       await wait(1000)
       let text, selected, depths, caret = true, wraps = 0, painted = false, nativeInput = null
       let finalInside = true, finalOutside = true, hanging = true, height = []
+      let snapshot = null
       const unwrappedHeight = (code) => {
         const pre = code.parentElement
         const preStyle = pre.style.whiteSpace, codeStyle = code.style.whiteSpace
@@ -118,6 +120,14 @@ describe.skipIf(!available)('code indentation guides', () => {
           hanging: !!first && !!wrapped && Math.abs(first.left - wrapped.left) <= 1,
           inside: cm.hasFocus && cm.state.selection.main.empty && cm.state.selection.main.head >= from && cm.state.selection.main.head <= cm.state.doc.lineAt(from).to,
           depths: [...cm.contentDOM.querySelectorAll('.abele-code-guides')].map((r) => r.style.getPropertyValue('--abele-guide-depth')),
+          lineClasses: line?.className,
+          lineStyle: line?.getAttribute('style'),
+          guideWidth: guide?.width,
+          firstX: first?.left,
+          wrappedX: wrapped?.left,
+          enabled: app.vault.getConfig('showIndentGuide'),
+          tabSize: app.vault.getConfig('tabSize'),
+          pluginPresent: cm.plugins.some((p) => p.value && typeof p.value.settle === 'function' && 'nativeDoc' in p.value),
         }
       }
       if (${JSON.stringify(mode)} === 'preview') {
@@ -219,12 +229,14 @@ describe.skipIf(!available)('code indentation guides', () => {
       await settle()
       if (${JSON.stringify(mode)} === 'source') {
         const final = editorSnapshot()
+        snapshot = final
         finalInside = finalInside && final.inside && final.painted
         hanging = hanging && final.hanging
       }
       const shot = await shoot(${JSON.stringify(label)})
       if (${JSON.stringify(mode)} === 'source') {
         const final = editorSnapshot()
+        snapshot = final
         finalInside = finalInside && final.inside && final.painted
         hanging = hanging && final.hanging
       }
@@ -235,19 +247,19 @@ describe.skipIf(!available)('code indentation guides', () => {
         : !leaf.view.editor.cm.contentDOM.querySelector('.abele-code-guides')
       if (${JSON.stringify(mode)} === 'preview') height.push(unwrappedHeight(leaf.view.containerEl.querySelector('pre > code')))
       await shoot(${JSON.stringify(label + '-off')})
-      return { text, selected, depths, off, caret, wraps, painted, nativeInput, shot, finalInside, finalOutside, hanging, height, width: innerWidth }
+      return { text, selected, depths, off, caret, wraps, painted, nativeInput, shot, finalInside, finalOutside, hanging, height, width: innerWidth, snapshot }
     })()`)
       expect(result.text).toBe(mode === 'preview' ? CODE : CONTENT)
       expect(result.selected).toBe(result.text)
-      expect(result.depths).toEqual(
+      expect(result.depths, JSON.stringify(result.snapshot)).toEqual(
         mode === 'preview' ? ['0', '1', '1', '2', '1', '0'] : ['1', '1', '2', '1']
       )
       expect(result.off).toBe(true)
       expect(result.caret).toBe(true)
       expect(result.painted).toBe(true)
-      expect(result.finalInside).toBe(true)
+      expect(result.finalInside, JSON.stringify(result.snapshot)).toBe(true)
       expect(result.finalOutside).toBe(true)
-      expect(result.hanging).toBe(true)
+      expect(result.hanging, JSON.stringify(result.snapshot)).toBe(true)
       if (mode === 'preview')
         expect(Math.abs(result.height[0] - result.height[1])).toBeLessThanOrEqual(0.5)
       if (label.startsWith('phone-')) expect(result.width).toBe(390)

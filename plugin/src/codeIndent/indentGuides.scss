@@ -4,6 +4,12 @@
 
 // Reading mode: each line is a block; its guides run its whole height, wrapped parts included.
 // A line of a code block stands as tall as a line of the note's text, as it did inline.
+.markdown-rendered pre > code:has(> .abele-code-line) {
+  // Keep the pre's native line box; an inline code box around block rows otherwise
+  // contributes its own font ascent/descent after the final row.
+  display: block;
+  line-height: 1lh;
+}
 .markdown-rendered pre > code .abele-code-line {
   display: block;
   line-height: inherit;
@@ -41,9 +47,9 @@
 }
 
 // Live Preview and source mode: the editor's own code lines, marked by the editor extension.
-.markdown-source-view.mod-cm6 .cm-line.HyperMD-codeblock.abele-code-guides {
+.markdown-source-view.mod-cm6 .cm-line.abele-code-guides {
   position: relative;
-  padding-inline-start: calc(var(--size-4-4) + var(--abele-guide-depth) * var(--abele-guide-step));
+  padding-inline-start: calc(var(--abele-guide-inset, var(--size-4-4)) + var(--abele-guide-depth) * var(--abele-guide-step));
   text-indent: calc(-1 * var(--abele-guide-depth) * var(--abele-guide-step));
 
   &::before {
@@ -51,7 +57,7 @@
     position: absolute;
     inset-block: 0;
     // The code line's own start, past its inline padding.
-    inset-inline-start: var(--size-4-4);
+    inset-inline-start: var(--abele-guide-inset, var(--size-4-4));
     width: calc(var(--abele-guide-depth) * var(--abele-guide-step));
     background-image: linear-gradient(
       to right,
