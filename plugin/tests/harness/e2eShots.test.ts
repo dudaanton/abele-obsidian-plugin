@@ -5,11 +5,33 @@
  * The /tmp cases never touch the real /tmp: a check machine may run the suite where nothing
  * outside its own job directory is writable. They ask which directory would be made instead.
  */
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { shotDir, shotPath } from '../e2e/helpers/shots'
+
+it.each([false, true])(
+  'imports helpers without creating shot roots (phone override: %s)',
+  async (override) => {
+    const root = mkdtempSync(join(tmpdir(), 'e2e-import-'))
+    const shots = join(root, 'missing-shots')
+    try {
+      vi.stubEnv('ABELE_E2E_SHOTS', shots)
+      vi.stubEnv('ABELE_PHONE_SHOTS', override ? join(root, 'missing-phone-shots') : undefined)
+      vi.resetModules()
+      await import('../e2e/helpers/globalSetup')
+      const { SHOTS } = await import('../e2e/helpers/phoneHost')
+      expect(SHOTS).toBe(override ? join(root, 'missing-phone-shots') : join(shots, 'abele-iphone'))
+      expect(existsSync(shots)).toBe(false)
+      expect(existsSync(join(root, 'missing-phone-shots'))).toBe(false)
+    } finally {
+      vi.unstubAllEnvs()
+      vi.resetModules()
+      rmSync(root, { recursive: true, force: true })
+    }
+  }
+)
 
 describe('the directory for e2e pictures', () => {
   const before = process.env.ABELE_E2E_SHOTS

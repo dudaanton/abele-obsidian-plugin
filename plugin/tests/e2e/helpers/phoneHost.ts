@@ -12,7 +12,7 @@ import { confirmReload, type ReloadWitness } from './reloadWitness'
 import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import type { AddressInfo } from 'node:net'
-import { shotDir } from './shots'
+import { shotPath } from './shots'
 import {
   DRIVER,
   PHONE_VAULT,
@@ -315,8 +315,8 @@ export async function installBuild(pluginDir: string): Promise<string> {
   return version
 }
 
-/** Where the phone's pictures go. */
-export const SHOTS = process.env.ABELE_PHONE_SHOTS ?? shotDir('abele-iphone')
+/** Where the phone's pictures go; the shot handler creates it only when needed. */
+export const SHOTS = process.env.ABELE_PHONE_SHOTS ?? shotPath('abele-iphone')
 
 let server: Server | undefined
 let unexpose: (() => Promise<void>) | undefined
