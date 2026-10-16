@@ -135,6 +135,9 @@
   height: auto;
   overflow: visible;
 }
+.abele-canvas-card.markdown-rendered a {
+  pointer-events: auto;
+}
 .abele-canvas-narration,
 .abele-canvas-status {
   flex-shrink: 0;

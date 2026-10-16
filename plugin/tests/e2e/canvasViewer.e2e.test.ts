@@ -121,6 +121,39 @@ describe.skipIf(!available)('read-only walkthrough viewer and canvas note embeds
     expect(result.safeNarration).toBe(true)
     shoot('step-one')
   }, 120_000)
+  it('follows a rendered note-card link with native mouse or touch input', () => {
+    if (onPhone()) return
+    const opened = run<string>(`
+      const file = app.vault.getAbstractFileByPath(path)
+      const leaf = app.workspace.getLeaf('tab'); await leaf.openFile(file); await app.workspace.revealLeaf(leaf)
+      const note = app.vault.getAbstractFileByPath(${JSON.stringify(`${DIR}/sample-note.md`)})
+      const original = await app.vault.read(note)
+      try {
+        await app.vault.modify(note, original + '\\n\\n[[sample-embed|Follow sample]]')
+        const v = view(); v.viewer.go(null, false)
+        const node = v.viewer.graph.nodes.find(n => n.id === 'note')
+        v.viewer.focusRegion(node, false); await wait(700)
+        const link = v.contentEl.querySelector('[data-node-id="note"] a.internal-link')
+        if (!link) throw Error('Rendered card link missing')
+        const rect = link.getBoundingClientRect(), x = rect.x + rect.width/2, y = rect.y + rect.height/2
+        if (!link.contains(document.elementFromPoint(x,y))) throw Error('Card link cannot receive input')
+        const cdp = require('@electron/remote').getCurrentWebContents().debugger, owned = !cdp.isAttached()
+        if (owned) cdp.attach('1.3')
+        try {
+          if (${mobile}) {
+            await cdp.sendCommand('Input.dispatchTouchEvent', { type:'touchStart', touchPoints:[{x,y}] })
+            await cdp.sendCommand('Input.dispatchTouchEvent', { type:'touchEnd', touchPoints:[] })
+          } else {
+            await cdp.sendCommand('Input.dispatchMouseEvent', {type:'mousePressed',x,y,button:'left',clickCount:1})
+            await cdp.sendCommand('Input.dispatchMouseEvent', {type:'mouseReleased',x,y,button:'left',clickCount:1})
+          }
+          await wait(500)
+          return app.workspace.getActiveFile()?.path ?? ''
+        } finally { if (owned) cdp.detach() }
+      } finally { await app.vault.modify(note, original) }
+    `)
+    expect(opened).toBe(`${DIR}/sample-embed.md`)
+  }, 120_000)
   it('zooms/pans, renders only revealed live cards, and follows a linked note change', () => {
     const result = run<{
       zoom: boolean

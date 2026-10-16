@@ -1,5 +1,5 @@
 /** Obsidian is one client of the portable graph/presentation model and DOM viewer. */
-import { Component, MarkdownRenderer, Notice, TFile, type App } from 'obsidian'
+import { Component, Keymap, MarkdownRenderer, Notice, TFile, type App } from 'obsidian'
 import { prepareExternalFile } from '@/sync/external/fileAccess'
 import { CanvasViewer, type ViewerCards } from './Viewer'
 import { canvasRegionAssets, canvasTheme, notePart } from './pictureAdapter'
@@ -16,6 +16,7 @@ import { openCanvas } from './opening'
 import { openExternal } from '../helpers/openExternal'
 import { canvasVisibility } from './core/visibility'
 import { WebCard, obsidianWebCardPorts, type WebCardPorts } from './webCard'
+import { bindCanvasLinks } from './links'
 
 interface CardLayer {
   el: HTMLElement
@@ -94,6 +95,33 @@ class LiveCards implements ViewerCards {
         this.cards.set(node.id, card)
         if (body && component) {
           body.dataset.nodeId = node.id
+          const hoverParent = { hoverPopover: null }
+          const href = (link: HTMLAnchorElement) =>
+            link.getAttribute('data-href') ?? link.getAttribute('href') ?? ''
+          component.register(
+            bindCanvasLinks(body, {
+              open: (link, event) => {
+                if (link.classList.contains('external-link')) openExternal(href(link))
+                else
+                  void this.app.workspace.openLinkText(
+                    href(link),
+                    this.source(),
+                    event.button === 1 || Keymap.isModEvent(event)
+                  )
+              },
+              hover: (link, event) => {
+                if (!link.classList.contains('internal-link')) return
+                this.app.workspace.trigger('hover-link', {
+                  event,
+                  source: 'preview',
+                  hoverParent,
+                  targetEl: link,
+                  linktext: href(link),
+                  sourcePath: this.source(),
+                })
+              },
+            })
+          )
           const current = card
           const render = async () => {
             const text =
