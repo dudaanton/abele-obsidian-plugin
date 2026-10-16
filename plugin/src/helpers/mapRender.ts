@@ -224,10 +224,9 @@ export async function renderMap(el: HTMLElement, config: MapConfig): Promise<Map
 
   map.on('load', () => {
     if (disposed) return
-    // MapLibre opens its compact notice on load; on a narrow map that is two lines over the
-    // bottom of it. There it starts folded to its glyph, a press away.
-    if (el.clientWidth < 480)
-      el.querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show')
+    // MapLibre opens its compact notice on load, a line of words over the map's foot. It starts
+    // folded to its glyph instead, the source a press away, as the free tiles ask.
+    el.querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show')
 
     config.lines.forEach((line, index) => {
       const id = `abele-line-${index}`

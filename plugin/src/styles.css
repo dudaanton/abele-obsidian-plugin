@@ -643,12 +643,20 @@ body.is-mobile .abele-comment-marker_pending::after {
 
 /* The map's own words, the scale and where the map comes from, as quiet facts on a plate of the
    theme's background; the source's notice stays, it is what the free tiles ask for. */
-.abele-map .maplibregl-ctrl-scale {
-  border-color: var(--text-faint);
+.abele-map .maplibregl-ctrl.maplibregl-ctrl-scale {
+  /* As long as the distance it names, on a plate of the glyph column's own: the theme's
+     background in the column's frame and corner, its words muted, the length a faint rule. */
+  margin: var(--size-4-2);
+  padding: 0 var(--size-2-3);
+  border: var(--border-width) solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
   background-color: var(--background-primary);
+  box-shadow: inset 0 calc(-1 * var(--size-2-1)) 0 var(--background-modifier-border);
   color: var(--text-muted);
   font-family: var(--font-interface);
-  font-size: var(--font-ui-smallest);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+  line-height: calc(var(--icon-xs) + 2 * var(--size-2-2));
 }
 .abele-map .maplibregl-ctrl.maplibregl-ctrl-attrib {
   margin: var(--size-4-2);
