@@ -89,25 +89,7 @@ describe.skipIf(!available)('confirming repairs on a real EPUB', () => {
         await until(() => opened.reading.marks.repairs().length === 3)
         const before = await app.vault.read(file)
         if (before !== noteText) throw new Error('Detection modified note')
-        // What the menu's choice reached: the repair it started, and how that ended.
-        const calls = []
-        const repair = opened.reading.repairHighlightLinks.bind(opened.reading)
-        opened.reading.repairHighlightLinks = (h) => {
-          const call = { h: h?.cfi ?? null, active: opened.model.active?.cfi ?? null, disposed: opened.reading.disposed, repairing: opened.reading.repairing, candidates: opened.reading.marks.repairs().filter(r => !h || r.cfi === h.cfi).length, modals: [], end: 'pending' }
-          calls.push(call)
-          // A dialog that opens and closes again before a poll sees it is still told.
-          const t0 = Date.now()
-          call.stack = String(new Error().stack).split('\\n').slice(1, 9).join(' < ')
-          call.events = []
-          const watch = new MutationObserver(() => call.modals.push((Date.now() - t0) + ':' + document.querySelectorAll('.modal').length))
-          watch.observe(document.body, { childList: true })
-          const seenEvent = (e) => call.events.push((Date.now() - t0) + ':' + e.type + ':' + (e.target?.className?.baseVal ?? e.target?.className ?? e.target?.nodeName))
-          const types = ['click', 'pointerdown', 'pointerup', 'touchstart', 'touchend', 'keydown', 'popstate', 'blur', 'focusin', 'resize', 'selectionchange']
-          for (const type of types) window.addEventListener(type, seenEvent, true)
-          setTimeout(() => { watch.disconnect(); for (const type of types) window.removeEventListener(type, seenEvent, true) }, 5000)
-          return repair(h).then(() => { call.end = 'done' }, (e) => { call.end = 'threw ' + e?.message; throw e })
-        }
-        const visible = () => ({ more: !!document.querySelector('.abele-book-selection__more'), menu: [...document.querySelectorAll('.menu-item')].map(el => el.textContent), modals: [...document.querySelectorAll('.modal')].map(el => el.className + ': ' + el.textContent.slice(0, 80)), notices: [...document.querySelectorAll('.notice')].map(el => el.textContent), repairs: opened.reading.marks.repairs().length, active: opened.model.active?.cfi ?? null, calls })
+        const visible = () => ({ more: !!document.querySelector('.abele-book-selection__more'), menu: [...document.querySelectorAll('.menu-item')].map(el => el.textContent), modals: [...document.querySelectorAll('.modal')].map(el => el.className + ': ' + el.textContent.slice(0, 80)), notices: [...document.querySelectorAll('.notice')].map(el => el.textContent), repairs: opened.reading.marks.repairs().length, active: opened.model.active?.cfi ?? null, repairing: opened.reading.repairing })
         seen = visible
         const menu = async (all) => {
           stage = 'the highlight menu button'
@@ -125,7 +107,10 @@ describe.skipIf(!available)('confirming repairs on a real EPUB', () => {
         let dialog = await menu(false)
         const shown = dialog.textContent
         dialog.querySelector('.abele-modal__footer button').click()
-        await wait(150)
+        // The reader takes one repair at a time: the cancelled one ends once its dialog has closed,
+        // which on the phone is after its closing animation, not at once.
+        stage = 'the cancelled repair ending'
+        await until(() => !dialog.isConnected && !opened.reading.repairing)
         const cancelled = await app.vault.read(file)
         dialog = await menu(false)
         ;[...dialog.querySelectorAll('.abele-modal__footer button')].find(b => b.textContent.includes('Repair')).click()
