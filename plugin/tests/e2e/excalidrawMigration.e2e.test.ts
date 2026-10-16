@@ -203,7 +203,11 @@ const textOf = (path: string) =>
   )
 
 describe.skipIf(!available)('Excalidraw drawings to canvases', () => {
+  let layout: unknown
+  let size: number[] | null = null
   beforeAll(() => {
+    layout = evalAsync<unknown>('app.workspace.getLayout()')
+    size = evalAsync<number[]>("require('@electron/remote').getCurrentWindow().getContentSize()")
     evalAsync(`(async () => {
       const dir = ${JSON.stringify(DIR)}
       if (app.vault.getAbstractFileByPath(dir)) await app.vault.adapter.rmdir(dir, true)
@@ -219,10 +223,33 @@ describe.skipIf(!available)('Excalidraw drawings to canvases', () => {
     })()`)
   })
   afterAll(async () => {
-    evalAsync(
-      `(async () => { await app.vault.adapter.rmdir(${JSON.stringify(DIR)}, true); return true })()`
-    )
-    await reloadApp('app.emulateMobile(false)')
+    try {
+      evalAsync(`(async () => {
+        const leaves = []
+        app.workspace.iterateAllLeaves((leaf) => {
+          if (leaf.view.file?.path.startsWith(${JSON.stringify(DIR + '/')})) leaves.push(leaf)
+        })
+        for (const leaf of leaves) leaf.detach()
+        if (${JSON.stringify(layout !== undefined)}) await app.workspace.changeLayout(${JSON.stringify(layout) ?? 'null'})
+        await app.workspace.requestSaveLayout?.run?.()
+        if (app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})) await app.vault.adapter.rmdir(${JSON.stringify(DIR)}, true)
+        return true
+      })()`)
+    } finally {
+      await reloadApp('app.emulateMobile(false)')
+      // Desktop and mobile have separate saved layouts. Leaving emulation can reopen the
+      // desktop's fixture canvas, so restore the desktop layout after that reload too.
+      if (layout !== undefined)
+        evalAsync(`(async () => {
+          await app.workspace.changeLayout(${JSON.stringify(layout)})
+          await app.workspace.requestSaveLayout.run()
+          return true
+        })()`)
+      if (size)
+        evalRaw(
+          `require('@electron/remote').getCurrentWindow().setContentSize(${size[0]}, ${size[1]})`
+        )
+    }
   })
 
   it('makes one drawing a canvas beside it, through its command', async () => {
