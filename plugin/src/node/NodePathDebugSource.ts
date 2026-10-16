@@ -24,6 +24,7 @@ export function mountNodePathDebugSource(
       request.path !== captured.path
     )
       return false
+    console.debug('[debugger] Source reveal handler', captured.path, request.line)
     extension.reveal(request.line)
     show(request.line)
     queueMicrotask(() => {

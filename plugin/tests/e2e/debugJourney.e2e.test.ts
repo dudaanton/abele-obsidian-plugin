@@ -24,7 +24,7 @@ function inApp<T>(script: string): T {
     )
   }
 }
-const prelude = `const wait=ms=>new Promise(r=>setTimeout(r,ms)),until=async(fn,what,tries=300)=>{for(let i=0;i<tries;i++){const v=fn();if(v)return v;await wait(50)}throw Error('Did not converge: '+what+'; '+(document.querySelector('.workspace-leaf.mod-active')?.textContent??'').slice(0,400))};
+const prelude = `const wait=ms=>new Promise(r=>setTimeout(r,ms)),until=async(fn,what,tries=300)=>{for(let i=0;i<tries;i++){const v=fn();if(v)return v;await wait(50)}await shot('journey-failure-'+what.replace(/[^a-z0-9]+/gi,'-'));throw Error('Did not converge: '+what+'; '+debugState0()+'; '+debugState())};
 const api=window.__abeleTest,nodes=api.NodeService.getInstance(),chats=api.ChatService.getInstance();
 const shot=async name=>{await wait(300);const image=await require('@electron/remote').getCurrentWebContents().capturePage();require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/'+name+'.png',image.toPNG())};
 const item=title=>[...document.querySelectorAll('.menu-item')].find(i=>i.querySelector('.menu-item-title')?.textContent.trim()===title);
@@ -53,7 +53,7 @@ const recordPoint=async (line,takes,root)=>{
 };
 window.__dbgLog=[];if(!console.__wrapped){const d=console.debug.bind(console);console.debug=(...a)=>{if(/^\\[(debugger|trace|Abele node)\\]/.test(String(a[0])))window.__dbgLog.push(a.map(x=>x instanceof Error?x.message+' '+(x.code??''):typeof x==='string'?x:JSON.stringify(x)?.slice(0,300)).join(' '));d(...a)};console.__wrapped=true}
 const debugState=()=>JSON.stringify({log:window.__dbgLog.slice(-10),notices:[...document.querySelectorAll('.notice')].map(n=>n.textContent)})+' '+debugState0();
-const debugState0=()=>{const b=api.DebuggerService.instance.active.value,c=b?.controller,n=c?.snapshot;return JSON.stringify({status:c?.session.status,error:c?.error,lifecycle:n?.lifecycle,execution:n?.execution,threads:n?.threads?.map(t=>[t.status,t.stop?.reason,t.stop?.description,t.stop?.hit_breakpoint_ids?.length]),identity:n?.target.build_identity,bps:n?.breakpoints?.map(x=>[x.source_id,x.line,x.status]),known:c?.knownBreakpoints?.().map(x=>[x.sourceId,x.line,x.state,x.file]),points:b?.trace?.points?.map(p=>p.breakpoint_id.slice(0,6)),actions:c?.actions?.slice(-3).map(a=>[a.kind,a.status,a.result])})};
+const debugState0=()=>{const b=api.DebuggerService.instance.active.value,c=b?.controller,n=c?.snapshot;return JSON.stringify({recent:window.__dbgLog.slice(-5),highlight:[...document.querySelectorAll(".abele-debug-source__line_here")].filter(e=>e.offsetParent).map(e=>e.textContent),status:c?.session.status,error:c?.error,lifecycle:n?.lifecycle,execution:n?.execution,threads:n?.threads?.map(t=>[t.status,t.stop?.reason,t.stop?.description,t.stop?.hit_breakpoint_ids?.length]),identity:n?.target.build_identity,bps:n?.breakpoints?.map(x=>[x.source_id,x.line,x.status]),known:c?.knownBreakpoints?.().map(x=>[x.sourceId,x.line,x.state,x.file]),points:b?.trace?.points?.map(p=>p.breakpoint_id.slice(0,6)),actions:c?.actions?.slice(-3).map(a=>[a.kind,a.status,a.result])})};
 const goOn=async()=>{
   const go=await until(()=>[...document.querySelectorAll('[aria-label="Continue (F5)"]')].find(b=>!b.classList.contains('is-disabled')&&!b.hasAttribute('disabled')),'Continue offered');
   press(go);
@@ -91,7 +91,12 @@ function openChat() {
     registration: string
     target: Record<string, string>
   }>(`(async()=>{${prelude}
-    const existing=nodes.nodes.value.find(n=>n.label==='Program fixture');if(existing)nodes.remove(existing.id);
+    const existing=nodes.nodes.value.find(n=>n.label==='Program fixture');if(existing){
+      for(const id of [...chats.tabOrder.value].filter(id=>id.startsWith('node:'+existing.id+':')))chats.closeTab(id);
+      for(const type of ['abele-node-file','abele-debug-view','abele-trace-run','abele-trace-value'])for(const leaf of app.workspace.getLeavesOfType(type))leaf.detach();
+      api.DebuggerService.instance.destroy();
+      nodes.remove(existing.id);
+    }
     const node=await nodes.add('Program fixture','http://127.0.0.1:${port}',${JSON.stringify(token)}),client=nodes.connection(node.id).client;
     const project=await client.registerProject(${JSON.stringify(repo)},'trusted');
     const workspaces=await client.listWorkspaces(project.project_id),workspace=(workspaces.items??workspaces)[0];
@@ -123,6 +128,7 @@ beforeAll(async () => {
     process.execPath,
     ['--inspect-brk=127.0.0.1:0', join(repo, 'src/attached.cjs')],
     {
+      cwd: repo,
       stdio: ['ignore', 'ignore', 'pipe'],
     }
   )
@@ -204,6 +210,7 @@ afterAll(async () => {
  * record points too. `via` is the menu item: Debug asks for a program while the chat has no session.
  */
 const RUN = (program: string, shots = '', via = 'Run a program') => `
+  const previousSession=api.DebuggerService.instance.active.value?.sessionId;
   document.querySelector('.abele-node-chat [aria-label="Node session menu"]').click();
   await until(()=>item(${JSON.stringify(via)}),${JSON.stringify(via + ' in the menu')});
   ${shots ? `await shot(${JSON.stringify(shots + '-menu')});` : ''}
@@ -212,7 +219,10 @@ const RUN = (program: string, shots = '', via = 'Run a program') => `
   field.value=${JSON.stringify(program)};field.dispatchEvent(new Event('input',{bubbles:true}));
   ${shots ? `await shot(${JSON.stringify(shots + '-picker')});` : ''}
   press(await until(()=>[...document.querySelectorAll('.modal-container .prompt .suggestion-item')].find(r=>r.querySelector('.suggestion-title')?.textContent.trim()===${JSON.stringify(program)}),'the program offered'));
-  await until(()=>document.querySelector('[aria-label="Continue (F5)"]'),'debug panel',600);`
+  await until(()=>{const b=api.DebuggerService.instance.active.value;return b?.sessionId&&b.sessionId!==previousSession},'new debug session',600);
+  await until(()=>{const c=api.DebuggerService.instance.active.value?.controller;return c?.session.status==='paused'&&c.session.frames.some(f=>f.file)},'paused program stack ready',600);
+  await until(()=>app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.getState().path===${JSON.stringify(program)}&&l.containerEl.querySelector('.abele-debug-source__point')),'debug source loaded',600);
+  await until(()=>{const b=document.querySelector('[aria-label="Continue (F5)"]');return b&&b.offsetParent&&!b.disabled},'visible Continue offered',600);`
 
 it('walks from source through stepping, recording, analysis, a crash, restart and reattach', async () => {
   const seen = inApp<{
@@ -221,13 +231,15 @@ it('walks from source through stepping, recording, analysis, a crash, restart an
     projectId: string
     stopped: boolean
     reattached: boolean
+    failures: string[]
   }>(`(async()=>{${prelude}
+    const failures=[];
     const visible=selector=>[...document.querySelectorAll(selector)].find(e=>e.offsetParent);
     const enabled=label=>{const e=visible('[aria-label="'+label+'"]');return e&&!e.disabled?e:null};
     const control=async label=>press(await until(()=>enabled(label),label+' available'));
     const paused=()=>visible('.abele-debug-panel_paused');
-    const rowNamed=name=>[...document.querySelectorAll('.abele-debug-value_row')].find(r=>r.querySelector(':scope > .tree-item-self .abele-tree-item__text')?.textContent.trim()===name);
-    const expand=async name=>{const row=await until(()=>rowNamed(name),'variable '+name);press(row.querySelector(':scope > .tree-item-self'));};
+    const rowNamed=name=>[...document.querySelectorAll('.abele-debug-value_row')].find(r=>{const text=r.querySelector(':scope > .tree-item-self .abele-tree-item__text')?.textContent.trim();return text===name||(name==='Local'&&text?.startsWith('Local: '))});
+    const expand=async name=>{await until(()=>enabled('Step over (F10)'),'variable controls ready');const row=await until(()=>rowNamed(name),'variable '+name);press(row.querySelector(':scope > .tree-item-self'));};
     let source=app.workspace.getLeaf('tab');
     const sourceAt=async(line,name)=>{
       const expected=${JSON.stringify(JS.split('\n'))}[line-1].trim();
@@ -259,10 +271,16 @@ it('walks from source through stepping, recording, analysis, a crash, restart an
     await until(()=>paused()&&document.querySelector('.abele-debug-panel__where')?.textContent.includes(':2'),'stepped into function');
     await control('Step over (F10)');
     await until(()=>paused()&&document.querySelector('.abele-debug-panel__where')?.textContent.includes(':3'),'stepped over object creation');
-    await expand('Local');
-    await expand('item');
-    await expand('nested');
-    await until(()=>document.querySelector('.abele-debug-panel')?.textContent.includes('sample-0'),'expanded object value');
+    await until(()=>enabled('Step over (F10)'),'frame controls ready');
+    press(await until(()=>[...document.querySelectorAll('.abele-debug-panel .tree-item-self')].find(r=>r.querySelector('.abele-tree-item__text')?.textContent.includes('inspectItem')),'function frame'));
+    // Keep exercising the rest of the journey when the neighbouring variables area fails;
+    // the final assertion still fails the test with every retained error.
+    try {
+      await expand('Local');
+      await expand('item');
+      await expand('nested');
+      await until(()=>document.querySelector('.abele-debug-panel')?.textContent.includes('sample-0'),'expanded object value');
+    } catch(error) { failures.push('Variables: '+String(error)); }
     if(!document.querySelector('.abele-debug-panel')?.textContent.includes('inspectItem'))throw Error('Readable function name missing');
     await shot('journey-variables-stack');
     await control('Step out (Shift+F11)');
@@ -276,7 +294,14 @@ it('walks from source through stepping, recording, analysis, a crash, restart an
     press((await until(breakpointRow,'record point listed')).querySelector('.abele-breakpoint-mark_record'));
     await sourceAt(6,'journey-record-list-diamond-source');
     await goOn();
-    await until(()=>[...source.containerEl.querySelectorAll('.abele-debug-source__tail')].some(e=>/n\\s+\\d/.test(e.textContent)),'inline argument value',100);
+    try {
+      await until(()=>[...source.containerEl.querySelectorAll('.abele-debug-source__tail')].some(e=>/n\\s+\\d/.test(e.textContent)),'inline argument value',100);
+    } catch(error) {
+      const trace=api.DebuggerService.instance.active.value.trace;
+      const runs=await trace.rpc.runs(trace.projectId);
+      const recorded=await trace.rpc.run(trace.projectId,runs.runs[0].id,0,1);
+      throw Error('Node recorded values: '+JSON.stringify(recorded.steps[0]?.values)+'; '+String(error));
+    }
     await shot('journey-inline-values');
     const b=api.DebuggerService.instance.active.value;
     await until(()=>b.trace?.status?.recording?.steps>=3,'several recorded steps',100);
@@ -365,7 +390,7 @@ it('walks from source through stepping, recording, analysis, a crash, restart an
     await until(()=>enabled('Detach (Shift+F5): the program runs on'),'reattached debugger');
     await shot('journey-reattached');
     await control('Detach (Shift+F5): the program runs on');
-    return {values,runId,projectId,stopped:true,reattached:true}
+    return {values,runId,projectId,stopped:true,reattached:true,failures}
   })()`)
   expect(seen.values).toEqual([1, 2, 3])
   expect(seen.stopped).toBe(true)
@@ -379,6 +404,7 @@ it('walks from source through stepping, recording, analysis, a crash, restart an
     .map((c) => c.text)
     .join('\n')
   for (const value of seen.values) expect(text).toContain(`n=${value} [`)
+  expect(seen.failures).toEqual([])
 }, 180000)
 
 it('on a phone: breakpoint navigation uncovers the source and highlights its line', async () => {
@@ -394,6 +420,7 @@ it('on a phone: breakpoint navigation uncovers the source and highlights its lin
         press(await until(()=>marginAt(6),'source gutter'));
         const row=()=>[...document.querySelectorAll('.abele-debug-panel .tree-item-self')].find(r=>r.querySelector('.abele-tree-item__text')?.textContent.trim()==='journey.cjs:6');
         await until(row,'breakpoint listed');
+        await wait(500);
         const debug=app.workspace.getLeavesOfType('abele-debug-view')[0];
         await app.workspace.revealLeaf(debug);
         app.workspace.rightSplit.expand();

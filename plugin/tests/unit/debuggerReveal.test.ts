@@ -59,6 +59,13 @@ describe('showing a debug session', () => {
     ;(GlobalStore.getInstance() as unknown as { _app: unknown })._app = app
     const presenter = { reference: { sessionId: 'chat-a' } } as unknown as NodeChatPresenter
     const binding = { open: vi.fn(async () => {}) }
+    const order: string[] = []
+    binding.open.mockImplementation(async () => {
+      order.push('open')
+    })
+    vi.mocked(revealSidebarView).mockImplementation(async () => {
+      order.push('reveal')
+    })
     vi.spyOn(DebuggerService.instance, 'sessions').mockResolvedValue([
       { debug_session_id: 'session-1' },
     ] as never)
@@ -67,5 +74,6 @@ describe('showing a debug session', () => {
     await openNodeDebugger(presenter)
     expect(revealSidebarView).toHaveBeenCalledWith(app, DEBUG_VIEW_TYPE)
     expect(binding.open).toHaveBeenCalledWith('session-1')
+    expect(order).toEqual(['open', 'reveal'])
   })
 })

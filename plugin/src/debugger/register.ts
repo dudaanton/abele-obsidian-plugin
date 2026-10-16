@@ -79,10 +79,12 @@ async function showSession(presenter: NodeChatPresenter, sessionId: string) {
   const service = DebuggerService.instance,
     binding = service.binding(presenter)
   service.select(binding)
+  // Opening the session may reveal its paused source and close a phone drawer.
+  // Show Debug after that navigation, so the controls stay on screen.
+  await binding.open(sessionId)
   // The shared reveal: on a phone a drawer can count as open while nothing of it is on screen,
   // and only closing and opening it again shows the panel.
   await revealSidebarView(GlobalStore.getInstance().app, DEBUG_VIEW_TYPE)
-  await binding.open(sessionId)
 }
 /** Runs a program of the chat's folder under the debugger and shows its session. */
 export async function startNodeProgram(presenter: NodeChatPresenter) {

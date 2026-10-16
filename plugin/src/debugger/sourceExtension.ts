@@ -41,7 +41,10 @@ export function mountDebugSource(
       if (binding) void binding.revision.value
       return binding?.controller.session.frame
     },
-    () => (revealed.value = undefined)
+    (frame, previous) => {
+      console.debug('[debugger] Source frame changed', context.path, previous, frame)
+      revealed.value = undefined
+    }
   )
   const unregister = service.registerSource(
     context.registrationId,
@@ -153,6 +156,7 @@ export function mountDebugSource(
   })
   return {
     reveal(line) {
+      console.debug('[debugger] Source highlight', context.path, line)
       revealed.value = line
     },
     update(value) {
