@@ -7,9 +7,9 @@ import {
   ViewPlugin,
   type ViewUpdate,
 } from '@codemirror/view'
-import { MarkdownPreviewRenderer, type Plugin } from 'obsidian'
+import { MarkdownPreviewRenderer, type Plugin, type Events } from 'obsidian'
 import { guideDepths, indentStep } from './indentGuides'
-import { clearReadingGuides, drawReadingGuides } from './readingGuides'
+import { clearReadingGuides, copyReadingGuides, drawReadingGuides } from './readingGuides'
 import { nativeCodeLines } from './nativeLines'
 
 interface GuideSettings {
@@ -263,12 +263,14 @@ export function codeGuideExtension(settings: Settings) {
 
 export function registerCodeIndentGuides(plugin: Plugin): void {
   const vault = plugin.app.vault as typeof plugin.app.vault & { getConfig(key: string): unknown }
+  const documents = new Set<Document>()
   const settings: Settings = () => {
     const size = Number(vault.getConfig('tabSize'))
     return {
       enabled:
-        document.body.classList.contains('show-indentation-guide') ||
-        vault.getConfig('showIndentGuide') !== false,
+        Array.from(documents).some((doc) =>
+          doc.body.classList.contains('show-indentation-guide')
+        ) || vault.getConfig('showIndentGuide') !== false,
       tabSize: Number.isInteger(size) && size > 0 ? size : 4,
     }
   }
@@ -288,9 +290,11 @@ export function registerCodeIndentGuides(plugin: Plugin): void {
   }, 1000)
   plugin.registerEditorExtension(codeGuideExtension(settings))
   let previous = JSON.stringify(settings())
-  const refresh = () => {
+  let unloaded = false
+  const refresh = (force = false) => {
+    if (unloaded) return
     const next = JSON.stringify(settings())
-    if (next === previous) return
+    if (!force && next === previous) return
     previous = next
     plugin.app.workspace.iterateAllLeaves((leaf) => {
       const cm = (leaf.view as { editor?: { cm?: EditorView } }).editor?.cm
@@ -306,16 +310,43 @@ export function registerCodeIndentGuides(plugin: Plugin): void {
       process(code)
     }
   }
-  const observer = new MutationObserver(refresh)
-  observer.observe(document.body, { attributes: true, attributeFilter: ['class'] })
+  const observers = new Map<Document, MutationObserver>()
+  const listen = (doc: Document) => {
+    if (documents.has(doc)) return
+    documents.add(doc)
+    plugin.registerDomEvent(doc, 'copy', copyReadingGuides)
+    const observer = new doc.defaultView.MutationObserver(() => refresh())
+    observer.observe(doc.body, { attributes: true, attributeFilter: ['class'] })
+    observers.set(doc, observer)
+    refresh(true)
+  }
+  listen(document)
+  plugin.registerEvent(plugin.app.workspace.on('window-open', (_win, win) => listen(win.document)))
+  plugin.registerEvent(
+    plugin.app.workspace.on('window-close', (_win, win) => {
+      observers.get(win.document)?.disconnect()
+      observers.delete(win.document)
+      documents.delete(win.document)
+      refresh(true)
+    })
+  )
   plugin.register(() => {
-    observer.disconnect()
+    unloaded = true
+    for (const observer of observers.values()) observer.disconnect()
+    observers.clear()
+    documents.clear()
     for (const ref of blocks) {
       const code = ref.deref()
       if (code) clearReadingGuides(code)
     }
   })
-  plugin.registerEvent(plugin.app.workspace.on('css-change', refresh))
-  // Config changes have no public event; poll the scalar values as a fallback.
-  plugin.registerInterval(window.setInterval(refresh, 500))
+  plugin.app.workspace.onLayoutReady(() => refresh(true))
+  plugin.registerEvent(plugin.app.workspace.on('css-change', () => refresh(true)))
+  plugin.registerEvent(
+    (vault as Events).on('config-changed', (key: string) => {
+      if (key === 'showIndentGuide' || key === 'tabSize') refresh(true)
+    })
+  )
+  // Retain a cheap fallback for hosts that do not emit the internal config event.
+  plugin.registerInterval(window.setInterval(() => refresh(), 500))
 }

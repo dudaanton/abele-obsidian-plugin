@@ -7,7 +7,11 @@ import { describe, it, expect, vi } from 'vitest'
 // Installs Obsidian's DOM helpers (`doc.win.createSpan`) the drawing uses.
 import 'obsidian'
 import { guideDepths, indentStep } from '@/codeIndent/indentGuides'
-import { clearReadingGuides, drawReadingGuides } from '@/codeIndent/readingGuides'
+import {
+  clearReadingGuides,
+  copyReadingGuides,
+  drawReadingGuides,
+} from '@/codeIndent/readingGuides'
 
 describe('indent guides', () => {
   it('reads the step from the block: two spaces, four, tabs', () => {
@@ -36,7 +40,10 @@ describe('drawReadingGuides', () => {
     drawReadingGuides(code, 4)
     expect(code.querySelectorAll('br')).toHaveLength(0)
     expect(code.textContent).toBe('a\n  b\n\n  c\n')
-    document.body.append(code)
+    const pre = document.createElement('pre')
+    pre.append(code)
+    document.body.append(pre)
+    document.addEventListener('copy', copyReadingGuides)
     const range = document.createRange()
     range.selectNodeContents(code)
     const selection = window.getSelection()
@@ -47,6 +54,7 @@ describe('drawReadingGuides', () => {
     Object.defineProperty(copy, 'clipboardData', { value: { setData } })
     document.dispatchEvent(copy)
     expect(setData).toHaveBeenCalledWith('text/plain', 'a\n  b\n\n  c\n')
+    expect(setData).toHaveBeenCalledWith('text/html', expect.stringContaining('abele-code-line'))
     expect(copy.defaultPrevented).toBe(true)
     expect(selection.getRangeAt(0).toString()).toBe(code.textContent)
     range.setStart(code.firstChild.firstChild, 1)
@@ -54,13 +62,14 @@ describe('drawReadingGuides', () => {
     selection.removeAllRanges()
     selection.addRange(range)
     document.dispatchEvent(copy)
-    expect(setData).toHaveBeenLastCalledWith('text/plain', '\n  b')
+    expect(setData).toHaveBeenCalledWith('text/plain', '\n  b')
     selection.removeAllRanges()
     clearReadingGuides(code)
     setData.mockClear()
     document.dispatchEvent(copy)
     expect(setData).not.toHaveBeenCalled()
-    code.remove()
+    pre.remove()
+    document.removeEventListener('copy', copyReadingGuides)
   })
   it('guides a single indented line and aligns tabs to the vault size', () => {
     const code = document.createElement('code')
@@ -69,6 +78,44 @@ describe('drawReadingGuides', () => {
     expect(code.querySelector('.abele-code-line')).not.toBeNull()
     expect(code.querySelector<HTMLElement>('.abele-code-line').style.tabSize).toBe('2')
     expect(code.textContent).toBe('\tvalue\n')
+  })
+  it('delegates rich copy across blocks and ignores selections outside a single guided block', () => {
+    const pre = document.createElement('pre')
+    const code = document.createElement('code')
+    const token = document.createElement('span')
+    token.className = 'token keyword'
+    token.textContent = '  value'
+    code.append(token, '\n')
+    pre.append(code)
+    document.body.append(pre)
+    drawReadingGuides(code, 4)
+    const selection = window.getSelection()
+    const range = document.createRange()
+    range.selectNodeContents(code)
+    selection.removeAllRanges()
+    selection.addRange(range)
+    const copy = new Event('copy', { cancelable: true })
+    const setData = vi.fn()
+    Object.defineProperty(copy, 'clipboardData', { value: { setData } })
+    document.addEventListener('copy', copyReadingGuides)
+    try {
+      document.dispatchEvent(copy)
+      expect(setData).toHaveBeenCalledWith('text/plain', '  value\n')
+      expect(setData).toHaveBeenCalledWith(
+        'text/html',
+        expect.stringContaining('class="token keyword"')
+      )
+      setData.mockClear()
+      range.selectNodeContents(pre)
+      selection.removeAllRanges()
+      selection.addRange(range)
+      document.dispatchEvent(copy)
+      expect(setData).not.toHaveBeenCalled()
+    } finally {
+      selection.removeAllRanges()
+      document.removeEventListener('copy', copyReadingGuides)
+      pre.remove()
+    }
   })
   it('puts each line in its own span, keeping a token that spans lines and the text', () => {
     const code = document.createElement('code')

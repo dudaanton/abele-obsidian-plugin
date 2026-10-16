@@ -112,9 +112,10 @@ it('keeps the registered extension through vault setting changes and editor reco
   })
   const host = {
     app: {
-      vault: { getConfig: (key: string) => config[key] },
+      vault: { getConfig: (key: string) => config[key], on: vi.fn() },
       workspace: {
         on: vi.fn(),
+        onLayoutReady: vi.fn(),
         iterateAllLeaves: (visit: (leaf: unknown) => void) =>
           visit({ view: { editor: { cm: view } } }),
       },
@@ -124,10 +125,13 @@ it('keeps the registered extension through vault setting changes and editor reco
     registerInterval: vi.fn(),
     registerEvent: vi.fn(),
     register: vi.fn(),
+    registerDomEvent: vi.fn(),
   }
   try {
     registerCodeIndentGuides(host as unknown as Plugin)
     expect(extensions).toHaveLength(1)
+    expect(host.registerDomEvent).toHaveBeenCalledTimes(1)
+    expect(host.app.workspace.onLayoutReady).toHaveBeenCalledTimes(1)
     const registered = extensions[0]
     view = new EditorView({
       state: EditorState.create({ doc: DOC, extensions: [native, extensions] }),
@@ -165,7 +169,24 @@ it('keeps the registered extension through vault setting changes and editor reco
     expect(extensions[0]).toBe(registered)
     expect(view.contentDOM.querySelectorAll('.abele-code-guides')).toHaveLength(3)
     expect(host.app.vault.getConfig('showIndentGuide')).toBe(true)
+    // Mobile has the same config source, but need not provide a native body class.
+    document.body.classList.add('is-mobile')
+    const configChanged = host.app.vault.on.mock.calls.find(
+      ([event]) => event === 'config-changed'
+    )[1] as (key: string) => void
+    config.showIndentGuide = false
+    configChanged('showIndentGuide')
+    expect(view.contentDOM.querySelector('.abele-code-guides')).toBeNull()
+    delete config.showIndentGuide
+    configChanged('showIndentGuide')
+    expect(view.contentDOM.querySelectorAll('.abele-code-guides')).toHaveLength(3)
+    const dispatch = vi.spyOn(view, 'dispatch')
+    const ready = host.app.workspace.onLayoutReady.mock.calls[0][0] as () => void
+    ready()
+    expect(dispatch).toHaveBeenCalled()
+    dispatch.mockRestore()
   } finally {
+    document.body.classList.remove('is-mobile')
     document.body.classList.remove('show-indentation-guide')
     for (const [cleanup] of host.register.mock.calls) (cleanup as () => void)()
     view?.destroy()

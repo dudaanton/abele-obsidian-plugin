@@ -1,12 +1,7 @@
 import { guideDepths, indentStep } from './indentGuides'
 import './indentGuides.scss'
 
-const copyHandlers = new WeakMap<HTMLElement, (event: ClipboardEvent) => void>()
-
 export function clearReadingGuides(code: HTMLElement): void {
-  const handler = copyHandlers.get(code)
-  if (handler) code.ownerDocument.removeEventListener('copy', handler)
-  copyHandlers.delete(code)
   for (const row of Array.from(code.querySelectorAll(':scope > .abele-code-line')))
     row.replaceWith(...Array.from(row.childNodes))
   code.style.removeProperty('--abele-guide-step')
@@ -35,28 +30,27 @@ export function drawReadingGuides(code: HTMLElement, tabSize: number): void {
       return row
     })
   )
-  const copy = sourceCopyHandler(new WeakRef(code), code.ownerDocument)
-  copyHandlers.set(code, copy)
-  code.ownerDocument.addEventListener('copy', copy)
 }
 
-function sourceCopyHandler(ref: WeakRef<HTMLElement>, doc: Document) {
-  const copy = (event: ClipboardEvent) => {
-    const code = ref.deref()
-    if (!code) {
-      doc.removeEventListener('copy', copy)
-      return
-    }
-    const selection = doc.defaultView.getSelection()
-    if (!event.clipboardData || !selection?.rangeCount || selection.isCollapsed) return
-    const range = selection.getRangeAt(0)
-    if (!code.contains(range.startContainer) || !code.contains(range.endContainer)) return
-    // DOM Range preserves source newlines, unlike Chromium's rendered Selection
-    // string, which omits the terminal newline of a preformatted block.
-    event.clipboardData.setData('text/plain', range.toString())
-    event.preventDefault()
-  }
-  return copy
+/** One delegated listener per document, owned by the plugin's window lifecycle. */
+export function copyReadingGuides(event: ClipboardEvent): void {
+  const doc = event.currentTarget as Document
+  const selection = doc.defaultView.getSelection()
+  if (!event.clipboardData || selection?.rangeCount !== 1 || selection.isCollapsed) return
+  const range = selection.getRangeAt(0)
+  const start = range.startContainer
+  const code = (
+    start.nodeType === Node.ELEMENT_NODE ? (start as Element) : start.parentElement
+  )?.closest('pre > code')
+  if (!code?.querySelector(':scope > .abele-code-line')) return
+  if (!code.contains(range.startContainer) || !code.contains(range.endContainer)) return
+  // DOM Range preserves source newlines, unlike Chromium's rendered Selection
+  // string, which omits the terminal newline of a preformatted block.
+  event.clipboardData.setData('text/plain', range.toString())
+  const contents = doc.win.createDiv()
+  contents.append(range.cloneContents())
+  event.clipboardData.setData('text/html', contents.innerHTML)
+  event.preventDefault()
 }
 
 /** The code's nodes cut at each newline into one span per line, ancestors cloned on both sides. */
