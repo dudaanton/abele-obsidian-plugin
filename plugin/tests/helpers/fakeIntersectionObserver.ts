@@ -88,3 +88,29 @@ export function scrollIntoView(element: Element): number {
 
   return fired
 }
+
+/**
+ * Delivers several records for `element` in one callback, oldest first, the way a browser does
+ * when the page changed more than once before the observer's task ran: an element observed out
+ * of view and scrolled into it a frame later arrives as `[false, true]`.
+ *
+ * @returns how many observer callbacks were invoked, as `scrollIntoView` counts them.
+ */
+export function deliverRecords(element: Element, states: readonly boolean[]): number {
+  let fired = 0
+
+  for (const registration of [...registrations]) {
+    if (!registration.targets.has(element)) continue
+
+    fired++
+    registration.callback(
+      states.map(
+        (isIntersecting, time) =>
+          ({ isIntersecting, target: element, time }) as IntersectionObserverEntry
+      ),
+      registration.observer
+    )
+  }
+
+  return fired
+}

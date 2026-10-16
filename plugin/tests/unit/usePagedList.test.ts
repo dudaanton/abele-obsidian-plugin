@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { effectScope, nextTick, ref } from 'vue'
 import { usePagedList, DEFAULT_PAGE_SIZE } from '@/composables/usePagedList'
 import {
+  deliverRecords,
   installFakeIntersectionObserver,
   resetFakeIntersectionObservers,
 } from '../helpers/fakeIntersectionObserver'
@@ -51,6 +52,23 @@ describe('usePagedList', () => {
 
     paged.showMore()
     expect(paged.visible.value).toEqual(source.slice(0, 40))
+  })
+
+  it('grows when the sentinel came into view after a record from before it did', async () => {
+    const paged = inScope(() => usePagedList(() => items(100), 20))
+    const sentinel = document.createElement('div')
+    document.body.append(sentinel)
+    paged.sentinel.value = sentinel
+    try {
+      await nextTick()
+      expect(deliverRecords(sentinel, [false, true])).toBe(1)
+      expect(paged.visible.value).toHaveLength(40)
+      // And the reverse: last seen out of view asks for nothing.
+      expect(deliverRecords(sentinel, [true, false])).toBe(1)
+      expect(paged.visible.value).toHaveLength(40)
+    } finally {
+      sentinel.remove()
+    }
   })
 
   it('grows by one page at a time', () => {

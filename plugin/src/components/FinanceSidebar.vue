@@ -281,6 +281,7 @@ import { ALL_CURRENCIES, useFinancePeriodSummary } from '@/composables/useFinanc
 import { addMoney } from '@/helpers/moneySum'
 import { ref, unref, watch, watchEffect, toRef } from 'vue'
 import { useIntersectionObserver } from '@vueuse/core'
+import { inViewNow } from '@/helpers/intersection'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AccountsList } from '@/entities/AccountsList'
 import { BalanceIndex } from '@/entities/BalanceIndex'
@@ -628,8 +629,8 @@ watch([periodEnd, search.terms], () => {
 const visibleTransactions = computed(() => listedTransactions.value.slice(0, visibleCount.value))
 
 const scrollSentinel = ref<HTMLElement | null>(null)
-useIntersectionObserver(scrollSentinel, ([entry]) => {
-  if (entry?.isIntersecting && listedTransactions.value.length > visibleCount.value) {
+useIntersectionObserver(scrollSentinel, (entries) => {
+  if (inViewNow(entries) && listedTransactions.value.length > visibleCount.value) {
     visibleCount.value += PAGE_SIZE
   }
 })

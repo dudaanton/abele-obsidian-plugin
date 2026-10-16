@@ -1,5 +1,6 @@
 import { computed, ref, watch, type ComputedRef, type Ref } from 'vue'
 import { useIntersectionObserver } from '@vueuse/core'
+import { inViewNow } from '@/helpers/intersection'
 
 /**
  * Renders a long list one page at a time, growing when a sentinel element scrolls into view.
@@ -92,8 +93,8 @@ export function usePagedList<T>(
   }
 
   const sentinel = ref<HTMLElement | null>(null)
-  useIntersectionObserver(sentinel, ([entry]) => {
-    if (entry?.isIntersecting) {
+  useIntersectionObserver(sentinel, (entries) => {
+    if (inViewNow(entries)) {
       showMore()
     }
   })

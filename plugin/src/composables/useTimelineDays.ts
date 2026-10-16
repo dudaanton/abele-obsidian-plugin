@@ -1,6 +1,7 @@
 import { computed, ref, watch } from 'vue'
 import { useIntersectionObserver } from '@vueuse/core'
 import type { PageMemory } from './usePagedList'
+import { inViewNow } from '@/helpers/intersection'
 
 export interface TimelineMemory extends PageMemory {
   overdueOpen?: boolean
@@ -56,8 +57,8 @@ export function useTimelineDays<T>(
         )
       )
   }
-  useIntersectionObserver(sentinel, ([entry]) => {
-    if (entry?.isIntersecting) showMore()
+  useIntersectionObserver(sentinel, (entries) => {
+    if (inViewNow(entries)) showMore()
   })
   const reset = () => {
     // A label changes the source, not the search: its matching past days must stay visible.

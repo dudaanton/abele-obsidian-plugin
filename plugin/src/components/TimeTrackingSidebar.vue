@@ -104,6 +104,7 @@ import { escapeHtml } from '@/helpers/escapeHtml'
 import { formatDuration as formatDurationShort } from '@/helpers/displayFormat'
 import { computed, ref, toRef, unref, watch } from 'vue'
 import { useIntersectionObserver } from '@vueuse/core'
+import { inViewNow } from '@/helpers/intersection'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { TimeEntryList } from '@/entities/TimeEntryList'
 import { TimeEntry, DATETIME_FORMAT } from '@/entities/TimeEntry'
@@ -212,8 +213,8 @@ watch(periodEnd, () => {
 const visibleEntries = computed(() => periodEntries.value.slice(0, visibleCount.value))
 
 const scrollSentinel = ref<HTMLElement | null>(null)
-useIntersectionObserver(scrollSentinel, ([entry]) => {
-  if (entry?.isIntersecting && periodEntries.value.length > visibleCount.value) {
+useIntersectionObserver(scrollSentinel, (entries) => {
+  if (inViewNow(entries) && periodEntries.value.length > visibleCount.value) {
     visibleCount.value += PAGE_SIZE
   }
 })

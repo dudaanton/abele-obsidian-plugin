@@ -3,6 +3,7 @@ import { effectScope, nextTick, ref } from 'vue'
 import dayjs from 'dayjs'
 import { useTimelineDays } from '@/composables/useTimelineDays'
 import {
+  deliverRecords,
   installFakeIntersectionObserver,
   scrollIntoView,
 } from '../helpers/fakeIntersectionObserver'
@@ -147,6 +148,38 @@ describe('timeline date loading', () => {
       expect(window.visible.value).toEqual([['2030-06-15', ['sample-today']]])
     } finally {
       scope.stop()
+    }
+  })
+  it('draws the next page when the sentinel came into view after a record from before it did', async () => {
+    installFakeIntersectionObserver()
+    const scope = effectScope()
+    const window = scope.run(() =>
+      useTimelineDays(
+        () =>
+          Array.from({ length: 80 }, (_, i): [string, string[]] => [
+            dayjs('2030-06-15').add(i, 'day').format('YYYY-MM-DD'),
+            [],
+          ]),
+        () => '2030-06-15',
+        () => [],
+        20,
+        { initial: 1, record: () => {} }
+      )
+    )!
+    const sentinel = document.createElement('div')
+    document.body.append(sentinel)
+    window.sentinel.value = sentinel
+    try {
+      await nextTick()
+      expect(window.visible.value).toHaveLength(20)
+      // Observed below the fold, then scrolled to before the callback ran: the sentinel stays in
+      // view, so no later record will ever ask again.
+      expect(deliverRecords(sentinel, [false, true])).toBe(1)
+      await nextTick()
+      expect(window.visible.value).toHaveLength(40)
+    } finally {
+      scope.stop()
+      sentinel.remove()
     }
   })
 })
