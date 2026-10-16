@@ -7,13 +7,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 import { Menu } from 'obsidian'
-import { newNodePathChat, showNodePathPlaceMenu } from '@/node/NodePathController'
+import {
+  newNodePathChat,
+  pickNodePathPlace,
+  showNodePathPlaceMenu,
+} from '@/node/NodePathController'
 import { NodePathMutations } from '@/node/NodePathMutations'
 import { nodePages } from '@/node/nodePages'
 import { pathPages } from '@/node/NodePathClientPort'
 
 const f = vi.hoisted(() => ({
-  items: [] as { id: string; title: string }[],
+  items: [] as { id: string; title: string; kind?: string; note?: string }[],
+  choose: (_item: { id: string }) => {},
   confirm: vi.fn(async () => true),
   client: {} as Record<string, ReturnType<typeof vi.fn>>,
 }))
@@ -33,8 +38,14 @@ vi.mock('@/node/NodePathOwnerActions', () => ({
 vi.mock('@/modal/confirm', () => ({ confirmAction: f.confirm }))
 vi.mock('@/components/nodeWork/NodeSuggestModal', () => ({
   NodeSuggestModal: class {
-    constructor(_app: unknown, items: typeof f.items) {
+    constructor(
+      _app: unknown,
+      items: typeof f.items,
+      _title: string,
+      choose: (item: { id: string }) => void
+    ) {
       f.items = items
+      f.choose = choose
     }
     open() {}
   },
@@ -206,8 +217,18 @@ describe('the node panel instead of the workspaces window', () => {
       repository: {
         worktrees: vi.fn(async () => ({
           entries: [
-            { worktree_id: 'sample-root', kind: 'root', path_label: '/sample/app', head: 'a'.repeat(40) },
-            { worktree_id: 'sample-feature', kind: 'external', path_label: '/sample/feature', head: 'b'.repeat(40) },
+            {
+              worktree_id: 'sample-root',
+              kind: 'root',
+              path_label: '/sample/app',
+              head: 'a'.repeat(40),
+            },
+            {
+              worktree_id: 'sample-feature',
+              kind: 'external',
+              path_label: '/sample/feature',
+              head: 'b'.repeat(40),
+            },
           ],
           cursor: null,
           incomplete: false,
@@ -232,5 +253,61 @@ describe('the node panel instead of the workspaces window', () => {
       expected_head: 'b'.repeat(40),
       expected_observation_id: 'seen',
     })
+  })
+
+  it('lists every folder, each worktree of a repository and the chats that work in it', async () => {
+    const m = model()
+    m.folders.value = [
+      {
+        ...m.folders.value[0],
+        copies: [
+          m.folders.value[0].copies[0],
+          { ...m.folders.value[0].copies[1], chats: [{ id: 'chat-1', title: 'Sample chat' }] },
+        ],
+      } as never,
+      { id: 'notes', name: 'sample-notes', path: '/sample/notes', git: false, copies: [] } as never,
+    ]
+    const openChat = vi.fn()
+    pickNodePathPlace(m as never, openChat)
+    expect(f.items.map((i) => [i.kind, i.title])).toEqual([
+      ['The folder itself', 'sample-app / trunk'],
+      ['Worktree', 'sample-app / feature'],
+      ['Chat', 'Sample chat'],
+      ['Folder', 'sample-notes'],
+    ])
+    f.choose({ id: 'chat:chat-1' })
+    expect(openChat).toHaveBeenCalledWith('chat-1')
+    f.choose({ id: 'sample-feature' })
+    await vi.waitFor(() => expect(m.select).toHaveBeenCalledWith('sample-feature'))
+  })
+
+  it('deletes nothing and asks nothing when the node no longer lists the worktree', async () => {
+    const deleteWorktree = vi.fn()
+    client({
+      repository: {
+        worktrees: vi.fn(async () => ({
+          entries: [
+            {
+              worktree_id: 'sample-root',
+              kind: 'root',
+              path_label: '/sample/app',
+              head: 'a'.repeat(40),
+            },
+          ],
+          cursor: null,
+          incomplete: false,
+          omissions: [],
+        })),
+        observe: vi.fn(),
+      },
+      nodePath: { deleteWorktree },
+    })
+    const m = model('sample-feature')
+    const menu = await placeMenu(m)
+    menu.items.find((i) => i.title === 'Delete the worktree…')!.handler!()
+    await vi.waitFor(() => expect(f.client.repository.worktrees as never).toHaveBeenCalled())
+    await new Promise((r) => setTimeout(r, 0))
+    expect(f.confirm).not.toHaveBeenCalled()
+    expect(deleteWorktree).not.toHaveBeenCalled()
   })
 })
