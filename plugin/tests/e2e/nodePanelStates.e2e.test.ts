@@ -30,6 +30,8 @@ const probe = (device: string) =>
       Object.assign(nodePanel.variant, variant)
       if (!window.__abeleNodePanelFixture) return nodePanel.open(place)
       const { model } = window.__abeleNodePanelFixture
+      // As a node reconnecting with other answers: its capabilities are read anew.
+      model.capabilities.value = [...model.capabilities.value]
       await model.refreshCurrent()
       const panel = await nodePanel.select(place)
       // The branch is read again on a new observation; the fixture's observation stays the same.

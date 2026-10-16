@@ -399,7 +399,10 @@ const showPlace = async (folder, branch) => {
       expect(result.provider).toBe('claude')
       expect(result.prompt).toBe(i === 0 ? 'allow' : 'deny')
       if (i === 0) {
-        expect(result.changes).toEqual(['sample.txt'])
+        // The fake provider keeps its own turn log in the worktree; the agent's change is sample.txt.
+        expect(result.changes.filter((path) => path !== 'fixture-turns.jsonl')).toEqual([
+          'sample.txt',
+        ])
         expect(result.diff).toContain('+after')
       } else {
         expect(result.changes).toEqual([])

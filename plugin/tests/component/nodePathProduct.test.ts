@@ -303,7 +303,7 @@ describe('git actions in the panel', () => {
       report: vi.fn(),
       error: ref(''),
       busy: ref(false),
-      capabilities: shallowRef<string[]>([]),
+      capabilities: shallowRef<string[]>(['repository_git_write_v1']),
     }
     const view = mount(NodePathSidebar, {
       props: { model: model as never, phase: 'ready', node: { name: 'Sample node', status: 'connected' } },

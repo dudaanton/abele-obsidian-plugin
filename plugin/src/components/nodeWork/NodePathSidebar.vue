@@ -163,6 +163,7 @@ import BranchCodes from './BranchCodes.vue'
 import CommitBox from './CommitBox.vue'
 import Button from '../obsidian/Button.vue'
 import { nextStep, type BranchStep } from './branchStep'
+import { GIT_WRITE_CAPABILITY } from '@/node/nodePathGit'
 import { shortRef } from '@/node/presentation'
 import type { NodeSummary } from './types'
 const props = withDefaults(
@@ -207,7 +208,11 @@ const branch = computed(() => props.model?.panelBranch.value)
 const offline = computed(() => props.node?.status !== 'connected')
 /** The node can stage, commit and push in this worktree. */
 const canGit = computed(
-  () => !!props.model?.port?.git && props.model.current.value?.kind === 'worktree'
+  () =>
+    // Read with the node's capabilities, so a node that gains git writes on reconnect shows them.
+    !!props.model?.capabilities.value.includes(GIT_WRITE_CAPABILITY) &&
+    !!props.model.port?.git &&
+    props.model.current.value?.kind === 'worktree'
 )
 const staged = computed(
   () =>
