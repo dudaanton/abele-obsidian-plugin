@@ -14,6 +14,28 @@ import { JOURNAL_KEY, WriteJournal } from '@/sync/writeJournal'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { TokenSettingsPort } from '@/sync/tokenSettingsPort'
 
+it.each([
+  'sample recovery record is unreadable',
+  'External files: sample recovery record is unreadable',
+])('shows the actual local recovery failure in startup status: %s', async (reason) => {
+  const fixture = inspectionFixture(false, 'Notes')
+  const recover = vi
+    .spyOn(ObsidianFileSystem.prototype, 'recover')
+    .mockRejectedValueOnce(new Error(reason))
+  try {
+    fixture.release()
+    await fixture.ui.connect(fixture.encoded)
+    const id = fixture.registry.records()[0].id
+    await vi.waitFor(() => expect(fixture.registry.records()[0].status).toBe('error'))
+    expect(fixture.ui.activity.value[id].error).toContain(reason)
+    expect(fixture.ui.activity.value[id].startup?.stage).toBe('Recovering local files')
+  } finally {
+    recover.mockRestore()
+    fixture.probe.mockRestore()
+    await fixture.host.close()
+  }
+})
+
 it('surfaces a server size refusal by path and reason, keeps bytes pending and avoids repeated rejected uploads', async () => {
   const app = buildFakeVault([{ path: 'oversized.bin', content: 'too many bytes' }])
   const registry = TokenConnectionRegistry.open(app),
@@ -110,7 +132,9 @@ it('recovers interrupted installations before inspecting their bytes', async () 
     await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
     await host.close()
     await app.vault.adapter.write('Notes/inflight.tmp', '{"format":"abele.external", broken')
-    app.saveLocalStorage(JOURNAL_KEY, [{ target: 'Notes/slow.txt', temp: 'Notes/inflight.tmp' }])
+    app.saveLocalStorage(JOURNAL_KEY, [
+      { owner: id, target: 'Notes/slow.txt', temp: 'Notes/inflight.tmp' },
+    ])
     const next = new TokenEngines(app as unknown as App, ui, () => 'a'.repeat(43), {
       fetch: fixture.transport,
       indexedDB: fixture.factory,

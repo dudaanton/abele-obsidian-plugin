@@ -4,6 +4,7 @@ import type { LocalStorage } from './ledgerId'
 export const JOURNAL_KEY = 'abele-sync-writes'
 export const RECOVERED_WRITES_KEY = 'abele-sync-recovered-writes'
 export interface JournalEntry {
+  owner?: string
   target: string
   temp?: string
   backup?: string
@@ -19,12 +20,13 @@ export interface JournalEntry {
   }
 }
 export interface RecoveredWrite {
+  owner?: string
   target: string
   backup: string
   replacementSha?: string
 }
 const sameEntry = (a: JournalEntry, b: JournalEntry): boolean =>
-  a.target === b.target && a.temp === b.temp && a.backup === b.backup
+  a.owner === b.owner && a.target === b.target && a.temp === b.temp && a.backup === b.backup
 const identity = (value: unknown): boolean => {
   if (!value || typeof value !== 'object') return false
   const held = value as { size: number; sha: string }
@@ -40,8 +42,19 @@ const identity = (value: unknown): boolean => {
 export class WriteJournal {
   constructor(
     private readonly storage: LocalStorage | null,
-    private readonly assertMutation?: () => void
+    private readonly assertMutation?: () => void,
+    private readonly owner?: string
   ) {}
+
+  private owns(value: unknown): boolean {
+    return (
+      this.owner === undefined ||
+      (!!value && typeof value === 'object' && Reflect.get(value, 'owner') === this.owner)
+    )
+  }
+  private owned<T extends JournalEntry | RecoveredWrite>(entry: T): T {
+    return this.owner === undefined ? entry : { ...entry, owner: this.owner }
+  }
 
   private read(key: string): unknown[] {
     let raw: unknown
@@ -55,12 +68,14 @@ export class WriteJournal {
     return raw
   }
   entries(): JournalEntry[] {
-    const raw = this.read(JOURNAL_KEY)
+    const raw = this.read(JOURNAL_KEY).filter((entry) => this.owns(entry))
     const entries = raw.filter((value): value is JournalEntry => {
       if (!value || typeof value !== 'object') return false
       const entry = value as JournalEntry
       return (
         typeof entry.target === 'string' &&
+        (entry.owner === undefined ||
+          (typeof entry.owner === 'string' && entry.owner.length > 0)) &&
         (entry.temp === undefined || typeof entry.temp === 'string') &&
         (entry.backup === undefined || typeof entry.backup === 'string') &&
         (entry.preserveBackup === undefined || typeof entry.preserveBackup === 'boolean') &&
@@ -77,11 +92,14 @@ export class WriteJournal {
     return entries
   }
   recovered(): RecoveredWrite[] {
-    const raw = this.read(RECOVERED_WRITES_KEY)
+    const raw = this.read(RECOVERED_WRITES_KEY).filter((entry) => this.owns(entry))
     const entries = raw.filter(
       (value): value is RecoveredWrite =>
         !!value &&
         typeof value === 'object' &&
+        ((value as RecoveredWrite).owner === undefined ||
+          (typeof (value as RecoveredWrite).owner === 'string' &&
+            (value as RecoveredWrite).owner.length > 0)) &&
         typeof (value as RecoveredWrite).target === 'string' &&
         typeof (value as RecoveredWrite).backup === 'string'
     )
@@ -92,41 +110,62 @@ export class WriteJournal {
   protects(backup: string): boolean {
     return this.recovered().some((entry) => entry.backup === backup)
   }
+  /** Ownership inventory only: a scan must not sweep another owner's or legacy temp. */
+  retainsTemp(path: string): boolean {
+    return this.read(JOURNAL_KEY).some(
+      (entry) => !!entry && typeof entry === 'object' && Reflect.get(entry, 'temp') === path
+    )
+  }
   vaultRecovered(): RecoveredWrite[] {
     return this.recovered().filter(
       (entry) => !entry.backup.startsWith('/') && !/^[A-Za-z]:[\\/]/.test(entry.backup)
     )
   }
   relocateRecovered(from: string, to: string): void {
+    this.recovered()
     this.save(
       RECOVERED_WRITES_KEY,
-      this.recovered().map((entry) => (entry.backup === from ? { ...entry, backup: to } : entry))
+      this.read(RECOVERED_WRITES_KEY).map((entry) =>
+        this.owns(entry) && (entry as RecoveredWrite).backup === from
+          ? { ...(entry as RecoveredWrite), backup: to }
+          : entry
+      )
     )
   }
   preserve(entry: JournalEntry): void {
     if (!entry.backup) throw new EngineError('io', 'there is no backup to preserve')
     const entries = this.recovered()
     if (entries.some((saved) => saved.backup === entry.backup)) return
-    const saved: RecoveredWrite = {
+    const saved: RecoveredWrite = this.owned({
+      ...(entry.owner ? { owner: entry.owner } : {}),
       target: entry.target,
       backup: entry.backup,
       ...(entry.replacementSha === undefined ? {} : { replacementSha: entry.replacementSha }),
-    }
-    this.save(RECOVERED_WRITES_KEY, [...entries, saved])
+    })
+    this.save(RECOVERED_WRITES_KEY, [...this.read(RECOVERED_WRITES_KEY), saved])
   }
   add(entry: JournalEntry): void {
-    this.save(JOURNAL_KEY, [...this.entries(), entry])
+    this.entries()
+    this.save(JOURNAL_KEY, [...this.read(JOURNAL_KEY), this.owned(entry)])
   }
   drop(entry: JournalEntry): void {
+    this.entries()
     this.save(
       JOURNAL_KEY,
-      this.entries().filter((held) => !sameEntry(held, entry))
+      this.read(JOURNAL_KEY).filter(
+        (held) => !this.owns(held) || !sameEntry(held as JournalEntry, this.owned(entry))
+      )
     )
   }
   replace(entry: JournalEntry, next: JournalEntry): void {
+    this.entries()
     this.save(
       JOURNAL_KEY,
-      this.entries().map((held) => (sameEntry(held, entry) ? next : held))
+      this.read(JOURNAL_KEY).map((held) =>
+        this.owns(held) && sameEntry(held as JournalEntry, this.owned(entry))
+          ? this.owned(next)
+          : held
+      )
     )
   }
   private save(key: string, entries: unknown[]): void {

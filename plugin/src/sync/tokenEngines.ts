@@ -1,4 +1,4 @@
-import { connectionAdapter, connectionInspectionApp } from './connectionScope'
+import { connectionAdapter, connectionInspectionApp, connectionJournalApp } from './connectionScope'
 import { connectionPrivateRoot } from './connectionPaths'
 import { Platform, type App, type EventRef } from 'obsidian'
 import { caseKey, encodeAccessToken } from '@abele/sync-protocol'
@@ -105,14 +105,16 @@ export class TokenEngines {
       assertCurrent()
       if (this.closed) throw new Error('Connection host closed; recovery required')
       if (!id) {
+        // A new connection owns no durable recovery work yet.
+        const journalApp = connectionJournalApp(this.app, crypto.randomUUID())
         const root = scope?.kind === 'folder' && scope.path !== '/' ? scope.path : undefined
         const app = root
           ? connectionInspectionApp(
-              this.app,
+              journalApp,
               connectionAdapter(this.app.vault.adapter, root, root),
               root
             )
-          : this.app
+          : journalApp
         requireExternalEnrollmentSafety(app)
         await requireExternalLifecycleSafety(
           app,
@@ -133,12 +135,12 @@ export class TokenEngines {
       const scopedApp =
         root && root !== '/'
           ? connectionInspectionApp(
-              this.app,
+              connectionJournalApp(this.app, id),
               connectionAdapter(this.app.vault.adapter, root, connectionPrivateRoot(id)),
               root,
               connectionPrivateRoot(id)
             )
-          : this.app
+          : connectionJournalApp(this.app, id)
       const inspecting = this.startupCancels.has(id) && !ui.runtimes.has(id)
       if (id) await this.offloadPorts.get(id)?.prepareDisconnect()
       await requireExternalLifecycleSafety(
@@ -276,7 +278,10 @@ export class TokenEngines {
             ? 'offline'
             : 'error'
     )
-    this.ui.publish(id, { error: connectionError(error), inspection: undefined })
+    this.ui.publish(id, {
+      error: connectionError(error, !this.ui.runtimes.has(id)),
+      inspection: undefined,
+    })
   }
   private create(
     record: TokenConnectionRecord,
@@ -424,9 +429,10 @@ export class TokenEngines {
       const adapter = scopedRoot
         ? connectionAdapter(this.app.vault.adapter, scopedRoot, connectionPrivateRoot(record.id))
         : this.app.vault.adapter
+      const journalApp = connectionJournalApp(this.app, record.id)
       const connectionApp = scopedRoot
-        ? connectionInspectionApp(this.app, adapter, scopedRoot, connectionPrivateRoot(record.id))
-        : this.app
+        ? connectionInspectionApp(journalApp, adapter, scopedRoot, connectionPrivateRoot(record.id))
+        : journalApp
 
       let inventory: ReadonlyMap<string, { path: string; size: number; mtime: number }> | undefined
       const inspection = {
@@ -499,6 +505,7 @@ export class TokenEngines {
       const ordinary = new ObsidianFileSystem(this.app, {
         adapter,
         connectionId: scopedRoot ? record.id : undefined,
+        journalOwner: record.id,
         fileScope: () =>
           runtime ? runtime.folderScope() : record.scope.kind === 'folder' ? localRoot : undefined,
         startupInventory: () => inventory,

@@ -2,7 +2,24 @@ import type { App, DataAdapter } from 'obsidian'
 import { FolderScopeError } from './scopedFileSystem'
 import { IGNORE_FILE } from './scope'
 
-import { withinRoot, CONNECTION_HOST, CONNECTION_ROOT, CONNECTION_PRIVATE } from './connectionPaths'
+import {
+  withinRoot,
+  CONNECTION_HOST,
+  CONNECTION_ROOT,
+  CONNECTION_PRIVATE,
+  CONNECTION_JOURNAL_OWNER,
+} from './connectionPaths'
+
+/** Lifecycle checks and filesystem recovery select the same connection's durable intents. */
+export function connectionJournalApp(app: App, owner: string): App {
+  return new Proxy(app, {
+    get(target, key) {
+      if (key === CONNECTION_JOURNAL_OWNER) return owner
+      const value = Reflect.get(target, key)
+      return typeof value === 'function' ? value.bind(target) : value
+    },
+  })
+}
 
 /** Control inputs only: no directory discovery or filesystem mutation capability. */
 const READ_ONLY_SETTINGS = new Set([IGNORE_FILE])

@@ -75,7 +75,9 @@ describe('token connection external dependency lifecycle', () => {
   it('inspects retained installation bytes even without an external document', async () => {
     const s = await fixture()
     await s.raw.setMeta(EXTERNAL_STATE_KEY, null)
-    const evidence = [{ target: 'Media/sample.bin', backup: 'Media/.abele-sync-abcd1234.old' }]
+    const evidence = [
+      { owner: s.id, target: 'Media/sample.bin', backup: 'Media/.abele-sync-abcd1234.old' },
+    ]
     s.app.saveLocalStorage('abele-sync-recovered-writes', evidence)
     await expect(s.ui.disconnect(s.id)).rejects.toThrow(/external|recovery/i)
     expect(s.app.loadLocalStorage('abele-sync-recovered-writes')).toEqual(evidence)

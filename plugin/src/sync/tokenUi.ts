@@ -14,12 +14,12 @@ import type { openDeviceReviews } from './openDeviceReviews'
 import { reviewSourceOf, sourceIdentity, type ReviewSource } from './reviewState'
 import { transferText } from './transferProgress'
 
-export function connectionError(error: unknown): string {
+export function connectionError(error: unknown, startup = false): string {
   const native = nativeSyncFailure(error)
   if (native) return native.message
   if (error instanceof ConnectStageError) return error.message
   if (error instanceof Error && /External files:|Sync recovery required/.test(error.message))
-    return 'Sync recovery required. Files and connection have been kept.'
+    return startup ? error.message : 'Sync recovery required. Files and connection have been kept.'
   const code = (error as { code?: string } | null)?.code
   if (
     code === 'offline' &&
@@ -45,7 +45,10 @@ export function connectionError(error: unknown): string {
         forbidden: 'This connection does not allow that action.',
         scope_unavailable: 'This folder or group is no longer available.',
       } as Record<string, string>
-    )[code ?? ''] ?? 'The action could not finish. Your files have been kept. Try again.'
+    )[code ?? ''] ??
+    (startup && error instanceof Error && error.message
+      ? error.message
+      : 'The action could not finish. Your files have been kept. Try again.')
   )
 }
 class ConnectStageError extends Error {}

@@ -50,11 +50,11 @@ it('stops scoped recovery before touching a foreign write journal entry', async 
   const { ObsidianFileSystem } = await import('@/sync/ObsidianFileSystem')
   const app = buildFakeVault([{ path: 'Shared/sample.md', content: 'sample' }])
   app.saveLocalStorage('abele-sync-writes', [
-    { target: 'Private/secret.md', temp: 'Private/temp.md' },
+    { owner: 'sample', target: 'Private/secret.md', temp: 'Private/temp.md' },
   ])
   const stat = vi.spyOn(app.vault.adapter, 'stat'),
     remove = vi.spyOn(app.vault.adapter, 'remove')
-  const fs = new ObsidianFileSystem(app as never, { fileScope: 'Shared' })
+  const fs = new ObsidianFileSystem(app as never, { fileScope: 'Shared', journalOwner: 'sample' })
   await expect(fs.recover()).rejects.toThrow(/outside this connection/)
   expect(stat).not.toHaveBeenCalled()
   expect(remove).not.toHaveBeenCalled()

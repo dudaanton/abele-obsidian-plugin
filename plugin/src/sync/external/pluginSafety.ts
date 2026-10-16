@@ -1,4 +1,9 @@
-import { connectionRoot, connectionPrivateArea, withinRoot } from '../connectionPaths'
+import {
+  connectionRoot,
+  connectionPrivateArea,
+  connectionJournalOwner,
+  withinRoot,
+} from '../connectionPaths'
 import {
   preservePrivateArtifacts,
   privateArtifactRecovered,
@@ -688,8 +693,8 @@ export async function recoverExternalState(
     throw new ExternalRecoveryRequired('projection evidence requires recovery before ordinary sync')
   // Inspect installation journals before their existing safe recovery, and publication
   // metadata before any constructor scope work or ordinary replay is permitted.
-  new WriteJournal(app).entries()
-  new WriteJournal(app).recovered()
+  new WriteJournal(app, undefined, connectionJournalOwner(app)).entries()
+  new WriteJournal(app, undefined, connectionJournalOwner(app)).recovered()
   const publication = await store.getJournal()
   if (
     publication !== null &&
@@ -774,7 +779,7 @@ export function requireExternalEnrollmentSafety(app: App): void {
   if (app.loadLocalStorage(EXTERNAL_SWITCH_KEY) != null) throw new ExternalRecoveryRequired()
   activation(app)
   retiredLedgers(app)
-  const installation = new WriteJournal(app)
+  const installation = new WriteJournal(app, undefined, connectionJournalOwner(app))
   if (
     installation.entries().some((entry) => !entry.streaming || entry.backup) ||
     installation.recovered().length
@@ -795,7 +800,7 @@ export async function requireExternalLifecycleSafety(
 ): Promise<void> {
   if (app.loadLocalStorage(EXTERNAL_SWITCH_KEY) != null) throw new ExternalRecoveryRequired()
   const marker = activation(app)
-  const installation = new WriteJournal(app)
+  const installation = new WriteJournal(app, undefined, connectionJournalOwner(app))
   // Startup validates intents here, then recovers them before inspecting vault bytes.
   // Enrollment and departure still require an empty installation journal.
   if (

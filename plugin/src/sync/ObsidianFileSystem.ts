@@ -57,6 +57,7 @@ const stageOperations = new WeakMap<object, Set<string>>()
 export interface ObsidianFileSystemOptions {
   adapter?: DataAdapter
   connectionId?: string
+  journalOwner?: string
   /** Ordinary enumeration is bounded before representation inspection for folder tokens. */
   fileScope?: string | (() => string | undefined)
   startupInventory?: () => ReadonlyMap<string, FileInfo> | undefined
@@ -261,8 +262,10 @@ export class ObsidianFileSystem implements FileSystem {
     this.onWatch = options.onWatch ?? null
     this.onEngineWrite = options.onEngineWrite ?? null
     this.yieldsToServer = options.yieldsToServer ?? null
-    this.journal = new WriteJournal(options.storage ?? storageOf(app), () =>
-      this.runtimeFence?.assertOwned()
+    this.journal = new WriteJournal(
+      options.storage ?? storageOf(app),
+      () => this.runtimeFence?.assertOwned(),
+      options.journalOwner ?? options.connectionId
     )
     this.io = new BoundedVaultIo(
       this.guardedAdapter,
@@ -961,11 +964,7 @@ export class ObsidianFileSystem implements FileSystem {
       if (isAdapterTemp(path)) {
         // A temp of new bytes a killed write left behind goes; a backup is somebody's only
         // copy, and the write journal puts it back.
-        if (
-          isDroppableTemp(path) &&
-          !this.stages.has(path) &&
-          !this.journal.entries().some((entry) => entry.temp === path && entry.streaming)
-        )
+        if (isDroppableTemp(path) && !this.stages.has(path) && !this.journal.retainsTemp(path))
           await this.sweep(path)
         continue
       }

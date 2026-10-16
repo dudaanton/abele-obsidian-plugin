@@ -1,0 +1,52 @@
+import { expect, it } from 'vitest'
+import { JOURNAL_KEY, RECOVERED_WRITES_KEY, WriteJournal } from '@/sync/writeJournal'
+import { buildFakeVault } from '../helpers/fakeVault'
+
+it('preserves other owners and legacy work across journal updates and retention decisions', () => {
+  const app = buildFakeVault([])
+  const pending = {
+    target: 'Shared/sample.md',
+    temp: 'Shared/sample.tmp',
+    backup: 'Shared/sample.old',
+  }
+  const foreign = { ...pending, owner: 'other' }
+  const legacy = { ...pending }
+  app.saveLocalStorage(JOURNAL_KEY, [foreign, legacy])
+  const retained = [
+    { owner: 'other', target: pending.target, backup: pending.backup },
+    { target: pending.target, backup: pending.backup },
+  ]
+  app.saveLocalStorage(RECOVERED_WRITES_KEY, retained)
+  const owned = new WriteJournal(app, undefined, 'sample')
+  expect(owned.entries()).toEqual([])
+  expect(owned.recovered()).toEqual([])
+  expect(owned.retainsTemp(pending.temp)).toBe(true)
+  owned.add(pending)
+  expect(owned.entries()).toEqual([{ ...pending, owner: 'sample' }])
+  owned.replace(pending, { ...pending, installed: true })
+  owned.preserve(pending)
+  expect(owned.recovered()).toEqual([
+    { owner: 'sample', target: pending.target, backup: pending.backup },
+  ])
+  owned.relocateRecovered(pending.backup, 'Shared/retained.old')
+  owned.drop(pending)
+  expect(new WriteJournal(app).entries()).toEqual([foreign, legacy])
+  expect(new WriteJournal(app).recovered()).toEqual([
+    ...retained,
+    { owner: 'sample', target: pending.target, backup: 'Shared/retained.old' },
+  ])
+})
+
+it('validates only the selected owner and leaves unknown legacy records untouched', () => {
+  const app = buildFakeVault([])
+  const untouched = [{ target: 42 }, { owner: 'other', target: null }]
+  app.saveLocalStorage(JOURNAL_KEY, untouched)
+  const owned = new WriteJournal(app, undefined, 'sample')
+  expect(owned.entries()).toEqual([])
+  const next = { target: 'Shared/new.md', temp: 'Shared/new.tmp' }
+  owned.add(next)
+  owned.drop(next)
+  expect(app.loadLocalStorage(JOURNAL_KEY)).toEqual(untouched)
+  app.saveLocalStorage(JOURNAL_KEY, [...untouched, { owner: 'sample', target: null }])
+  expect(() => owned.entries()).toThrow('unreadable')
+})

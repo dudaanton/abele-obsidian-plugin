@@ -2285,6 +2285,11 @@ inside the exact local root; canonical wire paths use retained file identities f
 local placement and never authorize a Unicode root sibling. A folder connection stops if shared write recovery
 requires touching another root, keeping the recovery records and local bytes.
 
+Write-journal and retained-backup records carry a device-local connection owner.
+Each connection's startup, enrollment, departure, and recovery select only its own
+records. Other owners' and legacy unowned records remain intact for their owner or
+local recovery; they never authorize this connection to read or change those files.
+
 Folder connection startup, projection inspection, recovery, and native/adapter file
 access share the same root boundary. Private placement downloads, write staging, and
 recovery copies use a device-local `.abele-sync/connections/<connection-id>/` namespace.

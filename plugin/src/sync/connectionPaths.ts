@@ -17,3 +17,7 @@ export const connectionRoot = (app: object): string | undefined => Reflect.get(a
 export const CONNECTION_PRIVATE = Symbol.for('abele.sync.connection-private-v1')
 export const connectionPrivateArea = (app: object): string | undefined =>
   Reflect.get(app, CONNECTION_PRIVATE)
+
+export const CONNECTION_JOURNAL_OWNER = Symbol.for('abele.sync.connection-journal-owner-v1')
+export const connectionJournalOwner = (app: object): string | undefined =>
+  Reflect.get(app, CONNECTION_JOURNAL_OWNER)
