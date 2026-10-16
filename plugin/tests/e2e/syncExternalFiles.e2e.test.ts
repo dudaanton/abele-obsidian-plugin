@@ -10,11 +10,14 @@ import type { SyncDriver } from './helpers/syncDriver'
 targets('desktop', 'phone')
 const fixture = liveSuite(false)
 const card = '.workspace-leaf.mod-active .abele-external-view'
-const embed = '.workspace-leaf.mod-active .abele-external-embed'
+const embed = '.workspace-leaf.mod-active .markdown-reading-view .abele-external-embed'
+const editorEmbed = '.workspace-leaf.mod-active .markdown-source-view .abele-external-embed'
 
 async function shot(a: SyncDriver, state: string, selector: string): Promise<void> {
   const name = 'external-' + state + (onPhone() ? '-phone' : '-desktop')
-  a.run(`await sleep(200);return true`)
+  a.run(
+    `await poll(()=>{const el=document.querySelector(${JSON.stringify(selector)});if(!el||!el.checkVisibility())return false;const r=el.getBoundingClientRect();return r.width>0&&r.height>0&&r.bottom>0&&r.top<innerHeight});await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));return true`
+  )
   if (onPhone()) screenshot(join(shotDir('abele-token-screens'), name + '.png'))
   else {
     const screen = await captureSyncScreen(a, name, selector)
@@ -32,9 +35,10 @@ async function openCard(a: SyncDriver, path: string): Promise<void> {
 }
 
 async function openNote(a: SyncDriver, path: string, mode = 'preview'): Promise<void> {
+  const selector = mode === 'preview' ? embed : editorEmbed
   await a.long(
     'open note with an offloaded embed',
-    `await closeSettings();await app.workspace.getLeaf(false).setViewState({type:'markdown',active:true,state:{file:${JSON.stringify(path)},mode:${JSON.stringify(mode)},source:false}});await poll(()=>document.querySelector(${JSON.stringify(embed)}));return true`
+    `await closeSettings();await app.workspace.getLeaf(false).setViewState({type:'markdown',active:true,state:{file:${JSON.stringify(path)},mode:${JSON.stringify(mode)},source:false}});await poll(()=>document.querySelector(${JSON.stringify(selector)}));return true`
   )
 }
 
@@ -49,7 +53,7 @@ it('offloads real synced attachments and opens cards separately from downloading
   a.create(note, `# Sample attachments\n\n![[${image}]]\n\n![[${other}]]\n`)
   // Generate a fresh image locally; no personal attachments or external image requests.
   a.run(
-    `const canvas=document.createElement('canvas');canvas.width=320;canvas.height=180;const ctx=canvas.getContext('2d');ctx.fillStyle='#888';ctx.fillRect(0,0,320,180);const data=Uint8Array.from(atob(canvas.toDataURL('image/png').split(',')[1]),c=>c.charCodeAt(0));await app.vault.createBinary(${JSON.stringify(image)},data.buffer);return true`
+    `const canvas=document.createElement('canvas');canvas.width=320;canvas.height=180;const ctx=canvas.getContext('2d');ctx.fillStyle='#8ecae6';ctx.fillRect(0,0,320,180);ctx.fillStyle='#ffcf56';ctx.beginPath();ctx.arc(250,40,23,0,Math.PI*2);ctx.fill();ctx.fillStyle='#28734b';ctx.beginPath();ctx.moveTo(0,180);ctx.lineTo(100,50);ctx.lineTo(200,180);ctx.fill();ctx.fillStyle='#164630';ctx.beginPath();ctx.moveTo(120,180);ctx.lineTo(220,75);ctx.lineTo(320,180);ctx.fill();const data=Uint8Array.from(atob(canvas.toDataURL('image/png').split(',')[1]),c=>c.charCodeAt(0));await app.vault.createBinary(${JSON.stringify(image)},data.buffer);return true`
   )
   a.create(video, 'sample video fixture bytes')
   a.create(other, 'sample document fixture bytes')
@@ -95,7 +99,7 @@ it('offloads real synced attachments and opens cards separately from downloading
   expect(a.exists(other)).toBe(false)
   await shot(a, 'card-from-embed', card)
   await openNote(a, note, 'source')
-  await shot(a, 'embed-editor', embed)
+  await shot(a, 'embed-editor', editorEmbed)
   await openNote(a, note)
   // SIGSTOP preserves the live request long enough to photograph real transfer state.
   s.server.suspend()
