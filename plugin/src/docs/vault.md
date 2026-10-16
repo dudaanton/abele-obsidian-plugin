@@ -2291,6 +2291,11 @@ Publication still uses the write journal and the local-save fence or backup swap
 with an unresolved backup remains an installation blocker. Sealed retained sources are
 separate from unfinished publication, and are verified again before use.
 
+Streaming pulls retain a verified private source stage before acquiring placement paths.
+The target publication reads that local source instead of downloading the file again.
+The source stage is discarded after placement or a handled failure; interrupted processes
+leave it under the same journal recovery rules as other private stages.
+
 Local edit preservation records may likewise retain a sealed source locator and size, shared
 by the destinations that still need that immutable edit. These source files and their journal
 records are device-local recovery evidence, never ordinary sync inventory or server content

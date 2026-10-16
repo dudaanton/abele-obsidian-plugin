@@ -22,6 +22,7 @@ export function syncPlacementPlugin() {
       if (!file.includes('/node_modules/@abele/sync-core/dist/')) return null
       let code = input
       if (file.endsWith('/pullPlace.js')) {
+        code = `import { receiveToStage as receivePlacementSource } from './streaming.js';\n` + code
         for (const name of ['adopt', 'adoptExisting']) {
           code = replaceOnce(
             code,
@@ -50,6 +51,28 @@ export function syncPlacementPlugin() {
           'async place(change, sha, entry, fetched, local) {',
           `async place(change, sha, entry, fetched, local) {
           // Downloads do not own paths. The original placer revalidates the source after waiting.
+          // Keep the network source bounded and fetch it only once. The core's durable target
+          // stage and local-edit checks still run under the placement lease.
+          if (this.fs.beginAtomicWrite && this.fs.reopenStage && this.fs.openRead &&
+              this.client.openVersion && change.size !== null) {
+            const identity = { sha, size: change.size };
+            const sourceStage = await this.fs.beginAtomicWrite(
+              '.abele-sync/placement-inbox/' + crypto.randomUUID(), 0, null);
+            try {
+              const source = await this.client.openVersion(change.file_id, change.version_id, identity);
+              await receivePlacementSource(source, sourceStage, identity, this.budget);
+              const prepared = Object.create(this);
+              prepared.client = new Proxy(this.client, {
+                get: (target, key) => key === 'openVersion'
+                  ? () => this.fs.openRead(sourceStage.id)
+                  : typeof target[key] === 'function' ? target[key].bind(target) : target[key],
+              });
+              return await coordinatePlacement(this.fs, [change.path, ...(entry ? [entry.path] : [])],
+                () => prepared.placeUnlocked(change, sha, entry, fetched, local));
+            } finally {
+              await sourceStage.discard();
+            }
+          }
           // A matching ledger hash does not prove that its local file still exists.
           // Populate even the fallback's cache before leasing either path.
           if (!fetched.has(sha)) {

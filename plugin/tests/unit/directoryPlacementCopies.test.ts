@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest'
 import type { App } from 'obsidian'
-import { MemoryStateStore, sha256 } from '@abele/sync-core'
+import { EngineError, MemoryStateStore, sha256 } from '@abele/sync-core'
 import { encodeAccessToken } from '@abele/sync-protocol'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { TokenEngineRuntime } from '@/sync/tokenEngineRuntime'
@@ -11,12 +11,13 @@ import { AttachmentConsent } from '@/sync/attachmentConsent'
 import { buildFakeVault } from '../helpers/fakeVault'
 
 it.each([
-  { fileCount: 0, uploading: false },
-  { fileCount: 1024, uploading: false },
-  { fileCount: 1024, uploading: true },
+  { fileCount: 0, uploading: false, retry: false },
+  { fileCount: 1024, uploading: false, retry: false },
+  { fileCount: 1024, uploading: false, retry: true },
+  { fileCount: 1024, uploading: true, retry: false },
 ])(
-  'bounds preservation to overwritten files (files=$fileCount, uploading=$uploading)',
-  async ({ fileCount, uploading }) => {
+  'bounds preservation to overwritten files (files=$fileCount, uploading=$uploading, retry=$retry)',
+  async ({ fileCount, uploading, retry }) => {
     const scope = { kind: 'folder' as const, id: 'shared', path: 'Container/Shared' }
     const app = buildFakeVault(
       Array.from({ length: 4000 }, (_, i) => ({
@@ -109,6 +110,9 @@ it.each([
         created.stat = { ...created.stat, size: file.size, mtime: file.mtime }
       }
     }
+    let contentRequests = 0
+    let wholeContentRequests = 0
+    let retried = false
     let requests = 0
     let uploaded = 0
     let committedContent = 0
@@ -157,8 +161,17 @@ it.each([
           return new Response(null, { status: 204 })
         }
         if (url.pathname.endsWith('/content')) {
+          contentRequests++
+          if (!new Headers(init?.headers).has('range')) wholeContentRequests++
           const bytes = payloads.get(url.pathname.split('/')[3])!
           const range = /^bytes=(\d+)-(\d+)$/.exec(new Headers(init?.headers).get('range') ?? '')
+          if (retry && range && url.pathname.includes('/content-1000/')) {
+            await new Promise((resolve) => setTimeout(resolve, 10))
+            if (!retried) {
+              retried = true
+              throw new EngineError('offline', 'Sample transfer interrupted')
+            }
+          }
           return range
             ? new Response(bytes.slice(Number(range[1]), Number(range[2]) + 1), {
                 status: 206,
@@ -197,9 +210,15 @@ it.each([
     const started = performance.now()
     try {
       await runtime.sync()
+      expect(runtime.engine.status).toMatchObject({ state: 'idle', pending: 0, lastError: null })
       if (uploading) {
         expect(uploaded).toBe(fileCount)
         expect(committedContent).toBe(fileCount)
+      }
+      if (!uploading) {
+        expect(wholeContentRequests).toBe(0)
+        expect(contentRequests).toBe(fileCount + Number(retry))
+        expect(retried).toBe(retry)
       }
       expect(preserve).toHaveBeenCalledTimes(uploading ? 0 : fileCount)
       expect(operations.list).toBe(0)
