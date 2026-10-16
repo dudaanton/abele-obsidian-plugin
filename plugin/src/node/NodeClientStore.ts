@@ -6,6 +6,7 @@ import { retainPromptAnswerIdentity } from './promptAnswers'
 import { FileDraftSchema, type FileDraft } from './fileDrafts'
 import { DelegationStorageSchema, type DelegationStorage } from './delegation'
 import { NodeMutationRecordSchema, type NodeMutationRecord } from '@/ai/tools/node/mutations'
+import { trimWindows } from './sessionWindow'
 
 export interface NodeClientState extends ClientState {
   chatMutations?: Record<string, NodeMutationRecord>
@@ -19,6 +20,8 @@ export interface NodeClientState extends ClientState {
   nodePathIntents?: Record<string, { id: string; method: string; params: unknown }>
   /** Replaceable artifact payload cache; journal references remain untouched. */
   artifactData?: Record<string, Record<string, unknown>>
+  /** Streams kept as a window of their latest events (`sessionWindow.ts`): how many. */
+  windows?: Record<string, number>
   results: Record<
     string,
     {
@@ -57,6 +60,7 @@ const StateSchema = z
       )
       .optional(),
     artifactData: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
+    windows: z.record(z.string(), z.number().int().positive().max(100000)).optional(),
     node_id: z.string().min(1).max(128).optional(),
     installation_id: z.string().min(1).max(128).optional(),
     cursors: z.record(z.string(), z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)),
@@ -195,6 +199,8 @@ export class NodeClientStore implements ClientStore {
               }
               delete state.turnDrafts?.[id]
             }
+            // A long session's journal stays on the node; the device keeps its latest window.
+            trimWindows(state)
             store.put(state, 'state')
             pending = false
           } catch (error) {

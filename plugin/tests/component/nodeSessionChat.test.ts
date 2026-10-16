@@ -190,3 +190,39 @@ describe('a background task', () => {
     expect(w.find('.abele-bg-tasks__task [aria-label="Stop this task"]').exists()).toBe(false)
   })
 })
+
+describe('a long session', () => {
+  it('reads the earlier page from the node when the list is scrolled to its top', async () => {
+    const p = {
+      ...presenter(sessionLive()),
+      hasOlder: ref(true),
+      olderState: ref('idle'),
+      loadOlder: vi.fn(async () => {}),
+    }
+    const w = open(p as never)
+    expect(w.get('.abele-node-chat__older').text()).toBe('Loading earlier messages…')
+    const list = w.get('.abele-ai-chat__messages')
+    ;(list.element as HTMLElement).scrollTop = 0
+    await list.trigger('scroll')
+    await flushPromises()
+    expect(p.loadOlder).toHaveBeenCalled()
+  })
+
+  it('offers to try again when the node could not give the earlier page', async () => {
+    const p = {
+      ...presenter(sessionLive()),
+      hasOlder: ref(true),
+      olderState: ref('failed'),
+      loadOlder: vi.fn(async () => {}),
+    }
+    const w = open(p as never)
+    expect(w.get('.abele-node-chat__older').text()).toContain('Could not read earlier messages')
+    await w.get('.abele-node-chat__older button').trigger('click')
+    expect(p.loadOlder).toHaveBeenCalled()
+  })
+
+  it('shows no such line once the session is shown from its start', () => {
+    const w = open({ ...presenter(sessionLive()), hasOlder: ref(false) } as never)
+    expect(w.find('.abele-node-chat__older').exists()).toBe(false)
+  })
+})

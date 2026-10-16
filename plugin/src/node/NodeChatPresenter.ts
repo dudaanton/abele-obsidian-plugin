@@ -1,4 +1,4 @@
-import { computed, ref, watch, type WatchStopHandle } from 'vue'
+import { computed, ref, shallowRef, watch, type WatchStopHandle } from 'vue'
 import { z } from 'zod'
 import type { FakeStep, Prompt } from '@abele/node-client'
 import type { ChatPresentationSession, ChatReference } from '@/ai/ChatPresentationSession'
@@ -17,6 +17,8 @@ import type { PathTarget } from './NodePathModel'
 import { wirePathTarget } from './nodePathChat'
 import { nodeProviders, nodeDebuggerSupported } from './providers'
 import { NodeSessionControl } from './NodeSessionControl'
+import { openWindow, readOlder, windowAt } from './sessionWindow'
+import type { JournalEvent } from '@abele/channel-protocol'
 import {
   chatMovedNotice,
   supportsExpectedTarget,
@@ -74,6 +76,16 @@ export class NodeChatPresenter implements ChatPresentationSession {
   /** The title the node has now: a rename on any device shows here. */
   readonly label = computed(() => this.projection.value.session?.title || this.reference.title)
   readonly provider = computed(() => this.projection.value.session?.provider ?? 'fake')
+  /** The session as the node describes it: its record, when its first events are not held here. */
+  private readonly sessionRecord =
+    shallowRef<NonNullable<ReturnType<typeof reduceTranscript>['session']>>()
+  /** Earlier events read from the node page by page as the person scrolls back; never stored. */
+  private readonly older = shallowRef<JournalEvent[]>([])
+  /** The first event this device keeps for the session; earlier ones are on the node. */
+  private readonly firstKept = ref(1)
+  readonly olderState = ref<'idle' | 'loading' | 'failed'>('idle')
+  /** There is more of the session before what is shown. */
+  readonly hasOlder = computed(() => (this.older.value[0]?.seq ?? this.firstKept.value) > 1)
   readonly providerReports = ref<ReturnType<typeof nodeProviders>>([])
   readonly nodeDescription = ref<unknown>()
   readonly binding = ref<ChatBinding | null>()
@@ -173,8 +185,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
         if (state === 'connected' && this.descriptionRequested)
           void this.describe().catch((e: unknown) => this.report(e))
         if (state === 'connected')
-          void connection.client
-            .subscribe(reference.sessionId)
+          void this.subscribe()
             .then(() => this.refresh())
             .then(() => this.readLive())
             .catch((e: unknown) => this.report(e))
@@ -194,7 +205,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
     try {
       await this.connection.connect()
       if (this.destroyed) return
-      await this.connection.client.subscribe(this.reference.sessionId)
+      await this.subscribe()
       await this.describe()
       await this.refresh()
       await this.readLive()
@@ -246,14 +257,17 @@ export class NodeChatPresenter implements ChatPresentationSession {
         this.dirty = false
         const client = this.connection.client
         const draftRevision = this.draftRevision
-        const { history, pending, rejected, artifactData, receipts, draft } =
+        const { history, pending, rejected, artifactData, receipts, draft, firstKept } =
           await client.store.transaction((raw) => {
             const state = raw as NodeClientState
             return {
               draft: state.chatDrafts?.[this.reference.sessionId],
               receipts: state.results,
               artifactData: state.artifactData ?? {},
-              history: state.events[this.reference.sessionId] ?? [],
+              history: [...this.older.value, ...(state.events[this.reference.sessionId] ?? [])],
+              firstKept:
+                state.events[this.reference.sessionId]?.[0]?.seq ??
+                (state.cursors[this.reference.sessionId] ?? 0) + 1,
               pending: state.outbox,
               rejected: Object.entries(state.results)
                 .filter(([, r]) => r.error && r.input?.sessionId === this.reference.sessionId)
@@ -303,7 +317,10 @@ export class NodeChatPresenter implements ChatPresentationSession {
           hydrated.push(event)
         }
         if (this.destroyed) return
-        this.projection.value = reduceTranscript(hydrated)
+        this.firstKept.value = firstKept
+        const projection = reduceTranscript(hydrated)
+        projection.session ??= this.sessionRecord.value
+        this.projection.value = projection
         this.updateBackgroundTurn()
         this.rejected.value = rejected
         this.receipts.value = receipts
@@ -568,6 +585,46 @@ export class NodeChatPresenter implements ChatPresentationSession {
       // Sending a deny answer first would release it to take another turn before Stop.
       await this.interrupt(prompt.run_id)
     } catch (error) {
+      this.report(error)
+    }
+  }
+
+  /**
+   * Subscribes at the session's end: a long journal is not replayed to this device (see
+   * `sessionWindow.ts`); its record is read on its own, as its first events may not be here.
+   */
+  private async subscribe(): Promise<void> {
+    const client = this.connection.client
+    const id = this.reference.sessionId
+    let window = await openWindow(client, id)
+    const answer = (await client.subscribe(id)) as { head_seq?: unknown } | undefined
+    // A node without stream.head says where the journal ends in the subscription's answer: a
+    // device far behind starts again at the window, before much of the journal has come.
+    if (!window && Number.isSafeInteger(answer?.head_seq)) {
+      window = await windowAt(client, id, answer!.head_seq as number)
+      if (window.jumped) await client.subscribe(id)
+    }
+    if (window && window.from > 1 && !this.sessionRecord.value)
+      try {
+        this.sessionRecord.value = await client.getSession(id)
+      } catch (error) {
+        console.debug('[Abele node] session record unavailable', error)
+      }
+  }
+
+  /** The page before what is shown, from the node; kept while the chat is open. */
+  async loadOlder(): Promise<void> {
+    if (this.olderState.value === 'loading' || !this.hasOlder.value || this.destroyed) return
+    this.olderState.value = 'loading'
+    try {
+      const before = this.older.value[0]?.seq ?? this.firstKept.value
+      const page = await readOlder(this.connection.client, this.reference.sessionId, before)
+      if (this.destroyed) return
+      this.older.value = [...page, ...this.older.value]
+      this.olderState.value = 'idle'
+      await this.refresh()
+    } catch (error) {
+      this.olderState.value = 'failed'
       this.report(error)
     }
   }

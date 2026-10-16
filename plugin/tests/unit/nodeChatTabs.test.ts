@@ -202,7 +202,8 @@ it('retries a disconnected artifact when the connection returns', async () => {
     await vi.waitFor(() =>
       expect(f.presenter.messages.value.map((m) => m.content)).toEqual(['Recovered answer'])
     )
-    expect(f.request).toHaveBeenCalledTimes(2)
+    // Reconnecting also asks where the journal ends; the artifact is read twice, no more.
+    expect(f.request.mock.calls.filter(([method]) => method === 'artifact.read')).toHaveLength(2)
   } finally {
     f.presenter.destroy()
   }

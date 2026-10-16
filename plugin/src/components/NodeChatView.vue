@@ -70,7 +70,20 @@
     >
       {{ presenter.error.value || presenter.connection.error.value }}
     </div>
-    <div v-show="!expanded" ref="scroller" class="abele-ai-chat__messages">
+    <div v-show="!expanded" ref="scroller" class="abele-ai-chat__messages" @scroll="onScroll">
+      <!-- A long session shows its end; what came before is read from the node as you scroll up. -->
+      <div
+        v-if="presenter.hasOlder?.value"
+        class="abele-node-chat__older"
+        role="status"
+        :aria-busy="presenter.olderState?.value === 'loading'"
+      >
+        <template v-if="presenter.olderState?.value === 'failed'">
+          <span>Could not read earlier messages</span>
+          <Button text="Try again" @click="loadOlder" />
+        </template>
+        <span v-else>Loading earlier messages…</span>
+      </div>
       <NodeDebugActions
         v-if="presenter.reference"
         :presenter="presenter"
@@ -623,18 +636,49 @@ const readArtifact = async (id: string) => {
       error instanceof Error ? error.message : 'Could not read stored output'
   }
 }
+/** An earlier page arriving keeps the words you are reading where they are. */
+let keepFromBottom: number | null = null
+const loadOlder = async () => {
+  const el = scroller.value
+  if (!el || !props.presenter.loadOlder || props.presenter.olderState?.value === 'loading') return
+  keepFromBottom = el.scrollHeight - el.scrollTop
+  try {
+    await props.presenter.loadOlder()
+  } finally {
+    await nextTick()
+    if (keepFromBottom !== null) el.scrollTop = el.scrollHeight - keepFromBottom
+    keepFromBottom = null
+  }
+}
+/** Near the top of what is shown, the page before it is read; also while the list does not fill
+ *  the pane, so a short window is never a dead end. */
+const onScroll = () => {
+  const el = scroller.value
+  if (el && el.scrollTop < 300 && props.presenter.hasOlder?.value) void loadOlder()
+}
 watch(
   () => props.presenter.messages.value,
   async () => {
     const el = scroller.value,
       atEnd = el && el.scrollHeight - el.scrollTop - el.clientHeight < 80
     await nextTick()
-    if (el && atEnd) el.scrollTop = el.scrollHeight
+    if (!el || keepFromBottom !== null) return
+    if (atEnd) el.scrollTop = el.scrollHeight
+    if (el.scrollHeight <= el.clientHeight && props.presenter.hasOlder?.value) void loadOlder()
   }
 )
 </script>
 <style lang="scss">
 .abele-node-chat {
+  &__older {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--size-4-2);
+    padding: var(--size-4-2);
+    color: var(--text-muted);
+    font-size: var(--font-ui-smaller);
+  }
   &__details-spacer {
     visibility: hidden;
   }
