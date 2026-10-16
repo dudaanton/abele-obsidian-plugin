@@ -387,3 +387,36 @@
 .abele-canvas-web[data-web-live='true'] .abele-canvas-web__frame {
   pointer-events: auto;
 }
+
+/* A note that shows Abele's header and footer in its card: the lists are its own, as in a tab, and
+   what in them is pressed answers a clean click; a press that moves on carries the card. With a pen
+   or an eraser in hand nothing in a card answers and the pen draws over it. */
+.abele-canvas-card_panels :is(button, a, input, .clickable-icon, .abele-fold-heading, .tree-item-self) {
+  pointer-events: auto;
+}
+:is([data-canvas-tool='pen'], [data-canvas-tool='marker'], [data-canvas-tool='eraser'], [data-canvas-tool='partial-eraser'])
+  :is(.abele-canvas-card_panels *, .abele-canvas-card-codes *) {
+  pointer-events: none;
+}
+.abele-canvas-card_panels > .abele-header-widget-container {
+  margin-bottom: var(--size-4-3);
+}
+.abele-canvas-card_panels > .abele-footer-widget-container {
+  margin-top: var(--size-4-6);
+}
+/* The lights and focus rings of the header's and footer's controls reach past the words' edge, as
+   in a tab; the card's clipping edge steps out by that much, its words staying where they were. */
+.abele-canvas-card_panels {
+  box-sizing: content-box;
+  padding: var(--size-2-2) var(--size-4-3);
+  translate: calc(-1 * var(--size-4-3)) calc(-1 * var(--size-2-2));
+}
+/* A card has no margin for a list's fold arrow to hang in: it stands on the words' edge, as the
+   kit's inline fold headings do. */
+.abele-canvas-card_panels .abele-fold-heading.is-collapsible {
+  margin-inline-start: calc(-1 * var(--size-2-3));
+}
+/* A card too small for the lists keeps their codes along its foot, at the screen's own size. */
+.abele-canvas-card_codes {
+  padding-bottom: calc(var(--icon-xs) + 4 * var(--size-2-2));
+}

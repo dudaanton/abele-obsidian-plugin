@@ -15,6 +15,8 @@ function controls() {
     state: vi.fn(() => ({ disabled: false, hidden: false, on: false })),
     act: vi.fn(async () => {}),
     editLabel: vi.fn(),
+    notePanels: vi.fn(() => false),
+    setPanels: vi.fn(async () => {}),
   } as unknown as Controls & {
     press: ReturnType<typeof vi.fn>
     editLabel: ReturnType<typeof vi.fn>
@@ -190,5 +192,23 @@ describe('the parts of a note', () => {
     expect(c.setSubpath).toHaveBeenCalledWith('one', '#Sample plan')
     await run(entries, 'Pin in place')
     expect(c.setPinned).toHaveBeenCalledWith('one', true)
+  })
+
+  it("turns the header and footer on in a note's card, ticked once they show", async () => {
+    const c = controls() as ReturnType<typeof controls> & Record<string, ReturnType<typeof vi.fn>>
+    const off = moreEntries(c, picked('file', { type: 'file', file: 'Sample.md' }), host())
+    expect(off.find((e) => e !== '-' && e.title === 'Show header and footer')).toMatchObject({
+      checked: false,
+    })
+    await run(off, 'Show header and footer')
+    expect(c.setPanels).toHaveBeenCalledWith('one', true)
+    const on = moreEntries(
+      c,
+      picked('file', { type: 'file', file: 'Sample.md', abele: { panels: true } }),
+      host()
+    )
+    expect(on.find((e) => e !== '-' && e.title === 'Show header and footer')).toMatchObject({
+      checked: true,
+    })
   })
 })

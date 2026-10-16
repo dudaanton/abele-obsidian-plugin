@@ -10,6 +10,7 @@ import type { CanvasNode, Rect } from '@/canvas/core/model'
 import { partRegion, type CanvasHostActions } from '@/canvas/pickedActions'
 import { SHAPES } from '@/canvas/core/model'
 import { COLOURS, COLOUR_NAMES, ROUTE_ICONS, SHAPE_ICONS } from './chromeTools'
+import { panelsShown } from '@/canvas/cardPanels'
 
 type Controls = CanvasEditor['controls']
 /** What is picked, as the menus over it need to know it. */
@@ -123,7 +124,9 @@ export function endsMenu(e: MouseEvent, c: Controls): void {
   showAt(menu, e)
 }
 
-type Entry = { title: string; icon: string; run: () => unknown; warning?: boolean } | '-'
+type Entry =
+  | { title: string; icon: string; run: () => unknown; warning?: boolean; checked?: boolean }
+  | '-'
 
 /**
  * The picked things' "more" menu. Every kind gets the same order of sections: copies, stacking,
@@ -229,6 +232,16 @@ export function moreEntries(c: Controls, p: PickedView, host?: CanvasHostActions
         if (part !== null) await c.setSubpath(p.ids[0], part)
       })
     )
+  // Abele's header and footer inside the card, as a tab shows them; ticked when the card shows them.
+  if (note && p.node) {
+    const shown = panelsShown(p.node, c.notePanels())
+    out.push({
+      title: 'Show header and footer',
+      icon: 'panel-bottom',
+      run: () => c.setPanels(p.ids[0], !shown),
+      checked: shown,
+    })
+  }
   if (p.one && p.kind === 'text')
     out.push(
       '-',
@@ -335,6 +348,7 @@ export function moreMenu(
           .setTitle(x.title)
           .setIcon(x.icon)
           .setWarning(!!x.warning)
+          .setChecked(x.checked ?? null)
           .onClick(() => void x.run())
       )
   }
@@ -399,6 +413,8 @@ export function paneEntries(
     contents: () => unknown
     openNative: () => unknown
     fingerDraws?: { on: boolean; toggle: () => unknown }
+    /** Whether the canvas's notes show Abele's header and footer unless a card says otherwise. */
+    notePanels?: { on: boolean; toggle: () => unknown }
   },
   tablet = Platform.isTablet
 ): { title: string; icon: string; run: () => unknown; checked?: boolean }[] {
@@ -408,6 +424,16 @@ export function paneEntries(
     { title: 'Export…', icon: 'image-down', run: handlers.exportCanvas },
     { title: 'Copy embed of what is shown', icon: 'clipboard-copy', run: handlers.copyEmbed },
     { title: 'Open in Obsidian Canvas', icon: 'layout-dashboard', run: handlers.openNative },
+    ...(handlers.notePanels
+      ? [
+          {
+            title: 'Notes show header and footer',
+            icon: 'panel-bottom',
+            run: handlers.notePanels.toggle,
+            checked: handlers.notePanels.on,
+          },
+        ]
+      : []),
     // Only where a pen and fingers share the screen: whether a finger draws as well.
     ...(handlers.fingerDraws && tablet
       ? [

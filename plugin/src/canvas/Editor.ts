@@ -160,6 +160,8 @@ export class CanvasEditor {
   private penSeen = false
   /** On a device with a Pencil, whether a finger draws too; kept on this device. */
   private fingerDraws = readFingerDraws()
+  /** The canvas's default for showing Abele's header and footer in its notes; off until asked. */
+  private notePanels = false
   /** A frame whose name is being written on its label. */
   private naming: string | null = null
   /** A connection or line whose label is being written on the line itself. */
@@ -264,6 +266,15 @@ export class CanvasEditor {
     /** A card pinned in place is picked but not carried or resized by hand. */
     setPinned: (id: string, pinned: boolean): Promise<void> =>
       this.patchNode(id, { abele: { pinned: pinned || undefined } }),
+    /** A note shows Abele's header and footer inside its card, or not, whatever the canvas's default. */
+    setPanels: (id: string, shown: boolean): Promise<void> =>
+      this.patchNode(id, { abele: { panels: shown } }),
+    /** Whether the canvas's notes show Abele's header and footer when a card has no choice of its own. */
+    notePanels: (): boolean => this.notePanels,
+    setNotePanels: (on: boolean): void => {
+      this.notePanels = on
+      this.refresh()
+    },
     /** A connection let go over nothing, waiting to be told what to make there. */
     drop: (): CanvasDrop | null => this.drop,
     /** Makes a card, a note or a shape at the end of the dropped connection, or nothing. */
@@ -1568,6 +1579,8 @@ export class CanvasEditor {
   refresh(): void {
     if (this.destroyed) return
     this.inputAdapter?.validate()
+    // What is in hand, for what the cards let through: with a pen nothing in a card answers.
+    this.viewer.el.dataset.canvasTool = this.tool
     const document = this.ports.document(),
       session = document?.session,
       node = this.node()
