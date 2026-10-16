@@ -27,7 +27,11 @@ const probe = (device: string) =>
       await nodePanel.close()
       for (const key of Object.keys(nodePanel.variant)) delete nodePanel.variant[key]
       Object.assign(nodePanel.variant, variant)
-      return nodePanel.open(place)
+      const panel = await nodePanel.open(place)
+      // On a phone the drawer closed with the last panel; it is opened again for the picture.
+      app.workspace.leftSplit.expand()
+      await wait(500)
+      return panel
     }
     const text = (panel) => panel.textContent
     try {
