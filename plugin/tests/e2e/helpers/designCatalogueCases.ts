@@ -22,4 +22,5 @@ export const DESIGN_CASES: { page: CataloguePage; bug?: string }[] = [
   { page: 'prompt' },
   { page: 'choice' },
   { page: 'suggestions' },
+  { page: 'notices' },
 ]

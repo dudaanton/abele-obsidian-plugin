@@ -69,7 +69,7 @@ vi.mock('../e2e/helpers/designLint', () => ({
 await import('../e2e/designLint.e2e.test')
 
 it('measures all catalogue pages with the unchanged native-reference requirement', () => {
-  expect(probe.measurements).toHaveLength(20)
+  expect(probe.measurements).toHaveLength(21)
   expect(
     probe.measurements.every((m) => JSON.stringify(m.rules) === '{"requireNative":true}')
   ).toBe(true)
@@ -94,6 +94,7 @@ it('measures all catalogue pages with the unchanged native-reference requirement
     'comment-thread',
     'events',
     'index',
+    'notices',
     'previews',
     'prompt',
     'rows',
