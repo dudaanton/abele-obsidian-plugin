@@ -22,13 +22,16 @@ export function tokens(n: number): string {
   return String(n)
 }
 
-/** «40s», «4m», «1h 12m»: how long something has gone on. */
+/** «40s», «4m», «1h 12m», «3d»: how long something has gone on. */
 export function span(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000))
   if (s < 60) return `${s}s`
   const m = Math.floor(s / 60)
   if (m < 60) return `${m}m`
-  return `${Math.floor(m / 60)}h ${m % 60}m`
+  const h = Math.floor(m / 60)
+  // Past two days the hours stop saying anything; the days do.
+  if (h < 48) return `${h}h ${m % 60}m`
+  return `${Math.floor(h / 24)}d`
 }
 
 export const MODE: Record<PermissionMode, { label: string; icon: string; said: string }> = {

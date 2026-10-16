@@ -182,3 +182,11 @@ describe('a long-lived node session', () => {
     list.unmount()
   })
 })
+
+describe('a background task', () => {
+  it('has no stop of its own while the node cannot stop one task alone', async () => {
+    const w = open(presenter(sessionLive()))
+    await w.get('.abele-bg-tasks .tree-item-self').trigger('click')
+    expect(w.find('.abele-bg-tasks__task [aria-label="Stop this task"]').exists()).toBe(false)
+  })
+})

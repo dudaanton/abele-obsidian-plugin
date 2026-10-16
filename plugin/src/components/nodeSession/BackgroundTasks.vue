@@ -38,7 +38,7 @@
           :label="`${KIND[task.kind].said}: ${task.title}, for ${span(now - task.since)}`"
           inert
         >
-          <template #actions>
+          <template v-if="canStop" #actions>
             <Icon icon="x" size="xs" tooltip="Stop this task" @click.stop="emit('stop', task.id)" />
           </template>
         </TreeItem>
@@ -64,8 +64,10 @@ const props = withDefaults(
     expanded?: boolean
     /** The clock the times are read against, ms. */
     now?: number
+    /** A task can be stopped on its own; off while the node cannot. */
+    canStop?: boolean
   }>(),
-  { sessions: () => [], expanded: false, now: () => Date.now() }
+  { sessions: () => [], expanded: false, now: () => Date.now(), canStop: true }
 )
 const emit = defineEmits<{ stop: [id: string]; open: [id: string] }>()
 

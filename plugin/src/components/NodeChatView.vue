@@ -178,6 +178,8 @@
       v-if="live && !expanded"
       :tasks="live.background"
       :sessions="live.children"
+      :can-stop="!!live.stopTask"
+      @stop="(id) => live?.stopTask?.(id)"
       @open="(id) => live?.open(id)"
     />
     <AiChatInput

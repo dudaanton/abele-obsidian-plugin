@@ -118,7 +118,8 @@ function journal(state: NodeSessionScreen): JournalEvent[] {
         { input_id: 'i3', text: 'Now make it rank exact title matches first.' },
         6
       ),
-      e('turn.started', { turn_id: 't4', trigger: 'input' }, 6)
+      e('turn.started', { turn_id: 't4', trigger: 'input' }, 6),
+      e('input.delivered', { input_id: 'i3', state: 'delivered' }, 6)
     )
     events.push(
       e(

@@ -97,8 +97,8 @@ const nodePanel = (() => {
     subscribe: async () => ({}),
     // \`{ waiting }\`: the layout chat asks the owner a question, its journal says so.
     store: { transaction: async (fn) => fn({ events: variant.waiting ? { 'sample-layout-chat': [
-      { kind: 'event', node_id: 'sample-panel-node', stream_id: 'sample-layout-chat', seq: 1, type: 'turn.started', data: { run_id: 'sample-process', turn_id: 't', trigger: 'input' }, actor: { kind: 'node' }, at },
-      { kind: 'event', node_id: 'sample-panel-node', stream_id: 'sample-layout-chat', seq: 2, type: 'prompt.requested', data: { prompt_id: 'sample-question', run_id: 'sample-process', state: 'pending' }, actor: { kind: 'node' }, at },
+      { kind: 'event', node_id: 'sample-panel-node', stream_id: 'sample-layout-chat', seq: 1, type: 'turn.started', data: { run_id: 'sample-process', turn_id: 't', trigger: 'input' }, actor: { kind: 'node' }, at: new Date(Date.now() - 5 * 60000).toISOString() },
+      { kind: 'event', node_id: 'sample-panel-node', stream_id: 'sample-layout-chat', seq: 2, type: 'prompt.requested', data: { prompt_id: 'sample-question', run_id: 'sample-process', state: 'pending' }, actor: { kind: 'node' }, at: new Date(Date.now() - 5 * 60000).toISOString() },
     ] } : {}, results: {} }) },
     nodePath: {
       divergence: async ({ worktree_id, base_ref }) =>

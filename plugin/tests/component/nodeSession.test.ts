@@ -206,3 +206,12 @@ describe('the node panel sessions mode', () => {
     )
   })
 })
+
+describe('span', () => {
+  it('says hours under two days and days past them', async () => {
+    const { span } = await import('@/components/nodeSession/types')
+    expect(span(40e3)).toBe('40s')
+    expect(span(72 * 60e3)).toBe('1h 12m')
+    expect(span(3 * 24 * 3600e3)).toBe('3d')
+  })
+})
