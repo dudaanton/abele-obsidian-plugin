@@ -65,8 +65,11 @@ actions**. The number never counts tool operations or the request already on scr
 Incomplete coverage remains explained in the agents list; an absent number is not proof that
 all conversations could be checked.
 
-The list has **Needs your action**, **Working**, and **Connection and delivery** sections,
-with search and ordinary keyboard-accessible buttons. Opening a row returns to its existing
+The list has **Waiting for you**, **Working**, **Offline** and **Not checked** sections,
+with search and ordinary keyboard-accessible buttons. Sessions on a connected node are listed
+by what they do, like the vault's chats, and are asked again whenever the list opens. Only a
+node whose connection is down is offline; a connected node whose sessions could not be read,
+or a session that could not be read, is under **Not checked** and the rest stay listed. Opening a row returns to its existing
 conversation and request; discussions remain discussions. Approvals are reviewed in the
 conversation, never granted from the list. Ordinary question marks in an answer do not count
 as explicit questions. An error handled by the agent while it continues is not an alert.
@@ -100,9 +103,10 @@ them. Opening a row is read-only. Changes arriving through file sync update open
 attention state, and a stale save cannot undo a recorded acknowledgement. A tool already
 accepted and executing appears as work, not another approval request.
 
-This local implementation does not yet include the Node all-session summary. Registered
-nodes appear as incomplete coverage under **Connection and delivery**, even if a node tab
-is connected; zero known local requests must not be mistaken for zero Node requests.
+A connected node is asked for every session's state and its open permissions and questions;
+an idle session is not listed. A node that is offline, connecting, or could not be read in
+full keeps the list marked incomplete, so zero known requests is never taken for zero Node
+requests.
 
 When all 20 tabs are occupied, returning from this list offers a choice of a tab to close;
 nothing closes automatically. On a phone, opening the list or conversation does not focus

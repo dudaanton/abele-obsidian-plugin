@@ -133,10 +133,36 @@ describe('agents dialog', () => {
     expect(wrapper.emitted('close')).toHaveLength(1)
     wrapper.unmount()
   })
+  it('calls only a node without a connection offline, not one whose sessions failed to load', () => {
+    useVault([])
+    const node = (offline: boolean, text: string): AttentionRow => ({
+      ...rows[0],
+      key: `node-${offline}`,
+      title: offline ? 'Sample offline node' : 'Sample connected node',
+      reference: { kind: 'node', registrationId: `r-${offline}`, nodeId: 'node-1', sessionId: '' },
+      ...(offline ? { offline: true } : {}),
+      reasons: [{ kind: 'delivery', id: `coverage-${offline}`, at: 0, text }],
+    })
+    const refreshNodes = vi.fn().mockResolvedValue(undefined)
+    const wrapper = mountWith(
+      sourceOf([node(false, "Can't load this node's sessions right now"), node(true, 'Offline')], {
+        refreshNodes,
+      })
+    )
+    // Looking at the list asks the nodes again.
+    expect(refreshNodes).toHaveBeenCalledOnce()
+    const sections = wrapper.findAll('section').map((s) => s.text())
+    const offline = sections.find((s) => s.startsWith('Offline'))!
+    expect(offline).toContain('Sample offline node')
+    expect(offline).not.toContain('Sample connected node')
+    expect(sections.find((s) => s.startsWith('Not checked'))).toContain('Sample connected node')
+    wrapper.unmount()
+  })
   it('reconnects a node without opening or restarting work', async () => {
     const row: AttentionRow = {
       ...rows[0],
       reference: { kind: 'node', registrationId: 'sample-node', nodeId: 'node-1', sessionId: '' },
+      offline: true,
       reasons: [{ kind: 'delivery', id: 'connection-1', at: 0, text: 'Connection lost' }],
     }
     const source = sourceOf([row], {

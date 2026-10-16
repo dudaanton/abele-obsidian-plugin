@@ -76,7 +76,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import ObsidianModal from './obsidian/Modal.vue'
 import Card from './obsidian/Card.vue'
 import StatusDot from './obsidian/StatusDot.vue'
@@ -99,9 +99,11 @@ const actionLabel = (reason: AttentionReason) =>
 const unavailable = (row: AttentionRow) => row.reference.kind === 'node' && !row.reference.sessionId
 const props = defineProps<{
   source?: Pick<AgentsService, 'rows' | 'incomplete' | 'status' | 'open' | 'markSeen'> &
-    Partial<Pick<AgentsService, 'reconnect' | 'markAllSeen'>>
+    Partial<Pick<AgentsService, 'reconnect' | 'markAllSeen' | 'refreshNodes'>>
 }>()
 const source = props.source ?? AgentsService.getInstance()
+// What a node's sessions are doing is asked when the list is looked at, not only on its timer.
+onMounted(() => void source.refreshNodes?.().catch(() => {}))
 const emit = defineEmits<{ (e: 'close'): void }>()
 const query = ref(''),
   failure = ref(''),
@@ -120,6 +122,9 @@ const sections = computed(() => {
       .toLocaleLowerCase()
       .includes(query.value.toLocaleLowerCase())
   )
+  const rest = rows.filter(
+    (r) => !r.reasons.some(needsAttention) && !r.reasons.some((s) => s.kind === 'running')
+  )
   return [
     { title: 'Waiting for you', rows: rows.filter((r) => r.reasons.some(needsAttention)) },
     {
@@ -128,12 +133,9 @@ const sections = computed(() => {
         (r) => !r.reasons.some(needsAttention) && r.reasons.some((s) => s.kind === 'running')
       ),
     },
-    {
-      title: 'Offline',
-      rows: rows.filter(
-        (r) => !r.reasons.some(needsAttention) && !r.reasons.some((s) => s.kind === 'running')
-      ),
-    },
+    { title: 'Offline', rows: rest.filter((r) => r.offline) },
+    // Connected, but not confirmed: a node whose list failed, a decision still being saved.
+    { title: 'Not checked', rows: rest.filter((r) => !r.offline) },
   ]
 })
 const primary = (row: AttentionRow) =>

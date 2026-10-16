@@ -74,14 +74,8 @@ export function agentsFixture(state: AgentsFixtureState = 'mixed') {
     title: 'Sample node',
     agent: 'Node',
     source: 'Node · Sample node',
-    reasons: [
-      {
-        kind: 'delivery',
-        id: 'sample-connection',
-        at: 0,
-        text: "Can't load this node's sessions right now",
-      },
-    ],
+    offline: true,
+    reasons: [{ kind: 'delivery', id: 'sample-connection', at: 0, text: 'Offline' }],
   }
   const rows =
     state === 'empty'

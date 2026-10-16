@@ -41,6 +41,8 @@ export interface AttentionRow {
   reasons: AttentionReason[]
   updatedAt?: number
   uncertain?: boolean
+  /** A node whose connection is down: the only thing the list calls offline. */
+  offline?: boolean
 }
 export const needsAttention = (r: AttentionReason): boolean =>
   ['approval', 'question', 'error', 'interrupted'].includes(r.kind)

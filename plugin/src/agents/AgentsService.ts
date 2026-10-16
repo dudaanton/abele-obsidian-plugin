@@ -10,6 +10,7 @@ import { CommentService } from '@/ai/CommentService'
 import type { ChatSession } from '@/ai/ChatSession'
 import { parseChatMetadata, serializeMetadata } from '@/ai/ChatLog'
 import { AttentionReader } from './AttentionReader'
+import { NodeAttentionWatch } from './NodeAttentionWatch'
 import { chatCopyPath } from '@/ai/chatCopy'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import type { ChatMetadata } from '@/ai/types'
@@ -60,12 +61,16 @@ export class AgentsService {
   readonly rows = shallowRef<AttentionRow[]>([])
   private readonly localIncomplete = ref(true)
   private readonly updating = ref(false)
-  private readonly nodes = shallowRef<{ id: string; label: string; expectedNodeId: string }[]>([])
+  private readonly nodesIncomplete = ref(false)
+  private readonly nodeWatch = new NodeAttentionWatch(() => {
+    this.nodesIncomplete.value = this.nodeWatch.incomplete
+    this.publish()
+  })
   readonly incomplete = computed(
     () =>
       this.localIncomplete.value ||
       this.updating.value ||
-      this.nodes.value.length > 0 ||
+      this.nodesIncomplete.value ||
       this.rows.value.some((row) => row.uncertain)
   )
   readonly status = ref('Updating…')
@@ -352,27 +357,7 @@ export class AgentsService {
       liveRows.set(row.key, row)
     }
     const rows = new Map(this.files)
-    for (const node of this.nodes.value)
-      rows.set(`node-coverage:${node.id}`, {
-        key: `node-coverage:${node.id}`,
-        reference: {
-          kind: 'node',
-          registrationId: node.id,
-          nodeId: node.expectedNodeId,
-          sessionId: '',
-        },
-        title: node.label,
-        agent: 'Node',
-        source: `Node · ${node.label}`,
-        reasons: [
-          {
-            kind: 'delivery',
-            id: `node-coverage:${node.id}`,
-            at: 0,
-            text: "Can't load this node's sessions right now",
-          },
-        ],
-      })
+    for (const row of this.nodeWatch.rows()) rows.set(row.key, row)
     for (const session of this.live.keys()) {
       const row = liveRows.get(session.currentChatFile.value?.path ?? `live:${session.id}`)
       if (!row) continue
@@ -539,7 +524,12 @@ export class AgentsService {
     this.publish()
     await this.refresh(false)
   }
+  /** Ask the connected nodes again, without rereading the vault's chats. */
+  refreshNodes(): Promise<void> {
+    return this.nodeWatch.refresh()
+  }
   refresh(force = true): Promise<void> {
+    if (force) void this.nodeWatch.refresh()
     if (this.refreshing !== undefined) return this.refreshing
     const scan =
       this.drainingTask !== undefined
@@ -686,7 +676,9 @@ export class AgentsService {
   }
 
   setNodes(nodes: { id: string; label: string; expectedNodeId: string }[]): void {
-    this.nodes.value = nodes
+    if (this.disposed) return
+    this.nodeWatch.set(nodes)
+    this.nodesIncomplete.value = this.nodeWatch.incomplete
     this.publish()
   }
   saved(path: string, metadata: ChatMetadata): void {
@@ -812,7 +804,19 @@ export class AgentsService {
     options: { focusComposer?: boolean } = {}
   ): Promise<boolean> {
     const chats = ChatService.getInstance()
-    if (row.reference.kind !== 'local') return false
+    if (row.reference.kind === 'node') {
+      const { registrationId, nodeId, sessionId } = row.reference
+      if (!sessionId) return false
+      await chats.openNodeSession({
+        kind: 'node-session',
+        nodeId,
+        registrationId,
+        sessionId,
+        title: row.title,
+      })
+      await chats.revealSidebar({ focus: false })
+      return true
+    }
     const ref = row.reference
     if (!ref.path && ref.sessionId) {
       const session = chats.getSession(ref.sessionId)
@@ -925,6 +929,7 @@ export class AgentsService {
   private destroy(): void {
     this.disposed = true
     this.reader.destroy()
+    this.nodeWatch.destroy()
     if (this.changeTimer !== undefined) window.clearTimeout(this.changeTimer)
     this.pending.clear()
     this.updating.value = false
