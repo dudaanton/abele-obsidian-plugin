@@ -6,6 +6,25 @@ import { externalFileFixture } from './externalFileFollowupFixture'
 import { mountExternalEmbed, externalEmbedsInEditor } from '@/sync/external/embed'
 import { routeExternalFiles, routeExternalLinks } from '@/sync/external/opening'
 
+it('marks an owned reading embed loaded while its original is intentionally absent', async () => {
+  const s = await externalFileFixture('Media/sample.pdf')
+  try {
+    await s.port.evict(s.path)
+    const el = document.createElement('span')
+    el.className = 'internal-embed'
+    el.setAttribute('src', s.path)
+    const off = mountExternalEmbed(s.app as never, el, '', s.manager)
+    await flushPromises()
+    expect(el.classList.contains('is-loaded')).toBe(true)
+    expect(el.querySelector('.abele-external-embed')).not.toBeNull()
+    expect(await s.app.vault.adapter.exists(s.path)).toBe(false)
+    off()
+    expect(el.classList.contains('is-loaded')).toBe(false)
+  } finally {
+    s.close()
+  }
+})
+
 it('does not let a late native render replace a reused editor widget', async () => {
   const s = await externalFileFixture()
   const source = document.createElement('span')

@@ -42,6 +42,9 @@ export function mountExternalEmbed(
   const component = owner ?? new MarkdownRenderChild(el)
   if (!owner) component.load()
   const original = Array.from(el.childNodes)
+  const wasLoaded = el.classList.contains('is-loaded')
+  // The replacement is the completed embed; native loading cannot finish for an absent file.
+  el.classList.add('is-loaded')
   const raw = el.getAttribute('src') ?? path
   const width = el.getAttribute('width')
   const height = el.getAttribute('height')
@@ -110,6 +113,7 @@ export function mountExternalEmbed(
     if (!native) {
       mounted.unmount()
       el.replaceChildren(...original)
+      if (!wasLoaded) el.classList.remove('is-loaded')
     }
     claimed.delete(el)
     if (!owner) component.unload()

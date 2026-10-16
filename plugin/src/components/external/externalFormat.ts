@@ -5,9 +5,9 @@ import type { ExternalFile } from './types'
 export function externalIcon(file: Pick<ExternalFile, 'mime' | 'name'>): string {
   const [kind, sub] = file.mime.split('/')
   if (kind === 'image') return 'file-image'
-  if (kind === 'audio') return 'file-volume-2'
+  if (kind === 'audio') return 'file-audio'
   if (kind === 'video') return 'file-video'
-  if (sub === 'pdf' || sub === 'epub+zip') return 'file-type'
+  if (sub === 'pdf' || sub === 'epub+zip') return 'file'
   if (sub === 'zip') return 'file-archive'
   if (kind === 'text') return 'file-text'
   return 'file'
