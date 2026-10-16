@@ -93,8 +93,9 @@ it('compares the current files of a branch with another version, committed and u
       await client.setRepositorySettings({project_id:project.project_id,external_read:false,default_branch:'main'});
       const workspace=(await client.repository.worktrees({project_id:project.project_id})).entries.find(w=>w.kind==='root');
       window.__sampleCompareProject=project.project_id;window.__sampleCompareWorkspace=workspace.worktree_id;
-      await api.openNodeRepository(node.id,project.project_id,workspace.worktree_id);
-      await until(()=>tab()?.querySelector('.abele-github-home')?.textContent.includes('draft.txt'),'repository home');
+      // A node tab has no home of its own: its top level is the folder's current files.
+      await api.openNodeRepository(node.id,project.project_id,workspace.worktree_id,{location:{kind:'home'}});
+      await until(()=>tab()?.querySelector('.abele-github-folder')?.textContent.includes('draft.txt'),'folder top level');
       return JSON.stringify({node:node.id,project:project.project_id,workspace:workspace.worktree_id});
     })()`)
     const ids = JSON.parse(registration)
@@ -145,17 +146,23 @@ it('compares the current files of a branch with another version, committed and u
       'draft.txt': '+1−0',
     })
     expect(shown.total).toBe('5fileschanged+3−3')
-    // A base chosen in a node tab opens the comparison; the tab's own file tree stays the files.
+    // A base chosen in a node tab opens the comparison; the files stay the current files, in the
+    // tab's top level and in the node panel, which is where a node's file tree lives now.
     const tree = await evalLong(`(async()=>{${prelude}
+      await api.openNodeRepository(window.__sampleCompareNode,window.__sampleCompareProject,window.__sampleCompareWorkspace,{location:{kind:'home'}});
+      const folder=()=>app.workspace.getLeavesOfType('abele-github').map(l=>l.view.contentEl).find(el=>el.querySelector('.abele-github-folder')?.textContent.includes('draft.txt')&&el.getBoundingClientRect().width);
+      await until(folder,'folder again');
+      const top=folder().querySelector('.abele-github-folder').textContent;
+      if(top.includes('later'))throw Error('The tab shows the base, not the current files: '+top.slice(0,300));
       await api.openNodeRepository(window.__sampleCompareNode,window.__sampleCompareProject,window.__sampleCompareWorkspace);
-      const home=()=>app.workspace.getLeavesOfType('abele-github').map(l=>l.view.contentEl).find(el=>el.querySelector('.abele-github-home')?.textContent.includes('draft.txt')&&el.getBoundingClientRect().width);
-      await until(home,'home again');
-      const root=home();
-      if(!root.querySelector('.abele-github-tree'))root.querySelector('[aria-label="Show the repository\\'s files beside this"]').click();
-      await until(()=>root.querySelector('.abele-github-tree [role="tree"]')?.textContent.includes('README.md')||root.querySelector('.abele-github-tree__error'),'file tree');
-      if(root.querySelector('.abele-github-tree__error'))throw Error('File tree failed: '+root.querySelector('.abele-github-tree__error').textContent);
-      root.querySelector('[aria-label="Close the file tree"]')?.click();
-      return root.querySelector('.abele-github-tree')?.textContent??'closed';
+      const panel=()=>document.querySelector('.abele-node-sidebar');
+      const files=()=>panel()?.querySelector('.abele-node-modes [role="tab"][aria-label^="Files"]');
+      await until(files,'node panel');
+      if(files().getAttribute('aria-selected')!=='true')files().click();
+      const paths=()=>[...panel().querySelectorAll('.tree-item-self[data-path]')].map(r=>r.dataset.path);
+      await until(()=>paths().includes('README.md')&&paths().includes('draft.txt'),'panel files');
+      if(paths().some(p=>p.startsWith('later')))throw Error('The panel shows the base, not the current files: '+paths().join(', '));
+      return top+' '+panel().textContent;
     })()`)
     expect(tree).not.toMatch(/stale/i)
     // The same comparison on a phone.
