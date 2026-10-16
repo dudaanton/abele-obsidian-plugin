@@ -221,6 +221,18 @@ it('attaches to a program of the chat’s folder, stops it at a breakpoint and l
     await until(()=>api.DebuggerService.instance.active.value?.controller.session.status==='paused','stopped at the breakpoint',600);
     const paused=statusLabel();
     await shot('2026-10-16-debug-attach-attached-desktop');
+    const active=api.DebuggerService.instance.active.value.controller;
+    const sourceId=active.snapshot.breakpoints[0].source_id;
+    const marked=document.querySelector('.workspace-leaf.mod-active button.abele-debug-source__point[aria-label^="Stops here"]');
+    if(!marked)throw Error('Missing verified gutter mark');
+    press(marked);
+    await until(()=>active.snapshot.breakpoints.length===0&&marginAt(3),'breakpoint removed by second click');
+    await active.command('continue');
+    await until(()=>active.session.status==='running','continued without breakpoint');
+    const epoch=active.snapshot.stop_epoch;
+    await wait(1200);
+    if(active.session.status!=='running'||active.snapshot.stop_epoch!==epoch)throw Error('Removed breakpoint stopped the program');
+    if(active.snapshot.breakpoints.some(b=>b.source_id===sourceId))throw Error('Breakpoint reappeared');
     press(detachButton);
     await until(()=>api.DebuggerService.instance.active.value?.controller.session.status==='exited','detached',600);
     const after=statusLabel();

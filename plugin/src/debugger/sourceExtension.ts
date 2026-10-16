@@ -86,10 +86,14 @@ export function mountDebugSource(
           stale: !model?.current,
           onSelection: selection,
           onBreakpoint: (line: number) => {
-            if (binding && matched)
-              void binding.controller
-                .toggleBreakpoint(context.sourceId, line)
-                .catch((e) => binding.fail(e))
+            if (binding && matched) {
+              const point = trace?.pointAt(context.sourceId, line)
+              void (
+                point && trace
+                  ? trace.removePoint(point.id)
+                  : binding.controller.toggleBreakpoint(context.sourceId, line)
+              ).catch((e) => binding.fail(e))
+            }
           },
           onEditPoint: (line: number) => {
             if (trace) editing.value = line

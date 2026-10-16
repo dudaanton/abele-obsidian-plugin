@@ -6,6 +6,90 @@ import {
 } from '@abele/node-protocol'
 import { DebuggerController, debuggerKey, receiptMessage } from '@/debugger/DebuggerController'
 
+it('removes all breakpoints displayed on a relocated line', async () => {
+  const { model, command } = fixture()
+  model.observe({
+    observation: 'current',
+    snapshot: snapshot({
+      breakpoints: [
+        {
+          breakpoint_id: 'sample-first',
+          source_id: 'sample-source',
+          line: 6,
+          resolved_line: 7,
+          resolved_column: null,
+          message: null,
+          status: 'relocated',
+        },
+        {
+          breakpoint_id: 'sample-second',
+          source_id: 'sample-source',
+          line: 5,
+          resolved_line: 7,
+          resolved_column: null,
+          message: null,
+          status: 'relocated',
+        },
+      ],
+    }),
+  })
+  await model.toggleBreakpoint('sample-source', 7)
+  expect(command).toHaveBeenLastCalledWith(
+    'breakpoints.patch',
+    expect.objectContaining({
+      upsert: [],
+      remove: ['sample-first', 'sample-second'],
+    })
+  )
+})
+
+it('toggles against the confirmed set when clicks arrive before verification', async () => {
+  const { model, command } = fixture()
+  command.mockImplementationOnce(async () =>
+    receipt('completed', {
+      snapshot: snapshot({
+        state_revision: 5,
+        breakpoint_revision: 3,
+        event_seq: 9,
+        breakpoints: [
+          {
+            breakpoint_id: 'sample-first',
+            source_id: 'sample-source',
+            line: 7,
+            resolved_line: 7,
+            resolved_column: null,
+            message: null,
+            status: 'verified',
+          },
+        ],
+      }),
+    })
+  )
+  command.mockImplementationOnce(async () =>
+    receipt('completed', {
+      snapshot: snapshot({
+        state_revision: 6,
+        breakpoint_revision: 4,
+        event_seq: 10,
+      }),
+    })
+  )
+  await Promise.all([
+    model.toggleBreakpoint('sample-source', 7),
+    model.toggleBreakpoint('sample-source', 7),
+  ])
+  expect(command).toHaveBeenLastCalledWith(
+    'breakpoints.patch',
+    expect.objectContaining({
+      expected_state_revision: 5,
+      expected_breakpoint_revision: 3,
+      upsert: [],
+      remove: ['sample-first'],
+    })
+  )
+  expect(model.session.breakpoints).toEqual([])
+})
+
 export function snapshot(patch = {}) {
   return DebuggerSnapshotSchema.parse({
     version: 'debugger.v1',

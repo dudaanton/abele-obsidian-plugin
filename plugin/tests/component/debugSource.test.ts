@@ -14,6 +14,28 @@ vi.mock('@/github/codeViewer', () => ({
 }))
 beforeEach(() => useVault([]))
 
+it.each(['stop', 'record'] as const)('toggles a %s off with one mark per line', async (kind) => {
+  const w = mount(DebugSource, {
+    props: {
+      text: 'sample',
+      path: 'sample.ts',
+      breakpoints: [{ file: 'sample.ts', line: 1, state: 'set', kind }],
+    },
+  })
+  try {
+    await nextTick()
+    const marks = w.findAll('button.abele-debug-source__point')
+    expect(marks).toHaveLength(1)
+    await marks[0]!.trigger('click')
+    expect(w.emitted('breakpoint')).toEqual([[1]])
+    expect(w.emitted('edit-point')).toBeUndefined()
+    await w.setProps({ breakpoints: [] })
+    expect(w.findAll('.abele-breakpoint-mark_set')).toHaveLength(0)
+  } finally {
+    w.unmount()
+  }
+})
+
 it('uses an inert hidden spacer while keeping actual stale breakpoint controls disabled', async () => {
   const w = mount(DebugSource, {
     props: { text: 'sample', path: 'sample.ts', breakpoints: [], stale: true },

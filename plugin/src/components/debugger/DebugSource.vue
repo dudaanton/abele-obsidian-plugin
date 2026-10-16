@@ -22,7 +22,7 @@
 // adds: a margin before the line numbers where a press sets or removes a breakpoint, and the line
 // the program stands on, marked across the whole width. The marks are the panel's: a red disc,
 // a hollow ring, a struck ring, a diamond for a record point. A right-click on the margin offers
-// both kinds; a record point opens its setup under its line, and after a run says at the end of
+// both kinds; a record point toggles off too, and after a run says at the end of
 // its line, faintly, what it took the last time. Selected code gets the selection bar: ask, add
 // to the chat, note.
 import { nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
@@ -115,12 +115,12 @@ class Mark extends GutterMarker {
       ? `${(record ? recordWords : words)[this.point.state]}${this.point.reason ? `: ${this.point.reason}` : ''}`
       : ''
     const label = this.point
-      ? `${said} · ${record ? 'press to set it up' : 'press to remove'} · right-click for more`
+      ? `${said} · press to remove · right-click for more`
       : `Stop at line ${this.line} · right-click for a record point`
     el.setAttribute('aria-label', label)
     setTooltip(el, label)
     const line = this.line
-    el.onclick = () => (record ? emit('edit-point', line) : emit('breakpoint', line))
+    el.onclick = () => emit('breakpoint', line)
     el.oncontextmenu = (e) => {
       e.preventDefault()
       emit('margin-menu', line, e)
@@ -300,7 +300,10 @@ onBeforeUnmount(() => viewer?.destroy())
 // The line the program stands on: Obsidian's own highlight across the whole line, as a marked
 // passage in a note. No edge down its side: a stripe there is the one mark these screens never use.
 .abele-debug-source .cm-content .cm-line.abele-debug-source__line_here {
-  background-color: var(--text-highlight-bg, color-mix(in srgb, var(--color-yellow) 35%, transparent));
+  background-color: var(
+    --text-highlight-bg,
+    color-mix(in srgb, var(--color-yellow) 35%, transparent)
+  );
 }
 // What a record point took, after its line: quiet, the size of a line number, pressable.
 .abele-debug-source .abele-debug-source__tail {

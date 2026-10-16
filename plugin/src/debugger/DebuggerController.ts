@@ -535,9 +535,11 @@ export class DebuggerController {
   }
   toggleBreakpoint(sourceId: string, line: number) {
     return this.patchBreakpoints((s) => {
-      const existing = s.breakpoints.find((b) => b.source_id === sourceId && b.line === line)
-      return existing
-        ? { upsert: [], remove: [existing.breakpoint_id] }
+      const existing = s.breakpoints.filter(
+        (b) => b.source_id === sourceId && (b.resolved_line ?? b.line) === line
+      )
+      return existing.length
+        ? { upsert: [], remove: existing.map((b) => b.breakpoint_id) }
         : {
             upsert: [{ breakpoint_id: crypto.randomUUID(), source_id: sourceId, line }],
             remove: [],
@@ -578,7 +580,9 @@ export class DebuggerController {
       remove: string[]
     }
   ) {
-    return this.human(async (invocation) => {
+    return this.human(async () => {
+      // Earlier queued clicks may have confirmed a new set while this click waited.
+      const invocation = this.invocation()
       const s = invocation.snapshot
       const generation = this.serial
       const result = DebuggerReceiptSchema.parse(
