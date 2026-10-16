@@ -5,6 +5,8 @@
  * a valid stream.
  */
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/='
+/** More than any drawing holds: a stream that grows past it is refused rather than followed. */
+const MAX_LENGTH = 64 * 1024 * 1024
 const VALUE = new Map(Array.from(ALPHABET, (c, i) => [c, i]))
 
 export function decompressFromBase64(input: string): string | null {
@@ -38,6 +40,7 @@ export function decompressFromBase64(input: string): string | null {
   dictionary[3] = c
   let w = c
   const result = [c]
+  let size = 1
   for (;;) {
     if (data.index > length) return null
     let code = read(numBits)
@@ -55,6 +58,8 @@ export function decompressFromBase64(input: string): string | null {
     else if (code === dictSize) entry = w + w.charAt(0)
     else return null
     result.push(entry)
+    size += entry.length
+    if (size > MAX_LENGTH) return null
     dictionary[dictSize++] = w + entry.charAt(0)
     enlargeIn--
     w = entry

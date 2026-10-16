@@ -101,7 +101,9 @@ export async function migrateOne(
       source,
       resolve: (link) => vault.resolve(link, source),
       picturePath: (fileId, ext) => {
-        const path = freePath(dir, `${base} ${fileId.slice(0, 8)}`, ext, taken)
+        // The id is the drawing's own text: only letters and digits of it reach a name.
+        const tag = fileId.replace(/[^A-Za-z0-9]/g, '').slice(0, 8) || 'picture'
+        const path = freePath(dir, `${base} ${tag}`, ext, taken)
         reserved.add(path)
         return path
       },

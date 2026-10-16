@@ -568,6 +568,15 @@ describe('migrating drawings', () => {
       file: 'Board abcdef12.png',
     })
   })
+  it('keeps a picture id that names folders out of the picture’s path', async () => {
+    const json = sceneJson(
+      [el({ id: 'odd-pic', type: 'image', x: 0, y: 0, fileId: '../../up/../x' })],
+      { '../../up/../x': { mimeType: 'image/png', dataURL: 'data:image/png;base64,AAAA' } }
+    )
+    const vault = memoryVault({ 'Art/Board.excalidraw': json })
+    await migrateOne(vault, 'Art/Board.excalidraw')
+    expect([...vault.binary.keys()]).toEqual(['Art/Board upx.png'])
+  })
   it('goes through the whole vault and reports each drawing', async () => {
     const vault = memoryVault({
       'One.excalidraw.md': noteText(sceneJson(sampleElements())),

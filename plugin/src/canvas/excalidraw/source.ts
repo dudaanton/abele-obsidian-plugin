@@ -60,9 +60,17 @@ function section(text: string, name: string): string[] {
 function textElements(text: string): Map<string, string> {
   const out = new Map<string, string>()
   // One block per text, ending with its ` ^id`; a block may run over several lines.
-  const body = section(text, 'Text Elements').join('\n')
-  for (const m of body.matchAll(/([\s\S]*?) \^([\w-]{4,})\s*(?:\n\n|\n?$)/g))
-    out.set(m[2], m[1].replace(/^\n+/, ''))
+  let block: string[] = []
+  for (const line of section(text, 'Text Elements')) {
+    const end = / \^([\w-]{4,})$/.exec(line)
+    if (!end) {
+      if (line || block.length) block.push(line)
+      continue
+    }
+    block.push(line.slice(0, end.index))
+    out.set(end[1], block.join('\n'))
+    block = []
+  }
   return out
 }
 
