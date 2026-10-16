@@ -1,7 +1,9 @@
 # Node browser packages
 
 These four exact `0.0.0` npm tarballs contain the built browser packages from
-the released AbeleNode tag `v0.4.10` (revision `43bc135`), including the repository and plain
+the released AbeleNode tag `v0.4.14` (revision `a328362`), including the owner git writes
+(`repository_git_write_v1`: stage, unstage, discard, commit, update from base, push with an
+optional lease, fetch, create branch, remote info), the repository and plain
 folder change streams (`repository_changes_v1`, `workspace_changes_v1`), the recorded-run
 `trace.v1` methods, paired WSS,
 foreground pairing, node-path resources and execution targets, pi sessions, durable

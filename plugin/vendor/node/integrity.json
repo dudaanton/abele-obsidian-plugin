@@ -67,10 +67,10 @@
     "id": "@abele/node-protocol@0.0.0",
     "name": "@abele/node-protocol",
     "version": "0.0.0",
-    "size": 62430,
-    "unpackedSize": 642806,
-    "shasum": "42c3010444948201cebfd75d4636c003d92d545d",
-    "integrity": "sha512-RSrH5zbt4rVEGTV3GCiQBk2EO4tTtfUwFnWAFiUYBquVjz98cEt4Ih/Vj3rMur19Es+qIdPd5bURCLYdYGXnjQ==",
+    "size": 77934,
+    "unpackedSize": 799681,
+    "shasum": "15b56f9bb9984f5d7f3aa0571a3ef2af2a943b06",
+    "integrity": "sha512-N5jZNX27HycIWqs1Ggz8SY6v+E+qJddswX3Ew17KdVl48gtVyYEE300DhKKWVkjyezJE4O78QoEwymEb0IJMiw==",
     "filename": "abele-node-protocol-0.0.0.tgz",
     "files": [
       {
@@ -134,18 +134,33 @@
         "mode": 420
       },
       {
+        "path": "dist/http.d.ts",
+        "size": 38343,
+        "mode": 420
+      },
+      {
+        "path": "dist/http.js",
+        "size": 8480,
+        "mode": 420
+      },
+      {
+        "path": "dist/http.js.map",
+        "size": 8791,
+        "mode": 420
+      },
+      {
         "path": "dist/index.d.ts",
-        "size": 1837,
+        "size": 1864,
         "mode": 420
       },
       {
         "path": "dist/index.js",
-        "size": 872,
+        "size": 899,
         "mode": 420
       },
       {
         "path": "dist/index.js.map",
-        "size": 764,
+        "size": 785,
         "mode": 420
       },
       {
@@ -209,6 +224,21 @@
         "mode": 420
       },
       {
+        "path": "dist/repository-git.d.ts",
+        "size": 70640,
+        "mode": 420
+      },
+      {
+        "path": "dist/repository-git.js",
+        "size": 11979,
+        "mode": 420
+      },
+      {
+        "path": "dist/repository-git.js.map",
+        "size": 10320,
+        "mode": 420
+      },
+      {
         "path": "dist/repository.d.ts",
         "size": 71723,
         "mode": 420
@@ -240,32 +270,32 @@
       },
       {
         "path": "dist/schemas.d.ts",
-        "size": 80152,
+        "size": 86864,
         "mode": 420
       },
       {
         "path": "dist/schemas.js",
-        "size": 11286,
+        "size": 11483,
         "mode": 420
       },
       {
         "path": "dist/schemas.js.map",
-        "size": 11721,
+        "size": 11837,
         "mode": 420
       },
       {
         "path": "dist/trace.d.ts",
-        "size": 35510,
+        "size": 36396,
         "mode": 420
       },
       {
         "path": "dist/trace.js",
-        "size": 7848,
+        "size": 8056,
         "mode": 420
       },
       {
         "path": "dist/trace.js.map",
-        "size": 10148,
+        "size": 10276,
         "mode": 420
       },
       {
@@ -289,7 +319,7 @@
         "mode": 420
       }
     ],
-    "entryCount": 43,
+    "entryCount": 49,
     "bundled": []
   },
   {
@@ -330,10 +360,10 @@
     "id": "@abele/node-client@0.0.0",
     "name": "@abele/node-client",
     "version": "0.0.0",
-    "size": 38856,
-    "unpackedSize": 210155,
-    "shasum": "09dfc70db0c8742fd75ac80fe8b0ab5c00397042",
-    "integrity": "sha512-b8i0pnWkth8P33lVVoDLuvm2IwgxlcYIWCLAjICVWyrASksFX44AdCjG1CtidJqq9l/VR9GaTs1a+XOTdIBK6g==",
+    "size": 41180,
+    "unpackedSize": 226962,
+    "shasum": "16b1af7ea1b349e7fd20115177cb201bd0fab1eb",
+    "integrity": "sha512-50tOV/rDLLYRWFh+96QweMzEfhPHBJjyR+PYk454+rw9b/DnWXklautXJicKya13vjfXCokWsukKjbja8G5gDQ==",
     "filename": "abele-node-client-0.0.0.tgz",
     "files": [
       {
@@ -358,12 +388,12 @@
       },
       {
         "path": "dist/index.js",
-        "size": 24985,
+        "size": 25007,
         "mode": 420
       },
       {
         "path": "dist/index.js.map",
-        "size": 24146,
+        "size": 24166,
         "mode": 420
       },
       {
@@ -427,23 +457,38 @@
         "mode": 420
       },
       {
+        "path": "dist/repository-git.d.ts",
+        "size": 11388,
+        "mode": 420
+      },
+      {
+        "path": "dist/repository-git.js",
+        "size": 2742,
+        "mode": 420
+      },
+      {
+        "path": "dist/repository-git.js.map",
+        "size": 2019,
+        "mode": 420
+      },
+      {
         "path": "dist/repository.d.ts",
-        "size": 8040,
+        "size": 8198,
         "mode": 420
       },
       {
         "path": "dist/repository.js",
-        "size": 4619,
+        "size": 4809,
         "mode": 420
       },
       {
         "path": "dist/repository.js.map",
-        "size": 4202,
+        "size": 4387,
         "mode": 420
       },
       {
         "path": "dist/trace.d.ts",
-        "size": 5076,
+        "size": 5159,
         "mode": 420
       },
       {
@@ -462,7 +507,7 @@
         "mode": 420
       }
     ],
-    "entryCount": 25,
+    "entryCount": 28,
     "bundled": []
   }
 ]
