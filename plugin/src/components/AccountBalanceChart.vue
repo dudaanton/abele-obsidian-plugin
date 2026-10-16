@@ -12,7 +12,12 @@
       </div>
     </div>
     <PeriodSelector v-model:start="periodStart" v-model:end="periodEnd" />
-    <Chart :source="chartData" :render="renderChart" class="abele-account-balance-chart__chart" />
+    <Chart
+      :source="chartData"
+      :render="renderChart"
+      :created="installCurrencyLegendToggle"
+      class="abele-account-balance-chart__chart"
+    />
   </div>
 </template>
 
@@ -32,6 +37,7 @@ import dayjs from 'dayjs'
 import { toRaw, unref } from 'vue'
 import { formatAmount } from '@/helpers/moneyFormat'
 import { isCategoryType, financeDirections } from '@/finance/accountTypes'
+import { installCurrencyLegendToggle } from '@/finance/currencyLegendToggle'
 
 const props = defineProps<{
   accountPath: string
@@ -216,6 +222,9 @@ function renderChart(chart: EChartsType) {
 
   const hasLegend = seriesList.length > 1
   const isBar = chartType === 'bar'
+  const selected = (
+    chart.getOption()?.legend as { selected?: Record<string, boolean> }[] | undefined
+  )?.[0]?.selected
 
   chart.setOption(
     {
@@ -225,7 +234,13 @@ function renderChart(chart: EChartsType) {
         valueFormatter: (v: number) => formatAmount(v),
       },
       legend: hasLegend
-        ? { data: seriesList.map((s) => s.name), bottom: 0, type: 'scroll' }
+        ? {
+            data: seriesList.map((s) => s.name),
+            selected,
+            bottom: 0,
+            type: 'scroll',
+            triggerEvent: true,
+          }
         : undefined,
       grid: {
         left: 12,

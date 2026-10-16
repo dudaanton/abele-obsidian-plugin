@@ -6,7 +6,6 @@
     :style="{ height: `${config?.height || 300}px` }"
     :source="built.option"
     :render="draw"
-    wait-for-width
   />
 </template>
 

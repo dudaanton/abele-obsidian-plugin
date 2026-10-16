@@ -46,6 +46,8 @@ vi.mock('@/bases/echarts', () => ({
       clear: vi.fn(),
       resize: vi.fn(),
       isDisposed: () => false,
+      off: vi.fn(),
+      getDom: () => document.createElement('div'),
     }
     charts.instances.push(chart)
     return chart
@@ -99,6 +101,8 @@ let wrapper: VueWrapper | undefined
 let pinned: string
 const originalStubs = mountConfig.global.stubs
 beforeEach(() => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(300)
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(200)
   mountConfig.global.stubs = {
     ...originalStubs,
     ListSectionHeader: false,
@@ -127,6 +131,7 @@ afterEach(() => {
   VaultWatcherWrapper.destroy()
   AbeleConfig.getInstance().pinnedCurrencies = pinned
   vi.clearAllMocks()
+  vi.restoreAllMocks()
   vi.useRealTimers()
   vi.unstubAllEnvs()
   mountConfig.global.stubs = originalStubs
@@ -370,6 +375,7 @@ describe('finance sidebar — period money and charts', () => {
   it('feeds signed net worth by pinned currency to the chart and responds to index rebuilds', async () => {
     await sidebar()
     await chartTab('networth')
+    expect(option().legend.triggerEvent).toBe(true)
     expect(
       option().series.map((s: { name: string; data: number[] }) => [
         s.name,

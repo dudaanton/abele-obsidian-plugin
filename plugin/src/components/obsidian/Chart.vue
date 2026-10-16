@@ -9,49 +9,62 @@ const props = withDefaults(
     active?: boolean
     source: unknown
     render: (chart: EChartsType) => void
-    created?: (chart: EChartsType) => void
-    /**
-     * Starts the chart only once its element has a width — a block in a collapsed callout or a
-     * note not yet laid out — instead of drawing it at zero size and resizing later.
-     */
-    waitForWidth?: boolean
+    created?: (chart: EChartsType) => void | (() => void)
   }>(),
-  { active: true, waitForWidth: false }
+  { active: true }
 )
 const element = ref<HTMLElement | null>(null)
 let chart: EChartsType | null = null
+let cleanupCreated: (() => void) | void
 let observer: ResizeObserver | null = null
-let sized = false
+let frame: number | null = null
 let gone = false
+const chartWindow = () => element.value?.ownerDocument.defaultView ?? window
+function scheduleResize() {
+  if (gone || frame !== null) return
+  frame = chartWindow().requestAnimationFrame(() => {
+    frame = null
+    render()
+  })
+}
 function observe(el: HTMLElement) {
   if (observer) return
-  observer = new ResizeObserver((entries) => {
-    if ((entries[0]?.contentRect.width ?? 0) > 0) sized = true
-    if (props.active === false) return
-    if (chart) chart.resize()
-    else if (sized) render()
-  })
+  observer = new ResizeObserver(scheduleResize)
   observer.observe(el)
 }
 function dispose() {
+  if (frame !== null) chartWindow().cancelAnimationFrame(frame)
+  frame = null
   observer?.disconnect()
   observer = null
+  cleanupCreated?.()
+  cleanupCreated = undefined
   chart?.dispose()
   chart = null
 }
 function render() {
-  if (gone || !element.value || props.active === false) return
+  if (gone || !element.value) return
+  observe(element.value)
+  // Measure now, not from a previous observer entry: a hidden leaf may have changed again.
+  if (props.active === false || element.value.clientWidth <= 1 || element.value.clientHeight <= 1)
+    return
   if (!chart) {
-    if (props.waitForWidth && !sized) return observe(element.value)
     chart = echartsInit(element.value)
-    observe(element.value)
-    props.created?.(chart)
-  }
+    cleanupCreated = props.created?.(chart)
+  } else chart.resize()
   props.render(chart)
 }
 // Drawn inside the mount itself, so a chart mounted with `render()` or `app.mount()` is there
 // (or watching for its width) before the call returns.
-onMounted(render)
+const workspace = GlobalStore.getInstance().app?.workspace
+const layoutRefs: ReturnType<NonNullable<typeof workspace>['on']>[] = []
+onMounted(() => {
+  render()
+  if (workspace) {
+    layoutRefs.push(workspace.on('layout-change', scheduleResize))
+    layoutRefs.push(workspace.on('active-leaf-change', scheduleResize))
+  }
+})
 watch([() => props.source, () => props.active], render, { flush: 'post' })
 watch(
   () => GlobalStore.getInstance().themeVersion.value,
@@ -63,6 +76,7 @@ watch(
 )
 onBeforeUnmount(() => {
   gone = true
+  for (const event of layoutRefs) workspace?.offref(event)
   dispose()
 })
 </script>

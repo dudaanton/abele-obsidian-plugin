@@ -5,6 +5,7 @@ import { escapeHtml } from '@/helpers/escapeHtml'
 import { formatAmount } from '@/helpers/moneyFormat'
 import { DATE_FORMAT } from '@/constants/dates'
 import type { PieItem } from './useFinancePeriodSummary'
+import { installCurrencyLegendToggle } from '@/finance/currencyLegendToggle'
 
 interface FinanceChartOptions {
   pieData: Ref<PieItem[]>
@@ -182,6 +183,7 @@ export function useFinanceCharts(options: FinanceChartOptions) {
     networthChart.on('legendselectchanged', (params: any) => {
       networthLegendSelected.value = { ...params.selected }
     })
+    return installCurrencyLegendToggle(networthChart)
   }
 
   function renderNetworthChart(networthChart: EChartsType) {
@@ -200,6 +202,7 @@ export function useFinanceCharts(options: FinanceChartOptions) {
           valueFormatter: (v: number) => formatAmount(v),
         },
         legend: {
+          triggerEvent: true,
           data: series.map((s) => s.name),
           selected: Object.keys(networthLegendSelected.value).length
             ? networthLegendSelected.value

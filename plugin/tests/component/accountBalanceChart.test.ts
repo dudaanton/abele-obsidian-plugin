@@ -16,6 +16,11 @@ const chart = vi.hoisted(() => ({
   resize: vi.fn(),
   dispose: vi.fn(),
   isDisposed: () => false,
+  on: vi.fn(),
+  off: vi.fn(),
+  getDom: () => document.createElement('div'),
+  getOption: vi.fn(() => undefined as Record<string, unknown> | undefined),
+  dispatchAction: vi.fn(),
 }))
 const init = vi.hoisted(() => vi.fn())
 vi.mock('@/bases/echarts', () => ({
@@ -43,6 +48,9 @@ const tx = (name: string, fm = {}): FakeFileSpec => ({
   },
 })
 beforeEach(() => {
+  // happy-dom has no layout; supply the visible chart's dimensions.
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(300)
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(200)
   vi.stubEnv('TZ', 'Europe/Moscow')
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2024-03-01T00:15:00+03:00'))
@@ -79,6 +87,7 @@ afterEach(() => {
   store.accountsList.value = null
   VaultWatcherWrapper.destroy()
   vi.clearAllMocks()
+  vi.restoreAllMocks()
   vi.useRealTimers()
   vi.unstubAllEnvs()
 })
@@ -106,6 +115,13 @@ async function period(start: string, end: string) {
 }
 
 describe('AccountBalanceChart — data handed to ECharts', () => {
+  it('enables currency legend gestures and retains selection when redrawing', async () => {
+    await show('Food.md')
+    expect(option().legend.triggerEvent).toBe(true)
+    chart.getOption.mockReturnValueOnce({ legend: [{ selected: { EUR: false, USD: true } }] })
+    await period('2024-03-01', '2024-03-01')
+    expect(option().legend.selected).toEqual({ EUR: false, USD: true })
+  })
   it('shows mixed activity as separate income and expense series, not a wallet balance', async () => {
     store.balanceIndex.value!.cleanup()
     store.transactionsList.value!.cleanup()

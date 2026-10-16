@@ -25,6 +25,8 @@ import { echartsInit } from '@/bases/echarts'
 
 /** A resize observer the test fires by hand, with the width the container reached. */
 const observers: Array<{ cb: ResizeObserverCallback; disconnect: ReturnType<typeof vi.fn> }> = []
+let measuredWidth = 0
+let frame: FrameRequestCallback | undefined
 class FakeResizeObserver {
   disconnect = vi.fn()
   constructor(private readonly cb: ResizeObserverCallback) {
@@ -34,8 +36,12 @@ class FakeResizeObserver {
   unobserve() {}
 }
 const fireResize = (width: number) => {
+  measuredWidth = width
   for (const o of observers)
     o.cb([{ contentRect: { width } } as ResizeObserverEntry], {} as ResizeObserver)
+  const cb = frame
+  frame = undefined
+  cb?.(0)
 }
 
 let handler: (source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext) => void
@@ -53,6 +59,17 @@ const ctx = () =>
 const SOURCE = 'type: bar\nxLabels: [a, b]\nseries:\n  - name: s\n    data: [1, 2]'
 
 beforeEach(() => {
+  measuredWidth = 0
+  frame = undefined
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(() => measuredWidth)
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(300)
+  vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+    frame = cb
+    return 1
+  })
+  vi.stubGlobal('cancelAnimationFrame', () => {
+    frame = undefined
+  })
   observers.length = 0
   children = []
   dispose.mockClear()
@@ -65,6 +82,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
 
@@ -75,6 +93,7 @@ describe('a chart block', () => {
     handler(SOURCE, el, ctx())
 
     expect(children).toHaveLength(1)
+    children[0].onunload()
   })
 
   it('disposes its chart and stops observing when that render is unloaded', () => {
