@@ -147,12 +147,12 @@ export const probePrelude = (shots: string): string => `
    * ever for a frame that never comes; a nudge of the window's size makes one, so a capture
    * that has not answered in five seconds is asked again after one.
    */
-  const shoot = async (label, doc = document) => {
+  const shoot = async (label, doc = document, settleMs = 400) => {
     // Settings can live in another renderer. Capture (and nudge) that window, not the vault
     // window whose test hook is running the probe.
     const target = doc === document ? win : doc.defaultView.require('@electron/remote').getCurrentWindow()
     for (const el of doc.querySelectorAll('.modal, .modal-container')) el.style.transition = 'none'
-    await wait(400)
+    if (settleMs) await wait(settleMs)
     let img = null
     for (let attempt = 0; attempt < 3 && !img; attempt++) {
       try {

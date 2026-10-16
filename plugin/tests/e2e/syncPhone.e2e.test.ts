@@ -3,6 +3,10 @@ import { targets } from './helpers/target'
 import { driver, phoneHome } from './helpers/phone'
 import { liveSuite, liveCase } from './helpers/syncLiveCases'
 import { exerciseTrustedWindow } from './helpers/syncTrustedConnection'
+import { sha256 } from '@abele/sync-core'
+import { syncProgressSamples } from './helpers/syncProgressSamples'
+import { syncProgressShotsPrelude } from './helpers/syncProgressShots'
+import { shotDir } from './helpers/shots'
 targets('phone')
 const fixture = liveSuite(false)
 liveCase(
@@ -23,6 +27,63 @@ liveCase(
       a.run(`return svc.registry.records().find(one=>one.id===${JSON.stringify(id)}).scope`)
     ).toMatchObject({ kind: 'folder', path: folder })
     await exerciseTrustedWindow(a, id, 'trusted-connection-phone')
+  },
+  fixture
+)
+liveCase(
+  'syncPhone',
+  'phone shows file and byte progress during a multi-file first pull',
+  [117],
+  async () => {
+    const s = fixture(),
+      a = s.primary,
+      client = s.client()
+    const ops = []
+    for (let i = 0; i < 384; i++) {
+      const bytes = new TextEncoder().encode('Sample ' + i + '\n' + 'Synthetic note.\n'.repeat(512))
+      const sha = await sha256(bytes)
+      await client.putBlob(sha, bytes)
+      ops.push({
+        op: 'create' as const,
+        path: s.root + '/progress/sample-' + i + '.md',
+        sha,
+        size: bytes.length,
+        mtime: 1000,
+      })
+    }
+    await s.commit(ops)
+    a.run(`${syncProgressShotsPrelude(shotDir('abele-sync-progress'), true)}
+      const samples=[],before=new Set(svc.rows.value.map(row=>row.id));let opened=false;window.__phoneProgressSamples=samples;
+      window.__phoneProgressTimer=setInterval(()=>{const root=app.setting.activeTab?.containerEl,added=svc.rows.value.find(row=>!before.has(row.id));
+        if(!opened&&added&&!modal('Connect to a server')&&root){opened=true;connectionRow(root,added.id).click()}
+        const current=(${syncProgressSamples.toString()})([document,settingsDoc()]);samples.push(...current.map(sample=>({...sample,at:Date.now()})));progressShots.sample(current)},50);return true`)
+    const started = Date.now()
+    let samples: { value: number; total: number; text: string; at: number }[] = []
+    let shots: { label: string; path?: string; error?: string }[] = []
+    try {
+      await s.connect()
+    } finally {
+      samples = a.run(
+        `clearInterval(window.__phoneProgressTimer);delete window.__phoneProgressTimer;const samples=window.__phoneProgressSamples||[];delete window.__phoneProgressSamples;return samples`
+      )
+      console.log('[phone pull progress]', { elapsedMs: Date.now() - started, samples })
+      shots = await a.long(
+        'collect phone progress screenshots',
+        `const shots=window.__syncProgressShots;delete window.__syncProgressShots;return shots?await Promise.all(shots.pending):[]`
+      )
+      console.log('[phone progress screenshots]', shots)
+    }
+    const downloading = samples.filter(
+      (sample) =>
+        sample.text.startsWith('Downloading') && sample.value > 0 && sample.value < sample.total
+    )
+    expect(downloading.some((sample) => /files.*\b(?:KB|MB)\b/.test(sample.text))).toBe(true)
+    expect(downloading.at(-1)!.at - downloading[0].at).toBeGreaterThanOrEqual(1000)
+    expect(
+      shots.some((shot) => shot.label === 'phone-downloading-window' && shot.path?.endsWith('.png'))
+    ).toBe(true)
+    expect(a.filesUnder(s.root + '/progress')).toHaveLength(384)
+    expect(a.read(s.root + '/progress/sample-383.md')).toContain('Sample 383')
   },
   fixture
 )

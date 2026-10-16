@@ -2,7 +2,7 @@
 export function syncProgressSamples(documents: Document[]) {
   const samples: { label: string; value: number; total: number; text: string }[] = []
   for (const doc of new Set(documents))
-    for (const bar of doc.querySelectorAll('.abele-sync-window progress')) {
+    for (const bar of Array.from(doc.querySelectorAll('.abele-sync-window progress'))) {
       const label = bar.getAttribute('aria-label')
       if (bar.getBoundingClientRect().width > 0 && /^\d+ of \d+$/.test(label ?? ''))
         samples.push({

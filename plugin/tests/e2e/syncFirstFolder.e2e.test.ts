@@ -4,6 +4,8 @@ import { liveCase, liveSuite } from './helpers/syncLiveCases'
 import { firstFolderFixture } from './helpers/syncFirstFolderFixture'
 import type { SyncDriver } from './helpers/syncDriver'
 import { syncProgressSamples } from './helpers/syncProgressSamples'
+import { syncProgressShotsPrelude } from './helpers/syncProgressShots'
+import { shotDir } from './helpers/shots'
 
 // CALIBRATE BEFORE LANDING: provisional, not a measured budget. Manager records the first
 // live elapsedMs below and sets generous headroom, still below 60 directories * 10 seconds.
@@ -63,9 +65,10 @@ liveCase(
     )
     const token = await a.share(owner, 'Folder: ' + folder)
     // Observe the rendered connection window during Connect, not an internal progress signal.
-    b.run(`const samples=[], before=new Set(svc.rows.value.map(row=>row.id));let opened=false;window.__firstFolderSamples=samples;
+    b.run(`${syncProgressShotsPrelude(shotDir('abele-sync-progress'))}
+      const samples=[], before=new Set(svc.rows.value.map(row=>row.id));let opened=false;window.__firstFolderSamples=samples;
       window.__firstFolderTimer=setInterval(()=>{const root=app.setting.activeTab?.containerEl, added=svc.rows.value.find(row=>!before.has(row.id));if(!opened&&added&&!modal('Connect to a server')&&root){opened=true;connectionRow(root,added.id).click()}
-      samples.push(...(${syncProgressSamples.toString()})([document,settingsDoc()]))},50);return true`)
+      const current=(${syncProgressSamples.toString()})([document,settingsDoc()]);samples.push(...current);progressShots.sample(current)},50);return true`)
     let samples: { label: string; value: number; total: number }[] = []
     const started = Date.now()
     let elapsedMs = 0
@@ -85,6 +88,13 @@ liveCase(
             limitMs: FIRST_FOLDER_PULL_LIMIT_MS,
             samples,
           })
+        )
+        console.log(
+          '[first folder screenshots]',
+          await b.long(
+            'collect first folder screenshots',
+            `const shots=window.__syncProgressShots;delete window.__syncProgressShots;return shots?await Promise.all(shots.pending):[]`
+          )
         )
       }
     }
