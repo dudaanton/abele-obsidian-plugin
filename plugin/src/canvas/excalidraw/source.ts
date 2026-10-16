@@ -74,9 +74,9 @@ function textElements(text: string): Map<string, string> {
   return out
 }
 
-function embeddedFiles(text: string): Map<string, string> {
+function embeddedFiles(text: string, heading = 'Embedded Files'): Map<string, string> {
   const out = new Map<string, string>()
-  for (const line of section(text, 'Embedded Files')) {
+  for (const line of section(text, heading)) {
     const m = /^([\w-]+):\s*(.+?)\s*$/.exec(line)
     if (m) out.set(m[1], m[2])
   }
@@ -122,6 +122,13 @@ export function parseExcalidraw(text: string, path: string): ExcalidrawScene {
     scene.files && typeof scene.files === 'object'
       ? (scene.files as Record<string, ExcalidrawFile>)
       : {}
+  if (isNote) {
+    const links = embeddedFiles(text, 'Element Links')
+    for (const element of elements) {
+      const link = links.get(element.id)
+      if (link) element.link = link
+    }
+  }
   return {
     elements,
     files,

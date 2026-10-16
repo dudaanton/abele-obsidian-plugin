@@ -334,6 +334,18 @@ describe('reading an Excalidraw file', () => {
       parseExcalidraw(json, 'S.excalidraw').elements.length
     )
   })
+  it('reads element links kept in the markdown note', () => {
+    const json = sceneJson([el({ id: 'linked-box', type: 'rectangle', x: 0, y: 0 })])
+    const note = noteText(json, false).replace(
+      '## Embedded Files',
+      '## Element Links\nlinked-box: [[Sample destination]]\n\n## Embedded Files'
+    )
+    const result = convertExcalidraw(parseExcalidraw(note, 'Sample.excalidraw.md'), {
+      source: 'Sample.excalidraw.md',
+      resolve,
+    })
+    expect(result.graph.nodes[0].text).toBe('[[Sample destination]]')
+  })
   it('says why when there is nothing to read', () => {
     expect(() => parseExcalidraw('# Just a note', 'Plain.excalidraw.md')).toThrow(/No drawing data/)
     expect(() => parseExcalidraw('{oops', 'Broken.excalidraw')).toThrow(/not valid JSON/)
