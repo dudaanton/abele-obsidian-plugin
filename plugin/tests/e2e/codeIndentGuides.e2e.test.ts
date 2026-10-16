@@ -83,6 +83,13 @@ describe.skipIf(!available)('code indentation guides', () => {
         width: number
         snapshot: unknown
         offSnapshot: unknown
+        readingToggle: {
+          immediateOff: boolean
+          retained: boolean
+          offWrapped: number[]
+          freshWrapped: number[]
+          onPainted: boolean
+        } | null
         geometry: {
           rows: { line: number; x: number; guides: number[] }[]
           left: number
@@ -101,10 +108,14 @@ describe.skipIf(!available)('code indentation guides', () => {
           const hosts = Object.values(app.plugins.plugins).filter((p) => typeof p.codeIndentGuideDiagnostics === 'function')
           const gates = hosts.map((p) => p.codeIndentGuideDiagnostics(cm?.dom.ownerDocument ?? leaf.view.containerEl.ownerDocument))
           const rows = leaf.view.containerEl.querySelectorAll('.abele-code-line').length
-          state = { raw: app.vault.getConfig('showIndentGuide'), gates, viewPlugin: instance?.guideDiagnostics(), rows }
+          const paintedRows = [...leaf.view.containerEl.querySelectorAll('.abele-code-line')].filter((row) => {
+            const style = row.ownerDocument.defaultView.getComputedStyle(row, '::before')
+            return style.content !== 'none' && style.content !== 'normal' && style.backgroundImage !== 'none'
+          }).length
+          state = { raw: app.vault.getConfig('showIndentGuide'), gates, viewPlugin: instance?.guideDiagnostics(), rows, paintedRows }
           if (state.raw === enabled && gates.length && gates.every((g) => g.gateReturn === enabled) &&
               (${JSON.stringify(mode)} !== 'source' || state.viewPlugin?.internalEnabled === enabled) &&
-              (${JSON.stringify(mode)} !== 'preview' || (enabled ? rows > 0 : rows === 0))) return state
+              (${JSON.stringify(mode)} !== 'preview' || (enabled ? paintedRows > 0 : paintedRows === 0))) return state
           await wait(100)
         } while (Date.now() < deadline)
         throw new Error('Guide state did not settle: ' + JSON.stringify({ expected: enabled, state }))
@@ -115,15 +126,15 @@ describe.skipIf(!available)('code indentation guides', () => {
       await waitGuideState(true)
       let text, selected, depths, caret = true, wraps = 0, painted = false, nativeInput = null
       let finalInside = true, finalOutside = true, hanging = true, height = []
-      let snapshot = null, clickDiagnostic = null, initialCheck = null
+      let snapshot = null, clickDiagnostic = null, initialCheck = null, readingToggle = null
       const geometry = []
       const measureGeometry = () => {
         const rows = []
         const add = (line, text, row, box) => {
           if (!box || !text.trim()) return
           const win = row.ownerDocument.defaultView
-          const depth = Number(row.style.getPropertyValue('--abele-guide-depth'))
           const pseudo = win.getComputedStyle(row, '::before')
+          const depth = pseudo.backgroundImage !== 'none' && pseudo.content !== 'none' && pseudo.content !== 'normal' ? Number(row.style.getPropertyValue('--abele-guide-depth')) : 0
           const bounds = row.getBoundingClientRect()
           const start = bounds.left + (parseFloat(win.getComputedStyle(row).borderLeftWidth) || 0) + (parseFloat(pseudo.insetInlineStart) || 0)
           const step = parseFloat(pseudo.width) / depth
@@ -154,6 +165,25 @@ describe.skipIf(!available)('code indentation guides', () => {
           }
         }
         return { rows, left: Math.min(...rows.filter((r) => r.indent === 0).map((r) => r.x)), right: Math.min(...rows.map((r) => r.right)) }
+      }
+      const wrappedReadingStarts = (root) => {
+        const code = root.querySelector('pre > code')
+        const text = code.textContent, start = text.indexOf('    print(') + 4, end = text.indexOf('\\n', start)
+        const walker = code.ownerDocument.createTreeWalker(code, NodeFilter.SHOW_TEXT)
+        let node, offset = 0
+        const range = code.ownerDocument.createRange()
+        while ((node = walker.nextNode())) {
+          const next = offset + node.textContent.length
+          if (start >= offset && start < next) range.setStart(node, start - offset)
+          if (end > offset && end <= next) { range.setEnd(node, end - offset); break }
+          offset = next
+        }
+        const rows = new Map()
+        for (const box of range.getClientRects()) if (box.width > 0) {
+          const top = Math.round(box.top)
+          rows.set(top, Math.min(rows.get(top) ?? Infinity, box.left))
+        }
+        return [...rows].sort((a, b) => a[0] - b[0]).map((r) => r[1])
       }
       const gateSnapshot = (doc) => {
         const raw = app.vault.getConfig('showIndentGuide')
@@ -340,16 +370,42 @@ describe.skipIf(!available)('code indentation guides', () => {
         finalInside = finalInside && final.inside && final.painted
         hanging = hanging && final.hanging
       }
+      const readingRowBeforeOff = leaf.view.containerEl.querySelector('.abele-code-line[style*="--abele-guide-depth"]')
       app.vault.setConfig('showIndentGuide', false)
+      const immediateOff = !readingRowBeforeOff || (() => {
+        const style = readingRowBeforeOff.ownerDocument.defaultView.getComputedStyle(readingRowBeforeOff)
+        const guide = readingRowBeforeOff.ownerDocument.defaultView.getComputedStyle(readingRowBeforeOff, '::before')
+        return !(parseFloat(style.textIndent) < 0) && guide.backgroundImage === 'none'
+      })()
       await app.vault.requestSaveConfig?.run()
       const offSnapshot = await waitGuideState(false)
       const off = ${JSON.stringify(mode)} === 'preview'
-        ? !leaf.view.containerEl.querySelector('.abele-code-line')
+        ? offSnapshot.paintedRows === 0
         : !leaf.view.editor.cm.contentDOM.querySelector('.abele-code-guides')
       if (${JSON.stringify(mode)} === 'preview') height.push(unwrappedHeight(leaf.view.containerEl.querySelector('pre > code')))
       geometry.push(measureGeometry())
       await shoot(${JSON.stringify(label + '-off')})
-      return { text, selected, depths, off, caret, wraps, painted, nativeInput, shot, finalInside, finalOutside, hanging, height, width: innerWidth, snapshot, offSnapshot, geometry }
+      if (${JSON.stringify(mode)} === 'preview') {
+        const code = leaf.view.containerEl.querySelector('pre > code')
+        const retained = !!readingRowBeforeOff && code.querySelector('.abele-code-line[style*="--abele-guide-depth"]') === readingRowBeforeOff
+        const offWrapped = wrappedReadingStarts(leaf.view.containerEl)
+        const fresh = app.workspace.getLeaf('tab')
+        let freshWrapped
+        try {
+          await fresh.openFile(app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)}))
+          await fresh.setViewState({ type: 'markdown', state: { file: ${JSON.stringify(NOTE)}, mode: 'preview' }, active: true })
+          await settle()
+          const deadline = Date.now() + 10000
+          while (!fresh.view.containerEl.querySelector('pre > code') && Date.now() < deadline) await wait(100)
+          freshWrapped = wrappedReadingStarts(fresh.view.containerEl)
+        } finally { fresh.detach(); app.workspace.setActiveLeaf(leaf, { focus: true }) }
+        app.vault.setConfig('showIndentGuide', true)
+        await app.vault.requestSaveConfig?.run()
+        const restored = await waitGuideState(true)
+        readingToggle = { immediateOff, retained, offWrapped, freshWrapped, onPainted: restored.paintedRows > 0 }
+        await shoot(${JSON.stringify(label + '-on-again')})
+      }
+      return { text, selected, depths, off, caret, wraps, painted, nativeInput, shot, finalInside, finalOutside, hanging, height, width: innerWidth, snapshot, offSnapshot, geometry, readingToggle }
       })
     })()`)
       console.log('Code guide diagnostics', JSON.stringify(result.snapshot))
@@ -381,6 +437,19 @@ describe.skipIf(!available)('code indentation guides', () => {
           })
       }
       expect(result.shot).toBeTruthy()
+      if (mode === 'preview') {
+        const toggle = result.readingToggle!
+        expect(toggle.immediateOff, JSON.stringify(toggle)).toBe(true)
+        expect(toggle.retained, JSON.stringify(toggle)).toBe(true)
+        expect(toggle.onPainted, JSON.stringify(toggle)).toBe(true)
+        expect(toggle.offWrapped.length, JSON.stringify(toggle)).toBeGreaterThanOrEqual(2)
+        expect(toggle.offWrapped.length, JSON.stringify(toggle)).toBe(toggle.freshWrapped.length)
+        toggle.offWrapped.forEach((x, i) =>
+          expect(Math.abs(x - toggle.freshWrapped[i]), JSON.stringify(toggle)).toBeLessThanOrEqual(
+            0.5
+          )
+        )
+      }
       expect(existsSync(result.shot), 'Screenshot was not saved: ' + result.shot).toBe(true)
       const [on, off] = result.geometry
       expect(on.rows.length).toBeGreaterThan(0)

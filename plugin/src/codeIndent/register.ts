@@ -358,11 +358,17 @@ export function registerCodeIndentGuides(plugin: Plugin): void {
   }, 1000)
   plugin.registerEditorExtension(codeGuideExtension(settings))
   let previous = JSON.stringify(settings())
+  let previousTabSize = settings().tabSize
   let unloaded = false
   const refresh = (force = false) => {
     if (unloaded) return
     const next = JSON.stringify(settings())
+    for (const doc of documents)
+      if (doc.body.classList.contains('abele-show-code-guides') !== settings().enabled)
+        doc.body.classList.toggle('abele-show-code-guides', settings().enabled)
     if (!force && next === previous) return
+    const tabSizeChanged = previousTabSize !== settings().tabSize
+    previousTabSize = settings().tabSize
     previous = next
     plugin.app.workspace.iterateAllLeaves((leaf) => {
       const cm = (leaf.view as { editor?: { cm?: EditorView } }).editor?.cm
@@ -374,7 +380,7 @@ export function registerCodeIndentGuides(plugin: Plugin): void {
         blocks.delete(ref)
         continue
       }
-      clearReadingGuides(code)
+      if (tabSizeChanged) clearReadingGuides(code)
       process(code)
     }
   }
@@ -406,6 +412,7 @@ export function registerCodeIndentGuides(plugin: Plugin): void {
     delete diagnosticHost.codeIndentGuideDiagnostics
     for (const observer of observers.values()) observer.disconnect()
     observers.clear()
+    for (const doc of documents) doc.body.classList.remove('abele-show-code-guides')
     documents.clear()
     for (const ref of blocks) {
       const code = ref.deref()

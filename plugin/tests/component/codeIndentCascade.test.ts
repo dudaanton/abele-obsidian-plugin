@@ -2,6 +2,41 @@ import { expect, it } from 'vitest'
 import { compileString } from 'sass-embedded'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import 'obsidian'
+import { drawReadingGuides } from '@/codeIndent/readingGuides'
+
+it('removes reading layout effects immediately while retaining rows across off/on toggles', () => {
+  const style = document.createElement('style')
+  style.textContent = compileString(
+    readFileSync(resolve(__dirname, '../../src/codeIndent/indentGuides.scss'), 'utf8')
+  ).css
+  const root = document.createElement('div')
+  root.className = 'markdown-rendered'
+  const pre = document.createElement('pre'),
+    code = document.createElement('code')
+  code.textContent = 'root\n  nested\n'
+  pre.append(code)
+  root.append(pre)
+  document.head.append(style)
+  document.body.append(root)
+  drawReadingGuides(code, 4)
+  const row = code.children[1] as HTMLElement
+  try {
+    document.body.classList.add('abele-show-code-guides')
+    expect(getComputedStyle(row).textIndent).toContain('-1')
+    document.body.classList.remove('abele-show-code-guides')
+    expect(getComputedStyle(row).textIndent).not.toContain('-1')
+    expect(getComputedStyle(row).display).not.toBe('block')
+    document.body.classList.add('abele-show-code-guides')
+    expect(getComputedStyle(row).textIndent).toContain('-1')
+    expect(code.children[1]).toBe(row)
+    expect(code.textContent).toBe('root\n  nested\n')
+  } finally {
+    document.body.classList.remove('abele-show-code-guides')
+    style.remove()
+    root.remove()
+  }
+})
 
 it('applies hanging padding together with text indent over native code-block padding', () => {
   const style = document.createElement('style')

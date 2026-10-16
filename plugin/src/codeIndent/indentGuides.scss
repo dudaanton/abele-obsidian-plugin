@@ -4,17 +4,17 @@
 
 // Reading mode: each line is a block; its guides run its whole height, wrapped parts included.
 // A line of a code block stands as tall as a line of the note's text, as it did inline.
-.markdown-rendered pre > code:has(> .abele-code-line) {
+body.abele-show-code-guides .markdown-rendered pre > code:has(> .abele-code-line) {
   // Keep the pre's native line box; an inline code box around block rows otherwise
   // contributes its own font ascent/descent after the final row.
   display: block;
   line-height: 1lh;
 }
-.markdown-rendered pre > code .abele-code-line {
+body.abele-show-code-guides .markdown-rendered pre > code .abele-code-line {
   display: block;
   line-height: inherit;
 }
-.markdown-rendered pre > code .abele-code-line {
+body.abele-show-code-guides .markdown-rendered pre > code .abele-code-line {
   position: relative;
 
   // A wrapped line goes on at its own indent, right of its guides, rather than across them.
