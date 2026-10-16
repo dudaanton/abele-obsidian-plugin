@@ -10,7 +10,6 @@ import { externalReadingEmbed, externalEditorEmbed } from './helpers/externalFil
 import { detachExternalFileLeaves } from './helpers/externalFileLeaves'
 
 targets('desktop', 'phone')
-const fixture = liveSuite(false)
 const card = '.workspace-leaf.mod-active .abele-external-view'
 const embed = externalReadingEmbed
 const editorEmbed = externalEditorEmbed
@@ -19,9 +18,12 @@ afterEach(async () => {
   const s = fixture()
   if (!s) return
   s.primary.run(
-    `await (${detachExternalFileLeaves.toString()})(app.workspace,${JSON.stringify(s.root)});await poll(()=>!app.workspace.getLeavesOfType('abele-external-file').some(leaf=>leaf.getViewState().state?.path?.startsWith(${JSON.stringify(s.root + '/')})));await app.workspace.requestSaveLayout.run();return true`
+    `await (${detachExternalFileLeaves.toString()})(app.workspace);await app.workspace.requestSaveLayout.run();let remaining=0;app.workspace.iterateRootLeaves(leaf=>{if(leaf.view.getViewType()==='abele-external-file')remaining++});if(remaining)throw new Error('External file cards returned after layout save: '+remaining);return true`,
+    true
   )
 })
+// Stack ordering: the sync fixture resets/drains first, then the hook above closes its cards.
+const fixture = liveSuite(false)
 
 async function shot(a: SyncDriver, state: string, selector: string): Promise<void> {
   const name = 'external-' + state + (onPhone() ? '-phone' : '-desktop')
