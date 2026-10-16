@@ -97,7 +97,7 @@ describe.skipIf(!available)('confirming repairs on a real EPUB', () => {
           calls.push(call)
           // A dialog that opens and closes again before a poll sees it is still told.
           const t0 = Date.now()
-          call.stack = String(new Error().stack).split('\n').slice(1, 9).join(' < ')
+          call.stack = String(new Error().stack).split('\\n').slice(1, 9).join(' < ')
           call.events = []
           const watch = new MutationObserver(() => call.modals.push((Date.now() - t0) + ':' + document.querySelectorAll('.modal').length))
           watch.observe(document.body, { childList: true })
