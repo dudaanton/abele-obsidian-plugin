@@ -92,6 +92,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   private readonly outbox: TokenAssetOutbox
   private readonly transferBudget: TransferBudget
   private active = true
+  private serverAvailable = true
   private readonly requests = new AbortController()
   private readonly transportObservers = new Set<
     (path: string, active: boolean, successful?: boolean, rangeOffset?: number) => void
@@ -664,6 +665,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       ...(options.paths?.scriptsFolder ? { scriptsFolder: options.paths.scriptsFolder } : {}),
       ...(options.fallbackMs ? { fallbackMs: options.fallbackMs } : {}),
       onSync: (report) => {
+        this.serverAvailable = true
         this.pendingFolders.clear()
         this.folderProgress.clear()
         this.progress.clear()
@@ -690,6 +692,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       },
     })
     this.unstatus = this.engine.onStatus((status) => {
+      if (status.state === 'offline') this.serverAvailable = false
       if (status.state === 'syncing' && this.progress.stage === 'Uploading') {
         pushTotal = Math.max(pushTotal, status.pending)
         this.progress.counts(pushTotal - status.pending, pushTotal)
@@ -1158,6 +1161,10 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     this.assertHeld()
     await this.outbox.restore()
     this.engine.start()
+  }
+  /** Starting a retry does not prove reachability; only a completed exchange clears offline. */
+  get available(): boolean {
+    return this.serverAvailable
   }
   async sync(retryHeld = true): Promise<void> {
     await this.refreshHolds()

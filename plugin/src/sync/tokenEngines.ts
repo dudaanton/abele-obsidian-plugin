@@ -532,7 +532,7 @@ export class TokenEngines {
             manager,
             scriptsFolder: () => this.scriptsFolder,
             client: () => runtime.client,
-            available: () => runtime?.engine.status.state !== 'offline',
+            available: () => runtime?.available ?? true,
             sync: () => runtime.sync(),
             includes: (path) =>
               runtime
@@ -609,6 +609,7 @@ export class TokenEngines {
               )
           },
           changed: (status, report) => {
+            manager.changed()
             if (report) own.settle()
             void this.changed(record.id, status, report).catch((error) =>
               this.failed(record.id, error)

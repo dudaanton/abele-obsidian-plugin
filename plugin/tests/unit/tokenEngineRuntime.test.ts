@@ -11,6 +11,43 @@ import { TokenAttachmentHost } from '@/sync/tokenAttachmentHost'
 import { useVault } from '../helpers/testEnv'
 import { NativeSyncFailure } from '@/sync/mobileTransport'
 
+it('keeps attachments offline while a reconnect is in flight and restores availability after success', async () => {
+  const wire = await server('Notes/sample.md', 'note')
+  const send = wire.fetch.getMockImplementation()!
+  const one = runtime(wire, new MemoryFileSystem())
+  let release!: () => void
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let started!: () => void
+  const retryStarted = new Promise<void>((resolve) => {
+    started = resolve
+  })
+  let retry: Promise<void> | undefined
+  try {
+    expect(one.runtime.available).toBe(true)
+    wire.fetch.mockRejectedValueOnce(new EngineError('offline', 'Sample network unavailable'))
+    await expect(one.runtime.sync()).rejects.toMatchObject({ code: 'offline' })
+    expect(one.runtime.available).toBe(false)
+    wire.fetch.mockImplementationOnce(async (...args) => {
+      started()
+      await blocked
+      return send(...args)
+    })
+    retry = one.runtime.sync()
+    await retryStarted
+    expect(one.runtime.engine.status.state).toBe('syncing')
+    expect(one.runtime.available).toBe(false)
+    release()
+    await retry
+    expect(one.runtime.available).toBe(true)
+  } finally {
+    release()
+    await retry?.catch(() => {})
+    await one.runtime.disconnect()
+  }
+})
+
 it('names unsent local files after an offline attempt so the phone can show file and reason', async () => {
   const wire = await server('Notes/sample.md', 'note'),
     fs = new MemoryFileSystem()
