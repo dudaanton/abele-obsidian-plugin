@@ -330,7 +330,7 @@ function rowMenu(
   if (root)
     addDanger('Remove the folder from the node…', 'list-x', online, async () => {
       if (
-        !(await confirmAction(app(), {
+        !(await confirmDialog({
           title: 'Remove the folder from the node?',
           message: `${folder.path} stays on disk, with its files and branches. Delete its worktrees first.`,
           confirmText: 'Remove folder',

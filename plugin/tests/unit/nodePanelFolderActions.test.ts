@@ -35,7 +35,7 @@ vi.mock('@/node/NodePathOwnerActions', () => ({
   nodePathOwnerActions: () => ({ ask: vi.fn(), add: vi.fn(), grant: vi.fn() }),
   freezeNodePathContext: (c: unknown) => c,
 }))
-vi.mock('@/modal/confirm', () => ({ confirmAction: f.confirm }))
+vi.mock('@/components/obsidian/dialogs', () => ({ confirmDialog: f.confirm }))
 vi.mock('@/components/nodeWork/NodeSuggestModal', () => ({
   NodeSuggestModal: class {
     constructor(

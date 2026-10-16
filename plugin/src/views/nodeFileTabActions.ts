@@ -1,10 +1,10 @@
 import { Notice, Platform, type App, type Menu } from 'obsidian'
-import { confirmAction } from '@/modal/confirm'
 import { NodeService } from '@/node/NodeService'
 import { pathPages } from '@/node/NodePathClientPort'
 import type { NodePathFileModel } from '@/node/NodePathModel'
 import type { NodePathFileEditing } from '@/node/NodePathFileEditing'
 import type { NodePathTabState } from '@/node/nodePathNavigation'
+import { confirmDialog } from '@/components/obsidian/dialogs'
 
 export interface NodeFileTabHost {
   addAction(icon: string, title: string, run: () => void): HTMLElement
@@ -111,7 +111,7 @@ export class NodeFileTabActions {
     }
     const enabled = editing.locked.value
     if (
-      !(await confirmAction(this.host.app(), {
+      !(await confirmDialog({
         title: enabled ? 'Allow editing in this worktree?' : 'Turn off worktree editing?',
         message: enabled
           ? `Allow current files in ${row.path_label} to be saved by confirmed node owners? This grants neither chat scope nor agent execution.`

@@ -1,7 +1,5 @@
 import { h } from 'vue'
 import { Notice } from 'obsidian'
-import { confirmAction } from '@/modal/confirm'
-import { askName } from '@/modal/askName'
 import { GitRefusal } from './nodePathGit'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { openGithubUrl } from '@/github/GithubService'
@@ -10,6 +8,7 @@ import PullRequestDialog from '@/components/nodeWork/PullRequestDialog.vue'
 import type { BranchStep } from '@/components/nodeWork/branchStep'
 import { nodePathDialog } from './NodePathDialogs'
 import type { NodePathModel } from './NodePathModel'
+import { confirmDialog, promptDialog } from '@/components/obsidian/dialogs'
 
 const app = () => GlobalStore.getInstance().app
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
@@ -19,7 +18,7 @@ export async function discardNodePathFile(model: NodePathModel, path: string): P
   const change = model.changes.value.find((c) => c.path === path)
   if (!change) return
   if (
-    !(await confirmAction(app(), {
+    !(await confirmDialog({
       title: 'Discard the changes?',
       message:
         change.kind === 'added'
@@ -38,7 +37,7 @@ export async function takeNodePathStep(model: NodePathModel, id: BranchStep['id'
     state = model.panelBranch.value?.state
   if (!copy || !state) return
   if (id === 'create-branch') {
-    const name = await askName(app(), {
+    const name = await promptDialog({
       title: 'Make a branch here',
       placeholder: 'branch-name',
       submitText: 'Make branch',
@@ -58,7 +57,7 @@ export async function takeNodePathStep(model: NodePathModel, id: BranchStep['id'
           : undefined
       if (!lease || !lease.ahead || !lease.behind) throw error
       if (
-        !(await confirmAction(app(), {
+        !(await confirmDialog({
           title: 'Replace the branch on the remote?',
           message: `${copy.branch} was rebased after it was pushed, so its copy on the remote has ${plural(lease.behind, 'commit')} it no longer has. Pushing replaces that copy, unless someone changed it since it was last fetched.`,
           confirmText: 'Push and replace',
