@@ -62,6 +62,76 @@ afterEach(() => {
 })
 
 describe("a node's sessions in the agents list", () => {
+  it('publishes an input turn arriving after the initial idle catalogue read', async () => {
+    useVault([])
+    let busy = false
+    let event: ((event: { type: string; stream_id: string }) => void) | undefined
+    fakeConnection({
+      onEvent: vi.fn((listener: (event: { type: string; stream_id: string }) => void) => {
+        event = listener
+        return vi.fn()
+      }),
+      listSessions: vi.fn(async (after?: string) =>
+        after
+          ? []
+          : [
+              {
+                ...session('busy'),
+                workspace_id: 'sample-workspace',
+                native_session_id: '11111111-1111-4111-8111-111111111111',
+              },
+            ]
+      ),
+      sessionState: vi.fn(async (id: string) =>
+        busy
+          ? {
+              ...working(id),
+              run_id: 'sample-run',
+              turn: {
+                turn_id: 'sample-turn',
+                trigger: 'input',
+                started_at: '2026-01-01T10:00:00.000Z',
+              },
+              background_tasks: [],
+              context: null,
+              watchers: 1,
+              idle_since: null,
+              restart_pending: false,
+              settings: {
+                model: 'sample-model',
+                effort: 'high',
+                account: 'default',
+                permission_mode: 'manual',
+                continue_after_compaction: true,
+                continuation_text: 'Continue',
+                messaging: true,
+              },
+              process_settings: {
+                model: 'sample-model',
+                effort: 'high',
+                account: 'default',
+                permission_mode: 'manual',
+              },
+            }
+          : idle(id)
+      ),
+      prompts: vi.fn(async () => []),
+    })
+    const agents = AgentsService.getInstance()
+    agents.setNodes([NODE])
+    await agents.start()
+    await settle()
+    expect(agents.rows.value).toEqual([])
+    busy = true
+    event?.({ type: 'turn.started', stream_id: 'busy' })
+    await settle()
+    expect(agents.rows.value).toHaveLength(1)
+    expect(agents.rows.value[0]).toMatchObject({
+      title: 'Sample busy',
+      reasons: [{ kind: 'running', id: 'sample-turn' }],
+    })
+  })
+
   it('refreshes a previously idle node when the real agents dialog opens', async () => {
     useVault([])
     let busy = false

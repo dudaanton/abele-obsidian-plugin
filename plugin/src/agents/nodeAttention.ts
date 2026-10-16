@@ -1,8 +1,10 @@
 import { nodePages } from '@/node/nodePages'
+import type { JournalEvent } from '@abele/channel-protocol'
 import type { AttentionReason, AttentionRow } from './attention'
 
 /** What the agents list needs from a node: the session list, each one's state, its open prompts. */
 export interface NodeAttentionPort {
+  onEvent?(listener: (event: JournalEvent) => void): () => void
   listSessions(after?: string): Promise<
     {
       session_id: string

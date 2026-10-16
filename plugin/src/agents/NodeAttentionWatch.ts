@@ -14,6 +14,7 @@ interface Watched {
   unreadable: number
   connection?: { state?: Ref<string>; client: NodeAttentionPort }
   stop?: WatchStopHandle
+  stopEvents?: () => void
   loading?: Promise<void>
   again?: boolean
   removed?: boolean
@@ -42,6 +43,7 @@ export class NodeAttentionWatch {
       if (!ids.has(id)) {
         entry.removed = true
         entry.stop?.()
+        entry.stopEvents?.()
         this.watched.delete(id)
       }
     for (const target of targets) {
@@ -70,6 +72,18 @@ export class NodeAttentionWatch {
         entry.target.id
       ) as Watched['connection']
       entry.connection = connection
+      entry.stopEvents = connection?.client.onEvent?.((event) => {
+        if (
+          connection.state?.value === 'connected' &&
+          (event.type.startsWith('turn.') ||
+            event.type.startsWith('prompt.') ||
+            event.type.startsWith('compaction.') ||
+            ['session.process', 'session.created', 'session.updated', 'session.deleted'].includes(
+              event.type
+            ))
+        )
+          void this.load(entry)
+      })
       entry.stop = watch(
         () => connection?.state?.value,
         (state) => this.follow(entry, state),
@@ -131,6 +145,9 @@ export class NodeAttentionWatch {
       } while (entry.again && !entry.removed)
     })().finally(() => {
       entry.loading = undefined
+      // A refresh can arrive after the read loop resolves but before this finalizer runs.
+      if (entry.again && !entry.removed && entry.connection?.state?.value === 'connected')
+        void this.load(entry)
     })
     return entry.loading
   }
@@ -174,6 +191,7 @@ export class NodeAttentionWatch {
     for (const entry of this.watched.values()) {
       entry.removed = true
       entry.stop?.()
+      entry.stopEvents?.()
     }
     this.watched.clear()
   }
