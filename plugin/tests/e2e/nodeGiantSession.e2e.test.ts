@@ -145,6 +145,9 @@ it('opens a giant session at its end over a remote connection, pages back, types
       void presenter.send('stream 300 15');
       const frames=[];let last=performance.now(),done=false;
       (async()=>{while(!done){const now=await frame();frames.push(now-last);last=now}})();
+      const refreshOf=presenter.refresh.bind(presenter);window.__giantProbe.refresh=0;window.__giantProbe.refreshMs=0;
+      presenter.refresh=async()=>{const t=performance.now();try{return await refreshOf()}finally{window.__giantProbe.refresh++;window.__giantProbe.refreshMs+=performance.now()-t}};
+      const seqBefore=await nodes.connection(${JSON.stringify(registration)}).client.cursor(${JSON.stringify(created.session)});
       const t0=performance.now();
       await until(()=>[...root.querySelectorAll('.abele-chat-msg')].some(m=>m.textContent.includes('word40 ')),'The streamed answer',60000);
       const firstMs=Math.round(performance.now()-t0);
@@ -155,6 +158,8 @@ it('opens a giant session at its end over a remote connection, pages back, types
       done=true;await frame();
       const probe={...window.__giantProbe,txMs:Math.round(window.__giantProbe.txMs),longMs:Math.round(window.__giantProbe.longMs)};
       const client=nodes.connection(${JSON.stringify(registration)}).client;
+      probe.refreshMs=Math.round(probe.refreshMs);
+      probe.types=await client.store.transaction(st=>{const c={};for(const e of st.events[${JSON.stringify(created.session)}]??[])if(e.seq>seqBefore)c[e.type]=(c[e.type]??0)+1;return c});
       probe.store=await client.store.transaction(st=>{const size=v=>JSON.stringify(v??null).length;return{total:size(st),streams:Object.fromEntries(Object.entries(st.events).map(([k,v])=>[k.slice(0,12),{events:v.length,kB:Math.round(size(v)/1024)}])),resultsKB:Math.round(size(st.results)/1024),results:Object.keys(st.results).length,artifactKB:Math.round(size(st.artifactData)/1024),outbox:st.outbox.length}});
       const heapLive=heap();await wait(8000);return JSON.stringify({typing,streamingTyping,firstMs,streamMs,frames:stats(frames),heapLive,heapSettled:heap(),probe})})()`,
       240000
