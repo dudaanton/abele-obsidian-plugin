@@ -6,7 +6,11 @@ import { screenshot } from './helpers/phone'
 import { shotDir } from './helpers/shots'
 import { targets, onPhone } from './helpers/target'
 import type { SyncDriver } from './helpers/syncDriver'
-import { externalReadingEmbed, externalEditorEmbed } from './helpers/externalFileSelectors'
+import {
+  externalReadingEmbed,
+  externalEditorEmbed,
+  externalReadingPreviewAction,
+} from './helpers/externalFileSelectors'
 import { detachExternalFileLeaves } from './helpers/externalFileLeaves'
 
 targets('desktop', 'phone')
@@ -113,11 +117,15 @@ it('offloads real synced attachments and opens cards separately from downloading
   await openNote(a, note, 'source')
   await shot(a, 'embed-editor', editorEmbed)
   await openNote(a, note)
+  await a.long(
+    'wait for external preview download action',
+    `await poll(()=>document.querySelector(${JSON.stringify(externalReadingPreviewAction)})?.checkVisibility());return true`
+  )
   // SIGSTOP preserves the live request long enough to photograph real transfer state.
   s.server.suspend()
   try {
     a.run(
-      `document.querySelector(${JSON.stringify(embed + '__plate')}).click();await poll(()=>document.querySelector(${JSON.stringify(embed + '__bar')}));return true`
+      `document.querySelector(${JSON.stringify(externalReadingPreviewAction)}).click();await poll(()=>document.querySelector(${JSON.stringify(embed + '__bar')}));return true`
     )
     await shot(a, 'embed-downloading', embed)
     expect(a.exists(image)).toBe(false)
