@@ -7,10 +7,9 @@ export const chatMovedNotice =
 
 /** Move to an explicit capability flag once the node advertises one. */
 export function supportsExpectedTarget(description: unknown): boolean {
-  const version =
-    description && typeof description === 'object'
-      ? (description as { version?: unknown }).version
-      : undefined
+  if (!description || typeof description !== 'object') return false
+  const release = description as { node_version?: unknown; version?: unknown }
+  const version = 'node_version' in release ? release.node_version : release.version
   if (typeof version !== 'string') return false
   const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:\+[\w.-]+)?$/.exec(version)
   if (!match) return false

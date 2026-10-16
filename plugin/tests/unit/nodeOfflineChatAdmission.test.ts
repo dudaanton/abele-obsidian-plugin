@@ -42,6 +42,36 @@ it('retains an offline turn as a local draft without any outbox admission', asyn
   expect(presenter.draft.value.text).toBe('Sample offline turn')
   presenter.destroy()
 })
+it('reads the real daemon description and carries its binding into a submitted turn', async () => {
+  const { presenter, client, store, connection } = await setup()
+  connection.state.value = 'connected'
+  vi.spyOn(client, 'connected', 'get').mockReturnValue(true)
+  presenter.nodeDescription.value = { node_version: '0.4.18' }
+  const binding = {
+    project_id: shown.projectId,
+    target: { kind: 'worktree' as const, worktree_id: shown.id },
+    incarnation: 'sample-binding',
+  }
+  const read = vi.spyOn(client.nodePath, 'sessionWorktreeGet').mockResolvedValue(binding)
+  vi.spyOn(client, 'flush').mockResolvedValue(undefined)
+  try {
+    await presenter.refreshBinding()
+    expect(read).toHaveBeenCalledWith({
+      session_id: reference.sessionId,
+      include_incarnation: true,
+    })
+    expect(presenter.binding.value).toEqual(binding)
+    await presenter.send('Sample guarded turn')
+    const outbox = await store.transaction((s) => s.outbox)
+    expect(outbox).toHaveLength(1)
+    expect(outbox[0].params).toHaveProperty('expected_target', {
+      target: binding.target,
+      incarnation: binding.incarnation,
+    })
+  } finally {
+    presenter.destroy()
+  }
+})
 it('rejects a turn when the node session has moved away from the displayed worktree', async () => {
   const { presenter, client, store, connection } = await setup()
   connection.state.value = 'connected'
