@@ -1146,6 +1146,95 @@ describe('human canvas editor', () => {
     expect(s.document.session.graph.nodes[1].url).toBe('https://sample.example')
   })
 
+  it.each(['file', 'link'] as const)(
+    'inserts a %s after an unchanged graph is reloaded with a new revision',
+    async (kind) => {
+      const s = setup()
+      vi.spyOn(s.editor['ports'], kind === 'file' ? 'pickFile' : 'pickLink').mockImplementation(
+        async () => {
+          const generation = s.document.session.generation
+          s.document.observe({ graph: s.document.session.graph, revision: 'reloaded' })
+          expect(s.document.session.generation).toBeGreaterThan(generation)
+          return kind === 'file' ? 'sample-note.md' : 'https://sample.example'
+        }
+      )
+      s.button(kind === 'file' ? 'Add note or attachment' : 'Add link').click()
+      await vi.waitFor(() => expect(s.document.session.graph.nodes).toHaveLength(1))
+      expect(s.notice).not.toHaveBeenCalled()
+    }
+  )
+
+  it('inserts against the current graph after an external edit while picking', async () => {
+    const s = setup()
+    vi.spyOn(s.editor['ports'], 'pickFile').mockImplementation(async () => {
+      s.document.observe({ graph: cards(), revision: 'external-edit' })
+      return 'sample-note.md'
+    })
+    s.button('Add note or attachment').click()
+    await vi.waitFor(() => expect(s.document.session.graph.nodes).toHaveLength(4))
+    expect(s.document.session.graph.nodes.slice(0, 3)).toEqual(cards().nodes)
+    expect(s.document.session.graph.edges).toEqual(cards().edges)
+    expect(s.document.session.graph.nodes[3].file).toBe('sample-note.md')
+    expect(s.notice).not.toHaveBeenCalled()
+  })
+
+  it('inserts after its own pending save is acknowledged while picking', async () => {
+    const s = setup(cards())
+    s.document.beginDraft()
+    s.document.updateDraft((graph) => ({ ...graph, nodes: graph.nodes.slice(0, 2) }))
+    s.document.finishDraft()
+    vi.spyOn(s.editor['ports'], 'pickFile').mockImplementation(async () => {
+      const generation = s.document.session.generation
+      await s.publish()
+      expect(s.document.session.generation).toBeGreaterThan(generation)
+      return 'sample-note.md'
+    })
+    s.button('Add note or attachment').click()
+    await vi.waitFor(() => expect(s.document.session.graph.nodes[2]?.file).toBe('sample-note.md'))
+    expect(s.notice).not.toHaveBeenCalled()
+  })
+
+  it('inserts into a replacement document for the same file', async () => {
+    const s = setup(),
+      replacement = setup(cards())
+    s.publish.mockImplementation(replacement.publish)
+    vi.spyOn(s.editor['ports'], 'pickFile').mockImplementation(async () => {
+      vi.spyOn(s.editor['ports'], 'document').mockReturnValue(replacement.document)
+      return 'sample-note.md'
+    })
+    s.button('Add note or attachment').click()
+    await vi.waitFor(() => expect(replacement.document.session.graph.nodes).toHaveLength(4))
+    expect(s.document.session.graph.nodes).toHaveLength(0)
+    expect(s.notice).not.toHaveBeenCalled()
+  })
+
+  it.each(['different-file', 'renamed', 'native', 'blocked', 'destroyed'])(
+    'rejects picker insertion when the canvas becomes %s',
+    async (change) => {
+      const s = setup()
+      vi.spyOn(s.editor['ports'], 'pickFile').mockImplementation(async () => {
+        if (change === 'different-file') {
+          const replacement = setup()
+          replacement.document.file.path = 'other.canvas'
+          vi.spyOn(s.editor['ports'], 'document').mockReturnValue(replacement.document)
+        }
+        if (change === 'renamed') s.document.file.path = 'renamed.canvas'
+        if (change === 'native')
+          vi.spyOn(s.document, 'state', 'get').mockReturnValue({
+            ...s.document.state,
+            native: true,
+          })
+        if (change === 'blocked') s.document.error = 'Sample read failure'
+        if (change === 'destroyed') s.editor.destroy()
+        return 'sample-note.md'
+      })
+      s.button('Add note or attachment').click()
+      await vi.waitFor(() => expect(s.notice).toHaveBeenCalled())
+      expect(s.document.session.graph.nodes).toHaveLength(0)
+      expect(s.publish).not.toHaveBeenCalled()
+    }
+  )
+
   it('deletes and undoes through the shared history', async () => {
     const s = setup()
     s.button('Add text card').click()

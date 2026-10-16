@@ -1140,29 +1140,27 @@ export class CanvasEditor {
     await this.flush()
   }
   private async pick(kind: 'file' | 'link'): Promise<void> {
-    const document = this.ready(),
-      generation = document.session.generation,
-      path = document.file.path
+    const original = this.ready(),
+      path = original.file.path
+    let value: string | null = null
     await this.saving(async () => {
-      const value = await (kind === 'file' ? this.ports.pickFile() : this.ports.pickLink())
-      if (!value) return
-      if (
-        this.destroyed ||
-        this.ports.document() !== document ||
-        document.session.generation !== generation ||
-        document.file.path !== path ||
-        document.state.native
-      )
-        throw new Error('Canvas changed while the picker was open; pick again')
-      const node: NodeInput = {
-        id: nanoid(),
-        kind: kind === 'file' ? 'note' : 'link',
-        ...this.location(),
-        ...(kind === 'file' ? { file: value } : { url: value }),
-      }
-      this.commit(document, [{ op: 'add_node', node }])
-      this.selected = new Set([node.id])
+      value = await (kind === 'file' ? this.ports.pickFile() : this.ports.pickLink())
     })
+    if (!value) return
+    const document = this.ports.document()
+    if (original.file.path !== path || document?.file.path !== path)
+      throw new Error('Canvas changed while the picker was open; pick again')
+    // The picker carries only a new card, not a snapshot to replay. Saves and reloads can
+    // advance the generation; build on the current graph after checking it is still editable.
+    this.ready()
+    const node: NodeInput = {
+      id: nanoid(),
+      kind: kind === 'file' ? 'note' : 'link',
+      ...this.location(),
+      ...(kind === 'file' ? { file: value } : { url: value }),
+    }
+    this.commit(document, [{ op: 'add_node', node }])
+    this.selected = new Set([node.id])
     this.refresh()
   }
   private async applyShape(): Promise<void> {
