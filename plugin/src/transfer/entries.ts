@@ -112,6 +112,7 @@ const aiBlock = (
 })
 
 const OTHER_KEYS = [
+  'zen',
   'refreshDelay',
   'logsNotesTypes',
   'excludedPathsForDefaultTemplate',

@@ -2334,3 +2334,9 @@ These recoverable copies are kept indefinitely, outside sync and projection insp
 a persistent notice gives their directory, and every batch of newly preserved copies
 notifies again, including partial batches interrupted by a failed move. Active stages and
 pending publication backups remain protected by their existing journals. No cleanup removes uncertain user bytes.
+
+## Zen preferences
+
+Plugin settings store `zen.width` (the shared page width, default 700 pixels) and
+`zen.windows` (on/off by workspace window id; `main` for the main window). The Other settings
+transfer section carries these preferences. Zen mode does not change note or canvas files.

@@ -38,6 +38,10 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
 
 ## Views
 
+- Toggle zen mode — hide window chrome around the active tab; no default hotkey. Also available
+  as Zen mode in every tab menu. Escape exits after overlays close. One shared, persisted page
+  width, independent window state; surfaces remain full width.
+
 - Show timeline sidebar · Show todo sidebar · Show AI chat sidebar
 - Agents — lists conversations needing an explicit approval, an answer or acknowledgement of a
   stopped-run error, plus current local work and incomplete connection coverage. The activity

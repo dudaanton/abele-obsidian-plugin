@@ -1,3 +1,4 @@
+import { registerZen } from '@/zen/registerZen'
 import { ChangeTracker } from '@/ai/rewind/ChangeTracker'
 import '@/helpers/deferredCleanup'
 import { openSyncedFile } from './sync/openSyncedFile'
@@ -323,6 +324,7 @@ export default class AbelePlugin extends Plugin {
       } // Ensure process is defined for Node.js compatibility
 
       await startupStepAsync('settings', () => AbeleConfig.getInstance().loadSettings())
+      startupStep('zen mode', () => registerZen(this))
       startupStep('mobile background', () => {
         if (!Platform.isMobile) return
         this.register(bindAppSuspension(appSuspension, document, window))

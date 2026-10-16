@@ -1,3 +1,4 @@
+import { zenSettings } from '@/zen/zenSession'
 import { migrateAgents } from '@/ai/agents/migration'
 import { mergeChatIndex } from '@/ai/chatIndexFile'
 import { migrateMcpPermissions } from '@/ai/mcp/permissions'
@@ -220,6 +221,7 @@ export function applySettingsTo(
   config.snippetsFolder = settings?.snippetsFolder ?? DEFAULT_SETTINGS.snippetsFolder
   config.traceNotesFolder =
     settings?.traceNotesFolder ?? DEFAULT_SETTINGS.traceNotesFolder ?? 'Trace'
+  config.zen = zenSettings(settings?.zen)
   config.fullWidthSidebars = settings?.fullWidthSidebars ?? DEFAULT_SETTINGS.fullWidthSidebars
   config.halfWidthSidebarsOnTablet =
     settings?.halfWidthSidebarsOnTablet ?? DEFAULT_SETTINGS.halfWidthSidebarsOnTablet
@@ -318,6 +320,7 @@ export function exportSettingsOf(config: AbeleConfig, outOfSettings: boolean): A
     mapStyleUrl: config.mapStyleUrl,
     snippetsFolder: config.snippetsFolder,
     traceNotesFolder: config.traceNotesFolder,
+    zen: config.zen,
     fullWidthSidebars: config.fullWidthSidebars,
     halfWidthSidebarsOnTablet: config.halfWidthSidebarsOnTablet,
     mermaidViewer: config.mermaidViewer,

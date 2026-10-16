@@ -77,6 +77,7 @@ export class AbeleConfig {
   public mapStyleUrl: string
   public snippetsFolder: string
   public traceNotesFolder: string
+  public zen: import('@/zen/zenSession').ZenSettings
   public fullWidthSidebars: boolean
   public halfWidthSidebarsOnTablet: boolean
   public mermaidViewer: boolean

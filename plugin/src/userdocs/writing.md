@@ -215,3 +215,15 @@ highlighting. **Open as code** in a file's menu does the same for a file Obsidia
 
 Select text containing links like `[[Anna Smith|Anna]]` and choose **Find and create aliases**
 from the right-click menu. Each target note gets the alias it was linked with.
+
+## Zen mode
+
+**Toggle zen mode** in the command palette, or **Zen mode** in a tab’s ⋯ menu, keeps only the
+active tab in its window. It has no default shortcut. A sidebar view moves into a main tab first.
+Notes, books, chats and panels use one centred column; canvases and graphs fill the window.
+Drag either edge to resize the column symmetrically, or double-click to reset to 700 pixels.
+The width and each window’s on/off state are remembered across restarts and travel with settings.
+
+Move the pointer to the top edge to reveal the header and **Exit zen mode** action. On a phone,
+tap the top edge to show the header for three seconds. **Escape** leaves after open menus,
+dialogs and search have closed. Switching tabs keeps zen mode on. Each pop-out is independent.
