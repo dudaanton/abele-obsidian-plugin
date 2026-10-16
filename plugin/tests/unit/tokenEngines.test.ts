@@ -81,7 +81,10 @@ it('surfaces a server size refusal by path and reason, keeps bytes pending and a
         new URL(String(input)).pathname.startsWith('/v2/uploads/')
       ).length
     expect(uploads()).toBe(1)
+    const approval = { at: Date.now(), text: 'Installed code from Whole vault: Scripts/sample.js' }
+    ui.publish(id, { events: [approval] })
     await ui.sync(id)
+    expect(ui.activity.value[id].events).toContainEqual(approval)
     expect(uploads()).toBe(1)
     expect(ui.activity.value[id].refused).toContainEqual({
       path: 'oversized.bin',

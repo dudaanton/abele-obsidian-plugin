@@ -554,16 +554,12 @@ export class TokenEngines {
         if (!this.ui.reviews) throw new Error('Device reviews are not available')
         const current = this.ui.registry.records().find((one) => one.id === record.id)
         fence.assertReady()
-        let recent = [...(this.ui.activity.value[record.id]?.events ?? [])]
         runtime = new TokenEngineRuntime({
           transferBudget: transferBudgetOf(this.app.vault),
           id: record.id,
           comparing: (comparison) => this.ui.publish(record.id, { comparison }),
-          progress: (transfer) =>
-            this.ui.publish(record.id, { transfer, comparison: undefined, events: recent }),
-          event: (text) => {
-            recent = [...recent, { at: Date.now(), text }].slice(-100)
-          },
+          progress: (transfer) => this.ui.publish(record.id, { transfer, comparison: undefined }),
+          event: (text) => this.ui.recordEvent(record.id, text),
           encoded: encodeAccessToken({
             v: 1,
             address: record.address,

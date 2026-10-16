@@ -287,7 +287,7 @@ export class TokenUi {
             await runtime.apply(one, assertAllowed)
           },
         })
-        this.reviewEvent(
+        this.recordEvent(
           candidate.source.id,
           `Installed code from ${scopeName(candidate.source.scope)}: ${candidate.path}`
         )
@@ -305,7 +305,7 @@ export class TokenUi {
           )
         ) {
           await runtime.publishAttachment?.(question.fileId)
-          this.reviewEvent(question.source.id, `Shared ${question.path}`)
+          this.recordEvent(question.source.id, `Shared ${question.path}`)
         }
       } catch (error) {
         this.reviewFailure(question.source.id, question.path, error)
@@ -326,7 +326,7 @@ export class TokenUi {
     }
     console.debug('[Abele Sync] Automatic approval failed', path, error)
   }
-  private reviewEvent(id: string, text: string): void {
+  recordEvent(id: string, text: string): void {
     this.activity.value = {
       ...this.activity.value,
       [id]: {
