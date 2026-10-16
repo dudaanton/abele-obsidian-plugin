@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { writeFileSync } from 'node:fs'
 import { evalAsync } from './helpers/githubLive'
 import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
@@ -178,6 +179,51 @@ describe.skipIf(!available)('agent explanatory diagrams in native Canvas', () =>
       gamma: null,
       overview: null,
     })
+  }, 120_000)
+
+  it('measures, fits, aligns and distributes cards and checks multiple regions without an open tab', () => {
+    const result = run<{
+      measured: number
+      fitted: number
+      tops: number[]
+      crops: number
+      images: number
+      urls: string[]
+    }>(`
+      const precise = ${JSON.stringify(`${DIR}/precise.canvas`)}
+      await call('canvas_create', { path: precise, from: { graph: { nodes: [
+        { id: 'first', kind: 'text', label: '# Sample heading\\nA short explanation with **bold words**.' },
+        { id: 'second', kind: 'text', label: 'Another sample card.' },
+        { id: 'third', kind: 'text', label: 'Last sample card.' }
+      ] } } })
+      await call('canvas_edit', { path: precise, ops: [
+        { op: 'update', id: 'first', patch: { x: 0, y: 0, width: 240, height: 800 } },
+        { op: 'update', id: 'second', patch: { x: 400, y: 80 } },
+        { op: 'update', id: 'third', patch: { x: 800, y: 160 } }
+      ] })
+      const before = parsed(await call('canvas_read', { path: precise, measure: ['first'] }))
+      await call('canvas_edit', { path: precise, ops: [
+        { op: 'fit', ids: ['first', 'second', 'third'] },
+        { op: 'align', ids: ['first', 'second', 'third'], axis: 'top' },
+        { op: 'distribute', ids: ['first', 'second', 'third'], axis: 'horizontal', gap: 80 }
+      ] })
+      const file = JSON.parse(await app.vault.read(app.vault.getAbstractFileByPath(precise)))
+      const pictures = await call('look_at_canvas', { path: precise, regions: [{ node: 'first' }, { node: 'second' }], maxSide: 800 })
+      const images = pictures.injectMessages[0].content.filter(p => p.type === 'image_url')
+      return { measured: before.measurements[0].height, fitted: file.nodes[0].height, tops: file.nodes.map(n => n.y), crops: parsed(pictures).shots.length, images: images.length, urls: images.map(image => image.image_url.url) }
+    `)
+    expect(result.measured).toBeGreaterThan(32)
+    expect(result.measured).toBeLessThan(800)
+    expect(result.fitted).toBe(result.measured)
+    expect(new Set(result.tops).size).toBe(1)
+    expect(result.crops).toBe(2)
+    expect(result.images).toBe(2)
+    result.urls.forEach((url, index) =>
+      writeFileSync(
+        `${SHOTS}/precise-region-${index}.png`,
+        Buffer.from(url.split(',')[1], 'base64')
+      )
+    )
   }, 120_000)
 
   it('returns crop PNGs, scoped note content and local images with clipping diagnostics', () => {

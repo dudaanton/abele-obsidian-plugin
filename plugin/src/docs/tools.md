@@ -328,6 +328,29 @@ Free primitives may be revealed, highlighted and focused by id in walkthrough st
   New unpositioned nodes trigger automatic layout. Update/style merge `abele` and `styleAttributes`
   instead of erasing their other fields. An error names the failing op index (from zero), and may
   suggest a similar id. Removing a group promotes children; removing a node removes incident edges.
+  Precise authoring ops in the same atomic batch:
+  `fit {ids,width?}` renders text/Markdown cards with the live card CSS, preserves width (or uses
+  the supplied width), and replaces height including shape insets, shrinking empty space too.
+  Embedded media is refused rather than guessed or loaded outside scope. Linked Markdown must
+  be in scope. `canvas_read` accepts `measure: ids[]` to return outer `width/height` and rendered
+  `contentWidth/contentHeight` without writing. Measurements use the current device's theme and fonts.
+  `align {ids,axis}` aligns selected bounds: `left`, `right`, `top`, `bottom`, `center_x`, `center_y`.
+  Groups move their descendants. `same_size {ids,dimension}` copies the first card's `width`,
+  `height`, or `both` to the rest (groups refused). `distribute {ids,axis,gap?}` needs three cards,
+  sorts by position, and gives equal nonnegative gaps along `horizontal` or `vertical`; without
+  `gap`, the outer bounds stay fixed. Duplicate selections and selecting both ancestor and child
+  are refused. `route {id,fromSide?,toSide?,method?,waypoints?,labelPosition?}` edits a connection.
+  Sides are `top/right/bottom/left`; methods `direct/bezier/square/avoid`. `avoid` computes orthogonal
+  bends around up to 100 other cards with 12 world units clearance; rerun after moving cards.
+  Explicit `waypoints: [{x,y}]` are world-space bends; `[]` clears them. `labelPosition: {x,y}`
+  places the caption centre in world coordinates; `null` restores automatic placement. Native
+  anchors, ends and pathfinding fields remain standard; Abele bends/label placement are extensions.
+  Supported `styleAttributes` keys are enumerated in the schema: `shape` (the shapes above),
+  `border: solid/dashed/dotted/invisible`, edge `path: solid/dashed/dotted`, edge
+  `arrow: triangle/circle/diamond/bar/t-shaped/square`. Unknown authoring keys are refused with
+  supported alternatives; retained unknown fields survive. Font and size follow the host theme;
+  padding and corner radius follow the shape. Use node `color` for background and edge `color`
+  for stroke, not invented CSS keys.
 - `canvas_layout(path, {revision,algorithm?,direction?,scope?,keep?,gap?})`: the same expected
   revision is required before changing geometry. algorithms `layered` (dagre,
   default), `tree`, `radial`, `grid`; directions `LR` (default), `RL`, `TB`, `BT`. Scope is a group
@@ -362,6 +385,9 @@ Free primitives may be revealed, highlighted and focused by id in walkthrough st
   Cancellation before final delivery leaves no final output. A temporary output is cleaned up
   on failure where possible; this does not add canvas recovery or a second source file.
 - `look_at_canvas(path, {step?,node?,region?,maxSide?})`: a PNG plus warnings, all of it or one crop.
+  For several visual checks in one call, use `regions: [{node:id}, {x,y,width,height}, ...]`
+  (1–12 crops), without `step/node/region`. Returns ordered `shots` metadata and one PNG per crop.
+  Each crop is rendered from this canvas file through the same scoped picture path, never another pane.
   `step` uses one-based cumulative reveal, highlights and camera focus, and returns `say`.
   An explicit node/region crop overrides the step camera, but never exposes hidden content.
   Diagnostics refer to the complete source graph, not a reduced reveal scene. Captions cut by

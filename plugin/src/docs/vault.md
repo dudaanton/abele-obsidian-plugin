@@ -588,6 +588,11 @@ still a text node. Shapes use Advanced Canvas `styleAttributes.shape`: `rectangl
 `styleAttributes.border`; edge path/arrow styles use `styleAttributes.path` / `styleAttributes.arrow`,
 with `pathfindingMethod` and floating-end fields retained. Groups retain `collapsed`; file nodes
 retain `portal` and `subpath`. Standard `file` paths and text-card links follow Obsidian renames.
+Precise routing stores world-space bend points as edge `abele.waypoints: [{x,y}]` and an optional
+caption centre as `abele.labelPosition: {x,y}` (`null` means automatic). Native side anchors and
+pathfinding fields remain present; native Canvas can ignore these extensions without losing the
+standard connection. Obstacle routing computes and stores bends at edit time; rerun it after moving
+cards. Fit-to-content writes ordinary node dimensions, with no measurement cache or sidecar persisted.
 
 Free lines/arrows are root `abele.lines` entries: `{version:1,id,from:{x,y},to:{x,y},fromEnd?,toEnd?,label?,color?}`.
 Ends are `none` or `arrow` (omitted ends mean none), coordinates are finite world coordinates, and endpoints are distinct.

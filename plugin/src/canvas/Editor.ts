@@ -1557,7 +1557,7 @@ export class CanvasEditor {
         edge = graph.edges.find((e) => e.id === id),
         line = edge ? undefined : linesOf(graph).find((l) => l.id === id)
       const mid = edge
-        ? labelPoint(paintedRoute(edge, graph))
+        ? labelPoint(paintedRoute(edge, graph), edge.abele?.labelPosition)
         : line
           ? { x: (line.from.x + line.to.x) / 2, y: (line.from.y + line.to.y) / 2 }
           : null

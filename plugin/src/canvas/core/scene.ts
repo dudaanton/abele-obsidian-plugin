@@ -8,6 +8,8 @@ import {
   type Rect,
   type Side,
 } from './model'
+import { pointSchema } from './authoring'
+import { obstacleRoute } from './obstacleRoute'
 export interface Point {
   x: number
   y: number
@@ -151,6 +153,28 @@ export function routeEdge(edge: CanvasEdge, graph: CanvasGraph): Point[] {
   const from = graph.nodes.find((n) => n.id === edge.fromNode),
     to = graph.nodes.find((n) => n.id === edge.toNode)
   if (!from || !to) return []
+  const manual = pointSchema.array().safeParse(edge.abele?.waypoints)
+  if (manual.success && manual.data.length) {
+    const dx = to.x + to.width / 2 - from.x - from.width / 2,
+      dy = to.y + to.height / 2 - from.y - from.height / 2
+    const aSide =
+      edge.fromSide ??
+      (from.id === to.id
+        ? 'right'
+        : Math.abs(dx) >= Math.abs(dy)
+          ? dx >= 0
+            ? 'right'
+            : 'left'
+          : dy >= 0
+            ? 'bottom'
+            : 'top')
+    const bSide =
+      edge.toSide ??
+      (from.id === to.id
+        ? 'top'
+        : ({ top: 'bottom', bottom: 'top', left: 'right', right: 'left' } as const)[aSide])
+    return [endpoint(from, aSide), ...manual.data, endpoint(to, bSide)]
+  }
   if (from.id === to.id) {
     const aSide = edge.fromSide ?? 'right',
       bSide = edge.toSide ?? 'top',
@@ -191,6 +215,21 @@ export function routeEdge(edge: CanvasEdge, graph: CanvasGraph): Point[] {
     edge.toSide ?? ({ top: 'bottom', bottom: 'top', left: 'right', right: 'left' } as const)[aSide]
   const a = endpoint(from, aSide),
     b = endpoint(to, bSide)
+  if (edge.abele?.avoidCards === true) {
+    const outside = (point: Point, side: Side): Point => ({
+      x: point.x + (side === 'right' ? 12 : side === 'left' ? -12 : 0),
+      y: point.y + (side === 'bottom' ? 12 : side === 'top' ? -12 : 0),
+    })
+    return [
+      a,
+      ...obstacleRoute(
+        outside(a, aSide),
+        outside(b, bSide),
+        graph.nodes.filter((n) => n.type !== 'group')
+      ),
+      b,
+    ]
+  }
   if (edge.pathfindingMethod === 'direct') return [a, b]
   const horizontal = aSide === 'right' || aSide === 'left'
   // These are either cubic control points or square-route corners; consumers use paintedRoute.
@@ -217,7 +256,9 @@ export function paintedRoute(edge: CanvasEdge, graph: CanvasGraph): PaintedRoute
   const points = routeEdge(edge, graph)
   return {
     kind:
-      points.length === 4 && (!edge.pathfindingMethod || edge.pathfindingMethod === 'bezier')
+      !(Array.isArray(edge.abele?.waypoints) && edge.abele.waypoints.length) &&
+      points.length === 4 &&
+      (!edge.pathfindingMethod || edge.pathfindingMethod === 'bezier')
         ? 'cubic'
         : 'polyline',
     points,
@@ -227,7 +268,9 @@ export function paintedRoute(edge: CanvasEdge, graph: CanvasGraph): PaintedRoute
  * Where a connection's label stands: the middle of the curve itself, not of the chord between
  * its ends, so a curved connection's label sits on its line.
  */
-export function labelPoint(route: PaintedRoute): Point {
+export function labelPoint(route: PaintedRoute, position?: unknown): Point {
+  const explicit = pointSchema.safeParse(position)
+  if (explicit.success) return explicit.data
   const p = route.points
   if (!p.length) return { x: 0, y: 0 }
   if (route.kind === 'cubic')
@@ -241,10 +284,16 @@ export function labelPoint(route: PaintedRoute): Point {
         0.5
       ),
     }
-  if (p.length === 5) return p[2]
-  const first = p[0],
-    last = p[p.length - 1]
-  return { x: (first.x + last.x) / 2, y: (first.y + last.y) / 2 }
+  const lengths = p.slice(1).map((point, i) => Math.hypot(point.x - p[i].x, point.y - p[i].y))
+  let remaining = lengths.reduce((sum, length) => sum + length, 0) / 2
+  for (let i = 0; i < lengths.length; i++) {
+    if (remaining <= lengths[i] && lengths[i] > 0) {
+      const t = remaining / lengths[i]
+      return { x: p[i].x + (p[i + 1].x - p[i].x) * t, y: p[i].y + (p[i + 1].y - p[i].y) * t }
+    }
+    remaining -= lengths[i]
+  }
+  return p[0]
 }
 const cubicAt = (v: number[], t: number) =>
   (1 - t) ** 3 * v[0] + 3 * (1 - t) ** 2 * t * v[1] + 3 * (1 - t) * t ** 2 * v[2] + t ** 3 * v[3]

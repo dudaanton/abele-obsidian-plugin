@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { editCanvas, inputNodeSchema } from './edit'
+import type { MeasureCard } from './authoring'
+import { editCanvas, inputNodeSchema, type CanvasOperation } from './edit'
 import {
   cloneCanvas,
   descendants,
@@ -132,10 +133,19 @@ export async function createCanvasGraph(
 export function planCanvasEdit(
   graph: CanvasGraph,
   ops: unknown,
-  metrics?: TextMetricsPort
+  metrics?: TextMetricsPort,
+  measure?: MeasureCard
 ): CanvasGraph {
-  const edited = editCanvas(graph, ops)
-  return edited.needsLayout ? layoutCanvas(fitForLayout(edited.graph, metrics), {}) : edited.graph
+  const edited = editCanvas(graph, ops, measure)
+  if (!edited.needsLayout) return edited.graph
+  // A real renderer's dimensions take precedence over the layout label estimate.
+  const fitted = new Set(
+    (ops as CanvasOperation[]).flatMap((op) => (op.op === 'fit' ? op.ids : []))
+  )
+  return layoutCanvas(
+    fitForLayout(edited.graph, metrics, (node) => !fitted.has(node.id)),
+    {}
+  )
 }
 export function planCanvasLayout(
   graph: CanvasGraph,

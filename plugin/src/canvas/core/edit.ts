@@ -1,6 +1,13 @@
 /** Batched semantic changes are validated on a clone; never partial writes. */
 import { z } from 'zod'
 import {
+  authoringSchemas,
+  applyAuthoring,
+  styleInputSchema,
+  validateStyle,
+  type MeasureCard,
+} from './authoring'
+import {
   bounds,
   cloneCanvas,
   edgeSchema,
@@ -14,6 +21,7 @@ import {
   type CanvasNode,
 } from './model'
 import { moveIds } from './selection'
+import { routeEdge } from './scene'
 import { WIDTHS } from '../../drawing/model'
 import { lineSchema, linesOf, rawLines, writeLines, lineIds, type CanvasLine } from './primitives'
 
@@ -47,7 +55,7 @@ export const inputNodeSchema = z
     y: z.number().optional(),
     width: z.number().positive().optional(),
     height: z.number().positive().optional(),
-    styleAttributes: object.optional(),
+    styleAttributes: styleInputSchema.optional(),
     abele: object.optional(),
     color: z.string().optional(),
   })
@@ -66,6 +74,7 @@ const inkInputSchema = z.discriminatedUnion('tool', [
   }),
 ])
 export const operationSchema = z.discriminatedUnion('op', [
+  ...authoringSchemas,
   z.object({ op: z.literal('add_node'), node: inputNodeSchema }).strict(),
   z.object({ op: z.literal('update'), id, patch: object }).strict(),
   z.object({ op: z.literal('remove'), id }).strict(),
@@ -103,7 +112,7 @@ export const operationSchema = z.discriminatedUnion('op', [
       place: z.enum(['front', 'back']),
     })
     .strict(),
-  z.object({ op: z.literal('style'), id, styleAttributes: object }).strict(),
+  z.object({ op: z.literal('style'), id, styleAttributes: styleInputSchema }).strict(),
 ])
 export type CanvasOperation = z.input<typeof operationSchema>
 export type NodeInput = z.input<typeof inputNodeSchema>
@@ -147,7 +156,8 @@ function checkEdges(graph: CanvasGraph, nodes: ReadonlyMap<string, CanvasNode>):
 }
 export function editCanvas(
   input: CanvasGraph,
-  ops: unknown
+  ops: unknown,
+  measure?: MeasureCard
 ): { graph: CanvasGraph; needsLayout: boolean } {
   if (!Array.isArray(ops) || !ops.length) throw new Error('ops must be a nonempty array')
   let graph = cloneCanvas(input),
@@ -182,8 +192,35 @@ export function editCanvas(
   rebuild()
   for (let index = 0; index < ops.length; index++) {
     try {
+      const raw = ops[index] as {
+        styleAttributes?: unknown
+        patch?: { styleAttributes?: unknown }
+        node?: { styleAttributes?: unknown }
+      }
+      const style =
+        raw?.styleAttributes ?? raw?.patch?.styleAttributes ?? raw?.node?.styleAttributes
+      if (style !== undefined) validateStyle(style)
       const op = operationSchema.parse(ops[index])
-      if (op.op === 'add_node') {
+      if (
+        op.op === 'align' ||
+        op.op === 'same_size' ||
+        op.op === 'distribute' ||
+        op.op === 'fit' ||
+        op.op === 'route'
+      ) {
+        applyAuthoring(graph, op, measure)
+        if (op.op === 'route' && op.method === 'avoid') {
+          if (op.waypoints?.length)
+            throw new Error('Choose obstacle routing or explicit waypoints, not both')
+          const edge = graph.edges.find((e) => e.id === op.id)!
+          edge.abele = {
+            ...edge.abele,
+            waypoints: routeEdge(edge, graph).slice(1, -1),
+            avoidCards: false,
+          }
+        }
+        rebuild()
+      } else if (op.op === 'add_node') {
         const n = op.node
         uniqueId(n.id)
         if ((n.x === undefined) !== (n.y === undefined))
@@ -297,6 +334,7 @@ export function editCanvas(
         if (allInkEntries(graph).some((e) => e.stroke.id === op.id))
           throw new Error('Use update_ink for strokes')
         const patch = op.op === 'style' ? { styleAttributes: op.styleAttributes } : op.patch
+        if (patch.styleAttributes !== undefined) validateStyle(patch.styleAttributes)
         if ('id' in patch && patch.id !== op.id) throw new Error('An id cannot be changed')
         const merged = { ...element, ...patch }
         for (const key of ['abele', 'styleAttributes'] as const) {

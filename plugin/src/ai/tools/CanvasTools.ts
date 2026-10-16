@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { AgentTool, AgentToolResult } from '../client'
+import type { UserContentPart } from '../client/types'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { appOf, scopeOf, type ToolContext } from '../toolContext'
 import { guardChatWrite } from './chatWriteGuard'
@@ -11,7 +12,11 @@ import {
   planCanvasEdit,
   planCanvasLayout,
 } from '@/canvas/core/service'
-import { CanvasEditError, operationSchema } from '@/canvas/core/edit'
+import { CanvasEditError, editCanvas, operationSchema } from '@/canvas/core/edit'
+import { renderedCard } from '@/canvas/measureAdapter'
+import type { MeasureCard } from '@/canvas/core/authoring'
+import { validateStyle } from '@/canvas/core/authoring'
+import type { CanvasGraph, CanvasNode } from '@/canvas/core/model'
 import { layoutOptionsSchema } from '@/canvas/core/layout'
 import { canvasOutline } from '@/canvas/core/read'
 import { editCanvasSteps, stepOperationSchema } from '@/canvas/core/steps'
@@ -70,6 +75,63 @@ async function recoverProposal(
 }
 const recoveryHelp =
   ' A failed agent proposal is reported by canvas_read(state.recovery). To recover it explicitly, use this same tool with {path,revision,recovery:retry|reapply|discard,proposal}, without ordinary edit/layout/step arguments. Retry publishes only on its unchanged baseline; reapply reruns its structured operation on the latest baseline; discard does not write the file. The original agent/chat and this tool permission are required; human drafts are never recovered implicitly.'
+const measurementKey = (node: CanvasNode) =>
+  JSON.stringify([node.id, node.text, node.file, node.subpath])
+async function prepareFits(
+  graph: CanvasGraph,
+  ops: z.output<typeof operationSchema>[],
+  path: string,
+  ctx?: ToolContext,
+  signal?: AbortSignal
+) {
+  const rendered = new Map<string, Awaited<ReturnType<typeof renderedCard>>>()
+  const dimensions = new Map<string, ReturnType<MeasureCard>>()
+  const dimensionKey = (node: CanvasNode) =>
+    JSON.stringify([measurementKey(node), node.width, node.styleAttributes?.shape])
+  const release = () => {
+    for (const card of rendered.values()) card.release()
+  }
+  const measure: MeasureCard = (node) => {
+    const card = rendered.get(measurementKey(node))
+    if (!card) throw new Error('Card changed during measurement; read the canvas again')
+    const result = card.measure(node)
+    dimensions.set(dimensionKey(node), result)
+    return result
+  }
+  let opIndex = 0
+  try {
+    for (const [index, op] of ops.entries()) {
+      opIndex = index
+      if (op.op === 'fit')
+        for (const id of op.ids) {
+          const node = graph.nodes.find((n) => n.id === id)
+          if (!node) throw new Error(`Unknown id ${id}`)
+          const key = measurementKey(node)
+          if (!rendered.has(key))
+            rendered.set(
+              key,
+              await renderedCard(
+                GlobalStore.getInstance().app,
+                node,
+                path,
+                (p) => scopeOf(ctx).isInScope(p),
+                signal
+              )
+            )
+        }
+      graph = editCanvas(graph, [op], measure).graph
+    }
+    release()
+    return (node: CanvasNode) => {
+      const size = dimensions.get(dimensionKey(node))
+      if (!size) throw new Error('Card content or width changed; read and fit again')
+      return size
+    }
+  } catch (error) {
+    release()
+    throw new CanvasEditError(opIndex, error)
+  }
+}
 const region = z
   .object({
     x: z.number(),
@@ -124,6 +186,33 @@ function definition<T extends z.ZodType>(
       signal?.throwIfAborted()
       let parsed: z.output<T>
       try {
+        if (
+          name === 'canvas_edit' &&
+          params &&
+          typeof params === 'object' &&
+          'ops' in params &&
+          Array.isArray(params.ops)
+        ) {
+          params.ops.forEach(
+            (
+              op: {
+                styleAttributes?: unknown
+                patch?: { styleAttributes?: unknown }
+                node?: { styleAttributes?: unknown }
+              },
+              index: number
+            ) => {
+              const style =
+                op?.styleAttributes ?? op?.patch?.styleAttributes ?? op?.node?.styleAttributes
+              if (style !== undefined)
+                try {
+                  validateStyle(style)
+                } catch (error) {
+                  throw new CanvasEditError(index, error)
+                }
+            }
+          )
+        }
         parsed = schema.parse(params)
       } catch (error) {
         if (name === 'canvas_edit' && error instanceof z.ZodError) {
@@ -150,15 +239,41 @@ export function createCanvasTools(): AgentTool[] {
           detail: z.enum(['outline', 'full']).default('outline'),
           step: z.number().int().positive().optional(),
           region: region.optional(),
+          measure: z
+            .array(z.string().min(1))
+            .min(1)
+            .max(100)
+            .optional()
+            .describe(
+              'Measure rendered text/Markdown cards at current width, without writing. Returns fitted outer dimensions. Embedded media is refused.'
+            ),
         })
         .strict(),
       async (params, _signal, ctx) => {
         const key = scoped(params.path, ctx),
           store = new ObsidianCanvasStore(GlobalStore.getInstance().app)
         const snapshot = await store.snapshot(key)
+        const measurements = []
+        for (const id of params.measure ?? []) {
+          const node = snapshot.graph.nodes.find((n) => n.id === id)
+          if (!node) throw new Error(`Unknown id ${id}`)
+          const card = await renderedCard(
+            GlobalStore.getInstance().app,
+            node,
+            key,
+            (p) => scopeOf(ctx).isInScope(p),
+            _signal
+          )
+          try {
+            measurements.push({ id, ...card.measure(node) })
+          } finally {
+            card.release()
+          }
+        }
         return answer({
           ...canvasOutline(snapshot.graph, params, hostMetrics()),
           revision: snapshot.revision,
+          ...(params.measure ? { measurements } : {}),
           ...(snapshot.state ? { state: snapshot.state } : {}),
         })
       }
@@ -210,6 +325,7 @@ export function createCanvasTools(): AgentTool[] {
       'canvas_edit',
       'Edit canvas',
       'Pass revision from canvas_read or the last successful write; stale file/native/Abele session state is refused before any agent change; pending human drafts remain unsaved and block writes. Apply a single validated atomic batch by id: add_node {node:{id,kind,label,...}}, update {id,patch}, move {ids,dx,dy} (cards, free lines and ink; group descendants/owned ink move once), scale {ids,x,y,factor} (positive factor about world x/y), add_line {line:{version:1,id,from:{x,y},to:{x,y},fromEnd?:none|arrow,toEnd?:none|arrow,label?,color?}}, add_ink {stroke:{version:1,id,tool:pen|marker,color?,size?,points:[x,y,pressure,...],frame?:{width,height}},node?:id} (colour defaults to the host theme and size to human medium width: pen 2.4, marker 14; node-local points and authoring frame when attached, world points without a frame when free), update_ink {id,patch} (points/tool/color/size/transform; not id/version/frame), attach_ink {id,node?:id} (omit node to detach, preserving visible outline), remove {id} (ink too), connect {edge:{id,fromNode,toNode,...}}, group {id,label?,ids}, ungroup {id}, collapse {id,collapsed}, style {id,styleAttributes}. Unknown ids report the op index and suggestions; no partial writes. New unpositioned nodes auto-layout. Styles/abele updates merge retained fields. Grouping accepts cards and ink; ungrouping promotes group-owned ink without changing its outline. Removing a group promotes its children; removing a node removes owned ink and incident edges. One shared Abele session or native Canvas undo item when open. Own Ask mode.' +
+        ' Precise ops: fit {ids,width?} uses real text/Markdown rendering at the current/supplied width and replaces height; embedded media refused. align {ids,axis:left|right|top|bottom|center_x|center_y}; same_size {ids,dimension:width|height|both} copies the first card; distribute {ids,axis:horizontal|vertical,gap?} requires three cards; route {id,fromSide?,toSide?,method:direct|bezier|square|avoid,waypoints?:[{x,y}],labelPosition?:{x,y}|null}. avoid computes bends around cards; rerun after moving them. Styling accepts only schema-listed shape/border/path/arrow; font, padding and radius follow host theme and shape, background uses color.' +
         recoveryHelp,
       z.union([
         z.object({ path, revision, ops: z.array(operationSchema).min(1) }).strict(),
@@ -221,13 +337,22 @@ export function createCanvasTools(): AgentTool[] {
         if ('recovery' in params) return recoverProposal('canvas_edit', key, params, signal, ctx)
         // Tool arguments are JSON; approval queues can wrap retained patch fields in Vue proxies.
         const operations = JSON.parse(JSON.stringify(params.ops)) as typeof params.ops
+        const fits = operations.some((op) => op.op === 'fit')
+          ? await prepareFits(
+              (await new ObsidianCanvasStore(GlobalStore.getInstance().app).snapshot(key)).graph,
+              operations,
+              key,
+              ctx,
+              signal
+            )
+          : undefined
         const result = await new ObsidianCanvasStore(
           GlobalStore.getInstance().app,
           appOf(ctx)
         ).change(
           key,
           params.revision,
-          (graph) => planCanvasEdit(graph, operations, hostMetrics()),
+          (graph) => planCanvasEdit(graph, operations, hostMetrics(), fits),
           signal,
           proposalOwner(ctx, 'canvas_edit')
         )
@@ -365,12 +490,53 @@ export function createCanvasTools(): AgentTool[] {
           node: z.string().optional(),
           step: z.number().int().positive().optional(),
           maxSide: z.number().min(64).max(4096).default(2048),
+          regions: z
+            .array(z.union([region, z.object({ node: z.string().min(1) }).strict()]))
+            .min(1)
+            .max(12)
+            .optional()
+            .describe(
+              'Batch crops from this canvas only; mutually exclusive with region/node/step'
+            ),
         })
         .strict(),
       async (params, signal, ctx) => {
         const key = scoped(params.path, ctx),
           app = GlobalStore.getInstance().app
         const graph = await new ObsidianCanvasStore(app).read(key)
+        if (params.regions) {
+          if (params.region || params.node || params.step)
+            throw new Error('regions cannot be combined with region, node or step')
+          const shots = [],
+            content: UserContentPart[] = []
+          for (const crop of params.regions) {
+            signal?.throwIfAborted()
+            const options = 'node' in crop ? { node: crop.node } : { region: crop }
+            const picture = await canvasPicture(
+              app,
+              graph,
+              key,
+              { ...options, maxSide: params.maxSide },
+              (p) => scopeOf(ctx).isInScope(p),
+              signal
+            )
+            shots.push({
+              region: picture.region,
+              width: picture.canvas.width,
+              height: picture.canvas.height,
+              visible: picture.visible,
+              warnings: picture.warnings,
+            })
+            content.push(
+              { type: 'text', text: `[Canvas crop ${shots.length}: ${JSON.stringify(crop)}]` },
+              { type: 'image_url', image_url: { url: picture.canvas.toDataURL('image/png') } }
+            )
+          }
+          return {
+            ...answer({ path: key, shots }),
+            injectMessages: [{ role: 'user', timestamp: Date.now(), content }],
+          }
+        }
         const picture = await canvasPicture(
           app,
           graph,

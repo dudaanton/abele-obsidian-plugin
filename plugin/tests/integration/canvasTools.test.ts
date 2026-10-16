@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { TFile } from 'obsidian'
+import { MarkdownRenderer, TFile } from 'obsidian'
 import { isReactive, ref } from 'vue'
 import { createCanvasTools } from '@/ai/tools/CanvasTools'
 import { createAgentTools, getToolRegistry } from '@/ai/tools'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { canvasAssets, canvasRegionAssets } from '@/canvas/pictureAdapter'
+import * as pictures from '@/canvas/pictureAdapter'
 import { ObsidianCanvasStore } from '@/canvas/obsidianStore'
 import { subAgentRefusal } from '@/ai/SubAgentRunner'
 import { ScopeResolver } from '@/ai/ScopeResolver'
@@ -47,6 +48,80 @@ beforeEach(() => {
 })
 
 describe('agent canvas tools and permissions', () => {
+  it('renders several crops through the scoped picture path and refuses ambiguous options', async () => {
+    await call('canvas_create', { path: 'sample.canvas', from: { graph } })
+    const picture = vi.spyOn(pictures, 'canvasPicture').mockResolvedValue({
+      canvas: {
+        width: 200,
+        height: 100,
+        toDataURL: () => 'data:image/png;base64,c2FtcGxl',
+      } as HTMLCanvasElement,
+      region: { x: 0, y: 0, width: 200, height: 100 },
+      warnings: [],
+      visible: ['alpha'],
+      say: undefined,
+    })
+    try {
+      const result = await call('look_at_canvas', {
+        path: 'sample.canvas',
+        regions: [{ node: 'alpha' }, { x: 0, y: 0, width: 200, height: 100 }],
+      })
+      expect(JSON.parse(result.content[0].text).shots).toHaveLength(2)
+      expect(result.injectMessages?.[0].content).toHaveLength(4)
+      expect(picture).toHaveBeenCalledTimes(2)
+      expect(picture.mock.calls[0][3]).toMatchObject({ node: 'alpha' })
+      await expect(
+        call('look_at_canvas', {
+          path: 'sample.canvas',
+          node: 'alpha',
+          regions: [{ node: 'alpha' }],
+        })
+      ).rejects.toThrow('cannot be combined')
+      expect(picture).toHaveBeenCalledTimes(2)
+    } finally {
+      picture.mockRestore()
+    }
+  })
+  it('measures without saving and atomically fits a batch through the host renderer', async () => {
+    await call('canvas_create', {
+      path: 'sample.canvas',
+      from: { graph: { nodes: [{ id: 'sample', kind: 'text', label: 'Sample text' }] } },
+    })
+    const render = vi
+      .spyOn(MarkdownRenderer, 'render')
+      .mockImplementation(async (_app, _text, el) => {
+        Object.defineProperty(el, 'scrollHeight', { get: () => 60 })
+        Object.defineProperty(el, 'scrollWidth', { get: () => parseFloat(el.style.width) })
+      })
+    try {
+      const file = app.vault.getAbstractFileByPath('sample.canvas') as TFile
+      const before = await app.vault.read(file)
+      const read = JSON.parse(
+        (await call('canvas_read', { path: 'sample.canvas', measure: ['sample'] })).content[0].text
+      )
+      expect(read.measurements[0].height).toBeGreaterThanOrEqual(92)
+      expect(await app.vault.read(file)).toBe(before)
+      await call('canvas_edit', {
+        path: 'sample.canvas',
+        ops: [{ op: 'fit', ids: ['sample'], width: 200 }],
+      })
+      const saved = JSON.parse(await app.vault.read(file))
+      expect(saved.nodes[0]).toMatchObject({ width: 200, height: read.measurements[0].height })
+      await expect(
+        call('canvas_edit', {
+          path: 'sample.canvas',
+          ops: [
+            { op: 'fit', ids: ['sample'] },
+            { op: 'align', ids: ['sample', 'missing'], axis: 'left' },
+          ],
+        })
+      ).rejects.toThrow('Unknown id')
+      expect(await app.vault.read(file)).toBe(JSON.stringify(saved, null, 2) + '\n')
+      expect(document.querySelector('.abele-canvas-cards')).toBeNull()
+    } finally {
+      render.mockRestore()
+    }
+  })
   // BUG: the stage-one fixed count is obsolete once the independent walkthrough tool is added.
   it.fails('retains the obsolete count of five independent canvas modes', () => {
     expect(Object.keys(CANVAS_TOOL_MODES)).toHaveLength(5)
@@ -408,7 +483,7 @@ describe('agent canvas tools and permissions', () => {
         args: {
           path: 'sample.canvas',
           revision: JSON.parse(read.content[0].text).revision,
-          ops: [{ op: 'update', id: 'alpha', patch: { styleAttributes: { shape: 'ellipse' } } }],
+          ops: [{ op: 'update', id: 'alpha', patch: { styleAttributes: { shape: 'circle' } } }],
         },
       },
     ])
@@ -416,7 +491,7 @@ describe('agent canvas tools and permissions', () => {
     expect(isReactive(approved.args.ops[0].patch.styleAttributes)).toBe(true)
     await call(approved.name, approved.args)
     const data = await new ObsidianCanvasStore(app as unknown as App).read('sample.canvas')
-    expect(data.nodes.find((node) => node.id === 'alpha')?.styleAttributes?.shape).toBe('ellipse')
+    expect(data.nodes.find((node) => node.id === 'alpha')?.styleAttributes?.shape).toBe('circle')
   })
   it('reads and paints only scope-authorized note assets; refuses out-of-scope diagram changes', async () => {
     await call('canvas_create', { path: 'sample.canvas', from: { graph } })
