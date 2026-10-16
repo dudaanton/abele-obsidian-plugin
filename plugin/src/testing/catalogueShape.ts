@@ -34,6 +34,7 @@ export const CATALOGUE_COMPONENTS = [
   'Chart',
   'Checkbox',
   'ChoiceModal',
+  'CodeField',
   'ConfirmModal',
   'DateDivider',
   'Disclosure',

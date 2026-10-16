@@ -486,6 +486,12 @@
         <Setting name="Related notes" desc="No related notes selected."
           ><NotePicker v-model="picked" disabled placeholder="Choose a note…"
         /></Setting>
+        <CodeField
+          value='{ "station": "balcony", "every": "10m" }'
+          path="sample.json"
+          label="Request body"
+          placeholder="Body"
+        />
         <div ref="selectionAnchor">
           <p data-selection-sample>Select these sample words to preview selection actions.</p>
           <SelectionBar :scope="selectionAnchor" :actions="[ASK, ADD, NOTE]" @pick="announce" />
@@ -703,6 +709,7 @@ import Button from '@/components/obsidian/Button.vue'
 import Input from '@/components/obsidian/Input.vue'
 import Dropdown from '@/components/obsidian/Dropdown.vue'
 import Checkbox from '@/components/obsidian/Checkbox.vue'
+import CodeField from '@/components/obsidian/CodeField.vue'
 import Search from '@/components/obsidian/Search.vue'
 import Slider from '@/components/obsidian/Slider.vue'
 import Section from '@/components/obsidian/Section.vue'
