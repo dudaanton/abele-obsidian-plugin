@@ -77,6 +77,10 @@ it('opens a giant session at its end over a remote connection, pages back, types
       const connection=nodes.connection(${JSON.stringify(registration)});
       await until(()=>connection.state.value==='connected','The reconnection');
       const heapBefore=heap();
+      const store=connection.client.store,tx=store.transaction.bind(store);
+      window.__giantProbe={tx:0,txMs:0,longTasks:0,longMs:0};
+      store.transaction=async(work)=>{const t=performance.now();try{return await tx(work)}finally{window.__giantProbe.tx++;window.__giantProbe.txMs+=performance.now()-t}};
+      try{new PerformanceObserver(l=>{for(const e of l.getEntries()){window.__giantProbe.longTasks++;window.__giantProbe.longMs+=e.duration}}).observe({type:'longtask'})}catch{}
       const t0=performance.now();
       await chats.openNodeSession({kind:'node-session',nodeId:${JSON.stringify(created.node)},registrationId:${JSON.stringify(registration)},sessionId:${JSON.stringify(created.session)},title:'Sample long session'});
       await chats.revealSidebar({focus:false});
@@ -86,7 +90,9 @@ it('opens a giant session at its end over a remote connection, pages back, types
       const presenter=chats.getNodeSession('node:'+${JSON.stringify(registration)}+':'+${JSON.stringify(created.session)});
       const kept=(await connection.client.history(${JSON.stringify(created.session)})).length;
       const dom=chat().querySelectorAll('.abele-chat-msg').length;
-      return JSON.stringify({openMs,kept,dom,heapBefore,heapOpen:heap(),hasOlder:presenter.hasOlder.value})})()`,
+      const probe={...window.__giantProbe,txMs:Math.round(window.__giantProbe.txMs),longMs:Math.round(window.__giantProbe.longMs)};
+      Object.assign(window.__giantProbe,{tx:0,txMs:0,longTasks:0,longMs:0});
+      return JSON.stringify({openMs,kept,dom,heapBefore,heapOpen:heap(),hasOlder:presenter.hasOlder.value,probe})})()`,
       180000
     )
   ) as {
@@ -143,10 +149,12 @@ it('opens a giant session at its end over a remote connection, pages back, types
       await until(()=>[...root.querySelectorAll('.abele-chat-msg')].some(m=>m.textContent.includes('word40 ')),'The streamed answer',60000);
       const firstMs=Math.round(performance.now()-t0);
       const streamingTyping=stats(await type('typed while it answers'));
-      await until(()=>[...root.querySelectorAll('.abele-chat-msg')].some(m=>m.textContent.includes('word299')),'The whole streamed answer',120000);
+      try{await until(()=>[...root.querySelectorAll('.abele-chat-msg')].some(m=>m.textContent.includes('word299')),'The whole streamed answer',120000)}
+      catch(e){const text=[...root.querySelectorAll('.abele-chat-msg')].map(m=>m.textContent).join(' ');const words=(text.match(/word\d+/g)??[]).length;throw Error(e.message+' '+JSON.stringify({words,probe:window.__giantProbe,frames:frames.length}))}
       const streamMs=Math.round(performance.now()-t0);
       done=true;await frame();
-      return JSON.stringify({typing,streamingTyping,firstMs,streamMs,frames:stats(frames),heapLive:heap()})})()`,
+      const probe={...window.__giantProbe,txMs:Math.round(window.__giantProbe.txMs),longMs:Math.round(window.__giantProbe.longMs)};
+      return JSON.stringify({typing,streamingTyping,firstMs,streamMs,frames:stats(frames),heapLive:heap(),probe})})()`,
       240000
     )
   ) as {
