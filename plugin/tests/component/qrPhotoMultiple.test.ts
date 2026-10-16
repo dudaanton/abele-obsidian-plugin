@@ -3,9 +3,9 @@ import { expect, it, vi } from 'vitest'
 import QrCode from '@/components/obsidian/QrCode.vue'
 import { readPhoto } from '@/transfer/photo'
 import type { Rect } from '@/transfer/scan'
+import { token } from './qrPhotoFixture'
 
 it('finds a connection token beside an unrelated QR in the same full-image pass', async () => {
-  const token = 'sample-connection-'.padEnd(270, 'aB3_')
   const codes = [
     { text: 'https://example.org/sample', x: 200, y: 200, size: 300 },
     { text: token, x: 800, y: 400, size: 2400 },
