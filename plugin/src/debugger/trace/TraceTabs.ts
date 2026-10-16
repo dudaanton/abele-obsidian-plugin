@@ -20,6 +20,7 @@ import { promptDialog } from '@/components/obsidian/dialogs'
 import { NodeService } from '@/node/NodeService'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { DebuggerService } from '../DebuggerService'
+import { revealSidebarView } from '@/views/revealSidebarView'
 import { shape, value as valueView } from './mapping'
 import { TraceRunModel } from './TraceRunModel'
 import { TraceRpc } from './wire'
@@ -153,15 +154,25 @@ export class TraceRunTab extends ItemView {
       render: () => {
         void this.revision.value
         if (!model.run) return h(EmptyState, { text: model.error || 'Reading the run…' })
+        const debuggerBinding = DebuggerService.instance.forRun(
+          state.registrationId,
+          state.projectId,
+          model.wire.run.debug_session_id
+        )
         return h(TraceRunView, {
+          debuggerAvailable: !!debuggerBinding,
+          onDebugger: () => {
+            if (!debuggerBinding) return
+            DebuggerService.instance.select(debuggerBinding)
+            act(revealSidebarView(GlobalStore.getInstance().app, 'abele-debug-view'))
+          },
           ref: (r: unknown) => (this.view.value = r as { back(): void } | null),
           run: model.run,
           picked: model.picked,
           trail: model.trail,
           onPick: (step: string | undefined) => act(model.pick(step)),
           onReveal: (file: string, line: number) => {
-            const binding = DebuggerService.instance.active.value
-            if (binding) DebuggerService.instance.reveal(binding, file, line)
+            if (debuggerBinding) DebuggerService.instance.reveal(debuggerBinding, file, line)
             else new Notice('Open the debugger of this session to go to the line')
           },
           onOpenValue: (step: string, name: string, path?: string) =>

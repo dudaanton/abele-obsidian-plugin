@@ -208,9 +208,16 @@ export async function startProgram(
   // The node has no restart of its own: Restart in the panel stops the program still going and
   // starts the same one again, with the points it had.
   const binding = service.binding(presenter)
+  binding.reattach = undefined
   binding.rerun = async () => {
+    await presenter.connection.connect()
+    // Recover current state before deciding whether the old process needs stopping.
+    if (!binding.controller.current && binding.sessionId) await binding.open(binding.sessionId)
+    if (!binding.controller.current) throw new Error('Reconnect to the debugger before restarting')
     const carried = carriedPoints(binding)
     if (binding.controller.session.status !== 'exited') await binding.controller.command('stop')
+    if (binding.controller.session.status !== 'exited')
+      throw new Error('The previous program has not stopped; reconnect before restarting')
     const taken = [...sources, ...carried.map((c) => c.path)]
     return startProgram(presenter, program, [...new Set(taken)], target, show, carried)
   }

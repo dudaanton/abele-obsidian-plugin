@@ -18,6 +18,12 @@ import { ChatService } from '@/ai/ChatService'
 import { mountDebugSource } from '@/debugger/sourceExtension'
 import { openTraceRun, openTraceValue } from '@/debugger/trace/TraceTabs'
 import { DebuggerService } from '@/debugger/DebuggerService'
+import { createTraceTools } from '@/ai/tools/TraceTools'
+import { activeTraceContext } from '@/debugger/trace/agentContext'
+const readAgentTraceTimeline = (run: string) =>
+  createTraceTools(activeTraceContext)
+    .find((tool) => tool.name === 'trace_timeline')
+    .execute('sample-analysis', { run })
 import { RequestsService } from '@/requests/RequestsService'
 import { openRequestTab } from '@/requests/actions'
 import { openRequestsView } from '@/requests/views'
@@ -284,6 +290,7 @@ interface AbeleTestApi {
   openTraceRun: typeof openTraceRun
   openTraceValue: typeof openTraceValue
   DebuggerService: typeof DebuggerService
+  readAgentTraceTimeline: typeof readAgentTraceTimeline
   requests: {
     service: typeof RequestsService
     openView: typeof openRequestsView
@@ -951,6 +958,7 @@ export function exposeTestApi(plugin: Plugin): void {
     openTraceRun,
     openTraceValue,
     DebuggerService,
+    readAgentTraceTimeline,
     requests: { service: RequestsService, openView: openRequestsView, openTab: openRequestTab },
     codeSelectionAdapters: { chat: chatCodeSelection, note: insertCodeSelection },
     ChatService,

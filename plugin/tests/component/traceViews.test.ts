@@ -49,6 +49,16 @@ describe('a record point set up under its line', () => {
 })
 
 describe('a recorded run', () => {
+  it('returns to its debugger through a compact toolbar action', async () => {
+    const w = mount(TraceRunView, { props: { run, debuggerAvailable: true } })
+    await w.get('[aria-label="Back to debugger"]').trigger('click')
+    expect(w.emitted('debugger')).toEqual([[]])
+    await w.setProps({ picked: 's2' })
+    expect(w.get('[aria-label="Back to debugger"]').exists()).toBe(true)
+    await w.setProps({ debuggerAvailable: false })
+    expect(w.find('[aria-label="Back to debugger"]').exists()).toBe(false)
+    w.unmount()
+  })
   it('stands the steps of one request under the first and keeps a step of none alone', () => {
     const w = mount(TraceRunView, { props: { run } })
     const top = w.findAll('.abele-trace-run__steps > .abele-trace-run__step')

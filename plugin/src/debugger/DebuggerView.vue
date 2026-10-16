@@ -17,6 +17,7 @@
         :runs="runs"
         :open-run="openRunId"
         :restart-available="!!binding.rerun"
+        :reattach-available="!!binding.reattach"
         @open-run="openRunTab"
         @run-menu="(id, e) => runMenu(binding!, id, e)"
         @show-folder="folderMenu(binding!)"
@@ -100,6 +101,7 @@ async function run(work: () => Promise<unknown>) {
 function command(action: string) {
   const b = binding.value
   if (!b) return
+  if (action === 'reattach' && b.reattach) return void run(b.reattach)
   if (action !== 'restart' || !b.rerun) return void run(() => b.controller.command(action))
   // Restart stops a program still going, then starts it again with its points.
   void run(b.rerun)

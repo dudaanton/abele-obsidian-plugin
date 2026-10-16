@@ -120,12 +120,54 @@ describe('running a program under the debugger', () => {
     await startProgram(presenter, 'src/page.js', ['src/service.js'], target, async () => {})
     const binding = DebuggerService.instance.binding(presenter)
     expect(binding.rerun).toBeTypeOf('function')
+    // The UI host normally opens the session; this test's show callback is inert.
+    vi.spyOn(binding.controller, 'current', 'get').mockReturnValue(true)
+    binding.controller.session.status = 'exited'
     await binding.rerun!()
     const starts = calls.filter(([m]) => m === 'debugger.v1.start').map(([, p]) => p)
     expect(starts).toHaveLength(2)
     expect(starts[1]).toEqual(
       expect.objectContaining({ program: 'src/page.js', sources: ['src/service.js'] })
     )
+  })
+
+  it('does not launch a second program when the first stop is unconfirmed', async () => {
+    fakeWorkspace()
+    const { presenter, calls } = fakePresenter()
+    await startProgram(presenter, 'src/page.js', [], target, async () => {})
+    const binding = DebuggerService.instance.binding(presenter)
+    vi.spyOn(binding.controller, 'current', 'get').mockReturnValue(true)
+    binding.controller.session.status = 'running'
+    vi.spyOn(binding.controller, 'command').mockResolvedValue(undefined)
+    await expect(binding.rerun!()).rejects.toThrow('previous program has not stopped')
+    expect(calls.filter(([m]) => m === 'debugger.v1.start')).toHaveLength(1)
+  })
+
+  it('refreshes a lost observation before stopping and restarting', async () => {
+    fakeWorkspace()
+    const { presenter, calls } = fakePresenter()
+    await startProgram(presenter, 'src/page.js', [], target, async () => {})
+    const binding = DebuggerService.instance.binding(presenter)
+    binding.controller.snapshot = { debug_session_id: 'old-session' } as never
+    let current = false
+    vi.spyOn(binding.controller, 'current', 'get').mockImplementation(() => current)
+    binding.controller.session.status = 'lost'
+    const order: string[] = []
+    vi.spyOn(presenter.connection, 'connect').mockImplementation(async () => {
+      order.push('connect')
+    })
+    vi.spyOn(binding, 'open').mockImplementation(async () => {
+      order.push('refresh')
+      current = true
+      binding.controller.session.status = 'running'
+    })
+    vi.spyOn(binding.controller, 'command').mockImplementation(async () => {
+      order.push('stop')
+      binding.controller.session.status = 'exited'
+    })
+    await binding.rerun!()
+    expect(order).toEqual(['connect', 'refresh', 'stop'])
+    expect(calls.filter(([m]) => m === 'debugger.v1.start')).toHaveLength(2)
   })
 
   it('stops the program still going on Restart and carries its breakpoints and record points to the new run', async () => {
@@ -154,8 +196,10 @@ describe('running a program under the debugger', () => {
       },
     ] as never)
     Object.defineProperty(binding.controller, 'session', { value: { status: 'paused' } })
+    vi.spyOn(binding.controller, 'current', 'get').mockReturnValue(true)
     vi.spyOn(binding.controller, 'command').mockImplementation(async (a: string) => {
       order.push(a)
+      binding.controller.session.status = 'exited'
       return undefined as never
     })
     const setBreakpoint = vi

@@ -7,6 +7,11 @@
     class="abele-trace-run"
     :class="{ 'abele-trace-run_phone': phone, 'abele-trace-run_picked': !!picked || !!trail }"
   >
+    <div v-if="debuggerAvailable" class="nav-header">
+      <div class="nav-buttons-container">
+        <Icon icon="bug-play" tooltip="Back to debugger" @click="emit('debugger')" />
+      </div>
+    </div>
     <div class="abele-trace-run__body">
       <div class="abele-trace-run__list">
         <div class="abele-trace-run__tools">
@@ -110,15 +115,17 @@ import type { TraceLink, TraceRun, TraceStep, TraceTrail as Trail } from './type
 const props = withDefaults(
   defineProps<{
     run: TraceRun
+    debuggerAvailable?: boolean
     /** The step shown on the right. */
     picked?: string
     /** A value followed through the run: its trail takes the right side. */
     trail?: Trail
   }>(),
-  { picked: undefined, trail: undefined }
+  { picked: undefined, trail: undefined, debuggerAvailable: false }
 )
 
 const emit = defineEmits<{
+  (e: 'debugger'): void
   (e: 'pick', step: string | undefined): void
   (e: 'reveal', file: string, line: number): void
   (e: 'open-value', step: string, name: string, path?: string): void
@@ -233,11 +240,14 @@ const StepEnd = defineComponent({
   color: var(--text-faint);
 }
 .abele-trace-run {
+  display: flex;
+  flex-direction: column;
   height: 100%;
   min-height: 0;
   container-type: inline-size;
 }
 .abele-trace-run__body {
+  flex: 1;
   display: grid;
   grid-template-columns: minmax(18em, 2fr) minmax(0, 3fr);
   gap: var(--size-4-4);

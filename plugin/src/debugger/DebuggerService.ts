@@ -30,6 +30,7 @@ export class DebuggerBinding {
   trace?: TraceSession
   /** Runs the program last started from this chat again, with the same files: Restart in the panel. */
   rerun?: () => Promise<unknown>
+  reattach?: () => Promise<unknown>
   private abort?: AbortController
   private waitId?: string
   private stopConnection: WatchStopHandle
@@ -306,6 +307,15 @@ export class DebuggerService {
   }
   select(binding: DebuggerBinding) {
     this.active.value = binding
+  }
+  /** A run belongs to one session on one node, even when another debugger is active. */
+  forRun(registrationId: string, projectId: string, sessionId: string) {
+    return [...this.bindings.values()].find(
+      (b) =>
+        b.registrationId === registrationId &&
+        b.sessionId === sessionId &&
+        b.controller.snapshot?.target.project_id === projectId
+    )
   }
   registerRevealer(reveal: (request: DebugSourceReveal) => boolean) {
     this.revealers.add(reveal)

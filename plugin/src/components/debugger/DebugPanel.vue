@@ -280,6 +280,7 @@ const props = withDefaults(
   defineProps<{
     session: DebugSession
     restartAvailable?: boolean
+    reattachAvailable?: boolean
     modeAvailable?: boolean
     modeUnavailableReason?: string
     busy?: boolean
@@ -292,6 +293,7 @@ const props = withDefaults(
   }>(),
   {
     restartAvailable: false,
+    reattachAvailable: false,
     modeAvailable: false,
     modeUnavailableReason: '',
     busy: false,
@@ -422,6 +424,16 @@ const buttons = computed(() => {
       tooltip: 'Step out (Shift+F11)',
       disabled: !can,
     },
+    ...(props.reattachAvailable && (s === 'exited' || s === 'lost')
+      ? [
+          {
+            action: 'reattach',
+            icon: 'plug',
+            tooltip: 'Attach to a running program',
+            disabled: props.busy,
+          },
+        ]
+      : []),
     {
       action: 'restart',
       icon: 'rotate-ccw',
@@ -430,7 +442,7 @@ const buttons = computed(() => {
         : props.session.attached
           ? 'Restart: not for a program the debugger attached to'
           : 'Restart is not available on this node',
-      disabled: locked.value || !props.restartAvailable,
+      disabled: props.busy || !props.restartAvailable,
     },
     // A program the node did not start is never stopped from here: the debugger lets go of it.
     props.session.attached

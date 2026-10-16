@@ -91,7 +91,9 @@ export async function attachToProgram(
   console.debug('[debugger] Attached', program.pid, program.port, started.debug_session_id)
   const snapshot = await registerSources(presenter, started, target)
   // Nothing to restart: the node did not start it, and Detach leaves it running.
-  DebuggerService.instance.binding(presenter).rerun = undefined
+  const binding = DebuggerService.instance.binding(presenter)
+  binding.rerun = undefined
+  binding.reattach = () => askAndAttachProgram(presenter, show)
   await show(started.debug_session_id)
   // The program's own file opens with its margin; with none in the chat's folder, the files open.
   await openSources(

@@ -115,6 +115,32 @@ describe('debugger panel', () => {
       expect(button.attributes('disabled')).toBeDefined()
     w.unmount()
   })
+  it('offers recovery after connection loss without enabling stale step controls', async () => {
+    const w = mount(DebugPanel, {
+      props: { session: session('lost'), restartAvailable: true },
+    })
+    const restart = w.get('[aria-label="Restart: the same program from its first line"]')
+    expect(restart.attributes('disabled')).toBeUndefined()
+    await restart.trigger('click')
+    expect(w.emitted('command')?.at(-1)).toEqual(['restart'])
+    expect(w.get('[aria-label="Step over (F10)"]').attributes('disabled')).toBeDefined()
+    w.unmount()
+  })
+
+  it('offers reattach for a detached program through the running program picker', async () => {
+    const w = mount(DebugPanel, {
+      props: {
+        session: { ...session('exited'), attached: true, detached: true },
+        reattachAvailable: true,
+      },
+    })
+    const button = w.get('[aria-label="Attach to a running program"]')
+    expect(button.attributes('disabled')).toBeUndefined()
+    await button.trigger('click')
+    expect(w.emitted('command')?.at(-1)).toEqual(['reattach'])
+    w.unmount()
+  })
+
   it('has one entry point per control and disables gated restart and unbound mode', () => {
     const w = mount(DebugPanel, {
       props: { session: session('paused'), restartAvailable: false, modeAvailable: false },
