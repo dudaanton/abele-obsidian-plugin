@@ -44,6 +44,26 @@ export const copyKind = (copy: CopySummary) =>
         ? `Detached at ${copy.branch}`
         : 'Worktree'
 
+/** A file's glyph by its kind, as an icon set for the file explorer draws them. */
+export function fileIcon(name: string): string {
+  const ext = name.slice(name.lastIndexOf('.') + 1).toLowerCase()
+  if (name.startsWith('.env')) return 'file-lock'
+  if (/^(md|txt|rst|adoc)$/.test(ext) || /^(readme|license|changelog)/i.test(name))
+    return 'file-text'
+  if (/^(json|jsonc)$/.test(ext)) return 'file-json'
+  if (/^(ya?ml|toml|ini|cfg|conf)$/.test(ext) || name.startsWith('.')) return 'file-cog'
+  if (/^(png|jpe?g|gif|svg|webp|avif|heic|bmp|ico)$/.test(ext)) return 'file-image'
+  if (/^(mp4|mov|webm|mkv)$/.test(ext)) return 'file-video'
+  if (/^(mp3|wav|ogg|flac|m4a)$/.test(ext)) return 'file-audio'
+  if (/^(zip|gz|tgz|tar|7z|rar)$/.test(ext)) return 'file-archive'
+  if (/^(csv|tsv|xlsx?|ods)$/.test(ext)) return 'file-spreadsheet'
+  if (/^(sh|bash|zsh|fish|ps1)$/.test(ext)) return 'file-terminal'
+  if (/^(pdf|epub|docx?)$/.test(ext)) return 'file-type'
+  if (/^(ttf|otf|woff2?)$/.test(ext)) return 'file-type-2'
+  if (/^(lock)$/.test(ext)) return 'file-lock'
+  return /\./.test(name) ? 'file-code' : 'file'
+}
+
 export const fileName = (path: string) => path.slice(path.lastIndexOf('/') + 1)
 export const dirName = (path: string) =>
   path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''

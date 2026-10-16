@@ -26,6 +26,10 @@ function pluginFor(app: unknown) {
       el.addEventListener(type, fn)
       disposers.push(() => el.removeEventListener(type, fn))
     },
+    // The external file tab, embeds and link routing register at the same startup step.
+    registerView: () => {},
+    registerMarkdownPostProcessor: () => {},
+    registerEditorExtension: () => {},
   }
 }
 

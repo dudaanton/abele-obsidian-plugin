@@ -34,6 +34,11 @@ it('keeps extracted workspace history actions scoped to each current token engin
     register: vi.fn(),
     registerEvent: vi.fn(),
     addCommand: vi.fn(),
+    // The external file tab, embeds and link routing register at the same startup step.
+    registerDomEvent: vi.fn(),
+    registerView: vi.fn(),
+    registerMarkdownPostProcessor: vi.fn(),
+    registerEditorExtension: vi.fn(),
   } as never)
   const items: Array<{ title: string; run?: () => void }> = []
   const menu = {
