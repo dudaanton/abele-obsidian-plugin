@@ -1,0 +1,183 @@
+import { ref, type Ref } from 'vue'
+import type { NodeClient } from '@abele/node-client'
+import type { LiveSessionState } from '@abele/node-protocol'
+import type { NodeProvider } from './providers'
+import type { LiveProjection } from './liveTranscript'
+import type { NodeSessionLive, PermissionMode, SessionChoice, SessionSettings } from './sessionLive'
+
+/** The node's word for a mode, and ours. */
+const WIRE_MODE: Record<PermissionMode, string> = {
+  manual: 'manual',
+  acceptEdits: 'acceptEdits',
+  auto: 'auto',
+  plan: 'plan',
+  dontAsk: 'dontAsk',
+  bypass: 'bypassPermissions',
+}
+const modeOf = (wire: string): PermissionMode =>
+  (Object.keys(WIRE_MODE) as PermissionMode[]).find((m) => WIRE_MODE[m] === wire) ?? 'manual'
+
+/** Claude Code's model aliases: the node takes them, and does not list its models yet. */
+const MODEL_ALIASES = ['opus', 'sonnet', 'haiku']
+const EFFORT_LABEL: Record<string, string> = {
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  xhigh: 'Extra high',
+  max: 'Max',
+}
+
+/** «Opus», «Opus 5.5» from `opus` or `claude-opus-5-5`; anything else as the node says it. */
+export function modelLabel(model: string): string {
+  const found = /(opus|sonnet|haiku|fable)(?:[-_ ]?(\d+(?:[-.]\d+)*))?/i.exec(model)
+  if (!found) return model
+  const family = found[1][0].toUpperCase() + found[1].slice(1).toLowerCase()
+  return found[2] ? `${family} ${found[2].replace(/-/g, '.')}` : family
+}
+
+const accountLabel = (name: string): string => (name === 'default' ? 'Main subscription' : name)
+
+/** The commands a node session takes after «/», before its skills. */
+export const SESSION_COMMANDS: NodeSessionLive['commands'] = [
+  { name: 'compact', description: 'Compact the context', kind: 'command' },
+  { name: 'model', description: 'Choose the model', kind: 'command' },
+  { name: 'effort', description: 'Choose how hard it thinks', kind: 'command' },
+  { name: 'mode', description: 'Choose what it asks you about', kind: 'command' },
+  { name: 'rename', description: 'Rename the session', kind: 'command' },
+  { name: 'stop', description: 'Stop the session and what it runs', kind: 'command' },
+]
+
+export interface SessionActions {
+  open: (sessionId: string) => void
+  report: (error: unknown) => void
+}
+
+/**
+ * How a long-lived session runs and the owner's levers on it: its settings read with
+ * `session.state`, changed with `session.configure`, compacted, stopped and renamed. What it
+ * shows comes from `session.state` together with the journal (`LiveTranscript`); the node's
+ * description supplies the choices it offers.
+ */
+export class NodeSessionControl {
+  readonly state: Ref<LiveSessionState | null> = ref(null)
+  private reading?: Promise<void>
+  private again = false
+
+  constructor(
+    private readonly client: () => NodeClient,
+    private readonly sessionId: string,
+    private readonly actions: SessionActions
+  ) {}
+
+  /** Reads the session's state again; calls while one read runs are folded into one more. */
+  read(): Promise<void> {
+    if (this.reading) {
+      this.again = true
+      return this.reading
+    }
+    this.reading = (async () => {
+      do {
+        this.again = false
+        try {
+          this.state.value = (await this.client().sessionState(this.sessionId)) as LiveSessionState
+        } catch (error) {
+          // An older node or a provider without long-lived sessions: nothing to show.
+          console.debug('[Abele node] session.state unavailable', error)
+          this.state.value = null
+        }
+      } while (this.again)
+    })().finally(() => (this.reading = undefined))
+    return this.reading
+  }
+
+  private async act(what: () => Promise<unknown>): Promise<void> {
+    try {
+      await what()
+    } catch (error) {
+      this.actions.report(error)
+    }
+    await this.read()
+  }
+
+  change(patch: Partial<SessionSettings>): Promise<void> {
+    return this.act(() =>
+      this.client().configureSession(this.sessionId, {
+        ...(patch.model ? { model: patch.model } : {}),
+        ...(patch.effort ? { effort: patch.effort as never } : {}),
+        ...(patch.account ? { account: patch.account } : {}),
+        ...(patch.mode ? { permission_mode: WIRE_MODE[patch.mode] as never } : {}),
+      })
+    )
+  }
+
+  /** `then` is sent once compacting is done; none, and the session waits for you. */
+  compact(focus: string, then?: string): Promise<void> {
+    return this.act(async () => {
+      const settings = this.state.value?.settings
+      if (then && then !== settings?.continuation_text)
+        await this.client().configureSession(this.sessionId, { continuation_text: then })
+      await this.client().compactSession(this.sessionId, {
+        ...(focus ? { focus } : {}),
+        continue: !!then,
+      })
+    })
+  }
+
+  stop(): Promise<void> {
+    return this.act(() => this.client().stopSession(this.sessionId))
+  }
+
+  rename(title: string): Promise<void> {
+    return this.act(() => this.client().renameSession(this.sessionId, title))
+  }
+
+  /**
+   * The session as its chat shows it, or null when it is not a long-lived one: a provider that
+   * runs one process per message, a node that does not say, a state not read yet.
+   */
+  view(provider: NodeProvider | undefined, journal: LiveProjection): NodeSessionLive | null {
+    const state = this.state.value
+    if (!state?.live) return null
+    const configuration = (provider?.configuration ?? {}) as {
+      accounts?: string[]
+      efforts?: string[]
+      permission_modes?: string[]
+    }
+    const settings: SessionSettings = {
+      model: state.settings.model,
+      effort: state.settings.effort,
+      account: state.settings.account,
+      mode: modeOf(state.settings.permission_mode),
+    }
+    const models = [...new Set([...MODEL_ALIASES, settings.model].filter(Boolean))]
+    const choice = (id: string, label: string): SessionChoice => ({ id, label })
+    const context =
+      journal.context ??
+      (state.context?.total_tokens != null && state.context.max_tokens
+        ? { used: state.context.total_tokens, limit: state.context.max_tokens }
+        : null)
+    return {
+      settings,
+      choices: {
+        models: models.map((m) => choice(m, modelLabel(m))),
+        efforts: (configuration.efforts ?? Object.keys(EFFORT_LABEL)).map((e) =>
+          choice(e, EFFORT_LABEL[e] ?? e)
+        ),
+        accounts: [...new Set([...(configuration.accounts ?? []), settings.account])].map((a) =>
+          choice(a, accountLabel(a))
+        ),
+        bypassAllowed: (configuration.permission_modes ?? []).includes('bypassPermissions'),
+      },
+      context,
+      compacting: journal.compacting || state.compacting,
+      background: journal.tasks,
+      children: [],
+      commands: SESSION_COMMANDS,
+      change: (patch) => void this.change(patch),
+      compact: (focus, then) => void this.compact(focus, then),
+      stop: () => void this.stop(),
+      rename: (title) => void this.rename(title),
+      open: (id) => this.actions.open(id),
+    }
+  }
+}

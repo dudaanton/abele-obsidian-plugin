@@ -87,7 +87,10 @@ export interface SessionMark {
 export interface NodeSessionLive {
   settings: SessionSettings
   choices: SessionChoices
-  context: ContextUse
+  /** Unknown until the session has reported it, after its first turn. */
+  context: ContextUse | null
+  /** A compaction runs now. */
+  compacting?: boolean
   background: BackgroundTask[]
   /** The sessions this one started through the node, listed with what runs in the background. */
   children: ChildSession[]
@@ -96,7 +99,8 @@ export interface NodeSessionLive {
   /** The node's own commands and the skills it has, for «/». */
   commands: { name: string; description: string; kind: 'command' | 'skill' }[]
   change: (patch: Partial<SessionSettings>) => void
-  stopTask: (id: string) => void
+  /** Stops one background task; unset while the node cannot stop one task alone. */
+  stopTask?: (id: string) => void
   compact: (focus: string, then?: string) => void
   /** Stops the answer, every background task and the session's process. */
   stop: () => void

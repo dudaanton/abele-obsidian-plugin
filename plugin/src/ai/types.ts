@@ -1,3 +1,4 @@
+import type { SessionMark } from '@/node/sessionLive'
 import type { NodeAccessRefusal } from './tools/node/accessRefusal'
 import { DEFAULT_REQUEST_TIMEOUT_SECONDS } from './requestTimeout'
 import { DEFAULT_MEMORY_TEMPLATE } from './agents/memory'
@@ -733,6 +734,10 @@ export interface ChatMessage {
    * what would let it through (`ai/tools/node/accessRefusal.ts`).
    */
   nodeAccessRefusal?: NodeAccessRefusal
+  /** A message another session on the node wrote to this one: who, and the way to its chat. */
+  fromSession?: { id: string; title: string; agent?: string }
+  /** A line a node session draws itself: compacting, compacted, woken by a background task. */
+  sessionMark?: SessionMark
 }
 
 /** Where a comment chat sits: the note holding its marker, and the text it was made on. */

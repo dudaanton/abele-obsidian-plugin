@@ -4,6 +4,7 @@ import type { ChatMessage } from '@/ai/types'
 import { readAgentReplyText } from '@/ai/replyLinks'
 import { ClaudeTranscript } from './claudeTranscript'
 import { PiTranscript, piFailure } from './piTranscript'
+import { LiveTranscript, type LiveProjection } from './liveTranscript'
 
 export type NodeSessionState = 'idle' | 'queued' | 'accepted' | 'running' | 'needs-attention'
 export interface NodeTranscript {
@@ -18,6 +19,8 @@ export interface NodeTranscript {
   state: NodeSessionState
   artifacts: { messageId: string; artifactId: string; size: number }[]
   unknown: JournalEvent[]
+  /** A long-lived session's process, background work, context and compacting. */
+  live: LiveProjection
 }
 
 /** The journal is canonical. Projection is disposable; replay never executes a plugin tool. */
@@ -32,7 +35,6 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
   const artifacts: NodeTranscript['artifacts'] = []
   const unknown: JournalEvent[] = []
   const seen = new Set<number>()
-  let failed = false
   let session: NodeTranscript['session']
   let at = 0
   let currentRun = ''
@@ -55,6 +57,12 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
   }
   const claude = new ClaudeTranscript(message)
   const pi = new PiTranscript(message)
+  let failed = false
+  const live = new LiveTranscript(message, runs, (ids, outcome) => {
+    for (const id of ids)
+      inputs.set(id, outcome === 'success' ? 'completed' : outcome || 'completed')
+    failed = outcome !== 'success'
+  })
   for (const event of [...events].sort((a, b) => a.seq - b.seq)) {
     if (seen.has(event.seq)) continue
     seen.add(event.seq)
@@ -87,6 +95,7 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
     const native =
       (event.type.startsWith('claude.') && claude.apply(event.type, data)) ||
       (event.type.startsWith('pi.') && pi.apply(event.type, data, runInputs.get(currentRun)))
+    if (!native && live.apply(event.type, data, at)) continue
     if (native) {
       for (const id of touchedTools) {
         if (event.type.endsWith('.tool.call')) startedTools.add(id)
@@ -108,6 +117,12 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
         const replied = readAgentReplyText(text('text'))
         input.content = replied?.content ?? text('text')
         if (replied) input.replyTo = replied.replyTo
+        const from = data.from_session as { session_id?: unknown; title?: unknown } | undefined
+        if (from && typeof from.session_id === 'string')
+          input.fromSession = {
+            id: from.session_id,
+            title: typeof from.title === 'string' ? from.title : '',
+          }
       }
     } else if (event.type === 'run.started') {
       runs.add(text('run_id'))
@@ -203,5 +218,6 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
     state,
     artifacts,
     unknown,
+    live: live.projection(),
   }
 }

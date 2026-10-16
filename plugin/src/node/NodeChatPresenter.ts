@@ -16,6 +16,7 @@ import { PromptSchema, TargetChangedRefusalSchema, validateParams } from '@abele
 import type { PathTarget } from './NodePathModel'
 import { wirePathTarget } from './nodePathChat'
 import { nodeProviders, nodeDebuggerSupported } from './providers'
+import { NodeSessionControl } from './NodeSessionControl'
 import {
   chatMovedNotice,
   supportsExpectedTarget,
@@ -40,6 +41,14 @@ const NORMALIZED_ARTIFACT_EVENTS = new Set([
 /** Immutable bytes that cannot be projected; transport/storage failures are retryable. */
 class UnusableArtifactError extends Error {}
 class OfflineTurnError extends Error {}
+/** Events after which a long-lived session's settings, process or context may have changed. */
+const LIVE_STATE_EVENTS = new Set([
+  'session.process',
+  'session.updated',
+  'turn.started',
+  'turn.completed',
+  'compaction.completed',
+])
 
 const NodeReferenceSchema = z
   .object({
@@ -62,7 +71,8 @@ export class NodeChatPresenter implements ChatPresentationSession {
   readonly projection = ref(reduceTranscript([]))
   readonly messages = computed(() => this.projection.value.messages)
   readonly isStreaming = computed(() => this.projection.value.state === 'running')
-  readonly label = computed(() => this.reference.title)
+  /** The title the node has now: a rename on any device shows here. */
+  readonly label = computed(() => this.projection.value.session?.title || this.reference.title)
   readonly provider = computed(() => this.projection.value.session?.provider ?? 'fake')
   readonly providerReports = ref<ReturnType<typeof nodeProviders>>([])
   readonly nodeDescription = ref<unknown>()
@@ -108,6 +118,11 @@ export class NodeChatPresenter implements ChatPresentationSession {
         ? 'queued'
         : this.projection.value.state
   )
+  /** A long-lived session's settings and levers; `live` is null for any other. */
+  readonly control: NodeSessionControl
+  readonly live = computed(() =>
+    this.control.view(this.providerReport.value, this.projection.value.live)
+  )
   private filesModel?: NodeFilesModel
   private filesBindingKey?: string
   private filesOpener?: (model: NodeFilesModel, path?: string, range?: CodeLineRange) => void
@@ -126,6 +141,10 @@ export class NodeChatPresenter implements ChatPresentationSession {
     readonly connection: NodeConnection
   ) {
     this.reference = NodeReferenceSchema.parse(reference)
+    this.control = new NodeSessionControl(() => connection.client, reference.sessionId, {
+      report: (error) => this.report(error),
+      open: (sessionId) => this.openSession?.(sessionId),
+    })
     const expected = connection.client.target.expected_node_id
     if (expected && expected !== reference.nodeId)
       throw new Error('Node tab identity does not match its registration')
@@ -141,6 +160,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
     this.stopEvent = connection.client.onEvent((event) => {
       if (event.stream_id === reference.sessionId) {
         void this.refresh().catch((e: unknown) => this.report(e))
+        if (LIVE_STATE_EVENTS.has(event.type)) void this.readLive()
         if (['session.worktree.changed', 'session.updated'].includes(event.type))
           void this.refreshBinding().catch((e: unknown) => this.report(e))
       }
@@ -156,6 +176,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
           void connection.client
             .subscribe(reference.sessionId)
             .then(() => this.refresh())
+            .then(() => this.readLive())
             .catch((e: unknown) => this.report(e))
         else void this.refresh().catch((e: unknown) => this.report(e))
       },
@@ -176,6 +197,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
       await this.connection.client.subscribe(this.reference.sessionId)
       await this.describe()
       await this.refresh()
+      await this.readLive()
     } catch (error) {
       this.report(error)
     }
@@ -548,6 +570,21 @@ export class NodeChatPresenter implements ChatPresentationSession {
     } catch (error) {
       this.report(error)
     }
+  }
+
+  /** Only Claude Code keeps a long-lived process on the node; nobody else is asked for one. */
+  private readLive(): Promise<void> {
+    return this.provider.value === 'claude' && !this.destroyed
+      ? this.control.read()
+      : Promise.resolve()
+  }
+
+  /** Opens another session of this node in its own chat tab; set by whoever owns the tabs. */
+  openSession?: (sessionId: string) => void
+
+  /** Stops whatever runs now, turns and compacting alike, and keeps the session. */
+  async interruptAll(): Promise<void> {
+    await Promise.all(this.projection.value.activeRuns.map((run) => this.interrupt(run)))
   }
 
   async interrupt(runId: string): Promise<void> {

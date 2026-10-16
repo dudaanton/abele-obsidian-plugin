@@ -13,7 +13,7 @@
       aria-hidden="true"
     />
     <span v-if="!phone" class="abele-session-settings__model">{{ said }}</span>
-    <ContextMeter :context="live.context" />
+    <ContextMeter v-if="live.context" :context="live.context" />
   </button>
 </template>
 
@@ -48,8 +48,10 @@ const effort = computed(() => label(props.live.choices.efforts, settings.value.e
 /** The model's family is enough beside the field, «Opus»: the row is full with the field's own
  *  glyphs, and the effort, which changes seldom, is in the tooltip and the menu. */
 const said = computed(() => model.value.split(' ')[0])
-const counts = computed(
-  () => `${tokens(props.live.context.used)} of ${tokens(props.live.context.limit)}`
+const counts = computed(() =>
+  props.live.context
+    ? `${tokens(props.live.context.used)} of ${tokens(props.live.context.limit)}`
+    : 'not reported yet'
 )
 const facts = computed(() =>
   [
@@ -74,7 +76,9 @@ function open(event: MouseEvent): void {
   const { choices } = props.live
   menu.addItem((i) =>
     i
-      .setTitle(`Compact the context… · ${counts.value}`)
+      .setTitle(
+        props.live.context ? `Compact the context… · ${counts.value}` : 'Compact the context…'
+      )
       .setIcon('fold-vertical')
       .setSection('Context')
       .onClick(() => emit('compact'))

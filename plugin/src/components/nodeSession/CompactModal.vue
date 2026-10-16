@@ -3,7 +3,8 @@
        to keep in focus, and what to send once it is done, so the work goes on by itself. -->
   <Modal title="Compact the context" close-in-footer phone-sheet @close="emit('close')">
     <p class="abele-compact__said">
-      {{ used }} of {{ limit }} in the context now. Everything said stays readable above the line.
+      <template v-if="context">{{ used }} of {{ limit }} in the context now. </template>Everything
+      said stays readable above the line.
     </p>
     <label class="abele-compact__field">
       <span class="setting-item-name">What to keep in focus</span>
@@ -39,14 +40,20 @@ import Input from '../obsidian/Input.vue'
 import Button from '../obsidian/Button.vue'
 import { tokens, type ContextUse } from './types'
 
-const props = defineProps<{ context: ContextUse; focus?: string }>()
+const props = defineProps<{
+  context: ContextUse | null
+  focus?: string
+  /** What the session sends after compacting, as it is set now, and whether it does. */
+  continuation?: string
+  continues?: boolean
+}>()
 const emit = defineEmits<{ close: []; compact: [focus: string, then?: string] }>()
 
 const focus = ref(props.focus ?? '')
-const then = ref(true)
-const next = ref('Continue from where you stopped.')
-const used = computed(() => tokens(props.context.used))
-const limit = computed(() => tokens(props.context.limit))
+const then = ref(props.continues ?? true)
+const next = ref(props.continuation || 'Continue from where you stopped.')
+const used = computed(() => (props.context ? tokens(props.context.used) : ''))
+const limit = computed(() => (props.context ? tokens(props.context.limit) : ''))
 const focusEl = ref<HTMLTextAreaElement>()
 onMounted(() => focusEl.value?.focus())
 

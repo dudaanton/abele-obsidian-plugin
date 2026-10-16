@@ -9,7 +9,15 @@ const Provider = z.object({
   available: z.boolean().optional(),
   diagnostic: z.string().optional(),
   configuration: z
-    .object({ model: z.string().optional(), profile: z.string().optional() })
+    .object({
+      model: z.string().optional(),
+      profile: z.string().optional(),
+      /** Long-lived sessions: what a session can be set to on this node. */
+      live_sessions: z.boolean().optional(),
+      accounts: z.array(z.string()).optional(),
+      efforts: z.array(z.string()).optional(),
+      permission_modes: z.array(z.string()).optional(),
+    })
     .optional(),
   capabilities: z.record(z.string(), Capability).default({}),
 })

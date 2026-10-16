@@ -227,7 +227,7 @@ export class ChatService {
         if (generation !== this.restoreGeneration || (session instanceof ChatSession && session.isDestroyed)) return false
         if (!this.tabOrder.value.includes(session.id) && !this.canCreateTab) return false
         slots[index] = session.id
-        if (session instanceof NodeChatPresenter) this.nodeSessions.set(session.id, session)
+        if (session instanceof NodeChatPresenter) this.nodeSessions.set(session.id, this.linkNodeSessions(session))
         else this.sessions.set(session.id, session)
         const restored = slots.filter((id): id is string => !!id && (this.sessions.has(id) || this.nodeSessions.has(id)))
         // Tabs opened while restoration was reading stay after the saved layout.
@@ -860,6 +860,14 @@ export class ChatService {
     return this.sessions.get(tabId) ?? null
   }
 
+  /** A node chat opens the sessions it names (one it started, one that wrote to it) as tabs of their own. */
+  private linkNodeSessions(presenter: NodeChatPresenter): NodeChatPresenter {
+    const { nodeId, registrationId } = presenter.reference
+    presenter.openSession = (sessionId) =>
+      void this.openNodeSession({ kind: 'node-session', nodeId, registrationId, sessionId, title: '' })
+    return presenter
+  }
+
   getNodeSession(tabId: string): NodeChatPresenter | null { return this.nodeSessions.get(tabId) ?? null }
 
   getPresentation(tabId: string): ChatPresentationSession | null {
@@ -876,7 +884,7 @@ export class ChatService {
     const presenter = this.presentations.apply(intent, () => {
       if (this.nodeSessions.has(id)) { this.switchTabNow(id); return null }
       if (!this.canCreateTab) { new Notice(ChatService.TABS_FULL); return null }
-      const presenter = new NodeChatPresenter(reference, NodeService.getInstance().connection(reference.registrationId))
+      const presenter = this.linkNodeSessions(new NodeChatPresenter(reference, NodeService.getInstance().connection(reference.registrationId)))
       this.nodeSessions.set(id, presenter)
       this.tabOrder.value = [...this.tabOrder.value, id]
       this.activeTabId.value = id
