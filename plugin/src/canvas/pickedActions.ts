@@ -8,10 +8,10 @@ import { FuzzySuggestModal, Notice, type App, type TFile } from 'obsidian'
 import { ChatService } from '@/ai/ChatService'
 import { grantNote } from '@/commands/chatAboutNote'
 import { attachDrawingToChat } from '@/drawing/askAgent'
-import { confirmAction } from '@/modal/confirm'
 import { canvasPicture } from './pictureAdapter'
 import { canvasEmbed } from './embedFormat'
 import type { CanvasGraph, Rect } from './core/model'
+import { confirmDialog } from '@/components/obsidian/dialogs'
 
 /** Room left round a picked part, so a picture or an embed of it does not cut its edges. */
 export const PART_MARGIN = 24
@@ -144,7 +144,7 @@ export function canvasHostActions(
   graph: () => CanvasGraph,
   ask: (title: string, value: string) => Promise<string | null>,
   chats: () => Chats = () => ChatService.getInstance(),
-  confirm: typeof confirmAction = confirmAction
+  confirm: typeof confirmDialog = confirmDialog
 ): CanvasHostActions {
   return {
     async exportPart(region, name) {
@@ -232,7 +232,7 @@ export function canvasHostActions(
         new Notice(`${path} is no longer in the vault`)
         return false
       }
-      const sure = await confirm(app, {
+      const sure = await confirm({
         title: 'Delete the note',
         message: `${note.basename} goes to the trash and leaves the canvas. Undo brings back the card on the canvas, not the note: restore it from the trash.`,
         confirmTooltip: 'Move the note to the trash',

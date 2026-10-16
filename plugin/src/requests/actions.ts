@@ -2,13 +2,12 @@
 // environment's dialog, new requests and collections. Obsidian's menus and dialogs over the model.
 import { Menu, Notice, Platform } from 'obsidian'
 import type { HttpEnvironmentEdit as EnvironmentEdit } from '@/components/debugger/http/types'
-import { askName } from '@/modal/askName'
 import { openComponentDialog } from '@/modal/componentDialog'
-import { confirmAction } from '@/modal/confirm'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { RequestsService, type RequestsContext } from './RequestsService'
 import type { RequestsModel } from './RequestsModel'
 import { toCurl } from './resolve'
+import { confirmDialog, promptDialog } from '@/components/obsidian/dialogs'
 
 export const REQUEST_TAB_VIEW = 'abele-request'
 
@@ -48,7 +47,7 @@ export async function copyCurl(model: RequestsModel, id: string) {
 export async function rename(context: RequestsContext, id: string) {
   const model = RequestsService.instance().model(context)
   const doc = model.entry(id).doc ?? (await model.rpc.get(model.projectId, id))
-  const name = await askName(app(), {
+  const name = await promptDialog({
     title: 'Rename request',
     value: doc.name,
     submitText: 'Rename',
@@ -66,7 +65,7 @@ export async function remove(context: RequestsContext, id: string) {
   const model = RequestsService.instance().model(context)
   const name =
     model.state.collections.flatMap((c) => c.requests).find((r) => r.id === id)?.name ?? id
-  const ok = await confirmAction(app(), {
+  const ok = await confirmDialog({
     title: 'Delete request',
     message: `${name} goes, its file and its history of sends with it.`,
     confirmText: 'Delete',
@@ -179,7 +178,7 @@ export function environmentMenu(model: RequestsModel, event: MouseEvent) {
       .setTitle('New environment')
       .setIcon('plus')
       .onClick(() => {
-        void askName(app(), {
+        void promptDialog({
           title: 'New environment',
           placeholder: 'local',
           submitText: 'Create',
@@ -212,7 +211,7 @@ export async function projectMenu(event: MouseEvent) {
 
 export async function newRequest(context: RequestsContext) {
   const model = RequestsService.instance().model(context)
-  const name = await askName(app(), {
+  const name = await promptDialog({
     title: 'New request',
     placeholder: 'Create order',
     submitText: 'Create',
@@ -230,7 +229,7 @@ export async function newRequest(context: RequestsContext) {
 }
 
 export async function newCollection(context: RequestsContext) {
-  const name = await askName(app(), {
+  const name = await promptDialog({
     title: 'New collection',
     placeholder: 'Orders',
     submitText: 'Create',

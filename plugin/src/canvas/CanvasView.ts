@@ -27,11 +27,11 @@ import { canvasMenu } from './menu'
 import type { CanvasExportFormat } from './core/export'
 import { pickAnyFile } from '../helpers/suggesters/VaultFilePicker'
 import { isChatLog } from '../ai/chatText'
-import { askName } from '../modal/askName'
 import { mountCanvasChrome } from './chrome'
 import { canvasHostActions, type CanvasHostActions } from './pickedActions'
 import { paneEntries } from '../components/canvas/chromeMenus'
 import { CanvasPlaceModal, canvasContents, type CanvasPlace } from './canvasFind'
+import { promptDialog } from '@/components/obsidian/dialogs'
 
 /** Shared human editor; no view save hook ever publishes a transient preview. */
 export class CanvasView extends FileView {
@@ -56,7 +56,7 @@ export class CanvasView extends FileView {
     this.app,
     () => this.file,
     () => this.viewer?.graph ?? emptyCanvas(),
-    (title, value) => askName(this.app, { title, placeholder: value })
+    (title, value) => promptDialog({ title, placeholder: value })
   )
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)

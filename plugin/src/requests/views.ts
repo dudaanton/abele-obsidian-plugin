@@ -10,20 +10,12 @@ import {
   type ViewStateResult,
   type WorkspaceLeaf,
 } from 'obsidian'
-import {
-  computed,
-  createApp,
-  defineComponent,
-  h,
-  onMounted,
-  shallowRef,
-  watch,
-  type App as VueApp,
-} from 'vue'
+import { computed, defineComponent, h, onMounted, shallowRef, watch } from 'vue'
 import { z } from 'zod'
 import RequestsPanel from '@/components/debugger/http/RequestsPanel.vue'
 import RequestView from '@/components/debugger/http/RequestView.vue'
 import EmptyState from '@/components/obsidian/EmptyState.vue'
+import { mountKit, type KitMount } from '@/components/obsidian/mount'
 import type {
   HttpCheck,
   HttpCollection,
@@ -211,7 +203,7 @@ const Sidebar = defineComponent({
 })
 
 export class RequestsView extends ItemView {
-  private vue?: VueApp
+  private vue?: KitMount
   getViewType() {
     return REQUESTS_VIEW
   }
@@ -224,8 +216,7 @@ export class RequestsView extends ItemView {
   async onOpen() {
     this.contentEl.replaceChildren()
     this.contentEl.addClass('abele-requests-view')
-    this.vue = createApp(Sidebar)
-    this.vue.mount(this.contentEl)
+    this.vue = mountKit(this.contentEl, Sidebar, null, { owner: this })
   }
   async onClose() {
     this.vue?.unmount()
@@ -242,7 +233,7 @@ type TabState = z.infer<typeof TabState>
 
 export class RequestTab extends ItemView {
   private readonly current = shallowRef<TabState>()
-  private vue?: VueApp
+  private vue?: KitMount
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
     // Obsidian puts each action before the last: added right to left, they read terminal,
@@ -352,7 +343,8 @@ export class RequestTab extends ItemView {
     this.contentEl.addClass('abele-request-tab')
     const current = this.current
     const header = () => this.header()
-    this.vue = createApp(
+    this.vue = mountKit(
+      this.contentEl,
       defineComponent({
         setup() {
           return () => {
@@ -424,7 +416,6 @@ export class RequestTab extends ItemView {
         },
       })
     )
-    this.vue.mount(this.contentEl)
   }
 }
 
