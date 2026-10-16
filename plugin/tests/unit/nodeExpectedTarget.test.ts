@@ -3,9 +3,14 @@ import { MemoryClientStore, type NodeClient } from '@abele/node-client'
 import { NodePathClientPort } from '@/node/NodePathClientPort'
 import { supportsExpectedTarget } from '@/node/expectedTarget'
 
-it('recognizes the release field returned by the daemon description', () => {
-  expect(supportsExpectedTarget({ node_version: '0.4.18' })).toBe(true)
-  expect(supportsExpectedTarget({ node_version: '0.4.1', version: '0.4.18' })).toBe(false)
+it.each(['0.4.18', '0.4.19'])(
+  'recognizes the discovery release field from node %s',
+  (node_version) => {
+    expect(supportsExpectedTarget({ node_version })).toBe(true)
+  }
+)
+it('uses the discovery release before the legacy release field', () => {
+  expect(supportsExpectedTarget({ node_version: '0.4.1', version: '0.4.19' })).toBe(false)
 })
 
 it.each(['0.4.2', '0.4.3', '0.5.0', '1.0.0', '0.4.2+sample'])(
