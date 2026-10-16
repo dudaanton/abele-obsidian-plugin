@@ -25,9 +25,13 @@ it('lists a connected node by what its sessions do, never as offline', async () 
       `(async()=>{${PAIRED_PRELUDE}
       const close=async()=>{for(const b of document.querySelectorAll('.modal .modal-close-button'))b.click();await wait(200)};
       const presenter=chats.getNodeSession(${JSON.stringify(tab)});
+      await until(()=>presenter.binding.value!==undefined,'The session target');
       await presenter.send('slow');
+      if(presenter.error.value||presenter.draftNotice.value)throw Error('Slow turn was not accepted: '+(presenter.error.value||presenter.draftNotice.value));
       const client=nodes.connection(${JSON.stringify(node.registration)}).client;
-      for(let i=0;i<300;i++){if((await client.sessionState(${JSON.stringify(busy)})).turn)break;await wait(100)}
+      let started=false;
+      for(let i=0;i<300;i++){if((await client.sessionState(${JSON.stringify(busy)})).turn){started=true;break}await wait(100)}
+      if(!started)throw Error('Slow turn did not start: '+JSON.stringify({state:await client.sessionState(${JSON.stringify(busy)}),error:presenter.error.value,notice:presenter.draftNotice.value,messages:presenter.messages.value}));
       await close();
       app.commands.executeCommandById('abele:agents');
       const root=await until(()=>document.querySelector('.abele-agents'),'The agents list');
