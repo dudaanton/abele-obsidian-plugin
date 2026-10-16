@@ -1,4 +1,5 @@
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
+import { ref } from 'vue'
 import { IDBFactory } from 'fake-indexeddb'
 import { NodeClient, PairedWssConnector } from '@abele/node-client'
 import {
@@ -16,6 +17,17 @@ import {
 } from '@abele/channel-protocol'
 import { NodeDeviceKeyStore } from '@/node/NodeDeviceKeyStore'
 import { NodeClientStore } from '@/node/NodeClientStore'
+import { NodePairingConnector } from '@/node/NodePairingConnector'
+import { NodePairingModel } from '@/node/NodePairingModel'
+import { encodePairCode } from '@abele/node-protocol'
+import { NodeService } from '@/node/NodeService'
+import { NodeRegistry } from '@/node/NodeRegistry'
+vi.mock('@/node/NodePathObsidianActions', () => ({
+  revokeNodePathChatApprovals: async () => {},
+}))
+vi.mock('@/agents/AgentsService', () => ({
+  AgentsService: { getInstance: () => ({ setNodes() {} }) },
+}))
 import { collectEntries } from '@/transfer/entries'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { useVault } from '../helpers/testEnv'
@@ -30,7 +42,13 @@ function lockService() {
     },
   }
 }
-async function endpoint() {
+async function endpoint(
+  options: {
+    nodeVersion?: string
+    welcomePadding?: number
+    oversizedRecord?: 'challenge' | 'welcome'
+  } = {}
+) {
   const identity = await generateIdentity()
   const invite = {
     node_id: 'sample-node',
@@ -54,7 +72,21 @@ async function endpoint() {
       challenge: DeviceChallenge | undefined
     let deviceKey: Parameters<typeof fingerprint>[0]
     const publish = (frame: RecordFrame) => {
-      queue.push(FrameCodec.encode(frame))
+      const oversized =
+        (options.oversizedRecord === 'challenge' && frame.kind === 'paired.challenge') ||
+        (options.oversizedRecord === 'welcome' && frame.kind === 'welcome')
+      queue.push(
+        oversized
+          ? new TextEncoder().encode(
+              JSON.stringify({
+                ...frame,
+                padding: 'x'.repeat(
+                  options.oversizedRecord === 'challenge' ? LIMITS.auth_bytes : LIMITS.record_bytes
+                ),
+              })
+            )
+          : FrameCodec.encode(frame)
+      )
       wake?.()
     }
     return {
@@ -119,7 +151,10 @@ async function endpoint() {
             instance_id: 'sample-instance',
             methods: ['node.describe'],
             limits: { ...LIMITS },
-            capabilities: {},
+            capabilities: {
+              ...(options.nodeVersion ? { node_version: options.nodeVersion } : {}),
+              ...(options.welcomePadding ? { diagnostic: 'x'.repeat(options.welcomePadding) } : {}),
+            },
           })
         else if (frame.kind === 'request')
           publish({
@@ -201,6 +236,98 @@ it('recovers a lost claim with the same persisted key across independent adapter
     await client.disconnect()
     store.close()
     b.close()
+  }
+})
+
+it.each(['0.4.18', '0.4.19'])(
+  'admits node %s with a welcome larger than the pre-authentication limit',
+  async (nodeVersion) => {
+    const server = await endpoint({ nodeVersion, welcomePadding: LIMITS.auth_bytes })
+    const factory = new IDBFactory()
+    const keys = new NodeDeviceKeyStore('sample-foreground', factory, lockService())
+    const connector = new NodePairingConnector(keys, server.open)
+    const store = new NodeClientStore('sample-foreground', factory)
+    let client: NodeClient | undefined
+    let admitted = false
+    const service = {
+      deviceKeys: keys,
+      registry: new NodeRegistry({
+        read: () => [],
+        write() {},
+        getSecret: () => '',
+        setSecret() {},
+        removeSecret() {},
+      }),
+      nodes: ref([]),
+      connections: new Map(),
+    }
+    const session = connector.createPairingSession({
+      createClient: (target) => (client = new NodeClient(target, store, connector)),
+      wait: async () => server.confirm(),
+    })
+    const model = new NodePairingModel(
+      session,
+      async (payload) => {
+        await keys.rememberInvitation(payload.invite, payload.node_name)
+      },
+      async (candidate) => {
+        expect(candidate).toBe(client)
+        expect(client?.connected).toBe(true)
+        await NodeService.prototype.adoptPaired.call(
+          service as never,
+          'Sample node',
+          client!,
+          store
+        )
+        admitted = true
+      }
+    )
+    try {
+      await model.connect(
+        encodePairCode({
+          version: 1,
+          node_name: 'Sample node',
+          invite: { ...server.invite, expires_at: Date.now() + 600000 },
+        }),
+        'Sample device',
+        { host: 'sample.example.ts.net', port: 8443 }
+      )
+      expect(model.state.value).toMatchObject({ phase: 'connected' })
+      expect(admitted).toBe(true)
+      expect(service.nodes.value).toHaveLength(1)
+    } finally {
+      for (const connection of service.connections.values()) connection.destroy()
+      await client?.disconnect()
+      store.close()
+      keys.close()
+    }
+  }
+)
+
+it('keeps the pre-authentication and normal record bounds during paired admission', async () => {
+  for (const oversizedRecord of ['challenge', 'welcome'] as const) {
+    const server = await endpoint({ oversizedRecord })
+    const keys = new NodeDeviceKeyStore(
+      `sample-bound-${oversizedRecord}`,
+      new IDBFactory(),
+      lockService()
+    )
+    const connector = new PairedWssConnector(keys, server.open)
+    try {
+      if (oversizedRecord === 'challenge') {
+        await expect(connector.claim(server.invite)).rejects.toThrow('auth_too_large')
+      } else {
+        await connector.claim(server.invite).catch(() => {})
+        const claim = await connector.claim(server.invite)
+        server.confirm()
+        expect(claim.state).toBe('pending')
+        await expect(
+          connector.connect(await connector.target(server.invite.node_id))
+        ).rejects.toThrow('record_too_large')
+      }
+    } finally {
+      keys.close()
+    }
   }
 })
 

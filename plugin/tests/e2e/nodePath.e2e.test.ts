@@ -304,7 +304,7 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     expect(pending[0].device_name).toBe('Sample device')
     await command('approve-pair', 'Sample device')
     registration = await evalLong(
-      `(async()=>{${prelude}await until(()=>!visible('.abele-pair')&&nodes.nodes.value.some(n=>n.profile==='paired-wss-v1'));const node=nodes.nodes.value.find(n=>n.profile==='paired-wss-v1');await until(()=>nodes.connection(node.id).state.value==='connected');return node.id})()`
+      `(async()=>{${prelude}try{await until(()=>!visible('.abele-pair')&&nodes.nodes.value.some(n=>n.profile==='paired-wss-v1'))}catch(error){throw Error(error.message+'; '+JSON.stringify({pairing:visible('.abele-pair')?.textContent,connections:nodes.nodes.value.map(n=>({profile:n.profile??'local-token-v1',state:nodes.connection(n.id).state.value,error:nodes.connection(n.id).error.value}))}))}const node=nodes.nodes.value.find(n=>n.profile==='paired-wss-v1');await until(()=>nodes.connection(node.id).state.value==='connected');return node.id})()`
     )
     const ids = JSON.parse(
       await evalLong(

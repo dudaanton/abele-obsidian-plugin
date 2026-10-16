@@ -18,15 +18,18 @@ delegation mailboxes, versioned repository reads and the gated `debugger.v1` hum
 client. Capability checks still determine adapter availability. They are kept in the
 repository so `npm ci` and the plugin build work in a clean clone without a sibling
 checkout, workspace link, daemon or private registry. `integrity.json` records npm's
-SHA-512 integrity and the packaged file list. All packages are unmodified, including
-upstream source maps. The released channel client now includes the opt-in host
+SHA-512 integrity and the packaged file list. The node client includes the bounded
+post-authentication welcome fix in `patches/paired-welcome.patch`; its JavaScript and
+source map were regenerated with TypeScript 5.9.3, ES2022 and ES modules. Apply that
+patch to the source revision before rebuilding to reproduce this payload. Other
+packages are unmodified. The released channel client now includes the opt-in host
 liveness policy, background ping probes, delayed-deadline receive grace and
 host-injected transport diagnostics previously carried by the local patch.
 Their transitive Zod 3 dependency remains separate from the plugin's Zod 4.
 
 The payloads were built from a clean archive of that revision, with `npm ci --ignore-scripts`
 and `tsc -b packages/channel-protocol packages/node-protocol packages/channel-client packages/node-client`.
-No unreleased source overlay, local patch or package export changes were applied.
+The welcome patch is the only local source change; package exports are unchanged.
 
 To refresh, build the desired released AbeleNode tag, then run from this plugin directory
 (replace `/path/to/node` with that checkout):

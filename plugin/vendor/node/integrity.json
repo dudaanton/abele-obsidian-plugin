@@ -450,10 +450,10 @@
     "id": "@abele/node-client@0.0.0",
     "name": "@abele/node-client",
     "version": "0.0.0",
-    "size": 44654,
-    "unpackedSize": 244597,
-    "shasum": "3ee5e14365301eb59022b0c97537d3f78a7559b2",
-    "integrity": "sha512-86eeAQWPwLesmhYkA7izx6QQ5y/QuTKJLUgghaChd7TEcf+Y5A4xBzwqQNgbL0e+RvdooPckkPeOXwkIaEQLFw==",
+    "size": 44778,
+    "unpackedSize": 244986,
+    "shasum": "255968c91e6a3cbf4ae39cc2bca9cfc637382885",
+    "integrity": "sha512-uydIMFelU4qegJrTzV+oFHqoUO9bgLaF5ZClGXvKY0dZu/TudYUDIRkuOMLtuj/wYe2P2JZcPxx+oe0uzjCfdQ==",
     "filename": "abele-node-client-0.0.0.tgz",
     "files": [
       {
@@ -523,12 +523,12 @@
       },
       {
         "path": "dist/paired.js",
-        "size": 14454,
+        "size": 14719,
         "mode": 420
       },
       {
         "path": "dist/paired.js.map",
-        "size": 11557,
+        "size": 11681,
         "mode": 420
       },
       {
