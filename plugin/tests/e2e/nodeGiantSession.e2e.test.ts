@@ -98,6 +98,7 @@ it('opens a giant session at its end over a remote connection, pages back, types
     hasOlder: boolean
   }
   const openTraffic = { down: traffic.down - before.down, up: traffic.up - before.up }
+  console.log('GIANT_SESSION_OPEN ' + JSON.stringify({ ...opened, traffic: openTraffic }))
 
   // Scroll back through five earlier pages.
   const paged = JSON.parse(
@@ -122,6 +123,8 @@ it('opens a giant session at its end over a remote connection, pages back, types
     heapPaged: number | null
   }
 
+  console.log('GIANT_SESSION_PAGED ' + JSON.stringify(paged))
+
   // Typing, then a streamed answer with typing under it; frames are timed throughout.
   const live = JSON.parse(
     await evalLong(
@@ -132,8 +135,8 @@ it('opens a giant session at its end over a remote connection, pages back, types
       const stats=g=>{const s=[...g].sort((a,b)=>a-b);return{median:Math.round(s[Math.floor(s.length/2)]),p95:Math.round(s[Math.floor(s.length*0.95)]),max:Math.round(s[s.length-1])}};
       const typing=stats(await type('Sample words typed into a long session'));
       field.value='';field.dispatchEvent(new Event('input',{bubbles:true}));
-      field.value='stream 300 15';field.dispatchEvent(new Event('input',{bubbles:true}));
-      field.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
+      const presenter=chats.getNodeSession('node:'+${JSON.stringify(registration)}+':'+${JSON.stringify(created.session)});
+      void presenter.send('stream 300 15');
       const frames=[];let last=performance.now(),done=false;
       (async()=>{while(!done){const now=await frame();frames.push(now-last);last=now}})();
       const t0=performance.now();

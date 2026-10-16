@@ -199,10 +199,10 @@ export async function startPairedNode(options: { latencyMs?: number } = {}) {
       for(let i=0;i<400;i++){const j=await client.getJob(job.job_id);if(j.state==='succeeded')break;if(j.state==='failed')throw Error('Workspace failed');await wait(50)}
       const list=await client.listWorkspaces(project.project_id);
       const workspace=(list.find(w=>w.kind!=='root')??list[0]).workspace_id;
-      return JSON.stringify({workspace,node:nodes.nodes.value.find(n=>n.id===${JSON.stringify(registration)}).expectedNodeId})})()`,
+      return JSON.stringify({workspace,project:project.project_id,node:nodes.nodes.value.find(n=>n.id===${JSON.stringify(registration)}).expectedNodeId})})()`,
       180000
     )
-  ) as { workspace: string; node: string }
+  ) as { workspace: string; project: string; node: string }
 
   return {
     state,
@@ -210,12 +210,28 @@ export async function startPairedNode(options: { latencyMs?: number } = {}) {
     node: placed.node,
     traffic,
     logs: () => logs,
-    /** A Claude session in the sample worktree. */
-    async session(title: string, settings?: Record<string, unknown>): Promise<string> {
+    /** Another managed worktree of the sample project: a second session works there. */
+    async worktree(): Promise<string> {
       return evalLong(
         `(async()=>{${PAIRED_PRELUDE}
         const client=nodes.connection(${JSON.stringify(registration)}).client;
-        return (await client.createSession(${JSON.stringify(title)},${JSON.stringify(placed.workspace)},'claude'${settings ? ',' + JSON.stringify(settings) : ''})).session_id})()`,
+        const before=new Set((await client.listWorkspaces(${JSON.stringify(placed.project)})).map(w=>w.workspace_id));
+        const job=await client.createWorkspace(${JSON.stringify(placed.project)});
+        for(let i=0;i<400;i++){const j=await client.getJob(job.job_id);if(j.state==='succeeded')break;if(j.state==='failed')throw Error('Workspace failed');await wait(50)}
+        return (await client.listWorkspaces(${JSON.stringify(placed.project)})).find(w=>!before.has(w.workspace_id)).workspace_id})()`,
+        180000
+      )
+    },
+    /** A Claude session in the sample worktree, or in `workspace`. */
+    async session(
+      title: string,
+      settings?: Record<string, unknown>,
+      workspace = placed.workspace
+    ): Promise<string> {
+      return evalLong(
+        `(async()=>{${PAIRED_PRELUDE}
+        const client=nodes.connection(${JSON.stringify(registration)}).client;
+        return (await client.createSession(${JSON.stringify(title)},${JSON.stringify(workspace)},'claude'${settings ? ',' + JSON.stringify(settings) : ''})).session_id})()`,
         60000
       )
     },

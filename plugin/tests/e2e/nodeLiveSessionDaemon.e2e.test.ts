@@ -121,7 +121,7 @@ it('renames the session everywhere it is named', async () => {
 })
 
 it('shows a message another session wrote to it under that session, opening its chat', async () => {
-  const other = await node.session('Sample sender session')
+  const other = await node.session('Sample sender session', undefined, await node.worktree())
   const r = JSON.parse(
     await run(`
     const first=presenter().reference;
