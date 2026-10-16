@@ -23,6 +23,7 @@ import { openRequestTab } from '@/requests/actions'
 import { openRequestsView } from '@/requests/views'
 import { chatCodeSelection, insertCodeSelection } from '@/views/codeSelectionHost'
 import { NodeService } from '@/node/NodeService'
+import { AgentsService } from '@/agents/AgentsService'
 import { NodePathService } from '@/node/NodePathService'
 import { openNodeRepository } from '@/node/openRepository'
 import {
@@ -291,6 +292,7 @@ interface AbeleTestApi {
   codeSelectionAdapters: { chat: typeof chatCodeSelection; note: typeof insertCodeSelection }
   ChatService: typeof ChatService
   NodeService: typeof NodeService
+  AgentsService: typeof AgentsService
   NodePathService: typeof NodePathService
   codeView: typeof codeView
   openNodeRepository: typeof openNodeRepository
@@ -953,6 +955,7 @@ export function exposeTestApi(plugin: Plugin): void {
     codeSelectionAdapters: { chat: chatCodeSelection, note: insertCodeSelection },
     ChatService,
     NodeService,
+    AgentsService,
     NodePathService,
     codeView,
     openNodeRepository,

@@ -10,6 +10,9 @@ import { CommentService } from '@/ai/CommentService'
 import { NodeService } from '@/node/NodeService'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
+import { NodeClient, MemoryClientStore } from '@abele/node-client'
+import { GlobalStore } from '@/stores/GlobalStore'
+import { openAgents, closeAgents } from '@/agents/openAgents'
 import { useAttentionVault as useVault } from '../helpers/attentionVault'
 
 const NODE = { id: 'sample-registration', expectedNodeId: 'sample-node', label: 'Sample node' }
@@ -62,6 +65,92 @@ afterEach(() => {
 })
 
 describe("a node's sessions in the agents list", () => {
+  it('renders a daemon input turn through the SDK and command dialog without injected rows', async () => {
+    useVault([])
+    const app = GlobalStore.getInstance().app
+    vi.spyOn(app, 'loadLocalStorage').mockImplementation((key) =>
+      key === 'abele-node-registry' ? [{ ...NODE, url: 'http://127.0.0.1:7777' }] : undefined
+    )
+    const busy = {
+      ...session('sample-session', 'Sample busy session'),
+      workspace_id: 'sample-workspace',
+      native_session_id: '11111111-1111-4111-8111-111111111111',
+    }
+    const quiet = {
+      ...session('sample-quiet', 'Sample quiet session'),
+      workspace_id: 'sample-other-workspace',
+    }
+    const state = {
+      session_id: busy.session_id,
+      live: true,
+      process: 'running',
+      run_id: 'sample-run',
+      turn: { turn_id: 'sample-turn', trigger: 'input', started_at: '2026-01-01T10:00:00.000Z' },
+      background_tasks: [],
+      context: null,
+      compacting: false,
+      settings: {
+        model: 'sample-model',
+        effort: 'high',
+        account: 'default',
+        permission_mode: 'manual',
+        continue_after_compaction: true,
+        continuation_text: 'Continue',
+        messaging: true,
+      },
+      process_settings: {
+        model: 'sample-model',
+        effort: 'high',
+        account: 'default',
+        permission_mode: 'manual',
+      },
+      restart_pending: false,
+      watchers: 1,
+      idle_since: null,
+    }
+    const client = new NodeClient(
+      { profile: 'local-token-v1', url: 'ws://127.0.0.1:7777/channel', token: 'sample-token' },
+      new MemoryClientStore()
+    )
+    const request = vi.spyOn(client, 'request').mockImplementation(async (method, params) => {
+      const p = params as { after_id?: string; session_id?: string }
+      if (method === 'session.list') return p.after_id ? [] : [quiet, busy]
+      if (method === 'session.state') {
+        if (p.session_id === quiet.session_id)
+          return {
+            ...state,
+            session_id: quiet.session_id,
+            live: false,
+            process: 'none',
+            run_id: null,
+            turn: null,
+            process_settings: null,
+            watchers: 0,
+          }
+        expect(p.session_id).toBe(busy.session_id)
+        return state
+      }
+      if (method === 'prompt.list') return []
+      throw Error('Unexpected request: ' + method)
+    })
+    fakeConnection(client as unknown as Record<string, unknown>)
+    const agents = AgentsService.getInstance()
+    try {
+      await agents.start()
+      openAgents()
+      await vi.waitFor(() => {
+        const root = document.querySelector('.abele-agents')!
+        expect(root.textContent).toContain('Sample busy session')
+        expect(root.textContent).toContain('Working')
+        expect(root.textContent).not.toContain('No agents at work')
+        expect(root.textContent).not.toContain('Sample quiet session')
+      })
+      expect(request).toHaveBeenCalledWith('session.state', { session_id: busy.session_id })
+    } finally {
+      closeAgents()
+    }
+  })
+
   it('publishes an input turn arriving after the initial idle catalogue read', async () => {
     useVault([])
     let busy = false

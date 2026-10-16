@@ -38,7 +38,9 @@ it('lists a connected node by what its sessions do, never as offline', async () 
       try{
         await until(()=>root.textContent.includes('Sample busy session'),'The busy session in the list',30000);
       }catch(error){
-        throw Error(String(error)+'; '+JSON.stringify({dialog:root.textContent,connection:nodes.connection(${JSON.stringify(node.registration)}).state.value,sessions:await client.listSessions(),busy:await client.sessionState(${JSON.stringify(busy)}),prompts:await client.prompts(${JSON.stringify(busy)},undefined,'pending')}));
+        const attention=api.AgentsService.getInstance();
+        const coverage=[...attention.nodeWatch.watched.values()].map(e=>({id:e.target.id,state:e.state,connection:e.connection?.state?.value,sameClient:e.connection?.client===client,rows:e.rows,loading:!!e.loading,removed:e.removed}));
+        throw Error(String(error)+'; '+JSON.stringify({dialog:root.textContent,attention:{rows:attention.rows.value,incomplete:attention.incomplete.value,status:attention.status.value,disposed:attention.disposed,coverage},registrations:nodes.nodes.value,connection:nodes.connection(${JSON.stringify(node.registration)}).state.value,sessions:await client.listSessions(),busy:await client.sessionState(${JSON.stringify(busy)}),prompts:await client.prompts(${JSON.stringify(busy)},undefined,'pending')}));
       }
       const sections=[...root.querySelectorAll('.abele-fold-heading__text')].map(e=>e.textContent.trim());
       const text=root.textContent;
