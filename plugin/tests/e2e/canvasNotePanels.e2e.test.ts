@@ -10,7 +10,6 @@ const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Sample card panels'
 const PATH = `${DIR}/sample.canvas`
 const SHOTS = shotDir('canvas-note-panels')
-let owned = false
 const run = <T>(body: string): T =>
   evalAsync<T>(`(async()=>{
   const path=${JSON.stringify(PATH)},dir=${JSON.stringify(DIR)}
@@ -19,6 +18,11 @@ const run = <T>(body: string): T =>
 })()`)
 const until = async (condition: string) => {
   await expect.poll(() => run(`return !!(${condition})`), { timeout: 15000 }).toBe(true)
+}
+const waitForNoteSection = async () => {
+  await until(
+    `app.workspace.activeLeaf?.view.containerEl.querySelector('[data-abele-anchor="section:backlinks"]')`
+  )
 }
 const open = () => run(`await app.workspace.openLinkText(path,'','tab');return true`)
 const PANEL_MENU = `
@@ -46,20 +50,30 @@ const press = (selector: string, dx = 0) =>
   return true`)
   )
 
-afterAll(async () => {
-  if (!available || !owned) return
-  run(`
+const CLEANUP = `
+    const errors=[]
     const leaves=[];app.workspace.iterateAllLeaves(l=>{if(l.view.file?.path.startsWith(dir+'/'))leaves.push(l)})
-    for(const leaf of leaves){await leaf.view.editor?.flush();leaf.detach()}
+    for(const leaf of leaves){
+      try {await leaf.view.editor?.flush?.()} catch(error) {errors.push(error)}
+      finally {try {leaf.detach()} catch(error) {errors.push(error)}}
+    }
     const folder=app.vault.getAbstractFileByPath(dir);if(folder)await app.vault.delete(folder,true)
-    return true`)
-  await reloadApp('app.emulateMobile(false)')
+    if(errors.length)throw new AggregateError(errors,'Synthetic canvas cleanup failed')
+    return true`
+
+afterAll(async () => {
+  if (!available) return
+  try {
+    run(CLEANUP)
+  } finally {
+    await reloadApp('app.emulateMobile(false)')
+  }
 }, 120000)
 
 describe.skipIf(!available)('note panels inside canvas cards', () => {
   it('persists choices and follows screen size, with controls that click or carry the card', async () => {
-    owned = run<boolean>(`
-      if(app.vault.getAbstractFileByPath(dir))throw Error('Synthetic folder already exists')
+    run(CLEANUP)
+    run(`
       await app.vault.createFolder(dir);return true`)
     run(`
       await app.vault.create(dir+'/Sample note.md','Sample text\\n\\n'+Array.from({length:20},()=> 'More sample words.').join('\\n\\n'))
@@ -87,11 +101,7 @@ describe.skipIf(!available)('note panels inside canvas cards', () => {
       expect(run('return app.workspace.activeLeaf.view.file.path')).toBe(PATH)
       await press('.abele-canvas-card-codes button')
       await until("app.workspace.activeLeaf.view.file?.path===dir+'/Sample note.md'")
-      expect(
-        run(
-          'return !!app.workspace.activeLeaf.view.containerEl.querySelector(\'[data-abele-anchor="section:backlinks"]\')'
-        )
-      ).toBe(true)
+      await waitForNoteSection()
       open()
       run(`view().viewer.setCamera({x:-10,y:-10,zoom:0.1});return true`)
       await until(
