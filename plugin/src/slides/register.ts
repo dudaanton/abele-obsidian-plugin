@@ -1,4 +1,5 @@
-import { MarkdownView, Platform, TFile, type Plugin, type WorkspaceLeaf } from 'obsidian'
+import { MarkdownView, Platform, TFile, TFolder, type Plugin, type WorkspaceLeaf } from 'obsidian'
+import { newDeck } from './newDeck'
 import { DeckView } from './DeckView'
 import { deckProperties } from './core/markdown'
 import { slideDividers } from './dividers'
@@ -8,6 +9,23 @@ import './core/layouts.css'
 export function registerSlides(plugin: Plugin): void {
   const { app } = plugin
   plugin.registerView(DECK_VIEW_TYPE, (leaf) => new DeckView(leaf))
+  plugin.addCommand({
+    id: 'new-presentation',
+    name: 'New presentation',
+    icon: 'presentation',
+    callback: () => void newDeck(app),
+  })
+  plugin.registerEvent(
+    app.workspace.on('file-menu', (menu, file) => {
+      if (file instanceof TFolder)
+        menu.addItem((item) =>
+          item
+            .setTitle('New presentation')
+            .setIcon('presentation')
+            .onClick(() => void newDeck(app, file))
+        )
+    })
+  )
   const isPresentation = async (file: TFile) => {
     if (!file || file.extension !== 'md') return false
     const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter

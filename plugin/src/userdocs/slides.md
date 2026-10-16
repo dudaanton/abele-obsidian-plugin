@@ -6,7 +6,9 @@ pictures, diagrams, galleries, charts and maps you already put in notes.
 
 ## Make a deck
 
-Give the note the property `type: presentation`. Opening it from a link or the file explorer
+Use **Abele: New presentation** to create a deck in the default location for new notes,
+or **New presentation** in a folder's menu to create it there.
+You can also give a note the property `type: presentation`. Opening it from a link or the file explorer
 now opens the deck. Use **Edit source** to return to its text, or **Edit beside** to keep an
 editor next to the slides. Changes refresh the preview on the slide you are looking at.
 

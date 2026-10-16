@@ -87,6 +87,33 @@ describe.skipIf(!available)('new native Canvas opening', () => {
     shoot('native-new-file')
   }, 120_000)
 
+  it('uses the default new-note folder for the native canvas command despite an active daily note', () => {
+    expect(
+      run<boolean>(`
+      const location=app.vault.getConfig('newFileLocation'),folder=app.vault.getConfig('newFileFolderPath')
+      const native=app.internalPlugins.getEnabledPluginById('canvas'),options={...native.options}
+      try {
+        const inbox=dir+'/sample-inbox',journal=dir+'/sample-journal'
+        await app.vault.createFolder(inbox);await app.vault.createFolder(journal)
+        const daily=await app.vault.create(journal+'/sample-day.md','Sample daily note')
+        const leaf=app.workspace.getLeaf('tab');await leaf.openFile(daily);await app.workspace.revealLeaf(leaf)
+        app.vault.setConfig('newFileLocation','folder');app.vault.setConfig('newFileFolderPath',inbox)
+        native.options={...native.options,newFileLocation:'folder',newFileFolderPath:journal}
+        const before=new Set(app.vault.getFiles().map(f=>f.path))
+        if(!app.commands.executeCommandById('canvas:new-file'))throw Error('Native canvas command unavailable')
+        await wait(600)
+        const file=app.vault.getFiles().find(f=>f.extension==='canvas'&&!before.has(f.path))
+        if(file)window.__canvasOpeningFiles.push(file.path)
+        return file?.parent?.path===inbox
+      } finally {
+        app.vault.setConfig('newFileLocation',location);app.vault.setConfig('newFileFolderPath',folder)
+        native.options=options
+      }
+    `)
+    ).toBe(true)
+    shoot('canvas-default-folder')
+  }, 120_000)
+
   it('renames through the native header and command and attaches the file to the current chat', () => {
     const result = run<{ header: boolean; command: boolean; moved: boolean; attached: boolean }>(`
       const path = dir + '/sample-actions.canvas'

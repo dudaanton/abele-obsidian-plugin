@@ -8,6 +8,79 @@ const available = isObsidianRunning() && hasTestApi()
 const SHOTS = shotDir('abele-slide-links')
 
 describe.skipIf(!available)('note links with a presentation tab active', () => {
+  it('renames a deck through its header and native command and attaches it to the current chat', async () => {
+    const r = JSON.parse(
+      await evalLong(`(async()=>{
+      const wait=ms=>new Promise(r=>setTimeout(r,ms)),dir='sample-deck-actions'
+      const layout=app.workspace.getLayout(),chats=window.__abeleTest.ChatService.getInstance()
+      const previous=chats.activeTabId.value,cfg=window.__abeleTest.AbeleConfig.getInstance().ai,enabled=cfg.enabled
+      const location=app.vault.getConfig('newFileLocation'),defaultFolder=app.vault.getConfig('newFileFolderPath')
+      if(app.vault.getAbstractFileByPath(dir))throw Error('Synthetic folder already exists')
+      let session,leaf
+      try {
+        await app.vault.createFolder(dir)
+        await app.vault.createFolder(dir+'/sample-inbox');await app.vault.createFolder(dir+'/sample-journal')
+        const daily=await app.vault.create(dir+'/sample-journal/sample-day.md','Sample daily note')
+        leaf=app.workspace.getLeaf('tab')
+        await leaf.openFile(daily);await app.workspace.revealLeaf(leaf)
+        app.vault.setConfig('newFileLocation','folder');app.vault.setConfig('newFileFolderPath',dir+'/sample-inbox')
+        if(!app.commands.executeCommandById('abele:new-presentation'))throw Error('New presentation command unavailable')
+        await wait(200)
+        const input=document.querySelector('.modal input[placeholder="Presentation name"]')
+        if(!input)throw Error('Presentation name dialog missing')
+        input.value='sample-deck';input.dispatchEvent(new Event('input',{bubbles:true}));await wait(50)
+        input.closest('.modal').querySelector('button.mod-cta').click()
+        const createdPath=dir+'/sample-inbox/sample-deck.md'
+        for(let n=0;n<100&&!app.vault.getAbstractFileByPath(createdPath);n++)await wait(50)
+        const file=app.vault.getAbstractFileByPath(createdPath)
+        if(!file)throw Error('Presentation was not created in the default new-note folder')
+        const bytes=await app.vault.read(file)
+        for(let n=0;n<100&&!app.workspace.getLeavesOfType('abele-deck').some(l=>l.view.file===file);n++)await wait(50)
+        leaf=app.workspace.getLeavesOfType('abele-deck').find(l=>l.view.file===file)
+        if(!leaf)throw Error('Created deck did not open')
+        await app.workspace.revealLeaf(leaf);await wait(300)
+        const view=leaf.view,title=view.containerEl.querySelector('.view-header-title')
+        if(!title)throw Error('Deck header missing')
+        title.click();title.focus();title.textContent='sample-header-renamed'
+        title.dispatchEvent(new Event('input',{bubbles:true}))
+        title.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await wait(500)
+        const header=file.basename==='sample-header-renamed'&&view.getDisplayText()===file.basename
+        const command=app.commands.executeCommandById('workspace:edit-file-title')
+        await wait(100);title.textContent='sample-command-renamed'
+        title.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await wait(500)
+        const renamed=command&&file.basename==='sample-command-renamed'
+        await app.fileManager.renameFile(file,dir+'/sample-explorer-renamed.md');await wait(200)
+        const moved=title.textContent===file.basename&&view.getDisplayText()===file.basename&&await app.vault.read(file)===bytes
+        const path=${JSON.stringify(SHOTS)}+'/deck-header-renamed.png'
+        if(window.__e2eHost)await window.__e2eHost.shot(path)
+        else {require('fs').mkdirSync(${JSON.stringify(SHOTS)},{recursive:true});require('fs').writeFileSync(path,(await require('@electron/remote').getCurrentWebContents().capturePage()).toPNG())}
+        session=await chats.openBlankChat();if(!session)throw Error('Synthetic chat unavailable')
+        cfg.enabled=true
+        const action=view.containerEl.querySelector('[aria-label="Attach to a chat"]')
+        if(!action)throw Error('Deck attachment action missing')
+        action.click();await wait(400)
+        const text=chats.pendingInput.value?.text??session.draft.value.text
+        const attached=chats.activeSession.value===session&&session.scopeResolver.isInScope(file.path)&&text.includes('sample-explorer-renamed')
+        await app.workspace.revealLeaf(leaf)
+        const palette=app.commands.executeCommandById('abele:attach-note-to-chat')
+        return JSON.stringify({header,renamed,moved,attached,palette})
+      } finally {
+        if(session){session.draft.value={text:'',attachments:[]};if(chats.pendingInput.value?.tabId===session.id)chats.pendingInput.value=null;await chats.closeTab(session.id)}
+        if(previous)chats.switchTab(previous)
+        cfg.enabled=enabled
+        app.vault.setConfig('newFileLocation',location);app.vault.setConfig('newFileFolderPath',defaultFolder)
+        const input=document.querySelector('.modal input[placeholder="Presentation name"]')
+        if(input)input.closest('.modal').querySelector('.modal-close-button')?.click()
+        const owned=[];app.workspace.iterateAllLeaves(l=>{if(l.view.file?.path.startsWith(dir+'/'))owned.push(l)})
+        owned.forEach(l=>l.detach())
+        const folder=app.vault.getAbstractFileByPath(dir);if(folder)await app.vault.delete(folder,true)
+        await app.workspace.changeLayout(layout)
+      }
+    })()`)
+    )
+    expect(r).toEqual({ header: true, renamed: true, moved: true, attached: true, palette: true })
+  }, 120_000)
+
   it('opens chat note links as native Markdown, keeps deck detection, and honors new tabs and source editing', async () => {
     const r = JSON.parse(
       await evalLong(`(async()=>{

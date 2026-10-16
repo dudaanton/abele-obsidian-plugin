@@ -6,12 +6,16 @@ import { adoptCanvasLeaves, CANVAS_VIEW_TYPE, openCanvas } from './opening'
 import { canvasEmbedProcessor, canvasEmbedsInEditor } from './embed'
 import { canvasDocuments } from './documentRegistry'
 import { newCanvas } from './editorControls'
+import { canvasNewFileLocation } from './newFileLocation'
 import './viewer.css'
 
 export function registerCanvas(plugin: Plugin): void {
   const { app } = plugin
   canvasDocuments(app).registerLifecycle(plugin)
   plugin.registerView(CANVAS_VIEW_TYPE, (leaf) => new CanvasView(leaf))
+  app.workspace.onLayoutReady(() => {
+    plugin.register(canvasNewFileLocation(app, () => AbeleConfig.getInstance().canvasViewer))
+  })
   let pending = 0,
     adopting = false
   const adopt = () => {

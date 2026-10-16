@@ -8,6 +8,7 @@ import { openCanvas } from './opening'
 import { CanvasEditor } from './Editor'
 import type { CanvasDocument } from './documentRegistry'
 import type { CanvasViewer } from './Viewer'
+import { newDocumentParent } from '@/helpers/newDocument'
 
 /** One line of text for the canvas, kept open with the reason while `validate` refuses it. */
 const askCanvasText = (title: string, label: string, validate: (value: string) => string) =>
@@ -121,14 +122,13 @@ export function hostCanvasEditor(
   })
 }
 export async function newCanvas(app: App, folder?: TFolder): Promise<void> {
+  const parent = newDocumentParent(app, folder)
   const name = await askCanvasText('New Abele canvas', 'Canvas name', (value) => {
     if (!value || value.includes('/')) throw new Error('Enter a canvas name without folders')
     return canvasPath(value.endsWith('.canvas') ? value : `${value}.canvas`)
   })
   if (!name) return
   try {
-    const parent =
-      folder ?? app.fileManager.getNewFileParent(app.workspace.getActiveFile()?.path ?? '')
     const path = parent.path === '/' ? name : `${parent.path}/${name}`
     await new ObsidianCanvasStore(app).create(path, emptyCanvas())
     const file = app.vault.getAbstractFileByPath(path)

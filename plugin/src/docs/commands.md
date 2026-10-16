@@ -24,6 +24,8 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
 
 ## Presentations
 
+- New presentation — asks for a name and creates a deck in the default new-note location;
+  a folder's menu creates it in that folder
 - Open presentation — view the current `type: presentation` note as a deck
 - Preview presentation beside editor — retain the source editor and open a live deck beside it
 - Play presentation — show on one screen, desktop fullscreen or a full-window mobile overlay

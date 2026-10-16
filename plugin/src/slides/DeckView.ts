@@ -1,5 +1,5 @@
 import {
-  FileView,
+  EditableFileView,
   Notice,
   Platform,
   Scope,
@@ -19,12 +19,13 @@ import { mobilePresentation } from './mobilePresentation'
 import { Presentation } from './core/Presentation'
 import { PresenterView } from './core/PresenterView'
 import type { Deck } from './core/model'
+import { addFileChatAction } from '@/commands/fileChatAction'
 
 // Runtime-only bootstraps: a new audience leaf must not activate slide zero during file loading.
 const audienceBootstraps = new WeakSet<WorkspaceLeaf>()
 
 /** Read-only file adapter: only the source editor writes, never the viewer's preview buffer. */
-export class DeckView extends FileView {
+export class DeckView extends EditableFileView {
   viewer: DeckViewer | null = null
   presenter: PresenterView | null = null
   show: Presentation | null = null
@@ -101,6 +102,8 @@ export class DeckView extends FileView {
   }
 
   async onOpen(): Promise<void> {
+    await super.onOpen()
+    addFileChatAction(this)
     this.ensureViewer()
     if (!Platform.isMobile) return
     // The body overlay outlives its tab's DOM visibility. Release it when navigation
