@@ -123,7 +123,7 @@ describe.skipIf(!available)('read-only walkthrough viewer and canvas note embeds
   }, 120_000)
   it('follows a rendered note-card link with native mouse or touch input', () => {
     if (onPhone()) return
-    const opened = run<string>(`
+    const opened = run<{ path: string }>(`
       const file = app.vault.getAbstractFileByPath(path)
       // Reuse the walkthrough's leaf: view() and subsequent cases must not find a hidden duplicate.
       const leaf = app.workspace.getLeavesOfType('abele-canvas').find(l => l.view.file?.path === path)
@@ -151,7 +151,7 @@ describe.skipIf(!available)('read-only walkthrough viewer and canvas note embeds
             await cdp.sendCommand('Input.dispatchMouseEvent', {type:'mouseReleased',x,y,button:'left',clickCount:1})
           }
           await wait(500)
-          return app.workspace.getActiveFile()?.path ?? ''
+          return { path: app.workspace.getActiveFile()?.path ?? '' }
         } finally { if (owned) cdp.detach() }
       } finally {
         await app.vault.modify(note, original)
@@ -159,7 +159,7 @@ describe.skipIf(!available)('read-only walkthrough viewer and canvas note embeds
         await leaf.openFile(file); await app.workspace.revealLeaf(leaf); await wait(300)
       }
     `)
-    expect(opened).toBe(`${DIR}/sample-embed.md`)
+    expect(opened.path).toBe(`${DIR}/sample-embed.md`)
   }, 120_000)
   it('zooms/pans, renders only revealed live cards, and follows a linked note change', () => {
     const result = run<{
