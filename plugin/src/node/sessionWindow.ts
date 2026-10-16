@@ -32,14 +32,10 @@ export async function openWindow(
 ): Promise<{ head: number; from: number; jumped: boolean } | null> {
   let head: number
   try {
-    const answer = (await client.request('stream.head', { stream_id: stream })) as {
-      head_seq?: unknown
-    }
-    if (!Number.isSafeInteger(answer?.head_seq)) return null
-    head = answer.head_seq as number
+    head = await client.head(stream)
   } catch (error) {
-    // An older node, or the connection going: the session is read as before, and a lost
-    // connection is said by the subscription that follows.
+    // A node before 0.4.18 has no stream.head, or the connection is going: the session is read
+    // as before, and a lost connection is said by the subscription that follows.
     console.debug('[Abele node] stream.head unavailable', error)
     return null
   }
