@@ -5,6 +5,7 @@ import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 import { withNativeInput } from './helpers/nativeInput'
 import { withEmulatedPhone } from './helpers/emulatedPhone'
+import { codeGuideClickTarget, withCodeGuideSettings } from './helpers/codeGuideProbe'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -41,16 +42,10 @@ const PRELUDE = `
 describe.skipIf(!available)('code indentation guides', () => {
   let previous: unknown
   let created = false
-  let config: { enabled: unknown; tabSize: unknown }
   let readingFacts: unknown = null
   beforeAll(() => {
     previous = evalJson('app.workspace.getLayout()')
-    config = evalJson(
-      '({ enabled: app.vault.getConfig("showIndentGuide"), tabSize: app.vault.getConfig("tabSize") })'
-    )
     created = evalAsync<boolean>(`(async () => {
-      app.vault.setConfig('showIndentGuide', true)
-      app.vault.setConfig('tabSize', 4)
       if (app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)})) throw new Error('Sample note already exists')
       const file = await app.vault.create(${JSON.stringify(NOTE)}, ${JSON.stringify(CONTENT)})
       await app.workspace.getLeaf('tab').openFile(file)
@@ -60,8 +55,6 @@ describe.skipIf(!available)('code indentation guides', () => {
   afterAll(async () => {
     if (!onPhone()) await reloadApp('app.emulateMobile(false)')
     evalAsync(`(async () => {
-      app.vault.setConfig('showIndentGuide', ${JSON.stringify(config?.enabled ?? true)})
-      app.vault.setConfig('tabSize', ${JSON.stringify(config?.tabSize ?? 4)})
       for (const leaf of app.workspace.getLeavesOfType('markdown')) if (${created} && leaf.view.file?.path === ${JSON.stringify(NOTE)}) leaf.detach()
       const file = app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)})
       if (${created} && file) await app.vault.delete(file)
@@ -89,8 +82,9 @@ describe.skipIf(!available)('code indentation guides', () => {
         width: number
         snapshot: unknown
       }>(`(async () => {
+      const withSettings = ${withCodeGuideSettings.toString()}
+      return withSettings(app.vault, async () => {
       ${PRELUDE}
-      app.vault.setConfig('showIndentGuide', true)
       await leaf.setViewState({ type: 'markdown', state: { file: ${JSON.stringify(NOTE)}, mode: ${JSON.stringify(mode)}, source: ${source} }, active: true })
       await wait(1000)
       let text, selected, depths, caret = true, wraps = 0, painted = false, nativeInput = null
@@ -194,7 +188,6 @@ describe.skipIf(!available)('code indentation guides', () => {
         if (first) cm.scrollDOM.scrollTop += first.top - scroll.top - 40
         await wait(150)
         const visualRows = new Set()
-        let target = null
         const initial = cm.coordsAtPos(from + 8)
         const viewport = cm.scrollDOM.getBoundingClientRect()
         for (let pos = from + 4; pos < cm.state.doc.lineAt(from).to; pos += 9) {
@@ -202,7 +195,6 @@ describe.skipIf(!available)('code indentation guides', () => {
           if (!box) { caret = false; break }
           if (box.top < Math.max(0, viewport.top) || box.bottom > Math.min(innerHeight, viewport.bottom)) continue
           visualRows.add(Math.round(box.top))
-          if (!target && initial && box.top > initial.top + 2) target = { pos, x: box.left, y: (box.top + box.bottom) / 2 }
           const back = cm.posAtCoords({ x: box.left, y: (box.top + box.bottom) / 2 })
           if (back === null || Math.abs(back - pos) > 1) { caret = false; break }
         }
@@ -230,6 +222,9 @@ describe.skipIf(!available)('code indentation guides', () => {
           const nativeDown = downHead > from + 8 && cm.state.doc.lineAt(downHead).from === from && cm.coordsAtPos(downHead).top > initial.top + 2
           await key('Up')
           const nativeUp = Math.abs(cm.state.selection.main.head - (from + 8)) <= 1
+          await settle()
+          const pickTarget = ${codeGuideClickTarget.toString()}
+          const target = pickTarget(cm, from)
           if (!target) throw new Error('No wrapped row available for a native click')
           const point = { x: Math.round(target.x), y: Math.round(target.y), button: 'left', clickCount: 1 }
           const expectedBox = cm.coordsAtPos(target.pos)
@@ -287,6 +282,7 @@ describe.skipIf(!available)('code indentation guides', () => {
       if (${JSON.stringify(mode)} === 'preview') height.push(unwrappedHeight(leaf.view.containerEl.querySelector('pre > code')))
       await shoot(${JSON.stringify(label + '-off')})
       return { text, selected, depths, off, caret, wraps, painted, nativeInput, shot, finalInside, finalOutside, hanging, height, width: innerWidth, snapshot }
+      })
     })()`)
       console.log('Code guide diagnostics', JSON.stringify(result.snapshot))
       if (mode === 'preview') readingFacts = result.snapshot
