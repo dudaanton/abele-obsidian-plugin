@@ -125,12 +125,15 @@ describe.skipIf(!available)('read-only walkthrough viewer and canvas note embeds
     if (onPhone()) return
     const opened = run<string>(`
       const file = app.vault.getAbstractFileByPath(path)
-      const leaf = app.workspace.getLeaf('tab'); await leaf.openFile(file); await app.workspace.revealLeaf(leaf)
+      // Reuse the walkthrough's leaf: view() and subsequent cases must not find a hidden duplicate.
+      const leaf = app.workspace.getLeavesOfType('abele-canvas').find(l => l.view.file?.path === path)
+      if (!leaf) throw Error('Walkthrough canvas leaf missing')
+      await app.workspace.revealLeaf(leaf)
       const note = app.vault.getAbstractFileByPath(${JSON.stringify(`${DIR}/sample-note.md`)})
       const original = await app.vault.read(note)
       try {
-        await app.vault.modify(note, original + '\\n\\n[[sample-embed|Follow sample]]')
-        const v = view(); v.viewer.go(null, false)
+        await app.vault.modify(note, original + ${JSON.stringify('\n\n[[sample-embed|Follow sample]]')})
+        const v = leaf.view; v.viewer.go(null, false)
         const node = v.viewer.graph.nodes.find(n => n.id === 'note')
         v.viewer.focusRegion(node, false); await wait(700)
         const link = v.contentEl.querySelector('[data-node-id="note"] a.internal-link')
@@ -150,7 +153,11 @@ describe.skipIf(!available)('read-only walkthrough viewer and canvas note embeds
           await wait(500)
           return app.workspace.getActiveFile()?.path ?? ''
         } finally { if (owned) cdp.detach() }
-      } finally { await app.vault.modify(note, original) }
+      } finally {
+        await app.vault.modify(note, original)
+        // Following the link can replace the canvas in this leaf. Restore it for the next case.
+        await leaf.openFile(file); await app.workspace.revealLeaf(leaf); await wait(300)
+      }
     `)
     expect(opened).toBe(`${DIR}/sample-embed.md`)
   }, 120_000)
