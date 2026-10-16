@@ -96,6 +96,9 @@ export async function startPairedNode(options: { latencyMs?: number } = {}) {
         '--json',
         '--no-codex',
         '--claude-allow-bypass',
+        // Sessions end with the node: a test leaves no Claude process behind.
+        '--claude-detached-ms',
+        '0',
         '--node-name',
         LABEL,
         '--port',
