@@ -20,7 +20,7 @@ import {
   type DelegationTaskInput,
   type DelegationCard,
 } from './delegation'
-import { nodeProviders, providerAvailable } from './providers'
+import { delegatable, nodeProviders, providerAvailable } from './providers'
 
 function storage(state: NodeClientState) {
   return (state.delegation ??= { grants: {}, tasks: {} })
@@ -46,7 +46,10 @@ export class NodeDelegationController {
   ) {}
 
   /** Server subscriptions belong to a transport, never to this controller's lifetime. */
-  connectionChanged() { this.subscribed.clear(); this.denied.clear() }
+  connectionChanged() {
+    this.subscribed.clear()
+    this.denied.clear()
+  }
 
   /** Synchronous fence first; durable waiter removal is serialized with status writes. */
   stopParent(parent: string): Promise<void> {
@@ -58,7 +61,9 @@ export class NodeDelegationController {
     })
   }
   /** Only an explicitly resumed parent turn can arm new waiters after Stop. */
-  resumeParent(parent: string): void { this.stoppedParents.delete(parent) }
+  resumeParent(parent: string): void {
+    this.stoppedParents.delete(parent)
+  }
 
   /** Owner UI only. These methods are deliberately absent from the model tools. */
   async approve(params: DelegationGrantRequest) {
@@ -81,7 +86,9 @@ export class NodeDelegationController {
   async destinations(parent: string) {
     const grants = (await this.grants()).filter((g) => !g.revoked && g.parent_id === parent)
     if (!grants.length) return []
-    const providers = nodeProviders(await this.client.describe()).filter(providerAvailable)
+    const providers = nodeProviders(await this.client.describe())
+      .filter(delegatable)
+      .filter(providerAvailable)
     const allowed = new Set(grants.flatMap((g) => g.project_ids))
     const projects = new Map<string, { project_id: string; root_path: string }>()
     let after: string | undefined
@@ -144,12 +151,13 @@ export class NodeDelegationController {
       return request
     })
     let child: Awaited<ReturnType<NodeClient['createDelegation']>> | undefined
-    const retainCancellation = () => this.store.transaction((s) => {
-      const task = storage(s).tasks[key]
-      task.cancelled = true
-      // A failed child-record write must not lose an already accepted child identity.
-      if (child && !task.child) task.child = child
-    })
+    const retainCancellation = () =>
+      this.store.transaction((s) => {
+        const task = storage(s).tasks[key]
+        task.cancelled = true
+        // A failed child-record write must not lose an already accepted child identity.
+        if (child && !task.child) task.child = child
+      })
     let cancelling: Promise<void> | undefined
     const onAbort = () => {
       // Start durable intent on Stop itself, independently of whether an outstanding
@@ -157,13 +165,15 @@ export class NodeDelegationController {
       cancelling = retainCancellation().then(async () => {
         if (child) await this.cancelAborted(key, child.delegation_id)
       })
-      void cancelling.catch(() => { /* The finally path retries a failed intent write. */ })
+      void cancelling.catch(() => {
+        /* The finally path retries a failed intent write. */
+      })
     }
     signal?.addEventListener('abort', onAbort, { once: true })
     try {
       if (signal?.aborted) throw new Error('Delegation call cancelled')
       const available = nodeProviders(await this.client.describe()).some(
-        (p) => p.provider === input.provider && providerAvailable(p)
+        (p) => p.provider === input.provider && delegatable(p) && providerAvailable(p)
       )
       if (signal?.aborted) throw new Error('Delegation call cancelled')
       if (!available) throw new Error('Provider unavailable on this node')
@@ -206,7 +216,9 @@ export class NodeDelegationController {
     try {
       if (await this.store.transaction((s) => storage(s).tasks[key].cancelSettled)) return
       await this.commitCancellation(key, id)
-    } catch { /* Retain the intent for retry on restore. */ }
+    } catch {
+      /* Retain the intent for retry on restore. */
+    }
   }
   private publicChild(child: {
     node_id: string
@@ -273,15 +285,24 @@ export class NodeDelegationController {
     const delivered = await this.store.transaction((s) => {
       const cursor = s.cursors[status.mailbox_stream_id] ?? 0
       const events = s.events[status.mailbox_stream_id] ?? []
-      return cursor >= status.mailbox_head_seq &&
-        (status.state !== 'completed' || events.some((e) => e.type === 'delegation.result' &&
-          (e.data as { delegation_id?: string }).delegation_id === id))
+      return (
+        cursor >= status.mailbox_head_seq &&
+        (status.state !== 'completed' ||
+          events.some(
+            (e) =>
+              e.type === 'delegation.result' &&
+              (e.data as { delegation_id?: string }).delegation_id === id
+          ))
+      )
     })
     if (status.state === 'completed')
       await this.store.transaction((s) => {
         const task = Object.values(storage(s).tasks).find((t) => t.child?.delegation_id === id)
-        if (task) task.awaitingResult = !delivered && !this.stoppedParents.has(parent) &&
-          wakeEpoch === (this.wakeEpochs.get(parent) ?? 0)
+        if (task)
+          task.awaitingResult =
+            !delivered &&
+            !this.stoppedParents.has(parent) &&
+            wakeEpoch === (this.wakeEpochs.get(parent) ?? 0)
       })
     const card = canRead ? (await this.cards(parent)).find((c) => c.delegationId === id) : undefined
     return {
@@ -301,7 +322,9 @@ export class NodeDelegationController {
     const guarded = supportsExpectedTarget(await this.client.describe())
     if (guarded && displayed === undefined) {
       await this.observeTarget(id, child.session_id)
-      throw new Error('The delegated chat target is not ready. Nothing was sent. Check its status before sending again.')
+      throw new Error(
+        'The delegated chat target is not ready. Nothing was sent. Check its status before sending again.'
+      )
     }
     const status = await this.client.delegationStatus(id)
     if (signal?.aborted) throw new Error('Delegation call cancelled')
@@ -321,7 +344,9 @@ export class NodeDelegationController {
     const child = await this.owned(parent, id, 'cancel')
     // Also covers Stop racing the tool wrapper's post-create refresh, after create's
     // signal listener has been released. A disconnected cancel still has durable intent.
-    await this.store.transaction((s) => { storage(s).tasks[child.delegation_key].cancelled = true })
+    await this.store.transaction((s) => {
+      storage(s).tasks[child.delegation_key].cancelled = true
+    })
     return this.publicChild(await this.commitCancellation(child.delegation_key, id))
   }
   /** Recover receipts before subscribing. Does not depend on an open parent/child tab. */
@@ -387,7 +412,10 @@ export class NodeDelegationController {
       )
       await Promise.all(
         children
-          .filter((c) => !this.subscribed.has(c.mailbox_stream_id) && !this.denied.has(c.mailbox_stream_id))
+          .filter(
+            (c) =>
+              !this.subscribed.has(c.mailbox_stream_id) && !this.denied.has(c.mailbox_stream_id)
+          )
           .map(async (c) => {
             try {
               await this.client.subscribeDelegation(c)
@@ -402,19 +430,33 @@ export class NodeDelegationController {
     }
   }
   /** Wake only a waiting model, once the result is durably present in its parent card. */
-  async wakeDelivered(cards: Record<string, DelegationCard[]>, wake: (parent: string, id: string) => boolean): Promise<void> {
+  async wakeDelivered(
+    cards: Record<string, DelegationCard[]>,
+    wake: (parent: string, id: string) => boolean
+  ): Promise<void> {
     const epochs = new Map(this.wakeEpochs)
-    const pending = await this.store.transaction((s) => Object.entries(storage(s).tasks)
-      .filter(([, task]) => task.awaitingResult && task.child)
-      .map(([key, task]) => ({ key, parent: task.parentId, id: task.child!.delegation_id })))
+    const pending = await this.store.transaction((s) =>
+      Object.entries(storage(s).tasks)
+        .filter(([, task]) => task.awaitingResult && task.child)
+        .map(([key, task]) => ({ key, parent: task.parentId, id: task.child!.delegation_id }))
+    )
     for (const { key, parent, id } of pending) {
       // Stop may have won after enumeration but before dispatch (or before a new
       // explicit turn). Neither a stale snapshot nor that new turn revives this wake.
-      if (this.stoppedParents.has(parent) ||
-        (epochs.get(parent) ?? 0) !== (this.wakeEpochs.get(parent) ?? 0)) continue
+      if (
+        this.stoppedParents.has(parent) ||
+        (epochs.get(parent) ?? 0) !== (this.wakeEpochs.get(parent) ?? 0)
+      )
+        continue
       const card = cards[parent]?.find((c) => c.delegationId === id)
-      if (card?.state === 'completed' && card.reports.some((r) => r.kind === 'result') && wake(parent, id))
-        await this.store.transaction((s) => { storage(s).tasks[key].awaitingResult = false })
+      if (
+        card?.state === 'completed' &&
+        card.reports.some((r) => r.kind === 'result') &&
+        wake(parent, id)
+      )
+        await this.store.transaction((s) => {
+          storage(s).tasks[key].awaitingResult = false
+        })
     }
   }
 

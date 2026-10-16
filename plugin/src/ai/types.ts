@@ -1,4 +1,4 @@
-import type { SessionMark } from '@/node/sessionLive'
+import type { SessionMark, SessionPlanEntry } from '@/node/sessionLive'
 import type { NodeAccessRefusal } from './tools/node/accessRefusal'
 import { DEFAULT_REQUEST_TIMEOUT_SECONDS } from './requestTimeout'
 import { DEFAULT_MEMORY_TEMPLATE } from './agents/memory'
@@ -692,6 +692,10 @@ export interface ChatMessage {
   /** A successfully saved image, copied from the tool's own result details, never model text. */
   toolImagePath?: string
   toolDiff?: ChatMessageDiff
+  /** What another agent calls its tool call, in words («Edit src/app.ts»), when it says. */
+  toolTitle?: string
+  /** The file a tool call works on, as its agent reports it. */
+  toolPath?: string
   /** A map a tool drew — shown under the call, the way a diff or a screenshot is. */
   toolMap?: MapBlock
   usage?: ChatMessageUsage
@@ -738,6 +742,8 @@ export interface ChatMessage {
   fromSession?: { id: string; title: string; agent?: string }
   /** A line a node session draws itself: compacting, compacted, woken by a background task. */
   sessionMark?: SessionMark
+  /** The plan an agent keeps while it works, as it stands now: drawn where it first appeared. */
+  sessionPlan?: SessionPlanEntry[]
 }
 
 /** Where a comment chat sits: the note holding its marker, and the text it was made on. */

@@ -140,6 +140,7 @@
         :fake="presenter.provider?.value === 'fake'"
         :disabled="offline"
         :answer-state="presenter.answers?.value[prompt.prompt_id]"
+        :diffs="presenter.projection.value.promptDiffs?.[prompt.prompt_id]"
         @stop="presenter.stopFromApproval(prompt)"
         @answer="
           (choice, value) =>
@@ -300,7 +301,7 @@ import Icon from './obsidian/Icon.vue'
 import AgentsButton from './AgentsButton.vue'
 import Button from './obsidian/Button.vue'
 import MetaLine from './obsidian/MetaLine.vue'
-import { piFailure } from '@/node/piTranscript'
+import { piFailure } from '@/node/piFailure'
 import NodeDebugActions from '@/debugger/NodeDebugActions.vue'
 import { attachNodeProgram, openNodeDebugger, startNodeProgram } from '@/debugger/register'
 import { useChatKeyboardGap } from '@/composables/useChatKeyboardGap'
@@ -402,15 +403,30 @@ const compactOpen = ref(false),
   renameOpen = ref(false),
   stopOpen = ref(false)
 const settingsControl = ref<{ open: (event?: MouseEvent) => void } | null>(null)
-/** After «/»: the session's own commands, then the skills it has. */
-const slashItems = computed<SlashItem[] | undefined>(() =>
-  live.value?.commands.map((c) => ({
+/**
+ * After «/»: the session's own commands, then what the agent itself takes — its commands and
+ * skills, as it last reported them. One of the agent's goes to it as the message; a name the
+ * session already answers itself (`compact`, `model`…) stays the session's.
+ */
+const slashItems = computed<SlashItem[] | undefined>(() => {
+  const own: SlashItem[] = (live.value?.commands ?? []).map((c) => ({
     kind: c.kind,
     name: c.name,
     title: `/${c.name}`,
     description: c.description,
   }))
-)
+  const taken = new Set(own.map((c) => c.name))
+  const agent: SlashItem[] = (props.presenter.agentCommands?.value ?? [])
+    .filter((c) => !taken.has(c.name))
+    .map((c) => ({
+      kind: c.source === 'skill' ? 'skill' : 'agent',
+      name: c.name,
+      title: c.input_hint ? `/${c.name} ${c.input_hint}` : `/${c.name}`,
+      description: c.description ?? '',
+    }))
+  const all = [...own, ...agent]
+  return all.length ? all : undefined
+})
 /** What stopping the session ends, named. */
 const stopSaid = computed(() => {
   const n = live.value?.background.length ?? 0

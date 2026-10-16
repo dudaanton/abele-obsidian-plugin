@@ -52,6 +52,8 @@ export function useChatMessageMedia(props: ChatMessageMediaProps) {
   /** Path to open when clicking the tool summary (result path for mv/cp, otherwise path param) */
   const toolFilePath = computed(() => {
     const name = props.message.toolName
+    // Another agent says which file its call works on.
+    if (props.message.toolPath) return props.message.toolPath
     if (!name) return ''
     const p = props.message.toolParams
     if (!p) return ''

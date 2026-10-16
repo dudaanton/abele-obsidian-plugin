@@ -2,9 +2,14 @@ import type { JournalEvent } from '@abele/channel-protocol'
 import { PromptSchema, SessionSchema, type Prompt } from '@abele/node-protocol'
 import type { ChatMessage } from '@/ai/types'
 import { readAgentReplyText } from '@/ai/replyLinks'
-import { ClaudeTranscript } from './claudeTranscript'
-import { PiTranscript, piFailure } from './piTranscript'
+import { piFailure } from './piFailure'
 import { LiveTranscript, type LiveProjection } from './liveTranscript'
+import {
+  UpdateTranscript,
+  eventProvider,
+  updatesOf,
+  type UpdateProjection,
+} from './updateTranscript'
 
 export type NodeSessionState = 'idle' | 'queued' | 'accepted' | 'running' | 'needs-attention'
 export interface NodeTranscript {
@@ -21,6 +26,10 @@ export interface NodeTranscript {
   unknown: JournalEvent[]
   /** A long-lived session's process, background work, context and compacting. */
   live: LiveProjection
+  /** What the agent's updates say beside its messages: its commands, mode, options and plan. */
+  agent: UpdateProjection
+  /** The changes a pending permission question asks about, by prompt. */
+  promptDiffs: Record<string, { path: string; old: string; new: string }[]>
 }
 
 /** The journal is canonical. Projection is disposable; replay never executes a plugin tool. */
@@ -55,14 +64,123 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
     }
     return current
   }
-  const claude = new ClaudeTranscript(message)
-  const pi = new PiTranscript(message)
   let failed = false
   const live = new LiveTranscript(message, runs, (ids, outcome) => {
     for (const id of ids)
       inputs.set(id, outcome === 'success' ? 'completed' : outcome || 'completed')
     failed = outcome !== 'success'
   })
+  const agent = new UpdateTranscript(message, live)
+  /** Providers that start a call as soon as they report it; ACP agents say when they do. */
+  const startsAtCall = new Set(['claude', 'pi', ''])
+  /** What the provider's own record says that the shared updates do not. */
+  const residual = (
+    type: string,
+    data: Record<string, unknown>,
+    provider: string,
+    piError: string,
+    decided: string | undefined
+  ): boolean => {
+    const text = (key: string) => (typeof data[key] === 'string' ? data[key] : '')
+    if (type === 'claude.tool.authorization') {
+      const tool = message(agent.toolId(provider, text('run_id'), text('tool_use_id')), 'tool-call')
+      tool.content = 'Allowed by your Claude settings'
+      return true
+    }
+    if (type === 'claude.message.final' && data.role === 'assistant') {
+      const usage = data.usage as Record<string, unknown> | undefined
+      const id = agent.messageId(
+        provider,
+        text('run_id'),
+        text('message_id'),
+        text('parent_tool_use_id') || null
+      )
+      const answer = messages.get(id)
+      if (
+        answer &&
+        typeof usage?.input_tokens === 'number' &&
+        typeof usage.output_tokens === 'number'
+      )
+        answer.usage = {
+          input: usage.input_tokens,
+          output: usage.output_tokens,
+          total: usage.input_tokens + usage.output_tokens,
+        }
+      return false
+    }
+    if (type === 'pi.message.final' || type === 'pi.message.start')
+      piSnapshot(data, provider, type === 'pi.message.final')
+    if (piError) {
+      const answer = message(piAnswerId(data, provider), 'assistant')
+      answer.error = piError
+      const input = runInputs.get(text('run_id'))
+      if (input) answer.retryInputId = `input:${input}`
+      return true
+    }
+    if (decided) {
+      const tool = messages.get(decided)
+      if (tool) tool.content = permissionWords(data)
+      return true
+    }
+    return false
+  }
+  /** The id pi's own updates give an answer. */
+  const piAnswerId = (data: Record<string, unknown>, provider: string): string => {
+    const run = typeof data.run_id === 'string' ? data.run_id : ''
+    const plain = (v: unknown) =>
+      typeof v === 'string' || typeof v === 'number' ? String(v) : undefined
+    const native = [run || undefined, plain(data.runtime_generation), plain(data.message_id)]
+      .filter((v) => v !== undefined)
+      .join(':')
+      .slice(0, 256)
+    return agent.messageId(provider, run, native)
+  }
+  /**
+   * What pi's whole-message snapshot says beyond its text: the calls it asked for (shown before
+   * pi reports running them) and, once final, that streamed text it no longer holds is gone.
+   */
+  const piSnapshot = (data: Record<string, unknown>, provider: string, final: boolean): void => {
+    const snapshot = data.message as Record<string, unknown> | undefined
+    if (snapshot?.role !== 'assistant' || !Array.isArray(snapshot.content)) return
+    const run = typeof data.run_id === 'string' ? data.run_id : ''
+    const content = snapshot.content as Record<string, unknown>[]
+    content.forEach((block) => {
+      if (block?.type !== 'toolCall' || typeof block.id !== 'string' || !block.id) return
+      if (agent.hasTool(agent.toolId(provider, run, block.id))) return
+      const name = typeof block.name === 'string' ? block.name : 'Tool'
+      agent.apply(
+        {
+          kind: 'tool_call_update',
+          tool_call_id: block.id,
+          title: name,
+          name,
+          raw_input:
+            block.arguments && typeof block.arguments === 'object'
+              ? (block.arguments as Record<string, unknown>)
+              : {},
+        },
+        provider,
+        run,
+        0
+      )
+    })
+    // An empty snapshot of a stopped answer does not take back what was already streamed.
+    if (!final || (snapshot.stopReason === 'aborted' && !content.length)) return
+    const kept = new Set<number>()
+    content.forEach((b, i) => {
+      if (b?.type === 'text' || b?.type === 'thinking') kept.add(i)
+    })
+    agent.keepOnly(piAnswerId(data, provider), kept)
+  }
+  const permissionDecision = (
+    data: Record<string, unknown>,
+    provider: string,
+    run: string
+  ): string | undefined => {
+    if (typeof data.tool_call_id !== 'string' || !data.tool_call_id) return undefined
+    const id = agent.toolId(provider, run, data.tool_call_id)
+    return messages.has(id) ? id : undefined
+  }
   for (const event of [...events].sort((a, b) => a.seq - b.seq)) {
     if (seen.has(event.seq)) continue
     seen.add(event.seq)
@@ -79,12 +197,16 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
       else unknown.push(event)
       continue
     }
-    if (
-      (event.type.startsWith('claude.') || event.type.startsWith('pi.')) &&
-      (data.artifact_id || data.late)
-    ) {
+    const provider = eventProvider(event)
+    if (provider && event.type.startsWith(`${provider}.`) && (data.artifact_id || data.late)) {
       unknown.push(event)
-      if (text('artifact_id') && !['claude.raw', 'claude.unknown'].includes(event.type))
+      // A record the node mapped is already shown through its updates; the whole of it stays
+      // in the details.
+      if (
+        text('artifact_id') &&
+        data.mapped !== true &&
+        !['claude.raw', 'claude.unknown'].includes(event.type)
+      )
         artifacts.push({
           messageId: `event:${event.seq}`,
           artifactId: text('artifact_id'),
@@ -92,22 +214,43 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
         })
       continue
     }
-    const native =
-      (event.type.startsWith('claude.') && claude.apply(event.type, data)) ||
-      (event.type.startsWith('pi.') && pi.apply(event.type, data, runInputs.get(currentRun)))
-    if (!native && live.apply(event.type, data, at)) continue
-    if (native) {
-      for (const id of touchedTools) {
-        if (event.type.endsWith('.tool.call')) startedTools.add(id)
-        if (event.type.endsWith('.tool.result')) {
-          completedTools.add(id)
-          const tool = messages.get(id)
-          if (tool) delete tool.toolExecution
-        }
+    let updates = updatesOf(event)
+    const piError = event.type === 'pi.message.final' ? piFailure(data) : ''
+    // pi's failure is said on the answer it belongs to, with the way to send it again.
+    if (piError) updates = updates.filter((u) => u.kind !== 'notice')
+    // A decision the node took for a call is said on the call itself.
+    const decided =
+      event.type === 'acp.permission' ? permissionDecision(data, provider, currentRun) : undefined
+    if (decided) updates = updates.filter((u) => u.kind !== 'notice')
+    for (const update of updates) {
+      agent.apply(update, provider, currentRun, event.seq)
+      if (update.kind !== 'tool_call' && update.kind !== 'tool_call_update') continue
+      const id = agent.toolId(provider, currentRun, update.tool_call_id)
+      if (
+        update.status === 'in_progress' ||
+        (update.kind === 'tool_call' && startsAtCall.has(provider))
+      )
+        startedTools.add(id)
+      if (update.status === 'completed' || update.status === 'failed') {
+        startedTools.add(id)
+        completedTools.add(id)
+        const tool = messages.get(id)
+        if (tool) delete tool.toolExecution
       }
-      if (event.type === 'pi.message.final' && piFailure(data)) unknown.unshift(event)
+    }
+    const extra = residual(event.type, data, provider, piError, decided)
+    const providerRecord = !!provider && event.type.startsWith(`${provider}.`)
+    if (updates.length || extra || (providerRecord && data.mapped === true)) {
+      if (piError) unknown.unshift(event)
       continue
     }
+    if (event.type === 'session.update') {
+      // A kind from a newer node: kept, never drawn as a known one.
+      unknown.push(event)
+      continue
+    }
+    if (QUIET_RECORDS.has(event.type)) continue
+    if (live.apply(event.type, data, at)) continue
     if (event.type.startsWith('input.')) {
       const state = text('state') || event.type.slice(6)
       inputs.set(text('input_id'), state)
@@ -202,6 +345,15 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
         : [...inputs.values()].includes('accepted')
           ? 'accepted'
           : 'idle'
+  const promptDiffs: NodeTranscript['promptDiffs'] = {}
+  for (const prompt of prompts.values()) {
+    if (prompt.state !== 'pending' || !prompt.tool_use_id) continue
+    const id = agent.toolByNativeId(prompt.tool_use_id)
+    const tool = id ? messages.get(id) : undefined
+    // The call waits for you: its line says so, and the question shows what it would change.
+    if (tool && tool.toolResult === undefined) tool.toolStatus = 'pending'
+    if (id) promptDiffs[prompt.prompt_id] = agent.pendingDiffs(id)
+  }
   const children: NodeTranscript['children'] = {}
   for (const m of messages.values())
     if (m.parentId && messages.has(m.parentId)) (children[m.parentId] ??= []).push(m)
@@ -219,5 +371,22 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
     artifacts,
     unknown,
     live: live.projection(),
+    agent: agent.projection(),
+    promptDiffs,
   }
+}
+
+/** Provider records the shared updates carry nothing of, and nothing else needs. */
+const QUIET_RECORDS = new Set(['pi.message.start'])
+
+const DECIDED_BY: Record<string, string> = {
+  session_mode: 'by the session mode',
+  owner: 'by you',
+  node: 'by the node',
+}
+/** What the node decided for a call it was asked about, in words. */
+function permissionWords(data: Record<string, unknown>): string {
+  const decision = typeof data.decision === 'string' ? data.decision : 'rejected'
+  const by = DECIDED_BY[typeof data.by === 'string' ? data.by : ''] ?? ''
+  return `${decision[0].toUpperCase()}${decision.slice(1)}${by ? ' ' + by : ''}`
 }

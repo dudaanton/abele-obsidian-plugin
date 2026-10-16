@@ -8,6 +8,15 @@
       }}</span>
     </div>
     <div v-if="summary" class="abele-tool-approval__param">{{ summary }}</div>
+    <!-- What the call would change, as the agent showed it: open while the question waits. -->
+    <Diff
+      v-for="(diff, i) in prompt.state === 'pending' ? (diffs ?? []) : []"
+      :key="i"
+      class="abele-node-permission__diff"
+      :text-left="diff.old"
+      :text-right="diff.new"
+      :path="diff.path"
+    />
     <details v-if="prompt.input">
       <summary>Original action</summary>
       <Diff
@@ -116,6 +125,8 @@ const props = defineProps<{
   disabled: boolean
   fake?: boolean
   answerState?: PromptAnswerState
+  /** The changes the call it asks about would make, when its agent showed them. */
+  diffs?: { path: string; old: string; new: string }[]
 }>()
 const emit = defineEmits<{
   (e: 'answer', choice: 'allow' | 'deny', value?: string): void
@@ -146,6 +157,9 @@ const summary = computed(() =>
 )
 </script>
 <style lang="scss">
+.abele-node-permission__diff {
+  margin: var(--size-4-1) 0;
+}
 .abele-node-permission {
   .abele-tool-approval__actions {
     margin-top: var(--size-4-2);

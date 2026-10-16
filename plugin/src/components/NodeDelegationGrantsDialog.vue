@@ -113,6 +113,7 @@ import type { DelegationGrant, Project } from '@abele/node-client'
 import type { NodeDelegationController } from '@/node/NodeDelegationController'
 import { nodePages } from '@/node/nodePages'
 import {
+  delegatable,
   nodeProviders,
   providerAvailable,
   providerLabel,
@@ -175,7 +176,7 @@ const load = () =>
       props.controller.client.describe(),
     ])
     projects.value = projectList
-    providers.value = nodeProviders(description)
+    providers.value = nodeProviders(description).filter(delegatable)
   })
 const approve = () =>
   act(async () => {

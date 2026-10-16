@@ -3,6 +3,7 @@ import type { NodeClient } from '@abele/node-client'
 import type { LiveSessionState } from '@abele/node-protocol'
 import type { NodeProvider } from './providers'
 import type { LiveProjection } from './liveTranscript'
+import type { UpdateProjection } from './updateTranscript'
 import type { NodeSessionLive, PermissionMode, SessionChoice, SessionSettings } from './sessionLive'
 
 /** The node's word for a mode, and ours. */
@@ -135,7 +136,12 @@ export class NodeSessionControl {
    * The session as its chat shows it, or null when it is not a long-lived one: a provider that
    * runs one process per message, a node that does not say, a state not read yet.
    */
-  view(provider: NodeProvider | undefined, journal: LiveProjection): NodeSessionLive | null {
+  view(
+    provider: NodeProvider | undefined,
+    journal: LiveProjection,
+    agent?: UpdateProjection,
+    name = 'claude'
+  ): NodeSessionLive | null {
     const state = this.state.value
     if (!state?.live) return null
     const configuration = (provider?.configuration ?? {}) as {
@@ -143,13 +149,22 @@ export class NodeSessionControl {
       efforts?: string[]
       permission_modes?: string[]
     }
+    // Some agents report the modes the node runs them in beside their configuration.
+    const modes = configuration.permission_modes ?? provider?.permission_modes ?? []
+    // Claude Code takes its aliases; any other agent offers the models it reported.
+    const offered =
+      agent?.options.find((o) => o.category === 'model')?.options?.map((o) => o.value) ?? []
     const settings: SessionSettings = {
       model: state.settings.model,
       effort: state.settings.effort,
       account: state.settings.account,
       mode: modeOf(state.settings.permission_mode),
     }
-    const models = [...new Set([...MODEL_ALIASES, settings.model].filter(Boolean))]
+    const models = [
+      ...new Set(
+        [...(name === 'claude' ? MODEL_ALIASES : offered), settings.model].filter(Boolean)
+      ),
+    ]
     const choice = (id: string, label: string): SessionChoice => ({ id, label })
     const context =
       journal.context ??
@@ -166,7 +181,10 @@ export class NodeSessionControl {
         accounts: [...new Set([...(configuration.accounts ?? []), settings.account])].map((a) =>
           choice(a, accountLabel(a))
         ),
-        bypassAllowed: (configuration.permission_modes ?? []).includes('bypassPermissions'),
+        bypassAllowed: modes.includes('bypassPermissions'),
+        // Claude Code takes every mode; any other agent asks every time or runs without asking,
+        // the second only where its node allows it.
+        ...(name !== 'claude' ? { modes: ['manual', 'bypass'] as PermissionMode[] } : {}),
       },
       context,
       compacting: journal.compacting || state.compacting,

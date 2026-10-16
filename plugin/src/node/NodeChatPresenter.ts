@@ -1,6 +1,7 @@
 import { computed, ref, shallowRef, watch, type WatchStopHandle } from 'vue'
 import { z } from 'zod'
 import type { FakeStep, Prompt } from '@abele/node-client'
+import type { SessionCommand } from '@abele/node-protocol'
 import type { ChatPresentationSession, ChatReference } from '@/ai/ChatPresentationSession'
 import type { ChatDraft, ChatReplyTo } from '@/ai/types'
 import { agentReplyText } from '@/ai/replyLinks'
@@ -55,6 +56,9 @@ const LIVE_STATE_EVENTS = new Set([
   'turn.completed',
   'compaction.completed',
 ])
+
+const commandsChanged = (data: unknown): boolean =>
+  (data as { update?: { kind?: unknown } } | null)?.update?.kind === 'available_commands_update'
 
 const NodeReferenceSchema = z
   .object({
@@ -142,7 +146,12 @@ export class NodeChatPresenter implements ChatPresentationSession {
   /** A long-lived session's settings and levers; `live` is null for any other. */
   readonly control: NodeSessionControl
   readonly live = computed(() =>
-    this.control.view(this.providerReport.value, this.projection.value.live)
+    this.control.view(
+      this.providerReport.value,
+      this.projection.value.live,
+      this.projection.value.agent,
+      this.provider.value
+    )
   )
   private filesModel?: NodeFilesModel
   private filesBindingKey?: string
@@ -182,6 +191,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
       if (event.stream_id === reference.sessionId) {
         this.refreshSoon()
         if (LIVE_STATE_EVENTS.has(event.type)) void this.readLive()
+        if (event.type === 'session.update' && commandsChanged(event.data)) void this.readCommands()
         if (['session.worktree.changed', 'session.updated'].includes(event.type))
           void this.refreshBinding().catch((e: unknown) => this.report(e))
       }
@@ -196,7 +206,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
         if (state === 'connected')
           void this.subscribe()
             .then(() => this.refresh())
-            .then(() => this.readLive())
+            .then(() => Promise.all([this.readLive(), this.readCommands()]))
             .catch((e: unknown) => this.report(e))
         else void this.refresh().catch((e: unknown) => this.report(e))
       },
@@ -302,7 +312,12 @@ export class NodeChatPresenter implements ChatPresentationSession {
         for (const event of history) {
           const data = event.data as Record<string, unknown>
           const id = data?.artifact_id
-          if (typeof id === 'string' && NORMALIZED_ARTIFACT_EVENTS.has(event.type)) {
+          // A record the node mapped is shown through its updates: nothing to read back.
+          if (
+            typeof id === 'string' &&
+            data.mapped !== true &&
+            NORMALIZED_ARTIFACT_EVENTS.has(event.type)
+          ) {
             if (!artifactData[id] && client.connected && !this.unusableArtifacts.has(id)) {
               try {
                 artifactData[id] = await this.cacheArtifact(id, await this.readArtifact(id))
@@ -660,12 +675,33 @@ export class NodeChatPresenter implements ChatPresentationSession {
     }, REFRESH_MS)
   }
 
-  /** Only Claude Code keeps a long-lived process on the node; nobody else is asked for one. */
+  /** Every agent but the fake one may keep a long-lived process on the node. */
   private readLive(): Promise<void> {
-    return this.provider.value === 'claude' && !this.destroyed
+    return this.provider.value !== 'fake' && !this.destroyed
       ? this.control.read()
       : Promise.resolve()
   }
+
+  /** The agent's «/» list as the node keeps it: the window held here may not reach its report. */
+  private readonly storedCommands = shallowRef<{ list: SessionCommand[]; seq: number } | null>(null)
+  private readCommands(): Promise<void> {
+    if (this.provider.value === 'fake' || this.destroyed) return Promise.resolve()
+    return this.connection.client
+      .sessionCommands(this.reference.sessionId)
+      .then((answer) => {
+        this.storedCommands.value = { list: answer.commands, seq: answer.seq }
+      })
+      .catch((error: unknown) => {
+        // An older node does not keep the list: what the journal held here is all there is.
+        console.debug('[Abele node] session.commands unavailable', error)
+      })
+  }
+  /** The commands the agent itself takes after «/», newest report first. */
+  readonly agentCommands = computed<SessionCommand[]>(() => {
+    const journal = this.projection.value.agent?.commands
+    const stored = this.storedCommands.value
+    return (journal && (!stored || journal.seq >= stored.seq) ? journal : stored)?.list ?? []
+  })
 
   /** Opens another session of this node in its own chat tab; set by whoever owns the tabs. */
   openSession?: (sessionId: string) => void

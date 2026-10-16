@@ -169,6 +169,39 @@ describe('a long-lived node session', () => {
     expect(p.send).not.toHaveBeenCalled()
   })
 
+  it('offers the agent’s own commands and skills after the session’s, and sends one as the message', async () => {
+    const p = {
+      ...presenter(sessionLive()),
+      agentCommands: ref([
+        { name: 'compact', description: 'The agent’s own compact' },
+        { name: 'review', description: 'Review the changes', input_hint: 'branch' },
+        { name: 'sample-skill', description: null, source: 'skill' },
+      ]),
+    }
+    const w = open(p)
+    const input = w.findComponent(AiChatInput)
+    const items = input.props('slashExtra') as { kind: string; name: string; title: string }[]
+    // A name the session answers itself stays the session's.
+    expect(items.filter((i) => i.name === 'compact')).toHaveLength(1)
+    expect(items.slice(-2)).toEqual([
+      expect.objectContaining({ kind: 'agent', name: 'review', title: '/review branch' }),
+      expect.objectContaining({ kind: 'skill', name: 'sample-skill', title: '/sample-skill' }),
+    ])
+    input.vm.$emit('send', '/review main')
+    await flushPromises()
+    expect(p.send).toHaveBeenCalled()
+    expect(p.send.mock.calls[0][0]).toBe('/review main')
+  })
+
+  it('offers the agent’s commands in a chat that is not a long-lived one too', () => {
+    const p = {
+      ...presenter(null),
+      agentCommands: ref([{ name: 'review', description: 'Review' }]),
+    }
+    const items = open(p).findComponent(AiChatInput).props('slashExtra') as { name: string }[]
+    expect(items.map((i) => i.name)).toEqual(['review'])
+  })
+
   it('lists only the session commands in the «/» list', () => {
     const list = mount(ChatSlashSuggest, {
       props: {

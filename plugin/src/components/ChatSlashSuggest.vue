@@ -40,7 +40,8 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { discoverSkills } from '@/ai/tools/SkillTool'
 
 export interface SlashItem {
-  kind: 'command' | 'skill' | 'prompt'
+  /** `agent`: a command of the agent a node session runs, sent to it as the message. */
+  kind: 'command' | 'skill' | 'prompt' | 'agent'
   name: string
   title: string
   description: string
@@ -58,8 +59,18 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ choose: [item: SlashItem] }>()
 
-const KIND_GLYPH = { command: 'square-slash', skill: 'sparkles', prompt: 'file-text' } as const
-const KIND_SAID = { command: 'Chat command', skill: 'Skill', prompt: 'Prompt' } as const
+const KIND_GLYPH = {
+  command: 'square-slash',
+  skill: 'sparkles',
+  prompt: 'file-text',
+  agent: 'terminal',
+} as const
+const KIND_SAID = {
+  command: 'Chat command',
+  skill: 'Skill',
+  prompt: 'Prompt',
+  agent: "The agent's own command",
+} as const
 
 const COMMANDS: SlashItem[] = [
   {

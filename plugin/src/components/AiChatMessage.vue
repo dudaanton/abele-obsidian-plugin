@@ -5,7 +5,7 @@
       `abele-chat-msg_${message.role}`,
       {
         'abele-chat-msg--draft': message.draft,
-        'abele-chat-msg_line': ownLine(message) || !!message.sessionMark,
+        'abele-chat-msg_line': ownLine(message) || !!message.sessionMark || !!message.sessionPlan,
         'abele-chat-msg_checking': !!message.answerCheck,
       },
     ]"
@@ -19,7 +19,8 @@
         message.role !== 'user' &&
         message.role !== 'assistant' &&
         !ownLine(message) &&
-        !message.sessionMark
+        !message.sessionMark &&
+        !message.sessionPlan
       "
       type="button"
       class="clickable-icon abele-chat-msg__icon"
@@ -107,7 +108,9 @@
           </span>
           <Icon
             v-if="
-              message.toolStatus === 'approved' && !message.toolResult && !message.toolExecution
+              message.toolStatus === 'approved' &&
+              message.toolResult === undefined &&
+              !message.toolExecution
             "
             icon="loader"
             no-hover
@@ -243,8 +246,12 @@
         <SessionMarkLine
           v-if="message.sessionMark"
           :mark="message.sessionMark"
-          :summary="message.content || undefined"
+          :summary="
+            message.sessionMark.kind === 'notice' ? undefined : message.content || undefined
+          "
         />
+        <!-- The plan an agent keeps, where it first wrote it, as it stands now. -->
+        <SessionPlan v-else-if="message.sessionPlan" :entries="message.sessionPlan" />
         <template v-else-if="message.content.length > 100">
           <span class="abele-chat-msg__compact-label">── Conversation compacted ──</span>
           <div v-if="expanded" class="abele-chat-msg__compact-summary">
@@ -443,6 +450,7 @@ import AbeleMap from './AbeleMap.vue'
 import Diff from './Diff.vue'
 import AiSubAgentRun from './AiSubAgentRun.vue'
 import SessionMarkLine from './nodeSession/SessionMarkLine.vue'
+import SessionPlan from './nodeSession/SessionPlan.vue'
 import GalleryViewer from './GalleryViewer.vue'
 import { getAttachmentIcon, fileName as attachmentName } from '@/ai/attachments'
 import { ChatService } from '@/ai/ChatService'
@@ -668,7 +676,7 @@ const replaced = computed(() => lastRevision.value?.by === 'interceptor')
 // `file_path` — so its comparison is coloured as that file's code.
 const diffPath = computed(() => {
   const params = props.message.toolParams
-  const path = params?.path ?? params?.file_path
+  const path = params?.path ?? params?.file_path ?? props.message.toolPath
   return typeof path === 'string' ? path : undefined
 })
 const editedLabel = computed(() => {

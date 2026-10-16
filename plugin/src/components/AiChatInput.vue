@@ -413,8 +413,9 @@ const onSlashKey = (e: KeyboardEvent) => {
   slash.value.key(e)
 }
 const onSlash = (item: SlashItem) => {
-  if (item.kind === 'skill') {
-    // A skill can take words after it: it stays in the field until the message is sent.
+  if (item.kind === 'skill' || item.kind === 'agent') {
+    // A skill or an agent's command can take words after it: it stays in the field until the
+    // message is sent, and goes as that message.
     write(`/${item.name} `)
     void nextTick(() => focus())
     return

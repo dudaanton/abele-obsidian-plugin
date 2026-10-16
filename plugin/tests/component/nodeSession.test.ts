@@ -10,6 +10,7 @@ import ContextMeter from '@/components/nodeSession/ContextMeter.vue'
 import BackgroundTasks from '@/components/nodeSession/BackgroundTasks.vue'
 import SessionTree from '@/components/nodeSession/SessionTree.vue'
 import SessionMarkLine from '@/components/nodeSession/SessionMarkLine.vue'
+import SessionPlan from '@/components/nodeSession/SessionPlan.vue'
 import { chatBlocks, runSummary } from '@/ai/toolRuns'
 import type { ChatMessage } from '@/ai/types'
 import type { ChildSession, NodeSessionLive } from '@/node/sessionLive'
@@ -167,6 +168,38 @@ describe('SessionMarkLine', () => {
       props: { mark: { kind: 'compacted', before: 812_000, after: 64_000 } },
     })
     expect(view.text()).toBe('Compacted · 812k → 64k')
+  })
+})
+
+describe('SessionPlan', () => {
+  it('says how far the plan got and each step’s state by its glyph', () => {
+    const view = mount(SessionPlan, {
+      props: {
+        entries: [
+          { content: 'Read the sample', priority: 'high', status: 'completed' },
+          { content: 'Change it', priority: 'medium', status: 'in_progress' },
+          { content: 'Run the tests', priority: 'low', status: 'pending' },
+        ],
+      },
+    })
+    expect(view.get('.abele-session-plan__count').text()).toBe('1 of 3')
+    expect(view.findAll('.abele-session-plan__step').map((s) => s.classes()[1])).toEqual([
+      'abele-session-plan__step_completed',
+      'abele-session-plan__step_in_progress',
+      'abele-session-plan__step_pending',
+    ])
+  })
+})
+
+describe('a notice the agent gives', () => {
+  it('is a line across the talk, coloured by how much it matters', () => {
+    const at = (level: 'info' | 'warning' | 'error') =>
+      mount(SessionMarkLine, { props: { mark: { kind: 'notice', level, text: 'Sample notice' } } })
+    expect(at('warning').get('.abele-session-mark').classes()).toContain(
+      'abele-session-mark_warning'
+    )
+    expect(at('error').get('.abele-session-mark').attributes('role')).toBe('alert')
+    expect(at('info').text()).toBe('Sample notice')
   })
 })
 

@@ -22,7 +22,24 @@ export function extractResultPath(result?: string): string {
 }
 
 /** The short thing after the tool's name on its line: the file, the address, the query. */
-export function toolSummary(message: Pick<ChatMessage, 'toolName' | 'toolParams' | 'toolResult'>) {
+export function toolSummary(
+  message: Pick<ChatMessage, 'toolName' | 'toolParams' | 'toolResult' | 'toolTitle'>
+): string {
+  const said = paramsSummary(message)
+  if (said || !message.toolTitle) return said
+  // Another agent's own words for the call, without the name the line already starts with.
+  const title = message.toolTitle.trim()
+  const name = message.toolName ?? ''
+  const rest =
+    name && title.toLowerCase().startsWith(name.toLowerCase() + ' ')
+      ? title.slice(name.length + 1)
+      : title.toLowerCase() === name.toLowerCase()
+        ? ''
+        : title
+  return truncate(rest.replace(/\s+/g, ' '), 160)
+}
+
+function paramsSummary(message: Pick<ChatMessage, 'toolName' | 'toolParams' | 'toolResult'>) {
   const name = message.toolName
   const p = message.toolParams
   // For apply_template, show created file path once available

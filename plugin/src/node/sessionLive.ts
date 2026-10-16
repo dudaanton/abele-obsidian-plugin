@@ -26,6 +26,8 @@ export interface SessionChoices {
   accounts: SessionChoice[]
   /** The node lets a session run with no questions; off, Bypass cannot be picked. */
   bypassAllowed: boolean
+  /** The modes this agent takes, when fewer than Claude Code's: pi and ACP agents ask or not. */
+  modes?: PermissionMode[]
 }
 
 /** Something the session left running that outlives its answer and wakes it when it ends. */
@@ -74,7 +76,9 @@ export interface ChildSession {
 
 /** A line the session itself puts in the conversation: compacting, compacted, woken. */
 export interface SessionMark {
-  kind: 'compacting' | 'compacted' | 'woke' | 'failed'
+  kind: 'compacting' | 'compacted' | 'woke' | 'failed' | 'notice'
+  /** How much a notice matters: a rate limit is a warning, a refused request an error. */
+  level?: 'info' | 'warning' | 'error'
   /** Tokens before and after compacting. */
   before?: number
   after?: number
@@ -82,6 +86,13 @@ export interface SessionMark {
   focus?: string
   /** What woke it, in words: «npm test finished · 12 passed». */
   text?: string
+}
+
+/** One step of the plan an agent keeps while it works. */
+export interface SessionPlanEntry {
+  content: string
+  priority: 'high' | 'medium' | 'low'
+  status: 'pending' | 'in_progress' | 'completed'
 }
 
 export interface NodeSessionLive {

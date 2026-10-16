@@ -106,7 +106,11 @@ it('renders successful edits as diffs, correlated results and honest collapsed t
     toolDiff: { old: 'before', new: 'after' },
   })
   expect(projection.messages[1].thinking).toBe('Thinking was not exposed by the provider.')
-  expect(projection.messages[2].content).toContain('not supported yet')
+  // Said the way the node says it for every agent: a warning line naming the tool and why.
+  expect(projection.messages[2]).toMatchObject({
+    content: 'AskUserQuestion: Question-response bridge unsupported',
+    sessionMark: { kind: 'notice', level: 'warning' },
+  })
 })
 
 it('keeps queued inputs, active runs, session metadata and pending permission details through replay', () => {

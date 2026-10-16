@@ -4,8 +4,8 @@
        a press), it is compacting now, or something it left running woke it. -->
   <div
     class="abele-session-mark"
-    :class="`abele-session-mark_${mark.kind}`"
-    :role="mark.kind === 'failed' ? 'alert' : 'note'"
+    :class="[`abele-session-mark_${mark.kind}`, mark.level && `abele-session-mark_${mark.level}`]"
+    :role="mark.kind === 'failed' || mark.level === 'error' ? 'alert' : 'note'"
   >
     <div class="abele-session-mark__line" />
     <span
@@ -17,7 +17,7 @@
       @click="summary && (open = !open)"
       @keydown.enter.prevent="summary && (open = !open)"
     >
-      <Icon :icon="ICON[mark.kind]" size="xs" :interactive="false" />
+      <Icon :icon="glyph" size="xs" :interactive="false" />
       <span>{{ said }}</span>
     </span>
     <div class="abele-session-mark__line" />
@@ -42,9 +42,16 @@ const ICON = {
   compacted: 'fold-vertical',
   woke: 'alarm-clock',
   failed: 'triangle-alert',
+  notice: 'info',
 } as const
+/** A notice says how much it matters by its glyph and colour. */
+const LEVEL_ICON = { info: 'info', warning: 'triangle-alert', error: 'circle-alert' } as const
+const glyph = computed(() =>
+  props.mark.kind === 'notice' ? LEVEL_ICON[props.mark.level ?? 'info'] : ICON[props.mark.kind]
+)
 const said = computed(() => {
   const { mark } = props
+  if (mark.kind === 'notice') return mark.text ?? ''
   if (mark.kind === 'compacting') return 'Compacting…'
   if (mark.kind === 'woke') return `Woke: ${mark.text ?? 'a background task ended'}`
   if (mark.kind === 'failed') return `Compacting failed${mark.text ? `: ${mark.text}` : ''}`
@@ -94,8 +101,12 @@ onMounted(() => {
     }
   }
 }
-.abele-session-mark_failed .abele-session-mark__label {
+.abele-session-mark_failed .abele-session-mark__label,
+.abele-session-mark_error .abele-session-mark__label {
   color: var(--text-error);
+}
+.abele-session-mark_warning .abele-session-mark__label {
+  color: var(--text-warning);
 }
 .abele-session-mark_compacting .abele-obsidian-icon__icon {
   animation: abele-session-mark-spin 1.2s linear infinite;

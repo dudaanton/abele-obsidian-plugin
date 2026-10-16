@@ -89,8 +89,13 @@ export class NodePathMutations {
       this.client.nodePath.execution(params, id)
     )
   }
-  session(target: PathTarget, title: string, provider: 'fake' | 'claude' | 'pi') {
-    const params = { title, provider, target: wirePathTarget(target) }
+  session(
+    target: PathTarget,
+    title: string,
+    provider: 'fake' | 'claude' | 'pi' | 'codex' | 'acp',
+    agent?: string
+  ) {
+    const params = { title, provider, target: wirePathTarget(target), ...(agent ? { agent } : {}) }
     return this.intent(
       'session.create',
       params,

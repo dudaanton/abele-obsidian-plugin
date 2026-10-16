@@ -111,7 +111,7 @@ function open(event?: MouseEvent): void {
     props.live.change({ account })
   )
   menu.addItem((i) => i.setTitle('Permissions').setIsLabel(true).setSection('Permissions'))
-  for (const mode of Object.keys(MODE) as PermissionMode[]) {
+  for (const mode of choices.modes ?? (Object.keys(MODE) as PermissionMode[])) {
     const off = mode === 'bypass' && !choices.bypassAllowed
     menu.addItem((i) =>
       i
