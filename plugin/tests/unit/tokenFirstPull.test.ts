@@ -13,16 +13,57 @@ import { ExecutableReview } from '@/sync/executableReview'
 import { AttachmentConsent } from '@/sync/attachmentConsent'
 import { buildFakeVault } from '../helpers/fakeVault'
 import type { TransferSnapshot } from '@/sync/transferProgress'
+import { assertSmallPullBounds } from '../helpers/smallPullBounds'
+import { ExchangeTrace } from '@/sync/exchangeTrace'
 
 const snapshotFiles = 1003
 
 it.each([
-  { host: false, reconnect: false, count: snapshotFiles },
-  { host: true, reconnect: false, count: snapshotFiles },
-  { host: true, reconnect: true, count: 3 },
+  { host: false, reconnect: false, count: snapshotFiles, native: false },
+  { host: true, reconnect: false, count: snapshotFiles, native: false },
+  { host: true, reconnect: true, count: 3, native: false },
+  { host: true, reconnect: false, count: 128, native: true },
 ])(
-  'pulls a pre-token folder snapshot across pages into a populated vault without a directory scan per item (host=$host, reconnect=$reconnect)',
-  async ({ host, reconnect, count }) => {
+  'pulls a pre-token folder snapshot across pages into a populated vault without a directory scan per item (host=$host, reconnect=$reconnect, native=$native)',
+  async ({ host, reconnect, count, native }) => {
+    const events: { operation: string; paths?: readonly string[] }[] = []
+    let capturing = false
+    let captured = false
+    let firstPull: ReturnType<ExchangeTrace['snapshot']>['firstSync']['pulls'] | undefined
+    const record = ExchangeTrace.prototype.record
+    const beginPull = ExchangeTrace.prototype.beginPull
+    vi.spyOn(ExchangeTrace.prototype, 'record').mockImplementation(function (
+      this: ExchangeTrace,
+      operation,
+      startedAt,
+      outcome,
+      paths
+    ) {
+      if (capturing) events.push({ operation, paths: paths && [...paths] })
+      return record.call(this, operation, startedAt, outcome, paths)
+    })
+    vi.spyOn(ExchangeTrace.prototype, 'beginPull').mockImplementation(function (
+      this: ExchangeTrace,
+      size,
+      path
+    ) {
+      const finish = beginPull.call(this, size, path)
+      if (!host || reconnect || native || captured) return finish
+      captured = capturing = true
+      return (complete) => {
+        finish(complete)
+        capturing = false
+        firstPull = this.snapshot().firstSync.pulls
+      }
+    })
+    let diagnosticCalls = 0
+    let beforeFirstPull = 0
+    if (native)
+      vi.spyOn(console, 'debug').mockImplementation((label) => {
+        if (String(label).startsWith('[Abele Sync request')) {
+          diagnosticCalls++
+        }
+      })
     const scope = { kind: 'folder' as const, id: 'shared-folder', path: 'Shared sample' }
     const bytes = new TextEncoder().encode('seeded before token issuance')
     const sha = await sha256(bytes)
@@ -102,6 +143,8 @@ it.each([
         })
       }
       if (url.pathname.endsWith('/content')) {
+        if (native && /\/file-\d+\/content$/.test(url.pathname) && beforeFirstPull === 0)
+          beforeFirstPull = diagnosticCalls
         const range = /^bytes=(\d+)-(\d+)$/.exec(new Headers(init?.headers).get('range') ?? '')
         return range
           ? new Response(bytes.slice(Number(range[1]), Number(range[2]) + 1), {
@@ -115,17 +158,68 @@ it.each([
       }
       throw new Error('Unexpected request: ' + url.pathname + ' ' + String(init?.body))
     }
-    const app = buildFakeVault(
-      Array.from({ length: host ? 120 : 4096 }, (_, i) => ({
+    const app = buildFakeVault([
+      ...Array.from({ length: host ? 120 : 4096 }, (_, i) => ({
         path: host
           ? 'Existing/section-' + i + '/local.md'
           : 'Existing/section-' + (i % 64) + '/local-' + i + '.md',
         content: 'untouched',
-      }))
-    )
+      })),
+      ...(native
+        ? files.slice(0, -1).map((file) => ({
+            path: file.path,
+            content: new TextDecoder().decode(bytes),
+            mtime: 1000,
+          }))
+        : []),
+    ])
+    if (native) {
+      const read = app.vault.adapter.readBinary.bind(app.vault.adapter)
+      const write = app.vault.adapter.writeBinary.bind(app.vault.adapter)
+      Object.assign(app.vault.adapter, {
+        getFullPath: (path: string) => path,
+        fsPromises: {
+          open: async (path: string, flags: string) => {
+            if (flags === 'wx') await write(path, new ArrayBuffer(0))
+            return {
+              read: async (
+                buffer: Uint8Array,
+                offset: number,
+                length: number,
+                position: number
+              ) => {
+                const part = new Uint8Array(await read(path)).subarray(position, position + length)
+                buffer.set(part, offset)
+                return { bytesRead: part.length }
+              },
+              write: async (
+                buffer: Uint8Array,
+                offset: number,
+                length: number,
+                position: number
+              ) => {
+                const before = new Uint8Array(await read(path))
+                const complete = new Uint8Array(Math.max(before.length, position + length))
+                complete.set(before)
+                complete.set(buffer.subarray(offset, offset + length), position)
+                await write(path, complete.buffer)
+                return { bytesWritten: length }
+              },
+              sync: async () => {},
+              close: async () => {},
+            }
+          },
+          utimes: async (path: string, _atime: number, mtime: number) =>
+            write(path, await read(path), { mtime: mtime * 1000 }),
+        },
+      })
+    }
+    let observedRuntime: TokenEngineRuntime | undefined
     const fs = new ObsidianFileSystem(app as unknown as App, {
       preserveEmptyDirectories: true,
       fileScope: scope.path,
+      diagnostic: (operation, startedAt, outcome) =>
+        observedRuntime?.trace.record(operation, startedAt, outcome),
     })
     const globalFiles = vi.spyOn(app.vault, 'getFiles')
     const reads = vi.spyOn(app.vault.adapter, 'readBinary')
@@ -160,6 +254,7 @@ it.each([
       failed: () => {},
       covers: async () => false,
     })
+    observedRuntime = runtime
     let fixture: Awaited<ReturnType<typeof productionHost>> | undefined
     try {
       if (host) {
@@ -176,6 +271,66 @@ it.each([
           fetchPort
         )
       } else await runtime.sync()
+      if (host && !reconnect && !native) {
+        expect(firstPull!.small.count).toBe(1)
+        expect(firstPull!.small.max).toMatchObject({ bridge: 15, preparationBridge: 2 })
+        assertSmallPullBounds(firstPull!.small.max)
+        // Two of the ten initial target stats preserve edit copies and have their
+        // own counter. The remaining 15 include the cold owned staging mkdir and write.
+        expect(
+          events
+            .filter((event) => event.operation.startsWith('adapter '))
+            .map((event) => event.operation)
+        ).toEqual([
+          ...Array<string>(10).fill('adapter stat'),
+          'adapter exists',
+          'adapter exists',
+          'adapter mkdir',
+          'adapter stat',
+          'adapter writeBinary',
+          'adapter rename',
+          'adapter stat',
+        ])
+        expect(
+          events.filter((event) => event.operation === 'adapter mkdir').map((event) => event.paths)
+        ).toEqual([[expect.stringMatching(/^\.abele-sync\/connections\/[^/]+\/writes$/)]])
+        console.log('[cold token-host pull calls]', JSON.stringify(events))
+      }
+      if (native) {
+        console.log(
+          '[startup diagnostic work]',
+          JSON.stringify({ beforeFirstPull, diagnosticCalls })
+        )
+        // Keep diagnostic bridge traffic below one call per existing file before the first
+        // content request. Per-read logging stalls 0/0 progress on a slow console bridge.
+        // Token connection, activation and first pull use the real host entry points.
+        expect(
+          requests.some((url) => /\/v2\/files\/[^/]+\/content$/.test(url.pathname)),
+          'an ordinary content request must really occur'
+        ).toBe(true)
+        expect(beforeFirstPull, 'diagnostics stay in memory until a snapshot is read').toBe(0)
+        expect(
+          beforeFirstPull,
+          'console bridge calls before the first content pull'
+        ).toBeLessThanOrEqual(count)
+        expect(fixture!.ui.registry.records()[0].status).toBe('idle')
+      }
+      if (!host) {
+        const evidence = runtime.trace.snapshot().firstSync.pulls
+        expect(evidence.small.count).toBe(count)
+        // The executable review downloads one candidate outside ordinary placement.
+        expect(evidence.contentRequests).toBe(count + 1)
+        expect(evidence.failed).toBe(0)
+        expect(evidence.overlap).toBe(false)
+        expect(evidence.small.max).toMatchObject({
+          requests: 1,
+          writes: 1,
+          publications: 1,
+          journal: 2,
+        })
+        assertSmallPullBounds(evidence.small.min)
+        assertSmallPullBounds(evidence.small.max)
+      }
       const syncReads = [...reads.mock.calls]
       expect(await app.vault.adapter.exists(code.path)).toBe(false)
       const activeReviews = fixture?.ui.reviews ?? reviews

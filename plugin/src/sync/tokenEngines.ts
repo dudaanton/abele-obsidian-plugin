@@ -506,6 +506,8 @@ export class TokenEngines {
         adapter,
         connectionId: scopedRoot ? record.id : undefined,
         journalOwner: record.id,
+        diagnostic: (operation, startedAt, outcome, paths) =>
+          runtime?.trace.record(operation, startedAt, outcome, paths),
         fileScope: () =>
           runtime ? runtime.folderScope() : record.scope.kind === 'folder' ? localRoot : undefined,
         startupInventory: () => inventory,

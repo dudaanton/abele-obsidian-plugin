@@ -1,8 +1,9 @@
 import type { VaultCli } from './obsidianCli'
 import { waitFor } from './syncVault'
 import { captureSyncFailure, captureSyncProgress, SYNC_SNAPSHOT } from './syncDiagnostics'
-import { STARTUP_WAIT, waitForStartup } from './startupWait'
+import { STARTUP_WAIT, waitForStartup, startupWaitFailure } from './startupWait'
 import { onPhone } from './target'
+import { TOKEN_HOST_READY } from './tokenHostReady'
 export const SYNC_PRELUDE = `
  ${SYNC_SNAPSHOT}
  ${STARTUP_WAIT}
@@ -47,7 +48,16 @@ export interface SyncStatus {
   address: string
   error?: string
 }
+export const ASYNC_SYNC_PRELUDE = `${TOKEN_HOST_READY}
+window.__abeleSyncWaiting='token host startup';
+await tokenHostReady(()=>app.plugins.plugins.abele?.tokenEngines, window.__abeleSyncActionTimeoutMs || 90000, ()=>{
+ const started=performance.getEntriesByName('abele:onload-start').at(-1), ended=performance.getEntriesByName('abele:onload-end').at(-1);
+ return !!started && !!ended && ended.startTime>=started.startTime;
+}, ()=>{const startup=app.plugins.plugins.abele?.tokenHostStartup;return startup?.state==='failed'?(startup.error||'Unknown startup error'):undefined});
+${SYNC_PRELUDE}`
+
 export class SyncDriver {
+  startupStallMs = 30000
   private retired = false
   get ended(): boolean {
     return this.retired
@@ -108,7 +118,7 @@ export class SyncDriver {
       // The job is started and, for up to FIRST_ANSWER_MS, waited for inside the same call: most
       // actions finish well within it and cost one round trip. A longer one is polled as before.
       answer = evaluate(
-        `(async()=>{window[${JSON.stringify(key)}]=null;const job=(async()=>{const jobKey=${JSON.stringify(key)};window.__abeleSyncActionTimeoutMs=${timeoutMs};window.__abeleSyncWaiting='starting action';${SYNC_PRELUDE}\n${body}})().then(value=>window[${JSON.stringify(key)}]={ok:true,value:value===undefined?null:value},error=>window[${JSON.stringify(key)}]={ok:false,error:String(error?.message||error),waiting:window.__abeleSyncWaiting});await Promise.race([job,new Promise(resolve=>setTimeout(resolve,${FIRST_ANSWER_MS}))]);const result=window[${JSON.stringify(key)}];if(result)delete window[${JSON.stringify(key)}];return result||null})()`,
+        `(async()=>{window[${JSON.stringify(key)}]=null;const job=(async()=>{const jobKey=${JSON.stringify(key)};window.__abeleSyncActionTimeoutMs=${timeoutMs};window.__abeleSyncWaiting='starting action';${ASYNC_SYNC_PRELUDE}\n${body}})().then(value=>window[${JSON.stringify(key)}]={ok:true,value:value===undefined?null:value},error=>window[${JSON.stringify(key)}]={ok:false,error:String(error?.message||error),waiting:window.__abeleSyncWaiting});await Promise.race([job,new Promise(resolve=>setTimeout(resolve,${FIRST_ANSWER_MS}))]);const result=window[${JSON.stringify(key)}];if(result)delete window[${JSON.stringify(key)}];return result||null})()`,
         FIRST_ANSWER_MS + 15_000
       )
       const check = () => {
@@ -151,7 +161,7 @@ export class SyncDriver {
       if (answer !== null) {
         /* answered within the first call */
       } else if (startupProgress)
-        await waitForStartup(check, 30000, undefined, undefined, timeoutMs)
+        await waitForStartup(check, this.startupStallMs, undefined, undefined, timeoutMs)
       else
         await waitFor(
           what,
@@ -180,13 +190,24 @@ export class SyncDriver {
         waiting?: string
       }
       waiting = result.waiting ?? waiting
-      if (!result.ok) throw new Error(confidential ? what + ' failed' : what + ': ' + result.error)
+      if (!result.ok)
+        throw new Error(
+          confidential
+            ? (startupProgress && startupWaitFailure(result.error)) || what + ' failed'
+            : what + ': ' + result.error
+        )
       return result.value
     } catch (error) {
       // A timed-out native action may still be running. Fail the case rather than retrying it.
-      throw this.failure(
-        what,
-        confidential ? new Error(what + ' failed while waiting for ' + waiting) : error
+      const startupFailure = startupProgress ? startupWaitFailure(error) : undefined
+      throw Object.assign(
+        this.failure(
+          what,
+          confidential
+            ? new Error(startupFailure ?? what + ' failed while waiting for ' + waiting)
+            : error
+        ),
+        startupFailure ? { startupFailure } : {}
       )
     } finally {
       console.debug('[sync action finished]', what, { elapsedMs: Date.now() - started, timeoutMs })
@@ -200,7 +221,7 @@ export class SyncDriver {
   async connect(token: string, qrImage?: string, timeoutMs = this.timeoutMs): Promise<string> {
     return this.long<string>(
       'connect by token',
-      `const before=new Set(svc.rows.value.map(one=>one.id)); const root=await openSyncTab(); await press(root,'Connect…'); await poll(()=>modal('Connect to a server')); const box=modal('Connect to a server'); ${qrImage ? `const picture=await (await fetch(${JSON.stringify(qrImage)})).blob();const files=new DataTransfer();files.items.add(new File([picture],'access.png',{type:'image/png'}));const input=box.querySelector('input[type=file]');input.files=files.files;input.dispatchEvent(new input.ownerDocument.defaultView.Event('change',{bubbles:true}));await poll(()=>box.querySelector('input[placeholder="Paste your token"]').value===${JSON.stringify(token)})` : `typeInto(box.querySelector('input[placeholder="Paste your token"]'),${JSON.stringify(token)})`}; await press(box,'Connect'); await poll(()=>!modal('Connect to a server')); const added=svc.rows.value.find(one=>!before.has(one.id)); if(!added) throw new Error('No connection added'); await waitForStartup(()=>{const current=app.plugins.plugins.abele.tokenEngines, ui=current.ui, row=ui.rows.value.find(one=>one.id===added.id), activity=ui.activity.value[added.id]||{}, phase=activity.startup, engine=current.live.get(added.id)?.engine.status;const ready=row?.status==='idle'&&engine?.state==='idle'&&!!engine.lastSyncAt&&!engine.lastError&&(!phase||phase.outcome==='complete');return {ready,progress:JSON.stringify([row?.status,engine?.state,!!engine?.lastSyncAt,phase?.stage,phase?.completed,phase?.total,phase?.outcome,activity.startupTimings?.length,activity.inspection?.completed,activity.inspection?.total,activity.transfer?.stage,activity.transfer?.completed,activity.transfer?.total,activity.transfer?.bytes]),error:ready?undefined:activity.error}},30000,undefined,undefined,${timeoutMs}); await closeSettings(); return added.id`,
+      `const before=new Set(svc.rows.value.map(one=>one.id)); const root=await openSyncTab(); await press(root,'Connect…'); await poll(()=>modal('Connect to a server')); const box=modal('Connect to a server'); ${qrImage ? `const picture=await (await fetch(${JSON.stringify(qrImage)})).blob();const files=new DataTransfer();files.items.add(new File([picture],'access.png',{type:'image/png'}));const input=box.querySelector('input[type=file]');input.files=files.files;input.dispatchEvent(new input.ownerDocument.defaultView.Event('change',{bubbles:true}));await poll(()=>box.querySelector('input[placeholder="Paste your token"]').value===${JSON.stringify(token)})` : `typeInto(box.querySelector('input[placeholder="Paste your token"]'),${JSON.stringify(token)})`}; await press(box,'Connect'); await poll(()=>!modal('Connect to a server')); const added=svc.rows.value.find(one=>!before.has(one.id)); if(!added) throw new Error('No connection added'); await waitForStartup(()=>{const current=app.plugins.plugins.abele.tokenEngines, ui=current.ui, row=ui.rows.value.find(one=>one.id===added.id), activity=ui.activity.value[added.id]||{}, phase=activity.startup, engine=current.live.get(added.id)?.engine.status;const ready=row?.status==='idle'&&engine?.state==='idle'&&!!engine.lastSyncAt&&!engine.lastError&&(!phase||phase.outcome==='complete');return {ready,progress:JSON.stringify([row?.status,engine?.state,!!engine?.lastSyncAt,phase?.stage,phase?.completed,phase?.total,phase?.outcome,activity.startupTimings?.length,activity.inspection?.completed,activity.inspection?.total,activity.transfer?.stage,activity.transfer?.completed,activity.transfer?.total,activity.transfer?.bytes]),error:ready?undefined:activity.error}},${this.startupStallMs},undefined,undefined,${timeoutMs}); await closeSettings(); return added.id`,
       true,
       timeoutMs,
       false,
@@ -217,8 +238,12 @@ export class SyncDriver {
         /* The vault can be reloading; keep the confidential fallback. */
       }
       const diagnostic = (error as { syncDiagnostic?: string })?.syncDiagnostic
+      const startupFailure = (error as { startupFailure?: string })?.startupFailure
       throw new Error(
-        'connect by token failed: ' + details + (diagnostic ? '; observed ' + diagnostic : '')
+        'connect by token failed: ' +
+          details +
+          (startupFailure ? '; ' + startupFailure : '') +
+          (diagnostic ? '; observed ' + diagnostic : '')
       )
     })
   }

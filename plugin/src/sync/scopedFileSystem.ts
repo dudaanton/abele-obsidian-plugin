@@ -18,6 +18,13 @@ export function scopedFileSystem(
 ): FileSystem {
   const handles = new Set<string>()
   const stages = privatePlacementStages(fs, privateRoot)
+  const privateStage = (path: string) =>
+    !!privateRoot &&
+    path.startsWith(privateRoot + '/writes/') &&
+    /^\.abele-sync-[a-z0-9]{8}\.tmp$/.test(path.slice((privateRoot + '/writes/').length))
+  const assertStage = (path: string) => {
+    if (!handles.has(path) && !privateStage(path)) assertPath(path)
+  }
   const retained = (stage: AtomicStage): AtomicStage => {
     handles.add(stage.id)
     return new Proxy(stage, {
@@ -38,6 +45,33 @@ export function scopedFileSystem(
       if (key === PRIVATE_PLACEMENT_STAGES) return stages
       const value = Reflect.get(target, key)
       if (typeof value !== 'function') return value
+      if (
+        key === Symbol.for('abele.sync.diagnostic-v1') ||
+        key === Symbol.for('abele.sync.replay-stage-v1')
+      )
+        return value.bind(target)
+      if (key === Symbol.for('abele.sync.fingerprint-pull-v1'))
+        return (path: string) => {
+          assertPath(path)
+          return value.call(target, path)
+        }
+      if (key === Symbol.for('abele.sync.live-source-stage-v1'))
+        return (id: string, work: () => Promise<unknown>) => {
+          assertStage(id)
+          return value.call(target, id, work)
+        }
+      if (key === Symbol.for('abele.sync.reopen-pull-stage-v1'))
+        return async (id: string) => {
+          assertStage(id)
+          return retained(await value.call(target, id))
+        }
+      if (key === Symbol.for('abele.sync.recover-published-pull-v1'))
+        return async (id: string | null, path: string, mtime: number, from: string | null) => {
+          if (id !== null) assertStage(id)
+          assertPath(path)
+          if (from !== null && from !== undefined) assertPath(from)
+          return retained(await value.call(target, id, path, mtime, from))
+        }
       if (key === 'list' || key === 'listDirectories')
         return async function* () {
           for await (const info of value.call(target)) {
@@ -57,7 +91,11 @@ export function scopedFileSystem(
           if (Array.isArray(preserve)) preserve.forEach(assertPath)
           return value.call(target, paths, work, preserve)
         }
-      if (key === 'reopenStage') return async (id: string) => retained(await value.call(target, id))
+      if (key === 'reopenStage')
+        return async (id: string) => {
+          assertStage(id)
+          return retained(await value.call(target, id))
+        }
       if (key === 'move' || key === 'moveDirectory')
         return async (from: string, to: string) => {
           assertPath(from)
@@ -79,7 +117,8 @@ export function scopedFileSystem(
         key === Symbol.for('abele.sync.directory-identity-v1')
       )
         return async (path: string, ...args: unknown[]) => {
-          if (!((key === 'openRead' || key === 'stat') && handles.has(path))) assertPath(path)
+          if (key === 'stat') assertStage(path)
+          else if (!(key === 'openRead' && handles.has(path))) assertPath(path)
           const result = await value.call(target, path, ...args)
           return key === 'beginAtomicWrite' ? retained(result) : result
         }

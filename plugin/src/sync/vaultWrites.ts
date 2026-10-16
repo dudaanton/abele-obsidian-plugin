@@ -40,8 +40,16 @@ export { nativeOf, type NativeFs } from './nativeVaultFs'
  * second one (the join dialog counts files with its own) must not tidy away a live write.
  */
 const inFlight = new Set<string>()
+const reservedSources = new Set<string>()
+/** Reserved before journal publication; released only after creation failure or stage retirement. */
+export function reserveSourceStage(path: string): void {
+  reservedSources.add(path)
+}
+export function releaseSourceStage(path: string): void {
+  reservedSources.delete(path)
+}
 export function adapterWriteInFlight(path: string): boolean {
-  return inFlight.has(path)
+  return inFlight.has(path) || reservedSources.has(path)
 }
 
 /** `.abele-sync-<8>.tmp` holds new bytes (safe to drop); `.old` holds the only copy of a file. */
@@ -54,7 +62,7 @@ export function isAdapterTemp(path: string): boolean {
 
 /** Whether it is a temp holding new bytes only, which a sweep may remove. */
 export function isDroppableTemp(path: string): boolean {
-  return isAdapterTemp(path) && path.endsWith('.tmp') && !inFlight.has(path)
+  return isAdapterTemp(path) && path.endsWith('.tmp') && !adapterWriteInFlight(path)
 }
 
 /** What `VaultWriter` is handed by the file system that owns it. */
@@ -98,12 +106,12 @@ export class VaultWriter {
     }
     await matches(entry.temp, stream.sealed)
     const held = await this.held(entry.target)
-    if (stream.base === null) {
+    if (stream.base === null && !stream.retainBase) {
       await this.takeFreeName(entry.temp, entry.target)
-    } else if (this.deps.native?.replaceFencedIdentity) {
+    } else if (this.deps.native?.replaceFencedIdentity && !stream.retainBase) {
       await this.deps.native.replaceFencedIdentity(entry.temp, held, stream.base)
     } else {
-      await matches(held, stream.base)
+      if (!stream.retainBase) await matches(held, stream.base)
       if (this.deps.native && !this.deps.native.installExclusive)
         throw new EngineError('io', 'native replacement has no safe publication capability')
       const backup = await this.freeName(held, 'old')
@@ -112,7 +120,7 @@ export class VaultWriter {
         target: held,
         backup,
         replacementSha: stream.sealed.sha,
-        ...(this.deps.native ? { preserveBackup: true } : {}),
+        ...(this.deps.native || stream.retainBase ? { preserveBackup: true } : {}),
       }
       this.deps.journal.replace(entry, swapping)
       entry = swapping
@@ -121,7 +129,7 @@ export class VaultWriter {
         else await this.adapter.rename(held, backup)
         await this.deps.adoptReceipt?.(held, backup)
         try {
-          await matches(backup, stream.base)
+          if (!stream.retainBase) await matches(backup, stream.base)
           if (this.deps.native) await this.deps.native.installExclusive(entry.temp, held)
           else await this.adapter.rename(entry.temp, held)
         } catch (error) {
@@ -142,7 +150,7 @@ export class VaultWriter {
         const installed = { ...entry, installed: true }
         this.deps.journal.replace(entry, installed)
         entry = installed
-        if (this.deps.native) {
+        if (this.deps.native || stream.retainBase) {
           await this.preserveBackup(entry)
           await this.dropQuietly(entry.temp)
         } else await this.adapter.remove(backup)
@@ -389,7 +397,15 @@ export class VaultWriter {
       }
     }
     for (const entry of this.deps.journal.entries()) {
-      if (entry.streaming && !entry.backup) continue
+      if (entry.streaming && !entry.backup) {
+        if (!entry.disposableSource && !entry.target.startsWith('.abele-sync/placement-inbox/'))
+          continue
+        if (entry.temp && adapterWriteInFlight(entry.temp)) continue
+        if (entry.temp && (await this.there(entry.temp))) await this.adapter.remove(entry.temp)
+        this.deps.journal.drop(entry)
+        console.debug('[abele-sync] retired interrupted disposable placement source')
+        continue
+      }
       if (entry.backup !== undefined && inFlight.has(entry.backup)) {
         throw new EngineError('io', 'scan held while a journalled replacement has a live backup')
       }
@@ -406,7 +422,11 @@ export class VaultWriter {
           if (this.deps.journal.protects(entry.backup)) {
             // A completed preservation decision outlives a later target edit/reversion/delete.
           } else if (await this.there(entry.target)) {
+            // A restarted streaming publication has no live incremental receipt. Keep its
+            // old bytes as recovery evidence without reading a potentially large target.
             const matchesReplacement =
+              !entry.streaming &&
+              entry.preserveBackup !== true &&
               entry.replacementSha !== undefined &&
               (this.deps.fingerprint
                 ? (await this.deps.fingerprint(entry.target)).sha
@@ -452,7 +472,7 @@ export class VaultWriter {
       const stem = Math.random().toString(36).slice(2, 10).padEnd(8, '0')
       const name = `.abele-sync-${stem}.${kind}`
       const candidate = folder === '' ? name : `${folder}/${name}`
-      if (!inFlight.has(candidate) && !(await this.there(candidate))) return candidate
+      if (!adapterWriteInFlight(candidate) && !(await this.there(candidate))) return candidate
     }
     throw new EngineError('conflict', `no free name beside ${path} to write it through`)
   }

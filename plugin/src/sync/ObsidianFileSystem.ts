@@ -6,6 +6,7 @@ import type { App, DataAdapter, ListedFiles, Stat } from 'obsidian'
 import { TFile, TFolder } from 'obsidian'
 import {
   EngineError,
+  MAX_CHUNK_BYTES,
   type FileInfo,
   type FileSystem,
   type StateStore,
@@ -14,6 +15,7 @@ import {
   type SourceStamp,
 } from '@abele/sync-core'
 import { BoundedVaultIo } from './boundedVaultIo'
+import { nativeDiagnostics } from './nativeDiagnostics'
 import type { JournalEntry } from './writeJournal'
 import { caseKey } from '@abele/sync-protocol'
 import { watchVault } from './vaultWatcher'
@@ -34,6 +36,8 @@ import {
   storageOf,
   VaultWriter,
   WriteJournal,
+  reserveSourceStage,
+  releaseSourceStage,
   type NativeFs,
 } from './vaultWrites'
 
@@ -58,6 +62,12 @@ export interface ObsidianFileSystemOptions {
   adapter?: DataAdapter
   connectionId?: string
   journalOwner?: string
+  diagnostic?: (
+    operation: string,
+    startedAt: number,
+    outcome: string,
+    paths?: readonly string[]
+  ) => void
   /** Ordinary enumeration is bounded before representation inspection for folder tokens. */
   fileScope?: string | (() => string | undefined)
   startupInventory?: () => ReadonlyMap<string, FileInfo> | undefined
@@ -135,6 +145,7 @@ export interface ObsidianFileSystemOptions {
  * paths it hands over; they go to the adapter exactly as they came.
  */
 export class ObsidianFileSystem implements FileSystem {
+  private readonly diagnostic?: ObsidianFileSystemOptions['diagnostic']
   private readonly fileScope?: ObsidianFileSystemOptions['fileScope']
   private readonly directories: VaultDirectories
   private readonly preserveEmptyDirectories: boolean
@@ -210,10 +221,59 @@ export class ObsidianFileSystem implements FileSystem {
           false
         )
       : this.scopedAdapter
+    this.diagnostic = options.diagnostic
+    const diagnosticNative = new WeakMap<object, object>()
+    const guardedMethods = new Map<
+      PropertyKey,
+      { source: unknown; wrapped: (...args: unknown[]) => unknown }
+    >()
     this.guardedAdapter = new Proxy(runtimeAdapter, {
       get: (target, key) => {
+        const source = Reflect.get(this.scopedAdapter, key)
+        const cached = guardedMethods.get(key)
+        if (cached && cached.source === source) return cached.wrapped
         const value = Reflect.get(target, key)
+        if (key === 'fsPromises' && value && options.diagnostic) {
+          if (!diagnosticNative.has(value))
+            diagnosticNative.set(value, nativeDiagnostics(value, options.diagnostic))
+          return diagnosticNative.get(value)
+        }
         if (typeof value !== 'function') return value
+        // Borrowed only during the synchronous diagnostic callback; no per-call path arrays.
+        const diagnosticPaths: string[] = []
+        const diagnosticLabel = 'adapter ' + String(key)
+        const bound =
+          options.diagnostic &&
+          [
+            'exists',
+            'stat',
+            'list',
+            'readBinary',
+            'writeBinary',
+            'write',
+            'appendBinary',
+            'rename',
+            'mkdir',
+            'remove',
+            'rmdir',
+            'copy',
+          ].includes(String(key))
+            ? async (...args: unknown[]) => {
+                const startedAt = Date.now()
+                let outcome = 'failed'
+                try {
+                  const result = await value.apply(target, args)
+                  outcome = 'complete'
+                  return result
+                } finally {
+                  diagnosticPaths.length = 0
+                  if (typeof args[0] === 'string') diagnosticPaths.push(args[0])
+                  if ((key === 'rename' || key === 'copy') && typeof args[1] === 'string')
+                    diagnosticPaths.push(args[1])
+                  options.diagnostic(diagnosticLabel, startedAt, outcome, diagnosticPaths)
+                }
+              }
+            : value.bind(target)
         if (
           ![
             'write',
@@ -227,13 +287,17 @@ export class ObsidianFileSystem implements FileSystem {
             'rmdir',
             'copy',
           ].includes(String(key))
-        )
-          return value.bind(target)
-        return (...args: unknown[]) => {
+        ) {
+          guardedMethods.set(key, { source, wrapped: bound })
+          return bound
+        }
+        const wrapped = (...args: unknown[]) => {
           const paths = args.slice(0, key === 'rename' || key === 'copy' ? 2 : 1) as string[]
           this.externalCoordination.assertEnginePaths(paths)
-          return value.apply(target, args)
+          return bound(...args)
         }
+        guardedMethods.set(key, { source, wrapped })
+        return wrapped
       },
     })
     this.directories = new VaultDirectories(
@@ -265,7 +329,8 @@ export class ObsidianFileSystem implements FileSystem {
     this.journal = new WriteJournal(
       options.storage ?? storageOf(app),
       () => this.runtimeFence?.assertOwned(),
-      options.journalOwner ?? options.connectionId
+      options.journalOwner ?? options.connectionId,
+      options.diagnostic
     )
     this.io = new BoundedVaultIo(
       this.guardedAdapter,
@@ -280,7 +345,7 @@ export class ObsidianFileSystem implements FileSystem {
       adapter: this.guardedAdapter,
       native: this.native,
       journal: this.journal,
-      fingerprint: (path) => this.io.fingerprint(path),
+      fingerprint: (path) => this.io.fingerprint(path, undefined, true),
       adoptReceipt: (from, to) => this.io.adoptReceipt(from, to),
       indexed: (path) => app.vault.getAbstractFileByPath(path) !== null,
       makeParents: (path) => makeParents(this.adapter, path),
@@ -614,8 +679,29 @@ export class ObsidianFileSystem implements FileSystem {
   openRead(path: string, expected?: SourceStamp) {
     return this.io.openRead(path, expected)
   }
+  [Symbol.for('abele.sync.diagnostic-v1')](operation: string, startedAt: number, outcome: string) {
+    this.diagnostic?.(operation, startedAt, outcome)
+  }
+  [Symbol.for('abele.sync.replay-stage-v1')]() {
+    return this.io.canReplayStage()
+  }
   async fingerprint(path: string, signal?: AbortSignal) {
     const identity = await this.io.fingerprint(path, signal)
+    this.observedBases.set(caseKey(path), { sha: identity.sha })
+    return identity
+  }
+  async [Symbol.for('abele.sync.fingerprint-pull-v1')](path: string) {
+    let identity
+    try {
+      identity = await this.io.fingerprint(path, undefined, true)
+    } catch (error) {
+      if (!(error instanceof EngineError) || error.code !== 'conflict') throw error
+      // A case-folding host may expose the same inode under the wire's new spelling.
+      // Use the actual directory entry's live receipt, never a same-stat guess.
+      const actual = await this.spellingOnDisk(path)
+      if (!actual || actual === path) throw error
+      identity = await this.io.fingerprint(actual, undefined, true)
+    }
     this.observedBases.set(caseKey(path), { sha: identity.sha })
     return identity
   }
@@ -631,15 +717,26 @@ export class ObsidianFileSystem implements FileSystem {
     const entry: JournalEntry = {
       target: path,
       temp,
+      ...(path.startsWith((this.privateRoot ?? '.abele-sync') + '/placement-inbox/')
+        ? { disposableSource: true }
+        : {}),
       streaming: {
         mtime,
         base: expectedBase ? { size: expectedBase.size, sha: expectedBase.sha } : null,
       },
     }
-    this.journal.add(entry)
-    this.stages.set(temp, entry)
-    await this.io.create(temp, mtime)
-    return this.reopenStage(temp)
+    if (entry.disposableSource) reserveSourceStage(temp)
+    let ready = false
+    try {
+      this.journal.add(entry)
+      this.stages.set(temp, entry)
+      await this.io.create(temp, mtime)
+      const stage = await this.reopenStage(temp)
+      ready = true
+      return stage
+    } finally {
+      if (!ready) releaseSourceStage(temp)
+    }
   }
   async reopenStage(id: string): Promise<AtomicStage & { readonly target: string }> {
     let entry =
@@ -685,7 +782,7 @@ export class ObsidianFileSystem implements FileSystem {
         }),
       seal: (expected) =>
         exclusive(async () => {
-          const identity = await this.io.fingerprint(id)
+          const identity = await this.io.fingerprint(id, undefined, true)
           if (identity.size !== expected.size || identity.sha !== expected.sha)
             throw new EngineError('protocol', 'streaming stage integrity mismatch')
           const sealed = {
@@ -708,6 +805,7 @@ export class ObsidianFileSystem implements FileSystem {
             this.stages.delete(id)
             this.observedBases.delete(caseKey(entry.target))
             finished = true
+            releaseSourceStage(id)
           } finally {
             release()
           }
@@ -720,8 +818,76 @@ export class ObsidianFileSystem implements FileSystem {
               this.journal.drop(entry)
               this.stages.delete(id)
               finished = true
-            }),
+            }).finally(() => releaseSourceStage(id)),
     }
+  }
+
+  /** Only the core's matching immutable pull intent may restart an unreadable private stage. */
+  [Symbol.for('abele.sync.reopen-pull-stage-v1')](id: string) {
+    return this.reopenPullStage(id)
+  }
+  private async reopenPullStage(id: string) {
+    const stage = await this.reopenStage(id)
+    if (await this.io.canResumeStage(id)) return stage
+    const entry = this.journal.entries().find((one) => one.temp === id)
+    if (!entry?.streaming || entry.backup || this.stageOperations.has(id))
+      throw new EngineError('io', 'pull stage cannot restart during publication')
+    const restarted: JournalEntry = {
+      ...entry,
+      replacementSha: undefined,
+      streaming: { ...entry.streaming, sealed: undefined },
+    }
+    // Retire the old seal before truncating only this journal-owned private download.
+    // No persisted digest authenticates bytes left by a previous process.
+    this.journal.replace(entry, restarted)
+    this.stages.set(id, restarted)
+    await this.io.create(id, entry.streaming.mtime)
+    console.debug('[abele-sync] restarting private pull stage without local range reads')
+    return this.reopenStage(id)
+  }
+
+  [Symbol.for('abele.sync.live-source-stage-v1')]<T>(id: string, work: () => Promise<T>) {
+    return this.writer.holding(id, work)
+  }
+
+  /** A matching pull intent outlived publication. Never infer the installed bytes' identity. */
+  async [Symbol.for('abele.sync.recover-published-pull-v1')](
+    id: string | null,
+    target: string,
+    mtime: number,
+    from: string | null = null
+  ) {
+    const previous = id ? this.journal.entries().find((one) => one.temp === id) : undefined
+    if (id && (await this.adapter.exists(id))) {
+      if (!previous?.streaming || previous.backup)
+        throw new EngineError('io', 'pull stage is unavailable or awaiting backup recovery')
+      // An intent authorizes the incoming version, not bytes saved locally since the crash.
+      // Retain either the destination or the source about to move there, on both host shapes.
+      const installed = (await this.rawStat(target)) ?? (from ? await this.rawStat(from) : null)
+      const retained: JournalEntry = {
+        ...previous,
+        streaming: { ...previous.streaming, base: null, retainBase: installed !== null },
+      }
+      this.journal.replace(previous, retained)
+      this.stages.set(id, retained)
+      return this.reopenPullStage(id)
+    }
+    if (previous?.backup)
+      throw new EngineError('io', 'pull publication is awaiting backup recovery')
+    const stage = await this.beginAtomicWrite(target, mtime, null)
+    const entry = this.journal.entries().find((one) => one.temp === stage.id)
+    if (!entry?.streaming) throw new EngineError('io', 'Recovery download stage lost its journal')
+    if ((await this.rawStat(target)) ?? (from ? await this.rawStat(from) : null)) {
+      const retained: JournalEntry = {
+        ...entry,
+        streaming: { ...entry.streaming, retainBase: true },
+      }
+      this.journal.replace(entry, retained)
+      this.stages.set(stage.id, retained)
+    }
+    if (previous) this.journal.drop(previous)
+    console.debug('[abele-sync] redownloading published pull while retaining uncertain local bytes')
+    return this.reopenStage(stage.id)
   }
 
   async writeAtomic(path: string, bytes: Uint8Array, mtime: number): Promise<void> {
@@ -738,6 +904,8 @@ export class ObsidianFileSystem implements FileSystem {
     const key = caseKey(path),
       expected = this.observedBases.get(key)
     const standing = await this.onlyFileOrNothing(path)
+    if (standing && standing.size > MAX_CHUNK_BYTES)
+      throw new EngineError('conflict', 'Existing file requires bounded streaming replacement')
     const before = standing === null ? null : await this.adapter.readBinary(path)
     if (
       expected &&
@@ -1036,7 +1204,9 @@ export class ObsidianFileSystem implements FileSystem {
     const parent = cut === -1 ? '/' : path.slice(0, cut)
     try {
       const listing = await this.adapter.list(parent)
-      return listing.files.find((file) => caseKey(file) === caseKey(path)) ?? null
+      return listing.files.includes(path)
+        ? path
+        : (listing.files.find((file) => caseKey(file) === caseKey(path)) ?? null)
     } catch (cause) {
       if (notFound(cause)) return null
       throw new EngineError('io', `cannot list ${parent}`, cause)
@@ -1105,6 +1275,7 @@ export class ObsidianFileSystem implements FileSystem {
     try {
       const base = this.observedBases.get(caseKey(from))
       await this.adapter.rename(from, to)
+      await this.io.adoptReceipt(from, to)
       if (caseKey(from) !== caseKey(to)) {
         this.observedBases.set(caseKey(from), { absent: true })
         if (base) this.observedBases.set(caseKey(to), base)

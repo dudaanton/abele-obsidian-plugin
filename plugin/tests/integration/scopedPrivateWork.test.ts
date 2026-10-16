@@ -15,9 +15,64 @@ import { connectionAdapter } from '@/sync/connectionScope'
 import { connectionPrivateRoot } from '@/sync/connectionPaths'
 import { privatePlacementStages } from '@/sync/privatePlacementStages'
 import { scopedFileSystem } from '@/sync/scopedFileSystem'
+import { JOURNAL_KEY, WriteJournal } from '@/sync/writeJournal'
 import { buildFakeVault } from '../helpers/fakeVault'
 
 afterEach(() => vi.unstubAllGlobals())
+
+it.each([false, true])(
+  'recovers an owned pull stage with installed edits (published=%s)',
+  async (published) => {
+    const app = buildFakeVault([{ path: 'Shared/sample.md', content: 'local edit' }])
+    const privateRoot = connectionPrivateRoot('sample')
+    const make = () => {
+      const disk = new ObsidianFileSystem(app as unknown as App, {
+        adapter: connectionAdapter(app.vault.adapter, 'Shared', privateRoot),
+        connectionId: 'sample',
+        fileScope: 'Shared',
+      })
+      return {
+        disk,
+        scoped: scopedFileSystem(
+          disk,
+          (path) => {
+            if (!path.startsWith('Shared/')) throw new Error('outside scope')
+          },
+          (path) => path.startsWith('Shared/'),
+          privateRoot
+        ),
+      }
+    }
+    const foreign = { owner: 'other', target: 'Other/kept.md', temp: 'Other/kept.tmp' }
+    app.saveLocalStorage(JOURNAL_KEY, [foreign])
+    const first = make()
+    const stage = await first.scoped.beginAtomicWrite!('Shared/sample.md', 1000, null)
+    const bytes = new TextEncoder().encode('incoming version')
+    await stage.append(0, bytes.slice(0, 4))
+    if (published) await app.vault.adapter.remove(stage.id)
+    const restarted = make()
+    await restarted.disk.recover()
+    const recovery = await Reflect.get(
+      restarted.scoped,
+      Symbol.for('abele.sync.recover-published-pull-v1')
+    )(stage.id, 'Shared/sample.md', 1000, null)
+    expect(recovery.id.startsWith(privateRoot + '/writes/')).toBe(true)
+    expect(await restarted.scoped.stat(recovery.id)).not.toBeNull()
+    await recovery.append(recovery.offset, bytes.slice(recovery.offset))
+    await recovery.seal({ size: bytes.length, sha: await digest(bytes) })
+    await recovery.commit()
+    await recovery.discard()
+    expect(await app.vault.adapter.read('Shared/sample.md')).toBe('incoming version')
+    const journal = new WriteJournal(app, undefined, 'sample')
+    expect(journal.entries()).toEqual([])
+    expect(journal.recovered()).toHaveLength(1)
+    const retained = journal.recovered()[0]
+    expect(retained.owner).toBe('sample')
+    expect(retained.backup.startsWith(privateRoot + '/writes/')).toBe(true)
+    expect(await app.vault.adapter.read(retained.backup)).toBe('local edit')
+    expect(new WriteJournal(app).entries()).toEqual([foreign])
+  }
+)
 
 it('cleans a committed private outbox download without applying user-directory bookkeeping', async () => {
   const app = buildFakeVault([{ path: 'Shared/sample.md', content: 'kept' }])

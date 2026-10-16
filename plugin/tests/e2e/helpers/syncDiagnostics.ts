@@ -14,6 +14,9 @@ const syncSnapshot = () => {
  return {
   driverWaiting:window.__abeleSyncWaiting||null,
   webViewLoad:{timeOrigin:performance.timeOrigin,loadId:window.__abelePhoneLoadIdentity?.loadId||null},
+  tokenHostReady:!!host,
+  tokenHostStartup:app.plugins.plugins.abele?.tokenHostStartup||null,
+  pluginStartup:{started:performance.getEntriesByName('abele:onload-start').at(-1)?.startTime??null,finished:performance.getEntriesByName('abele:onload-end').at(-1)?.startTime??null},
   attachmentStage:window.__abeleAttachmentStage||null,
   nativeTransport:window.__abeleTest?.nativeSyncTransport?.(),
   externalFiles:window.__abeleTest?.externalFileOperations?.(),

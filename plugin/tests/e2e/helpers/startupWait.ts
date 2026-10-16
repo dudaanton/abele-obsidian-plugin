@@ -27,3 +27,11 @@ export async function waitForStartup(
   }
 }
 export const STARTUP_WAIT = `const waitForStartup = ${waitForStartup.toString()};`
+
+/** A confidential connect may expose this fixed reason, never the evaluator's private detail. */
+export function startupWaitFailure(error: unknown): string | undefined {
+  const message = typeof error === 'string' ? error : error instanceof Error ? error.message : ''
+  for (const reason of ['Sync startup progress stalled', 'Sync startup deadline exceeded'])
+    if (message === reason || message.startsWith(reason + ':')) return reason
+  return undefined
+}

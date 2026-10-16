@@ -84,7 +84,7 @@ describe('waiting for a real sync state snapshot', () => {
       'window',
       'performance',
       diagnostics.SYNC_SNAPSHOT + ';return syncSnapshot()'
-    )(app, { querySelectorAll: () => [] }, {}, { timeOrigin: 0 })
+    )(app, { querySelectorAll: () => [] }, {}, { timeOrigin: 0, getEntriesByName: () => [] })
     expect(snapshot.connections[0].statusText).toBe('Downloading · 2 of 8 files · 1 of 4 KB')
     expect(snapshot.connections[0].transfer).toEqual(transfer)
   })

@@ -6,6 +6,12 @@ import { buildFakeVault } from '../helpers/fakeVault'
 import { WriteJournal } from '@/sync/writeJournal'
 import { EditCopies } from '@/sync/editCopies'
 import { MemoryStateStore } from '@abele/sync-core'
+import { JOURNAL_KEY, RECOVERED_WRITES_KEY } from '@/sync/writeJournal'
+import { deferred } from '../helpers/deferred'
+import { isDroppableTemp } from '@/sync/vaultWrites'
+import { connectionAdapter } from '@/sync/connectionScope'
+import { connectionPrivateRoot } from '@/sync/connectionPaths'
+import { privatePlacementStages } from '@/sync/privatePlacementStages'
 
 const bytes = new TextEncoder().encode('sample streamed replacement')
 const setup = () => {
@@ -20,6 +26,179 @@ const setup = () => {
   const fs = () => new ObsidianFileSystem(app as unknown as App, { storage })
   return { app, fs, storage }
 }
+it.each([false, true])(
+  'protects a disposable source while creation awaits acknowledgement (owned=%s)',
+  async (owned) => {
+    const { app, fs } = setup()
+    const privateRoot = connectionPrivateRoot('sample')
+    const make = () =>
+      owned
+        ? new ObsidianFileSystem(app as never, {
+            adapter: connectionAdapter(app.vault.adapter, 'Shared', privateRoot),
+            connectionId: 'sample',
+            fileScope: 'Shared',
+          })
+        : fs()
+    const disk = make(),
+      created = deferred<void>(),
+      resume = deferred<void>()
+    const write = app.vault.adapter.writeBinary.bind(app.vault.adapter)
+    let temp = ''
+    app.vault.adapter.writeBinary = async (path, data, options) => {
+      await write(path, data, options)
+      temp = path
+      created.resolve()
+      await resume.promise
+    }
+    const pending = privatePlacementStages(disk, owned ? privateRoot : undefined)
+      .beginAtomicWrite('.abele-sync/placement-inbox/' + crypto.randomUUID(), 0, null)
+      .then(
+        (stage) => stage,
+        (error) => error as Error
+      )
+    await Promise.race([
+      created.promise,
+      pending.then((result) => {
+        if (result instanceof Error) throw result
+      }),
+    ])
+    try {
+      await make().recover()
+      expect(await app.vault.adapter.exists(temp)).toBe(true)
+      expect(isDroppableTemp(temp)).toBe(false)
+    } finally {
+      resume.resolve()
+      const result = await pending
+      if (!(result instanceof Error)) await result.discard()
+    }
+  }
+)
+it('does not borrow a live receipt from a different exact spelling on a case-sensitive host', async () => {
+  const { app, fs } = setup(),
+    disk = fs()
+  const data = new Uint8Array(2 * 1024 * 1024).fill(17)
+  const stage = await disk.beginAtomicWrite('Shared/sample.bin', 123, null)
+  await stage.append(0, data.slice(0, 1024 * 1024))
+  await stage.append(1024 * 1024, data.slice(1024 * 1024))
+  await stage.seal({ size: data.length, sha: await sha256(data) })
+  await stage.commit()
+  // Model a case-sensitive listing with two independent directory entries.
+  vi.spyOn(app.vault.adapter, 'list').mockResolvedValue({
+    files: ['Shared/sample.bin', 'Shared/SAMPLE.bin'],
+    folders: [],
+  })
+  const read = vi
+    .spyOn(app.vault.adapter, 'readBinary')
+    .mockRejectedValue(new Error('Whole local read forbidden'))
+  await expect(
+    disk[Symbol.for('abele.sync.fingerprint-pull-v1')]('Shared/SAMPLE.bin')
+  ).rejects.toThrow('bounded')
+  expect(read).not.toHaveBeenCalled()
+})
+it('releases a source reservation when creation fails after writing its temp', async () => {
+  const { app, fs, storage } = setup()
+  const disk = fs(),
+    write = app.vault.adapter.writeBinary.bind(app.vault.adapter)
+  let temp = ''
+  app.vault.adapter.writeBinary = async (path, data, options) => {
+    await write(path, data, options)
+    temp = path
+    throw new Error('Sample creation failed after write')
+  }
+  await expect(
+    disk.beginAtomicWrite('.abele-sync/placement-inbox/sample', 0, null)
+  ).rejects.toThrow('creation failed')
+  await fs().recover()
+  expect(await app.vault.adapter.exists(temp)).toBe(false)
+  expect(new WriteJournal(storage).entries()).toEqual([])
+})
+it('retires an interrupted disposable placement source and its journal on restart', async () => {
+  const { app, fs, storage } = setup()
+  await app.vault.adapter.write('source.tmp', 'incomplete network source')
+  storage.saveLocalStorage(JOURNAL_KEY, [
+    {
+      target: '.abele-sync/placement-inbox/sample',
+      temp: 'source.tmp',
+      streaming: { mtime: 0, base: null },
+    },
+  ])
+  await fs().recover()
+  expect(await app.vault.adapter.exists('source.tmp')).toBe(false)
+  expect(new WriteJournal(storage).entries()).toEqual([])
+  expect(await app.vault.adapter.read('sample.bin')).toBe('original')
+})
+it('does not retire a live private network source or an ordinary retained stage', async () => {
+  const { fs } = setup()
+  const disk = fs()
+  const source = await disk.beginAtomicWrite('.abele-sync/placement-inbox/sample', 0, null)
+  const retained = await disk.beginAtomicWrite('local-copy.bin', 0, null)
+  await disk[Symbol.for('abele.sync.live-source-stage-v1')](source.id, async () => {
+    await disk.recover()
+    expect((await disk.reopenStage(source.id)).offset).toBe(0)
+    expect((await disk.reopenStage(retained.id)).offset).toBe(0)
+  })
+  await source.discard()
+  await retained.discard()
+})
+
+it('never whole-reads a large existing file when the incoming atomic write fits one chunk', async () => {
+  const { app, fs } = setup()
+  const stat = app.vault.adapter.stat.bind(app.vault.adapter)
+  vi.spyOn(app.vault.adapter, 'stat').mockImplementation(async (path) => {
+    const actual = await stat(path)
+    return path === 'sample.bin' && actual ? { ...actual, size: 1024 * 1024 * 1024 } : actual
+  })
+  const read = vi
+    .spyOn(app.vault.adapter, 'readBinary')
+    .mockRejectedValue(new Error('Whole old-file read forbidden'))
+  await expect(fs().writeAtomic('sample.bin', bytes, 123)).rejects.toThrow()
+  expect(read).not.toHaveBeenCalled()
+})
+it('pull verification never falls back to reading an entire multi-chunk local file', async () => {
+  const { app, fs } = setup()
+  const stat = app.vault.adapter.stat.bind(app.vault.adapter)
+  vi.spyOn(app.vault.adapter, 'stat').mockImplementation(async (path) => {
+    const actual = await stat(path)
+    return path === 'sample.bin' && actual ? { ...actual, size: 2 * 1024 * 1024 } : actual
+  })
+  const read = vi
+    .spyOn(app.vault.adapter, 'readBinary')
+    .mockRejectedValue(new Error('Whole local read forbidden'))
+  await expect(fs()[Symbol.for('abele.sync.fingerprint-pull-v1')]('sample.bin')).rejects.toThrow(
+    'bounded'
+  )
+  expect(read).not.toHaveBeenCalled()
+})
+it('preserves an interrupted streaming backup without hashing the installed large file after restart', async () => {
+  const { app, fs, storage } = setup()
+  await app.vault.adapter.write('saved.old', 'previous local bytes')
+  const stat = app.vault.adapter.stat.bind(app.vault.adapter)
+  vi.spyOn(app.vault.adapter, 'stat').mockImplementation(async (path) => {
+    const actual = await stat(path)
+    return path === 'sample.bin' && actual ? { ...actual, size: 51 * 1024 * 1024 } : actual
+  })
+  const read = vi
+    .spyOn(app.vault.adapter, 'readBinary')
+    .mockRejectedValue(new Error('Whole local read forbidden'))
+  storage.saveLocalStorage(JOURNAL_KEY, [
+    {
+      target: 'sample.bin',
+      temp: 'sample.tmp',
+      backup: 'saved.old',
+      replacementSha: 'a'.repeat(64),
+      streaming: {
+        mtime: 123,
+        base: { size: 20, sha: 'b'.repeat(64) },
+        sealed: { size: 51 * 1024 * 1024, sha: 'a'.repeat(64) },
+      },
+    },
+  ])
+  await fs().recover()
+  expect(read).not.toHaveBeenCalled()
+  expect(await app.vault.adapter.exists('saved.old')).toBe(true)
+  expect(new WriteJournal(storage).entries()).toEqual([])
+  expect(storage.loadLocalStorage(RECOVERED_WRITES_KEY)).toMatchObject([{ backup: 'saved.old' }])
+})
 it('retains local edits as sealed source locators and verifies retained bytes on every read', async () => {
   const { app, fs } = setup()
   const writer = fs(),

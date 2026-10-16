@@ -149,6 +149,9 @@ const releaseVueSetters = claimVueSetters()
 
 export default class AbelePlugin extends Plugin {
   private tokenEngines: TokenEngines | null = null
+  readonly tokenHostStartup: { state: 'starting' | 'ready' | 'failed'; error?: string } = {
+    state: 'starting',
+  }
   private syncStarted = false
   private vueApp: VueApp | null = null
   private headerCommands: HeaderCommands | null = null
@@ -421,6 +424,7 @@ export default class AbelePlugin extends Plugin {
             })
           )
           this.tokenEngines.announce()
+          this.tokenHostStartup.state = 'ready'
           watchTheFront(this, Platform.isMobile, {
             held: () => this.tokenEngines?.presentReviews(),
             sync: (visible) => {
@@ -464,6 +468,11 @@ export default class AbelePlugin extends Plugin {
           )
           await ui.refreshReviews()
         } catch (error) {
+          if (!this.tokenEngines) {
+            this.tokenHostStartup.state = 'failed'
+            this.tokenHostStartup.error =
+              (error as Error)?.message || 'Token host initialization failed'
+          }
           console.error(
             '[Abele] retired access cleanup requires recovery',
             (error as Error)?.message

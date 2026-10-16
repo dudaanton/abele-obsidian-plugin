@@ -5,6 +5,7 @@ export const serverTestFixtures = {
   ABELE_SYNC_DIR: [
     'tokenEngineServer',
     'syncServer',
+    'interruptedMoveExchange',
     'externalRepresentationServer',
     'syncService',
     'syncHeldDeletes',
@@ -14,7 +15,9 @@ export const serverTestFixtures = {
     'syncOwnSettings',
     'syncConnectionSaves',
     'productionSharingBuild',
-  ].map((name) => `tests/integration/${name}.test.ts`).concat('tests/unit/syncLiveServer.test.ts'),
+  ]
+    .map((name) => `tests/integration/${name}.test.ts`)
+    .concat('tests/unit/syncLiveServer.test.ts'),
 }
 
 export const serverTestFixtureRevisions = {}

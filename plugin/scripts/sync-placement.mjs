@@ -23,6 +23,73 @@ export function syncPlacementPlugin() {
       let code = input
       if (file.endsWith('/pullPlace.js')) {
         code = `import { receiveToStage as receivePlacementSource } from './streaming.js';\n` + code
+        if (!code.includes('fingerprintFile(this.fs,'))
+          throw new Error('Unsupported pull fingerprint boundary')
+        code = code.replaceAll('fingerprintFile(this.fs,', 'fingerprintPlacementFile(this.fs,')
+        code += `
+        async function fingerprintPlacementFile(fs, path, hash) {
+          const bounded = fs[Symbol.for('abele.sync.fingerprint-pull-v1')];
+          return bounded ? bounded(path) : fingerprintFile(fs, path, hash);
+        }
+        `
+        code = replaceOnce(
+          code,
+          'const notWritten = async () => {',
+          `// A still-owned private stage must finish through recovery, not be orphaned by adoption.
+        if (pending.stageId !== undefined && this.fs[Symbol.for('abele.sync.recover-published-pull-v1')] &&
+            await this.fs.stat(pending.stageId) !== null) return false;
+        const notWritten = async () => {`
+        )
+        code = replaceOnce(
+          code,
+          'if (pending.stageId !== undefined)\n                return false;',
+          `if (pending.stageId !== undefined || this.fs[Symbol.for('abele.sync.recover-published-pull-v1')])
+                return false;`
+        )
+        code = replaceOnce(
+          code,
+          'if (pending?.stageId && this.fs.reopenStage && this.client.openVersion) {',
+          'if (pending && this.fs.reopenStage && this.client.openVersion && change.size !== null) {'
+        )
+        code = replaceOnce(
+          code,
+          'const base = beforeTarget !== null',
+          `
+        const recoverPublished = this.fs[Symbol.for('abele.sync.recover-published-pull-v1')];
+        if (pending && from !== null && beforeFrom !== null && caseKey(from) !== caseKey(target)) {
+          this.opts.log?.('pull: holding ' + target + ': move source may have been recreated; interrupted intent cannot relocate it');
+          return false;
+        }
+        const recovery = pending && recoverPublished
+          ? await recoverPublished(pending.stageId ?? null, target, change.mtime ?? 0, from) : null;
+        if (recovery) {
+          await this.pending.prepare(change, entry, target, from, recovery.id);
+          try {
+            const source = await this.client.openVersion(change.file_id, change.version_id, identity);
+            await downloadToStage(source, recovery, identity, this.budget, undefined, async () => {
+              if (!sameStat(beforeTarget, await this.fs.stat(target)) ||
+                  !sameStat(beforeFrom, from === null ? null : await this.fs.stat(from)))
+                throw new Error('pull target changed during recovery transfer');
+              if (from !== null && beforeFrom !== null) await this.fs.move(from, target);
+              this.opts.expected.expect(target, sha);
+            });
+            await this.remember(change, sha, target, { size: identity.size, mtime: change.mtime ?? 0 }, from);
+            await recovery.discard();
+            return true;
+          } catch (error) {
+            this.opts.expected.clear(target);
+            throw error;
+          }
+        }
+        const base = beforeTarget !== null`
+        )
+        code = replaceOnce(
+          code,
+          'await this.fs.reopenStage(pending.stageId)',
+          `await (this.fs[Symbol.for('abele.sync.reopen-pull-stage-v1')]
+            ? this.fs[Symbol.for('abele.sync.reopen-pull-stage-v1')](pending.stageId)
+            : this.fs.reopenStage(pending.stageId))`
+        )
         for (const name of ['adopt', 'adoptExisting']) {
           code = replaceOnce(
             code,
@@ -50,29 +117,83 @@ export function syncPlacementPlugin() {
           code,
           'async place(change, sha, entry, fetched, local) {',
           `async place(change, sha, entry, fetched, local) {
+          const observe = this.fs[Symbol.for('abele.sync.trace-pull-v1')];
+          if (!observe) return this.placeObserved(change, sha, entry, fetched, local);
+          const finish = observe(change.size, change.path);
+          let complete = false;
+          try {
+            const result = await this.placeObserved(change, sha, entry, fetched, local);
+            complete = result === true;
+            return result;
+          } finally { finish(complete); }
+        }
+        async placeObserved(change, sha, entry, fetched, local) {
           // Downloads do not own paths. The original placer revalidates the source after waiting.
           // Keep the network source bounded and fetch it only once. The core's durable target
           // stage and local-edit checks still run under the placement lease.
           if (this.fs.beginAtomicWrite && this.fs.reopenStage && this.fs.openRead &&
               this.client.openVersion && change.size !== null) {
             const identity = { sha, size: change.size };
+            const placeFrom = async (open, smallBytes) => {
+              const prepared = Object.create(this);
+              if (smallBytes && (entry === null || entry.size <= this.budget.maxChunkBytes)) prepared.fs = new Proxy(this.fs, {
+                get: (target, key) => key === 'beginAtomicWrite' ? undefined
+                  : typeof target[key] === 'function' ? target[key].bind(target) : target[key],
+              });
+              prepared.client = new Proxy(this.client, {
+                get: (target, key) => key === 'openVersion'
+                  ? open
+                  : typeof target[key] === 'function' ? target[key].bind(target) : target[key],
+              });
+              return coordinatePlacement(this.fs, [change.path, ...(entry ? [entry.path] : [])],
+                () => prepared.placeUnlocked(change, sha, entry,
+                  smallBytes ? new Map(fetched).set(sha, smallBytes) : fetched, local));
+            };
+            // Small pulls fit in one transfer chunk. Avoid a second journal, copy and file
+            // read per note, while still verifying the network source outside the lease.
+            if (change.size <= this.budget.maxChunkBytes) {
+              let bytes, signal;
+              await this.budget.run(async () => {
+                const source = await this.client.openVersion(change.file_id, change.version_id, identity);
+                signal = source.signal;
+                try {
+                  signal?.throwIfAborted();
+                  if (source.size !== change.size) throw new Error('invalid placement source size');
+                  bytes = change.size === 0 ? new Uint8Array() : await source.read(0, change.size, signal);
+                  await source.assertUnchanged();
+                  const hashing = Date.now();
+                  const valid = bytes.length === change.size && bytes.buffer.byteLength <= this.budget.maxChunkBytes &&
+                      await this.hash(bytes) === sha;
+                  this.fs[Symbol.for('abele.sync.diagnostic-v1')]?.('pull hash', hashing, valid ? 'complete' : 'failed');
+                  if (!valid) throw new Error('placement source integrity mismatch');
+                } finally { await source.close(); }
+              });
+              // close() disposes the HTTP source by aborting its private signal. The
+              // verified local bytes no longer belong to that transport lifetime.
+              return placeFrom(async () => ({
+                size: bytes.length,
+                read: async (offset, length) => bytes.slice(offset, offset + length),
+                assertUnchanged: async () => {}, close: async () => {},
+              }), bytes);
+            }
+            // Some hosts can append bounded chunks but cannot read a large local stage.
+            // Use the core's direct network-to-target stream there, never a whole-file read.
+            const replay = this.fs[Symbol.for('abele.sync.replay-stage-v1')];
+            if (replay && !await replay())
+              return coordinatePlacement(this.fs, [change.path, ...(entry ? [entry.path] : [])],
+                () => this.placeUnlocked(change, sha, entry, fetched, local));
             const stagingFs = this.fs[Symbol.for('abele.sync.private-placement-stages-v1')] ?? this.fs;
             const sourceStage = await stagingFs.beginAtomicWrite(
               '.abele-sync/placement-inbox/' + crypto.randomUUID(), 0, null);
-            try {
+            const useSource = async () => { try {
               const source = await this.client.openVersion(change.file_id, change.version_id, identity);
               await receivePlacementSource(source, sourceStage, identity, this.budget);
-              const prepared = Object.create(this);
-              prepared.client = new Proxy(this.client, {
-                get: (target, key) => key === 'openVersion'
-                  ? () => stagingFs.openRead(sourceStage.id)
-                  : typeof target[key] === 'function' ? target[key].bind(target) : target[key],
-              });
-              return await coordinatePlacement(this.fs, [change.path, ...(entry ? [entry.path] : [])],
-                () => prepared.placeUnlocked(change, sha, entry, fetched, local));
+              return await placeFrom(() => stagingFs.openRead(sourceStage.id));
             } finally {
               await sourceStage.discard();
-            }
+            } };
+            const retainSource = this.fs[Symbol.for('abele.sync.live-source-stage-v1')];
+            return retainSource ? retainSource(sourceStage.id, useSource) : useSource();
           }
           // A matching ledger hash does not prove that its local file still exists.
           // Populate even the fallback's cache before leasing either path.
@@ -85,6 +206,51 @@ export function syncPlacementPlugin() {
             () => this.placeUnlocked(change, sha, entry, fetched, local));
         }
         async placeUnlocked(change, sha, entry, fetched, local) {`
+        )
+      } else if (file.endsWith('/pullRecovery.js')) {
+        code = replaceOnce(
+          code,
+          'await placer.adopt(change, entry);',
+          `// A pending move cannot identify a recreated source. Preserve that path as an
+        // independent local file; only an absent destination permits a fresh installation.
+        if (client?.openVersion && fs[Symbol.for('abele.sync.recover-published-pull-v1')] &&
+            entry !== null && intent.from === entry.path && normalisePath(intent.target) === change.path &&
+            intent.from.normalize('NFC').toLowerCase() !== intent.target.normalize('NFC').toLowerCase()) {
+            const separated = await coordinatePlacement(fs, [intent.from, intent.target], async () => {
+                if (await fs.stat(intent.from) === null || await fs.stat(intent.target) !== null) return false;
+                await state.transaction(async () => {
+                    const occupant = await state.get(intent.target);
+                    if (occupant !== null && occupant.fileId !== fileId)
+                        throw new ExternalStateError('recovery-required');
+                    if (await state.getMeta(\`pull-write:\${fileId}\`) !== raw ||
+                        await placer.pending.matching(change, await state.byFileId(fileId)) === null)
+                        throw new ExternalStateError('recovery-required');
+                    const detached = { ...entry, path: intent.target, wirePath: intent.wirePath };
+                    await state.delete(intent.from);
+                    await state.put(detached);
+                    await state.setMeta(\`pull-write:\${fileId}\`, JSON.stringify({ ...intent, from: null, base: detached }));
+                });
+                console.debug('[abele-sync] pull recovery', 'preserved independent move source; recovering into absent destination');
+                return true;
+            }, false);
+            if (separated) {
+                await recoverPendingPullWrites(fs, state, [fileId], client);
+                continue;
+            }
+        }
+        await placer.adopt(change, entry);`
+        )
+        code = replaceOnce(
+          code,
+          '{ expected: new ExpectedWrites(), dirty: new Set(), filter: { excluded: () => false } }',
+          `{ expected: new ExpectedWrites(), dirty: new Set(), filter: { excluded: () => false },
+             log: (line) => console.debug('[abele-sync] pull recovery', line) }`
+        )
+        code = replaceOnce(
+          code,
+          'if (intent.stageId !== undefined && (await state.getMeta?.(`pull-write:${fileId}`)) != null) {',
+          `if ((intent.stageId !== undefined || fs[Symbol.for('abele.sync.recover-published-pull-v1')]) &&
+              (await state.getMeta?.(\`pull-write:\${fileId}\`)) != null) {`
         )
       } else if (file.endsWith('/pusher.js')) {
         code = replaceOnce(

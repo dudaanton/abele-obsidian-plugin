@@ -2354,10 +2354,173 @@ Publication still uses the write journal and the local-save fence or backup swap
 with an unresolved backup remains an installation blocker. Sealed retained sources are
 separate from unfinished publication, and are verified again before use.
 
-Streaming pulls retain a verified private source stage before acquiring placement paths.
-The target publication reads that local source instead of downloading the file again.
-The source stage is discarded after placement or a handled failure; interrupted processes
-leave it under the same journal recovery rules as other private stages.
+Streaming pulls of at most one transfer chunk retain verified bytes in memory before acquiring
+placement paths, without an extra private source stage. New one-chunk placements use the ordinary
+atomic writer: one bounded write to a journal-owned temporary file, rename publication, then
+retirement of the write intent. They do not create, append and seal a streaming target stage;
+existing streaming recovery intents still follow their original stage recovery. Larger pulls retain a verified private
+source stage when the host can read it; target publication reads that local source instead of
+downloading the file again. The source stage is discarded after placement or a handled failure;
+interrupted processes leave it under the same journal recovery rules as other private stages.
+Hosts without bounded reads of large local files stream those versions directly from the server
+to the durable target stage under the placement lease. Whole-file fallback limits are unchanged.
+
+The iOS Capacitor adapter exposes whole-file `readBinary` (no offset), `appendBinary`,
+`write`/`writeBinary`, `rename`, metadata and `getResourcePath`. Large incoming versions use
+server HTTP Range requests of at most 1 MiB, sequentially appended to the target stage; there
+is no whole-file receive fallback and no second download for local placement. SHA-256 is
+updated incrementally after each acknowledged append. A process-local receipt binds that hash
+to the stage's size and timestamps; sealing compares its digest with the version's expected
+SHA-256 before publication. The sealed identity is journalled, but is not trusted as proof of
+unchanged bytes after restart. Publication uses the live receipt, then transfers it across the
+rename. Transfer memory stays proportional to a chunk, including native encoding overhead.
+
+Local range readers are optional, independently probed capabilities: `getResourcePath` URLs
+are tested with small WebView Range requests (exact 206 and Content-Range required); Capacitor
+Filesystem `readFile` offset/length and `readFileInChunks` are also probed against small inputs.
+The append-only large pull needs none of these local readers. If its process-local receipt is
+lost, the matching pull intent restarts only its private stage from offset zero and downloads
+one bounded stream anew, even when a previous seal was persisted. Recovery of an interrupted
+backup swap retains the backup without hashing the installed target. Existing local content
+still requires authenticated reads for uploads, local-edit preservation, replacement-base
+checks, and external-file eviction/read requests; unavailable bounded readers may stop those
+operations while preserving the local file. Custom providers without a streaming version API
+also cannot receive large versions through their legacy whole-file API.
+
+The bounded exchange diagnostics retain local adapter-call, journal-save, hash, atomic-write
+and streaming-stage timings alongside network requests. These device-local timings expose the
+work between range requests; they are not sync inventory and do not travel to the server.
+Successful local-call debug output is grouped in batches of up to 64 events, with per-operation
+counts, summed duration and maximum duration. Network and failed-operation logs remain
+immediate. The exact last 64 events and first-sync operation counts remain synchronously
+available in snapshots. Snapshots and first-sync completion flush partial batches; there is
+no logging timer. This keeps console bridge round trips out of the per-read/stat/close loop
+during initial local comparison, before any content request or download count can advance.
+
+A pull intent can outlive the rename that published its stage. If the private stage is missing,
+the matching intent downloads and verifies a new bounded stream. Uncertain installed bytes
+are never acknowledged from metadata or a persisted digest: publication retains them as a
+recoverable backup before installing the verified version. A local edit made after the previous
+publication therefore survives too. Streaming journal entries mark this retention explicitly;
+an interrupted recovery download can itself restart without reading those uncertain bytes.
+The same recovery covers moves, case-only renames and older atomic-write intents without a
+stage ID. Recreated source paths still obey the pending move's occupancy guards. An existing
+private target stage can also resume by retaining an unverifiable installed destination;
+recovery does not require hashing that destination first. Ordinary renames transfer live
+incremental receipts to the new spelling; a case-folded alias resolves through the actual
+directory entry, with an exact spelling taking precedence over an alias.
+
+### Pull crash recovery matrix
+
+`tests/integration/pullCrashLifecycle.test.ts` executes every cell below through both
+`applyStaged()` → `pullRun.take()` and `recoverPendingPullWrites()`. Before an intent exists,
+startup recovery does nothing and the next ordinary pull supplies the change. The fixtures
+use multi-chunk versions, a case-insensitive disk, fresh adapter identities after each crash,
+and independently saved destination edits, including rewrites with unchanged size and mtime.
+An additional matrix runs every published-window cell with a one-chunk, stage-less intent
+and an edit that grows beyond one chunk. No recovery calls `place()` without prior adoption.
+
+Outcomes:
+
+- **N**: ordinary pull; no earlier intent authorizes overwriting an independent destination.
+- **H**: hold, preserving files and any pending intent/stage. Startup reports recovery required
+  when a pending move has both a distinct source and an independently occupied destination.
+- **P**: ordinary pull holds; startup preserves the occupied distinct source as an independent
+  local file when the destination is absent. In one ledger transaction it relocates only the
+  old association to the absent destination and rewrites the intent's base with no move source.
+  It then verifies and installs the immutable version there. The ordinary scan uploads the
+  independent source under a new file identity. No source bytes are moved, read or overwritten
+  by recovery. The ledger retains the original file ID throughout, so another interruption
+  discovers and finishes the rewritten intent instead of losing it.
+- **R**: finish the exact intent's immutable version, then commit the ledger. Bounded readers
+  authenticate and resume the private stage; an append-only host resets only that stage and
+  downloads one bounded stream. Before publishing, recovery performs the pending move,
+  including the exact case-only spelling. Any displaced destination or moved source is kept
+  as a recoverable backup on either host; the intent never authenticates those local bytes.
+- **A**: adopt only after authenticating installed bytes and checking source absence/occupancy.
+  No publication is needed. If the intent still owns a private stage, use **R** instead so
+  adoption cannot orphan that stage. A case-only move cannot rely on source absence through a folded
+  alias, so it takes **R** and verifies the requested spelling instead.
+- **S**: the ledger already contains this version. Retire its stale intent, if any, without
+  downloading or writing; a subsequent local edit remains available to the ordinary scan.
+
+“Complete, before move” is after sealing but before the before-publication callback.
+“Complete, after move” is after that callback but before stage publication; for creates and
+replacements those two windows coincide. “Published” is after stage publication and before
+the ledger transaction. “Edited” means independently saved bytes at the destination, not a
+change to the private download stage. Corrupt stage and network bytes are tested separately:
+bounded readers reject a corrupted retained stage; append-only recovery discards only its
+private bytes and verifies a fresh stream. Neither publishes bytes that fail the version hash.
+
+| Crash window | Operation | Bounded, unchanged | Bounded, edited | Append-only, unchanged | Append-only, edited |
+| --- | --- | --- | --- | --- | --- |
+| Before stage/intent | New | N | H | N | H |
+| Before stage/intent | Replace | N | H | H¹ | H |
+| Before stage/intent | Move | N | H | H¹ | H |
+| Before stage/intent | Case-only move | N | H | H¹ | H |
+| Partial stage | New | R | R | R | R |
+| Partial stage | Replace | R | R | R | R |
+| Partial stage | Move | P | H | P | H |
+| Partial stage | Case-only move | R | R | R | R |
+| Complete, before move | New | R | R | R | R |
+| Complete, before move | Replace | R | R | R | R |
+| Complete, before move | Move | P | H | P | H |
+| Complete, before move | Case-only move | R | R | R | R |
+| Complete, after move | New | R | R | R | R |
+| Complete, after move | Replace | R | R | R | R |
+| Complete, after move | Move | R | R | R | R |
+| Complete, after move | Case-only move | R | R | R | R |
+| Published, before ledger | New | A | R | R² | R |
+| Published, before ledger | Replace | A | R | R² | R |
+| Published, before ledger | Move | A | R | R² | R |
+| Published move, destination deleted and distinct source recreated | Move | P | P | P | P |
+| Published, before ledger | Case-only move | R | R | R | R |
+| Ledger committed | New | S | S | S | S |
+| Ledger committed | Replace | S | S | S | S |
+| Ledger committed | Move | S | S | S | S |
+| Ledger committed | Case-only move | S | S | S | S |
+
+¹ With no durable intent and no bounded local reader, a multi-chunk existing file cannot be
+authenticated. Preserve it. One-chunk files can use the same **N** path as a bounded host.
+² A one-chunk installed version can instead be authenticated within the chunk budget and
+take **A**, including older intents without stage IDs. An adoption mismatch preserves that
+intent on a streaming-capable host; startup then runs **R** rather than silently clearing it.
+Without a streaming recovery client, unresolved intent recovery stops without mutation.
+
+If a pending distinct move's source path exists after interruption, that path may have been
+recreated. A private stage or matching bytes cannot prove it is still the original source.
+The ordinary pull holds it even when the destination is absent; its log explains that the
+source may have been recreated. Startup takes **P** only for an absent destination and an
+exact matching intent/base. This includes partial and sealed stages before the move. An
+occupied destination still holds; it cannot authorize source relocation or replacement.
+The engine-level server test runs startup recovery followed by real pull/scan/push exchanges:
+the local source keeps its path and bytes, the server version arrives at the destination,
+unrelated files exchange in both directions, and the intent retires without a retry loop.
+It also interrupts after the metadata separation and proves the next startup completes it.
+The recreated-source row is tested separately through both entry points on both host shapes;
+it applies regardless of the recreated file's bytes or the presence of its private stage.
+Case-only source aliases and moves whose distinct source is already absent continue through
+the corresponding earlier rows.
+
+These outcomes require an exact version and unchanged pre-write ledger base. An unrelated
+intent, another tracked occupant, or a recreated distinct move source never grants overwrite
+authority. Path occupancy is rechecked immediately before the recovery move/publication;
+failure retains recovery evidence and clears only the failed write's echo-suppression entry.
+
+The one-chunk atomic fast path is limited by the old ledger size as well as the incoming size.
+Large previous entries use streaming replacement; the ordinary atomic writer also refuses
+to whole-read a multi-chunk old file if it appears after the decision. Pull verification and
+stage publication use bounded local readers or live incremental receipts. When neither can
+authenticate existing local content, the pull holds it rather than allocating a whole-file
+buffer or guessing its identity.
+
+Private placement source caches are journalled as disposable network sources. Recovery removes
+their unfinished temp files and journal records, including older cache records identified by
+the reserved placement-inbox target. A process-local reservation starts before the source's
+journal entry is published and spans creation, reopening, download and consumption. Creation
+failure releases it so a later recovery can reclaim an incomplete source. Retirement releases
+it after normal use. Active sources are also excluded from generic temp-file sweeps;
+ordinary target stages and retained local-edit copies are not disposable caches.
 
 Local edit preservation records may likewise retain a sealed source locator and size, shared
 by the destinations that still need that immutable edit. These source files and their journal

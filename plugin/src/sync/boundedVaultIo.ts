@@ -147,6 +147,15 @@ export class BoundedVaultIo {
         'Bounded staging writes are unavailable; the fallback limit is 50 MiB'
       )
   }
+  async canReplayStage(): Promise<boolean> {
+    return !!(this.raw.fsPromises?.open && this.raw.getFullPath) || !!(await this.mobile())
+  }
+  async canResumeStage(path: string): Promise<boolean> {
+    const receipt = this.receipts.get(path)
+    if (receipt && stampOf(await this.stat(path)).generation === receipt.stamp.generation)
+      return true
+    return this.canReplayStage()
+  }
   private async stat(path: string): Promise<Stat> {
     this.assertOwned()
     const stat = await this.adapter.stat(path)
@@ -341,7 +350,7 @@ export class BoundedVaultIo {
       },
     }
   }
-  async fingerprint(path: string, signal?: AbortSignal) {
+  async fingerprint(path: string, signal?: AbortSignal, boundedOnly = false) {
     if (this.raw.fsPromises?.open && this.raw.getFullPath) {
       const before = stampOf(await this.stat(path))
       const handle = await this.raw.fsPromises.open(this.raw.getFullPath(path), 'r')
@@ -381,6 +390,15 @@ export class BoundedVaultIo {
         }
       this.receipts.delete(path)
     }
+    if (
+      boundedOnly &&
+      (await this.stat(path)).size > MAX_CHUNK_BYTES &&
+      !(await this.canReplayStage())
+    )
+      throw new EngineError(
+        'conflict',
+        'Existing bytes require bounded local verification; file kept'
+      )
     const source = await this.openRead(path)
     const identity = await fingerprintSource(source, MAX_CHUNK_BYTES, signal)
     return { ...source.stamp, ...identity }

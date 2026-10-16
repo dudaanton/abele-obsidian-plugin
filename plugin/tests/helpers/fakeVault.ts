@@ -115,7 +115,10 @@ export interface FakeAdapter {
 export interface FakeApp {
   delays: OperationDelays<'frontmatter' | 'metadata'>
   fileManager: {
-    processFrontMatter(file: TFile, fn: (frontmatter: Record<string, unknown>) => void): Promise<void>
+    processFrontMatter(
+      file: TFile,
+      fn: (frontmatter: Record<string, unknown>) => void
+    ): Promise<void>
   }
   vault: {
     getResourcePath(file: TFile): string
@@ -645,7 +648,9 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
     vault: {
       on: register('vault'),
       offref,
-      getResourcePath(file: TFile) { return `app://sample/${file.path}` },
+      getResourcePath(file: TFile) {
+        return `app://sample/${file.path}`
+      },
       getFiles() {
         stats.getFiles++
         // Obsidian allocates a fresh array per call; mirroring that keeps callers honest
@@ -889,7 +894,7 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
       },
     },
     workspace: {
-      getLeavesOfType: () => [],
+      getLeavesOfType: (): never[] => [],
       on: register('workspace'),
       offref,
     },

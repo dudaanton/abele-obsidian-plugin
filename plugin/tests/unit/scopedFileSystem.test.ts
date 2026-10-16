@@ -10,6 +10,50 @@ const assertPath = (path: string) => {
 }
 
 it.each([
+  'abele.sync.fingerprint-pull-v1',
+  'abele.sync.reopen-pull-stage-v1',
+  'abele.sync.live-source-stage-v1',
+])('checks paths for the pull capability %s', async (name) => {
+  const called = vi.fn(async () => ({}))
+  const key = Symbol.for(name)
+  const disk = Object.assign(new MemoryFileSystem(), { [key]: called })
+  const fs = scopedFileSystem(disk, assertPath, includes)
+  await expect(async () => Reflect.get(fs, key)('Private/secret.md')).rejects.toThrow(
+    'outside scope'
+  )
+  expect(called).not.toHaveBeenCalled()
+  await Reflect.get(fs, key)('Shared/sample.md')
+  expect(called).toHaveBeenCalledOnce()
+})
+
+it('validates both publication recovery paths before delegating', async () => {
+  const key = Symbol.for('abele.sync.recover-published-pull-v1')
+  const called = vi.fn(async () => ({}))
+  const disk = Object.assign(new MemoryFileSystem(), { [key]: called })
+  const fs = scopedFileSystem(disk, assertPath, includes)
+  for (const args of [
+    [null, 'Private/secret.md', 0, null],
+    [null, 'Shared/sample.md', 0, 'Private/secret.md'],
+    ['Private/secret.tmp', 'Shared/sample.md', 0, null],
+  ])
+    await expect(async () => Reflect.get(fs, key)(...args)).rejects.toThrow('outside scope')
+  expect(called).not.toHaveBeenCalled()
+  await Reflect.get(fs, key)('Shared/sample.tmp', 'Shared/sample.md', 0, null)
+  expect(called).toHaveBeenCalledOnce()
+})
+
+it.each(['abele.sync.diagnostic-v1', 'abele.sync.replay-stage-v1'])(
+  'delegates the path-free capability %s',
+  (name) => {
+    const key = Symbol.for(name),
+      called = vi.fn()
+    const disk = Object.assign(new MemoryFileSystem(), { [key]: called })
+    Reflect.get(scopedFileSystem(disk, assertPath, includes), key)()
+    expect(called).toHaveBeenCalledOnce()
+  }
+)
+
+it.each([
   'read',
   'stat',
   'fingerprint',

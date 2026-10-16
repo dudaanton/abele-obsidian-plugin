@@ -12,11 +12,15 @@ export interface JournalEntry {
   installed?: boolean
   /** Unfenced old inode must survive even if target contains exact replacement bytes. */
   preserveBackup?: boolean
+  /** Disposable verified-network cache, never a retained local edit or pending target. */
+  disposableSource?: boolean
   /** A resumable chunk stage; retained until the engine explicitly discards it. */
   streaming?: {
     mtime: number
     base: { size: number; sha: string } | null
     sealed?: { size: number; sha: string }
+    /** Uncertain installed bytes survive publication as a recoverable backup. */
+    retainBase?: boolean
   }
 }
 export interface RecoveredWrite {
@@ -43,7 +47,8 @@ export class WriteJournal {
   constructor(
     private readonly storage: LocalStorage | null,
     private readonly assertMutation?: () => void,
-    private readonly owner?: string
+    private readonly owner?: string,
+    private readonly diagnostic?: (operation: string, startedAt: number, outcome: string) => void
   ) {}
 
   private owns(value: unknown): boolean {
@@ -79,11 +84,14 @@ export class WriteJournal {
         (entry.temp === undefined || typeof entry.temp === 'string') &&
         (entry.backup === undefined || typeof entry.backup === 'string') &&
         (entry.preserveBackup === undefined || typeof entry.preserveBackup === 'boolean') &&
+        (entry.disposableSource === undefined || typeof entry.disposableSource === 'boolean') &&
         (entry.streaming === undefined ||
           (entry.temp !== undefined &&
             Number.isSafeInteger(entry.streaming?.mtime) &&
             entry.streaming.mtime >= 0 &&
             (entry.streaming.base === null || identity(entry.streaming.base)) &&
+            (entry.streaming.retainBase === undefined ||
+              typeof entry.streaming.retainBase === 'boolean') &&
             (entry.streaming.sealed === undefined || identity(entry.streaming.sealed))))
       )
     })
@@ -169,6 +177,8 @@ export class WriteJournal {
     )
   }
   private save(key: string, entries: unknown[]): void {
+    const startedAt = Date.now()
+    let outcome = 'failed'
     try {
       this.assertMutation?.()
       if (this.storage === null) throw new Error('no durable local storage')
@@ -176,6 +186,7 @@ export class WriteJournal {
       this.storage.saveLocalStorage(key, value)
       if (JSON.stringify(this.storage.loadLocalStorage(key)) !== JSON.stringify(value))
         throw new Error('journal was not kept')
+      outcome = 'complete'
     } catch (cause) {
       throw new EngineError(
         'io',
@@ -184,6 +195,8 @@ export class WriteJournal {
           : 'cannot save the write journal; no replacement was started',
         cause
       )
+    } finally {
+      this.diagnostic?.('journal save', startedAt, outcome)
     }
   }
 }

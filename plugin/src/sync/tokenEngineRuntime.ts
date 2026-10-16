@@ -587,6 +587,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
         return typeof value === 'function' ? value.bind(target) : value
       },
     })
+    const beginPull = this.trace.beginPull.bind(this.trace)
     this.engine = new SyncEngine({
       transferBudget: this.transferBudget,
       client: options.engineClient?.(this.client) ?? this.client,
@@ -605,7 +606,11 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
               })
           if (name === 'writeAtomic')
             return async (path: string, bytes: Uint8Array, mtime: number) => {
-              await target.writeAtomic(path, bytes, mtime)
+              await this.trace.run(
+                'pull atomic write ' + path,
+                () => target.writeAtomic(path, bytes, mtime),
+                true
+              )
               this.actions.written(path)
               this.pulled(path)
             }
@@ -617,7 +622,12 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
             }
           if (name === 'beginAtomicWrite' && target.beginAtomicWrite)
             return async (...args: Parameters<NonNullable<FileSystem['beginAtomicWrite']>>) => {
-              const stage = await target.beginAtomicWrite(...args)
+              const stage = await this.trace.run(
+                'pull stage create ' + args[0],
+                () => target.beginAtomicWrite(...args),
+                true
+              )
+              const trace = this.trace
               const written = () => {
                 this.actions.written(args[0])
                 this.pulled(args[0])
@@ -626,15 +636,30 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
                 get(target, key) {
                   if (key === 'commit')
                     return async (signal?: AbortSignal) => {
-                      await target.commit(signal)
+                      await trace.run(
+                        'pull stage publish ' + args[0],
+                        () => target.commit(signal),
+                        true
+                      )
                       written()
                     }
                   const value = Reflect.get(target, key)
+                  if (
+                    ['append', 'seal', 'discard'].includes(String(key)) &&
+                    typeof value === 'function'
+                  )
+                    return (...parameters: unknown[]) =>
+                      trace.run(
+                        'pull stage ' + String(key) + ' ' + args[0],
+                        () => value.apply(target, parameters),
+                        true
+                      )
                   return typeof value === 'function' ? value.bind(target) : value
                 },
               })
             }
           const value = Reflect.get(target, name)
+          if (name === Symbol.for('abele.sync.trace-pull-v1')) return beginPull
           if (
             name === Symbol.for('abele.sync.directory-identity-v1') &&
             typeof value === 'function'
@@ -667,8 +692,10 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
               work: () => Promise<unknown>,
               preserve: boolean | readonly string[] = true
             ) =>
-              this.trace.run('placement ' + paths.join(', '), () =>
-                value.call(target, paths, work, preserve)
+              this.trace.run(
+                'placement ' + paths.join(', '),
+                () => value.call(target, paths, work, preserve),
+                true
               )
           if (
             (name === 'read' || name === 'stat' || name === 'fingerprint') &&

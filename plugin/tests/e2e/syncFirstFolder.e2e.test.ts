@@ -6,14 +6,19 @@ import type { SyncDriver } from './helpers/syncDriver'
 import { syncProgressSamples } from './helpers/syncProgressSamples'
 import { collectSyncProgressShots, syncProgressShotsPrelude } from './helpers/syncProgressShots'
 import { shotDir } from './helpers/shots'
+import {
+  assertPullEvidence,
+  firstFolderExpectedPulls,
+  firstFolderBudget,
+  FIRST_FOLDER_STALL_MS,
+} from '../helpers/smallPullBounds'
+import type { ExchangeTrace } from '../../src/sync/exchangeTrace'
 
-// CALIBRATE BEFORE LANDING: provisional, not a measured budget. Manager records the first
-// live elapsedMs below and sets generous headroom, still below 60 directories * 10 seconds.
-export const FIRST_FOLDER_PULL_LIMIT_MS = 120_000
+const pullBudget = firstFolderBudget(firstFolderFixture().files.length)
 const fixture = liveSuite()
 const hash = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex')
 
-async function verifyBytes(device: SyncDriver, root: string): Promise<void> {
+async function verifyBytes(device: SyncDriver, root: string, scripts = true): Promise<void> {
   const actual = await device.long<{
     directories: string[]
     files: { path: string; sha: string }[]
@@ -27,6 +32,7 @@ async function verifyBytes(device: SyncDriver, root: string): Promise<void> {
   expect(actual.directories.sort()).toEqual(expected.directories.sort())
   expect(actual.files.sort((a, b) => a.path.localeCompare(b.path))).toEqual(
     expected.files
+      .filter((file) => scripts || !file.path.endsWith('.js'))
       .map((file) => ({ path: file.path, sha: hash(file.bytes) }))
       .sort((a, b) => a.path.localeCompare(b.path))
   )
@@ -42,7 +48,8 @@ liveCase(
       b = s.peer!,
       folder = s.root + '/Shared',
       unrelated = s.root + '/Unrelated'
-    a.timeoutMs = b.timeoutMs = FIRST_FOLDER_PULL_LIMIT_MS + 30000
+    a.timeoutMs = b.timeoutMs = pullBudget
+    b.startupStallMs = FIRST_FOLDER_STALL_MS
     await a.long(
       'seed first folder connection',
       `const root=${JSON.stringify(folder)}, fixture=(${firstFolderFixture.toString()})(42);
@@ -55,14 +62,14 @@ liveCase(
       for(let i=0;i<40;i++){const dir=root+'/Bucket-'+i;await app.vault.createFolder(dir);for(let j=0;j<100;j++)await app.vault.create(dir+'/Sample-'+j+'.md','Unrelated local note '+i+' '+j)}return true`
     )
     expect(b.filesUnder(unrelated)).toHaveLength(4000)
+    expect(b.exists(folder), 'the first pull starts without any shared files').toBe(false)
     const owner = await s.connect()
     expect(
       (await s.client().manifest(null, 1000)).next,
       'fixture must span actual server manifest pages'
     ).toBeTruthy()
-    expect((await s.items()).filter((item) => item.path.startsWith(folder + '/'))).toHaveLength(
-      1024
-    )
+    const manifest = (await s.items()).filter((item) => item.path.startsWith(folder + '/'))
+    expect(manifest).toHaveLength(1024)
     const token = await a.share(owner, 'Folder: ' + folder)
     // Observe the rendered connection window during Connect, not an internal progress signal.
     b.run(`${syncProgressShotsPrelude(shotDir('abele-sync-progress'))}
@@ -72,8 +79,9 @@ liveCase(
     let samples: { label: string; value: number; total: number }[] = []
     const started = Date.now()
     let elapsedMs = 0
+    let connection: string
     try {
-      await s.connect(b, token, undefined, FIRST_FOLDER_PULL_LIMIT_MS + 30000)
+      connection = await s.connect(b, token, undefined, pullBudget)
     } finally {
       elapsedMs = Date.now() - started
       try {
@@ -85,14 +93,28 @@ liveCase(
           '[first folder connection]',
           JSON.stringify({
             elapsedMs,
-            limitMs: FIRST_FOLDER_PULL_LIMIT_MS,
+            hangBudgetMs: pullBudget,
+            stallMs: FIRST_FOLDER_STALL_MS,
             samples,
           })
         )
         await collectSyncProgressShots(b)
       }
     }
-    expect(elapsedMs).toBeLessThan(FIRST_FOLDER_PULL_LIMIT_MS)
+    const evidence = b.run<ReturnType<ExchangeTrace['snapshot']>['firstSync']['pulls']>(
+      `return app.plugins.plugins.abele.tokenEngines.live.get(${JSON.stringify(connection!)}).trace.snapshot().firstSync.pulls`
+    )
+    assertPullEvidence(
+      evidence,
+      firstFolderExpectedPulls(
+        firstFolderFixture().files.map((file) => ({ path: file.path, size: file.bytes.length }))
+      )
+    )
+    // Every version must already be installed before any later cycle can repair an omission.
+    // Together with exact pull/request totals this rejects duplicate files or chunks without
+    // retaining a growing set of file IDs in runtime diagnostics.
+    await verifyBytes(b, folder, false)
+    console.log('[first folder operation bounds]', JSON.stringify(evidence))
     expect(samples.some((sample) => sample.total > 0 && sample.value < sample.total)).toBe(true)
     expect(
       new Set(samples.map((sample) => sample.label)).size,
@@ -132,7 +154,7 @@ liveCase(
     expect(b.filesUnder(unrelated)).toHaveLength(4000)
   },
   fixture,
-  600_000
+  pullBudget + 600_000
 )
 
 it.skip('BUG: NFD task — decomposed Cyrillic names survive first folder connection byte-for-byte', async () => {
