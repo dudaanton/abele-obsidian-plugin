@@ -85,15 +85,30 @@ describe.runIf(available)('zen window', () => {
   it('restores zen after restart and gives a modal the first Escape', async () => {
     await reloadApp('app.emulateMobile(false)')
     expect(evalJson("document.body.classList.contains('abele-zen')")).toBe(true)
-    await run(`
-      const {Modal}=require('obsidian'); const modal=new Modal(app); modal.open();
-      document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
-      modal.close();
-    `)
-    expect(evalJson("document.body.classList.contains('abele-zen')")).toBe(true)
-    await run(
-      `document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));`
-    )
-    await expect.poll(() => evalJson("document.body.classList.contains('abele-zen')")).toBe(false)
+    const escape = () =>
+      run(
+        `document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true,cancelable:true}));`
+      )
+    try {
+      // The page evaluator cannot require Obsidian's plugin API. Use the same real dialog
+      // entry point as the script-form e2e files, without awaiting its dismissal promise.
+      await run(`
+        void window.__abeleTest.showFormModal([
+          {name:'sample',label:'Sample overlay',type:'markdown',text:'A sample dialog over the page.'}
+        ]);
+      `)
+      await expect.poll(() => evalJson("!!document.querySelector('.abele-script-form')")).toBe(true)
+      await escape()
+      await expect
+        .poll(() => evalJson("!!document.querySelector('.abele-script-form')"))
+        .toBe(false)
+      expect(evalJson("document.body.classList.contains('abele-zen')")).toBe(true)
+      await escape()
+      await expect.poll(() => evalJson("document.body.classList.contains('abele-zen')")).toBe(false)
+    } finally {
+      await run(
+        `document.querySelector('.abele-script-form')?.closest('.modal-container')?.querySelector('.modal-bg')?.click();`
+      )
+    }
   })
 })
