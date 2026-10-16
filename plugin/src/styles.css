@@ -548,6 +548,26 @@ body.is-mobile .abele-comment-marker_pending::after {
   background: var(--background-secondary);
 }
 
+/* The settings' still picture of the picked style, under its row, as wide as the rows. */
+.setting-item.abele-obsidian-setting.abele-map-style-preview {
+  grid-template-columns: minmax(0, 1fr);
+  padding-top: 0;
+}
+
+/* It belongs to the row above: no hairline between them. */
+.abele-obsidian-setting.setting-item + .abele-obsidian-setting.setting-item.abele-map-style-preview::before {
+  content: none;
+}
+
+.abele-map-style-preview .abele-map {
+  pointer-events: none;
+}
+
+/* A picture: its pin opens nothing. */
+.abele-map-style-preview .abele-map__pin {
+  cursor: default;
+}
+
 .abele-map__pin {
   width: 14px;
   height: 14px;

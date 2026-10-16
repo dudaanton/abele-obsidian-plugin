@@ -118,6 +118,7 @@
           @update:model-value="updateMapStyle"
         />
       </Setting>
+      <MapStylePreview :choice="mapStyle" :url="savedMapStyleUrl" />
     </Section>
     <Section title="The plugin">
       <Setting name="Changelog" desc="See what changed in every plugin version, newest first.">
@@ -144,6 +145,7 @@ import Input from '../obsidian/Input.vue'
 import Checkbox from '../obsidian/Checkbox.vue'
 import Button from '../obsidian/Button.vue'
 import AttachmentRulesSettings from './AttachmentRulesSettings.vue'
+import MapStylePreview from './MapStylePreview.vue'
 import { openChangelog } from '@/changelog/ChangelogView'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { SnippetService } from '@/services/SnippetService'
@@ -162,6 +164,8 @@ const halfWidthSidebars = ref(config.halfWidthSidebarsOnTablet)
 const keyboardDiagnostics = ref(config.keyboardDiagnostics)
 const mapCoordinatesProperty = ref(config.mapCoordinatesProperty)
 const mapStyleUrl = ref(config.mapStyleUrl)
+// The preview follows the address once it is saved, not every key typed into it.
+const savedMapStyleUrl = ref(config.mapStyleUrl)
 // An older settings file with a URL and no choice reads as one's own style.
 const mapStyle = ref<MapStyleChoice>(config.mapStyle ?? (config.mapStyleUrl ? 'custom' : 'theme'))
 const pickMapStyle = async (value: string) => {
@@ -219,6 +223,7 @@ const updateMapProperty = (value: string) => {
 
 const saveMapStyle = debounce(async (value: string) => {
   config.mapStyleUrl = value.trim()
+  savedMapStyleUrl.value = config.mapStyleUrl
   await config.saveSettings()
 }, 500)
 

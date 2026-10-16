@@ -102,7 +102,7 @@ it('sets the other settings out under headings by what they are about', () => {
       ])
     )
     expect(under('Opening notes')).toEqual(['Remember where notes were left'])
-    expect(under('Maps')).toEqual(['Coordinates property', 'Map style URL'])
+    expect(under('Maps')).toEqual(['Coordinates property', 'Map style'])
     expect(under('The plugin')).toEqual(['Changelog', 'Keyboard diagnostics'])
     // Nothing was dropped on the way: every setting is under one of the headings.
     const all = screen.findAllComponents(Setting).map((s) => s.props('name'))
