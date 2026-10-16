@@ -383,7 +383,7 @@ const showPlace = async (folder, branch) => {
         ${
           i === 0
             ? 'await until(() => group()?.querySelector(\'.tree-item-self[data-path="sample.txt"]\'));'
-            : "await until(() => !tree()?.textContent.includes('Reading the files') && tree()?.querySelector('.search-empty-state'));"
+            : "await until(() => !tree()?.textContent.includes('Reading the files') && (tree()?.querySelector('.search-empty-state') || group()));"
         }
         const changes = [...(group()?.querySelectorAll('.tree-item-self[data-path]') ?? [])].map(r => r.dataset.path);
         const empty = tree().querySelector('.search-empty-state')?.textContent.trim() ?? '';
@@ -405,8 +405,11 @@ const showPlace = async (folder, branch) => {
         ])
         expect(result.diff).toContain('+after')
       } else {
-        expect(result.changes).toEqual([])
-        expect(result.empty).toMatch(/^Nothing (changed|differs from \S+)\.$/)
+        // Denied, the agent changed nothing: only the fake provider's own turn log, if any.
+        const changed = result.changes.filter((path) => path !== 'fixture-turns.jsonl')
+        expect(changed).toEqual([])
+        if (!result.changes.length)
+          expect(result.empty).toMatch(/^Nothing (changed|differs from \S+)\.$/)
       }
       expect(readFileSync(resolve(projectPaths[i], 'sample.txt'), 'utf8')).toBe('before\n')
     }

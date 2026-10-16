@@ -35,6 +35,7 @@ export const NODE_PANEL_FIXTURE = `
 const nodePanel = (() => {
   const names = ${JSON.stringify(NODE_PANEL)}
   const variant = {}
+  let observations = 0
   const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const waitFor = async (fn, what, ms = 10000) => {
     for (const end = Date.now() + ms; Date.now() < end; ) {
@@ -108,7 +109,8 @@ const nodePanel = (() => {
     },
     repository: {
       worktrees: async ({ project_id }) => page(worktrees.filter((w) => w.project_id === project_id)),
-      observe: async ({ worktree_id }) => ({ revision: { kind: 'working', observation_id: 'sample-observation-' + worktree_id, head: HEAD, observed_at: at }, atomic: false }),
+      // A new observation each time, as the node gives, so answers changed by a variant are read.
+      observe: async ({ worktree_id }) => ({ revision: { kind: 'working', observation_id: 'sample-observation-' + worktree_id + '-' + ++observations, head: HEAD, observed_at: at }, atomic: false }),
       status: async ({ worktree_id }) =>
         page(worktree_id === ids.feature
           ? [
