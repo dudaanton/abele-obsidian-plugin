@@ -71,6 +71,8 @@ describe.skipIf(!available)('remembered saved-key recipients', () => {
           config.ai = persisted
           const next = approve({ ...request, url: 'https://API.SAMPLE.EXAMPLE:443/next?q=2' })
           const repeated = !!document.querySelector('.modal')
+          // Which dialog was there, for a failure to be read: the question again, or another one.
+          const repeatedText = document.querySelector('.modal')?.textContent.slice(0, 160) ?? ''
           if (repeated) cancel()
           const nextError = await next.then(() => '', error => error.message)
           const other = approve({ ...request, url: 'https://other.example/next' })
@@ -78,7 +80,7 @@ describe.skipIf(!available)('remembered saved-key recipients', () => {
           const refused = other.then(() => false, () => true)
           cancel()
           const otherRefused = await refused
-          return { allowed, repeated, nextError, otherAsked, otherRefused, outside, text, shot: saved }
+          return { allowed, repeated, repeatedText, nextError, otherAsked, otherRefused, outside, text, shot: saved }
         } finally {
           cancel()
           config.ai = previous
@@ -91,6 +93,7 @@ describe.skipIf(!available)('remembered saved-key recipients', () => {
         )
         if (raw.startsWith('Error:')) throw Error(raw)
         const result = JSON.parse(raw)
+        console.info('remembered recipient', JSON.stringify({ ...result, text: undefined }))
         expect(result.allowed).toEqual(['https://api.sample.example'])
         expect(result.repeated).toBe(false)
         expect(result.nextError).toBe('')
