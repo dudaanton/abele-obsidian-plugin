@@ -34,7 +34,8 @@ function journal(state: NodeSessionScreen): JournalEvent[] {
     stream_id: SESSION,
     seq: ++seq,
     type,
-    data: { run_id: 'sample-process', ...data },
+    // The session's own record is the node's, with nothing beside it; the rest carry the process.
+    data: type === 'session.created' ? data : { run_id: 'sample-process', ...data },
     actor: { kind: 'node' },
     at: at(minutesAgo),
   })

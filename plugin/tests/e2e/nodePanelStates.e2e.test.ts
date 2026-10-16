@@ -62,6 +62,7 @@ const probe = (device: string) =>
       await nodePanel.mode('Files'); seen.files = !!panel.querySelector('.abele-file-tree .tree-item-self[data-path]'); await shot('files')
       await nodePanel.mode('History'); seen.history = !!panel.querySelector('.abele-node-sidebar__history .abele-history__row-subject'); await shot('history')
       await nodePanel.mode('Pull requests'); seen.pulls = text(panel).includes('does not say which remote'); await shot('pulls')
+      await nodePanel.mode('Sessions'); seen.sessions = !!panel.querySelector('.abele-session-row'); await shot('sessions')
       await nodePanel.mode('Changes')
       const places = await nodePanel.places(); seen.places = !!places.querySelector('.suggestion-item'); await shot('place-search', places); await nodePanel.dismiss()
       await shot('place-menu', await nodePanel.menu()); await nodePanel.dismiss()
@@ -79,7 +80,8 @@ const probe = (device: string) =>
       seen.long = panel.querySelectorAll('.abele-file-tree__group .tree-item-self').length > 40
       await shot('changes-long')
       panel = await reopen({}, 'notes')
-      seen.plain = panel.querySelectorAll('.abele-node-modes [role="tab"]').length === 1
+      // A folder without git has its files and its sessions, nothing of git.
+      seen.plain = [...panel.querySelectorAll('.abele-node-modes [role="tab"]')].map((t) => t.getAttribute('aria-label').split(':')[0]).join() === 'Files,Sessions'
       await shot('folder-without-git')
       await reopen({ empty: true }).catch(() => {})
       const root = nodePanel.root()
@@ -94,14 +96,17 @@ const probe = (device: string) =>
 it('pictures every state of the node panel on a computer', () => {
   const seen = probe('desktop')
   const shown = Object.entries(seen).filter(([key]) => key.startsWith('onScreen '))
-  expect(shown.length).toBe(12)
+  expect(shown.length).toBe(13)
   expect(shown.filter(([, ok]) => !ok)).toEqual([])
-  expect(Object.fromEntries(Object.entries(seen).filter(([key]) => !key.startsWith('onScreen ')))).toEqual({
+  expect(
+    Object.fromEntries(Object.entries(seen).filter(([key]) => !key.startsWith('onScreen ')))
+  ).toEqual({
     changes: true,
     aheadBehind: true,
     files: true,
     history: true,
     pulls: true,
+    sessions: true,
     places: true,
     commitBox: true,
     stageGlyphs: true,
@@ -115,6 +120,6 @@ it('pictures every state of the node panel on a computer', () => {
 
 it('pictures every state of the node panel in the phone layout', async () => {
   const seen = await withEmulatedPhone(async () => probe('phone'))
-  expect(Object.keys(seen).filter((key) => key.startsWith('onScreen ')).length).toBe(12)
+  expect(Object.keys(seen).filter((key) => key.startsWith('onScreen ')).length).toBe(13)
   expect(Object.entries(seen).filter(([, ok]) => !ok)).toEqual([])
 })
