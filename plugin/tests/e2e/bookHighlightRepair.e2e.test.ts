@@ -46,10 +46,13 @@ describe.skipIf(!available)('confirming repairs on a real EPUB', () => {
       await evalLong(
         `(async () => {
       const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
+      // Each wait names what it waits for, and says what it last saw, so a phone's stack-less
+      // error still tells which stage gave up.
+      let stage = 'opening the book', seen = () => null
       const until = async (fn, timeout = 15000) => {
         const end = Date.now() + timeout
         while (Date.now() < end) { const value = await fn(); if (value) return value; await wait(80) }
-        throw new Error('Timed out waiting for reader or action')
+        throw new Error('timed out, last seen ' + JSON.stringify(seen()))
       }
       let leaf
       try {
@@ -77,19 +80,28 @@ describe.skipIf(!available)('confirming repairs on a real EPUB', () => {
         const file = await app.vault.create(${JSON.stringify(NOTE)}, noteText)
         leaf = app.workspace.getLeaf('tab')
         await leaf.setViewState({ type: 'abele-book', state: { file: ${JSON.stringify(BOOK)} }, active: true })
+        stage = 'the three highlights loading'
+        seen = () => ({ status: leaf.view?.model?.status, highlights: leaf.view?.model?.highlights?.length })
         const opened = await until(() => leaf.view?.model?.highlights?.length === 3 && leaf.view)
         await opened.engine.goTo(0)
+        stage = 'three repair candidates'
+        seen = () => ({ repairs: opened.reading?.marks.repairs().map(r => r.cfi), contents: opened.engine.renderer?.getContents?.().map(c => c.index) })
         await until(() => opened.reading.marks.repairs().length === 3)
         const before = await app.vault.read(file)
         if (before !== noteText) throw new Error('Detection modified note')
+        const shown = () => ({ more: !!document.querySelector('.abele-book-selection__more'), menu: [...document.querySelectorAll('.menu-item')].map(el => el.textContent), modals: [...document.querySelectorAll('.modal')].map(el => el.className + ': ' + el.textContent.slice(0, 80)), repairs: opened.reading.marks.repairs().length })
+        seen = shown
         const menu = async (all) => {
+          stage = 'the highlight menu button'
           opened.reading.marks.open(opened.model.highlights.find(h => h.cfi === pairs[0].old) || opened.model.highlights[0])
           const action = await until(() => document.querySelector('.abele-book-selection__more'))
           action.click()
+          stage = 'the repair menu items'
           const options = await until(() => [...document.querySelectorAll('.menu-item')].filter(el => el.textContent.includes('Repair')))
           const option = options.find(el => el.textContent.includes(all ? 'all found' : 'this highlight'))
           if (!option) throw new Error('Missing menu choice: ' + options.map(x => x.textContent).join('|'))
           option.click()
+          stage = 'the repair dialog'
           return until(() => [...document.querySelectorAll('.modal.abele-modal')].find(el => el.textContent.includes('Only mismatches found')))
         }
         let dialog = await menu(false)
@@ -99,35 +111,41 @@ describe.skipIf(!available)('confirming repairs on a real EPUB', () => {
         const cancelled = await app.vault.read(file)
         dialog = await menu(false)
         ;[...dialog.querySelectorAll('.abele-modal__footer button')].find(b => b.textContent.includes('Repair')).click()
+        stage = 'the first repair written'
         await until(async () => (await app.vault.read(file)) !== before)
         const once = await app.vault.read(file)
         const expectedOne = noteText.replace('#cfi=' + encoded(pairs[0].old) + '|', '#cfi=' + encoded(pairs[0].suggested) + '|')
         if (once !== expectedOne) throw new Error('First repair changed unexpected bytes')
         // A still-unrepaired mark now offers an all-found action for the two remaining links.
+        stage = 'the second highlight menu button'
         opened.reading.marks.open(opened.model.highlights.find(h => h.cfi === pairs[1].old))
         const action = await until(() => document.querySelector('.abele-book-selection__more'))
         action.click()
+        stage = 'the repair-all menu item'
         const all = await until(() => [...document.querySelectorAll('.menu-item')].find(el => el.textContent.includes('all found')))
         all.click()
+        stage = 'the repair-all dialog'
         dialog = await until(() => [...document.querySelectorAll('.modal.abele-modal')].find(el => el.textContent.includes('Only mismatches found')))
         ;[...dialog.querySelectorAll('.abele-modal__footer button')].find(b => b.textContent.includes('Repair')).click()
         const expected = pairs.slice(1).reduce((md, p) => md.replace('#cfi=' + encoded(p.old) + '|', '#cfi=' + encoded(p.suggested) + '|'), expectedOne)
+        stage = 'the remaining repairs written'
         await until(async () => (await app.vault.read(file)) === expected)
         return JSON.stringify({ before: before === noteText, cancelled: cancelled === noteText, copy: shown.includes(pairs[0].words), one: once === expectedOne, all: (await app.vault.read(file)) === expected })
-      } catch (error) { return JSON.stringify({ error: String(error?.stack || error) }) }
+      } catch (error) { return JSON.stringify({ error: stage + ': ' + String(error?.message ?? error), stack: String(error?.stack ?? '') }) }
       finally { if (leaf?.view?.file?.path === ${JSON.stringify(BOOK)}) leaf.detach() }
     })()`,
         180_000
       )
     ) as {
       error?: string
+      stack?: string
       before: boolean
       cancelled: boolean
       copy: boolean
       one: boolean
       all: boolean
     }
-    expect(report.error).toBeUndefined()
+    expect(report.error, report.stack).toBeUndefined()
     expect(report).toMatchObject({
       before: true,
       cancelled: true,

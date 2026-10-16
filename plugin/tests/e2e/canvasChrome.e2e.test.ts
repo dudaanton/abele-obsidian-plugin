@@ -29,7 +29,7 @@ const run = <T>(body: string): T =>
 const state = () =>
   run(`const v=view(),e=v?.editor,d=v?.documentLease?.document
     return {labelEditable:!!document.querySelector('[data-frame-id][contenteditable="true"]'),gesturing:e?.controls.gesturing(),labelling:e?.controls.labelling(),naming:e?.controls.naming(),composing:e?.composing,editing:e?.editing,active:document.activeElement?.tagName+'.'+document.activeElement?.className,spot:window.__canvasChrome?.spot,tool:e?.controls.tool(),picked:e?.controls.picked().ids,camera:v?.viewer.camera,dirty:d?.session.dirty,busy:d?.session.busy,
-      waiting:e?.waiting,error:d?.error,ink:(v?.viewer.graph.abele?.ink??[]).length,events:(window.__canvasChrome?.events??[]).slice(-24),moves:window.__canvasChrome?.moves,stage:v?.viewer.stage.getBoundingClientRect().toJSON(),nodes:v?.viewer.graph.nodes.map(n=>[n.id,n.type,n.x,n.y,n.width,n.height]),corners:v&&[[363,166],[734,280]].map(([x,y])=>v.viewer.input.point({clientX:x,clientY:y})),leaves:app.workspace.getLeavesOfType('abele-canvas').filter(l=>l.view.file?.path===path).length,chromeClass:v?.contentEl.classList.contains('abele-canvas-view_chrome'),hosts:v?.contentEl.querySelectorAll('.abele-canvas-chrome-host').length,sameInput:v?.editor?.inputAdapter===v?.viewer.input,children:v&&[...v.contentEl.children].map(c=>[c.className,c.getBoundingClientRect().height|0,getComputedStyle(c).display])}`)
+      waiting:e?.waiting,error:d?.error,label:document.querySelector('[data-frame-id][contenteditable="true"]')?.innerText,selection:String(getSelection()),groups:d&&d.session.graph.nodes.filter(n=>n.type==='group').map(n=>n.label),ink:(v?.viewer.graph.abele?.ink??[]).length,events:(window.__canvasChrome?.events??[]).slice(-24),moves:window.__canvasChrome?.moves,stage:v?.viewer.stage.getBoundingClientRect().toJSON(),nodes:v?.viewer.graph.nodes.map(n=>[n.id,n.type,n.x,n.y,n.width,n.height]),corners:v&&[[363,166],[734,280]].map(([x,y])=>v.viewer.input.point({clientX:x,clientY:y})),leaves:app.workspace.getLeavesOfType('abele-canvas').filter(l=>l.view.file?.path===path).length,chromeClass:v?.contentEl.classList.contains('abele-canvas-view_chrome'),hosts:v?.contentEl.querySelectorAll('.abele-canvas-chrome-host').length,sameInput:v?.editor?.inputAdapter===v?.viewer.input,children:v&&[...v.contentEl.children].map(c=>[c.className,c.getBoundingClientRect().height|0,getComputedStyle(c).display])}`)
 const until = async (expression: string) => {
   try {
     await expect
@@ -200,6 +200,10 @@ describe.skipIf(!available)('the canvas by hand', () => {
     await input(screen(-30, -30), screen(560, 150))
     await until(`document.activeElement?.matches('[data-frame-id][contenteditable="true"]')`)
     await type('Sample stage')
+    // The words are on the label before Enter writes them: a loss in typing is told apart from a
+    // name lost on its way to the file.
+    const written = `document.querySelector('[data-frame-id][contenteditable="true"]')?.innerText.trim()`
+    await until(`${written}==='Sample stage'`)
     await key('Enter')
     if (onPhone()) await until(`!document.activeElement?.matches('[contenteditable="true"]')||true`)
     await saved()
