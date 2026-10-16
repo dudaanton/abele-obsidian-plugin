@@ -96,9 +96,15 @@ describe.skipIf(!available)('confirming repairs on a real EPUB', () => {
           const call = { h: h?.cfi ?? null, active: opened.model.active?.cfi ?? null, disposed: opened.reading.disposed, repairing: opened.reading.repairing, candidates: opened.reading.marks.repairs().filter(r => !h || r.cfi === h.cfi).length, modals: [], end: 'pending' }
           calls.push(call)
           // A dialog that opens and closes again before a poll sees it is still told.
-          const watch = new MutationObserver(() => call.modals.push(document.querySelectorAll('.modal').length))
+          const t0 = Date.now()
+          call.stack = String(new Error().stack).split('\n').slice(1, 9).join(' < ')
+          call.events = []
+          const watch = new MutationObserver(() => call.modals.push((Date.now() - t0) + ':' + document.querySelectorAll('.modal').length))
           watch.observe(document.body, { childList: true })
-          setTimeout(() => watch.disconnect(), 5000)
+          const seenEvent = (e) => call.events.push((Date.now() - t0) + ':' + e.type + ':' + (e.target?.className?.baseVal ?? e.target?.className ?? e.target?.nodeName))
+          const types = ['click', 'pointerdown', 'pointerup', 'touchstart', 'touchend', 'keydown', 'popstate', 'blur', 'focusin', 'resize', 'selectionchange']
+          for (const type of types) window.addEventListener(type, seenEvent, true)
+          setTimeout(() => { watch.disconnect(); for (const type of types) window.removeEventListener(type, seenEvent, true) }, 5000)
           return repair(h).then(() => { call.end = 'done' }, (e) => { call.end = 'threw ' + e?.message; throw e })
         }
         const visible = () => ({ more: !!document.querySelector('.abele-book-selection__more'), menu: [...document.querySelectorAll('.menu-item')].map(el => el.textContent), modals: [...document.querySelectorAll('.modal')].map(el => el.className + ': ' + el.textContent.slice(0, 80)), notices: [...document.querySelectorAll('.notice')].map(el => el.textContent), repairs: opened.reading.marks.repairs().length, active: opened.model.active?.cfi ?? null, calls })
