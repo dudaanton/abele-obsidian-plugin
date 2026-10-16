@@ -115,8 +115,7 @@ export class LiveTranscript {
         const open = this.compaction?.sessionMark?.kind === 'compacting'
         if (data.result !== 'success') {
           const line = open ? this.compaction! : this.mark()
-          delete line.sessionMark
-          line.error = `Compacting failed${text('error') ? `: ${text('error')}` : ''}`
+          line.sessionMark = { kind: 'failed', ...(text('error') ? { text: text('error') } : {}) }
           this.compaction = undefined
           return true
         }
@@ -147,8 +146,7 @@ export class LiveTranscript {
 
   private dropCompaction(): void {
     if (!this.compaction) return
-    delete this.compaction.sessionMark
-    this.compaction.error = 'Compacting stopped with the session'
+    this.compaction.sessionMark = { kind: 'failed', text: 'it stopped with the session' }
     this.compaction = undefined
   }
 

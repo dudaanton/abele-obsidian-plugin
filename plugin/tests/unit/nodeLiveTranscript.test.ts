@@ -197,11 +197,13 @@ describe('lines the session draws itself', () => {
       }),
     ])
     expect(projection.live?.compacting).toBe(false)
-    expect(projection.messages.filter((m) => m.sessionMark)).toEqual([])
+    // A line across the talk like the other compaction lines, in the error colour.
+    expect(projection.messages).toHaveLength(1)
     expect(projection.messages[0]).toMatchObject({
       role: 'system',
-      error: 'Compacting failed: sample failure',
+      sessionMark: { kind: 'failed', text: 'sample failure' },
     })
+    expect(projection.messages[0].error).toBeUndefined()
   })
 
   it('draws what woke it when a background task ends and the session answers by itself', () => {

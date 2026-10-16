@@ -146,7 +146,13 @@ it('opens a long session at its end and reads the earlier page from the node whe
 })
 
 it('says plainly when earlier messages cannot be read and when compacting failed, with a way to try again', async () => {
-  const r = await run<{ line: string; retry: boolean; failed: string; outside: string[] }>(`
+  const r = await run<{
+    line: string
+    retry: boolean
+    failed: string
+    banner: boolean
+    outside: string[]
+  }>(`
     const root = await open('error');
     const list = root.querySelector('.abele-ai-chat__messages');
     await until(() => [...root.querySelectorAll('.abele-chat-msg')].some(m => m.textContent.includes('Answer 120.')), 'The latest answer');
@@ -157,10 +163,12 @@ it('says plainly when earlier messages cannot be read and when compacting failed
     list.scrollTop = list.scrollHeight;
     await wait(300);
     await shot('node-sessions-error');
-    return JSON.stringify({ line: line.textContent.trim(), retry: !!line.querySelector('button'), failed, outside: outside(root) });`)
+    return JSON.stringify({ line: line.textContent.trim(), retry: !!line.querySelector('button'), failed, banner: !!root.querySelector(':scope > .abele-ai-chat__error'), outside: outside(root) });`)
   expect(r.line).toContain('Could not read earlier messages')
   expect(r.retry).toBe(true)
   expect(r.failed).toContain('Compacting failed: the context could not be shortened')
+  // Said once, on its line: no error banner over the talk repeats it.
+  expect(r.banner).toBe(false)
   expect(r.outside).toEqual([])
 })
 

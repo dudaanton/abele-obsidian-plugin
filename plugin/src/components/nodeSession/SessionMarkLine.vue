@@ -2,7 +2,11 @@
   <!-- A line the session draws across the conversation, like a date divider: it compacted here
        (how much it held before and after; what it kept is in the tooltip, the retelling opens on
        a press), it is compacting now, or something it left running woke it. -->
-  <div class="abele-session-mark" :class="`abele-session-mark_${mark.kind}`" role="note">
+  <div
+    class="abele-session-mark"
+    :class="`abele-session-mark_${mark.kind}`"
+    :role="mark.kind === 'failed' ? 'alert' : 'note'"
+  >
     <div class="abele-session-mark__line" />
     <span
       ref="label"
@@ -33,11 +37,17 @@ import { tokens, type SessionMark } from './types'
 const props = defineProps<{ mark: SessionMark; summary?: string }>()
 const open = ref(false)
 
-const ICON = { compacting: 'loader', compacted: 'fold-vertical', woke: 'alarm-clock' } as const
+const ICON = {
+  compacting: 'loader',
+  compacted: 'fold-vertical',
+  woke: 'alarm-clock',
+  failed: 'triangle-alert',
+} as const
 const said = computed(() => {
   const { mark } = props
   if (mark.kind === 'compacting') return 'Compacting…'
   if (mark.kind === 'woke') return `Woke: ${mark.text ?? 'a background task ended'}`
+  if (mark.kind === 'failed') return `Compacting failed${mark.text ? `: ${mark.text}` : ''}`
   return mark.before && mark.after
     ? `Compacted · ${tokens(mark.before)} → ${tokens(mark.after)}`
     : 'Compacted'
@@ -83,6 +93,9 @@ onMounted(() => {
       color: var(--text-normal);
     }
   }
+}
+.abele-session-mark_failed .abele-session-mark__label {
+  color: var(--text-error);
 }
 .abele-session-mark_compacting .abele-obsidian-icon__icon {
   animation: abele-session-mark-spin 1.2s linear infinite;

@@ -88,6 +88,8 @@ export class NodeChatPresenter implements ChatPresentationSession {
   /** The first event this device keeps for the session; earlier ones are on the node. */
   private readonly firstKept = ref(1)
   readonly olderState = ref<'idle' | 'loading' | 'failed'>('idle')
+  /** Why the last earlier page could not be read; said on its line, not as the chat's error. */
+  readonly olderError = ref('')
   /** There is more of the session before what is shown. */
   readonly hasOlder = computed(() => (this.older.value[0]?.seq ?? this.firstKept.value) > 1)
   readonly providerReports = ref<ReturnType<typeof nodeProviders>>([])
@@ -629,6 +631,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
   async loadOlder(): Promise<void> {
     if (this.olderState.value === 'loading' || !this.hasOlder.value || this.destroyed) return
     this.olderState.value = 'loading'
+    this.olderError.value = ''
     try {
       const before = this.older.value[0]?.seq ?? this.firstKept.value
       const page = await readOlder(this.connection.client, this.reference.sessionId, before)
@@ -638,7 +641,8 @@ export class NodeChatPresenter implements ChatPresentationSession {
       await this.refresh()
     } catch (error) {
       this.olderState.value = 'failed'
-      this.report(error)
+      this.olderError.value = error instanceof Error ? error.message : 'The node did not answer'
+      console.debug('[Abele node] earlier page unavailable', error)
     }
   }
 

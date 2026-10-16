@@ -74,7 +74,7 @@ export interface ChildSession {
 
 /** A line the session itself puts in the conversation: compacting, compacted, woken. */
 export interface SessionMark {
-  kind: 'compacting' | 'compacted' | 'woke'
+  kind: 'compacting' | 'compacted' | 'woke' | 'failed'
   /** Tokens before and after compacting. */
   before?: number
   after?: number

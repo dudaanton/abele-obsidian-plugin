@@ -198,6 +198,24 @@ describe('a giant session in its chat', () => {
     }
   })
 
+  it("says a failed earlier page on its own line, not in the chat's error", async () => {
+    const f = fixture()
+    await f.store.transaction((s) => {
+      s.node_id = 'sample-node'
+    })
+    const p = presenter(f)
+    try {
+      await p.load()
+      vi.mocked(f.client.request).mockRejectedValueOnce(new Error('Sample timeout'))
+      await p.loadOlder()
+      expect(p.olderState.value).toBe('failed')
+      expect(p.olderError.value).toBe('Sample timeout')
+      expect(p.error.value).toBe('')
+    } finally {
+      p.destroy()
+    }
+  })
+
   it('starts again at the window on a node that says where its journal ends only when subscribed', async () => {
     const f = fixture({ head: false })
     await f.store.transaction((s) => {

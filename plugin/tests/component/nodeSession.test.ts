@@ -188,6 +188,17 @@ describe('chatBlocks', () => {
   })
 })
 
+describe('a failed compaction', () => {
+  it('is a line across the talk in the error colour, saying why', () => {
+    const view = mount(SessionMarkLine, {
+      props: { mark: { kind: 'failed', text: 'sample reason' } },
+    })
+    expect(view.text()).toBe('Compacting failed: sample reason')
+    expect(view.get('.abele-session-mark').classes()).toContain('abele-session-mark_failed')
+    expect(view.get('.abele-session-mark').attributes('role')).toBe('alert')
+  })
+})
+
 describe('the node panel sessions mode', () => {
   it('stands fifth, counting only the sessions that wait for you, in orange', async () => {
     const { default: NodeModes } = await import('@/components/nodeWork/NodeModes.vue')

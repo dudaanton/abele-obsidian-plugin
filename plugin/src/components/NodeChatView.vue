@@ -79,7 +79,14 @@
         :aria-busy="presenter.olderState?.value === 'loading'"
       >
         <template v-if="presenter.olderState?.value === 'failed'">
-          <span>Could not read earlier messages</span>
+          <span
+            :aria-label="
+              presenter.olderError?.value
+                ? `Could not read earlier messages: ${presenter.olderError.value}`
+                : undefined
+            "
+            >Could not read earlier messages</span
+          >
           <Button text="Try again" @click="loadOlder" />
         </template>
         <span v-else>Loading earlier messages…</span>
