@@ -2,7 +2,29 @@ import { afterEach, expect, it, vi } from 'vitest'
 import type { DataAdapter } from 'obsidian'
 import { probeResourceRanges } from '@/sync/mobileResourceRanges'
 import { BoundedVaultIo } from '@/sync/boundedVaultIo'
+import { connectionAdapter } from '@/sync/connectionScope'
+import { connectionPrivateRoot } from '@/sync/connectionPaths'
 afterEach(() => vi.unstubAllGlobals())
+it('creates and removes resource probes only in the connection-owned staging area', async () => {
+  const f = setup(),
+    root = connectionPrivateRoot('sample-connection')
+  const write = vi.spyOn(f.adapter, 'writeBinary'),
+    remove = vi.spyOn(f.adapter, 'remove')
+  const adapter = connectionAdapter(f.adapter, 'Shared', root)
+  expect(
+    await probeResourceRanges(
+      adapter,
+      f.fetcher as unknown as typeof fetch,
+      () => {},
+      '.obsidian',
+      root
+    )
+  ).not.toBeNull()
+  expect(write).toHaveBeenCalledOnce()
+  expect(write.mock.calls[0][0]).toMatch(new RegExp('^' + root.replaceAll('.', '\\.') + '/writes/'))
+  expect(remove.mock.calls.map(([path]) => path)).toEqual([write.mock.calls[0][0]])
+  expect(f.files.size).toBe(0)
+})
 function setup(status = 206) {
   const files = new Map<string, Uint8Array>()
   const folders = new Set<string>()

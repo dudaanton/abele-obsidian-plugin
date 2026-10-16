@@ -4,7 +4,7 @@ export const PRIVATE_PLACEMENT_STAGES = Symbol.for('abele.sync.private-placement
 
 /** Trusted core integration only: these destinations are never server paths or inventory. */
 export function privatePlacementStages(fs: FileSystem, privateRoot?: string) {
-  const owned = new Set<string>()
+  const owned = new Map<string, string>()
   const destination = (path: string) => {
     if (
       !/^\.abele-sync\/placement-(?:inbox\/[a-f0-9-]+|outbox\/[a-f0-9]{64}\/[a-f0-9]{64})$/.test(
@@ -16,27 +16,27 @@ export function privatePlacementStages(fs: FileSystem, privateRoot?: string) {
   const physical = (path: string) =>
     privateRoot ? privateRoot + path.slice('.abele-sync'.length) : path
   const retained = (path: string) => {
-    if (!owned.has(path)) throw new EngineError('protocol', 'Unknown private placement stage')
+    const local = owned.get(path)
+    if (!local) throw new EngineError('protocol', 'Unknown private placement stage')
+    return local
   }
   return {
     async writeAtomic(path: string, bytes: Uint8Array, mtime: number) {
       destination(path)
       await fs.writeAtomic(physical(path), bytes, mtime)
-      owned.add(path)
+      owned.set(path, physical(path))
     },
     read(path: string) {
-      retained(path)
-      return fs.read(physical(path))
+      return fs.read(retained(path))
     },
     async remove(path: string) {
-      retained(path)
-      await fs.remove(physical(path))
+      await fs.remove(retained(path))
       owned.delete(path)
     },
     async beginAtomicWrite(path: string, mtime: number, base: null) {
       destination(path)
       const stage = await fs.beginAtomicWrite(physical(path), mtime, base)
-      owned.add(stage.id)
+      owned.set(stage.id, stage.id)
       return new Proxy(stage, {
         get(target, key) {
           if (key === 'commit')
@@ -54,8 +54,7 @@ export function privatePlacementStages(fs: FileSystem, privateRoot?: string) {
       })
     },
     openRead(path: string) {
-      retained(path)
-      return fs.openRead(path)
+      return fs.openRead(retained(path))
     },
   }
 }

@@ -1,4 +1,4 @@
-import { connectionPrivateRoot, legacyPrivateDownload, withinRoot } from './connectionPaths'
+import { connectionPrivateRoot, privateDownload, withinRoot } from './connectionPaths'
 import { assertPhysicalPath } from './external/projection'
 import { privateRecoveryDirectory } from './privateRecovery'
 import { sha256 } from './external/hash'
@@ -269,12 +269,11 @@ export class ObsidianFileSystem implements FileSystem {
       () => this.runtimeFence?.assertReady(),
       (work) => (this.runtimeFence ? this.runtimeFence.effect(work) : work()),
       this.scopedAdapter,
-      this.configDir
+      this.configDir,
+      this.privateRoot
     )
     this.writer = new VaultWriter({
-      stagingDirectory: this.privateRoot
-        ? this.privateRoot + '/writes'
-        : stagingDirectory(this.configDir),
+      stagingDirectory: stagingDirectory(this.configDir, this.privateRoot),
       adapter: this.guardedAdapter,
       native: this.native,
       journal: this.journal,
@@ -383,7 +382,7 @@ export class ObsidianFileSystem implements FileSystem {
             'streaming' in entry &&
             entry.streaming &&
             !entry.backup &&
-            legacyPrivateDownload(entry.target)
+            privateDownload(entry.target)
           )
       )
     )
@@ -422,8 +421,13 @@ export class ObsidianFileSystem implements FileSystem {
         entry.temp &&
         withinRoot(entry.target, this.privateRoot + '/placement-inbox') &&
         withinRoot(entry.temp, this.privateRoot)
-      )
-        await (await this.reopenStage(entry.temp)).discard()
+      ) {
+        if ((await this.rawStat(entry.temp)) === null) {
+          // Creation and discard each have a durable-intent/missing-file crash window.
+          this.journal.drop(entry)
+          this.stages.delete(entry.temp)
+        } else await (await this.reopenStage(entry.temp)).discard()
+      }
   }
 
   /** Placement needs immutable copies of its targets, not another full vault scan. */
@@ -821,6 +825,7 @@ export class ObsidianFileSystem implements FileSystem {
       if ((await this.rawStat(path)) === null) return
       throw new EngineError('io', `cannot remove ${path}`, cause)
     }
+    if (this.privateRoot && withinRoot(path, this.privateRoot)) return
     this.awaitingIndex.add(path)
     this.wrote(path)
     await this.directories.removedChild(path)

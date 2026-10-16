@@ -954,3 +954,91 @@ it.each(['owned', 'legacy'])(
     }
   }
 )
+
+it.each(['before-create', 'after-remove', 'other-connection'])(
+  'starts a folder connection after interrupted private work: %s',
+  async (gap) => {
+    const { app, ui, host, registry, encoded, release, probe, makeHost } = inspectionFixture(
+      false,
+      'Notes'
+    )
+    let restarted: TokenEngines | undefined
+    let restore: (() => void) | undefined
+    try {
+      release()
+      await ui.connect(encoded)
+      const id = registry.records()[0].id
+      await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
+      await ui.sync(id)
+      const { connectionAdapter } = await import('@/sync/connectionScope')
+      const { connectionPrivateRoot } = await import('@/sync/connectionPaths')
+      const { privatePlacementStages } = await import('@/sync/privatePlacementStages')
+      const owner = gap === 'other-connection' ? 'another-connection' : id
+      const root = connectionPrivateRoot(owner)
+      const fs = new ObsidianFileSystem(app as unknown as App, {
+        adapter: connectionAdapter(
+          app.vault.adapter,
+          gap === 'other-connection' ? 'Private' : 'Notes',
+          root
+        ),
+        connectionId: owner,
+        fileScope: gap === 'other-connection' ? 'Private' : 'Notes',
+      })
+      const stages = privatePlacementStages(fs, root)
+      const path = '.abele-sync/placement-inbox/aaaaaaaa-bbbb'
+      let temp: string
+      if (gap === 'before-create') {
+        const create = vi
+          .spyOn(Reflect.get(fs, 'io'), 'create')
+          .mockRejectedValueOnce(new Error('simulated termination'))
+        restore = () => create.mockRestore()
+        await expect(stages.beginAtomicWrite(path, 0, null)).rejects.toThrow(
+          'simulated termination'
+        )
+        temp = new WriteJournal(app)
+          .entries()
+          .find((entry) => entry.target === root + '/placement-inbox/aaaaaaaa-bbbb')!.temp!
+      } else {
+        const stage = await stages.beginAtomicWrite(path, 0, null)
+        temp = stage.id
+        await stage.append(0, new Uint8Array([1, 2]))
+        if (gap === 'after-remove') {
+          const original = app.saveLocalStorage.bind(app)
+          app.saveLocalStorage = (key, value) => {
+            if (key === JOURNAL_KEY) throw new Error('simulated termination')
+            original(key, value)
+          }
+          restore = () => {
+            app.saveLocalStorage = original
+          }
+          await expect(stage.discard()).rejects.toThrow('cannot save the write journal')
+        }
+      }
+      restore?.()
+      restore = undefined
+      expect(new WriteJournal(app).entries().some((entry) => entry.temp === temp)).toBe(true)
+      await host.close()
+      const stat = vi.spyOn(app.vault.adapter, 'stat')
+      restarted = makeHost()
+      restarted.start()
+      await vi.waitFor(() =>
+        expect(ui.runtimes.has(id) || registry.records()[0].status === 'error').toBe(true)
+      )
+      expect(ui.activity.value[id]?.error).toBeUndefined()
+      expect(ui.runtimes.has(id)).toBe(true)
+      await ui.sync(id)
+      expect(new WriteJournal(app).entries().some((entry) => entry.temp === temp)).toBe(
+        gap === 'other-connection'
+      )
+      if (gap === 'other-connection')
+        expect(stat.mock.calls.some(([path]) => path.startsWith(root))).toBe(false)
+      stat.mockRestore()
+    } finally {
+      restore?.()
+      release()
+      await restarted?.close()
+      await host.close()
+      probe.mockRestore()
+    }
+  }
+)

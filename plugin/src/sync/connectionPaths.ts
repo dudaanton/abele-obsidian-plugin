@@ -4,6 +4,10 @@ export const withinRoot = (path: string, root: string) =>
   path === root || path.startsWith(root + '/')
 export const legacyPrivateDownload = (path: string) =>
   /^\.abele-sync\/placement-inbox\/[a-f0-9-]+$/.test(path)
+/** Uncommitted inbox streams are never publication recovery, including another owner's. */
+export const privateDownload = (path: string) =>
+  legacyPrivateDownload(path) ||
+  /^\.abele-sync\/connections\/[^/]+\/placement-inbox\/[a-f0-9-]+$/.test(path)
 
 export const CONNECTION_HOST = Symbol.for('abele.sync.connection-host-v1')
 export const CONNECTION_ROOT = Symbol.for('abele.sync.connection-root-v1')

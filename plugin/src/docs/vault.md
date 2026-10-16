@@ -2288,8 +2288,10 @@ requires touching another root, keeping the recovery records and local bytes.
 Folder connection startup, projection inspection, recovery, and native/adapter file
 access share the same root boundary. Private placement downloads, write staging, and
 recovery copies use a device-local `.abele-sync/connections/<connection-id>/` namespace.
-Abandoned owned inbox downloads are discarded on restart; legacy uncommitted inbox
-stages remain untouched and do not block a folder connection. Folder connections
+Mobile capability probes use that same owned staging area. Abandoned owned inbox
+downloads are discarded on restart, including journal entries whose temporary file
+was never created or was already removed. Another connection's uncommitted inbox
+downloads and legacy inbox stages remain untouched and do not block startup. Folder connections
 honor the vault-root ignore file through an exact-path, read-only control-file
 exception. This file is never listed, uploaded, or synchronized by a folder
 connection; the exception permits no configuration-directory walk.

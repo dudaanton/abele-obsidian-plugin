@@ -100,7 +100,8 @@ export class BoundedVaultIo {
     private readonly assertOwned: () => void = () => {},
     private readonly effect: <T>(work: () => T) => T = (work) => work(),
     private readonly receiptScope: object = adapter,
-    private readonly configDir?: string
+    private readonly configDir?: string,
+    private readonly privateRoot?: string
   ) {}
   private get receipts(): Map<string, WriteReceipt> {
     let receipts = writeReceipts.get(this.receiptScope)
@@ -192,7 +193,13 @@ export class BoundedVaultIo {
     this.resourceMobile =
       typeof window === 'undefined' || typeof window.fetch !== 'function'
         ? null
-        : await probeResourceRanges(this.adapter, window.fetch.bind(window), trace, this.configDir)
+        : await probeResourceRanges(
+            this.adapter,
+            window.fetch.bind(window),
+            trace,
+            this.configDir,
+            this.privateRoot
+          )
     if (this.resourceMobile) {
       console.debug('[abele-sync] WebView file ranges verified')
       return {}
@@ -205,13 +212,19 @@ export class BoundedVaultIo {
       readFileInChunks: typeof files?.readFileInChunks,
     })
     if ((!files?.readFile && !files?.readFileInChunks) || !files?.stat) return null
-    this.sequentialMobile = await probeSequentialFiles(this.adapter, files, trace, this.configDir)
+    this.sequentialMobile = await probeSequentialFiles(
+      this.adapter,
+      files,
+      trace,
+      this.configDir,
+      this.privateRoot
+    )
     if (this.sequentialMobile) {
       console.debug('[abele-sync] native filesystem sequential chunks verified')
       return { files }
     }
     if (!files.readFile) return null
-    const path = `${stagingDirectory(this.configDir)}/.abele-sync-${Math.random().toString(36).slice(2, 10).padEnd(8, '0')}.tmp`
+    const path = `${stagingDirectory(this.configDir, this.privateRoot)}/.abele-sync-${Math.random().toString(36).slice(2, 10).padEnd(8, '0')}.tmp`
     let created = false
     const release = reserveStagingPath(path)
     try {
