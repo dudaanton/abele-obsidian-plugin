@@ -28,6 +28,7 @@ import {
   setFocusEmulation,
 } from './helpers/obsidianCli'
 import { shotDir } from './helpers/shots'
+import { editableTapPoints } from '../helpers/editableTapPoints'
 
 const CHAT = 'AI/Chats/Abele composer probe.abchat'
 const PHONE = { width: 390, height: 844 }
@@ -173,12 +174,13 @@ const probeLib = `(() => {
       if (!content) throw new Error('no editable composer')
       const box = field.getBoundingClientRect()
       const editable = content.getBoundingClientRect()
+      const style = getComputedStyle(field)
+      const points = (${editableTapPoints.toString()})(box, [style.borderTopLeftRadius,
+        style.borderTopRightRadius, style.borderBottomRightRadius, style.borderBottomLeftRadius])
       const misses = []
-      for (const x of [box.left + 2, box.right - 2]) {
-        for (const y of [box.top + 2, box.bottom - 2]) {
-          const hit = document.elementFromPoint(x, y)
-          if (!hit || !content.contains(hit)) misses.push({ x, y, hit: hit?.className })
-        }
+      for (const [x, y] of points) {
+        const hit = document.elementFromPoint(x, y)
+        if (!hit || !content.contains(hit)) misses.push({ x, y, hit: hit?.className })
       }
       return {
         gaps: [editable.left - box.left, editable.top - box.top,

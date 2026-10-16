@@ -15,6 +15,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
 import { shotDir } from './helpers/shots'
+import { editableTapPoints } from '../helpers/editableTapPoints'
 import {
   evalJson,
   evalRaw,
@@ -198,7 +199,7 @@ describe.skipIf(!available)('the note field', () => {
     `
 
     it('makes the editable cover the empty and filled form field', () => {
-      const areas = run<Array<{ gaps: number[]; misses: number }>>(`
+      const areas = run<Array<{ gaps: number[]; misses: unknown[] }>>(`
         const modal = await openForm(${NOTE_FIELD})
         const field = modal.querySelector('.abele-note-editor-field__editor')
         const view = viewOf(modal)
@@ -211,11 +212,13 @@ describe.skipIf(!available)('the note field', () => {
           const box = field.getBoundingClientRect()
           const content = view.contentDOM
           const editable = content.getBoundingClientRect()
-          let misses = 0
-          for (const x of [box.left + 3, box.right - 3]) {
-            for (const y of [box.top + 3, box.bottom - 3]) {
-              if (!content.contains(document.elementFromPoint(x, y))) misses++
-            }
+          const style = getComputedStyle(field)
+          const points = (${editableTapPoints.toString()})(box, [style.borderTopLeftRadius,
+            style.borderTopRightRadius, style.borderBottomRightRadius, style.borderBottomLeftRadius])
+          const misses = []
+          for (const [x, y] of points) {
+            const hit = document.elementFromPoint(x, y)
+            if (!hit || !content.contains(hit)) misses.push({ x, y, hit: hit?.className })
           }
           areas.push({
             gaps: [editable.left - box.left, editable.top - box.top,
@@ -230,7 +233,7 @@ describe.skipIf(!available)('the note field', () => {
       expect(areas).toHaveLength(2)
       for (const area of areas) {
         for (const gap of area.gaps) expect(gap).toBeLessThanOrEqual(2)
-        expect(area.misses).toBe(0)
+        expect(area.misses).toEqual([])
       }
     })
 
