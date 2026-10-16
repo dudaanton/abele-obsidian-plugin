@@ -219,7 +219,7 @@
           v-if="message.toolDiff && !message.toolDiff.old && (!compactToolDetails || expanded)"
           class="abele-chat-msg__new-file"
           data-find-part="newfile"
-        ><code>{{ message.toolDiff.new }}</code></pre>
+        ><code><SyntaxText :text="message.toolDiff.new" :path="diffPath" /></code></pre>
         <Diff
           v-else-if="message.toolDiff && (!compactToolDetails || expanded)"
           :text-left="message.toolDiff.old"
@@ -425,6 +425,7 @@
 </template>
 
 <script setup lang="ts">
+import SyntaxText from './SyntaxText.vue'
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { flashMessagePassage, flashExactSelection, messageRenderedText } from '@/ai/messageComments'
 import type { ChatRevision, RenderedRange } from '@/selection/types'

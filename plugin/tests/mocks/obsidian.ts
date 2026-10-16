@@ -1,5 +1,6 @@
 import { load as yamlLoad } from 'js-yaml'
 import { StateField } from '@codemirror/state'
+import { fakePrism } from './prism'
 
 /**
  * Minimal stand-in for the `obsidian` module.
@@ -1060,6 +1061,11 @@ export const mermaidStub = {
       svg: `<svg id="${id}" width="100%" viewBox="0 0 ${w} ${h}" style="max-width: ${w}px;"><defs><marker id="${id}_arrow"></marker></defs><g><path marker-end="url(#${id}_arrow)"></path></g></svg>`,
     }
   },
+}
+
+/** Obsidian's Prism, as `loadPrism()` hands it over: a few languages with a few rules. */
+export async function loadPrism(): Promise<unknown> {
+  return fakePrism
 }
 
 /** No PDF.js in a test: a PDF has no picture here. */

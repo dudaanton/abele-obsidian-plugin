@@ -18,7 +18,9 @@
     <!-- Create: the file does not exist yet, so its content is all there is to show -->
     <template v-if="message.toolName === 'create'">
       <div class="abele-tool-approval__path">{{ params.path }}</div>
-      <pre class="abele-tool-approval__code"><code>{{ params.content }}</code></pre>
+      <pre
+        class="abele-tool-approval__code"
+      ><code><SyntaxText :text="String(params.content || '')" :path="String(params.path || params.file_path || '')" /></code></pre>
     </template>
 
     <template v-else-if="message.toolName === 'node_propose_edit'">
@@ -30,7 +32,9 @@
       <div class="abele-tool-approval__param">
         Expected content · {{ params.expected_content_id }}
       </div>
-      <pre class="abele-tool-approval__code"><code>{{ params.text }}</code></pre>
+      <pre
+        class="abele-tool-approval__code"
+      ><code><SyntaxText :text="String(params.text || '')" :path="String(params.path || params.file_path || '')" /></code></pre>
       <div class="abele-tool-approval__note">
         Approve this exact edit as a local draft only. Save in the repository tab is a separate
         owner action. Read permission does not allow edits.
@@ -47,7 +51,10 @@
         :path="String(params.path || '')"
         class="abele-tool-approval__diff"
       />
-      <pre v-else class="abele-tool-approval__code"><code>{{ params.content }}</code></pre>
+      <pre
+        v-else
+        class="abele-tool-approval__code"
+      ><code><SyntaxText :text="String(params.content || '')" :path="String(params.path || params.file_path || '')" /></code></pre>
     </template>
 
     <!-- Edit: show diff -->
@@ -109,7 +116,9 @@
     <!-- create_script: show name + code preview -->
     <template v-else-if="message.toolName === 'create_script'">
       <div class="abele-tool-approval__path">{{ params.name }}.js</div>
-      <pre class="abele-tool-approval__code"><code>{{ params.content }}</code></pre>
+      <pre
+        class="abele-tool-approval__code"
+      ><code><SyntaxText :text="String(params.content || '')" path="script.js" /></code></pre>
     </template>
 
     <!-- write_settings: the setting, what it holds → what it would hold, and what that moves -->
@@ -198,6 +207,7 @@
 </template>
 
 <script setup lang="ts">
+import SyntaxText from './SyntaxText.vue'
 import { ref, computed, watch, onUnmounted } from 'vue'
 import {
   secretNames,

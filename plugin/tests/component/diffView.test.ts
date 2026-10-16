@@ -3,13 +3,15 @@
  * changed words marked, long unchanged runs folded and opened on request.
  */
 import { describe, it, expect } from 'vitest'
-import { mount } from '@vue/test-utils'
-import { defaultHighlightStyle } from '@codemirror/language'
-import { tags } from '@lezer/highlight'
+import { mount, flushPromises } from '@vue/test-utils'
 import Diff from '@/components/Diff.vue'
+import { loadedPrism } from '@/components/codeSyntax'
 
 const before = Array.from({ length: 12 }, (_, i) => `line ${i + 1}`).join('\n')
 const after = before.replace('line 6', 'line six')
+
+// Code is coloured once Obsidian's Prism has loaded; the tests start with it in.
+await loadedPrism()
 
 describe('Diff', () => {
   it("uses Obsidian's diff lines, with a sign that says what colour says", () => {
@@ -63,8 +65,9 @@ describe('Diff', () => {
   })
 
   describe('of code', () => {
-    const keyword = defaultHighlightStyle.style([tags.keyword])!
-    const string = defaultHighlightStyle.style([tags.string])!
+    // Obsidian's own code-block classes, which the theme colours.
+    const keyword = 'token keyword'
+    const string = 'token string'
     const tokens = (view: ReturnType<typeof mount>, selector: string) =>
       view
         .get(selector)
@@ -72,7 +75,7 @@ describe('Diff', () => {
         .filter((s) => s.classes().length > 0 && !s.classes().includes('abele-diff__changed'))
         .map((s) => [s.element.textContent, s.classes().join(' ')])
 
-    it("colours a file's code the way the code view does, on both sides", () => {
+    it("colours a file's code the way Obsidian's code blocks are, on both sides", () => {
       const view = mount(Diff, {
         props: {
           textLeft: 'const a = 1\nexport function f() {}',
@@ -88,7 +91,7 @@ describe('Diff', () => {
       // The changed words keep their mark, with the colours inside it.
       const changed = view.get('.abele-diff__line_added .abele-diff__changed')
       expect(changed.text()).toBe("'two'")
-      expect(changed.get('span').classes()).toContain(string)
+      expect(changed.get('span').classes().join(' ')).toBe(string)
       // Copying a line still gives exactly its text.
       expect(view.get('.abele-diff__line_added .abele-diff__text').element.textContent).toBe(
         "const a = 'two'"
@@ -96,7 +99,7 @@ describe('Diff', () => {
     })
 
     it('colours a line by the comment that opened above it', () => {
-      const comment = defaultHighlightStyle.style([tags.comment])!
+      const comment = 'token comment'
       const view = mount(Diff, {
         props: {
           textLeft: '/* one\ntwo */\nlet x = 1',
@@ -122,6 +125,15 @@ describe('Diff', () => {
 
       expect(tokens(view, '.abele-diff__line_left')).toContainEqual(['let', keyword])
       expect(tokens(view, '.abele-diff__line_right')).toContainEqual(['let', keyword])
+    })
+
+    it('colours a shell script, and code that arrives after Prism loads', async () => {
+      const view = mount(Diff, {
+        props: { textLeft: 'set -e\nexit 1', textRight: 'set -e\nexit 2', path: 'release.sh' },
+      })
+      await flushPromises()
+      expect(tokens(view, '.abele-diff__line_added')).toContainEqual(['exit', keyword])
+      expect(tokens(view, '.abele-diff__line_same')).toContainEqual(['set', keyword])
     })
 
     it('leaves prose and unknown files as they were', () => {

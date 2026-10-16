@@ -10,6 +10,7 @@ import { destinationFixture } from './destinationFixture'
 import { reviewScript } from '@/scripting/reviewScript'
 import { chatArtifactsFixture } from './chatArtifactsFixture'
 import TokenUiFixture from './TokenUiFixture.vue'
+import NodeSyntaxFixture from './NodeSyntaxFixture.vue'
 import EnvironmentDialog from '@/components/debugger/http/EnvironmentDialog.vue'
 
 export interface DialogFixtureOptions {
@@ -313,6 +314,9 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
       })
     ),
 
+  'node-syntax-sh': () => mountAlone(NodeSyntaxFixture, { kind: 'sh' }),
+  'node-syntax-ts': () => mountAlone(NodeSyntaxFixture, { kind: 'ts' }),
+  'node-syntax-diff': () => mountAlone(NodeSyntaxFixture, { kind: 'diff' }),
   'node-files': async () =>
     mountAlone(NodeFilesDialog, await nodeFilesFixture('files'), 'node-files'),
   'node-edit': async () => mountAlone(NodeFilesDialog, await nodeFilesFixture('edit'), 'node-edit'),

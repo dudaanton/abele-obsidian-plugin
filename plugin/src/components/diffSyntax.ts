@@ -1,10 +1,7 @@
 // The colours of code in a comparison: the same parser and the same highlighting the plugin's
 // code view uses, run once over each whole version, so a line inside a comment or a string that
-// started above it is coloured as one. Pure, apart from the stylesheet the colours need.
-import { defaultHighlightStyle } from '@codemirror/language'
-import { highlightTree } from '@lezer/highlight'
-import { StyleModule } from 'style-mod'
-import { languageOf } from '@/github/languages'
+// started above it is coloured as one. Token classes take their colours from the host theme.
+import { prism, loadedPrism, lineTokens as prismLineTokens } from './codeSyntax'
 import type { DiffPiece } from './diffModel'
 
 /**
@@ -27,26 +24,11 @@ export interface PaintedPiece extends DiffPiece {
 
 /** Each line's coloured stretches; null when the file is not code we colour, or too large. */
 export function lineTokens(text: string, path: string | undefined): LineToken[][] | null {
-  if (!path || text.length > MAX_HIGHLIGHTED) return null
-  const language = languageOf(path)
-  if (!language) return null
-  const starts = [0]
-  for (let i = text.indexOf('\n'); i >= 0; i = text.indexOf('\n', i + 1)) starts.push(i + 1)
-  const out: LineToken[][] = starts.map((): LineToken[] => [])
-  let line = 0
-  highlightTree(language.parser.parse(text), defaultHighlightStyle, (from, to, cls) => {
-    // A token over several lines — a block comment, a template string — is cut at each line end.
-    while (from < to) {
-      while (line + 1 < starts.length && starts[line + 1] <= from) line++
-      const next = line + 1 < starts.length ? starts[line + 1] : Infinity
-      const end = Math.min(to, next - 1)
-      if (end > from) out[line].push({ from: from - starts[line], to: end - starts[line], cls })
-      if (to < next) break
-      from = next
-    }
-  })
-  return out
+  return text.length <= MAX_HIGHLIGHTED && prism.value
+    ? prismLineTokens(prism.value, text, path)
+    : null
 }
+void loadedPrism().catch(console.debug)
 
 /** A line's pieces with its colours laid inside them, so a changed word keeps its mark. */
 export function paint(pieces: DiffPiece[], tokens: LineToken[] = []): PaintedPiece[] {
@@ -68,9 +50,4 @@ export function paint(pieces: DiffPiece[], tokens: LineToken[] = []): PaintedPie
     if (pos < end) parts.push({ text: piece.text.slice(pos - start) })
     return { ...piece, parts }
   })
-}
-
-/** The highlight style's rules, in the document — or pop-out window — the comparison is in. */
-export function mountSyntaxStyles(doc: Document): void {
-  if (defaultHighlightStyle.module) StyleModule.mount(doc, defaultHighlightStyle.module)
 }

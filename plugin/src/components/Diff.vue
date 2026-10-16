@@ -141,10 +141,10 @@
 // success colour, the changed words inside them stronger, unchanged stretches folded away.
 // A sign before each line says the same without colour. A file's code is coloured the way the
 // plugin's code view colours it.
-import { computed, ref, watch, watchEffect } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
 import { diffLines, foldUnchanged, pairRows, type DiffLine, type DiffRow } from './diffModel'
-import { lineTokens, mountSyntaxStyles, paint, type PaintedPiece } from './diffSyntax'
+import { lineTokens, paint, type PaintedPiece } from './diffSyntax'
 import Icon from './obsidian/Icon.vue'
 
 const props = withDefaults(
@@ -222,9 +222,6 @@ useResizeObserver(root, ([entry]) => {
   if (!el) return
   const em = parseFloat(el.win.getComputedStyle(el).fontSize) || 16
   roomy.value = entry.contentRect.width >= SPLIT_EMS * em
-})
-watchEffect(() => {
-  if (syntax.value && root.value) mountSyntaxStyles(root.value.ownerDocument)
 })
 const shown = computed(() =>
   props.layout !== 'auto' ? props.layout : (chosen.value ?? (roomy.value ? 'split' : 'unified'))

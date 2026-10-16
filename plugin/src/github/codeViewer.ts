@@ -22,9 +22,9 @@ import {
   type DecorationSet,
 } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
-import { defaultHighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { parsePatch, type DiffLine } from './patch'
 import type { LineRange } from './urls'
+import { codeSyntax } from '@/components/codeSyntax'
 import { languageFor } from './languages'
 import { lineSelection, type SelectionHooks } from './lineSelection'
 import { scrollParent } from './scrollTo'
@@ -74,11 +74,7 @@ class NumberMarker extends GutterMarker {
   }
 }
 
-const readOnly: Extension[] = [
-  EditorState.readOnly.of(true),
-  EditorView.editable.of(false),
-  syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-]
+const readOnly: Extension[] = [EditorState.readOnly.of(true), EditorView.editable.of(false)]
 
 function lineDecorations(state: EditorState, classOf: (line: number) => string[]): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>()
@@ -109,7 +105,6 @@ function mount(
       extensions: [
         ...(onChange
           ? [
-              syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
               history(),
               keymap.of([...defaultKeymap, ...historyKeymap]),
               EditorView.contentAttributes.of({ 'aria-label': 'Workspace file editor' }),
@@ -222,7 +217,7 @@ export function mountDiff(
   return mount(
     parent,
     diff.doc,
-    [...diff.extensions, selection.extension, ...languageFor(path)],
+    [...diff.extensions, selection.extension, ...languageFor(path), codeSyntax(path)],
     highlight.length > 0 ? Math.min(...highlight) + 1 : null
   )
 }
@@ -285,7 +280,9 @@ export function mountSnippet(
   parent: HTMLElement,
   snippet: { kind: 'code' | 'diff'; text: string; lang?: string; start?: number }
 ): Viewer {
-  const language = snippet.lang ? languageFor(`snippet.${snippet.lang}`) : []
+  const language = snippet.lang
+    ? [...languageFor(`snippet.${snippet.lang}`), codeSyntax(`snippet.${snippet.lang}`)]
+    : []
   if (snippet.kind === 'diff') {
     // The leading `@@` line is kept in the note for its numbers, which the gutters show: not
     // drawn. A header further down marks a gap between hunks and stays, as a separator.
@@ -328,6 +325,7 @@ export function mountCode(
       lineNumbers({ domEventHandlers: selection.gutterHandlers }),
       selection.extension,
       ...languageFor(path),
+      codeSyntax(path),
     ],
     focus ?? (range ? range.start : null),
     wrap,
