@@ -21,7 +21,8 @@ import { isScriptPath } from '@/scripting/scriptPath'
 import { pickChat } from '@/helpers/suggesters/ChatPicker'
 import { pickNote } from '@/helpers/suggesters/NotePicker'
 import { ChatService } from '@/ai/ChatService'
-import { grantNote } from './chatAboutNote'
+import { grantNote, type NoteSelection } from './chatAboutNote'
+import { linkToLines } from '@/lineLinks/register'
 import { noteWikilink } from './noteWikilink'
 import { NOTE_ACTIONS } from './noteActions'
 
@@ -62,13 +63,20 @@ export async function attachChatToNote(note: TFile): Promise<boolean> {
  * *Add to agent context* and a drawing's attach use — and shows it; with no chat there, into a
  * new one. Gives that chat access to the note; this does not attach a card to the note.
  */
-export async function attachNoteToChat(note: TFile): Promise<boolean> {
+export async function attachNoteToChat(
+  note: TFile,
+  selection?: NoteSelection | null
+): Promise<boolean> {
+  const text =
+    selection?.lines && selection.text.trim()
+      ? linkToLines(GlobalStore.getInstance().app, note, selection.lines)
+      : noteWikilink(note)
   const service = ChatService.getInstance()
   const session = service.activeSession.value ?? (await service.openBlankChat())
   if (!session || session.isDestroyed) return false
   grantNote(session.scopeResolver, note.path)
   service.pendingInput.value = {
-    text: `${noteWikilink(note)} `,
+    text: `${text} `,
     tabId: session.id,
     focus: true,
     append: true,

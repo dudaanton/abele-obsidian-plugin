@@ -47,7 +47,7 @@ export function addNoteActions(
   const jobs: Array<(() => Promise<unknown>) | null> = [
     enabled ? () => addContext(file, selection) : null,
     enabled && canChatAbout(file) && !book ? () => chatAboutNote(file, selection) : null,
-    enabled && canChatAbout(file) ? () => attachNoteToChat(file) : null,
+    enabled && canChatAbout(file) ? () => attachNoteToChat(file, selection) : null,
     enabled && canAttachTo(file) ? () => attachChatToNote(file) : null,
     () => navigator.clipboard.writeText(noteWikilink(file)),
   ]
@@ -102,8 +102,10 @@ export function registerNoteMenu(plugin: Plugin): void {
         if (index === 0) {
           const pane = paneOf(workspace, file)
           run(addContext(file, pane ? viewSelection(pane) : null))
-        } else if (index === 2) run(attachNoteToChat(file))
-        else run(navigator.clipboard.writeText(noteWikilink(file)))
+        } else if (index === 2) {
+          const pane = paneOf(workspace, file)
+          run(attachNoteToChat(file, pane ? viewSelection(pane) : null))
+        } else run(navigator.clipboard.writeText(noteWikilink(file)))
         return true
       },
     })

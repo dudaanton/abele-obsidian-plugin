@@ -151,6 +151,32 @@ describe('from a note: picking a chat', () => {
 })
 
 describe('inserting a note link into the current chat', () => {
+  it('inserts a selected line range while preserving the draft', async () => {
+    const service = ChatService.getInstance()
+    service.ensureInitialized()
+    const session = service.activeSession.value!
+    session.draft.value = { text: 'Existing draft', attachments: [] }
+    vi.spyOn(service, 'revealSidebar').mockResolvedValue()
+    const generate = vi.fn(() => '[[Notes/A#L2-L3]]')
+    ;(app.metadataCache as any).fileToLinktext = vi.fn(() => 'Notes/A')
+    ;(app as any).fileManager = { generateMarkdownLink: generate }
+    expect(
+      await attachNoteToChat(fileAt(NOTE_A), {
+        text: 'Selected passage',
+        lines: { from: 2, to: 3 },
+      })
+    ).toBe(true)
+    expect(generate).toHaveBeenCalledWith(fileAt(NOTE_A), '', '#L2-L3')
+    expect(service.pendingInput.value).toEqual({
+      text: '[[Notes/A#L2-L3]] ',
+      tabId: session.id,
+      focus: true,
+      append: true,
+    })
+    expect(session.draft.value.text).toBe('Existing draft')
+    expect(session.scopeResolver.isInScope(NOTE_A)).toBe(true)
+  })
+
   it('goes straight into the chat in front, without a picker, and grants access without attaching a card', async () => {
     const current = await seedChat('Current')
     const service = ChatService.getInstance()

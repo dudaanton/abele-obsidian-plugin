@@ -58,7 +58,8 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
 - Attach to a chat — inserts a wikilink to the note into the input of the chat in front (the
   sidebar's active tab) and shows it, keeping any draft already there and giving that chat
   access to the note; no chat is picked. With no chat open, a new chat opens with the link.
-  Nothing is sent
+  With text selected, inserts the same line-range link as Copy link to selected lines,
+  including reading-mode selections that can be resolved to source lines. Nothing is sent
 - Attach a chat to note — picks a chat from the history and links it to the note, the
   same link a chat makes by writing to it, so it appears in the note's **Chats** list. From a chat,
   the link button in its header attaches it to the note in front or to one picked, and detaches it; under the note, the unlink

@@ -10,8 +10,8 @@
  * Something selected in the note goes in with it, the way "Add to agent context" quotes it,
  * and the link then points at the selected lines. Only that note's own selection counts: the one in the
  * editor the menu was opened from, or in the note's pane in front — never another note's. In
- * reading view there are no lines to point at, so the link is to the note and the passage is
- * the text as it was selected on the page.
+ * reading view the comment mapping resolves source lines when available; otherwise the link
+ * is to the note. The passage is the text as it was selected on the page.
  *
  * Any vault file is offered, not only notes: an agent reads pictures and text files as well.
  * Chat logs are not — no scope takes one in, and a chat reaches an agent only by being attached.
@@ -34,6 +34,8 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { quoteLines } from '@/ai/quoteSelection'
 import { lineSubpath, type LineRange } from '@/lineLinks/parse'
 import { BOOK_VIEW_TYPE } from '@/reader/viewType'
+import { selectedReadingComment } from '@/comments/reading'
+import { selectedLines } from '@/lineLinks/register'
 import { NOTE_ACTIONS } from './noteActions'
 
 export const CHAT_ABOUT_TITLE = NOTE_ACTIONS[1].title
@@ -79,11 +81,7 @@ export interface NoteSelection {
 export function editorSelection(editor: Editor): NoteSelection | null {
   const text = editor.getSelection()
   if (!text.trim()) return null
-  const from = editor.getCursor('from')
-  const to = editor.getCursor('to')
-  // A selection run to the start of the next line does not take that line in.
-  const last = to.ch === 0 && to.line > from.line ? to.line - 1 : to.line
-  return { text: text.replace(/\n+$/, ''), lines: { from: from.line + 1, to: last + 1 } }
+  return { text: text.replace(/\n+$/, ''), lines: selectedLines(editor) }
 }
 
 /** What is selected in a note's pane: its editor's selection, or the page's in reading view. */
@@ -94,6 +92,16 @@ export function viewSelection(view: MarkdownView): NoteSelection | null {
   if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null
   if (!root.contains(selection.anchorNode) || !root.contains(selection.focusNode)) return null
   const text = selection.toString().trim()
+  const source = selectedReadingComment(root, selection.getRangeAt(0))
+  if (text && source && source.note === view.file?.path) {
+    return {
+      text,
+      lines: {
+        from: source.source.slice(0, source.from).split('\n').length,
+        to: source.source.slice(0, source.to).split('\n').length,
+      },
+    }
+  }
   return text ? { text } : null
 }
 

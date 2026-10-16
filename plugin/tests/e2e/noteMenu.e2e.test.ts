@@ -113,6 +113,15 @@ const script = `(async () => {
     // the originating main tab remaining selected, not which pane received the last focus.
     report.activeNote = leaf.view.file?.path
     report.noteInFront = leaf.getRoot() === app.workspace.rootSplit && leaf.parent?.children[leaf.parent.currentTab] === leaf
+    leaf.view.editor.setValue('First sample line.\\nSelected sample passage.\\nLast sample line.')
+    leaf.view.editor.setSelection({ line: 1, ch: 0 }, { line: 2, ch: 0 })
+    await app.workspace.revealLeaf(leaf)
+    app.workspace.setActiveLeaf(leaf, { focus: true })
+    const selectedLink = app.fileManager.generateMarkdownLink(note, '', '#L2')
+    app.commands.executeCommandById('abele:attach-note-to-chat')
+    await until(() => inputText().includes(selectedLink), 'inserted selection link')
+    report.selectionLink = selectedLink
+    report.selectionDraft = inputText()
   } catch (e) {
     report.error = String(e?.message || e)
     report.inputAtError = inputText()
@@ -152,6 +161,8 @@ interface Report {
   attached: string[]
   activeNote: string
   noteInFront: boolean
+  selectionLink: string
+  selectionDraft: string
 }
 const available = isObsidianRunning() && hasTestApi()
 
@@ -205,6 +216,13 @@ describe.skipIf(!available)('note actions in the app', () => {
       expect(report.attached).toEqual([])
       expect(report.activeNote).toBe('sample-menu-fixture/sample-note.md')
       expect(report.noteInFront).toBe(true)
+    }
+  })
+  it('attaches the selected lines and preserves the existing draft', () => {
+    for (const report of reports) {
+      expect(report.selectionLink).toContain('#L2')
+      expect(report.selectionDraft).toContain(report.selectionLink)
+      expect(report.selectionDraft).toContain('Existing draft')
     }
   })
 })

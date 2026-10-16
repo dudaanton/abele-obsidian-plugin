@@ -1072,7 +1072,9 @@ palette uses the same names:
   the link points at those lines and the text is quoted.
 - **Attach to a chat** inserts a wikilink to the note into the input of the chat in front and
   shows that chat, without sending it or replacing its draft. With no chat open, a new chat
-  opens with the link.
+  opens with the link. With text selected, the link points at the selected lines, using the
+  same format as **Copy link to selected lines**. Reading-mode selections also link to their
+  lines when the passage can be resolved to the source.
 - **Attach a chat to note** puts an existing chat in the note's **Chats** list (see below).
 - **Copy wikilink** copies a wikilink to the note, even when the vault uses Markdown links.
   This action also works with the AI switched off.

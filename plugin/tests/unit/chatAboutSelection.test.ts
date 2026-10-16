@@ -9,6 +9,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { MarkdownView, Menu, TFile, type Editor, type Plugin } from 'obsidian'
 import { chatAboutText, registerChatAbout, viewSelection } from '@/commands/chatAboutNote'
+import { registerNoteMenu } from '@/commands/noteMenu'
+import { paintNoteComments } from '@/comments/reading'
 import { useInAgentText } from '@/ai/quoteSelection'
 import { ChatService } from '@/ai/ChatService'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
@@ -157,6 +159,17 @@ describe('the text in the input', () => {
 })
 
 describe('from the editor’s menu', () => {
+  it('attaches the editor selection through the shared note menu', async () => {
+    registerNoteMenu(fakePlugin())
+    const menu = new Menu()
+    handlers.get('editor-menu')!(menu, fakeEditor({ from: 1, to: 2, endCh: 0 }), {
+      file: fileAt(NOTE),
+    })
+    menu.items.find((item) => item.title === 'Attach to a chat')!.handler!()
+    await opened()
+    expect(service.pendingInput.value!.text).toBe('[[Budget#L2]] ')
+  })
+
   it('takes that editor’s selection, with its lines', async () => {
     const menu = new Menu()
     handlers.get('editor-menu')!(menu, fakeEditor({ from: 1, to: 2 }), { file: fileAt(NOTE) })
@@ -192,6 +205,14 @@ describe('from the editor’s menu', () => {
 })
 
 describe('from the command and the file menu', () => {
+  it('attaches the active selection through the command used by quick menus', async () => {
+    registerNoteMenu(fakePlugin())
+    activeView = fakePane(NOTE, 'source', fakeEditor({ from: 1, to: 2 }))
+    commands.find((c) => c.id === 'attach-note-to-chat')!.checkCallback(false)
+    await opened()
+    expect(service.pendingInput.value!.text).toBe('[[Budget#L2-L3]] ')
+  })
+
   it('the command takes the selection of the note in front', async () => {
     activeView = fakePane(NOTE, 'source', fakeEditor({ from: 3, to: 3 }))
     commands[0].checkCallback(false)
@@ -233,6 +254,18 @@ describe('from the command and the file menu', () => {
 })
 
 describe('in reading view', () => {
+  it('resolves a rendered selection to source lines for attachment', async () => {
+    registerNoteMenu(fakePlugin())
+    activeView = fakePane(NOTE, 'preview')
+    const p = paragraph(activeView.previewMode.containerEl, 'Rent 900')
+    const source = LINES.join('\n')
+    paintNoteComments(p, source, source.indexOf('Rent'), source.indexOf('\nFood'), NOTE)
+    selectOnPage(p)
+    commands.find((c) => c.id === 'attach-note-to-chat')!.checkCallback(false)
+    await opened()
+    expect(service.pendingInput.value!.text).toBe('[[Budget#L2]] ')
+  })
+
   it('quotes the text selected on the page, under a link to the note', async () => {
     activeView = fakePane(NOTE, 'preview')
     const p = paragraph(activeView.previewMode.containerEl, 'Rent 900')
