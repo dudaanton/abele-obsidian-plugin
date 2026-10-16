@@ -154,6 +154,8 @@ it('opens a giant session at its end over a remote connection, pages back, types
       const streamMs=Math.round(performance.now()-t0);
       done=true;await frame();
       const probe={...window.__giantProbe,txMs:Math.round(window.__giantProbe.txMs),longMs:Math.round(window.__giantProbe.longMs)};
+      const client=nodes.connection(${JSON.stringify(registration)}).client;
+      probe.store=await client.store.transaction(st=>{const size=v=>JSON.stringify(v??null).length;return{total:size(st),streams:Object.fromEntries(Object.entries(st.events).map(([k,v])=>[k.slice(0,12),{events:v.length,kB:Math.round(size(v)/1024)}])),resultsKB:Math.round(size(st.results)/1024),results:Object.keys(st.results).length,artifactKB:Math.round(size(st.artifactData)/1024),outbox:st.outbox.length}});
       return JSON.stringify({typing,streamingTyping,firstMs,streamMs,frames:stats(frames),heapLive:heap(),probe})})()`,
       240000
     )

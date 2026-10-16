@@ -45,6 +45,8 @@ const NORMALIZED_ARTIFACT_EVENTS = new Set([
 /** Immutable bytes that cannot be projected; transport/storage failures are retryable. */
 class UnusableArtifactError extends Error {}
 class OfflineTurnError extends Error {}
+/** The longest an event waits to be shown while others keep arriving. */
+const REFRESH_MS = 50
 /** Events after which a long-lived session's settings, process or context may have changed. */
 const LIVE_STATE_EVENTS = new Set([
   'session.process',
@@ -176,7 +178,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
     )
     this.stopEvent = connection.client.onEvent((event) => {
       if (event.stream_id === reference.sessionId) {
-        void this.refresh().catch((e: unknown) => this.report(e))
+        this.refreshSoon()
         if (LIVE_STATE_EVENTS.has(event.type)) void this.readLive()
         if (['session.worktree.changed', 'session.updated'].includes(event.type))
           void this.refreshBinding().catch((e: unknown) => this.report(e))
@@ -640,6 +642,20 @@ export class NodeChatPresenter implements ChatPresentationSession {
     }
   }
 
+  private refreshTimer?: number
+  /**
+   * After an event: a streamed answer brings dozens of events a second, and reading the store and
+   * projecting the session for each held the store away from the events still arriving. One
+   * refresh covers what came within `REFRESH_MS`.
+   */
+  private refreshSoon(): void {
+    if (this.refreshTimer !== undefined || this.destroyed) return
+    this.refreshTimer = window.setTimeout(() => {
+      this.refreshTimer = undefined
+      void this.refresh().catch((e: unknown) => this.report(e))
+    }, REFRESH_MS)
+  }
+
   /** Only Claude Code keeps a long-lived process on the node; nobody else is asked for one. */
   private readLive(): Promise<void> {
     return this.provider.value === 'claude' && !this.destroyed
@@ -822,6 +838,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
   }
   destroy(): void {
     this.destroyed = true
+    if (this.refreshTimer !== undefined) window.clearTimeout(this.refreshTimer)
     this.releaseBackgroundTurn()
     this.backgroundStoppedRuns.clear()
     ++this.descriptionGeneration
