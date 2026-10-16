@@ -11,21 +11,25 @@
   display: flex;
   // The title is pressed to switch the view; it lights up as Obsidian's own quiet buttons do.
   .abele-calendar__header-month-year {
-    margin-inline-start: calc(-1 * var(--size-2-3));
-    padding: var(--size-2-1) var(--size-2-3);
-    border-radius: var(--radius-s);
-    cursor: var(--cursor);
+    &,
+    &:hover,
+    &:focus-visible {
+      margin-inline-start: calc(-1 * var(--size-2-3));
+      padding: var(--size-2-1) var(--size-2-3);
+      border: 0;
+      border-radius: var(--radius-s);
+      font-size: var(--font-ui-medium);
+      font-weight: var(--font-semibold);
+      cursor: var(--cursor);
+    }
 
-    &:hover {
+    &:hover,
+    &:focus-visible {
       background-color: var(--background-modifier-hover);
     }
   }
   justify-content: space-between;
   align-items: center;
-  .abele-calendar__header-month-year {
-    font-size: var(--font-ui-medium);
-    font-weight: var(--font-semibold);
-  }
   .abele-calendar__header-controls {
     display: flex;
     align-items: center;

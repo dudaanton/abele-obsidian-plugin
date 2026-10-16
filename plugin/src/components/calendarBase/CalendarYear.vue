@@ -240,11 +240,11 @@ $steps: (
     font-size: var(--font-ui-smaller);
   }
   .abele-calendar-year__grid {
-    gap: 2px;
+    gap: var(--size-2-1);
     margin-inline: 0;
   }
   .abele-calendar-year__day {
-    border-radius: 2px;
+    border-radius: calc(var(--radius-s) / 2);
   }
   .abele-calendar-year__day_heat-0 {
     background-color: var(--background-modifier-hover);
