@@ -136,7 +136,7 @@ class NotePartModal extends FuzzySuggestModal<{ title: string; subpath: string }
   }
 }
 
-type Chats = Pick<ChatService, 'openBlankChat' | 'pendingInput' | 'revealSidebar'>
+type Chats = Pick<ChatService, 'activeSession' | 'openBlankChat' | 'pendingInput' | 'revealSidebar'>
 
 export function canvasHostActions(
   app: App,

@@ -11,8 +11,10 @@ import { useVault } from '../helpers/testEnv'
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3])
 
-function fakeChats() {
+function fakeChats(active: { id: string } | null = { id: 'tab-front' }) {
   return {
+    activeSession: ref(active),
+    openBlankChat: vi.fn(async () => ({ id: 'tab-new' })),
     pendingInput: ref<PendingInput | null>(null),
     revealSidebar: vi.fn(async () => {}),
   }
@@ -52,9 +54,22 @@ describe('a drawing attached to the chat', () => {
     expect(chats.pendingInput.value).toEqual({
       text: '',
       attachments: ['Attachments/Plan.png'],
+      tabId: 'tab-front',
       focus: true,
     })
+    expect(chats.openBlankChat).not.toHaveBeenCalled()
     expect(chats.revealSidebar).toHaveBeenCalledOnce()
+  })
+
+  it('goes into a new chat when no chat is in front', async () => {
+    const chats = fakeChats(null)
+    const drawing = app.vault.getAbstractFileByPath('Sketches/Plan.svg') as never
+    const png = vi.fn(async () => new Blob([PNG], { type: 'image/png' }))
+    await attachDrawingToChat(app as never, drawing, false, png, chats as never)
+
+    expect(chats.openBlankChat).toHaveBeenCalledOnce()
+    expect(chats.pendingInput.value?.tabId).toBe('tab-new')
+    expect(chats.pendingInput.value?.attachments).toEqual(['Attachments/Plan.png'])
   })
 
   it('leaves the chat alone when the picture cannot be made', async () => {

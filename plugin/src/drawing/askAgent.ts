@@ -53,12 +53,13 @@ export function drawingAttachmentName(basename: string, part: boolean): string {
   return `${basename}${part ? ' (part)' : ''}.png`
 }
 
-type Chats = Pick<ChatService, 'pendingInput' | 'revealSidebar'>
+type Chats = Pick<ChatService, 'activeSession' | 'openBlankChat' | 'pendingInput' | 'revealSidebar'>
 
 /**
  * The drawing as a PNG — `png` paints it, all of it or the part — saved where the vault keeps a
- * note's attachments, and attached to what is being written in the chat in front. Says the file
- * it made; null, with the chat left alone, when there was no picture to make.
+ * note's attachments, and attached to what is being written in the chat in front, or in a new
+ * chat when none is. Says the file it made; null, with the chat left alone, when there was no
+ * picture to make.
  */
 export async function attachDrawingToChat(
   app: App,
@@ -78,7 +79,9 @@ export async function attachDrawingToChat(
     new Notice(`The drawing could not be attached: ${e instanceof Error ? e.message : String(e)}`)
     return null
   }
-  chats.pendingInput.value = { text: '', attachments: [made.path], focus: true }
+  const session = chats.activeSession.value ?? (await chats.openBlankChat())
+  if (!session) return made
+  chats.pendingInput.value = { text: '', attachments: [made.path], tabId: session.id, focus: true }
   await chats.revealSidebar()
   return made
 }

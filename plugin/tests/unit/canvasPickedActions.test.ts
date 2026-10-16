@@ -24,6 +24,7 @@ function fakeChats() {
   }
   return {
     scope,
+    activeSession: ref({ id: 'chat-front' }),
     pendingInput: ref<PendingInput | null>(null),
     revealSidebar: vi.fn(async () => {}),
     openBlankChat: vi.fn(async () => ({ id: 'chat-1', scopeResolver: scope })),
@@ -123,6 +124,7 @@ describe('canvas host actions', () => {
     expect(made?.path).toBe('Attachments/sample (part).png')
     expect(chats.pendingInput.value).toMatchObject({
       attachments: ['Attachments/sample (part).png'],
+      tabId: 'chat-front',
     })
   })
 
