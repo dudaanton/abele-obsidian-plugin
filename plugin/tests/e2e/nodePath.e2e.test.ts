@@ -8,6 +8,7 @@ import { createServer } from 'node:http'
 import { connect, type Socket } from 'node:net'
 import { evalLong, evalRaw, reloadApp } from './helpers/obsidianCli'
 import { targets } from './helpers/target'
+import { checkNodeFileMenuGeometry } from '../helpers/nodeFileMenuGeometry'
 
 targets('desktop')
 const cli = process.env.ABELE_NODE_CLI
@@ -97,7 +98,7 @@ async function checkCodeGeometry() {
 async function checkFileLineMenu(shell: 'desktop' | 'phone') {
   try {
     await evalLong(
-      `(async()=>{${prelude}await clearSelectionForMenu();async function clearSelectionForMenu(){window.getSelection()?.removeAllRanges();document.dispatchEvent(new Event('selectionchange'));await wait(100)}const line=visible('.abele-file-view .cm-line');line.scrollIntoView({block:'center'});await wait(100);const r=line.getBoundingClientRect(),x=r.left+10,y=r.top+r.height/2;line.dispatchEvent(new PointerEvent('contextmenu',{bubbles:true,cancelable:true,clientX:x,clientY:y,pointerType:${JSON.stringify(shell === 'phone' ? 'touch' : 'mouse')},detail:0}));await until(()=>menuItem('Copy path'));const menu=menuItem('Copy path').closest('.menu').getBoundingClientRect(),anchor=${shell === 'phone' ? 'r.bottom' : 'y'};if(menu.left<0||menu.right>innerWidth+1||menu.top<0||menu.bottom>innerHeight+1)throw Error('File menu escapes the viewport');if(Math.min(Math.abs(menu.top-anchor),Math.abs(menu.bottom-anchor))>16)throw Error('File menu is detached from the clicked line');return 'line menu anchored'})()`
+      `(async()=>{${prelude}await clearSelectionForMenu();async function clearSelectionForMenu(){window.getSelection()?.removeAllRanges();document.dispatchEvent(new Event('selectionchange'));await wait(100)}const line=visible('.abele-file-view .cm-line');line.scrollIntoView({block:'center'});await wait(100);const r=line.getBoundingClientRect(),x=r.left+10,y=r.top+r.height/2;line.dispatchEvent(new PointerEvent('contextmenu',{bubbles:true,cancelable:true,clientX:x,clientY:y,pointerType:${JSON.stringify(shell === 'phone' ? 'touch' : 'mouse')},detail:0}));await until(()=>menuItem('Copy path'));const menuEl=menuItem('Copy path').closest('.menu');await new Promise(requestAnimationFrame);await until(()=>!menuEl.getAnimations().some(a=>a.playState==='running')&&getComputedStyle(menuEl).transform==='none');const menu=menuEl.getBoundingClientRect(),anchor=${shell === 'phone' ? 'r.bottom' : 'y'};(${checkNodeFileMenuGeometry.toString()})(menu,{width:innerWidth,height:innerHeight},anchor,document.body.classList.contains('is-phone'));return 'line menu anchored'})()`
     )
     await capture(shell + '-file-line-menu')
   } finally {

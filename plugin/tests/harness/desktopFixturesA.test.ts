@@ -7,6 +7,7 @@ import { SCRIPT_FIXTURE } from '../e2e/helpers/scriptFixture'
 import { OPEN_LOCAL_NODE_FORM } from '../e2e/helpers/nodeSettingsForm'
 import { probePrelude } from '../e2e/helpers/layoutProbe'
 import { RESTORE_PHONE_SCRIPT } from '../e2e/helpers/phoneState'
+import { checkNodeFileMenuGeometry } from '../helpers/nodeFileMenuGeometry'
 
 it('opens the node chat fixture form with its real poller and settings document', async () => {
   const prelude = source('nodeChat').match(/const PRELUDE = (`[\s\S]*?`)\n/)![1]
@@ -88,6 +89,7 @@ it.each([
     OPEN_LOCAL_NODE_FORM,
     RESTORE_PHONE_SCRIPT,
     probePrelude,
+    checkNodeFileMenuGeometry,
     shotDir: () => 'sample-shots',
     DIR: 'Sample fixture',
     BOOK: 'Sample fixture/sample.epub',
