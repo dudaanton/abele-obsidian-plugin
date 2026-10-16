@@ -1,3 +1,4 @@
+import { assertPhysicalPath } from './external/projection'
 import { z } from 'zod'
 import { EngineError } from '@abele/sync-core'
 import type { LocalStorage } from './ledgerId'
@@ -24,8 +25,23 @@ export class VaultDirectories {
     private readonly storage: LocalStorage,
     private readonly symlink: (path: string) => Promise<boolean> = async () => false,
     private readonly removeEmpty: (path: string) => Promise<void> = (path) =>
-      adapter.rmdir(path, false)
+      adapter.rmdir(path, false),
+    private readonly scope: () => string | undefined = () => undefined
   ) {}
+  private includes(path: string): boolean {
+    const root = this.scope()
+    if (!root || root === '/') return true
+    try {
+      assertPhysicalPath(path)
+    } catch {
+      return false
+    }
+    return path === root || path.startsWith(root + '/')
+  }
+  private assertPath(path: string): void {
+    if (!this.includes(path))
+      throw new EngineError('protocol', 'Directory path is outside this connection')
+  }
   private records() {
     return schema.parse(this.storage.loadLocalStorage(KEY) ?? [])
   }
@@ -46,8 +62,10 @@ export class VaultDirectories {
     path: string,
     depth = 0
   ): Promise<{ files: string[]; folders: { path: string; birth: number }[] }> {
+    this.assertPath(path)
     if (depth > 32) throw new EngineError('io', 'Directory tree is too deep')
     const children = await this.adapter.list(path)
+    for (const child of [...children.files, ...children.folders]) this.assertPath(child)
     const files = [...children.files]
     const folders: { path: string; birth: number }[] = []
     for (const child of children.folders) {
@@ -69,6 +87,7 @@ export class VaultDirectories {
   }
   private async reconcile(): Promise<void> {
     for (const pending of this.removals().sort((a, b) => b.path.length - a.path.length)) {
+      if (!this.includes(pending.path)) continue
       const drop = () =>
         this.saveRemovals(this.removals().filter((one) => one.path !== pending.path))
       const stat = await this.adapter.stat(pending.path)
@@ -106,7 +125,9 @@ export class VaultDirectories {
   }
   /** Only retry a requested departure, never prune unrelated deliberately empty folders. */
   async removedChild(path: string): Promise<void> {
+    this.assertPath(path)
     for (const pending of this.removals().sort((a, b) => b.path.length - a.path.length)) {
+      if (!this.includes(pending.path)) continue
       if (!path.startsWith(pending.path + '/')) continue
       const stat = await this.adapter.stat(pending.path)
       if (!stat || stat.ctime !== pending.birth) {
@@ -127,6 +148,7 @@ export class VaultDirectories {
       if (depth > 32) throw new EngineError('io', 'Directory tree is too deep')
       for (const folder of (await this.adapter.list(path)).folders) {
         if (
+          !this.includes(folder) ||
           ['.abele-sync', '.trash', '.git'].some(
             (root) => folder === root || folder.startsWith(root + '/')
           ) ||
@@ -139,8 +161,17 @@ export class VaultDirectories {
         await walk(folder, depth + 1)
       }
     }
-    await walk('', 0)
-    const old = this.records(),
+    const root = this.scope()
+    if (root && root !== '/') {
+      this.assertPath(root)
+      const stat = await this.adapter.stat(root)
+      if (stat?.type === 'folder' && !(await this.symlink(root))) {
+        found.push({ path: root, birth: stat.ctime, mtime: Math.max(0, Math.round(stat.mtime)) })
+        await walk(root, 0)
+      }
+    } else await walk('', 0)
+    const all = this.records(),
+      old = all.filter((one) => this.includes(one.path)),
       occupied = new Set(found.map((one) => one.path))
     const records = found.map((one) => {
       const same = old.find((record) => record.path === one.path && record.birth === one.birth)
@@ -158,8 +189,8 @@ export class VaultDirectories {
         identity: (same ?? recovered)?.identity ?? crypto.randomUUID(),
       }
     })
-    this.save(records)
-    const removals = this.removals()
+    this.save([...all.filter((one) => !this.includes(one.path)), ...records])
+    const removals = this.removals().filter((one) => this.includes(one.path))
     for (const one of found) {
       // A departed folder awaiting a held child must not be published as a new mkdir.
       if (
@@ -178,6 +209,7 @@ export class VaultDirectories {
     }
   }
   async mkdir(path: string): Promise<void> {
+    this.assertPath(path)
     const before = await this.adapter.stat(path)
     if (before) {
       if (before.type !== 'folder' || (await this.symlink(path)))
@@ -190,6 +222,7 @@ export class VaultDirectories {
   }
   /** A received directory needs only its own identity, not another walk of the vault. */
   async identity(path: string): Promise<string> {
+    this.assertPath(path)
     const stat = await this.adapter.stat(path)
     if (stat?.type !== 'folder' || (await this.symlink(path)))
       throw new EngineError('io', 'Received directory is unavailable')
@@ -204,6 +237,8 @@ export class VaultDirectories {
     return identity
   }
   async move(from: string, to: string): Promise<void> {
+    this.assertPath(from)
+    this.assertPath(to)
     if (await this.adapter.stat(to))
       throw new EngineError('conflict', 'Directory destination is occupied')
     if ((await this.symlink(from)) || (await this.adapter.stat(from))?.type !== 'folder')
@@ -221,6 +256,7 @@ export class VaultDirectories {
     )
   }
   async remove(path: string): Promise<void> {
+    this.assertPath(path)
     const stat = await this.adapter.stat(path)
     if (!stat) {
       this.saveRemovals(this.removals().filter((one) => one.path !== path))

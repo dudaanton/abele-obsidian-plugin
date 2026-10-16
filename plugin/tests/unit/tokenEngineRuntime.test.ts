@@ -48,6 +48,118 @@ it('keeps attachments offline while a reconnect is in flight and restores availa
   }
 })
 
+it('reviews canonical executable content through its known physical identity', async () => {
+  const wire = await server('Café/Café.js', '// remote', undefined, { ...scope, path: 'Café' })
+  const physical = 'Café/Cafe\u0301.js',
+    fs = new MemoryFileSystem(),
+    state = new MemoryStateStore()
+  const old = new TextEncoder().encode('// old'),
+    privateBytes = new TextEncoder().encode('// unrelated sibling')
+  await fs.writeAtomic(physical, old, 1000)
+  await fs.writeAtomic(wire.item.path, privateBytes, 1000)
+  await state.put({
+    path: physical,
+    wirePath: wire.item.path,
+    fileId: wire.item.file_id,
+    versionId: 'old-version',
+    sha: await sha256(old),
+    size: old.length,
+    mtime: 1000,
+  })
+  const one = runtime(wire, fs, state)
+  try {
+    await one.runtime.sync()
+    const [candidate] = await one.reviews.executables.pending()
+    expect(candidate.previousPath).toBeNull()
+    await one.runtime.apply(candidate)
+    expect(await fs.read(physical)).toEqual(wire.bytes)
+    expect(await fs.read(wire.item.path)).toEqual(privateBytes)
+  } finally {
+    await one.runtime.close()
+  }
+})
+
+it('pulls a canonical wire path through its retained local identity without touching its Unicode sibling', async () => {
+  const wire = await server('Café/Café.md', 'remote bytes', undefined, { ...scope, path: 'Café' })
+  const physical = 'Café/Cafe\u0301.md',
+    fs = new MemoryFileSystem(),
+    state = new MemoryStateStore()
+  const old = new TextEncoder().encode('old bytes'),
+    privateBytes = new TextEncoder().encode('unrelated sibling')
+  await fs.writeAtomic(physical, old, 1000)
+  await fs.writeAtomic(wire.item.path, privateBytes, 1000)
+  await state.put({
+    path: physical,
+    wirePath: wire.item.path,
+    fileId: wire.item.file_id,
+    versionId: 'old-version',
+    sha: await sha256(old),
+    size: old.length,
+    mtime: 1000,
+  })
+  const one = runtime(wire, fs, state)
+  try {
+    await one.runtime.sync()
+    expect(await fs.read(physical)).toEqual(wire.bytes)
+    expect(await fs.read(wire.item.path)).toEqual(privateBytes)
+    expect(await state.byFileId(wire.item.file_id)).toMatchObject({
+      path: physical,
+      wirePath: wire.item.path,
+    })
+  } finally {
+    await one.runtime.close()
+  }
+})
+
+it('does not authorize a Unicode sibling through a retained group asset path', async () => {
+  const group = { kind: 'group' as const, id: 'sample-group', path: 'Groups/sample.md' }
+  const wire = await server('Groups/sample.md', 'sample', undefined, group as typeof scope)
+  const one = runtime(wire, new MemoryFileSystem())
+  try {
+    const paths = Reflect.get(one.runtime, 'assetPaths') as Map<string, string>
+    paths.set('Café.bin', 'sample-asset')
+    expect(one.runtime.client.includes('Café.bin')).toBe(true)
+    expect(one.runtime.client.includes('Cafe\u0301.bin')).toBe(false)
+  } finally {
+    await one.runtime.close()
+  }
+})
+
+it.each(
+  [
+    'Cafe\u0301/secret.js',
+    'CAFÉ/secret.js',
+    'Café2/secret.js',
+    'Café/../Private/secret.js',
+    '',
+    'Café//secret.js',
+    'Café/secret.js/',
+  ].flatMap((path) => [false, true].map((caseInsensitive) => ({ path, caseInsensitive })))
+)(
+  'rejects raw review and filesystem path $path (case insensitive $caseInsensitive)',
+  async ({ path, caseInsensitive }) => {
+    const wire = await server('Café/sample.js', '// sample', undefined, { ...scope, path: 'Café' })
+    const fs = new MemoryFileSystem({ caseInsensitive }),
+      one = runtime(wire, fs)
+    try {
+      await one.runtime.sync()
+      const [candidate] = await one.reviews.executables.pending()
+      const read = vi.spyOn(fs, 'read'),
+        stat = vi.spyOn(fs, 'stat')
+      await expect(one.runtime.apply({ ...candidate, path })).rejects.toMatchObject({
+        code: 'protocol',
+      })
+      await expect(Reflect.get(one.runtime, 'options').fs.read(path)).rejects.toMatchObject({
+        code: 'protocol',
+      })
+      expect(read).not.toHaveBeenCalled()
+      expect(stat).not.toHaveBeenCalled()
+    } finally {
+      await one.runtime.close()
+    }
+  }
+)
+
 it('never reads or uploads private siblings during folder discovery', async () => {
   const wire = await server('Shared/sample.md', 'sample', undefined, { ...scope, path: 'Shared' })
   const fs = new MemoryFileSystem()

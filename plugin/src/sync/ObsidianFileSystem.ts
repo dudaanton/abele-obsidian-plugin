@@ -1,3 +1,4 @@
+import { assertPhysicalPath } from './external/projection'
 import { privateRecoveryDirectory } from './privateRecovery'
 import { sha256 } from './external/hash'
 import type { App, DataAdapter, ListedFiles, Stat } from 'obsidian'
@@ -241,7 +242,8 @@ export class ObsidianFileSystem implements FileSystem {
         const native = this.native
         if (native) await native.rmdirEmpty(path)
         else await this.guardedAdapter.rmdir(path, false)
-      }
+      },
+      () => (typeof this.fileScope === 'function' ? this.fileScope() : this.fileScope)
     )
     this.beforeEngineMutation = options.beforeEngineMutation ?? null
     this.ledger = options.ledger ?? null
@@ -315,6 +317,21 @@ export class ObsidianFileSystem implements FileSystem {
     return this.app.vault.configDir
   }
 
+  private scopedRoot(): string | undefined {
+    const root = typeof this.fileScope === 'function' ? this.fileScope() : this.fileScope
+    return root && root !== '/' ? root : undefined
+  }
+  private withinFileScope(path: string): boolean {
+    const root = this.scopedRoot()
+    if (!root) return true
+    try {
+      assertPhysicalPath(path)
+    } catch {
+      return false
+    }
+    return path === root || path.startsWith(root + '/')
+  }
+
   /** Existing installation recovery runs before scanner/watcher activation. */
   listDirectories() {
     this.runtimeFence?.assertReady()
@@ -341,6 +358,16 @@ export class ObsidianFileSystem implements FileSystem {
   }
   async recover(): Promise<void> {
     this.runtimeFence?.assertOwned()
+    if (
+      this.scopedRoot() &&
+      [...this.journal.entries(), ...this.journal.vaultRecovered()].some(
+        (entry) => !this.withinFileScope(entry.target)
+      )
+    )
+      throw new EngineError(
+        'io',
+        'Sync recovery outside this connection is required; local files were kept'
+      )
     if (
       !this.journal.entries().length &&
       !(this.native?.archiveBackup && this.journal.vaultRecovered().length)
@@ -389,16 +416,14 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   async *list(): AsyncIterable<FileInfo> {
-    const requestedScope = typeof this.fileScope === 'function' ? this.fileScope() : this.fileScope
-    const scope = requestedScope && requestedScope !== '/' ? requestedScope : undefined
+    const scope = this.scopedRoot()
     this.runtimeFence?.assertReady()
     await this.recover()
     const mutations = folderMutations(this.app.vault)
     await mutations.settled()
     const revision = mutations.revision
     const indexed = new Set<string>()
-    const withinScope = (path: string) =>
-      !scope || caseKey(path) === caseKey(scope) || caseKey(path).startsWith(caseKey(scope) + '/')
+    const withinScope = (path: string) => this.withinFileScope(path)
     const walk = function* (entry: TFile | TFolder): Generator<TFile> {
       if (entry instanceof TFile) yield entry
       else for (const child of entry.children) yield* walk(child as TFile | TFolder)
@@ -406,6 +431,7 @@ export class ObsidianFileSystem implements FileSystem {
     const root = scope ? this.app.vault.getAbstractFileByPath(scope) : null
     const files = scope ? (root ? walk(root as TFile | TFolder) : []) : this.app.vault.getFiles()
     for (const file of files) {
+      if (!withinScope(file.path)) continue
       if (isAdapterTemp(file.path)) continue
       if (this.awaitingIndex.has(file.path)) {
         const actual = await this.rawStat(file.path)
@@ -433,7 +459,7 @@ export class ObsidianFileSystem implements FileSystem {
       // stat alone on a case-folding disk would keep a phantom Report.md after a rename to
       // report.md. List its parent for the actual spelling, and never yield both names.
       const actual = await this.spellingOnDisk(path)
-      const info = actual === null ? null : await this.fileAt(actual)
+      const info = actual === null || !withinScope(actual) ? null : await this.fileAt(actual)
       if (info !== null && !indexed.has(caseKey(info.path))) {
         indexed.add(caseKey(info.path))
         yield info
@@ -812,19 +838,22 @@ export class ObsidianFileSystem implements FileSystem {
   watch(cb: (paths: string[]) => void): () => void {
     this.runtimeFence?.assertReady()
     const directoryRename = this.app.vault.on('rename', (file, previous) => {
-      if ('children' in file) this.directories.renamed(previous, file.path)
+      if ('children' in file && this.withinFileScope(previous) && this.withinFileScope(file.path))
+        this.directories.renamed(previous, file.path)
     })
     const stopMutations = folderMutations(this.app.vault).watch()
     const watcher = watchVault(
       {
         app: this.app,
         now: this.now,
-        onWatch: this.onWatch,
+        onWatch: this.onWatch
+          ? (paths) => this.onWatch(paths.filter((path) => this.withinFileScope(path)))
+          : null,
         pollMs: this.pollMs,
         configDir: this.configDir,
         snapshot: () => this.configSnapshot(),
       },
-      cb
+      (paths) => cb(paths.filter((path) => this.withinFileScope(path)))
     )
     this.pollNow = watcher.kick
     return () => {
@@ -928,6 +957,7 @@ export class ObsidianFileSystem implements FileSystem {
    * it is neither in the file index nor under the config folder.
    */
   private async configSnapshot(): Promise<Map<string, string>> {
+    if (this.scopedRoot()) return new Map()
     const taken = new Map<string, string>()
     if (!this.configPolled && this.configInventory === null && !this.inventoryConsumed) {
       const inventory = this.startupInventory?.()
@@ -1010,16 +1040,15 @@ export class ObsidianFileSystem implements FileSystem {
    * Whether the folder holds this exact name, which is how a rename is known to have taken.
    * Null when the listing could not say.
    *
-   * Case matters, since case is the whole question; the decomposition does not, because
-   * Obsidian composes what it lists whatever the disk keeps underneath. A listing that failed
+   * Both case and Unicode spelling must match the actual listed path. A listing that failed
    * is *not* a no: read as one, a rename that has already happened would be sent round again
    * and reported as a conflict the vault would hold for ever.
    */
   private async spelledExactly(target: string): Promise<boolean | null> {
-    const wanted = target.normalize('NFC')
+    const wanted = target
     try {
       const listed = await this.adapter.list(folderOf(target))
-      return listed.files.some((held) => held.normalize('NFC') === wanted)
+      return listed.files.some((held) => held === wanted)
     } catch {
       return null
     }

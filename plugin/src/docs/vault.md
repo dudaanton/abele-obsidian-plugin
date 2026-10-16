@@ -2278,6 +2278,12 @@ Folder connections pin their initial local folder in the device-local registry's
 A server rename stops exchange with the old and new paths shown; local files stay
 in place and disconnect remains available. Server paths are validated before local
 handling, and filesystem operations reject paths outside the pinned folder.
+Folder discovery starts at that root and preserves foreign directory identities and
+pending removals without processing them. Noncanonical incoming Unicode spellings
+are rejected before local access. Host-resolved physical Unicode spelling is retained
+inside the exact local root; canonical wire paths use retained file identities for
+local placement and never authorize a Unicode root sibling. A folder connection stops if shared write recovery
+requires touching another root, keeping the recovery records and local bytes.
 
 `abele-sync-device-review-id-v1` is a verified device-local UUID for the review database.
 Incoming-code review selects the exact displayed candidate ID; later candidates remain

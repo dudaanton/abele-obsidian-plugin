@@ -1,6 +1,83 @@
 import { expect, it, vi } from 'vitest'
 import { VaultDirectories } from '@/sync/vaultDirectories'
 
+it('starts directory discovery at the scoped root rather than filtering a vault-wide walk', async () => {
+  const { buildFakeVault } = await import('../helpers/fakeVault')
+  const { ObsidianFileSystem } = await import('@/sync/ObsidianFileSystem')
+  const app = buildFakeVault([
+    { path: 'Shared/sub/sample.md', content: 'sample' },
+    { path: 'Private/secret.md', content: 'private' },
+  ])
+  const list = vi.spyOn(app.vault.adapter, 'list')
+  const fs = new ObsidianFileSystem(app as never, {
+    fileScope: 'Shared',
+    preserveEmptyDirectories: true,
+  })
+  const paths = []
+  for await (const entry of fs.listDirectories()) paths.push(entry.path)
+  expect(paths).toEqual(['Shared', 'Shared/sub'])
+  expect(list.mock.calls.map(([path]) => path)).toEqual(['Shared', 'Shared/sub'])
+})
+
+it('does not inspect foreign configuration folders while watching a scoped folder', async () => {
+  const { buildFakeVault } = await import('../helpers/fakeVault')
+  const { ObsidianFileSystem } = await import('@/sync/ObsidianFileSystem')
+  const app = buildFakeVault([{ path: 'Shared/sample.md', content: 'sample' }])
+  const list = vi.spyOn(app.vault.adapter, 'list'),
+    stat = vi.spyOn(app.vault.adapter, 'stat')
+  const fs = new ObsidianFileSystem(app as never, { fileScope: 'Shared' })
+  const stop = fs.watch(() => {})
+  try {
+    fs.kick()
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(list).not.toHaveBeenCalled()
+    expect(stat).not.toHaveBeenCalled()
+  } finally {
+    stop()
+  }
+})
+
+it('stops scoped recovery before touching a foreign write journal entry', async () => {
+  const { buildFakeVault } = await import('../helpers/fakeVault')
+  const { ObsidianFileSystem } = await import('@/sync/ObsidianFileSystem')
+  const app = buildFakeVault([{ path: 'Shared/sample.md', content: 'sample' }])
+  app.saveLocalStorage('abele-sync-writes', [
+    { target: 'Private/secret.md', temp: 'Private/temp.md' },
+  ])
+  const stat = vi.spyOn(app.vault.adapter, 'stat'),
+    remove = vi.spyOn(app.vault.adapter, 'remove')
+  const fs = new ObsidianFileSystem(app as never, { fileScope: 'Shared' })
+  await expect(fs.recover()).rejects.toThrow(/outside this connection/)
+  expect(stat).not.toHaveBeenCalled()
+  expect(remove).not.toHaveBeenCalled()
+})
+
+it('scopes the directory walk and retains foreign pending removals without touching them', async () => {
+  const { buildFakeVault } = await import('../helpers/fakeVault')
+  const { ObsidianFileSystem } = await import('@/sync/ObsidianFileSystem')
+  const app = buildFakeVault([{ path: 'Shared/sample.md', content: 'sample' }])
+  await app.vault.createFolder('Private')
+  const birth = (await app.vault.adapter.stat('Private'))!.ctime
+  const pending = [{ path: 'Private', birth, files: [] }]
+  app.saveLocalStorage('abele-sync-empty-directory-removals-v1', pending)
+  const list = vi.spyOn(app.vault.adapter, 'list'),
+    stat = vi.spyOn(app.vault.adapter, 'stat')
+  const remove = vi.spyOn(app.vault.adapter, 'rmdir')
+  const fs = new ObsidianFileSystem(app as never, {
+    fileScope: 'Shared',
+    preserveEmptyDirectories: true,
+  })
+  const paths = []
+  for await (const entry of fs.listDirectories()) paths.push(entry.path)
+  expect(paths).toEqual(['Shared'])
+  expect(list.mock.calls.every(([path]) => path === 'Shared' || path.startsWith('Shared/'))).toBe(
+    true
+  )
+  expect(stat.mock.calls.some(([path]) => path === 'Private')).toBe(false)
+  expect(remove).not.toHaveBeenCalled()
+  expect(app.loadLocalStorage('abele-sync-empty-directory-removals-v1')).toEqual(pending)
+})
+
 it.each(['local delete', 'empty child', 'missing', 'recreated', 'new content'])(
   'reconciles pending directory removal on a scan: %s',
   async (change) => {

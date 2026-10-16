@@ -1,3 +1,4 @@
+import { assertPhysicalPath } from './external/projection'
 import { scopedFileSystem, FolderScopeError } from './scopedFileSystem'
 import { sha256 } from './external/hash'
 import { nativeSyncFailure } from './mobileTransport'
@@ -215,7 +216,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     if (this.token.scope.kind === 'folder' && (options.localRoot ?? this.token.scope.path) !== '/')
       options.fs = scopedFileSystem(
         options.fs,
-        (path) => this.assertIncomingPaths([path]),
+        (path) => this.assertLocalPaths([path]),
         (path) => !this.outsideScope(path)
       )
     const transport: typeof fetch = (input, init) =>
@@ -431,7 +432,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     const prepare = this.client.prepare.bind(this.client)
     const includes = this.client.includes.bind(this.client)
     this.client.includes = (path) =>
-      includes(path) || (this.active && this.permitted && this.assetPaths.has(normalisePath(path)))
+      includes(path) || (this.active && this.permitted && this.assetPaths.has(path))
     this.client.prepare = async (fs, state, excluded) => {
       this.compared.clear()
       await this.trace.run('write recovery before placement', async () =>
@@ -487,7 +488,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
             includes(entry.wirePath ?? entry.path) &&
             !configurationPath(local.path, options.paths)
           )
-            this.assetPaths.set(normalisePath(local.path), identity.fileId)
+            this.assetPaths.set(local.path, identity.fileId)
         }
       }
     }
@@ -848,8 +849,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     }
   }
   private outsideScope(path: string): boolean {
-    const root = (this.options.localRoot ?? this.token.scope.path).normalize('NFC')
-    path = path.normalize('NFC')
+    const root = this.options.localRoot ?? this.token.scope.path
     return (
       this.token.scope.kind === 'folder' &&
       root !== '/' &&
@@ -857,10 +857,24 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       !path.startsWith(root + '/')
     )
   }
+  /** Host identity resolution and rooted inventory supply physical spelling, never a wire alias. */
+  private assertLocalPaths(paths: readonly string[]): void {
+    for (const path of paths) {
+      try {
+        assertPhysicalPath(path)
+        // Compare the exact physical root bytes; Unicode normalization grants no access.
+        if (!this.outsideScope(path)) continue
+      } catch {
+        /* Malformed physical paths cannot reach filesystem operations. */
+      }
+      this.engine?.pause()
+      throw new FolderScopeError('The local file is outside this connection; sync stopped: ' + path)
+    }
+  }
   private assertIncomingPaths(paths: readonly string[]): void {
     for (const path of paths) {
       try {
-        validatePath(path.normalize('NFC'))
+        validatePath(path)
         if (!this.outsideScope(path)) continue
       } catch {
         /* Refuse aliases and traversal. */
@@ -939,8 +953,8 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
         ? priorDirectory !== item.path
           ? (priorDirectory ?? null)
           : null
-        : baseline?.path !== item.path
-          ? (baseline?.path ?? null)
+        : (baseline?.wirePath ?? baseline?.path) !== item.path
+          ? (baseline?.wirePath ?? baseline?.path ?? null)
           : null)
     // Creating a directory cannot activate code. Executable files are reviewed individually;
     // directory moves and departures still require review of their affected code paths.
@@ -1090,6 +1104,12 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       item.path !== this.options.ownSettingsPath
     )
       return
+    const identity = await this.options.state.byFileId(item.file_id)
+    if (identity && (identity.wirePath ?? identity.path) === item.path) {
+      this.assertLocalPaths([identity.path])
+      // Core places through this retained physical identity, not the wire-spelled sibling.
+      return
+    }
     if (item.kind === 'directory' || (await this.options.state.get(item.path))) return
     const before = await this.options.fs.stat(item.path)
     if (!before) return
@@ -1374,7 +1394,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     const target = await this.resolve(id)
     if (!target || !(await this.options.reviews.attachments.mayUpload(this.source(), target)))
       throw new Error('File publication is not approved')
-    this.assertIncomingPaths([target.path])
+    this.assertLocalPaths([target.path])
     await this.options.preparePlacement?.([target.path])
     const capture = async () => {
       this.assertHeld()

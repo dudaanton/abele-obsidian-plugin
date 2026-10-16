@@ -3,6 +3,18 @@ import type { App } from 'obsidian'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
 
+it('keeps physical Unicode spelling inside the exact root without discovering a Unicode root sibling', async () => {
+  const physical = 'Café/Cafe\u0301.md'
+  const app = buildFakeVault([
+    { path: physical, content: 'included' },
+    { path: 'Cafe\u0301/private.md', content: 'private sibling' },
+  ])
+  const fs = new ObsidianFileSystem(app as unknown as App, { fileScope: 'Café' })
+  const paths = []
+  for await (const file of fs.list()) paths.push(file.path)
+  expect(paths).toEqual([physical])
+})
+
 it('enumerates the selected indexed subtree without visiting unrelated notes or configuration', async () => {
   const app = buildFakeVault([
     { path: 'Shared/sample.md', content: 'included' },

@@ -109,10 +109,12 @@ it('publishes a decomposed local filename with its canonical wire spelling and k
   const physical = 'Cafe\u0301.bin',
     wire = physical.normalize('NFC')
   await one.files.move('first.bin', physical)
+  await one.files.writeAtomic(wire, new TextEncoder().encode('unrelated sibling'), 2000)
   one.targets.set('first', { id: 'first', path: physical, kind: 'attachment' })
   await one.runtime.publishAttachment('first')
   expect(one.publish.mock.calls[0][0]).toBe(wire)
   expect(await one.state.get(physical)).toMatchObject({ path: physical, wirePath: wire })
+  expect(new TextDecoder().decode(await one.files.read(wire))).toBe('unrelated sibling')
 })
 it('an uncertain item retains its request while an unrelated attachment finishes', async () => {
   one = await tokenPublicationFixture()
