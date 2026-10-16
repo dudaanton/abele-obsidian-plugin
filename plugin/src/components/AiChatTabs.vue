@@ -172,6 +172,8 @@ const emit = defineEmits<{
   }
 
   &--active {
+    // The selected chat can use the strip's width; inactive chips stay compact.
+    max-width: 100%;
     color: var(--text-normal);
     background-color: var(--background-modifier-hover);
   }

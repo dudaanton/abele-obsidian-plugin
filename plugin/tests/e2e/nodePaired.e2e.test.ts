@@ -198,7 +198,6 @@ it('pairs through the real node UI, confirms locally, runs fake prompts and fenc
       await until(()=>[...document.querySelectorAll('.suggestion-item')].some(item=>item.querySelector('.suggestion-title')?.textContent===placeTitle));
       [...document.querySelectorAll('.suggestion-item')].find(item=>item.querySelector('.suggestion-title')?.textContent===placeTitle).click();
       await until(()=>model.current.value?.id===workspace.id&&panel().querySelector('.abele-node-place__name')?.textContent.trim()===workspace.branch);
-      const chats=window.__abeleTest.ChatService.getInstance();
       const before=new Set(chats.tabOrder.value);
       panel().querySelector('.abele-node-place > .abele-obsidian-icon').click();
       await until(()=>[...document.querySelectorAll('.menu-item')].some(item=>item.querySelector('.menu-item-title')?.textContent.trim()==='New chat here'&&!item.classList.contains('is-disabled')));

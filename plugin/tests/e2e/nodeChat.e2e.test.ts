@@ -300,7 +300,7 @@ const menuItem = async title => {
 };
 const placeMenu = async title => { panel().querySelector('.abele-node-place > .abele-obsidian-icon').click(); await menuItem(title) };
 const button = (root, text) => [...root.querySelectorAll('button')].find(b => b.textContent.trim() === text);
-const chatLeaf = id => app.workspace.getLeavesOfType('abele-node-chat').find(l => l.getViewState().state?.sessionId === id);
+const chatTab = id => chats.tabOrder.value.find(tab => chats.getNodeSession(tab)?.reference.sessionId === id);
 const placeIs = (folder, branch) => panel()?.querySelector('.abele-node-place__name')?.textContent.trim() === branch && panel().querySelector('.abele-node-place__where')?.textContent.trim() === folder;
 const showPlace = async (folder, branch) => {
   await until(() => panel()?.querySelector('.abele-node-place__row'));
@@ -337,21 +337,22 @@ const showPlace = async (folder, branch) => {
         for (let n = 0; n < 100 && !model.folders.value.flatMap(f => f.copies).some(c => c.branch === ${JSON.stringify(branch)}); n++) { await model.refresh(); await wait(100) }
         await showPlace(${JSON.stringify(folderName)}, ${JSON.stringify(branch)});
         const worktree = model.current.value.id;
-        const before = new Set(app.workspace.getLeavesOfType('abele-node-chat').map(l => l.getViewState().state?.sessionId));
+        const before = new Set(chats.tabOrder.value);
         await placeMenu('New chat here');
         await until(() => [...document.querySelectorAll('.suggestion-item')].some(item => item.querySelector('.suggestion-title')?.textContent === 'Claude Code'));
         [...document.querySelectorAll('.suggestion-item')].find(item => item.querySelector('.suggestion-title')?.textContent === 'Claude Code').click();
         await until(() => [...document.querySelectorAll('.modal button')].some(b => b.textContent.trim() === 'Allow execution'));
         [...document.querySelectorAll('.modal button')].find(b => b.textContent.trim() === 'Allow execution').click();
-        const leaf = await until(() => app.workspace.getLeavesOfType('abele-node-chat').find(l => !before.has(l.getViewState().state?.sessionId) && l.getViewState().state?.target?.id === worktree && l.view.presenter));
-        const root = leaf.view.containerEl;
-        await until(() => root.querySelector('.abele-node-chat__title')?.getAttribute('title').includes('Claude Code'));
-        const presenter = leaf.view.presenter;
+        const tab = await until(() => chats.tabOrder.value.find(id => !before.has(id) && chats.getNodeSession(id)));
+        const presenter = chats.getNodeSession(tab);
+        await until(() => model.sessions.value.some(s => s.session.session_id === presenter.reference.sessionId && s.target.id === worktree));
+        const root = await until(() => [...document.querySelectorAll('.abele-node-chat')].find(r => r.dataset.sessionId === presenter.reference.sessionId && r.getBoundingClientRect().width > 0));
+        await until(() => root.querySelector('.abele-node-chat__agent')?.textContent.trim() === 'Claude Code');
         const send = text => { const field = root.querySelector('.abele-node-chat textarea'); field.value = text; field.dispatchEvent(new Event('input', {bubbles:true})); field.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter',shiftKey:true,bubbles:true})) };
         send(${JSON.stringify(i === 0 ? 'edit' : 'deny')});
         await until(() => presenter.projection.value.prompts.some(p => p.state === 'pending'));
         ${i === 0 ? "send('followup'); await until(() => presenter.projection.value.queuedInputs.length === 1);" : ''}
-        return JSON.stringify(leaf.getViewState().state.sessionId)
+        return JSON.stringify(presenter.reference.sessionId)
       })()`)
       reloadPlugin()
       const result = evalAsync<{
@@ -360,26 +361,25 @@ const showPlace = async (folder, branch) => {
         changes: string[]
         empty: string
         diff: string
-        evidenceCollapsed: boolean
+        evidenceHidden: boolean
       }>(`(async () => {
         ${PRELUDE}
         ${PANEL}
-        const leaf = await until(() => chatLeaf(${JSON.stringify(sessionId)}));
-        await app.workspace.revealLeaf(leaf);
-        await until(() => leaf.view.presenter?.projection.value.prompts.some(p => p.state === 'pending'));
-        const presenter = leaf.view.presenter, root = leaf.view.containerEl;
+        const tab = await until(() => chatTab(${JSON.stringify(sessionId)}));
+        await chats.switchTab(tab); await chats.revealSidebar({focus:false});
+        const presenter = chats.getNodeSession(tab);
+        await until(() => presenter.projection.value.prompts.some(p => p.state === 'pending'));
+        const root = await until(() => [...document.querySelectorAll('.abele-node-chat')].find(r => r.dataset.sessionId === ${JSON.stringify(sessionId)} && r.getBoundingClientRect().width > 0));
         await until(() => [...root.querySelectorAll('.abele-node-chat button')].some(b => b.textContent.trim() === ${JSON.stringify(i === 0 ? 'Approve' : 'Deny')} && !b.disabled));
         [...root.querySelectorAll('.abele-node-chat button')].find(b => b.textContent.trim() === ${JSON.stringify(i === 0 ? 'Approve' : 'Deny')}).click();
         await until(() => presenter.messages.value.some(m => m.content === ${JSON.stringify(i === 0 ? '**Finished:** followup' : '**Finished:** deny')}));
-        // Raw evidence stays out of sight: Details is closed and draws nothing until opened, and
-        // each record then sits behind its own closed entry.
-        const raw = () => [...root.querySelectorAll('.abele-node-chat button')].filter(b => b.textContent.trim() === 'Read stored record');
-        const outer = root.querySelector('.abele-node-chat details.abele-chat-msg__body');
-        const closedFirst = !!outer && !outer.open && raw().length === 0;
-        outer.open = true; outer.dispatchEvent(new Event('toggle'));
-        await until(() => raw().length > 0);
-        const evidenceCollapsed = closedFirst && raw().every(b => b.closest('details') !== outer && !b.closest('details').open);
-        outer.open = false; outer.dispatchEvent(new Event('toggle'));
+        // Service evidence is never inline, even collapsed. The session menu retains a
+        // diagnostic exit without putting raw frames or stored system output in the chat.
+        const evidenceHidden = ![...root.querySelectorAll('button, summary')].some(el => /^(Read stored (record|output)|Details)$/.test(el.textContent.trim())) && !root.textContent.includes('"subtype":"init"');
+        root.querySelector('[aria-label="More chat actions"]').click();
+        await until(() => [...document.querySelectorAll('.menu-item-title')].some(el => el.textContent.trim() === 'Log raw session records'));
+        document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}));
+        await until(() => !document.querySelector('.menu'));
         // What the chat changed in its worktree: the panel's changes, and the file's diff in its tab.
         await nodeMenu('Folders and worktrees');
         await showPlace(${JSON.stringify(folderName)}, ${JSON.stringify(branch)});
@@ -400,9 +400,9 @@ const showPlace = async (folder, branch) => {
           const file = await until(() => app.workspace.getLeavesOfType('abele-node-file').find(l => l.view.getState().path === 'sample.txt' && l.view.containerEl.querySelector('.abele-diff__line')));
           diff = [...file.view.containerEl.querySelectorAll('.abele-diff__line')].map(l => (l.querySelector('.abele-diff__sign')?.textContent ?? '') + (l.querySelector('.abele-diff__text')?.textContent ?? '')).join('\\n');
         }
-        return JSON.stringify({ provider: presenter.provider.value, prompt: presenter.projection.value.prompts[0].choice, changes, empty, diff, evidenceCollapsed })
+        return JSON.stringify({ provider: presenter.provider.value, prompt: presenter.projection.value.prompts[0].choice, changes, empty, diff, evidenceHidden })
       })()`)
-      expect(result.evidenceCollapsed).toBe(true)
+      expect(result.evidenceHidden).toBe(true)
       expect(result.provider).toBe('claude')
       expect(result.prompt).toBe(i === 0 ? 'allow' : 'deny')
       if (i === 0) {
