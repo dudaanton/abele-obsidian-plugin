@@ -81,6 +81,11 @@ const probe = (footer: boolean) => String.raw`(async () => {
     await wait(900)
     report.initialState={padding:root.querySelector('.abele-timeline__blocks').style.paddingTop,space:root.querySelector('.abele-timeline__anchor-space').style.height}
     const initial=dates()
+    const overdueState=()=>{
+      const el=root.querySelector('.abele-timeline__overdue')
+      return el ? {visibility:getComputedStyle(el).visibility,height:el.getBoundingClientRect().height} : null
+    }
+    report.overdueBefore=overdueState()
     const labels=()=>[...root.querySelectorAll('.timeline__date')].map(el=>({day:el.closest('.abele-timeline__date-block').dataset.abeleAnchor,text:el.textContent,height:el.getBoundingClientRect().height}))
     const shortWeekdays=()=>labels().every(label=>/^(?:(?:Today|Tomorrow|Yesterday) · )?(Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d{2}\.\d{2}(?:\.\d{4})?$/.test(label.text.trim()))
     const initialLabels=labels()
@@ -98,6 +103,7 @@ const probe = (footer: boolean) => String.raw`(async () => {
     pointer('pointerdown',x,y,row()); pointer('pointermove',x,y+12)
     await wait(1000)
     report.range=dates()
+    report.overdueDrag=overdueState()
     report.startAnchor=[before,row().getBoundingClientRect().top]
     if (report.range.length < 20) return JSON.stringify(report)
     report.weekdays=shortWeekdays()
@@ -115,6 +121,7 @@ const probe = (footer: boolean) => String.raw`(async () => {
     document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))
     await wait(1000)
     report.cancelled=JSON.stringify(dates())===JSON.stringify(initial) && (await app.vault.read(app.vault.getAbstractFileByPath(folder+'/Sample moving.md')))===initialSource
+    report.overdueCancel=overdueState()
     report.cancelState={ padding:root.querySelector('.abele-timeline__blocks').style.paddingTop, space:root.querySelector('.abele-timeline__anchor-space').style.height, ghost:!!document.querySelector('.abele-timeline__drag-card'), source:!!root.querySelector('.abele-timeline__drag-source'), dragging:!!root.querySelector('.abele-timeline__dragging'), target:!!root.querySelector('.abele-timeline__drop-target'), scroll:[initialScroll,scroller.scrollTop] }
     app.workspace.setActiveLeaf(leaf,{focus:true})
     await wait(200)
@@ -130,6 +137,7 @@ const probe = (footer: boolean) => String.raw`(async () => {
     pointer('pointerup',ax,ty); await wait(1400)
     report.dropAnchor=[report.dropTop,row()?.getBoundingClientRect().top]
     report.written=app.metadataCache.getFileCache(app.vault.getAbstractFileByPath(folder+'/Sample moving.md'))?.frontmatter?.date===day(1)
+    report.overdueDrop=overdueState()
     report.extraGone=dates().length===2 && !root.querySelector('[data-abele-anchor="task:'+folder+'/Sample completed.md"]') && !root.querySelector('[data-abele-anchor="task:'+folder+'/Sample past.md"]')
     // Exercise the real WebKit touch path: a fast swipe scrolls, a held swipe drags.
     if (window.__e2eHost) {
@@ -149,8 +157,10 @@ const probe = (footer: boolean) => String.raw`(async () => {
       align(); await settle()
       const b=row().getBoundingClientRect(), bx=b.left+b.width/2, by=b.top+10
       let expanded=false, nativeStart, sourceBefore
+      let nativeOverdueHidden=false
       const observer=new MutationObserver(()=>{
         if(dates().length>20) expanded=true
+        if(dates().length>20 && overdueState()?.visibility==='hidden') nativeOverdueHidden=true
         const ghost=document.querySelector('.abele-timeline__drag-card')
         if(ghost && sourceBefore!==undefined && nativeStart===undefined) nativeStart=[sourceBefore,ghost.getBoundingClientRect().top]
       })
@@ -178,6 +188,8 @@ const probe = (footer: boolean) => String.raw`(async () => {
       document.removeEventListener('touchend',record,true); document.removeEventListener('touchmove',beforeMove,true); observer.disconnect(); await wait(1200)
       report.nativeWritten=app.metadataCache.getFileCache(app.vault.getAbstractFileByPath(folder+'/Sample moving.md'))?.frontmatter?.date===day(2)
       report.nativeDrag=expanded
+      report.nativeOverdueHidden=nativeOverdueHidden
+      report.nativeOverdueRestored=overdueState()?.visibility==='visible'
       report.nativeStart=nativeStart
       report.nativeDrop=[nativeEnd,row()?.getBoundingClientRect().top]
       align(); await settle()
@@ -255,6 +267,11 @@ describe.skipIf(!available)('timeline drag in native scroll panes', () => {
       console.log(JSON.stringify(result))
       expect(result.initialState).toEqual({ padding: '', space: '' })
       expect(result.threshold).toBe(true)
+      expect(result.overdueBefore.visibility).toBe('visible')
+      expect(result.overdueDrag.visibility).toBe('hidden')
+      expect(result.overdueDrag.height).toBe(result.overdueBefore.height)
+      expect(result.overdueCancel).toEqual(result.overdueBefore)
+      expect(result.overdueDrop).toEqual(result.overdueBefore)
       expect(result.range.length).toBeGreaterThanOrEqual(59)
       expect(result.range.length).toBeLessThanOrEqual(63)
       expect(Math.abs(result.startAnchor[1] - result.startAnchor[0])).toBeLessThanOrEqual(1)
@@ -284,6 +301,8 @@ describe.skipIf(!available)('timeline drag in native scroll panes', () => {
       if (result.nativeSwipe !== undefined) {
         expect(result.nativeSwipe).toBe(true)
         expect(result.nativeDrag).toBe(true)
+        expect(result.nativeOverdueHidden).toBe(true)
+        expect(result.nativeOverdueRestored).toBe(true)
         expect(result.nativeWritten).toBe(true)
         expect(result.nativeEdgeScroll).toBeGreaterThan(0)
         expect(result.nativeEdgeEnded).toBe(true)

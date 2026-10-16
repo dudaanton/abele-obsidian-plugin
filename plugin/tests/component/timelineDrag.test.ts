@@ -71,6 +71,46 @@ afterEach(() => {
 })
 
 describe('timeline task dragging', () => {
+  it.each(['drop', 'outside', 'escape', 'pointercancel', 'touchend', 'touchcancel'])(
+    'hides the overdue control during drag and restores it after %s without removing its row',
+    async (ending) => {
+      const current = sample('sample-current', '2030-06-15')
+      vi.spyOn(current, 'writeTaskToFile').mockResolvedValue(undefined)
+      await render([current, sample('sample-past', '2030-06-14')])
+      const overdue = () => view.get('.abele-timeline__overdue')
+      const visibility = () => getComputedStyle(overdue().element).visibility || 'visible'
+      expect(visibility()).toBe('visible')
+      if (ending.startsWith('touch')) {
+        await touch('touchstart', 80, 190)
+        await new Promise((resolve) => setTimeout(resolve, 500))
+        expect(visibility()).toBe('visible')
+        await touch('touchmove', 80, 205)
+      } else {
+        await pointer('pointerdown', 80, 190, row().element)
+        expect(visibility()).toBe('visible')
+        await pointer('pointermove', 80, 205)
+      }
+      expect(visibility()).toBe('hidden')
+      expect(getComputedStyle(overdue().element).display).not.toBe('none')
+      if (ending === 'escape') {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+        await flushPromises()
+      } else if (ending.startsWith('touch')) {
+        await touch(ending, 80, 205)
+      } else if (ending === 'pointercancel') {
+        await pointer('pointercancel', 80, 205)
+      } else {
+        vi.spyOn(document, 'elementFromPoint').mockReturnValue(
+          ending === 'drop'
+            ? view.get('[data-abele-anchor="date:2030-06-16"]').element
+            : document.body
+        )
+        await pointer('pointerup', 80, 205)
+      }
+      expect(visibility()).toBe('visible')
+    }
+  )
+
   it.each([
     ['en', true, 'Sat', 'Sun', 'Mon'],
     ['en', false, 'Sat', 'Sun', 'Mon'],

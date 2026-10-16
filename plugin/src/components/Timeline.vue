@@ -64,6 +64,7 @@
           <div
             v-if="group.id === 'overdue-row'"
             class="abele-timeline__fold abele-timeline__overdue"
+            :style="{ visibility: drag.range.value ? 'hidden' : undefined }"
             role="button"
             tabindex="0"
             :aria-label="overdueOpen ? 'Hide overdue tasks' : 'Show overdue tasks'"
