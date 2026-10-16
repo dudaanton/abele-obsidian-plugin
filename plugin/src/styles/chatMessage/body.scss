@@ -284,10 +284,22 @@ body.is-phone
   margin-top: var(--size-4-3);
 }
 .abele-ai-chat__messages > * + .abele-chat-msg_user {
-  margin-top: var(--size-4-8);
+  margin-top: var(--size-4-4);
 }
 .abele-ai-chat__messages > .abele-chat-run + .abele-chat-msg_assistant {
   margin-top: var(--size-2-2);
+}
+
+// Empty answers between runs take no room; the work reads as one continuous list.
+.abele-ai-chat__messages > .abele-chat-msg_assistant:has(> .abele-chat-msg__body:empty),
+.abele-ai-chat__messages > .abele-chat-run + .abele-chat-run,
+.abele-ai-chat__messages
+  > .abele-chat-msg_assistant:has(> .abele-chat-msg__body:empty)
+  + .abele-chat-run,
+// The question's own bar already separates it from the first work or words.
+.abele-ai-chat__messages > .abele-chat-msg_user + .abele-chat-run,
+.abele-ai-chat__messages > .abele-chat-msg_user + .abele-chat-msg_assistant {
+  margin-top: 0;
 }
 
 // A chart, a map or a picture in an answer keeps a paragraph's distance from what is around it;
