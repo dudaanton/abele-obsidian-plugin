@@ -15,12 +15,17 @@ const run = <T>(body: string): T =>
   evalAsync<T>(`(async()=>{
   const path=${JSON.stringify(PATH)},dir=${JSON.stringify(DIR)}
   const view=()=>app.workspace.getLeavesOfType('abele-canvas').find(l=>l.view.file?.path===path)?.view
-  return JSON.stringify(await(async()=>{${body}})())
+  return JSON.stringify((await(async()=>{${body}})()) ?? null)
 })()`)
 const until = async (condition: string) => {
   await expect.poll(() => run(`return !!(${condition})`), { timeout: 15000 }).toBe(true)
 }
 const open = () => run(`await app.workspace.openLinkText(path,'','tab');return true`)
+const PANEL_MENU = `
+  const more=view().containerEl.querySelector('.view-action[aria-label="More options"]')
+  if(!more)throw Error('Canvas pane menu button missing');more.click()
+  const item=[...document.querySelectorAll('.menu-item')].find(i=>i.querySelector('.menu-item-title')?.textContent==='Notes show header and footer')
+  if(!item)throw Error('Canvas panel menu entry missing');item.click();return true`
 const shot = (name: string) =>
   run(`
   const wc=require('@electron/remote').getCurrentWebContents()
@@ -67,11 +72,7 @@ describe.skipIf(!available)('note panels inside canvas cards', () => {
       await until('view()?.editor && view().viewer.graph.nodes.length===1')
       run(`view().viewer.setCamera({x:-10,y:-10,zoom:1});return true`)
       // Use the actual pane-menu handlers, including their persistence path.
-      run(`
-        const {Menu}=require('obsidian'),menu=new Menu();view().onPaneMenu(menu,'more-options')
-        menu.showAtPosition({x:40,y:80})
-        const item=[...document.querySelectorAll('.menu-item')].find(i=>i.querySelector('.menu-item-title')?.textContent==='Notes show header and footer')
-        if(!item)throw Error('Canvas panel menu entry missing');item.click();return true`)
+      run(PANEL_MENU)
       await until("view().contentEl.querySelector('.abele-canvas-card_panels')")
       shot(phone ? 'phone-full-long' : 'desktop-full-long')
       run(`view().editor.controls.setPanels('sample',false);return true`)
