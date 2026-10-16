@@ -39,6 +39,7 @@ export const liveSyncFiles = [
   'syncDialogs',
   'syncTransfer',
   'syncPhone',
+  'syncExternalFiles',
   'personalBaseline',
 ]
 export function mappedSyncCases(): { file: string; name: string; scenarios: number[] }[] {
