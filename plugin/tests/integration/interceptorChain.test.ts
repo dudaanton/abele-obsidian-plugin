@@ -166,6 +166,9 @@ describe('interceptors over a message, one after another', () => {
     // Each change is said beside it, by who made it.
     expect(bubble.interceptorChat?.map((m) => m.by)).toEqual(['First', 'Second', 'Third'])
     expect(bubble.interceptorWait).toBeUndefined()
+    // Through all of them, their lines fold into one under the message.
+    expect(bubble.interceptorCollapsed).toBe(true)
+    expect(bubble.interceptorName).toBe('Interceptors')
   })
 
   it('skips a switched-off one, one reading answers only, and one whose pattern does not match', async () => {

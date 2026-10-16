@@ -117,6 +117,8 @@ async function continueChain(
   const chain = interceptor.chain('message')
   let policy = carried
   let saved: Promise<void> | null = fresh ? null : Promise.resolve()
+  // Folded once it is through, as one interceptor's lines were, unless a pattern was broken.
+  let brokenPattern = false
   const live = () => gen === host.generation() && !!host.find(id)?.draft
 
   const result = await runChain<Stop>(
@@ -134,6 +136,7 @@ async function continueChain(
         interceptorScript: entry.script ? true : undefined,
         interceptorWait: wait,
       }))
+      if (step.broken) brokenPattern = true
       const notes = step.broken
         ? [`The pattern does not compile (${step.broken}), so every message goes to ${name}.`]
         : []
@@ -223,8 +226,10 @@ async function continueChain(
   if (saved !== null) await saved
   if (!live()) return
   if (result.kind === 'done') {
-    const noted = Boolean(host.find(id)?.interceptorChat?.some((m) => m.role === 'assistant'))
-    return settleAndRun(host, id, [], policy, !noted)
+    // Folded, several speakers read as one line under the message, their count beside it.
+    const speakers = new Set(host.find(id)?.interceptorChat?.map((m) => m.by).filter(Boolean))
+    if (speakers.size > 1) host.update(id, (m) => ({ ...m, interceptorName: 'Interceptors' }))
+    return settleAndRun(host, id, [], policy, !brokenPattern)
   }
   switch (result.result.kind) {
     case 'gone':
