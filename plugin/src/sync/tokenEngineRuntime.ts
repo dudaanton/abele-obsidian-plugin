@@ -1,3 +1,4 @@
+import { connectionPrivateRoot } from './connectionPaths'
 import { assertPhysicalPath } from './external/projection'
 import { scopedFileSystem, FolderScopeError } from './scopedFileSystem'
 import { sha256 } from './external/hash'
@@ -217,7 +218,8 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       options.fs = scopedFileSystem(
         options.fs,
         (path) => this.assertLocalPaths([path]),
-        (path) => !this.outsideScope(path)
+        (path) => !this.outsideScope(path),
+        connectionPrivateRoot(options.id)
       )
     const transport: typeof fetch = (input, init) =>
       this.trace.run(

@@ -207,7 +207,11 @@ export interface TokenUiRuntime extends ExecutableApplyPort, ConsentResolvePort 
 export type DeviceReviews = Awaited<ReturnType<typeof openDeviceReviews>>
 const noConnectionHost = async () => {}
 export class TokenUi {
-  connectionChangeGuard: (id?: string, assertCurrent?: () => void) => Promise<void> = async () => {}
+  connectionChangeGuard: (
+    id?: string,
+    assertCurrent?: () => void,
+    scope?: V2Scope
+  ) => Promise<void> = async () => {}
   connectionsChanged: (assertCurrent?: () => void) => Promise<void> = noConnectionHost
   disconnectRuntime: (id: string) => Promise<void> = async (id) => {
     await this.runtimes.get(id)?.disconnect()
@@ -442,7 +446,7 @@ export class TokenUi {
         'checking vault',
         'Checking the vault could not finish. Try again.',
         async (assertCurrent) => {
-          await this.connectionChangeGuard(undefined, assertCurrent)
+          await this.connectionChangeGuard(undefined, assertCurrent, token.scope)
           assertCurrent()
         },
         signal
@@ -531,7 +535,11 @@ export class TokenUi {
     }
   ): Promise<void> {
     if (patch.address !== undefined) {
-      await this.connectionChangeGuard()
+      await this.connectionChangeGuard(
+        undefined,
+        undefined,
+        this.registry.records().find((one) => one.id === id)?.scope ?? undefined
+      )
       this.registry.setAddress(id, patch.address)
     }
     if (patch.paused !== undefined) await this.pause(id, patch.paused)

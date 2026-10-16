@@ -1,3 +1,4 @@
+import { connectionHost, connectionPrivateArea } from '../connectionPaths'
 import type { App, DataAdapter, EventRef } from 'obsidian'
 import { caseKey } from '@abele/sync-protocol'
 import { nativeOf } from '../nativeVaultFs'
@@ -28,6 +29,7 @@ import {
 const coordinators = new WeakMap<object, ExternalFileCoordination>()
 /** One reservation authority for personal/scoped/rebuilt filesystems in this vault runtime. */
 export function externalCoordinationOf(vault: object): ExternalFileCoordination {
+  vault = connectionHost(vault)
   let coordinator = coordinators.get(vault)
   if (!coordinator) {
     coordinator = new ExternalFileCoordination()
@@ -85,7 +87,7 @@ export class ExternalFileHost {
     this.options.assertOwned()
   }
   artifactPath(name: string): string {
-    return `${stagingDirectory(this.app.vault.configDir)}/${name}`
+    return `${connectionPrivateArea(this.app) ? connectionPrivateArea(this.app) + '/external' : stagingDirectory(this.app.vault.configDir)}/${name}`
   }
   private effect<T>(work: () => T): T {
     this.assertOwned()
@@ -212,7 +214,11 @@ export class ExternalFileHost {
 
   private filesystem(): ExternalFilesystemPort {
     const adapter = this.app.vault.adapter
-    const native = nativeOf(adapter, this.assertOwned)
+    const native = nativeOf(
+      adapter,
+      this.assertOwned,
+      connectionPrivateArea(this.app) ? connectionPrivateArea(this.app) + '/recovery' : undefined
+    )
     const installation =
       this.options.platform === 'desktop'
         ? native?.installExclusive

@@ -1,3 +1,5 @@
+import { connectionAdapter, connectionInspectionApp } from './connectionScope'
+import { connectionPrivateRoot } from './connectionPaths'
 import { Platform, type App, type EventRef } from 'obsidian'
 import { caseKey, encodeAccessToken } from '@abele/sync-protocol'
 import type { EngineStatus, SyncReport } from '@abele/sync-core'
@@ -99,13 +101,21 @@ export class TokenEngines {
       if (retry) await retry(assertCurrent)
       else await ui.connectionsChanged(assertCurrent)
     }
-    ui.connectionChangeGuard = async (id, assertCurrent = () => {}) => {
+    ui.connectionChangeGuard = async (id, assertCurrent = () => {}, scope) => {
       assertCurrent()
       if (this.closed) throw new Error('Connection host closed; recovery required')
       if (!id) {
-        requireExternalEnrollmentSafety(this.app)
+        const root = scope?.kind === 'folder' && scope.path !== '/' ? scope.path : undefined
+        const app = root
+          ? connectionInspectionApp(
+              this.app,
+              connectionAdapter(this.app.vault.adapter, root, root),
+              root
+            )
+          : this.app
+        requireExternalEnrollmentSafety(app)
         await requireExternalLifecycleSafety(
-          this.app,
+          app,
           factoryOf(this.deps),
           undefined,
           true,
@@ -117,10 +127,22 @@ export class TokenEngines {
         )
         return
       }
+      const record = this.ui.registry.records().find((one) => one.id === id)
+      const root =
+        record?.scope?.kind === 'folder' ? (record.localRoot ?? record.scope.path) : undefined
+      const scopedApp =
+        root && root !== '/'
+          ? connectionInspectionApp(
+              this.app,
+              connectionAdapter(this.app.vault.adapter, root, connectionPrivateRoot(id)),
+              root,
+              connectionPrivateRoot(id)
+            )
+          : this.app
       const inspecting = this.startupCancels.has(id) && !ui.runtimes.has(id)
       if (id) await this.offloadPorts.get(id)?.prepareDisconnect()
       await requireExternalLifecycleSafety(
-        this.app,
+        scopedApp,
         factoryOf(this.deps),
         undefined,
         true,
@@ -398,8 +420,17 @@ export class TokenEngines {
       const key = this.key(record.secretReference)
       if (!key || !record.scope) throw new Error('Connection needs its token')
       const localRoot = this.ui.registry.pinLocalRoot(record.id)
+      const scopedRoot = record.scope.kind === 'folder' && localRoot !== '/' ? localRoot : undefined
+      const adapter = scopedRoot
+        ? connectionAdapter(this.app.vault.adapter, scopedRoot, connectionPrivateRoot(record.id))
+        : this.app.vault.adapter
+      const connectionApp = scopedRoot
+        ? connectionInspectionApp(this.app, adapter, scopedRoot, connectionPrivateRoot(record.id))
+        : this.app
+
       let inventory: ReadonlyMap<string, { path: string; size: number; mtime: number }> | undefined
       const inspection = {
+        scope: scopedRoot,
         inventory: (files: typeof inventory) => {
           inventory = files
         },
@@ -421,7 +452,7 @@ export class TokenEngines {
         'Checking recovery records',
         () =>
           requireExternalLifecycleSafety(
-            this.app,
+            connectionApp,
             factoryOf(this.deps),
             undefined,
             true,
@@ -466,6 +497,8 @@ export class TokenEngines {
       )
       assertActive()
       const ordinary = new ObsidianFileSystem(this.app, {
+        adapter,
+        connectionId: scopedRoot ? record.id : undefined,
         fileScope: () =>
           runtime ? runtime.folderScope() : record.scope.kind === 'folder' ? localRoot : undefined,
         startupInventory: () => inventory,
@@ -485,7 +518,7 @@ export class TokenEngines {
         'Checking retained recovery bytes',
         () =>
           requireExternalLifecycleSafety(
-            this.app,
+            connectionApp,
             factoryOf(this.deps),
             undefined,
             true,
@@ -500,7 +533,7 @@ export class TokenEngines {
         'Checking saved sync state',
         () =>
           recoverExternalState(
-            this.app,
+            connectionApp,
             state,
             record.ledgerId,
             record.ledgerId,
@@ -516,10 +549,11 @@ export class TokenEngines {
       {
         assertActive()
         fence.activate()
+        await ordinary.discardPrivateDownloads()
         const manager = tokenOffloadsOf(this.app.vault, pathCoordinatorOf(this.app.vault))
         const offloads = await stage('Preparing file access', () =>
           tokenOffloadConnection({
-            app: this.app,
+            app: connectionApp,
             factory: factoryOf(this.deps),
             state,
             ledgerId: record.ledgerId,
@@ -582,7 +616,7 @@ export class TokenEngines {
           preparePlacement: (paths) => manager.prepareIncoming(record.ledgerId, paths),
           recoverPlacement: () => ordinary.recover(),
           scopeInput: async (selective) => {
-            const text = await readIgnore(this.app)
+            const text = await readIgnore(connectionApp)
             return {
               key: await scopeKey(selective, text),
               ignore: ignoreFor(this.app.vault.configDir, text),

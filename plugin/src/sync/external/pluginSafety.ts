@@ -1,3 +1,4 @@
+import { connectionRoot, connectionPrivateArea, withinRoot } from '../connectionPaths'
 import {
   preservePrivateArtifacts,
   privateArtifactRecovered,
@@ -206,6 +207,7 @@ export const inspectionSchema = z
 
 /** Stat-first, persisted inspection. Recognition follows bounded content, not the extension. */
 export interface ProjectionInspection {
+  scope?: string
   inventory?(files: ReadonlyMap<string, { path: string; size: number; mtime: number }>): void
   signal?: AbortSignal
   stage?(stage: string): void
@@ -244,7 +246,9 @@ export async function recoverOrphanPrivateArtifacts(
   factory: IDBFactory,
   assertCurrent: () => void = () => {}
 ): Promise<void> {
-  const directory = stagingDirectory(app.vault.configDir)
+  const owned = connectionPrivateArea(app)
+  if (connectionRoot(app) && !owned) return
+  const directory = owned ? owned + '/external' : stagingDirectory(app.vault.configDir)
   await pathCoordinatorOf(app.vault).run(
     [directory],
     async () => {
@@ -342,6 +346,8 @@ export async function projectionEvidence(
   ownedPaths: ReadonlySet<string> = new Set(),
   inspection: ProjectionInspection = {}
 ): Promise<string | null> {
+  const scope = inspection.scope ?? connectionRoot(app)
+  const included = (path: string) => !scope || withinRoot(path, scope)
   const started = Date.now()
   let stopped = false
   const assertCurrent = () => {
@@ -354,7 +360,7 @@ export async function projectionEvidence(
   const indexed = new Map(
     app.vault
       .getFiles()
-      .filter((file) => !file.path.startsWith(recoveryPrefix))
+      .filter((file) => included(file.path) && !file.path.startsWith(recoveryPrefix))
       .map((file) => [file.path, file])
   )
   const inventory = new Map<string, { path: string; size: number; mtime: number }>()
@@ -373,13 +379,17 @@ export async function projectionEvidence(
     if (folder === privateRecoveryDirectory(app.vault.configDir)) return
     const listed = await readOnly(() => app.vault.adapter.list(folder))
     assertCurrent()
-    for (const file of listed.files) paths.add(file)
+    for (const file of listed.files) if (included(file)) paths.add(file)
     folders += listed.folders.length
     inspection.inventoryProgress?.(seen.size, folders)
     inspection.progress?.(0, paths.size)
-    for (const child of listed.folders) await walk(child)
+    for (const child of listed.folders) if (included(child)) await walk(child)
   }
-  await walk('')
+  if (scope) {
+    const root = await readOnly(() => app.vault.adapter.stat(scope))
+    if (root?.type === 'folder') await walk(scope)
+    else if (root) throw new ExternalRecoveryRequired('connection folder path is occupied')
+  } else await walk('')
   inspection.stage?.('Checking the vault')
   const cached = inspectionSchema.safeParse(app.loadLocalStorage(EXTERNAL_INSPECTION_KEY))
   // The index is an optimization, never authority: damaged/missing cache triggers inspection.
@@ -515,7 +525,13 @@ export async function projectionEvidence(
   }
   assertCurrent()
   if (updated || !cached.success || cached.data.entries.length !== inspected.length)
-    persist(app, EXTERNAL_INSPECTION_KEY, { schema: 1, entries: inspected })
+    persist(app, EXTERNAL_INSPECTION_KEY, {
+      schema: 1,
+      entries: [
+        ...(cached.success ? cached.data.entries.filter((entry) => !included(entry.path)) : []),
+        ...inspected,
+      ],
+    })
   inspection.inventory?.(inventory)
   console.debug(
     '[Abele Sync]',
@@ -885,6 +901,8 @@ export async function requireExternalLifecycleSafety(
       // Enrollment checks durable recovery metadata only. Byte verification belongs to startup.
       if (metadataOnly) continue
       const verifyLocal = async (path: string, sha: string, size: number) => {
+        const scope = inspection.scope ?? connectionRoot(app)
+        if (scope && !withinRoot(path, scope)) return
         if (await privateArtifactRecovered(app, path)) return
         const identity = await inspectionRead(inspection, assertCurrent, () =>
           new BoundedVaultIo(
@@ -900,6 +918,8 @@ export async function requireExternalLifecycleSafety(
       }
       for (const op of doc.operations)
         for (const artifact of op.ownedArtifacts) {
+          const scope = inspection.scope ?? connectionRoot(app)
+          if (scope && !withinRoot(artifact.path, scope)) continue
           if (
             !(await inspectionRead(inspection, assertCurrent, () =>
               app.vault.adapter.exists(artifact.path)

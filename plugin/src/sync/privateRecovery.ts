@@ -1,3 +1,4 @@
+import { connectionPrivateArea } from './connectionPaths'
 import { Notice, type App } from 'obsidian'
 import { makeParents } from './vaultFolders'
 import { stagingDirectory } from './stagingDirectory'
@@ -32,7 +33,7 @@ async function matchesCopy(
   }
 }
 async function hasRecoveryCopies(app: App): Promise<boolean> {
-  const root = privateRecoveryDirectory(app.vault.configDir)
+  const root = recoveryDirectory(app)
   if (!(await app.vault.adapter.exists(root))) return false
   const ordinary = ordinaryCopies(app),
     seen = new Set<string>()
@@ -64,11 +65,16 @@ async function hasRecoveryCopies(app: App): Promise<boolean> {
 export function privateRecoveryDirectory(configDir?: string): string {
   return configDir ? `${configDir}/plugins/abele/sync-recovery` : '.abele-sync-recovery'
 }
+const recoveryDirectory = (app: App) => {
+  const owned = connectionPrivateArea(app)
+  return owned ? owned + '/recovery' : privateRecoveryDirectory(app.vault.configDir)
+}
 export function privateRecoveryPath(app: App, path: string): string | null {
-  const prefix = stagingDirectory(app.vault.configDir) + '/'
+  const owned = connectionPrivateArea(app)
+  const prefix = (owned ? owned + '/external' : stagingDirectory(app.vault.configDir)) + '/'
   if (!path.startsWith(prefix) || path.split('/').some((part) => part === '.' || part === '..'))
     return null
-  return privateRecoveryDirectory(app.vault.configDir) + '/' + path.slice(prefix.length)
+  return recoveryDirectory(app) + '/' + path.slice(prefix.length)
 }
 /** A deterministic destination survives a crash between the rename and ledger updates.
  * Never unlink: a writer holding the old inode can still save unique bytes afterwards. */
@@ -85,7 +91,7 @@ export async function showPrivateRecoveryNotice(app: App, freshCopies = false): 
   if ((!freshCopies && notified.has(app.vault)) || !(await hasRecoveryCopies(app))) return
   notified.add(app.vault)
   new Notice(
-    `Sync kept recoverable copies in ${privateRecoveryDirectory(app.vault.configDir)}. They remain available for manual recovery.`,
+    `Sync kept recoverable copies in ${recoveryDirectory(app)}. They remain available for manual recovery.`,
     0
   )
 }

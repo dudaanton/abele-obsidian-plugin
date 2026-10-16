@@ -1,3 +1,4 @@
+import { connectionHost } from './connectionPaths'
 import { caseKey } from '@abele/sync-protocol'
 import type { FileSystem } from '@abele/sync-core'
 
@@ -96,6 +97,7 @@ export function coordinatedFileSystem<T extends FileSystem>(
 const SHARED = Symbol.for('abele.sync.path-coordinator-v1')
 /** Host identity, including module reloads, owns exclusion. No Obsidian dependency. */
 export function pathCoordinatorOf(host: object): PathCoordinator {
+  host = connectionHost(host)
   const value = host as { [SHARED]?: PathCoordinator }
   return (value[SHARED] ??= new PathCoordinator())
 }

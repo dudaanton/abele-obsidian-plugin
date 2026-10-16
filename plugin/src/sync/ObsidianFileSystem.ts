@@ -1,3 +1,4 @@
+import { connectionPrivateRoot, legacyPrivateDownload, withinRoot } from './connectionPaths'
 import { assertPhysicalPath } from './external/projection'
 import { privateRecoveryDirectory } from './privateRecovery'
 import { sha256 } from './external/hash'
@@ -54,6 +55,8 @@ const IGNORE_FILE = '.abele-sync-ignore'
 const stageOperations = new WeakMap<object, Set<string>>()
 
 export interface ObsidianFileSystemOptions {
+  adapter?: DataAdapter
+  connectionId?: string
   /** Ordinary enumeration is bounded before representation inspection for folder tokens. */
   fileScope?: string | (() => string | undefined)
   startupInventory?: () => ReadonlyMap<string, FileInfo> | undefined
@@ -165,6 +168,8 @@ export class ObsidianFileSystem implements FileSystem {
   private readonly journal: WriteJournal
   private readonly beforeEngineMutation: ((paths: string[]) => Promise<void>) | null
   private readonly runtimeFence: RuntimeFence | null
+  private readonly privateRoot?: string
+  private readonly scopedAdapter: DataAdapter
   private readonly guardedAdapter: DataAdapter
   readonly externalCoordination: ExternalFileCoordination
 
@@ -172,9 +177,13 @@ export class ObsidianFileSystem implements FileSystem {
     private readonly app: App,
     options: ObsidianFileSystemOptions = {}
   ) {
+    this.scopedAdapter = options.adapter ?? app.vault.adapter
+    this.privateRoot = options.connectionId
+      ? connectionPrivateRoot(options.connectionId)
+      : undefined
     this.stageOperations = stageOperations.get(app.vault) ?? new Set<string>()
     stageOperations.set(app.vault, this.stageOperations)
-    this.configRevision = adapterConfigRevision(app.vault.adapter, app.vault.configDir)
+    this.configRevision = adapterConfigRevision(this.scopedAdapter, app.vault.configDir)
     this.cachedConfigRevision = this.configRevision()
     this.preserveEmptyDirectories = options.preserveEmptyDirectories ?? false
     this.fileScope = options.fileScope
@@ -183,7 +192,7 @@ export class ObsidianFileSystem implements FileSystem {
     this.externalCoordination = externalCoordinationOf(app.vault)
     const runtimeAdapter = this.runtimeFence
       ? fencedPort(
-          app.vault.adapter,
+          this.scopedAdapter,
           this.runtimeFence,
           [
             'write',
@@ -199,7 +208,7 @@ export class ObsidianFileSystem implements FileSystem {
           ],
           false
         )
-      : app.vault.adapter
+      : this.scopedAdapter
     this.guardedAdapter = new Proxy(runtimeAdapter, {
       get: (target, key) => {
         const value = Reflect.get(target, key)
@@ -230,7 +239,7 @@ export class ObsidianFileSystem implements FileSystem {
       this.guardedAdapter,
       storageOf(app),
       async (path) => {
-        const adapter = app.vault.adapter as DataAdapter & {
+        const adapter = this.scopedAdapter as DataAdapter & {
           getFullPath?(path: string): string
           fsPromises?: { lstat(path: string): Promise<{ isSymbolicLink(): boolean }> }
         }
@@ -259,11 +268,13 @@ export class ObsidianFileSystem implements FileSystem {
       this.guardedAdapter,
       () => this.runtimeFence?.assertReady(),
       (work) => (this.runtimeFence ? this.runtimeFence.effect(work) : work()),
-      app.vault.adapter,
+      this.scopedAdapter,
       this.configDir
     )
     this.writer = new VaultWriter({
-      stagingDirectory: stagingDirectory(this.configDir),
+      stagingDirectory: this.privateRoot
+        ? this.privateRoot + '/writes'
+        : stagingDirectory(this.configDir),
       adapter: this.guardedAdapter,
       native: this.native,
       journal: this.journal,
@@ -280,10 +291,14 @@ export class ObsidianFileSystem implements FileSystem {
 
   /** Obsidian desktop's `fs.promises`, or null on a phone (`vaultWrites.nativeOf`). */
   private get native(): NativeFs | null {
-    const native = nativeOf(this.adapter, (paths = []) => {
-      this.runtimeFence?.assertOwned()
-      this.externalCoordination.assertEnginePaths(paths)
-    })
+    const native = nativeOf(
+      this.adapter,
+      (paths = []) => {
+        this.runtimeFence?.assertOwned()
+        this.externalCoordination.assertEnginePaths(paths)
+      },
+      this.privateRoot ? this.privateRoot + '/recovery' : undefined
+    )
     return native && this.runtimeFence
       ? fencedPort(
           native,
@@ -361,7 +376,15 @@ export class ObsidianFileSystem implements FileSystem {
     if (
       this.scopedRoot() &&
       [...this.journal.entries(), ...this.journal.vaultRecovered()].some(
-        (entry) => !this.withinFileScope(entry.target)
+        (entry) =>
+          !this.withinFileScope(entry.target) &&
+          !(this.privateRoot && withinRoot(entry.target, this.privateRoot)) &&
+          !(
+            'streaming' in entry &&
+            entry.streaming &&
+            !entry.backup &&
+            legacyPrivateDownload(entry.target)
+          )
       )
     )
       throw new EngineError(
@@ -388,6 +411,19 @@ export class ObsidianFileSystem implements FileSystem {
       },
       () => this.runtimeFence?.assertOwned()
     )
+  }
+
+  async discardPrivateDownloads(): Promise<void> {
+    if (!this.privateRoot) return
+    for (const entry of this.journal.entries())
+      if (
+        entry.streaming &&
+        !entry.backup &&
+        entry.temp &&
+        withinRoot(entry.target, this.privateRoot + '/placement-inbox') &&
+        withinRoot(entry.temp, this.privateRoot)
+      )
+        await (await this.reopenStage(entry.temp)).discard()
   }
 
   /** Placement needs immutable copies of its targets, not another full vault scan. */
@@ -847,13 +883,16 @@ export class ObsidianFileSystem implements FileSystem {
         app: this.app,
         now: this.now,
         onWatch: this.onWatch
-          ? (paths) => this.onWatch(paths.filter((path) => this.withinFileScope(path)))
+          ? (paths) =>
+              this.onWatch(
+                paths.filter((path) => path === IGNORE_FILE || this.withinFileScope(path))
+              )
           : null,
         pollMs: this.pollMs,
         configDir: this.configDir,
         snapshot: () => this.configSnapshot(),
       },
-      (paths) => cb(paths.filter((path) => this.withinFileScope(path)))
+      (paths) => cb(paths.filter((path) => path === IGNORE_FILE || this.withinFileScope(path)))
     )
     this.pollNow = watcher.kick
     return () => {
@@ -957,8 +996,12 @@ export class ObsidianFileSystem implements FileSystem {
    * it is neither in the file index nor under the config folder.
    */
   private async configSnapshot(): Promise<Map<string, string>> {
-    if (this.scopedRoot()) return new Map()
     const taken = new Map<string, string>()
+    if (this.scopedRoot()) {
+      const ignore = await this.stat(IGNORE_FILE)
+      if (ignore !== null) taken.set(ignore.path, `${ignore.size}:${ignore.mtime}`)
+      return taken
+    }
     if (!this.configPolled && this.configInventory === null && !this.inventoryConsumed) {
       const inventory = this.startupInventory?.()
       this.inventoryConsumed = true

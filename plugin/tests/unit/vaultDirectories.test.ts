@@ -23,15 +23,23 @@ it('does not inspect foreign configuration folders while watching a scoped folde
   const { buildFakeVault } = await import('../helpers/fakeVault')
   const { ObsidianFileSystem } = await import('@/sync/ObsidianFileSystem')
   const app = buildFakeVault([{ path: 'Shared/sample.md', content: 'sample' }])
+  await app.vault.adapter.write('.abele-sync-ignore', 'Shared/first.md\n')
   const list = vi.spyOn(app.vault.adapter, 'list'),
     stat = vi.spyOn(app.vault.adapter, 'stat')
   const fs = new ObsidianFileSystem(app as never, { fileScope: 'Shared' })
-  const stop = fs.watch(() => {})
+  const notify = vi.fn()
+  const stop = fs.watch(notify)
   try {
     fs.kick()
     await new Promise((resolve) => setTimeout(resolve, 10))
     expect(list).not.toHaveBeenCalled()
-    expect(stat).not.toHaveBeenCalled()
+    expect(stat).toHaveBeenCalled()
+    expect(new Set(stat.mock.calls.map(([path]) => path))).toEqual(new Set(['.abele-sync-ignore']))
+    await app.vault.adapter.write('.abele-sync-ignore', 'Shared/another-file.md\n')
+    fs.kick()
+    await vi.waitFor(() => expect(notify).toHaveBeenCalledWith(['.abele-sync-ignore']))
+    expect(list).not.toHaveBeenCalled()
+    expect(new Set(stat.mock.calls.map(([path]) => path))).toEqual(new Set(['.abele-sync-ignore']))
   } finally {
     stop()
   }

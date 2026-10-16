@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import type { App } from 'obsidian'
 import { IDBFactory } from 'fake-indexeddb'
-import { MemoryStateStore, type EngineStatus, type SyncReport } from '@abele/sync-core'
+import { MemoryStateStore, sha256, type EngineStatus, type SyncReport } from '@abele/sync-core'
 import { encodeAccessToken } from '@abele/sync-protocol'
 import { TokenEngines } from '@/sync/tokenEngines'
 import { TokenUi, connectionError } from '@/sync/tokenUi'
@@ -195,12 +195,17 @@ it('cancels a joining inspection before manager reset drains the host', async ()
   }
 })
 
-function inspectionFixture(marker = false, folder = '/') {
+function inspectionFixture(
+  marker = false,
+  folder = '/',
+  extra: Array<{ path: string; content: string }> = []
+) {
   const app = buildFakeVault([
     {
       path: 'Notes/slow.txt',
       content: marker ? '{"format":"abele.external", broken' : 'ordinary note',
     },
+    ...extra,
   ])
   const registry = TokenConnectionRegistry.open(app)
   const keys = new Map<string, string>()
@@ -255,15 +260,17 @@ function inspectionFixture(marker = false, folder = '/') {
     close: () => {},
   })
   const factory = new IDBFactory()
-  const host = new TokenEngines(app as unknown as App, ui, secrets.get, {
-    fetch: transport,
-    indexedDB: factory,
-    WebSocket: class {
-      constructor() {
-        throw new Error('No test socket')
-      }
-    } as unknown as typeof WebSocket,
-  })
+  const makeHost = () =>
+    new TokenEngines(app as unknown as App, ui, secrets.get, {
+      fetch: transport,
+      indexedDB: factory,
+      WebSocket: class {
+        constructor() {
+          throw new Error('No test socket')
+        }
+      } as unknown as typeof WebSocket,
+    })
+  const host = makeHost()
   let release!: () => void
   const gate = new Promise<void>((resolve) => {
     release = resolve
@@ -279,7 +286,7 @@ function inspectionFixture(marker = false, folder = '/') {
     key: 'a'.repeat(43),
     scope,
   })
-  return { app, registry, ui, host, transport, probe, release, encoded, factory, scope }
+  return { app, registry, ui, host, transport, probe, release, encoded, factory, scope, makeHost }
 }
 
 for (const action of ['pass', 'refuse', 'disconnect', 'unload']) {
@@ -804,3 +811,146 @@ it('stops a server rename without discovering its private local namesake and per
     await host.close()
   }
 })
+
+it('confines full folder startup, recovery and first exchange before any adapter access', async () => {
+  const { app, ui, host, registry, encoded, release, probe, transport } = inspectionFixture(
+    false,
+    'Notes',
+    [{ path: 'Notes/excluded.txt', content: 'excluded bytes' }]
+  )
+  const bytes = new TextEncoder().encode('downloaded bytes')
+  const item = {
+    file_id: 'remote-file',
+    version_id: 'remote-version',
+    path: 'Notes/remote.md',
+    kind: 'note',
+    mtime: 1000,
+    size: bytes.length,
+    sha: await sha256(bytes),
+  }
+  const send = transport.getMockImplementation()!
+  transport.mockImplementation(async (input, init) => {
+    const url = new URL(String(input))
+    if (url.pathname === '/v2/manifest')
+      return Response.json({ items: [item], cursor: 1, next: null })
+    if (url.pathname.endsWith('/content')) {
+      const range = /^bytes=(\d+)-(\d+)$/.exec(new Headers(init?.headers).get('range') ?? '')
+      return range
+        ? new Response(bytes.slice(Number(range[1]), Number(range[2]) + 1), {
+            status: 206,
+            headers: {
+              'content-range': `bytes ${range[1]}-${range[2]}/${bytes.length}`,
+              'content-length': String(Number(range[2]) - Number(range[1]) + 1),
+            },
+          })
+        : new Response(bytes)
+    }
+    return send(input, init)
+  })
+  await app.vault.create('Private/secret.md', 'private uncached bytes')
+  await app.vault.adapter.write('.abele-sync-ignore', 'Notes/excluded.txt\n')
+  const calls: string[] = []
+  for (const method of [
+    'list',
+    'stat',
+    'read',
+    'readBinary',
+    'exists',
+    'write',
+    'writeBinary',
+    'appendBinary',
+    'mkdir',
+    'remove',
+    'rmdir',
+    'rename',
+  ] as const) {
+    if (typeof app.vault.adapter[method] !== 'function') continue
+    const port = app.vault.adapter[method]
+    const original = (vi.isMockFunction(port) ? port.getMockImplementation()! : port).bind(
+      app.vault.adapter
+    )
+    vi.spyOn(app.vault.adapter, method).mockImplementation(
+      async (path: string, ...args: never[]) => {
+        calls.push(path)
+        if (method === 'rename') calls.push(String(args[0]))
+        return original(path, ...args)
+      }
+    )
+  }
+  try {
+    release()
+    await ui.connect(encoded)
+    const id = registry.records()[0].id
+    await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
+    await ui.sync(id)
+    const published = transport.mock.calls
+      .filter(([url]) => new URL(String(url)).pathname === '/v2/commit')
+      .flatMap(([, init]) => JSON.parse(String(init?.body)).ops as Array<{ path: string }>)
+    expect(published.map((op) => op.path)).toContain('Notes/slow.txt')
+    expect(published.map((op) => op.path)).not.toContain('Notes/excluded.txt')
+    expect(published.map((op) => op.path)).not.toContain('.abele-sync-ignore')
+    expect(probe.mock.calls.some(([path]) => path === '.abele-sync-ignore')).toBe(true)
+    expect(
+      calls.filter(
+        (path) =>
+          path !== 'Notes' &&
+          path !== '.abele-sync-ignore' &&
+          !path.startsWith('Notes/') &&
+          !path.startsWith('.abele-sync/connections/' + id + '/') &&
+          path !== '.abele-sync/connections/' + id &&
+          !['.abele-sync', '.abele-sync/connections'].includes(path)
+      )
+    ).toEqual([])
+    expect(calls.some((path) => path.startsWith('Private'))).toBe(false)
+    expect(await app.vault.adapter.read('Notes/remote.md')).toBe('downloaded bytes')
+  } finally {
+    release()
+    await host.close()
+    probe.mockRestore()
+    vi.restoreAllMocks()
+  }
+})
+
+it.each(['owned', 'legacy'])(
+  'restarts after an interrupted %s private placement download without treating it as a foreign folder',
+  async (kind) => {
+    const { app, ui, host, registry, encoded, release, probe, makeHost } = inspectionFixture(
+      false,
+      'Notes'
+    )
+    let restarted: TokenEngines | undefined
+    try {
+      release()
+      await ui.connect(encoded)
+      const id = registry.records()[0].id
+      await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
+      await ui.sync(id)
+      const fs = Reflect.get(Reflect.get(host, 'live').get(id), 'options').fs
+      const stages = Reflect.get(fs, Symbol.for('abele.sync.private-placement-stages-v1'))
+      const pending =
+        kind === 'owned'
+          ? await stages.beginAtomicWrite('.abele-sync/placement-inbox/aaaaaaaa-bbbb', 0, null)
+          : await new ObsidianFileSystem(app as never).beginAtomicWrite(
+              '.abele-sync/placement-inbox/aaaaaaaa-bbbb',
+              0,
+              null
+            )
+      await pending.append(0, new Uint8Array([1, 2]))
+      expect(new WriteJournal(app).entries().some((entry) => entry.temp === pending.id)).toBe(true)
+      await host.close()
+      restarted = makeHost()
+      restarted.start()
+      await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
+      await ui.sync(id)
+      expect(registry.records()[0].status).not.toBe('error')
+      expect(new WriteJournal(app).entries().some((entry) => entry.temp === pending.id)).toBe(
+        kind === 'legacy'
+      )
+    } finally {
+      release()
+      await restarted?.close()
+      await host.close()
+      probe.mockRestore()
+    }
+  }
+)

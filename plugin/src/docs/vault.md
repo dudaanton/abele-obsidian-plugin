@@ -2285,6 +2285,16 @@ inside the exact local root; canonical wire paths use retained file identities f
 local placement and never authorize a Unicode root sibling. A folder connection stops if shared write recovery
 requires touching another root, keeping the recovery records and local bytes.
 
+Folder connection startup, projection inspection, recovery, and native/adapter file
+access share the same root boundary. Private placement downloads, write staging, and
+recovery copies use a device-local `.abele-sync/connections/<connection-id>/` namespace.
+Abandoned owned inbox downloads are discarded on restart; legacy uncommitted inbox
+stages remain untouched and do not block a folder connection. Folder connections
+honor the vault-root ignore file through an exact-path, read-only control-file
+exception. This file is never listed, uploaded, or synchronized by a folder
+connection; the exception permits no configuration-directory walk.
+
+
 `abele-sync-device-review-id-v1` is a verified device-local UUID for the review database.
 Incoming-code review selects the exact displayed candidate ID; later candidates remain
 pending. Only workspace file-open events ask the attachment-consent port to resolve stable

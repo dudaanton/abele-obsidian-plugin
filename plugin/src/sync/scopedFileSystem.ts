@@ -1,6 +1,7 @@
 import { EngineError, type FileSystem, type AtomicStage } from '@abele/sync-core'
 import { PLACEMENT } from './pathCoordinator'
 import { privatePlacementStages, PRIVATE_PLACEMENT_STAGES } from './privatePlacementStages'
+import { IGNORE_FILE } from './scope'
 
 export class FolderScopeError extends EngineError {
   constructor(message: string) {
@@ -12,10 +13,11 @@ export class FolderScopeError extends EngineError {
 export function scopedFileSystem(
   fs: FileSystem,
   assertPath: (path: string) => void,
-  includes: (path: string) => boolean
+  includes: (path: string) => boolean,
+  privateRoot?: string
 ): FileSystem {
   const handles = new Set<string>()
-  const stages = privatePlacementStages(fs)
+  const stages = privatePlacementStages(fs, privateRoot)
   const retained = (stage: AtomicStage): AtomicStage => {
     handles.add(stage.id)
     return new Proxy(stage, {
@@ -46,7 +48,9 @@ export function scopedFileSystem(
         }
       if (key === 'watch')
         return (notify: (paths: string[]) => void) =>
-          value.call(target, (paths: string[]) => notify(paths.filter(includes)))
+          value.call(target, (paths: string[]) =>
+            notify(paths.filter((path) => path === IGNORE_FILE || includes(path)))
+          )
       if (key === PLACEMENT)
         return (paths: string[], work: () => Promise<unknown>, preserve?: boolean | string[]) => {
           paths.forEach(assertPath)

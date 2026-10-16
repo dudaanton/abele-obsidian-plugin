@@ -42,7 +42,8 @@ export interface NativeFs {
 /** Optional native capabilities; mobile remains adapter-only, never a Node import. */
 export function nativeOf(
   adapter: DataAdapter,
-  assertEffect: (paths?: readonly string[]) => void = () => {}
+  assertEffect: (paths?: readonly string[]) => void = () => {},
+  recoveryRoot?: string
 ): NativeFs | null {
   const raw = adapter as unknown as {
     fsPromises?: Partial<NodeFsPromises>
@@ -89,8 +90,10 @@ export function nativeOf(
       Array.from(sha256(new TextEncoder().encode(value)), (byte) =>
         byte.toString(16).padStart(2, '0')
       ).join('')
-    const root = at('').replace(/\\/g, '/').replace(/\/+$/, '')
-    const folder = root.slice(0, root.lastIndexOf('/')) + '/.abele-sync-recovery/' + hex(root)
+    const root = recoveryRoot ? at(recoveryRoot) : at('').replace(/\\/g, '/').replace(/\/+$/, '')
+    const folder = recoveryRoot
+      ? root
+      : root.slice(0, root.lastIndexOf('/')) + '/.abele-sync-recovery/' + hex(root)
     native.archiveBackup = async (path) => {
       assertEffect([path])
       const source = at(path),
