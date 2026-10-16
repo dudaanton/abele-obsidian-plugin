@@ -10,9 +10,13 @@ import { ExecutableReview } from '@/sync/executableReview'
 import { AttachmentConsent } from '@/sync/attachmentConsent'
 import { buildFakeVault } from '../helpers/fakeVault'
 
-it.each([0, 1024])(
-  'bounds preservation to touched files in a paginated folder pull (files=%s)',
-  async (fileCount) => {
+it.each([
+  { fileCount: 0, uploading: false },
+  { fileCount: 1024, uploading: false },
+  { fileCount: 1024, uploading: true },
+])(
+  'bounds preservation to overwritten files (files=$fileCount, uploading=$uploading)',
+  async ({ fileCount, uploading }) => {
     const scope = { kind: 'folder' as const, id: 'shared', path: 'Container/Shared' }
     const app = buildFakeVault(
       Array.from({ length: 4000 }, (_, i) => ({
@@ -94,7 +98,20 @@ it.each([0, 1024])(
     }
     const items = [...directories, ...files],
       boundary = fileCount ? 1000 : 32
+    if (uploading) {
+      for (const directory of directories.slice(2)) await app.vault.createFolder(directory.path)
+      for (const file of files) {
+        const created = await app.vault.createBinary(
+          file.path,
+          payloads.get(file.file_id)!.buffer as ArrayBuffer
+        )
+        // The fake binary creator does not update the index's size/mtime automatically.
+        created.stat = { ...created.stat, size: file.size, mtime: file.mtime }
+      }
+    }
     let requests = 0
+    let uploaded = 0
+    let committedContent = 0
     const runtime = new TokenEngineRuntime({
       id: 'sample',
       encoded: encodeAccessToken({
@@ -127,12 +144,18 @@ it.each([0, 1024])(
           return Response.json({ items: [], cursor: 100, next: null })
         if (url.pathname === '/v2/manifest')
           return Response.json({
-            items: url.searchParams.has('next')
-              ? [directories[0], ...items.slice(boundary)]
-              : items.slice(0, boundary),
+            items: uploading
+              ? []
+              : url.searchParams.has('next')
+                ? [directories[0], ...items.slice(boundary)]
+                : items.slice(0, boundary),
             cursor: 100,
-            next: url.searchParams.has('next') ? null : 'second',
+            next: uploading || url.searchParams.has('next') ? null : 'second',
           })
+        if (url.pathname.startsWith('/v2/uploads/')) {
+          uploaded++
+          return new Response(null, { status: 204 })
+        }
         if (url.pathname.endsWith('/content')) {
           const bytes = payloads.get(url.pathname.split('/')[3])!
           const range = /^bytes=(\d+)-(\d+)$/.exec(new Headers(init?.headers).get('range') ?? '')
@@ -146,17 +169,25 @@ it.each([0, 1024])(
               })
             : new Response(bytes)
         }
-        if (url.pathname === '/v2/commit')
+        if (url.pathname === '/v2/commit') {
+          committedContent += JSON.parse(String(init?.body)).ops.filter(
+            (op: { op: string }) => op.op === 'create'
+          ).length
           return Response.json({
             cursor: 100,
-            results: JSON.parse(String(init?.body)).ops.map((op: { path: string }) => ({
-              status: 'applied',
-              ...item(op.path),
-              seq: 100,
-              sha: '0'.repeat(64),
-              size: 0,
-            })),
+            results: JSON.parse(String(init?.body)).ops.map((op: { path: string; op: string }) =>
+              op.op === 'create'
+                ? { status: 'applied', ...files.find((file) => file.path === op.path)!, seq: 100 }
+                : {
+                    status: 'applied',
+                    ...item(op.path),
+                    seq: 100,
+                    sha: '0'.repeat(64),
+                    size: 0,
+                  }
+            ),
           })
+        }
         throw new Error('Unexpected fixture request')
       },
       changed: () => {},
@@ -166,7 +197,11 @@ it.each([0, 1024])(
     const started = performance.now()
     try {
       await runtime.sync()
-      expect(preserve).toHaveBeenCalledTimes(fileCount)
+      if (uploading) {
+        expect(uploaded).toBe(fileCount)
+        expect(committedContent).toBe(fileCount)
+      }
+      expect(preserve).toHaveBeenCalledTimes(uploading ? 0 : fileCount)
       expect(operations.list).toBe(0)
       expect(operations.read).toBe(0)
       expect(operations.stat).toBeLessThanOrEqual(fileCount * 2)
@@ -177,7 +212,14 @@ it.each([0, 1024])(
       expect(elapsedMs).toBeLessThan(fileCount ? 30000 : 10000)
       console.log(
         '[bounded folder placement]',
-        JSON.stringify({ fileCount, bytes: fileCount * 20 * 1024, elapsedMs, operations, requests })
+        JSON.stringify({
+          fileCount,
+          uploading,
+          bytes: fileCount * 20 * 1024,
+          elapsedMs,
+          operations,
+          requests,
+        })
       )
       for (const dir of directories.slice(1))
         expect((await app.vault.adapter.stat(dir.path))?.type).toBe('folder')

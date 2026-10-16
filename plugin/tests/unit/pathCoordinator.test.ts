@@ -4,6 +4,38 @@ import { MemoryFileSystem } from '@abele/sync-core'
 import { vi } from 'vitest'
 import { deferred } from '../helpers/deferred'
 
+it('preserves only overwritten files while leasing all acknowledged paths', async () => {
+  const gate = deferred<void>(),
+    preserve = vi.fn(async () => {})
+  const fs = coordinatedFileSystem(
+    new MemoryFileSystem(),
+    new PathCoordinator(),
+    () => {},
+    preserve
+  )
+  const place = Reflect.get(fs, PLACEMENT) as (
+    paths: string[],
+    work: () => Promise<void>,
+    preserve: readonly string[]
+  ) => Promise<void>
+  const batch = place(['sent.md', 'merged.md'], () => gate.promise, ['merged.md'])
+  let entered = false
+  const queued = place(
+    ['sent.md'],
+    async () => {
+      entered = true
+    },
+    []
+  )
+  await Promise.resolve()
+  expect(preserve).toHaveBeenCalledExactlyOnceWith(['merged.md'])
+  expect(entered).toBe(false)
+  gate.resolve()
+  await Promise.all([batch, queued])
+  expect(entered).toBe(true)
+  expect(preserve).toHaveBeenCalledTimes(1)
+})
+
 it('keeps directory creation leased while retaining preservation for a queued file replacement', async () => {
   const gate = deferred<void>(),
     preserve = vi.fn(async () => {})

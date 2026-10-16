@@ -105,22 +105,35 @@ export function syncPlacementPlugin() {
         code = replaceOnce(
           code,
           'await this.state.transaction(async () => {',
-          `const placementPaths = [];
-        for (const op of sending) {
-          if (op.op === 'create') placementPaths.push(op.path);
-          else { const old = await this.state.byFileId(op.file_id); if (old) placementPaths.push(old.path); }
-          if (op.op === 'move') placementPaths.push(op.to_path);
-        }
-        for (const result of results) if (result.status !== 'rejected') {
-          placementPaths.push(result.path);
-          if (result.status === 'conflict') placementPaths.push(result.conflict_path);
+          `const placementPaths = [], preservationPaths = [];
+        for (const [at, op] of sending.entries()) {
+          const paths = [];
+          if (op.op === 'create') paths.push(op.path);
+          else { const old = await this.state.byFileId(op.file_id); if (old) paths.push(old.path); }
+          if (op.op === 'move') paths.push(op.to_path);
+          const result = results[at];
+          let mutates = true;
+          if (result.status === 'rejected') mutates = op.op === 'move';
+          else {
+            paths.push(result.path);
+            if (result.status === 'conflict') paths.push(result.conflict_path);
+            // An unchanged acknowledgement records metadata. It cannot overwrite local bytes.
+            if (result.status === 'applied' && op.op === 'delete') mutates = false;
+            else if (result.status === 'applied' && 'sha' in op && result.sha === op.sha) {
+              const previous = await this.state.byFileId(result.file_id);
+              const target = await this.recorder.disk.targetOf(result.path, result.file_id);
+              if (previous === null || previous.path === target) mutates = false;
+            }
+          }
+          placementPaths.push(...paths);
+          if (mutates) preservationPaths.push(...paths);
         }
         await coordinatePlacement(this.recorder.fs, placementPaths, () => this.state.transaction(async () => {`
         )
         code = replaceOnce(
           code,
           'await this.state.setJournal(null);\n        });',
-          'await this.state.setJournal(null);\n        }));\n        for (const path of stagedDownloads.values()) await this.recorder.fs.remove(path);'
+          'await this.state.setJournal(null);\n        }), preservationPaths);\n        for (const path of stagedDownloads.values()) await this.recorder.fs.remove(path);'
         )
       } else if (file.endsWith('/v2Directories.js')) {
         code = replaceOnce(

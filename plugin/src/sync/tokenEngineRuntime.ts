@@ -618,7 +618,11 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
             }
           }
           if (name === PLACEMENT && typeof value === 'function')
-            return (paths: string[], work: () => Promise<unknown>, preserve = true) =>
+            return (
+              paths: string[],
+              work: () => Promise<unknown>,
+              preserve: boolean | readonly string[] = true
+            ) =>
               this.trace.run('placement ' + paths.join(', '), () =>
                 value.call(target, paths, work, preserve)
               )
