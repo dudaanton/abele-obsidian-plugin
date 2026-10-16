@@ -1,4 +1,9 @@
-import { connectionPrivateRoot, privateDownload, withinRoot } from './connectionPaths'
+import {
+  connectionPrivateRoot,
+  privateDownload,
+  withinRoot,
+  CONNECTION_ROOT_SYMLINK,
+} from './connectionPaths'
 import { assertPhysicalPath } from './external/projection'
 import { privateRecoveryDirectory } from './privateRecovery'
 import { crossesSymlink } from './symlinkChain'
@@ -1721,6 +1726,16 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   private async isSymlink(path: string): Promise<boolean> {
+    const root = this.scopedRoot()
+    const rootSymlink = Reflect.get(this.scopedAdapter, CONNECTION_ROOT_SYMLINK) as
+      | (() => Promise<boolean>)
+      | undefined
+    if (root && rootSymlink) {
+      // These are synthetic scaffolding in the scoped port. The root check below
+      // validates their real chain without exporting their paths to general callers.
+      if (root.startsWith(path + '/')) return false
+      if (path === root) return rootSymlink()
+    }
     const adapter = this.adapter as DataAdapter & {
       getFullPath?(path: string): string
       fsPromises?: { lstat(path: string): Promise<{ isSymbolicLink(): boolean }> }

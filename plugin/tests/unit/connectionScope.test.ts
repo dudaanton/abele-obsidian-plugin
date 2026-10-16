@@ -1,12 +1,107 @@
 import { expect, it, vi } from 'vitest'
 import type { DataAdapter } from 'obsidian'
 import { connectionAdapter, connectionInspectionApp } from '@/sync/connectionScope'
-import { connectionPrivateRoot } from '@/sync/connectionPaths'
+import { connectionPrivateRoot, CONNECTION_ROOT_SYMLINK } from '@/sync/connectionPaths'
 import { pathCoordinatorOf } from '@/sync/pathCoordinator'
 import { transferBudgetOf } from '@/sync/transferBudget'
 import { externalCoordinationOf } from '@/sync/external/ObsidianExternalFileHost'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { nativeOf } from '@/sync/nativeVaultFs'
+import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
+
+it.each(['../Private', 'Container/../Private', 'Container\\Private'])(
+  'refuses a malformed bound root before the native symlink probe: %s',
+  async (root) => {
+    const lstat = vi.fn(async () => ({ isSymbolicLink: () => false }))
+    const raw = { getFullPath: (path: string) => '/sample-vault/' + path, fsPromises: { lstat } }
+    const adapter = connectionAdapter(
+      raw as unknown as DataAdapter,
+      root,
+      connectionPrivateRoot('sample')
+    )
+    await expect(Reflect.get(adapter, CONNECTION_ROOT_SYMLINK)()).rejects.toMatchObject({
+      code: 'protocol',
+    })
+    expect(lstat).not.toHaveBeenCalled()
+  }
+)
+
+it.each([
+  { root: 'Container/Shared', existing: true },
+  { root: 'Container/Shared', existing: false },
+  { root: 'Container/é-folder'.normalize('NFD'), existing: true },
+])(
+  'receives a valid native folder root without widening its scope: $root, existing=$existing',
+  async ({ root, existing }) => {
+    const app = buildFakeVault(
+      [
+        { path: 'Private/secret.md', content: 'private' },
+        ...(existing ? [{ path: root + '/kept.md', content: 'kept' }] : []),
+      ],
+      { sensitiveNames: true }
+    )
+    const raw = app.vault.adapter
+    const lstat = vi.fn(async (full: string) => {
+      if (!(await raw.stat(full.slice('/sample-vault/'.length))))
+        throw Object.assign(new Error('missing'), { code: 'ENOENT' })
+      return { isSymbolicLink: () => false }
+    })
+    Object.assign(raw, {
+      getFullPath: (path: string) => '/sample-vault/' + path,
+      fsPromises: { lstat },
+    })
+    const adapter = connectionAdapter(raw, root, connectionPrivateRoot('sample'))
+    const fs = new ObsidianFileSystem(app as never, {
+      adapter,
+      fileScope: root,
+      connectionId: 'sample',
+    })
+    await expect(fs.mkdir(root)).resolves.toBeUndefined()
+    await fs.mkdir(root + '/Empty')
+    const paths = []
+    for await (const directory of fs.listDirectories()) paths.push(directory.path)
+    expect(paths).toEqual([root, root + '/Empty'])
+    const files = []
+    for await (const file of fs.list()) files.push(file.path)
+    expect(files).toEqual(existing ? [root + '/kept.md'] : [])
+    expect(() => Reflect.get(adapter, 'getFullPath')('Container')).toThrow(
+      'outside this connection'
+    )
+    await expect(async () =>
+      Reflect.get(adapter, 'fsPromises').lstat('/sample-vault/Container')
+    ).rejects.toThrow('outside this connection')
+    await expect(async () => adapter.readBinary('Private/secret.md')).rejects.toThrow(
+      'outside this connection'
+    )
+    expect(await raw.read('Private/secret.md')).toBe('private')
+  }
+)
+
+it.each(['Container', 'Container/Shared', 'Container/Shared/Linked'])(
+  'still refuses a native folder reached through symlink %s',
+  async (linked) => {
+    const root = 'Container/Shared'
+    const app = buildFakeVault([{ path: root + '/Linked/kept.md', content: 'kept' }])
+    const raw = app.vault.adapter
+    Object.assign(raw, {
+      getFullPath: (path: string) => '/sample-vault/' + path,
+      fsPromises: {
+        lstat: async (full: string) => ({
+          isSymbolicLink: () => full === '/sample-vault/' + linked,
+        }),
+      },
+    })
+    const read = vi.spyOn(raw, 'readBinary')
+    const adapter = connectionAdapter(raw, root, connectionPrivateRoot('sample'))
+    const fs = new ObsidianFileSystem(app as never, { adapter, fileScope: root })
+    await expect(fs.mkdir(root + '/Linked/Empty')).rejects.toMatchObject({ code: 'conflict' })
+    const paths = []
+    for await (const directory of fs.listDirectories()) paths.push(directory.path)
+    expect(paths).toEqual(linked === root + '/Linked' ? [root] : [])
+    expect(read).not.toHaveBeenCalled()
+    expect(await raw.exists(root + '/Linked/Empty')).toBe(false)
+  }
+)
 
 it('allows only exact read-only control-file access outside the folder', async () => {
   const app = buildFakeVault([])

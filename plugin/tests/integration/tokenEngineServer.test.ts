@@ -725,13 +725,16 @@ it('connects two real servers before editing, then hydrates offloaded bytes from
 }, 15000)
 
 it.each([
-  ['none', 'folder'],
-  ['parent', 'folder'],
-  ['folder', 'folder'],
-  ['none', 'root'],
+  ['none', 'folder', false],
+  ['parent', 'folder', false],
+  ['folder', 'folder', false],
+  ['none', 'root', false],
+  ['none', 'folder', true],
+  ['parent', 'folder', true],
+  ['folder', 'folder', true],
 ] as const)(
-  'connects and places nested folders while the index lags (local=%s, token=%s)',
-  async (local, kind) => {
+  'connects and places nested folders while the index lags (local=%s, token=%s, native=%s)',
+  async (local, kind, native) => {
     const existing = local === 'folder'
     const server = await v2Server()
     const factory = new IDBFactory()
@@ -748,6 +751,16 @@ it.each([
         : [{ path: 'Fixtures/local.md', content: 'outside the folder token' }]),
       ...(existing ? [{ path: 'Fixtures/Shared/kept.md', content: 'kept' }] : []),
     ])
+    if (native) {
+      withDesktopFs(app)
+      Object.assign(Reflect.get(app.vault.adapter, 'fsPromises'), {
+        lstat: async (full: string) => {
+          if (!(await app.vault.adapter.stat(full.slice('/vault/'.length))))
+            throw Object.assign(new Error('missing'), { code: 'ENOENT' })
+          return { isSymbolicLink: () => false }
+        },
+      })
+    }
     Object.assign(app.workspace, { iterateAllLeaves: () => {} })
     // Obsidian indexes what the adapter creates later, from its file watcher: until then a
     // folder a pull just made is on disk and absent from the index.

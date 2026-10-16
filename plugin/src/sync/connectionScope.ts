@@ -1,11 +1,13 @@
 import type { App, DataAdapter } from 'obsidian'
 import { FolderScopeError } from './scopedFileSystem'
 import { IGNORE_FILE } from './scope'
+import { crossesSymlink } from './symlinkChain'
 
 import {
   withinRoot,
   CONNECTION_HOST,
   CONNECTION_ROOT,
+  CONNECTION_ROOT_SYMLINK,
   CONNECTION_PRIVATE,
   CONNECTION_JOURNAL_OWNER,
 } from './connectionPaths'
@@ -110,6 +112,16 @@ export function connectionAdapter(
   }
   const native = Reflect.get(adapter, 'fsPromises')
   const full = Reflect.get(adapter, 'getFullPath')
+  // Symlink validation may inspect only the fixed root's ancestor metadata. It grants
+  // no general getFullPath/lstat capability above the connection or into a sibling.
+  const rootSymlink = async (): Promise<boolean> => {
+    check(root, 'lstat')
+    return native?.lstat && typeof full === 'function'
+      ? crossesSymlink(root, async (path) =>
+          (await native.lstat(full.call(adapter, path))).isSymbolicLink()
+        )
+      : false
+  }
   const nativePort =
     native && typeof full === 'function'
       ? new Proxy(native, {
@@ -144,6 +156,7 @@ export function connectionAdapter(
       return true
     },
     get(_target, key) {
+      if (key === CONNECTION_ROOT_SYMLINK) return rootSymlink
       if (key === 'fsPromises') return nativePort
       if (key === 'fs') return undefined
       const value = overrides.has(key) ? overrides.get(key) : Reflect.get(adapter, key)
