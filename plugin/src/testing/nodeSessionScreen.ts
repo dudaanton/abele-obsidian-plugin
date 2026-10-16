@@ -10,7 +10,15 @@ import { NodeService, type NodeConnection } from '@/node/NodeService'
  * client answers `session.state` and records what the owner's levers send, so a probe can check
  * that a press reached the node. Nothing is persisted: the registry and keys are left as found.
  */
-export const NODE_SESSION_SCREENS = ['idle', 'working', 'compacting', 'asking'] as const
+export const NODE_SESSION_SCREENS = [
+  'idle',
+  'working',
+  'compacting',
+  'asking',
+  'empty',
+  'long',
+  'error',
+] as const
 export type NodeSessionScreen = (typeof NODE_SESSION_SCREENS)[number]
 
 const NODE = 'sample-session-node'
@@ -45,6 +53,64 @@ function journal(state: NodeSessionScreen): JournalEvent[] {
       { message_id: id, role: 'assistant', content: [{ type: 'text', text }] },
       minutesAgo
     )
+  const created = e(
+    'session.created',
+    {
+      session_id: SESSION,
+      title: 'Search by words',
+      provider: 'claude',
+      created_at: at(90),
+      settings: { permission_mode: 'bypassPermissions' },
+    },
+    900
+  )
+  if (state === 'empty') return [created, e('session.process', { state: 'running' }, 1)]
+  if (state === 'long' || state === 'error') {
+    // A long session: days of turns, each a question, a run of calls with output and an answer;
+    // this device holds only the latest window, the node gives earlier pages as asked.
+    const long = [created, e('session.process', { state: 'running' }, 899)]
+    for (let t = 1; t <= 120; t++) {
+      const ago = 899 - t * 7
+      long.push(
+        e(
+          'input.accepted',
+          { input_id: `l${t}`, text: `Question ${t}: check the parser on case ${t}.` },
+          ago
+        ),
+        e('turn.started', { turn_id: `lt${t}`, trigger: 'input' }, ago),
+        e(
+          'claude.tool.call',
+          { tool_use_id: `lc${t}`, name: 'Bash', input: { command: `npm test -- case-${t}` } },
+          ago
+        ),
+        e(
+          'claude.tool.result',
+          { tool_use_id: `lc${t}`, content: `case-${t}: 14 passed\nDone in ${t % 9}.2s` },
+          ago
+        ),
+        say(`la${t}`, `Answer ${t}. Case ${t} parses as expected; the tests pass.`, ago),
+        e('turn.completed', { turn_id: `lt${t}`, outcome: 'success', input_ids: [`l${t}`] }, ago)
+      )
+      if (t % 40 === 0)
+        long.push(
+          e(
+            'compaction.completed',
+            { result: 'success', trigger: 'auto', pre_tokens: 860_000, post_tokens: 58_000 },
+            ago
+          )
+        )
+    }
+    if (state === 'error')
+      long.push(
+        e('compaction.started', {}, 2),
+        e(
+          'compaction.completed',
+          { result: 'failed', error: 'the context could not be shortened' },
+          1
+        )
+      )
+    return long
+  }
   const events = [
     e(
       'session.created',
@@ -170,8 +236,16 @@ export async function openNodeSessionFixture(state: NodeSessionScreen = 'idle', 
   if (!NODE_SESSION_SCREENS.includes(state)) throw new Error('Unknown node session state')
   await closeNodeSessionFixture()
   nodeSessionCalls.length = 0
-  const events = journal(state)
-  const store = { events: { [SESSION]: events }, results: {}, outbox: [] as unknown[] }
+  const full = journal(state)
+  const head = full.length
+  /** What this device holds: a long session's latest window, all of a short one. */
+  const events = state === 'long' || state === 'error' ? full.slice(-400) : full
+  const store = {
+    events: { [SESSION]: events },
+    cursors: { [SESSION]: head },
+    results: {},
+    outbox: [] as unknown[],
+  }
   const record =
     (method: string, answer: unknown = {}) =>
     async (...params: unknown[]) => {
@@ -217,7 +291,7 @@ export async function openNodeSessionFixture(state: NodeSessionScreen = 'idle', 
     sessionState: async (): Promise<LiveSessionState> => ({
       session_id: SESSION,
       live: true,
-      process: state === 'idle' ? 'idle' : 'running',
+      process: ['idle', 'long', 'error', 'empty'].includes(state) ? 'idle' : 'running',
       run_id: 'sample-process',
       turn: null,
       background_tasks: [],
@@ -235,12 +309,21 @@ export async function openNodeSessionFixture(state: NodeSessionScreen = 'idle', 
     renameSession: record('session.rename'),
     interrupt: record('session.interrupt'),
     cancelInput: record('input.cancel'),
-    cursor: async () => events.length,
+    cursor: async () => head,
+    head: async () => head,
+    getSession: async () => full[0].data,
     flush: async () => {},
     operationResult: async () => ({ result: {} }),
     onEvent: () => () => {},
     subscribe: async () => ({}),
-    request: async (method: string) => {
+    request: async (method: string, params?: { after_seq?: number; limit?: number }) => {
+      if (method === 'stream.read') {
+        nodeSessionCalls.push({ method, params: [params] })
+        // The node cannot be reached for earlier pages in the error state.
+        if (state === 'error') throw new Error('The node did not answer in time')
+        const after = params?.after_seq ?? 0
+        return full.filter((x) => x.seq > after).slice(0, params?.limit ?? 256)
+      }
       throw new Error('Unsupported fixture call: ' + method)
     },
     store: { transaction: async (fn: (state: unknown) => unknown) => fn(store) },

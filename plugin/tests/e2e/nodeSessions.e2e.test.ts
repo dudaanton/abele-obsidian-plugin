@@ -103,6 +103,67 @@ it.each(['idle', 'working', 'compacting', 'asking'])(
   120000
 )
 
+it('shows a new session as an empty chat with its controls, nothing over the composer', async () => {
+  const r = await run<{
+    messages: number
+    background: boolean
+    older: boolean
+    outside: string[]
+  }>(`
+    const root = await open('empty');
+    await wait(400);
+    const result = { messages: root.querySelectorAll('.abele-chat-msg').length, background: !!root.querySelector('.abele-bg-tasks'), older: !!root.querySelector('.abele-node-chat__older'), outside: outside(root) };
+    await shot('node-sessions-empty');
+    return JSON.stringify(result);`)
+  expect(r).toEqual({ messages: 0, background: false, older: false, outside: [] })
+})
+
+it('opens a long session at its end and reads the earlier page from the node when scrolled to its top', async () => {
+  const r = await run<{
+    last: boolean
+    before: number
+    after: number
+    reads: number
+    kept: boolean
+  }>(`
+    const root = await open('long');
+    const list = root.querySelector('.abele-ai-chat__messages');
+    await until(() => [...root.querySelectorAll('.abele-chat-msg')].some(m => m.textContent.includes('Answer 120.')), 'The latest answer');
+    await wait(300);
+    const last = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
+    await shot('node-sessions-long');
+    const before = root.querySelectorAll('.abele-chat-msg').length;
+    list.scrollTop = 0; list.dispatchEvent(new Event('scroll'));
+    await until(() => root.querySelectorAll('.abele-chat-msg').length > before, 'The earlier page');
+    await wait(300);
+    const kept = list.scrollTop > 0;
+    await shot('node-sessions-long-earlier');
+    return JSON.stringify({ last, before, after: root.querySelectorAll('.abele-chat-msg').length, reads: window.__abeleTest.nodeSessionCalls.filter(c => c.method === 'stream.read').length, kept });`)
+  expect(r.last).toBe(true)
+  expect(r.after).toBeGreaterThan(r.before)
+  expect(r.reads).toBeGreaterThanOrEqual(1)
+  expect(r.kept).toBe(true)
+})
+
+it('says plainly when earlier messages cannot be read and when compacting failed, with a way to try again', async () => {
+  const r = await run<{ line: string; retry: boolean; failed: string; outside: string[] }>(`
+    const root = await open('error');
+    const list = root.querySelector('.abele-ai-chat__messages');
+    await until(() => [...root.querySelectorAll('.abele-chat-msg')].some(m => m.textContent.includes('Answer 120.')), 'The latest answer');
+    list.scrollTop = 0; list.dispatchEvent(new Event('scroll'));
+    const line = await until(() => root.querySelector('.abele-node-chat__older')?.textContent.includes('Could not read') && root.querySelector('.abele-node-chat__older'), 'The failure line');
+    const failed = [...root.querySelectorAll('[role="alert"]')].map(a => a.textContent.trim()).join(' | ');
+    await shot('node-sessions-error-earlier');
+    list.scrollTop = list.scrollHeight;
+    await wait(300);
+    await shot('node-sessions-error');
+    return JSON.stringify({ line: line.textContent.trim(), retry: !!line.querySelector('button'), failed, outside: outside(root) });`)
+  expect(r.line).toContain('Could not read earlier messages')
+  expect(r.retry).toBe(true)
+  expect(r.failed).toContain('Compacting failed: the context could not be shortened')
+  expect(r.outside).toEqual([])
+})
+
 it('opens the background line to the tasks with how long each runs', async () => {
   const r = await run<{ rows: string[]; shot: string }>(`
     const root = await open('working');
