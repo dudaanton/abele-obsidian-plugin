@@ -184,7 +184,7 @@ it('pairs through the real node UI, confirms locally, runs fake prompts and fenc
       const project=await client.registerProject(${JSON.stringify(projectPath)},'trusted');
       const provision=await client.createWorkspace(project.project_id);
       for(let i=0;i<200;i++){const job=await client.getJob(provision.job_id);if(job.state==='succeeded')break;if(job.state==='failed')throw Error('Workspace provisioning failed');await wait(50)}
-      chat().querySelector('[aria-label="Node session menu"]').click();
+      chat().querySelector('[aria-label="More chat actions"]').click();
       await until(()=>[...document.querySelectorAll('.menu-item')].some(item=>item.querySelector('.menu-item-title')?.textContent.trim()==='Folders and worktrees'));
       [...document.querySelectorAll('.menu-item')].find(item=>item.querySelector('.menu-item-title')?.textContent.trim()==='Folders and worktrees').click();
       // The node panel: choose the managed workspace as its place, then start a chat there with pi.
@@ -198,7 +198,8 @@ it('pairs through the real node UI, confirms locally, runs fake prompts and fenc
       await until(()=>[...document.querySelectorAll('.suggestion-item')].some(item=>item.querySelector('.suggestion-title')?.textContent===placeTitle));
       [...document.querySelectorAll('.suggestion-item')].find(item=>item.querySelector('.suggestion-title')?.textContent===placeTitle).click();
       await until(()=>model.current.value?.id===workspace.id&&panel().querySelector('.abele-node-place__name')?.textContent.trim()===workspace.branch);
-      const before=new Set(app.workspace.getLeavesOfType('abele-node-chat').map(l=>l.getViewState().state?.sessionId));
+      const chats=window.__abeleTest.ChatService.getInstance();
+      const before=new Set(chats.tabOrder.value);
       panel().querySelector('.abele-node-place > .abele-obsidian-icon').click();
       await until(()=>[...document.querySelectorAll('.menu-item')].some(item=>item.querySelector('.menu-item-title')?.textContent.trim()==='New chat here'&&!item.classList.contains('is-disabled')));
       [...document.querySelectorAll('.menu-item')].find(item=>item.querySelector('.menu-item-title')?.textContent.trim()==='New chat here').click();
@@ -208,12 +209,14 @@ it('pairs through the real node UI, confirms locally, runs fake prompts and fenc
       [...document.querySelectorAll('.suggestion-item')].find(item=>item.querySelector('.suggestion-title')?.textContent==='pi').click();
       await until(()=>[...document.querySelectorAll('.modal button')].some(b=>b.textContent.trim()==='Allow execution'));
       [...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Allow execution').click();
-      const piLeaf=()=>app.workspace.getLeavesOfType('abele-node-chat').find(l=>!before.has(l.getViewState().state?.sessionId)&&l.view.presenter?.provider.value==='pi');
-      await until(()=>piLeaf());
-      await until(()=>piLeaf().view.containerEl.querySelector('.abele-node-chat__title')?.title.endsWith(' · pi'));
-      if(piLeaf().getViewState().state?.target?.id!==workspace.id)throw Error('Pi session is not bound to the managed workspace');
+      // The new chat opens as a tab of the sidebar chat, the agent named in its header.
+      const piTab=()=>chats.tabOrder.value.find(id=>!before.has(id)&&chats.getNodeSession(id)?.provider.value==='pi');
+      await until(()=>piTab());
+      await until(()=>chat()?.querySelector('.abele-node-chat__agent')?.textContent.trim()==='pi');
+      const piSession=chats.getNodeSession(piTab()).reference.sessionId;
+      await until(()=>model.sessions.value.find(s=>s.session.session_id===piSession)?.target?.id===workspace.id);
       // Session creation/opening is metadata only. Never send a real-provider turn.
-      piLeaf().detach();
+      await chats.closeTab(piTab());
       for(const leaf of app.workspace.getLeavesOfType('abele-node-sidebar'))leaf.detach();
       return JSON.stringify({registration:node.id,tab,pin:await nodes.deviceFingerprint(node.expectedNodeId)});
     })()`,

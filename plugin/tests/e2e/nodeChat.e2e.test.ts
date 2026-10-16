@@ -40,7 +40,7 @@ const until = async fn => { for (let i=0; i<200; i++) { const value = fn(); if (
 const chats = window.__abeleTest.ChatService.getInstance();
 const nodes = window.__abeleTest.NodeService.getInstance();
 const nodeMenu = async title => {
-  document.querySelector('.abele-node-chat [aria-label="Node session menu"]').click();
+  document.querySelector('.abele-node-chat [aria-label="More chat actions"]').click();
   await until(() => [...document.querySelectorAll('.menu-item')].some(item => item.querySelector('.menu-item-title')?.textContent.trim() === title));
   [...document.querySelectorAll('.menu-item')].find(item => item.querySelector('.menu-item-title')?.textContent.trim() === title).click();
   await wait(100);

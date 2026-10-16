@@ -96,7 +96,7 @@ it('stops a turn with the square and keeps the session; Stop the session ends it
     await until(()=>!chat().querySelector('.abele-chat-input__stop'),'The turn ending',30000);
     const client=nodes.connection(presenter().reference.registrationId).client;
     const kept=(await client.sessionState(presenter().reference.sessionId)).process;
-    chat().querySelector('[aria-label="Node session menu"]').click();await pick('Stop the session…');
+    chat().querySelector('[aria-label="More chat actions"]').click();await pick('Stop the session…');
     const modal=await until(()=>document.querySelector('.modal'),'The stop dialog');
     button(modal,'Stop').click();
     let ended;for(let i=0;i<200;i++){ended=(await client.sessionState(presenter().reference.sessionId)).process;if(ended==='none')break;await wait(100)}
@@ -109,11 +109,11 @@ it('stops a turn with the square and keeps the session; Stop the session ends it
 it('renames the session everywhere it is named', async () => {
   const r = JSON.parse(
     await run(`
-    chat().querySelector('[aria-label="Node session menu"]').click();await pick('Rename…');
+    chat().querySelector('[aria-label="More chat actions"]').click();await pick('Rename…');
     const modal=await until(()=>document.querySelector('.modal'),'The rename dialog');
     const input=modal.querySelector('input');input.value='Sample renamed session';input.dispatchEvent(new Event('input',{bubbles:true}));await wait(50);
     button(modal,'Rename').click();
-    await until(()=>chat().querySelector('.abele-node-chat__title')?.textContent.trim()==='Sample renamed session','The new title',30000);
+    await until(()=>chat().dataset.sessionTitle==='Sample renamed session','The new title',30000);
     const client=nodes.connection(presenter().reference.registrationId).client;
     return JSON.stringify({node:(await client.getSession(presenter().reference.sessionId)).title})`)
   )

@@ -3,6 +3,12 @@ import type { JournalEvent } from '@abele/channel-protocol'
 import type { LiveSessionState } from '@abele/node-protocol'
 import { ChatService } from '@/ai/ChatService'
 import { NodeService, type NodeConnection } from '@/node/NodeService'
+import { NodeSuggestModal } from '@/components/nodeWork/NodeSuggestModal'
+import { agentSuggestions } from '@/node/NodePathController'
+import { agentChoices, nodeProviders } from '@/node/providers'
+import { reduceTranscript } from '@/node/NodeTranscriptReducer'
+import { GlobalStore } from '@/stores/GlobalStore'
+import { agentJournal } from './nodeAgentJournal'
 
 /**
  * A long-lived node session in a real chat tab on invented data, for layout probes that run no
@@ -18,6 +24,9 @@ export const NODE_SESSION_SCREENS = [
   'empty',
   'long',
   'error',
+  // Another agent than Claude: pi at work on a plan, and Gemini over ACP asking before an edit.
+  'agent',
+  'agent-asking',
 ] as const
 export type NodeSessionScreen = (typeof NODE_SESSION_SCREENS)[number]
 
@@ -36,6 +45,7 @@ export async function closeNodeSessionFixture() {
 
 /** The invented journal of each screen; exported so a unit test checks it against the node schema. */
 export function journal(state: NodeSessionScreen): JournalEvent[] {
+  if (state === 'agent' || state === 'agent-asking') return agentJournal(state, NODE, SESSION)
   let seq = 0
   const e = (type: string, data: Record<string, unknown>, minutesAgo: number): JournalEvent => ({
     kind: 'event',
@@ -260,6 +270,7 @@ export async function openNodeSessionFixture(state: NodeSessionScreen = 'idle', 
   await closeNodeSessionFixture()
   nodeSessionCalls.length = 0
   const full = journal(state)
+  const agent = state === 'agent' || state === 'agent-asking'
   const head = full.length
   /** What this device holds: a long session's latest window, all of a short one. */
   const events = state === 'long' || state === 'error' ? full.slice(-400) : full
@@ -290,6 +301,7 @@ export async function openNodeSessionFixture(state: NodeSessionScreen = 'idle', 
     describe: async () => ({
       capabilities: { capabilities: {} },
       providers: [
+        ...AGENT_PROVIDERS,
         {
           provider: 'claude',
           available: true,
@@ -315,17 +327,34 @@ export async function openNodeSessionFixture(state: NodeSessionScreen = 'idle', 
       session_id: SESSION,
       live: true,
       process: ['idle', 'long', 'error', 'empty'].includes(state) ? 'idle' : 'running',
+      // The agent screens are mid-turn.
       run_id: 'sample-process',
       turn: null,
       background_tasks: [],
       context: null,
       compacting: state === 'compacting',
-      settings,
+      settings: agent ? { ...settings, model: 'default', permission_mode: 'manual' } : settings,
       process_settings: null,
       restart_pending: false,
       watchers: 1,
       idle_since: null,
     }),
+    sessionCommands: async () => {
+      const latest = [...full]
+        .reverse()
+        .find(
+          (x) =>
+            x.type === 'session.update' &&
+            (x.data as { update?: { kind?: string } }).update?.kind === 'available_commands_update'
+        )
+      return {
+        session_id: SESSION,
+        seq: latest?.seq ?? 0,
+        commands:
+          (latest?.data as { update?: { commands?: unknown[] } } | undefined)?.update?.commands ??
+          [],
+      }
+    },
     configureSession: record('session.configure'),
     compactSession: record('session.compact', { input_id: 'c', accepted_seq: 1 }),
     stopSession: record('session.stop'),
@@ -376,7 +405,7 @@ export async function openNodeSessionFixture(state: NodeSessionScreen = 'idle', 
     nodeId: NODE,
     registrationId: NODE,
     sessionId: SESSION,
-    title: 'Search by words',
+    title: String((full[0].data as { title?: unknown }).title ?? 'Search by words'),
   })
   await chats.revealSidebar({ focus: false })
   restore = async () => {
@@ -386,4 +415,66 @@ export async function openNodeSessionFixture(state: NodeSessionScreen = 'idle', 
     service.connection = previousConnection
   }
   return { state, ready: true }
+}
+
+/** What the invented node runs besides Claude Code: pi, and two agents over ACP, one missing. */
+const AGENT_PROVIDERS = [
+  {
+    provider: 'pi',
+    available: true,
+    configuration: { live_sessions: true, permission_modes: ['manual', 'bypassPermissions'] },
+    capabilities: {},
+  },
+  {
+    provider: 'acp',
+    available: true,
+    permission_modes: ['manual', 'bypassPermissions'],
+    agents: [
+      { id: 'gemini', name: 'Gemini CLI', available: true, diagnostic: null },
+      { id: 'opencode', name: 'OpenCode', available: false, diagnostic: 'acp_agent_not_installed' },
+    ],
+    capabilities: {},
+  },
+]
+
+let picker: NodeSuggestModal | undefined
+/** The agent chooser of a new node chat, on the invented node's agents; nothing is created. */
+export function openAgentPickerFixture(): { rows: number } {
+  picker?.close()
+  const items = agentSuggestions(
+    agentChoices(
+      nodeProviders({
+        providers: [{ provider: 'claude', available: true, capabilities: {} }, ...AGENT_PROVIDERS],
+      })
+    )
+  )
+  picker = new NodeSuggestModal(GlobalStore.getInstance().app, items, 'Choose the agent', () => {})
+  picker.open()
+  return { rows: items.length }
+}
+export function closeAgentPickerFixture(): void {
+  picker?.close()
+  picker = undefined
+}
+
+let regularTab: string | undefined
+/**
+ * A regular chat holding the same conversation as the pi screen, for a side-by-side look: the
+ * node chat's messages put into a new local tab, never saved.
+ */
+export async function openRegularChatFixture(): Promise<string> {
+  await closeRegularChatFixture()
+  const chats = ChatService.getInstance()
+  const id = (regularTab = chats.createTab())
+  const session = chats.getSession(id)
+  if (!session) throw new Error('No room for another chat tab')
+  const messages = reduceTranscript(agentJournal('agent', NODE, SESSION)).messages
+  session.messages.value = messages
+  session.allMessages.value = messages
+  await chats.revealSidebar({ focus: false })
+  return id
+}
+export async function closeRegularChatFixture(): Promise<void> {
+  if (regularTab) await ChatService.getInstance().closeTab(regularTab)
+  regularTab = undefined
 }

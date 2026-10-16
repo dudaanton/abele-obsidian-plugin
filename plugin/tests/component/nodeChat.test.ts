@@ -4,6 +4,7 @@ import { ref } from 'vue'
 import { Menu } from 'obsidian'
 import NodeChatView from '@/components/NodeChatView.vue'
 import AiChatMessage from '@/components/AiChatMessage.vue'
+import ChatToolRun from '@/components/ChatToolRun.vue'
 import AiChatInput from '@/components/AiChatInput.vue'
 import VoiceRecorder from '@/components/VoiceRecorder.vue'
 import { useVault } from '../helpers/testEnv'
@@ -276,12 +277,8 @@ it.each([false, true])(
       expect(wrapper.get('.abele-chat-msg_assistant [role="alert"]').text()).toContain(
         `HTTP ${status}`
       )
-      const detail = wrapper.get('details')
-      expect((detail.element as HTMLDetailsElement).open).toBe(false)
-      // The raw records are drawn once Details is opened.
-      ;(detail.element as HTMLDetailsElement).open = true
-      await detail.trigger('toggle')
-      expect(JSON.parse(detail.get('pre').text())[0]).toEqual(failure)
+      // The regular chat shows no raw records: the failure is said on its answer, nothing else.
+      expect(wrapper.find('details').exists()).toBe(false)
       await wrapper.get('[aria-label="Send again"]').trigger('click')
       await flushPromises()
       expect(presenter.send).toHaveBeenCalledExactlyOnceWith('Sample failed question')
@@ -326,7 +323,7 @@ it.each([false, true, undefined])(
       global: { stubs: { AiChatInput: true } },
     })
     try {
-      await w.get('[aria-label="Node session menu"]').trigger('click')
+      await w.get('[aria-label="More chat actions"]').trigger('click')
       const titles = (shown.mock.contexts.at(-1) as Menu).items.map((i) => i.title)
       expect(titles.includes('Debug')).toBe(available === true)
       // Attaching to a running program follows the same rule as running one, beside it.
@@ -366,7 +363,8 @@ it('uses the shared composer and renderer, labels offline queue and never offers
     global: { stubs: { AiChatInput: true, Icon: true, Button: true } },
   })
   await flushPromises()
-  expect(wrapper.text()).toContain('Offline')
+  // Offline is a red dot before where the agent works, the word in its tooltip.
+  expect(wrapper.find('.abele-node-chat__offline').attributes('aria-label')).toBe('Offline')
   expect(wrapper.text()).toContain('Queued input')
   expect(wrapper.findComponent({ name: 'AiChatMessage' }).props('readOnlyHistory')).toBe(true)
   expect(wrapper.findComponent({ name: 'AiChatInput' }).props('textOnly')).toBe(true)
@@ -427,16 +425,19 @@ it('restores exact Claude permission cards and nested work without fake controls
   wrapper.unmount()
   wrapper = mountChat()
   try {
-    expect(wrapper.get('.abele-node-chat__title').attributes('title')).toContain('Claude Code')
+    // The header names the agent as the regular chat's does; the chat's name is on its tab.
+    expect(wrapper.get('.abele-node-chat__agent').text()).toBe('Claude Code')
     expect(wrapper.text()).not.toContain('Ask for permission')
     expect(wrapper.text()).toContain('printf sample')
     expect(wrapper.text()).not.toContain('not supported yet')
-    await wrapper.get('[aria-label="Node session menu"]').trigger('click')
-    ;(menuShown.mock.contexts.at(-1) as Menu).items.find((i) => i.title === 'Steer turn')!
-      .handler!()
+    await wrapper.get('[aria-label="More chat actions"]').trigger('click')
+    // The menu holds what the chat can do, not what it cannot.
+    expect((menuShown.mock.contexts.at(-1) as Menu).items.map((i) => i.title)).not.toContain(
+      'Steer turn'
+    )
+    // Nested work is inside the run of calls, folded like the regular chat's; opened, it shows.
+    wrapper.findComponent(ChatToolRun).vm.$emit('update:open', true)
     await flushPromises()
-    expect(wrapper.text()).toContain('not supported yet')
-    expect(wrapper.find('.abele-node-child-work').attributes('open')).toBeUndefined()
     const rendered = wrapper.findAllComponents(AiChatMessage)
     expect(
       rendered.filter((c) => ['parent', 'child'].includes(c.props('message').id))

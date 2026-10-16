@@ -74,7 +74,7 @@ it('edits from the node code view, restores local drafts, and checks a lost save
       const project=await client.registerProject(${JSON.stringify(repo)},'untrusted'),job=await client.createWorkspace(project.project_id);
       for(let i=0;i<200;i++){const state=await client.getJob(job.job_id);if(state.state==='succeeded')break;if(state.state==='needs_attention')throw Error('Provisioning failed');await wait(50)}
       const workspace=await client.getWorkspace(job.workspace_id),session=await client.createSession('Editing fixture',workspace.workspace_id);
-      await chats.openNodeSession({kind:'node-session',registrationId:node.id,nodeId:node.expectedNodeId,sessionId:session.session_id,title:session.title});await chats.revealSidebar({focus:false});await until(()=>document.querySelector('.abele-node-chat__title')?.textContent==='Editing fixture' && chats.getNodeSession(chats.activeTabId.value)?.workspaceId.value);
+      await chats.openNodeSession({kind:'node-session',registrationId:node.id,nodeId:node.expectedNodeId,sessionId:session.session_id,title:session.title});await chats.revealSidebar({focus:false});await until(()=>document.querySelector('.abele-node-chat')?.dataset.sessionTitle==='Editing fixture' && chats.getNodeSession(chats.activeTabId.value)?.workspaceId.value);
       chats.getNodeSession(chats.activeTabId.value).openResource('sample.txt');await until(()=>document.querySelector('.abele-node-files .cm-content'));press('Edit file');await until(()=>document.querySelector('.abele-node-files [contenteditable="true"]'));
       await enter('local draft');await until(()=>document.querySelector('.abele-node-files').textContent.includes('Unsent edit'));await close();return {registration:node.id,path:workspace.path}
       } catch(e) {for(const id of chats.tabOrder.value.filter(id=>id.startsWith('node:'+node.id+':')))chats.closeTab(id);nodes.remove(node.id);await close();throw e}
@@ -83,7 +83,7 @@ it('edits from the node code view, restores local drafts, and checks a lost save
     workspacePath = setup.path
     reloadPlugin()
     evalAsync(`(async()=>{${prelude}
-      await until(()=>chats.getNodeSession(chats.activeTabId.value)?.workspaceId.value && document.querySelector('.abele-node-chat__title')?.textContent==='Editing fixture');chats.getNodeSession(chats.activeTabId.value).openResource('sample.txt');await until(()=>document.querySelector('.abele-node-files [contenteditable="true"]'));
+      await until(()=>chats.getNodeSession(chats.activeTabId.value)?.workspaceId.value && document.querySelector('.abele-node-chat')?.dataset.sessionTitle==='Editing fixture');chats.getNodeSession(chats.activeTabId.value).openResource('sample.txt');await until(()=>document.querySelector('.abele-node-files [contenteditable="true"]'));
       await until(()=>document.querySelector('.abele-node-files .cm-content').textContent==='local draft');press('Save file');await until(()=>document.querySelector('.abele-node-files').textContent.includes('Saved ·'));await enter('competing draft');return true
     })()`)
     expect(readFileSync(resolve(workspacePath, 'sample.txt'), 'utf8')).toBe('local draft')
@@ -97,7 +97,7 @@ it('edits from the node code view, restores local drafts, and checks a lost save
     writeFileSync(resolve(workspacePath, 'sample.txt'), 'later external')
     reloadPlugin()
     evalAsync(`(async()=>{${prelude}
-      await until(()=>chats.getNodeSession(chats.activeTabId.value)?.workspaceId.value && document.querySelector('.abele-node-chat__title')?.textContent==='Editing fixture');chats.getNodeSession(chats.activeTabId.value).openResource('sample.txt');await until(()=>[...document.querySelectorAll('.modal button')].some(b=>b.textContent==='Check save'));press('Check save');await until(()=>document.querySelector('.abele-node-files').textContent.includes('Saved ·'));await close();return true
+      await until(()=>chats.getNodeSession(chats.activeTabId.value)?.workspaceId.value && document.querySelector('.abele-node-chat')?.dataset.sessionTitle==='Editing fixture');chats.getNodeSession(chats.activeTabId.value).openResource('sample.txt');await until(()=>[...document.querySelectorAll('.modal button')].some(b=>b.textContent==='Check save'));press('Check save');await until(()=>document.querySelector('.abele-node-files').textContent.includes('Saved ·'));await close();return true
     })()`)
     expect(readFileSync(resolve(workspacePath, 'sample.txt'), 'utf8')).toBe('later external')
   } finally {

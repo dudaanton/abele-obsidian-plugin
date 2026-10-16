@@ -111,7 +111,7 @@ function openChat() {
     const s=await client.nodePath.createSession({title:'Program fixture',provider:'fake',target:{kind:'workspace',workspace_id:workspace.workspace_id}},crypto.randomUUID());
     await chats.openNodeSession({kind:'node-session',registrationId:node.id,nodeId:node.expectedNodeId,sessionId:s.session_id,title:s.title});
     await chats.revealSidebar({focus:false});
-    await until(()=>document.querySelector('.abele-node-chat__title')?.textContent==='Program fixture','chat open');
+    await until(()=>document.querySelector('.abele-node-chat')?.dataset.sessionTitle==='Program fixture','chat open');
     return {registration:node.id,target:{nodeId:node.expectedNodeId,registrationId:node.id,projectId:project.project_id,kind:'workspace',id:workspace.workspace_id}}
   })()`)
   registration = r.registration
@@ -216,7 +216,7 @@ afterAll(async () => {
  * record points too. `via` is the menu item: Debug asks for a program while the chat has no session.
  */
 const RUN = (program: string, shots = '', via = 'Run a program') => `
-  document.querySelector('.abele-node-chat [aria-label="Node session menu"]').click();
+  document.querySelector('.abele-node-chat [aria-label="More chat actions"]').click();
   await until(()=>item(${JSON.stringify(via)}),${JSON.stringify(via + ' in the menu')});
   ${shots ? `await shot(${JSON.stringify(shots + '-menu')});` : ''}
   press(item(${JSON.stringify(via)}));
@@ -368,7 +368,7 @@ it('on a phone: the picker offers the file open in a tab, the stack folds Node, 
       const opened=app.workspace.getLeaf('tab');
       await opened.setViewState({type:'abele-node-file',active:true,state:{kind:'file',target:${JSON.stringify(folder)},path:'src/total.js'}});
       await until(()=>opened.containerEl.textContent.includes('function total'),'program open');
-      document.querySelector('.abele-node-chat [aria-label="Node session menu"]').click();
+      document.querySelector('.abele-node-chat [aria-label="More chat actions"]').click();
       press(await until(()=>item('Run a program'),'Run a program in the menu'));
       await until(()=>document.querySelector('.modal-container .prompt .suggestion-item'),'program offered');
       const offered=[...document.querySelectorAll('.modal-container .prompt .suggestion-item')].map(r=>({title:r.querySelector('.suggestion-title')?.textContent.trim()??'',note:r.querySelector('.suggestion-note')?.textContent.trim()??''}));

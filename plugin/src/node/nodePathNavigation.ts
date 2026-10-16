@@ -88,10 +88,13 @@ export const editedFileTab = (state: NodePathTabState): NodePathTabState =>
 export async function openNodePathTab(
   workspace: Workspace,
   raw: NodePathTabState,
-  mobile: boolean
+  mobile: boolean,
+  initialText?: string
 ): Promise<void> {
-  const state = editedFileTab(NodePathTabSchema.parse(raw)),
-    type = nodePathViewType(state)
+  const state = editedFileTab(NodePathTabSchema.parse(raw))
+  // A chat is a chat: a tab of the chat in the sidebar, like every other one, never a pane.
+  if (state.kind === 'chat') return openNodeChat(state, initialText)
+  const type = nodePathViewType(state)
   const key = nodePathTabKey(state)
   const existing = workspace.getLeavesOfType(type).find((leaf) => {
     const old = NodePathTabSchema.safeParse(leaf.getViewState().state)
@@ -101,4 +104,31 @@ export async function openNodePathTab(
   await leaf.setViewState({ type, active: true, state })
   await workspace.revealLeaf(leaf)
   if (mobile) workspace.leftSplit.collapse()
+}
+
+/**
+ * Opens a node session as a tab of the sidebar chat, where every chat lives, and shows it there.
+ * `text`, when given, is added to its draft once the chat has loaded, never sent.
+ */
+export async function openNodeChat(
+  state: Extract<NodePathTabState, { kind: 'chat' }>,
+  text?: string
+): Promise<void> {
+  const { ChatService } = await import('@/ai/ChatService')
+  const chats = ChatService.getInstance()
+  await chats.openNodeSession({
+    kind: 'node-session',
+    nodeId: state.target.nodeId,
+    registrationId: state.target.registrationId,
+    sessionId: state.sessionId,
+    title: state.title,
+  })
+  if (text) {
+    const presenter = chats.getNodeSession(`node:${state.target.registrationId}:${state.sessionId}`)
+    if (presenter) {
+      const draft = presenter.draft.value
+      draft.text = draft.text ? `${draft.text}\n\n${text}` : text
+    }
+  }
+  await chats.revealSidebar({ focus: true })
 }

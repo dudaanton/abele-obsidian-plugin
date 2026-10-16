@@ -84,7 +84,7 @@ afterEach(() => {
 })
 const menuTitles = async (w: VueWrapper) => {
   const show = vi.spyOn(Menu.prototype, 'showAtPosition')
-  await w.get('[aria-label="Node session menu"]').trigger('click')
+  await w.get('[aria-label="More chat actions"]').trigger('click')
   return show.mock.contexts.at(-1) as Menu
 }
 

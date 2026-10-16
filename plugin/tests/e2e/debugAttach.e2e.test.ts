@@ -35,7 +35,7 @@ const marginAt=line=>{const sel='button.abele-debug-source__point[aria-label^="S
 const debugState=()=>{const b=api.DebuggerService.instance.active.value,c=b?.controller,n=c?.snapshot;return JSON.stringify({notices:[...document.querySelectorAll('.notice')].map(n=>n.textContent),status:c?.session.status,error:c?.error,lifecycle:n?.lifecycle,execution:n?.execution,owner:n?.target.process_ownership,identity:n?.target.build_identity,bps:n?.breakpoints?.map(x=>[x.source_id,x.line,x.status])})};
 const statusLabel=()=>document.querySelector('.abele-debug-panel__program [role="status"]')?.getAttribute('aria-label')??'';
 const openPicker=async()=>{
-  document.querySelector('.abele-node-chat [aria-label="Node session menu"]').click();
+  document.querySelector('.abele-node-chat [aria-label="More chat actions"]').click();
   press(await until(()=>item('Attach to a running program'),'Attach in the menu'));
   await until(()=>document.querySelector('.modal-container .prompt'),'picker open');
 };
@@ -101,7 +101,7 @@ function openChat() {
     const s=await client.nodePath.createSession({title:'Attach fixture',provider:'fake',target:{kind:'workspace',workspace_id:workspace.workspace_id}},crypto.randomUUID());
     await chats.openNodeSession({kind:'node-session',registrationId:node.id,nodeId:node.expectedNodeId,sessionId:s.session_id,title:s.title});
     await chats.revealSidebar({focus:false});
-    await until(()=>document.querySelector('.abele-node-chat__title')?.textContent==='Attach fixture','chat open');
+    await until(()=>document.querySelector('.abele-node-chat')?.dataset.sessionTitle==='Attach fixture','chat open');
     return {registration:node.id,session:s.session_id}
   })()`)
   registration = opened.registration
@@ -207,7 +207,7 @@ it('attaches to a program of the chat’s folder, stops it at a breakpoint and l
     after: string
     state: string
   }>(`(async()=>{${prelude}
-    document.querySelector('.abele-node-chat [aria-label="Node session menu"]').click();
+    document.querySelector('.abele-node-chat [aria-label="More chat actions"]').click();
     await until(()=>item('Attach to a running program'),'Attach in the menu');
     await shot('2026-10-16-debug-attach-menu-desktop');
     press(item('Attach to a running program'));
@@ -284,7 +284,7 @@ it('on a phone: the menu, the picker, the attached panel and the empty list fit 
     const seen = inApp<{ offered: string[]; detach: string; overflow: number }>(
       `(async()=>{${prelude}
       try{
-      document.querySelector('.abele-node-chat [aria-label="Node session menu"]').click();
+      document.querySelector('.abele-node-chat [aria-label="More chat actions"]').click();
       await until(()=>item('Attach to a running program'),'Attach in the menu');
       await shot('2026-10-16-debug-attach-menu-phone');
       press(item('Attach to a running program'));

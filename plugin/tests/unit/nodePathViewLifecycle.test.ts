@@ -8,6 +8,11 @@ const fixture = vi.hoisted(() => ({
   ready: vi.fn(),
   model: undefined as any,
   presenter: undefined as any,
+  openChat: vi.fn(async () => {}),
+}))
+vi.mock('@/node/nodePathNavigation', async (original) => ({
+  ...(await original<typeof import('@/node/nodePathNavigation')>()),
+  openNodeChat: fixture.openChat,
 }))
 vi.mock('obsidian', async (original) => {
   const api = await original<typeof import('obsidian')>()
@@ -81,25 +86,16 @@ const target = {
 }
 const views: NodePathMainView[] = []
 
-it('appends quoted context after an asynchronously restored chat draft', async () => {
-  let connected!: () => void
-  fixture.connect.mockReturnValue(
-    new Promise<void>((resolve) => {
-      connected = resolve
-    })
-  )
-  fixture.model = { sessions: shallowRef([]) }
-  const view = new NodePathMainView({} as WorkspaceLeaf, 'abele-node-chat')
+it('moves a chat tab of an earlier layout to the sidebar chat and closes it', async () => {
+  const detach = vi.fn()
+  const view = new NodePathMainView({ detach } as unknown as WorkspaceLeaf, 'abele-node-chat')
   views.push(view)
   view.app = { workspace: {} } as any
-  await view.setState(
-    { kind: 'chat', target, sessionId: 'sample-session', title: 'Sample chat' },
-    {}
-  )
-  view.appendChatText('Quoted sample')
-  connected()
+  const state = { kind: 'chat', target, sessionId: 'sample-session', title: 'Sample chat' }
+  await view.setState(state, {})
   for (let i = 0; i < 20; i++) await Promise.resolve()
-  expect(fixture.presenter.draft.value.text).toBe('Saved draft\n\nQuoted sample')
+  expect(fixture.openChat).toHaveBeenCalledWith(state)
+  expect(detach).toHaveBeenCalled()
 })
 afterEach(async () => {
   for (const view of views.splice(0)) await view.onClose()
@@ -298,7 +294,10 @@ it('reopens an editor tab of an earlier version as the file tab, editing, once i
   vi.useFakeTimers()
   try {
     const setViewState = vi.fn(async () => {})
-    const view = new NodePathMainView({ setViewState } as unknown as WorkspaceLeaf, 'abele-node-editor')
+    const view = new NodePathMainView(
+      { setViewState } as unknown as WorkspaceLeaf,
+      'abele-node-editor'
+    )
     views.push(view)
     view.app = { workspace: {} } as any
     await view.setState({ kind: 'editor', target, path: 'sample.ts' }, {})

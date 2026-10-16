@@ -1,85 +1,57 @@
 <template>
-  <div v-for="(message, index) in messages" :key="message.id" :data-node-message="message.id">
-    <AiChatMessage
-      :message="message"
-      :read-only-history="true"
-      :can-reply="canReply && depth === 0"
-      :compact-tool-details="true"
-      :resource-opener="openResource"
-      @reply="emit('reply', $event)"
-      @show-reply="emit('show-reply', $event)"
-      @open-session="emit('open-session', $event)"
+  <!-- The node chat's messages as the regular chat draws them: tool calls in a row folded into
+       one line of work, opened on a press; a call's nested agent work inside it. -->
+  <template
+    v-for="block in blocks"
+    :key="block.kind === 'run' ? `run:${block.id}` : block.message.id"
+  >
+    <ChatToolRun
+      v-if="block.kind === 'run'"
+      :id="block.id"
+      :calls="block.calls"
+      :open="isOpen(block)"
+      @update:open="(open) => chosen.set(block.id, open)"
     >
-      <template #tool-note
-        ><span v-if="message.content" class="abele-node-message-note" :title="message.content">{{
-          message.content === 'Allowed by your Claude settings'
-            ? 'Claude settings'
-            : message.content
-        }}</span></template
-      >
-      <template #metadata>
-        <div v-if="message.error" class="abele-ai-chat__error" role="alert">
-          <div class="abele-ai-chat__error-line">
-            <span class="abele-node-error-text">{{ message.error }}</span>
-            <button
-              v-if="message.retryInputId"
-              class="clickable-icon"
-              type="button"
-              aria-label="Send again"
-              :disabled="offline"
-              @click="emit('retry', message.id)"
-            >
-              <Icon icon="rotate-cw" tooltip="Send again" no-hover />
-            </button>
-          </div>
-        </div>
-        <div v-if="queueStates[message.id]" class="abele-node-queue-state" role="status">
-          <Icon icon="clock" no-hover />
-          <span>{{ queueStates[message.id].label }}</span>
-          <Icon
-            v-if="queueStates[message.id].inputId"
-            icon="x"
-            role="button"
-            tabindex="0"
-            aria-label="Cancel queued input"
-            tooltip="Cancel queued input"
-            :disabled="offline"
-            @click="emit('cancel', queueStates[message.id].inputId!)"
-            @keydown.enter.prevent="!offline && emit('cancel', queueStates[message.id].inputId!)"
-            @keydown.space.prevent="!offline && emit('cancel', queueStates[message.id].inputId!)"
+      <template v-for="message in block.messages" :key="message.id">
+        <NodeMessage
+          :data-node-message="message.id"
+          v-bind="messageProps(message)"
+          v-on="handlers"
+        />
+        <div v-if="children[message.id]?.length" class="abele-node-child-work">
+          <NodeMessageTree
+            v-if="depth < 12"
+            :messages="children[message.id]"
+            :children="children"
+            :depth="depth + 1"
+            :open-resource="openResource"
+            :queue-states="queueStates"
+            :offline="offline"
+            v-on="handlers"
           />
         </div>
       </template>
-    </AiChatMessage>
-    <details v-if="children[message.id]?.length" class="abele-node-child-work">
-      <summary>
-        Nested agent work · {{ children[message.id].length }}
-        {{ children[message.id].length === 1 ? 'record' : 'records' }}
-      </summary>
-      <NodeMessageTree
-        v-if="depth < 12"
-        :messages="children[message.id]"
-        :children="children"
-        :depth="depth + 1"
-        :open-resource="openResource"
-        :queue-states="queueStates"
-        :offline="offline"
-        @cancel="emit('cancel', $event)"
-        @retry="emit('retry', $event)"
-        @show-reply="emit('show-reply', $event)"
-        @open-session="emit('open-session', $event)"
-      />
-      <pre v-else>{{ JSON.stringify(children[message.id], null, 2) }}</pre>
-    </details>
-    <slot name="after-message" :message="message" :next="messages[index + 1]" />
-  </div>
+    </ChatToolRun>
+    <NodeMessage
+      v-else
+      :data-node-message="block.message.id"
+      v-bind="messageProps(block.message)"
+      v-on="handlers"
+    />
+    <slot
+      name="after-message"
+      :message="block.kind === 'run' ? block.messages[block.messages.length - 1] : block.message"
+    />
+  </template>
 </template>
 <script setup lang="ts">
 import type { ChatMessage, ChatReplyTo } from '@/ai/types'
 import type { QueueState } from '@/node/presentation'
-import AiChatMessage from './AiChatMessage.vue'
-import Icon from './obsidian/Icon.vue'
-withDefaults(
+import { computed, reactive } from 'vue'
+import { callState, chatBlocks, type ChatBlock } from '@/ai/toolRuns'
+import ChatToolRun from './ChatToolRun.vue'
+import NodeMessage from './NodeMessage.vue'
+const props = withDefaults(
   defineProps<{
     messages: ChatMessage[]
     children: Record<string, ChatMessage[]>
@@ -100,6 +72,26 @@ const emit = defineEmits<{
   /** Another session on the node, named by a message, opened in its own chat. */
   (e: 'open-session', sessionId: string): void
 }>()
+const blocks = computed(() => chatBlocks(props.messages))
+/** A run the reader opened or closed stays so; otherwise it is open while it works or waits. */
+const chosen = reactive(new Map<string, boolean>())
+const isOpen = (block: Extract<ChatBlock, { kind: 'run' }>) =>
+  chosen.get(block.id) ??
+  block.calls.some((c) => callState(c) === 'running' || c.toolStatus === 'pending')
+const messageProps = (message: ChatMessage) => ({
+  message,
+  openResource: props.openResource,
+  queueState: props.queueStates[message.id],
+  offline: props.offline,
+  canReply: props.canReply && props.depth === 0,
+})
+const handlers = {
+  cancel: (id: string) => emit('cancel', id),
+  retry: (id: string) => emit('retry', id),
+  reply: (to: ChatReplyTo) => emit('reply', to),
+  'show-reply': (to: ChatReplyTo) => emit('show-reply', to),
+  'open-session': (id: string) => emit('open-session', id),
+}
 </script>
 <style lang="scss">
 .abele-node-error-text {

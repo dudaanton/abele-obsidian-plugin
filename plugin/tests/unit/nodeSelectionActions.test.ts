@@ -28,7 +28,7 @@ vi.mock('@/stores/GlobalStore', () => ({
     }),
   },
 }))
-vi.mock('@/node/nodePathNavigation', () => ({ openNodePathTab: f.open }))
+vi.mock('@/node/nodePathNavigation', () => ({ openNodePathTab: f.open, openNodeChat: f.open }))
 vi.mock('@/node/NodeService', () => ({
   NodeService: {
     getInstance: () => ({
@@ -115,13 +115,16 @@ describe('selected node file context', () => {
     await newNodePathChat(model(), target, quote)
     expect(f.append).not.toHaveBeenCalled()
     f.choose!({ id: 'fake' })
-    await vi.waitFor(() => expect(f.append).toHaveBeenCalledWith(quote))
-    expect(f.session).toHaveBeenCalledWith(target, 'New chat', 'fake')
-    expect(f.open).toHaveBeenCalledWith(
-      expect.anything(),
-      { kind: 'chat', target, sessionId: 'sample-session', title: 'New chat' },
-      false
+    // The chat opens in the sidebar with the quote in its draft, never sent.
+    await vi.waitFor(() =>
+      expect(f.open).toHaveBeenCalledWith(
+        expect.anything(),
+        { kind: 'chat', target, sessionId: 'sample-session', title: 'New chat' },
+        false,
+        quote
+      )
     )
+    expect(f.session).toHaveBeenCalledWith(target, 'New chat', 'fake')
   })
   it('finds a chat in the place search under its branch and opens it, offering nothing it cannot do', () => {
     const opened = vi.fn()
@@ -164,7 +167,13 @@ describe('compare with', () => {
       panelBase: ref(''),
       panelMode: ref('files'),
       panelBranch: ref({
-        state: { base: 'origin/trunk', baseRef: 'refs/remotes/origin/trunk', ahead: 1, behind: 0, unpushed: 0 },
+        state: {
+          base: 'origin/trunk',
+          baseRef: 'refs/remotes/origin/trunk',
+          ahead: 1,
+          behind: 0,
+          unpushed: 0,
+        },
         committed: [],
         refs: ['refs/heads/other', 'refs/remotes/origin/trunk', 'refs/tags/v1'],
       }),

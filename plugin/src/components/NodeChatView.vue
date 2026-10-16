@@ -1,7 +1,56 @@
 <template>
-  <div ref="chatRoot" class="abele-node-chat" :class="{ 'abele-keyboard-open': keyboardOpen }">
+  <div
+    ref="chatRoot"
+    class="abele-node-chat"
+    :class="{ 'abele-keyboard-open': keyboardOpen }"
+    :data-session-id="presenter.reference?.sessionId"
+    :data-session-title="presenter.label.value"
+  >
+    <!-- The regular chat's header: the agent on the left, what is used all the time on the
+         right. The chat's name is on its tab. -->
     <div class="abele-ai-chat__header">
-      <span class="abele-node-chat__title" :title="title">{{ presenter.label.value }}</span>
+      <div class="abele-agent-selector">
+        <button
+          type="button"
+          class="dropdown abele-node-chat__agent"
+          aria-haspopup="menu"
+          :aria-label="`Agent: ${agentName}. Start a chat with another`"
+          @click="chooseAgent"
+        >
+          {{ agentName }}
+        </button>
+      </div>
+      <div class="abele-ai-chat__header-actions">
+        <AgentsButton />
+        <Icon
+          icon="plus"
+          with-bg
+          role="button"
+          tabindex="0"
+          aria-label="New chat or node session"
+          tooltip="New chat"
+          @click="emit('new-chat')"
+          @keydown.enter.prevent="emit('new-chat')"
+          @keydown.space.prevent="emit('new-chat')"
+        />
+        <Icon
+          icon="more-horizontal"
+          with-bg
+          role="button"
+          tabindex="0"
+          aria-label="More chat actions"
+          tooltip="More chat actions"
+          @click="openMenu"
+          @keydown.enter.prevent="openMenu"
+          @keydown.space.prevent="openMenu"
+        />
+      </div>
+    </div>
+    <!-- Where the agent works, quietly under the header: the folder and worktree (pressed, moved
+         to another), the node in the tooltip, a red dot while the node cannot be reached, and
+         the way back to the session that started this one. -->
+    <div class="abele-node-chat__place" :title="placeTip">
+      <span v-if="offline" class="abele-node-chat__offline" role="status" :aria-label="status" />
       <WorktreeChip
         v-if="worktree"
         :folder="folder ?? ''"
@@ -15,53 +64,12 @@
         "
         @choose="emit('choose-worktree')"
       />
-      <!-- A session another one started: the way back to it, at the line's end. -->
+      <span v-else class="abele-node-chat__node">{{ nodeLabel }}</span>
       <ParentLink
         v-if="live?.parent"
         :title="live.parent.title"
         @open="live.open(live.parent.id)"
       />
-      <div class="abele-ai-chat__header-actions">
-        <AgentsButton />
-        <span class="abele-node-chat__indicator" role="status" :title="status" :aria-label="status">
-          <Icon :icon="statusIcon" no-hover />
-          <span class="abele-node-chat__status-label">{{ status }}</span>
-        </span>
-        <Icon
-          v-if="presenter.workspaceId?.value"
-          icon="folder-open"
-          with-bg
-          role="button"
-          tabindex="0"
-          aria-label="Browse workspace files"
-          tooltip="Browse workspace files and review"
-          @click="presenter.openFiles()"
-          @keydown.enter.prevent="presenter.openFiles()"
-          @keydown.space.prevent="presenter.openFiles()"
-        />
-        <Icon
-          icon="more-horizontal"
-          with-bg
-          role="button"
-          tabindex="0"
-          aria-label="Node session menu"
-          tooltip="Node session menu"
-          @click="openMenu"
-          @keydown.enter.prevent="openMenu"
-          @keydown.space.prevent="openMenu"
-        />
-        <Icon
-          icon="plus"
-          with-bg
-          role="button"
-          tabindex="0"
-          aria-label="New chat or node session"
-          tooltip="New chat or node session"
-          @click="emit('new-chat')"
-          @keydown.enter.prevent="emit('new-chat')"
-          @keydown.space.prevent="emit('new-chat')"
-        />
-      </div>
     </div>
     <div
       v-if="presenter.error.value || presenter.connection.error.value"
@@ -129,10 +137,6 @@
           </template>
         </NodeMessageTree>
       </template>
-      <div v-for="artifact in presenter.projection.value.artifacts" :key="artifact.artifactId">
-        <Button text="Read stored output" @click="readArtifact(artifact.artifactId)" />
-        <pre v-if="artifacts[artifact.artifactId]">{{ artifacts[artifact.artifactId] }}</pre>
-      </div>
       <NodePermissionCard
         v-for="prompt in presenter.projection.value.prompts"
         :key="prompt.prompt_id"
@@ -156,45 +160,6 @@
         role="alert"
       >
         Not accepted: {{ rejected.text }} · {{ rejected.error }}
-      </div>
-      <div v-if="presenter.projection.value.unknown.length" class="abele-chat-msg">
-        <span
-          class="clickable-icon abele-chat-msg__icon abele-node-chat__details-spacer"
-          aria-hidden="true"
-          ><Icon icon="bot"
-        /></span>
-        <!-- The raw records can number in the thousands in a long session: drawn only when open. -->
-        <details
-          class="abele-chat-msg__body"
-          @toggle="detailsOpen = ($event.target as HTMLDetailsElement).open"
-        >
-          <summary>Details</summary>
-          <p
-            v-for="(diagnostic, index) in diagnostics"
-            :key="index"
-            class="abele-node-chat__diagnostic"
-          >
-            {{ diagnostic }}
-          </p>
-          <template
-            v-for="record in detailsOpen ? presenter.projection.value.unknown : []"
-            :key="record.seq"
-          >
-            <details v-if="recordArtifact(record.data)">
-              <summary>{{ record.type }} · {{ record.seq }}</summary>
-              <Button
-                text="Read stored record"
-                @click="readArtifact(recordArtifact(record.data))"
-              />
-              <pre v-if="artifacts[recordArtifact(record.data)]">{{
-                artifacts[recordArtifact(record.data)]
-              }}</pre>
-            </details>
-          </template>
-          <pre v-if="detailsOpen">{{
-            JSON.stringify(presenter.projection.value.unknown, null, 2)
-          }}</pre>
-        </details>
       </div>
     </div>
     <MetaLine
@@ -288,7 +253,7 @@ import { computed, nextTick, ref, watch, onUnmounted } from 'vue'
 import { Menu, Notice } from 'obsidian'
 import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import { nodeQueueView } from '@/node/presentation'
-import { providerLabel, capabilityReason } from '@/node/providers'
+import { agentChoices, providerLabel, type AgentChoice } from '@/node/providers'
 import { NodeService } from '@/node/NodeService'
 import { openNodePanel } from '@/node/openSession'
 import { openNodeFiles } from '@/node/openFiles'
@@ -301,7 +266,6 @@ import Icon from './obsidian/Icon.vue'
 import AgentsButton from './AgentsButton.vue'
 import Button from './obsidian/Button.vue'
 import MetaLine from './obsidian/MetaLine.vue'
-import { piFailure } from '@/node/piFailure'
 import NodeDebugActions from '@/debugger/NodeDebugActions.vue'
 import { attachNodeProgram, openNodeDebugger, startNodeProgram } from '@/debugger/register'
 import { useChatKeyboardGap } from '@/composables/useChatKeyboardGap'
@@ -338,19 +302,12 @@ const props = withDefaults(
     openNodeResource: undefined,
   }
 )
-const diagnostics = computed(() =>
-  props.presenter.projection.value.unknown
-    .filter((record) => record.type === 'pi.message.final')
-    .map((record) =>
-      piFailure(
-        record.data && typeof record.data === 'object' && !Array.isArray(record.data)
-          ? (record.data as Record<string, unknown>)
-          : {}
-      )
-    )
-    .filter(Boolean)
-)
-const emit = defineEmits<{ (e: 'new-chat'): void; (e: 'choose-worktree'): void }>()
+const emit = defineEmits<{
+  (e: 'new-chat'): void
+  (e: 'choose-worktree'): void
+  /** Another agent was chosen in the header: a new chat with it, at the same place. */
+  (e: 'start-with', choice: AgentChoice): void
+}>()
 // The presenter owns resource identities; this thin view supplies Obsidian's dialog adapter.
 const stopFiles = props.presenter.setFilesOpener?.((model, path, range) =>
   openNodeFiles(model, props.presenter.connection, path, range)
@@ -364,28 +321,58 @@ const labels = {
   'needs-attention': 'Needs attention',
   idle: 'Connected · Idle',
 }
-const icons = {
-  offline: 'wifi-off',
-  queued: 'clock',
-  accepted: 'check',
-  running: 'loader',
-  'needs-attention': 'circle-alert',
-  idle: 'circle-check',
-}
-const title = computed(
-  () =>
-    `${props.presenter.label.value} · ${providerLabel(props.presenter.provider?.value ?? 'fake')}`
-)
 const status = computed(() =>
   props.presenter.connection.state.value === 'connecting'
     ? 'Connecting…'
     : labels[props.presenter.state.value]
 )
-const statusIcon = computed(() =>
-  props.presenter.connection.state.value === 'connecting'
-    ? 'loader'
-    : icons[props.presenter.state.value]
-)
+/** The node this chat runs on, by the name it was paired under. */
+const nodeLabel = computed(() => {
+  try {
+    return (
+      NodeService.getInstance().nodes.value.find(
+        (n) => n.id === props.presenter.reference.registrationId
+      )?.label ?? 'Node'
+    )
+  } catch {
+    // Node connections did not load: the chat still says it runs on a node.
+    return 'Node'
+  }
+})
+const placeTip = computed(() => `On ${nodeLabel.value} · ${status.value}`)
+const sessionAgent = () =>
+  (props.presenter.projection.value.session as { agent?: string } | undefined)?.agent
+/** The agent this chat runs, by the name people know it: an ACP agent by its own. */
+const agentName = computed(() => {
+  const provider = props.presenter.provider?.value ?? 'fake'
+  const agent = sessionAgent()
+  if (provider === 'acp' && agent)
+    return (
+      agentChoices(props.presenter.providerReports?.value ?? []).find((c) => c.agent === agent)
+        ?.label ?? agent
+    )
+  return providerLabel(provider)
+})
+/** The agents of this node, this one checked; another starts a new chat with it here. */
+const chooseAgent = (event: MouseEvent) => {
+  const menu = new Menu()
+  const provider = props.presenter.provider?.value
+  const agent = sessionAgent() ?? ''
+  for (const choice of agentChoices(props.presenter.providerReports?.value ?? [])) {
+    const current = choice.provider === provider && (choice.agent ?? '') === agent
+    menu.addItem((i) =>
+      i
+        .setTitle(choice.unavailable ? `${choice.label} · ${choice.unavailable}` : choice.label)
+        .setChecked(current)
+        .setDisabled(!!choice.unavailable)
+        .onClick(() => {
+          if (!current) emit('start-with', choice)
+        })
+    )
+  }
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  menu.showAtPosition({ x: rect.left, y: rect.bottom })
+}
 const offline = computed(() => props.presenter.connection.state.value !== 'connected')
 /** A long-lived session: how it runs, what it keeps running; null for any other. */
 const live = computed(() => props.presenter.live?.value ?? null)
@@ -463,17 +450,10 @@ const onInputFocus = (focused: boolean) => {
   if (focused) measureBottomGap()
   keyboardOpen.value = focused
 }
-const detailsOpen = ref(false)
 const expanded = ref(false),
   sending = ref(false),
   permissionFixture = ref(false)
 const scroller = ref<HTMLElement>()
-const artifacts = ref<Record<string, string>>({})
-const recordArtifact = (data: unknown): string => {
-  const id =
-    data && typeof data === 'object' ? (data as Record<string, unknown>).artifact_id : undefined
-  return typeof id === 'string' ? id : ''
-}
 const segments = computed(() =>
   nodeChatSegments(
     presentation.value.messages,
@@ -494,9 +474,16 @@ const openMenu = (event: MouseEvent | KeyboardEvent) => {
   const menu = new Menu()
   menu.addItem((i) =>
     i
-      .setTitle(providerLabel(props.presenter.provider?.value ?? 'fake'))
-      .setIcon('terminal')
-      .setDisabled(true)
+      .setTitle('Log raw session records')
+      .setIcon('bug')
+      .onClick(() => {
+        console.debug('[Abele node] raw session records', {
+          reference: props.presenter.reference,
+          records: props.presenter.projection.value.unknown,
+          artifacts: props.presenter.projection.value.artifacts,
+        })
+        new Notice('Raw session records logged to the developer console')
+      })
   )
   if (props.presenter.debuggerAvailable?.value === true)
     menu.addItem((i) =>
@@ -525,6 +512,13 @@ const openMenu = (event: MouseEvent | KeyboardEvent) => {
           void attachNodeProgram(props.presenter)
         })
     )
+  if (props.presenter.workspaceId?.value)
+    menu.addItem((i) =>
+      i
+        .setTitle('Browse workspace files')
+        .setIcon('folder-open')
+        .onClick(() => props.presenter.openFiles())
+    )
   menu.addItem((i) => i.setTitle('Folders and worktrees').setIcon('server').onClick(workspaces))
   menu.addItem((i) =>
     i
@@ -549,57 +543,7 @@ const openMenu = (event: MouseEvent | KeyboardEvent) => {
         void props.presenter.connection.connect().catch(() => {})
       })
   )
-  if (props.presenter.provider?.value !== 'fake') {
-    menu.addItem((i) =>
-      i
-        .setTitle(
-          props.presenter.provider?.value === 'pi' &&
-            capabilityReason(props.presenter.providerReport?.value, 'resume')
-            ? `Session resume · ${capabilityReason(props.presenter.providerReport?.value, 'resume')}`
-            : 'Session resume'
-        )
-        .setDisabled(
-          props.presenter.provider?.value === 'pi' &&
-            !!capabilityReason(props.presenter.providerReport?.value, 'resume')
-        )
-        .setIcon('history')
-        .onClick(
-          () =>
-            new Notice(
-              props.presenter.nativeSessionId?.value
-                ? `Follow-ups resume native session ${props.presenter.nativeSessionId.value}.`
-                : 'A native session identity is not available yet.'
-            )
-        )
-    )
-    menu.addItem((i) =>
-      i
-        .setTitle(
-          props.presenter.provider?.value === 'pi'
-            ? `Steer turn · ${capabilityReason(props.presenter.providerReport?.value, 'steering') || 'Queued follow-ups only'}`
-            : 'Steer turn'
-        )
-        .setDisabled(true)
-        .setIcon('corner-up-right')
-        .onClick(() => {
-          props.presenter.error.value =
-            'Steering is not supported yet. Send a queued follow-up instead.'
-        })
-    )
-    menu.addItem((i) =>
-      i
-        .setTitle(
-          props.presenter.provider?.value === 'pi'
-            ? `Provider questions · ${capabilityReason(props.presenter.providerReport?.value, 'extension_prompts') || 'Answer only provider-issued questions'}`
-            : 'Ask a question'
-        )
-        .setDisabled(true)
-        .setIcon('circle-help')
-        .onClick(() => {
-          props.presenter.error.value = 'Interactive questions are not supported yet.'
-        })
-    )
-  } else
+  if (props.presenter.provider?.value === 'fake')
     menu.addItem((i) =>
       i
         .setTitle('Ask for permission')
@@ -661,14 +605,6 @@ const retry = (messageId: string) => {
   )
   if (input) void send(input.content)
 }
-const readArtifact = async (id: string) => {
-  try {
-    artifacts.value[id] = await props.presenter.artifact(id)
-  } catch (error) {
-    props.presenter.error.value =
-      error instanceof Error ? error.message : 'Could not read stored output'
-  }
-}
 /** An earlier page arriving keeps the words you are reading where they are. */
 let keepFromBottom: number | null = null
 const loadOlder = async () => {
@@ -724,9 +660,6 @@ watch(
     color: var(--text-muted);
     font-size: var(--font-ui-smaller);
   }
-  &__details-spacer {
-    visibility: hidden;
-  }
   &__draft-note {
     flex-shrink: 0;
     padding: var(--size-4-2);
@@ -737,37 +670,49 @@ watch(
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  &__title {
-    flex: 1;
-    min-width: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  &__indicator {
-    display: flex;
-    align-items: center;
-    flex-shrink: 0;
-    gap: var(--size-4-1);
-    color: var(--text-muted);
-  }
   .abele-ai-chat__header-actions {
     flex-shrink: 0;
   }
-  &__status-label {
-    display: none;
+  /* The agent as the regular chat's header names it: a dropdown that opens its menu. */
+  &__agent {
+    max-width: 12em;
+    min-width: 5em;
+    text-align: start;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  .abele-worktree-chip {
-    flex: 0 1 auto;
-  }
-  @container (max-width: 30em) {
-    .abele-ai-chat__header {
-      flex-wrap: wrap;
-    }
+  /* Where the agent works: one quiet line under the header. */
+  &__place {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    gap: var(--size-4-2);
+    min-width: 0;
+    padding: 0 var(--size-4-3) var(--size-4-1);
+    color: var(--text-muted);
+    font-size: var(--font-ui-smaller);
+
     .abele-worktree-chip {
-      order: 2;
-      width: 100%;
+      flex: 0 1 auto;
+      min-width: 0;
     }
+    &:empty {
+      display: none;
+    }
+  }
+  &__offline {
+    flex: 0 0 auto;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--color-red);
+  }
+  &__node {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   container-type: inline-size;
   body.is-mobile &.abele-keyboard-open {

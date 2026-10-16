@@ -49,6 +49,50 @@ afterAll(async () => {
   await evalLong('window.__abeleTest.closeNodeSessionFixture().then(() => "1")', 30000)
 })
 
+it('shows shared agent work, commands, unavailable agents and permission questions like the regular chat', async () => {
+  const r = await run<{
+    outside: string[]
+    plan: boolean
+    commands: string
+    picker: string
+    permission: boolean
+  }>(`
+    const root = await open('agent');
+    await wait(350);
+    const overflow = outside(root);
+    const plan = !!root.querySelector('.abele-session-plan');
+    await shot('node-agent-chat');
+    const input = root.querySelector('textarea');
+    input.value = '/'; input.dispatchEvent(new Event('input', { bubbles: true }));
+    await wait(250);
+    const commands = root.textContent;
+    await shot('node-agent-commands');
+    input.value = ''; input.dispatchEvent(new Event('input', { bubbles: true }));
+    await window.__abeleTest.closeNodeSessionFixture();
+    await window.__abeleTest.openRegularChatFixture();
+    await wait(350); await shot('node-agent-regular-comparison');
+    await window.__abeleTest.closeRegularChatFixture();
+    const asking = await open('agent-asking');
+    asking.querySelector('.abele-ai-chat__messages').scrollTop = 1e6;
+    await wait(250); await shot('node-agent-permission');
+    overflow.push(...outside(asking));
+    const permission = [...asking.querySelectorAll('button')].some(b => b.textContent.trim() === 'Approve');
+    await window.__abeleTest.openAgentPickerFixture();
+    await wait(250);
+    const picker = document.querySelector('.prompt')?.textContent ?? document.querySelector('.modal-container')?.textContent ?? '';
+    await shot('node-agent-picker');
+    window.__abeleTest.closeAgentPickerFixture();
+    return JSON.stringify({ outside: overflow, plan, commands, picker, permission });
+  `)
+  expect(r.outside).toEqual([])
+  expect(r.plan).toBe(true)
+  expect(r.commands).toContain('review')
+  expect(r.picker).toContain('Codex')
+  expect(r.picker).toContain('pi')
+  expect(r.picker).toContain('OpenCode')
+  expect(r.permission).toBe(true)
+})
+
 it.each(['idle', 'working', 'compacting', 'asking'])(
   'the %s session fits a real screen, its controls apart, Stop there while anything runs',
   async (state) => {
@@ -252,7 +296,7 @@ it('compacts from «/compact» with a focus, and the session commands lead the �
 it('stops the whole session from ⋯ after saying what stops, and renames it', async () => {
   const r = await run<{ said: string; sent: { method: string; params: unknown[] }[] }>(`
     const root = await open('working');
-    root.querySelector('[aria-label="Node session menu"]').click();
+    root.querySelector('[aria-label="More chat actions"]').click();
     await until(() => document.querySelector('.menu'), 'The session menu');
     await pick('Stop the session…');
     const modal = await until(() => document.querySelector('.modal'), 'The stop dialog');
@@ -261,7 +305,7 @@ it('stops the whole session from ⋯ after saying what stops, and renames it', a
     await shot('node-sessions-stop-confirm');
     [...modal.querySelectorAll('button')].find(b => b.textContent.trim() === 'Stop').click();
     await wait(300);
-    root.querySelector('[aria-label="Node session menu"]').click();
+    root.querySelector('[aria-label="More chat actions"]').click();
     await until(() => document.querySelector('.menu'), 'The session menu');
     await pick('Rename…');
     const rename = await until(() => document.querySelector('.modal'), 'The rename dialog');

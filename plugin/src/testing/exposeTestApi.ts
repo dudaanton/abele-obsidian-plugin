@@ -32,6 +32,10 @@ import {
 } from './nodeRepositoryScreen'
 import {
   openNodeSessionFixture,
+  openAgentPickerFixture,
+  closeAgentPickerFixture,
+  openRegularChatFixture,
+  closeRegularChatFixture,
   closeNodeSessionFixture,
   nodeSessionCalls,
 } from './nodeSessionScreen'
@@ -294,6 +298,10 @@ interface AbeleTestApi {
   closeNodeRepositoryFixture: typeof closeNodeRepositoryFixture
   nodeRepositoryScreens: typeof NODE_REPOSITORY_SCREENS
   openNodeSessionFixture: typeof openNodeSessionFixture
+  openAgentPickerFixture: typeof openAgentPickerFixture
+  closeAgentPickerFixture: typeof closeAgentPickerFixture
+  openRegularChatFixture: typeof openRegularChatFixture
+  closeRegularChatFixture: typeof closeRegularChatFixture
   closeNodeSessionFixture: typeof closeNodeSessionFixture
   nodeSessionCalls: typeof nodeSessionCalls
   NodeDeviceKeyStore: typeof NodeDeviceKeyStore
@@ -951,6 +959,10 @@ export function exposeTestApi(plugin: Plugin): void {
     openNodeRepositoryFixture,
     closeNodeRepositoryFixture,
     openNodeSessionFixture,
+    openAgentPickerFixture,
+    closeAgentPickerFixture,
+    openRegularChatFixture,
+    closeRegularChatFixture,
     closeNodeSessionFixture,
     nodeSessionCalls,
     nodeRepositoryScreens: NODE_REPOSITORY_SCREENS,

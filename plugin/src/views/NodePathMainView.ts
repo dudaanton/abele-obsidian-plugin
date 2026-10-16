@@ -7,17 +7,15 @@ import {
   type ViewStateResult,
   type WorkspaceLeaf,
 } from 'obsidian'
-import { h, shallowRef, watch, markRaw, type WatchStopHandle } from 'vue'
+import { h, shallowRef, watch, type WatchStopHandle } from 'vue'
 import { NodeService } from '@/node/NodeService'
 import { DebuggerService } from '@/debugger/DebuggerService'
-import { pathPages } from '@/node/NodePathClientPort'
 import { NodePathService } from '@/node/NodePathService'
 import { NodePathFileModel, pathTargetKey } from '@/node/NodePathModel'
 import { NodePathHistoryModel } from '@/node/NodePathHistoryModel'
-import { NodeFilesModel, NodeDocumentSource, nodeResourceTarget } from '@/node/NodeFilesModel'
+import { NodeFilesModel, NodeDocumentSource } from '@/node/NodeFilesModel'
 import { NodePathFileEditing } from '@/node/NodePathFileEditing'
 import { NodeFileTabActions } from './nodeFileTabActions'
-import { nodeChatSwitches, bindPathTarget } from '@/node/nodePathChat'
 import { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import {
   NodePathTabSchema,
@@ -25,22 +23,17 @@ import {
   editedFileTab,
   nodePathViewType,
   nodePathTabKey,
-  openNodePathTab,
+  openNodeChat,
   revealNodeDrawer,
   type NodePathTabState,
 } from '@/node/nodePathNavigation'
-import {
-  showNodePathFileMenu,
-  chooseSessionWorktree,
-  newNodePathChat,
-} from '@/node/NodePathController'
+import { showNodePathFileMenu, newNodePathChat } from '@/node/NodePathController'
 import { nodePathOwnerActions, freezeNodePathContext } from '@/node/NodePathOwnerActions'
 import { insertCodeSelection } from '@/views/codeSelectionHost'
 import { selectionQuote, type FileSelection } from '@/components/nodeWork/fileSelection'
 import NodePathFilePane from '@/components/nodeWork/NodePathFilePane.vue'
 import NodePathHistoryPane from '@/components/nodeWork/NodePathHistoryPane.vue'
 import NodePathEditorPane from '@/components/nodeWork/NodePathEditorPane.vue'
-import NodeChatView from '@/components/NodeChatView.vue'
 import { mountKit, type KitMount } from '@/components/obsidian/mount'
 
 /** Thin ItemView adapter; every callback is bound to this tab, not the sidebar selection. */
@@ -219,6 +212,12 @@ export class NodePathMainView extends ItemView {
   }
   private async bind(state: NodePathTabState): Promise<void> {
     this.clearBinding()
+    // A chat tab from an earlier layout: chats live in the sidebar now, so it moves there.
+    if (state.kind === 'chat') {
+      await openNodeChat(state)
+      this.leaf.detach()
+      return
+    }
     const lifetime = this.lifetime
     const node = NodeService.getInstance().nodes.value.find(
       (n) => n.id === state.target.registrationId
@@ -231,9 +230,7 @@ export class NodePathMainView extends ItemView {
     }
     const connection = NodeService.getInstance().connection(node.id)
     const model = NodePathService.getInstance().model(node.id)
-    const host = this.contentEl.createDiv({
-      cls: state.kind === 'chat' ? 'abele-node-content__chat' : 'abele-node-content__pane',
-    })
+    const host = this.contentEl.createDiv({ cls: 'abele-node-content__pane' })
     const offline = () => connection.state.value !== 'connected'
     this.error.value = ''
     if (state.kind === 'file') {
@@ -417,97 +414,8 @@ export class NodePathMainView extends ItemView {
         await history.open(state.commit).catch(() => {})
     } else if (state.kind === 'editor') {
       return
-    } else {
-      const presenter = (this.presenter = markRaw(
-        new NodeChatPresenter(
-          {
-            kind: 'node-session',
-            registrationId: node.id,
-            nodeId: node.expectedNodeId,
-            sessionId: state.sessionId,
-            title: state.title,
-          },
-          connection
-        )
-      ))
-      const root = {
-        render: () => {
-          const binding = presenter.binding.value
-          const target = binding
-            ? {
-                ...bindPathTarget(state.target, binding.project_id, binding.target),
-                incarnation: binding.incarnation,
-              }
-            : (model.sessions.value.find((s) => s.session.session_id === state.sessionId)?.target ??
-              state.target)
-          const folder = model.folders.value.find((f) => f.id === target.projectId)
-          const copy = model.copy(target) ?? {
-            id: target.id,
-            kind: 'project' as const,
-            branch: folder?.name ?? 'Folder',
-            path: folder?.path ?? '',
-            changed: 0,
-          }
-          return h(NodeChatView, {
-            presenter,
-            worktree: binding === null ? undefined : copy,
-            folder: folder?.name,
-            canSwitchWorktree: model.capabilities.value.includes('node_path_execution'),
-            canSwitchNative: model.capabilities.value.includes('node_path_native_switching'),
-            currentTarget: binding === null ? undefined : target,
-            switches: nodeChatSwitches(
-              presenter.projection.value.unknown,
-              target,
-              state.sessionId,
-              (id) =>
-                model.folders.value.flatMap((f) => f.copies).find((c) => c.id === id)?.branch ??
-                'Unavailable worktree'
-            ),
-            openNodeResource: (resource: string, bound = target) =>
-              this.act(() =>
-                openNodePathTab(
-                  this.app.workspace,
-                  { kind: 'file', target: bound, path: nodeResourceTarget(resource).path },
-                  Platform.isMobile
-                )
-              ),
-            onChooseWorktree: () => this.act(() => chooseSessionWorktree(model, state.sessionId)),
-            onNewChat: () =>
-              this.act(() =>
-                import('@/node/NodePathController').then((m) => m.newNodePathChat(model, target))
-              ),
-          })
-        },
-      }
-      this.stops.push(
-        watch(model.sessions, (sessions) => {
-          const current = sessions.find((s) => s.session.session_id === state.sessionId)?.target
-          if (current && this.saved?.kind === 'chat') {
-            this.saved = { ...this.saved, target: current }
-            this.app.workspace.requestSaveLayout()
-          }
-        })
-      )
-      this.ui = mountKit(host, root)
-      this.chatLoad = presenter.load()
-      await this.chatLoad
     }
     if (lifetime === this.lifetime) this.refreshHeader()
-  }
-  /** Append quoted file context without sending a provider turn or replacing an existing draft. */
-  appendChatText(text: string): void {
-    const presenter = this.presenter,
-      lifetime = this.lifetime
-    if (!presenter) return
-    const append = () => {
-      if (lifetime !== this.lifetime) return
-      const draft = presenter.draft.value
-      draft.text = draft.text ? `${draft.text}\n\n${text}` : text
-    }
-    // setState admits the shell before load restores its durable draft. Never let that
-    // restoration overwrite newly quoted context, or append it to a subsequently rebound tab.
-    if (this.chatLoad !== undefined) void this.chatLoad.then(append).catch(() => {})
-    else append()
   }
   private refreshHeader(): void {
     ;(this.leaf as unknown as { updateHeader?: () => void }).updateHeader?.()

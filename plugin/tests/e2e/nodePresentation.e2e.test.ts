@@ -10,6 +10,7 @@ it('keeps desktop node headers, approvals, queued inputs and the node panel comp
     header: number
     hostWidth: number
     titleWidth: number
+    titleCut: boolean
     queueCopies: number
     sameActionRow: boolean
     accent: boolean
@@ -47,7 +48,9 @@ it('keeps desktop node headers, approvals, queued inputs and the node panel comp
       await nodePanel.dismiss()
       const menu=await nodePanel.menu();rings(menu);await shot('desktop-node-panel-menu');await nodePanel.dismiss()
       await nodePanel.close()
-      return {header,hostWidth:root.getBoundingClientRect().width,titleWidth:root.querySelector('.abele-node-chat__title')?.getBoundingClientRect().width ?? 0,queueCopies,sameActionRow,accent,cardsClipped:cuts,paths}
+      // The chat's name is on its tab now, not in the header: it has room there and is shown whole.
+      const title=[...document.querySelectorAll('.abele-chat-tabs__chip--active .abele-chat-tabs__label')].find(l=>l.getBoundingClientRect().width>0&&l.textContent.trim()==='Sample node session')
+      return {header,hostWidth:root.getBoundingClientRect().width,titleWidth:title?.getBoundingClientRect().width ?? 0,titleCut:!title||title.scrollWidth>title.clientWidth+1,queueCopies,sameActionRow,accent,cardsClipped:cuts,paths}
     } finally {
       await nodePanel.close()
       document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));chats.nodeSessions.delete(presenter.id);chats.tabOrder.value=chats.tabOrder.value.filter(id=>id!==presenter.id);chats.activeTabId.value=active
@@ -57,7 +60,8 @@ it('keeps desktop node headers, approvals, queued inputs and the node panel comp
   expect(result.hostWidth).toBeGreaterThanOrEqual(430)
   expect(result.hostWidth).toBeLessThanOrEqual(440)
   expect(result.header).toBeLessThan(60)
-  expect(result.titleWidth).toBeGreaterThan(130)
+  expect(result.titleWidth).toBeGreaterThan(0)
+  expect(result.titleCut).toBe(false)
   expect(result.queueCopies).toBe(1)
   expect(result.sameActionRow).toBe(true)
   expect(result.accent).toBe(true)

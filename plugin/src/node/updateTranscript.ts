@@ -177,8 +177,8 @@ export class UpdateTranscript {
       block.text = update.text
       block.final = true
     } else if (update.kind === 'agent_thought') {
-      block.thinking =
-        update.redacted || !update.text ? 'Thinking was not exposed by the provider.' : update.text
+      // Reasoning the agent kept to itself is not shown at all, as in the regular chat.
+      block.thinking = update.redacted ? '' : update.text
       block.final = true
     } else if (!block.final) {
       if (update.kind === 'agent_message_chunk') block.text += update.text

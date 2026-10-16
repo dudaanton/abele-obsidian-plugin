@@ -9,7 +9,7 @@ import {
 } from './repositorySettings'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { NodeService } from './NodeService'
-import { agentChoices, nodeProviders } from './providers'
+import { agentChoices, nodeProviders, type AgentChoice } from './providers'
 import { bindPathTarget } from './nodePathChat'
 import { NodePathMutations } from './NodePathMutations'
 import { pathPages } from './NodePathClientPort'
@@ -455,6 +455,19 @@ export function openNodePathPairing(): void {
 const agentIcon = (provider: string): string =>
   provider === 'acp' ? 'plug' : provider === 'fake' ? 'flask-conical' : 'bot'
 
+/** The agents' rows in the chooser, as the new-chat list and a test fixture show them. */
+export function agentSuggestions(choices: AgentChoice[]) {
+  return choices.map((c) => ({
+    id: agentChoiceId(c),
+    title: c.label,
+    ...(c.unavailable ? { note: c.unavailable, disabled: c.unavailable } : {}),
+    icon: agentIcon(c.provider),
+    kind: c.agent ? 'Agent over ACP' : 'Agent',
+  }))
+}
+export const agentChoiceId = (c: AgentChoice): string =>
+  c.agent ? `${c.provider}:${c.agent}` : c.provider
+
 export async function newNodePathChat(
   model: NodePathModel,
   target = model.current.value,
@@ -468,51 +481,44 @@ export async function newNodePathChat(
   const bound = Object.freeze({ ...target }),
     connection = NodeService.getInstance().connection(model.registrationId)
   const choices = agentChoices(nodeProviders(await connection.client.describe()))
-  const idOf = (c: (typeof choices)[number]) => (c.agent ? `${c.provider}:${c.agent}` : c.provider)
-  new NodeSuggestModal(
-    app(),
-    choices.map((c) => ({
-      id: idOf(c),
-      title: c.label,
-      ...(c.unavailable ? { note: c.unavailable, disabled: c.unavailable } : {}),
-      icon: agentIcon(c.provider),
-      kind: c.agent ? 'Agent over ACP' : 'Agent',
-    })),
-    'Choose the agent',
-    (item) =>
-      nodePathAction(async () => {
-        if (!(await approveNodePathExecution(model, bound))) return
-        const choice = choices.find((c) => idOf(c) === item.id && !c.unavailable)
-        if (!choice) throw new Error('The selected agent is no longer available.')
-        const session = await new NodePathMutations(connection.client).session(
-          bound,
-          'New chat',
-          choice.provider,
-          ...(choice.agent ? [choice.agent] : [])
-        )
-        // The returned session already carries this exact target. Refresh drawer metadata
-        // in the background; recursively listing its files is not part of opening a chat.
-        void model.refresh().catch((error: unknown) => model.report(error))
-        model.selectedChat.value = session.session_id
-        await openNodePathTab(
-          app().workspace,
-          { kind: 'chat', target: bound, sessionId: session.session_id, title: session.title },
-          Platform.isMobile
-        )
-        if (initialText) {
-          const leaf = app()
-            .workspace.getLeavesOfType('abele-node-chat')
-            .find(
-              (leaf) =>
-                (leaf.getViewState().state as { sessionId?: string } | undefined)?.sessionId ===
-                session.session_id
-            )
-          ;(leaf?.view as unknown as { appendChatText?: (text: string) => void })?.appendChatText?.(
-            initialText
-          )
-        }
-      })
-  ).open()
+  new NodeSuggestModal(app(), agentSuggestions(choices), 'Choose the agent', (item) => {
+    const choice = choices.find((c) => agentChoiceId(c) === item.id && !c.unavailable)
+    startNodePathChat(model, bound, choice, initialText)
+  }).open()
+}
+
+/**
+ * A new chat with this agent at this place on the node, opened in the sidebar beside the other
+ * chats; `initialText` goes into its draft, never sent.
+ */
+export function startNodePathChat(
+  model: NodePathModel,
+  target: PathTarget,
+  choice: AgentChoice | undefined,
+  initialText?: string
+): void {
+  const bound = Object.freeze({ ...target }),
+    connection = NodeService.getInstance().connection(model.registrationId)
+  nodePathAction(async () => {
+    if (!(await approveNodePathExecution(model, bound))) return
+    if (!choice) throw new Error('The selected agent is no longer available.')
+    const session = await new NodePathMutations(connection.client).session(
+      bound,
+      'New chat',
+      choice.provider,
+      ...(choice.agent ? [choice.agent] : [])
+    )
+    // The returned session already carries this exact target. Refresh drawer metadata
+    // in the background; recursively listing its files is not part of opening a chat.
+    void model.refresh().catch((error: unknown) => model.report(error))
+    model.selectedChat.value = session.session_id
+    await openNodePathTab(
+      app().workspace,
+      { kind: 'chat', target: bound, sessionId: session.session_id, title: session.title },
+      Platform.isMobile,
+      ...(initialText ? [initialText] : [])
+    )
+  })
 }
 export async function chooseSessionWorktree(
   model: NodePathModel,

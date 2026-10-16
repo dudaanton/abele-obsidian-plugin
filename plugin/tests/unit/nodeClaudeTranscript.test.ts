@@ -73,7 +73,7 @@ it('reconciles block finals without duplication, scopes native IDs to runs and k
   ).toEqual(['Child answer'])
 })
 
-it('renders successful edits as diffs, correlated results and honest collapsed thinking', () => {
+it('renders successful edits as diffs and correlated results, and no empty thought', () => {
   const projection = reduceTranscript([
     e(1, 'claude.tool.call', {
       run_id: 'r',
@@ -105,9 +105,10 @@ it('renders successful edits as diffs, correlated results and honest collapsed t
     toolResult: 'Edited',
     toolDiff: { old: 'before', new: 'after' },
   })
-  expect(projection.messages[1].thinking).toBe('Thinking was not exposed by the provider.')
+  // Reasoning the provider withheld draws nothing: no empty «Thought» to open.
+  expect(projection.messages.some((m) => m.role === 'assistant')).toBe(false)
   // Said the way the node says it for every agent: a warning line naming the tool and why.
-  expect(projection.messages[2]).toMatchObject({
+  expect(projection.messages[1]).toMatchObject({
     content: 'AskUserQuestion: Question-response bridge unsupported',
     sessionMark: { kind: 'notice', level: 'warning' },
   })

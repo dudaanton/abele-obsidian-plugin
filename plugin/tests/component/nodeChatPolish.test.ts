@@ -5,6 +5,7 @@ import { Menu } from 'obsidian'
 import NodeChatView from '@/components/NodeChatView.vue'
 import NodeMessageTree from '@/components/NodeMessageTree.vue'
 import AiChatMessage from '@/components/AiChatMessage.vue'
+import ChatToolRun from '@/components/ChatToolRun.vue'
 import { useVault } from '../helpers/testEnv'
 const presenter = () => ({
   id: 'sample-node-tab',
@@ -35,6 +36,34 @@ const presenter = () => ({
   interrupt: vi.fn(),
   openResource: vi.fn(),
 })
+it('keeps stored service records outside the transcript with a diagnostic menu exit', async () => {
+  useVault([])
+  const p = presenter()
+  p.messages.value = []
+  p.projection.value.queuedInputs = []
+  p.projection.value.unknown = [
+    { seq: 1, type: 'claude.system', data: { subtype: 'init', artifact_id: 'sample-init' } },
+    { seq: 2, type: 'claude.raw', data: { frame: 'sample-stream-frame' } },
+  ] as never
+  p.projection.value.artifacts = [{ artifactId: 'sample-init', size: 100 }] as never
+  const show = vi.spyOn(Menu.prototype, 'showAtPosition')
+  const wrapper = mount(NodeChatView, {
+    props: { presenter: p as never },
+    global: { stubs: { AiChatInput: true } },
+  })
+  try {
+    expect(wrapper.findAllComponents(AiChatMessage)).toHaveLength(0)
+    for (const text of ['Read stored output', 'Details', 'sample-init', 'sample-stream-frame'])
+      expect(wrapper.text()).not.toContain(text)
+    await wrapper.get('[aria-label="More chat actions"]').trigger('click')
+    expect((show.mock.contexts.at(-1) as Menu).items.map((i) => i.title)).toContain(
+      'Log raw session records'
+    )
+  } finally {
+    wrapper.unmount()
+    show.mockRestore()
+  }
+})
 it('keeps secondary session actions in the menu and interrupts through Stop in the composer', async () => {
   useVault([])
   const p = presenter(),
@@ -53,13 +82,12 @@ it('keeps secondary session actions in the menu and interrupts through Stop in t
     expect(input.props('isStreaming')).toBe(true)
     input.vm.$emit('abort')
     expect(p.interrupt).toHaveBeenCalledWith('run')
-    await wrapper.get('[aria-label="Node session menu"]').trigger('click')
+    await wrapper.get('[aria-label="More chat actions"]').trigger('click')
     const menu = show.mock.contexts.at(-1) as Menu
     // Folders and worktrees are the node panel's now; the menu opens it.
     expect(menu.items.map((i) => i.title)).toContain('Folders and worktrees')
-    menu.items.find((i) => i.title === 'Steer turn')!.handler!()
-    await flushPromises()
-    expect(wrapper.text()).toContain('not supported yet')
+    // Nothing it cannot do is offered, greyed out or not.
+    expect(menu.items.map((i) => i.title)).not.toContain('Steer turn')
   } finally {
     wrapper.unmount()
     show.mockRestore()
@@ -116,7 +144,7 @@ it('read-only message rows never enable local draft actions while local drafts s
   }
 })
 
-it('pluralises nested records and keeps tool diffs and thinking closed', async () => {
+it('folds the calls into one line of work, nested work inside it, diffs and thinking closed', async () => {
   useVault([])
   const wrapper = mount(NodeMessageTree, {
     props: {
@@ -140,10 +168,16 @@ it('pluralises nested records and keeps tool diffs and thinking closed', async (
     global: { stubs: { Markdown: true, Diff: true } },
   })
   try {
-    expect(wrapper.get('.abele-node-child-work summary').text()).toBe(
-      'Nested agent work · 1 record'
-    )
-    expect(wrapper.get('.abele-node-child-work').attributes('open')).toBeUndefined()
+    // The call is a line of work, folded as in the regular chat; its nested work is inside.
+    expect(wrapper.find('.abele-node-child-work').exists()).toBe(false)
+    wrapper.findComponent(ChatToolRun).vm.$emit('update:open', true)
+    await flushPromises()
+    expect(
+      wrapper
+        .get('.abele-node-child-work')
+        .findAllComponents(AiChatMessage)
+        .map((c) => c.props('message').id)
+    ).toEqual(['child'])
     expect(wrapper.get('.abele-chat-msg__thinking').attributes('open')).toBeUndefined()
     expect(wrapper.find('.abele-chat-msg__diff').exists()).toBe(false)
     expect(wrapper.find('p.abele-node-message-note').exists()).toBe(false)
