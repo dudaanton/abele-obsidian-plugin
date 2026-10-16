@@ -371,8 +371,15 @@ const showPlace = async (folder, branch) => {
         await until(() => [...root.querySelectorAll('.abele-node-chat button')].some(b => b.textContent.trim() === ${JSON.stringify(i === 0 ? 'Approve' : 'Deny')} && !b.disabled));
         [...root.querySelectorAll('.abele-node-chat button')].find(b => b.textContent.trim() === ${JSON.stringify(i === 0 ? 'Approve' : 'Deny')}).click();
         await until(() => presenter.messages.value.some(m => m.content === ${JSON.stringify(i === 0 ? '**Finished:** followup' : '**Finished:** deny')}));
-        const rawControls = [...root.querySelectorAll('.abele-node-chat button')].filter(b => b.textContent.trim() === 'Read stored record');
-        const evidenceCollapsed = rawControls.length > 0 && rawControls.every(b => b.closest('details') && !b.closest('details').open);
+        // Raw evidence stays out of sight: Details is closed and draws nothing until opened, and
+        // each record then sits behind its own closed entry.
+        const raw = () => [...root.querySelectorAll('.abele-node-chat button')].filter(b => b.textContent.trim() === 'Read stored record');
+        const outer = root.querySelector('.abele-node-chat details.abele-chat-msg__body');
+        const closedFirst = !!outer && !outer.open && raw().length === 0;
+        outer.open = true; outer.dispatchEvent(new Event('toggle'));
+        await until(() => raw().length > 0);
+        const evidenceCollapsed = closedFirst && raw().every(b => b.closest('details') !== outer && !b.closest('details').open);
+        outer.open = false; outer.dispatchEvent(new Event('toggle'));
         // What the chat changed in its worktree: the panel's changes, and the file's diff in its tab.
         await nodeMenu('Folders and worktrees');
         await showPlace(${JSON.stringify(folderName)}, ${JSON.stringify(branch)});
