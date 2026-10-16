@@ -1,5 +1,5 @@
 import { syntaxTree } from '@codemirror/language'
-import { type EditorState, type Range, StateEffect } from '@codemirror/state'
+import { type EditorState, type Range, RangeSet, StateEffect } from '@codemirror/state'
 import {
   Decoration,
   type DecorationSet,
@@ -17,6 +17,7 @@ interface GuideSettings {
 }
 type Settings = () => GuideSettings
 export const refreshCodeGuides = StateEffect.define<null>()
+const measuredCodeGuides = StateEffect.define<DecorationSet>()
 const registry = () =>
   (MarkdownPreviewRenderer as unknown as { codeBlockPostProcessors?: object })
     .codeBlockPostProcessors ?? {}
@@ -73,10 +74,19 @@ export function codeGuideExtension(settings: Settings) {
       blocks: { start: number; end: number; depths: number[]; step: number }[] = []
       tree: ReturnType<typeof syntaxTree> | undefined
       config = ''
+      destroyed = false
       constructor(view: EditorView) {
         this.draw(view)
+        this.settle(view)
       }
       update(update: ViewUpdate) {
+        const measured = update.transactions
+          .flatMap((t) => t.effects)
+          .find((e) => e.is(measuredCodeGuides))
+        if (measured?.is(measuredCodeGuides)) {
+          this.decorations = measured.value
+          return
+        }
         // HyperMD may advance the parse context used by both states. Compare with
         // the tree we actually drew, rather than reading the old state again.
         const changed =
@@ -88,12 +98,41 @@ export function codeGuideExtension(settings: Settings) {
         if (
           update.docChanged ||
           update.viewportChanged ||
+          update.geometryChanged ||
           update.selectionSet ||
           update.focusChanged ||
           changed ||
           refreshed
-        )
+        ) {
           this.draw(update.view)
+          this.settle(update.view)
+        }
+      }
+      settle(view: EditorView) {
+        view.requestMeasure({
+          key: this,
+          read: () => {
+            const before = this.decorations
+            this.draw(view)
+            const next = this.decorations
+            this.decorations = before
+            return { decorations: next, state: view.state }
+          },
+          write: ({ decorations, state }) => {
+            // Dispatch after CodeMirror leaves its measure/write transaction.
+            queueMicrotask(() => {
+              if (
+                !this.destroyed &&
+                view.state === state &&
+                !RangeSet.eq([this.decorations], [decorations])
+              )
+                view.dispatch({ effects: measuredCodeGuides.of(decorations) })
+            })
+          },
+        })
+      }
+      destroy() {
+        this.destroyed = true
       }
       draw(view: EditorView) {
         const config = settings()

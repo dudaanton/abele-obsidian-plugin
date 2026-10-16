@@ -35,7 +35,8 @@ describe('drawReadingGuides', () => {
     code.textContent = 'a\n  b\n\n  c\n'
     drawReadingGuides(code, 4)
     expect(code.querySelectorAll('.abele-code-newline')).toHaveLength(1)
-    expect(code.querySelector('.abele-code-line:last-child > br.abele-code-newline')).not.toBeNull()
+    expect(code.lastElementChild.matches('br.abele-code-newline')).toBe(true)
+    expect(code.querySelector('.abele-code-line > br.abele-code-newline')).toBeNull()
     expect(code.textContent).toBe('a\n  b\n\n  c\n')
   })
   it('guides a single indented line and aligns tabs to the vault size', () => {

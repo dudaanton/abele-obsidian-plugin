@@ -4,6 +4,7 @@ import { evalAsync } from './helpers/githubLive'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 import { withNativeInput } from './helpers/nativeInput'
+import { withEmulatedPhone } from './helpers/emulatedPhone'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -21,6 +22,10 @@ const CONTENT = 'Sample code\n\n```js\n' + CODE + '```\n\nInline `sample` stays 
 const SHOTS = shotDir('abele-code-indent-guides')
 const PRELUDE = `
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const settle = async () => {
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    await wait(100)
+  }
   const leaf = app.workspace.getLeavesOfType('markdown').find((l) => l.view.file?.path === ${JSON.stringify(NOTE)}) ?? app.workspace.getLeaf(false)
   if (leaf.view.file?.path !== ${JSON.stringify(NOTE)}) await leaf.openFile(app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)}))
   const shoot = async (name) => {
@@ -76,12 +81,45 @@ describe.skipIf(!available)('code indentation guides', () => {
         painted: boolean
         nativeInput: { down: boolean; up: boolean; click: boolean } | null
         shot: string
+        finalInside: boolean
+        finalOutside: boolean
+        hanging: boolean
+        height: number[]
+        width: number
       }>(`(async () => {
       ${PRELUDE}
       app.vault.setConfig('showIndentGuide', true)
       await leaf.setViewState({ type: 'markdown', state: { file: ${JSON.stringify(NOTE)}, mode: ${JSON.stringify(mode)}, source: ${source} }, active: true })
       await wait(1000)
       let text, selected, depths, caret = true, wraps = 0, painted = false, nativeInput = null
+      let finalInside = true, finalOutside = true, hanging = true, height = []
+      const unwrappedHeight = (code) => {
+        const pre = code.parentElement
+        const preStyle = pre.style.whiteSpace, codeStyle = code.style.whiteSpace
+        pre.style.whiteSpace = code.style.whiteSpace = 'pre'
+        const height = pre.getBoundingClientRect().height
+        pre.style.whiteSpace = preStyle; code.style.whiteSpace = codeStyle
+        return height
+      }
+      const editorSnapshot = () => {
+        const cm = leaf.view.editor.cm
+        const from = cm.state.doc.toString().indexOf('    print(')
+        const line = [...cm.contentDOM.querySelectorAll('.cm-line')].find((el) => el.textContent.includes('print('))
+        const guide = line && getComputedStyle(line, '::before')
+        const first = cm.coordsAtPos(from + 4)
+        let wrapped = null
+        for (let p = from + 5; first && p < cm.state.doc.lineAt(from).to; p++) {
+          const box = cm.coordsAtPos(p)
+          if (box && box.top > first.top + 2) { wrapped = box; break }
+        }
+        const painted = !!line?.classList.contains('abele-code-guides') && guide?.content !== 'none' && guide?.backgroundImage !== 'none' && parseFloat(guide?.width) > 0 && parseFloat(getComputedStyle(line).textIndent) < 0
+        return {
+          painted,
+          hanging: !!first && !!wrapped && Math.abs(first.left - wrapped.left) <= 1,
+          inside: cm.hasFocus && cm.state.selection.main.empty && cm.state.selection.main.head >= from && cm.state.selection.main.head <= cm.state.doc.lineAt(from).to,
+          depths: [...cm.contentDOM.querySelectorAll('.abele-code-guides')].map((r) => r.style.getPropertyValue('--abele-guide-depth')),
+        }
+      }
       if (${JSON.stringify(mode)} === 'preview') {
         const code = leaf.view.containerEl.querySelector('pre > code')
         if (!code) throw new Error('Code block missing')
@@ -94,6 +132,9 @@ describe.skipIf(!available)('code indentation guides', () => {
         selection.removeAllRanges()
         depths = [...code.querySelectorAll('.abele-code-line')].map((r) => r.style.getPropertyValue('--abele-guide-depth') || '0')
         painted = [...code.querySelectorAll('[style*="--abele-guide-depth"]')].every((r) => getComputedStyle(r, '::before').backgroundImage !== 'none')
+        // Hold wrapping constant to isolate added terminal-line height from the
+        // extra visual rows that a hanging indent can require on a narrow screen.
+        height.push(unwrappedHeight(code))
       } else {
         const cm = leaf.view.editor.cm
         const from = cm.state.doc.toString().indexOf('    print(')
@@ -159,16 +200,42 @@ describe.skipIf(!available)('code indentation guides', () => {
         }
         cm.dispatch({ selection: { anchor: 0, head: cm.state.doc.length } })
         selected = cm.state.sliceDoc(cm.state.selection.main.from, cm.state.selection.main.to)
+        if (!${source}) {
+          cm.dispatch({ selection: { anchor: 0 } })
+          await settle()
+          const native = editorSnapshot()
+          const rendered = [...leaf.view.containerEl.querySelectorAll('pre > code .abele-code-line[style*="--abele-guide-depth"]')]
+          finalOutside = native.painted || rendered.some((row) => getComputedStyle(row, '::before').backgroundImage !== 'none')
+          await shoot(${JSON.stringify(label + '-outside')})
+        }
+        cm.focus()
         cm.dispatch({ selection: { anchor: from + 4 } })
+        await settle()
+        const final = editorSnapshot()
+        depths = final.depths
+        finalInside = final.inside && final.painted
+        hanging = final.hanging
+      }
+      await settle()
+      if (${JSON.stringify(mode)} === 'source') {
+        const final = editorSnapshot()
+        finalInside = finalInside && final.inside && final.painted
+        hanging = hanging && final.hanging
       }
       const shot = await shoot(${JSON.stringify(label)})
+      if (${JSON.stringify(mode)} === 'source') {
+        const final = editorSnapshot()
+        finalInside = finalInside && final.inside && final.painted
+        hanging = hanging && final.hanging
+      }
       app.vault.setConfig('showIndentGuide', false)
       await wait(1000)
       const off = ${JSON.stringify(mode)} === 'preview'
         ? !leaf.view.containerEl.querySelector('.abele-code-line')
         : !leaf.view.editor.cm.contentDOM.querySelector('.abele-code-guides')
+      if (${JSON.stringify(mode)} === 'preview') height.push(unwrappedHeight(leaf.view.containerEl.querySelector('pre > code')))
       await shoot(${JSON.stringify(label + '-off')})
-      return { text, selected, depths, off, caret, wraps, painted, nativeInput, shot }
+      return { text, selected, depths, off, caret, wraps, painted, nativeInput, shot, finalInside, finalOutside, hanging, height, width: innerWidth }
     })()`)
       expect(result.text).toBe(mode === 'preview' ? CODE : CONTENT)
       expect(result.selected).toBe(result.text)
@@ -178,6 +245,12 @@ describe.skipIf(!available)('code indentation guides', () => {
       expect(result.off).toBe(true)
       expect(result.caret).toBe(true)
       expect(result.painted).toBe(true)
+      expect(result.finalInside).toBe(true)
+      expect(result.finalOutside).toBe(true)
+      expect(result.hanging).toBe(true)
+      if (mode === 'preview')
+        expect(Math.abs(result.height[0] - result.height[1])).toBeLessThanOrEqual(0.5)
+      if (label.startsWith('phone-')) expect(result.width).toBe(390)
       if (mode === 'source') {
         expect(result.wraps).toBeGreaterThanOrEqual(2)
         if (!onPhone()) expect(result.nativeInput).toEqual({ down: true, up: true, click: true })
@@ -191,12 +264,9 @@ describe.skipIf(!available)('code indentation guides', () => {
     check('source', false, 'desktop-live'))
   it('source mode uses the same guides', () => check('source', true, 'desktop-source'))
   it.skipIf(onPhone())('captures narrow reading and editor states', async () => {
-    await reloadApp('app.emulateMobile(true)')
-    try {
+    await withEmulatedPhone(async () => {
       await check('preview', false, 'phone-reading')
       await check('source', false, 'phone-live')
-    } finally {
-      await reloadApp('app.emulateMobile(false)')
-    }
+    })
   })
 })

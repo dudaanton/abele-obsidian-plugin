@@ -6,13 +6,16 @@
 // A line of a code block stands as tall as a line of the note's text, as it did inline.
 .markdown-rendered pre > code .abele-code-line {
   display: block;
-  line-height: calc(var(--line-height-normal) * var(--font-text-size));
+  line-height: inherit;
 }
 .markdown-rendered pre > code .abele-code-newline {
+  display: block;
+  height: 0;
   font-size: 0;
   line-height: 0;
 }
-.markdown-rendered.show-indentation-guide pre > code .abele-code-line {
+.markdown-rendered.show-indentation-guide pre > code .abele-code-line,
+.markdown-source-view.mod-cm6 .markdown-rendered pre > code .abele-code-line {
   position: relative;
 
   // A wrapped line goes on at its own indent, right of its guides, rather than across them.

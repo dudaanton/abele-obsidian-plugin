@@ -1,9 +1,9 @@
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import 'obsidian'
 import { readingGuideProcessor, blockGuides } from '@/codeIndent/register'
 import { codeGuideExtension, refreshCodeGuides } from '@/codeIndent/register'
 import { EditorState } from '@codemirror/state'
-import { EditorView } from '@codemirror/view'
+import { EditorView, type MeasureRequest } from '@codemirror/view'
 import { StreamLanguage } from '@codemirror/language'
 import { Tag } from '@lezer/highlight'
 
@@ -20,7 +20,7 @@ it('skips inline and registered or special blocks and preserves text', () => {
   expect(root.textContent).toBe(text)
 })
 
-it('decorates parsed editor lines, blanks and edits while preserving selection and text', () => {
+it('decorates parsed editor lines, blanks and edits while preserving selection and text', async () => {
   const names = ['hmd-codeblock-begin', 'hmd-codeblock-end', 'hmd-codeblock']
   const language = StreamLanguage.define({
     startState: () => ({ code: false }),
@@ -38,10 +38,11 @@ it('decorates parsed editor lines, blanks and edits while preserving selection a
   let enabled = true
   let tabSize = 4
   const doc = 'prose\n```\na\n\tb\n\n        c\n```\n  prose'
+  const guides = codeGuideExtension(() => ({ enabled, tabSize }))
   const view = new EditorView({
     state: EditorState.create({
       doc,
-      extensions: [language, codeGuideExtension(() => ({ enabled, tabSize }))],
+      extensions: [language, guides],
     }),
   })
   try {
@@ -68,6 +69,24 @@ it('decorates parsed editor lines, blanks and edits while preserving selection a
     view.dispatch({ selection: { anchor: doc.indexOf('\tb') } })
     expect(rows()).toHaveLength(3)
     delete (view as unknown as { visibleRanges?: unknown }).visibleRanges
+    // Widget layout can expose code after an update has already run. Reconcile
+    // the decoration set against the settled ranges in CodeMirror's measure phase.
+    const measures: MeasureRequest<unknown>[] = []
+    const measure = vi.spyOn(view, 'requestMeasure').mockImplementation((request) => {
+      if (request?.key === view.plugin(guides)) measures.push(request)
+    })
+    Object.defineProperty(view, 'visibleRanges', {
+      configurable: true,
+      get: () => [{ from: 0, to: 5 }],
+    })
+    view.dispatch({ selection: { anchor: 0, head: view.state.doc.length } })
+    delete (view as unknown as { visibleRanges?: unknown }).visibleRanges
+    expect(measures.length).toBeGreaterThan(0)
+    const request = measures.at(-1)
+    request.write(request.read(view), view)
+    await Promise.resolve()
+    expect(rows()).toHaveLength(3)
+    measure.mockRestore()
     enabled = false
     view.dispatch({ effects: refreshCodeGuides.of(null) })
     expect(rows()).toHaveLength(0)

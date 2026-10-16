@@ -29,7 +29,7 @@ export function drawReadingGuides(code: HTMLElement, tabSize: number): void {
     // is a following line break in layout. This adds no text or visible line height.
     const end = code.ownerDocument.win.createEl('br')
     end.className = 'abele-code-newline'
-    rows.at(-1).append(end)
+    code.append(end)
   }
 }
 
