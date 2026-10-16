@@ -278,6 +278,9 @@ it.each([false, true])(
       )
       const detail = wrapper.get('details')
       expect((detail.element as HTMLDetailsElement).open).toBe(false)
+      // The raw records are drawn once Details is opened.
+      ;(detail.element as HTMLDetailsElement).open = true
+      await detail.trigger('toggle')
       expect(JSON.parse(detail.get('pre').text())[0]).toEqual(failure)
       await wrapper.get('[aria-label="Send again"]').trigger('click')
       await flushPromises()

@@ -91,7 +91,7 @@ it('places the native resend action inside the error row', () => {
     wrapper.unmount()
   }
 })
-it('aligns collapsed Details with the shared message body and leads with a plain diagnostic', () => {
+it('aligns collapsed Details with the shared message body and leads with a plain diagnostic', async () => {
   const { wrapper } = fixture()
   try {
     const details = wrapper.get('details')
@@ -101,6 +101,10 @@ it('aligns collapsed Details with the shared message body and leads with a plain
     const diagnostic = details.get('.abele-node-chat__diagnostic')
     expect(diagnostic.text()).toContain('HTTP 400')
     expect(diagnostic.text()).not.toMatch(/provider_error|SDK|sample-final|sample-run/)
+    // The raw records are drawn once Details is opened, after the plain diagnostic.
+    expect(details.find('pre').exists()).toBe(false)
+    ;(details.element as HTMLDetailsElement).open = true
+    await details.trigger('toggle')
     expect(
       diagnostic.element.compareDocumentPosition(details.get('pre').element) &
         Node.DOCUMENT_POSITION_FOLLOWING

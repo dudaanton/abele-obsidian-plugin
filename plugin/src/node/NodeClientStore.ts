@@ -96,13 +96,32 @@ function intentOf(state: NodeClientState): string {
   return JSON.stringify(rest)
 }
 
+/**
+ * Stored events already found valid in this run, by stream, sequence, type and time. A journal
+ * event never changes once stored; checking every stored event again in every transaction cost a
+ * long session's chat most of its time while an answer streamed.
+ */
+const validEvents = new Set<string>()
+const eventKey = (e: unknown): string | null => {
+  const event = e as { stream_id?: unknown; seq?: unknown; type?: unknown; at?: unknown }
+  return event && typeof event === 'object'
+    ? `${String(event.stream_id)}\u0000${String(event.seq)}\u0000${String(event.type)}\u0000${String(event.at)}`
+    : null
+}
+
 function readState(raw: unknown): NodeClientState {
   if (raw === undefined) return { cursors: {}, events: {}, outbox: [], results: {} }
   const state = StateSchema.parse(raw)
   const events = Object.fromEntries(
     Object.entries(state.events).map(([key, values]) => [
       key,
-      values.map((e) => NodeEventSchema.parse(e)),
+      values.map((e) => {
+        const known = eventKey(e)
+        if (known && validEvents.has(known)) return e as ReturnType<typeof NodeEventSchema.parse>
+        const event = NodeEventSchema.parse(e)
+        if (known) validEvents.add(known)
+        return event
+      }),
     ])
   )
   for (const request of Object.values(state.operationRequests ?? {}))

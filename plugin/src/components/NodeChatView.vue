@@ -155,7 +155,11 @@
           aria-hidden="true"
           ><Icon icon="bot"
         /></span>
-        <details class="abele-chat-msg__body">
+        <!-- The raw records can number in the thousands in a long session: drawn only when open. -->
+        <details
+          class="abele-chat-msg__body"
+          @toggle="detailsOpen = ($event.target as HTMLDetailsElement).open"
+        >
           <summary>Details</summary>
           <p
             v-for="(diagnostic, index) in diagnostics"
@@ -164,7 +168,10 @@
           >
             {{ diagnostic }}
           </p>
-          <template v-for="record in presenter.projection.value.unknown" :key="record.seq">
+          <template
+            v-for="record in detailsOpen ? presenter.projection.value.unknown : []"
+            :key="record.seq"
+          >
             <details v-if="recordArtifact(record.data)">
               <summary>{{ record.type }} · {{ record.seq }}</summary>
               <Button
@@ -176,7 +183,9 @@
               }}</pre>
             </details>
           </template>
-          <pre>{{ JSON.stringify(presenter.projection.value.unknown, null, 2) }}</pre>
+          <pre v-if="detailsOpen">{{
+            JSON.stringify(presenter.projection.value.unknown, null, 2)
+          }}</pre>
         </details>
       </div>
     </div>
@@ -431,6 +440,7 @@ const onInputFocus = (focused: boolean) => {
   if (focused) measureBottomGap()
   keyboardOpen.value = focused
 }
+const detailsOpen = ref(false)
 const expanded = ref(false),
   sending = ref(false),
   permissionFixture = ref(false)
