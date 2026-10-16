@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest'
+import { afterEach, expect, it } from 'vitest'
 import { join } from 'node:path'
 import { liveSuite } from './helpers/syncLiveCases'
 import { captureSyncScreen } from './helpers/syncScreens'
@@ -6,12 +6,21 @@ import { screenshot } from './helpers/phone'
 import { shotDir } from './helpers/shots'
 import { targets, onPhone } from './helpers/target'
 import type { SyncDriver } from './helpers/syncDriver'
+import { externalReadingEmbed, externalEditorEmbed } from './helpers/externalFileSelectors'
 
 targets('desktop', 'phone')
 const fixture = liveSuite(false)
 const card = '.workspace-leaf.mod-active .abele-external-view'
-const embed = '.workspace-leaf.mod-active .markdown-reading-view .abele-external-embed'
-const editorEmbed = '.workspace-leaf.mod-active .markdown-source-view .abele-external-embed'
+const embed = externalReadingEmbed
+const editorEmbed = externalEditorEmbed
+
+afterEach(async () => {
+  const s = fixture()
+  if (!s) return
+  s.primary.run(
+    `for(const leaf of app.workspace.getLeavesOfType('abele-external-file')){if(leaf.view.getState().path?.startsWith(${JSON.stringify(s.root + '/')}))await leaf.setViewState({type:'empty'})}await app.workspace.requestSaveLayout.run();return true`
+  )
+})
 
 async function shot(a: SyncDriver, state: string, selector: string): Promise<void> {
   const name = 'external-' + state + (onPhone() ? '-phone' : '-desktop')
@@ -38,7 +47,7 @@ async function openNote(a: SyncDriver, path: string, mode = 'preview'): Promise<
   const selector = mode === 'preview' ? embed : editorEmbed
   await a.long(
     'open note with an offloaded embed',
-    `await closeSettings();await app.workspace.getLeaf(false).setViewState({type:'markdown',active:true,state:{file:${JSON.stringify(path)},mode:${JSON.stringify(mode)},source:false}});await poll(()=>document.querySelector(${JSON.stringify(selector)}));return true`
+    `await closeSettings();const leaf=app.workspace.getLeaf(false);await leaf.setViewState({type:'markdown',active:true,state:{file:${JSON.stringify(path)},mode:${JSON.stringify(mode)},source:false}});try{await poll(()=>document.querySelector(${JSON.stringify(selector)}))}catch(error){const root=leaf.view.containerEl;throw new Error('External embed DOM: '+JSON.stringify({view:leaf.view.getViewType(),mode:leaf.view.getMode?.(),intendedFile:leaf.view.file?.path===${JSON.stringify(path)},active:root.closest('.workspace-leaf')?.classList.contains('mod-active'),surfaces:[...root.querySelectorAll('.markdown-reading-view,.markdown-source-view,.markdown-preview-view')].map(el=>({class:el.className,embeds:el.querySelectorAll('.internal-embed').length,pending:el.querySelectorAll('.internal-embed:not(.is-loaded)').length,external:el.querySelectorAll('.abele-external-embed').length}))}),{cause:error})}return true`
   )
 }
 
@@ -170,6 +179,9 @@ it('retains offloaded stubs when the real server is offline and shows a newer se
     ).toBe(true)
     await shot(a, 'card-offline', card)
     await openNote(a, note)
+    a.run(
+      `await poll(()=>document.querySelector(${JSON.stringify(embed + ' svg.lucide-cloud-off')}));return true`
+    )
     expect(
       a.run(`return !!document.querySelector(${JSON.stringify(embed + ' svg.lucide-cloud-off')})`)
     ).toBe(true)

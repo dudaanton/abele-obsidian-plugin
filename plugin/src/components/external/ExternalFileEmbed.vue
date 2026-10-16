@@ -4,7 +4,7 @@
        Obsidian embeds a file it cannot show: its glyph, name and size, and the download glyph. -->
   <span
     v-if="file.preview && !card"
-    class="internal-embed image-embed abele-external-embed abele-external-embed_image"
+    class="internal-embed is-loaded image-embed abele-external-embed abele-external-embed_image"
     :class="{ 'abele-external-embed_busy': state === 'downloading' }"
   >
     <img :src="file.preview" :alt="file.name" />
@@ -26,7 +26,7 @@
   </span>
   <span
     v-else
-    class="internal-embed file-embed mod-generic abele-external-embed abele-external-embed_card"
+    class="internal-embed is-loaded file-embed mod-generic abele-external-embed abele-external-embed_card"
     role="link"
     tabindex="0"
     :aria-label="`Open ${file.name}`"

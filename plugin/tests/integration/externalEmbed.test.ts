@@ -1,10 +1,71 @@
 import { expect, it, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import { sha256 } from '@abele/sync-core'
-import { MarkdownRenderer } from 'obsidian'
+import { Component, MarkdownRenderer } from 'obsidian'
 import { externalFileFixture } from './externalFileFollowupFixture'
-import { mountExternalEmbed, externalEmbedsInEditor } from '@/sync/external/embed'
+import {
+  mountExternalEmbed,
+  externalEmbedsInEditor,
+  externalEmbedProcessor,
+} from '@/sync/external/embed'
+import { externalReadingEmbed, externalEditorEmbed } from '../e2e/helpers/externalFileSelectors'
 import { routeExternalFiles, routeExternalLinks } from '@/sync/external/opening'
+
+it.each([
+  { mode: 'reading', preview: false },
+  { mode: 'reading', preview: true },
+  { mode: 'editor', preview: false },
+  { mode: 'editor', preview: true },
+])(
+  'completes the native $mode embed (preview=$preview) and matches the live selector',
+  async ({ mode, preview }) => {
+    const s = await externalFileFixture(preview ? 'Media/sample.png' : 'Media/sample.pdf')
+    const owner = new Component()
+    const leaf = document.createElement('div')
+    leaf.className = 'workspace-leaf mod-active'
+    const surface = document.createElement('div')
+    surface.className = mode === 'reading' ? 'markdown-reading-view' : 'markdown-source-view'
+    const source = document.createElement('span')
+    source.className = 'internal-embed'
+    source.setAttribute('src', s.path)
+    surface.append(source)
+    leaf.append(surface)
+    document.body.append(leaf)
+    let editor: ReturnType<ReturnType<typeof externalEmbedsInEditor>> | undefined
+    try {
+      if (preview)
+        s.app.saveLocalStorage('abele-external-previews-v1', {
+          [s.head.sha]: { data: 'data:image/jpeg;base64,c2FtcGxl', saved: 1 },
+        })
+      await s.port.evict(s.path)
+      owner.load()
+      if (mode === 'reading') {
+        externalEmbedProcessor(s.app as never)(surface, {
+          sourcePath: 'sample-note.md',
+          addChild: (child: Component) => owner.addChild(child),
+        } as never)
+      } else {
+        editor = externalEmbedsInEditor(
+          s.app as never,
+          () => 'sample-note.md'
+        )({ contentDOM: surface, dom: surface } as never)
+      }
+      const selector = mode === 'reading' ? externalReadingEmbed : externalEditorEmbed
+      await vi.waitFor(() => expect(document.querySelector(selector)).not.toBeNull())
+      await flushPromises()
+      // Native reading sections wait for every internal embed, including nested ones.
+      expect(surface.querySelectorAll('.internal-embed:not(.is-loaded)')).toHaveLength(0)
+      if (preview) expect(document.querySelector(selector)?.querySelector('img')).not.toBeNull()
+      else expect(document.querySelector(selector)?.textContent).toContain('sample.pdf')
+      expect(await s.app.vault.adapter.exists(s.path)).toBe(false)
+    } finally {
+      editor?.destroy()
+      owner.unload()
+      leaf.remove()
+      s.close()
+    }
+  }
+)
 
 it('marks an owned reading embed loaded while its original is intentionally absent', async () => {
   const s = await externalFileFixture('Media/sample.pdf')
