@@ -107,7 +107,12 @@ export async function openNodeFolderPicker(
     }
   }
   const opened = async (path: string, create: boolean, close: () => void) => {
-    if (busy.value || connection.state.value !== 'connected') return
+    if (busy.value) return
+    // Said, not swallowed: a press of Open that does nothing reads as a broken button.
+    if (connection.state.value !== 'connected') {
+      actionError.value = 'The node is not connected. Reconnect it, then open the folder.'
+      return
+    }
     busy.value = true
     try {
       if (create) {
