@@ -17,8 +17,26 @@ const run = <T>(body: string): T =>
   return JSON.stringify((await(async()=>{${body}})()) ?? null)
 })()`)
 const until = async (condition: string) => {
-  await expect.poll(() => run(`return !!(${condition})`), { timeout: 15000 }).toBe(true)
+  try {
+    await expect.poll(() => run(`return !!(${condition})`), { timeout: 15000 }).toBe(true)
+  } catch (error) {
+    const seen = run(WAIT_DIAGNOSTICS)
+    throw new Error(`Canvas wait failed: ${condition}; saw ${JSON.stringify(seen)}`, {
+      cause: error,
+    })
+  }
 }
+const WAIT_DIAGNOSTICS = `
+  const active=app.workspace.activeLeaf
+  return {
+    active:{type:active?.view.getViewType?.(),file:active?.view.file?.path},
+    canvases:app.workspace.getLeavesOfType('abele-canvas').filter(l=>l.view.file?.path===path).map(l=>({
+      active:l===active,camera:l.view.viewer?.camera,
+      box:l.view.contentEl.getBoundingClientRect().toJSON(),
+      nodes:l.view.viewer?.graph.nodes.map(n=>({id:n.id,width:n.width,height:n.height,abele:n.abele})),
+      cards:[...l.view.contentEl.querySelectorAll('.abele-canvas-card')].map(el=>({classes:el.className,box:el.getBoundingClientRect().toJSON()}))
+    }))
+  }`
 const NOTE_SECTION_DIAGNOSTICS = `
   const leaf=app.workspace.activeLeaf,v=leaf?.view,root=v?.containerEl
   return {
@@ -38,7 +56,12 @@ const waitForNoteSection = async () => {
     throw new Error(`Note footer section did not appear: ${JSON.stringify(seen)}`, { cause: error })
   }
 }
-const open = () => run(`await app.workspace.openLinkText(path,'','tab');return true`)
+const OPEN_CANVAS = `
+  const leaf=app.workspace.getLeavesOfType('abele-canvas').find(l=>l.view.file?.path===path)
+  if(leaf){await app.workspace.revealLeaf(leaf);app.workspace.setActiveLeaf(leaf,{focus:true})}
+  else await app.workspace.openLinkText(path,'','tab')
+  return true`
+const open = () => run(OPEN_CANVAS)
 const PANEL_MENU = `
   const more=view().containerEl.querySelector('.view-action[aria-label="More options"]')
   if(!more)throw Error('Canvas pane menu button missing');more.click()
@@ -101,6 +124,7 @@ describe.skipIf(!available)('note panels inside canvas cards', () => {
       run(`view().viewer.setCamera({x:-10,y:-10,zoom:1});return true`)
       // Use the actual pane-menu handlers, including their persistence path.
       run(PANEL_MENU)
+      await until("!document.querySelector('.menu .menu-item')")
       await until("view().contentEl.querySelector('.abele-canvas-card_panels')")
       shot(phone ? 'phone-full-long' : 'desktop-full-long')
       run(`view().editor.controls.setPanels('sample',false);return true`)
