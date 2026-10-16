@@ -89,7 +89,15 @@ describe.skipIf(!available)('confirming repairs on a real EPUB', () => {
         await until(() => opened.reading.marks.repairs().length === 3)
         const before = await app.vault.read(file)
         if (before !== noteText) throw new Error('Detection modified note')
-        const visible = () => ({ more: !!document.querySelector('.abele-book-selection__more'), menu: [...document.querySelectorAll('.menu-item')].map(el => el.textContent), modals: [...document.querySelectorAll('.modal')].map(el => el.className + ': ' + el.textContent.slice(0, 80)), repairs: opened.reading.marks.repairs().length })
+        // What the menu's choice reached: the repair it started, and how that ended.
+        const calls = []
+        const repair = opened.reading.repairHighlightLinks.bind(opened.reading)
+        opened.reading.repairHighlightLinks = (h) => {
+          const call = { h: h?.cfi ?? null, active: opened.model.active?.cfi ?? null, end: 'pending' }
+          calls.push(call)
+          return repair(h).then(() => { call.end = 'done' }, (e) => { call.end = 'threw ' + e?.message; throw e })
+        }
+        const visible = () => ({ more: !!document.querySelector('.abele-book-selection__more'), menu: [...document.querySelectorAll('.menu-item')].map(el => el.textContent), modals: [...document.querySelectorAll('.modal')].map(el => el.className + ': ' + el.textContent.slice(0, 80)), notices: [...document.querySelectorAll('.notice')].map(el => el.textContent), repairs: opened.reading.marks.repairs().length, active: opened.model.active?.cfi ?? null, calls })
         seen = visible
         const menu = async (all) => {
           stage = 'the highlight menu button'
