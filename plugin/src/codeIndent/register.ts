@@ -9,7 +9,7 @@ import {
 } from '@codemirror/view'
 import { MarkdownPreviewRenderer, type Plugin } from 'obsidian'
 import { guideDepths, indentStep } from './indentGuides'
-import { drawReadingGuides } from './readingGuides'
+import { clearReadingGuides, drawReadingGuides } from './readingGuides'
 import { nativeCodeLines } from './nativeLines'
 
 interface GuideSettings {
@@ -266,7 +266,9 @@ export function registerCodeIndentGuides(plugin: Plugin): void {
   const settings: Settings = () => {
     const size = Number(vault.getConfig('tabSize'))
     return {
-      enabled: vault.getConfig('showIndentGuide') !== false,
+      enabled:
+        document.body.classList.contains('show-indentation-guide') ||
+        vault.getConfig('showIndentGuide') !== false,
       tabSize: Number.isInteger(size) && size > 0 ? size : 4,
     }
   }
@@ -286,30 +288,34 @@ export function registerCodeIndentGuides(plugin: Plugin): void {
   }, 1000)
   plugin.registerEditorExtension(codeGuideExtension(settings))
   let previous = JSON.stringify(settings())
-  // Vault editor settings have no public change event. Poll only the two scalar values;
-  // documents and DOM are touched only when either changes.
-  plugin.registerInterval(
-    window.setInterval(() => {
-      const next = JSON.stringify(settings())
-      if (next === previous) return
-      previous = next
-      plugin.app.workspace.iterateAllLeaves((leaf) => {
-        const cm = (leaf.view as { editor?: { cm?: EditorView } }).editor?.cm
-        cm?.dispatch({ effects: refreshCodeGuides.of(null) })
-      })
-      for (const ref of blocks) {
-        const code = ref.deref()
-        if (!code?.isConnected) {
-          blocks.delete(ref)
-          continue
-        }
-        // Unwrap only our line containers. Prism nodes and all original text survive.
-        for (const end of Array.from(code.querySelectorAll('.abele-code-newline'))) end.remove()
-        for (const row of Array.from(code.querySelectorAll(':scope > .abele-code-line')))
-          row.replaceWith(...Array.from(row.childNodes))
-        code.style.removeProperty('--abele-guide-step')
-        process(code)
+  const refresh = () => {
+    const next = JSON.stringify(settings())
+    if (next === previous) return
+    previous = next
+    plugin.app.workspace.iterateAllLeaves((leaf) => {
+      const cm = (leaf.view as { editor?: { cm?: EditorView } }).editor?.cm
+      cm?.dispatch({ effects: refreshCodeGuides.of(null) })
+    })
+    for (const ref of blocks) {
+      const code = ref.deref()
+      if (!code?.isConnected) {
+        blocks.delete(ref)
+        continue
       }
-    }, 500)
-  )
+      clearReadingGuides(code)
+      process(code)
+    }
+  }
+  const observer = new MutationObserver(refresh)
+  observer.observe(document.body, { attributes: true, attributeFilter: ['class'] })
+  plugin.register(() => {
+    observer.disconnect()
+    for (const ref of blocks) {
+      const code = ref.deref()
+      if (code) clearReadingGuides(code)
+    }
+  })
+  plugin.registerEvent(plugin.app.workspace.on('css-change', refresh))
+  // Config changes have no public event; poll the scalar values as a fallback.
+  plugin.registerInterval(window.setInterval(refresh, 500))
 }

@@ -3,11 +3,11 @@
  * through blank lines, none where tabs and spaces are mixed; in reading mode, one span per line
  * with the highlighting kept and the text unchanged.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 // Installs Obsidian's DOM helpers (`doc.win.createSpan`) the drawing uses.
 import 'obsidian'
 import { guideDepths, indentStep } from '@/codeIndent/indentGuides'
-import { drawReadingGuides } from '@/codeIndent/readingGuides'
+import { clearReadingGuides, drawReadingGuides } from '@/codeIndent/readingGuides'
 
 describe('indent guides', () => {
   it('reads the step from the block: two spaces, four, tabs', () => {
@@ -30,14 +30,37 @@ describe('indent guides', () => {
 })
 
 describe('drawReadingGuides', () => {
-  it('retains the terminal line break as selectable layout without adding source text', () => {
+  it('retains the terminal newline without adding a layout break and copies the exact source', () => {
     const code = document.createElement('code')
     code.textContent = 'a\n  b\n\n  c\n'
     drawReadingGuides(code, 4)
-    expect(code.querySelectorAll('.abele-code-newline')).toHaveLength(1)
-    expect(code.lastElementChild.matches('br.abele-code-newline')).toBe(true)
-    expect(code.querySelector('.abele-code-line > br.abele-code-newline')).toBeNull()
+    expect(code.querySelectorAll('br')).toHaveLength(0)
     expect(code.textContent).toBe('a\n  b\n\n  c\n')
+    document.body.append(code)
+    const range = document.createRange()
+    range.selectNodeContents(code)
+    const selection = window.getSelection()
+    selection.removeAllRanges()
+    selection.addRange(range)
+    const copy = new Event('copy', { bubbles: true, cancelable: true })
+    const setData = vi.fn()
+    Object.defineProperty(copy, 'clipboardData', { value: { setData } })
+    document.dispatchEvent(copy)
+    expect(setData).toHaveBeenCalledWith('text/plain', 'a\n  b\n\n  c\n')
+    expect(copy.defaultPrevented).toBe(true)
+    expect(selection.getRangeAt(0).toString()).toBe(code.textContent)
+    range.setStart(code.firstChild.firstChild, 1)
+    range.setEnd(code.children[1].firstChild, 3)
+    selection.removeAllRanges()
+    selection.addRange(range)
+    document.dispatchEvent(copy)
+    expect(setData).toHaveBeenLastCalledWith('text/plain', '\n  b')
+    selection.removeAllRanges()
+    clearReadingGuides(code)
+    setData.mockClear()
+    document.dispatchEvent(copy)
+    expect(setData).not.toHaveBeenCalled()
+    code.remove()
   })
   it('guides a single indented line and aligns tabs to the vault size', () => {
     const code = document.createElement('code')

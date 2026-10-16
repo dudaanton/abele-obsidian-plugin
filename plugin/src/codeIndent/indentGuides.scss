@@ -14,14 +14,7 @@
   display: block;
   line-height: inherit;
 }
-.markdown-rendered pre > code .abele-code-newline {
-  display: block;
-  height: 0;
-  font-size: 0;
-  line-height: 0;
-}
-.markdown-rendered.show-indentation-guide pre > code .abele-code-line,
-.markdown-source-view.mod-cm6 .markdown-rendered pre > code .abele-code-line {
+.markdown-rendered pre > code .abele-code-line {
   position: relative;
 
   // A wrapped line goes on at its own indent, right of its guides, rather than across them.
@@ -49,7 +42,9 @@
 // Live Preview and source mode: the editor's own code lines, marked by the editor extension.
 .markdown-source-view.mod-cm6 .cm-line.abele-code-guides {
   position: relative;
-  padding-inline-start: calc(var(--abele-guide-inset, var(--size-4-4)) + var(--abele-guide-depth) * var(--abele-guide-step));
+  padding-inline-start: calc(
+    var(--abele-guide-inset, var(--size-4-4)) + var(--abele-guide-depth) * var(--abele-guide-step)
+  );
   text-indent: calc(-1 * var(--abele-guide-depth) * var(--abele-guide-step));
 
   &::before {

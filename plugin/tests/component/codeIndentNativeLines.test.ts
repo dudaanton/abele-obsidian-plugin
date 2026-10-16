@@ -114,6 +114,7 @@ it('keeps the registered extension through vault setting changes and editor reco
     app: {
       vault: { getConfig: (key: string) => config[key] },
       workspace: {
+        on: vi.fn(),
         iterateAllLeaves: (visit: (leaf: unknown) => void) =>
           visit({ view: { editor: { cm: view } } }),
       },
@@ -121,6 +122,8 @@ it('keeps the registered extension through vault setting changes and editor reco
     registerEditorExtension: (extension: Extension) => extensions.push(extension),
     registerMarkdownPostProcessor: vi.fn(),
     registerInterval: vi.fn(),
+    registerEvent: vi.fn(),
+    register: vi.fn(),
   }
   try {
     registerCodeIndentGuides(host as unknown as Plugin)
@@ -137,9 +140,22 @@ it('keeps the registered extension through vault setting changes and editor reco
       await Promise.resolve()
     }
     await flush()
+    expect(config.showIndentGuide).toBeUndefined()
     expect(view.contentDOM.querySelectorAll('.abele-code-guides')).toHaveLength(3)
+    // Native list-guide visibility is authoritative even if the config snapshot lags.
+    document.body.classList.add('show-indentation-guide')
     config.showIndentGuide = false
     tick()
+    expect(view.contentDOM.querySelectorAll('.abele-code-guides')).toHaveLength(3)
+    document.body.classList.remove('show-indentation-guide')
+    config.showIndentGuide = false
+    tick()
+    expect(view.contentDOM.querySelector('.abele-code-guides')).toBeNull()
+    document.body.classList.add('show-indentation-guide')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(view.contentDOM.querySelectorAll('.abele-code-guides')).toHaveLength(3)
+    document.body.classList.remove('show-indentation-guide')
+    await new Promise((resolve) => setTimeout(resolve, 0))
     expect(view.contentDOM.querySelector('.abele-code-guides')).toBeNull()
     config.showIndentGuide = true
     config.tabSize = 2
@@ -150,6 +166,8 @@ it('keeps the registered extension through vault setting changes and editor reco
     expect(view.contentDOM.querySelectorAll('.abele-code-guides')).toHaveLength(3)
     expect(host.app.vault.getConfig('showIndentGuide')).toBe(true)
   } finally {
+    document.body.classList.remove('show-indentation-guide')
+    for (const [cleanup] of host.register.mock.calls) (cleanup as () => void)()
     view?.destroy()
     interval.mockRestore()
     measure.mockRestore()

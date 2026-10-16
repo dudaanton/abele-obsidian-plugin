@@ -1,6 +1,17 @@
 import { guideDepths, indentStep } from './indentGuides'
 import './indentGuides.scss'
 
+const copyHandlers = new WeakMap<HTMLElement, (event: ClipboardEvent) => void>()
+
+export function clearReadingGuides(code: HTMLElement): void {
+  const handler = copyHandlers.get(code)
+  if (handler) code.ownerDocument.removeEventListener('copy', handler)
+  copyHandlers.delete(code)
+  for (const row of Array.from(code.querySelectorAll(':scope > .abele-code-line')))
+    row.replaceWith(...Array.from(row.childNodes))
+  code.style.removeProperty('--abele-guide-step')
+}
+
 /**
  * Indent guides in a rendered code block (reading mode). Each line of `code` is put in a span of
  * its own, its highlighting kept, so a line that wraps carries its guides down with it; the
@@ -24,13 +35,28 @@ export function drawReadingGuides(code: HTMLElement, tabSize: number): void {
       return row
     })
   )
-  if (text.endsWith('\n')) {
-    // Chromium omits a terminal preformatted newline from selection unless there
-    // is a following line break in layout. This adds no text or visible line height.
-    const end = code.ownerDocument.win.createEl('br')
-    end.className = 'abele-code-newline'
-    code.append(end)
+  const copy = sourceCopyHandler(new WeakRef(code), code.ownerDocument)
+  copyHandlers.set(code, copy)
+  code.ownerDocument.addEventListener('copy', copy)
+}
+
+function sourceCopyHandler(ref: WeakRef<HTMLElement>, doc: Document) {
+  const copy = (event: ClipboardEvent) => {
+    const code = ref.deref()
+    if (!code) {
+      doc.removeEventListener('copy', copy)
+      return
+    }
+    const selection = doc.defaultView.getSelection()
+    if (!event.clipboardData || !selection?.rangeCount || selection.isCollapsed) return
+    const range = selection.getRangeAt(0)
+    if (!code.contains(range.startContainer) || !code.contains(range.endContainer)) return
+    // DOM Range preserves source newlines, unlike Chromium's rendered Selection
+    // string, which omits the terminal newline of a preformatted block.
+    event.clipboardData.setData('text/plain', range.toString())
+    event.preventDefault()
   }
+  return copy
 }
 
 /** The code's nodes cut at each newline into one span per line, ancestors cloned on both sides. */
