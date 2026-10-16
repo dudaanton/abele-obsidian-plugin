@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { existsSync } from 'node:fs'
 import { evalJson, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { onPhone, targets } from './helpers/target'
@@ -81,6 +82,11 @@ describe.skipIf(!available)('code indentation guides', () => {
         height: number[]
         width: number
         snapshot: unknown
+        geometry: {
+          rows: { line: number; x: number; guides: number[] }[]
+          left: number
+          right: number
+        }[]
       }>(`(async () => {
       const withSettings = ${withCodeGuideSettings.toString()}
       return withSettings(app.vault, async () => {
@@ -90,6 +96,45 @@ describe.skipIf(!available)('code indentation guides', () => {
       let text, selected, depths, caret = true, wraps = 0, painted = false, nativeInput = null
       let finalInside = true, finalOutside = true, hanging = true, height = []
       let snapshot = null, clickDiagnostic = null, initialCheck = null
+      const geometry = []
+      const measureGeometry = () => {
+        const rows = []
+        const add = (line, text, row, box) => {
+          if (!box || !text.trim()) return
+          const win = row.ownerDocument.defaultView
+          const depth = Number(row.style.getPropertyValue('--abele-guide-depth'))
+          const pseudo = win.getComputedStyle(row, '::before')
+          const bounds = row.getBoundingClientRect()
+          const start = bounds.left + (parseFloat(win.getComputedStyle(row).borderLeftWidth) || 0) + (parseFloat(pseudo.insetInlineStart) || 0)
+          const step = parseFloat(pseudo.width) / depth
+          rows.push({ line, x: box.left, indent: text.search(/\\S/), right: bounds.right,
+            guides: Array.from({ length: depth }, (_, i) => start + i * step) })
+        }
+        if (${JSON.stringify(mode)} === 'preview') {
+          const code = leaf.view.containerEl.querySelector('pre > code')
+          const nodes = [], walker = code.ownerDocument.createTreeWalker(code, NodeFilter.SHOW_TEXT)
+          let node, offset = 0
+          while ((node = walker.nextNode())) { nodes.push({ node, from: offset }); offset += node.textContent.length }
+          offset = 0
+          code.textContent.split('\\n').forEach((text, line) => {
+            const pos = offset + text.search(/\\S/)
+            offset += text.length + 1
+            if (!text.trim()) return
+            const found = nodes.find(({ node, from }) => pos >= from && pos < from + node.textContent.length)
+            const range = code.ownerDocument.createRange()
+            range.setStart(found.node, pos - found.from); range.setEnd(found.node, pos - found.from + 1)
+            add(line, text, found.node.parentElement.closest('.abele-code-line') ?? code, range.getBoundingClientRect())
+          })
+        } else {
+          const cm = leaf.view.editor.cm
+          for (const row of cm.contentDOM.querySelectorAll('.cm-line.HyperMD-codeblock, .cm-line.HyperMD-codeblock-bg')) {
+            if (row.matches('.HyperMD-codeblock-begin, .HyperMD-codeblock-end')) continue
+            const line = cm.state.doc.lineAt(cm.posAtDOM(row))
+            if (line.text.trim()) add(line.number, line.text, row, cm.coordsAtPos(line.from + line.text.search(/\\S/)))
+          }
+        }
+        return { rows, left: Math.min(...rows.filter((r) => r.indent === 0).map((r) => r.x)), right: Math.min(...rows.map((r) => r.right)) }
+      }
       const gateSnapshot = (doc) => {
         const raw = app.vault.getConfig('showIndentGuide')
         return {
@@ -268,6 +313,7 @@ describe.skipIf(!available)('code indentation guides', () => {
         hanging = hanging && final.hanging
       }
       const shot = await shoot(${JSON.stringify(label)})
+      geometry.push(measureGeometry())
       if (${JSON.stringify(mode)} === 'source') {
         const final = editorSnapshot()
         snapshot = { ...final, initialCheck }
@@ -280,8 +326,9 @@ describe.skipIf(!available)('code indentation guides', () => {
         ? !leaf.view.containerEl.querySelector('.abele-code-line')
         : !leaf.view.editor.cm.contentDOM.querySelector('.abele-code-guides')
       if (${JSON.stringify(mode)} === 'preview') height.push(unwrappedHeight(leaf.view.containerEl.querySelector('pre > code')))
+      geometry.push(measureGeometry())
       await shoot(${JSON.stringify(label + '-off')})
-      return { text, selected, depths, off, caret, wraps, painted, nativeInput, shot, finalInside, finalOutside, hanging, height, width: innerWidth, snapshot }
+      return { text, selected, depths, off, caret, wraps, painted, nativeInput, shot, finalInside, finalOutside, hanging, height, width: innerWidth, snapshot, geometry }
       })
     })()`)
       console.log('Code guide diagnostics', JSON.stringify(result.snapshot))
@@ -310,6 +357,22 @@ describe.skipIf(!available)('code indentation guides', () => {
           })
       }
       expect(result.shot).toBeTruthy()
+      expect(existsSync(result.shot), 'Screenshot was not saved: ' + result.shot).toBe(true)
+      const [on, off] = result.geometry
+      expect(on.rows.length).toBeGreaterThan(0)
+      expect(on.rows.some((row) => row.guides.length > 0)).toBe(true)
+      for (const row of on.rows) {
+        const native = off.rows.find((other) => other.line === row.line)
+        expect(native, JSON.stringify(result.geometry)).toBeDefined()
+        expect(Math.abs(row.x - native!.x), JSON.stringify(result.geometry)).toBeLessThanOrEqual(
+          0.5
+        )
+        for (const x of row.guides) {
+          expect(x, JSON.stringify(result.geometry)).toBeGreaterThanOrEqual(off.left - 0.5)
+          expect(x).toBeLessThan(off.right)
+          expect(x).toBeLessThan(row.x)
+        }
+      }
     })
 
   it('reading mode preserves selectable code and follows the guide setting', () =>

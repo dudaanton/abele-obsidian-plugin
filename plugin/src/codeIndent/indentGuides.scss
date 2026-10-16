@@ -40,7 +40,9 @@
 }
 
 // Live Preview and source mode: the editor's own code lines, marked by the editor extension.
-.markdown-source-view.mod-cm6 .cm-line.abele-code-guides {
+// Native code-block padding includes :not(.HyperMD-list-line). Both halves of
+// the hanging indent must win that cascade, or text-indent alone pulls text left.
+.markdown-source-view.mod-cm6 .cm-editor .cm-content .cm-line.abele-code-guides {
   position: relative;
   padding-inline-start: calc(
     var(--abele-guide-inset, var(--size-4-4)) + var(--abele-guide-depth) * var(--abele-guide-step)

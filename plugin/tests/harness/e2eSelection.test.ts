@@ -33,6 +33,7 @@ describe('e2e run selection', () => {
     expect(emulationCovered('/e2e/sampleCase.e2e.test.ts', "targets('desktop')", real)).toBe(false)
     expect(emulationCovered('/e2e/sampleCase.e2e.test.ts', '', real)).toBe(false)
     expect(emulationCovered('/e2e/footerTaskClick.e2e.test.ts', both, real)).toBe(false)
+    expect(emulationCovered('/e2e/codeIndentGuides.e2e.test.ts', both, real)).toBe(false)
     expect(emulationCovered(undefined, both, real)).toBe(false)
   })
 

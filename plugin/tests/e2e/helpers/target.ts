@@ -40,6 +40,7 @@ export const requested = (variable: string): boolean => process.env[variable] ==
  * their emulated pass even when the batch runs the real phone too.
  */
 const EMULATION_ONLY = new Set([
+  'codeIndentGuides',
   'bookLibraryScript',
   'bookOverlayReflow',
   'footerTaskClick',
