@@ -9,6 +9,7 @@ it('restores each probe setting after success or failure, including an unset def
     setConfig: (key: string, value: unknown) => {
       config[key] = value
     },
+    requestSaveConfig: { run: vi.fn(async () => {}) },
   }
   await withCodeGuideSettings(vault, async () => {
     expect(config).toMatchObject({ showIndentGuide: true, tabSize: 4 })
@@ -16,6 +17,7 @@ it('restores each probe setting after success or failure, including an unset def
   })
   expect(config.showIndentGuide).toBe(false)
   expect(config.tabSize).toBeUndefined()
+  expect(vault.requestSaveConfig.run).toHaveBeenCalledTimes(2)
   delete config.showIndentGuide
   await expect(
     withCodeGuideSettings(vault, async () => {

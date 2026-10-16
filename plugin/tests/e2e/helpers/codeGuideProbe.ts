@@ -2,7 +2,11 @@ import type { EditorView } from '@codemirror/view'
 
 /** Standalone so the same function can be evaluated inside the app window. */
 export async function withCodeGuideSettings<T>(
-  vault: { getConfig(key: string): unknown; setConfig(key: string, value: unknown): void },
+  vault: {
+    getConfig(key: string): unknown
+    setConfig(key: string, value: unknown): void
+    requestSaveConfig?: { run(): unknown }
+  },
   probe: () => Promise<T>
 ): Promise<T> {
   const enabled = vault.getConfig('showIndentGuide')
@@ -10,10 +14,12 @@ export async function withCodeGuideSettings<T>(
   try {
     vault.setConfig('showIndentGuide', true)
     vault.setConfig('tabSize', 4)
+    await vault.requestSaveConfig?.run()
     return await probe()
   } finally {
     vault.setConfig('showIndentGuide', enabled)
     vault.setConfig('tabSize', tabSize)
+    await vault.requestSaveConfig?.run()
   }
 }
 

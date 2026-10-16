@@ -82,6 +82,7 @@ describe.skipIf(!available)('code indentation guides', () => {
         height: number[]
         width: number
         snapshot: unknown
+        offSnapshot: unknown
         geometry: {
           rows: { line: number; x: number; guides: number[] }[]
           left: number
@@ -91,8 +92,27 @@ describe.skipIf(!available)('code indentation guides', () => {
       const withSettings = ${withCodeGuideSettings.toString()}
       return withSettings(app.vault, async () => {
       ${PRELUDE}
+      const waitGuideState = async (enabled) => {
+        const deadline = Date.now() + 10000
+        let state
+        do {
+          const cm = leaf.view.editor?.cm
+          const instance = cm?.plugins.find((p) => typeof p.value?.guideDiagnostics === 'function')?.value
+          const hosts = Object.values(app.plugins.plugins).filter((p) => typeof p.codeIndentGuideDiagnostics === 'function')
+          const gates = hosts.map((p) => p.codeIndentGuideDiagnostics(cm?.dom.ownerDocument ?? leaf.view.containerEl.ownerDocument))
+          const rows = leaf.view.containerEl.querySelectorAll('.abele-code-line').length
+          state = { raw: app.vault.getConfig('showIndentGuide'), gates, viewPlugin: instance?.guideDiagnostics(), rows }
+          if (state.raw === enabled && gates.length && gates.every((g) => g.gateReturn === enabled) &&
+              (${JSON.stringify(mode)} !== 'source' || state.viewPlugin?.internalEnabled === enabled) &&
+              (${JSON.stringify(mode)} !== 'preview' || (enabled ? rows > 0 : rows === 0))) return state
+          await wait(100)
+        } while (Date.now() < deadline)
+        throw new Error('Guide state did not settle: ' + JSON.stringify({ expected: enabled, state }))
+      }
+      app.vault.setConfig('showIndentGuide', true)
+      await app.vault.requestSaveConfig?.run()
       await leaf.setViewState({ type: 'markdown', state: { file: ${JSON.stringify(NOTE)}, mode: ${JSON.stringify(mode)}, source: ${source} }, active: true })
-      await wait(1000)
+      await waitGuideState(true)
       let text, selected, depths, caret = true, wraps = 0, painted = false, nativeInput = null
       let finalInside = true, finalOutside = true, hanging = true, height = []
       let snapshot = null, clickDiagnostic = null, initialCheck = null
@@ -321,14 +341,15 @@ describe.skipIf(!available)('code indentation guides', () => {
         hanging = hanging && final.hanging
       }
       app.vault.setConfig('showIndentGuide', false)
-      await wait(1000)
+      await app.vault.requestSaveConfig?.run()
+      const offSnapshot = await waitGuideState(false)
       const off = ${JSON.stringify(mode)} === 'preview'
         ? !leaf.view.containerEl.querySelector('.abele-code-line')
         : !leaf.view.editor.cm.contentDOM.querySelector('.abele-code-guides')
       if (${JSON.stringify(mode)} === 'preview') height.push(unwrappedHeight(leaf.view.containerEl.querySelector('pre > code')))
       geometry.push(measureGeometry())
       await shoot(${JSON.stringify(label + '-off')})
-      return { text, selected, depths, off, caret, wraps, painted, nativeInput, shot, finalInside, finalOutside, hanging, height, width: innerWidth, snapshot, geometry }
+      return { text, selected, depths, off, caret, wraps, painted, nativeInput, shot, finalInside, finalOutside, hanging, height, width: innerWidth, snapshot, offSnapshot, geometry }
       })
     })()`)
       console.log('Code guide diagnostics', JSON.stringify(result.snapshot))
@@ -338,7 +359,10 @@ describe.skipIf(!available)('code indentation guides', () => {
       expect(result.depths, JSON.stringify(result.snapshot)).toEqual(
         mode === 'preview' ? ['0', '1', '1', '2', '1', '0'] : ['1', '1', '2', '1']
       )
-      expect(result.off).toBe(true)
+      expect(
+        result.off,
+        JSON.stringify({ state: result.offSnapshot, geometry: result.geometry })
+      ).toBe(true)
       expect(result.caret).toBe(true)
       expect(result.painted, JSON.stringify(result.snapshot)).toBe(true)
       expect(result.finalInside, JSON.stringify(result.snapshot)).toBe(true)
@@ -360,7 +384,10 @@ describe.skipIf(!available)('code indentation guides', () => {
       expect(existsSync(result.shot), 'Screenshot was not saved: ' + result.shot).toBe(true)
       const [on, off] = result.geometry
       expect(on.rows.length).toBeGreaterThan(0)
-      expect(on.rows.some((row) => row.guides.length > 0)).toBe(true)
+      expect(
+        on.rows.some((row) => row.guides.length > 0),
+        JSON.stringify(result.geometry)
+      ).toBe(true)
       for (const row of on.rows) {
         const native = off.rows.find((other) => other.line === row.line)
         expect(native, JSON.stringify(result.geometry)).toBeDefined()
@@ -369,8 +396,8 @@ describe.skipIf(!available)('code indentation guides', () => {
         )
         for (const x of row.guides) {
           expect(x, JSON.stringify(result.geometry)).toBeGreaterThanOrEqual(off.left - 0.5)
-          expect(x).toBeLessThan(off.right)
-          expect(x).toBeLessThan(row.x)
+          expect(x, JSON.stringify(result.geometry)).toBeLessThan(off.right)
+          expect(x, JSON.stringify(result.geometry)).toBeLessThan(row.x)
         }
       }
     })
