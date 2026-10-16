@@ -14,6 +14,7 @@
  * while the field keeps its focus.
  */
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
+import { shotDir } from './helpers/shots'
 import {
   evalJson,
   evalRaw,
@@ -24,6 +25,7 @@ import {
 } from './helpers/obsidianCli'
 
 const available = isObsidianRunning() && hasTestApi()
+const SHOTS = shotDir('abele-phone')
 
 const run = <T>(body: string, timeoutMs = 60_000): T =>
   JSON.parse(
@@ -194,6 +196,43 @@ describe.skipIf(!available)('the note field', () => {
         return { up: !!app.mobileToolbar?.isVisible, onTop: !!(hit && hit.closest('.mobile-toolbar')) }
       }
     `
+
+    it('makes the editable cover the empty and filled form field', () => {
+      const areas = run<Array<{ gaps: number[]; misses: number }>>(`
+        const modal = await openForm(${NOTE_FIELD})
+        const field = modal.querySelector('.abele-note-editor-field__editor')
+        const view = viewOf(modal)
+        const areas = []
+        const fs = require('fs')
+        fs.mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
+        for (const text of ['', 'sample draft']) {
+          view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } })
+          await wait(300)
+          const box = field.getBoundingClientRect()
+          const content = view.contentDOM
+          const editable = content.getBoundingClientRect()
+          let misses = 0
+          for (const x of [box.left + 3, box.right - 3]) {
+            for (const y of [box.top + 3, box.bottom - 3]) {
+              if (!content.contains(document.elementFromPoint(x, y))) misses++
+            }
+          }
+          areas.push({
+            gaps: [editable.left - box.left, editable.top - box.top,
+              box.right - editable.right, box.bottom - editable.bottom],
+            misses,
+          })
+          const image = await require('@electron/remote').getCurrentWindow().webContents.capturePage()
+          fs.writeFileSync(${JSON.stringify(SHOTS)} + '/note-field-' + (text ? 'filled' : 'empty') + '.png', image.toPNG())
+        }
+        return JSON.stringify(areas)
+      `)
+      expect(areas).toHaveLength(2)
+      for (const area of areas) {
+        for (const gap of area.gaps) expect(gap).toBeLessThanOrEqual(2)
+        expect(area.misses).toBe(0)
+      }
+    })
 
     it('brings up Obsidian’s toolbar for the field, over the dialog', () => {
       const r = run<{

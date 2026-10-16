@@ -167,6 +167,27 @@ const probeLib = `(() => {
       }
     },
 
+    async tapArea(label) {
+      const field = composer().field
+      const content = field.querySelector('.cm-content')
+      if (!content) throw new Error('no editable composer')
+      const box = field.getBoundingClientRect()
+      const editable = content.getBoundingClientRect()
+      const misses = []
+      for (const x of [box.left + 2, box.right - 2]) {
+        for (const y of [box.top + 2, box.bottom - 2]) {
+          const hit = document.elementFromPoint(x, y)
+          if (!hit || !content.contains(hit)) misses.push({ x, y, hit: hit?.className })
+        }
+      }
+      return {
+        gaps: [editable.left - box.left, editable.top - box.top,
+          box.right - editable.right, box.bottom - editable.bottom],
+        misses,
+        shot: await shoot(label),
+      }
+    },
+
     async write(text) {
       const c = composer()
       c.focus()
@@ -501,6 +522,7 @@ describe.skipIf(!available)('the chat composer, opened out', () => {
     let size: [number, number] = [0, 0]
     let up: Measure
     let typedDown: Measure
+    const tapAreas: Array<{ gaps: number[]; misses: unknown[]; shot: string }> = []
 
     beforeAll(async () => {
       size = evalJson<[number, number]>(
@@ -516,7 +538,11 @@ describe.skipIf(!available)('the chat composer, opened out', () => {
       setFocusEmulation(true)
       try {
         await step('open()')
+        tapAreas.push(await step('tapArea("phone-empty-tap-area")'))
+        await step('write("sample draft")')
+        tapAreas.push(await step('tapArea("phone-filled-tap-area")'))
         await step('toggle()')
+        tapAreas.push(await step('tapArea("phone-expanded-tap-area")'))
         await step('keyboard(true)')
         // Something written, so Send is live and can be hit.
         await step('write("a first line")')
@@ -545,6 +571,15 @@ describe.skipIf(!available)('the chat composer, opened out', () => {
       expect(up.keyboardTop).toBeLessThan(PHONE.height - 200)
       expect(up.field.height).toBeGreaterThan((floor - up.chat.top) * 0.5)
       expect(up.field.bottom).toBeLessThanOrEqual(floor)
+    })
+
+    it('makes the editable cover the empty, filled and expanded field tap area', () => {
+      expect(tapAreas).toHaveLength(3)
+      for (const area of tapAreas) {
+        expect(area.gaps, area.shot).toHaveLength(4)
+        for (const gap of area.gaps) expect(gap, area.shot).toBeLessThanOrEqual(1)
+        expect(area.misses, area.shot).toEqual([])
+      }
     })
 
     it('keeps Send above the keyboard and Obsidian’s toolbar, and reachable', () => {

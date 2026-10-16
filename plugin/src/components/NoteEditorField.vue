@@ -1,11 +1,6 @@
 <template>
   <div class="abele-note-editor-field">
-    <div
-      v-show="!fallback"
-      ref="host"
-      class="abele-note-editor-field__editor"
-      @mousedown="onEmptyPress"
-    />
+    <div v-show="!fallback" ref="host" class="abele-note-editor-field__editor" />
     <ObsidianInput
       v-if="fallback"
       as-text-area
@@ -80,14 +75,6 @@ onBeforeUnmount(() => {
   editor = null
 })
 
-/** A press on the field below the last line puts the cursor at the end, as in a note. */
-const onEmptyPress = (event: MouseEvent) => {
-  const target = event.target as HTMLElement
-  if (!editor || target.closest('.cm-content')) return
-  event.preventDefault()
-  editor.focusEnd()
-}
-
 defineExpose({
   focus: () => editor?.focus(),
 })
@@ -100,7 +87,6 @@ defineExpose({
  */
 .abele-note-editor-field__editor {
   flex: 1 0 auto;
-  min-height: 8em;
   border: var(--input-border-width) solid var(--background-modifier-border);
   border-radius: var(--input-radius);
   background: var(--background-modifier-form-field);
@@ -114,7 +100,7 @@ defineExpose({
   }
 
   .markdown-source-view.mod-cm6 .cm-scroller {
-    padding: var(--size-4-2) var(--size-4-3);
+    padding: 0;
   }
 
   // A note centres a readable column in a wide pane; a field is the column.
@@ -122,10 +108,15 @@ defineExpose({
   .markdown-source-view.mod-cm6 .cm-sizer {
     max-width: none;
     margin: 0;
+    padding: 0;
+    width: 100%;
   }
 
   .markdown-source-view.mod-cm6 .cm-content {
-    min-height: 6em;
+    // Keep the blank space editable too, so native edit gestures reach the note editor.
+    min-height: 8em;
+    padding: var(--size-4-2) var(--size-4-3);
+    box-sizing: border-box;
   }
 }
 </style>

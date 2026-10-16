@@ -195,14 +195,6 @@ export function useChatInputEditor(options: InputEditorOptions) {
     if (!editor) fallback.value = true
   }
 
-  /** A press on the field below the last line puts the cursor at the end, as in a note. */
-  const onEmptyPress = (event: MouseEvent) => {
-    const target = event.target as HTMLElement
-    if (!editor || target.closest('.cm-content')) return
-    event.preventDefault()
-    editor.focusEnd()
-  }
-
   /**
    * A file dropped on the note editor is an attachment, as it was on the text box — not a link
    * written into the message, which is what the editor would make of it. Only the default is
@@ -274,7 +266,6 @@ export function useChatInputEditor(options: InputEditorOptions) {
     hasFocus,
     hasSelection,
     onKeydown,
-    onEmptyPress,
     onEditorDrop,
   }
 }

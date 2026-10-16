@@ -55,7 +55,6 @@
         class="abele-chat-input__field abele-chat-input__editor"
         @paste.capture="onPaste"
         @drop.capture="onEditorDrop"
-        @mousedown="onEmptyPress"
       />
       <textarea
         v-else
@@ -325,7 +324,6 @@ const {
   hasFocus,
   hasSelection,
   onKeydown,
-  onEmptyPress,
   onEditorDrop,
 } = useChatInputEditor({
   props,

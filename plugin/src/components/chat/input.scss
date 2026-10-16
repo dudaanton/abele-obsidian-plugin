@@ -127,8 +127,16 @@
   .markdown-source-view.mod-cm6 .cm-scroller {
     min-height: calc(var(--line-height-normal) * 1em + var(--size-4-2) + var(--size-2-2));
     max-height: calc(8 * var(--line-height-normal) * 1em + var(--size-4-2) + var(--size-2-2));
-    padding: var(--size-4-2) var(--size-4-3) var(--size-2-2);
+    padding: 0;
     overflow-y: auto;
+  }
+
+  // The whole writing area belongs to the editable, including the space around the text.
+  // Native touch selection and the edit callout need an editable target there.
+  .markdown-source-view.mod-cm6 .cm-content {
+    padding: var(--size-4-2) var(--size-4-3) var(--size-2-2);
+    min-height: 100%;
+    box-sizing: border-box;
   }
 
   // A note centres a readable column in a wide pane; a field is the column.
@@ -137,6 +145,7 @@
     max-width: none;
     margin: 0;
     padding: 0;
+    width: 100%;
   }
 }
 

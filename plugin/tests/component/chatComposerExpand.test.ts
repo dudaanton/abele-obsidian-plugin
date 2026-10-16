@@ -13,6 +13,7 @@ import { mount } from '@vue/test-utils'
 import { ref, nextTick } from 'vue'
 import { TFile } from 'obsidian'
 import AiChatInput from '@/components/AiChatInput.vue'
+import NoteEditorField from '@/components/NoteEditorField.vue'
 import AiChat from '@/components/AiChat.vue'
 import { ChatService } from '@/ai/ChatService'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -54,6 +55,32 @@ function composer(props: Record<string, unknown> = {}) {
 }
 
 const editor = () => fakeNoteEditors[fakeNoteEditors.length - 1]
+
+it('leaves native edit gestures uncancelled and preserves the selection', () => {
+  const wrapper = composer()
+  editor().type('sample draft')
+  editor().cursor = 2
+  const field = wrapper.get('.abele-chat-input__editor').element
+  for (const type of ['touchstart', 'pointerdown', 'mousedown']) {
+    const event = new Event(type, { bubbles: true, cancelable: true })
+    field.dispatchEvent(event)
+    expect(event.defaultPrevented, type).toBe(false)
+    expect(editor().cursor, type).toBe(2)
+  }
+})
+
+it('also leaves native edit gestures alone in a form note field', () => {
+  const wrapper = mount(NoteEditorField, { props: { modelValue: 'sample draft' } })
+  mounted.push(wrapper)
+  editor().cursor = 2
+  const field = wrapper.get('.abele-note-editor-field__editor').element
+  for (const type of ['touchstart', 'pointerdown', 'mousedown']) {
+    const event = new Event(type, { bubbles: true, cancelable: true })
+    field.dispatchEvent(event)
+    expect(event.defaultPrevented, type).toBe(false)
+    expect(editor().cursor, type).toBe(2)
+  }
+})
 const expandButton = (wrapper: ReturnType<typeof composer>) =>
   wrapper.get('.abele-chat-input__expand')
 
