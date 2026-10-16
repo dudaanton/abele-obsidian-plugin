@@ -17,7 +17,8 @@ afterAll(async () => node?.close())
 it('lists a connected node by what its sessions do, never as offline', async () => {
   node = await startPairedNode()
   const busy = await node.session('Sample busy session')
-  await node.session('Sample quiet session')
+  // Each session owns its worktree; sharing the busy session's is rejected by the node.
+  await node.session('Sample quiet session', undefined, await node.worktree())
   const tab = await node.open(busy, 'Sample busy session')
   const r = JSON.parse(
     await evalLong(
