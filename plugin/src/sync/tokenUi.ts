@@ -1,3 +1,4 @@
+import { FolderScopeError } from './scopedFileSystem'
 import { nativeSyncFailure } from './mobileTransport'
 import { markRaw, shallowRef } from 'vue'
 import {
@@ -26,6 +27,7 @@ export function connectionError(error: unknown): string {
     /was cut off before its body arrived/.test(error.message)
   )
     return 'The server response was cut off before it finished. Try syncing again.'
+  if (error instanceof FolderScopeError) return error.message
   if (code === 'startup-stage' && error instanceof Error) return error.message
   return (
     (

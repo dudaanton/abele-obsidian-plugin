@@ -56,7 +56,8 @@ export function syncPlacementPlugin() {
           if (this.fs.beginAtomicWrite && this.fs.reopenStage && this.fs.openRead &&
               this.client.openVersion && change.size !== null) {
             const identity = { sha, size: change.size };
-            const sourceStage = await this.fs.beginAtomicWrite(
+            const stagingFs = this.fs[Symbol.for('abele.sync.private-placement-stages-v1')] ?? this.fs;
+            const sourceStage = await stagingFs.beginAtomicWrite(
               '.abele-sync/placement-inbox/' + crypto.randomUUID(), 0, null);
             try {
               const source = await this.client.openVersion(change.file_id, change.version_id, identity);
@@ -64,7 +65,7 @@ export function syncPlacementPlugin() {
               const prepared = Object.create(this);
               prepared.client = new Proxy(this.client, {
                 get: (target, key) => key === 'openVersion'
-                  ? () => this.fs.openRead(sourceStage.id)
+                  ? () => stagingFs.openRead(sourceStage.id)
                   : typeof target[key] === 'function' ? target[key].bind(target) : target[key],
               });
               return await coordinatePlacement(this.fs, [change.path, ...(entry ? [entry.path] : [])],
@@ -96,11 +97,12 @@ export function syncPlacementPlugin() {
           'const verdicts = await this.planner.plan(sending, results);',
           `const verdicts = await this.planner.plan(sending, results);
         const stagedDownloads = new Map();
+        const stagingFs = this.recorder.fs[Symbol.for('abele.sync.private-placement-stages-v1')] ?? this.recorder.fs;
         const stagingRoot = '.abele-sync/placement-outbox/' + await sha256(new TextEncoder().encode(key));
         const stage = async (sha, bytes) => {
           if (!bytes || await this.hash(bytes) !== sha) throw new EngineError('protocol', 'placement download integrity mismatch');
           const path = stagingRoot + '/' + sha;
-          await this.recorder.fs.writeAtomic(path, bytes, 0);
+          await stagingFs.writeAtomic(path, bytes, 0);
           stagedDownloads.set(sha, path);
         };
         for (const [index, run] of verdicts.runs.entries()) {
@@ -110,7 +112,7 @@ export function syncPlacementPlugin() {
         const readStaged = async (sha) => {
           const path = stagedDownloads.get(sha);
           if (!path) return null;
-          const bytes = await this.recorder.fs.read(path);
+          const bytes = await stagingFs.read(path);
           if (await this.hash(bytes) !== sha) throw new EngineError('protocol', 'staged placement integrity mismatch');
           return bytes;
         };
@@ -156,7 +158,7 @@ export function syncPlacementPlugin() {
         code = replaceOnce(
           code,
           'await this.state.setJournal(null);\n        });',
-          'await this.state.setJournal(null);\n        }), preservationPaths);\n        for (const path of stagedDownloads.values()) await this.recorder.fs.remove(path);'
+          'await this.state.setJournal(null);\n        }), preservationPaths);\n        for (const path of stagedDownloads.values()) await stagingFs.remove(path);'
         )
       } else if (file.endsWith('/v2Directories.js')) {
         code = replaceOnce(

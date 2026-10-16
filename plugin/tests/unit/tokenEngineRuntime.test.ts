@@ -48,6 +48,168 @@ it('keeps attachments offline while a reconnect is in flight and restores availa
   }
 })
 
+it('never reads or uploads private siblings during folder discovery', async () => {
+  const wire = await server('Shared/sample.md', 'sample', undefined, { ...scope, path: 'Shared' })
+  const fs = new MemoryFileSystem()
+  await fs.writeAtomic('Shared/local.md', new TextEncoder().encode('local bytes'), 1000)
+  await fs.writeAtomic('Private/secret.md', new TextEncoder().encode('private bytes'), 1000)
+  const read = vi.spyOn(fs, 'read'),
+    stat = vi.spyOn(fs, 'stat')
+  const one = runtime(wire, fs)
+  try {
+    await one.runtime.sync()
+    expect(read.mock.calls.some(([path]) => path.startsWith('Private/'))).toBe(false)
+    expect(stat.mock.calls.some(([path]) => path.startsWith('Private/'))).toBe(false)
+    const commits = wire.fetch.mock.calls.filter(
+      ([url]) => new URL(String(url)).pathname === '/v2/commit'
+    )
+    expect(commits.length).toBeGreaterThan(0)
+    const operations = commits.flatMap(([, init]) => JSON.parse(String(init?.body)).ops)
+    expect(operations.some((op: { path?: string }) => op.path === 'Shared/local.md')).toBe(true)
+    expect(JSON.stringify(operations)).not.toContain('Private')
+    expect(one.runtime.acceptsLocal('Private/secret.md', 10)).toBe(false)
+  } finally {
+    await one.runtime.disconnect()
+  }
+})
+
+it.each(
+  [undefined, 'Shared'].flatMap((localRoot) =>
+    [false, true].map((connected) => ({ localRoot, connected }))
+  )
+)(
+  'stops a server scope rename with pinned root $localRoot (connected $connected)',
+  async ({ localRoot, connected }) => {
+    const shared = { ...scope, path: 'Shared' }
+    const wire = await server('Shared/sample.md', 'sample', undefined, shared)
+    const fs = new MemoryFileSystem()
+    await fs.writeAtomic('Shared/sample.md', wire.bytes, 1000)
+    await fs.writeAtomic('Private/secret.md', new TextEncoder().encode('private bytes'), 1000)
+    const one = runtime(wire, fs, undefined, undefined, null, {
+      localRoot,
+      encoded: encodeAccessToken({
+        v: 1,
+        address: wire.address,
+        key: 'a'.repeat(43),
+        scope: shared,
+      }),
+    })
+    if (connected) await one.runtime.sync()
+    shared.path = 'Private'
+    wire.item.path = 'Private/sample.md'
+    const read = vi.spyOn(fs, 'read'),
+      stat = vi.spyOn(fs, 'stat')
+    try {
+      await expect(one.runtime.sync()).rejects.toThrow(/renamed on the server \(Shared → Private\)/)
+      expect(one.runtime.folderScope()).toBe('Shared')
+      expect(read.mock.calls.some(([path]) => path.startsWith('Private/'))).toBe(false)
+      expect(stat.mock.calls.some(([path]) => path.startsWith('Private/'))).toBe(false)
+      const commits = wire.fetch.mock.calls.filter(
+        ([url]) => new URL(String(url)).pathname === '/v2/commit'
+      )
+      expect(commits.map(([, init]) => String(init?.body)).join('')).not.toContain('secret.md')
+    } finally {
+      await one.runtime.close()
+    }
+  }
+)
+
+it.each(
+  [
+    'manifest-note',
+    'manifest-script',
+    'manifest-directory',
+    'content-note',
+    'content-script',
+    'content-directory',
+    'delete',
+    'removal',
+    'move-from',
+    'move-to',
+    'event-path',
+  ].flatMap((mode) => [undefined, 'Shared'].map((localRoot) => ({ mode, localRoot })))
+)(
+  'rejects an out-of-scope $mode page before local access (placement $localRoot)',
+  async ({ mode, localRoot }) => {
+    const wire = await server('Shared/sample.md', 'sample', undefined, { ...scope, path: 'Shared' })
+    const fs = new MemoryFileSystem()
+    await fs.writeAtomic('Private/secret.md', new TextEncoder().encode('private bytes'), 1000)
+    const preparePlacement = vi.fn(async () => {})
+    const one = runtime(wire, fs, undefined, undefined, null, {
+      localRoot,
+      preparePlacement,
+      encoded: encodeAccessToken({
+        v: 1,
+        address: wire.address,
+        key: 'a'.repeat(43),
+        scope: { ...scope, path: 'Shared' },
+      }),
+    })
+    const original = wire.fetch.getMockImplementation()!
+    try {
+      if (!mode.startsWith('manifest')) await one.runtime.sync()
+      const path =
+        mode === 'move-from' || mode === 'event-path' ? 'Shared/other.md' : 'Private/secret.md'
+      const item = mode.endsWith('directory')
+        ? { file_id: 'bad-file', version_id: 'bad-version', path, kind: 'directory', mtime: 1000 }
+        : {
+            ...wire.item,
+            file_id: 'bad-file',
+            version_id: 'bad-version',
+            path,
+            kind: mode.endsWith('script') ? 'script' : 'note',
+          }
+      wire.fetch.mockImplementation(async (url, init) => {
+        const route = new URL(String(url)).pathname
+        if (mode.startsWith('manifest') && route === '/v2/manifest')
+          return Response.json({ items: [wire.item, item], cursor: 2, next: null })
+        if (!mode.startsWith('manifest') && route === '/v2/changes') {
+          const event = {
+            cursor: 2,
+            file_id: 'bad-file',
+            path: mode === 'event-path' ? 'Private/secret.md' : path,
+            at: new Date(1000).toISOString(),
+          }
+          return Response.json({
+            items: [
+              mode === 'delete'
+                ? { ...event, type: 'delete', version_id: 'bad-version' }
+                : mode === 'removal'
+                  ? { ...event, type: 'removal' }
+                  : {
+                      ...event,
+                      type: 'content',
+                      item,
+                      prev_path:
+                        mode === 'move-from'
+                          ? 'Private/secret.md'
+                          : mode === 'move-to'
+                            ? 'Shared/other.md'
+                            : null,
+                    },
+            ],
+            cursor: 2,
+            next: null,
+          })
+        }
+        return original(url, init)
+      })
+      preparePlacement.mockClear()
+      const before = fs.snapshot(),
+        read = vi.spyOn(fs, 'read'),
+        stat = vi.spyOn(fs, 'stat')
+      await expect(one.runtime.sync()).rejects.toMatchObject({ code: 'protocol' })
+      expect(preparePlacement).not.toHaveBeenCalled()
+      expect(read.mock.calls.some(([path]) => path.startsWith('Private/'))).toBe(false)
+      expect(stat.mock.calls.some(([path]) => path.startsWith('Private/'))).toBe(false)
+      expect(fs.snapshot()).toEqual(before)
+      expect(await one.reviews.executables.pending()).toEqual([])
+    } finally {
+      await one.runtime.close()
+    }
+  }
+)
+
 it('names unsent local files after an offline attempt so the phone can show file and reason', async () => {
   const wire = await server('Notes/sample.md', 'note'),
     fs = new MemoryFileSystem()
@@ -362,7 +524,7 @@ async function server(
     }
     throw new Error('Unexpected route: ' + route)
   })
-  return { fetch, requests, item, bytes, address }
+  return { fetch, requests, item, bytes, address, sharedScope }
 }
 function runtime(
   wire: Awaited<ReturnType<typeof server>>,
@@ -370,7 +532,7 @@ function runtime(
   state = new MemoryStateStore(),
   locks = new PathCoordinator(),
   ignoreText: string | null = null,
-  progressOptions: Partial<Pick<TokenEngineOptions, 'progress' | 'event'>> = {}
+  progressOptions: Partial<TokenEngineOptions> = {}
 ) {
   const metadata = new MemoryStateStore()
   const reviews = {
@@ -381,7 +543,12 @@ function runtime(
   return {
     runtime: new TokenEngineRuntime({
       id: wire.address,
-      encoded: token(wire.address),
+      encoded: encodeAccessToken({
+        v: 1,
+        address: wire.address,
+        key: 'a'.repeat(43),
+        scope: wire.sharedScope,
+      }),
       fs: coordinatedFileSystem(fs, locks),
       state,
       reviews,
@@ -1050,3 +1217,110 @@ it('releases transport observers and connection inventories on close even after 
   expect(internals.compared.size).toBe(0)
   expect(internals.assetPaths.size).toBe(0)
 })
+
+it.each([
+  'versions',
+  'trash',
+  'head',
+  'restore',
+  'restoreDeleted',
+  'restoreDeletedMany',
+  'commitRaw',
+  'verifyExternalFile',
+] as const)('rejects foreign paths in %s responses before core handling', async (method) => {
+  const wire = await server('Shared/sample.md', 'sample', undefined, { ...scope, path: 'Shared' })
+  const one = runtime(wire, new MemoryFileSystem(), undefined, undefined, null, {
+    encoded: encodeAccessToken({
+      v: 1,
+      address: wire.address,
+      key: 'a'.repeat(43),
+      scope: { ...scope, path: 'Shared' },
+    }),
+  })
+  const original = wire.fetch.getMockImplementation()!
+  try {
+    await one.runtime.sync()
+    wire.fetch.mockImplementation(async (url, init) => {
+      const route = new URL(String(url)).pathname
+      if (route === '/v2/external-files/capabilities')
+        return Response.json({
+          extension_version: 1,
+          projection_schema: 1,
+          token: true,
+          max_file_size: 1000,
+          verification: {
+            live_head: true,
+            sha256: true,
+            actual_size: true,
+            authorization_rechecked: true,
+          },
+        })
+      if (route !== '/v2/connection')
+        return Response.json(
+          method === 'commitRaw'
+            ? { results: [{ path: 'Shared/sample.md', conflict_path: 'Private/secret.md' }] }
+            : { path: 'Private/secret.md' }
+        )
+      return original(url, init)
+    })
+    const client = one.runtime.client
+    await expect(async () => {
+      if (method === 'commitRaw')
+        return client.commitRaw([{ op: 'mkdir', path: 'Shared/new' }], 'sample-key')
+      if (method === 'verifyExternalFile')
+        return client.verifyExternalFile('file', {
+          version_id: 'version',
+          path: 'Shared/sample.md',
+          sha: 'a'.repeat(64),
+          size: 1,
+        })
+      if (method === 'restoreDeletedMany') return client.restoreDeletedMany(['file'])
+      if (method === 'restore') return client.restore('file', 'version')
+      if (method === 'trash') return client.trash()
+      return client[method]('file')
+    }).rejects.toMatchObject({
+      code: 'protocol',
+      message: expect.stringContaining('outside this connection'),
+    })
+  } finally {
+    await one.runtime.close()
+  }
+})
+
+it.each(['path', 'previousPath', 'directory'] as const)(
+  'rejects foreign retained review %s before applying any bytes',
+  async (field) => {
+    const wire = await server('Shared/sample.js', '// reviewed code', undefined, {
+      ...scope,
+      path: 'Shared',
+    })
+    const fs = new MemoryFileSystem()
+    await fs.writeAtomic('Private/secret.js', new TextEncoder().encode('// private code'), 1000)
+    const one = runtime(wire, fs, undefined, undefined, null, {
+      encoded: encodeAccessToken({
+        v: 1,
+        address: wire.address,
+        key: 'a'.repeat(43),
+        scope: { ...scope, path: 'Shared' },
+      }),
+    })
+    try {
+      await one.runtime.sync()
+      const [candidate] = await one.reviews.executables.pending()
+      expect(candidate).toBeDefined()
+      const before = fs.snapshot(),
+        read = vi.spyOn(fs, 'read'),
+        stat = vi.spyOn(fs, 'stat')
+      const foreign =
+        field === 'directory'
+          ? { ...candidate, path: 'Private/secret.js', directory: true }
+          : { ...candidate, [field]: 'Private/secret.js' }
+      await expect(one.runtime.apply(foreign)).rejects.toMatchObject({ code: 'protocol' })
+      expect(read).not.toHaveBeenCalled()
+      expect(stat).not.toHaveBeenCalled()
+      expect(fs.snapshot()).toEqual(before)
+    } finally {
+      await one.runtime.close()
+    }
+  }
+)

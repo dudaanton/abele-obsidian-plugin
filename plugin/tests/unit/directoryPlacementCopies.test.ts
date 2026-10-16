@@ -148,11 +148,12 @@ it.each([
           return Response.json({ items: [], cursor: 100, next: null })
         if (url.pathname === '/v2/manifest')
           return Response.json({
-            items: uploading
+            items: (uploading
               ? []
               : url.searchParams.has('next')
-                ? [directories[0], ...items.slice(boundary)]
-                : items.slice(0, boundary),
+                ? [directories[1], ...items.slice(boundary)]
+                : items.slice(0, boundary)
+            ).filter((item) => item.path === scope.path || item.path.startsWith(scope.path + '/')),
             cursor: 100,
             next: uploading || url.searchParams.has('next') ? null : 'second',
           })

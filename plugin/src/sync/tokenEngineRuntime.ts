@@ -1,3 +1,4 @@
+import { scopedFileSystem, FolderScopeError } from './scopedFileSystem'
 import { sha256 } from './external/hash'
 import { nativeSyncFailure } from './mobileTransport'
 import {
@@ -31,6 +32,7 @@ import {
   ErrorCodeSchema,
   decodeAccessToken,
   normalisePath,
+  validatePath,
   type V2ManifestItem,
   type V2Change,
   type V2Connection,
@@ -51,6 +53,7 @@ import { TransferProgress, type TransferSnapshot } from './transferProgress'
 
 export interface TokenEngineOptions {
   id: string
+  localRoot?: string
   encoded: string
   fs: FileSystem
   state: StateStore
@@ -209,6 +212,12 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     this.transferBudget = options.transferBudget ?? new TransferBudget()
     this.selective = structuredClone(options.selective ?? selectiveDefaults())
     this.token = decodeAccessToken(options.encoded)
+    if (this.token.scope.kind === 'folder' && (options.localRoot ?? this.token.scope.path) !== '/')
+      options.fs = scopedFileSystem(
+        options.fs,
+        (path) => this.assertIncomingPaths([path]),
+        (path) => !this.outsideScope(path)
+      )
     const transport: typeof fetch = (input, init) =>
       this.trace.run(
         (init?.method ?? 'GET') +
@@ -222,6 +231,13 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
           const path = new URL(
             typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
           ).pathname
+          if (
+            (path === '/v2/commit' ||
+              path === '/v2/group-assets' ||
+              path.endsWith('/external/verify')) &&
+            typeof init?.body === 'string'
+          )
+            this.assertScopedPayload(JSON.parse(init.body))
           const range = /^bytes=(\d+)-\d+$/.exec(new Headers(init?.headers).get('range') ?? '')
           const rangeOffset = range ? Number(range[1]) : undefined
           this.observeRequest(path, true, undefined, rangeOffset)
@@ -285,8 +301,23 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
               this.authority.scope.id !== this.token.scope.id
             )
               throw new EngineError('protocol', 'Token selector identity changed')
+            if (
+              this.token.scope.kind === 'folder' &&
+              this.permitted &&
+              this.authority.scope.path !== (options.localRoot ?? this.token.scope.path)
+            ) {
+              this.engine?.pause()
+              throw new FolderScopeError(
+                'The shared folder was renamed on the server (' +
+                  (options.localRoot ?? this.token.scope.path) +
+                  ' → ' +
+                  this.authority.scope.path +
+                  '); sync stopped. Local files were kept.'
+              )
+            }
           } else if (url.pathname === '/v2/manifest') {
             const page = V2ManifestSchema.parse(await response.json())
+            this.assertScopedPayload(page)
             if (this.pulling) {
               for (const item of page.items) this.pullPaths.add(item.path)
               this.pullProgress('Receiving files')
@@ -311,7 +342,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
             this.preparingFolders(
               page.items.filter((item) => item.kind === 'directory').map((item) => item.path)
             )
-            await options.preparePlacement?.(incomingPaths)
+            if (incomingPaths.length) await options.preparePlacement?.(incomingPaths)
             const items: V2ManifestItem[] = []
             for (const item of page.items)
               if (!(await this.reviewItem(item, null, page.cursor))) {
@@ -332,6 +363,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
             return Response.json({ ...page, items }, { headers: response.headers })
           } else if (url.pathname === '/v2/changes') {
             const page = V2ChangesSchema.parse(await response.json())
+            this.assertScopedPayload(page)
             if (this.progress.stage !== 'Downloading') this.progress.begin('Downloading')
             const incomingPaths: string[] = []
             for (const one of page.items)
@@ -361,7 +393,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
                 event.type === 'content' && event.item.kind === 'directory' ? [event.item.path] : []
               )
             )
-            await options.preparePlacement?.(incomingPaths)
+            if (incomingPaths.length) await options.preparePlacement?.(incomingPaths)
             const items: V2Change[] = []
             for (const event of page.items) {
               if (event.type !== 'content')
@@ -381,6 +413,14 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
             await this.refreshHolds()
             return Response.json({ ...page, items }, { headers: response.headers })
           }
+          if (
+            url.pathname === '/v2/commit' ||
+            url.pathname === '/v2/group-assets' ||
+            url.pathname === '/v2/trash' ||
+            url.pathname === '/v2/trash/restore' ||
+            /^\/v2\/files\/[^/]+\/(history|head|restore|external\/verify)$/.test(url.pathname)
+          )
+            this.assertScopedPayload(await response.clone().json())
           return response
         }
       )
@@ -788,7 +828,9 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       this.assertHeld()
       if (!response.ok)
         throw new EngineError('protocol', 'File publication response is unavailable')
-      return response.json()
+      const result: unknown = await response.json()
+      this.assertScopedPayload(result)
+      return result
     }, this.requests.signal)
   }
   private assertHeld(): void {
@@ -805,8 +847,44 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       scope: this.authority.scope,
     }
   }
+  private outsideScope(path: string): boolean {
+    const root = (this.options.localRoot ?? this.token.scope.path).normalize('NFC')
+    path = path.normalize('NFC')
+    return (
+      this.token.scope.kind === 'folder' &&
+      root !== '/' &&
+      path !== root &&
+      !path.startsWith(root + '/')
+    )
+  }
+  private assertIncomingPaths(paths: readonly string[]): void {
+    for (const path of paths) {
+      try {
+        validatePath(path.normalize('NFC'))
+        if (!this.outsideScope(path)) continue
+      } catch {
+        /* Refuse aliases and traversal. */
+      }
+      this.engine?.pause()
+      throw new FolderScopeError(
+        'The server returned a path outside this connection; sync stopped: ' + path
+      )
+    }
+  }
+  private assertScopedPayload(value: unknown): void {
+    if (!value || typeof value !== 'object') return
+    for (const [key, item] of Object.entries(value)) {
+      if (
+        ['path', 'to_path', 'prev_path', 'conflict_path', 'previousPath'].includes(key) &&
+        typeof item === 'string'
+      )
+        this.assertIncomingPaths([item])
+      else this.assertScopedPayload(item)
+    }
+  }
   private blocked(path: string): boolean {
     return (
+      this.outsideScope(path.replace(/\/$/, '')) ||
       (this.ignore?.ignores(path) ?? false) ||
       (!this.isRoot() && configurationPath(path, this.options.paths)) ||
       [...this.held].some((held) => path === held || path.startsWith(held + '/'))
@@ -817,8 +895,9 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     return scope.kind === 'folder' && scope.path === '/'
   }
   folderScope(): string | undefined {
-    const scope = this.authority?.scope ?? this.token.scope
-    return scope.kind === 'folder' ? scope.path : undefined
+    return this.token.scope.kind === 'folder'
+      ? (this.options.localRoot ?? this.token.scope.path)
+      : undefined
   }
   private async refreshHolds(): Promise<void> {
     const latest = new Map<string, ExecutableCandidate>()
@@ -835,6 +914,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     previous: string | null,
     cursor: number
   ): Promise<boolean> {
+    this.assertIncomingPaths([item.path, ...(previous ? [previous] : [])])
     if (!this.isRoot() && configurationPath(item.path, this.options.paths)) return true
     const baseline = await this.options.state.byFileId(item.file_id)
     if (
@@ -917,6 +997,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     return true
   }
   private async reviewDeparture(event: Exclude<V2Change, { type: 'content' }>): Promise<boolean> {
+    this.assertIncomingPaths([event.path])
     if (!this.isRoot() && configurationPath(event.path, this.options.paths)) return true
     let directory = false
     const directories = JSON.parse(
@@ -989,6 +1070,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
         throw new EngineError('protocol', 'Executable departure recovery failed')
       }
       const page = V2ChangesSchema.parse(await response.json())
+      this.assertScopedPayload(page)
       for (const event of page.items) {
         const id = event.type === 'content' ? event.item.file_id : event.file_id
         if (ids.has(id)) events.set(id, event)
@@ -1002,6 +1084,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       if (event.type !== 'content') await this.reviewDeparture(event)
   }
   private async joinItem(item: V2ManifestItem): Promise<void> {
+    this.assertIncomingPaths([item.path])
     if (
       configurationPath(item.path, this.options.paths) &&
       item.path !== this.options.ownSettingsPath
@@ -1226,6 +1309,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     return (
       this.active &&
       this.permitted &&
+      !this.outsideScope(path) &&
       this.client.includes(path) &&
       !(!this.isRoot() && configurationPath(path, this.options.paths))
     )
@@ -1235,6 +1319,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   }
   private localExcluded(path: string, size: number): boolean {
     return (
+      this.outsideScope(path.replace(/\/$/, '')) ||
       (this.ignore?.ignores(path) ?? false) ||
       (!this.isRoot() && configurationPath(path, this.options.paths)) ||
       isExcluded(path, size, this.selective, this.options.paths?.scriptsFolder ?? 'Scripts')
@@ -1289,6 +1374,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     const target = await this.resolve(id)
     if (!target || !(await this.options.reviews.attachments.mayUpload(this.source(), target)))
       throw new Error('File publication is not approved')
+    this.assertIncomingPaths([target.path])
     await this.options.preparePlacement?.([target.path])
     const capture = async () => {
       this.assertHeld()
@@ -1360,6 +1446,10 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       sourceIdentity(candidate.source) !== sourceIdentity(this.options.expectedSource)
     )
       throw new Error('Review source binding changed')
+    this.assertIncomingPaths([
+      candidate.path,
+      ...(candidate.previousPath ? [candidate.previousPath] : []),
+    ])
     await this.engine.runExclusive(async () => {
       this.assertHeld()
       const key = 'token-reviewed-apply:' + candidate.id

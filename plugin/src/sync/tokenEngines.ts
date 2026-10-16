@@ -397,6 +397,7 @@ export class TokenEngines {
       this.refreshDestinations()
       const key = this.key(record.secretReference)
       if (!key || !record.scope) throw new Error('Connection needs its token')
+      const localRoot = this.ui.registry.pinLocalRoot(record.id)
       let inventory: ReadonlyMap<string, { path: string; size: number; mtime: number }> | undefined
       const inspection = {
         inventory: (files: typeof inventory) => {
@@ -466,11 +467,7 @@ export class TokenEngines {
       assertActive()
       const ordinary = new ObsidianFileSystem(this.app, {
         fileScope: () =>
-          runtime
-            ? runtime.folderScope()
-            : record.scope.kind === 'folder'
-              ? record.scope.path
-              : undefined,
+          runtime ? runtime.folderScope() : record.scope.kind === 'folder' ? localRoot : undefined,
         startupInventory: () => inventory,
         runtimeFence: fence,
         ledger: state,
@@ -568,6 +565,7 @@ export class TokenEngines {
         runtime = new TokenEngineRuntime({
           transferBudget: transferBudgetOf(this.app.vault),
           id: record.id,
+          localRoot,
           comparing: (comparison) => this.ui.publish(record.id, { comparison }),
           progress: (transfer) => this.ui.publish(record.id, { transfer, comparison: undefined }),
           event: (text) => this.ui.recordEvent(record.id, text),

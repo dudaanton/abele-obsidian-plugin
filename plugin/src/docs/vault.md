@@ -2273,6 +2273,12 @@ not revoke a server token. `abele-sync-token-state:last-sync` stores only the la
 sync time in the connection's device-local state. Progress, errors and conflict paths are
 runtime state supplied by the core adapter, never synced settings.
 
+Folder connections pin their initial local folder in the device-local registry's
+`localRoot`. An existing connection pins its current scope path on first start.
+A server rename stops exchange with the old and new paths shown; local files stay
+in place and disconnect remains available. Server paths are validated before local
+handling, and filesystem operations reject paths outside the pinned folder.
+
 `abele-sync-device-review-id-v1` is a verified device-local UUID for the review database.
 Incoming-code review selects the exact displayed candidate ID; later candidates remain
 pending. Only workspace file-open events ask the attachment-consent port to resolve stable

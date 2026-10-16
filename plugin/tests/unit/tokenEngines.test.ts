@@ -195,7 +195,7 @@ it('cancels a joining inspection before manager reset drains the host', async ()
   }
 })
 
-function inspectionFixture(marker = false) {
+function inspectionFixture(marker = false, folder = '/') {
   const app = buildFakeVault([
     {
       path: 'Notes/slow.txt',
@@ -214,7 +214,7 @@ function inspectionFixture(marker = false) {
     },
   }
   const metadata = new MemoryStateStore()
-  const scope = { kind: 'folder' as const, id: 'root', path: '/' }
+  const scope = { kind: 'folder' as const, id: 'root', path: folder }
   let cursor = 1
   const transport = vi.fn<typeof fetch>(async (input, init) => {
     const path = new URL(String(input)).pathname
@@ -279,7 +279,7 @@ function inspectionFixture(marker = false) {
     key: 'a'.repeat(43),
     scope,
   })
-  return { app, registry, ui, host, transport, probe, release, encoded, factory }
+  return { app, registry, ui, host, transport, probe, release, encoded, factory, scope }
 }
 
 for (const action of ['pass', 'refuse', 'disconnect', 'unload']) {
@@ -763,6 +763,44 @@ it('binds saved token rows to independent native production runtimes and drains 
     await ui.sync(second.id)
     expect(registry.records().map((one) => one.id)).toEqual([second.id])
   } finally {
+    await host.close()
+  }
+})
+
+it('stops a server rename without discovering its private local namesake and permits disconnect', async () => {
+  const { app, registry, ui, host, transport, probe, release, encoded, scope } = inspectionFixture(
+    false,
+    'Notes'
+  )
+  const list = vi.spyOn(app.vault.adapter, 'list')
+  try {
+    release()
+    await ui.connect(encoded)
+    const id = registry.records()[0].id
+    await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
+    await ui.sync(id)
+    await app.vault.create('Private/secret.md', 'private bytes')
+    scope.path = 'Private'
+    list.mockClear()
+    probe.mockClear()
+    transport.mockClear()
+    await expect(ui.sync(id)).rejects.toThrow(/renamed on the server/)
+    expect(registry.records()[0].localRoot).toBe('Notes')
+    expect(
+      list.mock.calls.some(([path]) => path === 'Private' || path.startsWith('Private/'))
+    ).toBe(false)
+    expect(probe.mock.calls.some(([path]) => path.startsWith('Private/'))).toBe(false)
+    expect(
+      transport.mock.calls.some(([url]) => new URL(String(url)).pathname === '/v2/commit')
+    ).toBe(false)
+    expect(ui.activity.value[id].error).toContain('Notes → Private')
+    await ui.disconnect(id)
+    expect(registry.records()).toEqual([])
+    expect(await app.vault.adapter.read('Private/secret.md')).toBe('private bytes')
+  } finally {
+    release()
+    list.mockRestore()
+    probe.mockRestore()
     await host.close()
   }
 })

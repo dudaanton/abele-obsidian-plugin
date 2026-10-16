@@ -55,6 +55,7 @@ const recordSchema = z
     ledgerId: id,
     paused: z.boolean(),
     trusted: z.boolean().optional(),
+    localRoot: z.string().min(1).max(1024).optional(),
     selective: z
       .custom<SelectiveSettings>((value) => selectiveProblem(value, defaultSelective()) === null)
       .optional(),
@@ -320,6 +321,16 @@ export class TokenConnectionRegistry {
       { [Symbol.for('abele.sync.connection-storage')]: localId }
     )
   }
+  pinLocalRoot(localId: string): string | undefined {
+    const doc = this.document(),
+      record = this.record(doc, localId)
+    if (record.scope?.kind !== 'folder') return undefined
+    if (!record.localRoot) {
+      record.localRoot = record.scope.path
+      this.write(TOKEN_REGISTRY_KEY, doc)
+    }
+    return record.localRoot
+  }
   /** Caller must obtain authority via GET /v2/connection using this exact key. */
   attach(
     localId: string,
@@ -345,6 +356,7 @@ export class TokenConnectionRegistry {
       throw new Error('Invalid v2 token connection')
     const doc = this.document(),
       record = this.record(doc, localId)
+    if (token.scope.kind === 'folder') record.localRoot ??= record.scope?.path ?? token.scope.path
     const status =
       authority.status === 'active' ? (record.paused ? 'paused' : 'idle') : authority.status
     if (

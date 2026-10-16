@@ -233,3 +233,35 @@ it('provisions through the real device-only secret road and excludes keys from t
     ).secrets
   ).toEqual({})
 })
+
+it('persists first-connect placement across a later authoritative rename and restart', () => {
+  const store = local(),
+    registry = TokenConnectionRegistry.open(store),
+    keys = secrets()
+  const connection = registry.add()
+  const shared = { ...token.scope, path: 'Shared' }
+  registry.attach(connection, { ...token, scope: shared }, { ...receipt, scope: shared }, keys)
+  expect(registry.records()[0].localRoot).toBe('Shared')
+  registry.attach(
+    connection,
+    { ...token, scope: shared },
+    { ...receipt, scope: { ...shared, path: 'Private' } },
+    keys
+  )
+  expect(TokenConnectionRegistry.open(store).pinLocalRoot(connection)).toBe('Shared')
+})
+
+it('pins an existing connection from its current scope on first start', () => {
+  const store = local(),
+    registry = TokenConnectionRegistry.open(store),
+    keys = secrets()
+  const connection = registry.add(),
+    shared = { ...token.scope, path: 'Shared' }
+  registry.attach(connection, { ...token, scope: shared }, { ...receipt, scope: shared }, keys)
+  const doc = store.loadLocalStorage(TOKEN_REGISTRY_KEY) as { records: { localRoot?: string }[] }
+  delete doc.records[0].localRoot
+  store.saveLocalStorage(TOKEN_REGISTRY_KEY, doc)
+  const reopened = TokenConnectionRegistry.open(store)
+  expect(reopened.pinLocalRoot(connection)).toBe('Shared')
+  expect(TokenConnectionRegistry.open(store).records()[0].localRoot).toBe('Shared')
+})
