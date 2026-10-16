@@ -22,9 +22,17 @@ export class MapLocationControl implements IControl {
   private circleElement: HTMLElement | null = null
   private position: DeviceLocation | null = null
 
+  /** Told when a request for the position starts and ends, for a button the host draws. */
+  onBusy: ((busy: boolean) => void) | null = null
+
+  /**
+   * @param withButton false when the host draws the button itself (the map's column of glyphs)
+   * and calls `locate`; the control then only places the dot and the circle.
+   */
   constructor(
     private el: HTMLElement,
-    private library: LocationMapLibrary
+    private library: LocationMapLibrary,
+    private withButton = true
   ) {}
 
   onAdd(map: Map): HTMLElement {
@@ -32,6 +40,12 @@ export class MapLocationControl implements IControl {
     const doc = this.el.ownerDocument
     const container = doc.win.createDiv()
     container.className = 'maplibregl-ctrl maplibregl-ctrl-group'
+    map.on('zoom', this.resizeCircle)
+    this.container = container
+    if (!this.withButton) {
+      container.hidden = true
+      return container
+    }
     const button = doc.win.createEl('button')
     button.type = 'button'
     button.title = 'Show my location'
@@ -39,9 +53,7 @@ export class MapLocationControl implements IControl {
     setIcon(button, 'locate-fixed')
     button.addEventListener('click', this.locate)
     container.appendChild(button)
-    this.container = container
     this.button = button
-    map.on('zoom', this.resizeCircle)
     return container
   }
 
@@ -73,12 +85,13 @@ export class MapLocationControl implements IControl {
     this.circleElement.style.height = `${diameter}px`
   }
 
-  private locate = () => {
-    if (this.request || !this.map || !this.button) return
+  locate = () => {
+    if (this.request || !this.map) return
     const request = new AbortController()
     this.request = request
-    this.button.disabled = true
-    this.button.setAttribute('aria-busy', 'true')
+    this.button?.setAttribute('aria-busy', 'true')
+    if (this.button) this.button.disabled = true
+    this.onBusy?.(true)
     void this.showPosition(request)
   }
 
@@ -131,6 +144,7 @@ export class MapLocationControl implements IControl {
     } finally {
       if (this.request === request) {
         this.request = null
+        this.onBusy?.(false)
         if (this.button) {
           this.button.disabled = false
           this.button.removeAttribute('aria-busy')

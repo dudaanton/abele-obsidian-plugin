@@ -4,7 +4,10 @@
        maps, and the plugin itself. -->
   <div class="abele-settings__other">
     <Section title="Look">
-      <Setting name="Full-width sidebars" desc="Make sidebars take the full screen width on a phone.">
+      <Setting
+        name="Full-width sidebars"
+        desc="Make sidebars take the full screen width on a phone."
+      >
         <Checkbox :is-enabled="fullWidthSidebars" @toggle="toggleFullWidthSidebars" />
       </Setting>
       <Setting
@@ -94,12 +97,24 @@
         />
       </Setting>
       <Setting
-        name="Map style URL"
-        desc="MapLibre style for maps in notes and chats. Empty uses the free OpenFreeMap tiles."
+        name="Map style"
+        desc="How maps in notes and chats look. The free styles need no key or account."
+      >
+        <Dropdown
+          :options="MAP_STYLES"
+          :model-value="mapStyle"
+          @update:model-value="pickMapStyle"
+        />
+      </Setting>
+      <!-- Only for one's own style: where MapLibre reads it from. -->
+      <Setting
+        v-if="mapStyle === 'custom'"
+        name="Style URL"
+        desc="A MapLibre style.json of your own provider."
       >
         <Input
           :model-value="mapStyleUrl"
-          placeholder="https://tiles.openfreemap.org/styles/bright"
+          placeholder="https://example.com/style.json"
           @update:model-value="updateMapStyle"
         />
       </Setting>
@@ -123,6 +138,8 @@ import { computed, ref } from 'vue'
 import { debounce } from 'obsidian'
 import Setting from '../obsidian/Setting.vue'
 import Section from '../obsidian/Section.vue'
+import Dropdown from '../obsidian/Dropdown.vue'
+import { MAP_STYLES, type MapStyleChoice } from '@/helpers/mapStyles'
 import Input from '../obsidian/Input.vue'
 import Checkbox from '../obsidian/Checkbox.vue'
 import Button from '../obsidian/Button.vue'
@@ -145,6 +162,13 @@ const halfWidthSidebars = ref(config.halfWidthSidebarsOnTablet)
 const keyboardDiagnostics = ref(config.keyboardDiagnostics)
 const mapCoordinatesProperty = ref(config.mapCoordinatesProperty)
 const mapStyleUrl = ref(config.mapStyleUrl)
+// An older settings file with a URL and no choice reads as one's own style.
+const mapStyle = ref<MapStyleChoice>(config.mapStyle ?? (config.mapStyleUrl ? 'custom' : 'theme'))
+const pickMapStyle = async (value: string) => {
+  mapStyle.value = value as MapStyleChoice
+  config.mapStyle = mapStyle.value
+  await config.saveSettings()
+}
 const mermaidViewer = ref(config.mermaidViewer)
 const canvasViewer = ref(config.canvasViewer)
 const toggleCanvasViewer = async () => {

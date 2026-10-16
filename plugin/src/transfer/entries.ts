@@ -328,7 +328,7 @@ export const SECTIONS: Section[] = [
     'timeTrackableNoteTypes',
     'timeTrackAllNotes',
   ]),
-  rootBlock('maps', 'Maps', ['mapCoordinatesProperty', 'mapStyleUrl']),
+  rootBlock('maps', 'Maps', ['mapCoordinatesProperty', 'mapStyle', 'mapStyleUrl']),
   rootBlock('github', 'GitHub', ['github'], {
     // Compatibility fields are never offered here: otherwise choosing this block alone leaks
     // an unselected connection's key through the old keyId alias.
@@ -465,7 +465,7 @@ export function arrivingSecretIds(
     let references: string[]
     if (section.kind === 'list') {
       // Duplicated ids and connection normalization can replace or discard an earlier row.
-      const id = itemId(section.id, entry.data as Identified)
+      const id = itemId(section.id, entry.data)
       const item = section.read(applied).find((item) => itemId(section.id, item) === id)
       references = item ? section.secretsOf(item) : []
     } else {

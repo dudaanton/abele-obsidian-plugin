@@ -1,3 +1,4 @@
+import type { MapStyleChoice } from '@/helpers/mapStyles'
 import type { AiChatHistoryEntry, AiSettings } from '@/ai/types'
 import type { AutomationRule } from '@/automations/types'
 import type { CompletionMarks } from '@/calendars/completion'
@@ -74,6 +75,7 @@ export class AbeleConfig {
   public headerButtons: HeaderButtonDefinition[]
   public automations: AutomationRule[] = []
   public mapCoordinatesProperty: string
+  public mapStyle: MapStyleChoice | undefined
   public mapStyleUrl: string
   public snippetsFolder: string
   public traceNotesFolder: string

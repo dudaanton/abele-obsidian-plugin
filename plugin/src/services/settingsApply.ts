@@ -217,6 +217,7 @@ export function applySettingsTo(
   )
   config.mapCoordinatesProperty =
     settings?.mapCoordinatesProperty ?? DEFAULT_SETTINGS.mapCoordinatesProperty
+  config.mapStyle = settings?.mapStyle
   config.mapStyleUrl = settings?.mapStyleUrl ?? DEFAULT_SETTINGS.mapStyleUrl
   config.snippetsFolder = settings?.snippetsFolder ?? DEFAULT_SETTINGS.snippetsFolder
   config.traceNotesFolder =
@@ -317,6 +318,7 @@ export function exportSettingsOf(config: AbeleConfig, outOfSettings: boolean): A
       params: { ...rule.params },
     })),
     mapCoordinatesProperty: config.mapCoordinatesProperty,
+    mapStyle: config.mapStyle,
     mapStyleUrl: config.mapStyleUrl,
     snippetsFolder: config.snippetsFolder,
     traceNotesFolder: config.traceNotesFolder,

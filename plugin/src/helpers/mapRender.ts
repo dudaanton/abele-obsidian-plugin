@@ -1,8 +1,10 @@
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { mapStyleUrl } from './mapStyles'
 import { formatLatLon, reverseGeocode } from '@/services/GeoService'
 import { mapBounds, type MapConfig, type MapPoint } from './mapConfig'
 import { MapLocationControl } from './mapLocationControl'
+import { AbeleMapControls } from './mapControls'
 import { loadMaplibre } from './loadMaplibre'
 import MapPlacePopup from '@/components/map/MapPlacePopup.vue'
 import type { PlaceState } from '@/components/map/placeState'
@@ -19,9 +21,6 @@ import { renderKit, unrenderKit } from '@/components/obsidian/mount'
  * MapLibre's ESM assets are embedded once and evaluated on first use. Main and worker
  * share the same source Blob; its CSS remains part of Obsidian's plugin stylesheet.
  */
-
-const LIGHT_STYLE = 'https://tiles.openfreemap.org/styles/bright'
-const DARK_STYLE = 'https://tiles.openfreemap.org/styles/dark'
 
 export interface MapHandle {
   destroy(): void
@@ -85,10 +84,8 @@ function isDark(el: HTMLElement): boolean {
 export function styleFor(config: MapConfig, el: HTMLElement): string {
   if (config.style) return config.style
 
-  const configured = AbeleConfig.getInstance().mapStyleUrl
-  if (configured) return configured
-
-  return isDark(el) ? DARK_STYLE : LIGHT_STYLE
+  const settings = AbeleConfig.getInstance()
+  return mapStyleUrl(settings.mapStyle, settings.mapStyleUrl, isDark(el))
 }
 
 function accent(el: HTMLElement): string {
@@ -133,10 +130,10 @@ export async function renderMap(el: HTMLElement, config: MapConfig): Promise<Map
   const colour = accent(el)
 
   if (config.interactive) {
-    map.addControl(new maplibre.NavigationControl({ visualizePitch: true }), 'top-right')
-    map.addControl(new MapLocationControl(el, maplibre), 'top-right')
-    map.addControl(new maplibre.FullscreenControl({ container: el }), 'top-right')
-    // Expanded attribution spans the bottom of a phone map. Keep the scale on its own row.
+    // The plugin's own column of glyphs; the location control only places the dot and circle.
+    const location = new MapLocationControl(el, maplibre, false)
+    map.addControl(location, 'top-right')
+    map.addControl(new AbeleMapControls(el, location), 'top-right')
     map.addControl(new maplibre.ScaleControl({ maxWidth: 100, unit: 'metric' }), 'top-left')
   }
 
@@ -227,6 +224,10 @@ export async function renderMap(el: HTMLElement, config: MapConfig): Promise<Map
 
   map.on('load', () => {
     if (disposed) return
+    // MapLibre opens its compact notice on load; on a narrow map that is two lines over the
+    // bottom of it. There it starts folded to its glyph, a press away.
+    if (el.clientWidth < 480)
+      el.querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show')
 
     config.lines.forEach((line, index) => {
       const id = `abele-line-${index}`

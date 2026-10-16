@@ -573,28 +573,46 @@ body.is-mobile .abele-comment-marker_pending::after {
   font-size: var(--font-ui-small);
 }
 
-/* Their popup, in this theme's colours rather than the library's white. */
+/* What a pin or a pressed place says: a popover in Obsidian's own look (the frame, shadow and
+   type of its menus and link previews), with no pointer of the library's, a little above the
+   point. */
 .abele-map .maplibregl-popup-content {
-  background: var(--background-primary);
-  color: var(--text-normal);
-  border-radius: var(--radius-s);
-  font-size: var(--font-ui-smaller);
-  padding: var(--size-4-1) var(--size-4-2);
   display: flex;
   align-items: flex-start;
   gap: var(--size-4-2);
+  padding: var(--size-4-2) var(--size-4-3);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  border: var(--border-width) solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-s);
+  font-family: var(--font-interface);
+  font-size: var(--font-ui-small);
+  line-height: var(--line-height-tight);
+}
+.abele-map .maplibregl-popup-tip {
+  display: none;
 }
 
-/* The host's accessible button size must take up space, not cover the popup's text. */
+/* Its close is a glyph as Obsidian's are: muted, lit on pointing, taking room beside the words. */
 .abele-map .maplibregl-popup-close-button {
   position: static;
   order: 1;
   flex-shrink: 0;
+  width: auto;
+  height: auto;
+  margin: calc(-1 * var(--size-2-2)) calc(-1 * var(--size-2-3)) 0 0;
+  padding: var(--size-2-1) var(--size-2-2);
+  border-radius: var(--radius-s);
+  background: none;
+  box-shadow: none;
+  color: var(--icon-color);
+  font-size: var(--font-ui-medium);
+  line-height: 1;
 }
-
-.abele-map .maplibregl-popup-tip {
-  border-top-color: var(--background-primary);
-  border-bottom-color: var(--background-primary);
+.abele-map .maplibregl-popup-close-button:hover {
+  background-color: var(--background-modifier-hover);
+  color: var(--icon-color-hover);
 }
 
 .abele-map__place,
@@ -604,20 +622,75 @@ body.is-mobile .abele-comment-marker_pending::after {
   overflow-wrap: anywhere;
 }
 
+.abele-map__label,
+.abele-map__place > strong {
+  font-weight: var(--font-semibold);
+}
 .abele-map__place > strong {
   display: block;
-  margin-bottom: 2px;
+  margin-bottom: var(--size-2-1);
+}
+.abele-map__place > div:not(.abele-map__coordinates) {
+  color: var(--text-muted);
 }
 
 .abele-map__coordinates {
-  margin-top: 2px;
-  color: var(--text-muted);
+  margin-top: var(--size-2-2);
+  color: var(--text-faint);
   font-family: var(--font-monospace);
-  font-size: var(--font-ui-smallest);
+  font-size: var(--font-ui-smaller);
 }
 
-.abele-map .maplibregl-ctrl-attrib {
-  font-size: 10px;
+/* The map's own words, the scale and where the map comes from, as quiet facts on a plate of the
+   theme's background; the source's notice stays, it is what the free tiles ask for. */
+.abele-map .maplibregl-ctrl-scale {
+  border-color: var(--text-faint);
+  background-color: var(--background-primary);
+  color: var(--text-muted);
+  font-family: var(--font-interface);
+  font-size: var(--font-ui-smallest);
+}
+.abele-map .maplibregl-ctrl.maplibregl-ctrl-attrib {
+  margin: var(--size-4-2);
+  padding: var(--size-2-1) var(--size-4-2);
+  border-radius: var(--radius-s);
+  background-color: var(--background-primary);
+  color: var(--text-muted);
+  font-family: var(--font-interface);
+  font-size: var(--font-ui-smallest);
+}
+.abele-map .maplibregl-ctrl-attrib a {
+  color: inherit;
+  text-decoration: none;
+}
+.abele-map .maplibregl-ctrl-attrib a:hover {
+  color: var(--text-normal);
+  text-decoration: underline;
+}
+/* Folded, the notice is the theme's info glyph instead of the library's. */
+.abele-map .maplibregl-ctrl-attrib.maplibregl-compact {
+  min-height: calc(var(--icon-xs) + 2 * var(--size-2-2));
+  padding-inline-end: calc(var(--icon-xs) + 2 * var(--size-2-3));
+}
+.abele-map .maplibregl-ctrl-attrib-button {
+  width: calc(var(--icon-xs) + 2 * var(--size-2-2));
+  height: calc(var(--icon-xs) + 2 * var(--size-2-2));
+  background-image: none;
+  background-color: var(--icon-color);
+  border-radius: 0;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M12 16v-4'/%3E%3Cpath d='M12 8h.01'/%3E%3C/svg%3E")
+    center / var(--icon-xs) no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M12 16v-4'/%3E%3Cpath d='M12 8h.01'/%3E%3C/svg%3E")
+    center / var(--icon-xs) no-repeat;
+}
+
+/* Full screen where the system has none for one element: the map fills the window. */
+.abele-map.abele-map_full {
+  position: fixed;
+  inset: 0;
+  z-index: var(--layer-modal);
+  height: auto !important;
+  border-radius: 0;
 }
 
 .abele-chat-msg__map {

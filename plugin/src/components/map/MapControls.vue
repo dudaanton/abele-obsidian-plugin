@@ -1,0 +1,58 @@
+<template>
+  <!-- The map's glyphs as the canvas floats its own: Obsidian Canvas's control column. -->
+  <div class="canvas-controls abele-map-controls">
+    <div class="canvas-control-group">
+      <ControlItem icon="plus" tooltip="Zoom in" @click="emit('zoom', 1)" />
+      <ControlItem icon="minus" tooltip="Zoom out" @click="emit('zoom', -1)" />
+    </div>
+    <div class="canvas-control-group">
+      <!-- Only once the map is turned or tilted: the way back to north up. -->
+      <ControlItem
+        v-if="state.turned"
+        class="abele-map-controls__north"
+        :style="{ '--abele-map-bearing': `${-state.bearing}deg` }"
+        icon="navigation-2"
+        tooltip="Point north"
+        @click="emit('north')"
+      />
+      <ControlItem
+        icon="locate-fixed"
+        :tooltip="state.locating ? 'Finding where you are…' : 'Show my location'"
+        :disabled="state.locating"
+        @click="emit('locate')"
+      />
+      <ControlItem
+        :icon="state.full ? 'minimize' : 'maximize'"
+        :tooltip="state.full ? 'Exit full screen' : 'Full screen'"
+        @click="emit('full')"
+      />
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+// What a map in a note or a chat offers to do, in the plugin's glyphs with words in tooltips:
+// zoom, back to north once turned, where the device is, and the whole screen.
+import { ControlItem } from '../obsidian/ControlItem'
+import type { MapControlsState } from './mapControlsState'
+
+defineProps<{ state: MapControlsState }>()
+const emit = defineEmits<{
+  zoom: [step: 1 | -1]
+  north: []
+  locate: []
+  full: []
+}>()
+</script>
+
+<style lang="scss">
+// Inside the map's own corner, not the canvas's: MapLibre places it, the column keeps its look.
+.abele-map-controls-host > .abele-map-controls {
+  position: static;
+  margin: var(--size-4-2);
+  pointer-events: auto;
+}
+.abele-map-controls__north svg {
+  transform: rotate(var(--abele-map-bearing, 0deg));
+}
+</style>

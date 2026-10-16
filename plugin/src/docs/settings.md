@@ -184,8 +184,10 @@ for the visible-range cache and large-block limits. Inline code is not language-
 
 `mapCoordinatesProperty` is the note property a place is stored in — `coordinates` unless the
 person changed it, and the map tools tell the person to write into whichever it names.
-`mapStyleUrl` replaces the free OpenFreeMap tiles with a MapLibre style of one's own; empty
-means the plugin's own, which needs no key and no account.
+`mapStyle` picks the look of every map: `theme` (the default) draws OpenFreeMap's Bright in a light
+theme and its Dark in a dark one; `liberty`, `bright`, `positron`, `dark` and `fiord` are those free
+styles always; `custom` uses `mapStyleUrl`, a MapLibre style of one's own. None needs a key or an
+account except one's own. A settings file with a URL and no `mapStyle` means that URL.
 
 ## GitHub
 

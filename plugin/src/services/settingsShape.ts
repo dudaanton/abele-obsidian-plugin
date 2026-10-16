@@ -1,3 +1,4 @@
+import type { MapStyleChoice } from '@/helpers/mapStyles'
 import { AiSettings, DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { type AutomationRule } from '@/automations/types'
 import { DEFAULT_LIFE_YEARS } from '@/bases/lifeWeeks'
@@ -73,7 +74,9 @@ export interface AbeleSettings {
   // Maps
   /** Note property holding a place's `lat, lon`. What the agent is told to write into. */
   mapCoordinatesProperty?: string
-  /** A MapLibre style URL of one's own, instead of the free tiles the plugin ships with. */
+  /** Which look maps are drawn in: a free style, one that follows the theme, or one's own. */
+  mapStyle?: MapStyleChoice
+  /** A MapLibre style URL of one's own, used when `mapStyle` is `custom`. */
   mapStyleUrl?: string
   // Other
   snippetsFolder?: string
@@ -313,6 +316,8 @@ export const DEFAULT_SETTINGS: Required<Omit<AbeleSettings, 'secretStore'>> = {
   headerButtons: [],
   automations: [],
   mapCoordinatesProperty: 'coordinates',
+  // Read through `mapStyleUrl()`: absent in an older file that holds a URL means that URL.
+  mapStyle: 'theme',
   mapStyleUrl: '',
   snippetsFolder: '',
   traceNotesFolder: 'Trace',

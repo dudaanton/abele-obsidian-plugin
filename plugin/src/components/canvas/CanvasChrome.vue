@@ -307,19 +307,10 @@
 </template>
 
 <script setup lang="ts">
-import {
-  computed,
-  defineComponent,
-  h,
-  nextTick,
-  onBeforeUnmount,
-  onMounted,
-  ref,
-  shallowRef,
-  watch,
-} from 'vue'
+import { ControlItem } from '../obsidian/ControlItem'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { canvasMenu } from '@/canvas/menu'
-import { Platform, setIcon, setTooltip } from 'obsidian'
+import { Platform } from 'obsidian'
 import type { CanvasEditor, CanvasField } from '@/canvas/Editor'
 import type { CanvasViewer } from '@/canvas/Viewer'
 import { stepsOf } from '@/canvas/core/steps'
@@ -355,28 +346,6 @@ const props = defineProps<{
 }>()
 const c = props.editor.controls
 
-/** One of Obsidian Canvas's own control items: a glyph in its column, named by its tooltip. */
-const ControlItem = defineComponent({
-  props: { icon: String, tooltip: String, disabled: Boolean },
-  emits: ['click'],
-  setup(p, { emit }) {
-    const el = ref<HTMLElement>()
-    onMounted(() => {
-      if (!el.value) return
-      setIcon(el.value, p.icon)
-      setTooltip(el.value, p.tooltip, { placement: 'left' })
-    })
-    return () =>
-      h('div', {
-        ref: el,
-        class: ['canvas-control-item', { 'is-disabled': p.disabled }],
-        role: 'button',
-        'aria-label': p.tooltip,
-        'aria-disabled': p.disabled || undefined,
-        onClick: (e: MouseEvent) => !p.disabled && emit('click', e),
-      })
-  },
-})
 /** A tool at the foot, as Obsidian Canvas draws its card menu's buttons. */
 const tick = ref(0)
 const phone = Platform.isPhone

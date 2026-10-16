@@ -127,6 +127,7 @@ vi.mock('maplibre-gl', () => ({
 vi.mock('@/helpers/loadMaplibre', () => ({ loadMaplibre: () => import('maplibre-gl') }))
 
 import { mapFeatureInfo, renderMap } from '@/helpers/mapRender'
+import { AbeleMapControls } from '@/helpers/mapControls'
 import { MapLocationControl } from '@/helpers/mapLocationControl'
 
 const config = {
@@ -170,14 +171,14 @@ describe('map controls', () => {
     expect(maplibre.positions.get(scale)).toBe('top-left')
   })
 
+  // The plugin's own column of glyphs instead of MapLibre's buttons (zoom, north, location,
+  // full screen), as the owner asked for maps in the plugin's look.
   it('lets a person zoom, reset direction, use fullscreen and read the scale', async () => {
     await renderMap(document.createElement('div'), config)
 
+    expect(maplibre.controls.some((control) => control instanceof AbeleMapControls)).toBe(true)
     expect(maplibre.controls.some((control) => control instanceof maplibre.NavigationControl)).toBe(
-      true
-    )
-    expect(maplibre.controls.some((control) => control instanceof maplibre.FullscreenControl)).toBe(
-      true
+      false
     )
     expect(maplibre.controls.some((control) => control instanceof maplibre.ScaleControl)).toBe(true)
     expect(maplibre.controls.some((control) => control instanceof MapLocationControl)).toBe(true)
