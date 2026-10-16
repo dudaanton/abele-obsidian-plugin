@@ -1,7 +1,27 @@
 import { expect } from 'vitest'
 import { liveSuite, liveCase } from './helpers/syncLiveCases'
-import { captureSyncScreen, closeSyncScreens } from './helpers/syncScreens'
-import { reloadAs, setWindowSize, windowSize } from './helpers/phoneWindow'
+import { captureSyncScreen as captureScreen, closeSyncScreens } from './helpers/syncScreens'
+import { reloadAs as reloadWindowAs, setWindowSize, windowSize } from './helpers/phoneWindow'
+import { rendererMemory } from './helpers/rendererMemory'
+import type { VaultCli } from './helpers/obsidianCli'
+
+function sampleMemory(vault: VaultCli, phase: string): void {
+  console.info(
+    '[sync dialogs memory]',
+    phase,
+    vault.evalAwait(`(${rendererMemory.toString()})(require)`)
+  )
+}
+const reloadAs: typeof reloadWindowAs = async (vault, mobile) => {
+  sampleMemory(vault, 'before reload')
+  await reloadWindowAs(vault, mobile)
+  sampleMemory(vault, 'after reload')
+}
+const captureSyncScreen: typeof captureScreen = async (...args) => {
+  const result = await captureScreen(...args)
+  sampleMemory(args[0].vault(), 'after capture ' + args[1])
+  return result
+}
 const fixture = liveSuite(false)
 liveCase(
   'syncDialogs',
