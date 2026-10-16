@@ -9,7 +9,7 @@ import {
 } from './repositorySettings'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { NodeService } from './NodeService'
-import { nodeProviders, providerAvailable, providerLabel } from './providers'
+import { agentChoices, nodeProviders } from './providers'
 import { bindPathTarget } from './nodePathChat'
 import { NodePathMutations } from './NodePathMutations'
 import { pathPages } from './NodePathClientPort'
@@ -451,6 +451,10 @@ export async function attachNodePathWorktree(
 export function openNodePathPairing(): void {
   showNodePairingDialog()
 }
+/** The glyph of an agent in the chooser: the node's own agents and ACP ones apart. */
+const agentIcon = (provider: string): string =>
+  provider === 'acp' ? 'plug' : provider === 'fake' ? 'flask-conical' : 'bot'
+
 export async function newNodePathChat(
   model: NodePathModel,
   target = model.current.value,
@@ -463,26 +467,28 @@ export async function newNodePathChat(
     )
   const bound = Object.freeze({ ...target }),
     connection = NodeService.getInstance().connection(model.registrationId)
-  const providers = nodeProviders(await connection.client.describe()).filter(providerAvailable)
+  const choices = agentChoices(nodeProviders(await connection.client.describe()))
+  const idOf = (c: (typeof choices)[number]) => (c.agent ? `${c.provider}:${c.agent}` : c.provider)
   new NodeSuggestModal(
     app(),
-    providers.map((p) => ({
-      id: p.provider,
-      title: providerLabel(p.provider),
-      note: p.diagnostic,
-      icon: 'bot',
-      kind: 'Agent provider',
+    choices.map((c) => ({
+      id: idOf(c),
+      title: c.label,
+      ...(c.unavailable ? { note: c.unavailable, disabled: c.unavailable } : {}),
+      icon: agentIcon(c.provider),
+      kind: c.agent ? 'Agent over ACP' : 'Agent',
     })),
-    'Choose the node agent',
+    'Choose the agent',
     (item) =>
       nodePathAction(async () => {
         if (!(await approveNodePathExecution(model, bound))) return
-        const provider = providers.find((p) => p.provider === item.id)
-        if (!provider) throw new Error('The selected provider is no longer available.')
+        const choice = choices.find((c) => idOf(c) === item.id && !c.unavailable)
+        if (!choice) throw new Error('The selected agent is no longer available.')
         const session = await new NodePathMutations(connection.client).session(
           bound,
           'New chat',
-          provider.provider
+          choice.provider,
+          ...(choice.agent ? [choice.agent] : [])
         )
         // The returned session already carries this exact target. Refresh drawer metadata
         // in the background; recursively listing its files is not part of opening a chat.

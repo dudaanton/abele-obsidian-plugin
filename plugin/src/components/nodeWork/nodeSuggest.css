@@ -15,6 +15,14 @@
 .abele-node-suggestion_current .suggestion-title {
   color: var(--text-accent);
 }
+/* An agent the node cannot start now: there, in faint words, with why under its name. */
+.abele-node-suggestion_disabled {
+  cursor: default;
+}
+.abele-node-suggestion_disabled .suggestion-title,
+.abele-node-suggestion_disabled .abele-node-suggestion__kind {
+  color: var(--text-faint);
+}
 /* What the chooser cannot show yet, between the field and the list: its glyph where the rows' */
 /* kind glyphs stand, quiet words, the one button at the end, a hairline under it. */
 .abele-node-suggest-hint {

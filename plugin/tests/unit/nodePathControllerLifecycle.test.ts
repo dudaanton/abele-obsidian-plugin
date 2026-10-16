@@ -29,6 +29,7 @@ vi.mock('@/node/providers', () => ({
   nodeProviders: () => [{ provider: 'fake' }],
   providerAvailable: () => true,
   providerLabel: () => 'Fake',
+  agentChoices: () => [{ provider: 'fake', label: 'Fake', unavailable: '' }],
 }))
 vi.mock('@/components/obsidian/dialogs', () => ({ confirmDialog: async () => true }))
 vi.mock('@/node/NodePathMutations', () => ({

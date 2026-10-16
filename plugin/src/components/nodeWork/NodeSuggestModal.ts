@@ -15,6 +15,8 @@ export interface NodeSuggestion {
   count?: { value: number; label: string }
   /** The one in use now, marked in the accent colour. */
   current?: boolean
+  /** Shown but not choosable now; the reason is its note and tooltip. */
+  disabled?: string
 }
 
 /**
@@ -89,6 +91,11 @@ export class NodeSuggestModal extends SuggestModal<NodeSuggestion> {
   renderSuggestion(item: NodeSuggestion, el: HTMLElement): void {
     el.addClass('mod-complex', 'abele-node-suggestion')
     if (item.current) el.addClass('abele-node-suggestion_current')
+    if (item.disabled) {
+      el.addClass('abele-node-suggestion_disabled')
+      el.setAttr('aria-disabled', 'true')
+      setTooltip(el, item.disabled)
+    }
     const icon = el.createDiv({ cls: 'suggestion-icon abele-node-suggestion__kind' })
     setIcon(icon, item.icon)
     setTooltip(icon, item.kind)
@@ -100,6 +107,12 @@ export class NodeSuggestModal extends SuggestModal<NodeSuggestion> {
       const flair = aux.createSpan({ cls: 'suggestion-flair', text: String(item.count.value) })
       setTooltip(flair, item.count.label)
     }
+  }
+
+  /** A row that cannot be chosen now stays in the list, and the list stays open. */
+  selectSuggestion(item: NodeSuggestion, evt: MouseEvent | KeyboardEvent): void {
+    if (item.disabled) return
+    super.selectSuggestion(item, evt)
   }
 
   onChooseSuggestion(item: NodeSuggestion): void {

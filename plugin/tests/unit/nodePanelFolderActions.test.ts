@@ -137,10 +137,13 @@ describe('the node panel instead of the workspaces window', () => {
     expect(await pathPages(read)).toEqual(['first.txt', 'second.txt'])
   })
 
-  it('offers a new chat only the providers the node reports as available', async () => {
+  it('offers a new chat every agent, those the node cannot start now unavailable with why', async () => {
     client()
     await newNodePathChat(model() as never, target('sample-root'))
-    expect(f.items.map((i) => i.title)).toEqual(['Claude Code'])
+    expect(f.items.map((i) => i.title)).toEqual(['Claude Code', 'Codex', 'pi'])
+    const disabled = f.items.map((i) => (i as { disabled?: string }).disabled)
+    expect(disabled[0]).toBeUndefined()
+    expect(disabled.slice(1).every(Boolean)).toBe(true)
   })
 
   it('reserves a new worktree’s job without attaching a chat to it', async () => {
