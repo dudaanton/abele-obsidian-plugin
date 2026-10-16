@@ -70,6 +70,14 @@ it.each([
 ])('issues a token through the live driver selectors for %s', async (scopeLabel, scopeId) => {
   const ui = shareFixture(),
     id = ui.rows.value[0].id
+  const available = await ui.choices(id)
+  let releaseChoices!: () => void
+  vi.spyOn(ui, 'choices').mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        releaseChoices = () => resolve(available)
+      })
+  )
   const issue = vi.fn(async () => ({ token: 'sample-access-code' }))
   vi.spyOn(ui, 'client').mockReturnValue({ issue } as never)
   const view = mount(TokenDialogs, {
@@ -81,7 +89,8 @@ it.each([
     throw new Error('No live vault expected')
   })
   const long = vi.spyOn(driver, 'long').mockImplementation(async (_label, code) => {
-    const poll = async (condition: () => unknown) => {
+    const poll = async (condition: () => unknown, _timeout: number, label: string) => {
+      if (label === 'sharing scopes to load') releaseChoices()
       await flushPromises()
       expect(condition()).toBeTruthy()
     }
