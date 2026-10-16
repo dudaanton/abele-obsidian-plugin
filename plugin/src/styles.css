@@ -681,6 +681,7 @@ body.is-mobile .abele-comment-marker_pending::after {
 .abele-map .maplibregl-ctrl.maplibregl-ctrl-attrib {
   margin: var(--size-4-2);
   padding: var(--size-2-1) var(--size-4-2);
+  border: var(--border-width) solid var(--background-modifier-border);
   border-radius: var(--radius-s);
   background-color: var(--background-primary);
   color: var(--text-muted);
@@ -696,7 +697,16 @@ body.is-mobile .abele-comment-marker_pending::after {
   text-decoration: underline;
 }
 /* Folded, the notice is the theme's info glyph instead of the library's. */
-.abele-map .maplibregl-ctrl-attrib.maplibregl-compact {
+/* Folded, the plate is the glyph's own square, as tall as the scale's: nothing round it. */
+.abele-map .maplibregl-ctrl-attrib.maplibregl-compact:not(.maplibregl-compact-show) {
+  box-sizing: content-box;
+  width: calc(var(--icon-xs) + 2 * var(--size-2-2));
+  height: calc(var(--icon-xs) + 2 * var(--size-2-2));
+  min-height: 0;
+  padding: 0;
+}
+/* Opened, the words keep room for the glyph at the end. */
+.abele-map .maplibregl-ctrl-attrib.maplibregl-compact-show {
   min-height: calc(var(--icon-xs) + 2 * var(--size-2-2));
   padding-inline-end: calc(var(--icon-xs) + 2 * var(--size-2-3));
 }

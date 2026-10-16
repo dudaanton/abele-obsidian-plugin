@@ -47,6 +47,11 @@ const emit = defineEmits<{
 
 <style lang="scss">
 // Inside the map's own corner, not the canvas's: MapLibre places it, the column keeps its look.
+// MapLibre's own corner margin on the host is dropped: the column keeps the same distance from
+// the map's edge as the scale and the source's glyph in the other corners.
+.maplibregl-ctrl.abele-map-controls-host {
+  margin: 0;
+}
 .abele-map-controls-host > .abele-map-controls {
   position: static;
   margin: var(--size-4-2);
