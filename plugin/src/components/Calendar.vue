@@ -1,11 +1,26 @@
 <template>
   <div ref="clockEl" class="abele-calendar" :class="{ 'abele-calendar_marks': marks }">
     <div class="abele-calendar__header">
-      <div class="abele-calendar__header-month-year">
-        {{ dayjs().month(selectedMonth).format('MMMM') }} {{ selectedYear }}
+      <!-- The title is the way between the month and its year: pressed on a month, the year;
+           pressed on a year, back to the month it came from. -->
+      <div
+        ref="titleEl"
+        class="abele-calendar__header-month-year"
+        role="button"
+        tabindex="0"
+        :aria-label="titleTip"
+        @click="toggleView()"
+        @keydown.enter.prevent="toggleView()"
+      >
+        {{ view === 'year' ? selectedYear : dayjs().month(selectedMonth).format('MMMM') }}
+        <template v-if="view === 'month'">{{ selectedYear }}</template>
       </div>
       <div class="abele-calendar__header-controls">
-        <ObsidianIcon icon="chevron-left" tooltip="Previous month" @click="previousMonth()" />
+        <ObsidianIcon
+          icon="chevron-left"
+          :tooltip="view === 'year' ? 'Previous year' : 'Previous month'"
+          @click="view === 'year' ? selectedYear-- : previousMonth()"
+        />
         <!-- In a note's log month the keyboard moves through the controls and the days alike. -->
         <ObsidianIcon
           v-if="marks"
@@ -14,10 +29,28 @@
           @click="todayClick()"
         />
         <div v-else class="abele-calendar__header-today" @click="todayClick()">Today</div>
-        <ObsidianIcon icon="chevron-right" tooltip="Next month" @click="nextMonth()" />
+        <ObsidianIcon
+          :tooltip="view === 'year' ? 'Next year' : 'Next month'"
+          icon="chevron-right"
+          @click="view === 'year' ? selectedYear++ : nextMonth()"
+        />
       </div>
     </div>
-    <div class="abele-calendar__body">
+    <!-- The year: twelve small months, each day tinted by what is on it, as the base calendar's
+         year is. A day is chosen as in the month; a month's name opens that month. -->
+    <CalendarYear
+      v-if="view === 'year'"
+      compact
+      :year="selectedYear"
+      :monday-first="GlobalStore.getInstance().weekStartsOnMonday.value"
+      :items="[]"
+      :levels="yearLevels"
+      :today="today.format(DATE_FORMAT)"
+      :selected="props.selectedDate?.format(DATE_FORMAT) ?? null"
+      @day="(d) => emit('date-selected', dayjs(d))"
+      @month="openMonth"
+    />
+    <div v-else class="abele-calendar__body">
       <div class="abele-calendar__weekdays">
         <div v-for="day in weekdays" :key="day" class="abele-calendar__weekday">
           {{ day }}
@@ -147,6 +180,9 @@ import dayjs from 'dayjs'
 import { ref, unref, watch } from 'vue'
 import { panelComputed as computed } from '@/composables/usePanelComputed'
 import ObsidianIcon from './obsidian/Icon.vue'
+import CalendarYear from './calendarBase/CalendarYear.vue'
+import { levelsOfCounts, levelsOfMarks } from './calendarYearLevels'
+import { setTooltip } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DATE_FORMAT } from '@/constants/dates'
@@ -168,6 +204,8 @@ const props = defineProps<{
   marks?: Map<string, LogDayMark>
   /** What the marks stand for, read out with each day: a note's logs or its calendar tasks. */
   marksOf?: 'logs' | 'tasks'
+  /** Shown as a month or its year; each place keeps what its user left. */
+  view?: 'month' | 'year'
 }>()
 /** What a log month's day says when read out: its date, and what its mark shows. */
 const dayLabel = (date: dayjs.Dayjs, key: string): string => {
@@ -350,190 +388,51 @@ const emit = defineEmits<{
   (e: 'date-right-clicked', date: dayjs.Dayjs, event: MouseEvent): void
   /** The month shown changed: its first day. */
   (e: 'month-changed', first: dayjs.Dayjs): void
+  /** Switched between the month and its year. */
+  (e: 'view-changed', view: 'month' | 'year'): void
 }>()
+
+const view = ref<'month' | 'year'>(props.view ?? 'month')
+watch(
+  () => props.view,
+  (v) => v && (view.value = v)
+)
+const titleEl = ref<HTMLElement>()
+const titleTip = computed(() =>
+  view.value === 'year'
+    ? `Back to ${dayjs().month(selectedMonth.value).format('MMMM')}`
+    : 'Show the whole year'
+)
+watch([titleEl, titleTip], ([el, tip]) => el && setTooltip(el, tip))
+function toggleView() {
+  view.value = view.value === 'year' ? 'month' : 'year'
+  emit('view-changed', view.value)
+}
+function openMonth(month: number) {
+  selectedMonth.value = month
+  view.value = 'month'
+  emit('view-changed', 'month')
+}
+
+/** What the year view tints: a note's marks, or how much the sidebar's day carries. */
+const yearLevels = computed(() => {
+  if (view.value !== 'year') return new Map()
+  if (props.marks) return levelsOfMarks(props.marks)
+  const counts = new Map<string, number>()
+  const add = (day: string, n: number) => n && counts.set(day, (counts.get(day) ?? 0) + n)
+  for (const [day, tasks] of tasksDateMap.value) add(day, tasks.length)
+  for (const [day, shown] of calendarDays.value) add(day, shown.length)
+  if (props.journal) {
+    const first = dayjs().year(selectedYear.value).startOf('year')
+    for (let d = first; d.year() === selectedYear.value; d = d.add(1, 'day'))
+      if (props.journal.isJournalNoteCreated(d)) add(d.format(DATE_FORMAT), 1)
+  }
+  return levelsOfCounts(counts)
+})
 
 watch([selectedMonth, selectedYear], () =>
   emit('month-changed', dayjs().date(1).year(selectedYear.value).month(selectedMonth.value))
 )
 </script>
 
-<style lang="scss">
-.abele-calendar {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: var(--p-spacing);
-}
-
-.abele-calendar__header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  .abele-calendar__header-month-year {
-    font-size: var(--font-ui-medium);
-    font-weight: var(--font-semibold);
-  }
-  .abele-calendar__header-controls {
-    display: flex;
-    align-items: center;
-    align-items: center;
-    gap: var(--size-2-2);
-    .abele-calendar__header-today {
-      cursor: pointer;
-      font-size: var(--font-small);
-      color: var(--text-accent);
-      &:hover {
-        text-decoration: underline;
-      }
-    }
-  }
-}
-
-.abele-calendar__body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--p-spacing);
-}
-
-.abele-calendar__weekdays {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  // Quiet column labels, as a calendar's weekdays are: the dates are what is read.
-  .abele-calendar__weekday {
-    text-align: center;
-    font-size: var(--font-ui-smaller);
-    color: var(--text-faint);
-  }
-}
-
-.abele-calendar__days {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: var(--size-2-2);
-}
-
-.abele-calendar__day {
-  padding-bottom: var(--size-4-2);
-  padding-top: var(--size-2-2);
-  position: relative;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--size-2-1);
-  text-align: center;
-  border-radius: var(--radius-s);
-  cursor: pointer;
-  &:hover {
-    background-color: var(--background-modifier-hover);
-  }
-  &_today {
-    color: var(--text-accent);
-    background-color: hsl(var(--accent-h), var(--accent-s), 97%);
-  }
-  &_selected {
-    background-color: hsl(var(--accent-h), var(--accent-s), var(--accent-l));
-    color: var(--text-on-accent);
-    &:hover {
-      background-color: hsl(var(--accent-h), var(--accent-s), var(--accent-l));
-      color: var(--text-on-accent);
-    }
-  }
-  &_other-month {
-    color: var(--text-faint);
-  }
-}
-
-.theme-dark {
-  .abele-calendar__day {
-    &_today {
-      background-color: hsl(var(--accent-h), calc(var(--accent-s) - 15%), 10%);
-    }
-  }
-}
-
-.abele-calendar__day-marks {
-  position: absolute;
-  bottom: 4px;
-  left: 0;
-  right: 0;
-  height: 4px;
-  display: flex;
-  align-items: center;
-  gap: var(--size-2-1);
-  width: 100%;
-  justify-content: center;
-}
-
-.abele-calendar__day-dot {
-  width: 4px;
-}
-
-// Twice as wide as a dot, so it reads as a different mark rather than one more dot.
-.abele-calendar__day-event {
-  width: calc(var(--size-2-1) * 4);
-  color: var(--text-faint);
-}
-
-// A month of a note's log: the mark is what is read, so it sits under the number in the flow at
-// a size a box can be told from a dot by, and the chosen day is lit the way Obsidian lights the
-// open file in its list rather than filled with the accent the ticked boxes are drawn in.
-.abele-calendar_marks {
-  // The day is a button here; Obsidian's button box and shadow give way to the calendar's cell.
-  .abele-calendar__day {
-    padding: var(--size-2-2) 0;
-    height: auto;
-    font: inherit;
-
-    &:not(:focus-visible) {
-      box-shadow: none;
-    }
-    gap: var(--size-2-1);
-  }
-
-  .abele-calendar__day-marks {
-    position: static;
-    height: auto;
-    min-height: 0.6em;
-  }
-
-  .abele-calendar__day_selected,
-  .abele-calendar__day_selected:hover {
-    background-color: var(--nav-item-background-active);
-    color: var(--nav-item-color-active);
-    font-weight: var(--font-semibold);
-  }
-}
-
-// A finger's worth of height for each day on a phone, the cells meeting edge to edge.
-body.is-phone .abele-calendar_marks {
-  .abele-calendar__days {
-    gap: 0;
-  }
-
-  .abele-calendar__day {
-    min-height: var(--abele-touch-min);
-  }
-}
-
-.abele-calendar__day-log {
-  width: 0.6em;
-  height: 0.6em;
-  color: var(--text-muted);
-}
-
-.abele-calendar__day-log_done {
-  color: var(--checkbox-color);
-}
-
-.abele-calendar__day-log_open {
-  color: var(--text-faint);
-}
-
-$event-colors: red, orange, yellow, green, cyan, blue, purple, pink;
-@each $name in $event-colors {
-  .abele-calendar__day-event_color-#{$name} {
-    color: var(--color-#{$name});
-  }
-}
-</style>
+<style lang="scss" src="./calendarSmall.scss"></style>

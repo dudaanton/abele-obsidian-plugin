@@ -1,12 +1,17 @@
 <template>
   <div class="abele-tasks-calendar">
     <!-- The month and the chosen day's tasks, laid out as the logs' month is. -->
-    <div class="abele-tasks-calendar__grid">
+    <div
+      class="abele-tasks-calendar__grid"
+      :class="{ 'abele-tasks-calendar__grid_year': view === 'year' }"
+    >
       <Calendar
         class="abele-tasks-calendar__month"
         :selected-date="selected"
         :marks="marks"
         marks-of="tasks"
+        :view="view"
+        @view-changed="record"
         @date-selected="choose"
         @month-changed="turn"
       />
@@ -43,6 +48,7 @@
 import { computed, shallowRef, watch } from 'vue'
 import dayjs from '@/helpers/dateLibrary'
 import Calendar from './Calendar.vue'
+import { useFooterCalendarView } from '@/composables/useFooterView'
 import TaskView from './Task.vue'
 import CalendarEventView from './CalendarEvent.vue'
 import { Task } from '@/entities/Task'
@@ -104,6 +110,9 @@ const emptyMonth = computed(
   () => ![...days.value.keys()].some((key) => key.startsWith(month.value.format('YYYY-MM')))
 )
 const dayLabel = computed(() => selected.value.format('ddd D MMMM YYYY'))
+
+/** The year takes the whole width; the chosen day stands under it. */
+const { view, record } = useFooterCalendarView('tasks')
 </script>
 
 <style lang="scss">
@@ -146,5 +155,10 @@ const dayLabel = computed(() => selected.value.format('ddd D MMMM YYYY'))
 .abele-tasks-calendar__none {
   margin-top: var(--p-spacing);
   color: var(--text-muted);
+}
+
+// The year is twelve months across the note: the chosen day goes under it.
+.abele-tasks-calendar__grid.abele-tasks-calendar__grid_year {
+  grid-template-columns: minmax(0, 1fr);
 }
 </style>

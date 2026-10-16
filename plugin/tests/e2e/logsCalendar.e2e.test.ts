@@ -99,6 +99,34 @@ const probe = (label: string) => String.raw`(async () => {
     report.daySizes = [...calendar.querySelectorAll('.abele-calendar__day')].map(el => { const b=el.getBoundingClientRect(); return [b.width,b.height] })
     await shoot('today')
     await shoot('busy-month')
+    const title = calendar.querySelector('.abele-calendar__header-month-year')
+    title.click()
+    await until(() => calendar.querySelector('.abele-calendar-year'), 'footer year')
+    await shoot('footer-year')
+    report.footerYearSaved = app.loadLocalStorage('abele-footer-view')[note.path]?.logsYear === true
+    title.click()
+    await until(() => calendar.querySelector('.abele-calendar__days'), 'footer month')
+    report.footerMonthSaved = !app.loadLocalStorage('abele-footer-view')[note.path]?.logsYear
+
+    const sidebarMemory = app.loadLocalStorage('abele-sidebar-calendar-view')
+    const sidebarLeaf = app.workspace.getLeaf('tab')
+    try {
+      await sidebarLeaf.setViewState({type:'abele-timeline-sidebar-view',active:true})
+      const sidebar = await until(() => sidebarLeaf.view.containerEl.querySelector('.abele-timeline-sidebar__calendar'), 'sidebar calendar')
+      const sidebarTitle = sidebar.querySelector('.abele-calendar__header-month-year')
+      if (sidebar.querySelector('.abele-calendar-year')) { sidebarTitle.click(); await wait(100) }
+      sidebarTitle.click()
+      await until(() => sidebar.querySelector('.abele-calendar-year'), 'sidebar year')
+      await shoot('sidebar-year')
+      report.sidebarYearSaved = app.loadLocalStorage('abele-sidebar-calendar-view') === 'year'
+      sidebarTitle.click()
+      await until(() => sidebar.querySelector('.abele-calendar__days'), 'sidebar month')
+      report.sidebarMonthSaved = app.loadLocalStorage('abele-sidebar-calendar-view') === 'month'
+    } finally {
+      sidebarLeaf.detach()
+      app.saveLocalStorage('abele-sidebar-calendar-view', sidebarMemory)
+      app.workspace.setActiveLeaf(leaf, { focus: true })
+    }
     const todayFile = files.find(file => file.basename === todayKey)
     await app.vault.modify(todayFile, '---\ntype: log\ncreated: ' + todayKey + '\n---\n- [x] Sample entry for [[' + note.path + ']].\n')
     await until(() => selected().querySelector('.abele-calendar__day-log_done'), 'updated source checkbox mark')
@@ -159,6 +187,10 @@ async function check(label: string) {
   const raw = await evalLong(probe(label))
   if (raw.startsWith('Error:')) throw new Error(`${label} logs calendar: ${raw}`)
   const report = JSON.parse(raw)
+  expect(report.footerYearSaved).toBe(true)
+  expect(report.footerMonthSaved).toBe(true)
+  expect(report.sidebarYearSaved).toBe(true)
+  expect(report.sidebarMonthSaved).toBe(true)
   expect(report.today).toBe(true)
   expect(report.dailyLink).toBe(true)
   expect(report.noRepeatedSource).toBe(true)

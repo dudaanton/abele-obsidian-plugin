@@ -1,5 +1,5 @@
 <template>
-  <div class="abele-calendar-year">
+  <div class="abele-calendar-year" :class="{ 'abele-calendar-year_compact': compact }">
     <div v-for="m in months" :key="m.month" class="abele-calendar-year__month">
       <div
         class="abele-calendar-year__month-name"
@@ -12,7 +12,11 @@
         <span v-if="m.total" class="abele-calendar-year__month-total">{{ m.total }}</span>
       </div>
       <div class="abele-calendar-year__grid" @click="onDayClick">
-        <div v-for="name in weekdayNames" :key="name" class="abele-calendar-year__weekday">
+        <div
+          v-for="name in compact ? [] : weekdayNames"
+          :key="name"
+          class="abele-calendar-year__weekday"
+        >
           {{ name }}
         </div>
         <div
@@ -22,7 +26,7 @@
           :class="
             day.startsWith(m.prefix)
               ? [
-                  `abele-calendar-year__day_heat-${heatLevel(counts.get(day) ?? 0, max)}`,
+                  `abele-calendar-year__day_heat-${levelOf(day)}`,
                   {
                     'abele-calendar-year__day_today': day === today,
                     'abele-calendar-year__day_selected': day === selected,
@@ -32,12 +36,12 @@
           "
           :data-day="day.startsWith(m.prefix) ? day : undefined"
           :data-drop-day="day.startsWith(m.prefix) ? day : undefined"
-          :aria-label="day.startsWith(m.prefix) ? `${day}: ${counts.get(day) ?? 0}` : undefined"
+          :aria-label="day.startsWith(m.prefix) ? dayWords(day) : undefined"
           :role="day.startsWith(m.prefix) ? 'gridcell' : undefined"
           :tabindex="day.startsWith(m.prefix) ? -1 : undefined"
           :aria-selected="day.startsWith(m.prefix) ? day === selected : undefined"
         >
-          {{ day.startsWith(m.prefix) ? Number(day.slice(8)) : '' }}
+          {{ day.startsWith(m.prefix) && !compact ? Number(day.slice(8)) : '' }}
         </div>
       </div>
     </div>
@@ -60,6 +64,10 @@ const props = defineProps<{
   items: readonly CalendarItem[]
   today: string
   selected: string | null
+  /** The small calendars' year, in a sidebar or a note's footer: smaller type, closer months. */
+  compact?: boolean
+  /** How each day is tinted, given rather than counted from `items`; `open` is outlined. */
+  levels?: ReadonlyMap<string, 1 | 2 | 3 | 4 | 'open'>
 }>()
 
 const emit = defineEmits<{
@@ -69,6 +77,20 @@ const emit = defineEmits<{
 
 const counts = computed(() => countByDay(props.items, `${props.year}-01-01`, `${props.year}-12-31`))
 const max = computed(() => Math.max(0, ...counts.value.values()))
+const levelOf = (day: string) =>
+  props.levels ? (props.levels.get(day) ?? 0) : heatLevel(counts.value.get(day) ?? 0, max.value)
+const LEVEL_WORDS = {
+  0: 'nothing',
+  1: 'a little',
+  2: 'some',
+  3: 'a lot',
+  4: 'the most',
+  open: 'to do',
+}
+const dayWords = (day: string) =>
+  props.levels
+    ? `${dayjs(day).format('ddd D MMMM')}: ${LEVEL_WORDS[levelOf(day)]}`
+    : `${day}: ${counts.value.get(day) ?? 0}`
 
 const months = computed(() =>
   Array.from({ length: 12 }, (_, month) => {
@@ -186,6 +208,52 @@ $steps: (
   .abele-calendar-year__day_heat-#{$level} {
     background-color: color-mix(in srgb, var(--interactive-accent) #{$alpha * 100%}, transparent);
     color: if($level > 2, var(--text-on-accent), var(--text-normal));
+  }
+}
+
+// A box still to tick, as the month draws an open one: an outline in the quiet colour.
+.abele-calendar-year__day_heat-open {
+  box-shadow: inset 0 0 0 var(--border-width) var(--text-faint);
+}
+
+// Three months across in a sidebar or on a phone, four in a note of middle width, six in a wide
+// one: the year always in whole rows.
+@container (min-width: 26em) {
+  .abele-calendar-year.abele-calendar-year_compact {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+@container (min-width: 36em) {
+  .abele-calendar-year.abele-calendar-year_compact {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+// In a sidebar or a footer the year is read as a shape, as a contribution graph is: each day a
+// small square without its number (the date is in its tooltip), a day with nothing a faint
+// square so the month keeps its form, three or four months across.
+.abele-calendar-year_compact {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--size-4-3) var(--size-4-2);
+
+  .abele-calendar-year__month-name {
+    font-size: var(--font-ui-smaller);
+  }
+  .abele-calendar-year__grid {
+    gap: 2px;
+    margin-inline: 0;
+  }
+  .abele-calendar-year__day {
+    border-radius: 2px;
+  }
+  .abele-calendar-year__day_heat-0 {
+    background-color: var(--background-modifier-hover);
+  }
+  .abele-calendar-year__day_outside {
+    background-color: transparent;
+  }
+  .abele-calendar-year__day_today {
+    outline-offset: 1px;
   }
 }
 

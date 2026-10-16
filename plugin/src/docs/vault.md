@@ -1852,7 +1852,11 @@ Nothing about it is written into notes or synced, a rename carries the place alo
 drops it. The local footer-view memory also keeps expanded list pages, opened task descriptions,
 whether the timeline's overdue fold is open (`calendarOverdue`), whether the note’s logs
 use the month view (`logsCalendar`), and whether its calendar tasks do (`tasksCalendar`, only
-under a note; the timeline sidebar is always a list). Both view choices follow a renamed note and
+under a note; the timeline sidebar is always a list). The same record keeps each calendar's month/year choice
+(`logsYear` and `tasksYear`, true for year, absent for month), even while its list is shown.
+The sidebar stores its own choice in local storage as `abele-sidebar-calendar-view`
+(`month` or `year`); these preferences are device-local, not transferable settings.
+Both view choices follow a renamed note and
 are kept locally rather than in note content, independently of `rememberNotePlaces`. An open overdue fold
 is drawn again before restoring a saved overdue-task anchor. Past days with done tasks show only
 while the completed switch shows done tasks, which is not remembered; an older `calendarPast` or

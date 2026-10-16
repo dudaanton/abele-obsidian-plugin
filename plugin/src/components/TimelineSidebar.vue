@@ -2,9 +2,11 @@
   <SidebarPanel class="abele-timeline-sidebar" @element="container = $event">
     <Calendar
       :selected-date="selectedJournal?.date"
+      :view="calendarView"
       show-tasks
       :journal="journal"
       class="abele-timeline-sidebar__calendar"
+      @view-changed="rememberCalendarView"
       @date-selected="selectDate"
       @date-right-clicked="onDateRightClick"
     />
@@ -33,6 +35,15 @@ import { providePanelActive } from '@/composables/usePanelComputed'
 const props = withDefaults(defineProps<{ active?: boolean }>(), { active: true })
 const active = toRef(props, 'active')
 providePanelActive(active)
+const calendarViewKey = 'abele-sidebar-calendar-view'
+const calendarApp = GlobalStore.getInstance().app
+const calendarView = ref<'month' | 'year'>(
+  calendarApp.loadLocalStorage(calendarViewKey) === 'year' ? 'year' : 'month'
+)
+const rememberCalendarView = (view: 'month' | 'year') => {
+  calendarView.value = view
+  calendarApp.saveLocalStorage(calendarViewKey, view)
+}
 const { selectedJournal } = GlobalStore.getInstance()
 
 const tasks = pausedWhileHidden(active, () => {

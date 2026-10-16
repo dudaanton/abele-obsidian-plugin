@@ -40,6 +40,11 @@ are marked. Click a day to open its daily note, which is created if it does not 
 Right-click a day to create a task planned for it, or due on it.
 Choose whether the week starts on Monday in **Settings → Abele → Tasks**.
 
+Press a small calendar's month title to see the whole year. Press the year to return,
+or a month's name to open that month. Day squares show how much is recorded; an unchecked
+box stays outlined. The sidebar remembers its month/year choice on this device. Each note's
+logs and tasks calendars remember their choices separately, including when switched to a list.
+
 ## Other calendars
 
 Events from Google, iCloud, Outlook or any CalDAV calendar can show beside your tasks. They are

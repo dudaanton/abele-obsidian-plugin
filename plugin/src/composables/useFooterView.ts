@@ -4,6 +4,8 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import type { FooterSection } from '@/helpers/footerFolds'
 import {
   footerViewFrom,
+  calendarYearOf,
+  setCalendarYear,
   isOpen,
   logsCalendarOf,
   pagesOf,
@@ -141,4 +143,19 @@ export function forgetFooterView(path: string): void {
 /** Forgets what was read, so the next reader loads it again. For tests. */
 export function resetFooterView(): void {
   state.value = null
+}
+
+/** Per-note month/year choice, retained while the calendar is hidden. */
+export function useFooterCalendarView(section: 'logs' | 'tasks') {
+  const path = inject(FOOTER_FOLD, null)
+  const view = shallowRef<'month' | 'year'>(
+    path && calendarYearOf(current(), path(), section) ? 'year' : 'month'
+  )
+  return {
+    view,
+    record: (next: 'month' | 'year') => {
+      view.value = next
+      if (path) write(setCalendarYear(current(), path(), section, next === 'year'))
+    },
+  }
 }

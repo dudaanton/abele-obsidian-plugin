@@ -1,10 +1,15 @@
 <template>
   <div class="abele-logs-calendar">
-    <div class="abele-logs-calendar__grid">
+    <div
+      class="abele-logs-calendar__grid"
+      :class="{ 'abele-logs-calendar__grid_year': view === 'year' }"
+    >
       <Calendar
         class="abele-logs-calendar__month"
         :selected-date="selected"
         :marks="marks"
+        :view="view"
+        @view-changed="record"
         @date-selected="selected = $event"
         @month-changed="month = $event"
       />
@@ -45,6 +50,7 @@
 import { computed, ref, shallowRef, watch } from 'vue'
 import dayjs from '@/helpers/dateLibrary'
 import Calendar from './Calendar.vue'
+import { useFooterCalendarView } from '@/composables/useFooterView'
 import LogView from './Log.vue'
 import ObsidianMarkdown from './obsidian/Markdown.vue'
 import { extractDateFromFilename } from '@/helpers/datesHelper'
@@ -53,6 +59,7 @@ import { DATE_FORMAT } from '@/constants/dates'
 import { dayMark, logsByDay, type LogDayMark } from '@/logs/logDays'
 
 const props = defineProps<{ logs: Log[] }>()
+const { view, record } = useFooterCalendarView('logs')
 
 const days = computed(() => logsByDay(props.logs, DATE_FORMAT))
 
@@ -96,10 +103,16 @@ const emptyMonth = computed(
  */
 const loaded = ref(0)
 watch(
-  [month, selected, () => props.logs],
+  [month, selected, view, () => props.logs],
   async () => {
-    const from = month.value.subtract(7, 'day')
-    const to = month.value.add(1, 'month').add(7, 'day')
+    const from =
+      view.value === 'year'
+        ? month.value.startOf('year').subtract(1, 'day')
+        : month.value.subtract(7, 'day')
+    const to =
+      view.value === 'year'
+        ? month.value.startOf('year').add(1, 'year')
+        : month.value.add(1, 'month').add(7, 'day')
     const wanted = props.logs.filter(
       (log) =>
         log.content === undefined &&
@@ -184,5 +197,10 @@ const dayLabel = computed(() => selected.value.format('ddd D MMMM YYYY'))
 
 .abele-logs-calendar__none {
   color: var(--text-muted);
+}
+
+// The year is twelve months across the note: the chosen day goes under it.
+.abele-logs-calendar__grid.abele-logs-calendar__grid_year {
+  grid-template-columns: minmax(0, 1fr);
 }
 </style>

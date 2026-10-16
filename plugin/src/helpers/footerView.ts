@@ -19,7 +19,10 @@ export interface NoteFooterView {
   calendarPast?: true
   /** The overdue fold open, for the same reason: its rows are drawn only while it is. */
   calendarOverdue?: true
-  /** The note's logs shown as a month with marks rather than as a list. */
+  /** Month/year preferences, independent of whether each calendar is visible. */
+  logsYear?: true
+  tasksYear?: true
+  /** The note's logs shown as a calendar with marks rather than as a list. */
   logsCalendar?: true
   /** The note's calendar tasks shown as a month with marks rather than as days in a list. */
   tasksCalendar?: true
@@ -43,7 +46,9 @@ const isEmpty = (v: NoteFooterView) =>
   !v.calendarPast &&
   !v.calendarOverdue &&
   !v.logsCalendar &&
-  !v.tasksCalendar
+  !v.tasksCalendar &&
+  !v.logsYear &&
+  !v.tasksYear
 
 export function logsCalendarOf(state: FooterViewState, path: string): boolean {
   return state[path]?.logsCalendar === true
@@ -187,6 +192,8 @@ export function footerViewFrom(raw: unknown): FooterViewState {
       calendarPast?: unknown
       calendarOverdue?: unknown
       calendarStart?: unknown
+      logsYear?: unknown
+      tasksYear?: unknown
       logsCalendar?: unknown
       tasksCalendar?: unknown
     }
@@ -210,9 +217,32 @@ export function footerViewFrom(raw: unknown): FooterViewState {
     )
       view.calendarPast = true
     if (v.calendarOverdue === true) view.calendarOverdue = true
+    if (v.logsYear === true) view.logsYear = true
+    if (v.tasksYear === true) view.tasksYear = true
     if (v.logsCalendar === true) view.logsCalendar = true
     if (v.tasksCalendar === true) view.tasksCalendar = true
     if (!isEmpty(view)) state[path] = view
   }
   return state
+}
+
+/** Month/year preference, independent of the list/calendar switch. */
+export function calendarYearOf(
+  state: FooterViewState,
+  path: string,
+  section: 'logs' | 'tasks'
+): boolean {
+  return state[path]?.[`${section}Year`] === true
+}
+export function setCalendarYear(
+  state: FooterViewState,
+  path: string,
+  section: 'logs' | 'tasks',
+  year: boolean
+): FooterViewState {
+  if (calendarYearOf(state, path, section) === year) return state
+  const view = { ...state[path] }
+  if (year) view[`${section}Year`] = true
+  else delete view[`${section}Year`]
+  return put(state, path, view)
 }
