@@ -15,6 +15,8 @@
     </Setting>
 
     <template v-if="!fullVaultAccess">
+      <Progress v-if="loadingCounts" label="Counting group members" />
+      <EmptyState v-if="lookupError" :text="lookupError" />
       <!-- What the agent may reach, first: each place by its glyph, a group by how many notes
            it holds and open to show them, removed under the pointer. -->
       <div class="abele-scope-mgr__entries" role="list" aria-label="What the agent can reach">
@@ -31,7 +33,7 @@
             <Icon :icon="entryIcon(entry.type)" />
             <span class="abele-scope-mgr__entry-path">{{ entry.path }}</span>
             <span v-if="entry.type === 'group'" class="abele-scope-mgr__entry-type">
-              {{ groupSize(entry.path) }}
+              {{ groupCounts.get(entry.path) ?? '…' }}
             </span>
             <Icon
               class="abele-scope-mgr__entry-remove"
@@ -44,9 +46,19 @@
             v-if="previewEntry && previewEntry.path === entry.path"
             class="abele-scope-mgr__preview"
           >
-            <div v-for="p in previewPaths" :key="p" class="abele-scope-mgr__preview-item">
+            <Progress v-if="loadingPreview" label="Loading group members" />
+            <div
+              v-for="p in previewPaths.slice(0, previewLimit)"
+              :key="p"
+              class="abele-scope-mgr__preview-item"
+            >
               {{ p }}
             </div>
+            <Button
+              v-if="previewPaths.length > previewLimit"
+              text="Show more"
+              @click="previewLimit += 100"
+            />
           </div>
         </template>
         <EmptyState v-if="!entries.length" text="Nothing yet: the agent sees no files." />
@@ -67,12 +79,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, watch } from 'vue'
 import Search from './obsidian/Search.vue'
 import Setting from './obsidian/Setting.vue'
 import EmptyState from './obsidian/EmptyState.vue'
 import Checkbox from './obsidian/Checkbox.vue'
 import Icon from './obsidian/Icon.vue'
+import Progress from './obsidian/Progress.vue'
+import Button from './obsidian/Button.vue'
 import { ScopeSuggest } from '@/helpers/suggesters/ScopeSuggest'
 import { ScopeResolver } from '@/ai/ScopeResolver'
 import type { ScopeEntry } from '@/ai/ScopeResolver'
@@ -111,7 +125,44 @@ const removeEntry = (entry: ScopeEntry) => {
 const suggestPlace = (input: HTMLInputElement) =>
   new ScopeSuggest(app, input, () => props.entries, addEntry)
 
-const groupSize = (path: string) => ScopeResolver.getInstance().resolveGroupPaths(path).length
+const resolver = ScopeResolver.getInstance()
+const groupCounts = ref(new Map<string, number>())
+const loadingCounts = ref(false)
+const loadingPreview = ref(false)
+const lookupError = ref('')
+const previewPaths = ref<string[]>([])
+const previewLimit = ref(100)
+
+watch(
+  () => [
+    props.fullVaultAccess,
+    props.entries.map((e) => `${e.type}:${e.path}`).join('\n'),
+    resolver.groupVersion.value,
+  ],
+  async (_value, _old, onCleanup) => {
+    const controller = new AbortController()
+    onCleanup(() => controller.abort())
+    groupCounts.value = new Map()
+    lookupError.value = ''
+    const paths = props.fullVaultAccess
+      ? []
+      : props.entries.filter((e) => e.type === 'group').map((e) => e.path)
+    loadingCounts.value = paths.length > 0
+    if (!paths.length) return
+    try {
+      const counts = await resolver.groupCountsAsync(paths, controller.signal)
+      if (!controller.signal.aborted) groupCounts.value = counts
+    } catch (error) {
+      if (!controller.signal.aborted && (error as Error).name !== 'AbortError') {
+        console.debug('[scope] Group counts failed', error)
+        lookupError.value = 'Could not count group members. Reopen Access to try again.'
+      }
+    } finally {
+      if (!controller.signal.aborted) loadingCounts.value = false
+    }
+  },
+  { immediate: true }
+)
 
 const entryIcon = (type: string) => {
   switch (type) {
@@ -126,10 +177,31 @@ const entryIcon = (type: string) => {
   }
 }
 
-const previewPaths = computed(() => {
-  if (!previewEntry.value || previewEntry.value.type !== 'group') return []
-  return ScopeResolver.getInstance().resolveGroupPaths(previewEntry.value.path)
-})
+watch(
+  () => [previewEntry.value?.path, props.fullVaultAccess, resolver.groupVersion.value],
+  async (_value, _old, onCleanup) => {
+    const controller = new AbortController()
+    onCleanup(() => controller.abort())
+    previewPaths.value = []
+    previewLimit.value = 100
+    loadingPreview.value = !!previewEntry.value && !props.fullVaultAccess
+    if (!loadingPreview.value) return
+    try {
+      const paths = await resolver.resolveGroupPathsAsync(
+        previewEntry.value.path,
+        controller.signal
+      )
+      if (!controller.signal.aborted) previewPaths.value = paths
+    } catch (error) {
+      if (!controller.signal.aborted && (error as Error).name !== 'AbortError') {
+        console.debug('[scope] Group preview failed', error)
+        lookupError.value = 'Could not load group members. Close and reopen the group to try again.'
+      }
+    } finally {
+      if (!controller.signal.aborted) loadingPreview.value = false
+    }
+  }
+)
 
 const togglePreview = (entry: ScopeEntry) => {
   if (entry.type !== 'group') {

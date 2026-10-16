@@ -180,7 +180,9 @@ export function getToolRegistry(tools: AgentTool[] = buildAgentTools()): ToolInf
       category: isNodeTool(t.name, own)
         ? 'Nodes'
         : own || (t.name.startsWith('script_') ? 'Scripts' : 'Other'),
-      description: t.description,
+      get description() {
+        return t.description
+      },
     })
   }
 

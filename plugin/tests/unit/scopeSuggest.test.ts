@@ -58,11 +58,29 @@ function field() {
 const listed = (choices: { entry: ScopeEntry; kind: string }[]) =>
   choices.map((c) => [c.entry.type, c.entry.path, c.kind])
 
+it('does not build a cold group index on the input event', async () => {
+  vi.restoreAllMocks()
+  const app = useVault(Array.from({ length: 20000 }, (_, i) => ({ path: `Sample ${i}.md` })))
+  const input = document.createElement('input')
+  const suggest = new ScopeSuggest(
+    { ...app, workspace: { ...app.workspace, getActiveFile: () => null } } as unknown as App,
+    input,
+    () => [],
+    () => {}
+  )
+  app.resetStats()
+  const result = suggest.getSuggestions('Sample')
+  const reads = app.stats.getFileCache
+  await result
+  suggest.close()
+  expect(reads).toBe(0)
+})
+
 beforeEach(() => {
   open = tree[4] as TFile
   taken = []
   chosen = []
-  vi.spyOn(ScopeResolver.getInstance(), 'groupSizes').mockReturnValue(
+  vi.spyOn(ScopeResolver.getInstance(), 'groupSizesAsync').mockResolvedValue(
     new Map([
       ['Samples/Sample group.md', 3],
       ['Samples/Single group.md', 1],
@@ -75,8 +93,8 @@ afterEach(() => {
 })
 
 describe('what the access field offers', () => {
-  it('puts the open note first, then folders, groups by size and files, with no chat logs', () => {
-    expect(listed(field().suggest.getSuggestions(''))).toEqual([
+  it('puts the open note first, then folders, groups by size and files, with no chat logs', async () => {
+    expect(listed(await field().suggest.getSuggestions(''))).toEqual([
       ['file', 'Samples/open-note.md', 'open note'],
       ['folder', 'Samples', 'folder'],
       ['folder', 'Samples/Inner', 'folder'],
@@ -87,32 +105,32 @@ describe('what the access field offers', () => {
     ])
   })
 
-  it('narrows to what the text matches, anywhere in the path, and without the open note', () => {
-    expect(listed(field().suggest.getSuggestions('inner'))).toEqual([
+  it('narrows to what the text matches, anywhere in the path, and without the open note', async () => {
+    expect(listed(await field().suggest.getSuggestions('inner'))).toEqual([
       ['folder', 'Samples/Inner', 'folder'],
     ])
-    expect(listed(field().suggest.getSuggestions('ALPHA'))).toEqual([
+    expect(listed(await field().suggest.getSuggestions('ALPHA'))).toEqual([
       ['file', 'Samples/alpha.md', ''],
     ])
   })
 
-  it('offers a glob as a pattern first, as typed', () => {
-    const choices = field().suggest.getSuggestions(' Samples/**/*.md ')
+  it('offers a glob as a pattern first, as typed', async () => {
+    const choices = await field().suggest.getSuggestions(' Samples/**/*.md ')
     expect(listed(choices)[0]).toEqual(['pattern', 'Samples/**/*.md', 'pattern'])
-    expect(listed(field().suggest.getSuggestions('alpha?'))[0]).toEqual([
+    expect(listed(await field().suggest.getSuggestions('alpha?'))[0]).toEqual([
       'pattern',
       'alpha?',
       'pattern',
     ])
   })
 
-  it('leaves out what is in reach already', () => {
+  it('leaves out what is in reach already', async () => {
     taken = [
       { type: 'file', path: 'Samples/open-note.md' },
       { type: 'folder', path: 'Samples' },
       { type: 'group', path: 'Samples/Sample group.md' },
     ]
-    expect(listed(field().suggest.getSuggestions(''))).toEqual([
+    expect(listed(await field().suggest.getSuggestions(''))).toEqual([
       ['folder', 'Samples/Inner', 'folder'],
       ['group', 'Samples/Single group.md', 'group · 1 note'],
       ['file', 'Samples/alpha.md', ''],
@@ -180,31 +198,31 @@ describe('on a large vault', () => {
   }
   beforeEach(() => vi.restoreAllMocks())
 
-  it('learns the group sizes once for all the letters typed', () => {
+  it('learns the group sizes once for all the letters typed', async () => {
     const { vault, suggest } = big()
-    for (const q of ['s', 'sa', 'sam', 'samp', 'sample']) suggest.getSuggestions(q)
+    for (const q of ['s', 'sa', 'sam', 'samp', 'sample']) await suggest.getSuggestions(q)
     const once = 2002
     expect(vault.stats.getFileCache).toBeLessThanOrEqual(once)
     expect(vault.stats.getFirstLinkpathDest).toBeLessThanOrEqual(once)
   })
 
-  it('learns them again once a note changes the groups it is in', () => {
+  it('learns them again once a note changes the groups it is in', async () => {
     const { vault, suggest } = big()
-    const sizeOf = () =>
-      suggest.getSuggestions('hub').find((c) => c.entry.path === 'Hub/Sample hub.md')?.kind
-    expect(sizeOf()).toBe('group · 1000 notes')
+    const sizeOf = async () =>
+      (await suggest.getSuggestions('hub')).find((c) => c.entry.path === 'Hub/Sample hub.md')?.kind
+    expect(await sizeOf()).toBe('group · 1000 notes')
     vault.setFrontmatter('Area 0/Sample note 0.md', { groups: ['[[Sample hub]]'] })
     vault.emit(
       'metadataCache',
       'changed',
       vault.vault.getAbstractFileByPath('Area 0/Sample note 0.md')
     )
-    expect(sizeOf()).toBe('group · 1001 notes')
+    expect(await sizeOf()).toBe('group · 1001 notes')
   })
 
-  it('reads no note metadata while folders alone fill the list', () => {
+  it('reads no note metadata while folders alone fill the list', async () => {
     const { vault, suggest } = big()
-    expect(suggest.getSuggestions('')).toHaveLength(100)
+    expect(await suggest.getSuggestions('')).toHaveLength(100)
     expect(vault.stats.getFileCache).toBe(0)
   })
 })

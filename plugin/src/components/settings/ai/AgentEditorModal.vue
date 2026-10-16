@@ -229,6 +229,7 @@
             </Setting>
             <ToolModesEditor
               :tool-modes="agent.toolModes"
+              collapsed
               hide-show-all
               :by-section="toolDiscoveryMode(agent) === 'sections'"
               :section-opening="agent.toolSectionOpening ?? {}"

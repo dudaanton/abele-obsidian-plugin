@@ -355,10 +355,15 @@ describe('giving an agent a server', () => {
     expect(row.find('.checkbox-container').classes()).not.toContain('is-enabled')
     await row.find('.checkbox-container').trigger('click')
 
-    expect(view.emitted('update')?.sort()).toEqual([
-      [mcpPermissionKey('a', 'fetch_page'), 'ask'],
-      [mcpPermissionKey('a', 'lookup'), 'ask'],
+    expect(view.emitted('updateMany')).toEqual([
+      [
+        {
+          [mcpPermissionKey('a', 'fetch_page')]: 'ask',
+          [mcpPermissionKey('a', 'lookup')]: 'ask',
+        },
+      ],
     ])
+    expect(view.emitted('update')).toBeUndefined()
   })
 
   it('takes them all away again', async () => {
@@ -373,10 +378,15 @@ describe('giving an agent a server', () => {
     expect(row.find('.checkbox-container').classes()).toContain('is-enabled')
     await row.find('.checkbox-container').trigger('click')
 
-    expect(view.emitted('update')?.sort()).toEqual([
-      [mcpPermissionKey('a', 'fetch_page'), 'off'],
-      [mcpPermissionKey('a', 'lookup'), 'off'],
+    expect(view.emitted('updateMany')).toEqual([
+      [
+        {
+          [mcpPermissionKey('a', 'fetch_page')]: 'off',
+          [mcpPermissionKey('a', 'lookup')]: 'off',
+        },
+      ],
     ])
+    expect(view.emitted('update')).toBeUndefined()
   })
 
   it('shows the server as a group of its own', () => {

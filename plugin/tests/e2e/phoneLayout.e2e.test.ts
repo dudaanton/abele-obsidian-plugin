@@ -1588,6 +1588,8 @@ const probeScript = `(async () => {
           if (!access) throw new Error('no Access tab')
           access.click()
           await until(() => modal.querySelector('.abele-tool-modes__bulk'), 3000)
+          await screen('agent editor access collapsed', modal, modal.querySelector('.abele-modal__body'))
+          for (const heading of modal.querySelectorAll('.abele-tool-modes > .abele-disclosure > .abele-fold-heading[aria-expanded="false"]')) heading.click()
           await wait(300)
           await screen('agent editor access', modal, modal.querySelector('.abele-modal__body'))
           const cut = []

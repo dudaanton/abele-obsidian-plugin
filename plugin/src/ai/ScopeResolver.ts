@@ -29,6 +29,9 @@ export class ScopeResolver {
    * field; one pass on a large vault is a frozen window, so it is not paid again for nothing.
    */
   private _groupIndex: Map<string, string[]> | null = null
+  /** UI readers restart after metadata changes; permission resolution remains synchronous. */
+  public readonly groupVersion = ref(0)
+  private groupCounts = new Map<string, number>()
   private externalInventory = ''
   private watchedApp: App | null = null
   private vaultEvents: EventRef[] = []
@@ -294,6 +297,8 @@ export class ScopeResolver {
   invalidate(): void {
     this._cache = null
     this._groupIndex = null
+    this.groupCounts.clear()
+    this.groupVersion.value++
     this.ceiling?.invalidate()
   }
 
@@ -333,13 +338,22 @@ export class ScopeResolver {
   }
 
   private buildGroupIndex(): Map<string, string[]> {
+    const steps = this.buildGroupIndexSteps()
+    let step = steps.next()
+    while (!step.done) step = steps.next()
+    return step.value
+  }
+
+  private *buildGroupIndexSteps(): Generator<void, Map<string, string[]>> {
     const { app } = GlobalStore.getInstance()
     const index = new Map<string, string[]>()
     for (const file of app.vault.getFiles()) {
+      yield
       const groups = app.metadataCache.getFileCache(file)?.frontmatter?.groups
       if (!Array.isArray(groups)) continue
 
       for (const group of groups) {
+        yield
         if (!isWikilink(group)) continue
 
         // Keep the link's actual path, without an alias or subpath. The generic note-path
@@ -370,6 +384,16 @@ export class ScopeResolver {
    * via `groups` property, recursively down the tree).
    */
   private resolveGroup(groupPath: string, result: Set<string>, index: Map<string, string[]>): void {
+    for (const _step of this.resolveGroupSteps(groupPath, result, index)) {
+      /* drain */
+    }
+  }
+
+  private *resolveGroupSteps(
+    groupPath: string,
+    result: Set<string>,
+    index: Map<string, string[]>
+  ): Generator<void> {
     const { app } = GlobalStore.getInstance()
     const visited = new Set<string>()
     const pending = [groupPath]
@@ -377,6 +401,7 @@ export class ScopeResolver {
     // Iterative rather than recursive: a group tree can be thousands of nodes deep-ish and
     // wide, and this runs synchronously on the agent's tool-call path.
     while (pending.length > 0) {
+      yield
       const current = pending.pop()
       if (visited.has(current)) continue
       visited.add(current)
@@ -388,6 +413,7 @@ export class ScopeResolver {
 
       // Every member is itself a potential group for further notes.
       for (const member of index.get(current) ?? []) {
+        yield
         if (!visited.has(member)) pending.push(member)
       }
     }
@@ -399,14 +425,86 @@ export class ScopeResolver {
     return new Map([...this.groupIndex()].map(([path, members]) => [path, members.length]))
   }
 
+  async groupSizesAsync(signal: AbortSignal): Promise<Map<string, number>> {
+    this.watchVault()
+    const version = this.groupVersion.value
+    const steps = function* (self: ScopeResolver): Generator<void, Map<string, number>> {
+      const index = self._groupIndex ?? (yield* self.buildGroupIndexSteps())
+      self._groupIndex = index
+      const sizes = new Map<string, number>()
+      for (const [path, members] of index) {
+        yield
+        sizes.set(path, members.length)
+      }
+      return sizes
+    }
+    return this.drainForDisplay(steps(this), signal, version)
+  }
+
   resolveGroupPaths(groupPath: string): string[] {
     const result = new Set<string>()
     this.resolveGroup(groupPath, result, this.groupIndex())
     return [...result].sort()
   }
 
+  /** Counts are presentation only. Yield to input between bounded batches, including a cold index. */
+  async groupCountsAsync(paths: string[], signal: AbortSignal): Promise<Map<string, number>> {
+    this.watchVault()
+    const version = this.groupVersion.value
+    const steps = function* (self: ScopeResolver): Generator<void, Map<string, number>> {
+      const index = self._groupIndex ?? (yield* self.buildGroupIndexSteps())
+      self._groupIndex = index
+      const counts = new Map<string, number>()
+      for (const path of paths) {
+        let count = self.groupCounts.get(path)
+        if (count === undefined) {
+          const result = new Set<string>()
+          yield* self.resolveGroupSteps(path, result, index)
+          count = result.size
+          self.groupCounts.set(path, count)
+        }
+        counts.set(path, count)
+      }
+      return counts
+    }
+    return this.drainForDisplay(steps(this), signal, version)
+  }
+
+  async resolveGroupPathsAsync(path: string, signal: AbortSignal): Promise<string[]> {
+    this.watchVault()
+    const version = this.groupVersion.value
+    const steps = function* (self: ScopeResolver): Generator<void, string[]> {
+      const index = self._groupIndex ?? (yield* self.buildGroupIndexSteps())
+      self._groupIndex = index
+      const result = new Set<string>()
+      yield* self.resolveGroupSteps(path, result, index)
+      return [...result].sort()
+    }
+    return this.drainForDisplay(steps(this), signal, version)
+  }
+
+  private async drainForDisplay<T>(
+    steps: Generator<void, T>,
+    signal: AbortSignal,
+    version: number
+  ): Promise<T> {
+    for (;;) {
+      // A task boundary, not a microtask: the window can paint and process input.
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
+      if (signal.aborted || version !== this.groupVersion.value) {
+        throw new DOMException('Group lookup cancelled', 'AbortError')
+      }
+      const until = performance.now() + 4
+      for (let work = 0; work < 5000 && performance.now() < until; work++) {
+        const step = steps.next()
+        if (step.done) return step.value
+      }
+    }
+  }
+
   destroy(): void {
     this.stopWatching()
+    this.invalidate()
     this.clear()
     if (ScopeResolver.instance === this) ScopeResolver.instance = null
   }

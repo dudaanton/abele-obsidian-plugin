@@ -50,7 +50,7 @@ export abstract class TextInputSuggest<T> extends AbstractInputSuggest<T> {
     super.close()
   }
 
-  abstract getSuggestions(inputStr: string): T[]
+  abstract getSuggestions(inputStr: string): T[] | Promise<T[]>
   abstract renderSuggestion(item: T, el: HTMLElement): void
   abstract selectSuggestion(item: T): void
 }

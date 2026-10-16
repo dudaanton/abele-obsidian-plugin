@@ -201,6 +201,10 @@ describe("in an agent's editor", () => {
     })
     const tab = view.findAll('.abele-tabs__tab').find((t) => t.text() === 'Access')!
     await tab.trigger('click')
+    await view
+      .findAll('.abele-fold-heading')
+      .find((h) => h.text().startsWith('Web'))!
+      .trigger('click')
 
     save.mockClear()
     await press(sectionRow(view, 'Web'), 'Auto')
@@ -226,11 +230,11 @@ describe('on a large vault', () => {
     const vault = useVault(specs)
     vault.resetStats()
     const { view } = mountHost()
-    // What `skill` says of itself lists the vault's skills: one pass over its notes.
-    expect(vault.stats.getMarkdownFiles).toBe(1)
+    // Permission controls never need the dynamic description that scans for skills.
+    expect(vault.stats.getMarkdownFiles).toBe(0)
     await press(rowNamed(view, 'All tools'), 'Ask')
     await view.findAll('select.dropdown-stub')[0].setValue('auto')
-    expect(vault.stats.getMarkdownFiles).toBe(1)
+    expect(vault.stats.getMarkdownFiles).toBe(0)
     view.unmount()
   })
 })

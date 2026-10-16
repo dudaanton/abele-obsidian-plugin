@@ -29,6 +29,7 @@ const GLOB = /[*?]/
  * text has a `*` or `?` in it, then folders, group notes with their size, and files.
  */
 export class ScopeSuggest extends TextInputSuggest<ScopeChoice> {
+  private lookup: AbortController | null = null
   constructor(
     app: App,
     inputEl: HTMLInputElement,
@@ -38,7 +39,10 @@ export class ScopeSuggest extends TextInputSuggest<ScopeChoice> {
     super(app, inputEl)
   }
 
-  getSuggestions(query: string): ScopeChoice[] {
+  async getSuggestions(query: string): Promise<ScopeChoice[]> {
+    this.lookup?.abort()
+    const lookup = new AbortController()
+    this.lookup = lookup
     const q = query.trim().toLowerCase()
     const key = (e: ScopeEntry) => `${e.type}:${e.path}`
     const taken = new Set(this.taken().map(key))
@@ -63,7 +67,16 @@ export class ScopeSuggest extends TextInputSuggest<ScopeChoice> {
         push({ entry: { type: 'folder', path: f.path }, kind: 'folder' })
     }
     if (full()) return out
-    for (const [path, size] of ScopeResolver.getInstance().groupSizes())
+    let sizes: Map<string, number>
+    try {
+      sizes = await ScopeResolver.getInstance().groupSizesAsync(lookup.signal)
+    } catch (error) {
+      if ((error as Error).name !== 'AbortError')
+        console.debug('[scope] Group suggestions failed', error)
+      return []
+    }
+    if (lookup.signal.aborted) return []
+    for (const [path, size] of sizes)
       if (match(path))
         push({
           entry: { type: 'group', path },
@@ -90,6 +103,12 @@ export class ScopeSuggest extends TextInputSuggest<ScopeChoice> {
       title: choice.entry.path,
       aux: choice.kind ? [{ flair: choice.kind, cls: 'abele-scope-suggest__kind' }] : [],
     })
+  }
+
+  close(): void {
+    this.lookup?.abort()
+    this.lookup = null
+    super.close()
   }
 
   /**

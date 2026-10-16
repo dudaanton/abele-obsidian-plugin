@@ -23,11 +23,22 @@
       />
     </Setting>
 
-    <template v-for="group in visibleGroups" :key="group.category">
+    <Disclosure
+      v-for="group in visibleGroups"
+      :key="group.category"
+      :label="sectionLabel(group.category)"
+      :count="group.tools.length"
+      class="abele-tool-modes__group"
+      :class="{ 'abele-tool-modes__group_flat': !collapsed }"
+      :model-value="expanded[group.category] ?? !collapsed"
+      @update:model-value="expanded[group.category] = $event"
+    >
       <!-- A section's head: its name and, offered by section, whether it stands open from the
            first question or opens when the agent asks; under it what it is for, editable. -->
       <div class="abele-tool-modes__head">
-        <h4 class="abele-tool-modes__heading">{{ sectionLabel(group.category) }}</h4>
+        <h4 v-if="!collapsed" class="abele-tool-modes__heading">
+          {{ sectionLabel(group.category) }}
+        </h4>
         <span
           v-if="bySection && !descriptionsOnly && ALWAYS_LOADED_GROUPS.has(group.category)"
           class="abele-tool-modes__opening-fixed"
@@ -113,7 +124,7 @@
             @click="openAction = openAction === action.id ? null : action.id"
           />
           <div v-if="openAction === action.id" class="abele-tool-modes__members">
-            <Setting v-for="tool in action.tools" :key="tool.name">
+            <Setting v-for="tool in action.tools" :key="tool.name" :name="tool.name">
               <template #name
                 ><code>{{ tool.name }}</code></template
               >
@@ -194,13 +205,14 @@
           </div>
         </div>
       </div>
-    </template>
+    </Disclosure>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import Setting from './obsidian/Setting.vue'
+import Disclosure from './obsidian/Disclosure.vue'
 import Checkbox from './obsidian/Checkbox.vue'
 import Dropdown from './obsidian/Dropdown.vue'
 import Input from './obsidian/Input.vue'
@@ -220,7 +232,7 @@ import {
   sectionDefaultDescription,
   sectionIdOfGroup,
   sectionLabel,
-  sectionOpening,
+  sectionOpening as openingOfSection,
   sectionSummary,
   type SectionOpening,
 } from '@/ai/toolSections'
@@ -228,6 +240,8 @@ import {
 const props = withDefaults(
   defineProps<{
     toolModes: Record<string, ToolMode>
+    /** Defer mounting group controls until their heading is opened. */
+    collapsed?: boolean
     showDescriptions?: boolean
     toolDescriptions?: Record<string, string>
     hideShowAll?: boolean
@@ -239,6 +253,7 @@ const props = withDefaults(
     sectionDescriptions?: Record<string, string>
   }>(),
   {
+    collapsed: false,
     bySection: false,
     sectionOpening: () => ({}),
     sectionDescriptions: () => ({}),
@@ -263,7 +278,8 @@ const OPENING_OPTIONS = [
   { value: 'on-request', display: 'On request' },
 ]
 const opening = (group: string): SectionOpening =>
-  sectionOpening(group, { toolSectionOpening: props.sectionOpening })
+  openingOfSection(group, { toolSectionOpening: props.sectionOpening })
+const expanded = ref<Record<string, boolean>>({})
 const editingSection = ref<string | null>(null)
 const sectionText = (group: string) =>
   props.sectionDescriptions[sectionIdOfGroup(group)] || sectionDefaultDescription(group)
@@ -291,8 +307,8 @@ const mixedSaid = (tools: ToolEntry[]): string | undefined => {
 }
 const openAction = ref<string | null>(null)
 /**
- * Every tool once per screen: making them all reads the whole vault (the skills, for what
- * `skill` says of itself), so the lists below share one copy rather than making their own.
+ * Share the catalogue without evaluating dynamic descriptions. Listing permission controls
+ * must not scan the vault for skills; descriptions are read only by their editor.
  */
 const registry = computed(() => getToolRegistry())
 /** The node section's tools by action, in the order a person thinks of them: read, edit, worktrees. */
@@ -365,7 +381,7 @@ const serverInUse = (group: ToolGroup) =>
 /** On gives every tool at Ask — never Auto by one tap; off takes them all away. */
 const toggleServer = (group: ToolGroup) => {
   const mode: ToolMode = serverInUse(group) ? 'off' : 'ask'
-  for (const tool of group.tools) setMode(tool.permissionKey ?? tool.name, mode)
+  setAll(group.tools, mode)
 }
 
 /** The tools of a group a mode applies to: core tools are always on and have none. */
@@ -414,6 +430,14 @@ const visibleGroups = computed<ToolGroup[]>(() => {
 <style lang="scss">
 .abele-tool-modes .setting-item {
   min-height: 2.4em;
+}
+
+.abele-tool-modes__group {
+  margin-block: var(--size-4-3);
+}
+
+.abele-tool-modes__group_flat > .abele-disclosure__control {
+  display: none;
 }
 
 // A section's head: the name, and when it is open at the row's end, one hairline above it.

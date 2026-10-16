@@ -88,16 +88,22 @@ describe('scope entries', () => {
   })
 
   it("opens a group's row to show its members on a click and folds it on the next", async () => {
-    vi.spyOn(ScopeResolver.getInstance(), 'resolveGroupPaths').mockImplementation((path) =>
-      path === 'Samples/Sample group.md' ? ['Samples/member-a.md', 'Samples/member-b.md'] : []
+    vi.spyOn(ScopeResolver.getInstance(), 'groupCountsAsync').mockResolvedValue(
+      new Map([['Samples/Sample group.md', 2]])
+    )
+    vi.spyOn(ScopeResolver.getInstance(), 'resolveGroupPathsAsync').mockImplementation(
+      async (path) =>
+        path === 'Samples/Sample group.md' ? ['Samples/member-a.md', 'Samples/member-b.md'] : []
     )
     const view = mount(ScopeEditor, { props: { entries, fullVaultAccess: false } })
+    await vi.waitFor(() => expect(view.get('.abele-scope-mgr__entry-type').text()).toBe('2'))
     const group = view.findAll('[role="listitem"]')[1]
     expect(group.attributes('aria-expanded')).toBe('false')
     expect(group.get('.abele-scope-mgr__entry-type').text()).toBe('2')
     expect(view.find('.abele-scope-mgr__preview').exists()).toBe(false)
 
     await group.trigger('click')
+    await vi.waitFor(() => expect(view.findAll('.abele-scope-mgr__preview-item')).toHaveLength(2))
     expect(view.findAll('[role="listitem"]')[1].attributes('aria-expanded')).toBe('true')
     expect(view.findAll('.abele-scope-mgr__preview-item').map((p) => p.text())).toEqual([
       'Samples/member-a.md',
@@ -131,6 +137,7 @@ describe('group rows on a large vault', () => {
     }))
     vault.resetStats()
     const view = mount(ScopeEditor, { props: { entries: groups, fullVaultAccess: false } })
+    await vi.waitFor(() => expect(view.find('progress').exists()).toBe(false))
     expect(view.findAll('.abele-scope-mgr__entry-type').map((n) => n.text())).toEqual([
       '501',
       '501',
