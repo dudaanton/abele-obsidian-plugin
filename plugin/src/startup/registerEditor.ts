@@ -21,9 +21,11 @@ import { registerCheckboxes } from '@/checkboxes/register'
 import { registerColumns } from '@/columns/register'
 import { installUntrustedGuard } from '@/markdown/renderUntrusted'
 import type { Plugin } from 'obsidian'
+import { registerCodeIndentGuides } from '@/codeIndent/register'
 
 /** Startup section; called at its original lifecycle position. */
 export function registerEditor(plugin: Plugin) {
+  registerCodeIndentGuides(plugin)
   installUntrustedGuard()
   registerCheckboxes(plugin)
   registerColumns(plugin)

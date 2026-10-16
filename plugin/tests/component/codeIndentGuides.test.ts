@@ -30,6 +30,14 @@ describe('indent guides', () => {
 })
 
 describe('drawReadingGuides', () => {
+  it('guides a single indented line and aligns tabs to the vault size', () => {
+    const code = document.createElement('code')
+    code.textContent = '\tvalue\n'
+    drawReadingGuides(code, 2)
+    expect(code.querySelector('.abele-code-line')).not.toBeNull()
+    expect(code.querySelector<HTMLElement>('.abele-code-line').style.tabSize).toBe('2')
+    expect(code.textContent).toBe('\tvalue\n')
+  })
   it('puts each line in its own span, keeping a token that spans lines and the text', () => {
     const code = document.createElement('code')
     code.innerHTML = 'a {\n  <span class="token comment">/* one\n  two */</span>\n}\n'

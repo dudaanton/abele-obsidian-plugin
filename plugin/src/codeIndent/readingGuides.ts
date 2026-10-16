@@ -11,7 +11,6 @@ export function drawReadingGuides(code: HTMLElement, tabSize: number): void {
   if (code.firstElementChild?.classList.contains('abele-code-line')) return
   const text = code.textContent ?? ''
   const lines = text.replace(/\n$/, '').split('\n')
-  if (lines.length < 2) return
   const depths = guideDepths(lines, tabSize)
   if (!depths.some(Boolean)) return
   const rows = splitLines(code)
@@ -20,6 +19,7 @@ export function drawReadingGuides(code: HTMLElement, tabSize: number): void {
   code.replaceChildren(
     ...rows.map((row, i) => {
       row.className = 'abele-code-line'
+      row.style.tabSize = String(tabSize)
       if (depths[i]) row.style.setProperty('--abele-guide-depth', String(depths[i]))
       return row
     })

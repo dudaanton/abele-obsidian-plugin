@@ -37,13 +37,18 @@ export function guideDepths(lines: readonly string[], tabSize: number): number[]
     return width === null ? 0 : Math.floor(width / step)
   })
   const depths = own.map((d) => d ?? 0)
+  let before = 0
   for (let i = 0; i < lines.length; i++) {
-    if (own[i] !== undefined) continue
-    let before = i - 1
-    while (before >= 0 && own[before] === undefined) before--
-    let after = i + 1
+    if (own[i] !== undefined) {
+      before = own[i]
+      continue
+    }
+    let after = i
     while (after < lines.length && own[after] === undefined) after++
-    depths[i] = before < 0 || after >= lines.length ? 0 : Math.min(own[before], own[after])
+    const depth = after >= lines.length ? 0 : Math.min(before, own[after])
+    // Fill the whole blank run once, rather than searching both ends for every blank.
+    for (; i < after; i++) depths[i] = depth
+    i--
   }
   return depths
 }
