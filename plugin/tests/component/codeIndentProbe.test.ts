@@ -1,6 +1,26 @@
 import { expect, it, vi } from 'vitest'
 import type { EditorView } from '@codemirror/view'
-import { codeGuideClickTarget, withCodeGuideSettings } from '../e2e/helpers/codeGuideProbe'
+import {
+  codeGuideClickTarget,
+  codeGuideContentBounds,
+  withCodeGuideSettings,
+} from '../e2e/helpers/codeGuideProbe'
+
+it('uses the block content box regardless of the width of the closing text row', () => {
+  const pre = document.createElement('pre')
+  pre.style.cssText = 'padding: 0 12px; border: 2px solid'
+  const row = document.createElement('span')
+  row.textContent = '}'
+  pre.append(row)
+  vi.spyOn(pre, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 0, 400, 200))
+  vi.spyOn(row, 'getBoundingClientRect').mockReturnValue(new DOMRect(114, 100, 8, 20))
+  document.body.append(pre)
+  try {
+    expect(codeGuideContentBounds(pre)).toEqual({ left: 114, right: 486 })
+  } finally {
+    pre.remove()
+  }
+})
 
 it('restores each probe setting after success or failure, including an unset default', async () => {
   const config: Record<string, unknown> = { showIndentGuide: false }

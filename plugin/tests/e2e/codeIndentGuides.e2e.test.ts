@@ -6,7 +6,11 @@ import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 import { withNativeInput } from './helpers/nativeInput'
 import { withEmulatedPhone } from './helpers/emulatedPhone'
-import { codeGuideClickTarget, withCodeGuideSettings } from './helpers/codeGuideProbe'
+import {
+  codeGuideClickTarget,
+  codeGuideContentBounds,
+  withCodeGuideSettings,
+} from './helpers/codeGuideProbe'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -130,6 +134,8 @@ describe.skipIf(!available)('code indentation guides', () => {
       const geometry = []
       const measureGeometry = () => {
         const rows = []
+        const contentBounds = ${codeGuideContentBounds.toString()}
+        let blockBounds
         const add = (line, text, row, box) => {
           if (!box || !text.trim()) return
           const win = row.ownerDocument.defaultView
@@ -143,6 +149,7 @@ describe.skipIf(!available)('code indentation guides', () => {
         }
         if (${JSON.stringify(mode)} === 'preview') {
           const code = leaf.view.containerEl.querySelector('pre > code')
+          blockBounds = contentBounds(code.parentElement)
           const nodes = [], walker = code.ownerDocument.createTreeWalker(code, NodeFilter.SHOW_TEXT)
           let node, offset = 0
           while ((node = walker.nextNode())) { nodes.push({ node, from: offset }); offset += node.textContent.length }
@@ -158,13 +165,15 @@ describe.skipIf(!available)('code indentation guides', () => {
           })
         } else {
           const cm = leaf.view.editor.cm
+          const block = cm.contentDOM.querySelector('.cm-line.HyperMD-codeblock-bg:not(.abele-code-guides):not(.HyperMD-codeblock-begin):not(.HyperMD-codeblock-end)')
+          blockBounds = contentBounds(block ?? cm.contentDOM)
           for (const row of cm.contentDOM.querySelectorAll('.cm-line.HyperMD-codeblock, .cm-line.HyperMD-codeblock-bg')) {
             if (row.matches('.HyperMD-codeblock-begin, .HyperMD-codeblock-end')) continue
             const line = cm.state.doc.lineAt(cm.posAtDOM(row))
             if (line.text.trim()) add(line.number, line.text, row, cm.coordsAtPos(line.from + line.text.search(/\\S/)))
           }
         }
-        return { rows, left: Math.min(...rows.filter((r) => r.indent === 0).map((r) => r.x)), right: Math.min(...rows.map((r) => r.right)) }
+        return { rows, ...blockBounds }
       }
       const wrappedReadingStarts = (root) => {
         const code = root.querySelector('pre > code')
@@ -463,12 +472,14 @@ describe.skipIf(!available)('code indentation guides', () => {
         expect(Math.abs(row.x - native!.x), JSON.stringify(result.geometry)).toBeLessThanOrEqual(
           0.5
         )
-        for (const x of row.guides) {
-          expect(x, JSON.stringify(result.geometry)).toBeGreaterThanOrEqual(off.left - 0.5)
-          expect(x, JSON.stringify(result.geometry)).toBeLessThan(off.right)
-          expect(x, JSON.stringify(result.geometry)).toBeLessThan(row.x)
-        }
       }
+      for (const state of result.geometry)
+        for (const row of state.rows)
+          for (const x of row.guides) {
+            expect(x, JSON.stringify(result.geometry)).toBeGreaterThanOrEqual(state.left - 0.5)
+            expect(x, JSON.stringify(result.geometry)).toBeLessThan(state.right)
+            expect(x, JSON.stringify(result.geometry)).toBeLessThan(row.x)
+          }
     })
 
   it('reading mode preserves selectable code and follows the guide setting', () =>

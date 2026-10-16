@@ -1,5 +1,17 @@
 import type { EditorView } from '@codemirror/view'
 
+/** Block geometry is independent of the widths of its individual text fragments. */
+export function codeGuideContentBounds(block: HTMLElement) {
+  const box = block.getBoundingClientRect()
+  const style = block.ownerDocument.defaultView.getComputedStyle(block)
+  return {
+    left:
+      box.left + (parseFloat(style.borderLeftWidth) || 0) + (parseFloat(style.paddingLeft) || 0),
+    right:
+      box.right - (parseFloat(style.borderRightWidth) || 0) - (parseFloat(style.paddingRight) || 0),
+  }
+}
+
 /** Standalone so the same function can be evaluated inside the app window. */
 export async function withCodeGuideSettings<T>(
   vault: {
