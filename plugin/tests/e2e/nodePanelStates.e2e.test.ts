@@ -23,14 +23,18 @@ const probe = (device: string) =>
     const until = async (fn) => { for (let i = 0; i < 100; i++) { if (fn()) return true; await wait(50) } return false }
     ${NODE_PANEL_FIXTURE}
     const seen = {}
+    // One panel throughout, its node's answers changed under it and read again: a phone's
+    // drawer does not come back for a panel opened anew.
     const reopen = async (variant, place = 'feature') => {
-      await nodePanel.close()
       for (const key of Object.keys(nodePanel.variant)) delete nodePanel.variant[key]
       Object.assign(nodePanel.variant, variant)
-      const panel = await nodePanel.open(place)
-      // On a phone the drawer closed with the last panel; it is opened again for the picture.
-      app.workspace.leftSplit.expand()
-      await wait(500)
+      if (!window.__abeleNodePanelFixture) return nodePanel.open(place)
+      const { model } = window.__abeleNodePanelFixture
+      await model.refreshCurrent()
+      const panel = await nodePanel.select(place)
+      // The branch is read again on a new observation; the fixture's observation stays the same.
+      await model.loadPanelBranch()
+      await wait(300)
       return panel
     }
     const text = (panel) => panel.textContent
@@ -61,9 +65,7 @@ const probe = (device: string) =>
       panel = await reopen({}, 'notes')
       seen.plain = panel.querySelectorAll('.abele-node-modes [role="tab"]').length === 1
       await shot('folder-without-git')
-      await nodePanel.close()
-      Object.assign(nodePanel.variant, { empty: true })
-      await nodePanel.open('feature').catch(() => {})
+      await reopen({ empty: true }).catch(() => {})
       const root = nodePanel.root()
       seen.empty = await until(() => root?.textContent.includes('to see its files and changes'))
       await shot('empty')

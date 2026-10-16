@@ -75,7 +75,7 @@ const nodePanel = (() => {
   const client = {
     connected: true,
     describe: async () => ({
-      capabilities: { capabilities: { node_path_v2: supported, node_path_worktrees: supported, node_path_execution: supported, ...(variant.git ? { repository_git_write_v1: supported } : {}) } },
+      capabilities: { capabilities: { node_path_v2: supported, node_path_worktrees: supported, node_path_execution: supported, repository_git_write_v1: supported } },
       providers: [
         { provider: 'pi', available: true, diagnostic: names.diagnostic, configuration: { profile: 'isolated', model: 'sample-model' }, capabilities: { compaction: { status: 'unverified', reason: 'Compaction not accepted' } } },
         { provider: 'claude', available: true, configuration: { profile: 'inherited' }, capabilities: { steering: { status: 'unsupported', reason: 'Serialized follow-ups only' } } },
@@ -164,7 +164,8 @@ const nodePanel = (() => {
       },
     },
   }
-  // The node's git writes exist only in the variant that asks for them, whenever it is set.
+  // The node says it can write git, but its client speaks git only in the variant that asks for
+  // it, whenever that is set: without it the panel shows no git action, as with the e2e node.
   Object.defineProperty(client.repository, 'git', { get: () => (variant.git ? client.repository.gitWrites : undefined) })
   const connection = {
     client, state: { value: 'connected' }, error: { value: '' }, authorizationGeneration: 0,
