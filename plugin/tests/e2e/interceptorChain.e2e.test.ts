@@ -231,9 +231,7 @@ const agentLong = `(async () => {
   const list = await showList()
   const box = list.getBoundingClientRect()
   const over = qa('.abele-interceptors__entry', list).filter((r) => r.getBoundingClientRect().right > box.right + 0.5).length
-  const result = { rows: rows(), over }
-  await closeModals()
-  return JSON.stringify(result)
+  return JSON.stringify({ rows: rows(), over })
 })()`
 
 /** The chat's own list in its setup, and the chat ready to run it. */
@@ -451,6 +449,7 @@ describe.runIf(available)('several interceptors in a row', () => {
   it('keeps a long list with long names, a script and a switched-off one inside the window', async () => {
     const report = await run<{ rows: Row[]; over: number }>(agentLong)
     shot('4-long')
+    await run(closeSetup)
     expect(report.rows).toHaveLength(8)
     expect(report.rows[3].desc).toBe('Off')
     expect(report.over).toBe(0)
