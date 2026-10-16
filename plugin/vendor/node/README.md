@@ -1,7 +1,12 @@
 # Node browser packages
 
-These four exact `0.0.0` npm tarballs contain the built browser packages from
-the released AbeleNode tag `v0.4.18` (revision `0959374`), including where a stream ends (`stream.head`,
+**Temporary, unreleased vendor.** These four exact `0.0.0` npm tarballs contain the built browser
+packages of AbeleNode revision `2da32f0` (after `v0.4.18`, not a release): the shared session
+transcript (`session.update`, modelled on ACP, with `sessionUpdatesOf` and the Claude, pi and ACP
+mappers), the per-session command list (`session.commands`, `runCommand`) and ACP agents as
+sessions (`provider: "acp"` with an `agent`, the agents listed under the `acp` provider in
+`node.describe`). They are replaced by the next released node. Everything listed for `v0.4.18`
+(`0959374`) below is included: where a stream ends (`stream.head`,
 `NodeClient.head`) and ingesting a burst of events in one store write, long-lived sessions (`session.configure`, `session.compact`, `session.stop`, `session.state`, messages between sessions), attaching the debugger to
 a running program (`debugger.v1.programs`, `debugger.v1.attachProgram`), the owner git writes
 (`repository_git_write_v1`: stage, unstage, discard, commit, update from base, push with an
@@ -19,7 +24,7 @@ liveness policy, background ping probes, delayed-deadline receive grace and
 host-injected transport diagnostics previously carried by the local patch.
 Their transitive Zod 3 dependency remains separate from the plugin's Zod 4.
 
-The payloads were built from a clean archive of the release tag, with `npm ci --ignore-scripts`
+The payloads were built from a clean archive of that revision, with `npm ci --ignore-scripts`
 and `tsc -b packages/channel-protocol packages/node-protocol packages/channel-client packages/node-client`.
 No unreleased source overlay, local patch or package export changes were applied.
 
