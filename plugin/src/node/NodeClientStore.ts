@@ -90,6 +90,12 @@ const StateSchema = z
   })
   .strict()
 
+/** Everything but the streamed journal and caches: what must reach the disk before it counts. */
+function intentOf(state: NodeClientState): string {
+  const { events: _events, cursors: _cursors, artifactData: _artifacts, ...rest } = state
+  return JSON.stringify(rest)
+}
+
 function readState(raw: unknown): NodeClientState {
   if (raw === undefined) return { cursors: {}, events: {}, outbox: [], results: {} }
   const state = StateSchema.parse(raw)
@@ -150,12 +156,30 @@ export class NodeClientStore implements ClientStore {
     return new Promise<T>((resolve, reject) => {
       // The readwrite lock isolates even separate plugin windows/handles. A keepalive read
       // prevents IndexedDB's automatic commit while an injected callback awaits work.
-      const tx = db.transaction('client', 'readwrite', { durability: 'strict' })
+      // Relaxed first: most transactions only add the events a node streamed, which this device
+      // reads again from the node if a crash loses them. One that changed anything else (what
+      // was sent, receipts, drafts) completes only after a strict flush, below.
+      const tx = db.transaction('client', 'readwrite', { durability: 'relaxed' })
+      let intent = false
       const store = tx.objectStore('client')
       let result: T
       let failure: unknown
       let pending = true
-      tx.oncomplete = () => resolve(result)
+      tx.oncomplete = () => {
+        if (!intent) return resolve(result)
+        // A strict commit after it puts this one on disk too: transactions commit in order.
+        let flush: IDBTransaction
+        try {
+          flush = db.transaction('client', 'readwrite', { durability: 'strict' })
+        } catch {
+          // The store is closing: the commit happened, the flush is up to the browser now.
+          return resolve(result)
+        }
+        flush.objectStore('client').put(Date.now(), 'flushed')
+        flush.oncomplete = () => resolve(result)
+        flush.onabort = flush.onerror = () =>
+          reject(flush.error ?? new Error('Node store flush failed'))
+      }
       tx.onabort = () => {
         const error = failure ?? tx.error
         reject(
@@ -178,6 +202,7 @@ export class NodeClientStore implements ClientStore {
         void (async () => {
           try {
             const state = readState(request.result)
+            const before = intentOf(state)
             const submitted = state.outbox.slice()
             result = structuredClone(await work(state))
             retainPromptAnswerIdentity(state, submitted)
@@ -212,6 +237,7 @@ export class NodeClientStore implements ClientStore {
             }
             // A long session's journal stays on the node; the device keeps its latest window.
             trimWindows(state)
+            intent = intentOf(state) !== before
             store.put(state, 'state')
             pending = false
           } catch (error) {

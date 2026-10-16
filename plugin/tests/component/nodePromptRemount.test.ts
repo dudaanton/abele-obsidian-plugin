@@ -68,12 +68,13 @@ it('shows the durable answer as sent after view remount and presenter/store relo
   let view = mountView(first.presenter)
   const allow = view.findAll('button').find((b) => b.text() === 'Allow')!
   await allow.trigger('click')
+  // The answer is admitted once it is on disk: a strict flush follows the store's transaction.
+  await vi.waitFor(async () => expect(await first.client.pending()).toHaveLength(1))
   await flushPromises()
   const pending = await first.client.pending()
-  expect(pending).toHaveLength(1)
   view.unmount()
   view = mountView(first.presenter)
-  expect(view.text()).toContain('Answer sent')
+  await vi.waitFor(() => expect(view.text()).toContain('Answer sent'))
   expect(view.findAll('.abele-node-permission button').map((b) => b.text())).toEqual(['Stop'])
   view.unmount()
   first.presenter.destroy()
