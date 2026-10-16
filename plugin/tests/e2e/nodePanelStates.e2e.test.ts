@@ -19,10 +19,17 @@ const probe = (device: string) =>
   evalAsync<States>(`(async () => {
     const wait = (ms) => new Promise((r) => setTimeout(r, ms))
     const fs = require('fs'), win = require('@electron/remote').getCurrentWindow()
-    const shot = async (name) => { await wait(300); fs.writeFileSync(${JSON.stringify(SHOTS)} + '/${device}-' + name + '.png', (await win.webContents.capturePage()).toPNG()) }
+    // A picture is of the panel only when the panel is what is on screen: a phone's drawer that
+    // closed under a dismissed menu leaves the DOM in place and the picture an empty tab.
+    const onScreen = () => {
+      const el = nodePanel.root(), box = el?.getBoundingClientRect()
+      if (!box || box.width < 50 || box.height < 50) return false
+      return !!el.contains(document.elementFromPoint(box.left + box.width / 2, box.top + Math.min(box.height / 2, 200)))
+    }
+    const shot = async (name) => { await wait(300); seen['onScreen ' + name] = onScreen(); fs.writeFileSync(${JSON.stringify(SHOTS)} + '/${device}-' + name + '.png', (await win.webContents.capturePage()).toPNG()) }
     const until = async (fn) => { for (let i = 0; i < 100; i++) { if (fn()) return true; await wait(50) } return false }
-    ${NODE_PANEL_FIXTURE}
     const seen = {}
+    ${NODE_PANEL_FIXTURE}
     // One panel throughout, its node's answers changed under it and read again: a phone's
     // drawer does not come back for a panel opened anew.
     const reopen = async (variant, place = 'feature') => {
@@ -79,7 +86,10 @@ const probe = (device: string) =>
 
 it('pictures every state of the node panel on a computer', () => {
   const seen = probe('desktop')
-  expect(seen).toEqual({
+  const shown = Object.entries(seen).filter(([key]) => key.startsWith('onScreen '))
+  expect(shown.length).toBe(12)
+  expect(shown.filter(([, ok]) => !ok)).toEqual([])
+  expect(Object.fromEntries(Object.entries(seen).filter(([key]) => !key.startsWith('onScreen ')))).toEqual({
     changes: true,
     aheadBehind: true,
     files: true,
@@ -98,5 +108,6 @@ it('pictures every state of the node panel on a computer', () => {
 
 it('pictures every state of the node panel in the phone layout', async () => {
   const seen = await withEmulatedPhone(async () => probe('phone'))
+  expect(Object.keys(seen).filter((key) => key.startsWith('onScreen ')).length).toBe(12)
   expect(Object.entries(seen).filter(([, ok]) => !ok)).toEqual([])
 })

@@ -189,7 +189,12 @@ const nodePanel = (() => {
     if (open()) throw Error('Node panel fixture: a menu or prompt did not close')
   }
   const select = async (place) => {
-    const { model } = fixture()
+    const { model, leaf } = fixture()
+    // On a phone the panel is a drawer, and a menu dismissed by a press outside closes it too.
+    if (app.workspace.leftSplit.collapsed) {
+      await app.workspace.revealLeaf(leaf)
+      app.workspace.leftSplit.expand()
+    }
     // A place is pictured from its first view: history and pull requests carry over from the
     // last place by design, so the mode is set back as a new panel would open it.
     model.panelMode.value = 'files'
