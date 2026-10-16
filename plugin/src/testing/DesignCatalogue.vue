@@ -968,6 +968,10 @@ const renderChart = (chart: EChartsType) =>
   })
 </script>
 <style>
+/* A notice shown on its own: Obsidian's gap between stacked notices has nothing to separate here. */
+.abele-design-catalogue__notices > .notice {
+  margin: 0;
+}
 .abele-design-catalogue {
   min-width: 0;
   padding-block: var(--size-4-1);
