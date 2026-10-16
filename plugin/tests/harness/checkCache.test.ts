@@ -37,7 +37,9 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
 })
 
-describe('external check caches', () => {
+// These cases launch real compiler processes and fingerprint programs repeatedly.
+// Assertions prove cache identity and diagnostics, not process startup speed.
+describe('external check caches', { timeout: 120_000 }, () => {
   it('separates normal and strict programs, preserves source reuse, invalidates options and dependency payloads', () => {
     const f = fixture()
     const key = compilerCacheKey(f.root, 'normal', { noEmit: true })

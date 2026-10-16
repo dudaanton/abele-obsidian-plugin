@@ -14,6 +14,9 @@ import { createMoveFileTool } from '@/ai/tools/MoveFileTool'
 import { createCopyFileTool } from '@/ai/tools/CopyFileTool'
 import { toSafeVaultPath, invalidNameChars, cleanFileName } from '@/helpers/pathsHelpers'
 import { useVault } from '../helpers/testEnv'
+import { buildScriptContext } from '@/scripting/ScriptContext'
+import { AbeleConfig } from '@/services/AbeleConfig'
+import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import type { FakeApp } from '../helpers/fakeVault'
 
 let app: FakeApp
@@ -172,9 +175,6 @@ describe('a note built from a template', () => {
 
 describe('what a script is told', () => {
   const context = async () => {
-    const { buildScriptContext } = await import('@/scripting/ScriptContext')
-    const { AbeleConfig } = await import('@/services/AbeleConfig')
-    const { DEFAULT_AI_SETTINGS } = await import('@/ai/types')
     AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS }
     return buildScriptContext({ params: {}, signal: new AbortController().signal, logs: [] })
   }

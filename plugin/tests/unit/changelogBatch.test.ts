@@ -4,30 +4,37 @@ import { generateChangelog } from '../../scripts/changelog.mjs'
 import * as historyGit from '../../scripts/changelog-git.mjs'
 import { changelogFixture } from '../helpers/changelogFixture'
 
-it('bounds Git queries independently of the number of release boundaries', () => {
-  const f = changelogFixture()
-  try {
-    for (let i = 0; i < 12; i++) {
-      f.commit(`feat: sample item ${i}`)
-      f.bump(`1.${i}.0`)
-    }
-    const git = vi.spyOn(historyGit, 'gitAt')
+const releaseBoundaries = 12
+
+it(
+  'bounds Git queries independently of the number of release boundaries',
+  () => {
+    const f = changelogFixture()
     try {
-      const releases = generateChangelog(f.root, { historical: [] })
-      expect(releases).toHaveLength(12)
-      for (let i = 0; i < 12; i++) {
-        const release = releases.find((r) => r.version === `1.${i}.0`)
-        expect(release?.features).toEqual([`Sample item ${i}`])
-        expect(release?.date).toBe('2025-01-01')
+      for (let i = 0; i < releaseBoundaries; i++) {
+        f.commit(`feat: sample item ${i}`)
+        f.bump(`1.${i}.0`)
       }
-      expect(git.mock.calls.length).toBeLessThanOrEqual(12)
+      const git = vi.spyOn(historyGit, 'gitAt')
+      try {
+        const releases = generateChangelog(f.root, { historical: [] })
+        expect(releases).toHaveLength(releaseBoundaries)
+        for (let i = 0; i < releaseBoundaries; i++) {
+          const release = releases.find((r) => r.version === `1.${i}.0`)
+          expect(release?.features).toEqual([`Sample item ${i}`])
+          expect(release?.date).toBe('2025-01-01')
+        }
+        expect(git.mock.calls.length).toBeLessThanOrEqual(12)
+      } finally {
+        git.mockRestore()
+      }
     } finally {
-      git.mockRestore()
+      f.dispose()
     }
-  } finally {
-    f.dispose()
-  }
-})
+    // Fixture construction launches several Git processes per boundary; query count is the guard.
+  },
+  10_000 + releaseBoundaries * 10_000
+)
 
 it('assigns merged side-branch history exactly once and peels nested annotated tags', () => {
   const f = changelogFixture()

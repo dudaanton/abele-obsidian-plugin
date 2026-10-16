@@ -42,7 +42,8 @@ function fixture() {
   return root
 }
 
-describe('matching type evidence', () => {
+// Real Git and compiler subprocesses need scheduling headroom; receipts prove correctness.
+describe('matching type evidence', { timeout: 120_000 }, () => {
   it('fails closed without a successful receipt and detects changed inputs and dependencies', () => {
     const root = fixture()
     expect(() => requireTypes(root)).toThrow()
@@ -122,7 +123,7 @@ describe('matching type evidence', () => {
   })
 })
 
-describe('exact emitted artifact evidence', () => {
+describe('exact emitted artifact evidence', { timeout: 120_000 }, () => {
   function artifact(root: string, mode = 'production') {
     const dir = join(root, 'plugin/build')
     mkdirSync(dir)

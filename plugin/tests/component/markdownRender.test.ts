@@ -16,6 +16,10 @@ import { mount } from '@vue/test-utils'
 import { Component, MarkdownRenderChild, MarkdownRenderer, MarkdownView } from 'obsidian'
 import Markdown from '@/components/obsidian/Markdown.vue'
 import { useVault } from '../helpers/testEnv'
+import { ChatService } from '@/ai/ChatService'
+import { CommentService } from '@/ai/CommentService'
+// Compile the real click route during collection, outside the interaction deadline.
+import '@/ai/openChat'
 
 /** How long Obsidian takes over a render here. Long enough to look inside one. */
 const RENDER_MS = 30
@@ -197,8 +201,6 @@ describe('a link to a chat in rendered text', () => {
     const app = useVault([{ path: 'AI/Chats/Trip.abchat', content: '{}' }])
     const openLinkText = vi.fn()
     ;(app as unknown as { workspace: unknown }).workspace = { openLinkText }
-    const { ChatService } = await import('@/ai/ChatService')
-    const { CommentService } = await import('@/ai/CommentService')
     const service = ChatService.getInstance()
     const opened = vi.spyOn(service, 'openChatFile').mockResolvedValue()
     vi.spyOn(service, 'revealSidebar').mockResolvedValue()
@@ -210,12 +212,11 @@ describe('a link to a chat in rendered text', () => {
     )
 
     const wrapper = open('[[AI/Chats/Trip.abchat|Trip]]')
-    // Opening goes through dynamic imports, so a fixed number of ticks is not enough under load.
-    await vi.waitFor(() => expect(wrapper.find('a.internal-link').exists()).toBe(true))
+    await settle(0)
+    expect(wrapper.find('a.internal-link').exists()).toBe(true)
     await wrapper.find('a.internal-link').trigger('click')
-    await vi.waitFor(() =>
-      expect(opened).toHaveBeenCalledWith(app.vault.getAbstractFileByPath('AI/Chats/Trip.abchat'))
-    )
+    await vi.dynamicImportSettled()
+    expect(opened).toHaveBeenCalledWith(app.vault.getAbstractFileByPath('AI/Chats/Trip.abchat'))
     expect(openLinkText).not.toHaveBeenCalled()
   })
 
@@ -230,9 +231,9 @@ describe('a link to a chat in rendered text', () => {
     )
 
     const wrapper = open('[[Plans]]')
-    await settle(5)
+    await settle(0)
     await wrapper.find('a.internal-link').trigger('click')
-    await settle(5)
+    await vi.dynamicImportSettled()
 
     expect(openLinkText).toHaveBeenCalledWith('Plans', '', false)
   })
@@ -248,9 +249,11 @@ describe('a link to a chat in rendered text', () => {
     )
 
     const wrapper = open('[[Plans]]')
-    await vi.waitFor(() => expect(wrapper.find('a.internal-link').exists()).toBe(true))
+    await settle(0)
+    expect(wrapper.find('a.internal-link').exists()).toBe(true)
     await wrapper.find('a.internal-link').trigger('click', { metaKey: true })
-    await vi.waitFor(() => expect(openLinkText).toHaveBeenCalledWith('Plans', '', 'tab'))
+    await vi.dynamicImportSettled()
+    expect(openLinkText).toHaveBeenCalledWith('Plans', '', 'tab')
   })
 })
 

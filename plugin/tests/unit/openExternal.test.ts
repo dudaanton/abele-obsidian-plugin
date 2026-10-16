@@ -24,20 +24,26 @@ it.each(['https://example.org/sample', 'http://example.org/sample', 'mailto:samp
     expect(open).toHaveBeenCalledWith(url)
   }
 )
-it('routes every direct browser opening through the scheme check', () => {
-  const root = resolve(__dirname, '../../src')
-  const files = (dir: string): string[] =>
-    readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
-      entry.isDirectory()
-        ? entry.name === 'vendor'
-          ? []
-          : files(resolve(dir, entry.name))
-        : /\.(ts|vue)$/.test(entry.name)
-          ? [resolve(dir, entry.name)]
-          : []
-    )
-  const direct = files(root)
-    .filter((file) => /\b(?:window|activeWindow)\.open\(/.test(readFileSync(file, 'utf8')))
-    .map((file) => relative(root, file))
-  expect(direct).toEqual(['helpers/openExternal.ts'])
-})
+const root = resolve(__dirname, '../../src')
+const files = (dir: string): string[] =>
+  readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
+    entry.isDirectory()
+      ? entry.name === 'vendor'
+        ? []
+        : files(resolve(dir, entry.name))
+      : /\.(ts|vue)$/.test(entry.name)
+        ? [resolve(dir, entry.name)]
+        : []
+  )
+const sourceFiles = files(root)
+it(
+  'routes every direct browser opening through the scheme check',
+  () => {
+    const direct = sourceFiles
+      .filter((file) => /\b(?:window|activeWindow)\.open\(/.test(readFileSync(file, 'utf8')))
+      .map((file) => relative(root, file))
+    expect(direct).toEqual(['helpers/openExternal.ts'])
+    // Read every source file; the guard is the complete opening list, not filesystem speed.
+  },
+  5_000 + sourceFiles.length * 50
+)

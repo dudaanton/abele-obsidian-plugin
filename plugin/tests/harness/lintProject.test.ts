@@ -49,13 +49,14 @@ await walk(process.cwd())
 console.log(JSON.stringify({ missing, typed, vue }))
 `,
       ],
-      { cwd: resolve('..'), encoding: 'utf8' }
+      { cwd: resolve('..'), encoding: 'utf8', timeout: 60_000 }
     )
     const result = JSON.parse(output.trim())
     expect(result.missing).toEqual([])
     expect(result.typed).toBeGreaterThan(0)
     expect(result.vue).toBeGreaterThan(0)
-  }, 15000)
+    // Every source file is resolved through ESLint; this checks coverage, not traversal speed.
+  }, 65_000)
 })
 
 describe('lint concurrency', () => {

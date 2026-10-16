@@ -11,6 +11,8 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
 import { deferred } from '../helpers/deferred'
+// Keep lazy-component compilation outside the Stop interaction's deadline.
+import '@/components/ScriptFormModal.vue'
 
 const { requestUrl } = vi.hoisted(() => ({ requestUrl: vi.fn() }))
 vi.mock('obsidian', async () => ({
@@ -164,8 +166,10 @@ describe('script deadlines and prompts', () => {
     })
     const call = ctx.form([])
     const stopped = expect(call).rejects.toThrow(/abort|stopped/i)
+    // Await the lazy modal import and mount, rather than polling against a short deadline.
+    await vi.dynamicImportSettled()
     await flushPromises()
-    await expect.poll(() => !!document.querySelector('.abele-script-form')).toBe(true)
+    expect(document.querySelector('.abele-script-form')).not.toBeNull()
     controller.abort()
     await stopped
     expect(document.querySelector('.abele-script-form')).toBeNull()
