@@ -88,7 +88,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 const drawingsWord = computed(() => plural(props.drawings.length, 'drawing', 'drawings'))
 const question = computed(() =>
   props.drawings.length
-    ? `${drawingsWord.value} found in this vault. Each gets a new canvas beside it; the drawings themselves are not changed. Drawings that already have a canvas are skipped.`
+    ? `${drawingsWord.value} found in this vault. Each gets a new canvas beside it; the drawings themselves are not changed. Links and embeds in referring notes and canvases are updated. Drawings that already have a canvas are skipped.`
     : 'No Excalidraw drawings were found in this vault.'
 )
 const percent = computed(() =>
@@ -109,6 +109,13 @@ const facts = computed(() =>
         { label: 'Migrated', value: report.value.migrated },
         { label: 'Skipped', value: report.value.skipped },
         { label: 'Failed', value: report.value.failed },
+        {
+          label: 'References rewritten',
+          value: report.value.files.reduce(
+            (total, file) => total + (file.references?.rewritten ?? 0),
+            0
+          ),
+        },
       ].filter((f) => f.value || f.label === 'Migrated')
     : []
 )
@@ -120,6 +127,13 @@ const errors = computed(() =>
     : (report.value?.files ?? [])
         .filter((f) => f.status === 'failed')
         .map((f) => `${name(f.source)}: ${f.reason ?? 'failed'}`)
+        .concat(
+          (report.value?.files ?? []).flatMap((f) =>
+            (f.references?.files ?? [])
+              .filter((file) => file.error)
+              .map((file) => `${file.path}: ${file.error}`)
+          )
+        )
 )
 /** Each kind of loss once, with how many items of it and in how many drawings. */
 const lost = computed(() => {
@@ -145,6 +159,7 @@ const results = computed(() =>
       f.target,
       f.losses.map((loss) => `${loss.what} ×${loss.count}`).join('; '),
       f.reason,
+      f.references ? `${f.references.rewritten} references rewritten` : '',
     ]
       .filter(Boolean)
       .join(' · '),

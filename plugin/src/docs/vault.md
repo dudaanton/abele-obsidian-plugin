@@ -673,6 +673,11 @@ read to skip drawings that already have a canvas. Pictures kept inside a plain `
 written once beside it as `<drawing> <id>.<ext>`. If migration fails, it removes only pictures
 successfully created by that attempt, leaving pre-existing files and replacements untouched.
 Cleanup failures are included in the failure reason. The drawing itself is never written.
+After the new canvas is saved, resolved backlinks in Markdown notes and file nodes in other
+canvases are redirected to it through atomic file processing. Only link destination tokens are
+changed; Markdown image syntax becomes a native canvas picture embed. Each migration reports
+reference counts per referring file and update failures. Such a failure leaves the published
+canvas and its extracted images intact; it does not roll files back.
 
 Uncertain publication and confirmed-writing/local-acknowledgment-pending work is retained only
 in the running session: proposed draft, original baseline, operation kind, and revoked-attempt

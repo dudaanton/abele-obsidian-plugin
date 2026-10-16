@@ -8,7 +8,14 @@ import { openDialog } from '@/components/obsidian/dialogs'
 import ExcalidrawMigrationModal from '@/components/ExcalidrawMigrationModal.vue'
 import { isExcalidrawName } from './excalidraw/source'
 import { migratedFrom } from './excalidraw/convert'
-import { migrateAll, migrateOne, type ExcalidrawVault, type FileReport } from './excalidraw/migrate'
+import {
+  migrateAll,
+  migrateOne,
+  type ExcalidrawVault,
+  type FileReport,
+  type ReferenceReport,
+} from './excalidraw/migrate'
+import { rewriteDrawingReferences } from './excalidraw/references'
 import { openCanvas } from './opening'
 
 /** Whether a vault file is a drawing of the Excalidraw plugin. */
@@ -67,6 +74,46 @@ export class ObsidianExcalidrawVault implements ExcalidrawVault {
     return this.app.metadataCache.getFirstLinkpathDest(link, from)?.path ?? null
   }
 
+  async rewriteReferences(source: string, target: string): Promise<ReferenceReport> {
+    const paths = new Set(
+      Object.entries(this.app.metadataCache.resolvedLinks ?? {})
+        .filter(([, links]) => (links[source] ?? 0) > 0)
+        .map(([path]) => path)
+    )
+    // Canvas file nodes are not consistently included in Obsidian's Markdown backlinks index.
+    for (const file of this.app.vault.getFiles())
+      if (file.extension === 'canvas') paths.add(file.path)
+    const report: ReferenceReport = { rewritten: 0, files: [] }
+    for (const path of paths) {
+      if (path === source) continue
+      const file = this.app.vault.getAbstractFileByPath(path)
+      if (!(file instanceof TFile) || !['md', 'canvas'].includes(file.extension)) continue
+      let count = 0
+      try {
+        await this.writeApp.vault.process(file, (current) => {
+          const result = rewriteDrawingReferences(current, {
+            source,
+            target,
+            kind: file.extension as 'md' | 'canvas',
+            resolve: (link) => this.resolve(link, path),
+          })
+          count = result.count
+          return result.text
+        })
+        if (count) report.files.push({ path, count })
+        report.rewritten += count
+      } catch (error) {
+        report.files.push({
+          path,
+          count: 0,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+    console.debug('[Abele] Excalidraw reference updates', source, report)
+    return report
+  }
+
   async migrated(): Promise<Map<string, string>> {
     const out = new Map<string, string>()
     for (const file of this.app.vault.getFiles()) {
@@ -89,7 +136,12 @@ export function reportLine(report: FileReport): string {
   if (report.status === 'failed') return `The drawing could not be migrated: ${report.reason}`
   if (report.status === 'skipped') return `This drawing already has a canvas: ${report.target}`
   const lost = report.losses.map((l) => l.what.toLowerCase()).join(', ')
-  return `Made ${report.target}.` + (lost ? ` Not carried over: ${lost}.` : '')
+  const errors = report.references?.files.filter((file) => file.error) ?? []
+  return (
+    `Made ${report.target}. ${report.references?.rewritten ?? 0} references rewritten.` +
+    (lost ? ` Not carried over: ${lost}.` : '') +
+    errors.map((file) => ` Reference update failed in ${file.path}: ${file.error}.`).join('')
+  )
 }
 
 /** Migrates one drawing and opens its canvas — the new one, or the one made before. */

@@ -138,8 +138,11 @@ without saving keeps nothing.
 **Migrate this Excalidraw drawing to a canvas** makes a new canvas beside the active drawing.
 The drawing's file menu also offers **Migrate to Abele canvas**.
 **Migrate all Excalidraw drawings to canvases** asks with the number of drawings first, then shows each result and
-anything that could not carry over. Existing files stay untouched; a name already in use gets
-a numeric suffix. Drawings already migrated are skipped.
+anything that could not carry over. The original drawing stays untouched; a name already in use
+gets a numeric suffix. Links and embeds in referring notes and canvas file cards are updated to
+the new canvas, with aliases, sizes and headings retained. Markdown images become native canvas
+embeds so they still show a picture. The report counts rewritten references and lists any update
+errors. Drawings already migrated are skipped.
 
 Compressed or plain JSON drawings in notes and `.excalidraw` JSON files are supported.
 Shapes, text, arrows, pen strokes, frames and pictures become canvas cards, connections, ink

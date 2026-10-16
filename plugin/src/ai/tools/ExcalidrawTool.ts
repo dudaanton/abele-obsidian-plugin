@@ -19,7 +19,7 @@ export function createImportExcalidrawTool(): AgentTool {
     label: 'Migrate Excalidraw drawings',
     category: 'Canvas',
     description:
-      'Migrate Excalidraw drawings (.excalidraw.md, notes with `excalidraw-plugin` frontmatter, .excalidraw) into Abele canvases. Give `path` for one drawing, or `all: true` for every drawing in scope. Each drawing gets a new .canvas beside it (a free name, never overwriting); the drawing itself is never changed. Drawings that already have a canvas are skipped unless `force`. Shapes become shaped cards, bound arrows connectors, other arrows/lines free lines, pencil strokes ink, frames groups, pictures/embeds file or link cards. The reply lists per drawing the canvas made and what did not carry over (sketchy look, fills, fonts, rotation, grouping, curves, …). Own Ask mode.',
+      'Migrate Excalidraw drawings (.excalidraw.md, notes with `excalidraw-plugin` frontmatter, .excalidraw) into Abele canvases. Give `path` for one drawing, or `all: true` for every drawing in scope. Each drawing gets a new .canvas beside it (a free name, never overwriting); the drawing itself is never changed. Links and embeds to it in notes and canvases across the vault are updated, with a count and any errors in the report. Drawings that already have a canvas are skipped unless `force`. Shapes become shaped cards, bound arrows connectors, other arrows/lines free lines, pencil strokes ink, frames groups, pictures/embeds file or link cards. The reply lists per drawing the canvas made and what did not carry over (sketchy look, fills, fonts, rotation, grouping, curves, …). Own Ask mode.',
     parameters: {
       type: 'object',
       properties: {

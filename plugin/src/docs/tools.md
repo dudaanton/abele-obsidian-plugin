@@ -373,7 +373,10 @@ Free primitives may be revealed, highlighted and focused by id in walkthrough st
 - `canvas_import_excalidraw({path} | {all:true}, force?)`: migrates Excalidraw drawings
   (`.excalidraw.md`, notes with `excalidraw-plugin` frontmatter, plain `.excalidraw`) into Abele
   canvases. Each drawing gets a new `.canvas` beside it under a free name (`Plan.canvas`, else
-  `Plan 2.canvas`); the drawing is never changed. Pictures kept inside a plain `.excalidraw` are
+  `Plan 2.canvas`); the drawing is never changed. Links and embeds in referring notes and canvas
+  file nodes across the vault are updated to the new canvas. The report includes the rewritten
+  reference count and individual update errors. Markdown image links become native canvas picture
+  embeds, preserving their sizes. Pictures kept inside a plain `.excalidraw` are
   written beside it as files. A canvas records `abele.excalidraw.source`, so drawings migrated
   before are skipped unless `force`. Shapes become shaped text cards (rectangle, circle, diamond)
   with their text and stroke colour; arrows bound at both ends become connectors with sides,

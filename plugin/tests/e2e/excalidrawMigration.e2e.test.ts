@@ -204,6 +204,8 @@ describe.skipIf(!available)('Excalidraw drawings to canvases', () => {
       await app.vault.createFolder(dir)
       await app.vault.create(dir + '/Sample flow.excalidraw.md', ${JSON.stringify(NOTE_DRAWING)})
       await app.vault.create(dir + '/Demo shape.excalidraw', ${JSON.stringify(PLAIN_DRAWING)})
+      await app.vault.create(dir + '/Sample references.md', '![[Sample flow.excalidraw.md|300]] [[Sample flow.excalidraw|Example]] [Shape](Demo%20shape.excalidraw)')
+      await app.vault.create(dir + '/Sample references.canvas', JSON.stringify({nodes:[{id:'sample-ref',type:'file',file:dir+'/Sample flow.excalidraw.md',x:0,y:0,width:300,height:200}],edges:[]}))
       const bin = atob(${JSON.stringify(DOT_PNG)}); const bytes = new Uint8Array(bin.length)
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
       await app.vault.createBinary(dir + '/sample-dot.png', bytes.buffer)
@@ -223,6 +225,7 @@ describe.skipIf(!available)('Excalidraw drawings to canvases', () => {
       const file = app.vault.getAbstractFileByPath(${JSON.stringify(`${DIR}/Sample flow.excalidraw.md`)})
       await app.workspace.getLeaf(true).openFile(file)
       await until(() => app.metadataCache.getFileCache(file)?.frontmatter)
+      if (!await until(() => app.metadataCache.resolvedLinks[${JSON.stringify(`${DIR}/Sample references.md`)}]?.[file.path] === 2)) throw Error('Backlinks not ready')
       if (!app.commands.executeCommandById('abele:migrate-excalidraw-drawing')) throw Error('Command unavailable')
       await until(() => app.vault.getAbstractFileByPath(${JSON.stringify(`${DIR}/Sample flow.canvas`)}))
       await until(() => app.workspace.getActiveFile()?.extension === 'canvas')
@@ -249,6 +252,14 @@ describe.skipIf(!available)('Excalidraw drawings to canvases', () => {
         `app.vault.adapter.read(${JSON.stringify(`${DIR}/Sample flow.excalidraw.md`)})`
       )
     ).toBe(NOTE_DRAWING)
+    const references = evalAsync<string>(
+      `app.vault.adapter.read(${JSON.stringify(`${DIR}/Sample references.md`)})`
+    )
+    expect(references).toContain(`![[${DIR}/Sample flow.canvas|300]]`)
+    expect(references).toContain(`[[${DIR}/Sample flow.canvas|Example]]`)
+    expect(canvasOf(`${DIR}/Sample references.canvas`)?.nodes[0].file).toBe(
+      `${DIR}/Sample flow.canvas`
+    )
   })
 
   it('asks with the count, migrates the rest of the vault and reports, on a computer', () => {
@@ -258,6 +269,21 @@ describe.skipIf(!available)('Excalidraw drawings to canvases', () => {
     expect(shown.facts).toMatch(/1 migrated/)
     expect(shown.facts).toMatch(/skipped/)
     expect(canvasOf(`${DIR}/Demo shape.canvas`)?.nodes[0]).toMatchObject({ type: 'text' })
+    expect(
+      evalAsync<string>(`app.vault.adapter.read(${JSON.stringify(`${DIR}/Sample references.md`)})`)
+    ).toContain(`(${DIR}/Demo%20shape.canvas)`)
+  })
+
+  it('renders the rewritten drawing embed as a picture', () => {
+    const shown = evalAsync<boolean>(`(async () => {
+      ${WAIT_PRELUDE}
+      const file = app.vault.getAbstractFileByPath(${JSON.stringify(`${DIR}/Sample references.md`)})
+      const leaf = app.workspace.getLeaf(true)
+      await leaf.openFile(file, {state:{mode:'preview'}})
+      const doc = typeof activeDocument === 'undefined' ? document : activeDocument
+      return !!await until(() => [...doc.querySelectorAll('.abele-canvas-embed-picture')].some((image) => image.src.startsWith('data:image/png') && image.naturalWidth > 0), 30000)
+    })()`)
+    expect(shown).toBe(true)
   })
 
   it('shows the same dialogs on a phone', async () => {

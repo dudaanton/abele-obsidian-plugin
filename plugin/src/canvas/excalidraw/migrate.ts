@@ -9,6 +9,7 @@ import { convertExcalidraw, type Loss } from './convert'
 import { parseExcalidraw } from './source'
 
 export interface ExcalidrawVault {
+  rewriteReferences(source: string, target: string): Promise<ReferenceReport>
   /** Every drawing of the Excalidraw plugin in the vault, by path. */
   drawings(): Promise<string[]>
   read(path: string): Promise<string>
@@ -23,6 +24,11 @@ export interface ExcalidrawVault {
   migrated(): Promise<Map<string, string>>
 }
 
+export interface ReferenceReport {
+  rewritten: number
+  files: { path: string; count: number; error?: string }[]
+}
+
 export interface FileReport {
   source: string
   status: 'migrated' | 'skipped' | 'failed'
@@ -32,6 +38,7 @@ export interface FileReport {
   /** Why it failed or was skipped. */
   reason?: string
   counts?: { cards: number; connectors: number; lines: number; strokes: number }
+  references?: ReferenceReport
 }
 
 export interface MigrationReport {
@@ -116,12 +123,20 @@ export async function migrateOne(
     }
     await vault.createText(target, serializeCanvas(result.graph))
     known.set(source, target)
+    // Publication succeeded. A backlink failure must never remove pictures used by this canvas.
+    let references: ReferenceReport
+    try {
+      references = await vault.rewriteReferences(source, target)
+    } catch (error) {
+      references = { rewritten: 0, files: [{ path: source, count: 0, error: String(error) }] }
+    }
     return {
       source,
       status: 'migrated',
       target,
       losses: result.losses,
       counts: result.counts,
+      references,
     }
   } catch (e) {
     const cleanupErrors: string[] = []
@@ -184,7 +199,14 @@ export function reportText(report: MigrationReport): string {
     const lost = f.losses.length
       ? ` Not carried over: ${f.losses.map((l) => `${l.what} ×${l.count}`).join('; ')}.`
       : ' Nothing lost.'
-    return `- ${f.source} → ${f.target}.${lost}`
+    const references = f.references
+      ? ` ${f.references.rewritten} references rewritten.` +
+        f.references.files
+          .filter((file) => file.error)
+          .map((file) => ` Reference update failed in ${file.path}: ${file.error}.`)
+          .join('')
+      : ''
+    return `- ${f.source} → ${f.target}.${lost}${references}`
   })
   return [head, ...lines].join('\n')
 }

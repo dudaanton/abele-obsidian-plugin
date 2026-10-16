@@ -516,6 +516,7 @@ function memoryVault(files: Record<string, string>) {
   const vault: ExcalidrawVault & { files: Record<string, string>; binary: typeof binary } = {
     files,
     binary,
+    rewriteReferences: async () => ({ rewritten: 0, files: [] }),
     drawings: async () => Object.keys(files).filter(isExcalidrawName).sort(),
     read: async (path) => {
       if (!(path in files)) throw new Error(`No file ${path}`)
@@ -547,6 +548,34 @@ function memoryVault(files: Record<string, string>) {
 }
 
 describe('migrating drawings', () => {
+  it('rewrites references only after publishing and reports their count', async () => {
+    const vault = memoryVault({ 'Sample.excalidraw': sceneJson([]) })
+    vault.rewriteReferences = async (source, target) => {
+      expect(source).toBe('Sample.excalidraw')
+      expect(vault.files[target]).toBeDefined()
+      return { rewritten: 3, files: [{ path: 'Sample note.md', count: 3 }] }
+    }
+    expect(await migrateOne(vault, 'Sample.excalidraw')).toMatchObject({
+      status: 'migrated',
+      references: { rewritten: 3, files: [{ path: 'Sample note.md', count: 3 }] },
+    })
+  })
+  it('keeps the published canvas and pictures if a reference update fails', async () => {
+    const vault = memoryVault({ 'Sample.excalidraw': pictureDrawing() })
+    vault.rewriteReferences = async () => {
+      throw new Error('Sample reference failure')
+    }
+    const report = await migrateOne(vault, 'Sample.excalidraw')
+    expect(report).toMatchObject({
+      status: 'migrated',
+      references: {
+        rewritten: 0,
+        files: [{ path: 'Sample.excalidraw', count: 0, error: 'Error: Sample reference failure' }],
+      },
+    })
+    expect(vault.files['Sample.canvas']).toBeDefined()
+    expect(vault.binary.size).toBe(2)
+  })
   const pictureDrawing = () =>
     sceneJson(
       ['firstpic', 'secondpic'].map((fileId) =>
