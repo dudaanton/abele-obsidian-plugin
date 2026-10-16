@@ -330,14 +330,16 @@ const showPlace = async (folder, branch) => {
         button(picker, 'Open').click();
         // What the dialog refused, said, instead of a bare wait that runs out; and on a timeout,
         // what the dialog and the panel showed.
+        // Registering a folder is a durable node mutation; a loaded test machine takes its time.
+        const untilLong = async (fn) => { for (let n = 0; n < 600; n++) { const value = fn(); if (value) return value; await wait(100) } throw Error('Node UI did not converge in a minute') };
         try {
-          await until(() => {
+          await untilLong(() => {
             const refused = document.querySelector('.abele-folder-picker')?.parentElement?.querySelector(':scope > [role="alert"]')?.textContent;
             if (refused) throw Error('Open folder refused: ' + refused);
             return !document.querySelector('.abele-folder-picker') && model.currentFolder.value?.name === ${JSON.stringify(folderName)};
           });
         } catch (error) {
-          throw Error(String(error.message).slice(0, 200) + ' | dialog: ' + (document.querySelector('.abele-folder-picker')?.closest('.modal')?.textContent ?? 'closed').slice(0, 400) + ' | folders: ' + JSON.stringify(model.folders.value.map((f) => [f.name, f.path])) + ' | current: ' + model.currentFolder.value?.name + ' | error: ' + model.error.value);
+          throw Error(String(error.message).slice(0, 200) + ' | dialog: ' + (document.querySelector('.abele-folder-picker')?.closest('.modal')?.textContent ?? 'closed').slice(0, 400) + ' | folders: ' + JSON.stringify(model.folders.value.map((f) => [f.name, f.path])) + ' | current: ' + model.currentFolder.value?.name + ' | busy: ' + document.querySelector('.abele-folder-picker')?.parentElement?.getAttribute('aria-busy') + ' | error: ' + model.error.value);
         }
         await showPlace(${JSON.stringify(folderName)}, 'main');
         await placeMenu('New worktree');
