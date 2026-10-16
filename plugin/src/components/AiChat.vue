@@ -2236,6 +2236,9 @@ const showDebug = () => {
 
 <style lang="scss">
 .abele-ai-chat {
+  // The chat stands as far from the pane's edges as the plugin's other side panels do (money,
+  // accounts, time): its header, its messages and the field to write in, on one edge.
+  --abele-chat-inset: calc(var(--p-spacing) * 2);
   position: absolute;
   top: 0;
   left: 0;
@@ -2275,7 +2278,7 @@ const showDebug = () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--size-4-1) var(--size-4-2);
+  padding: var(--size-4-1) var(--abele-chat-inset);
   border-bottom: 1px solid var(--background-modifier-border);
   flex-shrink: 0;
   gap: var(--size-4-1);
@@ -2324,8 +2327,14 @@ const showDebug = () => {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: var(--size-4-2) var(--size-4-3);
+  padding: var(--size-4-2) var(--abele-chat-inset);
   user-select: text;
+}
+// Narrow, as the side panels: the room goes to the words.
+@media (max-width: 600px) {
+  .abele-ai-chat {
+    --abele-chat-inset: var(--size-4-4);
+  }
 }
 
 /* While the chat holds the reader's place itself, the browser does not hold it a second time. */
