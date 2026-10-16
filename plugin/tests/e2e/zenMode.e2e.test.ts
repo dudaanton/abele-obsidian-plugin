@@ -19,11 +19,39 @@ const shots = shotDir('zen-mode')
 const command = `app.commands.executeCommandById(Object.keys(app.commands.commands).find(id => id.endsWith(':toggle-zen-mode')))`
 const run = (body: string) => evalLong(`(async () => { ${body} })()`)
 let layout: unknown
+let savedMobile: string | null = null
 let wasOn = false
+
+const restoreLayout = (saved: unknown) =>
+  run(`
+  if(document.body.classList.contains('abele-zen')) ${command};
+  const layout=${JSON.stringify(saved)}, original=new Set();
+  const visit=node=>{if(node.type==='leaf')original.add(node.id);for(const child of node.children??[])visit(child)};
+  visit(layout.main);
+  const opened=[];
+  app.workspace.iterateRootLeaves(leaf=>{if(!original.has(leaf.id))opened.push(leaf)});
+  for(const leaf of opened)leaf.detach();
+  await app.workspace.changeLayout(layout);
+  await app.workspace.requestSaveLayout.run();
+  await window.__abeleTest.AbeleConfig.getInstance().saveSettings();
+`)
+
+const leavePhone = async () => {
+  if (!evalJson('!!app.isMobile')) return
+  // Mobile has a separate persisted workspace. Restore it before the reload saves it.
+  await restoreLayout(savedMobile === null ? layout : JSON.parse(savedMobile))
+  await reloadApp('app.emulateMobile(false)')
+}
 
 beforeAll(async () => {
   if (!available) return
   layout = evalJson('app.workspace.getLayout()')
+  savedMobile = JSON.parse(
+    await run(`
+    const path=app.vault.configDir+'/workspace-mobile.json';
+    return JSON.stringify(await app.vault.adapter.exists(path)?await app.vault.adapter.read(path):null);
+  `)
+  ) as string | null
   wasOn = evalJson("document.body.classList.contains('abele-zen')")
   await run(`
     if (document.body.classList.contains('abele-zen')) ${command};
@@ -35,22 +63,30 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (!available) return
-  await run(`if(document.body.classList.contains('abele-zen')) ${command};`)
-  await reloadApp('app.emulateMobile(false)')
+  await leavePhone()
+  await restoreLayout(layout)
   await run(`
-    await app.workspace.changeLayout(${JSON.stringify(layout)});
+    const mobilePath=app.vault.configDir+'/workspace-mobile.json', savedMobile=${JSON.stringify(savedMobile)};
+    if(savedMobile!==null)await app.vault.adapter.write(mobilePath,savedMobile);
+    else if(await app.vault.adapter.exists(mobilePath))await app.vault.adapter.remove(mobilePath);
     const folder=app.vault.getAbstractFileByPath(${JSON.stringify(folder)});
     if(folder) await app.vault.delete(folder, true);
     if (${wasOn} && !document.body.classList.contains('abele-zen')) ${command};
+    await window.__abeleTest.AbeleConfig.getInstance().saveSettings();
+    await app.workspace.requestSaveLayout.run();
   `)
 })
 
 describe.runIf(available)('zen window', () => {
   for (const phone of [false, true]) {
     it(`keeps note, canvas and chat focused on ${phone ? 'phone emulation' : 'desktop'}`, async () => {
-      if (phone) await enterPhone(390, 844)
-      for (const kind of ['note', 'canvas', 'chat']) {
-        await run(`
+      try {
+        if (phone) {
+          await enterPhone(390, 844)
+          await restoreLayout(savedMobile === null ? layout : JSON.parse(savedMobile))
+        }
+        for (const kind of ['note', 'canvas', 'chat']) {
+          await run(`
           if(document.body.classList.contains('abele-zen')) ${command};
           const leaf=${kind === 'chat' ? 'app.workspace.getRightLeaf(false)' : "app.workspace.getLeaf('tab')"};
           if(${kind === 'chat'}) await leaf.setViewState({type:${JSON.stringify(AI_SIDEBAR_VIEW_TYPE)},active:true});
@@ -58,31 +94,38 @@ describe.runIf(available)('zen window', () => {
           app.workspace.setActiveLeaf(leaf, {focus:true});
           ${command};
         `)
-        await expect
-          .poll(() => evalJson("document.body.classList.contains('abele-zen')"))
-          .toBe(true)
-        expect(evalJson("!!app.workspace.activeLeaf.view.containerEl.closest('.mod-root')")).toBe(
-          true
-        )
-        expect(evalJson("document.body.classList.contains('abele-zen-wide')")).toBe(
-          kind === 'canvas'
-        )
-        expect(
-          evalJson(`(() => {
+          await expect
+            .poll(() => evalJson("document.body.classList.contains('abele-zen')"))
+            .toBe(true)
+          expect(evalJson("!!app.workspace.activeLeaf.view.containerEl.closest('.mod-root')")).toBe(
+            true
+          )
+          expect(evalJson("document.body.classList.contains('abele-zen-wide')")).toBe(
+            kind === 'canvas'
+          )
+          expect(
+            evalJson(`(() => {
           const selectors=['.workspace-ribbon','.status-bar','.mobile-navbar'];
           return selectors.every(s=>[...document.querySelectorAll(s)].every(el=>!el.getBoundingClientRect().height));
         })()`)
-        ).toBe(true)
-        await run(`
+          ).toBe(true)
+          await run(`
           await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
           const image=await require('@electron/remote').getCurrentWebContents().capturePage();
           require('fs').writeFileSync(${JSON.stringify(shots + '/' + (phone ? 'phone' : 'desktop') + '-' + kind + '.png')},image.toPNG());
         `)
+        }
+      } finally {
+        if (phone) await leavePhone()
       }
     })
   }
 
   it('restores zen after restart and gives a modal the first Escape', async () => {
+    await run(`
+      if(!document.body.classList.contains('abele-zen')) ${command};
+      await window.__abeleTest.AbeleConfig.getInstance().saveSettings();
+    `)
     await reloadApp('app.emulateMobile(false)')
     expect(evalJson("document.body.classList.contains('abele-zen')")).toBe(true)
     const escape = () =>
