@@ -25,6 +25,7 @@ import { showNodePairingDialog } from './NodePairingDialogHost'
 import { h } from 'vue'
 import { shortRef } from './presentation'
 import { copyIcon, copyKind } from '@/components/nodeWork/codes'
+import { nodePathMenuPosition as position } from './nodePathMenuPosition'
 
 const app = () => GlobalStore.getInstance().app
 export const nodePathAction = (run: () => Promise<unknown> | void): void => {
@@ -33,15 +34,6 @@ export const nodePathAction = (run: () => Promise<unknown> | void): void => {
     .catch(
       (error: unknown) => new Notice(error instanceof Error ? error.message : 'Node action failed')
     )
-}
-// A press from the keyboard is a click with no pointer (no count, at 0,0): its menu opens under
-// the control pressed, not in the window's corner. Read while the event is dispatched, before
-// any await clears its currentTarget.
-const position = (event: MouseEvent) => {
-  const el = event.currentTarget ?? event.target
-  if (event.detail > 0 || !(el instanceof Element)) return { x: event.clientX, y: event.clientY }
-  const rect = el.getBoundingClientRect()
-  return { x: rect.left, y: rect.bottom }
 }
 export function showNodePathFileMenu(event: MouseEvent, raw: NodePathContext): void {
   event.preventDefault()

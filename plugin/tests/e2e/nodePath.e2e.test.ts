@@ -94,6 +94,19 @@ async function checkCodeGeometry() {
   )
 }
 
+async function checkFileLineMenu(shell: 'desktop' | 'phone') {
+  try {
+    await evalLong(
+      `(async()=>{${prelude}await clearSelectionForMenu();async function clearSelectionForMenu(){window.getSelection()?.removeAllRanges();document.dispatchEvent(new Event('selectionchange'));await wait(100)}const line=visible('.abele-file-view .cm-line');line.scrollIntoView({block:'center'});await wait(100);const r=line.getBoundingClientRect(),x=r.left+10,y=r.top+r.height/2;line.dispatchEvent(new PointerEvent('contextmenu',{bubbles:true,cancelable:true,clientX:x,clientY:y,pointerType:${JSON.stringify(shell === 'phone' ? 'touch' : 'mouse')},detail:0}));await until(()=>menuItem('Copy path'));const menu=menuItem('Copy path').closest('.menu').getBoundingClientRect(),anchor=${shell === 'phone' ? 'r.bottom' : 'y'};if(menu.left<0||menu.right>innerWidth+1||menu.top<0||menu.bottom>innerHeight+1)throw Error('File menu escapes the viewport');if(Math.min(Math.abs(menu.top-anchor),Math.abs(menu.bottom-anchor))>16)throw Error('File menu is detached from the clicked line');return 'line menu anchored'})()`
+    )
+    await capture(shell + '-file-line-menu')
+  } finally {
+    await evalLong(
+      `(()=>{document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));return 'closed line menu'})()`
+    )
+  }
+}
+
 it('pairs and opens target-bound node files history editor and fake chats in the desktop and phone shells', async () => {
   if (!cli) throw new Error('Set ABELE_NODE_CLI to a built node CLI')
   const fixtureRoot = resolve(process.env.ABELE_NODE_PATH_FIXTURE_DIR || realpathSync(tmpdir()))
@@ -357,6 +370,7 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     )
     await capture('desktop-whole')
     await checkCodeGeometry()
+    await checkFileLineMenu('desktop')
     await selectText('.abele-file-view .cm-line')
     await capture('desktop-file-selection')
     await evalLong(
@@ -514,6 +528,7 @@ it('pairs and opens target-bound node files history editor and fake chats in the
       `(async()=>{${prelude}const view=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.contentEl.contains(visible('.abele-file-view'))).view;view.file.mode.value='file';await until(()=>visible('.abele-file-view .cm-line'));return 'whole file'})()`
     )
     await checkCodeGeometry()
+    await checkFileLineMenu('phone')
     await selectText('.abele-file-view .cm-line')
     await capture('phone-file-selection')
     await clearSelection()
