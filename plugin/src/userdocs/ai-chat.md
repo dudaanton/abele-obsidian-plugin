@@ -1042,8 +1042,9 @@ palette uses the same names:
 - **Add to agent context** on a file, a folder or selected text adds it to the chat in front.
 - **Chat about this** starts a chat with a link to the note already typed. With text selected,
   the link points at those lines and the text is quoted.
-- **Attach to a chat** picks an existing chat and inserts a wikilink to the note in its input,
-  without sending it or replacing its draft.
+- **Attach to a chat** inserts a wikilink to the note into the input of the chat in front and
+  shows that chat, without sending it or replacing its draft. With no chat open, a new chat
+  opens with the link.
 - **Attach a chat to note** puts an existing chat in the note's **Chats** list (see below).
 - **Copy wikilink** copies a wikilink to the note, even when the vault uses Markdown links.
   This action also works with the AI switched off.

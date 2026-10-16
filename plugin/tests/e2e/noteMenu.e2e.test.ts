@@ -94,12 +94,7 @@ const script = `(async () => {
     require('fs').writeFileSync(${JSON.stringify(shots)} + (app.isMobile ? '/mobile.png' : '/desktop.png'), image.toPNG())
     const item = [...document.querySelectorAll('.menu-item')].find(e => e.querySelector('.menu-item-title')?.textContent.trim() === 'Attach to a chat')
     item.click()
-    await until(() => document.querySelector('.prompt-input'), 'chat picker')
-    const input = document.querySelector('.prompt-input')
-    input.value = 'Sample menu chat'
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-    await wait(400)
-    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }))
+    // No chat is picked: the link goes into the chat in front, which the probe made the sample one.
     // The link is the one Obsidian writes for the note: its shortest unique form, which depends
     // on what else the vault holds, so it is checked by where it leads rather than its spelling.
     const linktext = app.metadataCache.fileToLinktext(note, '')
@@ -107,6 +102,11 @@ const script = `(async () => {
     report.linkTarget = app.metadataCache.getFirstLinkpathDest(linktext, '')?.path ?? ''
     await until(() => inputText().includes(report.link), 'inserted note link')
     report.draft = inputText()
+    report.picker = !!document.querySelector('.prompt')
+    report.chat = svc.activeSession.value?.currentChatFile.value?.path ?? ''
+    await wait(400)
+    const result = await remote.getCurrentWindow().webContents.capturePage()
+    require('fs').writeFileSync(${JSON.stringify(shots)} + (app.isMobile ? '/mobile-result.png' : '/desktop-result.png'), result.toPNG())
     report.scope = session.scopeResolver.isInScope(notePath)
     report.attached = session.touched.value.map(n => n.path)
     // On mobile the most-recent leaf can be the drawer just revealed. The guarantee is
@@ -144,6 +144,8 @@ interface Report {
   menus: string[][]
   quick: string[]
   draft: string
+  picker: boolean
+  chat: string
   link: string
   linkTarget: string
   scope: boolean
@@ -191,8 +193,10 @@ describe.skipIf(!available)('note actions in the app', () => {
       expect(report.quick).toEqual(TITLES)
     }
   })
-  it('inserts into the picked chat beside its draft, without attaching a card or moving the note', () => {
+  it('inserts into the chat in front beside its draft, with no picker, without attaching a card or moving the note', () => {
     for (const report of reports) {
+      expect(report.picker).toBe(false)
+      expect(report.chat).toBe('sample-menu-fixture/sample-chat.abchat')
       expect(report.draft).toContain('Existing draft')
       expect(report.link).toMatch(/^\[\[(sample-menu-fixture\/)?sample-note\]\]$/)
       expect(report.linkTarget).toBe('sample-menu-fixture/sample-note.md')

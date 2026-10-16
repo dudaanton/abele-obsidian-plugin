@@ -1,6 +1,7 @@
 /**
  * Attaching a chat to a note by hand, from both ends: the note's file menu and command, which
- * pick a chat, and the menu behind the link button in a chat's header, which picks a note.
+ * pick a chat, and the menu behind the link button in a chat's header, which picks a note. And
+ * a note's link put into the chat in front.
  *
  * The chat files, the index and the sessions are real; only the workspace — menus, the note
  * in front, the pickers' dialogs — is stood in for.
@@ -16,7 +17,7 @@ import {
 } from '@/commands/attachChat'
 import { pickNote } from '@/helpers/suggesters/NotePicker'
 import { ChatSession } from '@/ai/ChatSession'
-import { ChatService, MAX_TABS } from '@/ai/ChatService'
+import { ChatService } from '@/ai/ChatService'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -149,24 +150,18 @@ describe('from a note: picking a chat', () => {
   })
 })
 
-describe('inserting a note link into a picked chat', () => {
-  it('picks an existing chat, inserts a wikilink and grants access without attaching a card', async () => {
-    const other = await seedChat('Other')
-    const chosen = await seedChat('Chosen')
+describe('inserting a note link into the current chat', () => {
+  it('goes straight into the chat in front, without a picker, and grants access without attaching a card', async () => {
+    const current = await seedChat('Current')
     const service = ChatService.getInstance()
-    await openSession(other)
-    vi.spyOn(service, 'revealSidebar').mockResolvedValue()
+    await openSession(await seedChat('Other'))
+    const session = await openSession(current)
+    const reveal = vi.spyOn(service, 'revealSidebar').mockResolvedValue()
     ;(app.metadataCache as any).fileToLinktext = vi.fn(() => 'Notes/A')
 
-    const done = attachNoteToChat(fileAt(NOTE_A))
-    const modal = opened<AiChatHistoryEntry>()
-    modal.onChooseItem(
-      modal.getItems().find((e) => e.path === chosen.path)!,
-      new MouseEvent('click')
-    )
+    expect(await attachNoteToChat(fileAt(NOTE_A))).toBe(true)
 
-    expect(await done).toBe(true)
-    const session = service.getSessionByFile(chosen.path)!
+    expect(openSpy).not.toHaveBeenCalled()
     expect(service.activeSession.value?.id).toBe(session.id)
     expect(service.pendingInput.value).toEqual({
       text: '[[Notes/A]] ',
@@ -174,35 +169,39 @@ describe('inserting a note link into a picked chat', () => {
       focus: true,
       append: true,
     })
+    expect(reveal).toHaveBeenCalled()
     expect(session.scopeResolver.isInScope(NOTE_A)).toBe(true)
-    expect(linkedTo(chosen.path)).toEqual([])
+    expect(linkedTo(current.path)).toEqual([])
   })
 
-  it('refuses a full tab bar without replacing an open conversation', async () => {
+  it('keeps an unsaved chat in front rather than starting another', async () => {
     const service = ChatService.getInstance()
-    for (let i = 0; i < MAX_TABS; i++) await openSession(await seedChat(`Sample-${i}`))
-    const active = service.activeSession.value!
-    const original = active.currentChatFile.value!.path
+    service.ensureInitialized()
+    const session = service.activeSession.value!
+    session.draft.value = { text: 'Existing draft', attachments: [] }
     vi.spyOn(service, 'revealSidebar').mockResolvedValue()
-    const extra = await seedChat('Extra')
     ;(app.metadataCache as any).fileToLinktext = vi.fn(() => 'Notes/A')
-    const done = attachNoteToChat(fileAt(NOTE_A))
-    const modal = opened<AiChatHistoryEntry>()
-    modal.onChooseItem(
-      modal.getItems().find((e) => e.path === extra.path)!,
-      new MouseEvent('click')
-    )
-    expect(await done).toBe(false)
-    expect(active.currentChatFile.value?.path).toBe(original)
-    expect(service.pendingInput.value).toBeNull()
+
+    expect(await attachNoteToChat(fileAt(NOTE_A))).toBe(true)
+
+    expect(service.tabOrder.value).toEqual([session.id])
+    expect(session.draft.value.text).toBe('Existing draft')
+    expect(service.pendingInput.value?.tabId).toBe(session.id)
   })
 
-  it('does nothing when picking is cancelled', async () => {
-    await seedChat('Sample')
-    const done = attachNoteToChat(fileAt(NOTE_A))
-    opened().onClose()
-    expect(await done).toBe(false)
-    expect(ChatService.getInstance().pendingInput.value).toBeNull()
+  it('opens a new chat with the link when no chat is open', async () => {
+    const service = ChatService.getInstance()
+    expect(service.activeSession.value).toBeNull()
+    vi.spyOn(service, 'revealSidebar').mockResolvedValue()
+    ;(app.metadataCache as any).fileToLinktext = vi.fn(() => 'Notes/A')
+
+    expect(await attachNoteToChat(fileAt(NOTE_A))).toBe(true)
+
+    const session = service.activeSession.value!
+    expect(session).not.toBeNull()
+    expect(openSpy).not.toHaveBeenCalled()
+    expect(service.pendingInput.value).toMatchObject({ text: '[[Notes/A]] ', tabId: session.id })
+    expect(session.scopeResolver.isInScope(NOTE_A)).toBe(true)
   })
 })
 

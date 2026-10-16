@@ -51,8 +51,10 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
   to it if the agent had none. The note's context menus offer the same action.
   With text selected in that note, the link points at the selected lines and the text is
   quoted under it
-- Attach to a chat — picks an existing chat and inserts a wikilink to the note into its input,
-  keeping any draft already there and giving that chat access to the note. Nothing is sent
+- Attach to a chat — inserts a wikilink to the note into the input of the chat in front (the
+  sidebar's active tab) and shows it, keeping any draft already there and giving that chat
+  access to the note; no chat is picked. With no chat open, a new chat opens with the link.
+  Nothing is sent
 - Attach a chat to note — picks a chat from the history and links it to the note, the
   same link a chat makes by writing to it, so it appears in the note's **Chats** list. From a chat,
   the link button in its header attaches it to the note in front or to one picked, and detaches it; under the note, the unlink

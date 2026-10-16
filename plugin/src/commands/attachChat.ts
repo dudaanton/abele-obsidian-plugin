@@ -3,7 +3,8 @@
  *
  * From a note: *Attach a chat to note* in its file menu — the explorer, a tab's header and its "more
  * options" all build that one menu — and as a command for the note in front. It picks a chat
- * out of the history. From a chat: the Artifacts view attaches the chat
+ * out of the history. *Attach to a chat* is the other way round and picks nothing: the note's
+ * link goes into the chat in front. From a chat: the Artifacts view attaches the chat
  * to the note in front or to one picked, and detaches it from the notes it is attached to.
  * Detaching from the note's end is the button on the chat's card under the note.
  *
@@ -56,17 +57,15 @@ export async function attachChatToNote(note: TFile): Promise<boolean> {
   return true
 }
 
-/** Inserts a link into a picked chat's draft; this does not attach a card to the note. */
+/**
+ * Inserts a link to the note into the draft of the chat in front — the sidebar's active tab, as
+ * *Add to agent context* and a drawing's attach use — and shows it; with no chat there, into a
+ * new one. Gives that chat access to the note; this does not attach a card to the note.
+ */
 export async function attachNoteToChat(note: TFile): Promise<boolean> {
-  const { app } = GlobalStore.getInstance()
-  const chat = await pickChat(app, undefined, { placeholder: 'Attach this note to a chat...' })
-  if (!chat) return false
   const service = ChatService.getInstance()
-  const current = service.fileOpenGuard(chat)
-  await service.openChatFile(chat, current)
-  // Opening can be refused or superseded. Never insert into an obsolete selection.
-  const session = service.getSessionByFile(chat.path)
-  if (!service.isForegroundPresentation(current) || !session || service.activeSession.value?.id !== session.id) return false
+  const session = service.activeSession.value ?? (await service.openBlankChat())
+  if (!session || session.isDestroyed) return false
   grantNote(session.scopeResolver, note.path)
   service.pendingInput.value = {
     text: `${noteWikilink(note)} `,
@@ -74,8 +73,8 @@ export async function attachNoteToChat(note: TFile): Promise<boolean> {
     focus: true,
     append: true,
   }
-  await service.revealSidebar({ current })
-  return service.isForegroundPresentation(current)
+  await service.revealSidebar()
+  return true
 }
 
 /** Attaches a chat to one note, and says so — the chat's end has no card to show it. */

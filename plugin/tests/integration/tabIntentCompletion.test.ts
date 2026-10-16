@@ -6,8 +6,6 @@ import { CommentService } from '@/ai/CommentService'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { AgentsService } from '@/agents/AgentsService'
 import { ChatLink } from '@/entities/ChatLink'
-import { attachNoteToChat } from '@/commands/attachChat'
-import { pickChat } from '@/helpers/suggesters/ChatPicker'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { serializeChat, parseChatMetadata } from '@/ai/ChatLog'
 import { DEFAULT_AI_SETTINGS, type ChatMetadata } from '@/ai/types'
@@ -19,7 +17,6 @@ import { useAttentionVault as useVault } from '../helpers/attentionVault'
 import { deferred } from '../helpers/deferred'
 
 vi.mock('@/editor/CommentPlugin', () => ({ dispatchCommentsChanged: vi.fn() }))
-vi.mock('@/helpers/suggesters/ChatPicker', () => ({ pickChat: vi.fn() }))
 
 const a = 'AI/Chats/sample-card.abchat'
 const b = 'AI/Chats/sample-other.abchat'
@@ -75,7 +72,7 @@ afterEach(() => {
 })
 
 describe('tab intent completion boundaries', () => {
-  it.each(['card', 'attention', 'attachment'] as const)(
+  it.each(['card', 'attention'] as const)(
     'an older %s open cannot admit a new foreground intent while revealing',
     async (entry) => {
       const { app, workspace } = fixture()
@@ -99,12 +96,9 @@ describe('tab intent completion boundaries', () => {
         return prepare(...args)
       })
       const row = agents.rows.value.find((row) => row.reference.kind === 'local' && row.reference.path === a)!
-      vi.mocked(pickChat).mockResolvedValue(app.vault.getFileByPath(a)!)
       const older = entry === 'card'
         ? new ChatLink({ path: a, title: 'Sample card', created: '' }, 'Notes/sample-source.md').open()
-        : entry === 'attachment'
-          ? attachNoteToChat(app.vault.getFileByPath('Notes/sample-source.md')!)
-          : agents.open(row, row.reasons[0])
+        : agents.open(row, row.reasons[0])
       await reading.promise
       const latest = comments.showInSidebar(discussionId)
       await preparing.promise
