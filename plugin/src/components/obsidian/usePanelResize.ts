@@ -3,7 +3,16 @@ import { computed, ref, type Ref } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
 import { GlobalStore } from '@/stores/GlobalStore'
 
-export function usePanelResize(layout: Ref<HTMLElement | undefined>, key: string, defaultEm = 18) {
+/**
+ * `restEm` keeps that much of the layout for what stands beside the panel, so dragging never
+ * squeezes it away.
+ */
+export function usePanelResize(
+  layout: Ref<HTMLElement | undefined>,
+  key: string,
+  defaultEm = 18,
+  restEm = 0
+) {
   const app = GlobalStore.getInstance().app
   const stored: unknown = app.loadLocalStorage(key)
   const width = ref<number | null>(
@@ -13,7 +22,7 @@ export function usePanelResize(layout: Ref<HTMLElement | undefined>, key: string
   const em = ref(14)
   const narrow = computed(() => available.value <= 640)
   // No cap of its own: a panel inside a tab may take the whole of it, as Obsidian's sidebars may.
-  const max = computed(() => available.value)
+  const max = computed(() => Math.max(0, available.value - restEm * em.value))
   const min = computed(() => Math.min(em.value * 12, max.value))
   const clamp = (value: number) => Math.max(min.value, Math.min(max.value, value))
   const current = computed(() => clamp(width.value ?? em.value * defaultEm))
@@ -73,6 +82,8 @@ export function usePanelResize(layout: Ref<HTMLElement | undefined>, key: string
   }
 
   return {
+    /** Whether a width was chosen by hand; until then the layout's own proportion stands. */
+    chosen: computed(() => width.value !== null),
     style: computed(() => ({
       '--abele-panel-width': width.value === null ? `${defaultEm}em` : `${width.value}px`,
     })),

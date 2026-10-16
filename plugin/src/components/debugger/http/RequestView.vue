@@ -3,7 +3,7 @@
        address on one line with Send, what the address comes to in this environment under it, the
        parts of the request as folds, and the answer below. -->
   <div class="abele-http-request" :class="{ 'abele-http-request_phone': phone }">
-    <div class="abele-http-request__layout">
+    <div ref="layout" class="abele-http-request__layout" :style="split">
       <div class="abele-http-request__top">
         <div class="abele-http-request__line">
           <Dropdown
@@ -69,6 +69,13 @@
       </div>
 
       <div class="abele-http-request__parts">
+        <!-- Between the request and its answer, Obsidian's own divider: dragged, the request's
+             side takes that width and keeps it on this device; a double click evens them again. -->
+        <PanelResizeHandle
+          class="abele-http-request__divider"
+          label="Resize the request"
+          v-bind="divider"
+        />
         <section v-for="part in parts" :key="part.id" class="abele-http-request__part">
           <FoldHeading
             :text="part.label"
@@ -189,13 +196,16 @@
             name="Body"
             :value="outcome.response.body"
           />
-          <div v-else-if="answerTab === 'headers'" class="abele-http-request__rows">
-            <TreeItem v-for="h in outcome.response.headers" :key="h.key" flush plain :text="h.key">
-              <template #end
-                ><code class="abele-http-request__header-value">{{ h.value }}</code></template
-              >
-            </TreeItem>
-          </div>
+          <!-- Name and value in two columns, as DevTools lists them: a long value (a policy, a
+               cookie) wraps under itself and never pushes its name out. -->
+          <dl v-else-if="answerTab === 'headers'" class="abele-http-request__headers">
+            <template v-for="(h, i) in outcome.response.headers" :key="i">
+              <dt>{{ h.key }}</dt>
+              <dd>
+                <code class="abele-http-request__header-value">{{ h.value }}</code>
+              </dd>
+            </template>
+          </dl>
           <div v-else-if="answerTab === 'history'" class="abele-http-request__rows">
             <TreeItem
               v-for="h in history"
@@ -320,6 +330,8 @@ import TreeItem from '../../obsidian/TreeItem.vue'
 import Diff from '../../Diff.vue'
 import DebugValueView from '../DebugValueView.vue'
 import { bytes } from '../trace/format'
+import PanelResizeHandle from '../../obsidian/PanelResizeHandle.vue'
+import { usePanelResize } from '../../obsidian/usePanelResize'
 import RequestPairs from './RequestPairs.vue'
 import type {
   HttpEnvironment,
@@ -370,6 +382,8 @@ const emit = defineEmits<{
 }>()
 
 const phone = Platform.isPhone
+/** The request side's width in a wide tab, on this device. */
+const HTTP_SPLIT_KEY = 'abele-http-request-width'
 /** When the answer shown was sent, if it is not the latest. */
 const shownAt = computed(() =>
   props.shownSend && props.shownSend !== props.history[0]?.id
@@ -378,7 +392,13 @@ const shownAt = computed(() =>
 )
 const METHODS: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']
 
-const folded = reactive(new Set<string>(['scripts']))
+// Scripts start folded, and so does every part with nothing in it: an empty request reads as
+// its headings alone, and opening one shows the line to add the first.
+const folded = reactive(new Set<string>())
+const foldEmpty = () => {
+  folded.clear()
+  for (const part of parts.value) if (part.id === 'scripts' || part.count === 0) folded.add(part.id)
+}
 const toggle = (id: string) => (folded.has(id) ? folded.delete(id) : folded.add(id))
 
 const parts = computed(() => [
@@ -396,6 +416,17 @@ const parts = computed(() => [
 ])
 // Every line, the ones left out too: they are there to read and to switch back on.
 const on = (pairs: HttpPair[]) => pairs.length
+foldEmpty()
+watch(() => props.request.id, foldEmpty)
+
+const layout = ref<HTMLElement>()
+// The answer keeps at least as much room as the request may be narrowed to.
+const { divider } = usePanelResize(layout, HTTP_SPLIT_KEY, 30, 22)
+// The width as the divider holds it, so a drag starts from what is drawn; until the tab has been
+// measured the two sides share it evenly.
+const split = computed(() =>
+  divider.value.max > 0 ? { '--abele-panel-width': `${divider.value.current}px` } : undefined
+)
 
 /** A variable of the address this environment has no value for. */
 const unknownVar = computed(() =>
@@ -511,6 +542,35 @@ const statusTone = (status: number) => (status >= 400 ? 'error' : status >= 300 
   }
   .abele-http-request__parts {
     grid-area: parts;
+    position: relative;
+  }
+  .abele-http-request__layout {
+    grid-template-columns: var(--abele-panel-width, minmax(0, 1fr)) minmax(0, 1fr);
+  }
+  // Obsidian's divider in the middle of the gap, from the parts' top to their foot. Obsidian hides
+  // a last leaf's handles by five classes; this one is inside the leaf, not at its edge.
+  .abele-http-request
+    .abele-http-request__layout
+    > .abele-http-request__parts
+    > .workspace-leaf-resize-handle.abele-panel-resize-handle.abele-http-request__divider {
+    display: block;
+    position: absolute;
+    inset-block: 0;
+    inset-inline-end: calc(-1 * (var(--size-4-4) + var(--divider-width-hover) / 2));
+    width: var(--divider-width-hover);
+    height: auto;
+    margin: 0;
+    border: none;
+    border-inline-end: var(--divider-width) solid transparent;
+    cursor: col-resize;
+
+    &:hover,
+    &:focus-visible {
+      border-color: var(--divider-color-hover);
+    }
+    &.is-active {
+      border-color: var(--color-accent);
+    }
   }
   .abele-http-request__layout > .abele-http-request__answer {
     grid-area: answer;
@@ -685,11 +745,38 @@ const statusTone = (status: number) => (status >= 400 ? 'error' : status >= 300 
   color: var(--text-muted);
 }
 
+.abele-http-request__headers {
+  display: grid;
+  grid-template-columns: fit-content(40%) minmax(0, 1fr);
+  gap: var(--size-4-2) var(--size-4-4);
+  margin: 0;
+  font-size: var(--font-ui-small);
+
+  dt {
+    color: var(--text-normal);
+    overflow-wrap: anywhere;
+  }
+  dd {
+    margin: 0;
+    min-width: 0;
+  }
+}
+
 .abele-http-request__header-value {
   background: none;
   padding: 0;
   font-size: var(--font-ui-smaller);
   color: var(--text-muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+// Nothing sent yet: one quiet line level with the request's first heading, not a block of its own.
+.abele-http-request__answer > .abele-empty-state {
+  display: flex;
+  align-items: center;
+  min-height: calc(var(--font-ui-medium) * var(--line-height-tight) + var(--size-2-2));
+  padding: 0;
 }
 
 .abele-http-request__notice {

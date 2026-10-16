@@ -1,8 +1,14 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import RequestView from '@/components/debugger/http/RequestView.vue'
 import RequestsPanel from '@/components/debugger/http/RequestsPanel.vue'
 import type { HttpRequest } from '@/components/debugger/http/types'
+import { useVault } from '../helpers/testEnv'
+
+// The request's width beside its answer is kept on the device, as the app keeps it.
+beforeEach(() => {
+  useVault([])
+})
 
 const request = (missing?: string): HttpRequest => ({
   id: 'sample-create',
@@ -169,5 +175,55 @@ describe('the requests view', () => {
   it('says the requests open while the node is online', () => {
     const view = mount(RequestsPanel, { props: { collections: [], offline: true } })
     expect(view.text()).toContain('while the node is online')
+  })
+})
+
+describe('an empty request and a long answer', () => {
+  it('folds every part with nothing in it, and opening one shows the line to add the first', async () => {
+    const blank: HttpRequest = { ...request(), method: 'GET', headers: [], body: undefined }
+    const view = mount(RequestView, { props: { request: blank, environment: 'local', vars } })
+    expect(view.findAll('.abele-http-pairs')).toHaveLength(0)
+    expect(view.find('.abele-http-request__rows').exists()).toBe(false)
+    await view.findAll('.abele-fold-heading')[0].trigger('click')
+    expect(view.find('.abele-http-pairs_empty input').attributes('placeholder')).toBe(
+      'Add a parameter'
+    )
+  })
+
+  it("lists the answer's headers as names beside values, repeated names each on its own line", async () => {
+    const value = 'SID=c2FtcGxl' + 'x'.repeat(200) + '; path=/; Secure'
+    const view = mount(RequestView, {
+      props: {
+        request: request(),
+        environment: 'local',
+        vars,
+        outcome: {
+          kind: 'answered',
+          response: {
+            status: 200,
+            reason: 'OK',
+            ms: 12,
+            bytes: 40,
+            headers: [
+              { key: 'set-cookie', value },
+              { key: 'set-cookie', value: 'PREF=1' },
+            ],
+            body: '',
+          },
+        },
+      },
+    })
+    const tab = view.findAll('[role="tab"], button').find((b) => b.text().startsWith('Headers'))
+    await tab!.trigger('click')
+    expect(view.findAll('.abele-http-request__headers dt').map((d) => d.text())).toEqual([
+      'set-cookie',
+      'set-cookie',
+    ])
+    expect(view.find('.abele-http-request__headers dd').text()).toBe(value)
+  })
+
+  it('stands a divider between the request and its answer', () => {
+    const view = mount(RequestView, { props: { request: request(), environment: 'local', vars } })
+    expect(view.find('.abele-http-request__divider').attributes('role')).toBe('separator')
   })
 })

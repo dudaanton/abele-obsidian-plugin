@@ -2,7 +2,12 @@
   <!-- Names and values in two columns, as a note's properties: a check to leave a line out
        without losing it, the remove glyph shown on pointing, and an empty line at the end to add
        one more. A key of the plugin is said by its name, never its value. -->
-  <div class="abele-http-pairs" role="table" :aria-label="label">
+  <div
+    class="abele-http-pairs"
+    :class="{ 'abele-http-pairs_empty': !pairs.length }"
+    role="table"
+    :aria-label="label"
+  >
     <div
       v-for="(pair, i) in pairs"
       :key="i"
@@ -54,7 +59,7 @@
       />
     </div>
     <div class="abele-http-pairs__row abele-http-pairs__row_new" role="row">
-      <span class="abele-http-pairs__spacer" />
+      <span v-if="pairs.length" class="abele-http-pairs__spacer" />
       <input
         type="text"
         class="abele-http-pairs__key"
@@ -217,6 +222,24 @@ onUpdated(tips)
 
 .abele-http-pairs__row_new:hover {
   background: none;
+}
+
+// The line to add one is asked in words, not in the names' own type.
+.abele-http-pairs__row_new input::placeholder {
+  font-family: var(--font-interface);
+}
+// With no lines yet there is no column of checks to stand under: the line starts on the heading's
+// words, its field's frame reaching past them only while typing.
+.abele-http-pairs_empty .abele-http-pairs__row_new {
+  grid-template-columns: minmax(6em, 1fr);
+  padding-inline: 0;
+
+  input {
+    margin-inline-start: calc(-1 * var(--size-2-2));
+  }
+  > span:not(.abele-http-pairs__spacer) {
+    display: none;
+  }
 }
 
 // Where the check stands on the empty line, so the name under it starts with the others.
