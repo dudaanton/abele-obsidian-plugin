@@ -151,8 +151,14 @@ export class NodePathMainView extends ItemView {
       this.saved = parsed
       await super.setState(raw, result)
       window.setTimeout(() => {
-        void this.leaf
-          .setViewState({ type: NODE_FILE_VIEW, active: true, state: editedFileTab(parsed) })
+        void Promise.resolve()
+          .then(() =>
+            this.leaf.setViewState({
+              type: NODE_FILE_VIEW,
+              active: true,
+              state: editedFileTab(parsed),
+            })
+          )
           .catch((error: unknown) => console.debug('[Abele node] editor tab not reopened', error))
       }, 0)
       return
