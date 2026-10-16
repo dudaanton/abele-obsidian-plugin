@@ -6,6 +6,57 @@ const source = readFileSync(resolve(__dirname, '../e2e/canvasNotePanels.e2e.test
 const cleanup = source.match(/const CLEANUP = `([\s\S]*?)`\n/)![1]
 const section = source.match(/const waitForNoteSection = async \(\) => \{([\s\S]*?)\n\}/)![1]
 const poll = source.match(/const until = async \(condition: string\) => \{([\s\S]*?)\n\}/)![1]
+const diagnostics = source.match(/const NOTE_SECTION_DIAGNOSTICS = `([\s\S]*?)`\n/)![1]
+
+it('reports the active view, file, editor state, anchors and footer presence on timeout', async () => {
+  const root = document.createElement('div')
+  const anchor = document.createElement('div')
+  anchor.setAttribute('data-abele-anchor', 'section:tasks')
+  root.append(anchor)
+  const app = {
+    workspace: {
+      activeLeaf: {
+        view: {
+          getViewType: () => 'markdown',
+          file: { path: 'sample.md' },
+          getState: () => ({ mode: 'preview' }),
+          containerEl: root,
+        },
+      },
+    },
+  }
+  const run = (body: string) => new Function('app', body)(app)
+  const until = async () => {
+    throw new Error('Sample timeout')
+  }
+  const wait = new Function(
+    'run',
+    'until',
+    'NOTE_SECTION_DIAGNOSTICS',
+    `return async () => {${section}}`
+  )(run, until, diagnostics)
+  const error = await wait().catch((error: Error) => error)
+  expect(error).toBeInstanceOf(Error)
+  expect(JSON.parse(error.message.replace('Note footer section did not appear: ', ''))).toEqual({
+    type: 'markdown',
+    file: 'sample.md',
+    state: { mode: 'preview' },
+    anchors: ['section:tasks'],
+    footerRoot: false,
+  })
+  const footer = document.createElement('div')
+  footer.className = 'abele-footer-widget-container'
+  root.append(footer)
+  expect(run(diagnostics).footerRoot).toBe(true)
+  app.workspace.activeLeaf = null as never
+  expect(run(diagnostics)).toEqual({
+    type: null,
+    file: null,
+    state: null,
+    anchors: [],
+    footerRoot: false,
+  })
+})
 
 it('waits for the footer after the note activates', async () => {
   const run = vi.fn().mockReturnValueOnce(false).mockReturnValueOnce(false).mockReturnValue(true)

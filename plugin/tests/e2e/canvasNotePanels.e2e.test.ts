@@ -19,10 +19,24 @@ const run = <T>(body: string): T =>
 const until = async (condition: string) => {
   await expect.poll(() => run(`return !!(${condition})`), { timeout: 15000 }).toBe(true)
 }
+const NOTE_SECTION_DIAGNOSTICS = `
+  const leaf=app.workspace.activeLeaf,v=leaf?.view,root=v?.containerEl
+  return {
+    type:v?.getViewType?.()??null,
+    file:v?.file?.path??null,
+    state:v?.getState?.()??null,
+    anchors:root?[...root.querySelectorAll('[data-abele-anchor]')].map(el=>el.getAttribute('data-abele-anchor')):[],
+    footerRoot:!!root?.querySelector('.abele-footer-widget-container,.abele-footer-view')
+  }`
 const waitForNoteSection = async () => {
-  await until(
-    `app.workspace.activeLeaf?.view.containerEl.querySelector('[data-abele-anchor="section:backlinks"]')`
-  )
+  try {
+    await until(
+      `app.workspace.activeLeaf?.view.file?.path===dir+'/Sample note.md' && app.workspace.activeLeaf.view.containerEl.querySelector('[data-abele-anchor="section:backlinks"]')`
+    )
+  } catch (error) {
+    const seen = run(NOTE_SECTION_DIAGNOSTICS)
+    throw new Error(`Note footer section did not appear: ${JSON.stringify(seen)}`, { cause: error })
+  }
 }
 const open = () => run(`await app.workspace.openLinkText(path,'','tab');return true`)
 const PANEL_MENU = `

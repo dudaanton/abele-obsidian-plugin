@@ -177,8 +177,14 @@ class LiveCards implements ViewerCards {
                 level: state.value,
                 open: async (section: string) => {
                   const leaf = this.app.workspace.getLeaf('tab')
+                  const text = await this.app.vault.cachedRead(file)
                   // An explicit place takes precedence over the note's remembered scroll position.
-                  await leaf.openFile(file, { eState: { line: 0 } })
+                  // The footer is a Live Preview widget at the document's end. Reading/source
+                  // mode and an off-screen final line cannot provide its destination rows.
+                  await leaf.openFile(file, {
+                    state: { mode: 'source', source: false },
+                    eState: { line: text.split('\n').length - 1 },
+                  })
                   const root = leaf.view.containerEl
                   const reveal = () => {
                     const row = root.querySelector(`[data-abele-anchor="section:${section}"]`)
