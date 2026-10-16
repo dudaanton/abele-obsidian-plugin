@@ -217,6 +217,14 @@ export class TokenOffloadCoordinator {
     }
     throw new Error('File content is unavailable through the current connections')
   }
+  /** This source's absent files are settled as metadata by its representation client.
+   * Other sources and parent placements still need the ordinary content preparation. */
+  async prepareIncoming(owner: string, paths: readonly string[]): Promise<void> {
+    const absent = this.absent.get(owner)?.files ?? []
+    await this.prepare(
+      paths.filter((path) => !absent.some((file) => caseKey(file.path) === caseKey(path)))
+    )
+  }
   async prepare(paths: readonly string[], signal?: AbortSignal): Promise<void> {
     for (const [id, snapshot] of this.absent)
       for (const file of snapshot.files)

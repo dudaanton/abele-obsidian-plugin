@@ -581,7 +581,7 @@ export class TokenEngines {
           state,
           engineState: offloads.state,
           engineClient: offloads.client,
-          preparePlacement: (paths) => manager.prepare(paths),
+          preparePlacement: (paths) => manager.prepareIncoming(record.ledgerId, paths),
           recoverPlacement: () => ordinary.recover(),
           scopeInput: async (selective) => {
             const text = await readIgnore(this.app)

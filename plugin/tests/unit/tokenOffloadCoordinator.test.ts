@@ -4,6 +4,40 @@ import { TokenOffloadCoordinator } from '@/sync/tokenOffloadCoordinator'
 import { PathCoordinator } from '@/sync/pathCoordinator'
 import { deferred } from '../helpers/deferred'
 
+it('accepts incoming metadata without hydrating an offloaded stale version after reconnect', async () => {
+  const manager = new TokenOffloadCoordinator(new PathCoordinator())
+  const hydrate = vi.fn(async () => {
+    throw new Error('The old version is no longer current')
+  })
+  manager.remember('sample', [{ path: 'Media/sample.bin', size: 12, mtime: 1 }], [])
+  manager.hydrator('sample', hydrate)
+  await expect(
+    manager.prepareIncoming('sample', ['Media/sample.bin', 'Notes/ordinary.md'])
+  ).resolves.toBeUndefined()
+  expect(hydrate).not.toHaveBeenCalled()
+  // An explicit request for content still goes through the authorized hydrator.
+  await expect(manager.prepare(['Media/sample.bin'])).rejects.toThrow('no longer current')
+  expect(hydrate).toHaveBeenCalledOnce()
+})
+
+it('still prepares offloaded descendants before an incoming parent placement', async () => {
+  const manager = new TokenOffloadCoordinator(new PathCoordinator())
+  const hydrate = vi.fn(async () => {})
+  manager.remember('sample', [{ path: 'Media/sample.bin', size: 12, mtime: 1 }], [])
+  manager.hydrator('sample', hydrate)
+  await manager.prepareIncoming('sample', ['Media'])
+  expect(hydrate).toHaveBeenCalledWith('Media/sample.bin')
+})
+
+it('prepares content offloaded by another source before ordinary incoming placement', async () => {
+  const manager = new TokenOffloadCoordinator(new PathCoordinator())
+  const hydrate = vi.fn(async () => {})
+  manager.remember('other', [{ path: 'Media/sample.bin', size: 12, mtime: 1 }], [])
+  manager.hydrator('other', hydrate)
+  await manager.prepareIncoming('sample', ['Media/sample.bin'])
+  expect(hydrate).toHaveBeenCalledWith('Media/sample.bin')
+})
+
 it('tries a reachable authorized source before the offline source backoff, even when offline is preferred', async () => {
   const manager = new TokenOffloadCoordinator(new PathCoordinator())
   const bytes = new TextEncoder().encode('retained bytes')
