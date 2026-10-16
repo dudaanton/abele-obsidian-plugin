@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
+import { Buffer } from 'node:buffer'
 import type { App, DataAdapter } from 'obsidian'
 import { sha256 } from '@noble/hashes/sha2'
 import {
@@ -43,6 +44,10 @@ it('cleans a committed private outbox download without applying user-directory b
 it('pulls and uploads more than 50 MiB with mobile bounded reads inside the owned folder boundary', async () => {
   const MiB = 1024 * 1024,
     size = 51 * MiB + 13
+  const chunk = new Uint8Array(MiB).fill(7)
+  const encodedChunk = Buffer.from(chunk.buffer).toString('base64')
+  const readBytes = new Map<string, number>()
+  let readCalls = 0
   const privateRoot = connectionPrivateRoot('sample')
   const files = new Map<string, { size: number; bytes?: Uint8Array; mtime: number }>([
     ['Shared/upload.bin', { size, mtime: 1000 }],
@@ -81,6 +86,7 @@ it('pulls and uploads more than 50 MiB with mobile bounded reads inside the owne
     },
     writeBinary: async (path: string, bytes: ArrayBuffer, options?: { mtime?: number }) => {
       record(path)
+      expect(bytes.byteLength).toBeLessThanOrEqual(MiB)
       files.set(path, {
         size: bytes.byteLength,
         bytes: new Uint8Array(bytes),
@@ -89,6 +95,7 @@ it('pulls and uploads more than 50 MiB with mobile bounded reads inside the owne
     },
     appendBinary: async (path: string, bytes: ArrayBuffer, options?: { mtime?: number }) => {
       record(path)
+      expect(bytes.byteLength).toBeLessThanOrEqual(MiB)
       const file = files.get(path)!
       file.size += bytes.byteLength
       file.bytes = undefined
@@ -112,18 +119,33 @@ it('pulls and uploads more than 50 MiB with mobile bounded reads inside the owne
     },
   } as unknown as DataAdapter
   Object.assign(app.vault.adapter, raw)
-  const readFile = vi.fn(
-    async ({ path, offset, length }: { path: string; offset: number; length: number }) => {
-      expect(length).toBeLessThanOrEqual(MiB)
-      const local = path.slice('file:///sample/'.length)
-      record(local)
-      const file = files.get(local)!
-      const bytes = file.bytes
-        ? file.bytes.slice(offset, offset + length)
-        : new Uint8Array(Math.min(length, file.size - offset)).fill(7)
-      return { data: btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join('')) }
+  // Count calls without retaining each large base64 response in mock history.
+  const readFile = async ({
+    path,
+    offset,
+    length,
+  }: {
+    path: string
+    offset: number
+    length: number
+  }) => {
+    expect(length).toBeLessThanOrEqual(MiB)
+    const local = path.slice('file:///sample/'.length)
+    record(local)
+    const file = files.get(local)!
+    const bytes = file.bytes
+      ? file.bytes.subarray(offset, offset + length)
+      : chunk.subarray(0, Math.min(length, file.size - offset))
+    expect(bytes.buffer.byteLength).toBeLessThanOrEqual(MiB)
+    readCalls++
+    readBytes.set(local, (readBytes.get(local) ?? 0) + bytes.length)
+    return {
+      data:
+        !file.bytes && bytes.length === MiB
+          ? encodedChunk
+          : Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('base64'),
     }
-  )
+  }
   vi.stubGlobal('Capacitor', {
     Plugins: {
       Filesystem: {
@@ -140,8 +162,7 @@ it('pulls and uploads more than 50 MiB with mobile bounded reads inside the owne
     fileScope: 'Shared',
     preserveEmptyDirectories: true,
   })
-  const hash = sha256.create(),
-    chunk = new Uint8Array(MiB).fill(7)
+  const hash = sha256.create()
   for (let offset = 0; offset < size; offset += MiB)
     hash.update(chunk.subarray(0, Math.min(MiB, size - offset)))
   const expectedSha = Array.from(hash.digest(), (b) => b.toString(16).padStart(2, '0')).join('')
@@ -160,6 +181,7 @@ it('pulls and uploads more than 50 MiB with mobile bounded reads inside the owne
     for (let offset = 0; offset < source.size; offset += MiB) {
       const bytes = await source.read(offset, Math.min(MiB, source.size - offset))
       expect(bytes.length).toBe(Math.min(MiB, source.size - offset))
+      expect(bytes.buffer.byteLength).toBeLessThanOrEqual(MiB)
       hash.update(bytes)
     }
     await source.assertUnchanged()
@@ -251,7 +273,13 @@ it('pulls and uploads more than 50 MiB with mobile bounded reads inside the owne
   )
   expect(await state.get('Shared/download.bin')).toMatchObject({ size, sha: expectedSha })
   expect(await fs.stat('Shared/download.bin')).toMatchObject({ size })
-  expect(readFile).toHaveBeenCalled()
+  expect(readCalls).toBeGreaterThan(0)
+  expect(readBytes.get('Shared/upload.bin')).toBeGreaterThanOrEqual(size)
+  expect(
+    [...readBytes]
+      .filter(([path]) => path.startsWith(privateRoot + '/'))
+      .reduce((sum, [, bytes]) => sum + bytes, 0)
+  ).toBeGreaterThanOrEqual(size)
   expect(
     calls.filter(
       (path) =>
@@ -261,4 +289,6 @@ it('pulls and uploads more than 50 MiB with mobile bounded reads inside the owne
         !['.abele-sync', '.abele-sync/connections', privateRoot].includes(path)
     )
   ).toEqual([])
-}, 30000)
+  // Real base64 decoding and SHA-256 traverse multiple full transfers. The timeout
+  // accommodates shared runners; bounded buffer sizes and byte counts prove the contract.
+}, 120000)
