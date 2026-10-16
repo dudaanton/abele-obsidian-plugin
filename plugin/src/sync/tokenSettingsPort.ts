@@ -13,6 +13,9 @@ import { DISCONNECTED_STATUS, statusOf } from './status'
 /** Thin per-connection settings actions; exchange and durable decisions remain in core. */
 export class TokenSettingsPort {
   private static readonly instances = new WeakMap<TokenUi, Map<string, TokenSettingsPort>>()
+  static forget(ui: TokenUi, id: string): void {
+    this.instances.get(ui)?.delete(id)
+  }
   static getInstance(): TokenSettingsPort {
     const ui = tokenUi.value
     if (!ui) throw new Error('Connections are not available')

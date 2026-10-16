@@ -76,6 +76,12 @@ export class TokenEngines {
       // writers and recovery callers need the completed startup outcome.
       if (!assertCurrent) await this.engines.settled()
     }
+    ui.disconnectRuntime = async (id) => {
+      await this.engines.remove(id)
+      TokenSettingsPort.forget(ui, id)
+      this.activityEpoch.delete(id)
+      this.activityReports.delete(id)
+    }
     ui.retryConnection = async (id, assertCurrent) => {
       assertCurrent()
       const retry = this.retries.get(id)

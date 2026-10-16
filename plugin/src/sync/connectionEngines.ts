@@ -7,7 +7,7 @@ export interface ConnectionRuntime {
 export class ConnectionEngines {
   private readonly runtimes = new Map<
     string,
-    { runtime: ConnectionRuntime; starting: Promise<void> }
+    { runtime: ConnectionRuntime; starting: Promise<void>; retiring: boolean }
   >()
   private closed = false
   start(
@@ -25,18 +25,28 @@ export class ConnectionEngines {
         failed(id, error)
         continue
       }
-      const starting = Promise.resolve()
+      const owned = { runtime, starting: Promise.resolve(), retiring: false }
+      owned.starting = Promise.resolve()
         .then(() => {
-          if (!this.closed) return runtime.start()
+          if (!this.closed && !owned.retiring) return runtime.start()
         })
         .catch((error) => {
           failed(id, error)
         })
-      this.runtimes.set(id, { runtime, starting })
+      this.runtimes.set(id, owned)
     }
   }
   async settled(): Promise<void> {
     await Promise.all([...this.runtimes.values()].map((one) => one.starting))
+  }
+  /** Release one departed connection's factory closures after all its effects drain. */
+  async remove(id: string): Promise<void> {
+    const owned = this.runtimes.get(id)
+    if (!owned) return
+    owned.retiring = true
+    owned.runtime.invalidate()
+    await Promise.all([owned.runtime.close(), owned.starting])
+    if (this.runtimes.get(id) === owned) this.runtimes.delete(id)
   }
   async close(): Promise<void> {
     this.closed = true
@@ -44,7 +54,10 @@ export class ConnectionEngines {
   }
   /** Drain old effects before a host configuration change opens replacement ledgers. */
   async reset(): Promise<void> {
-    for (const { runtime } of this.runtimes.values()) runtime.invalidate()
+    for (const owned of this.runtimes.values()) {
+      owned.retiring = true
+      owned.runtime.invalidate()
+    }
     const closing = [...this.runtimes.values()].map(async ({ runtime, starting }) => {
       const close = runtime.close()
       await Promise.all([close, starting])

@@ -207,6 +207,9 @@ const noConnectionHost = async () => {}
 export class TokenUi {
   connectionChangeGuard: (id?: string, assertCurrent?: () => void) => Promise<void> = async () => {}
   connectionsChanged: (assertCurrent?: () => void) => Promise<void> = noConnectionHost
+  disconnectRuntime: (id: string) => Promise<void> = async (id) => {
+    await this.runtimes.get(id)?.disconnect()
+  }
   retryConnection: (id: string, assertCurrent: () => void) => Promise<void> = async (
     _,
     assertCurrent
@@ -357,6 +360,7 @@ export class TokenUi {
     }
     this.refresh()
     void this.refreshReviews().catch(() => {
+      if (!this.registry.records().some((one) => one.id === id)) return
       this.activity.value = {
         ...this.activity.value,
         [id]: {
@@ -599,11 +603,14 @@ export class TokenUi {
       throw new Error('Connection changed while disconnecting')
     this.registry.beginForget(id)
     this.refresh()
-    await this.runtimes.get(id)?.disconnect()
+    await this.disconnectRuntime(id)
     await this.reviews?.executables.forgetSource(id)
     // Local disconnect is not revocation: other tokens and all local files remain untouched.
     this.registry.finishForgotten(this.secrets, id)
     this.runtimes.delete(id)
+    const activity = { ...this.activity.value }
+    delete activity[id]
+    this.activity.value = activity
     this.available.value = this.runtimes.size > 0
     this.refresh()
     await this.refreshReviews()

@@ -12,6 +12,7 @@ import { buildFakeVault } from '../helpers/fakeVault'
 import * as safety from '@/sync/external/pluginSafety'
 import { JOURNAL_KEY, WriteJournal } from '@/sync/writeJournal'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
+import { TokenSettingsPort } from '@/sync/tokenSettingsPort'
 
 it('surfaces a server size refusal by path and reason, keeps bytes pending and avoids repeated rejected uploads', async () => {
   const app = buildFakeVault([{ path: 'oversized.bin', content: 'too many bytes' }])
@@ -727,6 +728,35 @@ it('binds saved token rows to independent native production runtimes and drains 
     await ui.disconnect(first.id)
     expect(ui.runtimes.has(first.id)).toBe(false)
     expect(keys.size).toBe(1)
+    // Count the host's retained owners, not just the visible connection rows.
+    const retained = host as unknown as {
+      engines: { runtimes: Map<string, unknown> }
+      retries: Map<string, unknown>
+      activityEpoch: Map<string, unknown>
+      activityReports: Map<string, unknown>
+    }
+    for (let cycle = 0; cycle < 6; cycle++) {
+      await ui.connect(
+        encodeAccessToken({
+          v: 1,
+          address: `https://cycle${cycle}.example`,
+          key: 'c'.repeat(43),
+          scope,
+        })
+      )
+      const added = registry.records().find((one) => one.id !== second.id)!
+      await vi.waitFor(() => expect(ui.runtimes.has(added.id)).toBe(true))
+      await ui.disconnect(added.id)
+    }
+    expect(retained.engines.runtimes.size).toBe(1)
+    expect(retained.retries.size).toBe(1)
+    const ports = TokenSettingsPort as unknown as {
+      instances: WeakMap<TokenUi, Map<string, unknown>>
+    }
+    expect(ports.instances.get(ui)?.size).toBe(1)
+    expect(retained.activityEpoch.size).toBeLessThanOrEqual(1)
+    expect(retained.activityReports.size).toBeLessThanOrEqual(1)
+    expect(Object.keys(ui.activity.value)).toEqual([second.id])
     await ui.sync(second.id)
     expect(registry.records().map((one) => one.id)).toEqual([second.id])
   } finally {

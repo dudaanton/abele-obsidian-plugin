@@ -6,6 +6,22 @@ import { MemoryStateStore, sha256 } from '@abele/sync-core'
 import { ExecutableReview } from '@/sync/executableReview'
 import { AttachmentConsent } from '@/sync/attachmentConsent'
 import { tokenUiFixture } from '@/testing/tokenUiFixture'
+import { deferred } from '../helpers/deferred'
+
+it('does not resurrect departed activity when an older review refresh fails', async () => {
+  const { ui, registry } = setup()
+  await ui.connect(token)
+  const id = registry.records()[0].id
+  const pending = deferred<void>()
+  vi.spyOn(ui, 'refreshReviews')
+    .mockImplementationOnce(() => pending.promise)
+    .mockResolvedValue(undefined)
+  ui.publish(id, { pending: 2 })
+  await ui.disconnect(id)
+  pending.reject(new Error('old refresh failed'))
+  await Promise.resolve()
+  expect(ui.activity.value).toEqual({})
+})
 
 it('distinguishes a cut-off response body from an unreachable server', () => {
   expect(

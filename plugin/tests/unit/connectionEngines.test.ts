@@ -1,6 +1,41 @@
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { ConnectionEngines } from '@/sync/connectionEngines'
 import { deferred } from '../helpers/deferred'
+
+it('removes a connection before its queued startup can create effects', async () => {
+  const engines = new ConnectionEngines()
+  const start = vi.fn(async () => {})
+  const close = vi.fn(async () => {})
+  engines.start(
+    ['sample'],
+    () => ({ start, close, invalidate() {} }),
+    () => {}
+  )
+  await engines.remove('sample')
+  expect(start).not.toHaveBeenCalled()
+  expect(close).toHaveBeenCalledOnce()
+  await engines.close()
+  expect(close).toHaveBeenCalledOnce()
+})
+
+it('retains a failed drain until it can be retried', async () => {
+  const engines = new ConnectionEngines()
+  const close = vi
+    .fn()
+    .mockRejectedValueOnce(new Error('drain failed'))
+    .mockResolvedValue(undefined)
+  engines.start(
+    ['sample'],
+    () => ({ start: async () => {}, close, invalidate() {} }),
+    () => {}
+  )
+  await engines.settled()
+  await expect(engines.remove('sample')).rejects.toThrow('drain failed')
+  await engines.remove('sample')
+  expect(close).toHaveBeenCalledTimes(2)
+  await engines.close()
+  expect(close).toHaveBeenCalledTimes(2)
+})
 
 it('starts independently and revokes every runtime before waiting on shutdown', async () => {
   const engines = new ConnectionEngines()
