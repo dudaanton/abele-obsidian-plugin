@@ -120,37 +120,13 @@
         :collapsed="folded.has('stack')"
         @click="toggle('stack')"
       >
-        <template v-if="live">
-          <template v-for="row in stackRows" :key="row.at">
-            <TreeItem
-              v-if="row.kind === 'frame'"
-              :text="row.frame.name"
-              :note="`${fileName(row.frame.file)}:${row.frame.line}`"
-              :active="row.at === session.frame"
-              @click="!locked && emit('frame', row.at)"
-            />
-            <!-- Frames with no source of the program, Node's own loader mostly: one quiet row,
-                 opened on asking, so the program's frames stand together. -->
-            <TreeItem
-              v-else
-              class="abele-debug-panel__internals"
-              text="Node internals"
-              :flair="String(row.frames.length)"
-              collapsible
-              :collapsed="!folded.has(`internals-${row.at}`)"
-              @click="toggle(`internals-${row.at}`)"
-            >
-              <TreeItem
-                v-for="(f, j) in row.frames"
-                :key="j"
-                :text="f.name"
-                :note="`:${f.line}`"
-                :active="row.at + j === session.frame"
-                @click="!locked && emit('frame', row.at + j)"
-              />
-            </TreeItem>
-          </template>
-        </template>
+        <DebugCallStack
+          v-if="live"
+          :frames="session.frames"
+          :selected="session.frame"
+          :disabled="locked"
+          @select="emit('frame', $event)"
+        />
         <div v-else class="abele-debug-panel__empty">{{ notPaused }}</div>
       </TreeItem>
 
@@ -295,7 +271,8 @@ import StatusDot from '../obsidian/StatusDot.vue'
 import TreeItem from '../obsidian/TreeItem.vue'
 import BreakpointMark from './BreakpointMark.vue'
 import DebugValues from './DebugValues.vue'
-import type { DebugFrame, DebugSession, DebugWatch } from './types'
+import DebugCallStack from './DebugCallStack.vue'
+import type { DebugSession, DebugWatch } from './types'
 import { wholeValue } from './valueFormat'
 import type { TraceRecording, TraceRunSummary } from './trace/types'
 
@@ -381,20 +358,6 @@ const browserLabel = computed(() => {
 
 const fileName = (path: string) => path.slice(path.lastIndexOf('/') + 1)
 
-type StackRow =
-  | { kind: 'frame'; at: number; frame: DebugFrame }
-  | { kind: 'internals'; at: number; frames: DebugFrame[] }
-// The program's own frames one by one; a run of frames with no source between them folds into one.
-const stackRows = computed(() => {
-  const rows: StackRow[] = []
-  props.session.frames.forEach((frame, at) => {
-    const last = rows[rows.length - 1]
-    if (frame.file) rows.push({ kind: 'frame', at, frame })
-    else if (last?.kind === 'internals') last.frames.push(frame)
-    else rows.push({ kind: 'internals', at, frames: [frame] })
-  })
-  return rows
-})
 const paused = computed(() => props.session.status === 'paused')
 // The last values stay readable while the node is away, faded.
 const live = computed(() => paused.value || props.session.status === 'lost')
