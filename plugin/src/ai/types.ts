@@ -351,6 +351,7 @@ export const TOUCHING_TOOLS = [
   'canvas_edit',
   'canvas_layout',
   'canvas_steps',
+  'canvas_import_excalidraw',
 ]
 
 /**
@@ -476,6 +477,7 @@ export const CANVAS_TOOL_MODES: Record<string, ToolMode> = {
   canvas_layout: 'ask',
   canvas_steps: 'ask',
   canvas_export: 'ask',
+  canvas_import_excalidraw: 'ask',
 }
 
 /**

@@ -133,6 +133,20 @@ without saving keeps nothing.
 
 ## Canvas diagrams
 
+### Import Excalidraw drawings
+
+**Migrate this Excalidraw drawing to a canvas** makes a new canvas beside the active drawing.
+The drawing's file menu also offers **Migrate to Abele canvas**.
+**Migrate all Excalidraw drawings to canvases** asks with the number of drawings first, then shows each result and
+anything that could not carry over. Existing files stay untouched; a name already in use gets
+a numeric suffix. Drawings already migrated are skipped.
+
+Compressed or plain JSON drawings in notes and `.excalidraw` JSON files are supported.
+Shapes, text, arrows, pen strokes, frames and pictures become canvas cards, connections, ink
+and groups. Sketchy strokes, fills, fonts, rotation, locking and grouping do not carry over
+exactly; the report lists losses. Nested drawings stay file references. An agent can also
+migrate one drawing or all drawings within its scope.
+
 Structured diagrams stay ordinary `.canvas` files, separate from SVG drawings. Ask an agent to
 build a diagram, lay it out, and define a short walkthrough: an overview, then a few new cards
 per step, with an explanation and a camera focus. It can refine cards and connections by their

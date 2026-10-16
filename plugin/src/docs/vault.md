@@ -667,6 +667,11 @@ or an editable sidecar. Inserting an export appends an ordinary attachment embed
 note, preserving its existing bytes. `look_at_canvas` creates no export file, cache note or
 diagram attachment: its PNG is an agent-message image. Source notes and local images are read only within scope.
 
+A canvas migrated from an Excalidraw drawing is an ordinary new `.canvas` beside the drawing,
+with `abele.excalidraw.source` naming the drawing's path — the only record that it was migrated,
+read to skip drawings that already have a canvas. Pictures kept inside a plain `.excalidraw` are
+written once beside it as `<drawing> <id>.<ext>`. The drawing itself is never written.
+
 Uncertain publication and confirmed-writing/local-acknowledgment-pending work is retained only
 in the running session: proposed draft, original baseline, operation kind, and revoked-attempt
 evidence. The local recovery action reviews freshly read persisted bytes separately from this

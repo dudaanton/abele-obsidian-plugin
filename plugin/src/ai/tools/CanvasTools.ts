@@ -25,6 +25,7 @@ import { lintCanvas } from '@/canvas/core/lint'
 import { bundledMermaid } from '@/canvas/mermaidAdapter'
 import { canvasPicture, hostMetrics } from '@/canvas/pictureAdapter'
 import { exportCanvas, exportPath } from '@/canvas/exportAdapter'
+import { createImportExcalidrawTool } from './ExcalidrawTool'
 
 const path = z.string().describe('Exact vault-relative .canvas path')
 const revision = z
@@ -568,5 +569,6 @@ export function createCanvasTools(): AgentTool[] {
         }
       }
     ),
+    createImportExcalidrawTool(),
   ]
 }

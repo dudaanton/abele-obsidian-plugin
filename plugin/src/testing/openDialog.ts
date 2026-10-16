@@ -59,6 +59,8 @@ import MigrateDataviewFieldsModal from '@/components/MigrateDataviewFieldsModal.
 import MigrateFromDataviewModal from '@/components/MigrateFromDataviewModal.vue'
 import MigrateFromFireflyModal from '@/components/MigrateFromFireflyModal.vue'
 import MigrateFromTogglModal from '@/components/MigrateFromTogglModal.vue'
+import ExcalidrawMigrationModal from '@/components/ExcalidrawMigrationModal.vue'
+import { excalidrawDrawings, excalidrawReport } from './excalidrawFixture'
 import TransferSendModal from '@/components/settings/transfer/TransferSendModal.vue'
 import TransferPreviewModal from '@/components/settings/transfer/TransferPreviewModal.vue'
 import TransferScanModal from '@/components/settings/transfer/TransferScanModal.vue'
@@ -599,6 +601,17 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
   'migrate-dataview': () => mountAlone(MigrateFromDataviewModal),
   'migrate-firefly': () => mountAlone(MigrateFromFireflyModal),
   'migrate-toggl': () => mountAlone(MigrateFromTogglModal),
+  'excalidraw-confirm': () =>
+    mountAlone(ExcalidrawMigrationModal, {
+      drawings: excalidrawDrawings,
+      run: () => Promise.resolve(excalidrawReport()),
+    }),
+  'excalidraw-report': () =>
+    mountAlone(ExcalidrawMigrationModal, {
+      drawings: excalidrawDrawings,
+      run: () => Promise.resolve(excalidrawReport()),
+      initialReport: excalidrawReport(),
+    }),
   'transfer-send': () =>
     mountAlone(TransferSendModal, { frames: ['ABELE-TRANSFER'], text: 'ABELE', code: '1234' }),
   'transfer-preview': () =>

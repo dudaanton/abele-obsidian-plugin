@@ -271,7 +271,8 @@ not rebuilt. No tracked-change or comment authoring, nested-table editing or pag
 
 ## Canvas diagrams
 
-`canvas_read`, `canvas_create`, `canvas_edit`, `canvas_layout`, `canvas_steps`, `canvas_export`, and `look_at_canvas` have their own
+`canvas_read`, `canvas_create`, `canvas_edit`, `canvas_layout`, `canvas_steps`, `canvas_export`,
+`canvas_import_excalidraw`, and `look_at_canvas` have their own
 per-agent Off/Ask/On modes. Reading and pictures default to On; creation, semantic editing and
 layout, walkthrough authoring and exporting default to Ask, independently of general file-write permissions. Existing-diagram calls
 must be in scope. New diagrams join scope after creation, like `create`.
@@ -369,6 +370,21 @@ Free primitives may be revealed, highlighted and focused by id in walkthrough st
   annotation may be focused/highlighted by its own id. An id focus frames that node, edge,
   free line or stroke; a region gives exact framing; otherwise frame revealed content.
   `say` is plain text.
+- `canvas_import_excalidraw({path} | {all:true}, force?)`: migrates Excalidraw drawings
+  (`.excalidraw.md`, notes with `excalidraw-plugin` frontmatter, plain `.excalidraw`) into Abele
+  canvases. Each drawing gets a new `.canvas` beside it under a free name (`Plan.canvas`, else
+  `Plan 2.canvas`); the drawing is never changed. Pictures kept inside a plain `.excalidraw` are
+  written beside it as files. A canvas records `abele.excalidraw.source`, so drawings migrated
+  before are skipped unless `force`. Shapes become shaped text cards (rectangle, circle, diamond)
+  with their text and stroke colour; arrows bound at both ends become connectors with sides,
+  arrowheads, label and dashed/dotted path; other arrows and lines become free straight lines (one
+  per step); pencil strokes become pen ink with their pressure (translucent ones marker); frames
+  become groups; pictures, nested drawings and embedded notes become file cards, web embeds link
+  cards, LaTeX a `$$` card. The reply lists, per drawing, the canvas made and what did not carry
+  over: sketchy look, fill colour, rounded corners, line width, handwritten font, text size and
+  colour, rotation, transparency, locking, Excalidraw grouping, curves, drawn arrow routes,
+  arrowhead styles, iframes, missing pictures. People run the same migration from the command
+  palette (this drawing, or all of them after a confirmation with the count).
 - `canvas_export(path, {output,format,maxSide?})`: captures the complete current revision and
   creates a new attachment, independent of camera or walkthrough step. `format` is `png`, `svg`
   or `pdf`; `output` is an exact safe vault-relative path with that extension and an existing

@@ -97,6 +97,7 @@ export const TOOL_SECTIONS: readonly ToolSectionDefinition[] = [
     howTo: [
       'Read before you change: `canvas_read` for the structure, `look_at_canvas` to see it as drawn.',
       '`canvas_create` makes a new canvas; `canvas_edit` adds, changes and removes cards and edges; `canvas_layout` arranges them; `canvas_steps` draws a sequence; `canvas_export` saves a picture.',
+      '`canvas_import_excalidraw` makes Excalidraw drawings into canvases, one or all, leaving the drawings as they are.',
       'Use the ids `canvas_read` returned; never invent them.',
     ].join('\n'),
   },

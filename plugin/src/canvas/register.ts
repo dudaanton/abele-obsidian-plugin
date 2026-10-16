@@ -7,6 +7,7 @@ import { canvasEmbedProcessor, canvasEmbedsInEditor } from './embed'
 import { canvasDocuments } from './documentRegistry'
 import { newCanvas } from './editorControls'
 import { canvasNewFileLocation } from './newFileLocation'
+import { registerExcalidrawMigration } from './excalidrawAdapter'
 import './viewer.css'
 
 export function registerCanvas(plugin: Plugin): void {
@@ -81,6 +82,7 @@ export function registerCanvas(plugin: Plugin): void {
         )
     })
   )
+  registerExcalidrawMigration(plugin)
   plugin.addCommand({
     id: 'open-canvas-viewer',
     name: 'Open current canvas in diagram viewer',

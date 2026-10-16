@@ -173,6 +173,8 @@ const DIALOGS = [
   'migrate-dataview',
   'migrate-firefly',
   'migrate-toggl',
+  'excalidraw-confirm',
+  'excalidraw-report',
   'transfer-send',
   'transfer-preview',
   'transfer-scan',
