@@ -529,6 +529,9 @@ function memoryVault(files: Record<string, string>) {
     createBinary: async (path, data) => {
       if (vault.exists(path)) throw new Error('exists')
       binary.set(path, data)
+      return async () => {
+        if (binary.get(path) === data) binary.delete(path)
+      }
     },
     resolve: (link) => resolve(link),
     migrated: async () =>
@@ -544,6 +547,56 @@ function memoryVault(files: Record<string, string>) {
 }
 
 describe('migrating drawings', () => {
+  const pictureDrawing = () =>
+    sceneJson(
+      ['firstpic', 'secondpic'].map((fileId) =>
+        el({
+          id: fileId,
+          type: 'image',
+          x: 0,
+          y: 0,
+          fileId,
+        })
+      ),
+      Object.fromEntries(
+        ['firstpic', 'secondpic'].map((id) => [
+          id,
+          {
+            mimeType: 'image/png',
+            dataURL: 'data:image/png;base64,AAAA',
+          },
+        ])
+      )
+    )
+
+  it('removes only its extracted pictures when the canvas write fails', async () => {
+    const source = pictureDrawing()
+    const vault = memoryVault({ 'Sample.excalidraw': source, 'Sample.canvas': '{}' })
+    const existing = new Uint8Array([9]).buffer
+    vault.binary.set('Sample firstpic.png', existing)
+    vault.createText = async () => {
+      throw new Error('Sample canvas write failure')
+    }
+    const report = await migrateOne(vault, 'Sample.excalidraw')
+    expect(report).toMatchObject({ status: 'failed', reason: 'Sample canvas write failure' })
+    expect([...vault.binary]).toEqual([['Sample firstpic.png', existing]])
+    expect(vault.files).toEqual({ 'Sample.excalidraw': source, 'Sample.canvas': '{}' })
+  })
+
+  it('cleans earlier pictures without deleting a file whose creation failed', async () => {
+    const vault = memoryVault({ 'Sample.excalidraw': pictureDrawing() })
+    const create = vault.createBinary
+    const raced = new Uint8Array([7]).buffer
+    vault.createBinary = async (path, data) => {
+      if (path.endsWith('secondpi.png')) {
+        vault.binary.set(path, raced)
+        throw new Error('exists')
+      }
+      return create(path, data)
+    }
+    expect((await migrateOne(vault, 'Sample.excalidraw')).status).toBe('failed')
+    expect([...vault.binary]).toEqual([['Sample secondpi.png', raced]])
+  })
   it('names the canvas after the drawing, beside it', () => {
     expect(baseName('Sketches/Plan.excalidraw.md')).toEqual({ dir: 'Sketches/', base: 'Plan' })
     expect(baseName('Plan.excalidraw')).toEqual({ dir: '', base: 'Plan' })

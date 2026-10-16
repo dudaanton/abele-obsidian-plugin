@@ -670,7 +670,9 @@ diagram attachment: its PNG is an agent-message image. Source notes and local im
 A canvas migrated from an Excalidraw drawing is an ordinary new `.canvas` beside the drawing,
 with `abele.excalidraw.source` naming the drawing's path — the only record that it was migrated,
 read to skip drawings that already have a canvas. Pictures kept inside a plain `.excalidraw` are
-written once beside it as `<drawing> <id>.<ext>`. The drawing itself is never written.
+written once beside it as `<drawing> <id>.<ext>`. If migration fails, it removes only pictures
+successfully created by that attempt, leaving pre-existing files and replacements untouched.
+Cleanup failures are included in the failure reason. The drawing itself is never written.
 
 Uncertain publication and confirmed-writing/local-acknowledgment-pending work is retained only
 in the running session: proposed draft, original baseline, operation kind, and revoked-attempt

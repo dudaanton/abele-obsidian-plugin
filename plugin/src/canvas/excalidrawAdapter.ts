@@ -54,8 +54,13 @@ export class ObsidianExcalidrawVault implements ExcalidrawVault {
     await this.writeApp.vault.create(normalizePath(path), text)
   }
 
-  async createBinary(path: string, data: ArrayBuffer): Promise<void> {
-    await this.writeApp.vault.createBinary(normalizePath(path), data)
+  async createBinary(path: string, data: ArrayBuffer): Promise<() => Promise<void>> {
+    const file = await this.writeApp.vault.createBinary(normalizePath(path), data)
+    return async () => {
+      // Retain the created object: a replacement at the same path is not ours to delete.
+      if (this.app.vault.getAbstractFileByPath(file.path) === file)
+        await this.writeApp.fileManager.trashFile(file)
+    }
   }
 
   resolve(link: string, from: string): string | null {

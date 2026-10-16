@@ -15,7 +15,8 @@ export interface ExcalidrawVault {
   /** Whether anything — file or folder — has this path. */
   exists(path: string): boolean
   createText(path: string, text: string): Promise<void>
-  createBinary(path: string, data: ArrayBuffer): Promise<void>
+  /** Create exclusively; return cleanup owned by that new file, never an existing/replacement file. */
+  createBinary(path: string, data: ArrayBuffer): Promise<() => Promise<void>>
   /** A link target as written in `from` → the vault path it points at, or null. */
   resolve(link: string, from: string): string | null
   /** The canvases made from drawings so far: the drawing's path → the canvas's. */
@@ -80,6 +81,7 @@ export async function migrateOne(
   source: string,
   options: { force?: boolean; known?: Map<string, string> } = {}
 ): Promise<FileReport> {
+  const picturesCreated: { path: string; remove: () => Promise<void> }[] = []
   try {
     const known = options.known ?? (await vault.migrated())
     const before = known.get(source)
@@ -108,8 +110,10 @@ export async function migrateOne(
         return path
       },
     })
-    for (const picture of result.pictures)
-      await vault.createBinary(picture.path, bytesOf(picture.dataURL))
+    for (const picture of result.pictures) {
+      const remove = await vault.createBinary(picture.path, bytesOf(picture.dataURL))
+      picturesCreated.push({ path: picture.path, remove })
+    }
     await vault.createText(target, serializeCanvas(result.graph))
     known.set(source, target)
     return {
@@ -120,11 +124,23 @@ export async function migrateOne(
       counts: result.counts,
     }
   } catch (e) {
+    const cleanupErrors: string[] = []
+    for (const picture of picturesCreated.reverse()) {
+      try {
+        await picture.remove()
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error)
+        cleanupErrors.push(`${picture.path}: ${reason}`)
+      }
+    }
+    const reason = e instanceof Error ? e.message : String(e)
     return {
       source,
       status: 'failed',
       losses: [],
-      reason: e instanceof Error ? e.message : String(e),
+      reason:
+        reason +
+        (cleanupErrors.length ? `; Picture cleanup failed: ${cleanupErrors.join('; ')}` : ''),
     }
   }
 }
