@@ -135,7 +135,7 @@ export class CanvasView extends EditableFileView {
     this.addAction('image-down', 'Export diagram picture', (e) => this.exportMenu(e))
     this.addAction('rotate-ccw', 'Recover failed canvas change', (e) => void this.recoveryMenu(e))
     this.addAction(
-      'paperclip',
+      'image-plus',
       'Attach to the chat as a picture',
       () => void this.host.attach(null)
     )

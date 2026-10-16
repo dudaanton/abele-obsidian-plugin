@@ -187,8 +187,8 @@ is inside. Strokes offer **Read the handwriting**, which asks the agent to write
 
 The tab's own **⋯** menu adds **Find on the canvas** (Cmd+F), **Show contents** (its frames and
 walkthrough steps), **Export…**, **Copy embed of what is shown**, **Open in Obsidian Canvas**
-and, on a tablet, **Draw with a finger**. The paperclip in the tab's header attaches the whole
-canvas to the chat as a picture.
+and, on a tablet, **Draw with a finger**. The image-plus action in the tab's header attaches the
+whole canvas to the chat as a picture; the paperclip attaches the canvas file to a chat.
 
 ### Cards, frames and connections
 
