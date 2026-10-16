@@ -6,7 +6,7 @@ import { z } from 'zod'
 import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import { NodeSuggestModal, type NodeSuggestion } from '@/components/nodeWork/NodeSuggestModal'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { confirmAction } from '@/modal/confirm'
+import { confirmDialog } from '@/components/obsidian/dialogs'
 import { DebuggerService } from './DebuggerService'
 import {
   StartResultSchema,
@@ -147,7 +147,7 @@ export async function askAndAttachProgram(
         if (!program) return
         void (async () => {
           if (!program.in_chat_folder) {
-            const yes = await confirmAction(app, {
+            const yes = await confirmDialog({
               title: 'Attach to a program outside this folder?',
               message: `${program.command} runs from ${program.cwd ?? 'a folder the node cannot name'}, not from this chat's folder. The debugger can pause it and read its values. Detaching later leaves it running.`,
               confirmText: 'Attach',

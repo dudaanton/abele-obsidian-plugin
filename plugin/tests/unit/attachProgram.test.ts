@@ -15,8 +15,8 @@ import { NODE_FILE_VIEW } from '@/node/nodePathNavigation'
 import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import type { PathTarget } from '@/node/NodePathModel'
 
-vi.mock('@/modal/confirm', () => ({ confirmAction: vi.fn(async () => false) }))
-import { confirmAction } from '@/modal/confirm'
+vi.mock('@/components/obsidian/dialogs', () => ({ confirmDialog: vi.fn(async () => false) }))
+import { confirmDialog } from '@/components/obsidian/dialogs'
 
 const target: PathTarget = {
   nodeId: 'node-a',
@@ -110,7 +110,7 @@ vi.mock('@/node/expectedTarget', () => ({
 
 afterEach(() => {
   DebuggerService.instance.destroy()
-  vi.mocked(confirmAction).mockClear()
+  vi.mocked(confirmDialog).mockClear()
   vi.restoreAllMocks()
 })
 
@@ -187,21 +187,21 @@ describe('attaching the debugger to a running program', () => {
     const [mine, other] = picker.getSuggestions('')
     const attaches = () => calls.filter(([m]) => m === 'debugger.v1.attachProgram')
 
-    vi.mocked(confirmAction).mockResolvedValueOnce(false)
+    vi.mocked(confirmDialog).mockResolvedValueOnce(false)
     picker.onChooseSuggestion(other!)
-    await vi.waitFor(() => expect(confirmAction).toHaveBeenCalledTimes(1))
-    expect(vi.mocked(confirmAction).mock.calls[0]![1]).toMatchObject({ confirmText: 'Attach' })
+    await vi.waitFor(() => expect(confirmDialog).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(confirmDialog).mock.calls[0]![0]).toMatchObject({ confirmText: 'Attach' })
     await new Promise((r) => setTimeout(r, 0))
     expect(attaches()).toHaveLength(0)
 
-    vi.mocked(confirmAction).mockResolvedValueOnce(true)
+    vi.mocked(confirmDialog).mockResolvedValueOnce(true)
     picker.onChooseSuggestion(other!)
     await vi.waitFor(() => expect(attaches()).toHaveLength(1))
     expect(attaches()[0]![1]).toMatchObject({ pid: 4202, outside_folder: true })
 
     picker.onChooseSuggestion(mine!)
     await vi.waitFor(() => expect(attaches()).toHaveLength(2))
-    expect(confirmAction).toHaveBeenCalledTimes(2)
+    expect(confirmDialog).toHaveBeenCalledTimes(2)
     expect(attaches()[1]![1]).toMatchObject({ pid: 4101, outside_folder: false })
   })
 })
