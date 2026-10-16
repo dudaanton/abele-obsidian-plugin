@@ -378,10 +378,11 @@ const showPlace = async (folder, branch) => {
         const evidenceHidden = ![...root.querySelectorAll('button, summary')].some(el => /^(Read stored (record|output)|Details)$/.test(el.textContent.trim())) && !root.textContent.includes('"subtype":"init"');
         root.querySelector('[aria-label="More chat actions"]').click();
         await until(() => [...document.querySelectorAll('.menu-item-title')].some(el => el.textContent.trim() === 'Log raw session records'));
-        document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}));
+        // Continue through this menu's action, as the other node probes do. A synthetic
+        // Escape on body does not reliably reach Obsidian's menu keyboard scope.
+        await menuItem('Folders and worktrees');
         await until(() => !document.querySelector('.menu'));
         // What the chat changed in its worktree: the panel's changes, and the file's diff in its tab.
-        await nodeMenu('Folders and worktrees');
         await showPlace(${JSON.stringify(folderName)}, ${JSON.stringify(branch)});
         await model.refreshCurrent();
         panel().querySelector('.abele-node-modes [role="tab"][aria-label^="Changes"]').click();
