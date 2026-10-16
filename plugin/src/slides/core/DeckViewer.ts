@@ -59,6 +59,7 @@ export class DeckViewer {
   private readonly scopeId: string
   private placeholder: Comment | null = null
   private focusBefore: HTMLElement | null = null
+  private presentationWindow: Window | null = null
   private fullscreenOwned = false
   private controlsTimer: number | undefined
   private overControls = false
@@ -149,8 +150,6 @@ export class DeckViewer {
     this.resize.observe(this.viewport)
     const listen = { signal: this.abort.signal }
     this.root.addEventListener('keydown', this.handleKey, { ...listen, capture: true })
-    // In presenting mode the overlay owns the window, including focus accidentally left outside it.
-    doc.addEventListener('keydown', this.onWindowKey, { ...listen, capture: true })
     doc.addEventListener(
       'fullscreenchange',
       () => {
@@ -667,6 +666,11 @@ export class DeckViewer {
       this.focusBefore = doc.activeElement as HTMLElement | null
       this.placeholder = doc.createComment('presentation tab')
       this.root.before(this.placeholder)
+      // The overlay leaves its leaf and its hotkey scope. Capture at the owning window,
+      // before document-level app shortcuts can consume navigation or Escape. Resolve
+      // here because the view may have been adopted into a popout since construction.
+      this.presentationWindow = doc.defaultView
+      this.presentationWindow?.addEventListener('keydown', this.onWindowKey, true)
       doc.body.append(this.root)
       this.root.classList.add('abele-deck-presenting')
       this.hideControls()
@@ -698,6 +702,8 @@ export class DeckViewer {
   exitPresenting(): void {
     if (!this.placeholder) return
     const doc = this.root.ownerDocument
+    this.presentationWindow?.removeEventListener('keydown', this.onWindowKey, true)
+    this.presentationWindow = null
     this.placeholder.replaceWith(this.root)
     this.placeholder = null
     this.root.classList.remove('abele-deck-presenting', 'abele-deck-fullscreen')

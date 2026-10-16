@@ -138,8 +138,17 @@ const probe = async (name: string) =>
         await wait(2800);r.landscapeShot=await picture(${JSON.stringify(name)}+'-landscape')
         const s=active().getBoundingClientRect();r.landscapeFits=s.left>=-1 && s.right<=innerWidth+1 && s.bottom<=innerHeight+1
       }
-    } else {await press('ArrowRight','ArrowRight',39);r.keyboard=await until(()=>v.index===1)}
-    v.root.focus()
+    } else {
+      r.keyboard=true
+      for(const [key,code,n,index] of [
+        ['ArrowRight','ArrowRight',39,1],[' ','Space',32,2],
+        ['PageUp','PageUp',33,1],['PageDown','PageDown',34,2],
+        ['ArrowLeft','ArrowLeft',37,1]
+      ]){
+        await press(key,code,n)
+        if(!await until(()=>v.index===index))throw Error('Fullscreen key failed: '+key+' at '+v.index)
+      }
+    }
     if(phone)v.root.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))
     else await press('Escape','Escape',27)
     r.restored=await until(()=>v.root.parentElement===leaf.view.contentEl && (mobile || full()===beforeFull))

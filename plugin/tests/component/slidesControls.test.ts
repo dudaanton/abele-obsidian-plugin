@@ -137,6 +137,48 @@ describe('unobstructed presentation controls', () => {
     expect(exit).toHaveBeenCalledTimes(1)
   })
 
+  it('owns fullscreen keys before document hotkeys and releases them on exit', async () => {
+    const swallowed = vi.fn((event: KeyboardEvent) => {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+    })
+    document.addEventListener('keydown', swallowed, true)
+    try {
+      const enter = vi.fn(async () => {}),
+        exit = vi.fn(async () => {})
+      await make({ fullscreenHost: { enter, exit } })
+      const host = viewer.root.parentElement
+      await viewer.present(true)
+      const press = async (key: string) => {
+        document.activeElement!.dispatchEvent(
+          new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+        )
+        await viewer.ready
+      }
+      for (const [key, index] of [
+        ['ArrowRight', 1],
+        [' ', 2],
+        ['PageUp', 1],
+        ['PageDown', 2],
+        ['ArrowLeft', 1],
+        ['ArrowDown', 2],
+        ['ArrowUp', 1],
+      ] as const) {
+        await press(key)
+        expect(viewer.index, key).toBe(index)
+      }
+      await press('Escape')
+      expect(viewer.root.parentElement).toBe(host)
+      expect(exit).toHaveBeenCalledTimes(1)
+      expect(swallowed).not.toHaveBeenCalled()
+      await press('ArrowRight')
+      expect(swallowed).toHaveBeenCalledTimes(1)
+      expect(viewer.index).toBe(1)
+    } finally {
+      document.removeEventListener('keydown', swallowed, true)
+    }
+  })
+
   it('keeps keyboard-accessible controls available without idle hiding focused buttons', async () => {
     await make()
     vi.useFakeTimers()
