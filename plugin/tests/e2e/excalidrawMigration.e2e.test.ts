@@ -196,6 +196,12 @@ const canvasOf = (path: string) =>
     `(async () => { const f = app.vault.getAbstractFileByPath(${JSON.stringify(path)}); return f ? JSON.parse(await app.vault.read(f)) : null })()`
   )
 
+// The CLI prints bare strings verbatim; serialize string results for evalAsync's JSON parser.
+const textOf = (path: string) =>
+  evalAsync<string>(
+    `(async () => JSON.stringify(await app.vault.adapter.read(${JSON.stringify(path)})))()`
+  )
+
 describe.skipIf(!available)('Excalidraw drawings to canvases', () => {
   beforeAll(() => {
     evalAsync(`(async () => {
@@ -229,7 +235,7 @@ describe.skipIf(!available)('Excalidraw drawings to canvases', () => {
       if (!app.commands.executeCommandById('abele:migrate-excalidraw-drawing')) throw Error('Command unavailable')
       await until(() => app.vault.getAbstractFileByPath(${JSON.stringify(`${DIR}/Sample flow.canvas`)}))
       await until(() => app.workspace.getActiveFile()?.extension === 'canvas')
-      return app.workspace.getActiveFile()?.path ?? ''
+      return JSON.stringify(app.workspace.getActiveFile()?.path ?? '')
     })()`)
     expect(opened).toBe(`${DIR}/Sample flow.canvas`)
     const canvas = canvasOf(`${DIR}/Sample flow.canvas`)
@@ -247,14 +253,8 @@ describe.skipIf(!available)('Excalidraw drawings to canvases', () => {
     ])
     expect((canvas?.abele.ink as unknown[]).length).toBe(1)
     // The drawing itself is as it was.
-    expect(
-      evalAsync<string>(
-        `app.vault.adapter.read(${JSON.stringify(`${DIR}/Sample flow.excalidraw.md`)})`
-      )
-    ).toBe(NOTE_DRAWING)
-    const references = evalAsync<string>(
-      `app.vault.adapter.read(${JSON.stringify(`${DIR}/Sample references.md`)})`
-    )
+    expect(textOf(`${DIR}/Sample flow.excalidraw.md`)).toBe(NOTE_DRAWING)
+    const references = textOf(`${DIR}/Sample references.md`)
     expect(references).toContain(`![[${DIR}/Sample flow.canvas|300]]`)
     expect(references).toContain(`[[${DIR}/Sample flow.canvas|Example]]`)
     expect(canvasOf(`${DIR}/Sample references.canvas`)?.nodes[0].file).toBe(
@@ -269,9 +269,7 @@ describe.skipIf(!available)('Excalidraw drawings to canvases', () => {
     expect(shown.facts).toMatch(/1 migrated/)
     expect(shown.facts).toMatch(/skipped/)
     expect(canvasOf(`${DIR}/Demo shape.canvas`)?.nodes[0]).toMatchObject({ type: 'text' })
-    expect(
-      evalAsync<string>(`app.vault.adapter.read(${JSON.stringify(`${DIR}/Sample references.md`)})`)
-    ).toContain(`(${DIR}/Demo%20shape.canvas)`)
+    expect(textOf(`${DIR}/Sample references.md`)).toContain(`(${DIR}/Demo%20shape.canvas)`)
   })
 
   it('renders the rewritten drawing embed as a picture', () => {
