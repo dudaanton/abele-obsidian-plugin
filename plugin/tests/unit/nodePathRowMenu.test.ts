@@ -147,3 +147,34 @@ describe('the place menu’s external-worktrees item', () => {
     expect(menu.items.some((i) => i.title === 'Stop browsing external workspaces')).toBe(true)
   })
 })
+
+describe('where the place menu opens', () => {
+  const button = () => {
+    const el = document.createElement('div')
+    el.getBoundingClientRect = () => ({ left: 290, right: 314, top: 100, bottom: 124, width: 24, height: 24, x: 290, y: 100 }) as DOMRect
+    document.body.appendChild(el)
+    return el
+  }
+  const shownAt = async (event: MouseEvent) => {
+    const show = vi.spyOn(Menu.prototype, 'showAtPosition')
+    showNodePathPlaceMenu(model(), event, () => {})
+    await vi.waitFor(() => expect(show).toHaveBeenCalled())
+    return show.mock.calls[0]![0]
+  }
+  it('opens at the pointer for a press with the mouse', async () => {
+    f.request.mockResolvedValue({ project_id: 'sample-project', external_read: false })
+    const el = button(),
+      event = new MouseEvent('click', { clientX: 300, clientY: 110, detail: 1 })
+    Object.defineProperty(event, 'currentTarget', { value: el })
+    expect(await shownAt(event)).toEqual({ x: 300, y: 110 })
+    el.remove()
+  })
+  it('opens under its button for a press from the keyboard, not in the window corner', async () => {
+    f.request.mockResolvedValue({ project_id: 'sample-project', external_read: false })
+    const el = button(),
+      event = new MouseEvent('click', { clientX: 0, clientY: 0, detail: 0 })
+    Object.defineProperty(event, 'currentTarget', { value: el })
+    expect(await shownAt(event)).toEqual({ x: 290, y: 124 })
+    el.remove()
+  })
+})

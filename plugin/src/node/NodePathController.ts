@@ -34,7 +34,15 @@ export const nodePathAction = (run: () => Promise<unknown> | void): void => {
       (error: unknown) => new Notice(error instanceof Error ? error.message : 'Node action failed')
     )
 }
-const position = (event: MouseEvent) => ({ x: event.clientX, y: event.clientY })
+// A press from the keyboard is a click with no pointer (no count, at 0,0): its menu opens under
+// the control pressed, not in the window's corner. Read while the event is dispatched, before
+// any await clears its currentTarget.
+const position = (event: MouseEvent) => {
+  const el = event.currentTarget ?? event.target
+  if (event.detail > 0 || !(el instanceof Element)) return { x: event.clientX, y: event.clientY }
+  const rect = el.getBoundingClientRect()
+  return { x: rect.left, y: rect.bottom }
+}
 export function showNodePathFileMenu(event: MouseEvent, raw: NodePathContext): void {
   event.preventDefault()
   const context = freezeNodePathContext(raw),
@@ -665,6 +673,7 @@ export function showNodePathPlaceMenu(
   event: MouseEvent,
   openChat: (id: string) => void
 ): void {
+  const at = position(event)
   const online =
     NodeService.getInstance().connection(model.registrationId).state.value === 'connected'
   const menu = new Menu()
@@ -692,7 +701,7 @@ export function showNodePathPlaceMenu(
     )
     m.addSeparator()
     nodeItems(model, m)
-    m.showAtPosition(position(event))
+    m.showAtPosition(at)
   }
   const id = model.selected.value
   if (!id || !model.current.value) return tail(menu)
