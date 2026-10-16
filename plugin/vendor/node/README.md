@@ -1,7 +1,7 @@
 # Node browser packages
 
 These four exact `0.0.0` npm tarballs contain the built browser packages from
-the released AbeleNode tag `v0.4.15` (revision `6ef92ef`), including attaching the debugger to
+the released AbeleNode tag `v0.4.16` (revision `3280287`), including long-lived sessions (`session.configure`, `session.compact`, `session.stop`, `session.state`, messages between sessions), attaching the debugger to
 a running program (`debugger.v1.programs`, `debugger.v1.attachProgram`), the owner git writes
 (`repository_git_write_v1`: stage, unstage, discard, commit, update from base, push with an
 optional lease, fetch, create branch, remote info), the repository and plain
