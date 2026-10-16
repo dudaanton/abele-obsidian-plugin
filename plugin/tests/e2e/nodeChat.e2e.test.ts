@@ -330,7 +330,8 @@ const showPlace = async (folder, branch) => {
         button(picker, 'Open').click();
         // What the dialog refused, said, instead of a bare wait that runs out.
         await until(() => {
-          const refused = document.querySelector('.abele-folder-picker')?.closest('.modal')?.querySelector('[role="alert"]')?.textContent;
+          // The dialog's own refusal stands beside the picker; the picker's list says its loading itself.
+          const refused = document.querySelector('.abele-folder-picker')?.parentElement?.querySelector(':scope > [role="alert"]')?.textContent;
           if (refused) throw Error('Open folder refused: ' + refused);
           return !document.querySelector('.abele-folder-picker') && model.currentFolder.value?.name === ${JSON.stringify(folderName)};
         });

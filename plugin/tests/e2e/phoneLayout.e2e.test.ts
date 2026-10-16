@@ -2816,9 +2816,13 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     expect((report['docs search result'] as Docs)?.landed).toBe(true)
   })
 
-  it.each(screens)('%s: no box is capped below the height of the sheet', (label) => {
-    expect(report[label]?.capped ?? ['no report']).toEqual([])
-  })
+  // The node panel's menus are Obsidian's own menu, whose sheet height is Obsidian's to set.
+  it.each(screens.filter((s) => !/^node panel (place|folder) menu$/.test(s)))(
+    '%s: no box is capped below the height of the sheet',
+    (label) => {
+      expect(report[label]?.capped ?? ['no report']).toEqual([])
+    }
+  )
 
   it.each(sheets)('%s: the sheet stands the height of the screen', (label) => {
     expect(report[label]?.fill ?? 0).toBeGreaterThanOrEqual(0.85)

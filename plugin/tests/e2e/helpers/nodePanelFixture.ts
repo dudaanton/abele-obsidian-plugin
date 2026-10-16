@@ -144,7 +144,7 @@ const nodePanel = (() => {
         page([{ path: 'src/sample-committed.ts', status: 'M' }], { comparison_id: 'sample-comparison', base, head, mode: mode || 'endpoint' }),
       watch: async () => ({ subscription_id: 'sample-worktree-watch', expires_at: new Date(Date.now() + 600000).toISOString(), refresh_required: false }),
       unwatch: async () => ({ removed: true }),
-      git: {
+      gitWrites: {
         info: async () => ({
           head: HEAD, branch: 'refs/heads/' + names.feature, detached: false,
           operation: variant.conflict ? { kind: 'rebase', conflicted_paths: ['src/sample-panel.ts'] } : null,
@@ -164,7 +164,8 @@ const nodePanel = (() => {
       },
     },
   }
-  if (!variant.git) delete client.repository.git
+  // The node's git writes exist only in the variant that asks for them, whenever it is set.
+  Object.defineProperty(client.repository, 'git', { get: () => (variant.git ? client.repository.gitWrites : undefined) })
   const connection = {
     client, state: { value: 'connected' }, error: { value: '' }, authorizationGeneration: 0,
     delegationCards: { value: {} }, connect: async () => {}, start: () => {}, destroy: () => {},
@@ -186,6 +187,9 @@ const nodePanel = (() => {
   }
   const select = async (place) => {
     const { model } = fixture()
+    // A place is pictured from its first view: history and pull requests carry over from the
+    // last place by design, so the mode is set back as a new panel would open it.
+    model.panelMode.value = 'files'
     await model.select(place === 'notes' ? ids.folder : place === 'root' ? ids.root : ids.feature)
     const panel = await waitFor(() => root()?.querySelector('.abele-node-place__name')?.textContent.trim() === placeName[place] && root(), 'place ' + place)
     await waitFor(() => panel.querySelector('.abele-node-modes [role="tab"]'), 'modes')
