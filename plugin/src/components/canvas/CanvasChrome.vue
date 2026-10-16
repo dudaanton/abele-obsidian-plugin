@@ -318,7 +318,8 @@ import {
   shallowRef,
   watch,
 } from 'vue'
-import { Menu, Platform, setIcon, setTooltip } from 'obsidian'
+import { canvasMenu } from '@/canvas/menu'
+import { Platform, setIcon, setTooltip } from 'obsidian'
 import type { CanvasEditor, CanvasField } from '@/canvas/Editor'
 import type { CanvasViewer } from '@/canvas/Viewer'
 import { stepsOf } from '@/canvas/core/steps'
@@ -501,7 +502,7 @@ function fitColours(el: HTMLElement) {
 }
 /** The pen's colours, from the one glyph standing for them: Obsidian's menu under it. */
 function inkColourMenu(e: MouseEvent) {
-  const menu = new Menu()
+  const menu = canvasMenu()
   for (const col of COLOURS)
     menu.addItem((item) =>
       item
@@ -531,7 +532,7 @@ onBeforeUnmount(() => {
 })
 /** The pen's width, from its row's glyph: Obsidian's menu under the button. */
 function widthMenu(e: MouseEvent) {
-  const menu = new Menu()
+  const menu = canvasMenu()
   for (const t of THICKNESSES)
     menu.addItem((item) =>
       item
@@ -723,7 +724,7 @@ function run(slot: Slot, m: Slot['members'][number]) {
   press(m.label)
 }
 function familyMenu(slot: Slot, e: MouseEvent) {
-  const menu = new Menu()
+  const menu = canvasMenu()
   for (const m of slot.members)
     menu.addItem((item) =>
       item
@@ -735,7 +736,7 @@ function familyMenu(slot: Slot, e: MouseEvent) {
   menus.showAt(menu, e)
 }
 function moreTools(e: MouseEvent) {
-  const menu = new Menu()
+  const menu = canvasMenu()
   // Every member of each family left out of the row, so a line or an arrow is in reach too.
   hidden.value.forEach((slot, i) => {
     if (i) menu.addSeparator()

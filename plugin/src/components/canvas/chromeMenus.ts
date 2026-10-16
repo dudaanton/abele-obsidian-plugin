@@ -1,9 +1,10 @@
+import { canvasMenu } from '@/canvas/menu'
 /**
  * The canvas's menus, each opened at the button that was pressed: the colour, shape, line and
  * arrow pickers over a picked thing, its "more" menu, what to make at a loose connection's end,
  * what to do with work that did not save, and the tab's own "more" items.
  */
-import { Menu, Notice, Platform } from 'obsidian'
+import { Notice, Platform, type Menu } from 'obsidian'
 import type { CanvasEditor } from '@/canvas/Editor'
 import type { CanvasNode, Rect } from '@/canvas/core/model'
 import { partRegion, type CanvasHostActions } from '@/canvas/pickedActions'
@@ -42,7 +43,7 @@ const later = (title: string) => (): void =>
   void new Notice(`${title.replace(/…$/, '')}: not in this prototype yet`)
 
 export function colourMenu(e: MouseEvent, c: Controls, p: PickedView): void {
-  const menu = new Menu()
+  const menu = canvasMenu()
   for (const v of COLOURS)
     menu.addItem((item) =>
       item
@@ -67,7 +68,7 @@ function applyColour(v: string, c: Controls, p: PickedView): void {
   c.press('Recolor canvas selection')
 }
 export function shapeMenu(e: MouseEvent, c: Controls, p: PickedView): void {
-  const menu = new Menu()
+  const menu = canvasMenu()
   for (const s of SHAPES)
     menu.addItem((item) =>
       item
@@ -83,7 +84,7 @@ export function shapeMenu(e: MouseEvent, c: Controls, p: PickedView): void {
   showAt(menu, e)
 }
 export function routeMenu(e: MouseEvent, c: Controls): void {
-  const menu = new Menu()
+  const menu = canvasMenu()
   for (const [v, title] of [
     ['direct', 'Straight'],
     ['square', 'Elbow'],
@@ -102,7 +103,7 @@ export function routeMenu(e: MouseEvent, c: Controls): void {
   showAt(menu, e)
 }
 export function endsMenu(e: MouseEvent, c: Controls): void {
-  const menu = new Menu()
+  const menu = canvasMenu()
   for (const [from, to, title, icon] of [
     ['none', 'arrow', 'Arrow at the end', 'move-right'],
     ['arrow', 'arrow', 'Arrows at both ends', 'move-horizontal'],
@@ -283,7 +284,7 @@ export async function partMenu(
   const node = p.node
   if (!node?.file) return
   const headings = await c.headings(node.file)
-  const menu = new Menu()
+  const menu = canvasMenu()
   const current = node.subpath ?? ''
   const run = (subpath: string): void =>
     void (adding ? c.addPart(node.id, subpath) : c.showPart(node.id, subpath))
@@ -325,7 +326,7 @@ export function moreMenu(
   p: PickedView,
   host?: CanvasHostActions
 ): void {
-  const menu = new Menu()
+  const menu = canvasMenu()
   for (const x of moreEntries(c, p, host)) {
     if (x === '-') menu.addSeparator()
     else
@@ -348,7 +349,7 @@ export function dropMenu(c: Controls): void {
   const drop = c.drop()
   if (!drop) return
   let chosen = false
-  const menu = new Menu()
+  const menu = canvasMenu()
   const add = (title: string, icon: string, kind: 'card' | 'note' | 'shape') =>
     menu.addItem((item) =>
       item
@@ -370,7 +371,7 @@ export function dropMenu(c: Controls): void {
 }
 
 export function saveMenu(e: MouseEvent, c: Controls): void {
-  const menu = new Menu()
+  const menu = canvasMenu()
   menu.addItem((i) =>
     i
       .setTitle('Retry')

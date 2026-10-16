@@ -327,6 +327,16 @@ describe.skipIf(!available)('the canvas by hand', () => {
     )
     await until(menuItem('Duplicate'))
     shot('more-menu')
+    const selection = run<string[]>('return view().editor.controls.picked().ids')
+    // A press on the canvas dismisses the menu without selecting or starting a gesture.
+    await input(middle('beta'))
+    await until("!document.querySelector('.menu')")
+    expect(run<string[]>('return view().editor.controls.picked().ids')).toEqual(selection)
+    expect(run<boolean>('return view().editor.controls.gesturing()')).toBe(false)
+    await press(
+      `view().contentEl.querySelector('.abele-canvas-chrome__picked [aria-label="More"]')`
+    )
+    await until(menuItem('Duplicate'))
     const before = run<number>('return (await read()).nodes.length')
     await press(menuItem('Duplicate'))
     await saved()
