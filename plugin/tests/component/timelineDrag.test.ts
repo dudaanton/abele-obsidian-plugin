@@ -67,6 +67,7 @@ afterEach(() => {
   owner.remove()
   dayjs.locale('en')
   vi.restoreAllMocks()
+  vi.useRealTimers()
 })
 
 describe('timeline task dragging', () => {
@@ -347,18 +348,27 @@ describe('timeline task dragging', () => {
 
   it('starts gentle edge scrolling after a delay and stops when the pointer leaves the edge', async () => {
     await render([sample('sample-current', '2030-06-15')])
+    // Keep the edge delay and frame timestamps on one clock, independent of host load.
+    // Leave setImmediate real so flushPromises can still settle Vue updates.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) =>
+      window.setTimeout(() => callback(window.performance.now()), 16)
+    )
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation((id) => window.clearTimeout(id))
     await pointer('pointerdown', 80, 190, row().element)
     await pointer('pointermove', 80, 205)
     await pointer('pointermove', 80, 490)
     const start = owner.scrollTop
-    await new Promise((r) => setTimeout(r, 100))
+    await vi.advanceTimersByTimeAsync(100)
     expect(owner.scrollTop).toBe(start)
-    await new Promise((r) => setTimeout(r, 500))
+    await vi.advanceTimersByTimeAsync(199)
+    expect(owner.scrollTop).toBe(start)
+    await vi.advanceTimersByTimeAsync(301)
     expect(owner.scrollTop).toBeGreaterThan(start)
     expect(owner.scrollTop - start).toBeLessThan(100)
     await pointer('pointermove', 80, 250)
     const stopped = owner.scrollTop
-    await new Promise((r) => setTimeout(r, 300))
+    await vi.advanceTimersByTimeAsync(300)
     expect(owner.scrollTop).toBe(stopped)
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
   })
