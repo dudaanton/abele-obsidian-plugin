@@ -62,39 +62,69 @@ describe.skipIf(!available)('finance chart resizing', () => {
         for (const [path, content] of Object.entries(${JSON.stringify(files)})) {
           await app.vault.create(folder + '/' + path, content)
         }
-        leaf = ws.getRightLeaf(true)
+        // Phone drawers overlay the content; the chart must be in the content tab that
+        // becomes visible again after they close. Desktop exercises the docked sidebar.
+        leaf = ${mobile} ? ws.getLeaf('tab') : ws.getRightLeaf(true)
         await leaf.setViewState({ type: 'abele-finance-sidebar-view', active: true })
-        ws.rightSplit.expand()
+        if (${mobile}) {
+          ws.leftSplit.collapse()
+          ws.rightSplit.collapse()
+        } else ws.rightSplit.expand()
         await ws.revealLeaf(leaf)
         const chart = () => leaf.view.containerEl.querySelector('.abele-finance-sidebar__pie-chart')
         await until(() => chart()?.querySelector('canvas'), 'Missing seeded finance chart in ' + ${JSON.stringify(seed.currency)})
         const widths = []
+        const phoneLayouts = []
+        let lastMeasurement = null
+        const measure = () => {
+          const el = chart()
+          const canvas = el?.querySelector('canvas')
+          const pane = leaf.view.containerEl
+          return {
+            container: el?.clientWidth ?? 0,
+            css: canvas ? parseFloat(canvas.style.width) : 0,
+            buffer: canvas ? canvas.width / devicePixelRatio : 0,
+            visible: !!el && el.checkVisibility(),
+            pane: pane.getBoundingClientRect().width,
+            content: ws.rootSplit.containerEl.getBoundingClientRect().width,
+            leftClosed: ws.leftSplit.collapsed,
+            rightClosed: ws.rightSplit.collapsed,
+          }
+        }
         for (let i = 0; i < 3; i++) {
-          ws.leftSplit.expand()
           ws.rightSplit.collapse()
+          ws.leftSplit.expand()
           await wait(200)
           ws.leftSplit.collapse()
           ws.rightSplit.expand()
+          if (${mobile}) {
+            await wait(200)
+            ws.rightSplit.collapse()
+          }
           await ws.revealLeaf(leaf)
           await wait(500)
-          await until(() => {
-            const el = chart()
-            const canvas = el?.querySelector('canvas')
-            return el && el.clientWidth > 1 && canvas &&
-              Math.abs(parseFloat(canvas.style.width) - el.clientWidth) <= 1 &&
-              Math.abs(canvas.width / devicePixelRatio - el.clientWidth) <= 1
-          }, 'Finance canvas did not reach its container width after toggle ' + i)
-          const el = chart()
-          const canvas = el.querySelector('canvas')
+          try {
+            await until(() => {
+              const m = lastMeasurement = measure()
+              return m.visible && m.container > 1 &&
+                Math.abs(m.css - m.container) <= 1 &&
+                Math.abs(m.buffer - m.container) <= 1 &&
+                (!${mobile} || (m.leftClosed && m.rightClosed && Math.abs(m.pane - m.content) <= 1))
+            }, 'Finance canvas did not reach its visible container size')
+          } catch (error) {
+            throw Error(String(error) + ' after toggle ' + i + ': ' + JSON.stringify(lastMeasurement))
+          }
+          const m = measure()
           // The intrinsic drawing buffer detects a stale chart even if CSS stretches it.
-          widths.push([el.clientWidth, parseFloat(canvas.style.width), canvas.width / devicePixelRatio])
+          widths.push([m.container, m.css, m.buffer])
+          if (${mobile}) phoneLayouts.push(m)
         }
         chart().scrollIntoView({ block: 'center' })
         await wait(200)
         const shot = ${JSON.stringify(shots)} + '/finance-' + ${JSON.stringify(mobile ? 'phone' : 'desktop')} + '.png'
         const image = await win.webContents.capturePage()
         require('node:fs').writeFileSync(shot, image.toPNG())
-        return { error: '', widths, shot }
+        return { error: '', widths, phoneLayouts, shot }
       } finally {
         leaf?.detach()
         if (leftCollapsed) ws.leftSplit.collapse(); else ws.leftSplit.expand()
@@ -105,13 +135,31 @@ describe.skipIf(!available)('finance chart resizing', () => {
     })().then(result => JSON.stringify(result)).catch(error => JSON.stringify({ error: String(error), widths: [], shot: '' }))`,
         120_000
       )
-    ) as { error: string; widths: number[][]; shot: string }
+    ) as {
+      error: string
+      widths: number[][]
+      phoneLayouts: {
+        leftClosed: boolean
+        rightClosed: boolean
+        visible: boolean
+        pane: number
+        content: number
+      }[]
+      shot: string
+    }
     expect(result.error).toBe('')
     expect(result.widths).toHaveLength(3)
     for (const [container, css, buffer] of result.widths) {
       expect(container).toBeGreaterThan(1)
       expect(Math.abs(css - container)).toBeLessThanOrEqual(1)
       expect(Math.abs(buffer - container)).toBeLessThanOrEqual(1)
+    }
+    if (mobile) {
+      expect(result.phoneLayouts).toHaveLength(3)
+      for (const layout of result.phoneLayouts) {
+        expect(layout.leftClosed && layout.rightClosed && layout.visible).toBe(true)
+        expect(Math.abs(layout.pane - layout.content)).toBeLessThanOrEqual(1)
+      }
     }
     expect(result.shot).toMatch(/\.png$/)
   })
