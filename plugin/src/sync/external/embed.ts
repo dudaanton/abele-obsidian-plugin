@@ -1,4 +1,4 @@
-import { createApp, h, shallowRef } from 'vue'
+import { h, shallowRef } from 'vue'
 import {
   MarkdownRenderChild,
   MarkdownRenderer,
@@ -6,6 +6,7 @@ import {
   type MarkdownPostProcessorContext,
 } from 'obsidian'
 import type { EditorView } from '@codemirror/view'
+import { mountKit } from '@/components/obsidian/mount'
 import ExternalFileEmbed from '@/components/external/ExternalFileEmbed.vue'
 import { tokenOffloadsOf, type TokenOffloadCoordinator } from '../tokenOffloadCoordinator'
 import { pathCoordinatorOf } from '../pathCoordinator'
@@ -56,18 +57,22 @@ export function mountExternalEmbed(
   const value = shallowRef(presentation.value)
   let live = true,
     native = false
-  const mounted = createApp({
-    render: () =>
-      h(ExternalFileEmbed, {
-        file: value.value.file,
-        state: value.value.state,
-        progress: value.value.progress,
-        onOpen: () => open(path),
-        onDownload: (): void => void presentation.download(),
-        onRetry: (): void => void presentation.download(),
-      }),
-  })
-  mounted.mount(box)
+  const mounted = mountKit(
+    box,
+    {
+      render: () =>
+        h(ExternalFileEmbed, {
+          file: value.value.file,
+          state: value.value.state,
+          progress: value.value.progress,
+          onOpen: () => open(path),
+          onDownload: (): void => void presentation.download(),
+          onRetry: (): void => void presentation.download(),
+        }),
+    },
+    null,
+    { owner: component }
+  )
   const sync = () => {
     value.value = presentation.value
     if (!live || !value.value.hydrated || native || !app.vault.getFileByPath(path)) return

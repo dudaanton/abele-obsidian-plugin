@@ -39,6 +39,7 @@ const props = withDefaults(
     readOnly?: boolean
   }>(),
   {
+    size: 'default',
     readOnly: false,
     confirmText: 'Delete',
     confirmTooltip: 'Go ahead and delete it',

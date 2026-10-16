@@ -1,5 +1,6 @@
 import { ItemView, Platform, type ViewStateResult, type WorkspaceLeaf } from 'obsidian'
-import { createApp, h, shallowRef, type App as VueApp } from 'vue'
+import { h, shallowRef } from 'vue'
+import { mountKit, type KitMount } from '@/components/obsidian/mount'
 import ExternalFileView from '@/components/external/ExternalFileView.vue'
 import { tokenOffloadsOf } from '../tokenOffloadCoordinator'
 import { pathCoordinatorOf } from '../pathCoordinator'
@@ -10,7 +11,7 @@ import { EXTERNAL_VIEW_TYPE } from './opening'
 
 export class ExternalFileTab extends ItemView {
   private path = ''
-  private mounted: VueApp | null = null
+  private mounted: KitMount | null = null
   private presentation: ExternalPresentation | null = null
   private unsubscribe: (() => void) | null = null
   private opening = false
@@ -69,21 +70,25 @@ export class ExternalFileTab extends ItemView {
         if (!host) throw new Error('Connections are unavailable')
         await host.pin(path, true)
       })
-    this.mounted = createApp({
-      render: () =>
-        h(ExternalFileView, {
-          file: value.value.file,
-          state: value.value.state,
-          progress: value.value.progress,
-          error: value.value.error,
-          narrow: Platform.isMobile,
-          onDownload: (): void => void presentation.download(),
-          onRetry: (): void => void presentation.download(),
-          onKeep: (): void => void keep(),
-          onCancel: () => presentation.cancel(),
-        }),
-    })
-    this.mounted.mount(this.contentEl)
+    this.mounted = mountKit(
+      this.contentEl,
+      {
+        render: () =>
+          h(ExternalFileView, {
+            file: value.value.file,
+            state: value.value.state,
+            progress: value.value.progress,
+            error: value.value.error,
+            narrow: Platform.isMobile,
+            onDownload: (): void => void presentation.download(),
+            onRetry: (): void => void presentation.download(),
+            onKeep: (): void => void keep(),
+            onCancel: () => presentation.cancel(),
+          }),
+      },
+      null,
+      { owner: this }
+    )
     const refresh = (): void => void presentation.refresh()
     for (const name of ['online', 'offline']) {
       this.containerEl.ownerDocument.defaultView?.addEventListener(name, refresh)
