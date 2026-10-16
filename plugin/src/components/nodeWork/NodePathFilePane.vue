@@ -10,7 +10,7 @@
         v-show="model.mode.value === 'file'"
         :key="JSON.stringify([debug.sourceId, debug.debugSessionId, debug.incarnation, debug.path])"
         :context="{ ...debug, text: model.document.value.text }"
-        @reveal="model.mode.value = 'file'"
+        @reveal="revealSource"
         @selection="debugSelection"
       />
       <FileView
@@ -33,17 +33,22 @@ import type { NodePathFileModel } from '@/node/NodePathModel'
 import FileView from './FileView.vue'
 import NodePathDebugFile from './NodePathDebugFile.vue'
 import type { DebugSourceContext } from '@/debugger/sourceExtension'
-withDefaults(
+const props = withDefaults(
   defineProps<{ model: NodePathFileModel; offline?: boolean; debug?: DebugSourceContext }>(),
   { offline: false, debug: undefined }
 )
 import type { FileSelection } from './fileSelection'
 const emit = defineEmits<{
+  reveal: []
   menu: [event: MouseEvent, selection: string]
   ask: [selection: FileSelection]
   add: [selection: FileSelection]
   note: [selection: FileSelection]
 }>()
+function revealSource() {
+  props.model.mode.value = 'file'
+  emit('reveal')
+}
 import type { Selected } from '../obsidian/SelectionBar.vue'
 function debugSelection(action: 'ask' | 'add' | 'note', selected: Selected) {
   if (!selected.from || !selected.to) return

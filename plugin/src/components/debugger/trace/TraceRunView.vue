@@ -44,9 +44,11 @@
               :collapsed="folded.has(row.step.id)"
               :fold-apart="row.children.length > 0"
               @toggle="toggle(row.step.id)"
-              @click="pick(row.step.id)"
+              @click="openStep(row.step)"
             >
-              <template #leading><TraceStepGlyph :step="row.step" /></template>
+              <template #leading
+                ><TraceStepGlyph :step="row.step" @click="openStep(row.step)"
+              /></template>
               <template #end><StepEnd :step="row.step" /></template>
               <TreeItem
                 v-for="child in row.children"
@@ -55,9 +57,11 @@
                 :class="{ 'abele-trace-run__step_on-trail': onTrail.has(child.id) }"
                 :text="child.label"
                 :active="child.id === picked"
-                @click="pick(child.id)"
+                @click="openStep(child)"
               >
-                <template #leading><TraceStepGlyph :step="child" /></template>
+                <template #leading
+                  ><TraceStepGlyph :step="child" @click="openStep(child)"
+                /></template>
                 <template #end><StepEnd :step="child" /></template>
               </TreeItem>
             </TreeItem>
@@ -185,6 +189,10 @@ const toggle = (id: string) => (folded.has(id) ? folded.delete(id) : folded.add(
 const current = computed(() => props.run.steps.find((s) => s.id === props.picked))
 const onTrail = computed(() => new Set(props.trail?.stops.map((s) => s.step) ?? []))
 const pick = (id: string) => emit('pick', id)
+function openStep(step: TraceStep) {
+  pick(step.id)
+  if (step.place) emit('reveal', step.place.file, step.place.line)
+}
 /** Back to the steps on a phone: the host puts it on its header's back arrow, as views do. */
 function back() {
   if (props.trail) emit('unfollow')

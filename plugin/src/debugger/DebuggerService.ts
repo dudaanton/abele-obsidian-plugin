@@ -404,6 +404,7 @@ export class DebuggerService {
     )?.[0]
   }
   reveal(binding: DebuggerBinding, file: string, line: number) {
+    console.debug('[debugger] Reveal source', file, line)
     const sources = this.sources.get(this.key(binding.registrationId, binding.conversationId))
     const source = [...(sources ?? [])].find(
       ([id, mapping]) =>
@@ -431,8 +432,8 @@ export class DebuggerService {
     if (source[1].folder) {
       const folder = source[1].folder
       void import('@/node/nodePathNavigation')
-        .then(({ openNodePathTab }) =>
-          openNodePathTab(
+        .then(async ({ openNodePathTab, closeNodePathDrawers }) => {
+          await openNodePathTab(
             GlobalStore.getInstance().app.workspace,
             {
               kind: 'file',
@@ -443,11 +444,13 @@ export class DebuggerService {
                 sourceId: source[0],
                 debugSessionId: source[1].debugSessionId,
                 incarnation: source[1].incarnation,
+                line,
               },
             },
             Platform.isMobile
           )
-        )
+          closeNodePathDrawers(GlobalStore.getInstance().app.workspace, Platform.isMobile)
+        })
         .catch((e) => console.debug('[debugger] Source not opened', e))
       return
     }

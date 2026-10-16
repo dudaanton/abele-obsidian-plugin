@@ -24,6 +24,7 @@ export function mountNodePathDebugSource(
       request.path !== captured.path
     )
       return false
+    extension.reveal(request.line)
     show(request.line)
     queueMicrotask(() => {
       const element = host.querySelector<HTMLElement>('.cm-editor')
@@ -38,7 +39,7 @@ export function mountNodePathDebugSource(
     return true
   })
   return {
-    update: extension.update,
+    update: (text: string) => extension.update(text),
     destroy: () => {
       stop()
       extension.destroy()

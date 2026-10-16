@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import TracePointEditor from '@/components/debugger/trace/TracePointEditor.vue'
 import TraceRunView from '@/components/debugger/trace/TraceRunView.vue'
 import TraceValueRow from '@/components/debugger/trace/TraceValueRow.vue'
+import TraceStepDetail from '@/components/debugger/trace/TraceStepDetail.vue'
 import BreakpointMark from '@/components/debugger/BreakpointMark.vue'
 import type { TraceRun } from '@/components/debugger/trace/types'
 
@@ -49,6 +50,27 @@ describe('a record point set up under its line', () => {
 })
 
 describe('a recorded run', () => {
+  it.each(['.abele-tree-item__text', '.abele-trace-glyph'])(
+    'opens a child step source from %s and still picks its details',
+    async (selector) => {
+      const w = mount(TraceRunView, { props: { run } })
+      const step = w.get('.tree-item-children .abele-trace-run__step')
+      await step.get(selector).trigger('click')
+      expect(w.emitted('pick')).toEqual([['s2']])
+      expect(w.emitted('reveal')).toEqual([['src/sample.ts', 4]])
+      w.unmount()
+    }
+  )
+
+  it.each(['.abele-trace-step__title', '.abele-trace-glyph', '.abele-trace-step__place'])(
+    'opens source from the detail %s',
+    async (selector) => {
+      const w = mount(TraceStepDetail, { props: { step: run.steps[1] } })
+      await w.get(selector).trigger('click')
+      expect(w.emitted('reveal')).toEqual([['src/sample.ts', 4]])
+      w.unmount()
+    }
+  )
   it('returns to its debugger through a compact toolbar action', async () => {
     const w = mount(TraceRunView, { props: { run, debuggerAvailable: true } })
     await w.get('[aria-label="Back to debugger"]').trigger('click')

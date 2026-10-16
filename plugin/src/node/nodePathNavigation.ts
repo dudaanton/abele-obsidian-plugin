@@ -18,7 +18,13 @@ const target = z
   })
   .strict()
 export const NodePathDebugMappingSchema = z
-  .object({ conversationId: id, sourceId: id, debugSessionId: id, incarnation: id })
+  .object({
+    conversationId: id,
+    sourceId: id,
+    debugSessionId: id,
+    incarnation: id,
+    line: z.number().int().positive().optional(),
+  })
   .strict()
 export const NodePathTabSchema = z.discriminatedUnion('kind', [
   z
@@ -79,6 +85,12 @@ export async function revealNodeDrawer(
   })
   await workspace.revealLeaf(leaf)
   workspace.leftSplit.expand()
+}
+/** A source destination must be visible beyond either phone drawer. */
+export function closeNodePathDrawers(workspace: Workspace, mobile: boolean): void {
+  if (!mobile) return
+  workspace.leftSplit.collapse()
+  workspace.rightSplit.collapse()
 }
 /** A file is edited in its own tab: the old editor tab becomes that file's tab, editing. */
 export const editedFileTab = (state: NodePathTabState): NodePathTabState =>

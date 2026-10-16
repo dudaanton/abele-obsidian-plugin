@@ -1,4 +1,4 @@
-import { h, ref } from 'vue'
+import { h, ref, watch } from 'vue'
 import { mountKit } from '@/components/obsidian/mount'
 import type { CodeSelection } from '@/views/codeSelectionHost'
 import DebugSource from '@/components/debugger/DebugSource.vue'
@@ -16,9 +16,12 @@ export interface DebugSourceContext {
   incarnation: string
   path: string
   text: string
+  /** An explicit source-navigation target, including a source opened from a recorded step. */
+  line?: number
 }
 export interface DebugSourceExtension {
   update(text: string): void
+  reveal(line: number): void
   destroy(): void
 }
 export function mountDebugSource(
@@ -29,7 +32,17 @@ export function mountDebugSource(
   const service = DebuggerService.instance,
     text = ref(context.text),
     /** The line whose record point is being set up under it. */
-    editing = ref<number>()
+    editing = ref<number>(),
+    revealed = ref(context.line)
+  const stopFrameWatch = watch(
+    () => {
+      void service.active.value
+      const binding = service.forSource(context.registrationId, context.conversationId)
+      if (binding) void binding.revision.value
+      return binding?.controller.session.frame
+    },
+    () => (revealed.value = undefined)
+  )
   const unregister = service.registerSource(
     context.registrationId,
     context.conversationId,
@@ -79,10 +92,11 @@ export function mountDebugSource(
               })) ??
             [],
           line:
-            (model?.session.status === 'paused' || model?.session.status === 'lost') &&
+            revealed.value ??
+            ((model?.session.status === 'paused' || model?.session.status === 'lost') &&
             (frame?.file === context.path || frame?.file === context.sourceId)
               ? frame.line
-              : undefined,
+              : undefined),
           stale: !model?.current,
           onSelection: selection,
           onBreakpoint: (line: number) => {
@@ -138,10 +152,14 @@ export function mountDebugSource(
     },
   })
   return {
+    reveal(line) {
+      revealed.value = line
+    },
     update(value) {
       text.value = value
     },
     destroy() {
+      stopFrameWatch()
       app.unmount()
       unregister()
     },

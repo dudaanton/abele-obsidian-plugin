@@ -8,6 +8,7 @@ import { evalAsync } from './helpers/githubLive'
 import { evalRaw } from './helpers/obsidianCli'
 import { shotDir } from './helpers/shots'
 import { targets } from './helpers/target'
+import { withEmulatedPhone } from './helpers/emulatedPhone'
 import type { AgentToolResult } from '@/ai/client'
 targets('desktop')
 
@@ -227,7 +228,14 @@ it('walks from source through stepping, recording, analysis, a crash, restart an
     const paused=()=>visible('.abele-debug-panel_paused');
     const rowNamed=name=>[...document.querySelectorAll('.abele-debug-value_row')].find(r=>r.querySelector(':scope > .tree-item-self .abele-tree-item__text')?.textContent.trim()===name);
     const expand=async name=>{const row=await until(()=>rowNamed(name),'variable '+name);press(row.querySelector(':scope > .tree-item-self'));};
-    const source=app.workspace.getLeaf('tab');
+    let source=app.workspace.getLeaf('tab');
+    const sourceAt=async(line,name)=>{
+      const expected=${JSON.stringify(JS.split('\n'))}[line-1].trim();
+      await until(()=>[...document.querySelectorAll('.abele-node-debug-file .abele-debug-source__line_here')].some(e=>e.offsetParent&&e.textContent.trim()===expected),'visible highlighted source at line '+line);
+      source=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.getState().path==='src/journey.cjs');
+      if(!source)throw Error('Source file not opened');
+      await shot(name);
+    };
     await source.setViewState({type:'abele-node-file',active:true,state:{kind:'file',target:${JSON.stringify(folder)},path:'src/journey.cjs'}});
     await until(()=>source.containerEl.textContent.includes('function calculate'),'source open');
     await shot('journey-source');
@@ -238,6 +246,15 @@ it('walks from source through stepping, recording, analysis, a crash, restart an
     await goOn();
     await until(()=>paused()&&document.querySelector('.abele-debug-panel__where')?.textContent.includes(':6'),'breakpoint hit');
     await shot('journey-breakpoint');
+    const breakpointRow=()=>[...document.querySelectorAll('.abele-debug-panel .tree-item-self')].find(r=>r.querySelector('.abele-tree-item__text')?.textContent.trim()==='journey.cjs:6');
+    // The breakpoint-list diamond opens a closed file; the row and stopped-location link reuse it.
+    source.detach();
+    press((await until(breakpointRow,'breakpoint row')).querySelector('.abele-breakpoint-mark'));
+    await sourceAt(6,'journey-breakpoint-diamond-source');
+    press(breakpointRow().querySelector('.abele-tree-item__text'));
+    await sourceAt(6,'journey-breakpoint-row-source');
+    press(document.querySelector('.abele-debug-panel__where'));
+    await sourceAt(6,'journey-paused-location-source');
     await control('Step into (F11)');
     await until(()=>paused()&&document.querySelector('.abele-debug-panel__where')?.textContent.includes(':2'),'stepped into function');
     await control('Step over (F10)');
@@ -256,6 +273,8 @@ it('walks from source through stepping, recording, analysis, a crash, restart an
     await until(()=>marginAt(6,source.containerEl),'breakpoint removed');
     await app.workspace.revealLeaf(source);
     await recordPoint(6,['n'],source.containerEl);
+    press((await until(breakpointRow,'record point listed')).querySelector('.abele-breakpoint-mark_record'));
+    await sourceAt(6,'journey-record-list-diamond-source');
     await goOn();
     await until(()=>[...source.containerEl.querySelectorAll('.abele-debug-source__tail')].some(e=>/n\\s+\\d/.test(e.textContent)),'inline argument value',100);
     await shot('journey-inline-values');
@@ -263,16 +282,32 @@ it('walks from source through stepping, recording, analysis, a crash, restart an
     await until(()=>b.trace?.status?.recording?.steps>=3,'several recorded steps',100);
     const runId=b.trace.status.recording.run_id,projectId=b.trace.projectId;
     await api.openTraceRun({registrationId:${JSON.stringify(registration)},projectId,runId});
+    const runLeaf=app.workspace.getLeavesOfType('abele-trace-run').find(l=>l.view.getState().runId===runId);
+    const returnToRun=async()=>{await app.workspace.revealLeaf(runLeaf);await until(()=>visible('.abele-trace-run'),'run visible');};
     const steps=()=>[...document.querySelectorAll('.abele-trace-run__steps > .abele-trace-run__step')];
     await until(()=>steps().length>=3,'recorded steps');
     const values=[];
     for(const row of steps().slice(0,3)){
       press(row.querySelector('.tree-item-self'));
+      await sourceAt(6,'journey-step-row-source-'+values.length);
+      await returnToRun();
       await until(()=>document.querySelector('.abele-trace-step'),'recorded detail');
       const value=await until(()=>[...document.querySelectorAll('.abele-trace-step .abele-trace-value')].find(e=>e.querySelector('.abele-tree-item__text')?.textContent.trim()==='n'),'recorded n');
       if(value.querySelector('.abele-trace-value__failed'))throw Error('Record capture failed: '+value.textContent);
       values.push(Number(value.querySelector('.abele-tree-item__note')?.textContent.trim()));
     }
+    press(steps()[0].querySelector('.abele-trace-glyph'));
+    await sourceAt(6,'journey-step-diamond-source');
+    await returnToRun();
+    press(document.querySelector('.abele-trace-step__head .abele-trace-glyph'));
+    await sourceAt(6,'journey-detail-diamond-source');
+    await returnToRun();
+    press(document.querySelector('.abele-trace-step__title'));
+    await sourceAt(6,'journey-detail-title-source');
+    await returnToRun();
+    press(document.querySelector('.abele-trace-step__place'));
+    await sourceAt(6,'journey-step-location-source');
+    await returnToRun();
     const search=document.querySelector('input[aria-label="Find in the steps"]');
     search.value='no-such-sample';search.dispatchEvent(new Event('input',{bubbles:true}));
     await until(()=>document.querySelector('.abele-trace-run')?.textContent.includes('No step matches.'),'search empty state');
@@ -297,11 +332,12 @@ it('walks from source through stepping, recording, analysis, a crash, restart an
     await app.workspace.revealLeaf(source);
     // The record point travelled with Restart; replace it with an ordinary breakpoint.
     const record=source.containerEl.querySelector('button.abele-debug-source__point[aria-label^="Record point"]');
-    if(record){
-      record.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:40,clientY:200}));
-      press(await until(()=>item('Remove'),'remove record point'));
-    }
+    if(!record)throw Error('Restart did not carry the record point');
+    // The gutter-toggle branch removes a record point with a click; editing stays in its menu.
+    press(record);
     await until(()=>marginAt(6),'record point removed');
+    if(document.querySelector('.abele-trace-point'))throw Error('Gutter click opened the point editor');
+    await shot('journey-record-point-click-removed');
     press(marginAt(6));
     await goOn();
     await until(()=>paused()&&document.querySelector('.abele-debug-panel__where')?.textContent.includes(':6'),'breakpoint hit after restart');
@@ -343,4 +379,37 @@ it('walks from source through stepping, recording, analysis, a crash, restart an
     .map((c) => c.text)
     .join('\n')
   for (const value of seen.values) expect(text).toContain(`n=${value} [`)
+}, 180000)
+
+it('on a phone: breakpoint navigation uncovers the source and highlights its line', async () => {
+  await withEmulatedPhone(async () => {
+    openChat()
+    const result = inApp<{ highlighted: boolean; drawersClosed: boolean }>(`(async()=>{${prelude}
+      try {
+        ${RUN('src/journey.cjs', 'journey-phone', 'Debug')}
+        await until(()=>document.querySelector('.abele-debug-panel_paused'),'program held');
+        const source=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.getState().path==='src/journey.cjs');
+        await app.workspace.revealLeaf(source);
+        app.workspace.rightSplit.collapse();
+        press(await until(()=>marginAt(6),'source gutter'));
+        const row=()=>[...document.querySelectorAll('.abele-debug-panel .tree-item-self')].find(r=>r.querySelector('.abele-tree-item__text')?.textContent.trim()==='journey.cjs:6');
+        await until(row,'breakpoint listed');
+        const debug=app.workspace.getLeavesOfType('abele-debug-view')[0];
+        await app.workspace.revealLeaf(debug);
+        app.workspace.rightSplit.expand();
+        await shot('journey-phone-breakpoint-list');
+        press(row().querySelector('.abele-breakpoint-mark'));
+        const highlighted=await until(()=>[...document.querySelectorAll('.abele-debug-source__line_here')].some(e=>e.offsetParent&&e.textContent.trim()==='const item = inspectItem(n)'),'source line visible');
+        await until(()=>app.workspace.leftSplit.collapsed&&app.workspace.rightSplit.collapsed,'drawers closed');
+        await shot('journey-phone-breakpoint-source');
+        return {highlighted:!!highlighted,drawersClosed:true};
+      } finally {
+        const stop=document.querySelector('.abele-debug-panel [aria-label="Stop (Shift+F5)"]');
+        if(stop&&!stop.disabled){press(stop);await until(()=>document.querySelector('.abele-debug-panel_exited'),'program stopped');}
+        for(const type of ['abele-node-file','abele-debug-view','abele-trace-run','abele-trace-value'])for(const leaf of app.workspace.getLeavesOfType(type))leaf.detach();
+        await app.workspace.requestSaveLayout.run();
+      }
+    })()`)
+    expect(result).toEqual({ highlighted: true, drawersClosed: true })
+  })
 }, 180000)

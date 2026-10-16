@@ -166,6 +166,37 @@ it('forwards node and debugger selections to the file host for ask, add and note
   }
 })
 
+it('returns to the file and notifies the host when its debug source is revealed', async () => {
+  useVault([])
+  const model = {
+    busy: ref(false),
+    error: ref(''),
+    mode: ref('file'),
+    document: ref({ path: 'sample.ts', text: 'sample' }),
+  }
+  view = mount(NodePathFilePane, {
+    props: {
+      model: model as never,
+      debug: {
+        registrationId: 'sample-node',
+        conversationId: 'sample-chat',
+        sourceId: 'sample-source',
+        debugSessionId: 'sample-debug',
+        incarnation: 'sample-build',
+        path: 'sample.ts',
+        text: 'sample',
+      },
+    },
+  })
+  model.mode.value = 'diff'
+  await flushPromises()
+  view.getComponent(NodePathDebugFile).vm.$emit('reveal', 1)
+  await flushPromises()
+  expect(model.mode.value).toBe('file')
+  expect(view.emitted('reveal')).toEqual([[]])
+  expect(view.findComponent(FileView).exists()).toBe(false)
+})
+
 it('hands pending GitHub note snippets to the linker so it can handle a failed permalink', async () => {
   useVault([])
   let reject!: (error: Error) => void

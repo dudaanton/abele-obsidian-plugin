@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
-import { nodePathTabKey, openNodePathTab, revealNodeDrawer } from '@/node/nodePathNavigation'
+import {
+  NodePathTabSchema,
+  closeNodePathDrawers,
+  nodePathTabKey,
+  openNodePathTab,
+  revealNodeDrawer,
+} from '@/node/nodePathNavigation'
 const target = (id = 'tree-a') => ({
   nodeId: 'node-demo',
   registrationId: 'registration-demo',
@@ -8,6 +14,30 @@ const target = (id = 'tree-a') => ({
   id,
 })
 describe('main area node leaves', () => {
+  it('uncovers a source on a phone by closing both drawers, leaving desktop panes alone', () => {
+    const workspace = { leftSplit: { collapse: vi.fn() }, rightSplit: { collapse: vi.fn() } }
+    closeNodePathDrawers(workspace as never, false)
+    expect(workspace.leftSplit.collapse).not.toHaveBeenCalled()
+    expect(workspace.rightSplit.collapse).not.toHaveBeenCalled()
+    closeNodePathDrawers(workspace as never, true)
+    expect(workspace.leftSplit.collapse).toHaveBeenCalledOnce()
+    expect(workspace.rightSplit.collapse).toHaveBeenCalledOnce()
+  })
+  it('retains an explicit debug source line in the tab state', () => {
+    const state = NodePathTabSchema.parse({
+      kind: 'file',
+      target: target(),
+      path: 'sample.ts',
+      debug: {
+        conversationId: 'sample-chat',
+        sourceId: 'sample-source',
+        debugSessionId: 'sample-debug',
+        incarnation: 'sample-incarnation',
+        line: 12,
+      },
+    })
+    expect(state.kind === 'file' && state.debug?.line).toBe(12)
+  })
   it('keys history and editors by node and target, never filename alone', () => {
     expect(nodePathTabKey({ kind: 'editor', target: target(), path: 'sample.ts' })).not.toBe(
       nodePathTabKey({ kind: 'editor', target: target('tree-b'), path: 'sample.ts' })

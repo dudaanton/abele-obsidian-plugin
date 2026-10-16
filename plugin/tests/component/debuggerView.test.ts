@@ -23,6 +23,19 @@ const session = (status: DebugSession['status']): DebugSession => ({
   seen: '10:00',
 })
 describe('debugger panel', () => {
+  it.each(['.abele-tree-item__text', '.abele-breakpoint-mark'])(
+    'opens the breakpoint source when its %s is clicked',
+    async (selector) => {
+      const w = mount(DebugPanel, { props: { session: session('paused') } })
+      const row = w
+        .findAll('.tree-item-self')
+        .find((r) => r.find('.abele-tree-item__text').text() === 'sample.ts:7')!
+      await row.get(selector).trigger('click')
+      expect(w.emitted('reveal')).toEqual([['sample.ts', 7]])
+      expect(w.emitted('breakpoint')).toBeUndefined()
+      w.unmount()
+    }
+  )
   it('names unknown agent authority and explains the disabled mode switch', () => {
     const w = mount(DebugPanel, {
       props: {

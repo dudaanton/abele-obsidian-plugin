@@ -5,8 +5,21 @@
        where it came from, for you to confirm. -->
   <div class="abele-trace-step">
     <div class="abele-trace-step__head">
-      <TraceStepGlyph :step="step" />
-      <span class="abele-trace-step__title">{{ step.label }}</span>
+      <a
+        v-if="step.place"
+        class="abele-trace-step__source"
+        role="button"
+        tabindex="0"
+        @click="emit('reveal', step.place.file, step.place.line)"
+        @keydown.enter="emit('reveal', step.place.file, step.place.line)"
+      >
+        <TraceStepGlyph :step="step" />
+        <span class="abele-trace-step__title">{{ step.label }}</span>
+      </a>
+      <template v-else>
+        <TraceStepGlyph :step="step" />
+        <span class="abele-trace-step__title">{{ step.label }}</span>
+      </template>
       <Icon
         :icon="step.marked ? 'flag' : 'flag'"
         :active="step.marked"
@@ -190,6 +203,13 @@ watch(
   min-width: 0;
   font-weight: var(--font-semibold);
   overflow-wrap: anywhere;
+}
+.abele-trace-step__source {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .abele-trace-step__facts {
   display: flex;

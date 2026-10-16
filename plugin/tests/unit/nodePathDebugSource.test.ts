@@ -6,9 +6,14 @@ const f = vi.hoisted(() => ({
   destroy: vi.fn(),
   stop: vi.fn(),
   mount: vi.fn(),
+  revealLine: vi.fn(),
 }))
 vi.mock('@/debugger/sourceExtension', () => ({
-  mountDebugSource: f.mount.mockImplementation(() => ({ update: f.update, destroy: f.destroy })),
+  mountDebugSource: f.mount.mockImplementation(() => ({
+    update: f.update,
+    destroy: f.destroy,
+    reveal: f.revealLine,
+  })),
   registerDebugSourceRevealer: (handler: unknown) => {
     f.reveal = handler
     return f.stop
@@ -32,6 +37,7 @@ it('mounts the shared debug margin with exact source identity and releases its r
   expect(f.reveal({ ...context, sourceId: 'another-source', line: 2 })).toBe(false)
   expect(f.reveal({ ...context, line: 2 })).toBe(true)
   expect(show).toHaveBeenCalledWith(2)
+  expect(f.revealLine).toHaveBeenCalledWith(2)
   handle.update('changed')
   expect(f.update).toHaveBeenCalledWith('changed')
   handle.destroy()

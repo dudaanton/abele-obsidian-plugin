@@ -25,6 +25,7 @@ import {
   nodePathTabKey,
   openNodeChat,
   revealNodeDrawer,
+  closeNodePathDrawers,
   type NodePathTabState,
 } from '@/node/nodePathNavigation'
 import { showNodePathFileMenu, newNodePathChat } from '@/node/NodePathController'
@@ -288,6 +289,11 @@ export class NodePathMainView extends ItemView {
                 model: file,
                 offline: offline(),
                 debug: this.debugOf(state, file),
+                onReveal: () =>
+                  this.act(async () => {
+                    await this.app.workspace.revealLeaf(this.leaf)
+                    closeNodePathDrawers(this.app.workspace, Platform.isMobile)
+                  }),
                 onAsk: (selection: FileSelection) => {
                   const doc = file.document.value
                   if (doc)

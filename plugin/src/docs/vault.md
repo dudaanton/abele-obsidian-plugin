@@ -161,6 +161,8 @@ The Node drawer and its main-area file, history, chat and code-editor leaves ret
 registration/node/project IDs, an opaque workspace or worktree target, relative file paths
 and session IDs in the workspace layout. They never store node credentials or claim chat
 permissions. File navigation is bound to the leaf target, not the current drawer selection.
+Debug source mappings may also retain the requested line number so a source opened from a
+recorded step or breakpoint list reopens with that line highlighted.
 Selected file or comparison text can be quoted into a chat draft with its relative path, line
 range and comparison side. Ask here creates a node chat bound to that file's target; Add to
 chat uses an explicitly chosen Obsidian chat. Neither action sends a provider turn or grants

@@ -1,15 +1,71 @@
 import { expect, it, vi } from 'vitest'
-import { ref } from 'vue'
+import { nextTick, ref } from 'vue'
 import { debuggerSnapshot } from '../fixtures/debugger'
 import { DebuggerService } from '@/debugger/DebuggerService'
 import { mountDebugSource } from '@/debugger/sourceExtension'
 vi.mock('@/components/debugger/DebugSource.vue', () => ({
   default: {
-    props: ['stale'],
+    props: ['stale', 'line'],
     emits: ['selection'],
-    template: `<div :data-stale="stale">sample source<button @click="$emit('selection', 'note', { text: 'sample', path: 'sample.ts', from: 2, to: 3 })" aria-label="Quote"></button></div>`,
+    template: `<div :data-stale="stale" :data-line="line">sample source<button @click="$emit('selection', 'note', { text: 'sample', path: 'sample.ts', from: 2, to: 3 })" aria-label="Quote"></button></div>`,
   },
 }))
+it('highlights an explicitly revealed line even when the program is not paused there', async () => {
+  const host = document.createElement('div')
+  const handle = mountDebugSource(host, {
+    registrationId: 'sample-registration',
+    conversationId: 'sample-chat',
+    sourceId: 'sample-source',
+    debugSessionId: 'sample-debug',
+    incarnation: 'sample-incarnation',
+    path: 'sample.ts',
+    text: 'first\nsecond\nthird',
+    line: 2,
+  })
+  try {
+    expect(host.querySelector('[data-line]')?.getAttribute('data-line')).toBe('2')
+    handle.reveal(3)
+    await nextTick()
+    expect(host.querySelector('[data-line]')?.getAttribute('data-line')).toBe('3')
+  } finally {
+    handle.destroy()
+    DebuggerService.instance.destroy()
+  }
+})
+it('follows a newly selected paused frame after revealing another line', async () => {
+  const service = DebuggerService.instance
+  const binding = service.binding({
+    reference: { registrationId: 'sample-registration', sessionId: 'sample-chat' },
+    connection: { state: ref('connected'), client: {} },
+  } as never)
+  binding.controller.observe({ observation: 'current', snapshot: debuggerSnapshot() })
+  binding.controller.session.frames = [
+    { name: 'first', file: 'sample.ts', line: 7 },
+    { name: 'second', file: 'sample.ts', line: 9 },
+  ]
+  const host = document.createElement('div')
+  const handle = mountDebugSource(host, {
+    registrationId: 'sample-registration',
+    conversationId: 'sample-chat',
+    sourceId: 'sample-source',
+    debugSessionId: 'sample-debug',
+    incarnation: 'sample-incarnation',
+    path: 'sample.ts',
+    text: 'sample',
+  })
+  try {
+    handle.reveal(2)
+    await nextTick()
+    expect(host.querySelector('[data-line]')?.getAttribute('data-line')).toBe('2')
+    binding.controller.session.frame = 1
+    ++binding.revision.value
+    await nextTick()
+    expect(host.querySelector('[data-line]')?.getAttribute('data-line')).toBe('9')
+  } finally {
+    handle.destroy()
+    service.destroy()
+  }
+})
 it('registers a source extension without owning the node file tab and cleans it up', () => {
   const host = document.createElement('div')
   const service = DebuggerService.instance
