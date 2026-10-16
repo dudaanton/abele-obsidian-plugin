@@ -94,7 +94,7 @@ export async function tokenOffloadConnection(input: {
     fence.assertReady()
     return {
       ...projection,
-      changed: !!current && current.versionId !== projection.observedVersionId,
+      changed: !!current && current.versionId !== file.lastProvenLocalBase?.versionId,
       available: input.available?.() ?? true,
     }
   }

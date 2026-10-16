@@ -1,10 +1,48 @@
 import { expect, it, vi } from 'vitest'
+import { sha256 } from '@abele/sync-core'
+import { ExternalState } from '@/sync/external/state'
 import { mount, flushPromises } from '@vue/test-utils'
 import { reactive, h, defineComponent } from 'vue'
 import { externalFileFixture } from './externalFileFollowupFixture'
 import { ExternalPresentation } from '@/sync/external/presentation'
 import ExternalFileView from '@/components/external/ExternalFileView.vue'
 import ExternalFileEmbed from '@/components/external/ExternalFileEmbed.vue'
+
+it('keeps the newer-version notice after verified stub metadata advances', async () => {
+  const s = await externalFileFixture('Media/sample.pdf')
+  try {
+    await s.port.evict(s.path)
+    const projection = JSON.parse(await s.app.vault.adapter.read(s.path + '.abele-ref'))
+    projection.observedVersionId = 'sample-new-version'
+    const bytes = new TextEncoder().encode(JSON.stringify(projection) + '\n')
+    await s.app.vault.adapter.writeBinary(s.path + '.abele-ref', bytes.buffer)
+    const document = JSON.parse((await s.state.getExternalState())!)
+    const external = await ExternalState.open(s.state, document.ledgerId, s.binding)
+    await external.commit({
+      expectedRevision: document.revision,
+      files: [
+        {
+          expectedRevision: document.files[0].localRevision,
+          next: {
+            ...document.files[0],
+            localRevision: document.files[0].localRevision + 1,
+            projectionSha: await sha256(bytes),
+          },
+        },
+      ],
+    })
+    await s.state.put({ ...s.head, versionId: 'sample-new-version' })
+    const p = new ExternalPresentation(s.manager, s.path, () => true)
+    try {
+      await p.refresh()
+      expect(p.value.state).toBe('changed')
+    } finally {
+      p.dispose()
+    }
+  } finally {
+    s.close()
+  }
+})
 
 it('renders actual streamed byte progress while the staging write is still pending', async () => {
   const s = await externalFileFixture('Media/sample.pdf')
