@@ -100,8 +100,10 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
   const wait = ms => new Promise(r => setTimeout(r, ms))
   let uiState = () => null
   // Whether the window was drawing when a wait ran out: frames, visibility, and what a fresh
-  // observer says about the paging sentinel, the element the next page waits on.
-  const drawing = async () => {
+  // observer says about the paging sentinel, the element the next page waits on. Armed with
+  // uiState once the timeline is open; the fixture's own waits report nothing of the window.
+  let drawing = async () => null
+  const windowDrawing = async () => {
     const timeout = (ms, value) => new Promise(done => setTimeout(() => done(value), ms))
     const frames = await Promise.race([new Promise(done => {
       let n = 0; const start = performance.now()
@@ -221,6 +223,7 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
     const headerCount = () => Number(pinned()?.querySelector('.abele-fold-heading__count, .abele-list-section-header__count')?.textContent.trim())
     const openTasks = () => new Set([...root.querySelectorAll('[data-timeline-item^="task:"]')].map(x => x.dataset.timelineItem)).size
     const count = state => (report.counts ??= []).push([state, headerCount(), openTasks()])
+    drawing = windowDrawing
     uiState = () => ({today:day(0),dates:dates(),overdue:overdueRow()?.textContent.trim(),past:pastRow()?.textContent.trim(),
       viewport:[scroller.clientWidth,scroller.clientHeight],label,
       paging:{scrollTop:scroller.scrollTop,scrollHeight:scroller.scrollHeight,owner:scroller.getBoundingClientRect().toJSON(),
