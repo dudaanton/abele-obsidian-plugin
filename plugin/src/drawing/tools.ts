@@ -4,6 +4,7 @@
  * on a PDF's page. Each works on the drawing's items and says what has to be painted again; none
  * touches the screen itself, so they are tested without a canvas.
  */
+import { StylusSmoother } from '@/ink/smoothing'
 import { roundPoint, type InkColor, type InkTool } from '@/ink/stroke'
 import type { DrawingItems, ItemChange } from './history'
 import {
@@ -37,10 +38,18 @@ export interface Brush {
 }
 
 /** A pen's or a marker's touch: a stroke through every point it passes. */
-export function strokeGesture(ctx: ToolContext, brush: Brush, start: WorldPoint): ToolGesture {
-  const points: number[] = []
+export function strokeGesture(
+  ctx: ToolContext,
+  brush: Brush,
+  start: WorldPoint,
+  stylus = false
+): ToolGesture {
+  const smoother = stylus ? new StylusSmoother(ctx.zoom()) : null
+  const points: number[] = smoother?.points ?? []
+  const mode = stylus ? { linear: true as const } : {}
   let ahead: number[] = []
   const add = (pt: WorldPoint) => {
+    if (smoother) return smoother.add(pt.x, pt.y, pt.p)
     const [x, y, p] = roundPoint(pt.x, pt.y, pt.p)
     const n = points.length
     if (n >= 3 && points[n - 3] === x && points[n - 2] === y) return
@@ -50,13 +59,19 @@ export function strokeGesture(ctx: ToolContext, brush: Brush, start: WorldPoint)
   return {
     move(pts, predicted) {
       for (const pt of pts) add(pt)
-      ahead = predicted.flatMap((pt) => roundPoint(pt.x, pt.y, pt.p))
+      ahead = (stylus ? [] : predicted).flatMap((pt) => roundPoint(pt.x, pt.y, pt.p))
     },
     end(cancelled) {
       ahead = []
       // A touch the system took back after it had drawn a line is still the line drawn.
       if (cancelled && points.length <= 9) return
-      const stroke: StrokeItem = { id: newId(), type: 'stroke', ...brush, points: [...points] }
+      const stroke: StrokeItem = {
+        id: newId(),
+        type: 'stroke',
+        ...brush,
+        ...mode,
+        points: [...points],
+      }
       ctx.items.add([stroke])
       ctx.added([stroke])
       ctx.changed()
@@ -66,6 +81,7 @@ export function strokeGesture(ctx: ToolContext, brush: Brush, start: WorldPoint)
         id: '',
         type: 'stroke',
         ...brush,
+        ...mode,
         points: [...points, ...ahead],
       }
       paintItem(c, live)

@@ -48,6 +48,8 @@ export interface InkStroke {
   size: number
   /** `x, y, pressure` for each point, one after the other. */
   points: number[]
+  /** Already bounded at input; do not ease or curve a second time. */
+  linear?: true
 }
 
 /** The pen's width at a pressure: as set at half pressure, thinner lighter, wider harder. */
@@ -77,6 +79,11 @@ const EASE = 2
 function points(stroke: InkStroke): Pt[] {
   const raw: Pt[] = []
   const pts = stroke.points
+  if (stroke.linear) {
+    for (let i = 0; i + 2 < pts.length; i += 3)
+      raw.push({ x: pts[i], y: pts[i + 1], r: penWidth(stroke.size, pts[i + 2]) / 2 })
+    return raw
+  }
   for (let i = 0; i + 2 < pts.length; i += 3) {
     const pt = { x: pts[i], y: pts[i + 1], r: penWidth(stroke.size, pts[i + 2]) / 2 }
     const last = raw[raw.length - 1]
@@ -265,8 +272,8 @@ function joint(at: Pt, before: XY[], next: XY[]): string {
  * Where two bands meet nearly in line, the second starts from the first one's corners, so no
  * crack is left between them; where the line turns, `joint` fills the opening they leave.
  */
-function penPath(raw: Pt[]): string {
-  const pts = simplify(densify(raw))
+function penPath(raw: Pt[], linear = false): string {
+  const pts = linear ? raw : simplify(densify(raw))
   let d = circle(pts[0])
   let before: XY[] | null = null
   for (let i = 0; i + 1 < pts.length; i++) {
@@ -299,14 +306,16 @@ export function strokePath(stroke: InkStroke): string {
   if (!pts.length) return ''
   if (stroke.tool === 'marker') {
     if (pts.length === 1) return `M${f(pts[0].x)} ${f(pts[0].y)}l0 0`
+    if (stroke.linear) return pts.map((p, i) => `${i ? 'L' : 'M'}${f(p.x)} ${f(p.y)}`).join('')
     return smooth(pts)
   }
   if (pts.length === 1) return dot(pts[0].x, pts[0].y, pts[0].r)
-  return penPath(pts)
+  return penPath(pts, stroke.linear)
 }
 
 /** Rendered centreline samples for clients that cut/pick a curved stroke rather than its chords. */
 export function strokeCenterline(stroke: InkStroke): number[] {
+  if (stroke.linear) return [...stroke.points]
   const pts = points(stroke),
     pressure = (r: number) => Math.max(0, Math.min(1, ((r * 2) / stroke.size - 0.4) / 1.2))
   if (stroke.tool === 'pen') return densify(pts).flatMap((p) => [p.x, p.y, pressure(p.r)])

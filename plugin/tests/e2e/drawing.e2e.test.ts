@@ -180,7 +180,7 @@ describe.skipIf(!available)('the drawing canvas', () => {
       fresh?: boolean
       count?: number
       heard?: string[]
-      saved?: { tool: string; d: number[] }[] | null
+      saved?: { tool: string; points: number[] }[] | null
       pressures?: number
       svg?: boolean
     }>(`
@@ -207,7 +207,7 @@ describe.skipIf(!available)('the drawing canvas', () => {
     expect(r.count).toBe(1)
     expect(r.heard).toEqual([])
     expect(r.saved?.[0].tool).toBe('pen')
-    expect(r.saved?.[0].d.length).toBeGreaterThan(9)
+    expect(r.saved?.[0].points.length).toBeGreaterThan(9)
     expect(r.pressures).toBeGreaterThan(3)
     expect(r.svg).toBe(true)
   })
@@ -711,5 +711,55 @@ describe.skipIf(!available)('the drawing canvas', () => {
     expect(tablet.finger).toBe(false)
     expect(tablet.moved).toBeGreaterThan(100)
     expect(tablet.count).toBe(1)
+  }, 240_000)
+
+  it('keeps stylus micro-smoothing bounded with raw and drawn strokes side by side', async () => {
+    for (const mobile of [false, true]) {
+      await setWindowSize(mobile ? 390 : 1000, mobile ? 844 : 800)
+      await reload(`app.emulateMobile(${mobile})`)
+      for (const zoom of [1, 4]) {
+        const r = run<{ error?: string; deviations: number[]; endpoints: boolean[] }>(`
+          await closeAll()
+          const view = await newOne()
+          view.session.setCamera({ x: 0, y: 0, zoom: ${zoom} })
+          const el = view.session.surface.el, b = box(view), z = ${zoom}
+          const shapes = [
+            Array.from({ length: 70 }, (_, i) => [i, 5 * Math.sin(i / 7) + 0.15 * (i % 2)]),
+            [[0, 20], [0, 0], [20, 20], [20, 0], [40, 20], [60, 0]],
+            [[0.123, 0.456]],
+          ]
+          const deviations = [], endpoints = []
+          for (let k = 0; k < shapes.length; k++) {
+            const xy = shapes[k], oy = 100 + k * 65
+            const raw = xy.flatMap(([x, y]) => [(30 + x) / z, (oy + y) / z, 0.5])
+            // Left: unsmoothed input. Right: the same samples through the real surface.
+            const send = (type, pt) => el.dispatchEvent(new PointerEvent(type, {
+              pointerId: 81, pointerType: 'pen', bubbles: true, buttons: type === 'pointerup' ? 0 : 1,
+              pressure: type === 'pointerup' ? 0 : 0.5,
+              clientX: b.left + 150 + pt[0], clientY: b.top + oy + pt[1],
+            }))
+            send('pointerdown', xy[0])
+            for (const pt of xy.slice(1, -1)) send('pointermove', pt)
+            // The final position arrives only on pointerup.
+            send('pointerup', xy[xy.length - 1])
+            const stroke = items(view).at(-1)
+            if (!stroke.linear) throw new Error('Stylus input was not bounded')
+            view.session.items.add([{ ...stroke, id: 'raw-' + k, points: raw }])
+            const expected = xy.flatMap(([x, y]) => [(b.left + 150 + x - b.left) / z, (b.top + oy + y - b.top) / z, 0.5])
+            if (stroke.points.length !== expected.length) throw new Error('Lost samples')
+            deviations.push(Math.max(...xy.map((_, i) => Math.hypot(stroke.points[i * 3] - expected[i * 3], stroke.points[i * 3 + 1] - expected[i * 3 + 1]) * z)))
+            endpoints.push(JSON.stringify(stroke.points.slice(-3)) === JSON.stringify(expected.slice(-3)))
+          }
+          view.session.setCamera({ x: 0, y: 0, zoom: z })
+          await wait(200)
+          await shoot('smoothing-${mobile ? 'phone' : 'desktop'}-${zoom}x-raw-left')
+          return { deviations, endpoints }
+        `)
+        expect(r.error).toBeUndefined()
+        expect(r.endpoints).toEqual([true, true, true])
+        expect(r.deviations).toHaveLength(3)
+        expect(Math.max(...r.deviations)).toBeLessThanOrEqual(0.5)
+      }
+    }
   }, 240_000)
 })

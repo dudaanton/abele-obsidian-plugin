@@ -75,7 +75,7 @@ export class DrawingSession {
           this.model.finger = false
         }
       },
-      begin: (route, at) => this.begin(route, at),
+      begin: (route, at, event) => this.begin(route, at, event),
       camera: () => this.cam,
       setCamera: (c) => this.setCamera(c),
       overlay: (ctx, zoom) => this.pick.paint(ctx, zoom),
@@ -243,7 +243,7 @@ export class DrawingSession {
     }
   }
 
-  private begin(route: 'ink' | 'erase', at: WorldPoint): ToolGesture | null {
+  private begin(route: 'ink' | 'erase', at: WorldPoint, event: PointerEvent): ToolGesture | null {
     const tool = this.model.tool
     if (route === 'erase' || tool === 'eraser') {
       this.pick.set([])
@@ -252,7 +252,12 @@ export class DrawingSession {
     const thick = this.model.thickness
     if (tool === 'pen' || tool === 'marker') {
       const color = tool === 'marker' ? this.model.markerColor : this.model.penColor
-      return strokeGesture(this.toolContext(), { tool, color, size: WIDTHS[tool][thick] }, at)
+      return strokeGesture(
+        this.toolContext(),
+        { tool, color, size: WIDTHS[tool][thick] },
+        at,
+        event.pointerType === 'pen'
+      )
     }
     const ctx = this.editContext()
     if (tool === 'shape') {

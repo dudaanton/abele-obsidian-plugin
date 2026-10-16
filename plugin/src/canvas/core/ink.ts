@@ -14,6 +14,7 @@ export const inkSchema = z
     tool: z.enum(['pen', 'marker']),
     color: z.string().regex(/^(?:[1-6]|#[0-9a-fA-F]{6})?$/),
     size: z.number().positive(),
+    linear: z.literal(true).optional(),
     points: z
       .array(z.number())
       .min(3)

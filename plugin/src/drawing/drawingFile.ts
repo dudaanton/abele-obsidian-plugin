@@ -94,7 +94,7 @@ export function itemElement(item: DrawingItem): string {
       item.tool === 'marker'
         ? `fill="none" stroke="${color}" stroke-opacity="${MARKER_OPACITY}" stroke-width="${item.size}" stroke-linecap="round" stroke-linejoin="round" style="mix-blend-mode:multiply"`
         : `fill="${color}"`
-    out = `<path d="${compactPath(strokePath(item))}" ${paint}/>`
+    out = `<path d="${compactPath(strokePath(item), item.linear ? 1000 : 10)}" ${paint}/>`
   } else if (item.type === 'shape') {
     const line = `fill="none" stroke="${color}" stroke-width="${item.size}" stroke-linecap="round" stroke-linejoin="round"`
     const { x1, y1, x2, y2 } = item
@@ -162,10 +162,10 @@ export function unpackPoints(packed: unknown): number[] | null {
   return out
 }
 
-/** Items as the file keeps them: a stroke's points packed as `d`. */
+/** Legacy points packed as `d`; bounded input retains exact endpoints and pressure in `points`. */
 const packed = (items: readonly DrawingItem[]) =>
   items.map((item) => {
-    if (item.type !== 'stroke') return item
+    if (item.type !== 'stroke' || item.linear) return item
     const { points, ...rest } = item
     return { ...rest, d: packPoints(points) }
   })

@@ -59,7 +59,7 @@ export interface SurfaceHost {
 const XHTML = 'http://www.w3.org/1999/xhtml'
 
 type Touch =
-  | { kind: 'tool'; gesture: ToolGesture; touch: boolean; x: number; y: number }
+  | { kind: 'tool'; gesture: ToolGesture; touch: boolean; x: number; y: number; pressure: number }
   | { kind: 'pan'; x: number; y: number; x0: number; y0: number; moved: boolean }
 
 export class DrawingSurface {
@@ -242,6 +242,7 @@ export class DrawingSurface {
       kind: 'tool',
       gesture,
       touch: e.pointerType === 'touch',
+      pressure: e.pressure > 0 ? e.pressure : 0.5,
       x: e.clientX,
       y: e.clientY,
     })
@@ -256,7 +257,13 @@ export class DrawingSurface {
       t.x = e.clientX
       t.y = e.clientY
       const events = e.getCoalescedEvents?.() ?? []
-      const all = (events.length ? events : [e]).map((one) => this.point(one))
+      const samples = e.pointerType === 'pen' ? [...events, e] : events.length ? events : [e]
+      const all = samples.map((one) => {
+        if (one.pressure > 0) t.pressure = one.pressure
+        const point = this.point(one)
+        if (e.pointerType === 'pen') point.p = t.pressure
+        return point
+      })
       const ahead = (e.getPredictedEvents?.() ?? []).map((one) => this.point(one))
       t.gesture.move(all, ahead)
       this.paintLive()
@@ -292,6 +299,7 @@ export class DrawingSurface {
   private up(e: PointerEvent, cancelled: boolean): void {
     e.stopPropagation()
     const t = this.touches.get(e.pointerId)
+    if (t?.kind === 'tool' && !cancelled && e.pointerType === 'pen') this.move(e)
     this.touches.delete(e.pointerId)
     if (e.pointerType === 'pen' && this.host.drawing()) this.host.pen(false)
     if (t?.kind === 'tool') t.gesture.end(cancelled)

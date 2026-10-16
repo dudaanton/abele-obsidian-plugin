@@ -20,6 +20,7 @@ export interface StrokeItem {
   size: number
   /** `x, y, pressure` for each point, one after the other. */
   points: number[]
+  linear?: true
 }
 
 export type ShapeKind = 'rect' | 'ellipse' | 'line' | 'arrow'
@@ -297,6 +298,7 @@ export function itemFrom(raw: unknown): DrawingItem | null {
       color,
       size: size ?? 2,
       points: o.points as number[],
+      ...(o.linear === true ? { linear: true as const } : {}),
     }
   }
   if (o.type === 'shape') {

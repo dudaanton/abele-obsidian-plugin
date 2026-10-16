@@ -15,9 +15,9 @@ const ARGS: Record<string, { n: number; points: number[] }> = {
   Z: { n: 0, points: [] },
 }
 
-/** A number to a tenth, with nothing it does not need: `-0.5` as `-.5`, `2.0` as `2`. */
-function num(n: number): string {
-  const r = Math.round(n * 10) / 10
+/** A rounded number with nothing it does not need: `-0.5` as `-.5`, `2.0` as `2`. */
+function num(n: number, precision = 10): string {
+  const r = Math.round(n * precision) / precision
   const s = String(r === 0 ? 0 : r)
   return s.replace(/^(-?)0\./, '$1.')
 }
@@ -33,8 +33,10 @@ function join(nums: string[]): string {
   return out
 }
 
-/** An absolute path (`M`, `L`, `Q`, `C`, `A`, `Z`) rewritten relative, to a tenth. */
-export function compactPath(d: string): string {
+/** Absolute commands rewritten relative; bounded stylus outlines use finer precision. */
+export function compactPath(d: string, precision = 10): string {
+  const round = (n: number) => Math.round(n * precision) / precision
+  const format = (n: number) => num(n, precision)
   const tokens = d.match(/[MLQCAZ]|-?\d*\.?\d+(?:e-?\d+)?/gi) ?? []
   let out = ''
   let i = 0
@@ -60,21 +62,21 @@ export function compactPath(d: string): string {
     if (args.length < spec.n || args.some((v) => !Number.isFinite(v))) break
     if (first && cmd === 'M') {
       first = false
-      wx = Math.round(args[0] * 10) / 10
-      wy = Math.round(args[1] * 10) / 10
-      out += `M${join([num(wx), num(wy)])}`
+      wx = round(args[0])
+      wy = round(args[1])
+      out += `M${join([format(wx), format(wy)])}`
       sx = wx
       sy = wy
       continue
     }
     const rel = args.map((v, k) => {
       const pair = spec.points.find((p) => k === p || k === p + 1)
-      if (pair === undefined) return num(v)
-      return num(v - (k === pair ? wx : wy))
+      if (pair === undefined) return format(v)
+      return format(v - (k === pair ? wx : wy))
     })
     // What the end point is as written, to measure the next one from.
-    wx = Math.round((wx + Number(rel[spec.n - 2])) * 10) / 10
-    wy = Math.round((wy + Number(rel[spec.n - 1])) * 10) / 10
+    wx = round(wx + Number(rel[spec.n - 2]))
+    wy = round(wy + Number(rel[spec.n - 1]))
     if (cmd === 'M') {
       sx = wx
       sy = wy
