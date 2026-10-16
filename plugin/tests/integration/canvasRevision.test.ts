@@ -7,6 +7,7 @@ import { ScopeResolver } from '@/ai/ScopeResolver'
 import { createCanvasTools } from '@/ai/tools/CanvasTools'
 import { ObsidianCanvasStore } from '@/canvas/obsidianStore'
 import { parseCanvas } from '@/canvas/core/model'
+import { canvasDocuments } from '@/canvas/documentRegistry'
 
 const path = 'sample-revision.canvas'
 const initial = {
@@ -30,6 +31,55 @@ const read = async () => JSON.parse((await call('canvas_read', { path })).conten
 const ops = [{ op: 'update', id: 'alpha', patch: { text: 'Agent sample' } }]
 
 describe('canvas optimistic writes', () => {
+  it.each([
+    'closed',
+    'open',
+    'identical-sync',
+    'reserialized',
+    'open-reserialized',
+    'unrelated-rename',
+  ])('writes on the first attempt with an idle %s canvas', async (mode) => {
+    const file = app.vault.getAbstractFileByPath(path) as TFile,
+      host = app as unknown as App,
+      store = new ObsidianCanvasStore(host)
+    const lease = ['open', 'identical-sync', 'open-reserialized'].includes(mode)
+      ? await store.open(file, {})
+      : null
+    const observerFile = await app.vault.create('sample-observer.canvas', JSON.stringify(initial))
+    const observer = await store.open(observerFile, {})
+    const snapshot = await read()
+    try {
+      if (['identical-sync', 'reserialized', 'open-reserialized'].includes(mode)) {
+        const bytes = await app.vault.read(file)
+        await app.vault.modify(
+          file,
+          mode === 'identical-sync' ? bytes : JSON.stringify(JSON.parse(bytes), null, 2)
+        )
+        file.stat.mtime++
+        app.emit('vault', 'modify', file)
+        await canvasDocuments(host).flush(file)
+      }
+      if (mode === 'unrelated-rename') {
+        const other = await app.vault.create('sample-unrelated.md', 'Sample')
+        await app.vault.rename(other, 'sample-other.md')
+        app.emit('vault', 'rename', other, 'sample-unrelated.md')
+        await canvasDocuments(host).flush(observerFile)
+      }
+      expect((await read()).revision).toBe(snapshot.revision)
+      expect(app.stats.modify).toBe(
+        ['identical-sync', 'reserialized', 'open-reserialized'].includes(mode) ? 1 : 0
+      )
+      const result = JSON.parse(
+        (await call('canvas_edit', { path, revision: snapshot.revision, ops })).content[0].text
+      )
+      expect(result.revision).not.toBe(snapshot.revision)
+      expect(parseCanvas(await app.vault.read(file)).nodes[0].text).toBe('Agent sample')
+    } finally {
+      lease?.release()
+      observer.release()
+    }
+  })
+
   it.each(['canvas_edit', 'canvas_layout'])(
     'refuses stale %s without modifying a competing version',
     async (name) => {

@@ -253,7 +253,11 @@ export class ObsidianCanvasStore implements GraphStore {
   ): Promise<CanvasDocumentLease> {
     return canvasDocuments(this.app).open(file, owner, () => this.stored(file), listener)
   }
-  private publicSnapshot(stored: GraphSnapshot, document?: CanvasDocument): CanvasStoreSnapshot {
+  private publicSnapshot(
+    stored: GraphSnapshot,
+    document?: CanvasDocument,
+    path = ''
+  ): CanvasStoreSnapshot {
     return document
       ? {
           graph: document.session.graph,
@@ -267,7 +271,7 @@ export class ObsidianCanvasStore implements GraphStore {
         }
       : {
           graph: cloneCanvas(stored.graph),
-          revision: `${stored.revision}:rename-${canvasDocuments(this.app).renameGeneration}`,
+          revision: `${stored.revision}:rename-${canvasDocuments(this.app).referenceGeneration(stored.graph, path)}`,
         }
   }
   private async capture(
@@ -276,7 +280,7 @@ export class ObsidianCanvasStore implements GraphStore {
     const stored = await this.stored(file),
       document = canvasDocuments(this.app).find(file)
     document?.observe(stored)
-    return { stored, document, snapshot: this.publicSnapshot(stored, document) }
+    return { stored, document, snapshot: this.publicSnapshot(stored, document, file.path) }
   }
   async snapshot(key: string): Promise<CanvasStoreSnapshot> {
     return this.snapshotFile(this.file(key))
@@ -524,7 +528,7 @@ export class ObsidianCanvasStore implements GraphStore {
         return {
           before,
           after,
-          revision: this.publicSnapshot(confirmed, document).revision,
+          revision: this.publicSnapshot(confirmed, document, file.path).revision,
           ...(warning ? { warning } : {}),
           ...(kind === 'retry' || kind === 'reapply' ? { recovery: kind } : {}),
         }

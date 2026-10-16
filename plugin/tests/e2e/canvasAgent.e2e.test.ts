@@ -250,4 +250,33 @@ describe.skipIf(!available)('agent explanatory diagrams in native Canvas', () =>
     expect(r.clipping).toBe(true)
     expect(r.image).toBe(true)
   }, 120_000)
+
+  it('writes on the first attempt after reading an idle open Abele canvas', () => {
+    const result = run<{ unchanged: boolean; stable: boolean; text: string; history: number }>(`
+      const target = ${JSON.stringify(`${DIR}/idle.canvas`)}
+      await call('canvas_create', { path: target, from: { graph: { nodes: [{ id: 'idle-card', kind: 'text', label: 'Idle sample' }], edges: [] } } })
+      const file = app.vault.getAbstractFileByPath(target), before = await app.vault.read(file)
+      const leaf = app.workspace.getLeaf('tab')
+      try {
+        await leaf.setViewState({ type: 'abele-canvas', state: { file: target }, active: true })
+        await app.workspace.revealLeaf(leaf)
+        for (let i = 0; i < 60 && !leaf.view.documentLease; i++) await wait(50)
+        if (!leaf.view.documentLease) throw new Error('Abele canvas did not attach')
+        const snapshot = parsed(await call('canvas_read', { path: target }))
+        await wait(1800)
+        const idle = parsed(await call('canvas_read', { path: target }))
+        const unchanged = before === await app.vault.read(file)
+        await tools.canvas_edit.execute('sample-idle-write', { path: target, revision: snapshot.revision, ops: [{ op: 'update', id: 'idle-card', patch: { text: 'First attempt succeeded' } }] }, undefined, ctx)
+        return { unchanged, stable: idle.revision === snapshot.revision, text: JSON.parse(await app.vault.read(file)).nodes[0].text, history: leaf.view.documentLease.document.session.history.undo }
+      } finally {
+        await (${closeFixtureLeaves.toString()})([leaf])
+      }
+    `)
+    expect(result).toEqual({
+      unchanged: true,
+      stable: true,
+      text: 'First attempt succeeded',
+      history: 1,
+    })
+  }, 120_000)
 })

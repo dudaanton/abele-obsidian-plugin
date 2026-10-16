@@ -19,6 +19,46 @@ const edit = (text: string) => (current: typeof graph) =>
   planCanvasEdit(current, [{ op: 'update', id: 'sample-card', patch: { text } }])
 
 describe('human history click at the shared publication queue', () => {
+  it('keeps an idle viewer and editor read-only and accepts the first agent write', async () => {
+    const app = buildFakeVault([{ path, raw: serializeCanvas(graph) }]),
+      host = app as unknown as App,
+      store = new ObsidianCanvasStore(host),
+      file = app.vault.getAbstractFileByPath(path) as TFile,
+      owner = {}
+    const lease = await store.open(file, owner)
+    const el = document.createElement('div')
+    document.body.append(el)
+    const viewer = new CanvasViewer(el, {
+      theme: () => ({}) as never,
+      assets: async () => ({}),
+      cards: { sync: () => new Set(), destroy: () => {} },
+      openNode: () => {},
+    })
+    const editor = hostCanvasEditor(host, viewer, () => lease.document)
+    lease.document.owners.set(owner, (current) => {
+      viewer.load(current.session.graph)
+      editor.refresh()
+    })
+    try {
+      lease.document.notify()
+      const snapshot = await store.snapshot(path)
+      viewer.selection = new Set(['sample-card'])
+      viewer.draw()
+      editor.refresh()
+      expect((await store.snapshot(path)).revision).toBe(snapshot.revision)
+      expect(app.stats.modify).toBe(0)
+      expect(lease.document.session.dirty).toBe(false)
+      const result = await store.change(path, snapshot.revision, edit('First idle write'))
+      expect(result.after.nodes[0].text).toBe('First idle write')
+      expect(lease.document.session.history.undo).toBe(1)
+    } finally {
+      editor.destroy()
+      viewer.destroy()
+      el.remove()
+      lease.release()
+    }
+  })
+
   it.each(['undo', 'redo'] as const)(
     '%s wins over an agent write not yet applied, which is refused, never undone',
     async (direction) => {

@@ -3,7 +3,8 @@ import { TFile, TFolder, type App, type EventRef, type Plugin } from 'obsidian'
 import { nanoid } from 'nanoid'
 import { CanvasSession, type GraphTransform } from './core/session'
 import type { GraphSnapshot } from './core/service'
-import type { CanvasReferenceRename } from './core/references'
+import { nodeReferencesPath, type CanvasReferenceRename } from './core/references'
+import type { CanvasGraph } from './core/model'
 
 export type CanvasRecoveryAction = 'retry' | 'reapply' | 'discard'
 export type CanvasWriteTool = 'canvas_edit' | 'canvas_layout' | 'canvas_steps'
@@ -278,6 +279,16 @@ export class CanvasDocumentRegistry {
   private workspaceRef: EventRef | null = null
   private closed = false
   renameGeneration = 0
+  private readonly renamedPaths = new Map<string, number>()
+  /** Only moves that can affect this graph invalidate its closed-file revision. */
+  referenceGeneration(graph: CanvasGraph, source: string): number {
+    let generation = 0
+    for (const [path, epoch] of this.renamedPaths) {
+      if (graph.nodes.some((node) => nodeReferencesPath(node, path, source)))
+        generation = Math.max(generation, epoch)
+    }
+    return generation
+  }
   constructor(private readonly app: App) {}
   registerLifecycle(plugin: Pick<Plugin, 'register'>): void {
     plugin.register(() => {
@@ -382,6 +393,7 @@ export class CanvasDocumentRegistry {
       this.app.vault.on('modify', observe),
       this.app.vault.on('rename', (file, oldPath) => {
         this.renameGeneration++
+        this.renamedPaths.set(oldPath, this.renameGeneration)
         if (file instanceof TFile || file instanceof TFolder) {
           for (const document of this.documents.values()) {
             document.renameReference(oldPath, file.path)
