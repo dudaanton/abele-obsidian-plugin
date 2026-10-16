@@ -13,8 +13,8 @@ import { targets } from './helpers/target'
 // over every worktree, one gone from disk among them; the header's modes, with a repository's
 // changes under their groups, deep paths in a narrow panel, the history and its commits, and a
 // comparison with another branch; the place menu's switch for the project's other worktrees, on
-// and off; the header that stays put while a long tree scrolls under it; and a file edited and
-// saved in its own tab.
+// and off; the header that stays put while a long tree scrolls under it; a file edited and saved
+// in its own tab; and a change staged, committed and another discarded from the panel.
 targets('desktop')
 const cli = process.env.ABELE_NODE_CLI
 const shots = process.env.ABELE_E2E_SHOTS
@@ -78,6 +78,23 @@ it('shows changed files, a missing worktree, the external worktree switch and a 
     gone = resolve(home, 'sample-gone')
   await git('worktree', 'add', '-b', 'topic', external)
   await git('worktree', 'add', '-b', 'gone-topic', gone)
+  // A second repository of its own for the panel's git writes, so the cases above see the same
+  // changes in both shells. Its own identity, which the node's commits take.
+  const commits = resolve(home, 'sample-commits')
+  mkdirSync(commits)
+  const gitIn = (...args: string[]) => promisify(execFile)('/usr/bin/git', args, { cwd: commits })
+  await gitIn('init', '--initial-branch=main')
+  for (const [key, value] of [
+    ['user.name', 'Sample Committer'],
+    ['user.email', 'committer@example.invalid'],
+    ['commit.gpgsign', 'false'],
+    ['core.hooksPath', '/dev/null'],
+  ])
+    await gitIn('config', key, value)
+  writeFileSync(resolve(commits, 'alpha.txt'), 'alpha\n')
+  writeFileSync(resolve(commits, 'beta.txt'), 'beta\n')
+  await gitIn('add', '.')
+  await gitIn('commit', '-m', 'Add commit fixture')
   mkdirSync(state, { mode: 0o700 })
   const config = resolve(state, 'paired.json')
   writeFileSync(
@@ -169,7 +186,7 @@ it('shows changed files, a missing worktree, the external worktree switch and a 
     await command('pair', 'confirm', pending.installation_id, pending.fingerprint)
     const ids = JSON.parse(
       await evalLong(
-        `(async()=>{${prelude}await until(()=>nodes.connection(${JSON.stringify(registration)}).state.value==='connected');require('@electron/remote').getCurrentWindow().setContentSize(1200,850);const client=nodes.connection(${JSON.stringify(registration)}).client;const project=await client.nodePath.register({path:${JSON.stringify(repo)},trust:'untrusted',exact_root:true});await client.setRepositorySettings({project_id:project.project_id,external_read:true,default_branch:'trunk'});const rows=await client.repository.worktrees({project_id:project.project_id,include_selection:true});const root=rows.entries.find(w=>w.kind==='root');for(const w of rows.entries.filter(w=>w.kind==='external'))await client.nodePath.worktreeSelection({project_id:project.project_id,worktree_id:w.worktree_id,listed:true});const sidebar=app.workspace.getLeftLeaf(false);await sidebar.setViewState({type:'abele-node-sidebar',active:true,state:{registrationId:${JSON.stringify(registration)}}});await app.workspace.revealLeaf(sidebar);const service=api.NodePathService.getInstance(),model=service.model(${JSON.stringify(registration)});await service.ready(${JSON.stringify(registration)});await model.refresh();await model.select(root.worktree_id);return JSON.stringify({project:project.project_id,root:root.worktree_id})})()`,
+        `(async()=>{${prelude}await until(()=>nodes.connection(${JSON.stringify(registration)}).state.value==='connected');require('@electron/remote').getCurrentWindow().setContentSize(1200,850);const client=nodes.connection(${JSON.stringify(registration)}).client;const project=await client.nodePath.register({path:${JSON.stringify(repo)},trust:'untrusted',exact_root:true});await client.setRepositorySettings({project_id:project.project_id,external_read:true,default_branch:'trunk'});const rows=await client.repository.worktrees({project_id:project.project_id,include_selection:true});const root=rows.entries.find(w=>w.kind==='root');const commits=await client.nodePath.register({path:${JSON.stringify(commits)},trust:'untrusted',exact_root:true});await client.setRepositorySettings({project_id:commits.project_id,external_read:false,default_branch:'main'});const commitsRoot=(await client.repository.worktrees({project_id:commits.project_id,include_selection:true})).entries.find(w=>w.kind==='root');for(const w of rows.entries.filter(w=>w.kind==='external'))await client.nodePath.worktreeSelection({project_id:project.project_id,worktree_id:w.worktree_id,listed:true});const sidebar=app.workspace.getLeftLeaf(false);await sidebar.setViewState({type:'abele-node-sidebar',active:true,state:{registrationId:${JSON.stringify(registration)}}});await app.workspace.revealLeaf(sidebar);const service=api.NodePathService.getInstance(),model=service.model(${JSON.stringify(registration)});await service.ready(${JSON.stringify(registration)});await model.refresh();await model.select(root.worktree_id);return JSON.stringify({project:project.project_id,root:root.worktree_id,commits:commitsRoot.worktree_id})})()`,
         60000
       )
     )
@@ -280,6 +297,30 @@ it('shows changed files, a missing worktree, the external worktree switch and a 
       await evalLong(
         `(async()=>{${prelude}const target=${fileLeaf}.view.getState().target,leaf=app.workspace.getLeaf('tab');await leaf.setViewState({type:'abele-node-editor',active:true,state:{kind:'editor',target,path:'README.md'}});await until(()=>leaf.view?.getViewType()==='abele-node-file'&&leaf.view.getState().edit===true&&leaf.view.getState().path==='README.md');await until(()=>leaf.view.contentEl.querySelector('.cm-content')?.contentEditable==='true');if(app.workspace.getLeavesOfType('abele-node-editor').length)throw Error('The editor tab stayed an editor tab');const shown=api.codeView(leaf.view.contentEl.querySelector('.cm-content')).state.doc.toString();if(shown!==${JSON.stringify(text)})throw Error('The editor does not open on the saved text: '+shown);for(const l of app.workspace.getLeavesOfType('abele-node-file'))l.detach();return 'editor tab restored'})()`
       )
+      // With a node that writes git: one changed file staged from its row, committed from the
+      // commit field, listed newest in History with the repository's author; another discarded
+      // through its glyph and the question, back to what was committed.
+      writeFileSync(resolve(commits, 'alpha.txt'), `alpha ${prefix}\n`)
+      writeFileSync(resolve(commits, 'beta.txt'), `beta ${prefix}\n`)
+      const message = `Commit alpha from ${prefix}`
+      await evalLong(
+        `(async()=>{${prelude}const model=api.NodePathService.getInstance().model(${reg});await model.refresh();await model.select(${JSON.stringify(ids.commits)});await drawer();await until(()=>visible('.abele-node-place__name')?.textContent==='main');await until(()=>shownMode('Changes')&&tab('Changes').getAttribute('aria-label').startsWith('Changes: 2 files'));const tree=()=>visible('.abele-file-tree'),at=(g,p)=>g?.querySelector('.tree-item-self[data-path="'+p+'"]');await until(()=>at(group(tree(),'Changes'),'alpha.txt')&&at(group(tree(),'Changes'),'beta.txt'));if(group(tree(),'Staged')||visible('.abele-commit-box'))throw Error('A commit field or Staged group with nothing staged');const stage=at(group(tree(),'Changes'),'alpha.txt').querySelector('[aria-label="Stage"]');if(!stage)throw Error('No Stage glyph on the changed row: '+at(group(tree(),'Changes'),'alpha.txt').outerHTML);stage.click();await until(()=>at(group(tree(),'Staged'),'alpha.txt')&&!at(group(tree(),'Changes'),'alpha.txt')&&at(group(tree(),'Changes'),'beta.txt'));await until(()=>visible('.abele-commit-box textarea'));return 'staged'})()`
+      )
+      await capture(prefix + '-git-staged')
+      await evalLong(
+        `(async()=>{${prelude}const box=visible('.abele-commit-box'),field=box.querySelector('textarea'),commit=()=>[...box.querySelectorAll('button')].find(b=>b.textContent.trim()==='Commit');field.value=${JSON.stringify(message)};field.dispatchEvent(new Event('input',{bubbles:true}));await until(()=>commit()&&!commit().disabled);commit().click();const tree=()=>visible('.abele-file-tree');await until(()=>!group(tree(),'Staged')&&!visible('.abele-commit-box')&&tab('Changes').getAttribute('aria-label').startsWith('Changes: 1 file'));await pickMode('History');await until(()=>visible('.abele-node-sidebar__history .abele-history__row .abele-history__row-subject')?.textContent===${JSON.stringify(message)});const row=visible('.abele-node-sidebar__history .abele-history__row');if(!row.querySelector('.abele-history__row-meta')?.textContent.includes('Sample Committer'))throw Error('The commit is not by the repository author: '+row.textContent);return 'committed'})()`
+      )
+      const head = await gitIn('log', '-1', '--format=%s|%an')
+      expect(head.stdout.trim()).toBe(`${message}|Sample Committer`)
+      expect((await gitIn('status', '--porcelain')).stdout).toBe(' M beta.txt\n')
+      await capture(prefix + '-git-committed')
+      await evalLong(
+        `(async()=>{${prelude}await pickMode('Changes');const tree=()=>visible('.abele-file-tree'),at=(g,p)=>g?.querySelector('.tree-item-self[data-path="'+p+'"]');await until(()=>at(group(tree(),'Changes'),'beta.txt'));at(group(tree(),'Changes'),'beta.txt').querySelector('[aria-label="Discard the changes to this file…"]').click();const yes=()=>[...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Discard');await until(yes);if(!visible('.modal')?.textContent.includes('Discard the changes?'))throw Error('Discarding did not ask first');yes().click();await until(()=>!visible('.modal')&&tab('Changes').getAttribute('aria-label')==='Changes: none');return 'discarded'})()`
+      )
+      expect(readFileSync(resolve(commits, 'beta.txt'), 'utf8')).toBe(
+        (await gitIn('show', 'HEAD:beta.txt')).stdout
+      )
+      expect((await gitIn('status', '--porcelain')).stdout).toBe('')
     }
     await shell('desktop')
     // Into the real phone shell, with this fixture's paired transport put back.
