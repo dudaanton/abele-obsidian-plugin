@@ -7,6 +7,7 @@ import { shotDir } from './helpers/shots'
 import { targets, onPhone } from './helpers/target'
 import type { SyncDriver } from './helpers/syncDriver'
 import { externalReadingEmbed, externalEditorEmbed } from './helpers/externalFileSelectors'
+import { detachExternalFileLeaves } from './helpers/externalFileLeaves'
 
 targets('desktop', 'phone')
 const fixture = liveSuite(false)
@@ -18,7 +19,7 @@ afterEach(async () => {
   const s = fixture()
   if (!s) return
   s.primary.run(
-    `for(const leaf of app.workspace.getLeavesOfType('abele-external-file')){if(leaf.view.getState().path?.startsWith(${JSON.stringify(s.root + '/')}))await leaf.setViewState({type:'empty'})}await app.workspace.requestSaveLayout.run();return true`
+    `await (${detachExternalFileLeaves.toString()})(app.workspace,${JSON.stringify(s.root)});await poll(()=>!app.workspace.getLeavesOfType('abele-external-file').some(leaf=>leaf.getViewState().state?.path?.startsWith(${JSON.stringify(s.root + '/')})));await app.workspace.requestSaveLayout.run();return true`
   )
 })
 

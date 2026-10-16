@@ -3,6 +3,38 @@ import { flushPromises } from '@vue/test-utils'
 import { ExternalFileTab } from '@/sync/external/ExternalFileTab'
 import { externalActionsOf } from '@/sync/external/actionHost'
 import { externalFileFixture } from './externalFileFollowupFixture'
+import * as kit from '@/components/obsidian/mount'
+
+it('fully unmounts its kit and stops presentation updates when the card closes', async () => {
+  const s = await externalFileFixture()
+  const mount = vi.spyOn(kit, 'mountKit')
+  const tab = new ExternalFileTab({ openFile: vi.fn() } as never)
+  Object.assign(tab, { app: s.app })
+  const content = document.createElement('div')
+  Object.defineProperty(tab, 'contentEl', { value: content })
+  try {
+    await s.port.evict(s.path)
+    await tab.setState({ path: s.path }, {} as never)
+    await flushPromises()
+    expect(content.querySelector('.abele-external-view')).not.toBeNull()
+    const unmount = vi.spyOn(mount.mock.results.at(-1)!.value.app, 'unmount')
+    await tab.onClose()
+    await tab.onClose()
+    expect(unmount).toHaveBeenCalledOnce()
+    expect(content.children).toHaveLength(0)
+    const describe = vi.spyOn(s.manager, 'describe')
+    s.manager.progress(s.path, { done: 1, total: s.bytes.length })
+    window.dispatchEvent(new Event('online'))
+    await flushPromises()
+    expect(describe).not.toHaveBeenCalled()
+    expect(content.children).toHaveLength(0)
+  } finally {
+    await tab.onClose()
+    tab.unload()
+    mount.mockRestore()
+    s.close()
+  }
+})
 
 it('does not reopen an unowned stub recursively through its registered extension', async () => {
   const s = await externalFileFixture()
