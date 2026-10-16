@@ -613,9 +613,28 @@ const getDateWikilink = (dateStr: string) => {
   gap: calc(var(--p-spacing) / 2);
 }
 
+/**
+ * Days stand well apart: a day after another starts at a hairline, as Obsidian parts the rows of
+ * its settings, twice as far from the last words of the day before as two rows' words are, and
+ * its quiet heading as far under the line as rows are apart. With the quiet heading alone the step
+ * between days was barely wider than between tasks, and a day read as the end of the one above.
+ */
 .abele-timeline__date-block {
-  // Days stand well apart, further than a heading from its rows.
-  margin-bottom: var(--size-4-5);
+  position: relative;
+  margin-bottom: var(--size-4-4);
+
+  & + & {
+    padding-top: var(--size-4-4);
+
+    &::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      // From the words' edge, where the heading and the rows' names start, to the column's end.
+      inset-inline: var(--size-2-3) 0;
+      border-top: 1px solid var(--background-modifier-border);
+    }
+  }
 }
 
 // A day reads as a quiet heading over its rows, like a group in Obsidian's search results.
