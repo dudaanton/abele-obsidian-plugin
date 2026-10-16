@@ -1,9 +1,19 @@
 import type { ChatMessage } from './types'
 
 /** What a tool does, in the words and glyph a run of the agent's work is told by. */
-export type ToolKind = 'search' | 'read' | 'write' | 'delete' | 'run' | 'ask' | 'other'
+export type ToolKind =
+  | 'start'
+  | 'search'
+  | 'read'
+  | 'write'
+  | 'delete'
+  | 'run'
+  | 'ask'
+  | 'other'
 
 const KINDS: [RegExp, ToolKind][] = [
+  // A node tool that starts another session or a worker; its name may carry its server's prefix.
+  [/(^|__)start_(session|worker)$/, 'start'],
   [/delete|remove|trash|^rm(_|$)/i, 'delete'],
   [/search|grep|find|glob|query|list/i, 'search'],
   [/write|edit|create|append|save|apply|patch|move|rename|^mv(_|$)/i, 'write'],
@@ -17,6 +27,7 @@ export function toolKind(name: string | undefined): ToolKind {
 }
 
 export const KIND_ICON: Record<ToolKind, string> = {
+  start: 'bot',
   search: 'search',
   read: 'file-text',
   write: 'pencil',
@@ -27,6 +38,7 @@ export const KIND_ICON: Record<ToolKind, string> = {
 }
 
 const KIND_WORDS: Record<ToolKind, [string, string, string]> = {
+  start: ['Started', 'Starting', 'Start requested'],
   search: ['Searched', 'Searching', 'Search requested'],
   read: ['Read', 'Reading', 'Read requested'],
   write: ['Wrote', 'Writing', 'Write requested'],
