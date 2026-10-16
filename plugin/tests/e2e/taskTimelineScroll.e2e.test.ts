@@ -99,7 +99,29 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
   ${TIMELINE_POSITION_PROBE}
   const wait = ms => new Promise(r => setTimeout(r, ms))
   let uiState = () => null
-  const until = async (fn, condition = 'timeline UI') => { for (let i = 0; i < 300; i++) { const v = fn(); if (v) return v; await wait(50) } throw Error('timeline did not become ready: ' + condition + '; state=' + JSON.stringify(uiState())) }
+  // Whether the window was drawing when a wait ran out: frames, visibility, and what a fresh
+  // observer says about the paging sentinel, the element the next page waits on.
+  const drawing = async () => {
+    const timeout = (ms, value) => new Promise(done => setTimeout(() => done(value), ms))
+    const frames = await Promise.race([new Promise(done => {
+      let n = 0; const start = performance.now()
+      const tick = () => { n++; if (performance.now() - start < 500) requestAnimationFrame(tick); else done(n * 2) }
+      requestAnimationFrame(tick)
+    }), timeout(2000, 'no frame in 2 s')])
+    const sentinel = document.querySelector('.abele-timeline__sentinel')
+    const observed = !sentinel ? null : await Promise.race([new Promise(done => {
+      const io = new IntersectionObserver(([entry]) => { io.disconnect(); done({ intersecting: entry.isIntersecting, ratio: entry.intersectionRatio }) })
+      io.observe(sentinel)
+    }), timeout(2000, 'no observer entry in 2 s')])
+    let win = null
+    try {
+      const w = require('@electron/remote').getCurrentWindow()
+      win = { visible: w.isVisible(), focused: w.isFocused(), minimized: w.isMinimized(), bounds: w.getBounds(),
+        others: require('@electron/remote').BrowserWindow.getAllWindows().filter(x => x.id !== w.id && x.isVisible()).map(x => x.getBounds()) }
+    } catch {}
+    return { framesPerSecond: frames, visibility: document.visibilityState, focus: document.hasFocus(), observed, win }
+  }
+  const until = async (fn, condition = 'timeline UI') => { for (let i = 0; i < 300; i++) { const v = fn(); if (v) return v; await wait(50) } throw Error('timeline did not become ready: ' + condition + '; drawing=' + JSON.stringify(await drawing()) + '; state=' + JSON.stringify(uiState())) }
   ${TIMELINE_FIXTURE_PROBE}
   ${TIMELINE_READY_PROBE}
   const folder = ${JSON.stringify(FOLDER)} + (${short} ? ' short' : '')
