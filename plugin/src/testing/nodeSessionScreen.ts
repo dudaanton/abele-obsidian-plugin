@@ -34,7 +34,8 @@ export async function closeNodeSessionFixture() {
   restore = async () => {}
 }
 
-function journal(state: NodeSessionScreen): JournalEvent[] {
+/** The invented journal of each screen; exported so a unit test checks it against the node schema. */
+export function journal(state: NodeSessionScreen): JournalEvent[] {
   let seq = 0
   const e = (type: string, data: Record<string, unknown>, minutesAgo: number): JournalEvent => ({
     kind: 'event',
@@ -64,6 +65,36 @@ function journal(state: NodeSessionScreen): JournalEvent[] {
     },
     900
   )
+  // Records as the node writes them, every field present: earlier pages are checked against
+  // the node's schemas when they arrive.
+  const done = (turn: string, inputs: string[], ago: number) =>
+    e(
+      'turn.completed',
+      {
+        turn_id: turn,
+        outcome: 'success',
+        input_ids: inputs,
+        subtype: 'success',
+        num_turns: 1,
+        duration_ms: 1000,
+        total_cost_usd: 0.01,
+        terminal_reason: null,
+      },
+      ago
+    )
+  const compacted = (result: 'success' | 'failed', ago: number) =>
+    e(
+      'compaction.completed',
+      {
+        result,
+        trigger: result === 'success' ? 'auto' : 'manual',
+        pre_tokens: result === 'success' ? 860_000 : null,
+        post_tokens: result === 'success' ? 58_000 : null,
+        duration_ms: result === 'success' ? 20_000 : null,
+        error: result === 'success' ? null : 'the context could not be shortened',
+      },
+      ago
+    )
   if (state === 'empty') return [created, e('session.process', { state: 'running' }, 1)]
   if (state === 'long' || state === 'error') {
     // A long session: days of turns, each a question, a run of calls with output and an answer;
@@ -89,26 +120,11 @@ function journal(state: NodeSessionScreen): JournalEvent[] {
           ago
         ),
         say(`la${t}`, `Answer ${t}. Case ${t} parses as expected; the tests pass.`, ago),
-        e('turn.completed', { turn_id: `lt${t}`, outcome: 'success', input_ids: [`l${t}`] }, ago)
+        done(`lt${t}`, [`l${t}`], ago)
       )
-      if (t % 40 === 0)
-        long.push(
-          e(
-            'compaction.completed',
-            { result: 'success', trigger: 'auto', pre_tokens: 860_000, post_tokens: 58_000 },
-            ago
-          )
-        )
+      if (t % 40 === 0) long.push(compacted('success', ago))
     }
-    if (state === 'error')
-      long.push(
-        e('compaction.started', {}, 2),
-        e(
-          'compaction.completed',
-          { result: 'failed', error: 'the context could not be shortened' },
-          1
-        )
-      )
+    if (state === 'error') long.push(e('compaction.started', {}, 2), compacted('failed', 1))
     return long
   }
   const events = [
@@ -131,11 +147,18 @@ function journal(state: NodeSessionScreen): JournalEvent[] {
     ),
     e('turn.started', { turn_id: 't1', trigger: 'input' }, 80),
     say('m1', 'The search reads titles now. I started the tests in the background.', 78),
-    e('turn.completed', { turn_id: 't1', outcome: 'success', input_ids: ['i1'] }, 78),
+    done('t1', ['i1'], 78),
     e('compaction.started', {}, 60),
     e(
       'compaction.completed',
-      { result: 'success', trigger: 'manual', pre_tokens: 812_000, post_tokens: 64_000 },
+      {
+        result: 'success',
+        trigger: 'manual',
+        pre_tokens: 812_000,
+        post_tokens: 64_000,
+        duration_ms: 20_000,
+        error: null,
+      },
       59
     ),
     e(
@@ -150,7 +173,7 @@ function journal(state: NodeSessionScreen): JournalEvent[] {
     ),
     e('turn.started', { turn_id: 't2', trigger: 'task' }, 40),
     say('m2', 'All twelve tests passed.', 39),
-    e('turn.completed', { turn_id: 't2', outcome: 'success', input_ids: [] }, 39),
+    done('t2', [], 39),
     e(
       'input.accepted',
       {
@@ -162,7 +185,7 @@ function journal(state: NodeSessionScreen): JournalEvent[] {
     ),
     e('turn.started', { turn_id: 't3', trigger: 'command' }, 20),
     say('m3', 'Fixed: dashes in titles are matched as spaces.', 19),
-    e('turn.completed', { turn_id: 't3', outcome: 'success', input_ids: ['i2'] }, 19),
+    done('t3', ['i2'], 19),
     e(
       'session.context',
       {

@@ -664,16 +664,28 @@ const loadOlder = async () => {
  *  the pane, so a short window is never a dead end. */
 const onScroll = () => {
   const el = scroller.value
-  if (el && el.scrollTop < 300 && props.presenter.hasOlder?.value) void loadOlder()
+  if (!el) return
+  // Reading at the end keeps the chat there as answers render and grow; scrolling away lets go.
+  stickToEnd = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+  if (el.scrollTop < 300 && props.presenter.hasOlder?.value) void loadOlder()
 }
+/** The chat follows its end: opened, it shows the latest words even once they finish rendering. */
+let stickToEnd = true
+const settle = new ResizeObserver(() => {
+  const el = scroller.value
+  if (el && stickToEnd && keepFromBottom === null) el.scrollTop = el.scrollHeight
+})
+onUnmounted(() => settle.disconnect())
 watch(
   () => props.presenter.messages.value,
   async () => {
-    const el = scroller.value,
-      atEnd = el && el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    const el = scroller.value
     await nextTick()
-    if (!el || keepFromBottom !== null) return
-    if (atEnd) el.scrollTop = el.scrollHeight
+    if (!el) return
+    settle.disconnect()
+    for (const child of el.children) settle.observe(child)
+    if (keepFromBottom !== null) return
+    if (stickToEnd) el.scrollTop = el.scrollHeight
     if (el.scrollHeight <= el.clientHeight && props.presenter.hasOlder?.value) void loadOlder()
   }
 )
