@@ -17,7 +17,9 @@ import type { PathTarget } from './NodePathModel'
 import { wirePathTarget } from './nodePathChat'
 import { nodeProviders, nodeDebuggerSupported } from './providers'
 import { NodeSessionControl } from './NodeSessionControl'
-import { openWindow, readOlder, windowAt } from './sessionWindow'
+import { catchUp, openWindow, readOlder, windowAt } from './sessionWindow'
+import { StableMessages } from './stableMessages'
+import { readStore } from './NodeClientStore'
 import type { JournalEvent } from '@abele/channel-protocol'
 import {
   chatMovedNotice,
@@ -115,14 +117,17 @@ export class NodeChatPresenter implements ChatPresentationSession {
   readonly rejected = ref<{ id: string; text: string; error: string }[]>([])
   readonly answers = ref<Record<string, PromptAnswerState>>({})
   private readonly receipts = ref<NodeClientState['results']>({})
-  readonly presentation = computed(() =>
-    nodeQueueView(
+  /** Unchanged messages keep their objects across projections, so only what changed redraws. */
+  private readonly stable = new StableMessages()
+  readonly presentation = computed(() => {
+    const view = nodeQueueView(
       this.messages.value,
       this.queued.value,
       this.projection.value.queuedInputs,
       this.receipts.value
     )
-  )
+    return { ...view, messages: this.stable.keep(view.messages) }
+  })
   readonly state = computed(() =>
     this.connection.state.value !== 'connected'
       ? 'offline'
@@ -258,7 +263,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
         const client = this.connection.client
         const draftRevision = this.draftRevision
         const { history, pending, rejected, artifactData, receipts, draft, firstKept } =
-          await client.store.transaction((raw) => {
+          await readStore(client.store, (raw) => {
             const state = raw as NodeClientState
             return {
               draft: state.chatDrafts?.[this.reference.sessionId],
@@ -320,6 +325,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
         this.firstKept.value = firstKept
         const projection = reduceTranscript(hydrated)
         projection.session ??= this.sessionRecord.value
+        projection.children = this.stable.children(projection.children)
         this.projection.value = projection
         this.updateBackgroundTurn()
         this.rejected.value = rejected
@@ -597,12 +603,17 @@ export class NodeChatPresenter implements ChatPresentationSession {
     const client = this.connection.client
     const id = this.reference.sessionId
     let window = await openWindow(client, id)
+    // The window comes in pages, kept at once; the subscription then starts near the head.
+    if (window) await catchUp(client, id, window.head).catch((e: unknown) => this.report(e))
     const answer = (await client.subscribe(id)) as { head_seq?: unknown } | undefined
     // A node without stream.head says where the journal ends in the subscription's answer: a
     // device far behind starts again at the window, before much of the journal has come.
     if (!window && Number.isSafeInteger(answer?.head_seq)) {
       window = await windowAt(client, id, answer!.head_seq as number)
-      if (window.jumped) await client.subscribe(id)
+      if (window.jumped) {
+        await catchUp(client, id, window.head).catch((e: unknown) => this.report(e))
+        await client.subscribe(id)
+      }
     }
     if (window && window.from > 1 && !this.sessionRecord.value)
       try {

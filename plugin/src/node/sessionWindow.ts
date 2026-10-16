@@ -73,6 +73,40 @@ export async function windowAt(
   return { head, from, jumped }
 }
 
+/**
+ * Reads what this device has not got of the session up to `head` in pages and keeps it in one
+ * store transaction, instead of the node streaming it event by event (a durable transaction
+ * each). The subscription that follows then starts at the head. Gives up quietly, leaving the
+ * subscription to stream, when another reader moved the cursor meanwhile or a page is not
+ * contiguous. Returns how many events it kept.
+ */
+export async function catchUp(client: NodeClient, stream: string, head: number): Promise<number> {
+  const cursor = await client.cursor(stream)
+  const fetched: JournalEvent[] = []
+  while (cursor + fetched.length < head) {
+    const after = cursor + fetched.length
+    const raw = await client.request('stream.read', {
+      stream_id: stream,
+      after_seq: after,
+      limit: Math.min(PAGE, head - after),
+    })
+    if (!Array.isArray(raw) || !raw.length) break
+    const page = raw.map((event) => NodeEventSchema.parse(event))
+    if (page.some((event, i) => event.seq !== after + 1 + i)) break
+    fetched.push(...page)
+  }
+  if (!fetched.length) return 0
+  return client.store.transaction((raw) => {
+    const state = raw as NodeClientState
+    if ((state.cursors[stream] ?? 0) !== cursor) return 0
+    if (fetched.some((event) => event.node_id !== state.node_id || event.stream_id !== stream))
+      throw new ChannelError('node_identity_mismatch')
+    ;(state.events[stream] ??= []).push(...fetched)
+    state.cursors[stream] = fetched[fetched.length - 1].seq
+    return fetched.length
+  })
+}
+
 /** The page of events just before `before`, oldest first; none before the journal's start. */
 export async function readOlder(
   client: NodeClient,

@@ -111,6 +111,17 @@ function readState(raw: unknown): NodeClientState {
   return { ...state, events, outbox }
 }
 
+/**
+ * A look at the store that changes nothing: a read-only transaction where the store has one,
+ * which neither writes the state back nor waits for the disk. A chat reads the store after every
+ * event; doing that through `transaction` rewrote and flushed the whole state each time.
+ */
+export function readStore<T>(store: ClientStore, look: (state: NodeClientState) => T): Promise<T> {
+  return store instanceof NodeClientStore
+    ? store.read(look)
+    : store.transaction((state) => look(state as NodeClientState))
+}
+
 /** One database per enrolled installation, never a vault file or a transferable setting. */
 export class NodeClientStore implements ClientStore {
   private database?: Promise<IDBDatabase>
@@ -210,6 +221,25 @@ export class NodeClientStore implements ClientStore {
           }
         })()
       }
+    })
+  }
+
+  async read<T>(look: (state: NodeClientState) => T): Promise<T> {
+    const db = await this.open()
+    return new Promise<T>((resolve, reject) => {
+      const tx = db.transaction('client', 'readonly')
+      const request = tx.objectStore('client').get('state')
+      let result: T
+      request.onsuccess = () => {
+        try {
+          result = look(readState(request.result))
+        } catch (error) {
+          reject(error instanceof Error ? error : new Error(String(error)))
+          tx.abort()
+        }
+      }
+      tx.oncomplete = () => resolve(result)
+      tx.onerror = () => reject(tx.error ?? new Error('Node store read failed'))
     })
   }
 

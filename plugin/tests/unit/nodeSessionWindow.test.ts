@@ -12,7 +12,7 @@ import { giantJournal } from '../fixtures/giantJournal.mjs'
 import { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import type { NodeConnection } from '@/node/NodeService'
 import type { NodeClientState } from '@/node/NodeClientStore'
-import { SESSION_WINDOW, openWindow, readOlder, trimWindows } from '@/node/sessionWindow'
+import { SESSION_WINDOW, catchUp, openWindow, readOlder, trimWindows } from '@/node/sessionWindow'
 
 const SID = 'sample-giant-session'
 const journal = giantJournal({ turns: 300, node: 'sample-node', stream: SID }) as JournalEvent[]
@@ -106,6 +106,29 @@ describe('openWindow', () => {
   })
 })
 
+describe('catchUp', () => {
+  it('keeps what the device missed in one go and leaves it alone when the cursor moved meanwhile', async () => {
+    const f = fixture()
+    await f.store.transaction((s) => {
+      s.node_id = 'sample-node'
+      s.cursors[SID] = HEAD - 10
+    })
+    expect(await catchUp(f.client, SID, HEAD)).toBe(10)
+    expect(await f.client.cursor(SID)).toBe(HEAD)
+    expect((await f.client.history(SID)).map((e) => e.seq)).toEqual(
+      journal.slice(-10).map((e) => e.seq)
+    )
+    const moved = fixture()
+    await moved.store.transaction((s) => {
+      s.node_id = 'sample-node'
+      s.cursors[SID] = HEAD - 10
+    })
+    vi.spyOn(moved.client, 'cursor').mockResolvedValueOnce(HEAD - 20)
+    expect(await catchUp(moved.client, SID, HEAD)).toBe(0)
+    expect(await moved.client.cursor(SID)).toBe(HEAD - 10)
+  })
+})
+
 describe('readOlder', () => {
   it('reads the page just before the earliest event held, never more than a page', async () => {
     const f = fixture()
@@ -148,12 +171,13 @@ describe('a giant session in its chat', () => {
     const p = presenter(f)
     try {
       await p.load()
-      // What the node streams after the subscription: the window's events.
-      for (const event of journal.slice(HEAD - SESSION_WINDOW)) await f.client.ingest(event)
-      await p.refresh()
+      // The window came in pages kept at once; the subscription starts at the head.
+      expect(
+        f.requests.filter((r) => r.method === 'stream.read').map((r) => r.params.after_seq)
+      ).toEqual([HEAD - SESSION_WINDOW, HEAD - SESSION_WINDOW + 256])
       expect(f.requests.filter((r) => r.method === 'stream.subscribe').at(-1)?.params).toEqual({
         stream_id: SID,
-        after_seq: HEAD - SESSION_WINDOW,
+        after_seq: HEAD,
       })
       expect(p.provider.value).toBe('claude')
       expect(p.hasOlder.value).toBe(true)
@@ -162,8 +186,11 @@ describe('a giant session in its chat', () => {
       await p.loadOlder()
       expect(p.messages.value.length).toBeGreaterThan(shown)
       expect(
-        f.requests.filter((r) => r.method === 'stream.read').map((r) => r.params.after_seq)
-      ).toEqual([HEAD - SESSION_WINDOW - 256])
+        f.requests
+          .filter((r) => r.method === 'stream.read')
+          .map((r) => r.params.after_seq)
+          .at(-1)
+      ).toBe(HEAD - SESSION_WINDOW - 256)
       // Never more than the window is kept on the device.
       expect((await f.client.history(SID)).length).toBeLessThanOrEqual(SESSION_WINDOW)
     } finally {
@@ -181,8 +208,9 @@ describe('a giant session in its chat', () => {
       await p.load()
       expect(
         f.requests.filter((r) => r.method === 'stream.subscribe').map((r) => r.params.after_seq)
-      ).toEqual([0, HEAD - SESSION_WINDOW])
-      expect(await f.client.cursor(SID)).toBe(HEAD - SESSION_WINDOW)
+      ).toEqual([0, HEAD])
+      expect(await f.client.cursor(SID)).toBe(HEAD)
+      expect((await f.client.history(SID)).length).toBe(SESSION_WINDOW)
     } finally {
       p.destroy()
     }
