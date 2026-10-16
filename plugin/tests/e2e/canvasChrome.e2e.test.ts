@@ -199,15 +199,18 @@ describe.skipIf(!available)('the canvas by hand', () => {
     await chrome.click('Draw frame')
     await input(screen(-30, -30), screen(560, 150))
     await until(`document.activeElement?.matches('[data-frame-id][contenteditable="true"]')`)
-    await type('Sample stage')
+    // The phone types a label key by key, and a space there takes the keyboard's inline word
+    // prediction ("Sample" became "Samples"): one word, which no space can complete.
+    const name = onPhone() ? 'Staging' : 'Sample stage'
+    await type(name)
     // The words are on the label before Enter writes them: a loss in typing is told apart from a
     // name lost on its way to the file.
     const written = `document.querySelector('[data-frame-id][contenteditable="true"]')?.innerText.trim()`
-    await until(`${written}==='Sample stage'`)
+    await until(`${written}===${JSON.stringify(name)}`)
     await key('Enter')
     if (onPhone()) await until(`!document.activeElement?.matches('[contenteditable="true"]')||true`)
     await saved()
-    await until(`(await read()).nodes.some(n=>n.type==='group'&&n.label==='Sample stage')`)
+    await until(`(await read()).nodes.some(n=>n.type==='group'&&n.label===${JSON.stringify(name)})`)
     const frame = run<{ x: number; width: number }>(
       `return (await read()).nodes.find(n=>n.type==='group')`
     )

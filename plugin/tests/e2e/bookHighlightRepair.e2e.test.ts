@@ -89,8 +89,8 @@ describe.skipIf(!available)('confirming repairs on a real EPUB', () => {
         await until(() => opened.reading.marks.repairs().length === 3)
         const before = await app.vault.read(file)
         if (before !== noteText) throw new Error('Detection modified note')
-        const shown = () => ({ more: !!document.querySelector('.abele-book-selection__more'), menu: [...document.querySelectorAll('.menu-item')].map(el => el.textContent), modals: [...document.querySelectorAll('.modal')].map(el => el.className + ': ' + el.textContent.slice(0, 80)), repairs: opened.reading.marks.repairs().length })
-        seen = shown
+        const visible = () => ({ more: !!document.querySelector('.abele-book-selection__more'), menu: [...document.querySelectorAll('.menu-item')].map(el => el.textContent), modals: [...document.querySelectorAll('.modal')].map(el => el.className + ': ' + el.textContent.slice(0, 80)), repairs: opened.reading.marks.repairs().length })
+        seen = visible
         const menu = async (all) => {
           stage = 'the highlight menu button'
           opened.reading.marks.open(opened.model.highlights.find(h => h.cfi === pairs[0].old) || opened.model.highlights[0])
