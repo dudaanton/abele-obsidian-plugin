@@ -54,19 +54,25 @@
       </NodePlace>
       <!-- A rebase stopped on conflicts: go on once they are resolved and staged, or stop it. -->
       <div v-if="stopped" class="abele-node-sidebar__stopped" role="status">
-        <span
-          >The {{ stopped.kind }} onto {{ stopped.onto }} stopped ·
-          {{ stopped.conflicts }} in conflict</span
+        <Icon icon="triangle-alert" size="xs" color="red" :interactive="false" />
+        <span class="abele-node-sidebar__stopped-text"
+          >The {{ stopped.kind }} onto {{ stopped.onto }} stopped · {{ stopped.conflicts }} in
+          conflict</span
         >
         <Button
           text="Continue"
-          :disabled="!!model.gitBusy.value || offline"
+          :disabled="!!model.gitBusy.value || offline || stopped.conflicts > 0"
           :loading="model.gitBusy.value === 'continue'"
-          tooltip="Go on once the files in conflict are resolved and staged"
+          :tooltip="
+            stopped.conflicts > 0
+              ? `Stage the ${stopped.conflicts} ${stopped.conflicts === 1 ? 'file' : 'files'} in conflict first`
+              : `Finish the ${stopped.kind}`
+          "
           @click="act(() => model!.continueStopped(stopped!.kind))"
         />
         <Button
           :text="`Stop the ${stopped.kind}`"
+          quiet
           :disabled="!!model.gitBusy.value || offline"
           :loading="model.gitBusy.value === 'abort'"
           :tooltip="`Put the branch back as it was before the ${stopped.kind}`"
@@ -162,6 +168,7 @@ import HistoryView from './HistoryView.vue'
 import BranchCodes from './BranchCodes.vue'
 import CommitBox from './CommitBox.vue'
 import Button from '../obsidian/Button.vue'
+import Icon from '../obsidian/Icon.vue'
 import { nextStep, type BranchStep } from './branchStep'
 import { GIT_WRITE_CAPABILITY } from '@/node/nodePathGit'
 import { shortRef } from '@/node/presentation'
@@ -295,17 +302,21 @@ watch(
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--size-4-2);
+  gap: var(--size-4-2) var(--size-4-3);
   margin: var(--size-4-4) var(--size-4-2) 0;
-  padding: var(--size-4-2);
-  border-radius: var(--radius-s);
-  background-color: var(--background-modifier-error);
+  padding: var(--size-4-2) var(--size-4-3);
+  border-radius: var(--radius-m);
+  background-color: rgba(var(--color-red-rgb), 0.08);
   color: var(--text-normal);
   font-size: var(--font-ui-small);
 
-  > span {
-    flex: 1 1 100%;
+  .abele-obsidian-icon {
+    padding: 0;
   }
+}
+.abele-node-sidebar__stopped-text {
+  flex: 1 1 10em;
+  min-width: 0;
 }
 .abele-node-sidebar__error {
   padding: var(--size-4-2);

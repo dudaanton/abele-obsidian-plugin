@@ -204,7 +204,9 @@ describe('native node installation', () => {
 describe('the branch in the panel', () => {
   function branchModel(base = '') {
     return {
-      folders: shallowRef([{ id: 'project', name: 'sample-app', path: '/sample', git: true, copies: [] }]),
+      folders: shallowRef([
+        { id: 'project', name: 'sample-app', path: '/sample', git: true, copies: [] },
+      ]),
       selected: ref('tree'),
       current: ref({ id: 'tree', kind: 'worktree' }),
       selectedChat: ref(''),
@@ -214,7 +216,15 @@ describe('the branch in the panel', () => {
       treeCursors: shallowRef({}),
       treeProgress: shallowRef(undefined),
       changes: shallowRef([
-        { path: 'src/a.ts', kind: 'modified', stage: 'staged', before: '', after: '', added: 0, removed: 0 },
+        {
+          path: 'src/a.ts',
+          kind: 'modified',
+          stage: 'staged',
+          before: '',
+          after: '',
+          added: 0,
+          removed: 0,
+        },
       ]),
       panelMode: ref('changes'),
       panelBase: ref(base),
@@ -239,12 +249,18 @@ describe('the branch in the panel', () => {
   it('says the branch against its base under its name, and splits its changes into groups', async () => {
     const model = branchModel()
     const view = mount(NodePathSidebar, {
-      props: { model: model as never, phase: 'ready', node: { name: 'Sample node', status: 'connected' } },
+      props: {
+        model: model as never,
+        phase: 'ready',
+        node: { name: 'Sample node', status: 'connected' },
+      },
     })
     await flushPromises()
     expect(model.loadPanelBranch).toHaveBeenCalled()
     expect(view.get('.abele-node-place__byline .abele-branch-codes__base').text()).toBe('main')
-    const groups = view.findAll('.abele-file-tree__group').map((g) => g.get('.abele-tree-item__text').text())
+    const groups = view
+      .findAll('.abele-file-tree__group')
+      .map((g) => g.get('.abele-tree-item__text').text())
     expect(groups).toEqual(['Staged', 'Committed'])
     // No stage glyphs while the node cannot stage.
     expect(view.find('[aria-label="Unstage"]').exists()).toBe(false)
@@ -255,7 +271,11 @@ describe('the branch in the panel', () => {
   it('names the chosen base over the files and goes back to the default with its cross', async () => {
     const model = branchModel('refs/heads/other')
     const view = mount(NodePathSidebar, {
-      props: { model: model as never, phase: 'ready', node: { name: 'Sample node', status: 'connected' } },
+      props: {
+        model: model as never,
+        phase: 'ready',
+        node: { name: 'Sample node', status: 'connected' },
+      },
     })
     expect(view.get('.abele-node-modes__against-name').text()).toBe('vs other')
     await view.get('.abele-node-modes__against [aria-label^="Stop comparing"]').trigger('click')
@@ -268,7 +288,9 @@ describe('git actions in the panel', () => {
     const stage = vi.fn(async () => {})
     const commit = vi.fn(async () => ({ commit: 'c', author: 'Sample Person' }))
     const model = {
-      folders: shallowRef([{ id: 'project', name: 'sample-app', path: '/sample', git: true, copies: [] }]),
+      folders: shallowRef([
+        { id: 'project', name: 'sample-app', path: '/sample', git: true, copies: [] },
+      ]),
       selected: ref('tree'),
       current: ref({ id: 'tree', kind: 'worktree' }),
       selectedChat: ref(''),
@@ -278,12 +300,27 @@ describe('git actions in the panel', () => {
       treeCursors: shallowRef({}),
       treeProgress: shallowRef(undefined),
       changes: shallowRef([
-        { path: 'src/a.ts', kind: 'modified', stage: staged ? 'staged' : 'unstaged', before: '', after: '', added: 0, removed: 0 },
+        {
+          path: 'src/a.ts',
+          kind: 'modified',
+          stage: staged ? 'staged' : 'unstaged',
+          before: '',
+          after: '',
+          added: 0,
+          removed: 0,
+        },
       ]),
       panelMode: ref('changes'),
       panelBase: ref(''),
       panelBranch: shallowRef({
-        state: { base: 'main', ahead: 1, behind: 0, unpushed: 1, upstream: 'origin/sample-branch', ...state },
+        state: {
+          base: 'main',
+          ahead: 1,
+          behind: 0,
+          unpushed: 1,
+          upstream: 'origin/sample-branch',
+          ...state,
+        },
         committed: [],
         refs: [],
       }),
@@ -306,7 +343,11 @@ describe('git actions in the panel', () => {
       capabilities: shallowRef<string[]>(['repository_git_write_v1']),
     }
     const view = mount(NodePathSidebar, {
-      props: { model: model as never, phase: 'ready', node: { name: 'Sample node', status: 'connected' } },
+      props: {
+        model: model as never,
+        phase: 'ready',
+        node: { name: 'Sample node', status: 'connected' },
+      },
     })
     return { model, view }
   }
@@ -338,9 +379,34 @@ describe('git actions in the panel', () => {
     expect(view.find('.abele-node-sidebar__step').exists()).toBe(false)
     const line = view.get('.abele-node-sidebar__stopped')
     expect(line.text()).toContain('The rebase onto main stopped · 2 in conflict')
-    await line.findAll('button').find((b) => b.text() === 'Stop the rebase')!.trigger('click')
+    await line
+      .findAll('button')
+      .find((b) => b.text() === 'Stop the rebase')!
+      .trigger('click')
     expect(model.abortStopped).toHaveBeenCalledWith('rebase')
     view.unmount()
+  })
+  it('says a stopped rebase quietly, with a warning glyph, and goes on only once nothing is in conflict', async () => {
+    const { model, view } = gitModel(false, {
+      stopped: { kind: 'rebase', onto: 'main', conflicts: 2 },
+    })
+    const line = view.get('.abele-node-sidebar__stopped')
+    expect(line.find('.abele-obsidian-icon').exists()).toBe(true)
+    const button = (text: string) => line.findAll('button').find((b) => b.text() === text)!
+    expect(button('Stop the rebase').classes()).toContain('abele-obsidian-button_quiet')
+    expect(button('Continue').attributes('disabled')).toBeDefined()
+    expect(button('Continue').attributes('aria-label')).toBe('Stage the 2 files in conflict first')
+    view.unmount()
+    const resolved = gitModel(false, { stopped: { kind: 'rebase', onto: 'main', conflicts: 0 } })
+    const go = resolved.view
+      .get('.abele-node-sidebar__stopped')
+      .findAll('button')
+      .find((b) => b.text() === 'Continue')!
+    expect(go.attributes('disabled')).toBeUndefined()
+    await go.trigger('click')
+    expect(resolved.model.continueStopped).toHaveBeenCalledWith('rebase')
+    expect(model.continueStopped).not.toHaveBeenCalled()
+    resolved.view.unmount()
   })
 })
 describe('unknown history divergence', () => {
