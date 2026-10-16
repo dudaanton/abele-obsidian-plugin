@@ -14,9 +14,11 @@ import { AttachmentConsent } from '@/sync/attachmentConsent'
 import { buildFakeVault } from '../helpers/fakeVault'
 import type { TransferSnapshot } from '@/sync/transferProgress'
 
+const snapshotFiles = 1003
+
 it.each([
-  { host: false, reconnect: false, count: 1003 },
-  { host: true, reconnect: false, count: 1003 },
+  { host: false, reconnect: false, count: snapshotFiles },
+  { host: true, reconnect: false, count: snapshotFiles },
   { host: true, reconnect: true, count: 3 },
 ])(
   'pulls a pre-token folder snapshot across pages into a populated vault without a directory scan per item (host=$host, reconnect=$reconnect)',
@@ -250,7 +252,9 @@ it.each([
       vi.unstubAllGlobals()
     }
   },
-  20000
+  // IndexedDB schedules real tasks per file; CPU contention is not a scan regression.
+  // Bound fixture work by its size, and prove scan complexity with the spy above.
+  20_000 + snapshotFiles * 200
 )
 
 async function productionHost(

@@ -108,7 +108,7 @@ it('registers every real catalogue page as an ordinary clean contract after meas
   const actual = await vi.importActual<typeof import('../e2e/helpers/designCatalogueCases')>(
     '../e2e/helpers/designCatalogueCases'
   )
-  const { CATALOGUE_PAGES } = await import('@/testing/designCatalogue')
+  const { CATALOGUE_PAGES } = await import('@/testing/catalogueShape')
   expect(actual.DESIGN_CASES.map((entry) => entry.page)).toEqual([...CATALOGUE_PAGES])
   expect(actual.DESIGN_CASES.every((entry) => entry.bug === undefined)).toBe(true)
 })

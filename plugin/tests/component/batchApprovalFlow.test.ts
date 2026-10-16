@@ -65,7 +65,10 @@ const watches: WatchStopHandle[] = []
 let hold: ReturnType<typeof deferred> | undefined
 const makeSession = () => {
   const s = new ChatSession(ChatService.getInstance())
+  // Isolate both explicit saves and the coalesced autosave: slow rendering can cross
+  // its timer, otherwise creating a file whose later mocked saves never commit approval.
   vi.spyOn(s, 'save').mockResolvedValue()
+  vi.spyOn(s, 'flush').mockResolvedValue()
   s.permissionMode.value = 'confirm-all'
   s.toolModes.value = { demo: 'ask', other: 'ask', fetch: 'auto' }
   s.scopeResolver.clear()
@@ -215,8 +218,12 @@ describe('the Always allow transition at the runtime and rendered chat seams', (
     expect(mounted).toEqual(['first', 'uncovered'])
     expect(pendingStates).not.toContain('covered')
     expect(session.pendingToolCalls.value.map((tc) => tc.id)).toEqual(['uncovered', 'after'])
+    // Vue does not await async event handlers, and one flush need not finish the batch.
+    const rejected = vi.spyOn(session, 'rejectToolCall')
     await button('Deny').trigger('click')
-    await flushPromises()
+    expect(rejected).toHaveBeenCalledTimes(1)
+    await rejected.mock.results[0].value
+    await nextTick()
     expect(executed).toEqual(['first', 'covered', 'after'].map((id) => `${session.id}:${id}`))
     expect(mounted).toEqual(['first', 'uncovered'])
   })
