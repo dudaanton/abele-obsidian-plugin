@@ -98,7 +98,7 @@ export class ShellModal extends Modal {
     if ((this as { isOpen?: boolean }).isOpen && !this.finishClose) {
       const done = new Promise<void>((resolve) => {
         // A close Obsidian never finishes must not hold every later answer.
-        const timer = window.setTimeout(resolve, 1000)
+        const timer = window.setTimeout(resolve, 5000)
         this.finishClose = () => {
           window.clearTimeout(timer)
           resolve()
