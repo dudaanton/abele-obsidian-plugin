@@ -84,6 +84,17 @@ export class TokenOffloadCoordinator {
     return cached ? { ...cached, available: false } : null
   }
   constructor(readonly locks: PathCoordinator) {}
+  /** Pool reset drains providers first. Keep the object held by registered UI handlers. */
+  clearDrainedState(): void {
+    if (this.providers.size || this.inflight.size)
+      throw new Error('External file access must be drained before clearing state')
+    this.absent.clear()
+    this.descriptions.clear()
+    this.transfers.clear()
+    this.cancellations.clear()
+    this.hydration.clear()
+    this.changed()
+  }
   register(id: string, provider: Provider): () => void {
     this.providers.set(id, provider)
     return () => {

@@ -11,6 +11,8 @@ import { tokenPoolMarkers } from './tokenPoolMarkers'
 import { inspectExistingLedger, recoverOrphanPrivateArtifacts } from '../sync/external/pluginSafety'
 import { decodeExternalDocument, EXTERNAL_STATE_KEY } from '../sync/external/state'
 import { stagingDirectory } from '../sync/stagingDirectory'
+import { tokenOffloadsOf } from '../sync/tokenOffloadCoordinator'
+import { pathCoordinatorOf } from '../sync/pathCoordinator'
 
 const JOURNAL = 'abele-sync-test-pool-ledgers-v1'
 const REVIEW_ID = 'abele-sync-device-review-id-v1'
@@ -153,7 +155,7 @@ async function performResetSyncTokenState(
         ui.available.value = false
         ui.refresh()
         // Providers are drained; no stale absent-file marker may survive a new test case.
-        Reflect.deleteProperty(plugin.app.vault, Symbol.for('abele.sync.token-offloads-v1'))
+        tokenOffloadsOf(plugin.app.vault, pathCoordinatorOf(plugin.app.vault)).clearDrainedState()
       },
       restart: async () => {
         const reviews = await openDeviceReviews(window.indexedDB, reviewsId, {

@@ -15,6 +15,8 @@ import { tokenExternalBinding } from '@/sync/tokenExternalBinding'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { projectionEvidence } from '@/sync/external/pluginSafety'
 import { EXTERNAL_STATE_KEY } from '@/sync/external/state'
+import { tokenOffloadsOf } from '@/sync/tokenOffloadCoordinator'
+import { pathCoordinatorOf } from '@/sync/pathCoordinator'
 vi.mock('../../src/sync/tokenEngines', () => ({
   TokenEngines: class {
     start() {}
@@ -22,6 +24,18 @@ vi.mock('../../src/sync/tokenEngines', () => ({
 }))
 
 const cases = [false, true, 'unresolved'] as const
+it('refuses to clear offload state while a provider still owns it', () => {
+  const vault = {}
+  const manager = tokenOffloadsOf(vault, pathCoordinatorOf(vault))
+  manager.remember('sample', [{ path: 'Media/sample.pdf', size: 1, mtime: 1 }], [])
+  const close = manager.register('sample', {} as never)
+  expect(() => manager.clearDrainedState()).toThrow('must be drained')
+  expect(manager.files()).toHaveLength(1)
+  close()
+  manager.clearDrainedState()
+  expect(manager.files()).toEqual([])
+})
+
 it.each(cases)('resets owned state and private artifacts (retry=%s)', async (retry) => {
   const factory = new IDBFactory()
   const descriptor = Object.getOwnPropertyDescriptor(window, 'indexedDB')
@@ -178,6 +192,8 @@ it.each(cases)('resets owned state and private artifacts (retry=%s)', async (ret
       deps: {},
     },
   } as unknown as Plugin
+  const manager = tokenOffloadsOf(vault, pathCoordinatorOf(vault))
+  manager.remember('sample-old', [{ path: 'Media/sample.pdf', size: 1, mtime: 1 }], [])
   try {
     await captureSyncTokenOwnership(plugin, 'leased-pool')
     if (retry === true) {
@@ -199,6 +215,8 @@ it.each(cases)('resets owned state and private artifacts (retry=%s)', async (ret
     expect(cancelStartup).toHaveBeenCalledTimes(retry === true ? 2 : 1)
     expect(close).toHaveBeenCalledTimes(retry === true ? 2 : 1)
     expect(ui.activity.value).toEqual({})
+    expect(tokenOffloadsOf(vault, pathCoordinatorOf(vault))).toBe(manager)
+    expect(manager.files()).toEqual([])
     expect(ui.rows.value).toEqual([])
     expect(registry.records()).toEqual([])
     expect(local.get(EXTERNAL_ACTIVATION_KEY)).toBeNull()
