@@ -91,7 +91,7 @@ it.each(['idle', 'working', 'compacting', 'asking'])(
     expect(r.overlaps).toEqual([])
     expect(r.stop).toBe(state !== 'idle')
     expect(r.settings).toContain(state === 'working' ? '86%' : '41%')
-    expect(r.background).toBe(
+    expect(r.background).toEqual(
       state === 'idle' ? '' : expect.stringContaining('3 in the background')
     )
     expect(r.marks).toEqual(
@@ -160,7 +160,8 @@ it('compacts from «/compact» with a focus, and the session commands lead the �
     await wait(200);
     const list = [...document.querySelectorAll('.abele-chat-slash .suggestion-item')].map(i => i.textContent.trim());
     await shot('node-sessions-slash');
-    document.querySelector('.abele-chat-slash .suggestion-item').click();
+    // The list takes a press as Obsidian's suggestions do, on the pointer going down.
+    document.querySelector('.abele-chat-slash .suggestion-item').dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
     const modal = await until(() => document.querySelector('.modal'), 'The compact dialog');
     const focus = modal.querySelector('textarea');
     focus.value = 'the title search';
