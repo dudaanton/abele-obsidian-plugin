@@ -75,7 +75,7 @@ describe('debugger panel', () => {
     w.unmount()
   })
   it('names the runs folder by its own name, the whole path in its tooltip', () => {
-    const folder = '/Users/sample/projects/sample-service/.abele/runs'
+    const folder = '/Users/username/projects/sample-service/.abele/runs'
     const w = mount(DebugPanel, {
       props: {
         session: session('running'),

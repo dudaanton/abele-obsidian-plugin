@@ -3,7 +3,7 @@ import { openNodeFolderPicker } from '@/node/NodePathDialogs'
 import type { NodeConnection } from '@/node/NodeService'
 import type { NodePathModel } from '@/node/NodePathModel'
 
-const HOME = '/home/sample'
+const HOME = '/home/username'
 const NAMES = [
   'archive',
   'design-notes',
