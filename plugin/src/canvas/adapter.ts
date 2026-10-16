@@ -1,5 +1,13 @@
 /** Obsidian is one client of the portable graph/presentation model and DOM viewer. */
-import { Component, Keymap, MarkdownRenderer, Notice, TFile, type App } from 'obsidian'
+import {
+  Component,
+  Keymap,
+  MarkdownRenderer,
+  Notice,
+  TFile,
+  type App,
+  type HoverParent,
+} from 'obsidian'
 import { prepareExternalFile } from '@/sync/external/fileAccess'
 import { CanvasViewer, type ViewerCards } from './Viewer'
 import { canvasRegionAssets, canvasTheme, notePart } from './pictureAdapter'
@@ -95,7 +103,7 @@ class LiveCards implements ViewerCards {
         this.cards.set(node.id, card)
         if (body && component) {
           body.dataset.nodeId = node.id
-          const hoverParent = { hoverPopover: null }
+          const hoverParent: HoverParent = { hoverPopover: null }
           const href = (link: HTMLAnchorElement) =>
             link.getAttribute('data-href') ?? link.getAttribute('href') ?? ''
           component.register(
