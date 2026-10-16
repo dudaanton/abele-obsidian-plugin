@@ -16,13 +16,13 @@ let tab = '',
   session = ''
 
 const UI = `${PAIRED_PRELUDE}
-const presenter=()=>chats.getNodeSession(${'TAB'});
+const presenter=()=>chats.getNodeSession(__TAB__);
 const messages=()=>[...chat().querySelectorAll('.abele-chat-msg')].map(m=>m.textContent);
 const said=text=>until(()=>messages().some(m=>m.includes(text)),'«'+text+'»',60000);
 const pick=async title=>{await until(()=>document.querySelector('.menu'),'A menu');const item=[...document.querySelectorAll('.menu .menu-item')].find(i=>i.querySelector('.menu-item-title')?.textContent.trim().startsWith(title));if(!item)throw Error('No menu item '+title);item.click();await wait(150)};
 const button=(root,text)=>[...root.querySelectorAll('button')].find(b=>b.textContent.trim()===text);`
 const run = (body: string, timeout = 120000) =>
-  evalLong(`(async()=>{${UI.replace('${TAB}', JSON.stringify(tab))}${body}})()`, timeout)
+  evalLong(`(async()=>{${UI.replace('__TAB__', JSON.stringify(tab))}${body}})()`, timeout)
 
 beforeAll(async () => {
   node = await startPairedNode()

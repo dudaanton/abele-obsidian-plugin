@@ -160,8 +160,9 @@ export async function startPairedNode(options: { latencyMs?: number } = {}) {
       if (head.length) upstream.write(head)
       relay(socket, upstream, (n) => (traffic.up += n))
       relay(upstream, socket, (n) => (traffic.down += n))
-      socket.on('close', () => upstream.destroy())
-      upstream.on('close', () => socket.destroy())
+      // A side that closes still has its last chunks on their way: close after them.
+      socket.on('close', () => setTimeout(() => upstream.destroy(), latency + 5))
+      upstream.on('close', () => setTimeout(() => socket.destroy(), latency + 5))
     })
   })
   await new Promise<void>((r) => proxy.listen(0, '127.0.0.1', r))
