@@ -153,7 +153,7 @@ it('opens a giant session at its end over a remote connection, pages back, types
       const firstMs=Math.round(performance.now()-t0);
       const streamingTyping=stats(await type('typed while it answers'));
       try{await until(()=>[...root.querySelectorAll('.abele-chat-msg')].some(m=>m.textContent.includes('word299')),'The whole streamed answer',120000)}
-      catch(e){const text=[...root.querySelectorAll('.abele-chat-msg')].map(m=>m.textContent).join(' ');const words=(text.match(/word\d+/g)??[]).length;throw Error(e.message+' '+JSON.stringify({words,probe:window.__giantProbe,frames:frames.length}))}
+      catch(e){const text=[...root.querySelectorAll('.abele-chat-msg')].map(m=>m.textContent).join(' ');const words=(text.match(/word\\d+/g)??[]).length;throw Error(e.message+' '+JSON.stringify({words,probe:window.__giantProbe,frames:frames.length}))}
       const streamMs=Math.round(performance.now()-t0);
       done=true;await frame();
       const probe={...window.__giantProbe,txMs:Math.round(window.__giantProbe.txMs),longMs:Math.round(window.__giantProbe.longMs)};
