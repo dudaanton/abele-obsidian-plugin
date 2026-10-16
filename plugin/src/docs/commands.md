@@ -6,7 +6,7 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
 
 ## Tasks and notes
 
-- Create new task — and *Create new task and insert into current note*, which leaves a link behind
+- Create new task — and _Create new task and insert into current note_, which leaves a link behind
 - Create note from template · Insert template at cursor · Replace current note with template
 - Create note in group
 - Open today's daily note
@@ -32,7 +32,7 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
 
 ## Finance and time
 
-- Create new transaction — and *Create new transaction and insert into current note*, which leaves a link behind
+- Create new transaction — and _Create new transaction and insert into current note_, which leaves a link behind
 - Start timer for current note · Stop active timer
 - Show finance sidebar · Show accounts sidebar · Show time tracking sidebar
 
@@ -85,7 +85,7 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
   repositories. A bare number or a title is looked up in the repository of the GitHub tab used
   last, else the one last opened from the picker, else `github.defaultRepo`. It opens in the tab
   already showing that item, else the GitHub tab used last, else a new one; Mod+Enter opens a new
-  tab. The same picker is *Open another GitHub item…* in a GitHub tab's "more options" menu (only
+  tab. The same picker is _Open another GitHub item…_ in a GitHub tab's "more options" menu (only
   while the GitHub integration is on)
 - Open node repository — choose a connected node, registered project and workspace, then browse
   its repository in the same tab layout as GitHub. Workspaces include the original checkout,
@@ -128,8 +128,8 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
   Also in a GitHub tab's "more options" menu (only while the GitHub integration is on)
 - Chat about this GitHub item — in a GitHub tab: a new chat with a link to the item in the
   input. The same is the speech-bubble button in the tab's header and in its "more options"
-  menu; *Ask here* under selected lines of code starts one with those lines quoted, and so does
-  *Chat about this* while lines are selected
+  menu; _Ask here_ under selected lines of code starts one with those lines quoted, and so does
+  _Chat about this_ while lines are selected
 
 ## Media
 
@@ -172,6 +172,12 @@ Connect with a token in **Settings → Abele → Sync**.
 - Pause or resume sync — pauses all connections, or resumes them when all were paused.
 - Open sync settings — opens the Sync tab; the status bar opens it too.
 - Open deleted files — currently explains that deleted-file history is not served by v2.
+- Download to this device — downloads the active offloaded file through its sync connection.
+- Keep on this device — pins the active file on this device, downloading it if needed; running
+  it again on a pinned file removes the pin without removing its local copy.
+- Keep only on the server — previews eligible local files and the space to reclaim, then asks
+  for confirmation before removing verified local copies. Links stay unchanged; pinned, busy
+  or unsynced files stay on this device.
 
 Connections, sharing tokens, incoming executable review and private-file decisions are on
 the Sync tab. Each connection has its own status and last sync. Disconnect keeps local
