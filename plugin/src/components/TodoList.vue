@@ -3,7 +3,7 @@
     <ListSectionHeader
       class-prefix="abele-todo-list"
       text="Tasks"
-      :count="tasksWithoutDates.length"
+      :count="shown.length"
       :fold="fold"
       :search="search"
       search-tooltip="Search tasks by title and description"

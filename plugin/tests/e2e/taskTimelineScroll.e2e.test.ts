@@ -532,6 +532,10 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
     yield 'initial dates and unchanged appearance'
     await until(() => dates().length === ${short ? 1 : 20} && overdueRow()?.querySelector('.abele-timeline__overdue-count')?.getAttribute('aria-label') === ${short ? "'2 unfinished'" : "'90 unfinished'"}, 'initial fixture dates and unfinished count')
     await settleUI()
+    // Sidebar labels narrow the whole task store: the heading must count that same set,
+    // including days beyond the rendered page, with the overdue fold still closed.
+    const headingCount = root.querySelector('.abele-fold-heading__count')?.textContent.trim()
+    if (headingCount !== '${short ? 2 : 92}') throw Error('filtered timeline heading: ' + headingCount)
     if (!${footer} && document.body.classList.contains('is-phone')) {
       const calendar = root.closest('.abele-timeline-sidebar').querySelector('.abele-calendar')
       const header = leaf.view.containerEl.querySelector('.view-header')
@@ -557,6 +561,7 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
     await settleUI()
     await shot('unchanged')
     await shot('initial')
+    if (!${footer}) await shot('label-filtered')
     // Lazy markdown titles must be painted before the row's baseline is measured.
     await until(() => row(0)?.textContent.includes('Sample item 0 1'))
     if (${short}) {

@@ -28,6 +28,7 @@ import Timeline from '@/components/Timeline.vue'
 import TaskCard from '@/components/Task.vue'
 import ObsidianIcon from '@/components/obsidian/Icon.vue'
 import Card from '@/components/obsidian/Card.vue'
+import FoldHeading from '@/components/obsidian/FoldHeading.vue'
 import {
   installFakeIntersectionObserver,
   resetFakeIntersectionObservers,
@@ -328,6 +329,8 @@ describe('footer lists — priority and labels', () => {
       const view = render(TodoList, { tasks })
       const titles = () =>
         view.findAllComponents(TaskCard).map((c) => (c.props('task') as Task).title)
+      const count = () => view.findComponent(FoldHeading).props('count')
+      expect(count()).toBe(4)
 
       const items = await openLabelMenu(view)
       expect(items.map((i) => i.title)).toEqual([
@@ -343,6 +346,7 @@ describe('footer lists — priority and labels', () => {
       await view.vm.$nextTick()
       expect((await openLabelMenu(view)).find((i) => i.title === 'Work (2)')?.checked).toBe(true)
       expect(titles()).toEqual(['work-1', 'work-2'])
+      expect(count()).toBe(2)
       expect(
         view
           .findAllComponents(ObsidianIcon)
@@ -353,10 +357,12 @@ describe('footer lists — priority and labels', () => {
       pick(await openLabelMenu(view), 'No label (1)')
       await view.vm.$nextTick()
       expect(titles()).toEqual(['bare'])
+      expect(count()).toBe(1)
 
       pick(await openLabelMenu(view), 'All labels')
       await view.vm.$nextTick()
       expect(titles()).toHaveLength(4)
+      expect(count()).toBe(4)
     })
 
     it('reads labels from the property the settings name', async () => {
@@ -379,14 +385,20 @@ describe('footer lists — priority and labels', () => {
       const b = taskWith('b', { labels: ['home'] })
       b.date = dayjs('2026-05-02')
       const view = render(Timeline, { tasks: [a, b] })
+      expect(view.findComponent(FoldHeading).props('count')).toBe(2)
 
       pick(await openLabelMenu(view), 'work (1)')
       await view.vm.$nextTick()
 
       expect(view.findAll('.abele-timeline__date-block')).toHaveLength(1)
+      expect(view.findComponent(FoldHeading).props('count')).toBe(1)
       expect(view.findAllComponents(TaskCard).map((c) => (c.props('task') as Task).title)).toEqual([
         'a',
       ])
+      pick(await openLabelMenu(view), 'All labels')
+      await view.vm.$nextTick()
+      expect(view.findComponent(FoldHeading).props('count')).toBe(2)
+      expect(view.findAllComponents(TaskCard)).toHaveLength(2)
     })
 
     it('keeps its date order, not priority order', () => {
