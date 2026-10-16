@@ -35,7 +35,11 @@ it('lists a connected node by what its sessions do, never as offline', async () 
       await close();
       app.commands.executeCommandById('abele:agents');
       const root=await until(()=>document.querySelector('.abele-agents'),'The agents list');
-      await until(()=>root.textContent.includes('Sample busy session'),'The busy session in the list',30000);
+      try{
+        await until(()=>root.textContent.includes('Sample busy session'),'The busy session in the list',30000);
+      }catch(error){
+        throw Error(String(error)+'; '+JSON.stringify({dialog:root.textContent,connection:nodes.connection(${JSON.stringify(node.registration)}).state.value,sessions:await client.listSessions(),busy:await client.sessionState(${JSON.stringify(busy)}),prompts:await client.prompts(${JSON.stringify(busy)},undefined,'pending')}));
+      }
       const sections=[...root.querySelectorAll('.abele-fold-heading__text')].map(e=>e.textContent.trim());
       const text=root.textContent;
       const path=${JSON.stringify(shots)}+'/agents-node-online-'+(app.isMobile?'phone':'desktop')+'.png';

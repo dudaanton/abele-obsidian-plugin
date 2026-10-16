@@ -1,5 +1,7 @@
 import 'fake-indexeddb/auto'
 import { ref } from 'vue'
+import { mount, flushPromises } from '@vue/test-utils'
+import AgentsListDialog from '@/components/AgentsListDialog.vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AgentsService } from '@/agents/AgentsService'
 import { ChatService } from '@/ai/ChatService'
@@ -60,6 +62,30 @@ afterEach(() => {
 })
 
 describe("a node's sessions in the agents list", () => {
+  it('refreshes a previously idle node when the real agents dialog opens', async () => {
+    useVault([])
+    let busy = false
+    fakeConnection({
+      listSessions: vi.fn(async (after?: string) => (after ? [] : [session('busy')])),
+      sessionState: vi.fn(async (id: string) => (busy ? working(id) : idle(id))),
+      prompts: vi.fn(async () => []),
+    })
+    const agents = AgentsService.getInstance()
+    agents.setNodes([NODE])
+    await agents.start()
+    await settle()
+    expect(agents.rows.value).toEqual([])
+    busy = true
+    const wrapper = mount(AgentsListDialog, { attachTo: document.body })
+    try {
+      await flushPromises()
+      expect(document.querySelector('.abele-agents')?.textContent).toContain('Sample busy')
+      expect(document.querySelector('.abele-agents')?.textContent).toContain('Working')
+    } finally {
+      wrapper.unmount()
+    }
+  })
+
   it('lists what a connected node is doing instead of calling it offline', async () => {
     useVault([])
     fakeConnection({
