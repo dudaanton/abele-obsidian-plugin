@@ -56,6 +56,8 @@ export class ShellModal extends Modal {
   /** Dialogs asked to close whose close has not finished yet: Obsidian animates it first. */
   private static closing = new Set<Promise<void>>()
   private finishClose: (() => void) | null = null
+  /** Open by this shell's own count: Obsidian's `isOpen` is not on every app it runs in. */
+  private shown = false
 
   /**
    * Resolves once every shell dialog that was closing has gone from the page. Code awaiting an
@@ -87,6 +89,7 @@ export class ShellModal extends Modal {
   }
 
   open(): void {
+    this.shown = true
     super.open()
     this.detachKeyboard?.()
     this.detachKeyboard = attachKeyboardRoom(this.bodyEl)
@@ -95,7 +98,7 @@ export class ShellModal extends Modal {
   close(): void {
     this.detachKeyboard?.()
     this.detachKeyboard = null
-    if ((this as { isOpen?: boolean }).isOpen && !this.finishClose) {
+    if (this.shown && !this.finishClose) {
       const done = new Promise<void>((resolve) => {
         // A close Obsidian never finishes must not hold every later answer.
         const timer = window.setTimeout(resolve, 5000)
@@ -111,6 +114,7 @@ export class ShellModal extends Modal {
   }
 
   onClose(): void {
+    this.shown = false
     super.onClose()
     this.finishClose?.()
     this.finishClose = null
