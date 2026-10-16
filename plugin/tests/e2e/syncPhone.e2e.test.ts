@@ -5,7 +5,7 @@ import { liveSuite, liveCase } from './helpers/syncLiveCases'
 import { exerciseTrustedWindow } from './helpers/syncTrustedConnection'
 import { sha256 } from '@abele/sync-core'
 import { syncProgressSamples } from './helpers/syncProgressSamples'
-import { syncProgressShotsPrelude } from './helpers/syncProgressShots'
+import { collectSyncProgressShots, syncProgressShotsPrelude } from './helpers/syncProgressShots'
 import { shotDir } from './helpers/shots'
 targets('phone')
 const fixture = liveSuite(false)
@@ -67,11 +67,7 @@ liveCase(
         `clearInterval(window.__phoneProgressTimer);delete window.__phoneProgressTimer;const samples=window.__phoneProgressSamples||[];delete window.__phoneProgressSamples;return samples`
       )
       console.log('[phone pull progress]', { elapsedMs: Date.now() - started, samples })
-      shots = await a.long(
-        'collect phone progress screenshots',
-        `const shots=window.__syncProgressShots;delete window.__syncProgressShots;return shots?await Promise.all(shots.pending):[]`
-      )
-      console.log('[phone progress screenshots]', shots)
+      shots = await collectSyncProgressShots(a, true)
     }
     const downloading = samples.filter(
       (sample) =>

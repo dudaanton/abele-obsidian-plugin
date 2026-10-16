@@ -4,7 +4,7 @@ import { liveCase, liveSuite } from './helpers/syncLiveCases'
 import { firstFolderFixture } from './helpers/syncFirstFolderFixture'
 import type { SyncDriver } from './helpers/syncDriver'
 import { syncProgressSamples } from './helpers/syncProgressSamples'
-import { syncProgressShotsPrelude } from './helpers/syncProgressShots'
+import { collectSyncProgressShots, syncProgressShotsPrelude } from './helpers/syncProgressShots'
 import { shotDir } from './helpers/shots'
 
 // CALIBRATE BEFORE LANDING: provisional, not a measured budget. Manager records the first
@@ -89,13 +89,7 @@ liveCase(
             samples,
           })
         )
-        console.log(
-          '[first folder screenshots]',
-          await b.long(
-            'collect first folder screenshots',
-            `const shots=window.__syncProgressShots;delete window.__syncProgressShots;return shots?await Promise.all(shots.pending):[]`
-          )
-        )
+        await collectSyncProgressShots(b)
       }
     }
     expect(elapsedMs).toBeLessThan(FIRST_FOLDER_PULL_LIMIT_MS)
