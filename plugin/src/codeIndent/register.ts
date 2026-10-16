@@ -16,7 +16,7 @@ interface GuideSettings {
   enabled: boolean
   tabSize: number
 }
-type Settings = () => GuideSettings
+type Settings = (() => GuideSettings) & { inspect?: (doc: Document) => unknown }
 export const refreshCodeGuides = StateEffect.define<null>()
 const measuredCodeGuides = StateEffect.define<DecorationSet>()
 const registry = () =>
@@ -78,7 +78,17 @@ export function codeGuideExtension(settings: Settings) {
       destroyed = false
       native: ReturnType<typeof nativeCodeLines> | undefined
       nativeDoc: EditorState['doc'] | undefined
+      document: Document
+      recomputations = 0
+      lastRecomputed: {
+        at: number
+        sequence: number
+        measured: boolean
+        enabled: boolean
+        gate: unknown
+      } | null = null
       constructor(view: EditorView) {
+        this.document = view.dom.ownerDocument
         this.draw(view)
         this.settle(view)
       }
@@ -137,8 +147,24 @@ export function codeGuideExtension(settings: Settings) {
       destroy() {
         this.destroyed = true
       }
+      guideDiagnostics() {
+        return {
+          currentGate: settings.inspect?.(this.document) ?? settings(),
+          internalEnabled: this.config ? (JSON.parse(this.config) as GuideSettings).enabled : null,
+          lastRecomputed: this.lastRecomputed,
+          decorationCount: this.decorations.size,
+          destroyed: this.destroyed,
+        }
+      }
       draw(view: EditorView, measured = false) {
         const config = settings()
+        this.lastRecomputed = {
+          at: Date.now(),
+          sequence: ++this.recomputations,
+          measured,
+          enabled: config.enabled,
+          gate: settings.inspect?.(this.document) ?? config,
+        }
         if (this.nativeDoc !== view.state.doc) this.native = undefined
         if (measured) {
           const next = nativeCodeLines(view, config.tabSize, (n) => kind(view.state, n))
@@ -264,6 +290,23 @@ export function codeGuideExtension(settings: Settings) {
 export function registerCodeIndentGuides(plugin: Plugin): void {
   const vault = plugin.app.vault as typeof plugin.app.vault & { getConfig(key: string): unknown }
   const documents = new Set<Document>()
+  const observers = new Map<Document, MutationObserver>()
+  const documentIds = new WeakMap<Document, number>()
+  let nextDocumentId = 0
+  const documentFacts = (doc: Document) => {
+    if (!documentIds.has(doc)) documentIds.set(doc, ++nextDocumentId)
+    return {
+      id: documentIds.get(doc),
+      mainDocument: doc === document,
+      mainWindow: doc.defaultView === window,
+      bodyGuideClass: doc.body.classList.contains('show-indentation-guide'),
+      mobile: doc.body.classList.contains('is-mobile'),
+      observed: observers.has(doc),
+      readingPaneGuideClasses: Array.from(doc.querySelectorAll('.markdown-rendered')).map((el) =>
+        el.classList.contains('show-indentation-guide')
+      ),
+    }
+  }
   const settings: Settings = () => {
     const size = Number(vault.getConfig('tabSize'))
     return {
@@ -274,6 +317,31 @@ export function registerCodeIndentGuides(plugin: Plugin): void {
       tabSize: Number.isInteger(size) && size > 0 ? size : 4,
     }
   }
+  const events: { at: number; reason: string; key?: string }[] = []
+  const record = (reason: string, key?: string) => {
+    events.push({ at: Date.now(), reason, key })
+    if (events.length > 20) events.shift()
+  }
+  settings.inspect = (doc) => {
+    const raw = vault.getConfig('showIndentGuide')
+    const observedDocuments = Array.from(documents, documentFacts)
+    return {
+      at: Date.now(),
+      rawConfig: raw === undefined ? '[undefined]' : raw,
+      rawConfigType: typeof raw,
+      editorDocument: documentFacts(doc),
+      observerDocuments: observedDocuments,
+      gateReturn: settings().enabled,
+      inputUsed: observedDocuments.some((d) => d.bodyGuideClass)
+        ? 'observed-body-class'
+        : 'vault-config-default-on',
+      events: [...events],
+    }
+  }
+  const diagnosticHost = plugin as Plugin & {
+    codeIndentGuideDiagnostics?: (doc: Document) => unknown
+  }
+  diagnosticHost.codeIndentGuideDiagnostics = settings.inspect
   const blocks = new Set<WeakRef<HTMLElement>>()
   const remembered = new WeakSet<HTMLElement>()
   const process = readingGuideProcessor(settings)
@@ -310,14 +378,17 @@ export function registerCodeIndentGuides(plugin: Plugin): void {
       process(code)
     }
   }
-  const observers = new Map<Document, MutationObserver>()
   const listen = (doc: Document) => {
     if (documents.has(doc)) return
     documents.add(doc)
     plugin.registerDomEvent(doc, 'copy', copyReadingGuides)
-    const observer = new doc.defaultView.MutationObserver(() => refresh())
+    const observer = new doc.defaultView.MutationObserver(() => {
+      record('body-class')
+      refresh()
+    })
     observer.observe(doc.body, { attributes: true, attributeFilter: ['class'] })
     observers.set(doc, observer)
+    record('observe-window')
     refresh(true)
   }
   listen(document)
@@ -332,6 +403,7 @@ export function registerCodeIndentGuides(plugin: Plugin): void {
   )
   plugin.register(() => {
     unloaded = true
+    delete diagnosticHost.codeIndentGuideDiagnostics
     for (const observer of observers.values()) observer.disconnect()
     observers.clear()
     documents.clear()
@@ -340,10 +412,19 @@ export function registerCodeIndentGuides(plugin: Plugin): void {
       if (code) clearReadingGuides(code)
     }
   })
-  plugin.app.workspace.onLayoutReady(() => refresh(true))
-  plugin.registerEvent(plugin.app.workspace.on('css-change', () => refresh(true)))
+  plugin.app.workspace.onLayoutReady(() => {
+    record('layout-ready')
+    refresh(true)
+  })
+  plugin.registerEvent(
+    plugin.app.workspace.on('css-change', () => {
+      record('css-change')
+      refresh(true)
+    })
+  )
   plugin.registerEvent(
     (vault as Events).on('config-changed', (key: string) => {
+      record('config-changed', key)
       if (key === 'showIndentGuide' || key === 'tabSize') refresh(true)
     })
   )

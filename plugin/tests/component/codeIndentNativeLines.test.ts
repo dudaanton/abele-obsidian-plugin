@@ -68,6 +68,11 @@ it('decorates native background/token lines after measurement without parser-nam
   }
   try {
     await flush()
+    expect(view.plugin(guides).guideDiagnostics()).toMatchObject({
+      internalEnabled: true,
+      decorationCount: 3,
+      lastRecomputed: { enabled: true, measured: true },
+    })
     const rows = () =>
       Array.from(view.contentDOM.querySelectorAll<HTMLElement>('.abele-code-guides'))
     expect(rows().map((row) => row.style.getPropertyValue('--abele-guide-depth'))).toEqual([
@@ -180,6 +185,19 @@ it('keeps the registered extension through vault setting changes and editor reco
     delete config.showIndentGuide
     configChanged('showIndentGuide')
     expect(view.contentDOM.querySelectorAll('.abele-code-guides')).toHaveLength(3)
+    expect(
+      view.plugin(registered as ReturnType<typeof codeGuideExtension>).guideDiagnostics()
+    ).toMatchObject({
+      internalEnabled: true,
+      currentGate: {
+        rawConfig: '[undefined]',
+        rawConfigType: 'undefined',
+        gateReturn: true,
+        inputUsed: 'vault-config-default-on',
+        editorDocument: { mainDocument: true, mobile: true, observed: true },
+        observerDocuments: [expect.objectContaining({ mainDocument: true, observed: true })],
+      },
+    })
     const dispatch = vi.spyOn(view, 'dispatch')
     const ready = host.app.workspace.onLayoutReady.mock.calls[0][0] as () => void
     ready()

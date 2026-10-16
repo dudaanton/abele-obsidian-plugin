@@ -42,6 +42,7 @@ describe.skipIf(!available)('code indentation guides', () => {
   let previous: unknown
   let created = false
   let config: { enabled: unknown; tabSize: unknown }
+  let readingFacts: unknown = null
   beforeAll(() => {
     previous = evalJson('app.workspace.getLayout()')
     config = evalJson(
@@ -94,7 +95,23 @@ describe.skipIf(!available)('code indentation guides', () => {
       await wait(1000)
       let text, selected, depths, caret = true, wraps = 0, painted = false, nativeInput = null
       let finalInside = true, finalOutside = true, hanging = true, height = []
-      let snapshot = null
+      let snapshot = null, clickDiagnostic = null, initialCheck = null
+      const gateSnapshot = (doc) => {
+        const raw = app.vault.getConfig('showIndentGuide')
+        return {
+          at: Date.now(), rawConfig: raw === undefined ? '[undefined]' : raw, rawConfigType: typeof raw,
+          bodyGuideClass: doc.body.classList.contains('show-indentation-guide'),
+          editorDocumentIsHarnessDocument: doc === document,
+          editorWindowIsHarnessWindow: doc.defaultView === window,
+          mobile: doc.body.classList.contains('is-mobile'),
+          registrations: Object.values(app.plugins.plugins).filter((p) => typeof p.codeIndentGuideDiagnostics === 'function').map((p) => p.codeIndentGuideDiagnostics(doc)),
+        }
+      }
+      const readingSnapshot = () => [...leaf.view.containerEl.querySelectorAll('pre > code')].map((code) => ({
+        gate: gateSnapshot(code.ownerDocument),
+        rows: code.querySelectorAll('.abele-code-line').length,
+        painted: [...code.querySelectorAll('.abele-code-line[style*="--abele-guide-depth"]')].map((row) => code.ownerDocument.defaultView.getComputedStyle(row, '::before').backgroundImage !== 'none'),
+      }))
       const unwrappedHeight = (code) => {
         const pre = code.parentElement
         const preStyle = pre.style.whiteSpace, codeStyle = code.style.whiteSpace
@@ -108,6 +125,7 @@ describe.skipIf(!available)('code indentation guides', () => {
         const from = cm.state.doc.toString().indexOf('    print(')
         const line = [...cm.contentDOM.querySelectorAll('.cm-line')].find((el) => el.textContent.includes('print('))
         const guide = line && getComputedStyle(line, '::before')
+        const instance = cm.plugins.find((p) => p.value && typeof p.value.guideDiagnostics === 'function')?.value
         const first = cm.coordsAtPos(from + 4)
         let wrapped = null
         for (let p = from + 5; first && p < cm.state.doc.lineAt(from).to; p++) {
@@ -128,6 +146,11 @@ describe.skipIf(!available)('code indentation guides', () => {
           enabled: app.vault.getConfig('showIndentGuide'),
           tabSize: app.vault.getConfig('tabSize'),
           pluginPresent: cm.plugins.some((p) => p.value && typeof p.value.settle === 'function' && 'nativeDoc' in p.value),
+          gate: gateSnapshot(cm.dom.ownerDocument),
+          viewPlugin: instance ? instance.guideDiagnostics() : null,
+          readingNow: readingSnapshot(),
+          readingBaseline: ${JSON.stringify(readingFacts)},
+          clickDiagnostic,
         }
       }
       if (${JSON.stringify(mode)} === 'preview') {
@@ -149,6 +172,7 @@ describe.skipIf(!available)('code indentation guides', () => {
         // Hold wrapping constant to isolate added terminal-line height from the
         // extra visual rows that a hanging indent can require on a narrow screen.
         height.push(unwrappedHeight(code))
+        initialCheck = readingSnapshot()
       } else {
         const cm = leaf.view.editor.cm
         const from = cm.state.doc.toString().indexOf('    print(')
@@ -162,6 +186,7 @@ describe.skipIf(!available)('code indentation guides', () => {
           const line = getComputedStyle(r), guide = getComputedStyle(r, '::before')
           return guide.content !== 'none' && guide.backgroundImage !== 'none' && parseFloat(guide.width) > 0 && parseFloat(line.textIndent) < 0
         })
+        initialCheck = editorSnapshot()
         // Keep at least two wrapped rows on screen, including when a mobile keyboard
         // has shortened the viewport. Only on-screen coordinates can model a click.
         const first = cm.coordsAtPos(from + 8)
@@ -207,9 +232,18 @@ describe.skipIf(!available)('code indentation guides', () => {
           const nativeUp = Math.abs(cm.state.selection.main.head - (from + 8)) <= 1
           if (!target) throw new Error('No wrapped row available for a native click')
           const point = { x: Math.round(target.x), y: Math.round(target.y), button: 'left', clickCount: 1 }
+          const expectedBox = cm.coordsAtPos(target.pos)
+          const predictedPosition = cm.posAtCoords(point)
           contents.sendInputEvent({ type: 'mouseDown', ...point })
           contents.sendInputEvent({ type: 'mouseUp', ...point })
           await wait(100)
+          clickDiagnostic = {
+            expectedPosition: target.pos, actualPosition: cm.state.selection.main.head,
+            delta: cm.state.selection.main.head - target.pos,
+            point, predictedPosition, expectedBox,
+            editorDocumentIsHarnessDocument: cm.dom.ownerDocument === document,
+            editorDocumentFocused: cm.dom.ownerDocument.hasFocus(),
+          }
           nativeInput = { down: nativeDown, up: nativeUp, click: Math.abs(cm.state.selection.main.head - target.pos) <= 1 }
         }
         cm.dispatch({ selection: { anchor: 0, head: cm.state.doc.length } })
@@ -231,16 +265,17 @@ describe.skipIf(!available)('code indentation guides', () => {
         hanging = final.hanging
       }
       await settle()
+      if (${JSON.stringify(mode)} === 'preview') snapshot = { readingNow: readingSnapshot(), readingBaseline: ${JSON.stringify(readingFacts)} }
       if (${JSON.stringify(mode)} === 'source') {
         const final = editorSnapshot()
-        snapshot = final
+        snapshot = { ...final, initialCheck }
         finalInside = finalInside && final.inside && final.painted
         hanging = hanging && final.hanging
       }
       const shot = await shoot(${JSON.stringify(label)})
       if (${JSON.stringify(mode)} === 'source') {
         const final = editorSnapshot()
-        snapshot = final
+        snapshot = { ...final, initialCheck }
         finalInside = finalInside && final.inside && final.painted
         hanging = hanging && final.hanging
       }
@@ -253,6 +288,8 @@ describe.skipIf(!available)('code indentation guides', () => {
       await shoot(${JSON.stringify(label + '-off')})
       return { text, selected, depths, off, caret, wraps, painted, nativeInput, shot, finalInside, finalOutside, hanging, height, width: innerWidth, snapshot }
     })()`)
+      console.log('Code guide diagnostics', JSON.stringify(result.snapshot))
+      if (mode === 'preview') readingFacts = result.snapshot
       expect(result.text).toBe(mode === 'preview' ? CODE : CONTENT)
       expect(result.selected).toBe(result.text)
       expect(result.depths, JSON.stringify(result.snapshot)).toEqual(
@@ -260,7 +297,7 @@ describe.skipIf(!available)('code indentation guides', () => {
       )
       expect(result.off).toBe(true)
       expect(result.caret).toBe(true)
-      expect(result.painted).toBe(true)
+      expect(result.painted, JSON.stringify(result.snapshot)).toBe(true)
       expect(result.finalInside, JSON.stringify(result.snapshot)).toBe(true)
       expect(result.finalOutside).toBe(true)
       expect(result.hanging, JSON.stringify(result.snapshot)).toBe(true)
@@ -269,7 +306,12 @@ describe.skipIf(!available)('code indentation guides', () => {
       if (label.startsWith('phone-')) expect(result.width).toBe(390)
       if (mode === 'source') {
         expect(result.wraps).toBeGreaterThanOrEqual(2)
-        if (!onPhone()) expect(result.nativeInput).toEqual({ down: true, up: true, click: true })
+        if (!onPhone())
+          expect(result.nativeInput, JSON.stringify(result.snapshot)).toEqual({
+            down: true,
+            up: true,
+            click: true,
+          })
       }
       expect(result.shot).toBeTruthy()
     })
