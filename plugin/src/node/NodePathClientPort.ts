@@ -1,4 +1,5 @@
 import type { NodeClient } from '@abele/node-client'
+import { sessionActivity } from './sessionActivity'
 import { ChannelError } from '@abele/channel-protocol'
 import { bindPathTarget } from './nodePathChat'
 import { supportsExpectedTarget } from './expectedTarget'
@@ -302,18 +303,11 @@ export class NodePathClientPort implements NodePathPort {
         await this.client.subscribe(session.session_id)
         this.subscribedSessions.add(session.session_id)
       }
-      const running = await this.client.store.transaction((state) => {
-        const runs = new Set<string>()
-        for (const event of state.events[session.session_id] ?? []) {
-          const data = record(event.data)
-          if (typeof data.run_id !== 'string') continue
-          if (event.type === 'run.started') runs.add(data.run_id)
-          else if (['run.completed', 'run.failed', 'run.interrupted'].includes(event.type))
-            runs.delete(data.run_id)
-        }
-        return runs.size > 0
-      })
-      bound.push({ session, target, running })
+      // Runs and a long-lived session's turns alike, and a question waiting for the owner.
+      const activity = await this.client.store.transaction((state) =>
+        sessionActivity(state.events[session.session_id] ?? [])
+      )
+      bound.push({ session, target, running: activity.running, activity })
     }
     return { folders, targets, capabilities: this.capabilities, sessions: bound }
   }
@@ -360,7 +354,10 @@ export class NodePathClientPort implements NodePathPort {
     const own = this.worktrees.get(target.id)?.branch ?? null
     const name = own ? branchName(own) : null
     const [divergence, refs] = await Promise.all([
-      this.client.nodePath.divergence({ worktree_id: target.id, ...(base ? { base_ref: base } : {}) }),
+      this.client.nodePath.divergence({
+        worktree_id: target.id,
+        ...(base ? { base_ref: base } : {}),
+      }),
       pathPages((cursor) => this.client.repository.refs({ worktree_id: target.id, cursor })),
     ])
     const remotes = name
@@ -415,7 +412,8 @@ export class NodePathClientPort implements NodePathPort {
             ...(pr ? { pr } : {}),
             ...(info.upstream ? { upstream: shortRef(info.upstream.ref) } : {}),
             unpushed: info.upstream?.ahead ?? 0,
-            ...(info.operation && (info.operation.kind === 'rebase' || info.operation.kind === 'merge')
+            ...(info.operation &&
+            (info.operation.kind === 'rebase' || info.operation.kind === 'merge')
               ? {
                   stopped: {
                     kind: info.operation.kind,

@@ -2457,6 +2457,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
       'Changes: 3 files',
       'History',
       'Pull requests: none open',
+      'Sessions: 1',
     ])
     const menu = report['node panel place menu'] as Screen & { items?: string[] }
     expect(menu?.items).toEqual(

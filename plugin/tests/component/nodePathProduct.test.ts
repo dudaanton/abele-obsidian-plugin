@@ -86,6 +86,7 @@ describe('product node sidebar', () => {
       'Changes: 1 file',
       'History',
       'Pull requests: none open',
+      'Sessions: 0',
     ])
     await modes[2].trigger('click')
     expect(model.panelMode.value).toBe('history')

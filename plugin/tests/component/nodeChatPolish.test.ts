@@ -35,7 +35,7 @@ const presenter = () => ({
   interrupt: vi.fn(),
   openResource: vi.fn(),
 })
-it('keeps secondary session actions in the menu and interrupts through one icon in the header', async () => {
+it('keeps secondary session actions in the menu and interrupts through Stop in the composer', async () => {
   useVault([])
   const p = presenter(),
     show = vi.spyOn(Menu.prototype, 'showAtPosition')
@@ -47,7 +47,11 @@ it('keeps secondary session actions in the menu and interrupts through one icon 
     expect(wrapper.text()).not.toContain('Steering and questions are not supported yet')
     expect(wrapper.findAll('.abele-ai-chat__header')).toHaveLength(1)
     expect(wrapper.find('.abele-node-chat__status').exists()).toBe(false)
-    await wrapper.get('[aria-label="Interrupt turn"]').trigger('click')
+    // Stop stands in the composer, as in a local chat; the header has no square of its own.
+    expect(wrapper.find('[aria-label="Interrupt turn"]').exists()).toBe(false)
+    const input = wrapper.findComponent({ name: 'AiChatInput' })
+    expect(input.props('isStreaming')).toBe(true)
+    input.vm.$emit('abort')
     expect(p.interrupt).toHaveBeenCalledWith('run')
     await wrapper.get('[aria-label="Node session menu"]').trigger('click')
     const menu = show.mock.contexts.at(-1) as Menu

@@ -152,6 +152,7 @@ export class NodeSidebarView extends ItemView {
                   )
                 )
             },
+            onOpenChat: openChat,
             onPickPlace: () => {
               if (model) pickNodePathPlace(model, openChat)
             },

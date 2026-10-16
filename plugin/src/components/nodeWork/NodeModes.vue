@@ -9,7 +9,10 @@
         v-for="m in shown"
         :key="m.id"
         class="abele-node-modes__mode"
-        :class="{ 'nav-action-button': header }"
+        :class="{
+          'nav-action-button': header,
+          'abele-node-modes__mode_waiting': 'waiting' in m && m.waiting,
+        }"
         role="tab"
         :icon="m.icon"
         :active="mode === m.id"
@@ -58,6 +61,9 @@ const props = defineProps<{
   pulls: boolean
   changes?: number
   openPulls?: number
+  /** The node's sessions at this place: how many, and how many wait for you. Unset, the panel
+   *  has no sessions mode. */
+  sessions?: { total: number; waiting: number }
   /** In the panel's header, as the file explorer's buttons: centred, its buttons' look. */
   header?: boolean
   /** The branch, tag or commit changes are counted against; empty is what git has saved. */
@@ -90,6 +96,17 @@ const shown = computed(() =>
         : 'Pull requests: none open',
       on: props.git && props.pulls,
       count: props.openPulls ?? 0,
+    },
+    {
+      id: 'sessions' as const,
+      icon: 'messages-square',
+      tooltip: props.sessions?.waiting
+        ? `Sessions: ${props.sessions.waiting} waiting for you of ${props.sessions.total}`
+        : `Sessions: ${props.sessions?.total ?? 0}`,
+      on: !!props.sessions,
+      // Only those waiting for you are counted, in orange: the rest are there when you look.
+      count: props.sessions?.waiting ?? 0,
+      waiting: !!props.sessions?.waiting,
     },
   ].filter((m) => m.on)
 )
@@ -128,6 +145,9 @@ watch(() => props.against, tip, { flush: 'post' })
 .abele-node-modes__mode {
   font-size: var(--font-ui-smaller);
   color: var(--text-muted);
+}
+.abele-node-modes__mode_waiting .abele-obsidian-icon__text {
+  color: var(--color-orange);
 }
 
 .abele-node-modes__against {

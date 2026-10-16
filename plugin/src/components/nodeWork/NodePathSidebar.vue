@@ -29,6 +29,7 @@
         :changes="changeCount"
         :open-pulls="pulls?.pulls.length ?? 0"
         :against="model.panelBase.value ? shortRef(model.panelBase.value) : undefined"
+        :sessions="{ total: sessions.length, waiting: waitingCount }"
         @compare="emit('compare')"
         @stop-compare="model.panelBase.value = ''"
       />
@@ -129,6 +130,14 @@
         @unstage-all="act(() => model!.unstage('all'))"
         @discard="(path) => emit('discard', path)"
       />
+      <!-- The node's sessions at this place, each opening its chat. -->
+      <SessionTree
+        v-else-if="mode === 'sessions'"
+        class="abele-node-sidebar__sessions"
+        :sessions="sessions"
+        :active="model.selectedChat.value || undefined"
+        @open="(id) => emit('open-chat', id)"
+      />
       <div v-else-if="mode === 'history'" class="abele-node-sidebar__history">
         <div v-if="history?.error.value" class="abele-node-sidebar__error" role="alert">
           {{ history.error.value }}
@@ -163,6 +172,8 @@ import NodePanel from './NodePanel.vue'
 import NodePlace from './NodePlace.vue'
 import NodeModes from './NodeModes.vue'
 import NodePullList from './NodePullList.vue'
+import SessionTree from '../nodeSession/SessionTree.vue'
+import type { ChildSession } from '@/node/sessionLive'
 import FileTree from './FileTree.vue'
 import HistoryView from './HistoryView.vue'
 import BranchCodes from './BranchCodes.vue'
@@ -203,10 +214,30 @@ const emit = defineEmits<{
   compare: []
   step: [id: BranchStep['id']]
   discard: [path: string]
+  'open-chat': [id: string]
 }>()
 const git = computed(() => props.model?.currentFolder.value?.git ?? false)
-/** A folder without git has its files only, whatever mode was last chosen. */
-const mode = computed(() => (git.value ? props.model?.panelMode.value : 'files'))
+/** A folder without git has its files and its sessions only, whatever mode was last chosen. */
+const mode = computed(() => {
+  const chosen = props.model?.panelMode.value
+  return git.value || chosen === 'sessions' ? chosen : 'files'
+})
+/** The sessions at this place as the tree draws them: the node does not say yet which one
+ *  started which, so they stand side by side. */
+const sessions = computed<ChildSession[]>(() =>
+  (props.model?.currentCopy.value?.chats ?? props.model?.currentFolder.value?.chats ?? []).map(
+    (chat) => ({
+      id: chat.id,
+      title: chat.title,
+      agent: '',
+      kind: 'chat',
+      state: chat.waiting ? 'waiting' : chat.failed ? 'failed' : chat.running ? 'running' : 'done',
+      started: chat.since ?? 0,
+      ...(chat.bypass ? { mode: 'bypass' as const } : {}),
+    })
+  )
+)
+const waitingCount = computed(() => sessions.value.filter((s) => s.state === 'waiting').length)
 const changeCount = computed(
   () => new Set((props.model?.changes.value ?? []).map((c) => c.path)).size
 )
@@ -328,6 +359,7 @@ watch(
   padding-top: var(--size-4-2);
 }
 .abele-node-sidebar__history,
+.abele-node-sidebar__sessions,
 .abele-node-sidebar .abele-node-pulls {
   flex: 1;
   min-height: 0;

@@ -187,3 +187,22 @@ describe('chatBlocks', () => {
     ).toBe('Read · Started')
   })
 })
+
+describe('the node panel sessions mode', () => {
+  it('stands fifth, counting only the sessions that wait for you, in orange', async () => {
+    const { default: NodeModes } = await import('@/components/nodeWork/NodeModes.vue')
+    const view = mount(NodeModes, {
+      props: { mode: 'files', git: true, pulls: true, sessions: { total: 4, waiting: 2 } },
+    })
+    const tabs = view.findAll('[role="tab"]')
+    expect(tabs).toHaveLength(5)
+    expect(tabs[4].classes()).toContain('abele-node-modes__mode_waiting')
+    expect(tabs[4].text()).toBe('2')
+    const none = mount(NodeModes, {
+      props: { mode: 'files', git: false, pulls: false, sessions: { total: 1, waiting: 0 } },
+    })
+    expect(none.findAll('[role="tab"]').at(-1)!.classes()).not.toContain(
+      'abele-node-modes__mode_waiting'
+    )
+  })
+})

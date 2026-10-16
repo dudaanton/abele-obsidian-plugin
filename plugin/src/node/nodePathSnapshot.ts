@@ -9,6 +9,10 @@ const chat = z
     when: text,
     running: z.boolean().optional(),
     unseen: z.boolean().optional(),
+    waiting: z.boolean().optional(),
+    failed: z.boolean().optional(),
+    bypass: z.boolean().optional(),
+    since: z.number().optional(),
   })
   .strict()
 const copy = z
@@ -83,7 +87,7 @@ export const NodePathSnapshotSchema = z
     registrationId: id,
     receivedAt: z.string().datetime(),
     selected: text,
-    panelMode: z.enum(['files', 'changes', 'history', 'pulls']).optional(),
+    panelMode: z.enum(['files', 'changes', 'history', 'pulls', 'sessions']).optional(),
     folders: z.array(folder).max(256),
     targets: z.array(target).max(1024),
     inspection: z

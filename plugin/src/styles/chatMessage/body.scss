@@ -305,3 +305,22 @@ body.is-phone
   color: var(--text-muted);
   transition: color 0.2s ease;
 }
+
+// Who of the node's other sessions wrote this, a quiet line over its words that opens its chat.
+.abele-chat-msg__from {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2-2);
+  margin-bottom: var(--size-2-2);
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+  text-decoration: none;
+
+  .abele-obsidian-icon {
+    padding: 0;
+  }
+
+  &:hover {
+    color: var(--text-normal);
+  }
+}

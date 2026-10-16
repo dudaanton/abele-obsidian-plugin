@@ -8,6 +8,7 @@
       :resource-opener="openResource"
       @reply="emit('reply', $event)"
       @show-reply="emit('show-reply', $event)"
+      @open-session="emit('open-session', $event)"
     >
       <template #tool-note
         ><span v-if="message.content" class="abele-node-message-note" :title="message.content">{{
@@ -66,6 +67,7 @@
         @cancel="emit('cancel', $event)"
         @retry="emit('retry', $event)"
         @show-reply="emit('show-reply', $event)"
+        @open-session="emit('open-session', $event)"
       />
       <pre v-else>{{ JSON.stringify(children[message.id], null, 2) }}</pre>
     </details>
@@ -95,6 +97,8 @@ const emit = defineEmits<{
   (e: 'retry', messageId: string): void
   (e: 'reply', to: ChatReplyTo): void
   (e: 'show-reply', to: ChatReplyTo): void
+  /** Another session on the node, named by a message, opened in its own chat. */
+  (e: 'open-session', sessionId: string): void
 }>()
 </script>
 <style lang="scss">

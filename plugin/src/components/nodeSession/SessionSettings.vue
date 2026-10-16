@@ -71,7 +71,8 @@ const paint = () => {
 onMounted(paint)
 watch([() => settings.value.mode, facts], paint, { flush: 'post' })
 
-function open(event: MouseEvent): void {
+/** Opened by a press, or by «/model» and its kin, over the control either way. */
+function open(event?: MouseEvent): void {
   const menu = new Menu()
   const { choices } = props.live
   menu.addItem((i) =>
@@ -124,10 +125,11 @@ function open(event: MouseEvent): void {
     )
   }
   // Over the control that opened it, as from a keyboard as from a press.
-  const at = (event.currentTarget as HTMLElement | null)?.getBoundingClientRect()
+  const at = el.value?.getBoundingClientRect()
   if (at) menu.showAtPosition({ x: at.left, y: at.top })
-  else menu.showAtMouseEvent(event)
+  else if (event) menu.showAtMouseEvent(event)
 }
+defineExpose({ open })
 </script>
 
 <style lang="scss">

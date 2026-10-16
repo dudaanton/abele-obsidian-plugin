@@ -12,13 +12,14 @@
  * - `open(place)` — the panel in the left sidebar (the drawer on a phone) on `feature` (a worktree
  *   with changes, ahead of and behind its base), `root` (the repository's own folder) or `notes`
  *   (a folder without git); resolves to the panel's root element once its place and modes are shown;
- * - `root()`, `select(place)`, `mode('Files' | 'Changes' | 'History' | 'Pull requests')`;
+ * - `root()`, `select(place)`, `mode('Files' | 'Changes' | 'History' | 'Pull requests' | 'Sessions')`;
  * - `menu()` — the place's `…` menu, built; `items(menu)` its titles; `places()` the place search;
  *   `newChat()` the agent choice `New chat here` opens; `dismiss()` closes a menu or prompt;
  * - `close()` — removes the panel, the registration and the connection.
  * - `variant` — set before `open` for the states a picture needs: `{ git }` (the node offers git
  *   writes), `{ staged: false }` (nothing staged), `{ conflict }` (a rebase stopped on a file),
- *   `{ many: n }` (n more changed files), `{ empty }` (no folder opened yet), `{ offline }`.
+ *   `{ many: n }` (n more changed files), `{ empty }` (no folder opened yet), `{ offline }`,
+ *   `{ waiting }` (the layout chat waits for the owner's answer).
  */
 export const NODE_PANEL = {
   node: 'Sample node',
@@ -83,7 +84,7 @@ const nodePanel = (() => {
       ],
     }),
     listProjects: async (after) => (after ? [] : projects()),
-    listSessions: async (after) => (after ? [] : sessions),
+    listSessions: async (after) => (after ? [] : sessions.map((s) => (variant.waiting && s.session_id === 'sample-layout-chat' ? { ...s, settings: { permission_mode: 'bypassPermissions' } } : s))),
     listWorkspaces: async (project, after) =>
       after || project !== ids.folder ? [] : [{ workspace_id: ids.notes, project_id: ids.folder, path: allProjects[1].root_path, kind: 'root', state: 'ready', created_at: at }],
     listFiles: async (_id, path) => ({ entries: path ? [] : [{ name: 'sample-note.md', path: 'sample-note.md', kind: 'file' }, { name: 'drafts', path: 'drafts', kind: 'directory' }], next: null }),
@@ -94,7 +95,11 @@ const nodePanel = (() => {
     },
     onEvent: () => () => {},
     subscribe: async () => ({}),
-    store: { transaction: async (fn) => fn({ events: {}, results: {} }) },
+    // \`{ waiting }\`: the layout chat asks the owner a question, its journal says so.
+    store: { transaction: async (fn) => fn({ events: variant.waiting ? { 'sample-layout-chat': [
+      { kind: 'event', node_id: 'sample-panel-node', stream_id: 'sample-layout-chat', seq: 1, type: 'turn.started', data: { run_id: 'sample-process', turn_id: 't', trigger: 'input' }, actor: { kind: 'node' }, at },
+      { kind: 'event', node_id: 'sample-panel-node', stream_id: 'sample-layout-chat', seq: 2, type: 'prompt.requested', data: { prompt_id: 'sample-question', run_id: 'sample-process', state: 'pending' }, actor: { kind: 'node' }, at },
+    ] } : {}, results: {} }) },
     nodePath: {
       divergence: async ({ worktree_id, base_ref }) =>
         worktree_id === ids.feature
@@ -217,6 +222,7 @@ const nodePanel = (() => {
     Changes: (panel) => panel.querySelector('.abele-file-tree__group'),
     History: (panel) => panel.querySelector('.abele-node-sidebar__history .abele-history__row-subject'),
     'Pull requests': (panel) => panel.querySelector('.abele-node-pulls'),
+    Sessions: (panel) => panel.querySelector('.abele-node-sidebar__sessions .abele-session-row'),
   }
   return {
     names,

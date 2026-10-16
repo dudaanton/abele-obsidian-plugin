@@ -16,6 +16,7 @@
       ref="slash"
       :query="slashQuery"
       :text-only="textOnly"
+      :extra="slashExtra"
       @choose="onSlash"
     />
     <!-- One frame, as Obsidian's own field: what goes with the message on top, the words, and
@@ -104,6 +105,8 @@
             class="abele-chat-input__scope"
             @click="emit('openScope')"
           />
+          <!-- How a node session runs: its mode, model and context, from the chat. -->
+          <slot name="settings" />
         </div>
         <!-- How it is sent: the room, the voice, and sending last. -->
         <div class="abele-chat-input__toolbar-right">
@@ -226,6 +229,8 @@ const props = defineProps<{
   isBusy: boolean
   /** Node sessions accept text only and do not resolve vault skills or attachments. */
   textOnly?: boolean
+  /** A node session's own commands and skills, offered after «/» instead of the chat's. */
+  slashExtra?: SlashItem[]
   /** Captured conversation lifetime, not merely the tab that displays it. */
   attachmentOwner?: ConversationOwner
   /** A session-owned object: neither mounting nor replacing an editor changes its lifetime. */

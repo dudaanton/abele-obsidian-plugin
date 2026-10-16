@@ -15,26 +15,18 @@
         "
         @choose="emit('choose-worktree')"
       />
+      <!-- A session another one started: the way back to it, at the line's end. -->
+      <ParentLink
+        v-if="live?.parent"
+        :title="live.parent.title"
+        @open="live.open(live.parent.id)"
+      />
       <div class="abele-ai-chat__header-actions">
         <AgentsButton />
         <span class="abele-node-chat__indicator" role="status" :title="status" :aria-label="status">
           <Icon :icon="statusIcon" no-hover />
           <span class="abele-node-chat__status-label">{{ status }}</span>
         </span>
-        <Icon
-          v-for="runId in presenter.projection.value.activeRuns"
-          :key="runId"
-          icon="square"
-          with-bg
-          role="button"
-          tabindex="0"
-          aria-label="Interrupt turn"
-          tooltip="Interrupt turn"
-          :disabled="offline"
-          @click="presenter.interrupt(runId)"
-          @keydown.enter.prevent="!offline && presenter.interrupt(runId)"
-          @keydown.space.prevent="!offline && presenter.interrupt(runId)"
-        />
         <Icon
           v-if="presenter.workspaceId?.value"
           icon="folder-open"
@@ -101,6 +93,7 @@
           @retry="retry"
           @reply="(to) => chatInput?.quote(to)"
           @show-reply="showReply"
+          @open-session="(id) => presenter.openSession?.(id)"
         >
           <template #after-message="{ message }">
             <NodeDebugActions
@@ -180,6 +173,13 @@
       role="status"
       :facts="[{ key: '0', value: presenter.draftNotice.value }]"
     />
+    <!-- What a long-lived session keeps going between its answers, over the composer. -->
+    <BackgroundTasks
+      v-if="live && !expanded"
+      :tasks="live.background"
+      :sessions="live.children"
+      @open="(id) => live?.open(id)"
+    />
     <AiChatInput
       ref="chatInput"
       :key="presenter.id"
@@ -187,15 +187,67 @@
       :conversation-draft="presenter.draft.value"
       send-clearing="owner"
       :send-label="presenter.draftNotice?.value ? 'Send again' : 'Send'"
-      :is-streaming="false"
+      :is-streaming="working"
       :is-busy="sending"
       :text-only="true"
+      :slash-extra="slashItems"
       :can-continue="false"
       token-display=""
       scope-label=""
       @send="send"
+      @abort="stopTurn"
+      @command="onCommand"
       @show-reply="showReply"
       @focus="onInputFocus"
+    >
+      <template v-if="live" #settings>
+        <SessionSettings
+          ref="settingsControl"
+          :live="live"
+          :busy="working"
+          @compact="compactOpen = true"
+        />
+      </template>
+    </AiChatInput>
+    <CompactModal
+      v-if="compactOpen && live"
+      :context="live.context"
+      :focus="compactFocus"
+      :continuation="presenter.control?.state.value?.settings.continuation_text"
+      :continues="presenter.control?.state.value?.settings.continue_after_compaction"
+      @close="compactOpen = false"
+      @compact="
+        (focus, then) => {
+          compactOpen = false
+          live?.compact(focus, then)
+        }
+      "
+    />
+    <RenameModal
+      v-if="renameOpen"
+      :title="presenter.label.value"
+      @close="renameOpen = false"
+      @rename="
+        (title) => {
+          renameOpen = false
+          live ? live.rename(title) : void presenter.control?.rename(title)
+        }
+      "
+    />
+    <ConfirmModal
+      v-if="stopOpen && live"
+      title="Stop the session?"
+      :message="stopSaid"
+      confirm-text="Stop"
+      confirm-tooltip="Stop the answer, what runs in the background and the session's process"
+      cancel-tooltip="Keep the session running"
+      @close="stopOpen = false"
+      @confirm="
+        () => {
+          stopOpen = false
+          live?.stop()
+        }
+      "
     />
   </div>
 </template>
@@ -222,6 +274,13 @@ import NodeDebugActions from '@/debugger/NodeDebugActions.vue'
 import { attachNodeProgram, openNodeDebugger, startNodeProgram } from '@/debugger/register'
 import { useChatKeyboardGap } from '@/composables/useChatKeyboardGap'
 import WorktreeChip from './nodeWork/WorktreeChip.vue'
+import BackgroundTasks from './nodeSession/BackgroundTasks.vue'
+import SessionSettings from './nodeSession/SessionSettings.vue'
+import CompactModal from './nodeSession/CompactModal.vue'
+import RenameModal from './nodeSession/RenameModal.vue'
+import ParentLink from './nodeSession/ParentLink.vue'
+import ConfirmModal from './obsidian/ConfirmModal.vue'
+import type { SlashItem } from './ChatSlashSuggest.vue'
 import WorktreeSwitchLine from './nodeWork/WorktreeSwitchLine.vue'
 import { nodeChatSegments, type NodeChatSwitch } from '@/node/nodePathChat'
 import type { PathTarget } from '@/node/NodePathModel'
@@ -296,6 +355,50 @@ const statusIcon = computed(() =>
     : icons[props.presenter.state.value]
 )
 const offline = computed(() => props.presenter.connection.state.value !== 'connected')
+/** A long-lived session: how it runs, what it keeps running; null for any other. */
+const live = computed(() => props.presenter.live?.value ?? null)
+/** Something runs now that Stop ends: an answer, a turn the session woke for, a compaction. */
+const working = computed(
+  () => !!props.presenter.projection.value.activeRuns?.length || !!live.value?.compacting
+)
+const stopTurn = () => {
+  if (offline.value) return
+  for (const run of props.presenter.projection.value.activeRuns ?? [])
+    void props.presenter.interrupt(run)
+}
+const compactOpen = ref(false),
+  compactFocus = ref(''),
+  renameOpen = ref(false),
+  stopOpen = ref(false)
+const settingsControl = ref<{ open: (event?: MouseEvent) => void } | null>(null)
+/** After «/»: the session's own commands, then the skills it has. */
+const slashItems = computed<SlashItem[] | undefined>(() =>
+  live.value?.commands.map((c) => ({
+    kind: c.kind,
+    name: c.name,
+    title: `/${c.name}`,
+    description: c.description,
+  }))
+)
+/** What stopping the session ends, named. */
+const stopSaid = computed(() => {
+  const n = live.value?.background.length ?? 0
+  const tasks = n ? `, ${n === 1 ? 'the task' : `${n} tasks`} running in the background` : ''
+  return `This stops the answer${tasks} and the session's process. The conversation stays; your next message starts the session again.`
+})
+/** A session command chosen after «/», or typed with its words. */
+const onCommand = (command: string) => {
+  const [name, ...rest] = command.slice(1).split(/\s+/)
+  const words = rest.join(' ').trim()
+  if (name === 'compact') {
+    compactFocus.value = words
+    compactOpen.value = true
+  } else if (name === 'rename') {
+    if (words) live.value?.rename(words)
+    else renameOpen.value = true
+  } else if (name === 'stop') stopOpen.value = true
+  else if (['model', 'effort', 'mode'].includes(name)) settingsControl.value?.open()
+}
 const presentation = computed(
   () =>
     props.presenter.presentation?.value ??
@@ -374,9 +477,22 @@ const openMenu = (event: MouseEvent | KeyboardEvent) => {
           void attachNodeProgram(props.presenter)
         })
     )
+  menu.addItem((i) => i.setTitle('Folders and worktrees').setIcon('server').onClick(workspaces))
   menu.addItem((i) =>
-    i.setTitle('Folders and worktrees').setIcon('server').onClick(workspaces)
+    i
+      .setTitle('Rename…')
+      .setIcon('pencil')
+      .onClick(() => (renameOpen.value = true))
   )
+  if (live.value)
+    menu.addItem((i) =>
+      i
+        .setTitle('Stop the session…')
+        .setIcon('octagon-x')
+        .setWarning(true)
+        .setSection('danger')
+        .onClick(() => (stopOpen.value = true))
+    )
   menu.addItem((i) =>
     i
       .setTitle('Reconnect')
@@ -449,6 +565,11 @@ const openMenu = (event: MouseEvent | KeyboardEvent) => {
   menu.showAtPosition({ x: rect.left, y: rect.bottom })
 }
 const send = async (text: string, _files: string[] = [], replyTo?: ChatReplyTo[]) => {
+  if (live.value && /^\/(rename|stop|model|effort|mode)(\s|$)/.test(text.trim())) {
+    onCommand(text.trim())
+    props.presenter.draft.value.text = ''
+    return
+  }
   sending.value = true
   // The places replied to go as links over the words; the field's text held them as markers.
   const reply = replyTo?.length ? { replyTo, draft: props.presenter.draft.value.text } : undefined

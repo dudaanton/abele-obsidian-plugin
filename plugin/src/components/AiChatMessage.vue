@@ -5,7 +5,7 @@
       `abele-chat-msg_${message.role}`,
       {
         'abele-chat-msg--draft': message.draft,
-        'abele-chat-msg_line': ownLine(message),
+        'abele-chat-msg_line': ownLine(message) || !!message.sessionMark,
         'abele-chat-msg_checking': !!message.answerCheck,
       },
     ]"
@@ -15,7 +15,12 @@
          question or an answer has no glyph column: who speaks is plain from the bubble, and its
          actions are in the line under it. -->
     <button
-      v-if="message.role !== 'user' && message.role !== 'assistant' && !ownLine(message)"
+      v-if="
+        message.role !== 'user' &&
+        message.role !== 'assistant' &&
+        !ownLine(message) &&
+        !message.sessionMark
+      "
       type="button"
       class="clickable-icon abele-chat-msg__icon"
       aria-label="Message actions and details"
@@ -57,6 +62,20 @@
         :streaming="thinkingStreaming"
         :resource-opener="resourceOpener"
       />
+
+      <!-- Another session on the node wrote this: who, quietly over its words, opening its chat. -->
+      <a
+        v-if="message.fromSession"
+        href="#"
+        class="abele-chat-msg__from"
+        :aria-label="`Open ${message.fromSession.title || 'the session that wrote this'}`"
+        @click.prevent="emit('open-session', message.fromSession.id)"
+        ><Icon icon="bot" size="xs" :interactive="false" />{{
+          [message.fromSession.agent, message.fromSession.title || 'Another session']
+            .filter(Boolean)
+            .join(' · ')
+        }}</a
+      >
 
       <!-- Tool call — compact one-liner + inline diff -->
       <template v-if="message.role === 'tool-call'">
@@ -220,7 +239,13 @@
 
       <!-- System messages: compact summary (long) or short label (model change, skill, etc.) -->
       <template v-else-if="message.role === 'system'">
-        <template v-if="message.content.length > 100">
+        <!-- A node session's own line: compacted, compacting, woken by what it left running. -->
+        <SessionMarkLine
+          v-if="message.sessionMark"
+          :mark="message.sessionMark"
+          :summary="message.content || undefined"
+        />
+        <template v-else-if="message.content.length > 100">
           <span class="abele-chat-msg__compact-label">── Conversation compacted ──</span>
           <div v-if="expanded" class="abele-chat-msg__compact-summary">
             <Markdown
@@ -417,6 +442,7 @@ import type { ReplyProposal } from '@/ai/replyAnnotations'
 import AbeleMap from './AbeleMap.vue'
 import Diff from './Diff.vue'
 import AiSubAgentRun from './AiSubAgentRun.vue'
+import SessionMarkLine from './nodeSession/SessionMarkLine.vue'
 import GalleryViewer from './GalleryViewer.vue'
 import { getAttachmentIcon, fileName as attachmentName } from '@/ai/attachments'
 import { ChatService } from '@/ai/ChatService'
@@ -498,6 +524,8 @@ const emit = defineEmits<{
   (e: 'node-access', refusal: Refusal, named?: NodeScopeEntry[]): void
   /** Take back file changes: everything from this message on, or this turn's alone. */
   (e: 'rewind', messageId: string, mode: 'since' | 'turn'): void
+  /** Open another session on the node, one that wrote to this one, in its own chat. */
+  (e: 'open-session', sessionId: string): void
   (e: 'highlight', messageId: string, quote: string, start: number, color: HighlightColor): void
   (e: 'remove-highlight', messageId: string, highlightId: string): void
   (e: 'recolor-highlight', messageId: string, highlightId: string, color: HighlightColor): void

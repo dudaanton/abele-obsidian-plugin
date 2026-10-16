@@ -278,7 +278,7 @@ attention**. After connecting once, messages sent offline are kept on this devic
 with the same operation identity on reconnect. Unknown acceptance stays queued rather than
 silently being resent as a new message. Queue state appears on the message itself, changing
 from device-queued to node-queued using receipt identity rather than matching text. The small
-**×** beside a node-queued message cancels it. **Interrupt turn** in the header targets the
+**×** beside a node-queued message cancels it. **Stop** (the square in the message field) targets the
 active run, not a later resumed run. Steering is not supported. Provider-issued permission,
 confirm and trust requests have exact one-time approve/deny actions; select/input questions show
 the supplied options or a text field (up to 32,768 characters). Deny cancels the question. Answers
@@ -315,6 +315,34 @@ hover or expand a path to read it in full. Removal and detachment live in **Deta
 apart from creation and refresh, with confirmation. **Unregister project** retains the original
 checkout and requires removing its managed workspaces first. Git initialization, merging,
 pushing, editing files and automatic repair of jobs needing attention are not offered here.
+
+### Long-lived sessions
+
+A Claude Code chat on a node that keeps one process for the whole session shows how it runs at
+the foot of the message field: a glyph for its permission mode (a red crossed shield when it asks
+about nothing), the model's family, and how much of the context is taken. More than 80% turns the
+share orange, more than 95% red. Pressing it opens one menu: **Compact the context…** first, then
+the model, the effort, the subscription and the permission mode. Bypass can be chosen only when
+the node was started to allow it. A change made while it answers applies from the next message.
+
+The square in the message field stops what runs now, an answer, a turn the session started by
+itself or a compaction, and keeps the session. **Stop the session…** in **⋯** also stops what it
+runs in the background and its process; the conversation stays and the next message starts it
+again. **Rename…** in **⋯** or `/rename` with the new name renames it everywhere.
+
+Over the field a line says how many tasks it keeps running in the background; it opens to the
+list. When one ends, a quiet line says what woke the session, and it answers by itself.
+Compacting draws a line across the conversation; pressed, a finished one shows the retelling.
+The compact dialog takes what to keep in focus and what to send once it is done. A message
+another session on the node wrote to this one names that session over its words; pressed, it
+opens that session's chat.
+
+After `/` a session offers its own commands: `/compact`, `/model`, `/effort`, `/mode`, `/rename`
+and `/stop`. `/compact` with words compacts at once and keeps those words in focus.
+
+The node panel's fifth mode, **Sessions**, lists the sessions at the chosen place, each with a
+dot for what it does (working, waiting for you, stopped with an error) and a red shield when it
+asks about nothing. The mode counts the sessions waiting for you in orange.
 
 ## Saved requests
 

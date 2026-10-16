@@ -44,6 +44,14 @@ export interface ChatSummary {
   running?: boolean
   /** Something new since you last opened it. */
   unseen?: boolean
+  /** A question to you is open in it. */
+  waiting?: boolean
+  /** Its last answer ended with an error. */
+  failed?: boolean
+  /** It runs with no questions asked. */
+  bypass?: boolean
+  /** When the work under way began, ms. */
+  since?: number
   when: string
 }
 
@@ -101,7 +109,7 @@ export interface FolderEntry {
 /** How the side panel lists a copy's files: all of them, the changed ones in their folders, or the changed ones as a list. */
 export type FileTreeMode = 'all' | 'changed-tree' | 'changed'
 /** What the node panel shows of its place: files, changes, history or pull requests. */
-export type NodePanelMode = 'files' | 'changes' | 'history' | 'pulls'
+export type NodePanelMode = 'files' | 'changes' | 'history' | 'pulls' | 'sessions'
 
 /** One file or folder of a copy's tree; a file carries its git change, if it has one. */
 export interface TreeEntry {

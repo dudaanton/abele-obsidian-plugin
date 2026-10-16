@@ -172,7 +172,13 @@ it('the node panel fits a real screen with readable identity and usable controls
   expect(result.place.menu).toBe(`What can be done in ${NODE_PANEL.feature}`)
   expect(result.place.codes).toBe(true)
   // The working changes, in the header's modes and in their groups.
-  expect(result.modes).toEqual(['Files', 'Changes: 3 files', 'History', 'Pull requests: none open'])
+  expect(result.modes).toEqual([
+    'Files',
+    'Changes: 3 files',
+    'History',
+    'Pull requests: none open',
+    'Sessions: 1',
+  ])
   expect(result.groups.join(' ')).toContain('Changes')
   expect(result.groups.join(' ')).toContain('Staged')
   expect(result.groups.join(' ')).toContain('Committed')

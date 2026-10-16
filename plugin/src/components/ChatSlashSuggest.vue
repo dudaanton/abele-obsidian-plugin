@@ -53,6 +53,8 @@ const props = defineProps<{
   query: string
   /** Node sessions accept text only: no vault skills or prompts there. */
   textOnly?: boolean
+  /** What the place the chat works in offers instead: a node session's commands and skills. */
+  extra?: SlashItem[]
 }>()
 const emit = defineEmits<{ choose: [item: SlashItem] }>()
 
@@ -71,6 +73,7 @@ const COMMANDS: SlashItem[] = [
 ]
 
 const all = computed<SlashItem[]>(() => {
+  if (props.extra) return props.extra
   if (props.textOnly) return COMMANDS
   const { app } = GlobalStore.getInstance()
   const skills = discoverSkills().map<SlashItem>((skill) => ({

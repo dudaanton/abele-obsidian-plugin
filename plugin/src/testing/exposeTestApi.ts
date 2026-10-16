@@ -30,6 +30,11 @@ import {
   closeNodeRepositoryFixture,
   NODE_REPOSITORY_SCREENS,
 } from './nodeRepositoryScreen'
+import {
+  openNodeSessionFixture,
+  closeNodeSessionFixture,
+  nodeSessionCalls,
+} from './nodeSessionScreen'
 import { NodeDeviceKeyStore } from '@/node/NodeDeviceKeyStore'
 import { generateIdentity, fingerprint, signProof, verifyProof } from '@abele/channel-protocol'
 import { pairedLoopbackTransport } from './nodePairedTransport'
@@ -209,7 +214,8 @@ interface AbeleTestApi {
     id: string
     scans: ReturnType<import('@/sync/exchangeTrace').ExchangeTrace['snapshot']>['scans']
     firstSync:
-      ReturnType<import('@/sync/exchangeTrace').ExchangeTrace['snapshot']>['firstSync'] | null
+      | ReturnType<import('@/sync/exchangeTrace').ExchangeTrace['snapshot']>['firstSync']
+      | null
     active: ReturnType<import('@/sync/exchangeTrace').ExchangeTrace['snapshot']>['active']
   }[]
   canvasProbe: ReturnType<typeof createCanvasProbe>
@@ -287,6 +293,9 @@ interface AbeleTestApi {
   openNodeRepositoryFixture: typeof openNodeRepositoryFixture
   closeNodeRepositoryFixture: typeof closeNodeRepositoryFixture
   nodeRepositoryScreens: typeof NODE_REPOSITORY_SCREENS
+  openNodeSessionFixture: typeof openNodeSessionFixture
+  closeNodeSessionFixture: typeof closeNodeSessionFixture
+  nodeSessionCalls: typeof nodeSessionCalls
   NodeDeviceKeyStore: typeof NodeDeviceKeyStore
   nodePairingCrypto: typeof nodePairingCrypto
   pairedLoopbackTransport: typeof pairedLoopbackTransport
@@ -941,6 +950,9 @@ export function exposeTestApi(plugin: Plugin): void {
     openNodeRepository,
     openNodeRepositoryFixture,
     closeNodeRepositoryFixture,
+    openNodeSessionFixture,
+    closeNodeSessionFixture,
+    nodeSessionCalls,
     nodeRepositoryScreens: NODE_REPOSITORY_SCREENS,
     NodeDeviceKeyStore,
     nodePairingCrypto,

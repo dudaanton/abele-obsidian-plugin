@@ -1,0 +1,255 @@
+/**
+ * A long-lived node session in its real chat tab, on invented data and no node: the settings
+ * control at the composer's foot, Stop while anything runs, the background line, compacting and
+ * waking lines, a message from another session, the ⋯ menu's Rename… and Stop the session…, the
+ * compact dialog and the «/» list. Each state is measured on a real screen and pictured, and a
+ * press is checked to reach the node.
+ */
+import { afterAll, expect, it } from 'vitest'
+import { evalLong } from './helpers/obsidianCli'
+import { targets } from './helpers/target'
+import { shotDir } from './helpers/shots'
+import { NODE_PANEL, NODE_PANEL_FIXTURE } from './helpers/nodePanelFixture'
+
+targets('desktop', 'phone')
+const shots = shotDir('abele-node-sessions')
+
+const PRELUDE = `
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const until = async (fn, what) => { for (let i = 0; i < 200; i++) { const v = fn(); if (v) return v; await wait(50) } throw Error(what + ' did not show') };
+const shot = async (name) => {
+  const path = ${JSON.stringify(shots)} + '/' + name + '.png';
+  if (window.__e2eHost) { const r = await window.__e2eHost.shot(path); if (String(r).startsWith('no picture:')) throw Error(r); return r }
+  require('fs').writeFileSync(path, (await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG());
+  return 'saved';
+};
+const escape = async () => { for (let i = 0; i < 3 && document.querySelector('.menu, .modal'); i++) { document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true })); await wait(150) } };
+const chat = () => document.querySelector('.abele-node-chat');
+const box = el => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height } };
+const outside = root => [...root.querySelectorAll('button,[role="button"],textarea,.clickable-icon')].flatMap(el => { const r = el.getBoundingClientRect(); return r.width && (r.left < -1 || r.right > innerWidth + 1) ? [el.getAttribute('aria-label') || el.className] : [] });
+const menuTitles = () => [...document.querySelectorAll('.menu .menu-item')].map(i => ({ title: i.querySelector('.menu-item-title')?.textContent.trim(), disabled: i.classList.contains('is-disabled') }));
+const pick = async title => { const item = [...document.querySelectorAll('.menu .menu-item')].find(i => i.querySelector('.menu-item-title')?.textContent.trim().startsWith(title)); if (!item) throw Error('No menu item ' + title); item.click(); await wait(200) };
+const open = async (state, bypass = true) => {
+  await window.__abeleTest.openNodeSessionFixture(state, bypass);
+  return until(() => chat()?.querySelector('.abele-session-settings') && chat(), 'The session chat');
+};
+`
+
+const run = async <T>(body: string): Promise<T> =>
+  JSON.parse(
+    await evalLong(
+      `(async () => { ${PRELUDE}
+  try { ${body} } finally { await escape(); await window.__abeleTest.closeNodeSessionFixture() }
+})()`,
+      90000
+    )
+  ) as T
+
+afterAll(async () => {
+  await evalLong('window.__abeleTest.closeNodeSessionFixture().then(() => "1")', 30000)
+})
+
+it.each(['idle', 'working', 'compacting', 'asking'])(
+  'the %s session fits a real screen, its controls apart, Stop there while anything runs',
+  async (state) => {
+    const r = await run<{
+      outside: string[]
+      stop: boolean
+      settings: string
+      background: string
+      overlaps: string[]
+      marks: string[]
+      from: string
+      shot: string
+    }>(`
+    const root = await open(${JSON.stringify(state)});
+    await wait(400);
+    const settings = root.querySelector('.abele-session-settings');
+    const toolbar = settings.closest('.abele-chat-input__toolbar');
+    // Every control in the composer's foot stands apart from its neighbours.
+    const controls = [...toolbar.querySelectorAll('.clickable-icon, .abele-session-settings')].filter(el => el.getBoundingClientRect().width);
+    const overlaps = [];
+    for (let i = 0; i < controls.length; i++) for (let j = i + 1; j < controls.length; j++) {
+      const a = box(controls[i]), b = box(controls[j]);
+      if (controls[i].contains(controls[j]) || controls[j].contains(controls[i])) continue;
+      if (a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom) overlaps.push((controls[i].getAttribute('aria-label') || controls[i].className) + ' × ' + (controls[j].getAttribute('aria-label') || controls[j].className));
+    }
+    const result = {
+      outside: outside(root),
+      stop: !!root.querySelector('.abele-chat-input__stop'),
+      settings: settings.textContent.trim(),
+      background: root.querySelector('.abele-bg-tasks')?.textContent.trim() ?? '',
+      overlaps,
+      marks: [...root.querySelectorAll('.abele-session-mark__label')].map(m => m.textContent.trim()),
+      from: root.querySelector('.abele-chat-msg__from')?.textContent.trim() ?? '',
+    };
+    root.querySelector('.abele-ai-chat__messages').scrollTop = 1e6;
+    await wait(200);
+    result.shot = await shot('node-sessions-' + ${JSON.stringify(state)});
+    return JSON.stringify(result);`)
+    expect(r.outside).toEqual([])
+    expect(r.overlaps).toEqual([])
+    expect(r.stop).toBe(state !== 'idle')
+    expect(r.settings).toContain(state === 'working' ? '86%' : '41%')
+    expect(r.background).toBe(
+      state === 'idle' ? '' : expect.stringContaining('3 in the background')
+    )
+    expect(r.marks).toEqual(
+      expect.arrayContaining(['Compacted · 812k → 64k', 'Woke: npm test finished · 12 passed'])
+    )
+    if (state === 'compacting') expect(r.marks).toContain('Compacting…')
+    expect(r.from).toContain('Review the search diff')
+  },
+  120000
+)
+
+it('opens the background line to the tasks with how long each runs', async () => {
+  const r = await run<{ rows: string[]; shot: string }>(`
+    const root = await open('working');
+    root.querySelector('.abele-bg-tasks .tree-item-self').click();
+    await until(() => root.querySelectorAll('.abele-bg-tasks__task').length === 3, 'The task rows');
+    await wait(200);
+    return JSON.stringify({
+      rows: [...root.querySelectorAll('.abele-bg-tasks__task')].map(t => t.textContent.trim()),
+      shot: await shot('node-sessions-background-open'),
+    });`)
+  expect(r.rows.join('|')).toContain('npm test -- --watch')
+  expect(r.rows.join('|')).toContain('Check the ranking on a big vault')
+})
+
+it('sets the session from its control, bypass off where the node forbids it', async () => {
+  const r = await run<{
+    titles: { title: string; disabled: boolean }[]
+    sent: { method: string; params: unknown[] }[]
+    forbidden: { title: string; disabled: boolean }[]
+    shot: string
+  }>(`
+    let root = await open('working');
+    root.querySelector('.abele-session-settings').click();
+    await until(() => document.querySelector('.menu'), 'The settings menu');
+    await wait(300);
+    const titles = menuTitles();
+    const picture = await shot('node-sessions-settings-menu');
+    await pick('Plan');
+    const sent = window.__abeleTest.nodeSessionCalls.map(c => ({ method: c.method, params: c.params }));
+    await escape();
+    root = await open('idle', false);
+    root.querySelector('.abele-session-settings').click();
+    await until(() => document.querySelector('.menu'), 'The settings menu');
+    const forbidden = menuTitles().filter(t => t.title?.startsWith('Bypass'));
+    return JSON.stringify({ titles, sent, forbidden, shot: picture });`)
+  const titles = r.titles.map((t) => t.title)
+  expect(titles[0]).toMatch(/^Compact the context… · 862k of 1M/)
+  for (const t of ['Model', 'Effort', 'Account', 'Permissions', 'Ask every time', 'Bypass'])
+    expect(titles).toContain(t)
+  expect(r.sent).toContainEqual({
+    method: 'session.configure',
+    params: ['sample-live-session', { permission_mode: 'plan' }],
+  })
+  expect(r.forbidden).toEqual([{ title: 'Bypass · turned off on this node', disabled: true }])
+})
+
+it('compacts from «/compact» with a focus, and the session commands lead the «/» list', async () => {
+  const r = await run<{ list: string[]; sent: { method: string; params: unknown[] }[] }>(`
+    const root = await open('idle');
+    const field = root.querySelector('.abele-chat-input textarea, .abele-chat-input [contenteditable]');
+    field.focus();
+    if (field.tagName === 'TEXTAREA') { field.value = '/'; field.dispatchEvent(new Event('input', { bubbles: true })) }
+    else document.execCommand('insertText', false, '/');
+    await until(() => document.querySelector('.abele-chat-slash .suggestion-item'), 'The «/» list');
+    await wait(200);
+    const list = [...document.querySelectorAll('.abele-chat-slash .suggestion-item')].map(i => i.textContent.trim());
+    await shot('node-sessions-slash');
+    document.querySelector('.abele-chat-slash .suggestion-item').click();
+    const modal = await until(() => document.querySelector('.modal'), 'The compact dialog');
+    const focus = modal.querySelector('textarea');
+    focus.value = 'the title search';
+    focus.dispatchEvent(new Event('input', { bubbles: true }));
+    await wait(200);
+    await shot('node-sessions-compact');
+    [...modal.querySelectorAll('button')].find(b => b.textContent.trim() === 'Compact').click();
+    await wait(300);
+    return JSON.stringify({ list, sent: window.__abeleTest.nodeSessionCalls.map(c => ({ method: c.method, params: c.params })) });`)
+  expect(r.list[0]).toContain('/compact')
+  expect(r.list.join('|')).toContain('/rename')
+  expect(r.list.join('|')).not.toContain('/load')
+  expect(r.sent).toContainEqual({
+    method: 'session.compact',
+    params: ['sample-live-session', { focus: 'the title search', continue: true }],
+  })
+})
+
+it('stops the whole session from ⋯ after saying what stops, and renames it', async () => {
+  const r = await run<{ said: string; sent: { method: string; params: unknown[] }[] }>(`
+    const root = await open('working');
+    root.querySelector('[aria-label="Node session menu"]').click();
+    await until(() => document.querySelector('.menu'), 'The session menu');
+    await pick('Stop the session…');
+    const modal = await until(() => document.querySelector('.modal'), 'The stop dialog');
+    await wait(200);
+    const said = modal.textContent;
+    await shot('node-sessions-stop-confirm');
+    [...modal.querySelectorAll('button')].find(b => b.textContent.trim() === 'Stop').click();
+    await wait(300);
+    root.querySelector('[aria-label="Node session menu"]').click();
+    await until(() => document.querySelector('.menu'), 'The session menu');
+    await pick('Rename…');
+    const rename = await until(() => document.querySelector('.modal'), 'The rename dialog');
+    const input = rename.querySelector('input');
+    input.value = 'Search by words and titles';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await wait(200);
+    await shot('node-sessions-rename');
+    [...rename.querySelectorAll('button')].find(b => b.textContent.trim() === 'Rename').click();
+    await wait(300);
+    return JSON.stringify({ said, sent: window.__abeleTest.nodeSessionCalls.map(c => ({ method: c.method, params: c.params })) });`)
+  expect(r.said).toContain('3 tasks running in the background')
+  expect(r.sent).toContainEqual({ method: 'session.stop', params: ['sample-live-session'] })
+  expect(r.sent).toContainEqual({
+    method: 'session.rename',
+    params: ['sample-live-session', 'Search by words and titles'],
+  })
+})
+
+it('lists the sessions at a place in the panel, the waiting one counted in orange on its mode', async () => {
+  const r = JSON.parse(
+    await evalLong(
+      `(async () => { ${PRELUDE}
+    ${NODE_PANEL_FIXTURE}
+    try {
+      nodePanel.variant.waiting = true;
+      const panel = await nodePanel.open('feature');
+      const tab = [...panel.querySelectorAll('.abele-node-modes [role="tab"]')].find(t => t.getAttribute('aria-label').startsWith('Sessions'));
+      await nodePanel.mode('Sessions');
+      const row = panel.querySelector('.abele-session-row');
+      const result = {
+        tab: tab.getAttribute('aria-label'),
+        count: tab.textContent.trim(),
+        orange: getComputedStyle(tab.querySelector('.abele-obsidian-icon__text')).color,
+        row: row.textContent.trim(),
+        dot: !!row.querySelector('.abele-session-row__dot *'),
+        shield: !!row.querySelector('.abele-session-row__codes .abele-obsidian-icon'),
+        outside: outside(panel),
+      };
+      result.shot = await shot('node-sessions-panel');
+      return JSON.stringify(result);
+    } finally { await nodePanel.close() }
+  })()`,
+      90000
+    )
+  ) as {
+    tab: string
+    count: string
+    orange: string
+    row: string
+    dot: boolean
+    shield: boolean
+    outside: string[]
+  }
+  expect(r.tab).toBe('Sessions: 1 waiting for you of 1')
+  expect(r.count).toBe('1')
+  expect(r.row).toContain(NODE_PANEL.chat)
+  expect(r.dot).toBe(true)
+  expect(r.shield).toBe(true)
+  expect(r.outside).toEqual([])
+}, 120000)

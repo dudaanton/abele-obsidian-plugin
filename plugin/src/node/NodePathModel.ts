@@ -1,4 +1,5 @@
 import { computed, ref, shallowRef, markRaw } from 'vue'
+import type { SessionActivity } from './sessionActivity'
 import { ChannelError } from '@abele/channel-protocol'
 import { formatTimestamp } from '@/helpers/displayFormat'
 import { NodePathSnapshotSchema, emptySnapshotChange } from './nodePathSnapshot'
@@ -59,6 +60,16 @@ export interface PathTreePage {
   cursor: string | null
   revision?: RepositoryRevision
 }
+/** A session's state as its row in the panel shows it. */
+const chatActivity = (s: PathCatalogue['sessions'][number]) => ({
+  id: s.session.session_id,
+  title: s.session.title,
+  running: s.running,
+  ...(s.activity?.waiting ? { waiting: true } : {}),
+  ...(s.activity?.failed ? { failed: true } : {}),
+  ...(s.activity?.since ? { since: s.activity.since } : {}),
+  ...(s.session.settings?.permission_mode === 'bypassPermissions' ? { bypass: true } : {}),
+})
 export interface KnownPathRead {
   revision: RepositoryRevision
   changes?: PathChange[]
@@ -75,6 +86,8 @@ export interface PathCatalogue {
     session: Awaited<ReturnType<NodeClient['getSession']>>
     target?: PathTarget
     running?: boolean
+    /** What it is doing now, read from its journal. */
+    activity?: SessionActivity
   }[]
   capabilities: string[]
 }
@@ -246,9 +259,9 @@ export class NodePathModel {
       copies: f.copies.map((c) => ({
         ...c,
         running: false,
-        chats: c.chats?.map((chat) => ({ ...chat, running: false })),
+        chats: c.chats?.map((chat) => ({ ...chat, running: false, waiting: false })),
       })),
-      chats: f.chats?.map((chat) => ({ ...chat, running: false })),
+      chats: f.chats?.map((chat) => ({ ...chat, running: false, waiting: false })),
     }))
     this.targets.value = value.targets
     this.selected.value = value.selected
@@ -1004,9 +1017,7 @@ export class NodePathModel {
         ? this.sessions.value
             .filter((s) => s.target?.projectId === folder.id && s.target.kind === 'workspace')
             .map((s) => ({
-              id: s.session.session_id,
-              title: s.session.title,
-              running: s.running,
+              ...chatActivity(s),
               when: formatTimestamp(s.session.created_at).label,
             }))
         : undefined,
@@ -1016,9 +1027,7 @@ export class NodePathModel {
         const chats = this.sessions.value
           .filter((s) => s.target?.id === copy.id && s.target?.kind === target?.kind)
           .map((s) => ({
-            id: s.session.session_id,
-            title: s.session.title,
-            running: s.running,
+            ...chatActivity(s),
             when: formatTimestamp(s.session.created_at).label,
           }))
         return {
