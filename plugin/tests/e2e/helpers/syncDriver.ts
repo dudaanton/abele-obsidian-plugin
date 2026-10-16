@@ -9,16 +9,18 @@ export const SYNC_PRELUDE = `
  const host = app.plugins.plugins.abele.tokenEngines
  if (!host) throw new Error('Token host is not ready')
  const svc = host.ui
+ const actionTimeoutMs = window.__abeleSyncActionTimeoutMs || 90000
+ const actionDeadline = Date.now() + actionTimeoutMs
  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
  const textOf = el => el?.textContent?.trim() || ''
- const poll = async (fn, ms = 20000, label = 'expected live state') => { const until=Date.now()+ms; while(Date.now()<until) { if(await fn()) return true; await sleep(100) } throw new Error('Live sync condition did not complete: '+label+'; observed '+JSON.stringify(syncSnapshot())) }
+ const poll = async (fn, ms = actionTimeoutMs, label = 'expected live state') => { const until=Math.min(actionDeadline,Date.now()+ms);window.__abeleSyncWaiting=label;console.debug('[sync wait]',label,{timeoutMs:Math.max(0,until-Date.now())}); while(Date.now()<until) { if(await fn()) return true; await sleep(100) } throw new Error('Live sync condition did not complete: '+label+'; observed '+JSON.stringify(syncSnapshot())) }
  const buttonIn = (root,text) => [...root.querySelectorAll('button')].find(el=>textOf(el)===text)
- const press = async (root,text) => { let button; await poll(()=> {const container=typeof root==='function'?root():root;button=container&&buttonIn(container,text); return button&&!button.disabled},20000,'enabled '+text+' button'); button.click(); await sleep(100) }
+ const press = async (root,text) => { let button; await poll(()=> {const container=typeof root==='function'?root():root;button=container&&buttonIn(container,text); return button&&!button.disabled},actionTimeoutMs,'enabled '+text+' button'); button.click(); await sleep(100) }
  const typeInto = (input,text) => { if(!input) throw new Error('Input unavailable'); input.value=text; input.dispatchEvent(new input.ownerDocument.defaultView.Event('input',{bubbles:true})) }
  const settingsDoc = () => app.setting.activeTab?.containerEl.ownerDocument || document
  const inWindows = selector => [...new Set([settingsDoc(),document])].map(doc=>doc.querySelector(selector)).find(Boolean)
  const modal = title => [...new Set([document,settingsDoc()])].flatMap(doc=>[...doc.querySelectorAll('.modal')]).find(el=>textOf(el.querySelector('.modal-title'))===title)
- const openSyncTab = async () => { app.setting.open(); app.setting.openTabById('abele'); await sleep(300); let root=app.setting.activeTab.containerEl; if(root.querySelector('.token-sync-settings'))return root; const tab=[...root.querySelectorAll('[role="tab"],.abele-tabs__tab')].find(el=>textOf(el)==='Sync'); if(tab)tab.click(); else app.commands.executeCommandById('abele:sync-log'); await poll(()=>{root=app.setting.activeTab.containerEl;return root.querySelector('.token-sync-settings')}); return root }
+ const openSyncTab = async () => { app.setting.open(); app.setting.openTabById('abele'); await sleep(300); let root=app.setting.activeTab.containerEl; if(root.querySelector('.token-sync-settings'))return root; const tab=[...root.querySelectorAll('[role="tab"],.abele-tabs__tab')].find(el=>textOf(el)==='Sync'); if(tab)tab.click(); else app.commands.executeCommandById('abele:sync-log'); await poll(()=>{root=app.setting.activeTab.containerEl;return root.querySelector('.token-sync-settings')},actionTimeoutMs,'sync settings to open'); return root }
  const connectionRow = (root,id) => { const index=svc.rows.value.findIndex(one=>one.id===id); const rows=[...root.querySelectorAll('.abele-sync-row')]; if(index<0||!rows[index]) throw new Error('Connection row unavailable'); return rows[index] }
  // A connection row keeps only sync now on its face: opening it is a click on the row, and the
  // rarer actions sit in its ⋯ menu under the glyph the row once showed.
@@ -36,8 +38,8 @@ const ROWS = `svc.rows.value.map(({id,status,paused,address})=>({id,status,pause
  * returns the rows as they were at that moment: a watcher cycle starting right after must not
  * turn the observation into "syncing".
  */
-const settle = (id?: string) =>
-  `let seen;await poll(()=>{const rows=${ROWS}.filter(one=>${id ? 'one.id===' + JSON.stringify(id) : 'true'});seen=rows;return rows.some(one=>one.status==='error')||rows.length>0&&rows.every(one=>['idle','paused'].includes(one.status))},60000,'token connection to settle');return seen`
+const settle = (id?: string, timeoutMs = 90000) =>
+  `let seen;await poll(()=>{const rows=${ROWS}.filter(one=>${id ? 'one.id===' + JSON.stringify(id) : 'true'});seen=rows;return rows.some(one=>one.status==='error')||rows.length>0&&rows.every(one=>['idle','paused'].includes(one.status))},${timeoutMs},'token connection to settle');return seen`
 export interface SyncStatus {
   id: string
   status: string
@@ -56,11 +58,16 @@ export class SyncDriver {
   private assertActive(): void {
     if (this.retired) throw new Error('Live sync case has ended; no further UI actions are allowed')
   }
-  constructor(readonly vault: () => VaultCli) {}
+  constructor(
+    readonly vault: () => VaultCli,
+    public timeoutMs = 90000
+  ) {}
   run<T>(body: string, cleanup = false): T {
     if (!cleanup) this.assertActive()
     try {
-      return this.vault().evalAwait<T>(`(async()=>{${SYNC_PRELUDE}\n${body}})()`)
+      return this.vault().evalAwait<T>(
+        `(async()=>{window.__abeleSyncActionTimeoutMs=${this.timeoutMs};${SYNC_PRELUDE}\n${body}})()`
+      )
     } catch (error) {
       throw this.failure('live sync action', error)
     }
@@ -84,7 +91,7 @@ export class SyncDriver {
     what: string,
     body: string,
     confidential = false,
-    timeoutMs = 90000,
+    timeoutMs = this.timeoutMs,
     cleanup = false,
     startupProgress = false
   ): Promise<T> {
@@ -94,11 +101,14 @@ export class SyncDriver {
     const evaluate = confidential ? cli.evalAwaitPrivate.bind(cli) : cli.evalAwait.bind(cli)
     let answer: { ok: boolean; value?: T; error?: string } | null = null
     let nextEvidence = Date.now() + 30000
+    const started = Date.now()
+    let waiting = 'operation'
+    console.debug('[sync action]', what, { timeoutMs })
     try {
       // The job is started and, for up to FIRST_ANSWER_MS, waited for inside the same call: most
       // actions finish well within it and cost one round trip. A longer one is polled as before.
       answer = evaluate(
-        `(async()=>{window[${JSON.stringify(key)}]=null;const job=(async()=>{const jobKey=${JSON.stringify(key)};${SYNC_PRELUDE}\n${body}})().then(value=>window[${JSON.stringify(key)}]={ok:true,value:value===undefined?null:value},error=>window[${JSON.stringify(key)}]={ok:false,error:String(error?.message||error)});await Promise.race([job,new Promise(resolve=>setTimeout(resolve,${FIRST_ANSWER_MS}))]);const result=window[${JSON.stringify(key)}];if(result)delete window[${JSON.stringify(key)}];return result||null})()`,
+        `(async()=>{window[${JSON.stringify(key)}]=null;const job=(async()=>{const jobKey=${JSON.stringify(key)};window.__abeleSyncActionTimeoutMs=${timeoutMs};window.__abeleSyncWaiting='starting action';${SYNC_PRELUDE}\n${body}})().then(value=>window[${JSON.stringify(key)}]={ok:true,value:value===undefined?null:value},error=>window[${JSON.stringify(key)}]={ok:false,error:String(error?.message||error),waiting:window.__abeleSyncWaiting});await Promise.race([job,new Promise(resolve=>setTimeout(resolve,${FIRST_ANSWER_MS}))]);const result=window[${JSON.stringify(key)}];if(result)delete window[${JSON.stringify(key)}];return result||null})()`,
         FIRST_ANSWER_MS + 15_000
       )
       const check = () => {
@@ -163,12 +173,23 @@ export class SyncDriver {
           timeoutMs
         )
       if (!cleanup) this.assertActive()
-      const result = answer as unknown as { ok: boolean; value: T; error?: string }
+      const result = answer as unknown as {
+        ok: boolean
+        value: T
+        error?: string
+        waiting?: string
+      }
+      waiting = result.waiting ?? waiting
       if (!result.ok) throw new Error(confidential ? what + ' failed' : what + ': ' + result.error)
       return result.value
     } catch (error) {
       // A timed-out native action may still be running. Fail the case rather than retrying it.
-      throw this.failure(what, confidential ? new Error(what + ' failed') : error)
+      throw this.failure(
+        what,
+        confidential ? new Error(what + ' failed while waiting for ' + waiting) : error
+      )
+    } finally {
+      console.debug('[sync action finished]', what, { elapsedMs: Date.now() - started, timeoutMs })
     }
   }
   rows(): SyncStatus[] {
@@ -176,7 +197,7 @@ export class SyncDriver {
       'return svc.rows.value.map(({id,status,paused,address})=>({id,status,paused,address,error:svc.activity.value[id]?.error}))'
     )
   }
-  async connect(token: string, qrImage?: string, timeoutMs = 90000): Promise<string> {
+  async connect(token: string, qrImage?: string, timeoutMs = this.timeoutMs): Promise<string> {
     return this.long<string>(
       'connect by token',
       `const before=new Set(svc.rows.value.map(one=>one.id)); const root=await openSyncTab(); await press(root,'Connect…'); await poll(()=>modal('Connect to a server')); const box=modal('Connect to a server'); ${qrImage ? `const picture=await (await fetch(${JSON.stringify(qrImage)})).blob();const files=new DataTransfer();files.items.add(new File([picture],'access.png',{type:'image/png'}));const input=box.querySelector('input[type=file]');input.files=files.files;input.dispatchEvent(new input.ownerDocument.defaultView.Event('change',{bubbles:true}));await poll(()=>box.querySelector('input[placeholder="Paste your token"]').value===${JSON.stringify(token)})` : `typeInto(box.querySelector('input[placeholder="Paste your token"]'),${JSON.stringify(token)})`}; await press(box,'Connect'); await poll(()=>!modal('Connect to a server')); const added=svc.rows.value.find(one=>!before.has(one.id)); if(!added) throw new Error('No connection added'); await waitForStartup(()=>{const current=app.plugins.plugins.abele.tokenEngines, ui=current.ui, row=ui.rows.value.find(one=>one.id===added.id), activity=ui.activity.value[added.id]||{}, phase=activity.startup, engine=current.live.get(added.id)?.engine.status;const ready=row?.status==='idle'&&engine?.state==='idle'&&!!engine.lastSyncAt&&!engine.lastError&&(!phase||phase.outcome==='complete');return {ready,progress:JSON.stringify([row?.status,engine?.state,!!engine?.lastSyncAt,phase?.stage,phase?.completed,phase?.total,phase?.outcome,activity.startupTimings?.length,activity.inspection?.completed,activity.inspection?.total,activity.transfer?.stage,activity.transfer?.completed,activity.transfer?.total,activity.transfer?.bytes]),error:ready?undefined:activity.error}},30000,undefined,undefined,${timeoutMs}); await closeSettings(); return added.id`,
@@ -205,12 +226,15 @@ export class SyncDriver {
   async syncNow(id?: string): Promise<SyncStatus[]> {
     const rows = await this.long<SyncStatus[]>(
       'sync token connections',
-      `for(const row of svc.rows.value.filter(one=>!one.paused${id ? '&&one.id===' + JSON.stringify(id) : ''})) await svc.sync(row.id); ${settle(id)}`
+      `for(const row of svc.rows.value.filter(one=>!one.paused${id ? '&&one.id===' + JSON.stringify(id) : ''})) await svc.sync(row.id); ${settle(id, this.timeoutMs)}`
     )
     return this.settled(rows, id)
   }
   async waitIdle(id?: string): Promise<SyncStatus[]> {
-    return this.settled(await this.long<SyncStatus[]>('token connection to settle', settle(id)), id)
+    return this.settled(
+      await this.long<SyncStatus[]>('token connection to settle', settle(id, this.timeoutMs)),
+      id
+    )
   }
   private settled(all: SyncStatus[], id?: string): SyncStatus[] {
     const rows = all.filter((one) => !id || one.id === id)
@@ -265,11 +289,17 @@ export class SyncDriver {
       true
     )
   }
-  async share(id: string, scopeLabel: string, label = 'Sample recipient'): Promise<string> {
+  async share(
+    id: string,
+    scopeLabel: string,
+    label = 'Sample recipient',
+    timeoutMs = this.timeoutMs
+  ): Promise<string> {
     return this.long(
       'issue sharing token',
-      `const root=await openSyncTab(); icon(connectionRow(root,${JSON.stringify(id)}),'share-2'); await poll(()=>modal('Share access')); const box=modal('Share access'); const select=box.querySelector('select'); await poll(()=>select.options.length>0); const option=[...select.options].find(one=>one.textContent.trim()===${JSON.stringify(scopeLabel)}); if(!option) throw new Error('Scope choice unavailable'); select.value=option.value; select.dispatchEvent(new select.ownerDocument.defaultView.Event('change',{bubbles:true})); typeInto(box.querySelector('input[placeholder="A second device, a colleague"]'),${JSON.stringify(label)}); await press(box,'Create token'); await poll(()=>box.querySelector('textarea')); const token=box.querySelector('textarea').value; await press(box,'Close'); await closeSettings(); return token`,
-      true
+      `const root=await openSyncTab(); icon(connectionRow(root,${JSON.stringify(id)}),'share-2'); await poll(()=>modal('Share access'),${timeoutMs},'sharing dialog to open'); const box=modal('Share access'); const select=box.querySelector('select'); await poll(()=>select.options.length>0,${timeoutMs},'sharing scopes to load'); const option=[...select.options].find(one=>one.textContent.trim()===${JSON.stringify(scopeLabel)}); if(!option) throw new Error('Scope choice unavailable'); select.value=option.value; select.dispatchEvent(new select.ownerDocument.defaultView.Event('change',{bubbles:true})); typeInto(box.querySelector('input[placeholder="A second device, a colleague"]'),${JSON.stringify(label)}); await press(box,'Create token'); await poll(()=>box.querySelector('textarea'),${timeoutMs},'issued sharing token'); const token=box.querySelector('textarea').value; await press(box,'Close'); await closeSettings(); return token`,
+      true,
+      timeoutMs
     )
   }
   async shareQr(id: string): Promise<{ token: string; image: string }> {

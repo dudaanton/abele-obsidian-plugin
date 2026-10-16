@@ -130,7 +130,9 @@
         This opened note links to a private file. Allow this connection to share the file and its
         future changes?
       </p>
-      <p class="abele-token-dialog__note">Other private files and other connections are unaffected.</p>
+      <p class="abele-token-dialog__note">
+        Other private files and other connections are unaffected.
+      </p>
     </Section>
     <Section
       v-if="mode === 'disconnect'"
@@ -347,14 +349,16 @@ async function disconnect() {
   await props.ui.disconnect(props.connectionId)
   emit('close')
 }
-function loadShare() {
+function loadShare(reloadChoices = true) {
   if (props.mode === 'share')
     void run(async () => {
       const epoch = generation,
         id = props.connectionId
-      const available = await props.ui.choices(id)
-      if (!alive || epoch !== generation) return
-      choices.value = available
+      if (reloadChoices) {
+        const available = await props.ui.choices(id)
+        if (!alive || epoch !== generation) return
+        choices.value = available
+      }
       const listed = await props.ui.issued(id)
       if (alive && epoch === generation) tokens.value = listed
     })
@@ -374,7 +378,7 @@ watch(
   selected,
   () => {
     invalidate()
-    loadShare()
+    loadShare(false)
   },
   { flush: 'sync' }
 )

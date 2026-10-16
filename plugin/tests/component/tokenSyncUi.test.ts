@@ -64,7 +64,10 @@ it('renders held-only warnings in the status bar and phone header until resolved
   expect(header.children).toHaveLength(0)
 })
 
-it('issues a token through the live driver selectors in the sharing dialog', async () => {
+it.each([
+  ['Whole vault', 'root'],
+  ['Folder: Shared', 'other'],
+])('issues a token through the live driver selectors for %s', async (scopeLabel, scopeId) => {
   const ui = shareFixture(),
     id = ui.rows.value[0].id
   const issue = vi.fn(async () => ({ token: 'sample-access-code' }))
@@ -117,9 +120,9 @@ it('issues a token through the live driver selectors in the sharing dialog', asy
     )
   })
   try {
-    expect(await driver.share(id, 'Whole vault', 'Sample recipient')).toBe('sample-access-code')
+    expect(await driver.share(id, scopeLabel, 'Sample recipient')).toBe('sample-access-code')
     expect(issue).toHaveBeenCalledWith({
-      scope: { kind: 'folder', id: 'root' },
+      scope: { kind: 'folder', id: scopeId },
       label: 'Sample recipient',
     })
   } finally {
@@ -129,6 +132,37 @@ it('issues a token through the live driver selectors in the sharing dialog', asy
 })
 
 const modalStub = { template: '<div><slot /><slot name="footer" /></div>' }
+it('does not reload the whole manifest when selecting a different sharing scope', async () => {
+  const ui = shareFixture()
+  const choices = vi.spyOn(ui, 'choices')
+  const issue = vi.fn(async () => ({ token: 'sample-access-code' }))
+  vi.spyOn(ui, 'client').mockReturnValue({ issue } as never)
+  const view = mount(TokenDialogs, {
+    props: { ui, mode: 'share', connectionId: ui.rows.value[0].id },
+    global: { stubs: { Modal: modalStub } },
+  })
+  try {
+    await flushPromises()
+    choices.mockImplementationOnce(() => new Promise(() => {}))
+    view.findComponent(Dropdown).vm.$emit('update:model-value', '1')
+    await view.find('input').setValue('Sample recipient')
+    await flushPromises()
+    const create = view
+      .findAllComponents(Button)
+      .find((one) => one.props('text') === 'Create token')!
+    expect(create.props('disabled')).toBe(false)
+    expect(choices).toHaveBeenCalledTimes(1)
+    await create.trigger('click')
+    await flushPromises()
+    expect(issue).toHaveBeenCalledWith({
+      scope: { kind: 'folder', id: 'other' },
+      label: 'Sample recipient',
+    })
+  } finally {
+    view.unmount()
+    choices.mockRestore()
+  }
+})
 it('displays the exact path and server-size reason for an oversized unsent file', async () => {
   const ui = tokenUiFixture(),
     id = ui.rows.value[0].id
@@ -310,7 +344,7 @@ it('shows vault inspection progress in its connection row and keeps sync blocked
   const id = ui.rows.value[0].id
   ui.activity.value = { ...ui.activity.value, [id]: { inspection: { completed: 12, total: 3000 } } }
   const view = mount(SyncSettings, { props: { model: ui } })
-  expect(view.text()).toContain('Checking the vault… 12/3000')
+  expect(view.text()).toContain('Checking the vault · 12 of 3 000')
   const sync = view
     .findAllComponents(Icon)
     .find((one) => one.props('tooltip') === 'Sync this connection now')!

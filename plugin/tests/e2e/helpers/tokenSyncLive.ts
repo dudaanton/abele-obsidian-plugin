@@ -151,7 +151,7 @@ export class TokenSyncLive {
           throw new Error('Fixture token is not available')
         }
       },
-      60000
+      timeoutMs ?? device.timeoutMs
     ).catch((error) => {
       throw device.failure('fixture token readiness', error)
     })

@@ -12,6 +12,7 @@ const syncSnapshot = () => {
  const host=app.plugins.plugins.abele?.tokenEngines, ui=host?.ui;
  const docs=[...new Set([document,app.setting.activeTab?.containerEl.ownerDocument].filter(Boolean))];
  return {
+  driverWaiting:window.__abeleSyncWaiting||null,
   webViewLoad:{timeOrigin:performance.timeOrigin,loadId:window.__abelePhoneLoadIdentity?.loadId||null},
   attachmentStage:window.__abeleAttachmentStage||null,
   nativeTransport:window.__abeleTest?.nativeSyncTransport?.(),

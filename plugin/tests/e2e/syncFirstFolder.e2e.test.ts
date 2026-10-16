@@ -40,6 +40,7 @@ liveCase(
       b = s.peer!,
       folder = s.root + '/Shared',
       unrelated = s.root + '/Unrelated'
+    a.timeoutMs = b.timeoutMs = FIRST_FOLDER_PULL_LIMIT_MS + 30000
     await a.long(
       'seed first folder connection',
       `const root=${JSON.stringify(folder)}, fixture=(${firstFolderFixture.toString()})(42);

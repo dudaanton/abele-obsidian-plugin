@@ -1,9 +1,59 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest'
-import { SyncDriver } from '../e2e/helpers/syncDriver'
+import { SyncDriver, SYNC_PRELUDE } from '../e2e/helpers/syncDriver'
 import * as diagnostics from '../e2e/helpers/syncDiagnostics'
 
 describe('waiting for a real sync state snapshot', () => {
+  it('keeps the failed sharing condition in confidential diagnostics without exposing the token', async () => {
+    const cli = {
+      evalAwaitPrivate: () => ({
+        ok: false,
+        error: 'sample-secret-token',
+        waiting: 'enabled Create token button',
+      }),
+    }
+    const capture = vi.spyOn(diagnostics, 'captureSyncFailure').mockReturnValue('sample snapshot')
+    try {
+      const driver = new SyncDriver(() => cli as never)
+      const error = await driver.long('issue sharing token', '', true).catch((error) => error)
+      expect(error.message).toContain('waiting for enabled Create token button')
+      expect(error.message).not.toContain('sample-secret-token')
+    } finally {
+      capture.mockRestore()
+    }
+  })
+  it('lets browser waits use the caller budget beyond twenty seconds and names their condition', async () => {
+    vi.useFakeTimers()
+    const window = { __abeleSyncActionTimeoutMs: 60000 }
+    const debug = vi.fn()
+    const poll = new Function('app', 'window', 'console', SYNC_PRELUDE + ';return poll')(
+      { plugins: { plugins: { abele: { tokenEngines: { ui: {} } } } } },
+      window,
+      { debug }
+    )
+    const started = Date.now()
+    try {
+      const result = expect(
+        poll(() => Date.now() - started >= 25000, undefined, 'sharing choices ready')
+      ).resolves.toBe(true)
+      await vi.advanceTimersByTimeAsync(26000)
+      await result
+      expect(debug).toHaveBeenCalledWith('[sync wait]', 'sharing choices ready', expect.any(Object))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+  it('uses the caller default for both owner connect and share', async () => {
+    const driver = new SyncDriver(() => {
+      throw new Error('No live vault expected')
+    })
+    driver.timeoutMs = 150000
+    const long = vi.spyOn(driver, 'long').mockResolvedValue('sample')
+    await driver.connect('sample-token')
+    await driver.share('sample', 'Whole vault')
+    expect(long.mock.calls[0][3]).toBe(150000)
+    expect(long.mock.calls[1][3]).toBe(150000)
+  })
   it('serializes transfer counts and bytes into diagnostics without replacing them with a state label', () => {
     const transfer = {
       stage: 'Downloading',
