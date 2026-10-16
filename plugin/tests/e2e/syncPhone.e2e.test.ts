@@ -2,8 +2,30 @@ import { expect } from 'vitest'
 import { targets } from './helpers/target'
 import { driver, phoneHome } from './helpers/phone'
 import { liveSuite, liveCase } from './helpers/syncLiveCases'
+import { exerciseTrustedWindow } from './helpers/syncTrustedConnection'
 targets('phone')
 const fixture = liveSuite(false)
+liveCase(
+  'syncPhone',
+  '122 trusted folder toggle stays visible and persists both states on the phone',
+  [122],
+  async () => {
+    const s = fixture(),
+      a = s.primary,
+      folder = s.root + '/trusted-folder'
+    const owner = await s.connect()
+    a.create(folder + '/sample.md', 'phone folder marker')
+    await a.syncNow()
+    const token = await a.share(owner, 'Folder: ' + folder)
+    await a.disconnect(owner)
+    const id = await s.connect(a, token)
+    expect(
+      a.run(`return svc.registry.records().find(one=>one.id===${JSON.stringify(id)}).scope`)
+    ).toMatchObject({ kind: 'folder', path: folder })
+    await exerciseTrustedWindow(a, id, 'trusted-connection-phone')
+  },
+  fixture
+)
 liveCase(
   'syncPhone',
   '117 phone decodes a rendered sharing QR through the image scanner and connects',

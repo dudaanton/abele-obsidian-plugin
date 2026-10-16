@@ -2,7 +2,84 @@ import { expect } from 'vitest'
 import { AccessClient } from '@abele/sync-core'
 import { fixtureFetch } from './helpers/syncServer'
 import { liveSuite, liveCase } from './helpers/syncLiveCases'
+import {
+  exerciseTrustedWindow,
+  openTrustedConnection,
+  toggleTrusted,
+  expectTrustedRow,
+  expectDeviceLocalTrust,
+} from './helpers/syncTrustedConnection'
+import { closeSyncScreens } from './helpers/syncScreens'
 const fixture = liveSuite()
+liveCase(
+  'syncDevices',
+  'trusted folder connections persist a device-local toggle and approve only trusted incoming code',
+  [85],
+  async () => {
+    const s = fixture(),
+      a = s.primary,
+      b = s.peer!,
+      folder = s.root + '/trusted-folder'
+    const owner = await s.connect()
+    a.create(folder + '/sample.md', 'folder marker')
+    await a.syncNow()
+    const token = await a.share(owner, 'Folder: ' + folder)
+    await a.disconnect(owner)
+    // Both vaults use the same token; trust must remain a preference of just one device.
+    const sender = await s.connect(a, token),
+      recipient = await s.connect(b, token)
+    try {
+      expect(
+        b.run(
+          `return svc.registry.records().find(one=>one.id===${JSON.stringify(recipient)}).scope`
+        )
+      ).toMatchObject({ kind: 'folder', path: folder })
+      await exerciseTrustedWindow(b, recipient, 'trusted-connection-desktop')
+      openTrustedConnection(b, recipient)
+      toggleTrusted(b, recipient, true)
+      const installed = folder + '/automatic.js',
+        content = '// inert incoming code sample'
+      a.create(installed, content)
+      await s.cycle()
+      b.run(
+        `await poll(async()=>await app.vault.adapter.exists(${JSON.stringify(installed)})&&!svc.candidates.value.some(one=>one.path===${JSON.stringify(installed)})&&svc.activity.value[${JSON.stringify(recipient)}]?.events?.some(one=>one.text.includes('Installed code from ')&&one.text.includes(${JSON.stringify(installed)})),30000,'trusted incoming code installed and logged');return true`
+      )
+      expect(b.read(installed)).toBe(content)
+      expect(b.run(`return !!modal('Review incoming code')`)).toBe(false)
+      expectDeviceLocalTrust(b, recipient, true)
+      expectDeviceLocalTrust(a, sender, false)
+      openTrustedConnection(a, sender)
+      expectTrustedRow(a, false)
+      closeSyncScreens(a)
+      openTrustedConnection(b, recipient)
+      expectTrustedRow(b, true)
+      expect(
+        b.run(
+          `const box=inWindows('.abele-sync-window');return [...box.querySelectorAll('.abele-sync-window__events li')].some(one=>textOf(one).includes('Installed code from ')&&textOf(one).includes(${JSON.stringify(installed)}))`
+        )
+      ).toBe(true)
+      toggleTrusted(b, recipient, false)
+      closeSyncScreens(b)
+      const pending = folder + '/waiting.js'
+      a.create(pending, '// inert code waiting for approval')
+      await s.cycle()
+      b.run(
+        `await poll(()=>svc.candidates.value.some(one=>one.path===${JSON.stringify(pending)}&&one.source.id===${JSON.stringify(recipient)}),30000,'untrusted incoming code remains pending');return true`
+      )
+      expect(b.exists(pending)).toBe(false)
+      // Another completed exchange must not silently approve the waiting code.
+      await s.cycle()
+      expect(b.exists(pending)).toBe(false)
+      expect(b.candidates().filter((one) => one.path === pending)).toHaveLength(1)
+      openTrustedConnection(b, recipient)
+      expectTrustedRow(b, false)
+    } finally {
+      closeSyncScreens(a)
+      closeSyncScreens(b)
+    }
+  },
+  fixture
+)
 liveCase(
   'syncDevices',
   '117 a rendered sharing QR connects a desktop recipient and exchanges files',
