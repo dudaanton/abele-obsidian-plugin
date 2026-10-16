@@ -1016,6 +1016,7 @@ export class BasesView {}
 
 /** The editor Obsidian gives a plain-text file. Again, only the class is needed. */
 export class FileView extends ItemView {}
+export class EditableFileView extends FileView {}
 export class TextFileView extends ItemView {}
 
 /**

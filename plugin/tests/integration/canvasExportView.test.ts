@@ -8,7 +8,7 @@ vi.mock('obsidian', async (original) => {
   const api = await original<typeof import('../mocks/obsidian')>()
   return {
     ...api,
-    FileView: class extends api.FileView {
+    EditableFileView: class extends api.EditableFileView {
       async onUnloadFile() {}
     },
   }

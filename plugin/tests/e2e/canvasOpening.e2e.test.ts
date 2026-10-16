@@ -87,6 +87,60 @@ describe.skipIf(!available)('new native Canvas opening', () => {
     shoot('native-new-file')
   }, 120_000)
 
+  it('renames through the native header and command and attaches the file to the current chat', () => {
+    const result = run<{ header: boolean; command: boolean; moved: boolean; attached: boolean }>(`
+      const path = dir + '/sample-actions.canvas'
+      const bytes = JSON.stringify({ nodes: [], edges: [] })
+      const file = await app.vault.create(path, bytes)
+      window.__canvasOpeningFiles.push(path)
+      const leaf = app.workspace.getLeaf('tab')
+      await leaf.openFile(file); await app.workspace.revealLeaf(leaf); await wait(400)
+      const view = leaf.view
+      const title = view.containerEl.querySelector('.view-header-title')
+      if (!title) throw new Error('Canvas header missing')
+      title.click(); title.focus(); title.textContent = 'sample-header-renamed'
+      title.dispatchEvent(new Event('input', { bubbles: true }))
+      title.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+      await wait(500)
+      const header = file.basename === 'sample-header-renamed' && view.getDisplayText() === file.basename
+      const commandAvailable = app.commands.executeCommandById('workspace:edit-file-title')
+      await wait(100)
+      const command = commandAvailable && title.ownerDocument.activeElement === title
+      title.textContent = 'sample-command-renamed'
+      title.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+      await wait(500)
+      if (file.basename !== 'sample-command-renamed') throw new Error('Rename command did not save the new title')
+      await app.fileManager.renameFile(file, dir + '/sample-explorer-renamed.canvas')
+      await wait(200)
+      window.__canvasOpeningFiles.push(file.path)
+      const moved = view.file === file && title.textContent === file.basename && view.getDisplayText() === file.basename
+        && await app.vault.read(file) === bytes
+      const service = window.__abeleTest.ChatService.getInstance()
+      const previous = service.activeSession.value?.id
+      const enabled = window.__abeleTest.AbeleConfig.getInstance().ai.enabled
+      const session = await service.openBlankChat()
+      if (!session) throw new Error('Could not create synthetic chat')
+      try {
+        window.__abeleTest.AbeleConfig.getInstance().ai.enabled = true
+        const action = view.containerEl.querySelector('[aria-label="Attach to a chat"]')
+        if (!action) throw new Error('Canvas attachment action missing')
+        action.click(); await wait(400)
+        const text = service.pendingInput.value?.text ?? session.draft.value.text
+        const attached = service.activeSession.value === session && session.scopeResolver.isInScope(file.path)
+          && text.includes('sample-explorer-renamed.canvas')
+        return { header, command, moved, attached }
+      } finally {
+        session.draft.value = { text: '', attachments: [] }
+        if (service.pendingInput.value?.tabId === session.id) service.pendingInput.value = null
+        await service.closeTab(session.id)
+        if (previous) service.switchTab(previous)
+        window.__abeleTest.AbeleConfig.getInstance().ai.enabled = enabled
+      }
+    `)
+    expect(result).toEqual({ header: true, command: true, moved: true, attached: true })
+    shoot('canvas-file-actions')
+  }, 120_000)
+
   it.each(['{}', '{"nodes":[],"edges":[]}'])(
     'opens a valid empty native file %s and preserves its bytes',
     (bytes) => {

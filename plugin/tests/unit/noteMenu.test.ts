@@ -19,6 +19,17 @@ let file: TFile
 let active: TFile | null
 const editor = { getSelection: () => '' }
 
+it('offers the shared attachment in canvas file menus and the command palette', () => {
+  file = Object.assign(new TFile(), { path: 'Boards/sample.canvas', extension: 'canvas' })
+  active = file
+  const menu = new Menu()
+  handlers.get('file-menu')!(menu, file, 'more-options')
+  expect(menu.items.map((item) => item.title)).toContain('Attach to a chat')
+  expect(commands.find((command) => command.id === 'attach-note-to-chat').checkCallback(true)).toBe(
+    true
+  )
+})
+
 beforeEach(() => {
   const app = useVault([{ path: 'Notes/sample-note.md', content: 'Sample text' }])
   file = app.vault.getAbstractFileByPath('Notes/sample-note.md') as TFile

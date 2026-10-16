@@ -1,5 +1,5 @@
 import {
-  FileView,
+  EditableFileView,
   Menu,
   Notice,
   Scope,
@@ -32,9 +32,12 @@ import { canvasHostActions, type CanvasHostActions } from './pickedActions'
 import { paneEntries } from '../components/canvas/chromeMenus'
 import { CanvasPlaceModal, canvasContents, type CanvasPlace } from './canvasFind'
 import { promptDialog } from '@/components/obsidian/dialogs'
+import { attachNoteToChat } from '@/commands/attachChat'
+import { NOTE_ACTIONS } from '@/commands/noteActions'
+import { AbeleConfig } from '@/services/AbeleConfig'
 
 /** Shared human editor; no view save hook ever publishes a transient preview. */
-export class CanvasView extends FileView {
+export class CanvasView extends EditableFileView {
   viewer: CanvasViewer | null = null
   editor: CanvasEditor | null = null
   private refreshToken = 0
@@ -122,10 +125,21 @@ export class CanvasView extends FileView {
     return extension === 'canvas'
   }
   async onOpen(): Promise<void> {
+    await super.onOpen()
     this.closed = false
     this.contentEl.empty()
     this.contentEl.addClass('abele-canvas-view')
     this.viewer = hostCanvasViewer(this.app, this.contentEl, () => this.file?.path ?? '')
+    const attach = NOTE_ACTIONS[2]
+    this.addAction(attach.icon, attach.title, () => {
+      if (!this.file || !AbeleConfig.getInstance().ai.enabled) return
+      void attachNoteToChat(this.file).catch((error: unknown) => {
+        console.error('[Abele] Canvas attachment failed:', error)
+        new Notice(
+          `Could not attach the canvas: ${error instanceof Error ? error.message : 'unknown error'}`
+        )
+      })
+    })
     this.addAction('panel-top', 'Open in Obsidian Canvas', () => {
       void this.openNative()
     })

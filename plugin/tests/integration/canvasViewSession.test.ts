@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
-import { TFile, WorkspaceLeaf, Menu, Modal, type App } from 'obsidian'
+import { TFile, WorkspaceLeaf, Menu, Modal, EditableFileView, type App } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '@/ai/ScopeResolver'
 import { createCanvasTools } from '@/ai/tools/CanvasTools'
@@ -12,12 +12,17 @@ import { ShellModal } from '@/modal/ShellModal'
 import { canvasDocuments } from '@/canvas/documentRegistry'
 import { planCanvasEdit } from '@/canvas/core/service'
 import { emptyCanvas, serializeCanvas } from '@/canvas/core/model'
+import { attachNoteToChat } from '@/commands/attachChat'
+import { AbeleConfig } from '@/services/AbeleConfig'
+import { DEFAULT_AI_SETTINGS } from '@/ai/types'
+
+vi.mock('@/commands/attachChat', () => ({ attachNoteToChat: vi.fn(async () => true) }))
 
 vi.mock('obsidian', async (original) => {
   const api = await original<typeof import('../mocks/obsidian')>()
   return {
     ...api,
-    FileView: class extends api.ItemView {
+    EditableFileView: class extends api.EditableFileView {
       app: unknown
       file: TFile | null = null
       contentEl = document.createElement('div')
@@ -31,6 +36,7 @@ vi.mock('obsidian', async (original) => {
         this.actions.push(title)
         this.actionHandlers.set(title, handler)
       }
+      async onOpen() {}
       async onClose() {}
       async onUnloadFile() {}
     },
@@ -79,6 +85,26 @@ function repairScenario(raw = '{malformed') {
 }
 
 describe('Abele canvas leaf session lifecycle', () => {
+  it('uses the native editable file view for header rename and file menus', () => {
+    expect(CanvasView.prototype).toBeInstanceOf(EditableFileView)
+  })
+
+  it('initializes native title editing and offers the shared file attachment', async () => {
+    const { view, file } = repairScenario(serializeCanvas(emptyCanvas()))
+    const open = vi.spyOn(EditableFileView.prototype, 'onOpen')
+    await view.onOpen()
+    expect(open).toHaveBeenCalledOnce()
+    expect((view as unknown as { actions: string[] }).actions).toContain('Attach to a chat')
+    view.file = file
+    AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS, enabled: true }
+    ;(view as unknown as { actionHandlers: Map<string, () => unknown> }).actionHandlers.get(
+      'Attach to a chat'
+    )!()
+    expect(attachNoteToChat).toHaveBeenCalledWith(file)
+    await view.onClose()
+    open.mockRestore()
+  })
+
   it('refreshes relative cards and pictures when the canvas moves without byte changes', async () => {
     const { app, file, view, registry } = repairScenario(serializeCanvas(emptyCanvas()))
     await view.onOpen()

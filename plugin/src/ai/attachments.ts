@@ -7,6 +7,8 @@ import { contentHash } from './readGuard'
 import { createImportedBinary } from '@/media/importImageFile'
 import { ensureAttachmentFolder } from '@/media/attachmentFolder'
 import { isHeicImport } from '@/media/imageImport'
+import { parseCanvasFile } from '@/canvas/fileData'
+import { canvasOutline } from '@/canvas/core/read'
 
 const MAX_TEXT_FILE_SIZE = 100 * 1024 // 100 KB
 
@@ -15,6 +17,7 @@ const TEXT_EXTENSIONS = [
   'md',
   'txt',
   'json',
+  'canvas',
   'csv',
   'xml',
   'yaml',
@@ -107,15 +110,20 @@ export async function resolveAttachmentsForApi(
     } else {
       try {
         const whole = await app.vault.read(file)
-        let content = whole
+        let content =
+          file.extension === 'canvas'
+            ? JSON.stringify(canvasOutline(parseCanvasFile(whole), { detail: 'full' }), null, 2)
+            : whole
         let lines: [number, number] | undefined
-        if (file.stat.size > MAX_TEXT_FILE_SIZE) {
-          content = whole.slice(0, MAX_TEXT_FILE_SIZE)
-          if (content.length < whole.length) lines = [1, content.split('\n').length]
+        if ((file.extension === 'canvas' ? content.length : file.stat.size) > MAX_TEXT_FILE_SIZE) {
+          content = content.slice(0, MAX_TEXT_FILE_SIZE)
+          if (file.extension !== 'canvas') lines = [1, content.split('\n').length]
           content += '\n\n[... truncated]'
         }
         parts.push({ type: 'text', text: `--- ${file.name} ---\n${content}` })
-        onSeen?.({ path: file.path, hash: contentHash(whole), ...(lines ? { lines } : {}) })
+        // A derived outline is not a read of the source bytes for guarded text writes.
+        if (file.extension !== 'canvas')
+          onSeen?.({ path: file.path, hash: contentHash(whole), ...(lines ? { lines } : {}) })
       } catch {
         parts.push({ type: 'text', text: `[Cannot read: ${path}]` })
       }
