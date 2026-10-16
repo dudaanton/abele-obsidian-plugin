@@ -13,6 +13,7 @@ import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { NodeClient, MemoryClientStore } from '@abele/node-client'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { openAgents, closeAgents } from '@/agents/openAgents'
+import { generateIdentity } from '@abele/channel-protocol'
 import { useAttentionVault as useVault } from '../helpers/attentionVault'
 
 const NODE = { id: 'sample-registration', expectedNodeId: 'sample-node', label: 'Sample node' }
@@ -65,6 +66,64 @@ afterEach(() => {
 })
 
 describe("a node's sessions in the agents list", () => {
+  it('covers a node paired after attention startup through the invitation path', async () => {
+    useVault([])
+    const client = {
+      listSessions: vi.fn(async (after?: string) => (after ? [] : [session('sample-busy')])),
+      sessionState: vi.fn(async (id: string) => ({
+        ...working(id),
+        watchers: 1,
+        turn: { turn_id: 'sample-turn', trigger: 'input', started_at: '2026-01-01T10:00:00.000Z' },
+      })),
+      prompts: vi.fn(async () => []),
+    }
+    fakeConnection(client)
+    const nodes = NodeService.getInstance()
+    const invite = {
+      node_id: 'sample-paired-node',
+      endpoint: 'wss://sample.example.ts.net:8443/channel',
+      node_fingerprint: 'a'.repeat(64),
+      invite_id: 'sample-invitation',
+      secret: 'b'.repeat(64),
+      expires_at: 1999999999999,
+    }
+    const device = {
+      ...(await generateIdentity()),
+      node_id: invite.node_id,
+      endpoint: invite.endpoint,
+      node_fingerprint: invite.node_fingerprint,
+      installation_id: 'sample-installation',
+    }
+    vi.spyOn(nodes.deviceKeys, 'rememberInvitation').mockResolvedValue(device)
+    vi.spyOn(nodes.deviceKeys, 'recordClaim').mockResolvedValue(device)
+    vi.spyOn(nodes.pairedConnector, 'claim').mockResolvedValue({
+      installation_id: device.installation_id,
+      device_fingerprint: 'c'.repeat(64),
+      state: 'pending',
+    })
+    const agents = AgentsService.getInstance()
+    await agents.start()
+    expect(agents.rows.value).toEqual([])
+    const registered = await nodes.pair('Sample paired node', invite)
+    expect(nodes.nodes.value).toEqual([registered])
+    openAgents()
+    try {
+      await vi.waitFor(() => {
+        expect(document.querySelector('.abele-agents')?.textContent).toContain('Sample sample-busy')
+        expect(document.querySelector('.abele-agents')?.textContent).toContain('Working')
+      })
+      expect(nodes.connection).toHaveBeenCalledWith(registered.id)
+      expect(agents.rows.value[0].reference).toMatchObject({
+        kind: 'node',
+        registrationId: registered.id,
+        nodeId: invite.node_id,
+        sessionId: 'sample-busy',
+      })
+    } finally {
+      closeAgents()
+    }
+  })
+
   it('renders a daemon input turn through the SDK and command dialog without injected rows', async () => {
     useVault([])
     const app = GlobalStore.getInstance().app

@@ -362,6 +362,7 @@ export class NodeService {
       connection.start()
     }
     this.nodes.value = this.registry.list()
+    AgentsService.getInstance().setNodes(this.nodes.value)
     return this.nodes.value.find((n) => n.id === id)!
   }
 
