@@ -3,8 +3,10 @@
     <div class="abele-sync-window">
       <!-- What the connection is doing, as the row says it, and a bar while it runs. -->
       <div class="abele-sync-window__state">
-        <StatusDot :tone="tone" :label="line" :pulse="tone === 'accent'" />
-        <span class="abele-sync-window__line">{{ line }}</span>
+        <div class="abele-sync-window__status">
+          <StatusDot :tone="tone" :label="line" :pulse="tone === 'accent'" />
+          <span class="abele-sync-window__line">{{ line }}</span>
+        </div>
         <span class="abele-sync-window__server">{{ host }}</span>
       </div>
       <Progress
@@ -192,7 +194,21 @@ onMounted(async () => {
   gap: var(--size-2-3) var(--size-4-2);
   margin-bottom: var(--size-4-2);
 }
+.abele-sync-window__status {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  gap: var(--size-4-2);
+  min-width: 0;
+  max-width: 100%;
+
+  .abele-status-dot {
+    // Centre on the first line even when the status text wraps.
+    margin-block-start: calc((1lh - var(--size-4-2)) / 2);
+  }
+}
 .abele-sync-window__line {
+  min-width: 0;
   color: var(--text-normal);
 }
 .abele-sync-window__server {

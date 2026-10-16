@@ -5,6 +5,49 @@ import ConnectionWindow from '@/components/sync/ConnectionWindow.vue'
 import { TokenSettingsPort } from '@/sync/tokenSettingsPort'
 import { historyConnection } from '@/sync/tokenHistory'
 import { tokenUiFixture } from '@/testing/tokenUiFixture'
+import { readFileSync } from 'node:fs'
+import { compileString } from 'sass-embedded'
+
+it('keeps the dot beside long status text in a non-wrapping row at phone width', () => {
+  const ui = tokenUiFixture()
+  const id = ui.rows.value[0].id
+  ui.publish(id, {
+    transfer: {
+      stage: 'Downloading',
+      completed: 5,
+      total: 720,
+      totalKnown: true,
+      bytes: 1024,
+      totalBytes: 7 * 1024 * 1024,
+    },
+  })
+  const style = document.createElement('style')
+  const source = readFileSync('src/components/sync/ConnectionWindow.vue', 'utf8')
+  style.textContent = compileString(source.match(/<style lang="scss">([\s\S]*?)<\/style>/)![1]).css
+  document.head.append(style)
+  const view = mount(ConnectionWindow, {
+    props: { ui, connectionId: id },
+    attachTo: document.body,
+    global: {
+      stubs: {
+        Modal: { template: '<div style="width: 320px"><slot /></div>' },
+        SelectiveSync: true,
+      },
+    },
+  })
+  try {
+    const line = view.get('.abele-sync-window__line').element
+    const row = line.parentElement!
+    expect(row.querySelector('.abele-status-dot')).not.toBeNull()
+    expect(row.querySelector('.abele-sync-window__server')).toBeNull()
+    expect(getComputedStyle(row).display).toBe('flex')
+    expect(getComputedStyle(row).flexWrap).toBe('nowrap')
+    expect(getComputedStyle(line).minWidth).toBe('0')
+  } finally {
+    view.unmount()
+    style.remove()
+  }
+})
 
 afterEach(() => {
   vi.restoreAllMocks()
