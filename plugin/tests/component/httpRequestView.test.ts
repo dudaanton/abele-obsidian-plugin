@@ -227,3 +227,17 @@ describe('an empty request and a long answer', () => {
     expect(view.find('.abele-http-request__divider').attributes('role')).toBe('separator')
   })
 })
+
+describe("a request's body", () => {
+  it("is written in the plugin's code editor and handed on when the field is left", async () => {
+    const view = mount(RequestView, {
+      props: { request: request(), environment: 'local', vars },
+      attachTo: document.body,
+    })
+    const content = view.find('.abele-http-request__body .cm-content')
+    expect(content.exists()).toBe(true)
+    expect(content.attributes('aria-label')).toBe('Body')
+    expect(view.find('.abele-http-request__body textarea').exists()).toBe(false)
+    view.unmount()
+  })
+})

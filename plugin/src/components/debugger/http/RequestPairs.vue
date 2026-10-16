@@ -197,27 +197,16 @@ onUpdated(tips)
   visibility: visible;
 }
 
-// On a phone the value goes under its name: side by side neither had room to be read.
+// On a phone a line stays one line, as a note's properties do there: the name a narrower column,
+// the value the rest, cut short with an ellipsis until it is tapped to edit.
 .is-phone .abele-http-pairs__row {
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  grid-template-areas: 'on key remove' '. value .';
-  row-gap: 0;
+  grid-template-columns: auto minmax(5em, 8em) minmax(0, 1fr) auto;
+  gap: var(--size-4-1);
+  padding-inline: 0;
 
-  > :nth-child(1) {
-    grid-area: on;
+  input:not([type='checkbox']) {
+    text-overflow: ellipsis;
   }
-  > :nth-child(2) {
-    grid-area: key;
-  }
-  > :nth-child(3) {
-    grid-area: value;
-  }
-  > :nth-child(4) {
-    grid-area: remove;
-  }
-}
-.is-phone .abele-http-pairs__row_new {
-  grid-template-areas: 'on key remove';
 }
 
 .abele-http-pairs__row_new:hover {

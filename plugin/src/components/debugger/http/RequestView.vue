@@ -9,7 +9,7 @@
           <Dropdown
             class="abele-http-request__method"
             :class="`abele-http-method_${request.method.toLowerCase()}`"
-            :options="METHODS.map((m) => ({ value: m, display: m }))"
+            :options="METHODS.map((m) => ({ value: m, display: methodName(m) }))"
             :model-value="request.method"
             aria-label="Method"
             @update:model-value="
@@ -94,24 +94,23 @@
               @remove="(i) => removePair(part.id, i)"
               @add="(p) => addPair(part.id, p)"
             />
-            <div v-else-if="part.id === 'body'" class="abele-http-request__body">
-              <textarea
-                :value="request.body?.text ?? ''"
-                aria-label="Body"
-                spellcheck="false"
-                :rows="Math.min(8, Math.max(3, (request.body?.text ?? '').split('\n').length))"
-                placeholder="No body"
-                @change="
+            <!-- The body in the plugin's own code editor, coloured for its format; Mod+Enter sends. -->
+            <CodeField
+              v-else-if="part.id === 'body'"
+              class="abele-http-request__body"
+              :value="request.body?.text ?? ''"
+              :path="`body.${request.body?.format === 'json' ? 'json' : 'txt'}`"
+              label="Body"
+              placeholder="No body"
+              @change="
+                (text: string) =>
                   emit('change', {
                     ...request,
-                    body: {
-                      format: request.body?.format ?? 'json',
-                      text: ($event.target as HTMLTextAreaElement).value,
-                    },
+                    body: { format: request.body?.format ?? 'json', text },
                   })
-                "
-              />
-            </div>
+              "
+              @submit="send"
+            />
             <div v-else-if="part.id === 'scripts'" class="abele-http-request__rows">
               <TreeItem
                 v-for="when in ['before', 'after'] as const"
@@ -319,6 +318,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { Platform } from 'obsidian'
 import Button from '../../obsidian/Button.vue'
+import CodeField from '../../obsidian/CodeField.vue'
 import Dropdown from '../../obsidian/Dropdown.vue'
 import EmptyState from '../../obsidian/EmptyState.vue'
 import FoldHeading from '../../obsidian/FoldHeading.vue'
@@ -391,6 +391,9 @@ const shownAt = computed(() =>
     : undefined
 )
 const METHODS: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']
+// On a phone the method is said as the list of requests says it, so the address keeps its room.
+const methodName = (m: HttpMethod) =>
+  phone && m === 'DELETE' ? 'DEL' : phone && m === 'OPTIONS' ? 'OPT' : m
 
 // Scripts start folded, and so does every part with nothing in it: an empty request reads as
 // its headings alone, and opening one shows the line to add the first.
@@ -657,13 +660,6 @@ const statusTone = (status: number) => (status >= 400 ? 'error' : status >= 300 
   margin-bottom: var(--size-2-2);
 }
 
-.abele-http-request__body textarea {
-  width: 100%;
-  font-family: var(--font-monospace);
-  font-size: var(--font-ui-small);
-  resize: vertical;
-}
-
 .abele-http-request__rows {
   display: flex;
   flex-direction: column;
@@ -799,19 +795,13 @@ const statusTone = (status: number) => (status >= 400 ? 'error' : status >= 300 
   color: var(--text-warning);
 }
 
-// On a phone the address takes its own line, the method and Send under it.
+// On a phone too the method, the address and Send are one line, as a browser's address bar is:
+// a long address scrolls inside its field and is read in full on the line under it.
 .abele-http-request_phone {
   padding: var(--size-4-3) var(--size-4-4);
 
   .abele-http-request__line {
-    flex-wrap: wrap;
-  }
-  .abele-http-request__url {
-    order: -1;
-    flex-basis: 100%;
-  }
-  .abele-http-request__send {
-    margin-inline-start: auto;
+    gap: var(--size-4-1);
   }
   .abele-http-request__resolved {
     margin-top: 0;

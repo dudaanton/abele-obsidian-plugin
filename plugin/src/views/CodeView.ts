@@ -8,31 +8,13 @@ import {
   TextComponent,
   Scope,
 } from 'obsidian'
-import {
-  EditorView,
-  lineNumbers,
-  keymap,
-  highlightActiveLine,
-  drawSelection,
-} from '@codemirror/view'
+import { EditorView, lineNumbers, keymap } from '@codemirror/view'
 import { Extension } from '@codemirror/state'
 import { EditorState } from '@codemirror/state'
-import {
-  defaultKeymap,
-  history,
-  historyKeymap,
-  toggleComment,
-  indentWithTab,
-} from '@codemirror/commands'
-import { highlightSelectionMatches, SearchQuery, setSearchQuery } from '@codemirror/search'
+import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
+import { SearchQuery, setSearchQuery } from '@codemirror/search'
 import { SearchCursor } from '@codemirror/search'
-import {
-  bracketMatching,
-  foldGutter,
-  foldKeymap,
-  defaultHighlightStyle,
-  syntaxHighlighting,
-} from '@codemirror/language'
+import { defaultHighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { json } from '@codemirror/lang-json'
 import { javascript } from '@codemirror/lang-javascript'
 import { css } from '@codemirror/lang-css'
@@ -47,6 +29,7 @@ import { chatCodeSelection, insertCodeSelection, type CodeSelection } from './co
 import { isScriptPath } from '@/scripting/scriptPath'
 import { noteLocalScriptWrite } from '@/scripting/ScriptTrust'
 import { mountFileChats, type FileChatsModel } from './codeViewChats'
+import { codeEditing } from '@/editor/codeEditing'
 
 export const CODE_VIEW_TYPE = 'abele-code'
 
@@ -366,12 +349,8 @@ export class CodeView extends TextFileView {
         doc,
         extensions: [
           lineNumbers(),
-          foldGutter(),
           history(),
-          drawSelection(),
-          bracketMatching(),
-          highlightActiveLine(),
-          highlightSelectionMatches(),
+          ...codeEditing(),
           syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
           ...(langFactory ? [langFactory()] : []),
           EditorView.lineWrapping,
@@ -391,14 +370,8 @@ export class CodeView extends TextFileView {
                 return true
               },
             },
-            {
-              key: 'Mod-/',
-              run: (view) => toggleComment(view as any),
-            },
-            indentWithTab,
             ...defaultKeymap,
             ...historyKeymap,
-            ...foldKeymap,
           ]),
           EditorView.updateListener.of((update) => {
             if (update.docChanged && !this.suppressDirty) {
