@@ -5,8 +5,9 @@ const openMenus = new WeakMap<Document, Menu>()
 /**
  * A menu that closes on a press anywhere outside it. The canvas keeps its own presses from
  * reaching the page, so a menu listening there would stay open over it.
+ * Pass closing work here: Menu.onHide replaces its previous callback, including our cleanup.
  */
-export function canvasMenu(): Menu {
+export function canvasMenu(onHide?: () => void): Menu {
   const menu = new Menu(),
     doc = activeDocument
   openMenus.get(doc)?.hide()
@@ -38,6 +39,7 @@ export function canvasMenu(): Menu {
     doc.removeEventListener('wheel', wheel, true)
     doc.removeEventListener('keydown', key, true)
     if (openMenus.get(doc) === menu) openMenus.delete(doc)
+    onHide?.()
   })
   return menu
 }

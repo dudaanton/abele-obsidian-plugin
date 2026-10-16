@@ -349,7 +349,9 @@ export function dropMenu(c: Controls): void {
   const drop = c.drop()
   if (!drop) return
   let chosen = false
-  const menu = canvasMenu()
+  const menu = canvasMenu(() => {
+    if (!chosen) void c.dropAdd(null)
+  })
   const add = (title: string, icon: string, kind: 'card' | 'note' | 'shape') =>
     menu.addItem((item) =>
       item
@@ -364,9 +366,6 @@ export function dropMenu(c: Controls): void {
   add('Note or file', 'file-text', 'note')
   const shape = c.value('shape') || 'rectangle'
   add(`Shape: ${shape.replace(/-/g, ' ')}`, SHAPE_ICONS[shape] ?? 'square', 'shape')
-  menu.onHide(() => {
-    if (!chosen) void c.dropAdd(null)
-  })
   menu.showAtPosition({ x: drop.screen.x, y: drop.screen.y })
 }
 

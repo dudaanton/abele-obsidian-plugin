@@ -1,8 +1,56 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { canvasMenu } from '@/canvas/menu'
+import { Menu } from 'obsidian'
+import { dropMenu } from '@/components/canvas/chromeMenus'
 
-afterEach(() => vi.useRealTimers())
+// Obsidian keeps one onHide callback. Model that contract locally so the connection-drop
+// regression cannot be hidden by the shared mock's accumulating callbacks.
+vi.mock('obsidian', async (original) => {
+  const api = await original<typeof import('obsidian')>()
+  return {
+    ...api,
+    Menu: class extends api.Menu {
+      private closing: (() => void) | null = null
+      onHide(callback: () => void): void {
+        this.closing = callback
+      }
+      hide(): this {
+        const callback = this.closing
+        this.closing = null
+        callback?.()
+        return this
+      }
+    },
+  }
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.useRealTimers()
+})
 describe('canvas menus', () => {
+  it('releases canvas input when a connection-drop menu closes', () => {
+    vi.useFakeTimers()
+    const shown = vi.spyOn(Menu.prototype, 'showAtPosition')
+    const controls = {
+      drop: () => ({ screen: { x: 100, y: 100 } }),
+      value: () => 'rectangle',
+      dropAdd: vi.fn(),
+    }
+    dropMenu(controls as unknown as Parameters<typeof dropMenu>[0])
+    const menu = shown.mock.contexts[0]
+    vi.runAllTimers()
+    menu.hide()
+    expect(controls.dropAdd).toHaveBeenCalledExactlyOnceWith(null)
+    const hide = vi.spyOn(menu, 'hide')
+    const press = new PointerEvent('pointerdown', { bubbles: true, cancelable: true })
+    const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    document.body.dispatchEvent(press)
+    document.body.dispatchEvent(escape)
+    expect(press.defaultPrevented).toBe(false)
+    expect(escape.defaultPrevented).toBe(false)
+    expect(hide).not.toHaveBeenCalled()
+  })
   it('consumes outside presses before canvas actions', () => {
     vi.useFakeTimers()
     const stage = document.createElement('div'),
