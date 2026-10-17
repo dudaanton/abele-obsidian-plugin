@@ -1,5 +1,7 @@
 # Ābele Obsidian plugin
 
+When Obsidian uses a supported non-English language, Abele downloads its translation file from the matching GitHub release.
+
 ![Ābele plugin preview](assets/abele_preview.jpg)
 
 An Obsidian plugin that adds a lot of functionality I personally find missing:

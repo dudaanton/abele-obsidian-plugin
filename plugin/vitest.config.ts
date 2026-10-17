@@ -47,6 +47,10 @@ export default defineConfig({
         replacement: fixture ? `${fixture}/packages/server/$1.ts` : missingFixture,
       },
       { find: '@', replacement: path.resolve(__dirname, 'src') },
+      {
+        find: 'virtual:abele-i18n',
+        replacement: path.resolve(__dirname, 'tests/mocks/i18nAssets.ts'),
+      },
       // Production code imports the real plugin API; tests get the stand-in so that
       // `instanceof TFile` works against fixtures built by tests/helpers/fakeVault.ts.
       { find: 'obsidian', replacement: path.resolve(__dirname, 'tests/mocks/obsidian.ts') },

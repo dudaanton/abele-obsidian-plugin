@@ -8,7 +8,7 @@ import { nextTick } from 'vue'
 /** Reopen the surface after changing locale; never touches host language or saved settings. */
 export async function setTestLocale(locale = 'en'): Promise<void> {
   if (locale !== 'en-XA') {
-    initializeLocale(locale)
+    initializeLocale(locale, catalogs[locale as keyof typeof catalogs])
     await nextTick()
     return
   }

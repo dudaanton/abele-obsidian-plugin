@@ -15,13 +15,14 @@ export const english = { ...en, ...enTasks }
 export type TranslationCatalog = {
   [K in keyof typeof en]: (typeof en)[K] extends string ? string : Exclude<Message, string>
 }
-export const catalogs = {
+// Keep the full registry available to tooling without retaining it in English-only consumers.
+export const catalogs = /* @__PURE__ */ (() => ({
   en: english,
   ru: { ...ru, ...ruTasks },
   lv: { ...lv, ...lvTasks },
   es: { ...es, ...esTasks },
   de: { ...de, ...deTasks },
-}
+}))()
 
 const placeholders = (text: string) =>
   [...new Set([...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]))].sort().join(',')

@@ -8,6 +8,7 @@ import { writeArtifact } from '../../scripts/build-artifact.mjs'
 import { exportReleaseArtifact } from '../../scripts/export-release-artifact.mjs'
 import { sha256 } from '../../scripts/build-inputs.mjs'
 import { readProductionReport } from '../../scripts/bundle-size.mjs'
+import { catalogAssetNames } from '../../scripts/release-checks.mjs'
 
 const roots: string[] = []
 afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })))
@@ -36,28 +37,32 @@ function fixture() {
   const build = join(root, 'plugin/build')
   writeFileSync(join(build, 'main.js'), 'const sample = 1;')
   writeFileSync(join(build, 'main.css'), '.sample {}')
+  for (const name of catalogAssetNames) writeFileSync(join(build, name), '{}')
   writeArtifact(root, build, 'production', {
     mainJsBytes: 17,
     stylesBytes: 10,
-    files: ['main.js', 'main.css'],
+    files: ['main.js', 'main.css', ...catalogAssetNames],
     runtimeElements: { script: 0, style: 0 },
     byPackage: [],
   })
   return { root, build, git }
 }
-it('exports the candidate schema with checksums of exactly the three published assets', () => {
+it('exports the candidate schema with checksums of plugin and translation assets', () => {
   const { root, build, git } = fixture()
   const target = join(build, '../node_modules/.cache/candidate')
   exportReleaseArtifact(root, build, target)
-  expect(readdirSync(target).sort()).toEqual([
-    'SHA256SUMS',
-    'main.js',
-    'manifest.json',
-    'provenance.json',
-    'styles.css',
-  ])
+  expect(readdirSync(target).sort()).toEqual(
+    [
+      'SHA256SUMS',
+      'main.js',
+      'manifest.json',
+      'provenance.json',
+      'styles.css',
+      ...catalogAssetNames,
+    ].sort()
+  )
   const files = Object.fromEntries(
-    ['main.js', 'styles.css', 'manifest.json'].map((name) => [
+    ['main.js', 'styles.css', 'manifest.json', ...catalogAssetNames].map((name) => [
       name,
       sha256(readFileSync(join(target, name))),
     ])
@@ -123,6 +128,14 @@ it('offers the harness guarded build name without removing standalone type check
 it('rejects damaged production bytes instead of creating a publishable package', () => {
   const { root, build } = fixture()
   writeFileSync(join(build, 'main.js'), 'corrupt')
+  expect(() =>
+    exportReleaseArtifact(root, build, join(root, 'plugin/node_modules/.cache/bad'))
+  ).toThrow(/checksum/)
+})
+
+it('rejects a damaged translation asset before export', () => {
+  const { root, build } = fixture()
+  writeFileSync(join(build, 'abele-i18n-ru.json'), 'corrupt')
   expect(() =>
     exportReleaseArtifact(root, build, join(root, 'plugin/node_modules/.cache/bad'))
   ).toThrow(/checksum/)

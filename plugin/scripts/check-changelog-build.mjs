@@ -2,12 +2,14 @@
 /** Optional release-build gate, separate from the fast tier. Everything writable lives in
  * disposable full clones; no tag, config, index or commit is changed in the source checkout. */
 import { execFileSync, spawnSync } from 'node:child_process'
-import { accessSync, constants, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { accessSync, constants, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { resolve, join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
 import { gitAt, gitEnvironment } from './changelog-git.mjs'
+import { verifyArtifact } from './build-artifact.mjs'
+import { catalogAssetNames } from './release-checks.mjs'
 
 const source = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const scratch = mkdtempSync(join(tmpdir(), 'abele-tag-build-'))
@@ -91,13 +93,11 @@ try {
   run(join(second, 'plugin'), 'npm', ['ci', '--silent'])
   run(join(second, 'plugin'), 'npm', ['run', 'build'], { TZ: 'Asia/Tokyo' })
   for (const root of [first, second]) {
-    const files = readdirSync(join(root, 'plugin/build')).sort()
-    if (JSON.stringify(files) !== JSON.stringify(['main.css', 'main.js']))
-      throw Error('Unexpected release build files')
+    verifyArtifact(root, join(root, 'plugin/build'), 'production')
     if (gitAt(root, ['status', '--porcelain']))
       throw Error('Tagged build changed the clean checkout')
   }
-  for (const file of ['main.js', 'main.css']) {
+  for (const file of ['main.js', 'main.css', 'manifest.json', ...catalogAssetNames]) {
     if (hash(first, file) !== hash(second, file)) throw Error(`Tagged clone builds differ: ${file}`)
     console.log(`${file}: identical SHA-256 ${hash(first, file)}`)
   }

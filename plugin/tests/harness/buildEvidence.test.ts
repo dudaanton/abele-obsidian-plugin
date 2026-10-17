@@ -14,6 +14,7 @@ import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { inputIdentity, recordTypes, requireTypes } from '../../scripts/build-inputs.mjs'
 import { writeArtifact, verifyArtifact } from '../../scripts/build-artifact.mjs'
+import { catalogAssetNames } from '../../scripts/release-checks.mjs'
 
 const roots: string[] = []
 afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })))
@@ -129,10 +130,11 @@ describe('exact emitted artifact evidence', { timeout: 120_000 }, () => {
     mkdirSync(dir)
     writeFileSync(join(dir, 'main.js'), 'const sample = 1;')
     writeFileSync(join(dir, 'main.css'), '.sample {}')
+    for (const name of catalogAssetNames) writeFileSync(join(dir, name), '{}')
     const report = {
       mainJsBytes: 17,
       stylesBytes: 10,
-      files: ['main.js', 'main.css'],
+      files: ['main.js', 'main.css', ...catalogAssetNames],
       byPackage: [],
       runtimeElements: { script: 0, style: 0 },
     }

@@ -13,6 +13,7 @@ import { buildArtifactPlugin } from './scripts/build-artifact.mjs'
 import { syncPlacementPlugin } from './scripts/sync-placement.mjs'
 import { singleZodV3Plugin } from './scripts/single-zod-v3.mjs'
 import { hyperFormulaCataloguePlugin } from './scripts/hyperformula-catalogue.mjs'
+import { i18nAssetsPlugin } from './scripts/i18n-assets.mjs'
 
 /**
  * Carry MapLibre's three ESM assets in the single plugin file. The main and worker assets
@@ -100,6 +101,7 @@ export default defineConfig(async ({ mode }) => {
       __ABELE_TEST_SHARING__: JSON.stringify(mode === 'sharing-test'),
     },
     plugins: [
+      i18nAssetsPlugin(__dirname),
       syncPlacementPlugin(),
       singleZodV3Plugin(__dirname),
       hyperFormulaCataloguePlugin(),

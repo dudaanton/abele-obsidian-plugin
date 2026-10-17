@@ -9,11 +9,11 @@ import {
   atomicJson,
 } from './build-inputs.mjs'
 import { runtimeElements, reportBundle } from './build-report.mjs'
-import { checkBuild } from './release-checks.mjs'
+import { checkBuild, catalogAssetNames } from './release-checks.mjs'
 import { assertNoTestingModules } from './production-test-guard.mjs'
 import { gitAt } from './changelog-git.mjs'
 
-const assets = ['main.js', 'main.css', 'manifest.json', 'build-report.json']
+const assets = ['main.js', 'main.css', 'manifest.json', 'build-report.json', ...catalogAssetNames]
 export function writeArtifact(root, dir, mode, report, provenance = undefined) {
   writeFileSync(resolve(dir, 'manifest.json'), readFileSync(resolve(root, 'manifest.json')))
   atomicJson(resolve(dir, 'build-report.json'), report)
@@ -93,7 +93,8 @@ export function verifyArtifact(root, dir, mode, { promotionTag } = {}) {
     report.mainJsBytes !== Buffer.byteLength(javascript) ||
     report.stylesBytes !== readFileSync(resolve(dir, 'main.css')).length ||
     JSON.stringify(report.runtimeElements) !== JSON.stringify(runtimeElements(javascript)) ||
-    JSON.stringify([...report.files].sort()) !== '["main.css","main.js"]'
+    JSON.stringify([...report.files].sort()) !==
+      JSON.stringify(['main.css', 'main.js', ...catalogAssetNames].sort())
   )
     throw new Error('Artifact report does not match emitted bytes')
   return report

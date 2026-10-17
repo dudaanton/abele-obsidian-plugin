@@ -11,8 +11,9 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { verifyArtifact } from './build-artifact.mjs'
 import { atomicJson, sha256 } from './build-inputs.mjs'
+import { catalogAssetNames } from './release-checks.mjs'
 
-/** The portable release package has exactly three plugin assets. Richer build/size evidence
+/** The portable release package carries plugin assets and optional language downloads. Richer build/size evidence
  * stays in the independent production CI artifact, not the published asset inventory. */
 export function exportReleaseArtifact(root, source, target, options = {}) {
   verifyArtifact(root, source, 'production', options)
@@ -23,10 +24,11 @@ export function exportReleaseArtifact(root, source, target, options = {}) {
     ['main.js', 'main.js'],
     ['main.css', 'styles.css'],
     ['manifest.json', 'manifest.json'],
+    ...catalogAssetNames.map((name) => [name, name]),
   ])
     copyFileSync(resolve(source, emitted), resolve(target, published))
   const files = Object.fromEntries(
-    ['main.js', 'styles.css', 'manifest.json'].map((name) => [
+    ['main.js', 'styles.css', 'manifest.json', ...catalogAssetNames].map((name) => [
       name,
       sha256(readFileSync(resolve(target, name))),
     ])

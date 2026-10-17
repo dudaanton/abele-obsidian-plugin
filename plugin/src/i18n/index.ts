@@ -1,4 +1,5 @@
-import { catalogs } from './catalogs'
+import { english } from './catalogs'
+import type { Catalog } from './core'
 import { createTranslator, resolveLocale } from './core'
 import type { MessageKey, TranslationArgs } from './types'
 export {
@@ -10,9 +11,11 @@ export {
 } from './format'
 
 let locale = resolveLocale('en')
-let translate = createTranslator(locale.language, catalogs)
-export function initializeLocale(raw: string): void {
+let translate = createTranslator(locale.language, { en: english })
+export function initializeLocale(raw: string, catalog?: Catalog): void {
   locale = resolveLocale(raw)
+  const catalogs: Record<string, Catalog> = { en: english }
+  if (catalog) catalogs[locale.language] = catalog
   translate = createTranslator(locale.language, catalogs, (language, key) => {
     if (process.env.NODE_ENV !== 'production') console.warn(`[i18n] Missing ${language}/${key}`)
   })

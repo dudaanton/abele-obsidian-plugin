@@ -12,6 +12,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { writeFileSync, readFileSync } from 'node:fs'
 import path from 'node:path'
+import { createHash } from 'node:crypto'
 
 interface Budget {
   mainJsBytes: number
@@ -61,6 +62,24 @@ describe('bundle size', () => {
   it('keeps main.js inside its budget', () => {
     expect(report.mainJsBytes).toBeGreaterThan(0)
     expect(report.mainJsBytes).toBeLessThanOrEqual(budget.mainJsBytes)
+  })
+
+  it('ships non-English catalogs only as versioned assets whose hashes are bundled', () => {
+    const dir = path.resolve(root, process.env.ABELE_BUILD_ARTIFACT ?? 'build')
+    const code = readFileSync(path.join(dir, 'main.js'), 'utf8')
+    expect(code.includes('Звуковая волна')).toBe(false)
+    expect(code.includes('\\u0417\\u0432\\u0443')).toBe(false)
+    const { version } = JSON.parse(readFileSync(path.join(dir, 'manifest.json'), 'utf8'))
+    for (const language of ['ru', 'lv', 'es', 'de']) {
+      const name = `abele-i18n-${language}.json`
+      expect(report.files).toContain(name)
+      const text = readFileSync(path.join(dir, name), 'utf8')
+      const payload = JSON.parse(text)
+      expect(payload.version).toBe(version)
+      expect(payload.language).toBe(language)
+      expect(Object.keys(payload.catalog).length).toBeGreaterThan(100)
+      expect(code.includes(createHash('sha256').update(text).digest('hex'))).toBe(true)
+    }
   })
 
   it('keeps the stylesheet inside its budget', () => {

@@ -1,5 +1,5 @@
 import { t } from '@/i18n'
-import { initializeLocale } from '@/i18n'
+import { initializePluginLocale } from '@/i18n/initialize'
 import { hostLocale } from '@/i18n/obsidianLocale'
 import { registerZen } from '@/zen/registerZen'
 import { ChangeTracker } from '@/ai/rewind/ChangeTracker'
@@ -318,8 +318,11 @@ export default class AbelePlugin extends Plugin {
       // Every step below runs on its own: one that throws is named in the console and the rest of
       // the start goes on, instead of leaving the sidebars and everything after it unregistered.
       beginStartup()
-      startupStep('locale', () =>
-        initializeLocale(process.env.NODE_ENV !== 'production' ? 'en' : hostLocale().format)
+      await startupStepAsync('locale', () =>
+        initializePluginLocale(
+          this,
+          process.env.NODE_ENV !== 'production' ? 'en' : hostLocale().format
+        )
       )
       // First, so it runs before every other layout-ready callback registered below.
       this.app.workspace.onLayoutReady(() => markLoad('layoutStart'))

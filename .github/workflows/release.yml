@@ -140,6 +140,7 @@ jobs:
             release/main.js
             release/manifest.json
             release/styles.css
+            release/abele-i18n-*.json
             release/provenance.json
 
       - name: Publish release with checksums
@@ -163,4 +164,8 @@ jobs:
             release/main.js \
             release/manifest.json \
             release/styles.css \
+            release/abele-i18n-ru.json \
+            release/abele-i18n-lv.json \
+            release/abele-i18n-es.json \
+            release/abele-i18n-de.json \
             release/SHA256SUMS
