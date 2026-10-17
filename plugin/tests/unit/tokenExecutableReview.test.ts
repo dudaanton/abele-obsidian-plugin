@@ -18,6 +18,44 @@ const source = {
   scope: { kind: 'folder' as const, id: 'root', path: '/' },
 }
 const encode = (text: string) => new TextEncoder().encode(text)
+it('records approval durably before an installer is available', async () => {
+  const store = new MemoryStateStore(),
+    review = new ExecutableReview(store)
+  const { candidate } = await review.stage(await incoming())
+  await review.recordApproval(candidate!.id)
+  expect((await new ExecutableReview(store).state())[0].status).toBe('queued')
+  const applied: string[] = []
+  await review.approve([candidate!.id], {
+    apply: async (one) => {
+      applied.push(one.id)
+    },
+  })
+  expect(applied).toEqual([candidate!.id])
+  expect((await review.state())[0].status).toBe('approved')
+})
+it('retains saved consent after installation fails and retries the exact version after reopening', async () => {
+  const store = new MemoryStateStore(),
+    review = new ExecutableReview(store)
+  const { candidate } = await review.stage(await incoming())
+  await review.recordApproval(candidate!.id)
+  await expect(
+    review.approve([candidate!.id], {
+      apply: async () => {
+        throw new Error('sample unavailable file')
+      },
+    })
+  ).rejects.toThrow('sample unavailable file')
+  const reopened = new ExecutableReview(store)
+  expect((await reopened.state())[0].status).toBe('queued')
+  const applied: string[] = []
+  await reopened.approve([candidate!.id], {
+    apply: async (one) => {
+      applied.push(one.versionId)
+    },
+  })
+  expect(applied).toEqual([candidate!.versionId])
+  expect((await reopened.state())[0].status).toBe('approved')
+})
 async function incoming(
   path = 'Scripts/sample.js',
   versionId = 'version-a',

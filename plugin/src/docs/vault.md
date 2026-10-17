@@ -2354,6 +2354,11 @@ before exposing review ports; automatic reconnect verifies that durable identity
 reinitializing it. `token-executable-review-v1` stores
 immutable code candidates: connection snapshot, file/version, operation and
 paths, exact bytes/hash, original mtime, receipt time and review/apply status.
+An explicit approval is saved immediately as `queued`, independently of connection
+startup, pause, reachability or the engine lock. Installation consumes that durable
+decision when a runtime is available. A blocked pull read may yield for installation;
+issued writes settle first, then downloading resumes. Failed installations retain
+the queued decision for retry; only successful installation changes it to `approved`.
 Only explicitly selected IDs are approved; interrupted application retains the
 same candidate. Later versions stay pending and active files are unchanged by
 staging or rejection. Answered receipts remain stored for delivery deduplication.

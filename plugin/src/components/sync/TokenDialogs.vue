@@ -143,10 +143,24 @@
         working.
       </p>
     </Section>
-    <p v-if="error && mode !== 'connect'" class="abele-token-dialog__error" role="alert">
+    <p
+      v-if="error && mode !== 'connect' && mode !== 'review'"
+      class="abele-token-dialog__error"
+      role="alert"
+    >
       {{ error }}
     </p>
     <template #footer>
+      <p
+        v-if="mode === 'review' && error"
+        class="abele-token-dialog__feedback abele-token-dialog__error"
+        role="alert"
+      >
+        {{ error }}
+      </p>
+      <p v-if="mode === 'review' && approval" class="abele-token-dialog__feedback" role="status">
+        {{ approval }}
+      </p>
       <Button text="Close" tooltip="Close without making another decision" @click="close" />
       <Button
         v-if="mode === 'connect'"
@@ -160,14 +174,14 @@
         v-if="mode === 'review'"
         text="Reject"
         tooltip="Keep the current local version"
-        :disabled="busy"
+        :disabled="busy || !!approval"
         @click="run(reject)"
       />
       <Button
         v-if="mode === 'review'"
-        text="Approve"
+        :text="busy ? 'Approving…' : 'Approve'"
         tooltip="Apply only the version shown here"
-        :disabled="busy || !ui.runtimes.has(candidate?.source.id ?? '')"
+        :disabled="busy || !!approval"
         accent
         @click="run(approve)"
       />
@@ -255,6 +269,13 @@ const choices = ref<V2Scope[]>([]),
   tokens = ref<V2TokenInfo[]>([]),
   revoking = ref<V2TokenInfo | null>(null)
 const connection = computed(() => props.ui.rows.value.find((one) => one.id === props.connectionId))
+const approval = computed(
+  () =>
+    props.ui.approvalStatus.value[props.candidate?.id ?? ''] ??
+    (props.candidate?.status === 'queued'
+      ? 'Approved — will be installed as soon as the connection is available.'
+      : '')
+)
 const title = computed(
   () =>
     ({
@@ -335,7 +356,6 @@ async function revoke() {
 }
 async function approve() {
   if (props.candidate) await props.ui.approve(props.candidate)
-  emit('close')
 }
 async function reject() {
   if (props.candidate) await props.ui.reject(props.candidate)
@@ -409,6 +429,12 @@ watch(
 .abele-token-dialog__error {
   margin-block: var(--size-2-2) 0;
   color: var(--text-error);
+}
+.abele-token-dialog__feedback {
+  flex-basis: 100%;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--font-ui-small);
 }
 .abele-token-dialog__copy {
   display: flex;

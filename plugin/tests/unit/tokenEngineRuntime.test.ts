@@ -21,6 +21,120 @@ import { buildFakeVault } from '../helpers/fakeVault'
 import type { App } from 'obsidian'
 import { IDBFactory } from 'fake-indexeddb'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
+import { mount, flushPromises } from '@vue/test-utils'
+import TokenDialogs from '@/components/sync/TokenDialogs.vue'
+import Button from '@/components/obsidian/Button.vue'
+import { TokenUi } from '@/sync/tokenUi'
+import { tokenUiFixture } from '@/testing/tokenUiFixture'
+
+it.each(['network', 'staging', 'trusted'])(
+  'installs an approved candidate during a blocked first pull without completing the pull (%s)',
+  async (blockedAt) => {
+    const fixture = tokenUiFixture(),
+      source = fixture.candidates.value[0].source
+    const wire = await server('Scripts/sample.js', '// approved bytes', source.address)
+    const send = wire.fetch.getMockImplementation()!
+    let downloading = false
+    let release!: () => void
+    wire.fetch.mockImplementation(async (input, init) => {
+      const url = new URL(String(input))
+      if (url.pathname === '/v2/manifest' && url.searchParams.has('next')) {
+        downloading = true
+        await new Promise<void>((resolve, reject) => {
+          release = resolve
+          init?.signal?.addEventListener(
+            'abort',
+            () => reject(new DOMException('Cancelled', 'AbortError')),
+            { once: true }
+          )
+        })
+        return Response.json({ items: [], cursor: 1, next: null })
+      }
+      const response = await send(input, init)
+      if (url.pathname === '/v2/connection')
+        return Response.json({ ...(await response.json()), token_id: source.tokenId })
+      if (url.pathname === '/v2/manifest')
+        return Response.json({ items: [wire.item], cursor: 1, next: 'next-page' })
+      return response
+    })
+    const fs = new MemoryFileSystem(),
+      one = runtime(wire, fs, undefined, undefined, null, { id: source.id })
+    const ui = new TokenUi(
+      fixture.registry,
+      { get: () => null, set: () => {}, remove: () => {} },
+      wire.fetch,
+      one.reviews
+    )
+    ui.bind(source.id, one.runtime)
+    let staged = false,
+      finishStaging!: () => void
+    const staging = new Promise<void>((resolve) => {
+      finishStaging = resolve
+    })
+    const stage = one.reviews.executables.stage.bind(one.reviews.executables)
+    if (blockedAt === 'staging')
+      vi.spyOn(one.reviews.executables, 'stage').mockImplementation(async (input) => {
+        const result = await stage(input)
+        staged = true
+        await staging
+        return result
+      })
+    let install!: () => void
+    const installing = new Promise<void>((resolve) => {
+      install = resolve
+    })
+    const apply = one.runtime.apply.bind(one.runtime)
+    const installCall = vi.spyOn(one.runtime, 'apply').mockImplementation(async (candidate) => {
+      await installing
+      await apply(candidate)
+    })
+    let view: ReturnType<typeof mount> | undefined
+    const pull = one.runtime.sync().catch(() => {})
+    try {
+      await vi.waitFor(() => expect(blockedAt === 'staging' ? staged : downloading).toBe(true))
+      const [candidate] = await one.reviews.executables.pending()
+      view = mount(TokenDialogs, {
+        props: { ui, mode: 'review', candidate },
+        global: {
+          stubs: {
+            Modal: { template: '<main><slot /><footer><slot name="footer" /></footer></main>' },
+          },
+        },
+      })
+      if (blockedAt === 'trusted') {
+        ui.setTrusted(source.id, true)
+        void ui.refreshReviews()
+        await vi.waitFor(() => expect(installCall).toHaveBeenCalledTimes(1))
+      }
+      await view
+        .findAllComponents(Button)
+        .find((button) => button.props('text') === 'Approve')!
+        .trigger('click')
+      await flushPromises()
+      expect((await one.reviews.executables.state())[0].status).toBe('queued')
+      expect(view.get('[role=status]').text()).toContain('Approved —')
+      expect(await one.state.getCursor()).toBe(0)
+      install()
+      // Let the installation request stop the engine before its staged page finishes.
+      await flushPromises()
+      finishStaging()
+      await vi.waitFor(async () => expect(await fs.stat(candidate.path)).not.toBeNull())
+      expect(new TextDecoder().decode(await fs.read(candidate.path))).toBe('// approved bytes')
+      expect(await one.state.getCursor()).toBe(0)
+      await vi.waitFor(() =>
+        expect(view!.get('[role=status]').text()).toBe('Approved and installed.')
+      )
+      expect(installCall).toHaveBeenCalledTimes(1)
+    } finally {
+      install()
+      finishStaging()
+      view?.unmount()
+      release?.()
+      await pull
+      await one.runtime.close()
+    }
+  }
+)
 
 it('rejects a changed manifest generation before placement and reviews, then handshakes again', async () => {
   const wire = await server('Notes/sample.md', 'remote bytes')

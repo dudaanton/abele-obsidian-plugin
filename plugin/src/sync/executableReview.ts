@@ -48,7 +48,7 @@ const candidateSchema = z
       .regex(/^[a-f0-9]{64}$/)
       .nullable(),
     bytes: z.array(z.number().int().min(0).max(255)).nullable(),
-    status: z.enum(['pending', 'applying', 'approved', 'declined']),
+    status: z.enum(['pending', 'queued', 'applying', 'approved', 'declined']),
   })
   .strict()
 const schema = z
@@ -80,7 +80,8 @@ export interface ExecutableApplyPort {
   apply(candidate: ExecutableCandidate, assertAllowed?: () => void): Promise<void>
 }
 const initial = { version: 1 as const, candidates: [] as ExecutableCandidate[] }
-const pending = (one: ExecutableCandidate) => one.status === 'pending' || one.status === 'applying'
+const pending = (one: ExecutableCandidate) =>
+  one.status === 'pending' || one.status === 'queued' || one.status === 'applying'
 const deliveryIdentity = (one: ExecutableCandidate) =>
   JSON.stringify([
     sourceIdentity(one.source),
@@ -193,6 +194,16 @@ export class ExecutableReview {
       ),
     ]
   }
+  /** Save the exact decision independently of connection startup and the engine scheduler. */
+  async recordApproval(id: string): Promise<void> {
+    await this.documents.update(EXECUTABLE_REVIEW_KEY, schema, initial, async (doc) => {
+      const one = reviewedSelection(doc.candidates, [id], (candidate) => candidate.id)[0]
+      if (!one) throw new Error('This version is no longer available')
+      await this.integrity(one)
+      if (one.status === 'declined') throw new Error('This version was rejected')
+      if (one.status === 'pending' || one.status === 'applying') one.status = 'queued'
+    })
+  }
   async approve(ids: readonly string[], port: ExecutableApplyPort): Promise<void> {
     const shown = reviewedSelection(await this.pending(), ids, (one) => one.id)
     for (const candidate of shown) {
@@ -205,8 +216,9 @@ export class ExecutableReview {
           (doc) => {
             const one = doc.candidates.find((one) => one.id === candidate.id)
             if (!one || !pending(one)) return null
-            one.status = 'applying'
-            return one
+            // Keep explicit consent durable across a crash or failed installation.
+            if (one.status !== 'queued') one.status = 'applying'
+            return { ...one, status: 'applying' as const }
           }
         )
         if (!chosen) continue
@@ -214,7 +226,7 @@ export class ExecutableReview {
         await port.apply(structuredClone(chosen))
         await this.documents.update(EXECUTABLE_REVIEW_KEY, schema, initial, (doc): null => {
           const one = doc.candidates.find((one) => one.id === candidate.id)
-          if (!one || one.status !== 'applying')
+          if (!one || (one.status !== 'applying' && one.status !== 'queued'))
             throw new Error('Executable apply state requires recovery')
           one.status = 'approved'
           return null

@@ -141,6 +141,13 @@ export class TokenEngineRuntime
   private unroot: (() => void) | undefined
   private rootControl = false
   private readonly requests = new AbortController()
+  private readonly readRequests = new Set<AbortController>()
+  private reviewYield = 0
+  private reviewApplications = Promise.resolve()
+  private readonly reviewYielded = new EngineError(
+    'offline',
+    'Sync yielded for approved installation'
+  )
   private readonly transportObservers = new Set<
     (path: string, active: boolean, successful?: boolean, rangeOffset?: number) => void
   >()
@@ -307,6 +314,11 @@ export class TokenEngineRuntime
             .pathname,
         async () => {
           this.assertHeld()
+          if (
+            this.reviewYield &&
+            (!init?.method || init.method === 'GET' || init.method === 'HEAD')
+          )
+            throw this.reviewYielded
           let response: Response
           let successful = false
           const path = new URL(
@@ -331,6 +343,8 @@ export class TokenEngineRuntime
           const rangeOffset = range ? Number(range[1]) : undefined
           this.observeRequest(path, true, undefined, rangeOffset)
           const request = new AbortController()
+          if (!init?.method || init.method === 'GET' || init.method === 'HEAD')
+            this.readRequests.add(request)
           const abort = () => request.abort()
           const callerSignal = init?.signal ?? (input instanceof Request ? input.signal : undefined)
           for (const signal of [callerSignal, this.requests.signal]) {
@@ -363,12 +377,14 @@ export class TokenEngineRuntime
             })
             successful = response.ok
           } catch (error) {
+            if (this.reviewYield && request.signal.aborted) throw this.reviewYielded
             const native = nativeSyncFailure(error)
             if (native) {
               this.trace.log(native.message)
             }
             throw error
           } finally {
+            this.readRequests.delete(request)
             this.observeRequest(path, false, successful, rangeOffset)
             callerSignal?.removeEventListener('abort', abort)
             this.requests.signal.removeEventListener('abort', abort)
@@ -1016,7 +1032,7 @@ export class TokenEngineRuntime
         this.trace.finishPull(false)
         this.pendingFolders.clear()
         this.folderProgress.clear()
-        options.event?.('Error: ' + connectionError(error))
+        if (error !== this.reviewYielded) options.event?.('Error: ' + connectionError(error))
         this.progress.clear()
         this.pulling = false
         options.pulling?.()
@@ -1039,7 +1055,7 @@ export class TokenEngineRuntime
         )
           this.engine.pause()
         options.comparing?.()
-        options.failed(error)
+        if (error !== this.reviewYielded) options.failed(error)
       },
       log: (line) => {
         this.trace.log(line)
@@ -2132,6 +2148,31 @@ export class TokenEngineRuntime
   publications() {
     return this.outbox.state()
   }
+  private applyReviewed(work: () => Promise<void>): Promise<void> {
+    const next = this.reviewApplications.then(() => this.applyReviewedNow(work))
+    this.reviewApplications = next.catch(() => {})
+    return next
+  }
+  private async applyReviewedNow(work: () => Promise<void>): Promise<void> {
+    // Yield blocked reads through the engine scheduler; issued writes still settle.
+    // Restarting preserves the engine's pause state and resumes the retained pull.
+    const interrupted = this.engine.status.state === 'syncing'
+    if (interrupted) this.reviewYield++
+    try {
+      if (interrupted) {
+        // Manifest reads stage review metadata in the host, so core waits for them
+        // like writes. Cancel only their network wait, before response processing.
+        for (const request of this.readRequests) request.abort()
+        await this.engine.stop()
+      }
+      await this.engine.runExclusive(work)
+      await this.refreshHolds()
+    } finally {
+      if (interrupted) this.reviewYield--
+      if (interrupted && this.active && !this.rootIssue) this.engine.start()
+    }
+  }
+
   async apply(candidate: ExecutableCandidate, assertAllowed: () => void = () => {}): Promise<void> {
     this.assertHeld()
     if (candidate.source.id !== this.options.id) throw new Error('Review connection changed')
@@ -2144,7 +2185,7 @@ export class TokenEngineRuntime
       candidate.path,
       ...(candidate.previousPath ? [candidate.previousPath] : []),
     ])
-    await this.engine.runExclusive(async () => {
+    await this.applyReviewed(async () => {
       this.assertHeld()
       const key = 'token-reviewed-apply:' + candidate.id
       if (await this.options.state.getMeta(key)) return
@@ -2233,7 +2274,6 @@ export class TokenEngineRuntime
       }
       await this.options.state.setMeta(key, candidate.versionId)
     })
-    await this.refreshHolds()
   }
   private async applyDirectory(candidate: ExecutableCandidate, fs: FileSystem): Promise<void> {
     const work = async () => {

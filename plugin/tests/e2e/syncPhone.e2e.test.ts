@@ -336,7 +336,7 @@ liveCase(
     expect(receipt.finite).toBe(true)
     expect(receipt.actual).toBe(receipt.expected)
     expect(receipt.actual).not.toBe('')
-    await a.review(path, 'Approve')
+    await a.review(path, 'Approve', true)
     expect(a.read(path)).toBe('// phone review one')
     await s.put(path, '// rejected phone update')
     await a.syncNow()

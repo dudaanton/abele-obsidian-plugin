@@ -81,7 +81,9 @@ liveCase(
     )
     await s.put(path, '// later candidate')
     await a.syncNow()
-    a.run(`await press(modal('Review incoming code'),'Approve');return true`)
+    a.run(
+      `const box=modal('Review incoming code');await press(box,'Approve');await poll(()=>textOf(box.querySelector('[role=status]'))==='Approved and installed.',30000,'exact version installed');await press(box,'Close');return true`
+    )
     expect(a.read(path)).toBe('// first immutable review')
     expect(a.candidates().some((one) => one.path === path)).toBe(true)
     await a.review(path, 'Approve')

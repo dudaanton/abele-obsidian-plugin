@@ -316,6 +316,8 @@ export class TokenUi {
   readonly questions = shallowRef<AttachmentQuestion[]>([])
   readonly available = shallowRef(false)
   readonly runtimes = new Map<string, TokenUiRuntime>()
+  readonly approvalStatus = shallowRef<Record<string, string>>({})
+  private readonly installing = new Set<string>()
   private readonly deletionFacts = new Map<
     string,
     import('@/components/sync/serverDelete').ServerDeleteFacts
@@ -400,11 +402,16 @@ export class TokenUi {
     const { candidates, questions } = await publish()
     for (const candidate of candidates) {
       const runtime = this.runtimes.get(candidate.source.id)
-      if (!runtime || !this.trusted(candidate.source)) continue
+      if (candidate.status === 'queued') {
+        this.installApproval(candidate)
+        continue
+      }
+      if (!runtime || !this.trusted(candidate.source) || this.installing.has(candidate.id)) continue
       const revoked = new Error('Connection trust changed')
       const assertAllowed = () => {
         if (!this.trusted(candidate.source)) throw revoked
       }
+      this.installing.add(candidate.id)
       try {
         await reviews.executables.approve([candidate.id], {
           apply: async (one) => {
@@ -416,9 +423,18 @@ export class TokenUi {
           candidate.source.id,
           `Installed code from ${scopeName(candidate.source.scope)}: ${local(candidate.source.id, candidate.path)}`
         )
+        if (this.approvalStatus.value[candidate.id])
+          this.setApprovalStatus(candidate.id, 'Approved and installed.')
       } catch (error) {
+        if (this.approvalStatus.value[candidate.id])
+          this.setApprovalStatus(
+            candidate.id,
+            'Approved — installation could not finish. ' + connectionError(error)
+          )
         if (error !== revoked)
           this.reviewFailure(candidate.source.id, local(candidate.source.id, candidate.path), error)
+      } finally {
+        this.installing.delete(candidate.id)
       }
     }
     for (const question of questions) {
@@ -464,6 +480,7 @@ export class TokenUi {
     this.runtimes.set(id, runtime)
     this.available.value = true
     this.refresh()
+    void this.refreshReviews().catch((error) => this.reviewFailure(id, '', error))
     return () => {
       if (this.runtimes.get(id) === runtime) this.runtimes.delete(id)
       this.available.value = this.runtimes.size > 0
@@ -924,10 +941,54 @@ export class TokenUi {
     return (await this.client(id).tokens()).items
   }
   async approve(candidate: ExecutableCandidate): Promise<void> {
+    if (!this.reviews) throw new Error('File exchange is not available in this build')
+    const record = this.registry.records().find((one) => one.id === candidate.source.id)
+    if (!record || sourceIdentity(reviewSourceOf(record)) !== sourceIdentity(candidate.source))
+      throw new Error('This connection is no longer available')
+    await this.reviews.executables.recordApproval(candidate.id)
+    this.setApprovalStatus(
+      candidate.id,
+      'Approved — will be installed as soon as the connection is available.'
+    )
+    this.installApproval(candidate)
+    if (!this.runtimes.has(candidate.source.id) && !record.paused)
+      void this.retryConnection(record.id, () => {
+        if (!this.registry.records().some((one) => one.id === record.id))
+          throw new Error('Connection cancelled')
+      })
+        .then(() => this.installApproval(candidate))
+        .catch((error) => {
+          this.setApprovalStatus(
+            candidate.id,
+            'Approved — waiting for the connection. ' + connectionError(error)
+          )
+        })
+  }
+  private setApprovalStatus(id: string, text: string): void {
+    this.approvalStatus.value = { ...this.approvalStatus.value, [id]: text }
+  }
+  private installApproval(candidate: ExecutableCandidate): void {
     const runtime = this.runtimes.get(candidate.source.id)
-    if (!runtime || !this.reviews) throw new Error('File exchange is not available in this build')
-    await this.reviews.executables.approve([candidate.id], runtime)
-    await this.refreshReviews()
+    if (!runtime || !this.reviews || this.installing.has(candidate.id)) return
+    this.installing.add(candidate.id)
+    void this.reviews.executables
+      .approve([candidate.id], runtime)
+      .then(() => {
+        this.setApprovalStatus(candidate.id, 'Approved and installed.')
+        void this.refreshReviews().catch((error) =>
+          this.reviewFailure(candidate.source.id, candidate.path, error)
+        )
+      })
+      .catch((error) => {
+        this.setApprovalStatus(
+          candidate.id,
+          'Approved — installation could not finish. ' + connectionError(error)
+        )
+        this.reviewFailure(candidate.source.id, candidate.path, error)
+      })
+      .finally(() => {
+        this.installing.delete(candidate.id)
+      })
   }
   async reject(candidate: ExecutableCandidate): Promise<void> {
     await this.reviews?.executables.reject([candidate.id])

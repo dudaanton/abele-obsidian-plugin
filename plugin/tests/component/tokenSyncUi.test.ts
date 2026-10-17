@@ -21,6 +21,39 @@ import { Menu, Notice } from '../mocks/obsidian'
 import { SyncDriver } from '../e2e/helpers/syncDriver'
 vi.mock('../e2e/helpers/syncVault', () => ({ waitFor: vi.fn() }))
 
+it('accepts approval before runtime registration and shows progress and errors beside the buttons', async () => {
+  const ui = tokenUiFixture(),
+    candidate = ui.candidates.value[0]
+  ui.runtimes.clear()
+  let fail!: (error: Error) => void
+  vi.spyOn(ui, 'approve').mockImplementation(
+    () =>
+      new Promise((_, reject) => {
+        fail = reject
+      })
+  )
+  const view = mount(TokenDialogs, {
+    props: { ui, mode: 'review', candidate },
+    global: {
+      stubs: {
+        Modal: {
+          template:
+            '<main><article><slot /></article><footer><slot name="footer" /></footer></main>',
+        },
+      },
+    },
+  })
+  const button = view.findAllComponents(Button).find((one) => one.props('text') === 'Approve')!
+  expect(button.props('disabled')).toBe(false)
+  await button.trigger('click')
+  expect(button.props('text')).toBe('Approving…')
+  fail(Object.assign(new Error('Sample approval could not be saved'), { code: 'startup-stage' }))
+  await flushPromises()
+  expect(view.get('[role=alert]').element.parentElement).toBe(button.element.parentElement)
+  expect(view.get('[role=alert]').text()).toContain('Sample approval could not be saved')
+  view.unmount()
+})
+
 it('keeps the red status and disconnect menu but hides sync now for a server-deleted connection', async () => {
   const ui = tokenUiFixture(),
     id = ui.rows.value[0].id
@@ -630,68 +663,81 @@ it('shows what waits for a decision above the connections only while something w
   })
 })
 
-it('approves only the immutable code candidate displayed while a later version remains pending', async () => {
-  const fixture = tokenUiFixture(),
-    state = new MemoryStateStore()
-  const reviews = {
-    executables: new ExecutableReview(state),
-    attachments: new AttachmentConsent(state),
-    close: () => {},
+it.each([false, true])(
+  'approves before runtime registration while a later version remains pending (paused=%s)',
+  async (paused) => {
+    const fixture = tokenUiFixture(),
+      state = new MemoryStateStore()
+    const reviews = {
+      executables: new ExecutableReview(state),
+      attachments: new AttachmentConsent(state),
+      close: () => {},
+    }
+    const ui = new TokenUi(
+      fixture.registry,
+      { get: () => 'a'.repeat(43), set: () => {}, remove: () => {} },
+      async () => {
+        throw new Error('No request expected')
+      },
+      reviews
+    )
+    const source = fixture.candidates.value[0].source,
+      bytes = new TextEncoder().encode('sample reviewed version')
+    fixture.registry.setPaused(source.id, paused)
+    const retry = vi.fn(async () => {})
+    ui.retryConnection = retry
+    const incoming = {
+      source,
+      fileId: 'file-a',
+      versionId: 'version-a',
+      path: 'Scripts/sample.js',
+      previousPath: null,
+      operation: 'modify' as const,
+      directory: false,
+      receivedAt: 200,
+      mtime: 100,
+      sha: await sha256(bytes),
+      bytes,
+    }
+    await reviews.executables.stage(incoming)
+    const [candidate] = await reviews.executables.pending(),
+      apply = vi.fn(async () => {})
+    const runtime = {
+      apply,
+      sync: async () => {},
+      pause: async () => {},
+      disconnect: async () => {},
+      resolve: async () => null,
+      opened: async () => [],
+    }
+    const view = mount(TokenDialogs, {
+      props: { ui, mode: 'review', candidate },
+      global: { stubs: { Modal: modalStub } },
+    })
+    expect(view.get('pre').text()).toBe('sample reviewed version')
+    const later = new TextEncoder().encode('later unreviewed version')
+    await reviews.executables.stage({
+      ...incoming,
+      versionId: 'version-b',
+      bytes: later,
+      sha: await sha256(later),
+    })
+    await view
+      .findAllComponents(Button)
+      .find((one) => one.props('text') === 'Approve')!
+      .trigger('click')
+    await vi.waitFor(() => expect(view.get('[role=status]').text()).toContain('Approved —'))
+    expect((await reviews.executables.state()).find((one) => one.id === candidate.id)?.status).toBe(
+      'queued'
+    )
+    expect(apply).not.toHaveBeenCalled()
+    expect(retry).toHaveBeenCalledTimes(paused ? 0 : 1)
+    ui.bind(source.id, runtime)
+    await vi.waitFor(() => expect(view.get('[role=status]').text()).toBe('Approved and installed.'))
+    expect(apply).toHaveBeenCalledExactlyOnceWith({ ...candidate, status: 'applying' })
+    expect((await reviews.executables.pending()).map((one) => one.versionId)).toEqual(['version-b'])
   }
-  const ui = new TokenUi(
-    fixture.registry,
-    { get: () => 'a'.repeat(43), set: () => {}, remove: () => {} },
-    async () => {
-      throw new Error('No request expected')
-    },
-    reviews
-  )
-  const source = fixture.candidates.value[0].source,
-    bytes = new TextEncoder().encode('sample reviewed version')
-  const incoming = {
-    source,
-    fileId: 'file-a',
-    versionId: 'version-a',
-    path: 'Scripts/sample.js',
-    previousPath: null,
-    operation: 'modify' as const,
-    directory: false,
-    receivedAt: 200,
-    mtime: 100,
-    sha: await sha256(bytes),
-    bytes,
-  }
-  await reviews.executables.stage(incoming)
-  const [candidate] = await reviews.executables.pending(),
-    apply = vi.fn(async () => {})
-  ui.bind(source.id, {
-    apply,
-    sync: async () => {},
-    pause: async () => {},
-    disconnect: async () => {},
-    resolve: async () => null,
-    opened: async () => [],
-  })
-  const view = mount(TokenDialogs, {
-    props: { ui, mode: 'review', candidate },
-    global: { stubs: { Modal: modalStub } },
-  })
-  expect(view.get('pre').text()).toBe('sample reviewed version')
-  const later = new TextEncoder().encode('later unreviewed version')
-  await reviews.executables.stage({
-    ...incoming,
-    versionId: 'version-b',
-    bytes: later,
-    sha: await sha256(later),
-  })
-  await view
-    .findAllComponents(Button)
-    .find((one) => one.props('text') === 'Approve')!
-    .trigger('click')
-  await vi.waitFor(() => expect(view.emitted('close')).toBeDefined())
-  expect(apply).toHaveBeenCalledExactlyOnceWith({ ...candidate, status: 'applying' })
-  expect((await reviews.executables.pending()).map((one) => one.versionId)).toEqual(['version-b'])
-})
+)
 
 it('rejects only the displayed executable candidate, leaving local code and a later candidate untouched', async () => {
   const ui = tokenUiFixture(),
