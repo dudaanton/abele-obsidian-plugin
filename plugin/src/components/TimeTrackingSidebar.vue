@@ -2,6 +2,7 @@
   <SidebarPanel class="abele-time-tracking-sidebar">
     <!-- The pane's head as every list pane's: its name, and starting a timer as its action. -->
     <ListSectionHeader class-prefix="abele-time-tracking-sidebar" :text="t('area.time')">
+      <template #lead><DrawerViewSwitch icon="timer" name="Abele time tracking" /></template>
       <template #actions>
         <ObsidianIcon icon="timer" :label="t('area.startATimer')" @click="startEmptyTimer" />
       </template>
@@ -102,6 +103,7 @@
 <script setup lang="ts">
 import { areaDate } from '@/helpers/areaDateFormat'
 import { t } from '@/i18n'
+import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 import { escapeHtml } from '@/helpers/escapeHtml'
 import { areaDuration as formatDurationShort, durationPart } from '@/helpers/areaDateFormat'
 import { computed, ref, toRef, unref, watch } from 'vue'

@@ -2,6 +2,7 @@
   <div class="abele-run-view">
     <div class="abele-run-view__header">
       <div class="abele-run-view__title">
+        <DrawerViewSwitch icon="bot" name="Abele AI chat" />
         <Icon icon="bot" no-hover />
         <span class="abele-run-view__agent">{{ run.agentName }}</span>
         <Badge class="abele-run-view__badge" text="read-only" />
@@ -32,6 +33,7 @@
 </template>
 
 <script setup lang="ts">
+import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 import { TFile } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
 import Badge from './obsidian/Badge.vue'

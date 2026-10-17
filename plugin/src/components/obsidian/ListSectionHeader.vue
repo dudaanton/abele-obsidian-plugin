@@ -10,6 +10,7 @@
     ]"
   >
     <div class="abele-list-section-header__leading" :class="classPrefix + '__header-left'">
+      <slot name="lead" />
       <FoldHeading
         class="abele-list-section-header__title"
         :class="classPrefix + '__header-text'"
@@ -100,6 +101,12 @@ const fold = computed(() => props.fold ?? plainFold)
 .abele-list-section-header__count {
   font-weight: var(--font-normal);
   color: var(--abele-text-count-color);
+}
+.abele-list-section-header__leading:has(> .abele-drawer-switch.is-shown) {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-1);
+  min-width: 0;
 }
 /* The search it opens is the list's, not the title's: a step clear of the title and its glyph's
    light above, and as far from the first row below. */

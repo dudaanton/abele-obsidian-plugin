@@ -7,6 +7,7 @@
   <div ref="root" class="abele-requests-panel">
     <div class="nav-header">
       <div class="nav-buttons-container">
+        <DrawerViewSwitch icon="send-horizontal" name="Requests" />
         <Icon
           class="nav-action-button"
           icon="file-plus"
@@ -116,6 +117,7 @@
 </template>
 
 <script setup lang="ts">
+import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 // The requests stand on their own: collections, environments, keys by name, scripts and the
 // answers. Nothing here needs the debugger; a recording only adds a place a request may go into.
 import { nextTick, reactive, ref, watch } from 'vue'

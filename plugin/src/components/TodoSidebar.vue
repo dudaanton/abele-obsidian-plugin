@@ -1,10 +1,13 @@
 <template>
   <SidebarPanel class="abele-todo-sidebar">
-    <TodoList :tasks="todoTasks" show-add-button />
+    <TodoList :tasks="todoTasks" show-add-button>
+      <template #lead><DrawerViewSwitch icon="list-todo" name="Abele todo" /></template>
+    </TodoList>
   </SidebarPanel>
 </template>
 
 <script setup lang="ts">
+import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 import SidebarPanel from './obsidian/SidebarPanel.vue'
 import TodoList from './TodoList.vue'
 import { toRef, unref } from 'vue'

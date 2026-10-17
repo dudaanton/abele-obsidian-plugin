@@ -2,6 +2,7 @@
   <SidebarPanel class="abele-finance-sidebar">
     <div class="abele-finance-sidebar__header">
       <div class="abele-finance-sidebar__header-left">
+        <DrawerViewSwitch icon="wallet" name="Abele finance" />
         <div class="abele-finance-sidebar__header-text">{{ t('area.transactions') }}</div>
         <ObsidianIcon
           icon="banknote-arrow-down"
@@ -281,6 +282,7 @@
 <script setup lang="ts">
 import { areaDate } from '@/helpers/areaDateFormat'
 import { t } from '@/i18n'
+import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 import { financeDirections, transactionKind } from '@/finance/accountTypes'
 import { useFinanceCharts } from '@/composables/useFinanceCharts'
 import { ALL_CURRENCIES, useFinancePeriodSummary } from '@/composables/useFinancePeriodSummary'

@@ -8,10 +8,13 @@
     @new-chat="emit('new-chat')"
     @choose-worktree="chooseWorktree"
     @start-with="startWith"
-  />
+  >
+    <template #lead><DrawerViewSwitch icon="bot" name="Abele AI chat" /></template>
+  </NodeChatView>
 </template>
 
 <script setup lang="ts">
+import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 import { computed } from 'vue'
 import { Notice } from 'obsidian'
 import NodeChatView from './NodeChatView.vue'

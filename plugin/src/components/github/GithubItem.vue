@@ -23,6 +23,7 @@
       class="abele-github"
       :class="{ 'abele-github_node': source?.identity.provider === 'node' }"
     >
+      <DrawerViewSwitch v-if="!enabled || !target" icon="github" name="GitHub" />
       <EmptyState
         v-if="!enabled"
         icon="github"
@@ -347,6 +348,7 @@
 </template>
 
 <script setup lang="ts">
+import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 import { computed, ref } from 'vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import { openAbeleSettings } from '@/components/settings/settingsTab'

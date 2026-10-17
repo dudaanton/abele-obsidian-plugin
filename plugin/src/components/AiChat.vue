@@ -30,15 +30,15 @@
       @new-chat="onNewTab"
     />
 
-    <EmptyState
-      v-else-if="session?.preparingClone?.value"
-      text="Creating chat copy…"
-      role="status"
-    />
+    <template v-else-if="session?.preparingClone?.value">
+      <DrawerViewSwitch icon="bot" name="Abele AI chat" />
+      <EmptyState text="Creating chat copy…" role="status" />
+    </template>
 
     <template v-else>
       <!-- Header -->
       <div class="abele-ai-chat__header">
+        <DrawerViewSwitch icon="bot" name="Abele AI chat" @shown="inDrawer = $event" />
         <AiAgentSelector />
         <!-- What is used all the time, in sight: find, the outline, the history, a new chat.
              Everything else this chat is set up with is in ⋯. Other chats waiting for you show
@@ -75,6 +75,7 @@
             @click="openNavigation()"
           />
           <Icon
+            v-if="!inDrawer"
             icon="history"
             with-bg
             tooltip="Open a chat you have had"
@@ -454,6 +455,7 @@
 
 <script setup lang="ts">
 import { ASK_EVENT } from '@/views/agentView'
+import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 import {
   ref,
   shallowRef,
@@ -2086,9 +2088,13 @@ const onNewChatMenu = () => void handleNewChat()
 
 // What the chat is set up with and the rarer ways out of it, in the header's ⋯ menu.
 const phone = Platform.isPhone
+const inDrawer = ref(false)
 const headerOverflowActions = computed<HeaderAction[]>(() => [
   ...(phone
     ? [
+        ...(inDrawer.value
+          ? [{ id: 'history', label: 'Open a chat you have had', icon: 'history' }]
+          : []),
         { id: 'find', label: 'Find in this chat', icon: 'search' },
         { id: 'outline', label: 'Outline of this chat', icon: 'list-tree' },
       ]
@@ -2179,6 +2185,9 @@ const onHeaderOverflowAction = (id: string) => {
       break
     case 'promote':
       if (!blocked.value) void openAsChat()
+      break
+    case 'history':
+      historyOpen.value = true
       break
     case 'find':
       find.open()
@@ -2271,6 +2280,16 @@ const showDebug = () => {
     }
   }
 
+  body.is-phone .workspace-drawer & {
+    padding-bottom: max(
+      var(--size-4-4),
+      var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))
+    );
+    &.abele-keyboard-open {
+      padding-bottom: 0;
+    }
+  }
+
   // The composer is Obsidian's note editor, so Obsidian's toolbar comes up over the keyboard
   // for it, as for a note. It stands on the keyboard and covered the composer's own row of
   // buttons, Send among them; the chat ends above it instead.
@@ -2293,6 +2312,11 @@ const showDebug = () => {
   border-bottom: 1px solid var(--background-modifier-border);
   flex-shrink: 0;
   gap: var(--size-4-1);
+}
+
+.abele-ai-chat > .abele-drawer-switch.is-shown {
+  align-self: flex-start;
+  margin: var(--size-4-1) var(--abele-chat-inset);
 }
 
 .abele-ai-chat__header-actions {

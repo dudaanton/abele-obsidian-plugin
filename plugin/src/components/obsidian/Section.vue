@@ -1,6 +1,7 @@
 <template>
   <section class="abele-section">
     <div v-if="title || $slots.actions" class="abele-section__header">
+      <slot name="lead" />
       <h3 v-if="title" class="abele-section__heading">{{ title }}</h3>
       <div v-if="$slots.actions" class="abele-section__actions"><slot name="actions" /></div>
     </div>

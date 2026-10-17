@@ -1,10 +1,11 @@
 <template>
   <div class="abele-github-notifications">
-    <!-- While GitHub is off there is nothing to refresh, mark or open: no glyphs, only the
-         empty pane saying so. -->
-    <div v-if="enabled" class="nav-header">
+    <!-- While GitHub is off, only the drawer switch remains available. -->
+    <div v-show="enabled || inDrawer" class="nav-header">
       <div class="nav-buttons-container abele-github-notifications__buttons">
+        <DrawerViewSwitch icon="bell" name="GitHub notifications" @shown="inDrawer = $event" />
         <Icon
+          v-if="enabled"
           class="clickable-icon nav-action-button abele-github-notifications__refresh"
           icon="refresh-cw"
           :tooltip="refreshTooltip"
@@ -12,6 +13,7 @@
           @click="refresh(true)"
         />
         <Icon
+          v-if="enabled"
           class="clickable-icon nav-action-button abele-github-notifications__read-all"
           icon="check-check"
           :tooltip="
@@ -23,6 +25,7 @@
           @click="markAllRead"
         />
         <Icon
+          v-if="enabled"
           class="clickable-icon nav-action-button abele-github-notifications__on-github"
           icon="external-link"
           tooltip="Open the notifications on GitHub"
@@ -138,6 +141,7 @@
 </template>
 
 <script setup lang="ts">
+import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 import type { PaneType } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'
@@ -156,6 +160,8 @@ import {
   type NotificationsState,
 } from '@/github/notifications/inbox'
 import { ago, reasonText, subjectType, type GithubNotification } from '@/github/notifications/model'
+
+const inDrawer = ref(false)
 
 /**
  * The notifications of the account the GitHub token belongs to, as a sidebar list: unread ones

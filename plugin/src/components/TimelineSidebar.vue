@@ -9,13 +9,16 @@
       @view-changed="rememberCalendarView"
       @date-selected="selectDate"
       @date-right-clicked="onDateRightClick"
-    />
+    >
+      <template #lead><DrawerViewSwitch icon="chart-gantt" name="Abele timeline" /></template>
+    </Calendar>
     <Timeline :tasks="timelineTasks" :events="upcomingEvents" show-add-button />
   </SidebarPanel>
 </template>
 
 <script setup lang="ts">
 import { t } from '@/i18n'
+import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 import { TasksList } from '@/entities/TasksList'
 import Timeline from './Timeline.vue'
 import SidebarPanel from './obsidian/SidebarPanel.vue'

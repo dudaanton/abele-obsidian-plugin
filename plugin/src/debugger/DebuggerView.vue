@@ -1,5 +1,6 @@
 <template>
   <div class="abele-debug-view">
+    <DrawerViewSwitch v-if="!binding" icon="bug-play" name="Debug" />
     <EmptyState
       v-if="!binding"
       icon="bug"
@@ -37,6 +38,7 @@
   </div>
 </template>
 <script setup lang="ts">
+import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import DebugPanel from '@/components/debugger/DebugPanel.vue'
 import EmptyState from '@/components/obsidian/EmptyState.vue'

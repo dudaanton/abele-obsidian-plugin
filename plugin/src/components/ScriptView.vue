@@ -6,6 +6,10 @@
     :data-id="model.id"
     tabindex="-1"
   >
+    <DrawerViewSwitch
+      :icon="model.view?.icon ?? 'scroll-text'"
+      :name="model.view?.title ?? model.saved?.script ?? 'Script view'"
+    />
     <EmptyState
       v-if="model.status.kind === 'starting'"
       :text="`Starting ${model.status.script}…`"
@@ -52,6 +56,7 @@
  * nothing the script writes reaches past its tab.
  */
 import { onErrorCaptured, onMounted, onUnmounted, ref, watch } from 'vue'
+import DrawerViewSwitch from './obsidian/DrawerViewSwitch.vue'
 import type { ScriptViewModel } from '@/views/ScriptView'
 import { scopeCss } from '@/scripting/view/scopeCss'
 import EmptyState from './obsidian/EmptyState.vue'

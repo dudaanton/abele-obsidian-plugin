@@ -1,6 +1,7 @@
 <template>
   <header ref="root" class="abele-github-header" :class="{ 'abele-github-header_path': crumbs }">
     <div class="abele-github-header__top">
+      <DrawerViewSwitch icon="github" name="GitHub" />
       <div v-if="$slots.controls" class="abele-github-header__controls">
         <slot name="controls" />
       </div>
@@ -122,6 +123,7 @@
 </template>
 
 <script setup lang="ts">
+import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 import { computed, ref } from 'vue'
 import { useRepositorySource } from '@/repository/context'
 import { useResizeObserver } from '@vueuse/core'

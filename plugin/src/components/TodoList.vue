@@ -10,6 +10,7 @@
       :placeholder="t('area.searchTasks')"
       group-actions
     >
+      <template #lead><slot name="lead" /></template>
       <template #actions>
         <ObsidianIcon
           v-if="labelOptions.length"

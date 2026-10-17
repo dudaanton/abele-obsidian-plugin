@@ -9,6 +9,7 @@
     <!-- The regular chat's header: the agent on the left, what is used all the time on the
          right. The chat's name is on its tab. -->
     <div class="abele-ai-chat__header">
+      <slot name="lead" />
       <div class="abele-agent-selector">
         <button
           type="button"

@@ -2,6 +2,7 @@
   <div class="abele-debug-panel" :class="`abele-debug-panel_${session.status}`">
     <div class="nav-header">
       <div class="nav-buttons-container">
+        <DrawerViewSwitch icon="bug-play" name="Debug" />
         <Icon
           v-for="b in buttons"
           :key="b.action"
@@ -258,6 +259,7 @@
 </template>
 
 <script setup lang="ts">
+import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 // The debugger's own view, a tab of the right sidebar like Backlinks or Outline: the controls in
 // its header, a line saying what runs and where it stands, and the folding groups a debugger has —
 // variables, call stack, breakpoints, watched expressions, output. The source is the file's own

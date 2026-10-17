@@ -2,6 +2,7 @@
   <div class="abele-node-panel" :class="`abele-node-panel_${phase}`">
     <!-- Before there is a node: find the one on this computer, or connect another. -->
     <div v-if="phase !== 'ready'" class="abele-node-panel__intro" :aria-busy="phase === 'looking'">
+      <DrawerViewSwitch icon="server" name="Node" />
       <span ref="introIconEl" class="abele-node-panel__intro-icon" aria-hidden="true" />
       <template v-if="phase === 'looking'">
         <div class="abele-node-panel__intro-title">Looking for AbeleNode…</div>
@@ -67,42 +68,45 @@
       <div class="nav-header">
         <!-- Where the panel chooses what it shows, its modes stand here as the file explorer's
              buttons do, and the actions move to the place's menu. -->
-        <div v-if="$slots.nav" class="nav-buttons-container"><slot name="nav" /></div>
-        <div v-else class="nav-buttons-container">
-          <Icon
-            class="nav-action-button"
-            icon="message-square-plus"
-            :tooltip="
-              !chatAvailable
-                ? 'Update the node to enable target-bound sessions'
-                : here
-                  ? `New chat in ${here}`
-                  : 'Open a folder first'
-            "
-            :disabled="!here || !chatAvailable || node.status !== 'connected'"
-            @click="emit('new-chat')"
-          />
-          <Icon
-            v-if="!historyInPanel"
-            class="nav-action-button"
-            icon="history"
-            :tooltip="here ? `History of ${here}` : 'Open a folder first'"
-            :disabled="!here || !git"
-            @click="emit('history')"
-          />
-          <Icon
-            class="nav-action-button"
-            icon="folder-plus"
-            tooltip="Open folder"
-            :disabled="node.status !== 'connected'"
-            @click="emit('open-folder')"
-          />
-          <Icon
-            class="nav-action-button"
-            icon="refresh-cw"
-            tooltip="Refresh"
-            @click="emit('refresh')"
-          />
+        <div class="nav-buttons-container">
+          <DrawerViewSwitch icon="server" name="Node" />
+          <slot v-if="$slots.nav" name="nav" />
+          <template v-else>
+            <Icon
+              class="nav-action-button"
+              icon="message-square-plus"
+              :tooltip="
+                !chatAvailable
+                  ? 'Update the node to enable target-bound sessions'
+                  : here
+                    ? `New chat in ${here}`
+                    : 'Open a folder first'
+              "
+              :disabled="!here || !chatAvailable || node.status !== 'connected'"
+              @click="emit('new-chat')"
+            />
+            <Icon
+              v-if="!historyInPanel"
+              class="nav-action-button"
+              icon="history"
+              :tooltip="here ? `History of ${here}` : 'Open a folder first'"
+              :disabled="!here || !git"
+              @click="emit('history')"
+            />
+            <Icon
+              class="nav-action-button"
+              icon="folder-plus"
+              tooltip="Open folder"
+              :disabled="node.status !== 'connected'"
+              @click="emit('open-folder')"
+            />
+            <Icon
+              class="nav-action-button"
+              icon="refresh-cw"
+              tooltip="Refresh"
+              @click="emit('refresh')"
+            />
+          </template>
         </div>
       </div>
 
@@ -147,6 +151,7 @@
 </template>
 
 <script setup lang="ts">
+import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 // The node's side panel, a tab of the left sidebar beside the file explorer: the computer where
 // agents work, with its connection dot, and under it whatever layout of folders and files the
 // slot holds. Before a node is connected it is the way to connect one. State is said by codes;
@@ -257,6 +262,9 @@ watch(
   color: var(--text-faint);
   --icon-size: var(--icon-xl);
   --icon-stroke: var(--icon-xl-stroke-width);
+}
+.abele-node-panel__intro > .abele-drawer-switch.is-shown {
+  align-self: flex-start;
 }
 .abele-node-panel__intro-title {
   color: var(--text-normal);

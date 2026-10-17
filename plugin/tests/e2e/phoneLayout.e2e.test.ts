@@ -416,14 +416,19 @@ const probeScript = `(async () => {
     report[label] = entry
   }
 
-  // Obsidian draws no .modal-close-button on a phone; Escape closes a dialog everywhere. A
-  // picker is a \`.prompt\` in a modal container rather than a \`.modal\`, and a menu neither.
+  // Use the visible native dismissal when present. Pickers and menus may instead
+  // need Escape; closing must finish before the next screen is opened.
   const closeDialog = async () => {
-    if (!document.querySelector('.modal, .modal-container .prompt, .menu')) return
-    document.body.dispatchEvent(
+    const menu = document.querySelector('.menu')
+    const target = menu || [...document.querySelectorAll('.modal, .modal-container .prompt')].reverse().find(el => el.getBoundingClientRect().width)
+    if (!target) return
+    const close = !menu && [...(target.closest('.modal-container')?.querySelectorAll('.modal-header-button, .modal-close-button') ?? [])].find(el => el.getBoundingClientRect().width)
+    if (close) close.click()
+    else document.body.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true })
     )
-    await until(() => !document.querySelector('.modal, .modal-container .prompt, .menu'), 3000)
+    if (!await until(() => !target.isConnected, 3000))
+      throw new Error('The current dialog or menu did not close')
   }
 
   const headerActions = async (label, root) => {
@@ -779,9 +784,13 @@ const probeScript = `(async () => {
       }
     }
 
-    const history = chat && chat.querySelector('.lucide-history')
-    if (history) {
-      history.closest('.abele-icon, .clickable-icon, div').click()
+    if (chat) {
+      chat.querySelector('[aria-label="More chat actions"]').click()
+      await until(() => document.querySelector('.menu'), 3000)
+      const history = [...document.querySelectorAll('.menu-item')].find(item =>
+        item.querySelector('.menu-item-title')?.textContent.trim() === 'Open a chat you have had')
+      if (!history) throw new Error('Chat history is missing from More')
+      history.click()
       await until(() => document.querySelector('.modal .abele-chat-history'), 5000)
       await wait(300)
       const modal = document.querySelector('.modal')
@@ -2602,11 +2611,11 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
       const header = report[label]?.header
       expect(header?.direct).toEqual([
         ...(label === 'nested comment' ? ['Back to the passage this is about'] : []),
-        'Open a chat you have had',
         'Start a new chat',
         'More chat actions',
       ])
       expect(header?.overflow).toEqual([
+        'Open a chat you have had',
         'Find in this chat',
         'Outline of this chat',
         ...(label === 'nested comment' ? ['Turn this comment into an ordinary chat'] : []),

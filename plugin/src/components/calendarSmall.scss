@@ -11,6 +11,7 @@
   display: flex;
   // The title is pressed to switch the view; it lights up as Obsidian's own quiet buttons do.
   .abele-calendar__header-month-year {
+    white-space: nowrap;
     &,
     &:hover,
     &:focus-visible {

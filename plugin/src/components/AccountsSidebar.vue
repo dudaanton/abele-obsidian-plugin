@@ -3,6 +3,7 @@
     <!-- The pane's head as every list pane's; what it shows and in what order is a menu, as
          Obsidian's file list keeps its sort. -->
     <ListSectionHeader class-prefix="abele-accounts-sidebar" text="Accounts" :count="accountCount">
+      <template #lead><DrawerViewSwitch icon="landmark" name="Abele accounts" /></template>
       <template #actions>
         <ObsidianIcon
           icon="sliders-horizontal"
@@ -76,6 +77,7 @@
 </template>
 
 <script setup lang="ts">
+import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 import { computed, reactive, toRaw, toRef, unref } from 'vue'
 import dayjs from 'dayjs'
 import { GlobalStore } from '@/stores/GlobalStore'

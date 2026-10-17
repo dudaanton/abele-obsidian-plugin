@@ -1,5 +1,6 @@
 <template>
   <Section class="abele-runs" :title="heading">
+    <template #lead><DrawerViewSwitch icon="terminal" name="Abele script runs" /></template>
     <template #actions>
       <Icon
         v-if="runs.length"
@@ -109,6 +110,7 @@
 </template>
 
 <script setup lang="ts">
+import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 /**
  * What has been run this session.
  *

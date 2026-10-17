@@ -1,6 +1,7 @@
 <template>
   <div ref="clockEl" class="abele-calendar" :class="{ 'abele-calendar_marks': marks }">
     <div class="abele-calendar__header">
+      <slot name="lead" />
       <!-- The title is the way between the month and its year: pressed on a month, the year;
            pressed on a year, back to the month it came from. -->
       <div
