@@ -289,9 +289,29 @@ export class NodePathMainView extends ItemView {
                 model: file,
                 offline: offline(),
                 debug: this.debugOf(state, file),
-                onReveal: () =>
+                onReveal: (line: number) =>
                   this.act(async () => {
+                    console.debug('[debugger] Source tab reveal', state.path, line)
+                    // Revealing a leaf can re-admit its saved state. Keep the selected location
+                    // there too, so a newly mounted source cannot restore the previous stop.
+                    const debug = this.debugOf(state, file)
+                    if (this.saved?.kind === 'file' && debug)
+                      await this.leaf.setViewState({
+                        type: this.viewType,
+                        active: true,
+                        state: {
+                          ...this.saved,
+                          debug: {
+                            conversationId: debug.conversationId,
+                            sourceId: debug.sourceId,
+                            debugSessionId: debug.debugSessionId,
+                            incarnation: debug.incarnation,
+                            line,
+                          },
+                        },
+                      })
                     await this.app.workspace.revealLeaf(this.leaf)
+                    this.app.workspace.setActiveLeaf(this.leaf, { focus: true })
                     closeNodePathDrawers(this.app.workspace, Platform.isMobile)
                   }),
                 onAsk: (selection: FileSelection) => {

@@ -80,6 +80,14 @@ function fakePresenter() {
 afterEach(() => DebuggerService.instance.destroy())
 
 describe('running a program under the debugger', () => {
+  it('admits the source before offering debugger controls so late admission cannot replace a selected line', async () => {
+    const { opened } = fakeWorkspace()
+    const { presenter } = fakePresenter()
+    await startProgram(presenter, 'src/page.js', [], target, async () => {
+      expect(opened).toHaveLength(1)
+    })
+    expect(opened).toHaveLength(1)
+  })
   it('offers the JavaScript files open from the chat’s folder, the active one first', () => {
     const { workspace } = fakeWorkspace([
       fileLeaf('src/service.js'),

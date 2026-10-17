@@ -5,7 +5,7 @@ import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { evalAsync } from './helpers/githubLive'
-import { evalRaw } from './helpers/obsidianCli'
+import { evalLong, evalRaw } from './helpers/obsidianCli'
 import { shotDir } from './helpers/shots'
 import { targets } from './helpers/target'
 import { withEmulatedPhone } from './helpers/emulatedPhone'
@@ -14,10 +14,18 @@ targets('desktop')
 
 const SHOTS = shotDir('abele-debug-journey')
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+async function inAppLong<T>(script: string): Promise<T> {
+  return JSON.parse(await evalLong(script, 150_000)) as T
+}
 /** What the app answered, or why not, with what the node said on its way out. */
 function inApp<T>(script: string): T {
   try {
-    return evalAsync<T>(script)
+    const raw = evalRaw(script, 120_000)
+    try {
+      return JSON.parse(raw) as T
+    } catch {
+      throw new Error(`Not JSON from the app: ${raw.slice(0, 12000)}`)
+    }
   } catch (e) {
     throw new Error(
       `node: ${daemonExit || 'running'}\n${daemonErrors.slice(-1200)}\n${e instanceof Error ? e.message : String(e)}`
@@ -77,7 +85,7 @@ const JS = [
   '}',
   'function calculate(n) {',
   '  const item = inspectItem(n)',
-  '  if (n === 40) throw new Error("Synthetic calculation failure")',
+  '  if (n === 60) throw new Error("Synthetic calculation failure")',
   '  return item.count * 2',
   '}',
   'let next = 0',
@@ -87,7 +95,7 @@ const JS = [
 
 /** Registers the node, its folder and a chat in the app; a phone run starts after a reload, so again. */
 function openChat() {
-  const r = evalAsync<{
+  const r = inApp<{
     registration: string
     target: Record<string, string>
   }>(`(async()=>{${prelude}
@@ -104,7 +112,7 @@ function openChat() {
     const s=await client.nodePath.createSession({title:'Program fixture',provider:'fake',target:{kind:'workspace',workspace_id:workspace.workspace_id}},crypto.randomUUID());
     await chats.openNodeSession({kind:'node-session',registrationId:node.id,nodeId:node.expectedNodeId,sessionId:s.session_id,title:s.title});
     await chats.revealSidebar({focus:false});
-    await until(()=>document.querySelector('.abele-node-chat__title')?.textContent==='Program fixture','chat open');
+    await until(()=>[...document.querySelectorAll('.abele-node-chat[data-session-title="Program fixture"] [aria-label="More chat actions"]')].some(e=>e.offsetParent),'chat open');
     return {registration:node.id,target:{nodeId:node.expectedNodeId,registrationId:node.id,projectId:project.project_id,kind:'workspace',id:workspace.workspace_id}}
   })()`)
   registration = r.registration
@@ -211,7 +219,7 @@ afterAll(async () => {
  */
 const RUN = (program: string, shots = '', via = 'Run a program') => `
   const previousSession=api.DebuggerService.instance.active.value?.sessionId;
-  document.querySelector('.abele-node-chat [aria-label="Node session menu"]').click();
+  document.querySelector('.abele-node-chat [aria-label="More chat actions"]').click();
   await until(()=>item(${JSON.stringify(via)}),${JSON.stringify(via + ' in the menu')});
   ${shots ? `await shot(${JSON.stringify(shots + '-menu')});` : ''}
   press(item(${JSON.stringify(via)}));
@@ -225,7 +233,7 @@ const RUN = (program: string, shots = '', via = 'Run a program') => `
   await until(()=>{const b=document.querySelector('[aria-label="Continue (F5)"]');return b&&b.offsetParent&&!b.disabled},'visible Continue offered',600);`
 
 it('walks from source through stepping, recording, analysis, a crash, restart and reattach', async () => {
-  const seen = inApp<{
+  const seen = await inAppLong<{
     values: number[]
     runId: string
     projectId: string
@@ -243,7 +251,7 @@ it('walks from source through stepping, recording, analysis, a crash, restart an
     let source=app.workspace.getLeaf('tab');
     const sourceAt=async(line,name)=>{
       const expected=${JSON.stringify(JS.split('\n'))}[line-1].trim();
-      await until(()=>[...document.querySelectorAll('.abele-node-debug-file .abele-debug-source__line_here')].some(e=>e.offsetParent&&e.textContent.trim()===expected),'visible highlighted source at line '+line);
+      await until(()=>[...document.querySelectorAll('.abele-node-debug-file .abele-debug-source__line_here')].some(e=>e.offsetParent&&(()=>{const line=e.cloneNode(true);line.querySelectorAll('.abele-debug-source__tail').forEach(t=>t.remove());return line.textContent.trim()===expected})()),'visible highlighted source at line '+line);
       source=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.getState().path==='src/journey.cjs');
       if(!source)throw Error('Source file not opened');
       await shot(name);
@@ -308,7 +316,7 @@ it('walks from source through stepping, recording, analysis, a crash, restart an
     const runId=b.trace.status.recording.run_id,projectId=b.trace.projectId;
     await api.openTraceRun({registrationId:${JSON.stringify(registration)},projectId,runId});
     const runLeaf=app.workspace.getLeavesOfType('abele-trace-run').find(l=>l.view.getState().runId===runId);
-    const returnToRun=async()=>{await app.workspace.revealLeaf(runLeaf);await until(()=>visible('.abele-trace-run'),'run visible');};
+    const returnToRun=async()=>{await app.workspace.revealLeaf(runLeaf);app.workspace.setActiveLeaf(runLeaf,{focus:true});await until(()=>visible('.abele-trace-run'),'run visible');};
     const steps=()=>[...document.querySelectorAll('.abele-trace-run__steps > .abele-trace-run__step')];
     await until(()=>steps().length>=3,'recorded steps');
     const values=[];
@@ -344,7 +352,7 @@ it('walks from source through stepping, recording, analysis, a crash, restart an
     await control('Back to debugger');
     await until(()=>visible('.abele-debug-panel'),'returned debugger');
     await shot('journey-back-debugger');
-    await until(()=>document.querySelector('.abele-debug-panel')?.textContent.includes('Synthetic calculation failure'),'exception visible',300);
+    await until(()=>document.querySelector('.abele-debug-panel')?.textContent.includes('Synthetic calculation failure'),'exception visible',900);
     await until(()=>document.querySelector('.abele-debug-panel')?.textContent.includes('journey.cjs:7'),'exception source location');
     await shot('journey-exception');
     const restart=()=>enabled('Restart: the same program from its first line');
@@ -377,13 +385,15 @@ it('walks from source through stepping, recording, analysis, a crash, restart an
     await control('Stop (Shift+F5)');
     await until(()=>visible('.abele-debug-panel_exited'),'restarted program stopped');
     // Attach, detach, then choose the still-running process again from the debugger toolbar.
-    document.querySelector('.abele-node-chat [aria-label="Node session menu"]').click();
+    await chats.revealSidebar({focus:false});
+    await until(()=>visible('.abele-node-chat [aria-label="More chat actions"]'),'visible chat menu for attach');
+    document.querySelector('.abele-node-chat [aria-label="More chat actions"]').click();
     press(await until(()=>item('Attach to a running program'),'attach menu'));
     const pickAttached=async()=>press(await until(()=>[...document.querySelectorAll('.prompt .suggestion-item')].find(e=>e.textContent.includes('attached.cjs')),'waiting synthetic program'));
     await pickAttached();
     await until(()=>enabled('Detach (Shift+F5): the program runs on'),'attached debugger');
     await control('Detach (Shift+F5): the program runs on');
-    await until(()=>document.querySelector('.abele-debug-panel')?.textContent.includes('Detached'),'detached program');
+    await until(()=>visible('.abele-debug-panel [role="status"][aria-label^="Detached"]'),'detached program');
     await shot('journey-detached');
     await control('Attach to a running program');
     await pickAttached();
@@ -410,7 +420,10 @@ it('walks from source through stepping, recording, analysis, a crash, restart an
 it('on a phone: breakpoint navigation uncovers the source and highlights its line', async () => {
   await withEmulatedPhone(async () => {
     openChat()
-    const result = inApp<{ highlighted: boolean; drawersClosed: boolean }>(`(async()=>{${prelude}
+    const result = await inAppLong<{
+      highlighted: boolean
+      drawersClosed: boolean
+    }>(`(async()=>{${prelude}
       try {
         ${RUN('src/journey.cjs', 'journey-phone', 'Debug')}
         await until(()=>document.querySelector('.abele-debug-panel_paused'),'program held');
@@ -429,7 +442,7 @@ it('on a phone: breakpoint navigation uncovers the source and highlights its lin
         const highlighted=await until(()=>[...document.querySelectorAll('.abele-debug-source__line_here')].some(e=>e.offsetParent&&e.textContent.trim()==='const item = inspectItem(n)'),'source line visible');
         await until(()=>app.workspace.leftSplit.collapsed&&app.workspace.rightSplit.collapsed,'drawers closed');
         await shot('journey-phone-breakpoint-source');
-        return {highlighted:!!highlighted,drawersClosed:true};
+        const persisted=!!highlighted&&[...document.querySelectorAll('.abele-debug-source__line_here')].some(e=>e.offsetParent&&e.textContent.trim()==='const item = inspectItem(n)');if(!persisted)throw Error('Source highlight did not persist; '+debugState());return {highlighted:persisted,drawersClosed:app.workspace.leftSplit.collapsed&&app.workspace.rightSplit.collapsed};
       } finally {
         const stop=document.querySelector('.abele-debug-panel [aria-label="Stop (Shift+F5)"]');
         if(stop&&!stop.disabled){press(stop);await until(()=>document.querySelector('.abele-debug-panel_exited'),'program stopped');}

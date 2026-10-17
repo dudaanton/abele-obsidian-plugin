@@ -193,7 +193,7 @@ it('returns to the file and notifies the host when its debug source is revealed'
   view.getComponent(NodePathDebugFile).vm.$emit('reveal', 1)
   await flushPromises()
   expect(model.mode.value).toBe('file')
-  expect(view.emitted('reveal')).toEqual([[]])
+  expect(view.emitted('reveal')).toEqual([[1]])
   expect(view.findComponent(FileView).exists()).toBe(false)
 })
 

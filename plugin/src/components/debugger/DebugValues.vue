@@ -66,7 +66,10 @@ const revealsInPlace = (v: DebugVariable) =>
   !v.children?.length && !v.handle && !opensWhole(v) && v.value.length > 80
 function activate(v: DebugVariable) {
   if (v.handle) {
-    if (!props.disabled) emit('inspect', v.handle)
+    if (!props.disabled) {
+      if (!openSet.value.has(path(v))) emit('toggle', `value:${path(v)}`)
+      emit('inspect', v.handle)
+    }
   } else if (v.children?.length || revealsInPlace(v)) emit('toggle', `value:${path(v)}`)
   else if (opensWhole(v)) emit('open', path(v), wholeValue(v.value, v.full), v.type)
 }

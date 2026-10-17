@@ -192,13 +192,20 @@ export class DebuggerBinding {
       })
       if (this.waitId === waitId) this.waitId = undefined
       if (abort.signal.aborted || this.disposed) return
+      if (result.reason !== 'event' && result.reason !== 'elapsed')
+        console.debug('[debugger] Wait ended', result.reason, !!result.snapshot)
       this.controller.observe(this.connection.client.debugger.current(sessionId))
       if (result.reason === 'connection_lost' || !result.snapshot) {
         this.controller.disconnected()
         await this.lastRuns()
         return
       }
-      if (result.reason === 'cancelled') return
+      if (result.reason === 'cancelled') {
+        // A terminated target cancels its waits too. Read its retained final output before
+        // ending the observer, including the exception that made the program exit.
+        await this.refresh()
+        return
+      }
       // A quiet round: nothing happened, so nothing is read again; the next round asks on.
       if (result.reason === 'elapsed' && result.snapshot.event_seq === eventSeq) continue
       await this.loadGrant(abort)

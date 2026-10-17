@@ -6,6 +6,49 @@ import {
 } from '@abele/node-protocol'
 import { DebuggerController, debuggerKey, receiptMessage } from '@/debugger/DebuggerController'
 
+it('keeps inspected values under their scope instead of replacing the scope tree', async () => {
+  const { model, rpc, command } = fixture()
+  model.session.variables = [{ name: 'Local', value: 'Expand to inspect', handle: 'sample-scope' }]
+  command.mockImplementationOnce(async (...args: unknown[]) => {
+    const params = args[1] as { operation_id: string }
+    rpc.mockImplementation(async (method: string) => {
+      if (method === 'debugger.v1.history')
+        return {
+          entries: [
+            {
+              actor: { kind: 'human', principal_id: 'sample-human' },
+              operation_id: params.operation_id,
+              operation: 'variables',
+              outcome: 'completed',
+              debug_session_id: 'sample-debug',
+              incarnation: 'sample-incarnation',
+              history_seq: 1,
+              event_seq: 8,
+              stop: null,
+              observed_at: '2025-01-01T00:00:00.000Z',
+              stop_epoch: 3,
+              state_revision: 4,
+              target_id: 'sample-target',
+              build_identity: 'matched',
+              payload_status: 'retained',
+              requested_data: { items: [{ name: 'n', value: '3' }] },
+            },
+          ],
+          truncated_before: 0,
+        } as never
+      return { proposals: [], truncated: false, next: null } as never
+    })
+    return receipt()
+  })
+  await model.inspect('sample-scope')
+  expect(model.session.variables).toEqual([
+    expect.objectContaining({
+      name: 'Local',
+      children: [expect.objectContaining({ name: 'n', value: '3' })],
+    }),
+  ])
+})
+
 it('removes all breakpoints displayed on a relocated line', async () => {
   const { model, command } = fixture()
   model.observe({

@@ -5,6 +5,41 @@ import { DebuggerControlMethodSchemas } from '@abele/node-protocol'
 import { DebuggerBinding } from '@/debugger/DebuggerService'
 import { debuggerStatus } from '../fixtures/debugger'
 import type { NodeConnection } from '@/node/NodeService'
+it('reads retained terminal output when the node cancels a wait on program exit', async () => {
+  const terminal = structuredClone(debuggerStatus().snapshot)
+  terminal.lifecycle = 'terminated'
+  terminal.execution = 'unknown'
+  terminal.threads = []
+  terminal.selected_thread_id = null
+  const rpc = vi.fn(async (method: string, raw: unknown) => {
+    if (method === 'debugger.v1.status') return debuggerStatus()
+    if (method === 'debugger.v1.wait')
+      return {
+        wait_id: (raw as { wait_id: string }).wait_id,
+        reason: 'cancelled',
+        elapsed_ms: 0,
+        snapshot: terminal,
+      }
+    throw new Error('Unexpected sample RPC')
+  })
+  const connection = {
+    state: ref('connected'),
+    client: { request: rpc, debugger: new DebuggerClient(rpc) },
+  } as unknown as NodeConnection
+  const binding = new DebuggerBinding(connection, 'sample-chat', 'sample-registration')
+  const refresh = vi.spyOn(binding, 'refresh').mockImplementation(async () => {
+    if (binding.controller.session.status === 'exited')
+      binding.controller.session.output = 'Synthetic failure at sample.cjs:7'
+  })
+  try {
+    await binding.open('sample-debug')
+    await vi.waitFor(() => expect(binding.controller.session.status).toBe('exited'))
+    expect(binding.controller.session.output).toContain('Synthetic failure at sample.cjs:7')
+    expect(refresh).toHaveBeenCalledTimes(2)
+  } finally {
+    binding.destroy()
+  }
+})
 it('does not let an abandoned cursor wait disable a newly opened fresh observation', async () => {
   let rejectOld!: (e: Error) => void
   const waits = new Map<string, (v: unknown) => void>()

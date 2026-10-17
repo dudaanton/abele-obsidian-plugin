@@ -236,19 +236,37 @@ async function draw() {
       extras.of(extra()),
     ]),
   })
+  console.debug('[debugger] Source mounted', props.path, props.line)
 }
 onMounted(draw)
 watch(() => [props.text, props.path], draw)
 watch(
   () => [props.breakpoints, props.stale, props.line, props.editing, props.tails],
-  () =>
+  (values, previous) => {
+    if (values[2] !== previous[2])
+      console.debug(
+        '[debugger] Source decorations',
+        props.path,
+        props.line,
+        !!host.value?.offsetParent
+      )
     editor?.dispatch({
       effects: [
         marks.reconfigure(margin()),
         current.reconfigure(here()),
         extras.reconfigure(extra()),
       ],
-    }),
+    })
+    if (values[2] !== previous[2])
+      queueMicrotask(() =>
+        console.debug(
+          '[debugger] Source rendered',
+          props.path,
+          props.line,
+          host.value?.querySelector('.abele-debug-source__line_here')?.textContent
+        )
+      )
+  },
   { deep: true }
 )
 onBeforeUnmount(() => viewer?.destroy())

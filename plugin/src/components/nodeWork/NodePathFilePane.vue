@@ -39,15 +39,15 @@ const props = withDefaults(
 )
 import type { FileSelection } from './fileSelection'
 const emit = defineEmits<{
-  reveal: []
+  reveal: [line: number]
   menu: [event: MouseEvent, selection: string]
   ask: [selection: FileSelection]
   add: [selection: FileSelection]
   note: [selection: FileSelection]
 }>()
-function revealSource() {
+function revealSource(line: number) {
   props.model.mode.value = 'file'
-  emit('reveal')
+  emit('reveal', line)
 }
 import type { Selected } from '../obsidian/SelectionBar.vue'
 function debugSelection(action: 'ask' | 'add' | 'note', selected: Selected) {

@@ -221,6 +221,9 @@ export async function startProgram(
     const taken = [...sources, ...carried.map((c) => c.path)]
     return startProgram(presenter, program, [...new Set(taken)], target, show, carried)
   }
+  // Finish admitting the source before the controls become available. A late file admission
+  // would otherwise replace a location the person already selected in the debugger.
+  await openSources(presenter, started, snapshot.incarnation, target, program)
   await show(sessionId)
   // Held on its first line, the new run takes the points before any of its code runs. The node
   // can answer the start before that stop reaches the panel, and a point sent meanwhile names
@@ -240,7 +243,6 @@ export async function startProgram(
       })
     else await binding.controller.setBreakpoint(crypto.randomUUID(), sourceId, c.line, c.condition)
   }
-  await openSources(presenter, started, snapshot.incarnation, target, program)
   return sessionId
 }
 

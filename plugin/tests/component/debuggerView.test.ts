@@ -192,6 +192,28 @@ describe('debugger panel', () => {
     w.unmount()
   })
 })
+it('opens an explicitly inspected scope so its returned children are visible', async () => {
+  const w = mount(DebugValues, {
+    props: {
+      values: [{ name: 'Local', value: 'Expand to inspect', handle: 'sample-scope' }],
+      folded: new Set<string>(),
+    },
+  })
+  try {
+    await w.get('[role="treeitem"]').trigger('click')
+    expect(w.emitted('inspect')).toEqual([['sample-scope']])
+    expect(w.emitted('toggle')).toEqual([['value:Local']])
+    await w.setProps({
+      folded: new Set(['value:Local']),
+      values: [{ name: 'Local', value: '1 values', children: [{ name: 'n', value: '3' }] }],
+    })
+    expect(w.get('.tree-item-children').isVisible()).toBe(true)
+    expect(w.text()).toContain('n')
+    expect(w.text()).toContain('3')
+  } finally {
+    w.unmount()
+  }
+})
 it('reveals a long inert scalar in place without evaluating it', async () => {
   const value = 'sample value '.repeat(40)
   const w = mount(DebugValues, {

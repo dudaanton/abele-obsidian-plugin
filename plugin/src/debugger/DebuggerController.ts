@@ -136,6 +136,11 @@ export class DebuggerController {
   }
   observe(observation: DebuggerObservationState) {
     if (!observation.snapshot || observation.observation !== 'current') {
+      console.debug(
+        '[debugger] Observation unavailable',
+        observation.observation,
+        observation.reason
+      )
       this.disconnected()
       return
     }
@@ -668,10 +673,23 @@ export class DebuggerController {
             watch.value = typeof data.value === 'string' ? data.value : JSON.stringify(data)
         } else if (inspection.handle && Array.isArray(data.items)) {
           const page = z.array(z.object({ name: z.string(), value: z.string() })).parse(data.items)
-          this.session.variables = page.map((v) => ({
+          const children = page.map((v) => ({
             ...v,
             type: `Observed at ${entry.observed_at}`,
           }))
+          const fill = (values: typeof this.session.variables): boolean => {
+            for (const value of values) {
+              if (value.handle === inspection.handle) {
+                value.children = children
+                value.handle = undefined
+                value.value = `${children.length} values`
+                return true
+              }
+              if (value.children && fill(value.children)) return true
+            }
+            return false
+          }
+          fill(this.session.variables)
         }
         this.inspections.delete(entry.operation_id)
       }
