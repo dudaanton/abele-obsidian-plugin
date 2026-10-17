@@ -1,3 +1,4 @@
+import { nodeErrorWords } from './errorWords'
 import { SuggestModal, type App } from 'obsidian'
 import { SuggestionRows } from '@/components/obsidian/suggestionRows'
 import type { RepositorySource, RepositoryWorkspace } from '@/repository/source'
@@ -7,6 +8,7 @@ interface Choice {
   id: string
   label: string
   meta?: string
+  diagnostic?: string
 }
 /** One native picker for a repository's workspace and version. */
 export class RepositoryPicker extends SuggestModal<Choice> {
@@ -52,12 +54,12 @@ export class RepositoryPicker extends SuggestModal<Choice> {
         `${row.label} ${row.meta ?? ''}`.toLowerCase().includes(query.toLowerCase())
       )
     } catch (error) {
-      return [
-        { kind: 'note', id: '', label: error instanceof Error ? error.message : String(error) },
-      ]
+      const diagnostic = error instanceof Error ? error.message : String(error)
+      return [{ kind: 'note', id: '', label: nodeErrorWords(diagnostic), diagnostic }]
     }
   }
   renderSuggestion(row: Choice, el: HTMLElement) {
+    if (row.diagnostic) el.title = row.diagnostic
     this.rows.draw(el, {
       icon: row.kind === 'workspace' ? 'folder-git-2' : 'git-branch',
       title: row.label,

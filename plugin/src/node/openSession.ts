@@ -1,3 +1,4 @@
+import { nodeErrorNotice } from './errorNotice'
 import type { NodeSession } from './nodePages'
 import { revealNodeDrawer } from './nodePathNavigation'
 import { FuzzySuggestModal, Menu, Notice, type App } from 'obsidian'
@@ -29,9 +30,8 @@ class SessionPicker extends FuzzySuggestModal<SessionChoice> {
     return item.title
   }
   onChooseItem(item: SessionChoice): void {
-    void this.choose(item).catch(
-      (error: unknown) =>
-        new Notice(error instanceof Error ? error.message : 'Could not open node session')
+    void this.choose(item).catch((error: unknown) =>
+      nodeErrorNotice(error, 'Could not open node session')
     )
   }
 }
@@ -95,8 +95,8 @@ export async function revealNodeSession(
 
 /** A node's folders, worktrees and chats live in its side panel, opened here for that node. */
 export function openNodePanel(node: RegisteredNode): void {
-  void revealNodeDrawer(GlobalStore.getInstance().app.workspace, node.id).catch(
-    (e: unknown) => new Notice(e instanceof Error ? e.message : 'Could not open the node panel')
+  void revealNodeDrawer(GlobalStore.getInstance().app.workspace, node.id).catch((e: unknown) =>
+    nodeErrorNotice(e, 'Could not open the node panel')
   )
 }
 
@@ -122,9 +122,8 @@ export function newChatMenu(local: () => void, position: { x: number; y: number 
         .setTitle(`Session on ${node.label}`)
         .setIcon('server')
         .onClick(() => {
-          void pickNodeSession(node).catch(
-            (error: unknown) =>
-              new Notice(error instanceof Error ? error.message : 'Node unavailable')
+          void pickNodeSession(node).catch((error: unknown) =>
+            nodeErrorNotice(error, 'Node unavailable')
           )
         })
     )

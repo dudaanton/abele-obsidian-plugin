@@ -1,3 +1,4 @@
+import { nodeErrorNotice } from './errorNotice'
 import { Menu, Notice, Platform } from 'obsidian'
 import type { WorktreeEntry } from '@abele/node-protocol'
 import { NodeSuggestModal } from '@/components/nodeWork/NodeSuggestModal'
@@ -31,9 +32,7 @@ const app = () => GlobalStore.getInstance().app
 export const nodePathAction = (run: () => Promise<unknown> | void): void => {
   void Promise.resolve()
     .then(run)
-    .catch(
-      (error: unknown) => new Notice(error instanceof Error ? error.message : 'Node action failed')
-    )
+    .catch((error: unknown) => nodeErrorNotice(error, 'Node action failed'))
 }
 export function showNodePathFileMenu(event: MouseEvent, raw: NodePathContext): void {
   event.preventDefault()

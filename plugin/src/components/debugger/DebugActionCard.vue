@@ -22,7 +22,8 @@
       Awaiting result
     </div>
     <div v-if="action.result" class="abele-debug-action__result">
-      {{ action.result }}
+      <NodeErrorText v-if="action.status !== 'done'" :error="action.result" />
+      <template v-else>{{ action.result }}</template>
     </div>
     <div
       v-if="action.status === 'asked' && !action.awaitingResult"
@@ -45,6 +46,7 @@
 </template>
 
 <script setup lang="ts">
+import NodeErrorText from '@/components/NodeErrorText.vue'
 // One action of the chat agent in the debug session, where it happened: in the chat, between its
 // messages, like any tool call. Asked: the exact action, where the program stood, Allow and Deny.
 // Done, denied or expired: a glyph at the end says which, the words are in its tooltip; a done

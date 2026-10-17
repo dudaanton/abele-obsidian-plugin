@@ -98,7 +98,7 @@
           <Button text="Use another invitation" :disabled="busy" @click="reset" />
         </template>
       </template>
-      <p v-if="message" role="alert">{{ message }}</p>
+      <p v-if="message" role="alert"><NodeErrorText :error="message" /></p>
       <p>
         Revocation is done by the owner with <code>abele-node pair revoke</code>. To re-pair, use a
         fresh invitation bound to the same installation. Removing a connection here does not revoke
@@ -108,6 +108,7 @@
   </Modal>
 </template>
 <script setup lang="ts">
+import NodeErrorText from '@/components/NodeErrorText.vue'
 import { ref, onMounted, onUnmounted } from 'vue'
 import { InviteSchema, assertPairedEndpoint, type PairingInvite } from '@abele/channel-protocol'
 import type { NodeService } from '@/node/NodeService'

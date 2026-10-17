@@ -1,5 +1,30 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const es = {
+  'node.error.size': 'La solicitud es demasiado grande. Reduce su tamaño y vuelve a intentarlo.',
+  'node.error.route':
+    'Se rechazó la dirección del nodo. Comprueba la dirección permitida por la invitación de vinculación.',
+
+  'node.error.tls':
+    'No se pudo conectar al nodo de forma segura. Comprueba la dirección, el certificado y la conexión.',
+  'node.error.access': 'El nodo denegó el acceso. Vuelve a vincularlo o comprueba los permisos.',
+  'node.error.unknownOutcome':
+    'El resultado es desconocido. Actualiza y comprueba qué ocurrió antes de reintentar.',
+  'node.error.limit': 'El nodo alcanzó un límite. Espera antes de reintentar.',
+  'node.error.debugger':
+    'El depurador no está disponible. Comprueba la configuración de depuración y vuelve a conectar.',
+  'node.error.generic':
+    'El nodo no pudo completar la solicitud. Comprueba los detalles antes de reintentar.',
+  'node.error.connection': 'El nodo está desconectado. Comprueba la conexión y vuelve a conectar.',
+  'node.error.pairing':
+    'No se pudo completar la vinculación. Comprueba la invitación y vuelve a vincular.',
+  'node.error.identity':
+    'El nodo o el destino ha cambiado. Comprueba su identidad y vuelve a conectar.',
+  'node.error.stale': 'Los datos han cambiado. Actualiza antes de reintentar.',
+  'node.error.trust':
+    'Esta carpeta no es de confianza. Revisa la configuración de confianza antes de continuar.',
+  'node.error.unavailable':
+    'Esta función no está disponible. Comprueba la configuración y la versión del nodo.',
+
   'kit.cancel': 'Cancelar',
   'kit.delete': 'Eliminar',
   'kit.deleteTooltip': 'Eliminar este elemento',

@@ -236,7 +236,13 @@
           class="abele-chat-msg__tool-error"
           data-find-part="content"
         >
-          {{ message.content }}
+          <NodeErrorText
+            v-if="
+              message.toolName?.startsWith('node_') || message.toolName === 'list_node_worktrees'
+            "
+            :error="message.content"
+          />
+          <template v-else>{{ message.content }}</template>
         </span>
       </template>
 
@@ -425,6 +431,7 @@
 </template>
 
 <script setup lang="ts">
+import NodeErrorText from '@/components/NodeErrorText.vue'
 import SyntaxText from './SyntaxText.vue'
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { flashMessagePassage, flashExactSelection, messageRenderedText } from '@/ai/messageComments'

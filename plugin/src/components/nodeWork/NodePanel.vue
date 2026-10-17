@@ -35,7 +35,9 @@
           Agents and folders live on a computer running AbeleNode. Pair this device with it.
         </div>
       </template>
-      <div v-if="error" class="abele-node-panel__notice" role="alert">{{ error }}</div>
+      <div v-if="error" class="abele-node-panel__notice" role="alert">
+        <NodeErrorText :error="error" />
+      </div>
       <div class="abele-node-panel__intro-actions">
         <Button
           v-if="phase === 'found' || phase === 'connecting'"
@@ -129,7 +131,9 @@
         <Icon icon="rotate-cw" size="xs" tooltip="Try to reconnect" @click="emit('retry')" />
       </div>
 
-      <div v-if="error" class="abele-node-panel__notice" role="alert">{{ error }}</div>
+      <div v-if="error" class="abele-node-panel__notice" role="alert">
+        <NodeErrorText :error="error" />
+      </div>
       <div v-if="empty" class="abele-node-panel__intro abele-node-panel__intro_empty">
         <div class="abele-node-panel__intro-text">
           Open a folder on {{ node.name }} to see its files and changes.
@@ -151,6 +155,7 @@
 </template>
 
 <script setup lang="ts">
+import NodeErrorText from '@/components/NodeErrorText.vue'
 import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 // The node's side panel, a tab of the left sidebar beside the file explorer: the computer where
 // agents work, with its connection dot, and under it whatever layout of folders and files the

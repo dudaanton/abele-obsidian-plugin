@@ -140,7 +140,7 @@
       />
       <div v-else-if="mode === 'history'" class="abele-node-sidebar__history">
         <div v-if="history?.error.value" class="abele-node-sidebar__error" role="alert">
-          {{ history.error.value }}
+          <NodeErrorText :error="history.error.value" />
         </div>
         <HistoryView
           :commits="history?.commits.value ?? []"
@@ -164,6 +164,7 @@
   </NodePanel>
 </template>
 <script setup lang="ts">
+import NodeErrorText from '@/components/NodeErrorText.vue'
 // The node's side panel: one place (a folder and its branch) chosen from a row that opens the
 // search of all of them, and the place's files, changes, history or pull requests under it.
 import { computed, watch } from 'vue'

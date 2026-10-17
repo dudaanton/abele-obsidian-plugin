@@ -77,7 +77,7 @@
       class="abele-ai-chat__error"
       role="alert"
     >
-      {{ presenter.error.value || presenter.connection.error.value }}
+      <NodeErrorText :error="presenter.error.value || presenter.connection.error.value" />
     </div>
     <div v-show="!expanded" ref="scroller" class="abele-ai-chat__messages" @scroll="onScroll">
       <!-- A long session shows its end; what came before is read from the node as you scroll up. -->
@@ -160,7 +160,7 @@
         class="abele-ai-chat__error"
         role="alert"
       >
-        Not accepted: {{ rejected.text }} · {{ rejected.error }}
+        Not accepted: {{ rejected.text }} · <NodeErrorText :error="rejected.error" />
       </div>
     </div>
     <MetaLine
@@ -250,6 +250,7 @@
   </div>
 </template>
 <script setup lang="ts">
+import NodeErrorText from '@/components/NodeErrorText.vue'
 import { computed, nextTick, ref, watch, onUnmounted } from 'vue'
 import { Menu, Notice } from 'obsidian'
 import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
@@ -652,6 +653,11 @@ watch(
 </script>
 <style lang="scss">
 .abele-node-chat {
+  > .abele-ai-chat__error {
+    flex-shrink: 0;
+    padding-inline: var(--size-4-3);
+    overflow-wrap: anywhere;
+  }
   &__older {
     display: flex;
     align-items: center;

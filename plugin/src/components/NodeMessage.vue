@@ -14,13 +14,15 @@
   >
     <template #tool-note
       ><span v-if="message.content" class="abele-node-message-note" :title="message.content">{{
-        message.content === 'Allowed by your Claude settings' ? 'Claude settings' : message.content
+        message.content === 'Allowed by your Claude settings'
+          ? 'Claude settings'
+          : nodeErrorWords(message.content)
       }}</span></template
     >
     <template #metadata>
       <div v-if="message.error" class="abele-ai-chat__error" role="alert">
         <div class="abele-ai-chat__error-line">
-          <span class="abele-node-error-text">{{ message.error }}</span>
+          <span class="abele-node-error-text"><NodeErrorText :error="message.error" /></span>
           <button
             v-if="message.retryInputId"
             class="clickable-icon"
@@ -53,6 +55,8 @@
   </AiChatMessage>
 </template>
 <script setup lang="ts">
+import { nodeErrorWords } from '@/node/errorWords'
+import NodeErrorText from '@/components/NodeErrorText.vue'
 import type { ChatMessage, ChatReplyTo } from '@/ai/types'
 import type { QueueState } from '@/node/presentation'
 import AiChatMessage from './AiChatMessage.vue'

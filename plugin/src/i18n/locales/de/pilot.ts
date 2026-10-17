@@ -1,5 +1,31 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const de = {
+  'node.error.size': 'Die Anfrage ist zu groß. Größe reduzieren und erneut versuchen.',
+  'node.error.route':
+    'Die Knotenadresse wurde abgelehnt. Die in der Kopplungseinladung erlaubte Adresse prüfen.',
+
+  'node.error.tls':
+    'Der Knoten konnte nicht sicher erreicht werden. Adresse, Zertifikat und Verbindung prüfen.',
+  'node.error.access':
+    'Der Knoten hat den Zugriff verweigert. Erneut koppeln oder Berechtigungen prüfen.',
+  'node.error.unknownOutcome':
+    'Das Ergebnis ist unbekannt. Vor einem erneuten Versuch aktualisieren und das Ergebnis prüfen.',
+  'node.error.limit': 'Der Knoten hat ein Limit erreicht. Vor einem erneuten Versuch warten.',
+  'node.error.debugger':
+    'Der Debugger ist nicht verfügbar. Debug-Konfiguration prüfen und erneut verbinden.',
+  'node.error.generic':
+    'Der Knoten konnte die Anfrage nicht abschließen. Vor einem erneuten Versuch die Details prüfen.',
+  'node.error.connection': 'Der Knoten ist getrennt. Verbindung prüfen und erneut verbinden.',
+  'node.error.pairing':
+    'Die Kopplung konnte nicht abgeschlossen werden. Einladung prüfen und erneut koppeln.',
+  'node.error.identity':
+    'Der Knoten oder das Ziel hat sich geändert. Identität prüfen und erneut verbinden.',
+  'node.error.stale': 'Die Daten haben sich geändert. Vor einem erneuten Versuch aktualisieren.',
+  'node.error.trust':
+    'Dieser Ordner ist nicht vertrauenswürdig. Vor dem Fortfahren die Vertrauenseinstellungen prüfen.',
+  'node.error.unavailable':
+    'Diese Funktion ist nicht verfügbar. Konfiguration und Version des Knotens prüfen.',
+
   'kit.cancel': 'Abbrechen',
   'kit.delete': 'Löschen',
   'kit.deleteTooltip': 'Dieses Element löschen',

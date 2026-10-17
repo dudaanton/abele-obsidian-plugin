@@ -14,9 +14,9 @@
 </template>
 
 <script setup lang="ts">
+import { nodeErrorNotice } from '@/node/errorNotice'
 import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 import { computed } from 'vue'
-import { Notice } from 'obsidian'
 import NodeChatView from './NodeChatView.vue'
 import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import type { NodePathModel, PathTarget } from '@/node/NodePathModel'
@@ -51,8 +51,7 @@ const placeProps = computed(() => {
     switches: p.switches,
   }
 })
-const report = (error: unknown) =>
-  new Notice(error instanceof Error ? error.message : 'The node could not do that')
+const report = (error: unknown) => nodeErrorNotice(error, 'The node could not do that')
 const openResource = (resource: string, bound?: PathTarget) => {
   const target = bound ?? place?.value.target
   if (target) void openNodeChatResource(resource, target).catch(report)

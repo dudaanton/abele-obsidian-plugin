@@ -308,7 +308,7 @@
           role="status"
         >
           <Icon icon="circle-x" size="xs" no-hover />
-          <span>{{ outcome.reason }}</span>
+          <NodeErrorText :error="outcome.reason" />
         </div>
         <div
           v-else-if="outcome?.kind === 'unknown'"
@@ -352,6 +352,7 @@
 </template>
 
 <script setup lang="ts">
+import NodeErrorText from '@/components/NodeErrorText.vue'
 // Every part of a request is a fold, so a long body or a dozen headers never push the answer
 // out of sight; what is folded is remembered for the tab. A value that cannot be sent as it is
 // (a key the plugin does not have, a variable with no value) keeps Send off and says why in the

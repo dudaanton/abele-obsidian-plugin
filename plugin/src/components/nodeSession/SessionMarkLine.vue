@@ -18,7 +18,8 @@
       @keydown.enter.prevent="summary && (open = !open)"
     >
       <Icon :icon="glyph" size="xs" :interactive="false" />
-      <span>{{ said }}</span>
+      <NodeErrorText v-if="mark.kind === 'failed' || mark.level === 'error'" :error="said" />
+      <span v-else>{{ said }}</span>
     </span>
     <div class="abele-session-mark__line" />
   </div>
@@ -28,6 +29,7 @@
 </template>
 
 <script setup lang="ts">
+import NodeErrorText from '@/components/NodeErrorText.vue'
 import { computed, onMounted, ref } from 'vue'
 import { setTooltip } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'

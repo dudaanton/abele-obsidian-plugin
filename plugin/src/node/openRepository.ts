@@ -1,3 +1,4 @@
+import { nodeErrorNotice } from './errorNotice'
 import { Notice, SuggestModal, type App, type PaneType, type WorkspaceLeaf } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { GITHUB_VIEW_TYPE } from '@/github/GithubService'
@@ -135,7 +136,7 @@ class RepositoryPicker<T> extends SuggestModal<T> {
   }
 }
 const report = (work: Promise<unknown>) => {
-  void work.catch((error) => new Notice(error instanceof Error ? error.message : String(error)))
+  void work.catch((error) => nodeErrorNotice(error))
 }
 /** Native pickers keep each choice close to what it opens, including an empty project catalogue. */
 export function chooseNodeRepository(app: App): void {
@@ -163,9 +164,7 @@ export function chooseNodeRepository(app: App): void {
             if (projects.length >= 1000) break
           } while (after)
           if (!projects.length) {
-            new Notice(
-              'This node has no registered folders. Open one in the node panel.'
-            )
+            new Notice('This node has no registered folders. Open one in the node panel.')
             return
           }
           new RepositoryPicker(

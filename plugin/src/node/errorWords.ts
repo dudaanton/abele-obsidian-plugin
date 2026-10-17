@@ -1,0 +1,156 @@
+import { t } from '@/i18n'
+import type { MessageKey } from '@/i18n/types'
+
+type NodeErrorKey = Extract<MessageKey, `node.error.${string}`>
+
+// Exact protocol/client codes: new codes get the generic explanation until classified.
+const groups: readonly [NodeErrorKey, readonly string[]][] = [
+  ['node.error.unknownOutcome', ['outcome_unknown', 'delivery_unknown', 'idempotency_mismatch']],
+  [
+    'node.error.tls',
+    ['tls', 'tls_or_unreachable', 'paired_route_tls', 'paired_route_tls_or_unreachable'],
+  ],
+  [
+    'node.error.access',
+    [
+      'unauthorized',
+      'forbidden',
+      'auth_failed',
+      'approval_denied',
+      'permission_denied',
+      'access_denied',
+      'file_not_writable',
+    ],
+  ],
+  [
+    'node.error.identity',
+    [
+      'device_identity_mismatch',
+      'node_identity_mismatch',
+      'installation_identity_mismatch',
+      'identity_mismatch',
+      'target_replaced',
+      'target_changed',
+      'different_node',
+      'paired_route_different_node',
+      'enrollment_changed',
+    ],
+  ],
+  [
+    'node.error.route',
+    [
+      'host_not_accepted',
+      'policy_not_accepted',
+      'endpoint_refused',
+      'paired_route_host_not_accepted',
+      'paired_route_policy_not_accepted',
+    ],
+  ],
+  ['node.error.size', ['auth_too_large', 'record_too_large', 'file_too_large']],
+  [
+    'node.error.pairing',
+    [
+      'pairing_required',
+      'pairing_failed',
+      'pairing_cancelled',
+      'pairing_upgrade_required',
+      'pairing_wait_timeout',
+      'pairing_client_changed',
+      'invalid_pair_code',
+      'invalid_pairing_configuration',
+      'paired_profile_required',
+    ],
+  ],
+  [
+    'node.error.limit',
+    [
+      'rate_limit',
+      'rate_limited',
+      'output_limit',
+      'quota_exceeded',
+      'resource_busy',
+      'slow_consumer',
+    ],
+  ],
+  [
+    'node.error.debugger',
+    [
+      'debugger_profile_unavailable',
+      'debugger_program_not_found',
+      'debugger_online_only',
+      'build_identity_unverified',
+    ],
+  ],
+  [
+    'node.error.connection',
+    [
+      'offline',
+      'disconnected',
+      'unreachable',
+      'remote_unreachable',
+      'paired_route_unreachable',
+      'connect_before_queueing',
+      'connect_failed',
+      'connection_closed',
+      'connection_failed',
+      'connection_lost',
+      'connection_timeout',
+      'local_control_failed',
+      'local_control_timeout',
+      'timed_out',
+      'git_timeout',
+      'enotfound',
+      'econnrefused',
+      'econnreset',
+    ],
+  ],
+  [
+    'node.error.stale',
+    [
+      'stale_revision',
+      'fresh_snapshot_required',
+      'resync_required',
+      'conflict',
+      'prompt_expired',
+      'recovery_expired',
+      'invalid_anchor',
+    ],
+  ],
+  ['node.error.trust', ['project_untrusted', 'untrusted', 'trust_required']],
+  [
+    'node.error.unavailable',
+    [
+      'unsupported_method',
+      'unsupported_file_metadata',
+      'unsupported_name',
+      'profile_refused',
+      'invalid_local_runtime',
+      'unprotected_local_runtime',
+      'native_runtime_unavailable',
+      'storage_unavailable',
+      'provider_unavailable',
+      'repository_unavailable',
+    ],
+  ],
+]
+const explanations = new Map(
+  groups.flatMap(([key, codes]) => codes.map((code) => [code, key] as const))
+)
+
+/** Keep protocol diagnostics unchanged in state; translate only their presentation. */
+export function nodeErrorWords(error: string | null | undefined): string {
+  if (!error) return ''
+  const raw = error.trim().toLowerCase()
+  const tokens = raw.match(/\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g)
+  const code =
+    tokens?.join(' ') ??
+    error.trim().match(/(?:^|:\s*)([a-z][a-z0-9_-]*)[.!]?$/)?.[1] ??
+    (/^[A-Z][A-Z0-9_]+$/.test(error.trim()) ? raw : undefined)
+  // Existing prose, including provider explanations, remains useful as written.
+  if (!code) return error
+  const key = code
+    .split(' ')
+    .map((value) => explanations.get(value))
+    .find(Boolean)
+  return t(key ?? 'node.error.generic')
+}

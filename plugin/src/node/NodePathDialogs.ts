@@ -1,5 +1,5 @@
+import { nodeErrorNotice } from './errorNotice'
 import { h, shallowRef } from 'vue'
-import { Notice } from 'obsidian'
 import Modal from '@/components/obsidian/Modal.vue'
 import { mountKit } from '@/components/obsidian/mount'
 import FolderPicker from '@/components/nodeWork/FolderPicker.vue'
@@ -235,7 +235,7 @@ export async function openNodeWorktreeDialog(
               const job = await connection.client.getJob(reservation.job_id)
               await model.refresh()
               if (job.state !== 'succeeded')
-                new Notice(
+                nodeErrorNotice(
                   job.state === 'failed' || job.state === 'needs_attention'
                     ? (job.error ?? 'Worktree creation needs attention.')
                     : 'Worktree creation is in progress. Refresh the folder to check its result.'

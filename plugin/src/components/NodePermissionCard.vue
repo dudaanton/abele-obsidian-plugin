@@ -42,7 +42,9 @@
       {{ answerState.choice === 'allow' ? (isQuestion ? 'Answer' : 'Approve') : 'Deny' }}
       <template v-if="answerState.value !== undefined"> · {{ answerState.value }}</template>
       <template v-if="answerState.state === 'pending'"> · waiting for confirmation</template>
-      <template v-if="answerState.error"> · not accepted: {{ answerState.error }}</template>
+      <template v-if="answerState.error">
+        · not accepted: <NodeErrorText :error="answerState.error"
+      /></template>
       <div class="abele-tool-approval__actions">
         <Button
           text="Stop"
@@ -110,6 +112,7 @@
   </div>
 </template>
 <script setup lang="ts">
+import NodeErrorText from '@/components/NodeErrorText.vue'
 import { computed, ref, watch } from 'vue'
 import type { Prompt } from '@abele/node-client'
 import { toolSummary } from '@/ai/toolLine'

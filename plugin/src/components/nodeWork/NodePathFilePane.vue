@@ -1,7 +1,7 @@
 <template>
   <div class="abele-node-main">
     <div v-if="model.busy.value" role="status">Loading file…</div>
-    <div v-if="model.error.value" role="alert">{{ model.error.value }}</div>
+    <div v-if="model.error.value" role="alert"><NodeErrorText :error="model.error.value" /></div>
     <div v-if="offline" role="status">Offline · retained version.</div>
     <template v-if="model.document.value">
       <div v-if="model.document.value.note" role="status">{{ model.document.value.note }}</div>
@@ -29,6 +29,7 @@
   </div>
 </template>
 <script setup lang="ts">
+import NodeErrorText from '@/components/NodeErrorText.vue'
 import type { NodePathFileModel } from '@/node/NodePathModel'
 import FileView from './FileView.vue'
 import NodePathDebugFile from './NodePathDebugFile.vue'

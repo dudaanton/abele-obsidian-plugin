@@ -8,7 +8,9 @@
       text="Open Debug from a node chat."
     />
     <template v-else>
-      <div v-if="error" class="abele-debug-view__error" role="alert">{{ error }}</div>
+      <div v-if="error" class="abele-debug-view__error" role="alert">
+        <NodeErrorText :error="error" />
+      </div>
       <DebugPanel
         :session="session!"
         :mode-available="!!binding.controller.grantId"
@@ -38,6 +40,7 @@
   </div>
 </template>
 <script setup lang="ts">
+import NodeErrorText from '@/components/NodeErrorText.vue'
 import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import DebugPanel from '@/components/debugger/DebugPanel.vue'

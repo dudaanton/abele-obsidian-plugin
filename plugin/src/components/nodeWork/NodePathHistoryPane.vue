@@ -1,6 +1,6 @@
 <template>
   <div class="abele-node-main">
-    <div v-if="model.error.value" role="alert">{{ model.error.value }}</div>
+    <div v-if="model.error.value" role="alert"><NodeErrorText :error="model.error.value" /></div>
     <div v-if="model.busy.value" role="status">Loading history…</div>
     <div v-if="offline" role="status">Offline · retained history.</div>
     <HistoryView
@@ -19,6 +19,7 @@
   </div>
 </template>
 <script setup lang="ts">
+import NodeErrorText from '@/components/NodeErrorText.vue'
 import type { NodePathHistoryModel } from '@/node/NodePathHistoryModel'
 import type { CopySummary } from './types'
 import HistoryView from './HistoryView.vue'

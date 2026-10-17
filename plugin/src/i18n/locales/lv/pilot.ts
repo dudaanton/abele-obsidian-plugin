@@ -1,5 +1,29 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const lv = {
+  'node.error.size': 'Pieprasījums ir pārāk liels. Samaziniet tā izmēru un mēģiniet vēlreiz.',
+  'node.error.route':
+    'Mezgla adrese tika noraidīta. Pārbaudiet pāra izveides uzaicinājumā atļauto adresi.',
+
+  'node.error.tls':
+    'Neizdevās droši sasniegt mezglu. Pārbaudiet adresi, sertifikātu un savienojumu.',
+  'node.error.access': 'Mezgls liedza piekļuvi. Savienojiet pārī vēlreiz vai pārbaudiet atļaujas.',
+  'node.error.unknownOutcome':
+    'Rezultāts nav zināms. Pirms atkārtota mēģinājuma atsvaidziniet un pārbaudiet, kas notika.',
+  'node.error.limit': 'Mezgls sasniedza ierobežojumu. Pirms atkārtota mēģinājuma uzgaidiet.',
+  'node.error.debugger':
+    'Atkļūdotājs nav pieejams. Pārbaudiet atkļūdošanas iestatījumus un izveidojiet savienojumu vēlreiz.',
+  'node.error.generic':
+    'Mezgls nevarēja pabeigt pieprasījumu. Pirms atkārtota mēģinājuma pārbaudiet informāciju.',
+  'node.error.connection': 'Mezgls ir atvienots. Pārbaudiet savienojumu un izveidojiet to vēlreiz.',
+  'node.error.pairing':
+    'Neizdevās pabeigt pāra izveidi. Pārbaudiet uzaicinājumu un mēģiniet vēlreiz.',
+  'node.error.identity':
+    'Mezgls vai mērķis ir mainījies. Pārbaudiet identitāti un izveidojiet savienojumu vēlreiz.',
+  'node.error.stale': 'Dati ir mainījušies. Pirms atkārtota mēģinājuma atsvaidziniet tos.',
+  'node.error.trust':
+    'Šī mape nav uzticama. Pirms turpināšanas pārbaudiet uzticamības iestatījumus.',
+  'node.error.unavailable': 'Šī funkcija nav pieejama. Pārbaudiet mezgla iestatījumus un versiju.',
+
   'kit.cancel': 'Atcelt',
   'kit.delete': 'Dzēst',
   'kit.deleteTooltip': 'Dzēst šo vienumu',

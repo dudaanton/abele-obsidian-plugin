@@ -6,6 +6,7 @@
       :key="node.id"
       :name="node.label"
       :desc="nodeLine(node)"
+      :title="service.connection(node.id).error.value || undefined"
     >
       <StatusDot
         :tone="stateTone(service.connection(node.id).state.value)"
@@ -71,7 +72,7 @@
     />
     <!-- What the last check, open or add said, under the list it was about. -->
     <p v-if="message && !addingLocal" class="setting-item-description" role="status">
-      {{ message }}
+      <NodeErrorText :error="message" />
     </p>
     <ObsidianModal
       v-if="addingLocal"
@@ -101,7 +102,9 @@
           :aria-label="t('settings.nodes.installationToken')"
         />
       </Setting>
-      <p v-if="message" class="setting-item-description" role="status">{{ message }}</p>
+      <p v-if="message" class="setting-item-description" role="status">
+        <NodeErrorText :error="message" />
+      </p>
       <template #footer>
         <div class="abele-modal__actions">
           <Button
@@ -124,6 +127,8 @@
 </template>
 
 <script setup lang="ts">
+import { nodeErrorWords } from '@/node/errorWords'
+import NodeErrorText from '@/components/NodeErrorText.vue'
 import { useI18n } from '@/i18n/useI18n'
 import { computed, ref } from 'vue'
 import { ChatService } from '@/ai/ChatService'
@@ -259,7 +264,7 @@ const addingLocal = ref(false)
 /** Under a node's name: how it is in words, then where it is; a code from the node in words too. */
 const nodeLine = (node: RegisteredNode) => {
   const conn = service.connection(node.id)
-  const error = conn.error.value ? conn.error.value.replace(/_/g, ' ') : ''
+  const error = conn.error.value ? nodeErrorWords(conn.error.value) : ''
   return [error || stateLabel(conn.state.value), node.url].join(' · ')
 }
 

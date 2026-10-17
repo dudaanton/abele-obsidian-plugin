@@ -7,7 +7,7 @@
         Human permissions and extension questions stay in the child chat. Grants, task identities
         and mailboxes never transfer with settings.
       </p>
-      <p v-if="error" role="alert">{{ error }}</p>
+      <p v-if="error" role="alert"><NodeErrorText :error="error" /></p>
       <Setting
         name="Parent chat"
         desc="Open the plugin chat to authorize, then choose it here. A copied chat needs its own grant."
@@ -103,11 +103,12 @@
           />
         </Setting>
       </section>
-      <p v-if="message" role="status">{{ message }}</p>
+      <p v-if="message" role="status"><NodeErrorText :error="message" /></p>
     </div>
   </Modal>
 </template>
 <script setup lang="ts">
+import NodeErrorText from '@/components/NodeErrorText.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import type { DelegationGrant, Project } from '@abele/node-client'
 import type { NodeDelegationController } from '@/node/NodeDelegationController'

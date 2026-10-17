@@ -28,7 +28,9 @@
           aria-label="Pairing code"
           class="abele-pair__code-field"
         />
-        <div v-if="badCode" class="abele-pair__error" role="alert">{{ badCode }}</div>
+        <div v-if="badCode" class="abele-pair__error" role="alert">
+          <NodeErrorText :error="badCode" />
+        </div>
 
         <!-- What the code holds, read out of it at once, to be checked against the node. -->
         <!-- What the code holds, to check against the node: who it is, its key, how long the
@@ -61,7 +63,8 @@
             class="abele-pair__setting"
             name="Address"
             :desc="host.trim() === parsed.host ? 'From the code.' : `The code says ${parsed.host}.`"
-            :error="hostError"
+            :error="nodeErrorWords(hostError)"
+            :title="hostError"
           >
             <Input
               v-model="host"
@@ -155,6 +158,8 @@
 </template>
 
 <script setup lang="ts">
+import { nodeErrorWords } from '@/node/errorWords'
+import NodeErrorText from '@/components/NodeErrorText.vue'
 // Connecting this device to AbeleNode. The node prints a pairing code; pasted here, it is read at
 // once and what it holds is shown to check: the node's name, where it is, its key. Connect asks the
 // node, and the owner lets the device in there, choosing it by the name shown here. The dialog

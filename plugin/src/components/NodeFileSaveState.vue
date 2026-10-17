@@ -75,15 +75,16 @@
         @click="keepMine"
       />
     </div>
-    <span v-else-if="error || model.draftError.value" role="alert">{{
-      error || model.draftError.value
-    }}</span>
+    <span v-else-if="error || model.draftError.value" role="alert"
+      ><NodeErrorText :error="error || model.draftError.value"
+    /></span>
     <span v-else-if="model.draft.value?.pending" role="alert"
       >Save outcome unknown · keep this draft. Reconnect and check the same save; do not submit it
       again. Inspect the retained predecessor before recovery.</span
     >
     <span v-else-if="model.draft.value?.status === 'rejected'" role="alert"
-      >Save rejected · {{ model.draft.value.error }}. Your local draft is retained.</span
+      >Save rejected · <NodeErrorText :error="model.draft.value.error" />. Your local draft is
+      retained.</span
     >
     <span v-else-if="model.draft.value?.status === 'saved' && !model.draftDirty.value" role="status"
       >Saved · the node confirmed this version. External editors may change it afterwards.</span
@@ -118,6 +119,7 @@
   </div>
 </template>
 <script setup lang="ts">
+import NodeErrorText from '@/components/NodeErrorText.vue'
 import { computed, ref } from 'vue'
 import type { NodeFilesModel } from '@/node/NodeFilesModel'
 import type { FileDraftSnapshot } from '@/node/fileDrafts'

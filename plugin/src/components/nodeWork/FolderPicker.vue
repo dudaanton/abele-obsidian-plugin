@@ -13,7 +13,7 @@
       aria-controls="abele-folder-picker-list"
     />
     <div v-if="listing.error" class="abele-folder-picker__error" role="alert">
-      {{ listing.error }}
+      <NodeErrorText :error="listing.error" />
     </div>
 
     <div
@@ -101,6 +101,7 @@
 </template>
 
 <script setup lang="ts">
+import NodeErrorText from '@/components/NodeErrorText.vue'
 // Choosing a folder on the node: a path field over the folders it leads to, the way Obsidian's
 // own pickers put the input over the list. Typing filters and completes, arrows move, Enter goes
 // into the highlighted folder, Backspace on an empty segment goes up. The line under the list

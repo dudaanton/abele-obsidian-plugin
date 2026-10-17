@@ -20,7 +20,7 @@
         <Button text="Diffs" :accent="tab === 'diffs'" @click="tab = 'diffs'" />
         <Button text="History" :accent="tab === 'history'" @click="history" />
       </div>
-      <p v-if="error" role="alert">{{ error }}</p>
+      <p v-if="error" role="alert"><NodeErrorText :error="error" /></p>
       <p v-if="offline" role="status">
         Offline · retained views remain available. Reconnect to browse.
       </p>
@@ -306,6 +306,7 @@
   </Modal>
 </template>
 <script setup lang="ts">
+import NodeErrorText from '@/components/NodeErrorText.vue'
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import type { DiffMode } from '@abele/node-client'
 import type { DiffSpan } from '@/github/permalinks'

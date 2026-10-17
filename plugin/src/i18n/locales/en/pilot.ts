@@ -1,4 +1,26 @@
 export const en = {
+  'node.error.size': 'The request is too large. Reduce its size and try again.',
+  'node.error.route':
+    'The node address was refused. Check the address allowed by the pairing invitation.',
+
+  'node.error.tls':
+    'The node could not be reached securely. Check its address, certificate and connection.',
+  'node.error.access': 'The node refused access. Pair again or check your permissions.',
+  'node.error.unknownOutcome':
+    'The result is unknown. Refresh and check what happened before trying again.',
+  'node.error.limit': 'The node reached a limit. Wait before trying again.',
+  'node.error.debugger':
+    'The debugger is unavailable. Check the debug configuration and reconnect.',
+  'node.error.generic':
+    'The node could not complete the request. Check the details before trying again.',
+  'node.error.connection': 'The node is disconnected. Check the connection and reconnect.',
+  'node.error.pairing': 'Pairing could not be completed. Check the invitation and pair again.',
+  'node.error.identity': 'The node or target has changed. Check its identity and reconnect.',
+  'node.error.stale': 'The data has changed. Refresh before trying again.',
+  'node.error.trust': 'This folder is not trusted. Review its trust settings before continuing.',
+  'node.error.unavailable':
+    'This feature is unavailable. Check the node configuration and version.',
+
   'kit.cancel': 'Cancel',
   'kit.delete': 'Delete',
   'kit.deleteTooltip': 'Go ahead and delete it',

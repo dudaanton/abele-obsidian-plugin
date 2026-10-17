@@ -220,7 +220,8 @@
             <span
               class="abele-debug-panel__value"
               :class="{ 'abele-debug-panel__value_error': w.error }"
-              >{{ live ? (w.error ?? w.value ?? '') : '' }}</span
+              :title="w.error || undefined"
+              >{{ live ? (w.error ? nodeErrorWords(w.error) : (w.value ?? '')) : '' }}</span
             >
           </template>
           <template #actions>
@@ -259,6 +260,7 @@
 </template>
 
 <script setup lang="ts">
+import { nodeErrorWords } from '@/node/errorWords'
 import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 // The debugger's own view, a tab of the right sidebar like Backlinks or Outline: the controls in
 // its header, a line saying what runs and where it stands, and the folding groups a debugger has —

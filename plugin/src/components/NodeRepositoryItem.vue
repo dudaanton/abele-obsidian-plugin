@@ -1,6 +1,12 @@
 <template>
   <div v-if="!source || !target" class="abele-node-repository__unavailable">
-    <GithubNotice v-if="error" :text="error" retry-tooltip="Ask the node again" @retry="load" />
+    <GithubNotice
+      v-if="error"
+      :text="nodeErrorWords(error)"
+      :title="error"
+      retry-tooltip="Ask the node again"
+      @retry="load"
+    />
     <EmptyState v-else text="Connecting to the node…" />
   </div>
   <GithubItem
@@ -78,7 +84,11 @@
           <span>File history</span
           ><Icon icon="x" tooltip="Close file history" @click="historyOpen = false" />
         </div>
-        <EmptyState v-if="historyError" :text="historyError" />
+        <EmptyState
+          v-if="historyError"
+          :text="nodeErrorWords(historyError)"
+          :title="historyError"
+        />
         <GithubCommits
           v-else
           :commits="history"
@@ -89,8 +99,10 @@
   </GithubItem>
 </template>
 <script setup lang="ts">
+import { nodeErrorNotice } from '@/node/errorNotice'
+import { nodeErrorWords } from '@/node/errorWords'
 import { computed, onBeforeUnmount, reactive, ref, shallowRef, watch } from 'vue'
-import { Menu, Notice, type PaneType } from 'obsidian'
+import { Menu, type PaneType } from 'obsidian'
 import { confirmDialog } from '@/components/obsidian/dialogs'
 import { changeExternalBrowsing, externalBrowsingConfirm } from '@/node/repositorySettings'
 import GithubItem from './github/GithubItem.vue'
@@ -166,7 +178,7 @@ const toggleEditing = async () => {
     await transport.client.repository.editing({ worktree_id: current.identity.workspace, enabled })
     if (alive && current === source.value) await refreshMutable()
   } catch (e) {
-    new Notice(e instanceof Error ? e.message : String(e))
+    nodeErrorNotice(e)
   } finally {
     settingsBusy.value = false
   }
@@ -380,10 +392,7 @@ const open = (url: string, pane: PaneType | false = false) => {
 /** The place this tab is in, opened in the node panel, where its files and changes are. */
 const showInPanel = () => {
   const at = target.value?.source
-  if (at)
-    void revealNodePlace(at.node, at.workspace).catch(
-      (e: unknown) => new Notice(e instanceof Error ? e.message : String(e))
-    )
+  if (at) void revealNodePlace(at.node, at.workspace).catch((e: unknown) => nodeErrorNotice(e))
 }
 const settingsBusy = ref(false)
 const externalMenu = (event?: MouseEvent | KeyboardEvent) => {
@@ -400,7 +409,7 @@ const externalMenu = (event?: MouseEvent | KeyboardEvent) => {
       )
       if (changed && alive) await load()
     } catch (error) {
-      new Notice(error instanceof Error ? error.message : String(error))
+      nodeErrorNotice(error)
     } finally {
       settingsBusy.value = false
     }
