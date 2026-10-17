@@ -466,8 +466,12 @@ export function registerRequests(plugin: Plugin) {
 }
 
 /** Opens the Requests view in the left sidebar, as Bookmarks sits there. */
-export async function openRequestsView(obsidian: App = app()) {
+export async function openRequestsView(obsidian: App = app(), pickOpenProject = true) {
   const { workspace } = obsidian
+  if (pickOpenProject)
+    RequestsService.instance().chooseOpenProject(
+      workspace.getActiveViewOfType(ItemView)?.getState()
+    )
   const leaf = workspace.getLeavesOfType(REQUESTS_VIEW)[0] ?? workspace.getLeftLeaf(false)
   if (!leaf) return
   if (leaf.getViewState().type !== REQUESTS_VIEW)
@@ -491,7 +495,7 @@ async function importFromClipboard() {
     const model = service.model(c)
     const outcome = await importInto(model, importRequests(text))
     // The view shows what came in: its collection unfolded, the new rows in sight.
-    await openRequestsView()
+    await openRequestsView(app(), false)
     const main = outcome.collections[0]
     if (main)
       service.reveal.value = {

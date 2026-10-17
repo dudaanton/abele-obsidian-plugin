@@ -170,12 +170,21 @@ function shown(s: TraceStep) {
 const rows = computed(() => {
   const out: { step: TraceStep; children: TraceStep[] }[] = []
   const heads = new Map<string, { step: TraceStep; children: TraceStep[] }>()
+  // HTTP steps are completed after the code they caused, and may arrive after it.
+  const requests = new Map(
+    props.run.steps.filter((s) => s.kind === 'http' && s.chain).map((s) => [s.chain, s])
+  )
   for (const s of props.run.steps) {
-    if (!shown(s)) continue
+    const request = s.chain ? requests.get(s.chain) : undefined
+    if (filter.value === 'browser' && request) {
+      if (!shown(request)) continue
+    } else if (!shown(s)) continue
     const head = s.chain ? heads.get(s.chain) : undefined
-    if (head) head.children.push(s)
-    else {
-      const row = { step: s, children: [] as TraceStep[] }
+    if (head) {
+      if (s.id !== head.step.id) head.children.push(s)
+    } else {
+      const first = request && shown(request) ? request : s
+      const row = { step: first, children: first.id === s.id ? [] : [s] }
       out.push(row)
       if (s.chain) heads.set(s.chain, row)
     }

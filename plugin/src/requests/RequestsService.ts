@@ -16,6 +16,7 @@ import {
 import { RequestsModel, forgetRequestSecrets, type RequestsPorts } from './RequestsModel'
 import type { Outgoing } from './resolve'
 import { HttpRpc, nodeHttpSupported } from './wire'
+import { distinctProjects, projectOfTab } from './projectContext'
 
 export const RequestsContextSchema = z.object({
   registrationId: z.string().min(1),
@@ -177,6 +178,29 @@ export class RequestsService {
     GlobalStore.getInstance().app.saveLocalStorage(CONTEXT_KEY, JSON.stringify(c))
   }
 
+  chooseOpenProject(state: unknown) {
+    const binding = DebuggerService.instance.active.value
+    const projectId = binding?.controller.snapshot?.target.project_id
+    const c =
+      projectOfTab(state) ??
+      (binding && projectId ? { registrationId: binding.registrationId, projectId } : undefined)
+    if (c && nodeKnown(c.registrationId)) {
+      this.choose({ ...c, label: c.projectId })
+      // Fill in the friendly project name without undoing a later manual selection.
+      void this.contexts()
+        .then((contexts) => {
+          if (
+            this.chosen.value?.registrationId !== c.registrationId ||
+            this.chosen.value.projectId !== c.projectId
+          )
+            return
+          const named = contexts.find((p) => key(p) === key(c))
+          if (named) this.choose(named)
+        })
+        .catch((e) => console.debug('[requests] Project name unavailable', e))
+    }
+  }
+
   model(c: Pick<RequestsContext, 'registrationId' | 'projectId'>): RequestsModel {
     const k = key(c)
     let model = this.models.get(k)
@@ -235,6 +259,6 @@ export class RequestsService {
         console.debug('[requests] Node not listed', node.id, e)
       }
     }
-    return out
+    return distinctProjects(out)
   }
 }

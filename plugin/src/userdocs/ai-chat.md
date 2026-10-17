@@ -358,6 +358,11 @@ and edits the one in use. Collections are folders, and each request shows its me
 and, faintly, the status it got the last time, red when that was an error or it did not get
 through.
 
+Opening requests selects the project of the active node tab, or the debugger's project.
+When the first request has no environment, it asks for the server address and creates a local
+environment. A local HTTP address printed in the debugger output is offered when available;
+otherwise enter the address and port of the running service.
+
 A request opens in a tab: the method, the address and **Send** on one line, what the address
 comes to in this environment under it, then **Params**, **Headers**, **Body**, **Scripts** and
 **Checks**. Write `{{name}}` for a value of the environment and `${abele_key:name}` for a saved
@@ -382,9 +387,10 @@ its answer comes, when its header says `// @request` (see [Scripts around a requ
 Checks are lines in the request file, such as `status == 201` or `body.items[0].qty == 2`.
 
 While a program of the project is recorded under the debugger, the view says so at the top and
-**Send** gets a switch beside it. Switched on, the send goes into the recording: its answer says
+**Send** gets a switch beside it, enabled by default. The send goes into the recording: its answer says
 how many steps the code took while the request was out, and pressing that opens the run with the
-request heading those steps. A clock beside a step means it was put there by time. When the
+request heading those steps. **Only the requests** keeps those code steps under their request;
+pick a step to read its values. A clock beside a step means it was put there by time. When the
 environment has **Say the step** on, the request carries an `X-Abele-Step` header a record point
 can take.
 

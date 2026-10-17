@@ -10,6 +10,29 @@ import { doc, fakeNode, ports } from '../helpers/requestsFakeNode'
 beforeEach(() => forgetRequestSecrets())
 
 describe('the requests of a project', () => {
+  it('creates an environment using the offered server address', async () => {
+    const node = fakeNode()
+    const model = new RequestsModel(node.rpc, 'project-1', ports())
+    await model.createEnvironment('development', 'http://localhost:4567')
+    expect(model.state.env?.vars).toEqual([{ key: 'base', value: 'http://localhost:4567' }])
+    expect(model.state.environment).toBe('development')
+  })
+  it('records sends by default and respects an explicit opt out', async () => {
+    const node = fakeNode()
+    const model = new RequestsModel(
+      node.rpc,
+      'project-1',
+      ports({
+        recording: () => ({ sessionId: 'debug-1', name: 'sample.js' }),
+      })
+    )
+    await model.load()
+    await model.send('Samples/Create sample.http', { interactive: true })
+    expect(node.sent[0]).toHaveProperty('debug_session_id', 'debug-1')
+    await model.send('Samples/Create sample.http', { interactive: true, intoRecording: false })
+    expect(node.sent[1]).not.toHaveProperty('debug_session_id')
+  })
+
   it.each(['answer', 'history'] as const)(
     'keeps a new send selected when an earlier %s finishes loading afterwards',
     async (delayed) => {

@@ -242,27 +242,39 @@ async function serviceListening() {
 
 /** The Requests view of this project, the request open, sent into the recording. */
 const SEND_INTO = (shots: string) => `
-  requests.choose({registrationId:${JSON.stringify(registration)},projectId:${JSON.stringify(folder.projectId)},label:'repo',node:'Recording fixture'});
   await api.requests.openView();
+  if(requests.context.value?.projectId!==${JSON.stringify(folder.projectId)})throw Error('Open requests did not pick the debugger project');
   await until(()=>panel()?.querySelector('.abele-requests-panel__recording'),'recording said in the view',600);
   const recording=panel().querySelector('.abele-requests-panel__recording .abele-tree-item__text').textContent.trim();
   await shot(${JSON.stringify(shots + '-recording-view')});
   const r=await until(()=>row('Place order'),'request listed');
   (r.querySelector('.tree-item-self')??r).click();
   const into=await until(()=>tab()?.querySelector('.abele-http-request__into'),'send into the recording offered');
-  into.click();
-  await until(()=>tab().querySelector('.abele-http-request__into_on'),'switched on');
+  await until(()=>into.classList.contains('abele-http-request__into_on'),'recording enabled by default');
   await shot(${JSON.stringify(shots + '-recording')});
   tab().querySelector('.abele-http-request__send').click();
   await until(()=>facts().startsWith('201'),'answered',600);
   const steps=await until(()=>tab().querySelector('.abele-http-request__steps')?.textContent.trim(),'steps in code',200);
   await shot(${JSON.stringify(shots + '-into-run')});
   tab().querySelector('.abele-http-request__steps').click();
-  await until(()=>document.querySelectorAll('.abele-trace-run__step').length>=2,'run opened',400);
-  const top=[...document.querySelectorAll('.abele-trace-run__steps > .abele-trace-run__step')].map(e=>e.querySelector('.abele-tree-item__text')?.textContent.trim());
-  const under=[...document.querySelectorAll('.abele-trace-run__steps > .abele-trace-run__step .abele-trace-run__step .abele-tree-item__text, .abele-trace-run__steps > .abele-trace-run__step .tree-item-children .abele-tree-item__text')].map(e=>e.textContent.trim());
-  const byTime=!!document.querySelector('.abele-trace-run__by-time');
-  await shot(${JSON.stringify(shots + '-run')});`
+  const runLeaf=await until(()=>app.workspace.getLeavesOfType('abele-trace-run').find(l=>l.view.getState().registrationId===${JSON.stringify(registration)}),'run tab opened',400);
+  const runEl=runLeaf.containerEl;
+  await until(()=>runEl.querySelectorAll('.abele-trace-run__step').length>=2,'run opened',400);
+  const top=[...runEl.querySelectorAll('.abele-trace-run__steps > .abele-trace-run__step')].map(e=>e.querySelector('.abele-tree-item__text')?.textContent.trim());
+  const under=[...runEl.querySelectorAll('.abele-trace-run__steps > .abele-trace-run__step .abele-trace-run__step .abele-tree-item__text, .abele-trace-run__steps > .abele-trace-run__step .tree-item-children .abele-tree-item__text')].map(e=>e.textContent.trim());
+  const byTime=!!runEl.querySelector('.abele-trace-run__by-time');
+  runLeaf.containerEl.querySelector('[aria-label="Back to the steps"]')?.click();
+  await shot(${JSON.stringify(shots + '-run')});
+  runEl.querySelector('.abele-trace-run [aria-label="Only the requests"]').click();
+  await until(()=>runEl.querySelector('.abele-trace-run .tree-item-children .abele-trace-run__step'),'request flow retained by filter');
+  await shot(${JSON.stringify(shots + '-requests-filter')});
+  runEl.querySelector('.abele-trace-run .tree-item-children .abele-trace-run__step .abele-tree-item__text').click();
+  await until(()=>runEl.querySelector('.abele-trace-step__title')?.textContent.trim()==='server.js:9'&&[...runEl.querySelectorAll('.abele-trace-value .abele-tree-item__text')].some(e=>e.textContent.trim()==='order'),'step values opened');
+  await until(()=>app.workspace.activeLeaf?.getViewState().type==='abele-node-file','step source revealed');
+  app.workspace.setActiveLeaf(runLeaf,{focus:true});
+  await app.workspace.revealLeaf(runLeaf);
+  await until(()=>app.workspace.activeLeaf===runLeaf,'run values visible');
+  await shot(${JSON.stringify(shots + '-flow-values')});`
 
 /** Stops the program, so the next one is the only service listening. */
 const STOP = `

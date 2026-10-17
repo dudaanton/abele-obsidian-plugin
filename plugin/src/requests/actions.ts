@@ -8,6 +8,8 @@ import { RequestsService, type RequestsContext } from './RequestsService'
 import type { RequestsModel } from './RequestsModel'
 import { toCurl } from './resolve'
 import { confirmDialog, promptDialog } from '@/components/obsidian/dialogs'
+import { DebuggerService } from '@/debugger/DebuggerService'
+import { serverAddress } from './projectContext'
 
 export const REQUEST_TAB_VIEW = 'abele-request'
 
@@ -217,9 +219,39 @@ export async function newRequest(context: RequestsContext) {
     submitText: 'Create',
   })
   if (!name) return
+  await model.load()
+  if (!model.state.env?.vars.some((v) => v.key === 'base' && !v.off && (v.secret || v.value))) {
+    const binding = DebuggerService.instance.active.value
+    const sameProject =
+      binding?.registrationId === context.registrationId &&
+      binding.controller.snapshot?.target.project_id === context.projectId
+    const base = await promptDialog({
+      title: 'Server address',
+      value:
+        (sameProject && serverAddress(binding.controller.session.output)) ||
+        'http://localhost:3000',
+      placeholder: 'http://localhost:3000',
+      submitText: 'Create environment',
+    })
+    if (!base) return
+    const url = new URL(base)
+    if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Enter an HTTP server address')
+    if (model.state.env) {
+      await model.saveEnvironment({
+        ...model.state.env,
+        vars: [
+          ...model.state.env.vars.filter((v) => v.key !== 'base'),
+          { key: 'base', value: base },
+        ],
+      })
+    } else await model.createEnvironment('local', base)
+  }
   const open = RequestsService.instance().openRequest.value
   const collection =
-    (open && open.projectId === context.projectId && open.id.includes('/')
+    (open &&
+    open.registrationId === context.registrationId &&
+    open.projectId === context.projectId &&
+    open.id.includes('/')
       ? open.id.slice(0, open.id.lastIndexOf('/'))
       : undefined) ??
     model.state.collections[0]?.name ??
@@ -245,7 +277,7 @@ export async function revealRequest(context: RequestsContext, id: string) {
     service.choose({ registrationId: context.registrationId, projectId: context.projectId })
   service.openRequest.value = { ...context, id }
   const { openRequestsView } = await import('./views')
-  await openRequestsView(app())
+  await openRequestsView(app(), false)
   service.reveal.value = {
     collection: id.includes('/') ? id.slice(0, id.lastIndexOf('/')) : 'Requests',
     ids: [id],

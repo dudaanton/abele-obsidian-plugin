@@ -50,6 +50,25 @@ describe('a record point set up under its line', () => {
 })
 
 describe('a recorded run', () => {
+  it('keeps code under its request in the requests filter even if the request arrives last', async () => {
+    const w = mount(TraceRunView, {
+      props: {
+        run: {
+          ...run,
+          steps: [run.steps[1]!, run.steps[2]!, run.steps[0]!],
+        },
+      },
+    })
+    await w.get('[aria-label="Only the requests"]').trigger('click')
+    const top = w.findAll('.abele-trace-run__steps > .abele-trace-run__step')
+    expect(top.map((r) => r.get('.abele-tree-item__text').text())).toEqual(['GET /sample'])
+    const child = top[0]!.get('.tree-item-children .abele-trace-run__step')
+    expect(child.text()).toContain('Sample arrives')
+    await child.get('.abele-tree-item__text').trigger('click')
+    expect(w.emitted('pick')).toEqual([['s2']])
+    w.unmount()
+  })
+
   it.each(['.abele-tree-item__text', '.abele-trace-glyph'])(
     'opens a child step source from %s and still picks its details',
     async (selector) => {

@@ -67,7 +67,7 @@ export class RequestsModel {
     collections: [],
     environments: [],
     sending: [],
-    intoRecording: false,
+    intoRecording: true,
     entries: {},
   })
   private readonly saves = new Map<string, { timer: number; work?: Promise<void> }>()
@@ -126,10 +126,10 @@ export class RequestsModel {
     this.ports.prefs.set('environment', name)
   }
 
-  async createEnvironment(name: string) {
+  async createEnvironment(name: string, base = 'http://localhost:3000') {
     const env = await this.rpc.saveEnvironment(this.projectId, {
       name,
-      vars: [{ key: 'base', value: 'http://localhost:3000' }],
+      vars: [{ key: 'base', value: base }],
     })
     this.state.environments = [...new Set([...this.state.environments, env.name])].sort()
     await this.selectEnvironment(env.name)
