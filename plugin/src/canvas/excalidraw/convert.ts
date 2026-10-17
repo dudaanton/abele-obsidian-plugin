@@ -323,16 +323,36 @@ export function convertExcalidraw(scene: ExcalidrawScene, options: ConvertOption
     const simulated = el.simulatePressure !== false || pressures.length !== pts.length
     const marker = num(el.opacity, 100) < 100
     const width = num(el.strokeWidth, 2)
+    // Velocity pressure follows perfect-freehand's recurrence. Keep the source
+    // centreline intact: streamline/outline smoothing belongs to the ink renderer.
+    let pressure = 0.5
+    const simulatedPressures = pts.map((p, i) => {
+      const previous = pts[Math.max(0, i - 1)]
+      const speed = Math.min(
+        1,
+        Math.hypot(p.x - previous.x, p.y - previous.y) / Math.max(0.5, width * 4.25)
+      )
+      pressure += (1 - speed - pressure) * speed * 0.275
+      return pressure
+    })
     ink.push({
       version: 1,
       id: uniqueId(el.id),
       tool: marker ? 'marker' : 'pen',
       color: canvasColor(el.strokeColor) ?? '',
-      size: marker ? Math.max(4, width * 6) : Math.max(0.5, width * 1.6),
+      // Excalidraw's variable freedraw uses size=strokeWidth*4.25, thinning=0.6
+      // and easeOutSine. Its half-pressure diameter is size*sqrt(2), whereas
+      // our pen size already denotes the half-pressure diameter.
+      // https://github.com/excalidraw/excalidraw/blob/master/packages/element/src/shape.ts
+      size: marker ? Math.max(4, width * 6) : Math.max(0.5, width * 4.25 * Math.SQRT2),
       points: pts.flatMap((p, i) => [
-        r1(p.x),
-        r1(p.y),
-        simulated ? 0.5 : Math.min(1, Math.max(0, num(pressures[i], 0.5))),
+        p.x,
+        p.y,
+        simulated
+          ? marker
+            ? 0.5
+            : simulatedPressures[i]
+          : Math.min(1, Math.max(0, num(pressures[i], 0.5))),
       ]),
     })
   }

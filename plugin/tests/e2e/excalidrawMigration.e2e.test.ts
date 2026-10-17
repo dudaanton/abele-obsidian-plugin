@@ -9,6 +9,8 @@ import { evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obs
 import { evalAsync } from './helpers/githubLive'
 import { WAIT_PRELUDE } from './helpers/wait'
 import { shotDir } from './helpers/shots'
+import { convertExcalidraw } from '../../src/canvas/excalidraw/convert'
+import { parseExcalidraw } from '../../src/canvas/excalidraw/source'
 
 const available = isObsidianRunning() && hasTestApi()
 const SHOTS = shotDir('excalidraw-migration')
@@ -320,5 +322,66 @@ describe.skipIf(!available)('Excalidraw drawings to canvases', () => {
     const shown = runVaultDialog('phone')
     expect(shown.facts).toMatch(/1 migrated/)
     expect(canvasOf(`${DIR}/Later sample.canvas`)).not.toBeNull()
+  })
+
+  it('pictures dense migrated freehand before and after on desktop and phone', async () => {
+    const elements = [1, 2, 4].flatMap((strokeWidth, row) =>
+      [false, true].map((simulatePressure, column) => ({
+        ...common,
+        id: `sample-${row}-${column}`,
+        type: 'freedraw',
+        x: 30.013,
+        y: 40.027 + (row * 2 + column) * 55,
+        width: 240,
+        height: 25,
+        strokeWidth,
+        simulatePressure,
+        points: Array.from({ length: 1200 }, (_, i) => [i * 0.2, Math.sin(i / 190) * 12.013]),
+        pressures: Array.from({ length: 1200 }, (_, i) => 0.2 + (0.6 * i) / 1199),
+      }))
+    )
+    const graph = convertExcalidraw(parseExcalidraw(scene(elements), 'sample.excalidraw'), {
+      source: 'sample.excalidraw',
+      resolve: () => null,
+    }).graph
+    const before = JSON.parse(JSON.stringify(graph))
+    for (const stroke of before.abele.ink) {
+      stroke.size = elements.find((el) => el.id === stroke.id)!.strokeWidth * 1.6
+      stroke.points = stroke.points.map((v: number, i: number) =>
+        i % 3 === 2
+          ? elements.find((el) => el.id === stroke.id)!.simulatePressure
+            ? 0.5
+            : v
+          : Math.round(v * 10) / 10
+      )
+    }
+    for (const mobile of [false, true]) {
+      await reloadApp(`app.emulateMobile(${mobile})`)
+      evalRaw(
+        `require('@electron/remote').getCurrentWindow().setContentSize(${mobile ? '390,844' : '1100,800'})`
+      )
+      for (const [name, data] of [
+        ['before', before],
+        ['after', graph],
+      ] as const) {
+        const path = `${DIR}/Ink ${name}.canvas`
+        const shown = evalAsync<boolean>(`(async () => {
+          ${WAIT_PRELUDE}
+          let file = app.vault.getAbstractFileByPath(${JSON.stringify(path)})
+          if (!file) file = await app.vault.create(${JSON.stringify(path)}, ${JSON.stringify(JSON.stringify(data))})
+          const leaf = app.workspace.getLeaf('tab')
+          try {
+            await leaf.setViewState({type:'abele-canvas',state:{file:file.path},active:true})
+            await app.workspace.revealLeaf(leaf)
+            if (!await until(() => leaf.view.viewer?.graph?.abele?.ink?.length === 6)) throw Error('Ink not loaded')
+            await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+            const image = await require('@electron/remote').getCurrentWebContents().capturePage()
+            require('fs').writeFileSync(${JSON.stringify(`${SHOTS}/ink-${mobile ? 'phone' : 'desktop'}-${name}.png`)}, image.toPNG())
+            return true
+          } finally { leaf.detach() }
+        })()`)
+        expect(shown).toBe(true)
+      }
+    }
   })
 })
