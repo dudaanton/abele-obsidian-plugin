@@ -26,6 +26,27 @@ components are the designer's in `src/components/debugger/http/`.
 
 ## Sending
 
+Open the **Scripts** fold in a request's tab and click **Before it goes** or **After it comes
+back**. The quick-switcher picker lists scripts with `// @request` in their header and their
+descriptions. Type a name and choose **New script** to create, open and assign one in the
+configured scripts folder. Click an assigned script to open it; its row actions change the
+assignment or remove it without deleting the script. A missing or ineligible script is red.
+
+Assignments are stored in the request's `.http` file. To set them by hand, add these comments
+above the method line, using each script's declared `// @name`:
+
+```http
+# @name Create sample
+# @before Sign sample
+# @after Read sample token
+POST {{base}}/samples
+```
+
+Remove the corresponding comment to clear an assignment. The script itself must carry
+`// @request`; choosing or creating it does not run it. The divider between request and response
+spans the taller side; drag anywhere in its gap to resize, or double-click to reset its
+device-local width. An empty response says **No body**.
+
 1. The environment's `{{name}}` values are put in; a value kept in memory only for its origin.
 2. The script named before runs (`@request` scripts only) with keys still as
    `${abele_key:name}`; it may change the request or set values.
@@ -70,4 +91,4 @@ lists what was skipped and why; an import screen needs the designer first.
 ## Not here yet
 
 Client certificates (the owner said not now), sending from the device rather than the node, and
-editing scripts and checks from the tab (they are lines in the request's file).
+editing checks from the tab (they are lines in the request's file).

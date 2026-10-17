@@ -10,6 +10,61 @@ import { doc, fakeNode, ports } from '../helpers/requestsFakeNode'
 beforeEach(() => forgetRequestSecrets())
 
 describe('the requests of a project', () => {
+  it.each(['answer', 'history'] as const)(
+    'keeps a new send selected when an earlier %s finishes loading afterwards',
+    async (delayed) => {
+      const node = fakeNode()
+      const seed = new RequestsModel(node.rpc, 'project-1', ports())
+      const id = 'Samples/Create sample.http'
+      await seed.load()
+      await seed.selectEnvironment('local')
+      await seed.send(id, { interactive: true })
+      const earlier = (await node.rpc.history('project-1', id))[0]!.id
+      const model = new RequestsModel(node.rpc, 'project-1', ports())
+      await model.load()
+      await model.selectEnvironment('local')
+      let entered!: () => void
+      let release!: () => void
+      const reading = new Promise<void>((resolve) => {
+        entered = resolve
+      })
+      const held = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const status = node.rpc.status.bind(node.rpc)
+      if (delayed === 'answer') {
+        vi.spyOn(node.rpc, 'status').mockImplementation(async (projectId, sendId) => {
+          if (sendId === earlier) {
+            entered()
+            await held
+          }
+          return status(projectId, sendId)
+        })
+      } else {
+        const history = node.rpc.history.bind(node.rpc)
+        let first = true
+        vi.spyOn(node.rpc, 'history').mockImplementation(async (projectId, requestId) => {
+          const sends = await history(projectId, requestId)
+          if (first) {
+            first = false
+            entered()
+            await held
+          }
+          return sends
+        })
+      }
+      const opening = model.open(id)
+      await reading
+      const fresh = await model.send(id, { interactive: true })
+      const freshHistory = [...model.entry(id).history]
+      release()
+      await opening
+      expect(model.entry(id).outcome).toEqual(fresh)
+      expect(model.entry(id).shown).toBeUndefined()
+      expect(model.entry(id).history).toEqual(freshHistory)
+    }
+  )
+
   it('lists collections, picks the environment it used last, and opens a request with its last answer', async () => {
     const node = fakeNode()
     const p = ports()

@@ -69,13 +69,6 @@
       </div>
 
       <div class="abele-http-request__parts">
-        <!-- Between the request and its answer, Obsidian's own divider: dragged, the request's
-             side takes that width and keeps it on this device; a double click evens them again. -->
-        <PanelResizeHandle
-          class="abele-http-request__divider"
-          label="Resize the request"
-          v-bind="divider"
-        />
         <section v-for="part in parts" :key="part.id" class="abele-http-request__part">
           <FoldHeading
             :text="part.label"
@@ -111,17 +104,49 @@
               "
               @submit="send"
             />
+            <!-- A script named runs from here: its row opens it, the glyphs change it or take it
+                 off. With none, the row is the way to pick one, as Obsidian's own empty slots
+                 are: a plus and what it is for. -->
             <div v-else-if="part.id === 'scripts'" class="abele-http-request__rows">
-              <TreeItem
-                v-for="when in ['before', 'after'] as const"
-                :key="when"
-                flush
-                icon="file-code"
-                :text="request.scripts[when] ?? 'None'"
-                :note="when === 'before' ? 'Before it goes' : 'After it comes back'"
-                :disabled="!request.scripts[when]"
-                @click="request.scripts[when] && emit('open-script', request.scripts[when]!)"
-              />
+              <template v-for="when in ['before', 'after'] as const" :key="when">
+                <TreeItem
+                  v-if="request.scripts[when]"
+                  flush
+                  :icon="scriptProblems[when] ? 'file-warning' : 'file-code'"
+                  :class="[
+                    'abele-http-request__script',
+                    { 'abele-http-request__script_problem': scriptProblems[when] },
+                  ]"
+                  :text="request.scripts[when]!"
+                  :note="WHEN[when]"
+                  :label="scriptProblems[when] ?? `Open ${request.scripts[when]}`"
+                  @click="emit('open-script', request.scripts[when]!)"
+                >
+                  <template #actions>
+                    <Icon
+                      icon="arrow-left-right"
+                      size="xs"
+                      :tooltip="`Run another script ${WHEN[when].toLowerCase()}`"
+                      @click.stop="emit('pick-script', when)"
+                    />
+                    <Icon
+                      icon="x"
+                      size="xs"
+                      tooltip="Take it off this request; the script stays"
+                      @click.stop="emit('remove-script', when)"
+                    />
+                  </template>
+                </TreeItem>
+                <TreeItem
+                  v-else
+                  flush
+                  class="abele-http-request__script_none"
+                  icon="plus"
+                  :text="WHEN[when]"
+                  :label="`Pick a script to run ${WHEN[when].toLowerCase()}`"
+                  @click="emit('pick-script', when)"
+                />
+              </template>
             </div>
             <div v-else class="abele-http-request__rows">
               <TreeItem
@@ -143,6 +168,15 @@
           </template>
         </section>
       </div>
+
+      <!-- Between the request and its answer, Obsidian's own divider, as tall as the taller of the
+           two: dragged, the request's side takes that width and keeps it on this device; a double
+           click evens them again. -->
+      <PanelResizeHandle
+        class="abele-http-request__divider"
+        label="Resize the request"
+        v-bind="divider"
+      />
 
       <!-- The answer, as DevTools reads a request: a line of facts, then the body and the headers. -->
       <div class="abele-http-request__answer" aria-live="polite">
@@ -189,6 +223,7 @@
               empty-text="The same body."
             />
           </div>
+          <EmptyState v-else-if="answerTab === 'body' && !outcome.response.body" text="No body." />
           <DebugValueView
             v-else-if="answerTab === 'body'"
             class="abele-http-request__body-view"
@@ -364,6 +399,8 @@ const props = withDefaults(
     /** The program being recorded now, when one is: a send may go into it. */
     recording?: string
     intoRecording?: boolean
+    /** Why a named script cannot run, when it cannot: gone, or not made to run around requests. */
+    scriptProblems?: { before?: string; after?: string }
   }>(),
   {
     vars: () => [],
@@ -373,6 +410,7 @@ const props = withDefaults(
     compareWith: undefined,
     recording: undefined,
     intoRecording: false,
+    scriptProblems: () => ({}),
   }
 )
 const emit = defineEmits<{
@@ -380,6 +418,9 @@ const emit = defineEmits<{
   (e: 'send'): void
   (e: 'open-run'): void
   (e: 'open-script', name: string): void
+  /** The picker of `@request` scripts, for the script run before it goes or after it comes back. */
+  (e: 'pick-script', when: 'before' | 'after'): void
+  (e: 'remove-script', when: 'before' | 'after'): void
   (e: 'into-recording', on: boolean): void
   (e: 'show-send', id: string): void
   (e: 'compare', id: string | undefined): void
@@ -388,6 +429,7 @@ const emit = defineEmits<{
 }>()
 
 const phone = Platform.isPhone
+const WHEN = { before: 'Before it goes', after: 'After it comes back' } as const
 /** The request side's width in a wide tab, on this device. */
 const HTTP_SPLIT_KEY = 'abele-http-request-width'
 /** When the answer shown was sent, if it is not the latest. */
@@ -541,9 +583,8 @@ const statusTone = (status: number) => (status >= 400 ? 'error' : status >= 300 
 @container (min-width: 44em) {
   .abele-http-request__layout {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-areas: 'top top' 'parts answer';
-    column-gap: var(--size-4-8);
+    grid-template-columns: minmax(0, 1fr) var(--size-4-8) minmax(0, 1fr);
+    grid-template-areas: 'top top top' 'parts divider answer';
     align-items: start;
   }
   .abele-http-request__top {
@@ -551,34 +592,39 @@ const statusTone = (status: number) => (status >= 400 ? 'error' : status >= 300 
   }
   .abele-http-request__parts {
     grid-area: parts;
-    position: relative;
   }
   .abele-http-request__layout {
-    grid-template-columns: var(--abele-panel-width, minmax(0, 1fr)) minmax(0, 1fr);
+    grid-template-columns: var(--abele-panel-width, minmax(0, 1fr)) var(--size-4-8) minmax(0, 1fr);
   }
-  // Obsidian's divider in the middle of the gap, from the parts' top to their foot. Obsidian hides
-  // a last leaf's handles by five classes; this one is inside the leaf, not at its edge.
+  // Obsidian's divider, its hairline always drawn as between two panes, in the middle of the gap
+  // and as tall as the taller side; the whole gap takes the drag, wide enough for a finger.
+  // Obsidian hides a last leaf's handles by five classes; this one is inside the leaf.
   .abele-http-request
     .abele-http-request__layout
-    > .abele-http-request__parts
     > .workspace-leaf-resize-handle.abele-panel-resize-handle.abele-http-request__divider {
+    --abele-divider-line: var(--divider-color);
     display: block;
-    position: absolute;
-    inset-block: 0;
-    inset-inline-end: calc(-1 * (var(--size-4-4) + var(--divider-width-hover) / 2));
-    width: var(--divider-width-hover);
+    position: relative;
+    inset: auto;
+    grid-area: divider;
+    align-self: stretch;
+    width: auto;
     height: auto;
     margin: 0;
     border: none;
-    border-inline-end: var(--divider-width) solid transparent;
+    background: linear-gradient(var(--abele-divider-line), var(--abele-divider-line)) center /
+      var(--divider-width) 100% no-repeat;
     cursor: col-resize;
+    touch-action: none;
 
     &:hover,
     &:focus-visible {
-      border-color: var(--divider-color-hover);
+      --abele-divider-line: var(--divider-color-hover);
+      background-size: var(--divider-width-hover) 100%;
     }
     &.is-active {
-      border-color: var(--color-accent);
+      --abele-divider-line: var(--color-accent);
+      background-size: var(--divider-width-hover) 100%;
     }
   }
   .abele-http-request__layout > .abele-http-request__answer {
@@ -586,6 +632,24 @@ const statusTone = (status: number) => (status >= 400 ? 'error' : status >= 300 
     padding-top: 0;
     border-top: none;
   }
+}
+
+.abele-http-request__divider {
+  display: none;
+}
+
+// A script that cannot run says so in red, its tooltip saying why; an empty slot is a quiet line.
+.abele-http-request__script_problem .tree-item-inner {
+  color: var(--text-error);
+}
+.abele-http-request__script_none {
+  color: var(--text-faint);
+}
+// The rows light up past the column's edge, as the file explorer's do, so the words stay on it.
+.abele-http-request__script > .tree-item-self,
+.abele-http-request__script_none > .tree-item-self {
+  margin-inline: calc(-1 * var(--size-2-3));
+  padding-inline: var(--size-2-3);
 }
 
 .abele-http-request__top {
@@ -805,12 +869,27 @@ const statusTone = (status: number) => (status >= 400 ? 'error' : status >= 300 
 // a long address scrolls inside its field and is read in full on the line under it.
 .abele-http-request_phone {
   padding: var(--size-4-3) var(--size-4-4);
+  padding-block-end: calc(
+    var(--navbar-height, 0px) + var(--navbar-bottom-offset, 0px) + var(--size-4-3)
+  );
 
   .abele-http-request__line {
     gap: var(--size-4-1);
   }
   .abele-http-request__resolved {
     margin-top: 0;
+  }
+  // The script's name on its line and the moment it runs under it, as the quick switcher puts
+  // a note's folder, so a long name never squeezes it into a column.
+  .abele-http-request__script .abele-tree-item__inner {
+    flex-wrap: wrap;
+  }
+  .abele-http-request__script .abele-tree-item__text {
+    flex: 1 1 0;
+  }
+  .abele-http-request__script .abele-tree-item__note {
+    flex-basis: 100%;
+    padding-inline-start: calc(var(--icon-xs) + var(--size-4-1));
   }
 }
 </style>

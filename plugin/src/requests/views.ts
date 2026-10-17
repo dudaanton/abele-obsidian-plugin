@@ -44,6 +44,9 @@ import { keyPort, RequestsService, RequestsContextSchema } from './RequestsServi
 import type { RequestsModel } from './RequestsModel'
 import { pairsForView } from './resolve'
 import type { Pair, RequestDoc } from './wire'
+import { ScriptService } from '@/scripting/ScriptService'
+import { RequestScriptPicker } from '@/components/debugger/http/RequestScriptPicker'
+import { assignRequestScript, requestScriptProblems, type ScriptMoment } from './scripts'
 
 export const REQUESTS_VIEW = 'abele-requests'
 export { REQUEST_TAB_VIEW }
@@ -368,6 +371,32 @@ export class RequestTab extends ItemView {
               compareWith: entry.compare,
               recording: recording?.name,
               intoRecording: model.state.intoRecording,
+              scriptProblems: requestScriptProblems(
+                doc.scripts,
+                ScriptService.getInstance().scriptList.value.map((s) => s.meta)
+              ),
+              onPickScript: (when: ScriptMoment): void => {
+                const scripts = ScriptService.getInstance()
+                new RequestScriptPicker(
+                  app(),
+                  scripts.scriptList.value.map((s) => s.meta),
+                  when,
+                  doc.scripts[when],
+                  `${doc.name} ${when}`,
+                  (name) => {
+                    void assignRequestScript(model, s.id, when, name).catch(say)
+                  },
+                  (name) => {
+                    void scripts
+                      .createRequestScript(name)
+                      .then((created) => assignRequestScript(model, s.id, when, created))
+                      .catch(say)
+                  }
+                ).open()
+              },
+              onRemoveScript: (when: ScriptMoment): void => {
+                void assignRequestScript(model, s.id, when, undefined).catch(say)
+              },
               onChange: (r: HttpRequest): void => {
                 model.change(s.id, docOf(r))
                 if (r.name !== doc.name) header()

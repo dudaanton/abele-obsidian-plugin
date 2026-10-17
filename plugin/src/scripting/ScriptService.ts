@@ -191,6 +191,33 @@ export class ScriptService {
     await leaf.openFile(file)
   }
 
+  /** A script made from a request's picker, indexed before the request names it. */
+  async createRequestScript(rawName: string): Promise<string> {
+    const name = rawName.trim()
+    if (
+      !name ||
+      /[\\/:*?"<>|]/.test(name) ||
+      [...name].some((c) => c.charCodeAt(0) < 32) ||
+      name === '.' ||
+      name === '..'
+    )
+      throw new Error('Choose a script name without path separators or control characters')
+    if (this.getAll().some((s) => s.meta.name.toLowerCase() === name.toLowerCase()))
+      throw new Error(`There is already a script named ${name}`)
+    const folder = AbeleConfig.getInstance().ai.scriptsFolder
+    if (!folder) throw new Error('Scripts folder is not configured')
+    const { app } = GlobalStore.getInstance()
+    const path = normalizePath(`${folder}/${name.endsWith('.js') ? name : `${name}.js`}`)
+    if (app.vault.getAbstractFileByPath(path)) throw new Error(`File already exists: ${path}`)
+    if (!app.vault.getAbstractFileByPath(folder)) await app.vault.createFolder(folder)
+    const source = `// @name ${name}\n// @description \n// @request\n\n`
+    await noteLocalScriptWrite(path, source)
+    const file = await app.vault.create(path, source)
+    await this.discover()
+    await app.workspace.getLeaf('tab').openFile(file)
+    return name
+  }
+
   private cleanup() {
     this.disposed = true
     this.waitingNotice.hide()

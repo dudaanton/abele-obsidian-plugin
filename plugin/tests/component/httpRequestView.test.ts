@@ -24,6 +24,61 @@ const request = (missing?: string): HttpRequest => ({
 })
 const vars = [{ key: 'base', value: 'http://localhost:4000' }]
 
+describe('request script slots', () => {
+  it('opens an assigned script and offers change/remove even when it is missing', async () => {
+    const view = mount(RequestView, {
+      props: {
+        request: { ...request(), scripts: { before: 'Missing sample' } },
+        environment: 'local',
+        vars,
+        scriptProblems: { before: 'Script not found' },
+      },
+    })
+    await view
+      .findAll('.abele-fold-heading')
+      .find((h) => h.text().includes('Scripts'))!
+      .trigger('click')
+    const row = view.find('.abele-http-request__script_problem')
+    expect(row.text()).toContain('Missing sample')
+    await row.find('.tree-item-self').trigger('click')
+    expect(view.emitted('open-script')?.[0]).toEqual(['Missing sample'])
+    await row.find('[aria-label="Run another script before it goes"]').trigger('click')
+    await row.find('[aria-label="Take it off this request; the script stays"]').trigger('click')
+    expect(view.emitted('pick-script')?.[0]).toEqual(['before'])
+    expect(view.emitted('remove-script')?.[0]).toEqual(['before'])
+    expect(view.emitted('open-script')).toHaveLength(1)
+  })
+  it('offers an empty slot for picking a script', async () => {
+    const view = mount(RequestView, { props: { request: request(), environment: 'local', vars } })
+    await view
+      .findAll('.abele-fold-heading')
+      .find((h) => h.text().includes('Scripts'))!
+      .trigger('click')
+    await view.find('.abele-http-request__script_none .tree-item-self').trigger('click')
+    expect(view.emitted('pick-script')?.[0]).toEqual(['before'])
+  })
+  it('places the divider in the shared grid so either side determines its height', () => {
+    const view = mount(RequestView, { props: { request: request(), environment: 'local', vars } })
+    expect(view.find('.abele-http-request__layout > .abele-http-request__divider').exists()).toBe(
+      true
+    )
+  })
+  it('says when an answered request has no body', () => {
+    const view = mount(RequestView, {
+      props: {
+        request: request(),
+        environment: 'local',
+        vars,
+        outcome: {
+          kind: 'answered',
+          response: { status: 204, reason: 'No Content', ms: 1, bytes: 0, headers: [], body: '' },
+        },
+      },
+    })
+    expect(view.find('.abele-http-request__answer').text()).toContain('No body.')
+  })
+})
+
 describe('a saved request in its tab', () => {
   it('shows what the address comes to in the environment and never the key', () => {
     const view = mount(RequestView, { props: { request: request(), environment: 'local', vars } })

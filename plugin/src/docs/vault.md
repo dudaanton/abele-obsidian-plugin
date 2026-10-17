@@ -2667,3 +2667,13 @@ stopped across restart and retries the same request; it never removes local file
 Plugin settings store `zen.width` (the shared page width, default 700 pixels) and
 `zen.windows` (on/off by workspace window id; `main` for the main window). The Other settings
 transfer section carries these preferences. Zen mode does not change note or canvas files.
+
+## Saved HTTP request script assignments
+
+Saved requests live on the node under `.abele/requests/`, in `.http` files. Above the method
+line, `# @before Sign sample` and `# @after Read sample token` name plugin scripts by their
+declared `// @name`; removing a comment clears that assignment. The script must opt in with
+`// @request`. The request tab's Scripts picker writes the same fields. Creating a script there
+writes a JavaScript file with `// @name`, `// @description` and `// @request` in the configured
+scripts folder, opens it and assigns its name; it does not execute it. Removing an assignment
+keeps the script file.

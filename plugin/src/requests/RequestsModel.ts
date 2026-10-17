@@ -71,6 +71,8 @@ export class RequestsModel {
     entries: {},
   })
   private readonly saves = new Map<string, { timer: number; work?: Promise<void> }>()
+  /** A new send or answer selection supersedes reads already in flight. */
+  private readonly answerReads = new Map<string, symbol>()
   private readonly wait: (ms: number) => Promise<void>
   private readonly held: HeldSecrets
 
@@ -190,7 +192,9 @@ export class RequestsModel {
 
   private async readHistory(id: string) {
     const entry = this.entry(id)
+    const selection = this.answerReads.get(id)
     const sends = await this.rpc.history(this.projectId, id)
+    if (this.answerReads.get(id) !== selection) return
     entry.history = sends.map((s) => this.sendView(id, s))
     // A request opened later shows its last answer, as it was left.
     if (!entry.outcome && sends[0]) await this.showSend(id, sends[0].id).catch(() => {})
@@ -342,6 +346,7 @@ export class RequestsModel {
     if (why) throw new Error(why)
     const environment = this.state.environment ?? ''
     this.state.sending = [...this.state.sending, id]
+    this.answerReads.set(id, Symbol())
     entry.outcome = { kind: 'sending' }
     entry.shown = undefined
     entry.compare = undefined
@@ -473,7 +478,11 @@ export class RequestsModel {
   /** Shows the answer of an earlier send. */
   async showSend(id: string, sendId: string) {
     const entry = this.entry(id)
-    entry.outcome = await answerOf(this.rpc, this.projectId, sendId, entry.doc?.checks ?? [])
+    const selection = Symbol()
+    this.answerReads.set(id, selection)
+    const outcome = await answerOf(this.rpc, this.projectId, sendId, entry.doc?.checks ?? [])
+    if (this.answerReads.get(id) !== selection) return
+    entry.outcome = outcome
     entry.shown = sendId
     if (entry.compare?.id === sendId) entry.compare = undefined
   }

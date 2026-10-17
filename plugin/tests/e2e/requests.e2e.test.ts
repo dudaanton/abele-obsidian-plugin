@@ -230,6 +230,7 @@ function connect() {
     project: string
     empty: string
   }>(`(async()=>{${prelude}
+    for(const leaf of app.workspace.getLeavesOfType('abele-request'))leaf.detach();
     const existing=nodes.nodes.value.find(n=>n.label==='Requests fixture');if(existing)nodes.remove(existing.id);
     const node=await nodes.add('Requests fixture','http://127.0.0.1:${port}',${JSON.stringify(token)}),client=nodes.connection(node.id).client;
     const project=await client.registerProject(${JSON.stringify(repo)},'untrusted');
@@ -441,6 +442,138 @@ it('imports requests from the clipboard into the view, a clash numbered, nothing
     'The clipboard holds no request: paste a curl command, a .http file, or a Postman, Insomnia or Bruno export'
   )
 })
+
+async function scriptPickerScenes(phone: boolean) {
+  connect()
+  const seen = evalAsync<{
+    filtered: boolean
+    created: boolean
+    changed: boolean
+    removed: boolean
+    missing: boolean
+    height: boolean
+    dragged: boolean
+    noBody: boolean
+    noBodyVisible: boolean
+    overflow: number
+  }>(`(async()=>{${prelude}
+    ${CHOOSE(() => project, 'repo')}
+    await openRequest('Create sample');
+    await until(()=>!document.querySelector('.notice'),'earlier notices dismissed');
+    const context=shown.view.getState(),model=requests.model(context),entry=model.entry(context.id);
+    const original=JSON.parse(JSON.stringify(entry.doc)),oldOutcome=entry.outcome;
+    const cfg=api.AbeleConfig.getInstance().ai,oldFolder=cfg.scriptsFolder,oldWidth=app.loadLocalStorage('abele-http-request-width'),rightCollapsed=app.workspace.rightSplit.collapsed;
+    const folder='RequestPickerFixture',scripts=api.ScriptService.getInstance();
+    // Remove only this fixture's files left by an interrupted earlier attempt.
+    const leftovers=app.vault.getAbstractFileByPath(folder);
+    if(leftovers){
+      const oldLeaves=[];app.workspace.iterateAllLeaves(leaf=>{if(leaf.view.getState?.().file?.startsWith(folder+'/'))oldLeaves.push(leaf)});for(const leaf of oldLeaves)leaf.detach();
+      for(const file of app.vault.getFiles().filter(f=>f.path.startsWith(folder+'/')))await app.vault.delete(file);
+      await app.vault.delete(leftovers,true);
+    }
+    await app.vault.createFolder(folder);cfg.scriptsFolder=folder;
+    const suffix=${JSON.stringify(phone ? 'phone' : 'desktop')};
+    const picker=()=>document.querySelector('.abele-request-script-picker');
+    const pickRow=text=>[...picker().querySelectorAll('.suggestion-item')].find(e=>e.textContent.includes(text));
+    const choose=async text=>{(await until(()=>pickRow(text),'choice '+text)).click();await until(()=>!picker(),'selection closed')};
+    const type=async text=>{const input=picker().querySelector('input');input.value=text;input.dispatchEvent(new Event('input',{bubbles:true}));await wait(150)};
+    const closePicker=async()=>{if(!picker())return;document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}));await until(()=>!picker(),'picker closed')};
+    const reveal=async()=>{await app.workspace.revealLeaf(shown);app.workspace.setActiveLeaf(shown,{focus:true});await until(()=>app.workspace.activeLeaf===shown&&tab()?.offsetWidth,'request visible')};
+    const slot=when=>tab().querySelector('[aria-label="Pick a script to run '+(when==='before'?'before it goes':'after it comes back')+'"]');
+    const change=()=>tab().querySelector('[aria-label="Run another script before it goes"]');
+    const remove=()=>tab().querySelector('[aria-label="Take it off this request; the script stays"]');
+    const saved=()=>require('fs').readFileSync(${JSON.stringify(join(repo, '.abele/requests/Samples/Create sample.http'))},'utf8');
+    let filtered=false,created=false,changed=false,removed=false,missing=false,height=true,dragged=true,noBody=false,noBodyVisible=true;
+    try{
+      if(!${phone})app.workspace.rightSplit.collapse();
+      await scripts.discover();
+      const fold=[...tab().querySelectorAll('.abele-fold-heading')].find(e=>e.textContent.includes('Scripts'));
+      if(!slot('before'))fold.click();
+      (await until(()=>slot('before'),'empty slot')).click();
+      await until(()=>picker(),'picker');await shot('http-scripts-none-'+suffix);
+      await closePicker();
+      for(const [file,header] of [['sign','// @request'],['after','// @request'],['ordinary','']])
+        await app.vault.create(folder+'/'+file+'.js','// @name Sample '+file+' hook\\n// @description A sample request hook\\n'+header+'\\n');
+      await scripts.discover();
+      slot('before').click();await until(()=>pickRow('Sample sign hook'),'scripts listed');
+      filtered=!picker().textContent.includes('Sample ordinary hook')&&picker().textContent.includes('A sample request hook');
+      await shot('http-scripts-picker-'+suffix);
+      await type('New sample hook');await until(()=>pickRow('New script'),'new script offered');
+      await shot('http-scripts-picker-typed-'+suffix);await choose('New script');
+      await until(()=>entry.doc.scripts.before==='New sample hook','new script assigned');
+      await until(()=>saved().includes('# @before New sample hook'),'created assignment saved');created=saved().includes('# @before New sample hook')&&scripts.getAll().some(s=>s.meta.name==='New sample hook'&&s.meta.request);
+      await reveal();change().click();await until(()=>picker(),'change picker');await choose('Sample sign hook');
+      await until(()=>entry.doc.scripts.before==='Sample sign hook','changed');await until(()=>saved().includes('# @before Sample sign hook'),'changed assignment saved');
+      changed=saved().includes('# @before Sample sign hook');
+      slot('after').click();await until(()=>picker(),'after picker');await choose('Sample after hook');
+      await until(()=>entry.doc.scripts.after==='Sample after hook','after assigned');await until(()=>saved().includes('# @after Sample after hook'),'after assignment saved');
+      if(${phone})tab().querySelector('.abele-http-request__script').scrollIntoView({block:'center'});
+      await shot('http-scripts-'+suffix);
+      remove().click();await until(()=>!entry.doc.scripts.before,'removed');await until(()=>!saved().includes('# @before'),'removed assignment saved');
+      removed=!saved().includes('# @before')&&saved().includes('# @after Sample after hook')&&!!app.vault.getAbstractFileByPath(folder+'/sign.js');
+      await app.vault.delete(app.vault.getAbstractFileByPath(folder+'/after.js'));await scripts.discover();
+      await until(()=>tab().querySelector('.abele-http-request__script_problem'),'missing marked');
+      missing=tab().querySelector('.abele-http-request__script_problem .tree-item-self').getAttribute('aria-label').includes('There is no script');
+      if(${phone})tab().querySelector('.abele-http-request__script_problem').scrollIntoView({block:'center'});
+      await shot('http-scripts-problem-'+suffix);
+      for(const longRequest of [false,true]){
+        model.change(context.id,{...original,headers:longRequest?Array.from({length:30},(_,i)=>({key:'X-Sample-'+i,value:'sample value'})):[]});
+        entry.outcome={kind:'answered',response:{status:200,reason:'OK',ms:1,bytes:10,headers:Array.from({length:longRequest?0:30},(_,i)=>({key:'X-Answer-'+i,value:'sample answer'})),body:''}};
+        await wait(200);
+        if(longRequest){const h=[...tab().querySelectorAll('.abele-fold-heading')].find(e=>e.textContent.includes('Headers'));if(h.getAttribute('aria-expanded')==='false')h.click();answerTab('Body').click()}
+        else answerTab('Headers').click();
+        await wait(200);
+        if(longRequest)noBody=tab().querySelector('.abele-http-request__answer').textContent.includes('No body.');
+        if(!${phone}){
+          const d=tab().querySelector('.abele-http-request__divider'),a=tab().querySelector('.abele-http-request__answer'),p=tab().querySelector('.abele-http-request__parts');
+          height=height&&d.getBoundingClientRect().height>=Math.max(a.getBoundingClientRect().height,p.getBoundingClientRect().height)-1;
+          if(!longRequest){
+            const box=d.getBoundingClientRect(),before=Number(d.getAttribute('aria-valuenow')),web=require('@electron/remote').getCurrentWebContents();
+            const x=Math.round(box.x+box.width/2),y=Math.round(box.y+Math.min(box.height-2,100));
+            web.sendInputEvent({type:'mouseMove',x,y});web.sendInputEvent({type:'mouseDown',button:'left',clickCount:1,x,y});
+            web.sendInputEvent({type:'mouseMove',x:x-60,y});web.sendInputEvent({type:'mouseUp',button:'left',clickCount:1,x:x-60,y});
+            await wait(200);dragged=Number(d.getAttribute('aria-valuenow'))<before&&typeof app.loadLocalStorage('abele-http-request-width')==='number';
+          }
+        }
+        tab().scrollIntoView({block:'start'});await shot('http-'+(longRequest?'long-short':'short-long')+'-'+suffix);
+        if(${phone}){
+          tab().querySelector('.abele-http-request__answer').scrollIntoView({block:'start'});await shot('http-'+(longRequest?'no-body':'long-answer')+'-'+suffix);
+          if(longRequest){const empty=tab().querySelector('.abele-http-request__answer .abele-empty-state'),nav=document.querySelector('.mobile-navbar');noBodyVisible=empty.getBoundingClientRect().bottom<=(nav?.getBoundingClientRect().top??innerHeight)}
+        }
+      }
+      return {filtered,created,changed,removed,missing,height,dragged,noBody,noBodyVisible,overflow:tab().scrollWidth-tab().clientWidth};
+    }finally{
+      try{await closePicker();model.change(context.id,original);await model.flush(context.id)}finally{
+        entry.outcome=oldOutcome;
+        try{
+          const scriptLeaves=[];app.workspace.iterateAllLeaves(leaf=>{if((leaf.view.file?.path??leaf.view.getState?.().file)?.startsWith(folder+'/'))scriptLeaves.push(leaf)});for(const leaf of scriptLeaves)leaf.detach();
+          for(const file of app.vault.getFiles().filter(f=>f.path.startsWith(folder+'/')))await app.vault.delete(file);
+          const dir=app.vault.getAbstractFileByPath(folder);if(dir)await app.vault.delete(dir,true);
+        }finally{cfg.scriptsFolder=oldFolder;await scripts.discover();app.saveLocalStorage('abele-http-request-width',oldWidth);if(!rightCollapsed)app.workspace.rightSplit.expand()}
+      }
+    }
+  })()`)
+  expect(seen).toMatchObject({
+    filtered: true,
+    created: true,
+    changed: true,
+    removed: true,
+    missing: true,
+    height: true,
+    dragged: true,
+    noBody: true,
+    noBodyVisible: true,
+  })
+  expect(seen.overflow).toBeLessThanOrEqual(1)
+}
+
+it('picks, creates, replaces and removes request scripts and drags the full-height divider', async () => {
+  await scriptPickerScenes(false)
+}, 180000)
+
+it('offers request scripts on the phone with the same persisted assignments', async () => {
+  await withEmulatedPhone(() => scriptPickerScenes(true))
+}, 180000)
 
 it('works the same on a phone: the list in the drawer, a request on the whole screen', async () => {
   await withEmulatedPhone(async () => {
