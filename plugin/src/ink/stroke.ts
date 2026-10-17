@@ -48,7 +48,7 @@ export interface InkStroke {
   size: number
   /** `x, y, pressure` for each point, one after the other. */
   points: number[]
-  /** Already bounded at input; do not ease or curve a second time. */
+  /** Already bounded at input; do not ease the stored samples a second time. */
   linear?: true
 }
 
@@ -134,7 +134,7 @@ const dot = (x: number, y: number, r: number) =>
 /** Where a pen's points came further apart than this, a curve through them fills the gap. */
 const STEP = 1
 /** How far a point may stray from a straight run, width included, before it is kept. */
-const TOLERANCE = 0.1
+const TOLERANCE = 0.02
 
 /**
  * The points a quick hand left far apart joined by a curve through them and their neighbours
@@ -272,8 +272,8 @@ function joint(at: Pt, before: XY[], next: XY[]): string {
  * Where two bands meet nearly in line, the second starts from the first one's corners, so no
  * crack is left between them; where the line turns, `joint` fills the opening they leave.
  */
-function penPath(raw: Pt[], linear = false): string {
-  const pts = linear ? raw : simplify(densify(raw))
+function penPath(raw: Pt[]): string {
+  const pts = simplify(densify(raw))
   let d = circle(pts[0])
   let before: XY[] | null = null
   for (let i = 0; i + 1 < pts.length; i++) {
@@ -306,19 +306,17 @@ export function strokePath(stroke: InkStroke): string {
   if (!pts.length) return ''
   if (stroke.tool === 'marker') {
     if (pts.length === 1) return `M${f(pts[0].x)} ${f(pts[0].y)}l0 0`
-    if (stroke.linear) return pts.map((p, i) => `${i ? 'L' : 'M'}${f(p.x)} ${f(p.y)}`).join('')
     return smooth(pts)
   }
   if (pts.length === 1) return dot(pts[0].x, pts[0].y, pts[0].r)
-  return penPath(pts, stroke.linear)
+  return penPath(pts)
 }
 
 /** Rendered centreline samples for clients that cut/pick a curved stroke rather than its chords. */
 export function strokeCenterline(stroke: InkStroke): number[] {
-  if (stroke.linear) return [...stroke.points]
   const pts = points(stroke),
     pressure = (r: number) => Math.max(0, Math.min(1, ((r * 2) / stroke.size - 0.4) / 1.2))
-  if (stroke.tool === 'pen') return densify(pts).flatMap((p) => [p.x, p.y, pressure(p.r)])
+  if (stroke.tool === 'pen') return simplify(densify(pts)).flatMap((p) => [p.x, p.y, pressure(p.r)])
   if (pts.length < 3) return pts.flatMap((p) => [p.x, p.y, pressure(p.r)])
   const out: number[] = [pts[0].x, pts[0].y, pressure(pts[0].r)]
   let a = pts[0]
@@ -365,7 +363,7 @@ function distSq(px: number, py: number, ax: number, ay: number, bx: number, by: 
 
 /** Whether an eraser of `radius` at a point touches the stroke. */
 export function hitStroke(stroke: InkStroke, x: number, y: number, radius: number): boolean {
-  const pts = stroke.points
+  const pts = strokeCenterline(stroke)
   const half = stroke.tool === 'marker' ? stroke.size / 2 : penWidth(stroke.size, 1) / 2
   const reach = (radius + half) ** 2
   if (pts.length < 3) return false

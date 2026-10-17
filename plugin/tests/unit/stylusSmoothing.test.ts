@@ -128,7 +128,11 @@ describe('bounded stylus input', () => {
           points: filter.points,
           linear: true as const,
         }
-        expect(strokeCenterline(stroke)).toEqual(filter.points)
+        // Rendering interpolates the bounded input now; it must still start and end exactly
+        // where the input did. The input/pressure guarantees above remain on stored samples.
+        const rendered = strokeCenterline(stroke)
+        expect(rendered.slice(0, 2)).toEqual(filter.points.slice(0, 2))
+        expect(rendered.slice(-3, -1)).toEqual(filter.points.slice(-3, -1))
         expect(strokePath(stroke)).not.toMatch(/[QC]/)
         expect(itemFrom({ ...stroke, type: 'stroke', id: 'sample' })).toMatchObject({
           linear: true,

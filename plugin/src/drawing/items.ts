@@ -10,7 +10,14 @@
  * Strokes are shared with PDF ink (`ink/stroke.ts`): the same outline, pressure, colours and
  * hit test.
  */
-import { hitStroke, isInkColor, penWidth, type InkColor, type InkTool } from '@/ink/stroke'
+import {
+  hitStroke,
+  isInkColor,
+  penWidth,
+  strokeCenterline,
+  type InkColor,
+  type InkTool,
+} from '@/ink/stroke'
 
 export interface StrokeItem {
   id: string
@@ -119,7 +126,7 @@ export function boundsOf(item: DrawingItem): Rect {
   if (known) return known
   let out: Rect
   if (item.type === 'stroke') {
-    const pts = item.points
+    const pts = strokeCenterline(item)
     let x0 = Infinity
     let y0 = Infinity
     let x1 = -Infinity

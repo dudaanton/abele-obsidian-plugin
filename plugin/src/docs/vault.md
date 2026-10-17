@@ -2256,9 +2256,10 @@ the items oldest (lowest) first, each with an `id` and a `type`:
   `x, y, pressure` as they are (pressure in hundredths), every one after it as the step from the
   one before;
   new stylus strokes instead keep full-precision smoothed triples in `points` and `linear: true`.
-  This flag disables legacy render-time easing and curve interpolation; the SVG outline still
-  uses compact relative commands. Canvas ink uses the same optional flag. Unflagged strokes
-  retain their existing rendering;
+  This flag disables legacy render-time input easing. Both flagged and unflagged strokes use
+  shared curve interpolation for painting and picking; rendering never replaces stored samples
+  with fitted points. The SVG outline still uses compact relative commands. Canvas ink uses the
+  same optional flag. Existing points and pressure are retained when old strokes render more smoothly;
 - `shape` — `kind` (`rect`, `ellipse`, `line`, `arrow`), the two corners or ends `x1 y1 x2 y2`,
   `color`, `size`;
 - `text` — `x`, `y` (the top left), `text` (lines split by `\n`), `size`, `color`.
