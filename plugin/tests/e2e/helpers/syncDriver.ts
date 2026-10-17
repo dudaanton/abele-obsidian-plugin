@@ -397,7 +397,7 @@ export class SyncDriver {
   async history(path: string): Promise<void> {
     this.open(path)
     this.run(
-      `app.commands.executeCommandById('file-explorer:reveal-active-file'); let file;await poll(()=>file=document.querySelector('.nav-file-title[data-path='+CSS.escape(${JSON.stringify(path)})+']'));file.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,button:2}));let action;await poll(()=>action=[...document.querySelectorAll('.menu-item')].find(one=>textOf(one).includes('Open version history (Abele)')));action.click();await poll(()=>inWindows('.abele-version-history__row'));return true`
+      `app.commands.executeCommandById('file-explorer:reveal-active-file'); let file;await poll(()=>file=document.querySelector('.nav-file-title[data-path='+CSS.escape(${JSON.stringify(path)})+']'));file.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,button:2}));let action;await poll(()=>action=[...document.querySelectorAll('.menu-item')].find(one=>textOf(one).startsWith('Open version history')));action.click();await poll(()=>inWindows('.abele-version-history__row'));return true`
     )
   }
   async trash(): Promise<void> {

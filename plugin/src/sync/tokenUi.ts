@@ -150,6 +150,15 @@ export const scopeName = (scope: V2Scope | null, text: SyncText = englishSyncTex
         : scope.path === '/'
           ? text('Whole vault')
           : text('Folder: {path}', { path: scope.path })
+/** A connection's name without its server: the group, the folder's own name, or the vault. */
+export const scopeShortName = (scope: V2Scope | null, text: SyncText = englishSyncText) =>
+  !scope || scope.path === UNAVAILABLE_SCOPE_PATH
+    ? scopeName(scope, text)
+    : scope.kind === 'group'
+      ? scope.path.split('/').pop().replace(/\.md$/i, '')
+      : scope.path === '/'
+        ? text('Whole vault')
+        : scope.path.split('/').pop()
 export const connectionName = (record: Pick<TokenConnectionRecord, 'scope' | 'address'>) =>
   scopeName(record.scope) + ' · ' + new URL(record.address).host
 export const statusName = (status: string, text: SyncText = englishSyncText) =>
@@ -263,6 +272,8 @@ export interface TokenUiRuntime extends ExecutableApplyPort, ConsentResolvePort 
   publishAttachment?(fileId: string): Promise<void>
   updateSelective?(selective: import('@abele/sync-core').SelectiveSettings): Promise<void>
   historyClient?: import('@abele/sync-core').V2EngineClient
+  /** Whether this connection syncs the vault file: in its scope and not kept out by its rules. */
+  acceptsLocal?(path: string, size: number): boolean
   entryFor?(path: string): Promise<import('@abele/sync-core').StateEntry | null>
   heldDeletes?(): Promise<import('@abele/sync-core').HeldDelete[]>
   decideDeletes?(

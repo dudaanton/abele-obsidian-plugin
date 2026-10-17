@@ -922,6 +922,7 @@ export class TokenEngines {
           resolve: (id) => runtime.resolve(id),
           publishAttachment: (id) => runtime.publishAttachment(id),
           historyClient: runtime.historyClient(),
+          acceptsLocal: (path, size) => runtime.acceptsLocal(path, size),
           localPath: (path) => runtime.localPath(path),
           entryFor: (path) => runtime.entryFor(path),
           heldDeletes: () => runtime.heldDeletes(),

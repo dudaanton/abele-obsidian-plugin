@@ -2815,6 +2815,8 @@ export const de = {
   'settings.sync.presentation.fe7c4c6f414c4083': 'Gruppe außerhalb dieser Verbindung',
   'settings.sync.presentation.97c769d2eaf4ca1c': 'Ordner außerhalb dieser Verbindung',
   'settings.sync.presentation.f56643958aeae61b': 'Gruppe: {name}',
+  'settings.sync.presentation.40b37f5462cc5a19': 'Versionsverlauf öffnen',
+  'settings.sync.presentation.7dd20272337b469c': 'Versionsverlauf öffnen · {name}',
   'settings.sync.presentation.cb44fe2561afccff': 'Ganzes Gewölbe',
   'settings.sync.presentation.5c802e6401aca4d2': 'Ordner: {path}',
   'settings.sync.presentation.5fa7aac5375c5815': 'Bereit',

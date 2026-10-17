@@ -201,7 +201,7 @@ export async function openTestVault(): Promise<TestVault> {
     // or click, and the history dialog is opened from the file list's context menu.
     writeFileSync(join(path, '.obsidian/app.json'), '{ "nativeMenus": false }\n')
     // Obsidian's own Sync off. It puts an "Open version history" of its own in the same menu,
-    // beside the plugin's "Open version history (Abele)", and one sync in the vault is what the
+    // under the same name as the plugin's, and one sync in the vault is what the
     // suite means to drive. The rest is what a new vault gets by default — the file is read
     // whole, so a core plugin left out of it would be switched off too.
     writeFileSync(join(path, '.obsidian/core-plugins.json'), JSON.stringify(CORE_PLUGINS, null, 2))

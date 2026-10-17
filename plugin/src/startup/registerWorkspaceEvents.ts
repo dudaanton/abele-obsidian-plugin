@@ -11,7 +11,8 @@ import { ChatService } from '@/ai/ChatService'
 import { previewImage } from '@/commands/utilityDialogs'
 import { openChat } from '@/ai/openChat'
 
-import { tokenUi } from '@/sync/tokenUi'
+import { scopeShortName, tokenUi } from '@/sync/tokenUi'
+import { settingsSyncText } from '@/i18n/settingsSync'
 import { registerExternalFileActions } from '@/sync/external/registerActions'
 import { registerExternalPresentation } from '@/sync/external/registerPresentation'
 import { historyConnection } from '@/sync/tokenHistory'
@@ -92,15 +93,27 @@ export function registerWorkspaceEvents(plugin: Plugin) {
 
       if (!(file instanceof TFile)) return
 
-      // "Open version history (Abele)" for a file the server holds versions of. Named after
-      // the plugin because Obsidian's own Sync puts an "Open version history" in plugin same
-      // menu. Shown only on a device that is connected: on every other one the dialog could
-      // only say so.
-      for (const row of tokenUi.value?.rows.value ?? []) {
-        if (!tokenUi.value?.runtimes.get(row.id)?.historyClient) continue
+      // "Open version history" for a file a running connection syncs: inside its folder or
+      // group and not kept out by its ignore rules. Only when several connections hold the
+      // file does each item carry the connection's short name; never its server address.
+      const ui = tokenUi.value
+      const holders = (ui?.rows.value ?? []).filter((row) => {
+        const runtime = ui?.runtimes.get(row.id)
+        return !!runtime?.historyClient && !!runtime.acceptsLocal?.(file.path, file.stat.size)
+      })
+      const names = holders.map((row) => scopeShortName(row.scope, settingsSyncText))
+      for (const [index, row] of holders.entries()) {
+        const repeated = names.filter((name) => name === names[index]).length > 1
+        const name = repeated
+          ? `${names[index]} (${names.slice(0, index + 1).filter((one) => one === names[index]).length})`
+          : names[index]
         menu.addItem((item) => {
           item
-            .setTitle('Open version history (Abele) · ' + row.address)
+            .setTitle(
+              holders.length > 1
+                ? settingsSyncText('Open version history · {name}', { name })
+                : settingsSyncText('Open version history')
+            )
             .setIcon('history')
             .onClick(() => {
               historyConnection.value = row.id

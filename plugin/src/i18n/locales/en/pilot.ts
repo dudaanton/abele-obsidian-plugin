@@ -2708,6 +2708,8 @@ export const en = {
   'settings.sync.presentation.fe7c4c6f414c4083': 'Group outside this connection',
   'settings.sync.presentation.97c769d2eaf4ca1c': 'Folder outside this connection',
   'settings.sync.presentation.f56643958aeae61b': 'Group: {name}',
+  'settings.sync.presentation.40b37f5462cc5a19': 'Open version history',
+  'settings.sync.presentation.7dd20272337b469c': 'Open version history · {name}',
   'settings.sync.presentation.cb44fe2561afccff': 'Whole vault',
   'settings.sync.presentation.5c802e6401aca4d2': 'Folder: {path}',
   'settings.sync.presentation.5fa7aac5375c5815': 'Ready',
