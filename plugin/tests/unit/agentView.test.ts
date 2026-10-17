@@ -3,10 +3,33 @@ import { cleanViewHtml, readViewLink, viewDocument } from '@/views/agentView'
 import { readTopic } from '@/docs'
 
 describe('cleanViewHtml', () => {
+  it('makes every allowed link inert and keyboard accessible, without trusting supplied routing data', () => {
+    const doc = new DOMParser().parseFromString(
+      cleanViewHtml(
+        '<a href="https://example.test" data-abele-href="javascript:bad" tabindex="-1">web</a><a href="abele:ask?text=More">ask</a><a data-abele-href="https://example.test">forged</a>'
+      ),
+      'text/html'
+    )
+    expect(doc.querySelector('a[href]')).toBeNull()
+    const links = doc.querySelectorAll('a')
+    expect(links[0].getAttribute('data-abele-href')).toBe('https://example.test')
+    expect(links[1].getAttribute('data-abele-href')).toBe('abele:ask?text=More')
+    for (const link of Array.from(links).slice(0, 2)) {
+      expect(link.getAttribute('role')).toBe('link')
+      expect(link.getAttribute('tabindex')).toBe('0')
+    }
+    expect(links[2].hasAttribute('data-abele-href')).toBe(false)
+  })
   it('keeps a card as written', () => {
     const card =
       '<div class="card"><img src="https://pictures.example/chair.jpg" alt="Chair"><div class="title">Chair</div><a class="button" href="https://shop.example/chair">Open</a></div>'
-    expect(cleanViewHtml(card)).toBe(card)
+    // Destinations survive as routing data, never native frame navigation.
+    expect(cleanViewHtml(card)).toBe(
+      card.replace(
+        'href="https://shop.example/chair"',
+        'data-abele-href="https://shop.example/chair" role="link" tabindex="0"'
+      )
+    )
   })
 
   it('takes out what could run or reach out', () => {

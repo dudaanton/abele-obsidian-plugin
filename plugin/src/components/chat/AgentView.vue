@@ -91,6 +91,7 @@ const frameHeight = computed(() =>
 
 let observer: ResizeObserver | null = null
 let themeWatch: MutationObserver | null = null
+let releaseLinks: (() => void) | undefined
 
 function measure() {
   const doc = frame.value?.contentDocument
@@ -102,6 +103,8 @@ function measure() {
 }
 
 function ready() {
+  releaseLinks?.()
+  releaseLinks = undefined
   const doc = frame.value?.contentDocument
   if (!doc) return
   measure()
@@ -127,19 +130,125 @@ function ready() {
     img.addEventListener('error', () => missing(img))
     if (img.complete && !img.naturalWidth && img.getAttribute('src')) missing(img)
   })
-  doc.addEventListener('click', onClick)
+  releaseLinks = bindLinks(doc)
 }
 
-function onClick(e: MouseEvent) {
-  const a = (e.target as Element | null)?.closest?.('a')
-  if (!a) return
-  e.preventDefault()
-  const link = readViewLink(a.getAttribute('href') ?? '')
+function routeLink(anchor: Element) {
+  const link = readViewLink(anchor.getAttribute('data-abele-href') ?? '')
   if (!link) return
   if (link.kind === 'web') window.open(link.url, '_blank', 'noopener')
   else if (link.kind === 'note')
     void GlobalStore.getInstance().app.workspace.openLinkText(link.path, '')
   else ask(link.text)
+}
+
+function bindLinks(doc: Document): () => void {
+  type Contact = { anchor: Element; x: number; y: number; id: number; moved: boolean; at: number }
+  let pointer: Contact | undefined
+  let touch: Contact | undefined
+  let recent: { anchor: Element; type: string; at: number } | undefined
+  const anchorOf = (event: Event) => {
+    const node = event.target as Node | null
+    const el = node?.nodeType === 3 ? node.parentElement : (node as Element | null)
+    return el?.closest?.('a') ?? null
+  }
+  const start = (anchor: Element, x: number, y: number, id: number): Contact => {
+    recent = undefined
+    return { anchor, x, y, id, moved: false, at: Date.now() }
+  }
+  const move = (contact: Contact | undefined, x: number, y: number) => {
+    if (contact && Math.hypot(x - contact.x, y - contact.y) > 10) contact.moved = true
+  }
+  const suppressed = (anchor: Element) => recent?.anchor === anchor && Date.now() - recent.at < 800
+  const finish = (event: Event, contact: Contact | undefined) => {
+    if (!contact) return
+    const valid =
+      !contact.moved && Date.now() - contact.at < 700 && anchorOf(event) === contact.anchor
+    if (!valid) {
+      recent = { anchor: contact.anchor, type: 'cancel', at: Date.now() }
+      return
+    }
+    event.preventDefault()
+    // A single tap may produce pointerup, touchend and a compatibility click.
+    if (suppressed(contact.anchor) && recent?.type !== event.type) return
+    recent = { anchor: contact.anchor, type: event.type, at: Date.now() }
+    routeLink(contact.anchor)
+  }
+  const listeners: [string, EventListener][] = []
+  const listen = (type: string, handler: EventListener) => {
+    doc.addEventListener(type, handler, { capture: true, passive: false })
+    listeners.push([type, handler])
+  }
+  listen('click', (event) => {
+    const anchor = anchorOf(event)
+    if (!anchor) return
+    event.preventDefault()
+    const mouse = event as MouseEvent
+    if (mouse.button !== 0 || suppressed(anchor)) return
+    routeLink(anchor)
+  })
+  listen('keydown', (event) => {
+    const key = event as KeyboardEvent
+    const anchor = anchorOf(event)
+    if (!anchor || key.key !== 'Enter') return
+    event.preventDefault()
+    if (key.repeat) return
+    recent = { anchor, type: 'keydown', at: Date.now() }
+    routeLink(anchor)
+  })
+  listen('pointerdown', (event) => {
+    const e = event as PointerEvent
+    const anchor = anchorOf(e)
+    pointer = undefined
+    if (!anchor || e.button !== 0 || !e.isPrimary) return
+    recent = undefined
+    if (e.pointerType !== 'mouse') pointer = start(anchor, e.clientX, e.clientY, e.pointerId)
+  })
+  listen('pointermove', (event) => {
+    const e = event as PointerEvent
+    if (pointer?.id === e.pointerId) move(pointer, e.clientX, e.clientY)
+  })
+  listen('pointerup', (event) => {
+    const e = event as PointerEvent
+    if (pointer?.id !== e.pointerId) return
+    move(pointer, e.clientX, e.clientY)
+    finish(e, pointer)
+    pointer = undefined
+  })
+  listen('touchstart', (event) => {
+    const e = event as TouchEvent
+    const anchor = anchorOf(e)
+    touch = undefined
+    if (e.touches.length !== 1) {
+      if (pointer) pointer.moved = true
+      return
+    }
+    const point = e.touches[0]
+    if (anchor) touch = start(anchor, point.clientX, point.clientY, point.identifier)
+  })
+  listen('touchmove', (event) => {
+    const e = event as TouchEvent
+    const point = Array.from(e.touches).find((point) => point.identifier === touch?.id)
+    if (point) move(touch, point.clientX, point.clientY)
+  })
+  listen('touchend', (event) => {
+    const e = event as TouchEvent
+    const point = Array.from(e.changedTouches).find((point) => point.identifier === touch?.id)
+    if (!point) return
+    move(touch, point.clientX, point.clientY)
+    finish(e, touch)
+    touch = undefined
+  })
+  const cancel = () => {
+    const contact = pointer ?? touch
+    if (contact) recent = { anchor: contact.anchor, type: 'cancel', at: Date.now() }
+    pointer = undefined
+    touch = undefined
+  }
+  for (const type of ['pointercancel', 'touchcancel', 'scroll']) listen(type, cancel)
+  return () => {
+    for (const [type, handler] of listeners) doc.removeEventListener(type, handler, true)
+  }
 }
 
 function ask(text: string) {
@@ -168,7 +277,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   observer?.disconnect()
   themeWatch?.disconnect()
-  frame.value?.contentDocument?.removeEventListener('click', onClick)
+  releaseLinks?.()
 })
 </script>
 

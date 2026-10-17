@@ -75,6 +75,38 @@ describe.skipIf(!available)('agent views in a real chat answer', () => {
         const broken = await until(() => document.querySelector('.abele-agent-view__broken'))
         broken.scrollIntoView({ block: 'center' })
         await capture('broken')
+        const links = [...doc.querySelectorAll('a')]
+        const inert = links.every(link => !link.hasAttribute('href') && link.getAttribute('role') === 'link' && link.tabIndex === 0)
+        const frameUrl = doc.URL
+        const opened = []
+        const originalOpen = window.open
+        let asks = 0
+        const chat = frame.closest('.abele-ai-chat')
+        const countAsk = () => asks++
+        chat.addEventListener('abele-view-ask', countAsk)
+        try {
+          window.open = (...args) => { opened.push(args); return null }
+          links.find(link => link.dataset.abeleHref.startsWith('https:')).click()
+          const compare = links.find(link => link.dataset.abeleHref.startsWith('abele:ask'))
+          const tap = target => {
+            for (const type of ['touchstart', 'touchend']) {
+              const event = new doc.defaultView.Event(type, { bubbles: true, cancelable: true })
+              const point = { identifier: 1, clientX: 10, clientY: 10 }
+              Object.defineProperties(event, { touches: { value: type === 'touchend' ? [] : [point] }, changedTouches: { value: [point] } })
+              target.dispatchEvent(event)
+            }
+          }
+          tap(compare)
+          compare.click() // Compatibility click must not append the question twice.
+          await until(() => chats.getSession(tab).draft.value.text === 'Compare chairs')
+          compare.dispatchEvent(new doc.defaultView.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+          await until(() => chats.getSession(tab).draft.value.text === 'Compare chairs\\nCompare chairs')
+          await wait(150)
+        } finally {
+          window.open = originalOpen
+          chat.removeEventListener('abele-view-ask', countAsk)
+        }
+        const routing = { inert, asks, opened, stayed: frame.contentDocument === doc && doc.URL === frameUrl && doc.querySelectorAll('.card').length === 3 }
         // Deliberately bypass sanitizing to prove the browser boundaries on this same frame.
         const hostile = '<script>parent.__agentViewExecuted = true</script><img src="data:image/png,invalid" onerror="parent.__agentViewExecuted = true"><svg onload="parent.__agentViewExecuted = true"></svg>'
         for (const source of [frame.srcdoc.replace('</body>', hostile + '</body>'), hostile]) {
@@ -86,7 +118,7 @@ describe.skipIf(!available)('agent views in a real chat answer', () => {
           await wait(150)
           if (window.__agentViewExecuted === true) throw Error('Frame executed agent content')
         }
-        return { cardCount, overflow, sandbox, appearance, executed: window.__agentViewExecuted === true, broken: broken.textContent, source: broken.parentElement.querySelector('code').textContent }
+        return { cardCount, overflow, sandbox, appearance, routing, executed: window.__agentViewExecuted === true, broken: broken.textContent, source: broken.parentElement.querySelector('code').textContent }
       } finally {
         if (tab) await chats.closeTab(tab)
         if (previous) chats.switchTab(previous)
@@ -108,6 +140,10 @@ describe.skipIf(!available)('agent views in a real chat answer', () => {
       expect(result.cardCount).toBe(3)
       expect(result.overflow).toBe(false)
       expect(result.sandbox).toBe('allow-same-origin')
+      expect(result.routing.inert).toBe(true)
+      expect(result.routing.stayed).toBe(true)
+      expect(result.routing.asks).toBe(2)
+      expect(result.routing.opened).toEqual([['https://example.test/chair', '_blank', 'noopener']])
       expect(result.executed).toBe(false)
       expect(result.broken).toContain('can’t be shown')
       expect(result.source).toContain('<script>')

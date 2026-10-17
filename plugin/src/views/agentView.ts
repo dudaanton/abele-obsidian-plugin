@@ -79,6 +79,8 @@ html, body { margin: 0; background: transparent; color: var(--text-normal);
   line-height: var(--line-height-normal); -webkit-text-size-adjust: 100%; }
 body { padding: 1px; }
 a { color: var(--text-accent); text-decoration: none; }
+a[data-abele-href] { cursor: pointer; -webkit-touch-callout: none; }
+a[data-abele-href]:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 2px; }
 a:hover { text-decoration: underline; }
 img { display: block; max-width: 100%; }
 .cards { display: grid; gap: var(--size-4-3);
@@ -159,15 +161,22 @@ export function cleanViewHtml(html: string): string {
       el.remove()
       continue
     }
+    const href = el.localName === 'a' ? el.getAttribute('href')?.trim() : undefined
     for (const attr of Array.from(el.attributes)) {
       const name = attr.name.toLowerCase()
       const value = attr.value.trim()
       const keep =
         /^(class|title|alt|role|aria-label|colspan|rowspan|width|height)$/.test(name) ||
-        (name === 'href' && el.localName === 'a' && !!readViewLink(value)) ||
         (name === 'src' && el.localName === 'img' && /^(https:\/\/|data:image\/)/i.test(value)) ||
         (name === 'style' && safeStyle(value))
       if (!keep) el.removeAttribute(attr.name)
+    }
+    // No native navigation, even before the parent attaches its listeners. Never trust
+    // routing data supplied in the HTML: only derive it from an allowlisted source href.
+    if (href && readViewLink(href)) {
+      el.setAttribute('data-abele-href', href)
+      el.setAttribute('role', 'link')
+      el.setAttribute('tabindex', '0')
     }
   }
   return doc.body.innerHTML
