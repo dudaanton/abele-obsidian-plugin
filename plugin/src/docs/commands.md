@@ -95,10 +95,11 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
   tab. The same picker is _Open another GitHub item…_ in a GitHub tab's "more options" menu (only
   while the GitHub integration is on)
 
-  This picker also opens a pasted native Forgejo URL for a configured deployment. It does not
-  translate a Forgejo title, short repository name or search expression into a GitHub request;
-  unsupported Forgejo lookup operations explain that limitation. Clicking a supported Forgejo
-  link in a note opens the same repository tab; other links remain browser exits.
+  The same picker supports configured Forgejo/Gitea URLs, repository shorthand, issue/PR
+  numbers and titles, branches, tags, commits and comparisons on the chosen deployment. Native
+  searches stay on that service, with unsupported qualifiers explained. Repository pickers
+  retain provider and deployment identity for pinned/recent entries. Clicking a supported
+  native link in a note opens the same repository tab; other links remain browser exits.
 - Open node repository — choose a connected node, registered project and workspace, then browse
   its repository in the same tab layout as GitHub. Workspaces include the original checkout,
   node worktrees and opted-in external worktrees. Working tree shows local changes above HEAD;
@@ -116,7 +117,13 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
   Alt+Enter pins or unpins the row. A GitHub tab's "more options" menu has the same command, and
   **Pin repository** / **Unpin repository** for the repository it shows (only while the GitHub
   integration is on)
-- Show GitHub notifications — the account's GitHub inbox in the right sidebar: All (read and
+- Show GitHub notifications — the shared Git inbox in the right sidebar. Choose a connection
+  with the account selector; switching clears the old rows and pending results. Native
+  Forgejo/Gitea inboxes offer All/Unread and Mark read, never Done; pinned read changes that
+  would remove the pin are unavailable. Bulk read uses the displayed complete snapshot’s
+  service activity cutoff. Read actions never change issue/PR state. Missing connections
+  explain the problem instead of borrowing another account. The legacy GitHub selection keeps
+  its separate classic notifications token binding. For GitHub: All (read and
   unread, not Done) by default, or Unread; one repository or all. Old unread-only saved panels
   migrate once to All. A click opens the pull request, issue, commit or discussion in a GitHub
   tab (at the latest comment) and leaves it unread. Every row's check means Done on GitHub

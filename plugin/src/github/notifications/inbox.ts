@@ -37,6 +37,7 @@ export type Which = 'unread' | 'all'
 
 /** What the panel shows: which list, and one repository of it or all. */
 export interface NotificationsState {
+  connection?: string
   which: Which
   /** `owner/name`, or empty for every repository. */
   repo: string
@@ -347,7 +348,7 @@ export class NotificationInbox {
     if (version !== undefined) {
       this.done.delete(id)
       this.done.set(id, version)
-      if (this.done.size > MAX_DONE) this.done.delete(this.done.keys().next().value!)
+      if (this.done.size > MAX_DONE) this.done.delete(this.done.keys().next().value)
     }
     for (const k of this.kept.values()) k.items = k.items.filter((n) => n.id !== id)
     this.invalidateValidators()

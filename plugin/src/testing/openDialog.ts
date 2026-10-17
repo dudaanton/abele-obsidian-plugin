@@ -12,6 +12,7 @@ import { chatArtifactsFixture } from './chatArtifactsFixture'
 import TokenUiFixture from './TokenUiFixture.vue'
 import NodeSyntaxFixture from './NodeSyntaxFixture.vue'
 import EnvironmentDialog from '@/components/debugger/http/EnvironmentDialog.vue'
+import PullRequestDialog from '@/components/nodeWork/PullRequestDialog.vue'
 
 export interface DialogFixtureOptions {
   /** Inspect all synthetic recipient-row variants, without inheriting ambient rights. */
@@ -164,6 +165,35 @@ const mountNodeQuestion = (kind: 'select' | 'input') =>
   )
 
 const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise<void>> = {
+  'native-pr-create': () =>
+    mountAlone(
+      defineComponent({
+        inheritAttrs: false,
+        emits: ['close'],
+        setup(_props, { emit }) {
+          return () =>
+            h(
+              Modal,
+              { title: 'Create pull request', onClose: () => emit('close') },
+              {
+                default: () =>
+                  h(PullRequestDialog, {
+                    branch: 'sample-topic-with-a-deliberately-long-branch-name',
+                    base: 'main',
+                    commits: 3,
+                    files: 4,
+                    initialTitle: 'Sample change with a deliberately long descriptive title',
+                    initialBody: 'An invented description of the proposed change.',
+                    host: 'Gitea',
+                    draftSupported: false,
+                    onCancel: () => emit('close'),
+                    onCreate: () => emit('close'),
+                  }),
+              }
+            )
+        },
+      })
+    ),
   'chat-artifacts-empty': () => mountAlone(chatArtifactsFixture('empty')),
   'chat-artifacts': () => mountAlone(chatArtifactsFixture('populated')),
   'chat-artifacts-long': () => mountAlone(chatArtifactsFixture('long')),

@@ -39,7 +39,15 @@ export interface FakeGithub {
  */
 export async function startFakeGithub(
   options: {
-    mode?: 'legacy' | 'no-raw' | 'accounts' | 'wide-readme' | 'pinned' | 'no-archive' | 'forgejo'
+    mode?:
+      | 'legacy'
+      | 'no-raw'
+      | 'accounts'
+      | 'wide-readme'
+      | 'pinned'
+      | 'no-archive'
+      | 'forgejo'
+      | 'gitea'
   } = {}
 ): Promise<FakeGithub> {
   const dir = mkdtempSync(join(tmpdir(), 'abele-fake-github-'))

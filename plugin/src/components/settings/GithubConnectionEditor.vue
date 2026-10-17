@@ -20,7 +20,7 @@
       />
     </Setting>
     <Setting
-      v-if="draft.account && draft.provider !== 'forgejo'"
+      v-if="draft.account && !isNativeForge(draft.provider)"
       :name="t('settings.GithubConnectionEditor.account.7e1b0d56')"
       :desc="draft.account.login"
     >
@@ -41,18 +41,24 @@
         draft.server.trim() && !validServer ? t('settings.git.serverAddressError') : undefined
       "
       :desc="
-        draft.provider === 'forgejo'
-          ? t('settings.GithubConnectionEditor.full_forgejo_address_including_any.4aacc3e1')
+        isNativeForge(draft.provider)
+          ? t('settings.git.nativeAddress', { service: nativeLabel(draft.provider) })
           : t('settings.GithubConnectionEditor.empty_is_github_com_for.0f201123')
       "
     >
       <Input
         v-model:model-value="draft.server"
         :placeholder="
-          draft.provider === 'forgejo'
+          isNativeForge(draft.provider)
             ? 'https://git.example.test'
             : t('settings.GithubConnectionEditor.github_com.3aeb0024')
         "
+      />
+      <Button
+        v-if="isNew && draft.provider === 'forgejo'"
+        :text="t('settings.git.useCodeberg')"
+        :tooltip="t('settings.git.useCodebergTooltip')"
+        @click="draft.server = 'https://codeberg.org'"
       />
     </Setting>
     <Setting :name="t('settings.GithubConnectionEditor.token.d2089be6')" :desc="tokenState">
@@ -60,7 +66,7 @@
         v-model="token"
         :value="forget ? '' : stored"
         :placeholder="
-          draft.provider === 'forgejo'
+          isNativeForge(draft.provider)
             ? t('settings.GithubConnectionEditor.access_token.9a911b08')
             : t('settings.GithubConnectionEditor.github_pat.94238580')
         "
@@ -103,8 +109,8 @@
       <Input
         v-model:model-value="repoInput"
         :placeholder="
-          draft.provider === 'forgejo'
-            ? t('settings.GithubConnectionEditor.owner_repo_or_a_forgejo.5bdaf9f1')
+          isNativeForge(draft.provider)
+            ? t('settings.git.nativeRepoLink', { service: nativeLabel(draft.provider) })
             : t('settings.GithubConnectionEditor.owner_repo_or_a_github.b6c51009')
         "
       />
@@ -121,7 +127,7 @@
       v-if="duplicate"
       :text="t('settings.GithubConnectionEditor.another_connection_uses_the_same.db8b1327')"
     />
-    <template v-if="report && draft.provider === 'forgejo'">
+    <template v-if="report && isNativeForge(draft.provider)">
       <Setting :name="accessSummary" :desc="accessCapabilities">
         <StatusDot
           :tone="
@@ -158,6 +164,7 @@
 
 <script setup lang="ts">
 import { t } from '@/i18n'
+import { isNativeForge, nativeLabel } from '@/forge/native'
 import { computed, reactive, ref, watch, onBeforeUnmount, onMounted } from 'vue'
 import Modal from '../obsidian/Modal.vue'
 import Setting from '../obsidian/Setting.vue'
@@ -197,6 +204,7 @@ const draft = reactive<GithubConnection>(JSON.parse(JSON.stringify(props.connect
 const providerOptions = [
   { value: 'github', display: 'GitHub' },
   { value: 'forgejo', display: t('settings.GithubConnectionEditor.forgejo.f4e62146') },
+  { value: 'gitea', display: t('settings.git.gitea') },
 ]
 const detailsOpen = ref(false)
 const accessSummary = computed(() =>
@@ -333,17 +341,17 @@ onMounted(() => {
 })
 
 async function check(): Promise<void> {
-  if (draft.provider === 'forgejo') {
+  if (isNativeForge(draft.provider)) {
     const mine = ++generation
     const credential = draftCredential()
     const client = new ForgejoClient(
-      deployment('forgejo', draft.server),
+      deployment(draft.provider, draft.server),
       {
         connectionId: draft.id,
         generation: String(mine),
         assertCurrent() {
           if (!open || generation !== mine || credentialChanged(credential))
-            throw new Error('This access check was cancelled.')
+            throw new Error(t('settings.git.accessCheckCancelled'))
         },
       },
       singleHopRequest,
@@ -356,7 +364,7 @@ async function check(): Promise<void> {
       return
     }
     checking.value = true
-    message.value = t('settings.GithubConnectionEditor.asking_forgejo.f46aa9ff')
+    message.value = t('settings.git.askingNative', { service: nativeLabel(draft.provider) })
     try {
       const result = await checkForgejoAccess(client, repo, credential)
       if (!open || generation !== mine) return

@@ -6,6 +6,14 @@ import { blobLink, fileUrl, itemUrl } from '@/github/permalinks'
 
 const urls = forgejoUrls(deployment('forgejo', 'https://forge.example.test/team'))
 describe('Forgejo links', () => {
+  it('opens Markdown line citations as source while retaining the immutable revision', () => {
+    const sha = 'a'.repeat(40)
+    const url = urls.file('sample/project', sha, 'docs/sample.md', { from: 2, to: 3 })
+    expect(url).toBe(
+      `https://forge.example.test/team/sample/project/src/commit/${sha}/docs/sample.md?display=source#L2-L3`
+    )
+    expect(urls.parse(url)).toMatchObject({ plain: true, lines: { start: 2, end: 3 } })
+  })
   it('uses native routes for prose, images, items and immutable citations', () => {
     const repo = {
       provider: 'forgejo' as const,

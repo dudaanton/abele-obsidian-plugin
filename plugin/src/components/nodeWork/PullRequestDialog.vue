@@ -29,9 +29,16 @@
         placeholder="Why, and what to look at"
       />
     </label>
-    <Setting name="Draft" desc="Not ready for review yet; it can be marked ready later.">
+    <Setting
+      v-if="draftSupported"
+      name="Draft"
+      desc="Not ready for review yet; it can be marked ready later."
+    >
       <Checkbox :is-enabled="draft" aria-label="Open as a draft" @toggle="draft = !draft" />
     </Setting>
+    <p v-else class="setting-item-description">
+      Draft creation is not available for this service API.
+    </p>
     <div class="modal-button-container">
       <Button text="Cancel" tooltip="Close without opening anything" @click="emit('cancel')" />
       <Button
@@ -73,8 +80,9 @@ const props = withDefaults(
     pushed?: boolean
     /** Where the pull request opens ("GitHub"). */
     host?: string
+    draftSupported?: boolean
   }>(),
-  { initialBody: '', pushed: true, host: 'GitHub' }
+  { initialBody: '', pushed: true, host: 'GitHub', draftSupported: true }
 )
 const emit = defineEmits<{
   (e: 'create', pr: { title: string; body: string; draft: boolean }): void

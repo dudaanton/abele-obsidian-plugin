@@ -18,6 +18,7 @@ import type { GithubTarget } from './urls'
 import type { CompareData } from './compare'
 import type { ChatQuote } from './chatAbout'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { isNativeForge } from '@/forge/native'
 
 export interface Linker {
   /** The item on screen, once it has loaded; null before, and for a file at a ref. */
@@ -128,6 +129,7 @@ export function createLinker(o: {
 }): Linker {
   /** A branch is resolved to its commit once per tab: the link is to what was read. */
   const shas = new Map<string, Promise<string>>()
+  const share = sharing(o.app)
 
   return {
     item() {
@@ -145,9 +147,23 @@ export function createLinker(o: {
         case 'issue':
         case 'pull':
         case 'discussion':
-          return { ...repo, kind: t.kind, number: t.number }
+          return {
+            ...repo,
+            kind: t.kind,
+            number: t.number,
+            ...(t.kind === 'pull'
+              ? { headSha: (data as import('@/repository/conversation').PullData).headSha }
+              : {}),
+          }
         case 'commit':
-          return { ...repo, kind: 'commit', sha: (data as CommitData).sha || t.sha, pull: t.pull }
+          return {
+            ...repo,
+            kind: 'commit',
+            sha: (data as CommitData).sha || t.sha,
+            pull: t.pull,
+            headSha: (data as CommitData).sha,
+            baseSha: (data as CommitData).parentSha,
+          }
         case 'compare': {
           // The base as compared: a lone `compare/<head>` names the default branch once loaded.
           const c = data as CompareData
@@ -185,6 +201,23 @@ export function createLinker(o: {
         ? source.navigation.blobLink(sha, blob.path, span)
         : blobLink(t, sha, blob.path, span)
     },
-    ...sharing(o.app),
+    ...share,
+    async insertSnippet(snippet) {
+      const value = await snippet,
+        source = o.source?.()
+      source?.assertCurrent()
+      await share.insertSnippet(
+        source && 'deployment' in source.identity && isNativeForge(source.identity.provider)
+          ? {
+              ...value,
+              source: {
+                version: 1,
+                deployment: source.identity.deployment,
+                repository: source.identity.repository,
+              },
+            }
+          : value
+      )
+    },
   }
 }

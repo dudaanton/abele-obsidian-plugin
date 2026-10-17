@@ -50,7 +50,7 @@ import { createQueryDocsTool } from './QueryDocsTool'
 import { createReadSettingsTool, createWriteSettingsTool } from './SettingsTools'
 import { createRememberTool } from './RememberTool'
 import { createForgetTool } from './ForgetTool'
-import { createGithubTools } from './github'
+import { createGithubTools, createForgeTools } from './github'
 import { createNodeTools } from './node'
 import { createTraceTools } from './TraceTools'
 import { activeTraceContext } from '@/debugger/trace/agentContext'
@@ -120,6 +120,14 @@ export function getToolRegistry(tools: AgentTool[] = buildAgentTools()): ToolInf
     github_search: { label: 'Search', category: 'GitHub' },
     github_grep: { label: 'Grep code at a version', category: 'GitHub' },
     github_open: { label: 'Show in a tab', category: 'GitHub' },
+    forge_views: { label: 'Repository tabs', category: 'Git repositories' },
+    forge_read: { label: 'Read issue or PR', category: 'Git repositories' },
+    forge_pr_files: { label: 'PR files', category: 'Git repositories' },
+    forge_file: { label: 'Read file', category: 'Git repositories' },
+    forge_commits: { label: 'Commits', category: 'Git repositories' },
+    forge_search: { label: 'Search', category: 'Git repositories' },
+    forge_grep: { label: 'Grep code at a version', category: 'Git repositories' },
+    forge_open: { label: 'Show in a tab', category: 'Git repositories' },
     book_views: { label: 'Book tabs', category: 'Books' },
     book_contents: { label: 'Book contents', category: 'Books' },
     book_read: { label: 'Read book', category: 'Books' },
@@ -361,6 +369,10 @@ function buildAgentTools(options: AgentToolsOptions = {}, everything = false): A
   if (everything || githubSettings().enabled)
     tools.push(
       ...createGithubTools({
+        agent: options.githubAgent ?? resolveAgent,
+        approve: options.githubApproval,
+      }),
+      ...createForgeTools({
         agent: options.githubAgent ?? resolveAgent,
         approve: options.githubApproval,
       })

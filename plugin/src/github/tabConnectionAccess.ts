@@ -4,11 +4,21 @@ import { connectionGeneration } from './GithubService'
 import { GithubError, type GithubClient } from './client'
 import { guardedGithubClient } from './guardedClient'
 import type { GithubViewModel } from './model'
+import { forgejoConnectionSource } from '@/forge/forgejoConnections'
 
 type TabAccess = Pick<
   GithubViewModel,
   'allowedConnections' | 'executionAgentId' | 'approvedConnections'
 >
+export function nativeSourceForTab(model: TabAccess, id: string, repository: string) {
+  if (!model.allowedConnections) return forgejoConnectionSource(id, repository)
+  const scope = tabAccessSnapshot(model),
+    generation = connectionGeneration(id)
+  return forgejoConnectionSource(id, repository, undefined, () => {
+    if (!tabConnectionAllowed(scope, id) || generation !== connectionGeneration(id))
+      throw new Error('The agent no longer has access to this Git connection.')
+  })
+}
 
 /** Capture the executing principal; later user navigation must not widen an in-flight tool load. */
 export function tabAccessSnapshot(model: TabAccess): TabAccess {
@@ -52,7 +62,7 @@ export function clientForTab(model: TabAccess, id: string, client: GithubClient)
   const key = JSON.stringify([
     id,
     scope.executionAgentId,
-    [...scope.allowedConnections!].sort(),
+    [...scope.allowedConnections].sort(),
     Object.entries(scope.approvedConnections ?? {}).sort(([a], [b]) => a.localeCompare(b)),
   ])
   let cached = tabClients.get(client)
@@ -83,6 +93,6 @@ export function clientForTab(model: TabAccess, id: string, client: GithubClient)
     true
   )
   cached.set(key, guarded)
-  while (cached.size > 32) cached.delete(cached.keys().next().value!)
+  while (cached.size > 32) cached.delete(cached.keys().next().value)
   return guarded
 }

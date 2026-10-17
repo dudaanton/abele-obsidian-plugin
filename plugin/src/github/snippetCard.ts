@@ -7,7 +7,7 @@ import { MarkdownRenderChild, type MarkdownPostProcessorContext } from 'obsidian
 import { h } from 'vue'
 import GithubSnippet from '@/components/github/GithubSnippet.vue'
 import { mountKit } from '@/components/obsidian/mount'
-import { SNIPPET_BLOCK, parseSnippet } from './snippetBlock'
+import { SNIPPET_BLOCK, FORGE_SNIPPET_BLOCK, parseSnippet } from './snippetBlock'
 
 export function registerSnippetBlock(
   register: (
@@ -15,7 +15,18 @@ export function registerSnippetBlock(
     handler: (source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext) => void
   ) => void
 ): void {
-  register(SNIPPET_BLOCK, (source, el, ctx) => {
+  registerBlock(register, SNIPPET_BLOCK)
+}
+export function registerForgeSnippetBlock(
+  register: Parameters<typeof registerSnippetBlock>[0]
+): void {
+  registerBlock(register, FORGE_SNIPPET_BLOCK)
+}
+function registerBlock(
+  register: Parameters<typeof registerSnippetBlock>[0],
+  language: string
+): void {
+  register(language, (source, el, ctx) => {
     const snippet = parseSnippet(source)
     const host = el.createDiv()
     const child = new MarkdownRenderChild(host)

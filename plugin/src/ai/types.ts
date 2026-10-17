@@ -386,6 +386,8 @@ export const GITHUB_TOOLS = [
 export const GITHUB_TOOL_MODES: Record<string, ToolMode> = Object.fromEntries(
   GITHUB_TOOLS.map((name) => [name, 'auto'])
 )
+/** New neutral names follow the ordinary default-Off policy, independently of aliases. */
+export const FORGE_TOOLS = GITHUB_TOOLS.map((name) => name.replace(/^github_/, 'forge_'))
 
 /** Tools always sent to agent, governed by permissionMode */
 export const CORE_TOOLS = new Set([

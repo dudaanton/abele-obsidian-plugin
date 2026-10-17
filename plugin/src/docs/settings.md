@@ -196,7 +196,8 @@ adapters. An omitted field means GitHub. Records for unavailable providers retai
 deployment bases and key references through transfer; GitHub operations never use their keys.
 They are excluded from the compatibility `github.server` and `github.keyId` projection.
 
-The connection editor supports GitHub and Forgejo. Forgejo uses the complete deployment base
+The connection editor supports GitHub, Forgejo and Gitea. The Codeberg preset fills its address while
+retaining Forgejo as the provider. Forgejo uses the complete deployment base
 (including a port or path), native token authentication and a transient access check. Check does
 not save a credential; Save does. Changing a provider or server clears the draft token and does
 not reuse the previous credential binding. A Forgejo connection saved without a token can read
@@ -204,13 +205,23 @@ public repositories. A transferred connection with a missing referenced key inst
 the token is unavailable; it never borrows another account's key.
 
 Forgejo browsing currently covers repository home/tree/files, branches/tags, issues and pull
-request conversations, changed files and commits. Unsupported operations report that they are
-not available for this service in this version. GitHub tools, repository search/pickers beyond
-opening a pasted URL, notifications, comparison bases and node pull-request creation remain
-GitHub-only in this slice. Creating a Forgejo connection does not grant any agent access.
+request conversations, changed files and commits. File pages can pin an exact comparison base;
+commit details and path history use native routes. Repository code/name search and heuristic
+definitions use immutable revisions and native archives within the configured size limit.
+Unsupported operations report that they are not available for this service in this version.
+Changed-code search uses available patches and reports missing patches and imprecise diff links.
+Native lists, pickers, comparison links, people, snippets and the single inbox use the selected
+connection. Native inboxes support read, not Done; notification writes never change issue or
+pull-request state. Explicit comments, merge confirmation and node PR creation use native
+endpoints; drafts and threaded review replies are unavailable in the pinned APIs. Older node
+host-only metadata cannot resolve deployment subpaths. Lost write responses are retained in
+session memory and never blindly reposted. Creating a connection grants no agent access.
+Both `forge_*` names and `github_*` compatibility names obey per-tool and per-connection
+permissions; new neutral names default Off and delegated ceilings still apply.
 
-`github.enabled` is the whole integration, off unless the person turned it on: GitHub issues,
-pull requests, discussions, commits and files at a ref open in tabs of their own, read only.
+`github.enabled` is the whole integration, off unless the person turned it on: supported service
+issues, pull requests, discussions, commits and files at a ref open in tabs of their own.
+Repository files and agent tools are read-only; native human comment/merge actions are explicit.
 `github.openLinks` decides whether a click on such a link in a note opens that tab instead of
 the browser. `github.connections` lists named connections with stable IDs, a `server` address
 (empty for github.com), `owners` preferences and `isDefault` per server. Optional `account`

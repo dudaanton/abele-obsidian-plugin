@@ -112,6 +112,7 @@ const SHOTS = shotDir('abele-phone')
  * differ.
  */
 const DIALOGS = [
+  'native-pr-create',
   'chat-artifacts-empty',
   'chat-artifacts',
   'chat-artifacts-long',

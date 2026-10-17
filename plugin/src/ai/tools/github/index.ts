@@ -15,6 +15,7 @@ import { clip, MAX_OUTPUT, type GithubToolOperation } from './shared'
 import { GithubError } from '@/github/client'
 import { primaryAccess, primaryAccessKey } from '@/github/primaryAccess'
 import { endpoints } from '@/github/urls'
+import { forgeViews, runNativeTool, usesNativeTool } from './nativeTools'
 
 const factories = [
   createGithubViewsTool,
@@ -39,10 +40,25 @@ function labelled(result: AgentToolResult, label: string): AgentToolResult {
 }
 
 export function createGithubTools(access?: GithubToolAccess): AgentTool[] {
+  return createTools(access, 'github')
+}
+export function createForgeTools(access?: GithubToolAccess): AgentTool[] {
+  return createTools(access, 'forge')
+}
+function createTools(
+  access: GithubToolAccess | undefined,
+  namespace: 'github' | 'forge'
+): AgentTool[] {
   return factories.map((factory): AgentTool => {
     const tool = factory()
     return {
       ...tool,
+      name: tool.name.replace(/^github_/, `${namespace}_`),
+      label: namespace === 'forge' ? tool.label.replace(/GitHub/g, 'Git repositories') : tool.label,
+      description:
+        namespace === 'forge'
+          ? `Read configured Git providers through their supported capabilities. Native services use repository-local search and explicit unavailable states; GitHub behavior follows. ${tool.description}`
+          : tool.description,
       parameters: {
         ...tool.parameters,
         properties: {
@@ -61,6 +77,8 @@ export function createGithubTools(access?: GithubToolAccess): AgentTool[] {
           agent: () => access?.agent(ctx),
           approve: access?.approve,
         }
+        if (tool.name === 'github_views' && access) return forgeViews(params, callAccess, signal)
+        if (usesNativeTool(params)) return runNativeTool(tool.name, params, callAccess, signal)
         // Unmigrated test/compatibility callers have only the old single-server context.
         // Runtime settings load always migrates an existing credential into a connection.
         if (!access && !(githubSettings().connections ?? []).length && !params.connection)
@@ -113,7 +131,7 @@ export function createGithubTools(access?: GithubToolAccess): AgentTool[] {
           let primaryDenied = knownRefusal
           if (!knownRefusal) {
             try {
-              await primaryAccess(operation.client, primary!)
+              await primaryAccess(operation.client, primary)
             } catch (probeError) {
               if (
                 probeError instanceof GithubError &&
@@ -149,7 +167,7 @@ export function createGithubTools(access?: GithubToolAccess): AgentTool[] {
             if (next.client.endpoints.api !== operation.client.endpoints.api)
               throw new Error('The GitHub fallback connection changed to a different server.')
             try {
-              await primaryAccess(next.client, next.primaryTarget ?? next.target!)
+              await primaryAccess(next.client, next.primaryTarget ?? next.target)
             } catch (probeError) {
               if (
                 probeError instanceof GithubError &&

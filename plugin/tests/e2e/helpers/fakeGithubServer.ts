@@ -698,7 +698,17 @@ async function notifications(req: IncomingMessage, res: ServerResponse, url: URL
 }
 
 /** Forgejo 11 response shapes, deliberately distinct from the GitHub personality. */
-function forgejo(req: IncomingMessage, res: ServerResponse, url: URL, origin: string) {
+const nativeRead = new Set<string>()
+const nativeComments: Record<
+  string,
+  { id: number; body: string; user: { login: string }; created_at: string; html_url: string }[]
+> = {}
+async function forgejo(req: IncomingMessage, res: ServerResponse, url: URL, origin: string) {
+  const avatar = /^\/forge\/avatars\/([\w.-]+)\.png$/.exec(url.pathname)
+  if (avatar)
+    return req.headers.authorization
+      ? send(res, 401, {})
+      : send(res, 200, avatarPng(avatar[1]), 'image/png')
   const account =
     req.headers.authorization === 'token invented-connection-two'
       ? 'two'
@@ -706,24 +716,113 @@ function forgejo(req: IncomingMessage, res: ServerResponse, url: URL, origin: st
         ? 'one'
         : 'anonymous'
   const fail = (status = 404) => send(res, status, { message: 'Sample Forgejo request refused.' })
-  if (req.method !== 'GET' || !url.pathname.startsWith('/forge/api/v1/')) return fail()
+  if (!url.pathname.startsWith('/forge/api/v1/')) return fail()
   if (req.headers.authorization && account === 'anonymous') return fail(401)
   const route = decodeURIComponent(url.pathname.slice('/forge/api/v1'.length))
   const web = `${origin}/forge`,
     f = fixtures(web)
+  if (route.startsWith('/users/'))
+    return send(res, 200, {
+      login: route.slice(7),
+      full_name: 'Sample native profile',
+      avatar_url:
+        route.slice(7) === 'bob'
+          ? 'https://outside.example.test/avatar.png'
+          : `${web}/avatars/${route.slice(7)}.png?size=64`,
+    })
+  if (route === '/notifications' && req.method === 'GET')
+    return send(
+      res,
+      200,
+      [
+        {
+          id: 701,
+          unread: !nativeRead.has(account),
+          pinned: false,
+          updated_at: '2026-01-01T00:00:00Z',
+          repository: { full_name: `${OWNER}/${REPO}` },
+          subject: {
+            title: 'Sample native notification with a long description for narrow screens',
+            type: account === 'one' ? 'Release' : 'Issue',
+            html_url:
+              account === 'one'
+                ? `${web}/${OWNER}/${REPO}/releases/tag/sample-v1`
+                : `${web}/${OWNER}/${REPO}/issues/${ISSUE}`,
+          },
+        },
+      ].filter((n) => n.unread || url.searchParams.getAll('status-types').includes('read'))
+    )
+  if (
+    (route === '/notifications/threads/701' && req.method === 'PATCH') ||
+    (route === '/notifications' && req.method === 'PUT')
+  ) {
+    nativeRead.add(account)
+    return send(res, 205, {})
+  }
+  if (req.method !== 'GET') {
+    let raw = ''
+    for await (const chunk of req) raw += chunk
+    const body = JSON.parse(raw || '{}') as {
+      body?: string
+      title?: string
+      head_commit_id?: string
+      Do?: string
+    }
+    const comment = /^\/repos\/[^/]+\/[^/]+\/issues\/(\d+)\/comments$/.exec(route)
+    if (req.method === 'POST' && comment && body.body) {
+      const made = {
+        id: 9801,
+        body: body.body,
+        user: { login: `sample-account-${account}` },
+        created_at: '2026-01-01T00:00:00Z',
+        html_url: `${web}/${OWNER}/${REPO}/issues/${comment[1]}#issuecomment-9801`,
+      }
+      ;(nativeComments[`${account}:${comment[1]}`] ??= []).push(made)
+      return send(res, 201, made)
+    }
+    if (req.method === 'POST' && route.endsWith('/pulls') && body.title)
+      return send(res, 201, { number: 15 })
+    if (
+      req.method === 'POST' &&
+      route.endsWith('/merge') &&
+      body.Do === 'merge' &&
+      body.head_commit_id === HEAD_SHA
+    )
+      return send(res, 200, { merged: true })
+    return fail(422)
+  }
   const paged = <T>(rows: T[]) => {
     const size = Number(url.searchParams.get('limit') ?? 50),
       page = Number(url.searchParams.get('page') ?? 1)
     return rows.slice((page - 1) * size, page * size)
   }
-  if (route === '/version') return send(res, 200, { version: '11.0.0' })
+  if (route === '/version')
+    return send(res, 200, { version: mode === 'gitea' ? '1.24.0' : '11.0.0' })
   if (route === '/user')
     return account === 'anonymous'
       ? fail(401)
       : send(res, 200, { id: account === 'one' ? 1 : 2, login: `sample-account-${account}` })
+  const directoryRepo = {
+    name: REPO,
+    owner: { login: OWNER },
+    description: f.repo.description,
+    default_branch: 'main',
+    stars_count: 1234,
+  }
+  if (route === '/user/repos' || route === '/user/starred')
+    return send(res, 200, paged([directoryRepo]))
+  if (route === '/repos/search') return send(res, 200, { ok: true, data: [directoryRepo] })
   const match = new RegExp(`^/repos/${OWNER}/([^/]+)(.*)$`).exec(route)
   if (!match) return fail()
   const [, repository, path] = match
+  if (/^\/compare\/[a-f\d]{40}\.\.\.[a-f\d]{40}$/.test(path))
+    return send(res, 200, {
+      commits: f.commits,
+      total_commits: f.commits.length,
+      ...(mode === 'gitea' ? {} : { files: f.files.map(({ patch: _patch, ...file }) => file) }),
+    })
+  if (path === '/labels') return send(res, 200, [{ name: 'sample-label', color: 'abcdef' }])
+  if (path === '/milestones') return send(res, 200, [])
   if (
     ![
       'widgets',
@@ -780,8 +879,18 @@ function forgejo(req: IncomingMessage, res: ServerResponse, url: URL, origin: st
     const { additions: _a, deletions: _d, changed_files: _f, commits: _c, ...native } = f.pull
     return send(res, 200, { ...native, merged: false })
   }
-  if (path === `/issues/${ISSUE}/comments`) return send(res, 200, paged(f.issueComments))
-  if (path === `/issues/${PULL}/comments`) return send(res, 200, paged(f.pullComments))
+  if (path === `/issues/${ISSUE}/comments`)
+    return send(
+      res,
+      200,
+      paged([...f.issueComments, ...(nativeComments[`${account}:${ISSUE}`] ?? [])])
+    )
+  if (path === `/issues/${PULL}/comments`)
+    return send(
+      res,
+      200,
+      paged([...f.pullComments, ...(nativeComments[`${account}:${PULL}`] ?? [])])
+    )
   if (path === `/pulls/${PULL}/reviews`)
     return send(
       res,
@@ -795,6 +904,42 @@ function forgejo(req: IncomingMessage, res: ServerResponse, url: URL, origin: st
       paged(f.reviewComments.map((c) => ({ ...c, old_line_num: 0, new_line_num: c.line })))
     )
   if (path === `/pulls/${PULL}/commits`) return send(res, 200, paged(f.commits))
+  if (path === '/commits') return send(res, 200, paged(f.commits))
+  const archive = /^\/archive\/([a-f\d]{40})\.tar\.gz$/.exec(path)
+  if (archive) {
+    const files = repositoryFilesAt(archive[1])
+    return files ? send(res, 200, tarball(files, 'sample-project'), 'application/gzip') : fail()
+  }
+  const nativeCommit = /^\/git\/commits\/([a-f\d]{40})(\.diff)?$/.exec(path)
+  if (nativeCommit) {
+    const detail = f.commitDetail(nativeCommit[1])
+    if (!detail) return fail()
+    if (nativeCommit[2])
+      return send(
+        res,
+        200,
+        detail.files
+          .map(
+            (file) =>
+              `diff --git a/${file.filename} b/${file.filename}\n--- ${file.status === 'added' ? '/dev/null' : `a/${file.filename}`}\n+++ ${file.status === 'removed' ? '/dev/null' : `b/${file.filename}`}\n${file.patch ?? ''}\n`
+          )
+          .join(''),
+        'text/plain'
+      )
+    return send(res, 200, {
+      ...detail,
+      files: detail.files.map(({ patch: _patch, ...file }) => file),
+    })
+  }
+  const nativeBlob = /^\/git\/blobs\/([a-f\d]{40})$/.exec(path)
+  if (nativeBlob) {
+    const text = [HEAD_SHA, BASE_SHA]
+      .flatMap((ref) => Object.values(repositoryFilesAt(ref) ?? {}))
+      .find((text) => blobSha(text) === nativeBlob[1])
+    return text === undefined
+      ? fail()
+      : send(res, 200, { encoding: 'base64', content: base64(text), size: Buffer.byteLength(text) })
+  }
   if (path === `/pulls/${PULL}/files`)
     return send(res, 200, paged(f.files.map(({ patch: _patch, ...file }) => file)))
   if (path === `/pulls/${PULL}.diff`)
@@ -876,7 +1021,7 @@ const server = createServer((req, res) => {
   const host = req.headers.host ?? `127.0.0.1:${port}`
   const url = new URL(req.url ?? '/', `http://${host}`)
   const web = `http://${host}`
-  if (mode === 'forgejo') {
+  if (mode === 'forgejo' || mode === 'gitea') {
     console.log(`${req.method} ${url.pathname}${url.search}`)
     return forgejo(req, res, url, web)
   }

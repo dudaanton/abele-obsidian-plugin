@@ -69,7 +69,9 @@ export function itemHead(t: GithubTarget | null, data: ItemData | null): ItemHea
       meta: [
         commits,
         c.behindBy === null ? 'Behind: unknown' : `${c.behindBy} behind`,
-        c.filesComplete || c.files.length ? `+${c.additions} −${c.deletions}` : '',
+        (c.filesComplete || c.files.length) && !c.files.some((file) => file.countsPending)
+          ? `+${c.additions} −${c.deletions}`
+          : '',
         c.mergeBaseSha ? `split at ${c.mergeBaseSha.slice(0, 7)}` : '',
       ].filter(Boolean),
     }

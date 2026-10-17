@@ -19,6 +19,11 @@ export interface CommitSummary {
   avatar?: string
   date: string
 }
+export interface RepositoryPerson {
+  login: string
+  name: string | null
+  avatar: string | null
+}
 
 export interface CommitData {
   sha: string

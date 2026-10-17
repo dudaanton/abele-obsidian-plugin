@@ -162,8 +162,8 @@
           :text="
             source?.identity.provider === 'node'
               ? 'Loading from the node…'
-              : source?.identity.provider === 'forgejo'
-                ? 'Loading from Forgejo…'
+              : isNativeForge(source?.identity.provider)
+                ? `Loading from ${nativeLabel(source?.identity.provider)}…`
                 : 'Loading from GitHub…'
           "
         />
@@ -341,6 +341,21 @@
           />
         </template>
 
+        <NativeActions
+          v-if="
+            source?.github?.writes &&
+            !model.allowedConnections &&
+            ((shown.kind === 'issue' && issue) ||
+              (shown.kind === 'pull' && pull && pullTab === 'conversation'))
+          "
+          :key="`${source.cacheNamespace}:${shown.kind}:${head.number}`"
+          :writer="source.github.writes"
+          :number="shown.kind === 'issue' ? issue!.number : pull!.number"
+          :head="pull?.headSha"
+          :open="(issue || pull)?.state === 'open'"
+          :pull="shown.kind === 'pull'"
+          @refresh="reload(true)"
+        />
         <GithubProseActions v-if="root && main.data.value" :root="root" />
       </template>
     </div>
@@ -349,6 +364,7 @@
 
 <script setup lang="ts">
 import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
+import { isNativeForge, nativeLabel } from '@/forge/native'
 import { computed, ref } from 'vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import { openAbeleSettings } from '@/components/settings/settingsTab'
@@ -371,6 +387,7 @@ import GithubFolder from './GithubFolder.vue'
 import GithubRepoHome from './GithubRepoHome.vue'
 import GithubList from './GithubList.vue'
 import GithubProseActions from './GithubProseActions.vue'
+import NativeActions from './NativeActions.vue'
 import GithubTreePanel from './GithubTreePanel.vue'
 import GithubLayout from './GithubLayout.vue'
 import type { PaneType } from 'obsidian'
@@ -441,10 +458,10 @@ const {
   reload,
 } = useGithubItem(props)
 
-/** A GitHub repository's files, folders and home can be compared against a pinned version. */
+/** Remote repository files, folders and home can be compared against a pinned version. */
 const canPinBase = computed(
   () =>
-    source.value?.identity.provider === 'github' &&
+    ['github', 'forgejo', 'gitea'].includes(source.value?.identity.provider) &&
     !!repoRef.value &&
     ['blob', 'tree', 'repo'].includes(shown.value.kind)
 )

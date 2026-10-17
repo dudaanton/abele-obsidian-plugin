@@ -1,3 +1,4 @@
+import { isNativeForge } from '@/forge/native'
 /**
  * Links and images in a markdown file from GitHub, pointed where GitHub points them.
  *
@@ -15,7 +16,7 @@ import { deployment } from '@/forge/identity'
 
 /** The file a preview shows: its repository, the ref it was read at, and its path. */
 export interface RepoFile {
-  provider?: 'github' | 'forgejo'
+  provider?: 'github' | 'forgejo' | 'gitea'
   host: string
   origin?: string
   owner: string
@@ -101,11 +102,11 @@ export function hrefAction(href: string, file: RepoFile): HrefAction {
   // `?plain=1` alone, or `#…` after a query: this same file.
   const segments = path ? resolveRepoPath(file.path, path) : file.path.split('/')
   const ref = encodePath(file.ref.split('/'))
-  if (file.provider === 'forgejo')
+  if (isNativeForge(file.provider))
     return {
       kind: 'repo',
       url:
-        forgejoUrls(deployment('forgejo', file.origin)).file(
+        forgejoUrls(deployment(file.provider, file.origin)).file(
           `${file.owner}/${file.repo}`,
           file.ref,
           segments.join('/')
@@ -126,7 +127,7 @@ export function hrefAction(href: string, file: RepoFile): HrefAction {
 
 /** Where a file's bytes are served from without the API: github.com's raw host, or the server's. */
 export function rawUrl(file: RepoFile, segments: string[]): string {
-  if (file.provider === 'forgejo') {
+  if (isNativeForge(file.provider)) {
     const kind = /^[a-f\d]{40}$/i.test(file.ref) ? 'commit' : 'branch'
     return `${repoBase(file)}/raw/${kind}/${encodeURIComponent(file.ref)}/${encodePath(segments)}`
   }

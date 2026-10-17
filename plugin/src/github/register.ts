@@ -17,7 +17,7 @@ import {
   parseForSettings,
 } from './GithubService'
 import { linkAtClick, paneForClick, urlAtCursor } from './links'
-import { registerSnippetBlock } from './snippetCard'
+import { registerSnippetBlock, registerForgeSnippetBlock } from './snippetCard'
 import { OpenPicker } from './open/OpenPicker'
 import { RepoPicker } from './open/RepoPicker'
 import { initGithubUsers } from './users'
@@ -111,6 +111,9 @@ export function registerGithub(plugin: Plugin): void {
   plugin.register(() => void users.save())
   // Code and comments kept in notes, drawn as cards.
   registerSnippetBlock((lang, handler) => plugin.registerMarkdownCodeBlockProcessor(lang, handler))
+  registerForgeSnippetBlock((lang, handler) =>
+    plugin.registerMarkdownCodeBlockProcessor(lang, handler)
+  )
 
   // Capture phase, so this runs before Obsidian's own handler on the link and can stop it.
   const onClick = linkClickHandler(app)

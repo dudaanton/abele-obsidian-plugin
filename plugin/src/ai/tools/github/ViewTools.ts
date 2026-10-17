@@ -78,7 +78,10 @@ function describe(n: number, { leaf, model }: Shown): string[] {
   else if (!s.title) out.push('   Still loading.')
   if (s.section) out.push(`   Showing ${SECTION_NAME[s.section] ?? s.section}.`)
   if (model.tree) out.push('   The file tree panel is open beside it, at the version shown.')
-  if (s.comparison) out.push(`   Exact comparison: ${s.comparison.baseRef} (${s.comparison.baseSha}) → ${s.comparison.targetSha}`)
+  if (s.comparison)
+    out.push(
+      `   Exact comparison: ${s.comparison.baseRef} (${s.comparison.baseSha}) → ${s.comparison.targetSha}`
+    )
   if (s.expanded.length) out.push(`   Open diffs: ${s.expanded.join(', ')}`)
   if (s.selection) {
     const sel = s.selection
@@ -103,7 +106,7 @@ function describeProse(p: ProseSelection): string[] {
 }
 
 export function createGithubViewsTool(
-  operation?: import('./shared').GithubToolOperation
+  operation?: Pick<import('./shared').GithubToolOperation, 'canReadTab' | 'inventory'>
 ): AgentTool {
   return {
     name: 'github_views',
@@ -123,9 +126,13 @@ export function createGithubViewsTool(
       const out = [`${tabs.length} GitHub tab${tabs.length === 1 ? '' : 's'} open.`, '']
       if (operation) out.unshift(operation.inventory, '')
       tabs.forEach((tab, i) => {
-        const row=githubSettings().connections?.find(c=>c.id===tab.model.connectionId)
-        const current = row ? !!tab.model.target && sameConnectionServer(row,tab.model.target) &&
-          (!tab.model.screenNamespace || tab.model.screenNamespace===connectionGeneration(row.id)) : !tab.model.connectionId && tab.model.target?.host==='github.com'
+        const row = githubSettings().connections?.find((c) => c.id === tab.model.connectionId)
+        const current = row
+          ? !!tab.model.target &&
+            sameConnectionServer(row, tab.model.target) &&
+            (!tab.model.screenNamespace ||
+              tab.model.screenNamespace === connectionGeneration(row.id))
+          : !tab.model.connectionId && tab.model.target?.host === 'github.com'
         if (operation && (!operation.canReadTab(tab.model.connectionId) || !current)) {
           out.push(`${i + 1}. Restricted GitHub tab (connection access not granted).`, '')
         } else {

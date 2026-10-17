@@ -17,6 +17,10 @@ import {
   type TreeEntry,
 } from '@/github/tree/fileTree'
 import { forgejoPatch } from './forgejoDiff'
+import { forgejoComparison } from './forgejoComparison'
+import { forgejoSearch } from './forgejoSearch'
+import { forgejoLists } from './forgejoLists'
+import { nativeWrites } from './forgejoWrites'
 import { forgejoUrls } from './forgejoUrls'
 import { ForgejoError, type ForgejoClient } from './forgejoClient'
 import { languageShares, type ItemRow, type ReleaseData } from '@/github/repoPage/repoHome'
@@ -70,6 +74,13 @@ interface RawCommit {
   commit: { message: string; author: { name: string; date: string } }
   author?: { login: string } | null
 }
+const commitSummary = (row: RawCommit): CommitSummary => ({
+  sha: row.sha,
+  message: row.commit.message,
+  author: row.author?.login ?? row.commit.author.name,
+  login: row.author?.login,
+  date: row.commit.author.date,
+})
 interface RawFile {
   filename: string
   previous_filename?: string
@@ -81,6 +92,10 @@ export function forgejoRepository(client: ForgejoClient, repository: string): Re
   const urls = forgejoUrls(client.deployment)
   const web = urls.repository(repository)
   const api = `/repos/${repository.split('/').map(encodeURIComponent).join('/')}`
+  const comparisons = forgejoComparison(client, api, () => source)
+  const code = forgejoSearch(client, api, () => source)
+  const lists = forgejoLists(client, api, web)
+  const people = new Map<string, Promise<import('@/repository/model').RepositoryPerson>>()
   const unavailable = async (): Promise<never> => {
     throw new Error('Not available for this service in this version.')
   }
@@ -231,6 +246,51 @@ export function forgejoRepository(client: ForgejoClient, repository: string): Re
       date: row.commit.author.date,
     }))
     return { commits, complete: result.complete }
+  }
+  const commit: RepositorySource['commit'] = async (ref) => {
+    const sha = await resolve(ref)
+    const raw = await client.get<RawCommit & { parents?: { sha: string }[]; files?: RawFile[] }>(
+      `${api}/git/commits/${encodeURIComponent(sha)}`
+    )
+    let patches: Promise<string> | undefined
+    return {
+      ...commitSummary(raw),
+      parentSha: raw.parents?.[0]?.sha,
+      url: `${web}/commit/${sha}`,
+      files: (raw.files ?? []).map((file) => {
+        const shown: DiffFile = {
+          path: file.filename,
+          previousPath: file.previous_filename,
+          status:
+            file.status === 'deleted'
+              ? 'removed'
+              : file.status === 'changed'
+                ? 'modified'
+                : file.status,
+          additions: file.additions ?? 0,
+          deletions: file.deletions ?? 0,
+          countsPending: file.additions === undefined || file.deletions === undefined,
+          hash: '',
+          reviewComments: [],
+        }
+        shown.loadPatch = async () => {
+          client.session.assertCurrent()
+          patches ??= client
+            .text(`${api}/git/commits/${encodeURIComponent(sha)}.diff`)
+            .catch((error) => {
+              patches = undefined
+              throw error
+            })
+          const diff = await patches
+          client.session.assertCurrent()
+          shown.patch = forgejoPatch(diff, file.filename, shown.status === 'removed')
+          shown.diffNote = shown.patch
+            ? undefined
+            : 'No text patch is available for this file (binary, empty, renamed, or truncated).'
+        }
+        return shown
+      }),
+    }
   }
   const mapMetadata = (raw: RawRepo): RepoMeta => {
     return {
@@ -429,9 +489,93 @@ export function forgejoRepository(client: ForgejoClient, repository: string): Re
       },
     }
   }
+  const compare: RepositorySource['compare'] = async (base, head, direct = false) => {
+    const from = await resolve(base),
+      to = await resolve(head)
+    const native = await client.get<{
+      commits: RawCommit[]
+      total_commits: number
+      files?: RawFile[]
+    }>(`${api}/compare/${from}...${to}`)
+    const index = direct ? await comparisons.index(from, to) : undefined
+    const files: DiffFile[] = index
+      ? index.changes.map((change) => {
+          const file: DiffFile = {
+            path: change.path,
+            previousPath: change.previousPath,
+            status: change.status,
+            hash: '',
+            additions: 0,
+            deletions: 0,
+            countsPending: true,
+            reviewComments: [],
+          }
+          file.loadPatch = async () => {
+            const value = await comparisons.file(index, change.path)
+            file.diffNote = value.note
+            if (!value.text) return
+            const before = value.text.lines.filter((line) =>
+              ['ctx', 'del'].includes(line.type)
+            ).length
+            const after = value.text.lines.filter((line) =>
+              ['ctx', 'add'].includes(line.type)
+            ).length
+            file.patch =
+              `@@ -${before ? 1 : 0},${before} +${after ? 1 : 0},${after} @@\n` +
+              value.text.lines
+                .map(
+                  (line) =>
+                    `${line.type === 'add' ? '+' : line.type === 'del' ? '-' : line.type === 'note' ? '' : ' '}${line.text}`
+                )
+                .join('\n') +
+              '\n'
+            file.additions = value.text.additions
+            file.deletions = value.text.deletions
+            file.countsPending = false
+          }
+          return file
+        })
+      : (native.files ?? []).map(
+          (file): DiffFile => ({
+            path: file.filename,
+            previousPath: file.previous_filename,
+            status: file.status === 'deleted' ? 'removed' : file.status,
+            additions: file.additions ?? 0,
+            deletions: file.deletions ?? 0,
+            countsPending: file.additions === undefined || file.deletions === undefined,
+            hash: '',
+            reviewComments: [],
+            diffNote:
+              'The native comparison does not include text patches. Pin an endpoint base to compare full file contents.',
+          })
+        )
+    client.session.assertCurrent()
+    return {
+      base: from,
+      head: to,
+      direct,
+      mode: direct ? 'endpoint' : 'merge-base',
+      status: from === to ? 'identical' : '',
+      aheadBy: null,
+      behindBy: null,
+      totalCommits: native.total_commits,
+      commits: native.commits.map(commitSummary),
+      commitsComplete: native.commits.length >= native.total_commits,
+      files,
+      filesComplete: !!index,
+      additions: files.reduce((n, f) => n + f.additions, 0),
+      deletions: files.reduce((n, f) => n + f.deletions, 0),
+      headSha: to,
+      mergeBaseSha: direct ? from : undefined,
+      url: source.navigation.comparison(from, to, direct),
+      note: direct
+        ? undefined
+        : 'Native comparison metadata; the service does not supply a verified merge-base SHA or text patches here. Pin an endpoint base for full file diffs.',
+    }
+  }
   const source: RepositorySource = {
     identity: {
-      provider: 'forgejo',
+      provider: client.deployment.kind === 'gitea' ? 'gitea' : 'forgejo',
       connection: client.session.connectionId,
       deployment: client.deployment,
       repository,
@@ -452,7 +596,8 @@ export function forgejoRepository(client: ForgejoClient, repository: string): Re
       file: (ref, path, line) => fileUrl(ref, path, line ? { from: line, to: line } : undefined),
       folder: (ref, path) => fileUrl(ref, path),
       commit: (sha) => `${web}/commit/${encodeURIComponent(sha)}`,
-      comparison: () => web,
+      comparison: (base, head, direct = false) =>
+        `${web}/compare/${encodeURIComponent(base)}${direct ? '..' : '...'}${encodeURIComponent(head)}`,
       blobLink: (sha, path, lines) => ({
         label: `${repository}/${path}`,
         url: urls.file(repository, sha, path, lines),
@@ -494,20 +639,58 @@ export function forgejoRepository(client: ForgejoClient, repository: string): Re
     },
     workspaces: async () => [],
     status: async () => ({ supported: false, files: [] }),
-    compare: unavailable,
-    comparison: unavailable,
-    comparisonFile: unavailable,
-    commit: unavailable,
-    commits: unavailable,
+    compare,
+    comparison: comparisons.index,
+    comparisonFile: comparisons.file,
+    commit,
+    commits: async (ref, path) => {
+      const sha = await resolve(ref)
+      // The existing history view displays one bounded page; resolve aliases before reading it.
+      const rows = await client.get<RawCommit[]>(
+        `${api}/commits?sha=${encodeURIComponent(sha)}${path ? `&path=${encodeURIComponent(path)}` : ''}&limit=100&page=1`
+      )
+      return rows.map(commitSummary)
+    },
     blame: unavailable,
-    search: unavailable,
-    definitions: unavailable,
+    search: code.search,
+    definitions: code.definitions,
     subscribe: () => () => {},
     github: {
+      writes: nativeWrites(client, repository),
+      person: async (login) => {
+        client.session.assertCurrent()
+        if (!/^[\w.-]{1,100}$/.test(login)) throw new Error('Invalid profile login.')
+        let pending = people.get(login)
+        if (pending === undefined) {
+          pending = (async () => {
+            const raw = await client.get<{
+              login: string
+              full_name?: string
+              name?: string
+              avatar_url?: string
+            }>(`/users/${encodeURIComponent(login)}`)
+            if (raw.login.toLowerCase() !== login.toLowerCase())
+              throw new Error('The service returned a different profile.')
+            const avatar = raw.avatar_url ? await client.avatar(raw.avatar_url) : null
+            client.session.assertCurrent()
+            return { login, name: raw.full_name || raw.name || null, avatar }
+          })()
+          people.set(login, pending)
+          void pending.catch(() => {
+            if (people.get(login) === pending) people.delete(login)
+          })
+          while (people.size > 32) people.delete(people.keys().next().value)
+        }
+        const person = await pending
+        client.session.assertCurrent()
+        return person
+      },
+      listMore: lists.more,
+      listChoices: lists.choices,
       conversation,
       pullFiles,
       pullCommits,
-      loadTarget: async (target: GithubTarget, promote) => {
+      loadTarget: async (target: GithubTarget, promote, pinned = {}) => {
         if (
           `${target.owner}/${target.repo}` !== repository ||
           target.origin !== client.deployment.webBase
@@ -521,6 +704,9 @@ export function forgejoRepository(client: ForgejoClient, repository: string): Re
           return issue(target.number, true)
         }
         if (target.kind === 'pull') return issue(target.number, true)
+        if (target.kind === 'commit') return commit(target.sha)
+        if (target.kind === 'list') return lists.list(target)
+        if (target.kind === 'compare') return compare(target.base, target.head, target.direct)
         if (target.kind === 'blob' || target.kind === 'tree') {
           let ref = '',
             path = '',
@@ -542,6 +728,23 @@ export function forgejoRepository(client: ForgejoClient, repository: string): Re
           }
           if (!ref) throw new Error('This reference could not be found on the service.')
           if (target.refKind) refKinds.set(ref, target.refKind)
+          if (pinned.base && target.kind === 'blob') {
+            const index = await comparisons.index(pinned.base.baseSha, sha, pinned.signal)
+            const change = index.changes.find((c) => c.path === path || c.previousPath === path)
+            await index.target.reveal(path)
+            client.session.assertCurrent()
+            if (change || findNode(index.target.root, path)?.kind === 'file') {
+              const comparison = await comparisons.file(index, path, false, pinned.signal)
+              return {
+                ref: sha,
+                resolvedCommit: sha,
+                path: comparison.path,
+                text: comparison.after?.text ?? '',
+                url: fileUrl(sha, comparison.path),
+                comparison,
+              }
+            }
+          }
           const raw = await contents(sha, path)
           if (Array.isArray(raw)) {
             if (!path) {

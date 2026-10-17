@@ -3,6 +3,7 @@ import { sourceKey, type RepositoryIdentity, type RepositorySource } from '@/rep
 import { commitSha } from '../api'
 import type { GithubClient } from '../client'
 import { repoApiPath } from '../contents'
+import { savedForgeTarget } from '@/repository/state'
 
 export interface Repository {
   host: string
@@ -12,7 +13,7 @@ export interface Repository {
 }
 export interface BasePin {
   /** Local sources are scoped to opaque workspace identities, never their display labels. */
-  source?: Extract<RepositoryIdentity, { provider: 'node' }>
+  source?: Exclude<RepositoryIdentity, { provider: 'github' }>
   origin: string
   owner: string
   repo: string
@@ -27,7 +28,7 @@ export const PIN_KEY = 'abele-github-comparison-bases'
 export const repositoryKey = (repo: Repository) =>
   `${new URL(repo.origin ?? `https://${repo.host}`).origin}/${repo.owner.toLowerCase()}/${repo.repo.toLowerCase()}`
 const pinKey = (repo: Repository, source?: RepositoryIdentity) =>
-  source?.provider === 'node' ? sourceKey(source) : repositoryKey(repo)
+  source && source.provider !== 'github' ? sourceKey(source) : repositoryKey(repo)
 
 /** Reading context, deliberately outside synced settings and settings transfer. */
 export class BasePins {
@@ -56,6 +57,28 @@ export class BasePins {
         }
         if (row.source !== undefined) {
           const source = row.source
+          if (source && ['forgejo', 'gitea', 'gitlab'].includes(source.provider)) {
+            const saved = savedForgeTarget({
+              sourceTarget: {
+                version: 1,
+                provider: source.provider,
+                connection: source.connection,
+                deployment: source.deployment,
+                repository: source.repository,
+                url: `${source.deployment?.webBase}/${source.repository}`,
+              },
+            })
+            if (!saved) continue
+            pin.source = {
+              provider: saved.provider,
+              connection: saved.connection,
+              deployment: saved.deployment,
+              repository: saved.repository,
+            }
+            pin.origin = saved.deployment.webBase
+            this.pins.set(pinKey({ ...pin, host: url.host }, pin.source), pin)
+            continue
+          }
           if (
             !source ||
             source.provider !== 'node' ||
@@ -116,8 +139,11 @@ export class BasePins {
     if (!/^[a-f\d]{40}$/i.test(baseSha))
       throw new Error('The source did not resolve that ref to a commit SHA.')
     return {
-      ...(source.identity.provider === 'node' ? { source: { ...source.identity } } : {}),
-      origin: new URL(repo.origin ?? `https://${repo.host}`).origin,
+      ...(source.identity.provider !== 'github' ? { source: { ...source.identity } } : {}),
+      origin:
+        source.identity.provider !== 'github' && source.identity.provider !== 'node'
+          ? source.identity.deployment.webBase
+          : new URL(repo.origin ?? `https://${repo.host}`).origin,
       owner: repo.owner.toLowerCase(),
       repo: repo.repo.toLowerCase(),
       enteredRef: ref,

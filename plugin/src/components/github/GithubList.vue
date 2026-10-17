@@ -63,7 +63,7 @@
           @update:model-value="(v: string) => set('milestone', v)"
         />
       </label>
-      <label v-if="target.list === 'pulls'" class="abele-github-list__filter">
+      <label v-if="target.list === 'pulls' && !native" class="abele-github-list__filter">
         <span>Review</span>
         <Dropdown
           :options="[
@@ -74,7 +74,7 @@
           @update:model-value="(v: string) => set('review', v)"
         />
       </label>
-      <label v-if="target.list === 'pulls'" class="abele-github-list__filter">
+      <label v-if="target.list === 'pulls' && !native" class="abele-github-list__filter">
         <span>Draft</span>
         <Dropdown
           :options="[
@@ -119,6 +119,7 @@
       </label>
     </div>
 
+    <EmptyState v-if="data.note" :text="data.note" />
     <EmptyState v-if="!items.length" :text="emptyText" />
     <div v-else class="abele-github-list__rows" role="list">
       <GithubListRow
@@ -139,16 +140,18 @@
       v-else-if="next !== null"
       :loading="loadingMore"
       :shown="items.length"
-      :label="`${items.length} of ${shownTotal} shown, more below`"
+      :label="`${items.length} of ${shownTotal}${data.totalKnown === false ? '+' : ''} shown, more below`"
       @more="more"
     />
-    <div v-else-if="data.total > SEARCH_CAP_SHOWN" class="abele-github-list__cap">
+    <div v-else-if="!native && data.total > SEARCH_CAP_SHOWN" class="abele-github-list__cap">
       GitHub's search shows the first thousand; narrow the query to see the rest.
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { useRepositorySource } from '@/repository/context'
+import { isNativeForge } from '@/forge/native'
 import { computed, ref, shallowRef, watch } from 'vue'
 import type { PaneType } from 'obsidian'
 import Button from '../obsidian/Button.vue'
@@ -194,8 +197,13 @@ const props = defineProps<{
   target: ListTarget
   /** The first page, as the tab loaded it. */
   data: ListData
-  client: GithubClient
+  client?: GithubClient
 }>()
+const source = useRepositorySource(
+  () => props.client,
+  () => props.target
+)
+const native = computed(() => isNativeForge(source.value?.identity.provider))
 
 const emit = defineEmits<{
   (e: 'open', url: string, pane: PaneType | false): void
@@ -248,7 +256,19 @@ watch(
   () => `${props.target.host}/${props.target.owner}/${props.target.repo}/${props.target.list}`,
   () => {
     choices.value = { labels: [], milestones: [], categories: [] }
-    void loadChoices(props.client, props.target).then((c) => (choices.value = c))
+    const current = source.value
+    const query = props.target
+    const read = current?.github?.listChoices
+      ? current.github.listChoices()
+      : loadChoices(props.client, query)
+    void read
+      .then((c) => {
+        current?.assertCurrent()
+        if (source.value === current && props.target === query) choices.value = c
+      })
+      .catch(() => {
+        /* Primary rows remain readable when optional filters fail. */
+      })
   },
   { immediate: true }
 )
@@ -284,7 +304,11 @@ const more = async () => {
   loadingMore.value = true
   moreError.value = null
   try {
-    const page = await loadMore(props.client, props.target, from)
+    const current = source.value
+    const page = current?.github?.listMore
+      ? await current.github.listMore(props.target, from)
+      : await loadMore(props.client, props.target, from)
+    current?.assertCurrent()
     // Another query came meanwhile; its own first page is what is shown.
     if (props.data !== data) return
     items.value = [...items.value, ...page.items]

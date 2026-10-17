@@ -108,6 +108,8 @@ export async function takeNodePathStep(model: NodePathModel, id: BranchStep['id'
         files: commits,
         initialTitle: copy.branch,
         pushed: !!state.upstream && !state.unpushed,
+        draftSupported: model.panelPulls.value?.draftSupported !== false,
+        host: model.panelPulls.value?.serviceLabel,
         onCancel: close,
         onChooseBase: () => {},
         onCreate: (pr: { title: string; body: string; draft: boolean }) => {

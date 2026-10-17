@@ -1,3 +1,4 @@
+import { isNativeForge } from '@/forge/native'
 /**
  * GitHub web addresses, read as the things they point at.
  *
@@ -8,7 +9,7 @@
 
 interface Repo {
   /** Missing on legacy targets; never inferred from a token or a hostname. */
-  provider?: 'github' | 'forgejo'
+  provider?: 'github' | 'forgejo' | 'gitea'
   refKind?: 'branch' | 'tag' | 'commit'
   host: string
   /** Exact web origin when a resolved connection supplies a scheme or nonstandard port. */
@@ -397,7 +398,7 @@ export async function diffAnchorHash(path: string): Promise<string> {
 /** A stable key for "the same item", ignoring which tab or line the link pointed at. */
 export function targetKey(t: GithubTarget): string {
   const repo =
-    `${t.provider === 'forgejo' ? 'forgejo:' : ''}${t.origin ?? t.host}/${t.owner}/${t.repo}`.toLowerCase()
+    `${isNativeForge(t.provider) ? `${t.provider}:` : ''}${t.origin ?? t.host}/${t.owner}/${t.repo}`.toLowerCase()
   switch (t.kind) {
     case 'issue':
     case 'pull':

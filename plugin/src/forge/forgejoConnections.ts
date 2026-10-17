@@ -1,3 +1,4 @@
+import { isNativeForge } from '@/forge/native'
 import { effectScope, watch, reactive } from 'vue'
 import { ancestors, findNode } from '@/github/tree/fileTree'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -50,14 +51,10 @@ function watchAuthorities() {
   scope.run(() => watch([version, secretVersion, secrets().status], reconcile, { flush: 'sync' }))
   watching = { version, secrets: secretVersion, stop: () => scope.stop() }
 }
-export function forgejoConnectionSource(
-  id: string,
-  repository: string,
-  transport?: HttpTransport
-): RepositorySource {
+export function forgejoConnectionClient(id: string, transport?: HttpTransport): ForgejoClient {
   const row = () => AbeleConfig.getInstance().github.connections.find((r) => r.id === id)
   const current = row()
-  if (!current || current.provider !== 'forgejo')
+  if (!current || !isNativeForge(current.provider))
     throw new Error('The Forgejo connection was removed or changed.')
   watchAuthorities()
   reconcile()
@@ -66,31 +63,40 @@ export function forgejoConnectionSource(
     authority = { signature: signature(id), generation: `forgejo-${++sequence}`, retired: false }
     authorities.set(id, authority)
   }
-  const captured = authority,
-    key = JSON.stringify([id, repository])
-  const previous = sources.get(key)
-  if (!transport && previous?.authority === captured) return previous.source
+  const captured = authority
   const token = current.keyId ? (secrets().get(current.keyId) ?? '').trim() : ''
-  const source = forgejoRepository(
-    new ForgejoClient(
-      deployment('forgejo', current.server),
-      {
-        connectionId: id,
-        generation: captured.generation,
-        assertCurrent: () => {
-          if (captured.retired || captured.signature !== signature(id))
-            throw new Error('The Forgejo connection was removed or changed; reload this tab.')
-          if (current.keyId && !token)
-            throw new Error(
-              'The connection token is unavailable on this device; unlock synced keys or add the token.'
-            )
-        },
+  return new ForgejoClient(
+    deployment(current.provider, current.server),
+    {
+      connectionId: id,
+      generation: captured.generation,
+      assertCurrent: () => {
+        if (captured.retired || captured.signature !== signature(id))
+          throw new Error('The Forgejo connection was removed or changed; reload this tab.')
+        if (current.keyId && !token)
+          throw new Error(
+            'The connection token is unavailable on this device; unlock synced keys or add the token.'
+          )
       },
-      transport ?? singleHopRequest,
-      token
-    ),
-    repository
+    },
+    transport ?? singleHopRequest,
+    token
   )
+}
+
+export function forgejoConnectionSource(
+  id: string,
+  repository: string,
+  transport?: HttpTransport,
+  assertAccess?: () => void
+): RepositorySource {
+  const raw = forgejoConnectionClient(id, transport)
+  const client = assertAccess ? raw.guarded(assertAccess) : raw
+  const captured = authorities.get(id)
+  const key = JSON.stringify([id, repository])
+  const previous = sources.get(key)
+  if (!transport && !assertAccess && previous?.authority === captured) return previous.source
+  const source = forgejoRepository(client, repository)
   const nativeTree = source.tree.bind(source)
   source.tree = async (sha) => {
     const tree = await nativeTree(sha),
@@ -106,7 +112,7 @@ export function forgejoConnectionSource(
       },
     }
   }
-  if (!transport) {
+  if (!transport && !assertAccess) {
     sources.set(key, { authority: captured, source })
     if (sources.size > 32) sources.delete(sources.keys().next().value)
   }

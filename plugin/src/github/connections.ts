@@ -1,3 +1,4 @@
+import { isNativeForge } from '@/forge/native'
 import { endpoints } from './urls'
 import type { GithubSettings } from './settings'
 import { deployment } from '@/forge/identity'
@@ -10,15 +11,15 @@ const serverId = (address: string): string => endpoints(address).origin
 export const isGithubConnection = (connection: Pick<GithubConnection, 'provider'>): boolean =>
   connection.provider === undefined || connection.provider === 'github'
 
-/** Repository browsing is separate from the GitHub tools and notification adapters. */
+/** Installed provider adapters can browse repositories and participate in the shared inbox. */
 export const isBrowsableConnection = (connection: Pick<GithubConnection, 'provider'>): boolean =>
-  isGithubConnection(connection) || connection.provider === 'forgejo'
+  isGithubConnection(connection) || isNativeForge(connection.provider)
 
 /** Retained records are manageable before their provider's client is installed. */
 export function connectionUnavailableReason(
   connection: Pick<GithubConnection, 'provider'>
 ): string {
-  if (isGithubConnection(connection)) return ''
+  if (isBrowsableConnection(connection)) return ''
   const names: Record<string, string> = { forgejo: 'Forgejo', gitea: 'Gitea', gitlab: 'GitLab' }
   return `${names[connection.provider] ?? connection.provider}, available in a later version`
 }

@@ -193,7 +193,7 @@
           </Setting>
 
           <Section
-            :title="t('settings.ai.AgentEditorModal.github_connections.e95944e1')"
+            :title="t('settings.git.repositoryConnections')"
             :desc="t('settings.ai.AgentEditorModal.off_no_access_ask_approve.d4da8c61')"
           >
             <Setting
@@ -201,12 +201,13 @@
               :key="connection.id"
               :name="connection.name"
               :desc="
-                connectionUnavailableReason(connection) ||
-                `${connection.server || t('settings.ai.AgentEditorModal.github_com.3aeb0024')}${connection.account ? ' · ' + connection.account.login : ''}`
+                !isBrowsableConnection(connection)
+                  ? connectionUnavailableReason(connection)
+                  : `${connection.provider || t('settings.git.githubId')} · ${connection.server || t('settings.ai.AgentEditorModal.github_com.3aeb0024')}${connection.account ? ' · ' + connection.account.login : ''}`
               "
             >
               <Dropdown
-                v-if="isGithubConnection(connection)"
+                v-if="isBrowsableConnection(connection)"
                 :model-value="agent.githubConnections?.[connection.id] ?? 'off'"
                 :options="CONNECTION_MODES"
                 @update:model-value="
@@ -353,7 +354,7 @@
 <script setup lang="ts">
 import I18nText from '@/components/obsidian/I18nText.vue'
 import { t } from '@/i18n'
-import { isGithubConnection, connectionUnavailableReason } from '@/github/connections'
+import { isBrowsableConnection, connectionUnavailableReason } from '@/github/connections'
 import { computed, ref } from 'vue'
 import ObsidianModal from '../../obsidian/Modal.vue'
 import Setting from '../../obsidian/Setting.vue'

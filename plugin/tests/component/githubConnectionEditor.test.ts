@@ -38,6 +38,40 @@ const press = async (view: ReturnType<typeof mount>, text: string) => {
 }
 
 describe('GitHub connection draft', () => {
+  it('uses Codeberg as a Forgejo preset without carrying a token to the new deployment', async () => {
+    const app = useVault([])
+    app.secretStorage.setSecret('sample-key', 'invented-old-token')
+    const forge = { ...row, provider: 'forgejo', server: 'https://forge.example.test/team' }
+    const view = mount(GithubConnectionEditor, {
+      props: { connection: forge, connections: [forge], isNew: true },
+    })
+    try {
+      const preset = view
+        .findAllComponents(Button)
+        .find((button) => button.props('text') === 'Use Codeberg')
+      expect(preset).toBeDefined()
+      preset!.vm.$emit('click')
+      await flushPromises()
+      request.mockResolvedValue(reply('sample-user'))
+      await press(view, 'Check access')
+      expect(request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: 'https://codeberg.org/api/v1/user',
+          headers: { Accept: 'application/json' },
+        })
+      )
+      await press(view, 'Save')
+      // The parent allocates the saved key slot; the editor emits a draft and optional new token.
+      expect(view.emitted('save')?.[0]?.[0]).toMatchObject({
+        provider: 'forgejo',
+        server: 'https://codeberg.org',
+      })
+      expect(view.emitted('save')?.[0]?.[1]).toBeUndefined()
+      expect(app.secretStorage.getSecret('sample-key')).toBe('invented-old-token')
+    } finally {
+      view.unmount()
+    }
+  })
   it.each(['github', 'forgejo'])('shows owner examples on separate lines for %s', (provider) => {
     const connection = { ...row, provider, server: 'https://git.example.test' }
     const view = mount(GithubConnectionEditor, { props: { connection, connections: [connection] } })

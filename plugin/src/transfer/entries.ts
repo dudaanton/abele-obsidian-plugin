@@ -1,3 +1,4 @@
+import { isNativeForge } from '@/forge/native'
 /**
  * The settings, as a list of things that can travel one at a time.
  *
@@ -524,8 +525,8 @@ export function collectEntries(settings: AbeleSettings): TransferEntry[] {
         section: section.id,
         id: itemId(section.id, item),
         label:
-          section.id === 'github-connections' && (item as GithubConnection).provider === 'forgejo'
-            ? `${item.name || itemId(section.id, item)} · Forgejo`
+          section.id === 'github-connections' && isNativeForge((item as GithubConnection).provider)
+            ? `${item.name || itemId(section.id, item)} · ${(item as GithubConnection).provider === 'gitea' ? 'Gitea' : 'Forgejo'}`
             : section.id === 'github-connections' &&
                 connectionUnavailableReason(item as GithubConnection)
               ? `${item.name || itemId(section.id, item)} · ${connectionUnavailableReason(item as GithubConnection)}`

@@ -14,6 +14,8 @@
 </template>
 
 <script setup lang="ts">
+import { isNativeForge } from '@/forge/native'
+
 /**
  * A person in a GitHub tab: their picture and their name, or their login — whichever the
  * settings say. The other one is never out of reach: it is in the tooltip, and a click or a tap
@@ -38,14 +40,16 @@ const props = defineProps<{
 
 const client = inject(GITHUB_PEOPLE, null)
 const source = useRepositorySource()
+const nativePerson = ref<import('@/repository/model').RepositoryPerson | null>(null)
+let nativeRequest = 0
 const host = computed(() => {
   const c = client?.()
   return c ? peopleServer(c) : 'github.com'
 })
 
 const person = computed(() =>
-  source.value?.identity.provider === 'forgejo'
-    ? { login: props.login, name: null, avatar: props.avatar ?? null }
+  isNativeForge(source.value?.identity.provider)
+    ? (nativePerson.value ?? { login: props.login, name: null, avatar: null })
     : githubUsers().person(host.value, props.login, props.avatar)
 )
 const name = computed(() => {
@@ -80,7 +84,22 @@ const tooltip = computed(() => (name.value ? `${name.value} · ${props.login}` :
 watch(tooltip, (text) => el.value && setTooltip(el.value, text))
 
 const ask = () => {
-  if (source.value?.identity.provider === 'forgejo') return
+  const current = source.value,
+    request = ++nativeRequest
+  nativePerson.value = null
+  if (isNativeForge(current?.identity.provider)) {
+    if (current.github?.person && props.login)
+      void current.github
+        .person(props.login)
+        .then((person) => {
+          if (request === nativeRequest && current === source.value && current.isCurrent)
+            nativePerson.value = person
+        })
+        .catch(() => {
+          /* A profile failure leaves the readable login in place. */
+        })
+    return
+  }
   const c = client?.()
   if (c && props.login) githubUsers().want(c, props.login, props.avatar)
 }
@@ -88,7 +107,7 @@ onMounted(() => {
   if (el.value && tooltip.value) setTooltip(el.value, tooltip.value)
   ask()
 })
-watch(() => props.login, ask)
+watch([() => props.login, () => source.value], ask)
 </script>
 
 <style lang="scss">

@@ -9,6 +9,7 @@ import { parseRepoInput } from '../accessCheck'
 import { normaliseHost, parseGithubUrl, type GithubTarget } from '../urls'
 
 export interface RepoRef {
+  provider?: 'github' | 'forgejo' | 'gitea'
   host: string
   origin?: string
   owner: string
@@ -100,7 +101,7 @@ export function parseOpenQuery(input: string, ctx: QueryContext): OpenQuery {
 
   const named = (owner: string, repo: string): RepoRef => ({
     host: ctx.defaultHost,
-    ...(ctx.defaultOrigin ? {origin:ctx.defaultOrigin} : {}),
+    ...(ctx.defaultOrigin ? { origin: ctx.defaultOrigin } : {}),
     owner,
     repo: repo.replace(/\.git$/, ''),
   })
@@ -141,10 +142,13 @@ export function parseOpenQuery(input: string, ctx: QueryContext): OpenQuery {
 }
 
 export const repoKey = (r: RepoRef): string => {
-  let server=normaliseHost(r.host)
-  if(r.origin){
-    const url=new URL(r.origin)
-    if(url.protocol!=='https:' || url.port) server=`${url.protocol}//${normaliseHost(url.hostname)}${url.port ? ':'+url.port : ''}`
+  if (r.provider === 'forgejo' || r.provider === 'gitea')
+    return JSON.stringify([r.provider, r.origin, r.owner, r.repo])
+  let server = normaliseHost(r.host)
+  if (r.origin) {
+    const url = new URL(r.origin)
+    if (url.protocol !== 'https:' || url.port)
+      server = `${url.protocol}//${normaliseHost(url.hostname)}${url.port ? ':' + url.port : ''}`
   }
   return `${server}/${r.owner}/${r.repo}`.toLowerCase()
 }

@@ -274,6 +274,7 @@
 
 <script setup lang="ts">
 import { t } from '@/i18n'
+import { isNativeForge } from '@/forge/native'
 import { secrets } from '@/secrets/SecretStore'
 import SecretField from './SecretField.vue'
 import { computed, reactive, ref, watch } from 'vue'
@@ -328,7 +329,7 @@ const connectionDescription = (connection: GithubConnection) => {
   const token = connection.keyId ? secrets().get(connection.keyId) : ''
   const available = token
     ? t('settings.GithubSettings.token_available_on_this_device.8141399a')
-    : !connection.keyId && connection.provider === 'forgejo'
+    : !connection.keyId && isNativeForge(connection.provider)
       ? t('settings.GithubSettings.public_access_without_a_token.35b758c0')
       : secrets().status.value === 'locked'
         ? t('settings.GithubSettings.synced_keys_locked.1673153c')
@@ -340,7 +341,11 @@ const connectionDescription = (connection: GithubConnection) => {
     ? connectionClient(connection.id).rate.value
     : null
   return [
-    connection.provider === 'forgejo' ? t('settings.GithubSettings.forgejo.f4e62146') : 'GitHub',
+    connection.provider === 'gitea'
+      ? t('settings.git.gitea')
+      : connection.provider === 'forgejo'
+        ? t('settings.GithubSettings.forgejo.f4e62146')
+        : 'GitHub',
     connection.server || 'github.com',
     connection.account?.login ?? t('settings.GithubSettings.account_not_checked.d2a6562d'),
     available,
@@ -479,7 +484,7 @@ async function saveConnection(
       : connection.keyId || keychainId('abele-gh', connection.id),
   }
   if (
-    connection.provider === 'forgejo' &&
+    isNativeForge(connection.provider) &&
     (newConnection.value || rebound || !current.connections[index]?.keyId) &&
     !token
   )

@@ -1,5 +1,6 @@
 import type { GithubTarget } from '@/github/urls'
 import type { Deployment } from './model'
+import { isMarkdownPath } from '@/github/markdownPreview'
 
 const segment = (value: string) => {
   if (
@@ -29,7 +30,8 @@ export function forgejoUrls(base: Deployment) {
   ) => {
     const kind = refKind ?? (/^[a-f\d]{40}$/i.test(ref) ? 'commit' : 'branch')
     const anchor = lines ? `#L${lines.from}${lines.to > lines.from ? `-L${lines.to}` : ''}` : ''
-    return `${repository(repo)}/src/${kind}/${segment(ref)}${path ? `/${pathParts(path)}` : ''}${anchor}`
+    const plain = lines && isMarkdownPath(path) ? '?display=source' : ''
+    return `${repository(repo)}/src/${kind}/${segment(ref)}${path ? `/${pathParts(path)}` : ''}${plain}${anchor}`
   }
   const parse = (address: string): GithubTarget | null => {
     try {
@@ -53,7 +55,7 @@ export function forgejoUrls(base: Deployment) {
         .map(decodeURIComponent)
       if (!owner || !repo || [owner, repo].some((part) => part.includes('/'))) return null
       const shared = {
-        provider: 'forgejo' as const,
+        provider: base.kind === 'gitea' ? ('gitea' as const) : ('forgejo' as const),
         host: url.hostname,
         origin: base.webBase,
         owner,
@@ -97,6 +99,17 @@ export function forgejoUrls(base: Deployment) {
       }
       if (rest[0] === 'commit' && /^[a-f\d]{40}$/i.test(rest[1]) && rest.length === 2)
         return { ...shared, kind: 'commit', sha: rest[1] }
+      if (rest[0] === 'compare' && rest.length === 2) {
+        const match = /^(.+?)(\.\.\.?)(.+)$/.exec(rest[1])
+        if (match)
+          return {
+            ...shared,
+            kind: 'compare',
+            base: match[1],
+            head: match[3],
+            direct: match[2] === '..',
+          }
+      }
       return null
     } catch {
       return null

@@ -1,12 +1,13 @@
 # GitHub
 
 Issues, pull requests, discussions, commits and files from GitHub, opened in Obsidian tabs.
-Repository content is read-only. The notifications inbox can mark notifications read or Done.
+Repository files are read-only. The single inbox supports each connected service’s notification actions.
 
-## Forgejo preview
+## Forgejo and Gitea
 
-Under **Connections → Add connection**, choose **Forgejo**, enter the full server address
+Under **Connections → Add connection**, choose **Forgejo** or **Gitea**, enter the full server address
 (including any deployment path or port), a connection name and an optional access token.
+**Use Codeberg** fills in its address; the connection remains an ordinary Forgejo connection.
 **Check access** tests the draft account and, when supplied, repository permissions without
 storing the token. **Save** keeps it; **Cancel** discards the draft. Changing the service or
 server requires a fresh credential binding. Without a token, public repositories remain readable.
@@ -18,9 +19,46 @@ patches and inline review comments, and commits. Secondary failures leave readab
 place and explain what could not be loaded. The account button selects another connection on
 that exact deployment; an explicitly selected account never silently falls back to another.
 
-This first slice does not provide Forgejo notifications, search, comparisons, blame, discussions,
-agent tools or node pull-request creation. Those operations show an unavailable explanation
-where offered. GitHub retains its existing features. The preview is not a claim of feature parity.
+Native file pages also support a frozen comparison base, exact endpoint tree/blob diffs,
+commit details and file history. Comparison bases remain local to the device and are scoped to
+the provider, full deployment address, repository and connection. Unique identical blobs are
+recognized as renames; binary, oversized, symlink, LFS and submodule states retain their explicit
+limits. Repository text search, regular expressions, file-name search and heuristic definitions
+use the selected immutable revision. Changed-code search reads the available text patches;
+results open the change without an invented precise diff anchor, and missing text patches are
+reported as incomplete. Repository text search downloads that commit's native archive within
+the configured size limit; an oversized repository does not silently search another branch.
+
+Lists and pickers use the chosen connection. Common title, author, assignee, label, milestone,
+state and sort filters are supported; unsupported qualifiers are explained. Bounded partial
+lists do not claim exact totals. People use native profiles; external avatar hosts are not
+fetched automatically. Sharing preserves immutable file links where the service supports them.
+Native snippets use a versioned `abele-forge` card that keeps its text offline.
+
+The inbox account selector switches among all connections in the same pane. Forgejo and Gitea
+support Mark read, including a bounded snapshot cutoff for bulk reads. They do not support
+Done; reading a notification never closes or merges its issue or pull request.
+
+Comments are sent only by pressing Comment. Merge asks for confirmation and binds the exact
+head commit, without forcing, queueing or deleting the branch. Node branches can create pull
+requests on a configured root deployment; older host-only node metadata cannot identify a
+service installed under a URL subpath. Draft creation and true threaded review replies are
+unavailable in the pinned APIs; use the service in a browser. A lost comment, PR creation or
+merge response stops resubmission for that operation in the current session; check the service
+before proceeding. Idempotent notification reads can be retried explicitly after checking the
+inbox. No write is replayed automatically.
+
+Browsing needs read access only. Posting a comment needs issue/comment write access; creating
+or merging a pull request needs repository write access and must also satisfy the service’s
+branch protection and merge rules. A successful read-only access check does not grant these
+write permissions.
+
+The eight `forge_*` agent tools and their `github_*` compatibility names read native services.
+Tool permissions and connection Off/Ask/On permissions are independent; new connections and
+neutral tool names default Off. Delegated agents keep their parent’s access ceiling.
+Blame, discussions, a global server code index and precise native diff anchors remain
+unavailable. Endpoint comparisons use verified trees; native merge-base comparisons explain
+when file or patch information is missing, including Gitea’s smaller comparison response.
 
 Images hosted by GitHub (or the repository's Enterprise server) load normally. Images from
 other sites, including README badges, appear as buttons naming the site; tap one to load that
@@ -244,7 +282,7 @@ name in code to go to where it is declared; a right-click also offers **Find ref
 With the AI chat on, **Chat about this GitHub item**, or the speech bubble in the tab's header,
 starts a chat with a link to the item. **Ask here** does the same for selected lines or words,
 quoted. Agents can also read GitHub themselves while the integration is on. In each agent's
-**Access → GitHub connections**, choose **Off**, **Ask**, or **On** for each connection. A new
+**Access → Git repository connections**, choose **Off**, **Ask**, or **On** for each connection. A new
 connection starts Off on every server. Ask approves one operation in an interactive chat;
 background/delegated runs cannot ask. On still respects the tool's own Off/Ask/Auto setting.
 The tools accept a connection name, and their tab inventory hides content from connections the

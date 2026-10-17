@@ -103,6 +103,40 @@ function seedAgents() {
   return { main, helper }
 }
 
+it.each(['forgejo', 'gitea'])('offers %s connection permissions starting Off', async (provider) => {
+  const { main } = seedAgents()
+  AbeleConfig.getInstance().github = githubSettingsFrom({
+    connections: [
+      {
+        id: 'sample-native',
+        provider,
+        name: 'Sample native connection',
+        server: 'https://git.example.test/team',
+        keyId: '',
+        owners: [],
+        isDefault: true,
+      },
+    ],
+  })
+  const view = mountEditor(main.id)
+  try {
+    await view
+      .findAll('.abele-tabs__tab')
+      .find((tab) => tab.text() === 'Access')!
+      .trigger('click')
+    const row = view
+      .findAll('.setting-item')
+      .find((row) => row.text().includes('Sample native connection'))!
+    const control = row.findComponent(Dropdown)
+    expect(control.exists()).toBe(true)
+    expect(control.props('modelValue')).toBe('off')
+    control.vm.$emit('update:modelValue', 'ask')
+    expect(main.githubConnections?.['sample-native']).toBe('ask')
+  } finally {
+    view.unmount()
+  }
+})
+
 it('shows unsupported provider access as unavailable without an enable selector', async () => {
   const { main } = seedAgents()
   const row = {
@@ -119,7 +153,7 @@ it('shows unsupported provider access as unavailable without an enable selector'
       {
         ...row,
         id: 'sample-forgejo',
-        provider: 'forgejo',
+        provider: 'gitlab',
         name: 'Sample Forgejo',
         server: 'https://git.example.test/team',
       },
@@ -292,11 +326,11 @@ describe('the agent editor', () => {
       .find((s) => s.text().includes('Sample connection'))!
     const dropdown = setting.findComponent(Dropdown)
     expect(dropdown.props('modelValue')).toBe('off')
-    dropdown.vm.$emit('update:model-value','ask')
-    expect(main.githubConnections).toEqual({sample:'ask'})
+    dropdown.vm.$emit('update:model-value', 'ask')
+    expect(main.githubConnections).toEqual({ sample: 'ask' })
     expect(main.toolModes).toEqual(before)
-    const copy=AgentRegistry.getInstance().duplicate(main.id)!
-    copy.githubConnections!.sample='auto'
+    const copy = AgentRegistry.getInstance().duplicate(main.id)!
+    copy.githubConnections!.sample = 'auto'
     expect(main.githubConnections!.sample).toBe('ask')
     view.unmount()
   })

@@ -35,6 +35,210 @@ function fixture(data: Record<string, unknown>) {
   return { source, http }
 }
 describe('Forgejo repository adapter', () => {
+  it('reads native people without a GraphQL lookup or forwarding credentials to an external avatar', async () => {
+    const { source, http } = fixture({
+      '/users/sample-user': {
+        login: 'sample-user',
+        name: 'Sample Person',
+        avatar_url: 'https://outside.example.test/avatar.png',
+      },
+    })
+    expect(await source.github!.person!('sample-user')).toMatchObject({
+      login: 'sample-user',
+      name: 'Sample Person',
+      avatar: null,
+    })
+    expect(await source.github!.person!('sample-user')).toMatchObject({ name: 'Sample Person' })
+    expect(http).toHaveBeenCalledOnce()
+  })
+  it('opens an explicit endpoint comparison without requiring native compare files', async () => {
+    const head = 'b'.repeat(40)
+    const { source } = fixture({
+      [`/repos/sample/project/git/trees/${sha}?recursive=true`]: { tree: [] },
+      [`/repos/sample/project/git/trees/${head}?recursive=true`]: { tree: [] },
+      [`/repos/sample/project/compare/${sha}...${head}`]: { commits: [], total_commits: 0 },
+    })
+    expect(await source.compare(sha, head, true)).toMatchObject({
+      mode: 'endpoint',
+      direct: true,
+      files: [],
+      filesComplete: true,
+      aheadBy: null,
+      behindBy: null,
+      headSha: head,
+    })
+    expect(source.navigation.comparison(sha, head, true)).toContain(`/compare/${sha}..${head}`)
+  })
+  it('shows an unchanged file inside a lazily expanded pinned subtree', async () => {
+    const directory = 'b'.repeat(40),
+      content = 'c'.repeat(40)
+    const { source } = fixture({
+      [`/repos/sample/project/git/trees/${sha}?recursive=true`]: { truncated: true },
+      [`/repos/sample/project/git/trees/${sha}`]: {
+        tree: [{ path: 'src', type: 'tree', sha: directory, mode: '040000' }],
+      },
+      [`/repos/sample/project/git/trees/${directory}`]: {
+        tree: [{ path: 'sample.ts', type: 'blob', sha: content, size: 7, mode: '100644' }],
+      },
+      [`/repos/sample/project/git/blobs/${content}`]: {
+        encoding: 'base64',
+        content: btoa('sample\n'),
+      },
+    })
+    const result = await source.github!.loadTarget(
+      {
+        kind: 'blob',
+        refKind: 'commit',
+        provider: 'forgejo',
+        host: 'forge.example.test',
+        origin: base.webBase,
+        owner: 'sample',
+        repo: 'project',
+        rest: [sha, 'src', 'sample.ts'],
+      },
+      () => {},
+      {
+        base: {
+          origin: base.webBase,
+          owner: 'sample',
+          repo: 'project',
+          baseSha: sha,
+          enteredRef: 'main',
+        },
+      }
+    )
+    expect(result).toMatchObject({
+      comparison: { change: { status: 'unchanged' }, text: { additions: 0, deletions: 0 } },
+    })
+  })
+  it('keeps submodules, unknown-size and binary comparisons explicit without following them', async () => {
+    const head = 'b'.repeat(40),
+      id = 'c'.repeat(40)
+    const { source, http } = fixture({
+      [`/repos/sample/project/git/trees/${sha}?recursive=true`]: { tree: [] },
+      [`/repos/sample/project/git/trees/${head}?recursive=true`]: {
+        tree: [
+          { path: 'module', type: 'commit', mode: '160000', sha: id },
+          { path: 'unknown.bin', type: 'blob', mode: '100644', sha: id },
+          { path: 'binary.bin', type: 'blob', mode: '100644', sha: id, size: 1 },
+        ],
+      },
+      [`/repos/sample/project/git/blobs/${id}`]: { encoding: 'base64', content: 'AA==' },
+    })
+    const index = await source.comparison(sha, head)
+    expect(await source.comparisonFile(index, 'module')).toMatchObject({
+      note: expect.stringMatching(/submodule/i),
+    })
+    expect(await source.comparisonFile(index, 'unknown.bin')).toMatchObject({
+      note: expect.stringMatching(/size is unknown/i),
+    })
+    expect(http).toHaveBeenCalledTimes(2)
+    expect(await source.comparisonFile(index, 'binary.bin')).toMatchObject({
+      note: expect.stringMatching(/binary/i),
+    })
+    expect(index.counts.get('binary.bin')).toEqual({ state: 'unavailable' })
+  })
+  it('rejects comparison indexes from another reader and honours cancellation before transport', async () => {
+    const { source } = fixture({
+      [`/repos/sample/project/git/trees/${sha}?recursive=true`]: { tree: [] },
+    })
+    const index = await source.comparison(sha, sha)
+    const other = fixture({})
+    await expect(other.source.comparisonFile(index, 'sample.ts')).rejects.toThrow(
+      /another repository reader/
+    )
+    const controller = new AbortController()
+    controller.abort()
+    await expect(other.source.comparison(sha, sha, controller.signal)).rejects.toMatchObject({
+      name: 'AbortError',
+    })
+    expect(other.http).not.toHaveBeenCalled()
+  })
+  it('compares endpoint trees and immutable blobs, including deleted files and exact renames', async () => {
+    const head = 'b'.repeat(40),
+      before = 'c'.repeat(40),
+      after = 'd'.repeat(40)
+    const { source, http } = fixture({
+      [`/repos/sample/project/git/trees/${sha}?recursive=true`]: {
+        tree: [
+          { path: 'old.ts', type: 'blob', mode: '100644', sha: before, size: 7 },
+          { path: 'gone.ts', type: 'blob', mode: '100644', sha: after, size: 6 },
+        ],
+      },
+      [`/repos/sample/project/git/trees/${head}?recursive=true`]: {
+        tree: [{ path: 'new.ts', type: 'blob', mode: '100644', sha: before, size: 7 }],
+      },
+      [`/repos/sample/project/git/blobs/${after}`]: {
+        encoding: 'base64',
+        content: btoa('after\n'),
+      },
+    })
+    const index = await source.comparison(sha, head)
+    expect(index.changes).toMatchObject([
+      { path: 'gone.ts', status: 'removed' },
+      { path: 'new.ts', status: 'renamed', previousPath: 'old.ts' },
+    ])
+    expect(await source.comparisonFile(index, 'gone.ts')).toMatchObject({
+      text: { additions: 0, deletions: 1 },
+      before: { text: 'after\n' },
+      after: { text: '' },
+    })
+    expect(index.counts.get('gone.ts')).toEqual({ state: 'ready', additions: 0, deletions: 1 })
+    expect(http.mock.calls.some(([request]) => request.url.includes('/compare/'))).toBe(false)
+  })
+  it('reads commit patches and immutable path history through native routes', async () => {
+    const raw = {
+      sha,
+      commit: {
+        message: 'Sample commit',
+        author: { name: 'Sample', date: '2026-01-01T00:00:00Z' },
+      },
+      parents: [{ sha: 'b'.repeat(40) }],
+      files: [{ filename: 'old.ts', status: 'removed', additions: 0, deletions: 1 }],
+    }
+    const { source } = fixture({
+      [`/repos/sample/project/git/commits/${sha}`]: raw,
+      [`/repos/sample/project/git/commits/${sha}.diff`]:
+        'diff --git a/old.ts b/old.ts\n--- a/old.ts\n+++ /dev/null\n@@ -1 +0,0 @@\n-before\n',
+      '/repos/sample/project/commits/feature%2Fone': { sha },
+      [`/repos/sample/project/commits?sha=${sha}&path=src%2Fsample.ts&limit=100&page=1`]: [raw],
+    })
+    const commit = await source.commit(sha)
+    expect(commit).toMatchObject({
+      sha,
+      parentSha: 'b'.repeat(40),
+      message: 'Sample commit',
+      files: [{ path: 'old.ts', hash: '' }],
+    })
+    await commit.files[0].loadPatch!()
+    expect(commit.files[0].patch).toContain('-before')
+    expect(await source.commits('feature/one', 'src/sample.ts')).toMatchObject([
+      { sha, message: 'Sample commit' },
+    ])
+  })
+  it('loads commit targets through the same repository reader', async () => {
+    const { source } = fixture({
+      [`/repos/sample/project/git/commits/${sha}`]: {
+        sha,
+        commit: { message: 'Sample root', author: { name: 'Sample', date: '' } },
+        parents: [],
+        files: [],
+      },
+    })
+    expect(
+      await source.github!.loadTarget(
+        {
+          kind: 'commit',
+          host: 'forge.example.test',
+          origin: base.webBase,
+          owner: 'sample',
+          repo: 'project',
+          sha,
+        },
+        () => {}
+      )
+    ).toMatchObject({ sha, message: 'Sample root', files: [] })
+  })
   it('keeps an immutable SHA distinct from a branch with the same spelling', async () => {
     const { source } = fixture({
       '/repos/sample/project/branches?limit=50&page=1': [{ name: sha }],

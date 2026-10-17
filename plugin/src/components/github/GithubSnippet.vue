@@ -4,7 +4,7 @@
       v-if="snippet.kind === 'comment'"
       class="abele-github-snippet__quote"
       :text="snippet.text"
-      :repo="repoOfUrl(snippet.url) ?? NO_REPO"
+      :repo="snippetRepo"
       as-document
     />
     <div v-else ref="codeEl" class="abele-github-code abele-github-snippet__code" />
@@ -18,7 +18,7 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import Card from '../obsidian/Card.vue'
 import GithubText from './GithubText.vue'
 import { repoOfUrl } from '@/github/safeMarkdown'
@@ -37,6 +37,20 @@ const props = withDefaults(
 )
 
 const codeEl = ref<HTMLElement>()
+const snippetRepo = computed(() => {
+  const source = props.snippet?.source
+  if (!source) return props.snippet ? (repoOfUrl(props.snippet.url) ?? NO_REPO) : NO_REPO
+  const [owner, repo] = source.repository.split('/')
+  return {
+    provider: source.deployment.kind === 'gitea' ? ('gitea' as const) : ('forgejo' as const),
+    origin: source.deployment.webBase,
+    host: new URL(source.deployment.webBase).hostname,
+    owner,
+    repo,
+    ref: 'HEAD',
+    path: '',
+  }
+})
 let viewer: Viewer | null = null
 
 onMounted(() => {

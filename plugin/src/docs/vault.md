@@ -168,6 +168,12 @@ confirmed when pinning, not a branch/tag that is followed later. Pins are indepe
 account used to read their repository. This is device-local reading context, not synced plugin
 settings, settings-transfer data, a vault sidecar, or the separate synced pinned-repository list.
 
+Forgejo bases in this same array additionally retain a `source` identity with provider,
+connection, normalized deployment and repository. Their keys use that identity, including the
+deployment subpath and account, rather than the legacy GitHub origin key. Their `origin` retains
+the full deployment base. Restart validates and whitelists the identity; these rows cannot be
+read as GitHub bases. GitHub bases keep their existing account-independent keys.
+
 Workspace GitHub-tab state may store `originalFile: true`, a per-tab escape that leaves the
 repository base pinned. Resolved targets and displayed comparison/selection provenance are
 runtime-only. Immutable trees, blob text and endpoint indexes/counts are bounded session-memory
@@ -1729,7 +1735,7 @@ base (scheme, host, port and path) in `server`. Unknown provider names survive n
 and transfer but are unavailable to the GitHub adapter. Only GitHub records participate in the
 old single-server credential projection or legacy agent-grant migration. Transfer credential
 bindings include provider and deployment path; replacing a connection cannot retarget an
-existing slot. This does not enable additional providers or introduce a new inbox.
+existing slot. Forgejo and Gitea adapters share the existing inbox pane; its account selection retains a connection ID, never a credential.
 
 New remote adapters have a version-1 workspace target with provider, connection, normalized
 deployment, full repository path and original URL. Restoration validates the API binding and
@@ -1868,6 +1874,19 @@ writes it again. It is not synced and not carried by settings transfer. The two 
 govern it, `fetchExchangeRates` (on by default) and `displayCurrency` (`USD` by default), are in
 `data.json` and do travel. Converted figures are only shown and sorted by; no balance or note is
 ever written in another currency.
+
+## Native repository records
+
+Native pinned and recent repository entries retain version 1, provider and complete deployment
+base alongside the repository URL. Legacy GitHub URL-only entries remain readable. Native
+snippets use the `abele-forge` fence with `version: 1`, `provider`, `server` and `repository`
+fields in addition to the existing snippet fields below. They contain copied text and safe
+source identity, never connection IDs, tokens or keychain references. Unsupported versions are
+not interpreted as another provider. They render offline after a connection is removed.
+Native PR submission outcomes and uncertain write fingerprints are bounded session memory,
+not durable recovery records; restarting the plugin does not establish whether a lost write
+succeeded. Fingerprints remain tied to the connection, deployment and operation across credential
+refreshes and conversation remounts. There is no automatic write replay.
 
 ## GitHub snippets
 

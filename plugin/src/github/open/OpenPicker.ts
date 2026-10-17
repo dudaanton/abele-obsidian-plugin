@@ -1,3 +1,6 @@
+import { isNativeForge, nativeLabel } from '@/forge/native'
+import { forgejoConnectionClient } from '@/forge/forgejoConnections'
+import { nativeOpenRows } from '@/forge/forgejoDirectory'
 /**
  * "Open on GitHub": Obsidian's own picker, into which a GitHub link is pasted or a number, a
  * title, a branch or a commit is typed, with what GitHub has for it offered while typing.
@@ -26,6 +29,7 @@ import {
 } from '../GithubService'
 import { endpoints, shortName } from '../urls'
 import { preferredConnection } from '../connections'
+import { sameConnectionServer } from '../connectionRouting'
 import type { GithubClient } from '../client'
 import type { GithubViewModel } from '../model'
 import { parseOpenQuery, type OpenQuery, type RepoRef } from './query'
@@ -61,9 +65,14 @@ export const forgetLastPicked = () => {
 
 const repoOfTarget = (model: GithubViewModel | undefined): RepoRef | null => {
   const t = model?.target
-  if (t?.provider === 'forgejo') return null
   return t
-    ? { host: t.host, ...(t.origin ? { origin: t.origin } : {}), owner: t.owner, repo: t.repo }
+    ? {
+        provider: t.provider,
+        host: t.host,
+        ...(t.origin ? { origin: t.origin } : {}),
+        owner: t.owner,
+        repo: t.repo,
+      }
     : null
 }
 
@@ -85,6 +94,15 @@ export function pickerRepo(app: App): RepoRef | null {
   if (last) return last
   if (lastPicked) return lastPicked
   const configured = githubSettings().defaultRepo?.trim()
+  const target = configured ? parseForSettings(configured) : null
+  if (target && isNativeForge(target.provider))
+    return {
+      provider: target.provider,
+      host: target.host,
+      origin: target.origin,
+      owner: target.owner,
+      repo: target.repo,
+    }
   return configured ? parseRepoInput(configured, endpoints(githubSettings().server).webHost) : null
 }
 
@@ -100,6 +118,8 @@ export class OpenPicker extends SuggestModal<OpenRow> {
   private readonly contextId?: string
   private readonly contextManual: boolean
   private readonly forgeContext: boolean
+  private readonly nativeRows = new Map<string, OpenRow[]>()
+  private readonly nativePending = new Set<string>()
   private readonly choices = new Map<string, { id?: string; client: GithubClient }>()
   private choice(host: string, repo?: RepoRef): { id?: string; client: GithubClient } {
     const key = JSON.stringify([host, repo?.origin, repo?.owner, repo?.repo])
@@ -136,13 +156,28 @@ export class OpenPicker extends SuggestModal<OpenRow> {
       activeView?.getViewType?.() === GITHUB_VIEW_TYPE
         ? activeView.model
         : (remembered?.view as unknown as { model?: GithubViewModel })?.model
-    this.contextId = model?.connectionId ?? lastPickedConnection
-    this.forgeContext = model?.target?.provider === 'forgejo'
+    const connections = githubSettings().connections ?? []
+    this.repo = pickerRepo(app)
+    const nativeDefault = !preferredConnection(connections)
+      ? connections.find((c) => isNativeForge(c.provider) && c.isDefault)
+      : undefined
+    const rememberedId = model?.connectionId ?? lastPickedConnection
+    const nativeRepo = isNativeForge(this.repo?.provider) ? this.repo : null
+    const rememberedConnection = connections.find(
+      (c) => c.id === rememberedId && (!nativeRepo || sameConnectionServer(c, nativeRepo))
+    )
     this.contextManual = model?.connectionId
       ? model.connectionIntent === 'manual'
       : lastPickedManual
+    this.contextId = nativeRepo
+      ? this.contextManual && rememberedId
+        ? rememberedId
+        : (rememberedConnection?.id ??
+          resolveConnectionCandidates({ ...nativeRepo, kind: 'repo' })[0]?.id)
+      : (rememberedId ?? nativeDefault?.id)
+    this.forgeContext =
+      !!nativeRepo || isNativeForge(model?.target?.provider) || (!!nativeDefault && !this.repo)
     this.search = search ?? new OpenSearch((host, repo) => this.choice(host, repo).client)
-    this.repo = pickerRepo(app)
     const preferred = preferredConnection(githubSettings().connections ?? [])
     this.defaultHost = endpoints(preferred?.server ?? githubSettings().server).webHost
     this.defaultOrigin = endpoints(preferred?.server ?? githubSettings().server).origin
@@ -203,16 +238,66 @@ export class OpenPicker extends SuggestModal<OpenRow> {
     if (this.timer !== null) window.clearTimeout(this.timer)
     this.timer = null
     const native = parseForSettings(query.trim())
-    if (native?.provider === 'forgejo') {
+    if (isNativeForge(native?.provider)) {
       this.emptyStateText = ''
       const kind = native.kind === 'blob' ? 'file' : native.kind === 'tree' ? 'folder' : native.kind
       return [
-        { kind, title: shortName(native), note: `Forgejo · ${native.origin}`, url: query.trim() },
+        {
+          kind,
+          title: shortName(native),
+          note: `${nativeLabel(native.provider)} · ${native.origin}`,
+          url: query.trim(),
+        },
       ]
     }
     if (this.forgeContext && !native) {
-      this.emptyStateText =
-        'Search is not available for this service in this version. Paste a full repository, issue, pull request or file link.'
+      const available = (githubSettings().connections ?? []).some(
+        (c) =>
+          c.id === this.contextId &&
+          isNativeForge(c.provider) &&
+          (!this.repo || sameConnectionServer(c, this.repo))
+      )
+      if (!available) {
+        this.emptyStateText =
+          'This repository connection is unavailable. Choose a connected service.'
+        return []
+      }
+      const cached = this.nativeRows.get(query)
+      if (cached) {
+        this.emptyStateText = cached.length ? '' : 'No matching items for this service.'
+        return cached
+      }
+      if (!this.nativePending.has(query)) {
+        this.timer = window.setTimeout(() => {
+          this.timer = null
+          if (this.invalidated) return
+          this.nativePending.add(query)
+          void Promise.resolve()
+            .then(() =>
+              nativeOpenRows(
+                forgejoConnectionClient(this.contextId),
+                isNativeForge(this.repo?.provider) ? `${this.repo.owner}/${this.repo.repo}` : null,
+                query
+              )
+            )
+            .then(
+              (rows) => this.nativeRows.set(query, rows),
+              (error) =>
+                this.nativeRows.set(query, [
+                  {
+                    kind: 'note',
+                    title:
+                      error instanceof Error ? error.message : 'The service could not be searched.',
+                  },
+                ])
+            )
+            .then(() => {
+              if (!this.invalidated && this.inputEl.value === query)
+                this.inputEl.dispatchEvent(new Event('input'))
+            })
+        }, DEBOUNCE_MS)
+      }
+      this.emptyStateText = 'Searching this service…'
       return []
     }
     const q = this.parse(query)
@@ -270,11 +355,33 @@ export class OpenPicker extends SuggestModal<OpenRow> {
       }
     }
     if (!url) return false
-    if (parseForSettings(url)?.provider === 'forgejo')
+    const nativeTarget = parseForSettings(url)
+    if (nativeTarget && isNativeForge(nativeTarget.provider)) {
+      const source = (githubSettings().connections ?? []).find(
+        (c) => c.id === this.contextId && sameConnectionServer(c, nativeTarget)
+      )
+      const manual =
+        this.contextManual &&
+        this.contextId &&
+        this.repo?.provider === nativeTarget.provider &&
+        this.repo?.origin === nativeTarget.origin
+      const id = manual
+        ? this.contextId
+        : (source?.id ?? resolveConnectionCandidates(nativeTarget)[0]?.id)
+      lastPicked = {
+        provider: nativeTarget.provider,
+        host: nativeTarget.host,
+        origin: nativeTarget.origin,
+        owner: nativeTarget.owner,
+        repo: nativeTarget.repo,
+      }
+      lastPickedConnection = id
+      lastPickedManual = !!manual || (!!source && this.contextManual)
       return openGithubUrl(this.app, url, pane, {
-        sourceId: this.contextId,
-        sourceIntent: this.contextManual ? 'manual' : 'automatic',
+        sourceId: id,
+        sourceIntent: lastPickedManual ? 'manual' : 'automatic',
       })
+    }
     if (row.repo) lastPicked = row.repo
     const chosen = row.repo ? this.choice(row.repo.host, row.repo) : undefined
     if (chosen?.client.isCurrent === false) {

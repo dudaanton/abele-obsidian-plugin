@@ -1,3 +1,4 @@
+import { isNativeForge } from '@/forge/native'
 /**
  * The GitHub integration's shared state: the client for the configured server and token, and
  * the one road by which a URL becomes an open tab.
@@ -26,6 +27,7 @@ import { rememberRepo } from './open/repoList'
 import { isGithubConnection, validProviderServer } from './connections'
 import { deployment } from '@/forge/identity'
 import { forgejoUrls } from '@/forge/forgejoUrls'
+import { forgejoConnectionClient } from '@/forge/forgejoConnections'
 
 export const GITHUB_VIEW_TYPE = 'abele-github'
 
@@ -69,9 +71,11 @@ export function githubHosts(): string[] {
 
 export const parseForSettings = (url: string): GithubTarget | null => {
   for (const row of (githubSettings().connections ?? [])
-    .filter((c) => c.provider === 'forgejo' && validProviderServer(c))
+    .filter((c) => isNativeForge(c.provider) && validProviderServer(c))
     .sort((a, b) => b.server.length - a.server.length)) {
-    const target = forgejoUrls(deployment('forgejo', row.server)).parse(url)
+    const target = forgejoUrls(
+      deployment(row.provider === 'gitea' ? 'gitea' : 'forgejo', row.server)
+    ).parse(url)
     if (target) return target
   }
   const target = parseGithubUrl(url, githubHosts())
@@ -90,6 +94,8 @@ export const parseForSettings = (url: string): GithubTarget | null => {
 export const routingMemory = new ConnectionMemory()
 export const connectionGeneration = (id: string): string => {
   try {
+    const row = githubSettings().connections?.find((c) => c.id === id)
+    if (isNativeForge(row?.provider)) return forgejoConnectionClient(id).session.generation
     return id ? connectionClient(id).cacheNamespace : githubClient('github.com').cacheNamespace
   } catch {
     return ''

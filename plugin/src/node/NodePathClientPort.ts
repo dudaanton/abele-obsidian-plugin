@@ -161,7 +161,7 @@ export class NodePathClientPort implements NodePathPort {
   private forgePulls = new Map<string, { at: number; read: ReturnType<PathForge['pulls']> }>()
   /** A service's open pull requests, read at most once a minute: every save observes anew. */
   private readPulls(repo: Parameters<PathForge['pulls']>[0]): ReturnType<PathForge['pulls']> {
-    const key = `${repo.host}/${repo.owner}/${repo.name}`,
+    const key = `${this.forge!.cacheKey?.(repo) ?? repo.kind}:${repo.deployment ?? repo.host}/${repo.owner}/${repo.name}`,
       known = this.forgePulls.get(key)
     if (known && Date.now() - known.at < 60000) return known.read
     const read = this.forge!.pulls(repo)

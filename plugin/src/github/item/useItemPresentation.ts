@@ -1,3 +1,4 @@
+import { isNativeForge } from '@/forge/native'
 import { openExternal } from '@/helpers/openExternal'
 import { computed, provide, watch } from 'vue'
 import type { CompareSection } from '@/github/compareSection'
@@ -106,7 +107,7 @@ export function useItemPresentation(options: PresentationOptions) {
     if (!t || !data) return null
     if (source.value.identity.provider === 'node')
       return { label: head.value.title, url: (data as { url: string }).url }
-    if (source.value.identity.provider === 'forgejo')
+    if (isNativeForge(source.value.identity.provider))
       return { label: head.value.title, url: (data as { url: string }).url }
     const place = placeLink(t, data)
     if (place !== undefined) return place
@@ -177,7 +178,7 @@ export function useItemPresentation(options: PresentationOptions) {
     const t = shown.value
     if (t.kind !== 'pull') return
     props.onOpen?.(
-      t.provider === 'forgejo'
+      isNativeForge(t.provider)
         ? source.value.navigation.commit(sha)
         : `${repoWeb(t)}/pull/${t.number}/commits/${sha}`
     )

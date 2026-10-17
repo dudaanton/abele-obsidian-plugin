@@ -23608,5 +23608,115 @@
       "es",
       "de"
     ]
+  },
+  "settings.git.nativeAddress": {
+    "englishHash": "bbf4b4f9a3a600c348b4f11a722fcf6d0145c37f07865137f2c6a37588969d02",
+    "context": "Git connection settings and operation permissions",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.git.useCodeberg": {
+    "englishHash": "72661a0d42d1aea50ccf8194d27b654e7c491cd5aef3001e6a3ee225470c39b2",
+    "context": "Git connection settings and operation permissions",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.git.useCodebergTooltip": {
+    "englishHash": "2a5e6530da93a52dab22bb0206e1796a75dccf21d06de33f25a331971c266c42",
+    "context": "Git connection settings and operation permissions",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.git.nativeRepoLink": {
+    "englishHash": "7f5da25bb6227e2ea12f93ce979554fffef35d407344ea4e43784eafd0b82da6",
+    "context": "Git connection settings and operation permissions",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.git.gitea": {
+    "englishHash": "35ac58f204bc740aa2b9cccb0ba9b9666af06264b3ce06407d69d277d5dda402",
+    "context": "Git connection settings and operation permissions",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.git.githubId": {
+    "englishHash": "a916a1dc8cc5d8c367bfe55578bd3b90feb0e38152990293b35c1b17aa0ff0a2",
+    "context": "Git connection settings and operation permissions",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.git.askingNative": {
+    "englishHash": "dacedcc4c09a0b455b0a068304660c8b9ed10e87b934b674741d2b136f6407bb",
+    "context": "Git connection settings and operation permissions",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.git.accessCheckCancelled": {
+    "englishHash": "66c326b348dee83ae47d29d6bbf4a13fa39796a6c7eb4b8ed57f73c96e490374",
+    "context": "Git connection settings and operation permissions",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.git.repositoryConnections": {
+    "englishHash": "adb4bc75f37d5822d9ef1ce3f1f79211ec7ce7cb2e9c0a059479c156e0b03cb2",
+    "context": "Git connection settings and operation permissions",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.metadata.ca4a628311f7879a": {
+    "englishHash": "443640925d1af01267c1a362dbe7f41a9ea4ece05d6494118431a2d8525dd88a",
+    "context": "Git connection settings and operation permissions",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.metadata.b9227122bad532e6": {
+    "englishHash": "e3c8480580a570344ce3293628a470136e166863d8bc54fa61effcc1597feafe",
+    "context": "Git connection settings and operation permissions",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

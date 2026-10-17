@@ -598,6 +598,17 @@ into markdown. Downloads land in the vault, so they are subject to scope.
 
 ## GitHub
 
+Neutral provider names: `forge_views`, `forge_read`, `forge_pr_files`, `forge_file`,
+`forge_commits`, `forge_search`, `forge_grep`, `forge_open`. Each has its own tool permission,
+defaulting Off; enabling a `github_*` name does not enable the corresponding `forge_*` name.
+The eight `github_*` compatibility names can also read a selected Forgejo/Gitea connection.
+Connection Off/Ask/On and delegated ceilings apply identically to either spelling. All remain
+read-only. Native responses name their connection and use bounded JSON records and explicit
+next-page/line offsets. For native search, name a repository: code uses its fixed-revision archive,
+not a global server code index; issue/PR qualifiers are translated or explicitly refused.
+Unsupported blame/discussions and precise native diff selections report their limitations.
+Open carries the same captured account/grant into every asynchronous tab read.
+
 `github_views`, `github_read`, `github_pr_files`, `github_file`, `github_commits`,
 `github_search`, `github_grep`, `github_open`.
 

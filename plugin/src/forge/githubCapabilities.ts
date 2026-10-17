@@ -6,6 +6,13 @@ import type { FilesData, Conversation } from '@/repository/conversation'
 import type { CommitSummary } from '@/repository/model'
 
 export interface GithubRepositoryCapabilities {
+  writes?: ReturnType<typeof import('./forgejoWrites').nativeWrites>
+  person?(login: string): Promise<import('@/repository/model').RepositoryPerson>
+  listMore?(
+    target: Extract<GithubTarget, { kind: 'list' }>,
+    page: number | string
+  ): Promise<import('@/github/lists/listData').ListPage>
+  listChoices?(): Promise<import('@/github/lists/listData').ListChoices>
   pullFiles?(number: number): Promise<FilesData>
   pullCommits?(number: number): Promise<{ commits: CommitSummary[]; complete: boolean }>
   conversation?(number: number, pull: boolean): Promise<Conversation>

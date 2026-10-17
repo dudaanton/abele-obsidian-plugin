@@ -99,7 +99,7 @@ describe('connection settings list', () => {
         .find((row) => String(row.props('name')).includes(foreign.name))!
       expect(row.findAllComponents(Button)).toHaveLength(0)
       expect(row.findComponent(StatusDot).exists()).toBe(true)
-      if (provider === 'forgejo')
+      if (provider === 'forgejo' || provider === 'gitea')
         expect(row.findAllComponents(Icon).map((icon) => icon.props('tooltip'))).toEqual([
           'Edit connection',
           'Connection actions',

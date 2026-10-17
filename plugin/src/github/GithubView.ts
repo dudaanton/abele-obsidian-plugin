@@ -1,3 +1,4 @@
+import { isNativeForge, nativeLabel } from '@/forge/native'
 /**
  * A tab showing one GitHub item: an issue, a pull request, a discussion, a commit or a file.
  *
@@ -26,12 +27,11 @@ import {
   savedForgeTarget,
 } from '@/repository/state'
 import { deployment } from '@/forge/identity'
-import { forgejoConnectionSource } from '@/forge/forgejoConnections'
 import { forgejoUrls } from '@/forge/forgejoUrls'
 import EmptyState from '@/components/obsidian/EmptyState.vue'
 import { sameConnectionServer } from './connectionRouting'
 import { isGithubConnection, connectionUnavailableReason } from './connections'
-import { clientForTab, tabAccessSnapshot } from './tabConnectionAccess'
+import { clientForTab, tabAccessSnapshot, nativeSourceForTab } from './tabConnectionAccess'
 import GithubItem from '@/components/github/GithubItem.vue'
 import NodeRepositoryItem from '@/components/NodeRepositoryItem.vue'
 import { shortName, targetKey } from './urls'
@@ -103,12 +103,12 @@ export class GithubView extends ItemView {
 
   getState(): Record<string, unknown> {
     const state: Record<string, unknown> = { url: this.model.url }
-    if (this.model.target?.provider === 'forgejo') {
+    if (isNativeForge(this.model.target?.provider)) {
       state.sourceTarget = {
         version: 1,
-        provider: 'forgejo',
+        provider: this.model.target.provider,
         connection: this.model.connectionId ?? '',
-        deployment: deployment('forgejo', this.model.target.origin),
+        deployment: deployment(this.model.target.provider, this.model.target.origin),
         repository: `${this.model.target.owner}/${this.model.target.repo}`,
         url: this.model.url,
         ...(this.model.sourceRevision ? { revision: this.model.sourceRevision } : {}),
@@ -184,10 +184,9 @@ export class GithubView extends ItemView {
     }
     const url = saved?.url ?? (state as { url?: unknown } | null)?.url
     if (typeof url === 'string' && url) {
-      const target =
-        saved?.provider === 'forgejo'
-          ? forgejoUrls(saved.deployment).parse(url)
-          : parseForSettings(url)
+      const target = isNativeForge(saved?.provider)
+        ? forgejoUrls(saved.deployment).parse(url)
+        : parseForSettings(url)
       const requested = state as {
         connectionId?: string
         connectionIntent?: string
@@ -198,10 +197,10 @@ export class GithubView extends ItemView {
       let connectionId = saved?.connection || requested.connectionId
       const connection = githubSettings().connections.find((c) => c.id === connectionId)
       if (
-        (target?.provider === 'forgejo' || saved?.provider === 'forgejo') &&
+        (isNativeForge(target?.provider) || isNativeForge(saved?.provider)) &&
         connectionId &&
         (!connection ||
-          connection.provider !== 'forgejo' ||
+          !isNativeForge(connection.provider) ||
           !target ||
           !sameConnectionServer(connection, target))
       ) {
@@ -219,7 +218,7 @@ export class GithubView extends ItemView {
       if (
         connection &&
         !isGithubConnection(connection) &&
-        !(connection.provider === 'forgejo' && target?.provider === 'forgejo')
+        !(isNativeForge(connection.provider) && isNativeForge(target?.provider))
       ) {
         this.model.url = url
         this.model.target = target
@@ -433,10 +432,10 @@ export class GithubView extends ItemView {
           void secrets().version.value
           const id = this.model.connectionId
           const row = githubSettings().connections?.find((c) => c.id === id)
-          if (this.model.target?.provider === 'forgejo') {
+          if (isNativeForge(this.model.target?.provider)) {
             if (
               !row ||
-              row.provider !== 'forgejo' ||
+              !isNativeForge(row.provider) ||
               !sameConnectionServer(row, this.model.target)
             ) {
               this.unavailableConnection(
@@ -446,11 +445,8 @@ export class GithubView extends ItemView {
                 text: 'The Forgejo connection was removed or changed. Choose a connection for this server.',
               })
             }
-            if (this.model.allowedConnections !== undefined)
-              return h(EmptyState, {
-                text: 'Agent access is not available for this service in this version.',
-              })
-            const source = forgejoConnectionSource(
+            const source = nativeSourceForTab(
+              this.model,
               row.id,
               `${this.model.target.owner}/${this.model.target.repo}`
             )
@@ -468,7 +464,7 @@ export class GithubView extends ItemView {
               enabled: githubSettings().enabled,
               source,
               keys: this.keys,
-              accountName: `${row.name}${row.account ? ` · ${row.account.login}` : ''} · Forgejo`,
+              accountName: `${row.name}${row.account ? ` · ${row.account.login}` : ''} · ${nativeLabel(row.provider)}`,
               onChooseAccount: () => {
                 const menu = new Menu()
                 this.accountMenu(menu)

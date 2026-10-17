@@ -29,6 +29,10 @@ import {
   type RepoRow,
 } from './repoList'
 import type { GithubClient } from '../client'
+import { isNativeForge, nativeLabel } from '@/forge/native'
+import { forgejoConnectionClient } from '@/forge/forgejoConnections'
+import type { ForgejoClient } from '@/forge/forgejoClient'
+import { nativeAccountRepos, nativeSearchRepos } from '@/forge/forgejoDirectory'
 
 /** How long the typing has to pause before GitHub's search is asked. */
 export const REPO_DEBOUNCE_MS = 350
@@ -52,6 +56,10 @@ const OWNER_REPO = /^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/
 export class RepoPicker extends SuggestModal<RepoRow> {
   private readonly rows = new SuggestionRows()
   private readonly client: GithubClient
+  private readonly nativeClient?: ForgejoClient
+  private get hasToken(): boolean {
+    return this.nativeClient?.hasToken ?? this.client?.hasToken ?? false
+  }
   private readonly connectionId?: string
   private stopWatching?: WatchStopHandle
   private invalidated = false
@@ -63,12 +71,24 @@ export class RepoPicker extends SuggestModal<RepoRow> {
 
   constructor(app: App, client?: GithubClient) {
     super(app)
-    this.connectionId = client
+    const connections = githubSettings().connections ?? []
+    const activeId = (
+      app.workspace.getMostRecentLeaf?.()?.view as unknown as { model?: { connectionId?: string } }
+    )?.model?.connectionId
+    const active = connections.find((c) => c.id === activeId && isNativeForge(c.provider))
+    const selected =
+      active ??
+      preferredConnection(connections) ??
+      connections.find((c) => isNativeForge(c.provider) && c.isDefault)
+    this.connectionId = client ? undefined : selected?.id
+    if (!client && isNativeForge(selected?.provider))
+      this.nativeClient = forgejoConnectionClient(selected.id)
+    this.client = this.nativeClient
       ? undefined
-      : preferredConnection(githubSettings().connections ?? [])?.id
-    this.client =
-      client ?? (this.connectionId ? connectionClient(this.connectionId) : githubClient())
-    this.host = this.client.endpoints.webHost
+      : (client ?? (this.connectionId ? connectionClient(this.connectionId) : githubClient()))
+    this.host = this.nativeClient
+      ? new URL(this.nativeClient.deployment.webBase).hostname
+      : this.client.endpoints.webHost
     this.limit = 50
     this.setPlaceholder('Repository name, owner/repo')
     this.setInstructions([
@@ -92,6 +112,13 @@ export class RepoPicker extends SuggestModal<RepoRow> {
       () => {
         void AbeleConfig.getInstance().version.value
         void secrets().version.value
+        if (this.nativeClient) {
+          try {
+            return forgejoConnectionClient(this.connectionId).session.generation
+          } catch {
+            return 'unavailable'
+          }
+        }
         const id = preferredConnection(githubSettings().connections ?? [])?.id
         return id ? connectionClient(id).cacheNamespace : githubClient().cacheNamespace
       },
@@ -101,11 +128,13 @@ export class RepoPicker extends SuggestModal<RepoRow> {
       },
       { flush: 'sync' }
     )
-    if (!this.client.hasToken) {
+    if (!this.hasToken) {
       this.accountProblem = 'Your own and starred repositories are listed with a token.'
       return
     }
-    void accountRepos(this.client).then(
+    void (
+      this.nativeClient ? nativeAccountRepos(this.nativeClient) : accountRepos(this.client)
+    ).then(
       (lists) => {
         this.account = lists
         if (lists.problem) this.accountProblem = lists.problem
@@ -158,7 +187,22 @@ export class RepoPicker extends SuggestModal<RepoRow> {
       found: [
         // `owner/repo` typed whole is offered as itself, whether or not any list has it.
         ...(named
-          ? [{ host: this.host, owner: named[1], repo: named[2].replace(/\.git$/, '') }]
+          ? [
+              {
+                host: this.host,
+                ...(this.nativeClient
+                  ? {
+                      provider:
+                        this.nativeClient.deployment.kind === 'gitea'
+                          ? ('gitea' as const)
+                          : ('forgejo' as const),
+                      origin: this.nativeClient.deployment.webBase,
+                    }
+                  : {}),
+                owner: named[1],
+                repo: named[2].replace(/\.git$/, ''),
+              },
+            ]
           : []),
         ...(Array.isArray(found) ? found : []),
       ],
@@ -174,7 +218,11 @@ export class RepoPicker extends SuggestModal<RepoRow> {
     this.timer = window.setTimeout(() => {
       this.timer = null
       this.found.set(key, [])
-      void searchRepos(this.client, typed)
+      void (
+        this.nativeClient
+          ? nativeSearchRepos(this.nativeClient, typed)
+          : searchRepos(this.client, typed)
+      )
         .then(
           (repos) => this.found.set(key, repos),
           (e: unknown) => this.found.set(key, problemOf(e))
@@ -197,8 +245,11 @@ export class RepoPicker extends SuggestModal<RepoRow> {
     if (typeof found === 'string') notes.push({ group: 'note', title: found })
     if (this.accountProblem && !query.trim())
       notes.push({ group: 'note', title: this.accountProblem })
-    else if (!this.account && this.client.hasToken && !this.accountProblem && !query.trim()) {
-      notes.push({ group: 'note', title: 'Asking GitHub for your repositories…' })
+    else if (!this.account && this.hasToken && !this.accountProblem && !query.trim()) {
+      notes.push({
+        group: 'note',
+        title: `Asking ${this.nativeClient ? nativeLabel(this.nativeClient.deployment.kind) : 'GitHub'} for your repositories…`,
+      })
     }
     this.emptyStateText =
       query.trim().length >= MIN_SEARCH
@@ -228,12 +279,16 @@ export class RepoPicker extends SuggestModal<RepoRow> {
   }
 
   async choose(repo: RepoRef, pane: 'tab' | false): Promise<boolean> {
-    if (this.invalidated || this.client.isCurrent === false) {
+    if (this.invalidated || this.client?.isCurrent === false) {
       new Notice('The GitHub connection changed. Reopen this picker.')
       return false
     }
+    if (this.nativeClient) {
+      this.nativeClient.session.assertCurrent()
+      return openGithubUrl(this.app, repoUrlOf(repo), pane, { sourceId: this.connectionId })
+    }
     const opened =
-      this.connectionId && sameConnectionServer({server:this.client.endpoints.origin},repo)
+      this.connectionId && sameConnectionServer({ server: this.client.endpoints.origin }, repo)
         ? await openGithubUrl(
             this.app,
             repoUrlOf({ ...repo, origin: this.client.endpoints.origin }),

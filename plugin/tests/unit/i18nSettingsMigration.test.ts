@@ -16,6 +16,7 @@ import { transferText } from '../../src/sync/transferProgress'
 import { getSectionToolRegistry, getToolRegistry } from '../../src/ai/tools'
 import { TOOL_SECTIONS, sectionLabel, sectionSummary } from '../../src/ai/toolSections'
 import { isMcpToolName } from '../../src/ai/mcp/names'
+import { createForgeTools } from '../../src/ai/tools/github'
 import { BUILTIN_RULES } from '../../src/linter/rules'
 
 const root = resolve('src')
@@ -48,7 +49,7 @@ describe('complete settings migration', () => {
         .map(([, value]) => value)
     )
     const missing: string[] = []
-    for (const tool of getToolRegistry()) {
+    for (const tool of [...getToolRegistry(), ...getToolRegistry(createForgeTools())]) {
       // Server and script names are user/provider data, rather than plugin-owned labels.
       if (
         isMcpToolName(tool.name) ||

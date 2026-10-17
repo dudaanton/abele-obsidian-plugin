@@ -154,6 +154,8 @@ export interface PathBranch {
 }
 /** The pull requests of a place, from the git service its remote lives on. */
 export interface PathPulls {
+  draftSupported?: boolean
+  serviceLabel?: string
   /** The remote the folder pushes to, as the node reports it; null when it reports none. */
   remote: string | null
   /** An account of that git service is connected, so its pull requests can be read. */

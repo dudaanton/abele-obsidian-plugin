@@ -13,6 +13,9 @@ import { repoWeb } from '../origin'
 import { parseGithubUrl } from '../urls'
 import { DEFAULT_GITHUB_SETTINGS, type PinnedRepo } from '../settings'
 import { repoKey, type RepoRef } from './query'
+import { isNativeForge, nativeLabel } from '@/forge/native'
+import { forgejoUrls } from '@/forge/forgejoUrls'
+import { deployment } from '@/forge/identity'
 
 export type RepoGroup = 'pinned' | 'recent' | 'own' | 'starred' | 'found'
 
@@ -37,7 +40,43 @@ const GROUP_ORDER: RepoGroup[] = ['pinned', 'recent', 'own', 'starred', 'found']
 export const repoUrlOf = (r: RepoRef): string => repoWeb(r)
 
 /** A stored address read back as a repository; null for anything that is not one. */
-export function repoFromUrl(url: string): RepoRef | null {
+export function repoFromUrl(url: string, saved?: Partial<PinnedRepo>): RepoRef | null {
+  if (saved?.provider !== undefined || saved?.version !== undefined) {
+    if (saved.version !== 1 || !isNativeForge(saved.provider) || typeof saved.server !== 'string')
+      return null
+    try {
+      const base = deployment(saved.provider, saved.server)
+      const target = forgejoUrls(base).parse(url)
+      return target?.kind === 'repo'
+        ? {
+            provider: saved.provider,
+            origin: base.webBase,
+            host: target.host,
+            owner: target.owner,
+            repo: target.repo,
+          }
+        : null
+    } catch {
+      return null
+    }
+  }
+  for (const connection of AbeleConfig.getInstance().github?.connections ?? []) {
+    if (!isNativeForge(connection.provider)) continue
+    try {
+      const base = deployment(connection.provider, connection.server),
+        target = forgejoUrls(base).parse(url)
+      if (target?.kind === 'repo')
+        return {
+          provider: connection.provider,
+          host: target.host,
+          origin: base.webBase,
+          owner: target.owner,
+          repo: target.repo,
+        }
+    } catch {
+      /* Unknown deployment remains unavailable. */
+    }
+  }
   let host: string
   try {
     host = new URL(url).hostname
@@ -45,10 +84,15 @@ export function repoFromUrl(url: string): RepoRef | null {
     return null
   }
   const t = parseGithubUrl(url, [host])
-  const origin=new URL(url).origin
-  return t?.kind === 'repo' ? { host:t.host,owner:t.owner,repo:t.repo,
-    ...(origin!==`https://${t.host}` ? {origin} : {}),
-  } : null
+  const origin = new URL(url).origin
+  return t?.kind === 'repo'
+    ? {
+        host: t.host,
+        owner: t.owner,
+        repo: t.repo,
+        ...(origin !== `https://${t.host}` ? { origin } : {}),
+      }
+    : null
 }
 
 // --- Pinned: in the settings ---
@@ -57,7 +101,7 @@ const githubConfig = () => AbeleConfig.getInstance().github ?? DEFAULT_GITHUB_SE
 
 export function pinnedRepos(): RepoRef[] {
   return (githubConfig().pinnedRepos ?? [])
-    .map((p) => repoFromUrl(p.url))
+    .map((p) => repoFromUrl(p.url, p))
     .filter((r): r is RepoRef => !!r)
 }
 
@@ -69,10 +113,23 @@ export async function setPinned(r: RepoRef, pinned: boolean): Promise<void> {
   const config = AbeleConfig.getInstance()
   const github = { ...DEFAULT_GITHUB_SETTINGS, ...(config.github ?? {}) }
   const others: PinnedRepo[] = (github.pinnedRepos ?? []).filter((p) => {
-    const repo = repoFromUrl(p.url)
+    const repo = repoFromUrl(p.url, p)
     return !repo || repoKey(repo) !== repoKey(r)
   })
-  config.github = { ...github, pinnedRepos: pinned ? [...others, { url: repoUrlOf(r) }] : others }
+  config.github = {
+    ...github,
+    pinnedRepos: pinned
+      ? [
+          ...others,
+          {
+            url: repoUrlOf(r),
+            ...(isNativeForge(r.provider)
+              ? { version: 1 as const, provider: r.provider, server: r.origin }
+              : {}),
+          },
+        ]
+      : others,
+  }
   await config.saveSettings()
 }
 
@@ -87,15 +144,29 @@ export function recentRepos(app: LocalStore): RepoRef[] {
   const stored: unknown = app.loadLocalStorage(RECENT_KEY)
   if (!Array.isArray(stored)) return []
   return stored
-    .filter((u): u is string => typeof u === 'string')
-    .map(repoFromUrl)
+    .map((row) =>
+      typeof row === 'string'
+        ? repoFromUrl(row)
+        : row && typeof row === 'object' && typeof row.url === 'string'
+          ? repoFromUrl(row.url, row)
+          : null
+    )
     .filter((r): r is RepoRef => !!r)
 }
 
 /** The repository something was just opened in, first in the list; kept to the last twenty. */
 export function rememberRepo(app: LocalStore, r: RepoRef): void {
   const rest = recentRepos(app).filter((x) => repoKey(x) !== repoKey(r))
-  app.saveLocalStorage(RECENT_KEY, [r, ...rest].slice(0, RECENT_MAX).map(repoUrlOf))
+  app.saveLocalStorage(
+    RECENT_KEY,
+    [r, ...rest]
+      .slice(0, RECENT_MAX)
+      .map((repo) =>
+        isNativeForge(repo.provider)
+          ? { version: 1, provider: repo.provider, server: repo.origin, url: repoUrlOf(repo) }
+          : repoUrlOf(repo)
+      )
+  )
 }
 
 // --- Own and starred: asked of GitHub ---
@@ -112,7 +183,7 @@ interface RawRepo {
 
 export const entryOf = (host: string, r: RawRepo, origin?: string): RepoEntry => ({
   host,
-  ...(origin && origin!==`https://${host}` ? {origin} : {}),
+  ...(origin && origin !== `https://${host}` ? { origin } : {}),
   owner: r.owner.login,
   repo: r.name,
   description: r.description?.trim() || undefined,
@@ -153,9 +224,14 @@ export function accountRepos(client: GithubClient, now = Date.now()): Promise<Ac
     if (own.status === 'rejected' && starred.status === 'rejected') throw own.reason
     const failed = own.status === 'rejected' ? own : starred.status === 'rejected' ? starred : null
     return {
-      own: own.status === 'fulfilled' ? own.value.items.map((r) => entryOf(host, r, client.endpoints.origin)) : [],
+      own:
+        own.status === 'fulfilled'
+          ? own.value.items.map((r) => entryOf(host, r, client.endpoints.origin))
+          : [],
       starred:
-        starred.status === 'fulfilled' ? starred.value.items.map((r) => entryOf(host, r, client.endpoints.origin)) : [],
+        starred.status === 'fulfilled'
+          ? starred.value.items.map((r) => entryOf(host, r, client.endpoints.origin))
+          : [],
       problem: failed
         ? failed.reason instanceof Error
           ? failed.reason.message.split('\n')[0]
@@ -177,7 +253,9 @@ export async function searchRepos(client: GithubClient, text: string): Promise<R
     `/search/repositories?q=${encodeURIComponent(`${text} in:name`)}&per_page=10`,
     { what: 'repositories' }
   )
-  return (found.items ?? []).map((r) => entryOf(client.endpoints.webHost, r, client.endpoints.origin))
+  return (found.items ?? []).map((r) =>
+    entryOf(client.endpoints.webHost, r, client.endpoints.origin)
+  )
 }
 
 // --- The rows ---
@@ -213,6 +291,7 @@ function score(e: RepoEntry, needle: string): number {
 const noteOf = (e: RepoEntry, group: RepoGroup): string =>
   [
     GROUP_NOTE[group],
+    isNativeForge(e.provider) ? `${nativeLabel(e.provider)} · ${e.origin}` : '',
     e.private ? 'private' : '',
     e.archived ? 'archived' : '',
     e.fork ? 'fork' : '',

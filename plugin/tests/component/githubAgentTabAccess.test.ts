@@ -97,7 +97,7 @@ function setup(mode: 'off' | 'ask') {
 describe('an agent-opened tab capability', () => {
   it('restores an unavailable provider selection as a quiet refusal without a client', async () => {
     const { view } = setup('off')
-    AbeleConfig.getInstance().github.connections[1].provider = 'forgejo'
+    AbeleConfig.getInstance().github.connections[1].provider = 'gitlab'
     await view.setState(
       {
         url: 'https://github.com/sample/repo/issues/1',
@@ -108,7 +108,7 @@ describe('an agent-opened tab capability', () => {
     )
     await view.onOpen()
     await flushPromises()
-    expect(view.containerEl.textContent).toMatch(/Forgejo.*available in a later version/i)
+    expect(view.containerEl.textContent).toMatch(/GitLab.*available in a later version/i)
     expect(view.model.screen.title).toBe('')
     expect(request).not.toHaveBeenCalled()
   })
@@ -126,10 +126,10 @@ describe('an agent-opened tab capability', () => {
     await view.onOpen()
     await vi.waitFor(() => expect(view.model.screen.title).toBeTruthy())
     const count = request.mock.calls.length
-    AbeleConfig.getInstance().github.connections[1].provider = 'forgejo'
+    AbeleConfig.getInstance().github.connections[1].provider = 'gitlab'
     AbeleConfig.getInstance().version.value++
     await flushPromises()
-    expect(view.containerEl.textContent).toMatch(/Forgejo.*available in a later version/i)
+    expect(view.containerEl.textContent).toMatch(/GitLab.*available in a later version/i)
     expect(view.model.screen.title).toBe('')
     expect(request).toHaveBeenCalledTimes(count)
   })

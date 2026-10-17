@@ -3288,4 +3288,16 @@ export const es = {
     'Solo la dirección: sin usuario, consulta ni fragmento después de #',
   'settings.git.noteLabel': 'nota',
   'settings.transfer.oneKeyToStore': 'Una clave para guardar los elementos seleccionados.',
+  'settings.git.nativeAddress':
+    'Dirección completa de {service}, incluidos el puerto y la ruta de instalación.',
+  'settings.git.useCodeberg': 'Usar Codeberg',
+  'settings.git.useCodebergTooltip': 'Usar Codeberg como servidor Forgejo',
+  'settings.git.nativeRepoLink': 'owner/repo o un enlace de {service}',
+  'settings.git.gitea': 'Gitea',
+  'settings.git.githubId': 'github',
+  'settings.git.askingNative': 'Consultando {service}…',
+  'settings.git.accessCheckCancelled': 'Se canceló esta comprobación de acceso.',
+  'settings.git.repositoryConnections': 'Conexiones a repositorios Git',
+  'settings.metadata.ca4a628311f7879a': 'Repositorios Git',
+  'settings.metadata.b9227122bad532e6': 'Pestañas de repositorios',
 } satisfies TranslationCatalog

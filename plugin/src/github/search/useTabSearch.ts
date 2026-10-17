@@ -1,3 +1,4 @@
+import { isNativeForge } from '@/forge/native'
 /**
  * The search a GitHub tab carries — find in the tab, code search, go to definition — wired to
  * what the tab has loaded. Kept out of the tab component so that component only says where the
@@ -115,15 +116,18 @@ export function useTabSearch(o: TabSearchOptions) {
     if (t.kind === 'blob' || t.kind === 'tree' || t.kind === 'repo') {
       const ref = (d as BlobData | FolderData | null)?.ref ?? ''
       // A commit reads as GitHub shows it; a branch or a tag as it is.
-      if (source().identity.provider === 'node' && ref.startsWith('working-')) return 'Current files'
+      if (source().identity.provider === 'node' && ref.startsWith('working-'))
+        return 'Current files'
       return /^[0-9a-f]{40}$/i.test(ref) ? ref.slice(0, 7) : ref
     }
     return 'the default branch'
   }
 
-  const hasChanges = computed(() =>
-    ['pull', 'commit', 'compare'].includes(o.shown.value?.kind ?? '') ||
-    (source().identity.provider === 'node' && (o.data() as { ref?: string } | null)?.ref?.startsWith('working-') === true)
+  const hasChanges = computed(
+    () =>
+      ['pull', 'commit', 'compare'].includes(o.shown.value?.kind ?? '') ||
+      (source().identity.provider === 'node' &&
+        (o.data() as { ref?: string } | null)?.ref?.startsWith('working-') === true)
   )
 
   const changes = async (): Promise<TabChanges | null> => {
@@ -135,7 +139,9 @@ export function useTabSearch(o: TabSearchOptions) {
       return {
         files,
         lineUrl: (hash, side, line) =>
-          `${webBase(t)}/pull/${t.number}/files#diff-${hash}${side && line ? `${side}${line}` : ''}`,
+          isNativeForge(t.provider)
+            ? `${webBase(t)}/pulls/${t.number}/files`
+            : `${webBase(t)}/pull/${t.number}/files#diff-${hash}${side && line ? `${side}${line}` : ''}`,
       }
     }
     if (t.kind === 'commit') {
@@ -144,7 +150,9 @@ export function useTabSearch(o: TabSearchOptions) {
       return {
         files: c.files,
         lineUrl: (hash, side, line) =>
-          `${webBase(t)}/commit/${c.sha}#diff-${hash}${side && line ? `${side}${line}` : ''}`,
+          isNativeForge(t.provider)
+            ? `${webBase(t)}/commit/${c.sha}`
+            : `${webBase(t)}/commit/${c.sha}#diff-${hash}${side && line ? `${side}${line}` : ''}`,
       }
     }
     if (t.kind === 'compare') {

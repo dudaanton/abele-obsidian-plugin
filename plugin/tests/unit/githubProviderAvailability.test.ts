@@ -28,6 +28,7 @@ const foreign = {
   keyId: 'foreign-slot',
   checkState: 'partial' as const,
 }
+const unsupported = { ...foreign, provider: 'gitlab', name: 'Sample GitLab' }
 const actor = {
   id: 'sample-agent',
   githubConnections: { github: 'auto' as const, foreign: 'auto' as const },
@@ -37,7 +38,7 @@ beforeEach(() => {
   resetGithubClients()
   AbeleConfig.getInstance().github = githubSettingsFrom({
     enabled: true,
-    connections: [foreign, github],
+    connections: [unsupported, github],
   })
   request.mockReset()
 })
@@ -45,7 +46,7 @@ beforeEach(() => {
 describe('unavailable provider consumers', () => {
   it('does not treat a node remote on an unavailable configured host as public GitHub', async () => {
     AbeleConfig.getInstance().github = githubSettingsFrom({
-      connections: [{ ...foreign, server: 'https://git.example.test/team' }],
+      connections: [{ ...unsupported, server: 'https://git.example.test/team' }],
     })
     const repo = {
       kind: 'github' as const,
@@ -84,9 +85,13 @@ describe('unavailable provider consumers', () => {
     const operation = await toolOperation('github_views', {}, { agent: () => actor })
     expect(operation.allowedIds).toEqual(['github'])
     expect(operation.canReadTab('foreign')).toBe(false)
-    expect(operation.inventory).toMatch(/Forgejo.*available in a later version/i)
+    expect(operation.inventory).toMatch(/GitLab.*available in a later version/i)
   })
   it('preserves provider connections and secret references in the transfer preview', () => {
+    AbeleConfig.getInstance().github = githubSettingsFrom({
+      enabled: true,
+      connections: [foreign, github],
+    })
     const settings = { ...DEFAULT_SETTINGS, github: AbeleConfig.getInstance().github }
     const entry = collectEntries(settings).find(
       (entry) => entry.section === 'github-connections' && entry.id === 'foreign'

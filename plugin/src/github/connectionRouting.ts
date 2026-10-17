@@ -1,10 +1,11 @@
+import { isNativeForge } from '@/forge/native'
 import type { GithubConnection } from './connections'
 import { isGithubConnection } from './connections'
 import { endpoints, normaliseHost } from './urls'
 import { deployment } from '@/forge/identity'
 
 export interface RoutingInput {
-  provider?: 'github' | 'forgejo'
+  provider?: 'github' | 'forgejo' | 'gitea'
   host: string
   origin?: string
   owner: string
@@ -33,8 +34,8 @@ export function sameConnectionServer(
   connection: Pick<GithubConnection, 'server' | 'provider'>,
   target: Pick<RoutingInput, 'host' | 'origin' | 'provider'>
 ): boolean {
-  if (target.provider === 'forgejo') {
-    if (connection.provider !== 'forgejo' || !target.origin) return false
+  if (isNativeForge(target.provider)) {
+    if (connection.provider !== target.provider || !target.origin) return false
     try {
       return deployment('forgejo', connection.server).webBase === target.origin
     } catch {
@@ -95,7 +96,7 @@ export function routeConnections(
     })()
   const anonymous =
     publicOrigin &&
-    input.provider !== 'forgejo' &&
+    !isNativeForge(input.provider) &&
     normaliseHost(input.host) === 'github.com' &&
     !connections.some((c) => isGithubConnection(c) && endpoints(c.server).webHost === 'github.com')
   const serverRows = connections.filter((c) => sameConnectionServer(c, input))

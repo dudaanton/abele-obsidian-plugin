@@ -45,6 +45,8 @@ export interface ListPage {
 }
 
 export interface ListData extends ListPage {
+  note?: string
+  totalKnown?: boolean
   kind: ListKind
   query: string
   /** How many open and how many closed; null where GitHub was not asked or refused. */

@@ -25,10 +25,16 @@
 import { formatDate } from './format'
 import type { DiffLine } from './patch'
 import type { GithubLink, LineSpan } from './permalinks'
+import type { Deployment } from '@/forge/model'
+import { deployment } from '@/forge/identity'
+import { isNativeForge } from '@/forge/native'
+import { forgejoUrls } from '@/forge/forgejoUrls'
 
 export const SNIPPET_BLOCK = 'abele-github'
+export const FORGE_SNIPPET_BLOCK = 'abele-forge'
 
 export interface SnippetBlock {
+  source?: { version: 1; deployment: Deployment; repository: string }
   url: string
   label: string
   kind: 'code' | 'diff' | 'comment'
@@ -125,11 +131,24 @@ export function formatSnippet(s: SnippetBlock): string {
   const fence = '`'.repeat(Math.max(3, longest + 1))
   const oneLine = (v: string) => v.replace(/\s*\n\s*/g, ' ')
   const head = [`url: ${oneLine(s.url)}`, `label: ${oneLine(s.label)}`]
+  if (s.source)
+    head.push(
+      'version: 1',
+      `provider: ${s.source.deployment.kind}`,
+      `server: ${oneLine(s.source.deployment.webBase)}`,
+      `repository: ${oneLine(s.source.repository)}`
+    )
   if (s.lang) head.push(`lang: ${s.lang}`)
   if (s.kind === 'code' && s.start !== undefined) head.push(`start: ${s.start}`)
   if (s.kind === 'diff') head.push('diff: true')
   if (s.kind === 'comment') head.push('comment: true')
-  return [`${fence}${SNIPPET_BLOCK}`, ...head, '---', s.text.replace(/\n+$/, ''), fence].join('\n')
+  return [
+    `${fence}${s.source ? FORGE_SNIPPET_BLOCK : SNIPPET_BLOCK}`,
+    ...head,
+    '---',
+    s.text.replace(/\n+$/, ''),
+    fence,
+  ].join('\n')
 }
 
 /** Reads what is between the fences; null for a block without an address, a label or `---`. */
@@ -149,6 +168,17 @@ export function parseSnippet(source: string): SnippetBlock | null {
   const kind = fields.diff === 'true' ? 'diff' : fields.comment === 'true' ? 'comment' : 'code'
   const start = /^\d+$/.test(fields.start ?? '') ? Number(fields.start) : undefined
   const snippet: SnippetBlock = { url: fields.url, label: fields.label, kind, text: '' }
+  if (fields.version || fields.provider || fields.server || fields.repository) {
+    if (fields.version !== '1' || !isNativeForge(fields.provider)) return null
+    try {
+      const base = deployment(fields.provider, fields.server)
+      const target = forgejoUrls(base).parse(fields.url)
+      if (!target || `${target.owner}/${target.repo}` !== fields.repository) return null
+      snippet.source = { version: 1, deployment: base, repository: fields.repository }
+    } catch {
+      return null
+    }
+  }
   if (fields.lang) snippet.lang = fields.lang
   if (kind === 'code' && start !== undefined) snippet.start = start
   snippet.text = lines

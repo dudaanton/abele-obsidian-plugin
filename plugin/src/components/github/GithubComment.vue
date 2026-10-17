@@ -67,6 +67,7 @@ import { formatDate, shortDate } from '@/github/format'
 import { LINKER } from '@/github/linking'
 import { GITHUB_REPO, NO_REPO } from '@/github/repoContext'
 import { bodyLink, commentLink, type GithubLink } from '@/github/permalinks'
+import { isNativeForge } from '@/forge/native'
 import { commentSnippet, type SnippetBlock } from '@/github/snippetBlock'
 import { registerProse, unregisterProse } from '@/github/proseSelection'
 import { GITHUB_PEOPLE, personLabel } from '@/github/users'
@@ -100,6 +101,11 @@ const link = computed((): (() => GithubLink) | null => {
   const item = linker?.item()
   if (!linker || !item) return null
   if (props.body) return () => bodyLink(item, linker.title())
+  if (isNativeForge(item.provider) && props.comment.url)
+    return () => ({
+      label: `${linker.title()} · comment by ${props.comment.author}`,
+      url: props.comment.url,
+    })
   const anchor = props.comment.anchor
   if (!anchor) return null
   return () => commentLink(item, { anchor, author: props.comment.author }, props.reply)

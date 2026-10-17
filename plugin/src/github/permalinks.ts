@@ -1,3 +1,4 @@
+import { isNativeForge } from '@/forge/native'
 /**
  * Links to a place inside a GitHub item — lines of code, a comment — written the way GitHub
  * writes them, so they open the same place on GitHub and, through `parseGithubUrl`, in a tab here.
@@ -13,7 +14,9 @@ import { forgejoUrls } from '@/forge/forgejoUrls'
 import { deployment } from '@/forge/identity'
 
 export interface RepoRef {
-  provider?: 'github' | 'forgejo'
+  headSha?: string
+  baseSha?: string
+  provider?: 'github' | 'forgejo' | 'gitea'
   origin?: string
   host: string
   owner: string
@@ -49,7 +52,7 @@ export function itemUrl(item: LinkItem): string {
     case 'issue':
       return `${web(item)}/issues/${item.number}`
     case 'pull':
-      return `${web(item)}/${item.provider === 'forgejo' ? 'pulls' : 'pull'}/${item.number}`
+      return `${web(item)}/${isNativeForge(item.provider) ? 'pulls' : 'pull'}/${item.number}`
     case 'discussion':
       return `${web(item)}/discussions/${item.number}`
     case 'commit':
@@ -114,7 +117,14 @@ export function diffLink(
   const old = side === 'L' ? ' (before)' : ''
   return {
     label: `${itemName(item)} · ${file.path}:${lineText(start, end)}${old}`,
-    url: `${base}#diff-${file.hash}${lines}`,
+    url: isNativeForge(item.provider)
+      ? (side === 'R' ? item.headSha : item.baseSha)
+        ? blobLink(item, side === 'R' ? item.headSha : item.baseSha, file.path, {
+            from: start,
+            to: end,
+          }).url
+        : base
+      : `${base}#diff-${file.hash}${lines}`,
   }
 }
 
@@ -129,15 +139,14 @@ export function blobLink(repo: RepoRef, sha: string, path: string, span: LineSpa
   const plain = isMarkdownPath(path) ? '?plain=1' : ''
   return {
     label: `${repo.owner}/${repo.repo}@${sha.slice(0, 7)} · ${path}:${lineText(from, to)}`,
-    url:
-      repo.provider === 'forgejo'
-        ? forgejoUrls(deployment('forgejo', repo.origin)).file(
-            `${repo.owner}/${repo.repo}`,
-            sha,
-            path,
-            span
-          )
-        : `${web(repo)}/blob/${sha}/${encodePath(path)}${plain}#${lines}`,
+    url: isNativeForge(repo.provider)
+      ? forgejoUrls(deployment(repo.provider, repo.origin)).file(
+          `${repo.owner}/${repo.repo}`,
+          sha,
+          path,
+          span
+        )
+      : `${web(repo)}/blob/${sha}/${encodePath(path)}${plain}#${lines}`,
   }
 }
 
@@ -148,8 +157,8 @@ export function blobLink(repo: RepoRef, sha: string, path: string, span: LineSpa
  */
 export function fileUrl(repo: RepoRef, sha: string, path: string, line?: number): string {
   if (line !== undefined) return blobLink(repo, sha, path, { from: line, to: line }).url
-  if (repo.provider === 'forgejo')
-    return forgejoUrls(deployment('forgejo', repo.origin)).file(
+  if (isNativeForge(repo.provider))
+    return forgejoUrls(deployment(repo.provider, repo.origin)).file(
       `${repo.owner}/${repo.repo}`,
       sha,
       path
