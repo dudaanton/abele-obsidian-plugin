@@ -19,6 +19,7 @@ import { onPhone } from './target'
 import { phoneRouteProbe, phoneRouteDetail, type PhoneRouteResult } from './phoneRouteProbe'
 import { waitFor } from './syncVault'
 import { syncFixtureRules } from './syncFixtureRules'
+import { restoreSyncActiveFile } from './syncActiveFile'
 function cleanupReason(error: unknown, depth = 0): string {
   const message = error instanceof Error ? error.message : String(error)
   return error instanceof AggregateError && depth < 3
@@ -251,7 +252,7 @@ export class TokenSyncLive {
       }
       try {
         device.run(
-          `if(${JSON.stringify(saved.ignore)}===null){if(await app.vault.adapter.exists('.abele-sync-ignore'))await app.vault.adapter.remove('.abele-sync-ignore')}else await app.vault.adapter.write('.abele-sync-ignore',${JSON.stringify(saved.ignore)});const old=${JSON.stringify(saved.file)};if(old&&app.vault.getFileByPath(old))await app.workspace.getLeaf(false).openFile(app.vault.getFileByPath(old));app.setting.close();return true`,
+          `if(${JSON.stringify(saved.ignore)}===null){if(await app.vault.adapter.exists('.abele-sync-ignore'))await app.vault.adapter.remove('.abele-sync-ignore')}else await app.vault.adapter.write('.abele-sync-ignore',${JSON.stringify(saved.ignore)});await (${restoreSyncActiveFile.toString()})(app,${JSON.stringify(saved.file)},${onPhone()});app.setting.close();return true`,
           true
         )
       } catch (error) {

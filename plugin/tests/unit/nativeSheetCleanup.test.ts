@@ -1,9 +1,34 @@
 import { expect, it, vi } from 'vitest'
-import { dismissNativeSheet, withNativeSheetCleanup } from '../e2e/helpers/nativeSheetCleanup'
+import {
+  assertNoNativeSheet,
+  dismissNativeSheet,
+  withNativeSheetCleanup,
+} from '../e2e/helpers/nativeSheetCleanup'
 
 const absent = JSON.stringify({ alert: null })
 const sheet = JSON.stringify({ text: ['sample archive'], buttons: ['Copy', 'Close'] })
 const pause = async (_ms: number) => {}
+
+it('requires a quiet interval before allowing a screenshot', async () => {
+  const run = vi.fn(() => absent)
+  await assertNoNativeSheet(run, pause)
+  expect(run.mock.calls).toEqual([[['alert']], [['alert']], [['alert']]])
+})
+
+it('fails rather than dismissing a late native sheet before a screenshot', async () => {
+  const replies = [absent, sheet],
+    run = vi.fn(() => replies.shift()!)
+  await expect(assertNoNativeSheet(run, pause)).rejects.toThrow('Native sheet present')
+  expect(run.mock.calls).toEqual([[['alert']], [['alert']]])
+})
+
+it('fails closed on an invalid or ambiguous native-sheet reply', async () => {
+  for (const reply of ['invalid reply', '{}', sheet]) {
+    const run = vi.fn(() => reply)
+    await expect(assertNoNativeSheet(run, pause)).rejects.toThrow()
+    expect(run.mock.calls).toEqual([[['alert']]])
+  }
+})
 
 it('dismisses the native preview and verifies absence after the dismissal animation', async () => {
   const replies = [sheet, 'dismissed', sheet, absent, absent, absent]

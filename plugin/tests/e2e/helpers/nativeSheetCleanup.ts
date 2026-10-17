@@ -1,6 +1,15 @@
 export type NativeSheetDriver = (args: string[]) => string
 const pauseFor = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
+/** Screenshot precondition: report an obstructing native sheet without interacting with it. */
+export async function assertNoNativeSheet(run: NativeSheetDriver, pause = pauseFor): Promise<void> {
+  for (let observation = 0; observation < 3; observation++) {
+    const state = JSON.parse(run(['alert'])) as { alert?: unknown }
+    if (state.alert !== null) throw new Error('Native sheet present before screenshot')
+    if (observation < 2) await pause(200)
+  }
+}
+
 /** Native previews block WebView evaluation, so cleanup uses only the system driver. */
 export async function dismissNativeSheet(run: NativeSheetDriver, pause = pauseFor): Promise<void> {
   let empty = 0

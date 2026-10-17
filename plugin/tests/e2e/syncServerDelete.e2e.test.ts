@@ -1,19 +1,24 @@
-import { expect, it } from 'vitest'
+import { afterEach, expect, it } from 'vitest'
 import { AccessClient } from '@abele/sync-core'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { liveSuite } from './helpers/syncLiveCases'
 import { captureSyncScreen, closeSyncScreens } from './helpers/syncScreens'
 import { fixtureFetch } from './helpers/syncServer'
-import { screenshot } from './helpers/phone'
+import { driver, screenshot } from './helpers/phone'
 import { shotDir } from './helpers/shots'
 import { onPhone, targets } from './helpers/target'
 import type { SyncDriver } from './helpers/syncDriver'
 import { V2Client } from '../../src/sync/v2/client'
 import { issueDeletionDevice, deletionFolder } from '../helpers/serverDeleteSetup'
+import { assertNoNativeSheet, dismissNativeSheet } from './helpers/nativeSheetCleanup'
 
 targets('desktop', 'phone')
 const fixture = liveSuite(false)
+// Stack order: remove native UI before fixture teardown evaluates the WebView.
+afterEach(async () => {
+  if (onPhone()) await dismissNativeSheet((args) => driver(args, 10_000))
+})
 const factsSelector = '.abele-server-delete__facts'
 const dialog = `inWindows(${JSON.stringify(factsSelector)})?.closest('.modal')`
 const menu = `inWindows('.menu')`
@@ -21,11 +26,14 @@ const menu = `inWindows('.menu')`
 /** Capture the current viewport, including the native notice/menu, never offscreen content. */
 async function shot(a: SyncDriver, state: string, selector: string): Promise<void> {
   const name = 'server-delete-' + state + (onPhone() ? '-phone' : '-desktop')
+  if (onPhone()) await assertNoNativeSheet((args) => driver(args, 10_000))
   a.run(
-    `await poll(()=>inWindows(${JSON.stringify(selector)})?.checkVisibility());await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));return true`
+    `await poll(()=>![...new Set([document,settingsDoc()])].some(doc=>[...doc.querySelectorAll('.notice')].some(one=>textOf(one).includes('Connection saved'))),15000,'connection setup notice to disappear');await poll(()=>inWindows(${JSON.stringify(selector)})?.checkVisibility());await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));return true`
   )
-  if (onPhone()) screenshot(join(shotDir('abele-token-screens'), name + '.png'))
-  else {
+  if (onPhone()) {
+    await assertNoNativeSheet((args) => driver(args, 10_000))
+    screenshot(join(shotDir('abele-token-screens'), name + '.png'))
+  } else {
     const screen = await captureSyncScreen(a, name, selector)
     expect(screen.error).toBe('')
     expect(screen.over).toEqual([])
@@ -38,6 +46,7 @@ async function openConfirmation(a: SyncDriver, id: string, state: string): Promi
   const labels = await a.long<string[]>(
     'open connection deletion menu',
     `
+    await poll(()=>![...new Set([document,settingsDoc()])].some(doc=>[...doc.querySelectorAll('.notice')].some(one=>textOf(one).includes('Connection saved'))),15000,'connection setup notice to disappear');
     const root=await openSyncTab();const native=app.vault.getConfig('nativeMenus');
     try{app.vault.setConfig('nativeMenus',false);icon(connectionRow(root,${JSON.stringify(id)}),'more-horizontal')}finally{app.vault.setConfig('nativeMenus',native)}
     await poll(()=>[...(${menu})?.querySelectorAll('.menu-item')||[]].some(one=>textOf(one)==='Delete from the server…'&&!one.classList.contains('is-disabled')));
