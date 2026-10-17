@@ -29,7 +29,7 @@ export const NODE_PANEL = {
   featureFolder: 'sample-panel-layout-worktree-with-a-longer-folder-name',
   notes: 'sample-notes',
   chat: 'Sample chat about the panel layout',
-  diagnostic: 'Sample model ready on the node',
+  diagnostic: 'Sample agent unavailable on the node',
 } as const
 
 export const NODE_PANEL_FIXTURE = `
@@ -79,7 +79,8 @@ const nodePanel = (() => {
     describe: async () => ({
       capabilities: { capabilities: { node_path_v2: supported, node_path_worktrees: supported, node_path_execution: supported, repository_git_write_v1: supported } },
       providers: [
-        { provider: 'pi', available: true, diagnostic: names.diagnostic, configuration: { profile: 'isolated', model: 'sample-model' }, capabilities: { compaction: { status: 'unverified', reason: 'Compaction not accepted' } } },
+        { provider: 'pi', available: true, configuration: { profile: 'isolated', model: 'sample-model' }, capabilities: { compaction: { status: 'unverified', reason: 'Compaction not accepted' } } },
+        { provider: 'codex', available: false, diagnostic: names.diagnostic },
         { provider: 'claude', available: true, configuration: { profile: 'inherited' }, capabilities: { steering: { status: 'unsupported', reason: 'Serialized follow-ups only' } } },
       ],
     }),
@@ -281,7 +282,7 @@ const nodePanel = (() => {
       const item = [...menu.querySelectorAll('.menu-item')].find((i) => i.querySelector('.menu-item-title')?.textContent.trim() === 'New chat here')
       if (!item || item.classList.contains('is-disabled')) throw Error('Node panel fixture: New chat here is not offered')
       item.click()
-      const prompt = await waitFor(() => [...document.querySelectorAll('.modal-container > .prompt')].find((p) => shown(p) && p.querySelector('input')?.placeholder === 'Choose the node agent' && p.querySelector('.suggestion-item')), 'agent choice')
+      const prompt = await waitFor(() => [...document.querySelectorAll('.modal-container > .prompt')].find((p) => shown(p) && p.querySelector('.suggestion-item.abele-node-suggestion')), 'agent choice')
       await pause(250)
       return prompt
     },

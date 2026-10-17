@@ -98,18 +98,18 @@ it('retains a raced target-refused draft, shows the real target and sends only o
         `(async()=>{${prelude}${describe}const project=await client.nodePath.register({path:${JSON.stringify(repository)},trust:'trusted',exact_root:true});await client.setRepositorySettings({project_id:project.project_id,external_read:true});const rows=await client.repository.worktrees({project_id:project.project_id});const root=rows.entries.find(w=>w.kind==='root'),other=rows.entries.find(w=>w.kind==='external');await client.nodePath.worktreeSelection({project_id:project.project_id,worktree_id:other.worktree_id,listed:true});for(const row of [root,other])await client.nodePath.execution({project_id:project.project_id,target:{kind:'worktree',worktree_id:row.worktree_id},enabled:true});const session=await client.nodePath.createSession({title:'Sample guarded chat',provider:'fake',target:{kind:'worktree',worktree_id:root.worktree_id}});const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});await api.NodePathService.getInstance().ready(${JSON.stringify(registration)});await model.refresh();return JSON.stringify({project:project.project_id,root:root.worktree_id,other:other.worktree_id,session:session.session_id,node:await client.store.transaction(s=>s.node_id)})})()`
       )
     )
-    const target = {
+    const reference = {
+      kind: 'node-session',
       nodeId: ids.node,
       registrationId: registration,
-      projectId: ids.project,
-      kind: 'worktree',
-      id: ids.root,
+      sessionId: ids.session,
+      title: 'Sample guarded chat',
     }
     const open = () =>
       evalLong(
-        `(async()=>{${prelude}const leaf=app.workspace.getLeavesOfType('abele-node-chat').find(l=>l.view.getState().sessionId===${JSON.stringify(ids.session)})??app.workspace.getLeaf('tab');await leaf.setViewState({type:'abele-node-chat',active:true,state:${JSON.stringify({ kind: 'chat', target, sessionId: ids.session, title: 'Sample guarded chat' })}});await app.workspace.revealLeaf(leaf);app.workspace.leftSplit.collapse();app.workspace.rightSplit.collapse();await leaf.view.presenter.load();await until(()=>leaf.view.presenter.nodeDescription.value?.version);return 'opened'})()`
+        `(async()=>{${prelude}const chats=api.ChatService.getInstance();await chats.openNodeSession(${JSON.stringify(reference)});await chats.revealSidebar({focus:false});const presenter=chats.getNodeSession(chats.activeTabId.value);await presenter.load();await until(()=>presenter.nodeDescription.value?.version);await until(()=>document.querySelector('.abele-node-chat[data-session-id="${ids.session}"] textarea'));return 'opened'})()`
       )
-    const chatPrelude = `${prelude}const client=nodes.connection(${JSON.stringify(registration)}).client;const view=app.workspace.getLeavesOfType('abele-node-chat').find(l=>l.view.getState().sessionId===${JSON.stringify(ids.session)}).view;const presenter=view.presenter;const root=view.contentEl.querySelector('.abele-node-chat');`
+    const chatPrelude = `${prelude}const client=nodes.connection(${JSON.stringify(registration)}).client;const chats=api.ChatService.getInstance();const presenter=chats.getNodeSession(chats.activeTabId.value);const root=document.querySelector('.abele-node-chat[data-session-id="${ids.session}"]');`
     for (const shell of ['desktop', 'phone'] as const) {
       const draft =
         shell === 'phone'
@@ -148,7 +148,7 @@ it('retains a raced target-refused draft, shows the real target and sends only o
   } finally {
     try {
       await evalLong(
-        `(async()=>{${prelude}for(const leaf of app.workspace.getLeavesOfType('abele-node-chat'))if(leaf.view.getState().target?.registrationId===${JSON.stringify(registration)})leaf.detach();if(${JSON.stringify(registration)})nodes.remove(${JSON.stringify(registration)});app.workspace.requestSaveLayout();await wait(1000);return 'cleaned'})()`
+        `(async()=>{${prelude}const chats=api.ChatService.getInstance();for(const id of [...chats.tabOrder.value])if(chats.getNodeSession(id)?.reference.registrationId===${JSON.stringify(registration)})await chats.closeTab(id);if(${JSON.stringify(registration)})nodes.remove(${JSON.stringify(registration)});app.workspace.requestSaveLayout();await wait(1000);return 'cleaned'})()`
       )
     } finally {
       if (child && child.exitCode === null) {
@@ -157,7 +157,7 @@ it('retains a raced target-refused draft, shows the real target and sends only o
       }
       if (mobile) await reloadApp('app.emulateMobile(false)')
       await evalLong(
-        `(async()=>{${prelude}for(const leaf of app.workspace.getLeavesOfType('abele-node-chat'))if(leaf.view.getState().target?.registrationId===${JSON.stringify(registration)})leaf.detach();app.workspace.requestSaveLayout();await wait(1000);return 'desktop fixture roots cleared'})()`
+        `(async()=>{${prelude}const chats=api.ChatService.getInstance();for(const id of [...chats.tabOrder.value])if(chats.getNodeSession(id)?.reference.registrationId===${JSON.stringify(registration)})await chats.closeTab(id);app.workspace.requestSaveLayout();await wait(1000);return 'desktop fixture roots cleared'})()`
       )
       evalRaw(
         `require('@electron/remote').getCurrentWindow().setContentSize(${oldSize[0]},${oldSize[1]});'restored'`
