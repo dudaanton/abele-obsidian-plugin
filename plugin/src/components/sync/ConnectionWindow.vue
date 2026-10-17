@@ -60,17 +60,12 @@
         <Checkbox :is-enabled="!!row?.trusted" @toggle="toggleTrusted" />
       </Setting>
 
-      <Section v-if="events.length" title="Recent">
+      <Section v-if="events?.length" title="Recent">
         <p class="abele-sync-window__progress">
           Recent activity is kept here for this session. Open sync settings from the command palette
           for diagnostics.
         </p>
-        <ol class="abele-sync-window__events">
-          <li v-for="(event, i) in events" :key="i">
-            <span class="abele-sync-window__time">{{ when(event.at) }}</span>
-            <span>{{ event.text }}</span>
-          </li>
-        </ol>
+        <ConnectionEvents :events="events ?? []" />
       </Section>
     </div>
     <template #footer>
@@ -97,7 +92,7 @@
  * copies it saved, what waits for the person, what this device takes, and the last few things
  * that happened. Sharing and disconnecting are at the foot, the dangerous one apart.
  */
-import { computed, onMounted, ref, shallowRef } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import Modal from '../obsidian/Modal.vue'
 import Section from '../obsidian/Section.vue'
 import Setting from '../obsidian/Setting.vue'
@@ -110,6 +105,7 @@ import StatusDot from '../obsidian/StatusDot.vue'
 import HeldDeletesBlock from './HeldDeletesBlock.vue'
 import StagedSettingsBlock from './StagedSettingsBlock.vue'
 import SelectiveSync from '../settings/sync/SelectiveSync.vue'
+import ConnectionEvents from './ConnectionEvents.vue'
 import { connectionName, type TokenUi } from '@/sync/tokenUi'
 import { connectionLine, connectionProgress, connectionTone } from '@/sync/connectionLine'
 import { TokenSettingsPort } from '@/sync/tokenSettingsPort'
@@ -136,7 +132,30 @@ async function toggleTrusted(): Promise<void> {
     trustError.value = 'The action could not finish. Pending changes have been kept.'
   }
 }
-const activity = computed(() => props.ui.activity.value[props.connectionId])
+const liveActivity = computed(() => props.ui.activity.value[props.connectionId])
+/**
+ * What the window shows, at most a few times a second: a pull publishes progress for every
+ * file, and redrawing the window that often costs the phone more than the file itself.
+ */
+const activity = shallowRef(liveActivity.value)
+const ACTIVITY_REDRAW_MS = 250
+let shownAt = 0
+let redraw: number | undefined
+watch(liveActivity, (next) => {
+  if (redraw !== undefined) return
+  const wait = shownAt + ACTIVITY_REDRAW_MS - Date.now()
+  if (wait <= 0) {
+    shownAt = Date.now()
+    activity.value = next
+    return
+  }
+  redraw = window.setTimeout(() => {
+    redraw = undefined
+    shownAt = Date.now()
+    activity.value = liveActivity.value
+  }, wait)
+})
+onBeforeUnmount(() => window.clearTimeout(redraw))
 const name = computed(() => (row.value ? connectionName(row.value).split(' · ')[0] : ''))
 const host = computed(() => (row.value ? new URL(row.value.address).host : ''))
 const line = computed(() => (row.value ? connectionLine(row.value, activity.value) : ''))
@@ -154,13 +173,11 @@ const counts = computed(() => {
 const failure = computed(() => trustError.value || props.error || activity.value?.error || '')
 const refused = computed(() => activity.value?.refused ?? [])
 const conflicts = computed(() => activity.value?.conflicts ?? [])
-const events = computed(() => [...(activity.value?.events ?? [])].reverse())
+// The same list until an event is added, so the rows below are left alone on progress ticks.
+const events = computed(() => activity.value?.events)
 const port = shallowRef<TokenSettingsPort>()
 const held = shallowRef<HeldDelete[]>([])
 const changes = ref<ChangeItem[]>([])
-
-const when = (at: number) =>
-  new Date(at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 
 onMounted(async () => {
   historyConnection.value = props.connectionId
