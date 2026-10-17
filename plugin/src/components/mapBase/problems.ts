@@ -13,7 +13,6 @@ export type MapProblem =
   | 'offline'
   | 'no-webgl'
   | 'lost-context'
-  | 'conflict'
 
 export type MapPlate = {
   icon: string
@@ -90,13 +89,6 @@ export function plateFor(
         title: 'The map stopped drawing',
         text: 'The graphics card let go of it, often after sleep.',
         action: 'Draw again',
-        variant: 'error',
-      }
-    case 'conflict':
-      return {
-        icon: 'puzzle',
-        title: 'Obsidian Maps draws this view',
-        text: 'Both plugins offer the Map view. Turn Obsidian Maps off to use this one. Your bases stay as they are.',
         variant: 'error',
       }
     default:

@@ -114,7 +114,8 @@
 </template>
 
 <script setup lang="ts">
-// The Bases "Map" view: every note of the base that has coordinates as a mark of its glyph and
+// The plugin's own Bases view, "Abele map", beside Obsidian Maps' "Map" rather than in its place:
+// it reads the same view settings, so a base moves over by picking it. Every note of the base that has coordinates as a mark of its glyph and
 // colour, Obsidian Maps' behaviour first (a press opens the note, pointing shows the properties,
 // the menus on a mark and on the map), and on top of it the place card, the list beside the map
 // sorted by distance, and nearby places joined into groups. Nothing is written by looking: the
@@ -231,7 +232,7 @@ watch(
   { immediate: true }
 )
 
-const noMap = computed(() => props.problem === 'no-webgl' || props.problem === 'conflict')
+const noMap = computed(() => props.problem === 'no-webgl')
 const plate = computed(() =>
   plateFor(props.problem, { phone, query: props.searchText, notes: props.skipped.length })
 )
