@@ -1,12 +1,14 @@
 import { mount, flushPromises } from '@vue/test-utils'
 import { expect, it, vi } from 'vitest'
 import { ref } from 'vue'
-import { Menu } from 'obsidian'
+import { Menu, MarkdownRenderer } from 'obsidian'
 import NodeChatView from '@/components/NodeChatView.vue'
 import NodeMessageTree from '@/components/NodeMessageTree.vue'
 import AiChatMessage from '@/components/AiChatMessage.vue'
 import ChatToolRun from '@/components/ChatToolRun.vue'
 import { useVault } from '../helpers/testEnv'
+import { reduceTranscript } from '@/node/NodeTranscriptReducer'
+import type { JournalEvent } from '@abele/channel-protocol'
 const presenter = () => ({
   id: 'sample-node-tab',
   reference: { registrationId: 'sample' },
@@ -35,6 +37,119 @@ const presenter = () => ({
   cancelInput: vi.fn(),
   interrupt: vi.fn(),
   openResource: vi.fn(),
+})
+it('keeps the agent label and menu chevron inside the shared header button', async () => {
+  useVault([])
+  const p = presenter()
+  const show = vi.spyOn(Menu.prototype, 'showAtPosition')
+  const wrapper = mount(NodeChatView, {
+    props: { presenter: p as never },
+    global: { stubs: { AiChatInput: true, Markdown: true } },
+  })
+  try {
+    const picker = wrapper.get('.abele-node-chat__agent')
+    expect(picker.attributes('aria-label')).toBe('Agent: Claude Code. Start a chat with another')
+    expect(picker.classes()).not.toContain('dropdown')
+    expect(picker.get('.abele-obsidian-button__label').text()).toBe('Claude Code')
+    expect(picker.get('.abele-obsidian-button__trailing-icon').attributes('data-icon')).toBe(
+      'chevron-down'
+    )
+    await picker.trigger('click')
+    expect(show).toHaveBeenCalledOnce()
+  } finally {
+    wrapper.unmount()
+    show.mockRestore()
+  }
+})
+it('finishes painting an earlier answer while later message deltas keep arriving', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  useVault([])
+  const render = vi.spyOn(MarkdownRenderer, 'render').mockImplementation(async (_app, text, el) => {
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    el.setText(text)
+  })
+  const p = presenter()
+  const journal: JournalEvent[] = []
+  const update = (kind: string, message_id: string, text: string) => {
+    journal.push({
+      kind: 'event',
+      node_id: 'sample',
+      stream_id: 'sample-session',
+      seq: journal.length + 1,
+      type: 'session.update',
+      actor: { kind: 'provider', provider: 'claude', session_id: 'sample-session' },
+      at: '2025-01-01T00:00:00.000Z',
+      data: { run_id: 'sample-run', update: { kind, message_id, text } },
+    } as JournalEvent)
+    p.messages.value = reduceTranscript(journal).messages as never
+  }
+  update('agent_message_chunk', 'earlier', 'The first ans')
+  const wrapper = mount(NodeChatView, {
+    props: { presenter: p as never },
+    global: { stubs: { AiChatInput: true } },
+  })
+  try {
+    await vi.advanceTimersByTimeAsync(100)
+    const earlier = () => wrapper.findAllComponents(AiChatMessage)[0].find('.abele-markdown').text()
+    expect(earlier()).toBe('The first ans')
+    update('agent_message', 'earlier', 'The first answer is complete.')
+    update('agent_message_chunk', 'later', 'Next')
+    for (let i = 0; i < 12; i++) {
+      await vi.advanceTimersByTimeAsync(10)
+      update('agent_message_chunk', 'later', ` ${i}`)
+    }
+    // No pause in the later stream is needed to complete the answer above it.
+    expect(earlier()).toBe('The first answer is complete.')
+  } finally {
+    wrapper.unmount()
+    render.mockRestore()
+    vi.useRealTimers()
+  }
+})
+it('keeps earlier markdown resource contexts stable while later answers stream', async () => {
+  useVault([])
+  const p = presenter()
+  p.messages.value = [
+    { id: 'earlier', role: 'assistant', content: 'An earlier complete answer.', timestamp: 0 },
+    { id: 'later', role: 'assistant', content: 'Next', timestamp: 1 },
+  ] as never
+  const wrapper = mount(NodeChatView, {
+    props: { presenter: p as never },
+    global: { stubs: { AiChatInput: true, Markdown: true } },
+  })
+  try {
+    const earlier = wrapper.findAllComponents(AiChatMessage)[0]
+    const opener = earlier.props('resourceOpener')
+    for (const text of ['Next answer', 'Next answer continues', 'Next answer completes.']) {
+      p.messages.value = [p.messages.value[0], { ...p.messages.value[1], content: text }]
+      await flushPromises()
+      expect(earlier.props('message').content).toBe('An earlier complete answer.')
+      // A new opener invalidates an asynchronous render even when its text is unchanged.
+      expect(earlier.props('resourceOpener')).toBe(opener)
+    }
+    opener!('sample.txt')
+    expect(p.openResource).toHaveBeenCalledWith('sample.txt')
+  } finally {
+    wrapper.unmount()
+  }
+})
+
+it('shows working dots throughout a turn and removes them when the turn ends', async () => {
+  useVault([])
+  const p = presenter()
+  const wrapper = mount(NodeChatView, {
+    props: { presenter: p as never },
+    global: { stubs: { AiChatInput: true, Markdown: true } },
+  })
+  try {
+    expect(wrapper.get('[aria-label="Agent is working"]').attributes('role')).toBe('status')
+    expect(wrapper.findAll('.abele-ai-chat__typing-dot')).toHaveLength(3)
+    p.projection.value.activeRuns = []
+    await flushPromises()
+    expect(wrapper.find('[aria-label="Agent is working"]').exists()).toBe(false)
+  } finally {
+    wrapper.unmount()
+  }
 })
 it('keeps stored service records outside the transcript with a diagnostic menu exit', async () => {
   useVault([])

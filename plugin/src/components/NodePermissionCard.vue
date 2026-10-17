@@ -1,13 +1,15 @@
 <template>
-  <div class="abele-tool-approval abele-node-permission">
+  <RequestCard
+    class="abele-tool-approval abele-node-permission"
+    :waiting="prompt.state === 'pending'"
+  >
     <div class="abele-tool-approval__header">
-      <Icon icon="shield-alert" no-hover /><span>{{
-        prompt.title ||
-        prompt.tool_name ||
-        (prompt.kind === 'permission' ? 'Permission request' : 'Question')
-      }}</span>
+      <Icon :icon="KIND_ICON[toolKind(prompt.tool_name)]" no-hover /><span>{{ title }}</span>
     </div>
-    <div v-if="summary" class="abele-tool-approval__param">{{ summary }}</div>
+    <div v-if="location" class="abele-tool-approval__param">{{ location }}</div>
+    <div v-if="summary" class="abele-tool-approval__param">
+      <code>{{ summary }}</code>
+    </div>
     <!-- What the call would change, as the agent showed it: open while the question waits. -->
     <Diff
       v-for="(diff, i) in prompt.state === 'pending' ? (diffs ?? []) : []"
@@ -17,12 +19,16 @@
       :text-right="diff.new"
       :path="diff.path"
     />
-    <details v-if="prompt.input">
-      <summary>Original action</summary>
+    <Disclosure
+      v-if="prompt.input || prompt.tool_name"
+      v-model="detailOpen"
+      label="Original action"
+    >
+      <code v-if="prompt.tool_name">{{ prompt.tool_name }}</code>
       <Diff
         v-if="
           prompt.tool_name === 'Edit' &&
-          typeof prompt.input.old_string === 'string' &&
+          typeof prompt.input?.old_string === 'string' &&
           typeof prompt.input.new_string === 'string'
         "
         :text-left="prompt.input.old_string"
@@ -32,7 +38,7 @@
       <pre
         class="abele-tool-approval__code"
       ><code>{{ JSON.stringify(prompt.input, null, 2) }}</code></pre>
-    </details>
+    </Disclosure>
     <div
       v-if="prompt.state === 'pending' && answerState"
       class="abele-node-permission__note"
@@ -74,6 +80,12 @@
       />
       <div class="abele-tool-approval__actions">
         <Button
+          text="Deny"
+          :disabled="disabled"
+          tooltip="Do not allow this action"
+          @click="emit('answer', 'deny')"
+        />
+        <Button
           :text="isQuestion ? 'Answer' : fake ? 'Allow' : 'Approve'"
           accent
           :disabled="disabled || !valid"
@@ -81,12 +93,7 @@
           @click="approve"
         />
         <Button
-          text="Deny"
-          :disabled="disabled"
-          tooltip="Do not allow this action"
-          @click="emit('answer', 'deny')"
-        />
-        <Button
+          class="abele-tool-approval__stop"
           text="Stop"
           :disabled="disabled"
           tooltip="Reject and stop the agent"
@@ -95,6 +102,15 @@
       </div>
     </template>
     <div v-else class="abele-node-permission__note">
+      <ResultMark
+        v-if="prompt.state === 'resolved'"
+        :state="prompt.delivered ? 'done' : 'skipped'"
+        :text="
+          prompt.delivered
+            ? 'Decision delivered to provider'
+            : 'Decision saved; delivery not confirmed'
+        "
+      />
       {{ isQuestion ? 'Question' : 'Permission' }} {{ prompt.state
       }}{{ prompt.choice ? ': ' + prompt.choice : '' }}
       <template v-if="prompt.value !== undefined && prompt.value !== null">
@@ -109,13 +125,14 @@
         }}</template
       >
     </div>
-  </div>
+  </RequestCard>
 </template>
 <script setup lang="ts">
 import NodeErrorText from '@/components/NodeErrorText.vue'
 import { computed, ref, watch } from 'vue'
 import type { Prompt } from '@abele/node-client'
-import { toolSummary } from '@/ai/toolLine'
+import { toolSummary, readableToolName } from '@/ai/toolLine'
+import { KIND_ICON, toolKind } from '@/ai/toolRuns'
 import { promptExpiry } from '@/node/presentation'
 import type { PromptAnswerState } from '@/node/promptAnswers'
 import { useDisplayClock } from '@/composables/useDisplayClock'
@@ -123,10 +140,14 @@ import Button from './obsidian/Button.vue'
 import Icon from './obsidian/Icon.vue'
 import Diff from './Diff.vue'
 import Input from './obsidian/Input.vue'
+import RequestCard from './obsidian/RequestCard.vue'
+import Disclosure from './obsidian/Disclosure.vue'
+import ResultMark from './obsidian/ResultMark.vue'
 const props = defineProps<{
   prompt: Prompt
   disabled: boolean
   fake?: boolean
+  location?: string
   answerState?: PromptAnswerState
   /** The changes the call it asks about would make, when its agent showed them. */
   diffs?: { path: string; old: string; new: string }[]
@@ -136,10 +157,20 @@ const emit = defineEmits<{
   (e: 'stop'): void
 }>()
 const value = ref('')
+const detailOpen = ref(false)
+const title = computed(() => {
+  const name = props.prompt.tool_name
+  return name?.startsWith('mcp__') && (!props.prompt.title || props.prompt.title === name)
+    ? readableToolName(name)
+    : props.prompt.title ||
+        readableToolName(name) ||
+        (props.prompt.kind === 'permission' ? 'Permission request' : 'Question')
+})
 watch(
   () => props.prompt.prompt_id,
   () => {
     value.value = ''
+    detailOpen.value = false
   }
 )
 const isQuestion = computed(() => ['select', 'input'].includes(props.prompt.kind))
@@ -177,9 +208,6 @@ const summary = computed(() =>
   &__note {
     color: var(--text-muted);
     margin-top: var(--size-4-1);
-  }
-  details {
-    margin-block: var(--size-4-1);
   }
   select,
   textarea {

@@ -16,5 +16,8 @@ it.each([
   'rate-limit',
 ] as const)('the %s screen holds only events the node schema accepts', async (state) => {
   const { journal } = await import('@/testing/nodeSessionScreen')
-  for (const event of journal(state)) expect(() => NodeEventSchema.parse(event)).not.toThrow()
+  const events = journal(state)
+  for (const event of events) expect(() => NodeEventSchema.parse(event)).not.toThrow()
+  // A complete fixture has no missing first page for the chat to keep requesting.
+  expect(events.map((event) => event.seq)).toEqual(events.map((_, i) => i + 1))
 })

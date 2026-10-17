@@ -11,6 +11,18 @@ import type { ChatMessage } from './types'
 /** How much of a tool's result the message shows under its details. */
 export const TOOL_RESULT_MAX_LENGTH = 1000
 
+/** MCP identifiers stay in details; the action line uses the server and action as words. */
+export function readableToolName(name?: string): string {
+  if (!name) return ''
+  const words = (value: string) => value.replace(/[_-]+/g, ' ').trim()
+  const capital = (value: string) => value.charAt(0).toUpperCase() + value.slice(1)
+  const match = /^mcp__(.+?)__(.+)$/.exec(name)
+  if (!match) return capital(words(name))
+  const server = match[1].replace(/^abele_/, '')
+  const action = server === 'debugger' ? match[2].replace(/^debug_/, '') : match[2]
+  return `${capital(words(server))}: ${words(action)}`
+}
+
 export const truncate = (s: string, max: number): string =>
   s.length > max ? s.slice(0, max) + '…' : s
 

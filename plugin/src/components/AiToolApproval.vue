@@ -14,6 +14,13 @@
         @click="moreMenu"
       />
     </div>
+    <Disclosure
+      v-if="message.toolName?.startsWith('mcp__')"
+      v-model="originalOpen"
+      label="Original action"
+    >
+      <code>{{ message.toolName }}</code>
+    </Disclosure>
 
     <!-- Create: the file does not exist yet, so its content is all there is to show -->
     <template v-if="message.toolName === 'create'">
@@ -220,11 +227,13 @@ import Button from './obsidian/Button.vue'
 import Input from './obsidian/Input.vue'
 import Diff from './Diff.vue'
 import RequestCard from './obsidian/RequestCard.vue'
+import Disclosure from './obsidian/Disclosure.vue'
 import { ChatService } from '@/ai/ChatService'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { Menu, TFile } from 'obsidian'
 import { KIND_ICON, toolKind } from '@/ai/toolRuns'
+import { readableToolName } from '@/ai/toolLine'
 import { WRITE_TOOLS, DECK_WRITE_TOOLS } from '@/ai/types'
 import { NODE_EDIT_TOOLS, NODE_MUTATION_TOOLS } from '@/ai/tools/node/agent'
 import type { ChatMessage } from '@/ai/types'
@@ -245,6 +254,7 @@ const props = defineProps<{
 
 const session = computed(() => ChatService.getInstance().activeSession.value)
 const isEditing = ref(false)
+const originalOpen = ref(false)
 const editedArgs = ref(JSON.stringify(props.message.toolParams, null, 2))
 const params = computed(() => props.message.toolParams || {})
 const keyRevision = ref(0)
@@ -419,8 +429,7 @@ const headerText = computed(() => {
       return 'Change a setting'
     default: {
       // A tool's own name, said as words: run_command → Run command.
-      const words = (props.message.toolName ?? 'tool').replace(/_/g, ' ')
-      return words.charAt(0).toUpperCase() + words.slice(1)
+      return readableToolName(props.message.toolName ?? 'tool')
     }
   }
 })

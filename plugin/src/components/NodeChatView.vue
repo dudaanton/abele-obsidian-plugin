@@ -11,15 +11,15 @@
     <div class="abele-ai-chat__header">
       <slot name="lead" />
       <div class="abele-agent-selector">
-        <button
-          type="button"
-          class="dropdown abele-node-chat__agent"
+        <Button
+          ref="agentPicker"
+          class="abele-node-chat__agent"
+          :text="agentName"
+          trailing-icon="chevron-down"
           aria-haspopup="menu"
-          :aria-label="`Agent: ${agentName}. Start a chat with another`"
+          :label="`Agent: ${agentName}. Start a chat with another`"
           @click="chooseAgent"
-        >
-          {{ agentName }}
-        </button>
+        />
       </div>
       <div class="abele-ai-chat__header-actions">
         <AgentsButton />
@@ -116,7 +116,7 @@
           :children="presenter.projection.value.children || {}"
           :queue-states="presentation.states"
           :offline="offline"
-          :open-resource="(path) => openResource(path, segment.target)"
+          :open-resource="resourceOpener(segment.target)"
           can-reply
           @cancel="presenter.cancelInput($event)"
           @retry="retry"
@@ -142,6 +142,7 @@
         v-for="prompt in presenter.projection.value.prompts"
         :key="prompt.prompt_id"
         :prompt="prompt"
+        :location="[nodeLabel, folder, worktree?.branch].filter(Boolean).join(' · ')"
         :fake="presenter.provider?.value === 'fake'"
         :disabled="offline"
         :answer-state="presenter.answers?.value[prompt.prompt_id]"
@@ -154,6 +155,11 @@
               : presenter.answer(prompt, choice, value)
         "
       />
+      <div v-if="working" class="abele-ai-chat__typing" role="status" aria-label="Agent is working">
+        <span class="abele-ai-chat__typing-dot" />
+        <span class="abele-ai-chat__typing-dot" />
+        <span class="abele-ai-chat__typing-dot" />
+      </div>
       <div
         v-for="rejected in presenter.rejected.value"
         :key="rejected.id"
@@ -356,7 +362,10 @@ const agentName = computed(() => {
   return providerLabel(provider)
 })
 /** The agents of this node, this one checked; another starts a new chat with it here. */
-const chooseAgent = (event: MouseEvent) => {
+const agentPicker = ref<InstanceType<typeof Button> | null>(null)
+const chooseAgent = () => {
+  const button = agentPicker.value?.$el as HTMLElement | undefined
+  if (!button) return
   const menu = new Menu()
   const provider = props.presenter.provider?.value
   const agent = sessionAgent() ?? ''
@@ -372,7 +381,7 @@ const chooseAgent = (event: MouseEvent) => {
         })
     )
   }
-  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  const rect = button.getBoundingClientRect()
   menu.showAtPosition({ x: rect.left, y: rect.bottom })
 }
 const offline = computed(() => props.presenter.connection.state.value !== 'connected')
@@ -466,6 +475,18 @@ const segments = computed(() =>
 )
 const openResource = (path: string, target?: PathTarget) =>
   props.openNodeResource ? props.openNodeResource(path, target) : props.presenter.openResource(path)
+// Markdown invalidates a render when its resource context changes. Keep that context stable
+// across message deltas, while preserving the worktree each historical segment belongs to.
+const resourceContexts = new Map<string, (path: string) => void>()
+const resourceOpener = (target?: PathTarget) => {
+  const key = JSON.stringify(target ?? null)
+  let open = resourceContexts.get(key)
+  if (!open) {
+    open = (path) => openResource(path, target)
+    resourceContexts.set(key, open)
+  }
+  return open
+}
 const workspaces = () => {
   const node = NodeService.getInstance().nodes.value.find(
     (n) => n.id === props.presenter.reference.registrationId
@@ -681,13 +702,23 @@ watch(
     flex-shrink: 0;
   }
   /* The agent as the regular chat's header names it: a dropdown that opens its menu. */
+  .abele-agent-selector {
+    flex: 1;
+    min-width: 0;
+  }
   &__agent {
-    max-width: 12em;
-    min-width: 5em;
+    max-width: min(12em, 100%);
+    min-width: 0;
     text-align: start;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    .abele-obsidian-button__label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .abele-obsidian-button__trailing-icon {
+      flex-shrink: 0;
+    }
   }
   /* Where the agent works: one quiet line under the header. */
   &__place {

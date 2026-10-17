@@ -163,17 +163,7 @@ export function journal(state: NodeSessionScreen): JournalEvent[] {
     return long
   }
   const events = [
-    e(
-      'session.created',
-      {
-        session_id: SESSION,
-        title: 'Search by words',
-        provider: 'claude',
-        created_at: at(90),
-        settings: { permission_mode: 'bypassPermissions' },
-      },
-      90
-    ),
+    created,
     e('session.process', { state: 'running' }, 80),
     e(
       'input.accepted',
