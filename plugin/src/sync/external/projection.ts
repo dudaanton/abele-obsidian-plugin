@@ -172,14 +172,27 @@ function recognizeDamagedMarker(text: string): boolean {
   return false
 }
 
+/** Bytes of a string in UTF-8, without encoding it when every character is ASCII. */
+function utf8Bytes(text: string): number {
+  // eslint-disable-next-line no-control-regex -- the whole ASCII range is the fast path
+  return /^[\x00-\x7f]*$/.test(text) ? text.length : encoder.encode(text).byteLength
+}
+
+/**
+ * Paths already known to pass. The check is a pure function of the string, so a pass is
+ * remembered; a failure is recomputed every time and throws exactly as before.
+ */
+const physicalPathsPassed = new Set<string>()
+const PHYSICAL_PATH_MEMO = 8192
+
 /** Protocol spelling and physical UTF-8 limits are separate checks. */
 export function assertPhysicalPath(path: string): void {
+  if (physicalPathsPassed.has(path)) return
   validatePath(path.normalize('NFC'))
-  if (
-    encoder.encode(path).byteLength > 1024 ||
-    path.split('/').some((segment) => encoder.encode(segment).byteLength > 255)
-  )
+  if (utf8Bytes(path) > 1024 || path.split('/').some((segment) => utf8Bytes(segment) > 255))
     throw new Error('Projection physical path too long')
+  if (physicalPathsPassed.size >= PHYSICAL_PATH_MEMO) physicalPathsPassed.clear()
+  physicalPathsPassed.add(path)
 }
 
 export function parseProjection(bytes: Uint8Array): Projection {
