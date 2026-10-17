@@ -30,6 +30,16 @@ export const defaultMetrics: TextMetricsPort = {
   lineHeight: 1.4,
   measure: (text, size) => Array.from(text).length * size * 0.58,
 }
+/** Painted caption background in world coordinates, including its horizontal padding. */
+export function labelBox(text: string, middle: Point, metrics: TextMetricsPort): Rect {
+  const width = metrics.measure(text, metrics.size)
+  return {
+    x: middle.x - width / 2 - 4,
+    y: middle.y - metrics.size,
+    width: width + 8,
+    height: metrics.size * 1.4,
+  }
+}
 /**
  * Where a card's words go. A rectangle keeps a card's padding; a rounded or pointed shape gives
  * them the largest upright box inside its outline instead, whose curves and slopes already keep

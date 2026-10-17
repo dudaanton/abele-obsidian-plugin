@@ -61,7 +61,12 @@ export const authoringSchemas = [
       fromSide: z.enum(['top', 'right', 'bottom', 'left']).optional(),
       toSide: z.enum(['top', 'right', 'bottom', 'left']).optional(),
       waypoints: z.array(pointSchema).max(100).optional(),
-      labelPosition: pointSchema.nullable().optional(),
+      labelPosition: pointSchema
+        .nullable()
+        .optional()
+        .describe(
+          'Absolute world-space label baseline centre {x,y}, not a route fraction. null restores the route midpoint. Move the label to resolve covered-edge-label without changing the route.'
+        ),
       method: z.enum(['direct', 'bezier', 'square', 'avoid']).optional(),
     })
     .strict(),

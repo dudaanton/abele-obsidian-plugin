@@ -48,6 +48,41 @@ beforeEach(() => {
 })
 
 describe('agent canvas tools and permissions', () => {
+  it('reads and measures edge and free-line label boxes without writing', async () => {
+    await call('canvas_create', { path: 'sample.canvas', from: { graph } })
+    await call('canvas_edit', {
+      path: 'sample.canvas',
+      ops: [
+        {
+          op: 'add_line',
+          line: {
+            version: 1,
+            id: 'line',
+            from: { x: 0, y: 0 },
+            to: { x: 200, y: 0 },
+            label: 'Caption',
+          },
+        },
+      ],
+    })
+    const file = app.vault.getAbstractFileByPath('sample.canvas') as TFile
+    const before = await app.vault.read(file)
+    const read = JSON.parse(
+      (
+        await call('canvas_read', {
+          path: 'sample.canvas',
+          detail: 'full',
+          measure: ['flow', 'line'],
+        })
+      ).content[0].text
+    )
+    expect(read.measurements).toEqual([
+      { id: 'flow', labelBox: read.edges[0].labelBox },
+      { id: 'line', labelBox: read.lines[0].labelBox },
+    ])
+    expect(read.measurements[0].labelBox.width).toBeGreaterThan(8)
+    expect(await app.vault.read(file)).toBe(before)
+  })
   it('renders several crops through the scoped picture path and refuses ambiguous options', async () => {
     await call('canvas_create', { path: 'sample.canvas', from: { graph } })
     const picture = vi.spyOn(pictures, 'canvasPicture').mockResolvedValue({

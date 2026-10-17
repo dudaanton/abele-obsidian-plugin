@@ -615,7 +615,9 @@ pathfinding fields remain present; native Canvas can ignore these extensions wit
 standard connection. Obstacle routing computes and stores bends at edit time; rerun it after moving
 cards. Fit-to-content writes ordinary node dimensions, with no measurement cache or sidecar persisted.
 
-Free lines/arrows are root `abele.lines` entries: `{version:1,id,from:{x,y},to:{x,y},fromEnd?,toEnd?,label?,color?}`.
+Free-line `labelPosition: {x,y}` stores an optional world-space horizontal caption centre at the text baseline; omitted or null uses the segment midpoint. Moving/scaling the line transforms an explicit label position with it.
+
+Free lines/arrows are root `abele.lines` entries: `{version:1,id,from:{x,y},to:{x,y},fromEnd?,toEnd?,label?,labelPosition?,color?}`.
 Ends are `none` or `arrow` (omitted ends mean none), coordinates are finite world coordinates, and endpoints are distinct.
 Their ids share the node/edge namespace. They use the same edit batches and history, appear in reads, pictures and embeds,
 and contribute to Fit bounds even without nodes. Bound connections remain standard edges. There is no drawing sidecar.

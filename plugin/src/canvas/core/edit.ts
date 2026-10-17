@@ -291,6 +291,14 @@ export function editCanvas(
               return line && op.ids.includes(line.id)
                 ? lineSchema.parse({
                     ...line,
+                    ...(line.labelPosition
+                      ? {
+                          labelPosition: {
+                            x: x + (line.labelPosition.x - x) * factor + dx,
+                            y: y + (line.labelPosition.y - y) * factor + dy,
+                          },
+                        }
+                      : {}),
                     from: {
                       x: x + (line.from.x - x) * factor + dx,
                       y: y + (line.from.y - y) * factor + dy,

@@ -2,6 +2,7 @@ import { contains, descendants, labelOf, overlaps, parentsOf, type CanvasGraph }
 import { expandedNodeIds, stepsOf } from './steps'
 import { linesOf } from './primitives'
 import { allInkEntries } from './ink'
+import { canvasLabels } from './labels'
 import {
   contentBox,
   defaultMetrics,
@@ -60,6 +61,19 @@ export function lintCanvas(
       if (paintedRouteHits(route, node))
         add('edge-crossing', [edge.id, node.id], `${edge.id} crosses ${node.id}`)
     }
+  }
+  const labels = canvasLabels(graph, metrics)
+  for (const [i, label] of labels.entries()) {
+    for (const node of nodes)
+      if (node.type !== 'group' && overlaps(label.box, node))
+        add('covered-edge-label', [label.id, node.id], `${label.id}: label covered by ${node.id}`)
+    for (const other of labels.slice(i + 1))
+      if (overlaps(label.box, other.box))
+        add(
+          'overlapping-edge-labels',
+          [label.id, other.id],
+          `${label.id}: label overlaps ${other.id}`
+        )
   }
   for (const node of nodes)
     if (node.type !== 'group' && !connected.has(node.id))

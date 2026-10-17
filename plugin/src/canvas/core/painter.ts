@@ -19,6 +19,7 @@ import {
   centredLabel,
   contentBox,
   labelPoint,
+  labelBox,
   paintedRoute,
   routeEdge,
   textLines,
@@ -359,13 +360,8 @@ export function paintCanvas(
     if (edge.label && assets.omitLabel !== edge.id) {
       const middle = labelPoint(route, edge.abele?.labelPosition)
       ctx.font = `${theme.size}px ${theme.font}`
-      const width = ctx.measureText(edge.label).width
-      const caption = {
-        x: middle.x - width / 2 - 4,
-        y: middle.y - theme.size,
-        width: width + 8,
-        height: theme.size * 1.4,
-      }
+      const caption = labelBox(edge.label, middle, metrics)
+      const width = caption.width - 8
       if (!contains(region, caption)) {
         if (assets.lint !== false && overlaps(region, caption))
           warnings.push({
@@ -397,12 +393,15 @@ export function paintCanvas(
     if (line.toEnd === 'arrow') arrow(ctx, line.from, line.to, undefined)
     if (line.label && assets.omitLabel !== line.id) {
       ctx.font = `${theme.size}px ${theme.font}`
-      const width = ctx.measureText(line.label).width,
-        middle = { x: (line.from.x + line.to.x) / 2, y: (line.from.y + line.to.y) / 2 },
-        x = middle.x - width / 2,
+      const middle = labelPoint(
+          { kind: 'polyline', points: [line.from, line.to] },
+          line.labelPosition
+        ),
+        caption = labelBox(line.label, middle, metrics),
+        x = caption.x + 4,
         y = middle.y
       ctx.fillStyle = theme.paper
-      ctx.fillRect(x - 4, y - theme.size, width + 8, theme.size * 1.4)
+      ctx.fillRect(caption.x, caption.y, caption.width, caption.height)
       ctx.fillStyle = theme.text
       ctx.fillText(line.label, x, y)
     }

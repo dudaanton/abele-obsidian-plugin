@@ -21,6 +21,7 @@ import { layoutOptionsSchema } from '@/canvas/core/layout'
 import { canvasOutline } from '@/canvas/core/read'
 import { editCanvasSteps, stepOperationSchema } from '@/canvas/core/steps'
 import { serializeCanvas } from '@/canvas/core/model'
+import { canvasLabels } from '@/canvas/core/labels'
 import { lintCanvas } from '@/canvas/core/lint'
 import { bundledMermaid } from '@/canvas/mermaidAdapter'
 import { canvasPicture, hostMetrics } from '@/canvas/pictureAdapter'
@@ -233,7 +234,7 @@ export function createCanvasTools(): AgentTool[] {
     definition(
       'canvas_read',
       'Read canvas',
-      'Read a JSON Canvas diagram and its write revision by stable ids, as a compact outline with group hierarchy, edges, free line/arrow primitives and pen/marker strokes (ink with stable ids, points, style, node attachment, authoring frame, world transform and bounds), stored steps and deterministic lint. detail=full includes geometry and all retained extension fields. region filters the outline; step (one-based) shows cumulative revealed content and camera/narration. Works without an open tab; read-only. Open Abele sessions expose pending graph content and state (generation, dirty, busy, conflict, native writer presence and failed-proposal recovery instructions); a pending read never commits text. Node/edge array order preserves stacking, not identity.',
+      'Read a JSON Canvas diagram and its write revision by stable ids, as a compact outline with group hierarchy, edges, free line/arrow primitives and pen/marker strokes (ink with stable ids, points, style, node attachment, authoring frame, world transform and bounds), stored steps and deterministic lint. detail=full includes geometry, painted labelBox world rectangles for labelled edges/lines, and all retained extension fields. Warnings include covered-edge-label (ids: connection, card; endpoints included) and overlapping-edge-labels. region filters the outline; step (one-based) shows cumulative revealed content and camera/narration. Works without an open tab; read-only. Open Abele sessions expose pending graph content and state (generation, dirty, busy, conflict, native writer presence and failed-proposal recovery instructions); a pending read never commits text. Node/edge array order preserves stacking, not identity.',
       z
         .object({
           path,
@@ -246,7 +247,7 @@ export function createCanvasTools(): AgentTool[] {
             .max(100)
             .optional()
             .describe(
-              'Measure rendered text/Markdown cards at current width, without writing. Returns fitted outer dimensions. Embedded media is refused.'
+              'Measure rendered text/Markdown cards at current width, without writing. Returns fitted outer dimensions for cards or painted labelBox world rectangles for labelled edge/free-line ids. Embedded media is refused.'
             ),
         })
         .strict(),
@@ -255,9 +256,18 @@ export function createCanvasTools(): AgentTool[] {
           store = new ObsidianCanvasStore(GlobalStore.getInstance().app)
         const snapshot = await store.snapshot(key)
         const measurements = []
+        const metrics = hostMetrics()
+        const labels = new Map(
+          canvasLabels(snapshot.graph, metrics).map((label) => [label.id, label.box])
+        )
         for (const id of params.measure ?? []) {
           const node = snapshot.graph.nodes.find((n) => n.id === id)
-          if (!node) throw new Error(`Unknown id ${id}`)
+          if (!node) {
+            const labelBox = labels.get(id)
+            if (!labelBox) throw new Error(`Unknown or unlabelled id ${id}`)
+            measurements.push({ id, labelBox })
+            continue
+          }
           const card = await renderedCard(
             GlobalStore.getInstance().app,
             node,
@@ -272,7 +282,7 @@ export function createCanvasTools(): AgentTool[] {
           }
         }
         return answer({
-          ...canvasOutline(snapshot.graph, params, hostMetrics()),
+          ...canvasOutline(snapshot.graph, params, metrics),
           revision: snapshot.revision,
           ...(params.measure ? { measurements } : {}),
           ...(snapshot.state ? { state: snapshot.state } : {}),
@@ -326,7 +336,7 @@ export function createCanvasTools(): AgentTool[] {
       'canvas_edit',
       'Edit canvas',
       'Pass revision from canvas_read or the last successful write; stale file/native/Abele session state is refused before any agent change; pending human drafts remain unsaved and block writes. Apply a single validated atomic batch by id: add_node {node:{id,kind,label,...}}, update {id,patch}, move {ids,dx,dy} (cards, free lines and ink; group descendants/owned ink move once), scale {ids,x,y,factor} (positive factor about world x/y), add_line {line:{version:1,id,from:{x,y},to:{x,y},fromEnd?:none|arrow,toEnd?:none|arrow,label?,color?}}, add_ink {stroke:{version:1,id,tool:pen|marker,color?,size?,points:[x,y,pressure,...],frame?:{width,height}},node?:id} (colour defaults to the host theme and size to human medium width: pen 2.4, marker 14; node-local points and authoring frame when attached, world points without a frame when free), update_ink {id,patch} (points/tool/color/size/transform; not id/version/frame), attach_ink {id,node?:id} (omit node to detach, preserving visible outline), remove {id} (ink too), connect {edge:{id,fromNode,toNode,...}}, group {id,label?,ids}, ungroup {id}, collapse {id,collapsed}, style {id,styleAttributes}. Unknown ids report the op index and suggestions; no partial writes. New unpositioned nodes auto-layout. Styles/abele updates merge retained fields. Grouping accepts cards and ink; ungrouping promotes group-owned ink without changing its outline. Removing a group promotes its children; removing a node removes owned ink and incident edges. One shared Abele session or native Canvas undo item when open. Own Ask mode.' +
-        ' Precise ops: fit {ids,width?} uses real text/Markdown rendering at the current/supplied width and replaces height; embedded media refused. align {ids,axis:left|right|top|bottom|center_x|center_y}; same_size {ids,dimension:width|height|both} copies the first card; distribute {ids,axis:horizontal|vertical,gap?} requires three cards; route {id,fromSide?,toSide?,method:direct|bezier|square|avoid,waypoints?:[{x,y}],labelPosition?:{x,y}|null}. avoid computes bends around cards; rerun after moving them. Styling accepts only schema-listed shape/border/path/arrow; font, padding and radius follow host theme and shape, background uses color.' +
+        ' Precise ops: fit {ids,width?} uses real text/Markdown rendering at the current/supplied width and replaces height; embedded media refused. align {ids,axis:left|right|top|bottom|center_x|center_y}; same_size {ids,dimension:width|height|both} copies the first card; distribute {ids,axis:horizontal|vertical,gap?} requires three cards; route {id,fromSide?,toSide?,method:direct|bezier|square|avoid,waypoints?:[{x,y}],labelPosition?:{x,y}|null}. labelPosition is an absolute world-space label baseline centre, not a route fraction; null restores the route midpoint. For free lines use update {id,patch:{labelPosition:{x,y}|null}}. Move only the label to a free point to resolve covered-edge-label in one edit. avoid computes bends around cards; rerun after moving them. Styling accepts only schema-listed shape/border/path/arrow; font, padding and radius follow host theme and shape, background uses color.' +
         recoveryHelp,
       z.union([
         z.object({ path, revision, ops: z.array(operationSchema).min(1) }).strict(),
@@ -483,7 +493,7 @@ export function createCanvasTools(): AgentTool[] {
     definition(
       'look_at_canvas',
       'Look at canvas',
-      'See a diagram as a PNG, all of it, a one-based step with its camera/highlights/narration, or a crop by node id or region {x,y,width,height}. maxSide defaults 2048 (64–4096). Comes with deterministic overlap, edge-crossing, text/image clipping, isolation, missing-step-id and crowded-step warnings. Paints local note text and images only when in scope, using the host theme. Remote images are not fetched. A large diagram is unreadable as one picture: inspect node/region crops and fix lint first. Read-only, own On mode.',
+      'See a diagram as a PNG, all of it, a one-based step with its camera/highlights/narration, or a crop by node id or region {x,y,width,height}. maxSide defaults 2048 (64–4096). Comes with deterministic overlap, covered-edge-label, overlapping-edge-labels, edge-crossing, text/image clipping, isolation, missing-step-id and crowded-step warnings. Paints local note text and images only when in scope, using the host theme. Remote images are not fetched. A large diagram is unreadable as one picture: inspect node/region crops and fix lint first. Read-only, own On mode.',
       z
         .object({
           path,

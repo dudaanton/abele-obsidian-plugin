@@ -4,6 +4,7 @@ import { linesOf, lineBounds } from './primitives'
 import { allInkEntries, inkEntries, inkBounds, inkTransform } from './ink'
 import { stepScene } from './steps'
 import { defaultMetrics, type TextMetricsPort } from './scene'
+import { canvasLabels } from './labels'
 /** Card geometry appears in full detail; primitives/ink carry geometry in every read. Sorted by id. */
 export function canvasOutline(
   graph: CanvasGraph,
@@ -15,6 +16,7 @@ export function canvasOutline(
   const parents = parentsOf(graph),
     selected = options.region ? graph.nodes.filter((n) => overlaps(n, options.region)) : graph.nodes
   const ids = new Set(selected.map((n) => n.id))
+  const labels = new Map(canvasLabels(graph, metrics).map((label) => [label.id, label.box]))
   const nodes = [...selected]
     .sort((a, b) => a.id.localeCompare(b.id))
     .map((n) => ({
@@ -44,12 +46,16 @@ export function canvasOutline(
       .sort((a, b) => a.id.localeCompare(b.id))
       .map((e) =>
         options.detail === 'full'
-          ? e
+          ? { ...e, ...(labels.has(e.id) ? { labelBox: labels.get(e.id) } : {}) }
           : { id: e.id, from: e.fromNode, to: e.toNode, label: e.label ?? '' }
       ),
     lines: linesOf(graph)
       .filter((l) => !options.region || overlaps(lineBounds(l), options.region))
-      .sort((a, b) => a.id.localeCompare(b.id)),
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((line) => ({
+        ...line,
+        ...(labels.has(line.id) ? { labelBox: labels.get(line.id) } : {}),
+      })),
     ink: (options.step === undefined ? allInkEntries(graph) : inkEntries(graph))
       .filter((entry) => !options.region || overlaps(inkBounds(entry), options.region))
       .sort((a, b) => a.stroke.id.localeCompare(b.stroke.id))

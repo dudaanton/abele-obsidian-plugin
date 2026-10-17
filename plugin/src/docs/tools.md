@@ -286,7 +286,7 @@ must be in scope. New diagrams join scope after creation, like `create`.
   `node` (owner id or null), `world` transform `{x,y,sx,sy}` and world `bounds`. Region reads
   include strokes intersecting the region even when their owner card is outside it. Step reads
   omit ink belonging to hidden/collapsed owners; ordinary reads include it for editing.
-  Full adds card geometry and all extension data. It includes an open native Canvas's pending data and returns an opaque `revision` covering
+  Full adds card geometry, each labelled edge/free line's painted `labelBox: {x,y,width,height}` in world coordinates, and all extension data. Lint reports `covered-edge-label` with ids `[edgeOrLine, card]` (including endpoint cards, excluding group backgrounds), and `overlapping-edge-labels` with both connection ids. It includes an open native Canvas's pending data and returns an opaque `revision` covering
   file bytes and pending native state. Open Abele sessions also return their pending graph and
   `state` (dirty, busy, conflict and native writer presence); their opaque revision includes a
   non-reused session incarnation and generation. Read again after closing/reopening a session.
@@ -334,7 +334,7 @@ Free primitives may be revealed, highlighted and focused by id in walkthrough st
   the supplied width), and replaces height including shape insets, shrinking empty space too.
   Embedded media is refused rather than guessed or loaded outside scope. Linked Markdown must
   be in scope. `canvas_read` accepts `measure: ids[]` to return outer `width/height` and rendered
-  `contentWidth/contentHeight` without writing. Measurements use the current device's theme and fonts.
+  `contentWidth/contentHeight` without writing. Labelled edge and free-line ids are also accepted in `measure`, returning `{id,labelBox}` instead of card dimensions. Measurements use the current device's theme and fonts.
   `align {ids,axis}` aligns selected bounds: `left`, `right`, `top`, `bottom`, `center_x`, `center_y`.
   Groups move their descendants. `same_size {ids,dimension}` copies the first card's `width`,
   `height`, or `both` to the rest (groups refused). `distribute {ids,axis,gap?}` needs three cards,
@@ -344,7 +344,7 @@ Free primitives may be revealed, highlighted and focused by id in walkthrough st
   Sides are `top/right/bottom/left`; methods `direct/bezier/square/avoid`. `avoid` computes orthogonal
   bends around up to 100 other cards with 12 world units clearance; rerun after moving cards.
   Explicit `waypoints: [{x,y}]` are world-space bends; `[]` clears them. `labelPosition: {x,y}`
-  places the caption centre in world coordinates; `null` restores automatic placement. Native
+  places the horizontal caption centre at its text baseline in world coordinates (not a fraction along the route); `null` restores the route midpoint. To resolve label occlusion without moving cards or the route, use one `route` edit with a free label position. For free lines use `update {id,patch:{labelPosition:{x,y}}}`; `null` restores their midpoint. Native
   anchors, ends and pathfinding fields remain standard; Abele bends/label placement are extensions.
   Supported `styleAttributes` keys are enumerated in the schema: `shape` (the shapes above),
   `border: solid/dashed/dotted/invisible`, edge `path: solid/dashed/dotted`, edge

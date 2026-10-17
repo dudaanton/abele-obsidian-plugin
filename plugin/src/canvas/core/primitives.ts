@@ -13,6 +13,7 @@ export const lineSchema = z
     fromEnd: z.enum(['none', 'arrow']).optional(),
     toEnd: z.enum(['none', 'arrow']).optional(),
     label: z.string().optional(),
+    labelPosition: point.nullable().optional(),
     color: z.string().optional(),
   })
   .loose()
@@ -46,8 +47,8 @@ export function writeLines(graph: CanvasGraph, lines: unknown[]): void {
 export function lineBounds(line: CanvasLine, fontSize = 16): Rect {
   const margin = 12,
     caption = (line.label?.length ?? 0) * fontSize,
-    cx = (line.from.x + line.to.x) / 2,
-    cy = (line.from.y + line.to.y) / 2,
+    cx = line.labelPosition?.x ?? (line.from.x + line.to.x) / 2,
+    cy = line.labelPosition?.y ?? (line.from.y + line.to.y) / 2,
     x = Math.min(line.from.x, line.to.x, cx - caption / 2) - margin,
     y = Math.min(line.from.y, line.to.y, cy - fontSize) - margin
   return {
