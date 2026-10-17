@@ -528,6 +528,10 @@ const folderName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?
   flex-direction: column;
   min-height: 0;
 }
+// The native phone drawer is narrower than a full row of debugger controls.
+.abele-debug-panel > .nav-header {
+  height: auto;
+}
 .abele-debug-panel .nav-buttons-container {
   min-width: 0;
   flex-wrap: wrap;
