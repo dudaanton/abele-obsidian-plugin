@@ -4,6 +4,7 @@ import { encodeAccessToken } from '@abele/sync-protocol'
 import { sha256 } from '@abele/sync-core'
 import { ExchangeTrace } from '@/sync/exchangeTrace'
 import { TokenConnectionRegistry } from '@/sync/tokenConnectionRegistry'
+import { desktopFsPort } from '../helpers/desktopRequire'
 import { withDesktopFs } from '../helpers/fakeDesktopFs'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { nativeTokenFixture } from '../helpers/nativeTokenFixture'
@@ -12,13 +13,6 @@ import { assertSmallPullBounds } from '../helpers/smallPullBounds'
 it('keeps a production-host file pull with implicit folders within the bridge bound', async () => {
   const app = buildFakeVault([])
   withDesktopFs(app)
-  Object.assign(Reflect.get(app.vault.adapter, 'fsPromises'), {
-    lstat: async (full: string) => {
-      if (!(await app.vault.adapter.stat(full.slice('/vault/'.length))))
-        throw Object.assign(new Error('missing'), { code: 'ENOENT' })
-      return { isSymbolicLink: () => false }
-    },
-  })
   const scope = { kind: 'folder' as const, id: 'sample-root', path: 'Container/Shared' }
   const bytes = new TextEncoder().encode('sample bytes')
   const sha = await sha256(bytes)
@@ -115,6 +109,7 @@ it('keeps a production-host file pull with implicit folders within the bridge bo
     setInterval,
     clearInterval,
   })
+  desktopFsPort(Reflect.get(app.vault.adapter, 'fsPromises'))
   let fixture: Awaited<ReturnType<typeof nativeTokenFixture>> | undefined
   try {
     fixture = await nativeTokenFixture(app, encoded, transport, factory)

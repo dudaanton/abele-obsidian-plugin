@@ -798,11 +798,13 @@ describe('manual attachment store', () => {
           inodes.delete(from)
         }
       })
-      ;(adapter as any).getFullPath = (name: string) => name
+      ;(adapter as any).getFullPath = (name: string) => '/vault/' + name
       ;(adapter as any).fsPromises = {
-        rename: adapter.rename.bind(adapter),
+        rename: (from: string, to: string) => adapter.rename(from.slice(7), to.slice(7)),
         rmdir: async () => {},
         link: async (from: string, to: string) => {
+          from = from.slice(7)
+          to = to.slice(7)
           const inode = inodes.get(from)!
           inodes.set(to, inode)
           await write(to, inode.bytes)

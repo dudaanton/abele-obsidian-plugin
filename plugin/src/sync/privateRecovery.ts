@@ -1,3 +1,4 @@
+import { vaultDisk } from './vaultPathLinks'
 import { connectionPrivateArea } from './connectionPaths'
 import { Notice, type App } from 'obsidian'
 import { makeParents } from './vaultFolders'
@@ -21,7 +22,7 @@ async function matchesCopy(
 ): Promise<boolean> {
   try {
     const actual = await new BoundedVaultIo(
-      app.vault.adapter,
+      vaultDisk(app.vault),
       () => {},
       undefined,
       undefined,
@@ -34,13 +35,13 @@ async function matchesCopy(
 }
 async function hasRecoveryCopies(app: App): Promise<boolean> {
   const root = recoveryDirectory(app)
-  if (!(await app.vault.adapter.exists(root))) return false
+  if (!(await vaultDisk(app.vault).exists(root))) return false
   const ordinary = ordinaryCopies(app),
     seen = new Set<string>()
   const walk = async (path: string): Promise<boolean> => {
     if (seen.has(path)) throw new Error('Recovery directory loop')
     seen.add(path)
-    const list = await app.vault.adapter.list(path)
+    const list = await vaultDisk(app.vault).list(path)
     for (const file of list.files) {
       if (
         !file.startsWith(root + '/') ||
@@ -82,8 +83,8 @@ export async function privateArtifactRecovered(app: App, path: string): Promise<
   const recovery = privateRecoveryPath(app, path)
   return (
     !!recovery &&
-    !(await app.vault.adapter.exists(path)) &&
-    (await app.vault.adapter.exists(recovery))
+    !(await vaultDisk(app.vault).exists(path)) &&
+    (await vaultDisk(app.vault).exists(recovery))
   )
 }
 const notified = new WeakSet<object>()
@@ -109,21 +110,21 @@ export async function preservePrivateArtifacts(
       assertCurrent()
       const recovery = privateRecoveryPath(app, path)
       if (!recovery) throw new Error('Recovery copy is outside private staging')
-      if (!(await app.vault.adapter.exists(path))) continue
-      if (await app.vault.adapter.exists(recovery)) {
+      if (!(await vaultDisk(app.vault).exists(path))) continue
+      if (await vaultDisk(app.vault).exists(recovery)) {
         if (!known[recovery] || !(await matchesCopy(app, recovery, known[recovery])))
           needsNotice = true
         // Reused stage names must not overwrite earlier recovery or block new work.
         const previous = recovery + '.previous-' + crypto.randomUUID()
-        if (await app.vault.adapter.exists(previous))
+        if (await vaultDisk(app.vault).exists(previous))
           throw new Error('Recovery destination already exists; both copies have been kept')
         assertCurrent()
-        await app.vault.adapter.rename(recovery, previous)
+        await vaultDisk(app.vault).rename(recovery, previous)
         if (known[recovery]) known[previous] = known[recovery]
       }
-      await makeParents(app.vault.adapter, recovery)
+      await makeParents(vaultDisk(app.vault), recovery)
       assertCurrent()
-      await app.vault.adapter.rename(path, recovery)
+      await vaultDisk(app.vault).rename(path, recovery)
       count++
       delete known[recovery]
       try {

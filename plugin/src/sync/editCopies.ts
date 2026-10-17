@@ -9,6 +9,7 @@ import {
 } from '@abele/sync-core'
 import { ConnectionRegistry, REGISTRY_KEY } from './connectionRegistry'
 import type { LocalStorage } from './ledgerId'
+import { PRIVATE_PLACEMENT_STAGES } from './privatePlacementStages'
 
 export const EDIT_COPIES_KEY = 'local-edit-copies-v1'
 export interface EditCopy {
@@ -151,7 +152,18 @@ export class EditCopies {
         const incoming = await fs.openRead(path)
         let stage
         try {
-          stage = await fs.beginAtomicWrite(path, before.mtime, identity)
+          const privateStages = Reflect.get(fs, PRIVATE_PLACEMENT_STAGES) as
+            | ReturnType<typeof import('./privatePlacementStages').privatePlacementStages>
+            | undefined
+          // A retained history source is never an unfinished install into the live note.
+          // Its owned private target survives an explicit change of local placement.
+          stage = privateStages
+            ? await privateStages.beginAtomicWrite(
+                `.abele-sync/placement-outbox/${sha}/${sha}`,
+                before.mtime,
+                null
+              )
+            : await fs.beginAtomicWrite(path, before.mtime, identity)
         } catch (error) {
           await incoming.close()
           throw error

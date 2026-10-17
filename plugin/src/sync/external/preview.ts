@@ -1,3 +1,4 @@
+import { vaultDisk } from '../vaultPathLinks'
 import type { App } from 'obsidian'
 import { sha256 } from './hash'
 import { projectionMime } from './projection'
@@ -34,10 +35,10 @@ export async function saveExternalPreview(
 ): Promise<string | undefined> {
   if (!/^image\/(png|jpeg|gif|webp|avif|bmp|heic|heif)$/.test(projectionMime(path))) return
   try {
-    const stat = await app.vault.adapter.stat(path)
+    const stat = await vaultDisk(app.vault).stat(path)
     // Mobile adapters expose whole reads; never allocate an unbounded original for a thumbnail.
     if (!stat || stat.size > 50 * 1024 * 1024) return
-    const bytes = new Uint8Array(await app.vault.adapter.readBinary(path))
+    const bytes = new Uint8Array(await vaultDisk(app.vault).readBinary(path))
     if ((await sha256(bytes)) !== sha) return
     if (externalPreview(app, sha)) return sha
     const data = await render(new Blob([bytes], { type: projectionMime(path) }))

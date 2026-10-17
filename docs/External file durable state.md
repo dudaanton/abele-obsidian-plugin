@@ -174,6 +174,36 @@ also capped, not a second whole-file allocation. Known external records/markers 
 damaged paths independently of this candidate search. An ordinary note quoting a format
 example is not itself a projection.
 
+Token startup bounds this discovery to the selected folder subtree (including hidden
+descendants), or exact group-member paths from that connection's durable ledger. A root
+folder connection retains whole-vault discovery. Scoped discovery does not enumerate the
+vault index or list parent directories. Exact projection and retained-artifact paths in
+the connection's bound external journal remain eligible outside those roots. Ordinary group
+frontmatter discovery is limited to the group root and candidate paths named by the
+connection's ledger, manifest or changes. An unrelated local note is not discovered by
+reading its frontmatter, even if it links to this group. Server responses register candidates
+before representation inspection or incoming placement. Folder directory discovery starts
+at its selected root. A validated active connection response updates both directory roots
+and file/watch filters when the same folder identity moves to another path; the saved token
+path does not keep the old subtree in discovery. Observed local renames extend group
+candidates only from already named members, including descendants of a renamed folder,
+so core can match a move without discovering unrelated rename destinations. Group
+connections do not enumerate directory trees. An unindexed
+ledger member may require listing its exact parent to prove physical spelling. Directory identities
+and pending removals belonging to other scopes remain untouched. The file inventory filters
+candidates before reading representation prefixes or checking unindexed ledger paths.
+
+Scoped connections do not walk or poll the config tree. They still read/stat the exact
+unsynced `.abele-sync-ignore` control file, so an existing rule continues to protect in-scope
+files from publication. Ordinary publication may also read/stat its own exact private staging
+paths. These accesses do not enumerate the vault root or unrelated user directories.
+
+Recovery metadata remains shared across the vault: explicitly recorded ledger identities,
+installation journals and the private config-directory `plugins/abele/sync-staging` tree
+are checked to preserve orphaned work whose connection may no longer be reachable. The
+private `plugins/abele/sync-recovery` directory is checked for a recovery notice, not
+searched for projection candidates. No user-folder search is needed for those checks.
+
 `abele-sync-external-inspection-v1` persists path/size/mtime/marker observations in vault-local
 storage. Matching unchanged files need no content read on the next build. Missing/corrupt
 cache is re-inspected, not accepted as authority. Read errors are still refusals unless a

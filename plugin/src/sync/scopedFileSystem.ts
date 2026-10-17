@@ -15,10 +15,11 @@ export function scopedFileSystem(
   assertPath: (path: string) => void,
   includes: (path: string) => boolean,
   privateRoot?: string,
-  scopeRoot?: string
+  scopeRootInput?: string | (() => string)
 ): FileSystem {
   const handles = new Set<string>()
-  const stages = privatePlacementStages(fs, privateRoot)
+  const stages =
+    Reflect.get(fs, PRIVATE_PLACEMENT_STAGES) ?? privatePlacementStages(fs, privateRoot)
   const privateStage = (path: string) =>
     !!privateRoot &&
     path.startsWith(privateRoot + '/writes/') &&
@@ -52,6 +53,7 @@ export function scopedFileSystem(
           (await value.call(target)).filter((info: { path: string }) => includes(info.path))
       if (key === 'listChildren' || key === Symbol.for('abele.sync.inventory-children-v1'))
         return async (parent: string, ...args: unknown[]) => {
+          const scopeRoot = typeof scopeRootInput === 'function' ? scopeRootInput() : scopeRootInput
           if (scopeRoot && (parent === '' || scopeRoot.startsWith(parent + '/'))) {
             const path = scopeRoot
               .split('/')

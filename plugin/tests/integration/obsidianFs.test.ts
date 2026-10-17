@@ -1239,3 +1239,59 @@ describe('ObsidianFileSystem — watching', () => {
     expect(batches).toEqual([])
   })
 })
+
+it.each(['prefix', 'read', 'write', 'remove', 'inspect'])(
+  'refuses a linked ancestor before file %s',
+  async (action) => {
+    const app = buildFakeVault([{ path: 'Alias/Shared/sample.md', content: 'external' }])
+    const lstat = vi.fn(async (path: string) => ({ isSymbolicLink: () => path === 'Alias' }))
+    Object.assign(app.vault.adapter, { getFullPath: (path: string) => path, fsPromises: { lstat } })
+    const fs = new ObsidianFileSystem(app as unknown as App)
+    const read = vi.spyOn(app.vault.adapter, 'readBinary')
+    const write = vi.spyOn(app.vault.adapter, 'writeBinary')
+    const remove = vi.spyOn(app.vault.adapter, 'remove')
+    const { inspectFolder } = await import('@/sync/verifyFolderSet')
+    const path = 'Alias/Shared/sample.md'
+    const operation =
+      action === 'prefix'
+        ? fs.readPrefix(path, 64)
+        : action === 'read'
+          ? fs.read(path)
+          : action === 'write'
+            ? fs.writeAtomic(path, text('new'), 1000)
+            : action === 'remove'
+              ? fs.remove(path)
+              : inspectFolder(app.vault.adapter, 'Alias/Shared')
+    await expect(operation).rejects.toThrow(/symbolic link/i)
+    expect(read).not.toHaveBeenCalled()
+    expect(write).not.toHaveBeenCalled()
+    expect(remove).not.toHaveBeenCalled()
+  }
+)
+
+it.each(['rename', 'rmdirEmpty', 'replaceFenced', 'installExclusive'])(
+  'native %s refuses a linked ancestor',
+  async (action) => {
+    const app = buildFakeVault([
+      { path: 'Alias/Shared/sample.md', content: 'external' },
+      { path: 'temp.md', content: 'new' },
+    ])
+    const calls = withDesktopFs(app)
+    const raw = Reflect.get(app.vault.adapter, 'fsPromises')
+    raw.lstat = async (path: string) => ({ isSymbolicLink: () => path === '/vault/Alias' })
+    const { nativeOf } = await import('@/sync/nativeVaultFs')
+    const native = nativeOf(app.vault.adapter)!
+    const path = 'Alias/Shared/sample.md'
+    const work =
+      action === 'rename'
+        ? native.rename(path, 'new.md')
+        : action === 'rmdirEmpty'
+          ? native.rmdirEmpty('Alias/Shared')
+          : action === 'replaceFenced'
+            ? native.replaceFenced!('temp.md', path, text('external').buffer as ArrayBuffer)
+            : native.installExclusive!('temp.md', 'Alias/new.md')
+    await expect(work).rejects.toThrow(/symbolic link/i)
+    expect(calls.renames).toEqual([])
+    expect(calls.rmdirs).toEqual([])
+  }
+)

@@ -3,6 +3,7 @@ import { syncFixtureRules } from './helpers/syncFixtureRules'
 import { liveSuite, liveCase } from './helpers/syncLiveCases'
 import { reloadAs } from './helpers/phoneWindow'
 import { waitFor } from './helpers/syncVault'
+import { captureSyncFailure } from './helpers/syncDiagnostics'
 const fixture = liveSuite()
 liveCase(
   'syncSettings',
@@ -222,6 +223,10 @@ liveCase(
       )
       await b.waitIdle()
       expect(b.read(path)).toBe(incoming)
+    } catch (error) {
+      // Capture the stalled review before cleanup reloads the vault and destroys its state.
+      const diagnostic = captureSyncFailure(b.vault(), 'reviewed settings apply/reload')
+      throw new Error('Settings review did not finish; observed ' + diagnostic, { cause: error })
     } finally {
       for (const device of devices) {
         for (const id of s.ids.get(device) || [])

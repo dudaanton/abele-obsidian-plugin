@@ -1,3 +1,6 @@
+import { nativeChunkPort } from '../vaultPathLinks'
+import { vaultDisk } from '../vaultPathLinks'
+import { guardedVaultAdapter, assertVaultPath } from '../vaultPathLinks'
 import {
   connectionRoot,
   connectionPrivateArea,
@@ -213,6 +216,8 @@ export const inspectionSchema = z
 /** Stat-first, persisted inspection. Recognition follows bounded content, not the extension. */
 export interface ProjectionInspection {
   scope?: string
+  roots?: readonly string[]
+  paths?: readonly string[]
   inventory?(files: ReadonlyMap<string, { path: string; size: number; mtime: number }>): void
   signal?: AbortSignal
   stage?(stage: string): void
@@ -251,6 +256,7 @@ export async function recoverOrphanPrivateArtifacts(
   factory: IDBFactory,
   assertCurrent: () => void = () => {}
 ): Promise<void> {
+  const disk = vaultDisk(app.vault)
   const owned = connectionPrivateArea(app)
   if (connectionRoot(app) && !owned) return
   const directory = owned ? owned + '/external' : stagingDirectory(app.vault.configDir)
@@ -259,7 +265,7 @@ export async function recoverOrphanPrivateArtifacts(
     async () => {
       assertCurrent()
       await showPrivateRecoveryNotice(app)
-      if (!(await app.vault.adapter.exists(directory))) return
+      if (!(await disk.exists(directory))) return
       // Snapshot candidates first, then read fresh ownership. Newly created work is
       // either absent from this list or already journaled/reserved before creation.
       const files: string[] = []
@@ -270,7 +276,7 @@ export async function recoverOrphanPrivateArtifacts(
       const walk = async (folder: string) => {
         if (seen.has(folder)) throw new ExternalRecoveryRequired('private artifact directory loop')
         seen.add(folder)
-        const listed = await app.vault.adapter.list(folder)
+        const listed = await disk.list(folder)
         if ([...listed.files, ...listed.folders].some((path) => !validPath(path)))
           throw new ExternalRecoveryRequired('private artifact path is outside its directory')
         files.push(...listed.files)
@@ -336,6 +342,7 @@ export async function recoverOrphanPrivateArtifacts(
           adapterWriteInFlight(path)
         )
           continue
+        await assertVaultPath(vaultDisk(app.vault), path)
         console.debug('[abele-sync] preserving orphan private work', path)
         await preservePrivateArtifacts(app, [path], assertCurrent)
       }
@@ -351,8 +358,13 @@ export async function projectionEvidence(
   ownedPaths: ReadonlySet<string> = new Set(),
   inspection: ProjectionInspection = {}
 ): Promise<string | null> {
+  const disk = vaultDisk(app.vault)
   const scope = inspection.scope ?? connectionRoot(app)
-  const included = (path: string) => !scope || withinRoot(path, scope)
+  const included = (path: string) =>
+    (!scope || withinRoot(path, scope)) &&
+    (inspection.roots === undefined ||
+      inspection.roots.some((root) => withinRoot(path, root)) ||
+      !!inspection.paths?.includes(path))
   const started = Date.now()
   let stopped = false
   const assertCurrent = () => {
@@ -363,13 +375,13 @@ export async function projectionEvidence(
   const readOnly = <T>(work: () => Promise<T>) => inspectionRead(inspection, assertCurrent, work)
   const recoveryPrefix = privateRecoveryDirectory(app.vault.configDir) + '/'
   const indexed = new Map(
-    app.vault
-      .getFiles()
+    (inspection.roots !== undefined ? [] : app.vault.getFiles())
       .filter((file) => included(file.path) && !file.path.startsWith(recoveryPrefix))
       .map((file) => [file.path, file])
   )
   const inventory = new Map<string, { path: string; size: number; mtime: number }>()
   const paths = new Set(indexed.keys())
+  for (const path of inspection.paths ?? []) paths.add(path)
   inspection.stage?.('Listing the vault')
   inspection.progress?.(0, paths.size)
   const seen = new Set<string>()
@@ -382,7 +394,7 @@ export async function projectionEvidence(
       throw new ExternalRecoveryRequired('projection inventory is incomplete')
     seen.add(folder)
     if (folder === privateRecoveryDirectory(app.vault.configDir)) return
-    const listed = await readOnly(() => app.vault.adapter.list(folder))
+    const listed = await readOnly(() => disk.list(folder))
     assertCurrent()
     for (const file of listed.files) if (included(file)) paths.add(file)
     folders += listed.folders.length
@@ -391,9 +403,13 @@ export async function projectionEvidence(
     for (const child of listed.folders) if (included(child)) await walk(child)
   }
   if (scope) {
-    const root = await readOnly(() => app.vault.adapter.stat(scope))
+    const root = await readOnly(() => vaultDisk(app.vault).stat(scope))
     if (root?.type === 'folder') await walk(scope)
     else if (root) throw new ExternalRecoveryRequired('connection folder path is occupied')
+  } else if (inspection.roots !== undefined) {
+    for (const root of inspection.roots) {
+      if ((await readOnly(() => disk.stat(root)))?.type === 'folder') await walk(root)
+    }
   } else await walk('')
   inspection.stage?.('Checking the vault')
   const cached = inspectionSchema.safeParse(app.loadLocalStorage(EXTERNAL_INSPECTION_KEY))
@@ -412,11 +428,11 @@ export async function projectionEvidence(
     dirty = false
   }
   let evidence: string | null = null
-  const stat = async (path: string, disk = false) => {
-    const file = disk ? null : app.vault.getFileByPath(path)
+  const stat = async (path: string, forceDisk = false) => {
+    const file = forceDisk ? null : app.vault.getFileByPath(path)
     if (file) return { type: 'file', ...file.stat }
     try {
-      return await readOnly(() => app.vault.adapter.stat(path))
+      return await readOnly(() => disk.stat(path))
     } catch (cause) {
       const code =
         typeof cause === 'object' && cause !== null && 'code' in cause ? cause.code : null
@@ -424,28 +440,14 @@ export async function projectionEvidence(
       throw cause
     }
   }
-  const adapter = app.vault.adapter as typeof app.vault.adapter & {
+  const adapter = disk as typeof disk & {
     readBinaryPrefix?(path: string, maximumBytes: number): Promise<ArrayBuffer | Uint8Array>
-    getFullPath?(path: string): string
-    fsPromises?: {
-      open?(
-        path: string,
-        flags: string
-      ): Promise<{
-        read(
-          buffer: Uint8Array,
-          offset: number,
-          length: number,
-          position: number
-        ): Promise<{ bytesRead: number }>
-        close(): Promise<void>
-      }>
-    }
   }
+  const native = nativeChunkPort(adapter)
   const readCandidate = async (path: string): Promise<ArrayBuffer | Uint8Array> => {
     if (adapter.readBinaryPrefix) return adapter.readBinaryPrefix(path, MAX_PROJECTION_BYTES)
-    if (adapter.getFullPath && adapter.fsPromises?.open) {
-      const handle = await adapter.fsPromises.open(adapter.getFullPath(path), 'r')
+    if (native.fullPath && native.open) {
+      const handle = await native.open(native.fullPath(path), 'r')
       try {
         const buffer = new Uint8Array(MAX_PROJECTION_BYTES)
         const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0)
@@ -457,6 +459,7 @@ export async function projectionEvidence(
     return adapter.readBinary(path) // Stat-bounded portable/mobile candidate only.
   }
   const inspect = async (path: string) => {
+    await readOnly(() => assertVaultPath(vaultDisk(app.vault), path))
     if (!includeControl && path === IGNORE_FILE) return
     assertCurrent()
     const before = await stat(path)
@@ -652,6 +655,23 @@ export async function recoverExternalState(
     const document = decodeExternalDocument(raw)
     if (document.ledgerId !== ledgerId || !sameConnection(document.binding, binding))
       throw new ExternalRecoveryRequired('external connection binding changed')
+    if (inspection.roots !== undefined) {
+      // Exact durable ownership permits inspecting this connection's moved
+      // projections/artifacts without searching neighbouring user directories.
+      inspection = {
+        ...inspection,
+        paths: [
+          ...(inspection.paths ?? []),
+          ...document.files.flatMap((file) => [
+            ...(file.projectionPath ? [file.projectionPath] : []),
+            ...file.retained.map((artifact) => artifact.path),
+          ]),
+          ...document.operations.flatMap((operation) =>
+            operation.ownedArtifacts.map((artifact) => artifact.path)
+          ),
+        ],
+      }
+    }
     if ((document.files.length || document.operations.length) && item?.phase !== 'active')
       throw new ExternalRecoveryRequired('external representation has no activated instance proof')
     // Task-six jobs can be resumed/held per file; destructive eviction/hydration recovery
@@ -918,7 +938,7 @@ export async function requireExternalLifecycleSafety(
         if (await privateArtifactRecovered(app, path)) return
         const identity = await inspectionRead(inspection, assertCurrent, () =>
           new BoundedVaultIo(
-            app.vault.adapter,
+            vaultDisk(app.vault),
             assertCurrent,
             undefined,
             undefined,
@@ -934,7 +954,7 @@ export async function requireExternalLifecycleSafety(
           if (scope && !withinRoot(artifact.path, scope)) continue
           if (
             !(await inspectionRead(inspection, assertCurrent, () =>
-              app.vault.adapter.exists(artifact.path)
+              guardedVaultAdapter(vaultDisk(app.vault)).exists(artifact.path)
             ))
           )
             continue

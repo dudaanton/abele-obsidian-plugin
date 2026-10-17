@@ -3,6 +3,112 @@ import { describe, expect, it, vi } from 'vitest'
 import { SyncDriver, SYNC_PRELUDE } from '../e2e/helpers/syncDriver'
 import * as diagnostics from '../e2e/helpers/syncDiagnostics'
 
+it('shares using the populated replacement select rather than the detached loading select', async () => {
+  const driver = new SyncDriver(() => {
+    throw new Error('No live vault expected')
+  })
+  let body = ''
+  vi.spyOn(driver, 'long').mockImplementation(async (_label, code) => {
+    body = code
+    return 'sample-token' as never
+  })
+  await driver.share('sample', 'Folder: Shared')
+  const old = { options: [] }
+  const populated = {
+    options: [{ textContent: 'Folder: Shared', value: '1' }],
+    value: '',
+    ownerDocument: { defaultView: { Event } },
+    dispatchEvent: vi.fn(),
+  }
+  let current: { options: { textContent: string; value: string }[] } = old
+  const name = { value: '' },
+    issued = { value: 'sample-token' }
+  const box = {
+    querySelector: (selector: string) =>
+      selector === 'select' ? current : selector === 'textarea' ? issued : name,
+  }
+  let polls = 0
+  const poll = async (check: () => boolean) => {
+    if (++polls === 2) current = populated
+    expect(await check(), 'poll must observe the live populated select').toBeTruthy()
+  }
+  const execute = new Function(
+    'openSyncTab',
+    'icon',
+    'connectionRow',
+    'modal',
+    'poll',
+    'typeInto',
+    'press',
+    'closeSettings',
+    `return (async()=>{${body}})()`
+  )
+  expect(
+    await execute(
+      async () => ({}),
+      () => {},
+      () => ({}),
+      () => box,
+      poll,
+      (input: HTMLInputElement, text: string) => {
+        input.value = text
+      },
+      async () => {},
+      async () => {}
+    )
+  ).toBe('sample-token')
+  expect(name.value).toBe('Sample recipient')
+  expect(populated.value).toBe('1')
+})
+
+it.each([true, false])(
+  'explains a missing indexed note when its disk existence is %s',
+  async (disk) => {
+    const driver = new SyncDriver(() => {
+      throw new Error('No live vault expected')
+    })
+    let body = ''
+    vi.spyOn(driver, 'run').mockImplementation((code) => {
+      body = code
+      return true as never
+    })
+    driver.open('Notes/member.md')
+    const exists = vi.fn(async () => disk),
+      read = vi.fn()
+    const app = {
+      vault: {
+        getFileByPath: () => null,
+        getAbstractFileByPath: () => ({}),
+        adapter: { exists, read },
+      },
+    }
+    const host = {
+      live: new Map([
+        [
+          'sample',
+          {
+            trace: {
+              snapshot: () => ({
+                lastPull: {
+                  paths: ['Notes/root.md', 'Notes/member.md'],
+                  writes: 2,
+                  complete: true,
+                },
+              }),
+            },
+          },
+        ],
+      ]),
+    }
+    const svc = { rows: { value: [{ id: 'sample', status: 'idle' }] } }
+    const execute = new Function('app', 'host', 'svc', `return (async()=>{${body}})()`)
+    await expect(execute(app, host, svc)).rejects.toThrow(`"disk":${disk}`)
+    await expect(execute(app, host, svc)).rejects.toThrow('"parent":true')
+    await expect(execute(app, host, svc)).rejects.toThrow('Notes/member.md')
+    expect(read).not.toHaveBeenCalled()
+  }
+)
+
 describe('waiting for a real sync state snapshot', () => {
   it('keeps the failed sharing condition in confidential diagnostics without exposing the token', async () => {
     const cli = {

@@ -44,6 +44,7 @@ it('shows a hung local read separately from native network requests', async () =
       expect.objectContaining({ operation: 'readBinary' })
     )
     expect(JSON.stringify(externalFileSnapshot())).not.toContain('private')
+    await vi.waitFor(() => expect(typeof release).toBe('function'))
     release(new ArrayBuffer(0))
     await read
     expect(externalFileSnapshot().active).toEqual([])
@@ -55,3 +56,34 @@ it('shows a hung local read separately from native network requests', async () =
     host.close()
   }
 })
+
+it.each(['writeStaging', 'install', 'removeOriginal'])(
+  'refuses linked external staging or hydration paths before %s',
+  async (action) => {
+    const app = buildFakeVault([{ path: 'Alias/sample.bin', content: 'external' }])
+    Object.assign(app.workspace, { iterateAllLeaves: () => {} })
+    Object.assign(app.vault.adapter, {
+      getFullPath: (p: string) => p,
+      fsPromises: { lstat: async (p: string) => ({ isSymbolicLink: () => p === 'Alias' }) },
+    })
+    const write = vi.spyOn(app.vault.adapter, 'writeBinary')
+    const rename = vi.spyOn(app.vault.adapter, 'rename')
+    const remove = vi.spyOn(app.vault.adapter, 'remove')
+    const host = new ExternalFileHost(app as never, { platform: 'mobile', assertOwned: () => {} })
+    try {
+      const fs = Reflect.get(host, 'filesystem').call(host)
+      const work =
+        action === 'writeStaging'
+          ? fs.writeStaging('Alias/stage.tmp', new Uint8Array([1]), () => {})
+          : action === 'install'
+            ? fs.install('Alias/sample.bin', 'target.bin', () => {})
+            : fs.removeOriginal('Alias/sample.bin')
+      await expect(work).rejects.toThrow(/symbolic link/i)
+      expect(write).not.toHaveBeenCalled()
+      expect(rename).not.toHaveBeenCalled()
+      expect(remove).not.toHaveBeenCalled()
+    } finally {
+      host.close()
+    }
+  }
+)

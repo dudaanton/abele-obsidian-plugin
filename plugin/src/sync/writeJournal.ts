@@ -151,6 +151,19 @@ export class WriteJournal {
       (entry) => !entry.backup.startsWith('/') && !/^[A-Za-z]:[\\/]/.test(entry.backup)
     )
   }
+  /** Explicitly followed placement changes only settled evidence labels, never file bytes. */
+  relocateRecoveredTargets(from: string, to: string): void {
+    this.recovered()
+    this.save(
+      RECOVERED_WRITES_KEY,
+      this.read(RECOVERED_WRITES_KEY).map((value) => {
+        const entry = value as RecoveredWrite
+        return this.owns(entry) && (entry.target === from || entry.target.startsWith(from + '/'))
+          ? { ...entry, target: to + entry.target.slice(from.length) }
+          : entry
+      })
+    )
+  }
   relocateRecovered(from: string, to: string): void {
     this.recovered()
     this.save(

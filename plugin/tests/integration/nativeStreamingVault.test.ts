@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { desktopFsPort } from '../helpers/desktopRequire'
 import { expect, it } from 'vitest'
 import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -26,6 +27,9 @@ it('appends, fsyncs, dates and replaces a native stage with bounded buffers insi
         open: async (path: string, flags: string) => {
           const handle = await fs.open(path, flags)
           return {
+            stat: () => handle.stat(),
+            truncate: (length: number) => handle.truncate(length),
+            utimes: (atime: number, mtime: number) => handle.utimes(atime, mtime),
             read: (bytes: Uint8Array, offset: number, length: number, position: number) => {
               expect(bytes.buffer.byteLength).toBeLessThanOrEqual(1024 * 1024)
               return handle.read(bytes, offset, length, position)
@@ -82,6 +86,7 @@ it('appends, fsyncs, dates and replaces a native stage with bounded buffers insi
         }
       },
     })
+    desktopFsPort(Reflect.get(app.vault.adapter, 'fsPromises'))
     const writer = new ObsidianFileSystem(app as unknown as App)
     const base = await writer.fingerprint('sample.bin')
     const stage = await writer.beginAtomicWrite('sample.bin', 2000, base)

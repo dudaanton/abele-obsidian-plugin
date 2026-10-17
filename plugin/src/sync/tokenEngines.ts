@@ -1,5 +1,6 @@
 import { connectionAdapter, connectionInspectionApp, connectionJournalApp } from './connectionScope'
 import { connectionPrivateRoot } from './connectionPaths'
+import { vaultDisk, releaseVaultPathGuard } from './vaultPathLinks'
 import { Platform, type App, type EventRef } from 'obsidian'
 import { caseKey, encodeAccessToken } from '@abele/sync-protocol'
 import {
@@ -14,7 +15,7 @@ import { RESTORE_HEADER, fenceHostGeneration, assertResponseGeneration } from '.
 import { ConnectionEngines, type ConnectionRuntime } from './connectionEngines'
 import { TokenEngineRuntime } from './tokenEngineRuntime'
 import type { TokenConnectionRecord } from './tokenConnectionRegistry'
-import { TokenUi, connectionError, connectStage } from './tokenUi'
+import { TokenUi, connectionError, connectStage, failureDetails } from './tokenUi'
 import {
   factoryOf,
   transportOf,
@@ -49,6 +50,10 @@ import { OwnSettingsWatch } from './ownSettings'
 import { ExternalFileActions } from './external/fileActions'
 import { externalActionsOf } from './external/actionHost'
 import { devicePins } from './external/devicePins'
+import { watchScopeRoot } from './scopeRoot'
+import { LocalFolderPlacement } from './localFolderPlacement'
+import { inspectFolder } from './verifyFolderSet'
+import { localGroupCandidates } from './localGroupCandidates'
 
 /** One native host, independent durable engines, and one vault-wide placement coordinator. */
 export class TokenEngines {
@@ -89,6 +94,7 @@ export class TokenEngines {
           : path
       )
       if (JSON.stringify(moved) !== JSON.stringify(pins)) this.saveDevicePins(moved)
+      for (const runtime of this.live.values()) runtime.localRenamed(from, file.path)
     })
     ui.connectionsChanged = async (assertCurrent) => {
       assertCurrent?.()
@@ -102,6 +108,10 @@ export class TokenEngines {
       TokenSettingsPort.forget(ui, id)
       this.activityEpoch.delete(id)
       this.activityReports.delete(id)
+    }
+    ui.connectionForgotten = async (id) => {
+      await this.engines.remove(id)
+      if (ui.registry.records().length === 0) releaseVaultPathGuard(this.app.vault)
     }
     ui.retryConnection = async (id, assertCurrent) => {
       assertCurrent()
@@ -119,7 +129,7 @@ export class TokenEngines {
         const app = root
           ? connectionInspectionApp(
               journalApp,
-              connectionAdapter(this.app.vault.adapter, root, root),
+              connectionAdapter(vaultDisk(this.app.vault), root, root),
               root
             )
           : journalApp
@@ -144,7 +154,7 @@ export class TokenEngines {
         root && root !== '/'
           ? connectionInspectionApp(
               connectionJournalApp(this.app, id),
-              connectionAdapter(this.app.vault.adapter, root, connectionPrivateRoot(id)),
+              connectionAdapter(vaultDisk(this.app.vault), root, connectionPrivateRoot(id)),
               root,
               connectionPrivateRoot(id)
             )
@@ -288,12 +298,15 @@ export class TokenEngines {
             ? 'offline'
             : 'error'
     )
+    const failure = {
+      stage: this.ui.activity.value[id]?.startup?.stage,
+      ...failureDetails(error),
+      message: error instanceof Error ? error.message : (JSON.stringify(error) ?? 'unknown'),
+    }
+    console.debug('[Abele Sync failure]', id, failure)
     this.ui.publish(id, {
       error: connectionError(error, !this.ui.runtimes.has(id)),
-      failure: {
-        ...(code ? { code } : {}),
-        message: error instanceof Error ? error.message : (JSON.stringify(error) ?? 'unknown'),
-      },
+      failure,
       inspection: undefined,
     })
   }
@@ -301,6 +314,7 @@ export class TokenEngines {
     record: TokenConnectionRecord,
     beforeOpening: { teardown: Promise<void>; documents: Promise<unknown>; ready: Promise<void> }
   ): ConnectionRuntime {
+    record.localRoot = this.ui.registry.pinLocalRoot(record.id)
     let active = true,
       runtime: TokenEngineRuntime | undefined
     let closeStore: (() => void) | undefined,
@@ -438,14 +452,23 @@ export class TokenEngines {
       this.refreshDestinations()
       const key = this.key(record.secretReference)
       if (!key || !record.scope) throw new Error('Connection needs its token')
-      const localRoot = this.ui.registry.pinLocalRoot(record.id)
+      let localRoot = this.ui.registry.pinLocalRoot(record.id)
       const scopedRoot = record.scope.kind === 'folder' && localRoot !== '/' ? localRoot : undefined
       const adapter = scopedRoot
-        ? connectionAdapter(this.app.vault.adapter, scopedRoot, connectionPrivateRoot(record.id))
-        : this.app.vault.adapter
+        ? connectionAdapter(
+            vaultDisk(this.app.vault),
+            () => localRoot,
+            connectionPrivateRoot(record.id)
+          )
+        : vaultDisk(this.app.vault)
       const journalApp = connectionJournalApp(this.app, record.id)
       const connectionApp = scopedRoot
-        ? connectionInspectionApp(journalApp, adapter, scopedRoot, connectionPrivateRoot(record.id))
+        ? connectionInspectionApp(
+            journalApp,
+            adapter,
+            () => localRoot,
+            connectionPrivateRoot(record.id)
+          )
         : journalApp
 
       let inventory: ReadonlyMap<string, { path: string; size: number; mtime: number }> | undefined
@@ -516,6 +539,27 @@ export class TokenEngines {
         tokenExternalBinding(record, key)
       )
       assertActive()
+      const groupCandidates = new Set<string>([record.scope.path.normalize('NFC')])
+      let localCandidates = new Set<string>()
+      if (record.scope.kind === 'group')
+        for await (const entry of state.all()) groupCandidates.add(entry.path.normalize('NFC'))
+      let discoveryScope = record.scope
+      const externalPlacement =
+        record.scope.kind === 'folder' && record.scope.path !== '/'
+          ? new LocalFolderPlacement(record.scope.path, localRoot)
+          : undefined
+      const discoveryRoots = record.scope.kind === 'folder' ? [localRoot] : []
+      const discovery =
+        record.scope.kind === 'folder' && record.scope.path === '/'
+          ? undefined
+          : {
+              roots: discoveryRoots,
+              includes: (path: string) =>
+                discoveryScope.kind === 'folder'
+                  ? path === localRoot || path.startsWith(localRoot + '/')
+                  : groupCandidates.has(path.normalize('NFC')) ||
+                    localCandidates.has(path.normalize('NFC')),
+            }
       const ordinary = new ObsidianFileSystem(this.app, {
         adapter,
         connectionId: scopedRoot ? record.id : undefined,
@@ -524,6 +568,7 @@ export class TokenEngines {
           runtime?.trace.record(operation, startedAt, outcome, paths),
         fileScope: () =>
           runtime ? runtime.folderScope() : record.scope.kind === 'folder' ? localRoot : undefined,
+        discovery,
         startupInventory: () => inventory,
         runtimeFence: fence,
         ledger: state,
@@ -613,8 +658,20 @@ export class TokenEngines {
       )
       await stage(
         'Checking saved sync state',
-        () =>
-          recoverExternalState(
+        async () => {
+          const scopedInspection: import('./external/pluginSafety').ProjectionInspection = {
+            ...inspection,
+          }
+          if (!(record.scope.kind === 'folder' && record.scope.path === '/')) {
+            scopedInspection.roots = record.scope.kind === 'folder' ? [localRoot] : []
+            const paths: string[] = []
+            if (record.scope.kind === 'group')
+              for await (const entry of state.all()) paths.push(entry.path)
+            scopedInspection.paths = paths
+            // Runtime discovery also incorporates server-named group members.
+            if (record.scope.kind === 'group') scopedInspection.inventory = undefined
+          }
+          return recoverExternalState(
             connectionApp,
             state,
             record.ledgerId,
@@ -622,8 +679,9 @@ export class TokenEngines {
             binding,
             fence,
             factoryOf(this.deps),
-            inspection
-          ),
+            scopedInspection
+          )
+        },
         true
       )
       assertActive()
@@ -641,7 +699,9 @@ export class TokenEngines {
             ledgerId: record.ledgerId,
             binding,
             fence,
+            // The filesystem filters before representation reads candidate prefixes.
             fs: ordinary,
+            placement: externalPlacement,
             manager,
             scriptsFolder: () => this.scriptsFolder,
             client: () => runtime.client,
@@ -651,7 +711,7 @@ export class TokenEngines {
               runtime
                 ? runtime.covers(path)
                 : record.scope.kind === 'folder' &&
-                  (record.scope.path === '/' || withinSyncPath(path, record.scope.path)),
+                  (record.scope.path === '/' || withinSyncPath(path, localRoot)),
             capture: (paths) => editCopiesOf(this.app.vault).capture(ordinary, paths),
             rememberIdentity: (path) => this.localFiles.remember(path),
             hydratedIdentity: (path) => this.localFiles.hydrated(path),
@@ -689,7 +749,48 @@ export class TokenEngines {
             key,
             scope: record.scope,
           }),
+          discoveryCandidates: (paths) => {
+            for (const path of paths) groupCandidates.add(path.normalize('NFC'))
+          },
+          discoveryLocalCandidates: (paths) => {
+            localCandidates = new Set(paths)
+          },
+          discoveryScope: (scope) => {
+            this.ui.registry.setScopePath(record.id, scope.path)
+            discoveryScope = scope
+            if (externalPlacement) {
+              externalPlacement.server = scope.path
+              externalPlacement.local = localRoot
+            }
+            // VaultDirectories retains this array; update its roots before the
+            // client's prepare/scan proceeds under the new authoritative path.
+            discoveryRoots.splice(
+              0,
+              discoveryRoots.length,
+              ...(scope.kind === 'folder' ? [localRoot] : [])
+            )
+          },
           fs,
+          followRecoveredRoot: (from, to) => ordinary.followRecoveredRoot(from, to),
+          localRootChanged: (path) => {
+            this.ui.registry.setLocalRoot(record.id, path)
+            localRoot = path
+            if (externalPlacement) externalPlacement.local = path
+            discoveryRoots.splice(0, discoveryRoots.length, path)
+          },
+          inspectRoot: (path) => inspectFolder(vaultDisk(this.app.vault), path),
+          verifyRootFileSystem: (root) =>
+            new ObsidianFileSystem(this.app, {
+              adapter: connectionAdapter(
+                vaultDisk(this.app.vault),
+                root,
+                connectionPrivateRoot(record.id)
+              ),
+              fileScope: root,
+              connectionId: record.id,
+              journalOwner: record.id,
+              runtimeFence: fence,
+            }),
           state,
           engineState: offloads.state,
           engineClient: offloads.client,
@@ -700,6 +801,16 @@ export class TokenEngines {
           scopeInput: async (selective) => {
             const text = await readIgnore(connectionApp)
             return {
+              localCandidates:
+                record.scope.kind === 'group'
+                  ? localGroupCandidates(
+                      discoveryScope.path,
+                      this.app.vault.getMarkdownFiles().map((file) => ({
+                        path: file.path,
+                        groups: this.app.metadataCache.getFileCache(file)?.frontmatter?.groups,
+                      }))
+                    )
+                  : undefined,
               key: await scopeKey(selective, text),
               ignore: ignoreFor(this.app.vault.configDir, text),
             }
@@ -709,6 +820,30 @@ export class TokenEngines {
           WebSocket: socketOf(this.deps),
           paths: { scriptsFolder: this.scriptsFolder, configRoots: [this.app.vault.configDir] },
           paused: current.paused,
+          rootIssue: current.rootIssue,
+          serverRoot: current.serverRoot,
+          serverRootChanged: (path) => this.ui.registry.setServerRoot(record.id, path),
+          rootExists:
+            record.scope.kind === 'folder' && record.scope.path !== '/'
+              ? async () => (await vaultDisk(this.app.vault).stat(localRoot))?.type === 'folder'
+              : undefined,
+          watchRoot:
+            record.scope.kind === 'folder'
+              ? (notice) => {
+                  const saved = this.ui.registry
+                    .records()
+                    .find((row) => row.id === record.id)?.rootIssue
+                  return watchScopeRoot(
+                    this.app,
+                    saved?.kind === 'moved' ? saved.path : localRoot,
+                    notice
+                  )
+                }
+              : undefined,
+          rootChanged: (issue) => {
+            this.ui.registry.setRootIssue(record.id, issue)
+            this.ui.publish(record.id, { inspection: undefined, comparison: undefined })
+          },
           selective: current.selective,
           fallbackMs: fallbackMsOf(this.deps),
           expectedSource: reviewSourceOf(record),
@@ -742,7 +877,7 @@ export class TokenEngines {
             editCopiesOf(this.app.vault),
             record.id,
             JSON.stringify([record.address, record.spaceId, record.tokenId, record.ledgerId]),
-            state,
+            externalPlacement?.localState(state) ?? state,
             (path, size) => runtime.acceptsLocal(path, size),
             () => fence.assertReady()
           )
@@ -756,12 +891,16 @@ export class TokenEngines {
           assertCurrent: () => fence.assertReady(),
           sync: () => runtime.sync(),
           reconcile: () => runtime.reconcile(),
+          restoreRoot: () => runtime.restoreRoot(),
+          followRoot: () => runtime.followRoot(),
+          followServerRoot: () => runtime.followServerRoot(),
           pause: (paused) => runtime.pause(paused),
           updateSelective: (selective) => runtime.updateSelective(selective),
           opened: (path) => runtime.opened(path),
           resolve: (id) => runtime.resolve(id),
           publishAttachment: (id) => runtime.publishAttachment(id),
-          historyClient: runtime.client,
+          historyClient: runtime.historyClient(),
+          localPath: (path) => runtime.localPath(path),
           entryFor: (path) => runtime.entryFor(path),
           heldDeletes: () => runtime.heldDeletes(),
           decideDeletes: (kind, ids) => runtime.decideDeletes(kind, ids),
@@ -956,11 +1095,12 @@ export class TokenEngines {
     const original = manager.originalPath(path)
     if (original === path && path.endsWith('.abele-ref')) throw new Error('unavailable')
     await manager.prepare([original])
-    if (!(await this.app.vault.adapter.exists(original))) throw new Error('unavailable')
+    if (!(await vaultDisk(this.app.vault).exists(original))) throw new Error('unavailable')
   }
   private async changed(id: string, status: EngineStatus, report?: SyncReport): Promise<void> {
     if (this.closed || !this.ui.registry.records().some((one) => one.id === id)) return
     tokenOffloadsOf(this.app.vault, pathCoordinatorOf(this.app.vault)).changed()
+    if (this.ui.registry.records().find((one) => one.id === id)?.rootIssue) return
     const epoch = (this.activityEpoch.get(id) ?? 0) + 1
     this.activityEpoch.set(id, epoch)
     const reportEpoch = (this.activityReports.get(id) ?? 0) + (report ? 1 : 0)
@@ -1073,6 +1213,7 @@ export class TokenEngines {
     this.cancelStartup()
     this.app.vault.offref(this.renameEvent)
     this.ui.connectionsChanged = async () => {}
+    this.ui.connectionForgotten = async () => {}
     this.closing = this.engines.close()
     recordTeardown(this.app, Promise.all([prior, this.closing]))
     return this.closing

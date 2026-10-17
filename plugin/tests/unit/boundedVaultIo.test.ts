@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { desktopFsPort } from '../helpers/desktopRequire'
 import type { DataAdapter } from 'obsidian'
 import { BoundedVaultIo } from '@/sync/boundedVaultIo'
 
@@ -113,7 +114,9 @@ describe('bounded vault I/O', () => {
       stat: async () => ({ type: 'file', size, mtime: 10, ctime: 1 }),
       getFullPath: (path: string) => '/sample/' + path,
       fsPromises: {
+        lstat: async () => ({ dev: 1, ino: 1, isSymbolicLink: () => false }),
         open: async () => ({
+          stat: async () => ({ dev: 1, ino: 1 }),
           read: async (buffer: Uint8Array, _at: number, length: number, position: number) => {
             largest = Math.max(largest, buffer.buffer.byteLength)
             expect(buffer.buffer.byteLength).toBeLessThanOrEqual(MiB)
@@ -127,6 +130,7 @@ describe('bounded vault I/O', () => {
         throw new Error('whole file read')
       },
     } as unknown as DataAdapter
+    desktopFsPort(Reflect.get(adapter, 'fsPromises'))
     const source = await new BoundedVaultIo(adapter).openRead('sample.bin')
     for (let offset = 0; offset < size; offset += MiB) {
       const bytes = await source.read(offset, Math.min(MiB, size - offset))
@@ -216,3 +220,31 @@ describe('bounded vault I/O', () => {
     await source.close()
   })
 })
+
+it.each(['create', 'append'])(
+  'refuses linked staging ancestors before native %s',
+  async (action) => {
+    const open = vi.fn(async () => ({
+      sync: async () => {},
+      close: async () => {},
+      write: async () => ({ bytesWritten: 1 }),
+    }))
+    const adapter = {
+      getFullPath: (p: string) => '/vault/' + p,
+      stat: async () => ({ type: 'file', size: 0, mtime: 1, ctime: 1 }),
+      fsPromises: {
+        open,
+        lstat: async (p: string) => ({
+          isSymbolicLink: () => p === '/vault/.obsidian/sync-staging',
+          isDirectory: () => p !== '/vault/.obsidian/sync-staging',
+        }),
+      },
+    } as unknown as DataAdapter
+    const io = new BoundedVaultIo(adapter)
+    const path = '.obsidian/sync-staging/sample.tmp'
+    await expect(
+      action === 'create' ? io.create(path, 1) : io.append(path, 0, new Uint8Array([1]), 1)
+    ).rejects.toThrow(/symbolic link/i)
+    expect(open).not.toHaveBeenCalled()
+  }
+)

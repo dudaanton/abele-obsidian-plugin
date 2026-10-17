@@ -1,3 +1,5 @@
+import { constants } from 'node:fs'
+import { desktopFsPort } from './desktopRequire'
 /**
  * Obsidian desktop's own hands on the disk, added to a fake vault's adapter.
  *
@@ -32,12 +34,65 @@ export function withDesktopFs(app: FakeApp, options: { fenced?: boolean } = {}):
   }
   const calls: DesktopCalls = { renames: [], rmdirs: [] }
   const vaultPath = (full: string): string => {
+    if (full === ROOT.slice(0, -1)) return ''
     if (!full.startsWith(ROOT)) throw new Error(`ENOENT: outside the vault: ${full}`)
     return full.slice(ROOT.length)
   }
   Object.assign(adapter, {
     getFullPath: (path: string): string => ROOT + path,
     fsPromises: {
+      async lstat(full: string) {
+        const path = vaultPath(full),
+          stat = path === '' ? { type: 'folder' } : await adapter.stat(path)
+        if (!stat) throw Object.assign(new Error('missing'), { code: 'ENOENT' })
+        return {
+          dev: 1,
+          ino: [...path.normalize('NFC').toLowerCase()].reduce(
+            (id, char) => (id * 31 + char.charCodeAt(0)) >>> 0,
+            1
+          ),
+          isSymbolicLink: () => false,
+          isDirectory: () => stat.type === 'folder',
+        }
+      },
+      async open(full: string, flags: number) {
+        const path = vaultPath(full)
+        const before = await adapter.stat(path)
+        if (flags & constants.O_EXCL && before)
+          throw Object.assign(new Error('exists'), { code: 'EEXIST' })
+        if (!before && !(flags & constants.O_CREAT))
+          throw Object.assign(new Error('missing'), { code: 'ENOENT' })
+        if (!before || flags & constants.O_TRUNC) await write(path, new ArrayBuffer(0))
+        const identity = await this.lstat(full)
+        return {
+          stat: async () => identity,
+          readFile: async () => new Uint8Array(await adapter.readBinary(path)),
+          read: async (buffer: Uint8Array, offset: number, length: number, position: number) => {
+            const bytes = new Uint8Array(await adapter.readBinary(path)).subarray(
+              position,
+              position + length
+            )
+            buffer.set(bytes, offset)
+            return { bytesRead: bytes.length }
+          },
+          write: async (buffer: Uint8Array, offset: number, length: number, position: number) => {
+            const old = new Uint8Array(await adapter.readBinary(path))
+            const bytes = new Uint8Array(Math.max(old.length, position + length))
+            bytes.set(old)
+            bytes.set(buffer.subarray(offset, offset + length), position)
+            await write(path, bytes.buffer)
+            return { bytesWritten: length }
+          },
+          truncate: async (length: number) => {
+            const old = new Uint8Array(await adapter.readBinary(path))
+            const bytes = new Uint8Array(length)
+            bytes.set(old.subarray(0, length))
+            await write(path, bytes.buffer)
+          },
+          sync: async () => {},
+          close: async () => {},
+        }
+      },
       async readFile(path: string): Promise<Uint8Array> {
         return new Uint8Array(await adapter.readBinary(vaultPath(path)))
       },
@@ -75,5 +130,6 @@ export function withDesktopFs(app: FakeApp, options: { fenced?: boolean } = {}):
       },
     },
   })
+  desktopFsPort(Reflect.get(adapter, 'fsPromises'))
   return calls
 }

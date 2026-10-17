@@ -1,3 +1,4 @@
+import { guardedVaultAdapter } from './vaultPathLinks'
 import { Platform, type DataAdapter } from 'obsidian'
 import { EngineError } from '@abele/sync-core'
 import type { NativeFs } from './vaultWrites'
@@ -13,6 +14,7 @@ import type { NativeFs } from './vaultWrites'
  * which is what a host whose `mkdir` makes one folder at a time would look like.
  */
 export async function makeParents(adapter: DataAdapter, target: string): Promise<void> {
+  adapter = guardedVaultAdapter(adapter)
   const cut = target.lastIndexOf('/')
   if (cut <= 0) return
   const folder = target.slice(0, cut)
@@ -60,6 +62,7 @@ export async function pruneAbove(
   configDir: string,
   path: string
 ): Promise<void> {
+  adapter = guardedVaultAdapter(adapter)
   // The mobile API only removes recursively. No check-then-remove can protect a file
   // created between those calls, so on mobile we deliberately leave empty folders alone.
   if (Platform.isMobile || native === null) return

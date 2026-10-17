@@ -1,5 +1,6 @@
 import { FolderScopeError } from './scopedFileSystem'
 import { nativeSyncFailure } from './mobileTransport'
+import { LocalPlacementError } from './localFolderPlacement'
 import { markRaw, shallowRef } from 'vue'
 import {
   TokenConnectionRegistry,
@@ -15,6 +16,8 @@ import { reviewSourceOf, sourceIdentity, type ReviewSource } from './reviewState
 import { transferText } from './transferProgress'
 
 export function connectionError(error: unknown, startup = false): string {
+  if (error instanceof LocalPlacementError || error instanceof FolderScopeError)
+    return error.message
   const native = nativeSyncFailure(error)
   if (native) return native.message
   if (error instanceof ConnectStageError) return error.message
@@ -43,6 +46,7 @@ export function connectionError(error: unknown, startup = false): string {
         quota_waiting:
           'The server is full. The file stays here and can be sent after space is available.',
         forbidden: 'This connection does not allow that action.',
+        protocol: 'The server response could not be trusted; sync stopped. Local files were kept.',
         scope_unavailable: 'This folder or group is no longer available.',
         scope_deleted: 'This folder or group is no longer available.',
       } as Record<string, string>
@@ -53,6 +57,21 @@ export function connectionError(error: unknown, startup = false): string {
   )
 }
 class ConnectStageError extends Error {}
+export function failureDetails(error: unknown): { reason: string; code?: string } {
+  const seen = new Set<unknown>()
+  while (error && typeof error === 'object' && !seen.has(error)) {
+    seen.add(error)
+    const cause = Reflect.get(error, 'cause')
+    if (!cause || seen.has(cause)) break
+    error = cause
+  }
+  const code = error && typeof error === 'object' ? Reflect.get(error, 'code') : undefined
+  const message = error && typeof error === 'object' ? Reflect.get(error, 'message') : error
+  return {
+    reason: typeof message === 'string' ? message : 'Unknown sync failure',
+    ...(typeof code === 'string' ? { code } : {}),
+  }
+}
 /** Bound an individual stage and revoke its permission to perform later effects. */
 export async function connectStage<T>(
   name: string,
@@ -92,6 +111,7 @@ export async function connectStage<T>(
       /Sync recovery required|External files:/.test(String(error))
     )
       throw error
+    failure.cause = error
     throw failure
   } finally {
     clock.clearTimeout(timer)
@@ -136,7 +156,7 @@ export const statusName = (status: string) =>
   )[status] ?? 'Needs attention'
 export interface ConnectionActivity {
   /** Diagnostics only: the code and original message behind `error`'s friendly text. */
-  failure?: { code?: string; message: string }
+  failure?: { code?: string; message: string; reason?: string; stage?: string }
   transfer?: import('./transferProgress').TransferSnapshot
   reconciliation?: import('@abele/sync-core').ReconciliationState | null
   pull?: { stage: string; completed: number; total: number }
@@ -169,13 +189,22 @@ export interface ConnectionActivity {
   events?: { at: number; text: string }[]
 }
 export function connectionStatusText(
-  row: Pick<TokenConnectionRecord, 'status' | 'paused'>,
+  row: Pick<TokenConnectionRecord, 'status' | 'paused' | 'rootIssue'>,
   activity?: ConnectionActivity
 ): string {
   if (activity?.reconciliation && activity.reconciliation.phase !== 'complete')
     return activity.reconciliation.reason.startsWith('server generation changed')
       ? 'The server was restored from a backup — checking files'
       : 'Checking restored files'
+  if (row.rootIssue?.kind === 'server-renamed')
+    return `Shared folder renamed on the server: ${row.rootIssue.from} → ${row.rootIssue.to}; sync stopped`
+  if (row.rootIssue)
+    return row.rootIssue.kind === 'moved'
+      ? `Folder moved to ${row.rootIssue.path}; sync stopped`
+      : 'Folder is gone; sync stopped'
+  if (row.status === 'scope_unavailable')
+    return 'Server folder or group unavailable; local files kept'
+  if (row.status === 'needs-token' && activity?.error) return 'Access closed; local files kept'
   if (activity?.startup) {
     const one = activity.startup
     return `${one.stage}… ${one.completed}/${one.total}${one.outcome === 'failed' ? ' · Needs attention' : ''}`
@@ -194,10 +223,14 @@ export function connectionStatusText(
   return statusName(row.paused ? 'paused' : row.status)
 }
 export interface TokenUiRuntime extends ExecutableApplyPort, ConsentResolvePort {
+  localPath?(path: string): string
   scanSnapshot?(): ReturnType<import('./exchangeTrace').ExchangeTrace['snapshot']>
   assertCurrent?(): void
   sync(): Promise<void>
   reconcile?(): Promise<void>
+  restoreRoot?(): Promise<void>
+  followRoot?(): Promise<void>
+  followServerRoot?(): Promise<void>
   pause(paused: boolean): Promise<void>
   disconnect(): Promise<void>
   /** Stable local identities already recorded by the engine, never derived from a path. */
@@ -223,6 +256,7 @@ export interface TokenUiRuntime extends ExecutableApplyPort, ConsentResolvePort 
 export type DeviceReviews = Awaited<ReturnType<typeof openDeviceReviews>>
 const noConnectionHost = async () => {}
 export class TokenUi {
+  connectFailure?: { reason: string; code?: string }
   connectionChangeGuard: (
     id?: string,
     assertCurrent?: () => void,
@@ -232,6 +266,7 @@ export class TokenUi {
   disconnectRuntime: (id: string) => Promise<void> = async (id) => {
     await this.runtimes.get(id)?.disconnect()
   }
+  connectionForgotten: (id: string) => Promise<void> = async () => {}
   retryConnection: (id: string, assertCurrent: () => void) => Promise<void> = async (
     _,
     assertCurrent
@@ -286,16 +321,31 @@ export class TokenUi {
   }
   private async refreshReviewsNow(): Promise<void> {
     if (!this.reviews) return
+    const reviews = this.reviews
+    const local = (id: string, path: string) => this.runtimes.get(id)?.localPath?.(path) ?? path
+    // Reviews keep their canonical server paths; only what the panel shows is local.
+    const publish = async () => {
+      const candidates = await reviews.executables.pending()
+      const questions = await reviews.attachments.pending()
+      this.candidates.value = candidates.map((one) => ({
+        ...one,
+        path: local(one.source.id, one.path),
+        previousPath: one.previousPath ? local(one.source.id, one.previousPath) : one.previousPath,
+      }))
+      this.questions.value = questions.map((one) => ({
+        ...one,
+        path: local(one.source.id, one.path),
+      }))
+      return { candidates, questions }
+    }
     // Also retire reviews left by older builds. Snapshot only orphan IDs: a new
     // connection may stage its own deliveries while these durable writes wait.
-    const candidates = await this.reviews.executables.state()
+    const stored = await reviews.executables.state()
     const connected = new Set(this.registry.records().map((one) => one.id))
-    for (const id of new Set(candidates.map((one) => one.source.id)))
-      if (!connected.has(id) && !this.runtimes.has(id))
-        await this.reviews.executables.forgetSource(id)
-    this.candidates.value = await this.reviews.executables.pending()
-    this.questions.value = await this.reviews.attachments.pending()
-    for (const candidate of this.candidates.value) {
+    for (const id of new Set(stored.map((one) => one.source.id)))
+      if (!connected.has(id) && !this.runtimes.has(id)) await reviews.executables.forgetSource(id)
+    const { candidates, questions } = await publish()
+    for (const candidate of candidates) {
       const runtime = this.runtimes.get(candidate.source.id)
       if (!runtime || !this.trusted(candidate.source)) continue
       const revoked = new Error('Connection trust changed')
@@ -303,7 +353,7 @@ export class TokenUi {
         if (!this.trusted(candidate.source)) throw revoked
       }
       try {
-        await this.reviews.executables.approve([candidate.id], {
+        await reviews.executables.approve([candidate.id], {
           apply: async (one) => {
             assertAllowed()
             await runtime.apply(one, assertAllowed)
@@ -311,30 +361,30 @@ export class TokenUi {
         })
         this.recordEvent(
           candidate.source.id,
-          `Installed code from ${scopeName(candidate.source.scope)}: ${candidate.path}`
+          `Installed code from ${scopeName(candidate.source.scope)}: ${local(candidate.source.id, candidate.path)}`
         )
       } catch (error) {
-        if (error !== revoked) this.reviewFailure(candidate.source.id, candidate.path, error)
+        if (error !== revoked)
+          this.reviewFailure(candidate.source.id, local(candidate.source.id, candidate.path), error)
       }
     }
-    for (const question of this.questions.value) {
+    for (const question of questions) {
       const runtime = this.runtimes.get(question.source.id)
       if (!runtime || !this.trusted(question.source)) continue
       try {
         if (
-          await this.reviews.attachments.decide(question.id, true, runtime, () =>
+          await reviews.attachments.decide(question.id, true, runtime, () =>
             this.trusted(question.source)
           )
         ) {
           await runtime.publishAttachment?.(question.fileId)
-          this.recordEvent(question.source.id, `Shared ${question.path}`)
+          this.recordEvent(question.source.id, `Shared ${local(question.source.id, question.path)}`)
         }
       } catch (error) {
-        this.reviewFailure(question.source.id, question.path, error)
+        this.reviewFailure(question.source.id, local(question.source.id, question.path), error)
       }
     }
-    this.candidates.value = await this.reviews.executables.pending()
-    this.questions.value = await this.reviews.attachments.pending()
+    await publish()
   }
   private reviewFailure(id: string, path: string, error: unknown): void {
     const reason =
@@ -458,6 +508,15 @@ export class TokenUi {
     }))
   }
   async connect(text: string, signal?: AbortSignal): Promise<void> {
+    this.connectFailure = undefined
+    try {
+      await this.connectToken(text, signal)
+    } catch (error) {
+      this.connectFailure = failureDetails(error)
+      throw error
+    }
+  }
+  private async connectToken(text: string, signal?: AbortSignal): Promise<void> {
     // Validate with the server before adding a row. Failed paste leaves all existing rows intact.
     const token = decodeAccessToken(text),
       client = new V2Client(token, this.transport)
@@ -642,6 +701,7 @@ export class TokenUi {
     const activity = { ...this.activity.value }
     delete activity[id]
     this.activity.value = activity
+    await this.connectionForgotten(id)
     this.available.value = this.runtimes.size > 0
     this.refresh()
     await this.refreshReviews()

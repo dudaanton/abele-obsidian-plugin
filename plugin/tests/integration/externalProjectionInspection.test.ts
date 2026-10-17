@@ -1,4 +1,5 @@
 import { performance } from 'node:perf_hooks'
+import { desktopFsPort } from '../helpers/desktopRequire'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { projectionEvidence, EXTERNAL_INSPECTION_KEY } from '@/sync/external/pluginSafety'
 import { MAX_PROJECTION_BYTES, recognizeProjection } from '@/sync/external/projection'
@@ -7,6 +8,54 @@ import { useVault } from '../helpers/testEnv'
 afterEach(() => vi.restoreAllMocks())
 
 describe('bounded persisted external projection inspection', () => {
+  it('inspects only selected folders and exact group members without reading their neighbours', async () => {
+    const app = useVault([
+      { path: 'Shared/note.md', content: 'ordinary' },
+      { path: 'Shared/.hidden/item.txt', content: 'ordinary' },
+      { path: 'Notes/member.md', content: 'ordinary' },
+      ...Array.from({ length: 200 }, (_, i) => ({ path: `Private/${i}.md`, content: 'private' })),
+    ])
+    const list = vi.spyOn(app.vault.adapter, 'list')
+    const read = vi.spyOn(app.vault.adapter, 'readBinary')
+    const index = vi.spyOn(app.vault, 'getFiles')
+    await projectionEvidence(app as never, () => {}, true, new Set(), {
+      roots: ['Shared'],
+      paths: ['Notes/member.md'],
+    })
+    expect(list.mock.calls.map(([path]) => path)).toEqual(['Shared', 'Shared/.hidden'])
+    expect(read.mock.calls.map(([path]) => path).sort()).toEqual([
+      'Notes/member.md',
+      'Shared/.hidden/item.txt',
+      'Shared/note.md',
+    ])
+    expect(index).not.toHaveBeenCalled()
+  })
+  it('inspects only exact group members without listing any folder', async () => {
+    const app = useVault([
+      { path: 'Notes/member.md', content: 'ordinary' },
+      { path: 'Notes/neighbour.md', content: 'private' },
+    ])
+    const list = vi.spyOn(app.vault.adapter, 'list')
+    const read = vi.spyOn(app.vault.adapter, 'readBinary')
+    await projectionEvidence(app as never, () => {}, true, new Set(), {
+      roots: [],
+      paths: ['Notes/member.md'],
+    })
+    expect(list).not.toHaveBeenCalled()
+    expect(read.mock.calls.map(([path]) => path)).toEqual(['Notes/member.md'])
+  })
+  it('accepts a not-yet-materialized folder without listing the vault root', async () => {
+    const app = useVault([{ path: 'Private/note.md', content: 'private' }])
+    const list = vi.spyOn(app.vault.adapter, 'list')
+    const read = vi.spyOn(app.vault.adapter, 'readBinary')
+    await expect(
+      projectionEvidence(app as never, () => {}, true, new Set(), {
+        roots: ['Shared'],
+      })
+    ).resolves.toBeNull()
+    expect(list).not.toHaveBeenCalled()
+    expect(read).not.toHaveBeenCalled()
+  })
   it.each(['delete', 'rename'])(
     'skips a captured indexed path after %s while listing directories',
     async (action) => {
@@ -146,8 +195,12 @@ describe('bounded persisted external projection inspection', () => {
       }
     )
     const adapter = app.vault.adapter as any
-    adapter.getFullPath = (path: string) => path
-    adapter.fsPromises = { open: vi.fn(async () => ({ read, close })) }
+    adapter.getFullPath = (path: string) => '/vault/' + path
+    adapter.fsPromises = {
+      lstat: async () => ({ dev: 1, ino: 1, isSymbolicLink: () => false }),
+      open: vi.fn(async () => ({ read, close, stat: async () => ({ dev: 1, ino: 1 }) })),
+    }
+    desktopFsPort(adapter.fsPromises)
     try {
       expect(await projectionEvidence(app as never)).toBeNull()
       expect(whole).not.toHaveBeenCalled()

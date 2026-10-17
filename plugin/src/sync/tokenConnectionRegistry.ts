@@ -1,15 +1,37 @@
+import { assertPhysicalPath } from './external/projection'
 import { z } from 'zod'
 import { Platform } from 'obsidian'
 import type { SelectiveSettings } from '@abele/sync-core'
 import { defaultSelective, selectiveProblem } from './connection'
-import { normalizeServerUrl, serverUrlProblem } from '@abele/sync-protocol'
+import { normalizeServerUrl, serverUrlProblem, PathSchema } from '@abele/sync-protocol'
 import { DEVICE_SECRET_PREFIX } from '@/secrets/deviceSecret'
 import type { LocalStorage } from './ledgerId'
 import { isLegacyAccessSlot } from './discardLegacyConnections'
+import { LocalPlacementError } from './localFolderPlacement'
 
 export const TOKEN_REGISTRY_KEY = 'abele-sync-connections-v2'
 const secretPrefix = DEVICE_SECRET_PREFIX + 'token-'
 const id = z.string().min(1).max(200)
+const localRootSchema = z
+  .string()
+  .refine(
+    (path) =>
+      PathSchema.safeParse(path).success &&
+      !path.includes('\\') &&
+      path.split('/').every((part) => part.length > 0 && part !== '.' && part !== '..')
+  )
+const physicalRootSchema = z
+  .string()
+  .min(1)
+  .max(1024)
+  .refine((path) => {
+    try {
+      if (path !== '/') assertPhysicalPath(path)
+      return true
+    } catch {
+      return false
+    }
+  })
 const scopeSchema = z
   .object({ kind: z.enum(['folder', 'group']), id, path: z.string().min(1).max(1024) })
   .strict()
@@ -55,7 +77,17 @@ const recordSchema = z
     ledgerId: id,
     paused: z.boolean(),
     trusted: z.boolean().optional(),
-    localRoot: z.string().min(1).max(1024).optional(),
+    localRoot: physicalRootSchema.optional(),
+    serverRoot: localRootSchema.optional(),
+    rootIssue: z
+      .discriminatedUnion('kind', [
+        z.object({ kind: z.literal('deleted') }).strict(),
+        z
+          .object({ kind: z.literal('server-renamed'), from: localRootSchema, to: localRootSchema })
+          .strict(),
+        z.object({ kind: z.literal('moved'), path: physicalRootSchema }).strict(),
+      ])
+      .optional(),
     selective: z
       .custom<SelectiveSettings>((value) => selectiveProblem(value, defaultSelective()) === null)
       .optional(),
@@ -256,6 +288,68 @@ export class TokenConnectionRegistry {
     this.record(doc, localId).trusted = trusted
     this.write(TOKEN_REGISTRY_KEY, doc)
   }
+  setRootIssue(localId: string, issue: TokenConnectionRecord['rootIssue']): void {
+    const doc = this.document(),
+      record = this.record(doc, localId)
+    record.rootIssue = issue
+    if (!issue) record.paused = false
+    record.status = issue ? 'scope_unavailable' : 'paused'
+    this.write(TOKEN_REGISTRY_KEY, doc)
+  }
+  private assertRoot(doc: Document, record: TokenConnectionRecord, path: string): void {
+    const folded = (value: string) => value.normalize('NFC').toLowerCase()
+    const root = folded(path)
+    for (const other of doc.records) {
+      const scope = other.scope ?? other.pending?.scope
+      if (other.id === record.id || other.status === 'disconnected' || !scope) continue
+      const roots = [
+        other.localRoot ?? scope.path,
+        ...(other.rootIssue?.kind === 'moved' ? [other.rootIssue.path] : []),
+      ]
+      if (
+        roots.some((path) => {
+          const effective = folded(path)
+          return (
+            root === '/' ||
+            effective === '/' ||
+            root === effective ||
+            root.startsWith(effective + '/') ||
+            effective.startsWith(root + '/')
+          )
+        })
+      )
+        throw new LocalPlacementError(
+          'The folder overlaps another connection; sync remains stopped'
+        )
+    }
+  }
+  setServerRoot(localId: string, path: string): void {
+    const doc = this.document(),
+      record = this.record(doc, localId)
+    if (record.scope?.kind !== 'folder' || record.scope.path === '/') throw recovery()
+    record.serverRoot = localRootSchema.parse(path)
+    this.write(TOKEN_REGISTRY_KEY, doc)
+  }
+  setLocalRoot(localId: string, path: string): void {
+    const doc = this.document(),
+      record = this.record(doc, localId)
+    if (record.scope?.kind !== 'folder' || record.scope.path === '/') throw recovery()
+    const parsed = physicalRootSchema.parse(path)
+    this.assertRoot(doc, record, parsed)
+    record.localRoot = parsed
+    this.write(TOKEN_REGISTRY_KEY, doc)
+  }
+  setScopePath(localId: string, path: string): void {
+    const doc = this.document(),
+      record = this.record(doc, localId)
+    if (!record.scope) throw new Error('Connection needs a scope')
+    const needsPin =
+      record.scope.kind === 'folder' && record.scope.path !== '/' && !record.localRoot
+    if (needsPin) record.localRoot = record.scope.path
+    if (record.scope.path === path && !needsPin) return
+    record.scope.path = path
+    this.write(TOKEN_REGISTRY_KEY, doc)
+  }
   setSelective(localId: string, selective: SelectiveSettings): void {
     const doc = this.document(),
       record = this.record(doc, localId)
@@ -291,7 +385,7 @@ export class TokenConnectionRegistry {
       (!record.secretReference || record.pending)
     )
       throw new Error('Connection needs a token')
-    record.status = status
+    record.status = record.rootIssue ? 'scope_unavailable' : status
     this.write(TOKEN_REGISTRY_KEY, doc)
   }
   /** New engine state is device-only and permanently bound to this local ID. */

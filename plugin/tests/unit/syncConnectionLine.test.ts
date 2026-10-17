@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { connectionBusy, connectionLine, connectionProgress, connectionTone } from '@/sync/connectionLine'
+import {
+  connectionBusy,
+  connectionLine,
+  connectionProgress,
+  connectionTone,
+} from '@/sync/connectionLine'
 import { DISCONNECTED_STATUS, statusText, statusTooltip, statusWarns } from '@/sync/status'
 import { phoneSyncIcon } from '@/sync/phoneSyncAction'
 import { tokenStatus } from '@/sync/tokenStatus'
@@ -8,6 +13,14 @@ import { tokenUiFixture } from '@/testing/tokenUiFixture'
 const idle = { status: 'idle' as const, paused: false }
 
 describe('a connection row', () => {
+  it('keeps a missing root decision visible over stale startup activity', () => {
+    const row = { ...idle, rootIssue: { kind: 'deleted' as const } }
+    expect(connectionBusy(row, { comparison: { completed: 1, total: 1000 } })).toBe(false)
+    expect(connectionTone(row)).toBe('red')
+    expect(connectionLine(row, { comparison: { completed: 1, total: 1000 } })).toBe(
+      'Folder is gone; sync stopped'
+    )
+  })
   it('says when it last synced and is green when everything is through', () => {
     expect(connectionLine(idle, { lastSync: Date.now() - 120_000 })).toBe('Synced 2 minutes ago')
     expect(connectionTone(idle, { lastSync: Date.now() })).toBe('green')
@@ -24,10 +37,14 @@ describe('a connection row', () => {
   it('is orange for a pause, a missing server and a conflict copy, red when the person must act', () => {
     expect(connectionLine({ status: 'paused', paused: true })).toBe('Paused')
     expect(connectionTone({ status: 'paused', paused: true })).toBe('orange')
-    expect(connectionLine({ status: 'offline', paused: false })).toBe('Server unavailable, retrying')
+    expect(connectionLine({ status: 'offline', paused: false })).toBe(
+      'Server unavailable, retrying'
+    )
     expect(connectionLine(idle, { conflicts: ['a.md', 'b.md'] })).toBe('2 conflict copies')
     expect(connectionTone(idle, { conflicts: ['a.md'] })).toBe('orange')
-    expect(connectionLine(idle, { refused: [{ path: 'a.mov', reason: 'big' }] })).toBe('1 file not sent')
+    expect(connectionLine(idle, { refused: [{ path: 'a.mov', reason: 'big' }] })).toBe(
+      '1 file not sent'
+    )
     expect(connectionTone({ status: 'error', paused: false })).toBe('red')
     expect(connectionLine({ status: 'error', paused: false })).toBe('Needs attention')
   })

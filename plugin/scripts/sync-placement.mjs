@@ -10,7 +10,7 @@ function replaceOnce(code, before, after) {
 const helper = `
 async function coordinatePlacement(fs, paths, work, preserve = true) {
   const run = fs[Symbol.for('abele.sync.placement-v1')];
-  return run ? run(paths, work, preserve) : work();
+  return run ? run.call(fs, paths, work, preserve) : work();
 }
 async function* inventoryDirectories(fs) {
   const read = fs[Symbol.for('abele.sync.inventory-directories-v1')];
@@ -72,7 +72,7 @@ export function syncPlacementPlugin() {
         code += `
         async function fingerprintPlacementFile(fs, path, hash) {
           const bounded = fs[Symbol.for('abele.sync.fingerprint-pull-v1')];
-          return bounded ? bounded(path) : fingerprintFile(fs, path, hash);
+          return bounded ? bounded.call(fs, path) : fingerprintFile(fs, path, hash);
         }
         async function settledPlacementStat(fs, path, sha, wrote, hash) {
           return settledStat({
@@ -110,7 +110,7 @@ export function syncPlacementPlugin() {
           return false;
         }
         const recovery = pending && recoverPublished
-          ? await recoverPublished(pending.stageId ?? null, target, change.mtime ?? 0, from) : null;
+          ? await recoverPublished.call(this.fs, pending.stageId ?? null, target, change.mtime ?? 0, from) : null;
         if (recovery) {
           await this.pending.prepare(change, entry, target, from, recovery.id);
           try {
@@ -168,7 +168,7 @@ export function syncPlacementPlugin() {
           `async place(change, sha, entry, fetched, local) {
           const observe = this.fs[Symbol.for('abele.sync.trace-pull-v1')];
           if (!observe) return this.placeObserved(change, sha, entry, fetched, local);
-          const finish = observe(change.size, change.path);
+          const finish = observe.call(this.fs, change.size, change.path);
           let complete = false;
           try {
             const result = await this.placeObserved(change, sha, entry, fetched, local);
@@ -228,7 +228,7 @@ export function syncPlacementPlugin() {
             // Some hosts can append bounded chunks but cannot read a large local stage.
             // Use the core's direct network-to-target stream there, never a whole-file read.
             const replay = this.fs[Symbol.for('abele.sync.replay-stage-v1')];
-            if (replay && !await replay())
+            if (replay && !await replay.call(this.fs))
               return coordinatePlacement(this.fs, [change.path, ...(entry ? [entry.path] : [])],
                 () => this.placeUnlocked(change, sha, entry, fetched, local));
             const stagingFs = this.fs[Symbol.for('abele.sync.private-placement-stages-v1')] ?? this.fs;
@@ -242,7 +242,7 @@ export function syncPlacementPlugin() {
               await sourceStage.discard();
             } };
             const retainSource = this.fs[Symbol.for('abele.sync.live-source-stage-v1')];
-            return retainSource ? retainSource(sourceStage.id, useSource) : useSource();
+            return retainSource ? retainSource.call(this.fs, sourceStage.id, useSource) : useSource();
           }
           // A matching ledger hash does not prove that its local file still exists.
           // Populate even the fallback's cache before leasing either path.

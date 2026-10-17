@@ -42,9 +42,9 @@ it.each([
     )
     const raw = app.vault.adapter
     const lstat = vi.fn(async (full: string) => {
-      if (!(await raw.stat(full.slice('/sample-vault/'.length))))
-        throw Object.assign(new Error('missing'), { code: 'ENOENT' })
-      return { isSymbolicLink: () => false }
+      const stat = await raw.stat(full.slice('/sample-vault/'.length))
+      if (!stat) throw Object.assign(new Error('missing'), { code: 'ENOENT' })
+      return { isSymbolicLink: () => false, isDirectory: () => stat.type === 'folder' }
     })
     Object.assign(raw, {
       getFullPath: (path: string) => '/sample-vault/' + path,
@@ -220,18 +220,26 @@ it.each([
     let linked = false
     const lstat = vi.fn(async (full: string) => ({
       isSymbolicLink: () => linked && full === '/sample-vault/' + root,
+      isDirectory: () => true,
     }))
     Object.assign(app.vault.adapter, {
       getFullPath: (path: string) => '/sample-vault/' + path,
       fsPromises: { lstat },
     })
     const adapter = connectionAdapter(app.vault.adapter, root, connectionPrivateRoot('sample'))
-    const fs = new ObsidianFileSystem(app as never, { adapter, fileScope: root })
+    const probe = vi.fn(Reflect.get(adapter, CONNECTION_ROOT_SYMLINK) as () => Promise<boolean>)
+    const observed = new Proxy(adapter, {
+      get(target, key) {
+        return key === CONNECTION_ROOT_SYMLINK ? probe : Reflect.get(target, key)
+      },
+    })
+    const fs = new ObsidianFileSystem(app as never, { adapter: observed, fileScope: root })
     const stop = fs.watch(() => {})
     try {
       await fs.mkdir(root + '/One')
       await fs.mkdir(root + '/Two')
-      expect(lstat.mock.calls.filter(([path]) => path === '/sample-vault/' + root)).toHaveLength(1)
+      // Per-effect native chain guards remain active; only this bound metadata proof is cached.
+      expect(probe).toHaveBeenCalledTimes(1)
       app.emit(
         'vault',
         event,
@@ -243,5 +251,44 @@ it.each([
     } finally {
       stop()
     }
+  }
+)
+
+it.each(['Moved/Shared', 'Cafe\u0301/Shared'])(
+  'revalidates the new root chain after explicitly rebinding placement to %s',
+  async (destination) => {
+    let root = 'Container/Shared'
+    const app = buildFakeVault([{ path: root + '/kept.md', content: 'kept' }])
+    const lstat = vi.fn(async (full: string) => ({
+      isSymbolicLink: () => full === '/sample-vault/' + destination.split('/')[0],
+      isDirectory: () => true,
+    }))
+    Object.assign(app.vault.adapter, {
+      getFullPath: (path: string) => '/sample-vault/' + path,
+      fsPromises: { lstat },
+    })
+    const adapter = connectionAdapter(
+      app.vault.adapter,
+      () => root,
+      connectionPrivateRoot('sample')
+    )
+    const probe = vi.fn(Reflect.get(adapter, CONNECTION_ROOT_SYMLINK) as () => Promise<boolean>)
+    const observed = new Proxy(adapter, {
+      get(target, key) {
+        return key === CONNECTION_ROOT_SYMLINK ? probe : Reflect.get(target, key)
+      },
+    })
+    const fs = new ObsidianFileSystem(app as never, { adapter: observed, fileScope: () => root })
+    expect((await Array.fromAsync(fs.listDirectories())).map((item) => item.path)).toEqual([root])
+    expect(probe).toHaveBeenCalledTimes(1)
+    root = destination
+    lstat.mockClear()
+    expect(await Array.fromAsync(fs.listDirectories())).toEqual([])
+    expect(probe).toHaveBeenCalledTimes(2)
+    expect(lstat).toHaveBeenCalledWith('/sample-vault/' + destination.split('/')[0])
+    await expect(fs.mkdir(destination + '/Blocked')).rejects.toMatchObject({ code: 'conflict' })
+    expect(() => Reflect.get(adapter, 'getFullPath')('Container/Shared')).toThrow(
+      'outside this connection'
+    )
   }
 )

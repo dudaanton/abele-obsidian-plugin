@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
+import { desktopFsPort } from '../helpers/desktopRequire'
 import { IDBFactory } from 'fake-indexeddb'
 import { sha256 } from '@abele/sync-core'
 import { JOURNAL_KEY } from '@/sync/writeJournal'
@@ -159,9 +160,18 @@ it('rechecks native ownership inside the save queue after the final byte read', 
   const rename = vi.fn(),
     bytes = new TextEncoder().encode('sample original')
   const adapter = {
-    getFullPath: (path: string) => path,
+    getFullPath: (path: string) => '/vault/' + path,
     queue: async (fn: () => Promise<void>) => fn(),
     fsPromises: {
+      lstat: async () => ({ dev: 1, ino: 1, isSymbolicLink: () => false }),
+      open: async () => ({
+        stat: async () => ({ dev: 1, ino: 1 }),
+        close: async () => {},
+        readFile: async () => {
+          fence.release()
+          return bytes
+        },
+      }),
       rename,
       rmdir: vi.fn(),
       readFile: async () => {
@@ -170,6 +180,7 @@ it('rechecks native ownership inside the save queue after the final byte read', 
       },
     },
   }
+  desktopFsPort(adapter.fsPromises)
   const native = nativeOf(adapter as never, () => fence.assertOwned())!
   await expect(native.replaceFenced!('sample.tmp', 'sample.bin', bytes.buffer)).rejects.toThrow(
     /ownership|held/i

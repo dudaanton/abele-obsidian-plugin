@@ -1,3 +1,5 @@
+import { privatePlacementStages, PRIVATE_PLACEMENT_STAGES } from './privatePlacementStages'
+import { nativeChunkPort, connectionFilePort, vaultPathIsLink } from './vaultPathLinks'
 import {
   connectionPrivateRoot,
   privateDownload,
@@ -91,6 +93,8 @@ export interface ObsidianFileSystemOptions {
   ) => void
   /** Ordinary enumeration is bounded before representation inspection for folder tokens. */
   fileScope?: string | (() => string | undefined)
+  /** Omitted for personal/root connections. Group roots are empty; members are exact paths. */
+  discovery?: { roots: readonly string[]; includes(path: string): boolean }
   startupInventory?: () => ReadonlyMap<string, FileInfo> | undefined
   preserveEmptyDirectories?: boolean
   /** The startup/ownership fence, owned by the engine host. */
@@ -298,7 +302,8 @@ export class ObsidianFileSystem implements FileSystem {
     const prior = this.inventory?.listings.get(parent)
     if (prior !== undefined) return prior
     const inventory = this.inventory
-    const listing = this.adapter.list(parent).catch((error) => {
+    const listing = this.disk.list(parent).catch((error): ListedFiles => {
+      if (notFound(error)) return { files: [], folders: [] }
       if (inventory?.listings.get(parent) === listing) inventory.listings.delete(parent)
       throw error
     })
@@ -367,7 +372,7 @@ export class ObsidianFileSystem implements FileSystem {
     for (const path of parents) inventory.publishedParents.delete(path)
   }
   private async rememberInventoryParents(path: string): Promise<void> {
-    if (!path) return
+    if (!path || (this.discovery && this.discovery.roots.length === 0)) return
     const inventory = this.inventory
     if (inventory?.directories === undefined) return
     const before = inventory.directories
@@ -409,6 +414,7 @@ export class ObsidianFileSystem implements FileSystem {
   private cachedConfigRevision: number
   private configPolled = false
   private readonly startupInventory?: () => ReadonlyMap<string, FileInfo> | undefined
+  private readonly discovery?: ObsidianFileSystemOptions['discovery']
   /** Last engine-visible byte/absence observation, not a fresh read inside a replacement.
    * Digests avoid retaining the vault's binary contents. A later stat never promotes new bytes. */
   private readonly observedBases = new Map<string, { sha: string } | { absent: true }>()
@@ -426,6 +432,10 @@ export class ObsidianFileSystem implements FileSystem {
   private readonly runtimeFence: RuntimeFence | null
   private readonly privateRoot?: string
   private readonly scopedAdapter: DataAdapter
+  private readonly placementStages: ReturnType<typeof privatePlacementStages>
+  get [PRIVATE_PLACEMENT_STAGES]() {
+    return this.placementStages
+  }
   private readonly guardedAdapter: DataAdapter
   readonly externalCoordination: ExternalFileCoordination
 
@@ -433,7 +443,11 @@ export class ObsidianFileSystem implements FileSystem {
     private readonly app: App,
     options: ObsidianFileSystemOptions = {}
   ) {
-    this.scopedAdapter = options.adapter ?? app.vault.adapter
+    this.placementStages = privatePlacementStages(
+      this,
+      options.connectionId ? connectionPrivateRoot(options.connectionId) : undefined
+    )
+    this.scopedAdapter = connectionFilePort(app.vault, options)
     this.privateRoot = options.connectionId
       ? connectionPrivateRoot(options.connectionId)
       : undefined
@@ -444,6 +458,7 @@ export class ObsidianFileSystem implements FileSystem {
     this.preserveEmptyDirectories = options.preserveEmptyDirectories ?? false
     this.fileScope = options.fileScope
     this.startupInventory = options.startupInventory
+    this.discovery = options.discovery
     this.runtimeFence = options.runtimeFence ?? null
     this.externalCoordination = externalCoordinationOf(app.vault)
     const runtimeAdapter = this.runtimeFence
@@ -539,7 +554,17 @@ export class ObsidianFileSystem implements FileSystem {
           const paths = args.slice(0, key === 'rename' || key === 'copy' ? 2 : 1) as string[]
           for (const path of paths) this.inventory?.mutations.add(path)
           this.externalCoordination.assertEnginePaths(paths)
-          return bound(...args)
+          const result = bound(...args)
+          if (key !== 'rename') return result
+          return Promise.resolve(result).then(async (answer) => {
+            const reconcile = Reflect.get(this.scopedAdapter, 'reconcileInternalFile')
+            if (typeof reconcile === 'function') {
+              this.runtimeFence?.assertOwned()
+              await reconcile.call(this.scopedAdapter, paths[1])
+              this.runtimeFence?.assertOwned()
+            }
+            return answer
+          })
         }
         guardedMethods.set(key, { source, wrapped })
         return wrapped
@@ -559,7 +584,7 @@ export class ObsidianFileSystem implements FileSystem {
             directories.filter((one) => one.path !== path && !one.path.startsWith(path + '/'))
           )
       },
-      () => this.scopedRoot()
+      this.discovery?.roots ?? (() => this.scopedRoot())
     )
     this.beforeEngineMutation = options.beforeEngineMutation ?? null
     this.ledger = options.ledger ?? null
@@ -584,13 +609,13 @@ export class ObsidianFileSystem implements FileSystem {
     )
     this.writer = new VaultWriter({
       stagingDirectory: stagingDirectory(this.configDir, this.privateRoot),
-      adapter: this.guardedAdapter,
+      filesystem: this.guardedAdapter,
       native: this.native,
       journal: this.journal,
       fingerprint: (path) => this.io.fingerprint(path, undefined, true),
       adoptReceipt: (from, to) => this.io.adoptReceipt(from, to),
       indexed: (path) => app.vault.getAbstractFileByPath(path) !== null,
-      makeParents: (path) => makeParents(this.adapter, path),
+      makeParents: (path) => makeParents(this.disk, path),
       installed: (path) => {
         this.awaitingIndex.add(path)
         this.wrote([path], 'file')
@@ -601,7 +626,7 @@ export class ObsidianFileSystem implements FileSystem {
   /** Obsidian desktop's `fs.promises`, or null on a phone (`vaultWrites.nativeOf`). */
   private get native(): NativeFs | null {
     const native = nativeOf(
-      this.adapter,
+      this.disk,
       (paths = []) => {
         for (const path of paths) this.inventory?.mutations.add(path)
         this.runtimeFence?.assertOwned()
@@ -626,7 +651,7 @@ export class ObsidianFileSystem implements FileSystem {
       : native
   }
 
-  private get adapter(): DataAdapter {
+  private get disk(): DataAdapter {
     return this.guardedAdapter
   }
 
@@ -661,7 +686,12 @@ export class ObsidianFileSystem implements FileSystem {
   async *listDirectories() {
     this.runtimeFence?.assertReady()
     const scope = this.scopedRoot()
+    if (this.discovery && !scope) {
+      yield* this.directories.list([], () => false)
+      return
+    }
     if (scope) {
+      if (await crossesSymlink(scope, (prefix) => this.isSymlink(prefix))) return
       yield* this.directories.list()
       return
     }
@@ -693,6 +723,19 @@ export class ObsidianFileSystem implements FileSystem {
     }
     if (scope && !this.withinFileScope(parent))
       throw new EngineError('protocol', 'Inventory path is outside this connection')
+    if (this.discovery && this.discovery.roots.length === 0) {
+      const children = new Map<string, InventoryChild>()
+      for (const file of this.app.vault.getFiles()) {
+        if (!this.discovery.includes(file.path) || (parent && !file.path.startsWith(parent + '/')))
+          continue
+        const prefix = parent ? parent + '/' : ''
+        const tail = file.path.slice(prefix.length)
+        const cut = tail.indexOf('/')
+        const path = cut < 0 ? file.path : prefix + tail.slice(0, cut)
+        children.set(path, { path, kind: cut < 0 ? 'file' : 'directory' })
+      }
+      return [...children.values()]
+    }
     const listing = await this.inventoryListing(parent)
     const children: InventoryChild[] = listing.files
       .filter((path) => !isAdapterTemp(path))
@@ -710,6 +753,8 @@ export class ObsidianFileSystem implements FileSystem {
   async mkdir(path: string): Promise<void> {
     this.runtimeFence?.assertReady()
     await this.beforeEngineMutation?.([path])
+    if (await crossesSymlink(path, (prefix) => this.isSymlink(prefix)))
+      throw new EngineError('conflict', 'Directory path contains a symbolic link')
     const parts = path.split('/')
     const prefixes = parts.map((_, index) => parts.slice(0, index + 1).join('/'))
     const missing: string[] = []
@@ -759,6 +804,53 @@ export class ObsidianFileSystem implements FileSystem {
       this.journal.vaultRecovered().length > 0
     )
   }
+  /** Called only after explicit Follow verified the destination file set. */
+  followRecoveredRoot(from: string, to: string): void {
+    this.runtimeFence?.assertReady()
+    assertPhysicalPath(from)
+    assertPhysicalPath(to)
+    const privateRoot = this.privateRoot
+    if (!privateRoot || from !== this.scopedRoot())
+      throw new EngineError('io', 'The recovery placement changed; sync remains stopped')
+    // Unfinished installs cannot be relabelled or replayed into a different placement.
+    if (this.journal.entries().some((entry) => !withinRoot(entry.target, privateRoot)))
+      throw new EngineError('io', 'Unfinished file recovery prevents following the folder')
+    const fullArchive = nativeChunkPort(this.disk)
+      .fullPath?.(privateRoot + '/recovery')
+      ?.replace(/\\/g, '/')
+    const backupSuffix = (backup: string): string | undefined => {
+      if (withinRoot(backup, privateRoot)) return backup.slice(privateRoot.length)
+      const native = backup.replace(/\\/g, '/')
+      return fullArchive && native.startsWith(fullArchive + '/')
+        ? '/recovery' + native.slice(fullArchive.length)
+        : undefined
+    }
+    if (
+      this.journal
+        .recovered()
+        .some(
+          (entry) =>
+            (!withinRoot(entry.target, from) &&
+              !withinRoot(entry.target, to) &&
+              !withinRoot(entry.target, privateRoot)) ||
+            backupSuffix(entry.backup) === undefined
+        )
+    )
+      throw new EngineError('io', 'Unproven recovery copy prevents following the folder')
+    for (const entry of this.journal.recovered()) {
+      // Private evidence is outside the wire namespace; validate its relative suffix.
+      assertPhysicalPath(
+        withinRoot(entry.target, privateRoot)
+          ? 'Recovery' + entry.target.slice(privateRoot.length)
+          : entry.target
+      )
+      // Native archives retain absolute paths. Authorize only the exact owned archive root,
+      // then validate its suffix without granting access to any native path.
+      assertPhysicalPath('Recovery' + backupSuffix(entry.backup))
+    }
+    this.journal.relocateRecoveredTargets(from, to)
+  }
+
   async recover(): Promise<void> {
     this.runtimeFence?.assertOwned()
     if (
@@ -870,7 +962,7 @@ export class ObsidianFileSystem implements FileSystem {
       )
         throw new EngineError('io', 'placement needs write recovery before acquiring its lease')
     for (const path of new Set(paths)) {
-      const stat = await this.adapter.stat(path)
+      const stat = await this.disk.stat(path)
       if (stat?.type === 'folder') yield* this.walkConfig(path)
       else if (stat?.type === 'file') {
         const info = await this.fileAt(path)
@@ -905,8 +997,13 @@ export class ObsidianFileSystem implements FileSystem {
     const revision = mutations.revision
     const indexed = new Set<string>()
     const withinScope = (path: string) => this.withinFileScope(path)
-    for await (const file of this.rawVaultFiles(scope)) {
-      if (!withinScope(file.path)) continue
+    const files =
+      this.discovery && this.discovery.roots.length === 0
+        ? this.app.vault.getFiles().filter((file) => this.discovery.includes(file.path))
+        : this.rawVaultFiles(scope)
+    for await (const file of files) {
+      if (!withinScope(file.path) || (this.discovery && !this.discovery.includes(file.path)))
+        continue
       if (isAdapterTemp(file.path)) continue
       if (this.awaitingIndex.has(file.path)) {
         const actual = await this.rawStat(file.path)
@@ -928,6 +1025,7 @@ export class ObsidianFileSystem implements FileSystem {
     }
     for (const path of candidates) {
       if (!withinScope(path)) continue
+      if (this.discovery && !this.discovery.includes(path)) continue
       if (indexed.has(caseKey(path)) || path.startsWith(`${this.configDir}/`)) {
         continue
       }
@@ -942,7 +1040,7 @@ export class ObsidianFileSystem implements FileSystem {
       if ((info === null || actual !== path) && !this.app.vault.getFileByPath(path))
         this.awaitingIndex.delete(path)
     }
-    if (!scope) {
+    if (!scope && !this.discovery) {
       const configRevision = this.configRevision()
       if (this.cachedConfigRevision !== configRevision) {
         this.configInventory = null
@@ -950,19 +1048,9 @@ export class ObsidianFileSystem implements FileSystem {
       }
       if (!this.startupInventory) this.configInventory = null
       if (this.configInventory === null) {
-        const inventory = this.inventoryConsumed ? undefined : this.startupInventory?.()
+        const inventory = this.inventoryConsumed ? undefined : this.startupConfigInventory()
         this.inventoryConsumed = true
-        this.configInventory = inventory
-          ? [...inventory.values()]
-              .filter(
-                (info) =>
-                  info.path.startsWith(this.configDir + '/') &&
-                  !isAdapterTemp(info.path) &&
-                  !info.path.startsWith(stagingDirectory(this.configDir) + '/') &&
-                  !info.path.startsWith(privateRecoveryDirectory(this.configDir) + '/')
-              )
-              .map((info) => ({ ...info, mtime: stamp(info.mtime) }))
-          : await this.readConfigInventory()
+        this.configInventory = inventory ?? (await this.readConfigInventory())
         this.cachedConfigRevision = configRevision
       }
       for (const info of this.configInventory) yield await this.told(info, true)
@@ -1183,30 +1271,16 @@ export class ObsidianFileSystem implements FileSystem {
    * ceiling and inspected one at a time. This never promotes a prefix to a proven local base. */
   async readPrefix(path: string, maximum: number): Promise<Uint8Array> {
     this.runtimeFence?.assertReady()
-    const adapter = this.adapter as DataAdapter & {
+    const adapter = this.disk as DataAdapter & {
       readBinaryPrefix?(path: string, maximum: number): Promise<ArrayBuffer | Uint8Array>
-      getFullPath?(path: string): string
-      fsPromises?: {
-        open?(
-          path: string,
-          flags: string
-        ): Promise<{
-          read(
-            buffer: Uint8Array,
-            offset: number,
-            length: number,
-            position: number
-          ): Promise<{ bytesRead: number }>
-          close(): Promise<void>
-        }>
-      }
     }
+    const native = nativeChunkPort(adapter)
     if (adapter.readBinaryPrefix) {
       const bytes = await adapter.readBinaryPrefix(path, maximum)
       return (bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)).subarray(0, maximum)
     }
-    if (adapter.getFullPath && adapter.fsPromises?.open) {
-      const handle = await adapter.fsPromises.open(adapter.getFullPath(path), 'r')
+    if (native.fullPath && native.open) {
+      const handle = await native.open(native.fullPath(path), 'r')
       try {
         const bytes = new Uint8Array(maximum)
         const result = await handle.read(bytes, 0, maximum, 0)
@@ -1223,15 +1297,16 @@ export class ObsidianFileSystem implements FileSystem {
 
   async read(path: string): Promise<Uint8Array> {
     try {
-      const bytes = new Uint8Array(await this.adapter.readBinary(path))
+      const bytes = new Uint8Array(await this.disk.readBinary(path))
       this.observedBases.set(caseKey(path), { sha: await sha256(bytes) })
       return bytes
     } catch (cause) {
+      if (cause instanceof EngineError) throw cause
       throw new EngineError('io', `cannot read ${path}`, cause)
     }
   }
 
-  openRead(path: string, expected?: SourceStamp) {
+  async openRead(path: string, expected?: SourceStamp) {
     return this.io.openRead(path, expected)
   }
   [Symbol.for('abele.sync.diagnostic-v1')](operation: string, startedAt: number, outcome: string) {
@@ -1243,7 +1318,7 @@ export class ObsidianFileSystem implements FileSystem {
   async fingerprint(path: string, signal?: AbortSignal) {
     const identity = await this.io.fingerprint(path, signal, false, true)
     this.observedBases.set(caseKey(path), { sha: identity.sha })
-    return identity
+    return { ...identity, mtime: stamp(identity.mtime) }
   }
   async [Symbol.for('abele.sync.fingerprint-fresh-v1')](path: string) {
     return this.fingerprint(path)
@@ -1261,7 +1336,9 @@ export class ObsidianFileSystem implements FileSystem {
       identity = await this.io.fingerprint(actual, undefined, true)
     }
     this.observedBases.set(caseKey(path), { sha: identity.sha })
-    return identity
+    // Native stats retain fractional milliseconds for source-generation checks.
+    // The core identity must use the same wire date as stat/list and staged bases.
+    return { ...identity, mtime: stamp(identity.mtime) }
   }
   async beginAtomicWrite(
     path: string,
@@ -1270,7 +1347,7 @@ export class ObsidianFileSystem implements FileSystem {
   ): Promise<AtomicStage> {
     this.runtimeFence?.assertReady()
     this.externalCoordination.assertEnginePaths([path])
-    await makeParents(this.adapter, path)
+    await makeParents(this.disk, path)
     const temp = await this.writer.freeName(path, 'tmp')
     const entry: JournalEntry = {
       target: path,
@@ -1376,7 +1453,7 @@ export class ObsidianFileSystem implements FileSystem {
         finished
           ? Promise.resolve()
           : exclusive(async () => {
-              await this.adapter.remove(id)
+              await this.disk.remove(id)
               this.journal.drop(entry)
               this.stages.delete(id)
               finished = true
@@ -1420,7 +1497,7 @@ export class ObsidianFileSystem implements FileSystem {
     from: string | null = null
   ) {
     const previous = id ? this.journal.entries().find((one) => one.temp === id) : undefined
-    if (id && (await this.adapter.exists(id))) {
+    if (id && (await this.disk.exists(id))) {
       if (!previous?.streaming || previous.backup)
         throw new EngineError('io', 'pull stage is unavailable or awaiting backup recovery')
       // An intent authorizes the incoming version, not bytes saved locally since the crash.
@@ -1468,7 +1545,7 @@ export class ObsidianFileSystem implements FileSystem {
     const standing = await this.onlyFileOrNothing(path)
     if (standing && standing.size > MAX_CHUNK_BYTES)
       throw new EngineError('conflict', 'Existing file requires bounded streaming replacement')
-    const before = standing === null ? null : await this.adapter.readBinary(path)
+    const before = standing === null ? null : await this.disk.readBinary(path)
     if (
       expected &&
       (('absent' in expected && before !== null) ||
@@ -1525,14 +1602,14 @@ export class ObsidianFileSystem implements FileSystem {
       await this.writer.respell(from, to, (path) => this.spelledExactly(path))
       return
     }
-    await makeParents(this.adapter, to)
+    await makeParents(this.disk, to)
     await this.rename(from, to)
     this.awaitingIndex.add(from)
     this.awaitingIndex.add(to)
     this.wrote([from, to])
     await this.directories.removedChild(from)
     if (!this.preserveEmptyDirectories)
-      await pruneAbove(this.adapter, this.native, this.configDir, from)
+      await pruneAbove(this.disk, this.native, this.configDir, from)
   }
 
   async remove(path: string): Promise<void> {
@@ -1551,7 +1628,7 @@ export class ObsidianFileSystem implements FileSystem {
     if (standing === null) return
     if (standing.type !== 'file') throw conflictAt(path, standing)
     try {
-      await this.adapter.remove(path)
+      await this.disk.remove(path)
     } catch (cause) {
       if (cause instanceof EngineError && cause.code === 'lost') throw cause
       // Two removes of one file race, or the user deleted it while this one was asked for.
@@ -1563,7 +1640,7 @@ export class ObsidianFileSystem implements FileSystem {
     this.wrote([path], null)
     await this.directories.removedChild(path)
     if (!this.preserveEmptyDirectories)
-      await pruneAbove(this.adapter, this.native, this.configDir, path)
+      await pruneAbove(this.disk, this.native, this.configDir, path)
   }
 
   /** Tell the host what the engine changed on disk (`onEngineWrite`). */
@@ -1757,7 +1834,7 @@ export class ObsidianFileSystem implements FileSystem {
 
   private async sweep(path: string): Promise<void> {
     try {
-      await this.adapter.remove(path)
+      await this.disk.remove(path)
       console.debug(`[abele-sync] removed ${path}, left by a write that did not finish`)
     } catch (error) {
       console.debug(`[abele-sync] could not remove ${path}`, error)
@@ -1767,7 +1844,7 @@ export class ObsidianFileSystem implements FileSystem {
   /** Whether the path is there; a question that cannot be answered is answered with yes. */
   private async there(path: string): Promise<boolean> {
     try {
-      return await this.adapter.exists(path)
+      return await this.disk.exists(path)
     } catch {
       return true
     }
@@ -1782,19 +1859,15 @@ export class ObsidianFileSystem implements FileSystem {
    */
   private async configSnapshot(): Promise<Map<string, string>> {
     const taken = new Map<string, string>()
-    if (this.scopedRoot()) {
+    if (this.scopedRoot() || this.discovery) {
       const ignore = await this.stat(IGNORE_FILE)
       if (ignore !== null) taken.set(ignore.path, `${ignore.size}:${ignore.mtime}`)
       return taken
     }
     if (!this.configPolled && this.configInventory === null && !this.inventoryConsumed) {
-      const inventory = this.startupInventory?.()
+      const inventory = this.startupConfigInventory()
       this.inventoryConsumed = true
-      this.configInventory = inventory
-        ? [...inventory.values()].filter(
-            (info) => info.path.startsWith(this.configDir + '/') && !isAdapterTemp(info.path)
-          )
-        : await this.readConfigInventory()
+      this.configInventory = inventory ?? (await this.readConfigInventory())
     } else if (this.configPolled || this.configInventory === null) {
       this.configInventory = await this.readConfigInventory()
     }
@@ -1826,16 +1899,31 @@ export class ObsidianFileSystem implements FileSystem {
         return this.rootChain.linked
       }
     }
-    const adapter = this.adapter as DataAdapter & {
-      getFullPath?(path: string): string
-      fsPromises?: { lstat(path: string): Promise<{ isSymbolicLink(): boolean }> }
-    }
-    return adapter.getFullPath && adapter.fsPromises?.lstat
-      ? (await adapter.fsPromises.lstat(adapter.getFullPath(path))).isSymbolicLink()
-      : false
+    return vaultPathIsLink(this.disk, path)
+  }
+
+  /** Watchers and scans share this cache; their startup order must not change wire metadata. */
+  private startupConfigInventory(): FileInfo[] | undefined {
+    const inventory = this.startupInventory?.()
+    return (
+      inventory &&
+      [...inventory.values()]
+        .filter(
+          (info) =>
+            info.path.startsWith(this.configDir + '/') &&
+            !isAdapterTemp(info.path) &&
+            !info.path.startsWith(stagingDirectory(this.configDir) + '/') &&
+            !info.path.startsWith(privateRecoveryDirectory(this.configDir) + '/')
+        )
+        .map((info) => ({ ...info, mtime: stamp(info.mtime) }))
+    )
   }
 
   private async spellingOnDisk(path: string): Promise<string | null> {
+    if (this.discovery && this.discovery.roots.length === 0)
+      return (
+        this.app.vault.getFileByPath(path)?.path ?? (this.awaitingIndex.has(path) ? path : null)
+      )
     const cut = path.lastIndexOf('/')
     const parent = cut === -1 ? '' : path.slice(0, cut)
     try {
@@ -1844,16 +1932,19 @@ export class ObsidianFileSystem implements FileSystem {
         ? path
         : (listing.files.find((file) => caseKey(file) === caseKey(path)) ?? null)
     } catch (cause) {
-      if (notFound(cause)) return null
+      if (notFound(cause)) {
+        return null
+      }
       throw new EngineError('io', `cannot list ${parent}`, cause)
     }
   }
 
   private async rawStat(target: string): Promise<Stat | null> {
     try {
-      return await this.adapter.stat(target)
+      return await this.disk.stat(target)
     } catch (cause) {
       if (notFound(cause)) return null
+      if (cause instanceof EngineError) throw cause
       throw new EngineError('io', `cannot stat ${target}`, cause)
     }
   }
@@ -1900,7 +1991,7 @@ export class ObsidianFileSystem implements FileSystem {
   private async spelledExactly(target: string): Promise<boolean | null> {
     const wanted = target
     try {
-      const listed = await this.adapter.list(folderOf(target))
+      const listed = await this.disk.list(folderOf(target))
       return listed.files.some((held) => held === wanted)
     } catch {
       return null
@@ -1910,7 +2001,7 @@ export class ObsidianFileSystem implements FileSystem {
   private async rename(from: string, to: string): Promise<void> {
     try {
       const base = this.observedBases.get(caseKey(from))
-      await this.adapter.rename(from, to)
+      await this.disk.rename(from, to)
       await this.io.adoptReceipt(from, to)
       if (caseKey(from) !== caseKey(to)) {
         this.observedBases.set(caseKey(from), { absent: true })

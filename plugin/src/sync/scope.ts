@@ -1,3 +1,4 @@
+import { vaultDisk } from './vaultPathLinks'
 import { sha256 } from './external/hash'
 import type { App } from 'obsidian'
 import {
@@ -144,8 +145,8 @@ export async function scopeKey(
  */
 export async function readIgnore(app: App): Promise<string | null> {
   try {
-    if (!(await app.vault.adapter.exists(IGNORE_FILE))) return null
-    return new TextDecoder().decode(await app.vault.adapter.readBinary(IGNORE_FILE))
+    if (!(await vaultDisk(app.vault).exists(IGNORE_FILE))) return null
+    return new TextDecoder().decode(await vaultDisk(app.vault).readBinary(IGNORE_FILE))
   } catch (error) {
     console.debug('[abele-sync] cannot read the ignore file', error)
     throw new Error(`${IGNORE_FILE} is there but could not be read: ${messageOf(error)}`)

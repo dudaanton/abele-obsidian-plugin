@@ -20,6 +20,7 @@ const syncSnapshot = () => {
   attachmentStage:window.__abeleAttachmentStage||null,
   nativeTransport:window.__abeleTest?.nativeSyncTransport?.(),
   externalFiles:window.__abeleTest?.externalFileOperations?.(),
+  connectFailure:ui?.connectFailure||null,
   connections:(ui?.rows?.value||[]).map(row=>{
    const activity=ui.activity?.value[row.id]||{}, status=host.live?.get(row.id)?.engine.status;
    const startup=activity.startup, inspection=activity.inspection;

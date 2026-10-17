@@ -1,4 +1,5 @@
 // @vitest-environment node
+import '../helpers/desktopRequire'
 import { IDBFactory } from 'fake-indexeddb'
 import {
   preservePrivateArtifacts,

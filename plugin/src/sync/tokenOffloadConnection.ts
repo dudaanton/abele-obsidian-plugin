@@ -1,3 +1,5 @@
+import { nativeChunkPort, vaultDisk } from './vaultPathLinks'
+import { connectionPrivateArea, withinRoot } from './connectionPaths'
 import { preservePrivateArtifacts, privateArtifactRecovered } from './privateRecovery'
 import type { App } from 'obsidian'
 import {
@@ -21,6 +23,8 @@ import type { ExternalDescription, TokenOffloadCoordinator } from './tokenOffloa
 import { retryTransientOperation } from './transientOperation'
 import { parseProjection } from './external/projection'
 import { saveExternalPreview } from './external/preview'
+import type { LocalFolderPlacement } from './localFolderPlacement'
+import { placedExternalHost } from './placedExternalHost'
 
 /** Composition of the existing durable external-file state machine with token authority. */
 export async function tokenOffloadConnection(input: {
@@ -31,6 +35,7 @@ export async function tokenOffloadConnection(input: {
   binding: ConnectionBinding
   fence: RuntimeFence
   fs: FileSystem
+  placement?: LocalFolderPlacement
   manager: TokenOffloadCoordinator
   scriptsFolder(): string
   client(): V2EngineClient
@@ -42,8 +47,20 @@ export async function tokenOffloadConnection(input: {
   hydratedIdentity(path: string): void
 }) {
   const { state, ledgerId, fence, manager } = input
+  const toLocal = (path: string) => input.placement?.toLocal(path) ?? path
+  const localArtifact = (path: string) => {
+    const owned = connectionPrivateArea(input.app)
+    const prefix = host.artifactPath('')
+    return (owned && withinRoot(path, owned)) ||
+      (path.startsWith(prefix) &&
+        path.split('/').every((part) => part !== '.' && part !== '..' && part.length > 0))
+      ? path
+      : toLocal(path)
+  }
+  const toServer = (path: string) => input.placement?.toServer(path) ?? path
   const representation = await pluginRepresentation({
     ...input,
+    fs: input.placement?.fileSystem(input.fs) ?? input.fs,
     store: state,
     verify: (id, request) => input.client().verifyExternalFile(id, request),
   })
@@ -62,38 +79,39 @@ export async function tokenOffloadConnection(input: {
     )
     return next
   }
-  const host = new ExternalFileHost(input.app, {
-    platform:
-      typeof (input.app.vault.adapter as unknown as { fsPromises?: unknown }).fsPromises ===
-      'object'
-        ? 'desktop'
-        : 'mobile',
-    assertOwned: () => fence.assertReady(),
-    effect: (work) => fence.effect(work),
-    placement: manager.locks,
-    beforeRemoval: (path) => input.capture([path]),
-    assertRemovalAllowed: (path) => {
-      if (devicePinned(input.app, path)) throw new ExternalFilePortError('pinned')
-    },
-    stagingMtime: (path) => stagingMtimes.get(path) ?? Date.now(),
-  })
+  const host = placedExternalHost(
+    new ExternalFileHost(input.app, {
+      platform: nativeChunkPort(vaultDisk(input.app.vault)).available ? 'desktop' : 'mobile',
+      assertOwned: () => fence.assertReady(),
+      effect: (work) => fence.effect(work),
+      placement: manager.locks,
+      beforeRemoval: (path) => input.capture([path]),
+      assertRemovalAllowed: (path) => {
+        if (devicePinned(input.app, path)) throw new ExternalFilePortError('pinned')
+      },
+      stagingMtime: (path) => stagingMtimes.get(path) ?? Date.now(),
+    }),
+    input.placement
+  )
   const describe = async (
     path: string,
     record?: ExternalRecord
   ): Promise<ExternalDescription | null> => {
+    const canonical = record ? path : toServer(path)
     const file =
       record ??
       (await external?.snapshot())?.files.find(
-        (one) => one.lastProvenLocalBase?.path === path && one.representation !== 'hydrated'
+        (one) => one.lastProvenLocalBase?.path === canonical && one.representation !== 'hydrated'
       )
     if (!file?.projectionPath || !file.projectionSha) return null
     const bytes = await host.read(file.projectionPath)
     if ((await sha256(bytes)) !== file.projectionSha) throw new Error('The local stub changed')
     const projection = parseProjection(bytes)
-    const current = await state.get(path)
+    const current = await state.get(canonical)
     fence.assertReady()
     return {
       ...projection,
+      path: toLocal(projection.path),
       changed: !!current && current.versionId !== file.lastProvenLocalBase?.versionId,
       available: input.available?.() ?? true,
     }
@@ -118,7 +136,7 @@ export async function tokenOffloadConnection(input: {
           one.lastProvenLocalBase
             ? [
                 {
-                  path: one.lastProvenLocalBase.path,
+                  path: toLocal(one.lastProvenLocalBase.path),
                   size: one.lastProvenLocalBase.size,
                   mtime: one.lastProvenLocalBase.mtime,
                 },
@@ -127,17 +145,17 @@ export async function tokenOffloadConnection(input: {
         ),
       [
         ...(document?.files ?? []).flatMap((one) =>
-          one.projectionPath ? [one.projectionPath] : []
+          one.projectionPath ? [localArtifact(one.projectionPath)] : []
         ),
         ...(document?.operations ?? []).flatMap((one) =>
-          one.ownedArtifacts.map((artifact) => artifact.path)
+          one.ownedArtifacts.map((artifact) => localArtifact(artifact.path))
         ),
       ]
     )
   }
   const unbind = manager.register(ledgerId, {
     describe,
-    ledger: state,
+    ledger: input.placement?.localState(state) ?? state,
     available: () => input.available?.() ?? true,
     includes: (path) => input.includes(path),
     assertOwned: () => fence.assertReady(),
@@ -226,7 +244,7 @@ export async function tokenOffloadConnection(input: {
             () => input.client().verifyExternalFile(id, request),
             () => fence.assertReady()
           ),
-        authorizeHydration: (head) => manager.authorize(head),
+        authorizeHydration: (head) => manager.authorize({ ...head, path: toLocal(head.path) }),
         openVersion: async (id, version, expected, signal) => {
           const head = await state.byFileId(id)
           if (
@@ -236,13 +254,13 @@ export async function tokenOffloadConnection(input: {
             head.size !== expected.size
           )
             throw new Error('Offloaded source identity changed')
-          return manager.openVersion(ledgerId, head, signal)
+          return manager.openVersion(ledgerId, { ...head, path: toLocal(head.path) }, signal)
         },
         download: async (id, version, sha) => {
           const head = await state.byFileId(id)
           if (!head || head.versionId !== version || head.sha !== sha)
             throw new Error('Offloaded source identity changed')
-          return manager.download(ledgerId, head)
+          return manager.download(ledgerId, { ...head, path: toLocal(head.path) })
         },
         refreshed: refresh,
       })
@@ -250,7 +268,7 @@ export async function tokenOffloadConnection(input: {
   }
   const head = async (path: string): Promise<StateEntry> => {
     fence.assertReady()
-    const entry = await state.get(path)
+    const entry = await state.get(toServer(path))
     if (!entry) throw new Error('not-on-server')
     return entry
   }
@@ -335,7 +353,11 @@ export async function tokenOffloadConnection(input: {
         ? { ...result, status: 'complete' as const }
         : result
     },
-    fs: manager.fileSystem(representation.fileSystem(), (path) => input.includes(path), ledgerId),
+    fs: manager.fileSystem(
+      input.placement?.localFileSystem(representation.fileSystem()) ?? representation.fileSystem(),
+      (path) => input.includes(path),
+      ledgerId
+    ),
     state: representation.stateStore(),
     client: representation.engineClient.bind(representation),
     hydrate,
@@ -367,7 +389,7 @@ export async function tokenOffloadConnection(input: {
       if (!external) return
       for (const file of (await external.snapshot()).files)
         if (file.representation !== 'hydrated' && file.lastProvenLocalBase)
-          await hydrate(file.lastProvenLocalBase.path)
+          await hydrate(toLocal(file.lastProvenLocalBase.path))
       const api = await store(),
         saved = await state.getMeta('token-offload-disconnect'),
         operationId = saved ?? crypto.randomUUID()

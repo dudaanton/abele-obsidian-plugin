@@ -385,7 +385,7 @@ it.each(
     const read = vi.spyOn(fs, 'read'),
       stat = vi.spyOn(fs, 'stat')
     try {
-      await expect(one.runtime.sync()).rejects.toThrow(/renamed on the server \(Shared → Private\)/)
+      await expect(one.runtime.sync()).rejects.toThrow(/renamed on the server: Shared → Private/)
       expect(one.runtime.folderScope()).toBe('Shared')
       expect(read.mock.calls.some(([path]) => path.startsWith('Private/'))).toBe(false)
       expect(stat.mock.calls.some(([path]) => path.startsWith('Private/'))).toBe(false)
@@ -489,6 +489,495 @@ it.each(
       expect(stat.mock.calls.some(([path]) => path.startsWith('Private/'))).toBe(false)
       expect(fs.snapshot()).toEqual(before)
       expect(await one.reviews.executables.pending()).toEqual([])
+    } finally {
+      await one.runtime.close()
+    }
+  }
+)
+
+it.each([undefined, 'Shared'])(
+  'never follows a server scope rename into a private local folder (saved root %s)',
+  async (localRoot) => {
+    const shared = { ...scope, path: 'Shared' }
+    const wire = await server('Shared/sample.md', 'sample', undefined, shared)
+    const fs = new MemoryFileSystem()
+    await fs.writeAtomic('Shared/sample.md', wire.bytes, 1000)
+    await fs.writeAtomic('Private/secret.md', new TextEncoder().encode('private bytes'), 1000)
+    const one = runtime(wire, fs, undefined, undefined, null, { localRoot })
+    shared.path = 'Private'
+    wire.item.path = 'Private/sample.md'
+    const read = vi.spyOn(fs, 'read'),
+      stat = vi.spyOn(fs, 'stat')
+    try {
+      await expect(one.runtime.sync()).rejects.toThrow(/Shared.*Private/)
+      expect(read.mock.calls.some(([path]) => path.startsWith('Private/'))).toBe(false)
+      expect(stat.mock.calls.some(([path]) => path.startsWith('Private/'))).toBe(false)
+      const commits = wire.fetch.mock.calls.filter(
+        ([url]) => new URL(String(url)).pathname === '/v2/commit'
+      )
+      expect(commits.map(([, init]) => String(init?.body)).join('')).not.toContain('secret.md')
+    } finally {
+      await one.runtime.close()
+    }
+  }
+)
+
+it.each(
+  [
+    'manifest-note',
+    'manifest-script',
+    'manifest-directory',
+    'content-note',
+    'content-script',
+    'content-directory',
+    'delete',
+    'removal',
+    'move-from',
+    'move-to',
+    'event-path',
+  ].flatMap((mode) => [undefined, 'Moved'].map((localRoot) => ({ mode, localRoot })))
+)(
+  'rejects an out-of-scope $mode page before local access (placement $localRoot)',
+  async ({ mode, localRoot }) => {
+    const wire = await server('Shared/sample.md', 'sample', undefined, { ...scope, path: 'Shared' })
+    const fs = new MemoryFileSystem()
+    await fs.writeAtomic('Private/secret.md', new TextEncoder().encode('private bytes'), 1000)
+    const preparePlacement = vi.fn(async () => {})
+    const one = runtime(wire, fs, undefined, undefined, null, { localRoot, preparePlacement })
+    const original = wire.fetch.getMockImplementation()!
+    try {
+      if (!mode.startsWith('manifest')) await one.runtime.sync()
+      const path =
+        mode === 'move-from' || mode === 'event-path' ? 'Shared/other.md' : 'Private/secret.md'
+      const item = mode.endsWith('directory')
+        ? { file_id: 'bad-file', version_id: 'bad-version', path, kind: 'directory', mtime: 1000 }
+        : {
+            ...wire.item,
+            file_id: 'bad-file',
+            version_id: 'bad-version',
+            path,
+            kind: mode.endsWith('script') ? 'script' : 'note',
+          }
+      wire.fetch.mockImplementation(async (url, init) => {
+        const route = new URL(String(url)).pathname
+        if (mode.startsWith('manifest') && route === '/v2/manifest')
+          return Response.json({ items: [wire.item, item], cursor: 2, next: null })
+        if (!mode.startsWith('manifest') && route === '/v2/changes') {
+          const event = {
+            cursor: 2,
+            file_id: 'bad-file',
+            path: mode === 'event-path' ? 'Private/secret.md' : path,
+            at: new Date(1000).toISOString(),
+          }
+          return Response.json({
+            items: [
+              mode === 'delete'
+                ? { ...event, type: 'delete', version_id: 'bad-version' }
+                : mode === 'removal'
+                  ? { ...event, type: 'removal' }
+                  : {
+                      ...event,
+                      type: 'content',
+                      item,
+                      prev_path:
+                        mode === 'move-from'
+                          ? 'Private/secret.md'
+                          : mode === 'move-to'
+                            ? 'Shared/other.md'
+                            : null,
+                    },
+            ],
+            cursor: 2,
+            next: null,
+          })
+        }
+        return original(url, init)
+      })
+      preparePlacement.mockClear()
+      const before = fs.snapshot(),
+        read = vi.spyOn(fs, 'read'),
+        stat = vi.spyOn(fs, 'stat')
+      await expect(one.runtime.sync()).rejects.toMatchObject({ code: 'protocol' })
+      expect(preparePlacement).not.toHaveBeenCalled()
+      expect(read.mock.calls.some(([path]) => path.startsWith('Private/'))).toBe(false)
+      expect(stat.mock.calls.some(([path]) => path.startsWith('Private/'))).toBe(false)
+      expect(fs.snapshot()).toEqual(before)
+      expect(await one.reviews.executables.pending()).toEqual([])
+    } finally {
+      await one.runtime.close()
+    }
+  }
+)
+
+it('blocks root-loss deletes before any request, coalescing a thousand events', async () => {
+  const wire = await server('Shared/sample.md', 'sample')
+  const one = runtime(wire, new MemoryFileSystem())
+  try {
+    await one.runtime.sync()
+    wire.fetch.mockClear()
+    const started = performance.now()
+    for (let i = 0; i < 1000; i++) one.runtime.scopeRootGone({ kind: 'deleted' })
+    await expect(one.runtime.sync()).rejects.toMatchObject({ code: 'scope_unavailable' })
+    expect(wire.fetch).not.toHaveBeenCalled()
+    expect(performance.now() - started).toBeLessThan(250)
+  } finally {
+    await one.runtime.close()
+  }
+})
+
+it('detects a missing established root on disk before scanning or contacting the server', async () => {
+  const wire = await server('Shared/sample.md', 'sample', undefined, { ...scope, path: 'Shared' })
+  const fs = new MemoryFileSystem(),
+    state = new MemoryStateStore()
+  await state.setCursor(1)
+  const rootExists = vi.fn(async () => false),
+    rootChanged = vi.fn(),
+    list = vi.spyOn(fs, 'list')
+  const one = runtime(wire, fs, state, undefined, null, { rootExists, rootChanged })
+  try {
+    await expect(one.runtime.sync()).rejects.toMatchObject({ code: 'scope_unavailable' })
+    expect(rootExists).toHaveBeenCalledOnce()
+    expect(rootChanged).toHaveBeenCalledExactlyOnceWith({ kind: 'deleted' })
+    expect(list).not.toHaveBeenCalled()
+    expect(wire.fetch).not.toHaveBeenCalled()
+  } finally {
+    await one.runtime.close()
+  }
+})
+
+it('restores a missing folder from a fresh server snapshot without sending deletes', async () => {
+  const wire = await server('Shared/sample.md', 'sample', undefined, { ...scope, path: 'Shared' })
+  const fs = new MemoryFileSystem()
+  let one = runtime(wire, fs)
+  try {
+    await one.runtime.sync()
+    await fs.remove(wire.item.path)
+    await one.state.setMeta(
+      'held-deletes',
+      JSON.stringify([{ path: wire.item.path, fileId: wire.item.file_id }])
+    )
+    await one.runtime.close()
+    one = runtime(wire, fs, one.state)
+    one.runtime.scopeRootGone({ kind: 'deleted' })
+    wire.requests.length = 0
+    await one.runtime.restoreRoot()
+    expect(new TextDecoder().decode(await fs.read(wire.item.path))).toBe('sample')
+    expect(wire.requests).not.toContain('/v2/commit')
+    expect(await one.runtime.engine.heldDeletes()).toEqual([])
+  } finally {
+    await one.runtime.close()
+  }
+})
+
+it('keeps an unresolved server journal when restore is requested', async () => {
+  const wire = await server('Shared/sample.md', 'sample'),
+    one = runtime(wire, new MemoryFileSystem())
+  try {
+    await one.runtime.sync()
+    const pending = {
+      batchId: 'pending',
+      idempotencyKey: 'pending',
+      startedAt: new Date().toISOString(),
+      ops: [],
+    }
+    await one.state.setJournal(pending)
+    one.runtime.scopeRootGone({ kind: 'deleted' })
+    await expect(one.runtime.restoreRoot()).rejects.toThrow('unresolved')
+    expect(await one.state.getJournal()).toEqual(pending)
+    await expect(one.runtime.sync()).rejects.toMatchObject({ code: 'scope_unavailable' })
+  } finally {
+    await one.runtime.close()
+  }
+})
+
+it('follows a moved folder locally without changing the server namespace', async () => {
+  const wire = await server('Shared/sample.md', 'sample', undefined, { ...scope, path: 'Shared' })
+  const fs = new MemoryFileSystem(),
+    localRootChanged = vi.fn()
+  const one = runtime(wire, fs, undefined, undefined, null, { localRootChanged })
+  try {
+    await one.runtime.sync()
+    await fs.move('Shared/sample.md', 'Moved/sample.md')
+    one.runtime.scopeRootGone({ kind: 'moved', path: 'Moved' })
+    wire.requests.length = 0
+    await one.runtime.followRoot()
+    await one.runtime.sync()
+    expect(wire.requests).not.toContain('/v2/commit')
+    expect(wire.item.path).toBe('Shared/sample.md')
+    expect(localRootChanged).toHaveBeenCalledWith('Moved')
+    expect(new TextDecoder().decode(await fs.read('Moved/sample.md'))).toBe('sample')
+    expect(await fs.stat('Shared/sample.md')).toBeNull()
+    expect((await one.state.get('Shared/sample.md'))?.wirePath).toBe('Shared/sample.md')
+  } finally {
+    await one.runtime.close()
+  }
+})
+
+it('keeps an unresolved legacy server move when local follow is requested', async () => {
+  const wire = await server('Shared/sample.md', 'sample', undefined, { ...scope, path: 'Shared' })
+  const fs = new MemoryFileSystem(),
+    one = runtime(wire, fs)
+  try {
+    await one.runtime.sync()
+    await fs.move('Shared/sample.md', 'Moved/sample.md')
+    one.runtime.scopeRootGone({ kind: 'moved', path: 'Moved' })
+    const pending = JSON.stringify({ key: 'saved-request', op: { op: 'move_directory' } })
+    await one.state.setMeta('plugin:scope-root-follow', pending)
+    wire.requests.length = 0
+    await expect(one.runtime.followRoot()).rejects.toThrow('unresolved')
+    expect(await one.state.getMeta('plugin:scope-root-follow')).toBe(pending)
+    await expect(one.runtime.restoreRoot()).rejects.toThrow('unresolved')
+    expect(wire.requests).toEqual([])
+    expect(new TextDecoder().decode(await fs.read('Moved/sample.md'))).toBe('sample')
+  } finally {
+    await one.runtime.close()
+  }
+})
+
+it('pulls into a persisted local placement while keeping canonical ledger paths', async () => {
+  const wire = await server('Shared/fresh.md', 'fresh', undefined, { ...scope, path: 'Shared' })
+  const fs = new MemoryFileSystem(),
+    one = runtime(wire, fs, undefined, undefined, null, { localRoot: 'Moved' })
+  try {
+    await one.runtime.sync()
+    expect(new TextDecoder().decode(await fs.read('Moved/fresh.md'))).toBe('fresh')
+    expect(await fs.stat('Shared/fresh.md')).toBeNull()
+    expect((await one.state.get('Shared/fresh.md'))?.wirePath).toBe('Shared/fresh.md')
+    expect(one.runtime.covers('Moved/fresh.md')).toBe(true)
+    expect(one.runtime.covers('Shared/fresh.md')).toBe(false)
+    expect(await one.runtime.pathFor(wire.item.file_id)).toBe('Moved/fresh.md')
+  } finally {
+    await one.runtime.close()
+  }
+})
+
+it('refuses a reused moved destination without known synced file identities', async () => {
+  const wire = await server('Shared/sample.md', 'sample', undefined, { ...scope, path: 'Shared' })
+  const fs = new MemoryFileSystem(),
+    changed = vi.fn(),
+    one = runtime(wire, fs, undefined, undefined, null, { localRootChanged: changed })
+  try {
+    await one.runtime.sync()
+    await fs.move('Shared/sample.md', 'Final/sample.md')
+    await fs.writeAtomic('Moved/private.md', new TextEncoder().encode('private'), 1000)
+    one.runtime.scopeRootGone({ kind: 'moved', path: 'Moved' })
+    wire.requests.length = 0
+    await expect(one.runtime.followRoot()).rejects.toThrow(/aren.t part|missing/i)
+    expect(changed).not.toHaveBeenCalled()
+    expect(wire.requests).toEqual([])
+    await expect(one.runtime.sync()).rejects.toMatchObject({ code: 'scope_unavailable' })
+  } finally {
+    await one.runtime.close()
+  }
+})
+
+it.each(
+  ['extra-file', 'extra-folder', 'missing-file', 'missing-folder', 'edited-known-file'].flatMap(
+    (kind) => [true, false].map((restart) => ({ kind, restart }))
+  )
+)('checks the exact known set for $kind with restart=$restart', async ({ kind, restart }) => {
+  const wire = await server('Shared/sample.md', 'sample', undefined, { ...scope, path: 'Shared' })
+  const fs = new MemoryFileSystem()
+  let one = runtime(wire, fs)
+  try {
+    await one.runtime.sync()
+    await fs.move('Shared/sample.md', 'Moved/sample.md')
+    if (kind === 'extra-file')
+      await fs.writeAtomic('Moved/private.md', new TextEncoder().encode('private'), 1000)
+    if (kind === 'extra-folder')
+      Object.assign(fs, {
+        listDirectories: async function* () {
+          yield { path: 'Moved/unknown', identity: 'unknown', mtime: 1000 }
+        },
+      })
+    if (kind === 'missing-file') await fs.remove('Moved/sample.md')
+    if (kind === 'missing-folder') {
+      await one.state.setMeta(
+        'v2-directories',
+        JSON.stringify({ directories: [{ path: 'Shared/empty' }], removals: [] })
+      )
+      Object.assign(fs, {
+        listDirectories: async function* () {
+          yield { path: 'Moved', identity: 'root', mtime: 1000 }
+        },
+      })
+    }
+    if (kind === 'edited-known-file')
+      await fs.writeAtomic('Moved/sample.md', new TextEncoder().encode('ordinary edit'), 2000)
+    if (restart) {
+      await one.runtime.close()
+      one = runtime(wire, fs, one.state, undefined, null, {
+        rootIssue: { kind: 'moved', path: 'Moved' },
+      })
+    } else one.runtime.scopeRootGone({ kind: 'moved', path: 'Moved' })
+    wire.requests.length = 0
+    if (kind === 'edited-known-file') {
+      await one.runtime.followRoot()
+      expect(await fs.stat('Moved/sample.md')).not.toBeNull()
+    } else {
+      await expect(one.runtime.followRoot()).rejects.toThrow(/aren.t part|missing/i)
+      expect(wire.requests).toEqual([])
+      await expect(one.runtime.sync()).rejects.toMatchObject({ code: 'scope_unavailable' })
+    }
+  } finally {
+    await one.runtime.close()
+  }
+})
+
+it('uses local paths for history, trash and held work while sending canonical keep-local paths', async () => {
+  const wire = await server('Shared/sample.md', 'sample', undefined, { ...scope, path: 'Shared' })
+  const fs = new MemoryFileSystem(),
+    one = runtime(wire, fs, undefined, undefined, null, { localRoot: 'Moved' })
+  try {
+    await one.runtime.sync()
+    expect(await one.runtime.entryFor('Moved/sample.md')).toMatchObject({
+      path: 'Moved/sample.md',
+      wirePath: 'Shared/sample.md',
+    })
+    vi.spyOn(one.runtime.client, 'trash').mockResolvedValue([
+      { path: 'Shared/deleted.md', file_id: 'deleted' },
+    ] as never)
+    vi.spyOn(one.runtime.client, 'versions').mockResolvedValue([
+      { path: 'Shared/sample.md', version_id: 'old' },
+    ] as never)
+    expect(await one.runtime.historyClient().trash()).toEqual([
+      { path: 'Moved/deleted.md', file_id: 'deleted' },
+    ])
+    expect(await one.runtime.historyClient().versions('sample-file')).toEqual([
+      { path: 'Moved/sample.md', version_id: 'old' },
+    ])
+    vi.spyOn(one.runtime.engine, 'heldDeletes').mockResolvedValue([
+      { path: 'Shared/deleted.md', fileId: 'deleted' },
+    ] as never)
+    vi.spyOn(one.runtime.engine, 'deferred').mockResolvedValue([
+      { path: 'Shared/code.js', prev_path: 'Shared/old.js' },
+    ] as never)
+    expect(await one.runtime.heldDeletes()).toEqual([
+      { path: 'Moved/deleted.md', fileId: 'deleted' },
+    ])
+    expect(await one.runtime.deferred()).toEqual([
+      { path: 'Moved/code.js', prev_path: 'Moved/old.js' },
+    ])
+    const keep = vi.spyOn(one.runtime.engine, 'keepLocal').mockResolvedValue(undefined as never)
+    await one.runtime.keepLocal(['Moved/code.js'], ['version'])
+    expect(keep).toHaveBeenCalledWith(['Shared/code.js'], ['version'])
+  } finally {
+    await one.runtime.close()
+  }
+})
+
+it('reports local conflict and refused publication paths without changing wire metadata', async () => {
+  const wire = await server('Shared/sample.md', 'sample', undefined, { ...scope, path: 'Shared' }),
+    changed = vi.fn()
+  const one = runtime(wire, new MemoryFileSystem(), undefined, undefined, null, {
+    localRoot: 'Moved',
+    changed,
+  })
+  try {
+    const report = {
+      push: {
+        committed: { results: [{ status: 'conflict', conflict_path: 'Shared/conflict.md' }] },
+        rejected: [{ op: { path: 'Shared/refused.md' }, code: 'quota_exceeded' }],
+      },
+      pull: { applied: 0 },
+    }
+    Reflect.get(one.runtime.engine, 'opts').onSync(report)
+    expect(changed.mock.lastCall?.[1]).toMatchObject({
+      push: {
+        committed: { results: [{ conflict_path: 'Moved/conflict.md' }] },
+        rejected: [{ op: { path: 'Moved/refused.md' } }],
+      },
+    })
+    expect(report.push.rejected[0].op.path).toBe('Shared/refused.md')
+  } finally {
+    await one.runtime.close()
+  }
+})
+
+it('preserves a forbidden error and stopped state when saving local placement fails', async () => {
+  const wire = await server('Shared/sample.md', 'sample', undefined, { ...scope, path: 'Shared' })
+  const fs = new MemoryFileSystem(),
+    one = runtime(wire, fs, undefined, undefined, null, {
+      localRootChanged: () => {
+        throw new EngineError('forbidden', 'placement refused')
+      },
+    })
+  try {
+    await one.runtime.sync()
+    await fs.move('Shared/sample.md', 'Moved/sample.md')
+    one.runtime.scopeRootGone({ kind: 'moved', path: 'Moved' })
+    const baseline = await one.state.get('Shared/sample.md')
+    wire.requests.length = 0
+    await expect(one.runtime.followRoot()).rejects.toMatchObject({ code: 'forbidden' })
+    expect(await one.state.get('Shared/sample.md')).toEqual(baseline)
+    expect(wire.requests).toEqual([])
+    await expect(one.runtime.sync()).rejects.toMatchObject({ code: 'scope_unavailable' })
+  } finally {
+    await one.runtime.close()
+  }
+})
+
+it('rejects an entire remote root-deletion page before deleting any local child', async () => {
+  const wire = await server('Shared/sample.md', 'sample', undefined, { ...scope, path: 'Shared' })
+  const fs = new MemoryFileSystem(),
+    one = runtime(wire, fs)
+  try {
+    await one.runtime.sync()
+    const original = wire.fetch.getMockImplementation()!
+    wire.fetch.mockImplementation(async (input, init) => {
+      if (new URL(String(input)).pathname === '/v2/changes')
+        return Response.json({
+          cursor: 3,
+          next: null,
+          items: [
+            {
+              type: 'delete',
+              cursor: 2,
+              file_id: wire.item.file_id,
+              version_id: 'deleted-child',
+              path: wire.item.path,
+              at: new Date().toISOString(),
+            },
+            {
+              type: 'delete',
+              cursor: 3,
+              file_id: 'root',
+              version_id: 'deleted-root',
+              path: 'Shared',
+              at: new Date().toISOString(),
+            },
+          ],
+        })
+      return original(input, init)
+    })
+    await expect(one.runtime.sync()).rejects.toMatchObject({ code: 'scope_unavailable' })
+    expect(new TextDecoder().decode(await fs.read(wire.item.path))).toBe('sample')
+    expect(await one.state.getCursor()).toBe(1)
+  } finally {
+    await one.runtime.close()
+  }
+})
+
+it.each(['scope_unavailable', 'forbidden'] as const)(
+  'keeps local files when the server reports %s',
+  async (code) => {
+    const wire = await server('Shared/sample.md', 'sample', undefined, { ...scope, path: 'Shared' })
+    const fs = new MemoryFileSystem(),
+      one = runtime(wire, fs)
+    try {
+      await one.runtime.sync()
+      wire.requests.length = 0
+      wire.fetch.mockImplementation(async (input) => {
+        wire.requests.push(new URL(String(input)).pathname)
+        return Response.json(
+          { error: { code, message: 'Scope is unavailable', details: {} } },
+          { status: 403 }
+        )
+      })
+      await expect(one.runtime.sync()).rejects.toMatchObject({ code })
+      expect(new TextDecoder().decode(await fs.read(wire.item.path))).toBe('sample')
+      expect(wire.requests).toEqual(['/v2/connection'])
+      expect(await one.state.getCursor()).toBe(1)
     } finally {
       await one.runtime.close()
     }
@@ -809,7 +1298,7 @@ async function server(
     }
     throw new Error('Unexpected route: ' + route)
   })
-  return { fetch, requests, item, bytes, address, sharedScope }
+  return { fetch, requests, item, bytes, address, sharedScope, scope: sharedScope }
 }
 function runtime(
   wire: Awaited<ReturnType<typeof server>>,
@@ -839,10 +1328,10 @@ function runtime(
       reviews,
       fetch: wire.fetch,
       changed: () => {},
-      ...progressOptions,
       failed: () => {},
       covers: async () => false,
       scopeInput: async () => ({ key: 'sample-scope', ignore: ignoreFor('.obsidian', ignoreText) }),
+      ...progressOptions,
     }),
     state,
     reviews,
@@ -1026,6 +1515,28 @@ it('retains a covering destination for local edits while an executable candidate
   expect(await one.reviews.executables.pending()).toHaveLength(1)
   expect(one.runtime.acceptsLocal('sample.js', 100)).toBe(true)
 })
+it('never uploads or commits a local change outside a folder connection', async () => {
+  const wire = await server('Shared/note.md', 'incoming', 'https://folder.example', {
+    ...scope,
+    path: 'Shared',
+  })
+  const fs = new MemoryFileSystem()
+  await fs.writeAtomic('Private/note.md', new TextEncoder().encode('private original'), 1000)
+  const one = runtime(wire, fs)
+  try {
+    await one.runtime.sync()
+    wire.requests.length = 0
+    await fs.writeAtomic('Private/note.md', new TextEncoder().encode('private edit'), 2000)
+    await one.runtime.sync()
+    expect(
+      wire.requests.some((path) => path.startsWith('/v2/uploads/') || path === '/v2/commit')
+    ).toBe(false)
+    expect(await one.state.get('Private/note.md')).toBeNull()
+  } finally {
+    await one.runtime.disconnect()
+  }
+})
+
 it('runs two production token engines through one coordinator with separate ledgers', async () => {
   const fs = new MemoryFileSystem(),
     locks = new PathCoordinator()
@@ -1396,6 +1907,61 @@ it('synchronizes a group token without reading excluded vault notes for group el
   }
 })
 
+it('reads group candidates named by the server or ledger without reading unrelated note frontmatter', async () => {
+  const group = { kind: 'group' as const, id: 'sample-group', path: 'Groups/sample.md' }
+  const wire = await server(
+    group.path,
+    'group sample',
+    'https://group.example',
+    group as typeof scope
+  )
+  const fs = new MemoryFileSystem()
+  for (let i = 0; i < 100; i++)
+    await fs.writeAtomic(
+      `Private/${i}.md`,
+      new TextEncoder().encode('---\ngroups: []\n---\nprivate'),
+      2000
+    )
+  const read = vi.spyOn(fs, 'read')
+  const metadata = new MemoryStateStore()
+  const state = new MemoryStateStore()
+  const member = new TextEncoder().encode('---\ngroups:\n  - "[[Groups/sample]]"\n---\nmember')
+  await fs.writeAtomic('Notes/member.md', member, 1000)
+  await state.put({
+    path: 'Notes/member.md',
+    wirePath: 'Notes/member.md',
+    fileId: 'member-file',
+    versionId: 'member-version',
+    sha: await sha256(member),
+    size: member.length,
+    mtime: 1000,
+  })
+  const one = new TokenEngineRuntime({
+    id: 'bounded-group',
+    encoded: encodeAccessToken({ v: 1, address: wire.address, key: 'a'.repeat(43), scope: group }),
+    fs,
+    state,
+    reviews: {
+      executables: new ExecutableReview(metadata),
+      attachments: new AttachmentConsent(metadata),
+      close: () => {},
+    },
+    fetch: wire.fetch,
+    changed: () => {},
+    failed: () => {},
+    covers: async () => false,
+  })
+  try {
+    await one.sync()
+    await one.sync()
+    expect(await fs.stat(group.path)).not.toBeNull()
+    expect(read.mock.calls.filter(([path]) => path.startsWith('Private/'))).toEqual([])
+    expect(read.mock.calls.some(([path]) => path === 'Notes/member.md')).toBe(true)
+  } finally {
+    await one.disconnect()
+  }
+})
+
 it('stages standalone executable bytes outside the scripts folder', async () => {
   const wire = await server('Tools/sample.js', 'incoming executable'),
     fs = new MemoryFileSystem()
@@ -1503,6 +2069,37 @@ it('releases transport observers and connection inventories on close even after 
   expect(internals.assetPaths.size).toBe(0)
 })
 
+it('stops and reports the pinned-root reason even when filesystem wrappers add context', async () => {
+  vi.useFakeTimers()
+  const wire = await server('sample.md', 'sample')
+  const fs = new MemoryFileSystem()
+  const reason = Object.assign(new Error('Vault root changed; sync stopped'), {
+    code: 'vault-root-changed',
+  })
+  let scans = 0
+  // eslint-disable-next-line require-yield -- Simulates a scan failing before its first entry.
+  fs.list = async function* () {
+    scans++
+    throw new EngineError('io', 'cannot inspect file', reason)
+  }
+  const failed = vi.fn()
+  const one = runtime(wire, fs, undefined, undefined, null, { failed })
+  try {
+    await one.runtime.start()
+    await one.runtime.sync().catch(() => {})
+    // Core retains an error status after the host pauses inside its failure hook.
+    expect(one.runtime.engine.status.state).toBe('error')
+    expect(failed).toHaveBeenCalledWith(reason)
+    const before = scans
+    fs.emitChange(['sample.md'])
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(scans).toBe(before)
+  } finally {
+    await one.runtime.close()
+    vi.useRealTimers()
+  }
+})
+
 it.each([
   'versions',
   'trash',
@@ -1559,6 +2156,7 @@ it.each([
           sha: 'a'.repeat(64),
           size: 1,
         })
+      if (method === 'commitRaw') return client.commitRaw([{ op: 'mkdir', path: 'Shared/new' }])
       if (method === 'restoreDeletedMany') return client.restoreDeletedMany(['file'])
       if (method === 'restore') return client.restore('file', 'version')
       if (method === 'trash') return client.trash()
@@ -1567,6 +2165,21 @@ it.each([
       code: 'protocol',
       message: expect.stringContaining('outside this connection'),
     })
+  } finally {
+    await one.runtime.close()
+  }
+})
+
+it('accepts only files under the pinned local placement for outgoing discovery', async () => {
+  const wire = await server('Shared/sample.md', 'sample', undefined, { ...scope, path: 'Shared' })
+  const one = runtime(wire, new MemoryFileSystem(), undefined, undefined, null, {
+    localRoot: 'Moved',
+  })
+  try {
+    await one.runtime.sync()
+    expect(one.runtime.acceptsLocal('Moved/new.md', 10)).toBe(true)
+    expect(one.runtime.acceptsLocal('Shared/secret.md', 10)).toBe(false)
+    expect(one.runtime.acceptsLocal('Private/secret.md', 10)).toBe(false)
   } finally {
     await one.runtime.close()
   }
@@ -1604,6 +2217,252 @@ it.each(['path', 'previousPath', 'directory'] as const)(
       expect(read).not.toHaveBeenCalled()
       expect(stat).not.toHaveBeenCalled()
       expect(fs.snapshot()).toEqual(before)
+    } finally {
+      await one.runtime.close()
+    }
+  }
+)
+
+it.each([undefined, 'Moved'])(
+  'explicitly follows a server rename while keeping local bytes and saved paths unchanged (local root %s)',
+  async (localRoot) => {
+    const shared = { ...scope, path: 'Shared' }
+    const wire = await server('Shared/sample.md', 'sample', undefined, shared)
+    const fs = new MemoryFileSystem(),
+      state = new MemoryStateStore(),
+      rootChanged = vi.fn(),
+      serverRootChanged = vi.fn()
+    const one = runtime(wire, fs, state, undefined, null, {
+      rootChanged,
+      serverRootChanged,
+      localRoot,
+    } as Partial<TokenEngineOptions>)
+    try {
+      await one.runtime.sync()
+      const baseline = await Array.fromAsync(state.all())
+      await fs.writeAtomic('Private/secret.md', new TextEncoder().encode('private bytes'), 1000)
+      shared.path = 'Private'
+      wire.item.path = 'Private/sample.md'
+      const read = vi.spyOn(fs, 'read'),
+        stat = vi.spyOn(fs, 'stat')
+      await expect(one.runtime.sync()).rejects.toThrow(/Shared.*Private/)
+      expect(rootChanged).toHaveBeenLastCalledWith({
+        kind: 'server-renamed',
+        from: 'Shared',
+        to: 'Private',
+      })
+      wire.fetch.mockClear()
+      await one.runtime.followServerRoot()
+      expect(serverRootChanged).toHaveBeenCalledWith('Private')
+      expect(await Array.fromAsync(state.all())).toEqual(baseline)
+      expect(read.mock.calls.some(([path]) => path.startsWith('Private/'))).toBe(false)
+      expect(stat.mock.calls.some(([path]) => path.startsWith('Private/'))).toBe(false)
+      expect(
+        wire.fetch.mock.calls.filter(([url]) => new URL(String(url)).pathname === '/v2/commit')
+      ).toEqual([])
+      const send = wire.fetch.getMockImplementation()!
+      wire.fetch.mockImplementation(async (url, init) => {
+        if (new URL(String(url)).pathname !== '/v2/commit') return send(url, init)
+        const { ops } = JSON.parse(String(init?.body))
+        return Response.json({
+          cursor: 1,
+          results: ops.map((op: { path: string; sha: string; size: number; mtime: number }) => ({
+            status: 'applied',
+            file_id: 'new-file',
+            version_id: 'new-version',
+            seq: 1,
+            path: op.path,
+            sha: op.sha,
+            size: op.size,
+            mtime: op.mtime,
+          })),
+        })
+      })
+      await fs.writeAtomic(
+        (localRoot ?? 'Shared') + '/new.md',
+        new TextEncoder().encode('new local edit'),
+        2000
+      )
+      await one.runtime.sync()
+      const commits = wire.fetch.mock.calls
+        .filter(([url]) => new URL(String(url)).pathname === '/v2/commit')
+        .map(([, init]) => String(init?.body))
+        .join('')
+      expect(commits).toContain('Private/new.md')
+      expect(commits).not.toContain('secret.md')
+      expect(commits).not.toContain('"op":"delete')
+      expect(await state.get('Shared/new.md')).toMatchObject({
+        fileId: 'new-file',
+        path: 'Shared/new.md',
+        wirePath: 'Shared/new.md',
+      })
+      expect(await state.get('Private/new.md')).toBeNull()
+    } finally {
+      await one.runtime.close()
+    }
+  }
+)
+
+it.each(['renamed-again', 'pending-commit'] as const)(
+  'keeps server rename stopped when confirmation is unsafe: %s',
+  async (condition) => {
+    const shared = { ...scope, path: 'Shared' },
+      wire = await server('Shared/sample.md', 'sample', undefined, shared),
+      state = new MemoryStateStore(),
+      changed = vi.fn()
+    const one = runtime(wire, new MemoryFileSystem(), state, undefined, null, {
+      serverRootChanged: changed,
+    })
+    try {
+      await one.runtime.sync()
+      shared.path = 'Renamed'
+      wire.item.path = 'Renamed/sample.md'
+      await expect(one.runtime.sync()).rejects.toThrow(/Shared.*Renamed/)
+      if (condition === 'renamed-again') shared.path = 'Final'
+      else
+        await state.setJournal({
+          batchId: 'pending',
+          idempotencyKey: 'key',
+          startedAt: new Date().toISOString(),
+          ops: [],
+        })
+      await expect(one.runtime.followServerRoot()).rejects.toThrow(/again|unresolved/)
+      expect(changed).not.toHaveBeenCalled()
+      await expect(one.runtime.sync()).rejects.toThrow(/folder|paused/i)
+    } finally {
+      await one.runtime.close()
+    }
+  }
+)
+
+it('restarts an acknowledged server rename without migrating existing saved paths', async () => {
+  const wire = await server('Renamed/sample.md', 'sample', undefined, { ...scope, path: 'Renamed' })
+  const fs = new MemoryFileSystem(),
+    state = new MemoryStateStore()
+  await fs.writeAtomic('Shared/sample.md', wire.bytes, 1000)
+  await state.put({
+    path: 'Shared/sample.md',
+    wirePath: 'Shared/sample.md',
+    fileId: wire.item.file_id,
+    versionId: wire.item.version_id,
+    sha: wire.item.sha,
+    size: wire.bytes.length,
+    mtime: 1000,
+  })
+  const before = await Array.fromAsync(state.all())
+  const one = runtime(wire, fs, state, undefined, null, {
+    serverRoot: 'Renamed',
+    localRoot: 'Shared',
+    encoded: encodeAccessToken({
+      v: 1,
+      address: wire.address,
+      key: 'a'.repeat(43),
+      scope: { ...scope, path: 'Shared' },
+    }),
+  })
+  try {
+    await one.runtime.sync()
+    expect(await Array.fromAsync(state.all())).toEqual(before)
+    expect(await fs.stat('Renamed/sample.md')).toBeNull()
+  } finally {
+    await one.runtime.close()
+  }
+})
+
+it.each([false, true])(
+  'keeps file and byte progress advancing through a held mobile directory (changes=%s)',
+  async (changes) => {
+    const physical = 'Cafe\u0301',
+      wireRoot = physical.normalize('NFC')
+    const wire = await server('Notes/sample.md', 'remote sample')
+    const send = wire.fetch.getMockImplementation()!
+    const directory = {
+      file_id: 'sample-directory',
+      version_id: 'sample-directory-version',
+      kind: 'directory',
+      path: wireRoot,
+      mtime: 1000,
+    }
+    const app = buildFakeVault(
+      [
+        { path: physical + '/kept.md', content: 'local sample' },
+        { path: wireRoot + '/other.md', content: 'other sample' },
+      ],
+      { sensitiveNames: true }
+    )
+    expect(Reflect.get(app.vault.adapter, 'fsPromises')).toBeUndefined()
+    const fs = new ObsidianFileSystem(app as unknown as App)
+    const updates: (TransferSnapshot | undefined)[] = []
+    const contentProgress: (TransferSnapshot | undefined)[] = []
+    wire.fetch.mockImplementation(async (input, init) => {
+      const path = new URL(String(input)).pathname
+      const items = [
+        directory,
+        { ...directory, file_id: 'notes-directory', path: 'Notes' },
+        wire.item,
+      ]
+      if (changes && path === '/v2/changes') {
+        const since = Number(new URL(String(input)).searchParams.get('since'))
+        return Response.json({
+          items:
+            since < 1
+              ? items.map((item, index) => ({
+                  type: 'content',
+                  file_id: item.file_id,
+                  at: '2020-01-01T00:00:00Z',
+                  cursor: index + 1,
+                  path: item.path,
+                  item,
+                  prev_path: null,
+                }))
+              : [],
+          cursor: 3,
+          next: null,
+        })
+      }
+      if (path === '/v2/manifest')
+        return Response.json({
+          items: changes ? [] : items,
+          cursor: changes ? 0 : 1,
+          next: null,
+        })
+      if (path.endsWith('/content')) {
+        contentProgress.push(updates.at(-1))
+        const range = new Headers(init?.headers).get('range')
+        if (range) {
+          const [, first, last] = /^bytes=(\d+)-(\d+)$/.exec(range)!
+          const start = Number(first),
+            end = Number(last)
+          return new Response(wire.bytes.slice(start, end + 1), {
+            status: 206,
+            headers: {
+              'content-range': `bytes ${start}-${end}/${wire.bytes.length}`,
+              'content-length': String(end - start + 1),
+            },
+          })
+        }
+      }
+      return send(input, init)
+    })
+    const one = runtime(
+      wire,
+      fs as unknown as MemoryFileSystem,
+      new MemoryStateStore(),
+      new PathCoordinator(),
+      null,
+      { progress: (value) => updates.push(value) }
+    )
+    try {
+      await one.runtime.sync()
+      expect(contentProgress).toContainEqual(expect.objectContaining({ stage: 'Downloading' }))
+      expect(updates).toContainEqual(
+        expect.objectContaining({ stage: 'Downloading', completed: 1, bytes: wire.bytes.length })
+      )
+      expect(await app.vault.adapter.read('Notes/sample.md')).toBe('remote sample')
+      expect(await app.vault.adapter.read(physical + '/kept.md')).toBe('local sample')
+      expect(JSON.parse((await one.state.getMeta('v2-directories'))!).incoming).toContainEqual(
+        expect.objectContaining({ file_id: directory.file_id })
+      )
     } finally {
       await one.runtime.close()
     }

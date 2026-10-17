@@ -50,6 +50,22 @@ const localKinds = [
 
 /** Device-local diagnostics. Recording performs no console/storage calls and retains no per-file map. */
 export class ExchangeTrace {
+  private pulling = false
+  private writtenPaths: string[] = []
+  private writes = 0
+  private lastPull: { paths: string[]; writes: number; complete: boolean } | null = null
+  written(path: string): void {
+    this.writes++
+    if (this.writtenPaths.length < 16 && !this.writtenPaths.includes(path))
+      this.writtenPaths.push(path)
+  }
+  /** Keep the last pull that installed bytes visible through later no-op cycles. */
+  finishPull(complete: boolean): void {
+    if (this.writes || this.lastPull === null)
+      this.lastPull = { paths: [...this.writtenPaths], writes: this.writes, complete }
+    this.pulling = false
+  }
+
   private readonly scopes: PullScope[] = Array.from({ length: 4 }, () => {
     const scope: PullScope = { active: false, size: 0, counts: emptyPullCounts(), finish: noPull }
     scope.finish = (complete) => this.endPull(scope, complete)
@@ -110,7 +126,19 @@ export class ExchangeTrace {
   }))
   private detailCount = 0
 
-  beginPull(size: number, path?: string): (complete: boolean) => void {
+  beginPullCycle(): void {
+    if (!this.pulling) {
+      this.pulling = true
+      this.writtenPaths = []
+      this.writes = 0
+    }
+  }
+
+  beginPull(size?: number, path?: string): (complete: boolean) => void {
+    if (size === undefined) {
+      this.beginPullCycle()
+      return noPull
+    }
     if (this.sealed) return noPull
     let scope: (typeof this.scopes)[number] | undefined
     for (const candidate of this.scopes)
@@ -284,6 +312,7 @@ export class ExchangeTrace {
       this.detailCount = 0
     }
     return {
+      lastPull: this.lastPull ? { ...this.lastPull, paths: [...this.lastPull.paths] } : null,
       active: this.active
         .filter((one) => one.active)
         .map((one) => ({

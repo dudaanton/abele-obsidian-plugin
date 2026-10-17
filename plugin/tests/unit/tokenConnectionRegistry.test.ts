@@ -28,6 +28,40 @@ const receipt = {
   scope: token.scope,
   status: 'active' as const,
 }
+
+it('pins the original local root on attach even if the server already renamed the scope', () => {
+  const store = local(),
+    registry = TokenConnectionRegistry.open(store),
+    keys = secrets()
+  const id = registry.add()
+  registry.attach(
+    id,
+    { ...token, scope: { ...token.scope, path: 'Shared' } },
+    { ...receipt, scope: { ...token.scope, path: 'Private' } },
+    keys
+  )
+  expect(registry.records()[0].localRoot).toBe('Shared')
+  registry.setScopePath(id, 'Elsewhere')
+  expect(TokenConnectionRegistry.open(store).records()[0].localRoot).toBe('Shared')
+})
+
+it('pins legacy folder placement before a later server scope update', () => {
+  const store = local(),
+    registry = TokenConnectionRegistry.open(store),
+    keys = secrets()
+  const id = registry.add(),
+    scope = { ...token.scope, path: 'Shared' }
+  registry.attach(id, { ...token, scope }, { ...receipt, scope }, keys)
+  const document = store.loadLocalStorage(TOKEN_REGISTRY_KEY) as {
+    records: { localRoot?: string }[]
+  }
+  delete document.records[0].localRoot
+  store.saveLocalStorage(TOKEN_REGISTRY_KEY, document)
+  const reopened = TokenConnectionRegistry.open(store)
+  expect(reopened.pinLocalRoot(id)).toBe('Shared')
+  reopened.setScopePath(id, 'Private')
+  expect(reopened.records()[0].localRoot).toBe('Shared')
+})
 function secrets() {
   const data = new Map<string, string>()
   return {
@@ -38,6 +72,91 @@ function secrets() {
     },
   }
 }
+
+it('persists local placement without changing server scope or transferring it in a token', () => {
+  const store = local(),
+    registry = TokenConnectionRegistry.open(store),
+    id = registry.add()
+  const folder = { ...token, scope: { ...token.scope, path: 'Shared' } }
+  registry.attach(id, folder, { ...receipt, scope: folder.scope }, secrets())
+  registry.setLocalRoot(id, 'Moved')
+  expect(TokenConnectionRegistry.open(store).records()[0]).toMatchObject({
+    localRoot: 'Moved',
+    scope: { path: 'Shared' },
+  })
+  expect(folder.scope.path).toBe('Shared')
+  expect(() => registry.setLocalRoot(id, '../outside')).toThrow()
+})
+
+it('retains a missing root decision when reopened and clears it only explicitly', () => {
+  const store = local(),
+    registry = TokenConnectionRegistry.open(store),
+    id = registry.add()
+  registry.attach(id, token, receipt, secrets())
+  registry.setRootIssue(id, { kind: 'moved', path: 'Moved' })
+  const reopened = TokenConnectionRegistry.open(store)
+  expect(reopened.records()[0]).toMatchObject({
+    status: 'scope_unavailable',
+    rootIssue: { kind: 'moved', path: 'Moved' },
+  })
+  reopened.setRootIssue(id, undefined)
+  expect(TokenConnectionRegistry.open(store).records()[0].rootIssue).toBeUndefined()
+})
+
+it.each(['Other/Shared', 'Other', 'Parent'])(
+  'refuses overlapping local placement at %s',
+  (path) => {
+    const store = local(),
+      registry = TokenConnectionRegistry.open(store),
+      a = registry.add(),
+      b = registry.add()
+    const attach = (id: string, root: string) => {
+      const scoped = { ...token, scope: { ...token.scope, id: root, path: root } }
+      registry.attach(id, scoped, { ...receipt, scope: scoped.scope, token_id: id }, secrets())
+    }
+    attach(a, 'Shared')
+    attach(b, path === 'Parent' ? 'Parent/Other' : 'Other')
+    registry.setRootIssue(a, { kind: 'moved', path })
+    expect(() => registry.setLocalRoot(a, path)).toThrow(/overlap/i)
+    expect(registry.records().find((row) => row.id === a)).toMatchObject({
+      rootIssue: { kind: 'moved', path },
+    })
+    expect(registry.records().find((row) => row.id === a)?.localRoot).toBe('Shared')
+  }
+)
+
+it.each(['attach', 'scope', 'restore'])(
+  'permits explicitly chosen overlap through %s',
+  (action) => {
+    const registry = TokenConnectionRegistry.open(local()),
+      first = registry.add(),
+      second = registry.add(),
+      keys = secrets()
+    const attach = (id: string, path: string) => {
+      const value = { ...token, scope: { ...token.scope, id: path, path } }
+      registry.attach(id, value, { ...receipt, token_id: id, scope: value.scope }, keys)
+    }
+    attach(first, 'Shared')
+    if (action === 'attach') expect(() => attach(second, 'Shared/nested')).not.toThrow()
+    else {
+      attach(second, 'Other')
+      if (action === 'scope')
+        expect(() => registry.setScopePath(second, 'Shared/nested')).not.toThrow()
+      else {
+        registry.setRootIssue(second, { kind: 'deleted' })
+        const doc = registry.records()
+        doc.find((row) => row.id === second)!.localRoot = 'Shared/nested'
+        const store = Reflect.get(registry, 'local')
+        store.saveLocalStorage(TOKEN_REGISTRY_KEY, {
+          ...store.loadLocalStorage(TOKEN_REGISTRY_KEY),
+          records: doc,
+        })
+        expect(() => registry.setRootIssue(second, undefined)).not.toThrow()
+        expect(registry.records().find((row) => row.id === second)?.rootIssue).toBeUndefined()
+      }
+    }
+  }
+)
 
 it('resumes interrupted provisioning after a folder rename using stable selector identity', () => {
   const store = local(),
@@ -264,4 +383,28 @@ it('pins an existing connection from its current scope on first start', () => {
   const reopened = TokenConnectionRegistry.open(store)
   expect(reopened.pinLocalRoot(connection)).toBe('Shared')
   expect(TokenConnectionRegistry.open(store).records()[0].localRoot).toBe('Shared')
+})
+
+it('retains server rename acknowledgement separately from local placement across restart', () => {
+  const store = local(),
+    registry = TokenConnectionRegistry.open(store),
+    id = registry.add(),
+    keys = secrets(),
+    scope = { ...token.scope, path: 'Shared' }
+  registry.attach(id, { ...token, scope }, { ...receipt, scope }, keys)
+  const before = registry.records()[0]
+  registry.setRootIssue(id, { kind: 'server-renamed', from: 'Shared', to: 'Renamed' })
+  expect(TokenConnectionRegistry.open(store).records()[0].rootIssue).toEqual({
+    kind: 'server-renamed',
+    from: 'Shared',
+    to: 'Renamed',
+  })
+  registry.setServerRoot(id, 'Renamed')
+  registry.setRootIssue(id, undefined)
+  expect(TokenConnectionRegistry.open(store).records()[0]).toMatchObject({
+    scope: before.scope,
+    localRoot: 'Shared',
+    serverRoot: 'Renamed',
+    ledgerId: before.ledgerId,
+  })
 })

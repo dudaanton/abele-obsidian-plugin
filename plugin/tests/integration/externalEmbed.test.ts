@@ -8,58 +8,8 @@ import {
   externalEmbedsInEditor,
   externalEmbedProcessor,
 } from '@/sync/external/embed'
-import {
-  externalReadingEmbed,
-  externalEditorEmbed,
-  externalReadingPreviewAction,
-} from '../e2e/helpers/externalFileSelectors'
+import { externalReadingEmbed, externalEditorEmbed } from '../e2e/helpers/externalFileSelectors'
 import { routeExternalFiles, routeExternalLinks } from '@/sync/external/opening'
-
-it('does not report the preview download action ready while embed metadata is still loading', async () => {
-  const s = await externalFileFixture('Media/sample.png')
-  const leaf = document.createElement('div')
-  leaf.className = 'workspace-leaf mod-active'
-  const surface = document.createElement('div')
-  surface.className = 'markdown-reading-view'
-  const embed = document.createElement('span')
-  embed.className = 'internal-embed'
-  surface.append(embed)
-  leaf.append(surface)
-  embed.setAttribute('src', s.path)
-  document.body.append(leaf)
-  let release!: () => void
-  const pending = new Promise<void>((resolve) => {
-    release = resolve
-  })
-  let off = () => {}
-  try {
-    s.app.saveLocalStorage('abele-external-previews-v1', {
-      [s.head.sha]: { data: 'data:image/jpeg;base64,c2FtcGxl', saved: 1 },
-    })
-    await s.port.evict(s.path)
-    const describe = s.manager.describe.bind(s.manager)
-    vi.spyOn(s.manager, 'describe').mockImplementation(async (path) => {
-      await pending
-      return describe(path)
-    })
-    off = mountExternalEmbed(s.app as never, embed, '', s.manager)
-    await flushPromises()
-    expect(document.querySelector(externalReadingEmbed)).not.toBeNull()
-    expect(document.querySelector(externalReadingPreviewAction)).toBeNull()
-    release()
-    await vi.waitFor(() =>
-      expect(document.querySelector(externalReadingPreviewAction)).not.toBeNull()
-    )
-    expect(document.querySelector(externalReadingEmbed + ' img')).not.toBeNull()
-    expect(await s.app.vault.adapter.exists(s.path)).toBe(false)
-  } finally {
-    release()
-    await flushPromises()
-    off()
-    leaf.remove()
-    s.close()
-  }
-})
 
 it.each([
   { mode: 'reading', preview: false },

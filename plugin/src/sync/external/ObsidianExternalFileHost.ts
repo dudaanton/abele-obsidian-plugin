@@ -1,3 +1,4 @@
+import { vaultDisk, guardedVaultAdapter } from '../vaultPathLinks'
 import { connectionHost, connectionPrivateArea } from '../connectionPaths'
 import type { App, DataAdapter, EventRef } from 'obsidian'
 import { caseKey } from '@abele/sync-protocol'
@@ -68,7 +69,7 @@ export class ExternalFileHost {
   ) {
     this.coordination = externalCoordinationOf(app.vault)
     this.io = new BoundedVaultIo(
-      app.vault.adapter,
+      vaultDisk(app.vault),
       this.assertOwned,
       undefined,
       undefined,
@@ -112,14 +113,18 @@ export class ExternalFileHost {
   async read(path: string): Promise<Uint8Array> {
     this.assertOwned()
     const bytes = new Uint8Array(
-      await fileOperations.run('readBinary', () => this.app.vault.adapter.readBinary(path), true)
+      await fileOperations.run(
+        'readBinary',
+        () => guardedVaultAdapter(vaultDisk(this.app.vault)).readBinary(path),
+        true
+      )
     )
     this.assertOwned()
     return bytes
   }
   async exists(path: string): Promise<boolean> {
     this.assertOwned()
-    return this.app.vault.adapter.exists(path)
+    return guardedVaultAdapter(vaultDisk(this.app.vault)).exists(path)
   }
   openRead(path: string): Promise<ChunkSource> {
     return this.io.openRead(path)
@@ -133,7 +138,10 @@ export class ExternalFileHost {
   }
   /** Native bounded reads on desktop; the mobile adapter exposes only readBinary. */
   async matches(expected: ExternalByteExpectation): Promise<boolean> {
-    if (!(await this.app.vault.adapter.stat(expected.path)) && expected.size <= 50 * 1024 * 1024) {
+    if (
+      !(await vaultDisk(this.app.vault).stat(expected.path)) &&
+      expected.size <= 50 * 1024 * 1024
+    ) {
       const bytes = await this.read(expected.path)
       const sha = Array.from(incremental(bytes), (byte) => byte.toString(16).padStart(2, '0')).join(
         ''
@@ -213,7 +221,7 @@ export class ExternalFileHost {
   }
 
   private filesystem(): ExternalFilesystemPort {
-    const adapter = this.app.vault.adapter
+    const adapter = vaultDisk(this.app.vault)
     const native = nativeOf(
       adapter,
       this.assertOwned,
@@ -302,7 +310,7 @@ export class ExternalFileHost {
               assertEffect()
             },
             (work) => this.effect(work),
-            this.app.vault.adapter,
+            vaultDisk(this.app.vault),
             this.app.vault.configDir
           )
           const mtime = this.options.stagingMtime?.(path) ?? Date.now()

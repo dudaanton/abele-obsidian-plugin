@@ -1,3 +1,5 @@
+import { nativeChunkPort } from './vaultPathLinks'
+import { guardedVaultAdapter, ensureVaultDirectory } from './vaultPathLinks'
 import type { DataAdapter, Stat } from 'obsidian'
 import {
   EngineError,
@@ -14,29 +16,6 @@ import { stagingDirectory, reserveStagingPath } from './stagingDirectory'
 import { makeParents } from './vaultFolders'
 
 const PHONE_FALLBACK_BYTES = 50 * 1024 * 1024
-interface Handle {
-  read(
-    buffer: Uint8Array,
-    offset: number,
-    length: number,
-    position: number
-  ): Promise<{ bytesRead: number }>
-  write(
-    buffer: Uint8Array,
-    offset: number,
-    length: number,
-    position: number
-  ): Promise<{ bytesWritten: number }>
-  sync(): Promise<void>
-  close(): Promise<void>
-}
-export interface NativeChunkAdapter extends DataAdapter {
-  getFullPath?(path: string): string
-  fsPromises?: {
-    open?(path: string, flags: string): Promise<Handle>
-    utimes?(path: string, atime: number, mtime: number): Promise<void>
-  }
-}
 interface MobileFiles {
   readFile(options: { path: string; offset: number; length: number }): Promise<{ data: string }>
   stat(options: { path: string }): Promise<{ size: number }>
@@ -96,13 +75,15 @@ export class BoundedVaultIo {
   private sequentialMobile: Awaited<ReturnType<typeof probeSequentialFiles>> = null
   private resourceMobile: Awaited<ReturnType<typeof probeResourceRanges>> = null
   constructor(
-    readonly adapter: DataAdapter,
+    readonly disk: DataAdapter,
     private readonly assertOwned: () => void = () => {},
     private readonly effect: <T>(work: () => T) => T = (work) => work(),
-    private readonly receiptScope: object = adapter,
+    private readonly receiptScope: object = disk,
     private readonly configDir?: string,
     private readonly privateRoot?: string
-  ) {}
+  ) {
+    this.disk = guardedVaultAdapter(disk)
+  }
   private get receipts(): Map<string, WriteReceipt> {
     let receipts = writeReceipts.get(this.receiptScope)
     if (!receipts) writeReceipts.set(this.receiptScope, (receipts = new Map()))
@@ -114,8 +95,8 @@ export class BoundedVaultIo {
   async requireWrite(size: number): Promise<void> {
     if (
       size <= PHONE_FALLBACK_BYTES ||
-      typeof this.adapter.appendBinary === 'function' ||
-      (this.raw.fsPromises?.open && this.raw.getFullPath)
+      typeof this.disk.appendBinary === 'function' ||
+      (this.raw.open && this.raw.fullPath)
     )
       return
     throw new EngineError(
@@ -134,24 +115,24 @@ export class BoundedVaultIo {
     this.receipts.set(to, { hash: receipt.hash.clone(), stamp })
     this.receipts.delete(from)
   }
-  private get raw(): NativeChunkAdapter {
-    return this.adapter
+  private get raw() {
+    return nativeChunkPort(this.disk)
   }
   async requireTransfer(size: number): Promise<void> {
-    if (size <= PHONE_FALLBACK_BYTES || (this.raw.fsPromises?.open && this.raw.getFullPath)) return
+    if (size <= PHONE_FALLBACK_BYTES || (this.raw.open && this.raw.fullPath)) return
     if (!(await this.mobile()))
       throw new EngineError(
         'io',
         'Bounded file reads are unavailable; the fallback limit is 50 MiB'
       )
-    if (typeof this.adapter.appendBinary !== 'function')
+    if (typeof this.disk.appendBinary !== 'function')
       throw new EngineError(
         'io',
         'Bounded staging writes are unavailable; the fallback limit is 50 MiB'
       )
   }
   async canReplayStage(): Promise<boolean> {
-    return !!(this.raw.fsPromises?.open && this.raw.getFullPath) || !!(await this.mobile())
+    return !!(this.raw.open && this.raw.fullPath) || !!(await this.mobile())
   }
   async canResumeStage(path: string): Promise<boolean> {
     const receipt = this.receipts.get(path)
@@ -161,14 +142,14 @@ export class BoundedVaultIo {
   }
   private async stat(path: string): Promise<Stat> {
     this.assertOwned()
-    const stat = await this.adapter.stat(path)
+    const stat = await this.disk.stat(path)
     this.assertOwned()
     if (!stat || stat.type !== 'file') throw new EngineError('io', `cannot read ${path}`)
     return stat
   }
   private mobilePath(path: string): string {
-    if (this.raw.getFullPath) return this.raw.getFullPath(path)
-    const resource = new URL(this.adapter.getResourcePath(path))
+    if (this.raw.fullPath) return this.raw.fullPath(path)
+    const resource = new URL(this.disk.getResourcePath(path))
     if (resource.protocol === 'file:') return new URL(resource.pathname, 'file://').href
     const prefix = '/_capacitor_file_/'
     if (
@@ -206,7 +187,7 @@ export class BoundedVaultIo {
       typeof window === 'undefined' || typeof window.fetch !== 'function'
         ? null
         : await probeResourceRanges(
-            this.adapter,
+            this.disk,
             window.fetch.bind(window),
             trace,
             this.configDir,
@@ -225,7 +206,7 @@ export class BoundedVaultIo {
     })
     if ((!files?.readFile && !files?.readFileInChunks) || !files?.stat) return null
     this.sequentialMobile = await probeSequentialFiles(
-      this.adapter,
+      this.disk,
       files,
       trace,
       this.configDir,
@@ -240,11 +221,11 @@ export class BoundedVaultIo {
     let created = false
     const release = reserveStagingPath(path)
     try {
-      if (await this.adapter.exists(path)) return null
-      await makeParents(this.adapter, path)
+      if (await this.disk.exists(path)) return null
+      await makeParents(this.disk, path)
       this.assertOwned()
       trace({ step: 'create', path, bytes: 4 })
-      await this.adapter.writeBinary(path, new Uint8Array([11, 37, 89, 143]).buffer)
+      await this.disk.writeBinary(path, new Uint8Array([11, 37, 89, 143]).buffer)
       created = true
       const absolute = this.mobilePath(path)
       trace({ step: 'call', method: 'stat', options: { path: absolute } })
@@ -263,7 +244,7 @@ export class BoundedVaultIo {
       try {
         if (created) {
           this.assertOwned()
-          await this.adapter.remove(path)
+          await this.disk.remove(path)
           trace({ step: 'delete', path })
         }
       } finally {
@@ -276,10 +257,7 @@ export class BoundedVaultIo {
     if (expected && original.generation !== expected.generation)
       throw new EngineError('conflict', `${path} changed before opening`)
     const raw = this.raw
-    const handle =
-      raw.fsPromises?.open && raw.getFullPath
-        ? await raw.fsPromises.open(raw.getFullPath(path), 'r')
-        : null
+    const handle = raw.open && raw.fullPath ? await raw.open(raw.fullPath(path), 'r') : null
     const access = handle ? null : await this.mobile()
     const files = access?.files
     const resource = access && this.resourceMobile
@@ -292,7 +270,7 @@ export class BoundedVaultIo {
           'io',
           'Bounded file reads are unavailable; the fallback limit is 50 MiB'
         )
-      fallback = new Uint8Array(await this.adapter.readBinary(path))
+      fallback = new Uint8Array(await this.disk.readBinary(path))
     }
     let closed = false
     const unchanged = async () => {
@@ -355,9 +333,9 @@ export class BoundedVaultIo {
   }
   async fingerprint(path: string, signal?: AbortSignal, boundedOnly = false, fresh = false) {
     if (fresh) this.receipts.delete(path)
-    if (this.raw.fsPromises?.open && this.raw.getFullPath) {
+    if (this.raw.open && this.raw.fullPath) {
       const before = stampOf(await this.stat(path))
-      const handle = await this.raw.fsPromises.open(this.raw.getFullPath(path), 'r')
+      const handle = await this.raw.open(this.raw.fullPath(path), 'r')
       try {
         const bytes = new Uint8Array(MAX_CHUNK_BYTES),
           hash = sha256.create()
@@ -409,10 +387,10 @@ export class BoundedVaultIo {
   }
   async create(path: string, mtime: number): Promise<void> {
     this.assertOwned()
-    if (this.raw.fsPromises?.open && this.raw.getFullPath) {
-      const handle = await this.effect(() =>
-        this.raw.fsPromises.open(this.raw.getFullPath(path), 'wx')
-      )
+    const cut = path.lastIndexOf('/')
+    if (cut > 0) await this.effect(() => ensureVaultDirectory(this.disk, path.slice(0, cut)))
+    if (this.raw.open && this.raw.fullPath) {
+      const handle = await this.effect(() => this.raw.open(this.raw.fullPath(path), 'wx'))
       try {
         await this.effect(() => handle.sync())
       } finally {
@@ -421,7 +399,7 @@ export class BoundedVaultIo {
       await this.date(path, mtime)
     } else {
       this.receipts.delete(path)
-      await this.adapter.writeBinary(path, new ArrayBuffer(0), { mtime })
+      await this.disk.writeBinary(path, new ArrayBuffer(0), { mtime })
       this.receipts.set(path, { hash: sha256.create(), stamp: stampOf(await this.stat(path)) })
     }
   }
@@ -439,8 +417,8 @@ export class BoundedVaultIo {
       throw new EngineError('io', 'oversized staging chunk')
     if ((await this.stat(path)).size !== offset)
       throw new EngineError('io', 'staging offset changed')
-    if (this.raw.fsPromises?.open && this.raw.getFullPath) {
-      const handle = await this.raw.fsPromises.open(this.raw.getFullPath(path), 'r+')
+    if (this.raw.open && this.raw.fullPath) {
+      const handle = await this.raw.open(this.raw.fullPath(path), 'r+')
       try {
         let written = 0
         while (written < bytes.length) {
@@ -475,20 +453,20 @@ export class BoundedVaultIo {
       }
       // An uncertain append cannot contribute an acknowledged identity.
       this.receipts.delete(path)
-      if (typeof this.adapter.appendBinary === 'function')
-        await this.adapter.appendBinary(path, bytesOf(bytes), { mtime })
+      if (typeof this.disk.appendBinary === 'function')
+        await this.disk.appendBinary(path, bytesOf(bytes), { mtime })
       else {
         if (offset + bytes.length > PHONE_FALLBACK_BYTES)
           throw new EngineError(
             'io',
             'Bounded staging writes are unavailable; the fallback limit is 50 MiB'
           )
-        const existing = new Uint8Array(await this.adapter.readBinary(path))
+        const existing = new Uint8Array(await this.disk.readBinary(path))
         const complete = new Uint8Array(offset + bytes.length)
         complete.set(existing)
         complete.set(bytes, offset)
         this.assertOwned()
-        await this.adapter.writeBinary(path, complete.buffer, { mtime })
+        await this.disk.writeBinary(path, complete.buffer, { mtime })
       }
       const stamp = stampOf(await this.stat(path))
       if (stamp.size !== offset + bytes.length)
@@ -501,9 +479,7 @@ export class BoundedVaultIo {
   }
   private async date(path: string, mtime: number): Promise<void> {
     this.assertOwned()
-    if (this.raw.fsPromises?.utimes && this.raw.getFullPath)
-      await this.effect(() =>
-        this.raw.fsPromises.utimes(this.raw.getFullPath(path), mtime / 1000, mtime / 1000)
-      )
+    if (this.raw.utimes && this.raw.fullPath)
+      await this.effect(() => this.raw.utimes(this.raw.fullPath(path), mtime / 1000, mtime / 1000))
   }
 }

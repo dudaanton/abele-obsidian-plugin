@@ -7,6 +7,7 @@ import { ExecutableReview } from '@/sync/executableReview'
 import { AttachmentConsent } from '@/sync/attachmentConsent'
 import { tokenUiFixture } from '@/testing/tokenUiFixture'
 import { deferred } from '../helpers/deferred'
+import { LocalPlacementError } from '@/sync/localFolderPlacement'
 
 it('does not resurrect departed activity when an older review refresh fails', async () => {
   const { ui, registry } = setup()
@@ -53,6 +54,76 @@ it('names a granted folder or group the server no longer shows to its issuer', (
     'Group outside this connection'
   )
   expect(scopeName({ kind: 'folder', id: 'kept', path: 'Shared' })).toBe('Folder: Shared')
+})
+
+it('shows the reason a local placement was refused', () => {
+  const reason = 'The folder overlaps another connection; sync remains stopped'
+  expect(connectionError(new LocalPlacementError(reason))).toBe(reason)
+})
+
+it('retains the failed connect stage cause when no connection could be added', async () => {
+  const { ui, registry } = setup()
+  ui.connectionChangeGuard = async () => {
+    throw new Error('Native inventory read failed')
+  }
+  await expect(ui.connect(token)).rejects.toThrow('Checking the vault')
+  expect(registry.records()).toEqual([])
+  expect(ui.connectFailure).toMatchObject({ reason: 'Native inventory read failed' })
+})
+
+it('reconciles host sessions after disconnect removes a placed connection', async () => {
+  const { ui, registry } = setup()
+  await ui.connect(token)
+  const id = registry.records()[0].id
+  registry.setScopePath(id, 'Shared')
+  registry.setLocalRoot(id, 'Moved')
+  registry.setRootIssue(id, { kind: 'moved', path: 'Moved' })
+  const drained = vi.fn(async () => {})
+  ui.runtimes.set(id, { disconnect: drained } as never)
+  ui.connectionChangeGuard = async () => {}
+  const changed = vi.fn(async () => {
+    expect(drained).toHaveBeenCalledOnce()
+    expect(registry.records()).toEqual([])
+  })
+  ui.connectionForgotten = changed
+  await ui.disconnect(id)
+  expect(changed).toHaveBeenCalledOnce()
+})
+
+it('shows review and question paths at the local placement while keeping their source binding canonical', async () => {
+  const { ui } = setup()
+  const candidate = {
+    id: 'review',
+    path: 'Shared/code.js',
+    previousPath: 'Shared/old.js',
+    source: { id: 'connection', scope: { path: 'Shared' } },
+  }
+  const question = {
+    id: 'question',
+    path: 'Shared/image.png',
+    source: { id: 'connection', scope: { path: 'Shared' } },
+  }
+  Object.assign(ui, {
+    reviews: {
+      executables: { state: async () => [], pending: async () => [candidate] },
+      attachments: { pending: async () => [question] },
+    },
+  })
+  ui.runtimes.set('connection', {
+    localPath: (path: string) => path.replace(/^Shared(?=\/|$)/, 'Moved'),
+  } as never)
+  await ui.refreshReviews()
+  expect(ui.candidates.value[0]).toMatchObject({
+    path: 'Moved/code.js',
+    previousPath: 'Moved/old.js',
+    source: { scope: { path: 'Shared' } },
+  })
+  expect(ui.questions.value[0]).toMatchObject({
+    path: 'Moved/image.png',
+    source: { scope: { path: 'Shared' } },
+  })
+  expect(candidate.path).toBe('Shared/code.js')
+  expect(question.path).toBe('Shared/image.png')
 })
 
 it('distinguishes a cut-off response body from an unreachable server', () => {

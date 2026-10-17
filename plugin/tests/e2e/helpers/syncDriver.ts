@@ -233,7 +233,11 @@ export class SyncDriver {
         details =
           this.rows()
             .map((one) => one.id + ' (' + one.status + '): ' + (one.error ?? 'No product error'))
-            .join('; ') || 'No connection added'
+            .join('; ') ||
+          this.run<string>(
+            `const box=modal('Connect to a server');return box?[...box.querySelectorAll('[role="alert"]')].map(textOf).filter(Boolean).join('; ')||'Connection was not added; the connect dialog is still open':'Connection was not added; no connect dialog is open'`,
+            true
+          )
       } catch {
         /* The vault can be reloading; keep the confidential fallback. */
       }
@@ -320,9 +324,10 @@ export class SyncDriver {
     label = 'Sample recipient',
     timeoutMs = this.timeoutMs
   ): Promise<string> {
+    // The kit rebuilds its native select when choices arrive; never poll the loading node.
     return this.long(
       'issue sharing token',
-      `const root=await openSyncTab(); icon(connectionRow(root,${JSON.stringify(id)}),'share-2'); await poll(()=>modal('Share access'),${timeoutMs},'sharing dialog to open'); const box=modal('Share access'); await poll(()=>box.querySelector('select')?.options.length>0,${timeoutMs},'sharing scopes to load'); const select=box.querySelector('select'); const option=[...select.options].find(one=>one.textContent.trim()===${JSON.stringify(scopeLabel)}); if(!option) throw new Error('Scope choice unavailable'); select.value=option.value; select.dispatchEvent(new select.ownerDocument.defaultView.Event('change',{bubbles:true})); typeInto(box.querySelector('input[placeholder="A second device, a colleague"]'),${JSON.stringify(label)}); await press(box,'Create token'); await poll(()=>box.querySelector('textarea'),${timeoutMs},'issued sharing token'); const token=box.querySelector('textarea').value; await press(box,'Close'); await closeSettings(); return token`,
+      `const root=await openSyncTab(); icon(connectionRow(root,${JSON.stringify(id)}),'share-2'); await poll(()=>modal('Share access'),${timeoutMs},'sharing dialog to open'); const box=modal('Share access'); let select,option; await poll(()=>{select=box.querySelector('select');option=select&&[...select.options].find(one=>one.textContent.trim()===${JSON.stringify(scopeLabel)});return !!option},${timeoutMs},'sharing scopes to load'); select.value=option.value; select.dispatchEvent(new select.ownerDocument.defaultView.Event('change',{bubbles:true})); typeInto(box.querySelector('input[placeholder="A second device, a colleague"]'),${JSON.stringify(label)}); await press(box,'Create token'); await poll(()=>box.querySelector('textarea'),${timeoutMs},'issued sharing token'); const token=box.querySelector('textarea').value; await press(box,'Close'); await closeSettings(); return token`,
       true,
       timeoutMs
     )
@@ -376,7 +381,7 @@ export class SyncDriver {
   }
   open(path: string): void {
     this.run(
-      `const file=app.vault.getFileByPath(${JSON.stringify(path)}); if(!file) throw new Error('Note unavailable'); await closeSettings(); await app.workspace.getLeaf(false).openFile(file); return true`
+      `const path=${JSON.stringify(path)},file=app.vault.getFileByPath(path); if(!file) { const cut=path.lastIndexOf('/'),parent=!!app.vault.getAbstractFileByPath(cut<0?'/':path.slice(0,cut));let disk;try{disk=await app.vault.adapter.exists(path)}catch{disk='unavailable'}const pulls=svc.rows.value.slice(0,4).map(row=>{const pull=host.live.get(row.id)?.trace.snapshot().lastPull;return {id:row.id,status:row.status,pull:pull?{...pull,paths:pull.paths.slice(0,4)}:null}}); throw new Error('Note unavailable: '+JSON.stringify({disk,parent,pulls})); } await closeSettings(); await app.workspace.getLeaf(false).openFile(file); return true`
     )
   }
   async review(path: string, decision: 'Approve' | 'Reject'): Promise<void> {

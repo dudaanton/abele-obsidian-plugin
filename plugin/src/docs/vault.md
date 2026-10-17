@@ -19,6 +19,25 @@ refusals and held-delete reviews still apply. Automatic actions appear in the co
 
 ## Device-local external-file state foundation
 
+Folder connections retain a device-local `rootIssue` in their connection registry when the
+root is deleted or moved locally. Child events share that one stopped state; they do not
+authorize server deletions. Explicit restore requests a fresh snapshot. Explicit follow
+stores `localRoot` in the device-local connection registry. The server selector and ledger
+paths stay unchanged; filesystem access maps those paths into the selected local folder.
+This placement survives reconnects and does not travel with a sharing token. Legacy unresolved
+server-move evidence at `plugin:scope-root-follow` keeps recovery stopped rather than being
+replayed or discarded.
+
+Device-local placement changes refuse overlap with another connection's effective reserved
+root. Explicitly connecting overlapping scopes and restoring them remain supported. A stopped folder continues tracking later
+moves. Follow scans the destination independently of the watcher: it requires exactly the
+known file and folder set, with no extra or missing entries. Known files may contain edits.
+A retained, validated offload sidecar counts as its known file; its recorded identity, version,
+hash and binding must agree. An invalid sidecar is an unknown entry. Refusal keeps sync stopped
+and reports counts of extra or missing entries, including after restart.
+External-file state and server receipts retain canonical paths too; their filesystem effects,
+reservations and local UI paths pass through the same placement mapping.
+
 The sync ledger reserves a schema-1 external-file document at `plugin:external-files` in its
 IndexedDB `meta` store. The SQLite adapter uses `daemon:external-files` in the existing CLI
 ledger. The ledger can now classify existing external records during ordinary personal and scoped
@@ -2338,6 +2357,15 @@ honor the vault-root ignore file through an exact-path, read-only control-file
 exception. This file is never listed, uploaded, or synchronized by a folder
 connection; the exception permits no configuration-directory walk.
 
+Non-root folder connections persist their initial device-local placement in `localRoot`,
+including records migrated when their runtime starts. Server scope paths never redirect
+local discovery. A server rename stops the connection and keeps local bytes, showing both
+names. The explicit same-local-folder action records `serverRoot` and projects wire paths
+onto the unchanged saved namespace; it never migrates existing baselines or moves local files.
+A new manifest is required after confirmation, so the historical rename is never replayed
+as local moves or server deletes. Disconnect remains available.
+Incoming folder paths are validated before placement or review, and filesystem translations
+refuse paths outside the connection boundary.
 
 `abele-sync-device-review-id-v1` is a verified device-local UUID for the review database.
 Incoming-code review selects the exact displayed candidate ID; later candidates remain
@@ -2594,6 +2622,12 @@ These recoverable copies are kept indefinitely, outside sync and projection insp
 a persistent notice gives their directory, and every batch of newly preserved copies
 notifies again, including partial batches interrupted by a failed move. Active stages and
 pending publication backups remain protected by their existing journals. No cleanup removes uncertain user bytes.
+
+Explicitly following a moved connection root updates the target labels of that connection’s settled preserved-copy records after the destination file set is verified. Recovery copies stay in its private area, other connections’ records stay unchanged, and no files are moved or restored by this metadata update. Unfinished installs or copies outside the owned private area keep Follow stopped. Following a server rename keeps these local target labels unchanged.
+
+Follow matches absolute desktop backup paths against the adapter’s exact owned private recovery directory. Only settled evidence target labels change; archive paths and bytes remain unchanged. Foreign archives, sibling prefixes and traversal aliases remain refused.
+
+Bounded local edit history captures use owned private outbox stage targets, while their history records retain the original file path and immutable source handle. They are retained sources rather than pending installs into that file, so following a moved root leaves those stages and bytes intact. Unfinished ordinary target installs still stop Follow.
 
 ## Zen preferences
 

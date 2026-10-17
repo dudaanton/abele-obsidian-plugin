@@ -1,3 +1,4 @@
+import { guardedVaultAdapter } from './vaultPathLinks'
 import type { App, DataAdapter } from 'obsidian'
 import { EngineError } from '@abele/sync-core'
 import { caseKey } from '@abele/sync-protocol'
@@ -68,7 +69,7 @@ export function isDroppableTemp(path: string): boolean {
 /** What `VaultWriter` is handed by the file system that owns it. */
 export interface WriterDeps {
   stagingDirectory: string
-  adapter: DataAdapter
+  filesystem: DataAdapter
   native: NativeFs | null
   journal: WriteJournal
   /** Whether the vault's file index holds this exact path. */
@@ -83,8 +84,8 @@ export interface WriterDeps {
 export class VaultWriter {
   constructor(private readonly deps: WriterDeps) {}
 
-  private get adapter(): DataAdapter {
-    return this.deps.adapter
+  private get disk(): DataAdapter {
+    return guardedVaultAdapter(this.deps.filesystem)
   }
 
   /** Publish authenticated disk bytes without assembling either old or new contents. */
@@ -126,16 +127,16 @@ export class VaultWriter {
       entry = swapping
       await this.holding(backup, async () => {
         if (this.deps.native) await this.deps.native.rename(held, backup)
-        else await this.adapter.rename(held, backup)
+        else await this.disk.rename(held, backup)
         await this.deps.adoptReceipt?.(held, backup)
         try {
           if (!stream.retainBase) await matches(backup, stream.base)
           if (this.deps.native) await this.deps.native.installExclusive(entry.temp, held)
-          else await this.adapter.rename(entry.temp, held)
+          else await this.disk.rename(entry.temp, held)
         } catch (error) {
           try {
             if (this.deps.native) await this.deps.native.installExclusive(backup, held)
-            else await this.adapter.rename(backup, held)
+            else await this.disk.rename(backup, held)
             await this.deps.adoptReceipt?.(backup, held)
             this.deps.journal.replace(entry, { ...entry, backup: undefined })
           } catch {
@@ -153,7 +154,7 @@ export class VaultWriter {
         if (this.deps.native || stream.retainBase) {
           await this.preserveBackup(entry)
           await this.dropQuietly(entry.temp)
-        } else await this.adapter.remove(backup)
+        } else await this.disk.remove(backup)
       })
     }
     await this.deps.adoptReceipt?.(entry.temp, entry.target)
@@ -185,15 +186,15 @@ export class VaultWriter {
         const chunkSize = 1024 * 1024
         if (
           !this.deps.native &&
-          typeof this.adapter.appendBinary === 'function' &&
+          typeof this.disk.appendBinary === 'function' &&
           bytes.byteLength > chunkSize
         ) {
           for (let at = 0; at < bytes.byteLength; at += chunkSize) {
             const chunk = bytesOf(view.slice(at, at + chunkSize))
-            if (at === 0) await this.adapter.writeBinary(temp, chunk, { mtime })
-            else await this.adapter.appendBinary(temp, chunk, { mtime })
+            if (at === 0) await this.disk.writeBinary(temp, chunk, { mtime })
+            else await this.disk.appendBinary(temp, chunk, { mtime })
           }
-        } else await this.adapter.writeBinary(temp, bytesOf(view), { mtime })
+        } else await this.disk.writeBinary(temp, bytesOf(view), { mtime })
       } catch (cause) {
         throw new EngineError('io', `cannot write ${path}`, cause)
       }
@@ -260,7 +261,7 @@ export class VaultWriter {
   /** A file that was not there: the temp takes the name, which the adapter refuses if taken. */
   private async takeFreeName(temp: string, path: string): Promise<void> {
     try {
-      await this.adapter.rename(temp, path)
+      await this.disk.rename(temp, path)
     } catch (cause) {
       // Somebody made the file in the moment since it was looked for. Theirs is not written over;
       // the puller holds the change and the next scan sends theirs.
@@ -288,18 +289,18 @@ export class VaultWriter {
     try {
       try {
         if (native) await native.rename(path, backup)
-        else await this.adapter.rename(path, backup)
+        else await this.disk.rename(path, backup)
       } catch (cause) {
         throw new EngineError('io', `cannot write ${path}`, cause)
       }
       try {
         if (before !== null) await this.unchanged(backup, before)
         if (native?.installExclusive) await native.installExclusive(temp, path)
-        else await this.adapter.rename(temp, path)
+        else await this.disk.rename(temp, path)
       } catch (cause) {
         try {
           if (native?.installExclusive) await native.installExclusive(backup, path)
-          else await this.adapter.rename(backup, path)
+          else await this.disk.rename(backup, path)
         } catch {
           console.debug(`[abele-sync] ${path} is left at ${backup} until the next listing`)
           return false
@@ -325,7 +326,7 @@ export class VaultWriter {
     const cut = path.lastIndexOf('/')
     let files: string[]
     try {
-      files = (await this.adapter.list(cut === -1 ? '/' : path.slice(0, cut))).files
+      files = (await this.disk.list(cut === -1 ? '/' : path.slice(0, cut))).files
     } catch {
       return path
     }
@@ -355,18 +356,18 @@ export class VaultWriter {
       // Out from `to`, not from `from`: on the disk this is for, both names answer to the one
       // file, and `to` is the one that is there whether the rename before this took or not.
       try {
-        await this.adapter.rename(to, aside)
+        await this.disk.rename(to, aside)
       } catch (cause) {
         this.deps.journal.drop(entry)
         throw new EngineError('conflict', `cannot spell ${from} as ${to}`, cause)
       }
       try {
-        await this.adapter.rename(aside, to)
+        await this.disk.rename(aside, to)
       } catch (cause) {
         // Back under the name it had, rather than leaving the vault holding an aside name. A
         // disk that will not do that either leaves it to the journal.
         try {
-          await this.adapter.rename(aside, from)
+          await this.disk.rename(aside, from)
           this.deps.journal.drop(entry)
         } catch {
           console.debug(`[abele-sync] ${from} is left at ${aside} until the next listing`)
@@ -402,7 +403,7 @@ export class VaultWriter {
         if (!entry.disposableSource && !entry.target.startsWith('.abele-sync/placement-inbox/'))
           continue
         if (entry.temp && adapterWriteInFlight(entry.temp)) continue
-        if (entry.temp && (await this.there(entry.temp))) await this.adapter.remove(entry.temp)
+        if (entry.temp && (await this.there(entry.temp))) await this.disk.remove(entry.temp)
         this.deps.journal.drop(entry)
         console.debug('[abele-sync] retired interrupted disposable placement source')
         continue
@@ -431,10 +432,10 @@ export class VaultWriter {
               entry.replacementSha !== undefined &&
               (this.deps.fingerprint
                 ? (await this.deps.fingerprint(entry.target)).sha
-                : await signature(await this.adapter.readBinary(entry.target))) ===
+                : await signature(await this.disk.readBinary(entry.target))) ===
                 entry.replacementSha
             if (matchesReplacement && entry.preserveBackup !== true)
-              await this.adapter.remove(entry.backup)
+              await this.disk.remove(entry.backup)
             else {
               // Do not overwrite the independent target or discard the old copy. Keep the
               // backup hidden (not a new uploadable identity), and persist its locator first.
@@ -444,12 +445,12 @@ export class VaultWriter {
               )
             }
           } else {
-            await this.adapter.rename(entry.backup, entry.target)
+            await this.disk.rename(entry.backup, entry.target)
             console.debug(`[abele-sync] put ${entry.target} back after an interrupted write`)
           }
         }
         if (entry.temp !== undefined && (await this.there(entry.temp))) {
-          await this.adapter.remove(entry.temp)
+          await this.disk.remove(entry.temp)
         }
         this.deps.journal.drop(entry)
       } catch (error) {
@@ -490,7 +491,7 @@ export class VaultWriter {
 
   private async there(path: string): Promise<boolean> {
     try {
-      return (await this.adapter.stat(path)) !== null
+      return (await this.disk.stat(path)) !== null
     } catch (cause) {
       const code =
         typeof cause === 'object' && cause !== null && 'code' in cause ? cause.code : null
@@ -502,7 +503,7 @@ export class VaultWriter {
   private async unchanged(path: string, before: ArrayBuffer): Promise<void> {
     if (!(await this.there(path)))
       throw new EngineError('conflict', `${path} changed while its replacement was prepared`)
-    const current = new Uint8Array(await this.adapter.readBinary(path))
+    const current = new Uint8Array(await this.disk.readBinary(path))
     const original = new Uint8Array(before)
     if (current.length !== original.length || current.some((value, at) => value !== original[at])) {
       throw new EngineError('conflict', `${path} changed while its replacement was prepared`)
@@ -511,7 +512,7 @@ export class VaultWriter {
 
   private async dropQuietly(path: string): Promise<void> {
     try {
-      if (await this.there(path)) await this.adapter.remove(path)
+      if (await this.there(path)) await this.disk.remove(path)
     } catch (error) {
       console.debug(`[abele-sync] left ${path} behind`, error)
     }

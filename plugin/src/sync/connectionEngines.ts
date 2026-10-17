@@ -28,7 +28,8 @@ export class ConnectionEngines {
       const owned = { runtime, starting: Promise.resolve(), retiring: false }
       owned.starting = Promise.resolve()
         .then(() => {
-          if (!this.closed && !owned.retiring) return runtime.start()
+          const held = this.runtimes.get(id)
+          if (!this.closed && held === owned && !owned.retiring) return runtime.start()
         })
         .catch((error) => {
           failed(id, error)

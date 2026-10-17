@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { useVault } from '../helpers/testEnv'
 import { TokenAttachmentHost } from '@/sync/tokenAttachmentHost'
 
@@ -34,4 +34,19 @@ it('keeps consent identity through proven offload and hydration, but never adopt
   await app.vault.adapter.remove('sample.bin')
   await app.vault.adapter.write('sample.bin', 'different file', { ctime: 9876 })
   expect(host.resolve(id)).toBeNull()
+})
+
+it('refuses a linked group note parent before reading attachment consent targets', async () => {
+  const app = useVault([{ path: 'Groups/sample.md', content: '![[sample.bin]]' }])
+  Object.assign(app.vault.adapter, {
+    getFullPath: (p: string) => p,
+    fsPromises: {
+      lstat: async (p: string) => ({ isSymbolicLink: () => p === 'Groups' }),
+    },
+  })
+  const read = vi.spyOn(app.vault, 'read')
+  await expect(new TokenAttachmentHost(app as never).note('Groups/sample.md')).rejects.toThrow(
+    /symbolic link/i
+  )
+  expect(read).not.toHaveBeenCalled()
 })

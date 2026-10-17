@@ -62,7 +62,12 @@
         <Icon
           icon="refresh-cw"
           tooltip="Sync this connection now"
-          :disabled="row.paused || connectionBusy(row, activity[row.id]) || busy.has(row.id)"
+          :disabled="
+            !!row.rootIssue ||
+            row.paused ||
+            connectionBusy(row, activity[row.id]) ||
+            busy.has(row.id)
+          "
           @click.stop="act(row.id, () => ui!.sync(row.id))"
         />
         <Icon
@@ -159,12 +164,52 @@ function openTrash(id: string) {
 /** The rarer things to do to a connection, with disconnecting apart at the end. */
 function more(event: MouseEvent, row: TokenConnectionRecord) {
   const menu = new Menu()
-  menu.addItem((item) =>
-    item
-      .setTitle(row.paused ? 'Resume' : 'Pause')
-      .setIcon(row.paused ? 'play' : 'pause')
-      .onClick(() => act(row.id, () => ui.value!.pause(row.id, !row.paused)))
-  )
+  if (row.rootIssue?.kind === 'server-renamed')
+    menu.addItem((item) =>
+      item
+        .setTitle('Keep syncing into the same local folder')
+        .setIcon('folder-input')
+        .onClick(() =>
+          act(row.id, async () => {
+            const runtime = ui.value.runtimes.get(row.id)
+            if (!runtime?.followServerRoot) throw new Error('Connection is unavailable')
+            await runtime.followServerRoot()
+          })
+        )
+    )
+  if (row.rootIssue?.kind === 'moved')
+    menu.addItem((item) =>
+      item
+        .setTitle('Follow moved folder')
+        .setIcon('folder-input')
+        .onClick(() =>
+          act(row.id, async () => {
+            const runtime = ui.value.runtimes.get(row.id)
+            if (!runtime?.followRoot) throw new Error('Connection is unavailable')
+            await runtime.followRoot()
+          })
+        )
+    )
+  if (row.rootIssue && row.rootIssue.kind !== 'server-renamed')
+    menu.addItem((item) =>
+      item
+        .setTitle('Restore from the server')
+        .setIcon('download')
+        .onClick(() =>
+          act(row.id, async () => {
+            const runtime = ui.value.runtimes.get(row.id)
+            if (!runtime?.restoreRoot) throw new Error('Connection is unavailable')
+            await runtime.restoreRoot()
+          })
+        )
+    )
+  if (!row.rootIssue)
+    menu.addItem((item) =>
+      item
+        .setTitle(row.paused ? 'Resume' : 'Pause')
+        .setIcon(row.paused ? 'play' : 'pause')
+        .onClick(() => act(row.id, () => ui.value.pause(row.id, !row.paused)))
+    )
   menu.addItem((item) =>
     item
       .setTitle('Share…')

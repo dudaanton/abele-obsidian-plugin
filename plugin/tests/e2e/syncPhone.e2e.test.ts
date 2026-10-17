@@ -7,6 +7,7 @@ import { sha256 } from '@abele/sync-core'
 import { syncProgressSamples } from './helpers/syncProgressSamples'
 import { collectSyncProgressShots, syncProgressShotsPrelude } from './helpers/syncProgressShots'
 import { shotDir } from './helpers/shots'
+import { deletedRootRecovery, serverRenamedRootRecovery } from './helpers/syncRootRecovery'
 targets('phone')
 const fixture = liveSuite(false)
 liveCase(
@@ -81,6 +82,13 @@ liveCase(
     expect(a.filesUnder(s.root + '/progress')).toHaveLength(384)
     expect(a.read(s.root + '/progress/sample-383.md')).toContain('Sample 383')
   },
+  fixture
+)
+liveCase(
+  'syncPhone',
+  '118 deleted folder root stops phone sync and Restore from the server resumes it',
+  [118],
+  async () => deletedRootRecovery(fixture()),
   fixture
 )
 liveCase(
@@ -394,5 +402,13 @@ liveCase(
       new TextDecoder().decode(await s.client(second).versionBytes(file.file_id, file.version_id))
     ).toBe('one server unavailable')
   },
+  fixture
+)
+
+liveCase(
+  'syncPhone',
+  '118 server-renamed folder keeps phone placement after explicit follow',
+  [118],
+  async () => serverRenamedRootRecovery(fixture()),
   fixture
 )

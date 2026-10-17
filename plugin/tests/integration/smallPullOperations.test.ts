@@ -1,4 +1,5 @@
 // @vitest-environment node
+import '../helpers/desktopRequire'
 import { expect, it, vi } from 'vitest'
 import { promises as native } from 'node:fs'
 import { tmpdir } from 'node:os'

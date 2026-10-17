@@ -187,9 +187,9 @@ it.each([
         getFullPath: (path: string) => path,
         fsPromises: {
           lstat: async (path: string) => {
-            if (!(await rawStat(path)))
-              throw Object.assign(new Error('missing'), { code: 'ENOENT' })
-            return { isSymbolicLink: () => false }
+            const stat = await rawStat(path)
+            if (!stat) throw Object.assign(new Error('missing'), { code: 'ENOENT' })
+            return { isSymbolicLink: () => false, isDirectory: () => stat.type === 'folder' }
           },
           open: async (path: string, flags: string) => {
             if (flags === 'wx') await write(path, new ArrayBuffer(0))

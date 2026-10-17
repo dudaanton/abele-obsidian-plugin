@@ -5,14 +5,19 @@ import { MemoryStateStore, sha256, type EngineStatus, type SyncReport } from '@a
 import { encodeAccessToken } from '@abele/sync-protocol'
 import { TokenEngines } from '@/sync/tokenEngines'
 import { TokenUi, connectionError } from '@/sync/tokenUi'
-import { TokenConnectionRegistry } from '@/sync/tokenConnectionRegistry'
+import { TokenConnectionRegistry, TOKEN_REGISTRY_KEY } from '@/sync/tokenConnectionRegistry'
 import { ExecutableReview } from '@/sync/executableReview'
 import { AttachmentConsent } from '@/sync/attachmentConsent'
 import { buildFakeVault } from '../helpers/fakeVault'
 import * as safety from '@/sync/external/pluginSafety'
-import { JOURNAL_KEY, WriteJournal } from '@/sync/writeJournal'
+import { JOURNAL_KEY, RECOVERED_WRITES_KEY, WriteJournal } from '@/sync/writeJournal'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
+import { connectionPrivateRoot } from '@/sync/connectionPaths'
 import { TokenSettingsPort } from '@/sync/tokenSettingsPort'
+import { promises as nativeFs } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { desktopFsPort } from '../helpers/desktopRequire'
 
 it.each([
   'sample recovery record is unreadable',
@@ -33,6 +38,27 @@ it.each([
     recover.mockRestore()
     fixture.probe.mockRestore()
     await fixture.host.close()
+  }
+})
+
+it('retains the original startup failure before an engine exists', async () => {
+  const failure = vi
+    .spyOn(safety, 'recoverExternalState')
+    .mockRejectedValueOnce(new Error('Native prefix reader failed'))
+  const { ui, host, registry, encoded, release, probe } = inspectionFixture()
+  try {
+    await ui.connect(encoded)
+    const id = registry.records()[0].id
+    await vi.waitFor(() =>
+      expect(ui.activity.value[id]?.failure?.reason).toContain('Native prefix reader failed')
+    )
+    expect(ui.activity.value[id].failure?.stage).toBe('Checking saved sync state')
+    expect(host.live.has(id)).toBe(false)
+  } finally {
+    release()
+    await host.close()
+    probe.mockRestore()
+    failure.mockRestore()
   }
 })
 
@@ -222,11 +248,13 @@ it('cancels a joining inspection before manager reset drains the host', async ()
 function inspectionFixture(
   marker = false,
   folder = '/',
-  extra: Array<{ path: string; content: string }> = []
+  extraOrKind: Array<{ path: string; content: string }> | 'folder' | 'group' = []
 ) {
+  const kind = typeof extraOrKind === 'string' ? extraOrKind : 'folder'
+  const extra = typeof extraOrKind === 'string' ? [] : extraOrKind
   const app = buildFakeVault([
     {
-      path: 'Notes/slow.txt',
+      path: kind === 'group' ? 'Notes/group.md' : 'Notes/slow.txt',
       content: marker ? '{"format":"abele.external", broken' : 'ordinary note',
     },
     ...extra,
@@ -243,7 +271,7 @@ function inspectionFixture(
     },
   }
   const metadata = new MemoryStateStore()
-  const scope = { kind: 'folder' as const, id: 'root', path: folder }
+  const scope = { kind, id: 'root', path: folder }
   let cursor = 1
   const transport = vi.fn<typeof fetch>(async (input, init) => {
     const path = new URL(String(input)).pathname
@@ -258,17 +286,24 @@ function inspectionFixture(
       })
     if (path === '/v2/commit') {
       const { ops } = JSON.parse(String(init?.body)) as {
-        ops: Array<{ path: string; sha?: string; size?: number; mtime?: number }>
+        ops: Array<{
+          path?: string
+          to_path?: string
+          file_id?: string
+          sha?: string
+          size?: number
+          mtime?: number
+        }>
       }
       cursor++
       return Response.json({
         cursor,
         results: ops.map((op) => ({
           status: 'applied',
-          file_id: crypto.randomUUID(),
+          file_id: op.file_id ?? crypto.randomUUID(),
           version_id: crypto.randomUUID(),
           seq: cursor,
-          path: op.path,
+          path: op.path ?? op.to_path ?? scope.path,
           sha: op.sha ?? null,
           size: op.size ?? 0,
           mtime: op.mtime ?? 0,
@@ -310,8 +345,530 @@ function inspectionFixture(
     key: 'a'.repeat(43),
     scope,
   })
-  return { app, registry, ui, host, transport, probe, release, encoded, factory, scope, makeHost }
+  return {
+    app,
+    registry,
+    ui,
+    host,
+    transport,
+    probe,
+    release,
+    encoded,
+    factory,
+    scope,
+    makeHost,
+    secrets,
+  }
 }
+
+it('stops a locally renamed folder connection before any further exchange', async () => {
+  const { app, registry, ui, host, transport, release, encoded, factory } = inspectionFixture(
+    false,
+    'Notes'
+  )
+  try {
+    release()
+    await ui.connect(encoded)
+    const id = registry.records()[0].id
+    await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
+    await ui.sync(id)
+    transport.mockClear()
+    await app.vault.rename(app.vault.getAbstractFileByPath('Notes')!, 'Moved')
+    expect(registry.records()[0]).toMatchObject({
+      status: 'scope_unavailable',
+      rootIssue: { kind: 'moved', path: 'Moved' },
+    })
+    await expect(ui.sync(id)).rejects.toMatchObject({ code: 'scope_unavailable' })
+    expect(transport).not.toHaveBeenCalled()
+    await ui.runtimes.get(id)!.followRoot!()
+    await ui.sync(id)
+    expect(registry.records()[0]).toMatchObject({ localRoot: 'Moved', scope: { path: 'Notes' } })
+    expect(registry.records()[0].rootIssue).toBeUndefined()
+    transport.mockClear()
+    await app.vault.adapter.write('Moved/added.md', 'placed locally')
+    // The vault watcher batches create events before invalidating the scan cache.
+    let ops: { path?: string; to_path?: string }[] = []
+    await vi.waitFor(async () => {
+      await ui.sync(id)
+      ops = transport.mock.calls
+        .filter(([input]) => new URL(String(input)).pathname === '/v2/commit')
+        .flatMap(([, init]) => JSON.parse(String(init?.body)).ops)
+      expect(ops).toEqual(
+        expect.arrayContaining([expect.objectContaining({ path: 'Notes/added.md' })])
+      )
+    })
+    expect(
+      ops.some(
+        (op: { path?: string; to_path?: string }) =>
+          op.path?.startsWith('Moved/') || op.to_path?.startsWith('Moved/')
+      )
+    ).toBe(false)
+    await host.close()
+    const reopened = new TokenEngines(app as unknown as App, ui, () => 'a'.repeat(43), {
+      fetch: transport,
+      indexedDB: factory,
+    })
+    try {
+      reopened.start()
+      await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
+      await ui.sync(id)
+      expect(registry.records()[0]).toMatchObject({ localRoot: 'Moved', scope: { path: 'Notes' } })
+      // The fake adapter retains old empty directory entries after a vault rename.
+      expect(app.vault.getFiles().some((file) => file.path.startsWith('Notes/'))).toBe(false)
+      expect(await app.vault.adapter.read('Moved/added.md')).toBe('placed locally')
+    } finally {
+      await reopened.close()
+    }
+  } finally {
+    release()
+    await host.close()
+  }
+})
+
+it('follows a moved folder after native pulls preserve local edit sources', async () => {
+  const { app, registry, ui, host, transport, release, encoded, factory } = inspectionFixture(
+    false,
+    'Fixtures/Shared',
+    [
+      { path: 'Fixtures/Shared/nested/second.md', content: 'nested sample' },
+      { path: 'Fixtures/Shared/slow.txt', content: 'ordinary note' },
+    ]
+  )
+  const root = await nativeFs.mkdtemp(join(tmpdir(), 'sample-follow-'))
+  try {
+    await nativeFs.mkdir(join(root, 'Fixtures/Shared'), { recursive: true })
+    await nativeFs.mkdir(join(root, 'Fixtures/Shared/nested'))
+    await nativeFs.writeFile(join(root, 'Fixtures/Shared/nested/second.md'), 'nested sample')
+    await nativeFs.writeFile(join(root, 'Fixtures/Shared/slow.txt'), 'ordinary note')
+    Object.assign(app.vault.adapter, {
+      getFullPath: (path: string) => join(root, path),
+      fsPromises: nativeFs,
+    })
+    desktopFsPort(nativeFs)
+    const original = transport.getMockImplementation()!
+    const items = await Promise.all(
+      [
+        ['Fixtures/Shared/slow.txt', 'ordinary note'],
+        ['Fixtures/Shared/nested/second.md', 'nested sample'],
+      ].map(async ([path, text], n) => ({
+        file_id: 'file-' + n,
+        version_id: 'version-' + n,
+        path,
+        sha: await sha256(new TextEncoder().encode(text)),
+        size: text.length,
+        mtime: 1000,
+        kind: 'note',
+      }))
+    )
+    transport.mockImplementation(async (input, init) => {
+      const path = new URL(String(input)).pathname
+      let response: Response
+      if (path === '/v2/manifest')
+        response = Response.json({
+          items: [
+            {
+              file_id: 'root',
+              version_id: 'root-version',
+              path: 'Fixtures/Shared',
+              kind: 'directory',
+              mtime: 1000,
+            },
+            {
+              file_id: 'nested',
+              version_id: 'nested-version',
+              path: 'Fixtures/Shared/nested',
+              kind: 'directory',
+              mtime: 1000,
+            },
+            ...items,
+          ],
+          cursor: 1,
+          next: null,
+        })
+      else if (path.includes('/content')) {
+        const text = path.includes('file-0') ? 'ordinary note' : 'nested sample'
+        response = new Response(text, {
+          status: 206,
+          headers: {
+            'content-range': `bytes 0-${text.length - 1}/${text.length}`,
+            'content-length': String(text.length),
+          },
+        })
+      } else response = await original(input, init)
+      response.headers.set('abele-restore-generation', 'sample-generation')
+      return response
+    })
+    release()
+    await ui.connect(encoded)
+    const id = registry.records()[0].id
+    await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
+    await ui.sync(id)
+    const retained = app.loadLocalStorage(JOURNAL_KEY) as Array<{ target: string; temp: string }>
+    expect(retained).toHaveLength(2)
+    expect(
+      retained.every((entry) =>
+        entry.target.startsWith(connectionPrivateRoot(id) + '/placement-outbox/')
+      )
+    ).toBe(true)
+    const kept = await Promise.all(
+      retained.map((entry) => nativeFs.readFile(join(root, entry.temp), 'utf8'))
+    )
+    transport.mockClear()
+    await app.vault.rename(app.vault.getAbstractFileByPath('Fixtures/Shared')!, 'Fixtures/Moved')
+    await nativeFs.rename(join(root, 'Fixtures/Shared'), join(root, 'Fixtures/Moved'))
+    expect(registry.records()[0]).toMatchObject({
+      status: 'scope_unavailable',
+      rootIssue: { kind: 'moved', path: 'Fixtures/Moved' },
+    })
+    await expect(ui.sync(id)).rejects.toMatchObject({ code: 'scope_unavailable' })
+    expect(transport).not.toHaveBeenCalled()
+    await ui.runtimes.get(id)!.followRoot!()
+    await ui.sync(id)
+    expect(registry.records()[0]).toMatchObject({
+      localRoot: 'Fixtures/Moved',
+      scope: { path: 'Fixtures/Shared' },
+    })
+    expect(registry.records()[0].rootIssue).toBeUndefined()
+    expect(registry.records()[0].status).toBe('idle')
+    expect(
+      await Promise.all(retained.map((entry) => nativeFs.readFile(join(root, entry.temp), 'utf8')))
+    ).toEqual(kept)
+    transport.mockClear()
+    await app.vault.adapter.write('Fixtures/Moved/added.md', 'placed locally')
+    await nativeFs.writeFile(join(root, 'Fixtures/Moved/added.md'), 'placed locally')
+    // The vault watcher batches create events before invalidating the scan cache.
+    let ops: { op: string; path?: string; to_path?: string }[] = []
+    await vi.waitFor(async () => {
+      await ui.sync(id)
+      ops = transport.mock.calls
+        .filter(([input]) => new URL(String(input)).pathname === '/v2/commit')
+        .flatMap(([, init]) => JSON.parse(String(init?.body)).ops)
+      expect(ops).toEqual(
+        expect.arrayContaining([expect.objectContaining({ path: 'Fixtures/Shared/added.md' })])
+      )
+    })
+    expect(
+      ops.some(
+        (op: { path?: string; to_path?: string }) =>
+          op.path?.startsWith('Fixtures/Moved/') || op.to_path?.startsWith('Fixtures/Moved/')
+      )
+    ).toBe(false)
+    expect(ops.some((op) => op.op === 'delete' || op.op === 'delete_directory')).toBe(false)
+    await host.close()
+    const reopened = new TokenEngines(app as unknown as App, ui, () => 'a'.repeat(43), {
+      fetch: transport,
+      indexedDB: factory,
+    })
+    try {
+      reopened.start()
+      await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
+      await ui.sync(id)
+      expect(registry.records()[0]).toMatchObject({
+        localRoot: 'Fixtures/Moved',
+        scope: { path: 'Fixtures/Shared' },
+      })
+      // The fake adapter retains old empty directory entries after a vault rename.
+      expect(app.vault.getFiles().some((file) => file.path.startsWith('Fixtures/Shared/'))).toBe(
+        false
+      )
+      expect(await app.vault.adapter.read('Fixtures/Moved/added.md')).toBe('placed locally')
+    } finally {
+      await reopened.close()
+    }
+  } finally {
+    release()
+    await host.close()
+    await nativeFs.rm(root, { recursive: true, force: true })
+  }
+})
+
+it.each(['later-move', 'replaced-file', 'edited-file'])(
+  'verifies the stopped root after %s before following',
+  async (kind) => {
+    const { app, registry, ui, host, transport, release, encoded } = inspectionFixture(
+      false,
+      'Notes'
+    )
+    try {
+      release()
+      await ui.connect(encoded)
+      const id = registry.records()[0].id
+      await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
+      await ui.sync(id)
+      await app.vault.rename(app.vault.getAbstractFileByPath('Notes')!, 'Moved')
+      if (kind === 'later-move') {
+        await app.vault.rename(app.vault.getAbstractFileByPath('Moved')!, 'Final')
+        await app.vault.createFolder('Moved')
+        await app.vault.adapter.write('Moved/private.md', 'private')
+        expect(registry.records()[0].rootIssue).toEqual({ kind: 'moved', path: 'Final' })
+        transport.mockClear()
+        await ui.runtimes.get(id)!.followRoot!()
+        expect(registry.records()[0].localRoot).toBe('Final')
+        await ui.sync(id)
+        const bodies = transport.mock.calls
+          .filter(([url]) => new URL(String(url)).pathname === '/v2/commit')
+          .map(([, init]) => String(init?.body))
+          .join('')
+        expect(bodies).not.toContain('private.md')
+      } else if (kind === 'edited-file') {
+        const file = app.vault.getFileByPath('Moved/slow.txt')!
+        await app.vault.modify(file, 'edited before follow')
+        await ui.runtimes.get(id)!.followRoot!()
+        expect(registry.records()[0].localRoot).toBe('Moved')
+        expect(await app.vault.adapter.read('Moved/slow.txt')).toBe('edited before follow')
+      } else {
+        await app.vault.delete(app.vault.getFileByPath('Moved/slow.txt')!)
+        await app.vault.adapter.write('Moved/slow.txt', 'ordinary note')
+        transport.mockClear()
+        // The exact-set rule permits edits and replacement at an already known path.
+        await ui.runtimes.get(id)!.followRoot!()
+        expect(registry.records()[0].rootIssue).toBeUndefined()
+        expect(registry.records()[0].localRoot).toBe('Moved')
+      }
+    } finally {
+      release()
+      await host.close()
+    }
+  }
+)
+
+it('pins local discovery independently of an authoritative scope rename', async () => {
+  const { app, registry, ui, host, transport, probe, release, encoded, scope } = inspectionFixture(
+    false,
+    'Notes'
+  )
+  const list = vi.spyOn(app.vault.adapter, 'list')
+  try {
+    release()
+    await ui.connect(encoded)
+    const id = registry.records()[0].id
+    await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
+    await ui.sync(id)
+    scope.path = 'Renamed'
+    await app.vault.create('Renamed/private.md', 'unrelated private bytes')
+    await app.vault.adapter.write('Notes/slow.txt', 'changed after scope rename')
+    list.mockClear()
+    probe.mockClear()
+    transport.mockClear()
+    await expect(ui.sync(id)).rejects.toThrow(/renamed on the server: Notes.*Renamed/)
+    expect(registry.records()[0].localRoot).toBe('Notes')
+    expect(
+      list.mock.calls.some(
+        ([path]) => path === '' || path === 'Renamed' || path.startsWith('Renamed/')
+      )
+    ).toBe(false)
+    expect(probe.mock.calls.some(([path]) => path.startsWith('Renamed/'))).toBe(false)
+    const ops = transport.mock.calls
+      .filter(([input]) => new URL(String(input)).pathname === '/v2/commit')
+      .flatMap(([, init]) => JSON.parse(String(init?.body)).ops)
+    expect(ops).toEqual([])
+    expect(await app.vault.adapter.read('Renamed/private.md')).toBe('unrelated private bytes')
+    expect(await app.vault.adapter.read('Notes/slow.txt')).toBe('changed after scope rename')
+  } finally {
+    release()
+    list.mockRestore()
+    probe.mockRestore()
+    await host.close()
+  }
+})
+
+it.each(['root', 'member'] as const)(
+  'keeps a locally renamed group %s visible for core move matching',
+  async (identity) => {
+    const { app, registry, ui, host, transport, probe, release, encoded } = inspectionFixture(
+      false,
+      'Notes/group.md',
+      'group'
+    )
+    const original = transport.getMockImplementation()!
+    const bytes = new TextEncoder().encode('ordinary note')
+    const sha = await sha256(bytes)
+    const member = new TextEncoder().encode('---\ngroups:\n  - "[[Notes/group]]"\n---\nmember')
+    await app.vault.adapter.mkdir('Private')
+    await app.vault.adapter.write('Private/source.md', 'unrelated')
+    const records = [
+      {
+        file_id: 'root',
+        version_id: 'root-version',
+        path: 'Notes/group.md',
+        sha,
+        size: bytes.length,
+        mtime: 1000,
+        kind: 'note',
+      },
+      {
+        file_id: 'member',
+        version_id: 'member-version',
+        path: 'Notes/member.md',
+        sha: await sha256(member),
+        size: member.length,
+        mtime: 1000,
+        kind: 'note',
+      },
+    ]
+    transport.mockImplementation(async (input, init) => {
+      const route = new URL(String(input)).pathname
+      if (route === '/v2/manifest') return Response.json({ items: records, cursor: 1, next: null })
+      if (route.includes('/content')) {
+        const content = route.includes('/member/') ? member : bytes
+        const range = new Headers(init?.headers).get('range')?.match(/^bytes=(\d+)-(\d+)$/)
+        if (!range) return new Response(content)
+        const start = Number(range[1]),
+          end = Number(range[2])
+        return new Response(content.slice(start, end + 1), {
+          status: 206,
+          headers: {
+            'content-range': `bytes ${start}-${end}/${content.length}`,
+            'content-length': String(end - start + 1),
+          },
+        })
+      }
+      if (route === '/v2/commit') {
+        const response = await original(input, init)
+        const body = await response.json()
+        for (const result of body.results) {
+          const record = records.find((record) => record.file_id === result.file_id)
+          if (!record) continue
+          result.sha = record.sha
+          result.size = record.size
+          result.mtime = 1000
+        }
+        return Response.json(body)
+      }
+      return original(input, init)
+    })
+    try {
+      release()
+      await ui.connect(encoded)
+      const id = registry.records()[0].id
+      await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
+      await ui.sync(id)
+      transport.mockClear()
+      probe.mockClear()
+      await app.vault.adapter.rename('Private/source.md', 'Private/renamed.md')
+      app.emit(
+        'vault',
+        'rename',
+        app.vault.getFileByPath('Private/renamed.md')!,
+        'Private/source.md'
+      )
+      const from = identity === 'root' ? 'Notes/group.md' : 'Notes/member.md'
+      await app.vault.adapter.rename(from, 'Notes/renamed.md')
+      app.emit('vault', 'rename', app.vault.getFileByPath('Notes/renamed.md')!, from)
+      await ui.sync(id)
+      const ops = transport.mock.calls
+        .filter(([input]) => new URL(String(input)).pathname === '/v2/commit')
+        .flatMap(([, init]) => JSON.parse(String(init?.body)).ops)
+      expect(ops).toContainEqual(
+        expect.objectContaining({ op: 'move', file_id: identity, to_path: 'Notes/renamed.md' })
+      )
+      expect(ops).not.toContainEqual(expect.objectContaining({ op: 'delete', file_id: identity }))
+      expect(probe.mock.calls.some(([path]) => path.startsWith('Private/'))).toBe(false)
+    } finally {
+      release()
+      probe.mockRestore()
+      await host.close()
+    }
+  }
+)
+
+async function checkFolderInspection(allStartup: boolean) {
+  const fixture = inspectionFixture(false, 'Notes')
+  const { app, ui, host, registry, probe, release, encoded } = fixture
+  for (let i = 0; i < 200; i++) await app.vault.create(`Private/item-${i}.txt`, 'private')
+  const list = vi.spyOn(app.vault.adapter, 'list')
+  let inspectionLists: string[] = []
+  const recover = safety.recoverExternalState
+  const recovery = vi.spyOn(safety, 'recoverExternalState').mockImplementation(async (...args) => {
+    const start = list.mock.calls.length
+    await recover(...args)
+    inspectionLists = list.mock.calls.slice(start).map(([path]) => path)
+  })
+  try {
+    release()
+    await ui.connect(encoded)
+    const id = registry.records()[0].id
+    await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
+    const directories = allStartup ? list.mock.calls.map(([path]) => path) : inspectionLists
+    expect(directories.some((path) => path === '' || path.startsWith('Private'))).toBe(false)
+    expect(probe.mock.calls.some(([path]) => path.startsWith('Private/'))).toBe(false)
+    expect(probe.mock.calls.some(([path]) => path === 'Notes/slow.txt')).toBe(true)
+  } finally {
+    release()
+    probe.mockRestore()
+    list.mockRestore()
+    recovery.mockRestore()
+    await host.close()
+  }
+}
+
+it('keeps folder recovery inspection away from unrelated vault files', () =>
+  checkFolderInspection(false))
+it('ordinary folder runtime directory discovery stays inside the selected folder', () =>
+  checkFolderInspection(true))
+
+it.each(['folder', 'group'] as const)(
+  'performs no unrelated adapter listing, stat or content read at startup or a normal %s cycle',
+  async (kind) => {
+    const { app, ui, host, registry, probe, release, encoded, transport } = inspectionFixture(
+      false,
+      kind === 'folder' ? 'Notes' : 'Notes/group.md',
+      kind
+    )
+    for (let i = 0; i < 100; i++) await app.vault.create(`Private-${i}/note.md`, 'private')
+    await app.vault.create('Notes/ignored.md', 'must stay local')
+    await app.vault.adapter.mkdir('.obsidian')
+    await app.vault.adapter.write('.obsidian/app.json', '{}')
+    await app.vault.adapter.write('.abele-sync-ignore', 'Private-*/\nNotes/ignored.md')
+    const list = vi.spyOn(app.vault.adapter, 'list')
+    const stat = vi.spyOn(app.vault.adapter, 'stat')
+    const write = vi.spyOn(app.vault.adapter, 'writeBinary')
+    try {
+      release()
+      await ui.connect(encoded)
+      const id = registry.records()[0].id
+      await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
+      await ui.sync(id)
+      await ui.sync(id)
+      // Private staging is required for this connection's publication. Permit only
+      // exact paths created by this runtime, never unrelated staged recovery files.
+      const ownedStages = new Set(
+        write.mock.calls
+          .map(([path]) => path)
+          .filter((path) => path.startsWith('.obsidian/plugins/abele/sync-staging/'))
+      )
+      for (const calls of [list.mock.calls, stat.mock.calls, probe.mock.calls]) {
+        expect(
+          calls.filter(
+            ([path]) =>
+              !(kind === 'folder'
+                ? path === 'Notes' || path.startsWith('Notes/')
+                : path === 'Notes/group.md') &&
+              !ownedStages.has(path) &&
+              path !== '.abele-sync-ignore'
+          )
+        ).toEqual([])
+      }
+      if (kind === 'folder') expect(list).toHaveBeenCalled()
+      else expect(list).not.toHaveBeenCalled()
+      expect(probe).toHaveBeenCalled()
+      for (const [input, init] of transport.mock.calls)
+        if (new URL(String(input)).pathname === '/v2/commit')
+          expect(
+            JSON.parse(String(init?.body)).ops.some(
+              (op: { path?: string }) => op.path === 'Notes/ignored.md'
+            )
+          ).toBe(false)
+    } finally {
+      release()
+      probe.mockRestore()
+      list.mockRestore()
+      stat.mockRestore()
+      write.mockRestore()
+      await host.close()
+    }
+  }
+)
 
 for (const action of ['pass', 'refuse', 'disconnect', 'unload']) {
   it(`keeps a slow full inspection outside Connect and handles ${action} safely`, async () => {
@@ -1069,6 +1626,240 @@ it.each(['before-create', 'after-remove', 'other-connection'])(
       await restarted?.close()
       await host.close()
       probe.mockRestore()
+    }
+  }
+)
+it('starts an unchanged legacy folder connection with saved state and pins its current local root', async () => {
+  const f = inspectionFixture(false, 'Notes')
+  let restarted: TokenEngines | undefined
+  try {
+    f.release()
+    await f.ui.connect(f.encoded)
+    const id = f.registry.records()[0].id
+    await vi.waitFor(() => expect(f.ui.runtimes.has(id)).toBe(true))
+    await f.ui.sync(id)
+    const before = f.registry.records()[0]
+    await f.host.close()
+    const doc = f.app.loadLocalStorage(TOKEN_REGISTRY_KEY) as { records: { localRoot?: string }[] }
+    delete doc.records[0].localRoot
+    f.app.saveLocalStorage(TOKEN_REGISTRY_KEY, doc)
+    const registry = TokenConnectionRegistry.open(f.app),
+      ui = new TokenUi(registry, f.secrets, f.transport, f.ui.reviews)
+    restarted = new TokenEngines(f.app as unknown as App, ui, f.secrets.get, {
+      fetch: f.transport,
+      indexedDB: f.factory,
+      WebSocket: class {
+        constructor() {
+          throw new Error('No test socket')
+        }
+      } as unknown as typeof WebSocket,
+    })
+    restarted.start()
+    await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
+    await ui.sync(id)
+    expect(registry.records()[0]).toMatchObject({
+      localRoot: 'Notes',
+      ledgerId: before.ledgerId,
+      scope: before.scope,
+    })
+    expect(registry.records()[0].rootIssue).toBeUndefined()
+    expect(await f.app.vault.adapter.read('Notes/slow.txt')).toBe('ordinary note')
+    f.transport.mockClear()
+    await f.app.vault.adapter.write('Notes/slow.txt', 'edited after upgrade')
+    await ui.sync(id)
+    const ops = f.transport.mock.calls
+      .filter(([url]) => new URL(String(url)).pathname === '/v2/commit')
+      .flatMap(([, init]) => JSON.parse(String(init?.body)).ops)
+    expect(ops).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ op: 'modify', file_id: expect.any(String) }),
+      ])
+    )
+    expect(ops.some((op) => op.op === 'delete' || op.op === 'delete_directory')).toBe(false)
+  } finally {
+    f.release()
+    await restarted?.close()
+    await f.host.close()
+    f.probe.mockRestore()
+  }
+})
+
+it.each([false, true])(
+  'explicitly follows a moved root with preserved copies without granting the old root access (native archive=%s)',
+  async (nativeArchive) => {
+    const { app, registry, ui, host, transport, release, encoded, makeHost } = inspectionFixture(
+      false,
+      'Notes'
+    )
+    try {
+      release()
+      await ui.connect(encoded)
+      const id = registry.records()[0].id
+      await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
+      await ui.sync(id)
+      const localBackup = connectionPrivateRoot(id) + '/recovery/sample.old'
+      const backup = nativeArchive ? '/sample-vault/' + localBackup : localBackup
+      if (nativeArchive)
+        Object.assign(app.vault.adapter, { getFullPath: (path: string) => '/sample-vault/' + path })
+      await app.vault.adapter.mkdir(connectionPrivateRoot(id) + '/recovery')
+      await app.vault.adapter.write(localBackup, 'preserved sample')
+      const foreign = {
+        owner: 'other-connection',
+        target: 'Private/other.md',
+        backup: 'Private/other.old',
+      }
+      app.saveLocalStorage(RECOVERED_WRITES_KEY, [
+        foreign,
+        { owner: id, target: 'Notes/slow.txt', backup },
+      ])
+      await app.vault.rename(app.vault.getAbstractFileByPath('Notes')!, 'Moved')
+      transport.mockClear()
+      await expect(ui.sync(id)).rejects.toMatchObject({ code: 'scope_unavailable' })
+      expect(transport).not.toHaveBeenCalled()
+      await ui.runtimes.get(id)!.followRoot!()
+      await ui.sync(id)
+      expect(registry.records()[0].status).toBe('idle')
+      expect(registry.records()[0].rootIssue).toBeUndefined()
+      expect(await app.vault.adapter.read(localBackup)).toBe('preserved sample')
+      expect(app.loadLocalStorage(RECOVERED_WRITES_KEY)).toContainEqual(foreign)
+      expect(await app.vault.adapter.read('Moved/slow.txt')).toBe('ordinary note')
+      expect(app.loadLocalStorage(RECOVERED_WRITES_KEY)).toContainEqual({
+        owner: id,
+        target: 'Moved/slow.txt',
+        backup,
+      })
+      await host.close()
+      const reopened = makeHost()
+      try {
+        reopened.start()
+        // Enrollment intentionally remains blocked while retained recovery is unresolved.
+        await vi.waitFor(() => expect(registry.records()[0].status).toBe('error'))
+        expect(ui.runtimes.has(id)).toBe(false)
+        expect(ui.activity.value[id].error).toContain('retained-byte recovery')
+        expect(app.loadLocalStorage(RECOVERED_WRITES_KEY)).toContainEqual({
+          owner: id,
+          target: 'Moved/slow.txt',
+          backup,
+        })
+        expect(await app.vault.adapter.read(localBackup)).toBe('preserved sample')
+      } finally {
+        await reopened.close()
+      }
+    } finally {
+      release()
+      await host.close()
+    }
+  }
+)
+
+it.each(['unfinished', 'foreign-backup'])(
+  'keeps Follow stopped with %s recovery evidence',
+  async (kind) => {
+    const { app, registry, ui, host, transport, release, encoded } = inspectionFixture(
+      false,
+      'Notes'
+    )
+    try {
+      release()
+      await ui.connect(encoded)
+      const id = registry.records()[0].id
+      await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
+      await ui.sync(id)
+      const key = kind === 'unfinished' ? JOURNAL_KEY : RECOVERED_WRITES_KEY
+      const evidence = [
+        {
+          owner: id,
+          target: 'Notes/slow.txt',
+          backup:
+            kind === 'unfinished'
+              ? connectionPrivateRoot(id) + '/recovery/sample.old'
+              : 'Private/sample.old',
+        },
+      ]
+      app.saveLocalStorage(key, evidence)
+      await app.vault.rename(app.vault.getAbstractFileByPath('Notes')!, 'Moved')
+      transport.mockClear()
+      await expect(ui.runtimes.get(id)!.followRoot!()).rejects.toThrow(/recovery/)
+      expect(registry.records()[0].rootIssue).toEqual({ kind: 'moved', path: 'Moved' })
+      expect(registry.records()[0].localRoot).toBe('Notes')
+      expect(app.loadLocalStorage(key)).toEqual(evidence)
+      expect(transport).not.toHaveBeenCalled()
+      expect(await app.vault.adapter.read('Moved/slow.txt')).toBe('ordinary note')
+    } finally {
+      release()
+      await host.close()
+    }
+  }
+)
+
+it('explicitly follows a server rename with preserved copies while keeping local placement', async () => {
+  const { app, registry, ui, host, release, encoded, scope } = inspectionFixture(false, 'Notes')
+  try {
+    release()
+    await ui.connect(encoded)
+    const id = registry.records()[0].id
+    await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
+    await ui.sync(id)
+    const backup = connectionPrivateRoot(id) + '/recovery/sample.old'
+    await app.vault.adapter.mkdir(connectionPrivateRoot(id) + '/recovery')
+    await app.vault.adapter.write(backup, 'preserved sample')
+    const evidence = [{ owner: id, target: 'Notes/slow.txt', backup }]
+    app.saveLocalStorage(RECOVERED_WRITES_KEY, evidence)
+    scope.path = 'Renamed'
+    await expect(ui.sync(id)).rejects.toThrow(/renamed on the server/)
+    expect(registry.records()[0].rootIssue?.kind).toBe('server-renamed')
+    await ui.runtimes.get(id)!.followServerRoot!()
+    await ui.sync(id)
+    expect(registry.records()[0]).toMatchObject({
+      status: 'idle',
+      localRoot: 'Notes',
+      serverRoot: 'Renamed',
+    })
+    expect(registry.records()[0].rootIssue).toBeUndefined()
+    expect(app.loadLocalStorage(RECOVERED_WRITES_KEY)).toEqual(evidence)
+    expect(await app.vault.adapter.read('Notes/slow.txt')).toBe('ordinary note')
+    expect(await app.vault.adapter.read(backup)).toBe('preserved sample')
+    expect(await app.vault.adapter.exists('Renamed')).toBe(false)
+  } finally {
+    release()
+    await host.close()
+  }
+})
+
+it.each(['foreign-owner', 'prefix-sibling', 'traversal'])(
+  'keeps local Follow stopped for an unproven native archive: %s',
+  async (kind) => {
+    const { app, registry, ui, host, transport, release, encoded } = inspectionFixture(
+      false,
+      'Notes'
+    )
+    try {
+      release()
+      await ui.connect(encoded)
+      const id = registry.records()[0].id
+      await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
+      await ui.sync(id)
+      Object.assign(app.vault.adapter, { getFullPath: (path: string) => '/sample-vault/' + path })
+      const archive = '/sample-vault/' + connectionPrivateRoot(id) + '/recovery'
+      const backup =
+        kind === 'foreign-owner'
+          ? '/sample-vault/' + connectionPrivateRoot('other') + '/recovery/sample.old'
+          : kind === 'prefix-sibling'
+            ? archive + '-other/sample.old'
+            : archive + '/../../Private/sample.old'
+      const evidence = [{ owner: id, target: 'Notes/slow.txt', backup }]
+      app.saveLocalStorage(RECOVERED_WRITES_KEY, evidence)
+      await app.vault.rename(app.vault.getAbstractFileByPath('Notes')!, 'Moved')
+      transport.mockClear()
+      await expect(ui.runtimes.get(id)!.followRoot!()).rejects.toThrow()
+      expect(registry.records()[0].rootIssue).toEqual({ kind: 'moved', path: 'Moved' })
+      expect(registry.records()[0].localRoot).toBe('Notes')
+      expect(app.loadLocalStorage(RECOVERED_WRITES_KEY)).toEqual(evidence)
+      expect(transport).not.toHaveBeenCalled()
+      expect(await app.vault.adapter.read('Moved/slow.txt')).toBe('ordinary note')
+    } finally {
+      release()
+      await host.close()
     }
   }
 )

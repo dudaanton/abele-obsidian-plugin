@@ -108,3 +108,58 @@ it('reuses inspection inventory for the first and fallback local listings', asyn
   expect(list).not.toHaveBeenCalled()
   expect(stat).not.toHaveBeenCalled()
 })
+
+it.each([undefined, ['Alias/Shared'], ['Moved/Shared']])(
+  'refuses linked ancestors before startup inspection (roots=%s)',
+  async (roots) => {
+    const root = roots?.[0] ?? 'Alias/Shared'
+    const app = buildFakeVault([{ path: root + '/sample.md', content: 'external' }])
+    const linked = root.split('/')[0]
+    Object.assign(app.vault.adapter, {
+      getFullPath: (p: string) => p,
+      fsPromises: { lstat: async (p: string) => ({ isSymbolicLink: () => p === linked }) },
+    })
+    const read = vi.spyOn(app.vault.adapter, 'readBinary')
+    const list = vi.spyOn(app.vault.adapter, 'list')
+    await expect(
+      projectionEvidence(app as never, () => {}, true, new Set(), { roots })
+    ).rejects.toThrow(/symbolic link/i)
+    expect(read).not.toHaveBeenCalled()
+    expect(list.mock.calls.some(([p]) => p === root)).toBe(false)
+  }
+)
+
+it('validates a cached explicit candidate before trusting indexed metadata', async () => {
+  const app = buildFakeVault([{ path: 'Alias/Shared/sample.md', content: 'external' }])
+  const file = app.vault.getFiles()[0]
+  app.saveLocalStorage(EXTERNAL_INSPECTION_KEY, {
+    schema: 1,
+    entries: [{ path: file.path, size: file.stat.size, mtime: file.stat.mtime, marker: false }],
+  })
+  Object.assign(app.vault.adapter, {
+    getFullPath: (p: string) => p,
+    fsPromises: { lstat: async (p: string) => ({ isSymbolicLink: () => p === 'Alias' }) },
+  })
+  await expect(
+    projectionEvidence(app as never, () => {}, true, new Set(), { roots: [], paths: [file.path] })
+  ).rejects.toThrow(/symbolic link/i)
+})
+
+it('refuses linked staging before orphan recovery inventories private work', async () => {
+  const { recoverOrphanPrivateArtifacts } = await import('@/sync/external/pluginSafety')
+  const { stagingDirectory } = await import('@/sync/stagingDirectory')
+  const { IDBFactory } = await import('fake-indexeddb')
+  const app = buildFakeVault([
+    { path: '.obsidian/plugins/abele/sync-staging/sample.tmp', content: 'external' },
+  ])
+  const root = stagingDirectory(app.vault.configDir)
+  Object.assign(app.vault.adapter, {
+    getFullPath: (p: string) => p,
+    fsPromises: { lstat: async (p: string) => ({ isSymbolicLink: () => p === root }) },
+  })
+  const list = vi.spyOn(app.vault.adapter, 'list')
+  await expect(recoverOrphanPrivateArtifacts(app as never, new IDBFactory())).rejects.toThrow(
+    /symbolic link/i
+  )
+  expect(list.mock.calls.some(([p]) => p === root)).toBe(false)
+})

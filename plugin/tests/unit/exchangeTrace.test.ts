@@ -188,6 +188,26 @@ it('retains bounded local-stage timing events alongside requests', () => {
   expect(requests.at(-1)!.durationMs).toBeGreaterThanOrEqual(10)
 })
 
+it('retains a bounded last nonempty pull summary across idle cycles without file contents', () => {
+  const trace = new ExchangeTrace()
+  trace.beginPull()
+  for (let i = 0; i < 100; i++) trace.written(`Notes/note-${i}.md`)
+  trace.finishPull(true)
+  expect(trace.snapshot().lastPull).toMatchObject({ writes: 100, complete: true })
+  expect(trace.snapshot().lastPull!.paths).toHaveLength(16)
+  trace.beginPull()
+  trace.finishPull(true)
+  expect(trace.snapshot().lastPull!.writes).toBe(100)
+  trace.beginPull()
+  trace.written('Notes/partial.md')
+  trace.finishPull(false)
+  expect(trace.snapshot().lastPull).toEqual({
+    paths: ['Notes/partial.md'],
+    writes: 1,
+    complete: false,
+  })
+})
+
 it('names a stalled operation synchronously and removes it after success or failure', async () => {
   const trace = new ExchangeTrace()
   let release!: () => void

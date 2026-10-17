@@ -1,3 +1,5 @@
+import { nativeChunkPort } from '../vaultPathLinks'
+import { vaultDisk } from '../vaultPathLinks'
 import type { App } from 'obsidian'
 import type { FileSystem, StateStore } from '@abele/sync-core'
 import { ExternalState } from './state'
@@ -7,6 +9,8 @@ import { ExternalRecoveryRequired, type RuntimeFence } from './recovery'
 import type { ConnectionBinding } from './records'
 import { IndexedDbStateStore } from '../IndexedDbStateStore'
 import { EXTERNAL_INSPECTION_KEY, inspectionSchema, retiredArtifactPaths } from './pluginSafety'
+import type { LocalFolderPlacement } from '../localFolderPlacement'
+import { placedExternalHost } from '../placedExternalHost'
 
 /** Called only after the startup fence/journal inspection, before engine activation.
  * During receive/recovery this callback runs inside the owning sync job; it does not enqueue
@@ -20,6 +24,7 @@ export async function pluginRepresentation(options: {
   binding: ConnectionBinding
   fence: RuntimeFence
   fs: FileSystem
+  placement?: LocalFolderPlacement
   verify: RepresentationOptions['verify']
   scriptsFolder(): string
   excluded?: RepresentationOptions['excluded']
@@ -59,16 +64,16 @@ export async function pluginRepresentation(options: {
         throw new ExternalRecoveryRequired('projection installation intent missing')
       // Retire/replace neither changed nor unchanged sidecars without a safe cleanup port.
       // A moved job also keeps its old sidecar, source reference and original bytes intact.
-      if (await app.vault.adapter.exists(path)) return 'cleanup-pending'
-      const host = new ExternalFileHost(app, {
-        platform:
-          typeof (app.vault.adapter as unknown as { fsPromises?: unknown }).fsPromises === 'object'
-            ? 'desktop'
-            : 'mobile',
-        assertOwned: () => fence.assertOwned(),
-        effect: (work) => fence.effect(work),
-        reconciled: options.reconciled,
-      })
+      if (await options.fs.stat(path)) return 'cleanup-pending'
+      const host = placedExternalHost(
+        new ExternalFileHost(app, {
+          platform: nativeChunkPort(vaultDisk(app.vault)).available ? 'desktop' : 'mobile',
+          assertOwned: () => fence.assertOwned(),
+          effect: (work) => fence.effect(work),
+          reconciled: (path) => options.reconciled?.(path),
+        }),
+        options.placement
+      )
       try {
         return await host.run(
           { run: (work) => work() },
@@ -97,7 +102,7 @@ export async function pluginRepresentation(options: {
           async (effects) => {
             // An existing incoming artifact may follow a lost acknowledgement. Matching bytes
             // alone never authorize another installation: retain it and hold the recorded job.
-            if (await app.vault.adapter.exists(artifact.path)) return 'cleanup-pending'
+            if (await host.exists(artifact.path)) return 'cleanup-pending'
             const staged = await effects.stage(artifact, bytes)
             if (staged.status !== 'staged')
               throw new ExternalRecoveryRequired('projection staging outcome unknown')

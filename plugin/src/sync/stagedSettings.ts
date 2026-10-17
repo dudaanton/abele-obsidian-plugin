@@ -1,3 +1,4 @@
+import { vaultDisk } from './vaultPathLinks'
 import { ref, type Ref } from 'vue'
 import type { App } from 'obsidian'
 import {
@@ -356,7 +357,7 @@ export async function pluginNamesIn(
   if (app === null) return names
   for (const id of ids) {
     try {
-      const bytes = await app.vault.adapter.readBinary(
+      const bytes = await vaultDisk(app.vault).readBinary(
         `${app.vault.configDir}/plugins/${id}/manifest.json`
       )
       const manifest: unknown = JSON.parse(new TextDecoder().decode(bytes))

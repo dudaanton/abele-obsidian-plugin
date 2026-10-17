@@ -1,3 +1,5 @@
+import { guardedVaultAdapter } from './vaultPathLinks'
+import { nativeChunkPort } from './vaultPathLinks'
 import type { DataAdapter } from 'obsidian'
 import { stagingDirectory, reserveStagingPath } from './stagingDirectory'
 import { makeParents } from './vaultFolders'
@@ -20,7 +22,8 @@ export function mobilePaths(
   path: string,
   trace: (event: ProbeEvent) => void = () => {}
 ) {
-  const raw = adapter as DataAdapter & { getFullPath?(path: string): string }
+  adapter = guardedVaultAdapter(adapter)
+  const raw = nativeChunkPort(adapter)
   const paths: MobilePath[] = []
   const add = (value: string) => {
     const url = value.startsWith('/') ? new URL(value, 'file://') : new URL(value)
@@ -37,8 +40,8 @@ export function mobilePaths(
       })
   }
   try {
-    if (raw.getFullPath) {
-      const result = raw.getFullPath(path)
+    if (raw.fullPath) {
+      const result = raw.fullPath(path)
       trace({ step: 'path', method: 'getFullPath', result })
       add(result)
     }
@@ -264,6 +267,7 @@ export async function probeSequentialFiles(
   configDir?: string,
   privateRoot?: string
 ) {
+  adapter = guardedVaultAdapter(adapter)
   if (!files.readFileInChunks) return null
   const name = `${stagingDirectory(configDir, privateRoot)}/.abele-sync-${Math.random().toString(36).slice(2, 10).padEnd(8, '0')}.tmp`
   const bytes = new Uint8Array(20 * 1024)

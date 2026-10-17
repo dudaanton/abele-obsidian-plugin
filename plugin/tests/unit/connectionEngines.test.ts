@@ -37,6 +37,54 @@ it('retains a failed drain until it can be retried', async () => {
   expect(close).toHaveBeenCalledTimes(2)
 })
 
+it('does not revive a queued startup when its connection is removed', async () => {
+  const engines = new ConnectionEngines(),
+    events: string[] = []
+  engines.start(
+    ['retired'],
+    () => ({
+      start: async () => {
+        events.push('start')
+      },
+      invalidate: () => {
+        events.push('invalidate')
+      },
+      close: async () => {
+        events.push('close')
+      },
+    }),
+    () => {}
+  )
+  await engines.remove('retired')
+  expect(events).toEqual(['invalidate', 'close'])
+  await engines.close()
+})
+
+it('drains and removes one disconnected session without closing another connection', async () => {
+  const engines = new ConnectionEngines(),
+    events: string[] = []
+  const factory = (id: string) => ({
+    start: async () => {
+      events.push('start:' + id)
+    },
+    invalidate: () => {
+      events.push('invalidate:' + id)
+    },
+    close: async () => {
+      events.push('close:' + id)
+    },
+  })
+  engines.start(['placed', 'other'], factory, () => {})
+  await engines.settled()
+  await engines.remove('placed')
+  expect(events).toEqual(['start:placed', 'start:other', 'invalidate:placed', 'close:placed'])
+  engines.start(['placed', 'other'], factory, () => {})
+  await engines.settled()
+  expect(events.filter((one) => one === 'start:placed')).toHaveLength(2)
+  expect(events.filter((one) => one === 'start:other')).toHaveLength(1)
+  await engines.close()
+})
+
 it('starts independently and revokes every runtime before waiting on shutdown', async () => {
   const engines = new ConnectionEngines()
   const slow = deferred<void>()

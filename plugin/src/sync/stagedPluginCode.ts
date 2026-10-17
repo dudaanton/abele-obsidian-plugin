@@ -1,3 +1,4 @@
+import { vaultDisk } from './vaultPathLinks'
 import { sha256 } from './external/hash'
 import type { App } from 'obsidian'
 import { settingsCategory, type EngineClient } from '@abele/sync-core'
@@ -130,10 +131,10 @@ export async function pluginCodeNames(
     let installed = false
     try {
       installed =
-        (await app.vault.adapter.exists(`${folder}/main.js`)) ||
-        (await app.vault.adapter.exists(`${folder}/manifest.json`))
+        (await vaultDisk(app.vault).exists(`${folder}/main.js`)) ||
+        (await vaultDisk(app.vault).exists(`${folder}/manifest.json`))
       local = manifestLabel(
-        new Uint8Array(await app.vault.adapter.readBinary(`${folder}/manifest.json`))
+        new Uint8Array(await vaultDisk(app.vault).readBinary(`${folder}/manifest.json`))
       )
     } catch {
       /* A missing or invalid local manifest leaves the folder as the name. */

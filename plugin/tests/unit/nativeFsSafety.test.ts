@@ -1,4 +1,5 @@
 // @vitest-environment node
+import '../helpers/desktopRequire'
 import { promises as fsp } from 'node:fs'
 import { mkdtemp, mkdir, rm } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'

@@ -154,6 +154,36 @@ it('recovers an offline normalization rename with equal sibling birth times with
   expect(new Set(twins.map((one) => one.identity)).size).toBe(2)
 })
 
+it('scans only selected roots and preserves other roots identities and pending removals', async () => {
+  const { buildFakeVault } = await import('../helpers/fakeVault')
+  const app = buildFakeVault([
+    { path: 'Shared/child/note.md', content: 'shared' },
+    { path: 'Private/child/note.md', content: 'private' },
+  ])
+  const all = new VaultDirectories(app.vault.adapter, app)
+  for await (const _directory of all.list()) {
+    /* establish durable identities */
+  }
+  await expect(all.remove('Private')).rejects.toMatchObject({ code: 'ENOTEMPTY' })
+  const before = app.loadLocalStorage('abele-sync-local-directories-v1') as { path: string }[]
+  const pending = app.loadLocalStorage('abele-sync-empty-directory-removals-v1')
+  const list = vi.spyOn(app.vault.adapter, 'list')
+  const stat = vi.spyOn(app.vault.adapter, 'stat')
+  const scoped = new VaultDirectories(app.vault.adapter, app, undefined, undefined, ['Shared'])
+  const paths: string[] = []
+  for await (const directory of scoped.list()) paths.push(directory.path)
+  expect(paths).toEqual(['Shared', 'Shared/child'])
+  expect(list.mock.calls.map(([path]) => path)).toEqual(['Shared', 'Shared/child'])
+  expect(stat.mock.calls.every(([path]) => path === 'Shared' || path.startsWith('Shared/'))).toBe(
+    true
+  )
+  const after = app.loadLocalStorage('abele-sync-local-directories-v1') as { path: string }[]
+  expect(after.filter((record) => record.path.startsWith('Private'))).toEqual(
+    before.filter((record) => record.path.startsWith('Private'))
+  )
+  expect(app.loadLocalStorage('abele-sync-empty-directory-removals-v1')).toEqual(pending)
+})
+
 it.each(['local delete', 'empty child', 'missing', 'recreated', 'new content'])(
   'reconciles pending directory removal on a scan: %s',
   async (change) => {
@@ -423,3 +453,74 @@ it('never brings a remembered folder back from a hidden place such as the trash'
   for await (const one of dirs.list(['Plain'])) listed.push(one.path)
   expect(listed).toEqual(['Plain'])
 })
+it.each(['list', 'mkdir', 'move-source', 'move-target', 'remove'])(
+  'refuses a linked ancestor before directory %s',
+  async (action) => {
+    const { buildFakeVault } = await import('../helpers/fakeVault')
+    const app = buildFakeVault([
+      { path: 'Alias/Shared/sample.md', content: 'external' },
+      { path: 'Safe/sample.md', content: 'local' },
+    ])
+    const port = app.vault.adapter
+    const list = vi.spyOn(port, 'list')
+    const rename = vi.spyOn(port, 'rename')
+    const mkdir = vi.spyOn(port, 'mkdir')
+    const remove = vi.spyOn(port, 'rmdir')
+    const dirs = new VaultDirectories(port, app, async (path) => path === 'Alias', undefined, [
+      'Alias/Shared',
+    ])
+    const operation =
+      action === 'list'
+        ? Array.fromAsync(dirs.list())
+        : action === 'mkdir'
+          ? dirs.mkdir('Alias/New')
+          : action === 'move-source'
+            ? dirs.move('Alias/Shared', 'New')
+            : action === 'move-target'
+              ? dirs.move('Safe', 'Alias/New')
+              : dirs.remove('Alias/Shared')
+    await expect(operation).rejects.toThrow(/symbolic link/i)
+    expect(list).not.toHaveBeenCalled()
+    expect(rename).not.toHaveBeenCalled()
+    expect(mkdir).not.toHaveBeenCalled()
+    expect(remove).not.toHaveBeenCalled()
+  }
+)
+
+it.each([{ roots: ['Shared'] }, { roots: [] }])(
+  'preserves an empty pending removal owned by another scope (%j)',
+  async ({ roots }) => {
+    const { buildFakeVault } = await import('../helpers/fakeVault')
+    const app = buildFakeVault([
+      { path: 'Shared/sample.md', content: 'in scope' },
+      { path: 'Outside/Empty/held.md', content: 'held' },
+    ])
+    const { withDesktopFs } = await import('../helpers/fakeDesktopFs')
+    withDesktopFs(app)
+    const native = Reflect.get(app.vault.adapter, 'fsPromises')
+    const removeEmpty = (path: string) => native.rmdir('/vault/' + path)
+    const owner = new VaultDirectories(app.vault.adapter, app, undefined, removeEmpty)
+    await expect(owner.remove('Outside/Empty')).rejects.toMatchObject({ code: 'ENOTEMPTY' })
+    await app.vault.adapter.remove('Outside/Empty/held.md')
+    const key = 'abele-sync-empty-directory-removals-v1'
+    const pending = app.loadLocalStorage(key)
+    const before = await app.vault.adapter.stat('Outside/Empty')
+    const stat = vi.spyOn(app.vault.adapter, 'stat')
+    const list = vi.spyOn(app.vault.adapter, 'list')
+    const remove = vi.spyOn(app.vault.adapter, 'rmdir')
+    const scoped = new VaultDirectories(app.vault.adapter, app, undefined, removeEmpty, roots)
+    await Array.fromAsync(scoped.list())
+    await scoped.removedChild('Outside/Empty/held.md')
+    expect(remove).not.toHaveBeenCalled()
+    expect(
+      [...stat.mock.calls, ...list.mock.calls].every(
+        ([path]) => path === 'Shared' || path.startsWith('Shared/')
+      )
+    ).toBe(true)
+    expect(app.loadLocalStorage(key)).toEqual(pending)
+    expect(await app.vault.adapter.stat('Outside/Empty')).toEqual(before)
+    // Only a scan including the owning path may complete this request.
+    await Array.fromAsync(owner.list())
+    expect(await app.vault.adapter.stat('Outside/Empty')).toBeNull()
+  }
+)

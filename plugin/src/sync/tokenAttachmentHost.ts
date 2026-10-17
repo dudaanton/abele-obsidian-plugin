@@ -1,3 +1,4 @@
+import { vaultDisk } from './vaultPathLinks'
 import type { App, TFile } from 'obsidian'
 import { z } from 'zod'
 import { markdownLinkTargets } from '@/helpers/markdownLinkTargets'
@@ -66,7 +67,7 @@ export class TokenAttachmentHost {
   async note(path: string): Promise<{ id: string; targets: ConsentTarget[] } | null> {
     const file = this.app.vault.getFileByPath(path)
     if (!file || file.extension !== 'md') return null
-    const text = await this.app.vault.read(file)
+    const text = await vaultDisk(this.app.vault).read(path)
     const links = [...text.matchAll(/\[\[([^\]|#]+)(?:[^\]]*)\]\]/g)].map((one) => one[1])
     for (const one of markdownLinkTargets(text)) links.push(text.slice(one.start, one.end))
     const targets = new Map<string, ConsentTarget>()

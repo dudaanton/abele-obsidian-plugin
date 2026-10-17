@@ -2,7 +2,26 @@ import { expect } from 'vitest'
 import { holdRestore } from './helpers/holdRestore'
 import { liveSuite, liveCase } from './helpers/syncLiveCases'
 import { MOVE_DIAGNOSTICS } from './helpers/moveDiagnostics'
+import {
+  deletedRootRecovery,
+  movedRootRecovery,
+  serverRenamedRootRecovery,
+} from './helpers/syncRootRecovery'
 const fixture = liveSuite()
+liveCase(
+  'syncDeletes',
+  'deleted folder root stops sync and Restore from the server resumes it',
+  [56],
+  async () => deletedRootRecovery(fixture()),
+  fixture
+)
+liveCase(
+  'syncDeletes',
+  'moved folder root stops sync until Follow moved folder resumes it',
+  [54],
+  async () => movedRootRecovery(fixture()),
+  fixture
+)
 async function heldFixture() {
   const s = fixture(),
     a = s.primary,
@@ -221,5 +240,13 @@ liveCase(
       a.run('window.__abeleMoveProbe?.close();delete window.__abeleMoveProbe;return true', true)
     }
   },
+  fixture
+)
+
+liveCase(
+  'syncDeletes',
+  'server-renamed folder stops until explicitly followed into the same local folder',
+  [54],
+  async () => serverRenamedRootRecovery(fixture()),
   fixture
 )

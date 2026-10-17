@@ -1,10 +1,16 @@
+const origins = new WeakMap<object, object>()
+
+export function diagnosticOrigin<T extends object>(host: T): T {
+  return (origins.get(host) ?? host) as T
+}
+
 /** Observe only this engine's native calls; never patch the host's shared filesystem. */
 export function nativeDiagnostics<T extends object>(
   host: T,
   record: (operation: string, startedAt: number, outcome: string, paths?: readonly string[]) => void
 ): T {
-  const wrap = <O extends object>(object: O, ownedPaths?: readonly string[]): O =>
-    new Proxy(object, {
+  const wrap = <O extends object>(object: O, ownedPaths?: readonly string[]): O => {
+    const proxy = new Proxy(object, {
       get(target, key) {
         const value = Reflect.get(target, key)
         if (typeof value !== 'function') return value
@@ -33,5 +39,8 @@ export function nativeDiagnostics<T extends object>(
         }
       },
     })
+    origins.set(proxy, diagnosticOrigin(object))
+    return proxy
+  }
   return wrap(host)
 }

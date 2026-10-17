@@ -271,7 +271,12 @@ describe('external-file host coordination and filesystem effects', () => {
       }
     )
     const adapter = s.fake.vault.adapter as any
-    adapter.fsPromises.open = vi.fn(async () => ({ read, close }))
+    adapter.fsPromises.lstat = async () => ({ dev: 1, ino: 1, isSymbolicLink: () => false })
+    adapter.fsPromises.open = vi.fn(async () => ({
+      read,
+      close,
+      stat: async () => ({ dev: 1, ino: 1 }),
+    }))
     const wholeRead = vi.spyOn(adapter, 'readBinary')
     expect(await s.host.matches({ path: source, size: data.length, sha: await sha256(data) })).toBe(
       true

@@ -2,6 +2,95 @@ import { expect, it, vi } from 'vitest'
 import type { TFolder } from 'obsidian'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
+import {
+  applyStaged,
+  ExpectedWrites,
+  MemoryStateStore,
+  scan,
+  sha256,
+  type EngineClient,
+} from '@abele/sync-core'
+import { CommitOpSchema } from '@abele/sync-protocol'
+
+it.each([
+  ['watch-first', 1234.75],
+  ['list-first', 1234.75],
+  ['watch-first', 1235],
+] as const)(
+  'uses integer settings dates through the startup cache, scan and review (%s, %s)',
+  async (order, mtime) => {
+    vi.useFakeTimers()
+    const path = '.obsidian/hotkeys.json'
+    const app = buildFakeVault([{ path, content: '{}', mtime }])
+    const initial = new Map([[path, { path, size: 2, mtime }]])
+    const fs = new ObsidianFileSystem(app as never, {
+      startupInventory: () => initial,
+      pollMs: 60000,
+    })
+    let stop: (() => void) | undefined
+    try {
+      if (order === 'list-first') await Array.fromAsync(fs.list())
+      stop = fs.watch(() => {})
+      const state = new MemoryStateStore()
+      const result = await scan(fs, state, { excluded: () => false })
+      const op = result.ops.find((one) => one.op === 'create' && one.path === path)!
+      expect(CommitOpSchema.safeParse(op).success).toBe(true)
+      const info = result.infos.get(path)!
+      expect(info.mtime).toBe(1235)
+      expect(info.mtime).toBe((await fs.stat(path))!.mtime)
+      expect(initial.get(path)!.mtime).toBe(mtime)
+      await state.put({
+        path,
+        wirePath: path,
+        fileId: 'sample-file',
+        versionId: 'v1',
+        sha: await sha256(new TextEncoder().encode('{}')),
+        size: 2,
+        mtime: info.mtime,
+      })
+      expect(await fs.fingerprint(path)).toMatchObject({
+        sha: await sha256(new TextEncoder().encode('{}')),
+        size: 2,
+        mtime: info.mtime,
+      })
+      const incoming = new TextEncoder().encode('{"sample":true}')
+      const messages: string[] = []
+      const applied = await applyStaged(
+        { getBlob: async () => incoming } as unknown as EngineClient,
+        fs,
+        state,
+        [
+          {
+            seq: 2,
+            file_id: 'sample-file',
+            version_id: 'v2',
+            op: 'modify',
+            path,
+            prev_path: null,
+            kind: 'settings',
+            sha: await sha256(incoming),
+            size: incoming.length,
+            mtime: 2000,
+            actor: { kind: 'token', id: 'sample-peer', name: 'Sample peer' },
+            at: new Date(2000).toISOString(),
+          },
+        ],
+        {
+          filter: { excluded: () => false },
+          dirty: new Set(),
+          expected: new ExpectedWrites(),
+          log: (line) => messages.push(line),
+        }
+      )
+      expect(applied.applied, messages.join('; ')).toBe(1)
+      expect(applied.held).toEqual([])
+      expect(await app.vault.adapter.read(path)).toBe('{"sample":true}')
+    } finally {
+      stop?.()
+      vi.useRealTimers()
+    }
+  }
+)
 
 it('reuses startup inventory once and observes later config edits without waiting for the poll', async () => {
   const app = buildFakeVault([{ path: '.obsidian/app.json', content: '{}', mtime: 1 }])
@@ -148,3 +237,51 @@ it('retires published parent membership after an engine directory move without a
     expect(children.some((one) => one.path === root + '/Moved')).toBe(true)
   })
 })
+
+it.each(['rename-follow', 'delete-restore'])(
+  'refreshes batched parent identities after root %s',
+  async (action) => {
+    let root = 'Container/Shared'
+    const app = buildFakeVault([{ path: root + '/kept.md', content: 'kept' }])
+    let birth = 1000
+    const rawStat = app.vault.adapter.stat.bind(app.vault.adapter)
+    vi.spyOn(app.vault.adapter, 'stat').mockImplementation(async (path) => {
+      const stat = await rawStat(path)
+      return stat?.type === 'folder' ? { ...stat, ctime: birth } : stat
+    })
+    const fs = new ObsidianFileSystem(app as never, { fileScope: () => root })
+    await fs[Symbol.for('abele.sync.inventory-pass-v1')](async () => {
+      const before = await fs[Symbol.for('abele.sync.inventory-directories-v1')]()
+      const oldRoot = root
+      const oldIdentity = before.find((item) => item.path === root)!.identity
+      await fs.writeAtomic(root + '/Fresh/sample.md', new TextEncoder().encode('sample'), 1000)
+      if (action === 'rename-follow') {
+        await app.vault.rename(app.vault.getAbstractFileByPath(root)!, 'Moved/Shared')
+        root = 'Moved/Shared'
+        app.emit('vault', 'rename', { path: root, children: [] }, oldRoot)
+      } else {
+        await app.vault.delete(app.vault.getAbstractFileByPath(root)!)
+        await app.vault.adapter.rmdir(root, true)
+        app.emit('vault', 'delete', { path: root, children: [] })
+        birth = 2000
+        await app.vault.createFolder(root)
+      }
+      await fs.writeAtomic(root + '/New/sample.md', new TextEncoder().encode('new sample'), 2000)
+      const after = await fs[Symbol.for('abele.sync.inventory-directories-v1')](true)
+      expect(after.some((item) => item.path === oldRoot + '/Fresh')).toBe(false)
+      expect(after).toContainEqual(
+        expect.objectContaining({ path: root + '/New', identity: expect.any(String) })
+      )
+      if (action === 'rename-follow')
+        expect(after.some((item) => item.path === oldRoot)).toBe(false)
+      else expect(after.find((item) => item.path === root)!.identity).not.toBe(oldIdentity)
+      const children = await fs[Symbol.for('abele.sync.inventory-children-v1')](
+        root,
+        root + '/next.md'
+      )
+      expect(children).toContainEqual(
+        expect.objectContaining({ path: root + '/New', kind: 'directory' })
+      )
+    })
+  }
+)

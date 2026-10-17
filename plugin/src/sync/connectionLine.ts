@@ -10,13 +10,13 @@ import { transferText } from './transferProgress'
 
 export type ConnectionTone = 'green' | 'orange' | 'red' | 'accent' | 'faint'
 
-type Row = Pick<TokenConnectionRecord, 'status' | 'paused'>
+type Row = Pick<TokenConnectionRecord, 'status' | 'paused' | 'rootIssue'>
 
 const ATTENTION = ['error', 'needs-token', 'scope_unavailable', 'disconnected']
 
 /** Something is moving: a first scan, a comparison, a push or a pull. */
 export function connectionBusy(row: Row, activity?: ConnectionActivity): boolean {
-  if (row.paused) return false
+  if (row.paused || row.rootIssue) return false
   return (
     row.status === 'syncing' ||
     row.status === 'joining' ||
@@ -35,6 +35,7 @@ export function connectionBusy(row: Row, activity?: ConnectionActivity): boolean
  * outside (paused, no server, a copy to look at), red when the person has to act.
  */
 export function connectionTone(row: Row, activity?: ConnectionActivity): ConnectionTone {
+  if (row.rootIssue) return 'red'
   if (ATTENTION.includes(row.status) || activity?.startup?.outcome === 'failed') return 'red'
   if (row.paused || row.status === 'offline') return 'orange'
   if (connectionBusy(row, activity)) return 'accent'
@@ -46,6 +47,7 @@ const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : 
 
 /** The one line under the connection's name: what it is doing, or what it waits on. */
 export function connectionLine(row: Row, activity?: ConnectionActivity): string {
+  if (row.rootIssue) return connectionStatusText(row, activity)
   if (row.paused) return 'Paused'
   const phase = activity?.startup ?? activity?.inspection
   const numbered = (stage: string, completed: number, total: number) =>

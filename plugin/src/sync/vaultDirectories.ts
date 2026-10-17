@@ -5,6 +5,8 @@ import { z } from 'zod'
 import { EngineError } from '@abele/sync-core'
 import type { LocalStorage } from './ledgerId'
 
+import { assertNoLinkedAncestors } from './vaultPathLinks'
+
 const KEY = 'abele-sync-local-directories-v1'
 const REMOVALS = 'abele-sync-empty-directory-removals-v1'
 const removalSchema = z.array(
@@ -23,22 +25,22 @@ interface DirectoryAdapter {
 /** Device-local identities and strictly nonrecursive directory effects. */
 export class VaultDirectories {
   constructor(
-    private readonly adapter: DirectoryAdapter,
+    private readonly disk: DirectoryAdapter,
     private readonly storage: LocalStorage,
     private readonly symlink: (path: string) => Promise<boolean> = async () => false,
     private readonly removeEmpty: (path: string) => Promise<void> = (path) =>
-      adapter.rmdir(path, false),
-    private readonly scope: () => string | undefined = () => undefined
+      disk.rmdir(path, false),
+    private readonly scope: (() => string | undefined) | readonly string[] = () => undefined
   ) {}
   private includes(path: string): boolean {
-    const root = this.scope()
-    if (!root || root === '/') return true
+    const roots = typeof this.scope === 'function' ? [this.scope()] : this.scope
+    if (roots.some((root) => !root || root === '/')) return true
     try {
       assertPhysicalPath(path)
     } catch {
       return false
     }
-    return path === root || path.startsWith(root + '/')
+    return roots.some((root) => root && (path === root || path.startsWith(root + '/')))
   }
   private assertPath(path: string): void {
     if (!this.includes(path))
@@ -70,7 +72,7 @@ export class VaultDirectories {
   ): Promise<{ files: string[]; folders: { path: string; birth: number }[] }> {
     this.assertPath(path)
     if (depth > 32) throw new EngineError('io', 'Directory tree is too deep')
-    const children = await this.adapter.list(path)
+    const children = await this.disk.list(path)
     for (const child of [...children.files, ...children.folders]) this.assertPath(child)
     const files = [...children.files]
     const folders: { path: string; birth: number }[] = []
@@ -83,7 +85,7 @@ export class VaultDirectories {
         files.push(child)
         continue
       }
-      const stat = await this.adapter.stat(child)
+      const stat = await this.disk.stat(child)
       if (stat?.type !== 'folder') continue
       const nested = await this.tree(child, depth + 1)
       files.push(...nested.files)
@@ -96,7 +98,8 @@ export class VaultDirectories {
       if (!this.includes(pending.path)) continue
       const drop = () =>
         this.saveRemovals(this.removals().filter((one) => one.path !== pending.path))
-      const stat = await this.adapter.stat(pending.path)
+      await assertNoLinkedAncestors(pending.path, this.symlink)
+      const stat = await this.disk.stat(pending.path)
       if (
         stat?.type !== 'folder' ||
         stat.ctime !== pending.birth ||
@@ -115,9 +118,10 @@ export class VaultDirectories {
       }
       if (tree.files.length) continue
       for (const folder of [...tree.folders, { path: pending.path, birth: pending.birth }]) {
-        const current = await this.adapter.stat(folder.path)
+        await assertNoLinkedAncestors(folder.path, this.symlink)
+        const current = await this.disk.stat(folder.path)
         if (current?.type !== 'folder' || current.ctime !== folder.birth) continue
-        const children = await this.adapter.list(folder.path)
+        const children = await this.disk.list(folder.path)
         if (children.files.length || children.folders.length) continue
         try {
           await this.removeEmpty(folder.path)
@@ -126,12 +130,12 @@ export class VaultDirectories {
             throw error
         }
       }
-      if (!(await this.adapter.stat(pending.path))) drop()
+      if (!(await this.disk.stat(pending.path))) drop()
     }
   }
   /** Only retry a requested departure, never prune unrelated deliberately empty folders. */
   async removedChild(path: string): Promise<void> {
-    this.assertPath(path)
+    if (!this.includes(path)) return
     for (const pending of this.removals().sort((a, b) => b.path.length - a.path.length)) {
       if (!this.includes(pending.path)) continue
       if (
@@ -139,7 +143,7 @@ export class VaultDirectories {
         !withinSyncPath(path, pending.path)
       )
         continue
-      const stat = await this.adapter.stat(pending.path)
+      const stat = await this.disk.stat(pending.path)
       if (!stat || stat.ctime !== pending.birth) {
         this.saveRemovals(this.removals().filter((one) => one.path !== pending.path))
         continue
@@ -166,7 +170,7 @@ export class VaultDirectories {
     const outsidePaths = new Set(outside.map((one) => one.path))
     const walk = async (path: string, depth: number) => {
       if (depth > 32) throw new EngineError('io', 'Directory tree is too deep')
-      for (const folder of (await this.adapter.list(path)).folders) {
+      for (const folder of (await this.disk.list(path)).folders) {
         if (
           !this.includes(folder) ||
           ['.abele-sync', '.trash', '.git'].some(
@@ -175,7 +179,7 @@ export class VaultDirectories {
           (await this.symlink(folder))
         )
           continue
-        const stat = await this.adapter.stat(folder)
+        const stat = await this.disk.stat(folder)
         if (stat?.type !== 'folder') continue
         found.push({ path: folder, birth: stat.ctime, mtime: Math.max(0, Math.round(stat.mtime)) })
         await walk(folder, depth + 1)
@@ -186,7 +190,7 @@ export class VaultDirectories {
       for (const path of indexed) {
         if (!this.includes(path)) continue
         if (await this.linked(path, seen)) continue
-        const stat = await this.adapter.stat(path)
+        const stat = await this.disk.stat(path)
         if (stat?.type === 'folder')
           found.push({ path, birth: stat.ctime, mtime: Math.max(0, Math.round(stat.mtime)) })
       }
@@ -199,7 +203,7 @@ export class VaultDirectories {
         // Only ordinary vault folders lag the index; a hidden one was never in this inventory.
         if (record.path.split('/').some((part) => part.startsWith('.'))) continue
         if (await this.linked(record.path, seen)) continue
-        const stat = await this.adapter.stat(record.path)
+        const stat = await this.disk.stat(record.path)
         if (stat?.type === 'folder' && stat.ctime === record.birth) {
           listed.add(record.path)
           found.push({
@@ -210,15 +214,22 @@ export class VaultDirectories {
         }
       }
     } else {
-      const root = this.scope()
-      if (root && root !== '/') {
-        this.assertPath(root)
-        const stat = await this.adapter.stat(root)
-        if (stat?.type === 'folder' && !(await this.symlink(root))) {
-          found.push({ path: root, birth: stat.ctime, mtime: Math.max(0, Math.round(stat.mtime)) })
-          await walk(root, 0)
-        }
-      } else await walk('', 0)
+      const roots = typeof this.scope === 'function' ? [this.scope()] : this.scope
+      for (const root of roots) {
+        if (root && root !== '/') {
+          this.assertPath(root)
+          await assertNoLinkedAncestors(root, this.symlink)
+          const stat = await this.disk.stat(root)
+          if (stat?.type === 'folder') {
+            found.push({
+              path: root,
+              birth: stat.ctime,
+              mtime: Math.max(0, Math.round(stat.mtime)),
+            })
+            await walk(root, 0)
+          }
+        } else await walk('', 0)
+      }
     }
     const all = this.records(),
       old = all.filter((record) => this.includes(record.path) && !outsidePaths.has(record.path)),
@@ -273,21 +284,23 @@ export class VaultDirectories {
     }
   }
   async mkdir(path: string): Promise<void> {
+    if (await this.linked(path))
+      throw new EngineError('conflict', 'Directory path contains a symbolic link')
     this.assertPath(path)
-    const before = await this.adapter.stat(path)
+    const before = await this.disk.stat(path)
     if (await this.linked(path)) throw new EngineError('conflict', 'Directory path is occupied')
     if (before) {
       if (before.type !== 'folder') throw new EngineError('conflict', 'Directory path is occupied')
       this.saveRemovals(this.removals().filter((one) => one.path !== path))
       return
     }
-    await this.adapter.mkdir(path)
+    await this.disk.mkdir(path)
     this.saveRemovals(this.removals().filter((one) => one.path !== path))
   }
   /** A received directory needs only its own identity, not another walk of the vault. */
   async identity(path: string): Promise<string> {
     this.assertPath(path)
-    const stat = await this.adapter.stat(path)
+    const stat = await this.disk.stat(path)
     if (stat?.type !== 'folder' || (await this.linked(path)))
       throw new EngineError('io', 'Received directory is unavailable')
     const records = this.records()
@@ -301,15 +314,17 @@ export class VaultDirectories {
     return identity
   }
   async move(from: string, to: string): Promise<void> {
+    if ((await this.linked(from)) || (await this.linked(to)))
+      throw new EngineError('conflict', 'Directory path contains a symbolic link')
     this.assertPath(from)
     this.assertPath(to)
-    if (await this.adapter.stat(to))
+    if (await this.disk.stat(to))
       throw new EngineError('conflict', 'Directory destination is occupied')
     if (await this.linked(to))
       throw new EngineError('conflict', 'Directory destination is occupied')
-    if ((await this.linked(from)) || (await this.adapter.stat(from))?.type !== 'folder')
+    if ((await this.linked(from)) || (await this.disk.stat(from))?.type !== 'folder')
       throw new EngineError('conflict', 'Directory source is unavailable')
-    await this.adapter.rename(from, to)
+    await this.disk.rename(from, to)
     this.renamed(from, to)
   }
   renamed(from: string, to: string): void {
@@ -322,8 +337,10 @@ export class VaultDirectories {
     )
   }
   async remove(path: string, expectedIdentity?: string): Promise<void> {
+    if (await this.linked(path))
+      throw new EngineError('conflict', 'Directory path contains a symbolic link')
     this.assertPath(path)
-    const stat = await this.adapter.stat(path)
+    const stat = await this.disk.stat(path)
     if (!stat) {
       this.saveRemovals(this.removals().filter((one) => one.path !== path))
       return
@@ -332,7 +349,7 @@ export class VaultDirectories {
       throw new EngineError('conflict', 'Directory path is occupied')
     if (expectedIdentity !== undefined && (await this.identity(path)) !== expectedIdentity)
       throw new EngineError('conflict', 'Directory identity changed before removal')
-    const children = await this.adapter.list(path)
+    const children = await this.disk.list(path)
     if (children.files.length || children.folders.length) {
       const prior = this.removals().find((one) => one.path === path && one.birth === stat.ctime)
       this.saveRemovals([

@@ -17,9 +17,49 @@ import SyncSettings from '@/components/settings/SyncSettings.vue'
 import { MemoryStateStore, sha256 } from '@abele/sync-core'
 import { ExecutableReview } from '@/sync/executableReview'
 import { AttachmentConsent } from '@/sync/attachmentConsent'
-import { Notice } from '../mocks/obsidian'
+import { Menu, Notice } from '../mocks/obsidian'
 import { SyncDriver } from '../e2e/helpers/syncDriver'
 vi.mock('../e2e/helpers/syncVault', () => ({ waitFor: vi.fn() }))
+
+it.each(['deleted', 'moved'] as const)(
+  'offers one root recovery decision after a folder is %s',
+  async (kind) => {
+    const ui = tokenUiFixture(),
+      id = ui.rows.value[0].id
+    const restoreRoot = vi.fn(async () => {}),
+      followRoot = vi.fn(async () => {})
+    ui.registry.setRootIssue(id, kind === 'moved' ? { kind, path: 'Moved' } : { kind })
+    ui.publish(id, {})
+    ui.runtimes.set(id, { restoreRoot, followRoot } as never)
+    const show = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
+    const view = mount(SyncSettings, { props: { model: ui } })
+    try {
+      expect(view.text()).toContain(
+        kind === 'moved' ? 'Folder moved to Moved; sync stopped' : 'Folder is gone; sync stopped'
+      )
+      const icons = view.findAllComponents(Icon)
+      expect(icons.find((one) => one.props('icon') === 'refresh-cw')!.props('disabled')).toBe(true)
+      await icons.find((one) => one.props('icon') === 'more-horizontal')!.trigger('click')
+      const menu = show.mock.instances.at(-1)!
+      expect(menu.items.filter((item) => item.title === 'Restore from the server')).toHaveLength(1)
+      expect(menu.items.some((item) => item.title === 'Disconnect…')).toBe(true)
+      expect(menu.items.some((item) => item.title === 'Resume' || item.title === 'Pause')).toBe(
+        false
+      )
+      if (kind === 'moved') {
+        menu.items.find((item) => item.title === 'Follow moved folder')!.handler!()
+        await flushPromises()
+        expect(followRoot).toHaveBeenCalledOnce()
+      }
+      menu.items.find((item) => item.title === 'Restore from the server')!.handler!()
+      await flushPromises()
+      expect(restoreRoot).toHaveBeenCalledOnce()
+    } finally {
+      view.unmount()
+      show.mockRestore()
+    }
+  }
+)
 
 it('renders held-only warnings in the status bar and phone header until resolved', () => {
   const ui = tokenUiFixture()
@@ -658,4 +698,33 @@ it('closing executable review decides nothing and leaves it available for later'
   expect(reject).not.toHaveBeenCalled()
   expect(approve).not.toHaveBeenCalled()
   expect(ui.candidates.value).toContain(candidate)
+})
+
+it('offers explicit server rename follow and disconnect while keeping the local folder', async () => {
+  const ui = tokenUiFixture(),
+    id = ui.rows.value[0].id,
+    followServerRoot = vi.fn(async () => {})
+  ui.registry.setRootIssue(id, { kind: 'server-renamed', from: 'Shared', to: 'Renamed' } as never)
+  ui.publish(id, {})
+  ui.runtimes.set(id, { followServerRoot } as never)
+  const show = vi.spyOn(Menu.prototype, 'showAtMouseEvent'),
+    view = mount(SyncSettings, { props: { model: ui } })
+  try {
+    expect(view.text()).toContain(
+      'Shared folder renamed on the server: Shared → Renamed; sync stopped'
+    )
+    await view
+      .findAllComponents(Icon)
+      .find((one) => one.props('icon') === 'more-horizontal')!
+      .trigger('click')
+    const menu = show.mock.instances.at(-1)!
+    expect(menu.items.some((item) => item.title === 'Disconnect…')).toBe(true)
+    expect(menu.items.some((item) => item.title === 'Restore from the server')).toBe(false)
+    menu.items.find((item) => item.title === 'Keep syncing into the same local folder')!.handler!()
+    await flushPromises()
+    expect(followServerRoot).toHaveBeenCalledOnce()
+  } finally {
+    view.unmount()
+    show.mockRestore()
+  }
 })

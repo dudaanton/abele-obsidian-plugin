@@ -298,6 +298,8 @@ export function parseYaml(raw: string): unknown {
 export const Platform = {
   isMobile: false,
   isDesktop: true,
+  isDesktopApp: true,
+  isMobileApp: false,
   isPhone: false,
   isTablet: false,
 }

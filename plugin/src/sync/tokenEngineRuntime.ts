@@ -3,6 +3,8 @@ import { assertPhysicalPath } from './external/projection'
 import { scopedFileSystem, FolderScopeError } from './scopedFileSystem'
 import { withinSyncPath } from './scope'
 import { LocalPaths } from '@abele/sync-core'
+import { ServerFolderPaths } from './serverFolderPaths'
+import { vaultRootFailure } from './vaultPathLinks'
 import { sha256 } from './external/hash'
 import { nativeSyncFailure } from './mobileTransport'
 import {
@@ -33,10 +35,12 @@ import {
 import { ExchangeTrace } from './exchangeTrace'
 import { connectStage, connectionError } from './tokenUi'
 import {
+  PathSchema,
   V2ManifestSchema,
   V2ChangesSchema,
   V2ConnectionSchema,
   ErrorCodeSchema,
+  AbeleError,
   decodeAccessToken,
   normalisePath,
   validatePath,
@@ -58,10 +62,12 @@ import { PLACEMENT } from './pathCoordinator'
 import { reviewFileSystem } from './reviewFileSystem'
 import { TransferProgress, type TransferSnapshot } from './transferProgress'
 import { RESTORE_HEADER, assertResponseGeneration, fenceHostGeneration } from './restoreFence'
+import type { ScopeRootIssue } from './scopeRoot'
+import { LocalFolderPlacement, LocalPlacementError } from './localFolderPlacement'
+import { verifyFolderSet, type FolderEntries } from './verifyFolderSet'
 
 export interface TokenEngineOptions {
   id: string
-  localRoot?: string
   encoded: string
   fs: FileSystem
   state: StateStore
@@ -78,8 +84,21 @@ export interface TokenEngineOptions {
   engineClient?(client: EngineClient): EngineClient
   engineState?: StateStore
   publicationChanged?(): void
-  scopeInput?(selective: SelectiveSettings): Promise<{ key: string; ignore: PathMatcher }>
+  scopeInput?(
+    selective: SelectiveSettings
+  ): Promise<{ key: string; ignore: PathMatcher; localCandidates?: readonly string[] }>
   paused?: boolean
+  serverRoot?: string
+  serverRootChanged?(path: string): void
+  rootIssue?: ScopeRootIssue
+  rootChanged?(issue: ScopeRootIssue | undefined): void
+  localRoot?: string
+  followRecoveredRoot?(from: string, to: string): void
+  localRootChanged?(path: string): void
+  verifyRootFileSystem?(path: string): FileSystem
+  inspectRoot?(path: string): Promise<FolderEntries>
+  watchRoot?(notice: (issue: ScopeRootIssue) => void): () => void
+  rootExists?(): Promise<boolean>
   selective?: SelectiveSettings
   fallbackMs?: number
   assertHeld?(): void
@@ -90,6 +109,10 @@ export interface TokenEngineOptions {
   event?(text: string): void
   failed(error: unknown): void
   covers(path: string): Promise<boolean>
+  /** Server/ledger-named group candidates, before host representation inspection. */
+  discoveryCandidates?(paths: readonly string[]): void
+  discoveryLocalCandidates?(paths: readonly string[]): void
+  discoveryScope?(scope: V2Connection['scope']): void
   expectedSource?: ReviewSource
   localFiles?: {
     note(path: string): Promise<{ id: string; targets: ConsentTarget[] } | null>
@@ -97,7 +120,9 @@ export interface TokenEngineOptions {
   }
 }
 /** Host wiring around the retained engine. All exchange and journaling belongs to core. */
-export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
+export class TokenEngineRuntime
+  implements ConnectionRuntime, Omit<TokenUiRuntime, 'historyClient'>
+{
   readonly trace = new ExchangeTrace()
   readonly engine: SyncEngine
   readonly client: V2EngineClient
@@ -106,6 +131,9 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   private readonly transferBudget: TransferBudget
   private active = true
   private serverAvailable = true
+  private rootIssue: ScopeRootIssue | undefined
+  private unroot: (() => void) | undefined
+  private rootControl = false
   private readonly requests = new AbortController()
   private readonly transportObservers = new Set<
     (path: string, active: boolean, successful?: boolean, rangeOffset?: number) => void
@@ -144,6 +172,8 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   private comparisonPublished = 0
   private held = new Set<string>()
   private readonly manifestIds = new Set<string>()
+  private readonly groupCandidates = new Set<string>()
+  private localCandidates = new Set<string>()
   private readonly assetPaths = new Map<string, string>()
   private pulling = false
   private readonly pullPaths = new Set<string>()
@@ -177,6 +207,13 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       this.progress.refresh()
     }
   }
+  /** A consumed page may retain or exclude a directory without calling mkdir. */
+  private finishFolderPreparation(): void {
+    if (!this.pendingFolders.size) return
+    this.pendingFolders.clear()
+    this.folderProgress.clear()
+    this.progress.refresh()
+  }
   private readonly incomingNames = new Map<string, string>()
   private readonly receivedPaths = new Set<string>()
   private readonly uploadNames = new Map<string, string>()
@@ -201,6 +238,9 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   private unstatus: () => void
   private readonly token
   private readonly selective: SelectiveSettings
+  private readonly placement?: LocalFolderPlacement
+  private readonly serverPaths?: ServerFolderPaths
+  private readonly localFs: FileSystem
   constructor(private readonly options: TokenEngineOptions) {
     this.progress = new TransferProgress(
       (one) => {
@@ -222,17 +262,37 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
         return () => window.clearTimeout(timer)
       }
     )
+    this.localFs = options.fs
     this.transferBudget = options.transferBudget ?? new TransferBudget()
     this.selective = structuredClone(options.selective ?? selectiveDefaults())
     this.token = decodeAccessToken(options.encoded)
     if (this.token.scope.kind === 'folder' && (options.localRoot ?? this.token.scope.path) !== '/')
       options.fs = scopedFileSystem(
         options.fs,
-        (path) => this.assertLocalPaths([path]),
-        (path) => !this.outsideScope(path),
+        (path) => this.assertPhysicalLocalPaths([path]),
+        (path) => {
+          const root = this.options.localRoot ?? this.token.scope.path
+          return path === root || path.startsWith(root + '/')
+        },
         connectionPrivateRoot(options.id),
+        () => options.localRoot ?? this.token.scope.path
+      )
+    if (this.token.scope.kind === 'folder' && this.token.scope.path !== '/') {
+      this.serverPaths = new ServerFolderPaths(
+        this.token.scope.path,
+        options.serverRoot ?? this.token.scope.path
+      )
+      this.placement = new LocalFolderPlacement(
+        this.token.scope.path,
         options.localRoot ?? this.token.scope.path
       )
+      options.fs = this.placement.fileSystem(options.fs)
+      const prepare = options.preparePlacement?.bind(options)
+      if (prepare)
+        options.preparePlacement = (paths) =>
+          prepare(paths.map((path) => this.placement.toLocal(path)))
+    }
+    if (this.token.scope.kind === 'group') this.nameCandidates([this.token.scope.path])
     const transport: typeof fetch = (input, init) =>
       this.trace.run(
         (init?.method ?? 'GET') +
@@ -272,7 +332,29 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
             else signal?.addEventListener('abort', abort, { once: true })
           }
           try {
-            response = await options.fetch(input, { ...init, headers, signal: request.signal })
+            const outgoing =
+              this.serverPaths &&
+              typeof init?.body === 'string' &&
+              (path === '/v2/commit' || path.endsWith('/external/verify'))
+                ? {
+                    ...init,
+                    body: JSON.stringify(this.serverPaths.map(JSON.parse(init.body), false)),
+                  }
+                : init
+            const requestUrl = new URL(
+              typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+            )
+            const prefix = requestUrl.searchParams.get('path_prefix')
+            if (this.serverPaths && prefix)
+              requestUrl.searchParams.set(
+                'path_prefix',
+                this.serverPaths.map({ path: prefix }, false).path
+              )
+            response = await options.fetch(prefix && this.serverPaths ? requestUrl : input, {
+              ...outgoing,
+              headers,
+              signal: request.signal,
+            })
             successful = response.ok
           } catch (error) {
             const native = nativeSyncFailure(error)
@@ -336,36 +418,47 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
                 await options.reviews.executables.forgetSource(options.id)
               }
             )
-            this.authority = V2ConnectionSchema.parse(await response.clone().json())
-            this.permitted = this.authority.status === 'active'
+            const authority = V2ConnectionSchema.parse(await response.clone().json())
+            this.permitted = authority.status === 'active'
             if (
-              this.authority.scope.kind !== this.token.scope.kind ||
-              this.authority.scope.id !== this.token.scope.id
+              authority.scope.kind !== this.token.scope.kind ||
+              authority.scope.id !== this.token.scope.id
             )
               throw new EngineError('protocol', 'Token selector identity changed')
             if (
-              this.token.scope.kind === 'folder' &&
               this.permitted &&
-              this.authority.scope.path !== (options.localRoot ?? this.token.scope.path)
+              this.serverPaths &&
+              authority.scope.path !== this.serverPaths.remote
             ) {
-              this.engine?.pause()
+              if (!PathSchema.safeParse(authority.scope.path).success)
+                throw new FolderScopeError(
+                  'The server returned an invalid shared-folder name; sync stopped'
+                )
+              const issue = {
+                kind: 'server-renamed' as const,
+                from: this.serverPaths.remote,
+                to: authority.scope.path,
+              }
+              this.scopeRootGone(issue)
               throw new FolderScopeError(
-                'The shared folder was renamed on the server (' +
-                  (options.localRoot ?? this.token.scope.path) +
-                  ' → ' +
-                  this.authority.scope.path +
-                  '); sync stopped. Local files were kept.'
+                `Shared folder renamed on the server: ${issue.from} → ${issue.to}; sync stopped`
               )
             }
+            this.authority = this.serverPaths
+              ? { ...authority, scope: { ...authority.scope, path: this.serverPaths.canonical } }
+              : authority
+            if (this.permitted) options.discoveryScope?.(this.authority.scope)
+            return Response.json(this.authority, { headers: response.headers })
           } else if (url.pathname === '/v2/manifest') {
-            const page = V2ManifestSchema.parse(await response.json())
-            this.assertScopedPayload(page)
+            const page = V2ManifestSchema.parse(this.received(await response.json()))
+            this.assertIncomingPaths(page.items.map((item) => item.path))
             if (this.pulling) {
               for (const item of page.items) this.pullPaths.add(item.path)
               this.pullProgress('Receiving files')
             }
             if (!url.searchParams.get('next')) this.manifestIds.clear()
             for (const item of page.items) this.manifestIds.add(item.file_id)
+            this.nameCandidates(page.items.map((item) => item.path))
             const incomingPaths: string[] = []
             for (const item of page.items)
               if ((await options.state.byFileId(item.file_id))?.versionId !== item.version_id)
@@ -404,9 +497,38 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
             await this.refreshHolds()
             return Response.json({ ...page, items }, { headers: response.headers })
           } else if (url.pathname === '/v2/changes') {
-            const page = V2ChangesSchema.parse(await response.json())
-            this.assertScopedPayload(page)
+            const page = V2ChangesSchema.parse(this.received(await response.json()))
+            this.assertIncomingPaths(
+              page.items.flatMap((event) =>
+                event.type === 'content'
+                  ? [event.path, event.item.path, ...(event.prev_path ? [event.prev_path] : [])]
+                  : [event.path]
+              )
+            )
+            const scope = this.authority?.scope ?? this.token.scope
+            if (
+              scope.kind === 'folder' &&
+              scope.path !== '/' &&
+              page.items.some(
+                (event) =>
+                  event.type !== 'content' &&
+                  (event.file_id === scope.id || event.path === scope.path)
+              )
+            ) {
+              const error = new AbeleError(
+                'scope_unavailable',
+                'The server folder was removed; local files were kept'
+              )
+              return Response.json(error.toBody(), { status: error.status })
+            }
             if (this.progress.stage !== 'Downloading') this.progress.begin('Downloading')
+            this.nameCandidates(
+              page.items.flatMap((event) =>
+                event.type === 'content'
+                  ? [event.item.path, ...(event.prev_path ? [event.prev_path] : [])]
+                  : [event.path]
+              )
+            )
             const incomingPaths: string[] = []
             for (const one of page.items)
               if (
@@ -454,6 +576,15 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
             }
             await this.refreshHolds()
             return Response.json({ ...page, items }, { headers: response.headers })
+          } else if (
+            url.pathname === '/v2/commit' ||
+            url.pathname === '/v2/trash' ||
+            url.pathname === '/v2/trash/restore' ||
+            /^\/v2\/files\/[^/]+\/(history|head|restore|external\/verify)$/.test(url.pathname)
+          ) {
+            const payload = this.received(await response.clone().json())
+            this.assertScopedPayload(payload)
+            return Response.json(payload, { headers: response.headers })
           }
           if (
             url.pathname === '/v2/commit' ||
@@ -477,11 +608,21 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     this.client.prepare = async (fs, state, excluded) => {
       this.readyToPublish = false
       this.acceptHandshake = true
+      if (options.rootExists && (await state.getCursor()) > 0 && !(await options.rootExists()))
+        this.scopeRootGone({ kind: 'deleted' })
+      this.assertHeld()
       this.compared.clear()
       this.assetPaths.clear()
+      if (this.token.scope.kind === 'group') {
+        const paths: string[] = []
+        for await (const entry of state.all()) paths.push(entry.path)
+        this.nameCandidates(paths)
+      }
       if (options.scopeInput) {
         const input = await options.scopeInput(this.selective)
         this.assertHeld()
+        this.localCandidates = new Set(input.localCandidates ?? [])
+        options.discoveryLocalCandidates?.([...this.localCandidates])
         const prior = await state.getMeta('scope')
         this.ignore = input.ignore
         if (prior !== input.key) {
@@ -500,13 +641,14 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       this.pulledPaths.clear()
       this.pullProgress('Reading server inventory')
       const localExcluded = (path: string, size: number) => this.localExcluded(path, size)
+      const candidate = (path: string) => this.namedCandidate(path)
       await prepare(
         new Proxy(fs, {
           get(target, name) {
             if (name === 'list')
               return async function* () {
                 for await (const info of target.list())
-                  if (!localExcluded(info.path, info.size)) yield info
+                  if (candidate(info.path) && !localExcluded(info.path, info.size)) yield info
               }
             const value = Reflect.get(target, name)
             return typeof value === 'function' ? value.bind(target) : value
@@ -545,6 +687,18 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       }
     }
     this.client.onRemoval = (_id, path) => options.covers(path)
+    const manifest = this.client.manifest.bind(this.client)
+    this.client.manifest = async (...args) => {
+      const page = await manifest(...args)
+      this.finishFolderPreparation()
+      return page
+    }
+    const changes = this.client.changes.bind(this.client)
+    this.client.changes = async (...args) => {
+      const page = await changes(...args)
+      this.finishFolderPreparation()
+      return page
+    }
     const openVersion = this.client.openVersion.bind(this.client)
     this.client.openVersion = async (fileId, versionId, expected, signal) => {
       const path = this.incomingNames.get(fileId) ?? (await options.state.byFileId(fileId))?.path
@@ -646,6 +800,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
           if (name === 'watch' && target.watch)
             return (notify: (paths: string[]) => void) =>
               target.watch((paths) => {
+                if (this.rootIssue) return
                 // Polling settings and editor activity also reports ignored files.
                 // They cannot change this connection's inventory; keep the ignore
                 // control file itself observable so scope changes still take effect.
@@ -664,6 +819,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
               )
               this.actions.written(path)
               this.pulled(path)
+              this.trace.written(path)
             }
           if (name === 'mkdir' && target.mkdir)
             return async (path: string) => {
@@ -682,6 +838,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
               const written = () => {
                 this.actions.written(args[0])
                 this.pulled(args[0])
+                this.trace.written(args[0])
               }
               return new Proxy(stage, {
                 get(target, key) {
@@ -717,16 +874,30 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
           )
             return (path: string) =>
               this.trace.run('directory identity ' + path, () => value.call(target, path), true)
+          if (name === 'move')
+            return async (from: string, to: string) => {
+              await target.move(from, to)
+              this.trace.written(to)
+            }
           if ((name === 'list' || name === 'listDirectories') && typeof value === 'function') {
             const trace = this.trace
             const inventoried = (completed: number) => {
               if (name === 'list') this.inventoryTotal = completed
             }
+            const candidate = (path: string) => this.namedCandidate(path)
+            const checkRoot = () => this.checkRoot()
+            const nameTracked = async () => {
+              if (this.token.scope.kind !== 'group') return
+              for await (const entry of options.state.all()) this.nameCandidates([entry.path])
+            }
             return async function* () {
+              await checkRoot()
+              await nameTracked()
               const finish = trace.begin('fs ' + String(name))
               let completed = 0
               try {
                 for await (const info of value.call(target)) {
+                  if (name === 'list' && !candidate(info.path)) continue
                   completed++
                   yield info
                 }
@@ -777,7 +948,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       }),
       state: progressState,
       selective: this.selective,
-      stillHeld: () => this.active,
+      stillHeld: () => this.active && !this.rootIssue,
       ignore: { ignores: (path) => this.blocked(path) },
       // Host transport durably stages every executable delivery before core receives the page.
       defer: (path) =>
@@ -787,6 +958,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       ...(options.fallbackMs ? { fallbackMs: options.fallbackMs } : {}),
       onSync: (report) => {
         this.serverAvailable = true
+        this.trace.finishPull(true)
         this.pendingFolders.clear()
         this.folderProgress.clear()
         this.progress.clear()
@@ -794,16 +966,35 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
         options.pulling?.()
         options.comparing?.()
         this.trace.finishFirstSync()
-        options.changed(this.engine.status, report)
+        options.changed(this.engine.status, this.placement?.localMetadata(report) ?? report)
         void this.outbox.drain().catch(() => options.publicationChanged?.())
       },
       onFail: (error) => {
+        this.trace.finishPull(false)
         this.pendingFolders.clear()
         this.folderProgress.clear()
         options.event?.('Error: ' + connectionError(error))
         this.progress.clear()
         this.pulling = false
         options.pulling?.()
+        const rootFailure = vaultRootFailure(error)
+        if (rootFailure) {
+          this.engine.pause()
+          options.comparing?.()
+          options.failed(rootFailure)
+          return
+        }
+        if (error instanceof LocalPlacementError) this.engine.pause()
+        if (
+          [
+            'scope_unavailable',
+            'forbidden',
+            'unauthorized',
+            'vault-root-changed',
+            'protocol',
+          ].includes((error as { code?: string }).code ?? '')
+        )
+          this.engine.pause()
         options.comparing?.()
         options.failed(error)
       },
@@ -814,6 +1005,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     })
     this.unstatus = this.engine.onStatus((status) => {
       if (status.state === 'offline') this.serverAvailable = false
+      if (status.state === 'syncing') this.trace.beginPullCycle()
       if (status.state === 'syncing' && this.progress.stage === 'Uploading') {
         pushTotal = Math.max(pushTotal, status.pending)
         this.progress.counts(pushTotal - status.pending, pushTotal)
@@ -874,6 +1066,164 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
       return outcome
     }
     if (options.paused) this.engine.pause()
+    this.rootIssue = options.rootIssue
+    if (this.rootIssue) this.engine.pause()
+    this.unroot = options.watchRoot?.((issue) => this.scopeRootGone(issue))
+  }
+  scopeRootGone(issue: ScopeRootIssue): void {
+    if (!this.active || JSON.stringify(this.rootIssue) === JSON.stringify(issue)) return
+    this.rootIssue = issue
+    this.engine.pause()
+    this.options.rootChanged?.(issue)
+    console.debug('[abele-sync] folder root unavailable; connection stopped', issue.kind)
+  }
+  async restoreRoot(): Promise<void> {
+    if (!this.rootIssue || this.rootIssue.kind === 'server-renamed')
+      throw new Error('The folder is not missing')
+    await this.engine.runExclusive(async () => {
+      const directories = JSON.parse((await this.options.state.getMeta('v2-directories')) ?? '{}')
+      if (
+        (await this.options.state.getMeta('plugin:scope-root-follow')) ||
+        (await this.options.state.getJournal()) ||
+        directories.pending
+      )
+        throw new Error('A previous server operation is unresolved; sync remains stopped')
+      // Explicitly pull a new snapshot. Old absence must never become outgoing deletes.
+      await this.options.state.transaction(async () => {
+        await this.options.state.setCursor(0)
+        await this.options.state.setMeta('v2-directories', null)
+        const entries = []
+        for await (const entry of this.options.state.all()) entries.push(entry.path)
+        for (const path of entries) await this.options.state.delete(path)
+      })
+      this.rootIssue = undefined
+      this.options.rootChanged?.(undefined)
+    })
+    try {
+      this.unroot?.()
+      this.unroot = this.options.watchRoot?.((issue) => this.scopeRootGone(issue))
+      const held = await this.engine.heldDeletes()
+      if (held.length)
+        await this.engine.decideDeletes(
+          'restore',
+          held.map((one) => one.fileId)
+        )
+      await this.engine.sync()
+      this.engine.resume()
+      this.engine.start()
+    } catch (error) {
+      this.scopeRootGone({ kind: 'deleted' })
+      throw error
+    }
+  }
+  async followServerRoot(): Promise<void> {
+    const issue = this.rootIssue
+    if (issue?.kind !== 'server-renamed' || !this.serverPaths)
+      throw new Error('The server folder was not renamed')
+    await this.engine.runExclusive(async () => {
+      if (!this.active) throw new EngineError('lost', 'Connection stopped')
+      this.options.assertHeld?.()
+      if (this.options.rootExists && !(await this.options.rootExists()))
+        throw new LocalPlacementError('The local folder is missing; sync remains stopped')
+      const directories = JSON.parse((await this.options.state.getMeta('v2-directories')) ?? '{}')
+      if (
+        (await this.options.state.getJournal()) ||
+        directories.pending ||
+        (await this.options.state.getMeta('plugin:scope-root-follow'))
+      )
+        throw new LocalPlacementError(
+          'A previous server operation is unresolved; sync remains stopped'
+        )
+      const response = await this.options.fetch(new URL('/v2/connection', this.token.address), {
+        headers: {
+          authorization: 'Bearer ' + this.token.key,
+          ...(this.generation ? { [RESTORE_HEADER]: this.generation } : {}),
+        },
+        cache: 'no-store',
+        signal: this.requests.signal,
+      })
+      if (!response.ok)
+        throw new EngineError(
+          'protocol',
+          'Cannot confirm the renamed server folder; sync remains stopped'
+        )
+      assertResponseGeneration(response, this.generation)
+      const authority = V2ConnectionSchema.parse(await response.json())
+      if (
+        authority.status !== 'active' ||
+        authority.scope.kind !== this.token.scope.kind ||
+        authority.scope.id !== this.token.scope.id
+      )
+        throw new EngineError(
+          'protocol',
+          'The shared folder identity changed; sync remains stopped'
+        )
+      if (!this.active) throw new EngineError('lost', 'Connection stopped')
+      this.options.assertHeld?.()
+      if (this.rootIssue !== issue)
+        throw new LocalPlacementError(
+          'The local folder changed; review its current state before continuing'
+        )
+      if (authority.scope.path !== issue.to) {
+        if (!PathSchema.safeParse(authority.scope.path).success)
+          throw new FolderScopeError(
+            'The server returned an invalid shared-folder name; sync remains stopped'
+          )
+        this.scopeRootGone({ ...issue, to: authority.scope.path })
+        throw new FolderScopeError(
+          'The server folder was renamed again; review its current name before continuing'
+        )
+      }
+      // Only the wire namespace changes. Existing baselines, stages and local paths remain intact.
+      // A snapshot skips the historical move whose old path is outside the new server boundary.
+      await this.options.state.setCursor(0)
+      if (!this.active || this.rootIssue !== issue)
+        throw new LocalPlacementError('The connection changed; sync remains stopped')
+      this.options.assertHeld?.()
+      this.options.serverRootChanged?.(issue.to)
+      this.serverPaths.remote = issue.to
+      this.rootIssue = undefined
+      this.options.rootChanged?.(undefined)
+      console.debug('[abele-sync] following renamed server folder at unchanged local placement')
+    })
+    await this.engine.sync()
+    this.engine.resume()
+    this.engine.start()
+  }
+  async followRoot(): Promise<void> {
+    const issue = this.rootIssue
+    if (issue?.kind !== 'moved' || !this.placement) throw new Error('The folder was not moved')
+    await this.engine.runExclusive(async () => {
+      this.options.assertHeld?.()
+      if (
+        (await this.options.state.getJournal()) ||
+        (await this.options.state.getMeta('plugin:scope-root-follow'))
+      )
+        throw new Error('A previous server operation is unresolved; sync remains stopped')
+      await verifyFolderSet(
+        this.options.state,
+        this.options.verifyRootFileSystem?.(issue.path) ?? this.localFs,
+        this.placement.server,
+        issue.path,
+        this.options.inspectRoot?.bind(this.options)
+      )
+      if (this.rootIssue !== issue)
+        throw new LocalPlacementError(
+          'The folder moved again; check its current location before following'
+        )
+      this.options.followRecoveredRoot?.(this.placement.local, issue.path)
+      this.options.localRootChanged?.(issue.path)
+      this.options.localRoot = issue.path
+      this.placement.local = issue.path
+      this.rootIssue = undefined
+      this.options.rootChanged?.(undefined)
+      this.unroot?.()
+      this.unroot = this.options.watchRoot?.((issue) => this.scopeRootGone(issue))
+      console.debug('[abele-sync] following folder at its new local placement')
+    })
+    await this.engine.rescan()
+    this.engine.resume()
+    this.engine.start()
   }
   async updateSelective(selective: SelectiveSettings): Promise<void> {
     await this.engine.runExclusive(async () => {
@@ -882,8 +1232,38 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     })
     if (this.engine.status.state !== 'paused') await this.engine.rescan()
   }
+  private nameCandidates(paths: readonly string[]): void {
+    if (this.token.scope.kind !== 'group') return
+    for (const path of paths) this.groupCandidates.add(path)
+    this.options.discoveryCandidates?.(paths)
+  }
+  private received<T>(value: T): T {
+    try {
+      return this.serverPaths ? this.serverPaths.map(value, true) : value
+    } catch (error) {
+      this.engine?.pause()
+      throw error
+    }
+  }
+  private namedCandidate(path: string): boolean {
+    return (
+      this.token.scope.kind !== 'group' ||
+      this.groupCandidates.has(path) ||
+      this.localCandidates.has(path)
+    )
+  }
+  /** An observed local rename extends discovery only from already named members. */
+  localRenamed(from: string, to: string): void {
+    if (!this.active || this.token.scope.kind !== 'group') return
+    const source = from,
+      destination = to
+    const paths = [...this.groupCandidates].filter(
+      (path) => path === source || path.startsWith(source + '/')
+    )
+    this.nameCandidates(paths.map((path) => destination + path.slice(source.length)))
+  }
   written(path: string): void {
-    this.actions.written(path)
+    this.actions.written(this.placement?.toServer(path) ?? path)
   }
   private publishAssetSource(
     one: { path: string; sha: string; mtime: number; key: string },
@@ -921,6 +1301,15 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   }
   private assertHeld(): void {
     if (!this.active) throw new EngineError('lost', 'Connection stopped')
+    if (this.rootIssue?.kind === 'server-renamed' && !this.rootControl)
+      throw new FolderScopeError(
+        `Shared folder renamed on the server: ${this.rootIssue.from} → ${this.rootIssue.to}; sync stopped`
+      )
+    if (this.rootIssue && !this.rootControl)
+      throw new AbeleError(
+        'scope_unavailable',
+        'The local folder is gone; restore it from the server or disconnect'
+      )
     this.options.assertHeld?.()
   }
   private source(): ReviewSource {
@@ -934,21 +1323,36 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     }
   }
   private outsideScope(path: string): boolean {
-    const root = this.options.localRoot ?? this.token.scope.path
     return (
-      this.token.scope.kind === 'folder' &&
-      root !== '/' &&
-      path !== root &&
-      !path.startsWith(root + '/')
+      !!this.placement &&
+      path !== this.placement.server &&
+      !path.startsWith(this.placement.server + '/')
     )
   }
   /** Host identity resolution and rooted inventory supply physical spelling, never a wire alias. */
+  private assertPhysicalLocalPaths(paths: readonly string[]): void {
+    const root = this.options.localRoot ?? this.token.scope.path
+    for (const path of paths) {
+      assertPhysicalPath(path)
+      if (path !== root && !path.startsWith(root + '/'))
+        throw new FolderScopeError(
+          'The local file is outside this connection; sync stopped: ' + path
+        )
+    }
+  }
   private assertLocalPaths(paths: readonly string[]): void {
     for (const path of paths) {
       try {
         assertPhysicalPath(path)
         // Compare the exact physical root bytes; Unicode normalization grants no access.
-        if (!this.outsideScope(path)) continue
+        const root = this.placement?.server ?? this.options.localRoot ?? this.token.scope.path
+        if (
+          this.token.scope.kind !== 'folder' ||
+          root === '/' ||
+          path === root ||
+          path.startsWith(root + '/')
+        )
+          continue
       } catch {
         /* Malformed physical paths cannot reach filesystem operations. */
       }
@@ -983,10 +1387,11 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     }
   }
   private blocked(path: string): boolean {
-    path = path.normalize('NFC')
+    // Core asks about directory prefixes as well as concrete paths.
+    if (path.endsWith('/')) path = path.slice(0, -1)
     return (
-      this.outsideScope(path.replace(/\/$/, '')) ||
-      (this.ignore?.ignores(path) ?? false) ||
+      this.outsideScope(path) ||
+      (this.ignore?.ignores(this.placement?.toLocal(path) ?? path) ?? false) ||
       (!this.isRoot() && configurationPath(path, this.options.paths)) ||
       [...this.held].some((held) => withinSyncPath(path, held))
     )
@@ -1170,8 +1575,14 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
         }
         throw new EngineError('protocol', 'Executable departure recovery failed')
       }
-      const page = V2ChangesSchema.parse(await response.json())
-      this.assertScopedPayload(page)
+      const page = V2ChangesSchema.parse(this.received(await response.json()))
+      this.assertIncomingPaths(
+        page.items.flatMap((event) =>
+          event.type === 'content'
+            ? [event.path, event.item.path, ...(event.prev_path ? [event.prev_path] : [])]
+            : [event.path]
+        )
+      )
       for (const event of page.items) {
         const id = event.type === 'content' ? event.item.file_id : event.file_id
         if (ids.has(id)) events.set(id, event)
@@ -1268,6 +1679,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
         throw new EngineError('lost', 'Local file changed; preserved conflict copy remains')
       await this.assertJoinPlacement(item.path)
       await this.options.fs.writeAtomic(item.path, incoming, item.mtime)
+      this.trace.written(item.path)
     }
     const lease = (this.options.fs as FileSystem & { [key: symbol]: unknown })[
       Symbol.for('abele.sync.placement-v1')
@@ -1350,6 +1762,7 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
         throw new EngineError('lost', 'Local file changed; preserved conflict copy remains')
       await this.assertJoinPlacement(item.path)
       await incomingStage.commit(this.requests.signal)
+      this.trace.written(item.path)
     }
     const placement = Reflect.get(fs, PLACEMENT) as
       | ((paths: string[], work: () => Promise<void>) => Promise<void>)
@@ -1375,10 +1788,17 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     )
     return {
       count: result.ops.length,
-      paths: [...new Set(paths.filter((path): path is string => path !== null))],
+      paths: [
+        ...new Set(
+          paths
+            .filter((path): path is string => path !== null)
+            .map((path) => this.placement?.toLocal(path) ?? path)
+        ),
+      ],
     }
   }
   async start(): Promise<void> {
+    if (this.rootIssue) return
     await this.refreshHolds()
     this.assertHeld()
     await this.outbox.restore()
@@ -1388,7 +1808,18 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
   get available(): boolean {
     return this.serverAvailable
   }
+  private async checkRoot(): Promise<void> {
+    if (
+      !this.rootIssue &&
+      this.options.rootExists &&
+      (await this.options.state.getCursor()) > 0 &&
+      !(await this.options.rootExists())
+    )
+      this.scopeRootGone({ kind: 'deleted' })
+    this.assertHeld()
+  }
   async sync(retryHeld = true): Promise<void> {
+    await this.checkRoot()
     await this.refreshHolds()
     this.assertHeld()
     await this.engine.sync()
@@ -1403,6 +1834,8 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     this.pendingFolders.clear()
     this.progress.clear()
     this.folderProgress.clear()
+    this.unroot?.()
+    this.unroot = undefined
     this.requests.abort()
   }
   async close(): Promise<void> {
@@ -1452,29 +1885,33 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
     return (
       this.active &&
       this.permitted &&
-      !this.outsideScope(path) &&
-      this.client.includes(path) &&
+      (!this.placement ||
+        path === this.placement.local ||
+        path.startsWith(this.placement.local + '/')) &&
+      this.client.includes(this.placement?.toServer(path) ?? path) &&
       !(!this.isRoot() && configurationPath(path, this.options.paths))
     )
   }
   acceptsLocal(path: string, size: number): boolean {
-    return this.covers(path) && !this.localExcluded(path, size)
+    return this.covers(path) && !this.localExcluded(this.placement?.toServer(path) ?? path, size)
   }
   private localExcluded(path: string, size: number): boolean {
-    path = path.normalize('NFC')
+    if (this.outsideScope(path)) return true
+    path = this.placement?.toLocal(path) ?? path
     return (
-      this.outsideScope(path.replace(/\/$/, '')) ||
       (this.ignore?.ignores(path) ?? false) ||
       (!this.isRoot() && configurationPath(path, this.options.paths)) ||
       isExcluded(path, size, this.selective, this.options.paths?.scriptsFolder ?? 'Scripts')
     )
   }
   async pathFor(fileId: string): Promise<string | null> {
-    return (await this.options.state.byFileId(fileId))?.path ?? null
+    const path = (await this.options.state.byFileId(fileId))?.path
+    return path ? (this.placement?.toLocal(path) ?? path) : null
   }
   async entryFor(path: string) {
+    path = this.placement?.toServer(path) ?? path
     const exact = await this.options.state.get(path)
-    if (exact) return exact
+    if (exact) return this.placement?.localMetadata(exact) ?? exact
     const key = path.normalize('NFC')
     let match = null
     for await (const entry of this.options.state.all()) {
@@ -1483,22 +1920,43 @@ export class TokenEngineRuntime implements ConnectionRuntime, TokenUiRuntime {
         match = entry
       }
     }
-    return match
+    return match ? (this.placement?.localMetadata(match) ?? match) : null
   }
-  heldDeletes() {
-    return this.engine.heldDeletes()
+  historyClient(): V2EngineClient {
+    if (!this.placement) return this.client
+    const placement = this.placement
+    return new Proxy(this.client, {
+      get(target, key) {
+        const value = Reflect.get(target, key)
+        if (['versions', 'trash', 'restore', 'restoreDeleted'].includes(String(key)))
+          return async (...args: unknown[]) =>
+            placement.localMetadata(await value.apply(target, args))
+        return typeof value === 'function' ? value.bind(target) : value
+      },
+    })
+  }
+  localPath(path: string): string {
+    return this.placement?.toLocal(path) ?? path
+  }
+  async heldDeletes() {
+    const held = await this.engine.heldDeletes()
+    return this.placement?.localMetadata(held) ?? held
   }
   decideDeletes(kind: 'confirm' | 'restore', ids: readonly string[]) {
     return this.actions.decideDeletes(kind, ids)
   }
-  deferred() {
-    return this.engine.deferred()
+  async deferred() {
+    const deferred = await this.engine.deferred()
+    return this.placement?.localMetadata(deferred) ?? deferred
   }
   applyDeferred(ids: readonly string[]) {
     return this.actions.applyDeferred(ids)
   }
   keepLocal(paths: string[] | undefined, ids: readonly string[]) {
-    return this.engine.keepLocal(paths, ids)
+    return this.engine.keepLocal(
+      paths?.map((path) => this.placement?.toServer(path) ?? path),
+      ids
+    )
   }
   async opened(path: string): Promise<{ source: ReviewSource; noteId: string }[]> {
     this.assertHeld()
