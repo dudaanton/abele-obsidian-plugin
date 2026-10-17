@@ -287,15 +287,15 @@ describe.skipIf(!available)('the canvas by hand', () => {
     await key('Enter')
     await saved()
     await until(`(await read()).edges.some(e=>e.label==='Sample feeds')`)
-    const start = run<number[]>(
+    const arrowStart = run<number[]>(
       `const b=view().viewer.graph.nodes.find(n=>n.id==='beta');return [b.x+b.width/2,b.y+b.height]`
     )
-    const before = startPixels(start[0], start[1])
+    const before = startPixels(arrowStart[0], arrowStart[1])
     await bothEnds()
     await until(
       `(await read()).edges.some(e=>e.label==='Sample feeds'&&e.fromEnd==='arrow'&&(e.toEnd??'arrow')==='arrow')`
     )
-    await expect.poll(() => startPixels(start[0], start[1])).not.toEqual(before)
+    await expect.poll(() => startPixels(arrowStart[0], arrowStart[1])).not.toEqual(before)
     shot('connection-labelled')
     run(`view().viewer.setCamera(${JSON.stringify(camera)});return true`)
     // Let go over nothing: a menu there offers what to make at its end.
