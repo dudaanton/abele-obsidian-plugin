@@ -19,6 +19,12 @@ import { ChatService } from '@/ai/ChatService'
 import { mountDebugSource } from '@/debugger/sourceExtension'
 import { openTraceRun, openTraceValue } from '@/debugger/trace/TraceTabs'
 import { DebuggerService } from '@/debugger/DebuggerService'
+import {
+  openDebuggerAccessFixture,
+  closeDebuggerAccessFixture,
+  retryDebuggerAccessFixture,
+  openDebuggerGrantsFixture,
+} from './debuggerAccessScreen'
 import { createTraceTools } from '@/ai/tools/TraceTools'
 import { activeTraceContext } from '@/debugger/trace/agentContext'
 const readAgentTraceTimeline = (run: string) =>
@@ -294,6 +300,10 @@ interface AbeleTestApi {
   openTraceRun: typeof openTraceRun
   openTraceValue: typeof openTraceValue
   DebuggerService: typeof DebuggerService
+  openDebuggerAccessFixture: typeof openDebuggerAccessFixture
+  closeDebuggerAccessFixture: typeof closeDebuggerAccessFixture
+  retryDebuggerAccessFixture: typeof retryDebuggerAccessFixture
+  openDebuggerGrantsFixture: typeof openDebuggerGrantsFixture
   readAgentTraceTimeline: typeof readAgentTraceTimeline
   requests: {
     service: typeof RequestsService
@@ -965,6 +975,10 @@ export function exposeTestApi(plugin: Plugin): void {
     openTraceRun,
     openTraceValue,
     DebuggerService,
+    openDebuggerAccessFixture,
+    closeDebuggerAccessFixture,
+    retryDebuggerAccessFixture,
+    openDebuggerGrantsFixture,
     readAgentTraceTimeline,
     requests: { service: RequestsService, openView: openRequestsView, openTab: openRequestTab },
     codeSelectionAdapters: { chat: chatCodeSelection, note: insertCodeSelection },

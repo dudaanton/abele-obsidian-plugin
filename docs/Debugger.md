@@ -6,6 +6,20 @@ on the node, not inside Obsidian. The view has one set of controls, with Variabl
 Call stack, Breakpoints, Watch and Output underneath. Agent proposals and their
 results appear as action cards between chat messages.
 
+## Agent access
+
+Approving a provider's tool prompt does not grant debugger access. When an agent needs
+a debugger grant, its chat shows a request naming the folder, program and requested access.
+Allow grants access to that run and target; Deny refuses it. The agent then explicitly retries
+the rejected call. Allow does not replay it or approve an expression: expressions and value
+changes still use the separate exact-operation approval.
+
+In Settings → Nodes, open the node's menu → Agent debugger access to see retained grants
+you issued on this device. Revoke stops access; Delete revokes and removes the grant from
+the list while retaining operation history. Other owners' grants are hidden, and the node
+enforces issuer-only management. Grants also end when their run ends or their deadline passes.
+A node without `debugger.access.v1` support shows an update message instead of these controls.
+
 ## Availability
 
 This UI uses the gated `debugger.v1` infrastructure. The node must advertise and

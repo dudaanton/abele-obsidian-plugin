@@ -2899,3 +2899,34 @@ describe.skipIf(!available)('design catalogue phone contracts', () => {
     if (page === 'comment') expect(result.height).toBeLessThan(PHONE.height * 0.85)
   })
 })
+
+describe.skipIf(!available)('agent debugger grants on a phone', () => {
+  beforeAll(ensurePhone, 90_000)
+  it('keeps grant management inside the native tall dialog', async () => {
+    const result = JSON.parse(
+      await evalLong(
+        `(async () => {
+      const api = window.__abeleTest, wait = ms => new Promise(r => setTimeout(r, ms));
+      const until = async fn => { for (let i = 0; i < 100; i++) { const v = fn(); if (v) return v; await wait(50) } throw Error('Debugger grants did not appear') };
+      try {
+        await api.openDebuggerAccessFixture();
+        const card = await until(() => document.querySelector('.abele-debugger-access-card'));
+        [...card.querySelectorAll('button')].find(b => b.textContent.trim() === 'Allow').click();
+        await until(() => card.textContent.includes('agent can retry'));
+        api.openDebuggerGrantsFixture();
+        const button = await until(() => document.querySelector('[aria-label="Revoke debugger access"]'));
+        const modal = button.closest('.modal');
+        const over = [...modal.querySelectorAll('*')].filter(el => { const r = el.getBoundingClientRect(); return r.width > 0 && (r.left < -1 || r.right > innerWidth + 1) }).map(el => el.className);
+        const fill = modal.getBoundingClientRect().height / innerHeight;
+        const image = await require('@electron/remote').getCurrentWebContents().capturePage();
+        require('fs').writeFileSync(${JSON.stringify(SHOTS + '/debugger-access-grants.png')}, image.toPNG());
+        return { over, fill };
+      } finally { await api.closeDebuggerAccessFixture() }
+    })()`,
+        90000
+      )
+    ) as { over: string[]; fill: number }
+    expect(result.over).toEqual([])
+    expect(result.fill).toBeGreaterThanOrEqual(0.85)
+  })
+})

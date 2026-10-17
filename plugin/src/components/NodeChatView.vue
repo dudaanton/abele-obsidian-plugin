@@ -138,6 +138,10 @@
           </template>
         </NodeMessageTree>
       </template>
+      <NodeDebuggerAccess
+        v-if="presenter.reference && presenter.nodeDescription?.value"
+        :presenter="presenter"
+      />
       <NodePermissionCard
         v-for="prompt in presenter.projection.value.prompts"
         :key="prompt.prompt_id"
@@ -275,6 +279,7 @@ import AgentsButton from './AgentsButton.vue'
 import Button from './obsidian/Button.vue'
 import MetaLine from './obsidian/MetaLine.vue'
 import NodeDebugActions from '@/debugger/NodeDebugActions.vue'
+import NodeDebuggerAccess from '@/debugger/NodeDebuggerAccess.vue'
 import { attachNodeProgram, openNodeDebugger, startNodeProgram } from '@/debugger/register'
 import { useChatKeyboardGap } from '@/composables/useChatKeyboardGap'
 import WorktreeChip from './nodeWork/WorktreeChip.vue'

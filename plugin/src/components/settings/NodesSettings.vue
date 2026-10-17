@@ -64,6 +64,12 @@
       :initial-parent-id="ChatService.getInstance().activeSession.value?.delegationParentId"
       @close="grantNode = undefined"
     />
+    <DebuggerGrantsDialog
+      v-if="debuggerGrantNode"
+      :label="debuggerGrantNode.label"
+      :connection="service.connection(debuggerGrantNode.id)"
+      @close="debuggerGrantNode = undefined"
+    />
     <NodePairingDialog
       v-if="pairing"
       :service="service"
@@ -137,6 +143,7 @@ import { isPairedNode } from '@/node/NodeRegistry'
 import { claimedEnrollment } from '@/node/NodeDeviceKeyStore'
 import NodePairingDialog from '../NodePairingDialog.vue'
 import NodeDelegationGrantsDialog from '../NodeDelegationGrantsDialog.vue'
+import DebuggerGrantsDialog from '@/debugger/DebuggerGrantsDialog.vue'
 import { pickNodeSession } from '@/node/openSession'
 import type { RegisteredNode } from '@/node/NodeRegistry'
 import Section from '../obsidian/Section.vue'
@@ -172,6 +179,7 @@ const chooseTraceNotesFolder = async () => {
   updateTraceNotesFolder(folder.kind === 'vault' && folder.path ? folder.path : chosen)
 }
 const grantNode = ref<RegisteredNode>()
+const debuggerGrantNode = ref<RegisteredNode>()
 const parentChats = computed(() => {
   const chats = ChatService.getInstance()
   return chats.tabOrder.value.flatMap((id) => {
@@ -291,6 +299,14 @@ const more = (event: MouseEvent, node: RegisteredNode) => {
       .onClick(() => showGrants(node))
   )
   menu.addSeparator()
+  menu.addItem((i) =>
+    i
+      .setTitle('Agent debugger access')
+      .setIcon('bug')
+      .onClick(() => {
+        debuggerGrantNode.value = node
+      })
+  )
   menu.addItem((i) =>
     i
       .setTitle(t('settings.nodes.remove'))
