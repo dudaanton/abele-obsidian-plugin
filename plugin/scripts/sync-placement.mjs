@@ -3,8 +3,27 @@
  * provenance remain unchanged. Fail closed on changed upstream boundaries; tests and the
  * production bundle use the same transform. The core has no placement hook in this pin.
  */
-function replaceOnce(code, before, after) {
-  if (code.split(before).length !== 2) throw new Error('Unsupported sync placement boundary')
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const pluginRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
+const read = (file) => JSON.parse(readFileSync(file, 'utf8'))
+const provenance = read(join(pluginRoot, 'vendor/sync/provenance.json'))
+const pinnedVersion = `0.0.0-${provenance.commit.slice(0, 12)}`
+const pinnedFiles = provenance.packages['@abele/sync-core'].files
+const digest = (code) => createHash('sha256').update(code).digest('hex')
+const marker = '// abele-sync-placement-v1:'
+
+function boundaryError(id, before, count, expected = '1') {
+  return new Error(
+    `Unsupported sync placement boundary in ${id}: ${JSON.stringify(before.slice(0, 100))}; found ${count}, expected ${expected}`
+  )
+}
+function replaceBoundary(code, before, after, id) {
+  const count = code.split(before).length - 1
+  if (count !== 1) throw boundaryError(id, before, count)
   return code.replace(before, after)
 }
 const helper = `
@@ -29,6 +48,23 @@ export function syncPlacementPlugin() {
     transform(input, id) {
       const file = id.split('?')[0]
       if (!file.includes('/node_modules/@abele/sync-core/dist/')) return null
+      const packageRoot = file.slice(0, file.lastIndexOf('/dist/'))
+      const installed = read(join(packageRoot, 'package.json'))
+      if (installed.name !== '@abele/sync-core' || installed.version !== pinnedVersion)
+        throw new Error(
+          `installed @abele/sync-core ${installed.version} does not match the pinned ${pinnedVersion}; run npm ci (${id})`
+        )
+      const relative = file.slice(packageRoot.length + 1)
+      if (!pinnedFiles[relative] || digest(readFileSync(file)) !== pinnedFiles[relative])
+        throw new Error(`Installed @abele/sync-core integrity mismatch in ${id}; run npm ci`)
+      if (input.startsWith(marker)) {
+        const end = input.indexOf('\n')
+        const body = input.slice(end + 1)
+        if (end < 0 || input.slice(marker.length, end) !== `${relative}:${digest(body)}`)
+          throw new Error(`Invalid sync placement marker in ${id}`)
+        return { code: input, map: null }
+      }
+      const replaceOnce = (code, before, after) => replaceBoundary(code, before, after, id)
       let code = input
       if (file.endsWith('/cycle.js')) {
         code = replaceOnce(
@@ -62,7 +98,7 @@ export function syncPlacementPlugin() {
       } else if (file.endsWith('/pullPlace.js')) {
         code = `import { receiveToStage as receivePlacementSource } from './streaming.js';\n` + code
         if (!code.includes('fingerprintFile(this.fs,'))
-          throw new Error('Unsupported pull fingerprint boundary')
+          throw boundaryError(id, 'fingerprintFile(this.fs,', 0, 'at least 1')
         code = code.replaceAll('fingerprintFile(this.fs,', 'fingerprintPlacementFile(this.fs,')
         code = replaceOnce(
           code,
@@ -424,7 +460,8 @@ export function syncPlacementPlugin() {
           '}); continue;\n                }\n                if (!entry)'
         )
       } else return null
-      return { code: helper + code, map: null }
+      const body = helper + code
+      return { code: `${marker}${relative}:${digest(body)}\n${body}`, map: null }
     },
   }
 }
