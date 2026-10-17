@@ -6,8 +6,34 @@ import { clientWith } from '../helpers/githubTab'
 import { githubRepositorySource } from '@/repository/github'
 import { sourceKey } from '@/repository/source'
 import { savedForgeTarget } from '@/repository/state'
+import { guardedGithubClient } from '@/github/guardedClient'
 
 describe('forge authority boundary', () => {
+  it('constructs view adapters after revocation so the async load can publish its refusal', async () => {
+    const { client, request } = clientWith({})
+    const guarded = guardedGithubClient(
+      client,
+      () => {
+        throw new Error('Connection approval expired')
+      },
+      true
+    )
+    let source: ReturnType<typeof githubRepositorySource> | undefined
+    expect(() => {
+      source = githubRepositorySource(
+        guarded,
+        { host: 'github.com', owner: 'sample', repo: 'project' },
+        'sample-account'
+      )
+    }).not.toThrow()
+    await expect(
+      source!.github!.loadTarget(
+        { host: 'github.com', owner: 'sample', repo: 'project', kind: 'issue', number: 7 },
+        () => {}
+      )
+    ).rejects.toThrow('Connection approval expired')
+    expect(request).not.toHaveBeenCalled()
+  })
   it('keys non-GitHub sources by full deployment and restores versioned targets safely', () => {
     const one = {
       provider: 'gitlab' as const,

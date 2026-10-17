@@ -1,8 +1,7 @@
-/** Compatibility entry point: existing readers now compose the provider adapter. */
+/** Compatibility entry point for the GitHub repository adapter. */
 import type { GithubClient } from '@/github/client'
 import type { RepoLike } from '@/github/repoPage/repoHome'
-import { endpoints } from '@/github/urls'
-import { githubProvider } from '@/forge/github'
+import { createGithubRepositorySource } from '@/forge/githubRepository'
 import type { RepositorySource } from './source'
 
 export function githubRepositorySource(
@@ -10,13 +9,7 @@ export function githubRepositorySource(
   repo: RepoLike,
   connection = ''
 ): RepositorySource {
-  const provider = githubProvider(client, connection, {
-    ...(client.endpoints ?? endpoints(repo.origin ?? repo.host)),
-    webHost: repo.host,
-    origin: repo.origin ?? `https://${repo.host}`,
-  })
-  return provider.repository({
-    deployment: provider.deployment,
-    fullPath: `${repo.owner}/${repo.repo}`,
-  })
+  // Reactive views must construct their adapter even after access expires. Its reads retain
+  // the guarded client and reject inside the async load, which clears content and shows why.
+  return createGithubRepositorySource(client, repo, connection)
 }
