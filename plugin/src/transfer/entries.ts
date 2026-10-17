@@ -524,10 +524,12 @@ export function collectEntries(settings: AbeleSettings): TransferEntry[] {
         section: section.id,
         id: itemId(section.id, item),
         label:
-          section.id === 'github-connections' &&
-          connectionUnavailableReason(item as GithubConnection)
-            ? `${item.name || itemId(section.id, item)} · ${connectionUnavailableReason(item as GithubConnection)}`
-            : item.name || itemId(section.id, item),
+          section.id === 'github-connections' && (item as GithubConnection).provider === 'forgejo'
+            ? `${item.name || itemId(section.id, item)} · Forgejo`
+            : section.id === 'github-connections' &&
+                connectionUnavailableReason(item as GithubConnection)
+              ? `${item.name || itemId(section.id, item)} · ${connectionUnavailableReason(item as GithubConnection)}`
+              : item.name || itemId(section.id, item),
         data: item,
         secretIds: section.secretsOf?.(item) ?? [],
       }))
@@ -684,6 +686,8 @@ export function applyEntries(
       typeof c.keyId !== 'string' ||
       typeof c.server !== 'string' ||
       !validProviderServer({ ...c, server: c.server.trim() }) ||
+      (c.checkState !== undefined &&
+        !['ok', 'partial', 'refused', 'error'].includes(c.checkState)) ||
       entry.secretIds?.some((id) => id !== c.keyId)
     ) {
       throw new Error(

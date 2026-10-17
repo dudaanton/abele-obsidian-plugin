@@ -94,6 +94,11 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
   already showing that item, else the GitHub tab used last, else a new one; Mod+Enter opens a new
   tab. The same picker is _Open another GitHub item…_ in a GitHub tab's "more options" menu (only
   while the GitHub integration is on)
+
+  This picker also opens a pasted native Forgejo URL for a configured deployment. It does not
+  translate a Forgejo title, short repository name or search expression into a GitHub request;
+  unsupported Forgejo lookup operations explain that limitation. Clicking a supported Forgejo
+  link in a note opens the same repository tab; other links remain browser exits.
 - Open node repository — choose a connected node, registered project and workspace, then browse
   its repository in the same tab layout as GitHub. Workspaces include the original checkout,
   node worktrees and opted-in external worktrees. Working tree shows local changes above HEAD;

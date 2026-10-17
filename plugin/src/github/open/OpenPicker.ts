@@ -22,8 +22,9 @@ import {
   GITHUB_VIEW_TYPE,
   connectionClient,
   resolveConnectionCandidates,
+  parseForSettings,
 } from '../GithubService'
-import { endpoints } from '../urls'
+import { endpoints, shortName } from '../urls'
 import { preferredConnection } from '../connections'
 import type { GithubClient } from '../client'
 import type { GithubViewModel } from '../model'
@@ -60,6 +61,7 @@ export const forgetLastPicked = () => {
 
 const repoOfTarget = (model: GithubViewModel | undefined): RepoRef | null => {
   const t = model?.target
+  if (t?.provider === 'forgejo') return null
   return t
     ? { host: t.host, ...(t.origin ? { origin: t.origin } : {}), owner: t.owner, repo: t.repo }
     : null
@@ -97,6 +99,7 @@ export class OpenPicker extends SuggestModal<OpenRow> {
   private timer: number | null = null
   private readonly contextId?: string
   private readonly contextManual: boolean
+  private readonly forgeContext: boolean
   private readonly choices = new Map<string, { id?: string; client: GithubClient }>()
   private choice(host: string, repo?: RepoRef): { id?: string; client: GithubClient } {
     const key = JSON.stringify([host, repo?.origin, repo?.owner, repo?.repo])
@@ -134,7 +137,10 @@ export class OpenPicker extends SuggestModal<OpenRow> {
         ? activeView.model
         : (remembered?.view as unknown as { model?: GithubViewModel })?.model
     this.contextId = model?.connectionId ?? lastPickedConnection
-    this.contextManual = model?.connectionId ? model.connectionIntent==='manual' : lastPickedManual
+    this.forgeContext = model?.target?.provider === 'forgejo'
+    this.contextManual = model?.connectionId
+      ? model.connectionIntent === 'manual'
+      : lastPickedManual
     this.search = search ?? new OpenSearch((host, repo) => this.choice(host, repo).client)
     this.repo = pickerRepo(app)
     const preferred = preferredConnection(githubSettings().connections ?? [])
@@ -194,6 +200,21 @@ export class OpenPicker extends SuggestModal<OpenRow> {
         'GitHub settings or keys changed. Reopen the picker to search with current connections.'
       return []
     }
+    if (this.timer !== null) window.clearTimeout(this.timer)
+    this.timer = null
+    const native = parseForSettings(query.trim())
+    if (native?.provider === 'forgejo') {
+      this.emptyStateText = ''
+      const kind = native.kind === 'blob' ? 'file' : native.kind === 'tree' ? 'folder' : native.kind
+      return [
+        { kind, title: shortName(native), note: `Forgejo · ${native.origin}`, url: query.trim() },
+      ]
+    }
+    if (this.forgeContext && !native) {
+      this.emptyStateText =
+        'Search is not available for this service in this version. Paste a full repository, issue, pull request or file link.'
+      return []
+    }
     const q = this.parse(query)
     // A new input: whatever was waiting to be asked for the one before is not asked now.
     if (this.timer !== null) window.clearTimeout(this.timer)
@@ -249,6 +270,11 @@ export class OpenPicker extends SuggestModal<OpenRow> {
       }
     }
     if (!url) return false
+    if (parseForSettings(url)?.provider === 'forgejo')
+      return openGithubUrl(this.app, url, pane, {
+        sourceId: this.contextId,
+        sourceIntent: this.contextManual ? 'manual' : 'automatic',
+      })
     if (row.repo) lastPicked = row.repo
     const chosen = row.repo ? this.choice(row.repo.host, row.repo) : undefined
     if (chosen?.client.isCurrent === false) {
@@ -256,9 +282,15 @@ export class OpenPicker extends SuggestModal<OpenRow> {
       return false
     }
     const manual = this.contextManual && chosen?.id === this.contextId
-    if (row.repo) { lastPickedConnection = chosen?.id; lastPickedManual = manual }
+    if (row.repo) {
+      lastPickedConnection = chosen?.id
+      lastPickedManual = manual
+    }
     const opened = chosen?.id
-      ? await openGithubUrl(this.app, url, pane, { connectionId: chosen.id, ...(manual ? {manual:true} : {}) })
+      ? await openGithubUrl(this.app, url, pane, {
+          connectionId: chosen.id,
+          ...(manual ? { manual: true } : {}),
+        })
       : await openGithubUrl(this.app, url, pane)
     if (!opened) new Notice('Abele cannot show that in a GitHub tab.')
     return opened

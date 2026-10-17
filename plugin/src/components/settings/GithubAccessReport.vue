@@ -50,7 +50,7 @@ const KINDS: Record<TokenKind, string> = {
   classic: 'a classic personal access token',
   oauth: 'an OAuth token',
   app: "a GitHub App's token",
-  unknown: 'a token of a kind GitHub does not mark',
+  unknown: 'an access token',
 }
 
 const tokenLines = computed(() => {

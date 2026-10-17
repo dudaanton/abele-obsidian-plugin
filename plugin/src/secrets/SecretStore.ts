@@ -413,8 +413,10 @@ export class SecretStore {
   }
 
   private record(id: string, value: string): void {
-    if (this.status.value === 'off' || !this.storeId) return
-    if (isOwn(this.ownIds(), id)) return
+    if (this.status.value === 'off' || !this.storeId || isOwn(this.ownIds(), id)) {
+      this.version.value++
+      return
+    }
     this.entries = { ...(this.entries ?? {}), [id]: { value, at: this.host.now() } }
     this.version.value++
     if (this.status.value === 'unlocked') this.persist()

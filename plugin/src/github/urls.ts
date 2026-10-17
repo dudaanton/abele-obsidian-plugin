@@ -7,6 +7,9 @@
  */
 
 interface Repo {
+  /** Missing on legacy targets; never inferred from a token or a hostname. */
+  provider?: 'github' | 'forgejo'
+  refKind?: 'branch' | 'tag' | 'commit'
   host: string
   /** Exact web origin when a resolved connection supplies a scheme or nonstandard port. */
   origin?: string
@@ -393,7 +396,8 @@ export async function diffAnchorHash(path: string): Promise<string> {
 
 /** A stable key for "the same item", ignoring which tab or line the link pointed at. */
 export function targetKey(t: GithubTarget): string {
-  const repo = `${t.origin ?? t.host}/${t.owner}/${t.repo}`.toLowerCase()
+  const repo =
+    `${t.provider === 'forgejo' ? 'forgejo:' : ''}${t.origin ?? t.host}/${t.owner}/${t.repo}`.toLowerCase()
   switch (t.kind) {
     case 'issue':
     case 'pull':

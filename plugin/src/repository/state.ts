@@ -51,6 +51,7 @@ export function savedForgeTarget(state: unknown): ForgeTabTarget | null {
     if (
       url.username ||
       url.password ||
+      [...url.searchParams.keys()].some((key) => /token|authorization|password/i.test(key)) ||
       url.origin !== repo.origin ||
       !(url.pathname === repo.pathname || url.pathname.startsWith(`${repo.pathname}/`))
     )

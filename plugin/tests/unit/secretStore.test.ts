@@ -63,6 +63,24 @@ function device(on: Shared, ids: string[] = [], own?: string[]): Device {
 
 afterEach(() => vi.restoreAllMocks())
 
+describe('local credential invalidation', () => {
+  it('advances the credential clock for local writes and removal while synced keys are off', () => {
+    const on = shared(),
+      local = device(on, ['abele-sample-token'])
+    const first = local.store.version.value
+    local.store.set('abele-sample-token', 'sample-first')
+    expect(local.store.version.value).toBeGreaterThan(first)
+    const second = local.store.version.value
+    local.store.set('abele-sample-token', 'sample-second')
+    expect(local.store.version.value).toBeGreaterThan(second)
+    const third = local.store.version.value
+    local.store.remove('abele-sample-token')
+    expect(local.store.version.value).toBeGreaterThan(third)
+    expect(local.writes).toBe(0)
+    expect(on.file).toBeNull()
+  })
+})
+
 describe('a present but malformed synced store', () => {
   it.each([{}, '', false, 1, { id: 'bad', v: 99 }])(
     'is damaged rather than disabled: %j',

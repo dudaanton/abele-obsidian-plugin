@@ -59,8 +59,8 @@ describe('the notifications token setting', () => {
     })
     const view = mount(GithubSettings)
     view
-      .findAllComponents(Button)
-      .find((b) => b.props('text') === 'Edit')!
+      .findAllComponents(Icon)
+      .find((b) => b.props('tooltip') === 'Edit connection')!
       .vm.$emit('click')
     await flushPromises()
     const editor = view.findComponent(ConnectionEditor)

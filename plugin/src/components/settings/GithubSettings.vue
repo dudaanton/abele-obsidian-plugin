@@ -1,7 +1,7 @@
 <template>
   <div class="abele-settings__github">
     <Setting
-      name="GitHub"
+      name="Git hosting"
       desc="Open GitHub issues, pull requests, discussions, commits and files in tabs here, and your notifications in a sidebar. Repository content is read-only. Notifications can be marked read or Done."
     >
       <Checkbox :is-enabled="settings.enabled" @toggle="toggle('enabled')" />
@@ -53,32 +53,27 @@
           v-for="connection in settings.connections"
           :key="connection.id"
           :name="
-            connection.name +
-            (isGithubConnection(connection) && connection.isDefault ? ' · Default' : '')
+            (isBrowsableConnection(connection) && connection.isDefault ? 'Default · ' : '') +
+            connection.name
           "
           :desc="connectionDescription(connection)"
         >
-          <Avatar
-            v-if="isGithubConnection(connection)"
-            :name="connection.account?.login || connection.name"
-            :src="connection.account?.avatarUrl"
+          <StatusDot
+            :tone="connectionStatus(connection).tone"
+            :label="connectionStatus(connection).label"
           />
-          <Button
-            v-if="isGithubConnection(connection)"
-            text="Check"
-            tooltip="Check this connection's account and repository access"
-            @click="editConnection(connection, true)"
-          />
-          <Button
-            v-if="isGithubConnection(connection)"
-            text="Edit"
-            tooltip="Edit this connection's name, server, token and owner preferences"
+          <Icon
+            v-if="isBrowsableConnection(connection)"
+            icon="pencil"
+            with-bg
+            tooltip="Edit connection"
             @click="editConnection(connection)"
           />
-          <Button
-            text="Delete"
-            tooltip="Remove this connection after confirmation"
-            @click="deletingConnection = connection"
+          <Icon
+            icon="more-horizontal"
+            with-bg
+            tooltip="Connection actions"
+            @click="connectionMenu(connection, $event)"
           />
         </Setting>
         <Setting
@@ -213,7 +208,7 @@
     <GithubConnectionEditor
       v-if="editingConnection"
       :connection="editingConnection"
-      :connections="settings.connections.filter(isGithubConnection)"
+      :connections="settings.connections.filter(isBrowsableConnection)"
       :is-new="newConnection"
       :check-on-open="checkOnOpen"
       :error-message="connectionMessage"
@@ -253,7 +248,8 @@ import Checkbox from '../obsidian/Checkbox.vue'
 import Input from '../obsidian/Input.vue'
 import Button from '../obsidian/Button.vue'
 import Icon from '../obsidian/Icon.vue'
-import Avatar from '../obsidian/Avatar.vue'
+import StatusDot from '../obsidian/StatusDot.vue'
+import { Menu } from 'obsidian'
 import ConfirmModal from '../obsidian/ConfirmModal.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import Dropdown from '../obsidian/Dropdown.vue'
@@ -273,6 +269,7 @@ import { PAGE_WIDTH_MAX, PAGE_WIDTH_MIN } from '@/github/pageWidth'
 import {
   projectLegacy,
   isGithubConnection,
+  isBrowsableConnection,
   connectionUnavailableReason,
   connectionBinding,
 } from '@/github/connections'
@@ -287,15 +284,19 @@ const connectionMessage = ref('')
 let originalConnection = ''
 
 const connectionDescription = (connection: GithubConnection) => {
-  const unavailable = connectionUnavailableReason(connection)
+  const unavailable = isBrowsableConnection(connection)
+    ? ''
+    : connectionUnavailableReason(connection)
   if (unavailable) return `${unavailable} · ${connection.server}`
   void secrets().version.value
   const token = connection.keyId ? secrets().get(connection.keyId) : ''
   const available = token
     ? 'Token available on this device'
-    : secrets().status.value === 'locked'
-      ? 'Synced keys locked'
-      : 'No token on this device'
+    : !connection.keyId && connection.provider === 'forgejo'
+      ? 'Public access without a token'
+      : secrets().status.value === 'locked'
+        ? 'Synced keys locked'
+        : 'No token on this device'
   const expiry = connection.expiresAt ? Date.parse(connection.expiresAt) - Date.now() : Infinity
   const rate = config.github.connections?.some(
     (c) => c.id === connection.id && isGithubConnection(c)
@@ -303,8 +304,9 @@ const connectionDescription = (connection: GithubConnection) => {
     ? connectionClient(connection.id).rate.value
     : null
   return [
-    connection.account?.login ?? 'Account not checked',
+    connection.provider === 'forgejo' ? 'Forgejo' : 'GitHub',
     connection.server || 'github.com',
+    connection.account?.login ?? 'Account not checked',
     available,
     rate
       ? `${rate.remaining} of ${rate.limit} requests remaining${rate.reset ? ` · resets ${new Date(rate.reset).toLocaleTimeString()}` : ''}`
@@ -315,8 +317,64 @@ const connectionDescription = (connection: GithubConnection) => {
     .filter(Boolean)
     .join(' · ')
 }
+const connectionStatus = (
+  connection: GithubConnection
+): { tone: 'green' | 'orange' | 'red' | 'faint'; label: string } => {
+  if (!isBrowsableConnection(connection))
+    return { tone: 'faint', label: connectionUnavailableReason(connection) }
+  void secrets().version.value
+  if (connection.keyId && !secrets().get(connection.keyId))
+    return { tone: 'orange', label: 'Token unavailable on this device' }
+  if (connection.expiresAt && Date.parse(connection.expiresAt) <= Date.now())
+    return { tone: 'red', label: 'The token has expired' }
+  if (connection.checkState === 'refused')
+    return { tone: 'red', label: 'The server did not accept the token at the last access check' }
+  if (connection.checkState === 'error')
+    return { tone: 'red', label: 'The last access check failed' }
+  if (connection.checkState === 'partial')
+    return { tone: 'orange', label: 'Some repository access checks failed' }
+  if (connection.checkState === 'ok' || (connection.checkedAt && connection.account))
+    return { tone: 'green', label: 'Access checked' }
+  return { tone: 'faint', label: 'Not checked yet' }
+}
+const connectionMenu = (connection: GithubConnection, event: MouseEvent) => {
+  const menu = new Menu()
+  if (isBrowsableConnection(connection)) {
+    menu.addItem((item) =>
+      item
+        .setTitle('Check access')
+        .setIcon('shield-check')
+        .onClick(() => editConnection(connection, true))
+    )
+    menu.addItem((item) =>
+      item
+        .setTitle(`Make default for ${connection.server || 'github.com'}`)
+        .setIcon('check')
+        .setChecked(connection.isDefault)
+        .onClick(async () => {
+          const current = githubSettingsFrom(config.github),
+            binding = connectionBinding(connection)
+          current.connections = current.connections.map((c) =>
+            connectionBinding(c) === binding ? { ...c, isDefault: c.id === connection.id } : c
+          )
+          config.github = projectLegacy(githubSettingsFrom(current))
+          Object.assign(settings, config.github)
+          await config.saveSettings()
+        })
+    )
+  }
+  menu.addItem((item) =>
+    item
+      .setTitle('Delete')
+      .setIcon('trash-2')
+      .onClick(() => {
+        deletingConnection.value = connection
+      })
+  )
+  menu.showAtMouseEvent(event)
+}
 const editConnection = (connection: GithubConnection, check = false) => {
-  if (!isGithubConnection(connection)) return
+  if (!isBrowsableConnection(connection)) return
   newConnection.value = false
   originalConnection = JSON.stringify(connection)
   checkOnOpen.value = check
@@ -340,7 +398,6 @@ async function saveConnection(
   token?: string | null,
   rate?: GithubRate
 ): Promise<void> {
-  connection = { ...connection, keyId: connection.keyId || keychainId('abele-gh', connection.id) }
   const current = githubSettingsFrom(config.github)
   const index = current.connections.findIndex((c) => c.id === connection.id)
   if (
@@ -351,8 +408,22 @@ async function saveConnection(
       'This connection changed elsewhere. Close this draft and edit its current settings.'
     return
   }
+  const rebound =
+    index >= 0 && connectionBinding(current.connections[index]) !== connectionBinding(connection)
+  connection = {
+    ...connection,
+    keyId: rebound
+      ? keychainId('abele-gh', crypto.randomUUID())
+      : connection.keyId || keychainId('abele-gh', connection.id),
+  }
+  if (
+    connection.provider === 'forgejo' &&
+    (newConnection.value || rebound || !current.connections[index]?.keyId) &&
+    !token
+  )
+    connection.keyId = ''
   try {
-    if (token !== undefined) secrets().set(connection.keyId, token ?? '')
+    if (connection.keyId && token !== undefined) secrets().set(connection.keyId, token ?? '')
   } catch {
     connectionMessage.value =
       'Could not save the token to the keychain. Nothing was changed; try again.'

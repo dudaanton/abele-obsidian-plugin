@@ -1,8 +1,10 @@
 import type { GithubConnection } from './connections'
 import { isGithubConnection } from './connections'
 import { endpoints, normaliseHost } from './urls'
+import { deployment } from '@/forge/identity'
 
 export interface RoutingInput {
+  provider?: 'github' | 'forgejo'
   host: string
   origin?: string
   owner: string
@@ -29,8 +31,16 @@ export interface ConnectionCandidate {
 /** Link aliases are not authenticated destinations: schemes and ports still distinguish servers. */
 export function sameConnectionServer(
   connection: Pick<GithubConnection, 'server' | 'provider'>,
-  target: Pick<RoutingInput, 'host' | 'origin'>
+  target: Pick<RoutingInput, 'host' | 'origin' | 'provider'>
 ): boolean {
+  if (target.provider === 'forgejo') {
+    if (connection.provider !== 'forgejo' || !target.origin) return false
+    try {
+      return deployment('forgejo', connection.server).webBase === target.origin
+    } catch {
+      return false
+    }
+  }
   if (!isGithubConnection(connection)) return false
   const e = endpoints(connection.server)
   if (e.webHost !== normaliseHost(target.host)) return false
@@ -85,6 +95,7 @@ export function routeConnections(
     })()
   const anonymous =
     publicOrigin &&
+    input.provider !== 'forgejo' &&
     normaliseHost(input.host) === 'github.com' &&
     !connections.some((c) => isGithubConnection(c) && endpoints(c.server).webHost === 'github.com')
   const serverRows = connections.filter((c) => sameConnectionServer(c, input))

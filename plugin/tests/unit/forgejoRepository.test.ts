@@ -14,7 +14,7 @@ function fixture(data: Record<string, unknown>) {
     return {
       status: 200,
       headers: {},
-      text: JSON.stringify(json),
+      text: typeof json === 'string' ? json : JSON.stringify(json),
       json,
       arrayBuffer: new ArrayBuffer(0),
     }
@@ -35,8 +35,63 @@ function fixture(data: Record<string, unknown>) {
   return { source, http }
 }
 describe('Forgejo repository adapter', () => {
-  // BUG: The shared PR presentation cannot yet represent unknown aggregate counts.
-  it.fails('loads a PR body without inventing aggregate counts', async () => {
+  it('keeps an immutable SHA distinct from a branch with the same spelling', async () => {
+    const { source } = fixture({
+      '/repos/sample/project/branches?limit=50&page=1': [{ name: sha }],
+      '/repos/sample/project/tags?limit=50&page=1': [],
+    })
+    await source.refs()
+    expect(await source.resolve(sha)).toBe(sha)
+    expect(source.navigation.file(sha, 'src/sample.ts')).toContain(`/src/commit/${sha}/`)
+  })
+  it('shows an empty repository without requesting nonexistent contents', async () => {
+    const { source, http } = fixture({
+      '/repos/sample/project': {
+        name: 'project',
+        owner: { login: 'sample' },
+        default_branch: 'main',
+        empty: true,
+      },
+    })
+    expect(await source.home()).toMatchObject({ empty: true, entries: [] })
+    expect(http).toHaveBeenCalledTimes(1)
+  })
+  it('lists native open issues and pull requests without GitHub search syntax', async () => {
+    const { source } = fixture({
+      '/repos/sample/project/issues?state=open&type=issues&sort=recentupdate&limit=5&page=1': [
+        { number: 12, title: 'Sample issue', user: null },
+      ],
+      '/repos/sample/project/pulls?state=open&sort=recentupdate&limit=5&page=1': [
+        { number: 13, title: 'Sample change', user: null },
+      ],
+    })
+    expect(await source.github!.issues()).toMatchObject([
+      { number: 12, url: 'https://forge.example.test/team/sample/project/issues/12' },
+    ])
+    expect(await source.github!.pulls()).toMatchObject([
+      { number: 13, url: 'https://forge.example.test/team/sample/project/pulls/13' },
+    ])
+  })
+  it('loads native patches and inline review comments with partial failures retained', async () => {
+    const { source } = fixture({
+      '/repos/sample/project/pulls/12/files?limit=50&page=1': [
+        { filename: 'src/sample.ts', status: 'modified', additions: 1, deletions: 1 },
+      ],
+      '/repos/sample/project/pulls/12.diff':
+        'diff --git a/src/sample.ts b/src/sample.ts\n--- a/src/sample.ts\n+++ b/src/sample.ts\n@@ -1 +1 @@\n-before\n+after\n',
+      '/repos/sample/project/pulls/12/reviews?limit=50&page=1': [{ id: 7 }],
+      '/repos/sample/project/pulls/12/reviews/7/comments?limit=50&page=1': [
+        { id: 8, path: 'src/sample.ts', body: 'Sample review', created_at: '2026-01-01T00:00:00Z' },
+      ],
+    })
+    const data = await source.github!.pullFiles!(12)
+    await data.files[0].loadPatch!()
+    expect(data.files[0]).toMatchObject({
+      patch: '@@ -1 +1 @@\n-before\n+after\n',
+      reviewComments: [{ body: 'Sample review', location: 'src/sample.ts' }],
+    })
+  })
+  it('loads a PR body without inventing aggregate counts', async () => {
     const { source } = fixture({
       '/repos/sample/project/pulls/12': {
         number: 12,
@@ -111,7 +166,8 @@ describe('Forgejo repository adapter', () => {
   })
   it('reads UTF-8 contents with the selected ref and native immutable navigation', async () => {
     const { source } = fixture({
-      '/repos/sample/project/contents/src/sample.ts?ref=feature%2Fone': {
+      '/repos/sample/project/commits/feature%2Fone': { sha },
+      [`/repos/sample/project/contents/src/sample.ts?ref=${sha}`]: {
         type: 'file',
         encoding: 'base64',
         content: 'Ly8gz4AK',
@@ -119,6 +175,7 @@ describe('Forgejo repository adapter', () => {
       },
     })
     expect(await source.blob('feature/one', 'src/sample.ts')).toMatchObject({
+      resolvedCommit: sha,
       text: '// π\n',
       ref: 'feature/one',
     })

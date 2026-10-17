@@ -95,6 +95,7 @@ export interface RepositorySearch {
   signal?: AbortSignal
 }
 export interface RepositoryNavigation {
+  ref?(kind: 'branch' | 'tag', ref: string): string
   workspace?(id: string): string
   home(ref?: string, defaultBranch?: string): string
   file(ref: string, path: string, line?: number): string

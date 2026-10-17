@@ -28,6 +28,7 @@ import Avatar from '../obsidian/Avatar.vue'
 import { GITHUB_PEOPLE, githubUsers, peopleServer } from '@/github/users'
 import { githubSettings } from '@/github/GithubService'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { useRepositorySource } from '@/repository/context'
 
 const props = defineProps<{
   login: string
@@ -36,9 +37,17 @@ const props = defineProps<{
 }>()
 
 const client = inject(GITHUB_PEOPLE, null)
-const host = computed(() => { const c=client?.(); return c ? peopleServer(c) : 'github.com' })
+const source = useRepositorySource()
+const host = computed(() => {
+  const c = client?.()
+  return c ? peopleServer(c) : 'github.com'
+})
 
-const person = computed(() => githubUsers().person(host.value, props.login, props.avatar))
+const person = computed(() =>
+  source.value?.identity.provider === 'forgejo'
+    ? { login: props.login, name: null, avatar: props.avatar ?? null }
+    : githubUsers().person(host.value, props.login, props.avatar)
+)
 const name = computed(() => {
   const n = person.value.name
   return n && n !== props.login ? n : null
@@ -71,6 +80,7 @@ const tooltip = computed(() => (name.value ? `${name.value} · ${props.login}` :
 watch(tooltip, (text) => el.value && setTooltip(el.value, text))
 
 const ask = () => {
+  if (source.value?.identity.provider === 'forgejo') return
   const c = client?.()
   if (c && props.login) githubUsers().want(c, props.login, props.avatar)
 }

@@ -35,6 +35,8 @@ export interface CommitData {
 }
 
 export interface BlobData {
+  /** Immutable commit used for this read, when ref is a human-facing alias. */
+  resolvedCommit?: string
   contentId?: string | null
   canLoadLarge?: boolean
   note?: string
@@ -109,6 +111,7 @@ export interface FolderEntry {
 }
 
 export interface FolderData {
+  resolvedCommit?: string
   ref: string
   /** Empty for the repository's root. */
   path: string

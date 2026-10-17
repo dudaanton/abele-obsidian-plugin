@@ -219,6 +219,13 @@ observe afresh after restart; links to captured bytes include their retained con
 working observation. An expired observation/content returns an error, never silently reads the
 current file under the old identity.
 
+Forgejo repository tabs use a version-1 `sourceTarget` with provider, exact deployment web/API
+bases, stable connection ID, full repository path, native web URL and optional observed commit.
+Tokens and keychain slots are never stored in tab state. Removing or rebinding a saved Forgejo
+connection leaves the tab unavailable until a connection is explicitly chosen; it does not
+silently replace that account. Connection records continue to use `github.connections`, and
+their existing provider fields and secret references travel through settings transfer.
+
 Node comparison bases use the existing device-local base store with a source identity; they are
 isolated by installation/project/worktree rather than display labels. Repository tab reads keep
 at most 4 MiB of decoded content in a source-local LRU and bounded revision/link metadata in
@@ -1731,7 +1738,7 @@ remain unavailable. Existing GitHub URL-only leaves, snippets and comparison-pin
 their format; this adds no persistent source-content cache.
 
 The plugin's `github.connections` list in settings holds stable connection IDs, names, server
-addresses, repository-owner patterns, per-server default marks, and optional account metadata
+addresses, repository-owner patterns, per-server default marks, the last explicit access-check verdict (ok, partial, refused or error), and optional account metadata
 (discovered login, avatar URL and access-check time). Each `keyId` names a keychain slot, never
 contains the token. A migrated connection keeps the old `github.keyId` slot; the old `keyId` and
 `server` fields are retained as a single-server compatibility projection. An explicitly empty

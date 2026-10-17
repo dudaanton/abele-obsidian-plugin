@@ -10,9 +10,12 @@
  */
 import { repoWeb, webOrigin } from './origin'
 import type { GithubClient } from './client'
+import { forgejoUrls } from '@/forge/forgejoUrls'
+import { deployment } from '@/forge/identity'
 
 /** The file a preview shows: its repository, the ref it was read at, and its path. */
 export interface RepoFile {
+  provider?: 'github' | 'forgejo'
   host: string
   origin?: string
   owner: string
@@ -98,6 +101,18 @@ export function hrefAction(href: string, file: RepoFile): HrefAction {
   // `?plain=1` alone, or `#…` after a query: this same file.
   const segments = path ? resolveRepoPath(file.path, path) : file.path.split('/')
   const ref = encodePath(file.ref.split('/'))
+  if (file.provider === 'forgejo')
+    return {
+      kind: 'repo',
+      url:
+        forgejoUrls(deployment('forgejo', file.origin)).file(
+          `${file.owner}/${file.repo}`,
+          file.ref,
+          segments.join('/')
+        ) +
+        query +
+        hash,
+    }
   if (segments.length === 0 || path.endsWith('/')) {
     // A folder: its listing, which opens in the tab like a file does.
     const folder = segments.length ? `/${encodePath(segments)}` : ''
@@ -111,6 +126,10 @@ export function hrefAction(href: string, file: RepoFile): HrefAction {
 
 /** Where a file's bytes are served from without the API: github.com's raw host, or the server's. */
 export function rawUrl(file: RepoFile, segments: string[]): string {
+  if (file.provider === 'forgejo') {
+    const kind = /^[a-f\d]{40}$/i.test(file.ref) ? 'commit' : 'branch'
+    return `${repoBase(file)}/raw/${kind}/${encodeURIComponent(file.ref)}/${encodePath(segments)}`
+  }
   const ref = encodePath(file.ref.split('/'))
   if (file.host === 'github.com') {
     return `https://raw.githubusercontent.com/${encodeURIComponent(file.owner)}/${encodeURIComponent(file.repo)}/${ref}/${encodePath(segments)}`
@@ -139,7 +158,8 @@ export function imageSource(src: string, file: RepoFile): ImageSource | null {
       `^https?://${file.host.replace(/\./g, '\\.')}(?::\\d+)?/([^/]+)/([^/]+)/blob/(.+)$`,
       'i'
     ).exec(s)
-    if (page) return { src: `${file.origin ?? webOrigin(file.host)}/${page[1]}/${page[2]}/raw/${page[3]}` }
+    if (page)
+      return { src: `${file.origin ?? webOrigin(file.host)}/${page[1]}/${page[2]}/raw/${page[3]}` }
     return { src: s }
   }
   const segments = resolveRepoPath(file.path, parts(s).path)

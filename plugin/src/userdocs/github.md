@@ -3,6 +3,25 @@
 Issues, pull requests, discussions, commits and files from GitHub, opened in Obsidian tabs.
 Repository content is read-only. The notifications inbox can mark notifications read or Done.
 
+## Forgejo preview
+
+Under **Connections → Add connection**, choose **Forgejo**, enter the full server address
+(including any deployment path or port), a connection name and an optional access token.
+**Check access** tests the draft account and, when supplied, repository permissions without
+storing the token. **Save** keeps it; **Cancel** discards the draft. Changing the service or
+server requires a fresh credential binding. Without a token, public repositories remain readable.
+
+Open a configured server's repository, issue, pull request or file URL from a note or paste it
+into **Open GitHub link or item**. Repository pages show their files and README, with branches
+and tags in the existing version picker. Pull requests have conversation, changed files with
+patches and inline review comments, and commits. Secondary failures leave readable content in
+place and explain what could not be loaded. The account button selects another connection on
+that exact deployment; an explicitly selected account never silently falls back to another.
+
+This first slice does not provide Forgejo notifications, search, comparisons, blame, discussions,
+agent tools or node pull-request creation. Those operations show an unavailable explanation
+where offered. GitHub retains its existing features. The preview is not a claim of feature parity.
+
 Images hosted by GitHub (or the repository's Enterprise server) load normally. Images from
 other sites, including README badges, appear as buttons naming the site; tap one to load that
 image. This applies to files, comments and GitHub snippets. It does not change images in AI replies.

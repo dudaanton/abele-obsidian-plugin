@@ -1,6 +1,13 @@
 import type { RepositorySource, RepositoryTree } from '@/repository/source'
 import type { BlobData, FolderData, RepoMeta, TreeNode, CommitSummary } from '@/repository/model'
-import type { IssueData, FilesData } from '@/repository/conversation'
+import type {
+  IssueData,
+  PullData,
+  FilesData,
+  Conversation,
+  Comment,
+  DiffFile,
+} from '@/repository/conversation'
 import type { GithubTarget } from '@/github/urls'
 import {
   buildTree,
@@ -9,8 +16,10 @@ import {
   findNode,
   type TreeEntry,
 } from '@/github/tree/fileTree'
+import { forgejoPatch } from './forgejoDiff'
 import { forgejoUrls } from './forgejoUrls'
-import type { ForgejoClient } from './forgejoClient'
+import { ForgejoError, type ForgejoClient } from './forgejoClient'
+import { languageShares, type ItemRow, type ReleaseData } from '@/github/repoPage/repoHome'
 
 interface RawRepo {
   name: string
@@ -47,12 +56,14 @@ interface RawIssue {
   pull_request?: unknown
   base?: { ref: string; sha: string }
   head?: { ref: string; sha: string }
+  comments?: number
 }
 interface RawComment {
   id: number
   body?: string
   created_at: string
   user?: { login: string } | null
+  html_url?: string
 }
 interface RawCommit {
   sha: string
@@ -75,23 +86,140 @@ export function forgejoRepository(client: ForgejoClient, repository: string): Re
   }
   const encodePath = (path: string) => path.split('/').map(encodeURIComponent).join('/')
   const rawMeta = () => client.get<RawRepo>(api)
+  const commentUrl = (address: string | undefined, number: number, pull: boolean): string => {
+    const fallback = `${web}/${pull ? 'pulls' : 'issues'}/${number}`
+    if (!address) return fallback
+    try {
+      const url = new URL(address),
+        item = new URL(fallback)
+      if (
+        url.username ||
+        url.password ||
+        url.origin !== item.origin ||
+        !(url.pathname === item.pathname || url.pathname.startsWith(`${item.pathname}/`)) ||
+        [...url.searchParams.keys()].some((key) => /token|authorization|password/i.test(key))
+      )
+        return fallback
+      return url.href
+    } catch {
+      return fallback
+    }
+  }
+  const refKinds = new Map<string, 'branch' | 'tag' | 'commit'>()
+  const fileUrl = (ref: string, path: string, lines?: { from: number; to: number }) =>
+    urls.file(
+      repository,
+      ref,
+      path,
+      lines,
+      /^[a-f\d]{40}$/i.test(ref) ? 'commit' : refKinds.get(ref)
+    )
+  const resolve = async (
+    ref?: string,
+    verify = false,
+    kind?: 'branch' | 'tag' | 'commit'
+  ): Promise<string> => {
+    client.session.assertCurrent()
+    if (ref && /^[a-f\d]{40}$/i.test(ref) && !verify && kind !== 'branch' && kind !== 'tag')
+      return ref
+    const at = ref ?? (await source.defaultBranch())
+    const qualified =
+      kind === 'branch' ? `refs/heads/${at}` : kind === 'tag' ? `refs/tags/${at}` : at
+    const sha = (
+      await client.get<{ sha: string }>(`${api}/commits/${encodeURIComponent(qualified)}`)
+    ).sha
+    if (!/^[a-f\d]{40}$/i.test(sha))
+      throw new Error('The service did not return an immutable commit.')
+    return sha
+  }
+  const items = async (pull: boolean): Promise<ItemRow[]> => {
+    const path = pull
+      ? `${api}/pulls?state=open&sort=recentupdate&limit=5&page=1`
+      : `${api}/issues?state=open&type=issues&sort=recentupdate&limit=5&page=1`
+    const rows = await client.get<RawIssue[]>(path)
+    return rows.slice(0, 5).map((row) => ({
+      number: row.number,
+      title: row.title,
+      author: row.user?.login ?? 'ghost',
+      createdAt: row.created_at ?? '',
+      draft: false,
+      comments: row.comments ?? 0,
+      url: `${web}/${pull ? 'pulls' : 'issues'}/${row.number}`,
+    }))
+  }
   const pullFiles = async (number: number): Promise<FilesData> => {
     const result = await client.pages<RawFile>(`${api}/pulls/${number}/files`)
-    return {
-      complete: result.complete,
-      files: result.value.map((file) => ({
-        path: file.filename,
-        previousPath: file.previous_filename,
-        status: file.status,
-        additions: file.additions ?? 0,
-        deletions: file.deletions ?? 0,
-        countsPending: file.additions === undefined || file.deletions === undefined,
-        hash: '',
-        patch: undefined,
-        reviewComments: [],
-        diffNote: 'This service returns a file summary without a patch.',
-      })),
+    let patches: Promise<string> | undefined
+    let reviewCommentsProblem: string | undefined
+    const comments = new Map<string, Comment[]>()
+    try {
+      const reviews = await client.pages<{ id: number }>(`${api}/pulls/${number}/reviews`)
+      if (!reviews.complete) reviewCommentsProblem = 'Not all reviews could be listed.'
+      for (const review of reviews.value) {
+        const rows = await client.pages<
+          RawComment & { path: string; old_line_num?: number; new_line_num?: number }
+        >(`${api}/pulls/${number}/reviews/${review.id}/comments`)
+        if (!rows.complete) reviewCommentsProblem = 'Not all inline comments could be listed.'
+        for (const row of rows.value) {
+          const line = row.new_line_num || row.old_line_num
+          const list = comments.get(row.path) ?? []
+          list.push({
+            id: `inline-${row.id}`,
+            body: row.body ?? '',
+            author: row.user?.login ?? 'ghost',
+            createdAt: row.created_at,
+            location: `${row.path}${line ? `:${line}` : ''}`,
+            url: commentUrl(row.html_url, number, true),
+          })
+          comments.set(row.path, list)
+        }
+      }
+    } catch {
+      client.session.assertCurrent()
+      reviewCommentsProblem = 'The inline review comments could not be read from this service.'
     }
+    const data: FilesData = {
+      complete: result.complete,
+      reviewCommentsProblem,
+      files: result.value.map((file) => {
+        const shown: DiffFile = {
+          path: file.filename,
+          previousPath: file.previous_filename,
+          status:
+            file.status === 'deleted'
+              ? 'removed'
+              : file.status === 'changed'
+                ? 'modified'
+                : file.status,
+          additions: file.additions ?? 0,
+          deletions: file.deletions ?? 0,
+          countsPending: file.additions === undefined || file.deletions === undefined,
+          hash: '',
+          patch: undefined,
+          reviewComments: comments.get(file.filename) ?? [],
+          diffNote: 'This service returns a file summary without a patch.',
+        }
+        shown.loadPatch = async () => {
+          client.session.assertCurrent()
+          patches ??= client.text(`${api}/pulls/${number}.diff`).catch((error) => {
+            patches = undefined
+            throw error
+          })
+          const diff = await patches
+          client.session.assertCurrent()
+          shown.patch = forgejoPatch(
+            diff,
+            file.filename,
+            file.status === 'removed' || file.status === 'deleted'
+          )
+          shown.diffNote = shown.patch
+            ? undefined
+            : 'No text patch is available for this file (binary, empty, renamed, or truncated).'
+        }
+        return shown
+      }),
+    }
+    return data
   }
   const pullCommits = async (number: number) => {
     const result = await client.pages<RawCommit>(`${api}/pulls/${number}/commits`)
@@ -104,8 +232,7 @@ export function forgejoRepository(client: ForgejoClient, repository: string): Re
     }))
     return { commits, complete: result.complete }
   }
-  const metadata = async (): Promise<RepoMeta> => {
-    const raw = await rawMeta()
+  const mapMetadata = (raw: RawRepo): RepoMeta => {
     return {
       owner: raw.owner.login,
       name: raw.name,
@@ -124,17 +251,20 @@ export function forgejoRepository(client: ForgejoClient, repository: string): Re
       url: web,
     }
   }
+  const metadata = async () => mapMetadata(await rawMeta())
   const contents = (ref: string, path: string) =>
     client.get<RawContent | RawContent[]>(
       `${api}/contents${path ? `/${encodePath(path)}` : ''}?ref=${encodeURIComponent(ref)}`
     )
-  const folder = async (ref: string, path: string): Promise<FolderData> => {
-    const raw = await contents(ref, path)
+  const folder = async (ref: string, path: string, knownCommit?: string): Promise<FolderData> => {
+    const resolvedCommit = knownCommit ?? (await resolve(ref)),
+      raw = await contents(resolvedCommit, path)
     if (!Array.isArray(raw)) throw new Error('This path is a file.')
     return {
       ref,
+      resolvedCommit,
       path,
-      url: urls.file(repository, ref, path),
+      url: fileUrl(resolvedCommit, path),
       entries: raw.map((entry) => ({
         name: entry.name,
         path: entry.path,
@@ -150,8 +280,9 @@ export function forgejoRepository(client: ForgejoClient, repository: string): Re
       })),
     }
   }
-  const blob = async (ref: string, path: string): Promise<BlobData> => {
-    const raw = await contents(ref, path)
+  const blob = async (ref: string, path: string, knownCommit?: string): Promise<BlobData> => {
+    const resolvedCommit = knownCommit ?? (await resolve(ref)),
+      raw = await contents(resolvedCommit, path)
     if (Array.isArray(raw) || raw.type === 'dir') throw new Error('This path is a folder.')
     let text = '',
       note: string | undefined
@@ -163,39 +294,79 @@ export function forgejoRepository(client: ForgejoClient, repository: string): Re
     else {
       const bytes = Uint8Array.from(atob(raw.content.replace(/\s/g, '')), (c) => c.charCodeAt(0))
       if (bytes.includes(0)) note = 'Binary file.'
-      else text = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+      else {
+        try {
+          text = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+        } catch {
+          note = 'Binary or non-UTF-8 file.'
+        }
+      }
     }
     return {
       ref,
+      resolvedCommit,
       path,
       text,
       contentId: raw.sha,
-      url: urls.file(repository, ref, path),
+      url: fileUrl(resolvedCommit, path),
       ...(note ? { note } : {}),
     }
   }
-  const issue = async (number: number, pull: boolean): Promise<IssueData> => {
-    // The shared PR view requires known aggregate counts. Do not fabricate them from absent fields.
-    if (pull) return unavailable()
-    const raw = await client.get<RawIssue>(`${api}/${pull ? 'pulls' : 'issues'}/${number}`)
-    let comments: IssueData['comments'] = [],
-      complete = false,
-      problem: string | undefined
+  const conversation = async (number: number, pull: boolean): Promise<Conversation> => {
+    const comments: Comment[] = []
+    let complete = true
+    const problems: string[] = []
     try {
       const page = await client.pages<RawComment>(`${api}/issues/${number}/comments`)
-      comments = page.value.map((row) => ({
-        id: String(row.id),
-        body: row.body ?? '',
-        author: row.user?.login ?? 'ghost',
-        createdAt: row.created_at,
-        anchor: `issuecomment-${row.id}`,
-        url: `${web}/${pull ? 'pulls' : 'issues'}/${number}#issuecomment-${row.id}`,
-      }))
+      comments.push(
+        ...page.value.map((row) => ({
+          id: String(row.id),
+          body: row.body ?? '',
+          author: row.user?.login ?? 'ghost',
+          createdAt: row.created_at,
+          anchor: `issuecomment-${row.id}`,
+          url: commentUrl(row.html_url, number, pull),
+        }))
+      )
       complete = page.complete
     } catch {
       client.session.assertCurrent()
-      problem = 'The conversation could not be read from this service.'
+      complete = false
+      problems.push('The conversation could not be read from this service.')
     }
+    if (pull) {
+      try {
+        const reviews = await client.pages<RawComment & { state: string; submitted_at?: string }>(
+          `${api}/pulls/${number}/reviews`
+        )
+        complete &&= reviews.complete
+        comments.push(
+          ...reviews.value
+            .filter((r) => r.state !== 'PENDING')
+            .map((r) => ({
+              id: `review-${r.id}`,
+              body: r.body ?? '',
+              author: r.user?.login ?? 'ghost',
+              createdAt: r.submitted_at ?? r.created_at ?? '',
+              badge: r.state.replace(/_/g, ' ').toLowerCase(),
+              url: commentUrl(r.html_url, number, true),
+            }))
+        )
+      } catch {
+        client.session.assertCurrent()
+        complete = false
+        problems.push('The pull request reviews could not be read from this service.')
+      }
+    }
+    return {
+      comments: comments.sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+      complete,
+      problem: problems.join(' ') || undefined,
+    }
+  }
+  const issue = async (number: number, pull: boolean): Promise<IssueData | PullData> => {
+    const raw = await client.get<RawIssue>(`${api}/${pull ? 'pulls' : 'issues'}/${number}`)
+    const { comments, complete, problem } = await conversation(number, pull)
     const result: IssueData = {
       number: raw.number,
       title: raw.title,
@@ -210,7 +381,18 @@ export function forgejoRepository(client: ForgejoClient, repository: string): Re
       commentsProblem: problem,
       isPull: !!raw.pull_request,
     }
-    return result
+    if (!pull) return result
+    return {
+      ...result,
+      base: raw.base?.ref ?? '',
+      head: raw.head?.ref ?? '',
+      baseSha: raw.base?.sha,
+      headSha: raw.head?.sha,
+      additions: null,
+      deletions: null,
+      changedFiles: null,
+      commitsCount: null,
+    }
   }
   const tree = async (sha: string): Promise<RepositoryTree> => {
     const answer = await client.get<{ tree: TreeEntry[]; truncated?: boolean }>(
@@ -265,10 +447,10 @@ export function forgejoRepository(client: ForgejoClient, repository: string): Re
     },
     assertCurrent: () => client.session.assertCurrent(),
     navigation: {
-      home: (ref, branch) => (ref && ref !== branch ? urls.file(repository, ref, '') : web),
-      file: (ref, path, line) =>
-        urls.file(repository, ref, path, line ? { from: line, to: line } : undefined),
-      folder: (ref, path) => urls.file(repository, ref, path),
+      ref: (kind, ref) => urls.file(repository, ref, '', undefined, kind),
+      home: (ref, branch) => (ref && ref !== branch ? fileUrl(ref, '') : web),
+      file: (ref, path, line) => fileUrl(ref, path, line ? { from: line, to: line } : undefined),
+      folder: (ref, path) => fileUrl(ref, path),
       commit: (sha) => `${web}/commit/${encodeURIComponent(sha)}`,
       comparison: () => web,
       blobLink: (sha, path, lines) => ({
@@ -278,9 +460,12 @@ export function forgejoRepository(client: ForgejoClient, repository: string): Re
     },
     metadata,
     home: async (ref) => {
-      const meta = await metadata()
+      const raw = await rawMeta(),
+        meta = mapMetadata(raw)
       const at = ref ?? meta.defaultBranch
-      return { ...(await folder(at, '')), meta }
+      if (raw.empty && !ref) return { ref: at, path: '', entries: [], meta, empty: true, url: web }
+      const sha = await resolve(at, false, ref ? refKinds.get(ref) : 'branch')
+      return { ...(await folder(at, '', sha)), meta }
     },
     refs: async (prefix) => {
       const [branches, tags] = await Promise.all([
@@ -289,6 +474,8 @@ export function forgejoRepository(client: ForgejoClient, repository: string): Re
       ])
       const names = (rows: { name: string }[]) =>
         rows.map((row) => row.name).filter((name) => !prefix || name.startsWith(prefix))
+      for (const branch of branches.value) refKinds.set(branch.name, 'branch')
+      for (const tag of tags.value) if (!refKinds.has(tag.name)) refKinds.set(tag.name, 'tag')
       return {
         branches: names(branches.value),
         tags: names(tags.value),
@@ -296,15 +483,10 @@ export function forgejoRepository(client: ForgejoClient, repository: string): Re
       }
     },
     defaultBranch: async () => (await rawMeta()).default_branch,
-    resolve: async (ref) =>
-      (
-        await client.get<{ sha: string }>(
-          `${api}/git/commits/${encodeURIComponent(ref ?? (await source.defaultBranch()))}`
-        )
-      ).sha,
+    resolve,
     tree,
-    folder,
-    blob,
+    folder: (ref, path) => folder(ref, path),
+    blob: (ref, path) => blob(ref, path),
     text: async (ref, path) => {
       const data = await blob(ref, path)
       if (data.note) throw new Error(data.note)
@@ -322,6 +504,7 @@ export function forgejoRepository(client: ForgejoClient, repository: string): Re
     definitions: unavailable,
     subscribe: () => () => {},
     github: {
+      conversation,
       pullFiles,
       pullCommits,
       loadTarget: async (target: GithubTarget, promote) => {
@@ -331,26 +514,84 @@ export function forgejoRepository(client: ForgejoClient, repository: string): Re
         )
           throw new Error('This target belongs to another repository or deployment.')
         if (target.kind === 'repo') return source.home(target.ref)
-        if (target.kind === 'issue') return issue(target.number, false)
+        if (target.kind === 'issue') {
+          const data = await issue(target.number, false)
+          if (!data.isPull) return data
+          promote({ ...target, kind: 'pull', tab: 'conversation' })
+          return issue(target.number, true)
+        }
         if (target.kind === 'pull') return issue(target.number, true)
         if (target.kind === 'blob' || target.kind === 'tree') {
-          const [ref, ...parts] = target.rest,
-            path = parts.join('/')
-          const raw = await contents(ref, path)
+          let ref = '',
+            path = '',
+            sha = ''
+          for (
+            let split = target.refKind === 'commit' ? 1 : target.rest.length;
+            split >= 1;
+            split--
+          ) {
+            const candidate = target.rest.slice(0, split).join('/')
+            try {
+              sha = await resolve(candidate, false, target.refKind)
+              ref = candidate
+              path = target.rest.slice(split).join('/')
+              break
+            } catch (error) {
+              if (!(error instanceof ForgejoError && error.status === 404)) throw error
+            }
+          }
+          if (!ref) throw new Error('This reference could not be found on the service.')
+          if (target.refKind) refKinds.set(ref, target.refKind)
+          const raw = await contents(sha, path)
           if (Array.isArray(raw)) {
+            if (!path) {
+              promote({
+                provider: target.provider,
+                kind: 'repo',
+                host: target.host,
+                origin: target.origin,
+                owner: target.owner,
+                repo: target.repo,
+                ref,
+                anchor: target.anchor,
+              })
+              return source.home(ref)
+            }
             promote({ ...target, kind: 'tree' })
-            return path ? folder(ref, path) : source.home(ref)
+            return path ? folder(ref, path, sha) : source.home(ref)
           }
           promote({ ...target, kind: 'blob' })
-          return blob(ref, path)
+          return blob(ref, path, sha)
         }
         return unavailable()
       },
       listUrl: (kind) => `${web}/${kind}`,
-      languages: unavailable,
-      issues: unavailable,
-      pulls: unavailable,
-      release: unavailable,
+      languages: async () =>
+        languageShares(await client.get<Record<string, number>>(`${api}/languages`)),
+      issues: () => items(false),
+      pulls: () => items(true),
+      release: async (): Promise<ReleaseData | null> => {
+        try {
+          const raw = await client.get<{
+            name?: string
+            tag_name: string
+            published_at?: string
+            prerelease?: boolean
+            author?: { login: string }
+          }>(`${api}/releases/latest`)
+          return {
+            name: raw.name || raw.tag_name,
+            tag: raw.tag_name,
+            publishedAt: raw.published_at ?? '',
+            prerelease: !!raw.prerelease,
+            author: raw.author?.login ?? '',
+            url: `${web}/releases/tag/${encodeURIComponent(raw.tag_name)}`,
+          }
+        } catch (error) {
+          if (error instanceof ForgejoError && error.status === 404) return null
+          throw error
+        }
+      },
     },
   }
   return source

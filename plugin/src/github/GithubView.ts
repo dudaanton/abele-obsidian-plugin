@@ -19,7 +19,16 @@ import { secrets } from '@/secrets/SecretStore'
 import { readConnectionItem } from './connectionRead'
 import { GithubError } from './client'
 import type { GithubTarget } from './urls'
-import { githubTabTarget, savedGithubTarget, savedNodeTarget } from '@/repository/state'
+import {
+  githubTabTarget,
+  savedGithubTarget,
+  savedNodeTarget,
+  savedForgeTarget,
+} from '@/repository/state'
+import { deployment } from '@/forge/identity'
+import { forgejoConnectionSource } from '@/forge/forgejoConnections'
+import { forgejoUrls } from '@/forge/forgejoUrls'
+import EmptyState from '@/components/obsidian/EmptyState.vue'
 import { sameConnectionServer } from './connectionRouting'
 import { isGithubConnection, connectionUnavailableReason } from './connections'
 import { clientForTab, tabAccessSnapshot } from './tabConnectionAccess'
@@ -94,8 +103,19 @@ export class GithubView extends ItemView {
 
   getState(): Record<string, unknown> {
     const state: Record<string, unknown> = { url: this.model.url }
+    if (this.model.target?.provider === 'forgejo') {
+      state.sourceTarget = {
+        version: 1,
+        provider: 'forgejo',
+        connection: this.model.connectionId ?? '',
+        deployment: deployment('forgejo', this.model.target.origin),
+        repository: `${this.model.target.owner}/${this.model.target.repo}`,
+        url: this.model.url,
+        ...(this.model.sourceRevision ? { revision: this.model.sourceRevision } : {}),
+      }
+    }
     // URL-only callers keep their legacy shape until the repository tab is mounted.
-    if (this.model.target && (this.vue || this.model.sourceTarget))
+    else if (this.model.target && (this.vue || this.model.sourceTarget))
       state.sourceTarget = githubTabTarget(
         this.model.url,
         this.model.target,
@@ -118,7 +138,7 @@ export class GithubView extends ItemView {
 
   async setState(state: unknown, result: ViewStateResult): Promise<void> {
     const node = savedNodeTarget(state)
-    const saved = savedGithubTarget(state)
+    const saved = savedForgeTarget(state) ?? savedGithubTarget(state)
     if (
       (state as { sourceTarget?: unknown } | null)?.sourceTarget !== undefined &&
       !node &&
@@ -164,7 +184,10 @@ export class GithubView extends ItemView {
     }
     const url = saved?.url ?? (state as { url?: unknown } | null)?.url
     if (typeof url === 'string' && url) {
-      const target = parseForSettings(url)
+      const target =
+        saved?.provider === 'forgejo'
+          ? forgejoUrls(saved.deployment).parse(url)
+          : parseForSettings(url)
       const requested = state as {
         connectionId?: string
         connectionIntent?: string
@@ -174,7 +197,30 @@ export class GithubView extends ItemView {
       }
       let connectionId = saved?.connection || requested.connectionId
       const connection = githubSettings().connections.find((c) => c.id === connectionId)
-      if (connection && !isGithubConnection(connection)) {
+      if (
+        (target?.provider === 'forgejo' || saved?.provider === 'forgejo') &&
+        connectionId &&
+        (!connection ||
+          connection.provider !== 'forgejo' ||
+          !target ||
+          !sameConnectionServer(connection, target))
+      ) {
+        this.model.url = url
+        this.model.target = target
+        this.model.sourceTarget = saved ?? undefined
+        this.model.connectionId = connectionId
+        this.model.connectionIntent = 'manual'
+        this.unavailableConnection(
+          'The saved Forgejo connection was removed or changed. Choose a connection for this server.'
+        )
+        await super.setState(state, result)
+        return
+      }
+      if (
+        connection &&
+        !isGithubConnection(connection) &&
+        !(connection.provider === 'forgejo' && target?.provider === 'forgejo')
+      ) {
         this.model.url = url
         this.model.target = target
         this.model.connectionId = connectionId
@@ -387,6 +433,66 @@ export class GithubView extends ItemView {
           void secrets().version.value
           const id = this.model.connectionId
           const row = githubSettings().connections?.find((c) => c.id === id)
+          if (this.model.target?.provider === 'forgejo') {
+            if (
+              !row ||
+              row.provider !== 'forgejo' ||
+              !sameConnectionServer(row, this.model.target)
+            ) {
+              this.unavailableConnection(
+                'The Forgejo connection was removed or changed. Choose a connection for this server.'
+              )
+              return h(EmptyState, {
+                text: 'The Forgejo connection was removed or changed. Choose a connection for this server.',
+              })
+            }
+            if (this.model.allowedConnections !== undefined)
+              return h(EmptyState, {
+                text: 'Agent access is not available for this service in this version.',
+              })
+            const source = forgejoConnectionSource(
+              row.id,
+              `${this.model.target.owner}/${this.model.target.repo}`
+            )
+            if (
+              this.model.screenNamespace &&
+              this.model.screenNamespace !== source.cacheNamespace
+            ) {
+              Object.assign(this.model.screen, emptyScreen())
+              this.title = ''
+              this.refreshHeader()
+            }
+            return h(GithubItem, {
+              key: source.cacheNamespace,
+              model: this.model,
+              enabled: githubSettings().enabled,
+              source,
+              keys: this.keys,
+              accountName: `${row.name}${row.account ? ` · ${row.account.login}` : ''} · Forgejo`,
+              onChooseAccount: () => {
+                const menu = new Menu()
+                this.accountMenu(menu)
+                const rect = this.containerEl
+                  .querySelector('.abele-github__account')
+                  ?.getBoundingClientRect()
+                menu.showAtPosition(
+                  { x: rect?.left ?? 0, y: rect?.bottom ?? 0 },
+                  this.containerEl.ownerDocument
+                )
+              },
+              onOpen: (url: string, pane?: PaneType | false) => {
+                void openGithubUrl(this.app, url, pane, {
+                  sourceId: row.id,
+                  sourceIntent: this.model.connectionIntent,
+                })
+              },
+              onTitle: (title: string) => {
+                this.title = title
+                this.refreshHeader()
+              },
+              onState: () => this.app.workspace.requestSaveLayout(),
+            })
+          }
           if (row && !isGithubConnection(row)) {
             const reason = connectionUnavailableReason(row)
             this.unavailableConnection(reason)

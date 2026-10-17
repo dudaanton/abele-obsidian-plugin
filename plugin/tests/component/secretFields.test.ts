@@ -27,7 +27,6 @@ vi.mock('@/secrets/clipboard', async (importOriginal) => {
 import SecretField from '@/components/settings/SecretField.vue'
 import GeneralSettings from '@/components/settings/ai/GeneralSettings.vue'
 import GithubSettings from '@/components/settings/GithubSettings.vue'
-import Button from '@/components/obsidian/Button.vue'
 import ConnectionEditor from '@/components/settings/GithubConnectionEditor.vue'
 import FinanceSettings from '@/components/settings/FinanceSettings.vue'
 import Icon from '@/components/obsidian/Icon.vue'
@@ -204,8 +203,8 @@ describe('the GitHub token', () => {
     app.secretStorage.setSecret(GITHUB_TOKEN_KEY_ID, 'fake-github-value')
     const view = mount(GithubSettings)
     view
-      .findAllComponents(Button)
-      .find((b) => b.props('text') === 'Edit')!
+      .findAllComponents(Icon)
+      .find((b) => b.props('tooltip') === 'Edit connection')!
       .vm.$emit('click')
     await flushPromises()
     const editor = view.findComponent(ConnectionEditor)

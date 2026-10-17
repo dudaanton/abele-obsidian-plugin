@@ -3,6 +3,8 @@ import { mount, flushPromises } from '@vue/test-utils'
 import GithubConnectionEditor from '@/components/settings/GithubConnectionEditor.vue'
 import Input from '@/components/obsidian/Input.vue'
 import Button from '@/components/obsidian/Button.vue'
+import Dropdown from '@/components/obsidian/Dropdown.vue'
+import { secrets } from '@/secrets/SecretStore'
 import { useVault } from '../helpers/testEnv'
 
 const request = vi.hoisted(() => vi.fn())
@@ -36,6 +38,112 @@ const press = async (view: ReturnType<typeof mount>, text: string) => {
 }
 
 describe('GitHub connection draft', () => {
+  it.each(['github', 'forgejo'])('shows owner examples on separate lines for %s', (provider) => {
+    const connection = { ...row, provider, server: 'https://git.example.test' }
+    const view = mount(GithubConnectionEditor, { props: { connection, connections: [connection] } })
+    const textarea = document.body.querySelector('textarea')!
+    expect(textarea.placeholder).toBe('sample-org\nsample-org/project')
+    view.unmount()
+  })
+  it('clears a saved identity when its token is refused on a later check', async () => {
+    const forge = {
+      ...row,
+      provider: 'forgejo',
+      server: 'https://forge.example.test',
+      account: { login: 'previous-user' },
+      checkedAt: 1,
+    }
+    secrets().set(row.keyId, 'invented-token')
+    request.mockResolvedValue({ ...reply(''), status: 401, json: { message: 'Unauthorized' } })
+    const view = mount(GithubConnectionEditor, {
+      props: { connection: forge, connections: [forge] },
+    })
+    await press(view, 'Check access')
+    expect(document.body.querySelector('.abele-github-access')).toBeNull()
+    await press(view, 'Save')
+    expect(view.emitted('save')![0][0]).toMatchObject({ checkState: 'refused' })
+    expect(view.emitted('save')![0][0]).not.toHaveProperty('account')
+    view.unmount()
+  })
+  it('keeps a saved service fixed and explains invalid server syntax', async () => {
+    const view = mount(GithubConnectionEditor, { props: { connection: row, connections: [row] } })
+    expect(view.findComponent(Dropdown).props('disabled')).toBe(true)
+    view
+      .findAllComponents(Input)
+      .find((i) => i.props('placeholder') === 'github.com')!
+      .vm.$emit('update:modelValue', 'https://sample.example.test?token=sample')
+    await flushPromises()
+    expect(document.body.textContent).toContain('Only the address: no login, query or # part')
+    view.unmount()
+  })
+  it('discards an access result after the stored credential rotates during the check', async () => {
+    secrets().set(row.keyId, 'invented-old')
+    let finish!: (reply: unknown) => void
+    request.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        })
+    )
+    const view = mount(GithubConnectionEditor, { props: { connection: row, connections: [row] } })
+    await press(view, 'Check access')
+    secrets().set(row.keyId, 'invented-new')
+    await flushPromises()
+    finish(reply('stale-account'))
+    await flushPromises()
+    await press(view, 'Save')
+    expect(view.emitted('save')?.[0]?.[0]).not.toHaveProperty('account')
+    view.unmount()
+  })
+  it('offers Forgejo and checks its native API without storing the draft token', async () => {
+    const app = useVault([])
+    const forge = { ...row, provider: 'forgejo', server: 'https://forge.example.test/team' }
+    const view = mount(GithubConnectionEditor, {
+      props: { connection: forge, connections: [forge] },
+    })
+    expect(view.findComponent(Dropdown).props('options')).toContainEqual({
+      value: 'forgejo',
+      display: 'Forgejo',
+    })
+    view
+      .findAllComponents(Input)
+      .find((i) => i.props('placeholder') === 'Access token')!
+      .vm.$emit('update:modelValue', 'invented-forgejo-token')
+    request.mockResolvedValue(reply('sample-user'))
+    await press(view, 'Check access')
+    expect(request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: 'https://forge.example.test/team/api/v1/user',
+        headers: expect.objectContaining({ Authorization: 'token invented-forgejo-token' }),
+      })
+    )
+    expect(app.secretStorage.getSecret('sample-key')).toBe('')
+    expect(document.body.textContent).toContain('sample-user')
+    await press(view, 'Save')
+    expect(view.emitted('save')![0][0]).toMatchObject({
+      provider: 'forgejo',
+      checkState: 'ok',
+      account: { login: 'sample-user' },
+    })
+    view.unmount()
+  })
+  it('does not retarget a stored credential when its provider changes', async () => {
+    const app = useVault([])
+    app.secretStorage.setSecret('sample-key', 'invented-old-token')
+    const view = mount(GithubConnectionEditor, {
+      props: { connection: row, connections: [row], isNew: true },
+    })
+    view.findComponent(Dropdown).vm.$emit('update:modelValue', 'forgejo')
+    await flushPromises()
+    view
+      .findAllComponents(Input)
+      .find((i) => i.props('placeholder') === 'https://git.example.test')!
+      .vm.$emit('update:modelValue', 'https://forge.example.test')
+    request.mockResolvedValue(reply('sample-user'))
+    await press(view, 'Check access')
+    expect(request.mock.calls.every(([r]) => !r.headers.Authorization)).toBe(true)
+    view.unmount()
+  })
   it('returns the observed quota separately from persisted connection metadata', async () => {
     const view = mount(GithubConnectionEditor, { props: { connection: row, connections: [row] } })
     view

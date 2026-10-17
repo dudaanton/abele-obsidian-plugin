@@ -268,7 +268,14 @@ const switchRef = () => {
     props.repo,
     props.home.ref,
     meta.value.defaultBranch,
-    (ref) => emit('open', homeUrl(props.repo, ref), false)
+    (ref, kind) =>
+      emit(
+        'open',
+        kind && source.value.navigation.ref
+          ? source.value.navigation.ref(kind, ref)
+          : homeUrl(props.repo, ref),
+        false
+      )
   ).open()
 }
 </script>
@@ -279,7 +286,6 @@ const switchRef = () => {
   flex-direction: column;
   gap: var(--size-4-4);
   container-type: inline-size;
-
 
   &__about {
     display: flex;

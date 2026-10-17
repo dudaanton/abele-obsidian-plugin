@@ -196,6 +196,19 @@ adapters. An omitted field means GitHub. Records for unavailable providers retai
 deployment bases and key references through transfer; GitHub operations never use their keys.
 They are excluded from the compatibility `github.server` and `github.keyId` projection.
 
+The connection editor supports GitHub and Forgejo. Forgejo uses the complete deployment base
+(including a port or path), native token authentication and a transient access check. Check does
+not save a credential; Save does. Changing a provider or server clears the draft token and does
+not reuse the previous credential binding. A Forgejo connection saved without a token can read
+public repositories. A transferred connection with a missing referenced key instead reports that
+the token is unavailable; it never borrows another account's key.
+
+Forgejo browsing currently covers repository home/tree/files, branches/tags, issues and pull
+request conversations, changed files and commits. Unsupported operations report that they are
+not available for this service in this version. GitHub tools, repository search/pickers beyond
+opening a pasted URL, notifications, comparison bases and node pull-request creation remain
+GitHub-only in this slice. Creating a Forgejo connection does not grant any agent access.
+
 `github.enabled` is the whole integration, off unless the person turned it on: GitHub issues,
 pull requests, discussions, commits and files at a ref open in tabs of their own, read only.
 `github.openLinks` decides whether a click on such a link in a note opens that tab instead of

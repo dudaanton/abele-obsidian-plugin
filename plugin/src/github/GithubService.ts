@@ -23,7 +23,9 @@ import { DEFAULT_GITHUB_SETTINGS, type GithubSettings } from './settings'
 import { forgetRepoTrees } from './tree/repoTree'
 import { forgetCodeIndexes } from './search/source'
 import { rememberRepo } from './open/repoList'
-import { isGithubConnection } from './connections'
+import { isGithubConnection, validProviderServer } from './connections'
+import { deployment } from '@/forge/identity'
+import { forgejoUrls } from '@/forge/forgejoUrls'
 
 export const GITHUB_VIEW_TYPE = 'abele-github'
 
@@ -58,12 +60,20 @@ export function githubHosts(): string[] {
     ...new Set([
       'github.com',
       endpoints(settings.server).webHost,
-      ...(settings.connections ?? []).filter(isGithubConnection).map((c) => endpoints(c.server).webHost),
+      ...(settings.connections ?? [])
+        .filter(isGithubConnection)
+        .map((c) => endpoints(c.server).webHost),
     ]),
   ]
 }
 
 export const parseForSettings = (url: string): GithubTarget | null => {
+  for (const row of (githubSettings().connections ?? [])
+    .filter((c) => c.provider === 'forgejo' && validProviderServer(c))
+    .sort((a, b) => b.server.length - a.server.length)) {
+    const target = forgejoUrls(deployment('forgejo', row.server)).parse(url)
+    if (target) return target
+  }
   const target = parseGithubUrl(url, githubHosts())
   if (!target) return null
   const parsed = new URL(url)
@@ -101,7 +111,7 @@ export function resolveConnectionCandidates(
     ...target,
     ...options,
     rememberedId: routingMemory.success(repo, connectionGeneration),
-    allowed: options.allowedIds ? (c) => options.allowedIds!.includes(c.id) : undefined,
+    allowed: options.allowedIds ? (c) => options.allowedIds.includes(c.id) : undefined,
   })
 }
 
@@ -189,7 +199,7 @@ export function notificationsClient(): { client: GithubClient; separate: boolean
     )
     return { client: main ? connectionClient(main.id) : githubClient(), separate: false }
   }
-  return {client:notificationClients.client('notifications'),separate:true}
+  return { client: notificationClients.client('notifications'), separate: true }
 }
 
 /**

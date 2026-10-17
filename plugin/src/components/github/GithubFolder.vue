@@ -93,8 +93,14 @@ watch(() => props.folder, paged.reset)
 
 const urlOf = (entry: FolderEntry) =>
   entry.kind === 'dir'
-    ? source.value.navigation.folder(props.browseRef ?? props.folder.ref, entry.path)
-    : source.value.navigation.file(props.browseRef ?? props.folder.ref, entry.path)
+    ? source.value.navigation.folder(
+        props.browseRef ?? props.folder.resolvedCommit ?? props.folder.ref,
+        entry.path
+      )
+    : source.value.navigation.file(
+        props.browseRef ?? props.folder.resolvedCommit ?? props.folder.ref,
+        entry.path
+      )
 
 const open = (entry: FolderEntry, event: MouseEvent) => {
   const url = urlOf(entry)
@@ -107,7 +113,7 @@ const open = (entry: FolderEntry, event: MouseEvent) => {
 const readme = computed(() => readmeOf(props.folder.entries))
 const readmeFile = computed<RepoFile>(() => ({
   ...props.repo,
-  ref: props.folder.ref,
+  ref: props.folder.resolvedCommit ?? props.folder.ref,
   path: readme.value?.path ?? '',
 }))
 const readmeText = useLoad(async () => {

@@ -78,13 +78,23 @@ export function useItemPresentation(options: PresentationOptions) {
   const repo = computed<RepoFile | null>(() => {
     const t = target.value
     return t
-      ? { host: t.host, origin: t.origin, owner: t.owner, repo: t.repo, ref: 'HEAD', path: '' }
+      ? {
+          provider: t.provider,
+          host: t.host,
+          origin: t.origin,
+          owner: t.owner,
+          repo: t.repo,
+          ref: 'HEAD',
+          path: '',
+        }
       : null
   })
   provide(GITHUB_REPO, repo)
   // The people in it are looked up with the tab's own client: its server, its token.
   provide(GITHUB_PEOPLE, () =>
-    target.value && source.value?.github ? (props.peopleClient?.() ?? client()) : null
+    target.value && source.value?.identity.provider === 'github'
+      ? (props.peopleClient?.() ?? client())
+      : null
   )
   // What is on screen, for an agent to ask about: the diffs and the file view add their part.
   const screen = props.model.screen
@@ -95,6 +105,8 @@ export function useItemPresentation(options: PresentationOptions) {
     const data = main.data.value
     if (!t || !data) return null
     if (source.value.identity.provider === 'node')
+      return { label: head.value.title, url: (data as { url: string }).url }
+    if (source.value.identity.provider === 'forgejo')
       return { label: head.value.title, url: (data as { url: string }).url }
     const place = placeLink(t, data)
     if (place !== undefined) return place
@@ -164,7 +176,11 @@ export function useItemPresentation(options: PresentationOptions) {
   const openCommit = (sha: string) => {
     const t = shown.value
     if (t.kind !== 'pull') return
-    props.onOpen?.(`${repoWeb(t)}/pull/${t.number}/commits/${sha}`)
+    props.onOpen?.(
+      t.provider === 'forgejo'
+        ? source.value.navigation.commit(sha)
+        : `${repoWeb(t)}/pull/${t.number}/commits/${sha}`
+    )
   }
   return { browserUrl, head, linker, repo, screen, chatAbout, openInBrowser, swapSides, openCommit }
 }

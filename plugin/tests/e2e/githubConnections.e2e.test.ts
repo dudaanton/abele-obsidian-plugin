@@ -47,14 +47,14 @@ describe.skipIf(!available)(
         if (!root) throw Error('Connection settings did not open')
         const config = window.__abeleTest.AbeleConfig.getInstance()
         const github = {...config.github.connections[0], name:'Sample GitHub'}
-        config.github.connections = [github, {...github, id:'sample-forgejo', provider:'forgejo', name:'Sample Forgejo', server:'https://git.example.test/team', keyId:''}]
+        config.github.connections = [github, {...github, id:'sample-gitea', provider:'gitea', name:'Sample Gitea', server:'https://git.example.test/team', keyId:''}]
         config.version.value++
-        const row = await until(() => [...root.querySelectorAll('.setting-item')].find(el => el.querySelector('.setting-item-name')?.textContent.trim() === 'Sample Forgejo'))
+        const row = await until(() => [...root.querySelectorAll('.setting-item')].find(el => el.querySelector('.setting-item-name')?.textContent.trim() === 'Sample Gitea'))
         if (!row) throw Error('Imported connection row did not render')
-        const actions = [...row.querySelectorAll('button')].map(button => button.textContent.trim())
-        const unavailable = row.textContent.includes('Forgejo, available in a later version')
-        const githubRow = [...root.querySelectorAll('.setting-item')].find(el => el.querySelector('.setting-item-name')?.textContent.startsWith('Sample GitHub'))
-        const githubEditable = [...githubRow.querySelectorAll('button')].some(button => button.textContent.trim() === 'Edit')
+        const actions = [...row.querySelectorAll('[aria-label]')].filter(el => el.classList.contains('clickable-icon')).map(el => el.getAttribute('aria-label'))
+        const unavailable = row.textContent.includes('Gitea, available in a later version')
+        const githubRow = [...root.querySelectorAll('.setting-item')].find(el => el.querySelector('.setting-item-name')?.textContent.includes('Sample GitHub'))
+        const githubEditable = !!githubRow.querySelector('[aria-label="Edit connection"]')
         const paths = []
         const shoot = async path => {
           if (window.__e2eHost) return window.__e2eHost.shot(path)
@@ -74,18 +74,19 @@ describe.skipIf(!available)(
             paths.push(await shoot(${JSON.stringify(shots + '/unavailable-provider-phone.png')}))
           } finally {win.setContentSize(...size);document.body.classList.toggle('is-phone',phone)}
         }
-        row.querySelector('button')?.click()
-        const confirmation = await until(() => [...document.querySelectorAll('.modal')].find(modal => modal.textContent.includes('Delete Sample Forgejo?')))
+        row.querySelector('[aria-label="Connection actions"]')?.click()
+        const deleteAction = await until(() => [...document.querySelectorAll('.menu-item')].find(el => el.textContent.trim() === 'Delete')); if (!deleteAction) throw Error('Delete menu action missing'); deleteAction.click()
+        const confirmation = await until(() => [...document.querySelectorAll('.modal')].find(modal => modal.textContent.includes('Delete Sample Gitea?')))
         if (!confirmation) throw Error('Connection deletion did not ask for confirmation')
         const remove = [...confirmation.querySelectorAll('button')].find(button => button.textContent.trim() === 'Delete')
         if (!remove) throw Error('Connection deletion has no confirm action')
         remove.click()
-        const removed = !!(await until(() => !config.github.connections.some(c => c.id === 'sample-forgejo')))
+        const removed = !!(await until(() => !config.github.connections.some(c => c.id === 'sample-gitea')))
         return {unavailable,actions,githubEditable,removed,retained:config.github.connections.some(c => c.id === github.id),shots:paths}
       })()`)
       expect(result).toMatchObject({
         unavailable: true,
-        actions: ['Delete'],
+        actions: ['Connection actions'],
         githubEditable: true,
         removed: true,
         retained: true,
@@ -148,7 +149,7 @@ describe.skipIf(!available)(
       heading.scrollIntoView({block:'start'})
       await wait(300)
       paths.push(await window.__e2eHost.shot(${JSON.stringify(shots + '/list.png')}))
-      const edit = [...modal.querySelectorAll('button')].find(b=>b.textContent.trim()==='Edit')
+      const edit = modal.querySelector('[aria-label="Edit connection"]')
       edit.scrollIntoView({block:'center'}); edit.click()
       modal = await until(() => document.querySelector('input[type=password][placeholder="github_pat_..."]')?.closest('.modal.abele-modal'))
       const token = modal.querySelector('input[type=password]')

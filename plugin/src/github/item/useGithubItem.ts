@@ -203,8 +203,22 @@ export function useGithubItem(props: GithubItemProps) {
       }
     }
   )
-  const files = useLoad(() => loadPullFiles(client(), shown.value as Of<'pull'>))
-  const commits = useLoad(() => loadPullCommits(client(), shown.value as Of<'pull'>))
+  const files = useLoad(() =>
+    source.value?.github?.pullFiles
+      ? source.value.github.pullFiles((shown.value as Of<'pull'>).number)
+      : loadPullFiles(client(), shown.value as Of<'pull'>)
+  )
+  const commits = useLoad(async () => {
+    if (source.value?.github?.pullCommits) {
+      const result = await source.value.github.pullCommits((shown.value as Of<'pull'>).number)
+      if (!result.complete)
+        throw new Error(
+          'Not all pull request commits could be listed. Open the service to read the rest.'
+        )
+      return result.commits
+    }
+    return loadPullCommits(client(), shown.value as Of<'pull'>)
+  })
   // Where the tab is in its repository: the breadcrumbs, and the file tree panel beside it.
   const {
     panelOpen,
@@ -322,11 +336,12 @@ export function useGithubItem(props: GithubItemProps) {
     const b = blob.value
     if (!t || !b) return null
     return {
+      provider: t.provider,
       host: t.host,
       origin: t.origin,
       owner: t.owner,
       repo: t.repo,
-      ref: b.ref,
+      ref: b.resolvedCommit ?? b.ref,
       path: b.path,
     }
   })
@@ -346,16 +361,21 @@ export function useGithubItem(props: GithubItemProps) {
     { id: 'conversation', label: 'Conversation', icon: 'message-square' },
     {
       id: 'files',
-      label: pull.value ? `Files (${pull.value.changedFiles})` : 'Files',
+      label: pull.value?.changedFiles != null ? `Files (${pull.value.changedFiles})` : 'Files',
       icon: 'file-diff',
     },
     {
       id: 'commits',
-      label: pull.value ? `Commits (${pull.value.commitsCount})` : 'Commits',
+      label: pull.value?.commitsCount != null ? `Commits (${pull.value.commitsCount})` : 'Commits',
       icon: 'git-commit-horizontal',
     },
   ])
-  const { conversationRetrying, retryConversation } = useItemConversation(main, shown, client)
+  const { conversationRetrying, retryConversation } = useItemConversation(
+    main,
+    shown,
+    client,
+    () => source.value
+  )
   watch(pullTab, (tab) => {
     if (tab === 'files' && !files.data.value && !files.loading.value) void files.load()
     if (tab === 'commits' && !commits.data.value && !commits.loading.value) void commits.load()

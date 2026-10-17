@@ -10,10 +10,12 @@ import {
 } from '@/github/api'
 import type { Ref } from 'vue'
 import type { Loaded } from '@/github/useLoad'
+import type { RepositorySource } from '@/repository/source'
 export function useItemConversation(
   main: Loaded<ItemData>,
   shown: Ref<GithubTarget>,
-  client: () => GithubClient
+  client: () => GithubClient,
+  source?: () => RepositorySource
 ) {
   /**
    * Asks again for the comments alone, which were refused while the item itself was read, and
@@ -26,8 +28,9 @@ export function useItemConversation(
     if (!data || conversationRetrying.value || (t.kind !== 'pull' && t.kind !== 'issue')) return
     conversationRetrying.value = true
     try {
-      const conversation =
-        t.kind === 'pull'
+      const conversation = source?.().github?.conversation
+        ? await source().github.conversation(t.number, t.kind === 'pull')
+        : t.kind === 'pull'
           ? await loadPullConversation(client(), t)
           : await loadIssueConversation(client(), t)
       // The item was reloaded meanwhile; that load brought its own comments.

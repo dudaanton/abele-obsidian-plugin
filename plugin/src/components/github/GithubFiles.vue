@@ -23,7 +23,7 @@
     />
     <EmptyState v-if="!files.length" text="No files changed." />
     <div v-if="!complete" class="abele-github-files__missing">
-      GitHub lists only the first {{ files.length }} files here; the rest are on GitHub.
+      Only the first {{ files.length }} files are shown; open the original change for the rest.
     </div>
   </div>
 </template>
@@ -65,8 +65,14 @@ const countsPending = computed(() => {
   void patchEpoch.value
   return props.files.some((f) => f.countsPending)
 })
-const additions = computed(() => { void patchEpoch.value; return props.files.reduce((n, f) => n + f.additions, 0) })
-const deletions = computed(() => { void patchEpoch.value; return props.files.reduce((n, f) => n + f.deletions, 0) })
+const additions = computed(() => {
+  void patchEpoch.value
+  return props.files.reduce((n, f) => n + f.additions, 0)
+})
+const deletions = computed(() => {
+  void patchEpoch.value
+  return props.files.reduce((n, f) => n + f.deletions, 0)
+})
 const anchored = computed(() => props.files.some((f) => f.hash === props.anchor?.hash))
 </script>
 

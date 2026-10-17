@@ -47,7 +47,7 @@ export class RefPicker extends SuggestModal<RefRow> {
     /** The ref shown now, and the default branch, both marked in the list. */
     private readonly current: string,
     private readonly defaultBranch: string,
-    private readonly choose: (ref: string) => void
+    private readonly choose: (ref: string, kind?: 'branch' | 'tag') => void
   ) {
     super(app)
     this.limit = 50
@@ -116,6 +116,8 @@ export class RefPicker extends SuggestModal<RefRow> {
   }
 
   onChooseSuggestion(row: RefRow): void {
-    if (row.kind !== 'note') this.choose(row.name)
+    if (row.kind === 'note') return
+    if ('identity' in this.client && this.client.navigation.ref) this.choose(row.name, row.kind)
+    else this.choose(row.name)
   }
 }

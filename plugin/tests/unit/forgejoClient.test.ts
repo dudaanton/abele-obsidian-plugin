@@ -14,6 +14,27 @@ const response = (json: unknown, status = 200): HttpResponse => ({
 const session = () => ({ connectionId: 'sample', generation: 'one', assertCurrent: vi.fn() })
 
 describe('Forgejo credential-bound reads', () => {
+  it('does not publish malformed-response parser diagnostics containing credentials', async () => {
+    const client = new ForgejoClient(
+      base,
+      session(),
+      async () => ({
+        ...response(null),
+        get json() {
+          throw new Error('sample-token in invalid JSON')
+        },
+      }),
+      'sample-token'
+    )
+    await expect(client.get('/user')).rejects.toThrow('Forgejo returned an unreadable response.')
+  })
+  it('reads a native unified diff as text through the same credential boundary', async () => {
+    const http = vi
+      .fn<HttpTransport>()
+      .mockResolvedValue({ ...response(null), text: '@@ -1 +1 @@\n-before\n+after\n' })
+    const client = new ForgejoClient(base, session(), http, 'sample-token')
+    expect(await client.text('/repos/sample/project/pulls/12.diff')).toContain('+after')
+  })
   it('does not publish transport diagnostics containing credentials', async () => {
     const client = new ForgejoClient(
       base,

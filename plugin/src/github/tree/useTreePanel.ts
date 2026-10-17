@@ -62,7 +62,9 @@ export function useTreePanel(o: TreePanelOptions) {
 
   const repoRef = computed(() => {
     const t = o.shown.value
-    return t ? { host: t.host, origin: t.origin, owner: t.owner, repo: t.repo } : null
+    return t
+      ? { provider: t.provider, host: t.host, origin: t.origin, owner: t.owner, repo: t.repo }
+      : null
   })
 
   /** The ref the links stay at, once the item has loaded; null for the default branch. */

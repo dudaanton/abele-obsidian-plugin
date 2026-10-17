@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { mount, flushPromises } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import GithubSettings from '@/components/settings/GithubSettings.vue'
 import Editor from '@/components/settings/GithubConnectionEditor.vue'
 import Button from '@/components/obsidian/Button.vue'
@@ -8,8 +8,31 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { githubSettingsFrom } from '@/github/settings'
 import { useVault } from '../helpers/testEnv'
 import Setting from '@/components/obsidian/Setting.vue'
+import Icon from '@/components/obsidian/Icon.vue'
+import StatusDot from '@/components/obsidian/StatusDot.vue'
+
+import { Menu } from 'obsidian'
+let openedMenu: Menu
+afterEach(() => vi.restoreAllMocks())
+const chooseAction = async (view: VueWrapper, title: string) => {
+  view
+    .findAllComponents(Icon)
+    .find((icon) => icon.props('tooltip') === 'Connection actions')!
+    .vm.$emit('click', new MouseEvent('click'))
+  await flushPromises()
+  const item = openedMenu.items.find((item) => item.title === title)
+  expect(item).toBeDefined()
+  item!.handler!()
+  await flushPromises()
+}
 
 beforeEach(() => {
+  vi.spyOn(Menu.prototype, 'showAtMouseEvent').mockImplementation(function (this: Menu) {
+    // Capture the menu instance for exercising its actions without opening a native menu.
+    // eslint-disable-next-line @typescript-eslint/no-this-alias -- Capture the native menu for exercising its actions.
+    openedMenu = this
+    return this
+  })
   useVault([])
   const config = AbeleConfig.getInstance()
   config.github = githubSettingsFrom({ enabled: true })
@@ -17,6 +40,36 @@ beforeEach(() => {
 })
 
 describe('connection settings list', () => {
+  it('uses the approved compact dot, pencil and action menu instead of stacked row buttons', () => {
+    AbeleConfig.getInstance().github = githubSettingsFrom({
+      enabled: true,
+      connections: [
+        {
+          id: 'sample',
+          provider: 'forgejo',
+          name: 'Sample service',
+          server: 'https://forge.example.test',
+          keyId: '',
+          owners: [],
+          isDefault: true,
+        },
+      ],
+    })
+    const view = mount(GithubSettings)
+    const row = view
+      .findAllComponents(Setting)
+      .find((item) => String(item.props('name')).includes('Sample service'))!
+    try {
+      expect(row.findAllComponents(Button)).toHaveLength(0)
+      expect(row.findComponent(StatusDot).exists()).toBe(true)
+      expect(row.findAllComponents(Icon).map((i) => i.props('tooltip'))).toEqual([
+        'Edit connection',
+        'Connection actions',
+      ])
+    } finally {
+      view.unmount()
+    }
+  })
   it.each(['forgejo', 'gitea', 'gitlab', 'future-forge'])(
     'keeps an imported %s connection removable without a GitHub client',
     async (provider) => {
@@ -43,20 +96,30 @@ describe('connection settings list', () => {
       const view = mount(GithubSettings)
       const row = view
         .findAllComponents(Setting)
-        .find((row) => String(row.props('name')).startsWith(foreign.name))!
-      expect(row.text()).toMatch(/available in a later version/i)
-      expect(row.findAllComponents(Button).map((button) => button.props('text'))).toEqual([
-        'Delete',
-      ])
-      expect(read.mock.calls.some(([id]) => id === foreign.keyId)).toBe(false)
+        .find((row) => String(row.props('name')).includes(foreign.name))!
+      expect(row.findAllComponents(Button)).toHaveLength(0)
+      expect(row.findComponent(StatusDot).exists()).toBe(true)
+      if (provider === 'forgejo')
+        expect(row.findAllComponents(Icon).map((icon) => icon.props('tooltip'))).toEqual([
+          'Edit connection',
+          'Connection actions',
+        ])
+      else {
+        expect(row.text()).toMatch(/available in a later version/i)
+        expect(row.findAllComponents(Icon).map((icon) => icon.props('tooltip'))).toEqual([
+          'Connection actions',
+        ])
+        expect(read.mock.calls.some(([id]) => id === foreign.keyId)).toBe(false)
+      }
+      const githubRow = view
+        .findAllComponents(Setting)
+        .find((row) => String(row.props('name')).includes(github.name))!
       expect(
-        view
-          .findAllComponents(Setting)
-          .find((row) => String(row.props('name')).startsWith(github.name))!
-          .text()
-      ).toContain('Edit')
-      row.findComponent(Button).vm.$emit('click')
-      await flushPromises()
+        githubRow
+          .findAllComponents(Icon)
+          .some((icon) => icon.props('tooltip') === 'Edit connection')
+      ).toBe(true)
+      await chooseAction(row, 'Delete')
       view.findComponent(ConfirmModal).vm.$emit('confirm')
       await flushPromises()
       expect(config.github.connections.map((c) => c.id)).toEqual(['github'])
@@ -84,8 +147,8 @@ describe('connection settings list', () => {
     config.github = githubSettingsFrom({ enabled: true, connections: [github, foreign] })
     const view = mount(GithubSettings)
     view
-      .findAllComponents(Button)
-      .find((button) => button.props('text') === 'Edit')!
+      .findAllComponents(Icon)
+      .find((button) => button.props('tooltip') === 'Edit connection')!
       .vm.$emit('click')
     await flushPromises()
     view.findComponent(Editor).vm.$emit('save', { ...github, name: 'Updated GitHub' })
@@ -103,11 +166,7 @@ describe('connection settings list', () => {
     })
     app.secretStorage.setSecret('shared-classic', 'invented-classic')
     const view = mount(GithubSettings)
-    view
-      .findAllComponents(Button)
-      .find((b) => b.props('text') === 'Delete')!
-      .vm.$emit('click')
-    await flushPromises()
+    await chooseAction(view, 'Delete')
     view.findComponent(ConfirmModal).vm.$emit('confirm')
     await flushPromises()
     expect(config.github.connections).toEqual([])

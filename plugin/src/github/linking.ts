@@ -134,7 +134,13 @@ export function createLinker(o: {
       const t = o.shown()
       const data = o.data()
       if (!t || !data) return null
-      const repo = { host: t.host, origin: t.origin, owner: t.owner, repo: t.repo }
+      const repo = {
+        provider: t.provider,
+        host: t.host,
+        origin: t.origin,
+        owner: t.owner,
+        repo: t.repo,
+      }
       switch (t.kind) {
         case 'issue':
         case 'pull':
@@ -161,17 +167,23 @@ export function createLinker(o: {
       if (t?.kind !== 'blob' || !blob) throw new Error('no file is shown')
       const client = o.client(),
         source = o.source?.()
-      const key = `${source ? sourceKey(source.identity) : ''}:${(source ?? client).cacheNamespace}:${t.host}/${t.owner}/${t.repo}@${blob.ref}`
+      const key = `${source ? sourceKey(source.identity) : ''}:${(source ?? client).cacheNamespace}:${t.host}/${t.owner}/${t.repo}@${blob.resolvedCommit ?? blob.ref}`
       let asked = shas.get(key)
       if (asked === undefined) {
-        asked = source ? source.resolve(blob.ref) : commitSha(client, t, blob.ref)
+        asked = blob.resolvedCommit
+          ? Promise.resolve(blob.resolvedCommit)
+          : source
+            ? source.resolve(blob.ref)
+            : commitSha(client, t, blob.ref)
         shas.set(key, asked)
         // A failure is not kept: the next press asks again.
         asked.catch(() => shas.delete(key))
       }
-      return o.source
-        ? o.source().navigation.blobLink(await asked, blob.path, span)
-        : blobLink(t, await asked, blob.path, span)
+      const sha = await asked
+      source?.assertCurrent()
+      return source
+        ? source.navigation.blobLink(sha, blob.path, span)
+        : blobLink(t, sha, blob.path, span)
     },
     ...sharing(o.app),
   }

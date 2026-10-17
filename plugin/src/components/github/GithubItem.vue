@@ -56,7 +56,7 @@
           class="abele-github__account"
           :text="accountName"
           icon="user-round"
-          tooltip="Open as another GitHub account"
+          tooltip="Open as another account"
           @click="onChooseAccount?.()"
         />
         <GithubFindBar
@@ -159,7 +159,11 @@
         <EmptyState
           v-else-if="!main.data.value"
           :text="
-            source?.identity.provider === 'node' ? 'Loading from the node…' : 'Loading from GitHub…'
+            source?.identity.provider === 'node'
+              ? 'Loading from the node…'
+              : source?.identity.provider === 'forgejo'
+                ? 'Loading from Forgejo…'
+                : 'Loading from GitHub…'
           "
         />
 
@@ -438,7 +442,7 @@ const {
 /** A GitHub repository's files, folders and home can be compared against a pinned version. */
 const canPinBase = computed(
   () =>
-    source.value?.identity.provider !== 'node' &&
+    source.value?.identity.provider === 'github' &&
     !!repoRef.value &&
     ['blob', 'tree', 'repo'].includes(shown.value.kind)
 )

@@ -3,7 +3,7 @@ import { useVault } from '../helpers/testEnv'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { githubSettingsFrom } from '@/github/settings'
 import { toolOperation } from '@/ai/tools/github/operation'
-import { collectEntries } from '@/transfer/entries'
+import { applyEntries, collectEntries } from '@/transfer/entries'
 import { DEFAULT_SETTINGS } from '@/services/AbeleConfig'
 import { preferredConnection } from '@/github/connections'
 import { notificationsClient, resetGithubClients } from '@/github/GithubService'
@@ -26,6 +26,7 @@ const foreign = {
   name: 'Sample Forgejo',
   server: 'https://github.com',
   keyId: 'foreign-slot',
+  checkState: 'partial' as const,
 }
 const actor = {
   id: 'sample-agent',
@@ -85,14 +86,20 @@ describe('unavailable provider consumers', () => {
     expect(operation.canReadTab('foreign')).toBe(false)
     expect(operation.inventory).toMatch(/Forgejo.*available in a later version/i)
   })
-  it('preserves unavailable connections and secret references in the transfer preview', () => {
+  it('preserves provider connections and secret references in the transfer preview', () => {
     const settings = { ...DEFAULT_SETTINGS, github: AbeleConfig.getInstance().github }
     const entry = collectEntries(settings).find(
       (entry) => entry.section === 'github-connections' && entry.id === 'foreign'
     )!
-    expect(entry.label).toMatch(/Forgejo.*available in a later version/i)
+    expect(entry.label).toContain('Forgejo')
+    expect(entry.label).not.toMatch(/available in a later version/i)
     expect(entry.secretIds).toEqual(['foreign-slot'])
     expect(entry.data).toMatchObject(foreign)
+    const restored = applyEntries([entry], {
+      ...settings,
+      github: { ...settings.github, connections: [] },
+    })
+    expect(restored.github.connections).toContainEqual(expect.objectContaining(foreign))
   })
   it('uses only the supported default for pickers and the retained inbox', () => {
     const settings = AbeleConfig.getInstance().github

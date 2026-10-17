@@ -107,7 +107,8 @@ export function itemHead(t: GithubTarget | null, data: ItemData | null): ItemHea
   ]
   if (t.kind === 'pull') {
     const p = item as PullData
-    meta.push(`${p.head} → ${p.base}`, `+${p.additions} −${p.deletions}`)
+    meta.push(`${p.head} → ${p.base}`)
+    if (p.additions !== null && p.deletions !== null) meta.push(`+${p.additions} −${p.deletions}`)
   }
   if (t.kind === 'discussion') meta.push((item as DiscussionData).category)
   return {

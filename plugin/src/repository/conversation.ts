@@ -65,10 +65,10 @@ export interface PullData extends IssueData {
   headSha?: string
   /** The commit of the base branch it is compared with: where a file it deletes still exists. */
   baseSha?: string
-  additions: number
-  deletions: number
-  changedFiles: number
-  commitsCount: number
+  additions: number | null
+  deletions: number | null
+  changedFiles: number | null
+  commitsCount: number | null
 }
 
 export interface DiffFile {

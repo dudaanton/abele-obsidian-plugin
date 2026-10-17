@@ -7,6 +7,12 @@ import {
   type HttpResponse,
 } from './transport'
 
+export class ForgejoError extends Error {
+  constructor(readonly status: number) {
+    super(`Forgejo refused the request (${status}).`)
+  }
+}
+
 /** Native Forgejo REST reads. Transport is single-hop and never follows server links. */
 export class ForgejoClient {
   constructor(
@@ -27,6 +33,14 @@ export class ForgejoClient {
   }
 
   async get<T>(path: string): Promise<T> {
+    return this.read<T>(path, false)
+  }
+
+  async text(path: string): Promise<string> {
+    return this.read<string>(path, true)
+  }
+
+  private async read<T>(path: string, text: boolean): Promise<T> {
     if (!path.startsWith('/') || path.startsWith('//') || /[\\#\r\n]/.test(path))
       throw new Error('Invalid Forgejo API path.')
     const parts = path.split('?')[0].split('/')
@@ -45,7 +59,7 @@ export class ForgejoClient {
     if ([...url.searchParams.keys()].some((key) => /token|authorization|password/i.test(key)))
       throw new Error('Credentials cannot appear in an API URL.')
     return checkedRead(this.session, async () => {
-      const headers: Record<string, string> = { Accept: 'application/json' }
+      const headers: Record<string, string> = { Accept: text ? 'text/plain' : 'application/json' }
       if (this.token) headers.Authorization = `token ${this.token}`
       let result: HttpResponse
       try {
@@ -55,9 +69,12 @@ export class ForgejoClient {
       }
       if (result.status >= 300 && result.status < 400)
         throw new Error('Forgejo redirected the request; check the configured server address.')
-      if (result.status < 200 || result.status >= 300)
-        throw new Error(`Forgejo refused the request (${result.status}).`)
-      return result.json as T
+      if (result.status < 200 || result.status >= 300) throw new ForgejoError(result.status)
+      try {
+        return (text ? result.text : result.json) as T
+      } catch {
+        throw new Error('Forgejo returned an unreadable response.')
+      }
     })
   }
 

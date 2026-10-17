@@ -9,8 +9,12 @@ import { isMarkdownPath } from './markdownPreview'
 import { repoWeb } from './origin'
 import { compareUrl } from './compare'
 import { encodePath } from './contents'
+import { forgejoUrls } from '@/forge/forgejoUrls'
+import { deployment } from '@/forge/identity'
 
 export interface RepoRef {
+  provider?: 'github' | 'forgejo'
+  origin?: string
   host: string
   owner: string
   repo: string
@@ -45,7 +49,7 @@ export function itemUrl(item: LinkItem): string {
     case 'issue':
       return `${web(item)}/issues/${item.number}`
     case 'pull':
-      return `${web(item)}/pull/${item.number}`
+      return `${web(item)}/${item.provider === 'forgejo' ? 'pulls' : 'pull'}/${item.number}`
     case 'discussion':
       return `${web(item)}/discussions/${item.number}`
     case 'commit':
@@ -125,7 +129,15 @@ export function blobLink(repo: RepoRef, sha: string, path: string, span: LineSpa
   const plain = isMarkdownPath(path) ? '?plain=1' : ''
   return {
     label: `${repo.owner}/${repo.repo}@${sha.slice(0, 7)} · ${path}:${lineText(from, to)}`,
-    url: `${web(repo)}/blob/${sha}/${encodePath(path)}${plain}#${lines}`,
+    url:
+      repo.provider === 'forgejo'
+        ? forgejoUrls(deployment('forgejo', repo.origin)).file(
+            `${repo.owner}/${repo.repo}`,
+            sha,
+            path,
+            span
+          )
+        : `${web(repo)}/blob/${sha}/${encodePath(path)}${plain}#${lines}`,
   }
 }
 
@@ -136,6 +148,12 @@ export function blobLink(repo: RepoRef, sha: string, path: string, span: LineSpa
  */
 export function fileUrl(repo: RepoRef, sha: string, path: string, line?: number): string {
   if (line !== undefined) return blobLink(repo, sha, path, { from: line, to: line }).url
+  if (repo.provider === 'forgejo')
+    return forgejoUrls(deployment('forgejo', repo.origin)).file(
+      `${repo.owner}/${repo.repo}`,
+      sha,
+      path
+    )
   return `${web(repo)}/blob/${sha}/${encodePath(path)}`
 }
 

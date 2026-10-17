@@ -258,9 +258,9 @@ const selectedLink = (): GithubLink => {
   if (!selectedSpan.value) throw new Error('nothing is selected')
   const span = selectedSpan.value
   const ref = span.side === 'L' ? props.refs?.base : props.refs?.head
-  if (source.value?.identity.provider === 'node' && !ref)
+  if (source.value?.identity.provider !== 'github' && !ref)
     throw new Error('This index side is available in the retained patch, not as a whole-file link.')
-  if (source.value?.identity.provider === 'node' && ref)
+  if (source.value?.identity.provider !== 'github' && ref)
     return source.value.navigation.blobLink(
       ref,
       span.side === 'L' ? (props.file.previousPath ?? props.file.path) : props.file.path,

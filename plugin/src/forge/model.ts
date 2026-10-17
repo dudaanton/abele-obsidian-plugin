@@ -85,6 +85,8 @@ export interface ChangedFile {
 
 /** Stable, non-secret identifier; names and discovered logins may change independently. */
 export interface ForgeConnection {
+  /** Last explicit access-check verdict; not an authorization grant. */
+  checkState?: 'ok' | 'partial' | 'refused' | 'error'
   /** Absent in older settings. Unknown kinds are retained but cannot use the GitHub adapter. */
   provider?: string
   id: string

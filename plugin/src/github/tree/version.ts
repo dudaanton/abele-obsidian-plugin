@@ -9,7 +9,7 @@ import type { GithubTarget } from '../urls'
 
 export function linkRef(shown: GithubTarget, data: unknown): string | null {
   if (!data) return null
-  const d = data as { headSha?: string; sha?: string; ref?: string }
+  const d = data as { headSha?: string; sha?: string; ref?: string; resolvedCommit?: string }
   switch (shown.kind) {
     case 'pull':
     case 'compare':
@@ -19,7 +19,7 @@ export function linkRef(shown: GithubTarget, data: unknown): string | null {
     case 'blob':
     case 'tree':
     case 'repo':
-      return d.ref || null
+      return d.resolvedCommit || d.ref || null
     default:
       return null
   }

@@ -22,7 +22,6 @@ import { createHash } from 'node:crypto'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { deflateSync } from 'node:zlib'
 import {
-  BASE_FILES,
   BASE_SHA,
   DISCUSSION,
   HEAD_FILES,
@@ -698,10 +697,189 @@ async function notifications(req: IncomingMessage, res: ServerResponse, url: URL
   res.end(bytes)
 }
 
+/** Forgejo 11 response shapes, deliberately distinct from the GitHub personality. */
+function forgejo(req: IncomingMessage, res: ServerResponse, url: URL, origin: string) {
+  const account =
+    req.headers.authorization === 'token invented-connection-two'
+      ? 'two'
+      : req.headers.authorization === 'token invented-connection-one'
+        ? 'one'
+        : 'anonymous'
+  const fail = (status = 404) => send(res, status, { message: 'Sample Forgejo request refused.' })
+  if (req.method !== 'GET' || !url.pathname.startsWith('/forge/api/v1/')) return fail()
+  if (req.headers.authorization && account === 'anonymous') return fail(401)
+  const route = decodeURIComponent(url.pathname.slice('/forge/api/v1'.length))
+  const web = `${origin}/forge`,
+    f = fixtures(web)
+  const paged = <T>(rows: T[]) => {
+    const size = Number(url.searchParams.get('limit') ?? 50),
+      page = Number(url.searchParams.get('page') ?? 1)
+    return rows.slice((page - 1) * size, page * size)
+  }
+  if (route === '/version') return send(res, 200, { version: '11.0.0' })
+  if (route === '/user')
+    return account === 'anonymous'
+      ? fail(401)
+      : send(res, 200, { id: account === 'one' ? 1 : 2, login: `sample-account-${account}` })
+  const match = new RegExp(`^/repos/${OWNER}/([^/]+)(.*)$`).exec(route)
+  if (!match) return fail()
+  const [, repository, path] = match
+  if (
+    ![
+      'widgets',
+      'private-widgets',
+      'empty-widgets',
+      'partial-widgets',
+      'long-widget-repository-with-a-deliberately-descriptive-name',
+    ].includes(repository)
+  )
+    return fail()
+  if (repository === 'private-widgets' && account !== 'two') return fail()
+  if (!path)
+    return send(res, 200, {
+      name: repository,
+      owner: { login: OWNER },
+      description: repository.startsWith('long-')
+        ? 'A deliberately long repository description that wraps across narrow screens while keeping the repository identity and account selection readable.'
+        : f.repo.description,
+      default_branch: 'main',
+      stars_count: 1234,
+      watchers_count: 7,
+      forks_count: 56,
+      private: repository === 'private-widgets',
+      empty: repository === 'empty-widgets',
+      has_issues: true,
+    })
+  if (repository === 'empty-widgets') {
+    if (path === '/languages') return send(res, 200, {})
+    if (path === '/issues' || path === '/pulls' || path === '/branches' || path === '/tags')
+      return send(res, 200, [])
+    return fail()
+  }
+  if (repository === 'partial-widgets' && (path.includes('comments') || path.includes('reviews')))
+    return fail(403)
+  if (path === '/languages') return send(res, 200, f.languages)
+  if (path === '/releases/latest') return send(res, 200, f.release)
+  if (path === '/branches')
+    return send(
+      res,
+      200,
+      paged(['main', 'loader', SLASHED_BRANCH].map((name) => ({ name, commit: { id: HEAD_SHA } })))
+    )
+  if (path === '/tags') return send(res, 200, paged([{ name: TAG, commit: { sha: BASE_SHA } }]))
+  if (path === '/issues') return send(res, 200, paged([f.issue]))
+  if (path === '/pulls')
+    return send(
+      res,
+      200,
+      paged([{ ...f.pull, html_url: `${web}/${OWNER}/${repository}/pulls/${PULL}` }])
+    )
+  if (path === `/issues/${ISSUE}`) return send(res, 200, f.issue)
+  if (path === `/issues/${PULL}`) return send(res, 200, { ...f.pull, pull_request: {} })
+  if (path === `/pulls/${PULL}`) {
+    const { additions: _a, deletions: _d, changed_files: _f, commits: _c, ...native } = f.pull
+    return send(res, 200, { ...native, merged: false })
+  }
+  if (path === `/issues/${ISSUE}/comments`) return send(res, 200, paged(f.issueComments))
+  if (path === `/issues/${PULL}/comments`) return send(res, 200, paged(f.pullComments))
+  if (path === `/pulls/${PULL}/reviews`)
+    return send(
+      res,
+      200,
+      paged(f.reviews.map((r) => ({ ...r, state: 'APPROVED', comments_count: 1 })))
+    )
+  if (path === `/pulls/${PULL}/reviews/9001/comments`)
+    return send(
+      res,
+      200,
+      paged(f.reviewComments.map((c) => ({ ...c, old_line_num: 0, new_line_num: c.line })))
+    )
+  if (path === `/pulls/${PULL}/commits`) return send(res, 200, paged(f.commits))
+  if (path === `/pulls/${PULL}/files`)
+    return send(res, 200, paged(f.files.map(({ patch: _patch, ...file }) => file)))
+  if (path === `/pulls/${PULL}.diff`)
+    return send(
+      res,
+      200,
+      f.files
+        .map(
+          (file) =>
+            `diff --git a/${file.filename} b/${file.filename}\n--- a/${file.filename}\n+++ b/${file.filename}\n${file.patch ?? ''}\n`
+        )
+        .join(''),
+      'text/plain'
+    )
+  const commit = /^\/commits\/(.+)$/.exec(path)
+  if (commit) {
+    const ref = commit[1].replace(/^refs\/(heads|tags)\//, '')
+    if (!repositoryFilesAt(ref)) return fail()
+    const sha = ref === TAG || ref === BASE_SHA ? BASE_SHA : HEAD_SHA
+    return send(res, 200, f.commitDetail(sha) ?? { sha })
+  }
+  const content = /^\/contents(?:\/(.*))?$/.exec(path)
+  if (content) {
+    const files = repositoryFilesAt(url.searchParams.get('ref') ?? 'main'),
+      at = content[1] ?? ''
+    if (!files) return fail()
+    if (at in files)
+      return send(res, 200, {
+        type: 'file',
+        name: at.split('/').pop(),
+        path: at,
+        sha: blobSha(files[at]),
+        size: Buffer.byteLength(files[at]),
+        encoding: 'base64',
+        content: base64(files[at]),
+      })
+    const prefix = at ? `${at}/` : '',
+      entries = new Map<string, { name: string; path: string; type: string; size: number }>()
+    for (const [file, text] of Object.entries(files)) {
+      if (!file.startsWith(prefix)) continue
+      const [name, ...rest] = file.slice(prefix.length).split('/')
+      entries.set(name, {
+        name,
+        path: `${prefix}${name}`,
+        type: rest.length ? 'dir' : 'file',
+        size: rest.length ? 0 : Buffer.byteLength(text),
+      })
+    }
+    return entries.size ? send(res, 200, [...entries.values()]) : fail()
+  }
+  const tree = /^\/git\/trees\/(.+)$/.exec(path)
+  if (tree) {
+    const files = repositoryFilesAt(tree[1])
+    if (!files) return fail()
+    return send(res, 200, {
+      sha: tree[1],
+      truncated: false,
+      tree: [
+        ...foldersOf(files).map((path) => ({
+          path,
+          type: 'tree',
+          sha: treeSha(files, path),
+          mode: '040000',
+        })),
+        ...Object.entries(files).map(([path, text]) => ({
+          path,
+          type: 'blob',
+          sha: blobSha(text),
+          size: Buffer.byteLength(text),
+          mode: '100644',
+        })),
+      ],
+    })
+  }
+  return fail()
+}
+
 const server = createServer((req, res) => {
   const host = req.headers.host ?? `127.0.0.1:${port}`
   const url = new URL(req.url ?? '/', `http://${host}`)
   const web = `http://${host}`
+  if (mode === 'forgejo') {
+    console.log(`${req.method} ${url.pathname}${url.search}`)
+    return forgejo(req, res, url, web)
+  }
   // GraphQL is logged after its body is read, so profile requests can be counted on their own.
   if (!(req.method === 'POST' && url.pathname === '/api/graphql'))
     console.log(

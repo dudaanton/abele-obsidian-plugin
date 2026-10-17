@@ -5,10 +5,12 @@
     <GithubNotice v-if="problem" :text="problem" :busy="retrying" @retry="emit('retry')" />
     <div v-else-if="!comments.length" class="abele-github-thread__note">No comments yet.</div>
     <div v-if="missing > 0" class="abele-github-thread__note">
-      {{ missing }} more {{ missing === 1 ? 'comment is' : 'comments are' }} on GitHub.
+      {{ missing }} more {{ missing === 1 ? 'comment is' : 'comments are' }} in the original
+      conversation.
     </div>
-    <div v-else-if="incomplete" class="abele-github-thread__note">
-      Only the first {{ comments.length }} comments are shown; the rest are on GitHub.
+    <div v-else-if="incomplete && !problem" class="abele-github-thread__note">
+      Only the first {{ comments.length }} comments are shown; open the original conversation for
+      the rest.
     </div>
   </div>
 </template>
