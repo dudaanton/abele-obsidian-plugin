@@ -2629,6 +2629,11 @@ Follow matches absolute desktop backup paths against the adapter’s exact owned
 
 Bounded local edit history captures use owned private outbox stage targets, while their history records retain the original file path and immutable source handle. They are retained sources rather than pending installs into that file, so following a moved root leaves those stages and bytes intact. Unfinished ordinary target installs still stop Follow.
 
+Deleting a connection's server scope stores a device-local request UUID and, after confirmation,
+the server receipt in that connection's state before disconnecting. An uncertain attempt stays
+stopped across restart and retries the same request; it never removes local files. A server
+`scope_deleted` refusal likewise persists a stopped marker until explicit disconnect.
+
 ## Zen preferences
 
 Plugin settings store `zen.width` (the shared page width, default 700 pixels) and

@@ -374,6 +374,19 @@ export class TokenEngineRuntime
           if (url.pathname !== '/v2/connection')
             assertResponseGeneration(response, expectedGeneration)
           if (!response.ok) {
+            const refusal = await response
+              .clone()
+              .json()
+              .catch((): null => null)
+            if (refusal?.error?.code === 'scope_deleted') {
+              this.permitted = false
+              this.engine?.pause()
+              const error = Object.assign(new Error('Scope deleted on the server'), {
+                code: 'scope_deleted',
+              })
+              options.failed(error)
+              throw error
+            }
             if (response.status === 401 || response.status === 403) this.permitted = false
             if (response.status >= 500) {
               // Read a clone so the protocol client can still decode classified refusals.

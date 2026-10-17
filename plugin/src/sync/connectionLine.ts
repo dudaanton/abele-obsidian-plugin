@@ -1,5 +1,5 @@
 import type { TokenConnectionRecord } from './tokenConnectionRegistry'
-import { connectionStatusText, type ConnectionActivity } from './tokenUi'
+import { connectionStatusText, SCOPE_DELETED, type ConnectionActivity } from './tokenUi'
 import { formatWhen } from './format'
 import { transferText } from './transferProgress'
 
@@ -16,7 +16,7 @@ const ATTENTION = ['error', 'needs-token', 'scope_unavailable', 'disconnected']
 
 /** Something is moving: a first scan, a comparison, a push or a pull. */
 export function connectionBusy(row: Row, activity?: ConnectionActivity): boolean {
-  if (row.paused || row.rootIssue) return false
+  if (activity?.error === SCOPE_DELETED || row.paused || row.rootIssue) return false
   return (
     row.status === 'syncing' ||
     row.status === 'joining' ||
@@ -47,6 +47,7 @@ const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : 
 
 /** The one line under the connection's name: what it is doing, or what it waits on. */
 export function connectionLine(row: Row, activity?: ConnectionActivity): string {
+  if (activity?.error === SCOPE_DELETED) return connectionStatusText(row, activity)
   if (row.rootIssue) return connectionStatusText(row, activity)
   if (row.paused) return 'Paused'
   const phase = activity?.startup ?? activity?.inspection

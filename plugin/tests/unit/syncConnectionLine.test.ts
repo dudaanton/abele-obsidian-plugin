@@ -9,6 +9,7 @@ import { DISCONNECTED_STATUS, statusText, statusTooltip, statusWarns } from '@/s
 import { phoneSyncIcon } from '@/sync/phoneSyncAction'
 import { tokenStatus } from '@/sync/tokenStatus'
 import { tokenUiFixture } from '@/testing/tokenUiFixture'
+import { SCOPE_DELETED } from '@/sync/tokenUi'
 
 const idle = { status: 'idle' as const, paused: false }
 
@@ -20,6 +21,16 @@ describe('a connection row', () => {
     expect(connectionLine(row, { comparison: { completed: 1, total: 1000 } })).toBe(
       'Folder is gone; sync stopped'
     )
+  })
+  it('shows permanent server deletion above a stale startup or pause', () => {
+    const row = { status: 'error' as const, paused: true }
+    const activity = {
+      error: SCOPE_DELETED,
+      startup: { stage: 'Checking', completed: 0, total: 1, startedAt: 1, progressAt: 1 },
+    }
+    expect(connectionLine(row, activity)).toBe('Deleted on the server')
+    expect(connectionBusy(row, activity)).toBe(false)
+    expect(connectionTone(row, activity)).toBe('red')
   })
   it('says when it last synced and is green when everything is through', () => {
     expect(connectionLine(idle, { lastSync: Date.now() - 120_000 })).toBe('Synced 2 minutes ago')

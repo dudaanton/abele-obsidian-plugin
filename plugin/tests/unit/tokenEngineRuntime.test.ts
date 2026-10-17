@@ -984,6 +984,43 @@ it.each(['scope_unavailable', 'forbidden'] as const)(
   }
 )
 
+it('accepts permission metadata from the deletion server through the retained engine', async () => {
+  const wire = await server('Notes/sample.md', 'sample')
+  const send = wire.fetch.getMockImplementation()!
+  wire.fetch.mockImplementation(async (input, init) => {
+    const response = await send(input, init)
+    if (String(input).endsWith('/v2/connection'))
+      return Response.json({ ...(await response.json()), read_only: false })
+    return response
+  })
+  const one = runtime(wire, new MemoryFileSystem())
+  try {
+    await one.runtime.sync()
+  } finally {
+    await one.runtime.disconnect()
+  }
+})
+
+it('stops on scope_deleted without applying local deletes or uploading retained files', async () => {
+  const wire = await server('Notes/sample.md', 'sample')
+  wire.fetch.mockImplementation(async () =>
+    Response.json({ error: { code: 'scope_deleted', message: 'Scope deleted' } }, { status: 401 })
+  )
+  const fs = new MemoryFileSystem()
+  await fs.writeAtomic('Notes/local.md', new TextEncoder().encode('local'), 1000)
+  const one = runtime(wire, fs)
+  try {
+    await expect(one.runtime.sync()).rejects.toBeDefined()
+    expect(new TextDecoder().decode(await fs.read('Notes/local.md'))).toBe('local')
+    expect(one.runtime.acceptsLocal('Notes/local.md', 5)).toBe(false)
+    expect(wire.fetch.mock.calls.every(([input]) => String(input).endsWith('/v2/connection'))).toBe(
+      true
+    )
+  } finally {
+    await one.runtime.disconnect()
+  }
+})
+
 it('names unsent local files after an offline attempt so the phone can show file and reason', async () => {
   const wire = await server('Notes/sample.md', 'note'),
     fs = new MemoryFileSystem()

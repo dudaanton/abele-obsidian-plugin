@@ -201,7 +201,9 @@ export class TokenEngines {
         !record.paused &&
         record.scope &&
         !record.pending &&
-        record.status !== 'needs-token'
+        record.status !== 'needs-token' &&
+        !record.state['abele-sync-token-state:scope-deleted'] &&
+        !record.state['abele-sync-token-state:server-delete']
       )
         this.ui.registry.setStatus(record.id, 'joining')
     this.ui.refresh()
@@ -268,7 +270,13 @@ export class TokenEngines {
     const records = this.ui.registry
       .records()
       .filter(
-        (one) => one.secretReference && one.scope && !one.pending && one.status !== 'needs-token'
+        (one) =>
+          one.secretReference &&
+          one.scope &&
+          !one.pending &&
+          one.status !== 'needs-token' &&
+          !one.state['abele-sync-token-state:scope-deleted'] &&
+          !one.state['abele-sync-token-state:server-delete']
       )
     this.engines.start(
       records.map((one) => one.id),
@@ -285,6 +293,20 @@ export class TokenEngines {
     if (this.closed || !this.ui.registry.records().some((one) => one.id === id)) return
     const code = (error as { code?: string })?.code
     if (code === 'startup-cancelled') return
+    if (
+      code !== 'scope_deleted' &&
+      this.ui.registry.records().find((one) => one.id === id)?.state[
+        'abele-sync-token-state:scope-deleted'
+      ]
+    )
+      return
+    if (code === 'scope_deleted') {
+      this.ui.registry.storage(id).saveLocalStorage('abele-sync-token-state:scope-deleted', true)
+      void this.live
+        .get(id)
+        ?.pause(true)
+        .catch(() => {})
+    }
     this.ui.finishStartup(id, 'failed')
     this.ui.registry.setStatus(
       id,
@@ -1101,6 +1123,18 @@ export class TokenEngines {
     if (this.closed || !this.ui.registry.records().some((one) => one.id === id)) return
     tokenOffloadsOf(this.app.vault, pathCoordinatorOf(this.app.vault)).changed()
     if (this.ui.registry.records().find((one) => one.id === id)?.rootIssue) return
+    if (
+      this.ui.registry.records().find((one) => one.id === id)?.state[
+        'abele-sync-token-state:scope-deleted'
+      ]
+    )
+      return
+    if (
+      this.ui.registry.records().find((one) => one.id === id)?.state[
+        'abele-sync-token-state:server-delete'
+      ]
+    )
+      return
     const epoch = (this.activityEpoch.get(id) ?? 0) + 1
     this.activityEpoch.set(id, epoch)
     const reportEpoch = (this.activityReports.get(id) ?? 0) + (report ? 1 : 0)

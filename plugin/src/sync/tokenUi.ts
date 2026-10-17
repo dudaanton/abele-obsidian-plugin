@@ -15,6 +15,8 @@ import type { openDeviceReviews } from './openDeviceReviews'
 import { reviewSourceOf, sourceIdentity, type ReviewSource } from './reviewState'
 import { transferText } from './transferProgress'
 
+/** Its owner deleted what this connection opens; the device stops and keeps every file. */
+export const SCOPE_DELETED = 'Deleted on the server. Every file stays on this device.'
 export function connectionError(error: unknown, startup = false): string {
   if (error instanceof LocalPlacementError || error instanceof FolderScopeError)
     return error.message
@@ -48,7 +50,7 @@ export function connectionError(error: unknown, startup = false): string {
         forbidden: 'This connection does not allow that action.',
         protocol: 'The server response could not be trusted; sync stopped. Local files were kept.',
         scope_unavailable: 'This folder or group is no longer available.',
-        scope_deleted: 'This folder or group is no longer available.',
+        scope_deleted: SCOPE_DELETED,
       } as Record<string, string>
     )[code ?? ''] ??
     (startup && error instanceof Error && error.message
@@ -192,6 +194,7 @@ export function connectionStatusText(
   row: Pick<TokenConnectionRecord, 'status' | 'paused' | 'rootIssue'>,
   activity?: ConnectionActivity
 ): string {
+  if (activity?.error === SCOPE_DELETED) return 'Deleted on the server'
   if (activity?.reconciliation && activity.reconciliation.phase !== 'complete')
     return activity.reconciliation.reason.startsWith('server generation changed')
       ? 'The server was restored from a backup — checking files'
@@ -278,6 +281,11 @@ export class TokenUi {
   readonly questions = shallowRef<AttachmentQuestion[]>([])
   readonly available = shallowRef(false)
   readonly runtimes = new Map<string, TokenUiRuntime>()
+  private readonly deletionFacts = new Map<
+    string,
+    import('@/components/sync/serverDelete').ServerDeleteFacts
+  >()
+  private readonly deletions = new Map<string, Promise<void>>()
   constructor(
     readonly registry: TokenConnectionRegistry,
     private readonly secrets: DeviceTokenSecrets & { remove(reference: string): void },
@@ -290,6 +298,16 @@ export class TokenUi {
     this.refresh()
     const activity: Record<string, ConnectionActivity> = {}
     for (const row of this.rows.value) {
+      if (row.state['abele-sync-token-state:scope-deleted']) {
+        activity[row.id] = { error: SCOPE_DELETED }
+        continue
+      }
+      if (row.state['abele-sync-token-state:server-delete']) {
+        activity[row.id] = {
+          error: 'Server deletion is awaiting confirmation. Retry Delete from the server.',
+        }
+        continue
+      }
       const lastSync = this.registry
         .storage(row.id)
         .loadLocalStorage('abele-sync-token-state:last-sync')
@@ -642,8 +660,128 @@ export class TokenUi {
     if (!record?.scope || !key) throw new V2ClientError('bad-token')
     return new V2Client({ v: 1, address: record.address, key, scope: record.scope }, this.transport)
   }
+  async serverDeleteFacts(
+    id: string
+  ): Promise<import('@/components/sync/serverDelete').ServerDeleteFacts> {
+    const pending = this.registry
+      .storage(id)
+      .loadLocalStorage('abele-sync-token-state:server-delete') as {
+      facts?: import('@/components/sync/serverDelete').ServerDeleteFacts
+    } | null
+    if (pending?.facts) return pending.facts
+    const client = this.client(id)
+    const authority = await client.connection()
+    const tokens = await client.tokens()
+    let files = 0,
+      bytes = 0,
+      next: string | null = null
+    const members = new Set<string>([authority.scope.id])
+    do {
+      const page = await client.manifest(next)
+      for (const item of page.items) {
+        members.add(item.file_id)
+        if (item.kind !== 'directory') {
+          files++
+          bytes += item.size
+        }
+      }
+      next = page.next
+    } while (next !== null)
+    const facts = {
+      files,
+      bytes,
+      canWrite: authority.read_only === false,
+      unavailableReason:
+        authority.read_only === undefined
+          ? 'This server is too old. Update the server to delete a connection.'
+          : undefined,
+      access: tokens.items
+        .filter(
+          (one) =>
+            !one.revoked_at &&
+            (authority.scope.path === '/' ||
+              members.has(one.scope.id) ||
+              (authority.scope.kind === 'folder' &&
+                one.scope.path.startsWith(authority.scope.path + '/')))
+        )
+        .map((one) => ({ label: one.label, scope: scopeName(one.scope) })),
+    }
+    if (authority.token_id && !tokens.items.some((one) => one.id === authority.token_id))
+      facts.access.unshift({ label: 'This connection', scope: scopeName(authority.scope) })
+    this.deletionFacts.set(id, facts)
+    return facts
+  }
+  deleteFromServer(id: string): Promise<void> {
+    const running = this.deletions.get(id)
+    if (running !== undefined) return running
+    const work = this.performServerDeletion(id).finally(() => this.deletions.delete(id))
+    this.deletions.set(id, work)
+    return work
+  }
+  private async performServerDeletion(id: string): Promise<void> {
+    const identity = () => {
+      const row = this.registry.records().find((one) => one.id === id)
+      return (
+        row &&
+        JSON.stringify({
+          address: row.address,
+          spaceId: row.spaceId,
+          tokenId: row.tokenId,
+          scope: row.scope,
+          secretReference: row.secretReference,
+        })
+      )
+    }
+    const confirmed = identity()
+    const assertCurrent = () => {
+      if (!confirmed || identity() !== confirmed)
+        throw new Error('Connection changed; open its deletion confirmation again.')
+    }
+    const storage = this.registry.storage(id)
+    const slot = 'abele-sync-token-state:server-delete'
+    const previous = storage.loadLocalStorage(slot) as {
+      key: string
+      identity?: string
+      result?: unknown
+      facts?: import('@/components/sync/serverDelete').ServerDeleteFacts
+    } | null
+    if (previous?.identity && previous.identity !== confirmed)
+      throw new Error('Connection changed; the earlier server deletion remains unresolved.')
+    const attempt = previous ?? {
+      key: crypto.randomUUID(),
+      identity: confirmed,
+      facts: this.deletionFacts.get(id),
+    }
+    assertCurrent()
+    const client = this.client(id)
+    await this.connectionChangeGuard(id, assertCurrent)
+    assertCurrent()
+    storage.saveLocalStorage(slot, attempt)
+    this.registry.setStatus(id, 'error')
+    this.publish(id, {
+      error: 'Server deletion is awaiting confirmation. Retry Delete from the server.',
+    })
+    await this.runtimes.get(id)?.pause(true)
+    assertCurrent()
+    if (!attempt.result) {
+      attempt.result = await client.deleteScope(attempt.key)
+      assertCurrent()
+      storage.saveLocalStorage(slot, attempt)
+    }
+    this.publish(id, {
+      events: [
+        ...(this.activity.value[id]?.events ?? []),
+        { at: Date.now(), text: 'Deleted from the server. Local files kept.' },
+      ],
+    })
+    assertCurrent()
+    await this.disconnect(id)
+  }
   async sync(id: string): Promise<void> {
     const record = this.registry.records().find((one) => one.id === id)
+    if (record?.state['abele-sync-token-state:scope-deleted']) throw new Error(SCOPE_DELETED)
+    if (record?.state['abele-sync-token-state:server-delete'])
+      throw new Error('Server deletion is awaiting confirmation')
     if (!record || record.paused) throw new Error('Sync is paused')
     let runtime = this.runtimes.get(id)
     if (!runtime) {
@@ -659,6 +797,12 @@ export class TokenUi {
     this.refresh()
   }
   async pause(id: string, paused: boolean): Promise<void> {
+    const state = this.registry.records().find((one) => one.id === id)?.state
+    if (
+      state?.['abele-sync-token-state:scope-deleted'] ||
+      state?.['abele-sync-token-state:server-delete']
+    )
+      throw new Error('This connection is stopped. Disconnect or finish the server deletion.')
     this.registry.setPaused(id, paused)
     this.refresh()
     await this.runtimes.get(id)?.pause(paused)

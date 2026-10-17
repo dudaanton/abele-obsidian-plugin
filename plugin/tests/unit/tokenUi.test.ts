@@ -42,7 +42,7 @@ it('uses the connection status line for restored server and local files', () => 
     })
   ).toBe('Syncing')
   expect(connectionError({ code: 'scope_deleted' })).toBe(
-    'This folder or group is no longer available.'
+    'Deleted on the server. Every file stays on this device.'
   )
 })
 

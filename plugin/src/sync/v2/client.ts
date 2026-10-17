@@ -1,6 +1,11 @@
 import { sha256 } from '../external/hash'
-import { z } from 'zod'
-import { ERROR_CODES } from '@abele/sync-protocol'
+import {
+  ERROR_CODES,
+  V2_CAPABILITIES_HEADER,
+  V2_READ_ONLY_CAPABILITY,
+  V2DeleteScopeRequestSchema,
+  V2DeleteScopeResponseSchema,
+} from '@abele/sync-protocol'
 import * as wire from './contract'
 import { DEFAULT_SIMPLE_UPLOAD_BYTES } from '@abele/sync-core'
 import { ShaSchema } from './fileSchemas'
@@ -52,7 +57,7 @@ export class V2Client {
   }
   private async request<T>(
     route: string,
-    schema: z.ZodType<T>,
+    schema: { parse(value: unknown): T },
     init: RequestInit = {}
   ): Promise<T> {
     const response = await this.response(route, init)
@@ -64,6 +69,7 @@ export class V2Client {
   }
   private async response(route: string, init: RequestInit = {}): Promise<Response> {
     const headers = new Headers(init.headers)
+    headers.set(V2_CAPABILITIES_HEADER, V2_READ_ONLY_CAPABILITY)
     headers.set('Authorization', 'Bearer ' + this.token.key)
     if (init.body !== undefined && !headers.has('Content-Type'))
       headers.set('Content-Type', 'application/json')
@@ -254,6 +260,18 @@ export class V2Client {
   }
   connection(signal?: AbortSignal): Promise<wire.V2Connection> {
     return this.request('connection', wire.V2ConnectionSchema, { signal })
+  }
+  /** The server owns scope selection; retries replay the original self-revocation receipt. */
+  deleteScope(requestId: string) {
+    return this.request('connection/delete', V2DeleteScopeResponseSchema, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': requestId },
+      body: JSON.stringify(V2DeleteScopeRequestSchema.parse({})),
+    }).catch((error) => {
+      if (error instanceof V2ClientError && [404, 405].includes(error.status))
+        throw new Error('This server is too old to delete a connection. Update the server first.')
+      throw error
+    })
   }
   issue(input: wire.V2IssueTokenRequest): Promise<wire.V2IssueTokenResponse> {
     return this.request('tokens', wire.V2IssueTokenResponseSchema, {

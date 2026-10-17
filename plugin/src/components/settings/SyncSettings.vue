@@ -98,6 +98,15 @@
       @share="dialog = { mode: 'share', connectionId: opened! }"
       @disconnect="dialog = { mode: 'disconnect', connectionId: opened! }"
     />
+    <ServerDeleteModal
+      v-if="deleting && deletingFacts && serverDeleteSource"
+      :name="deletingName"
+      :host="deletingHost"
+      :facts="deletingFacts"
+      :remove="() => serverDeleteSource!.remove(deleting!)"
+      @close="deleting = null"
+      @done="deleted"
+    />
     <TokenDialogs
       v-if="dialog"
       :key="
@@ -121,6 +130,12 @@ import EmptyState from '../obsidian/EmptyState.vue'
 import StatusDot from '../obsidian/StatusDot.vue'
 import TokenDialogs from '../sync/TokenDialogs.vue'
 import ConnectionWindow from '../sync/ConnectionWindow.vue'
+import ServerDeleteModal from '../sync/ServerDeleteModal.vue'
+import {
+  READ_ONLY,
+  serverDeleteSource as designDeleteSource,
+  type ServerDeleteFacts,
+} from '../sync/serverDelete'
 import { historyConnection } from '@/sync/tokenHistory'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { tokenUi, scopeName, connectionError, type TokenUi } from '@/sync/tokenUi'
@@ -131,6 +146,17 @@ import type { ExecutableCandidate } from '@/sync/executableReview'
 import type { AttachmentQuestion } from '@/sync/attachmentConsent'
 const props = defineProps<{ model?: TokenUi }>()
 const ui = computed(() => props.model ?? tokenUi.value)
+const deleteFacts = ref<Record<string, ServerDeleteFacts>>({})
+const serverDeleteSource = computed(
+  () =>
+    designDeleteSource.value ??
+    (ui.value
+      ? {
+          facts: (id: string) => deleteFacts.value[id] ?? null,
+          remove: (id: string) => ui.value.deleteFromServer(id),
+        }
+      : null)
+)
 const rows = computed(() => ui.value?.rows.value ?? [])
 const activity = computed(() => ui.value?.activity.value ?? {})
 const candidates = computed(() => ui.value?.candidates.value ?? [])
@@ -156,6 +182,33 @@ function closeDialog() {
   if (dialog.value?.mode === 'disconnect' && !rows.value.some((one) => one.id === opened.value))
     opened.value = null
   dialog.value = null
+}
+/** The connection whose files are being deleted from the server, while it is asked about. */
+const deleting = ref<string | null>(null)
+const deletingSnapshot = ref<TokenConnectionRecord | null>(null)
+const deletingRow = computed(
+  () => rows.value.find((one) => one.id === deleting.value) ?? deletingSnapshot.value
+)
+const deletingFacts = computed(() =>
+  deleting.value ? (serverDeleteSource.value?.facts(deleting.value) ?? null) : null
+)
+/** What goes, as a sentence says it: the whole vault, or a folder or group by its name. */
+const deletingName = computed(() => {
+  const scope = deletingRow.value?.scope
+  if (!scope) return ''
+  if (scope.path === '/') return 'the whole vault'
+  const name = scope.path.replace(/\.md$/, '').split('/').pop()
+  return `“${name}”`
+})
+const deletingHost = computed(() => (deletingRow.value ? host(deletingRow.value.address) : ''))
+/** Its files are in the server's trash: this device lets go of it and keeps every file. */
+async function deleted() {
+  const id = deleting.value
+  const name = deletingName.value
+  deleting.value = null
+  if (!id) return
+  if (opened.value === id) opened.value = null
+  new Notice(`Deleted ${name} from the server. Its files stay on this device.`)
 }
 function openTrash(id: string) {
   historyConnection.value = id
@@ -236,6 +289,40 @@ function more(event: MouseEvent, row: TokenConnectionRecord) {
       .setWarning(true)
       .onClick(() => (dialog.value = { mode: 'disconnect', connectionId: row.id }))
   )
+  menu.addItem((item) => {
+    const configure = (facts: ServerDeleteFacts | null) => {
+      item
+        .setTitle(
+          facts
+            ? (facts.unavailableReason ??
+                (facts.canWrite ? 'Delete from the server…' : 'Delete from the server: read only'))
+            : 'Delete from the server: unavailable; check the server connection and version'
+        )
+        .setIcon('cloud-off')
+        .setWarning(!!facts?.canWrite)
+        .setDisabled(!facts?.canWrite)
+      if (facts && !facts.canWrite)
+        item.dom?.setAttribute('aria-label', facts.unavailableReason ?? READ_ONLY)
+      else item.dom?.removeAttribute('aria-label')
+    }
+    configure(serverDeleteSource.value?.facts(row.id) ?? null)
+    item.onClick(() => {
+      deletingSnapshot.value = row
+      deleting.value = row.id
+    })
+    if (!designDeleteSource.value)
+      void ui.value
+        .serverDeleteFacts(row.id)
+        .then((facts) => {
+          deleteFacts.value[row.id] = facts
+          configure(facts)
+        })
+        .catch((error) => {
+          delete deleteFacts.value[row.id]
+          configure(null)
+          new Notice(connectionError(error))
+        })
+  })
   menu.showAtMouseEvent(event)
 }
 async function act(id: string, action: () => Promise<void>) {
