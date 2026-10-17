@@ -10,6 +10,21 @@ interface NativeWindow {
   removeListener(event: 'leave-full-screen' | 'resize', handler: () => void): void
 }
 
+/** Escape in a deck tab also leaves fullscreen entered through the window controls. */
+export function leaveWindowFullscreen(host: HTMLElement): boolean {
+  if (Platform.isMobile) return false
+  const win = host.ownerDocument.defaultView as unknown as {
+    require?: (name: string) => { getCurrentWindow(): NativeWindow }
+  }
+  const native = win.require?.('@electron/remote').getCurrentWindow()
+  if (!native) return false
+  const full = native.isFullScreen(),
+    simple = !!native.isSimpleFullScreen?.()
+  if (simple) native.setSimpleFullScreen?.(false)
+  if (full) native.setFullScreen(false)
+  return full || simple
+}
+
 /** The embedded app can leave DOM/native-space fullscreen pending. Simple mode fills the display
  * on macOS without creating another Space; other desktops use their regular window fullscreen. */
 export function nativeFullscreen(win: NativeWindow, preferSimple = false): FullscreenHost {

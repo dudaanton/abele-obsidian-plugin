@@ -61,6 +61,7 @@ export class DeckViewer {
   private placeholder: Comment | null = null
   private focusBefore: HTMLElement | null = null
   private presentationWindow: Window | null = null
+  private releaseKeyboard: (() => void) | null = null
   private fullscreenOwned = false
   private controlsTimer: number | undefined
   private overControls = false
@@ -82,6 +83,8 @@ export class DeckViewer {
       fullscreenHost?: FullscreenHost
       /** Optional native chrome lifetime, also used by full-window shows without fullscreen. */
       presentationHost?: FullscreenHost
+      /** Acquire the host's hotkey scope while the overlay lives outside its leaf. */
+      keyboardHost?: (handle: (event: KeyboardEvent) => void) => () => void
       preview?: boolean
       revealAll?: boolean
       /** Original numbering when rendering a subset, used by deck CSS selectors. */
@@ -671,10 +674,11 @@ export class DeckViewer {
       this.focusBefore = doc.activeElement as HTMLElement | null
       this.placeholder = doc.createComment('presentation tab')
       this.root.before(this.placeholder)
-      // The overlay leaves its leaf and its hotkey scope. Capture at the owning window,
-      // before document-level app shortcuts can consume navigation or Escape. Resolve
-      // here because the view may have been adopted into a popout since construction.
+      // The overlay leaves its leaf and its hotkey scope. Acquire the app scope and
+      // retain window capture as a fallback for standalone viewers. Resolve here because
+      // the view may have been adopted into a popout since construction.
       this.presentationWindow = doc.defaultView
+      this.releaseKeyboard = this.options.keyboardHost?.(this.handleKey) ?? null
       this.presentationWindow?.addEventListener('keydown', this.onWindowKey, true)
       doc.body.append(this.root)
       this.root.classList.add('abele-deck-presenting')
@@ -707,6 +711,8 @@ export class DeckViewer {
   exitPresenting(): void {
     if (!this.placeholder) return
     const doc = this.root.ownerDocument
+    this.releaseKeyboard?.()
+    this.releaseKeyboard = null
     this.presentationWindow?.removeEventListener('keydown', this.onWindowKey, true)
     this.presentationWindow = null
     this.placeholder.replaceWith(this.root)
@@ -786,7 +792,11 @@ export class DeckViewer {
       return
     }
     if (event.key === 'Tab' && this.placeholder) this.showControls()
-    if (interactive(event.target)) return
+    if (
+      interactive(event.target) &&
+      (!this.placeholder || this.root.contains(event.target as Node))
+    )
+      return
     const action = slideForKey(event.key)
     if (action === null) return
     event.preventDefault()

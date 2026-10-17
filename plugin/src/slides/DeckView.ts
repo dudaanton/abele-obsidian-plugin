@@ -15,7 +15,7 @@ import { parseDeck } from './core/markdown'
 import { noteDeckSource, noteMedia, noteRenderer } from './adapter'
 import { liveRenderer } from './liveAdapter'
 import { DECK_VIEW_TYPE, sourceLeaves } from './opening'
-import { desktopFullscreen } from './fullscreen'
+import { desktopFullscreen, leaveWindowFullscreen } from './fullscreen'
 import { mobilePresentation } from './mobilePresentation'
 import { Presentation } from './core/Presentation'
 import { PresenterView } from './core/PresenterView'
@@ -56,6 +56,14 @@ export class DeckView extends EditableFileView {
       this.scope.register([], key, (event) => {
         if (this.presenter) this.presenter.handleKey(event)
         else this.viewer?.handleKey(event)
+        if (
+          !event.defaultPrevented &&
+          event.key === 'Escape' &&
+          leaveWindowFullscreen(this.contentEl)
+        ) {
+          event.preventDefault()
+          event.stopPropagation()
+        }
         return event.defaultPrevented ? false : undefined
       })
     this.follower = new DeckFollower(
@@ -185,6 +193,39 @@ export class DeckView extends EditableFileView {
       {
         fullscreen: !Platform.isMobile,
         fullscreenHost: desktopFullscreen(this.contentEl),
+        keyboardHost: (handle) => {
+          // An overlay no longer belongs to the leaf whose scope Obsidian activates.
+          // Push a scope explicitly so its earlier window hotkey listener routes to us.
+          const scope = new Scope(this.app.scope)
+          const doc = this.viewer?.root.ownerDocument ?? this.contentEl.ownerDocument
+          scope.register(null, null, (event) => {
+            if ((event.target as Node | null)?.ownerDocument !== doc) return
+            handle(event)
+            return event.defaultPrevented ? false : undefined
+          })
+          // Audience and presenter can live in different windows. Only the focused
+          // window owns the overlay scope; other windows retain their leaf shortcuts.
+          let active = false
+          const enter = () => {
+            if (active) return
+            active = true
+            this.app.keymap.pushScope(scope)
+          }
+          const leave = () => {
+            if (!active) return
+            active = false
+            this.app.keymap.popScope(scope)
+          }
+          const win = doc.defaultView
+          win?.addEventListener('focus', enter)
+          win?.addEventListener('blur', leave)
+          if (doc.hasFocus()) enter()
+          return () => {
+            win?.removeEventListener('focus', enter)
+            win?.removeEventListener('blur', leave)
+            leave()
+          }
+        },
         presentationHost: Platform.isMobile
           ? mobilePresentation(this.contentEl.ownerDocument.defaultView)
           : undefined,

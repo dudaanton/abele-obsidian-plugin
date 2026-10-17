@@ -1,7 +1,26 @@
 import { describe, expect, it, vi } from 'vitest'
-import { desktopFullscreen, nativeFullscreen } from '@/slides/fullscreen'
+import { desktopFullscreen, leaveWindowFullscreen, nativeFullscreen } from '@/slides/fullscreen'
 
 describe('native presentation fullscreen adapter', () => {
+  it('leaves manually entered window fullscreen without requiring Play', () => {
+    const win = {
+      isFullScreen: () => true,
+      isSimpleFullScreen: () => true,
+      setFullScreen: vi.fn(),
+      setSimpleFullScreen: vi.fn(),
+    }
+    const host = {
+      ownerDocument: {
+        defaultView: {
+          require: () => ({ getCurrentWindow: () => win }),
+        },
+      },
+    } as unknown as HTMLElement
+    expect(leaveWindowFullscreen(host)).toBe(true)
+    expect(win.setFullScreen).toHaveBeenCalledWith(false)
+    expect(win.setSimpleFullScreen).toHaveBeenCalledWith(false)
+  })
+
   it('resolves the native window after an app-created view is adopted into a popout', async () => {
     const initial = {
       isFullScreen: () => false,

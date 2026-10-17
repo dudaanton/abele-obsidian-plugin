@@ -42,6 +42,42 @@ afterEach(() => {
 })
 
 describe('unobstructed presentation controls', () => {
+  it('owns keys left in an obscured editor but preserves fields inside the slide', async () => {
+    await make()
+    const editor = document.createElement('textarea')
+    document.body.append(editor)
+    await viewer.present(false)
+    editor.focus()
+    editor.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'ArrowRight',
+        bubbles: true,
+        cancelable: true,
+      })
+    )
+    await viewer.ready
+    expect(viewer.index).toBe(1)
+    const field = document.createElement('input')
+    viewer.viewport.append(field)
+    field.focus()
+    field.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'ArrowRight',
+        bubbles: true,
+        cancelable: true,
+      })
+    )
+    expect(viewer.index).toBe(1)
+    field.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      })
+    )
+    expect(viewer.root.classList.contains('abele-deck-presenting')).toBe(false)
+  })
+
   it('starts hidden, appears only over the top strip and fades after leaving it', async () => {
     await make()
     vi.useFakeTimers()
@@ -176,6 +212,49 @@ describe('unobstructed presentation controls', () => {
       expect(viewer.index).toBe(1)
     } finally {
       document.removeEventListener('keydown', swallowed, true)
+    }
+  })
+
+  it('routes presentation keys through the host scope before earlier window hotkeys', async () => {
+    let forward: ((event: KeyboardEvent) => void) | undefined
+    const hostHotkey = (event: KeyboardEvent) => {
+      forward?.(event)
+      event.preventDefault()
+      event.stopImmediatePropagation()
+    }
+    window.addEventListener('keydown', hostHotkey, true)
+    const release = vi.fn(() => {
+      forward = undefined
+    })
+    try {
+      await make({
+        keyboardHost: (handle) => {
+          forward = handle
+          return release
+        },
+      })
+      await viewer.present(false)
+      document.body.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'ArrowRight',
+          bubbles: true,
+          cancelable: true,
+        })
+      )
+      await viewer.ready
+      expect(viewer.index).toBe(1)
+      document.body.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'Escape',
+          bubbles: true,
+          cancelable: true,
+        })
+      )
+      expect(viewer.root.classList.contains('abele-deck-presenting')).toBe(false)
+      expect(release).toHaveBeenCalledTimes(1)
+      expect(forward).toBeUndefined()
+    } finally {
+      window.removeEventListener('keydown', hostHotkey, true)
     }
   })
 

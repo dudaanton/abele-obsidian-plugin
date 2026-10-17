@@ -82,6 +82,7 @@ describe.skipIf(!available)('shared presenter show', () => {
       await view.viewer.go(0)
       await view.startPresenter()
       const attached=[]
+      let reopened
       try {
         const presenter=view.presenter,show=view.show
         const audience=app.workspace.getLeavesOfType('abele-deck').find(l=>l!==leaf && l.view.show===show)
@@ -89,6 +90,8 @@ describe.skipIf(!available)('shared presenter show', () => {
         const active=()=>viewer.viewport.querySelector('.abele-slide:not([hidden])')
         const result={otherDocument:doc!==document,notes:presenter.notes.textContent.includes('Private cue'),privateAudience:viewer.root.textContent.includes('Private cue'),current:presenter.current.index,next:presenter.next.index,fragments:active().querySelectorAll('.abele-slide-fragment').length,transition:active().dataset.transition}
         const press=async(doc,key,code,n)=>{
+          doc.defaultView.require('@electron/remote').getCurrentWindow().focus()
+          if(!await until(()=>doc.hasFocus()))throw Error('keyboard target window did not gain focus')
           const cdp=doc.defaultView.require('@electron/remote').getCurrentWebContents().debugger
           if(!cdp.isAttached()){cdp.attach('1.3');attached.push(doc.defaultView.require('@electron/remote').getCurrentWindow().id)}
           await cdp.sendCommand('Input.dispatchKeyEvent',{type:'rawKeyDown',key,code,windowsVirtualKeyCode:n,nativeVirtualKeyCode:n})
@@ -100,6 +103,16 @@ describe.skipIf(!available)('shared presenter show', () => {
         const fullscreen=[...viewer.toolbar.querySelectorAll('button')].find(b=>b.textContent==='Fullscreen')
         const cdp=doc.defaultView.require('@electron/remote').getCurrentWebContents().debugger
         if(!cdp.isAttached()){cdp.attach('1.3');attached.push(doc.defaultView.require('@electron/remote').getCurrentWindow().id)}
+        const clickContent=async()=>{
+          const b=active().getBoundingClientRect(),x=b.left+b.width/2,y=b.top+b.height/2
+          await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mousePressed',x,y,button:'left',clickCount:1})
+          await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseReleased',x,y,button:'left',clickCount:1})
+        }
+        await clickContent()
+        await press(doc,'ArrowRight','ArrowRight',39)
+        result.windowedKey=show.index===0 && show.step===1
+        await press(doc,'ArrowLeft','ArrowLeft',37)
+        if(show.index!==0 || show.step!==0)throw Error('windowed audience did not navigate back')
         await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseMoved',x:doc.defaultView.innerWidth/2,y:10})
         if(!await until(()=>doc.defaultView.getComputedStyle(viewer.toolbar).visibility==='visible'))throw Error('audience controls did not reveal at the top strip')
         const box=fullscreen.getBoundingClientRect(),x=box.left+box.width/2,y=box.top+box.height/2
@@ -117,7 +130,7 @@ describe.skipIf(!available)('shared presenter show', () => {
         presenter.root.focus()
         await press(document,'ArrowRight','ArrowRight',39)
         result.first=show.index===0 && show.step===1 && active().querySelectorAll('.abele-slide-fragment-hidden').length===1
-        viewer.root.focus()
+        await clickContent()
         await press(doc,' ','Space',32)
         result.second=show.index===0 && show.step===2
         await press(doc,'PageDown','PageDown',34)
@@ -146,8 +159,31 @@ describe.skipIf(!available)('shared presenter show', () => {
         const second=view.show
         leaf.detach()
         result.presenterClosed=await until(()=>second.ended && !app.workspace.getLeavesOfType('abele-deck').some(l=>l.view.show===second))
+        // Escape must end the show from the audience, both with and without native fullscreen.
+        reopened=app.workspace.getLeaf('tab');await reopened.openFile(app.vault.getAbstractFileByPath(${JSON.stringify(PATH)}))
+        result.escape=[]
+        for(const fullscreen of [false,true]){
+          await reopened.view.startPresenter()
+          const session=reopened.view.show
+          const a=app.workspace.getLeavesOfType('abele-deck').find(l=>l!==reopened && l.view.show===session)
+          const av=a.view.viewer,ad=av.root.ownerDocument
+          if(fullscreen)await av.present(true)
+          const acdp=ad.defaultView.require('@electron/remote').getCurrentWebContents().debugger
+          ad.defaultView.require('@electron/remote').getCurrentWindow().focus()
+          if(!await until(()=>ad.hasFocus()))throw Error('audience window did not gain focus')
+          if(!acdp.isAttached()){acdp.attach('1.3');attached.push(ad.defaultView.require('@electron/remote').getCurrentWindow().id)}
+          const b=av.viewport.getBoundingClientRect(),x=b.left+b.width/2,y=b.top+b.height/2
+          await acdp.sendCommand('Input.dispatchMouseEvent',{type:'mousePressed',x,y,button:'left',clickCount:1})
+          await acdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseReleased',x,y,button:'left',clickCount:1})
+          // keydown closes the audience context, so keyUp cannot be sent through its proxy.
+          await acdp.sendCommand('Input.dispatchKeyEvent',{type:'rawKeyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27,nativeVirtualKeyCode:27}).catch(()=>{})
+          result.escape.push(await until(()=>session.ended && !reopened.view.presenter))
+        }
+        reopened.detach();reopened=null
         return JSON.stringify(result)
       } finally {
+        reopened?.view.show?.end()
+        reopened?.detach()
         view.show?.end()
         // Audience close intentionally releases its context. Do not invoke a debugger
         // proxy owned by that dead document during cleanup; resolve live windows here.
@@ -175,10 +211,12 @@ describe.skipIf(!available)('shared presenter show', () => {
       expect(r.duration).toBe('0.25s')
       expect(r.reduced).toBe('none')
       expect(r.movable, JSON.stringify(r)).toBe(true)
+      expect(r.windowedKey, JSON.stringify(r)).toBe(true)
       expect(r.fullscreen, JSON.stringify(r)).toBe(true)
       expect(r.audienceHidden, JSON.stringify(r)).toBe(true)
       expect(r.closed).toBe(true)
       expect(r.presenterClosed).toBe(true)
+      expect(r.escape).toEqual([true, true])
     }
   )
 

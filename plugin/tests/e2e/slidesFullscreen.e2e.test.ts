@@ -15,6 +15,10 @@ targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
 const PATH = 'sample-fullscreen-deck.md'
 const SHOTS = shotDir('abele-fullscreen')
+const resultJson = (raw: string) => {
+  if (raw.startsWith('Error:')) throw new Error(raw)
+  return JSON.parse(raw)
+}
 let layout: unknown
 let windowState: { bounds: unknown; minimum: number[] } | undefined
 let emulated = false
@@ -73,6 +77,8 @@ const PRELUDE = `
   }
   const move=async(x,y)=>{await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseMoved',x,y})}
   const press=async(key,code,n)=>{
+    native.focus()
+    if(!await until(()=>document.hasFocus()))throw Error('keyboard target window did not gain focus')
     await cdp.sendCommand('Input.dispatchKeyEvent',{type:'rawKeyDown',key,code,windowsVirtualKeyCode:n,nativeVirtualKeyCode:n})
     await cdp.sendCommand('Input.dispatchKeyEvent',{type:'keyUp',key,code,windowsVirtualKeyCode:n,nativeVirtualKeyCode:n})
   }
@@ -86,7 +92,7 @@ const PRELUDE = `
   const slideBox=()=>{const b=active().getBoundingClientRect();return [b.x,b.y,b.width,b.height]}
 `
 const probe = async (name: string) =>
-  JSON.parse(
+  resultJson(
     await evalLong(`(async()=>{${PRELUDE}
   const beforeStatus=status?(await status.getInfo()).visible:null
   const beforeFull=full()
@@ -139,6 +145,8 @@ const probe = async (name: string) =>
         const s=active().getBoundingClientRect();r.landscapeFits=s.left>=-1 && s.right<=innerWidth+1 && s.bottom<=innerHeight+1
       }
     } else {
+      // A person clicks the content after Play, rather than leaving focus as present() set it.
+      await tap(innerWidth/2,innerHeight/2)
       r.keyboard=true
       for(const [key,code,n,index] of [
         ['ArrowRight','ArrowRight',39,1],[' ','Space',32,2],
@@ -182,6 +190,87 @@ const verify = (r: Record<string, unknown>, mobile: boolean) => {
 }
 
 describe.skipIf(!available)('fullscreen show without permanent chrome', () => {
+  it.skipIf(onPhone())(
+    'owns real keys outside the leaf scope for every desktop fullscreen entry',
+    async () => {
+      const result = resultJson(
+        await evalLong(`(async()=>{${PRELUDE}
+      await app.workspace.revealLeaf(leaf)
+      app.workspace.setActiveLeaf(leaf,{focus:true})
+      const beforeFull=native.isFullScreen(),beforeSimple=native.isSimpleFullScreen()
+      const blocker=new app.scope.constructor(app.scope)
+      let swallowed=0,pushed=false
+      blocker.register(null,null,event=>{swallowed++;return false})
+      const clickSlide=async()=>{
+        const b=active().getBoundingClientRect()
+        await tap(b.left+b.width/2,b.top+b.height/2)
+      }
+      const keys=async()=>{
+        for(const [key,code,n,index] of [
+          ['ArrowRight','ArrowRight',39,1],[' ','Space',32,2],
+          ['PageUp','PageUp',33,1],['PageDown','PageDown',34,2],
+          ['ArrowLeft','ArrowLeft',37,1],['ArrowDown','ArrowDown',40,2],
+          ['ArrowUp','ArrowUp',38,1]
+        ]){
+          await press(key,code,n)
+          if(!await until(()=>v.index===index))throw Error('Real key failed: '+JSON.stringify({key,index:v.index,focus:document.activeElement?.outerHTML.slice(0,250),swallowed}))
+        }
+      }
+      try {
+        native.setSimpleFullScreen(false);native.setFullScreen(false)
+        if(!await until(()=>!full()))throw Error('window did not leave fullscreen')
+        // Prove this scope really consumes keys before the viewer's window listener.
+        app.keymap.pushScope(blocker);pushed=true
+        await v.go(0);v.root.focus();await press('ArrowRight','ArrowRight',39)
+        if(v.index!==0 || swallowed===0)throw Error('host hotkey precondition failed')
+        const modes=[]
+        for(const mode of ['in-tab','native','already-native']){
+          if(mode==='already-native'){
+            // Follow the fullscreen adapter's platform policy: this host uses simple
+            // fullscreen on macOS, where native Spaces entry can remain pending.
+            if(require('process').platform==='darwin')native.setSimpleFullScreen(true)
+            else native.setFullScreen(true)
+            if(!await until(full))throw Error('window did not enter fullscreen')
+          }
+          await v.go(0)
+          await v.present(mode!=='in-tab')
+          if(mode!=='in-tab' && !await until(full))throw Error('Play did not enter fullscreen')
+          await clickSlide()
+          await keys()
+          // Reparenting or hiding focused controls can leave the body as the key target.
+          document.activeElement.blur()
+          await press('ArrowLeft','ArrowLeft',37)
+          if(!await until(()=>v.index===0))throw Error('body focus did not navigate')
+          const field=document.createElement('textarea')
+          document.body.append(field)
+          try {
+            field.focus()
+            await press('ArrowRight','ArrowRight',39)
+            if(!await until(()=>v.index===1))throw Error('focus left in the workspace did not navigate')
+          } finally {field.remove()}
+          await press('Escape','Escape',27)
+          if(!await until(()=>!v.root.classList.contains('abele-deck-presenting')))throw Error('Escape did not end '+mode)
+          if(!await until(()=>!!full()===(mode==='already-native')))throw Error('fullscreen not restored after '+mode)
+          modes.push(mode)
+        }
+        app.keymap.popScope(blocker);pushed=false
+        // Native fullscreen entered through the window controls, without Play.
+        await v.go(0);await clickSlide();await keys()
+        await press('Escape','Escape',27)
+        if(!await until(()=>!full()))throw Error('Escape did not leave native window fullscreen')
+        return JSON.stringify({modes,swallowed})
+      } finally {
+        v.exitPresenting()
+        if(pushed)app.keymap.popScope(blocker)
+        native.setSimpleFullScreen(beforeSimple);native.setFullScreen(beforeFull)
+      }
+    })()`)
+      )
+      expect(result.modes).toEqual(['in-tab', 'native', 'already-native'])
+      expect(result.swallowed).toBeGreaterThan(0)
+    }
+  )
+
   it('enters from the actual Play gesture and reveals controls only at the top or on touch', async () => {
     verify(await probe(onPhone() ? 'phone' : 'desktop'), onPhone())
   })
@@ -193,12 +282,41 @@ describe.skipIf(!available)('fullscreen show without permanent chrome', () => {
     )
     verify(await probe('emulated-phone'), true)
   })
+  it.skipIf(onPhone())(
+    'accepts hardware keyboard input in the mobile presentation layout',
+    async () => {
+      const result = resultJson(
+        await evalLong(`(async()=>{${PRELUDE}
+      if(!mobile)throw Error('mobile layout required')
+      await v.go(0)
+      await v.present(false)
+      try {
+        await tap(innerWidth/2,innerHeight/2)
+        const indices=[]
+        for(const [key,code,n,index] of [
+          ['ArrowRight','ArrowRight',39,1],[' ','Space',32,2],
+          ['PageUp','PageUp',33,1],['PageDown','PageDown',34,2],
+          ['ArrowLeft','ArrowLeft',37,1]
+        ]){
+          await press(key,code,n)
+          if(!await until(()=>v.index===index))throw Error('Mobile hardware key failed: '+key+' at '+v.index)
+          indices.push(v.index)
+        }
+        await press('Escape','Escape',27)
+        return JSON.stringify({indices,ended:await until(()=>!v.root.classList.contains('abele-deck-presenting'))})
+      } finally {v.exitPresenting()}
+    })()`)
+      )
+      expect(result.indices).toEqual([1, 2, 1, 2, 1])
+      expect(result.ended).toBe(true)
+    }
+  )
   it('ends a mobile show when another tab or file becomes active', async () => {
     if (!onPhone() && !emulated) {
       emulated = true
       await reloadApp('app.emulateMobile(true)')
     }
-    const result = JSON.parse(
+    const result = resultJson(
       await evalLong(`(async()=>{${PRELUDE}
       if(!mobile)throw Error('mobile layout required')
       const path='sample-navigation-note.md'
