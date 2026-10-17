@@ -212,6 +212,10 @@ it.each([
 ])('rejects deliberately bad filesystem fixture: %s', (source) => {
   expect(() => enforce(source)).toThrow(/Raw sync filesystem access/)
 })
+// Parses every source file with the TypeScript compiler. That is CPU-bound and grows with the
+// tree, so under a busy test machine it outruns the 5 s default; the assertion, not the clock,
+// is what guards the boundary.
+const SOURCE_WALK_TIMEOUT = 60_000
 it('keeps all raw filesystem access inside the guarded module', () => {
   const walk = (directory: string): string[] =>
     readdirSync(directory, { withFileTypes: true }).flatMap((entry) =>
@@ -225,7 +229,7 @@ it('keeps all raw filesystem access inside the guarded module', () => {
     .filter((path) => path !== 'src/sync/vaultPathLinks.ts' && !nonSyncFilesystem.has(path))
     .flatMap((path) => violations(readFileSync(path, 'utf8')).map((value) => `${path}: ${value}`))
   expect(found).toEqual([])
-})
+}, SOURCE_WALK_TIMEOUT)
 
 it('finds a raw adapter helper imported from outside sync', () => {
   const files = new Map([
@@ -293,4 +297,4 @@ it('keeps allowlisted non-sync filesystem helpers out of sync imports', () => {
       importedFilesystemHelpers(path, readFileSync(path, 'utf8'), nonSyncFilesystem)
     )
   ).toEqual([])
-})
+}, SOURCE_WALK_TIMEOUT)
