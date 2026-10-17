@@ -133,6 +133,21 @@ describe.skipIf(!available)('picture crop from the viewer', () => {
         click('4:3, and 3:4 when picked again'); click('4:3, and 3:4 when picked again'); await screenshot('crop-tall')
         click('Turn a quarter to the left'); await screenshot('crop-turned')
         view.editor.crop.rect = { x: 0, y: 0, w: 0.5, h: 0.5 }
+        await screenshot('before-done')
+        click('Pen'); await wait(100)
+        const surface = view.contentEl.querySelector('.abele-picture-session')
+        if (!surface.style.clipPath.startsWith('polygon(')) throw Error('Done still shows the whole source')
+        const sw = view.editor.crop.turns % 2 ? view.editor.height : view.editor.width
+        const sh = view.editor.crop.turns % 2 ? view.editor.width : view.editor.height
+        const expectedZoom = Math.max(0.001, Math.min(20,
+          Math.max(1, view.session.surface.width - 64) / (sw * 0.5),
+          Math.max(1, view.session.surface.height - 64) / (sh * 0.5)))
+        if (Math.abs(view.model.zoom - expectedZoom) > 0.001) throw Error('Done did not fit the kept region')
+        await screenshot('after-done')
+        click('Crop, turn or mirror the picture'); await wait(100)
+        if (surface.style.clipPath) throw Error('Re-entering crop hid the source')
+        if (view.editor.crop.rect.w !== 0.5) throw Error('Re-entering crop lost the frame')
+        await screenshot('crop-reentered')
         const made = await view.saveNew(original)
         const bytes = await app.vault.readBinary(made)
         const bitmap = await createImageBitmap(new Blob([bytes]))

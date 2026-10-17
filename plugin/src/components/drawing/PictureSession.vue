@@ -21,7 +21,7 @@
     @redo="actions.redo"
     @zoom="actions.zoom"
   >
-    <div ref="stage" class="abele-picture-session">
+    <div ref="stage" class="abele-picture-session" :style="{ clipPath }">
       <div ref="textLayer" class="abele-picture-session__text" />
     </div>
     <div v-if="state.cropping && state.width" class="abele-picture-session__crop" :style="box">
@@ -86,6 +86,7 @@ onMounted(() => {
 watch(
   () => props.state.cropping,
   (cropping) => {
+    props.actions.fit()
     if (cropping) session.value?.stop()
     else session.value?.start()
   }
@@ -139,6 +140,18 @@ const box = computed(() => {
     width: `${odd ? h : w}px`,
     height: `${odd ? w : h}px`,
   }
+})
+// Clip the whole surface, including live ink and text, in displayed coordinates.
+// The camera and inverse pointer mapping continue to use the original image coordinates.
+const clipPath = computed(() => {
+  if (props.state.cropping || !props.state.width) return ''
+  const b = box.value
+  const r = props.state.crop.rect
+  const w = parseFloat(b.width)
+  const h = parseFloat(b.height)
+  const x = parseFloat(b.left) + r.x * w
+  const y = parseFloat(b.top) + r.y * h
+  return `polygon(${x}px ${y}px, ${x + r.w * w}px ${y}px, ${x + r.w * w}px ${y + r.h * h}px, ${x}px ${y + r.h * h}px)`
 })
 watchEffect(() => {
   const active = session.value

@@ -162,8 +162,16 @@ export class ImageInkView extends ItemView {
     const sh = crop.turns % 2 ? width : height
     const w = session.surface.width
     const h = session.surface.height
-    const zoom = Math.max(0.001, Math.min(20, Math.max(1, w - 64) / sw, Math.max(1, h - 64) / sh))
-    session.setCamera({ x: width / 2 - w / 2 / zoom, y: height / 2 - h / 2 / zoom, zoom })
+    const r = this.editor.cropping ? { x: 0, y: 0, w: 1, h: 1 } : crop.rect
+    const zoom = Math.max(
+      0.001,
+      Math.min(20, Math.max(1, w - 64) / (sw * r.w), Math.max(1, h - 64) / (sh * r.h))
+    )
+    session.setCamera({
+      x: width / 2 + (r.x + r.w / 2 - 0.5) * sw - w / 2 / zoom,
+      y: height / 2 + (r.y + r.h / 2 - 0.5) * sh - h / 2 / zoom,
+      zoom,
+    })
   }
 
   private restoreEdit(redo: boolean): void {
