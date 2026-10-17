@@ -1,6 +1,6 @@
 import ts from 'typescript'
 import { parse as parseSfc } from '@vue/compiler-sfc'
-import { en } from '@/i18n/locales/en/pilot'
+import { en } from '../../src/i18n/locales/en/pilot'
 
 function requireShape(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`Settings tab source: ${message}`)
