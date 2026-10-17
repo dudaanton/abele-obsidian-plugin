@@ -49,6 +49,28 @@ afterAll(async () => {
   await evalLong('window.__abeleTest.closeNodeSessionFixture().then(() => "1")', 30000)
 })
 
+it('shows one quiet near-limit notice across several node turns', async () => {
+  const result = await run<{ copies: number; replies: number; iso: boolean; outside: string[] }>(`
+    const root = await open('rate-limit');
+    await wait(350);
+    const scroll = root.querySelector('.abele-ai-chat__messages');
+    scroll.scrollTop = 0;
+    await wait(150);
+    await shot('node-rate-limit-several-turns');
+    const text = root.textContent;
+    return JSON.stringify({
+      copies: text.split('Usage limit close').length - 1,
+      replies: [1, 2, 3].filter(n => text.includes('Sample ' + n + ' checked.')).length,
+      iso: text.includes('T18:00:00.000Z'),
+      outside: outside(root)
+    });
+  `)
+  expect(result.copies).toBe(1)
+  expect(result.replies).toBe(3)
+  expect(result.iso).toBe(false)
+  expect(result.outside).toEqual([])
+})
+
 it('shows shared agent work, commands, unavailable agents and permission questions like the regular chat', async () => {
   const r = await run<{
     outside: string[]

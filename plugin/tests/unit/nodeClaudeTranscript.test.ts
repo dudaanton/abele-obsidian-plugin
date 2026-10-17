@@ -24,6 +24,64 @@ const e = (seq: number, type: string, data: unknown): JournalEvent => ({
   at: '2025-01-01T00:00:00.000Z',
 })
 
+it('shows rate-limit states once per session across turns, preserving changed states and errors', () => {
+  const notice = (seq: number, text: string, level = 'warning', code = 'rate_limit') =>
+    e(seq, 'session.update', {
+      run_id: `run-${seq}`,
+      update: { kind: 'notice', code, level, text },
+    })
+  const warning = 'Usage limit close, resets 2025-01-01T12:00:00.000Z'
+  const events = [
+    notice(1, warning),
+    e(2, 'claude.message.final', {
+      run_id: 'r',
+      message_id: 'm',
+      role: 'assistant',
+      content: [{ type: 'text', text: 'Sample reply' }],
+    }),
+    notice(3, warning),
+    notice(4, 'Sample diagnostic', 'warning', 'other'),
+    notice(5, warning),
+    notice(6, 'Usage limit close, resets 2025-01-01T18:00:00.000Z'),
+    notice(7, 'Usage limit reached', 'error'),
+    notice(8, 'Usage limit reached', 'error'),
+  ]
+  for (const journal of [events, [...events]]) {
+    const notices = reduceTranscript(journal).messages.filter(
+      (m) => m.sessionMark?.kind === 'notice'
+    )
+    expect(notices).toHaveLength(4)
+    expect(notices[0].content).toContain(new Date('2025-01-01T12:00:00.000Z').toLocaleString())
+    expect(notices.at(-1)?.sessionMark).toMatchObject({
+      level: 'error',
+      text: 'Usage limit reached',
+    })
+  }
+  expect(reduceTranscript([notice(1, warning)]).messages).toHaveLength(1)
+})
+
+it('deduplicates raw and legacy rate-limit notices without hiding unrelated notices', () => {
+  const raw = (seq: number, resetsAt: number) =>
+    e(seq, 'claude.rate_limit', {
+      run_id: `r${seq}`,
+      info: { status: 'allowed_warning', resetsAt },
+    })
+  const legacy = (seq: number) =>
+    e(seq, 'session.update', {
+      run_id: `r${seq}`,
+      update: { kind: 'notice', level: 'warning', text: 'Usage limit close, resets at 21:00' },
+    })
+  expect(
+    reduceTranscript([raw(1, 1735732800), raw(2, 1735732800), raw(3, 1735754400)]).messages
+  ).toHaveLength(2)
+  expect(reduceTranscript([legacy(1), legacy(2)]).messages).toHaveLength(1)
+  const other = (seq: number) =>
+    e(seq, 'session.update', {
+      update: { kind: 'notice', level: 'warning', text: 'Sample diagnostic' },
+    })
+  expect(reduceTranscript([other(1), other(2)]).messages).toHaveLength(2)
+})
+
 it('keeps raw provider evidence collapsed instead of creating dozens of transcript artifact buttons', () => {
   const projected = reduceTranscript([
     e(1, 'claude.raw', { run_id: 'r', artifact_id: 'raw', size: 9000 }),

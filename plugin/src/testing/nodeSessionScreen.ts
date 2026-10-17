@@ -24,6 +24,7 @@ export const NODE_SESSION_SCREENS = [
   'empty',
   'long',
   'error',
+  'rate-limit',
   // Another agent than Claude: pi at work on a plan, and Gemini over ACP asking before an edit.
   'agent',
   'agent-asking',
@@ -106,6 +107,30 @@ export function journal(state: NodeSessionScreen): JournalEvent[] {
       ago
     )
   if (state === 'empty') return [created, e('session.process', { state: 'running' }, 1)]
+  if (state === 'rate-limit') {
+    const events = [created, e('session.process', { state: 'running' }, 5)]
+    for (let turn = 1; turn <= 3; turn++) {
+      events.push(
+        e('input.accepted', { input_id: `limit-${turn}`, text: `Check sample ${turn}.` }, 4 - turn),
+        e('turn.started', { turn_id: `limit-turn-${turn}`, trigger: 'input' }, 4 - turn),
+        e(
+          'session.update',
+          {
+            update: {
+              kind: 'notice',
+              code: 'rate_limit',
+              level: 'warning',
+              text: 'Usage limit close, resets 2025-01-01T18:00:00.000Z',
+            },
+          },
+          4 - turn
+        ),
+        say(`limit-reply-${turn}`, `Sample ${turn} checked.`, 4 - turn),
+        done(`limit-turn-${turn}`, [`limit-${turn}`], 4 - turn)
+      )
+    }
+    return events
+  }
   if (state === 'long' || state === 'error') {
     // A long session: days of turns, each a question, a run of calls with output and an answer;
     // this device holds only the latest window, the node gives earlier pages as asked.

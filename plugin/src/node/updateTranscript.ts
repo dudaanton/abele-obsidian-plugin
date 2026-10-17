@@ -95,6 +95,8 @@ export class UpdateTranscript {
   private options: UpdateProjection['options'] = []
   private plan: PlanEntry[] = []
   private notices = 0
+  /** Session state, deliberately independent of turns and process/run ids. */
+  private rateLimit = ''
 
   constructor(
     private readonly message: Message,
@@ -149,9 +151,24 @@ export class UpdateTranscript {
       case 'compaction_summary':
         return this.live.summary(update.text)
       case 'notice': {
+        const rateLimit =
+          update.code === 'rate_limit' || /^Usage limit (?:close|reached)\b/.test(update.text)
+        if (rateLimit) {
+          const state = JSON.stringify([update.level, update.text])
+          if (state === this.rateLimit) return
+          this.rateLimit = state
+        }
+        // Older nodes put an ISO instant in the prose. Format on the viewing device,
+        // after comparing the original state, so locale does not affect deduplication.
+        const text = rateLimit
+          ? update.text.replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/g, (iso) => {
+              const time = new Date(iso)
+              return Number.isNaN(time.getTime()) ? iso : time.toLocaleString()
+            })
+          : update.text
         const line = this.message(`notice:${++this.notices}`, 'system')
-        line.content = update.text
-        line.sessionMark = { kind: 'notice', level: update.level, text: update.text }
+        line.content = text
+        line.sessionMark = { kind: 'notice', level: update.level, text }
         return
       }
       // The node's own record of the input already shows what was written.
