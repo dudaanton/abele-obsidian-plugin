@@ -67,7 +67,7 @@ describe('the parts of a message that are searched', () => {
       })
     )
     expect(parts.map((p) => p.part)).toEqual(['tool', 'params', 'result'])
-    expect(parts[0].text).toBe('read Notes/sample-note.md')
+    expect(parts[0].text).toBe('Read Notes/sample-note.md')
     // The details print the first thousand characters of a result, and nothing past them.
     expect(
       findInMessages([msg('t', { role: 'tool-call', toolResult: result })], 'tail-only')

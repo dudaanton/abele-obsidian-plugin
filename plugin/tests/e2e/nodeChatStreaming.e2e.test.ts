@@ -81,8 +81,30 @@ it.each(onPhone() ? ['phone'] : ['desktop', 'phone emulation'])(
       append('prompt.resolved',{...permission,state:'resolved',choice:'allow',delivered:true});await publish();
       await until(()=>root().querySelector('.abele-node-permission .abele-result-mark'), 'The decision outcome');
       await shot('node-streaming-permission-delivered');
+      append('tool.started',{tool_call_id:'sample-failed',name:'mcp__abele_debugger__debug_read',params:{}});
+      append('tool.failed',{tool_call_id:'sample-failed',result:'Debugger access is missing for this run and target. Approval is required before the call can continue.'});
+      append('tool.started',{tool_call_id:'sample-status',name:'mcp__abele_debugger__debug_status',params:{}});
+      append('tool.completed',{tool_call_id:'sample-status',result:JSON.stringify({observation:'current',execution:'running',debug_session_id:'sample-session'})});
+      await publish();
+      await until(()=>root().querySelector('.abele-chat-run'), 'The tool group');
+      const group=[...root().querySelectorAll('.abele-chat-run')].at(-1);
+      if(!group.querySelector('.abele-chat-msg_tool-call'))group.querySelector('.tree-item-self').click();
+      await until(()=>group.querySelectorAll('.abele-chat-msg_tool-call').length===2, 'Expanded tool calls');
+      root().querySelector('.abele-ai-chat__messages').scrollTop=1e6;await wait(150);
+      const toolFailures=[];
+      for(const row of group.querySelectorAll('.abele-chat-msg_tool-call')){
+        const name=row.querySelector('.abele-chat-msg__tool-name'),line=row.querySelector('.abele-chat-msg__tool-line'),output=row.querySelector('.abele-chat-msg__tool-output');
+        const r=row.getBoundingClientRect(),l=line.getBoundingClientRect(),o=output.getBoundingClientRect(),n=name.getBoundingClientRect();
+        if(!name.textContent.startsWith('Debugger: '))toolFailures.push('Unreadable tool name');
+        if(n.width<70)toolFailures.push('Tool name squeezed');
+        if(o.top<l.bottom-1||o.width<r.width*0.7)toolFailures.push('Result squeezed beside header');
+        if(o.right>r.right+1||row.scrollWidth>row.clientWidth+1)toolFailures.push('Tool row overflow');
+      }
+      const toolText=group.textContent;
+      if(!toolText.includes('Execution: running')||toolText.includes('{"observation"'))toolFailures.push('Raw JSON result');
+      await shot('node-expanded-tool-group');
       append('run.completed',{run_id:'sample-stream'});await publish();await wait(100);
-      return JSON.stringify({answers,pickerFailures,failures,working,stop,readable,nativeDetails,clipped,stopped:!root().querySelector('[aria-label="Agent is working"]')});
+      return JSON.stringify({answers,pickerFailures,failures,working,stop,readable,nativeDetails,clipped,toolFailures,stopped:!root().querySelector('[aria-label="Agent is working"]')});
     } finally {
       await window.__abeleTest.closeNodeSessionFixture();chats.activeTabId.value=active;
     }
@@ -99,6 +121,7 @@ it.each(onPhone() ? ['phone'] : ['desktop', 'phone emulation'])(
         readable: true,
         nativeDetails: false,
         clipped: false,
+        toolFailures: [],
         stopped: true,
       })
     } finally {

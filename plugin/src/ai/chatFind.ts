@@ -1,5 +1,5 @@
 import type { ChatMessage } from './types'
-import { toolParamsText, toolResultText, toolSummary } from './toolLine'
+import { readableToolName, toolParamsText, toolResultText, toolSummary } from './toolLine'
 
 /**
  * Finding words in a chat: which parts of which messages hold them, counted from what the
@@ -95,7 +95,10 @@ export function searchableParts(message: ChatMessage): Array<{ part: FindPart; t
       add('content', message.content)
       break
     case 'tool-call':
-      add('tool', [message.toolName, toolSummary(message)].filter(Boolean).join(' '))
+      add(
+        'tool',
+        [readableToolName(message.toolName), toolSummary(message)].filter(Boolean).join(' ')
+      )
       if (message.toolDiff && !message.toolDiff.old) add('newfile', message.toolDiff.new)
       if (message.toolParams) add('params', toolParamsText(message.toolParams))
       if (message.toolResult) add('result', toolResultText(message.toolResult))

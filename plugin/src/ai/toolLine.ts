@@ -76,4 +76,25 @@ export const toolParamsText = (params: Record<string, unknown>): string =>
   JSON.stringify(params, null, 2)
 
 /** The result as the details under a tool call print it. */
-export const toolResultText = (result: string): string => truncate(result, TOOL_RESULT_MAX_LENGTH)
+export function toolResultText(result: string): string {
+  try {
+    const value: unknown = JSON.parse(result)
+    const label = (key: string) => {
+      const words = key.replace(/[_-]+/g, ' ')
+      return words.charAt(0).toUpperCase() + words.slice(1)
+    }
+    const lines = (item: unknown, depth = 0): string => {
+      if (item === null) return 'null'
+      if (typeof item === 'string') return item
+      if (typeof item === 'number' || typeof item === 'boolean') return String(item)
+      if (typeof item !== 'object') return ''
+      if (depth > 4) return '…'
+      return Object.entries(item)
+        .map(([key, value]) => `${label(key)}: ${lines(value, depth + 1)}`)
+        .join('\n')
+    }
+    return truncate(lines(value), TOOL_RESULT_MAX_LENGTH)
+  } catch {
+    return truncate(result, TOOL_RESULT_MAX_LENGTH)
+  }
+}

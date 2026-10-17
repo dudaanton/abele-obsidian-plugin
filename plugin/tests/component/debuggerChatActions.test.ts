@@ -5,6 +5,16 @@ import { debuggerSnapshot } from '../fixtures/debugger'
 import NodeDebugActions from '@/debugger/NodeDebugActions.vue'
 import { DebuggerService } from '@/debugger/DebuggerService'
 import { useVault } from '../helpers/testEnv'
+import DebugActionCard from '@/components/debugger/DebugActionCard.vue'
+
+it('makes Allow the primary action for a pending debugger approval', () => {
+  useVault([])
+  const wrapper = mount(DebugActionCard, {
+    props: { action: { id: 'sample', timestamp: 0, kind: 'pause', at: '', status: 'asked' } },
+  })
+  expect(wrapper.findAll('button.mod-cta').map((button) => button.text())).toEqual(['Allow'])
+  wrapper.unmount()
+})
 it.each(['expired', 'denied', 'done'] as const)(
   'renders an external transition to %s even when disabled does not change',
   async (status) => {

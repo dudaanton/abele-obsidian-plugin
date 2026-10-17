@@ -13,11 +13,19 @@
     @open-session="emit('open-session', $event)"
   >
     <template #tool-note
-      ><span v-if="message.content" class="abele-node-message-note" :title="message.content">{{
-        message.content === 'Allowed by your Claude settings'
-          ? 'Claude settings'
-          : nodeErrorWords(message.content)
-      }}</span></template
+      ><span
+        v-if="message.toolResult || message.content"
+        class="abele-node-message-note"
+        :title="message.toolResult ? undefined : message.content"
+        :data-find-part="message.toolResult ? 'result' : undefined"
+        >{{
+          message.toolResult
+            ? toolResultText(message.toolResult)
+            : message.content === 'Allowed by your Claude settings'
+              ? 'Claude settings'
+              : nodeErrorWords(message.content)
+        }}</span
+      ></template
     >
     <template #metadata>
       <div v-if="message.error" class="abele-ai-chat__error" role="alert">
@@ -58,6 +66,7 @@
 import { nodeErrorWords } from '@/node/errorWords'
 import NodeErrorText from '@/components/NodeErrorText.vue'
 import type { ChatMessage, ChatReplyTo } from '@/ai/types'
+import { toolResultText } from '@/ai/toolLine'
 import type { QueueState } from '@/node/presentation'
 import AiChatMessage from './AiChatMessage.vue'
 import Icon from './obsidian/Icon.vue'

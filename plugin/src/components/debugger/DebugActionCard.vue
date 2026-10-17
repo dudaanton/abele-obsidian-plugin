@@ -37,6 +37,7 @@
       />
       <Button
         :text="t('streamC.e213c161d5cefa52')"
+        accent
         :disabled="disabled"
         :tooltip="t('streamC.db2a63b909320df2')"
         @click="emit('allow')"

@@ -26,6 +26,35 @@
   white-space: nowrap;
 }
 
+.abele-chat-msg__tool-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+}
+
+.abele-chat-msg__tool-output {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+body.is-mobile .abele-chat-msg_tool-call {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+
+  > .abele-chat-msg__body {
+    min-width: 0;
+  }
+
+  .abele-chat-msg__tool-err-badge {
+    color: var(--text-muted);
+  }
+}
+
 .abele-chat-msg__tool-link {
   color: var(--text-accent);
   cursor: pointer;

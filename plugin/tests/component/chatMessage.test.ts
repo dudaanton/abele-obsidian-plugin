@@ -13,6 +13,7 @@ import AiChatMessage from '@/components/AiChatMessage.vue'
 import type { ChatMessage } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
 import { Menu } from 'obsidian'
+import { searchableParts } from '@/ai/chatFind'
 
 async function actionMenu(wrapper: ReturnType<typeof mount>) {
   const shown = vi.spyOn(Menu.prototype, 'showAtPosition')
@@ -73,6 +74,55 @@ describe('interceptor draft actions', () => {
       },
     })
     expect(wrapper.find('.abele-chat-msg__draft-actions').exists()).toBe(false)
+    wrapper.unmount()
+  })
+})
+
+describe('tool row content', () => {
+  it('searches the readable tool name shown in the row', () => {
+    const parts = searchableParts({
+      id: 'sample',
+      role: 'tool-call',
+      content: '',
+      timestamp: 0,
+      toolName: 'mcp__abele_debugger__debug_status',
+    })
+    expect(parts.find((part) => part.part === 'tool')?.text).toBe('Debugger: status')
+  })
+  it('keeps the readable name and status above the node result', () => {
+    const wrapper = mount(AiChatMessage, {
+      props: {
+        message: {
+          id: 'sample',
+          role: 'tool-call',
+          content: '',
+          timestamp: 0,
+          toolName: 'mcp__abele_debugger__debug_status',
+          toolStatus: 'rejected',
+        },
+      },
+      slots: { 'tool-note': 'Sample result' },
+    })
+    expect(wrapper.get('.abele-chat-msg__tool-name').text()).toBe('Debugger: status')
+    expect(wrapper.get('.abele-chat-msg__tool-line').text()).not.toContain('Sample result')
+    expect(wrapper.get('.abele-chat-msg__tool-output').text()).toBe('Sample result')
+    wrapper.unmount()
+  })
+
+  it('shows JSON result fields as readable text in details', async () => {
+    const wrapper = render({
+      role: 'tool-call',
+      toolName: 'sample_status',
+      toolResult:
+        '{"execution":"running","debug_session_id":"sample-session","count":0,"ready":false}',
+    })
+    await wrapper.get('.abele-chat-msg__icon').trigger('click')
+    const result = wrapper.get('[data-find-part="result"]').text()
+    expect(result).toContain('Execution: running')
+    expect(result).toContain('Debug session id: sample-session')
+    expect(result).toContain('Count: 0')
+    expect(result).toContain('Ready: false')
+    expect(result).not.toContain('{')
     wrapper.unmount()
   })
 })

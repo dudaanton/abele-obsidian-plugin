@@ -86,7 +86,7 @@
           data-find-part="tool"
           @contextmenu.prevent="showActions"
         >
-          <code>{{ message.toolName }}</code>
+          <span class="abele-chat-msg__tool-name">{{ readableToolName(message.toolName) }}</span>
           <span
             class="abele-chat-msg__tool-summary"
             :class="{ 'abele-chat-msg__tool-link': toolFilePath }"
@@ -123,7 +123,6 @@
                 ? 'not run'
                 : 'failed'
           }}</span>
-          <slot name="tool-note" />
           <ChatBranchSwitch
             v-if="branches"
             class="abele-chat-msg__branches abele-chat-msg__tool-branches"
@@ -142,6 +141,9 @@
             @click.stop="branchFromHere"
           />
         </span>
+        <div v-if="$slots['tool-note']" class="abele-chat-msg__tool-output">
+          <slot name="tool-note" />
+        </div>
         <span
           v-if="ownLine(message) && expanded"
           class="abele-chat-msg__tool-line"
@@ -432,6 +434,7 @@
 
 <script setup lang="ts">
 import NodeErrorText from '@/components/NodeErrorText.vue'
+import { readableToolName } from '@/ai/toolLine'
 import SyntaxText from './SyntaxText.vue'
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { flashMessagePassage, flashExactSelection, messageRenderedText } from '@/ai/messageComments'
