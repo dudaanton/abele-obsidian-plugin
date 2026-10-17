@@ -1,3 +1,16 @@
+/* Read-only values can be quoted even inside Obsidian's unselectable app chrome.
+   Descendants opt in too: native tree rows and code can override inheritance. */
+.abele-selectable,
+.abele-selectable * {
+  -webkit-user-select: text;
+  user-select: text;
+}
+.abele-selectable :is(button, [role='button'], .clickable-icon, .is-collapsible),
+.abele-selectable :is(button, [role='button'], .clickable-icon, .is-collapsible) * {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 /* Focused controls need paint room when a native scroller brings them to its edge. */
 :is(
   .abele-obsidian-icon.clickable-icon,

@@ -17,6 +17,8 @@ describe('the card asking before an agent sends a saved request', () => {
     expect(card.text()).toContain('${abele_key:sample-key}')
     expect(card.text()).toContain('Into the recording')
     expect(card.text()).toContain('local')
+    expect(card.find('pre').classes()).toContain('abele-selectable')
+    card.unmount()
   })
 
   it('says when there is no such request', async () => {

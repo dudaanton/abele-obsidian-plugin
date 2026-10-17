@@ -288,6 +288,7 @@ it('sends a request from its tab and shows the answer with its checks', () => {
     checks: string
     last: string
     file: string
+    selection: string[]
   }>(
     `(async()=>{${prelude}
     await openRequest('Create sample');
@@ -297,9 +298,14 @@ it('sends a request from its tab and shows the answer with its checks', () => {
     const body=tab().querySelector('.abele-http-request__body-view')?.textContent??'';
     const checks=answerTab('Checks')?.querySelector('.abele-tabs__badge')?.textContent.trim()??'';
     await shot('2026-10-15-http-answer-desktop');
+    answerTab('Headers').click();
+    const headers=await until(()=>tab().querySelector('.abele-http-request__headers'),'response headers');
+    const selection=[...headers.querySelectorAll('dt,dd,code'),...tab().querySelectorAll('.abele-http-request__facts > span,.abele-http-request__to')].map(e=>getComputedStyle(e).userSelect);
+    await shot('http-headers-desktop');
+    answerTab('Body').click();
     const last=await until(()=>row('Create sample')?.querySelector('.abele-requests-panel__last')?.textContent.trim(),'last status in the list');
     const file=require('fs').readdirSync(${JSON.stringify(join(repo, '.abele/requests/.history'))}).length;
-    return {facts:facts(),body,checks,last,file:String(file)}
+    return {facts:facts(),body,checks,last,file:String(file),selection}
   })()`
   )
   expect(seen.facts).toMatch(/^201 Created \d+ ms/)
@@ -307,6 +313,8 @@ it('sends a request from its tab and shows the answer with its checks', () => {
   expect(seen.checks).toBe('2/2')
   expect(seen.last).toBe('201')
   expect(Number(seen.file)).toBeGreaterThan(0)
+  expect(seen.selection.length).toBeGreaterThan(3)
+  expect(seen.selection.every((s) => s === 'text')).toBe(true)
 })
 
 it('shows an error answer in red and a request that never got through', () => {
@@ -443,6 +451,9 @@ it('works the same on a phone: the list in the drawer, a request on the whole sc
       overflow: number
       error: string
       compared: boolean
+      selection: string
+      selectable: string
+      controlSelection: string[]
     }>(`(async()=>{${prelude}
       try{
       ${CHOOSE(() => emptyProject, 'empty-repo')}
@@ -458,6 +469,18 @@ it('works the same on a phone: the list in the drawer, a request on the whole sc
       await until(()=>facts().startsWith('201'),'answered on the phone');
       tab().closest('.view-content').scrollTop=tab().querySelector('.abele-http-request__answer').offsetTop;
       await shot('2026-10-15-http-answer-phone');
+      answerTab('Headers').click();
+      const header=await until(()=>tab().querySelector('.abele-http-request__header-value'),'header value');
+      header.scrollIntoView({block:'center'});
+      const selectable=getComputedStyle(header).userSelect;
+      // Desktop Chromium does not produce native phone long-press selection. Show the
+      // selected text in the phone layout; native selection handles require WebKit.
+      const range=document.createRange();range.selectNodeContents(header);
+      const selected=window.getSelection();selected.removeAllRanges();selected.addRange(range);
+      const selection=selected.toString();
+      const controlSelection=[...tab().querySelectorAll('.abele-fold-heading,.abele-http-request__send')].map(e=>getComputedStyle(e).userSelect);
+      await shot('http-header-selection-phone');
+      selected.removeAllRanges();
       const root=tab(),overflow=root.scrollWidth-root.clientWidth,f=facts();
       (await until(()=>answerTab('History'),'History on the phone')).click();
       const latest=await until(()=>tab().querySelectorAll('.abele-http-request__answer .tree-item')[1],'two sends');
@@ -473,7 +496,7 @@ it('works the same on a phone: the list in the drawer, a request on the whole sc
       tab().closest('.view-content').scrollTop=tab().querySelector('.abele-http-request__answer').offsetTop;
       await shot('2026-10-15-http-error-phone');
       const error=facts();
-      return {rows,facts:f,overflow,error,compared}
+      return {rows,facts:f,overflow,error,compared,selection,selectable,controlSelection}
       }finally{
         // The phone's layout is saved apart from the desktop's: leave no request tab in it.
         for(const t of ['abele-request','abele-requests'])for(const l of app.workspace.getLeavesOfType(t))l.detach();
@@ -485,5 +508,8 @@ it('works the same on a phone: the list in the drawer, a request on the whole sc
     expect(seen.overflow).toBeLessThanOrEqual(1)
     expect(seen.error).toMatch(/^404/)
     expect(seen.compared).toBe(true)
+    expect(seen.selectable).toBe('text')
+    expect(seen.selection).not.toBe('')
+    expect(seen.controlSelection.every((s) => s === 'none')).toBe(true)
   })
 }, 180000)

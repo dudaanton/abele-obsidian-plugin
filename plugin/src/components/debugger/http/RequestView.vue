@@ -61,7 +61,7 @@
           <Icon icon="layers" size="xs" no-hover />
           <span class="abele-http-request__env">{{ environment }}</span>
           <code
-            class="abele-http-request__to"
+            class="abele-http-request__to abele-selectable"
             :class="{ 'abele-http-request__to_missing': unknownVar }"
             >{{ resolved }}</code
           >
@@ -147,7 +147,7 @@
       <!-- The answer, as DevTools reads a request: a line of facts, then the body and the headers. -->
       <div class="abele-http-request__answer" aria-live="polite">
         <template v-if="outcome?.kind === 'answered'">
-          <div class="abele-http-request__facts">
+          <div class="abele-http-request__facts abele-selectable">
             <span
               class="abele-http-request__status"
               :class="`abele-http-request__status_${statusTone(outcome.response.status)}`"
@@ -197,7 +197,10 @@
           />
           <!-- Name and value in two columns, as DevTools lists them: a long value (a policy, a
                cookie) wraps under itself and never pushes its name out. -->
-          <dl v-else-if="answerTab === 'headers'" class="abele-http-request__headers">
+          <dl
+            v-else-if="answerTab === 'headers'"
+            class="abele-http-request__headers abele-selectable"
+          >
             <template v-for="(h, i) in outcome.response.headers" :key="i">
               <dt>{{ h.key }}</dt>
               <dd>
@@ -205,7 +208,10 @@
               </dd>
             </template>
           </dl>
-          <div v-else-if="answerTab === 'history'" class="abele-http-request__rows">
+          <div
+            v-else-if="answerTab === 'history'"
+            class="abele-http-request__rows abele-http-request__history abele-selectable"
+          >
             <TreeItem
               v-for="h in history"
               :key="h.id"

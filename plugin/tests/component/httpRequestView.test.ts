@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import RequestView from '@/components/debugger/http/RequestView.vue'
@@ -135,6 +136,7 @@ describe('the history of a request', () => {
     expect(tab).toBeDefined()
     await tab!.trigger('click')
     expect(view.text()).toContain('05:03')
+    expect(view.find('.abele-http-request__history').classes()).toContain('abele-selectable')
     await view.findAll('.abele-http-request__rows .tree-item-self')[1].trigger('click')
     expect(view.emitted('show-send')?.[0]).toEqual(['sample-1'])
     await view.setProps({ compareWith: history[1] })
@@ -220,6 +222,11 @@ describe('an empty request and a long answer', () => {
       'set-cookie',
     ])
     expect(view.find('.abele-http-request__headers dd').text()).toBe(value)
+    expect(view.find('.abele-http-request__headers').classes()).toContain('abele-selectable')
+    expect(view.find('.abele-http-request__facts').classes()).toContain('abele-selectable')
+    expect(view.find('.abele-http-request__to').classes()).toContain('abele-selectable')
+    expect(view.find('.abele-fold-heading').classes()).not.toContain('abele-selectable')
+    view.unmount()
   })
 
   it('stands a divider between the request and its answer', () => {
@@ -239,5 +246,17 @@ describe("a request's body", () => {
     expect(content.attributes('aria-label')).toBe('Body')
     expect(view.find('.abele-http-request__body textarea').exists()).toBe(false)
     view.unmount()
+  })
+})
+
+describe('selectable read-only text in the shared kit', () => {
+  it('enables native selection including WebKit while keeping controls unselectable', () => {
+    const css = readFileSync('src/components/obsidian/designKit.css', 'utf8')
+    expect(css).toMatch(
+      /\.abele-selectable[^{]*\{[^}]*-webkit-user-select: text;[^}]*user-select: text;/
+    )
+    expect(css).toMatch(
+      /\.abele-selectable :is\([^}]*button[^}]*\{[^}]*-webkit-user-select: none;[^}]*user-select: none;/
+    )
   })
 })

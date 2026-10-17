@@ -7,7 +7,7 @@
       <span v-if="into" class="abele-http-send-preview__into">Into the recording</span>
     </div>
     <pre
-      class="abele-tool-approval__code"
+      class="abele-tool-approval__code abele-selectable"
     ><code>{{ request?.text ?? error ?? 'Reading the request…' }}</code></pre>
   </div>
 </template>
