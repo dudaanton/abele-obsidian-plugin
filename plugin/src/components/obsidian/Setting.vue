@@ -116,7 +116,9 @@ defineProps<{
    * enough to sit beside the text — and stacked, the toggle floats alone on a line under the
    * description, which is what the chat dialog's phone rows looked like.
    */
-  &:has(> .setting-item-control > .checkbox-container) {
+  // So do a row's state dot and glyphs: a connection's dot and menu are smaller than a toggle.
+  &:has(> .setting-item-control > .checkbox-container),
+  &:has(> .setting-item-control > .abele-status-dot) {
     grid-template-columns: minmax(0, 1fr) auto;
 
     > .setting-item-control {
