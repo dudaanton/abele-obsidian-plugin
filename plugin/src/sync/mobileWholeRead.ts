@@ -1,4 +1,6 @@
 import { AbeleError } from '@abele/sync-protocol'
+/** Whole-file fallback bound outside the explicit large-upload path. */
+export const PHONE_FALLBACK_BYTES = 50 * 1024 * 1024
 /** Hard ceiling for the single whole-file buffer required by mobile upload. */
 export const MOBILE_WHOLE_READ_MAX = 200 * 1024 * 1024
 /** Adapter capability shared through scoped filesystem proxies, without Obsidian dependencies. */

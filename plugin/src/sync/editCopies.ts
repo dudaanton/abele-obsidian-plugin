@@ -1,3 +1,4 @@
+import { PHONE_FALLBACK_BYTES } from './mobileWholeRead'
 import { sha256 } from './external/hash'
 import {
   type FileSystem,
@@ -124,7 +125,7 @@ export class EditCopies {
       }
       if (!destinations.length) continue
       const identity =
-        before.size > 50 * 1024 * 1024 && acknowledgedFingerprint
+        before.size > PHONE_FALLBACK_BYTES && acknowledgedFingerprint
           ? await acknowledgedFingerprint(path)
           : await fingerprintFile(fs, path, sha256)
       const sha = identity.sha

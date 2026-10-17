@@ -1,3 +1,4 @@
+import { PHONE_FALLBACK_BYTES } from './mobileWholeRead'
 import { nativeChunkPort, vaultDisk } from './vaultPathLinks'
 import { connectionPrivateArea, withinRoot } from './connectionPaths'
 import { preservePrivateArtifacts, privateArtifactRecovered } from './privateRecovery'
@@ -184,7 +185,7 @@ export async function tokenOffloadConnection(input: {
           if (typeof client.openVersion === 'function')
             return client.openVersion(head.fileId, head.versionId, head, signal)
           // Legacy/custom providers retain their small-file byte API only within the phone limit.
-          if (head.size > 50 * 1024 * 1024)
+          if (head.size > PHONE_FALLBACK_BYTES)
             throw new Error('Bounded file reads are unavailable; the fallback limit is 50 MiB')
           signal?.throwIfAborted()
           let bytes: Uint8Array | null = await client.versionBytes(head.fileId, head.versionId)

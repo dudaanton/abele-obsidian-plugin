@@ -1,3 +1,4 @@
+import { PHONE_FALLBACK_BYTES } from '@/sync/mobileWholeRead'
 import { loadPdfJs, type App, type TFile } from 'obsidian'
 import { BoundedVaultIo } from '@/sync/boundedVaultIo'
 import { vaultDisk } from '@/sync/vaultPathLinks'
@@ -25,7 +26,7 @@ export async function openVaultBook(app: App, file: TFile): Promise<OpenedBook> 
   ).openRead(file.path)
   try {
     const format = formatOf(file.extension)
-    if (source.size <= 50 * 1024 * 1024) {
+    if (source.size <= PHONE_FALLBACK_BYTES) {
       const data = new Uint8Array(await sourceFile(source).slice().arrayBuffer())
       await source.close()
       return await openBookFile(file, data)

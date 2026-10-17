@@ -15,11 +15,14 @@ import { sha256 } from '@noble/hashes/sha2'
 import { probeSequentialFiles, type ProbeEvent } from './mobileSequentialSource'
 import { probeResourceRanges } from './mobileResourceRanges'
 import { mobileReadMeter } from './mobileReadDiagnostics'
-import { MOBILE_WHOLE_READ_MAX, MobileWholeReadLimitError } from './mobileWholeRead'
+import {
+  MOBILE_WHOLE_READ_MAX,
+  MobileWholeReadLimitError,
+  PHONE_FALLBACK_BYTES,
+} from './mobileWholeRead'
 import { stagingDirectory, reserveStagingPath } from './stagingDirectory'
 import { makeParents } from './vaultFolders'
 
-const PHONE_FALLBACK_BYTES = 50 * 1024 * 1024
 interface MobileFiles {
   readFile(options: { path: string; offset: number; length: number }): Promise<{ data: string }>
   stat(options: { path: string }): Promise<{ size: number }>
@@ -201,11 +204,6 @@ export class BoundedVaultIo {
     trace: (event: ProbeEvent) => void = () => {}
   ): Promise<MobileAccess | null> {
     this.sequentialMobile = null
-    return this.probeMobileNative(trace)
-  }
-  private async probeMobileNative(
-    trace: (event: ProbeEvent) => void = () => {}
-  ): Promise<MobileAccess | null> {
     this.resourceMobile =
       typeof window === 'undefined' || typeof window.fetch !== 'function'
         ? null

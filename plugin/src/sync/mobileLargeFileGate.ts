@@ -1,3 +1,4 @@
+import { PHONE_FALLBACK_BYTES } from './mobileWholeRead'
 import type { ChunkSource } from '@abele/sync-core'
 
 /** One large mobile allocation/transfer at a time, across connections and vault adapters. */
@@ -37,7 +38,7 @@ export class MobileLargeFileGate {
 }
 export const mobileLargeFileGate = new MobileLargeFileGate()
 export const MOBILE_LARGE_SOURCE = Symbol.for('abele.sync.mobile-large-source-v1')
-export const isLargeMobileFile = (size: number) => size > 50 * 1024 * 1024
+export const isLargeMobileFile = (size: number) => size > PHONE_FALLBACK_BYTES
 
 /** Acquire on first read, inside the caller's transfer budget, to preserve lock ordering. */
 export function gateMobileSource(source: ChunkSource, signal?: AbortSignal): ChunkSource {

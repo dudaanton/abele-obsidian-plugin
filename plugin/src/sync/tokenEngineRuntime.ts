@@ -1,5 +1,5 @@
 import { gateMobileSource } from './mobileLargeFileGate'
-import { FINGERPRINT_UPLOAD } from './mobileWholeRead'
+import { FINGERPRINT_UPLOAD, PHONE_FALLBACK_BYTES } from './mobileWholeRead'
 import { connectionPrivateRoot } from './connectionPaths'
 import { assertPhysicalPath } from './external/projection'
 import { scopedFileSystem, FolderScopeError } from './scopedFileSystem'
@@ -932,7 +932,7 @@ export class TokenEngineRuntime
                 for await (const info of value.call(target)) {
                   if (name === 'list' && !candidate(info.path)) continue
                   if (name === 'list') {
-                    if (info.size > 50 * 1024 * 1024) largeUploads.add(info.path)
+                    if (info.size > PHONE_FALLBACK_BYTES) largeUploads.add(info.path)
                     else largeUploads.delete(info.path)
                   }
                   completed++
