@@ -170,6 +170,23 @@ const emit = defineEmits<{ 'update:more': [open: boolean] }>()
     padding: 0;
     align-items: baseline;
   }
+  // A code that opens something is a button, and a phone holds every button to a finger's size:
+  // iOS then set its words at the top of that box and its glyph in the middle, a line apart, and
+  // the box pushed the quiet line down. The box keeps the line's height; the finger's room is
+  // drawn around it, unseen, so the tap still lands.
+  .clickable-icon {
+    position: relative;
+  }
+  body.is-phone & .abele-obsidian-icon.clickable-icon {
+    min-width: 0;
+    min-height: 0;
+
+    &::after {
+      content: '';
+      position: absolute;
+      inset: min(0px, calc((100% - var(--abele-touch-min)) / 2));
+    }
+  }
   .abele-obsidian-icon__icon {
     align-self: center;
     position: relative;
