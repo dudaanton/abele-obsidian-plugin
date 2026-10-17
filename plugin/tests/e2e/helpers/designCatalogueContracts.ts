@@ -132,7 +132,11 @@ export const PHONE_CATALOGUE_CONTRACTS: Contract[] = [
         window.__abeleTest.openDesignCatalogue('controls');await new Promise(r=>setTimeout(r,300));
         const slider=document.querySelector('input[type="range"]'),dropdown=document.querySelector('.abele-obsidian-dropdown');
         const geometry={slider:slider.getBoundingClientRect().height,track:getComputedStyle(slider,'::-webkit-slider-runnable-track').height,radius:parseFloat(getComputedStyle(slider).borderTopLeftRadius),overflow:dropdown.scrollWidth-dropdown.clientWidth};
-        const input=document.querySelector('.search-input-container input');input.style.paddingLeft=(parseFloat(getComputedStyle(input).paddingLeft)+5)+'px';
+        const input=document.querySelector('.abele-design-catalogue .search-input-container input');
+        if(!input)throw Error('Catalogue search input is missing');
+        const beforePadding=parseFloat(getComputedStyle(input).paddingLeft);
+        input.style.paddingLeft=(beforePadding+5)+'px';
+        if(parseFloat(getComputedStyle(input).paddingLeft)!==beforePadding+5)throw Error('Catalogue search padding fault was not applied');
         const snapshot=${designCaptureExpression('.abele-design-catalogue')};
         return {choices,underlinePadding,geometry,snapshot};
       }finally{window.__abeleTest.closeDesignCatalogue()}

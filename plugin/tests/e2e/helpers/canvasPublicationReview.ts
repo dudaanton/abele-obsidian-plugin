@@ -49,18 +49,21 @@ export const publicationFault = (fault: string): string => `
   fixture.view=leaf.view;fixture.file=leaf.view.file;fixture.session=leaf.view.documentLease.document.session
   if(!fixture.view.recoveryMenu.toString().includes('reviewPublication'))throw Error('Loaded Canvas view is not the local-review candidate')
   const approved=await read(), originalProcess=app.vault.process, originalDigest=crypto.subtle.digest
-  let digestWrapper
+  let digestWrapper, digestFaultFired=false
   const processWrapper = async function(target,transform) {
     if(target!==fixture.file) return originalProcess.call(this,target,transform)
     if(${JSON.stringify(fault)}==='unpersisted') {transform(await app.vault.read(target));throw Error('Sample uncertain publication')}
     const published=await originalProcess.call(this,target,transform)
     if(${JSON.stringify(fault)}==='persisted') throw Error('Sample uncertain publication')
+    const canonical=value=>Array.isArray(value)?value.map(canonical):value&&typeof value==='object'
+      ?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([key,child])=>[key,canonical(child)])):value
+    const publishedSource=JSON.stringify(canonical(JSON.parse(published)))
     digestWrapper = function(algorithm,data) {
       // Reject only the exact result-revision payload of this synthetic file, never another digest.
       let value
       try {value=JSON.parse(new TextDecoder().decode(data))} catch {}
-      if(Array.isArray(value) && value[0]===published && typeof value[1]==='string' &&
-         value[1].includes('Retained proposed sample')) {crypto.subtle.digest=originalDigest;return Promise.reject(Error('Sample result digest failure'))}
+      if(Array.isArray(value) && value[0]===publishedSource && typeof value[1]==='string' &&
+         value[1].includes('Retained proposed sample')) {digestFaultFired=true;crypto.subtle.digest=originalDigest;return Promise.reject(Error('Sample result digest failure'))}
       return originalDigest.call(this,algorithm,data)
     }
     crypto.subtle.digest=digestWrapper
@@ -73,6 +76,7 @@ export const publicationFault = (fault: string): string => `
       ops:[{op:'update',id:'sample-card',patch:{text:'Retained proposed sample'}}]},undefined,ctx)
   } catch(error) {failure=error.outcome}
   finally {if(app.vault.process===processWrapper)app.vault.process=originalProcess;if(crypto.subtle.digest===digestWrapper)crypto.subtle.digest=originalDigest}
+  if(${JSON.stringify(fault)}==='digest' && !digestFaultFired)throw Error('Sample result digest fault did not fire')
   if(failure!==(${JSON.stringify(fault)}==='digest'?'written-acknowledgment-pending':'unknown')) throw Error('Unexpected source outcome: '+failure)
   fixture.before=await app.vault.read(fixture.file);fixture.retained=retained();fixture.events=[];fixture.operation=null
   fixture.processCalls=0;fixture.ackCalls=0

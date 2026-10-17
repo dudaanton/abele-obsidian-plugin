@@ -132,6 +132,9 @@ const DIALOGS = [
   'node-folder-picker',
   'node-delegation-grants',
   'node-delegation-card',
+  'node-syntax-sh',
+  'node-syntax-ts',
+  'node-syntax-diff',
   'node-files',
   'node-edit',
   'node-edit-conflict',
@@ -1660,6 +1663,8 @@ const probeScript = `(async () => {
       ],edges:[{id:'sample-flow',fromNode:'alpha',toNode:'beta',label:'Next'}]}))
       SEEDED.push(file.path, reference.path)
       const leaf = app.workspace.getLeaf('tab')
+      const originalProcess=app.vault.process
+      let failedWrites=0
       try {
         await leaf.setViewState({type:'abele-canvas',state:{file:file.path},active:true})
         await app.workspace.revealLeaf(leaf)
@@ -1757,16 +1762,33 @@ const probeScript = `(async () => {
         report['canvas link input'].clipped=[]
         for(const field of input.querySelectorAll('input,button')){field.focus();report['canvas link input'].clipped.push(...ringClipped(field));field.blur()}
         await closeDialog();await wait(200)
+        // Retained-draft choices require a known failed save, including the handoff flush.
+        app.vault.process=async function(target,transform){
+          if(target.path===file.path){failedWrites++;throw Error('Sample known-unwritten save failure')}
+          return originalProcess.call(this,target,transform)
+        }
         root.querySelector('[aria-label="Add text card"]').click()
         await screen('canvas text draft',root,root)
         report['canvas text draft'].clipped=[]
         for(const field of root.querySelectorAll('textarea,button')){if(!field.getBoundingClientRect().width)continue;field.focus();report['canvas text draft'].clipped.push(...ringClipped(field));field.blur()}
+        const previousReference=reference.path
         await app.fileManager.renameFile(reference,'Phone probe/sample-renamed-reference.md')
         SEEDED.push(reference.path)
-        await until(()=>leaf.view.viewer.graph.nodes.some(n=>n.file===reference.path),5000)
+        // Complete the host's standard-field rewrite for this synthetic source only. The
+        // failed-save hook must retain the human draft, not prevent fixture rename settlement.
+        await originalProcess.call(app.vault,file,current=>{
+          const data=JSON.parse(current)
+          for(const node of data.nodes)if(node.type==='file'&&node.file===previousReference)node.file=reference.path
+          return JSON.stringify(data)
+        })
+        if(!await until(()=>!leaf.view.documentLease.document.referencesPending&&
+          leaf.view.viewer.graph.nodes.some(n=>n.file===reference.path),5000))
+          throw Error('Canvas fixture reference rewrite did not settle')
         await screen('canvas renamed draft',root,root)
         leaf.view.containerEl.querySelector('[aria-label="Open in Obsidian Canvas"]').click()
-        await until(()=>document.querySelector('.abele-canvas-choice'),5000)
+        if(!await until(()=>document.querySelector('.abele-canvas-choice'),5000))
+          throw Error('Canvas retained-draft handoff choice is missing; failed writes: '+failedWrites)
+        if(!failedWrites)throw Error('Canvas retained-draft write fault did not fire')
         const choice=document.querySelector('.abele-canvas-choice')
         await screen('canvas native handoff',choice,choice.querySelector('.abele-modal__body'))
         report['canvas native handoff'].clipped=[]
@@ -1779,6 +1801,7 @@ const probeScript = `(async () => {
         report['canvas draft discard'].clipped=[]
         for(const field of discard.querySelectorAll('button')){field.focus();report['canvas draft discard'].clipped.push(...ringClipped(field));field.blur()}
         await closeDialog();await wait(200)
+        app.vault.process=originalProcess
         leaf.view.documentLease.document.discardDraft()
         app.commands.executeCommandById('abele:new-canvas')
         await until(()=>document.querySelector('.abele-canvas-input'),5000)
@@ -1801,6 +1824,7 @@ const probeScript = `(async () => {
         const shown=JSON.parse((await tools.canvas_read.execute('read',{path:file.path,step:1},undefined,ctx)).content[0].text)
         report['canvas agent strokes'].ids=shown.ink.map(s=>s.id)
       } finally {
+        app.vault.process=originalProcess
         await closeDialog()
         leaf.view.documentLease?.document.discardDraft()
         leaf.detach()
@@ -1948,8 +1972,8 @@ const probeScript = `(async () => {
       })
       await screen('map location', mapRoot)
       const edge = mapRoot.getBoundingClientRect()
-      const buttons = [...mapRoot.querySelectorAll('.maplibregl-ctrl button')]
-      report['map location'].locationLabel = mapRoot.querySelector('button[aria-label="Show my location"]')?.title || ''
+      const buttons = [...mapRoot.querySelectorAll('.maplibregl-ctrl button, .maplibregl-ctrl [role="button"]')]
+      report['map location'].locationLabel = mapRoot.querySelector('[role="button"][aria-label="Show my location"]')?.getAttribute('aria-label') || ''
       const scale = mapRoot.querySelector('.maplibregl-ctrl-scale')?.getBoundingClientRect()
       const attribution = mapRoot.querySelector('.maplibregl-ctrl-attrib')?.getBoundingClientRect()
       report['map location'].scaleOverlap = !!scale && !!attribution &&
