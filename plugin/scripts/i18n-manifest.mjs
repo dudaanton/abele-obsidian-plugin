@@ -187,10 +187,12 @@ export function inventory(dir = join(root, 'src')) {
   })
 }
 
-export function checkMigrated() {
+export function checkMigrated(entries) {
   const policy = JSON.parse(readFileSync(join(root, 'src/i18n/migrated.json'), 'utf8'))
-  return policy.files
+  const candidates = entries ?? policy.files
     .flatMap((path) => extract(path, readFileSync(join(root, 'src', path), 'utf8')))
+  return candidates
+    .filter((entry) => policy.files.includes(entry.path))
     .filter(
       (entry) =>
         !policy.exceptions.some(

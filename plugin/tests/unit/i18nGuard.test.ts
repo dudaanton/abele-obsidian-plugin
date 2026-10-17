@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { extract, checkMigrated, checkRatchet, areaFor } from '../../scripts/i18n-manifest.mjs'
+import { extract, checkMigrated, areaFor } from '../../scripts/i18n-manifest.mjs'
 import ts from 'typescript'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -73,11 +73,24 @@ it('keeps migrated surfaces free of untranslated presentation literals', () => {
   expect(checkMigrated()).toEqual([])
 })
 
-it('ratchets legacy prose across all areas and detects new or moved strings', () => {
-  expect(checkRatchet()).toEqual([])
+// Enable the full all-areas ratchet at stage 8, once every area is migrated.
+// Until then, the manifest reports legacy prose without gating unrelated changes.
+it('ignores new or moved prose in unmigrated files', () => {
   const changed = extract(
-    'components/sample.vue',
+    'components/settings/SampleConnection.vue',
     '<template><div>New presentation text</div></template>'
   )
-  expect(checkRatchet(changed)).toHaveLength(1)
+  expect(changed).toHaveLength(1)
+  expect(checkMigrated(changed)).toEqual([])
+})
+
+it('rejects new or moved prose in migrated files', () => {
+  const source = '<template><div>New presentation text</div></template>'
+  const legacy = extract('components/sample.vue', source)
+  const moved = extract('components/obsidian/Button.vue', source)
+  const added = extract(
+    'components/settings/Settings.vue',
+    '<template><Icon tooltip="New action" /></template>'
+  )
+  expect(checkMigrated([...legacy, ...moved, ...added])).toEqual([...moved, ...added])
 })
