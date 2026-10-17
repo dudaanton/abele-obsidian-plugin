@@ -1,4 +1,4 @@
-import { createServer } from 'node:http'
+import { createServer, request as httpRequest } from 'node:http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { evalLong, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { shotDir } from './helpers/shots'
@@ -18,6 +18,11 @@ const server = createServer((request, response) => {
   response.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
   if (request.method === 'OPTIONS') {
     response.writeHead(204)
+    response.end()
+    return
+  }
+  if (request.method !== 'POST' || request.url !== '/custom/v1/chat/completions') {
+    response.writeHead(404)
     response.end()
     return
   }
@@ -62,6 +67,28 @@ describe.skipIf(!available)('custom OpenAI-compatible proxy timeouts in the runn
   afterAll(async () => {
     server.closeAllConnections()
     await new Promise<void>((resolve) => server.close(() => resolve()))
+  })
+
+  it('ignores unrelated routes and methods before parsing or counting requests', async () => {
+    const before = [...paths]
+    const origin = new URL(baseUrl).origin
+    for (const [method, path] of [
+      ['GET', '/json/version'],
+      ['POST', '/unrelated'],
+      ['GET', '/custom/v1/chat/completions'],
+    ]) {
+      const status = await new Promise<number | undefined>((resolve, reject) => {
+        const request = httpRequest(origin + path, { method }, (response) => {
+          response.resume()
+          response.on('end', () => resolve(response.statusCode))
+          response.on('error', reject)
+        })
+        request.on('error', reject)
+        request.end(method === 'POST' ? 'not json' : undefined)
+      })
+      expect(status).toBe(404)
+    }
+    expect(paths).toEqual(before)
   })
 
   type Mode = 'silent' | 'comments' | 'closed' | 'error' | 'length'
