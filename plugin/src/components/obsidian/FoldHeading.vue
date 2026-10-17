@@ -122,10 +122,10 @@ watch(() => props.collapsible, draw, { flush: 'post' })
 // so the title starts on the same edge as the rows under it and nothing moves as it folds.
 .abele-fold-heading__arrow {
   flex: 0 0 auto;
-  // On the first line of a title that wraps, as a tree's arrow stays by its first line.
-  align-self: flex-start;
+  // Level with the words, however tall the row: a phone makes a pressable row taller for the
+  // finger, and an arrow held to the row's top stood above a title centred in it.
+  align-self: center;
   align-items: center;
-  height: 1lh;
   // As wide as the margin the heading is pulled back by, whatever size the theme draws the arrow.
   display: inline-flex;
   justify-content: center;
