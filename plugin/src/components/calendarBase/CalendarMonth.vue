@@ -27,7 +27,7 @@
             class="abele-calendar-month__day-number"
             role="button"
             tabindex="0"
-            :aria-label="`Show ${day}`"
+            :aria-label="t('area.showValue', { value: day })"
             @click.stop="emit('select', day)"
             @keydown.enter.stop="emit('select', day)"
           >
@@ -37,7 +37,7 @@
             v-if="canCreate && !narrow"
             icon="plus"
             class="abele-calendar-month__add"
-            tooltip="New note on this day"
+            :tooltip="t('area.newNoteOnThisDay')"
             @click.stop="emit('create', day)"
           />
         </div>
@@ -71,7 +71,7 @@
             @click.stop="emit('more', day, placed.get(day)!.slice(shownIn(day)), $event)"
             @keydown.enter.stop="emit('more', day, placed.get(day)!.slice(shownIn(day)), $event)"
           >
-            +{{ (placed.get(day)?.length ?? 0) - shownIn(day) }} more
+            +{{ t('area.moreCount', { count: (placed.get(day)?.length ?? 0) - shownIn(day) }) }}
           </div>
         </div>
       </div>
@@ -80,6 +80,8 @@
 </template>
 
 <script setup lang="ts">
+import { areaDate } from '@/helpers/areaDateFormat'
+import { t } from '@/i18n'
 /**
  * A month as a grid of whole weeks, the mini calendar's layout grown up: each day lists what is
  * on it, three lines and then "+N more"; narrow, it shows dots in its items' colours instead.
@@ -127,7 +129,7 @@ const shownIn = (day: string) => {
 }
 
 const weekdayNames = computed(() =>
-  days.value.slice(0, 7).map((day) => dayjs(day).format(props.narrow ? 'dd' : 'ddd'))
+  days.value.slice(0, 7).map((day) => areaDate(dayjs(day), props.narrow ? 'dd' : 'ddd'))
 )
 </script>
 

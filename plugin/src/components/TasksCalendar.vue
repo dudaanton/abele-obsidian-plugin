@@ -30,7 +30,9 @@
         </div>
         <div v-else class="abele-tasks-calendar__none">
           {{
-            emptyMonth ? `Nothing planned in ${month.format('MMMM')}.` : 'Nothing planned this day.'
+            emptyMonth
+              ? t('area.nothingPlannedMonth', { month: areaDate(month, 'MMMM') })
+              : t('area.nothingPlannedThisDay')
           }}
         </div>
       </section>
@@ -39,6 +41,8 @@
 </template>
 
 <script setup lang="ts">
+import { areaDate } from '@/helpers/areaDateFormat'
+import { t } from '@/i18n'
 /**
  * A note's calendar tasks as a month: under every day with a task a small box, ticked once every
  * task of the day is done and left open while one is not; a dot where only an event of the
@@ -109,7 +113,7 @@ const dayItems = computed(() => days.value.get(selectedKey.value) ?? [])
 const emptyMonth = computed(
   () => ![...days.value.keys()].some((key) => key.startsWith(month.value.format('YYYY-MM')))
 )
-const dayLabel = computed(() => selected.value.format('ddd D MMMM YYYY'))
+const dayLabel = computed(() => areaDate(selected.value, 'ddd D MMMM YYYY'))
 
 /** The year takes the whole width; the chosen day stands under it. */
 const { view, record } = useFooterCalendarView('tasks')

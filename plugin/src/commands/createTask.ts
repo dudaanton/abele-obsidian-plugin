@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { Task, TaskCreateDTO } from '@/entities/Task'
 import { cleanNoteName, pathToWikilink } from '@/helpers/pathsHelpers'
 import dayjs from 'dayjs'
@@ -16,7 +17,7 @@ export const createTask = async (
     getNewTaskPathFromString(data?.title ?? DEFAULT_TASK_NAME)
   )
   if (!availablePath) {
-    new Notice('Failed to determine available path for the new task.', 3000)
+    new Notice(t('area.failedToDetermineAvailablePathForTheNewTask'), 3000)
     return
   }
 
@@ -37,7 +38,7 @@ export const createTask = async (
 
 export const createTaskAndInsert = async (editor: Editor) => {
   if (!editor) {
-    new Notice('No active Markdown editor found.', 3000)
+    new Notice(t('area.noActiveMarkdownEditorFound'), 3000)
     return
   }
 
@@ -49,7 +50,7 @@ export const createTaskAndInsert = async (editor: Editor) => {
     getNewTaskPathFromString(cleanNoteName(selection) || DEFAULT_TASK_NAME)
   )
   if (!availablePath) {
-    new Notice('Failed to determine available path for the new task.', 3000)
+    new Notice(t('area.failedToDetermineAvailablePathForTheNewTask'), 3000)
     return
   }
 

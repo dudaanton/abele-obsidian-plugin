@@ -2,13 +2,13 @@
   <div class="abele-calendar-base__agenda abele-calendar-base__life-week" :data-week="week.index">
     <div class="abele-calendar-base__agenda-head">
       <span class="abele-calendar-base__agenda-date">
-        Age {{ week.age }}, week {{ week.week + 1 }}
+        {{ t('area.lifeWeek', { age: week.age, week: week.week + 1 }) }}
         <span class="abele-calendar-base__agenda-range">{{ range }}</span>
       </span>
       <div class="abele-calendar-base__agenda-actions">
         <Icon
           icon="calendar-range"
-          tooltip="Show this week by the hour"
+          :tooltip="t('area.showThisWeekByTheHour')"
           class="abele-calendar-base__agenda-week"
           @click="emit('zoom', week.start)"
         />
@@ -27,11 +27,13 @@
         />
       </div>
     </div>
-    <EmptyState v-else text="Nothing in this week." />
+    <EmptyState v-else :text="t('area.nothingInThisWeek')" />
   </div>
 </template>
 
 <script setup lang="ts">
+import { areaDate } from '@/helpers/areaDateFormat'
+import { t } from '@/i18n'
 /**
  * The week of a life that is picked, under the grid the way a picked day is under the month:
  * which week of which year of age it is, the days it covers, and what is in it, each note with
@@ -61,8 +63,8 @@ const range = computed(() => {
   const from = dayjs(props.week.start)
   const to = dayjs(props.week.end)
   return from.year() === to.year()
-    ? `${from.format('D MMM')} – ${to.format('D MMM YYYY')}`
-    : `${from.format('D MMM YYYY')} – ${to.format('D MMM YYYY')}`
+    ? `${areaDate(from, 'D MMM')} – ${areaDate(to, 'D MMM YYYY')}`
+    : `${areaDate(from, 'D MMM YYYY')} – ${areaDate(to, 'D MMM YYYY')}`
 })
 
 /** A note that began before the week is listed on its first day, as a span carried over. */
@@ -78,7 +80,7 @@ const rows = computed(() => {
         fromBefore: item.start < start,
         goesOn: item.end > end,
       }
-      return { placed, label: dayjs(day).format('ddd D') }
+      return { placed, label: areaDate(dayjs(day), 'ddd D') }
     })
     .sort((a, b) =>
       a.placed.day !== b.placed.day

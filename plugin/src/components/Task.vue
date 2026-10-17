@@ -1,6 +1,6 @@
 <template>
   <div v-if="task.taskNotFound" class="abele-task-view">
-    <em class="abele-task-view__content">Task not found</em>
+    <em class="abele-task-view__content">{{ t('area.taskNotFound') }}</em>
     <ObsidianIcon icon="trash" @click="removeOrphaned" />
   </div>
   <EntryRow
@@ -50,7 +50,13 @@
         :text-right="`${subtasks.done}/${subtasks.total}`"
         role="button"
         :aria-expanded="!!subtasksOpen"
-        :tooltip="`${subtasks.done} of ${subtasks.total} subtasks done · ${subtasksOpen ? 'Hide' : 'Show'} them`"
+        :tooltip="
+          t('area.subtasksToggle', {
+            done: subtasks.done,
+            total: subtasks.total,
+            action: subtasksOpen ? t('area.hide') : t('area.show'),
+          })
+        "
         @click.stop="emit('toggle-subtasks')"
       />
       <ObsidianIcon
@@ -66,7 +72,11 @@
           v-if="dateTimeText"
           class="abele-task-view__code"
           :text-right="dateTimeText"
-          :tooltip="timeLeftText ? `Starts ${timeLeftText.replace(/[()]/g, '')}` : 'Starts'"
+          :tooltip="
+            timeLeftText
+              ? t('area.startsValue', { value: timeLeftText.replace(/[()]/g, '') })
+              : t('area.starts')
+          "
           no-hover
         />
         <ObsidianIcon
@@ -74,7 +84,7 @@
           class="abele-task-view__code"
           icon="calendar-clock"
           :text-right="dueTimeText"
-          tooltip="Due"
+          :tooltip="t('area.due')"
           no-hover
         />
       </template>
@@ -83,7 +93,7 @@
           class="abele-task-view__code"
           icon="check"
           :text-right="completedCode"
-          :tooltip="`Completed ${completedText}`"
+          :tooltip="t('area.completedValue', { value: completedText })"
           no-hover
         />
       </template>
@@ -92,7 +102,10 @@
           v-if="dateText"
           class="abele-task-view__code"
           :text-right="dateCode"
-          :tooltip="`Date ${dateText} ${dateTimeText}`.trim() + diffWords(diffDateText)"
+          :tooltip="
+            t('area.dateValue', { value: `${dateText} ${dateTimeText}` }).trim() +
+            diffWords(diffDateText)
+          "
           no-hover
         />
         <ObsidianIcon
@@ -101,7 +114,10 @@
           icon="calendar-clock"
           :text-right="dueCode"
           :color="isOverdue ? 'red' : undefined"
-          :tooltip="`Due ${dueText} ${dueTimeText}`.trim() + diffWords(diffDueText)"
+          :tooltip="
+            t('area.dueValue', { value: `${dueText} ${dueTimeText}` }).trim() +
+            diffWords(diffDueText)
+          "
           no-hover
         />
       </template>
@@ -109,13 +125,15 @@
         v-if="task.recurrence && !atTimeline"
         class="abele-task-view__code"
         icon="repeat"
-        :tooltip="`Repeats ${task.recurrence}`"
+        :tooltip="t('area.repeatsValue', { value: task.recurrence })"
         no-hover
       />
     </template>
     <!-- The labels under the name, quiet words each with a dot of its colour. -->
     <template v-if="labels.length || parent?.length" #meta>
-      <span v-if="parent?.length" class="abele-task-view__parent">in {{ parent.join(', ') }}</span>
+      <span v-if="parent?.length" class="abele-task-view__parent">{{
+        t('area.inGroup', { name: parent.join(', ') })
+      }}</span>
       <LabelDot
         v-for="label in labels"
         :key="label.text"
@@ -136,10 +154,14 @@
 </template>
 
 <script setup lang="ts">
+import { currentLocale } from '@/i18n'
+import { relativeDay } from '@/helpers/areaDateFormat'
+import { areaDate } from '@/helpers/areaDateFormat'
+import { t } from '@/i18n'
 import { confirmDialog } from '@/components/obsidian/dialogs'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { DISPLAY_DATE_FORMAT } from '@/constants/dates'
-import { compactDate } from '@/helpers/datesHelper'
+import { areaCompactDate as compactDate } from '@/helpers/areaDateFormat'
 import { Task } from '@/entities/Task'
 import dayjs from 'dayjs'
 import { computed, onMounted, ref, watch } from 'vue'
@@ -177,8 +199,8 @@ const circularText = computed(() => {
   const others = props.circular ?? []
   const me = props.task.title || props.task.taskName
   return others.length === 1 && others[0] === me
-    ? `Circular: ${me} is in its own groups. Shown flat until the link is removed.`
-    : `Circular: ${me} and ${others.join(', ')} are in each other's groups. Shown flat until one of the links is removed.`
+    ? t('area.circularSelf', { name: me })
+    : t('area.circularOthers', { name: me, others: others.join(', ') })
 })
 
 const rowEl = ref<{ $el: HTMLElement } | null>(null)
@@ -203,9 +225,9 @@ watch(
 )
 
 const PRIORITY_MARKS: Record<TaskPriority, { icon: string; color: KitColor; label: string }> = {
-  high: { icon: 'chevron-up', color: 'red', label: 'High priority' },
-  medium: { icon: 'equal', color: 'orange', label: 'Medium priority' },
-  low: { icon: 'chevron-down', color: 'blue', label: 'Low priority' },
+  high: { icon: 'chevron-up', color: 'red', label: t('area.highPriority') },
+  medium: { icon: 'equal', color: 'orange', label: t('area.mediumPriority') },
+  low: { icon: 'chevron-down', color: 'blue', label: t('area.lowPriority') },
 }
 
 // Only on tasks without a date: the calendar orders by when, and a priority there would be a
@@ -243,7 +265,7 @@ const toggleDescription = () => {
 const dueText = computed(() => {
   if (!props.task.due) return ''
 
-  return props.task.due.format(DISPLAY_DATE_FORMAT)
+  return areaDate(props.task.due, DISPLAY_DATE_FORMAT)
 })
 
 const dueTimeText = computed(() => {
@@ -255,7 +277,7 @@ const dueTimeText = computed(() => {
 const dateText = computed(() => {
   if (!props.task.date) return ''
 
-  return props.task.date.format(DISPLAY_DATE_FORMAT)
+  return areaDate(props.task.date, DISPLAY_DATE_FORMAT)
 })
 
 const dateTimeText = computed(() => {
@@ -291,7 +313,9 @@ const timeLeftText = computed(() => {
   const hours = Math.floor(diff / (1000 * 60 * 60))
   const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
 
-  return `(in ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')})`
+  return t('area.inClock', {
+    time: `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`,
+  })
 })
 
 const getDiffText = (date: dayjs.Dayjs | null) => {
@@ -299,6 +323,7 @@ const getDiffText = (date: dayjs.Dayjs | null) => {
 
   const diff = date.startOf('day').diff(today.value.startOf('day'), 'day')
 
+  if (currentLocale().language !== 'en') return `(${relativeDay(diff)})`
   if (diff === 0) return '(Today)'
   if (diff === 1) return '(Tomorrow)'
   if (diff === -1) return '(Yesterday)'
@@ -322,11 +347,11 @@ const dayCode = (date: dayjs.Dayjs | null, time: dayjs.Dayjs | null) => {
   const diff = date.startOf('day').diff(today.value.startOf('day'), 'day')
   const day =
     diff === 0
-      ? 'Today'
+      ? relativeDay(0)
       : diff === 1
-        ? 'Tomorrow'
+        ? relativeDay(1)
         : diff === -1
-          ? 'Yesterday'
+          ? relativeDay(-1)
           : compactDate(date, today.value)
   return time ? `${day} ${time.format('HH:mm')}` : day
 }
@@ -342,7 +367,7 @@ const diffWords = (diff: string) => (diff ? `, ${diff.replace(/[()]/g, '').toLow
 const completedText = computed(() => {
   if (!props.task.completedAt) return ''
 
-  return props.task.completedAt.format(DISPLAY_DATE_FORMAT)
+  return areaDate(props.task.completedAt, DISPLAY_DATE_FORMAT)
 })
 
 const isOverdue = computed(() => {
@@ -370,13 +395,13 @@ const onContextMenu = (e: MouseEvent) => {
   const menu = new Menu()
   menu.addItem((item) =>
     item
-      .setTitle('Add subtask')
+      .setTitle(t('area.addSubtask'))
       .setIcon('list-plus')
       .onClick(() => void addSubtask(props.task.taskPath))
   )
   menu.addItem((item) =>
     item
-      .setTitle('Make subtask of…')
+      .setTitle(t('area.makeSubtaskOf'))
       .setIcon('list-tree')
       .onClick(() => {
         const list = GlobalStore.getInstance().tasksList.value
@@ -386,20 +411,20 @@ const onContextMenu = (e: MouseEvent) => {
   for (const parent of props.parents ?? [])
     menu.addItem((item) =>
       item
-        .setTitle(`Detach from ${parent.title || parent.taskName}`)
+        .setTitle(t('area.detachValue', { name: parent.title || parent.taskName }))
         .setIcon('unlink')
         .onClick(() => void detachFrom(props.task, parent))
     )
   menu.addSeparator()
   menu.addItem((item) => {
     item
-      .setTitle('Delete')
+      .setTitle(t('area.delete'))
       .setIcon('trash')
       .onClick(async () => {
         if (
           await confirmDialog({
-            title: 'Delete task',
-            message: 'Are you sure you want to delete this task?',
+            title: t('area.deleteTask'),
+            message: t('area.areYouSureYouWantToDeleteThisTask'),
           })
         ) {
           props.task.remove()

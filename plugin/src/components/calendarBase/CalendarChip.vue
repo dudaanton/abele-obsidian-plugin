@@ -22,7 +22,7 @@
       class="task-list-item-checkbox"
       type="checkbox"
       :checked="placed.item.completed"
-      :aria-label="`${placed.item.completed ? 'Mark undone' : 'Mark done'}: ${placed.item.title}`"
+      :aria-label="`${placed.item.completed ? t('area.markUndone') : t('area.markDone')}: ${placed.item.title}`"
       @pointerdown.stop
       @keydown.stop
       @click.stop.prevent="toggleDone"
@@ -35,6 +35,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 /**
  * One thing on the calendar: a note or an event, as a short line on a light wash of the colour
  * of its group (or of its calendar), a note led by a dot of that colour and an event by its box
@@ -75,7 +76,7 @@ const time = computed(() => {
 })
 
 const label = computed(() =>
-  [time.value, props.placed.item.title, props.placed.item.completed ? 'done' : '']
+  [time.value, props.placed.item.title, props.placed.item.completed ? t('area.doneLower') : '']
     .filter(Boolean)
     .join(', ')
 )

@@ -8,7 +8,7 @@
       <Input
         v-model="query"
         class="abele-timeline-base__go"
-        placeholder="Go to 1812, 490 BC or a name"
+        :placeholder="t('area.goTo1812490BCOrAName')"
         @keydown.enter.prevent="go"
       />
       <Tabs
@@ -21,16 +21,16 @@
       <Button
         v-if="canCreate && !stacked"
         class="abele-timeline-base__new"
-        text="New note"
+        :text="t('area.newNote')"
         icon="plus"
-        tooltip="Make a note at the year in the middle of the screen"
+        :tooltip="t('area.makeANoteAtTheYearInTheMiddleOfTheScreen')"
         @click="createInMiddle"
       />
       <Icon
         v-if="canCreate && stacked"
         class="abele-timeline-base__new-icon"
         icon="plus"
-        tooltip="Make a note at the year in the middle of the screen"
+        :tooltip="t('area.makeANoteAtTheYearInTheMiddleOfTheScreen')"
         @click="createInMiddle"
       />
     </div>
@@ -43,7 +43,7 @@
         :color="lane.color ?? undefined"
       />
       <span v-if="undated" class="abele-timeline-base__undated">
-        {{ undated === 1 ? '1 note has' : `${undated} notes have` }} no date it can read
+        {{ t('area.unreadableDate', { count: undated }) }}
       </span>
     </div>
 
@@ -93,6 +93,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 /**
  * The history timeline of a base: the header — go to a year or a name, how far out, a new
  * note — the rows' colours, the drawing, and the list of contemporaries of whoever is picked.
@@ -134,11 +135,11 @@ const NARROW = 560
 const STACKED = 900
 
 const LEVEL_NAMES: Record<ZoomLevel, string> = {
-  millennia: 'Millennia',
-  centuries: 'Centuries',
-  decades: 'Decades',
-  years: 'Years',
-  days: 'Days',
+  millennia: t('area.millennia'),
+  centuries: t('area.centuries'),
+  decades: t('area.decades'),
+  years: t('area.years'),
+  days: t('area.days'),
 }
 
 const props = defineProps<{ instance: TimelineBaseInstance }>()
@@ -267,7 +268,7 @@ const levelTabs = computed<Tab[]>(() =>
   ZOOM_LEVELS.filter((l) => l !== 'days' || finest.value !== 'year').map((l) => ({
     id: l,
     label: LEVEL_NAMES[l],
-    tooltip: `Zoom to ${LEVEL_NAMES[l].toLowerCase()}`,
+    tooltip: t('area.zoomTo', { level: LEVEL_NAMES[l].toLowerCase() }),
   }))
 )
 

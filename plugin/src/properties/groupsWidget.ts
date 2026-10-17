@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * The row of a groups property: Obsidian's own list editor, left exactly as it is — its link
  * pills that open their note, `[[` bringing up its link suggester, any note or text typed in —
@@ -74,7 +75,7 @@ export class GroupPicker extends SuggestModal<GroupNote> {
   ) {
     super(app)
     this.vault = vaultGroups(app, key)
-    this.setPlaceholder('Add a group…')
+    this.setPlaceholder(t('area.addAGroup'))
     this.emptyStateText = 'No such note'
     GroupPicker.last = this
   }
@@ -93,7 +94,7 @@ export class GroupPicker extends SuggestModal<GroupNote> {
       el.createDiv({ cls: 'suggestion-aux' }).createSpan({
         cls: 'suggestion-flair',
         text: String(note.members),
-        attr: { 'aria-label': `${note.members} in this group` },
+        attr: { 'aria-label': t('area.groupMembers', { count: note.members }) },
       })
     }
   }
@@ -142,8 +143,8 @@ export function renderGroups(
   const pills = el.querySelector<HTMLElement>('.multi-select-container') ?? el
   const button = pills.createDiv({
     cls: 'abele-property-groups__pick',
-    text: 'Add group',
-    attr: { role: 'button', tabindex: '0', 'aria-label': 'Add a group' },
+    text: t('area.addGroup'),
+    attr: { role: 'button', tabindex: '0', 'aria-label': t('area.addAGroup') },
   })
   // The stock editor replaces the pill children while accepting typed links. Keep the
   // shortcut in its current list without taking ownership of the stock editor's input.

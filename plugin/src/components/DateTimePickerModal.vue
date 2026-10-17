@@ -12,16 +12,20 @@
       <!-- As Obsidian orders them: the one that takes the value off apart, the answer last. -->
       <Button
         class="abele-modal__apart"
-        text="Clear"
-        tooltip="Take the date off"
+        :text="t('area.clear')"
+        :tooltip="t('area.takeTheDateOff')"
         @click="emit('clear')"
       />
-      <Button text="Cancel" tooltip="Close this and change nothing" @click="emit('cancel')" />
       <Button
-        text="Confirm"
+        :text="t('area.cancel')"
+        :tooltip="t('area.closeThisAndChangeNothing')"
+        @click="emit('cancel')"
+      />
+      <Button
+        :text="t('area.confirm')"
         accent
         :disabled="!picker?.canConfirm"
-        tooltip="Set this date"
+        :tooltip="t('area.setThisDate')"
         @click="picker?.confirm()"
       />
     </template>
@@ -29,6 +33,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, useTemplateRef } from 'vue'
 import dayjs from 'dayjs'
 import ObsidianModal from './obsidian/Modal.vue'
@@ -45,7 +50,9 @@ const props = defineProps<{
 
 const picker = useTemplateRef<InstanceType<typeof DateTimePicker>>('picker')
 
-const title = computed(() => props.title ?? (props.mode === 'event' ? 'Event date' : 'Due date'))
+const title = computed(
+  () => props.title ?? (props.mode === 'event' ? t('area.eventDate') : t('area.dueDate'))
+)
 
 const emit = defineEmits<{
   (e: 'confirm', result: { date: dayjs.Dayjs; time: string | null }): void

@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * A priority property, on the scale tasks use (`helpers/taskMeta`): `low`, `medium`, `high`, and
  * no priority below `low`. Raising an empty one gives `low`; lowering `low` empties it. The value
@@ -38,7 +39,13 @@ export function stepPriority(value: unknown, delta: number): TaskPriority | null
 /** How a level is named on screen. */
 export function priorityName(level: number): string {
   const priority = priorityAt(level)
-  return priority ? priority[0].toUpperCase() + priority.slice(1) : 'None'
+  return priority === 'low'
+    ? t('area.priorityLow')
+    : priority === 'medium'
+      ? t('area.priorityMedium')
+      : priority === 'high'
+        ? t('area.priorityHigh')
+        : t('area.None')
 }
 
 /** The theme colour of a level, as tasks mark it: blue, orange, red. */

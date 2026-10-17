@@ -4,7 +4,7 @@
 
     <Section
       v-if="selectedDate && tasksForDay.length"
-      title="Scheduled tasks"
+      :title="t('area.scheduledTasks')"
       class="abele-datetime-picker__tasks-preview"
     >
       <div v-for="task in tasksForDay" :key="task.id" class="abele-datetime-picker__task-item">
@@ -15,17 +15,21 @@
       </div>
     </Section>
 
-    <Setting name="Time (optional)">
+    <Setting :name="t('area.timeOptional')">
       <div class="abele-datetime-picker__time">
         <div class="abele-datetime-picker__time-input-row">
           <Input
             v-model="timeDisplay"
-            aria-label="Time (optional)"
+            :aria-label="t('area.timeOptional')"
             placeholder="HH:mm"
             maxlength="5"
             @beforeinput="onTimeBeforeInput"
           />
-          <ObsidianIcon icon="clock" tooltip="Choose time" @click="nativeTimeInput?.showPicker()" />
+          <ObsidianIcon
+            icon="clock"
+            :tooltip="t('area.chooseTime')"
+            @click="nativeTimeInput?.showPicker()"
+          />
           <Input
             ref="nativeTimeInput"
             type="time"
@@ -43,7 +47,7 @@
             :text-right="time"
             with-bg
             :active="timeDisplay === time"
-            :tooltip="`Set time to ${time}`"
+            :tooltip="t('area.setTimeValue', { value: time })"
             @click="setTime(timeDisplay === time ? null : time)"
           />
         </div>
@@ -53,6 +57,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { ref, computed, unref } from 'vue'
 import dayjs from 'dayjs'
 import Calendar from './Calendar.vue'

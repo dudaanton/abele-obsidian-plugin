@@ -5,7 +5,9 @@
     :data-task="done ? 'x' : undefined"
     role="button"
     tabindex="0"
-    :aria-label="`${event.title}, ${timeText}, from ${calendarName}`"
+    :aria-label="
+      t('area.eventLabel', { title: event.title, time: timeText, calendar: calendarName })
+    "
     :more="event.description ? showDescription : undefined"
     @update:more="showDescription = $event"
     @click="openMenu"
@@ -18,7 +20,7 @@
           class="task-list-item-checkbox"
           type="checkbox"
           :checked="done"
-          :aria-label="`${done ? 'Mark undone' : 'Mark done'}: ${event.title}`"
+          :aria-label="`${done ? t('area.markUndone') : t('area.markDone')}: ${event.title}`"
           @click.stop.prevent="toggleEventDone(event)"
           @keydown.stop
         />
@@ -27,7 +29,10 @@
     <div class="abele-calendar-event__title">{{ event.title }}</div>
     <!-- The same codes as a task row: when, and which calendar as a dot of its colour. -->
     <template #codes>
-      <span class="abele-calendar-event__time" :aria-label="`From ${calendarName}`">
+      <span
+        class="abele-calendar-event__time"
+        :aria-label="t('area.calendarFrom', { calendar: calendarName })"
+      >
         <span class="abele-calendar-event__bar" />{{ timeText }}
       </span>
     </template>
@@ -41,6 +46,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 /**
  * One external occurrence beside tasks. The checkbox is the owner's local mark, not a
  * calendar edit. Pressing the card offers that mark, a meeting note and its link.
@@ -70,14 +76,16 @@ const timeText = computed(() => {
   const event = props.event
   if (event.allDay) {
     const days = eventDays(event)
-    return days.length > 1 ? `All day, ${days.indexOf(props.day) + 1} of ${days.length}` : 'All day'
+    return days.length > 1
+      ? t('area.allDayIndex', { index: days.indexOf(props.day) + 1, total: days.length })
+      : t('area.allDay')
   }
   const startsToday = localDay(event.start) === props.day
   const endsToday = localDay(Math.max(event.start, event.end - 1)) === props.day
   if (startsToday && endsToday) return eventTimeText(event)
-  if (startsToday) return `From ${clockTime(event.start)}`
-  if (endsToday) return `Until ${clockTime(event.end)}`
-  return 'All day'
+  if (startsToday) return t('area.fromTime', { time: clockTime(event.start) })
+  if (endsToday) return t('area.untilTime', { time: clockTime(event.end) })
+  return t('area.allDay')
 })
 
 const openMenu = (e: MouseEvent | KeyboardEvent) => openEventMenu(props.event, props.day, e)

@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * The row of a labels property: Obsidian's own pills, each with its ×, tinted with the colour the
  * label has in the task settings, and a field that adds one more — picked from the labels the
@@ -64,7 +65,7 @@ class LabelSuggest extends AbstractInputSuggest<Choice> {
 
   renderSuggestion(choice: Choice, el: HTMLElement): void {
     el.addClass('abele-property-labels__choice')
-    el.setText(choice.fresh ? `Add “${choice.label}”` : choice.label)
+    el.setText(choice.fresh ? t('area.addLabelValue', { label: choice.label }) : choice.label)
   }
 
   selectSuggestion(choice: Choice): void {
@@ -91,7 +92,7 @@ export function renderLabels(el: HTMLElement, value: unknown, ctx: WidgetContext
   const pills = row.createDiv({ cls: 'abele-property-labels__pills' })
   const input = row.createEl('input', {
     cls: 'abele-property-labels__input',
-    attr: { type: 'text', placeholder: 'Add label', 'aria-label': 'Add label' },
+    attr: { type: 'text', placeholder: t('area.addLabel'), 'aria-label': t('area.addLabel') },
   })
 
   const write = (next: unknown[] | null) => {
@@ -116,7 +117,7 @@ export function renderLabels(el: HTMLElement, value: unknown, ctx: WidgetContext
       pill.createDiv({ cls: 'multi-select-pill-content', text: label })
       const x = pill.createDiv({
         cls: 'multi-select-pill-remove-button',
-        attr: { role: 'button', 'aria-label': `Remove ${label}` },
+        attr: { role: 'button', 'aria-label': t('area.removeLabelValue', { label }) },
       })
       setIcon(x, 'x')
       x.addEventListener('click', (e) => {

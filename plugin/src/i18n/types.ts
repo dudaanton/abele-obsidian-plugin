@@ -1,4 +1,4 @@
-import type { en } from './locales/en/pilot'
+import type { english as en } from './catalogs'
 export type MessageKey = keyof typeof en
 type Slots<S extends string> = S extends `${string}{${infer P}}${infer Tail}`
   ? P | Slots<Tail>

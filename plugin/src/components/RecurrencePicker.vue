@@ -1,12 +1,12 @@
 <template>
   <div class="abele-recurrence-picker">
-    <Setting name="Repeat every">
+    <Setting :name="t('area.repeatEvery')">
       <div class="abele-recurrence-picker__interval-row">
         <Input
           type="number"
           min="1"
           max="99"
-          aria-label="Repeat interval"
+          :aria-label="t('area.repeatInterval')"
           :model-value="String(intervalValue)"
           class="abele-recurrence-picker__interval-input"
           @update:model-value="intervalValue = Math.max(1, parseInt($event) || 1)"
@@ -21,7 +21,7 @@
 
     <Setting
       v-if="intervalUnit === 'week'"
-      name="On days"
+      :name="t('area.onDays')"
       class="abele-recurrence-picker__weekdays"
     >
       <div class="abele-recurrence-picker__weekdays-row">
@@ -31,7 +31,7 @@
           :text-right="day.label"
           with-bg
           :active="selectedWeekdays.includes(day.value)"
-          :tooltip="`Repeat on ${day.label}`"
+          :tooltip="t('area.repeatOn', { day: day.label })"
           @click="toggleWeekday(day.value)"
         />
       </div>
@@ -39,35 +39,39 @@
 
     <Section
       v-if="intervalUnit === 'month'"
-      title="On"
+      :title="t('area.on')"
       class="abele-recurrence-picker__month-options"
     >
       <div class="abele-recurrence-picker__month-modes">
         <ObsidianIcon
-          text-right="Specific days"
+          :text-right="t('area.specificDays')"
           with-bg
           :active="monthMode === 'days'"
-          tooltip="Choose specific days of the month"
+          :tooltip="t('area.chooseSpecificDaysOfTheMonth')"
           @click="monthMode = 'days'"
         />
         <ObsidianIcon
-          text-right="Weekday"
+          :text-right="t('area.weekday')"
           with-bg
           :active="monthMode === 'positional'"
-          tooltip="Choose a weekday of the month"
+          :tooltip="t('area.chooseAWeekdayOfTheMonth')"
           @click="monthMode = 'positional'"
         />
         <ObsidianIcon
-          text-right="First/Last day"
+          :text-right="t('area.firstLastDay')"
           with-bg
           :active="monthMode === 'boundary'"
-          tooltip="Choose the first or last day of the month"
+          :tooltip="t('area.chooseTheFirstOrLastDayOfTheMonth')"
           @click="monthMode = 'boundary'"
         />
       </div>
 
       <div v-if="monthMode === 'days'" class="abele-recurrence-picker__monthdays">
-        <Input v-model="monthDaysInput" aria-label="Days of month" placeholder="e.g. 1, 15" />
+        <Input
+          v-model="monthDaysInput"
+          :aria-label="t('area.daysOfMonth')"
+          :placeholder="t('area.eg115')"
+        />
       </div>
 
       <div v-if="monthMode === 'positional'" class="abele-recurrence-picker__positional">
@@ -89,13 +93,13 @@
           :options="positionOptions"
           @update:model-value="position = $event as PositionType"
         />
-        <span class="abele-recurrence-picker__positional-label">day of month</span>
+        <span class="abele-recurrence-picker__positional-label">{{ t('area.dayOfMonth') }}</span>
       </div>
     </Section>
 
     <Section
       v-if="intervalUnit === 'year'"
-      title="On"
+      :title="t('area.on')"
       class="abele-recurrence-picker__year-options"
     >
       <div class="abele-recurrence-picker__positional">
@@ -104,25 +108,28 @@
           :options="positionOptions"
           @update:model-value="position = $event as PositionType"
         />
-        <span class="abele-recurrence-picker__positional-label">day of year</span>
+        <span class="abele-recurrence-picker__positional-label">{{ t('area.dayOfYear') }}</span>
       </div>
     </Section>
 
-    <Setting name="From completion">
+    <Setting :name="t('area.fromCompletion')">
       <Checkbox
         :is-enabled="fromCompletion"
-        aria-label="Repeat from completion"
+        :aria-label="t('area.repeatFromCompletion')"
         @toggle="fromCompletion = !fromCompletion"
       />
     </Setting>
 
-    <Setting name="Pattern"
+    <Setting :name="t('area.pattern')"
       ><span class="abele-recurrence-picker__pattern">{{ pattern }}</span></Setting
     >
   </div>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+import dayjs from 'dayjs'
+import { areaDate } from '@/helpers/areaDateFormat'
 import { ref, computed } from 'vue'
 import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianDropdown from './obsidian/Dropdown.vue'
@@ -153,7 +160,7 @@ const position = ref<PositionType>('first')
 const positionalWeekday = ref('1')
 const fromCompletion = ref(false)
 
-const weekdayOptions = [
+const englishWeekdays = [
   { value: 1, label: 'Mon' },
   { value: 2, label: 'Tue' },
   { value: 3, label: 'Wed' },
@@ -162,6 +169,66 @@ const weekdayOptions = [
   { value: 6, label: 'Sat' },
   { value: 0, label: 'Sun' },
 ]
+
+const intervalUnits: IntervalUnitType[] = ['hour', 'day', 'week', 'month', 'year']
+
+const englishWeekdayDropdownOptions = [
+  { value: '1', display: 'Monday' },
+  { value: '2', display: 'Tuesday' },
+  { value: '3', display: 'Wednesday' },
+  { value: '4', display: 'Thursday' },
+  { value: '5', display: 'Friday' },
+  { value: '6', display: 'Saturday' },
+  { value: '0', display: 'Sunday' },
+]
+
+const weekdayOptions = englishWeekdays.map((day) => ({
+  ...day,
+  label: areaDate(dayjs().day(day.value), 'ddd'),
+}))
+const unitOptions = computed(() =>
+  intervalUnits.map((value, i) => ({
+    value,
+    display: [
+      t('area.unit0', { count: intervalValue.value }),
+      t('area.unit1', { count: intervalValue.value }),
+      t('area.unit2', { count: intervalValue.value }),
+      t('area.unit3', { count: intervalValue.value }),
+      t('area.unit4', { count: intervalValue.value }),
+    ][i],
+  }))
+)
+const positionOptions = computed(() => {
+  const weekday =
+    intervalUnit.value === 'month' && monthMode.value === 'positional'
+      ? positionalWeekday.value
+      : null
+  const feminine = ['3', '5', '6'].includes(weekday ?? '')
+  return [
+    {
+      value: 'first',
+      display:
+        weekday === '0'
+          ? t('area.firstNeuter')
+          : feminine
+            ? t('area.firstFeminine')
+            : t('area.position0'),
+    },
+    {
+      value: 'last',
+      display:
+        weekday === '0'
+          ? t('area.lastNeuter')
+          : feminine
+            ? t('area.lastFeminine')
+            : t('area.position1'),
+    },
+  ]
+})
+const weekdayDropdownOptions = englishWeekdayDropdownOptions.map((day) => ({
+  ...day,
+  display: areaDate(dayjs().day(Number(day.value)), 'dddd'),
+}))
 
 // Parse initial pattern
 if (props.initialPattern) {
@@ -181,7 +248,7 @@ if (props.initialPattern) {
     intervalUnit.value = 'month'
     monthMode.value = 'positional'
     position.value = posMatch[1] as 'first' | 'last'
-    const day = weekdayOptions.find((d) => posMatch[2].startsWith(d.label.toLowerCase()))
+    const day = englishWeekdays.find((d) => posMatch[2].startsWith(d.label.toLowerCase()))
     positionalWeekday.value = day ? String(day.value) : '1'
   } else {
     const intMatch = p.match(/every\s+(\d+)?\s*(hour|day|week|month|year)/)
@@ -194,7 +261,7 @@ if (props.initialPattern) {
     if (weekMatch && intervalUnit.value === 'week') {
       selectedWeekdays.value = weekMatch[1]
         .split(/[,\s]+/)
-        .map((d) => weekdayOptions.find((opt) => d.startsWith(opt.label.toLowerCase()))?.value)
+        .map((d) => englishWeekdays.find((opt) => d.startsWith(opt.label.toLowerCase()))?.value)
         .filter((d): d is number => d !== undefined)
     }
 
@@ -206,29 +273,6 @@ if (props.initialPattern) {
   }
 }
 
-const unitOptions = [
-  { value: 'hour', display: 'hour(s)' },
-  { value: 'day', display: 'day(s)' },
-  { value: 'week', display: 'week(s)' },
-  { value: 'month', display: 'month(s)' },
-  { value: 'year', display: 'year(s)' },
-]
-
-const positionOptions = [
-  { value: 'first', display: 'First' },
-  { value: 'last', display: 'Last' },
-]
-
-const weekdayDropdownOptions = [
-  { value: '1', display: 'Monday' },
-  { value: '2', display: 'Tuesday' },
-  { value: '3', display: 'Wednesday' },
-  { value: '4', display: 'Thursday' },
-  { value: '5', display: 'Friday' },
-  { value: '6', display: 'Saturday' },
-  { value: '0', display: 'Sunday' },
-]
-
 const toggleWeekday = (day: number) => {
   const idx = selectedWeekdays.value.indexOf(day)
   if (idx === -1) {
@@ -239,14 +283,16 @@ const toggleWeekday = (day: number) => {
 }
 
 const weekdayName = (day: number): string => {
-  return weekdayOptions.find((d) => d.value === day)?.label ?? ''
+  return englishWeekdays.find((d) => d.value === day)?.label ?? ''
 }
 
 const pattern = computed(() => {
   let result = 'every'
 
   if (intervalUnit.value === 'month' && monthMode.value === 'positional') {
-    const dayName = weekdayDropdownOptions.find((d) => d.value === positionalWeekday.value)?.display
+    const dayName = englishWeekdayDropdownOptions.find(
+      (d) => d.value === positionalWeekday.value
+    )?.display
     result += ` ${position.value} ${dayName}`
   } else if (intervalUnit.value === 'month' && monthMode.value === 'boundary') {
     result += ` ${position.value} day of month`

@@ -2,25 +2,37 @@
   <div ref="root" class="abele-calendar-life" :data-current="current >= 0 ? current : undefined">
     <div class="abele-calendar-life__summary">
       <span class="abele-calendar-life__lived">
-        <b>{{ number(summary.lived) }}</b> weeks lived
+        <b>{{ number(summary.lived) }}</b> {{ t('area.weeksLived', { count: summary.lived }) }}
       </span>
       <span class="abele-calendar-life__left">
-        <b>{{ number(summary.left) }}</b> left
+        <b>{{ number(summary.left) }}</b> {{ t('area.weeksLeft') }}
       </span>
       <span class="abele-calendar-life__percent">
-        {{ summary.percent }}% of {{ years }} years
+        {{ t('area.lifePercent', { percent: summary.percent, years }) }}
       </span>
     </div>
 
     <div class="abele-calendar-life__legend" aria-hidden="true">
-      <span><i class="abele-calendar-life__swatch abele-calendar-life__swatch_lived" />Lived</span>
       <span
-        ><i class="abele-calendar-life__swatch abele-calendar-life__swatch_busy" />With notes</span
+        ><i class="abele-calendar-life__swatch abele-calendar-life__swatch_lived" />{{
+          t('area.lived')
+        }}</span
       >
       <span
-        ><i class="abele-calendar-life__swatch abele-calendar-life__swatch_now" />This week</span
+        ><i class="abele-calendar-life__swatch abele-calendar-life__swatch_busy" />{{
+          t('area.withNotes')
+        }}</span
       >
-      <span><i class="abele-calendar-life__swatch abele-calendar-life__swatch_ahead" />Ahead</span>
+      <span
+        ><i class="abele-calendar-life__swatch abele-calendar-life__swatch_now" />{{
+          t('area.thisWeek')
+        }}</span
+      >
+      <span
+        ><i class="abele-calendar-life__swatch abele-calendar-life__swatch_ahead" />{{
+          t('area.ahead')
+        }}</span
+      >
     </div>
 
     <canvas
@@ -28,7 +40,7 @@
       class="abele-calendar-life__grid"
       tabindex="0"
       role="img"
-      :aria-label="`Life in weeks: ${summary.lived} weeks lived, ${summary.left} left`"
+      :aria-label="t('area.lifeSummary', { lived: summary.lived, left: summary.left })"
       :data-grid="gridData"
       @click="onClick"
       @mousemove="onMove"
@@ -42,6 +54,8 @@
 </template>
 
 <script setup lang="ts">
+import { areaDate } from '@/helpers/areaDateFormat'
+import { t } from '@/i18n'
 /**
  * A life in weeks, the way the poster draws it: a row for each year of age, fifty-two boxes
  * to a row, the lived ones filled, the ones ahead left open, this week marked, and every week
@@ -111,16 +125,16 @@ const describe = (index: number): string => {
   const to = dayjs(week.end)
   const days =
     from.year() === to.year()
-      ? `${from.format('D MMM')} – ${to.format('D MMM YYYY')}`
-      : `${from.format('D MMM YYYY')} – ${to.format('D MMM YYYY')}`
+      ? `${areaDate(from, 'D MMM')} – ${areaDate(to, 'D MMM YYYY')}`
+      : `${areaDate(from, 'D MMM YYYY')} – ${areaDate(to, 'D MMM YYYY')}`
   const n = counts.value[index] ?? 0
-  return `Age ${week.age}, week ${week.week + 1} · ${days} · ${n === 1 ? '1 note' : `${n} notes`}`
+  return `${t('area.lifeWeek', { age: week.age, week: week.week + 1 })} · ${days} · ${t('area.noteCount', { count: n })}`
 }
 
 const hint = computed(() => {
   // The picked week is named under the grid already; this says what the pointer is over.
   const index = hovered.value
-  return index === null ? 'Press a week to list what is in it.' : describe(index)
+  return index === null ? t('area.pressWeek') : describe(index)
 })
 
 // ---- colours -------------------------------------------------------------------------------

@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { TimeEntryCreateDTO, DATETIME_FORMAT } from '@/entities/TimeEntry'
 import { TimeEntryNoteTemplate } from '@/templates/TimeEntryNoteTemplate'
 import { extractAliasOrNameFromWikilink } from '@/helpers/pathsHelpers'
@@ -75,7 +76,7 @@ export const createTimeEntry = async (data?: TimeEntryCreateDTO, focus = true): 
 
   const availablePath = await getAvailablePath(getNewTimeEntryPath({ start, groups }))
   if (!availablePath) {
-    new Notice('Failed to determine available path for the new time entry.', 3000)
+    new Notice(t('area.failedToDetermineAvailablePathForTheNewTimeEntry'), 3000)
     return
   }
 

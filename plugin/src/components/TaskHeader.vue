@@ -1,6 +1,6 @@
 <template>
   <div v-if="task.taskNotFound" class="abele-task-header-view">
-    <em class="abele-task-header-view__content">Task not found</em>
+    <em class="abele-task-header-view__content">{{ t('area.taskNotFound') }}</em>
   </div>
   <div v-else-if="task.loaded" class="abele-task-header-view abele-glyph-row">
     <!-- One row of glyphs, as Obsidian's own navigation: a set value is a code beside its glyph,
@@ -8,7 +8,7 @@
     <Icon
       class="abele-task-header-view__toggle"
       :icon="toggleIcon"
-      :label="task.completedAt ? 'Mark not done' : 'Mark done'"
+      :label="task.completedAt ? t('area.markNotDone') : t('area.markDone')"
       role="switch"
       :aria-checked="!!task.completedAt"
       @click="task.toggle()"
@@ -17,8 +17,12 @@
       class="abele-task-header-view__date"
       icon="calendar-days"
       :text-right="dateCode"
-      :label="task.date ? 'Change date' : 'Set date'"
-      :tooltip="task.date ? `Date ${fullDate(task.date, task.dateTime)}` : 'Set date'"
+      :label="task.date ? t('area.changeDate') : t('area.setDate')"
+      :tooltip="
+        task.date
+          ? t('area.dateValue', { value: fullDate(task.date, task.dateTime) })
+          : t('area.setDate')
+      "
       @click="openDatePickerForMode('event')"
     />
     <Icon
@@ -26,15 +30,19 @@
       icon="calendar-clock"
       :text-right="dueCode"
       :color="isOverdue ? 'red' : undefined"
-      :label="task.due ? 'Change due date' : 'Set due date'"
-      :tooltip="task.due ? `Due ${fullDate(task.due, task.dueTime)}` : 'Set due date'"
+      :label="task.due ? t('area.changeDueDate') : t('area.setDueDate')"
+      :tooltip="
+        task.due
+          ? t('area.dueValue', { value: fullDate(task.due, task.dueTime) })
+          : t('area.setDueDate')
+      "
       @click="openDatePickerForMode('due')"
     />
     <Icon
       class="abele-task-header-view__recurrence"
       icon="repeat"
       :text-right="task.recurrence || undefined"
-      :label="task.recurrence ? 'Change repeat' : 'Set repeat'"
+      :label="task.recurrence ? t('area.changeRepeat') : t('area.setRepeat')"
       @click="recurrencePickerOpen = true"
     />
     <!-- Its subtasks: done of all beside the glyph, and pressed, a new one under this task. -->
@@ -42,11 +50,11 @@
       class="abele-task-header-view__subtasks"
       icon="list-plus"
       :text-right="subtasks ? `${subtasks.done}/${subtasks.total}` : undefined"
-      label="Add subtask"
+      :label="t('area.addSubtask')"
       :tooltip="
         subtasks
-          ? `${subtasks.done} of ${subtasks.total} subtasks done · Add subtask`
-          : 'Add subtask'
+          ? t('area.subtasksAdd', { done: subtasks.done, total: subtasks.total })
+          : t('area.addSubtask')
       "
       @click="addSubtask(task.filePath)"
     />
@@ -54,7 +62,7 @@
       v-if="hasAnything"
       class="abele-task-header-view__clear"
       icon="eraser"
-      label="Clear dates, repeat and done"
+      :label="t('area.clearDatesRepeatAndDone')"
       @click="clear"
     />
     <Icon
@@ -62,14 +70,14 @@
       :key="button.id"
       :icon="button.icon || 'play'"
       :text-right="button.iconOnly ? undefined : button.name"
-      :tooltip="button.iconOnly ? button.name : `Run ${button.scriptName}`"
+      :tooltip="button.iconOnly ? button.name : t('area.runScript', { name: button.scriptName })"
       @click="runButton(button)"
     />
     <Icon
       v-if="showTimerButton"
       :icon="isTimerActiveForNote ? 'timer-off' : 'timer'"
       :text-right="isTimerActiveForNote ? timerElapsedText : undefined"
-      :label="isTimerActiveForNote ? 'Stop timer' : 'Start timer for this note'"
+      :label="isTimerActiveForNote ? t('area.stopTimer') : t('area.startTimerForThisNote')"
       @click="toggleTimer"
     />
 
@@ -96,13 +104,15 @@
 </template>
 
 <script setup lang="ts">
+import { areaDate, relativeDay } from '@/helpers/areaDateFormat'
+import { t } from '@/i18n'
 import { ref, computed, onMounted } from 'vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { addSubtask, subtasksOfPath } from '@/commands/subtasks'
 import dayjs from 'dayjs'
 import { TaskHeader } from '@/entities/TaskHeader'
 import { DISPLAY_DATE_FORMAT } from '@/constants/dates'
-import { compactDate } from '@/helpers/datesHelper'
+import { areaCompactDate as compactDate } from '@/helpers/areaDateFormat'
 import Icon from './obsidian/Icon.vue'
 import DateTimePickerModal from './DateTimePickerModal.vue'
 import RecurrencePickerModal from './RecurrencePickerModal.vue'
@@ -141,13 +151,12 @@ const formatTime = (time: dayjs.Dayjs | null): string | null => {
 const dayCode = (date: dayjs.Dayjs | null, time: dayjs.Dayjs | null) => {
   if (!date) return undefined
   const diff = date.startOf('day').diff(dayjs().startOf('day'), 'day')
-  const day =
-    diff === 0 ? 'Today' : diff === 1 ? 'Tomorrow' : diff === -1 ? 'Yesterday' : compactDate(date)
+  const day = Math.abs(diff) <= 1 ? relativeDay(diff) : compactDate(date)
   return time ? `${day} ${time.format('HH:mm')}` : day
 }
 
 const fullDate = (date: dayjs.Dayjs, time: dayjs.Dayjs | null) =>
-  `${date.format(DISPLAY_DATE_FORMAT)}${time ? ' ' + time.format('HH:mm') : ''}`
+  `${areaDate(date, DISPLAY_DATE_FORMAT)}${time ? ' ' + time.format('HH:mm') : ''}`
 
 const dateCode = computed(() => dayCode(props.task.date, props.task.dateTime))
 const dueCode = computed(() => dayCode(props.task.due, props.task.dueTime))

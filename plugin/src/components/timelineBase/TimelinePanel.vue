@@ -4,8 +4,12 @@
       <div class="abele-timeline-panel__title">{{ selected.title }}</div>
       <!-- The pick's own glyphs, as a pane's header has them: open the note, let go. -->
       <div class="abele-timeline-panel__glyphs">
-        <Icon icon="file-text" tooltip="Open this note" @click="emit('open', selected, $event)" />
-        <Icon icon="x" tooltip="Let go of the pick" @click="emit('close')" />
+        <Icon
+          icon="file-text"
+          :tooltip="t('area.openThisNote')"
+          @click="emit('open', selected, $event)"
+        />
+        <Icon icon="x" :tooltip="t('area.letGoOfThePick')" @click="emit('close')" />
       </div>
     </div>
     <div class="abele-timeline-panel__dates">{{ summary }}</div>
@@ -27,13 +31,14 @@
         <span class="abele-timeline-panel__together">{{ row.text }}</span>
       </div>
       <div v-if="rows.length > shown.length" class="abele-timeline-panel__more">
-        and {{ rows.length - shown.length }} more
+        {{ t('area.andMore', { count: rows.length - shown.length }) }}
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 /**
  * What the pick is and who shares its time: for a life or a period, everyone who lived at the
  * same time and for how many years, most first; for an event, who was alive then and how old;
@@ -62,14 +67,14 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>()
 
-const years = (n: number) => (n < 1 ? 'under a year' : n === 1 ? '1 year' : `${n} years`)
+const years = (n: number) => (n < 1 ? t('area.underYear') : t('area.yearCount', { count: n }))
 
 const summary = computed(() => {
   const s = props.selected
   const dates = datesOf(s, props.lang)
   const life = lifeOf(s)
   if (!life || isPoint(s) || s.ending === 'none') return dates
-  return `${dates} · ${s.start.fuzzy || s.end?.fuzzy ? 'about ' : ''}${years(Math.floor(life[1] - life[0] + 1e-9))}`
+  return `${dates} · ${s.start.fuzzy || s.end?.fuzzy ? t('area.aboutValue', { value: years(Math.floor(life[1] - life[0] + 1e-9)) }) : years(Math.floor(life[1] - life[0] + 1e-9))}`
 })
 
 interface Row {
@@ -86,13 +91,19 @@ const rows = computed<Row[]>(() => {
       if (item === s || item.kind === 'era' || item.ending === 'none') continue
       const age = ageAt(item, s.start.at)
       if (age === null) continue
-      out.push({ item, text: item.kind === 'person' ? `aged ${age}` : `year ${age + 1}` })
+      out.push({
+        item,
+        text:
+          item.kind === 'person'
+            ? t('area.aged', { age })
+            : t('area.yearNumber', { year: age + 1 }),
+      })
     }
     return out.sort((a, b) => a.item.from - b.item.from)
   }
-  return together(s, props.items).map((t) => ({
-    item: t.item,
-    text: `${t.approx ? 'about ' : ''}${years(t.years)}`,
+  return together(s, props.items).map((row) => ({
+    item: row.item,
+    text: row.approx ? t('area.aboutValue', { value: years(row.years) }) : years(row.years),
   }))
 })
 
@@ -101,9 +112,9 @@ const shown = computed(() => rows.value.slice(0, MAX_ROWS))
 const caption = computed(() => {
   const n = rows.value.length
   const s = props.selected
-  if (isPoint(s) || s.ending === 'none') return `Alive at the time: ${n}`
-  if (s.kind === 'era') return `Lived in it: ${n}. Years in the era:`
-  return `Contemporaries: ${n}. Years lived at the same time:`
+  if (isPoint(s) || s.ending === 'none') return t('area.aliveCount', { count: n })
+  if (s.kind === 'era') return t('area.eraCount', { count: n })
+  return t('area.contemporaries', { count: n })
 })
 
 const dotClass = (item: TimelineItem) =>

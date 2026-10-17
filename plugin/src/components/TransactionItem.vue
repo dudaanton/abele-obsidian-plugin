@@ -1,6 +1,6 @@
 <template>
   <div v-if="transaction.transactionNotFound" class="abele-transaction-view">
-    <em class="abele-transaction-view__content">Transaction not found</em>
+    <em class="abele-transaction-view__content">{{ t('area.transactionNotFound') }}</em>
   </div>
   <EntryRow
     v-else-if="transaction.loaded"
@@ -60,6 +60,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { confirmDialog } from '@/components/obsidian/dialogs'
 import { Transaction } from '@/entities/Transaction'
 import { computed, onMounted, ref, watch } from 'vue'
@@ -114,13 +115,13 @@ const onContextMenu = (e: MouseEvent) => {
   const menu = new Menu()
   menu.addItem((item) => {
     item
-      .setTitle('Delete')
+      .setTitle(t('area.delete'))
       .setIcon('trash')
       .onClick(async () => {
         if (
           await confirmDialog({
-            title: 'Delete transaction',
-            message: 'Are you sure you want to delete this transaction?',
+            title: t('area.deleteTransaction'),
+            message: t('area.areYouSureYouWantToDeleteThisTransaction'),
           })
         ) {
           props.transaction.remove()

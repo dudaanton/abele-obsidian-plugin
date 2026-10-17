@@ -1,37 +1,43 @@
 <template>
-  <ObsidianModal title="Select date range" close-in-footer @close="emit('cancel')">
+  <ObsidianModal :title="t('area.rangeSelectdaterange')" close-in-footer @close="emit('cancel')">
     <div class="abele-date-range-picker">
-      <Setting name="From" desc="Start date of the range">
+      <Setting :name="t('area.rangeFrom')" :desc="t('area.rangeStartdateoftherange')">
         <div class="abele-date-range-picker__input-row">
           <Input
             :model-value="fromDisplay"
-            aria-label="Start date"
+            :aria-label="t('area.rangeStartdate')"
             placeholder="YYYY-MM-DD"
             @commit="onFromInput"
           />
           <ObsidianIcon
             icon="calendar"
-            tooltip="Choose start date"
+            :tooltip="t('area.rangeChoosestartdate')"
             @click="calendarTarget = 'from'"
           />
         </div>
       </Setting>
-      <Setting name="To" desc="End date of the range">
+      <Setting :name="t('area.rangeTo')" :desc="t('area.rangeEnddateoftherange')">
         <div class="abele-date-range-picker__input-row">
           <Input
             :model-value="toDisplay"
-            aria-label="End date"
+            :aria-label="t('area.rangeEnddate')"
             placeholder="YYYY-MM-DD"
             @commit="onToInput"
           />
-          <ObsidianIcon icon="calendar" tooltip="Choose end date" @click="calendarTarget = 'to'" />
+          <ObsidianIcon
+            icon="calendar"
+            :tooltip="t('area.rangeChooseenddate')"
+            @click="calendarTarget = 'to'"
+          />
         </div>
       </Setting>
     </div>
 
     <ObsidianModal
       v-if="calendarTarget"
-      :title="calendarTarget === 'from' ? 'Select start date' : 'Select end date'"
+      :title="
+        calendarTarget === 'from' ? t('area.rangeSelectstartdate') : t('area.rangeSelectenddate')
+      "
       @close="calendarTarget = null"
     >
       <div class="abele-date-range-picker__calendar-wrap">
@@ -43,19 +49,28 @@
     </ObsidianModal>
     <template #footer>
       <ObsidianButton
-        text="Apply"
-        tooltip="Apply this date range"
+        :text="t('area.rangeApply')"
+        :tooltip="t('area.rangeApplythisdaterange')"
         accent
         :disabled="!fromDate || !toDate"
         @click="apply"
       />
-      <ObsidianButton text="Reset" tooltip="Reset the date range" @click="emit('reset')" />
-      <ObsidianButton text="Cancel" tooltip="Close without applying" @click="emit('cancel')" />
+      <ObsidianButton
+        :text="t('area.rangeReset')"
+        :tooltip="t('area.rangeResetthedaterange')"
+        @click="emit('reset')"
+      />
+      <ObsidianButton
+        :text="t('area.cancel')"
+        :tooltip="t('area.rangeClosewithoutapplying')"
+        @click="emit('cancel')"
+      />
     </template>
   </ObsidianModal>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { ref, computed } from 'vue'
 import dayjs from 'dayjs'
 import { DATE_FORMAT } from '@/constants/dates'

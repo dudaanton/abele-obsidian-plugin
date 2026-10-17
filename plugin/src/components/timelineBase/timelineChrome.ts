@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * The frame around the history timeline's rows, painted over them: the names of the rows, the
  * axis with its years and the strip of eras, the year under the pointer, and the overview of the
@@ -52,7 +53,7 @@ export function paintLaneNames(
       ctx.font = fontOf(p, false)
       ctx.fillStyle = p.faint
       const n = box.lane.count
-      ctx.fillText(n === 1 ? '1 note' : `${n} notes`, x + 10, y + p.small + 4)
+      ctx.fillText(t('area.noteCount', { count: n }), x + 10, y + p.small + 4)
     }
   }
   ctx.restore()

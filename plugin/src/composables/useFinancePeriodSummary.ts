@@ -1,4 +1,5 @@
 import { ref, watch, type Ref } from 'vue'
+import { t } from '@/i18n'
 import { financeDirections } from '@/finance/accountTypes'
 import type { Dayjs } from 'dayjs'
 import type { AccountsList } from '@/entities/AccountsList'
@@ -191,7 +192,7 @@ export function useFinancePeriodSummary(options: PeriodSummaryOptions) {
         ? {
             id: c,
             label: `≈ ${rates().display}`,
-            tooltip: `Every currency in ${rates().display}, at today's rates`,
+            tooltip: t('area.everyCurrency', { currency: rates().display }),
           }
         : { id: c, label: c }
     )

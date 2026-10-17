@@ -15,6 +15,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { TasksList } from '@/entities/TasksList'
 import Timeline from './Timeline.vue'
 import SidebarPanel from './obsidian/SidebarPanel.vue'
@@ -71,7 +72,7 @@ const journal = computed(() => {
 
 const selectDate = (date: dayjs.Dayjs) => {
   if (!journal.value) {
-    new Notice('No daily journal found. Please check your settings.')
+    new Notice(t('area.noDailyJournalFoundPleaseCheckYourSettings'))
 
     return
   }
@@ -84,12 +85,12 @@ const onDateRightClick = (date: dayjs.Dayjs, event: MouseEvent) => {
   const menu = new Menu()
   menu.setUseNativeMenu(false)
   menu.addItem((item) => {
-    item.setTitle('Event date')
+    item.setTitle(t('area.eventDate'))
     item.setIcon('calendar-days')
     item.onClick(() => createTask({ date }))
   })
   menu.addItem((item) => {
-    item.setTitle('Due date')
+    item.setTitle(t('area.dueDate'))
     item.setIcon('calendar-clock')
     item.onClick(() => createTask({ due: date }))
   })

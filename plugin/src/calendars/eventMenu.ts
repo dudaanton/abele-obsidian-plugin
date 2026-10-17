@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { openExternal } from '@/helpers/openExternal'
 import { Menu, Notice } from 'obsidian'
 import type { CalendarEvent } from './events'
@@ -9,7 +10,7 @@ export async function toggleEventDone(event: CalendarEvent): Promise<void> {
   try {
     await calendars().setDone(event, !calendars().isDone(event))
   } catch (e) {
-    new Notice(`The event's completion could not be saved: ${(e as Error).message}`)
+    new Notice(t('area.eventSaveError', { error: (e as Error).message }))
   }
 }
 
@@ -23,24 +24,24 @@ export function openEventMenu(event: CalendarEvent, day: string, e: MouseEvent |
   const menu = new Menu()
   menu.addItem((item) =>
     item
-      .setTitle(calendars().isDone(event) ? 'Mark undone' : 'Mark done')
+      .setTitle(calendars().isDone(event) ? t('area.markUndone') : t('area.markDone'))
       .setIcon(calendars().isDone(event) ? 'square' : 'check-square')
       .onClick(() => void toggleEventDone(event))
   )
   menu.addItem((item) =>
     item
-      .setTitle('Create meeting note')
+      .setTitle(t('area.createMeetingNote'))
       .setIcon('file-plus')
       .onClick(() => {
         createMeetingNote(event, day).catch((err) => {
-          new Notice(`The meeting note could not be created: ${(err as Error).message}`)
+          new Notice(t('area.meetingCreateError', { error: (err as Error).message }))
         })
       })
   )
   if (event.url) {
     menu.addItem((item) =>
       item
-        .setTitle('Open the event link')
+        .setTitle(t('area.openTheEventLink'))
         .setIcon('external-link')
         .onClick(() => openExternal(event.url, '_blank'))
     )

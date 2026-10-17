@@ -126,6 +126,8 @@ export function timeOf(value: unknown): string | null {
   return `${pad(Number(m[1]))}:${m[2]}`
 }
 
+import { currentLocale, relativeFormatter } from '@/i18n'
+
 const DAY_MS = 86_400_000
 
 /**
@@ -147,6 +149,8 @@ export function relativeTime(
         Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())) /
         DAY_MS
     )
+    if (currentLocale().language !== 'en')
+      return relativeFormatter(currentLocale().format, { numeric: 'auto' }).format(days, 'day')
     if (days === 0) return 'today'
     if (days === 1) return 'tomorrow'
     if (days === -1) return 'yesterday'
@@ -154,6 +158,13 @@ export function relativeTime(
     return days > 0 ? `in ${n} days` : `${n} days ago`
   }
   const diff = dateOf(parsed, clock).getTime() - now.getTime()
+  if (currentLocale().language !== 'en') {
+    const magnitude = Math.abs(diff)
+    const unit = magnitude >= DAY_MS ? 'day' : magnitude >= 3_600_000 ? 'hour' : 'minute'
+    const size = unit === 'day' ? DAY_MS : unit === 'hour' ? 3_600_000 : 60_000
+    const count = Math.floor(magnitude / size) * Math.sign(diff)
+    return relativeFormatter(currentLocale().format, { numeric: 'auto' }).format(count, unit)
+  }
   const minutes = Math.floor(Math.abs(diff) / 60_000)
   if (minutes < 1) return 'now'
   const hours = Math.floor(minutes / 60)

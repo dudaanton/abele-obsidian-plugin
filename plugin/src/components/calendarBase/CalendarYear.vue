@@ -13,8 +13,8 @@
       </div>
       <div class="abele-calendar-year__grid" @click="onDayClick">
         <div
-          v-for="name in compact ? [] : weekdayNames"
-          :key="name"
+          v-for="(name, index) in compact ? [] : weekdayNames"
+          :key="index"
           class="abele-calendar-year__weekday"
         >
           {{ name }}
@@ -49,6 +49,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+import { areaDate } from '@/helpers/areaDateFormat'
 /**
  * A year as twelve small months, each day tinted by how much is on it — relative to the
  * busiest day of the year, so a quiet year still shows its shape. A month's name opens the
@@ -80,16 +82,16 @@ const max = computed(() => Math.max(0, ...counts.value.values()))
 const levelOf = (day: string) =>
   props.levels ? (props.levels.get(day) ?? 0) : heatLevel(counts.value.get(day) ?? 0, max.value)
 const LEVEL_WORDS = {
-  0: 'nothing',
-  1: 'a little',
-  2: 'some',
-  3: 'a lot',
-  4: 'the most',
-  open: 'to do',
+  0: t('area.heatNothing'),
+  1: t('area.heatLittle'),
+  2: t('area.heatSome'),
+  3: t('area.heatLot'),
+  4: t('area.heatMost'),
+  open: t('area.heatTodo'),
 }
 const dayWords = (day: string) =>
   props.levels
-    ? `${dayjs(day).format('ddd D MMMM')}: ${LEVEL_WORDS[levelOf(day)]}`
+    ? `${areaDate(dayjs(day), 'ddd D MMMM')}: ${LEVEL_WORDS[levelOf(day)]}`
     : `${day}: ${counts.value.get(day) ?? 0}`
 
 const months = computed(() =>
@@ -101,14 +103,14 @@ const months = computed(() =>
       month,
       prefix,
       total,
-      name: dayjs(`${prefix}-01`).format('MMMM'),
+      name: areaDate(dayjs(`${prefix}-01`), 'MMMM'),
       days: monthGrid(props.year, month, props.mondayFirst),
     }
   })
 )
 
 const weekdayNames = computed(() =>
-  months.value[0].days.slice(0, 7).map((day) => dayjs(day).format('dd').slice(0, 1))
+  months.value[0].days.slice(0, 7).map((day) => areaDate(dayjs(day), 'dd').slice(0, 1))
 )
 
 /** One listener per month rather than one per day: a year is 365 of them. */

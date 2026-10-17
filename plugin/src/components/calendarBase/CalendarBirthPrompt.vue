@@ -1,7 +1,11 @@
 <template>
   <div class="abele-calendar-base__birth">
     <EmptyState
-      text="A life in weeks is counted from your birth date. Set it once here and every base uses it; it is kept in the plugin's settings, under Tasks."
+      :text="
+        t(
+          'area.aLifeInWeeksIsCountedFromYourBirthDateSetItOnceHereAndEveryBaseUsesItItIsKeptInThePluginsSettingsUnderTasks'
+        )
+      "
     />
     <div class="abele-calendar-base__birth-row">
       <Input
@@ -11,11 +15,11 @@
         @update:model-value="(v) => (draft = v)"
       />
       <Button
-        text="Show my weeks"
+        :text="t('area.showMyWeeks')"
         accent
         :disabled="!isBirthDate(draft)"
         :tooltip="
-          isBirthDate(draft) ? 'Save the birth date and draw the weeks' : 'Pick a date first'
+          isBirthDate(draft) ? t('area.saveTheBirthDateAndDrawTheWeeks') : t('area.pickADateFirst')
         "
         @click="save"
       />
@@ -24,6 +28,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 /**
  * What the life in weeks shows before it knows when the life began: a field for the birth date,
  * saved into the plugin's settings — one date for the person, not one per base.

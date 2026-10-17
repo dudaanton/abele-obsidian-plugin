@@ -2,12 +2,12 @@
   <div class="abele-transactions-list" data-abele-anchor="section:transactions">
     <ListSectionHeader
       class-prefix="abele-transactions-list"
-      text="Transactions"
+      :text="t('area.transactions')"
       :count="transactions.length"
       :fold="fold"
       :search="search"
       search-tooltip="Search transactions"
-      placeholder="Search transactions…"
+      :placeholder="t('area.searchTransactions')"
     >
       <template #leading
         ><ObsidianIcon icon="banknote-arrow-down" @click="addTransaction()"
@@ -31,13 +31,16 @@
         v-if="!sorted.length"
         class="abele-transactions-list__empty"
         :variant="search.terms.value.length ? 'no-matches' : 'empty'"
-        :text="search.terms.value.length ? 'Nothing matches the search.' : 'No transactions.'"
+        :text="
+          search.terms.value.length ? t('area.nothingMatchesTheSearch') : t('area.noTransactions')
+        "
       />
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { transactionKind } from '@/finance/accountTypes'
 import { addMoney } from '@/helpers/moneySum'
 import { Transaction } from '@/entities/Transaction'

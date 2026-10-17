@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { Transaction, TransactionCreateDTO } from '@/entities/Transaction'
 import {
   cleanFileName,
@@ -61,7 +62,7 @@ export const createTransaction = async (
     })
   )
   if (!availablePath) {
-    new Notice('Failed to determine available path for the new transaction.', 3000)
+    new Notice(t('area.failedToDetermineAvailablePathForTheNewTransaction'), 3000)
     return
   }
 
@@ -121,7 +122,7 @@ export const createTransaction = async (
 
 export const createTransactionAndInsert = async (editor: Editor) => {
   if (!editor) {
-    new Notice('No active Markdown editor found.', 3000)
+    new Notice(t('area.noActiveMarkdownEditorFound'), 3000)
     return
   }
 
@@ -133,7 +134,7 @@ export const createTransactionAndInsert = async (editor: Editor) => {
 
   const availablePath = await getAvailablePath(getNewTransactionPath({ title }))
   if (!availablePath) {
-    new Notice('Failed to determine available path for the new transaction.', 3000)
+    new Notice(t('area.failedToDetermineAvailablePathForTheNewTransaction'), 3000)
     return
   }
 

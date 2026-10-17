@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * One frame of the history timeline, painted on a canvas: eras behind, the rows with their bars
  * and points, "+N" and density where a row is crowded, the names of the rows, the axis, the year
@@ -166,7 +167,7 @@ function paintLane(
     ctx.fillStyle = p.faint
     ctx.font = fontOf(p, false)
     ctx.textAlign = 'left'
-    ctx.fillText('Not at the same time', m.labelW + 8, y)
+    ctx.fillText(t('area.notTogether'), m.labelW + 8, y)
   }
   if (box.clusters.length) {
     const lines = Math.max(1, box.pack.lines)

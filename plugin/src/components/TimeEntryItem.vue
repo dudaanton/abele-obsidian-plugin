@@ -1,6 +1,6 @@
 <template>
   <div v-if="entry.entryNotFound" class="abele-time-entry-item">
-    <em class="abele-time-entry-item__content">Time entry not found</em>
+    <em class="abele-time-entry-item__content">{{ t('area.timeEntryNotFound') }}</em>
   </div>
   <EntryRow
     v-else-if="entry.loaded"
@@ -21,7 +21,9 @@
         />
         <span v-if="idx < entry.groups.length - 1">, </span>
       </template>
-      <span v-if="!entry.groups.length" class="abele-time-entry-item__no-groups">Timer</span>
+      <span v-if="!entry.groups.length" class="abele-time-entry-item__no-groups">{{
+        t('area.timer')
+      }}</span>
     </span>
     <!-- How long, in the column the day's total stands in. -->
     <template #codes>
@@ -36,15 +38,16 @@
       <span class="abele-time-entry-item__time-range">{{ timeRange }}</span>
     </template>
     <template v-if="entry.isActive" #actions>
-      <ObsidianIcon icon="timer-off" label="Stop timer" @click.stop="stopTimer" />
+      <ObsidianIcon icon="timer-off" :label="t('area.stopTimer')" @click.stop="stopTimer" />
     </template>
     <template v-else #aside>
-      <ObsidianIcon icon="timer-reset" label="Start again" @click.stop="startNew" />
+      <ObsidianIcon icon="timer-reset" :label="t('area.startAgain')" @click.stop="startNew" />
     </template>
   </EntryRow>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { confirmDialog } from '@/components/obsidian/dialogs'
 import { TimeEntry } from '@/entities/TimeEntry'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
@@ -57,7 +60,7 @@ import { createTimeEntry, stopActiveTimeEntry } from '@/commands/createTimeEntry
 import { Menu } from 'obsidian'
 import dayjs from 'dayjs'
 // One way of saying a duration across the lists, so a day's total and its entries read alike.
-import { formatDuration } from '@/helpers/displayFormat'
+import { areaDuration as formatDuration } from '@/helpers/areaDateFormat'
 
 const props = defineProps<{
   entry: TimeEntry
@@ -113,13 +116,13 @@ const onContextMenu = (e: MouseEvent) => {
   const menu = new Menu()
   menu.addItem((item) => {
     item
-      .setTitle('Delete')
+      .setTitle(t('area.delete'))
       .setIcon('trash')
       .onClick(async () => {
         if (
           await confirmDialog({
-            title: 'Delete time entry',
-            message: 'Are you sure you want to delete this time entry?',
+            title: t('area.deleteTimeEntry'),
+            message: t('area.areYouSureYouWantToDeleteThisTimeEntry'),
           })
         ) {
           props.entry.remove()

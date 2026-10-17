@@ -12,25 +12,27 @@
         @click="toggleView()"
         @keydown.enter.prevent="toggleView()"
       >
-        {{ view === 'year' ? selectedYear : dayjs().month(selectedMonth).format('MMMM') }}
+        {{ view === 'year' ? selectedYear : areaDate(dayjs().month(selectedMonth), 'MMMM') }}
         <template v-if="view === 'month'">{{ selectedYear }}</template>
       </div>
       <div class="abele-calendar__header-controls">
         <ObsidianIcon
           icon="chevron-left"
-          :tooltip="view === 'year' ? 'Previous year' : 'Previous month'"
+          :tooltip="view === 'year' ? t('area.previousYear') : t('area.previousMonth')"
           @click="view === 'year' ? selectedYear-- : previousMonth()"
         />
         <!-- In a note's log month the keyboard moves through the controls and the days alike. -->
         <ObsidianIcon
           v-if="marks"
-          text-right="Today"
-          tooltip="Select today"
+          :text-right="t('area.today')"
+          :tooltip="t('area.selectToday')"
           @click="todayClick()"
         />
-        <div v-else class="abele-calendar__header-today" @click="todayClick()">Today</div>
+        <div v-else class="abele-calendar__header-today" @click="todayClick()">
+          {{ t('area.today') }}
+        </div>
         <ObsidianIcon
-          :tooltip="view === 'year' ? 'Next year' : 'Next month'"
+          :tooltip="view === 'year' ? t('area.nextYear') : t('area.nextMonth')"
           icon="chevron-right"
           @click="view === 'year' ? selectedYear++ : nextMonth()"
         />
@@ -174,6 +176,8 @@
 </template>
 
 <script setup lang="ts">
+import { areaDate } from '@/helpers/areaDateFormat'
+import { t } from '@/i18n'
 import { useOwnerVisibility } from '@/composables/useOwnerVisibility'
 import { useDate } from '@/composables/useDate'
 import dayjs from 'dayjs'
@@ -212,10 +216,20 @@ const dayLabel = (date: dayjs.Dayjs, key: string): string => {
   const mark = props.marks?.get(key)
   const words =
     props.marksOf === 'tasks'
-      ? { done: 'All tasks done', open: 'Tasks to do', entry: 'Events', none: 'Nothing planned' }
-      : { done: 'Checked log', open: 'Unchecked log', entry: 'Log entry', none: 'No log entries' }
+      ? {
+          done: t('area.Alltasksdone'),
+          open: t('area.Taskstodo'),
+          entry: t('area.Events'),
+          none: t('area.Nothingplanned'),
+        }
+      : {
+          done: t('area.Checkedlog'),
+          open: t('area.Uncheckedlog'),
+          entry: t('area.Logentry'),
+          none: t('area.Nologentries'),
+        }
   const status = mark ? words[mark] : words.none
-  return `${date.format('ddd D MMMM YYYY')}: ${status}`
+  return `${areaDate(date, 'ddd D MMMM YYYY')}: ${status}`
 }
 const selectedMonth = ref(
   props.selectedDate ? props.selectedDate.get('month') : today.value.get('month')
@@ -340,7 +354,7 @@ const weekdays = computed(() => {
     i < (GlobalStore.getInstance().weekStartsOnMonday.value ? 8 : 7);
     i++
   ) {
-    days.push(dayjs().day(i).format('dd'))
+    days.push(areaDate(dayjs().day(i), 'dd'))
   }
   return days
 })
@@ -400,8 +414,8 @@ watch(
 const titleEl = ref<HTMLElement>()
 const titleTip = computed(() =>
   view.value === 'year'
-    ? `Back to ${dayjs().month(selectedMonth.value).format('MMMM')}`
-    : 'Show the whole year'
+    ? t('area.backToMonth', { month: areaDate(dayjs().month(selectedMonth.value), 'MMMM') })
+    : t('area.showTheWholeYear')
 )
 watch([titleEl, titleTip], ([el, tip]) => el && setTooltip(el, tip))
 function toggleView() {

@@ -2,15 +2,15 @@
   <SidebarPanel class="abele-finance-sidebar">
     <div class="abele-finance-sidebar__header">
       <div class="abele-finance-sidebar__header-left">
-        <div class="abele-finance-sidebar__header-text">Transactions</div>
+        <div class="abele-finance-sidebar__header-text">{{ t('area.transactions') }}</div>
         <ObsidianIcon
           icon="banknote-arrow-down"
-          tooltip="New transaction"
+          :tooltip="t('area.newTransaction')"
           @click="createTransaction()"
         />
         <ObsidianIcon
           icon="landmark"
-          tooltip="Show every account and its balance"
+          :tooltip="t('area.showEveryAccountAndItsBalance')"
           @click="showAccounts"
         />
       </div>
@@ -40,24 +40,24 @@
           class="abele-finance-sidebar__card-details abele-finance-sidebar__dashed"
         >
           <div class="abele-finance-sidebar__card-row">
-            <span class="abele-finance-sidebar__summary-label">Debts</span>
+            <span class="abele-finance-sidebar__summary-label">{{ t('area.debts') }}</span>
             <span class="abele-finance-sidebar__card-debts">
               <span
                 v-if="totalCard.owed > 0"
                 class="abele-finance-sidebar__card-debt-amount abele-finance-sidebar__summary-value--income"
-                aria-label="Owed to me"
+                :aria-label="t('area.owedToMe')"
                 >+{{ formatAmount(totalCard.owed) }}</span
               >
               <span
                 v-if="totalCard.debt > 0"
                 class="abele-finance-sidebar__card-debt-amount abele-finance-sidebar__summary-value--expense"
-                aria-label="I owe"
+                :aria-label="t('area.iOwe')"
                 >-{{ formatAmount(totalCard.debt) }}</span
               >
             </span>
           </div>
           <div class="abele-finance-sidebar__card-row">
-            <span class="abele-finance-sidebar__summary-label">Net</span>
+            <span class="abele-finance-sidebar__summary-label">{{ t('area.net') }}</span>
             <span class="abele-finance-sidebar__card-net">≈ {{ formatAmount(totalCard.net) }}</span>
           </div>
         </div>
@@ -74,24 +74,24 @@
           class="abele-finance-sidebar__card-details abele-finance-sidebar__dashed"
         >
           <div class="abele-finance-sidebar__card-row">
-            <span class="abele-finance-sidebar__summary-label">Debts</span>
+            <span class="abele-finance-sidebar__summary-label">{{ t('area.debts') }}</span>
             <span class="abele-finance-sidebar__card-debts">
               <span
                 v-if="card.owed > 0"
                 class="abele-finance-sidebar__card-debt-amount abele-finance-sidebar__summary-value--income"
-                aria-label="Owed to me"
+                :aria-label="t('area.owedToMe')"
                 >+{{ formatAmount(card.owed) }}</span
               >
               <span
                 v-if="card.debt > 0"
                 class="abele-finance-sidebar__card-debt-amount abele-finance-sidebar__summary-value--expense"
-                aria-label="I owe"
+                :aria-label="t('area.iOwe')"
                 >-{{ formatAmount(card.debt) }}</span
               >
             </span>
           </div>
           <div class="abele-finance-sidebar__card-row">
-            <span class="abele-finance-sidebar__summary-label">Net</span>
+            <span class="abele-finance-sidebar__summary-label">{{ t('area.net') }}</span>
             <span class="abele-finance-sidebar__card-net">{{ formatAmount(card.net) }}</span>
           </div>
         </div>
@@ -111,7 +111,7 @@
       <EmptyState
         v-if="periodEmpty"
         class="abele-finance-sidebar__period-empty"
-        :text="`Nothing in ${periodName(periodStart, periodEnd)}`"
+        :text="t('area.nothingInPeriod', { period: periodName(periodStart, periodEnd) })"
       />
       <div
         v-else
@@ -119,7 +119,7 @@
         :class="{ 'abele-finance-sidebar__summary_approx': approxPeriod }"
       >
         <div class="abele-finance-sidebar__summary-row">
-          <span class="abele-finance-sidebar__summary-label">Income</span>
+          <span class="abele-finance-sidebar__summary-label">{{ t('area.income') }}</span>
           <span
             class="abele-finance-sidebar__summary-value abele-finance-sidebar__summary-value--income"
           >
@@ -130,7 +130,7 @@
           </span>
         </div>
         <div class="abele-finance-sidebar__summary-row">
-          <span class="abele-finance-sidebar__summary-label">Expenses</span>
+          <span class="abele-finance-sidebar__summary-label">{{ t('area.expenses') }}</span>
           <span
             class="abele-finance-sidebar__summary-value abele-finance-sidebar__summary-value--expense"
           >
@@ -141,7 +141,7 @@
           </span>
         </div>
         <div class="abele-finance-sidebar__summary-row abele-finance-sidebar__summary-row--total">
-          <span class="abele-finance-sidebar__summary-label">Savings</span>
+          <span class="abele-finance-sidebar__summary-label">{{ t('area.savings') }}</span>
           <span
             class="abele-finance-sidebar__summary-value"
             :class="{
@@ -179,7 +179,7 @@
         class="abele-finance-sidebar__summary abele-finance-sidebar__summary--debt abele-finance-sidebar__dashed"
       >
         <div v-if="periodLent > 0" class="abele-finance-sidebar__summary-row">
-          <span class="abele-finance-sidebar__summary-label">Lent</span>
+          <span class="abele-finance-sidebar__summary-label">{{ t('area.lent') }}</span>
           <span
             class="abele-finance-sidebar__summary-value abele-finance-sidebar__summary-value--income"
           >
@@ -187,7 +187,7 @@
           </span>
         </div>
         <div v-if="periodReturned > 0" class="abele-finance-sidebar__summary-row">
-          <span class="abele-finance-sidebar__summary-label">Returned</span>
+          <span class="abele-finance-sidebar__summary-label">{{ t('area.returned') }}</span>
           <span
             class="abele-finance-sidebar__summary-value abele-finance-sidebar__summary-value--expense"
           >
@@ -211,7 +211,7 @@
             :created="createPieChart"
             class="abele-finance-sidebar__pie-chart"
           />
-          <EmptyState v-else class="abele-finance-sidebar__pie-empty" text="No data" />
+          <EmptyState v-else class="abele-finance-sidebar__pie-empty" :text="t('area.noData')" />
         </template>
         <template v-else-if="chartTab === 'calendar'">
           <Chart
@@ -234,13 +234,13 @@
     </section>
 
     <!-- Recent Transactions -->
-    <Section title="Recent Transactions" class="abele-finance-sidebar__section">
+    <Section :title="t('area.recentTransactions')" class="abele-finance-sidebar__section">
       <template #actions>
         <ObsidianIcon
           class="abele-finance-sidebar__search-toggle"
           icon="search"
           :active="search.open.value"
-          :tooltip="search.open.value ? 'Close the search' : 'Search all transactions'"
+          :tooltip="search.open.value ? t('area.closeTheSearch') : t('area.searchAllTransactions')"
           @click="search.toggle"
         />
       </template>
@@ -248,7 +248,7 @@
         v-if="search.open.value"
         v-model="search.query.value"
         class="abele-finance-sidebar__search"
-        placeholder="Search transactions…"
+        :placeholder="t('area.searchTransactions')"
         autofocus
         @keydown.escape.stop.prevent="search.close"
       />
@@ -268,13 +268,19 @@
       <EmptyState
         v-else
         :variant="search.terms.value.length ? 'no-matches' : 'empty'"
-        :text="search.terms.value.length ? 'Nothing matches the search.' : 'No transactions found'"
+        :text="
+          search.terms.value.length
+            ? t('area.nothingMatchesTheSearch')
+            : t('area.noTransactionsFound')
+        "
       />
     </Section>
   </SidebarPanel>
 </template>
 
 <script setup lang="ts">
+import { areaDate } from '@/helpers/areaDateFormat'
+import { t } from '@/i18n'
 import { financeDirections, transactionKind } from '@/finance/accountTypes'
 import { useFinanceCharts } from '@/composables/useFinanceCharts'
 import { ALL_CURRENCIES, useFinancePeriodSummary } from '@/composables/useFinancePeriodSummary'
@@ -434,7 +440,7 @@ const periodCode = computed(() =>
 )
 const ratesStale = computed(() => ratesStatus() === 'stale')
 const ratesDay = computed(() =>
-  exchangeRates.table ? dayjs(exchangeRates.table.fetchedOn).format('D MMM') : ''
+  exchangeRates.table ? areaDate(dayjs(exchangeRates.table.fetchedOn), 'D MMM') : ''
 )
 const approxTooltip = computed(() =>
   ratesTooltip(periodTotals.value.currencies ?? [], periodTotals.value.missing ?? [])
@@ -462,10 +468,30 @@ type ChartTab = 'expenses' | 'income' | 'calendar' | 'networth'
 const chartTab = ref<ChartTab>('expenses')
 // Four words did not fit a panel's width and broke onto two rows: glyphs, the words in tooltips.
 const allChartTabs = [
-  { id: 'expenses' as ChartTab, label: 'Expenses', icon: 'pie-chart', tooltip: 'Expenses' },
-  { id: 'income' as ChartTab, label: 'Income', icon: 'piggy-bank', tooltip: 'Income' },
-  { id: 'calendar' as ChartTab, label: 'Calendar', icon: 'calendar-days', tooltip: 'Calendar' },
-  { id: 'networth' as ChartTab, label: 'Net Worth', icon: 'line-chart', tooltip: 'Net worth' },
+  {
+    id: 'expenses' as ChartTab,
+    label: t('area.expenses'),
+    icon: 'pie-chart',
+    tooltip: t('area.expenses'),
+  },
+  {
+    id: 'income' as ChartTab,
+    label: t('area.income'),
+    icon: 'piggy-bank',
+    tooltip: t('area.income'),
+  },
+  {
+    id: 'calendar' as ChartTab,
+    label: t('area.calendar'),
+    icon: 'calendar-days',
+    tooltip: t('area.calendar'),
+  },
+  {
+    id: 'networth' as ChartTab,
+    label: t('area.netWorth'),
+    icon: 'line-chart',
+    tooltip: t('area.netWorth'),
+  },
 ]
 
 const chartTabs = computed(() =>
@@ -534,7 +560,7 @@ const networthData = pausedWhileHidden(active, () => {
   const dates: string[] = []
   let d = periodStart.value
   while (d.isBefore(periodEnd.value) || d.isSame(periodEnd.value, 'day')) {
-    dates.push(d.format('MMM D'))
+    dates.push(areaDate(d, 'MMM D'))
     d = d.add(1, 'day')
   }
 

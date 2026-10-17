@@ -1,0 +1,2932 @@
+{
+  "area.markUndone": {
+    "englishHash": "cc431329bed084b696ba3301015d8369e3c9465014f33583494ac2c30007a90c",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.markNotDone": {
+    "englishHash": "80d46001ea7a74e22d787bf041d1f76f3f580911f437250a962785442ea0e986",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.markDone": {
+    "englishHash": "9b6d6ae5c1f0fb8381292f060c9f4b0b86afaceb5f1eba0b1bd774d05fe8f183",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.createMeetingNote": {
+    "englishHash": "32b2a0e1d40d7bab05fbb3f9cd554ceb0b8222ac0845ad43b87e6be89494d4ad",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.openTheEventLink": {
+    "englishHash": "28e27628ac4f75edc0941aa3bda93103782bbf0986a07f3b1030eed8914bc9c3",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.failedToDetermineAvailablePathForTheNewTask": {
+    "englishHash": "be7bee82915b76e2ee4010ac36eb10d793541d488bc71127c924a5e9d1c1b87c",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.noActiveMarkdownEditorFound": {
+    "englishHash": "6721f44d344d8b0587325a66c8bb8d0f9864229f2bd7abf647422ba19dbd6150",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.failedToDetermineAvailablePathForTheNewTimeEntry": {
+    "englishHash": "c5a07f361360b63fc9910557c04519701d0fc0f4a86cd98d861e94ae0f60afea",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.failedToDetermineAvailablePathForTheNewTransaction": {
+    "englishHash": "368dfdca3af26ab31e34ffe55cabb4fdd8bc6e46011c29dea80025225df4ad1c",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.previousYear": {
+    "englishHash": "626f99d2fe184eb3918f91bddf252cc1c75978f7d68cb929195a52955e7f097e",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.previousMonth": {
+    "englishHash": "9b2a15c33359eed22317f1584552893a276860b29fd2bd224ecd2572c5915b27",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.today": {
+    "englishHash": "5397d8be1e29249b78a1dad485a7dfc8cf9cbf685f8f7084a1dea271ab8dcd67",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.tomorrow": {
+    "englishHash": "cde189ce451b90181283ee7fe2831abf56984ca1dbd423723a85ca0599b93df5",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.yesterday": {
+    "englishHash": "abeeb74a47e5723193a3f47d6f3790095df9e6c0658b74f95fc42431149bcd0e",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.selectToday": {
+    "englishHash": "8280d15a70fa9da78ffdd06a61d34ab5104fc5f7ff8a3db780067ef0f11be10f",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.nextYear": {
+    "englishHash": "b19aca07c46d70fa4e2ac910ecdde9f4bb47defa7833745cd78a11994ed8082c",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.nextMonth": {
+    "englishHash": "e7579e3f5561a4afb9444ddbd442a38cf7a9aee9da7bbb5aeecc5fba404e6c9d",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.scheduledTasks": {
+    "englishHash": "5112530a6fb798edeb500cfcf43703f421901df4909c69bf59d7f48074a7a8e7",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.timeOptional": {
+    "englishHash": "fbe810ca55bd7d05be3d1d96e4c76b0b6ba74db4d1c6e1e35278cb397e2978b3",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.chooseTime": {
+    "englishHash": "f77675f03580ed8bcb948d1d37e7b4cd932ed137f0bcb11475cac5b7275183d6",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.clear": {
+    "englishHash": "d0f86d2093269896341fb4121f115da27f07de0418653b34dff083fc56b5c0f1",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.takeTheDateOff": {
+    "englishHash": "b9057b225b90edbf361929e0fd2fa5a293a32f9e73c78d78a467b1f6a96eae35",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.cancel": {
+    "englishHash": "c0774c185060fc1366ab0c01488af84eb5e4e1f4f59229431e064de73e0de6c5",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.closeThisAndChangeNothing": {
+    "englishHash": "4945ee41eb8b46585acd2ff1fce185b037d0529226b2b2e46d8f5683b57edbd3",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.confirm": {
+    "englishHash": "f66dc4fe259c8634225281e427124adb309e67757e185bbdfa8268d0982a2599",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.setThisDate": {
+    "englishHash": "8fda1a6e21a7b3f3a38aff7808d64b2e11d04d5ecc41e7f6baf03e57ebb11ebb",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.transactions": {
+    "englishHash": "e3ec8651eaff6fbd5c7f14dd7946b941ba27a8df5ecc2f048a2eca3b6d84b72d",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.newTransaction": {
+    "englishHash": "d55b0c4afdb1bd28df1d2a9264fc34830d5f0fd13e26fcabfb62554ffe1bb7ae",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.showEveryAccountAndItsBalance": {
+    "englishHash": "d76e400f644701f32cdb4cb6f1f99b030b33ac317e0daa3e2fef1a9ed6a31887",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.debts": {
+    "englishHash": "2b308e4112976abb61d1cd3e483165cca30c34f898df89a5504029217948876f",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.owedToMe": {
+    "englishHash": "cba8a46b6e23427f37739486d65c572ac0466745041fb81ac6dfa58c940d101b",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.iOwe": {
+    "englishHash": "869bbf6d36282a7223e7e41460d846ed5e4a75666eff08e3e19b7e76f3430919",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.net": {
+    "englishHash": "4084ddc189e12b57d57c02c20dcea34216368cb2140693e9d3f6d21ce5faa7d3",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.income": {
+    "englishHash": "0f67c96ed6b9775679418b910b9cf39011ec22d64e3a063814aac527ae01bd1b",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.expenses": {
+    "englishHash": "77a68acad1403f03d4cc53afe354748ad7dc32ed7555d136f6f90cd39767a415",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.savings": {
+    "englishHash": "cc260df2fb4b4f71e16fd09b0c348bdb138e8ea8739a684c6b9c960d347b6c21",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.lent": {
+    "englishHash": "d43db296fd58c9783c59dff63738207ce2f5c3118e388026c7bb20d630688ec5",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.returned": {
+    "englishHash": "8074386f38a23dcf5593f78c729ec45790fe4451ca2625fa8fe81ac5d86cf451",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.noData": {
+    "englishHash": "40d4ade4614db95a81a32d7e701dc43c126be51d082f5accaaef993a5377d0df",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.recentTransactions": {
+    "englishHash": "8f871ce5d285488585b1d2bf313496c1da718f7cc6ad0bbe287ed01fdc72f8c2",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.closeTheSearch": {
+    "englishHash": "f233d409710a42149feeab850523e72799e3a4da48f666e3527f268b57106182",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.searchAllTransactions": {
+    "englishHash": "47cb80028ffbab6e568e13a201d1141b10f855a272ce7abb32a2d7a75f017ffd",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.searchTransactions": {
+    "englishHash": "e9a5f978274f1d7993b167235253df9f2fcd5f8951ab43859b88dcfb772de9bb",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.nothingMatchesTheSearch": {
+    "englishHash": "3054094347e6167c102f3a31c4439cf9083f36a8db851a7de85e3af6399d50ce",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.noTransactionsFound": {
+    "englishHash": "46717df9836853b8004c788fb14366c075cdddb4fda04bc80a035d1ce75e7471",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.calendar": {
+    "englishHash": "727181e2e1586d2ca54157de3f85aa63268b8bdcc72197e0fd8ac921e16d22c8",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.netWorth": {
+    "englishHash": "85f0b276fb0a50dbe0ffa9da514d8a83c12878dab3ef9ef132c61b65878589f2",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.repeatEvery": {
+    "englishHash": "6b2aaf6947df62eb69191206ce1238b6acb9d8931a19dcfaaff6944c30bbc870",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.repeatInterval": {
+    "englishHash": "b4c3a56d89e6341ff473b4bae91871fc05cc547e1a2dd0dddb62ef81569838dc",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.onDays": {
+    "englishHash": "dd6339f40e945a2945781ae619e3fc808a2e45aceee189714c522ae917d87f78",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.on": {
+    "englishHash": "9cc01faad79c28daaa443d582cd5f5177d925c9cb57b11209b542fa6764b0504",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.specificDays": {
+    "englishHash": "4a5286aa8f239a9a508220f06e05b9ab847da9bfbb373dd7aa8397b3d6366290",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.chooseSpecificDaysOfTheMonth": {
+    "englishHash": "5ff0c9659ab1dac372c6b913b26ff469be8d3b718c68bef2e3f0e962f07cea67",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.weekday": {
+    "englishHash": "7273d7e651f317b3510133177aad650ec4545e98ed7fa0fe9c4019b87503dacd",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.chooseAWeekdayOfTheMonth": {
+    "englishHash": "320b6edb7aefde13191766bb0f4b099cedfcd94c1f0f352a214c6be9a398d6c2",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.firstLastDay": {
+    "englishHash": "a6e31ce6d7efe0e3983c1ca2988a8b969678278ab94fbc7ecc79aa57d5f9a18f",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.chooseTheFirstOrLastDayOfTheMonth": {
+    "englishHash": "dc11cbee68864987c72366570f18fea6b601cca5d3d9d9afa540c161bf4e44ca",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.daysOfMonth": {
+    "englishHash": "249913f7037fe37d2074044d4baaa8c5b633fd497c25ac7a8ec9e1a27817c4de",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.eg115": {
+    "englishHash": "8e044749048b91bdacb13b82e743eb8b0bfe657ee4f61def6747f5c4ed5d9a28",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.dayOfMonth": {
+    "englishHash": "536c65b56b40bce403b2256cc147d6fa09d40ce6649e58409b6b127168af4ad9",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.dayOfYear": {
+    "englishHash": "d5927811b04af9da7dbf30fabe288cb80057193739e9c2a904e5e38ac93e5933",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.fromCompletion": {
+    "englishHash": "1ec8a7e4be311e7a7065a33e128b1670037123adbc74d046f397a5269613ddce",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.repeatFromCompletion": {
+    "englishHash": "44278b079f039317feb61596634e8e71d0bbecd6254fedfa966e5d6b81892238",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.pattern": {
+    "englishHash": "b403a5a26744f5ecb49fae853a5576ccb2ca1f72a461eb010c2e13261240c298",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.recurrence": {
+    "englishHash": "966b080587e16fa7802290951a6a38eff91188f6a34aa74b5ac6b14b1d022a98",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.takeTheRecurrenceOff": {
+    "englishHash": "b9be6d018c8c6b913cd4e078340ee3c08dde05135eb329359bd78f6c41639ff2",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.setThisRecurrence": {
+    "englishHash": "1980f5000d934f98391dd2ce684b0e7f554de3cd0c36e56c164771ee538e58a8",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.taskNotFound": {
+    "englishHash": "5a9814f8718769de68d438dbb5dfeb9ab3717474f59111203829b4fc1f10b52e",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.hide": {
+    "englishHash": "591087ea83a48eade707829e9c9a60eff64cced919542264bf16d50e54ea6096",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.show": {
+    "englishHash": "827e0c6ac9936b6914c7689b2bdd41e808231e5e3a50f60094cecfe4686541b2",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.starts": {
+    "englishHash": "f70f128879afd1f36bc7d647ff500b27b6650bc7019405b232c17979634943a8",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.due": {
+    "englishHash": "5a04c33ee13fbae3bfa3be1c61a896d5761dabbc56b7aded7c99cad1116964ca",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.highPriority": {
+    "englishHash": "a2a12d72b2b6513c7324dea45e0f96d09a718e299a6c5d1a94a5a602f51da3ae",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.mediumPriority": {
+    "englishHash": "38bbc217f4d08cf628ce03b0274f418164d0205f68cdc08ad4926480a815f5ba",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.lowPriority": {
+    "englishHash": "052646e2add6dbd0c1be53f8239d5ae033f21eef860e98169a217e7d3f6bf048",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.addSubtask": {
+    "englishHash": "59a2bf92cb5501290e5c64cff22fe7062f16f836ec22d5da63971e313b7cb32b",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.makeSubtaskOf": {
+    "englishHash": "799763851f0615dc178aa32a1a4731a6aacddef687f527783b903f88674d9771",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.delete": {
+    "englishHash": "b26de372b4b0eaac60202884a72db98a6be6e9036e785ea867ea01c5f7921098",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.deleteTask": {
+    "englishHash": "7c19332661ed817b642be30cddf78b85e2e818392f05e99de555ea9a3271f48a",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.areYouSureYouWantToDeleteThisTask": {
+    "englishHash": "e0160c26a80f3d5b7bf0608b3c3dfc1dcfa4ee0836cd11f8d8510b4fcc38b956",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.changeDate": {
+    "englishHash": "fe7983ebbe4d7f02d470f7a4c939c0cad7ee4b150fa30a0186a0421a8eac2ec7",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.setDate": {
+    "englishHash": "0f6eb8dc38f0ffa995ec8abb72d353670aaa6e1e60755899388bf7b3078b43dc",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.changeDueDate": {
+    "englishHash": "73feddbf03b3266aa2af3fcfae2a08de1988175083309c2880f4cb63a6a777ad",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.setDueDate": {
+    "englishHash": "64d6450414374d7e0497150ec6c991110ca892f242f1764efbd5c5f00f706db3",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.changeRepeat": {
+    "englishHash": "32bb71f0c69083d89c01dd0b8754097dbb5c1c8c233321bd7143cb197590b123",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.setRepeat": {
+    "englishHash": "5215d897ced5844c2ec9e530102593e709a6c513029b7cb4427b2b05b8406665",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.clearDatesRepeatAndDone": {
+    "englishHash": "c7684e9e6f000e1135f86f6e6e222d17a28fe5a30248f10b4b690dc2a737731b",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.stopTimer": {
+    "englishHash": "fbbf4c3ed7dde42b19a38c1ce4ca082261bbbf363ddc67ef1c9156da36b6656c",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.startTimerForThisNote": {
+    "englishHash": "fca5097a344eca0d439c99330eb42508d23414729a5176981e19a7fdb60ea212",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.nothingPlannedThisDay": {
+    "englishHash": "bf0a0b158ae5aaf64fe14701d9c1befeff3941bf692d6532b0c392dc6e8eec0a",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.timeEntryNotFound": {
+    "englishHash": "0fe456f2b028ac81dc4b6e291e8d3803ac0dfb8eccf348502df84e2a47880d6a",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.timer": {
+    "englishHash": "16cf5255de1116c7c3f91683b4d409bc1e8b2bca9cb908d44ab64ccd976d18ab",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.startAgain": {
+    "englishHash": "630eb42ec76bb7e03a03d70641ce58e4f682a68b1bc5daee6e3ea72bfbe9e73f",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.deleteTimeEntry": {
+    "englishHash": "8ff3a4ba39044f3c7de52d08c02d6e20482a5074e5041ac5a3e719eb1f059086",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.areYouSureYouWantToDeleteThisTimeEntry": {
+    "englishHash": "1e53cc7fdb6eabd4293fdfc9a1340c047d9c287ae4b27920aa02622b0e87a015",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.timeEntries": {
+    "englishHash": "e465514e003697af4d7c27f17b45077b15b4fda06d84ccc74265a29d636d0a97",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.noTimeEntries": {
+    "englishHash": "9f49c3da5506b4bf3f6c7066628c84dbfc0d8406ed8ce2d663a7a8f575791dd0",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.time": {
+    "englishHash": "bbf063c475b0d107605ddac47c920394773ea795f9ac2d25e3925d19c36d089f",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.startATimer": {
+    "englishHash": "d9ca2ca8cc547d56cb68ea04284299b228773eebe5f7c4701b37217dc8161268",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.running": {
+    "englishHash": "15ce6468cd8f7458f52541e6498a50165e519d5c3cc14abb274d337670d73417",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.total": {
+    "englishHash": "bba745e2169cdf3c7fdd32f89c40fec79d230a8b3b07720a22a9be5aa9086579",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.entries": {
+    "englishHash": "624b7cc419e8a076a41c426e1cbbde3dde1064b6fa05bc791c77b440fe75cc08",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.noEntriesFound": {
+    "englishHash": "08a71a35e76e76cea40564ea2ea0d82dc2017a541bedd4ddf59f8e99c7708241",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.daily": {
+    "englishHash": "544716058286aa31b49630b3b3f0288a211e14535e040a476ece85d2b6b33a30",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.byGroups": {
+    "englishHash": "f514dffbff10053422ac5a7f092d051af5b2e27cc145162fba6502f76ed8ffeb",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.timeline": {
+    "englishHash": "704ef8cfcddd04e5ce1112b0ae45b45ed09fdeb1164f6467a0412dd3287c0b15",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.searchTasks": {
+    "englishHash": "cae59297ef163fc7ff754c2cdb6c6596a1a81ccedebef8f17f301aa9ae3dbb4f",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.filterByLabel": {
+    "englishHash": "0062d9a6116e93423eecf85390c3247a7e35acd688114981f7807a06cc6ac154",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.showCompletedTasks": {
+    "englishHash": "1d02eb8526774a666e0eaf7e3b5c31e9368b781ecd3771b8b942077046ea8608",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.hideCompletedTasks": {
+    "englishHash": "00a342537985e5204702a6f5306b17a6b6033049aa7cba37dad3b27b97ca0b92",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.showAsAList": {
+    "englishHash": "d92fec95a1bf7bf951227e65baa20f7c9d37cad932d8d0e8c5c0227bef969aa9",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.showAsACalendar": {
+    "englishHash": "f2f4b34bce64e5ee363839acd7e7981b5b4d35f4003488c2d33bdf1132f2d5b8",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.hideOverdueTasks": {
+    "englishHash": "3b23b0d9aa35fe349b2cfacd53b5fae3db4e01c4df2502e3d596a89fd18a6468",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.showOverdueTasks": {
+    "englishHash": "a18babe5c6f19bdd5e44b3e7d4b2edb6b88eb24d49f7194330a1778b0ebca387",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.overdue": {
+    "englishHash": "0dc8d18267a856f8e6f944c00a34ebcace8ea7aa8e7979773aad6865b4f4cf75",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.noDailyJournalFoundPleaseCheckYourSettings": {
+    "englishHash": "093115070ad09c715bd31449cea042a3a2904cdda2fc910ae20699ab733bc2b1",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.eventDate": {
+    "englishHash": "d665cae8b328797a206ed9399cedc86e98748b09ac12617a4fc735bac083bdfd",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.dueDate": {
+    "englishHash": "c3d209141b84c4d0d4d726621fa8202b8844c733d8347385ff6156cb5a86fa75",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.tasks": {
+    "englishHash": "7a30c0650aa7f7b1e7c0b7f51bf4db99073bbf33fdd66c90e63e638e8d3dcc6f",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.newTask": {
+    "englishHash": "cfe1b5e64c6eee0867ee1921ff6bf5fa2d0f39fc1f17fb8676eaa081147012d7",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.noTasksToShow": {
+    "englishHash": "93e58f361366857791f42defbe2e955d4153a693a715e29a41027738086976f4",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.transactionNotFound": {
+    "englishHash": "3446ef2d5becce69a4d78199d1b3850da22343c5037e5d3c263c4cab881c0735",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.deleteTransaction": {
+    "englishHash": "b94d63251475b72171939bdd7968458a2c7c4546579b0ba641583511c3781328",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.areYouSureYouWantToDeleteThisTransaction": {
+    "englishHash": "d3649bdab35cf23fd97f10eacd05b625ffacef16846e7cc8a31ca75812b71592",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.noTransactions": {
+    "englishHash": "d0eceaf8d6e6e5b6c840c1245ebbc20ca50fe5bbc1f1da186742da8570b19458",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.goToThisWeek": {
+    "englishHash": "6151b0cc033b3be6ad83c734d0d7ead2d9367621675cf2eb7a87ee6ba51f7e5b",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.goToToday": {
+    "englishHash": "f9a5b475e20b93e56f608b17bb028c17aceb63745c84ede0aa2f46d0f08fa28b",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.hideCompletedNotesAndEvents": {
+    "englishHash": "9df5ddb32b64ebe4be10e24ea273e03365cf29ac143d8599990926bbe28a6c8b",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.showCompletedNotesAndEvents": {
+    "englishHash": "71863af1445222738320a4ced0d4826eda8c2f0c19099907780ef59e7ca29a88",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.showTheWeekOfThisDay": {
+    "englishHash": "a9e7ae97be421e52f6e4e2142bb9bab77805a42304d9d2062572b5f747ca5155",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.makeANoteOnThisDay": {
+    "englishHash": "2ca52cb4fcd9554b1db9d63d53b77cc122d81238af0484f2d3e88b3ea977939e",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.nothingOnThisDay": {
+    "englishHash": "15d5136297da3000572bc4737d71fa4224e089f32da5e6ad55a4055d14adb0bd",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.month": {
+    "englishHash": "84e37a928e8ebb3635ba03ca35c599cff9928b9eba35523f970790b8029a6354",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.showAMonth": {
+    "englishHash": "ca5014f5be51e73508aa4889e6e62ccee3201651b486d279e3809c99b8691869",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.week": {
+    "englishHash": "200d3b47e800b27d2c70fe9726f4a1dad08f2892c4d7a19f963f19b053823cfd",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.showAWeekByTheHour": {
+    "englishHash": "ce04d15c3050de2726777b6c7a4c5c8a9b3f9e8b50884224548559759878d866",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.year": {
+    "englishHash": "643c767acca0322c3d4d4d771a2d737214e38874d3bda9069636549060d43a96",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.showTheWholeYear": {
+    "englishHash": "939f03bfb162ff16fb67172a8ce39ac5cb06cd5cbdd0d470ce696ddee64ee69e",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.life": {
+    "englishHash": "f8fe9ce39c48c84a0990f475594eba79e5e920f5dce0521b1eaf53c6e53958e9",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.showYourLifeInWeeks": {
+    "englishHash": "c6c9c269b9aae0404b06846e0a51875cf42d89e95505fe3d7dbf3cbf0979b49a",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.aLifeInWeeksIsCountedFromYourBirthDateSetItOnceHereAndEveryBaseUsesItItIsKeptInThePluginsSettingsUnderTasks": {
+    "englishHash": "607e99d0c5155392fe1139906b985bc994cf0f6e35dfe0a2d4e7c5dfd27bdc99",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.showMyWeeks": {
+    "englishHash": "e7573130933d855e7f3ee109d07e2947d7441215e83c74578af68713a50fbe18",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.saveTheBirthDateAndDrawTheWeeks": {
+    "englishHash": "c81c021c3ad640596bed07ea5ddf370ec187ed78764d76659cd85b2c7611caaa",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.pickADateFirst": {
+    "englishHash": "119bd13d83a8c45c8254484cda5a739ed652f90fb558b3d7903a0e86574e5dcf",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.lived": {
+    "englishHash": "a1499a4af8d98606236b70437fd5ef9c72ff3a3fb22d969ebcef4b50a6c73fa2",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.withNotes": {
+    "englishHash": "88512bdf3c1b0ba18e725c6655d645b0fcb6e1951bff2698ddecb3f16f9672a8",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.thisWeek": {
+    "englishHash": "0c6446088c0cef1afcb030907d7a5d0561a57f20893a1674b94f1e4d3538ce29",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.ahead": {
+    "englishHash": "da390dfac017f46b74e6f4d1bb24a6ba459357d6383f55608d54368fe23eafbc",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.showThisWeekByTheHour": {
+    "englishHash": "8775b0fc8b80752945997f3db7e0d4cd72f0047de28f4e23648e978531e4b9ab",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.nothingInThisWeek": {
+    "englishHash": "8e0752ad65f1be584ab6a8e787f1e7be0c92511f45b250bd6f3873e6ccb6145b",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.newNoteOnThisDay": {
+    "englishHash": "97aa0ffa5b4abd48097de4253c004ccb73ecfe270bd9a9a22e13edf3df84b1e1",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.allDay": {
+    "englishHash": "41499c3401e96768867688891dea326d845827bdfda522f588ca9599714c1773",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.goTo1812490BCOrAName": {
+    "englishHash": "7f33a4ead8153a7afdbe1e10648ad42fff829f1fe6621ee5ab7970589952a2cf",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.newNote": {
+    "englishHash": "6bc294575523ebc911a3d05f1db4fecaa162d4640165c12f614671b13f31db01",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.makeANoteAtTheYearInTheMiddleOfTheScreen": {
+    "englishHash": "eb383a319bc8bb6d2cffd8f3e025c343cfe998d6b37c431e5f9637b4b9bb4207",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.millennia": {
+    "englishHash": "548c438c463cc4d929bc765530fa9fb4912bba80f3e0759eb6921e61c20b3fb8",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.centuries": {
+    "englishHash": "4b046da3ec1d3944e0688afb98a681cf8640c4f7358a9fa4f050edb1e56c833d",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.decades": {
+    "englishHash": "54d874f34a6a9fb63bab7b611facd1030e01979f9ce374087af6f1f661fdb4aa",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.years": {
+    "englishHash": "f5b09993e99c1b17289f1d4932105929d9d1a3889df3d878522b9cb2f3110278",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.days": {
+    "englishHash": "2ac08fe5defc4d8c77b98a66d8e196e8c4127beb07a3cb530cc502da8716be0b",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.openThisNote": {
+    "englishHash": "64a492bbe199c70d958a445c5fb1161f1f719626d21cb64f45c267dda258d2f8",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.letGoOfThePick": {
+    "englishHash": "5929e33ac7a2fa43ebbf66b756a9de612830bf6d51059ef5f27802f30d362d5e",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.openNote": {
+    "englishHash": "5dd1d4f87652fa59943615f42fe478567924952846cc14aa919bf1ed7340ac81",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.showWhoLivedThen": {
+    "englishHash": "b0b45d45a1a6e9d187f1585e72fb32f1091ddd2fac470377171b840dabd7c76b",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.empty": {
+    "englishHash": "65b1cbba3b92c5b2597926a0d5dcf1fe03cdb5fa8f518dbfc1c66a523473bc7a",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.addAGroup": {
+    "englishHash": "4a51371ff045c7eaa055b3ea685c4ae37f5c0da4d85108caf017825d51ca512a",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.addGroup": {
+    "englishHash": "6f8a511ab3d7a3c1526d0258182ba00ff64287d61e0093179d5e46a7a6603d8f",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.addLabel": {
+    "englishHash": "47c268279ff3feabde3060c5c4036e31e7a1d2f3cde7818b4fe0507e7e17680b",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.files": {
+    "englishHash": "6e190b061b83b7bf697a1be3963541ff10d3db138305bc3a4bd85547b709ae05",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.dateValue": {
+    "englishHash": "ce59bc1b03d8ba48a69945caf2c76d2a32426580bb0cddc1ed6234b4e90225fe",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.dueValue": {
+    "englishHash": "871ec443f0633f892382bd82c636d4b2fe171b595e03e4f5e9fd48c1e70bf8ed",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.subtasksAdd": {
+    "englishHash": "ace5aef4e393917662ea4a52211ea75feef7b3979ef1f3a3c1ba9d6166d04c8d",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.runScript": {
+    "englishHash": "a0543d66c9f4d08f0bd0bd0a679df2a26a599e02673186eb3bc251c0212e6fba",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.subtasksToggle": {
+    "englishHash": "b30970cad7e607efd15e6f925207a479b092577edceeb5705abfd7021dda9cae",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.startsValue": {
+    "englishHash": "07a3f1e9904e7561efe2ec6b3841f1c722de87b6f9d8d1e1776e4d443ad59b69",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.completedValue": {
+    "englishHash": "87593a71990dff384bc001e737be096ecf1e340b6e0fb977002c0ef22e0b6a40",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.repeatsValue": {
+    "englishHash": "e89a912451590f839fed12d643ef972e205fe9bab41539f4c9c06f61dd0a169c",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.detachValue": {
+    "englishHash": "ab85791319a6ea091b34fed8956223a5738b5e0887e5506adec1b49266564d0e",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.inGroup": {
+    "englishHash": "108b6aee3482cba6bd515ba736173caa6c83c500b2e45f4acd88d2393cbef8d9",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.setTimeValue": {
+    "englishHash": "382baadd83d6d3099dc58f480c29a260b502df8c8e8129ebc9dd241bf097e8ce",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.nothingInPeriod": {
+    "englishHash": "129b6034dd3c573ff9f137606f4687e6ceff6927942f6aeecaea33ea52211d69",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.nothingTracked": {
+    "englishHash": "7b48f17860e913631873ac98a68e00f06413d3ca9be48162416118e41a978e16",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.repeatOn": {
+    "englishHash": "c0980724fe4654466f1214784c1cc489fc97f6a8274989a3a4088c6515723c59",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.eventSaveError": {
+    "englishHash": "e75908096be20201f968922a6e8f5f484fe2db0807fbc4efe8e4f9a7323660f3",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.meetingCreateError": {
+    "englishHash": "07d42fb71c4f0a01fbfea1cfa32d417c70cbfef534b5290313a64749f36f7267",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.previousPeriod": {
+    "englishHash": "007c0bd758218b2bbebaeed38077416c87fd3a38f2b19e36323f358188641a45",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.nextPeriod": {
+    "englishHash": "2b3c2e9a1fd832285398bd1e80d9d07a6a3c17878af6bcfaa529e97e3b14dabd",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.lifeSummary": {
+    "englishHash": "f760bbc9630feded5dc4b600e9fb2e5b738271e5b7c4489c6ca2286fdf977719",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.lifeWeek": {
+    "englishHash": "0f1d2e2a54909eed7dea129c1a6fa04967cfb9a26a7027d88854e76eb95d2d00",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.showValue": {
+    "englishHash": "f30e570666c228a25fa8eb538397851225709fb6b710164960c770c720b69125",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.eventLabel": {
+    "englishHash": "ea2f4ac0b2035740c5d4f84fe24ef19e1c1b1a92e86f35b801257097a961b7e5",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.calendarFrom": {
+    "englishHash": "582a6c17f67db7123e53055214da338c5473c403374db568943e503beb9ce6f7",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.groupMembers": {
+    "englishHash": "63368221757663a43b1f18bf7941fe3138f7c8328ce337536cc93e940e00dfa8",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.addLabelValue": {
+    "englishHash": "3d412869058c26fe6f8e0544cc8ab833b76130e2dbb041bf798c649796f2de44",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.removeLabelValue": {
+    "englishHash": "53e3b42591b414c4477b14fb9e954ae0663ee9ef71a5a02fb788c4674652736a",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.priorityValue": {
+    "englishHash": "64e25305f9f1eae0cbf4892ca99cf2af7fbc82c60d6c20c5b2791a8919b19ece",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.unfinished": {
+    "englishHash": "fcffeeb7c83d15e8619d344fd0839d5bae4fa5c9622f6188b4cf42c0cda7dce9",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.zoomTo": {
+    "englishHash": "0ca8bf9e4ebed67163a41d49c25163abdd72ad37af6b45df693ca7e05644396d",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.newNoteYear": {
+    "englishHash": "b37d5c9d8e7fa6d4d652c719d89cfaa0aaaa6e5fa2daa8d8555e9eb75031fed3",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.subtaskDetached": {
+    "englishHash": "2732d9969105fbaf8e4206c7a0af7bbb673d241e4dd85e4cc45b77729cb324db",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.backToMonth": {
+    "englishHash": "e888d804028990999c4e2c5fa0b87ed54bcb0cb9144a00628ab7795e3fa3c200",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.nothingPlannedMonth": {
+    "englishHash": "d6bd9203cc8db28f3334f6898d5cdc68270610607ecd59536d1fc71bf36a524c",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.undated": {
+    "englishHash": "5023b7184b274d6da58ff930325274cd5142f76028b71e1708cd45c4d79e21c0",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.unreadableDate": {
+    "englishHash": "e4e5181a7167782296675cb4b8a30f63d4aec6cfa5d4d9d0e8554ca0b98dff76",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.weeksLived": {
+    "englishHash": "b1ca96de98c73d7a46b3a9c5c398b0caaeee67af9d6a91b66d077eb7bbede96d",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.weeksLeft": {
+    "englishHash": "6157fe4ca13ffd6bc0f6f9b2c22d24f59fd468886733d7bf389a2f73311e049b",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.lifePercent": {
+    "englishHash": "eafd35ddecb32d2747413b5199b94372baa2cff4ba656188e08087f4ad388a2f",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.noteCount": {
+    "englishHash": "c86e5ce9d1c0272f6b1ee90d8dde1d15899f1a10a7e0f7f7c66c7d7b0381437d",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.pressWeek": {
+    "englishHash": "2411610b3137d0f00c7983c884cac8bf2ab4566de0909f6b4744e7562bfc1e12",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.moreCount": {
+    "englishHash": "c5571464ed937199d4f6b56d06d8e9986917e7ea91e39e37e693e60c1cc1fd26",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.andMore": {
+    "englishHash": "48a6e08144174f71cda3c99d28e6cb805f122dbf3862dfb19f865a4cfae02543",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.aged": {
+    "englishHash": "6b85fb65efd94267a09f92d2e19159965b7611643ef714fd457d3aeb4129be9e",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.yearNumber": {
+    "englishHash": "299b5d752613e61acad477b397fa582d85ec166b48636aa19ff579beafedbfc2",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.aboutValue": {
+    "englishHash": "e5011435f75ac360d7628bde5ca8852eff78299dd64f97fb2c9b896b23c308d6",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.yearCount": {
+    "englishHash": "d3575acb4265d33715efd9867840441c8bace991e3cf713c4488d37a4aff38eb",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.underYear": {
+    "englishHash": "848b21d40389dbc8fbf74e99c13a4d8239f35602587a8d430819f64a9f6773e2",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.aliveCount": {
+    "englishHash": "bc5858aff1a78a91dfb0fa54eec37bf0a74a704b3a72e18662b428eecfb47e51",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.eraCount": {
+    "englishHash": "8f2bf1d16a1a4bbc67a142cc6173cb47564546f3dccefcd9812beee35c46f36b",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.contemporaries": {
+    "englishHash": "c9ab72f2c0482536a36cf2cb8287eec0b228cda82792949111d973a110ca828a",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.Previousday": {
+    "englishHash": "71e2a511d611966752d9483342c39696f1c90793c9c05e5c79dbb04c05098d36",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.Nextday": {
+    "englishHash": "a08fb1c24c429e1e7b06f49181c4ecfad102b2e2e9aa725e9e627abaca2a3b9d",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.Opendailynote": {
+    "englishHash": "00db8d68185086910529e3e79b4223447354b3b9795b5eb8f78a46d50dc4df3f",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.Decrease": {
+    "englishHash": "8532308ade86d6295a49ffcac919f32b9b4afa1d0daf5a408dbc885292cbe21a",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.Increase": {
+    "englishHash": "9f03bc893c3c632f44ae8a5eb3aa64350d0bbb91a11b47e060b98afe0d69dd9e",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.Lowerpriority": {
+    "englishHash": "e114eea2461eec1da9f2a65225494fd5a520faeb42363596a2c0bd9a2abc86e2",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.Raisepriority": {
+    "englishHash": "994aad0f87119b628c885975fb6c7b56146cd9ebc2bc26ba2a0203f1e67165f5",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.Alltasksdone": {
+    "englishHash": "77bb8e77cf2363c1fd24d491ae5506dd439014ff1fd8b7043a5310ec02650209",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.Taskstodo": {
+    "englishHash": "e5d077a80965c703ccf25d31b3077070aec746eb34b1da65e6db536c7ee8d1d1",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.Events": {
+    "englishHash": "298dd7c15c671332526dcc22c0d64d73aa377cb75ff0034ec6efd854b7404239",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.Nothingplanned": {
+    "englishHash": "01ed171f2ecac47cd44e198534d64cbd929b0a49d7bdc8116d4b025d820e42da",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.Checkedlog": {
+    "englishHash": "8bcf75f2eb05dc69a0047583f9738dfbd7a4c9168b5c885496597ea35efc2bd6",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.Uncheckedlog": {
+    "englishHash": "3d7b8e7375e166f0bafe2918fd093fa24f7bd8855fe01c0a763f575ab0e9eebe",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.Logentry": {
+    "englishHash": "1dc685216a1afed006cd39ed74526e4bce4713840dfadbdef3bea5fe013da035",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.Nologentries": {
+    "englishHash": "e75b59e43178c5aa6f10b282b7160009a2ec773e9b53a301490032149ebf5ad7",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.Nogroups": {
+    "englishHash": "2604f185c107eec67d224ac078bb6dc47c08ac108e5a7086dd011ca66c37ee59",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.None": {
+    "englishHash": "f2953d2931e36d0c55640f51865f8394ebe52194765d04e521017232558f871c",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.lifeInWeeks": {
+    "englishHash": "a7b63ffba6efca0a0649ec3759704e9124c9365a1926d0e88ec0d18bc77209d4",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.unit0": {
+    "englishHash": "6ad93ce858d3117dce0ea1866a1cb72c9241465c0fa44de5e68b0487baac3bf3",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.unit1": {
+    "englishHash": "f3700ec01d5e59537aba986e5f47ecf1cac2081c4a98161a7d622b9b7ee37e1a",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.unit2": {
+    "englishHash": "55c9e3bf8d120454d479b31f278db8d909262a6a809b38c2d7414850a3994f6b",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.unit3": {
+    "englishHash": "0d782fd36ea2a544f4151623e6efd4987f57f6e97fa55032cf1e2779d616bd08",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.unit4": {
+    "englishHash": "f3940666c36c264f4d3b6b7d973dd6e8e02eebe24705a0b0c929c8ff7a3f53fa",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.position0": {
+    "englishHash": "81c9759ddbb7582b13225e7227b41e9f274107222b0573dbaec0f8060138a877",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.position1": {
+    "englishHash": "c4ee391cb2b6036afdf4a0dc2af898772c7297fb0e731aecf6c511cc806a5d64",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.priorityLow": {
+    "englishHash": "803532407fb5962b7a6ba8e36245558cb7d4da648123cd2c5da86fbeb01789fe",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.priorityMedium": {
+    "englishHash": "866bf047c116b31d538dd529f9a3e7bb0f0192ffcbd5de6a0b47a9684c131fe5",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.priorityHigh": {
+    "englishHash": "b77127463c51fa947e389f9b2c4f0534780371005882d7a5914b6b5b2129a429",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.rangeSelectdaterange": {
+    "englishHash": "82f6a9809cce93abedeb81000102752750b75ffb2e5aebc628c4e528ab36f7d9",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.rangeFrom": {
+    "englishHash": "702140636ff3977a6ae5f330acfff62c1b2bacbdfa498cd2fba8a7ee6bd6caf6",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.rangeStartdateoftherange": {
+    "englishHash": "e43e2c6c21c6daf1b8cbe1b041707ccf68f34dc9dd3b59fde663367649618160",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.rangeStartdate": {
+    "englishHash": "0c452c7f4bb81e47de0c087f12d9d3ad6a4a6d6e2a95ec9babb426f79a70a806",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.rangeChoosestartdate": {
+    "englishHash": "3354e2642e70eb195ffa87db10a906c8f14138d6526f28be4a7c0ad732b9d351",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.rangeTo": {
+    "englishHash": "b3214a20e45a7aed057b32fce6801ba3be975daf24edbc484cc6cda308bc6dad",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.rangeEnddateoftherange": {
+    "englishHash": "de47e8271761b420d6dea7a157967c8a52f377096556ee215c2835fb1f7583c1",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.rangeEnddate": {
+    "englishHash": "9e994ff6c9427d81fbb84ca87ccebb8133b1979678e4f5738055c752c9ad4886",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.rangeChooseenddate": {
+    "englishHash": "cf052f8aed12c20d06426bff5249f0a030ce24ae27a07b7441fc8605aadbc9cc",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.rangeSelectstartdate": {
+    "englishHash": "e22be8c215e9d9f0843519968457ccb7caa7c65a7782136e4dc2e7fdf833d8fe",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.rangeSelectenddate": {
+    "englishHash": "875ff284613a1eb02cf0fae1168af6ffe8b541934c0a5ebffadfba4f246a0338",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.rangeApply": {
+    "englishHash": "417cf9c08b0b8d6c7b661371dbe0bfc75445bb4b2a1ca626afd4e4ca1dcbd8d1",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.rangeApplythisdaterange": {
+    "englishHash": "d704ad74ae62086878c17d78b9464c8b45d0a29320b0a61e7f45c103dd5b3911",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.rangeReset": {
+    "englishHash": "bf91b71a9aa76e9492ce6e63f9ae7488e9b4c08bbde532004e02463d7301acd4",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.rangeResetthedaterange": {
+    "englishHash": "0f0a30fc49ab21fa59e0e4272625e70eee1a62f34e95e1f89c5908b0d7a4ad25",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.rangeClosewithoutapplying": {
+    "englishHash": "1c2d646e810b2b5ba2d52c3616298cf969a18bba05b8bf063e1338a9f9da7afb",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.staleRates": {
+    "englishHash": "6623ca2eb768e6ec4be74c2ae04ff60b6bb2fed8fb6f2f54527bc94b708ee423",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.todayRates": {
+    "englishHash": "c5edf7154fe4da6f3d262dfad29a6558ef0c83d10b7bd69ad1f1056cdff7dd8c",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.missingRates": {
+    "englishHash": "55b9097d55e3dcffcdb8c5bc37595ca4217e408dd260183652b466f8c934708d",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.allDayIndex": {
+    "englishHash": "6647a7a37761a643a53aabd9f0999e9bc3add79af05e2557392219c3550fd10a",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.fromTime": {
+    "englishHash": "31ebd5952214afe43376ea3c6eb92d341500a56720fe40fcf7a70dfffb4a298d",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.untilTime": {
+    "englishHash": "34d6cb1d627c0a6b69f9163a2e78a7ea90ad9152363667ba18a7b53b0a463cbc",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.circularSelf": {
+    "englishHash": "9210d2d84f47c579be2c83066bebfc2113eaa1d17b84fe20b891ec6c2887cd15",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.circularOthers": {
+    "englishHash": "59311cf041e19694a952b42f9f039b9285d33e95d1208037bf1304de06021f1f",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.inClock": {
+    "englishHash": "2174e23865bf291f6e13e6e81bb86f0cb4802372f2539d1daeedb5ef8ad54094",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.periodWeek": {
+    "englishHash": "ff6bd46ed72a91d3edc87b0068d3eed936385539fbdbf328f48dd29127c3274e",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.periodMonth": {
+    "englishHash": "181d90829828f91d8d92fb4b3fbd0dcdfeb130d6a1982eb05253810d07d802c9",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.periodYear": {
+    "englishHash": "2992f9abc1d6e757b4b15fafa0b37e9d753f9d0d34e72b9b643e4fae8cf4a098",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.taskDone": {
+    "englishHash": "16552c2580bbe8b82d3582de9eb3e20ef0e0015937c0b4f5e2bc329368476226",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.taskOpen": {
+    "englishHash": "3e52f04f92e08070a6a4ea9721ad715dd53f2bfced6dab220fbd379613a796d0",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.makeASubtaskOf": {
+    "englishHash": "bf64ae458dc9b7b3552363ef990914cc6b3b0b25b68ce2ab68ecea24267871fd",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.noParentTask": {
+    "englishHash": "1246a3957d710f193a7da0ff1109a436b4392133c34d19876116c4535f58f8f2",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.noTransactionsChart": {
+    "englishHash": "5a44cdd22a63c3f871a974446840c367dcceeb72f8b4df3e32a0b96b7cfa5314",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.heatNothing": {
+    "englishHash": "47dbebec5d6543d84309f99260d6e15b38765bd7fa1fff92bb6379d41426e271",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.heatLittle": {
+    "englishHash": "fd51ddb7a570bc58d1e11c0c05286b98ddde60fa56ff999c8155873e8ba9f28a",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.heatSome": {
+    "englishHash": "79bb6bebd06f38c9b78e47a7f2a9a4e9106c7f9f79f64bc85727e4d69665e277",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.heatLot": {
+    "englishHash": "ba63cf20b4100696277f103a95e89dbcbefc966a2b762c9a441a8f947e54d882",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.heatMost": {
+    "englishHash": "0d18dedf64febe98b214c16feefac68d257ea3baf69c3c5d2a2711dca431eff3",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.heatTodo": {
+    "englishHash": "54e477c4cb0bffd71e09ec9750d2656904426bad2785e0355333be6d3fcfa9ed",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.notTogether": {
+    "englishHash": "136cd7e9f5a02bcd2cb6cf0215486a229b5d9d6e0265c9ce5b71e1474b1486cd",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.doneLower": {
+    "englishHash": "58bf5b5478e5d1fb7441daeff9fd1ed60a4ad5fbfabc64715cd8608f3f59f6da",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.everyCurrency": {
+    "englishHash": "9f5f27a4b089a682956518015b433b86e0c48a71778ea2f996fecb5f0b536d47",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.firstFeminine": {
+    "englishHash": "81c9759ddbb7582b13225e7227b41e9f274107222b0573dbaec0f8060138a877",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.lastFeminine": {
+    "englishHash": "c4ee391cb2b6036afdf4a0dc2af898772c7297fb0e731aecf6c511cc806a5d64",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.firstNeuter": {
+    "englishHash": "81c9759ddbb7582b13225e7227b41e9f274107222b0573dbaec0f8060138a877",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.lastNeuter": {
+    "englishHash": "c4ee391cb2b6036afdf4a0dc2af898772c7297fb0e731aecf6c511cc806a5d64",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  }
+}

@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * What a hand does to the history timeline: a mouse drags it along and a finger too, the wheel
  * scrolls the rows or moves along the years, two fingers or Ctrl with the wheel zoom about the
@@ -279,13 +280,13 @@ export function createGestures(h: GestureHost) {
       const item = hit.item
       menu.addItem((m) =>
         m
-          .setTitle('Open note')
+          .setTitle(t('area.openNote'))
           .setIcon('file-text')
           .onClick(() => h.emit('open', item, null))
       )
       menu.addItem((m) =>
         m
-          .setTitle('Show who lived then')
+          .setTitle(t('area.showWhoLivedThen'))
           .setIcon('users')
           .onClick(() => h.emit('select', item))
       )
@@ -294,7 +295,9 @@ export function createGestures(h: GestureHost) {
       const year = roundToStep(tAt(x), Math.max(1, h.step() / 5))
       menu.addItem((m) =>
         m
-          .setTitle(`New note in ${formatYear(year > 0 ? year : year + 1, h.lang())}`)
+          .setTitle(
+            t('area.newNoteYear', { year: formatYear(year > 0 ? year : year + 1, h.lang()) })
+          )
           .setIcon('plus')
           .onClick(() => h.emit('create', year))
       )

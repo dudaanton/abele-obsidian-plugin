@@ -1,3 +1,6 @@
+import { t, currentLocale } from '@/i18n'
+import dayjs from 'dayjs'
+import { areaDate } from '@/helpers/areaDateFormat'
 import type { Ref } from 'vue'
 import type { Dayjs } from 'dayjs'
 import { getThemeColors, type EChartsType } from '@/bases/echarts'
@@ -118,7 +121,7 @@ export function useFinanceCharts(options: FinanceChartOptions) {
             const dateStr = params.data[0]
             const data = dayTotals.get(dateStr)
             if (!data || (data.expense === 0 && data.income === 0))
-              return `${escapeHtml(dateStr)}<br/>No transactions`
+              return `${escapeHtml(dateStr)}<br/>${escapeHtml(t('area.noTransactionsChart'))}`
             let html = `<b>${escapeHtml(dateStr)}</b>`
             if (data.income > 0)
               html += `<br/><span style="color:${colors.income}">+${formatAmount(data.income)}</span>`
@@ -145,7 +148,10 @@ export function useFinanceCharts(options: FinanceChartOptions) {
           cellSize: ['auto', 28],
           dayLabel: {
             firstDay: weekStartsOnMonday.value ? 1 : 0,
-            nameMap: 'en',
+            nameMap:
+              currentLocale().language === 'en'
+                ? 'en'
+                : Array.from({ length: 7 }, (_, day) => areaDate(dayjs().day(day), 'ddd')),
             color: colors.textFaint,
           },
           monthLabel: { show: false },

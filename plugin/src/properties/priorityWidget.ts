@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * The row of a priority property: lower, the level drawn as three bars in the colour tasks mark
  * it with and its name, raise. Drawn whole by the plugin, like the counter.
@@ -12,12 +13,22 @@ export function renderPriority(el: HTMLElement, value: unknown, ctx: WidgetConte
   el.empty()
   let current = value
   const row = el.createDiv({ cls: 'abele-property-priority' })
-  const lower = iconButton(row, 'abele-property-priority__lower', 'chevron-down', 'Lower priority')
+  const lower = iconButton(
+    row,
+    'abele-property-priority__lower',
+    'chevron-down',
+    t('area.Lowerpriority')
+  )
   const level = row.createDiv({ cls: 'abele-property-priority__level' })
   const bars = level.createDiv({ cls: 'abele-property-priority__bars' })
   const barEls = TASK_PRIORITIES.map(() => bars.createSpan({ cls: 'abele-property-priority__bar' }))
   const name = level.createSpan({ cls: 'abele-property-priority__name' })
-  const raise = iconButton(row, 'abele-property-priority__raise', 'chevron-up', 'Raise priority')
+  const raise = iconButton(
+    row,
+    'abele-property-priority__raise',
+    'chevron-up',
+    t('area.Raisepriority')
+  )
 
   const show = (v: unknown) => {
     const n = priorityLevel(v) ?? 0
@@ -31,7 +42,7 @@ export function renderPriority(el: HTMLElement, value: unknown, ctx: WidgetConte
     name.toggleClass('is-empty', n === 0)
     lower.toggleClass('is-disabled', n === 0)
     raise.toggleClass('is-disabled', n === TASK_PRIORITIES.length)
-    level.setAttribute('aria-label', `Priority: ${priorityName(n)}`)
+    level.setAttribute('aria-label', t('area.priorityValue', { value: priorityName(n) }))
   }
   const step = (delta: number) => {
     const next = stepPriority(current, delta)

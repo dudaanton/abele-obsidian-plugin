@@ -1,3 +1,5 @@
+import { areaDate } from '@/helpers/areaDateFormat'
+import { t } from '@/i18n'
 import { reactive } from 'vue'
 import dayjs from 'dayjs'
 import { formatAmount } from '@/helpers/moneyFormat'
@@ -37,11 +39,9 @@ export function ratesTooltip(currencies: string[], missing: string[] = []): stri
   const table = ratesTable()
   if (!table) return ''
   const to = exchangeRates.display
-  const day = dayjs(table.fetchedOn).format('D MMM')
+  const day = areaDate(dayjs(table.fetchedOn), 'D MMM')
   const lines = [
-    ratesStatus() === 'stale'
-      ? `Rates from ${day}: could not update since`
-      : `At today's rates, ${day}`,
+    ratesStatus() === 'stale' ? t('area.staleRates', { day }) : t('area.todayRates', { day }),
   ]
   const rates = currencies
     .filter((c) => c !== to)
@@ -51,7 +51,7 @@ export function ratesTooltip(currencies: string[], missing: string[] = []): stri
     })
     .filter(Boolean)
   if (rates.length) lines.push(rates.join(' · '))
-  if (missing.length) lines.push(`Not counted: ${missing.join(', ')}, no rate`)
+  if (missing.length) lines.push(t('area.missingRates', { currencies: missing.join(', ') }))
   lines.push(exchangeRates.source)
   return lines.join('\n')
 }

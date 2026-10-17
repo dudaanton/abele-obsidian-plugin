@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * The daily note of a day, opened — and made first when there is none, the way the calendar in
  * the timeline sidebar does it: through the plugin's default daily journal (its path and its
@@ -47,7 +48,7 @@ export async function openDailyNote(app: App, day: string, newLeaf: boolean | st
 
   const core = coreDailyNotes(app)
   if (!core) {
-    new Notice('No daily journal found. Please check your settings.')
+    new Notice(t('area.noDailyJournalFoundPleaseCheckYourSettings'))
     return
   }
   const date = dayjs(day, DATE_FORMAT)

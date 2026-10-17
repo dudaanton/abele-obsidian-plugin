@@ -2,12 +2,12 @@
   <div class="abele-todo-list" data-abele-anchor="section:tasks">
     <ListSectionHeader
       class-prefix="abele-todo-list"
-      text="Tasks"
+      :text="t('area.tasks')"
       :count="shown.length"
       :fold="fold"
       :search="search"
       search-tooltip="Search tasks by title and description"
-      placeholder="Search tasks…"
+      :placeholder="t('area.searchTasks')"
       group-actions
     >
       <template #actions>
@@ -16,7 +16,7 @@
           class="abele-task-label-filter"
           icon="tag"
           :text-right="labelText || undefined"
-          tooltip="Filter by label"
+          :tooltip="t('area.filterByLabel')"
           @click="openLabelMenu"
         />
         <ObsidianIcon
@@ -24,13 +24,13 @@
           :icon="hideCompleted ? 'list-checks' : 'list-todo'"
           role="switch"
           :aria-checked="!hideCompleted"
-          :label="hideCompleted ? 'Show completed tasks' : 'Hide completed tasks'"
+          :label="hideCompleted ? t('area.showCompletedTasks') : t('area.hideCompletedTasks')"
           @click="hideCompleted = !hideCompleted"
         />
         <ObsidianIcon
           v-if="showAddButton"
           icon="square-plus"
-          label="New task"
+          :label="t('area.newTask')"
           @click="createTask()"
         />
       </template>
@@ -48,13 +48,16 @@
         <div v-if="hasMore" ref="sentinel" class="abele-todo-list__sentinel" />
       </div>
       <div v-if="!shown.length" class="abele-todo-list__no-tasks">
-        {{ search.terms.value.length ? 'Nothing matches the search.' : 'No tasks to show.' }}
+        {{
+          search.terms.value.length ? t('area.nothingMatchesTheSearch') : t('area.noTasksToShow')
+        }}
       </div>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { Task } from '@/entities/Task'
 import TaskBranch from './TaskBranch.vue'
 import { treeOf } from '@/commands/subtasks'

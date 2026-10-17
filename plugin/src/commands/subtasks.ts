@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 // Making and unmaking subtasks: a parent is a task named among a task's groups, so each of these
 // writes one link into, or out of, the `groups` property of one task note.
 import { Notice, TFile } from 'obsidian'
@@ -86,25 +87,25 @@ export function makeSubtaskOf(task: Task, all: Task[]) {
   })
   new NodeSuggestModal(
     GlobalStore.getInstance().app,
-    offered.map((t) => ({
-      id: t.taskPath,
-      icon: t.completedAt ? 'circle-check' : 'circle',
-      kind: t.completedAt ? 'Done' : 'Open',
-      title: nameOf(t),
-      note: t.taskFolder || undefined,
+    offered.map((task) => ({
+      id: task.taskPath,
+      icon: task.completedAt ? 'circle-check' : 'circle',
+      kind: task.completedAt ? t('area.taskDone') : t('area.taskOpen'),
+      title: nameOf(task),
+      note: task.taskFolder || undefined,
     })),
-    'Make a subtask of…',
+    t('area.makeASubtaskOf'),
     (picked) => {
       const parent = offered.find((t) => t.taskPath === picked.id)
       if (!parent) return
       void editGroups(task, (groups) => [...groups, pathToWikilink(parent.taskPath)])
     },
-    'No task to put it under'
+    t('area.noParentTask')
   ).open()
 }
 
 /** Takes the link to one parent out of the task's groups. */
 export async function detachFrom(task: Task, parent: Task) {
   await editGroups(task, (groups) => groups.filter((g) => !namesNote(g, parent.taskPath)))
-  new Notice(`${nameOf(task)} is no longer a subtask of ${nameOf(parent)}`)
+  new Notice(t('area.subtaskDetached', { task: nameOf(task), parent: nameOf(parent) }))
 }

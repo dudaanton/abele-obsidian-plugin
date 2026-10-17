@@ -1,9 +1,9 @@
 <template>
   <SidebarPanel class="abele-time-tracking-sidebar">
     <!-- The pane's head as every list pane's: its name, and starting a timer as its action. -->
-    <ListSectionHeader class-prefix="abele-time-tracking-sidebar" text="Time">
+    <ListSectionHeader class-prefix="abele-time-tracking-sidebar" :text="t('area.time')">
       <template #actions>
-        <ObsidianIcon icon="timer" label="Start a timer" @click="startEmptyTimer" />
+        <ObsidianIcon icon="timer" :label="t('area.startATimer')" @click="startEmptyTimer" />
       </template>
     </ListSectionHeader>
 
@@ -14,7 +14,7 @@
       :key="active.id"
       class="abele-time-tracking-sidebar__active"
     >
-      <template #leading><StatusDot tone="green" label="Running" pulse /></template>
+      <template #leading><StatusDot tone="green" :label="t('area.running')" pulse /></template>
       <span class="abele-time-tracking-sidebar__active-groups">
         <template v-for="(group, idx) in active.groups" :key="idx">
           <ObsidianMarkdown
@@ -26,7 +26,7 @@
           <span v-if="idx < active.groups.length - 1">, </span>
         </template>
         <span v-if="!active.groups.length" class="abele-time-tracking-sidebar__no-groups">
-          Timer
+          {{ t('area.timer') }}
         </span>
       </span>
       <template #codes>
@@ -35,7 +35,7 @@
         /></span>
       </template>
       <template #actions>
-        <ObsidianIcon icon="timer-off" label="Stop timer" @click="stopSingle(active)" />
+        <ObsidianIcon icon="timer-off" :label="t('area.stopTimer')" @click="stopSingle(active)" />
       </template>
     </EntryRow>
 
@@ -47,13 +47,13 @@
     <EmptyState
       v-if="!periodEntries.length"
       class="abele-time-tracking-sidebar__period-empty"
-      :text="`Nothing tracked in ${periodName(periodStart, periodEnd)}`"
+      :text="t('area.nothingTracked', { period: periodName(periodStart, periodEnd) })"
     />
     <template v-else>
       <!-- Total time for period -->
       <div class="abele-time-tracking-sidebar__summary">
         <div class="abele-time-tracking-sidebar__summary-row">
-          <span class="abele-time-tracking-sidebar__summary-label">Total</span>
+          <span class="abele-time-tracking-sidebar__summary-label">{{ t('area.total') }}</span>
           <span class="abele-time-tracking-sidebar__summary-value">{{ totalTimeText }}</span>
         </div>
       </div>
@@ -68,7 +68,7 @@
           :render="renderDailyChart"
           class="abele-time-tracking-sidebar__chart"
         />
-        <EmptyState v-else text="No data" />
+        <EmptyState v-else :text="t('area.noData')" />
       </template>
       <template v-else-if="chartTab === 'groups'">
         <Chart
@@ -79,11 +79,11 @@
           :created="createGroupsPieChart"
           class="abele-time-tracking-sidebar__chart"
         />
-        <EmptyState v-else text="No data" />
+        <EmptyState v-else :text="t('area.noData')" />
       </template>
 
       <!-- Entries list -->
-      <Section title="Entries" class="abele-time-tracking-sidebar__section">
+      <Section :title="t('area.entries')" class="abele-time-tracking-sidebar__section">
         <div v-if="visibleEntries.length" class="abele-time-tracking-sidebar__entries">
           <template v-for="(entry, idx) in visibleEntries" :key="entry.id">
             <DateDivider v-if="showDateBefore(idx)" :date="entryDate(entry)">
@@ -93,15 +93,17 @@
           </template>
           <div ref="scrollSentinel" class="abele-time-tracking-sidebar__sentinel" />
         </div>
-        <EmptyState v-else text="No entries found" />
+        <EmptyState v-else :text="t('area.noEntriesFound')" />
       </Section>
     </template>
   </SidebarPanel>
 </template>
 
 <script setup lang="ts">
+import { areaDate } from '@/helpers/areaDateFormat'
+import { t } from '@/i18n'
 import { escapeHtml } from '@/helpers/escapeHtml'
-import { formatDuration as formatDurationShort } from '@/helpers/displayFormat'
+import { areaDuration as formatDurationShort, durationPart } from '@/helpers/areaDateFormat'
 import { computed, ref, toRef, unref, watch } from 'vue'
 import { useIntersectionObserver } from '@vueuse/core'
 import { inViewNow } from '@/helpers/intersection'
@@ -236,14 +238,14 @@ const durations = pausedWhileHidden(active, () => {
 const totalTimeText = computed(() => {
   const hours = Math.floor(durations.value.total / 3600)
   const minutes = Math.floor((durations.value.total % 3600) / 60)
-  return `${hours}h ${minutes}m`
+  return `${durationPart(hours, 'hour')} ${durationPart(minutes, 'minute')}`
 })
 
 // --- Charts ---
 
 const chartTabs: Array<{ id: ChartTab; label: string }> = [
-  { id: 'daily', label: 'Daily' },
-  { id: 'groups', label: 'By Groups' },
+  { id: 'daily', label: t('area.daily') },
+  { id: 'groups', label: t('area.byGroups') },
 ]
 const chartTab = ref<ChartTab>('daily')
 
@@ -284,7 +286,7 @@ function renderDailyChart(dailyChart: EChartsType) {
         confine: true,
         formatter: (params: any) => {
           const p = Array.isArray(params) ? params[0] : params
-          return `${dayjs(p.value[0]).format('MMM D')}<br/>${formatDurationShort(Math.round(p.value[1] * 3600))}`
+          return `${areaDate(dayjs(p.value[0]), 'MMM D')}<br/>${formatDurationShort(Math.round(p.value[1] * 3600))}`
         },
       },
       grid: { left: 40, right: 12, top: 8, bottom: 24 },
@@ -304,7 +306,7 @@ function renderDailyChart(dailyChart: EChartsType) {
         type: 'value',
         axisLabel: {
           color: colors.textMuted,
-          formatter: (v: number) => `${v}h`,
+          formatter: (v: number) => durationPart(v, 'hour'),
         },
         splitLine: { lineStyle: { color: colors.border, type: 'dashed' } },
       },
@@ -344,8 +346,8 @@ const groupsPieData = pausedWhileHidden(active, (): GroupPieItem[] => {
 
   for (const entry of periodEntries.value) {
     if (entry.groups.length === 0) {
-      const existing = byGroup.get('No groups') || { seconds: 0 }
-      byGroup.set('No groups', { seconds: existing.seconds + entry.duration })
+      const existing = byGroup.get(t('area.Nogroups')) || { seconds: 0 }
+      byGroup.set(t('area.Nogroups'), { seconds: existing.seconds + entry.duration })
     } else {
       for (const g of entry.groups) {
         const label = extractAliasOrNameFromWikilink(g) || g

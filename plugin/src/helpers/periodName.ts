@@ -1,3 +1,4 @@
+import { areaDate } from '@/helpers/areaDateFormat'
 import type dayjs from 'dayjs'
 
 /**
@@ -10,6 +11,6 @@ export function periodName(start: dayjs.Dayjs, end: dayjs.Dayjs): string {
     end.isSame(end.endOf('month'), 'day') &&
     start.isSame(end, 'month')
   return wholeMonth
-    ? start.format('MMMM YYYY')
-    : `${start.format('MMM D, YYYY')} — ${end.format('MMM D, YYYY')}`
+    ? areaDate(start, 'MMMM YYYY')
+    : `${areaDate(start, 'MMM D, YYYY')} — ${areaDate(end, 'MMM D, YYYY')}`
 }

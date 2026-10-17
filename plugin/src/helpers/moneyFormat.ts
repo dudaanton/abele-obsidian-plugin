@@ -7,6 +7,8 @@
  * adding and subtracting the same money in floating point — and two decimal places of that is
  * `-0.00`, which reads as a balance in the red. Javascript's own `-0` prints its sign too.
  */
+import { currentLocale } from '@/i18n'
+
 export const AMOUNT_DECIMALS = 2
 
 export function formatAmount(value: number, decimals: number = AMOUNT_DECIMALS): string {
@@ -15,7 +17,8 @@ export function formatAmount(value: number, decimals: number = AMOUNT_DECIMALS):
   // the -0 that rounding leaves behind into a plain one.
   const shown = Number(value.toFixed(decimals)) + 0
 
-  return shown.toLocaleString(undefined, {
+  const locale = currentLocale()
+  return shown.toLocaleString(locale.language === 'en' ? undefined : locale.format, {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   })

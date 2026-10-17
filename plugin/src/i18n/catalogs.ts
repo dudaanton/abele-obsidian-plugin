@@ -4,11 +4,24 @@ import { lv } from './locales/lv/pilot'
 import { es } from './locales/es/pilot'
 import { de } from './locales/de/pilot'
 import { pluralRules, type Catalog, type Message } from './core'
+import { tasks as enTasks } from './locales/en/tasks'
+import { tasks as ruTasks } from './locales/ru/tasks'
+import { tasks as lvTasks } from './locales/lv/tasks'
+import { tasks as esTasks } from './locales/es/tasks'
+import { tasks as deTasks } from './locales/de/tasks'
+
+export const english = { ...en, ...enTasks }
 
 export type TranslationCatalog = {
   [K in keyof typeof en]: (typeof en)[K] extends string ? string : Exclude<Message, string>
 }
-export const catalogs = { en, ru, lv, es, de }
+export const catalogs = {
+  en: english,
+  ru: { ...ru, ...ruTasks },
+  lv: { ...lv, ...lvTasks },
+  es: { ...es, ...esTasks },
+  de: { ...de, ...deTasks },
+}
 
 const placeholders = (text: string) =>
   [...new Set([...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]))].sort().join(',')

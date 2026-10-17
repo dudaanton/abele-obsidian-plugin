@@ -9,12 +9,12 @@
     >
       <ListSectionHeader
         class-prefix="abele-timeline"
-        :text="title ?? 'Timeline'"
+        :text="title ?? t('area.timeline')"
         :count="shownCount"
         :fold="fold"
         :search="calendar ? undefined : search"
         search-tooltip="Search tasks by title and description"
-        placeholder="Search tasks…"
+        :placeholder="t('area.searchTasks')"
         group-actions
       >
         <template #leading
@@ -26,7 +26,7 @@
             class="abele-task-label-filter"
             icon="tag"
             :text-right="labelText || undefined"
-            tooltip="Filter by label"
+            :tooltip="t('area.filterByLabel')"
             @click="openLabelMenu"
           />
           <ObsidianIcon
@@ -35,7 +35,7 @@
             :active="!hideCompleted"
             role="switch"
             :aria-checked="!hideCompleted"
-            :label="hideCompleted ? 'Show completed tasks' : 'Hide completed tasks'"
+            :label="hideCompleted ? t('area.showCompletedTasks') : t('area.hideCompletedTasks')"
             @click="hideCompleted = !hideCompleted"
           />
           <!-- Under a note, list or month, remembered for it as the logs' are. -->
@@ -43,7 +43,7 @@
             v-if="tasksView.available"
             class="abele-timeline__view"
             :icon="calendar ? 'list' : 'calendar-days'"
-            :tooltip="calendar ? 'Show as a list' : 'Show as a calendar'"
+            :tooltip="calendar ? t('area.showAsAList') : t('area.showAsACalendar')"
             @click="setCalendar(!calendar)"
           />
         </template>
@@ -67,17 +67,17 @@
             :style="{ visibility: drag.range.value ? 'hidden' : undefined }"
             role="button"
             tabindex="0"
-            :aria-label="overdueOpen ? 'Hide overdue tasks' : 'Show overdue tasks'"
+            :aria-label="overdueOpen ? t('area.hideOverdueTasks') : t('area.showOverdueTasks')"
             :aria-expanded="overdueOpen"
             @click="toggleOverdue"
             @keydown.enter.prevent="toggleOverdue"
             @keydown.space.prevent="toggleOverdue"
           >
             <ObsidianIcon class="abele-timeline__overdue-flame" icon="flame" no-hover />
-            <span class="abele-timeline__fold-text">Overdue</span>
+            <span class="abele-timeline__fold-text">{{ t('area.overdue') }}</span>
             <span
               class="abele-timeline__overdue-count"
-              :aria-label="`${overdueCount} unfinished`"
+              :aria-label="t('area.unfinished', { count: overdueCount })"
               >{{ overdueCount }}</span
             >
             <ObsidianIcon
@@ -108,7 +108,7 @@
                   v-if="group.id === 'overdue'"
                   class="abele-timeline__date-icon"
                   icon="flame"
-                  label="Overdue"
+                  :label="t('area.overdue')"
                   no-hover
                 />
                 <ObsidianMarkdown trusted class="timeline__date" :text="getDateWikilink(date)" />
@@ -148,7 +148,7 @@
            and while done tasks are hidden it offers the switch that brings the past back. -->
       <EmptyState v-if="emptyText" class="abele-timeline__no-tasks" :text="emptyText">
         <template v-if="emptyText === NOTHING_AHEAD_HIDDEN" #action>
-          <Button text="Show completed tasks" @click="hideCompleted = false" />
+          <Button :text="t('area.showCompletedTasks')" @click="hideCompleted = false" />
         </template>
       </EmptyState>
     </template>
@@ -156,6 +156,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+import { areaDate, relativeDay } from '@/helpers/areaDateFormat'
 import { Task } from '@/entities/Task'
 import TaskView from './Task.vue'
 import CalendarEventView from './CalendarEvent.vue'
@@ -451,8 +453,8 @@ const getDateWikilink = (dateStr: string) => {
   const date = dayjs(dateStr, DATE_FORMAT)
   const diff = date.startOf('day').diff(now.value.startOf('day'), 'day')
 
-  const near = diff === 0 ? 'Today' : diff === 1 ? 'Tomorrow' : diff === -1 ? 'Yesterday' : ''
-  const short = date.format(date.isSame(now.value, 'year') ? 'ddd DD.MM' : 'ddd DD.MM.YYYY')
+  const near = Math.abs(diff) <= 1 ? relativeDay(diff) : ''
+  const short = areaDate(date, date.isSame(now.value, 'year') ? 'ddd DD.MM' : 'ddd DD.MM.YYYY')
   // TODO: handle user defined daily note format and location
   return `[[${dateStr}|${near ? `${near} · ${short}` : short}]]`
 }

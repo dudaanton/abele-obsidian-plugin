@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * The plugin's own drawing of some properties in Obsidian's Properties panel.
  *
@@ -341,7 +342,7 @@ export class PropertyWidgets {
     const list = table.multitext
     const widget: TypeWidget = {
       type: FILES_TYPE,
-      name: () => 'Files',
+      name: () => t('area.files'),
       icon: 'lucide-files',
       validate: (value) =>
         typeof value === 'string' ||

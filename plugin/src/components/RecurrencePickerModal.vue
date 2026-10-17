@@ -1,5 +1,5 @@
 <template>
-  <ObsidianModal title="Recurrence" close-in-footer @close="emit('cancel')">
+  <ObsidianModal :title="t('area.recurrence')" close-in-footer @close="emit('cancel')">
     <RecurrencePicker
       ref="picker"
       :initial-pattern="initialPattern"
@@ -11,16 +11,20 @@
       <!-- As Obsidian orders them: the one that takes the value off apart, the answer last. -->
       <Button
         class="abele-modal__apart"
-        text="Clear"
-        tooltip="Take the recurrence off"
+        :text="t('area.clear')"
+        :tooltip="t('area.takeTheRecurrenceOff')"
         @click="emit('clear')"
       />
-      <Button text="Cancel" tooltip="Close this and change nothing" @click="emit('cancel')" />
       <Button
-        text="Confirm"
+        :text="t('area.cancel')"
+        :tooltip="t('area.closeThisAndChangeNothing')"
+        @click="emit('cancel')"
+      />
+      <Button
+        :text="t('area.confirm')"
         accent
         :disabled="!picker?.canConfirm"
-        tooltip="Set this recurrence"
+        :tooltip="t('area.setThisRecurrence')"
         @click="picker?.confirm()"
       />
     </template>
@@ -28,6 +32,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import ObsidianModal from './obsidian/Modal.vue'
 import { useTemplateRef } from 'vue'
 import RecurrencePicker from './RecurrencePicker.vue'

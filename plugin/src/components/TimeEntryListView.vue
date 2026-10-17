@@ -2,7 +2,7 @@
   <div class="abele-time-entries-list" data-abele-anchor="section:time">
     <ListSectionHeader
       class-prefix="abele-time-entries-list"
-      text="Time Entries"
+      :text="t('area.timeEntries')"
       :count="timeEntries.length"
       :fold="fold"
       actions-when-collapsed
@@ -34,14 +34,16 @@
       <EmptyState
         v-if="!filtered.length"
         class="abele-time-entries-list__empty"
-        text="No time entries."
+        :text="t('area.noTimeEntries')"
       />
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { formatDuration } from '@/helpers/displayFormat'
+import { areaDate } from '@/helpers/areaDateFormat'
+import { t } from '@/i18n'
+import { areaDuration as formatDuration } from '@/helpers/areaDateFormat'
 import { escapeHtml } from '@/helpers/escapeHtml'
 import { TimeEntry } from '@/entities/TimeEntry'
 import { DATE_FORMAT } from '@/constants/dates'
@@ -163,7 +165,7 @@ function renderChart(chart: EChartsType) {
         formatter: (params: any) => {
           const p = Array.isArray(params) ? params[0] : params
           const day = data[p.dataIndex]?.date
-          return `${escapeHtml(day ? dayjs(day).format('ddd D MMM') : p.name)}<br/>${formatDuration(Math.round(p.value * 3600))}`
+          return `${escapeHtml(day ? areaDate(dayjs(day), 'ddd D MMM') : p.name)}<br/>${formatDuration(Math.round(p.value * 3600))}`
         },
       },
       // A strip of the period's days: thin bars on a baseline, the hours only in the tooltip

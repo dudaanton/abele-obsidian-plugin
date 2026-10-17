@@ -1,3 +1,5 @@
+import { areaDate } from '@/helpers/areaDateFormat'
+import { t } from '@/i18n'
 /**
  * The row of a date property: a day back, the date that opens the plugin's own date window, a day on, how far away the
  * date is, and a button to the daily note of that day. Drawn whole by the plugin, like the
@@ -12,7 +14,7 @@ import dayjs from 'dayjs'
 import { openComponentDialog } from '@/modal/componentDialog'
 import { DISPLAY_DATE_FORMAT } from '@/constants/dates'
 import './kinds.css'
-import { formatDay, parseDateValue, relativeTime, stepDate, timeOf, withDay } from './dates'
+import { dateOf, formatDay, parseDateValue, relativeTime, stepDate, timeOf, withDay } from './dates'
 import { openDailyNote } from './dailyNote'
 import type { WidgetContext } from './widgets'
 
@@ -48,19 +50,29 @@ export function renderDate(el: HTMLElement, value: unknown, ctx: WidgetContext, 
   const row = el.createDiv({ cls: 'abele-property-date' })
   // The day with its two arrows never comes apart: a narrow cell moves the rest under it.
   const dayEl = row.createSpan({ cls: 'abele-property-date__day' })
-  const earlier = iconButton(dayEl, 'abele-property-date__earlier', 'chevron-left', 'Previous day')
+  const earlier = iconButton(
+    dayEl,
+    'abele-property-date__earlier',
+    'chevron-left',
+    t('area.Previousday')
+  )
   // The date as text that opens the plugin's date window, the one a task's dates use, not the
   // system's own picker, which looks different on every platform.
   const input = dayEl.createEl('input', {
     cls: 'metadata-input metadata-input-text mod-date abele-property-date__value',
-    attr: { readonly: 'true', 'aria-haspopup': 'dialog', placeholder: 'Empty' },
+    attr: { readonly: 'true', 'aria-haspopup': 'dialog', placeholder: t('area.empty') },
   })
-  const later = iconButton(dayEl, 'abele-property-date__later', 'chevron-right', 'Next day')
+  const later = iconButton(dayEl, 'abele-property-date__later', 'chevron-right', t('area.Nextday'))
   // Together, so a narrow cell wraps them onto the next line as one rather than leaving the
   // button alone there.
   const after = row.createSpan({ cls: 'abele-property-date__after' })
   const relative = after.createSpan({ cls: 'abele-property-date__relative' })
-  const daily = iconButton(after, 'abele-property-date__daily', 'calendar-days', 'Open daily note')
+  const daily = iconButton(
+    after,
+    'abele-property-date__daily',
+    'calendar-days',
+    t('area.Opendailynote')
+  )
 
   const show = (v: unknown) => {
     const parsed = parseDateValue(v)
@@ -69,14 +81,20 @@ export function renderDate(el: HTMLElement, value: unknown, ctx: WidgetContext, 
     input.toggleClass('mod-datetime', timed)
     const day = parsed ? dayjs(String(v).trim().slice(0, 10)) : null
     input.value = day?.isValid()
-      ? `${day.format(DISPLAY_DATE_FORMAT)}${timed ? ` ${parsed.time}` : ''}`
+      ? `${areaDate(day, DISPLAY_DATE_FORMAT)}${timed ? ` ${parsed.time}` : ''}`
       : ''
     // As wide as what it says, so the next-day arrow sits right after the date.
     input.size = Math.max(input.value.length, input.placeholder.length, 1)
     const text = relativeTime(v, new Date(), siblingTime(ctx))
     relative.setText(text ?? '')
     relative.toggle(!!text)
-    relative.toggleClass('is-past', !!text && (text.endsWith(' ago') || text === 'yesterday'))
+    const now = new Date()
+    const past =
+      parsed &&
+      (parsed.time || siblingTime(ctx)
+        ? dateOf(parsed, parsed.time ?? siblingTime(ctx)).getTime() <= now.getTime() - 60_000
+        : formatDay(dateOf(parsed)) < formatDay(now))
+    relative.toggleClass('is-past', !!text && !!past)
   }
   const write = (next: string | null) => {
     current = next

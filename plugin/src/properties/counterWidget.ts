@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * The row of a counter property: − , the number, + — Obsidian's own icon buttons around its own
  * number field. Drawn whole by the plugin rather than beside the stock field, so nothing Obsidian
@@ -27,13 +28,13 @@ export function renderCounter(el: HTMLElement, value: unknown, ctx: WidgetContex
     setIcon(b, icon)
     return b
   }
-  const minus = button('decrease', 'minus', 'Decrease')
+  const minus = button('decrease', 'minus', t('area.Decrease'))
   const input = row.createEl('input', {
     cls: 'metadata-input metadata-input-number abele-property-counter__value',
     type: 'text',
-    attr: { placeholder: 'Empty' },
+    attr: { placeholder: t('area.empty') },
   })
-  const plus = button('increase', 'plus', 'Increase')
+  const plus = button('increase', 'plus', t('area.Increase'))
 
   const show = (v: unknown) => {
     const n = counterValue(v)

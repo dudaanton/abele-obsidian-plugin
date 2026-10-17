@@ -8,20 +8,30 @@
     <div class="abele-calendar-base__header">
       <div class="abele-calendar-base__title">{{ title }}</div>
       <div class="abele-calendar-base__controls">
-        <Icon icon="chevron-left" :tooltip="`Previous ${stepName}`" @click="step(-1)" />
+        <Icon
+          icon="chevron-left"
+          :tooltip="t('area.previousPeriod', { period: stepName })"
+          @click="step(-1)"
+        />
         <Button
-          text="Today"
-          :tooltip="mode === 'life' ? 'Go to this week' : 'Go to today'"
+          :text="t('area.today')"
+          :tooltip="mode === 'life' ? t('area.goToThisWeek') : t('area.goToToday')"
           @click="goToday"
         />
-        <Icon icon="chevron-right" :tooltip="`Next ${stepName}`" @click="step(1)" />
+        <Icon
+          icon="chevron-right"
+          :tooltip="t('area.nextPeriod', { period: stepName })"
+          @click="step(1)"
+        />
         <Icon
           class="abele-calendar-base__completed-toggle"
           :icon="showCompleted ? 'list-todo' : 'list-checks'"
           role="switch"
           :aria-checked="showCompleted"
           :tooltip="
-            showCompleted ? 'Hide completed notes and events' : 'Show completed notes and events'
+            showCompleted
+              ? t('area.hideCompletedNotesAndEvents')
+              : t('area.showCompletedNotesAndEvents')
           "
           @click="showCompleted = !showCompleted"
         />
@@ -44,7 +54,7 @@
         >{{ g.label }}</span
       >
       <span v-if="undated" class="abele-calendar-base__undated">
-        {{ undated === 1 ? '1 note has' : `${undated} notes have` }} no date
+        {{ t('area.undated', { count: undated }) }}
       </span>
     </div>
 
@@ -107,14 +117,14 @@
         <div class="abele-calendar-base__agenda-actions">
           <Icon
             icon="calendar-range"
-            tooltip="Show the week of this day"
+            :tooltip="t('area.showTheWeekOfThisDay')"
             class="abele-calendar-base__agenda-week"
             @click="zoomToWeek(selected)"
           />
           <Icon
             v-if="canCreate"
             icon="plus"
-            tooltip="Make a note on this day"
+            :tooltip="t('area.makeANoteOnThisDay')"
             class="abele-calendar-base__agenda-new"
             @click="instance.create(selected, null)"
           />
@@ -132,7 +142,7 @@
           @hover="hover"
         />
       </div>
-      <EmptyState v-else text="Nothing on this day." />
+      <EmptyState v-else :text="t('area.nothingOnThisDay')" />
     </div>
 
     <CalendarLifeWeek
@@ -147,6 +157,8 @@
 </template>
 
 <script setup lang="ts">
+import { areaDate } from '@/helpers/areaDateFormat'
+import { t } from '@/i18n'
 /**
  * The calendar view of a base: the header — where you are, back, today, on, and which layout —
  * and the month, week or year under it. The notes come from the base through the instance its
@@ -193,10 +205,10 @@ import {
 const NARROW = 520
 
 const MODE_TABS: Tab[] = [
-  { id: 'month', label: 'Month', tooltip: 'Show a month' },
-  { id: 'week', label: 'Week', tooltip: 'Show a week, by the hour' },
-  { id: 'year', label: 'Year', tooltip: 'Show the whole year' },
-  { id: 'life', label: 'Life', tooltip: 'Show your life in weeks' },
+  { id: 'month', label: t('area.month'), tooltip: t('area.showAMonth') },
+  { id: 'week', label: t('area.week'), tooltip: t('area.showAWeekByTheHour') },
+  { id: 'year', label: t('area.year'), tooltip: t('area.showTheWholeYear') },
+  { id: 'life', label: t('area.life'), tooltip: t('area.showYourLifeInWeeks') },
 ]
 
 const props = defineProps<{ instance: CalendarBaseInstance }>()
@@ -246,20 +258,27 @@ const allItems = computed<readonly CalendarItem[]>(() => {
 // ---- where the view is ---------------------------------------------------------------------
 
 const title = computed(() => {
-  if (mode.value === 'life') return 'Life in weeks'
+  if (mode.value === 'life') return t('area.lifeInWeeks')
   const at = dayjs(anchor.value)
   if (mode.value === 'year') return at.format('YYYY')
-  if (mode.value === 'month') return at.format('MMMM YYYY')
+  if (mode.value === 'month') return areaDate(at, 'MMMM YYYY')
   const first = dayjs(startOfWeek(anchor.value, mondayFirst.value))
   const last = first.add(6, 'day')
-  if (first.month() === last.month()) return `${first.format('MMMM D')} – ${last.format('D, YYYY')}`
+  if (first.month() === last.month())
+    return `${areaDate(first, 'MMMM D')} – ${last.format('D, YYYY')}`
   if (first.year() === last.year())
-    return `${first.format('MMM D')} – ${last.format('MMM D, YYYY')}`
-  return `${first.format('MMM D, YYYY')} – ${last.format('MMM D, YYYY')}`
+    return `${areaDate(first, 'MMM D')} – ${areaDate(last, 'MMM D, YYYY')}`
+  return `${areaDate(first, 'MMM D, YYYY')} – ${areaDate(last, 'MMM D, YYYY')}`
 })
 
 /** What the arrows move by: a life moves a week at a time. */
-const stepName = computed(() => (mode.value === 'life' ? 'week' : mode.value))
+const stepName = computed(() =>
+  mode.value === 'life' || mode.value === 'week'
+    ? t('area.periodWeek')
+    : mode.value === 'month'
+      ? t('area.periodMonth')
+      : t('area.periodYear')
+)
 
 const step = (by: number) => {
   if (mode.value === 'life') {
@@ -347,7 +366,7 @@ const agenda = computed(() => {
 })
 
 const agendaTitle = computed(() =>
-  selected.value ? dayjs(selected.value).format('dddd, D MMMM') : ''
+  selected.value ? areaDate(dayjs(selected.value), 'dddd, D MMMM') : ''
 )
 
 // ---- pressing things -----------------------------------------------------------------------

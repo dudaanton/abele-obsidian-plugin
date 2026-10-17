@@ -17,7 +17,9 @@
         </div>
       </div>
       <div class="abele-calendar-week__row abele-calendar-week__all-day">
-        <div class="abele-calendar-week__gutter abele-calendar-week__gutter-label">All day</div>
+        <div class="abele-calendar-week__gutter abele-calendar-week__gutter-label">
+          {{ t('area.allDay') }}
+        </div>
         <div
           v-for="day in days"
           :key="day"
@@ -86,6 +88,8 @@
 </template>
 
 <script setup lang="ts">
+import { areaDate } from '@/helpers/areaDateFormat'
+import { t } from '@/i18n'
 /**
  * A week as seven columns: what has no time, or lasts several days, in a row at the top, and
  * the rest on the hours by when it starts and ends. Things at the same time share the width.
@@ -144,7 +148,7 @@ const timed = computed(() => {
   return out
 })
 
-const weekdayName = (day: string) => dayjs(day).format('ddd')
+const weekdayName = (day: string) => areaDate(dayjs(day), 'ddd')
 
 /** The hour pressed, to the half hour, from where in the column the press landed. */
 const onColumnClick = (day: string, event: MouseEvent) => {

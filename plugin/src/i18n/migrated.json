@@ -74,7 +74,59 @@
     "components/obsidian/notice.ts",
     "components/obsidian/selectionActions.ts",
     "components/obsidian/suggestionRows.ts",
-    "components/obsidian/usePanelResize.ts"
+    "components/obsidian/usePanelResize.ts",
+    "calendars/eventMenu.ts",
+    "commands/createTask.ts",
+    "commands/createTimeEntry.ts",
+    "commands/createTransaction.ts",
+    "commands/subtasks.ts",
+    "components/Calendar.vue",
+    "components/CalendarEvent.vue",
+    "components/DateRangePickerModal.vue",
+    "components/DateTimePicker.vue",
+    "components/DateTimePickerModal.vue",
+    "components/FinanceSidebar.vue",
+    "components/RecurrencePicker.vue",
+    "components/RecurrencePickerModal.vue",
+    "components/Task.vue",
+    "components/TaskHeader.vue",
+    "components/TasksCalendar.vue",
+    "components/TimeEntryItem.vue",
+    "components/TimeEntryListView.vue",
+    "components/TimeTrackingSidebar.vue",
+    "components/Timeline.vue",
+    "components/TimelineSidebar.vue",
+    "components/TodoList.vue",
+    "components/TransactionItem.vue",
+    "components/TransactionsList.vue",
+    "components/calendarBase/CalendarBase.vue",
+    "components/calendarBase/CalendarBirthPrompt.vue",
+    "components/calendarBase/CalendarChip.vue",
+    "components/calendarBase/CalendarLife.vue",
+    "components/calendarBase/CalendarLifeWeek.vue",
+    "components/calendarBase/CalendarMonth.vue",
+    "components/calendarBase/CalendarWeek.vue",
+    "components/calendarBase/CalendarYear.vue",
+    "components/timelineBase/TimelineBase.vue",
+    "components/timelineBase/TimelinePanel.vue",
+    "components/timelineBase/timelineGestures.ts",
+    "composables/useFinanceCharts.ts",
+    "finance/rates/exchangeRates.ts",
+    "helpers/moneyFormat.ts",
+    "helpers/periodName.ts",
+    "properties/counterWidget.ts",
+    "properties/dailyNote.ts",
+    "properties/dateWidget.ts",
+    "properties/dates.ts",
+    "properties/groupsWidget.ts",
+    "properties/labelsWidget.ts",
+    "properties/priority.ts",
+    "properties/priorityWidget.ts",
+    "properties/widgets.ts",
+    "helpers/areaDateFormat.ts",
+    "components/timelineBase/timelineChrome.ts",
+    "components/timelineBase/timelineDraw.ts",
+    "composables/useFinancePeriodSummary.ts"
   ],
   "exceptions": [
     {
@@ -84,13 +136,83 @@
     },
     {
       "path": "components/obsidian/Breadcrumbs.vue",
-      "text": "\u2026",
+      "text": "…",
       "reason": "Navigation ellipsis"
     },
     {
       "path": "components/obsidian/EventList.vue",
       "text": "ready",
       "reason": "Stable state discriminator indexing caller data"
+    },
+    {
+      "path": "components/Calendar.vue",
+      "text": "MMMM",
+      "reason": "Display date format token passed to Intl adapter"
+    },
+    {
+      "path": "components/DateTimePicker.vue",
+      "text": "HH:mm",
+      "reason": "Fixed time input syntax"
+    },
+    {
+      "path": "components/DateRangePickerModal.vue",
+      "text": "YYYY-MM-DD",
+      "reason": "Fixed date input syntax"
+    },
+    {
+      "path": "components/RecurrencePicker.vue",
+      "text": "Mon",
+      "reason": "English recurrence parsing and serialization data, or display date format token"
+    },
+    {
+      "path": "components/RecurrencePicker.vue",
+      "text": "Tue",
+      "reason": "English recurrence parsing and serialization data, or display date format token"
+    },
+    {
+      "path": "components/RecurrencePicker.vue",
+      "text": "Wed",
+      "reason": "English recurrence parsing and serialization data, or display date format token"
+    },
+    {
+      "path": "components/RecurrencePicker.vue",
+      "text": "Thu",
+      "reason": "English recurrence parsing and serialization data, or display date format token"
+    },
+    {
+      "path": "components/RecurrencePicker.vue",
+      "text": "Fri",
+      "reason": "English recurrence parsing and serialization data, or display date format token"
+    },
+    {
+      "path": "components/RecurrencePicker.vue",
+      "text": "Sat",
+      "reason": "English recurrence parsing and serialization data, or display date format token"
+    },
+    {
+      "path": "components/RecurrencePicker.vue",
+      "text": "Sun",
+      "reason": "English recurrence parsing and serialization data, or display date format token"
+    },
+    {
+      "path": "components/RecurrencePicker.vue",
+      "text": "ddd",
+      "reason": "English recurrence parsing and serialization data, or display date format token"
+    },
+    {
+      "path": "components/calendarBase/CalendarLife.vue",
+      "text": "--text-normal",
+      "reason": "Host CSS variable name"
+    },
+    {
+      "path": "components/calendarBase/CalendarLifeWeek.vue",
+      "text": "ddd D",
+      "reason": "Display date format token"
+    },
+    {
+      "path": "components/calendarBase/CalendarYear.vue",
+      "text": "MMMM",
+      "reason": "Display date format token"
     }
   ]
 }
