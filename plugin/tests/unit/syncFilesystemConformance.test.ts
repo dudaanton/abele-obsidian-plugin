@@ -47,6 +47,8 @@ const nonSyncFilesystem = new Set([
   'src/canvas/adapter.ts',
   'src/canvas/editorControls.ts',
   'src/canvas/embed.ts',
+  'src/canvas/excalidraw/migrate.ts',
+  'src/canvas/excalidrawAdapter.ts',
   'src/canvas/exportAdapter.ts',
   'src/canvas/measureAdapter.ts',
   'src/canvas/obsidianStore.ts',
