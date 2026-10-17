@@ -2928,5 +2928,35 @@
       "es",
       "de"
     ]
+  },
+  "area.drawerFinance": {
+    "englishHash": "afa07b95802f0c6b36139523f5a003870ed8a7857fdafd6fa1366fc07a8a9396",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.drawerTimeTracking": {
+    "englishHash": "6c131d94c4ba9baa7e11c839c5ef56df200c0a46526cbec46a4c9ca362117507",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "area.drawerTimeline": {
+    "englishHash": "ad914f1affcc0f4cd88e0a0e6c52bf36a8885955b8ec57b50dad6156623387f7",
+    "context": "Task, calendar, finance or property presentation; stored values stay unchanged",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }
