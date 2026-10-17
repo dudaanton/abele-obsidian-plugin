@@ -16,6 +16,7 @@ import { join, relative } from 'node:path'
 import { inspectDesign, inspectCss } from '../helpers/designParser'
 import { parse as parseSfc } from '@vue/compiler-sfc'
 import { baseParse, NodeTypes, type TemplateChildNode } from '@vue/compiler-dom'
+import { en } from '@/i18n/locales/en/pilot'
 
 const ROOT = join(__dirname, '..', '..', 'src', 'components')
 const STYLES = join(__dirname, '..', '..', 'src', 'styles.css')
@@ -267,7 +268,27 @@ describe('migrated small UI', () => {
   it('makes the period caption a named kit action rather than a clickable div', () => {
     const source = readFileSync(join(ROOT, 'obsidian/PeriodSelector.vue'), 'utf8')
     expect(template(source)).not.toMatch(/<div[^>]*__title[^>]*@click/)
-    expect(template(source)).toContain('tooltip="Choose date range"')
+    expect(source).toContain("import ObsidianIcon from './Icon.vue'")
+    const captions: string[] = []
+    const visit = (node: TemplateChildNode) => {
+      if (node.type !== NodeTypes.ELEMENT) return
+      if (
+        node.tag === 'ObsidianIcon' &&
+        node.props.some(
+          (prop) =>
+            prop.type === NodeTypes.ATTRIBUTE &&
+            prop.name === 'class' &&
+            prop.value?.content === 'abele-period-selector__title'
+        )
+      )
+        captions.push(node.loc.source)
+      node.children.forEach(visit)
+    }
+    baseParse(template(source)).children.forEach(visit)
+    expect(captions).toHaveLength(1)
+    expect(captions[0]).toContain(':tooltip="t(\'kit.dateRange\')"')
+    expect(captions[0]).toContain('@click="pickerOpen = true"')
+    expect(en['kit.dateRange']).toBe('Choose date range')
   })
   it('detects nested handmade states, bars and captions without rejecting kit aliases', () => {
     expect(

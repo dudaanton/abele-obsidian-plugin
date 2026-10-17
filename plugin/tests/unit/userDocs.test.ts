@@ -21,6 +21,7 @@ import {
   pageForSettingsTab,
 } from '@/userdocs'
 import { slug } from '@/docs'
+import { settingsTabsFromSource } from '../helpers/settingsTabs'
 
 const SRC = join(__dirname, '..', '..', 'src')
 const DOCS_DIR = join(SRC, 'userdocs')
@@ -182,7 +183,8 @@ describe('what is handed to Obsidian to render', () => {
   })
 
   it('leaves code, tables, headings and quotes line by line', () => {
-    const source = '## Heading\nText\n\n```yaml\na: 1\nb: 2\n```\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n> quoted\n> more'
+    const source =
+      '## Heading\nText\n\n```yaml\na: 1\nb: 2\n```\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n> quoted\n> more'
     expect(unwrap(source)).toBe(source)
   })
 
@@ -239,12 +241,23 @@ describe('what the pages must at least mention', () => {
   })
 
   const settingsSource = readFileSync(join(SRC, 'components/settings/Settings.vue'), 'utf8')
-  const tabs = [...settingsSource.matchAll(/\{\s*id:\s*'([^']+)',\s*label:\s*'([^']+)'/g)].map(
-    (m) => [m[1], m[2]] as const
-  )
+  const tabs = settingsTabsFromSource(settingsSource)
 
   it('finds the settings tabs it is meant to be checking', () => {
     expect(tabs.length).toBeGreaterThan(8)
+  })
+
+  it('rejects unrecognized tab labels rather than silently omitting their documentation checks', () => {
+    expect(() =>
+      settingsTabsFromSource(
+        `<script setup>const tabs = [{ id: 'sample', label: t('settings.tabs.missing') }]</script>`
+      )
+    ).toThrow('unknown English key settings.tabs.missing')
+    expect(() =>
+      settingsTabsFromSource(
+        `<script setup>const tabs = [{ id: 'sample', label: arbitraryLabel() }]</script>`
+      )
+    ).toThrow('expected t() for sample')
   })
 
   it.each(tabs)('gives the settings tab %s (%s) a section of the settings page', (_id, label) => {

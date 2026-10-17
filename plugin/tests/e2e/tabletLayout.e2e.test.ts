@@ -19,6 +19,7 @@ import path from 'node:path'
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
 import { shotDir } from './helpers/shots'
+import { settingsTabsFromSource } from '../helpers/settingsTabs'
 
 /** An iPad in landscape, in points. */
 const TABLET = { width: 1180, height: 820 }
@@ -182,10 +183,8 @@ const reload = async (): Promise<void> => {
  * One per page in `Settings.vue`, counted from its list rather than written down here: a fixed
  * number went stale the day Books added a twelfth page, and failed a layout that was fine.
  */
-const SETTINGS_TABS = (
-  readFileSync(path.join(__dirname, '../../src/components/settings/Settings.vue'), 'utf8').match(
-    /^\s*\{ id: '[^']+', label: '[^']+', component:/gm
-  ) ?? []
+const SETTINGS_TABS = settingsTabsFromSource(
+  readFileSync(path.join(__dirname, '../../src/components/settings/Settings.vue'), 'utf8')
 ).length
 
 const available = isObsidianRunning() && hasTestApi()
