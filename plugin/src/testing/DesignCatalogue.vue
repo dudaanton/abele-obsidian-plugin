@@ -516,6 +516,9 @@
         </AnchoredCard>
       </template>
       <template v-else-if="page === 'navigation'">
+        <Setting name="Drawer view switch" desc="Visible only inside a phone side drawer.">
+          <DrawerViewSwitch icon="list-todo" name="Sample panel" />
+        </Setting>
         <Tabs
           v-model="tab"
           :tabs="[
@@ -694,6 +697,7 @@ import ChoiceModal from '@/components/obsidian/ChoiceModal.vue'
 import SuggestionRow from '@/components/obsidian/SuggestionRow.vue'
 import NoticeActions from '@/components/obsidian/NoticeActions.vue'
 import ListRow from '@/components/obsidian/ListRow.vue'
+import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 import ListSectionHeader from '@/components/obsidian/ListSectionHeader.vue'
 import SheetHeaderActions from '@/components/obsidian/SheetHeaderActions.vue'
 import PathLabel from '@/components/obsidian/PathLabel.vue'

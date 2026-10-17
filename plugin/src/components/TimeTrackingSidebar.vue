@@ -2,7 +2,9 @@
   <SidebarPanel class="abele-time-tracking-sidebar">
     <!-- The pane's head as every list pane's: its name, and starting a timer as its action. -->
     <ListSectionHeader class-prefix="abele-time-tracking-sidebar" :text="t('area.time')">
-      <template #lead><DrawerViewSwitch icon="timer" name="Abele time tracking" /></template>
+      <template #lead
+        ><DrawerViewSwitch icon="timer" :name="t('area.drawerTimeTracking')"
+      /></template>
       <template #actions>
         <ObsidianIcon icon="timer" :label="t('area.startATimer')" @click="startEmptyTimer" />
       </template>

@@ -1,4 +1,7 @@
 export const tasks = {
+  'area.drawerFinance': 'Abele finanses',
+  'area.drawerTimeTracking': 'Abele laika uzskaite',
+  'area.drawerTimeline': 'Abele laika skala',
   'area.markUndone': 'Atzīmēt kā nepabeigtu',
   'area.markNotDone': 'Atzīmēt kā nepabeigtu',
   'area.markDone': 'Atzīmēt kā pabeigtu',

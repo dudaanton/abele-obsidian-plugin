@@ -1,4 +1,7 @@
 export const tasks = {
+  'area.drawerFinance': 'Abele Finanzen',
+  'area.drawerTimeTracking': 'Abele Zeiterfassung',
+  'area.drawerTimeline': 'Abele Zeitleiste',
   'area.markUndone': 'Als unerledigt markieren',
   'area.markNotDone': 'Als unerledigt markieren',
   'area.markDone': 'Als erledigt markieren',

@@ -38,6 +38,7 @@ export const CATALOGUE_COMPONENTS = [
   'ConfirmModal',
   'DateDivider',
   'Disclosure',
+  'DrawerViewSwitch',
   'Dropdown',
   'EmptyState',
   'EntryRow',

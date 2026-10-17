@@ -2,7 +2,7 @@
   <SidebarPanel class="abele-finance-sidebar">
     <div class="abele-finance-sidebar__header">
       <div class="abele-finance-sidebar__header-left">
-        <DrawerViewSwitch icon="wallet" name="Abele finance" />
+        <DrawerViewSwitch icon="wallet" :name="t('area.drawerFinance')" />
         <div class="abele-finance-sidebar__header-text">{{ t('area.transactions') }}</div>
         <ObsidianIcon
           icon="banknote-arrow-down"

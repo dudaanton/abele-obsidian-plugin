@@ -10,7 +10,9 @@
       @date-selected="selectDate"
       @date-right-clicked="onDateRightClick"
     >
-      <template #lead><DrawerViewSwitch icon="chart-gantt" name="Abele timeline" /></template>
+      <template #lead
+        ><DrawerViewSwitch icon="chart-gantt" :name="t('area.drawerTimeline')"
+      /></template>
     </Calendar>
     <Timeline :tasks="timelineTasks" :events="upcomingEvents" show-add-button />
   </SidebarPanel>
