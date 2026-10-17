@@ -1,0 +1,267 @@
+/* The Bases map view. The map fills the view as a table fills it; embedded in a note it takes
+   the view's height and the note's rounded frame. Beside it, the list or a place's card. */
+.abele-map-base {
+  --abele-glyph-size: calc(var(--icon-xs) + 2 * var(--size-2-2));
+  --abele-side-width: calc(var(--size-4-12) * 7);
+  position: relative;
+  display: flex;
+  height: 100%;
+  min-height: calc(var(--size-4-12) * 6);
+}
+.abele-map-base_embedded {
+  min-height: 0;
+  border: var(--border-width) solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  overflow: hidden;
+}
+.abele-map-base__stage {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+.abele-map.abele-map-base__map {
+  position: absolute;
+  inset: 0;
+  height: auto;
+  border: none;
+  border-radius: 0;
+}
+.abele-map-base__side {
+  flex: none;
+  width: var(--abele-side-width);
+  min-height: 0;
+  overflow-y: auto;
+  border-inline-end: var(--border-width) solid var(--background-modifier-border);
+  background: var(--background-primary);
+}
+.abele-map-base__side > .abele-map-card {
+  padding: var(--size-4-3) var(--size-4-4) var(--size-4-4);
+}
+/* On a phone the list and the map are two faces of one view: one at a time, the whole width. */
+.abele-map-base_phone-list .abele-map-base__side {
+  width: 100%;
+  border: none;
+}
+.abele-map-base_phone-list .abele-map-base__stage {
+  display: none;
+}
+
+/* ── Marks ─────────────────────────────────────────────────────────────── */
+.abele-map-base__pin {
+  box-sizing: content-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--abele-glyph-size);
+  height: var(--abele-glyph-size);
+  border-radius: 50%;
+  border: 2px solid var(--background-primary);
+  background-color: var(--abele-pin-color, var(--interactive-accent));
+  color: var(--text-on-accent);
+  box-shadow: var(--shadow-s);
+  cursor: var(--cursor-link);
+  --icon-size: var(--icon-xs);
+  --icon-stroke: var(--icon-xs-stroke-width);
+}
+.abele-map-base__pin svg {
+  width: var(--icon-xs);
+  height: var(--icon-xs);
+  stroke-width: var(--icon-xs-stroke-width);
+}
+/* No glyph, or one Obsidian does not know: a smaller dot of the same colour, still pressable;
+   with no colour either, grey, so it never reads as a kind drawn in the accent. */
+.abele-map-base__pin.abele-map-base__pin_dot {
+  background-color: var(--abele-pin-color, var(--text-muted));
+  width: var(--size-4-3);
+  height: var(--size-4-3);
+}
+/* Picked, or pointed at in the list: a ring in the text colour, the mark on top of its neighbours;
+   picked, a step larger too, so it is found among the others at a glance. */
+.abele-map-base__pin.is-selected,
+.abele-map-base__pin.is-hovered {
+  outline: 2px solid var(--text-normal);
+  outline-offset: 1px;
+}
+.abele-map-base__pin.is-selected {
+  width: calc(var(--icon-s) + 2 * var(--size-4-2));
+  height: calc(var(--icon-s) + 2 * var(--size-4-2));
+}
+.abele-map-base__pin.is-selected svg {
+  width: var(--icon-s);
+  height: var(--icon-s);
+  stroke-width: var(--icon-s-stroke-width);
+}
+.maplibregl-marker:has(> .abele-map-base__pin.is-selected),
+.maplibregl-marker:has(> .abele-map-base__pin.is-hovered) {
+  z-index: 2;
+}
+.abele-map-base__pin:focus-visible,
+.abele-map-base__group:focus-visible {
+  outline: 2px solid var(--background-modifier-border-focus);
+  outline-offset: 2px;
+}
+
+.abele-map-base__group {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 2px solid var(--background-primary);
+  /* Neutral, the text colour as a plate: no place's kind has it, so a group never reads as one. */
+  background: var(--text-normal);
+  color: var(--background-primary);
+  box-shadow: var(--shadow-s);
+  font-family: var(--font-interface);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold);
+  font-variant-numeric: tabular-nums;
+  cursor: var(--cursor-link);
+}
+.abele-map-base__group_s {
+  width: calc(var(--abele-glyph-size) + var(--size-2-3));
+  height: calc(var(--abele-glyph-size) + var(--size-2-3));
+}
+.abele-map-base__group_m {
+  width: calc(var(--abele-glyph-size) + var(--size-4-3));
+  height: calc(var(--abele-glyph-size) + var(--size-4-3));
+}
+.abele-map-base__group_l {
+  width: calc(var(--abele-glyph-size) + var(--size-4-5));
+  height: calc(var(--abele-glyph-size) + var(--size-4-5));
+  font-size: var(--font-ui-smaller);
+}
+/* Places on one spot, which zooming will not part: the plate of the theme ringed in the text
+   colour, a list on a press. */
+.abele-map-base__group.abele-map-base__group_spot {
+  background: var(--background-primary);
+  color: var(--text-normal);
+  border-color: var(--text-normal);
+}
+
+/* The person: Obsidian's accent dot with a soft ring, as the note map draws it. */
+.abele-map-base__me {
+  width: var(--size-4-3);
+  height: var(--size-4-3);
+  border-radius: 50%;
+  background: var(--color-blue);
+  border: 2px solid var(--background-primary);
+  box-shadow: 0 0 0 6px rgba(var(--color-blue-rgb), 0.25);
+}
+
+/* The small disc of a place in a list row or a card title. */
+.abele-map-base__glyph {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--abele-glyph-size, calc(var(--icon-xs) + 2 * var(--size-2-2)));
+  height: var(--abele-glyph-size, calc(var(--icon-xs) + 2 * var(--size-2-2)));
+  --abele-glyph-size: calc(var(--icon-xs) + 2 * var(--size-2-2));
+  border-radius: 50%;
+  background-color: var(--abele-pin-color, var(--interactive-accent));
+  color: var(--text-on-accent);
+}
+.abele-map-base__glyph svg {
+  width: var(--icon-xs);
+  height: var(--icon-xs);
+  stroke-width: var(--icon-xs-stroke-width);
+}
+.abele-map-base__glyph.abele-map-base__glyph_dot {
+  background: none;
+}
+.abele-map-base__glyph.abele-map-base__glyph_dot::before {
+  content: '';
+  width: var(--size-4-2);
+  height: var(--size-4-2);
+  border-radius: 50%;
+  background-color: var(--abele-pin-color, var(--text-muted));
+}
+
+/* ── Over the map ──────────────────────────────────────────────────────── */
+.abele-map-base__corner {
+  position: absolute;
+  top: 0;
+  inset-inline-start: 0;
+  z-index: 3;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--size-4-2);
+  margin: var(--size-4-2);
+  pointer-events: none;
+}
+.abele-map-base__corner > * {
+  pointer-events: auto;
+}
+.abele-map-base__plate-group.canvas-controls {
+  position: static;
+  margin: 0;
+}
+/* The notes left off the map: a glyph and their count on a plate of the control column's own. */
+.abele-map-base__skipped {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2-2);
+  height: var(--size-4-8);
+  padding: 0 var(--size-4-2) 0 var(--size-2-3);
+  border: var(--border-width) solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background-color: var(--background-primary);
+  box-shadow: var(--shadow-s);
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  font-variant-numeric: tabular-nums;
+  cursor: var(--cursor);
+}
+.abele-map-base__skipped:hover {
+  background-color: var(--background-primary-alt);
+  color: var(--text-normal);
+}
+.abele-map-base__controls.canvas-controls {
+  position: absolute;
+  top: 0;
+  inset-inline-end: 0;
+  z-index: 3;
+  margin: var(--size-4-2);
+}
+
+/* One plate at the top of the map saying what is the matter; the map stays usable round it. */
+.abele-map-base__notice {
+  position: absolute;
+  top: var(--size-4-12);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  width: min(calc(100% - 2 * var(--size-4-4)), calc(var(--size-4-12) * 7));
+  padding: var(--size-4-4);
+  border: var(--border-width) solid var(--background-modifier-border);
+  border-radius: var(--radius-l);
+  background: var(--background-primary);
+  box-shadow: var(--shadow-s);
+}
+.abele-map-base__notice .abele-empty-state {
+  margin: 0;
+}
+
+/* Pointing at a mark: the note map's popover, a little further above the larger disc. */
+.abele-map-base__hover .maplibregl-popup-content {
+  padding: var(--size-4-3);
+}
+.abele-map-base .maplibregl-ctrl-bottom-left .maplibregl-ctrl-scale {
+  margin: var(--size-4-2);
+}
+
+/* The card's dialog: as wide as a reading column on a desktop, Obsidian's tall sheet on a phone. */
+.modal.abele-map-card-modal {
+  width: min(calc(var(--size-4-12) * 11), 92vw);
+}
+
+/* A phone's floating navigation bar sits over the view's foot: the map's corner plates and the
+   list's last rows stand clear of it by Obsidian's own spacing for views. */
+.is-phone .abele-map-base:not(.abele-map-base_embedded) .maplibregl-ctrl-bottom-left,
+.is-phone .abele-map-base:not(.abele-map-base_embedded) .maplibregl-ctrl-bottom-right {
+  bottom: var(--view-bottom-spacing, 0px);
+}
+.is-phone .abele-map-base:not(.abele-map-base_embedded) .abele-map-list__rows {
+  padding-bottom: calc(var(--view-bottom-spacing, 0px) + var(--size-4-2));
+}

@@ -16,8 +16,9 @@
         @click="emit('north')"
       />
       <ControlItem
-        icon="locate-fixed"
-        :tooltip="state.locating ? 'Finding where you are…' : 'Show my location'"
+        :class="{ 'is-active': state.following }"
+        :icon="state.locationOff ? 'locate-off' : 'locate-fixed'"
+        :tooltip="locateTip"
         :disabled="state.locating"
         @click="emit('locate')"
       />
@@ -27,21 +28,36 @@
         @click="emit('full')"
       />
     </div>
+    <!-- A base's map: which background it is drawn on. -->
+    <div v-if="layers" class="canvas-control-group">
+      <ControlItem icon="layers" tooltip="Background" @click="(e: MouseEvent) => emit('layers', e)" />
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 // What a map in a note or a chat offers to do, in the plugin's glyphs with words in tooltips:
 // zoom, back to north once turned, where the device is, and the whole screen.
+import { computed } from 'vue'
 import { ControlItem } from '../obsidian/ControlItem'
 import type { MapControlsState } from './mapControlsState'
 
-defineProps<{ state: MapControlsState }>()
+const props = defineProps<{ state: MapControlsState; layers?: boolean }>()
+const locateTip = computed(() =>
+  props.state.locating
+    ? 'Finding where you are…'
+    : props.state.locationOff
+      ? 'Location is off for Obsidian'
+      : props.state.following
+        ? 'Following you. Press to stop'
+        : 'Show my location'
+)
 const emit = defineEmits<{
   zoom: [step: 1 | -1]
   north: []
   locate: []
   full: []
+  layers: [event: MouseEvent]
 }>()
 </script>
 
@@ -56,6 +72,10 @@ const emit = defineEmits<{
   position: static;
   margin: var(--size-4-2);
   pointer-events: auto;
+}
+/* Following the person: the glyph in the accent, as Obsidian marks a toggle that is on. */
+.abele-map-controls .canvas-control-item.is-active {
+  color: var(--interactive-accent);
 }
 .abele-map-controls__north svg {
   transform: rotate(var(--abele-map-bearing, 0deg));

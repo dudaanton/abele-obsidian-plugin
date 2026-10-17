@@ -4,4 +4,8 @@ export type MapControlsState = {
   bearing: number
   locating: boolean
   full: boolean
+  /** A base's map following the person as they move. */
+  following?: boolean
+  /** Permission refused: the glyph says so and its press explains. */
+  locationOff?: boolean
 }
