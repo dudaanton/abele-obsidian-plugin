@@ -10,6 +10,15 @@ const serverId = (address: string): string => endpoints(address).origin
 export const isGithubConnection = (connection: Pick<GithubConnection, 'provider'>): boolean =>
   connection.provider === undefined || connection.provider === 'github'
 
+/** Retained records are manageable before their provider's client is installed. */
+export function connectionUnavailableReason(
+  connection: Pick<GithubConnection, 'provider'>
+): string {
+  if (isGithubConnection(connection)) return ''
+  const names: Record<string, string> = { forgejo: 'Forgejo', gitea: 'Gitea', gitlab: 'GitLab' }
+  return `${names[connection.provider!] ?? connection.provider}, available in a later version`
+}
+
 export function connectionBinding(
   connection: Pick<GithubConnection, 'provider' | 'server'>
 ): string {

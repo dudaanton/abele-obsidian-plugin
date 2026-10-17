@@ -95,6 +95,44 @@ function setup(mode: 'off' | 'ask') {
 }
 
 describe('an agent-opened tab capability', () => {
+  it('restores an unavailable provider selection as a quiet refusal without a client', async () => {
+    const { view } = setup('off')
+    AbeleConfig.getInstance().github.connections[1].provider = 'forgejo'
+    await view.setState(
+      {
+        url: 'https://github.com/sample/repo/issues/1',
+        connectionId: 'selected',
+        connectionIntent: 'manual',
+      },
+      { history: false }
+    )
+    await view.onOpen()
+    await flushPromises()
+    expect(view.containerEl.textContent).toMatch(/Forgejo.*available in a later version/i)
+    expect(view.model.screen.title).toBe('')
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  it('clears a visible tab when its selected connection becomes an unavailable provider', async () => {
+    const { view } = setup('off')
+    await view.setState(
+      {
+        url: 'https://github.com/sample/repo/issues/1',
+        connectionId: 'selected',
+        connectionIntent: 'manual',
+      },
+      { history: false }
+    )
+    await view.onOpen()
+    await vi.waitFor(() => expect(view.model.screen.title).toBeTruthy())
+    const count = request.mock.calls.length
+    AbeleConfig.getInstance().github.connections[1].provider = 'forgejo'
+    AbeleConfig.getInstance().version.value++
+    await flushPromises()
+    expect(view.containerEl.textContent).toMatch(/Forgejo.*available in a later version/i)
+    expect(view.model.screen.title).toBe('')
+    expect(request).toHaveBeenCalledTimes(count)
+  })
   it('refreshes a loaded pinned file offline through the same live agent capability', async () => {
     const { app, agent, view, leaf } = setup('off'),
       base = 'a'.repeat(40),

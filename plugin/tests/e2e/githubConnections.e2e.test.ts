@@ -32,6 +32,67 @@ describe.skipIf(!available)(
       closeDialogs()
     })
 
+    it('keeps imported provider rows quiet and removable beside working GitHub controls', () => {
+      const result = evalAsync<{
+        unavailable: boolean
+        actions: string[]
+        githubEditable: boolean
+        removed: boolean
+        retained: boolean
+        shots: string[]
+      }>(`(async () => {
+        ${PRELUDE}
+        window.__abeleTest.openDialog('github-connections')
+        const root = await until(() => document.querySelector('.abele-settings__github'))
+        if (!root) throw Error('Connection settings did not open')
+        const config = window.__abeleTest.AbeleConfig.getInstance()
+        const github = {...config.github.connections[0], name:'Sample GitHub'}
+        config.github.connections = [github, {...github, id:'sample-forgejo', provider:'forgejo', name:'Sample Forgejo', server:'https://git.example.test/team', keyId:''}]
+        config.version.value++
+        const row = await until(() => [...root.querySelectorAll('.setting-item')].find(el => el.querySelector('.setting-item-name')?.textContent.trim() === 'Sample Forgejo'))
+        if (!row) throw Error('Imported connection row did not render')
+        const actions = [...row.querySelectorAll('button')].map(button => button.textContent.trim())
+        const unavailable = row.textContent.includes('Forgejo, available in a later version')
+        const githubRow = [...root.querySelectorAll('.setting-item')].find(el => el.querySelector('.setting-item-name')?.textContent.startsWith('Sample GitHub'))
+        const githubEditable = [...githubRow.querySelectorAll('button')].some(button => button.textContent.trim() === 'Edit')
+        const paths = []
+        const shoot = async path => {
+          if (window.__e2eHost) return window.__e2eHost.shot(path)
+          const image = await Promise.race([require('@electron/remote').getCurrentWebContents().capturePage(), wait(8000).then(() => null)])
+          if (!image) throw Error('Connection settings screenshot did not arrive')
+          require('fs').writeFileSync(path,image.toPNG())
+          return path
+        }
+        row.scrollIntoView({block:'center'}); await wait(200)
+        paths.push(await shoot(${JSON.stringify(shots + '/unavailable-provider-desktop.png')}))
+        if (!${JSON.stringify(onPhone())}) {
+          const win = require('@electron/remote').getCurrentWindow()
+          const size = win.getContentSize(), phone = document.body.classList.contains('is-phone')
+          try {
+            win.setContentSize(390,844); document.body.classList.add('is-phone')
+            await wait(300); row.scrollIntoView({block:'center'}); await wait(200)
+            paths.push(await shoot(${JSON.stringify(shots + '/unavailable-provider-phone.png')}))
+          } finally {win.setContentSize(...size);document.body.classList.toggle('is-phone',phone)}
+        }
+        row.querySelector('button')?.click()
+        const confirmation = await until(() => [...document.querySelectorAll('.modal')].find(modal => modal.textContent.includes('Delete Sample Forgejo?')))
+        if (!confirmation) throw Error('Connection deletion did not ask for confirmation')
+        const remove = [...confirmation.querySelectorAll('button')].find(button => button.textContent.trim() === 'Delete')
+        if (!remove) throw Error('Connection deletion has no confirm action')
+        remove.click()
+        const removed = !!(await until(() => !config.github.connections.some(c => c.id === 'sample-forgejo')))
+        return {unavailable,actions,githubEditable,removed,retained:config.github.connections.some(c => c.id === github.id),shots:paths}
+      })()`)
+      expect(result).toMatchObject({
+        unavailable: true,
+        actions: ['Delete'],
+        githubEditable: true,
+        removed: true,
+        retained: true,
+      })
+      expect(result.shots.length).toBeGreaterThan(0)
+    })
+
     it('checks two unsaved credentials against their own account and never renders or stores them', async () => {
       const result = evalAsync<{
         accounts: string[]

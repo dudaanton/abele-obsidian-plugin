@@ -21,6 +21,7 @@ import { GithubError } from './client'
 import type { GithubTarget } from './urls'
 import { githubTabTarget, savedGithubTarget, savedNodeTarget } from '@/repository/state'
 import { sameConnectionServer } from './connectionRouting'
+import { isGithubConnection, connectionUnavailableReason } from './connections'
 import { clientForTab, tabAccessSnapshot } from './tabConnectionAccess'
 import GithubItem from '@/components/github/GithubItem.vue'
 import NodeRepositoryItem from '@/components/NodeRepositoryItem.vue'
@@ -82,6 +83,13 @@ export class GithubView extends ItemView {
   /** Which item this tab shows, whatever line or comment it was last pointed at. */
   targetKey(): string | null {
     return this.model.target ? targetKey(this.model.target) : null
+  }
+
+  private unavailableConnection(reason: string): void {
+    Object.assign(this.model.screen, emptyScreen())
+    this.model.screen.error = reason
+    this.title = ''
+    this.refreshHeader()
   }
 
   getState(): Record<string, unknown> {
@@ -165,6 +173,17 @@ export class GithubView extends ItemView {
         approvedConnections?: Record<string, string>
       }
       let connectionId = saved?.connection || requested.connectionId
+      const connection = githubSettings().connections.find((c) => c.id === connectionId)
+      if (connection && !isGithubConnection(connection)) {
+        this.model.url = url
+        this.model.target = target
+        this.model.connectionId = connectionId
+        this.model.connectionIntent =
+          requested.connectionIntent === 'manual' ? 'manual' : 'automatic'
+        this.unavailableConnection(connectionUnavailableReason(connection))
+        await super.setState(state, result)
+        return
+      }
       const exists = (githubSettings().connections ?? []).some((c) => c.id === connectionId)
       this.model.connectionNotice = ''
       if (connectionId && !exists) {
@@ -368,6 +387,11 @@ export class GithubView extends ItemView {
           void secrets().version.value
           const id = this.model.connectionId
           const row = githubSettings().connections?.find((c) => c.id === id)
+          if (row && !isGithubConnection(row)) {
+            const reason = connectionUnavailableReason(row)
+            this.unavailableConnection(reason)
+            return h('div', { class: 'abele-github-view__source-unavailable' }, reason)
+          }
           if (id && !row && this.model.target) {
             const chosen = resolveConnectionCandidates(this.model.target)[0]
             this.model.connectionId = chosen?.id || undefined
@@ -402,7 +426,7 @@ export class GithubView extends ItemView {
                 )
               return row ? connectionClient(row.id) : githubClient(target?.host)
             },
-            accountName: (githubSettings().connections ?? []).length
+            accountName: (githubSettings().connections ?? []).some(isGithubConnection)
               ? row
                 ? `${row.name}${row.account ? ` · ${row.account.login}` : ''}`
                 : 'Anonymous'
@@ -418,7 +442,7 @@ export class GithubView extends ItemView {
                 this.containerEl.ownerDocument
               )
             },
-            primaryLoad: (githubSettings().connections ?? []).length
+            primaryLoad: (githubSettings().connections ?? []).some(isGithubConnection)
               ? async (
                   target: GithubTarget,
                   promote: (target: GithubTarget) => void,

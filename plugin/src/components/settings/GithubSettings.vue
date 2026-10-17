@@ -52,19 +52,25 @@
         <Setting
           v-for="connection in settings.connections"
           :key="connection.id"
-          :name="connection.name + (connection.isDefault ? ' · Default' : '')"
+          :name="
+            connection.name +
+            (isGithubConnection(connection) && connection.isDefault ? ' · Default' : '')
+          "
           :desc="connectionDescription(connection)"
         >
           <Avatar
+            v-if="isGithubConnection(connection)"
             :name="connection.account?.login || connection.name"
             :src="connection.account?.avatarUrl"
           />
           <Button
+            v-if="isGithubConnection(connection)"
             text="Check"
             tooltip="Check this connection's account and repository access"
             @click="editConnection(connection, true)"
           />
           <Button
+            v-if="isGithubConnection(connection)"
             text="Edit"
             tooltip="Edit this connection's name, server, token and owner preferences"
             @click="editConnection(connection)"
@@ -76,7 +82,11 @@
           />
         </Setting>
         <Setting
-          v-if="!settings.connections.some((c) => endpoints(c.server).webHost === 'github.com')"
+          v-if="
+            !settings.connections.some(
+              (c) => isGithubConnection(c) && endpoints(c.server).webHost === 'github.com'
+            )
+          "
           name="Public github.com (anonymous)"
           :desc="
             anonymousGithubRate
@@ -203,7 +213,7 @@
     <GithubConnectionEditor
       v-if="editingConnection"
       :connection="editingConnection"
-      :connections="settings.connections"
+      :connections="settings.connections.filter(isGithubConnection)"
       :is-new="newConnection"
       :check-on-open="checkOnOpen"
       :error-message="connectionMessage"
@@ -212,7 +222,9 @@
     />
     <ConfirmModal
       v-if="deletingConnection"
-      title="Delete GitHub connection"
+      :title="
+        isGithubConnection(deletingConnection) ? 'Delete GitHub connection' : 'Delete connection'
+      "
       :message="`Delete ${deletingConnection.name}? Its local token will be forgotten; other connections are kept.`"
       confirm-tooltip="Delete this connection and forget its local token"
       @confirm="deleteConnection"
@@ -258,7 +270,12 @@ import {
 import { resetGithubClients, connectionClient } from '@/github/GithubService'
 import { githubUsers } from '@/github/users'
 import { PAGE_WIDTH_MAX, PAGE_WIDTH_MIN } from '@/github/pageWidth'
-import { projectLegacy } from '@/github/connections'
+import {
+  projectLegacy,
+  isGithubConnection,
+  connectionUnavailableReason,
+  connectionBinding,
+} from '@/github/connections'
 import { endpoints } from '@/github/urls'
 
 const config = AbeleConfig.getInstance()
@@ -270,6 +287,8 @@ const connectionMessage = ref('')
 let originalConnection = ''
 
 const connectionDescription = (connection: GithubConnection) => {
+  const unavailable = connectionUnavailableReason(connection)
+  if (unavailable) return `${unavailable} · ${connection.server}`
   void secrets().version.value
   const token = connection.keyId ? secrets().get(connection.keyId) : ''
   const available = token
@@ -278,7 +297,9 @@ const connectionDescription = (connection: GithubConnection) => {
       ? 'Synced keys locked'
       : 'No token on this device'
   const expiry = connection.expiresAt ? Date.parse(connection.expiresAt) - Date.now() : Infinity
-  const rate = config.github.connections?.some((c) => c.id === connection.id)
+  const rate = config.github.connections?.some(
+    (c) => c.id === connection.id && isGithubConnection(c)
+  )
     ? connectionClient(connection.id).rate.value
     : null
   return [
@@ -295,6 +316,7 @@ const connectionDescription = (connection: GithubConnection) => {
     .join(' · ')
 }
 const editConnection = (connection: GithubConnection, check = false) => {
+  if (!isGithubConnection(connection)) return
   newConnection.value = false
   originalConnection = JSON.stringify(connection)
   checkOnOpen.value = check
@@ -337,9 +359,9 @@ async function saveConnection(
     return
   }
   if (connection.isDefault) {
-    const origin = endpoints(connection.server).origin
+    const binding = connectionBinding(connection)
     current.connections = current.connections.map((c) =>
-      endpoints(c.server).origin === origin ? { ...c, isDefault: false } : c
+      connectionBinding(c) === binding ? { ...c, isDefault: false } : c
     )
   }
   if (index < 0) current.connections.push(connection)

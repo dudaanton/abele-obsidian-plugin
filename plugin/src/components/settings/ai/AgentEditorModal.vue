@@ -164,9 +164,13 @@
               v-for="connection in githubConnections"
               :key="connection.id"
               :name="connection.name"
-              :desc="`${connection.server || 'github.com'}${connection.account ? ' · ' + connection.account.login : ''}`"
+              :desc="
+                connectionUnavailableReason(connection) ||
+                `${connection.server || 'github.com'}${connection.account ? ' · ' + connection.account.login : ''}`
+              "
             >
               <Dropdown
+                v-if="isGithubConnection(connection)"
                 :model-value="agent.githubConnections?.[connection.id] ?? 'off'"
                 :options="CONNECTION_MODES"
                 @update:model-value="
@@ -298,6 +302,7 @@
 </template>
 
 <script setup lang="ts">
+import { isGithubConnection, connectionUnavailableReason } from '@/github/connections'
 import { computed, ref } from 'vue'
 import ObsidianModal from '../../obsidian/Modal.vue'
 import Setting from '../../obsidian/Setting.vue'

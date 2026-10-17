@@ -11,7 +11,12 @@ import {
   GITHUB_VIEW_TYPE,
   resolveConnectionCandidates,
 } from '@/github/GithubService'
-import { preferredConnection, type GithubConnection } from '@/github/connections'
+import {
+  preferredConnection,
+  isGithubConnection,
+  connectionUnavailableReason,
+  type GithubConnection,
+} from '@/github/connections'
 import { endpoints, parseGithubUrl, type GithubTarget } from '@/github/urls'
 import { parseRepoInput } from '@/github/accessCheck'
 import { GithubClient } from '@/github/client'
@@ -34,12 +39,13 @@ export async function toolOperation(
   access: GithubToolAccess,
   signal?: AbortSignal
 ): Promise<GithubToolOperation> {
-  const rows = githubSettings().connections ?? []
+  const allRows = githubSettings().connections ?? []
+  const rows = allRows.filter(isGithubConnection)
   const originalAgent = access.agent()?.id
   const selected = typeof params.connection === 'string' ? params.connection.trim() : ''
   let connection: GithubConnection | undefined
   if (selected) {
-    const matches = rows.filter((c) => c.id === selected || c.name === selected)
+    const matches = allRows.filter((c) => c.id === selected || c.name === selected)
     if (matches.length !== 1)
       throw new Error(
         matches.length
@@ -47,6 +53,7 @@ export async function toolOperation(
           : 'Unknown GitHub connection. Use github_views to list connections.'
       )
     connection = matches[0]
+    if (!isGithubConnection(connection)) throw new Error(connectionUnavailableReason(connection))
   }
   const { app } = GlobalStore.getInstance()
   const tabs = (app?.workspace?.getLeavesOfType?.(GITHUB_VIEW_TYPE) ?? [])
@@ -192,15 +199,17 @@ export async function toolOperation(
   }
   const canReadTab = (id: string | undefined) => {
     if (!id) return true
-    if (!(githubSettings().connections ?? []).some((c) => c.id === id)) return false
+    if (!(githubSettings().connections ?? []).some((c) => c.id === id && isGithubConnection(c)))
+      return false
     if (selected && id !== connection?.id) return false
     return connectionMode(access.agent(), id) === 'auto' || id === approved
   }
   const inventory = [
     'GitHub connections (Off / Ask / On):',
-    ...rows.map(
-      (c) =>
-        `- ${c.name} [${c.id}] — ${c.server || 'github.com'}${c.account ? ` · ${c.account.login}` : ''} — ${connectionMode(access.agent(), c.id) === 'auto' ? 'On' : connectionMode(access.agent(), c.id) === 'ask' ? 'Ask' : 'Off'}`
+    ...allRows.map((c) =>
+      !isGithubConnection(c)
+        ? `- ${c.name} [${c.id}] — ${connectionUnavailableReason(c)}`
+        : `- ${c.name} [${c.id}] — ${c.server || 'github.com'}${c.account ? ` · ${c.account.login}` : ''} — ${connectionMode(access.agent(), c.id) === 'auto' ? 'On' : connectionMode(access.agent(), c.id) === 'ask' ? 'Ask' : 'Off'}`
     ),
   ].join('\n')
   const guardedClient = guardedGithubClient(client, assertAccess)

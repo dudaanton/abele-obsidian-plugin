@@ -7,6 +7,7 @@ import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { githubSettingsFrom } from '@/github/settings'
 import { useVault } from '../helpers/testEnv'
+import Setting from '@/components/obsidian/Setting.vue'
 
 beforeEach(() => {
   useVault([])
@@ -16,6 +17,82 @@ beforeEach(() => {
 })
 
 describe('connection settings list', () => {
+  it.each(['forgejo', 'gitea', 'gitlab', 'future-forge'])(
+    'keeps an imported %s connection removable without a GitHub client',
+    async (provider) => {
+      const app = useVault([]),
+        config = AbeleConfig.getInstance()
+      const github = {
+        id: 'github',
+        name: 'Sample GitHub',
+        server: '',
+        keyId: 'github-slot',
+        owners: [],
+        isDefault: true,
+      }
+      const foreign = {
+        ...github,
+        id: 'foreign',
+        name: 'Sample other service',
+        provider,
+        server: 'https://git.example.test/team',
+        keyId: 'foreign-slot',
+      }
+      config.github = githubSettingsFrom({ enabled: true, connections: [github, foreign] })
+      const read = vi.spyOn(app.secretStorage, 'getSecret')
+      const view = mount(GithubSettings)
+      const row = view
+        .findAllComponents(Setting)
+        .find((row) => String(row.props('name')).startsWith(foreign.name))!
+      expect(row.text()).toMatch(/available in a later version/i)
+      expect(row.findAllComponents(Button).map((button) => button.props('text'))).toEqual([
+        'Delete',
+      ])
+      expect(read.mock.calls.some(([id]) => id === foreign.keyId)).toBe(false)
+      expect(
+        view
+          .findAllComponents(Setting)
+          .find((row) => String(row.props('name')).startsWith(github.name))!
+          .text()
+      ).toContain('Edit')
+      row.findComponent(Button).vm.$emit('click')
+      await flushPromises()
+      view.findComponent(ConfirmModal).vm.$emit('confirm')
+      await flushPromises()
+      expect(config.github.connections.map((c) => c.id)).toEqual(['github'])
+      view.unmount()
+    }
+  )
+
+  it('does not clear another provider default when a GitHub connection is saved on the same host', async () => {
+    const config = AbeleConfig.getInstance()
+    const github = {
+      id: 'github',
+      name: 'Sample GitHub',
+      server: 'https://git.example.test',
+      keyId: 'github-slot',
+      owners: [],
+      isDefault: true,
+    }
+    const foreign = {
+      ...github,
+      id: 'foreign',
+      provider: 'forgejo',
+      name: 'Sample Forgejo',
+      keyId: 'foreign-slot',
+    }
+    config.github = githubSettingsFrom({ enabled: true, connections: [github, foreign] })
+    const view = mount(GithubSettings)
+    view
+      .findAllComponents(Button)
+      .find((button) => button.props('text') === 'Edit')!
+      .vm.$emit('click')
+    await flushPromises()
+    view.findComponent(Editor).vm.$emit('save', { ...github, name: 'Updated GitHub' })
+    await flushPromises()
+    expect(config.github.connections.find((c) => c.id === 'foreign')?.isDefault).toBe(true)
+    view.unmount()
+  })
   it('does not forget a slot still used by the notifications credential when its connection is deleted', async () => {
     const app = useVault([]),
       config = AbeleConfig.getInstance()

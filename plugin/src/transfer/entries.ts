@@ -17,6 +17,7 @@ import {
   validConnectionServer,
   validProviderServer,
   connectionBinding,
+  connectionUnavailableReason,
   type GithubConnection,
 } from '@/github/connections'
 import type { AiSettings } from '@/ai/types'
@@ -522,7 +523,11 @@ export function collectEntries(settings: AbeleSettings): TransferEntry[] {
       return section.read(settings).map((item) => ({
         section: section.id,
         id: itemId(section.id, item),
-        label: item.name || itemId(section.id, item),
+        label:
+          section.id === 'github-connections' &&
+          connectionUnavailableReason(item as GithubConnection)
+            ? `${item.name || itemId(section.id, item)} · ${connectionUnavailableReason(item as GithubConnection)}`
+            : item.name || itemId(section.id, item),
         data: item,
         secretIds: section.secretsOf?.(item) ?? [],
       }))

@@ -19,6 +19,7 @@ import Input from '@/components/obsidian/Input.vue'
 import Dropdown from '@/components/obsidian/Dropdown.vue'
 import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
 import { useVault } from '../helpers/testEnv'
+import { githubSettingsFrom } from '@/github/settings'
 
 const provider: AiProvider = {
   id: 'p1',
@@ -101,6 +102,46 @@ function seedAgents() {
   const helper = registry.create({ name: 'Titler', utility: true })
   return { main, helper }
 }
+
+it('shows unsupported provider access as unavailable without an enable selector', async () => {
+  const { main } = seedAgents()
+  const row = {
+    id: 'sample-github',
+    name: 'Sample GitHub',
+    server: '',
+    keyId: '',
+    owners: [],
+    isDefault: true,
+  }
+  AbeleConfig.getInstance().github = githubSettingsFrom({
+    connections: [
+      row,
+      {
+        ...row,
+        id: 'sample-forgejo',
+        provider: 'forgejo',
+        name: 'Sample Forgejo',
+        server: 'https://git.example.test/team',
+      },
+    ],
+  })
+  const view = mountEditor(main.id)
+  await view
+    .findAll('.abele-tabs__tab')
+    .find((tab) => tab.text() === 'Access')!
+    .trigger('click')
+  const other = view.findAll('.setting-item').find((row) => row.text().includes('Sample Forgejo'))!
+  expect(other.text()).toMatch(/available in a later version/i)
+  expect(other.findComponent(Dropdown).exists()).toBe(false)
+  expect(
+    view
+      .findAll('.setting-item')
+      .find((row) => row.text().includes('Sample GitHub'))!
+      .findComponent(Dropdown)
+      .exists()
+  ).toBe(true)
+  view.unmount()
+})
 
 it('offers tool discovery on the agent Access tab and saves the selection', async () => {
   const { main } = seedAgents()
@@ -225,14 +266,31 @@ describe('the agents list', () => {
 
 describe('the agent editor', () => {
   it('stores Off/Ask/On by connection ID without changing tool permissions or sharing a duplicate map', async () => {
-    const {main}=seedAgents()
-    const config=AbeleConfig.getInstance()
-    config.github={...config.github,connections:[{id:'sample',name:'Sample connection',server:'',keyId:'',owners:[],isDefault:true}]}
-    const before={...main.toolModes}
-    const view=mountEditor(main.id)
-    await view.findAll('.abele-tabs__tab').find(t=>t.text()==='Access')!.trigger('click')
-    const setting=view.findAll('.setting-item').find(s=>s.text().includes('Sample connection'))!
-    const dropdown=setting.findComponent(Dropdown)
+    const { main } = seedAgents()
+    const config = AbeleConfig.getInstance()
+    config.github = {
+      ...config.github,
+      connections: [
+        {
+          id: 'sample',
+          name: 'Sample connection',
+          server: '',
+          keyId: '',
+          owners: [],
+          isDefault: true,
+        },
+      ],
+    }
+    const before = { ...main.toolModes }
+    const view = mountEditor(main.id)
+    await view
+      .findAll('.abele-tabs__tab')
+      .find((t) => t.text() === 'Access')!
+      .trigger('click')
+    const setting = view
+      .findAll('.setting-item')
+      .find((s) => s.text().includes('Sample connection'))!
+    const dropdown = setting.findComponent(Dropdown)
     expect(dropdown.props('modelValue')).toBe('off')
     dropdown.vm.$emit('update:model-value','ask')
     expect(main.githubConnections).toEqual({sample:'ask'})

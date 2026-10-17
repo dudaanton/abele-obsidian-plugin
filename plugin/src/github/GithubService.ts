@@ -156,12 +156,23 @@ function cachedClient(ends: Endpoints, token: string, noTokenReason?: string): G
  */
 const notificationClients = new ConnectionClients(
   () => {
-    const settings=githubSettings(), keyId=settings.notifications?.boundKeyId ?? settings.notifications?.keyId
-    return keyId ? [{id:'notifications',name:'GitHub notifications',server:settings.notifications?.boundServer ?? settings.server,
-      keyId,owners:[] as string[],isDefault:true}] : []
+    const settings = githubSettings(),
+      keyId = settings.notifications?.boundKeyId ?? settings.notifications?.keyId
+    return keyId
+      ? [
+          {
+            id: 'notifications',
+            name: 'GitHub notifications',
+            server: settings.notifications?.boundServer ?? settings.server,
+            keyId,
+            owners: [] as string[],
+            isDefault: true,
+          },
+        ]
+      : []
   },
-  keyId=>secrets().get(keyId) ?? '',
-  ()=>secrets().status.value
+  (keyId) => secrets().get(keyId) ?? '',
+  () => secrets().status.value
 )
 
 export function notificationsClient(): { client: GithubClient; separate: boolean } {
@@ -170,8 +181,13 @@ export function notificationsClient(): { client: GithubClient; separate: boolean
   const token = keyId ? (secrets().get(keyId) ?? '').trim() : ''
   notificationClients.reconcile()
   if (!token) {
-    const main=settings.connections?.find(c=>isGithubConnection(c) && c.isDefault && endpoints(c.server).origin===endpoints(settings.server).origin)
-    return {client:main ? connectionClient(main.id) : githubClient(),separate:false}
+    const main = settings.connections?.find(
+      (c) =>
+        isGithubConnection(c) &&
+        c.isDefault &&
+        endpoints(c.server).origin === endpoints(settings.server).origin
+    )
+    return { client: main ? connectionClient(main.id) : githubClient(), separate: false }
   }
   return {client:notificationClients.client('notifications'),separate:true}
 }
@@ -297,7 +313,7 @@ export async function openGithubUrl(
     allowedIds: context.allowedIds,
   })[0]
   // Legacy fixtures and callers without a configured connection still read public GitHub.
-  if (!chosen && (githubSettings().connections ?? []).length) return false
+  if (!chosen && (githubSettings().connections ?? []).some(isGithubConnection)) return false
 
   let leaf: WorkspaceLeaf
   if (pane) {
