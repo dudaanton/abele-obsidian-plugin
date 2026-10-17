@@ -60,6 +60,7 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { Notice } from 'obsidian'
+import { openExternal } from '@/helpers/openExternal'
 import Icon from '../obsidian/Icon.vue'
 import ObsidianModal from '../obsidian/Modal.vue'
 import { createLinkHitTarget } from '../obsidian/linkHitTarget'
@@ -262,7 +263,7 @@ function ready() {
 function routeLink(anchor: Element) {
   const link = readViewLink(anchor.getAttribute('data-abele-href') ?? '')
   if (!link) return
-  if (link.kind === 'web') window.open(link.url, '_blank', 'noopener')
+  if (link.kind === 'web') openExternal(link.url, '_blank', 'noopener')
   else if (link.kind === 'note')
     void GlobalStore.getInstance().app.workspace.openLinkText(link.path, '')
   else ask(link.text)
