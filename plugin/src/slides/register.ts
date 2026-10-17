@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { MarkdownView, Platform, TFile, TFolder, type Plugin, type WorkspaceLeaf } from 'obsidian'
 import { newDeck } from './newDeck'
 import { DeckView } from './DeckView'
@@ -11,7 +12,7 @@ export function registerSlides(plugin: Plugin): void {
   plugin.registerView(DECK_VIEW_TYPE, (leaf) => new DeckView(leaf))
   plugin.addCommand({
     id: 'new-presentation',
-    name: 'New presentation',
+    name: t('commands.new-presentation'),
     icon: 'presentation',
     callback: () => void newDeck(app),
   })
@@ -48,7 +49,7 @@ export function registerSlides(plugin: Plugin): void {
   }
   plugin.addCommand({
     id: 'open-presentation',
-    name: 'Open presentation',
+    name: t('commands.open-presentation'),
     icon: 'presentation',
     checkCallback: (checking) => {
       const file = available()
@@ -59,7 +60,7 @@ export function registerSlides(plugin: Plugin): void {
   })
   plugin.addCommand({
     id: 'preview-presentation',
-    name: 'Preview presentation beside editor',
+    name: t('commands.preview-presentation'),
     icon: 'columns-2',
     checkCallback: (checking) => {
       const file = available()
@@ -76,7 +77,7 @@ export function registerSlides(plugin: Plugin): void {
   })
   plugin.addCommand({
     id: 'play-presentation',
-    name: 'Play presentation',
+    name: t('commands.play-presentation'),
     icon: 'play',
     checkCallback: (checking) => {
       const file = available()
@@ -92,7 +93,7 @@ export function registerSlides(plugin: Plugin): void {
   })
   plugin.addCommand({
     id: 'present-presentation',
-    name: 'Present with speaker view',
+    name: t('commands.present-presentation'),
     icon: 'presentation',
     checkCallback: (checking) => {
       const file = available()

@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import {
   ButtonComponent,
   Menu,
@@ -319,7 +320,7 @@ export function registerColumns(plugin: Plugin): void {
   }
   plugin.addCommand({
     id: 'insert-columns',
-    name: 'Insert columns',
+    name: t('commands.insert-columns'),
     editorCallback: (editor) => {
       const menu = new Menu()
       for (const [kind, name] of [
@@ -334,18 +335,18 @@ export function registerColumns(plugin: Plugin): void {
     },
   })
   for (const [kind, name] of [
-    ['two', 'Insert two equal columns'],
-    ['three', 'Insert three equal columns'],
-    ['aside', 'Insert text with an aside'],
+    ['two', 'commands.insert-columns-two'],
+    ['three', 'commands.insert-columns-three'],
+    ['aside', 'commands.insert-columns-aside'],
   ] as const)
     plugin.addCommand({
       id: 'insert-columns-' + kind,
-      name: name,
+      name: t(name),
       editorCallback: (editor) => insert(editor, kind),
     })
   plugin.addCommand({
     id: 'column-options',
-    name: 'Column options',
+    name: t('commands.column-options'),
     editorCheckCallback: (checking, editor) => {
       const record = findColumns(editor.getValue(), editor.posToOffset(editor.getCursor()))
       if (!record) return false
@@ -370,7 +371,7 @@ export function registerColumns(plugin: Plugin): void {
   })
   plugin.addCommand({
     id: 'remove-columns',
-    name: 'Remove columns',
+    name: t('commands.remove-columns'),
     editorCheckCallback: (checking, editor) => {
       const record = findColumns(editor.getValue(), editor.posToOffset(editor.getCursor()))
       if (!record) return false

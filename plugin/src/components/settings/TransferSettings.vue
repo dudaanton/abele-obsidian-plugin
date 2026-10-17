@@ -3,12 +3,12 @@
     <SecretStoreSettings />
 
     <Section
-      title="Send to another device"
-      desc="Tick what should travel. What you pick can go as a QR code, as text to paste, or as a file to send."
+      :title="t('settings.TransferSettings.send_to_another_device.71ef2876')"
+      :desc="t('settings.TransferSettings.tick_what_should_travel_what.be4e856b')"
     >
       <Setting
-        name="Include keys"
-        desc="API keys travel with whatever needs them. A transfer carrying a key is locked behind a one-time code, shown here and typed on the other device."
+        :name="t('settings.TransferSettings.include_keys.f7508fd4')"
+        :desc="t('settings.TransferSettings.api_keys_travel_with_whatever.8cb769f9')"
       >
         <Checkbox :is-enabled="withKeys" @toggle="withKeys = !withKeys" />
       </Setting>
@@ -17,12 +17,22 @@
            how much is chosen, and only a group of several opens to its things. A group of one
            thing is that thing's row. -->
       <div v-if="groups.length" class="abele-transfer__head">
-        <GroupHeading label="What to send">{{ chosenCount }}</GroupHeading>
+        <GroupHeading :label="t('settings.TransferSettings.what_to_send.bceb988a')">{{
+          chosenCount
+        }}</GroupHeading>
         <Button
           quiet
           class="abele-transfer__all"
-          :text="everythingChosen ? 'Clear' : 'Select all'"
-          :tooltip="everythingChosen ? 'Send nothing' : 'Send everything listed here'"
+          :text="
+            everythingChosen
+              ? t('settings.TransferSettings.clear.83b12c22')
+              : t('settings.TransferSettings.select_all.1fc9a387')
+          "
+          :tooltip="
+            everythingChosen
+              ? t('settings.TransferSettings.send_nothing.1bc92d8a')
+              : t('settings.TransferSettings.send_everything_listed_here.f1ac2a00')
+          "
           @click="toggleEverything"
         />
       </div>
@@ -45,7 +55,11 @@
               :checked="allOf(page.entries)"
               :indeterminate="someOf(page.entries) && !allOf(page.entries)"
               :data-indeterminate="someOf(page.entries) && !allOf(page.entries)"
-              :aria-label="`Send everything under ${page.title}`"
+              :aria-label="
+                t('settings.TransferSettings.send_everything_under_value.1db19fa3', {
+                  value0: String(page.title),
+                })
+              "
               @change="toggleAll(page.entries)"
             />
           </template>
@@ -62,12 +76,20 @@
                   type="checkbox"
                   class="abele-transfer__check"
                   :checked="chosen.has(key(group.entries[0]))"
-                  :aria-label="`Send ${group.entries[0].label}`"
+                  :aria-label="
+                    t('settings.TransferSettings.send_value.c229d699', {
+                      value0: String(group.entries[0].label),
+                    })
+                  "
                   @change="toggle(group.entries[0])"
                 />
               </template>
               <template v-if="withKeys && carriesKey(group.entries[0])" #end>
-                <Icon icon="key-round" :interactive="false" tooltip="Carries a key" />
+                <Icon
+                  icon="key-round"
+                  :interactive="false"
+                  :tooltip="t('settings.TransferSettings.carries_a_key.0d090cb4')"
+                />
               </template>
             </TreeItem>
             <TreeItem
@@ -86,7 +108,11 @@
                   :checked="allOf(group.entries)"
                   :indeterminate="someOf(group.entries) && !allOf(group.entries)"
                   :data-indeterminate="someOf(group.entries) && !allOf(group.entries)"
-                  :aria-label="`Send all of the ${group.label.toLowerCase()}`"
+                  :aria-label="
+                    t('settings.TransferSettings.send_all_of_the_value.f01a8818', {
+                      value0: String(group.label.toLowerCase()),
+                    })
+                  "
                   @change="toggleAll(group.entries)"
                 />
               </template>
@@ -103,12 +129,20 @@
                     type="checkbox"
                     class="abele-transfer__check"
                     :checked="chosen.has(key(entry))"
-                    :aria-label="`Send ${entry.label}`"
+                    :aria-label="
+                      t('settings.TransferSettings.send_value.c229d699', {
+                        value0: String(transferLabel(entry)),
+                      })
+                    "
                     @change="toggle(entry)"
                   />
                 </template>
                 <template v-if="withKeys && carriesKey(entry)" #end>
-                  <Icon icon="key-round" :interactive="false" tooltip="Carries a key" />
+                  <Icon
+                    icon="key-round"
+                    :interactive="false"
+                    :tooltip="t('settings.TransferSettings.carries_a_key.0d090cb4')"
+                  />
                 </template>
               </TreeItem>
             </TreeItem>
@@ -116,25 +150,30 @@
         </TreeItem>
       </div>
 
-      <EmptyState v-if="!groups.length" text="Nothing here can be transferred yet." />
+      <EmptyState
+        v-if="!groups.length"
+        :text="t('settings.TransferSettings.nothing_here_can_be_transferred.49a46df4')"
+      />
 
       <Setting :name="summary" :desc="codesSummary">
         <Button
-          text="Preview"
+          :text="t('settings.TransferSettings.preview.324b134f')"
           :disabled="!chosen.size"
           :tooltip="
-            chosen.size ? 'See exactly what would be sent' : 'Choose something to send first'
+            chosen.size
+              ? t('settings.TransferSettings.see_exactly_what_would_be.5a694fa9')
+              : t('settings.TransferSettings.choose_something_to_send_first.5fde4c03')
           "
           @click="previewing = true"
         />
         <Button
-          text="Send"
+          :text="t('settings.TransferSettings.send.f6f4688f')"
           accent
           :disabled="!chosen.size"
           :tooltip="
             chosen.size
-              ? 'Hand what you chose to the other device'
-              : 'Choose something to send first'
+              ? t('settings.TransferSettings.hand_what_you_chose_to.f4aa3506')
+              : t('settings.TransferSettings.choose_something_to_send_first.5fde4c03')
           "
           @click="show"
         />
@@ -142,16 +181,16 @@
     </Section>
 
     <Section
-      title="Receive from another device"
-      desc="Read the codes the other device is showing. Nothing is written until you have seen what arrived."
+      :title="t('settings.TransferSettings.receive_from_another_device.955f97bb')"
+      :desc="t('settings.TransferSettings.read_the_codes_the_other.7d52f77b')"
     >
       <Setting
-        name="Read a transfer"
-        desc="Camera, a photo of the code, a file, or the text itself."
+        :name="t('settings.TransferSettings.read_a_transfer.da2dcc0f')"
+        :desc="t('settings.TransferSettings.camera_a_photo_of_the.d9996865')"
       >
         <Button
-          text="Scan"
-          tooltip="Read a transfer from another device"
+          :text="t('settings.TransferSettings.scan.ea1c510d')"
+          :tooltip="t('settings.TransferSettings.read_a_transfer_from_another.60d1c2f6')"
           @click="scanning = true"
         />
       </Setting>
@@ -178,6 +217,9 @@
 </template>
 
 <script setup lang="ts">
+import { settingsCount } from '@/i18n/settingsCounts'
+import { settingsLabel, transferLabel } from '@/i18n/settingsLabels'
+import { t } from '@/i18n'
 import { secrets } from '@/secrets/SecretStore'
 import { computed, onMounted, ref, watch } from 'vue'
 import { Notice } from 'obsidian'
@@ -245,7 +287,7 @@ const groups = computed<Group[]>(() => {
   // to rather than wherever the two collections happened to be concatenated.
   return TRANSFER_SECTIONS.filter((section) => bySection.has(section)).map((section) => ({
     section,
-    label: sectionLabel(section),
+    label: settingsLabel(sectionLabel(section)),
     entries: bySection.get(section) ?? [],
   }))
 })
@@ -259,7 +301,7 @@ const toggle = (entry: TransferEntry) => {
   chosen.value = next
 }
 
-const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`
+const plural = (count: number, word: 'item' | 'key' | 'file') => settingsCount(word, count)
 
 const allOf = (list: TransferEntry[]) => list.every((entry) => chosen.value.has(key(entry)))
 const someOf = (list: TransferEntry[]) => list.some((entry) => chosen.value.has(key(entry)))
@@ -267,7 +309,12 @@ const someOf = (list: TransferEntry[]) => list.some((entry) => chosen.value.has(
 /** How much of a branch goes: its size while none of it is chosen, then "2 of 3". */
 const countOf = (list: TransferEntry[]) => {
   const count = list.filter((entry) => chosen.value.has(key(entry))).length
-  return count ? `${count} of ${list.length}` : String(list.length)
+  return count
+    ? t('settings.TransferSettings.value_of_value.ca6c5e5f', {
+        value0: String(count),
+        value1: String(list.length),
+      })
+    : String(list.length)
 }
 
 const toggleAll = (list: TransferEntry[]) => {
@@ -282,37 +329,43 @@ const toggleAll = (list: TransferEntry[]) => {
 
 /** Where each section's settings are found, by the titles of the settings' own left column. */
 const PAGE_OF: Record<SectionId, string> = {
-  tasks: 'Notes',
-  journals: 'Notes',
-  calendars: 'Notes',
-  links: 'Notes',
-  linter: 'Notes',
-  reader: 'Notes',
-  maps: 'Notes',
-  finance: 'Money and time',
-  'time-tracking': 'Money and time',
-  'ai-general': 'Agents',
-  'ai-providers': 'Agents',
-  'ai-image-providers': 'Agents',
-  'ai-agents': 'Agents',
-  'ai-secrets': 'Agents',
-  'ai-prompts': 'Agents',
-  'ai-voice': 'Agents',
-  'ai-mcp-servers': 'Agents',
-  scripts: 'Agents',
-  'script-files': 'Agents',
-  'skill-notes': 'Agents',
-  'prompt-notes': 'Agents',
-  github: 'Agents',
-  'github-connections': 'Agents',
-  'quick-button': 'Buttons',
-  'header-buttons': 'Buttons',
-  automations: 'Buttons',
-  sync: 'Data',
-  connection: 'Data',
-  other: 'Data',
+  tasks: t('settings.TransferSettings.notes.8a7525b1'),
+  journals: t('settings.TransferSettings.notes.8a7525b1'),
+  calendars: t('settings.TransferSettings.notes.8a7525b1'),
+  links: t('settings.TransferSettings.notes.8a7525b1'),
+  linter: t('settings.TransferSettings.notes.8a7525b1'),
+  reader: t('settings.TransferSettings.notes.8a7525b1'),
+  maps: t('settings.TransferSettings.notes.8a7525b1'),
+  finance: t('settings.TransferSettings.money_and_time.ebb5a49d'),
+  'time-tracking': t('settings.TransferSettings.money_and_time.ebb5a49d'),
+  'ai-general': t('settings.TransferSettings.agents.279b44d2'),
+  'ai-providers': t('settings.TransferSettings.agents.279b44d2'),
+  'ai-image-providers': t('settings.TransferSettings.agents.279b44d2'),
+  'ai-agents': t('settings.TransferSettings.agents.279b44d2'),
+  'ai-secrets': t('settings.TransferSettings.agents.279b44d2'),
+  'ai-prompts': t('settings.TransferSettings.agents.279b44d2'),
+  'ai-voice': t('settings.TransferSettings.agents.279b44d2'),
+  'ai-mcp-servers': t('settings.TransferSettings.agents.279b44d2'),
+  scripts: t('settings.TransferSettings.agents.279b44d2'),
+  'script-files': t('settings.TransferSettings.agents.279b44d2'),
+  'skill-notes': t('settings.TransferSettings.agents.279b44d2'),
+  'prompt-notes': t('settings.TransferSettings.agents.279b44d2'),
+  github: t('settings.TransferSettings.agents.279b44d2'),
+  'github-connections': t('settings.TransferSettings.agents.279b44d2'),
+  'quick-button': t('settings.TransferSettings.buttons.d452583a'),
+  'header-buttons': t('settings.TransferSettings.buttons.d452583a'),
+  automations: t('settings.TransferSettings.buttons.d452583a'),
+  sync: t('settings.TransferSettings.data.cec3a9b8'),
+  connection: t('settings.TransferSettings.data.cec3a9b8'),
+  other: t('settings.TransferSettings.data.cec3a9b8'),
 }
-const PAGES = ['Notes', 'Money and time', 'Agents', 'Buttons', 'Data']
+const PAGES = [
+  t('settings.TransferSettings.notes.8a7525b1'),
+  t('settings.TransferSettings.money_and_time.ebb5a49d'),
+  t('settings.TransferSettings.agents.279b44d2'),
+  t('settings.TransferSettings.buttons.d452583a'),
+  t('settings.TransferSettings.data.cec3a9b8'),
+]
 
 const pages = computed(() =>
   PAGES.map((title) => {
@@ -346,7 +399,12 @@ const toggleEverything = () => {
 }
 
 const chosenCount = computed(() =>
-  chosen.value.size ? `${chosen.value.size} of ${entries.value.length}` : ''
+  chosen.value.size
+    ? t('settings.TransferSettings.value_of_value.ca6c5e5f', {
+        value0: String(chosen.value.size),
+        value1: String(entries.value.length),
+      })
+    : ''
 )
 
 const carriesKey = (entry: TransferEntry) => !!entry.secretIds?.length || !!entry.sensitive
@@ -375,7 +433,11 @@ const details = (entry: TransferEntry): string[] => {
 
 const picked = computed(() => entries.value.filter((entry) => chosen.value.has(key(entry))))
 
-const summary = computed(() => `${plural(chosen.value.size, 'item')} selected`)
+const summary = computed(() =>
+  t('settings.TransferSettings.value_selected.975acbfe', {
+    value0: String(plural(chosen.value.size, 'item')),
+  })
+)
 
 /**
  * How many codes it will take, worked out by actually packing it.
@@ -399,12 +461,17 @@ watch(
 )
 
 const codesSummary = computed(() => {
-  if (!picked.value.length) return 'Nothing selected yet.'
-  if (codes.value <= 1) return 'Fits in one code.'
-  if (codes.value <= 6) return `Takes ${codes.value} codes, shown one after another.`
+  if (!picked.value.length) return t('settings.TransferSettings.nothing_selected_yet.d6f9822a')
+  if (codes.value <= 1) return t('settings.TransferSettings.fits_in_one_code.324a2a38')
+  if (codes.value <= 6)
+    return t('settings.TransferSettings.takes_value_codes_shown_one.8b7b80a4', {
+      value0: String(codes.value),
+    })
   // Said here rather than only in the modal, because this is where what goes in is decided:
   // a hundred codes is a sign to send fewer things, or to send it as text.
-  return `Takes ${codes.value} codes — too many to photograph, so it would go as text or as a file.`
+  return t('settings.TransferSettings.takes_value_codes_too_many.304d8234', {
+    value0: String(codes.value),
+  })
 })
 
 const reader = () => {
@@ -441,13 +508,24 @@ const onApplied = ({ items, keysRefused, filesRefused }: Applied) => {
   scanning.value = false
 
   // A transfer that brought only the connection applied no item, and its line says what did.
-  const parts = [`Applied ${plural(items, 'item')}.`]
+  const parts = [
+    t('settings.TransferSettings.applied_value.d4ffb612', {
+      value0: String(plural(items, 'item')),
+    }),
+  ]
   if (keysRefused) {
     parts.push(
-      `${plural(keysRefused, 'key')} could not be stored — the name this vault uses for it is one Obsidian will not take.`
+      t('settings.TransferSettings.value_could_not_be_stored.cf4fe457', {
+        value0: String(plural(keysRefused, 'key')),
+      })
     )
   }
-  if (filesRefused) parts.push(`${plural(filesRefused, 'file')} could not be written.`)
+  if (filesRefused)
+    parts.push(
+      t('settings.TransferSettings.value_could_not_be_written.93eaa96e', {
+        value0: String(plural(filesRefused, 'file')),
+      })
+    )
 
   new Notice(parts.join(' '))
 }

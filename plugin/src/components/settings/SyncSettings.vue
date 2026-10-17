@@ -3,18 +3,23 @@
     <!-- What waits for the person, above everything else, and only while something does. -->
     <Section
       v-if="candidates.length || questions.length"
-      title="Waiting for you"
-      desc="Code that came from another device and private files a shared note links to."
+      :title="t('settings.SyncSettings.waiting_for_you.9f760ab2')"
+      :desc="t('settings.SyncSettings.code_that_came_from_another.89b6b46f')"
     >
       <Setting
         v-for="candidate in candidates"
         :key="candidate.id"
         :name="candidate.path"
-        :desc="'Code from ' + host(candidate.source.address) + ' · ' + when(candidate.receivedAt)"
+        :desc="
+          t('settings.sync.codeSource', {
+            host: host(candidate.source.address),
+            when: when(candidate.receivedAt),
+          })
+        "
       >
         <Icon
           icon="eye"
-          tooltip="View the exact incoming version"
+          :tooltip="t('settings.SyncSettings.view_the_exact_incoming_version.6497a546')"
           @click="dialog = { mode: 'review', candidate }"
         />
       </Setting>
@@ -22,24 +27,24 @@
         v-for="question in questions"
         :key="question.id"
         :name="question.path"
-        :desc="'Private file · share with ' + scopeName(question.source.scope) + '?'"
+        :desc="t('settings.sync.privateQuestion', { scope: scopeName(question.source.scope) })"
       >
         <Icon
           icon="eye"
-          tooltip="Allow or deny this file for this connection"
+          :tooltip="t('settings.SyncSettings.allow_or_deny_this_file.5d819259')"
           @click="dialog = { mode: 'attachment', question }"
         />
       </Setting>
     </Section>
     <Section
-      title="Connections"
-      desc="Each connection works on its own. Disconnecting keeps every file on this device."
+      :title="t('settings.SyncSettings.connections.dc273117')"
+      :desc="t('settings.SyncSettings.each_connection_works_on_its.4a88585e')"
     >
       <EmptyState
         v-if="!rows.length"
         icon="cloud"
-        title="No connections yet"
-        text="Paste a token or scan a QR code to connect."
+        :title="t('settings.SyncSettings.no_connections_yet.8697571e')"
+        :text="t('settings.SyncSettings.paste_a_token_or_scan.257b9a79')"
       />
       <!-- A connection as one row: its state as a dot, sync now, the rest in ⋯; the row opens it. -->
       <Setting
@@ -65,7 +70,7 @@
             activity[row.id]?.error !== SCOPE_DELETED
           "
           icon="refresh-cw"
-          tooltip="Sync this connection now"
+          :tooltip="t('settings.SyncSettings.sync_this_connection_now.52cd5ea4')"
           :disabled="
             !!row.rootIssue ||
             row.paused ||
@@ -76,19 +81,22 @@
         />
         <Icon
           icon="more-horizontal"
-          tooltip="Pause, share, deleted files, disconnect"
+          :tooltip="t('settings.SyncSettings.pause_share_deleted_files_disconnect.20903c85')"
           @click.stop="more($event, row)"
         />
       </Setting>
-      <Setting name="Connect to a server" desc="By a token you were given, pasted or scanned.">
+      <Setting
+        :name="t('settings.SyncSettings.connect_to_a_server.232ac7de')"
+        :desc="t('settings.SyncSettings.by_a_token_you_were.d2dab8e7')"
+      >
         <Button
-          text="Connect…"
-          tooltip="Paste a token for a server, folder or group"
+          :text="t('settings.SyncSettings.connect.c0e20f6d')"
+          :tooltip="t('settings.SyncSettings.paste_a_token_for_a.256b8463')"
           @click="dialog = { mode: 'connect' }"
         />
       </Setting>
       <p v-if="rows.length && !ui.available.value" class="setting-item-description">
-        File exchange is opening. Connections that need attention keep their files here.
+        {{ t('settings.SyncSettings.file_exchange_is_opening_connections.980fe6d6') }}
       </p>
     </Section>
     <ConnectionWindow
@@ -121,9 +129,10 @@
       @close="closeDialog"
     />
   </div>
-  <EmptyState v-else text="Sync is opening. If it cannot open, restart Obsidian and try again." />
+  <EmptyState v-else :text="t('settings.SyncSettings.sync_is_opening_if_it.1225ed54')" />
 </template>
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { Menu, Notice, setTooltip } from 'obsidian'
 import Section from '../obsidian/Section.vue'
@@ -142,9 +151,15 @@ import {
 } from '../sync/serverDelete'
 import { historyConnection } from '@/sync/tokenHistory'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { tokenUi, scopeName, connectionError, SCOPE_DELETED, type TokenUi } from '@/sync/tokenUi'
+import {
+  tokenUi,
+  scopeName as syncScopeName,
+  connectionError,
+  SCOPE_DELETED,
+  type TokenUi,
+} from '@/sync/tokenUi'
+import { settingsSyncText, settingsSyncWhen } from '@/i18n/settingsSync'
 import { connectionBusy, connectionLine, connectionTone } from '@/sync/connectionLine'
-import { formatWhen } from '@/sync/format'
 import type { TokenConnectionRecord } from '@/sync/tokenConnectionRegistry'
 import type { ExecutableCandidate } from '@/sync/executableReview'
 import type { AttachmentQuestion } from '@/sync/attachmentConsent'
@@ -176,11 +191,14 @@ const dialog = ref<{
   question?: AttachmentQuestion
 } | null>(null)
 const host = (address: string) => new URL(address).host
-const when = (at: number) => formatWhen(new Date(at).toISOString())
+const when = (at: number) => settingsSyncWhen(new Date(at).toISOString())
 const tone = (row: TokenConnectionRecord) =>
   errors.value[row.id] ? 'red' : connectionTone(row, activity.value[row.id])
 const line = (row: TokenConnectionRecord) =>
-  errors.value[row.id] ?? connectionLine(row, activity.value[row.id])
+  errors.value[row.id] ??
+  connectionLine(row, activity.value[row.id], settingsSyncText, settingsSyncWhen)
+const scopeName = (scope: Parameters<typeof syncScopeName>[0]) =>
+  syncScopeName(scope, settingsSyncText)
 function closeDialog() {
   // A disconnected connection has no window left to go back to.
   if (dialog.value?.mode === 'disconnect' && !rows.value.some((one) => one.id === opened.value))
@@ -200,7 +218,7 @@ const deletingFacts = computed(() =>
 const deletingName = computed(() => {
   const scope = deletingRow.value?.scope
   if (!scope) return ''
-  if (scope.path === '/') return 'the whole vault'
+  if (scope.path === '/') return t('settings.SyncSettings.the_whole_vault.0a409543')
   const name = scope.path.replace(/\.md$/, '').split('/').pop()
   return `“${name}”`
 })
@@ -212,7 +230,9 @@ async function deleted() {
   deleting.value = null
   if (!id) return
   if (opened.value === id) opened.value = null
-  new Notice(`Deleted ${name} from the server. Its files stay on this device.`)
+  new Notice(
+    t('settings.SyncSettings.deleted_value_from_the_server.70376e92', { value0: String(name) })
+  )
 }
 function openTrash(id: string) {
   historyConnection.value = id
@@ -224,7 +244,7 @@ function more(event: MouseEvent, row: TokenConnectionRecord) {
   if (row.rootIssue?.kind === 'server-renamed')
     menu.addItem((item) =>
       item
-        .setTitle('Keep syncing into the same local folder')
+        .setTitle(t('settings.SyncSettings.keep_syncing_into_the_same.12873e9a'))
         .setIcon('folder-input')
         .onClick(() =>
           act(row.id, async () => {
@@ -237,7 +257,7 @@ function more(event: MouseEvent, row: TokenConnectionRecord) {
   if (row.rootIssue?.kind === 'moved')
     menu.addItem((item) =>
       item
-        .setTitle('Follow moved folder')
+        .setTitle(t('settings.SyncSettings.follow_moved_folder.bba3cc92'))
         .setIcon('folder-input')
         .onClick(() =>
           act(row.id, async () => {
@@ -250,7 +270,7 @@ function more(event: MouseEvent, row: TokenConnectionRecord) {
   if (row.rootIssue && row.rootIssue.kind !== 'server-renamed')
     menu.addItem((item) =>
       item
-        .setTitle('Restore from the server')
+        .setTitle(t('settings.SyncSettings.restore_from_the_server.6186b8b7'))
         .setIcon('download')
         .onClick(() =>
           act(row.id, async () => {
@@ -263,32 +283,36 @@ function more(event: MouseEvent, row: TokenConnectionRecord) {
   if (!row.rootIssue)
     menu.addItem((item) =>
       item
-        .setTitle(row.paused ? 'Resume' : 'Pause')
+        .setTitle(
+          row.paused
+            ? t('settings.SyncSettings.resume.d640c742')
+            : t('settings.SyncSettings.pause.858e4ba7')
+        )
         .setIcon(row.paused ? 'play' : 'pause')
         .onClick(() => act(row.id, () => ui.value.pause(row.id, !row.paused)))
     )
   menu.addItem((item) =>
     item
-      .setTitle('Share…')
+      .setTitle(t('settings.SyncSettings.share.51fc2d24'))
       .setIcon('share-2')
       .onClick(() => (dialog.value = { mode: 'share', connectionId: row.id }))
   )
   menu.addItem((item) =>
     item
-      .setTitle('Deleted files')
+      .setTitle(t('settings.SyncSettings.deleted_files.5352e2e9'))
       .setIcon('trash-2')
       .onClick(() => openTrash(row.id))
   )
   menu.addItem((item) =>
     item
-      .setTitle('What this device syncs')
+      .setTitle(t('settings.SyncSettings.what_this_device_syncs.979d00ce'))
       .setIcon('settings')
       .onClick(() => (opened.value = row.id))
   )
   menu.addSeparator()
   menu.addItem((item) =>
     item
-      .setTitle('Disconnect…')
+      .setTitle(t('settings.SyncSettings.disconnect.f1142965'))
       .setIcon('unlink')
       .setWarning(true)
       .onClick(() => (dialog.value = { mode: 'disconnect', connectionId: row.id }))
@@ -299,8 +323,10 @@ function more(event: MouseEvent, row: TokenConnectionRecord) {
         .setTitle(
           facts
             ? (facts.unavailableReason ??
-                (facts.canWrite ? 'Delete from the server…' : 'Delete from the server: read only'))
-            : 'Delete from the server: unavailable; check the server connection and version'
+                (facts.canWrite
+                  ? t('settings.SyncSettings.delete_from_the_server.b3acd04d')
+                  : t('settings.SyncSettings.delete_from_the_server_read.5f7e4370')))
+            : t('settings.SyncSettings.delete_from_the_server_unavailable.516a170e')
         )
         .setIcon('cloud-off')
         .setWarning(!!facts?.canWrite)
@@ -324,7 +350,7 @@ function more(event: MouseEvent, row: TokenConnectionRecord) {
         .catch((error) => {
           delete deleteFacts.value[row.id]
           configure(null)
-          new Notice(connectionError(error))
+          new Notice(connectionError(error, false, settingsSyncText))
         })
   })
   menu.showAtMouseEvent(event)
@@ -336,7 +362,7 @@ async function act(id: string, action: () => Promise<void>) {
     await action()
     delete errors.value[id]
   } catch (error) {
-    errors.value[id] = connectionError(error)
+    errors.value[id] = connectionError(error, false, settingsSyncText)
   } finally {
     busy.value.delete(id)
   }
@@ -345,12 +371,7 @@ function openFile(path: string) {
   if (ui.value)
     void ui.value
       .openFile(path)
-      .catch(
-        () =>
-          new Notice(
-            'The file could not be opened. Its contents have been kept. Try again when a server is available.'
-          )
-      )
+      .catch(() => new Notice(t('settings.SyncSettings.the_file_could_not_be.accad798')))
 }
 let active = true
 onUnmounted(() => {
@@ -358,8 +379,7 @@ onUnmounted(() => {
 })
 onMounted(() => {
   void ui.value?.refreshReviews().catch(() => {
-    if (active)
-      new Notice('Incoming changes could not be opened. Reopen sync settings to try again.')
+    if (active) new Notice(t('settings.SyncSettings.incoming_changes_could_not_be.24745c6e'))
   })
 })
 </script>

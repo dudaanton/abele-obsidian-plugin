@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { type Editor, MarkdownView, Notice, TFile, TFolder, type TAbstractFile } from 'obsidian'
 import { watch } from 'vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -36,16 +37,27 @@ export function registerAiFeatures(
   setHeaderCommands: (commands: HeaderCommands) => void
 ) {
   const agents = AgentsService.getInstance()
-  plugin.addCommand({ id: 'agents', name: 'Agents', icon: 'activity', callback: openAgents })
-  const ribbon = plugin.addRibbonIcon('activity', 'Agents', openAgents)
+  plugin.addCommand({
+    id: 'agents',
+    name: t('commands.agents'),
+    icon: 'activity',
+    callback: openAgents,
+  })
+  const ribbon = plugin.addRibbonIcon('activity', t('ribbon.agents'), openAgents)
   ribbon.addClass('abele-agents-ribbon')
   const badge = ribbon.createSpan({ cls: 'abele-agents-ribbon__badge' })
   plugin.register(
     watch(
-      [agents.badge, agents.tooltip],
-      ([value, tooltip]) => {
+      agents.badge,
+      (value) => {
         badge.textContent = `${value.mark}${value.incomplete ? ' ?' : ''}`.trim()
-        ribbon.setAttribute('aria-label', tooltip)
+        ribbon.setAttribute(
+          'aria-label',
+          t(value.incomplete ? 'ribbon.agentsStatusIncomplete' : 'ribbon.agentsStatus', {
+            attention: value.attention,
+            running: value.running,
+          })
+        )
       },
       { immediate: true }
     )
@@ -101,7 +113,7 @@ export function registerAiFeatures(
 
   plugin.addCommand({
     id: 'comment-here',
-    name: 'Comment here',
+    name: t('commands.comment-here'),
     icon: 'message-circle-plus',
     editorCallback: (_editor: Editor, view: MarkdownView) => {
       void commentHereInView(view)
@@ -201,7 +213,7 @@ export function registerAiFeatures(
 
   plugin.addCommand({
     id: 'show-ai-sidebar',
-    name: 'Show AI chat sidebar',
+    name: t('commands.show-ai-sidebar'),
     icon: 'bot',
     // Through the chat service rather than `activateView`: a blank chat shown plugin way gets
     // the cursor, and only the service knows whether the chat in front is blank.
@@ -214,7 +226,7 @@ export function registerAiFeatures(
   // panel first; the chat on screen takes the request (`AiChat.vue`).
   plugin.addCommand({
     id: 'find-in-chat',
-    name: 'Find in the current chat',
+    name: t('commands.find-in-chat'),
     icon: 'search',
     callback: () => {
       const chats = ChatService.getInstance()
@@ -224,7 +236,7 @@ export function registerAiFeatures(
 
   plugin.addCommand({
     id: 'search-all-chats',
-    name: 'Search all chats',
+    name: t('commands.search-all-chats'),
     icon: 'history',
     callback: () => {
       const chats = ChatService.getInstance()
@@ -237,26 +249,26 @@ export function registerAiFeatures(
   // choosing that works from anywhere.
   plugin.addCommand({
     id: 'chat-close-tab',
-    name: 'Close the current chat tab',
+    name: t('commands.chat-close-tab'),
     callback: () => runChatTabAction('close'),
   })
   plugin.addCommand({
     id: 'chat-reopen-tab',
-    name: 'Reopen the last closed chat tab',
+    name: t('commands.chat-reopen-tab'),
     callback: () => runChatTabAction('reopen'),
   })
   plugin.addCommand({
     id: 'chat-next-tab',
-    name: 'Go to the next chat tab',
+    name: t('commands.chat-next-tab'),
     callback: () => runChatTabAction('next'),
   })
   plugin.addCommand({
     id: 'chat-previous-tab',
-    name: 'Go to the previous chat tab',
+    name: t('commands.chat-previous-tab'),
     callback: () => runChatTabAction('previous'),
   })
 
-  plugin.addRibbonIcon(AiSidebarView.getIcon(), 'Show AI chat', () => {
+  plugin.addRibbonIcon(AiSidebarView.getIcon(), t('ribbon.show-ai-chat'), () => {
     void ChatService.getInstance().revealSidebar()
   })
 
@@ -264,7 +276,7 @@ export function registerAiFeatures(
   // while deciding to turn them on.
   plugin.addCommand({
     id: 'voice-input',
-    name: 'Dictate into the note',
+    name: t('commands.voice-input'),
     icon: 'mic',
     editorCallback: (editor) => {
       void dictate(plugin.app).then((text) => {
@@ -279,7 +291,7 @@ export function registerAiFeatures(
 
   plugin.addCommand({
     id: 'show-script-runs',
-    name: 'Show script runs',
+    name: t('commands.show-script-runs'),
     icon: ScriptRunsView.getIcon(),
     callback: () => {
       void plugin.activateView(SCRIPT_RUNS_VIEW_TYPE)
@@ -288,7 +300,7 @@ export function registerAiFeatures(
 
   plugin.addCommand({
     id: 'open-documentation',
-    name: 'Open documentation',
+    name: t('commands.open-documentation'),
     icon: UserDocsView.getIcon(),
     callback: () => void openUserDocs(plugin.app),
   })
@@ -296,7 +308,7 @@ export function registerAiFeatures(
   // The quick button's menu without the button: bound to a key, or from the palette.
   plugin.addCommand({
     id: 'open-quick-menu',
-    name: 'Open quick menu',
+    name: t('commands.open-quick-menu'),
     icon: 'zap',
     callback: () =>
       void openQuickMenu(plugin.app, {
@@ -325,7 +337,7 @@ export function registerAiFeatures(
 
   plugin.addCommand({
     id: 'show-script-api',
-    name: 'Show script API reference',
+    name: t('commands.show-script-api'),
     icon: 'book-open',
     callback: () => {
       // No title: the reference opens with its own heading, which the modal lifts into the

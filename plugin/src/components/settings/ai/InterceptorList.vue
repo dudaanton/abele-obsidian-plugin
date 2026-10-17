@@ -2,7 +2,12 @@
   <!-- The interceptors in the order they run: a number, who reads, what it reads, on or off. A
        row opens its settings under it; its menu moves it, and on a desktop it drags. -->
   <div class="abele-interceptors">
-    <Setting v-if="headed" heading name="Interceptors" :desc="desc" />
+    <Setting
+      v-if="headed"
+      heading
+      :name="t('settings.ai.InterceptorList.interceptors.803987ac')"
+      :desc="desc"
+    />
     <div
       v-for="(entry, i) in entries"
       :key="entry.id"
@@ -19,11 +24,23 @@
       @drop.prevent="drop(i)"
       @dragend="dragged = dropAt = null"
     >
-      <Setting :name="nameOf(entry)" :desc="entry.enabled ? entryFacts(entry).join(' · ') : 'Off'">
+      <Setting
+        :name="nameOf(entry)"
+        :desc="
+          entry.enabled
+            ? entryFacts(entry).join(' · ')
+            : t('settings.ai.InterceptorList.off.ca7981b4')
+        "
+      >
         <template #name>
-          <span class="abele-interceptors__number" :data-tip="`Runs ${ordinal(i + 1)}`">{{
-            i + 1
-          }}</span
+          <span
+            class="abele-interceptors__number"
+            :data-tip="
+              t('settings.ai.InterceptorList.runs_value.fe51da79', {
+                value0: String(ordinal(i + 1)),
+              })
+            "
+            >{{ i + 1 }}</span
           ><span
             class="abele-interceptors__name"
             role="button"
@@ -37,18 +54,26 @@
           v-if="!narrow || open === entry.id"
           :icon="open === entry.id ? 'chevron-up' : 'pencil'"
           size="xs"
-          :tooltip="open === entry.id ? 'Close its settings' : 'Edit what it reads and how'"
+          :tooltip="
+            open === entry.id
+              ? t('settings.ai.InterceptorList.close_its_settings.de0fd0fb')
+              : t('settings.ai.InterceptorList.edit_what_it_reads_and.86412c66')
+          "
           @click="toggleOpen(entry.id)"
         />
         <Checkbox
           :is-enabled="entry.enabled"
-          :aria-label="entry.enabled ? 'On: runs in its turn' : 'Off: skipped, keeps its place'"
+          :aria-label="
+            entry.enabled
+              ? t('settings.ai.InterceptorList.on_runs_in_its_turn.baf521d9')
+              : t('settings.ai.InterceptorList.off_skipped_keeps_its_place.28162216')
+          "
           @toggle="patch(entry.id, { enabled: !entry.enabled })"
         />
         <Icon
           icon="more-horizontal"
           size="xs"
-          tooltip="Move or remove"
+          :tooltip="t('settings.ai.InterceptorList.move_or_remove.ca447e47')"
           @click="(e: MouseEvent) => menu(e, i)"
         />
       </Setting>
@@ -56,7 +81,7 @@
         <InterceptorSettings
           :model-value="keyOf(entry)"
           :options="choicesFor(entry)"
-          desc="Who reads: an agent says what it thinks, a script decides."
+          :desc="t('settings.ai.InterceptorList.who_reads_an_agent_says.0ff03e5e')"
           :active="true"
           :agent-active="!entry.script"
           :pattern-placeholder="patternPlaceholder"
@@ -74,12 +99,12 @@
     </div>
     <div class="abele-interceptors__add">
       <Button
-        text="Add interceptor"
+        :text="t('settings.ai.InterceptorList.add_interceptor.36b0eb2d')"
         icon="plus"
         :tooltip="
           entries.length
-            ? 'Add one at the end; it runs last'
-            : 'An agent or a script that reads first'
+            ? t('settings.ai.InterceptorList.add_one_at_the_end.98a5c813')
+            : t('settings.ai.InterceptorList.an_agent_or_a_script.92a06c1a')
         "
         @click="add"
       />
@@ -88,6 +113,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 /**
  * An ordered list of interceptors, for an agent or as a chat's own. Each entry keeps the settings
  * one interceptor had; they run one after another in this order.
@@ -106,7 +132,7 @@ const props = withDefaults(
   defineProps<{
     entries: InterceptorEntry[]
     /** Who can read: agents and scripts, as the single interceptor offered them. */
-    choices: { value: string; display: string }[]
+    choices: { value: string; display: string; label?: string }[]
     desc?: string
     /** A phone: no dragging, the menu moves. */
     narrow?: boolean
@@ -116,8 +142,8 @@ const props = withDefaults(
   }>(),
   {
     headed: true,
-    patternPlaceholder: 'Everything',
-    desc: 'They run in this order, each given what the one before returned. The agent reads the last one’s text.',
+    patternPlaceholder: () => t('settings.ai.InterceptorList.everything.75304cf7'),
+    desc: () => t('settings.ai.InterceptorList.they_run_in_this_order.7b624feb'),
     narrow: false,
   }
 )
@@ -129,15 +155,36 @@ const dropAt = ref<number | null>(null)
 
 // The name alone: whether an agent is a utility one says nothing about its place in the list.
 const nameOf = (entry: InterceptorEntry) =>
-  props.choices.find((c) => c.value === keyOf(entry))?.display.replace(/ · utility$/, '') ??
-  (entry.script ? `Script: ${entry.script} · missing` : entry.agentId ? 'Missing agent' : 'Nobody')
+  props.choices.find((c) => c.value === keyOf(entry))?.label ??
+  props.choices.find((c) => c.value === keyOf(entry))?.display ??
+  (entry.script
+    ? t('settings.ai.InterceptorList.script_value_missing.31a4f5d0', {
+        value0: String(entry.script),
+      })
+    : entry.agentId
+      ? t('settings.ai.InterceptorList.missing_agent.4eeff6c3')
+      : t('settings.ai.InterceptorList.nobody.3fad99b5'))
 // A script no longer there stays choosable for the entry that names it, said as missing.
 const choicesFor = (entry: InterceptorEntry) =>
   entry.script && !props.choices.some((c) => c.value === keyOf(entry))
-    ? [...props.choices, { value: keyOf(entry), display: `Script: ${entry.script} · missing` }]
+    ? [
+        ...props.choices,
+        {
+          value: keyOf(entry),
+          display: t('settings.ai.InterceptorList.script_value_missing.31a4f5d0', {
+            value0: String(entry.script),
+          }),
+        },
+      ]
     : props.choices
 const ordinal = (n: number) =>
-  n === 1 ? 'first' : n === 2 ? 'second' : n === 3 ? 'third' : `${n}th`
+  n === 1
+    ? t('settings.ordinal.first')
+    : n === 2
+      ? t('settings.ordinal.second')
+      : n === 3
+        ? t('settings.ordinal.third')
+        : t('settings.ordinal.number', { count: n })
 
 function toggleOpen(id: string) {
   open.value = open.value === id ? null : id
@@ -161,14 +208,14 @@ function menu(e: MouseEvent, i: number) {
   new Menu()
     .addItem((item) =>
       item
-        .setTitle('Move up')
+        .setTitle(t('settings.ai.InterceptorList.move_up.c66feb5e'))
         .setIcon('arrow-up')
         .setDisabled(i === 0)
         .onClick(() => emit('update:entries', moveEntry(props.entries, i, i - 1)))
     )
     .addItem((item) =>
       item
-        .setTitle('Move down')
+        .setTitle(t('settings.ai.InterceptorList.move_down.40bb50da'))
         .setIcon('arrow-down')
         .setDisabled(i === last)
         .onClick(() => emit('update:entries', moveEntry(props.entries, i, i + 1)))
@@ -176,7 +223,7 @@ function menu(e: MouseEvent, i: number) {
     .addSeparator()
     .addItem((item) =>
       item
-        .setTitle('Remove')
+        .setTitle(t('settings.ai.InterceptorList.remove.c3812fc4'))
         .setIcon('trash-2')
         .setWarning(true)
         .onClick(() =>

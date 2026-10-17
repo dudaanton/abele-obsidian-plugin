@@ -1,6 +1,17 @@
 <template>
-  <Modal :title="isNew ? 'Add Git connection' : 'Edit Git connection'" size="tall" @close="close">
-    <Setting name="Service" desc="Choose the service before entering its server address and token.">
+  <Modal
+    :title="
+      isNew
+        ? t('settings.GithubConnectionEditor.add_git_connection.9e359dd8')
+        : t('settings.GithubConnectionEditor.edit_git_connection.1e73be5f')
+    "
+    size="tall"
+    @close="close"
+  >
+    <Setting
+      :name="t('settings.GithubConnectionEditor.service.d677190e')"
+      :desc="t('settings.GithubConnectionEditor.choose_the_service_before_entering.1fbb0dd8')"
+    >
       <Dropdown
         :model-value="draft.provider || 'github'"
         :options="providerOptions"
@@ -10,83 +21,97 @@
     </Setting>
     <Setting
       v-if="draft.account && draft.provider !== 'forgejo'"
-      name="Account"
+      :name="t('settings.GithubConnectionEditor.account.7e1b0d56')"
       :desc="draft.account.login"
     >
       <Avatar :name="draft.account.login" :src="draft.account.avatarUrl" />
     </Setting>
     <Setting
-      name="Name"
-      desc="A name for this connection, independent of the account discovered from its token."
+      :name="t('settings.GithubConnectionEditor.name.dcd1d522')"
+      :desc="t('settings.GithubConnectionEditor.a_name_for_this_connection.1c5554f0')"
     >
-      <Input v-model:model-value="draft.name" placeholder="Connection name" />
+      <Input
+        v-model:model-value="draft.name"
+        :placeholder="t('settings.GithubConnectionEditor.connection_name.686d4d5d')"
+      />
     </Setting>
     <Setting
-      name="Server"
+      :name="t('settings.GithubConnectionEditor.server.aef7de28')"
       :error="
-        draft.server.trim() && !validServer
-          ? 'Only the address: no login, query or # part'
-          : undefined
+        draft.server.trim() && !validServer ? t('settings.git.serverAddressError') : undefined
       "
       :desc="
         draft.provider === 'forgejo'
-          ? 'Full Forgejo address, including any port or deployment path.'
-          : 'Empty is github.com. For Enterprise, use its full address including any port.'
+          ? t('settings.GithubConnectionEditor.full_forgejo_address_including_any.4aacc3e1')
+          : t('settings.GithubConnectionEditor.empty_is_github_com_for.0f201123')
       "
     >
       <Input
         v-model:model-value="draft.server"
-        :placeholder="draft.provider === 'forgejo' ? 'https://git.example.test' : 'github.com'"
+        :placeholder="
+          draft.provider === 'forgejo'
+            ? 'https://git.example.test'
+            : t('settings.GithubConnectionEditor.github_com.3aeb0024')
+        "
       />
     </Setting>
-    <Setting name="Token" :desc="tokenState">
+    <Setting :name="t('settings.GithubConnectionEditor.token.d2089be6')" :desc="tokenState">
       <SecretField
         v-model="token"
         :value="forget ? '' : stored"
-        :placeholder="draft.provider === 'forgejo' ? 'Access token' : 'github_pat_...'"
-        replace-placeholder="New token..."
-        save-tooltip="Use this token when saving the connection"
-        what="The token"
+        :placeholder="
+          draft.provider === 'forgejo'
+            ? t('settings.GithubConnectionEditor.access_token.9a911b08')
+            : t('settings.GithubConnectionEditor.github_pat.94238580')
+        "
+        :replace-placeholder="t('settings.GithubConnectionEditor.new_token.564f08bc')"
+        :save-tooltip="t('settings.GithubConnectionEditor.use_this_token_when_saving.7cc96882')"
+        :what="t('settings.GithubConnectionEditor.the_token.d22bffce')"
         @save="token = token.trim()"
       >
         <template #actions>
-          <Icon icon="trash-2" with-bg tooltip="Forget the token" @click="forget = true" />
+          <Icon
+            icon="trash-2"
+            with-bg
+            :tooltip="t('settings.GithubConnectionEditor.forget_the_token.961a44b9')"
+            @click="forget = true"
+          />
         </template>
       </SecretField>
     </Setting>
     <Setting
-      name="Default for this server"
-      desc="Used when no repository-owner preference selects another connection."
+      :name="t('settings.GithubConnectionEditor.default_for_this_server.c7a4b365')"
+      :desc="t('settings.GithubConnectionEditor.used_when_no_repository_owner.4af29859')"
     >
       <Checkbox :is-enabled="draft.isDefault" @toggle="draft.isDefault = !draft.isDefault" />
     </Setting>
     <Setting
-      name="Repository owners"
-      desc="One per line: sample-org, sample-org/*, sample-*, or sample-org/project. More specific rules win."
+      :name="t('settings.GithubConnectionEditor.repository_owners.89c91e93')"
+      :desc="t('settings.GithubConnectionEditor.one_per_line_sample_org.335517a9')"
     >
       <Input
         v-model:model-value="owners"
         as-text-area
         :rows="4"
-        :placeholder="'sample-org\nsample-org/project'"
+        :placeholder="t('settings.GithubConnectionEditor.sample_org_sample_org_project.51d1a47b')"
       />
     </Setting>
     <Setting
-      name="Check access"
-      desc="Checks only this connection. Leave the repository empty to discover the account."
+      :name="t('settings.GithubConnectionEditor.check_access.abb9a172')"
+      :desc="t('settings.GithubConnectionEditor.checks_only_this_connection_leave.71a745a0')"
     >
       <Input
         v-model:model-value="repoInput"
         :placeholder="
           draft.provider === 'forgejo'
-            ? 'owner/repo or a Forgejo link'
-            : 'owner/repo or a GitHub link'
+            ? t('settings.GithubConnectionEditor.owner_repo_or_a_forgejo.5bdaf9f1')
+            : t('settings.GithubConnectionEditor.owner_repo_or_a_github.b6c51009')
         "
       />
     </Setting>
     <Button
-      text="Check access"
-      tooltip="Send read requests with this draft's token without storing it"
+      :text="t('settings.GithubConnectionEditor.check_access.abb9a172')"
+      :tooltip="t('settings.GithubConnectionEditor.send_read_requests_with_this.e6f0e799')"
       :disabled="checking || !validServer"
       @click="check"
     />
@@ -94,7 +119,7 @@
     <EmptyState v-if="errorMessage" :text="errorMessage" />
     <EmptyState
       v-if="duplicate"
-      text="Another connection uses the same account on this server. You can still save it."
+      :text="t('settings.GithubConnectionEditor.another_connection_uses_the_same.db8b1327')"
     />
     <template v-if="report && draft.provider === 'forgejo'">
       <Setting :name="accessSummary" :desc="accessCapabilities">
@@ -105,7 +130,10 @@
           :label="accessSummary"
         />
       </Setting>
-      <Disclosure v-model="detailsOpen" label="Access details">
+      <Disclosure
+        v-model="detailsOpen"
+        :label="t('settings.GithubConnectionEditor.access_details.abe1adac')"
+      >
         <GithubAccessReport :report="report" />
       </Disclosure>
     </template>
@@ -113,13 +141,13 @@
     <!-- As Obsidian's dialogs order them: Cancel, then the answer last. -->
     <template #footer>
       <Button
-        text="Cancel"
-        tooltip="Discard this draft without changing settings or the keychain"
+        :text="t('settings.GithubConnectionEditor.cancel.19766ed6')"
+        :tooltip="t('settings.GithubConnectionEditor.discard_this_draft_without_changing.e8faacff')"
         @click="close"
       />
       <Button
-        text="Save"
-        tooltip="Store this connection and its token, then close the editor"
+        :text="t('settings.GithubConnectionEditor.save.1509f561')"
+        :tooltip="t('settings.GithubConnectionEditor.store_this_connection_and_its.1cf41364')"
         accent
         :disabled="!draft.name.trim() || !validServer"
         @click="save"
@@ -129,6 +157,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, reactive, ref, watch, onBeforeUnmount, onMounted } from 'vue'
 import Modal from '../obsidian/Modal.vue'
 import Setting from '../obsidian/Setting.vue'
@@ -167,23 +196,27 @@ const emit = defineEmits<{
 const draft = reactive<GithubConnection>(JSON.parse(JSON.stringify(props.connection)))
 const providerOptions = [
   { value: 'github', display: 'GitHub' },
-  { value: 'forgejo', display: 'Forgejo' },
+  { value: 'forgejo', display: t('settings.GithubConnectionEditor.forgejo.f4e62146') },
 ]
 const detailsOpen = ref(false)
 const accessSummary = computed(() =>
   report.value?.login
-    ? `Signed in as ${report.value.login}`
+    ? t('settings.GithubConnectionEditor.signed_in_as_value.682769b2', {
+        value0: String(report.value.login),
+      })
     : report.value?.tokenConfigured
       ? report.value.identityError?.includes('401')
-        ? 'The host did not accept this token (401).'
-        : `The account could not be checked. ${report.value.identityError ?? ''}`
-      : 'Public access without a token'
+        ? t('settings.GithubConnectionEditor.the_host_did_not_accept.71ef1e9a')
+        : t('settings.GithubConnectionEditor.the_account_could_not_be.71de8f27', {
+            value0: String(report.value.identityError ?? ''),
+          })
+      : t('settings.GithubConnectionEditor.public_access_without_a_token.35b758c0')
 )
 const accessCapabilities = computed(
   () =>
     report.value?.rows
       .map((row) => `${row.state === 'ok' ? '✓' : '—'} ${row.permission}`)
-      .join(' · ') || 'Choose a repository to check read access.'
+      .join(' · ') || t('settings.GithubConnectionEditor.choose_a_repository_to_check.0ea16edc')
 )
 function recordCheck(result: AccessReport): void {
   if (!result.login) {
@@ -231,23 +264,23 @@ const credentialChanged = (credential: string) => {
   delete draft.checkState
   delete draft.checkedAt
   delete draft.expiresAt
-  message.value = 'The connection token changed. Check access again.'
+  message.value = t('settings.GithubConnectionEditor.the_connection_token_changed_check.225dffc8')
   return true
 }
 const validServer = computed(() => validProviderServer(draft))
 const tokenState = computed(() =>
   forget.value
-    ? 'The token will be forgotten when you save.'
+    ? t('settings.GithubConnectionEditor.the_token_will_be_forgotten.370b78f6')
     : stored.value
-      ? 'A token is stored on this device. Enter a replacement, or leave empty to keep it. Changes are saved only with Save.'
+      ? t('settings.GithubConnectionEditor.a_token_is_stored_on.cf14633e')
       : !props.isNew &&
           validProviderServer(draft) &&
           connectionBinding(draft) !== connectionBinding(props.connection) &&
           props.connection.keyId
-        ? 'The stored token belongs to the previous server. Enter a new token for this address.'
+        ? t('settings.GithubConnectionEditor.the_stored_token_belongs_to.6fe37376')
         : secrets().status.value === 'locked'
-          ? 'Synced keys are locked; unlock them to use the token, or enter a new one.'
-          : 'No token on this device. Stored in the keychain only when you save.'
+          ? t('settings.GithubConnectionEditor.synced_keys_are_locked_unlock.aeb37d60')
+          : t('settings.GithubConnectionEditor.no_token_on_this_device.6ad3dfbf')
 )
 const duplicate = computed(
   () =>
@@ -319,11 +352,11 @@ async function check(): Promise<void> {
     const text = repoInput.value.trim(),
       repo = text ? forgejoRepoInput(client, text) : null
     if (text && !repo) {
-      message.value = 'Give owner/repo or a repository link on this connection’s server.'
+      message.value = t('settings.GithubConnectionEditor.give_owner_repo_or_a.08ecfbf3')
       return
     }
     checking.value = true
-    message.value = 'Asking Forgejo…'
+    message.value = t('settings.GithubConnectionEditor.asking_forgejo.f46aa9ff')
     try {
       const result = await checkForgejoAccess(client, repo, credential)
       if (!open || generation !== mine) return
@@ -336,7 +369,10 @@ async function check(): Promise<void> {
       }
     } catch (error) {
       if (open && generation === mine)
-        message.value = error instanceof Error ? error.message : 'The access check failed.'
+        message.value =
+          error instanceof Error
+            ? error.message
+            : t('settings.GithubConnectionEditor.the_access_check_failed.90fa9dca')
     } finally {
       if (generation === mine) checking.value = false
     }
@@ -347,24 +383,23 @@ async function check(): Promise<void> {
   const text = repoInput.value.trim()
   const repo = text ? parseRepoInput(text, ends.webHost) : null
   if (text && !repo) {
-    message.value = 'Give owner/repo or a repository link.'
+    message.value = t('settings.GithubConnectionEditor.give_owner_repo_or_a.5007d209')
     return
   }
   if (repo && repo.host !== ends.webHost) {
-    message.value = 'This repository is on another server. Choose its connection instead.'
+    message.value = t('settings.GithubConnectionEditor.this_repository_is_on_another.3dfb442d')
     return
   }
   if (/^https?:\/\//i.test(text)) {
     const url = new URL(text)
     const api = new URL(ends.api)
     if (![ends.origin, api.origin].includes(url.origin) || url.username || url.password) {
-      message.value =
-        'This repository is on a different server address, scheme or port. Use this connection’s server.'
+      message.value = t('settings.GithubConnectionEditor.this_repository_is_on_a.2f633da4')
       return
     }
   }
   checking.value = true
-  message.value = 'Asking GitHub…'
+  message.value = t('settings.GithubConnectionEditor.asking_github.5becc057')
   const credential = draftCredential()
   const client = new GithubClient(ends, credential)
   try {
@@ -389,7 +424,10 @@ async function check(): Promise<void> {
     }
   } catch (e) {
     if (open && generation === requestGeneration)
-      message.value = e instanceof Error ? e.message : 'The access check failed.'
+      message.value =
+        e instanceof Error
+          ? e.message
+          : t('settings.GithubConnectionEditor.the_access_check_failed.90fa9dca')
   } finally {
     client.retire()
     if (generation === requestGeneration) checking.value = false

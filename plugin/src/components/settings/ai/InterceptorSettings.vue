@@ -1,19 +1,19 @@
 <template>
-  <Setting name="Interceptor" :desc="desc">
+  <Setting :name="t('settings.ai.InterceptorSettings.interceptor.e7123168')" :desc="desc">
     <Dropdown :model-value="modelValue" :options="options" @update:model-value="choose" />
   </Setting>
   <template v-if="active">
     <!-- Your message before the agent reads it, the agent's answer before it stays in the chat. -->
-    <Setting name="Checks" :desc="checksDesc">
+    <Setting :name="t('settings.ai.InterceptorSettings.checks.de07d072')" :desc="checksDesc">
       <Dropdown
         :model-value="checks"
-        :options="INTERCEPTOR_CHECKS_OPTIONS"
+        :options="settingsOptions(INTERCEPTOR_CHECKS_OPTIONS)"
         @update:model-value="emit('update:checks', $event as InterceptorChecks)"
       />
     </Setting>
     <Setting
-      name="Only messages matching"
-      desc="A regular expression, bare or as /pattern/flags, tried on whatever is checked. The rest pass unchecked. Empty means everything."
+      :name="t('settings.ai.InterceptorSettings.only_messages_matching.a6b95968')"
+      :desc="t('settings.ai.InterceptorSettings.a_regular_expression_bare_or.23b7cedb')"
     >
       <Input
         :model-value="patternText"
@@ -22,30 +22,32 @@
       />
     </Setting>
     <p v-if="patternProblem" class="setting-item-description mod-warning">
-      Not saved: {{ patternProblem }}
+      {{ t('settings.sentence.cdb07f66a428a0ed', { value0: String(patternProblem) }) }}
     </p>
     <Setting
       v-if="checks !== 'answer'"
-      name="Reply only"
-      desc="Send your messages unchanged straight to the main agent. The interceptor may answer beside each message, without holding it, rewriting it or deciding tool approvals."
+      :name="t('settings.ai.InterceptorSettings.reply_only.df23f4c5')"
+      :desc="t('settings.ai.InterceptorSettings.send_your_messages_unchanged_straight.58a7f839')"
     >
       <Checkbox :is-enabled="replyOnly" @toggle="emit('update:reply-only', !replyOnly)" />
     </Setting>
   </template>
   <Setting
     v-if="agentActive"
-    name="Interceptor context"
-    desc="How much of the conversation the interceptor sees."
+    :name="t('settings.ai.InterceptorSettings.interceptor_context.4b7f6f53')"
+    :desc="t('settings.ai.InterceptorSettings.how_much_of_the_conversation.5cbc2856')"
   >
     <Dropdown
       :model-value="String(contextDepth)"
-      :options="INTERCEPTOR_CONTEXT_OPTIONS"
+      :options="settingsOptions(INTERCEPTOR_CONTEXT_OPTIONS)"
       @update:model-value="emit('update:context-depth', Number($event))"
     />
   </Setting>
 </template>
 
 <script setup lang="ts">
+import { settingsOptions } from '@/i18n/settingsLabels'
+import { t } from '@/i18n'
 import { computed, ref, watch } from 'vue'
 import Setting from '../../obsidian/Setting.vue'
 import Dropdown from '../../obsidian/Dropdown.vue'
@@ -71,7 +73,10 @@ const props = withDefaults(
     contextDepth: number
     patternPlaceholder?: string
   }>(),
-  { patternPlaceholder: 'Everything', checks: 'message' }
+  {
+    patternPlaceholder: () => t('settings.ai.InterceptorSettings.everything.75304cf7'),
+    checks: 'message',
+  }
 )
 const emit = defineEmits<{
   'update:model-value': [value: string]
@@ -84,10 +89,10 @@ const emit = defineEmits<{
 /** What happens to what it checks, said for the choice in force. */
 const checksDesc = computed(() =>
   props.checks === 'message'
-    ? 'Your messages, before the agent reads them.'
+    ? t('settings.ai.InterceptorSettings.your_messages_before_the_agent.4c538aec')
     : props.checks === 'answer'
-      ? "The agent's answers, once it has finished. A new text from the interceptor takes the answer's place; the original stays a press away."
-      : "Your messages before the agent reads them, and its answers once it has finished. A new text from the interceptor takes the answer's place."
+      ? t('settings.ai.InterceptorSettings.the_agent_s_answers_once.69a4059d')
+      : t('settings.ai.InterceptorSettings.your_messages_before_the_agent.1b910706')
 )
 
 /** Invalid text stays visible here; neither owner loses its last valid stored pattern. */

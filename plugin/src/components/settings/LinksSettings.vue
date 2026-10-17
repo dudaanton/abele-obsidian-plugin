@@ -1,75 +1,117 @@
 <template>
   <div class="abele-settings__links">
     <Section
-      title="Links that run things"
-      desc="Each one is an obsidian:// address that runs a script or a command when it is opened — from a bookmark, another app or a shortcut."
+      :title="t('settings.LinksSettings.links_that_run_things.6849bb37')"
+      :desc="t('settings.LinksSettings.each_one_is_an_obsidian.bcfd9260')"
     >
       <!-- One row per link: its name and what it runs, the address to copy, and the rest in a
            window of its own. -->
       <Setting v-for="(link, idx) in links" :key="link.id" class="abele-links__row">
-        <template #name>{{ link.name || 'Untitled link' }}</template>
+        <template #name>{{
+          link.name || t('settings.LinksSettings.untitled_link.be1c93df')
+        }}</template>
         <template #desc>{{ runsText(link) }}</template>
-        <Icon icon="copy" tooltip="Copy the link's address" @click="copyUrl(link)" />
-        <Icon icon="settings" tooltip="Change this link" @click="editing = idx" />
+        <Icon
+          icon="copy"
+          :tooltip="t('settings.LinksSettings.copy_the_link_s_address.331a3bd9')"
+          @click="copyUrl(link)"
+        />
+        <Icon
+          icon="settings"
+          :tooltip="t('settings.LinksSettings.change_this_link.f6aa89bf')"
+          @click="editing = idx"
+        />
       </Setting>
       <Setting
-        :name="links.length ? 'Add another link' : 'No links yet'"
-        desc="A name for the address, and the script or command it runs."
+        :name="
+          links.length
+            ? t('settings.LinksSettings.add_another_link.a8b73866')
+            : t('settings.LinksSettings.no_links_yet.30d3e862')
+        "
+        :desc="t('settings.LinksSettings.a_name_for_the_address.f36bdc5a')"
       >
-        <Button text="Add link" tooltip="Add a link and set it up" @click="addAndEdit" />
+        <Button
+          :text="t('settings.LinksSettings.add_link.dfe9ca4d')"
+          :tooltip="t('settings.LinksSettings.add_a_link_and_set.5eb68448')"
+          @click="addAndEdit"
+        />
       </Setting>
     </Section>
 
     <ObsidianModal
       v-if="editing !== null && links[editing]"
-      :title="links[editing].name || 'New link'"
+      :title="links[editing].name || t('settings.LinksSettings.new_link.98ee0dfb')"
       @close="editing = null"
     >
-      <Setting name="Name" desc="The part of the address after name=, in plain letters and dashes.">
+      <Setting
+        :name="t('settings.LinksSettings.name.dcd1d522')"
+        :desc="t('settings.LinksSettings.the_part_of_the_address.2929fc21')"
+      >
         <Input
           :model-value="links[editing].name"
-          placeholder="add-movie"
+          :placeholder="t('settings.LinksSettings.add_movie.2f79eca6')"
           @update:model-value="updateField(editing, 'name', $event)"
         />
       </Setting>
-      <Setting name="Runs">
+      <Setting :name="t('settings.LinksSettings.runs.848f54e8')">
         <Dropdown
           :model-value="links[editing].type"
           :options="typeOptions"
           @update:model-value="updateField(editing, 'type', $event)"
         />
       </Setting>
-      <Setting v-if="links[editing].type === 'script'" name="Script">
+      <Setting
+        v-if="links[editing].type === 'script'"
+        :name="t('settings.LinksSettings.script.102acc10')"
+      >
         <Button
-          :text="links[editing].scriptName || 'Choose a script…'"
-          tooltip="Search the scripts for the one this link runs"
+          :text="links[editing].scriptName || t('settings.LinksSettings.choose_a_script.d8ff6dd0')"
+          :tooltip="t('settings.LinksSettings.search_the_scripts_for_the.e5119ad8')"
           @click="chooseScript(editing)"
         />
       </Setting>
-      <Setting v-if="links[editing].type === 'command'" name="Command">
+      <Setting
+        v-if="links[editing].type === 'command'"
+        :name="t('settings.LinksSettings.command.71316697')"
+      >
         <Button
           :text="commandLabel(links[editing].commandId)"
-          tooltip="Search the commands for the one this link runs"
+          :tooltip="t('settings.LinksSettings.search_the_commands_for_the.ebe2fa5b')"
           @click="chooseCommand(editing)"
         />
       </Setting>
-      <Setting name="Wait for sync" desc="Run only once Obsidian Sync has brought the vault up to date.">
+      <Setting
+        :name="t('settings.LinksSettings.wait_for_sync.8d3efbd1')"
+        :desc="t('settings.LinksSettings.run_only_once_obsidian_sync.91ba259b')"
+      >
         <Checkbox :is-enabled="links[editing].waitForSync" @toggle="toggleWaitForSync(editing)" />
       </Setting>
-      <Setting name="Address" desc="Add &param=value to hand the script its values.">
+      <Setting
+        :name="t('settings.LinksSettings.address.56ef8f20')"
+        :desc="t('settings.LinksSettings.add_param_value_to_hand.2c89675e')"
+      >
         <code class="abele-links__url">{{ buildUrl(links[editing]) }}</code>
-        <Icon icon="copy" tooltip="Copy the link's address" @click="copyUrl(links[editing])" />
+        <Icon
+          icon="copy"
+          :tooltip="t('settings.LinksSettings.copy_the_link_s_address.331a3bd9')"
+          @click="copyUrl(links[editing])"
+        />
       </Setting>
       <template #footer>
         <div class="abele-modal__actions">
           <Button
-            text="Delete"
+            :text="t('settings.LinksSettings.delete.e2d0a549')"
             warning
-            tooltip="Remove this link"
+            :tooltip="t('settings.LinksSettings.remove_this_link.d7173cb1')"
             class="abele-links__delete"
             @click="removeEditing"
           />
-          <Button text="Done" accent tooltip="Close this window; changes are kept as you make them" @click="editing = null" />
+          <Button
+            :text="t('settings.LinksSettings.done.11a6767d')"
+            accent
+            :tooltip="t('settings.LinksSettings.close_this_window_changes_are.91342d87')"
+            @click="editing = null"
+          />
         </div>
       </template>
     </ObsidianModal>
@@ -77,6 +119,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { ref } from 'vue'
 import { debounce, Notice } from 'obsidian'
 import { nanoid } from 'nanoid'
@@ -99,13 +142,13 @@ const vaultName = app.vault.getName()
 const links = ref<LinkDefinition[]>(JSON.parse(JSON.stringify(config.links || [])))
 
 const typeOptions = [
-  { value: 'script', display: 'Script' },
-  { value: 'command', display: 'Command' },
+  { value: 'script', display: t('settings.LinksSettings.script.102acc10') },
+  { value: 'command', display: t('settings.LinksSettings.command.71316697') },
 ]
 
 /** A link stores a command's id; what a person recognises is its name. */
 const commandLabel = (id: string): string => {
-  if (!id) return 'Choose a command…'
+  if (!id) return t('settings.LinksSettings.choose_a_command.58e501e1')
   return listCommands(app).find((command) => command.id === id)?.name ?? id
 }
 
@@ -159,11 +202,15 @@ const removeEditing = () => {
 const runsText = (link: LinkDefinition): string =>
   link.type === 'script'
     ? link.scriptName
-      ? `Runs the script ${link.scriptName}`
-      : 'Runs a script — none chosen yet'
+      ? t('settings.LinksSettings.runs_the_script_value.c5e5c031', {
+          value0: String(link.scriptName),
+        })
+      : t('settings.LinksSettings.runs_a_script_none_chosen.1b6f1723')
     : link.commandId
-      ? `Runs the command ${commandLabel(link.commandId)}`
-      : 'Runs a command — none chosen yet'
+      ? t('settings.LinksSettings.runs_the_command_value.c397fa11', {
+          value0: String(commandLabel(link.commandId)),
+        })
+      : t('settings.LinksSettings.runs_a_command_none_chosen.67edb64d')
 
 const updateField = (idx: number, field: keyof LinkDefinition, value: string) => {
   if (field === 'name') {
@@ -188,7 +235,7 @@ const buildUrl = (link: LinkDefinition): string => {
 
 const copyUrl = (link: LinkDefinition) => {
   navigator.clipboard.writeText(buildUrl(link))
-  new Notice('Link copied')
+  new Notice(t('settings.LinksSettings.link_copied.d12860c2'))
 }
 </script>
 

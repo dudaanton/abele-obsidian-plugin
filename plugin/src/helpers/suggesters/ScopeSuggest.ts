@@ -1,3 +1,5 @@
+import { t } from '@/i18n'
+import { settingsLabel } from '@/i18n/settingsLabels'
 import { App, TFile, TFolder } from 'obsidian'
 import { TextInputSuggest } from './suggest'
 import { ScopeResolver, type ScopeEntry } from '@/ai/ScopeResolver'
@@ -54,17 +56,19 @@ export class ScopeSuggest extends TextInputSuggest<ScopeChoice> {
       if (!full() && !taken.has(key(choice.entry))) out.push(choice)
     }
 
-    if (GLOB.test(q)) push({ entry: { type: 'pattern', path: query.trim() }, kind: 'pattern' })
+    if (GLOB.test(q))
+      push({ entry: { type: 'pattern', path: query.trim() }, kind: settingsLabel('pattern') })
 
     const open = this.app.workspace.getActiveFile()
-    if (!q && open) push({ entry: { type: 'file', path: open.path }, kind: 'open note' })
+    if (!q && open)
+      push({ entry: { type: 'file', path: open.path }, kind: settingsLabel('open note') })
 
     const files = this.app.vault.getAllLoadedFiles()
     const match = (path: string) => !q || GLOB.test(q) || path.toLowerCase().includes(q)
     for (const f of files) {
       if (full()) return out
       if (f instanceof TFolder && !f.isRoot() && match(f.path))
-        push({ entry: { type: 'folder', path: f.path }, kind: 'folder' })
+        push({ entry: { type: 'folder', path: f.path }, kind: settingsLabel('folder') })
     }
     if (full()) return out
     let sizes: Map<string, number>
@@ -80,7 +84,7 @@ export class ScopeSuggest extends TextInputSuggest<ScopeChoice> {
       if (match(path))
         push({
           entry: { type: 'group', path },
-          kind: `group · ${size} ${size === 1 ? 'note' : 'notes'}`,
+          kind: t('settings.scope.groupNotes', { count: size }),
         })
     // A chat log is never in reach through a scope, so it is not offered; the open note is
     // listed once, at the top, while nothing is typed, and by its name once something is.

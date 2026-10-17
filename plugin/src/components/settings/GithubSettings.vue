@@ -1,60 +1,69 @@
 <template>
   <div class="abele-settings__github">
     <Setting
-      name="Git hosting"
-      desc="Open GitHub issues, pull requests, discussions, commits and files in tabs here, and your notifications in a sidebar. Repository content is read-only. Notifications can be marked read or Done."
+      :name="t('settings.GithubSettings.git_hosting.a3002011')"
+      :desc="t('settings.GithubSettings.open_github_issues_pull_requests.ad94cf5c')"
     >
       <Checkbox :is-enabled="settings.enabled" @toggle="toggle('enabled')" />
     </Setting>
 
     <template v-if="settings.enabled">
       <Setting
-        name="Open GitHub links in Obsidian"
-        desc="A click on a supported GitHub link in a note opens it in a tab here. Other GitHub links, and any link clicked with Alt held, still go to the browser."
+        :name="t('settings.GithubSettings.open_github_links_in_obsidian.815b1959')"
+        :desc="t('settings.GithubSettings.a_click_on_a_supported.f005fa1f')"
       >
         <Checkbox :is-enabled="settings.openLinks" @toggle="toggle('openLinks')" />
       </Setting>
 
       <Setting
-        name="Default repository"
-        desc="Where the command Open GitHub link or item looks up a bare #123, a title, a branch or a commit when no GitHub tab is open. owner/repo, or a link into it."
+        :name="t('settings.GithubSettings.default_repository.525a8366')"
+        :desc="t('settings.GithubSettings.where_the_command_open_github.750aa580')"
       >
         <Input
           :model-value="settings.defaultRepo"
-          placeholder="owner/repo"
+          :placeholder="t('settings.GithubSettings.owner_repo.65e817ee')"
           @update:model-value="updateDefaultRepo"
         />
       </Setting>
 
       <Section
-        title="Pinned repositories"
-        desc="First in Open GitHub repository…, and carried to your other devices with the settings. Pin one from that picker (Alt+Enter) or from a GitHub tab's menu."
+        :title="t('settings.GithubSettings.pinned_repositories.03dccfeb')"
+        :desc="t('settings.GithubSettings.first_in_open_github_repository.067f8a9c')"
       >
-        <EmptyState v-if="!settings.pinnedRepos.length" text="Nothing pinned yet." />
+        <EmptyState
+          v-if="!settings.pinnedRepos.length"
+          :text="t('settings.GithubSettings.nothing_pinned_yet.0b27e4d1')"
+        />
         <Setting
           v-for="pin in settings.pinnedRepos"
           :key="pin.url"
           :name="pinName(pin.url)"
           :desc="pinHost(pin.url)"
         >
-          <Icon icon="pin-off" with-bg tooltip="Unpin this repository" @click="unpin(pin.url)" />
+          <Icon
+            icon="pin-off"
+            with-bg
+            :tooltip="t('settings.GithubSettings.unpin_this_repository.91038877')"
+            @click="unpin(pin.url)"
+          />
         </Setting>
       </Section>
 
       <Section
-        title="Connections"
-        desc="A fine-grained personal access token with read-only access to Contents, Issues, Pull requests and Discussions for the repositories you want to read. Each connection has its own server and account; choose one default per server. Notifications need a classic token with the notifications scope, set in Notifications token below."
+        :title="t('settings.GithubSettings.connections.dc273117')"
+        :desc="t('settings.GithubSettings.a_fine_grained_personal_access.d3f9cea9')"
       >
         <EmptyState
           v-if="!settings.connections.length"
-          text="No connections. Public github.com repositories are read anonymously."
+          :text="t('settings.GithubSettings.no_connections_public_github_com.534d40f4')"
         />
         <Setting
           v-for="connection in settings.connections"
           :key="connection.id"
           :name="
-            (isBrowsableConnection(connection) && connection.isDefault ? 'Default · ' : '') +
-            connection.name
+            (isBrowsableConnection(connection) && connection.isDefault
+              ? t('settings.GithubSettings.default.2ae2ecc2')
+              : '') + connection.name
           "
           :desc="connectionDescription(connection)"
         >
@@ -66,13 +75,13 @@
             v-if="isBrowsableConnection(connection)"
             icon="pencil"
             with-bg
-            tooltip="Edit connection"
+            :tooltip="t('settings.GithubSettings.edit_connection.047f9f95')"
             @click="editConnection(connection)"
           />
           <Icon
             icon="more-horizontal"
             with-bg
-            tooltip="Connection actions"
+            :tooltip="t('settings.GithubSettings.connection_actions.9e1bbb65')"
             @click="connectionMenu(connection, $event)"
           />
         </Setting>
@@ -82,43 +91,52 @@
               (c) => isGithubConnection(c) && endpoints(c.server).webHost === 'github.com'
             )
           "
-          name="Public github.com (anonymous)"
+          :name="t('settings.GithubSettings.public_github_com_anonymous.c18bb859')"
           :desc="
             anonymousGithubRate
-              ? `${anonymousGithubRate.remaining} of ${anonymousGithubRate.limit} requests remaining${anonymousGithubRate.reset ? ' · resets ' + new Date(anonymousGithubRate.reset).toLocaleTimeString() : ''}`
-              : 'Quota not observed yet; normally 60 requests an hour shared by this device.'
+              ? t('settings.GithubSettings.value_of_value_requests_remaining.037c7ebe', {
+                  value0: String(anonymousGithubRate.remaining),
+                  value1: String(anonymousGithubRate.limit),
+                  value2: String(
+                    anonymousGithubRate.reset
+                      ? t('settings.terms.resetsSuffix') +
+                          new Date(anonymousGithubRate.reset).toLocaleTimeString()
+                      : ''
+                  ),
+                })
+              : t('settings.GithubSettings.quota_not_observed_yet_normally.b802706a')
           "
         />
         <EmptyState v-if="connectionMessage" :text="connectionMessage" />
         <Button
-          text="Add connection"
-          tooltip="Create a connection with its own keychain token"
+          :text="t('settings.GithubSettings.add_connection.685f88ae')"
+          :tooltip="t('settings.GithubSettings.create_a_connection_with_its.a4245461')"
           @click="addConnection"
         />
       </Section>
 
       <Section
-        title="Notifications"
-        desc="A fine-grained personal access token can read repository content, but GitHub serves notifications only to a classic token with the notifications scope. Set the Notifications token below for the retained single inbox. It stays bound to the server where it was set."
+        :title="t('settings.GithubSettings.notifications.78801183')"
+        :desc="t('settings.GithubSettings.a_fine_grained_personal_access.259d3619')"
       >
         <Setting
-          name="Notifications token"
-          desc="Optional. A classic personal access token with the notifications scope, used only by the notifications panel: GitHub does not let a fine-grained token read notifications. Empty: the panel uses the default connection. Stored in the keychain."
+          :name="t('settings.GithubSettings.notifications_token.e314ce9b')"
+          :desc="t('settings.GithubSettings.optional_a_classic_personal_access.0e7b2561')"
         >
           <SecretField
             v-model="notificationsInput"
             :value="storedNotifications"
-            placeholder="ghp_..."
-            replace-placeholder="New token..."
-            save-tooltip="Save the notifications token"
-            what="The notifications token"
+            :placeholder="t('settings.GithubSettings.ghp.ff475c83')"
+            :replace-placeholder="t('settings.GithubSettings.new_token.564f08bc')"
+            :save-tooltip="t('settings.GithubSettings.save_the_notifications_token.d4a25b6f')"
+            :what="t('settings.GithubSettings.the_notifications_token.266dfc35')"
             @save="saveNotificationsToken"
           >
             <template #actions>
               <Icon
                 icon="trash-2"
                 with-bg
-                tooltip="Forget the notifications token"
+                :tooltip="t('settings.GithubSettings.forget_the_notifications_token.5f48625d')"
                 @click="confirmingForgetNotifications = true"
               />
             </template>
@@ -126,10 +144,13 @@
         </Setting>
       </Section>
 
-      <Section title="Pages" desc="How a GitHub tab lays out what it shows.">
+      <Section
+        :title="t('settings.GithubSettings.pages.9046da16')"
+        :desc="t('settings.GithubSettings.how_a_github_tab_lays.f030133b')"
+      >
         <Setting
-          name="Page width"
-          desc="How wide the text of a tab runs: conversations, commit messages, rendered markdown and folder pages. Diffs and code always take the whole tab."
+          :name="t('settings.GithubSettings.page_width.217fbef1')"
+          :desc="t('settings.GithubSettings.how_wide_the_text_of.8d0e20a7')"
         >
           <Dropdown
             :options="widthOptions"
@@ -139,8 +160,13 @@
         </Setting>
         <Setting
           v-if="settings.pageWidth === 'custom'"
-          name="Width in pixels"
-          :desc="`From ${PAGE_WIDTH_MIN} to ${PAGE_WIDTH_MAX}. A tab narrower than this uses what it has.`"
+          :name="t('settings.GithubSettings.width_in_pixels.b3f8f713')"
+          :desc="
+            t('settings.GithubSettings.from_value_to_value_a.87f8c5fb', {
+              value0: String(PAGE_WIDTH_MIN),
+              value1: String(PAGE_WIDTH_MAX),
+            })
+          "
         >
           <Input
             :model-value="String(settings.pageWidthPx)"
@@ -149,8 +175,8 @@
           />
         </Setting>
         <Setting
-          name="Markdown files open as"
-          desc="Preview: rendered, and a link to lines of the file marks the paragraphs, lists or code blocks that hold them. Code: the file as it is written, line by line. The switch above a file changes it for that tab."
+          :name="t('settings.GithubSettings.markdown_files_open_as.5541a0b8')"
+          :desc="t('settings.GithubSettings.preview_rendered_and_a_link.7f27338b')"
         >
           <Dropdown
             :options="markdownOptions"
@@ -161,12 +187,12 @@
       </Section>
 
       <Section
-        title="People"
-        desc="Who wrote an issue, a comment, a review or a commit, with their picture. Names and pictures are asked of GitHub once and kept on this device for a week."
+        :title="t('settings.GithubSettings.people.7db20897')"
+        :desc="t('settings.GithubSettings.who_wrote_an_issue_a.deb19dbb')"
       >
         <Setting
-          name="Show people by"
-          desc="Their name as their profile gives it, or their login. The other one is in the tooltip, and a click or a tap on a person swaps the two right there. Someone whose profile has no name is shown by login either way."
+          :name="t('settings.GithubSettings.show_people_by.989a820c')"
+          :desc="t('settings.GithubSettings.their_name_as_their_profile.2452b5a6')"
         >
           <Dropdown
             :options="displayOptions"
@@ -174,14 +200,17 @@
             @update:model-value="updateUserDisplay"
           />
         </Setting>
-        <Setting name="Kept names and pictures" :desc="peopleDesc">
+        <Setting
+          :name="t('settings.GithubSettings.kept_names_and_pictures.586c5b5f')"
+          :desc="peopleDesc"
+        >
           <Button
-            text="Clear"
+            :text="t('settings.GithubSettings.clear.83b12c22')"
             :disabled="!peopleCount"
             :tooltip="
               peopleCount
-                ? 'Forget every kept name and picture; they are asked for again as people are shown'
-                : 'Nothing is kept yet'
+                ? t('settings.GithubSettings.forget_every_kept_name_and.ddf1b164')
+                : t('settings.GithubSettings.nothing_is_kept_yet.7287d9c8')
             "
             @click="clearPeople"
           />
@@ -189,12 +218,12 @@
       </Section>
 
       <Section
-        title="Code search"
-        desc="Search the code of the version a tab shows, and go to definition, from inside the tab. The repository at that version is downloaded once a session and searched here."
+        :title="t('settings.GithubSettings.code_search.ca5e7167')"
+        :desc="t('settings.GithubSettings.search_the_code_of_the.1ce06300')"
       >
         <Setting
-          name="Largest repository to download (MB)"
-          desc="Its files at that version, added up. A larger one is searched through GitHub's own code search instead, which knows only the default branch and needs a token."
+          :name="t('settings.GithubSettings.largest_repository_to_download_mb.c4edc368')"
+          :desc="t('settings.GithubSettings.its_files_at_that_version.5d039cfc')"
         >
           <Input
             :model-value="String(settings.searchLimitMb)"
@@ -218,19 +247,25 @@
     <ConfirmModal
       v-if="deletingConnection"
       :title="
-        isGithubConnection(deletingConnection) ? 'Delete GitHub connection' : 'Delete connection'
+        isGithubConnection(deletingConnection)
+          ? t('settings.GithubSettings.delete_github_connection.e4dfa050')
+          : t('settings.GithubSettings.delete_connection.e960651b')
       "
-      :message="`Delete ${deletingConnection.name}? Its local token will be forgotten; other connections are kept.`"
-      confirm-tooltip="Delete this connection and forget its local token"
+      :message="
+        t('settings.GithubSettings.delete_value_its_local_token.b78722f1', {
+          value0: String(deletingConnection.name),
+        })
+      "
+      :confirm-tooltip="t('settings.GithubSettings.delete_this_connection_and_forget.1a526c31')"
       @confirm="deleteConnection"
       @close="deletingConnection = null"
     />
     <ConfirmModal
       v-if="confirmingForgetNotifications"
-      title="Forget the notifications token"
-      message="Remove the notifications token from the keychain? The notifications panel goes back to the main token."
-      confirm-text="Forget"
-      confirm-tooltip="Remove the notifications token from the keychain"
+      :title="t('settings.GithubSettings.forget_the_notifications_token.5f48625d')"
+      :message="t('settings.GithubSettings.remove_the_notifications_token_from.5b3f8312')"
+      :confirm-text="t('settings.GithubSettings.forget.a6bd489d')"
+      :confirm-tooltip="t('settings.GithubSettings.remove_the_notifications_token_from.d1453607')"
       @confirm="forgetNotificationsToken"
       @close="confirmingForgetNotifications = false"
     />
@@ -238,6 +273,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { secrets } from '@/secrets/SecretStore'
 import SecretField from './SecretField.vue'
 import { computed, reactive, ref, watch } from 'vue'
@@ -291,12 +327,12 @@ const connectionDescription = (connection: GithubConnection) => {
   void secrets().version.value
   const token = connection.keyId ? secrets().get(connection.keyId) : ''
   const available = token
-    ? 'Token available on this device'
+    ? t('settings.GithubSettings.token_available_on_this_device.8141399a')
     : !connection.keyId && connection.provider === 'forgejo'
-      ? 'Public access without a token'
+      ? t('settings.GithubSettings.public_access_without_a_token.35b758c0')
       : secrets().status.value === 'locked'
-        ? 'Synced keys locked'
-        : 'No token on this device'
+        ? t('settings.GithubSettings.synced_keys_locked.1673153c')
+        : t('settings.GithubSettings.no_token_on_this_device.a87b4f4f')
   const expiry = connection.expiresAt ? Date.parse(connection.expiresAt) - Date.now() : Infinity
   const rate = config.github.connections?.some(
     (c) => c.id === connection.id && isGithubConnection(c)
@@ -304,14 +340,26 @@ const connectionDescription = (connection: GithubConnection) => {
     ? connectionClient(connection.id).rate.value
     : null
   return [
-    connection.provider === 'forgejo' ? 'Forgejo' : 'GitHub',
+    connection.provider === 'forgejo' ? t('settings.GithubSettings.forgejo.f4e62146') : 'GitHub',
     connection.server || 'github.com',
-    connection.account?.login ?? 'Account not checked',
+    connection.account?.login ?? t('settings.GithubSettings.account_not_checked.d2a6562d'),
     available,
     rate
-      ? `${rate.remaining} of ${rate.limit} requests remaining${rate.reset ? ` · resets ${new Date(rate.reset).toLocaleTimeString()}` : ''}`
+      ? t('settings.GithubSettings.value_of_value_requests_remaining.037c7ebe', {
+          value0: String(rate.remaining),
+          value1: String(rate.limit),
+          value2: String(
+            rate.reset
+              ? t('settings.parts.fa11c9afc868fc1e', {
+                  value0: String(new Date(rate.reset).toLocaleTimeString()),
+                })
+              : ''
+          ),
+        })
       : '',
-    expiry < 7 * 86400000 ? 'Token expires within seven days' : '',
+    expiry < 7 * 86400000
+      ? t('settings.GithubSettings.token_expires_within_seven_days.1b81c28c')
+      : '',
     connection.owners.join(', '),
   ]
     .filter(Boolean)
@@ -324,31 +372,44 @@ const connectionStatus = (
     return { tone: 'faint', label: connectionUnavailableReason(connection) }
   void secrets().version.value
   if (connection.keyId && !secrets().get(connection.keyId))
-    return { tone: 'orange', label: 'Token unavailable on this device' }
+    return {
+      tone: 'orange',
+      label: t('settings.GithubSettings.token_unavailable_on_this_device.0bd03b33'),
+    }
   if (connection.expiresAt && Date.parse(connection.expiresAt) <= Date.now())
-    return { tone: 'red', label: 'The token has expired' }
+    return { tone: 'red', label: t('settings.GithubSettings.the_token_has_expired.0b52627f') }
   if (connection.checkState === 'refused')
-    return { tone: 'red', label: 'The server did not accept the token at the last access check' }
+    return { tone: 'red', label: t('settings.GithubSettings.the_server_did_not_accept.1d7560a4') }
   if (connection.checkState === 'error')
-    return { tone: 'red', label: 'The last access check failed' }
+    return {
+      tone: 'red',
+      label: t('settings.GithubSettings.the_last_access_check_failed.72f4e393'),
+    }
   if (connection.checkState === 'partial')
-    return { tone: 'orange', label: 'Some repository access checks failed' }
+    return {
+      tone: 'orange',
+      label: t('settings.GithubSettings.some_repository_access_checks_failed.1b573ceb'),
+    }
   if (connection.checkState === 'ok' || (connection.checkedAt && connection.account))
-    return { tone: 'green', label: 'Access checked' }
-  return { tone: 'faint', label: 'Not checked yet' }
+    return { tone: 'green', label: t('settings.GithubSettings.access_checked.d2518d23') }
+  return { tone: 'faint', label: t('settings.GithubSettings.not_checked_yet.881d23f6') }
 }
 const connectionMenu = (connection: GithubConnection, event: MouseEvent) => {
   const menu = new Menu()
   if (isBrowsableConnection(connection)) {
     menu.addItem((item) =>
       item
-        .setTitle('Check access')
+        .setTitle(t('settings.GithubSettings.check_access.abb9a172'))
         .setIcon('shield-check')
         .onClick(() => editConnection(connection, true))
     )
     menu.addItem((item) =>
       item
-        .setTitle(`Make default for ${connection.server || 'github.com'}`)
+        .setTitle(
+          t('settings.GithubSettings.make_default_for_value.ded3e105', {
+            value0: String(connection.server || 'github.com'),
+          })
+        )
         .setIcon('check')
         .setChecked(connection.isDefault)
         .onClick(async () => {
@@ -365,7 +426,7 @@ const connectionMenu = (connection: GithubConnection, event: MouseEvent) => {
   }
   menu.addItem((item) =>
     item
-      .setTitle('Delete')
+      .setTitle(t('settings.GithubSettings.delete.e2d0a549'))
       .setIcon('trash-2')
       .onClick(() => {
         deletingConnection.value = connection
@@ -404,8 +465,9 @@ async function saveConnection(
     !newConnection.value &&
     (index < 0 || JSON.stringify(current.connections[index]) !== originalConnection)
   ) {
-    connectionMessage.value =
-      'This connection changed elsewhere. Close this draft and edit its current settings.'
+    connectionMessage.value = t(
+      'settings.GithubSettings.this_connection_changed_elsewhere_close.7283b1d4'
+    )
     return
   }
   const rebound =
@@ -425,8 +487,7 @@ async function saveConnection(
   try {
     if (connection.keyId && token !== undefined) secrets().set(connection.keyId, token ?? '')
   } catch {
-    connectionMessage.value =
-      'Could not save the token to the keychain. Nothing was changed; try again.'
+    connectionMessage.value = t('settings.GithubSettings.could_not_save_the_token.8edbb7d6')
     return
   }
   if (connection.isDefault) {
@@ -485,9 +546,12 @@ const save = async () => {
 }
 
 const widthOptions = [
-  { value: 'readable', display: 'Readable line width, like notes' },
-  { value: 'custom', display: 'Width in pixels' },
-  { value: 'full', display: 'Full width' },
+  {
+    value: 'readable',
+    display: t('settings.GithubSettings.readable_line_width_like_notes.526184e3'),
+  },
+  { value: 'custom', display: t('settings.GithubSettings.width_in_pixels.b3f8f713') },
+  { value: 'full', display: t('settings.GithubSettings.full_width.d34008d2') },
 ]
 
 const updatePageWidth = (value: string) => {
@@ -503,8 +567,8 @@ const updatePageWidthPx = (value: string) => {
 }
 
 const markdownOptions = [
-  { value: 'preview', display: 'Preview' },
-  { value: 'code', display: 'Code' },
+  { value: 'preview', display: t('settings.GithubSettings.preview.324b134f') },
+  { value: 'code', display: t('settings.GithubSettings.code.340f4630') },
 ]
 
 const updateMarkdownView = (value: string) => {
@@ -513,8 +577,8 @@ const updateMarkdownView = (value: string) => {
 }
 
 const displayOptions = [
-  { value: 'name', display: 'Name' },
-  { value: 'login', display: 'Login' },
+  { value: 'name', display: t('settings.GithubSettings.name.dcd1d522') },
+  { value: 'login', display: t('settings.GithubSettings.login.9d6322c1') },
 ]
 
 const updateUserDisplay = (value: string) => {
@@ -528,8 +592,10 @@ void githubUsers()
   .then(() => (peopleCount.value = githubUsers().size))
 const peopleDesc = computed(() =>
   peopleCount.value
-    ? `${peopleCount.value} ${peopleCount.value === 1 ? 'person is' : 'people are'} kept on this device. Clear them to have every name and picture asked for again — after someone changed theirs, say.`
-    : 'None kept on this device yet.'
+    ? t('settings.GithubSettings.value_value_kept_on_this.ceefdd92', {
+        count: peopleCount.value,
+      })
+    : t('settings.GithubSettings.none_kept_on_this_device.bfb58c42')
 )
 const clearPeople = async () => {
   await githubUsers().clear()

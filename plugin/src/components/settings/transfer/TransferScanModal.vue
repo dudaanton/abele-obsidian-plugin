@@ -1,29 +1,33 @@
 <template>
-  <ObsidianModal title="Read a transfer" size="wide" @close="onClose">
+  <ObsidianModal
+    :title="t('settings.transfer.TransferScanModal.read_a_transfer.da2dcc0f')"
+    size="wide"
+    @close="onClose"
+  >
     <div ref="root" class="abele-transfer-scan">
       <template v-if="phase === 'collect'">
         <video v-show="cameraOn" ref="video" class="abele-transfer-scan__view" playsinline muted />
 
         <div v-if="!cameraOn" class="abele-transfer-scan__sources">
           <Button
-            text="Use the camera"
+            :text="t('settings.transfer.TransferScanModal.use_the_camera.429bb22e')"
             accent
-            tooltip="Point the camera at the codes on the other device"
+            :tooltip="t('settings.transfer.TransferScanModal.point_the_camera_at_the.81f345ce')"
             @click="startCamera"
           />
           <Button
-            text="Take a photo"
-            tooltip="Photograph the code, or pick a picture of one"
+            :text="t('settings.transfer.TransferScanModal.take_a_photo.996e6a73')"
+            :tooltip="t('settings.transfer.TransferScanModal.photograph_the_code_or_pick.31bb8c87')"
             @click="pickPhoto"
           />
           <Button
-            text="Open a file"
-            tooltip="Read a transfer saved as a file on the other device"
+            :text="t('settings.transfer.TransferScanModal.open_a_file.3b31f677')"
+            :tooltip="t('settings.transfer.TransferScanModal.read_a_transfer_saved_as.0d55f3e7')"
             @click="pickFile"
           />
           <Button
-            text="Paste the text"
-            tooltip="Paste the transfer as text instead of reading a code"
+            :text="t('settings.transfer.TransferScanModal.paste_the_text.d98782e3')"
+            :tooltip="t('settings.transfer.TransferScanModal.paste_the_transfer_as_text.5455e7aa')"
             @click="pasting = !pasting"
           />
         </div>
@@ -32,42 +36,58 @@
           v-if="pasting"
           as-text-area
           :model-value="pasted"
-          placeholder="ABL1:…"
+          :placeholder="t('settings.transfer.TransferScanModal.abl.c834a09f')"
           @update:model-value="onPasted"
         />
 
         <div v-if="progress.total" class="abele-transfer-scan__progress">
-          {{ progress.received }} / {{ progress.total }} codes read
+          {{ progress.received }} / {{ progress.total }}
+          {{ t('settings.transfer.TransferScanModal.codes_read.99b98121') }}
           <span v-if="progress.missing.length" class="abele-transfer-scan__missing">
-            still to find: {{ progress.missing.join(', ') }}
+            {{
+              t('settings.sentence.7caf85c3282be170', {
+                value0: String(progress.missing.join(', ')),
+              })
+            }}
           </span>
         </div>
         <p v-else class="abele-transfer-scan__hint">
-          Nothing read yet. The other device shows the codes; this one collects them in any order.
+          {{ t('settings.transfer.TransferScanModal.nothing_read_yet_the_other.eab29908') }}
         </p>
       </template>
 
       <template v-else-if="phase === 'code'">
         <p class="abele-transfer-scan__hint">
-          This transfer carries a key, so it is locked. Type the code shown on the other device.
+          {{ t('settings.transfer.TransferScanModal.this_transfer_carries_a_key.fd9c3a91') }}
         </p>
         <Input
           :model-value="code"
-          placeholder="8 characters"
+          :placeholder="t('settings.transfer.TransferScanModal.characters.2ad81da8')"
           @update:model-value="code = $event"
           @keydown.enter="unlock"
         />
       </template>
 
       <template v-else>
-        <p class="abele-transfer-scan__hint">Made {{ madeAt }}. Tick what to keep.</p>
+        <p class="abele-transfer-scan__hint">
+          {{ t('settings.sentence.2d2a1f1b3800ab01', { value0: String(madeAt) }) }}
+        </p>
 
-        <Setting name="What to do with what is already here" :desc="modeNote">
+        <Setting
+          :name="t('settings.transfer.TransferScanModal.what_to_do_with_what.99215800')"
+          :desc="modeNote"
+        >
           <Dropdown
             :model-value="mode"
             :options="[
-              { value: 'merge', display: 'Keep it, and add these' },
-              { value: 'replace', display: 'Replace it with these' },
+              {
+                value: 'merge',
+                display: t('settings.transfer.TransferScanModal.keep_it_and_add_these.b6bd0311'),
+              },
+              {
+                value: 'replace',
+                display: t('settings.transfer.TransferScanModal.replace_it_with_these.c489d0d8'),
+              },
             ]"
             @update:model-value="mode = $event as ApplyMode"
           />
@@ -91,25 +111,33 @@
                   type="checkbox"
                   class="abele-transfer-scan__check"
                   :checked="accepted.has(id(item))"
-                  :aria-label="`Keep ${item.entry.label}`"
+                  :aria-label="
+                    t('settings.transfer.TransferScanModal.keep_value.c1cdcb02', {
+                      value0: String(transferLabel(item.entry)),
+                    })
+                  "
                   @click.stop
                   @change="toggle(item)"
                 />
               </template>
-              {{ item.entry.label }}
+              {{ transferLabel(item.entry) }}
               <template v-if="item.status !== 'same'" #codes>
                 <Icon
                   :icon="item.status === 'new' ? 'plus' : 'pencil'"
                   :interactive="false"
                   :tooltip="
                     item.status === 'new'
-                      ? 'Not on this device yet'
-                      : 'Replaces the one already on this device'
+                      ? t('settings.transfer.TransferScanModal.not_on_this_device_yet.591f425a')
+                      : t(
+                          'settings.transfer.TransferScanModal.replaces_the_one_already_on.a7c76324'
+                        )
                   "
                 />
               </template>
               <template v-if="item.status === 'same'" #meta>
-                <span>Already here, the same</span>
+                <span>{{
+                  t('settings.transfer.TransferScanModal.already_here_the_same.1f75ca0c')
+                }}</span>
               </template>
             </EntryRow>
           </div>
@@ -125,14 +153,14 @@
     <template #footer>
       <Button
         v-if="phase === 'code'"
-        text="Unlock"
+        :text="t('settings.transfer.TransferScanModal.unlock.4ac709aa')"
         accent
-        tooltip="Open the transfer with this code"
+        :tooltip="t('settings.transfer.TransferScanModal.open_the_transfer_with_this.2ad88253')"
         @click="unlock"
       />
       <Button
         v-else-if="phase === 'review'"
-        text="Apply"
+        :text="t('settings.transfer.TransferScanModal.apply.31e392d1')"
         accent
         :disabled="!accepted.size || busy || done"
         :tooltip="applyTooltip"
@@ -143,6 +171,9 @@
 </template>
 
 <script setup lang="ts">
+import { settingsLabel, transferLabel } from '@/i18n/settingsLabels'
+import { t } from '@/i18n'
+import { settingsCount } from '@/i18n/settingsCounts'
 import { computed, onBeforeUnmount, ref, useTemplateRef } from 'vue'
 import ObsidianModal from '../../obsidian/Modal.vue'
 import Button from '../../obsidian/Button.vue'
@@ -221,7 +252,7 @@ const current = ref(new Map<string, string>())
 
 const scriptsFolder = () => AbeleConfig.getInstance().ai.scriptsFolder || ''
 
-const label = (section: SectionId) => sectionLabel(section)
+const label = (section: SectionId) => settingsLabel(sectionLabel(section))
 
 /** A frame from anywhere: the camera, a photo, a file, or pasted text. */
 const take = async (text: string) => {
@@ -245,7 +276,7 @@ const open = async () => {
 
   const result = await decodePayload(blob.value)
   if (!result.ok) {
-    error.value = 'That transfer did not arrive whole. Read the codes again.'
+    error.value = t('settings.transfer.TransferScanModal.that_transfer_did_not_arrive.1b9bb186')
     reset()
     return
   }
@@ -272,8 +303,8 @@ const unlock = async () => {
   if (!result.ok) {
     error.value =
       result.reason === 'bad-code'
-        ? 'That code does not open this transfer.'
-        : 'That transfer did not arrive whole. Read the codes again.'
+        ? t('settings.transfer.TransferScanModal.that_code_does_not_open.de6ab3a4')
+        : t('settings.transfer.TransferScanModal.that_transfer_did_not_arrive.1b9bb186')
     return
   }
 
@@ -343,11 +374,19 @@ const going = computed(() =>
 
 const modeNote = computed(() => {
   if (mode.value === 'merge')
-    return 'Anything here that the transfer does not mention is left alone.'
-  if (!going.value.length) return 'Nothing here would be removed: the transfer covers all of it.'
+    return t('settings.transfer.TransferScanModal.anything_here_that_the_transfer.589d08a0')
+  if (!going.value.length)
+    return t('settings.transfer.TransferScanModal.nothing_here_would_be_removed.319450b4')
 
   const names = going.value.map((item) => item.label).join(', ')
-  return `${going.value.length === 1 ? 'This will be removed' : 'These will be removed'}: ${names}. Scripts, skills and prompts are never deleted.`
+  return t('settings.transfer.TransferScanModal.value_value_scripts_skills_and.11b87876', {
+    value0: String(
+      going.value.length === 1
+        ? t('settings.parts.195dc73d2db93bf8')
+        : t('settings.parts.778541341fcda9aa')
+    ),
+    value1: String(names),
+  })
 })
 
 const acceptedEntries = computed(() =>
@@ -355,7 +394,7 @@ const acceptedEntries = computed(() =>
 )
 
 const acceptedSummary = computed(() =>
-  accepted.value.size === 1 ? '1 item to apply' : `${accepted.value.size} items to apply`
+  t('settings.transfer.itemsToApply', { count: accepted.value.size })
 )
 
 /** Count planned key writes, not everything the sender included. Use Apply's normalization
@@ -379,17 +418,24 @@ const keysCount = computed(() => {
 
 const keysSummary = computed(() =>
   keysCount.value
-    ? `${keysCount.value === 1 ? 'One key' : `${keysCount.value} keys`} to store for the selected items.`
-    : 'No keys to store for the selected items.'
+    ? t('settings.transfer.TransferScanModal.value_to_store_for_the.22f67128', {
+        value0: String(settingsCount('key', keysCount.value)),
+      })
+    : t('settings.transfer.TransferScanModal.no_keys_to_store_for.40b27ff7')
 )
 
 const madeAt = computed(() => {
   const at = payload.value?.at
-  if (!at) return 'just now'
+  if (!at) return t('settings.transfer.TransferScanModal.just_now.7ddb44d8')
   const made = new Date(at)
   const today = new Date().toDateString() === made.toDateString()
   const time = made.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  return today ? `today at ${time}` : `${made.toLocaleDateString()} at ${time}`
+  return today
+    ? t('settings.transfer.TransferScanModal.today_at_value.c0d04ee3', { value0: String(time) })
+    : t('settings.transfer.TransferScanModal.value_at_value.92c9c89a', {
+        value0: String(made.toLocaleDateString()),
+        value1: String(time),
+      })
 })
 
 const onPasted = (value: string) => {
@@ -419,11 +465,11 @@ const busy = ref(false)
 const done = ref(false)
 
 const applyTooltip = computed(() => {
-  if (done.value) return 'Already applied'
-  if (busy.value) return 'Applying…'
+  if (done.value) return t('settings.transfer.TransferScanModal.already_applied.ca602d60')
+  if (busy.value) return t('settings.transfer.TransferScanModal.applying.3329a9bb')
   return accepted.value.size
-    ? "Write these into this vault's settings"
-    : 'Tick something to apply first'
+    ? t('settings.transfer.TransferScanModal.write_these_into_this_vault.1d9ecead')
+    : t('settings.transfer.TransferScanModal.tick_something_to_apply_first.c9effb7d')
 })
 
 /**
@@ -455,7 +501,10 @@ const finish = async () => {
     config.applySettings(next)
   } catch (e) {
     // Connection/credential binding is validated before any keychain or settings write.
-    error.value = e instanceof Error ? e.message : 'These settings could not be applied.'
+    error.value =
+      e instanceof Error
+        ? e.message
+        : t('settings.transfer.TransferScanModal.these_settings_could_not_be.77e9b53e')
     return
   }
   // Taken in here, by hand: it arms this device even if it was once switched off on it.
@@ -504,7 +553,7 @@ const startCamera = async () => {
     stream = granted
   } catch {
     if (request !== cameraGeneration) return
-    error.value = 'No camera here. Take a photo of the code, or paste the transfer as text.'
+    error.value = t('settings.transfer.TransferScanModal.no_camera_here_take_a.1f89f870')
     return
   }
 
@@ -575,7 +624,8 @@ const fromText = async (file?: File) => {
   if (!file) return
 
   error.value = ''
-  if (!(await swallow(await file.text()))) error.value = 'No transfer in that file.'
+  if (!(await swallow(await file.text())))
+    error.value = t('settings.transfer.TransferScanModal.no_transfer_in_that_file.f0c76a1f')
 }
 
 /* -------------------------------------------------------------------- reading from a photo */
@@ -586,7 +636,8 @@ const fromFile = async (file?: File) => {
   const bitmap = await createImageBitmap(file)
   const found = await lookAt(bitmap)
 
-  if (!found.length) error.value = 'No code in that picture.'
+  if (!found.length)
+    error.value = t('settings.transfer.TransferScanModal.no_code_in_that_picture.34801264')
   for (const text of found) await take(text)
 }
 

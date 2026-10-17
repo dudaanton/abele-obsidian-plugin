@@ -307,7 +307,9 @@ body.is-phone .modal:has(.abele-settings) .modal-header {
 
 .abele-settings__content {
   flex: 1;
+  min-width: 0;
   min-height: 0;
+  overflow-wrap: anywhere;
   overflow-y: auto;
   padding: var(--size-4-4);
 

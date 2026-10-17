@@ -11,6 +11,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { ref } from 'vue'
 import Tabs from '../obsidian/Tabs.vue'
 import GeneralSettings from './ai/GeneralSettings.vue'
@@ -18,11 +19,11 @@ import AgentsSettings from './ai/AgentsSettings.vue'
 import McpSettings from './ai/McpSettings.vue'
 
 const TABS = [
-  { id: 'general', label: 'General' },
-  { id: 'models', label: 'Models' },
-  { id: 'agents', label: 'Agents' },
+  { id: 'general', label: t('settings.AiSettings.general.c910d474') },
+  { id: 'models', label: t('settings.AiSettings.models.d17d2d78') },
+  { id: 'agents', label: t('settings.AiSettings.agents.279b44d2') },
   { id: 'mcp', label: 'MCP' },
-  { id: 'prompts', label: 'Prompts' },
+  { id: 'prompts', label: t('settings.AiSettings.prompts.5f2e66e6') },
 ]
 
 const active = ref('general')

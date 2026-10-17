@@ -9,7 +9,7 @@
     role="link"
     tabindex="0"
     :more="transaction.description ? showDescription : undefined"
-    more-label="note"
+    :more-label="t('settings.git.noteLabel')"
     @update:more="toggleDescription"
     @click="onCardClick"
     @keydown.enter.self="openFile(transaction.transactionPath)"

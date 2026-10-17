@@ -1,5 +1,8 @@
 <template>
-  <ObsidianModal title="Send to another device" @close="emit('close')">
+  <ObsidianModal
+    :title="t('settings.transfer.TransferSendModal.send_to_another_device.71ef2876')"
+    @close="emit('close')"
+  >
     <div ref="root" class="abele-transfer-send">
       <!--
         Before the codes, when the sync connection is going with keys: the server is to make a
@@ -8,23 +11,25 @@
       -->
       <template v-if="naming">
         <Setting
-          name="Name for the other device"
-          desc="The server makes a device of its own for it, and the vault's device list shows it under this name."
+          :name="t('settings.transfer.TransferSendModal.name_for_the_other_device.33a35391')"
+          :desc="t('settings.transfer.TransferSendModal.the_server_makes_a_device.e8785846')"
         >
           <Input
             :model-value="name"
-            placeholder="Other device"
+            :placeholder="t('settings.transfer.TransferSendModal.other_device.76d065a6')"
             @update:model-value="name = $event"
           />
         </Setting>
         <p v-if="busy" class="abele-transfer-send__hint">
-          Asking the server for a device of its own for the other side…
+          {{ t('settings.transfer.TransferSendModal.asking_the_server_for_a.efc54b48') }}
         </p>
       </template>
 
       <template v-else>
         <div v-if="code" class="abele-transfer-send__code">
-          <div class="abele-transfer-send__code-label">Type this on the other device</div>
+          <div class="abele-transfer-send__code-label">
+            {{ t('settings.transfer.TransferSendModal.type_this_on_the_other.ebbcbff7') }}
+          </div>
           <div class="abele-transfer-send__code-value">{{ code }}</div>
         </div>
 
@@ -40,16 +45,34 @@
         />
 
         <template v-if="showing && frames.length">
-          <QrCode :text="frames[index]" :label="`Transfer code ${index + 1} of ${frames.length}`" />
+          <QrCode
+            :text="frames[index]"
+            :label="
+              t('settings.transfer.TransferSendModal.transfer_code_value_of_value.62240606', {
+                value0: String(index + 1),
+                value1: String(frames.length),
+              })
+            "
+          />
 
           <div v-if="frames.length > 1" class="abele-transfer-send__series">
-            <Icon icon="chevron-left" tooltip="Previous code" @click="step(-1)" />
+            <Icon
+              icon="chevron-left"
+              :tooltip="t('settings.transfer.TransferSendModal.previous_code.9073b55e')"
+              @click="step(-1)"
+            />
             <span class="abele-transfer-send__counter">{{ index + 1 }} / {{ frames.length }}</span>
-            <Icon icon="chevron-right" tooltip="Next code" @click="step(1)" />
+            <Icon
+              icon="chevron-right"
+              :tooltip="t('settings.transfer.TransferSendModal.next_code.2924d04c')"
+              @click="step(1)"
+            />
             <Icon
               :icon="cycling ? 'pause' : 'play'"
               :tooltip="
-                cycling ? 'Stop moving through the codes' : 'Move through the codes on their own'
+                cycling
+                  ? t('settings.transfer.TransferSendModal.stop_moving_through_the_codes.333446f8')
+                  : t('settings.transfer.TransferSendModal.move_through_the_codes_on.e5a80219')
               "
               @click="cycling = !cycling"
             />
@@ -65,33 +88,37 @@
     <template #footer>
       <template v-if="naming">
         <Button
-          text="Make the codes"
+          :text="t('settings.transfer.TransferSendModal.make_the_codes.05fce439')"
           accent
           :disabled="busy || !name.trim()"
           :tooltip="
             name.trim()
-              ? 'Have the server make the other device, and show the codes'
-              : 'Give the other device a name first'
+              ? t('settings.transfer.TransferSendModal.have_the_server_make_the.26277032')
+              : t('settings.transfer.TransferSendModal.give_the_other_device_a.62f36130')
           "
           @click="emit('named', name.trim())"
         />
       </template>
       <template v-else>
         <Button
-          text="Save a file"
-          tooltip="Save the transfer as a file outside what syncs, to send on however you like"
+          :text="t('settings.transfer.TransferSendModal.save_a_file.637ed29a')"
+          :tooltip="t('settings.transfer.TransferSendModal.save_the_transfer_as_a.5b9056e0')"
           @click="save"
         />
         <Button
           v-if="!showing"
-          text="Show the codes"
-          :tooltip="`Show the transfer as ${frames.length === 1 ? 'a QR code' : `${frames.length} QR codes`}`"
+          :text="t('settings.transfer.TransferSendModal.show_the_codes.1eb16a33')"
+          :tooltip="
+            frames.length === 1
+              ? t('settings.transfer.singleQr')
+              : t('settings.transfer.multipleQr', { count: frames.length })
+          "
           @click="showing = true"
         />
         <Button
-          text="Copy the text"
+          :text="t('settings.transfer.TransferSendModal.copy_the_text.a9c0e598')"
           :accent="!showing"
-          tooltip="Copy the whole transfer, to paste on the other device"
+          :tooltip="t('settings.transfer.TransferSendModal.copy_the_whole_transfer_to.c3ca218d')"
           @click="copy"
         />
       </template>
@@ -100,6 +127,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, nextTick, onBeforeUnmount, ref, useTemplateRef, watch } from 'vue'
 import { Notice } from 'obsidian'
 import { platformClipboard } from '@/secrets/clipboard'
@@ -164,13 +192,24 @@ watch(
 )
 
 const advice = computed(() => {
-  const tail = props.code ? ' The code above unlocks it on the other side.' : ''
+  const tail = props.code
+    ? t('settings.transfer.TransferSendModal.the_code_above_unlocks_it.868154f8')
+    : ''
 
-  if (props.frames.length === 1) return `Read the code, or copy the text.${tail}`
+  if (props.frames.length === 1)
+    return t('settings.transfer.TransferSendModal.read_the_code_or_copy.1530b601', {
+      value0: String(tail),
+    })
   if (props.frames.length <= WORTH_PHOTOGRAPHING) {
-    return `${props.frames.length} codes, shown one after another — or copy the text and skip the camera.${tail}`
+    return t('settings.transfer.TransferSendModal.value_codes_shown_one_after.2e23aff2', {
+      count: props.frames.length,
+      value1: String(tail),
+    })
   }
-  return `This one takes ${props.frames.length} codes, which is more than anyone wants to photograph. Copy the text into a message, or save it as a file and send that.${tail}`
+  return t('settings.transfer.TransferSendModal.this_one_takes_value_codes.0c640e1f', {
+    count: props.frames.length,
+    value1: String(tail),
+  })
 })
 
 const step = (by: number) => {
@@ -201,22 +240,30 @@ const copy = async () => {
   } catch (error) {
     console.debug('[Abele] the clipboard would not take the transfer', error)
     uncopied.value = true
-    new Notice('Could not copy the text. Select it below and copy it, or save it as a file.')
+    new Notice(t('settings.transfer.TransferSendModal.could_not_copy_the_text.0545a659'))
     await nextTick()
     selectFallback()
     return
   }
-  new Notice('Transfer copied. Paste it on the other device.')
+  new Notice(t('settings.transfer.TransferSendModal.transfer_copied_paste_it_on.e525bf9c'))
 }
 
 /** What the person is told once the file has gone somewhere. */
 const savedLine = (saved: SavedTo): string | null => {
-  const open = 'Open it under "Read a transfer" on the other device'
-  if (saved.road === 'disk') return `Saved to ${saved.path}. ${open}.`
+  const open = t('settings.transfer.TransferSendModal.open_it_under_read_a.eb80ca07')
+  if (saved.road === 'disk')
+    return t('settings.transfer.TransferSendModal.saved_to_value_value.fdb8f6e2', {
+      value0: String(saved.path),
+      value1: String(open),
+    })
   if (saved.road === 'vault') {
     return (
-      `Saved as ${saved.path}, in a hidden folder of this vault that Abele Sync does not carry. ` +
-      `${open}, and delete it once it is read.`
+      t('settings.transfer.TransferSendModal.saved_as_value_in_a.6994b91d', {
+        value0: String(saved.path),
+      }) +
+      t('settings.transfer.TransferSendModal.value_and_delete_it_once.ed61f2ef', {
+        value0: String(open),
+      })
     )
   }
   return null
@@ -239,7 +286,11 @@ const save = async () => {
     const line = savedLine(saved)
     if (line) new Notice(line)
   } catch (error) {
-    new Notice(`Could not save it: ${error instanceof Error ? error.message : error}`)
+    new Notice(
+      t('settings.transfer.TransferSendModal.could_not_save_it_value.14315a58', {
+        value0: String(error instanceof Error ? error.message : error),
+      })
+    )
   }
 }
 

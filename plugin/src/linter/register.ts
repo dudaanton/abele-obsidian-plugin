@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * The linter's hooks into Obsidian: its tab, the commands, and "Lint" in the menus of a note, a
  * folder and several selected files.
@@ -53,14 +54,14 @@ export function registerLinter(plugin: Plugin): void {
 
   plugin.addCommand({
     id: 'linter-open',
-    name: 'Open linter',
+    name: t('commands.linter-open'),
     icon: LinterView.getIcon(),
     callback: () => void openLinter(app),
   })
 
   plugin.addCommand({
     id: 'linter-lint-note',
-    name: 'Lint current note',
+    name: t('commands.linter-lint-note'),
     icon: LinterView.getIcon(),
     checkCallback: (checking) => {
       const file =
@@ -73,7 +74,7 @@ export function registerLinter(plugin: Plugin): void {
 
   plugin.addCommand({
     id: 'linter-lint-folder',
-    name: 'Lint folder…',
+    name: t('commands.linter-lint-folder'),
     icon: LinterView.getIcon(),
     callback: async () => {
       const folder = await new FolderModal(app).pick()
@@ -83,7 +84,7 @@ export function registerLinter(plugin: Plugin): void {
 
   plugin.addCommand({
     id: 'linter-lint-vault',
-    name: 'Lint vault',
+    name: t('commands.linter-lint-vault'),
     icon: LinterView.getIcon(),
     callback: () => void lintInView(app, { kind: 'vault' }),
   })

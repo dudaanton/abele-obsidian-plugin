@@ -1,11 +1,11 @@
 <template>
   <div class="abele-scope-editor">
     <Setting
-      name="Full vault access"
+      :name="t('settings.components.AiScopeEditor.full_vault_access.e59147d6')"
       :desc="
         fullVaultAccess
-          ? 'The agent may read and change every file in the vault.'
-          : 'The agent sees only what is listed below.'
+          ? t('settings.components.AiScopeEditor.the_agent_may_read_and.7215c412')
+          : t('settings.components.AiScopeEditor.the_agent_sees_only_what.dd8d63d0')
       "
     >
       <Checkbox
@@ -15,11 +15,18 @@
     </Setting>
 
     <template v-if="!fullVaultAccess">
-      <Progress v-if="loadingCounts" label="Counting group members" />
+      <Progress
+        v-if="loadingCounts"
+        :label="t('settings.components.AiScopeEditor.counting_group_members.6cf29d46')"
+      />
       <EmptyState v-if="lookupError" :text="lookupError" />
       <!-- What the agent may reach, first: each place by its glyph, a group by how many notes
            it holds and open to show them, removed under the pointer. -->
-      <div class="abele-scope-mgr__entries" role="list" aria-label="What the agent can reach">
+      <div
+        class="abele-scope-mgr__entries"
+        role="list"
+        :aria-label="t('settings.components.AiScopeEditor.what_the_agent_can_reach.9e1cc9cb')"
+      >
         <template v-for="entry in entries" :key="`${entry.type}:${entry.path}`">
           <div
             class="abele-scope-mgr__entry"
@@ -38,7 +45,11 @@
             <Icon
               class="abele-scope-mgr__entry-remove"
               icon="x"
-              :tooltip="`Remove ${entry.path} from scope`"
+              :tooltip="
+                t('settings.components.AiScopeEditor.remove_value_from_scope.5306ceeb', {
+                  value0: String(entry.path),
+                })
+              "
               @click.stop="removeEntry(entry)"
             />
           </div>
@@ -46,7 +57,10 @@
             v-if="previewEntry && previewEntry.path === entry.path"
             class="abele-scope-mgr__preview"
           >
-            <Progress v-if="loadingPreview" label="Loading group members" />
+            <Progress
+              v-if="loadingPreview"
+              :label="t('settings.components.AiScopeEditor.loading_group_members.64b5fef7')"
+            />
             <div
               v-for="p in previewPaths.slice(0, previewLimit)"
               :key="p"
@@ -56,12 +70,15 @@
             </div>
             <Button
               v-if="previewPaths.length > previewLimit"
-              text="Show more"
+              :text="t('settings.components.AiScopeEditor.show_more.f5c9bd13')"
               @click="previewLimit += 100"
             />
           </div>
         </template>
-        <EmptyState v-if="!entries.length" text="Nothing yet: the agent sees no files." />
+        <EmptyState
+          v-if="!entries.length"
+          :text="t('settings.components.AiScopeEditor.nothing_yet_the_agent_sees.83352aaa')"
+        />
       </div>
 
       <!-- One field adds any kind of place, as the quick switcher mixes its kinds: the open
@@ -70,8 +87,8 @@
       <Search
         class="abele-scope-mgr__field"
         model-value=""
-        label="Add to what the agent can reach"
-        placeholder="Add a note, folder, group or pattern…"
+        :label="t('settings.components.AiScopeEditor.add_to_what_the_agent.ba420695')"
+        :placeholder="t('settings.components.AiScopeEditor.add_a_note_folder_group.0a52ba05')"
         :make-suggest="suggestPlace"
       />
     </template>
@@ -79,6 +96,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { ref, watch } from 'vue'
 import Search from './obsidian/Search.vue'
 import Setting from './obsidian/Setting.vue'
@@ -155,7 +173,9 @@ watch(
     } catch (error) {
       if (!controller.signal.aborted && (error as Error).name !== 'AbortError') {
         console.debug('[scope] Group counts failed', error)
-        lookupError.value = 'Could not count group members. Reopen Access to try again.'
+        lookupError.value = t(
+          'settings.components.AiScopeEditor.could_not_count_group_members.58d42889'
+        )
       }
     } finally {
       if (!controller.signal.aborted) loadingCounts.value = false
@@ -195,7 +215,9 @@ watch(
     } catch (error) {
       if (!controller.signal.aborted && (error as Error).name !== 'AbortError') {
         console.debug('[scope] Group preview failed', error)
-        lookupError.value = 'Could not load group members. Close and reopen the group to try again.'
+        lookupError.value = t(
+          'settings.components.AiScopeEditor.could_not_load_group_members.9a565298'
+        )
       }
     } finally {
       if (!controller.signal.aborted) loadingPreview.value = false

@@ -1,29 +1,36 @@
 <template>
   <div class="abele-scripts-general">
     <Setting
-      name="Enable scripts"
-      desc="Allow JavaScript scripts stored in a vault folder to be registered as commands and AI tools."
+      :name="t('settings.scripts.ScriptsGeneral.enable_scripts.4fe25ff6')"
+      :desc="t('settings.scripts.ScriptsGeneral.allow_javascript_scripts_stored_in.1e5b4bf9')"
     >
       <Checkbox :is-enabled="scriptsEnabled" @toggle="toggleScriptsEnabled" />
     </Setting>
 
     <template v-if="scriptsEnabled">
       <Setting
-        name="Synced script policy"
-        desc="Personal sync: until confirmed on this device. Shared and agent connections: refuse. Run a script manually to review its exact bytes. Missing provenance requires recovery; approvals never sync."
+        :name="t('settings.scripts.ScriptsGeneral.synced_script_policy.a4d283f1')"
+        :desc="t('settings.scripts.ScriptsGeneral.personal_sync_until_confirmed_on.6340833f')"
       />
-      <Setting name="Scripts folder" desc="Vault folder containing .js script files.">
+      <Setting
+        :name="t('settings.scripts.ScriptsGeneral.scripts_folder.fd88dd8d')"
+        :desc="t('settings.scripts.ScriptsGeneral.vault_folder_containing_js_script.d5c97d89')"
+      >
         <Search
           :model-value="scriptsFolder"
           :suggester="FolderSuggest"
-          placeholder="e.g. System/Scripts"
+          :placeholder="
+            t('settings.scripts.ScriptsGeneral.e_g_system_scripts.f729b48b', {
+              literal0: String('System/Scripts'),
+            })
+          "
           @update:model-value="updateScriptsFolder"
         />
       </Setting>
 
       <Setting
         class="abele-confirm-foreign-scripts"
-        name="Confirm scripts from other devices"
+        :name="t('settings.scripts.ScriptsGeneral.confirm_scripts_from_other_devices.ba3bb6ea')"
         :desc="CONFIRM_FOREIGN_DESC"
       >
         <Checkbox :is-enabled="confirmForeign" @toggle="toggleConfirmForeign" />
@@ -32,21 +39,34 @@
       <p v-if="waitingCount" class="setting-item-description abele-scripts-waiting">
         {{
           waitingCount === 1
-            ? '1 script waits to be confirmed on this device.'
-            : `${waitingCount} scripts wait to be confirmed on this device.`
+            ? t('settings.scripts.ScriptsGeneral.script_waits_to_be_confirmed.97d74aac')
+            : t('settings.scripts.ScriptsGeneral.value_scripts_wait_to_be.7d9d81b9', {
+                value0: String(waitingCount),
+              })
         }}
-        <a href="#" @click.prevent="reviewWaiting">Review</a>
+        <a href="#" @click.prevent="reviewWaiting">{{
+          t('settings.scripts.ScriptsGeneral.review.aff0766a')
+        }}</a>
       </p>
 
       <p v-if="discoveredScripts.length" class="setting-item-description">
-        {{ discoveredScripts.length }} scripts discovered. Configure tool modes in
-        <strong>AI Agent → Default Tool Modes</strong> or per-chat in the permissions modal.
+        <I18nText
+          :text="t('settings.rich.82dd523dc663e313', { slot0: '⟪slot0⟫', slot1: '⟪slot1⟫' })"
+          ><template #slot0>{{ discoveredScripts.length }}</template
+          ><template #slot1
+            ><strong>{{
+              t('settings.scripts.ScriptsGeneral.ai_agent_default_tool_modes.18eb6e27')
+            }}</strong></template
+          ></I18nText
+        >
       </p>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
+import I18nText from '@/components/obsidian/I18nText.vue'
+import { t } from '@/i18n'
 import { ref, computed } from 'vue'
 import Setting from '../../obsidian/Setting.vue'
 import Checkbox from '../../obsidian/Checkbox.vue'
@@ -60,8 +80,7 @@ import { useSettingsSave } from '@/composables/useSettingsSave'
 const config = AbeleConfig.getInstance()
 const trust = ScriptTrust.getInstance()
 
-const CONFIRM_FOREIGN_DESC =
-  'A script that appears or changes without being written on this device — through Obsidian Sync, iCloud, Syncthing, git — waits until you look at it and confirm it here. Until then buttons, automations, startup and agents do not run it. Scripts you write on this device, in the editor or through Abele, count as confirmed. Switching this on accepts every script in the folder as it is now. Confirmations are kept on this device only; switching it off here forgets them, and only for this device.'
+const CONFIRM_FOREIGN_DESC = t('settings.scripts.ScriptsGeneral.a_script_that_appears_or.cef15a6e')
 
 // Looking arms a device the settings ask to, the same as a run would — once, here, rather than
 // inside a computed that would change what it depends on.

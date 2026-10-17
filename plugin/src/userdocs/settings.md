@@ -34,6 +34,12 @@ The command palette has **Sync now**, **Pause or resume sync**, **Open sync sett
 **Open deleted files**. The last explains that deleted-file history is not available yet.
 The status bar also opens sync settings.
 
+For synced files, **Keep only on the server** previews removing verified local copies while
+retaining their server versions and links. **Keep on this device** pins a local copy against
+removal; running it again removes the pin. **Download to this device** retrieves a server-only
+file. These commands also appear in file and folder menus. Unsent changes, unavailable server
+versions, and files currently in use stay on the device; review the preview before confirming.
+
 ## Tasks
 
 The tasks folder, the quick choices of dates, times and repeats in the task editor, the busy day

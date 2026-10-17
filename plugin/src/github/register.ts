@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * Everything the GitHub integration hooks into Obsidian, in one call from `onload`.
  *
@@ -94,7 +95,7 @@ export function registerGithub(plugin: Plugin): void {
   plugin.registerView(GITHUB_VIEW_TYPE, (leaf) => new GithubView(leaf))
   plugin.addCommand({
     id: 'open-node-repository',
-    name: 'Open node repository',
+    name: t('commands.open-node-repository'),
     icon: 'folder-git-2',
     callback: () => chooseNodeRepository(app),
   })
@@ -145,7 +146,7 @@ export function registerGithub(plugin: Plugin): void {
 
   plugin.addCommand({
     id: 'chat-about-github-item',
-    name: 'Chat about this GitHub item',
+    name: t('commands.chat-about-github-item'),
     icon: 'message-square-plus',
     checkCallback: (checking) => {
       const view = app.workspace.getActiveViewOfType(GithubView)
@@ -157,7 +158,7 @@ export function registerGithub(plugin: Plugin): void {
 
   plugin.addCommand({
     id: 'open-github-repository',
-    name: 'Open GitHub repository…',
+    name: t('commands.open-github-repository'),
     icon: 'book-marked',
     checkCallback: (checking) => {
       if (!githubSettings().enabled) return false
@@ -168,7 +169,7 @@ export function registerGithub(plugin: Plugin): void {
 
   plugin.addCommand({
     id: 'show-github-notifications',
-    name: 'Show GitHub notifications',
+    name: t('commands.show-github-notifications'),
     icon: 'bell',
     checkCallback: (checking) => {
       if (!githubSettings().enabled) return false
@@ -179,7 +180,7 @@ export function registerGithub(plugin: Plugin): void {
 
   plugin.addCommand({
     id: 'open-github-link',
-    name: 'Open GitHub link or item',
+    name: t('commands.open-github-link'),
     icon: 'github',
     checkCallback: (checking) => {
       if (!githubSettings().enabled) return false

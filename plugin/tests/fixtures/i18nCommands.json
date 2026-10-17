@@ -1,0 +1,125 @@
+{
+  "canvas/excalidrawAdapter.ts": {
+    "migrate-excalidraw-drawing": "Migrate this Excalidraw drawing to a canvas",
+    "migrate-excalidraw-vault": "Migrate all Excalidraw drawings to canvases"
+  },
+  "canvas/register.ts": {
+    "new-canvas": "New canvas",
+    "open-canvas-viewer": "Open current canvas in diagram viewer"
+  },
+  "changelog/register.ts": {
+    "open-changelog": "Open changelog"
+  },
+  "checkboxes/register.ts": {
+    "cycle-checkbox-state": "Cycle checkbox state"
+  },
+  "columns/register.ts": {
+    "insert-columns": "Insert columns",
+    "column-options": "Column options",
+    "remove-columns": "Remove columns"
+  },
+  "comments/register.ts": {
+    "add-text-comment": "Add comment"
+  },
+  "drawing/register.ts": {
+    "new-drawing": "New drawing",
+    "insert-drawing": "Insert a new drawing"
+  },
+  "github/register.ts": {
+    "open-node-repository": "Open node repository",
+    "chat-about-github-item": "Chat about this GitHub item",
+    "open-github-repository": "Open GitHub repository…",
+    "show-github-notifications": "Show GitHub notifications",
+    "open-github-link": "Open GitHub link or item"
+  },
+  "lineLinks/register.ts": {
+    "copy-link-to-lines": "Copy link to selected lines"
+  },
+  "linter/register.ts": {
+    "linter-open": "Open linter",
+    "linter-lint-note": "Lint current note",
+    "linter-lint-folder": "Lint folder…",
+    "linter-lint-vault": "Lint vault"
+  },
+  "main.ts": {
+    "sync-now": "Sync now",
+    "sync-pause-resume": "Pause or resume sync",
+    "sync-log": "Open sync settings",
+    "sync-deleted-files": "Open deleted files"
+  },
+  "reader/register.ts": {
+    "reader-toggle-eink": "Toggle e-ink mode for books on this device",
+    "reader-toggle-zen": "Toggle zen mode for books on this device"
+  },
+  "requests/views.ts": {
+    "open-requests": "Open requests",
+    "import-requests": "Import requests from the clipboard"
+  },
+  "slides/register.ts": {
+    "new-presentation": "New presentation",
+    "open-presentation": "Open presentation",
+    "preview-presentation": "Preview presentation beside editor",
+    "play-presentation": "Play presentation",
+    "present-presentation": "Present with speaker view"
+  },
+  "startup/registerAiFeatures.ts": {
+    "agents": "Agents",
+    "comment-here": "Comment here",
+    "show-ai-sidebar": "Show AI chat sidebar",
+    "find-in-chat": "Find in the current chat",
+    "search-all-chats": "Search all chats",
+    "chat-close-tab": "Close the current chat tab",
+    "chat-reopen-tab": "Reopen the last closed chat tab",
+    "chat-next-tab": "Go to the next chat tab",
+    "chat-previous-tab": "Go to the previous chat tab",
+    "voice-input": "Dictate into the note",
+    "show-script-runs": "Show script runs",
+    "open-documentation": "Open documentation",
+    "open-quick-menu": "Open quick menu",
+    "show-script-api": "Show script API reference"
+  },
+  "startup/registerCoreCommands.ts": {
+    "review-key-destinations": "Review key destinations",
+    "create-task": "Create new task",
+    "create-task-and-insert-link": "Create new task and insert into current note",
+    "find-and-replace": "Find and replace in frontmatter and content of all notes, matching the criteria",
+    "import-files": "Import files to vault",
+    "save-media": "Save remote media to vault",
+    "unused-media": "Find and delete unused media",
+    "deduplicate-media": "Deduplicate media attachments",
+    "migrate-from-dataview": "Migrate tasks from Dataview",
+    "migrate-from-firefly": "Migrate data from Firefly III",
+    "create-transaction": "Create new transaction",
+    "create-transaction-and-insert-link": "Create new transaction and insert into current note",
+    "show-timeline-sidebar": "Show timeline sidebar",
+    "migrate-dataview-fields": "Migrate from Dataview fields",
+    "show-todo-sidebar": "Show todo sidebar",
+    "show-finance-sidebar": "Show finance sidebar",
+    "show-accounts-sidebar": "Show accounts sidebar",
+    "migrate-from-toggl": "Migrate time entries from Toggl",
+    "show-time-tracking-sidebar": "Show time tracking sidebar",
+    "start-timer": "Start timer for current note",
+    "stop-timer": "Stop active timer",
+    "paste-from-clipboard": "Paste from clipboard at cursor",
+    "create-note-from-template": "Create note from template",
+    "create-note-in-group": "Create note in group",
+    "replace-note-with-template": "Replace current note with template",
+    "insert-template-at-cursor": "Insert template at cursor",
+    "insert-gallery": "Insert image gallery",
+    "convert-images-to-galleries": "Convert images on page to galleries",
+    "reindex-footnotes": "Reindex footnotes",
+    "insert-highlight": "Insert colored highlight",
+    "remove-highlight": "Remove colored highlight",
+    "set-cover-from-first-media": "Set cover from first image/video in note",
+    "open-today-daily-note": "Open today's daily note",
+    "create-css-snippet": "Create CSS snippet",
+    "reload-css-snippets": "Reload CSS snippets",
+    "create-script": "Create script"
+  },
+  "startup/registerViews.ts": {
+    "open-node": "Open node"
+  },
+  "zen/registerZen.ts": {
+    "toggle-zen-mode": "Toggle zen mode"
+  }
+}

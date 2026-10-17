@@ -4,10 +4,14 @@
       <code class="abele-secret-field__value">{{ shown ? value : masked }}</code>
       <Icon
         :icon="shown ? 'eye-off' : 'eye'"
-        :tooltip="shown ? 'Hide the key' : 'Show the key'"
+        :tooltip="
+          shown
+            ? t('settings.SecretField.hide_the_key.46a22923')
+            : t('settings.SecretField.show_the_key.90d90eb7')
+        "
         @click="shown = !shown"
       />
-      <Icon icon="copy" tooltip="Copy the key" @click="copy" />
+      <Icon icon="copy" :tooltip="t('settings.SecretField.copy_the_key.30d7860a')" @click="copy" />
     </div>
     <div class="abele-secret-field__row">
       <Input
@@ -24,6 +28,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 /**
  * A setting that holds a key: the key already stored, masked, with a way to show it in full
  * and to copy it — and below it a field for a new one.
@@ -51,9 +56,9 @@ const props = withDefaults(
   }>(),
   {
     placeholder: undefined,
-    replacePlaceholder: 'New key...',
-    saveTooltip: 'Save key',
-    what: 'The key',
+    replacePlaceholder: () => t('settings.SecretField.new_key.31ffdeb5'),
+    saveTooltip: () => t('settings.SecretField.save_key.b6e0aef2'),
+    what: () => t('settings.SecretField.the_key.144976d8'),
   }
 )
 

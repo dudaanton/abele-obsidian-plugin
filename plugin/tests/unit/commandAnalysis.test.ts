@@ -40,3 +40,19 @@ it('preserves unresolved, missing-name and nonliteral-object failures', () => {
   expect(entries[1].hasName).toBe(false)
   expect(entries[2].objectLiteral).toBe(false)
 })
+
+it('resolves English catalog names and rejects unknown keys without skipping commands', () => {
+  const entries = analyzeCommands(
+    program(`declare const plugin: any;
+    declare function t(key: string): string;
+    plugin.addCommand({ name: t('commands.new-canvas') });
+    plugin.addCommand({ name: t('commands.missing') });
+    plugin.addCommand({ name: t('commands.script') });`),
+    '/sample/src/'
+  )
+  expect(entries.map((entry) => entry.names)).toEqual([
+    [{ literal: true, value: 'New canvas' }],
+    [{ literal: false, value: '' }],
+    [{ literal: true, value: 'Script: <name>' }],
+  ])
+})

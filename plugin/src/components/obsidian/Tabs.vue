@@ -14,6 +14,7 @@
         'abele-tabs__tab_disabled': tab.disabled,
       }"
       role="tab"
+      :data-tab-id="tab.id"
       :tabindex="index === focusable ? 0 : -1"
       :aria-selected="tab.id === modelValue"
       :aria-disabled="tab.disabled || undefined"

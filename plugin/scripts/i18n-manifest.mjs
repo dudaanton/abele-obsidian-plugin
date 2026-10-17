@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const presentation =
-  /^(?:label|title|text|description|desc|placeholder|tooltip|name|heading|message|emptyText|confirmText|submitText|cancelTooltip|confirmTooltip|submitTooltip|detailsLabel|overflowLabel|disabledReason|aria-label|aria-description|text-right|disabled-reason)$/
+  /^(?:label|display|title|text|description|desc|placeholder|tooltip|name|heading|message|emptyText|confirmText|submitText|cancelTooltip|confirmTooltip|submitTooltip|detailsLabel|overflowLabel|disabledReason|aria-label|aria-description|text-right|disabled-reason|replace-placeholder|save-tooltip|more-label|what|data-tip|confirm-tooltip|cancel-tooltip|submit-tooltip|confirm-text|submit-text|details-label|overflow-label|empty-text)$/
 const sinks =
   /^(?:Notice|setTitle|setName|setDesc|setText|setTooltip|setPlaceholder|createEl|createDiv|createSpan|addCommand|setAttribute)$/
 const readable = (text) => /[\p{L}]/u.test(text) && !/^\s*$/.test(text)
@@ -158,7 +158,7 @@ export function extract(path, source) {
           if (
             prop.type === NodeTypes.DIRECTIVE &&
             prop.exp &&
-            presentation.test(prop.arg?.content ?? '')
+            (presentation.test(prop.arg?.content ?? '') || prop.arg?.content === 'options')
           )
             script(prop.exp.content, template.loc.start.line + prop.loc.start.line - 2, true)
         }
@@ -189,8 +189,9 @@ export function inventory(dir = join(root, 'src')) {
 
 export function checkMigrated(entries) {
   const policy = JSON.parse(readFileSync(join(root, 'src/i18n/migrated.json'), 'utf8'))
-  const candidates = entries ?? policy.files
-    .flatMap((path) => extract(path, readFileSync(join(root, 'src', path), 'utf8')))
+  const candidates =
+    entries ??
+    policy.files.flatMap((path) => extract(path, readFileSync(join(root, 'src', path), 'utf8')))
   return candidates
     .filter((entry) => policy.files.includes(entry.path))
     .filter(
@@ -199,6 +200,38 @@ export function checkMigrated(entries) {
           (exception) => exception.path === entry.path && exception.text === entry.text
         )
     )
+}
+
+/** Command registration is migrated separately from each feature's menus and notices. */
+export function checkCommandLabels() {
+  const policy = JSON.parse(readFileSync(join(root, 'src/i18n/migrated.json'), 'utf8'))
+  return (policy.commandFiles ?? []).flatMap((path) => {
+    const source = readFileSync(join(root, 'src', path), 'utf8')
+    const ast = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true)
+    const found = []
+    function visit(node) {
+      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+        let label
+        if (
+          node.expression.name.text === 'addCommand' &&
+          ts.isObjectLiteralExpression(node.arguments[0])
+        )
+          label = node.arguments[0].properties.find(
+            (p) => ts.isPropertyAssignment(p) && p.name.getText(ast) === 'name'
+          )?.initializer
+        if (node.expression.name.text === 'addRibbonIcon') label = node.arguments[1]
+        if (label && !(ts.isCallExpression(label) && label.expression.getText(ast) === 't'))
+          found.push({
+            path,
+            line: ast.getLineAndCharacterOfPosition(label.getStart(ast)).line + 1,
+            text: label.getText(ast),
+          })
+      }
+      ts.forEachChild(node, visit)
+    }
+    visit(ast)
+    return found
+  })
 }
 
 /** Full-source ratchet: changed prose or a moved file cannot hide behind legacy debt. */
@@ -214,7 +247,7 @@ export function checkRatchet(entries = inventory()) {
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const guard = process.argv.includes('--check')
-  const result = guard ? checkMigrated() : inventory()
+  const result = guard ? [...checkMigrated(), ...checkCommandLabels()] : inventory()
   console.log(JSON.stringify(result, null, 2))
   if (guard && result.length) process.exitCode = 1
 }

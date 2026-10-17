@@ -2,8 +2,8 @@
   <div class="abele-settings__ai">
     <Setting
       v-if="page === 'general'"
-      name="AI Agent"
-      desc="Enable AI agent features including the chat sidebar."
+      :name="t('settings.ai.GeneralSettings.ai_agent.b48c8be3')"
+      :desc="t('settings.ai.GeneralSettings.enable_ai_agent_features_including.f1bb9425')"
     >
       <Checkbox :is-enabled="enabled" @toggle="toggleEnabled" />
     </Setting>
@@ -12,50 +12,53 @@
          live, Models for what it talks to, Prompts for the words it uses — the rare part. -->
     <EmptyState
       v-if="!enabled && page !== 'general'"
-      text="The AI agent is off. Turn it on under General."
+      :text="t('settings.ai.GeneralSettings.the_ai_agent_is_off.e967af23')"
     />
     <template v-if="enabled && page === 'general'">
       <template v-if="Platform.isMobile">
         <Setting
-          name="Keep running in background while agents work"
-          desc="Play silent audio while a turn is running. May use more battery; background execution depends on the system."
+          :name="t('settings.ai.GeneralSettings.keep_running_in_background_while.32440789')"
+          :desc="t('settings.ai.GeneralSettings.play_silent_audio_while_a.325ce1f2')"
         >
           <Checkbox :is-enabled="backgroundWhileAgents" @toggle="toggleBackground('whileAgents')" />
         </Setting>
         <Setting
-          name="Keep running in background always"
-          desc="Play silent audio even when agents are idle. Off by default; may use more battery."
+          :name="t('settings.ai.GeneralSettings.keep_running_in_background_always.ea405fee')"
+          :desc="t('settings.ai.GeneralSettings.play_silent_audio_even_when.1582869f')"
         >
           <Checkbox :is-enabled="backgroundAlways" @toggle="toggleBackground('always')" />
         </Setting>
       </template>
       <Setting
-        name="Key destinations"
-        desc="Review addresses changed outside this device before sending keys there."
+        :name="t('settings.ai.GeneralSettings.key_destinations.fe672569')"
+        :desc="t('settings.ai.GeneralSettings.review_addresses_changed_outside_this.3108ccee')"
       >
         <Button
-          text="Review"
-          tooltip="Review and confirm where this device sends keys"
+          :text="t('settings.ai.GeneralSettings.review.aff0766a')"
+          :tooltip="t('settings.ai.GeneralSettings.review_and_confirm_where_this.d9c7c591')"
           @click="reviewKeyDestinations"
         />
       </Setting>
-      <Section title="Chat Storage">
+      <Section :title="t('settings.ai.GeneralSettings.chat_storage.b1ad73cf')">
         <Setting
-          name="Chat path template"
-          :desc="`Path template for chat files. Variables: ${NAME_TOKEN}, ${DATE_TOKEN}.`"
+          :name="t('settings.ai.GeneralSettings.chat_path_template.306fa23b')"
+          :desc="
+            t('settings.ai.GeneralSettings.path_template_for_chat_files.68eb138e', {
+              value0: String(NAME_TOKEN),
+              value1: String(DATE_TOKEN),
+            })
+          "
         >
           <Input
             :model-value="chatFolder"
-            placeholder="AI/Chats"
+            :placeholder="t('settings.ai.GeneralSettings.ai_chats.f579b34b')"
             @update:model-value="updateField('chatFolder', $event)"
           />
         </Setting>
 
         <Setting
-          name="Rewind space (MB)"
-          desc="How much room, on this device, the copies may take that let a chat put back the
-            files its agent changed. Chats written to least recently lose theirs first. 0 keeps
-            nothing, and chats cannot rewind."
+          :name="t('settings.ai.GeneralSettings.rewind_space_mb.a3eaae55')"
+          :desc="t('settings.ai.GeneralSettings.how_much_room_on_this.f5c80989')"
         >
           <Input
             :model-value="String(rewindLimitMb)"
@@ -65,21 +68,24 @@
         </Setting>
 
         <Setting
-          name="Migrate chats"
-          desc="Move existing chat files to match the current path template."
+          :name="t('settings.ai.GeneralSettings.migrate_chats.cd7a094d')"
+          :desc="t('settings.ai.GeneralSettings.move_existing_chat_files_to.6ae0ce3b')"
         >
           <Button
-            :text="migrating ? 'Migrating...' : 'Migrate'"
+            :text="
+              migrating
+                ? t('settings.ai.GeneralSettings.migrating.e3c84baf')
+                : t('settings.ai.GeneralSettings.migrate.f988ed29')
+            "
             :disabled="migrating"
-            tooltip="Move existing chat files to match the template above"
+            :tooltip="t('settings.ai.GeneralSettings.move_existing_chat_files_to.2048cf22')"
             @click="migrateChats"
           />
         </Setting>
 
         <Setting
-          name="Comment agent"
-          desc="Which agent answers comment chats. Utility agents are offered too — the one
-            seeded for comments is one."
+          :name="t('settings.ai.GeneralSettings.comment_agent.42067bbf')"
+          :desc="t('settings.ai.GeneralSettings.which_agent_answers_comment_chats.d8ddd0b0')"
         >
           <Dropdown
             :model-value="commentAgentId"
@@ -88,30 +94,36 @@
           />
         </Setting>
 
-        <Setting name="Comment folder" desc="Where comment chats are stored">
+        <Setting
+          :name="t('settings.ai.GeneralSettings.comment_folder.0f39b86a')"
+          :desc="t('settings.ai.GeneralSettings.where_comment_chats_are_stored.dcd58501')"
+        >
           <Input
             :model-value="commentFolder"
-            placeholder="AI/Comments"
+            :placeholder="t('settings.ai.GeneralSettings.ai_comments.e01654c6')"
             @update:model-value="updateField('commentFolder', $event)"
           />
         </Setting>
       </Section>
 
-      <Section title="Skills">
+      <Section :title="t('settings.ai.GeneralSettings.skills.66d0f523')">
         <Setting
-          name="Skills folder"
-          desc="Skills here are offered to every agent. Elsewhere, only skills in the chat's scope are offered; loading another skill asks first. The agent's skill selection still applies."
+          :name="t('settings.ai.GeneralSettings.skills_folder.bc563bf9')"
+          :desc="t('settings.ai.GeneralSettings.skills_here_are_offered_to.32a3926b')"
         >
           <Input
             :model-value="skillsFolder"
-            placeholder="AI/Skills"
+            :placeholder="t('settings.ai.GeneralSettings.ai_skills.cebb9b9a')"
             @update:model-value="updateField('skillsFolder', $event)"
           />
         </Setting>
       </Section>
 
-      <Section title="Integrations">
-        <Setting name="Brave Search API Key" desc="Stored securely in keychain.">
+      <Section :title="t('settings.ai.GeneralSettings.integrations.090512d9')">
+        <Setting
+          :name="t('settings.ai.GeneralSettings.brave_search_api_key.309e5bff')"
+          :desc="t('settings.ai.GeneralSettings.stored_securely_in_keychain.0d11e7d5')"
+        >
           <SecretField
             :value="storedSecret(braveSearchApiKey)"
             :model-value="braveSecretInput"
@@ -122,17 +134,18 @@
         </Setting>
       </Section>
 
-      <Section title="Secrets">
+      <Section :title="t('settings.ai.GeneralSettings.secrets.d8707d41')">
         <template #desc>
-          Keys and tokens for API requests. AI agent uses <code>${abele_key:name}</code> in fetch
-          calls, which is replaced with the actual value. Stored securely in keychain.
+          <I18nText :text="t('settings.rich.3cf5061d7d4aaae2', { slot0: '⟪slot0⟫' })"
+            ><template #slot0><code>${abele_key:name}</code></template></I18nText
+          >
         </template>
 
         <CardGrid>
           <Card
             v-for="(secret, sIdx) in secrets"
             :key="secret.id"
-            :title="secret.name || '(unnamed)'"
+            :title="secret.name || t('settings.ai.GeneralSettings.unnamed.9edb143e')"
             :subtitle="
               editingSecretIdx === sIdx ? undefined : getSecretDisplay(secret.keyId) || '(not set)'
             "
@@ -148,38 +161,46 @@
             <div v-if="editingSecretIdx === sIdx" class="abele-ai-secret__editor" @click.stop>
               <Input
                 :model-value="secret.name"
-                placeholder="Secret name"
+                :placeholder="t('settings.ai.GeneralSettings.secret_name.5cdf573b')"
                 @update:model-value="(v: string) => updateSecretName(sIdx, v)"
               />
               <SecretField
                 :value="storedSecret(secret.keyId)"
                 :model-value="secretValueInputs[secret.id] || ''"
-                placeholder="Value..."
-                replace-placeholder="Value..."
+                :placeholder="t('settings.ai.GeneralSettings.value.fb2e2c72')"
+                :replace-placeholder="t('settings.ai.GeneralSettings.value.fb2e2c72')"
                 @update:model-value="secretValueInputs[secret.id] = $event"
                 @save="applySecretValue(sIdx)"
               />
               <Setting
-                name="Allowed addresses"
-                desc="Add an address from a request's confirmation. Each saved-key request still asks."
+                :name="t('settings.ai.GeneralSettings.allowed_addresses.0479f7eb')"
+                :desc="t('settings.ai.GeneralSettings.add_an_address_from_a.f1ab507c')"
               >
                 <div>
                   <div v-for="origin in secret.allowedOrigins || []" :key="origin">
                     <span>{{ origin }}</span>
                     <Button
-                      text="Remove"
-                      tooltip="Remove this address from the key's allowed list"
+                      :text="t('settings.ai.GeneralSettings.remove.c3812fc4')"
+                      :tooltip="
+                        t('settings.ai.GeneralSettings.remove_this_address_from_the.e14aba72')
+                      "
                       @click="removeSecretOrigin(sIdx, origin)"
                     />
                   </div>
-                  <span v-if="!secret.allowedOrigins?.length">None yet</span>
+                  <span v-if="!secret.allowedOrigins?.length">{{
+                    t('settings.ai.GeneralSettings.none_yet.adb85cf2')
+                  }}</span>
                 </div>
               </Setting>
               <div class="abele-ai-secret__row">
-                <Icon icon="trash" tooltip="Remove this secret" @click="askRemoveSecret(sIdx)" />
+                <Icon
+                  icon="trash"
+                  :tooltip="t('settings.ai.GeneralSettings.remove_this_secret.42b31675')"
+                  @click="askRemoveSecret(sIdx)"
+                />
                 <Icon
                   icon="x"
-                  tooltip="Cancel — leave the stored value as it is"
+                  :tooltip="t('settings.ai.GeneralSettings.cancel_leave_the_stored_value.ab838eaa')"
                   @click="cancelEditSecret(sIdx)"
                 />
               </div>
@@ -188,13 +209,17 @@
         </CardGrid>
 
         <div class="abele-settings__ai-actions">
-          <Button text="Add secret" tooltip="Add another named secret" @click="addSecret" />
+          <Button
+            :text="t('settings.ai.GeneralSettings.add_secret.f57a23c6')"
+            :tooltip="t('settings.ai.GeneralSettings.add_another_named_secret.16c8806f')"
+            @click="addSecret"
+          />
         </div>
       </Section>
     </template>
 
     <template v-if="enabled && page === 'models'">
-      <Section title="Providers">
+      <Section :title="t('settings.ai.GeneralSettings.providers.996c32b3')">
         <ProviderSettings
           v-for="(provider, pIdx) in providers"
           :key="provider.id"
@@ -210,7 +235,10 @@
           @remove="askRemoveProvider(pIdx)"
         >
           <template #endpoint>
-            <Setting name="Base URL" desc="OpenAI-compatible API endpoint.">
+            <Setting
+              :name="t('settings.ai.GeneralSettings.base_url.70589413')"
+              :desc="t('settings.ai.GeneralSettings.openai_compatible_api_endpoint.7e47af2e')"
+            >
               <Input
                 :model-value="provider.baseUrl"
                 placeholder="https://api.openai.com/v1"
@@ -222,22 +250,30 @@
           <template #model-actions>
             <Icon
               icon="download"
-              tooltip="Fetch models from API"
+              :tooltip="t('settings.ai.GeneralSettings.fetch_models_from_api.f5eaa7ef')"
               :disabled="!provider.baseUrl || !provider.apiKeyId || fetchingModels === pIdx"
               @click="fetchModels(pIdx)"
             />
-            <Icon icon="plus" tooltip="Add model manually" @click="addModel(pIdx)" />
+            <Icon
+              icon="plus"
+              :tooltip="t('settings.ai.GeneralSettings.add_model_manually.c42ee506')"
+              @click="addModel(pIdx)"
+            />
           </template>
 
           <!-- Fetched models picker -->
           <div v-if="remoteModels[provider.id]?.length" class="abele-ai-provider__remote-models">
             <div class="abele-ai-provider__remote-label">
-              {{ remoteModels[provider.id].length }} models available
+              {{
+                t('settings.sentence.c93c0ada01c57a48', {
+                  value0: String(remoteModels[provider.id].length),
+                })
+              }}
             </div>
             <input
               type="text"
               class="abele-obsidian-input"
-              placeholder="Filter models..."
+              :placeholder="t('settings.ai.GeneralSettings.filter_models.e91fd9af')"
               :value="modelFilter[provider.id] || ''"
               @input="modelFilter[provider.id] = ($event.target as HTMLInputElement).value"
             />
@@ -282,12 +318,18 @@
               @click="openModelEdit(pIdx, mIdx)"
             >
               <template #badges>
-                <Badge v-if="model.supportsReasoning" text="reasoning" />
+                <Badge
+                  v-if="model.supportsReasoning"
+                  :text="t('settings.ai.GeneralSettings.reasoning.0c4d01e8')"
+                />
               </template>
             </Card>
           </CardGrid>
 
-          <EmptyState v-if="!provider.models.length" text="No models yet." />
+          <EmptyState
+            v-if="!provider.models.length"
+            :text="t('settings.ai.GeneralSettings.no_models_yet.36604ff4')"
+          />
 
           <ModelEditModal
             v-if="editingModel?.pIdx === pIdx"
@@ -300,55 +342,65 @@
         </ProviderSettings>
 
         <Setting
-          :name="providers.length ? 'Add another provider' : 'No providers yet'"
-          desc="Any service that speaks the OpenAI API: its address, a key and its models."
+          :name="
+            providers.length
+              ? t('settings.ai.GeneralSettings.add_another_provider.91f9cd40')
+              : t('settings.ai.GeneralSettings.no_providers_yet.55327313')
+          "
+          :desc="t('settings.ai.GeneralSettings.any_service_that_speaks_the.e99bc8c8')"
         >
           <Button
-            text="Add provider"
-            tooltip="Add another OpenAI-compatible provider"
+            :text="t('settings.ai.GeneralSettings.add_provider.8cd1856b')"
+            :tooltip="
+              t('settings.ai.GeneralSettings.add_another_openai_compatible_provider.14842bd7')
+            "
             @click="addProvider"
           />
         </Setting>
       </Section>
 
       <Section
-        title="Background Model"
-        desc="Chat models are chosen per agent, on the Agents tab. This one is used for the
-          plugin's own background work — naming chats and compacting long conversations."
+        :title="t('settings.ai.GeneralSettings.background_model.eefa747e')"
+        :desc="t('settings.ai.GeneralSettings.chat_models_are_chosen_per.1867a8fa')"
       >
         <Setting
-          name="Auxiliary Model"
-          desc="Used for chat titles and compaction. Left unset, each chat uses the model it is
-            already talking to; an agent can name one of its own, which wins over this."
+          :name="t('settings.ai.GeneralSettings.auxiliary_model.6c245762')"
+          :desc="t('settings.ai.GeneralSettings.used_for_chat_titles_and.d3db0143')"
         >
           <Dropdown
             :model-value="auxModelKey"
-            :options="[{ value: '', display: 'Same as the chat' }, ...modelOptions]"
+            :options="[
+              { value: '', display: t('settings.ai.GeneralSettings.same_as_the_chat.3e206eff') },
+              ...modelOptions,
+            ]"
             @update:model-value="selectAuxModel($event)"
           />
         </Setting>
 
         <Setting
-          name="Sequential Auxiliary"
-          desc="Run auxiliary tasks after the main model finishes. Enable for local models with limited throughput."
+          :name="t('settings.ai.GeneralSettings.sequential_auxiliary.f9fb6da7')"
+          :desc="t('settings.ai.GeneralSettings.run_auxiliary_tasks_after_the.d26cd159')"
         >
           <Checkbox :is-enabled="sequentialAuxiliary" @toggle="toggleSequentialAuxiliary" />
         </Setting>
       </Section>
 
       <Section
-        title="When a request fails"
-        desc="Only failures that pass on their own are repeated — a rate limit, an overloaded provider, a dropped connection. A rejected key or a bad request is not tried again."
+        :title="t('settings.ai.GeneralSettings.when_a_request_fails.8adc1690')"
+        :desc="t('settings.ai.GeneralSettings.only_failures_that_pass_on.40e2ce33')"
       >
-        <Setting name="Try again automatically" desc="How many further tries after the first.">
+        <Setting
+          :name="t('settings.ai.GeneralSettings.try_again_automatically.84c6a3e7')"
+          :desc="t('settings.ai.GeneralSettings.how_many_further_tries_after.21ca31fd')"
+        >
           <Dropdown
             :model-value="String(retry.attempts)"
             :options="[
-              { value: '0', display: 'Off' },
-              { value: '1', display: 'Once' },
-              { value: '2', display: 'Twice' },
-              { value: '3', display: 'Three times' },
-              { value: '5', display: 'Five times' },
+              { value: '0', display: t('settings.ai.GeneralSettings.off.ca7981b4') },
+              { value: '1', display: t('settings.ai.GeneralSettings.once.d88f6d83') },
+              { value: '2', display: t('settings.ai.GeneralSettings.twice.cc1b4c8d') },
+              { value: '3', display: t('settings.ai.GeneralSettings.three_times.13b6376c') },
+              { value: '5', display: t('settings.ai.GeneralSettings.five_times.ee32f27e') },
             ]"
             @update:model-value="setRetry('attempts', Number($event))"
           />
@@ -356,8 +408,8 @@
 
         <Setting
           v-if="retry.attempts > 0"
-          name="First wait"
-          desc="Seconds before the first retry. Each one after doubles it, up to a minute."
+          :name="t('settings.ai.GeneralSettings.first_wait.548b0480')"
+          :desc="t('settings.ai.GeneralSettings.seconds_before_the_first_retry.60ee00fb')"
         >
           <Input
             :model-value="String(Math.round(retry.firstDelayMs / 1000))"
@@ -366,11 +418,12 @@
         </Setting>
       </Section>
       <Setting
-        name="Request timeout (seconds)"
-        desc="Wait for the model to connect or send the next response chunk, not for the whole answer. 1–3600 seconds; empty restores 60. Used for chat and background models without their own timeout."
+        :name="t('settings.ai.GeneralSettings.request_timeout_seconds.1b1b1d08')"
+        :desc="t('settings.ai.GeneralSettings.wait_for_the_model_to.230c11b5')"
       >
         <Input
           :model-value="timeoutInput"
+          data-testid="settings-request-timeout"
           :aria-invalid="timeoutError ? 'true' : undefined"
           placeholder="60"
           @update:model-value="setRequestTimeout($event)"
@@ -381,10 +434,13 @@
       </Setting>
 
       <Section
-        title="Voice input"
-        desc="Dictate into the chat, or into a note with the “Dictate into the note” command. OpenRouter has no transcription endpoint, so the audio goes to a model that hears — these two were picked for price, for running in Europe, and for not training on what is sent."
+        :title="t('settings.ai.GeneralSettings.voice_input.8748f239')"
+        :desc="t('settings.ai.GeneralSettings.dictate_into_the_chat_or.6ffa829a')"
       >
-        <Setting name="Model" desc="What turns speech into text.">
+        <Setting
+          :name="t('settings.ai.GeneralSettings.model.5e2c614c')"
+          :desc="t('settings.ai.GeneralSettings.what_turns_speech_into_text.7083143f')"
+        >
           <Dropdown
             :model-value="voiceModelChoice"
             :options="voiceModelOptions"
@@ -395,14 +451,20 @@
         <Setting v-if="voiceModelNote" :name="voiceModelName" :desc="voiceModelNote" />
 
         <template v-if="voiceModelChoice === 'custom'">
-          <Setting name="Model id" desc="Any model that accepts audio, as its provider names it.">
+          <Setting
+            :name="t('settings.ai.GeneralSettings.model_id.7789530b')"
+            :desc="t('settings.ai.GeneralSettings.any_model_that_accepts_audio.ee899177')"
+          >
             <Input
               :model-value="voice.modelId"
-              placeholder="vendor/model"
+              :placeholder="t('settings.ai.GeneralSettings.vendor_model.ba723767')"
               @update:model-value="setVoice('modelId', $event)"
             />
           </Setting>
-          <Setting name="Endpoint" desc="Left empty, OpenRouter's chat completions.">
+          <Setting
+            :name="t('settings.ai.GeneralSettings.endpoint.3df9726c')"
+            :desc="t('settings.ai.GeneralSettings.left_empty_openrouter_s_chat.cfc34cb7')"
+          >
             <Input
               :model-value="voice.endpoint"
               placeholder="https://openrouter.ai/api/v1/chat/completions"
@@ -412,27 +474,30 @@
         </template>
 
         <Setting
-          name="Language"
-          desc="Told to the model as a hint. Left empty, it works it out from the audio."
+          :name="t('settings.ai.GeneralSettings.language.a4fe6526')"
+          :desc="t('settings.ai.GeneralSettings.told_to_the_model_as.35170cef')"
         >
           <Input
             :model-value="voice.language"
-            placeholder="Russian"
+            :placeholder="t('settings.ai.GeneralSettings.russian.5bcc40ad')"
             @update:model-value="setVoice('language', $event)"
           />
         </Setting>
 
-        <Setting name="Client name" :desc="CLIENT_NAME_DESCRIPTION">
+        <Setting
+          :name="t('settings.ai.GeneralSettings.client_name.b6626cd7')"
+          :desc="settingsLabel(CLIENT_NAME_DESCRIPTION)"
+        >
           <Input
             :model-value="voice.clientName || ''"
-            placeholder="Default"
+            :placeholder="t('settings.ai.GeneralSettings.default.21b111cb')"
             @update:model-value="setVoice('clientName', $event)"
           />
         </Setting>
 
         <Setting
-          name="OpenRouter API key"
-          desc="Stored in the keychain, shared with image generation."
+          :name="t('settings.ai.GeneralSettings.openrouter_api_key.89616b71')"
+          :desc="t('settings.ai.GeneralSettings.stored_in_the_keychain_shared.26300c21')"
         >
           <SecretField
             :value="storedSecret(voiceKeyName)"
@@ -444,7 +509,7 @@
         </Setting>
       </Section>
 
-      <Section title="Image Generation">
+      <Section :title="t('settings.ai.GeneralSettings.image_generation.8f4716e6')">
         <ProviderSettings
           v-for="(ip, ipIdx) in imageProviders"
           :key="ipIdx"
@@ -462,19 +527,23 @@
           <template #identity>
             <Setting
               name="ID"
-              desc="Short identifier used in model keys (e.g. openai, openrouter)."
+              :desc="t('settings.ai.GeneralSettings.short_identifier_used_in_model.1846b226')"
             >
               <Input
                 :model-value="ip.id"
-                placeholder="e.g. openai"
+                :placeholder="
+                  t('settings.ai.GeneralSettings.e_g_openai.e3ce2f3c', {
+                    literal0: String('openai'),
+                  })
+                "
                 @update:model-value="updateImageProvider(ipIdx, 'id', $event)"
               />
             </Setting>
           </template>
           <template #endpoint>
             <Setting
-              name="API Type"
-              desc="OpenAI uses /v1/images/generations, OpenRouter uses chat completions."
+              :name="t('settings.ai.GeneralSettings.api_type.72e7cc4c')"
+              :desc="t('settings.ai.GeneralSettings.openai_uses_v_images_generations.12e3117d')"
             >
               <Dropdown
                 :model-value="ip.apiType"
@@ -483,8 +552,11 @@
               />
             </Setting>
             <Setting
-              name="Endpoint"
-              :desc="'Leave empty for default: ' + imgEndpointDefault(ip.apiType)"
+              :name="t('settings.ai.GeneralSettings.endpoint.3df9726c')"
+              :desc="
+                t('settings.ai.GeneralSettings.leave_empty_for_default.ac9c8df3') +
+                imgEndpointDefault(ip.apiType)
+              "
             >
               <Input
                 :model-value="ip.endpoint"
@@ -495,7 +567,11 @@
           </template>
 
           <template #model-actions>
-            <Icon icon="plus" tooltip="Add model" @click="addImageModel(ipIdx)" />
+            <Icon
+              icon="plus"
+              :tooltip="t('settings.ai.GeneralSettings.add_model.b2609f7d')"
+              @click="addImageModel(ipIdx)"
+            />
           </template>
 
           <CardGrid>
@@ -522,20 +598,32 @@
         </ProviderSettings>
 
         <Setting
-          :name="imageProviders.length ? 'Add another image provider' : 'No image providers yet'"
-          desc="A service that makes pictures from words, for the agent to draw with."
+          :name="
+            imageProviders.length
+              ? t('settings.ai.GeneralSettings.add_another_image_provider.fac89d72')
+              : t('settings.ai.GeneralSettings.no_image_providers_yet.03ad87ca')
+          "
+          :desc="t('settings.ai.GeneralSettings.a_service_that_makes_pictures.a39241cb')"
         >
           <Button
-            text="Add image provider"
-            tooltip="Add another image generation provider"
+            :text="t('settings.ai.GeneralSettings.add_image_provider.858726bf')"
+            :tooltip="
+              t('settings.ai.GeneralSettings.add_another_image_generation_provider.8a3f2ea9')
+            "
             @click="addImageProvider"
           />
         </Setting>
 
-        <Setting name="Default Image Model" desc="Used when agent doesn't specify a model.">
+        <Setting
+          :name="t('settings.ai.GeneralSettings.default_image_model.164d9980')"
+          :desc="t('settings.ai.GeneralSettings.used_when_agent_doesn_t.a37bbc88')"
+        >
           <Dropdown
             :model-value="defaultImageModel"
-            :options="[{ value: '', display: 'Not configured' }, ...imageModelOptions]"
+            :options="[
+              { value: '', display: t('settings.ai.GeneralSettings.not_configured.dd1841d2') },
+              ...imageModelOptions,
+            ]"
             @update:model-value="selectDefaultImageModel"
           />
         </Setting>
@@ -546,21 +634,25 @@
       <!-- What the plugin tells the models, rarely changed: a prompt a row, saying whether it is
            still the plugin's own, and its words in a window of their own. -->
       <Section
-        title="Prompts"
-        desc="What the plugin says to the models for its own work. Each starts as the plugin's own; change one only to change how that work comes out."
+        :title="t('settings.ai.GeneralSettings.prompts.5f2e66e6')"
+        :desc="t('settings.ai.GeneralSettings.what_the_plugin_says_to.b62716b4')"
       >
         <Setting
-          name="Tool descriptions"
-          desc="What each tool tells the model about itself, shared by every agent. Which tools an agent may use is set per agent."
+          :name="t('settings.ai.GeneralSettings.tool_descriptions.eb258712')"
+          :desc="t('settings.ai.GeneralSettings.what_each_tool_tells_the.577cc136')"
         >
           <StatusDot
             v-if="toolDescriptionsChanged"
             tone="accent"
-            :label="`${toolDescriptionsChanged} changed from the plugin's own`"
+            :label="
+              t('settings.ai.GeneralSettings.value_changed_from_the_plugin.6bb25106', {
+                value0: String(toolDescriptionsChanged),
+              })
+            "
           />
           <Icon
             icon="pencil"
-            tooltip="Change what the tools tell the model"
+            :tooltip="t('settings.ai.GeneralSettings.change_what_the_tools_tell.4a192e39')"
             @click="editingTools = true"
           />
         </Setting>
@@ -568,11 +660,15 @@
           <StatusDot
             v-if="isChanged(row.key)"
             tone="accent"
-            label="Changed from the plugin's own words"
+            :label="t('settings.ai.GeneralSettings.changed_from_the_plugin_s.5eaba5ab')"
           />
           <Icon
             icon="pencil"
-            :tooltip="`Change the ${row.name.toLowerCase()} prompt`"
+            :tooltip="
+              t('settings.ai.GeneralSettings.change_the_value_prompt.e3b3d921', {
+                value0: String(row.name.toLowerCase()),
+              })
+            "
             @click="editPrompt(row)"
           />
         </Setting>
@@ -590,23 +686,28 @@
         />
         <template #footer>
           <Button
-            text="Use the default"
-            tooltip="Go back to the plugin's own words"
+            :text="t('settings.ai.GeneralSettings.use_the_default.76f7faf5')"
+            :tooltip="t('settings.ai.GeneralSettings.go_back_to_the_plugin.03eb09fb')"
             :disabled="!promptDraft"
             @click="promptDraft = ''"
           />
           <Button
-            text="Cancel"
-            tooltip="Close this and change nothing"
+            :text="t('settings.ai.GeneralSettings.cancel.19766ed6')"
+            :tooltip="t('settings.ai.GeneralSettings.close_this_and_change_nothing.80f7e492')"
             @click="editingPrompt = null"
           />
-          <Button text="Save" tooltip="Use these words from now on" accent @click="savePrompt" />
+          <Button
+            :text="t('settings.ai.GeneralSettings.save.1509f561')"
+            :tooltip="t('settings.ai.GeneralSettings.use_these_words_from_now.0d2b4a3d')"
+            accent
+            @click="savePrompt"
+          />
         </template>
       </ObsidianModal>
 
       <ObsidianModal
         v-if="editingTools"
-        title="Tool descriptions"
+        :title="t('settings.ai.GeneralSettings.tool_descriptions.eb258712')"
         size="wide"
         @close="editingTools = false"
       >
@@ -615,7 +716,12 @@
           @update="onToolDescriptionUpdate"
         />
         <template #footer>
-          <Button text="Done" tooltip="Close this window" accent @click="editingTools = false" />
+          <Button
+            :text="t('settings.ai.GeneralSettings.done.11a6767d')"
+            :tooltip="t('settings.ai.GeneralSettings.close_this_window.3f02fc8e')"
+            accent
+            @click="editingTools = false"
+          />
         </template>
       </ObsidianModal>
     </template>
@@ -634,6 +740,10 @@
 </template>
 
 <script setup lang="ts">
+import { settingsCount } from '@/i18n/settingsCounts'
+import { settingsLabel } from '@/i18n/settingsLabels'
+import I18nText from '@/components/obsidian/I18nText.vue'
+import { t } from '@/i18n'
 import { DEFAULT_REWIND_LIMIT_MB } from '@/ai/rewind/ChatRewind'
 import { mobileBackground } from '@/ai/mobileBackground'
 import { keyDestinations, acceptIntroducedDestinations } from '@/secrets/destinations'
@@ -713,9 +823,15 @@ const migrateChats = async () => {
   migrating.value = true
   try {
     const count = await ChatStorage.getInstance().migrateChats()
-    new Notice(`Migrated ${count} chat(s)`)
+    new Notice(
+      t('settings.ai.GeneralSettings.migrated_value_chat_s.9cf610c9', { value0: String(count) })
+    )
   } catch (err: unknown) {
-    new Notice(`Migration failed: ${err instanceof Error ? err.message : err}`)
+    new Notice(
+      t('settings.ai.GeneralSettings.migration_failed_value.109b5f7f', {
+        value0: String(err instanceof Error ? err.message : err),
+      })
+    )
   } finally {
     migrating.value = false
   }
@@ -732,10 +848,10 @@ const commentFolder = ref(config.ai.commentFolder ?? DEFAULT_AI_SETTINGS.comment
 /**
  * Utility agents are on this list on purpose, unlike the chat picker's: a comment agent is
  * meant to be a utility one, and the agent seeded for comments is created that way. The empty
- * value is the default agent, not "none" — a comment always runs on something.
+ * value is the default agent, not 'none' — a comment always runs on something.
  */
 const commentAgentOptions = computed(() => [
-  { value: '', display: 'Default agent' },
+  { value: '', display: t('settings.ai.GeneralSettings.default_agent.94da52ec') },
   ...AgentRegistry.getInstance()
     .list({ includeUtility: true })
     .map((agent) => ({ value: agent.id, display: agent.name })),
@@ -756,7 +872,7 @@ const timeoutError = computed(() => {
   const seconds = Number(timeoutInput.value)
   return timeoutInput.value.trim() !== '' &&
     (!Number.isFinite(seconds) || seconds < 1 || seconds > MAX_REQUEST_TIMEOUT_SECONDS)
-    ? 'Enter 1–3600 seconds. This value has not been saved.'
+    ? t('settings.ai.GeneralSettings.enter_seconds_this_value_has.ec39a7c9')
     : ''
 })
 
@@ -967,7 +1083,7 @@ const voiceKeyName = computed(() => voiceKeyId(voice.value))
 
 const voiceModelOptions = [
   ...TRANSCRIPTION_MODELS.map((model) => ({ value: model.id, display: model.name })),
-  { value: 'custom', display: 'Something else…' },
+  { value: 'custom', display: t('settings.ai.GeneralSettings.something_else.b4768d66') },
 ]
 
 /** A model that is not one of the two is shown as "something else", with its id spelled out. */
@@ -1076,9 +1192,10 @@ const cancelEditSecret = (idx: number) => {
 const askRemoveSecret = (idx: number) => {
   const secret = secrets.value[idx]
   askRemoval(
-    'Remove secret',
-    `Remove ${secret.name || '(unnamed)'}? Any fetch call referring to it by name will stop ` +
-      'working, and the stored value is gone from the keychain.',
+    t('settings.ai.GeneralSettings.remove_secret.1422ca6e'),
+    t('settings.secrets.removeNamed', {
+      name: secret.name || t('settings.parts.9edb143e79ddd491'),
+    }),
     () => {
       const current = secrets.value.findIndex((entry) => entry.id === secret.id)
       if (current !== -1) removeSecret(current)
@@ -1132,7 +1249,11 @@ const applySecretValue = (idx: number) => {
   // Force re-render so getSecretDisplay() re-evaluates with the new keychain value
   secrets.value = [...secrets.value]
   save()
-  new Notice(`Saved ${secret.name || 'the secret'} to the keychain`)
+  new Notice(
+    t('settings.ai.GeneralSettings.saved_value_to_the_keychain.9ec0f101', {
+      value0: String(secret.name || t('settings.terms.theSecret')),
+    })
+  )
 }
 
 const updateField = (field: string, value: string) => {
@@ -1178,33 +1299,43 @@ interface PromptRow {
 const PROMPT_ROWS: PromptRow[] = [
   {
     key: 'memoryTemplate',
-    name: 'Agent memory',
-    desc: `How what an agent was asked to remember is added to its system prompt; ${MEMORY_TOKEN} is where the items go.`,
+    name: t('settings.ai.GeneralSettings.agent_memory.f3cd4df6'),
+    desc: t('settings.ai.GeneralSettings.how_what_an_agent_was.45d8f0ab', {
+      value0: String(MEMORY_TOKEN),
+    }),
   },
   {
     key: 'titleGeneration',
-    name: 'Chat titles',
-    desc: `Names a chat from its first messages; ${MESSAGES_TOKEN} is where they go.`,
+    name: t('settings.ai.GeneralSettings.chat_titles.950a9874'),
+    desc: t('settings.ai.GeneralSettings.names_a_chat_from_its.b2ea780a', {
+      value0: String(MESSAGES_TOKEN),
+    }),
   },
   {
     key: 'titleSystem',
-    name: 'Chat titles, system',
-    desc: 'What the model that names chats is told it is.',
+    name: t('settings.ai.GeneralSettings.chat_titles_system.2f3fd2f9'),
+    desc: t('settings.ai.GeneralSettings.what_the_model_that_names.4a08978e'),
   },
   {
     key: 'recapPrompt',
-    name: 'Chat recap',
-    desc: `The sentence on a chat's card under a note it changed; ${MESSAGES_TOKEN} is where the messages go.`,
+    name: t('settings.ai.GeneralSettings.chat_recap.adaaf80a'),
+    desc: t('settings.ai.GeneralSettings.the_sentence_on_a_chat.af42907c', {
+      value0: String(MESSAGES_TOKEN),
+    }),
   },
   {
     key: 'summaryPrompt',
-    name: 'Chat summary',
-    desc: `The short line under a chat's title in the history; ${MESSAGES_TOKEN} is where the messages go.`,
+    name: t('settings.ai.GeneralSettings.chat_summary.b82dab10'),
+    desc: t('settings.ai.GeneralSettings.the_short_line_under_a.c81696a8', {
+      value0: String(MESSAGES_TOKEN),
+    }),
   },
   {
     key: 'compactPrompt',
-    name: 'Compacting',
-    desc: `How a long conversation is summed up so it can go on; ${MESSAGES_TOKEN} is where it goes.`,
+    name: t('settings.ai.GeneralSettings.compacting.df77799c'),
+    desc: t('settings.ai.GeneralSettings.how_a_long_conversation_is.fb14c886', {
+      value0: String(MESSAGES_TOKEN),
+    }),
   },
 ]
 
@@ -1231,7 +1362,7 @@ const isChanged = (key: PromptKey) => {
   return !!own && own.trim() !== (defaultPrompts[key] || '').trim()
 }
 
-const modelCount = (n: number) => (n === 1 ? '1 model' : `${n} models`)
+const modelCount = (n: number) => (n === 1 ? settingsCount('model', 1) : settingsCount('model', n))
 </script>
 
 <style lang="scss">

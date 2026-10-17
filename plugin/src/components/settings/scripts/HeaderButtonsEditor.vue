@@ -1,11 +1,14 @@
 <template>
-  <Section title="Header buttons">
+  <Section :title="t('settings.scripts.HeaderButtonsEditor.header_buttons.1d80ae78')">
     <template #desc>
-      Buttons above a note's text that run a command or a script, on the notes you choose, in this
-      order. A script can be handed the note's values: <code>{{ variableExamples }}</code> or any
-      property, <code>{{ frontmatterExample }}</code
-      >.
-    </template>
+      <I18nText :text="t('settings.rich.5c124ccc61dc59ea', { slot0: '⟪slot0⟫', slot1: '⟪slot1⟫' })"
+        ><template #slot0
+          ><code>{{ variableExamples }}</code></template
+        ><template #slot1
+          ><code>{{ frontmatterExample }}</code></template
+        ></I18nText
+      ></template
+    >
 
     <!-- One row per button, in the order they stand in the header: its glyph and name, what it
          runs and where in a quiet line (or that it shows nowhere), moved up and down, on or off,
@@ -13,14 +16,14 @@
     <Setting
       v-for="(button, idx) in buttons"
       :key="button.id"
-      :name="button.name || 'Unnamed button'"
+      :name="button.name || t('settings.scripts.HeaderButtonsEditor.unnamed_button.06e343d4')"
       class="abele-header-buttons__row"
       :class="{ 'abele-header-buttons__row_off': button.enabled === false }"
     >
       <template #name>
         <span class="abele-header-buttons__name"
           ><Icon :icon="button.icon || 'play'" no-hover class="abele-header-buttons__glyph" />{{
-            button.name || 'Unnamed button'
+            button.name || t('settings.scripts.HeaderButtonsEditor.unnamed_button.06e343d4')
           }}</span
         >
       </template>
@@ -29,44 +32,67 @@
           v-if="button.enabled !== false && problemsOf(button).nowhere"
           class="mod-warning"
           :title="problemsOf(button).nowhere"
-          >Shows nowhere · {{ subtitleOf(button) }}</span
+          >{{
+            t('settings.sentence.4f7ec121b15ac5e4', { value0: String(subtitleOf(button)) })
+          }}</span
         >
         <template v-else>{{ subtitleOf(button) }}</template>
       </template>
       <Icon
         icon="arrow-up"
         :disabled="idx === 0"
-        :tooltip="idx === 0 ? 'Move earlier — already the first' : 'Move earlier in the header'"
+        :tooltip="
+          idx === 0
+            ? t('settings.scripts.HeaderButtonsEditor.move_earlier_already_the_first.eafd3275')
+            : t('settings.scripts.HeaderButtonsEditor.move_earlier_in_the_header.8dc04f10')
+        "
         @click="move(idx, -1)"
       />
       <Icon
         icon="arrow-down"
         :disabled="idx === buttons.length - 1"
         :tooltip="
-          idx === buttons.length - 1 ? 'Move later — already the last' : 'Move later in the header'
+          idx === buttons.length - 1
+            ? t('settings.scripts.HeaderButtonsEditor.move_later_already_the_last.a265fd45')
+            : t('settings.scripts.HeaderButtonsEditor.move_later_in_the_header.ab6bf94d')
         "
         @click="move(idx, 1)"
       />
-      <Icon icon="settings" tooltip="Change this button" @click="editing = idx" />
+      <Icon
+        icon="settings"
+        :tooltip="t('settings.scripts.HeaderButtonsEditor.change_this_button.8467d30e')"
+        @click="editing = idx"
+      />
       <Checkbox
         :is-enabled="button.enabled !== false"
         @toggle="updateFlag(idx, 'enabled', button.enabled === false)"
       />
     </Setting>
     <Setting
-      :name="buttons.length ? 'Add another button' : 'No header buttons yet'"
-      desc="A command or a script, on the notes you choose."
+      :name="
+        buttons.length
+          ? t('settings.scripts.HeaderButtonsEditor.add_another_button.1a22c516')
+          : t('settings.scripts.HeaderButtonsEditor.no_header_buttons_yet.429fc6f3')
+      "
+      :desc="t('settings.scripts.HeaderButtonsEditor.a_command_or_a_script.e4b5be3f')"
     >
-      <Button text="Add button" tooltip="Add a header button and set it up" @click="addAndEdit" />
+      <Button
+        :text="t('settings.scripts.HeaderButtonsEditor.add_button.c0f290f3')"
+        :tooltip="t('settings.scripts.HeaderButtonsEditor.add_a_header_button_and.959ddec8')"
+        @click="addAndEdit"
+      />
     </Setting>
 
     <ObsidianModal
       v-if="editing !== null && edited"
-      :title="edited.name || 'New button'"
+      :title="edited.name || t('settings.scripts.HeaderButtonsEditor.new_button.c499cbe3')"
       @close="editing = null"
     >
-      <Setting heading name="What it runs" />
-      <Setting name="Runs" desc="A command from anywhere in Obsidian, or one of your scripts.">
+      <Setting heading :name="t('settings.scripts.HeaderButtonsEditor.what_it_runs.ba619d80')" />
+      <Setting
+        :name="t('settings.scripts.HeaderButtonsEditor.runs.848f54e8')"
+        :desc="t('settings.scripts.HeaderButtonsEditor.a_command_from_anywhere_in.2b8a7412')"
+      >
         <Dropdown
           class="abele-header-buttons__runs"
           :options="RUNS_OPTIONS"
@@ -75,48 +101,71 @@
         />
       </Setting>
       <Setting
-        name="Name"
+        :name="t('settings.scripts.HeaderButtonsEditor.name.dcd1d522')"
         :desc="
           isCommand(edited)
-            ? 'Shown as the button\'s tooltip, and in the menu where it does not fit.'
-            : 'Shown on the button, or as its tooltip when it is icon only.'
+            ? t('settings.scripts.HeaderButtonsEditor.shown_as_the_button_s.a52b2eef')
+            : t('settings.scripts.HeaderButtonsEditor.shown_on_the_button_or.18bb181b')
         "
       >
         <Input
           :model-value="edited.name"
-          placeholder="e.g. Fetch details"
+          :placeholder="
+            t('settings.scripts.HeaderButtonsEditor.e_g_fetch_details.9c250ebd', {
+              literal0: String('Fetch details'),
+            })
+          "
           @update:model-value="updateField(editing, 'name', $event)"
         />
       </Setting>
-      <Setting name="Icon" desc="Shown on the button in the header.">
+      <Setting
+        :name="t('settings.scripts.HeaderButtonsEditor.icon.a35abcd6')"
+        :desc="t('settings.scripts.HeaderButtonsEditor.shown_on_the_button_in.bf9242b8')"
+      >
         <Button
           :icon="edited.icon || 'play'"
           :text="edited.icon || 'play'"
-          tooltip="Choose the icon from the whole set, by picture or by name"
+          :tooltip="t('settings.scripts.HeaderButtonsEditor.choose_the_icon_from_the.9fd0ec06')"
           @click="pickingIconFor = editing"
         />
       </Setting>
-      <Setting v-if="isCommand(edited)" name="Command" desc="Command the button runs.">
+      <Setting
+        v-if="isCommand(edited)"
+        :name="t('settings.scripts.HeaderButtonsEditor.command.71316697')"
+        :desc="t('settings.scripts.HeaderButtonsEditor.command_the_button_runs.e980230f')"
+      >
         <Button
-          :text="edited.commandId ? commandName(edited.commandId) : 'Choose command...'"
-          tooltip="Search every command Obsidian has for the one this button runs"
+          :text="
+            edited.commandId
+              ? commandName(edited.commandId)
+              : t('settings.scripts.HeaderButtonsEditor.choose_command.ea49d680')
+          "
+          :tooltip="
+            t('settings.scripts.HeaderButtonsEditor.search_every_command_obsidian_has.4ef0ca77')
+          "
           @click="chooseCommand(editing)"
         />
       </Setting>
       <Setting
         v-if="!isCommand(edited)"
-        name="Icon only"
-        desc="Leave the name off the header, for a header already full."
+        :name="t('settings.scripts.HeaderButtonsEditor.icon_only.7a047008')"
+        :desc="t('settings.scripts.HeaderButtonsEditor.leave_the_name_off_the.b9311fa5')"
       >
         <Checkbox
           :is-enabled="edited.iconOnly === true"
           @toggle="updateFlag(editing, 'iconOnly', !edited.iconOnly)"
         />
       </Setting>
-      <Setting v-if="!isCommand(edited)" name="Script" desc="Script the button runs.">
+      <Setting
+        v-if="!isCommand(edited)"
+        :name="t('settings.scripts.HeaderButtonsEditor.script.102acc10')"
+        :desc="t('settings.scripts.HeaderButtonsEditor.script_the_button_runs.bd6df80c')"
+      >
         <Button
-          :text="edited.scriptName || 'Choose script...'"
-          tooltip="Search the scripts for the one this button runs"
+          :text="
+            edited.scriptName || t('settings.scripts.HeaderButtonsEditor.choose_script.e582e7b2')
+          "
+          :tooltip="t('settings.scripts.HeaderButtonsEditor.search_the_scripts_for_the.dcae2ff4')"
           @click="chooseScript(editing)"
         />
       </Setting>
@@ -134,46 +183,67 @@
         v-if="!isCommand(edited) && edited.scriptName && !paramsOf(edited).length"
         class="setting-item-description"
       >
-        This script takes no parameters.
+        {{ t('settings.scripts.HeaderButtonsEditor.this_script_takes_no_parameters.c613d6f9') }}
       </p>
 
-      <Setting heading name="Where it shows" />
-      <Setting name="On every note" desc="Whatever its type, tags or folder.">
+      <Setting heading :name="t('settings.scripts.HeaderButtonsEditor.where_it_shows.3397c2f1')" />
+      <Setting
+        :name="t('settings.scripts.HeaderButtonsEditor.on_every_note.d761c688')"
+        :desc="t('settings.scripts.HeaderButtonsEditor.whatever_its_type_tags_or.ed398572')"
+      >
         <Checkbox
           :is-enabled="edited.allNotes === true"
           @toggle="updateFlag(editing, 'allNotes', !edited.allNotes)"
         />
       </Setting>
       <template v-if="!edited.allNotes">
-        <Setting name="Note types" :desc="typesDescription(edited)">
+        <Setting
+          :name="t('settings.scripts.HeaderButtonsEditor.note_types.52d728fb')"
+          :desc="typesDescription(edited)"
+        >
           <Input
             :model-value="edited.noteTypes.join(', ')"
-            placeholder="e.g. movie, book"
+            :placeholder="
+              t('settings.scripts.HeaderButtonsEditor.e_g_movie_book.f621e5b4', {
+                literal0: String('movie, book'),
+              })
+            "
             @update:model-value="updateList(editing, 'noteTypes', $event)"
           />
         </Setting>
-        <Setting name="Folders" :desc="foldersDescription(edited)">
+        <Setting
+          :name="t('settings.scripts.HeaderButtonsEditor.folders.c4d6bb20')"
+          :desc="foldersDescription(edited)"
+        >
           <Input
             :model-value="(edited.folders ?? []).join(', ')"
-            placeholder="e.g. Films, Library/Books"
+            :placeholder="
+              t('settings.scripts.HeaderButtonsEditor.e_g_films_library_books.2cdb7bb5', {
+                literal0: String('Films, Library/Books'),
+              })
+            "
             @update:model-value="updateList(editing, 'folders', $event)"
           />
         </Setting>
         <Setting
-          name="Tags"
-          desc="Comma-separated, with or without #. Notes with one of these, or a tag nested under it, show the button too."
+          :name="t('settings.scripts.HeaderButtonsEditor.tags.1331275b')"
+          :desc="t('settings.scripts.HeaderButtonsEditor.comma_separated_with_or_without.3c0cedc4')"
         >
           <Input
             :model-value="(edited.tags ?? []).join(', ')"
-            placeholder="e.g. work, project/site"
+            :placeholder="
+              t('settings.scripts.HeaderButtonsEditor.e_g_work_project_site.e87aea15', {
+                literal0: String('work, project/site'),
+              })
+            "
             @update:model-value="updateList(editing, 'tags', $event)"
           />
         </Setting>
       </template>
       <Setting
         v-if="isCommand(edited)"
-        name="Also on other files"
-        desc="PDFs, canvases, books and other files opened in a tab, as far as its folders and tags reach. They have no type or properties."
+        :name="t('settings.scripts.HeaderButtonsEditor.also_on_other_files.9f988318')"
+        :desc="t('settings.scripts.HeaderButtonsEditor.pdfs_canvases_books_and_other.b562d03c')"
       >
         <Checkbox
           :is-enabled="edited.otherFiles === true"
@@ -182,23 +252,23 @@
       </Setting>
 
       <Setting
-        name="Only when its properties"
+        :name="t('settings.scripts.HeaderButtonsEditor.only_when_its_properties.488c8e87')"
         :desc="
           edited.conditions?.length
-            ? 'The note must also have these in its frontmatter.'
-            : 'Show it only on notes whose frontmatter fits, a status or a filled-in date, say.'
+            ? t('settings.scripts.HeaderButtonsEditor.the_note_must_also_have.6119d754')
+            : t('settings.scripts.HeaderButtonsEditor.show_it_only_on_notes.d5cbb9eb')
         "
       >
         <Button
-          text="Add condition"
-          tooltip="Ask for one more property of the note"
+          :text="t('settings.scripts.HeaderButtonsEditor.add_condition.60a0d835')"
+          :tooltip="t('settings.scripts.HeaderButtonsEditor.ask_for_one_more_property.20378dfa')"
           @click="addCondition(editing)"
         />
       </Setting>
       <Setting
         v-if="(edited.conditions?.length ?? 0) > 1"
-        name="Conditions needed"
-        desc="Whether the note has to fit every condition below or any one of them."
+        :name="t('settings.scripts.HeaderButtonsEditor.conditions_needed.9e17c43b')"
+        :desc="t('settings.scripts.HeaderButtonsEditor.whether_the_note_has_to.997bc0f1')"
       >
         <Dropdown
           class="abele-header-buttons__mode"
@@ -210,14 +280,20 @@
       <Setting
         v-for="(condition, cIdx) in edited.conditions ?? []"
         :key="cIdx"
-        :name="condition.property.trim() || 'Property'"
+        :name="
+          condition.property.trim() || t('settings.scripts.HeaderButtonsEditor.property.40040cb1')
+        "
         :desc="describeCondition(condition)"
       >
         <div class="abele-header-buttons__condition">
           <Input
             class="abele-header-buttons__property"
             :model-value="condition.property"
-            placeholder="e.g. status"
+            :placeholder="
+              t('settings.scripts.HeaderButtonsEditor.e_g_status.be5a95ab', {
+                literal0: String('status'),
+              })
+            "
             @update:model-value="updateCondition(editing, cIdx, { property: $event })"
           />
           <Dropdown
@@ -230,13 +306,17 @@
             v-if="comparesValue(condition.test)"
             class="abele-header-buttons__value"
             :model-value="condition.value"
-            placeholder="e.g. todo"
+            :placeholder="
+              t('settings.scripts.HeaderButtonsEditor.e_g_todo.f74eec56', {
+                literal0: String('todo'),
+              })
+            "
             @update:model-value="updateCondition(editing, cIdx, { value: $event })"
           />
           <Icon
             class="abele-header-buttons__remove"
             icon="x"
-            tooltip="Remove this condition"
+            :tooltip="t('settings.scripts.HeaderButtonsEditor.remove_this_condition.3b23e189')"
             @click="removeCondition(editing, cIdx)"
           />
         </div>
@@ -244,16 +324,18 @@
       <template #footer>
         <div class="abele-modal__actions">
           <Button
-            text="Delete"
+            :text="t('settings.scripts.HeaderButtonsEditor.delete.e2d0a549')"
             warning
-            tooltip="Delete this button"
+            :tooltip="t('settings.scripts.HeaderButtonsEditor.delete_this_button.3a238ae9')"
             class="abele-header-buttons__delete"
             @click="pendingRemoval = edited"
           />
           <Button
-            text="Done"
+            :text="t('settings.scripts.HeaderButtonsEditor.done.11a6767d')"
             accent
-            tooltip="Close this window; changes are kept as you make them"
+            :tooltip="
+              t('settings.scripts.HeaderButtonsEditor.close_this_window_changes_are.91342d87')
+            "
             @click="editing = null"
           />
         </div>
@@ -269,10 +351,17 @@
 
     <ConfirmModal
       v-if="pendingRemoval"
-      title="Delete header button"
-      :message="`Delete ${pendingRemoval.name || 'this unnamed button'}? It disappears from every
-        note header it was on. This cannot be undone.`"
-      :confirm-tooltip="`Delete ${pendingRemoval.name || 'the button'}`"
+      :title="t('settings.scripts.HeaderButtonsEditor.delete_header_button.bf829880')"
+      :message="
+        t('settings.scripts.HeaderButtonsEditor.delete_value_it_disappears_from.c2d5da26', {
+          value0: String(pendingRemoval.name || t('settings.terms.unnamedButton')),
+        })
+      "
+      :confirm-tooltip="
+        t('settings.scripts.HeaderButtonsEditor.delete_value.8782b778', {
+          value0: String(pendingRemoval.name || 'the button'),
+        })
+      "
       @confirm="remove(pendingRemoval.id)"
       @close="pendingRemoval = null"
     />
@@ -280,6 +369,8 @@
 </template>
 
 <script setup lang="ts">
+import I18nText from '@/components/obsidian/I18nText.vue'
+import { t } from '@/i18n'
 import { computed, ref } from 'vue'
 import { nanoid } from 'nanoid'
 import Setting from '../../obsidian/Setting.vue'
@@ -303,6 +394,7 @@ import { placementProblems, type VaultShape } from '@/helpers/headerButtons'
 import { TFolder } from 'obsidian'
 import { findScriptByName } from '@/scripting/runScript'
 import { pickCommand, pickScript } from '@/helpers/suggesters/RunnablePicker'
+import { defaultCommandLabel } from '@/i18n/commandLabels'
 import { buttonRuns } from '@/helpers/headerButtons'
 import { hasCommand } from '@/headerButtons/viewActions'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -346,8 +438,8 @@ const vaultShape = ((): VaultShape => {
 })()
 
 const RUNS_OPTIONS = [
-  { value: 'command', display: 'A command' },
-  { value: 'script', display: 'A script' },
+  { value: 'command', display: t('settings.scripts.HeaderButtonsEditor.a_command.18e6a3ee') },
+  { value: 'script', display: t('settings.scripts.HeaderButtonsEditor.a_script.1ccd820b') },
 ]
 
 const runsOf = buttonRuns
@@ -374,9 +466,13 @@ const commandName = (id: string): string => findCommand(id)?.name ?? id
 
 const subtitleOf = (button: HeaderButtonDefinition): string => {
   if (isCommand(button)) {
-    return button.commandId ? commandName(button.commandId) : 'No command chosen yet'
+    return button.commandId
+      ? commandName(button.commandId)
+      : t('settings.scripts.HeaderButtonsEditor.no_command_chosen_yet.114ca4e7')
   }
-  return button.scriptName || 'No script chosen yet'
+  return (
+    button.scriptName || t('settings.scripts.HeaderButtonsEditor.no_script_chosen_yet.1662385a')
+  )
 }
 
 const problemsOf = (button: HeaderButtonDefinition) => placementProblems(button, vaultShape)
@@ -384,41 +480,56 @@ const problemsOf = (button: HeaderButtonDefinition) => placementProblems(button,
 const quoted = (items: string[]) => items.map((item) => `"${item}"`).join(', ')
 
 const typesDescription = (button: HeaderButtonDefinition): string => {
-  const plain = 'Comma-separated. Notes whose type frontmatter is one of these show the button.'
+  const plain = t('settings.scripts.HeaderButtonsEditor.comma_separated_notes_whose_type.15826848')
   const unknown = problemsOf(button).unknownTypes
   if (!unknown.length) return plain
   const known = [...vaultShape.types].sort().slice(0, 12)
   const which =
     unknown.length === 1
-      ? `No note in this vault has the type ${quoted(unknown)}.`
-      : `No note in this vault has the types ${quoted(unknown)}.`
-  return known.length ? `${which} Types in use: ${known.join(', ')}.` : which
+      ? t('settings.scripts.HeaderButtonsEditor.no_note_in_this_vault.c4ccaca3', {
+          value0: String(quoted(unknown)),
+        })
+      : t('settings.scripts.HeaderButtonsEditor.no_note_in_this_vault.0477bd78', {
+          value0: String(quoted(unknown)),
+        })
+  return known.length
+    ? t('settings.scripts.HeaderButtonsEditor.value_types_in_use_value.165f7815', {
+        value0: String(which),
+        value1: String(known.join(', ')),
+      })
+    : which
 }
 
 const foldersDescription = (button: HeaderButtonDefinition): string => {
   const plain =
-    'Comma-separated. Notes anywhere under one of these show the button too. A * stands for ' +
-    'any one folder, ** for any depth: Projects/*/Notes.'
+    t('settings.scripts.HeaderButtonsEditor.comma_separated_notes_anywhere_under.e213df44') +
+    t('settings.scripts.HeaderButtonsEditor.any_one_folder_for_any.d06e9c0a', {
+      literal0: String('Projects/*/Notes'),
+    })
   const missing = problemsOf(button).missingFolders
   if (!missing.length) return plain
   return missing.length === 1
-    ? `No folder ${quoted(missing)} in this vault.`
-    : `No folders ${quoted(missing)} in this vault.`
+    ? t('settings.scripts.HeaderButtonsEditor.no_folder_value_in_this.046d41b9', {
+        value0: String(quoted(missing)),
+      })
+    : t('settings.scripts.HeaderButtonsEditor.no_folders_value_in_this.c62c6ef1', {
+        value0: String(quoted(missing)),
+      })
 }
 
 /** The button whose icon is being chosen, by its place in the list. */
 const pickingIconFor = ref<number | null>(null)
 
 const TEST_OPTIONS: { value: PropertyTest; display: string }[] = [
-  { value: 'equals', display: 'is' },
-  { value: 'not-equals', display: 'is not' },
-  { value: 'filled', display: 'is filled in' },
-  { value: 'empty', display: 'is empty' },
+  { value: 'equals', display: t('settings.scripts.HeaderButtonsEditor.is.fa51fd49') },
+  { value: 'not-equals', display: t('settings.scripts.HeaderButtonsEditor.is_not.e1bf1560') },
+  { value: 'filled', display: t('settings.scripts.HeaderButtonsEditor.is_filled_in.855a94e1') },
+  { value: 'empty', display: t('settings.scripts.HeaderButtonsEditor.is_empty.86aaa00d') },
 ]
 
 const MODE_OPTIONS = [
-  { value: 'all', display: 'All of them' },
-  { value: 'any', display: 'Any one' },
+  { value: 'all', display: t('settings.scripts.HeaderButtonsEditor.all_of_them.29c88933') },
+  { value: 'any', display: t('settings.scripts.HeaderButtonsEditor.any_one.4013adf2') },
 ]
 
 const { save } = useSettingsSave(
@@ -439,9 +550,15 @@ const paramsOf = (button: HeaderButtonDefinition): ScriptParam[] =>
   button.scriptName ? (findScriptByName(button.scriptName)?.meta.params ?? []) : []
 
 const paramDescription = (param: ScriptParam): string => {
-  const described = param.description || 'No description.'
+  const described =
+    param.description || t('settings.scripts.HeaderButtonsEditor.no_description.06a69482')
   // A description written as a label has no full stop: the default joins it as a second fact.
-  return param.default ? `${described} · defaults to ${param.default}` : described
+  return param.default
+    ? t('settings.scripts.HeaderButtonsEditor.value_defaults_to_value.e824e925', {
+        value0: String(described),
+        value1: String(param.default),
+      })
+    : described
 }
 
 /** Scripts a header button may run: not the ones switched off in their own header. */
@@ -511,7 +628,8 @@ const chooseCommand = async (idx: number) => {
   if (!command) return
   const button = buttons.value[idx]
   button.commandId = command.id
-  if (!button.name.trim()) button.name = command.name
+  if (!button.name.trim())
+    button.name = defaultCommandLabel(command, ScriptService.getInstance().scriptList.value)
   if ((!button.icon || button.icon === 'play') && command.icon) button.icon = command.icon
   save()
 }
@@ -559,18 +677,31 @@ const comparesValue = (test: PropertyTest) => test === 'equals' || test === 'not
 /** The condition read out as a sentence, so a row says what it asks without parsing. */
 const describeCondition = (c: HeaderButtonCondition): string => {
   const property = c.property.trim()
-  if (!property) return 'Name a frontmatter property; until then this condition is ignored.'
+  if (!property)
+    return t('settings.scripts.HeaderButtonsEditor.name_a_frontmatter_property_until.b0812819')
   switch (c.test) {
     case 'filled':
-      return `Notes whose ${property} is filled in.`
+      return t('settings.scripts.HeaderButtonsEditor.notes_whose_value_is_filled.031bfe7b', {
+        value0: String(property),
+      })
     case 'empty':
-      return `Notes whose ${property} is empty or missing.`
+      return t('settings.scripts.HeaderButtonsEditor.notes_whose_value_is_empty.18f1876a', {
+        value0: String(property),
+      })
     case 'not-equals':
-      return `Notes whose ${property} is anything but "${c.value.trim()}", missing included.`
+      return t('settings.scripts.HeaderButtonsEditor.notes_whose_value_is_anything.292370b0', {
+        value0: String(property),
+        value1: String(c.value.trim()),
+      })
     default:
       return c.value.trim()
-        ? `Notes whose ${property} is "${c.value.trim()}", or holds it in a list.`
-        : `Type the value ${property} must have.`
+        ? t('settings.scripts.HeaderButtonsEditor.notes_whose_value_is_value.20728e9f', {
+            value0: String(property),
+            value1: String(c.value.trim()),
+          })
+        : t('settings.scripts.HeaderButtonsEditor.type_the_value_value_must.eb364908', {
+            value0: String(property),
+          })
   }
 }
 

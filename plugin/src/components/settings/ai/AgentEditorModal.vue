@@ -1,6 +1,10 @@
 <template>
   <ObsidianModal
-    :title="agent ? `Agent: ${agent.name}` : 'Agent'"
+    :title="
+      agent
+        ? t('settings.ai.AgentEditorModal.agent_value.c67844d1', { value0: String(agent.name) })
+        : t('settings.ai.AgentEditorModal.agent.11b39c93')
+    "
     size="wide"
     @close="emit('close')"
   >
@@ -10,11 +14,17 @@
       <div v-if="agent" class="abele-agent-editor__body">
         <!-- Basic -->
         <template v-if="section === 'basic'">
-          <Setting name="Name" desc="Shown in the agent picker.">
+          <Setting
+            :name="t('settings.ai.AgentEditorModal.name.dcd1d522')"
+            :desc="t('settings.ai.AgentEditorModal.shown_in_the_agent_picker.fad20e51')"
+          >
             <Input :model-value="agent.name" @update:model-value="patch({ name: $event })" />
           </Setting>
 
-          <Setting name="Description" desc="Tells other agents what this one is for.">
+          <Setting
+            :name="t('settings.ai.AgentEditorModal.description.526e0087')"
+            :desc="t('settings.ai.AgentEditorModal.tells_other_agents_what_this.f64bf342')"
+          >
             <Input
               :model-value="agent.description"
               as-text-area
@@ -23,14 +33,16 @@
           </Setting>
 
           <Setting
-            name="Utility agent"
-            desc="Hidden from the chat picker. Still available to scripts, delegation and draft
-              review."
+            :name="t('settings.ai.AgentEditorModal.utility_agent.e8384fe8')"
+            :desc="t('settings.ai.AgentEditorModal.hidden_from_the_chat_picker.a9f2b9dc')"
           >
             <Checkbox :is-enabled="agent.utility" @toggle="patch({ utility: !agent.utility })" />
           </Setting>
 
-          <Setting name="Model" desc="The model this agent runs on.">
+          <Setting
+            :name="t('settings.ai.AgentEditorModal.model.5e2c614c')"
+            :desc="t('settings.ai.AgentEditorModal.the_model_this_agent_runs.d092d7ab')"
+          >
             <Dropdown
               :model-value="modelKey"
               :options="modelOptions"
@@ -39,25 +51,32 @@
           </Setting>
 
           <Setting
-            name="Fallback model"
-            desc="Offered as a retry when a request fails. Used automatically in delegated runs,
-              where nobody can press a button."
+            :name="t('settings.ai.AgentEditorModal.fallback_model.ed293bb6')"
+            :desc="t('settings.ai.AgentEditorModal.offered_as_a_retry_when.3264a4a0')"
           >
             <Dropdown
               :model-value="fallbackKey"
-              :options="[{ value: '', display: 'None' }, ...modelOptions]"
+              :options="[
+                { value: '', display: t('settings.ai.AgentEditorModal.none.dc937b59') },
+                ...modelOptions,
+              ]"
               @update:model-value="selectFallback($event)"
             />
           </Setting>
 
           <Setting
-            name="Background model"
-            desc="For naming and compacting this agent's chats. Unset, the plugin-wide Background
-              Model setting decides — and unset there too, the chat's own model does."
+            :name="t('settings.ai.AgentEditorModal.background_model.905a0833')"
+            :desc="t('settings.ai.AgentEditorModal.for_naming_and_compacting_this.772ec428')"
           >
             <Dropdown
               :model-value="backgroundKey"
-              :options="[{ value: '', display: 'Follow the setting' }, ...modelOptions]"
+              :options="[
+                {
+                  value: '',
+                  display: t('settings.ai.AgentEditorModal.follow_the_setting.ead899ca'),
+                },
+                ...modelOptions,
+              ]"
               @update:model-value="selectBackground($event)"
             />
           </Setting>
@@ -68,9 +87,7 @@
             :choices="interceptorOptions"
             :narrow="Platform.isPhone"
             pattern-placeholder="^/todo"
-            desc="They read this agent's chats in this order, each given what the one before
-              returned: your messages before the agent does, its answers before they stay, or
-              both. An agent says what it thinks; a script decides. A chat can keep its own list."
+            :desc="t('settings.ai.AgentEditorModal.they_read_this_agent_s.81992c4a')"
             @update:entries="patch({ interceptors: $event })"
           />
         </template>
@@ -78,24 +95,38 @@
         <!-- Prompts -->
         <Section
           v-else-if="section === 'prompts'"
-          :desc="`Blocks are joined in order with a blank line between them. Use ${DATE_TOKEN} for today's date.`"
+          :desc="
+            t('settings.ai.AgentEditorModal.blocks_are_joined_in_order.b7a98cc9', {
+              value0: String(DATE_TOKEN),
+            })
+          "
         >
           <CardGrid stack>
-            <Card v-for="(prompt, idx) in agent.prompts" :key="idx" :title="`Block ${idx + 1}`">
+            <Card
+              v-for="(prompt, idx) in agent.prompts"
+              :key="idx"
+              :title="
+                t('settings.ai.AgentEditorModal.block_value.dd05ec6a', { value0: String(idx + 1) })
+              "
+            >
               <template #actions>
                 <Icon
                   icon="chevron-up"
-                  tooltip="Move up"
+                  :tooltip="t('settings.ai.AgentEditorModal.move_up.c66feb5e')"
                   :disabled="idx === 0"
                   @click="movePrompt(idx, -1)"
                 />
                 <Icon
                   icon="chevron-down"
-                  tooltip="Move down"
+                  :tooltip="t('settings.ai.AgentEditorModal.move_down.40bb50da')"
                   :disabled="idx === agent.prompts.length - 1"
                   @click="movePrompt(idx, 1)"
                 />
-                <Icon icon="trash" tooltip="Remove" @click="removePrompt(idx)" />
+                <Icon
+                  icon="trash"
+                  :tooltip="t('settings.ai.AgentEditorModal.remove.c3812fc4')"
+                  @click="removePrompt(idx)"
+                />
               </template>
 
               <Dropdown
@@ -106,7 +137,7 @@
               <Search
                 v-if="prompt.type === 'note'"
                 :model-value="prompt.value"
-                placeholder="Path to note..."
+                :placeholder="t('settings.ai.AgentEditorModal.path_to_note.ef6763e6')"
                 :suggester="FileSuggest"
                 @update:model-value="setPromptValue(idx, $event)"
               />
@@ -114,7 +145,9 @@
                 v-else
                 :model-value="prompt.value"
                 as-text-area
-                placeholder="Instructions for this agent..."
+                :placeholder="
+                  t('settings.ai.AgentEditorModal.instructions_for_this_agent.6ef9a0d2')
+                "
                 @update:model-value="setPromptValue(idx, $event)"
               />
             </Card>
@@ -122,18 +155,18 @@
 
           <EmptyState
             v-if="!agent.prompts.length"
-            text="No prompt blocks. This agent runs with no instructions of its own."
+            :text="t('settings.ai.AgentEditorModal.no_prompt_blocks_this_agent.856efff4')"
           />
 
           <div class="abele-agent-editor__actions">
             <Button
-              text="Add text block"
-              tooltip="Append a block of instructions written here"
+              :text="t('settings.ai.AgentEditorModal.add_text_block.4b0903f4')"
+              :tooltip="t('settings.ai.AgentEditorModal.append_a_block_of_instructions.b6b6e5b8')"
               @click="addPrompt('text')"
             />
             <Button
-              text="Add note block"
-              tooltip="Append a block read from a note in the vault"
+              :text="t('settings.ai.AgentEditorModal.add_note_block.34512584')"
+              :tooltip="t('settings.ai.AgentEditorModal.append_a_block_read_from.f3396cf7')"
               @click="addPrompt('note')"
             />
           </div>
@@ -148,7 +181,10 @@
 
         <!-- Access -->
         <template v-else-if="section === 'access'">
-          <Setting name="Permission mode" desc="What this agent may do without asking.">
+          <Setting
+            :name="t('settings.ai.AgentEditorModal.permission_mode.c7a8e6db')"
+            :desc="t('settings.ai.AgentEditorModal.what_this_agent_may_do.5022e01c')"
+          >
             <Dropdown
               :model-value="agent.permissionMode"
               :options="PERMISSION_OPTIONS"
@@ -157,8 +193,8 @@
           </Setting>
 
           <Section
-            title="GitHub connections"
-            desc="Off: no access. Ask: approve each operation in an interactive chat. On: use without asking. New connections start Off on every server. These choices do not enable an Off tool."
+            :title="t('settings.ai.AgentEditorModal.github_connections.e95944e1')"
+            :desc="t('settings.ai.AgentEditorModal.off_no_access_ask_approve.d4da8c61')"
           >
             <Setting
               v-for="connection in githubConnections"
@@ -166,7 +202,7 @@
               :name="connection.name"
               :desc="
                 connectionUnavailableReason(connection) ||
-                `${connection.server || 'github.com'}${connection.account ? ' · ' + connection.account.login : ''}`
+                `${connection.server || t('settings.ai.AgentEditorModal.github_com.3aeb0024')}${connection.account ? ' · ' + connection.account.login : ''}`
               "
             >
               <Dropdown
@@ -186,8 +222,12 @@
             <Setting
               v-for="id in missingGithubConnections"
               :key="id"
-              :name="`Unavailable connection: ${id}`"
-              desc="This agent refers to a connection not present on this device. Transfer the connection or leave it Off."
+              :name="
+                t('settings.ai.AgentEditorModal.unavailable_connection_value.795252e1', {
+                  value0: String(id),
+                })
+              "
+              :desc="t('settings.ai.AgentEditorModal.this_agent_refers_to_a.48e627ef')"
             >
               <Dropdown
                 :model-value="agent.githubConnections?.[id] ?? 'off'"
@@ -201,9 +241,8 @@
             </Setting>
           </Section>
           <Section
-            title="Scope"
-            desc="Where this agent works by default. A delegated run also gets whatever the chat
-              that delegated to it had open."
+            :title="t('settings.ai.AgentEditorModal.scope.b073f6c6')"
+            :desc="t('settings.ai.AgentEditorModal.where_this_agent_works_by.08d21d74')"
           >
             <AiScopeEditor
               :entries="agent.scope"
@@ -214,19 +253,24 @@
           </Section>
 
           <Section
-            title="Tools"
-            desc="Off = unavailable. Ask = needs approval. Auto = runs on its own. File tools are
-              always available and governed by the permission mode above."
+            :title="t('settings.ai.AgentEditorModal.tools.ea93d6a2')"
+            :desc="t('settings.ai.AgentEditorModal.off_unavailable_ask_needs_approval.845b7983')"
           >
             <Setting
-              name="Offer tools"
-              desc="By section: the agent sees one entry per section with what it is for, and opens a section when it needs it. All at once: every enabled tool is offered from the start."
+              :name="t('settings.ai.AgentEditorModal.offer_tools.677c3882')"
+              :desc="t('settings.ai.AgentEditorModal.by_section_the_agent_sees.636028d7')"
             >
               <Dropdown
                 :model-value="toolDiscoveryMode(agent)"
                 :options="[
-                  { value: 'sections', display: 'By section' },
-                  { value: 'all-at-once', display: 'All at once' },
+                  {
+                    value: 'sections',
+                    display: t('settings.ai.AgentEditorModal.by_section.2c8a0eb5'),
+                  },
+                  {
+                    value: 'all-at-once',
+                    display: t('settings.ai.AgentEditorModal.all_at_once.f9068371'),
+                  },
                 ]"
                 @update:model-value="patch({ toolDiscovery: $event as 'sections' | 'all-at-once' })"
               />
@@ -256,7 +300,10 @@
 
         <!-- Skills -->
         <template v-else-if="section === 'skills'">
-          <Setting name="Skills" desc="Which skills this agent can load on demand.">
+          <Setting
+            :name="t('settings.ai.AgentEditorModal.skills.66d0f523')"
+            :desc="t('settings.ai.AgentEditorModal.which_skills_this_agent_can.a35316d3')"
+          >
             <Dropdown
               :model-value="agent.skillsMode"
               :options="SKILL_MODES"
@@ -278,16 +325,18 @@
             </Setting>
 
             <EmptyState v-if="!skills.length">
-              No skills in this vault. Skills are notes with <code>type: abele-skill</code>.
-            </EmptyState>
+              <I18nText :text="t('settings.rich.ae545f75ff9437be', { slot0: '⟪slot0⟫' })"
+                ><template #slot0><code>type: abele-skill</code></template></I18nText
+              ></EmptyState
+            >
           </template>
         </template>
 
         <!-- Delegation -->
         <template v-else-if="section === 'delegation'">
           <Setting
-            name="Delegation depth"
-            desc="How far this agent may delegate. 0 removes the delegate tool entirely."
+            :name="t('settings.ai.AgentEditorModal.delegation_depth.29ea0156')"
+            :desc="t('settings.ai.AgentEditorModal.how_far_this_agent_may.3ae4d41e')"
           >
             <Dropdown
               :model-value="String(agent.maxDelegateDepth)"
@@ -302,6 +351,8 @@
 </template>
 
 <script setup lang="ts">
+import I18nText from '@/components/obsidian/I18nText.vue'
+import { t } from '@/i18n'
 import { isGithubConnection, connectionUnavailableReason } from '@/github/connections'
 import { computed, ref } from 'vue'
 import ObsidianModal from '../../obsidian/Modal.vue'
@@ -347,33 +398,33 @@ const props = defineProps<{ agentId: string }>()
 const emit = defineEmits<{ close: []; changed: [] }>()
 
 const SECTIONS = [
-  { id: 'basic', label: 'Basic' },
-  { id: 'prompts', label: 'Prompts' },
-  { id: 'memory', label: 'Memory' },
-  { id: 'access', label: 'Access' },
-  { id: 'skills', label: 'Skills' },
-  { id: 'delegation', label: 'Delegation' },
+  { id: 'basic', label: t('settings.ai.AgentEditorModal.basic.0e35f6e9') },
+  { id: 'prompts', label: t('settings.ai.AgentEditorModal.prompts.5f2e66e6') },
+  { id: 'memory', label: t('settings.ai.AgentEditorModal.memory.c3963aed') },
+  { id: 'access', label: t('settings.ai.AgentEditorModal.access.ec5ba0ab') },
+  { id: 'skills', label: t('settings.ai.AgentEditorModal.skills.66d0f523') },
+  { id: 'delegation', label: t('settings.ai.AgentEditorModal.delegation.a6d910ba') },
 ]
 
 /** Written out in script: nested moustaches in the template confuse the Vue parser. */
 const DATE_TOKEN = '{{date}}'
 
 const PROMPT_TYPES = [
-  { value: 'text', display: 'Text' },
-  { value: 'note', display: 'Note' },
+  { value: 'text', display: t('settings.ai.AgentEditorModal.text.71988c4d') },
+  { value: 'note', display: t('settings.ai.AgentEditorModal.note.d8da2c49') },
 ]
 
 const SKILL_MODES = [
-  { value: 'all', display: 'All skills' },
-  { value: 'none', display: 'No skills' },
-  { value: 'selected', display: 'Only selected' },
+  { value: 'all', display: t('settings.ai.AgentEditorModal.all_skills.78abcbbf') },
+  { value: 'none', display: t('settings.ai.AgentEditorModal.no_skills.5083cd4b') },
+  { value: 'selected', display: t('settings.ai.AgentEditorModal.only_selected.c1792bfe') },
 ]
 
 const DEPTH_OPTIONS = [
-  { value: '0', display: 'Cannot delegate' },
-  { value: '1', display: '1 level' },
-  { value: '2', display: '2 levels' },
-  { value: '3', display: '3 levels' },
+  { value: '0', display: t('settings.ai.AgentEditorModal.cannot_delegate.6a16ca61') },
+  { value: '1', display: t('settings.ai.AgentEditorModal.level.3292ae98') },
+  { value: '2', display: t('settings.ai.AgentEditorModal.levels.8b7cdd29') },
+  { value: '3', display: t('settings.ai.AgentEditorModal.levels.93b1554a') },
 ]
 
 const registry = AgentRegistry.getInstance()
@@ -382,9 +433,9 @@ const config = AbeleConfig.getInstance()
 /** The stored, reactive agent — edits reach open chats as they are typed. */
 const agent = computed(() => registry.get(props.agentId))
 const CONNECTION_MODES = [
-  { value: 'off', display: 'Off' },
-  { value: 'ask', display: 'Ask' },
-  { value: 'auto', display: 'On' },
+  { value: 'off', display: t('settings.ai.AgentEditorModal.off.ca7981b4') },
+  { value: 'ask', display: t('settings.ai.AgentEditorModal.ask.b8c209cd') },
+  { value: 'auto', display: t('settings.ai.AgentEditorModal.on.13001175') },
 ]
 const githubConnections = computed(() => {
   void config.version.value

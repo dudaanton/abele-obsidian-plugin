@@ -1,17 +1,21 @@
 <template>
   <Section
-    title="Synced keys"
-    desc="Every API key and token kept in one encrypted store that syncs with the plugin's settings. Each device needs only the passphrase, typed once. Without it the store is unreadable, on any device and in any copy of the settings file."
+    :title="t('settings.SecretStoreSettings.synced_keys.a764d83d')"
+    :desc="t('settings.SecretStoreSettings.every_api_key_and_token.5e8bd0ab')"
   >
-    <Setting name="Status" :desc="statusDesc">
+    <Setting :name="t('settings.SecretStoreSettings.status.920e413c')" :desc="statusDesc">
       <Badge :text="statusLabel" :color="statusColor" />
     </Setting>
 
     <Setting
-      name="All keys"
-      desc="Every key the plugin uses on this device: what it is for, whether it is synced, and a way to show or copy it."
+      :name="t('settings.SecretStoreSettings.all_keys.9e5c5da4')"
+      :desc="t('settings.SecretStoreSettings.every_key_the_plugin_uses.f09952da')"
     >
-      <Button text="Show" tooltip="List every key on this device" @click="listing = true" />
+      <Button
+        :text="t('settings.SecretStoreSettings.show.0df6f1ca')"
+        :tooltip="t('settings.SecretStoreSettings.list_every_key_on_this.ab7f11c1')"
+        @click="listing = true"
+      />
     </Setting>
     <SecretsListModal v-if="listing" @close="listing = false" />
 
@@ -19,34 +23,55 @@
     <template v-if="status === 'off'">
       <template v-if="form === 'create'">
         <Setting
-          name="Passphrase"
-          desc="At least 12 characters. Typed on every device that should have the keys; nothing can recover it."
+          :name="t('settings.SecretStoreSettings.passphrase.e7611f05')"
+          :desc="t('settings.SecretStoreSettings.at_least_characters_typed_on.fcf5d43e')"
         >
-          <Input v-model="passphrase" password placeholder="Passphrase" />
+          <Input
+            v-model="passphrase"
+            password
+            :placeholder="t('settings.SecretStoreSettings.passphrase.e7611f05')"
+          />
         </Setting>
-        <Setting name="Repeat the passphrase" :desc="repeatDesc">
-          <Input v-model="repeat" password placeholder="Passphrase again" />
+        <Setting
+          :name="t('settings.SecretStoreSettings.repeat_the_passphrase.4b93336c')"
+          :desc="repeatDesc"
+        >
+          <Input
+            v-model="repeat"
+            password
+            :placeholder="t('settings.SecretStoreSettings.passphrase_again.47b97578')"
+          />
         </Setting>
-        <Setting :name="`Keys moving into the store: ${pluginKeyCount}`">
-          <Button text="Cancel" tooltip="Close this and change nothing" @click="closeForm" />
+        <Setting
+          :name="
+            t('settings.SecretStoreSettings.keys_moving_into_the_store.fadc3573', {
+              value0: String(pluginKeyCount),
+            })
+          "
+        >
           <Button
-            text="Turn on"
+            :text="t('settings.SecretStoreSettings.cancel.19766ed6')"
+            :tooltip="t('settings.SecretStoreSettings.close_this_and_change_nothing.80f7e492')"
+            @click="closeForm"
+          />
+          <Button
+            :text="t('settings.SecretStoreSettings.turn_on.5a1f096a')"
             accent
             :disabled="!newPassphraseOk || busy"
-            tooltip="Encrypt this device's keys into the store and sync them"
+            :tooltip="t('settings.SecretStoreSettings.encrypt_this_device_s_keys.4fb9ef24')"
             @click="enable"
           />
         </Setting>
       </template>
       <Setting
         v-else
-        name="Turn on"
-        desc="Moves the keys this device has into the store, under a passphrase you choose."
+        :name="t('settings.SecretStoreSettings.turn_on.5a1f096a')"
+        :desc="t('settings.SecretStoreSettings.moves_the_keys_this_device.07bf9910')"
       >
         <Button
-          text="Set up"
+          :text="t('settings.SecretStoreSettings.set_up.4da10f1f')"
           accent
-          tooltip="Choose a passphrase for the synced keys"
+          :tooltip="t('settings.SecretStoreSettings.choose_a_passphrase_for_the.6f457f5b')"
           @click="openForm('create')"
         />
       </Setting>
@@ -54,15 +79,19 @@
 
     <!-- A store this device cannot open: locked, or its passphrase moved on -->
     <template v-if="status === 'locked' || status === 'stale'">
-      <Setting name="Passphrase" :desc="unlockDesc">
-        <Input v-model="passphrase" password placeholder="Passphrase" />
+      <Setting :name="t('settings.SecretStoreSettings.passphrase.e7611f05')" :desc="unlockDesc">
+        <Input
+          v-model="passphrase"
+          password
+          :placeholder="t('settings.SecretStoreSettings.passphrase.e7611f05')"
+        />
       </Setting>
-      <Setting name="Unlock on this device">
+      <Setting :name="t('settings.SecretStoreSettings.unlock_on_this_device.ec7699b7')">
         <Button
-          text="Unlock"
+          :text="t('settings.SecretStoreSettings.unlock.4ac709aa')"
           accent
           :disabled="!passphrase || busy"
-          tooltip="Open the store here and put its keys in this device's keychain"
+          :tooltip="t('settings.SecretStoreSettings.open_the_store_here_and.879288fd')"
           @click="unlock"
         />
       </Setting>
@@ -72,53 +101,72 @@
     <template v-if="status === 'unlocked'">
       <template v-if="form === 'change'">
         <Setting
-          name="New passphrase"
-          desc="Every other device asks for it once, the next time the settings reach it."
+          :name="t('settings.SecretStoreSettings.new_passphrase.5cc14549')"
+          :desc="t('settings.SecretStoreSettings.every_other_device_asks_for.6b298c8e')"
         >
-          <Input v-model="passphrase" password placeholder="New passphrase" />
+          <Input
+            v-model="passphrase"
+            password
+            :placeholder="t('settings.SecretStoreSettings.new_passphrase.5cc14549')"
+          />
         </Setting>
-        <Setting name="Repeat the new passphrase" :desc="repeatDesc">
-          <Input v-model="repeat" password placeholder="New passphrase again" />
+        <Setting
+          :name="t('settings.SecretStoreSettings.repeat_the_new_passphrase.c0e298be')"
+          :desc="repeatDesc"
+        >
+          <Input
+            v-model="repeat"
+            password
+            :placeholder="t('settings.SecretStoreSettings.new_passphrase_again.6ab2f2bb')"
+          />
         </Setting>
-        <Setting name="Change the passphrase">
-          <Button text="Cancel" tooltip="Close this and change nothing" @click="closeForm" />
+        <Setting :name="t('settings.SecretStoreSettings.change_the_passphrase.a9a3e51b')">
           <Button
-            text="Change"
+            :text="t('settings.SecretStoreSettings.cancel.19766ed6')"
+            :tooltip="t('settings.SecretStoreSettings.close_this_and_change_nothing.80f7e492')"
+            @click="closeForm"
+          />
+          <Button
+            :text="t('settings.SecretStoreSettings.change.c0bf75bd')"
             accent
             :disabled="!newPassphraseOk || busy"
-            tooltip="Encrypt the store again under the new passphrase"
+            :tooltip="t('settings.SecretStoreSettings.encrypt_the_store_again_under.d0f767af')"
             @click="change"
           />
         </Setting>
       </template>
       <Setting
         v-else
-        name="Change passphrase"
-        desc="The keys are encrypted again. Other devices keep working with their keys, and ask for the new passphrase."
+        :name="t('settings.SecretStoreSettings.change_passphrase.a0ffb851')"
+        :desc="t('settings.SecretStoreSettings.the_keys_are_encrypted_again.78c3db29')"
       >
-        <Button text="Change" tooltip="Choose a new passphrase" @click="openForm('change')" />
+        <Button
+          :text="t('settings.SecretStoreSettings.change.c0bf75bd')"
+          :tooltip="t('settings.SecretStoreSettings.choose_a_new_passphrase.bedf8286')"
+          @click="openForm('change')"
+        />
       </Setting>
 
       <Setting
-        name="Remove from this device"
-        desc="The passphrase and every key in the store leave this device. The store and other devices keep them; unlock again to get them back."
+        :name="t('settings.SecretStoreSettings.remove_from_this_device.43b9a522')"
+        :desc="t('settings.SecretStoreSettings.the_passphrase_and_every_key.adebe1d0')"
       >
         <Button
-          text="Remove"
+          :text="t('settings.SecretStoreSettings.remove.c3812fc4')"
           warning
-          tooltip="Take the synced keys off this device"
+          :tooltip="t('settings.SecretStoreSettings.take_the_synced_keys_off.537f867f')"
           @click="confirming = 'lock'"
         />
       </Setting>
 
       <Setting
-        name="Turn off"
-        desc="The store leaves the settings. Every device that was unlocked keeps its keys in its own keychain; any other device will need them entered by hand."
+        :name="t('settings.SecretStoreSettings.turn_off.06f0e210')"
+        :desc="t('settings.SecretStoreSettings.the_store_leaves_the_settings.617a2df0')"
       >
         <Button
-          text="Turn off"
+          :text="t('settings.SecretStoreSettings.turn_off.06f0e210')"
           warning
-          tooltip="Stop syncing keys, keeping them on each device"
+          :tooltip="t('settings.SecretStoreSettings.stop_syncing_keys_keeping_them.e20ea31d')"
           @click="confirming = 'disable'"
         />
       </Setting>
@@ -127,41 +175,45 @@
     <!-- Damaged: nobody can open it, so the one way on is a new one -->
     <Setting
       v-if="status === 'damaged' || status === 'locked' || status === 'stale'"
-      name="Start over"
-      desc="Removes the store from the settings on every device, for a new one with a new passphrase. The keys this device has stay here."
+      :name="t('settings.SecretStoreSettings.start_over.5eed7e9f')"
+      :desc="t('settings.SecretStoreSettings.removes_the_store_from_the.2b150d0f')"
     >
       <Button
-        text="Start over"
+        :text="t('settings.SecretStoreSettings.start_over.5eed7e9f')"
         warning
-        tooltip="Remove the synced keys from the settings"
+        :tooltip="t('settings.SecretStoreSettings.remove_the_synced_keys_from.8aac0de2')"
         @click="confirming = 'discard'"
       />
     </Setting>
 
     <ConfirmModal
       v-if="confirming === 'lock'"
-      title="Remove the synced keys from this device"
-      :message="`The passphrase and the ${keysText} in the store leave this device's keychain. Features using them stop working here until it is unlocked again.`"
-      confirm-text="Remove"
-      confirm-tooltip="Take the synced keys off this device"
+      :title="t('settings.SecretStoreSettings.remove_the_synced_keys_from.b2662195')"
+      :message="
+        t('settings.SecretStoreSettings.the_passphrase_and_the_value.33ba68ae', {
+          value0: String(keysText),
+        })
+      "
+      :confirm-text="t('settings.SecretStoreSettings.remove.c3812fc4')"
+      :confirm-tooltip="t('settings.SecretStoreSettings.take_the_synced_keys_off.537f867f')"
       @confirm="lock"
       @close="confirming = null"
     />
     <ConfirmModal
       v-if="confirming === 'disable'"
-      title="Turn off synced keys"
-      message="The store leaves the settings on every device. Devices that were unlocked keep their keys; a new device will not get them."
-      confirm-text="Turn off"
-      confirm-tooltip="Stop syncing keys, keeping them on each device"
+      :title="t('settings.SecretStoreSettings.turn_off_synced_keys.f0438a6c')"
+      :message="t('settings.SecretStoreSettings.the_store_leaves_the_settings.b87b1814')"
+      :confirm-text="t('settings.SecretStoreSettings.turn_off.06f0e210')"
+      :confirm-tooltip="t('settings.SecretStoreSettings.stop_syncing_keys_keeping_them.e20ea31d')"
       @confirm="disable"
       @close="confirming = null"
     />
     <ConfirmModal
       v-if="confirming === 'discard'"
-      title="Start over"
-      message="The store is removed from the settings on every device, with every key in it that no device holds. This device's own keys stay."
-      confirm-text="Start over"
-      confirm-tooltip="Remove the synced keys from the settings"
+      :title="t('settings.SecretStoreSettings.start_over.5eed7e9f')"
+      :message="t('settings.SecretStoreSettings.the_store_is_removed_from.7d71216a')"
+      :confirm-text="t('settings.SecretStoreSettings.start_over.5eed7e9f')"
+      :confirm-tooltip="t('settings.SecretStoreSettings.remove_the_synced_keys_from.8aac0de2')"
       @confirm="discard"
       @close="confirming = null"
     />
@@ -169,6 +221,8 @@
 </template>
 
 <script setup lang="ts">
+import { settingsCount } from '@/i18n/settingsCounts'
+import { t } from '@/i18n'
 import { computed, ref, watch } from 'vue'
 import { Notice } from 'obsidian'
 import Section from '../obsidian/Section.vue'
@@ -212,35 +266,35 @@ watch(passphrase, () => {
   refused.value = false
 })
 
-const keysText = computed(() => `${count.value} ${count.value === 1 ? 'key' : 'keys'}`)
+const keysText = computed(() => settingsCount('key', count.value))
 
 const pluginKeyCount = computed(() => pluginSecretIds().filter((id) => secrets().get(id)).length)
 
 const LABELS: Record<string, { label: string; color: KitColor; desc: string }> = {
   off: {
-    label: 'Off',
+    label: t('settings.SecretStoreSettings.off.ca7981b4'),
     color: 'grey',
-    desc: 'Each device keeps its own keys, entered on that device.',
+    desc: t('settings.SecretStoreSettings.each_device_keeps_its_own.02c01692'),
   },
   locked: {
-    label: 'Locked on this device',
+    label: t('settings.SecretStoreSettings.locked_on_this_device.e1223c06'),
     color: 'orange',
-    desc: 'Another device keeps keys in the store. Enter its passphrase to have them here too.',
+    desc: t('settings.SecretStoreSettings.another_device_keeps_keys_in.f266e954'),
   },
   unlocked: {
-    label: 'Unlocked on this device',
+    label: t('settings.SecretStoreSettings.unlocked_on_this_device.09bd8bd4'),
     color: 'green',
     desc: '',
   },
   stale: {
-    label: 'Out of date',
+    label: t('settings.SecretStoreSettings.out_of_date.c8f1506a'),
     color: 'orange',
-    desc: 'The passphrase was changed on another device. Keys already here keep working; enter the new passphrase to get changes again.',
+    desc: t('settings.SecretStoreSettings.the_passphrase_was_changed_on.43f18603'),
   },
   damaged: {
-    label: 'Damaged',
+    label: t('settings.SecretStoreSettings.damaged.3604e21d'),
     color: 'red',
-    desc: 'The store in the settings file cannot be decrypted, though this device has the right passphrase: the file was changed by something other than the plugin. Keys already on this device keep working.',
+    desc: t('settings.SecretStoreSettings.the_store_in_the_settings.d9c2c3b8'),
   },
 }
 
@@ -248,16 +302,18 @@ const statusLabel = computed(() => LABELS[status.value].label)
 const statusColor = computed(() => LABELS[status.value].color)
 const statusDesc = computed(() =>
   status.value === 'unlocked'
-    ? `${keysText.value} in the store. A key added or changed anywhere in the plugin goes into it and reaches your other devices with the settings.`
+    ? t('settings.SecretStoreSettings.value_in_the_store_a.02db016b', {
+        value0: String(keysText.value),
+      })
     : LABELS[status.value].desc
 )
 
 const unlockDesc = computed(() =>
   refused.value
-    ? 'That passphrase does not open the store.'
+    ? t('settings.SecretStoreSettings.that_passphrase_does_not_open.525fb3a8')
     : status.value === 'stale'
-      ? 'The new passphrase, as set on the other device.'
-      : 'The passphrase chosen when synced keys were turned on.'
+      ? t('settings.SecretStoreSettings.the_new_passphrase_as_set.f4e9f983')
+      : t('settings.SecretStoreSettings.the_passphrase_chosen_when_synced.27696e36')
 )
 
 const newPassphraseOk = computed(
@@ -265,9 +321,11 @@ const newPassphraseOk = computed(
 )
 const repeatDesc = computed(() =>
   repeat.value && repeat.value !== passphrase.value
-    ? 'The two do not match.'
+    ? t('settings.SecretStoreSettings.the_two_do_not_match.184006b7')
     : passphrase.value && passphrase.value.length < MIN_PASSPHRASE
-      ? `At least ${MIN_PASSPHRASE} characters.`
+      ? t('settings.SecretStoreSettings.at_least_value_characters.0bd5b7d6', {
+          value0: String(MIN_PASSPHRASE),
+        })
       : ''
 )
 
@@ -299,8 +357,12 @@ async function run(action: () => Promise<void>, failed: string): Promise<void> {
 const enable = () =>
   run(async () => {
     await store.enable(passphrase.value)
-    new Notice(`Synced keys are on: ${store.count()} keys in the store.`)
-  }, 'Synced keys could not be turned on')
+    new Notice(
+      t('settings.SecretStoreSettings.synced_keys_are_on_value.406e7e86', {
+        value0: String(store.count()),
+      })
+    )
+  }, t('settings.SecretStoreSettings.synced_keys_could_not_be.162ddd6c'))
 
 const unlock = () =>
   run(async () => {
@@ -308,17 +370,24 @@ const unlock = () =>
       refused.value = true
       return
     }
-    new Notice(`Unlocked: ${store.count()} keys on this device.`)
-  }, 'The store could not be unlocked')
+    new Notice(
+      t('settings.SecretStoreSettings.unlocked_value_keys_on_this.646c741b', {
+        value0: String(store.count()),
+      })
+    )
+  }, t('settings.SecretStoreSettings.the_store_could_not_be.be373a49'))
 
 const change = () =>
   run(async () => {
     await store.changePassphrase(passphrase.value)
     closeForm()
-    new Notice('The passphrase is changed. Other devices will ask for it.')
-  }, 'The passphrase could not be changed')
+    new Notice(t('settings.SecretStoreSettings.the_passphrase_is_changed_other.b8dd49ec'))
+  }, t('settings.SecretStoreSettings.the_passphrase_could_not_be.61e326c1'))
 
-const lock = () => run(() => store.lock(), 'The keys could not be removed from this device')
-const disable = () => run(() => store.disable(), 'Synced keys could not be turned off')
-const discard = () => run(() => store.discard(), 'The store could not be removed')
+const lock = () =>
+  run(() => store.lock(), t('settings.SecretStoreSettings.the_keys_could_not_be.a70d217b'))
+const disable = () =>
+  run(() => store.disable(), t('settings.SecretStoreSettings.synced_keys_could_not_be.ac40cb3f'))
+const discard = () =>
+  run(() => store.discard(), t('settings.SecretStoreSettings.the_store_could_not_be.76043571'))
 </script>

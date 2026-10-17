@@ -126,7 +126,74 @@
     "helpers/areaDateFormat.ts",
     "components/timelineBase/timelineChrome.ts",
     "components/timelineBase/timelineDraw.ts",
-    "composables/useFinancePeriodSummary.ts"
+    "composables/useFinancePeriodSummary.ts",
+    "components/settings/NodesSettings.vue",
+    "components/settings/AiSettings.vue",
+    "components/settings/AttachmentRulesSettings.vue",
+    "components/settings/CalendarsSettings.vue",
+    "components/settings/FinanceSettings.vue",
+    "components/settings/GithubAccessReport.vue",
+    "components/settings/GithubConnectionEditor.vue",
+    "components/settings/GithubSettings.vue",
+    "components/settings/ImageModelEditModal.vue",
+    "components/settings/JournalsSettings.vue",
+    "components/settings/KeyDestinationsModal.vue",
+    "components/settings/LinksSettings.vue",
+    "components/settings/LintRuleModal.vue",
+    "components/settings/LinterSettings.vue",
+    "components/settings/LogsSettings.vue",
+    "components/settings/MapStylePreview.vue",
+    "components/settings/ModelEditModal.vue",
+    "components/settings/OtherSettings.vue",
+    "components/settings/QuickButtonSettings.vue",
+    "components/settings/ReaderSettings.vue",
+    "components/settings/SavedKeyRequestModal.vue",
+    "components/settings/ScriptsSettings.vue",
+    "components/settings/SecretField.vue",
+    "components/settings/SecretStoreSettings.vue",
+    "components/settings/SecretsListModal.vue",
+    "components/settings/SyncSettings.vue",
+    "components/settings/TaskLabelsSettings.vue",
+    "components/settings/TasksSettings.vue",
+    "components/settings/TimeTrackingSettings.vue",
+    "components/settings/TransferSettings.vue",
+    "components/settings/ai/AgentEditorModal.vue",
+    "components/settings/ai/AgentMemoryEditor.vue",
+    "components/settings/ai/AgentsSettings.vue",
+    "components/settings/ai/GeneralSettings.vue",
+    "components/settings/ai/InterceptorList.vue",
+    "components/settings/ai/InterceptorSettings.vue",
+    "components/settings/ai/McpServerModal.vue",
+    "components/settings/ai/McpSettings.vue",
+    "components/settings/ai/ProviderSettings.vue",
+    "components/settings/ai/ToolDescriptions.vue",
+    "components/settings/ai/interceptorList.ts",
+    "components/settings/ai/options.ts",
+    "components/settings/scripts/AutomationsEditor.vue",
+    "components/settings/scripts/HeaderButtonsEditor.vue",
+    "components/settings/scripts/ScriptLibrary.vue",
+    "components/settings/scripts/ScriptsGeneral.vue",
+    "components/settings/scripts/SelectionScriptsSettings.vue",
+    "components/settings/scripts/StartupScriptsEditor.vue",
+    "components/settings/settingsHeaderRoom.ts",
+    "components/settings/settingsTab.ts",
+    "components/settings/sync/ExternalFileRules.vue",
+    "components/settings/sync/SelectiveSync.vue",
+    "components/settings/transfer/TransferPreviewModal.vue",
+    "components/settings/transfer/TransferScanModal.vue",
+    "components/settings/transfer/TransferSendModal.vue",
+    "components/obsidian/I18nText.vue",
+    "components/AiScopeEditor.vue",
+    "components/ToolModesEditor.vue",
+    "helpers/suggesters/ScopeSuggest.ts",
+    "i18n/commandLabels.ts",
+    "i18n/settingsLabels.ts",
+    "i18n/settingsCounts.ts",
+    "i18n/settingsSync.ts",
+    "sync/presentation.ts",
+    "components/reader/ReaderSettingsForm.vue",
+    "components/reader/BookNotesSettings.vue",
+    "components/reader/BookScriptsSettings.vue"
   ],
   "exceptions": [
     {
@@ -213,6 +280,276 @@
       "path": "components/calendarBase/CalendarYear.vue",
       "text": "MMMM",
       "reason": "Display date format token"
+    },
+    {
+      "path": "components/settings/NodesSettings.vue",
+      "text": "http://127.0.0.1:7777",
+      "reason": "Literal local endpoint example, not translated"
+    },
+    {
+      "path": "components/settings/AiSettings.vue",
+      "text": "MCP",
+      "reason": "Brand, protocol, currency, identifier, or literal input example"
+    },
+    {
+      "path": "components/settings/CalendarsSettings.vue",
+      "text": "https://caldav.icloud.com",
+      "reason": "Brand, protocol, currency, identifier, or literal input example"
+    },
+    {
+      "path": "components/settings/CalendarsSettings.vue",
+      "text": "name@example.com",
+      "reason": "Brand, protocol, currency, identifier, or literal input example"
+    },
+    {
+      "path": "components/settings/FinanceSettings.vue",
+      "text": "USD",
+      "reason": "Brand, protocol, currency, identifier, or literal input example"
+    },
+    {
+      "path": "components/settings/GithubSettings.vue",
+      "text": "GitHub",
+      "reason": "Brand, protocol, currency, identifier, or literal input example"
+    },
+    {
+      "path": "components/settings/LinterSettings.vue",
+      "text": "// @lint",
+      "reason": "Literal script/property syntax, not presentation prose"
+    },
+    {
+      "path": "components/settings/LinterSettings.vue",
+      "text": "check(note)",
+      "reason": "Literal script/property syntax, not presentation prose"
+    },
+    {
+      "path": "components/settings/LinterSettings.vue",
+      "text": "fix(note)",
+      "reason": "Literal script/property syntax, not presentation prose"
+    },
+    {
+      "path": "components/settings/OtherSettings.vue",
+      "text": "https://example.com/style.json",
+      "reason": "Brand, protocol, currency, identifier, or literal input example"
+    },
+    {
+      "path": "components/settings/ai/AgentEditorModal.vue",
+      "text": "type: abele-skill",
+      "reason": "Literal script/property syntax, not presentation prose"
+    },
+    {
+      "path": "components/settings/ai/AgentsSettings.vue",
+      "text": "Agent ",
+      "reason": "Persisted generated agent name remains language invariant"
+    },
+    {
+      "path": "components/settings/ai/GeneralSettings.vue",
+      "text": "BSA...",
+      "reason": "Brand, protocol, currency, identifier, or literal input example"
+    },
+    {
+      "path": "components/settings/ai/GeneralSettings.vue",
+      "text": "${abele_key:name}",
+      "reason": "Literal script/property syntax, not presentation prose"
+    },
+    {
+      "path": "components/settings/ai/GeneralSettings.vue",
+      "text": "https://api.openai.com/v1",
+      "reason": "Brand, protocol, currency, identifier, or literal input example"
+    },
+    {
+      "path": "components/settings/ai/GeneralSettings.vue",
+      "text": "https://openrouter.ai/api/v1/chat/completions",
+      "reason": "Brand, protocol, currency, identifier, or literal input example"
+    },
+    {
+      "path": "components/settings/ai/GeneralSettings.vue",
+      "text": "sk-or-...",
+      "reason": "Brand, protocol, currency, identifier, or literal input example"
+    },
+    {
+      "path": "components/settings/ai/GeneralSettings.vue",
+      "text": "ID",
+      "reason": "Brand, protocol, currency, identifier, or literal input example"
+    },
+    {
+      "path": "components/settings/ai/McpServerModal.vue",
+      "text": "URL",
+      "reason": "Brand, protocol, currency, identifier, or literal input example"
+    },
+    {
+      "path": "components/settings/ai/McpServerModal.vue",
+      "text": "https://example.com/mcp",
+      "reason": "Brand, protocol, currency, identifier, or literal input example"
+    },
+    {
+      "path": "components/settings/ai/ProviderSettings.vue",
+      "text": "sk-...",
+      "reason": "Brand, protocol, currency, identifier, or literal input example"
+    },
+    {
+      "path": "components/settings/scripts/AutomationsEditor.vue",
+      "text": "event",
+      "reason": "Literal script/property syntax, not presentation prose"
+    },
+    {
+      "path": "components/settings/scripts/HeaderButtonsEditor.vue",
+      "text": "play",
+      "reason": "Brand, protocol, currency, identifier, or literal input example"
+    },
+    {
+      "path": "components/settings/scripts/ScriptLibrary.vue",
+      "text": "@name",
+      "reason": "Literal script/property syntax, not presentation prose"
+    },
+    {
+      "path": "components/settings/scripts/ScriptLibrary.vue",
+      "text": "@description",
+      "reason": "Literal script/property syntax, not presentation prose"
+    },
+    {
+      "path": "components/settings/scripts/ScriptLibrary.vue",
+      "text": "@icon",
+      "reason": "Literal script/property syntax, not presentation prose"
+    },
+    {
+      "path": "components/settings/scripts/ScriptLibrary.vue",
+      "text": "@param",
+      "reason": "Literal script/property syntax, not presentation prose"
+    },
+    {
+      "path": "components/settings/scripts/ScriptLibrary.vue",
+      "text": "@toolbar",
+      "reason": "Literal script/property syntax, not presentation prose"
+    },
+    {
+      "path": "components/settings/scripts/ScriptLibrary.vue",
+      "text": "@startup",
+      "reason": "Literal script/property syntax, not presentation prose"
+    },
+    {
+      "path": "components/settings/ImageModelEditModal.vue",
+      "text": "PNG",
+      "reason": "Stable file-format identifier or provider brand"
+    },
+    {
+      "path": "components/settings/ImageModelEditModal.vue",
+      "text": "JPEG",
+      "reason": "Stable file-format identifier or provider brand"
+    },
+    {
+      "path": "components/settings/ImageModelEditModal.vue",
+      "text": "WebP",
+      "reason": "Stable file-format identifier or provider brand"
+    },
+    {
+      "path": "components/settings/ai/GeneralSettings.vue",
+      "text": "OpenAI",
+      "reason": "Stable file-format identifier or provider brand"
+    },
+    {
+      "path": "components/settings/ai/GeneralSettings.vue",
+      "text": "OpenRouter",
+      "reason": "Stable file-format identifier or provider brand"
+    },
+    {
+      "path": "components/reader/ReaderSettingsForm.vue",
+      "text": "Fonts",
+      "reason": "Literal folder-path example or pixel unit"
+    },
+    {
+      "path": "components/reader/ReaderSettingsForm.vue",
+      "text": " px",
+      "reason": "Literal folder-path example or pixel unit"
+    },
+    {
+      "path": "components/reader/ReaderSettingsForm.vue",
+      "text": "PDF",
+      "reason": "Standard file format name"
+    },
+    {
+      "path": "components/RecurrencePicker.vue",
+      "text": "Monday",
+      "reason": "English fallback metadata; actual display is replaced by areaDate"
+    },
+    {
+      "path": "components/RecurrencePicker.vue",
+      "text": "Tuesday",
+      "reason": "English fallback metadata; actual display is replaced by areaDate"
+    },
+    {
+      "path": "components/RecurrencePicker.vue",
+      "text": "Wednesday",
+      "reason": "English fallback metadata; actual display is replaced by areaDate"
+    },
+    {
+      "path": "components/RecurrencePicker.vue",
+      "text": "Thursday",
+      "reason": "English fallback metadata; actual display is replaced by areaDate"
+    },
+    {
+      "path": "components/RecurrencePicker.vue",
+      "text": "Friday",
+      "reason": "English fallback metadata; actual display is replaced by areaDate"
+    },
+    {
+      "path": "components/RecurrencePicker.vue",
+      "text": "Saturday",
+      "reason": "English fallback metadata; actual display is replaced by areaDate"
+    },
+    {
+      "path": "components/RecurrencePicker.vue",
+      "text": "Sunday",
+      "reason": "English fallback metadata; actual display is replaced by areaDate"
+    },
+    {
+      "path": "components/RecurrencePicker.vue",
+      "text": "dddd",
+      "reason": "Day.js date format token"
+    },
+    {
+      "path": "finance/rates/exchangeRates.ts",
+      "text": "USD",
+      "reason": "ISO currency code"
+    },
+    {
+      "path": "composables/useFinancePeriodSummary.ts",
+      "text": "USD",
+      "reason": "ISO currency code"
+    },
+    {
+      "path": "components/settings/GithubConnectionEditor.vue",
+      "text": "GitHub",
+      "reason": "Provider brand"
+    },
+    {
+      "path": "components/settings/GithubConnectionEditor.vue",
+      "text": "https://git.example.test",
+      "reason": "Literal example server address"
     }
+  ],
+  "commandFiles": [
+    "canvas/excalidrawAdapter.ts",
+    "canvas/register.ts",
+    "changelog/register.ts",
+    "checkboxes/register.ts",
+    "columns/register.ts",
+    "commands/attachChat.ts",
+    "commands/chatAboutNote.ts",
+    "commands/noteMenu.ts",
+    "comments/register.ts",
+    "drawing/register.ts",
+    "github/register.ts",
+    "lineLinks/register.ts",
+    "linter/register.ts",
+    "main.ts",
+    "reader/register.ts",
+    "requests/views.ts",
+    "scripting/ScriptService.ts",
+    "slides/register.ts",
+    "startup/registerAiFeatures.ts",
+    "startup/registerCoreCommands.ts",
+    "startup/registerViews.ts",
+    "zen/registerZen.ts",
+    "sync/external/registerActions.ts"
   ]
 }

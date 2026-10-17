@@ -1,28 +1,41 @@
 <template>
   <div class="abele-settings__time-tracking">
     <Setting
-      name="Time entry path template"
-      desc="Template for new time entry file paths. Variables: {{groups}}, {{start}}, {{end}}, {{date:FORMAT}}."
+      :name="t('settings.TimeTrackingSettings.time_entry_path_template.b06163ff')"
+      :desc="
+        t('settings.TimeTrackingSettings.template_for_new_time_entry.ef1556e8', {
+          literalDate: '{{date:FORMAT}}',
+          literal0: String('{{groups}}'),
+          literal1: String('{{start}}'),
+          literal2: String('{{end}}'),
+        })
+      "
     >
       <Input
         :model-value="timeEntryPathTemplate"
-        placeholder="e.g. Time/{{date:YYYY/MM}}/{{groups}} {{start}}"
+        :placeholder="
+          t('settings.TimeTrackingSettings.e_g_time_date_yyyy.dfcd03ce', {
+            literal2: String('Time/{{date:YYYY/MM}}/{{groups}} {{start}}'),
+          })
+        "
         @update:model-value="timeEntryPathTemplateChanged"
       />
     </Setting>
     <Setting
-      name="Trackable note types"
-      desc="Comma-separated note types that show the timer button in header (e.g. task,project)."
+      :name="t('settings.TimeTrackingSettings.trackable_note_types.4b331926')"
+      :desc="t('settings.TimeTrackingSettings.comma_separated_note_types_that.e5d132fd')"
     >
       <Input
         :model-value="timeTrackableNoteTypes"
-        placeholder="e.g. task"
+        :placeholder="
+          t('settings.TimeTrackingSettings.e_g_task.1c985447', { literal0: String('task') })
+        "
         @update:model-value="timeTrackableNoteTypesChanged"
       />
     </Setting>
     <Setting
-      name="Track all notes"
-      desc="Show the timer button in the header for all notes, regardless of type."
+      :name="t('settings.TimeTrackingSettings.track_all_notes.41a2243c')"
+      :desc="t('settings.TimeTrackingSettings.show_the_timer_button_in.983d0303')"
     >
       <Checkbox :is-enabled="timeTrackAllNotes" @toggle="timeTrackAllNotesChanged" />
     </Setting>
@@ -30,6 +43,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { ref } from 'vue'
 import Setting from '../obsidian/Setting.vue'
 import Input from '../obsidian/Input.vue'

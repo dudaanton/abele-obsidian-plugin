@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import type { App, Plugin } from 'obsidian'
 import { noticeWithActions } from '@/components/obsidian/notice'
 import { startChangelog } from './startup'
@@ -13,7 +14,7 @@ export function registerChangelog(plugin: Plugin): void {
   plugin.registerView(CHANGELOG_VIEW_TYPE, (leaf) => new ChangelogView(leaf))
   plugin.addCommand({
     id: 'open-changelog',
-    name: 'Open changelog',
+    name: t('commands.open-changelog'),
     icon: 'list',
     callback: () => void openChangelog(app),
   })

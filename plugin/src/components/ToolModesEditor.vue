@@ -1,7 +1,10 @@
 <template>
   <div class="abele-tool-modes">
     <div v-if="!hideShowAll && !descriptionsOnly" class="abele-tool-modes__toggle">
-      <Setting name="Show core tools" desc="Show always-on tools that cannot be disabled.">
+      <Setting
+        :name="t('settings.components.ToolModesEditor.show_core_tools.bea400e8')"
+        :desc="t('settings.components.ToolModesEditor.show_always_on_tools_that.841d8a03')"
+      >
         <Checkbox :is-enabled="showAll" @toggle="showAll = !showAll" />
       </Setting>
     </div>
@@ -9,8 +12,8 @@
     <!-- Shortcuts only: they set every tool's own dropdown below, which stays to be changed. -->
     <Setting
       v-if="!descriptionsOnly && allTools.length > 1"
-      name="All tools"
-      desc="Sets every tool below at once. Each can still be changed on its own after."
+      :name="t('settings.components.ToolModesEditor.all_tools.81c151f9')"
+      :desc="t('settings.components.ToolModesEditor.sets_every_tool_below_at.54f57dce')"
       class="abele-tool-modes__bulk abele-tool-modes__bulk--all"
     >
       <Button
@@ -18,7 +21,11 @@
         :key="option.value"
         :text="option.display"
         :accent="sharedMode(allTools) === option.value"
-        :tooltip="`Set every tool to ${option.display}`"
+        :tooltip="
+          t('settings.components.ToolModesEditor.set_every_tool_to_value.5861bfee', {
+            value0: String(option.display),
+          })
+        "
         @click="setAll(allTools, option.value)"
       />
     </Setting>
@@ -42,14 +49,18 @@
         <span
           v-if="bySection && !descriptionsOnly && ALWAYS_LOADED_GROUPS.has(group.category)"
           class="abele-tool-modes__opening-fixed"
-          >Always open</span
+          >{{ t('settings.components.ToolModesEditor.always_open.67b6ffc1') }}</span
         >
         <Dropdown
           v-else-if="bySection && !descriptionsOnly"
           class="abele-tool-modes__opening"
           :model-value="opening(group.category)"
           :options="OPENING_OPTIONS"
-          :aria-label="`When ${group.category} is open`"
+          :aria-label="
+            t('settings.components.ToolModesEditor.when_value_is_open.37a2f90a', {
+              value0: String(sectionLabel(group.category)),
+            })
+          "
           @update:model-value="
             emit('updateOpening', sectionIdOfGroup(group.category), $event as SectionOpening)
           "
@@ -66,7 +77,11 @@
           <Icon
             icon="pencil"
             size="xs"
-            :tooltip="`Change what ${group.category} is said to be for`"
+            :tooltip="
+              t('settings.components.ToolModesEditor.change_what_value_is_said.5508c12f', {
+                value0: String(group.category),
+              })
+            "
             @click="editingSection = group.category"
           />
         </template>
@@ -79,12 +94,15 @@
           <div class="abele-tool-modes__desc-reset">
             <Button
               v-if="props.sectionDescriptions[sectionIdOfGroup(group.category)]"
-              text="Reset to default"
+              :text="t('settings.components.ToolModesEditor.reset_to_default.bc5b45ae')"
               icon="rotate-ccw"
-              tooltip="Use the section's own description again"
+              :tooltip="t('settings.components.ToolModesEditor.use_the_section_s_own.e02f836f')"
               @click="emitSectionText(group.category, '')"
             />
-            <Button text="Done" @click="editingSection = null" />
+            <Button
+              :text="t('settings.components.ToolModesEditor.done.11a6767d')"
+              @click="editingSection = null"
+            />
           </div>
         </template>
       </div>
@@ -101,7 +119,13 @@
               :options="
                 sharedMode(action.tools)
                   ? modeOptions
-                  : [...modeOptions, { value: 'mixed', display: 'Mixed' }]
+                  : [
+                      ...modeOptions,
+                      {
+                        value: 'mixed',
+                        display: t('settings.components.ToolModesEditor.mixed.f340b6d6'),
+                      },
+                    ]
               "
               :aria-label="mixedSaid(action.tools)"
               @update:model-value="
@@ -115,11 +139,15 @@
             class="abele-tool-modes__members-toggle"
             :icon="openAction === action.id ? 'chevron-down' : 'chevron-right'"
             size="xs"
-            :text-right="`${action.tools.length} tools`"
+            :text-right="
+              t('settings.components.ToolModesEditor.value_tools.a2c9c9bb', {
+                value0: String(action.tools.length),
+              })
+            "
             :tooltip="
               openAction === action.id
-                ? 'Hide its tools'
-                : 'Show its tools, each with its own choice'
+                ? t('settings.components.ToolModesEditor.hide_its_tools.52db5aef')
+                : t('settings.components.ToolModesEditor.show_its_tools_each_with.3c99bb30')
             "
             @click="openAction = openAction === action.id ? null : action.id"
           />
@@ -140,7 +168,7 @@
 
       <Setting
         v-if="!descriptionsOnly && group.category !== NODE_SECTION && optionalOf(group).length > 1"
-        name="All in this section"
+        :name="t('settings.components.ToolModesEditor.all_in_this_section.3d4eba9d')"
         class="abele-tool-modes__bulk abele-tool-modes__bulk--section"
         :data-section="group.category"
       >
@@ -149,7 +177,12 @@
           :key="option.value"
           :text="option.display"
           :accent="sharedMode(optionalOf(group)) === option.value"
-          :tooltip="`Set every tool in ${group.category} to ${option.display}`"
+          :tooltip="
+            t('settings.components.ToolModesEditor.set_every_tool_in_value.82231b6a', {
+              value0: String(group.category),
+              value1: String(option.display),
+            })
+          "
           @click="setAll(optionalOf(group), option.value)"
         />
       </Setting>
@@ -157,8 +190,8 @@
       <!-- An MCP server is given to an agent whole; each tool can then be tuned below. -->
       <Setting
         v-if="group.mcp && !descriptionsOnly"
-        name="Use this server"
-        desc="Gives every tool of this server, each asking before it runs."
+        :name="t('settings.components.ToolModesEditor.use_this_server.8eb48b42')"
+        :desc="t('settings.components.ToolModesEditor.gives_every_tool_of_this.daa3c48e')"
       >
         <Checkbox :is-enabled="serverInUse(group)" @toggle="toggleServer(group)" />
       </Setting>
@@ -177,7 +210,9 @@
             @click="toggleDescEdit(tool.name)"
           />
           <span v-if="descriptionsOnly" />
-          <span v-else-if="isCore(tool.name)" class="abele-tool-modes__core">always on</span>
+          <span v-else-if="isCore(tool.name)" class="abele-tool-modes__core">{{
+            t('settings.components.ToolModesEditor.always_on.f017032a')
+          }}</span>
           <Dropdown
             v-else
             :model-value="getMode(tool.permissionKey ?? tool.name)"
@@ -197,9 +232,9 @@
           />
           <div v-if="hasCustomDescription(tool.name)" class="abele-tool-modes__desc-reset">
             <Button
-              text="Reset to default"
+              :text="t('settings.components.ToolModesEditor.reset_to_default.bc5b45ae')"
               icon="rotate-ccw"
-              tooltip="Use the tool's own description again"
+              :tooltip="t('settings.components.ToolModesEditor.use_the_tool_s_own.520c244d')"
               @click="emitDescUpdate(tool.name, '')"
             />
           </div>
@@ -210,6 +245,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+import { settingsLabel, settingsToolLabel } from '@/i18n/settingsLabels'
 import { ref, computed } from 'vue'
 import Setting from './obsidian/Setting.vue'
 import Disclosure from './obsidian/Disclosure.vue'
@@ -231,11 +268,13 @@ import {
   nodeAction,
   sectionDefaultDescription,
   sectionIdOfGroup,
-  sectionLabel,
+  sectionLabel as originalSectionLabel,
   sectionOpening as openingOfSection,
   sectionSummary,
   type SectionOpening,
 } from '@/ai/toolSections'
+
+const sectionLabel = (group: string) => settingsLabel(originalSectionLabel(group))
 
 const props = withDefaults(
   defineProps<{
@@ -274,8 +313,8 @@ const emit = defineEmits<{
 }>()
 
 const OPENING_OPTIONS = [
-  { value: 'always', display: 'Always open' },
-  { value: 'on-request', display: 'On request' },
+  { value: 'always', display: t('settings.components.ToolModesEditor.always_open.67b6ffc1') },
+  { value: 'on-request', display: t('settings.components.ToolModesEditor.on_request.be820103') },
 ]
 const opening = (group: string): SectionOpening =>
   openingOfSection(group, { toolSectionOpening: props.sectionOpening })
@@ -293,7 +332,7 @@ const emitSectionText = (group: string, text: string) =>
 
 /** What a person reads under a section's name: the agent's own words if any, else one short line. */
 const sectionSaid = (group: string) =>
-  props.sectionDescriptions[sectionIdOfGroup(group)] || sectionSummary(group)
+  props.sectionDescriptions[sectionIdOfGroup(group)] || settingsLabel(sectionSummary(group))
 /** For a Mixed action, which of its tools are at which mode: «Auto: a, b · Ask: c». */
 const mixedSaid = (tools: ToolEntry[]): string | undefined => {
   if (sharedMode(tools)) return undefined
@@ -316,11 +355,13 @@ const registry = computed(() => getToolRegistry())
 const legacyNodeTools = computed<ToolEntry[]>(() =>
   registry.value
     .filter((t) => LEGACY_NODE_TOOLS.has(t.name))
-    .map((t) => ({ name: t.name, permissionKey: t.permissionKey, label: t.label }))
+    .map((t) => ({ name: t.name, permissionKey: t.permissionKey, label: settingsToolLabel(t) }))
 )
 const nodeActions = (group: ToolGroup) =>
   NODE_ACTIONS.map((action) => ({
     ...action,
+    label: settingsLabel(action.label),
+    desc: settingsLabel(action.desc),
     tools: optionalOf(group).filter((t) => nodeAction(t.name) === action.id),
     carried: legacyNodeTools.value.filter((t) => nodeAction(t.name) === action.id),
   })).filter((a) => a.tools.length)
@@ -329,9 +370,9 @@ const showAll = ref(false)
 const editingDesc = ref<string | null>(null)
 
 const modeOptions = [
-  { value: 'off', display: 'Off' },
-  { value: 'ask', display: 'Ask' },
-  { value: 'auto', display: 'Auto' },
+  { value: 'off', display: t('settings.components.ToolModesEditor.off.ca7981b4') },
+  { value: 'ask', display: t('settings.components.ToolModesEditor.ask.b8c209cd') },
+  { value: 'auto', display: t('settings.components.ToolModesEditor.auto.02862497') },
 ]
 
 /** What each tool says of itself: shown when there is no override, and the text one is measured against. */
@@ -414,9 +455,11 @@ const visibleGroups = computed<ToolGroup[]>(() => {
     // Old node names are answered when called but never offered or listed.
     if (LEGACY_NODE_TOOLS.has(tool.name)) continue
     if (!groups.has(tool.category)) groups.set(tool.category, [])
-    groups
-      .get(tool.category)
-      .push({ name: tool.name, permissionKey: tool.permissionKey, label: tool.label })
+    groups.get(tool.category).push({
+      name: tool.name,
+      permissionKey: tool.permissionKey,
+      label: settingsToolLabel(tool),
+    })
   }
 
   return Array.from(groups.entries()).map(([category, tools]) => ({

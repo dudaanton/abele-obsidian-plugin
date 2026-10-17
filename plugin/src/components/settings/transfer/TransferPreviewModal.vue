@@ -1,5 +1,9 @@
 <template>
-  <ObsidianModal title="What will be sent" size="wide" @close="emit('close')">
+  <ObsidianModal
+    :title="t('settings.transfer.TransferPreviewModal.what_will_be_sent.86f3f00c')"
+    size="wide"
+    @close="emit('close')"
+  >
     <div class="abele-transfer-preview">
       <p class="abele-transfer-preview__summary">{{ summary }}</p>
 
@@ -13,12 +17,16 @@
             :key="key(entry)"
             role="listitem"
             :more="open.has(key(entry))"
-            more-label="what goes"
+            :more-label="t('settings.transfer.TransferPreviewModal.what_goes.39dde11f')"
             @update:more="fold(entry)"
           >
-            {{ entry.label }}
+            {{ transferLabel(entry) }}
             <template v-if="entry.secretIds?.some((id) => payload.secrets[id])" #codes>
-              <Icon icon="key-round" :interactive="false" tooltip="Carries a key" />
+              <Icon
+                icon="key-round"
+                :interactive="false"
+                :tooltip="t('settings.transfer.TransferPreviewModal.carries_a_key.0d090cb4')"
+              />
             </template>
             <template v-if="open.has(key(entry))" #detail>
               <pre class="abele-transfer-preview__body">{{ shown(entry) }}</pre>
@@ -28,7 +36,9 @@
       </div>
 
       <div v-if="keys.length" class="abele-transfer-preview__group">
-        <GroupHeading label="Keys">{{ keys.length }}</GroupHeading>
+        <GroupHeading :label="t('settings.transfer.TransferPreviewModal.keys.f0d66a79')">{{
+          keys.length
+        }}</GroupHeading>
         <div role="list">
           <EntryRow v-for="[id, value] in keys" :key="id" role="listitem">
             {{ id }}
@@ -38,7 +48,7 @@
           </EntryRow>
         </div>
         <p class="abele-transfer-preview__note">
-          Shown masked here; they travel in full, which is why the transfer is locked.
+          {{ t('settings.transfer.TransferPreviewModal.shown_masked_here_they_travel.6de2d018') }}
         </p>
       </div>
     </div>
@@ -46,6 +56,9 @@
 </template>
 
 <script setup lang="ts">
+import { settingsCount } from '@/i18n/settingsCounts'
+import { settingsLabel, transferLabel } from '@/i18n/settingsLabels'
+import { t } from '@/i18n'
 import { computed, ref } from 'vue'
 import ObsidianModal from '../../obsidian/Modal.vue'
 import EntryRow from '../../obsidian/EntryRow.vue'
@@ -71,9 +84,12 @@ const keys = computed(() => Object.entries(props.payload.secrets))
 
 const summary = computed(() => {
   const items = props.payload.entries.length
-  const parts = [items === 1 ? '1 item' : `${items} items`]
-  if (keys.value.length) parts.push(keys.value.length === 1 ? '1 key' : `${keys.value.length} keys`)
-  parts.push(props.codes === 1 ? '1 code' : `${props.codes} codes`)
+  const parts = [items === 1 ? settingsCount('item', 1) : settingsCount('item', items)]
+  if (keys.value.length)
+    parts.push(
+      keys.value.length === 1 ? settingsCount('key', 1) : settingsCount('key', keys.value.length)
+    )
+  parts.push(props.codes === 1 ? settingsCount('code', 1) : settingsCount('code', props.codes))
 
   return parts.join(' · ')
 })
@@ -92,7 +108,7 @@ const groups = computed(() => {
   }
   return TRANSFER_SECTIONS.filter((section) => bySection.has(section)).map((section) => ({
     section,
-    label: sectionLabel(section),
+    label: settingsLabel(sectionLabel(section)),
     entries: bySection.get(section) ?? [],
   }))
 })
@@ -112,7 +128,11 @@ const fold = (entry: TransferEntry) => {
  */
 const mask = (value: string) =>
   value.length > 12
-    ? `${value.slice(0, 3)}…${value.slice(-4)} (${value.length} characters)`
+    ? t('settings.transfer.TransferPreviewModal.value_value_value_characters.3394d986', {
+        value0: String(value.slice(0, 3)),
+        value1: String(value.slice(-4)),
+        value2: String(value.length),
+      })
     : '••••'
 </script>
 

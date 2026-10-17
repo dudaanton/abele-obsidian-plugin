@@ -1,7 +1,7 @@
 <template>
   <Section
-    title="What this device syncs"
-    desc="Notes and canvases always travel. Everything else is this device's own choice — a phone can skip the video and still hold every note."
+    :title="t('settings.sync.SelectiveSync.what_this_device_syncs.979d00ce')"
+    :desc="t('settings.sync.SelectiveSync.notes_and_canvases_always_travel.395d3522')"
   >
     <p v-if="saveError" class="abele-selective-sync__error">{{ saveError }}</p>
     <Setting
@@ -15,12 +15,12 @@
     </Setting>
 
     <Setting
-      name="Largest file"
-      desc="Files bigger than this are skipped, in megabytes. Leave it empty to take everything."
+      :name="t('settings.sync.SelectiveSync.largest_file.5cd59717')"
+      :desc="t('settings.sync.SelectiveSync.files_bigger_than_this_are.ce27e6e7')"
     >
       <Input
         :model-value="capDraft"
-        placeholder="No limit"
+        :placeholder="t('settings.sync.SelectiveSync.no_limit.f7fcff0d')"
         @update:model-value="capDraft = $event"
         @commit="commitCap"
       />
@@ -28,7 +28,10 @@
     <ExternalFileRules />
   </Section>
 
-  <Section title="Obsidian settings" :desc="settingsDesc">
+  <Section
+    :title="t('settings.sync.SelectiveSync.obsidian_settings.b1370814')"
+    :desc="settingsDesc"
+  >
     <Setting
       v-for="entry in renamedConfig ? [] : SETTINGS_KINDS"
       :key="entry.key"
@@ -41,39 +44,48 @@
   </Section>
 
   <Section
-    title="Folders this device skips"
-    desc="Nothing under a folder listed here is uploaded or downloaded by this device. The other devices still hold it."
+    :title="t('settings.sync.SelectiveSync.folders_this_device_skips.f47a9f56')"
+    :desc="t('settings.sync.SelectiveSync.nothing_under_a_folder_listed.6abc4f89')"
   >
     <Setting
       v-for="folder in selective.excludedFolders"
       :key="folder"
       :name="folder"
-      desc="Skipped by this device."
+      :desc="t('settings.sync.SelectiveSync.skipped_by_this_device.a7679073')"
     >
       <Icon
         icon="trash"
-        tooltip="Sync this folder on this device again"
+        :tooltip="t('settings.sync.SelectiveSync.sync_this_folder_on_this.b41e686c')"
         @click="removeFolder(folder)"
       />
     </Setting>
 
     <EmptyState
       v-if="selective.excludedFolders.length === 0"
-      text="This device syncs every folder."
+      :text="t('settings.sync.SelectiveSync.this_device_syncs_every_folder.5c1a44be')"
     />
 
-    <Setting name="Skip a folder" desc="Pick a folder this device should leave alone.">
+    <Setting
+      :name="t('settings.sync.SelectiveSync.skip_a_folder.1f3e8658')"
+      :desc="t('settings.sync.SelectiveSync.pick_a_folder_this_device.dab71c43')"
+    >
       <Search
         :model-value="folderToAdd"
         :suggester="FilledFolderSuggest"
-        placeholder="e.g. Archive/Video"
+        :placeholder="
+          t('settings.sync.SelectiveSync.e_g_archive_video.b35fc660', {
+            literal0: String('Archive/Video'),
+          })
+        "
         @update:model-value="folderToAdd = $event"
       />
       <Button
-        text="Skip"
+        :text="t('settings.sync.SelectiveSync.skip.28d03596')"
         :disabled="!canAddFolder"
         :tooltip="
-          canAddFolder ? 'Stop syncing this folder on this device' : 'Name a folder to skip first'
+          canAddFolder
+            ? t('settings.sync.SelectiveSync.stop_syncing_this_folder_on.a245d063')
+            : t('settings.sync.SelectiveSync.name_a_folder_to_skip.987a0698')
         "
         @click="addFolder"
       />
@@ -82,6 +94,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 /**
  * Selective sync: what of the vault this one device takes.
  *
@@ -129,13 +142,25 @@ type KindKey = {
 }[keyof SelectiveSettings]
 
 const KIND_TEXT: Record<KindKey, Described> = {
-  images: { name: 'Images', desc: 'Screenshots, photos, drawings and diagrams.' },
-  audio: { name: 'Audio', desc: 'Recordings and voice notes.' },
-  video: { name: 'Video', desc: 'The heaviest thing a vault usually holds.' },
-  pdf: { name: 'PDFs', desc: 'Papers, manuals and scans.' },
+  images: {
+    name: t('settings.sync.SelectiveSync.images.be7e2f20'),
+    desc: t('settings.sync.SelectiveSync.screenshots_photos_drawings_and_diagrams.34494a0e'),
+  },
+  audio: {
+    name: t('settings.sync.SelectiveSync.audio.bc1b8890'),
+    desc: t('settings.sync.SelectiveSync.recordings_and_voice_notes.2bf25181'),
+  },
+  video: {
+    name: t('settings.sync.SelectiveSync.video.d534be82'),
+    desc: t('settings.sync.SelectiveSync.the_heaviest_thing_a_vault.c54886fb'),
+  },
+  pdf: {
+    name: t('settings.sync.SelectiveSync.pdfs.211eae3f'),
+    desc: t('settings.sync.SelectiveSync.papers_manuals_and_scans.55635c99'),
+  },
   other: {
-    name: 'Everything else',
-    desc: 'Attachments of no listed type, and the scripts folder.',
+    name: t('settings.sync.SelectiveSync.everything_else.cd6c5f59'),
+    desc: t('settings.sync.SelectiveSync.attachments_of_no_listed_type.d6b34625'),
   },
 }
 
@@ -149,17 +174,29 @@ type SettingsKey = keyof SelectiveSettings['settings']
 
 /** The same exhaustiveness, one level down: a new settings category has to be named here. */
 const SETTINGS_TEXT: Record<SettingsKey, Described> = {
-  main: { name: 'App settings', desc: 'Editor and file behaviour, from app.json.' },
-  appearance: { name: 'Appearance', desc: 'The theme, its snippets and the font choices.' },
-  hotkeys: { name: 'Hotkeys', desc: 'The shortcuts you have bound.' },
-  corePlugins: { name: 'Core plugins', desc: "Which of Obsidian's own plugins are on." },
+  main: {
+    name: t('settings.sync.SelectiveSync.app_settings.d43fb8a9'),
+    desc: t('settings.sync.SelectiveSync.editor_and_file_behaviour_from.0132e8bd'),
+  },
+  appearance: {
+    name: t('settings.sync.SelectiveSync.appearance.3907fa7f'),
+    desc: t('settings.sync.SelectiveSync.the_theme_its_snippets_and.584f5304'),
+  },
+  hotkeys: {
+    name: t('settings.sync.SelectiveSync.hotkeys.c15f1530'),
+    desc: t('settings.sync.SelectiveSync.the_shortcuts_you_have_bound.3f1903d8'),
+  },
+  corePlugins: {
+    name: t('settings.sync.SelectiveSync.core_plugins.f2e957b0'),
+    desc: t('settings.sync.SelectiveSync.which_of_obsidian_s_own.99bc1676'),
+  },
   communityPlugins: {
-    name: 'Community plugins',
-    desc: 'The plugins themselves, so a new device installs what this one runs.',
+    name: t('settings.sync.SelectiveSync.community_plugins.ab574402'),
+    desc: t('settings.sync.SelectiveSync.the_plugins_themselves_so_a.9c0fb58f'),
   },
   pluginSettings: {
-    name: 'Plugin settings',
-    desc: 'What each community plugin holds in its own data.json.',
+    name: t('settings.sync.SelectiveSync.plugin_settings.95d7fb37'),
+    desc: t('settings.sync.SelectiveSync.what_each_community_plugin_holds.3087ad5b'),
   },
 }
 
@@ -179,8 +216,10 @@ const configDir = GlobalStore.getInstance().app.vault.configDir
 const renamedConfig = !isWireConfigDir(configDir)
 
 const settingsDesc = renamedConfig
-  ? `This device keeps its settings in a renamed config folder, ${configDir}, and sync does not carry one yet: Obsidian settings stay on this device, and those on the server are left alone.`
-  : 'How much of the configuration folder travels. The workspace, the graph and every plugin cache stay where they are, on every device.'
+  ? t('settings.sync.SelectiveSync.this_device_keeps_its_settings.6f44f3ee', {
+      value0: String(configDir),
+    })
+  : t('settings.sync.SelectiveSync.how_much_of_the_configuration.426f0882')
 
 /**
  * A copy of the connection's selective settings, edited here and written back on every change.
@@ -216,7 +255,9 @@ const save = (): void => {
   sync.updateConnection({ selective: copyOf(selective.value) }).catch((error: unknown) => {
     selective.value = copyOf(sync.connection.value.selective)
     capDraft.value = maxMegabytes.value
-    saveError.value = `Nothing was changed: ${error instanceof Error ? error.message : String(error)}`
+    saveError.value = t('settings.sync.SelectiveSync.nothing_was_changed_value.d24494c2', {
+      value0: String(error instanceof Error ? error.message : String(error)),
+    })
     console.debug('[abele-sync] what this device syncs could not be saved', error)
   })
 }

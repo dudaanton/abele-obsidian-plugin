@@ -2,41 +2,50 @@
   <div class="abele-linter-settings">
     <Section>
       <template #desc>
-        The linter checks notes against the rules below — a note at a time, a folder or the whole
-        vault — and lists what does not follow them in a tab of its own. Much of it can be fixed
-        there in one go; the rest opens at the line to fix by hand.
+        {{ t('settings.LinterSettings.the_linter_checks_notes_against.67baa82b') }}
       </template>
-      <Setting name="Linter" desc="The tab with what the last run found.">
+      <Setting
+        :name="t('settings.LinterSettings.linter.99bede8d')"
+        :desc="t('settings.LinterSettings.the_tab_with_what_the.e019607d')"
+      >
         <Button
-          text="Open linter"
-          tooltip="Close the settings and open the linter's tab"
+          :text="t('settings.LinterSettings.open_linter.72c54acd')"
+          :tooltip="t('settings.LinterSettings.close_the_settings_and_open.125786ff')"
           @click="openTab"
         />
       </Setting>
       <Setting
-        name="Folders to skip"
-        desc="No rule looks in these, unless a note in one is linted by name. Comma-separated; a folder, or a glob like Archive/**."
+        :name="t('settings.LinterSettings.folders_to_skip.ad324780')"
+        :desc="t('settings.LinterSettings.no_rule_looks_in_these.2a478951')"
       >
         <Input
           v-model="excludeText"
-          placeholder="Templates, Attachments"
+          :placeholder="t('settings.LinterSettings.templates_attachments.2440bdba')"
           @update:model-value="setExclude"
         />
       </Setting>
     </Section>
 
     <Section
-      title="Rules"
-      desc="Each can be switched off, told how bad a finding is, kept to some folders or note types, and given its own settings."
+      :title="t('settings.LinterSettings.rules.4228aeb0')"
+      :desc="t('settings.LinterSettings.each_can_be_switched_off.240786af')"
     >
       <Setting
         v-for="rule in rules"
         :key="rule.id"
-        :name="rule.title"
+        :name="rule.source === 'builtin' ? settingsLabel(rule.title) : rule.title"
         :desc="describe(rule)"
         :data-rule="rule.id"
       >
-        <Icon icon="settings" :tooltip="`Set up ${rule.title}`" @click="editing = rule.id" />
+        <Icon
+          icon="settings"
+          :tooltip="
+            t('settings.LinterSettings.set_up_value.45578254', {
+              value0: String(rule.source === 'builtin' ? settingsLabel(rule.title) : rule.title),
+            })
+          "
+          @click="editing = rule.id"
+        />
         <Checkbox
           :is-enabled="settingOf(rule).enabled"
           @toggle="change(rule, { enabled: !settingOf(rule).enabled })"
@@ -44,14 +53,25 @@
       </Setting>
     </Section>
 
-    <Section title="Rules of your own">
+    <Section :title="t('settings.LinterSettings.rules_of_your_own.f29b0461')">
       <template #desc>
-        A script whose first lines say <code>// @lint</code> is a rule: it gives back
-        <code>check(note)</code>, a list of what is wrong, and may give back <code>fix(note)</code>,
-        the note's new text. It is listed above with the others. The Scripts page of the
-        documentation shows one.
+        <I18nText
+          :text="
+            t('settings.rich.bc6ba5473fff4aa8', {
+              slot0: '⟪slot0⟫',
+              slot1: '⟪slot1⟫',
+              slot2: '⟪slot2⟫',
+            })
+          "
+          ><template #slot0><code>// @lint</code></template
+          ><template #slot1><code>check(note)</code></template
+          ><template #slot2><code>fix(note)</code></template></I18nText
+        >
       </template>
-      <EmptyState v-if="!scriptRules.length" text="No script rules yet." />
+      <EmptyState
+        v-if="!scriptRules.length"
+        :text="t('settings.LinterSettings.no_script_rules_yet.37cf496e')"
+      />
     </Section>
 
     <LintRuleModal
@@ -66,6 +86,9 @@
 </template>
 
 <script setup lang="ts">
+import { settingsLabel } from '@/i18n/settingsLabels'
+import I18nText from '@/components/obsidian/I18nText.vue'
+import { t } from '@/i18n'
 import { computed, ref } from 'vue'
 import { debounce } from 'obsidian'
 import Section from '../obsidian/Section.vue'
@@ -115,13 +138,37 @@ const settingOf = (rule: LintRule): LintRuleSetting => ruleSetting(current.value
 function describe(rule: LintRule): string {
   const s = settingOf(rule)
   const where: string[] = []
-  if (s.folders.length) where.push(`in ${s.folders.join(', ')}`)
-  if (s.exclude.length) where.push(`not in ${s.exclude.join(', ')}`)
-  if (s.types.length) where.push(`for ${s.types.join(', ')} notes`)
-  if (s.property) where.push(`where ${s.property}${s.value ? ` is ${s.value}` : ' is set'}`)
-  const from = rule.source === 'builtin' ? '' : ` Script: ${rule.source.script}.`
-  const scope = where.length ? ` Only ${where.join(', ')}.` : ''
-  return `${rule.description}${from}${scope} ${s.severity === 'error' ? 'Error' : 'Warning'}.`
+  if (s.folders.length)
+    where.push(
+      t('settings.LinterSettings.in_value.b63d3a91', { value0: String(s.folders.join(', ')) })
+    )
+  if (s.exclude.length)
+    where.push(
+      t('settings.LinterSettings.not_in_value.d95a4831', { value0: String(s.exclude.join(', ')) })
+    )
+  if (s.types.length)
+    where.push(
+      t('settings.LinterSettings.for_value_notes.670a9ee4', { value0: String(s.types.join(', ')) })
+    )
+  if (s.property)
+    where.push(
+      t('settings.LinterSettings.where_value_value.e534e0d0', {
+        value0: String(s.property),
+        value1: String(
+          s.value
+            ? t('settings.parts.520a5d3ab1d92888', { value0: String(s.value) })
+            : t('settings.LinterSettings.is_set.c7d5e11f')
+        ),
+      })
+    )
+  const from =
+    rule.source === 'builtin'
+      ? ''
+      : t('settings.LinterSettings.script_value.c5efe1d1', { value0: String(rule.source.script) })
+  const scope = where.length
+    ? t('settings.LinterSettings.only_value.e2625151', { value0: String(where.join(', ')) })
+    : ''
+  return `${rule.source === 'builtin' ? settingsLabel(rule.description) : rule.description}${from}${scope} ${s.severity === 'error' ? t('settings.LinterSettings.error.54a0e8c1') : t('settings.LinterSettings.warning.e981ddae')}.`
 }
 
 const save = async () => {

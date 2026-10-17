@@ -1,8 +1,6 @@
 <template>
   <div class="abele-settings__reader">
-    <Section
-      desc="EPUB books in the vault open in a reader tab of their own, and PDFs can too. These choices apply to every book, and can also be changed from a book's tab with the Aa button."
-    >
+    <Section :desc="t('settings.ReaderSettings.epub_books_in_the_vault.7574b8de')">
       <ReaderSettingsForm />
     </Section>
     <BookNotesSettings />
@@ -11,6 +9,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import Section from '../obsidian/Section.vue'
 import ReaderSettingsForm from '../reader/ReaderSettingsForm.vue'
 import BookNotesSettings from '../reader/BookNotesSettings.vue'

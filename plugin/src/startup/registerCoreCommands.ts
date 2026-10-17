@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { type Editor, Notice, type Plugin } from 'obsidian'
 import dayjs from 'dayjs'
 import { reviewKeyDestinations } from '@/secrets/destinationReview'
@@ -43,12 +44,12 @@ interface CoreCommandHost extends Plugin {
 export function registerCoreCommands(plugin: CoreCommandHost) {
   plugin.addCommand({
     id: 'review-key-destinations',
-    name: 'Review key destinations',
+    name: t('commands.review-key-destinations'),
     callback: reviewKeyDestinations,
   })
   plugin.addCommand({
     id: 'create-task',
-    name: 'Create new task',
+    name: t('commands.create-task'),
     icon: 'circle-plus',
     callback: () => {
       void createTask()
@@ -57,7 +58,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'create-task-and-insert-link',
-    name: 'Create new task and insert into current note',
+    name: t('commands.create-task-and-insert-link'),
     icon: 'list-plus',
     editorCallback: (editor: Editor) => {
       void createTaskAndInsert(editor)
@@ -66,7 +67,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'find-and-replace',
-    name: 'Find and replace in frontmatter and content of all notes, matching the criteria',
+    name: t('commands.find-and-replace'),
     icon: 'replace-all',
     callback: () => {
       void findAndReplace()
@@ -75,7 +76,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'import-files',
-    name: 'Import files to vault',
+    name: t('commands.import-files'),
     icon: 'import',
     callback: () => {
       importFiles()
@@ -84,7 +85,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'save-media',
-    name: 'Save remote media to vault',
+    name: t('commands.save-media'),
     icon: 'download',
     callback: () => {
       saveMedia()
@@ -93,7 +94,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'unused-media',
-    name: 'Find and delete unused media',
+    name: t('commands.unused-media'),
     icon: 'trash-2',
     callback: () => {
       unusedMedia()
@@ -102,7 +103,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'deduplicate-media',
-    name: 'Deduplicate media attachments',
+    name: t('commands.deduplicate-media'),
     icon: 'copy-check',
     callback: () => {
       deduplicateMedia()
@@ -111,7 +112,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'migrate-from-dataview',
-    name: 'Migrate tasks from Dataview',
+    name: t('commands.migrate-from-dataview'),
     icon: 'database',
     callback: () => {
       void migrateFromDataview()
@@ -120,7 +121,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'migrate-from-firefly',
-    name: 'Migrate data from Firefly III',
+    name: t('commands.migrate-from-firefly'),
     icon: 'database',
     callback: () => {
       void openUtilityDialog('migrateFromFirefly')
@@ -129,7 +130,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'create-transaction',
-    name: 'Create new transaction',
+    name: t('commands.create-transaction'),
     icon: 'receipt',
     callback: () => {
       void createTransaction()
@@ -138,7 +139,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'create-transaction-and-insert-link',
-    name: 'Create new transaction and insert into current note',
+    name: t('commands.create-transaction-and-insert-link'),
     icon: 'receipt',
     editorCallback: (editor: Editor) => {
       void createTransactionAndInsert(editor)
@@ -147,7 +148,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'show-timeline-sidebar',
-    name: 'Show timeline sidebar',
+    name: t('commands.show-timeline-sidebar'),
     icon: 'calendar-range',
     callback: () => {
       void plugin.activateView(TIMELINE_SIDEBAR_VIEW_TYPE)
@@ -156,7 +157,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'migrate-dataview-fields',
-    name: 'Migrate from Dataview fields',
+    name: t('commands.migrate-dataview-fields'),
     icon: 'database',
     callback: () => {
       void openUtilityDialog('migrateDataviewFields')
@@ -165,7 +166,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'show-todo-sidebar',
-    name: 'Show todo sidebar',
+    name: t('commands.show-todo-sidebar'),
     icon: 'check-square',
     callback: () => {
       void plugin.activateView(TODO_SIDEBAR_VIEW_TYPE)
@@ -174,7 +175,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'show-finance-sidebar',
-    name: 'Show finance sidebar',
+    name: t('commands.show-finance-sidebar'),
     icon: 'wallet',
     callback: () => {
       void plugin.activateView(FINANCE_SIDEBAR_VIEW_TYPE)
@@ -183,7 +184,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'show-accounts-sidebar',
-    name: 'Show accounts sidebar',
+    name: t('commands.show-accounts-sidebar'),
     icon: AccountsSidebarView.getIcon(),
     callback: () => {
       void plugin.activateView(ACCOUNTS_SIDEBAR_VIEW_TYPE)
@@ -192,7 +193,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'migrate-from-toggl',
-    name: 'Migrate time entries from Toggl',
+    name: t('commands.migrate-from-toggl'),
     icon: 'database',
     callback: () => {
       void openUtilityDialog('migrateFromToggl')
@@ -201,7 +202,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'show-time-tracking-sidebar',
-    name: 'Show time tracking sidebar',
+    name: t('commands.show-time-tracking-sidebar'),
     icon: 'timer',
     callback: () => {
       void plugin.activateView(TIME_TRACKING_SIDEBAR_VIEW_TYPE)
@@ -210,7 +211,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'start-timer',
-    name: 'Start timer for current note',
+    name: t('commands.start-timer'),
     icon: 'play',
     callback: () => {
       const file = plugin.app.workspace.getActiveFile()
@@ -222,7 +223,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'stop-timer',
-    name: 'Stop active timer',
+    name: t('commands.stop-timer'),
     icon: 'square',
     callback: () => {
       void stopActiveTimeEntry()
@@ -231,7 +232,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'paste-from-clipboard',
-    name: 'Paste from clipboard at cursor',
+    name: t('commands.paste-from-clipboard'),
     icon: 'clipboard-paste',
     editorCallback: async (editor: Editor) => {
       await pasteFromClipboard(editor)
@@ -240,7 +241,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'create-note-from-template',
-    name: 'Create note from template',
+    name: t('commands.create-note-from-template'),
     icon: 'file-plus-2',
     callback: () => {
       createNoteFromTemplate()
@@ -249,7 +250,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'create-note-in-group',
-    name: 'Create note in group',
+    name: t('commands.create-note-in-group'),
     icon: 'folder-plus',
     callback: () => {
       const file = plugin.app.workspace.getActiveFile()
@@ -261,7 +262,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'replace-note-with-template',
-    name: 'Replace current note with template',
+    name: t('commands.replace-note-with-template'),
     icon: 'file-input',
     callback: () => {
       replaceNoteWithTemplate()
@@ -270,7 +271,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'insert-template-at-cursor',
-    name: 'Insert template at cursor',
+    name: t('commands.insert-template-at-cursor'),
     icon: 'file-symlink',
     editorCallback: (editor: Editor) => {
       insertTemplateAtCursor(editor)
@@ -279,7 +280,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'insert-gallery',
-    name: 'Insert image gallery',
+    name: t('commands.insert-gallery'),
     icon: 'gallery-horizontal',
     editorCallback: (editor: Editor) => {
       insertGallery(editor)
@@ -288,7 +289,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'convert-images-to-galleries',
-    name: 'Convert images on page to galleries',
+    name: t('commands.convert-images-to-galleries'),
     icon: 'images',
     editorCallback: (editor: Editor) => {
       convertImagesToGalleries(editor)
@@ -297,7 +298,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'reindex-footnotes',
-    name: 'Reindex footnotes',
+    name: t('commands.reindex-footnotes'),
     icon: 'list-ordered',
     editorCallback: (editor: Editor) => {
       reindexFootnotes(editor)
@@ -306,7 +307,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'insert-highlight',
-    name: 'Insert colored highlight',
+    name: t('commands.insert-highlight'),
     icon: 'highlighter',
     editorCallback: (editor: Editor) => {
       void insertHighlight(editor)
@@ -315,7 +316,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'remove-highlight',
-    name: 'Remove colored highlight',
+    name: t('commands.remove-highlight'),
     icon: 'eraser',
     editorCallback: (editor: Editor) => {
       removeHighlight(editor)
@@ -324,7 +325,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'set-cover-from-first-media',
-    name: 'Set cover from first image/video in note',
+    name: t('commands.set-cover-from-first-media'),
     icon: 'image',
     callback: () => {
       void setCoverFromFirstMedia()
@@ -333,7 +334,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'open-today-daily-note',
-    name: "Open today's daily note",
+    name: t('commands.open-today-daily-note'),
     icon: 'calendar',
     callback: () => {
       const journal = AbeleConfig.getInstance().journals.find((j) => j.isDefaultDailyJournal)
@@ -347,7 +348,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'create-css-snippet',
-    name: 'Create CSS snippet',
+    name: t('commands.create-css-snippet'),
     icon: 'palette',
     callback: () => {
       void SnippetService.getInstance().createSnippet()
@@ -356,7 +357,7 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'reload-css-snippets',
-    name: 'Reload CSS snippets',
+    name: t('commands.reload-css-snippets'),
     icon: 'refresh-cw',
     callback: async () => {
       await SnippetService.getInstance().reload()
@@ -366,30 +367,30 @@ export function registerCoreCommands(plugin: CoreCommandHost) {
 
   plugin.addCommand({
     id: 'create-script',
-    name: 'Create script',
+    name: t('commands.create-script'),
     icon: 'scroll-text',
     callback: () => {
       void ScriptService.getInstance().createScript()
     },
   })
 
-  plugin.addRibbonIcon(TimelineSidebarView.getIcon(), 'Show timeline sidebar', () => {
+  plugin.addRibbonIcon(TimelineSidebarView.getIcon(), t('ribbon.show-timeline-sidebar'), () => {
     void plugin.activateView(TIMELINE_SIDEBAR_VIEW_TYPE)
   })
 
-  plugin.addRibbonIcon(TodoSidebarView.getIcon(), 'Show todo sidebar', () => {
+  plugin.addRibbonIcon(TodoSidebarView.getIcon(), t('ribbon.show-todo-sidebar'), () => {
     void plugin.activateView(TODO_SIDEBAR_VIEW_TYPE)
   })
 
-  plugin.addRibbonIcon(FinanceSidebarView.getIcon(), 'Show finance sidebar', () => {
+  plugin.addRibbonIcon(FinanceSidebarView.getIcon(), t('ribbon.show-finance-sidebar'), () => {
     void plugin.activateView(FINANCE_SIDEBAR_VIEW_TYPE)
   })
 
-  plugin.addRibbonIcon(TimeTrackingSidebarView.getIcon(), 'Show time tracking', () => {
+  plugin.addRibbonIcon(TimeTrackingSidebarView.getIcon(), t('ribbon.show-time-tracking'), () => {
     void plugin.activateView(TIME_TRACKING_SIDEBAR_VIEW_TYPE)
   })
 
-  plugin.addRibbonIcon(ScriptRunsView.getIcon(), 'Show script runs', () => {
+  plugin.addRibbonIcon(ScriptRunsView.getIcon(), t('ribbon.show-script-runs'), () => {
     void plugin.activateView(SCRIPT_RUNS_VIEW_TYPE)
   })
 }

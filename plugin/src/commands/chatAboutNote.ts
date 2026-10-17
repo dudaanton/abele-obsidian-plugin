@@ -37,6 +37,7 @@ import { BOOK_VIEW_TYPE } from '@/reader/viewType'
 import { selectedReadingComment } from '@/comments/reading'
 import { selectedLines } from '@/lineLinks/register'
 import { NOTE_ACTIONS } from './noteActions'
+import { t } from '@/i18n'
 
 export const CHAT_ABOUT_TITLE = NOTE_ACTIONS[1].title
 const CHAT_ABOUT_ICON = NOTE_ACTIONS[1].icon
@@ -200,7 +201,7 @@ export function registerChatAbout(plugin: Plugin, menus = true): void {
 
   plugin.addCommand({
     id: 'chat-about-current-note',
-    name: CHAT_ABOUT_TITLE,
+    name: t('commands.chat-about-current-note'),
     icon: CHAT_ABOUT_ICON,
     checkCallback: (checking) => {
       const file = workspace.getActiveFile()

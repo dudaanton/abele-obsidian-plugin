@@ -16,7 +16,8 @@ through the rest.
 
 **Insert columns** offers two equal columns, three equal columns, or text with a narrower
 aside. The selected text goes into the first column. The three templates are also separate
-commands. **Column options** works at the cursor, and the frame's column icon opens the same
+commands: **Insert two equal columns**, **Insert three equal columns**, and
+**Insert text with an aside**. **Column options** works at the cursor, and the frame's column icon opens the same
 Obsidian menu in Reading view or Live Preview. Right-click or long-press a column to target
 that column: add a column, move it left/right, choose proportions, or remove the frame.
 
@@ -32,6 +33,7 @@ at least two child callouts, separated by a blank line that still belongs to the
 
 ```markdown
 > [!abele-columns|ratio=2:1 mobile=stack]
+>
 > > [!abele-column]
 > > First column text.
 >
@@ -106,7 +108,7 @@ whose places are brought over the first time; keep only one of the two on.
 
 ## Diagrams
 
-A ```` ```mermaid ```` block is drawn at the width of the note, with zoom and drag, full screen,
+A ` ```mermaid ` block is drawn at the width of the note, with zoom and drag, full screen,
 and copying as source, SVG or a picture. Turn this off in **Settings → Abele → Other** to get
 Obsidian's own drawing back.
 

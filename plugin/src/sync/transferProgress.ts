@@ -1,3 +1,5 @@
+import { englishSyncText, type SyncText } from './presentation'
+
 export interface TransferSnapshot {
   stage: string
   completed: number
@@ -143,30 +145,53 @@ export class TransferProgress {
   }
 }
 
-export function transferText(one: TransferSnapshot): string {
-  const [single, plural] =
-    one.stage === 'Preparing folders' ? ['folder', 'folders'] : ['file', 'files']
+export function transferText(one: TransferSnapshot, text: SyncText = englishSyncText): string {
+  const folders = one.stage === 'Preparing folders'
   const total = one.total
-  let text =
-    one.stage +
+  let result =
+    text(one.stage) +
     ' · ' +
     (total === undefined
-      ? `${one.completed} ${one.completed === 1 ? single : plural}`
-      : `${one.completed} of ${one.totalKnown === false ? 'at least ' : ''}${total} ${total === 1 ? single : plural}`)
+      ? text(
+          folders ? '{count} folders' : '{count} files',
+          { count: one.completed },
+          folders ? '{count} folder' : '{count} file'
+        )
+      : text(
+          one.totalKnown === false
+            ? folders
+              ? '{completed} of at least {count} folders'
+              : '{completed} of at least {count} files'
+            : folders
+              ? '{completed} of {count} folders'
+              : '{completed} of {count} files',
+          { completed: one.completed, count: total },
+          one.totalKnown === false
+            ? folders
+              ? '{completed} of at least {count} folder'
+              : '{completed} of at least {count} file'
+            : folders
+              ? '{completed} of {count} folder'
+              : '{completed} of {count} file'
+        ))
   if (one.bytes !== undefined) {
     const units = ['B', 'KB', 'MB', 'GB']
     const size = Math.max(one.bytes, one.totalBytes ?? 0)
     const unit = Math.min(3, Math.max(0, Math.floor(Math.log2(Math.max(1, size)) / 10)))
     const number = (n: number) => Number((n / 1024 ** unit).toFixed(1))
-    text +=
+    result +=
       one.totalBytes === undefined
-        ? ` · ${number(one.bytes)} ${units[unit]} transferred`
-        : ` · ${number(one.bytes)} of ${number(one.totalBytes)} ${units[unit]}`
+        ? text(' · {bytes} {unit} transferred', { bytes: number(one.bytes), unit: units[unit] })
+        : text(' · {bytes} of {total} {unit}', {
+            bytes: number(one.bytes),
+            total: number(one.totalBytes),
+            unit: units[unit],
+          })
   }
   if (one.secondsLeft !== undefined)
-    text +=
+    result +=
       one.secondsLeft < 60
-        ? ' · less than 1 min left'
-        : ` · about ${Math.ceil(one.secondsLeft / 60)} min left`
-  return text
+        ? text(' · less than 1 min left')
+        : text(' · about {minutes} min left', { minutes: Math.ceil(one.secondsLeft / 60) })
+  return result
 }

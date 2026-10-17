@@ -1,14 +1,19 @@
 <template>
-  <Section
-    desc="What this agent was asked to remember. Only this agent sees it: it is added to its
-      system prompt, laid out by the memory template in the general AI settings. The agent adds
-      and changes items with the remember tool and removes them with forget; both can be switched
-      off on the Access tab."
-  >
+  <Section :desc="t('settings.ai.AgentMemoryEditor.what_this_agent_was_asked.66974c2c')">
     <CardGrid v-if="items.length" stack>
-      <Card v-for="item in items" :key="item.id" :title="`Added ${item.created}`">
+      <Card
+        v-for="item in items"
+        :key="item.id"
+        :title="
+          t('settings.ai.AgentMemoryEditor.added_value.29f396e2', { value0: String(item.created) })
+        "
+      >
         <template #actions>
-          <Icon icon="trash" tooltip="Forget this item" @click="remove(item.id)" />
+          <Icon
+            icon="trash"
+            :tooltip="t('settings.ai.AgentMemoryEditor.forget_this_item.5fddee9d')"
+            @click="remove(item.id)"
+          />
         </template>
 
         <Input :model-value="item.text" @update:model-value="edit(item.id, $event)" />
@@ -17,14 +22,19 @@
 
     <EmptyState
       v-else
-      text="Nothing remembered yet. Ask the agent in a chat to remember something, or add it here."
+      :text="t('settings.ai.AgentMemoryEditor.nothing_remembered_yet_ask_the.bc8e1ea6')"
     />
 
     <div class="abele-agent-memory__add">
-      <Input v-model="draft" placeholder="Something this agent should remember..." />
+      <Input
+        v-model="draft"
+        :placeholder="
+          t('settings.ai.AgentMemoryEditor.something_this_agent_should_remember.d49c6b77')
+        "
+      />
       <Button
-        text="Add"
-        tooltip="Add this line to the agent's memory"
+        :text="t('settings.ai.AgentMemoryEditor.add.9fd728c6')"
+        :tooltip="t('settings.ai.AgentMemoryEditor.add_this_line_to_the.7ca78ec8')"
         :disabled="!draft.trim()"
         @click="add"
       />
@@ -33,6 +43,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, ref } from 'vue'
 import Section from '../../obsidian/Section.vue'
 import Card from '../../obsidian/Card.vue'

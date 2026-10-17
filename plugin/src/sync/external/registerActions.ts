@@ -1,3 +1,5 @@
+import { englishSyncText, type SyncText } from '../presentation'
+import { t } from '@/i18n'
 import { Notice, TFile, TFolder, type Plugin, type TAbstractFile, type Menu } from 'obsidian'
 import { confirmDialog } from '@/components/obsidian/dialogs'
 import { externalActionsOf } from './actionHost'
@@ -13,8 +15,8 @@ export const actionTitles = {
   hydrate: 'Download to this device',
 } as const
 
-export function externalStatus(status: string): string {
-  return (
+export function externalStatus(status: string, text: SyncText = englishSyncText): string {
+  return text(
     (
       {
         complete: 'Done',
@@ -169,7 +171,7 @@ export function registerExternalFileActions(plugin: Plugin): void {
   for (const kind of Object.keys(actionTitles) as (keyof typeof actionTitles)[])
     plugin.addCommand({
       id: `external-file-${kind}`,
-      name: actionTitles[kind],
+      name: t(`commands.external-file-${kind}`),
       checkCallback: (checking) => {
         const file = app.workspace.getActiveFile()
         if (!file) return false

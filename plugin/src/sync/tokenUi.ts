@@ -1,3 +1,4 @@
+import { englishSyncText, type SyncText } from './presentation'
 import { FolderScopeError } from './scopedFileSystem'
 import { nativeSyncFailure } from './mobileTransport'
 import { LocalPlacementError } from './localFolderPlacement'
@@ -17,24 +18,30 @@ import { transferText } from './transferProgress'
 
 /** Its owner deleted what this connection opens; the device stops and keeps every file. */
 export const SCOPE_DELETED = 'Deleted on the server. Every file stays on this device.'
-export function connectionError(error: unknown, startup = false): string {
+export function connectionError(
+  error: unknown,
+  startup = false,
+  text: SyncText = englishSyncText
+): string {
   if (error instanceof LocalPlacementError || error instanceof FolderScopeError)
     return error.message
   const native = nativeSyncFailure(error)
   if (native) return native.message
   if (error instanceof ConnectStageError) return error.message
   if (error instanceof Error && /External files:|Sync recovery required/.test(error.message))
-    return startup ? error.message : 'Sync recovery required. Files and connection have been kept.'
+    return startup
+      ? error.message
+      : text('Sync recovery required. Files and connection have been kept.')
   const code = (error as { code?: string } | null)?.code
   if (
     code === 'offline' &&
     error instanceof Error &&
     /was cut off before its body arrived/.test(error.message)
   )
-    return 'The server response was cut off before it finished. Try syncing again.'
+    return text('The server response was cut off before it finished. Try syncing again.')
   if (error instanceof FolderScopeError) return error.message
   if (code === 'startup-stage' && error instanceof Error) return error.message
-  return (
+  return text(
     (
       {
         'bad-token': 'This token is damaged or incomplete. Paste the whole token again.',
@@ -53,9 +60,9 @@ export function connectionError(error: unknown, startup = false): string {
         scope_deleted: SCOPE_DELETED,
       } as Record<string, string>
     )[code ?? ''] ??
-    (startup && error instanceof Error && error.message
-      ? error.message
-      : 'The action could not finish. Your files have been kept. Try again.')
+      (startup && error instanceof Error && error.message
+        ? error.message
+        : 'The action could not finish. Your files have been kept. Try again.')
   )
 }
 class ConnectStageError extends Error {}
@@ -129,33 +136,39 @@ export async function connectStage<T>(
 }
 /** The server's stand-in path for a grant whose folder or group has left the caller's scope. */
 const UNAVAILABLE_SCOPE_PATH = '(unavailable)'
-export const scopeName = (scope: V2Scope | null) =>
+export const scopeName = (scope: V2Scope | null, text: SyncText = englishSyncText) =>
   !scope
-    ? 'Not connected'
+    ? text('Not connected')
     : scope.path === UNAVAILABLE_SCOPE_PATH
-      ? (scope.kind === 'group' ? 'Group' : 'Folder') + ' outside this connection'
+      ? text(
+          scope.kind === 'group'
+            ? 'Group outside this connection'
+            : 'Folder outside this connection'
+        )
       : scope.kind === 'group'
-        ? 'Group: ' + scope.path.split('/').pop().replace(/\.md$/i, '')
+        ? text('Group: {name}', { name: scope.path.split('/').pop().replace(/\.md$/i, '') })
         : scope.path === '/'
-          ? 'Whole vault'
-          : 'Folder: ' + scope.path
+          ? text('Whole vault')
+          : text('Folder: {path}', { path: scope.path })
 export const connectionName = (record: Pick<TokenConnectionRecord, 'scope' | 'address'>) =>
   scopeName(record.scope) + ' · ' + new URL(record.address).host
-export const statusName = (status: string) =>
-  (
-    ({
-      idle: 'Ready',
-      syncing: 'Syncing',
-      paused: 'Paused',
-      offline: 'Server unavailable',
-      error: 'Needs attention',
-      disconnected: 'Not connected',
-      'needs-token': 'Needs a token',
-      joining: 'Connecting',
-      scope_unavailable: 'Access unavailable',
-      scope_updating: 'Updating access',
-    }) as Record<string, string>
-  )[status] ?? 'Needs attention'
+export const statusName = (status: string, text: SyncText = englishSyncText) =>
+  text(
+    (
+      {
+        idle: 'Ready',
+        syncing: 'Syncing',
+        paused: 'Paused',
+        offline: 'Server unavailable',
+        error: 'Needs attention',
+        disconnected: 'Not connected',
+        'needs-token': 'Needs a token',
+        joining: 'Connecting',
+        scope_unavailable: 'Access unavailable',
+        scope_updating: 'Updating access',
+      } as Record<string, string>
+    )[status] ?? 'Needs attention'
+  )
 export interface ConnectionActivity {
   /** Diagnostics only: the code and original message behind `error`'s friendly text. */
   failure?: { code?: string; message: string; reason?: string; stage?: string }
@@ -192,38 +205,47 @@ export interface ConnectionActivity {
 }
 export function connectionStatusText(
   row: Pick<TokenConnectionRecord, 'status' | 'paused' | 'rootIssue'>,
-  activity?: ConnectionActivity
+  activity?: ConnectionActivity,
+  text: SyncText = englishSyncText
 ): string {
-  if (activity?.error === SCOPE_DELETED) return 'Deleted on the server'
+  if (activity?.error === SCOPE_DELETED) return text('Deleted on the server')
   if (activity?.reconciliation && activity.reconciliation.phase !== 'complete')
     return activity.reconciliation.reason.startsWith('server generation changed')
-      ? 'The server was restored from a backup — checking files'
-      : 'Checking restored files'
+      ? text('The server was restored from a backup — checking files')
+      : text('Checking restored files')
   if (row.rootIssue?.kind === 'server-renamed')
-    return `Shared folder renamed on the server: ${row.rootIssue.from} → ${row.rootIssue.to}; sync stopped`
+    return text('Shared folder renamed on the server: {from} → {to}; sync stopped', {
+      from: row.rootIssue.from,
+      to: row.rootIssue.to,
+    })
   if (row.rootIssue)
     return row.rootIssue.kind === 'moved'
-      ? `Folder moved to ${row.rootIssue.path}; sync stopped`
-      : 'Folder is gone; sync stopped'
+      ? text('Folder moved to {path}; sync stopped', { path: row.rootIssue.path })
+      : text('Folder is gone; sync stopped')
   if (row.status === 'scope_unavailable')
-    return 'Server folder or group unavailable; local files kept'
-  if (row.status === 'needs-token' && activity?.error) return 'Access closed; local files kept'
+    return text('Server folder or group unavailable; local files kept')
+  if (row.status === 'needs-token' && activity?.error)
+    return text('Access closed; local files kept')
   if (activity?.startup) {
     const one = activity.startup
-    return `${one.stage}… ${one.completed}/${one.total}${one.outcome === 'failed' ? ' · Needs attention' : ''}`
+    return text('{stage}… {completed}/{total}{attention}', {
+      stage: text(one.stage),
+      completed: one.completed,
+      total: one.total,
+      attention: one.outcome === 'failed' ? text(' · Needs attention') : '',
+    })
   }
   if (activity?.inspection)
-    return `Checking the vault… ${activity.inspection.completed}/${activity.inspection.total}`
+    return text('Checking the vault… {completed}/{total}', activity.inspection)
   if (!row.paused && row.status === 'syncing' && activity?.transfer)
-    return transferText(activity.transfer)
-  if (activity?.comparison)
-    return `Comparing files ${activity.comparison.completed}/${activity.comparison.total}`
+    return transferText(activity.transfer, text)
+  if (activity?.comparison) return text('Comparing files {completed}/{total}', activity.comparison)
   if (
     row.status === 'offline' &&
     activity?.error === 'The server response was cut off before it finished. Try syncing again.'
   )
-    return 'Server response interrupted'
-  return statusName(row.paused ? 'paused' : row.status)
+    return text('Server response interrupted')
+  return statusName(row.paused ? 'paused' : row.status, text)
 }
 export interface TokenUiRuntime extends ExecutableApplyPort, ConsentResolvePort {
   localPath?(path: string): string

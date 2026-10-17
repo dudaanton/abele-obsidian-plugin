@@ -1,5 +1,6 @@
 import path from 'node:path'
 import ts from 'typescript'
+import { en } from '../../src/i18n/locales/en/pilot'
 
 interface CommandAnalysis {
   readonly source: string
@@ -42,6 +43,20 @@ export function analyzeCommands(
         if (value) {
           if (ts.isTemplateExpression(value) && expression === '`Script: ${parsed.meta.name}`') {
             names = [{ literal: true, value: 'Script: <name>' }]
+          } else if (ts.isCallExpression(value) && value.expression.getText(source) === 't') {
+            const key = value.arguments[0]
+            checker ??= program.getTypeChecker()
+            const type = key && checker.getTypeAtLocation(key)
+            names = (type ? (type.isUnion() ? type.types : [type]) : []).map((candidate) => {
+              const text = candidate.isStringLiteral()
+                ? en[candidate.value as keyof typeof en]
+                : undefined
+              return {
+                literal: typeof text === 'string',
+                value: typeof text === 'string' ? text.replace('{name}', '<name>') : '',
+              }
+            })
+            if (!names.length) names = [{ literal: false, value: '' }]
           } else {
             checker ??= program.getTypeChecker()
             const type = checker.getTypeAtLocation(value)

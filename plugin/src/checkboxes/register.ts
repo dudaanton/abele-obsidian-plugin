@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { ensureSyntaxTree } from '@codemirror/language'
 import { EditorView } from '@codemirror/view'
 import { Menu, Notice, TFile, type Editor, type Plugin } from 'obsidian'
@@ -125,7 +126,7 @@ export function registerCheckboxes(plugin: Plugin): void {
   )
   plugin.addCommand({
     id: 'cycle-checkbox-state',
-    name: 'Cycle checkbox state',
+    name: t('commands.cycle-checkbox-state'),
     icon: 'list-checks',
     editorCheckCallback(checking, editor: Editor) {
       const view = (editor as Editor & { cm?: EditorView }).cm

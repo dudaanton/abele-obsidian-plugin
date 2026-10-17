@@ -1,26 +1,33 @@
 <template>
   <Section
-    title="Startup"
-    desc="Scripts run each time Obsidian starts, one after another in this order, once the vault is open. A script that takes parameters gets its defaults; one that needs a value with no default is skipped. Put a script here with the power button on its card in the library."
+    :title="t('settings.scripts.StartupScriptsEditor.startup.65d48235')"
+    :desc="t('settings.scripts.StartupScriptsEditor.scripts_run_each_time_obsidian.149c2450')"
     class="abele-startup-scripts"
   >
     <Setting
-      name="Don't run startup scripts"
-      desc="Skips all of them until switched back. If a startup script freezes Obsidian, it is also skipped by itself the next time Obsidian starts."
+      :name="t('settings.scripts.StartupScriptsEditor.don_t_run_startup_scripts.a287f1aa')"
+      :desc="t('settings.scripts.StartupScriptsEditor.skips_all_of_them_until.bf97689c')"
     >
       <Checkbox :is-enabled="paused" @toggle="togglePaused" />
     </Setting>
 
     <EmptyState
       v-if="!scripts.length"
-      text="There are no scripts yet: add one to the scripts folder first."
+      :text="t('settings.scripts.StartupScriptsEditor.there_are_no_scripts_yet.3ac66fc7')"
     />
-    <EmptyState v-else-if="!chosen.length && !headed.length" text="No startup scripts yet." />
+    <EmptyState
+      v-else-if="!chosen.length && !headed.length"
+      :text="t('settings.scripts.StartupScriptsEditor.no_startup_scripts_yet.30a2445c')"
+    />
     <Setting
       v-for="(entry, idx) in chosen"
       :key="entry.script"
       :name="entry.script"
-      :desc="exists(entry.script) ? '' : 'Not found in the scripts folder'"
+      :desc="
+        exists(entry.script)
+          ? ''
+          : t('settings.scripts.StartupScriptsEditor.not_found_in_the_scripts.e5cfdc39')
+      "
       class="abele-startup-scripts__entry"
       :data-script="entry.script"
     >
@@ -32,35 +39,55 @@
       <Icon
         icon="arrow-up"
         :disabled="idx === 0"
-        :tooltip="idx === 0 ? 'Already the first' : 'Run it earlier'"
+        :tooltip="
+          idx === 0
+            ? t('settings.scripts.StartupScriptsEditor.already_the_first.eab62d41')
+            : t('settings.scripts.StartupScriptsEditor.run_it_earlier.01c77f4e')
+        "
         @click="move(idx, -1)"
       />
       <Icon
         icon="arrow-down"
         :disabled="idx === chosen.length - 1"
-        :tooltip="idx === chosen.length - 1 ? 'Already the last' : 'Run it later'"
+        :tooltip="
+          idx === chosen.length - 1
+            ? t('settings.scripts.StartupScriptsEditor.already_the_last.a6ec4b12')
+            : t('settings.scripts.StartupScriptsEditor.run_it_later.f2761f7f')
+        "
         @click="move(idx, 1)"
       />
-      <Icon icon="trash" tooltip="Stop running it at startup" @click="remove(entry.script)" />
+      <Icon
+        icon="trash"
+        :tooltip="t('settings.scripts.StartupScriptsEditor.stop_running_it_at_startup.7b061cf3')"
+        @click="remove(entry.script)"
+      />
     </Setting>
     <Setting
       v-for="s in headed"
       :key="s.meta.name"
       :name="s.meta.name"
-      :desc="`Runs at startup by its own header (@startup), after the ones above, on ${DEVICE_WORDS[s.meta.startup ?? 'both']}. Add it to the list to give it a place.`"
+      :desc="
+        t('settings.scripts.StartupScriptsEditor.runs_at_startup_by_its.2407579f', {
+          value0: String(DEVICE_WORDS[s.meta.startup ?? 'both']),
+        })
+      "
       class="abele-startup-scripts__headed"
       :data-script="s.meta.name"
     >
       <Button
-        text="Add to the list"
-        :tooltip="`Put ${s.meta.name} in the list above, to move it or choose its devices`"
+        :text="t('settings.scripts.StartupScriptsEditor.add_to_the_list.6b62dd0b')"
+        :tooltip="
+          t('settings.scripts.StartupScriptsEditor.put_value_in_the_list.f0c37c74', {
+            value0: String(s.meta.name),
+          })
+        "
         @click="add(s.meta.name, s.meta.startup)"
       />
     </Setting>
     <div v-if="scripts.length" class="abele-startup-scripts__add">
       <Button
-        text="Add a script"
-        tooltip="Search your scripts for one to run at startup"
+        :text="t('settings.scripts.StartupScriptsEditor.add_a_script.c4526bc4')"
+        :tooltip="t('settings.scripts.StartupScriptsEditor.search_your_scripts_for_one.d53e42be')"
         @click="addScript"
       />
     </div>
@@ -68,6 +95,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 /**
  * The startup scripts: which run when Obsidian starts, in what order and on which devices, with
  * those put there by their own header listed after them — and the switch that skips them all.
@@ -97,15 +125,18 @@ import {
 import type { StartupDevices, StartupScript } from '@/scripting/types'
 
 const DEVICE_OPTIONS = [
-  { value: 'both', display: 'Every device' },
-  { value: 'desktop', display: 'Computers' },
-  { value: 'mobile', display: 'Phones and tablets' },
+  { value: 'both', display: t('settings.scripts.StartupScriptsEditor.every_device.9b626893') },
+  { value: 'desktop', display: t('settings.scripts.StartupScriptsEditor.computers.680cb3c6') },
+  {
+    value: 'mobile',
+    display: t('settings.scripts.StartupScriptsEditor.phones_and_tablets.578553d2'),
+  },
 ]
 
 const DEVICE_WORDS: Record<StartupDevices, string> = {
-  both: 'every device',
-  desktop: 'computers',
-  mobile: 'phones and tablets',
+  both: t('settings.scripts.StartupScriptsEditor.every_device.17779e2b'),
+  desktop: t('settings.startup.computers'),
+  mobile: t('settings.scripts.StartupScriptsEditor.phones_and_tablets.a522653d'),
 }
 
 const config = AbeleConfig.getInstance()

@@ -1,26 +1,35 @@
 <template>
-  <ObsidianModal title="All keys" size="tall" @close="emit('close')">
+  <ObsidianModal
+    :title="t('settings.SecretsListModal.all_keys.9e5c5da4')"
+    size="tall"
+    @close="emit('close')"
+  >
     <div ref="root" class="abele-secrets-list">
       <p class="abele-secrets-list__summary">{{ summary }}</p>
 
       <!-- The store's names are encrypted with its values: locked, it can only be said to exist -->
       <template v-if="status === 'locked' || status === 'stale'">
         <Setting :name="lockedName" :desc="unlockDesc">
-          <Input v-model="passphrase" password placeholder="Passphrase" />
+          <Input
+            v-model="passphrase"
+            password
+            :placeholder="t('settings.SecretsListModal.passphrase.e7611f05')"
+          />
           <Button
-            text="Unlock"
+            :text="t('settings.SecretsListModal.unlock.4ac709aa')"
             accent
             :disabled="!passphrase || busy"
             :tooltip="
-              passphrase ? 'Open the store here and list its keys' : 'Type the passphrase first'
+              passphrase
+                ? t('settings.SecretsListModal.open_the_store_here_and.6be7e00a')
+                : t('settings.SecretsListModal.type_the_passphrase_first.397584ff')
             "
             @click="unlock"
           />
         </Setting>
       </template>
       <p v-else-if="status === 'damaged'" class="abele-secrets-list__note">
-        The synced store cannot be decrypted, so the keys only it holds cannot be listed. The keys
-        below are the ones this device has.
+        {{ t('settings.SecretsListModal.the_synced_store_cannot_be.df30eba8') }}
       </p>
 
       <CardGrid stack>
@@ -38,10 +47,18 @@
           <template v-if="row.set" #actions>
             <Icon
               :icon="shown.has(row.id) ? 'eye-off' : 'eye'"
-              :tooltip="shown.has(row.id) ? 'Hide the key' : 'Show the key'"
+              :tooltip="
+                shown.has(row.id)
+                  ? t('settings.SecretsListModal.hide_the_key.46a22923')
+                  : t('settings.SecretsListModal.show_the_key.90d90eb7')
+              "
               @click="toggle(row.id)"
             />
-            <Icon icon="copy" tooltip="Copy the key" @click="copyOne(row)" />
+            <Icon
+              icon="copy"
+              :tooltip="t('settings.SecretsListModal.copy_the_key.30d7860a')"
+              @click="copyOne(row)"
+            />
           </template>
           <code v-if="row.set" class="abele-secrets-list__value">{{
             shown.has(row.id) ? store.get(row.id) : MASK
@@ -51,25 +68,29 @@
 
       <EmptyState
         v-if="!rows.length"
-        text="No keys yet. A key entered anywhere in the plugin's settings is listed here."
+        :text="t('settings.SecretsListModal.no_keys_yet_a_key.9c87ddf6')"
       />
 
-      <Setting name="Copy all" :desc="copyAllDesc">
+      <Setting :name="t('settings.SecretsListModal.copy_all.96e3f09a')" :desc="copyAllDesc">
         <Button
-          text="Copy all"
+          :text="t('settings.SecretsListModal.copy_all.96e3f09a')"
           warning
           :disabled="!setCount"
-          :tooltip="setCount ? 'Put every key on the clipboard, after a warning' : 'No key is set'"
+          :tooltip="
+            setCount
+              ? t('settings.SecretsListModal.put_every_key_on_the.a26cf3c7')
+              : t('settings.SecretsListModal.no_key_is_set.f4f5b239')
+          "
           @click="confirmingAll = true"
         />
       </Setting>
 
       <ConfirmModal
         v-if="confirmingAll"
-        title="Copy every key"
+        :title="t('settings.SecretsListModal.copy_every_key.2f918de3')"
         :message="copyAllWarning"
-        confirm-text="Copy all"
-        confirm-tooltip="Put every key on the clipboard as plain text"
+        :confirm-text="t('settings.SecretsListModal.copy_all.96e3f09a')"
+        :confirm-tooltip="t('settings.SecretsListModal.put_every_key_on_the.8118968c')"
         @confirm="copyAll"
         @close="confirmingAll = false"
       />
@@ -78,6 +99,8 @@
 </template>
 
 <script setup lang="ts">
+import { settingsCount } from '@/i18n/settingsCounts'
+import { t } from '@/i18n'
 /**
  * Every key the plugin knows on this device, each masked until asked for.
  *
@@ -112,13 +135,22 @@ const SHOW_FOR_MS = 30_000
 const MASK = '••••••••••••'
 
 const STATES: Record<KeyState, { label: string; color: KitColor }> = {
-  device: { label: 'On this device', color: 'grey' },
-  synced: { label: 'Synced', color: 'green' },
-  differs: { label: 'Differs from keychain', color: 'orange' },
-  'store-only': { label: 'Only in the store', color: 'orange' },
-  'not-synced': { label: 'Not in the store', color: 'orange' },
-  locked: { label: 'Store locked', color: 'grey' },
-  unset: { label: 'Not set', color: 'grey' },
+  device: { label: t('settings.SecretsListModal.on_this_device.38b9d88c'), color: 'grey' },
+  synced: { label: t('settings.SecretsListModal.synced.5da22fe4'), color: 'green' },
+  differs: {
+    label: t('settings.SecretsListModal.differs_from_keychain.922767e7'),
+    color: 'orange',
+  },
+  'store-only': {
+    label: t('settings.SecretsListModal.only_in_the_store.9bb2ce40'),
+    color: 'orange',
+  },
+  'not-synced': {
+    label: t('settings.SecretsListModal.not_in_the_store.507fd6ce'),
+    color: 'orange',
+  },
+  locked: { label: t('settings.SecretsListModal.store_locked.d47ee0fe'), color: 'grey' },
+  unset: { label: t('settings.SecretsListModal.not_set.4895f731'), color: 'grey' },
 }
 
 const store = secrets()
@@ -138,20 +170,24 @@ const setCount = computed(() => rows.value.filter((r) => r.set).length)
 
 const summary = computed(() => {
   const all = rows.value.length
-  const parts = [all === 1 ? '1 key' : `${all} keys`, `${setCount.value} set`]
+  const parts = [
+    all === 1 ? settingsCount('key', 1) : settingsCount('key', all),
+    t('settings.SecretsListModal.value_set.f4c8f3b4', { value0: String(setCount.value) }),
+  ]
   const synced = rows.value.filter((r) => r.state === 'synced').length
-  if (status.value === 'unlocked') parts.push(`${synced} synced`)
+  if (status.value === 'unlocked')
+    parts.push(t('settings.SecretsListModal.value_synced.1785a4d0', { value0: String(synced) }))
   return parts.join(' · ')
 })
 
 const explained = (row: SecretRow): string | undefined => {
   switch (row.state) {
     case 'differs':
-      return "This device's keychain holds another value, changed outside the plugin. The store's value is the one used."
+      return t('settings.SecretsListModal.this_device_s_keychain_holds.1b27e956')
     case 'store-only':
-      return "In the store but not in this device's keychain. The plugin still uses it."
+      return t('settings.SecretsListModal.in_the_store_but_not.5e27c94a')
     case 'not-synced':
-      return 'Set on this device and not in the store. Set it again to put it there.'
+      return t('settings.SecretsListModal.set_on_this_device_and.db43f1dd')
     default:
       return undefined
   }
@@ -161,8 +197,10 @@ const when = (at: number) =>
   new Date(at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
 const meta = (row: SecretRow): string[] => [
-  ...(row.unused ? ['Not used by any setting on this device'] : row.uses),
-  ...(row.at ? [`Updated ${when(row.at)}`] : []),
+  ...(row.unused ? [t('settings.SecretsListModal.not_used_by_any_setting.85faf2ac')] : row.uses),
+  ...(row.at
+    ? [t('settings.SecretsListModal.updated_value.51194723', { value0: String(when(row.at)) })]
+    : []),
 ]
 
 // ── Showing ──────────────────────────────────────────────────
@@ -210,28 +248,28 @@ onUnmounted(() => {
 const clipboard = () => platformClipboard(doc().defaultView ?? activeWindow)
 const confirmingAll = ref(false)
 
-const copy = (text: string, what: string) =>
-  copyKey(text, what, doc().defaultView ?? activeWindow)
+const copy = (text: string, what: string) => copyKey(text, what, doc().defaultView ?? activeWindow)
 
 const copyOne = (row: SecretRow) => copy(store.get(row.id), row.name)
 
 const copyAll = () =>
   copy(
     copyAllText(rows.value, (id) => store.get(id)),
-    setCount.value === 1 ? '1 key' : `${setCount.value} keys`
+    setCount.value === 1 ? settingsCount('key', 1) : settingsCount('key', setCount.value)
   )
 
 const clears = computed(() => clipboard().read !== null)
 
-const copyAllDesc =
-  'Every key that is set, as lines of name = value — for a password manager, or to paste into another app.'
+const copyAllDesc = t('settings.SecretsListModal.every_key_that_is_set.19a2b157')
 
 const copyAllWarning = computed(
   () =>
-    `Every key listed here — ${setCount.value} of them — goes onto the clipboard as plain text, where any app on this device can read it. ` +
+    t('settings.SecretsListModal.every_key_listed_here_value.a6aac65e', {
+      value0: String(setCount.value),
+    }) +
     (clears.value
-      ? 'It is cleared from the clipboard in a minute if it is still there.'
-      : 'On this device it stays there until something else is copied.')
+      ? t('settings.SecretsListModal.it_is_cleared_from_the.06480e6f')
+      : t('settings.SecretsListModal.on_this_device_it_stays.57af8178'))
 )
 
 // ── Unlocking ────────────────────────────────────────────────
@@ -248,14 +286,14 @@ watch(status, () => {
 
 const lockedName = computed(() =>
   status.value === 'stale'
-    ? 'Synced keys are out of date here'
-    : 'Synced keys are locked on this device'
+    ? t('settings.SecretsListModal.synced_keys_are_out_of.408b671b')
+    : t('settings.SecretsListModal.synced_keys_are_locked_on.3cab7b24')
 )
 
 const unlockDesc = computed(() =>
   refused.value
-    ? 'That passphrase does not open the store.'
-    : 'The store may hold keys this device does not have. Their names are encrypted too, so they are listed once it is unlocked.'
+    ? t('settings.SecretsListModal.that_passphrase_does_not_open.525fb3a8')
+    : t('settings.SecretsListModal.the_store_may_hold_keys.5b2f6105')
 )
 
 async function unlock(): Promise<void> {
@@ -264,7 +302,7 @@ async function unlock(): Promise<void> {
     if (!(await store.unlock(passphrase.value))) refused.value = true
   } catch (e) {
     console.error('[Abele] the store could not be unlocked', (e as Error)?.message)
-    new Notice('The store could not be unlocked.')
+    new Notice(t('settings.SecretsListModal.the_store_could_not_be.bafdcd54'))
   } finally {
     busy.value = false
   }

@@ -3,44 +3,53 @@
        looks, what Abele draws in a note in place of Obsidian, how notes open, where attachments go,
        maps, and the plugin itself. -->
   <div class="abele-settings__other">
-    <Section title="Look">
+    <Section :title="t('settings.OtherSettings.look.a0de5719')">
       <Setting
-        name="Full-width sidebars"
-        desc="Make sidebars take the full screen width on a phone."
+        :name="t('settings.OtherSettings.full_width_sidebars.bc7a2b4e')"
+        :desc="t('settings.OtherSettings.make_sidebars_take_the_full.15d01abc')"
       >
         <Checkbox :is-enabled="fullWidthSidebars" @toggle="toggleFullWidthSidebars" />
       </Setting>
       <Setting
-        name="Half-width sidebars on tablet"
-        desc="Make sidebars take half the screen width on a tablet."
+        :name="t('settings.OtherSettings.half_width_sidebars_on_tablet.9c66ca63')"
+        :desc="t('settings.OtherSettings.make_sidebars_take_half_the.f915aa8e')"
       >
         <Checkbox :is-enabled="halfWidthSidebars" @toggle="toggleHalfWidthSidebars" />
       </Setting>
       <Setting
-        name="CSS snippets folder"
-        desc="Vault folder with .css files to auto-apply as style snippets. Leave empty to disable."
+        :name="t('settings.OtherSettings.css_snippets_folder.0f718ada')"
+        :desc="t('settings.OtherSettings.vault_folder_with_css_files.063bfc1c')"
       >
         <Input
           :model-value="snippetsFolder"
-          placeholder="e.g. snippets"
+          :placeholder="
+            t('settings.OtherSettings.e_g_snippets.d1877812', { literal0: String('snippets') })
+          "
           @update:model-value="updateSnippetsFolder"
         />
       </Setting>
     </Section>
-    <Section title="Drawn by Abele in a note" desc="Each one in place of Obsidian's own drawing.">
+    <Section
+      :title="t('settings.OtherSettings.drawn_by_abele_in_a.3c7dbc19')"
+      :desc="t('settings.OtherSettings.each_one_in_place_of.7bc5aa3f')"
+    >
       <Setting
-        name="Own drawing of properties"
-        desc="In a note's properties: a wallet's balance beside a link to it, sums worked out in number fields, and cards for File and Files properties and for the cover. Off is Obsidian's own drawing."
+        :name="t('settings.OtherSettings.own_drawing_of_properties.909062a8')"
+        :desc="t('settings.OtherSettings.in_a_note_s_properties.769ed541')"
       >
         <Checkbox :is-enabled="propertyWidgets" @toggle="togglePropertyWidgets" />
       </Setting>
       <Setting
-        name="Counter properties"
-        desc="Comma-separated property names drawn as a number with − and + buttons. An empty value counts as 0. Needs own drawing of properties on."
+        :name="t('settings.OtherSettings.counter_properties.8ebc8e5b')"
+        :desc="t('settings.OtherSettings.comma_separated_property_names_drawn.054f1654')"
       >
         <Input
           :model-value="counterProperties"
-          placeholder="e.g. reps, glasses"
+          :placeholder="
+            t('settings.OtherSettings.e_g_reps_glasses.bcb26756', {
+              literal0: String('reps, glasses'),
+            })
+          "
           @update:model-value="updateCounterProperties"
         />
       </Setting>
@@ -58,50 +67,50 @@
         />
       </Setting>
       <Setting
-        name="Mermaid viewer"
-        desc="Draw mermaid diagrams at the width of the note, with zoom, drag and a full-screen view, instead of Obsidian's own drawing."
+        :name="t('settings.OtherSettings.mermaid_viewer.0fee57c7')"
+        :desc="t('settings.OtherSettings.draw_mermaid_diagrams_at_the.48ca67fa')"
       >
         <Checkbox :is-enabled="mermaidViewer" @toggle="toggleMermaidViewer" />
       </Setting>
       <Setting
-        name="Open canvases in Abele"
-        desc="Open diagrams in the read-only viewer with walkthrough steps. Use Open in Obsidian Canvas in its header to edit a diagram in the native canvas."
+        :name="t('settings.OtherSettings.open_canvases_in_abele.0104f91b')"
+        :desc="t('settings.OtherSettings.open_diagrams_in_the_read.b48fc66f')"
       >
         <Checkbox :is-enabled="canvasViewer" @toggle="toggleCanvasViewer" />
       </Setting>
       <Setting
-        name="Editor syntax highlighting"
-        desc="Highlight more fenced-code languages in Source and Live Preview, using Obsidian's own theme. Native highlighting and rendered blocks stay unchanged. Extra highlighting is limited to blocks of 32,768 characters and 1,000 lines."
+        :name="t('settings.OtherSettings.editor_syntax_highlighting.9bbd35c2')"
+        :desc="t('settings.OtherSettings.highlight_more_fenced_code_languages.89e723bd')"
       >
         <Checkbox :is-enabled="editorSyntaxHighlight" @toggle="toggleEditorSyntaxHighlight" />
       </Setting>
     </Section>
-    <Section title="Opening notes">
+    <Section :title="t('settings.OtherSettings.opening_notes.d2eceee4')">
       <Setting
-        name="Remember where notes were left"
-        desc="Open each note at the scroll and cursor it was left at, kept on this device. A link to a heading or block, a search result or a book's highlight still goes to its own place."
+        :name="t('settings.OtherSettings.remember_where_notes_were_left.1010d0b2')"
+        :desc="t('settings.OtherSettings.open_each_note_at_the.c4f04706')"
       >
         <Checkbox :is-enabled="rememberNotePlaces" @toggle="toggleRememberNotePlaces" />
       </Setting>
     </Section>
     <AttachmentRulesSettings />
-    <Section title="Maps">
+    <Section :title="t('settings.OtherSettings.maps.119e66d1')">
       <Setting
-        name="Coordinates property"
-        desc="Note property holding a place as 'lat, lon'. The agent is told to write into this one."
+        :name="t('settings.OtherSettings.coordinates_property.afe852a5')"
+        :desc="t('settings.OtherSettings.note_property_holding_a_place.d3b2dd8b')"
       >
         <Input
           :model-value="mapCoordinatesProperty"
-          placeholder="coordinates"
+          :placeholder="t('settings.OtherSettings.coordinates.29abdbc9')"
           @update:model-value="updateMapProperty"
         />
       </Setting>
       <Setting
-        name="Map style"
-        desc="How maps in notes and chats look. The free styles need no key or account."
+        :name="t('settings.OtherSettings.map_style.62a4d250')"
+        :desc="t('settings.OtherSettings.how_maps_in_notes_and.dc2e0608')"
       >
         <Dropdown
-          :options="MAP_STYLES"
+          :options="settingsOptions(MAP_STYLES)"
           :model-value="mapStyle"
           @update:model-value="pickMapStyle"
         />
@@ -109,8 +118,8 @@
       <!-- Only for one's own style: where MapLibre reads it from. -->
       <Setting
         v-if="mapStyle === 'custom'"
-        name="Style URL"
-        desc="A MapLibre style.json of your own provider."
+        :name="t('settings.OtherSettings.style_url.221b2c65')"
+        :desc="t('settings.OtherSettings.a_maplibre_style_json_of.2c7c7cee')"
       >
         <Input
           :model-value="mapStyleUrl"
@@ -120,13 +129,20 @@
       </Setting>
       <MapStylePreview :choice="mapStyle" :url="savedMapStyleUrl" />
     </Section>
-    <Section title="The plugin">
-      <Setting name="Changelog" desc="See what changed in every plugin version, newest first.">
-        <Button text="Open changelog" tooltip="Open the plugin changelog" @click="showChangelog" />
+    <Section :title="t('settings.OtherSettings.the_plugin.cb8c07f4')">
+      <Setting
+        :name="t('settings.OtherSettings.changelog.ead07c84')"
+        :desc="t('settings.OtherSettings.see_what_changed_in_every.b28c48a6')"
+      >
+        <Button
+          :text="t('settings.OtherSettings.open_changelog.f8738613')"
+          :tooltip="t('settings.OtherSettings.open_the_plugin_changelog.f99c92b8')"
+          @click="showChangelog"
+        />
       </Setting>
       <Setting
-        name="Keyboard diagnostics"
-        desc="Show, at the top of the screen, what the app reports about the on-screen keyboard — for a screenshot when a dialog ends up under it. Stays on this device."
+        :name="t('settings.OtherSettings.keyboard_diagnostics.b559c4cd')"
+        :desc="t('settings.OtherSettings.show_at_the_top_of.2cad0798')"
       >
         <Checkbox :is-enabled="keyboardDiagnostics" @toggle="toggleKeyboardDiagnostics" />
       </Setting>
@@ -135,6 +151,8 @@
 </template>
 
 <script setup lang="ts">
+import { settingsOptions } from '@/i18n/settingsLabels'
+import { t } from '@/i18n'
 import { computed, ref } from 'vue'
 import { debounce } from 'obsidian'
 import Setting from '../obsidian/Setting.vue'
@@ -315,26 +333,26 @@ const propertyList = (key: ListKey, name: string, desc: string, placeholder: str
 const propertyLists = [
   propertyList(
     'dateProperties',
-    'Date properties',
-    'Comma-separated property names drawn as a date with buttons a day back and on, how far away it is, and a button to its daily note. Needs own drawing of properties on.',
+    t('settings.OtherSettings.date_properties.9201e6b8'),
+    t('settings.OtherSettings.comma_separated_property_names_drawn.2b3d1640'),
     'e.g. date, due'
   ),
   propertyList(
     'priorityProperties',
-    'Priority properties',
-    'Comma-separated property names drawn as a task priority, low, medium or high, with buttons to raise and lower it. Needs own drawing of properties on.',
+    t('settings.OtherSettings.priority_properties.21f4bae9'),
+    t('settings.OtherSettings.comma_separated_property_names_drawn.b31eb248'),
     'e.g. priority'
   ),
   propertyList(
     'labelProperties',
-    'Label properties',
-    'Comma-separated property names drawn as labels, added from those already used in the vault or typed. Needs own drawing of properties on.',
+    t('settings.OtherSettings.label_properties.7ad8c49d'),
+    t('settings.OtherSettings.comma_separated_property_names_drawn.fcb4c6c7'),
     'e.g. labels'
   ),
   propertyList(
     'groupProperties',
-    'Group properties',
-    'Comma-separated property names that get a button beside their list, adding one of the notes already used as groups. The list is still typed into as usual. Needs own drawing of properties on.',
+    t('settings.OtherSettings.group_properties.23d1a496'),
+    t('settings.OtherSettings.comma_separated_property_names_that.cb39dad8'),
     'e.g. groups'
   ),
 ]

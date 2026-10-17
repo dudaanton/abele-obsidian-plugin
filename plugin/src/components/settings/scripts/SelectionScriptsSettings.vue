@@ -1,10 +1,10 @@
 <template>
   <Section
-    title="Scripts on selected words"
+    :title="t('settings.scripts.SelectionScriptsSettings.scripts_on_selected_words.1698fbec')"
     :desc="
       surface === 'book'
-        ? 'Scripts pinned to the book selection menu, in this order. Up to three are a button each; more fold into one menu. Other scripts remain under “Other script…”.'
-        : 'Scripts chosen for the chat selection menu, independently of books. Chat launch support is not enabled yet.'
+        ? t('settings.scripts.SelectionScriptsSettings.scripts_pinned_to_the_book.f58bed5f')
+        : t('settings.scripts.SelectionScriptsSettings.scripts_chosen_for_the_chat.db9d7d44')
     "
     class="abele-selection-scripts-settings"
     :class="{ 'abele-book-scripts-settings': surface === 'book' }"
@@ -12,15 +12,24 @@
   >
     <EmptyState
       v-if="!scripts.length"
-      text="There are no scripts yet: add one to the scripts folder first."
+      :text="t('settings.scripts.SelectionScriptsSettings.there_are_no_scripts_yet.3ac66fc7')"
     />
-    <EmptyState v-else-if="!chosen.length && !headed.length" text="Nothing on the menu yet." />
+    <EmptyState
+      v-else-if="!chosen.length && !headed.length"
+      :text="t('settings.scripts.SelectionScriptsSettings.nothing_on_the_menu_yet.e30d6c11')"
+    />
     <Setting
       v-for="(entry, idx) in chosen"
       :key="entry.script"
       :name="entry.name.trim() || entry.script"
       :desc="
-        exists(entry.script) ? `Script: ${entry.script}` : `Script: ${entry.script} — not found`
+        exists(entry.script)
+          ? t('settings.scripts.SelectionScriptsSettings.script_value.804f5354', {
+              value0: String(entry.script),
+            })
+          : t('settings.scripts.SelectionScriptsSettings.script_value_not_found.48b085e0', {
+              value0: String(entry.script),
+            })
       "
       class="abele-selection-scripts-settings__entry"
       :class="{ 'abele-book-scripts-settings__entry': surface === 'book' }"
@@ -28,47 +37,69 @@
     >
       <Input
         :model-value="entry.name"
-        placeholder="Name on the bar"
+        :placeholder="t('settings.scripts.SelectionScriptsSettings.name_on_the_bar.6c09f682')"
         @update:model-value="rename(idx, $event)"
       />
       <Icon
         :icon="entry.icon || iconOf(entry.script)"
-        tooltip="Choose the icon it has on the bar"
+        :tooltip="t('settings.scripts.SelectionScriptsSettings.choose_the_icon_it_has.ebff10d4')"
         @click="pickingIconFor = idx"
       />
       <Icon
         icon="arrow-up"
         :disabled="idx === 0"
-        :tooltip="idx === 0 ? 'Already the first' : 'Move it up the menu'"
+        :tooltip="
+          idx === 0
+            ? t('settings.scripts.SelectionScriptsSettings.already_the_first.eab62d41')
+            : t('settings.scripts.SelectionScriptsSettings.move_it_up_the_menu.20938d10')
+        "
         @click="move(idx, -1)"
       />
       <Icon
         icon="arrow-down"
         :disabled="idx === chosen.length - 1"
-        :tooltip="idx === chosen.length - 1 ? 'Already the last' : 'Move it down the menu'"
+        :tooltip="
+          idx === chosen.length - 1
+            ? t('settings.scripts.SelectionScriptsSettings.already_the_last.a6ec4b12')
+            : t('settings.scripts.SelectionScriptsSettings.move_it_down_the_menu.dc508335')
+        "
         @click="move(idx, 1)"
       />
-      <Icon icon="trash" tooltip="Take it off the menu" @click="pendingRemoval = entry.script" />
+      <Icon
+        icon="trash"
+        :tooltip="t('settings.scripts.SelectionScriptsSettings.take_it_off_the_menu.c979b889')"
+        @click="pendingRemoval = entry.script"
+      />
     </Setting>
     <Setting
       v-for="s in headed"
       :key="s.meta.name"
       :name="s.meta.name"
-      :desc="`On the menu by its own header (${header}), after the ones above. Add it to the list to rename it or give it a place.`"
+      :desc="
+        t('settings.scripts.SelectionScriptsSettings.on_the_menu_by_its.9695bd79', {
+          value0: String(header),
+        })
+      "
       class="abele-selection-scripts-settings__headed"
       :class="{ 'abele-book-scripts-settings__headed': surface === 'book' }"
       :data-script="s.meta.name"
     >
       <Button
-        text="Add to the list"
-        :tooltip="`Put ${s.meta.name} in the list above, to rename it or move it`"
+        :text="t('settings.scripts.SelectionScriptsSettings.add_to_the_list.6b62dd0b')"
+        :tooltip="
+          t('settings.scripts.SelectionScriptsSettings.put_value_in_the_list.ab3d4711', {
+            value0: String(s.meta.name),
+          })
+        "
         @click="add(s.meta.name)"
       />
     </Setting>
     <div v-if="scripts.length" class="abele-selection-scripts-settings__add">
       <Button
-        text="Add a script"
-        tooltip="Search your scripts for one to put on the menu"
+        :text="t('settings.scripts.SelectionScriptsSettings.add_a_script.c4526bc4')"
+        :tooltip="
+          t('settings.scripts.SelectionScriptsSettings.search_your_scripts_for_one.702cfb4f')
+        "
         @click="addScript"
       />
     </div>
@@ -80,10 +111,24 @@
     />
     <ConfirmModal
       v-if="pendingRemoval"
-      title="Take off the menu"
-      :message="`Take ${pendingRemoval} off the menu for words in a ${surface === 'book' ? 'book' : 'chat'}? The script itself stays.${isHeaded(pendingRemoval) ? ` Its ${header} header still puts it on this menu; remove that line from the script to hide it.` : ''}`"
-      confirm-text="Take off"
-      :confirm-tooltip="`Take ${pendingRemoval} off the menu`"
+      :title="t('settings.scripts.SelectionScriptsSettings.take_off_the_menu.c4b604ec')"
+      :message="
+        t('settings.scripts.SelectionScriptsSettings.take_value_off_the_menu.66090b83', {
+          value0: String(pendingRemoval),
+          value1: String(surface === 'book' ? t('settings.terms.book') : t('settings.terms.chat')),
+          value2: String(
+            isHeaded(pendingRemoval)
+              ? t('settings.parts.951aaf14e2b23dff', { value0: String(header) })
+              : ''
+          ),
+        })
+      "
+      :confirm-text="t('settings.scripts.SelectionScriptsSettings.take_off.c2ed15e8')"
+      :confirm-tooltip="
+        t('settings.scripts.SelectionScriptsSettings.take_value_off_the_menu.83b6400c', {
+          value0: String(pendingRemoval),
+        })
+      "
       @confirm="remove(pendingRemoval)"
       @close="pendingRemoval = null"
     />
@@ -91,6 +136,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, ref } from 'vue'
 import { debounce } from 'obsidian'
 import Section from '../../obsidian/Section.vue'

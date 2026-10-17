@@ -1,36 +1,50 @@
 <template>
   <Setting
-    name="Keep only on the server"
-    desc="Device-local rule. It runs only when you preview and confirm; pinned, changed and open files stay here."
+    :name="t('settings.sync.ExternalFileRules.keep_only_on_the_server.21caa8b7')"
+    :desc="t('settings.sync.ExternalFileRules.device_local_rule_it_runs.cc40b724')"
   />
-  <Setting name="Offload folder" desc="Empty means all folders.">
-    <Input v-model="folder" placeholder="All folders" />
+  <Setting
+    :name="t('settings.sync.ExternalFileRules.offload_folder.6566fece')"
+    :desc="t('settings.sync.ExternalFileRules.empty_means_all_folders.c907d956')"
+  >
+    <Input
+      v-model="folder"
+      :placeholder="t('settings.sync.ExternalFileRules.all_folders.226fd0e5')"
+    />
   </Setting>
-  <Setting name="File types" desc="Comma-separated extensions. Empty means all attachment types.">
-    <Input v-model="extensions" placeholder="pdf, epub, jpg" />
+  <Setting
+    :name="t('settings.sync.ExternalFileRules.file_types.696bc9a7')"
+    :desc="t('settings.sync.ExternalFileRules.comma_separated_extensions_empty_means.6af4a62a')"
+  >
+    <Input
+      v-model="extensions"
+      :placeholder="t('settings.sync.ExternalFileRules.pdf_epub_jpg.aef4166d')"
+    />
   </Setting>
-  <Setting name="Minimum size (MiB)">
+  <Setting :name="t('settings.sync.ExternalFileRules.minimum_size_mib.f9c796bb')">
     <Input v-model="minSize" placeholder="0" />
   </Setting>
   <Setting
-    name="Not opened for days"
-    desc="0 ignores age. Files without a recorded opening are excluded when age is set."
+    :name="t('settings.sync.ExternalFileRules.not_opened_for_days.42eb5259')"
+    :desc="t('settings.sync.ExternalFileRules.ignores_age_files_without_a.a2dd1ff0')"
   >
     <Input v-model="days" placeholder="0" />
   </Setting>
   <Setting
-    name="Review matching files"
-    :desc="error || 'See every file and the estimated space before making changes.'"
+    :name="t('settings.sync.ExternalFileRules.review_matching_files.f7400143')"
+    :desc="error || t('settings.sync.ExternalFileRules.see_every_file_and_the.b398409d')"
   >
     <Button
-      text="Preview"
-      tooltip="List matching files and review space before offloading"
+      :text="t('settings.sync.ExternalFileRules.preview.324b134f')"
+      :tooltip="t('settings.sync.ExternalFileRules.list_matching_files_and_review.df3d52b2')"
       :disabled="busy"
       @click="preview"
     />
   </Setting>
 </template>
 <script setup lang="ts">
+import { t } from '@/i18n'
+import { settingsSyncText } from '@/i18n/settingsSync'
 import { ref } from 'vue'
 import { Notice } from 'obsidian'
 import Setting from '../../obsidian/Setting.vue'
@@ -68,7 +82,11 @@ async function preview() {
     if (!(await confirmOffload({ app }, result.preview))) return
     saveRule(app, id, rule)
     const results = await result.actions.apply(result.preview)
-    new Notice(results.map((file) => `${file.path}: ${externalStatus(file.status)}`).join('\n'))
+    new Notice(
+      results
+        .map((file) => `${file.path}: ${externalStatus(file.status, settingsSyncText)}`)
+        .join('\n')
+    )
   } catch (failure) {
     error.value = failure instanceof Error ? failure.message : String(failure)
     console.debug('[abele-sync] external file rule did not finish', failure)

@@ -1,8 +1,5 @@
 <template>
-  <Section
-    desc="An agent is a model, a set of instructions, and what it is allowed to do. Chats run on
-      one; scripts and other agents can delegate to one."
-  >
+  <Section :desc="t('settings.ai.AgentsSettings.an_agent_is_a_model.148349b4')">
     <CardGrid wide>
       <Card
         v-for="agent in agents"
@@ -14,8 +11,12 @@
         @click="editingId = agent.id"
       >
         <template #badges>
-          <Badge v-if="agent.id === defaultAgentId" text="default" accent />
-          <Badge v-if="agent.utility" text="utility" />
+          <Badge
+            v-if="agent.id === defaultAgentId"
+            :text="t('settings.ai.AgentsSettings.default.37a8eec1')"
+            accent
+          />
+          <Badge v-if="agent.utility" :text="t('settings.ai.AgentsSettings.utility.57ffcc28')" />
         </template>
 
         <template #actions>
@@ -25,13 +26,17 @@
             :disabled="agent.id === defaultAgentId || agent.utility"
             @click="makeDefault(agent.id)"
           />
-          <Icon icon="copy" tooltip="Duplicate this agent" @click="duplicate(agent.id)" />
+          <Icon
+            icon="copy"
+            :tooltip="t('settings.ai.AgentsSettings.duplicate_this_agent.1e1d9501')"
+            @click="duplicate(agent.id)"
+          />
           <Icon
             icon="trash"
             :tooltip="
               agents.length <= 1
-                ? 'The last agent cannot be deleted — a chat has to run on something'
-                : 'Delete this agent'
+                ? t('settings.ai.AgentsSettings.the_last_agent_cannot_be.c57e2a82')
+                : t('settings.ai.AgentsSettings.delete_this_agent.0ba11bd2')
             "
             :disabled="agents.length <= 1"
             @click="pendingRemoval = agent"
@@ -42,19 +47,26 @@
 
     <div class="abele-agents-settings__actions">
       <Button
-        text="Add agent"
+        :text="t('settings.ai.AgentsSettings.add_agent.d3e039d4')"
         accent
-        tooltip="Create an agent and open it for editing"
+        :tooltip="t('settings.ai.AgentsSettings.create_an_agent_and_open.fd458de1')"
         @click="addAgent"
       />
     </div>
 
     <ConfirmModal
       v-if="pendingRemoval"
-      title="Delete agent"
-      :message="`Delete ${pendingRemoval.name}? Chats still running on it will fall back to the
-        default agent. This cannot be undone.`"
-      :confirm-tooltip="`Delete ${pendingRemoval.name}`"
+      :title="t('settings.ai.AgentsSettings.delete_agent.602cc4da')"
+      :message="
+        t('settings.ai.AgentsSettings.delete_value_chats_still_running.80b7b7d4', {
+          value0: String(pendingRemoval.name),
+        })
+      "
+      :confirm-tooltip="
+        t('settings.ai.AgentsSettings.delete_value.8782b778', {
+          value0: String(pendingRemoval.name),
+        })
+      "
       @confirm="remove(pendingRemoval.id)"
       @close="pendingRemoval = null"
     />
@@ -69,6 +81,8 @@
 </template>
 
 <script setup lang="ts">
+import { settingsCount } from '@/i18n/settingsCounts'
+import { t } from '@/i18n'
 import { computed, ref } from 'vue'
 import Button from '../../obsidian/Button.vue'
 import Icon from '../../obsidian/Icon.vue'
@@ -102,9 +116,10 @@ const defaultAgentId = computed(() => {
 })
 
 function starTooltip(agent: AgentDefinition): string {
-  if (agent.utility) return 'A utility agent cannot be the default — it is hidden from chats'
-  if (agent.id === defaultAgentId.value) return 'Already the default agent'
-  return 'Make this the default agent for new chats'
+  if (agent.utility) return t('settings.ai.AgentsSettings.a_utility_agent_cannot_be.3315c30d')
+  if (agent.id === defaultAgentId.value)
+    return t('settings.ai.AgentsSettings.already_the_default_agent.28842ed7')
+  return t('settings.ai.AgentsSettings.make_this_the_default_agent.4e646862')
 }
 
 function metaFor(agent: AgentDefinition): string[] {
@@ -112,20 +127,20 @@ function metaFor(agent: AgentDefinition): string[] {
 }
 
 function modelLabel(agent: AgentDefinition): string {
-  if (!agent.modelId) return 'no model'
+  if (!agent.modelId) return t('settings.ai.AgentsSettings.no_model.f62c7d17')
   const provider = config.ai.providers.find((p) => p.id === agent.providerId)
   const model = provider?.models.find((m) => m.id === agent.modelId)
   return model?.name || agent.modelId
 }
 
 function promptLabel(agent: AgentDefinition): string {
-  return `${agent.prompts.length} prompt${agent.prompts.length === 1 ? '' : 's'}`
+  return settingsCount('prompt', agent.prompts.length)
 }
 
 function scopeLabel(agent: AgentDefinition): string {
-  if (agent.fullVaultAccess) return 'whole vault'
-  if (!agent.scope.length) return 'no scope'
-  return `${agent.scope.length} scope entr${agent.scope.length === 1 ? 'y' : 'ies'}`
+  if (agent.fullVaultAccess) return t('settings.ai.AgentsSettings.whole_vault.18d9a3b5')
+  if (!agent.scope.length) return t('settings.ai.AgentsSettings.no_scope.cc0ca29a')
+  return settingsCount('scopeEntry', agent.scope.length)
 }
 
 function persist(): void {

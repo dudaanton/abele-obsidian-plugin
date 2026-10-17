@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { TIMELINE_SIDEBAR_VIEW_TYPE, TimelineSidebarView } from '@/views/TimelineSidebarView'
 import { TODO_SIDEBAR_VIEW_TYPE, TodoSidebarView } from '@/views/TodoSidebarView'
 import { AI_SIDEBAR_VIEW_TYPE, AiSidebarView } from '@/views/AiSidebarView'
@@ -52,12 +53,12 @@ export function registerViews(plugin: Plugin) {
   }
   plugin.addCommand({
     id: 'open-node',
-    name: 'Open node',
+    name: t('commands.open-node'),
     callback: () => {
       void openNode()
     },
   })
-  plugin.addRibbonIcon('server', 'Node', () => {
+  plugin.addRibbonIcon('server', t('ribbon.node'), () => {
     void openNode()
   })
   plugin.register(() => NodePathService.destroyCurrent())

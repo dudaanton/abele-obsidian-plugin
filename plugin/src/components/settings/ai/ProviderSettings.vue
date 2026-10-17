@@ -2,28 +2,46 @@
   <!-- A provider as a row, as Obsidian lists its plugins: its name, whether its key is in and
        how many models it brings, and the rest in a window of its own. -->
   <Setting class="abele-ai-provider">
-    <template #name>{{ name || 'Unnamed provider' }}</template>
+    <template #name>{{
+      name || t('settings.ai.ProviderSettings.unnamed_provider.1b003656')
+    }}</template>
     <template #desc
       ><span :class="{ 'mod-warning': !secretValue }">{{
-        [secretValue ? 'Key saved' : 'No key yet', summary].filter(Boolean).join(' · ')
+        [secretValue ? t('settings.terms.keySaved') : t('settings.terms.noKeyYet'), summary]
+          .filter(Boolean)
+          .join(' · ')
       }}</span></template
     >
-    <Icon icon="settings" tooltip="Change this provider and its models" @click="open = true" />
+    <Icon
+      icon="settings"
+      :tooltip="t('settings.ai.ProviderSettings.change_this_provider_and_its.6b743289')"
+      @click="open = true"
+    />
   </Setting>
-  <ObsidianModal v-if="open" :title="name || 'New provider'" @close="open = false">
+  <ObsidianModal
+    v-if="open"
+    :title="name || t('settings.ai.ProviderSettings.new_provider.38a96a6a')"
+    @close="open = false"
+  >
     <slot name="identity" />
-    <Setting name="Name">
+    <Setting :name="t('settings.ai.ProviderSettings.name.dcd1d522')">
       <Input :model-value="name" @update:model-value="emit('update:name', $event)" />
     </Setting>
     <slot name="endpoint" />
-    <Setting name="Client name" :desc="CLIENT_NAME_DESCRIPTION">
+    <Setting
+      :name="t('settings.ai.ProviderSettings.client_name.b6626cd7')"
+      :desc="settingsLabel(CLIENT_NAME_DESCRIPTION)"
+    >
       <Input
         :model-value="clientName || ''"
-        placeholder="Default"
+        :placeholder="t('settings.ai.ProviderSettings.default.21b111cb')"
         @update:model-value="emit('update:client-name', $event)"
       />
     </Setting>
-    <Setting name="API key" desc="Kept in the keychain of this device.">
+    <Setting
+      :name="t('settings.ai.ProviderSettings.api_key.16f0ee47')"
+      :desc="t('settings.ai.ProviderSettings.kept_in_the_keychain_of.27a8c578')"
+    >
       <SecretField
         :value="secretValue"
         :model-value="secretInput"
@@ -32,21 +50,23 @@
         @save="emit('save-secret')"
       />
     </Setting>
-    <Setting heading name="Models"><slot name="model-actions" /></Setting>
+    <Setting heading :name="t('settings.ai.ProviderSettings.models.d17d2d78')"
+      ><slot name="model-actions"
+    /></Setting>
     <slot />
     <template #footer>
       <div class="abele-modal__actions">
         <Button
-          text="Delete"
+          :text="t('settings.ai.ProviderSettings.delete.e2d0a549')"
           warning
-          tooltip="Remove this provider and its models"
+          :tooltip="t('settings.ai.ProviderSettings.remove_this_provider_and_its.e1aeea6b')"
           class="abele-ai-provider__delete"
           @click="emit('remove')"
         />
         <Button
-          text="Done"
+          :text="t('settings.ai.ProviderSettings.done.11a6767d')"
           accent
-          tooltip="Close this window; changes are kept as you make them"
+          :tooltip="t('settings.ai.ProviderSettings.close_this_window_changes_are.91342d87')"
           @click="open = false"
         />
       </div>
@@ -55,6 +75,8 @@
 </template>
 
 <script setup lang="ts">
+import { settingsLabel } from '@/i18n/settingsLabels'
+import { t } from '@/i18n'
 import Setting from '../../obsidian/Setting.vue'
 import Input from '../../obsidian/Input.vue'
 import Icon from '../../obsidian/Icon.vue'

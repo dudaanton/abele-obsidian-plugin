@@ -16,6 +16,7 @@ import {
 } from './chatAboutNote'
 import { attachChatToNote, attachNoteToChat, canAttachTo, registerAttachChat } from './attachChat'
 import { NOTE_ACTIONS } from './noteActions'
+import { t } from '@/i18n'
 import { noteWikilink } from './noteWikilink'
 
 function run(job: Promise<unknown>): void {
@@ -92,7 +93,7 @@ export function registerNoteMenu(plugin: Plugin): void {
     const action = NOTE_ACTIONS[index]
     plugin.addCommand({
       id: action.id,
-      name: action.title,
+      name: t(`commands.${action.id}`),
       icon: action.icon,
       checkCallback: (checking) => {
         const file = workspace.getActiveFile()

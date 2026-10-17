@@ -1,9 +1,5 @@
 <template>
-  <Section
-    desc="Servers that give agents more tools, reached over HTTP — on a phone too. Nothing is
-      started on this device. A server's tools reach an agent only once they are switched on in
-      that agent's Access tab, and they ask before each call unless set otherwise."
-  >
+  <Section :desc="t('settings.ai.McpSettings.servers_that_give_agents_more.67631550')">
     <CardGrid wide>
       <Card
         v-for="server in servers"
@@ -20,18 +16,26 @@
         </template>
 
         <template #actions>
-          <Icon icon="trash" tooltip="Delete this server" @click="pendingRemoval = server" />
+          <Icon
+            icon="trash"
+            :tooltip="t('settings.ai.McpSettings.delete_this_server.e42cb344')"
+            @click="pendingRemoval = server"
+          />
         </template>
       </Card>
     </CardGrid>
 
-    <EmptyState v-if="!servers.length" text="No MCP servers yet." />
+    <EmptyState
+      v-if="!servers.length"
+      :text="t('settings.ai.McpSettings.no_mcp_servers_yet.cf5e91ef')"
+    />
 
     <div class="abele-mcp-settings__actions">
       <Button
-        text="Add server"
+        data-testid="settings-mcp-add"
+        :text="t('settings.ai.McpSettings.add_server.1099b2a9')"
         accent
-        tooltip="Connect an MCP server by its address"
+        :tooltip="t('settings.ai.McpSettings.connect_an_mcp_server_by.60c5ad42')"
         @click="addServer"
       />
     </div>
@@ -48,9 +52,17 @@
 
     <ConfirmModal
       v-if="pendingRemoval"
-      title="Delete MCP server"
-      :message="`Delete ${pendingRemoval.name || pendingRemoval.url}? Every agent loses its tools.`"
-      :confirm-tooltip="`Delete ${pendingRemoval.name || pendingRemoval.url}`"
+      :title="t('settings.ai.McpSettings.delete_mcp_server.1a969bef')"
+      :message="
+        t('settings.ai.McpSettings.delete_value_every_agent_loses.cf787f8d', {
+          value0: String(pendingRemoval.name || pendingRemoval.url),
+        })
+      "
+      :confirm-tooltip="
+        t('settings.ai.McpSettings.delete_value.8782b778', {
+          value0: String(pendingRemoval.name || pendingRemoval.url),
+        })
+      "
       @confirm="remove(pendingRemoval.id)"
       @close="pendingRemoval = null"
     />
@@ -58,6 +70,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+import { settingsCount } from '@/i18n/settingsCounts'
 import StatusDot from '../../obsidian/StatusDot.vue'
 import { ref } from 'vue'
 import { nanoid } from 'nanoid'
@@ -87,7 +101,7 @@ const pendingRemoval = ref<McpServer | null>(null)
 
 function metaFor(server: McpServer): string[] {
   const count = server.tools.length
-  return server.fetchedAt ? [`${count} ${count === 1 ? 'tool' : 'tools'}`] : []
+  return server.fetchedAt ? [settingsCount('tool', count)] : []
 }
 
 function addServer(): void {
@@ -148,7 +162,11 @@ function remove(id: string): void {
 }
 
 const serverState = (server: { enabled?: boolean; fetchedAt?: unknown }) =>
-  !server.enabled ? 'Off' : server.fetchedAt ? 'On' : 'On, tools not fetched yet'
+  !server.enabled
+    ? t('settings.ai.McpSettings.off.ca7981b4')
+    : server.fetchedAt
+      ? t('settings.ai.McpSettings.on.13001175')
+      : t('settings.ai.McpSettings.on_tools_not_fetched_yet.28d5069f')
 const serverTone = (server: { enabled?: boolean; fetchedAt?: unknown }) =>
   !server.enabled ? 'faint' : server.fetchedAt ? 'green' : 'orange'
 </script>

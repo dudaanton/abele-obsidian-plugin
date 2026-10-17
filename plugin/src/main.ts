@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { initializeLocale } from '@/i18n'
 import { hostLocale } from '@/i18n/obsidianLocale'
 import { registerZen } from '@/zen/registerZen'
@@ -252,7 +253,7 @@ export default class AbelePlugin extends Plugin {
     // without the agent these four were simply missing from the palette.
     this.addCommand({
       id: 'sync-now',
-      name: 'Sync now',
+      name: t('commands.sync-now'),
       icon: 'refresh-cw',
       callback: () => {
         // The service says so in the log and moves nothing; from the palette there is no
@@ -274,7 +275,7 @@ export default class AbelePlugin extends Plugin {
 
     this.addCommand({
       id: 'sync-pause-resume',
-      name: 'Pause or resume sync',
+      name: t('commands.sync-pause-resume'),
       icon: 'pause-circle',
       callback: () => {
         const ui = tokenUi.value
@@ -294,7 +295,7 @@ export default class AbelePlugin extends Plugin {
 
     this.addCommand({
       id: 'sync-log',
-      name: 'Open sync settings',
+      name: t('commands.sync-log'),
       icon: 'scroll-text',
       callback: () => {
         openAbeleSettings(this.app, 'sync')
@@ -303,7 +304,7 @@ export default class AbelePlugin extends Plugin {
 
     this.addCommand({
       id: 'sync-deleted-files',
-      name: 'Open deleted files',
+      name: t('commands.sync-deleted-files'),
       icon: 'trash-2',
       callback: () => {
         GlobalStore.getInstance().deletedFilesModalOpened.value = true

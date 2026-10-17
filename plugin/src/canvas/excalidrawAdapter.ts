@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * The vault as the Excalidraw migrator sees it, and the ways a person starts it: a command and a
  * file menu item for one drawing, a command for all of them. The migration itself is
@@ -171,7 +172,7 @@ export function registerExcalidrawMigration(plugin: Plugin): void {
   const { app } = plugin
   plugin.addCommand({
     id: 'migrate-excalidraw-drawing',
-    name: 'Migrate this Excalidraw drawing to a canvas',
+    name: t('commands.migrate-excalidraw-drawing'),
     icon: 'workflow',
     checkCallback: (checking) => {
       const file = app.workspace.getActiveFile()
@@ -182,7 +183,7 @@ export function registerExcalidrawMigration(plugin: Plugin): void {
   })
   plugin.addCommand({
     id: 'migrate-excalidraw-vault',
-    name: 'Migrate all Excalidraw drawings to canvases',
+    name: t('commands.migrate-excalidraw-vault'),
     icon: 'workflow',
     callback: () => void migrateVaultDrawings(app),
   })

@@ -1,13 +1,13 @@
 <template>
   <Section
-    title="Labels"
-    desc="Labels are read from a task's property, one value or a list of them. Each label can have a colour; the rest are grey."
+    :title="t('settings.TaskLabelsSettings.labels.934b8899')"
+    :desc="t('settings.TaskLabelsSettings.labels_are_read_from_a.310aa3b6')"
     class="abele-task-labels"
   >
     <Setting
       class="abele-task-labels__property"
-      name="Label property"
-      desc='The task property labels are read from (default: "labels").'
+      :name="t('settings.TaskLabelsSettings.label_property.2b08cac9')"
+      :desc="t('settings.TaskLabelsSettings.the_task_property_labels_are.5b8a2eb7')"
     >
       <Input
         :model-value="property"
@@ -17,12 +17,12 @@
     </Setting>
     <Setting
       class="abele-task-labels__priority-property"
-      name="Priority property"
-      desc='The task property priority is read from and written to (default: "priority"). Does not change which properties have widgets.'
+      :name="t('settings.TaskLabelsSettings.priority_property.1588ceb0')"
+      :desc="t('settings.TaskLabelsSettings.the_task_property_priority_is.19d87f4b')"
     >
       <Input
         :model-value="priorityProperty"
-        placeholder="priority"
+        :placeholder="t('settings.TaskLabelsSettings.priority.3092a5f0')"
         @update:model-value="priorityPropertyChanged"
       />
     </Setting>
@@ -37,16 +37,21 @@
     </Setting>
     <Setting
       class="abele-task-labels__new"
-      name="Add a label"
-      desc="To colour a label before any task carries it."
+      :name="t('settings.TaskLabelsSettings.add_a_label.43db67d6')"
+      :desc="t('settings.TaskLabelsSettings.to_colour_a_label_before.7f8888f5')"
     >
-      <Input v-model="newLabel" placeholder="Label" />
-      <Button text="Add" tooltip="Add this label to the list" @click="addLabel" />
+      <Input v-model="newLabel" :placeholder="t('settings.TaskLabelsSettings.label.0e66373f')" />
+      <Button
+        :text="t('settings.TaskLabelsSettings.add.9fd728c6')"
+        :tooltip="t('settings.TaskLabelsSettings.add_this_label_to_the.b2c3c5b9')"
+        @click="addLabel"
+      />
     </Setting>
   </Section>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, ref, unref } from 'vue'
 import { debounce } from 'obsidian'
 import Section from '../obsidian/Section.vue'

@@ -1,54 +1,77 @@
 <template>
   <div class="abele-settings__finance">
-    <h3>Transactions</h3>
+    <h3>{{ t('settings.FinanceSettings.transactions.3e5136fd') }}</h3>
     <Setting
-      name="Transaction path template"
-      desc="Template for new transaction file paths. Leave empty to keep existing paths; new transactions use their titles in the vault root. Variables: {{title}}, {{date:FORMAT}}, {{from}}, {{to}}, {{amount}}, {{currency}}."
+      :name="t('settings.FinanceSettings.transaction_path_template.39b564b9')"
+      :desc="
+        t('settings.FinanceSettings.template_for_new_transaction_file.0e3740ec', {
+          literalDate: '{{date:FORMAT}}',
+          literal0: String('{{title}}'),
+          literal1: String('{{from}}'),
+          literal2: String('{{to}}'),
+          literal3: String('{{amount}}'),
+          literal4: String('{{currency}}'),
+        })
+      "
     >
       <Input
         :model-value="transactionPathTemplate"
-        placeholder="e.g. Finance/Transactions/{{date:YYYY/MM}}/{{title}}"
+        :placeholder="
+          t('settings.FinanceSettings.e_g_finance_transactions_date.1fe69c45', {
+            literal1: String('Finance/Transactions/{{date:YYYY/MM}}/{{title}}'),
+          })
+        "
         @update:model-value="transactionPathTemplateChanged"
       />
     </Setting>
     <Setting
-      name="Transaction template note"
-      desc="Path to a template note used when creating new transactions."
+      :name="t('settings.FinanceSettings.transaction_template_note.010eab6c')"
+      :desc="t('settings.FinanceSettings.path_to_a_template_note.397b813a')"
     >
       <Search
         :model-value="transactionTemplatePath"
-        placeholder="Path to template note"
+        :placeholder="t('settings.FinanceSettings.path_to_template_note.18b70a08')"
         :suggester="FileSuggest"
         @update:model-value="transactionTemplatePathChanged"
       />
     </Setting>
-    <Setting name="Default currency" desc="Default currency code for new transactions.">
+    <Setting
+      :name="t('settings.FinanceSettings.default_currency.67e65877')"
+      :desc="t('settings.FinanceSettings.default_currency_code_for_new.7d536f52')"
+    >
       <Input
         :model-value="defaultCurrency"
-        placeholder="e.g. EUR"
+        :placeholder="t('settings.FinanceSettings.e_g_eur.00afdaf5', { literal0: String('EUR') })"
         @update:model-value="defaultCurrencyChanged"
       />
     </Setting>
     <Setting
-      name="Pinned currencies"
-      desc="Comma-separated currencies to show balance summaries in the sidebar. Order is preserved."
+      :name="t('settings.FinanceSettings.pinned_currencies.b882d6bc')"
+      :desc="t('settings.FinanceSettings.comma_separated_currencies_to_show.c63a2698')"
     >
       <Input
         :model-value="pinnedCurrencies"
-        placeholder="e.g. EUR, USD, GBP"
+        :placeholder="
+          t('settings.FinanceSettings.e_g_eur_usd_gbp.768ebc64', {
+            literal0: String('EUR, USD, GBP'),
+          })
+        "
         @update:model-value="pinnedCurrenciesChanged"
       />
     </Setting>
 
-    <h3>Exchange rates</h3>
+    <h3>{{ t('settings.FinanceSettings.exchange_rates.a1875e41') }}</h3>
     <Setting
-      name="Fetch today's rates"
-      desc="Once a day, from a public table that needs no key; nothing about the vault is sent. Sums of several currencies and the order of accounts by amount use them."
+      :name="t('settings.FinanceSettings.fetch_today_s_rates.c175748e')"
+      :desc="t('settings.FinanceSettings.once_a_day_from_a.73d47942')"
     >
       <Checkbox :is-enabled="exchangeRates.enabled" @toggle="fetchRatesToggled" />
     </Setting>
     <template v-if="exchangeRates.enabled">
-      <Setting name="Show sums in" desc="The currency a sum of several currencies is shown in.">
+      <Setting
+        :name="t('settings.FinanceSettings.show_sums_in.86b3b3d2')"
+        :desc="t('settings.FinanceSettings.the_currency_a_sum_of.42c9988d')"
+      >
         <Input
           :model-value="exchangeRates.display"
           placeholder="USD"
@@ -57,54 +80,72 @@
       </Setting>
       <!-- Where the rates stand, in one quiet line: their day and source, what failed, which
            currency has none. -->
-      <Setting name="Rates" :desc="ratesLine">
+      <Setting :name="t('settings.FinanceSettings.rates.54dd2169')" :desc="ratesLine">
         <Icon
           icon="refresh-cw"
           :disabled="exchangeRates.updating || !exchangeRates.refresh"
-          tooltip="Fetch today's rates now"
+          :tooltip="t('settings.FinanceSettings.fetch_today_s_rates_now.68e35189')"
           @click="exchangeRates.refresh?.()"
         />
       </Setting>
     </template>
 
-    <h3>Firefly III Migration</h3>
-    <Setting name="Firefly III URL" desc="Base URL of your Firefly III instance.">
+    <h3>{{ t('settings.FinanceSettings.firefly_iii_migration.59031cf7') }}</h3>
+    <Setting
+      :name="t('settings.FinanceSettings.firefly_iii_url.3050cc31')"
+      :desc="t('settings.FinanceSettings.base_url_of_your_firefly.f8d2bb5a')"
+    >
       <Input
         :model-value="fireflyBaseUrl"
-        placeholder="e.g. https://firefly.example.com"
+        :placeholder="
+          t('settings.FinanceSettings.e_g_https_firefly_example.6999e343', {
+            literal1: String('https://firefly.example.com'),
+          })
+        "
         @update:model-value="fireflyBaseUrlChanged"
       />
     </Setting>
     <Setting
-      name="Firefly III token"
-      desc="Personal Access Token for Firefly III API. Stored in the keychain, never in the settings file."
+      :name="t('settings.FinanceSettings.firefly_iii_token.45c3acb2')"
+      :desc="t('settings.FinanceSettings.personal_access_token_for_firefly.7deff96a')"
     >
       <SecretField
         v-model="tokenInput"
         :value="fireflyToken"
-        placeholder="Enter your Firefly III token"
-        replace-placeholder="New token..."
-        save-tooltip="Save the token"
-        what="The token"
+        :placeholder="t('settings.FinanceSettings.enter_your_firefly_iii_token.c1c8a788')"
+        :replace-placeholder="t('settings.FinanceSettings.new_token.564f08bc')"
+        :save-tooltip="t('settings.FinanceSettings.save_the_token.8326f085')"
+        :what="t('settings.FinanceSettings.the_token.d22bffce')"
         @save="saveToken"
       >
         <template #actions>
-          <Icon icon="trash-2" with-bg tooltip="Forget the token" @click="forgetToken" />
+          <Icon
+            icon="trash-2"
+            with-bg
+            :tooltip="t('settings.FinanceSettings.forget_the_token.961a44b9')"
+            @click="forgetToken"
+          />
         </template>
       </SecretField>
     </Setting>
-    <Setting name="Accounts folder" desc="Folder for account notes created during migration.">
+    <Setting
+      :name="t('settings.FinanceSettings.accounts_folder.8f9b5bf3')"
+      :desc="t('settings.FinanceSettings.folder_for_account_notes_created.dab1fa98')"
+    >
       <Search
         :model-value="accountsFolder"
-        placeholder="Enter accounts folder path"
+        :placeholder="t('settings.FinanceSettings.enter_accounts_folder_path.93935780')"
         :suggester="FolderSuggest"
         @update:model-value="accountsFolderChanged"
       />
     </Setting>
-    <Setting name="Categories folder" desc="Folder for category notes created during migration.">
+    <Setting
+      :name="t('settings.FinanceSettings.categories_folder.60253c7c')"
+      :desc="t('settings.FinanceSettings.folder_for_category_notes_created.9f0764fe')"
+    >
       <Search
         :model-value="financeCategoriesFolder"
-        placeholder="Enter categories folder path"
+        :placeholder="t('settings.FinanceSettings.enter_categories_folder_path.306fac3f')"
         :suggester="FolderSuggest"
         @update:model-value="financeCategoriesFolderChanged"
       />
@@ -113,6 +154,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { fireflyToken as readFireflyToken, setFireflyToken } from '@/secrets/legacy'
 import { computed, ref } from 'vue'
 import Setting from '../obsidian/Setting.vue'
@@ -167,19 +209,31 @@ const withoutRate = computed(() => {
 
 const ratesLine = computed(() => {
   const table = exchangeRates.table
-  if (exchangeRates.updating) return "Fetching today's rates…"
+  if (exchangeRates.updating) return t('settings.FinanceSettings.fetching_today_s_rates.1182bcb9')
   if (!table)
     return exchangeRates.lastError
-      ? `Could not fetch: ${exchangeRates.lastError}`
-      : 'Not fetched yet.'
+      ? t('settings.FinanceSettings.could_not_fetch_value.ae250f78', {
+          value0: String(exchangeRates.lastError),
+        })
+      : t('settings.FinanceSettings.not_fetched_yet.21ca804f')
   const day = dayjs(table.fetchedOn).format('D MMM')
   const parts = [
     ratesStatus() === 'stale'
-      ? `Could not update since ${day}${exchangeRates.lastError ? `: ${exchangeRates.lastError}` : ''}`
-      : `From ${day}, ${exchangeRates.source}`,
+      ? t('settings.FinanceSettings.could_not_update_since_value.9af0a0fc', {
+          value0: String(day),
+          value1: String(exchangeRates.lastError ? `: ${exchangeRates.lastError}` : ''),
+        })
+      : t('settings.FinanceSettings.from_value_value.11c05045', {
+          value0: String(day),
+          value1: String(exchangeRates.source),
+        }),
   ]
   if (withoutRate.value.length)
-    parts.push(`No rate for ${withoutRate.value.join(', ')}: left out of sums`)
+    parts.push(
+      t('settings.FinanceSettings.no_rate_for_value_left.b8718978', {
+        value0: String(withoutRate.value.join(', ')),
+      })
+    )
   return `${parts.join('. ')}.`
 })
 

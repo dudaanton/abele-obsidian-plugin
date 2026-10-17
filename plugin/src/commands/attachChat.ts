@@ -25,6 +25,7 @@ import { grantNote, type NoteSelection } from './chatAboutNote'
 import { linkToLines } from '@/lineLinks/register'
 import { noteWikilink } from './noteWikilink'
 import { NOTE_ACTIONS } from './noteActions'
+import { t } from '@/i18n'
 
 export const ATTACH_CHAT_TITLE = NOTE_ACTIONS[3].title
 export const ATTACH_ICON = NOTE_ACTIONS[3].icon
@@ -185,7 +186,7 @@ export function registerAttachChat(plugin: Plugin, menus = true): void {
 
   plugin.addCommand({
     id: 'attach-chat-to-current-note',
-    name: ATTACH_CHAT_TITLE,
+    name: t('commands.attach-chat-to-current-note'),
     icon: ATTACH_ICON,
     checkCallback: (checking) => {
       const file = workspace.getActiveFile()

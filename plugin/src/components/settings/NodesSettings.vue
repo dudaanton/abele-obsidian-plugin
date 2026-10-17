@@ -1,8 +1,5 @@
 <template>
-  <Section
-    title="Nodes"
-    desc="Computers the agent can work on for you: open one, pick a project, and watch and answer here. Their keys and history stay on this device."
-  >
+  <Section :title="t('settings.nodes.title')" :desc="t('settings.nodes.description')">
     <!-- A node as one row: its state as a dot, check, open; the rarer things in ⋯. -->
     <Setting
       v-for="node in service.nodes.value"
@@ -14,56 +11,47 @@
         :tone="stateTone(service.connection(node.id).state.value)"
         :label="stateLabel(service.connection(node.id).state.value)"
       />
-      <Icon
-        icon="refresh-cw"
-        tooltip="Check this device's node connection"
-        @click="check(node.id)"
-      />
+      <Icon icon="refresh-cw" :tooltip="t('settings.nodes.check')" @click="check(node.id)" />
       <Button
-        text="Open session"
-        tooltip="Pick a session or manage projects and workspaces"
+        :text="t('settings.nodes.open')"
+        :tooltip="t('settings.nodes.openTip')"
         @click="open(node)"
       />
       <Icon
         icon="more-horizontal"
-        tooltip="Pairing, delegation, remove"
+        :tooltip="t('settings.nodes.more')"
         @click="more($event, node)"
       />
     </Setting>
     <!-- Adding a node is a row like the nodes: what it is, and the one button that starts it. -->
-    <Setting
-      name="Pair a node on another computer"
-      desc="A remote desktop or a server, by an invitation from it. A device that was revoked pairs again the same way."
-    >
+    <Setting :name="t('settings.nodes.pairTitle')" :desc="t('settings.nodes.pairDesc')">
       <Button
-        text="Pair"
-        tooltip="Scan or paste an invitation; re-pair or verify a changed node key"
+        :text="t('settings.nodes.pair')"
+        :tooltip="t('settings.nodes.pairTip')"
         @click="showPairing()"
       />
     </Setting>
-    <Setting name="Add the node on this computer" desc="One running here, by the token it gives.">
+    <Setting :name="t('settings.nodes.addTitle')" :desc="t('settings.nodes.addDesc')">
       <Button
-        text="Add"
-        tooltip="Name the node here and paste its token"
+        :text="t('settings.nodes.add')"
+        :tooltip="t('settings.nodes.addTip')"
+        data-testid="node-settings-add-local"
         @click="addingLocal = true"
       />
     </Setting>
-    <Setting
-      name="Notes about recorded runs"
-      desc="Folder for a note about a run the debugger recorded, yours or the agent's: a vault folder, or on a computer any folder by its full path. The run itself stays on the node."
-    >
+    <Setting :name="t('settings.nodes.traceTitle')" :desc="t('settings.nodes.traceDesc')">
       <Input
         :model-value="traceNotesFolder"
-        placeholder="e.g. Trace"
-        aria-label="Folder for notes about recorded runs"
+        :placeholder="t('settings.nodes.traceExample')"
+        :aria-label="t('settings.nodes.traceFolder')"
         :suggester="FolderSuggest"
         @update:model-value="updateTraceNotesFolder"
       />
       <Button
         v-if="Platform.isDesktopApp"
         icon="folder-open"
-        tooltip="Choose a folder on this computer, in the vault or outside it"
-        aria-label="Choose a folder for notes about recorded runs"
+        :tooltip="t('settings.nodes.chooseFolderTip')"
+        :aria-label="t('settings.nodes.chooseFolder')"
         @click="chooseTraceNotesFolder"
       />
     </Setting>
@@ -87,34 +75,45 @@
     </p>
     <ObsidianModal
       v-if="addingLocal"
-      title="Add the node on this computer"
+      :title="t('settings.nodes.addTitle')"
+      modal-class="abele-node-settings-local-dialog"
       @close="addingLocal = false"
     >
-      <Setting name="Name" desc="What this node is called on this device.">
-        <Input v-model="label" placeholder="Local node" aria-label="Node label" />
+      <Setting :name="t('settings.nodes.name')" :desc="t('settings.nodes.nameDesc')">
+        <Input
+          v-model="label"
+          :placeholder="t('settings.nodes.localPlaceholder')"
+          :aria-label="t('settings.nodes.label')"
+        />
       </Setting>
-      <Setting name="Address" desc="Only this computer's own address; another computer is paired.">
-        <Input v-model="url" placeholder="http://127.0.0.1:7777" aria-label="Node URL" />
+      <Setting :name="t('settings.nodes.address')" :desc="t('settings.nodes.addressDesc')">
+        <Input
+          v-model="url"
+          placeholder="http://127.0.0.1:7777"
+          :aria-label="t('settings.nodes.url')"
+        />
       </Setting>
-      <Setting
-        name="Token"
-        desc="The one abele-node token create prints. Kept in this device's keychain only."
-      >
+      <Setting :name="t('settings.nodes.token')" :desc="t('settings.nodes.tokenDesc')">
         <Input
           v-model="token"
           password
-          placeholder="Paste token"
-          aria-label="Node installation token"
+          :placeholder="t('settings.nodes.pasteToken')"
+          :aria-label="t('settings.nodes.installationToken')"
         />
       </Setting>
       <p v-if="message" class="setting-item-description" role="status">{{ message }}</p>
       <template #footer>
         <div class="abele-modal__actions">
-          <Button text="Cancel" tooltip="Close this and add nothing" @click="addingLocal = false" />
           <Button
-            text="Add"
+            :text="t('settings.nodes.cancel')"
+            :tooltip="t('settings.nodes.cancelTip')"
+            data-testid="node-settings-local-cancel"
+            @click="addingLocal = false"
+          />
+          <Button
+            :text="t('settings.nodes.add')"
             accent
-            tooltip="Authenticate and pin the local node identity on this device"
+            :tooltip="t('settings.nodes.authenticateTip')"
             :disabled="busy || !label.trim() || !token.trim()"
             @click="add"
           />
@@ -125,6 +124,7 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from '@/i18n/useI18n'
 import { computed, ref } from 'vue'
 import { ChatService } from '@/ai/ChatService'
 import { NodeService } from '@/node/NodeService'
@@ -146,6 +146,7 @@ import { FolderSuggest } from '@/helpers/suggesters/FolderSuggester'
 import { chooseOutsideFolder, notesFolder } from '@/debugger/trace/notesFolder'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
+const { t } = useI18n()
 const service = NodeService.getInstance()
 const config = AbeleConfig.getInstance()
 const traceNotesFolder = ref(config.traceNotesFolder)
@@ -171,7 +172,12 @@ const parentChats = computed(() => {
   return chats.tabOrder.value.flatMap((id) => {
     const parent = chats.getSession(id)
     return parent?.delegationParentId
-      ? [{ id: parent.delegationParentId, title: parent.chatTitle.value || 'Untitled chat' }]
+      ? [
+          {
+            id: parent.delegationParentId,
+            title: parent.chatTitle.value || t('settings.nodes.untitledChat'),
+          },
+        ]
       : []
   })
 })
@@ -200,7 +206,7 @@ const token = ref('')
 const busy = ref(false)
 const message = ref('')
 const report = (error: unknown) => {
-  message.value = error instanceof Error ? error.message : 'Node unavailable'
+  message.value = error instanceof Error ? error.message : t('settings.nodes.unavailable')
 }
 const add = async () => {
   busy.value = true
@@ -208,7 +214,7 @@ const add = async () => {
   try {
     await service.add(label.value.trim(), url.value.trim(), token.value.trim())
     token.value = ''
-    message.value = 'Connected. Open a session here or from the new chat menu.'
+    message.value = t('settings.nodes.added')
     addingLocal.value = false
   } catch (error) {
     report(error)
@@ -233,7 +239,7 @@ const check = async (id: string) => {
       expected.installation_id === node.installationId
     )
       await service.deviceKeys.finishEnrollment(node.expectedNodeId, expected)
-    message.value = 'Connected'
+    message.value = t('settings.nodes.connected')
   } catch (error) {
     report(error)
   }
@@ -258,27 +264,31 @@ const nodeLine = (node: RegisteredNode) => {
 }
 
 const stateLabel = (state: string) =>
-  state === 'connected' ? 'Connected' : state === 'connecting' ? 'Connecting…' : 'Not connected'
+  state === 'connected'
+    ? t('settings.nodes.connected')
+    : state === 'connecting'
+      ? t('settings.nodes.connecting')
+      : t('settings.nodes.disconnected')
 
 const more = (event: MouseEvent, node: RegisteredNode) => {
   const menu = new Menu()
   if (isPairedNode(node))
     menu.addItem((i) =>
       i
-        .setTitle('Pairing / re-pair')
+        .setTitle(t('settings.nodes.repair'))
         .setIcon('link')
         .onClick(() => showPairing(node.expectedNodeId))
     )
   menu.addItem((i) =>
     i
-      .setTitle('Delegation grants')
+      .setTitle(t('settings.nodes.delegation'))
       .setIcon('key-round')
       .onClick(() => showGrants(node))
   )
   menu.addSeparator()
   menu.addItem((i) =>
     i
-      .setTitle('Remove')
+      .setTitle(t('settings.nodes.remove'))
       .setIcon('trash-2')
       .setWarning(true)
       .onClick(() => remove(node.id))
@@ -291,7 +301,6 @@ const remove = async (id: string) => {
   for (const tab of [...chats.tabOrder.value])
     if (chats.getNodeSession(tab)?.reference.registrationId === id) await chats.closeTab(tab)
   service.remove(id)
-  message.value =
-    'Connection removed from this device. Node history and the daemon credential are unchanged.'
+  message.value = t('settings.nodes.removed')
 }
 </script>

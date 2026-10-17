@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 // The saved requests in Obsidian: a view of their own in the left sidebar, as Bookmarks, and each
 // request a tab of the main area, its answer beside it. Both read one model per project; neither
 // keeps a request in the saved layout, only where it is: the node, the project and the file.
@@ -453,12 +454,12 @@ export function registerRequests(plugin: Plugin) {
   plugin.registerView(REQUEST_TAB_VIEW, (leaf) => new RequestTab(leaf))
   plugin.addCommand({
     id: 'open-requests',
-    name: 'Open requests',
+    name: t('commands.open-requests'),
     callback: () => void openRequestsView(plugin.app),
   })
   plugin.addCommand({
     id: 'import-requests',
-    name: 'Import requests from the clipboard',
+    name: t('commands.import-requests'),
     callback: () => void importFromClipboard(),
   })
   plugin.register(() => RequestsService.destroy())

@@ -1,16 +1,46 @@
 <template>
-  <ObsidianModal :title="isNew ? 'Add Image Model' : 'Edit Image Model'" @close="emit('close')">
+  <ObsidianModal
+    :title="
+      isNew
+        ? t('settings.ImageModelEditModal.add_image_model.6b3a2d66')
+        : t('settings.ImageModelEditModal.edit_image_model.ca72d086')
+    "
+    @close="emit('close')"
+  >
     <div class="abele-model-edit">
-      <Setting name="Model ID" desc="API model identifier (e.g. gpt-image-1, flux-pro).">
-        <Input v-model:model-value="form.id" placeholder="e.g. gpt-image-1" />
+      <Setting
+        :name="t('settings.ImageModelEditModal.model_id.089ef2b6')"
+        :desc="t('settings.ImageModelEditModal.api_model_identifier_e_g.c112d31d')"
+      >
+        <Input
+          v-model:model-value="form.id"
+          :placeholder="
+            t('settings.ImageModelEditModal.e_g_gpt_image.c781dc87', {
+              literal0: String('gpt-image-1'),
+            })
+          "
+        />
       </Setting>
 
-      <Setting name="Display name" desc="Optional label shown in model selector.">
-        <Input v-model:model-value="form.name" placeholder="e.g. GPT Image 1" />
+      <Setting
+        :name="t('settings.ImageModelEditModal.display_name.2b7f6a84')"
+        :desc="t('settings.ImageModelEditModal.optional_label_shown_in_model.3bf6fb7f')"
+      >
+        <Input
+          v-model:model-value="form.name"
+          :placeholder="
+            t('settings.ImageModelEditModal.e_g_gpt_image.5ae53afd', {
+              literal0: String('GPT Image 1'),
+            })
+          "
+        />
       </Setting>
 
       <template v-if="isOpenAi">
-        <Setting name="Size" desc="Image dimensions.">
+        <Setting
+          :name="t('settings.ImageModelEditModal.size.1af85190')"
+          :desc="t('settings.ImageModelEditModal.image_dimensions.1a4bb2f3')"
+        >
           <Dropdown
             :model-value="form.size"
             :options="sizeOptions"
@@ -18,7 +48,7 @@
           />
         </Setting>
 
-        <Setting name="Quality">
+        <Setting :name="t('settings.ImageModelEditModal.quality.1b2c08a8')">
           <Dropdown
             :model-value="form.quality"
             :options="qualityOptions"
@@ -26,7 +56,7 @@
           />
         </Setting>
 
-        <Setting name="Output format">
+        <Setting :name="t('settings.ImageModelEditModal.output_format.93c53d37')">
           <Dropdown
             :model-value="form.outputFormat"
             :options="formatOptions"
@@ -38,25 +68,32 @@
 
     <ConfirmModal
       v-if="confirming"
-      title="Delete image model"
-      :message="`Delete ${form.name || form.id}? Agents using it will have no model until one is
-        chosen again.`"
-      :confirm-tooltip="`Delete ${form.name || form.id}`"
+      :title="t('settings.ImageModelEditModal.delete_image_model.f28aaecc')"
+      :message="
+        t('settings.ImageModelEditModal.delete_value_agents_using_it.c65217d0', {
+          value0: String(form.name || form.id),
+        })
+      "
+      :confirm-tooltip="
+        t('settings.ImageModelEditModal.delete_value.8782b778', {
+          value0: String(form.name || form.id),
+        })
+      "
       @confirm="onDelete"
       @close="confirming = false"
     />
     <template #footer>
       <Button
-        text="Save"
+        :text="t('settings.ImageModelEditModal.save.1509f561')"
         :disabled="!form.id"
-        tooltip="Keep these settings and close"
+        :tooltip="t('settings.ImageModelEditModal.keep_these_settings_and_close.88a64dfa')"
         @click="onSave"
       />
       <Button
         v-if="!isNew"
-        text="Delete"
+        :text="t('settings.ImageModelEditModal.delete.e2d0a549')"
         warning
-        tooltip="Remove this image model from the provider"
+        :tooltip="t('settings.ImageModelEditModal.remove_this_image_model_from.c139edec')"
         @click="confirming = true"
       />
     </template>
@@ -64,6 +101,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { reactive, ref } from 'vue'
 import ObsidianModal from '../obsidian/Modal.vue'
 import Setting from '../obsidian/Setting.vue'
@@ -92,15 +130,15 @@ const confirming = ref(false)
 
 const sizeOptions = [
   { value: '1024x1024', display: '1024×1024' },
-  { value: '1536x1024', display: '1536×1024 (landscape)' },
-  { value: '1024x1536', display: '1024×1536 (portrait)' },
-  { value: 'auto', display: 'Auto' },
+  { value: '1536x1024', display: t('settings.ImageModelEditModal.landscape.caa8642b') },
+  { value: '1024x1536', display: t('settings.ImageModelEditModal.portrait.29d9d2d0') },
+  { value: 'auto', display: t('settings.ImageModelEditModal.auto.02862497') },
 ]
 
 const qualityOptions = [
-  { value: 'low', display: 'Low' },
-  { value: 'medium', display: 'Medium' },
-  { value: 'high', display: 'High' },
+  { value: 'low', display: t('settings.ImageModelEditModal.low.f793de20') },
+  { value: 'medium', display: t('settings.ImageModelEditModal.medium.8e588cd1') },
+  { value: 'high', display: t('settings.ImageModelEditModal.high.c4ebc6d4') },
 ]
 
 const formatOptions = [

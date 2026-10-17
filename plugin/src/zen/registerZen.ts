@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import type { ItemView, Menu, Plugin, View, WorkspaceLeaf } from 'obsidian'
 import { defineComponent, h, reactive } from 'vue'
 import { mountKit, type KitMount } from '@/components/obsidian/mount'
@@ -181,7 +182,7 @@ export function registerZen(plugin: Plugin): void {
   }
   plugin.addCommand({
     id: 'toggle-zen-mode',
-    name: 'Toggle zen mode',
+    name: t('commands.toggle-zen-mode'),
     callback: () => toggle(workspace.activeLeaf),
   })
   plugin.registerEvent(

@@ -1,49 +1,64 @@
 <template>
   <ObsidianModal
-    :title="isNew ? 'Add MCP server' : 'Edit MCP server'"
+    :title="
+      isNew
+        ? t('settings.ai.McpServerModal.add_mcp_server.0e3e58f9')
+        : t('settings.ai.McpServerModal.edit_mcp_server.35d90caa')
+    "
     size="tall"
     @close="emit('close')"
   >
     <div class="abele-mcp-server">
-      <Setting name="Name" :desc="nameDesc">
-        <Input v-model:model-value="form.name" placeholder="e.g. context7" />
+      <Setting :name="t('settings.ai.McpServerModal.name.dcd1d522')" :desc="nameDesc">
+        <Input
+          v-model:model-value="form.name"
+          :placeholder="
+            t('settings.ai.McpServerModal.e_g_context.e900fc3c', { literal0: String('context7') })
+          "
+        />
       </Setting>
       <div v-if="clash" class="abele-mcp-server__error">
-        Another server already has this name. Tool names come from it, so it has to differ.
+        {{ t('settings.ai.McpServerModal.another_server_already_has_this.8e96ea34') }}
       </div>
 
-      <Setting name="URL" desc="The server's MCP endpoint, reached over HTTP.">
+      <Setting
+        name="URL"
+        :desc="t('settings.ai.McpServerModal.the_server_s_mcp_endpoint.d96fdd59')"
+      >
         <Input v-model:model-value="form.url" placeholder="https://example.com/mcp" />
       </Setting>
 
-      <Setting name="On" desc="Off keeps it here and gives its tools to no agent.">
+      <Setting
+        :name="t('settings.ai.McpServerModal.on.13001175')"
+        :desc="t('settings.ai.McpServerModal.off_keeps_it_here_and.3cab2a37')"
+      >
         <Checkbox :is-enabled="form.enabled" @toggle="form.enabled = !form.enabled" />
       </Setting>
 
       <Setting
-        name="Token"
-        desc="Sent as Authorization: Bearer. Stored in the keychain, never in the settings file."
+        :name="t('settings.ai.McpServerModal.token.d2089be6')"
+        :desc="t('settings.ai.McpServerModal.sent_as_authorization_bearer_stored.954f00f3')"
       >
         <SecretField
           v-model="token"
           :value="forgetToken ? '' : storedToken"
-          placeholder="Optional"
-          replace-placeholder="New token..."
-          save-tooltip="Save the token"
-          what="The token"
+          :placeholder="t('settings.ai.McpServerModal.optional.59be7133')"
+          :replace-placeholder="t('settings.ai.McpServerModal.new_token.564f08bc')"
+          :save-tooltip="t('settings.ai.McpServerModal.save_the_token.8326f085')"
+          :what="t('settings.ai.McpServerModal.the_token.d22bffce')"
           @save="saveToken"
         >
           <template #actions>
             <Icon
               icon="trash"
-              tooltip="Forget the stored token when saving"
+              :tooltip="t('settings.ai.McpServerModal.forget_the_stored_token_when.4af3d436')"
               @click="forgetToken = true"
             />
           </template>
         </SecretField>
       </Setting>
 
-      <Setting name="Headers" :desc="headersDesc">
+      <Setting :name="t('settings.ai.McpServerModal.headers.194e9fe6')" :desc="headersDesc">
         <Input
           v-model:model-value="headersText"
           as-text-area
@@ -53,18 +68,17 @@
       </Setting>
 
       <Section
-        title="Tools"
-        desc="What agents are told is this list as it was fetched. It changes only when you fetch it
-          again here and save."
+        :title="t('settings.ai.McpServerModal.tools.ea93d6a2')"
+        :desc="t('settings.ai.McpServerModal.what_agents_are_told_is.7591a661')"
       >
         <div class="abele-mcp-server__fetch">
           <Button
-            text="Fetch tools"
+            :text="t('settings.ai.McpServerModal.fetch_tools.4788d40d')"
             :disabled="!form.url || fetching"
             :tooltip="
               form.url
-                ? 'Connect to the server and read the tools it offers'
-                : 'Needs the server URL first'
+                ? t('settings.ai.McpServerModal.connect_to_the_server_and.db04f00f')
+                : t('settings.ai.McpServerModal.needs_the_server_url_first.9616ba6f')
             "
             @click="fetchTools"
           />
@@ -83,26 +97,38 @@
 
     <template #footer>
       <Button
-        text="Save"
+        :text="t('settings.ai.McpServerModal.save.1509f561')"
         accent
         :disabled="!canSave"
-        :tooltip="canSave ? 'Keep this server and close' : 'Needs a name of its own and a URL'"
+        :tooltip="
+          canSave
+            ? t('settings.ai.McpServerModal.keep_this_server_and_close.f4798cef')
+            : t('settings.ai.McpServerModal.needs_a_name_of_its.7be3e1cc')
+        "
         @click="onSave"
       />
       <Button
         v-if="!isNew"
-        text="Delete"
+        :text="t('settings.ai.McpServerModal.delete.e2d0a549')"
         warning
-        tooltip="Remove this server; agents lose its tools"
+        :tooltip="t('settings.ai.McpServerModal.remove_this_server_agents_lose.6709241c')"
         @click="confirming = true"
       />
     </template>
 
     <ConfirmModal
       v-if="confirming"
-      title="Delete MCP server"
-      :message="`Delete ${form.name || form.url}? Every agent loses its tools.`"
-      :confirm-tooltip="`Delete ${form.name || form.url}`"
+      :title="t('settings.ai.McpServerModal.delete_mcp_server.1a969bef')"
+      :message="
+        t('settings.ai.McpServerModal.delete_value_every_agent_loses.cf787f8d', {
+          value0: String(form.name || form.url),
+        })
+      "
+      :confirm-tooltip="
+        t('settings.ai.McpServerModal.delete_value.8782b778', {
+          value0: String(form.name || form.url),
+        })
+      "
       @confirm="onDelete"
       @close="confirming = false"
     />
@@ -110,6 +136,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+import { settingsCount } from '@/i18n/settingsCounts'
 import { computed, reactive, ref } from 'vue'
 import ObsidianModal from '../../obsidian/Modal.vue'
 import Setting from '../../obsidian/Setting.vue'
@@ -141,9 +169,7 @@ const emit = defineEmits<{
 
 /** Written out here: a `${…}` in a template attribute reads like an expression to a person. */
 const HEADERS_EXAMPLE = 'X-Api-Key: ${abele_key:name}'
-const headersDesc =
-  'One per line, as Name: value. Write a secret as ${abele_key:name}, a key kept under AI → ' +
-  'General → Stored keys, so it stays out of the settings file.'
+const headersDesc = t('settings.mcp.headersDescription', { example: '${abele_key:name}' })
 
 const form = reactive<McpServer>(JSON.parse(JSON.stringify(props.server)) as McpServer)
 const headersText = ref(formatHeaders(form.headers))
@@ -172,16 +198,18 @@ function saveToken(): void {
 const clash = computed(() => !!form.name.trim() && nameClash(props.servers, form.name, form.id))
 const canSave = computed(() => !!form.name.trim() && !!form.url.trim() && !clash.value)
 
-const nameDesc = computed(
-  () => `Also the start of its tools' names: mcp_${mcpServerSlug(form.name || 'name')}_<tool>.`
+const nameDesc = computed(() =>
+  t('settings.ai.McpServerModal.also_the_start_of_its.6f23c597', {
+    value0: String(mcpServerSlug(form.name || 'name')),
+  })
 )
 
 const status = computed(() => {
-  if (fetching.value) return 'Fetching…'
-  if (!form.fetchedAt) return 'Not fetched yet'
+  if (fetching.value) return t('settings.ai.McpServerModal.fetching.8d0738c8')
+  if (!form.fetchedAt) return t('settings.ai.McpServerModal.not_fetched_yet.d17fdec2')
   const count = form.tools.length
   const when = new Date(form.fetchedAt).toLocaleString()
-  return `${count} ${count === 1 ? 'tool' : 'tools'}, fetched ${when}`
+  return t('settings.mcp.fetched', { tools: settingsCount('tool', count), when })
 })
 
 /** The server as the form has it now, for fetching before anything is saved. */

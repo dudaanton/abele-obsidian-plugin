@@ -9,7 +9,7 @@
  * without a word of documentation fails here and says which one.
  */
 import { describe, it, expect } from 'vitest'
-import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import {
   USER_DOCS,
@@ -22,6 +22,7 @@ import {
 } from '@/userdocs'
 import { slug } from '@/docs'
 import { settingsTabsFromSource } from '../helpers/settingsTabs'
+import { projectCommands } from '../helpers/commandAnalysis'
 
 const SRC = join(__dirname, '..', '..', 'src')
 const DOCS_DIR = join(SRC, 'userdocs')
@@ -217,19 +218,13 @@ describe('plain text', () => {
  * nudges: whoever adds a command or a settings tab is sent here to say a word about it.
  */
 describe('what the pages must at least mention', () => {
-  function walk(dir: string): string[] {
-    return readdirSync(dir).flatMap((entry) => {
-      const path = join(dir, entry)
-      if (statSync(path).isDirectory()) return walk(path)
-      return /\.(ts|vue)$/.test(path) ? [path] : []
-    })
-  }
-
   /** Every command registered with a fixed name, wherever in the plugin it is registered. */
-  const commands = walk(SRC).flatMap((file) =>
-    [...readFileSync(file, 'utf8').matchAll(/addCommand\(\{[\s\S]*?\bname:\s*(['"`])(.+?)\1/g)]
-      .filter((m) => !m[2].includes('${'))
-      .map((m) => [m[2], relative(SRC, file)] as const)
+  const commands = projectCommands().flatMap((command) =>
+    command.names.map((name) => {
+      if (!name.literal)
+        throw new Error(`Unresolved command name: ${command.source}: ${command.expression}`)
+      return [name.value, relative(SRC, command.source)] as const
+    })
   )
 
   it('finds the commands it is meant to be checking', () => {

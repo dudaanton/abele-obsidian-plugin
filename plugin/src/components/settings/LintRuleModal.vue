@@ -1,14 +1,25 @@
 <template>
-  <ObsidianModal :title="rule.title" @close="emit('close')">
+  <ObsidianModal
+    :title="rule.source === 'builtin' ? settingsLabel(rule.title) : rule.title"
+    @close="emit('close')"
+  >
     <div class="abele-lint-rule">
-      <p class="abele-lint-rule__about">{{ rule.description }}</p>
-      <Setting name="On" desc="Switched off, the rule checks nothing.">
+      <p class="abele-lint-rule__about">
+        {{ rule.source === 'builtin' ? settingsLabel(rule.description) : rule.description }}
+      </p>
+      <Setting
+        :name="t('settings.LintRuleModal.on.13001175')"
+        :desc="t('settings.LintRuleModal.switched_off_the_rule_checks.db75c03b')"
+      >
         <Checkbox
           :is-enabled="setting.enabled"
           @toggle="emit('change', { enabled: !setting.enabled })"
         />
       </Setting>
-      <Setting name="How bad" desc="An error or a warning, as the list shows it.">
+      <Setting
+        :name="t('settings.LintRuleModal.how_bad.016a19df')"
+        :desc="t('settings.LintRuleModal.an_error_or_a_warning.ea93bb11')"
+      >
         <Dropdown
           :model-value="setting.severity"
           :options="severities"
@@ -18,51 +29,66 @@
         />
       </Setting>
 
-      <Section title="Where it applies" desc="Left empty, everywhere. Lists are comma-separated.">
-        <Setting name="Only in" desc="Folders, or globs like Projects/*/Tasks.">
+      <Section
+        :title="t('settings.LintRuleModal.where_it_applies.39e44cbf')"
+        :desc="t('settings.LintRuleModal.left_empty_everywhere_lists_are.5675de53')"
+      >
+        <Setting
+          :name="t('settings.LintRuleModal.only_in.aed9f516')"
+          :desc="t('settings.LintRuleModal.folders_or_globs_like_projects.3f2b32ac')"
+        >
           <Input
             v-model="text.folders"
-            placeholder="Everywhere"
+            :placeholder="t('settings.LintRuleModal.everywhere.dcc10bfd')"
             @update:model-value="list('folders', $event)"
           />
         </Setting>
-        <Setting name="Not in" desc="Folders or globs left alone inside those.">
+        <Setting
+          :name="t('settings.LintRuleModal.not_in.1bc8651b')"
+          :desc="t('settings.LintRuleModal.folders_or_globs_left_alone.a5983464')"
+        >
           <Input
             v-model="text.exclude"
-            placeholder="Nowhere"
+            :placeholder="t('settings.LintRuleModal.nowhere.7e32434d')"
             @update:model-value="list('exclude', $event)"
           />
         </Setting>
-        <Setting name="Note types" desc="Only notes whose type is one of these.">
+        <Setting
+          :name="t('settings.LintRuleModal.note_types.52d728fb')"
+          :desc="t('settings.LintRuleModal.only_notes_whose_type_is.a3e5cd66')"
+        >
           <Input
             v-model="text.types"
-            placeholder="Any type"
+            :placeholder="t('settings.LintRuleModal.any_type.b05fc1fe')"
             @update:model-value="list('types', $event)"
           />
         </Setting>
         <Setting
-          name="Having a property"
-          desc="Only notes with this property — equal to the value, when one is given."
+          :name="t('settings.LintRuleModal.having_a_property.07dd0569')"
+          :desc="t('settings.LintRuleModal.only_notes_with_this_property.adbc72b9')"
         >
           <Input
             v-model="text.property"
-            placeholder="Property"
+            :placeholder="t('settings.LintRuleModal.property.40040cb1')"
             @update:model-value="word('property', $event)"
           />
           <Input
             v-model="text.value"
-            placeholder="Any value"
+            :placeholder="t('settings.LintRuleModal.any_value.004f62d2')"
             @update:model-value="word('value', $event)"
           />
         </Setting>
       </Section>
 
-      <Section v-if="rule.params.length" title="Settings of the rule">
+      <Section
+        v-if="rule.params.length"
+        :title="t('settings.LintRuleModal.settings_of_the_rule.99e57b0c')"
+      >
         <Setting
           v-for="param in rule.params"
           :key="param.name"
-          :name="param.label"
-          :desc="param.description"
+          :name="rule.source === 'builtin' ? settingsLabel(param.label) : param.label"
+          :desc="rule.source === 'builtin' ? settingsLabel(param.description) : param.description"
         >
           <Checkbox
             v-if="param.type === 'boolean'"
@@ -79,14 +105,14 @@
     </div>
     <template #footer>
       <Button
-        text="As it ships"
-        tooltip="Put this rule back the way the plugin ships it"
+        :text="t('settings.LintRuleModal.as_it_ships.be4ca4de')"
+        :tooltip="t('settings.LintRuleModal.put_this_rule_back_the.6e2ebc57')"
         @click="resetAll"
       />
       <Button
-        text="Done"
+        :text="t('settings.LintRuleModal.done.11a6767d')"
         accent
-        tooltip="Close this; the changes are saved"
+        :tooltip="t('settings.LintRuleModal.close_this_the_changes_are.459403b0')"
         @click="emit('close')"
       />
     </template>
@@ -94,6 +120,8 @@
 </template>
 
 <script setup lang="ts">
+import { settingsLabel } from '@/i18n/settingsLabels'
+import { t } from '@/i18n'
 /**
  * One lint rule set up: on or off, error or warning, where it applies, and its own parameters.
  * Every change is kept as it is made. Text fields keep what is typed; the list it stands for is
@@ -120,8 +148,8 @@ const emit = defineEmits<{
 }>()
 
 const severities = [
-  { value: 'error', display: 'Error' },
-  { value: 'warning', display: 'Warning' },
+  { value: 'error', display: t('settings.LintRuleModal.error.54a0e8c1') },
+  { value: 'warning', display: t('settings.LintRuleModal.warning.e981ddae') },
 ]
 
 const joined = (value: unknown): string =>

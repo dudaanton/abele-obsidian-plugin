@@ -1,3 +1,5 @@
+import { settingsLabel } from '@/i18n/settingsLabels'
+import { t } from '@/i18n'
 import type { InterceptorEntry } from '@/ai/agents/types'
 import { INTERCEPTOR_CHECKS_OPTIONS } from '@/ai/agents/types'
 import { SCRIPT_KEY } from './options'
@@ -18,10 +20,16 @@ export function withKey(entry: InterceptorEntry, key: string): InterceptorEntry 
 
 /** The entry's facts after its name, in the order one reads them. */
 export function entryFacts(entry: InterceptorEntry): string[] {
-  const facts = [INTERCEPTOR_CHECKS_OPTIONS.find((o) => o.value === entry.checks)?.display ?? '']
-  if (entry.pattern) facts.push(`matching ${entry.pattern}`)
-  if (entry.replyOnly && entry.checks !== 'answer') facts.push('reply only')
-  if (entry.script) facts.push('script')
+  const facts = [
+    settingsLabel(INTERCEPTOR_CHECKS_OPTIONS.find((o) => o.value === entry.checks)?.display ?? ''),
+  ]
+  if (entry.pattern)
+    facts.push(
+      t('settings.ai.interceptorList.matching_value.b4ca1a61', { value0: String(entry.pattern) })
+    )
+  if (entry.replyOnly && entry.checks !== 'answer')
+    facts.push(t('settings.ai.interceptorList.reply_only.37786db8'))
+  if (entry.script) facts.push(t('settings.terms.script'))
   return facts.filter(Boolean)
 }
 

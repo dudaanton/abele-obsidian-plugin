@@ -2,23 +2,23 @@
   <div class="abele-quick-button-settings">
     <Section>
       <template #desc>
-        A round button at the edge of the screen on a phone. It opens a menu of quick actions for
-        whatever is in front: your own actions below, a note's header buttons, and what the plugin
-        offers there — a book's search and highlights, a note's timer and chat. It gets out of the
-        way while you read or type. Drag it to move it; it keeps the side and height it is left at.
+        {{ t('settings.QuickButtonSettings.a_round_button_at_the.aa095d26') }}
       </template>
       <Setting
-        name="Show the quick button"
-        desc="On a phone. It is a concept, so it starts switched off."
+        :name="t('settings.QuickButtonSettings.show_the_quick_button.65b455f7')"
+        :desc="t('settings.QuickButtonSettings.on_a_phone_it_is.0737337d')"
       >
         <Checkbox :is-enabled="current.enabled" @toggle="update({ enabled: !current.enabled })" />
       </Setting>
-      <Setting name="Also on a tablet" desc="Show it on a tablet as well as on a phone.">
+      <Setting
+        :name="t('settings.QuickButtonSettings.also_on_a_tablet.5f696152')"
+        :desc="t('settings.QuickButtonSettings.show_it_on_a_tablet.015eac3d')"
+      >
         <Checkbox :is-enabled="current.tablet" @toggle="update({ tablet: !current.tablet })" />
       </Setting>
       <Setting
-        name="Side"
-        desc="The edge of the screen it stands at. Dragging it across changes it."
+        :name="t('settings.QuickButtonSettings.side.630ef00b')"
+        :desc="t('settings.QuickButtonSettings.the_edge_of_the_screen.20ef4e46')"
       >
         <Dropdown
           :model-value="current.side"
@@ -27,20 +27,20 @@
         />
       </Setting>
       <Setting
-        name="Height"
+        :name="t('settings.QuickButtonSettings.height.bfe2eca4')"
         :desc="
           current.lift
-            ? 'Dragged higher than where it rests, above the bottom bar of each screen.'
-            : 'Where it rests: just above the bottom bar of each screen.'
+            ? t('settings.QuickButtonSettings.dragged_higher_than_where_it.8e838ed1')
+            : t('settings.QuickButtonSettings.where_it_rests_just_above.3d9aff94')
         "
       >
         <Button
-          text="Put it back"
+          :text="t('settings.QuickButtonSettings.put_it_back.55057d7e')"
           :disabled="!current.lift"
           :tooltip="
             current.lift
-              ? 'Move it back down to where it rests'
-              : 'It is already where it rests; drag it to raise it'
+              ? t('settings.QuickButtonSettings.move_it_back_down_to.4bb8ca2b')
+              : t('settings.QuickButtonSettings.it_is_already_where_it.36b74557')
           "
           @click="update({ lift: 0 })"
         />
@@ -48,10 +48,13 @@
     </Section>
 
     <Section
-      title="Your actions"
-      desc="At the top of the menu, in this order. A command appears only where it can run, so one meant for notes is not offered over a book."
+      :title="t('settings.QuickButtonSettings.your_actions.6c06c355')"
+      :desc="t('settings.QuickButtonSettings.at_the_top_of_the.b6848b73')"
     >
-      <EmptyState v-if="!current.actions.length" text="Nothing of your own yet." />
+      <EmptyState
+        v-if="!current.actions.length"
+        :text="t('settings.QuickButtonSettings.nothing_of_your_own_yet.3d8c2002')"
+      />
       <Setting
         v-for="(action, idx) in current.actions"
         :key="action.id"
@@ -60,39 +63,49 @@
       >
         <Input
           :model-value="action.name"
-          placeholder="Name in the menu"
+          :placeholder="t('settings.QuickButtonSettings.name_in_the_menu.feca41eb')"
           @update:model-value="rename(idx, $event)"
         />
         <Icon
           :icon="action.icon || defaultIcon(action)"
-          tooltip="Choose the icon it has in the menu"
+          :tooltip="t('settings.QuickButtonSettings.choose_the_icon_it_has.e8357476')"
           @click="pickingIconFor = idx"
         />
         <Icon
           icon="arrow-up"
           :disabled="idx === 0"
-          :tooltip="idx === 0 ? 'Already the first' : 'Move it up the menu'"
+          :tooltip="
+            idx === 0
+              ? t('settings.QuickButtonSettings.already_the_first.eab62d41')
+              : t('settings.QuickButtonSettings.move_it_up_the_menu.20938d10')
+          "
           @click="move(idx, -1)"
         />
         <Icon
           icon="arrow-down"
           :disabled="idx === current.actions.length - 1"
           :tooltip="
-            idx === current.actions.length - 1 ? 'Already the last' : 'Move it down the menu'
+            idx === current.actions.length - 1
+              ? t('settings.QuickButtonSettings.already_the_last.a6ec4b12')
+              : t('settings.QuickButtonSettings.move_it_down_the_menu.dc508335')
           "
           @click="move(idx, 1)"
         />
-        <Icon icon="trash" tooltip="Take it out of the menu" @click="pendingRemoval = action" />
+        <Icon
+          icon="trash"
+          :tooltip="t('settings.QuickButtonSettings.take_it_out_of_the.4a64934c')"
+          @click="pendingRemoval = action"
+        />
       </Setting>
       <div class="abele-quick-button-settings__add">
         <Button
-          text="Add a command"
-          tooltip="Search Obsidian's commands — any plugin's — for one to put in the menu"
+          :text="t('settings.QuickButtonSettings.add_a_command.b907f252')"
+          :tooltip="t('settings.QuickButtonSettings.search_obsidian_s_commands_any.4054c0d7')"
           @click="addCommand"
         />
         <Button
-          text="Add a script"
-          tooltip="Search your scripts for one to put in the menu"
+          :text="t('settings.QuickButtonSettings.add_a_script.c4526bc4')"
+          :tooltip="t('settings.QuickButtonSettings.search_your_scripts_for_one.df40b370')"
           @click="addScript"
         />
       </div>
@@ -107,10 +120,18 @@
 
     <ConfirmModal
       v-if="pendingRemoval"
-      title="Take out of the menu"
-      :message="`Take ${titleOf(pendingRemoval)} out of the quick menu? The command or script itself stays.`"
-      confirm-text="Take out"
-      :confirm-tooltip="`Take ${titleOf(pendingRemoval)} out of the menu`"
+      :title="t('settings.QuickButtonSettings.take_out_of_the_menu.756bbe6a')"
+      :message="
+        t('settings.QuickButtonSettings.take_value_out_of_the.f628c5a3', {
+          value0: String(titleOf(pendingRemoval)),
+        })
+      "
+      :confirm-text="t('settings.QuickButtonSettings.take_out.a7fc33e3')"
+      :confirm-tooltip="
+        t('settings.QuickButtonSettings.take_value_out_of_the.8b01b719', {
+          value0: String(titleOf(pendingRemoval)),
+        })
+      "
       @confirm="remove(pendingRemoval.id)"
       @close="pendingRemoval = null"
     />
@@ -118,6 +139,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, ref } from 'vue'
 import { nanoid } from 'nanoid'
 import { debounce } from 'obsidian'
@@ -151,8 +173,8 @@ const current = computed(() => {
 })
 
 const sideOptions = [
-  { value: 'right', display: 'Right' },
-  { value: 'left', display: 'Left' },
+  { value: 'right', display: t('settings.QuickButtonSettings.right.883361d5') },
+  { value: 'left', display: t('settings.QuickButtonSettings.left.58eb9032') },
 ]
 
 const pickingIconFor = ref<number | null>(null)
@@ -175,12 +197,14 @@ const commandName = (id: string): string =>
 const titleOf = (action: QuickAction): string =>
   action.name ||
   (action.type === 'command' ? commandName(action.commandId) : action.scriptName) ||
-  'Unnamed'
+  t('settings.QuickButtonSettings.unnamed.e504e615')
 
 const describe = (action: QuickAction): string =>
   action.type === 'command'
-    ? `Command: ${commandName(action.commandId)}`
-    : `Script: ${action.scriptName}`
+    ? t('settings.QuickButtonSettings.command_value.b7bcffe4', {
+        value0: String(commandName(action.commandId)),
+      })
+    : t('settings.QuickButtonSettings.script_value.804f5354', { value0: String(action.scriptName) })
 
 const defaultIcon = (action: QuickAction): string =>
   action.type === 'command'
@@ -200,10 +224,7 @@ const blank = (): QuickAction => ({
 const addCommand = async () => {
   const command = await pickCommand(app)
   if (!command) return
-  await setActions([
-    ...stored().actions,
-    { ...blank(), type: 'command', commandId: command.id },
-  ])
+  await setActions([...stored().actions, { ...blank(), type: 'command', commandId: command.id }])
 }
 
 const addScript = async () => {

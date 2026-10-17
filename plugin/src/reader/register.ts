@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * The book reader's hooks into Obsidian: the tab type, `.epub` files opening in it, "Open in
  * Abele reader" in a file's menu, and — unless the setting is off — `.pdf` files opening in it.
@@ -38,7 +39,7 @@ export function registerReader(plugin: Plugin): void {
   })
   plugin.addCommand({
     id: 'reader-toggle-eink',
-    name: 'Toggle e-ink mode for books on this device',
+    name: t('commands.reader-toggle-eink'),
     callback: () => {
       setEink({ on: !eink().on })
       new Notice(eink().on ? 'E-ink mode is on for books on this device.' : 'E-ink mode is off.')
@@ -48,7 +49,7 @@ export function registerReader(plugin: Plugin): void {
   initZen(app)
   plugin.addCommand({
     id: 'reader-toggle-zen',
-    name: 'Toggle zen mode for books on this device',
+    name: t('commands.reader-toggle-zen'),
     callback: () => setZen(!zen().on),
   })
   // The fonts folder: read when a book or the settings first ask, followed from then on.

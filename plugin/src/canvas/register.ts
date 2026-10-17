@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { ViewPlugin } from '@codemirror/view'
 import { editorInfoField, Notice, TFile, TFolder, type Plugin } from 'obsidian'
 import { AbeleConfig } from '../services/AbeleConfig'
@@ -67,7 +68,7 @@ export function registerCanvas(plugin: Plugin): void {
   )
   plugin.addCommand({
     id: 'new-canvas',
-    name: 'New canvas',
+    name: t('commands.new-canvas'),
     icon: 'workflow',
     callback: () => void newCanvas(app),
   })
@@ -85,7 +86,7 @@ export function registerCanvas(plugin: Plugin): void {
   registerExcalidrawMigration(plugin)
   plugin.addCommand({
     id: 'open-canvas-viewer',
-    name: 'Open current canvas in diagram viewer',
+    name: t('commands.open-canvas-viewer'),
     checkCallback: (checking) => {
       const file = app.workspace.getActiveFile()
       if (file?.extension !== 'canvas') return false

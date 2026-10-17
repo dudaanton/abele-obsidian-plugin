@@ -1,3 +1,4 @@
+import { englishSyncText, type SyncText } from './presentation'
 import type { TokenConnectionRecord } from './tokenConnectionRegistry'
 import { connectionStatusText, SCOPE_DELETED, type ConnectionActivity } from './tokenUi'
 import { formatWhen } from './format'
@@ -43,40 +44,58 @@ export function connectionTone(row: Row, activity?: ConnectionActivity): Connect
   return 'green'
 }
 
-const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
-
 /** The one line under the connection's name: what it is doing, or what it waits on. */
-export function connectionLine(row: Row, activity?: ConnectionActivity): string {
-  if (activity?.error === SCOPE_DELETED) return connectionStatusText(row, activity)
-  if (row.rootIssue) return connectionStatusText(row, activity)
-  if (row.paused) return 'Paused'
+export function connectionLine(
+  row: Row,
+  activity?: ConnectionActivity,
+  text: SyncText = englishSyncText,
+  when: (iso: string) => string = formatWhen
+): string {
+  if (activity?.error === SCOPE_DELETED) return connectionStatusText(row, activity, text)
+  if (row.rootIssue) return connectionStatusText(row, activity, text)
+  if (row.paused) return text('Paused')
   const phase = activity?.startup ?? activity?.inspection
   const numbered = (stage: string, completed: number, total: number) =>
-    stage +
+    text(stage) +
     (total > 0
-      ? ` · ${completed.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} of ${total.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}`
+      ? text(' · {completed} of {total}', {
+          completed: completed.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' '),
+          total: total.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' '),
+        })
       : '')
   if (phase)
     return (
       numbered(activity?.startup?.stage ?? 'Checking the vault', phase.completed, phase.total) +
-      (activity?.startup?.outcome === 'failed' ? ' · Needs attention' : '')
+      (activity?.startup?.outcome === 'failed' ? text(' · Needs attention') : '')
     )
-  if (row.status === 'offline') return 'Server unavailable, retrying'
+  if (row.status === 'offline') return text('Server unavailable, retrying')
   if (ATTENTION.includes(row.status) || row.status === 'scope_updating')
-    return connectionStatusText(row, activity)
-  if (activity?.transfer) return transferText(activity.transfer)
+    return connectionStatusText(row, activity, text)
+  if (activity?.transfer) return transferText(activity.transfer, text)
   if (activity?.comparison)
     return numbered('Comparing files', activity.comparison.completed, activity.comparison.total)
-  if (activity?.pull) return transferText({ ...activity.pull, totalKnown: false })
+  if (activity?.pull) return transferText({ ...activity.pull, totalKnown: false }, text)
   if (activity?.total !== undefined && (activity.completed ?? 0) < activity.total)
-    return `${activity.completed ?? 0} of ${activity.total} files`
-  if (row.status === 'syncing') return 'Syncing'
+    return text('{completed} of {total} files', {
+      completed: activity.completed ?? 0,
+      total: activity.total,
+    })
+  if (row.status === 'syncing') return text('Syncing')
   if (activity?.conflicts?.length)
-    return count(activity.conflicts.length, 'conflict copy', 'conflict copies')
+    return text(
+      '{count} conflict copies',
+      { count: activity.conflicts.length },
+      '{count} conflict copy'
+    )
   if (activity?.refused?.length)
-    return count(activity.refused.length, 'file', 'files') + ' not sent'
-  if (activity?.lastSync) return 'Synced ' + formatWhen(new Date(activity.lastSync).toISOString())
-  return 'Not synced yet'
+    return text(
+      '{count} files not sent',
+      { count: activity.refused.length },
+      '{count} file not sent'
+    )
+  if (activity?.lastSync)
+    return text('Synced {when}', { when: when(new Date(activity.lastSync).toISOString()) })
+  return text('Not synced yet')
 }
 
 /** How much of a running exchange is done, for a bar; null when nothing is counted. */

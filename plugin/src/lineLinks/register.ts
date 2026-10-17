@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * Links to lines of a note, wired into Obsidian: the click on one in a note, its hover preview,
  * and the way a person makes one — "Copy link to lines" on the editor's menu and as a command.
@@ -218,7 +219,7 @@ export function registerLineLinks(plugin: Plugin): void {
 
   plugin.addCommand({
     id: 'copy-link-to-lines',
-    name: 'Copy link to selected lines',
+    name: t('commands.copy-link-to-lines'),
     icon: 'link',
     editorCheckCallback: (checking, editor, ctx) => {
       const file = ctx.file

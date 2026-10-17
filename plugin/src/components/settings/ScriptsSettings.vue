@@ -15,6 +15,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { ref } from 'vue'
 import Tabs from '../obsidian/Tabs.vue'
 import ScriptLibrary from './scripts/ScriptLibrary.vue'
@@ -32,25 +33,49 @@ import type { SelectionMenuSurface } from '@/scripting/selectionMenuScripts'
  * ones that run when Obsidian starts, and the switch and folder behind all of it.
  */
 const TABS = [
-  { id: 'library', label: 'Library', tooltip: 'Every script in the folder, and what it does' },
+  {
+    id: 'library',
+    label: t('settings.ScriptsSettings.library.dc20b3d5'),
+    tooltip: t('settings.ScriptsSettings.every_script_in_the_folder.8e2a3585'),
+  },
   {
     id: 'selection',
-    label: 'Selection menus',
-    tooltip: 'Choose scripts for books and chats independently',
+    label: t('settings.ScriptsSettings.selection_menus.22601a32'),
+    tooltip: t('settings.ScriptsSettings.choose_scripts_for_books_and.71bc0ae4'),
   },
-  { id: 'buttons', label: 'Header buttons', tooltip: 'Buttons in note headers that run a script' },
+  {
+    id: 'buttons',
+    label: t('settings.ScriptsSettings.header_buttons.1d80ae78'),
+    tooltip: t('settings.ScriptsSettings.buttons_in_note_headers_that.922a8f0e'),
+  },
   {
     id: 'automations',
-    label: 'Automations',
-    tooltip: 'Scripts that run by themselves when a task or a note changes',
+    label: t('settings.ScriptsSettings.automations.ad1fb9ec'),
+    tooltip: t('settings.ScriptsSettings.scripts_that_run_by_themselves.32dace66'),
   },
-  { id: 'startup', label: 'Startup', tooltip: 'Scripts that run each time Obsidian starts' },
-  { id: 'general', label: 'General', tooltip: 'Turn scripts on and choose their folder' },
+  {
+    id: 'startup',
+    label: t('settings.ScriptsSettings.startup.65d48235'),
+    tooltip: t('settings.ScriptsSettings.scripts_that_run_each_time.695fa1cc'),
+  },
+  {
+    id: 'general',
+    label: t('settings.ScriptsSettings.general.c910d474'),
+    tooltip: t('settings.ScriptsSettings.turn_scripts_on_and_choose.d4857b2d'),
+  },
 ]
 
 const SURFACES = [
-  { id: 'book', label: 'Books', tooltip: 'Scripts on words selected in a book' },
-  { id: 'chat', label: 'Chats', tooltip: 'Scripts chosen for words selected in a chat' },
+  {
+    id: 'book',
+    label: t('settings.ScriptsSettings.books.9da7f76b'),
+    tooltip: t('settings.ScriptsSettings.scripts_on_words_selected_in.862c0f97'),
+  },
+  {
+    id: 'chat',
+    label: t('settings.ScriptsSettings.chats.ef5b4049'),
+    tooltip: t('settings.ScriptsSettings.scripts_chosen_for_words_selected.6086fa3b'),
+  },
 ]
 const surface = ref<SelectionMenuSurface>('book')
 

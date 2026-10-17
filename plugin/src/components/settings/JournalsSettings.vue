@@ -5,28 +5,58 @@
         <div class="setting-item-info abele-settings__journal">
           <div class="abele-settings__journal-header">
             <div class="setting-item-name">
-              {{ journal.name ? `${journal.name} journal` : `Journal #${id + 1}` }}
+              {{
+                journal.name
+                  ? t('settings.JournalsSettings.value_journal.cc8a4dd5', {
+                      value0: String(journal.name),
+                    })
+                  : t('settings.JournalsSettings.journal_value.06b87038', {
+                      value0: String(id + 1),
+                    })
+              }}
             </div>
-            <Icon icon="cross" tooltip="Remove this journal" @click="removeJournal(id)" />
+            <Icon
+              icon="cross"
+              :tooltip="t('settings.JournalsSettings.remove_this_journal.c3a84c0a')"
+              @click="removeJournal(id)"
+            />
           </div>
-          <Setting name="Default journal">
+          <Setting :name="t('settings.JournalsSettings.default_journal.b54bf1fd')">
             <Checkbox :is-enabled="journal.isDefault" @toggle="toggleJournalDefault(journal)" />
           </Setting>
-          <Setting name="Journal name">
-            <Input v-model="journal.name" placeholder="Journal name" />
+          <Setting :name="t('settings.JournalsSettings.journal_name.4a021433')">
+            <Input
+              v-model="journal.name"
+              :placeholder="t('settings.JournalsSettings.journal_name.4a021433')"
+            />
           </Setting>
-          <Setting name="Journal type property value or filename RegExp">
-            <Input v-model="journal.type" placeholder="Type or RegExp" />
-          </Setting>
-          <Setting name="Date property name" desc="Optional">
-            <Input v-model="journal.dateProperty" placeholder="Date property name" />
-          </Setting>
-          <Setting name="New journal note path template" desc="Optional">
-            <Input v-model="journal.newPathTemplate" placeholder="Path template" />
+          <Setting :name="t('settings.JournalsSettings.journal_type_property_value_or.04441eaf')">
+            <Input
+              v-model="journal.type"
+              :placeholder="t('settings.JournalsSettings.type_or_regexp.241a5ad0')"
+            />
           </Setting>
           <Setting
-            name="Day of reccurence period, when note is created"
-            desc="Optional. Default to 'first'."
+            :name="t('settings.JournalsSettings.date_property_name.8e90965d')"
+            :desc="t('settings.JournalsSettings.optional.59be7133')"
+          >
+            <Input
+              v-model="journal.dateProperty"
+              :placeholder="t('settings.JournalsSettings.date_property_name.8e90965d')"
+            />
+          </Setting>
+          <Setting
+            :name="t('settings.JournalsSettings.new_journal_note_path_template.862462e1')"
+            :desc="t('settings.JournalsSettings.optional.59be7133')"
+          >
+            <Input
+              v-model="journal.newPathTemplate"
+              :placeholder="t('settings.JournalsSettings.path_template.ec234daf')"
+            />
+          </Setting>
+          <Setting
+            :name="t('settings.JournalsSettings.day_of_reccurence_period_when.ae1517a9')"
+            :desc="t('settings.JournalsSettings.optional_default_to_first.e58c831d')"
           >
             <Input
               :model-value="
@@ -34,19 +64,22 @@
                   ? journal.dayOfPeriod.toString()
                   : journal.dayOfPeriod
               "
-              placeholder="Path template"
+              :placeholder="t('settings.JournalsSettings.path_template.ec234daf')"
               @update:model-value="journal.dayOfPeriod = $event as Journal['dayOfPeriod']"
             />
           </Setting>
-          <Setting name="Template note path" desc="Optional">
+          <Setting
+            :name="t('settings.JournalsSettings.template_note_path.de4db36f')"
+            :desc="t('settings.JournalsSettings.optional.59be7133')"
+          >
             <Search
               :model-value="journal.templatePath"
-              placeholder="Template note path"
+              :placeholder="t('settings.JournalsSettings.template_note_path.de4db36f')"
               :suggester="FileSuggest"
               @update:model-value="journal.templatePath = $event"
             />
           </Setting>
-          <Setting name="Journal reccurence">
+          <Setting :name="t('settings.JournalsSettings.journal_reccurence.8957b0f1')">
             <Dropdown
               :model-value="journal.recurrence"
               :options="journalReccurenceOptions"
@@ -58,11 +91,16 @@
         </div>
       </div>
     </div>
-    <Button text="Add journal" tooltip="Add another journal" @click="addJournal" />
+    <Button
+      :text="t('settings.JournalsSettings.add_journal.f49ae75e')"
+      :tooltip="t('settings.JournalsSettings.add_another_journal.0d345224')"
+      @click="addJournal"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { reactive, watch } from 'vue'
 import Setting from '../obsidian/Setting.vue'
 import Search from '../obsidian/Search.vue'
@@ -80,10 +118,10 @@ import { nanoid } from 'nanoid'
 const journals = reactive([...AbeleConfig.getInstance().journals])
 
 const journalReccurenceOptions = [
-  { value: 'daily', display: 'Daily' },
-  { value: 'weekly', display: 'Weekly' },
-  { value: 'monthly', display: 'Monthly' },
-  { value: 'yearly', display: 'Yearly' },
+  { value: 'daily', display: t('settings.JournalsSettings.daily.b36c2611') },
+  { value: 'weekly', display: t('settings.JournalsSettings.weekly.29751324') },
+  { value: 'monthly', display: t('settings.JournalsSettings.monthly.9b11f6b7') },
+  { value: 'yearly', display: t('settings.JournalsSettings.yearly.6e69b59e') },
 ]
 
 const saveSettings = debounce(async () => {

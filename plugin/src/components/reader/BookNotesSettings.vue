@@ -1,22 +1,38 @@
 <template>
-  <Section :title="bookKey ? 'Highlights of this book' : 'Highlights'" class="abele-book-notes">
+  <Section
+    :title="
+      bookKey
+        ? t('settings.components.reader.BookNotesSettings.highlights_of_this_book.1202b037')
+        : t('settings.components.reader.BookNotesSettings.highlights.6e517828')
+    "
+    class="abele-book-notes"
+  >
     <Setting
-      name="Where they go"
+      :name="t('settings.components.reader.BookNotesSettings.where_they_go.e7d3bea7')"
       :desc="
         bookKey
-          ? 'For this book alone. “As in settings” follows Settings → Books.'
-          : 'A note of each book\'s own, beside it, or one note for every book. A book can choose for itself from its Aa button.'
+          ? t('settings.components.reader.BookNotesSettings.for_this_book_alone_as.cc47dd64')
+          : t('settings.components.reader.BookNotesSettings.a_note_of_each_book.198e675e')
       "
     >
       <Dropdown :options="toOptions" :model-value="to" @update:model-value="setTo" />
     </Setting>
     <Setting
       v-if="target.to === 'note'"
-      :name="bookKey ? 'Note' : 'Note for all books'"
+      :name="
+        bookKey
+          ? t('settings.components.reader.BookNotesSettings.note.d8da2c49')
+          : t('settings.components.reader.BookNotesSettings.note_for_all_books.105d496e')
+      "
       :desc="
         bookKey
-          ? `The note this book's highlights go to. Empty: ${fallbackPath}.`
-          : `Made with the first highlight; each book's are told apart by their links. Empty: ${DEFAULT_NOTES_PATH}.`
+          ? t('settings.components.reader.BookNotesSettings.the_note_this_book_s.47b93fc6', {
+              value0: String(fallbackPath),
+            })
+          : t(
+              'settings.components.reader.BookNotesSettings.made_with_the_first_highlight.21e4557d',
+              { value0: String(DEFAULT_NOTES_PATH) }
+            )
       "
     >
       <Search
@@ -27,16 +43,31 @@
       />
     </Setting>
     <Setting
-      name="Template"
+      :name="t('settings.components.reader.BookNotesSettings.template.0575f29d')"
       :desc="
         bookKey
-          ? 'A note to make this book\'s highlights note from. Empty: as in settings.'
-          : 'A note a new highlights note is made from. Between {{#body}} and {{/body}} is what each highlight adds, {{ highlight }} being the highlight; or {{ quote }} and {{ comment }} to put the quote and your comment apart; also {{ title }}, {{ author }}, {{ book }}, {{ chapter }}, {{ date }}. Empty: none.'
+          ? t('settings.components.reader.BookNotesSettings.a_note_to_make_this.fe9815bd')
+          : t('settings.components.reader.BookNotesSettings.a_note_a_new_highlights.a56f13fc', {
+              literal0: String('{{#body}}'),
+              literal1: String('{{/body}}'),
+              literal2: String('{{ highlight }}'),
+              literal3: String('{{ quote }}'),
+              literal4: String('{{ comment }}'),
+              literal5: String('{{ title }}'),
+              literal6: String('{{ author }}'),
+              literal7: String('{{ book }}'),
+              literal8: String('{{ chapter }}'),
+              literal9: String('{{ date }}'),
+            })
       "
     >
       <Search
         :model-value="template"
-        :placeholder="bookKey ? fallbackTemplate || 'None' : 'None'"
+        :placeholder="
+          bookKey
+            ? fallbackTemplate || t('settings.components.reader.BookNotesSettings.none.dc937b59')
+            : t('settings.components.reader.BookNotesSettings.none.dc937b59')
+        "
         :suggester="FileSuggest"
         @update:model-value="type('notesTemplate', $event)"
       />
@@ -45,6 +76,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 /**
  * Where highlights go: for every book in Settings → Books, and — given a book's key — for that
  * book alone in its Aa dialog, where anything left as it is follows the settings. Saved to the
@@ -83,15 +115,26 @@ const own = computed<BookNotesChoice>(() =>
 const target = computed(() => notesTargetFor(settings.value, props.bookKey ?? ''))
 
 const place: Record<NotesTo, string> = {
-  book: "A note of the book's own",
-  note: 'One note for every book',
+  book: t('settings.components.reader.BookNotesSettings.a_note_of_the_book.6c1f2ec2'),
+  note: t('settings.components.reader.BookNotesSettings.one_note_for_every_book.698e6f78'),
 }
 const toOptions = computed(() =>
   props.bookKey
     ? [
-        { value: '', display: `As in settings (${place[settings.value.notesTo].toLowerCase()})` },
-        { value: 'book', display: "A note of the book's own" },
-        { value: 'note', display: 'A note you name' },
+        {
+          value: '',
+          display: t('settings.components.reader.BookNotesSettings.as_in_settings_value.7686ad0c', {
+            value0: String(place[settings.value.notesTo].toLowerCase()),
+          }),
+        },
+        {
+          value: 'book',
+          display: t('settings.components.reader.BookNotesSettings.a_note_of_the_book.6c1f2ec2'),
+        },
+        {
+          value: 'note',
+          display: t('settings.components.reader.BookNotesSettings.a_note_you_name.09402a6f'),
+        },
       ]
     : [
         { value: 'book', display: place.book },

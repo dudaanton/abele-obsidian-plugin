@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { promptDialog } from '@/components/obsidian/dialogs'
 import { TFile, TAbstractFile, debounce, Notice, EventRef, normalizePath } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -144,7 +145,7 @@ export class ScriptService {
     try {
       plugin.addCommand({
         id: REVIEW_COMMAND,
-        name: 'Review scripts waiting for confirmation',
+        name: t('commands.review-scripts'),
         icon: 'shield-check',
         checkCallback: (checking: boolean) => {
           if (!this.waitingScripts().length) return false
@@ -357,7 +358,7 @@ export class ScriptService {
       try {
         plugin.addCommand({
           id: parsed.commandId,
-          name: `Script: ${parsed.meta.name}`,
+          name: t('commands.script', { name: parsed.meta.name }),
           icon: parsed.meta.icon || 'scroll-text',
           callback: () => this.executeFromCommand(parsed.path),
         })

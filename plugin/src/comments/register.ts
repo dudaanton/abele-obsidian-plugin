@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { MarkdownView, Notice, TFile, TFolder, type TAbstractFile, type Plugin } from 'obsidian'
 import { watch } from 'vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -48,7 +49,7 @@ export function registerTextComments(plugin: Plugin): TextComments {
   }
   plugin.addCommand({
     id: 'add-text-comment',
-    name: 'Add comment',
+    name: t('commands.add-text-comment'),
     icon: 'message-square',
     checkCallback: (checking) => {
       const view = plugin.app.workspace.getActiveViewOfType(MarkdownView)

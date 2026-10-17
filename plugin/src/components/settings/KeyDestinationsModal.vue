@@ -1,66 +1,92 @@
 <template>
   <ObsidianModal
-    title="Review key destinations"
+    :title="t('settings.KeyDestinationsModal.review_key_destinations.2058c462')"
     modal-class="abele-key-destinations"
     @close="emit('close')"
   >
     <p ref="intro">
-      Choose a key and recipient. Confirmation and HTTP allowance are local to this device.
+      {{ t('settings.KeyDestinationsModal.choose_a_key_and_recipient.25b7b597') }}
     </p>
     <p role="status">{{ status }}</p>
-    <Setting name="Saved key">
+    <Setting :name="t('settings.KeyDestinationsModal.saved_key.85ec79d9')">
       <Dropdown
         :model-value="choice"
-        aria-label="Saved key"
+        :aria-label="t('settings.KeyDestinationsModal.saved_key.85ec79d9')"
         :options="keyOptions"
         :disabled="busy"
         @update:model-value="chose"
       />
     </Setting>
-    <Setting name="Recipient address">
+    <Setting :name="t('settings.KeyDestinationsModal.recipient_address.454d0391')">
       <Input
         v-model="address"
-        aria-label="Recipient address"
-        placeholder="Recipient URL"
+        :aria-label="t('settings.KeyDestinationsModal.recipient_address.454d0391')"
+        :placeholder="t('settings.KeyDestinationsModal.recipient_url.59ef2635')"
         :disabled="busy"
       />
     </Setting>
     <template v-if="choice === 'new'">
-      <Setting name="New key name">
-        <Input v-model="name" aria-label="New key name" :disabled="busy" />
+      <Setting :name="t('settings.KeyDestinationsModal.new_key_name.0e18145f')">
+        <Input
+          v-model="name"
+          :aria-label="t('settings.KeyDestinationsModal.new_key_name.0e18145f')"
+          :disabled="busy"
+        />
       </Setting>
-      <Setting name="New key value" desc="Protected storage; saved only when you confirm.">
+      <Setting
+        :name="t('settings.KeyDestinationsModal.new_key_value.7a7e9552')"
+        :desc="t('settings.KeyDestinationsModal.protected_storage_saved_only_when.86338477')"
+      >
         <!-- `type`, not the kit's `password`: that one turns autocomplete off, and a new key
              field says `new-password` so no saved login is offered into it. -->
         <Input
           v-model="value"
           type="password"
           autocomplete="new-password"
-          aria-label="New key value"
+          :aria-label="t('settings.KeyDestinationsModal.new_key_value.7a7e9552')"
           :disabled="busy"
         />
       </Setting>
     </template>
 
-    <Section v-if="pairs.length" title="Key permissions">
+    <Section
+      v-if="pairs.length"
+      :title="t('settings.KeyDestinationsModal.key_permissions.1f24b6b7')"
+    >
       <div v-for="pair in pairs" :key="pair.keyId + ' ' + pair.origin" data-key-destination="true">
-        <Setting :name="pair.name || 'Saved key'" :desc="pair.desc">
+        <Setting
+          :name="pair.name || t('settings.KeyDestinationsModal.saved_key.85ec79d9')"
+          :desc="pair.desc"
+        >
           <Button
             v-if="pair.allowText"
             :text="pair.allowText"
-            :tooltip="`Let ${pair.name || 'this key'} be sent to ${pair.origin} from this device`"
+            :tooltip="
+              t('settings.KeyDestinationsModal.let_value_be_sent_to.3057160b', {
+                value0: String(pair.name || t('settings.terms.thisKey')),
+                value1: String(pair.origin),
+              })
+            "
             @click="allowPair(pair)"
           />
           <Button
-            text="Remove key permission"
-            :tooltip="`Stop sending ${pair.name || 'this key'} to ${pair.origin}; the key stays saved`"
+            :text="t('settings.KeyDestinationsModal.remove_key_permission.60713985')"
+            :tooltip="
+              t('settings.KeyDestinationsModal.stop_sending_value_to_value.c158dbdd', {
+                value0: String(pair.name || t('settings.terms.thisKey')),
+                value1: String(pair.origin),
+              })
+            "
             @click="removePair(pair)"
           />
         </Setting>
       </div>
     </Section>
 
-    <Section v-if="pending.length" title="Service destinations to confirm">
+    <Section
+      v-if="pending.length"
+      :title="t('settings.KeyDestinationsModal.service_destinations_to_confirm.e397cae5')"
+    >
       <Setting
         v-for="row in pending"
         :key="row.destination.keyId + ' ' + row.destination.origin"
@@ -70,22 +96,34 @@
         <Button
           v-if="row.allowText"
           :text="row.allowText"
-          :tooltip="`Let ${row.destination.name} receive its key at ${row.destination.origin} from this device`"
+          :tooltip="
+            t('settings.KeyDestinationsModal.let_value_receive_its_key.90e1b8f2', {
+              value0: String(row.destination.name),
+              value1: String(row.destination.origin),
+            })
+          "
           @click="confirmPending(row)"
         />
       </Setting>
     </Section>
 
-    <Section v-if="httpOrigins.length" title="HTTP transport on this device">
+    <Section
+      v-if="httpOrigins.length"
+      :title="t('settings.KeyDestinationsModal.http_transport_on_this_device.caafbfd3')"
+    >
       <Setting
         v-for="origin in httpOrigins"
         :key="origin"
         :name="origin"
-        desc="Unencrypted transport only; each key still needs its own recipient permission."
+        :desc="t('settings.KeyDestinationsModal.unencrypted_transport_only_each_key.82a7923f')"
       >
         <Button
-          text="Remove HTTP exception"
-          :tooltip="`Stop allowing unencrypted key transport to ${origin}`"
+          :text="t('settings.KeyDestinationsModal.remove_http_exception.ae72ff92')"
+          :tooltip="
+            t('settings.KeyDestinationsModal.stop_allowing_unencrypted_key_transport.0b903e28', {
+              value0: String(origin),
+            })
+          "
           @click="removeHttp(origin)"
         />
       </Setting>
@@ -94,10 +132,10 @@
     <template #footer>
       <p>{{ summary }}</p>
       <Button
-        text="Allow key and address"
+        :text="t('settings.KeyDestinationsModal.allow_key_and_address.5e3ba2cc')"
         accent
         :disabled="!canAllow"
-        tooltip="Save this key permission on this device; nothing is sent now"
+        :tooltip="t('settings.KeyDestinationsModal.save_this_key_permission_on.38e5eb82')"
         @click="allowForm"
       />
     </template>
@@ -105,6 +143,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import ObsidianModal from '@/components/obsidian/Modal.vue'
 import Setting from '@/components/obsidian/Setting.vue'
@@ -148,8 +187,8 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>()
 
-const UNENCRYPTED = ' — Unencrypted: anyone on the network path can read the key.'
-const PUBLIC_HTTP = ' — Public HTTP cannot receive keys. Change this address to HTTPS.'
+const UNENCRYPTED = t('settings.KeyDestinationsModal.unencrypted_anyone_on_the_network.a467237d')
+const PUBLIC_HTTP = t('settings.KeyDestinationsModal.public_http_cannot_receive_keys.9151a1c1')
 
 /** Aborts a save still running when the dialog goes, so nothing lands after it is closed. */
 const controller = new AbortController()
@@ -173,9 +212,12 @@ const keys = computed(() => {
   return recipientKeys()
 })
 const keyOptions = computed(() => [
-  { value: '', display: 'Choose a key' },
-  ...keys.value.map((key) => ({ value: key.id, display: key.name || 'Saved key' })),
-  { value: 'new', display: 'Save a new named key…' },
+  { value: '', display: t('settings.KeyDestinationsModal.choose_a_key.68bb8fb8') },
+  ...keys.value.map((key) => ({
+    value: key.id,
+    display: key.name || t('settings.KeyDestinationsModal.saved_key.85ec79d9'),
+  })),
+  { value: 'new', display: t('settings.KeyDestinationsModal.save_a_new_named_key.7982a2de') },
 ])
 
 const label = computed(() =>
@@ -194,8 +236,8 @@ const checked = computed(() => {
 const summary = computed(() => {
   const { origin, validation } = checked.value
   return origin && label.value
-    ? `${label.value} → ${origin}${canAllowHttp(origin) ? UNENCRYPTED : ''}${choice.value === 'new' ? ' Save this new key in protected storage.' : ''}`
-    : validation || 'Choose a saved key and enter the recipient address.'
+    ? `${label.value} → ${origin}${canAllowHttp(origin) ? UNENCRYPTED : ''}${choice.value === 'new' ? t('settings.KeyDestinationsModal.save_this_new_key_in.9a0a7afb') : ''}`
+    : validation || t('settings.KeyDestinationsModal.choose_a_saved_key_and.065702b0')
 })
 const canAllow = computed(
   () =>
@@ -233,8 +275,12 @@ const pairs = computed<PairRow[]>(() => {
         return { ...pair, desc: pair.origin + PUBLIC_HTTP, allowText: null }
       return {
         ...pair,
-        desc: `${pair.origin} — ${allowed ? 'Allowed on this device' : 'Needs confirmation on this device'}${unencrypted ? UNENCRYPTED : ''}`,
-        allowText: allowed ? null : unencrypted ? 'Allow unencrypted HTTP' : 'Allow on this device',
+        desc: `${pair.origin} — ${allowed ? t('settings.KeyDestinationsModal.allowed_on_this_device.bac894b7') : t('settings.KeyDestinationsModal.needs_confirmation_on_this_device.55badbda')}${unencrypted ? UNENCRYPTED : ''}`,
+        allowText: allowed
+          ? null
+          : unencrypted
+            ? t('settings.KeyDestinationsModal.allow_unencrypted_http.e905502b')
+            : t('settings.KeyDestinationsModal.allow_on_this_device.a92ce243'),
       }
     })
 })
@@ -266,7 +312,7 @@ const pending = computed<PendingRow[]>(() => {
         return {
           destination,
           unencrypted,
-          desc: 'The store key cannot be sent to a recipient.',
+          desc: t('settings.KeyDestinationsModal.the_store_key_cannot_be.61f3c9e8'),
           allowText: null,
         }
       if (unencrypted && !canAllowHttp(destination.origin))
@@ -280,7 +326,9 @@ const pending = computed<PendingRow[]>(() => {
         destination,
         unencrypted,
         desc: destination.origin + (unencrypted ? UNENCRYPTED : ''),
-        allowText: unencrypted ? 'Allow unencrypted HTTP' : 'Allow on this device',
+        allowText: unencrypted
+          ? t('settings.KeyDestinationsModal.allow_unencrypted_http.e905502b')
+          : t('settings.KeyDestinationsModal.allow_on_this_device.a92ce243'),
       }
     })
 })
@@ -341,7 +389,10 @@ function allowForm(): void {
       if (choice.value === 'new')
         choice.value = config().ai.secrets.find((key) => key.name === allowed)?.keyId ?? ''
       address.value = origin
-      status.value = `Allowed ${allowed} → ${origin}. Retry the original script; nothing was sent automatically.`
+      status.value = t('settings.KeyDestinationsModal.allowed_value_value_retry_the.61f6ca46', {
+        value0: String(allowed),
+        value1: String(origin),
+      })
     }
   )
 }
@@ -350,7 +401,10 @@ function allowPair(pair: PairRow): void {
   run(
     () => allowKeyRecipient({ keyId: pair.keyId, address: pair.origin }, controller.signal),
     () => {
-      status.value = `Allowed ${pair.name} → ${pair.origin}. Retry the original script.`
+      status.value = t('settings.KeyDestinationsModal.allowed_value_value_retry_the.a9933642', {
+        value0: String(pair.name),
+        value1: String(pair.origin),
+      })
     }
   )
 }
@@ -359,7 +413,10 @@ function removePair(pair: PairRow): void {
   run(
     () => removeKeyRecipient(pair.keyId, pair.origin, controller.signal),
     () => {
-      status.value = `Removed ${pair.name} → ${pair.origin}. The saved key and other permissions remain.`
+      status.value = t('settings.KeyDestinationsModal.removed_value_value_the_saved.a1ac62ad', {
+        value0: String(pair.name),
+        value1: String(pair.origin),
+      })
     }
   )
 }
@@ -373,7 +430,10 @@ function confirmPending({ destination, unencrypted }: PendingRow): void {
     if (config().settingsUnreadable) throw new Error('Settings are unreadable')
     acceptDestinations([destination])
     if (unencrypted) allowHttpOrigin(destination.origin)
-    status.value = `Confirmed ${destination.name} → ${destination.origin}.`
+    status.value = t('settings.KeyDestinationsModal.confirmed_value_value.b96426a6', {
+      value0: String(destination.name),
+      value1: String(destination.origin),
+    })
   } catch (error) {
     try {
       if (unencrypted && !hadHttp) forgetHttpOrigin(destination.origin)
@@ -394,7 +454,7 @@ function removeHttp(origin: string): void {
   if (busy.value) return
   try {
     forgetHttpOrigin(origin)
-    status.value = 'HTTP exception removed. Keys cannot use this unencrypted address.'
+    status.value = t('settings.KeyDestinationsModal.http_exception_removed_keys_cannot.07f54f86')
   } catch (error) {
     status.value = keyConsentError(error)
   }

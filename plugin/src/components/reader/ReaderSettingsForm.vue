@@ -2,15 +2,15 @@
   <div class="abele-reader-settings">
     <EmptyState
       v-if="kind === 'fixed'"
-      text="This book's pages are laid out by the book, like a comic's: there is nothing to set for them. Zoom with Mod and plus or minus, a pinch, or the tab's menu."
+      :text="t('settings.components.reader.ReaderSettingsForm.this_book_s_pages_are.f094ff7e')"
     />
     <template v-if="kind === 'epub' || kind === 'all'">
       <Setting
-        name="Layout"
+        :name="t('settings.components.reader.ReaderSettingsForm.layout.a5119091')"
         :desc="
           einkState.on
-            ? 'Turn pages one at a time, or scroll through each chapter. E-ink mode keeps pages on this device.'
-            : 'Turn pages one at a time, or scroll through each chapter.'
+            ? t('settings.components.reader.ReaderSettingsForm.turn_pages_one_at_a.8c26479f')
+            : t('settings.components.reader.ReaderSettingsForm.turn_pages_one_at_a.c0f95f4f')
         "
       >
         <Dropdown
@@ -19,7 +19,10 @@
           @update:model-value="set('flow', $event)"
         />
       </Setting>
-      <Setting name="Font" :desc="fontDesc">
+      <Setting
+        :name="t('settings.components.reader.ReaderSettingsForm.font.64d0b3ad')"
+        :desc="fontDesc"
+      >
         <Dropdown
           :options="fontOptions"
           :model-value="settings.font"
@@ -27,8 +30,8 @@
         />
       </Setting>
       <Setting
-        name="Fonts folder"
-        desc="A folder in the vault with font files: .ttf, .otf, .woff or .woff2. Each family in it is offered as a font above, and travels to your other devices with the vault. Obsidian Sync carries them with Sync all other types on. Empty: no fonts from the vault."
+        :name="t('settings.components.reader.ReaderSettingsForm.fonts_folder.cb89bd22')"
+        :desc="t('settings.components.reader.ReaderSettingsForm.a_folder_in_the_vault.92bd812c')"
       >
         <Input
           :model-value="fontsFolder"
@@ -36,43 +39,54 @@
           @update:model-value="setFontsFolder"
         />
       </Setting>
-      <Setting name="Text size">
+      <Setting :name="t('settings.components.reader.ReaderSettingsForm.text_size.d68761cc')">
         <Dropdown
           :options="sizeOptions"
           :model-value="String(settings.fontSize)"
           @update:model-value="set('fontSize', Number($event))"
         />
       </Setting>
-      <Setting name="Line spacing">
+      <Setting :name="t('settings.components.reader.ReaderSettingsForm.line_spacing.0db45da1')">
         <Dropdown
           :options="lineOptions"
           :model-value="String(settings.lineHeight)"
           @update:model-value="set('lineHeight', Number($event))"
         />
       </Setting>
-      <Setting name="Margins" desc="The space around the text and between columns.">
+      <Setting
+        :name="t('settings.components.reader.ReaderSettingsForm.margins.eea8d245')"
+        :desc="
+          t('settings.components.reader.ReaderSettingsForm.the_space_around_the_text.0315d33b')
+        "
+      >
         <Dropdown
           :options="marginOptions"
           :model-value="settings.margin"
           @update:model-value="set('margin', $event)"
         />
       </Setting>
-      <Setting name="Column width" desc="The widest a column of text may grow.">
+      <Setting
+        :name="t('settings.components.reader.ReaderSettingsForm.column_width.86f4e582')"
+        :desc="t('settings.components.reader.ReaderSettingsForm.the_widest_a_column_of.f684dbab')"
+      >
         <Dropdown
           :options="widthOptions"
           :model-value="String(settings.maxWidth)"
           @update:model-value="set('maxWidth', Number($event))"
         />
       </Setting>
-      <Setting name="Two columns" desc="Two pages side by side when the tab is wide enough.">
+      <Setting
+        :name="t('settings.components.reader.ReaderSettingsForm.two_columns.ff4a0135')"
+        :desc="t('settings.components.reader.ReaderSettingsForm.two_pages_side_by_side.4fa3abc2')"
+      >
         <Checkbox
           :is-enabled="settings.columns === 2"
           @toggle="set('columns', settings.columns === 2 ? 1 : 2)"
         />
       </Setting>
       <Setting
-        name="Theme colours"
-        desc="Draw the book in your theme's text and background colours, dark mode included. Off: the book's own colours, on a light page."
+        :name="t('settings.components.reader.ReaderSettingsForm.theme_colours.c75350b1')"
+        :desc="t('settings.components.reader.ReaderSettingsForm.draw_the_book_in_your.2f7ab7ee')"
       >
         <Checkbox
           :is-enabled="settings.themeColors"
@@ -80,8 +94,8 @@
         />
       </Setting>
       <Setting
-        name="Book's own styles"
-        desc="The book's own layout: tables, indents, alignment, drop caps. Your text size, spacing, font and colours still win. Nothing outside the book is ever loaded."
+        :name="t('settings.components.reader.ReaderSettingsForm.book_s_own_styles.67266f8d')"
+        :desc="t('settings.components.reader.ReaderSettingsForm.the_book_s_own_layout.a674d8a8')"
       >
         <Checkbox
           :is-enabled="settings.bookStyles"
@@ -93,8 +107,10 @@
     <Section v-if="kind === 'pdf' || kind === 'all'" :title="kind === 'all' ? 'PDF' : undefined">
       <Setting
         v-if="kind === 'all'"
-        name="Open PDF files in the Abele reader"
-        desc="PDFs open here instead of in Obsidian's own viewer, with pages to turn, the contents beside them and the place kept. Off: they open in Obsidian's viewer, and Open in Abele reader in a PDF's menu still opens one here."
+        :name="t('settings.components.reader.ReaderSettingsForm.open_pdf_files_in_the.d806dd32')"
+        :desc="
+          t('settings.components.reader.ReaderSettingsForm.pdfs_open_here_instead_of.3f90cb9b')
+        "
       >
         <Checkbox
           :is-enabled="settings.pdfInReader"
@@ -102,8 +118,12 @@
         />
       </Setting>
       <Setting
-        name="Layout"
-        desc="One continuous scroll, page under page, or pages turned one at a time."
+        :name="t('settings.components.reader.ReaderSettingsForm.layout.a5119091')"
+        :desc="
+          t(
+            'settings.components.reader.ReaderSettingsForm.one_continuous_scroll_page_under.0ef1ee8f'
+          )
+        "
       >
         <Dropdown
           :options="pdfLayoutOptions"
@@ -112,8 +132,8 @@
         />
       </Setting>
       <Setting
-        name="Page size"
-        desc="Automatic is the page's width when scrolling and the whole page with pages. Or fit the whole page, fit its width, or a fixed zoom."
+        :name="t('settings.components.reader.ReaderSettingsForm.page_size.bd69e66e')"
+        :desc="t('settings.components.reader.ReaderSettingsForm.automatic_is_the_page_s.b16d03bb')"
       >
         <Dropdown
           :options="zoomOptions"
@@ -123,8 +143,8 @@
       </Setting>
       <Setting
         v-if="settings.pdfLayout === 'paginated'"
-        name="Two pages side by side"
-        desc="When the tab is wide enough, as a printed book lies open."
+        :name="t('settings.components.reader.ReaderSettingsForm.two_pages_side_by_side.594104bc')"
+        :desc="t('settings.components.reader.ReaderSettingsForm.when_the_tab_is_wide.f46590d6')"
       >
         <Checkbox
           :is-enabled="settings.pdfTwoPages"
@@ -132,8 +152,8 @@
         />
       </Setting>
       <Setting
-        name="Dark pages in a dark theme"
-        desc="The page's light and dark swapped while Obsidian's theme is dark, so a white page does not glare. Pictures come out as negatives."
+        :name="t('settings.components.reader.ReaderSettingsForm.dark_pages_in_a_dark.93ab09cd')"
+        :desc="t('settings.components.reader.ReaderSettingsForm.the_page_s_light_and.d827fce3')"
       >
         <Checkbox
           :is-enabled="settings.pdfDarkPages"
@@ -141,8 +161,8 @@
         />
       </Setting>
       <Setting
-        name="Pen thickness"
-        desc="How thick the pen and the marker draw on a PDF. The button beside the colours under the page changes it too."
+        :name="t('settings.components.reader.ReaderSettingsForm.pen_thickness.6cfc015f')"
+        :desc="t('settings.components.reader.ReaderSettingsForm.how_thick_the_pen_and.ed066925')"
       >
         <Dropdown
           :options="thicknessOptions"
@@ -152,8 +172,10 @@
       </Setting>
       <Setting
         v-if="kind === 'all'"
-        name="Pen thickness on drawings"
-        desc="How thick the pen and the marker draw on a drawing or a picture drawn on. The button beside the colours on its bar changes it too."
+        :name="
+          t('settings.components.reader.ReaderSettingsForm.pen_thickness_on_drawings.cf146856')
+        "
+        :desc="t('settings.components.reader.ReaderSettingsForm.how_thick_the_pen_and.cb33f16a')"
       >
         <Dropdown
           :options="thicknessOptions"
@@ -164,19 +186,23 @@
     </Section>
 
     <Section
-      title="E-ink, on this device"
-      desc="For a reader with an e-ink screen, such as a Boox. Kept on this device only: your phone and computer read as before."
+      :title="t('settings.components.reader.ReaderSettingsForm.e_ink_on_this_device.c30db2fc')"
+      :desc="t('settings.components.reader.ReaderSettingsForm.for_a_reader_with_an.85f96337')"
     >
       <Setting
-        name="E-ink mode"
-        desc="Pages turned, never scrolled or slid, a PDF's too. Black text on white, nothing grey, thicker lines, nothing that moves or fades. Highlights drawn as lines whose shape tells the colour. A tap in the left or right third turns the page. The page buttons and keys turn it too."
+        :name="t('settings.components.reader.ReaderSettingsForm.e_ink_mode.42a01801')"
+        :desc="
+          t('settings.components.reader.ReaderSettingsForm.pages_turned_never_scrolled_or.98803e3d')
+        "
       >
         <Checkbox :is-enabled="einkState.on" @toggle="setEink({ on: !einkState.on })" />
       </Setting>
       <Setting
         v-if="einkState.on"
-        name="Full refresh"
-        desc="The page flashes black and then white every so many pages, which clears the faint ghost of earlier pages an e-ink screen leaves."
+        :name="t('settings.components.reader.ReaderSettingsForm.full_refresh.9322071a')"
+        :desc="
+          t('settings.components.reader.ReaderSettingsForm.the_page_flashes_black_and.d072717f')
+        "
       >
         <Dropdown
           :options="refreshOptions"
@@ -185,8 +211,8 @@
         />
       </Setting>
       <Setting
-        name="Show the keys the reader hears"
-        desc="Over the page, the name and code of the last key or button pressed, and whether it turned the page; the console logs each. For finding out what a reader's page buttons send when they do not turn the pages."
+        :name="t('settings.components.reader.ReaderSettingsForm.show_the_keys_the_reader.ea82694e')"
+        :desc="t('settings.components.reader.ReaderSettingsForm.over_the_page_the_name.ff90557a')"
       >
         <Checkbox
           :is-enabled="einkState.showKeys"
@@ -195,10 +221,12 @@
       </Setting>
     </Section>
 
-    <Section title="Reading aloud">
+    <Section :title="t('settings.components.reader.ReaderSettingsForm.reading_aloud.044c9986')">
       <Setting
-        name="Voice"
-        desc="The voices this device has; on an iPhone, the ones in Settings → Accessibility → Spoken Content. A voice chosen on another device that this one lacks reads as the default."
+        :name="t('settings.components.reader.ReaderSettingsForm.voice.87bf2bc0')"
+        :desc="
+          t('settings.components.reader.ReaderSettingsForm.the_voices_this_device_has.fbb10a8e')
+        "
       >
         <Dropdown
           :options="voiceOptions"
@@ -206,7 +234,7 @@
           @update:model-value="set('ttsVoice', $event)"
         />
       </Setting>
-      <Setting name="Speed">
+      <Setting :name="t('settings.components.reader.ReaderSettingsForm.speed.c372fee9')">
         <Dropdown
           :options="rateOptions"
           :model-value="String(settings.ttsRate)"
@@ -215,10 +243,17 @@
       </Setting>
     </Section>
 
-    <Section v-if="kind === 'all'" title="Where books were left">
+    <Section
+      v-if="kind === 'all'"
+      :title="t('settings.components.reader.ReaderSettingsForm.where_books_were_left.28aed7a8')"
+    >
       <Setting
-        name="Reading places file"
-        :desc="`A .json file in the vault that keeps where each book was left, so every device opens it there. Obsidian's file list does not show it. Obsidian Sync carries it with Sync all other types on, as it does chats. Changing the path moves the places to the new file. Empty: ${DEFAULT_PLACES_PATH}.`"
+        :name="t('settings.components.reader.ReaderSettingsForm.reading_places_file.e1c4bfc7')"
+        :desc="
+          t('settings.components.reader.ReaderSettingsForm.a_json_file_in_the.601687c5', {
+            value0: String(DEFAULT_PLACES_PATH),
+          })
+        "
       >
         <Input
           :model-value="placesPath"
@@ -231,6 +266,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 /**
  * How books are laid out and lettered. Shown in the plugin's settings and, from a book's tab, in a
  * dialog over the book, which redraws as each choice is made. Every change is saved at once.
@@ -277,12 +313,22 @@ watch(config.version, () => Object.assign(settings, readerSettingsFrom(config.re
 const einkState = eink()
 const refreshOptions = REFRESH_EVERY.map((n) => ({
   value: String(n),
-  display: n ? `Every ${n} pages` : 'Never',
+  display: n
+    ? t('settings.components.reader.ReaderSettingsForm.every_value_pages.95a857a4', {
+        value0: String(n),
+      })
+    : t('settings.components.reader.ReaderSettingsForm.never.6300ef80'),
 }))
 
 const flowOptions = [
-  { value: 'paginated', display: 'Pages' },
-  { value: 'scrolled', display: 'Scrolling' },
+  {
+    value: 'paginated',
+    display: t('settings.components.reader.ReaderSettingsForm.pages.9046da16'),
+  },
+  {
+    value: 'scrolled',
+    display: t('settings.components.reader.ReaderSettingsForm.scrolling.9b976293'),
+  },
 ]
 /** The fonts folder's families; read when the settings open, followed while they are. */
 const fonts = readerFonts()
@@ -291,49 +337,80 @@ const fontOptions = computed(() => {
   const families = fonts?.families.value ?? []
   const chosen = vaultFontOf(settings)
   return [
-    { value: 'theme', display: "Theme's text font" },
-    { value: 'serif', display: 'Serif' },
-    { value: 'sans', display: 'Sans-serif' },
-    { value: 'book', display: "The book's own" },
+    {
+      value: 'theme',
+      display: t('settings.components.reader.ReaderSettingsForm.theme_s_text_font.60cc69f0'),
+    },
+    { value: 'serif', display: t('settings.components.reader.ReaderSettingsForm.serif.1b5e747e') },
+    {
+      value: 'sans',
+      display: t('settings.components.reader.ReaderSettingsForm.sans_serif.07e77255'),
+    },
+    {
+      value: 'book',
+      display: t('settings.components.reader.ReaderSettingsForm.the_book_s_own.e5eed055'),
+    },
     ...families.map((f) => ({ value: `${VAULT_FONT}${f.name}`, display: f.name })),
     // A family chosen whose files are not here — not synced yet, or removed — stays chosen,
     // named as what it is; the text is in a serif meanwhile.
     ...(chosen && !families.some((f) => f.name.toLowerCase() === chosen.toLowerCase())
-      ? [{ value: settings.font, display: `${chosen} (not in the fonts folder)` }]
+      ? [
+          {
+            value: settings.font,
+            display: t(
+              'settings.components.reader.ReaderSettingsForm.value_not_in_the_fonts.a0bd3d6c',
+              { value0: String(chosen) }
+            ),
+          },
+        ]
       : []),
   ]
 })
 const fontDesc = computed(() =>
   fonts?.families.value.length
-    ? "The font of the text. The theme's is the one your notes use; below the book's own are the fonts from your fonts folder."
-    : "The font of the text. The theme's is the one your notes use. Put font files in the fonts folder to read in your own."
+    ? t('settings.components.reader.ReaderSettingsForm.the_font_of_the_text.d4417807')
+    : t('settings.components.reader.ReaderSettingsForm.the_font_of_the_text.b3dc0358')
 )
 const sizeOptions = FONT_SIZES.map((n) => ({ value: String(n), display: `${n}%` }))
 const lineOptions = LINE_HEIGHTS.map((n) => ({
   value: String(n),
-  display: n === 0 ? "The book's own" : String(n),
+  display:
+    n === 0
+      ? t('settings.components.reader.ReaderSettingsForm.the_book_s_own.e5eed055')
+      : String(n),
 }))
 const marginOptions = [
-  { value: 'narrow', display: 'Narrow' },
-  { value: 'normal', display: 'Normal' },
-  { value: 'wide', display: 'Wide' },
+  { value: 'narrow', display: t('settings.components.reader.ReaderSettingsForm.narrow.ba227109') },
+  { value: 'normal', display: t('settings.components.reader.ReaderSettingsForm.normal.a7248eeb') },
+  { value: 'wide', display: t('settings.components.reader.ReaderSettingsForm.wide.147170e7') },
 ]
 const pdfLayoutOptions = [
-  { value: 'scrolled', display: 'Continuous scroll' },
-  { value: 'paginated', display: 'Pages' },
+  {
+    value: 'scrolled',
+    display: t('settings.components.reader.ReaderSettingsForm.continuous_scroll.39e14ae6'),
+  },
+  {
+    value: 'paginated',
+    display: t('settings.components.reader.ReaderSettingsForm.pages.9046da16'),
+  },
 ]
 const zoomLabel: Record<string, string> = {
-  auto: 'Automatic',
-  'fit-page': 'Whole page',
-  'fit-width': 'Page width',
+  auto: t('settings.components.reader.ReaderSettingsForm.automatic.d461a493'),
+  'fit-page': t('settings.components.reader.ReaderSettingsForm.whole_page.d9799e4c'),
+  'fit-width': t('settings.components.reader.ReaderSettingsForm.page_width.217fbef1'),
 }
 const zoomOptions = PDF_ZOOMS.map((z) => ({
   value: z,
   display: zoomLabel[z] ?? `${Math.round(Number(z) * 100)}%`,
 }))
-const thicknessOptions = THICKNESSES.map((t) => ({
-  value: t,
-  display: t[0].toUpperCase() + t.slice(1),
+const thicknessLabels = {
+  fine: t('settings.reader.stroke.fine'),
+  medium: t('settings.reader.stroke.medium'),
+  bold: t('settings.reader.stroke.bold'),
+}
+const thicknessOptions = THICKNESSES.map((stroke) => ({
+  value: stroke,
+  display: thicknessLabels[stroke],
 }))
 const widthOptions = MAX_WIDTHS.map((n) => ({ value: String(n), display: `${n} px` }))
 
@@ -347,13 +424,23 @@ loadVoices()
 synth?.addEventListener?.('voiceschanged', loadVoices)
 onBeforeUnmount(() => synth?.removeEventListener?.('voiceschanged', loadVoices))
 const voiceOptions = computed(() => [
-  { value: '', display: "The device's voice for the book's language" },
+  {
+    value: '',
+    display: t('settings.components.reader.ReaderSettingsForm.the_device_s_voice_for.7aa4eae4'),
+  },
   ...[...voices.value]
     .sort((a, b) => a.lang.localeCompare(b.lang) || a.name.localeCompare(b.name))
     .map((v) => ({ value: v.voiceURI, display: `${v.name} (${v.lang})` })),
   // A voice chosen on another device stays chosen, named as what it is.
   ...(settings.ttsVoice && !voices.value.some((v) => v.voiceURI === settings.ttsVoice)
-    ? [{ value: settings.ttsVoice, display: 'A voice from another device' }]
+    ? [
+        {
+          value: settings.ttsVoice,
+          display: t(
+            'settings.components.reader.ReaderSettingsForm.a_voice_from_another_device.f2965a24'
+          ),
+        },
+      ]
     : []),
 ])
 

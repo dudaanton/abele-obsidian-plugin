@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * The drawing's hooks into Obsidian: its tab, drawings opening in it, the ways to make one, and
  * drawings shown in notes.
@@ -69,7 +70,7 @@ export function registerDrawing(plugin: Plugin): void {
 
   plugin.addCommand({
     id: 'new-drawing',
-    name: 'New drawing',
+    name: t('commands.new-drawing'),
     icon: 'pen-line',
     callback: () => void newDrawing(app),
   })
@@ -79,7 +80,7 @@ export function registerDrawing(plugin: Plugin): void {
   }
   plugin.addCommand({
     id: 'insert-drawing',
-    name: 'Insert a new drawing',
+    name: t('commands.insert-drawing'),
     icon: 'pen-line',
     editorCallback: (editor, view) => insertHere(editor, view as MarkdownView),
   })
