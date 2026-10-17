@@ -10,6 +10,7 @@ import { shotDir } from './helpers/shots'
 import { onPhone, targets } from './helpers/target'
 import type { SyncDriver } from './helpers/syncDriver'
 import { V2Client } from '../../src/sync/v2/client'
+import { issueDeletionDevice, deletionFolder } from '../helpers/serverDeleteSetup'
 
 targets('desktop', 'phone')
 const fixture = liveSuite(false)
@@ -94,12 +95,12 @@ it('shows whole-vault facts and explicitly deletes only after confirmation, keep
     path = s.root + '/sample.md',
     content = 'Sample vault note'
   await s.put(path, content)
-  const owner = AccessClient.fromToken(s.server.rootToken, { fetch: fixtureFetch })
-  const { token: reader } = await owner.issue({
-    scope: owner.token.scope,
-    label: 'Sample reading device',
-    read_only: true,
-  })
+  const { token: reader } = await issueDeletionDevice(
+    s.server.rootToken,
+    'Sample reading device',
+    true,
+    fixtureFetch
+  )
   const id = await s.connect()
   try {
     await openConfirmation(a, id, 'vault')
@@ -138,17 +139,13 @@ it.each([
       content = 'Sample folder note'
     await s.put(path, content)
     await s.put(sibling, 'Unrelated server note')
-    const scope = (await s.items()).find((one) => one.kind === 'directory' && one.path === folder)!
+    const scope = await deletionFolder(s.server.rootToken, folder, fixtureFetch)
     expect(scope).toBeDefined()
     const token = await s.server.issue(
-      { kind: 'folder', id: scope.file_id },
+      { kind: 'folder', id: scope!.file_id },
       'Sample folder device'
     )
-    await AccessClient.fromToken(token, { fetch: fixtureFetch }).issue({
-      scope: { kind: 'folder', id: scope.file_id },
-      label: 'Sample reading device',
-      read_only: true,
-    })
+    await issueDeletionDevice(token, 'Sample reading device', true, fixtureFetch)
     const id = await s.connect(a, token)
     try {
       await openConfirmation(a, id, state)
@@ -188,7 +185,7 @@ it('keeps an in-progress confirmation open and shows a real server error without
       true
     )
     await shot(a, 'in-progress', factsSelector)
-    await s.server.kill()
+    await s.server.crash()
     await a.long(
       'server deletion failure appears',
       `await poll(()=>(${dialog})?.querySelector('[role="alert"]'));return true`
@@ -201,6 +198,7 @@ it('keeps an in-progress confirmation open and shows a real server error without
     expect(a.read(path)).toBe(content)
     await shot(a, 'server-error', factsSelector)
   } finally {
+    // Also thaw on an earlier assertion failure; crash/kill itself is idempotent.
     s.server.resume()
     closeSyncScreens(a)
   }
@@ -213,7 +211,12 @@ it('shows another device stopped by scope_deleted after the owner deletes the sa
     content = 'Retained on the other device'
   await s.put(path, content)
   const owner = AccessClient.fromToken(s.server.rootToken, { fetch: fixtureFetch })
-  const token = await s.server.issue(owner.token.scope, 'Sample other device')
+  const { token } = await issueDeletionDevice(
+    s.server.rootToken,
+    'Sample other device',
+    false,
+    fixtureFetch
+  )
   const id = await s.connect(a, token)
   try {
     await new V2Client(owner.token, fixtureFetch).deleteScope(randomUUID())

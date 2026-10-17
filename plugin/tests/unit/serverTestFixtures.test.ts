@@ -43,7 +43,8 @@ describe('server-backed fast-tier fixture gate', () => {
   })
   it('skips only the files that require an absent fixture', () => {
     const skipped = missingServerTests({})
-    expect(skipped).toHaveLength(13)
+    expect(skipped).toHaveLength(14)
+    expect(skipped).toContain('tests/integration/serverDeleteServer.test.ts')
     expect(skipped).toContain('tests/integration/interruptedMoveExchange.test.ts')
     expect(skipped).not.toContain('tests/integration/scopedPublicationPush.test.ts')
     expect(skipped).toContain('tests/integration/tokenEngineServer.test.ts')
@@ -63,6 +64,11 @@ describe('server-backed fast-tier fixture gate', () => {
     expect(selectServerTests(['--tests', file])).toEqual({
       repository: undefined,
       files: [file],
+      variables: ['ABELE_SYNC_DIR'],
+    })
+    expect(selectServerTests(['--tests', 'tests/integration/serverDeleteServer.test.ts'])).toEqual({
+      repository: undefined,
+      files: ['tests/integration/serverDeleteServer.test.ts'],
       variables: ['ABELE_SYNC_DIR'],
     })
     expect(() => selectServerTests(['--tests', 'tests/e2e/sync.e2e.test.ts'])).toThrow(/registered/)

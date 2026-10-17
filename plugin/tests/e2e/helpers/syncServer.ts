@@ -56,6 +56,8 @@ export interface SyncServer {
   rootToken: string
   suspend(): void
   resume(): void
+  /** Reject in-flight requests without thawing them during graceful shutdown. */
+  crash(): Promise<void>
   issue(scope: { kind: 'folder' | 'group'; id: string }, label?: string): Promise<string>
   /** Safe to call twice; takes the database and the blobs with it. */
   kill(): Promise<void>
@@ -168,6 +170,11 @@ export async function spawnSyncServer(dir: string): Promise<SyncServer> {
   return {
     url,
     kill,
+    crash: async () => {
+      child.kill('SIGKILL')
+      await ended(child)
+      await kill()
+    },
     rootToken,
     suspend: () => {
       writeFileSync(frozen, '')

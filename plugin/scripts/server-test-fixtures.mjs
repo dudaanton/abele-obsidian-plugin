@@ -4,6 +4,7 @@ export const SERVER_TEST_COMMIT = '4b57c445777f32230709e743df6d613ab27ece29'
 export const serverTestFixtures = {
   ABELE_SYNC_DIR: [
     'tokenEngineServer',
+    'serverDeleteServer',
     'syncServer',
     'interruptedMoveExchange',
     'externalRepresentationServer',
