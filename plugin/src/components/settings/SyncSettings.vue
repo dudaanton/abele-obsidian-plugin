@@ -60,6 +60,10 @@
         >
         <StatusDot :tone="tone(row)" :label="line(row)" :pulse="tone(row) === 'accent'" />
         <Icon
+          v-if="
+            !row.state['abele-sync-token-state:scope-deleted'] &&
+            activity[row.id]?.error !== SCOPE_DELETED
+          "
           icon="refresh-cw"
           tooltip="Sync this connection now"
           :disabled="
@@ -121,7 +125,7 @@
 </template>
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { Menu, Notice } from 'obsidian'
+import { Menu, Notice, setTooltip } from 'obsidian'
 import Section from '../obsidian/Section.vue'
 import Setting from '../obsidian/Setting.vue'
 import Icon from '../obsidian/Icon.vue'
@@ -138,7 +142,7 @@ import {
 } from '../sync/serverDelete'
 import { historyConnection } from '@/sync/tokenHistory'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { tokenUi, scopeName, connectionError, type TokenUi } from '@/sync/tokenUi'
+import { tokenUi, scopeName, connectionError, SCOPE_DELETED, type TokenUi } from '@/sync/tokenUi'
 import { connectionBusy, connectionLine, connectionTone } from '@/sync/connectionLine'
 import { formatWhen } from '@/sync/format'
 import type { TokenConnectionRecord } from '@/sync/tokenConnectionRegistry'
@@ -301,12 +305,12 @@ function more(event: MouseEvent, row: TokenConnectionRecord) {
         .setIcon('cloud-off')
         .setWarning(!!facts?.canWrite)
         .setDisabled(!facts?.canWrite)
-      if (facts && !facts.canWrite)
-        item.dom?.setAttribute('aria-label', facts.unavailableReason ?? READ_ONLY)
-      else item.dom?.removeAttribute('aria-label')
+      if (item.dom)
+        setTooltip(item.dom, facts && !facts.canWrite ? (facts.unavailableReason ?? READ_ONLY) : '')
     }
     configure(serverDeleteSource.value?.facts(row.id) ?? null)
     item.onClick(() => {
+      if (!serverDeleteSource.value?.facts(row.id)?.canWrite) return
       deletingSnapshot.value = row
       deleting.value = row.id
     })

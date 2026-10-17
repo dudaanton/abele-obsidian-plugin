@@ -3,6 +3,24 @@ import { tokenUiFixture } from '@/testing/tokenUiFixture'
 import { V2Client } from '@/sync/v2/client'
 import { TokenUi, SCOPE_DELETED } from '@/sync/tokenUi'
 
+it('distinguishes failure before sending from an uncertain request or an earlier pending attempt', async () => {
+  const ui = tokenUiFixture(),
+    id = ui.rows.value[0].id
+  const remove = vi.fn().mockRejectedValue(new Error('offline'))
+  vi.spyOn(ui, 'client').mockReturnValue({ deleteScope: remove } as unknown as V2Client)
+  ui.connectionChangeGuard = async () => {
+    throw new Error('offline')
+  }
+  await expect(ui.deleteFromServer(id)).rejects.toMatchObject({ deletionOutcome: 'not-deleted' })
+  expect(remove).not.toHaveBeenCalled()
+  ui.connectionChangeGuard = async () => {}
+  await expect(ui.deleteFromServer(id)).rejects.toMatchObject({ deletionOutcome: 'unknown' })
+  ui.connectionChangeGuard = async () => {
+    throw new Error('offline')
+  }
+  await expect(ui.deleteFromServer(id)).rejects.toMatchObject({ deletionOutcome: 'unknown' })
+})
+
 it('advertises permission support when inspecting deletion authority', async () => {
   const transport = vi.fn<typeof fetch>(async (_input, init) => {
     expect(new Headers(init?.headers).get('abele-client-capabilities')).toBe('read-only')

@@ -49,7 +49,7 @@
 import { ref } from 'vue'
 import Modal from '../obsidian/Modal.vue'
 import Button from '../obsidian/Button.vue'
-import { folderSize, type ServerDeleteFacts } from './serverDelete'
+import { folderSize, serverDeleteFailure, type ServerDeleteFacts } from './serverDelete'
 
 const props = defineProps<{
   name: string
@@ -76,7 +76,7 @@ async function confirm(): Promise<void> {
     emit('done')
   } catch (error) {
     busy.value = false
-    failure.value = `Deletion could not be confirmed: ${error instanceof Error ? error.message : String(error)}. Try again to recover the result.`
+    failure.value = serverDeleteFailure(props.host, error)
   }
 }
 </script>

@@ -12,6 +12,7 @@ import type { SyncDriver } from './helpers/syncDriver'
 import { V2Client } from '../../src/sync/v2/client'
 import { issueDeletionDevice, deletionFolder } from '../helpers/serverDeleteSetup'
 import { assertNoNativeSheet, dismissNativeSheet } from './helpers/nativeSheetCleanup'
+import { clickSyncMenu } from './helpers/syncMenuClick'
 
 targets('desktop', 'phone')
 const fixture = liveSuite(false)
@@ -48,7 +49,7 @@ async function openConfirmation(a: SyncDriver, id: string, state: string): Promi
     `
     await poll(()=>![...new Set([document,settingsDoc()])].some(doc=>[...doc.querySelectorAll('.notice')].some(one=>textOf(one).includes('Connection saved'))),15000,'connection setup notice to disappear');
     const root=await openSyncTab();const native=app.vault.getConfig('nativeMenus');
-    try{app.vault.setConfig('nativeMenus',false);icon(connectionRow(root,${JSON.stringify(id)}),'more-horizontal')}finally{app.vault.setConfig('nativeMenus',native)}
+    try{app.vault.setConfig('nativeMenus',false);(${clickSyncMenu.toString()})(connectionRow(root,${JSON.stringify(id)}))}finally{app.vault.setConfig('nativeMenus',native)}
     await poll(()=>[...(${menu})?.querySelectorAll('.menu-item')||[]].some(one=>textOf(one)==='Delete from the server…'&&!one.classList.contains('is-disabled')));
     return [...(${menu}).querySelectorAll('.menu-item-title')].map(textOf)
   `
@@ -199,8 +200,8 @@ it('keeps an in-progress confirmation open and shows a real server error without
       'server deletion failure appears',
       `await poll(()=>(${dialog})?.querySelector('[role="alert"]'));return true`
     )
-    expect(a.run(`return textOf((${dialog}).querySelector('[role="alert"]'))`)).toContain(
-      'Deletion could not be confirmed'
+    expect(a.run(`return textOf((${dialog}).querySelector('[role="alert"]'))`)).toBe(
+      `No answer from ${new URL(s.server.url).host}. It may already be deleted: Try again to find out.`
     )
     expect(a.run(`return !buttonIn(${dialog},'Try again').disabled`)).toBe(true)
     expect(a.rows().some((row) => row.id === id)).toBe(true)
@@ -240,9 +241,54 @@ it('shows another device stopped by scope_deleted after the owner deletes the sa
       a.run(`return textOf(connectionRow(app.setting.activeTab.containerEl,${JSON.stringify(id)}))`)
     ).toContain('Deleted on the server')
     expect(
+      a.run(
+        `const row=connectionRow(app.setting.activeTab.containerEl,${JSON.stringify(id)});return {sync:!!row.querySelector('svg.lucide-refresh-cw'),red:!!row.querySelector('.abele-status-dot_red'),menu:!!row.querySelector('svg.lucide-more-horizontal')}`
+      )
+    ).toEqual({ sync: false, red: true, menu: true })
+    expect(
       a.run(`try{await svc.pause(${JSON.stringify(id)},false);return false}catch{return true}`)
     ).toBe(true)
     await shot(a, 'other-device-stopped', '.token-sync-settings')
+  } finally {
+    closeSyncScreens(a)
+  }
+}, 180000)
+
+it('shows a disabled read-only deletion action with its reason and never offers confirmation', async () => {
+  const s = fixture(),
+    a = s.primary,
+    path = s.root + '/read-only.md'
+  await s.put(path, 'Sample read-only note')
+  const { token } = await issueDeletionDevice(
+    s.server.rootToken,
+    'Sample read-only device',
+    true,
+    fixtureFetch
+  )
+  const id = await s.connect(a, token)
+  try {
+    const observed = await a.long<{ disabled: boolean; reason: string; labels: string[] }>(
+      'open read-only deletion menu',
+      `
+      await poll(()=>![...new Set([document,settingsDoc()])].some(doc=>[...doc.querySelectorAll('.notice')].some(one=>textOf(one).includes('Connection saved'))),15000,'connection setup notice to disappear');
+      const root=await openSyncTab(),native=app.vault.getConfig('nativeMenus');
+      try{app.vault.setConfig('nativeMenus',false);(${clickSyncMenu.toString()})(connectionRow(root,${JSON.stringify(id)}))}finally{app.vault.setConfig('nativeMenus',native)}
+      let item;await poll(()=>item=[...(${menu})?.querySelectorAll('.menu-item')||[]].find(one=>textOf(one)==='Delete from the server: read only'));
+      return {disabled:item.classList.contains('is-disabled')||item.getAttribute('aria-disabled')==='true',reason:item.getAttribute('aria-label'),labels:[...(${menu}).querySelectorAll('.menu-item-title')].map(textOf)}
+    `
+    )
+    expect(observed.disabled).toBe(true)
+    expect(observed.reason).toBe(
+      'This key can only read. Only someone who can change these files can delete them.'
+    )
+    expect(observed.labels.slice(-2)).toEqual(['Disconnect…', 'Delete from the server: read only'])
+    await shot(a, 'read-only-menu', '.menu')
+    a.run(
+      `const item=[...(${menu}).querySelectorAll('.menu-item')].find(one=>textOf(one)==='Delete from the server: read only');item.click();return true`
+    )
+    expect(a.run(`return !!(${dialog})`)).toBe(false)
+    expect((await s.items()).some((one) => one.path === path)).toBe(true)
+    expect(a.read(path)).toBe('Sample read-only note')
   } finally {
     closeSyncScreens(a)
   }

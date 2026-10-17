@@ -5,7 +5,7 @@ import { tokenStatus } from '@/sync/tokenStatus'
 import { mountPhoneSyncAction } from '@/sync/phoneSyncAction'
 import { mount, flushPromises } from '@vue/test-utils'
 import TokenDialogs from '@/components/sync/TokenDialogs.vue'
-import { TokenUi } from '@/sync/tokenUi'
+import { TokenUi, SCOPE_DELETED } from '@/sync/tokenUi'
 import { TokenConnectionRegistry } from '@/sync/tokenConnectionRegistry'
 import Button from '@/components/obsidian/Button.vue'
 import Modal from '@/components/obsidian/Modal.vue'
@@ -20,6 +20,32 @@ import { AttachmentConsent } from '@/sync/attachmentConsent'
 import { Menu, Notice } from '../mocks/obsidian'
 import { SyncDriver } from '../e2e/helpers/syncDriver'
 vi.mock('../e2e/helpers/syncVault', () => ({ waitFor: vi.fn() }))
+
+it('keeps the red status and disconnect menu but hides sync now for a server-deleted connection', async () => {
+  const ui = tokenUiFixture(),
+    id = ui.rows.value[0].id
+  ui.registry.storage(id).saveLocalStorage('abele-sync-token-state:scope-deleted', true)
+  ui.registry.setStatus(id, 'scope_unavailable')
+  ui.publish(id, { error: SCOPE_DELETED })
+  const show = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
+  const view = mount(SyncSettings, { props: { model: ui } })
+  try {
+    const row = view.findAll('.abele-sync-row')[0]
+    expect(row.findAllComponents(Icon).map((one) => one.props('icon'))).not.toContain('refresh-cw')
+    expect(row.text()).toContain('Deleted on the server')
+    expect(row.find('.abele-status-dot_red').exists()).toBe(true)
+    await row
+      .findAllComponents(Icon)
+      .find((one) => one.props('icon') === 'more-horizontal')!
+      .trigger('click')
+    expect(show.mock.instances.at(-1)!.items.some((item) => item.title === 'Disconnect…')).toBe(
+      true
+    )
+  } finally {
+    view.unmount()
+    show.mockRestore()
+  }
+})
 
 it.each(['deleted', 'moved'] as const)(
   'offers one root recovery decision after a folder is %s',

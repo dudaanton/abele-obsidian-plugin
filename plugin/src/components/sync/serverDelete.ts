@@ -27,6 +27,13 @@ export const serverDeleteSource = shallowRef<ServerDeleteSource | null>(null)
 export const READ_ONLY =
   'This key can only read. Only someone who can change these files can delete them.'
 
+/** Only an explicit pre-request failure can promise that nothing was deleted. */
+export function serverDeleteFailure(host: string, error: unknown): string {
+  return (error as { deletionOutcome?: unknown } | null)?.deletionOutcome === 'not-deleted'
+    ? `Nothing was deleted: ${host} did not answer.`
+    : `No answer from ${host}. It may already be deleted: Try again to find out.`
+}
+
 /** Bytes as a person reads a folder's size. */
 export function folderSize(bytes: number): string {
   const units = ['B', 'KB', 'MB', 'GB', 'TB']

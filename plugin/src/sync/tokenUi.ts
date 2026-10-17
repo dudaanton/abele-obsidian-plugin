@@ -714,11 +714,23 @@ export class TokenUi {
   deleteFromServer(id: string): Promise<void> {
     const running = this.deletions.get(id)
     if (running !== undefined) return running
-    const work = this.performServerDeletion(id).finally(() => this.deletions.delete(id))
+    // An earlier attempt may already have committed, even if this retry fails before sending.
+    let requested = !!this.registry.records().find((one) => one.id === id)?.state[
+      'abele-sync-token-state:server-delete'
+    ]
+    const work = this.performServerDeletion(id, () => {
+      requested = true
+    })
+      .catch((error: unknown) => {
+        throw Object.assign(error instanceof Error ? error : new Error('Server deletion failed'), {
+          deletionOutcome: requested ? 'unknown' : 'not-deleted',
+        })
+      })
+      .finally(() => this.deletions.delete(id))
     this.deletions.set(id, work)
     return work
   }
-  private async performServerDeletion(id: string): Promise<void> {
+  private async performServerDeletion(id: string, requesting: () => void): Promise<void> {
     const identity = () => {
       const row = this.registry.records().find((one) => one.id === id)
       return (
@@ -764,6 +776,7 @@ export class TokenUi {
     await this.runtimes.get(id)?.pause(true)
     assertCurrent()
     if (!attempt.result) {
+      requesting()
       attempt.result = await client.deleteScope(attempt.key)
       assertCurrent()
       storage.saveLocalStorage(slot, attempt)

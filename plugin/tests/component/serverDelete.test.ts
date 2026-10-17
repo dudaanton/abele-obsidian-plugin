@@ -13,6 +13,7 @@ import Button from '@/components/obsidian/Button.vue'
 import { tokenUiFixture } from '@/testing/tokenUiFixture'
 import { Menu } from '../mocks/obsidian'
 import { Modal as NativeModal } from 'obsidian'
+import * as nativeUi from 'obsidian'
 
 const facts: ServerDeleteFacts = {
   files: 12,
@@ -29,6 +30,42 @@ const open = (remove: () => Promise<void>) =>
   })
 
 describe('ServerDeleteModal', () => {
+  it('keeps the read-only menu action disabled and binds the reason as an Obsidian tooltip', async () => {
+    const ui = tokenUiFixture()
+    vi.spyOn(ui, 'serverDeleteFacts').mockResolvedValue({ ...facts, canWrite: false })
+    const show = vi.spyOn(Menu.prototype, 'showAtMouseEvent'),
+      tooltip = vi.spyOn(nativeUi, 'setTooltip')
+    const original = Menu.prototype.addItem
+    const items = vi.spyOn(Menu.prototype, 'addItem').mockImplementation(function (build) {
+      return original.call(this, (item) => {
+        Object.assign(item, { dom: document.createElement('div') })
+        build(item)
+      })
+    })
+    const view = mount(SyncSettings, { props: { model: ui } })
+    try {
+      await view
+        .findAllComponents(Icon)
+        .find((one) => one.props('icon') === 'more-horizontal')!
+        .trigger('click')
+      await flushPromises()
+      const item = show.mock.instances.at(-1)!.items.at(-1)!
+      expect(item.title).toBe('Delete from the server: read only')
+      expect(item.disabled).toBe(true)
+      expect(tooltip).toHaveBeenCalledWith(
+        expect.any(HTMLElement),
+        'This key can only read. Only someone who can change these files can delete them.'
+      )
+      item.handler!()
+      await flushPromises()
+      expect(view.findComponent(ServerDeleteModal).exists()).toBe(false)
+    } finally {
+      view.unmount()
+      show.mockRestore()
+      tooltip.mockRestore()
+      items.mockRestore()
+    }
+  })
   it('refuses native dismissal while the confirmed deletion is running', async () => {
     let finish!: () => void
     const opened = vi.spyOn(NativeModal.prototype, 'open')
@@ -152,10 +189,27 @@ describe('ServerDeleteModal', () => {
     press('Delete from the server').click()
     await flushPromises()
     expect(document.querySelector('[role="alert"]')?.textContent).toBe(
-      'Deletion could not be confirmed: Not reachable. Try again to recover the result.'
+      'No answer from sync.example. It may already be deleted: Try again to find out.'
     )
     expect(press('Try again')).toBeTruthy()
     expect(view.emitted('done')).toBeUndefined()
+    view.unmount()
+  })
+  it('names a known failure without exposing transport code and keeps retry warning-coloured', async () => {
+    const view = open(async () => {
+      throw Object.assign(new Error('private transport detail'), { deletionOutcome: 'not-deleted' })
+    })
+    press('Delete from the server').click()
+    await flushPromises()
+    expect(document.querySelector('[role="alert"]')?.textContent).toBe(
+      'Nothing was deleted: sync.example did not answer.'
+    )
+    expect(
+      view
+        .findAllComponents(Button)
+        .find((one) => one.props('text') === 'Try again')
+        ?.props('warning')
+    ).toBe(true)
     view.unmount()
   })
 })
