@@ -11,7 +11,7 @@ async function withCli(
     cli: Awaited<ReturnType<(typeof import('../e2e/helpers/obsidianCli'))['vaultCli']>>,
     pid: () => number,
     effects: () => number
-  ) => void
+  ) => void | Promise<void>
 ): Promise<void> {
   const dir = mkdtempSync(join(tmpdir(), 'abele-cli-reply-'))
   const executable = join(dir, 'sample-cli')
@@ -40,7 +40,7 @@ Promise.resolve(eval(code)).then((reply) => {
   try {
     defaultCli = await import('../e2e/helpers/obsidianCli')
     const { vaultCli } = defaultCli
-    work(
+    await work(
       vaultCli('sample-vault'),
       () => Number(readFileSync(pid, 'utf8')),
       () =>
@@ -86,9 +86,11 @@ describe('an Obsidian CLI reply independent of process exit', () => {
   })
 
   it('does not accept a log as a missing reply, and kills the child on the unchanged deadline', async () => {
-    await withCli((cli, pid) => {
+    await withCli(async (cli, pid) => {
       expect(() => cli.evalAwait('new Promise(() => {})', 1000)).toThrow(/gave no answer/)
-      expect(gone(pid())).toBe(true)
+      // The outer deadline can kill the proxy before it reaps its CLI child. SIGKILL
+      // is asynchronous; allow OS cleanup, but never accept a surviving child.
+      await expect.poll(() => gone(pid()), { timeout: 1000, interval: 10 }).toBe(true)
     })
   })
 
