@@ -136,7 +136,7 @@ class LiveCards implements ViewerCards {
               },
             })
           )
-          const textBody = body.createDiv()
+          const textBody = body.createDiv({ cls: 'abele-canvas-card-text' })
           const current = card
           const render = async () => {
             const text =

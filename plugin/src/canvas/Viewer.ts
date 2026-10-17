@@ -168,6 +168,9 @@ export class CanvasViewer {
       'pointerdown',
       (event) => {
         const e = event as PointerEvent
+        // Links in the note's text keep the body's native link and hover handling, including
+        // modifier/middle clicks. Only the header/footer controls share the card's drag.
+        if ((e.target as Element | null)?.closest('.abele-canvas-card-text a')) return
         const target = (e.target as Element | null)?.closest<HTMLElement>(
           '.abele-canvas-card_panels :is(button,a,input,.clickable-icon,.abele-fold-heading,.tree-item-self), .abele-canvas-card-codes .clickable-icon'
         )
@@ -185,6 +188,7 @@ export class CanvasViewer {
       this.stage,
       'click',
       (e) => {
+        if ((e.target as Element | null)?.closest('.abele-canvas-card-text a')) return
         if (
           e.isTrusted &&
           (e as MouseEvent).detail !== 0 &&

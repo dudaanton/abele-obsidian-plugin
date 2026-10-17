@@ -11,6 +11,10 @@ it('changes panel level on camera moves without rendering Markdown again', async
   config.ai = { ...DEFAULT_AI_SETTINGS, chatHistory: [] }
   config.headerButtons = []
   const app = useVault([{ path: 'sample.md', content: 'Sample words' }])
+  const workspace = Object.assign(app.workspace, {
+    openLinkText: vi.fn(async () => {}),
+    trigger: vi.fn(),
+  })
   const el = document.createElement('div')
   document.body.append(el)
   const render = vi.spyOn(MarkdownRenderer, 'render')
@@ -38,6 +42,32 @@ it('changes panel level on camera moves without rendering Markdown again', async
     const body = el.querySelector('.abele-canvas-card')
     expect(body?.classList.contains('abele-canvas-card_panels')).toBe(true)
     const top = body?.querySelector('.abele-header-widget-container')
+    const textBody = render.mock.calls[0][2]
+    expect(textBody.parentElement).toBe(body)
+    const link = document.createElement('a')
+    link.className = 'internal-link'
+    link.setAttribute('data-href', 'target#Part')
+    const label = document.createElement('span')
+    link.append(label)
+    textBody.append(link)
+    const down = vi.fn(() => true)
+    viewer.input = { down, up: vi.fn(), move: vi.fn(), cancel: vi.fn(), paint: vi.fn() }
+    viewer.el.dataset.canvasTool = 'select'
+    label.dispatchEvent(
+      new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', ctrlKey: true })
+    )
+    expect(down).not.toHaveBeenCalled()
+    label.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true }))
+    expect(workspace.openLinkText).toHaveBeenCalledWith('target#Part', 'sample.canvas', 'tab')
+    label.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
+    expect(workspace.trigger).toHaveBeenCalledWith(
+      'hover-link',
+      expect.objectContaining({
+        targetEl: link,
+        linktext: 'target#Part',
+        sourcePath: 'sample.canvas',
+      })
+    )
     await draw(0.9)
     expect(body?.querySelector('.abele-header-widget-container')).toBe(top)
     await draw(0.5)
