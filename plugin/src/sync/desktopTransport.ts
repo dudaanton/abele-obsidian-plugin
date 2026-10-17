@@ -9,7 +9,32 @@ import { sessionAwareNet, type SessionFetch, type SessionNet } from './desktopNe
  * module loader hides Electron. Production supplies none and keeps its desktop-only guard.
  */
 export function desktopTransport(session?: SessionFetch, host?: SessionNet): typeof fetch {
-  return fetchViaRequestUrl((input, signal) => desktopRequest(input, signal, session, host))
+  // Resolving remote handles is a run of synchronous IPC calls; do it once per transport.
+  let native = host
+  const resolve = () => (native ??= sessionAwareNet(session))
+  return fetchViaRequestUrl((input, signal) => desktopRequest(input, signal, resolve, !!host))
+}
+
+/** Responses up to this size are bridged in one read rather than chunk by chunk. */
+const SINGLE_READ_BYTES = 64 * 1024
+
+/** Headers as one record, duplicates joined the way `Headers.get` joins them. */
+function headerRecord(native: SessionNet, headers: Headers): Record<string, string> {
+  const record: Record<string, string> = {}
+  if (native.headerEntries) {
+    for (const [name, value] of native.headerEntries(headers))
+      record[name] = name in record ? `${record[name]}, ${value}` : value
+    return record
+  }
+  // Iterate synchronously through the bridge: a remote forEach callback would run later,
+  // after constructing the response, and could drop its headers.
+  const iterator = (headers as Headers & { keys(): Iterator<string> }).keys()
+  for (;;) {
+    const next = iterator.next()
+    if (next.done) break
+    record[next.value] = headers.get(next.value) ?? ''
+  }
+  return record
 }
 
 function abortError(signal?: AbortSignal | null): Error {
@@ -20,11 +45,12 @@ function abortError(signal?: AbortSignal | null): Error {
 
 const desktopRequest = async (
   input: Parameters<RequestUrlFn>[0],
-  signal?: AbortSignal | null,
-  session?: SessionFetch,
-  host?: SessionNet
+  signal: AbortSignal | null | undefined,
+  nativeHost: () => SessionNet,
+  explicitHost: boolean
 ): ReturnType<RequestUrlFn> => {
-  if (!host && !Platform.isDesktop) throw new Error('native desktop sync transport is unavailable')
+  if (!explicitHost && !Platform.isDesktop)
+    throw new Error('native desktop sync transport is unavailable')
   if (signal?.aborted) throw abortError(signal)
   const url = new URL(input.url)
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
@@ -33,7 +59,7 @@ const desktopRequest = async (
   if (url.username || url.password) {
     throw new TypeError('sync transport refuses credentials in a URL')
   }
-  const native = host ?? sessionAwareNet(session)
+  const native = nativeHost()
   const controller = native.controller()
   const abort = () => controller.abort()
   signal?.addEventListener('abort', abort, { once: true })
@@ -89,30 +115,25 @@ const desktopRequest = async (
       throw error
     })
     if (signal?.aborted) throw abortError(signal)
-    if (
-      response.type === 'opaqueredirect' ||
-      (response.status >= 300 && response.status < 400 && response.status !== 304)
-    ) {
+    // Each property read on a native response is a synchronous bridge call: read each once.
+    const status = response.status
+    if (response.type === 'opaqueredirect' || (status >= 300 && status < 400 && status !== 304)) {
       // The main-process net implementation paused at this response; no second request exists.
       await response.body?.cancel()
       throw new Error('sync transport refuses redirects')
     }
-    const headers: Record<string, string> = {}
-    // Iterate synchronously through the bridge: a remote forEach callback would run later,
-    // after constructing the response, and could drop its headers.
-    const iterator = (response.headers as Headers & { keys(): Iterator<string> }).keys()
-    for (;;) {
-      const next = iterator.next()
-      if (next.done) break
-      headers[next.value] = response.headers.get(next.value) ?? ''
-    }
-    const init = {
-      status: response.status,
-      headers,
-    }
-    if ((input.method ?? 'GET') === 'HEAD' || [204, 205, 304].includes(response.status)) {
+    const headers = headerRecord(native, response.headers)
+    const init = { status, headers }
+    if ((input.method ?? 'GET') === 'HEAD' || [204, 205, 304].includes(status)) {
       await response.body?.cancel()
       return new Response(null, init)
+    }
+    const declared = Number(headers['content-length'] ?? NaN)
+    if (Number.isSafeInteger(declared) && declared >= 0 && declared <= SINGLE_READ_BYTES) {
+      // A small body is bridged in one read: one call instead of one per chunk and its fields.
+      const whole = await waitNative(response.arrayBuffer(), 30000)
+      if (signal?.aborted) throw abortError(signal)
+      return new Response(native.bytes(whole) as Uint8Array<ArrayBuffer>, init)
     }
     if (!response.body) return new Response(null, init)
     const reader = response.body.getReader()
@@ -123,15 +144,15 @@ const desktopRequest = async (
           try {
             if (signal?.aborted) throw abortError(signal)
             const next = await waitNative(reader.read(), 30000)
-            if (next.done) {
+            // `value` is read once: on a native result every read is a bridge call and a copy.
+            const value = next.done ? undefined : next.value
+            if (!value) {
               finish()
               stream.close()
             } else {
               // Electron serializes only this bounded chunk, never the complete attachment.
-              const chunk = native.bytes(next.value.buffer)
-              stream.enqueue(
-                chunk.subarray(next.value.byteOffset, next.value.byteOffset + next.value.byteLength)
-              )
+              const chunk = native.bytes(value.buffer)
+              stream.enqueue(chunk.subarray(value.byteOffset, value.byteOffset + value.byteLength))
             }
           } catch (error) {
             finish()
