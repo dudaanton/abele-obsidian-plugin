@@ -121,6 +121,25 @@ const probe = (type: string, phone: boolean) => `(async () => {
       await until(() => native.view.containerEl.closest('.workspace-drawer')?.querySelector('.workspace-drawer-tab-options'))
       await wait(600)
       const nativeDrawer = native.view.containerEl.closest('.workspace-drawer')
+      await ws.revealLeaf(leaf); ws.rightSplit.expand()
+      await until(() => content.querySelector('.abele-drawer-switch.is-shown'))
+      await wait(300)
+      content.querySelector('.abele-drawer-switch.is-shown').click()
+      await until(() => document.querySelector('.menu .menu-item-title'))
+      const drawerLeaves = []
+      ws.iterateAllLeaves(candidate => {
+        if (candidate.getRoot() === leaf.getRoot()) drawerLeaves.push(candidate)
+      })
+      const entries = [...document.querySelectorAll('.menu .menu-item')]
+      const titles = entries.map(entry => entry.querySelector('.menu-item-title')?.textContent)
+      if (JSON.stringify(titles) !== JSON.stringify(drawerLeaves.map(candidate => candidate.view.getDisplayText())))
+        report.overflow.push('Drawer menu does not list its views')
+      await wait(300)
+      const menuShot = await require('@electron/remote').getCurrentWebContents().capturePage()
+      require('fs').writeFileSync(${JSON.stringify(shots + '/phone-menu-' + type + '.png')}, menuShot.toPNG())
+      entries[drawerLeaves.indexOf(native)].click()
+      await until(() => !document.querySelector('.menu') && native.view.containerEl.closest('.workspace-drawer-active-tab-content'))
+      await wait(300)
       report.restored = ['.workspace-drawer-header', '.workspace-drawer-tab-options'].map(selector => getComputedStyle(nativeDrawer.querySelector(selector)).display)
     }
   } catch (error) { report.error = String(error.stack || error) }

@@ -1,16 +1,29 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import { Platform } from 'obsidian'
+import { Menu, Platform } from 'obsidian'
 import { readFileSync } from 'node:fs'
 import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 import ListSectionHeader from '@/components/obsidian/ListSectionHeader.vue'
 import Section from '@/components/obsidian/Section.vue'
+
+const workspace = vi.hoisted(() => ({
+  iterateAllLeaves: vi.fn(),
+  setActiveLeaf: vi.fn(),
+  revealLeaf: vi.fn().mockResolvedValue(undefined),
+}))
+vi.mock('@/stores/GlobalStore', () => ({
+  GlobalStore: { getInstance: () => ({ app: { workspace } }) },
+}))
 
 const wrappers: ReturnType<typeof mount>[] = []
 afterEach(() => {
   wrappers.splice(0).forEach((wrapper) => wrapper.unmount())
   document.body.replaceChildren()
   Platform.isPhone = false
+  vi.restoreAllMocks()
+  workspace.iterateAllLeaves.mockReset()
+  workspace.setActiveLeaf.mockReset()
+  workspace.revealLeaf.mockClear()
 })
 async function render(phone: boolean, drawer: boolean) {
   Platform.isPhone = phone
@@ -37,18 +50,65 @@ it.each([
   expect(wrapper.find('.is-shown').exists()).toBe(false)
   expect(wrapper.find('span[hidden]').exists()).toBe(true)
 })
-it('forwards pointer and keyboard activation to its own drawer selector', async () => {
+it('opens its own drawer leaves by pointer and keyboard without a hidden selector click', async () => {
   const other = document.createElement('button')
   other.className = 'workspace-drawer-tab-select'
   document.body.append(other)
   const wrong = vi.spyOn(other, 'click')
   const { wrapper, select } = await render(true, true)
   const click = vi.spyOn(select, 'click')
+  select.style.display = 'none'
+  const root = {}
+  const current = {
+    getRoot: () => root,
+    view: {
+      containerEl: wrapper.element.parentElement!,
+      getDisplayText: () => 'Sample chat',
+      getIcon: () => 'bot',
+    },
+  }
+  const calendarEl = document.createElement('div')
+  // Inactive mobile drawer leaves may be detached from the document.
+  const calendar = {
+    getRoot: () => root,
+    view: {
+      containerEl: calendarEl,
+      getDisplayText: () => 'Sample calendar',
+      getIcon: () => 'calendar',
+    },
+  }
+  const elsewhere = {
+    getRoot: () => ({}),
+    view: { containerEl: other, getDisplayText: () => 'Other panel', getIcon: () => 'file' },
+  }
+  workspace.iterateAllLeaves.mockImplementation((visit) => {
+    // Obsidian stops iterating a subtree when the callback returns truthy.
+    for (const leaf of [elsewhere, current, calendar]) {
+      if (visit(leaf)) break
+    }
+  })
+  const shown = vi.spyOn(Menu.prototype, 'showAtPosition').mockImplementation(function (
+    this: Menu
+  ) {
+    this.unload = vi.fn()
+    return this
+  })
   const control = wrapper.get('.abele-drawer-switch.is-shown')
   await control.trigger('click')
   await control.trigger('keydown', { key: 'Enter' })
   await control.trigger('keydown', { key: ' ' })
-  expect(click).toHaveBeenCalledTimes(3)
+  expect(shown).toHaveBeenCalledTimes(3)
+  const menu = shown.mock.instances[2] as Menu
+  expect(menu.items.map((item) => [item.title, item.icon, item.checked])).toEqual([
+    ['Sample chat', 'bot', true],
+    ['Sample calendar', 'calendar', false],
+  ])
+  expect(shown).toHaveBeenLastCalledWith({ x: 0, y: 0 }, control.element.ownerDocument)
+  menu.items[1].handler!()
+  await flushPromises()
+  expect(workspace.revealLeaf).toHaveBeenCalledWith(calendar)
+  expect(workspace.setActiveLeaf).toHaveBeenCalledWith(calendar, { focus: true })
+  expect(click).not.toHaveBeenCalled()
   expect(wrong).not.toHaveBeenCalled()
   expect(control.attributes('aria-label')).toContain('Another view in this panel')
   expect(wrapper.get('.abele-drawer-switch__glyph').attributes('data-icon')).toBe('bot')

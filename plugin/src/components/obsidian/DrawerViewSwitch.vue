@@ -27,7 +27,8 @@
  * other view in the drawer brings them back.
  */
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Platform, setIcon, setTooltip } from 'obsidian'
+import { Menu, Platform, setIcon, setTooltip, type WorkspaceLeaf } from 'obsidian'
+import { GlobalStore } from '@/stores/GlobalStore'
 
 const props = defineProps<{
   /** The view's own icon, as its tab shows it. */
@@ -58,7 +59,12 @@ onMounted(() => {
     subtree: true,
   })
 })
-onBeforeUnmount(() => observer?.disconnect())
+let menu: Menu | undefined
+onBeforeUnmount(() => {
+  observer?.disconnect()
+  menu?.hide()
+  menu?.unload()
+})
 watch(
   () => [shown.value, props.icon, props.name],
   async () => {
@@ -70,12 +76,39 @@ watch(
   }
 )
 
-// Obsidian's list of the drawer's views, from its own switcher, which stays in the page hidden.
+// Build the native menu at the visible trigger. The hidden native selector uses
+// a pointer gesture handler, so forwarding click() cannot open its list on iOS.
 function open() {
-  el.value
-    ?.closest('.workspace-drawer')
-    ?.querySelector<HTMLElement>('.workspace-drawer-tab-select')
-    ?.click()
+  const trigger = el.value
+  const drawer = trigger?.closest('.workspace-drawer')
+  if (!trigger || !drawer) return
+  const workspace = GlobalStore.getInstance().app.workspace
+  const leaves: WorkspaceLeaf[] = []
+  workspace.iterateAllLeaves((leaf) => {
+    leaves.push(leaf)
+  })
+  const root = leaves.find((leaf) => leaf.view.containerEl.contains(trigger))?.getRoot()
+  if (!root) return
+  menu?.hide()
+  menu?.unload()
+  menu = new Menu().setUseNativeMenu(false)
+  const choices = menu
+  // Inactive drawer leaves can have detached DOM; workspace ownership is authoritative.
+  leaves.forEach((leaf) => {
+    if (leaf.getRoot() !== root) return
+    choices.addItem((item) =>
+      item
+        .setTitle(leaf.view.getDisplayText())
+        .setIcon(leaf.view.getIcon())
+        .setChecked(leaf.view.containerEl.contains(trigger))
+        .onClick(async () => {
+          await workspace.revealLeaf(leaf)
+          workspace.setActiveLeaf(leaf, { focus: true })
+        })
+    )
+  })
+  const box = trigger.getBoundingClientRect()
+  choices.showAtPosition({ x: box.left, y: box.bottom }, trigger.ownerDocument)
 }
 </script>
 
