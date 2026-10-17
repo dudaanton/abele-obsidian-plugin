@@ -5,9 +5,69 @@ import { confirmDialog } from '@/components/obsidian/dialogs'
 import { useVault } from '../helpers/testEnv'
 import type { TFile } from 'obsidian'
 import { PictureHistory } from '@/drawing/pictureSession'
+import { createCanvas, loadImage } from '@napi-rs/canvas'
 
 vi.mock('@/components/obsidian/dialogs', () => ({ confirmDialog: vi.fn() }))
 afterEach(() => vi.restoreAllMocks())
+
+it('Save as new renders the selected pixels instead of copying the source bytes', async () => {
+  const source = createCanvas(6, 4)
+  const ctx = source.getContext('2d')
+  ctx.fillStyle = 'red'
+  ctx.fillRect(0, 0, 3, 4)
+  ctx.fillStyle = 'blue'
+  ctx.fillRect(3, 0, 3, 4)
+  const originalBytes = source.toBuffer('image/png')
+  const app = useVault([{ path: 'Pictures/sample.png', content: 'unchanged source' }])
+  const original = app.vault.getAbstractFileByPath('Pictures/sample.png') as TFile
+  const modify = vi.spyOn(app.vault, 'modifyBinary')
+  let written!: ArrayBuffer
+  const create = vi.spyOn(app.vault, 'createBinary').mockImplementation(async (path, data) => {
+    written = data
+    return { path, extension: 'png' } as TFile
+  })
+  const doc = {
+    createElementNS: () => {
+      const canvas = createCanvas(1, 1)
+      Object.assign(canvas, {
+        toBlob: (done: (blob: Blob) => void) =>
+          done(new Blob([new Uint8Array(canvas.toBuffer('image/png'))])),
+      })
+      return canvas
+    },
+  } as unknown as Document
+  const picture = (
+    ImageInkView.prototype as unknown as {
+      picture(this: unknown, file: TFile): Promise<Blob | null>
+    }
+  ).picture
+  const host = {
+    app,
+    image: source,
+    contentEl: { ownerDocument: doc },
+    editor: {
+      width: 6,
+      height: 4,
+      crop: { ...wholePicture(), rect: { x: 0.5, y: 0, w: 0.5, h: 1 } },
+    },
+    session: { pick: { closeText: vi.fn() }, items: { items: [] } },
+    picture(file: TFile) {
+      return picture.call(this, file)
+    },
+  }
+  await ImageInkView.prototype.saveNew.call(host as never, original, false)
+  expect(create).toHaveBeenCalledWith('Pictures/sample drawn.png', expect.any(ArrayBuffer))
+  expect(Buffer.from(written)).not.toEqual(originalBytes)
+  const decoded = await loadImage(Buffer.from(written))
+  expect([decoded.width, decoded.height]).toEqual([3, 4])
+  const output = createCanvas(3, 4)
+  output.getContext('2d').drawImage(decoded, 0, 0)
+  for (let y = 0; y < 4; y++)
+    for (let x = 0; x < 3; x++)
+      expect([...output.getContext('2d').getImageData(x, y, 1, 1).data]).toEqual([0, 0, 255, 255])
+  expect(modify).not.toHaveBeenCalled()
+  expect(await app.vault.read(original)).toBe('unchanged source')
+})
 
 it('updates the view header to the filename when a picture is opened', async () => {
   const titleEl = document.createElement('div')

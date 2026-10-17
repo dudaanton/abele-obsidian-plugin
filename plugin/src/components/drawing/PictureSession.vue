@@ -26,6 +26,7 @@
     </div>
     <div v-if="state.cropping && state.width" class="abele-picture-session__crop" :style="box">
       <CropFrame
+        :surface="stage?.parentElement ?? undefined"
         :rect="state.crop.rect"
         :ratio="ratio"
         :picture="picture"

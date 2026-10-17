@@ -115,7 +115,7 @@
       <span class="abele-picture-editor__status-text">{{ status.text }}</span>
     </div>
 
-    <div class="abele-picture-editor__stage">
+    <div class="abele-picture-editor__stage" data-ignore-swipe="true">
       <slot />
     </div>
 

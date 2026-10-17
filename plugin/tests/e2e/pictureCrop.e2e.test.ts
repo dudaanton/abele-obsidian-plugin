@@ -174,6 +174,54 @@ describe.skipIf(!available)('picture crop from the viewer', () => {
           document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
         }
         heicView.leaf.detach()
+        if (${phone}) {
+          canvas.width = 2000; canvas.height = 160
+          ctx.fillStyle = '#3978bd'; ctx.fillRect(0, 0, 2000, 160)
+          ctx.fillStyle = '#f1c344'; ctx.fillRect(0, 0, 1000, 160)
+          const thinBlob = await new Promise(r => canvas.toBlob(r))
+          const sourceBytes = await thinBlob.arrayBuffer()
+          const thinFile = await app.vault.createBinary(dir + '/sample-thin.png', sourceBytes)
+          await window.__abeleTest.openImageInk(app, thinFile.path, '', null, '', true)
+          const thinView = await until(() => app.workspace.getLeavesOfType('abele-image-ink').map(l => l.view).find(v => v.editor.width === 2000))
+          await until(() => thinView.session.surface.width > 0 && thinView.model.zoom < 1 && thinView.contentEl.querySelector('.abele-crop-frame'))
+          const fitZoom = thinView.model.zoom
+          const frameBefore = JSON.stringify(thinView.editor.crop.rect)
+          const pinchAcrossBoundary = async (scale) => {
+            const frame = thinView.contentEl.querySelector('.abele-crop-frame').getBoundingClientRect()
+            const stageEl = thinView.contentEl.querySelector('.abele-picture-editor__stage')
+            const stage = stageEl.getBoundingClientRect()
+            const a = { x: frame.x + frame.width / 2, y: frame.y + frame.height / 2, id: 0 }
+            const b = { x: stage.x + stage.width / 2, y: (frame.bottom + stage.bottom) / 2, id: 1 }
+            if (![a, b].every(p => stageEl.contains(document.elementFromPoint(p.x, p.y)))) throw Error('Pinch contact is obscured outside the editor stage')
+            if (document.elementFromPoint(b.x, b.y)?.closest('.abele-crop-frame')) throw Error('Pinch did not start across the background boundary')
+            const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2
+            await wc.debugger.sendCommand('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [a, b] })
+            await wc.debugger.sendCommand('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [a, b].map(p => ({ x: mx + (p.x - mx) * scale, y: my + (p.y - my) * scale, id: p.id })) })
+            await wc.debugger.sendCommand('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+            await wait(100)
+          }
+          await pinchAcrossBoundary(1.5)
+          const enlarged = thinView.model.zoom
+          if (enlarged <= fitZoom) throw Error('Thin picture did not zoom in')
+          await pinchAcrossBoundary(0.7)
+          if (thinView.model.zoom >= enlarged) throw Error('Thin picture ignored pinch out')
+          await pinchAcrossBoundary(0.7)
+          if (thinView.model.zoom > fitZoom) throw Error('Pinch out could not return to fit-to-view')
+          if (JSON.stringify(thinView.editor.crop.rect) !== frameBefore) throw Error('Pinch resized the thin picture crop')
+          await screenshot('pinch-out')
+          thinView.editor.crop.rect = { x: 0.5, y: 0, w: 0.5, h: 1 }
+          const cropped = await thinView.saveNew(thinFile)
+          const copyBytes = await app.vault.readBinary(cropped)
+          const pixels = await createImageBitmap(new Blob([copyBytes]))
+          if (pixels.width !== 1000 || pixels.height !== 160) throw Error('Saved copy did not apply the crop')
+          const sample = document.createElement('canvas'); sample.width = sample.height = 1
+          const sampleCtx = sample.getContext('2d'); sampleCtx.drawImage(pixels, 0, 0)
+          pixels.close()
+          if (JSON.stringify([...sampleCtx.getImageData(0, 0, 1, 1).data]) !== '[57,120,189,255]') throw Error('Saved copy has the wrong crop pixels')
+          const after = new Uint8Array(await app.vault.readBinary(thinFile))
+          if (after.length !== sourceBytes.byteLength || !after.every((v, i) => v === new Uint8Array(sourceBytes)[i])) throw Error('Saving the crop changed the original')
+          thinView.leaf.detach()
+        }
         if (!${phone}) {
           canvas.width = 8000; canvas.height = 6000
           ctx.fillStyle = '#3978bd'; ctx.fillRect(0, 0, 8000, 6000)

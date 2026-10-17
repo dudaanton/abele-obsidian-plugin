@@ -2,6 +2,7 @@
   <!-- Over the picture's own box: the rest of the picture dimmed, the frame clear, its corners and
        sides to drag with a finger's room around each, thirds while it moves. -->
   <div
+    ref="root"
     class="abele-crop-frame"
     :class="{ 'is-dragging': held !== null }"
     data-ignore-swipe="true"
@@ -11,10 +12,6 @@
     @pointerup.stop
     @pointercancel.stop
     @wheel.prevent.stop="wheel"
-    @pointerdown.capture="track"
-    @pointermove.capture="navigate"
-    @pointerup.capture="release"
-    @pointercancel.capture="release"
   >
     <div class="abele-crop-frame__shade" :style="frameStyle" aria-hidden="true" />
     <div
@@ -46,7 +43,7 @@
  * opposite corner, sides from the opposite side, the inside moves it; a kept shape holds while any
  * of them is dragged. The picture's long press does nothing here, so the handles win on a phone.
  */
-import { computed, ref } from 'vue'
+import { computed, ref, watchEffect } from 'vue'
 import { dragRect, type CropHandle, type CropRect } from '@/drawing/crop'
 
 const props = defineProps<{
@@ -55,6 +52,8 @@ const props = defineProps<{
   ratio: number | null
   /** The shown picture's width over its height. */
   picture: number
+  /** The whole editor stage: a pinch may start with one finger outside the picture. */
+  surface?: HTMLElement
 }>()
 const emit = defineEmits<{
   'update:rect': [rect: CropRect]
@@ -67,11 +66,30 @@ const emit = defineEmits<{
 }>()
 const pointers = new Map<number, { clientX: number; clientY: number }>()
 let pinched = false
+const root = ref<HTMLElement | null>(null)
+watchEffect((cleanup) => {
+  const surface = props.surface ?? root.value
+  if (!surface) return
+  surface.addEventListener('pointerdown', track, { capture: true, passive: false })
+  surface.addEventListener('pointermove', navigate, { capture: true, passive: false })
+  surface.addEventListener('pointerup', release, true)
+  surface.addEventListener('pointercancel', release, true)
+  cleanup(() => {
+    surface.removeEventListener('pointerdown', track, true)
+    surface.removeEventListener('pointermove', navigate, true)
+    surface.removeEventListener('pointerup', release, true)
+    surface.removeEventListener('pointercancel', release, true)
+    pointers.clear()
+    pinched = false
+  })
+})
 function track(e: PointerEvent) {
   ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
   pointers.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY })
   if (pointers.size > 1) {
     pinched = true
+    e.preventDefault()
+    e.stopPropagation()
     ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
   }
 }
@@ -93,6 +111,11 @@ function release(e: PointerEvent) {
   if (!pointers.size) pinched = false
 }
 function navigate(e: PointerEvent) {
+  // The stage owns both contacts until they lift; do not also pan the canvas or drag a handle.
+  if (pinched) {
+    e.preventDefault()
+    e.stopPropagation()
+  }
   const before = pointers.get(e.pointerId)
   if (!before) return
   const other = [...pointers.entries()].find(([id]) => id !== e.pointerId)?.[1]
