@@ -110,13 +110,42 @@ table { width: 100%; border-collapse: collapse; font-size: var(--font-ui-small);
 th, td { padding: var(--size-2-3) var(--size-4-2); border-bottom: 1px solid var(--background-modifier-border); text-align: start; }
 th { color: var(--text-muted); font-weight: var(--font-semibold); }
 @media (max-width: 24em) {
+  .cards { grid-template-columns: minmax(0, 1fr); }
   .card { flex-direction: row; }
   .card > img, .card .picture { flex: none; width: 5.5em; aspect-ratio: auto; align-self: stretch; }
   .card .body { padding: var(--size-4-2) var(--size-4-2) var(--size-4-2) var(--size-4-3); }
 }
 `
 
-const DROPPED = 'script, iframe, frame, object, embed, form, base, meta, link, noscript'
+const ALLOWED_TAGS = new Set(
+  'div span p a img table thead tbody tfoot tr th td caption colgroup col ul ol li dl dt dd h1 h2 h3 h4 h5 h6 strong em b i small br hr pre code blockquote section article header footer details summary'.split(
+    ' '
+  )
+)
+
+/** No escapes, resource functions or legacy executable CSS. */
+function safeStyle(value: string): boolean {
+  if (/[\\@<>]|\/\*|expression|behavior|binding/i.test(value)) return false
+  return [...value.matchAll(/([\w-]+)\s*\(/g)].every((match) =>
+    /^(var|calc|min|max|clamp|repeat|minmax|fit-content|rgb|rgba|hsl|hsla|color|color-mix|light-dark|lab|lch|oklab|oklch|linear-gradient|radial-gradient)$/.test(
+      match[1].toLowerCase()
+    )
+  )
+}
+
+function cleanTheme(theme: string): string {
+  return theme
+    .split(';')
+    .flatMap((declaration) => {
+      const colon = declaration.indexOf(':')
+      const name = declaration.slice(0, colon).trim()
+      const value = declaration.slice(colon + 1).trim()
+      return THEME_VARIABLES.includes(name) && safeStyle(value) && !/[{}]/.test(value)
+        ? [`${name}: ${value};`]
+        : []
+    })
+    .join(' ')
+}
 
 /**
  * The agent's HTML with what could run or reach out taken away: scripts, frames, forms, event
@@ -125,18 +154,20 @@ const DROPPED = 'script, iframe, frame, object, embed, form, base, meta, link, n
  */
 export function cleanViewHtml(html: string): string {
   const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html')
-  doc.querySelectorAll(DROPPED).forEach((el) => el.remove())
-  for (const el of doc.body.querySelectorAll('*')) {
-    for (const attr of [...el.attributes]) {
+  for (const el of Array.from(doc.body.querySelectorAll('*'))) {
+    if (!ALLOWED_TAGS.has(el.localName) || el.namespaceURI !== 'http://www.w3.org/1999/xhtml') {
+      el.remove()
+      continue
+    }
+    for (const attr of Array.from(el.attributes)) {
       const name = attr.name.toLowerCase()
-      const value = attr.value.trim().toLowerCase()
-      if (name.startsWith('on')) el.removeAttribute(attr.name)
-      else if (
-        (name === 'href' || name === 'src' || name === 'xlink:href') &&
-        !/^(https:|http:|data:image\/|abele:|#)/.test(value)
-      )
-        el.removeAttribute(attr.name)
-      else if (name === 'srcset' || name === 'formaction') el.removeAttribute(attr.name)
+      const value = attr.value.trim()
+      const keep =
+        /^(class|title|alt|role|aria-label|colspan|rowspan|width|height)$/.test(name) ||
+        (name === 'href' && el.localName === 'a' && !!readViewLink(value)) ||
+        (name === 'src' && el.localName === 'img' && /^(https:\/\/|data:image\/)/i.test(value)) ||
+        (name === 'style' && safeStyle(value))
+      if (!keep) el.removeAttribute(attr.name)
     }
   }
   return doc.body.innerHTML
@@ -145,11 +176,11 @@ export function cleanViewHtml(html: string): string {
 /** The whole document of the frame: no scripts by its own rule, the theme, the classes, the view. */
 export function viewDocument(html: string, theme: string): string {
   const policy =
-    "default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; font-src data:"
+    "default-src 'none'; script-src 'none'; object-src 'none'; frame-src 'none'; connect-src 'none'; form-action 'none'; base-uri 'none'; img-src https: data:; style-src 'unsafe-inline'; font-src 'none'"
   return (
     `<!doctype html><html><head><meta charset="utf-8">` +
     `<meta http-equiv="Content-Security-Policy" content="${policy}">` +
-    `<style>:root { ${theme} }${VIEW_BASE_CSS}</style></head>` +
+    `<style>:root { ${cleanTheme(theme)} }${VIEW_BASE_CSS}</style></head>` +
     `<body>${cleanViewHtml(html)}</body></html>`
   )
 }
@@ -167,7 +198,16 @@ export type ViewLink =
  */
 export function readViewLink(href: string): ViewLink {
   const value = href.trim()
-  if (/^https?:\/\//i.test(value)) return { kind: 'web', url: value }
+  if (/^https:\/\//i.test(value)) {
+    try {
+      const url = new URL(value)
+      if (url.protocol === 'https:' && !url.username && !url.password)
+        return { kind: 'web', url: value }
+    } catch {
+      /* Invalid links are inert. */
+    }
+    return null
+  }
   const m = /^abele:(note|ask)\?(.*)$/i.exec(value)
   if (!m) return null
   const params = new URLSearchParams(m[2])

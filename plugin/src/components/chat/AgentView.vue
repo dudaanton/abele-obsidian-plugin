@@ -1,7 +1,7 @@
 <template>
   <!-- The agent's own view where it stands in the answer, as tall as what is in it; under it a
        quiet line saying whose it is, and what can be done with it. -->
-  <div class="abele-agent-view" :class="{ 'is-window': inWindow }">
+  <div ref="host" class="abele-agent-view" :class="{ 'is-window': inWindow }">
     <div v-if="broken" class="abele-agent-view__broken">
       <span>This view can’t be shown.</span>
     </div>
@@ -10,7 +10,7 @@
       v-if="!broken && !source"
       ref="frame"
       class="abele-agent-view__frame"
-      :style="{ height: frameHeight }"
+      :style="{ height: frameHeight, maxHeight: inWindow ? undefined : '32em' }"
       title="View by the agent"
       sandbox="allow-same-origin"
       referrerpolicy="no-referrer"
@@ -41,8 +41,8 @@
         />
       </span>
     </div>
-    <ObsidianModal v-if="opened" title="View by the agent" size="large" @close="opened = false">
-      <AgentView :html="html" in-window />
+    <ObsidianModal v-if="opened" title="View by the agent" size="tall" @close="opened = false">
+      <AgentView :html="html" in-window @ask="ask" />
     </ObsidianModal>
   </div>
 </template>
@@ -68,6 +68,8 @@ const props = defineProps<{
   /** Drawn in the larger window: as tall as the window allows, no line under it. */
   inWindow?: boolean
 }>()
+const emit = defineEmits<{ ask: [text: string] }>()
+const host = ref<HTMLElement | null>(null)
 
 const frame = ref<HTMLIFrameElement | null>(null)
 const source = ref(false)
@@ -84,7 +86,7 @@ const broken = computed(() => {
 const documentHtml = computed(() => viewDocument(props.html, theme.value))
 // Tall views scroll inside past a window's worth; in the larger window it fills what it has.
 const frameHeight = computed(() =>
-  props.inWindow ? '70vh' : height.value ? `min(${height.value}px, 32em)` : '8em'
+  props.inWindow ? '70vh' : height.value ? `${height.value}px` : '8em'
 )
 
 let observer: ResizeObserver | null = null
@@ -92,7 +94,11 @@ let themeWatch: MutationObserver | null = null
 
 function measure() {
   const doc = frame.value?.contentDocument
-  if (doc?.documentElement) height.value = Math.ceil(doc.documentElement.scrollHeight)
+  // The root includes the iframe viewport, so measuring it prevents a taller view shrinking.
+  if (doc?.body)
+    height.value = Math.ceil(
+      Math.max(doc.body.scrollHeight, doc.body.getBoundingClientRect().height)
+    )
 }
 
 function ready() {
@@ -133,9 +139,15 @@ function onClick(e: MouseEvent) {
   if (link.kind === 'web') window.open(link.url, '_blank', 'noopener')
   else if (link.kind === 'note')
     void GlobalStore.getInstance().app.workspace.openLinkText(link.path, '')
+  else ask(link.text)
+}
+
+function ask(text: string) {
+  // The enlarged view is teleported outside the chat; route through its original owner.
+  if (props.inWindow) emit('ask', text)
   else
-    frame.value?.dispatchEvent(
-      new CustomEvent(ASK_EVENT, { bubbles: true, composed: true, detail: { text: link.text } })
+    host.value?.dispatchEvent(
+      new CustomEvent(ASK_EVENT, { bubbles: true, composed: true, detail: { text } })
     )
 }
 

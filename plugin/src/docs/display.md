@@ -18,6 +18,51 @@ Links work as in a note: `[[Note]]` opens the note when pressed (Mod-click for a
 `[[Note#L12-L18]]` opens it with those lines selected. Name notes and pictures the way a note
 would link them — by name, or by vault path when the name is not unique.
 
+## Agent views
+
+Use an `abele-view` fenced block for a useful custom view in an answer, such as cards,
+a comparison or a timetable. You may choose this without being asked. This is a block,
+not a tool; write HTML directly in the answer. It also renders when copied into a note.
+
+````markdown
+```abele-view
+<div class="cards">
+  <article class="card">
+    <img src="https://images.example/sample-chair.png" alt="A sample chair">
+    <div class="body">
+      <div class="title">Oak chair</div>
+      <div class="meta">Solid wood · natural finish</div>
+      <div class="row"><span class="price">120 EUR</span><span class="tag">In stock</span></div>
+      <div class="actions">
+        <a class="button" href="https://shop.example/chair">Details</a>
+        <a class="button accent" href="abele:ask?text=Compare%20these%20chairs">Compare</a>
+      </div>
+    </div>
+  </article>
+</div>
+```
+````
+
+Classes follow the current Obsidian theme: `cards` is a responsive grid; `card` is a card;
+`body` is its padded content; `picture` is its image area; `title`, `price`, `meta` and
+`tag` format labels; `row` wraps items, `spacer` fills free room, and `actions` holds links.
+An anchor with `button` looks like an action; add `accent` for the primary action.
+Ordinary HTML tables, lists, headings, paragraphs and details/summary work too.
+Prefer these classes and theme variables over fixed colours, fonts and sizes.
+Inline styles can arrange content; style blocks, resource-loading CSS and executable CSS
+are removed. Do not depend on custom stylesheets, SVG markup, scripts, forms, frames or embeds.
+
+Links are limited to `https://…` (opens the browser), `abele:note?path=…` (opens a vault
+note), and `abele:ask?text=…` (places an unsent question in this chat). Percent-encode
+query values, for example `abele:note?path=Samples%2FChair.md`. Never imply an ask link
+already sent a question or performed an action. Other schemes are inert.
+
+HTTPS pictures load immediately; inline `data:image/…` pictures also work. Use meaningful
+alt text: a failed picture becomes a quiet placeholder with that accessible label.
+The frame has scripts disabled and cannot access the vault or run tools. Its footer offers
+source, copy and a larger window. Content with nothing safe to display shows escaped source
+and a broken-view message instead.
+
 ## Plain markdown
 
 Headings, lists, tables, task lists (`- [ ]`, `- [x]`), bold and italic, code blocks with
