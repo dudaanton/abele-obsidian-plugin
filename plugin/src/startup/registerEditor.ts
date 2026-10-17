@@ -16,6 +16,7 @@ import { registerTextComments } from '@/comments/register'
 import { createHeaderExtension } from '@/editor/HeaderExtension'
 import { registerChartCodeblock } from '@/editor/ChartCodeblock'
 import { registerMapCodeblock } from '@/editor/MapCodeblock'
+import { registerViewCodeblock } from '@/editor/ViewCodeblock'
 import { registerMessageCardBlock } from '@/ai/messageCards'
 import { registerCheckboxes } from '@/checkboxes/register'
 import { registerColumns } from '@/columns/register'
@@ -81,6 +82,8 @@ export function registerEditor(plugin: Plugin) {
   )
 
   registerMapCodeblock((lang, handler) => plugin.registerMarkdownCodeBlockProcessor(lang, handler))
+  // A view an agent wrote in HTML, drawn in a frame of its own.
+  registerViewCodeblock((lang, handler) => plugin.registerMarkdownCodeBlockProcessor(lang, handler))
   // A chat message kept in a note, as a card that opens the chat at it.
   registerMessageCardBlock((lang, handler) =>
     plugin.registerMarkdownCodeBlockProcessor(lang, handler)

@@ -11,12 +11,13 @@
 
 import { findGalleryBlocks } from './galleryUtils'
 
-export type UnfinishedKind = 'chart' | 'map' | 'diagram' | 'gallery'
+export type UnfinishedKind = 'chart' | 'map' | 'diagram' | 'gallery' | 'view'
 
 /** The fenced languages that draw something rather than show code. */
 const DRAWN: Record<string, UnfinishedKind> = {
   'abele-chart': 'chart',
   'abele-map': 'map',
+  'abele-view': 'view',
   mermaid: 'diagram',
 }
 
@@ -81,4 +82,5 @@ export const PENDING_LABEL: Record<UnfinishedKind, string> = {
   map: 'Drawing a map…',
   diagram: 'Drawing a diagram…',
   gallery: 'Gathering pictures…',
+  view: 'Drawing a view…',
 }

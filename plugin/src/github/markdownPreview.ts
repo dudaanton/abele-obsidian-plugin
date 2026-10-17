@@ -124,6 +124,7 @@ export const PLAIN_LANGUAGES = new Set(
 export const ABELE_LANGUAGES = new Set([
   'abele-chart',
   'abele-map',
+  'abele-view',
   'abele-message',
   'abele-github',
 ])

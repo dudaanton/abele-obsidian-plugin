@@ -3,6 +3,7 @@
     ref="chatContainer"
     class="abele-ai-chat"
     :class="{ 'abele-ai-chat--composing': composing, 'abele-keyboard-open': keyboardOpen }"
+    v-on="{ [ASK_EVENT]: onViewAsk }"
     @dragover.prevent
     @drop.prevent="onFileDrop"
   >
@@ -452,6 +453,7 @@
 </template>
 
 <script setup lang="ts">
+import { ASK_EVENT } from '@/views/agentView'
 import {
   ref,
   shallowRef,
@@ -826,6 +828,15 @@ const canComment = computed(
 const canReply = computed(() => !!session.value && session.value.kind !== 'run')
 /** A chip for the place goes into the field where the cursor is, and the field takes the focus. */
 const onReply = (to: ChatReplyTo) => chatInput.value?.quote(to)
+/** «Ask» on an agent's view: its question goes into the field after what is there, unsent. */
+function onViewAsk(e: Event) {
+  const text = (e as CustomEvent<{ text?: string }>).detail?.text?.trim()
+  const field = chatInput.value
+  if (!text || !field) return
+  const draft = field.takeDraft().text.trim()
+  field.setText(draft ? `${draft}\n${text}` : text)
+  field.focus({ atEnd: true })
+}
 /** Back to the words a place replies to, in this branch: the words themselves when picked. */
 const onShowReply = (to: ChatReplyTo) =>
   void revealMessage(
