@@ -48,6 +48,15 @@ const touch = async (type: string, x: number, y: number) => {
   await flushPromises()
   return event
 }
+const useDragClock = () => {
+  // Keep the edge delay and frame timestamps on one clock, independent of host load.
+  // Leave setImmediate real so flushPromises can still settle Vue updates.
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
+  vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) =>
+    window.setTimeout(() => callback(window.performance.now()), 16)
+  )
+  vi.spyOn(window, 'cancelAnimationFrame').mockImplementation((id) => window.clearTimeout(id))
+}
 const render = async (tasks: Task[]) => {
   view = mount(Timeline, { props: { tasks }, shallow: true, attachTo: owner })
   await flushPromises()
@@ -77,12 +86,13 @@ describe('timeline task dragging', () => {
       const current = sample('sample-current', '2030-06-15')
       vi.spyOn(current, 'writeTaskToFile').mockResolvedValue(undefined)
       await render([current, sample('sample-past', '2030-06-14')])
+      useDragClock()
       const overdue = () => view.get('.abele-timeline__overdue')
       const visibility = () => getComputedStyle(overdue().element).visibility || 'visible'
       expect(visibility()).toBe('visible')
       if (ending.startsWith('touch')) {
         await touch('touchstart', 80, 190)
-        await new Promise((resolve) => setTimeout(resolve, 500))
+        await vi.advanceTimersByTimeAsync(500)
         expect(visibility()).toBe('visible')
         await touch('touchmove', 80, 205)
       } else {
@@ -348,13 +358,14 @@ describe('timeline task dragging', () => {
 
   it('lets a touch swipe scroll; a long press still needs movement before starting a drag', async () => {
     await render([sample('sample-current', '2030-06-15')])
+    useDragClock()
     await touch('touchstart', 80, 190)
     expect((await touch('touchmove', 80, 230)).defaultPrevented).toBe(false)
-    await new Promise((r) => setTimeout(r, 500))
+    await vi.advanceTimersByTimeAsync(500)
     expect(days()).toHaveLength(1)
     await touch('touchend', 80, 230)
     await touch('touchstart', 80, 190)
-    await new Promise((r) => setTimeout(r, 500))
+    await vi.advanceTimersByTimeAsync(500)
     expect(days()).toHaveLength(1)
     // Once the long press arms dragging, prevent even the first sub-threshold move:
     // WebKit otherwise starts a native pan before the drag can claim the gesture.
@@ -374,11 +385,12 @@ describe('timeline task dragging', () => {
     vi.spyOn(bar, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 450, 300, 50))
     try {
       await render([sample('sample-current', '2030-06-15')])
+      useDragClock()
       await pointer('pointerdown', 80, 190, row().element)
       await pointer('pointermove', 80, 205)
       await pointer('pointermove', 80, 440)
       const start = owner.scrollTop
-      await new Promise((r) => setTimeout(r, 600))
+      await vi.advanceTimersByTimeAsync(600)
       expect(owner.scrollTop).toBeGreaterThan(start)
     } finally {
       bar.remove()
@@ -388,13 +400,7 @@ describe('timeline task dragging', () => {
 
   it('starts gentle edge scrolling after a delay and stops when the pointer leaves the edge', async () => {
     await render([sample('sample-current', '2030-06-15')])
-    // Keep the edge delay and frame timestamps on one clock, independent of host load.
-    // Leave setImmediate real so flushPromises can still settle Vue updates.
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
-    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) =>
-      window.setTimeout(() => callback(window.performance.now()), 16)
-    )
-    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation((id) => window.clearTimeout(id))
+    useDragClock()
     await pointer('pointerdown', 80, 190, row().element)
     await pointer('pointermove', 80, 205)
     await pointer('pointermove', 80, 490)
