@@ -4,7 +4,103 @@ import { probeResourceRanges } from '@/sync/mobileResourceRanges'
 import { BoundedVaultIo } from '@/sync/boundedVaultIo'
 import { connectionAdapter } from '@/sync/connectionScope'
 import { connectionPrivateRoot } from '@/sync/connectionPaths'
+import { mobileStreamFixture } from '../helpers/mobileStreamFixture'
 afterEach(() => vi.unstubAllGlobals())
+
+function legacyMobile() {
+  const f = setup(200),
+    size = 200 * 1024 * 1024
+  const local = (path: string) =>
+    path.startsWith('file:')
+      ? new URL(path).pathname.split('/sample/')[1]
+      : path.replace(/^sample-vault\//, '')
+  const whole = vi.fn(() => {
+    throw new Error('whole-file adapter read')
+  })
+  const readFile = vi.fn(async ({ path }: { path: string }) => {
+    const bytes = f.files.get(local(path))
+    if (!bytes) throw new Error('unbounded native read of large source')
+    // This host ignores offset/length rather than rejecting unsupported options.
+    return { data: btoa(String.fromCharCode(...bytes)) }
+  })
+  const readFileInChunks = vi.fn(async () => {
+    throw new Error('Filesystem.readFileInChunks() is not implemented on ios')
+  })
+  const stat = async ({ path }: { path: string }) => {
+    if (path.startsWith('/')) throw new Error('file not found')
+    return { size: f.files.get(local(path))?.length ?? size }
+  }
+  Object.assign(f.adapter, {
+    getFullPath: (path: string) => 'sample-vault/' + path,
+    stat: async (path: string) => ({
+      type: 'file',
+      size: f.files.get(path)?.length ?? size,
+      mtime: 1,
+      ctime: 1,
+    }),
+    appendBinary: async () => {},
+    readBinary: whole,
+  })
+  vi.stubGlobal('fetch', f.fetcher)
+  // Proxy method presence does not mean the native host implements that method.
+  vi.stubGlobal('Capacitor', {
+    Plugins: { Filesystem: { stat, readFile, readFileInChunks } },
+    PluginHeaders: [
+      {
+        name: 'Filesystem',
+        methods: ['stat', 'readFile', 'appendFile'].map((name) => ({ name, rtype: 'promise' })),
+      },
+    ],
+  })
+  return { ...f, io: new BoundedVaultIo(f.adapter), whole, readFile, readFileInChunks, size }
+}
+
+it('reproduces a mobile host whose resources ignore ranges and whose chunk proxy is not implemented', async () => {
+  const f = legacyMobile()
+  const diagnosis = await f.io.diagnoseMobile()
+  expect(diagnosis.available).toBe(false)
+  expect(diagnosis.events).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        step: 'resource-response',
+        status: 200,
+        bodyBytes: 20480,
+        validHeaders: false,
+      }),
+      expect.objectContaining({
+        step: 'error',
+        message: expect.stringContaining('not implemented on ios'),
+      }),
+      expect.objectContaining({
+        step: 'error',
+        message: 'Native filesystem ignored the bounded read',
+      }),
+    ])
+  )
+  expect(f.readFileInChunks).toHaveBeenCalled()
+  expect(f.whole).not.toHaveBeenCalled()
+  expect(f.files.size).toBe(0)
+})
+
+it('returns bounded upload parts from one 200 MiB whole mobile read', async () => {
+  const f = mobileStreamFixture()
+  const source = await new BoundedVaultIo(f.adapter).openUploadRead('sample.bin')
+  try {
+    for (let offset = 0; offset < f.size; offset += 1024 * 1024)
+      expect((await source.read(offset, 1024 * 1024)).every((byte) => byte === 73)).toBe(true)
+    expect(f.readBinary).toHaveBeenCalledOnce()
+    expect(f.counts).toMatchObject({
+      largeFetches: 0,
+      bytesProduced: f.size,
+      arrayBuffers: 0,
+      blobs: 0,
+    })
+    expect(f.probes.size).toBe(0)
+  } finally {
+    await source.close()
+  }
+})
+
 it('creates and removes resource probes only in the connection-owned staging area', async () => {
   const f = setup(),
     root = connectionPrivateRoot('sample-connection')
@@ -63,6 +159,8 @@ function setup(status = 206) {
       arrayBuffer()
       return native()
     }
+    // This older fixture explicitly has no stream API; its refusal remains required.
+    Object.defineProperty(response, 'body', { value: null })
     return response
   })
   return { adapter, files, fetcher, arrayBuffer }
@@ -228,21 +326,21 @@ it('uses validated WebView ranges before unavailable native APIs for a virtual m
   expect(f.files.size).toBe(0)
 })
 
-it('keeps the large-file refusal when the WebView ignores Range and native reads are absent', async () => {
+it('keeps the whole-file cap when the WebView ignores Range and native reads are absent', async () => {
   const f = setup(200),
     readBinary = vi.fn(() => {
       throw new Error('whole-file read')
     })
   Object.assign(f.adapter, {
-    stat: async () => ({ type: 'file', size: 200 * 1024 * 1024, mtime: 1, ctime: 1 }),
+    stat: async () => ({ type: 'file', size: 201 * 1024 * 1024, mtime: 1, ctime: 1 }),
     appendBinary: async () => {},
     readBinary,
   })
   vi.stubGlobal('fetch', f.fetcher)
   vi.stubGlobal('Capacitor', undefined)
   const io = new BoundedVaultIo(f.adapter)
-  await expect(io.requireTransfer(200 * 1024 * 1024)).rejects.toThrow('50 MiB')
-  await expect(io.openRead('sample.bin')).rejects.toThrow('50 MiB')
+  await expect(io.requireTransfer(201 * 1024 * 1024)).rejects.toThrow('200 MiB')
+  await expect(io.openUploadRead('sample.bin')).rejects.toThrow('200 MiB')
   expect(readBinary).not.toHaveBeenCalled()
   expect(f.files.size).toBe(0)
 })

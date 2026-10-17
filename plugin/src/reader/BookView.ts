@@ -19,7 +19,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { settingsSlice } from '@/composables/settingsSlice'
 import { auditDocument, blankDocument, frameSandbox } from './bookSafety'
 import type { OpenedBook } from './openBook'
-import { openBookFile } from './openFile'
+import { openVaultBook } from './vaultBook'
 import { emptyBookModel, tocEntries, type BookModel, type PanelTab } from './model'
 import {
   darkPdfPages,
@@ -531,10 +531,13 @@ export class BookView extends FileView {
     try {
       const stage = await this.stageReady
       await prepareExternalFile(this.app, file.path)
-      const data = new Uint8Array(await this.app.vault.readBinary(file))
       if (token !== this.loadToken) return
       const settings = readerSettings()
-      const opened = await openBookFile(file, data)
+      const opened = await openVaultBook(this.app, file)
+      if (token !== this.loadToken) {
+        opened.destroy()
+        return
+      }
       if (this.isPdf) {
         this.openedPdfLayout = pdfLayoutKey(settings)
         const rendition = (opened.book.rendition ??= {})

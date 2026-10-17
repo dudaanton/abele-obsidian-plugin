@@ -1,3 +1,4 @@
+import { FINGERPRINT_UPLOAD } from './mobileWholeRead'
 import { connectionPrivateRoot } from './connectionPaths'
 import { assertPhysicalPath } from './external/projection'
 import { scopedFileSystem, FolderScopeError } from './scopedFileSystem'
@@ -124,6 +125,7 @@ export class TokenEngineRuntime
   implements ConnectionRuntime, Omit<TokenUiRuntime, 'historyClient'>
 {
   readonly trace = new ExchangeTrace()
+  private readonly wholeReadUploads = new Set<string>()
   readonly engine: SyncEngine
   readonly client: V2EngineClient
   readonly actions: TokenActions
@@ -614,11 +616,14 @@ export class TokenEngineRuntime
       fetch: transport,
       ...(options.WebSocket ? { WebSocket: options.WebSocket } : {}),
     })
+    const hasBlob = this.client.hasBlob.bind(this.client)
+    this.client.hasBlob = async (sha) => this.wholeReadUploads.has(sha) || (await hasBlob(sha))
     const prepare = this.client.prepare.bind(this.client)
     const includes = this.client.includes.bind(this.client)
     this.client.includes = (path) =>
       includes(path) || (this.active && this.permitted && this.assetPaths.has(path))
     this.client.prepare = async (fs, state, excluded) => {
+      this.wholeReadUploads.clear()
       this.readyToPublish = false
       this.acceptHandshake = true
       if (options.rootExists && (await state.getCursor()) > 0 && !(await options.rootExists()))
@@ -933,7 +938,10 @@ export class TokenEngineRuntime
                 true
               )
           if (
-            (name === 'read' || name === 'stat' || name === 'fingerprint') &&
+            (name === 'read' ||
+              name === 'stat' ||
+              name === 'fingerprint' ||
+              name === Symbol.for('abele.sync.fingerprint-fresh-v1')) &&
             typeof value === 'function'
           )
             return (path: string) =>
@@ -942,8 +950,9 @@ export class TokenEngineRuntime
                 const total = this.inventoryTotal
                 if (this.compared.size === 0) options.comparing?.({ completed: 0, total })
                 const bytes =
-                  name === 'fingerprint'
-                    ? await value.call(target, path)
+                  name === 'fingerprint' || name === Symbol.for('abele.sync.fingerprint-fresh-v1')
+                    ? ((await this.fingerprintForUpload(target, path)) ??
+                      (await value.call(target, path)))
                     : await connectStage(
                         'Comparing files',
                         'Comparing a local file could not finish. Try syncing again.',
@@ -970,6 +979,7 @@ export class TokenEngineRuntime
       ...(options.paths?.scriptsFolder ? { scriptsFolder: options.paths.scriptsFolder } : {}),
       ...(options.fallbackMs ? { fallbackMs: options.fallbackMs } : {}),
       onSync: (report) => {
+        this.wholeReadUploads.clear()
         this.serverAvailable = true
         this.trace.finishPull(true)
         this.pendingFolders.clear()
@@ -983,6 +993,7 @@ export class TokenEngineRuntime
         void this.outbox.drain().catch(() => options.publicationChanged?.())
       },
       onFail: (error) => {
+        this.wholeReadUploads.clear()
         this.trace.finishPull(false)
         this.pendingFolders.clear()
         this.folderProgress.clear()
@@ -1837,6 +1848,35 @@ export class TokenEngineRuntime
     this.assertHeld()
     await this.engine.sync()
     await this.outbox.drain(retryHeld)
+  }
+  private async fingerprintForUpload(fs: FileSystem, path: string) {
+    const fingerprint = Reflect.get(fs, FINGERPRINT_UPLOAD) as
+      | undefined
+      | ((
+          path: string,
+          consume: (identity: { size: number; sha: string }, source: ChunkSource) => Promise<void>,
+          signal: AbortSignal
+        ) => Promise<unknown>)
+    if (!fingerprint) return undefined
+    return this.transferBudget.run(() =>
+      fingerprint.call(
+        fs,
+        path,
+        async (identity: { size: number; sha: string }, source: ChunkSource) => {
+          this.assertHeld()
+          if (await this.client.hasBlob(identity.sha)) return
+          this.assertHeld()
+          await this.client.putBlobSource(
+            identity,
+            source,
+            this.requests.signal,
+            this.transferBudget.maxChunkBytes
+          )
+          this.wholeReadUploads.add(identity.sha)
+        },
+        this.requests.signal
+      )
+    )
   }
   async reconcile(): Promise<void> {
     this.assertHeld()

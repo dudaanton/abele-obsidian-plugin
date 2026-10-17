@@ -95,9 +95,12 @@ it.each([50, 200])(
       expect(readBinary).not.toHaveBeenCalled()
       records.set('sample.bin', { size, mtime: ++clock, ctime: clock })
       if (mib > 50) {
-        await expect(host.fingerprint('sample.bin')).rejects.toThrow('50 MiB')
+        await expect(host.fingerprint('sample.bin')).rejects.toThrow(
+          'Recorded file changed; file kept'
+        )
         await expect(fs.openRead('sample.bin')).rejects.toThrow('50 MiB')
         expect(records.has('sample.bin')).toBe(true)
+        expect(readBinary).not.toHaveBeenCalled()
       }
     } finally {
       host.close()

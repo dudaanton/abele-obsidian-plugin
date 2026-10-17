@@ -5,6 +5,7 @@ import {
   summarizePull,
   pullCountKeys,
 } from './pullOperationCounts'
+import { mobileReadSnapshot } from './mobileReadDiagnostics'
 
 interface PullScope {
   active: boolean
@@ -312,6 +313,7 @@ export class ExchangeTrace {
       this.detailCount = 0
     }
     return {
+      localReads: mobileReadSnapshot(),
       lastPull: this.lastPull ? { ...this.lastPull, paths: [...this.lastPull.paths] } : null,
       active: this.active
         .filter((one) => one.active)

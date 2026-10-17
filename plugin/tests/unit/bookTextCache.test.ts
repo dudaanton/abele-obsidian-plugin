@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { App, TFile } from 'obsidian'
 import type { OpenedBook } from '@/reader/openBook'
-import { openBookFile } from '@/reader/openFile'
+import { openVaultBook } from '@/reader/vaultBook'
 import { forgetBookTexts, loadBookText } from '@/reader/bookText'
 
-vi.mock('@/reader/openFile', () => ({ openBookFile: vi.fn() }))
+vi.mock('@/reader/vaultBook', () => ({ openVaultBook: vi.fn() }))
 
 const app = {
   vault: { readBinary: async () => new ArrayBuffer(0) },
@@ -22,12 +22,12 @@ const deferred = () => {
   return { promise, resolve, reject }
 }
 
-beforeEach(() => vi.mocked(openBookFile).mockReset())
+beforeEach(() => vi.mocked(openVaultBook).mockReset())
 afterEach(() => forgetBookTexts())
 
 it('shares an unchanged book and releases it once on unload', async () => {
   const book = opened()
-  vi.mocked(openBookFile).mockResolvedValue(book)
+  vi.mocked(openVaultBook).mockResolvedValue(book)
   const loading = loadBookText(app, file(1))
   expect(loadBookText(app, file(1)) === loading).toBe(true)
   await loading
@@ -40,7 +40,7 @@ it('shares an unchanged book and releases it once on unload', async () => {
 it('releases every replaced book instead of losing its resource owner on a file change', async () => {
   const books = Array.from({ length: 6 }, opened)
   for (const [index, book] of books.entries()) {
-    vi.mocked(openBookFile).mockResolvedValueOnce(book)
+    vi.mocked(openVaultBook).mockResolvedValueOnce(book)
     await loadBookText(app, file(index))
     for (const prior of books.slice(0, index)) expect(prior.destroy).toHaveBeenCalledOnce()
     expect(book.destroy).not.toHaveBeenCalled()
@@ -54,7 +54,7 @@ it('releases a replaced book even when its opening finishes after its replacemen
   const pending = deferred()
   const oldBook = opened()
   const newBook = opened()
-  vi.mocked(openBookFile).mockReturnValueOnce(pending.promise).mockResolvedValueOnce(newBook)
+  vi.mocked(openVaultBook).mockReturnValueOnce(pending.promise).mockResolvedValueOnce(newBook)
   const oldLoading = loadBookText(app, file(1))
   const newLoading = loadBookText(app, file(2))
   await newLoading
@@ -71,7 +71,7 @@ it.each(['replace', 'unload'] as const)(
   async (action) => {
     const pending = deferred()
     const book = opened()
-    vi.mocked(openBookFile).mockReturnValueOnce(pending.promise).mockResolvedValueOnce(book)
+    vi.mocked(openVaultBook).mockReturnValueOnce(pending.promise).mockResolvedValueOnce(book)
     const oldLoading = loadBookText(app, file(1))
     // Let the first opening reach the deferred source before unload creates a new entry.
     await Promise.resolve()
@@ -82,7 +82,7 @@ it.each(['replace', 'unload'] as const)(
     pending.reject(new Error('Sample opening failed'))
     await expect(oldLoading).rejects.toThrow('Sample opening failed')
     expect(loadBookText(app, currentFile) === newLoading).toBe(true)
-    expect(openBookFile).toHaveBeenCalledTimes(2)
+    expect(openVaultBook).toHaveBeenCalledTimes(2)
     expect(book.destroy).not.toHaveBeenCalled()
   }
 )

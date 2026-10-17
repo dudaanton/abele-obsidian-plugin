@@ -155,8 +155,9 @@ class FB2Converter {
 }
 
 const parseXML = async blob => {
-    const buffer = await blob.arrayBuffer()
-    const str = new TextDecoder('utf-8').decode(buffer)
+    // ABELE: disk-backed input decodes bounded chunks without retaining a binary copy.
+    const buffer = blob.readText ? null : await blob.arrayBuffer()
+    const str = blob.readText ? await blob.readText('utf-8') : new TextDecoder('utf-8').decode(buffer)
     const parser = new DOMParser()
     const doc = parser.parseFromString(str, MIME.XML)
     const encoding = doc.xmlEncoding
@@ -164,7 +165,7 @@ const parseXML = async blob => {
         // so parse the XML declaration manually
         || str.match(/^<\?xml\s+version\s*=\s*["']1.\d+"\s+encoding\s*=\s*["']([A-Za-z0-9._-]*)["']/)?.[1]
     if (encoding && encoding.toLowerCase() !== 'utf-8') {
-        const str = new TextDecoder(encoding).decode(buffer)
+        const str = blob.readText ? await blob.readText(encoding) : new TextDecoder(encoding).decode(buffer)
         return parser.parseFromString(str, MIME.XML)
     }
     return doc

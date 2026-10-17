@@ -132,10 +132,10 @@ describe('the connection record', () => {
 })
 
 describe('the size cap', () => {
-  it('is 50 MB on a phone and nothing on a desktop when the record names none', () => {
+  it('is 200 MiB on a phone and nothing on a desktop when the record names none', () => {
     expect(readConnection(storage()).selective.maxFileBytes).toBeNull()
     expect(readConnection(storage(), true).selective.maxFileBytes).toBe(MOBILE_MAX_FILE_BYTES)
-    expect(MOBILE_MAX_FILE_BYTES).toBe(50 * 1024 * 1024)
+    expect(MOBILE_MAX_FILE_BYTES).toBe(200 * 1024 * 1024)
 
     const noCap = storage({ [CONNECTION_KEY]: { ...connected(), selective: { images: false } } })
     expect(readConnection(noCap, true).selective.maxFileBytes).toBe(MOBILE_MAX_FILE_BYTES)

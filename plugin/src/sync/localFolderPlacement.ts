@@ -1,3 +1,4 @@
+import { FINGERPRINT_UPLOAD, UPLOAD_READ } from './mobileWholeRead'
 import type { FileSystem, StateStore, StateEntry, AtomicStage } from '@abele/sync-core'
 import { assertPhysicalPath } from './external/projection'
 import { privatePlacementStages, PRIVATE_PLACEMENT_STAGES } from './privatePlacementStages'
@@ -164,6 +165,9 @@ export class LocalFolderPlacement {
           ].includes(key as symbol)
         )
           return (path: string) => value.call(target, placement.toLocal(path))
+        if (key === FINGERPRINT_UPLOAD || key === UPLOAD_READ)
+          return (path: string, ...args: unknown[]) =>
+            value.call(target, placement.toLocal(path), ...args)
         if (key === Symbol.for('abele.sync.live-source-stage-v1')) return value.bind(target)
         if (key === Symbol.for('abele.sync.reopen-pull-stage-v1'))
           return async (id: string) => retainedStage(await value.call(target, id))

@@ -12,7 +12,7 @@ import { searchMatcher, type SearchExcerpt } from '@/vendor/foliate-js/search.js
 import type { FoliateBook, FoliateTocItem } from '@/vendor/foliate-js/view.js'
 import type { OpenedBook } from './openBook'
 import type { PdfBookExtras } from './pdfBook'
-import { openBookFile } from './openFile'
+import { openVaultBook } from './vaultBook'
 
 export interface BookSectionInfo {
   index: number
@@ -64,9 +64,8 @@ async function indexOfHref(book: Resolver, href: string): Promise<number> {
 
 async function load(app: App, file: TFile): Promise<LoadedBook> {
   await prepareExternalFile(app, file.path)
-  const data = new Uint8Array(await app.vault.readBinary(file))
   const pdf = file.extension === 'pdf'
-  const opened: OpenedBook = await openBookFile(file, data)
+  const opened: OpenedBook = await openVaultBook(app, file)
   const book = opened.book as LoadedBook['book']
   const toc: LoadedBook['toc'] = []
   const walk = async (items: FoliateTocItem[] | undefined, depth: number) => {

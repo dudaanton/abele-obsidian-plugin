@@ -432,8 +432,7 @@ opened.
 
 Obsidian hides the status bar on a phone, so the sync state is only shown in the Sync tab.
 
-On a phone **Largest file** starts at 50 MB, so the vault's video and big scans stay off it while
-every note arrives. The cap is always the phone's own: nothing that arrives from a laptop — a
+On a phone **Largest file** starts at 200 MiB. Larger files stay off it while every note arrives. The cap is always the phone's own: nothing that arrives from a laptop — a
 transfer, a copied or synced `data.json` — sets it, so a laptop's "no cap" never fills a phone. Set
 it to anything else, or empty, like on any device; the laptop does not see the change.
 

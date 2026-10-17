@@ -1,4 +1,5 @@
 import { englishSyncText, type SyncText } from './presentation'
+import { MobileWholeReadLimitError } from './mobileWholeRead'
 import { FolderScopeError } from './scopedFileSystem'
 import { nativeSyncFailure } from './mobileTransport'
 import { LocalPlacementError } from './localFolderPlacement'
@@ -23,6 +24,7 @@ export function connectionError(
   startup = false,
   text: SyncText = englishSyncText
 ): string {
+  if (error instanceof MobileWholeReadLimitError) return error.message
   if (error instanceof LocalPlacementError || error instanceof FolderScopeError)
     return error.message
   const native = nativeSyncFailure(error)

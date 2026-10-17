@@ -337,6 +337,13 @@ export function syncPlacementPlugin() {
           `if ((intent.stageId !== undefined || fs[Symbol.for('abele.sync.recover-published-pull-v1')]) &&
               (await state.getMeta?.(\`pull-write:\${fileId}\`)) != null) {`
         )
+      } else if (file.endsWith('/pushSources.js')) {
+        code = replaceOnce(
+          code,
+          'return await fs.openRead(path);',
+          `const upload = fs[Symbol.for('abele.sync.open-upload-v1')];
+          return await (upload ? upload.call(fs, path) : fs.openRead(path));`
+        )
       } else if (file.endsWith('/pusher.js')) {
         code = replaceOnce(
           code,
@@ -449,6 +456,19 @@ export function syncPlacementPlugin() {
           'await coordinatePlacement(this.fs, [path], () => this.fs.removeDirectory(path, removal.identity));'
         )
       } else if (file.endsWith('/v2Client.js')) {
+        // Multipart parts are private until complete. Hash that pass, including already
+        // received parts on resume, rather than reading the entire source once more first.
+        code = replaceOnce(
+          code,
+          'const first = incrementalSha256.create();',
+          `if (expected.size <= Math.min(maxChunkBytes, this.http.simpleUploadBytes)) {
+            const first = incrementalSha256.create();`
+        )
+        code = replaceOnce(
+          code,
+          'const path = `/v2/uploads/${expected.sha}`;',
+          '}\n            const path = `/v2/uploads/${expected.sha}`;'
+        )
         code = replaceOnce(
           code,
           "if (event.type === 'removal') {",

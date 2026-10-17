@@ -7,11 +7,14 @@ import {
   fingerprintSource,
   type ChunkSource,
   type SourceStamp,
+  type ContentIdentity,
 } from '@abele/sync-core'
 import { bytesOf } from './vaultWrites'
 import { sha256 } from '@noble/hashes/sha2'
 import { probeSequentialFiles, type ProbeEvent } from './mobileSequentialSource'
 import { probeResourceRanges } from './mobileResourceRanges'
+import { mobileReadMeter } from './mobileReadDiagnostics'
+import { MOBILE_WHOLE_READ_MAX, MobileWholeReadLimitError } from './mobileWholeRead'
 import { stagingDirectory, reserveStagingPath } from './stagingDirectory'
 import { makeParents } from './vaultFolders'
 
@@ -135,11 +138,8 @@ export class BoundedVaultIo {
   }
   async requireTransfer(size: number): Promise<void> {
     if (size <= PHONE_FALLBACK_BYTES || (this.raw.open && this.raw.fullPath)) return
-    if (!(await this.mobile()))
-      throw new EngineError(
-        'io',
-        'Bounded file reads are unavailable; the fallback limit is 50 MiB'
-      )
+    if (!(await this.mobile()) && size > MOBILE_WHOLE_READ_MAX)
+      throw new MobileWholeReadLimitError(size)
     if (typeof this.disk.appendBinary !== 'function')
       throw new EngineError(
         'io',
@@ -182,7 +182,8 @@ export class BoundedVaultIo {
   }
   async diagnoseMobile() {
     const events: ProbeEvent[] = []
-    const available = await this.probeMobile((event) => events.push(event))
+    this.rangedMobile = this.probeMobile((event) => events.push(event))
+    const available = await this.rangedMobile
     return {
       available: available !== null,
       mode: this.resourceMobile
@@ -196,6 +197,12 @@ export class BoundedVaultIo {
     }
   }
   private async probeMobile(
+    trace: (event: ProbeEvent) => void = () => {}
+  ): Promise<MobileAccess | null> {
+    this.sequentialMobile = null
+    return this.probeMobileNative(trace)
+  }
+  private async probeMobileNative(
     trace: (event: ProbeEvent) => void = () => {}
   ): Promise<MobileAccess | null> {
     this.resourceMobile =
@@ -267,25 +274,50 @@ export class BoundedVaultIo {
       }
     }
   }
-  async openRead(path: string, expected?: SourceStamp): Promise<ChunkSource> {
+  openUploadRead(path: string, expected?: SourceStamp): Promise<ChunkSource> {
+    return this.openSource(path, expected, true)
+  }
+  openRead(path: string, expected?: SourceStamp): Promise<ChunkSource> {
+    return this.openSource(path, expected, false)
+  }
+  private async openSource(
+    path: string,
+    expected: SourceStamp | undefined,
+    wholeFileUpload: boolean
+  ): Promise<ChunkSource> {
     const original = stampOf(await this.stat(path))
     if (expected && original.generation !== expected.generation)
       throw new EngineError('conflict', `${path} changed before opening`)
     const raw = this.raw
     const handle = raw.open && raw.fullPath ? await raw.open(raw.fullPath(path), 'r') : null
-    const access = handle ? null : await this.mobile()
+    // A stat-bounded small read avoids a resource fetch for every note in a first pull.
+    const small = original.size <= MAX_CHUNK_BYTES
+    const access = handle || small ? null : await this.mobile()
     const files = access?.files
     const resource = access && this.resourceMobile
     const sequential =
       !resource && files ? this.sequentialMobile?.open(path, original.size) : undefined
     let fallback: Uint8Array | null = null
+    const meter = mobileReadMeter()
     if (!handle && !access) {
-      if (original.size > PHONE_FALLBACK_BYTES)
+      if (!wholeFileUpload && original.size > PHONE_FALLBACK_BYTES)
         throw new EngineError(
           'io',
           'Bounded file reads are unavailable; the fallback limit is 50 MiB'
         )
+      if (original.size > MOBILE_WHOLE_READ_MAX) throw new MobileWholeReadLimitError(original.size)
+      // iOS delivers the whole file anyway. Read directly, avoiding a fetch body plus a copy.
+      // Slice only the outgoing part: the bridge must never receive the whole backing buffer.
+      this.assertOwned()
+      meter.wholeRead()
       fallback = new Uint8Array(await this.disk.readBinary(path))
+      this.assertOwned()
+      if (fallback.length !== original.size)
+        throw new EngineError('conflict', `${path} changed while reading`)
+      console.debug('[abele-sync] mobile whole-file read', { bytes: fallback.byteLength })
+      meter.opened()
+      meter.chunk(fallback.length, fallback.byteLength, MOBILE_WHOLE_READ_MAX)
+      meter.hold(fallback.byteLength)
     }
     let closed = false
     const unchanged = async () => {
@@ -326,11 +358,16 @@ export class BoundedVaultIo {
           }
         } else if (resource) {
           bytes = await resource.read(path, original.size, offset, length, signal)
+        } else if (sequential) {
+          bytes = await sequential.read(offset, length, signal)
         } else if (files) {
-          bytes = sequential
-            ? await sequential.read(offset, length, signal)
-            : await readMobileChunk(files, this.mobilePath(path), offset, length, signal)
-        } else bytes = fallback.slice(offset, offset + length)
+          bytes = await readMobileChunk(files, this.mobilePath(path), offset, length, signal)
+        } else {
+          bytes = fallback.slice(offset, offset + length)
+          meter.output(bytes.length)
+          meter.hold(fallback.byteLength + bytes.byteLength)
+          meter.hold(fallback.byteLength)
+        }
         signal?.throwIfAborted()
         this.assertOwned()
         if (bytes.length !== length) throw new EngineError('io', 'truncated bounded file read')
@@ -341,9 +378,51 @@ export class BoundedVaultIo {
         if (closed) return
         closed = true
         fallback = null
+        meter.hold(0)
+        meter.closed()
         await sequential?.close()
         await handle?.close()
       },
+    }
+  }
+  /** Hash and publish while the one mobile buffer is alive, rather than reread after scanning.
+   * The caller only publishes content-addressed bytes; ordinary engine commits still own paths.
+   * No buffer survives a completed scan callback, an upload failure, or a server hit. */
+  async fingerprintForUpload(
+    path: string,
+    consume: (identity: ContentIdentity, source: ChunkSource) => Promise<void>,
+    signal?: AbortSignal
+  ) {
+    const stat = await this.stat(path)
+    if (
+      stat.size <= PHONE_FALLBACK_BYTES ||
+      (this.raw.open && this.raw.fullPath) ||
+      (await this.mobile())
+    )
+      return undefined
+    signal?.throwIfAborted()
+    const source = await this.openUploadRead(path)
+    const hash = sha256.create()
+    try {
+      const identity = await fingerprintSource(
+        {
+          ...source,
+          read: async (offset, length, readSignal) => {
+            const bytes = await source.read(offset, length, readSignal)
+            hash.update(bytes)
+            return bytes
+          },
+          close: async () => {},
+        },
+        MAX_CHUNK_BYTES,
+        signal
+      )
+      await consume(identity, { ...source, close: async () => {} })
+      await source.assertUnchanged()
+      this.receipts.set(path, { hash, stamp: source.stamp })
+      return { ...source.stamp, ...identity }
+    } finally {
+      await source.close()
     }
   }
   async fingerprint(path: string, signal?: AbortSignal, boundedOnly = false, fresh = false) {
@@ -389,6 +468,10 @@ export class BoundedVaultIo {
             byte.toString(16).padStart(2, '0')
           ).join(''),
         }
+      // A recorded large mobile file with changed metadata must stay local. Never
+      // turn an invalidated receipt into an automatic whole-file eviction proof.
+      if (this.metadataReceipts && stamp.size > PHONE_FALLBACK_BYTES)
+        throw new EngineError('conflict', 'Recorded file changed; file kept')
       this.receipts.delete(path)
     }
     if (
@@ -477,6 +560,11 @@ export class BoundedVaultIo {
       let receipt = this.receipts.get(path)
       if (!receipt || receipt.stamp.generation !== before.generation) {
         this.receipts.delete(path)
+        if (before.size > PHONE_FALLBACK_BYTES && !(await this.canReplayStage()))
+          throw new EngineError(
+            'io',
+            'Bounded staging recovery is unavailable; the fallback limit is 50 MiB'
+          )
         const hash = sha256.create()
         const source = await this.openRead(path)
         try {

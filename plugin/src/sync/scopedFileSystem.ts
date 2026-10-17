@@ -1,3 +1,4 @@
+import { FINGERPRINT_UPLOAD, UPLOAD_READ } from './mobileWholeRead'
 import { EngineError, type FileSystem, type AtomicStage } from '@abele/sync-core'
 import { PLACEMENT } from './pathCoordinator'
 import { privatePlacementStages, PRIVATE_PLACEMENT_STAGES } from './privatePlacementStages'
@@ -149,7 +150,9 @@ export function scopedFileSystem(
           'mkdir',
           'removeDirectory',
         ].includes(String(key)) ||
-        key === Symbol.for('abele.sync.directory-identity-v1')
+        key === Symbol.for('abele.sync.directory-identity-v1') ||
+        key === FINGERPRINT_UPLOAD ||
+        key === UPLOAD_READ
       )
         return async (path: string, ...args: unknown[]) => {
           if (key === 'stat') assertStage(path)

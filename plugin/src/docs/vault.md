@@ -75,7 +75,8 @@ append chunks and check the resulting size before publication. Their write ident
 file stamps remain in process memory, never in the ledger or journal. Changed stamps,
 uncertain writes or a process restart invalidate that evidence: existing bytes then require
 ordinary verification. Without bounded reads, unknown local files above 50 MiB refuse
-read-dependent operations while retaining the original and any recovery artifacts. This
+non-upload whole-file reads while retaining the original and any recovery artifacts. Unknown large staging
+bytes still refuse bounded-only recovery above 50 MiB. This
 read fallback does not cap streamed receipt or hydration; selective-download limits still apply.
 
 Native unfenced publication retains displaced inodes in a device-local recovery directory
@@ -2469,8 +2470,9 @@ and routes outgoing deletes to the existing held-deletes review, including singl
 Filesystem fingerprints and content revalidation bypass process-local write receipts.
 Generation retirement clears the adapter's live receipts, including those shared by another
 filesystem instance. Ordinary pull verification
-can still use a live incremental receipt on append-only hosts. Fresh reads retain the ordinary
-50 MiB whole-file fallback limit; larger files require bounded readers. A persisted digest
+can still use a live incremental receipt on append-only hosts. Fresh non-upload reads retain the
+50 MiB whole-file fallback ceiling; larger files require bounded readers. Uploads alone may use
+the explicit 200 MiB whole-file ceiling. A persisted digest
 never substitutes for current bytes.
 
 Before startup recovery or publication, the host handshakes the server generation. A changed
@@ -2507,13 +2509,37 @@ rename. Transfer memory stays proportional to a chunk, including native encoding
 Local range readers are optional, independently probed capabilities: `getResourcePath` URLs
 are tested with small WebView Range requests (exact 206 and Content-Range required); Capacitor
 Filesystem `readFile` offset/length and `readFileInChunks` are also probed against small inputs.
+When these readers are unavailable, upload reads alone use one adapter `readBinary` buffer with
+an explicit 200 MiB hard ceiling (`MOBILE_WHOLE_READ_MAX`). Files above that ceiling are
+refused before reading, with the requested size and limit in the error. This is a whole-file
+read, not a bounded local stream. Outgoing multipart parts are independent copies of at most
+1 MiB, so the bridge never receives the full backing buffer for a part. Closing the source
+releases its buffer on success or failure. A resumed upload reads once again and skips parts
+the server has acknowledged.
+
+For large whole-read uploads, the scan hashes and publishes the content-addressed blob while
+the same buffer is open. The ordinary engine still owns commits and path changes, and its
+later blob check uses acknowledgements retained for that cycle to avoid reopening the file. This avoids retaining every scanned file in
+memory until the upload phase. A server hit closes the buffer immediately. Scope and placement
+proxies validate the path before this capability runs. Native/ranged hosts keep the ordinary
+scan/upload flow. The default mobile selective size cap uses the same 200 MiB constant.
+Non-upload readers, including book readers and unknown external-file verification, retain the
+50 MiB whole-read guard. Successful uploads retain only their incremental hash and unchanged
+file stamp for later offload verification; the upload buffer is released.
+
+The exchange snapshot's `localReads` counters expose reads, delivered chunks, consumed bytes,
+active sources, current/peak source-held buffers and maximum incoming backing-buffer size.
+For a whole-file read, one delivered chunk is the complete file. These counters measure
+JavaScript-owned buffers; native/browser resident memory requires platform sampling.
 The append-only large pull needs none of these local readers. If its process-local receipt is
 lost, the matching pull intent restarts only its private stage from offset zero and downloads
-one bounded stream anew, even when a previous seal was persisted. Recovery of an interrupted
-backup swap retains the backup without hashing the installed target. Existing local content
-still requires authenticated reads for uploads, local-edit preservation, replacement-base
-checks, and external-file eviction/read requests; unavailable bounded readers may stop those
-operations while preserving the local file. Custom providers without a streaming version API
+one bounded stream anew. Recovery of an interrupted backup swap retains the backup without
+hashing the installed target. Unknown large staging bytes still require bounded recovery;
+the whole-read upload allowance does not authorize replay after an uncertain append.
+External mobile fingerprints retain the hash with size/mtime; unchanged files reuse it,
+including after reconciliation changes ctime. Changed large receipts refuse eviction and keep
+the file local. A lost receipt requires a fresh authenticated read before eviction.
+Custom providers without a streaming version API
 also cannot receive large versions through their legacy whole-file API.
 
 The bounded exchange diagnostics retain local adapter-call, journal-save, hash, atomic-write

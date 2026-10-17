@@ -74,7 +74,7 @@ export class ExternalFileHost {
       undefined,
       undefined,
       app.vault.configDir,
-      undefined,
+      connectionPrivateArea(app),
       options.platform === 'mobile'
     )
     const opened = (file?: { path?: string } | null) => {

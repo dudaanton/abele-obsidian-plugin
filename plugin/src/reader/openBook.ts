@@ -16,6 +16,7 @@ import {
   sanitizePage,
 } from './bookSafety'
 import { isZip, openZip, type ZipLoader } from './zipLoader'
+import type { RangedZip } from './rangedZip'
 
 export class BookFormatError extends Error {}
 
@@ -135,10 +136,25 @@ export function isProtected(zip: ZipLoader): boolean {
 
 export async function openEpub(data: Uint8Array): Promise<OpenedBook> {
   if (!isZip(data)) throw new BookFormatError('This file is not an EPUB book.')
-  const zip: ZipLoader = openZip(data)
+  return openEpubArchive(openZip(data))
+}
+
+export async function openEpubArchive(zip: ZipLoader | RangedZip): Promise<OpenedBook> {
   if (!zip.entries.some((e) => e.filename === 'META-INF/container.xml'))
     throw new BookFormatError('This file is not an EPUB book: it has no container.')
-  if (isProtected(zip))
+  const names = new Set(zip.entries.map((entry) => entry.filename))
+  const encryption = await zip.loadText('META-INF/encryption.xml')
+  const algorithms = encryption
+    ? Array.from(
+        encryption.matchAll(/EncryptionMethod[^>]*\sAlgorithm\s*=\s*["']([^"']+)["']/g),
+        (match) => match[1]
+      )
+    : []
+  if (
+    names.has('META-INF/rights.xml') ||
+    names.has('META-INF/sinf.xml') ||
+    algorithms.some((algorithm) => !FONT_OBFUSCATION.has(algorithm))
+  )
     throw new BookFormatError('This book is protected by DRM, and the reader cannot open it.')
   const epub = new EPUB({
     loadText: zip.loadText,

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { desktopFsPort } from '../helpers/desktopRequire'
 import type { DataAdapter } from 'obsidian'
 import { BoundedVaultIo } from '@/sync/boundedVaultIo'
+import { mobileStreamFixture } from '../helpers/mobileStreamFixture'
 
 const MiB = 1024 * 1024
 afterEach(() => vi.unstubAllGlobals())
@@ -142,7 +143,7 @@ describe('bounded vault I/O', () => {
     expect(close).toHaveBeenCalledTimes(1)
     expect(largest).toBe(MiB)
   })
-  it('refuses large portable reads before invoking the whole-file adapter', async () => {
+  it('refuses non-upload portable reads above 50 MiB before invoking the adapter', async () => {
     const readBinary = vi.fn()
     const adapter = {
       stat: async () => ({ type: 'file', size: 51 * MiB, mtime: 1, ctime: 1 }),
@@ -195,12 +196,16 @@ describe('bounded vault I/O', () => {
     expect(await io.fingerprint('sample.tmp')).toMatchObject({ size: 51 * MiB })
     // A process restart has no acknowledgement history, even when the path and stamp survive.
     const restarted = new BoundedVaultIo(adapter, undefined, undefined, {})
-    await expect(restarted.fingerprint('sample.tmp')).rejects.toThrow('50 MiB')
+    await expect(restarted.fingerprint('sample.tmp', undefined, true)).rejects.toThrow(
+      'bounded local verification'
+    )
     uncertain = true
     await expect(io.append('sample.tmp', size, chunk, 1)).rejects.toThrow('acknowledgement lost')
     uncertain = false
     await expect(io.append('sample.tmp', size, chunk, 1)).rejects.toThrow('50 MiB')
-    await expect(io.fingerprint('sample.tmp')).rejects.toThrow('50 MiB')
+    await expect(io.fingerprint('sample.tmp', undefined, true)).rejects.toThrow(
+      'bounded local verification'
+    )
     expect(size).toBe(52 * MiB)
     expect(readBinary).not.toHaveBeenCalled()
   })
@@ -248,3 +253,53 @@ it.each(['create', 'append'])(
     expect(open).not.toHaveBeenCalled()
   }
 )
+
+it('reads a small mobile file without per-file resource fetch overhead', async () => {
+  const bytes = new Uint8Array(8200).fill(7)
+  const readBinary = vi.fn(async () => bytes.buffer)
+  const fetcher = vi.fn(() => {
+    throw new Error('unexpected local fetch')
+  })
+  vi.stubGlobal('fetch', fetcher)
+  const adapter = {
+    getResourcePath: () => 'capacitor://localhost/_capacitor_file_/sample/sample.md',
+    exists: async () => false,
+    mkdir: async () => {},
+    writeBinary: async () => {},
+    remove: async () => {},
+    stat: async () => ({ type: 'file', size: bytes.length, mtime: 1, ctime: 1 }),
+    readBinary,
+  } as unknown as DataAdapter
+  const source = await new BoundedVaultIo(adapter).openRead('sample.md')
+  try {
+    expect(await source.read(0, bytes.length)).toEqual(bytes)
+  } finally {
+    await source.close()
+  }
+  expect(readBinary).toHaveBeenCalledOnce()
+  expect(fetcher).not.toHaveBeenCalled()
+})
+
+it('keeps small reads on the adapter after a whole-file upload read', async () => {
+  const f = mobileStreamFixture()
+  const originalStat = f.adapter.stat.bind(f.adapter)
+  f.adapter.stat = async (path) =>
+    path === 'small.md' ? { type: 'file', size: 8, mtime: 1, ctime: 1 } : originalStat(path)
+  const smallRead = vi.fn(
+    async (path: string) => new Uint8Array(path === 'small.md' ? 8 : f.size).buffer
+  )
+  f.adapter.readBinary = smallRead
+  const io = new BoundedVaultIo(f.adapter)
+  const large = await io.openUploadRead('sample.bin')
+  await large.read(0, MiB)
+  await large.close()
+  const before = f.fetcher.mock.calls.length
+  const small = await io.openRead('small.md')
+  try {
+    expect(await small.read(0, 8)).toEqual(new Uint8Array(8))
+  } finally {
+    await small.close()
+  }
+  expect(f.fetcher.mock.calls.length).toBe(before)
+  expect(smallRead).toHaveBeenCalledTimes(2)
+})

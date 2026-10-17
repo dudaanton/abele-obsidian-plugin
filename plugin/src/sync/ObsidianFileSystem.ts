@@ -1,3 +1,4 @@
+import { FINGERPRINT_UPLOAD, UPLOAD_READ } from './mobileWholeRead'
 import { privatePlacementStages, PRIVATE_PLACEMENT_STAGES } from './privatePlacementStages'
 import { nativeChunkPort, connectionFilePort, vaultPathIsLink } from './vaultPathLinks'
 import {
@@ -22,6 +23,7 @@ import {
   type StateStore,
   type AtomicStage,
   type ContentIdentity,
+  type ChunkSource,
   type SourceStamp,
 } from '@abele/sync-core'
 import { BoundedVaultIo } from './boundedVaultIo'
@@ -1292,7 +1294,14 @@ export class ObsidianFileSystem implements FileSystem {
     const info = await this.rawStat(path)
     if (info === null || info.type !== 'file' || info.size > 200 * 1024 * 1024)
       return new Uint8Array()
-    return new Uint8Array(await adapter.readBinary(path)).subarray(0, maximum)
+    const source = await this.io.openRead(path)
+    try {
+      const bytes = await source.read(0, Math.min(maximum, source.size, MAX_CHUNK_BYTES))
+      await source.assertUnchanged()
+      return bytes
+    } finally {
+      await source.close()
+    }
   }
 
   async read(path: string): Promise<Uint8Array> {
@@ -1306,6 +1315,9 @@ export class ObsidianFileSystem implements FileSystem {
     }
   }
 
+  [UPLOAD_READ](path: string, expected?: SourceStamp) {
+    return this.io.openUploadRead(path, expected)
+  }
   async openRead(path: string, expected?: SourceStamp) {
     return this.io.openRead(path, expected)
   }
@@ -1314,6 +1326,16 @@ export class ObsidianFileSystem implements FileSystem {
   }
   [Symbol.for('abele.sync.replay-stage-v1')]() {
     return this.io.canReplayStage()
+  }
+  async [FINGERPRINT_UPLOAD](
+    path: string,
+    consume: (identity: { size: number; sha: string }, source: ChunkSource) => Promise<void>,
+    signal?: AbortSignal
+  ) {
+    const identity = await this.io.fingerprintForUpload(path, consume, signal)
+    if (!identity) return undefined
+    this.observedBases.set(caseKey(path), { sha: identity.sha })
+    return { ...identity, mtime: stamp(identity.mtime) }
   }
   async fingerprint(path: string, signal?: AbortSignal) {
     const identity = await this.io.fingerprint(path, signal, false, true)

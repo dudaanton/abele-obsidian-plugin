@@ -6,6 +6,12 @@ export async function allowFixtureAttachment(svc: TokenUi, id: string, size: num
   if (!record) throw new Error('Attachment fixture connection missing')
   const selective = record.selective
   if (!selective) throw new Error('Attachment fixture policy missing')
-  if (selective.maxFileBytes !== null && selective.maxFileBytes < size)
-    await svc.updateConnection(id, { selective: { ...selective, maxFileBytes: size } })
+  if (size > 50 * 1024 * 1024 || (selective.maxFileBytes !== null && selective.maxFileBytes < size))
+    await svc.updateConnection(id, {
+      selective: {
+        ...selective,
+        maxFileBytes:
+          selective.maxFileBytes === null ? null : Math.max(selective.maxFileBytes, size),
+      },
+    })
 }

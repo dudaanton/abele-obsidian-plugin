@@ -94,7 +94,7 @@ export function cleanSections(book: FoliateBook): () => void {
   }
 }
 
-const opened = (book: FoliateBook): OpenedBook => {
+export const openedOtherBook = (book: FoliateBook): OpenedBook => {
   // Resources a format does send through the engine's hook (a Kindle book's styles and pictures)
   // are cleaned there as an EPUB's are.
   if (book.transformTarget) guardBook(book)
@@ -107,6 +107,7 @@ const opened = (book: FoliateBook): OpenedBook => {
     },
   }
 }
+const opened = openedOtherBook
 
 export async function openOtherFormat(
   format: Exclude<BookFormat, 'epub' | 'pdf'>,

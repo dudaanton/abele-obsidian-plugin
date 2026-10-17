@@ -4,7 +4,7 @@ import type { ProbeEvent } from './mobileSequentialSource'
 import { stagingDirectory, reserveStagingPath } from './stagingDirectory'
 import { makeParents } from './vaultFolders'
 
-function resourceUrl(adapter: DataAdapter, path: string): string {
+export function resourceUrl(adapter: DataAdapter, path: string): string {
   const url = new URL(adapter.getResourcePath(path))
   if (
     url.hostname !== 'localhost' ||

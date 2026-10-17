@@ -219,17 +219,27 @@ async function drawPage(
   }
 }
 
-export async function openPdf(lib: PdfLib, data: Uint8Array): Promise<OpenedBook> {
+export async function openPdf(
+  lib: PdfLib,
+  data: Uint8Array | { range: { failed?: (error: unknown) => void }; length: number }
+): Promise<OpenedBook> {
   const problem = checkPdfLib(lib)
   if (problem) throw new Error(problem)
-  const pdf: PdfDocument = await lib.getDocument({
-    data,
+  const loadingTask = lib.getDocument({
+    ...(data instanceof Uint8Array ? { data } : data),
     ...pdfDataUrls(lib.GlobalWorkerOptions?.workerSrc),
     isEvalSupported: false,
     enableXfa: false,
     enableScripting: false,
     disableAutoFetch: true,
-  }).promise
+    rangeChunkSize: 1024 * 1024,
+    disableStream: true,
+  })
+  if (!(data instanceof Uint8Array))
+    data.range.failed = () => {
+      void loadingTask.destroy()
+    }
+  const pdf: PdfDocument = await loadingTask.promise
 
   const meta = (await pdf.getMetadata().catch((): null => null)) ?? {}
   const get = (key: string): unknown => meta.metadata?.get?.(key)
