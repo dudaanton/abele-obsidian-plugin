@@ -149,44 +149,42 @@ it('surfaces a server size refusal by path and reason, keeps bytes pending and a
 it('recovers interrupted installations before inspecting their bytes', async () => {
   const fixture = inspectionFixture()
   const { app, ui, host, registry, encoded, release, probe } = fixture
+  const socket = vi.spyOn(window, 'WebSocket')
   const recover = vi.spyOn(ObsidianFileSystem.prototype, 'recover')
   try {
     await ui.connect(encoded)
     const id = registry.records()[0].id
     await vi.waitFor(() => expect(ui.activity.value[id]?.inspection?.total).toBe(1))
     release()
-    await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
+    // Finish the initial automatic exchange before staging an interrupted installation.
+    await ui.sync(id)
     await host.close()
     await app.vault.adapter.write('Notes/inflight.tmp', '{"format":"abele.external", broken')
     app.saveLocalStorage(JOURNAL_KEY, [
       { owner: id, target: 'Notes/slow.txt', temp: 'Notes/inflight.tmp' },
     ])
-    const next = new TokenEngines(app as unknown as App, ui, () => 'a'.repeat(43), {
-      fetch: fixture.transport,
-      indexedDB: fixture.factory,
-    })
+    const next = fixture.makeHost()
     recover.mockClear()
     try {
       next.start()
-      // Recovery retires the interrupted entry; the restarted engine may already journal
-      // its own fresh streaming write for the same file, so only the old entry must go.
-      await vi.waitFor(
-        () =>
-          expect(
-            new WriteJournal(app).entries().filter((entry) => entry.temp === 'Notes/inflight.tmp')
-          ).toEqual([]),
-        { timeout: 10_000 }
-      )
+      await ui.sync(id)
+      // Recovery must retire the old entry before inspection can accept this vault.
+      expect(
+        new WriteJournal(app).entries().filter((entry) => entry.temp === 'Notes/inflight.tmp')
+      ).toEqual([])
       expect(recover).toHaveBeenCalled()
-      await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
+      expect(probe.mock.calls.some(([path]) => path === 'Notes/inflight.tmp')).toBe(false)
+      expect(ui.runtimes.has(id)).toBe(true)
     } finally {
       await next.close()
+      expect(socket).not.toHaveBeenCalled()
     }
   } finally {
     release()
     await host.close()
     probe.mockRestore()
     recover.mockRestore()
+    socket.mockRestore()
   }
 })
 
@@ -362,7 +360,7 @@ function inspectionFixture(
 }
 
 it('stops a locally renamed folder connection before any further exchange', async () => {
-  const { app, registry, ui, host, transport, release, encoded, factory } = inspectionFixture(
+  const { app, registry, ui, host, transport, release, encoded, makeHost } = inspectionFixture(
     false,
     'Notes'
   )
@@ -404,10 +402,7 @@ it('stops a locally renamed folder connection before any further exchange', asyn
       )
     ).toBe(false)
     await host.close()
-    const reopened = new TokenEngines(app as unknown as App, ui, () => 'a'.repeat(43), {
-      fetch: transport,
-      indexedDB: factory,
-    })
+    const reopened = makeHost()
     try {
       reopened.start()
       await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
@@ -426,7 +421,7 @@ it('stops a locally renamed folder connection before any further exchange', asyn
 })
 
 it('follows a moved folder after native pulls preserve local edit sources', async () => {
-  const { app, registry, ui, host, transport, release, encoded, factory } = inspectionFixture(
+  const { app, registry, ui, host, transport, release, encoded, makeHost } = inspectionFixture(
     false,
     'Fixtures/Shared',
     [
@@ -555,10 +550,7 @@ it('follows a moved folder after native pulls preserve local edit sources', asyn
     ).toBe(false)
     expect(ops.some((op) => op.op === 'delete' || op.op === 'delete_directory')).toBe(false)
     await host.close()
-    const reopened = new TokenEngines(app as unknown as App, ui, () => 'a'.repeat(43), {
-      fetch: transport,
-      indexedDB: factory,
-    })
+    const reopened = makeHost()
     try {
       reopened.start()
       await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
