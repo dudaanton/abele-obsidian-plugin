@@ -15,6 +15,12 @@
   flex: 0 0 auto;
 }
 
+/* The cell clips what hangs out of it: the previous-day arrow's light and focus ring need room
+   on its left, which the row keeps for them. */
+.abele-property-date {
+  padding-inline-start: var(--size-4-2);
+}
+
 /* As wide as the date, so the next-day button stays beside it. Outranks the phone's own
    `.is-mobile input[type="text"] { width: 100% }`. */
 .abele-property-date .abele-property-date__value.metadata-input {
@@ -23,7 +29,9 @@
   min-width: 0;
 }
 
-/* How far away the date is and its daily-note button: one piece when the row wraps. */
+/* The day between its arrows, and how far away it is with its daily-note button: two pieces,
+   each kept whole when the row wraps. */
+.abele-property-date__day,
 .abele-property-date__after {
   display: inline-flex;
   flex: 0 0 auto;
@@ -31,8 +39,9 @@
   gap: var(--size-2-1);
 }
 
+/* Wrapped under the day, its words start where the previous-day arrow's drawing does. */
 .abele-property-date__relative {
-  padding-inline: var(--size-4-1);
+  padding-inline: var(--size-2-3) var(--size-4-1);
   color: var(--text-muted);
   font-size: var(--font-ui-small);
   white-space: nowrap;

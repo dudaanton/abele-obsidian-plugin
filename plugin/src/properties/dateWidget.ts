@@ -46,14 +46,16 @@ export function renderDate(el: HTMLElement, value: unknown, ctx: WidgetContext, 
   el.empty()
   let current = value
   const row = el.createDiv({ cls: 'abele-property-date' })
-  const earlier = iconButton(row, 'abele-property-date__earlier', 'chevron-left', 'Previous day')
+  // The day with its two arrows never comes apart: a narrow cell moves the rest under it.
+  const dayEl = row.createSpan({ cls: 'abele-property-date__day' })
+  const earlier = iconButton(dayEl, 'abele-property-date__earlier', 'chevron-left', 'Previous day')
   // The date as text that opens the plugin's date window, the one a task's dates use, not the
   // system's own picker, which looks different on every platform.
-  const input = row.createEl('input', {
+  const input = dayEl.createEl('input', {
     cls: 'metadata-input metadata-input-text mod-date abele-property-date__value',
     attr: { readonly: 'true', 'aria-haspopup': 'dialog', placeholder: 'Empty' },
   })
-  const later = iconButton(row, 'abele-property-date__later', 'chevron-right', 'Next day')
+  const later = iconButton(dayEl, 'abele-property-date__later', 'chevron-right', 'Next day')
   // Together, so a narrow cell wraps them onto the next line as one rather than leaving the
   // button alone there.
   const after = row.createSpan({ cls: 'abele-property-date__after' })
@@ -69,6 +71,8 @@ export function renderDate(el: HTMLElement, value: unknown, ctx: WidgetContext, 
     input.value = day?.isValid()
       ? `${day.format(DISPLAY_DATE_FORMAT)}${timed ? ` ${parsed.time}` : ''}`
       : ''
+    // As wide as what it says, so the next-day arrow sits right after the date.
+    input.size = Math.max(input.value.length, input.placeholder.length, 1)
     const text = relativeTime(v, new Date(), siblingTime(ctx))
     relative.setText(text ?? '')
     relative.toggle(!!text)

@@ -225,9 +225,26 @@ onMounted(() => {
   }
 }
 
-// A phone keeps the row to one line: the repeat rule is in its tooltip and its window there.
+// A phone keeps the row to one line, as Obsidian keeps its own toolbar over the keyboard: what
+// does not fit scrolls sideways, every glyph keeps its tap box, and nothing goes down alone to a
+// second line. Seven glyphs and a date in words are more than a phone's width. The row reaches
+// past the text's edge by its own padding, so the scroll does not cut a glyph's light, and the
+// first glyph's drawing still starts at the text's edge. The repeat rule is in its tooltip there.
 .is-phone .abele-task-header-view {
   gap: 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin-inline: calc(-1 * var(--size-4-2));
+  padding-inline: var(--size-4-2);
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+
+  > * {
+    flex: 0 0 auto;
+  }
 
   .abele-obsidian-icon {
     padding-inline: var(--size-2-3);
