@@ -20,7 +20,7 @@ it.each([false, true])(
     const panel = mount(DebugPanel, { props: { session: { ...model.session } } })
     await panel.get('.abele-debug-value_row > .tree-item-self').trigger('click')
     command.mockImplementationOnce(async (...args: unknown[]) => {
-      const params = args[1] as { operation_id: string }
+      const params = args[1] as { operation_id: string; depth: number }
       inspectionId = params.operation_id
       rpc.mockImplementation(async (method: string) => {
         if (method === 'debugger.v1.approve') {
@@ -47,7 +47,18 @@ it.each([false, true])(
                     target_id: 'sample-target',
                     build_identity: 'matched',
                     payload_status: 'retained',
-                    requested_data: { items: [{ name: 'n', value: '3', handle: 'sample-child' }] },
+                    requested_data: {
+                      items: [
+                        { name: 'n', value: '3', handle: params.depth > 0 ? 'sample-child' : null },
+                      ],
+                      truncated: false,
+                      start: 0,
+                      count: 50,
+                      next: null,
+                      depth_limit: params.depth,
+                      expansion_depth: 0,
+                      observation_stop_epoch: 3,
+                    },
                   },
                 ]
               : [],
@@ -89,6 +100,12 @@ it.each([false, true])(
     ])
     expect(panel.findAll('.abele-debug-value_row')).toHaveLength(2)
     expect(panel.text()).toContain('n')
+    await panel
+      .findAll('.abele-debug-value_row')[1]
+      .get(':scope > .tree-item-self')
+      .trigger('click')
+    expect(panel.emitted('inspect')?.at(-1)).toEqual(['sample-child'])
+    expect(command).toHaveBeenCalledTimes(1)
     panel.unmount()
   }
 )

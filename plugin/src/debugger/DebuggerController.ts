@@ -752,7 +752,8 @@ export class DebuggerController {
           handle,
           start: 0,
           count: 50,
-          depth: 0,
+          // Retain handles for the next explicit expansion; the node does not recurse.
+          depth: 1,
           max_bytes: 8192,
         })
       )
