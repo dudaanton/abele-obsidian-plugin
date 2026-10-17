@@ -65,9 +65,15 @@
         />
         <ObsidianIcon
           v-if="drawable"
+          icon="crop"
+          tooltip="Crop, turn or mirror this picture"
+          @click="drawOnImage(true)"
+        />
+        <ObsidianIcon
+          v-if="drawable"
           icon="pen-line"
           tooltip="Draw on this picture"
-          @click="drawOnImage"
+          @click="drawOnImage()"
         />
         <ObsidianIcon
           v-if="isLocal"
@@ -184,7 +190,8 @@ const facts = computed(() =>
 /** A picture in the vault that can be drawn on: the pen opens it in a drawing tab. */
 const drawable = computed(() => isLocal.value && isDrawable(resolveFile()))
 
-function drawOnImage() {
+// One editor for both: cropping opens it with the frame in hand, drawing with the pen.
+function drawOnImage(crop = false) {
   const file = resolveFile()
   if (!file) return
   close()
@@ -193,7 +200,8 @@ function drawOnImage() {
     file.path,
     props.chatId,
     null,
-    props.replaceAttachment
+    props.replaceAttachment,
+    crop
   )
 }
 

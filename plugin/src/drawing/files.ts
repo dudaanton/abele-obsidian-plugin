@@ -141,13 +141,15 @@ export async function openImageInk(
   path: string,
   chat = '',
   embed: EmbedAnchor | null = null,
-  replaceAttachment = ''
+  replaceAttachment = '',
+  /** Opened to crop: the frame is in hand from the start rather than the pen. */
+  crop = false
 ): Promise<void> {
   const leaf = app.workspace.getLeaf('tab')
   await leaf.setViewState({
     type: IMAGE_INK_VIEW_TYPE,
     state: {
-      path, chat, embed, replaceAttachment,
+      path, chat, embed, replaceAttachment, crop,
       chatVersion: chat ? ChatService.getInstance().getSession(chat)?.conversationVersion.value : undefined,
     },
     active: true,
