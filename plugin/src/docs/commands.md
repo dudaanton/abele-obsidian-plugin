@@ -164,6 +164,16 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
 - Find and replace in frontmatter and content of all notes, matching the criteria
 - Migrate tasks from Dataview · Migrate from Dataview fields
 - Migrate data from Firefly III · Migrate time entries from Toggl
+- Migrate this Excalidraw drawing to a canvas — available for the active Excalidraw drawing;
+  creates and opens a new Abele canvas beside it, leaving the original untouched. The drawing's
+  file menu offers **Migrate to Abele canvas**. Existing output names get a numeric suffix;
+  drawings migrated before open their existing canvas instead
+- Migrate all Excalidraw drawings to canvases — asks for confirmation with the drawing count,
+  then migrates the vault's drawings, skipping ones already migrated. The report lists each
+  result, conversion losses and failures. Both commands redirect links and embeds in referring
+  notes and canvas file nodes to each newly migrated canvas, reporting rewritten-reference
+  counts and update errors; embedded drawings continue to render as pictures. The agent tool
+  `canvas_import_excalidraw` offers the same migration for one drawing or all drawings in scope
 
 - Lint current note · Lint folder… · Lint vault · Open linter — the linter's run shown in its own
   tab, grouped by note or rule, with fixes; also **Lint this note** / **Lint this folder** in the
