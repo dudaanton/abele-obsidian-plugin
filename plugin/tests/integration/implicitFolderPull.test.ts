@@ -35,9 +35,10 @@ it('keeps a production-host file pull with implicit folders within the bridge bo
   vi.spyOn(ExchangeTrace.prototype, 'beginPull').mockImplementation(function (
     this: ExchangeTrace,
     size,
-    path
+    path,
+    prefetchedRequests
   ) {
-    const finish = begin.call(this, size, path)
+    const finish = begin.call(this, size, path, prefetchedRequests)
     capturing = true
     return (complete) => {
       finish(complete)
