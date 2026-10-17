@@ -77,7 +77,7 @@ export const VIEW_BASE_CSS = `
 html, body { margin: 0; background: transparent; color: var(--text-normal);
   font-family: var(--font-interface); font-size: var(--font-ui-medium);
   line-height: var(--line-height-normal); -webkit-text-size-adjust: 100%; }
-body { padding: 1px; }
+body { padding: var(--size-4-1); }
 a { color: var(--text-accent); text-decoration: none; }
 a[data-abele-href] { cursor: pointer; -webkit-touch-callout: none; }
 a[data-abele-href]:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 2px; }
@@ -176,7 +176,8 @@ export function cleanViewHtml(html: string): string {
     if (href && readViewLink(href)) {
       el.setAttribute('data-abele-href', href)
       el.setAttribute('role', 'link')
-      el.setAttribute('tabindex', '0')
+      el.setAttribute('tabindex', '-1')
+      el.setAttribute('aria-hidden', 'true')
     }
   }
   return doc.body.innerHTML
@@ -226,4 +227,55 @@ export function readViewLink(href: string): ViewLink {
   }
   const text = params.get('text')?.trim()
   return text ? { kind: 'ask', text } : null
+}
+
+export interface ViewLinkRect {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+/** Frame layout read by the parent, never frame input listeners. Coordinates are viewport-local. */
+export function viewLinkTargets(doc: Document, width: number, height: number) {
+  const styleOf = (el: Element) => doc.defaultView?.getComputedStyle(el) ?? getComputedStyle(el)
+  return Array.from(doc.querySelectorAll('a[data-abele-href]')).flatMap((element) => {
+    const href = element.getAttribute('data-abele-href') ?? ''
+    if (!readViewLink(href)) return []
+    const bounds = { left: 0, top: 0, right: width, bottom: height }
+    for (let ancestor: Element | null = element; ancestor; ancestor = ancestor.parentElement) {
+      const style = styleOf(ancestor)
+      if (style.visibility === 'hidden' || style.display === 'none' || style.opacity === '0')
+        return []
+      if (ancestor === element) continue
+      const rect = ancestor.getBoundingClientRect()
+      if (/hidden|clip|scroll|auto/.test(style.overflowX || style.overflow)) {
+        bounds.left = Math.max(bounds.left, rect.left)
+        bounds.right = Math.min(bounds.right, rect.right)
+      }
+      if (/hidden|clip|scroll|auto/.test(style.overflowY || style.overflow)) {
+        bounds.top = Math.max(bounds.top, rect.top)
+        bounds.bottom = Math.min(bounds.bottom, rect.bottom)
+      }
+    }
+    const raw = Array.from(element.getClientRects()).filter(
+      (rect) => rect.width > 0 && rect.height > 0
+    )
+    if (!raw.length) return []
+    const rects = raw.flatMap((rect) => {
+      const left = Math.max(bounds.left, rect.left)
+      const top = Math.max(bounds.top, rect.top)
+      const right = Math.min(bounds.right, rect.right)
+      const bottom = Math.min(bounds.bottom, rect.bottom)
+      return right > left && bottom > top
+        ? [{ left, top, width: right - left, height: bottom - top }]
+        : []
+    })
+    const label =
+      element.getAttribute('aria-label')?.trim() ||
+      element.textContent?.trim() ||
+      element.querySelector('img')?.getAttribute('alt')?.trim() ||
+      href
+    return [{ element, href, label, rects }]
+  })
 }

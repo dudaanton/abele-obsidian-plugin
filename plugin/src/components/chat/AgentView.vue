@@ -6,17 +6,21 @@
       <span>This view can’t be shown.</span>
     </div>
     <pre v-if="broken || source" class="abele-agent-view__source"><code>{{ html }}</code></pre>
-    <iframe
-      v-if="!broken && !source"
-      ref="frame"
-      class="abele-agent-view__frame"
-      :style="{ height: frameHeight, maxHeight: inWindow ? undefined : '32em' }"
-      title="View by the agent"
-      sandbox="allow-same-origin"
-      referrerpolicy="no-referrer"
-      :srcdoc="documentHtml"
-      @load="ready"
-    />
+    <div v-if="!broken && !source" ref="stage" class="abele-agent-view__stage">
+      <iframe
+        key="frame"
+        ref="frame"
+        class="abele-agent-view__frame"
+        :style="{ height: frameHeight, maxHeight: inWindow ? undefined : '32em' }"
+        title="View by the agent"
+        tabindex="-1"
+        sandbox="allow-same-origin"
+        referrerpolicy="no-referrer"
+        :srcdoc="documentHtml"
+        @load="ready"
+      />
+      <div ref="hitLayer" class="abele-agent-view__hits" />
+    </div>
     <div v-if="!inWindow" class="abele-agent-view__foot">
       <span class="abele-agent-view__whose">
         <Icon icon="layout-panel-top" size="xs" :interactive="false" />
@@ -54,11 +58,19 @@
  * its links; with scripts off nothing inside can use that. A link to a web page opens the browser,
  * a note link opens the note, and an «ask» link puts its question in the chat's field, unsent.
  */
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { Notice } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'
 import ObsidianModal from '../obsidian/Modal.vue'
-import { ASK_EVENT, cleanViewHtml, readViewLink, themeOf, viewDocument } from '@/views/agentView'
+import { createLinkHitTarget } from '../obsidian/linkHitTarget'
+import {
+  ASK_EVENT,
+  cleanViewHtml,
+  readViewLink,
+  themeOf,
+  viewDocument,
+  viewLinkTargets,
+} from '@/views/agentView'
 import { GlobalStore } from '@/stores/GlobalStore'
 
 defineOptions({ name: 'AgentView' })
@@ -72,6 +84,11 @@ const emit = defineEmits<{ ask: [text: string] }>()
 const host = ref<HTMLElement | null>(null)
 
 const frame = ref<HTMLIFrameElement | null>(null)
+const stage = ref<HTMLElement | null>(null)
+const hitLayer = ref<HTMLElement | null>(null)
+const links = shallowRef<ReturnType<typeof viewLinkTargets>>([])
+const offscreenRect = { left: 0, top: 0, width: 1, height: 1 }
+const controls = new Map<string, ReturnType<typeof createLinkHitTarget>>()
 const source = ref(false)
 const opened = ref(false)
 const height = ref(0)
@@ -92,6 +109,81 @@ const frameHeight = computed(() =>
 let observer: ResizeObserver | null = null
 let themeWatch: MutationObserver | null = null
 let releaseLinks: (() => void) | undefined
+let animation: number | undefined
+let visibility: IntersectionObserver | undefined
+let visible = true
+
+function stopTracking() {
+  if (animation !== undefined) window.cancelAnimationFrame(animation)
+  animation = undefined
+  visibility?.disconnect()
+  observer?.disconnect()
+  releaseLinks?.()
+  releaseLinks = undefined
+  links.value = []
+  for (const control of controls.values()) control.destroy()
+  controls.clear()
+}
+
+function syncLinks() {
+  const el = frame.value
+  const doc = el?.contentDocument
+  if (!el || !doc) return
+  const next = viewLinkTargets(doc, el.clientWidth, el.clientHeight)
+  const signature = (items: typeof next) =>
+    JSON.stringify(items.map(({ href, label, rects }) => ({ href, label, rects })))
+  if (signature(next) !== signature(links.value)) links.value = next
+  const layer = hitLayer.value
+  if (!layer || !stage.value) return
+  // Markdown post-processing can move or normalize rendered DOM. Repair native nodes
+  // directly instead of retaining virtual nodes whose host anchors may have disappeared.
+  if (layer.parentElement !== stage.value) stage.value.appendChild(layer)
+  const active = new Set<string>()
+  next.forEach((link, index) => {
+    const rects = link.rects.length ? link.rects : [offscreenRect]
+    rects.forEach((rect, part) => {
+      const key = `${index}:${part}`
+      active.add(key)
+      let control = controls.get(key)
+      if (!control) {
+        control = createLinkHitTarget(layer)
+        control.element.classList.add('abele-agent-view__hit')
+        controls.set(key, control)
+      }
+      control.update({
+        href: link.href,
+        label: link.label,
+        secondary: part > 0,
+        offscreen: !link.rects.length,
+        rect,
+        onFocus: () => revealLink(link),
+      })
+      if (control.element.parentElement !== layer) layer.appendChild(control.element)
+    })
+  })
+  for (const [key, control] of controls) {
+    if (!active.has(key)) {
+      control.destroy()
+      controls.delete(key)
+    }
+  }
+}
+
+function revealLink(link: ReturnType<typeof viewLinkTargets>[number]) {
+  if (!link.rects.length) {
+    link.element.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    syncLinks()
+  }
+}
+
+watch(
+  [documentHtml, source, frame],
+  () => {
+    stopTracking()
+    if (!source.value && frame.value) ready()
+  },
+  { flush: 'post' }
+)
 
 function measure() {
   const doc = frame.value?.contentDocument
@@ -103,10 +195,13 @@ function measure() {
 }
 
 function ready() {
-  releaseLinks?.()
-  releaseLinks = undefined
+  stopTracking()
+  if (!frame.value) return
   const doc = frame.value?.contentDocument
-  if (!doc) return
+  if (!doc?.body) {
+    animation = window.requestAnimationFrame(ready)
+    return
+  }
   measure()
   const View = doc.defaultView?.ResizeObserver
   observer?.disconnect()
@@ -130,7 +225,38 @@ function ready() {
     img.addEventListener('error', () => missing(img))
     if (img.complete && !img.naturalWidth && img.getAttribute('src')) missing(img)
   })
-  releaseLinks = bindLinks(doc)
+  syncLinks()
+  if (stage.value) releaseLinks = bindLinks(stage.value)
+  visible = true
+  // WebKit does not deliver sandboxed-frame input events to parent-installed listeners.
+  // Read layout from the parent instead, including native iframe scrolling. Hidden views
+  // suspend their frame loop rather than reading layout throughout a long conversation.
+  const track = () => {
+    animation = undefined
+    if (!visible) return
+    if (frame.value?.contentDocument !== doc) {
+      ready()
+      return
+    }
+    syncLinks()
+    animation = window.requestAnimationFrame(track)
+  }
+  if (typeof IntersectionObserver !== 'undefined' && frame.value) {
+    visibility = new IntersectionObserver(([entry]) => {
+      if (frame.value?.contentDocument !== doc) {
+        ready()
+        return
+      }
+      visible = entry.isIntersecting
+      if (visible && animation === undefined) animation = window.requestAnimationFrame(track)
+      else if (!visible && animation !== undefined) {
+        window.cancelAnimationFrame(animation)
+        animation = undefined
+      }
+    })
+    visibility.observe(frame.value)
+  }
+  animation = window.requestAnimationFrame(track)
 }
 
 function routeLink(anchor: Element) {
@@ -142,7 +268,7 @@ function routeLink(anchor: Element) {
   else ask(link.text)
 }
 
-function bindLinks(doc: Document): () => void {
+function bindLinks(doc: HTMLElement): () => void {
   type Contact = { anchor: Element; x: number; y: number; id: number; moved: boolean; at: number }
   let pointer: Contact | undefined
   let touch: Contact | undefined
@@ -150,7 +276,7 @@ function bindLinks(doc: Document): () => void {
   const anchorOf = (event: Event) => {
     const node = event.target as Node | null
     const el = node?.nodeType === 3 ? node.parentElement : (node as Element | null)
-    return el?.closest?.('a') ?? null
+    return el?.closest?.('[data-abele-href]') ?? null
   }
   const start = (anchor: Element, x: number, y: number, id: number): Contact => {
     recent = undefined
@@ -275,7 +401,7 @@ onMounted(() => {
   themeWatch.observe(host, { attributes: true, attributeFilter: ['class', 'style'] })
 })
 onBeforeUnmount(() => {
-  observer?.disconnect()
+  stopTracking()
   themeWatch?.disconnect()
   releaseLinks?.()
 })
@@ -292,6 +418,18 @@ onBeforeUnmount(() => {
   border: none;
   background: transparent;
   color-scheme: normal;
+}
+
+.abele-agent-view__stage {
+  position: relative;
+  overflow: hidden;
+}
+
+.abele-agent-view__hits {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 .abele-agent-view__broken {

@@ -31,14 +31,18 @@ describe.skipIf(!available)('agent views in a real chat answer', () => {
           await evalLong(
             `(async () => {
       const wait = ms => new Promise(r => setTimeout(r, ms))
-      const until = async fn => { for (let i = 0; i < 100; i++) { const value = fn(); if (value) return value; await wait(100) } throw Error('Agent view did not render') }
+      const until = async (fn, label = 'render', details = () => ({})) => { for (let i = 0; i < 100; i++) { const value = fn(); if (value) return value; await wait(100) } throw Error('Agent view ' + label + ' timed out: ' + JSON.stringify(await details())) }
       const chats = window.__abeleTest.ChatService.getInstance()
       const previous = chats.activeTabId.value
       const previousLeaf = app.workspace.activeLeaf
       const path = 'sample-agent-views.abchat'
       if (app.vault.getAbstractFileByPath(path)) throw Error('Synthetic path occupied')
       if (!chats.canCreateTab) throw Error('No free synthetic chat tab')
-      let file, tab
+      let file, tab, session, originalSend
+      let unexpectedSends = 0
+      const originalConsoleError = console.error
+      const rendererErrors = []
+      console.error = (...args) => { rendererErrors.push(args.map(value => value?.stack || String(value))); originalConsoleError.apply(console, args) }
       const panes = new Set(app.workspace.getLeavesOfType('abele-ai-sidebar-view'))
       const capture = async name => {
         await wait(300)
@@ -54,8 +58,11 @@ describe.skipIf(!available)('agent views in a real chat answer', () => {
         file = await app.vault.create(path, records.map(r => JSON.stringify(r)).join('\\n') + '\\n')
         tab = chats.createTab()
         await chats.openChatInTab(tab, file)
+        session = chats.getSession(tab)
+        originalSend = session.sendMessage
+        session.sendMessage = async () => { unexpectedSends++; throw Error('A view link must never send a message') }
         await chats.revealSidebar({ focus: false })
-        const frame = await until(() => [...document.querySelectorAll('.abele-agent-view iframe')].find(el => el.getClientRects().length && el.contentDocument?.querySelectorAll('.card').length === 3))
+        const frame = await until(() => [...document.querySelectorAll('.abele-agent-view iframe')].find(el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && r.right > 0 && r.left < innerWidth && r.bottom > 0 && r.top < innerHeight && getComputedStyle(el).visibility === 'visible' && el.contentDocument?.querySelectorAll('.card').length === 3 }))
         await until(() => frame.getBoundingClientRect().height > 40)
         frame.scrollIntoView({ block: 'center' })
         await capture('chairs')
@@ -76,7 +83,27 @@ describe.skipIf(!available)('agent views in a real chat answer', () => {
         broken.scrollIntoView({ block: 'center' })
         await capture('broken')
         const links = [...doc.querySelectorAll('a')]
-        const inert = links.every(link => !link.hasAttribute('href') && link.getAttribute('role') === 'link' && link.tabIndex === 0)
+        const inert = links.every(link => !link.hasAttribute('href') && link.tabIndex === -1 && link.getAttribute('aria-hidden') === 'true')
+        const stage = frame.parentElement
+        await until(() => stage.querySelectorAll(".abele-agent-view__hit").length === links.length, "parent targets", async () => {
+          const before = stage.querySelectorAll(".abele-agent-view__hit").length
+          const component = frame.__vueParentComponent
+          const errors = []
+          const config = component?.appContext.config
+          const oldHandler = config?.errorHandler
+          if (config) config.errorHandler = error => { errors.push(error?.stack || String(error)); oldHandler?.(error) }
+          frame.dispatchEvent(new Event("load"))
+          await wait(150)
+          if (config) config.errorHandler = oldHandler
+          return { before, afterLoad: stage.querySelectorAll(".abele-agent-view__hit").length, rendererErrors: rendererErrors.slice(0, 5), errors, component: component ? { mounted: component.isMounted, unmounted: component.isUnmounted, keys: Object.keys(component.setupState) } : null, tail: stage.innerHTML.slice(-800) }
+        })
+        const targets = [...stage.querySelectorAll('.abele-agent-view__hit')]
+        const alignment = () => targets.every((target, index) => {
+          const rect = target.getBoundingClientRect(), source = links[index].getBoundingClientRect(), origin = frame.getBoundingClientRect()
+          if (target.classList.contains('is-offscreen')) return source.bottom <= 0 || source.top >= frame.clientHeight || source.right <= 0 || source.left >= frame.clientWidth
+          return target.ownerDocument === document && target.getAttribute('role') === 'link' && !!target.getAttribute('aria-label') && Math.abs(rect.left - origin.left - Math.max(0, source.left)) < 2 && Math.abs(rect.top - origin.top - Math.max(0, source.top)) < 2
+        })
+        const aligned = alignment()
         const frameUrl = doc.URL
         const opened = []
         const originalOpen = window.open
@@ -84,29 +111,65 @@ describe.skipIf(!available)('agent views in a real chat answer', () => {
         const chat = frame.closest('.abele-ai-chat')
         const countAsk = () => asks++
         chat.addEventListener('abele-view-ask', countAsk)
+        const cdp = require('@electron/remote').getCurrentWebContents().debugger
+        const ownedDebugger = !cdp.isAttached()
+        if (ownedDebugger) cdp.attach('1.3')
+        let swiped = false, hitParent = false, focusStyle
         try {
           window.open = (...args) => { opened.push(args); return null }
-          links.find(link => link.dataset.abeleHref.startsWith('https:')).click()
-          const compare = links.find(link => link.dataset.abeleHref.startsWith('abele:ask'))
-          const tap = target => {
-            for (const type of ['touchstart', 'touchend']) {
-              const event = new doc.defaultView.Event(type, { bubbles: true, cancelable: true })
-              const point = { identifier: 1, clientX: 10, clientY: 10 }
-              Object.defineProperties(event, { touches: { value: type === 'touchend' ? [] : [point] }, changedTouches: { value: [point] } })
-              target.dispatchEvent(event)
-            }
+          const web = targets.find(link => link.dataset.abeleHref.startsWith('https:'))
+          const compare = targets.find(link => link.dataset.abeleHref.startsWith('abele:ask'))
+          const point = target => {
+            const r = target.getBoundingClientRect()
+            return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }
           }
-          tap(compare)
+          const tap = async target => {
+            target.scrollIntoView({ block: 'center' }); await wait(150)
+            const p = point(target)
+            hitParent = document.elementFromPoint(p.x, p.y) === target
+            await cdp.sendCommand('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [p] })
+            await cdp.sendCommand('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+          }
+          const scroller = frame.closest('.abele-ai-chat__messages')
+          scroller.scrollTop = 0; await wait(150)
+          const before = scroller.scrollTop, start = point(compare)
+          await cdp.sendCommand('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [start] })
+          for (let i = 1; i <= 8; i++) {
+            await cdp.sendCommand('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: start.x, y: start.y - i * 10 }] })
+            await wait(30)
+          }
+          await cdp.sendCommand('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+          await wait(250)
+          swiped = scroller.scrollTop > before + 2 && asks === 0 && opened.length === 0
+          await tap(web)
+          await tap(compare)
           compare.click() // Compatibility click must not append the question twice.
-          await until(() => chats.getSession(tab).draft.value.text === 'Compare chairs')
-          compare.dispatchEvent(new doc.defaultView.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+          await until(() => chats.getSession(tab).draft.value.text === 'Compare chairs', 'touch draft', () => ({ asks, opened, swiped, hitParent, text: chats.getSession(tab).draft.value.text, target: compare.getBoundingClientRect().toJSON() }))
+          await wait(100) // Let the draft's requested composer focus settle before testing Tab/Enter's target.
+          compare.focus()
+          for (const modifiers of [0, 8]) {
+            await cdp.sendCommand('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9, modifiers })
+            await cdp.sendCommand('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9, modifiers })
+          }
+          await capture('parent-focus')
+          compare.focus()
+          if (document.activeElement !== compare) throw Error('Parent link target did not accept keyboard focus')
+          const focused = getComputedStyle(compare)
+          focusStyle = { background: focused.backgroundColor, shadow: focused.boxShadow, appearance: focused.appearance, tap: focused.webkitTapHighlightColor, offset: focused.outlineOffset, transition: focused.transitionDuration, animation: focused.animationName }
+          await cdp.sendCommand('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 })
+          await cdp.sendCommand('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 })
           await until(() => chats.getSession(tab).draft.value.text === 'Compare chairs\\nCompare chairs')
           await wait(150)
+        } catch (error) {
+          await capture('routing-error')
+          throw error
         } finally {
+          await cdp.sendCommand('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] }).catch(() => {})
           window.open = originalOpen
           chat.removeEventListener('abele-view-ask', countAsk)
+          if (ownedDebugger && cdp.isAttached()) cdp.detach()
         }
-        const routing = { inert, asks, opened, stayed: frame.contentDocument === doc && doc.URL === frameUrl && doc.querySelectorAll('.card').length === 3 }
+        const routing = { inert, aligned, swiped, hitParent, focusStyle, asks, opened, stayed: frame.contentDocument === doc && doc.URL === frameUrl && doc.querySelectorAll('.card').length === 3 }
         // Deliberately bypass sanitizing to prove the browser boundaries on this same frame.
         const hostile = '<script>parent.__agentViewExecuted = true</script><img src="data:image/png,invalid" onerror="parent.__agentViewExecuted = true"><svg onload="parent.__agentViewExecuted = true"></svg>'
         for (const source of [frame.srcdoc.replace('</body>', hostile + '</body>'), hostile]) {
@@ -118,8 +181,10 @@ describe.skipIf(!available)('agent views in a real chat answer', () => {
           await wait(150)
           if (window.__agentViewExecuted === true) throw Error('Frame executed agent content')
         }
-        return { cardCount, overflow, sandbox, appearance, routing, executed: window.__agentViewExecuted === true, broken: broken.textContent, source: broken.parentElement.querySelector('code').textContent }
+        return { cardCount, overflow, sandbox, appearance, routing, rendererErrors, unexpectedSends, executed: window.__agentViewExecuted === true, broken: broken.textContent, source: broken.parentElement.querySelector('code').textContent }
       } finally {
+        console.error = originalConsoleError
+        if (session && originalSend) session.sendMessage = originalSend
         if (tab) await chats.closeTab(tab)
         if (previous) chats.switchTab(previous)
         for (const leaf of app.workspace.getLeavesOfType('abele-ai-sidebar-view')) if (!panes.has(leaf)) leaf.detach()
@@ -141,6 +206,20 @@ describe.skipIf(!available)('agent views in a real chat answer', () => {
       expect(result.overflow).toBe(false)
       expect(result.sandbox).toBe('allow-same-origin')
       expect(result.routing.inert).toBe(true)
+      expect(result.rendererErrors).toEqual([])
+      expect(result.unexpectedSends).toBe(0)
+      expect(result.routing.aligned).toBe(true)
+      expect(result.routing.swiped).toBe(true)
+      expect(result.routing.hitParent).toBe(true)
+      expect(result.routing.focusStyle).toEqual({
+        background: 'rgba(0, 0, 0, 0)',
+        shadow: 'none',
+        appearance: 'none',
+        tap: 'rgba(0, 0, 0, 0)',
+        offset: '2px',
+        transition: '0s',
+        animation: 'none',
+      })
       expect(result.routing.stayed).toBe(true)
       expect(result.routing.asks).toBe(2)
       expect(result.routing.opened).toEqual([['https://example.test/chair', '_blank', 'noopener']])

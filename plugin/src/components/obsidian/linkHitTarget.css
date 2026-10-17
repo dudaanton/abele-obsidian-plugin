@@ -1,0 +1,31 @@
+button.abele-link-hit-target {
+  -webkit-appearance: none;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
+  position: absolute;
+  z-index: 1;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+  touch-action: auto;
+  pointer-events: auto;
+}
+button.abele-link-hit-target:hover,
+button.abele-link-hit-target:active {
+  background: transparent;
+  box-shadow: none;
+}
+button.abele-link-hit-target:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
+}
+button.abele-link-hit-target.is-offscreen {
+  pointer-events: none;
+  clip-path: inset(50%);
+}

@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { cleanViewHtml, readViewLink, viewDocument } from '@/views/agentView'
+import { describe, expect, it, vi } from 'vitest'
+import { cleanViewHtml, readViewLink, viewDocument, viewLinkTargets } from '@/views/agentView'
 import { readTopic } from '@/docs'
 
 describe('cleanViewHtml', () => {
@@ -16,7 +16,8 @@ describe('cleanViewHtml', () => {
     expect(links[1].getAttribute('data-abele-href')).toBe('abele:ask?text=More')
     for (const link of Array.from(links).slice(0, 2)) {
       expect(link.getAttribute('role')).toBe('link')
-      expect(link.getAttribute('tabindex')).toBe('0')
+      expect(link.getAttribute('tabindex')).toBe('-1')
+      expect(link.getAttribute('aria-hidden')).toBe('true')
     }
     expect(links[2].hasAttribute('data-abele-href')).toBe(false)
   })
@@ -27,7 +28,7 @@ describe('cleanViewHtml', () => {
     expect(cleanViewHtml(card)).toBe(
       card.replace(
         'href="https://shop.example/chair"',
-        'data-abele-href="https://shop.example/chair" role="link" tabindex="0"'
+        'data-abele-href="https://shop.example/chair" role="link" tabindex="-1" aria-hidden="true"'
       )
     )
   })
@@ -48,6 +49,61 @@ describe('cleanViewHtml', () => {
     expect(out).toContain('abele:note?path=Desk.md')
     expect(out).toContain('abele:ask?text=hi')
     expect(out).toContain('data:image/svg+xml')
+  })
+})
+
+describe('parent link geometry', () => {
+  it('clips wrapped fragments to the viewport and overflow ancestors, and retains offscreen links for keyboard access', () => {
+    const holder = document.createElement('div')
+    const parsed = new DOMParser().parseFromString(
+      cleanViewHtml(
+        '<div style="overflow:hidden"><a href="abele:ask?text=More" aria-label="Compare choices">First<br>second</a></div><a href="https://example.test"><img alt="Sample picture"></a><a style="display:none" href="https://example.test/hidden">Hidden</a>'
+      ),
+      'text/html'
+    )
+    holder.replaceChildren(...Array.from(parsed.body.childNodes))
+    document.body.appendChild(holder)
+    const rect = (left: number, top: number, width: number, height: number) => ({
+      left,
+      top,
+      right: left + width,
+      bottom: top + height,
+      width,
+      height,
+    })
+    try {
+      const anchors = holder.querySelectorAll('a')
+      vi.spyOn(anchors[0], 'getClientRects').mockReturnValue([
+        rect(-5, 10, 30, 10),
+        rect(0, 25, 40, 10),
+      ] as unknown as DOMRectList)
+      vi.spyOn(anchors[0].parentElement!, 'getBoundingClientRect').mockReturnValue(
+        rect(2, 3, 15, 27) as DOMRect
+      )
+      vi.spyOn(anchors[1], 'getClientRects').mockReturnValue([
+        rect(10, 200, 30, 20),
+      ] as unknown as DOMRectList)
+      vi.spyOn(anchors[2], 'getClientRects').mockReturnValue([
+        rect(10, 20, 30, 20),
+      ] as unknown as DOMRectList)
+      const targets = viewLinkTargets(document, 20, 100)
+      expect(targets.map(({ href, label, rects }) => ({ href, label, rects }))).toEqual([
+        {
+          href: 'abele:ask?text=More',
+          label: 'Compare choices',
+          rects: [rect(2, 10, 15, 10), rect(2, 25, 15, 5)].map(({ left, top, width, height }) => ({
+            left,
+            top,
+            width,
+            height,
+          })),
+        },
+        { href: 'https://example.test', label: 'Sample picture', rects: [] },
+      ])
+    } finally {
+      holder.remove()
+      vi.restoreAllMocks()
+    }
   })
 })
 

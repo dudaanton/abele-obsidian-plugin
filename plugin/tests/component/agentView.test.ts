@@ -11,15 +11,130 @@ vi.mock('@/stores/GlobalStore', () => ({
 
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
   document.body.removeAttribute('style')
 })
 
 function setFrameHtml(doc: Document, html: string) {
   const parsed = new DOMParser().parseFromString(cleanViewHtml(html), 'text/html')
   doc.body.replaceChildren(...Array.from(parsed.body.childNodes))
+  doc.querySelectorAll('a').forEach((link, index) => {
+    vi.spyOn(link, 'getClientRects').mockReturnValue([
+      { left: 10, top: 10 + index * 30, right: 90, bottom: 30 + index * 30, width: 80, height: 20 },
+    ] as unknown as DOMRectList)
+  })
 }
 
 describe('agent view frame', () => {
+  it('reattaches geometry when moving rendered markdown replaces the frame document without a load callback', async () => {
+    const callbacks: FrameRequestCallback[] = []
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      callbacks.push(cb)
+      return callbacks.length
+    })
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+    const view = mount(AgentView, { props: { html: '<p>View</p>' }, attachTo: document.body })
+    await nextTick()
+    const iframe = view.get('iframe')
+    const original = (iframe.element as HTMLIFrameElement).contentDocument!
+    setFrameHtml(original, '<p>Off-page layout</p>')
+    await iframe.trigger('load')
+    expect(view.find('.abele-agent-view__hit').exists()).toBe(false)
+    const replacement = new DOMParser().parseFromString('<body></body>', 'text/html')
+    setFrameHtml(replacement, '<a href="abele:ask?text=More">More</a>')
+    Object.defineProperty(iframe.element, 'contentDocument', {
+      configurable: true,
+      value: replacement,
+    })
+    callbacks.at(-1)!(1)
+    await nextTick()
+    expect(view.get('.abele-agent-view__hit').attributes('aria-label')).toBe('More')
+    view.unmount()
+  })
+  it('updates parent geometry after frame scrolling/reflow and removes targets and tracking in source mode', async () => {
+    const callbacks: FrameRequestCallback[] = []
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      callbacks.push(cb)
+      return callbacks.length
+    })
+    const cancel = vi.fn()
+    vi.stubGlobal('cancelAnimationFrame', cancel)
+    const view = mount(AgentView, { props: { html: '<p>View</p>' }, attachTo: document.body })
+    await nextTick()
+    const iframe = view.get('iframe')
+    Object.defineProperty(iframe.element, 'clientWidth', { configurable: true, value: 200 })
+    Object.defineProperty(iframe.element, 'clientHeight', { configurable: true, value: 100 })
+    const doc = (iframe.element as HTMLIFrameElement).contentDocument!
+    setFrameHtml(doc, '<a href="abele:ask?text=More">More</a>')
+    await iframe.trigger('load')
+    let target = view.get('.abele-agent-view__hit')
+    expect(target.attributes('style')).toContain('left: 10px')
+    expect(target.attributes('style')).toContain('width: 80px')
+    const attributes = vi.spyOn(target.element, 'setAttribute')
+    callbacks.at(-1)!(0)
+    await nextTick()
+    expect(attributes).not.toHaveBeenCalled()
+    // The markdown host also owns this DOM. Lost controls must be recreated, not patched
+    // through stale virtual nodes after its post-processing/reparenting pass.
+    target.element.remove()
+    callbacks.at(-1)!(0)
+    await nextTick()
+    expect(view.findAll('.abele-agent-view__hit')).toHaveLength(1)
+    const anchor = doc.querySelector('a')!
+    vi.mocked(anchor.getClientRects).mockReturnValue([
+      { left: 5, top: -10, right: 85, bottom: 10, width: 80, height: 20 },
+    ] as unknown as DOMRectList)
+    Object.defineProperty(iframe.element, 'clientWidth', { configurable: true, value: 50 })
+    callbacks.at(-1)!(1)
+    await nextTick()
+    target = view.get('.abele-agent-view__hit')
+    expect(target.attributes('style')).toContain('left: 5px')
+    expect(target.attributes('style')).toContain('top: 0px')
+    expect(target.attributes('style')).toContain('width: 45px')
+    expect(target.attributes('style')).toContain('height: 10px')
+    vi.mocked(anchor.getClientRects).mockReturnValue([
+      { left: 5, top: 200, right: 45, bottom: 220, width: 40, height: 20 },
+    ] as unknown as DOMRectList)
+    callbacks.at(-1)!(2)
+    await nextTick()
+    expect(view.get('.abele-agent-view__hit').classes()).toContain('is-offscreen')
+    vi.spyOn(anchor, 'scrollIntoView').mockImplementation(() => {
+      vi.mocked(anchor.getClientRects).mockReturnValue([
+        { left: 5, top: 20, right: 45, bottom: 40, width: 40, height: 20 },
+      ] as unknown as DOMRectList)
+    })
+    await view.get('.abele-agent-view__hit').trigger('focus')
+    expect(anchor.scrollIntoView).toHaveBeenCalledWith({ block: 'nearest', inline: 'nearest' })
+    expect(view.get('.abele-agent-view__hit').classes()).not.toContain('is-offscreen')
+    expect(view.get('.abele-agent-view__hit').attributes('style')).toContain('top: 20px')
+    vi.mocked(anchor.getClientRects).mockReturnValue([
+      { left: 5, top: 20, right: 45, bottom: 30, width: 40, height: 10 },
+      { left: 5, top: 40, right: 45, bottom: 50, width: 40, height: 10 },
+    ] as unknown as DOMRectList)
+    callbacks.at(-1)!(3)
+    await nextTick()
+    expect(view.findAll('.abele-agent-view__hit')).toHaveLength(2)
+    expect(view.findAll('.abele-agent-view__hit[tabindex="0"]')).toHaveLength(1)
+    expect(view.findAll('.abele-agent-view__hit[aria-hidden="true"]')).toHaveLength(1)
+    vi.mocked(anchor.getClientRects).mockReturnValue([] as unknown as DOMRectList)
+    callbacks.at(-1)!(4)
+    await nextTick()
+    expect(view.findAll('.abele-agent-view__hit')).toHaveLength(0)
+    vi.mocked(anchor.getClientRects).mockReturnValue([
+      { left: 5, top: 20, right: 45, bottom: 40, width: 40, height: 20 },
+    ] as unknown as DOMRectList)
+    callbacks.at(-1)!(5)
+    await nextTick()
+    expect(view.findAll('.abele-agent-view__hit')).toHaveLength(1)
+    expect(view.get('iframe').element).toBe(iframe.element)
+    await view
+      .findAllComponents({ name: 'Icon' })
+      .find((icon) => icon.props('icon') === 'code-xml')!
+      .trigger('click')
+    expect(view.find('.abele-agent-view__hit').exists()).toBe(false)
+    expect(cancel).toHaveBeenCalled()
+    view.unmount()
+  })
   it('routes touch-only and pointer taps once, captures clicks, and supports Enter', async () => {
     const view = mount(AgentView, { props: { html: '<p>View</p>' }, attachTo: document.body })
     await nextTick()
@@ -27,7 +142,10 @@ describe('agent view frame', () => {
     const doc = (iframe.element as HTMLIFrameElement).contentDocument!
     setFrameHtml(doc, '<a href="abele:ask?text=Compare"><span>Compare</span></a>')
     await iframe.trigger('load')
-    const target = doc.querySelector('span')!
+    const target = view.get('.abele-agent-view__hit').element
+    expect(target.ownerDocument).toBe(document)
+    expect(target.getAttribute('role')).toBe('link')
+    expect(target.getAttribute('aria-label')).toBe('Compare')
     const ask = vi.fn()
     view.element.addEventListener(ASK_EVENT, ask)
     const touch = (type: string, x = 10, y = 10) => {
@@ -158,7 +276,7 @@ describe('agent view frame', () => {
     const web = vi.spyOn(window, 'open').mockReturnValue(null)
     const ask = vi.fn()
     view.element.addEventListener(ASK_EVENT, ask)
-    for (const link of doc.querySelectorAll('a')) {
+    for (const link of view.element.querySelectorAll('.abele-agent-view__hit')) {
       const event = new MouseEvent('click', { bubbles: true, cancelable: true })
       link.dispatchEvent(event)
       expect(event.defaultPrevented).toBe(true)
@@ -167,6 +285,7 @@ describe('agent view frame', () => {
     expect(openNote).toHaveBeenCalledExactlyOnceWith('Sample.md', '')
     expect(ask).toHaveBeenCalledTimes(1)
     expect((ask.mock.calls[0][0] as CustomEvent).detail).toEqual({ text: 'More please' })
+    expect(doc.querySelectorAll('a[tabindex="0"]')).toHaveLength(0)
     view.unmount()
   })
 
