@@ -55,7 +55,13 @@ export class NodePathMainView extends ItemView {
     saved: () => this.saved,
     act: (run) => this.act(run),
   })
-  private saved?: NodePathTabState
+  private readonly savedState = shallowRef<NodePathTabState>()
+  private get saved() {
+    return this.savedState.value
+  }
+  private set saved(state: NodePathTabState | undefined) {
+    this.savedState.value = state
+  }
   private lifetime = 0
   private readonly error = shallowRef('')
   constructor(
@@ -149,22 +155,37 @@ export class NodePathMainView extends ItemView {
       }, 0)
       return
     }
-    // Revealing an existing chat/history/editor must not destroy drafts, frozen views or scroll.
+    // A reveal must keep mounted editors, drafts and scroll. File tabs share a navigation key,
+    // so their actual document identity must also match before retaining the binding.
     const same =
       this.ui &&
       this.saved &&
-      parsed.kind !== 'file' &&
-      nodePathTabKey(this.saved) === nodePathTabKey(parsed)
-    this.saved = parsed
+      nodePathTabKey(this.saved) === nodePathTabKey(parsed) &&
+      (parsed.kind !== 'file' ||
+        (this.saved.kind === 'file' &&
+          pathTargetKey(this.saved.target) === pathTargetKey(parsed.target) &&
+          this.saved.target.registrationId === parsed.target.registrationId &&
+          this.saved.target.nodeId === parsed.target.nodeId &&
+          this.saved.path === parsed.path &&
+          this.saved.stage === parsed.stage))
+    this.saved =
+      same && parsed.kind === 'file' && this.editing?.active.value
+        ? { ...parsed, edit: true }
+        : parsed
     if (!same) this.startBinding(parsed)
+    else if (parsed.kind === 'file' && parsed.edit && !this.editing?.active.value)
+      this.act(() => this.editing?.start(parsed.path))
     // The same history tab, asked for another commit from the panel: it opens that one.
-    else if (parsed.kind === 'history' && parsed.commit && this.history)
-      this.act(() => this.history?.open(parsed.commit!))
+    else if (parsed.kind === 'history' && parsed.commit && this.history) {
+      const commit = parsed.commit
+      this.act(() => this.history?.open(commit))
+    }
     await super.setState(raw, result)
   }
   /** The margin of the file shown: the one this tab was opened for, or any file a running
    * program took from this folder, however the tab came to show it. */
   private debugOf(state: Extract<NodePathTabState, { kind: 'file' }>, file: NodePathFileModel) {
+    if (this.saved?.kind === 'file') state = this.saved
     const doc = file.document.value
     if (!doc) return undefined
     const debug =

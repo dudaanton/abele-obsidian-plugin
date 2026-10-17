@@ -86,6 +86,24 @@ const target = {
 }
 const views: NodePathMainView[] = []
 
+it('keeps the mounted file editor across same-file reveals but rebinds another file or target', async () => {
+  const view = new NodePathMainView({} as WorkspaceLeaf, 'abele-node-file')
+  views.push(view)
+  view.app = { workspace: {} } as any
+  const bind = vi.spyOn(view as any, 'startBinding').mockImplementation(() => {})
+  const state = { kind: 'file', target, path: 'sample.ts' }
+  ;(view as any).saved = state
+  ;(view as any).ui = { unmount: vi.fn() }
+  ;(view as any).editing = { active: shallowRef(true) }
+  await view.setState(state, {})
+  expect(bind).not.toHaveBeenCalled()
+  expect(view.getState().edit).toBe(true)
+  await view.setState({ ...state, path: 'other.ts' }, {})
+  expect(bind).toHaveBeenCalledTimes(1)
+  await view.setState({ ...state, target: { ...target, id: 'other-worktree' } }, {})
+  expect(bind).toHaveBeenCalledTimes(2)
+})
+
 it('moves a chat tab of an earlier layout to the sidebar chat and closes it', async () => {
   const detach = vi.fn()
   const view = new NodePathMainView({ detach } as unknown as WorkspaceLeaf, 'abele-node-chat')

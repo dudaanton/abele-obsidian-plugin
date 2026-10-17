@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
+import { mount } from '@vue/test-utils'
+import DebugPanel from '@/components/debugger/DebugPanel.vue'
 import {
   DebuggerSnapshotSchema,
   DebuggerReceiptSchema,
@@ -6,48 +8,90 @@ import {
 } from '@abele/node-protocol'
 import { DebuggerController, debuggerKey, receiptMessage } from '@/debugger/DebuggerController'
 
-it('keeps inspected values under their scope instead of replacing the scope tree', async () => {
-  const { model, rpc, command } = fixture()
-  model.session.variables = [{ name: 'Local', value: 'Expand to inspect', handle: 'sample-scope' }]
-  command.mockImplementationOnce(async (...args: unknown[]) => {
-    const params = args[1] as { operation_id: string }
-    rpc.mockImplementation(async (method: string) => {
-      if (method === 'debugger.v1.history')
-        return {
-          entries: [
-            {
-              actor: { kind: 'human', principal_id: 'sample-human' },
-              operation_id: params.operation_id,
-              operation: 'variables',
-              outcome: 'completed',
-              debug_session_id: 'sample-debug',
-              incarnation: 'sample-incarnation',
-              history_seq: 1,
-              event_seq: 8,
-              stop: null,
-              observed_at: '2025-01-01T00:00:00.000Z',
-              stop_epoch: 3,
-              state_revision: 4,
-              target_id: 'sample-target',
-              build_identity: 'matched',
-              payload_status: 'retained',
-              requested_data: { items: [{ name: 'n', value: '3' }] },
-            },
-          ],
-          truncated_before: 0,
-        } as never
-      return { proposals: [], truncated: false, next: null } as never
+it.each([false, true])(
+  'keeps inspected scope children when completion is delayed: %s',
+  async (delayed) => {
+    const { model, rpc, command, proposal } = fixture()
+    let completed = !delayed
+    let inspectionId = ''
+    model.session.variables = [
+      { name: 'Local', value: 'Expand to inspect', handle: 'sample-scope' },
+    ]
+    const panel = mount(DebugPanel, { props: { session: { ...model.session } } })
+    await panel.get('.abele-debug-value_row > .tree-item-self').trigger('click')
+    command.mockImplementationOnce(async (...args: unknown[]) => {
+      const params = args[1] as { operation_id: string }
+      inspectionId = params.operation_id
+      rpc.mockImplementation(async (method: string) => {
+        if (method === 'debugger.v1.approve') {
+          completed = true
+          return receipt('completed', { operation_id: inspectionId })
+        }
+        if (method === 'debugger.v1.history')
+          return {
+            entries: completed
+              ? [
+                  {
+                    actor: { kind: 'human', principal_id: 'sample-human' },
+                    operation_id: params.operation_id,
+                    operation: 'variables',
+                    outcome: 'completed',
+                    debug_session_id: 'sample-debug',
+                    incarnation: 'sample-incarnation',
+                    history_seq: 1,
+                    event_seq: 8,
+                    stop: null,
+                    observed_at: '2025-01-01T00:00:00.000Z',
+                    stop_epoch: 3,
+                    state_revision: 4,
+                    target_id: 'sample-target',
+                    build_identity: 'matched',
+                    payload_status: 'retained',
+                    requested_data: { items: [{ name: 'n', value: '3', handle: 'sample-child' }] },
+                  },
+                ]
+              : [],
+            truncated_before: 0,
+          } as never
+        return { proposals: [], truncated: false, next: null } as never
+      })
+      return receipt(delayed ? 'pending' : 'completed')
     })
-    return receipt()
-  })
-  await model.inspect('sample-scope')
-  expect(model.session.variables).toEqual([
-    expect.objectContaining({
-      name: 'Local',
-      children: [expect.objectContaining({ name: 'n', value: '3' })],
-    }),
-  ])
-})
+    await model.inspect('sample-scope')
+    await panel.setProps({ session: { ...model.session } })
+    if (delayed) {
+      expect(panel.text()).toContain('Waiting for approval in chat')
+      expect(model.session.variables[0].value).toBe('Waiting for approval in chat')
+      expect(model.session.variables[0].children).toBeUndefined()
+      expect(
+        rpc.mock.calls.some(
+          ([method, params]) =>
+            method === 'debugger.v1.approve' && (params as any)?.decision === 'approve'
+        )
+      ).toBe(false)
+      model.addProposal({
+        ...proposal,
+        key: 'sample-inspection',
+        method: 'variables',
+        params: command.mock.calls.at(-1)![1],
+        receipt: receipt('pending', { operation_id: inspectionId }),
+      })
+      await model.decide(JSON.stringify([proposal.principal_key, inspectionId]), true)
+      // The chat approval handler refreshes history after the explicit decision.
+      await model.refreshHistory()
+      await panel.setProps({ session: { ...model.session } })
+    }
+    expect(model.session.variables).toEqual([
+      expect.objectContaining({
+        name: 'Local',
+        children: [expect.objectContaining({ name: 'n', value: '3', handle: 'sample-child' })],
+      }),
+    ])
+    expect(panel.findAll('.abele-debug-value_row')).toHaveLength(2)
+    expect(panel.text()).toContain('n')
+    panel.unmount()
+  }
+)
 
 it('removes all breakpoints displayed on a relocated line', async () => {
   const { model, command } = fixture()
@@ -221,7 +265,7 @@ function fixture() {
     if (method === 'debugger.v1.approvals') return { proposals: [], truncated: false, next: null }
     return []
   })
-  const command = vi.fn(async () => receipt())
+  const command = vi.fn(async (_method: string, _params: unknown) => receipt())
   const model = new DebuggerController({ rpc, command }, () => {})
   model.observe({ observation: 'current', snapshot: snapshot() })
   const proposal = {

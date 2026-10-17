@@ -247,7 +247,22 @@ it('walks from source through stepping, recording, analysis, a crash, restart an
     const control=async label=>press(await until(()=>enabled(label),label+' available'));
     const paused=()=>visible('.abele-debug-panel_paused');
     const rowNamed=name=>[...document.querySelectorAll('.abele-debug-value_row')].find(r=>{const text=r.querySelector(':scope > .tree-item-self .abele-tree-item__text')?.textContent.trim();return text===name||(name==='Local'&&text?.startsWith('Local: '))});
-    const expand=async name=>{await until(()=>enabled('Step over (F10)'),'variable controls ready');const row=await until(()=>rowNamed(name),'variable '+name);press(row.querySelector(':scope > .tree-item-self'));};
+    const expand=async name=>{
+      await until(()=>enabled('Step over (F10)'),'variable controls ready');
+      const row=await until(()=>rowNamed(name),'variable '+name);
+      press(row.querySelector(':scope > .tree-item-self'));
+      // Inspection follows the same explicit approval path as other debugger requests.
+      await until(()=>row.querySelector('.abele-debug-value_row')||row.textContent.includes('Waiting for approval in chat'),'inspection result or approval request');
+      if(!row.querySelector('.abele-debug-value_row')){
+        if(name==='Local')await shot('journey-waiting-approval');
+        await chats.revealSidebar({focus:false});
+        const allow=await until(()=>[...document.querySelectorAll('.abele-debug-action_asked button')].find(b=>b.closest('.abele-debug-action')?.querySelector('.abele-debug-action__what')?.textContent.trim()==='variables'&&b.textContent.trim()==='Allow'&&!b.disabled&&b.offsetParent),'variables approval in chat');
+        if(name==='Local')await shot('journey-chat-approval');
+        press(allow);
+        await app.workspace.revealLeaf(app.workspace.getLeavesOfType('abele-debug-view')[0]);
+      }
+      await until(()=>rowNamed(name)?.querySelector('.abele-debug-value_row'),'approved children of '+name);
+    };
     let source=app.workspace.getLeaf('tab');
     const sourceAt=async(line,name)=>{
       const expected=${JSON.stringify(JS.split('\n'))}[line-1].trim();

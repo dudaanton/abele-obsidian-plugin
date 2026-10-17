@@ -196,6 +196,7 @@ afterAll(async () => {
 })
 
 const RUN = (program: string, shots = '', via = 'Run a program') => `
+  const previousSession=api.DebuggerService.instance.active.value?.sessionId;
   document.querySelector('.abele-node-chat [aria-label="More chat actions"]').click();
   await until(()=>item(${JSON.stringify(via)}),${JSON.stringify(via + ' in the menu')});
   ${shots ? `await shot(${JSON.stringify(shots + '-menu')});` : ''}
@@ -204,7 +205,10 @@ const RUN = (program: string, shots = '', via = 'Run a program') => `
   field.value=${JSON.stringify(program)};field.dispatchEvent(new Event('input',{bubbles:true}));
   ${shots ? `await shot(${JSON.stringify(shots + '-picker')});` : ''}
   press(await until(()=>[...document.querySelectorAll('.modal-container .prompt .suggestion-item')].find(r=>r.querySelector('.suggestion-title')?.textContent.trim()===${JSON.stringify(program)}),'the program offered'));
-  await until(()=>document.querySelector('[aria-label="Continue (F5)"]'),'debug panel',600);`
+  await until(()=>{const b=api.DebuggerService.instance.active.value;return b?.sessionId&&b.sessionId!==previousSession},'new debug session',600);
+  await until(()=>{const c=api.DebuggerService.instance.active.value?.controller;return c?.session.status==='paused'&&c.session.frames.some(f=>f.file)},'paused program stack ready',600);
+  await until(()=>app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.getState().path===${JSON.stringify(program)}&&l.containerEl.querySelector('.abele-debug-source__point')),'debug source loaded',600);
+  await until(()=>{const b=document.querySelector('[aria-label="Continue (F5)"]');return b&&b.offsetParent&&!b.disabled},'visible Continue offered',600);`
 
 /** The service's port once it listens, and the request and environment that go to it. */
 async function serviceListening() {

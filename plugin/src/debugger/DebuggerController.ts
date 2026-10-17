@@ -11,7 +11,7 @@ import {
   type DebuggerSnapshot,
 } from '@abele/node-protocol'
 import type { DebuggerObservationState } from '@abele/node-client'
-import type { DebugAction, DebugSession } from '@/components/debugger/types'
+import type { DebugAction, DebugSession, DebugVariable } from '@/components/debugger/types'
 import { formatTimestamp } from '@/helpers/displayFormat'
 
 const ProposalSchema = z
@@ -672,24 +672,26 @@ export class DebuggerController {
           if (watch)
             watch.value = typeof data.value === 'string' ? data.value : JSON.stringify(data)
         } else if (inspection.handle && Array.isArray(data.items)) {
-          const page = z.array(z.object({ name: z.string(), value: z.string() })).parse(data.items)
+          const page = z
+            .array(
+              z.object({
+                name: z.string(),
+                value: z.string(),
+                handle: z.string().nullish(),
+              })
+            )
+            .parse(data.items)
           const children = page.map((v) => ({
             ...v,
+            handle: v.handle ?? undefined,
             type: `Observed at ${entry.observed_at}`,
           }))
-          const fill = (values: typeof this.session.variables): boolean => {
-            for (const value of values) {
-              if (value.handle === inspection.handle) {
-                value.children = children
-                value.handle = undefined
-                value.value = `${children.length} values`
-                return true
-              }
-              if (value.children && fill(value.children)) return true
-            }
-            return false
-          }
-          fill(this.session.variables)
+          this.updateVariable(inspection.handle, (value) => ({
+            ...value,
+            children,
+            handle: undefined,
+            value: `${children.length} values`,
+          }))
         }
         this.inspections.delete(entry.operation_id)
       }
@@ -726,6 +728,18 @@ export class DebuggerController {
     }
     this.notify()
   }
+  /** Plain controller data crosses Vue props by identity, including every nested branch. */
+  private updateVariable(handle: string, update: (value: DebugVariable) => DebugVariable) {
+    const visit = (values: DebugVariable[]): DebugVariable[] =>
+      values.map((value) =>
+        value.handle === handle
+          ? update(value)
+          : value.children
+            ? { ...value, children: visit(value.children) }
+            : value
+      )
+    this.session.variables = visit(this.session.variables)
+  }
   inspect(handle: string) {
     return this.human(async (invocation) => {
       const operation_id = crypto.randomUUID(),
@@ -744,6 +758,16 @@ export class DebuggerController {
       )
       if (!this.current || generation !== this.serial) return
       this.observe({ observation: 'current', snapshot: result.snapshot })
+      this.updateVariable(handle, (value) => ({
+        ...value,
+        value:
+          result.outcome === 'pending'
+            ? 'Waiting for approval in chat'
+            : result.outcome === 'completed'
+              ? 'Awaiting result'
+              : receiptMessage(result.code ?? result.outcome),
+      }))
+      this.notify()
       await this.refreshApprovals()
       await this.refreshHistory()
     })
