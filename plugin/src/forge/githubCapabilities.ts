@@ -2,8 +2,13 @@
 import type { GithubTarget } from '@/github/urls'
 import type { ItemData, PinnedLoad } from '@/github/loadItem'
 import type { LanguageShare, ItemRow, ReleaseData } from '@/github/repoPage/repoHome'
+import type { FilesData, Conversation } from '@/repository/conversation'
+import type { CommitSummary } from '@/repository/model'
 
 export interface GithubRepositoryCapabilities {
+  pullFiles?(number: number): Promise<FilesData>
+  pullCommits?(number: number): Promise<{ commits: CommitSummary[]; complete: boolean }>
+  conversation?(number: number, pull: boolean): Promise<Conversation>
   loadTarget(
     target: GithubTarget,
     promote: (target: GithubTarget) => void,
