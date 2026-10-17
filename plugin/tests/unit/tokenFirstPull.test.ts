@@ -47,9 +47,10 @@ it.each([
     vi.spyOn(ExchangeTrace.prototype, 'beginPull').mockImplementation(function (
       this: ExchangeTrace,
       size,
-      path
+      path,
+      prefetchedRequests
     ) {
-      const finish = beginPull.call(this, size, path)
+      const finish = beginPull.call(this, size, path, prefetchedRequests)
       if (!host || reconnect || (native && count !== 1) || captured) return finish
       captured = capturing = true
       return (complete) => {
@@ -289,23 +290,22 @@ it.each([
       }
       if (host && !reconnect && !native) {
         expect(firstPull!.small.count).toBe(1)
-        expect(firstPull!.small.max).toMatchObject({ bridge: 15, preparationBridge: 2 })
+        expect(firstPull!.small.max).toMatchObject({ bridge: 12, preparationBridge: 1 })
         assertSmallPullBounds(firstPull!.small.max)
-        // Two of the ten initial target stats preserve edit copies and have their
-        // own counter. The remaining 15 include the cold owned staging mkdir and write.
+        // One of the seven initial target stats inventories local edit copies.
+        // The remaining 12 include the cold owned staging mkdir and write.
         expect(
           events
             .filter((event) => event.operation.startsWith('adapter '))
             .map((event) => event.operation)
         ).toEqual([
-          ...Array<string>(10).fill('adapter stat'),
+          ...Array<string>(7).fill('adapter stat'),
           'adapter exists',
           'adapter exists',
           'adapter mkdir',
           'adapter stat',
           'adapter writeBinary',
           'adapter rename',
-          'adapter stat',
         ])
         expect(
           events.filter((event) => event.operation === 'adapter mkdir').map((event) => event.paths)

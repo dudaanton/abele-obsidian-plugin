@@ -72,6 +72,7 @@ const stageOperations = new WeakMap<object, Set<string>>()
 type DirectoryInfo = { path: string; identity: string; mtime: number }
 type InventoryChild = { path: string; kind: 'file' | 'directory'; identity?: string }
 interface InventoryPass {
+  parentFolders?: Set<string>
   publishedParents?: Set<string>
   directories?: Promise<DirectoryInfo[]>
   listings: Map<string, Promise<ListedFiles>>
@@ -174,6 +175,18 @@ export class ObsidianFileSystem implements FileSystem {
   private readonly fileScope?: ObsidianFileSystemOptions['fileScope']
   private inventory: InventoryPass | null = null
   private inventoryDepth = 0
+  private writtenStat: FileInfo | null = null
+
+  async [Symbol.for('abele.sync.written-stat-v1')](
+    path: string,
+    wrote: { size: number; mtime: number }
+  ) {
+    const receipt = this.writtenStat
+    this.writtenStat = null
+    return receipt?.path === path && receipt.size === wrote.size && receipt.mtime === wrote.mtime
+      ? { size: receipt.size, mtime: receipt.mtime }
+      : null
+  }
   // Connection-local metadata proof; root/ancestor events retire it before reuse.
   private rootChain: { root: string; linked: Promise<boolean> } | undefined
 
@@ -203,6 +216,9 @@ export class ObsidianFileSystem implements FileSystem {
       this.invalidateRootChain([file.path, ...(previous ? [previous] : [])])
       if (!inventory) return
       for (const path of [file.path, ...(previous ? [previous] : [])]) {
+        for (const parent of inventory.parentFolders ?? [])
+          if (parent === path || parent.startsWith(path + '/'))
+            inventory.parentFolders?.delete(parent)
         if (created && inventory.mutations.has(path)) {
           if (file.children) inventory.mutations.delete(path)
           continue
@@ -555,6 +571,11 @@ export class ObsidianFileSystem implements FileSystem {
         const wrapped = (...args: unknown[]) => {
           const paths = args.slice(0, key === 'rename' || key === 'copy' ? 2 : 1) as string[]
           for (const path of paths) this.inventory?.mutations.add(path)
+          if (key === 'rmdir' || key === 'rename' || key === 'remove')
+            for (const path of paths)
+              for (const parent of this.inventory?.parentFolders ?? [])
+                if (parent === path || parent.startsWith(path + '/'))
+                  this.inventory?.parentFolders?.delete(parent)
           this.externalCoordination.assertEnginePaths(paths)
           const result = bound(...args)
           if (key !== 'rename') return result
@@ -617,7 +638,7 @@ export class ObsidianFileSystem implements FileSystem {
       fingerprint: (path) => this.io.fingerprint(path, undefined, true),
       adoptReceipt: (from, to) => this.io.adoptReceipt(from, to),
       indexed: (path) => app.vault.getAbstractFileByPath(path) !== null,
-      makeParents: (path) => makeParents(this.disk, path),
+      makeParents: (path) => this.makeParents(path),
       installed: (path) => {
         this.awaitingIndex.add(path)
         this.wrote([path], 'file')
@@ -655,6 +676,17 @@ export class ObsidianFileSystem implements FileSystem {
 
   private get disk(): DataAdapter {
     return this.guardedAdapter
+  }
+
+  private async makeParents(path: string): Promise<void> {
+    const inventory = this.inventory
+    const known = inventory ? (inventory.parentFolders ??= new Set()) : undefined
+    try {
+      await makeParents(this.disk, path, known)
+    } catch (error) {
+      known?.clear()
+      throw error
+    }
   }
 
   /**
@@ -1553,9 +1585,13 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   async writeAtomic(path: string, bytes: Uint8Array, mtime: number): Promise<void> {
+    this.writtenStat = null
     const release = this.externalCoordination.beginEngineMutation([path])
     try {
       await this.writeUnreserved(path, bytes, mtime)
+      // Record only a successful publication. A later local edit must differ from this
+      // baseline on the next scan, rather than being adopted as part of our write.
+      this.writtenStat = { path, size: bytes.length, mtime }
     } finally {
       release()
     }

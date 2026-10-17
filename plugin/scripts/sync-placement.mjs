@@ -76,6 +76,45 @@ export function syncPlacementPlugin() {
         }
         async cycleUnlocked() {`
         )
+      } else if (file.endsWith('/pullRun.js')) {
+        code = replaceOnce(code, 'const MANIFEST_PAGE = 1000;', 'const MANIFEST_PAGE = 5000;')
+        code = replaceOnce(
+          code,
+          'async prefetch(changes, local) {',
+          `async prefetch(changes, local) {
+          if (this.fs.beginAtomicWrite && this.fs.reopenStage && this.client.openVersion) {
+            const wanted = [];
+            for (const change of changes) {
+              if (change.sha === null || change.op === 'delete' || change.size === null ||
+                  change.size > this.placer.budget.maxChunkBytes || this.passedOver(change)) continue;
+              const entry = await this.state.byFileId(change.file_id);
+              if (entry?.versionId === change.version_id || entry?.sha === change.sha ||
+                  this.isDirty(change, entry)) continue;
+              wanted.push(change);
+            }
+            const fetched = new Map();
+            const prefetched = fetched[Symbol.for('abele.sync.prefetched-files-v1')] = new Set();
+            // pool drains active workers after a failure; no source outlives the run.
+            await pool(wanted, 8, async (change) => {
+                const source = await this.client.openVersion(change.file_id, change.version_id,
+                  { sha: change.sha, size: change.size });
+                try {
+                  source.signal?.throwIfAborted();
+                  if (source.size !== change.size) throw new Error('invalid placement source size');
+                  const bytes = change.size === 0 ? new Uint8Array() :
+                    await source.read(0, change.size, source.signal);
+                  await source.assertUnchanged();
+                  if (bytes.length !== change.size || bytes.buffer.byteLength > 1024 * 1024 ||
+                      await this.hash(bytes) !== change.sha) this.placer.disbelieve(change.sha);
+                  else {
+                    fetched.set(change.sha, bytes);
+                    prefetched.add(change.file_id);
+                  }
+                } finally { await source.close(); }
+            });
+            return fetched;
+          }`
+        )
       } else if (file.endsWith('/scanner.js')) {
         code = replaceOnce(
           code,
@@ -97,6 +136,33 @@ export function syncPlacementPlugin() {
         )
       } else if (file.endsWith('/pullPlace.js')) {
         code = `import { receiveToStage as receivePlacementSource } from './streaming.js';\n` + code
+        code = replaceOnce(
+          code,
+          'const state = await this.clear(target, from, change, sha);',
+          `const state = await this.clear(target, from, change, sha,
+            entry === null && from === null && firstTarget === null ? null : undefined);`
+        )
+        code = replaceOnce(
+          code,
+          'async clear(target, from, change, sha) {',
+          'async clear(target, from, change, sha, knownAbsent) {'
+        )
+        code = replaceOnce(
+          code,
+          'const there = await this.fs.stat(target);',
+          'const there = knownAbsent === null ? null : await this.fs.stat(target);'
+        )
+        code = replaceOnce(
+          code,
+          'if (!sameStat(beforeTarget, await this.fs.stat(target)))',
+          `const checkedTarget = await this.fs.stat(target);
+        if (!sameStat(beforeTarget, checkedTarget))`
+        )
+        code = replaceOnce(
+          code,
+          'const have = await this.fs.stat(target);',
+          `const have = entry === null && from === null ? checkedTarget : await this.fs.stat(target);`
+        )
         if (!code.includes('fingerprintFile(this.fs,'))
           throw boundaryError(id, 'fingerprintFile(this.fs,', 0, 'at least 1')
         code = code.replaceAll('fingerprintFile(this.fs,', 'fingerprintPlacementFile(this.fs,')
@@ -111,6 +177,8 @@ export function syncPlacementPlugin() {
           return bounded ? bounded.call(fs, path) : fingerprintFile(fs, path, hash);
         }
         async function settledPlacementStat(fs, path, sha, wrote, hash) {
+          const receipt = await fs[Symbol.for('abele.sync.written-stat-v1')]?.(path, wrote);
+          if (receipt) return receipt;
           return settledStat({
             stat: (path) => fs.stat(path),
             fingerprint: (path) => fingerprintPlacementFile(fs, path, hash),
@@ -204,7 +272,8 @@ export function syncPlacementPlugin() {
           `async place(change, sha, entry, fetched, local) {
           const observe = this.fs[Symbol.for('abele.sync.trace-pull-v1')];
           if (!observe) return this.placeObserved(change, sha, entry, fetched, local);
-          const finish = observe.call(this.fs, change.size, change.path);
+          const prefetched = fetched[Symbol.for('abele.sync.prefetched-files-v1')]?.has(change.file_id);
+          const finish = observe.call(this.fs, change.size, change.path, prefetched ? 1 : 0);
           let complete = false;
           try {
             const result = await this.placeObserved(change, sha, entry, fetched, local);
@@ -237,8 +306,8 @@ export function syncPlacementPlugin() {
             // Small pulls fit in one transfer chunk. Avoid a second journal, copy and file
             // read per note, while still verifying the network source outside the lease.
             if (change.size <= this.budget.maxChunkBytes) {
-              let bytes, signal;
-              await this.budget.run(async () => {
+              let bytes = fetched.get(sha), signal;
+              if (!bytes) await this.budget.run(async () => {
                 const source = await this.client.openVersion(change.file_id, change.version_id, identity);
                 signal = source.signal;
                 try {
@@ -468,6 +537,35 @@ export function syncPlacementPlugin() {
           code,
           'const path = `/v2/uploads/${expected.sha}`;',
           '}\n            const path = `/v2/uploads/${expected.sha}`;'
+        )
+        code = replaceOnce(
+          code,
+          `this.departed.delete(item.path);
+        if (this.ports)
+            await this.ports.state.setMeta('v2-departures', JSON.stringify([...this.departed]));`,
+          `if (this.departed.delete(item.path) && this.ports) {
+            if (this.manifestDepartures) this.manifestDepartures.changed = true;
+            else await this.ports.state.setMeta('v2-departures', JSON.stringify([...this.departed]));
+          }`
+        )
+        code = replaceOnce(
+          code,
+          `for (const item of page.items) {
+            const file = await this.fileItem(item, page.cursor);
+            if (file)
+                items.push(file);
+        }`,
+          `const departures = this.manifestDepartures = { changed: false };
+        try {
+          for (const item of page.items) {
+            const file = await this.fileItem(item, page.cursor);
+            if (file) items.push(file);
+          }
+        } finally {
+          this.manifestDepartures = null;
+          if (departures.changed && this.ports)
+            await this.ports.state.setMeta('v2-departures', JSON.stringify([...this.departed]));
+        }`
         )
         code = replaceOnce(
           code,

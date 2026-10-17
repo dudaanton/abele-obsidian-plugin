@@ -1692,7 +1692,7 @@ export class TokenEngineRuntime
       return
     }
     if (item.kind === 'directory' || (await this.options.state.get(item.path))) return
-    const inventory = await LocalPaths.forPath(this.options.fs, item.path, this.options.state)
+    const inventory = await LocalPaths.forFile(this.options.fs, item.path, this.options.state)
     if (inventory.blocked(item.path)) return
     try {
       item = { ...item, path: inventory.resolve(item.path, 'file') }

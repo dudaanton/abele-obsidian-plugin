@@ -135,7 +135,7 @@ export class ExchangeTrace {
     }
   }
 
-  beginPull(size?: number, path?: string): (complete: boolean) => void {
+  beginPull(size?: number, path?: string, prefetchedRequests = 0): (complete: boolean) => void {
     if (size === undefined) {
       this.beginPullCycle()
       return noPull
@@ -158,6 +158,8 @@ export class ExchangeTrace {
     scope.path = path
     scope.size = size
     for (const key of pullCountKeys) scope.counts[key] = 0
+    // The HTTP event was already recorded while fetching outside the placement lease.
+    scope.counts.requests = prefetchedRequests
     return scope.finish
   }
 

@@ -204,7 +204,9 @@ export class LocalFolderPlacement {
             )
           }
         const policy =
-          key === DIRECTORY_IDENTITY ? 'path' : placementMethods[key as keyof PlacementFileSystem]
+          key === DIRECTORY_IDENTITY || key === Symbol.for('abele.sync.written-stat-v1')
+            ? 'path'
+            : placementMethods[key as keyof PlacementFileSystem]
         if (policy === 'list')
           return async function* () {
             for await (const item of value.call(target)) {

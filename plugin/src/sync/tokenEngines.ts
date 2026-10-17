@@ -748,7 +748,9 @@ export class TokenEngines {
           () => fence.assertReady(),
           async (paths) => {
             const capture = async () => {
-              const affected = new Set(paths)
+              // placementFiles includes existing targets and descendants. An absent
+              // path has no edit to archive; publication still rechecks it under the lease.
+              const affected = new Set<string>()
               for await (const info of ordinary.placementFiles(paths)) affected.add(info.path)
               await editCopiesOf(this.app.vault).capture(ordinary, [...affected])
             }

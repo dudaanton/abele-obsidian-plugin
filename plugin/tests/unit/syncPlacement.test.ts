@@ -29,6 +29,7 @@ it.each([
   'cycle.js',
   'scanner.js',
   'localPaths.js',
+  'pullRun.js',
   'pullPlace.js',
   'pullRecovery.js',
   'pusher.js',

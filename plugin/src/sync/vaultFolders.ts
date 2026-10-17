@@ -13,14 +13,25 @@ import type { NativeFs } from './vaultWrites'
  * depth every write reaches. The chain is only walked when the one call did not do it,
  * which is what a host whose `mkdir` makes one folder at a time would look like.
  */
-export async function makeParents(adapter: DataAdapter, target: string): Promise<void> {
+export async function makeParents(
+  adapter: DataAdapter,
+  target: string,
+  known?: Set<string>
+): Promise<void> {
   adapter = guardedVaultAdapter(adapter)
   const cut = target.lastIndexOf('/')
   if (cut <= 0) return
   const folder = target.slice(0, cut)
-  if (await adapter.exists(folder)) return
+  if (known?.has(folder)) return
+  if (await adapter.exists(folder)) {
+    known?.add(folder)
+    return
+  }
   const failed = await tryMkdir(adapter, folder)
-  if (failed === null) return
+  if (failed === null) {
+    known?.add(folder)
+    return
+  }
 
   let walked = ''
   for (const segment of folder.split('/')) {
@@ -30,6 +41,7 @@ export async function makeParents(adapter: DataAdapter, target: string): Promise
   if (!(await adapter.exists(folder))) {
     throw new EngineError('io', `cannot create the folder ${folder}`, failed)
   }
+  known?.add(folder)
 }
 
 /** Makes a folder; answers what went wrong, or null when the folder is there afterwards. */
