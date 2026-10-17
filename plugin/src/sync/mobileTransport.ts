@@ -1,7 +1,6 @@
 import { EngineError } from '@abele/sync-core'
 import { binaryResponse } from './binaryResponse'
 import { rangedBinaryTransport } from './rangedBinaryTransport'
-import { apiVersion } from 'obsidian'
 import { ExchangeTrace } from './exchangeTrace'
 const nativeRequests = new ExchangeTrace()
 nativeRequests.finishFirstSync()
@@ -118,7 +117,6 @@ export function mobileTransport(): typeof fetch {
   ).Capacitor
   const http = capacitor?.Plugins?.CapacitorHttp
   if (
-    apiVersion !== '1.13.7' ||
     capacitor?.getPlatform?.() !== 'ios' ||
     typeof http?.request !== 'function'
   )
