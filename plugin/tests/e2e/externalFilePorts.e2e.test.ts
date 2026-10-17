@@ -62,12 +62,14 @@ describe.skipIf(!available)('external-file production filesystem ports on the li
       for(const when of ['before','during']){
         const target=root+'/sample-'+when+'.bin',stage=root+'/.abele-external-'+when+'.incoming',data=encode('sample incoming'),a=await artifact(stage,data)
         if(when==='before')await adapter.writeBinary(target,encode('sample occupant').buffer)
-        const exists=adapter.exists.bind(adapter)
+        const raw=${onPhone() ? 'adapter' : 'adapter.fsPromises'},method=${JSON.stringify(onPhone() ? 'exists' : 'link')},real=raw[method]
         let armed=false,checks=0
-        if(when==='during')adapter.exists=async path=>{
-          const out=await exists(path)
-          if(armed&&path===target&&++checks===1)await adapter.writeBinary(target,encode('sample occupant').buffer)
-          return out
+        if(when==='during')raw[method]=async function(...args){
+          const before=${onPhone() ? 'await real.apply(raw,args)' : 'undefined'}
+          if(armed&&${onPhone() ? 'args[0]===target' : 'args[1]===adapter.getFullPath(target)'}){
+            checks++;await adapter.writeBinary(target,encode('sample occupant').buffer)
+          }
+          return ${onPhone() ? 'before' : 'real.apply(raw,args)'}
         }
         try{
           await host.run(serial,request([target,stage]),async op=>{
@@ -75,10 +77,11 @@ describe.skipIf(!available)('external-file production filesystem ports on the li
             const refused=await reason(op.install(a,target))
             result.push({when,refused,target:await read(target),staging:await read(stage),checks})
           })
-        }finally{adapter.exists=exists}
+        }finally{raw[method]=real}
       }
       return result
     `)
+    expect(out.find((item: { when: string }) => item.when === 'during').checks).toBeGreaterThan(0)
     expect(
       out.map((item: { refused: string; target: string; staging: string }) => ({
         refused: item.refused,
@@ -95,19 +98,43 @@ describe.skipIf(!available)('external-file production filesystem ports on the li
     const out = await probe(`
       const target=root+'/sample-free.bin',stage=root+'/.abele-external-free.incoming',data=encode('sample incoming'),a=await artifact(stage,data)
       const write=adapter.writeBinary.bind(adapter),copy=adapter.copy.bind(adapter),rename=adapter.rename.bind(adapter)
+      const native=adapter.fsPromises&&typeof window.require==='function'?window.require('fs').promises:null
+      const open=native?.open,nativeCopy=adapter.fsPromises?.copyFile,nativeRename=adapter.fsPromises?.rename
       let writes=[],copies=0,renames=0
       // Observe this fixture's effects without intercepting independent sync staging.
       const ours=path=>typeof path==='string'&&path.startsWith(root+'/')
       adapter.writeBinary=async(path,...args)=>{if(ours(path))writes.push(path);return write(path,...args)}
       adapter.copy=async(...args)=>{if(args.slice(0,2).some(ours)){copies++;throw Error('Copy is not an installer')}return copy(...args)}
       adapter.rename=async(...args)=>{if(args.slice(0,2).some(ours))renames++;return rename(...args)}
+      if(native){
+        const full=adapter.getFullPath(root)+'/'
+        const nativeOurs=path=>typeof path==='string'&&path.startsWith(full)
+        native.open=async function(path,...args){
+          const handle=await open.call(native,path,...args)
+          if(nativeOurs(path)){
+            const write=handle.write
+            let observed=false
+            handle.write=async function(...args){
+              const local=root+'/'+path.slice(full.length)
+              if(!observed){writes.push(local);observed=true}
+              return write.apply(handle,args)
+            }
+          }
+          return handle
+        }
+        adapter.fsPromises.copyFile=async function(...args){if(args.slice(0,2).some(nativeOurs)){copies++;throw Error('Copy is not an installer')}return nativeCopy.apply(adapter.fsPromises,args)}
+        adapter.fsPromises.rename=async function(...args){if(args.slice(0,2).some(nativeOurs))renames++;return nativeRename.apply(adapter.fsPromises,args)}
+      }
       try{
         return await host.run(serial,request([target,stage]),async op=>{
           await op.stage(a,data)
           const result=await op.install(a,target)
           return {result,target:await read(target),stagingPresent:await adapter.exists(stage),writes,copies,renames}
         })
-      }finally{adapter.writeBinary=write;adapter.copy=copy;adapter.rename=rename}
+      }finally{
+        adapter.writeBinary=write;adapter.copy=copy;adapter.rename=rename
+        if(native){native.open=open;adapter.fsPromises.copyFile=nativeCopy;adapter.fsPromises.rename=nativeRename}
+      }
     `)
     expect(out.result).toEqual({
       status: 'installed',
@@ -118,6 +145,7 @@ describe.skipIf(!available)('external-file production filesystem ports on the li
     expect(out.stagingPresent).toBe(!onPhone())
     expect(out.copies).toBe(0)
     expect(out.renames).toBe(onPhone() ? 1 : 0)
+    expect(out.writes.length).toBeGreaterThan(0)
     expect(out.writes).toEqual([root + '/.abele-external-free.incoming'])
   })
 

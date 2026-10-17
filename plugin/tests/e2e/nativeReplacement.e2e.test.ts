@@ -40,6 +40,7 @@ describe('native local-save replacement boundary', () => {
       const root = 'ReplacementProbe-' + require('crypto').randomBytes(16).toString('hex')
       const path = root + '/sample.md', adapter = app.vault.adapter
       const original = adapter.fsPromises
+      const native = window.require('fs').promises, open = native.open
       let owned = false
       try {
         await app.vault.createFolder(root); owned = true
@@ -50,17 +51,25 @@ describe('native local-save replacement boundary', () => {
         try { file = await app.vault.create(path, 'original'); await cached }
         finally { app.metadataCache.offref(ref) }
         const full = adapter.getFullPath(path)
-        let reads = 0
-        adapter.fsPromises = { ...original, readFile: async function(target, ...args) {
-          // Initial snapshot and temp-write check precede the fenced final native read.
-          if (target === full && ++reads === 3) await original.writeFile(full, 'local-before-queued-compare')
-          return original.readFile(target, ...args)
-        } }
+        let reads = 0, injections = 0
+        native.open = async function(target, ...args) {
+          const handle = await open.call(native, target, ...args)
+          if (target === full) {
+            const read = handle.readFile
+            handle.readFile = async function(...args) {
+              // Initial snapshot and temp-write check precede the fenced final native read.
+              if (++reads === 3) { injections++; await original.writeFile(full, 'local-before-queued-compare') }
+              return read.apply(handle, args)
+            }
+          }
+          return handle
+        }
         const fs = new window.__abeleTest.ObsidianFileSystem(app)
         let held = false
         try { await fs.writeAtomic(path, new TextEncoder().encode('remote'), Date.now()) }
         catch (error) { held = error.code === 'conflict' }
         const before = String(await original.readFile(full, 'utf8'))
+        native.open = open
         adapter.fsPromises = original
         await app.vault.modify(file, 'original again')
         let save = null
@@ -72,14 +81,17 @@ describe('native local-save replacement boundary', () => {
         await queued.writeAtomic(path, new TextEncoder().encode('second remote'), Date.now())
         await save
         const after = String(await original.readFile(full, 'utf8'))
-        return { held, before, after, saveQueued: !!save }
+        return { held, before, after, saveQueued: !!save, injections }
       } finally {
+        native.open = open
         adapter.fsPromises = original
         if (owned) { const folder = app.vault.getAbstractFileByPath(root); if (folder) await app.vault.delete(folder, true) }
       }
     })()`)
     console.info(JSON.stringify(result))
+    expect(result.injections).toBeGreaterThan(0)
     expect(result).toEqual({
+      injections: 1,
       held: true,
       before: 'local-before-queued-compare',
       after: 'local-save-at-rename',
