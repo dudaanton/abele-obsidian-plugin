@@ -8,6 +8,13 @@ import { syncProgressSamples } from './helpers/syncProgressSamples'
 import { collectSyncProgressShots, syncProgressShotsPrelude } from './helpers/syncProgressShots'
 import { shotDir } from './helpers/shots'
 import { deletedRootRecovery, serverRenamedRootRecovery } from './helpers/syncRootRecovery'
+import {
+  decodeAccessToken,
+  V2CommitRequestSchema,
+  V2CommitResponseSchema,
+} from '@abele/sync-protocol'
+import { rawManifest } from '../helpers/rawManifest'
+import { fixtureFetch } from './helpers/syncServer'
 targets('phone')
 const fixture = liveSuite(false)
 liveCase(
@@ -238,6 +245,95 @@ liveCase(
     ])
     await a.syncNow()
     expect(a.exists(renamed.path)).toBe(false)
+  },
+  fixture
+)
+liveCase(
+  'syncPhone',
+  '118 ordinary folders deleted on the phone reach server trash and remote folder deletes reach the phone',
+  [118],
+  async () => {
+    const s = fixture(),
+      a = s.primary,
+      folder = s.root + '/phone-folder',
+      paths = [folder + '/first.md', folder + '/nested/second.md', folder + '/nested/sample.bin'],
+      bytes = [0, 255, 17, 128, 10, 0]
+    const id = await s.connect()
+    a.create(paths[0], 'first folder note')
+    a.create(paths[1], 'nested folder note')
+    a.run(
+      `await app.vault.createBinary(${JSON.stringify(paths[2])},new Uint8Array(${JSON.stringify(bytes)}).buffer);return true`
+    )
+    await a.syncNow()
+    const uploaded = (await s.items()).filter((one) => paths.includes(one.path))
+    expect(uploaded.map((one) => one.path).sort()).toEqual([...paths].sort())
+    const binary = uploaded.find((one) => one.path === paths[2])!
+    expect([
+      ...new Uint8Array(await s.client().versionBytes(binary.file_id, binary.version_id)),
+    ]).toEqual(bytes)
+
+    a.remove([folder])
+    expect(a.exists(folder)).toBe(false)
+    await a.syncNow()
+    // Three files are below the mass-deletion guard's minimum of ten.
+    expect(a.run(`return svc.activity.value[${JSON.stringify(id)}]?.heldDeletes`)).toBe(0)
+    expect((await s.items()).filter((one) => paths.includes(one.path))).toHaveLength(0)
+    const trashed = (await s.client().trash()).filter((one) => paths.includes(one.path))
+    expect(trashed.map((one) => one.file_id).sort()).toEqual(
+      uploaded.map((one) => one.file_id).sort()
+    )
+    expect([
+      ...new Uint8Array(await s.client().versionBytes(binary.file_id, binary.version_id)),
+    ]).toEqual(bytes)
+    await a.syncNow()
+    expect(a.exists(folder)).toBe(false)
+    expect(paths.map((path) => a.exists(path))).toEqual([false, false, false])
+
+    const remoteFolder = s.root + '/remote-folder',
+      remotePaths = [remoteFolder + '/first.md', remoteFolder + '/nested/second.md']
+    for (const path of remotePaths) await s.put(path, 'remote folder note')
+    await a.syncNow()
+    expect(remotePaths.map((path) => a.read(path))).toEqual([
+      'remote folder note',
+      'remote folder note',
+    ])
+    const remote = (await rawManifest(s.server.rootToken, fixtureFetch)).filter(
+      (one) => one.path === remoteFolder || one.path.startsWith(remoteFolder + '/')
+    )
+    expect(
+      remote
+        .filter((one) => one.kind !== 'directory')
+        .map((one) => one.path)
+        .sort()
+    ).toEqual([...remotePaths].sort())
+    expect(remote.filter((one) => one.kind === 'directory')).toHaveLength(2)
+    const token = decodeAccessToken(s.server.rootToken)
+    const response = await fixtureFetch(new URL('/v2/commit', token.address), {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer ' + token.key,
+        'content-type': 'application/json',
+        'idempotency-key': crypto.randomUUID(),
+      },
+      body: JSON.stringify(
+        V2CommitRequestSchema.parse({
+          ops: remote
+            .sort((left, right) => right.path.length - left.path.length)
+            .map((one) => ({
+              op: one.kind === 'directory' ? 'delete_directory' : 'delete',
+              file_id: one.file_id,
+              base_version_id: one.version_id,
+            })),
+        })
+      ),
+    })
+    expect(response.ok).toBe(true)
+    const outcome = V2CommitResponseSchema.parse(await response.json())
+    expect(outcome.results).toHaveLength(remote.length)
+    expect(outcome.results.every((one) => one.status === 'applied')).toBe(true)
+    await a.syncNow()
+    expect(remotePaths.map((path) => a.exists(path))).toEqual([false, false])
+    expect(a.exists(remoteFolder)).toBe(false)
   },
   fixture
 )
