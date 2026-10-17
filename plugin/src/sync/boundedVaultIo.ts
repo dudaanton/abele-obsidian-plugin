@@ -66,7 +66,7 @@ interface WriteReceipt {
   hash: ReturnType<typeof sha256.create>
   stamp: SourceStamp
 }
-// Process-local acknowledgements only; changed or reopened files require ordinary reads.
+// Process-local acknowledgements only; changed content stamps require ordinary reads.
 const writeReceipts = new WeakMap<object, Map<string, WriteReceipt>>()
 
 /** Native capabilities are discovered on the adapter, without loading Node on mobile. */
@@ -80,7 +80,8 @@ export class BoundedVaultIo {
     private readonly effect: <T>(work: () => T) => T = (work) => work(),
     private readonly receiptScope: object = disk,
     private readonly configDir?: string,
-    private readonly privateRoot?: string
+    private readonly privateRoot?: string,
+    private readonly metadataReceipts = false
   ) {
     this.disk = guardedVaultAdapter(disk)
   }
@@ -91,6 +92,20 @@ export class BoundedVaultIo {
   }
   retireReceipts(): void {
     this.receipts.clear()
+  }
+  /** Call only after an acknowledged owned write, with the hash of its written chunks. */
+  async recordWrite(
+    path: string,
+    size: number,
+    hash: ReturnType<typeof sha256.create>
+  ): Promise<void> {
+    this.assertOwned()
+    const stat = await this.disk.stat(path)
+    this.assertOwned()
+    if (!stat) return
+    if (stat.type !== 'file' || stat.size !== size)
+      throw new EngineError('conflict', 'Written file changed')
+    this.receipts.set(path, { hash: hash.clone(), stamp: stampOf(stat) })
   }
   async requireWrite(size: number): Promise<void> {
     if (
@@ -363,7 +378,11 @@ export class BoundedVaultIo {
     const receipt = fresh ? undefined : this.receipts.get(path)
     if (receipt) {
       const stamp = stampOf(await this.stat(path))
-      if (stamp.generation === receipt.stamp.generation)
+      if (
+        this.metadataReceipts
+          ? stamp.size === receipt.stamp.size && stamp.mtime === receipt.stamp.mtime
+          : stamp.generation === receipt.stamp.generation
+      )
         return {
           ...stamp,
           sha: Array.from(receipt.hash.clone().digest(), (byte) =>
@@ -382,7 +401,25 @@ export class BoundedVaultIo {
         'Existing bytes require bounded local verification; file kept'
       )
     const source = await this.openRead(path)
-    const identity = await fingerprintSource(source, MAX_CHUNK_BYTES, signal)
+    if (!this.metadataReceipts) {
+      const identity = await fingerprintSource(source, MAX_CHUNK_BYTES, signal)
+      return { ...source.stamp, ...identity }
+    }
+    const hash = sha256.create()
+    const identity = await fingerprintSource(
+      {
+        ...source,
+        read: async (offset, length, signal) => {
+          const bytes = await source.read(offset, length, signal)
+          hash.update(bytes)
+          return bytes
+        },
+      },
+      MAX_CHUNK_BYTES,
+      signal
+    )
+    this.assertOwned()
+    this.receipts.set(path, { hash, stamp: source.stamp })
     return { ...source.stamp, ...identity }
   }
   async create(path: string, mtime: number): Promise<void> {

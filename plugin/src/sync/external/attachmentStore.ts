@@ -333,9 +333,15 @@ export class AttachmentStore {
           (file?.localRevision ?? 0) !== opts.expectedRevision
         )
           return false
-        selected = { path: head.wirePath, ...(await this.options.host.fingerprint(head.path)) }
+        try {
+          selected = { path: head.wirePath, ...(await this.options.host.fingerprint(head.path)) }
+        } catch {
+          // An unverified local copy cannot authorize publication or removal.
+          return 'local-changed' as const
+        }
         return true
       })
+      if (checked === 'local-changed') return this.result(checked)
       if (!checked) return this.result('version-changed')
       try {
         const report = (await this.options.sync()) as

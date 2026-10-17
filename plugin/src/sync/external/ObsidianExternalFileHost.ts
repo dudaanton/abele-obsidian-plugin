@@ -73,7 +73,9 @@ export class ExternalFileHost {
       this.assertOwned,
       undefined,
       undefined,
-      app.vault.configDir
+      app.vault.configDir,
+      undefined,
+      options.platform === 'mobile'
     )
     const opened = (file?: { path?: string } | null) => {
       this.coordination.opened([...this.openPaths(), ...(file?.path ? [file.path] : [])])
@@ -287,18 +289,24 @@ export class ExternalFileHost {
           else await mutateAdapter.writeBinary(path, bytesOf(bytes))
           return
         }
+        const hash = incremental.create()
         for (let at = 0; at < bytes.length; at += chunkSize) {
           // A view would expose its full backing buffer to the base64 bridge.
-          const chunk = bytes.slice(at, at + chunkSize).buffer
+          const chunk = bytes.slice(at, at + chunkSize)
           assertEffect()
           await this.effect(() =>
             at === 0
               ? this.options.stagingMtime
-                ? mutateAdapter.writeBinary(path, chunk, { mtime: this.options.stagingMtime(path) })
-                : mutateAdapter.writeBinary(path, chunk)
-              : mutateAdapter.appendBinary(path, chunk)
+                ? mutateAdapter.writeBinary(path, chunk.buffer, {
+                    mtime: this.options.stagingMtime(path),
+                  })
+                : mutateAdapter.writeBinary(path, chunk.buffer)
+              : mutateAdapter.appendBinary(path, chunk.buffer)
           )
+          hash.update(chunk)
         }
+        assertEffect()
+        await this.io.recordWrite(path, bytes.length, hash)
       },
       writeStagingSource: async (path, source, expected, assertEffect, signal) => {
         await transferBudgetOf(this.app.vault).run(async () => {
@@ -311,7 +319,9 @@ export class ExternalFileHost {
             },
             (work) => this.effect(work),
             vaultDisk(this.app.vault),
-            this.app.vault.configDir
+            this.app.vault.configDir,
+            undefined,
+            this.options.platform === 'mobile'
           )
           const mtime = this.options.stagingMtime?.(path) ?? Date.now()
           assertEffect()

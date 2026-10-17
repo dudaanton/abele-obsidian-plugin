@@ -24,6 +24,31 @@ import { buildFakeVault } from '../helpers/fakeVault'
 
 const path = 'Media/sample-image.bin'
 const content = new TextEncoder().encode('sample attachment bytes')
+it('keeps a large mobile file when its changed stamp prevents verification', async () => {
+  const s = await setup()
+  const stat = s.fake.vault.adapter.stat.bind(s.fake.vault.adapter)
+  vi.spyOn(s.fake.vault.adapter, 'stat').mockImplementation(async (name) => {
+    const value = await stat(name)
+    return name === path && value
+      ? { ...value, size: 51 * 1024 * 1024, mtime: value.mtime + 1 }
+      : value
+  })
+  const read = vi.spyOn(s.fake.vault.adapter, 'readBinary')
+  try {
+    expect(
+      await s.api.evict(s.base.fileId, {
+        operationId: 'sample-changed',
+        expectedRevision: 0,
+        expectedVersionId: s.base.versionId,
+      })
+    ).toEqual({ status: 'local-changed', reclaimedBytes: 0 })
+    expect(await s.fake.vault.adapter.exists(path)).toBe(true)
+    expect(await s.fake.vault.adapter.exists(path + '.abele-ref')).toBe(false)
+    expect(read).not.toHaveBeenCalled()
+  } finally {
+    s.close()
+  }
+})
 it('refuses offload promptly when desktop pre-publication sync stalls, retaining the sole bytes', async () => {
   const s = await setup(),
     controller = new AbortController(),
