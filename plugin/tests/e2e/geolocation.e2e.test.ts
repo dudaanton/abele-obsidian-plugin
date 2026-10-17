@@ -94,7 +94,7 @@ describe.skipIf(!available)('device location on a real map', () => {
       const button = state.root.querySelector('[role="button"][aria-label="Show my location"]')
       button.click()
       await new Promise(resolve => setTimeout(resolve, 500))
-      return { message: [...(typeof activeDocument === 'undefined' ? document : activeDocument).querySelectorAll('.notice')].map(n => n.textContent).find(t => t.startsWith('Location ')), dot: !!state.root.querySelector('.maplibregl-user-location-dot'), retry: button.getAttribute('aria-disabled') !== 'true' }
+      return { message: [...(typeof activeDocument === 'undefined' ? document : activeDocument).querySelectorAll('.notice')].map(n => n.textContent).find(t => t.startsWith('Location ')), dot: !!state.root.querySelector('.maplibregl-user-location-dot') }
     })()`)
       )
       expect(result.message).toMatch(
@@ -102,7 +102,12 @@ describe.skipIf(!available)('device location on a real map', () => {
           code - 1
         ]
       )
-      expect(result).toMatchObject({ dot: false, retry: true })
+      expect(result).toMatchObject({ dot: false })
+      expect(
+        evalJson<boolean>(
+          `window.__locationE2E.root.querySelector('[role="button"][aria-label="Show my location"]').getAttribute('aria-disabled') !== 'true'`
+        )
+      ).toBe(true)
     },
     30_000
   )
