@@ -8,17 +8,26 @@
   >
     <template #label
       ><span class="abele-path-label__path">{{ compact }}</span
-      ><span v-if="missing" class="abele-path-label__state">Unavailable on this device</span></template
+      ><span v-if="missing" class="abele-path-label__state">{{
+        t('kit.deviceMissing')
+      }}</span></template
     >
-    <span v-if="workspace" class="abele-path-label__workspace">Workspace: {{ workspace }}</span>
+    <span v-if="workspace" class="abele-path-label__workspace">{{
+      t('kit.workspace', { name: workspace })
+    }}</span>
     <div class="abele-path-label__full">{{ path }}</div>
     <div class="abele-path-label__actions">
-      <Icon v-if="copyable" icon="copy" tooltip="Copy full path" @click="emit('copy', path)" /><Icon
+      <Icon
+        v-if="copyable"
+        icon="copy"
+        :tooltip="t('kit.copyPath')"
+        @click="emit('copy', path)"
+      /><Icon
         v-if="revealable"
         icon="folder"
-        tooltip="Reveal in file explorer"
+        :tooltip="t('kit.reveal')"
         :disabled="missing"
-        disabled-reason="Target unavailable"
+        :disabled-reason="t('kit.targetMissing')"
         @click="emit('reveal', path)"
       />
     </div>
@@ -27,14 +36,17 @@
     v-else
     class="abele-path-label"
     :class="{ 'abele-path-label_missing': missing, 'abele-path-label_full': mode === 'full' }"
-    ><span v-if="workspace" class="abele-path-label__workspace">Workspace: {{ workspace }}</span
+    ><span v-if="workspace" class="abele-path-label__workspace">{{
+      t('kit.workspace', { name: workspace })
+    }}</span
     ><span class="abele-path-label__path" :class="{ 'abele-path-label__full': mode === 'full' }">{{
       mode === 'full' ? path : compact
     }}</span
-    ><span v-if="missing" class="abele-path-label__state">Unavailable on this device</span></span
+    ><span v-if="missing" class="abele-path-label__state">{{ t('kit.deviceMissing') }}</span></span
   >
 </template>
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, ref } from 'vue'
 import Disclosure from './Disclosure.vue'
 import Icon from './Icon.vue'
@@ -59,7 +71,7 @@ const compact = computed(() => {
   return props.mode === 'basename'
     ? props.path.slice(index + 1) || props.path
     : index < 0
-      ? 'Vault root'
+      ? t('kit.vaultRoot')
       : props.path.slice(0, index) || props.path.slice(0, 1)
 })
 </script>

@@ -10,6 +10,7 @@
  * module is dropped entirely from the production bundle.
  */
 import { EditorView } from '@codemirror/view'
+import { setTestLocale } from './i18nLocale'
 const codeView = (element: HTMLElement) => EditorView.findFromDOM(element)
 import { eink, setEink } from '@/reader/eink'
 import { setZen, zen } from '@/reader/zen'
@@ -221,6 +222,7 @@ export interface NoteRenderSample {
 }
 
 interface AbeleTestApi {
+  setTestLocale: typeof setTestLocale
   syncStartup(): ReturnType<import('@/sync/tokenUi').TokenUi['startupSnapshot']>
   syncScans(): {
     id: string
@@ -888,6 +890,7 @@ function chatHistoryPaths(): string[] {
 export function exposeTestApi(plugin: Plugin): void {
   plugin.register(closeDesignCatalogue)
   window.__abeleTest = {
+    setTestLocale,
     openDesignCatalogue,
     closeDesignCatalogue,
     syncStartup: () => structuredClone(tokenUi.value?.startupSnapshot() ?? []),

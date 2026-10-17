@@ -6,13 +6,14 @@
     class="abele-scroll-more"
     role="status"
     :aria-busy="loading || undefined"
-    :aria-label="loading ? 'Loading…' : label"
+    :aria-label="loading ? t('kit.loading') : label"
   >
-    <span v-if="loading" class="abele-scroll-more__text">Loading…</span>
+    <span v-if="loading" class="abele-scroll-more__text">{{ t('kit.loading') }}</span>
   </div>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
 const props = withDefaults(
@@ -28,7 +29,7 @@ const props = withDefaults(
      */
     shown?: number
   }>(),
-  { loading: false, label: 'More below', shown: 0 }
+  { loading: false, label: () => t('kit.moreBelow'), shown: 0 }
 )
 const emit = defineEmits<{ more: [] }>()
 

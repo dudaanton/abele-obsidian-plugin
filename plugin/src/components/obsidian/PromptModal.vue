@@ -12,13 +12,14 @@
     />
     <p v-if="error" class="mod-warning abele-prompt__error">{{ error }}</p>
     <template #footer>
-      <Button text="Cancel" :tooltip="cancelTooltip" @click="emit('close')" />
+      <Button :text="t('kit.cancel')" :tooltip="cancelTooltip" @click="emit('close')" />
       <Button :text="submitText" :tooltip="submitTooltip" accent @click="submit" />
     </template>
   </ObsidianModal>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { nextTick, onMounted, ref } from 'vue'
 import ObsidianModal from './Modal.vue'
 import Input from './Input.vue'
@@ -50,11 +51,11 @@ const props = withDefaults(
   }>(),
   {
     autofocus: true,
-    placeholder: 'filename',
+    placeholder: () => t('kit.filename'),
     value: '',
-    submitText: 'Create',
-    submitTooltip: 'Go ahead with this text',
-    cancelTooltip: 'Close this and change nothing',
+    submitText: () => t('kit.create'),
+    submitTooltip: () => t('kit.submitTooltip'),
+    cancelTooltip: () => t('kit.cancelTooltip'),
   }
 )
 

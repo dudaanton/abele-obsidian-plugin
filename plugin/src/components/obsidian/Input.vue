@@ -45,7 +45,7 @@
         ref="loadingIcon"
         class="abele-obsidian-input__loading-icon"
         role="status"
-        aria-label="Загружаю"
+        :aria-label="t('kit.inputLoading')"
       />
       <slot v-else name="trailing">
         <span ref="trailingIconEl" class="abele-obsidian-input__trailing-icon" aria-hidden="true" />
@@ -55,6 +55,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 // A text field shaped like Nuxt UI's Input: the field itself, an optional leading icon and a
 // trailing place for an icon, a button or a count. The look is Obsidian's own: its input,
 // and its search field's geometry for the icon beside the text.

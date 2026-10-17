@@ -12,7 +12,7 @@
         <Progress
           :value="progress.total ? progress.done : undefined"
           :max="progress.total || undefined"
-          :label="workingTitle ?? 'Progress'"
+          :label="workingTitle ?? t('kit.progress')"
           class="abele-found-list__progress"
         />
       </template>
@@ -44,8 +44,8 @@
           v-if="selectable && total"
           quiet
           class="abele-found-list__all"
-          :text="chosen === total ? 'Clear' : 'Select all'"
-          :tooltip="chosen === total ? 'Choose none of these' : 'Choose every one of these'"
+          :text="chosen === total ? t('kit.clear') : t('kit.selectAll')"
+          :tooltip="chosen === total ? t('kit.chooseNone') : t('kit.chooseAll')"
           @click="emit(chosen === total ? 'clear' : 'select-all')"
         />
       </GroupHeading>
@@ -55,6 +55,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 /**
  * What a window found when it looked through the vault, and the place it fills while it looks:
  * the same four states for every such window — looking (with how far it has got), nothing found,

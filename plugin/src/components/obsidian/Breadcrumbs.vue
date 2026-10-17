@@ -2,13 +2,13 @@
   <nav
     class="abele-breadcrumbs"
     :class="{ 'abele-breadcrumbs_folded': folded }"
-    aria-label="Where this is"
+    :aria-label="t('kit.where')"
   >
     <template v-for="(entry, at) in shown" :key="entry.index ?? 'more'">
       <Icon v-if="at > 0" icon="chevron-right" no-hover class="abele-breadcrumbs__separator" />
       <span
         v-if="entry.index === null"
-        :ref="(el) => applyTooltip(el, 'Show every level')"
+        :ref="(el) => applyTooltip(el, t('kit.allLevels'))"
         class="abele-breadcrumbs__more"
         role="button"
         tabindex="0"
@@ -39,6 +39,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, ref, watch, type ComponentPublicInstance } from 'vue'
 import { setTooltip } from 'obsidian'
 import Icon from './Icon.vue'

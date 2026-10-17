@@ -1,0 +1,1202 @@
+{
+  "kit.cancel": {
+    "englishHash": "4d3f40f04c4288052255b978663d11d047fb80c63470cb4e0b2aba39660b50ed",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.delete": {
+    "englishHash": "48a15ab1be1c2b4bebc2e4176d6822df5ca41bb3a7aeaab91473c9bf0a95bd2a",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.deleteTooltip": {
+    "englishHash": "f79406945dc403c3b0ef3958c8bde450e997e97ac14a67413be76c278d2a994b",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.cancelTooltip": {
+    "englishHash": "3388b8434d9489822e2c9f6e85a179132a44cb0f2689fac896e379212798aa26",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.filename": {
+    "englishHash": "30acccdcc1412e1d6d052276868618abecbbdd5df7f4e7676538226bfd404d9a",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.create": {
+    "englishHash": "5e97cd086a9a721a1567847513354cc32a29229719949116408eea24cdb735b9",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.submitTooltip": {
+    "englishHash": "6b16fd838489967c5eede27fce2b3358b35597b200ee18bffb7abcf37523efae",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.where": {
+    "englishHash": "dce4e06cd593427e4ae21d0c877646d071be32f43d7a9606d35afb4a699ea009",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.allLevels": {
+    "englishHash": "7651f5331221d28e01d5a95a33b56452caa16c32d5c835236a48de6a25046cbf",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.empty": {
+    "englishHash": "f3b6512bf6dab4b2aca1553383fac91bb25a8b81c5f9835aeee40ad6cb5d6d9c",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.noMatches": {
+    "englishHash": "18c8bfa630fbe8085904910df75bcfa8ae36b4e31a8c3434fad8598fc0a509dc",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.loading": {
+    "englishHash": "1a8f9906129dd6caf2e152923f354e2629d32c7a0c5938fa557c1cfba7301e1b",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.loadError": {
+    "englishHash": "f0f6b9e6407e60ebaa464249a5947bead376f6cb5984f3ec65ffb6b99c201515",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.details": {
+    "englishHash": "ceea59a54bd2ffe678b85f75a15c5ffedb91331e399efb005c63e2aa6b6161a0",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.noEvents": {
+    "englishHash": "305824ce8ec003d684bf0dd059633c0de11720597e765154d2a90d473646c829",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.sourceMissing": {
+    "englishHash": "ad4badddf4efefbee9aed89acf99c110d61a12503081c71fb82fa1067f0c9957",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.saveError": {
+    "englishHash": "d7be71a42d277c78fd852eef2c7a4b15169949538bfdc321aeba0672af853e75",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.progress": {
+    "englishHash": "557e23e0cfc10d3bdb17a95799ca9d76d7925a04bc69535b5e4beb56e4696e18",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.clear": {
+    "englishHash": "91758a2464b80cc5f974e35d487a3403e2d35f3084e4509d4ff9b70abf85bc2a",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.selectAll": {
+    "englishHash": "4763d0ec28d25f184e7689040dc0855bde45000600e97218bd89934e799b587d",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.chooseNone": {
+    "englishHash": "ea4a42b1e099ef4be596b347ea2a3aeb418560319a327e84d645765dae6d1b97",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.chooseAll": {
+    "englishHash": "a465d027f61654257a08a2be463cbb92179c6edf7ab8e5191739e53ff0b788ef",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.chooseIcon": {
+    "englishHash": "dc1eeb9e061c1ed80576d97ff745f750847e922fcede0d683e56480d00cf7630",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.searchIcons": {
+    "englishHash": "06e67fe66efa21d6550331d73f89be341a32a709f66265bf1b98c2d86e2ea39c",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.noIcon": {
+    "englishHash": "f84bcf911f55f009e050cddc998361dcc7459b8d6fffcefbf968d0887ad9e181",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.refreshing": {
+    "englishHash": "bbb8d67a45a91675789ac1a95abe78083bc2193830b418423734a67e523d3374",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.objectMissing": {
+    "englishHash": "1a37d0e51d7534986a19884363f75cb51b957f74400497b962bdbe05fe95356c",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.objectError": {
+    "englishHash": "09e5e625cc3c852995615e6317aa6bda1786427b7074c8543fbd3d3ee28a7ffb",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.waiting": {
+    "englishHash": "346b3ec0445a4fdcbc74aa07e5af55e5946629fb84b3b3c926505ace75e9bfb7",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.closeSearch": {
+    "englishHash": "bb5c7e5ab418b500cfc6096d9f8d252786cfe991992199f499deb871df94c988",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.folder": {
+    "englishHash": "f30cec3c8b3e6fa8263a5da2a3353c04fa5ba98ae84865695db66d320e7b18dd",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.scope": {
+    "englishHash": "c3b76dd0115461809024cf8a5582d86dbe67fb72a6dbf4afe46a3c3a59afb91a",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.unknown": {
+    "englishHash": "35b151599e81d88b1c233d2fcf33ecd260db56f2f660728f9f0d51354fbb7c8f",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.removeNote": {
+    "englishHash": "aff5b346a3a3e4770e6205f2ac6b58a0b17676666adcd2c6a9e5d19f154970fb",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.copyPath": {
+    "englishHash": "db96d445f0a9279e684cc00f095203eea3c6325a39015c9d798319d693440f5a",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.reveal": {
+    "englishHash": "6ae64d6626b35cab2899c3443d0864e2277b93e61a05d3e53a5e14c1ca016e5f",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.targetMissing": {
+    "englishHash": "31abfc321b95f50d77f70b4073a6cafe157648d0907753fee812d6b82862ceff",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.vaultRoot": {
+    "englishHash": "c94873cb5d287132236105707f69576df5bd7fa1daece222355aeed698fb98d5",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.previousMonth": {
+    "englishHash": "b8492b49caf3d157c92ed9d57d84856c0613e0fb24048d2d9817cdabbaa2f551",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.dateRange": {
+    "englishHash": "cb4779cca90546ff21389d7f0acc2af56b82b017e784ce2bdb38d1cf9252159b",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.nextMonth": {
+    "englishHash": "8fe650f1e68d50d679d46ec447d13bffb0c70228ff7b16812bf8bd36e1fbff1a",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.noQuote": {
+    "englishHash": "ebbbef7083ef729b84cc6fa7ce636698a085470ccc3e031c74a1a9fe43678606",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.collapseQuote": {
+    "englishHash": "99fee21874ddab0f15f40c496cdc33a2280d8507b7029584918d0132caf95c88",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.expandQuote": {
+    "englishHash": "508bf6973992c61ea7678bbf9c30a00d8574c5fc3fd7ca0ea535316018e88cd8",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.exactTime": {
+    "englishHash": "8e4fc9c64c1453d4387f5a607d8b965e9581d15a7b8e777c3b849ee24ae75b1c",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.working": {
+    "englishHash": "0ba35a590ddab2eb8adcec512cefc5a288c2115b0e823fd1a0d70f3bf5727931",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.done": {
+    "englishHash": "677de5e20da9577c14ccf53a8034157de98c674d2eb817b7addaf8625cac52a6",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.failed": {
+    "englishHash": "9852304659e128305c10bea9bdf10440c8b5b1dba8baff1ed318afe864af1657",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.skipped": {
+    "englishHash": "5080610db89e28b1818031cf10f5377f1e89d3346e863b4f6d2200929872be25",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.errors": {
+    "englishHash": "c77cad75949fe220074fcdaa0ba00f504313ea9a25c432d302b541c3e4f2404b",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.moreBelow": {
+    "englishHash": "f53a665b27b1c7dc53477782184ab0371b1abbeb99372e6e5f2977d6dff638ca",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.selection": {
+    "englishHash": "9d37c6987777d07351175cb17661fb60fc31ce83dbaf060633582301fe583337",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.moreActions": {
+    "englishHash": "ffb8a61b9ca7817660e9b111d2213ebf0dd74bfdd4ec9323a1d4f936f00a8c64",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.showRest": {
+    "englishHash": "7cd36d92b249f74aa7e903efab2e7ef4d647467f6b1c8e718509eb8e4425cc02",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.showMore": {
+    "englishHash": "76a5e6015d89045ba663922fffe49a6fccf327fc45d1960645fd6fc946e1c377",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.underlineOn": {
+    "englishHash": "c169987a7442c116e05fd2455a236a8162d4d7077e8fb7010b32c918ae1a97cf",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.underlineOff": {
+    "englishHash": "f653731856ad7b0fe26d520298591f109ba9f8d72c684597cf61b43d4dcfc400",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.underline": {
+    "englishHash": "e25c455a939be7c84e3a973d9af7583c9f12913a10b70af54ef8c29c41e20c27",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.savingColour": {
+    "englishHash": "a210123b2de367cc68f4a40b36ba83f022cc63ab76d8a7368b86c224cdafcdbc",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.selectionMissing": {
+    "englishHash": "cec2457d5337050afd7546cabcddf221b2a4a670f6e911fd989ed520d09f991a",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.noColour": {
+    "englishHash": "b1e02fcefb51d3a6b718d255531e8be3f070ec1825b2622a46d2a8a69322bdb6",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.savingNamedColour": {
+    "englishHash": "0a0e1c7cd87deb30cc719a21a9bcbdfb8b0714ec9b294b3a8c582d80d067ee62",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.colourDisabled": {
+    "englishHash": "af48949ca2a0efe212413ce96ba71510450fdcd0d1398d2ba722316f2a84d24f",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.waveform": {
+    "englishHash": "8c0e5fe3f219342d8cf20a7b2afa5cc2ac9c1e534b2fc7c0655fc48a9dbe53e2",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.colour.grey": {
+    "englishHash": "15c729fa845a786bcd921582f1d29ccce58a66d45ad7be69ea122cfbb87cfcc0",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.colour.red": {
+    "englishHash": "d911904c06204a2fa8728a9c71fa198f170dcb7ca85b012637236f0e1a37f502",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.colour.orange": {
+    "englishHash": "cdbccc2108eb87a74d29c080dc32d02fdf71738d42ede0de183d14d60cbb8e1a",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.colour.yellow": {
+    "englishHash": "4d4327149ed6d44de7e4a0ec7a56fba7045eb5b6cd2cbb5f701b1ce37d064a1f",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.colour.green": {
+    "englishHash": "dd96abb0c05348f8fbd90a3e5e2ddf81dc66430209260cbdff3bbd5dda460f78",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.colour.cyan": {
+    "englishHash": "f7f4a2111468e5222323cb33d3b35a4a37ffc5c30ad8e5321d3d37bcdf5edc01",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.colour.blue": {
+    "englishHash": "c70341715d40705f8d9679279e437773259e53ec9466b34b961de09b6042190d",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.colour.purple": {
+    "englishHash": "678c5574892918a12013ad6656b165513cf1c7f082ef8918af6196ddff188f22",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.colour.pink": {
+    "englishHash": "f3b162df5146d60f0f04ba51e6914489c7ec4eb9856b1d299cd04a6c7eb8bd5a",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.tabs.tasks": {
+    "englishHash": "5efcca9d4693612e2f14208ffc3a13883fd5b60b0be0cf613e067b5f33f2d894",
+    "context": "Settings navigation; IDs remain language independent",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.tabs.logs": {
+    "englishHash": "2f3add9e0db3fe71cba714ff46b586db99f03b0567e683f071a40b43ef8c6cce",
+    "context": "Settings navigation; IDs remain language independent",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.tabs.journals": {
+    "englishHash": "f0a1622774b0088c7d6563dcf8aa42f243144c81067a420cbb04416130bc3cd9",
+    "context": "Settings navigation; IDs remain language independent",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.tabs.calendars": {
+    "englishHash": "d740a5c38df3d4bc438e1635b747bf085d9b1807125af609528a8da7cc4ae326",
+    "context": "Settings navigation; IDs remain language independent",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.tabs.finance": {
+    "englishHash": "9058c789490ff6c3fd9df42c796a14621cf6f0767a159a52abbd1e81ceb0cecd",
+    "context": "Settings navigation; IDs remain language independent",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.tabs.timeTracking": {
+    "englishHash": "227900d9f27fdcb9361360e3d94f138948454e5d476f3d62062940548896372d",
+    "context": "Settings navigation; IDs remain language independent",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.tabs.ai": {
+    "englishHash": "07961cae65da0b22cb145033223d77dbe8457e3282f06bc16020449df1b285b4",
+    "context": "Settings navigation; IDs remain language independent",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.tabs.scripts": {
+    "englishHash": "088b4734bb1687acd7dfb98832aa9eb340dc8fec7699fc6993a02e4db4834371",
+    "context": "Settings navigation; IDs remain language independent",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.tabs.links": {
+    "englishHash": "04714194e7d2e4648008d1fb462b30ddeeb757f91a9461c4045348775a7b5b3b",
+    "context": "Settings navigation; IDs remain language independent",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.tabs.github": {
+    "englishHash": "5dd692a6c790e52044d7a2d0d4851016cf1764d6112700543acd5b1ec88bbb55",
+    "context": "Provider brand; unchanged across all locales.",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.tabs.nodes": {
+    "englishHash": "7aa617360c0432f15e672ac0d4aeaba2e55365c6512e7ad777eadb8823c27539",
+    "context": "Settings navigation; IDs remain language independent",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.tabs.reader": {
+    "englishHash": "7d1054239d151f089b8b973c0322a716473bf03d66adb024edff5b31c9a87b1a",
+    "context": "Settings navigation; IDs remain language independent",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.tabs.quickButton": {
+    "englishHash": "9af5fb5671756881b4b39996531ec69248601a0c6a0334c50969bd0c6c72b9b0",
+    "context": "Settings navigation; IDs remain language independent",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.tabs.headerButtons": {
+    "englishHash": "61ee4dd1771005df86f3832cf2d5e56c56a0d0557972321dd6618f61aac8383d",
+    "context": "Settings navigation; IDs remain language independent",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.tabs.linter": {
+    "englishHash": "715735d87950f5a18e12c601301a81b0867ba0b817d232db65b5529453f28731",
+    "context": "Settings navigation; IDs remain language independent",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.tabs.transfer": {
+    "englishHash": "10dbbaf0cf14b62e2b8fefcaa79442c1ea62e0942a962c1314c44e3270e3b3b2",
+    "context": "Settings navigation; IDs remain language independent",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.tabs.sync": {
+    "englishHash": "191cc2c42d3243b8e3961e42596e27a5183175c29d8620fde888c4e0469e8c74",
+    "context": "Settings navigation; IDs remain language independent",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.tabs.other": {
+    "englishHash": "85d53b5c077d62a5b6c55b03ccf5aa1dc2ebc0888fc59d293f6d3ce072f3b659",
+    "context": "Settings navigation; IDs remain language independent",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.groups.notes": {
+    "englishHash": "5c3f568b18e6480edacf555e0a08238f24dac7ee16700b23fb6fc29cfb567124",
+    "context": "Settings navigation; IDs remain language independent",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.groups.moneyTime": {
+    "englishHash": "7b3a91843d7b2d983e42a92ebb382f589a8af14fd0f5ba88351e926b063f6fc8",
+    "context": "Settings navigation; IDs remain language independent",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.groups.agents": {
+    "englishHash": "5039f304ace48feb112963e90aede2a222328b18be542982b2556800bad740bf",
+    "context": "Settings navigation; IDs remain language independent",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.groups.buttons": {
+    "englishHash": "0f70e2480e553f0ba0ecd35369368a85975acba6c508df9eb5d5f2430f57b52e",
+    "context": "Settings navigation; IDs remain language independent",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.groups.data": {
+    "englishHash": "64d2fb2734dc938d561a6ab79dcc9069530d24913a0137378b093df1f4e64702",
+    "context": "Settings navigation; IDs remain language independent",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.documentation": {
+    "englishHash": "5abe96f1cf90effc79c46e5fb00a4a175008b850feb8e517ea18cc2c833cdd39",
+    "context": "Settings navigation; IDs remain language independent",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.documentationTooltip": {
+    "englishHash": "fbc64270afc522668f46d94c40174d154395f0acf75cb23b7c8c9ca4fc58bc30",
+    "context": "Settings navigation; IDs remain language independent",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.englishDocs": {
+    "englishHash": "44a7b8a3280fcffec5fd35df2db343cb8618887e9e601f5c9cbc2efb3025f7af",
+    "context": "Settings navigation; IDs remain language independent",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.imageMissing": {
+    "englishHash": "6b68cda9358e60030c2a12d53770867e06a7e9081a1737dd38d0c8218b702339",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.loadingImage": {
+    "englishHash": "229af5bfa2535a788735f97cc6d25ecd1c75495ed19ea23deee38bbc5ef08020",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.deviceMissing": {
+    "englishHash": "b5b01933730596f071373d7734ef88a1d0a2581c6f2fc276d999f51d58026b67",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.hideDetail": {
+    "englishHash": "2ed250c8ad3180b79c3ce1fdb5a6ab9ccee85384f6cc6a8aba93f38bf3ce6fc9",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.showDetail": {
+    "englishHash": "db3898bbff7c6dfe93bcae34909884884f3827f580311ef385093712714ae478",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.description": {
+    "englishHash": "fa8319a14e0f5488960130a320d5fa580fdd8723c94c77cda7561b5b40dbedb2",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.openSource": {
+    "englishHash": "1fab289d4a611c8ff66431bf65b274950dd929f4eb85138323c545cfd59fb838",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.retry": {
+    "englishHash": "3db1d57822fc034725696c868929cb218a9126681478320a9ae9c3c29cd941b4",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.moreIcons": {
+    "englishHash": "976141bcef47012f387d46f4309c684ea945a768562c89ec89b789bfb7630243",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.image": {
+    "englishHash": "2c292e9481bbc39f72c136115ea4144ad5cc535538fe4fbaea8953fc0d0a6f90",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.imageMissingNamed": {
+    "englishHash": "442812f74d14b79e004e1827f9ffda28614660ce18f38623fc603632ff366b0b",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.previewImage": {
+    "englishHash": "660b84192ffcd561965c9b55e9f4e7ba3524aa816adb07a76bd3976297ec2e7e",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.inputLoading": {
+    "englishHash": "bf4931a93cf4348f5c0541debe6d49e4f8a4d5960c4e7d9a2b84a65a622e351f",
+    "context": "Legacy accessibility wording retained byte-for-byte during baseline extraction; English copy normalization is a separate change.",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.partOf": {
+    "englishHash": "ded171f351e271aaac82b22d1f8fc65a01dc4ed696f5faeb12d0af12d661cda2",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.workspace": {
+    "englishHash": "32e409fd2a94a31240b4a85824ad9868f0d83ca47bdc2c3b7a4d3628cfc73dff",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.qrCode": {
+    "englishHash": "f5aed96d2b10591c96093426e74d77a2c11f9049029c82938bb062e8607a24ef",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.askSelection": {
+    "englishHash": "98bb9cc50e1e9464e765c288a6ea8f66c8ef3698a80e2d95dcf03aaa7beae301",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.addSelection": {
+    "englishHash": "ea9551076d7cfd855fbc3257ec441192b8d2a7e739e97fe08d2d06f6f6aade17",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.noteSelection": {
+    "englishHash": "b58fd7ca93e78e6ebd6d641e3ed3b025769759260cd7f8a0ef56bc554e8bed48",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.linkSelection": {
+    "englishHash": "5a4abdb669c827701d4abc3f3805da5d26a973f3741093a065d4f5df1976cdac",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "kit.saving": {
+    "englishHash": "d89cdca193c1e5625a22690efa9fb80e83c35774d4672847bf104101f84b0b13",
+    "context": "Shared control default or accessible label",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  }
+}

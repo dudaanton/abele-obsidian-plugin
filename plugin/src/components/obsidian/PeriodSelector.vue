@@ -1,13 +1,13 @@
 <template>
   <div class="abele-period-selector">
-    <ObsidianIcon icon="chevron-left" tooltip="Previous month" @click="previousMonth" />
+    <ObsidianIcon icon="chevron-left" :tooltip="t('kit.previousMonth')" @click="previousMonth" />
     <!-- The title takes the width of the year's longest month, so the arrows stay where they are
          while paging; every month's label sits unseen in the same cell to hold it. -->
     <span class="abele-period-selector__slot">
       <ObsidianIcon
         class="abele-period-selector__title"
         :text-right="label"
-        tooltip="Choose date range"
+        :tooltip="t('kit.dateRange')"
         @click="pickerOpen = true"
       />
       <ObsidianIcon
@@ -19,7 +19,7 @@
         tabindex="-1"
       />
     </span>
-    <ObsidianIcon icon="chevron-right" tooltip="Next month" @click="nextMonth" />
+    <ObsidianIcon icon="chevron-right" :tooltip="t('kit.nextMonth')" @click="nextMonth" />
 
     <DateRangePickerModal
       v-if="pickerOpen"
@@ -33,6 +33,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, ref, watch } from 'vue'
 import dayjs from 'dayjs'
 import ObsidianIcon from './Icon.vue'
@@ -64,7 +65,9 @@ const label = computed(() => {
 })
 
 const months = computed(() =>
-  Array.from({ length: 12 }, (_, m) => dayjs().year(selectedYear.value).month(m).format('MMMM YYYY'))
+  Array.from({ length: 12 }, (_, m) =>
+    dayjs().year(selectedYear.value).month(m).format('MMMM YYYY')
+  )
 )
 
 const computedStart = computed(() =>

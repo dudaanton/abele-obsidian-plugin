@@ -8,7 +8,7 @@
       class="abele-selection-bar"
       :class="{ 'abele-selection-bar_placed': placed }"
       role="toolbar"
-      aria-label="Selection"
+      :aria-label="t('kit.selection')"
       :style="{ top: `${at.top}px`, left: `${at.left}px` }"
       @pointerdown="onPress"
       @mousedown.prevent
@@ -26,6 +26,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 // Words selected inside `scope` — part of a line, several lines — and what can be done with them:
 // ask the agent, add them to the open chat, insert them into a note, whatever the host adds. The
 // bar says which action was picked, with the words and, inside a code view, the lines they span.

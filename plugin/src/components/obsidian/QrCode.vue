@@ -12,6 +12,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import qr from 'qrcode-generator'
 import { computed } from 'vue'
 
@@ -23,7 +24,7 @@ const props = withDefaults(
     /** Error correction. `M` is the usual trade; `L` fits more in the same code. */
     level?: 'L' | 'M' | 'Q' | 'H'
   }>(),
-  { label: 'QR code', level: 'M' }
+  { label: () => t('kit.qrCode'), level: 'M' }
 )
 
 /** Four modules of clear space on every side, which every scanner expects to find. */

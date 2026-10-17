@@ -27,19 +27,19 @@
           ><Icon
             v-if="event.jump && event.state !== 'missing'"
             icon="message-square"
-            :tooltip="`Open source for ${event.title}`"
+            :tooltip="t('kit.openSource', { title: event.title })"
             @click="emit('jump', event.id)"
         /></template>
         <template v-if="event.state === 'error' && event.retryable" #recovery
           ><Icon
             icon="refresh-cw"
             :text-right="event.retryLabel"
-            :tooltip="event.retryLabel || `Retry ${event.title}`"
+            :tooltip="event.retryLabel || t('kit.retry', { title: event.title })"
             @click="emit('retry', event.id)"
         /></template>
         <template v-if="event.detail" #detail
           ><Disclosure
-            :label="event.detailLabel || 'Details'"
+            :label="event.detailLabel || t('kit.details')"
             :model-value="expanded.has(event.id)"
             @update:model-value="toggle(event.id, $event)"
             >{{ event.detail }}</Disclosure
@@ -48,9 +48,10 @@
       </ListRow>
     </li>
   </ol>
-  <EmptyState v-else text="No events yet" />
+  <EmptyState v-else :text="t('kit.noEvents')" />
 </template>
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { ref } from 'vue'
 import ListRow from './ListRow.vue'
 import MetaLine from './MetaLine.vue'
@@ -77,9 +78,9 @@ defineProps<{ events: KitEvent[]; now?: Date; diagnostic?: boolean }>()
 const emit = defineEmits<{ jump: [id: string]; retry: [id: string] }>()
 const messages = {
   ready: '',
-  pending: 'Saving…',
-  missing: 'Source unavailable',
-  error: 'Could not save',
+  pending: t('kit.saving'),
+  missing: t('kit.sourceMissing'),
+  error: t('kit.saveError'),
 }
 const showTime = (event: KitEvent) =>
   event.time !== undefined || !['pending', 'error'].includes(event.state ?? 'ready')

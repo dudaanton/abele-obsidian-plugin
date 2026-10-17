@@ -13,7 +13,7 @@
         class="abele-settings__nav"
         :class="{ 'abele-settings__nav_phone': isPhone }"
       >
-        <template v-for="group in groups" :key="group.title">
+        <template v-for="group in groups" :key="group.ids.join(' ')">
           <div class="abele-settings__group">{{ group.title }}</div>
           <Tabs
             v-model="activeTab"
@@ -32,11 +32,14 @@
           <div class="abele-settings__docs">
             <Icon
               icon="life-buoy"
-              text-right="Documentation"
-              tooltip="Close the settings and read what this tab is for"
+              :text-right="t('settings.documentation')"
+              :tooltip="t('settings.documentationTooltip')"
               @click="openDocs"
             />
           </div>
+          <p v-if="locale.language !== 'en'" class="setting-item-description">
+            {{ t('settings.englishDocs') }}
+          </p>
           <component :is="activeComponent" />
         </template>
       </div>
@@ -45,6 +48,7 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from '@/i18n/useI18n'
 import { ref, computed, onMounted, onUnmounted, watch, markRaw, type Component } from 'vue'
 import { settingsHeaderRoom } from './settingsHeaderRoom'
 import { Platform } from 'obsidian'
@@ -73,6 +77,8 @@ import LinterSettings from './LinterSettings.vue'
 import { takePendingTab } from './settingsTab'
 import SyncSettings from './SyncSettings.vue'
 
+const { t, locale } = useI18n()
+
 interface SettingsTab {
   id: string
   label: string
@@ -80,37 +86,53 @@ interface SettingsTab {
 }
 
 const tabs: SettingsTab[] = [
-  { id: 'tasks', label: 'Tasks', component: markRaw(TasksSettings) },
-  { id: 'logs', label: 'Logs', component: markRaw(LogsSettings) },
-  { id: 'journals', label: 'Journals', component: markRaw(JournalsSettings) },
-  { id: 'calendars', label: 'Calendars', component: markRaw(CalendarsSettings) },
-  { id: 'finance', label: 'Finance', component: markRaw(FinanceSettings) },
-  { id: 'time-tracking', label: 'Time Tracking', component: markRaw(TimeTrackingSettings) },
-  { id: 'ai', label: 'AI Agent', component: markRaw(AiSettings) },
-  { id: 'scripts', label: 'Scripts', component: markRaw(ScriptsSettings) },
-  { id: 'links', label: 'Links', component: markRaw(LinksSettings) },
-  { id: 'github', label: 'GitHub', component: markRaw(GithubSettings) },
-  { id: 'nodes', label: 'Nodes', component: markRaw(NodesSettings) },
-  { id: 'reader', label: 'Books', component: markRaw(ReaderSettings) },
-  { id: 'quick-button', label: 'Quick button', component: markRaw(QuickButtonSettings) },
+  { id: 'tasks', label: t('settings.tabs.tasks'), component: markRaw(TasksSettings) },
+  { id: 'logs', label: t('settings.tabs.logs'), component: markRaw(LogsSettings) },
+  { id: 'journals', label: t('settings.tabs.journals'), component: markRaw(JournalsSettings) },
+  { id: 'calendars', label: t('settings.tabs.calendars'), component: markRaw(CalendarsSettings) },
+  { id: 'finance', label: t('settings.tabs.finance'), component: markRaw(FinanceSettings) },
+  {
+    id: 'time-tracking',
+    label: t('settings.tabs.timeTracking'),
+    component: markRaw(TimeTrackingSettings),
+  },
+  { id: 'ai', label: t('settings.tabs.ai'), component: markRaw(AiSettings) },
+  { id: 'scripts', label: t('settings.tabs.scripts'), component: markRaw(ScriptsSettings) },
+  { id: 'links', label: t('settings.tabs.links'), component: markRaw(LinksSettings) },
+  { id: 'github', label: t('settings.tabs.github'), component: markRaw(GithubSettings) },
+  { id: 'nodes', label: t('settings.tabs.nodes'), component: markRaw(NodesSettings) },
+  { id: 'reader', label: t('settings.tabs.reader'), component: markRaw(ReaderSettings) },
+  {
+    id: 'quick-button',
+    label: t('settings.tabs.quickButton'),
+    component: markRaw(QuickButtonSettings),
+  },
   // Also under Scripts, where a script's own card leads to it; here it is a page of its own,
   // because most of its buttons run commands that have nothing to do with scripts.
-  { id: 'header-buttons', label: 'Header buttons', component: markRaw(HeaderButtonsEditor) },
-  { id: 'linter', label: 'Linter', component: markRaw(LinterSettings) },
-  { id: 'transfer', label: 'Transfer', component: markRaw(TransferSettings) },
-  { id: 'sync', label: 'Sync', component: markRaw(SyncSettings) },
-  { id: 'other', label: 'Other', component: markRaw(OtherSettings) },
+  {
+    id: 'header-buttons',
+    label: t('settings.tabs.headerButtons'),
+    component: markRaw(HeaderButtonsEditor),
+  },
+  { id: 'linter', label: t('settings.tabs.linter'), component: markRaw(LinterSettings) },
+  { id: 'transfer', label: t('settings.tabs.transfer'), component: markRaw(TransferSettings) },
+  { id: 'sync', label: t('settings.tabs.sync'), component: markRaw(SyncSettings) },
+  { id: 'other', label: t('settings.tabs.other'), component: markRaw(OtherSettings) },
 ]
 
 const GROUPS: { title: string; ids: string[] }[] = [
-  { title: 'Notes', ids: ['tasks', 'journals', 'calendars', 'links', 'linter', 'reader'] },
-  { title: 'Money and time', ids: ['finance', 'time-tracking'] },
-  { title: 'Agents', ids: ['ai', 'scripts', 'nodes', 'github'] },
-  { title: 'Buttons', ids: ['quick-button', 'header-buttons'] },
-  { title: 'Data', ids: ['sync', 'transfer', 'logs', 'other'] },
+  {
+    title: t('settings.groups.notes'),
+    ids: ['tasks', 'journals', 'calendars', 'links', 'linter', 'reader'],
+  },
+  { title: t('settings.groups.moneyTime'), ids: ['finance', 'time-tracking'] },
+  { title: t('settings.groups.agents'), ids: ['ai', 'scripts', 'nodes', 'github'] },
+  { title: t('settings.groups.buttons'), ids: ['quick-button', 'header-buttons'] },
+  { title: t('settings.groups.data'), ids: ['sync', 'transfer', 'logs', 'other'] },
 ]
 const groups = GROUPS.map((g) => ({
   title: g.title,
+  ids: g.ids,
   tabs: g.ids.map((id) => tabs.find((t) => t.id === id)),
 }))
 
@@ -260,6 +282,13 @@ body.is-phone .modal:has(.abele-settings) .modal-header {
   font-size: var(--font-ui-smaller);
   font-weight: var(--font-semibold);
   color: var(--text-faint);
+}
+
+// Navigation names remain readable when translated; the list can grow vertically.
+.abele-settings__nav .abele-tabs__label {
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
 }
 
 // On a desktop the pages are a list to pick from, not to descend into: no chevrons, a row as

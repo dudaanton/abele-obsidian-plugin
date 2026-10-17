@@ -12,7 +12,11 @@
           v-if="more !== undefined"
           class="abele-entry-row__more"
           :icon="more ? 'chevron-up' : 'chevron-down'"
-          :tooltip="more ? `Hide ${moreLabel}` : `Show ${moreLabel}`"
+          :tooltip="
+            more
+              ? t('kit.hideDetail', { label: moreLabel })
+              : t('kit.showDetail', { label: moreLabel })
+          "
           @click.stop="emit('update:more', !more)"
         />
       </div>
@@ -25,6 +29,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 /**
  * One entry of a list in a pane: a task, an event, a bookmark, a highlight. The name on the first
  * line, the codes of its state at the end of that line, a quiet line of facts under it, and the
@@ -43,7 +48,7 @@ withDefaults(
     more?: boolean
     moreLabel?: string
   }>(),
-  { more: undefined, moreLabel: 'description' }
+  { more: undefined, moreLabel: () => t('kit.description') }
 )
 const emit = defineEmits<{ 'update:more': [open: boolean] }>()
 </script>

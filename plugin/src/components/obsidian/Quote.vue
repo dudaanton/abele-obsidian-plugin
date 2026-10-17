@@ -1,6 +1,6 @@
 <template>
   <figure class="abele-quote">
-    <EmptyState v-if="!text" text="No quoted text" />
+    <EmptyState v-if="!text" :text="t('kit.noQuote')" />
     <!-- One passage, cut to three lines while folded; the fold stays under it either way, so
          opening it never moves the control above the words it opened. -->
     <blockquote
@@ -16,17 +16,18 @@
       v-model="expanded"
       control-only
       :target-id="textId"
-      :label="expanded ? 'Collapse quote' : 'Expand quote'"
+      :label="expanded ? t('kit.collapseQuote') : t('kit.expandQuote')"
     />
     <figcaption v-if="source || unresolved" class="abele-quote__source">
       {{ source
       }}<template v-if="unresolved"
-        ><template v-if="source"> · </template>Source unavailable</template
+        ><template v-if="source"> · </template>{{ t('kit.sourceMissing') }}</template
       >
     </figcaption>
   </figure>
 </template>
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { ref, computed, useId } from 'vue'
 import Disclosure from './Disclosure.vue'
 import EmptyState from './EmptyState.vue'

@@ -1,3 +1,5 @@
+import { initializeLocale } from '@/i18n'
+import { hostLocale } from '@/i18n/obsidianLocale'
 import { registerZen } from '@/zen/registerZen'
 import { ChangeTracker } from '@/ai/rewind/ChangeTracker'
 import '@/helpers/deferredCleanup'
@@ -310,6 +312,7 @@ export default class AbelePlugin extends Plugin {
   }
 
   async onload() {
+    initializeLocale(process.env.NODE_ENV !== 'production' ? 'en' : hostLocale().format)
     markLoad('onloadStart')
     try {
       // Every step below runs on its own: one that throws is named in the console and the rest of

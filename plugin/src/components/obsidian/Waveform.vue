@@ -15,6 +15,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed } from 'vue'
 
 const props = withDefaults(
@@ -25,7 +26,7 @@ const props = withDefaults(
     progress?: number
     label?: string
   }>(),
-  { progress: undefined, label: 'Waveform' }
+  { progress: undefined, label: () => t('kit.waveform') }
 )
 
 /**

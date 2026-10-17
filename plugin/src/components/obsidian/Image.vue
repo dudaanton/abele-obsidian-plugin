@@ -9,9 +9,9 @@
     :aria-busy="pending || (loading && !unavailable)"
     :aria-label="
       unavailable && !pending
-        ? `Image unavailable: ${alt || 'image'}`
+        ? t('kit.imageMissingNamed', { name: alt || t('kit.image') })
         : preview
-          ? `Preview ${alt || 'image'}`
+          ? t('kit.previewImage', { name: alt || t('kit.image') })
           : undefined
     "
     :role="!preview && unavailable ? 'img' : undefined"
@@ -28,12 +28,12 @@
     />
     <span v-if="unavailable && !pending" class="abele-image-thumbnail__fallback"
       ><Icon icon="image-off" no-hover /><span class="abele-image-thumbnail__reason"
-        >Image unavailable<template v-if="alt">: {{ alt }}</template></span
+        >{{ t('kit.imageMissing') }}<template v-if="alt">: {{ alt }}</template></span
       ></span
     >
     <span v-else-if="loading || pending" class="abele-image-thumbnail__fallback" role="status"
-      ><span aria-hidden="true">Loading…</span
-      ><span class="abele-image-thumbnail__reason">Loading image…</span></span
+      ><span aria-hidden="true">{{ t('kit.loading') }}</span
+      ><span class="abele-image-thumbnail__reason">{{ t('kit.loadingImage') }}</span></span
     >
   </component>
   <img
@@ -48,6 +48,7 @@
   />
 </template>
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, ref, watch } from 'vue'
 import { isExternalSource, resourceUrl } from '@/helpers/resourceUrl'
 import Icon from './Icon.vue'

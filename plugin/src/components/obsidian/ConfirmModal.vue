@@ -2,7 +2,7 @@
   <ObsidianModal :title="title" :size="size" close-in-footer @close="emit('close')">
     <p v-for="(line, i) in lines" :key="i" class="abele-confirm__message">{{ line }}</p>
     <template #footer>
-      <Button text="Cancel" :tooltip="cancelTooltip" @click="emit('close')" />
+      <Button :text="t('kit.cancel')" :tooltip="cancelTooltip" @click="emit('close')" />
       <Button
         :text="confirmText"
         :warning="!readOnly"
@@ -15,6 +15,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed } from 'vue'
 import ObsidianModal from './Modal.vue'
 import Button from './Button.vue'
@@ -41,9 +42,9 @@ const props = withDefaults(
   {
     size: 'default',
     readOnly: false,
-    confirmText: 'Delete',
-    confirmTooltip: 'Go ahead and delete it',
-    cancelTooltip: 'Close this and change nothing',
+    confirmText: () => t('kit.delete'),
+    confirmTooltip: () => t('kit.deleteTooltip'),
+    cancelTooltip: () => t('kit.cancelTooltip'),
   }
 )
 

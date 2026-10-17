@@ -91,6 +91,7 @@
   </article>
 </template>
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, useId } from 'vue'
 import Icon from './Icon.vue'
 import Disclosure from './Disclosure.vue'
@@ -114,7 +115,7 @@ const props = withDefaults(
     /** Opening goes a level deeper, into a list of its own: on a phone too it keeps its arrow. */
     drill?: boolean
   }>(),
-  { state: 'ready', selected: undefined, expanded: undefined, detailsLabel: 'Details' }
+  { state: 'ready', selected: undefined, expanded: undefined, detailsLabel: () => t('kit.details') }
 )
 const emit = defineEmits<{ open: []; 'update:expanded': [expanded: boolean] }>()
 const detailId = `abele-row-${useId()}`
@@ -132,10 +133,10 @@ const stem = computed(() =>
 )
 const stateText = {
   ready: '',
-  loading: 'Refreshing…',
-  missing: 'Object unavailable',
-  error: 'Could not load object',
-  waiting: 'Waiting for your answer',
+  loading: t('kit.refreshing'),
+  missing: t('kit.objectMissing'),
+  error: t('kit.objectError'),
+  waiting: t('kit.waiting'),
 }
 const stateIcon = {
   ready: 'check',

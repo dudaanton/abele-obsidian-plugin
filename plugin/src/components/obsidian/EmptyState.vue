@@ -21,6 +21,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 // What stands in place of a list that has nothing to show. On its own it is one muted line, as
 // Obsidian's search says "No matches"; with an icon or a title it is the larger, centred block
 // Nuxt UI calls Empty and Obsidian shows for a pane with no file open.
@@ -41,10 +42,10 @@ const props = withDefaults(
   { variant: 'empty', text: undefined, icon: undefined, title: undefined, badge: undefined }
 )
 const labels = {
-  empty: 'No items yet',
-  'no-matches': 'No matches',
-  loading: 'Loading…',
-  error: 'Could not load items',
+  empty: t('kit.empty'),
+  'no-matches': t('kit.noMatches'),
+  loading: t('kit.loading'),
+  error: t('kit.loadError'),
 }
 
 const centered = computed(() => !!props.icon || !!props.title)

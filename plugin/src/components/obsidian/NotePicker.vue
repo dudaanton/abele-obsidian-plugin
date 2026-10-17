@@ -13,7 +13,7 @@
         </div>
         <Icon
           icon="x"
-          tooltip="Take this note out"
+          :tooltip="t('kit.removeNote')"
           class="multi-select-pill-remove-button abele-note-picker__remove"
           @click="remove(file.path)"
         />
@@ -29,6 +29,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { TFile, type EventRef, type TAbstractFile } from 'obsidian'
 import Icon from './Icon.vue'

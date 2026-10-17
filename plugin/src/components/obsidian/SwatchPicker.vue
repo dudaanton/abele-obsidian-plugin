@@ -8,7 +8,7 @@
         role="radio"
         class="clickable-icon abele-swatch-picker__choice"
         :class="`abele-swatch-picker__choice_${color}`"
-        :aria-label="KIT_COLOR_NAMES[color]"
+        :aria-label="colourNames[color]"
         :aria-checked="modelValue === color"
         :disabled="disabled || busy"
         :tabindex="color === modelValue || (!colors.includes(modelValue) && index === 0) ? 0 : -1"
@@ -29,26 +29,40 @@
       class="abele-swatch-picker__underline"
       :class="{ 'is-active': underline, 'abele-obsidian-icon_active': underline }"
       icon="underline"
-      :text-right="underline ? 'Underline on' : 'Underline off'"
-      tooltip="Underline annotation"
+      :text-right="underline ? t('kit.underlineOn') : t('kit.underlineOff')"
+      :tooltip="t('kit.underline')"
       role="checkbox"
       :aria-checked="underline"
       :disabled="disabled || busy"
-      :disabled-reason="busy ? 'Saving colour' : 'Selection unavailable'"
+      :disabled-reason="busy ? t('kit.savingColour') : t('kit.selectionMissing')"
       @click="emit('update:underline', !underline)"
     />
     <span v-if="!busy" class="setting-item-description">{{
-      modelValue === 'grey' ? 'No colour' : KIT_COLOR_NAMES[modelValue]
+      modelValue === 'grey' ? t('kit.noColour') : colourNames[modelValue]
     }}</span>
-    <span v-if="busy" role="status">Saving {{ KIT_COLOR_NAMES[modelValue] }}…</span>
+    <span v-if="busy" role="status">{{
+      t('kit.savingNamedColour', { colour: colourNames[modelValue] })
+    }}</span>
     <span v-else-if="disabled" class="setting-item-description">{{
-      disabledReason || 'Colour cannot be changed here'
+      disabledReason || t('kit.colourDisabled')
     }}</span>
   </div>
 </template>
 <script setup lang="ts">
-import { KIT_COLORS, KIT_COLOR_NAMES, type KitColor } from '@/constants/colors'
+import { t } from '@/i18n'
+import { KIT_COLORS, type KitColor } from '@/constants/colors'
 import Icon from './Icon.vue'
+const colourNames = {
+  grey: t('kit.colour.grey'),
+  red: t('kit.colour.red'),
+  orange: t('kit.colour.orange'),
+  yellow: t('kit.colour.yellow'),
+  green: t('kit.colour.green'),
+  cyan: t('kit.colour.cyan'),
+  blue: t('kit.colour.blue'),
+  purple: t('kit.colour.purple'),
+  pink: t('kit.colour.pink'),
+}
 const props = withDefaults(
   defineProps<{
     modelValue: KitColor

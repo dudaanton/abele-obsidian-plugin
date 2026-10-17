@@ -14,13 +14,14 @@
       v-if="formatted.datetime && formatted.label !== formatted.exact"
       v-model="opened"
       class="abele-relative-time__detail"
-      label="Exact time"
+      :label="t('kit.exactTime')"
     >
       <span class="abele-relative-time__exact">{{ formatted.exact }}</span>
     </Disclosure>
   </span>
 </template>
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, ref } from 'vue'
 import Disclosure from './Disclosure.vue'
 import { formatTimestamp, type TimestampValue } from '@/helpers/displayFormat'

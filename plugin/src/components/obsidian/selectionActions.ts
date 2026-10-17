@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /** One glyph of the selection bar: what it is called by its host, how it looks, what it says. */
 export interface SelectionAction {
   id: string
@@ -10,20 +11,28 @@ export interface SelectionAction {
 export const ASK: SelectionAction = {
   id: 'ask',
   icon: 'message-circle-plus',
-  tooltip: 'Ask the agent about this in a new chat',
+  get tooltip() {
+    return t('kit.askSelection')
+  },
 }
 export const ADD: SelectionAction = {
   id: 'add',
   icon: 'message-square-plus',
-  tooltip: 'Add to the open chat',
+  get tooltip() {
+    return t('kit.addSelection')
+  },
 }
 export const NOTE: SelectionAction = {
   id: 'note',
   icon: 'file-input',
-  tooltip: 'Insert into the note you were last in',
+  get tooltip() {
+    return t('kit.noteSelection')
+  },
 }
 export const LINK: SelectionAction = {
   id: 'link',
   icon: 'link',
-  tooltip: 'Copy a link to these lines',
+  get tooltip() {
+    return t('kit.linkSelection')
+  },
 }

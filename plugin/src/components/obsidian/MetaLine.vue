@@ -10,6 +10,7 @@
   </span>
 </template>
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed } from 'vue'
 export interface MetaFact {
   key: string
@@ -19,7 +20,7 @@ export interface MetaFact {
   unknown?: string
 }
 const props = defineProps<{ facts: MetaFact[] }>()
-const labels: Record<string, string> = { where: 'Folder', scope: 'Scope' }
+const labels: Record<string, string> = { where: t('kit.folder'), scope: t('kit.scope') }
 const plainLabel = (key: string) => {
   // Positional keys carry already-composed card prose, not named metadata facts.
   if (/^\d+$/.test(key)) return undefined
@@ -38,7 +39,7 @@ const present = computed(() =>
           {
             ...fact,
             label: fact.label || labels[fact.key] || plainLabel(fact.key),
-            value: missing ? (fact.unknown ?? 'Unknown') : fact.value,
+            value: missing ? (fact.unknown ?? t('kit.unknown')) : fact.value,
           },
         ]
   })

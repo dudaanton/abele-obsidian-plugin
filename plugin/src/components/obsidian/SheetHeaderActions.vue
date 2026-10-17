@@ -23,6 +23,7 @@
   </div>
 </template>
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { ref, onUnmounted } from 'vue'
 import { Menu } from 'obsidian'
 import Icon from './Icon.vue'
@@ -42,7 +43,7 @@ export interface HeaderAction {
 }
 const props = withDefaults(
   defineProps<{ context?: HeaderAction; actions?: HeaderAction[]; overflowLabel?: string }>(),
-  { overflowLabel: 'More actions' }
+  { overflowLabel: () => t('kit.moreActions') }
 )
 const emit = defineEmits<{ action: [id: string] }>()
 const overflow = ref<{ $el: HTMLElement }>()

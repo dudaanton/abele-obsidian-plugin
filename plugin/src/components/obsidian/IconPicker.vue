@@ -1,12 +1,12 @@
 <template>
-  <Modal title="Choose an icon" size="tall" @close="emit('close')">
+  <Modal :title="t('kit.chooseIcon')" size="tall" @close="emit('close')">
     <div ref="root" class="abele-icon-picker" @keydown="onKeydown">
-      <Search v-model="query" placeholder="Search icons, e.g. calendar" />
+      <Search v-model="query" :placeholder="t('kit.searchIcons')" />
 
       <div class="setting-item-description" role="status">
-        {{ focusedName || shown[cursor] || 'Choose an icon' }}
+        {{ focusedName || shown[cursor] || t('kit.chooseIcon') }}
       </div>
-      <EmptyState v-if="!matches.length" :text="`No icon is called anything like “${query}”.`" />
+      <EmptyState v-if="!matches.length" :text="t('kit.noIcon', { query })" />
 
       <div v-else ref="grid" class="abele-icon-picker__scroller">
         <div class="abele-icon-picker__grid">
@@ -24,7 +24,7 @@
         <ScrollMore
           v-if="shown.length < matches.length"
           :shown="shown.length"
-          :label="`${matches.length - shown.length} more icons below`"
+          :label="t('kit.moreIcons', { count: matches.length - shown.length })"
           @more="pages++"
         />
       </div>
@@ -33,6 +33,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { getIconIds } from 'obsidian'
 import Modal from './Modal.vue'

@@ -11,6 +11,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 /**
  * What became of one row when the window acted on it: being done now, done, failed, or left
  * alone. A glyph in the row's codes; the words — the error itself — under the pointer.
@@ -30,7 +31,12 @@ const glyph = computed(
 const label = computed(
   () =>
     props.text ??
-    { working: 'Working', done: 'Done', error: 'Failed', skipped: 'Left alone' }[props.state]
+    {
+      working: t('kit.working'),
+      done: t('kit.done'),
+      error: t('kit.failed'),
+      skipped: t('kit.skipped'),
+    }[props.state]
 )
 const el = ref<HTMLElement>()
 watch([el, label], ([node, words]) => node && setTooltip(node, words), { immediate: true })

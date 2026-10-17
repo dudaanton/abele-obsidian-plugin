@@ -21,14 +21,14 @@
       />
       <slot name="leading" />
     </div>
-    <span v-if="total !== undefined" class="abele-list-section-header__count"
-      >{{ count }} of {{ total }}</span
-    >
+    <span v-if="total !== undefined" class="abele-list-section-header__count">{{
+      t('kit.partOf', { shown: count ?? '', total })
+    }}</span>
     <span
       v-if="loading"
       class="abele-list-section-header__count abele-list-section-header__loading"
       role="status"
-      >Loading…</span
+      >{{ t('kit.loading') }}</span
     >
     <div
       v-if="!fold.collapsed.value || actionsWhenCollapsed"
@@ -41,7 +41,7 @@
         :class="classPrefix + '__search-toggle'"
         icon="search"
         :active="search.open.value"
-        :tooltip="search.open.value ? 'Close the search' : searchTooltip"
+        :tooltip="search.open.value ? t('kit.closeSearch') : searchTooltip"
         @click="search.toggle"
       />
       <slot name="actions" />
@@ -58,6 +58,7 @@
   />
 </template>
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, ref } from 'vue'
 import FoldHeading from './FoldHeading.vue'
 import Icon from './Icon.vue'

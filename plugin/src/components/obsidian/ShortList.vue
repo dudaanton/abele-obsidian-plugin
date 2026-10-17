@@ -29,14 +29,15 @@
       v-if="items.length > shown.length"
       quiet
       class="abele-short-list__more"
-      :text="`Show ${items.length - shown.length} more`"
-      tooltip="Show the rest of the list"
+      :text="t('kit.showMore', { count: items.length - shown.length })"
+      :tooltip="t('kit.showRest')"
       @click="all = true"
     />
   </div>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 /**
  * A list a window reports rather than works with — what was found, what failed — kept to its
  * first few rows until asked for the rest, so a long report does not push the window's own

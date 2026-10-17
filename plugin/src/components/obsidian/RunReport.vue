@@ -11,7 +11,7 @@
       v-if="running"
       class="abele-run-report__progress"
       :value="percent"
-      :label="status || 'Progress'"
+      :label="status || t('kit.progress')"
     />
     <div v-if="facts.length" class="abele-run-report__facts">
       <template v-for="(fact, i) in facts" :key="fact.label">
@@ -25,7 +25,7 @@
     <ShortList
       v-if="errors.length"
       class="abele-run-report__errors"
-      heading="Errors"
+      :heading="t('kit.errors')"
       tone="error"
       :items="errors.map((title) => ({ title }))"
     />
@@ -34,6 +34,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 /**
  * What a long job a window started is doing and what came of it: a line of where it is with a bar
  * under it while it runs, then the counts as quiet facts, anything the window adds, and the

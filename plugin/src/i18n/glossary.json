@@ -1,0 +1,166 @@
+{
+  "source": "https://github.com/obsidianmd/obsidian-translations",
+  "revision": "70b691cecdd8372424b1d577264d4d15a3ccc309",
+  "usage": "Short terminology references only; no host dictionaries are redistributed. Upstream has no license file at this revision.",
+  "terms": [
+    {
+      "upstreamKey": "dialogue.button-cancel",
+      "en": "Cancel",
+      "ru": "Отмена",
+      "lv": "Atcelt",
+      "es": "Cancelar",
+      "de": "Abbrechen"
+    },
+    {
+      "upstreamKey": "dialogue.button-save",
+      "en": "Save",
+      "ru": "Сохранить",
+      "lv": "Saglabāt",
+      "es": "Guardar",
+      "de": "Speichern"
+    },
+    {
+      "upstreamKey": "plugins.search.name",
+      "en": "Search",
+      "ru": "Поиск",
+      "lv": "Meklēšana",
+      "es": "Buscar",
+      "de": "Suchen"
+    },
+    {
+      "upstreamKey": "interface.settings",
+      "en": "Settings",
+      "ru": "Настройки",
+      "lv": "Iestatījumi",
+      "es": "Preferencias",
+      "de": "Einstellungen"
+    },
+    {
+      "upstreamKey": "setting.editor.option-reindex-vault",
+      "en": "Rebuild vault cache",
+      "ru": "Восстановить кэш хранилища",
+      "lv": "Pārbūvēt krātuves kešatmiņu",
+      "es": "Reconstruir caché de la bóveda",
+      "de": "Vault-Cache zurücksetzen"
+    },
+    {
+      "upstreamKey": "setting.file.option-choice-new-note",
+      "en": "New note",
+      "ru": "Новая заметка",
+      "lv": "Jauna piezīme",
+      "es": "Nueva nota",
+      "de": "Neue Notiz"
+    },
+    {
+      "upstreamKey": "interface.menu.add-property",
+      "en": "Add file property",
+      "ru": "Добавить свойство файла",
+      "lv": "Pievienot faila īpašību",
+      "es": "Añadir propiedad de archivo",
+      "de": "Dateieigenschaften hinzufügen"
+    },
+    {
+      "upstreamKey": "plugins.graph-view.option-backlinks",
+      "en": "Incoming links",
+      "ru": "Входящие связи",
+      "lv": "Ienākošās saites",
+      "es": "Enlaces entrantes",
+      "de": "Eingehende Links"
+    },
+    {
+      "upstreamKey": "plugins.command-palette.name",
+      "en": "Command palette",
+      "ru": "Палитра команд",
+      "lv": "Komandu palete",
+      "es": "Paleta de comandos",
+      "de": "Befehlspalette"
+    },
+    {
+      "upstreamKey": "interface.start-up.loading-workspace",
+      "en": "Loading workspace...",
+      "ru": "Рабочее пространство загружается...",
+      "lv": "Ielādē darbvietu...",
+      "es": "Cargando el espacio de trabajo...",
+      "de": "Workspace wird geladen..."
+    },
+    {
+      "upstreamKey": "interface.start-screen.option-connect-obsidian-sync",
+      "en": "Open vault from Obsidian Sync",
+      "ru": "Подключить к Obsidian Sync",
+      "lv": "Pievienoties Obsidian Sync",
+      "es": "Conectar con Obsidian Sync",
+      "de": "Mit Obsidian Sync verbinden"
+    },
+    {
+      "upstreamKey": "setting.file.option-trash",
+      "en": "Trash",
+      "ru": "Корзина",
+      "lv": "Atkritne",
+      "es": "Papelera",
+      "de": "Papierkorb"
+    },
+    {
+      "upstreamKey": "setting.editor.option-default-new-tab-view",
+      "en": "Default view for new tabs",
+      "ru": "Режим открытия новых вкладок",
+      "lv": "Noklusējuma skats jaunām cilnēm",
+      "es": "Vista por defecto para nuevas pestañas",
+      "de": "Standard-Ansicht für neue Tabs"
+    },
+    {
+      "upstreamKey": "plugins.backlinks.name",
+      "en": "Backlinks",
+      "ru": "Обратные ссылки",
+      "lv": "Atpakaļsaites",
+      "es": "Enlaces entrantes",
+      "de": "Rückverweise"
+    },
+    {
+      "upstreamKey": "plugins.sync.name",
+      "en": "Sync",
+      "ru": "Синхронизация",
+      "lv": "Sinhronizācija",
+      "es": "Sync",
+      "de": "Sync"
+    },
+    {
+      "upstreamKey": "plugins.sync.label-restore-this-version",
+      "en": "Restore",
+      "ru": "Восстановить эту версию",
+      "lv": "Atjaunot šo versiju",
+      "es": "Restaurar esta versión",
+      "de": "Diese Version wiederherstellen"
+    },
+    {
+      "upstreamKey": "plugins.bases.label-property-key",
+      "en": "Property",
+      "ru": "Свойство",
+      "lv": "Īpašība",
+      "es": "Propiedad",
+      "de": "Eigenschaft"
+    }
+  ],
+  "productTerms": {
+    "agent": {
+      "en": "Agent",
+      "ru": "Агент",
+      "lv": "Aģents",
+      "es": "Agente",
+      "de": "Agent"
+    },
+    "node": {
+      "en": "Node",
+      "ru": "Узел",
+      "lv": "Mezgls",
+      "es": "Nodo",
+      "de": "Knoten"
+    },
+    "task": {
+      "en": "Task",
+      "ru": "Задача",
+      "lv": "Uzdevums",
+      "es": "Tarea",
+      "de": "Aufgabe"
+    }
+  }
+}
