@@ -49,12 +49,12 @@ describe.skipIf(!available)('device location on a real map', () => {
     const result = JSON.parse(
       await evalLong(`(async () => {
       const state = window.__locationE2E
-      const button = state.root.querySelector('button[aria-label="Show my location"]')
+      const button = state.root.querySelector('[role="button"][aria-label="Show my location"]')
       if (!button) return { missing: true }
       button.click()
       const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
       const deadline = Date.now() + 8000
-      while (Date.now() < deadline && (button.disabled || !state.root.querySelector('.maplibregl-user-location-dot'))) await wait(100)
+      while (Date.now() < deadline && (button.getAttribute('aria-disabled') === 'true' || !state.root.querySelector('.maplibregl-user-location-dot'))) await wait(100)
       const dot = state.root.querySelector('.maplibregl-user-location-dot')
       const circle = state.root.querySelector('.maplibregl-user-location-accuracy-circle')
       // A flight can take several seconds. Wait for the acquired point to reach the centre,
@@ -68,7 +68,7 @@ describe.skipIf(!available)('device location on a real map', () => {
       return {
         calls: state.calls, dot: !!dot, circle: !!circle, diameter: parseFloat(circle?.style.width || '0'),
         centred: !!d && Math.abs((d.left + d.right - canvas.left - canvas.right) / 2) < 3 && Math.abs((d.top + d.bottom - canvas.top - canvas.bottom) / 2) < 3,
-        retry: !button.disabled,
+        retry: button.getAttribute('aria-disabled') !== 'true',
         delta: d ? [(d.left + d.right - canvas.left - canvas.right) / 2, (d.top + d.bottom - canvas.top - canvas.bottom) / 2] : [],
       }
     })()`)
@@ -91,10 +91,10 @@ describe.skipIf(!available)('device location on a real map', () => {
         await evalLong(`(async () => {
       const state = window.__locationE2E
       state.error = ${code}
-      const button = state.root.querySelector('button[aria-label="Show my location"]')
+      const button = state.root.querySelector('[role="button"][aria-label="Show my location"]')
       button.click()
       await new Promise(resolve => setTimeout(resolve, 500))
-      return { message: [...(typeof activeDocument === 'undefined' ? document : activeDocument).querySelectorAll('.notice')].map(n => n.textContent).find(t => t.startsWith('Location ')), dot: !!state.root.querySelector('.maplibregl-user-location-dot'), retry: !button.disabled }
+      return { message: [...(typeof activeDocument === 'undefined' ? document : activeDocument).querySelectorAll('.notice')].map(n => n.textContent).find(t => t.startsWith('Location ')), dot: !!state.root.querySelector('.maplibregl-user-location-dot'), retry: button.getAttribute('aria-disabled') !== 'true' }
     })()`)
       )
       expect(result.message).toMatch(
@@ -117,7 +117,7 @@ describe.skipIf(!available)('device location on a real map', () => {
       const canvas = state.root.querySelector('.maplibregl-canvas-container')
       let lookups = 0
       canvas.addEventListener('click', () => lookups++)
-      state.root.querySelector('button[aria-label="Show my location"]').click()
+      state.root.querySelector('[role="button"][aria-label="Show my location"]').click()
       const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
       const deadline = Date.now() + 8000
       while (Date.now() < deadline && !state.root.querySelector('.maplibregl-user-location-dot')) await wait(100)

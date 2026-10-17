@@ -228,7 +228,7 @@ describe.skipIf(!available)('the agent and books', () => {
       return { denied, views }
     `)
     expect(r.error).toBeUndefined()
-    expect(r.denied).toMatch(/^ERROR: Access denied: .*rich\.epub is not in this chat's scope/)
+    expect(r.denied).toBe('ERROR: Access denied: book is outside scope')
     expect(r.views).toMatch(/1 book tab is open, outside this chat's scope/)
   })
 
