@@ -1004,6 +1004,14 @@ export class ItemView extends Component {
    * overrides both and calls `super.setState` last, which is why the base has to exist.
    */
   async setState(_state: unknown, _result: unknown): Promise<void> {}
+  async onOpen(): Promise<void> {}
+  addAction(icon: string, title: string, callback: (event: MouseEvent) => unknown): HTMLElement {
+    const action = this.containerEl.createDiv({ cls: 'clickable-icon' })
+    action.setAttribute('aria-label', title)
+    setIcon(action, icon)
+    action.addEventListener('click', callback)
+    return action
+  }
   getState(): Record<string, unknown> {
     return {}
   }
