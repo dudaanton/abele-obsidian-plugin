@@ -540,8 +540,13 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       const calendar = root.closest('.abele-timeline-sidebar').querySelector('.abele-calendar')
       const header = leaf.view.containerEl.querySelector('.view-header')
       if (!calendar || !header) throw Error('calendar or native view header missing')
-      report.calendarGap = calendar.getBoundingClientRect().top - header.getBoundingClientRect().bottom
       const panel = root.closest('.abele-timeline-sidebar'), bodyStyle = getComputedStyle(document.body)
+      // The panel clips its scrolled children: only visible calendar content can cover the header.
+      const calendarRect = calendar.getBoundingClientRect(), panelRect = panel.getBoundingClientRect()
+      const visibleTop = Math.max(calendarRect.top, panelRect.top + panel.clientTop)
+      const visibleBottom = Math.min(calendarRect.bottom, panelRect.top + panel.clientTop + panel.clientHeight)
+      if (visibleBottom <= visibleTop) throw Error('calendar has no visible content for header placement check')
+      report.calendarGap = visibleTop - header.getBoundingClientRect().bottom
       report.calendarLayout = { scrollTop: panel.scrollTop, panelTop: panel.getBoundingClientRect().top, calendarTop: calendar.getBoundingClientRect().top,
         headerTop: header.getBoundingClientRect().top, headerBottom: header.getBoundingClientRect().bottom, paddingTop: getComputedStyle(panel).paddingTop,
         safe: bodyStyle.getPropertyValue('--safe-area-inset-top'), viewHeader: bodyStyle.getPropertyValue('--view-header-height') }

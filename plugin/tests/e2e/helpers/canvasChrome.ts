@@ -160,7 +160,8 @@ export function canvasChrome(d: CanvasChromeDriver) {
   /** A card or shape in hand is put down where the canvas is next pressed: an empty place. */
   async function putDown() {
     const placing = d.run<string>(`return view().editor.controls.tool()`)
-    if (placing === 'card' || placing === 'shape') await d.at(emptySpot())
+    if (placing === 'card' || placing === 'shape')
+      await d.at(await verifiedRoom(placing === 'card' ? 260 : 200, 120))
   }
   /** Waits in the app, up to `ms`, for `expression`; says whether it came. Never throws. */
   const waitFor = (expression: string, ms = 3000) =>
@@ -203,7 +204,8 @@ export function canvasChrome(d: CanvasChromeDriver) {
     return d.run<number[] | null>(`
       const v=view().viewer,s=v.stage.getBoundingClientRect(),c=v.camera,g=v.graph
       const w=${width / 2}*c.zoom+12,h=${height / 2}*c.zoom+12
-      const left=Math.max(s.left,0),right=Math.min(s.right,innerWidth),top=Math.max(s.top,0),bottom=Math.min(s.bottom,innerHeight)
+      const vv=window.visualViewport,kb=parseFloat(getComputedStyle(document.body).getPropertyValue('--keyboard-height'))||0
+      const left=Math.max(s.left,vv?.offsetLeft??0),right=Math.min(s.right,innerWidth),top=Math.max(s.top,vv?.offsetTop??0),bottom=Math.min(s.bottom,innerHeight-kb,vv?vv.offsetTop+vv.height:innerHeight)
       const clear=(x,y)=>{const hit=document.elementFromPoint(x,y);return !!hit&&v.stage.contains(hit)&&!hit.closest('.abele-canvas-chrome,[data-frame-id],[data-card-id]')}
       const spots=[];for(let fy=0.1;fy<0.95;fy+=0.05)for(let fx=0.1;fx<0.95;fx+=0.05)spots.push([Math.round(s.left+s.width*fx),Math.round(s.top+s.height*fy)])
       const mid=[(left+right)/2,(top+bottom)/2];spots.sort((a,b)=>Math.hypot(a[0]-mid[0],a[1]-mid[1])-Math.hypot(b[0]-mid[0],b[1]-mid[1]))
@@ -215,6 +217,26 @@ export function canvasChrome(d: CanvasChromeDriver) {
         return [x,y]}
       return null`)
   }
+  /** Navigation only: move beyond the graph when the current viewport has no room. */
+  async function verifiedRoom(width: number, height: number): Promise<number[]> {
+    let spot = roomFor(width, height)
+    if (spot) return spot
+    d.run(`
+      const v=view().viewer,s=v.stage.getBoundingClientRect(),vv=window.visualViewport
+      const zoom=Math.min(0.8,s.width/(${width}+100),Math.min(s.height,vv?.height??innerHeight)/(${height}+160))
+      const right=Math.max(0,...v.graph.nodes.map(n=>n.x+n.width))
+      v.setCamera({x:right+100,y:0,zoom});return true`)
+    // Camera drawing and the DOM overlays settle on the next frame, including on a phone.
+    await d.until(
+      `(await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))),true)`
+    )
+    spot = roomFor(width, height)
+    if (!spot)
+      throw new Error(
+        `No verified free area for a ${width} by ${height} canvas object after panning and zooming`
+      )
+    return spot
+  }
   /** Default sizes of what the placing tools put down, as the editor puts them. */
   const PLACED: Record<string, { tool: string; width: number; height: number }> = {
     'Add canvas shape': { tool: 'shape', width: 200, height: 120 },
@@ -222,7 +244,7 @@ export function canvasChrome(d: CanvasChromeDriver) {
   }
   /**
    * A card or shape taken in hand and put down where it fits whole on the screen, so its field can
-   * be pressed and written in; only when no such place is left, on any empty place.
+   * be pressed and written in, moving the camera when the current viewport is full.
    */
   async function put(label: string) {
     const p = PLACED[label]
@@ -234,7 +256,7 @@ export function canvasChrome(d: CanvasChromeDriver) {
       else await menu(tools('More tools'), ADDS[label].title)
       await d.until(placing)
     }
-    await d.at(roomFor(p.width, p.height) ?? emptySpot())
+    await d.at(await verifiedRoom(p.width, p.height))
   }
   /**
    * As `emptySpot`, but only where a person can see it: above a phone's keyboard. The page does not
@@ -261,6 +283,7 @@ export function canvasChrome(d: CanvasChromeDriver) {
     emptySpot,
     emptySpotInSight,
     roomFor,
+    verifiedRoom,
     take,
     put,
     /** As `click`, but a tool is taken and a card or shape put down by `take` and `put`. */

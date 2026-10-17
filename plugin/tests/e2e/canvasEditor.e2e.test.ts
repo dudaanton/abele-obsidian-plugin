@@ -174,27 +174,6 @@ const takeCard = async () => {
   await until("view().editor.controls.tool()==='card'")
 }
 /**
- * Where a person puts a card down: a free place with room for the whole card on screen, nearest
- * the middle. A card is centred on the press at its default size (260 by 120 at zoom 1), and its
- * text field is laid over it; pressed near the stage's edge, half the field hangs off the screen.
- */
-const roomForCard = () =>
-  run<number[] | null>(`
-    const v=view().viewer,s=v.stage.getBoundingClientRect(),c=v.camera,g=v.graph
-    const w=130*c.zoom+12,h=60*c.zoom+12
-    const left=Math.max(s.left,0),right=Math.min(s.right,innerWidth),top=Math.max(s.top,0),bottom=Math.min(s.bottom,${SEEN})
-    const clear=(x,y)=>{const hit=document.elementFromPoint(x,y);return !!hit&&v.stage.contains(hit)&&!hit.closest('.abele-canvas-chrome,[data-frame-id],[data-card-id]')}
-    const spots=[];for(let fy=0.1;fy<0.95;fy+=0.05)for(let fx=0.1;fx<0.95;fx+=0.05)spots.push([Math.round(s.left+s.width*fx),Math.round(s.top+s.height*fy)])
-    const mid=[(left+right)/2,(top+bottom)/2];spots.sort((a,b)=>Math.hypot(a[0]-mid[0],a[1]-mid[1])-Math.hypot(b[0]-mid[0],b[1]-mid[1]))
-    for(const [x,y] of spots){
-      if(x-w<left||x+w>right||y-h<top||y+h>bottom)continue
-      const x0=c.x+(x-w-s.left)/c.zoom,x1=c.x+(x+w-s.left)/c.zoom,y0=c.y+(y-h-s.top)/c.zoom,y1=c.y+(y+h-s.top)/c.zoom
-      if(g.nodes.some(n=>n.x-20<x1&&n.x+n.width+20>x0&&n.y-20<y1&&n.y+n.height+20>y0))continue
-      if(![[x,y],[x-w,y-h],[x+w,y-h],[x-w,y+h],[x+w,y+h]].every(([px,py])=>clear(px,py)))continue
-      return [x,y]}
-    // A phone at the zoom a new canvas opens with has no room for a whole card: press the middle.
-    const x=Math.round(mid[0]),y=Math.round(mid[1]);return clear(x,y)?[x,y]:null`)
-/**
  * Presses the card's text field where it is on screen. A card put down near an edge, or wider
  * than a phone at the canvas's zoom, has part of its field off screen; a person presses the part
  * they see, so only that part has to be reachable. On a phone the press is what brings the
@@ -217,9 +196,8 @@ const pressField = async () => {
 }
 const beginText = async () => {
   await takeCard()
-  const spot = roomForCard()
-  expect(spot, 'No free place on the canvas to put a card down').not.toBeNull()
-  await chrome.at(spot!)
+  const spot = await chrome.verifiedRoom(260, 120)
+  await chrome.at(spot)
   console.info(
     'Add text transition:',
     run(`const el=view().contentEl.querySelector('textarea'),r=el?.getBoundingClientRect();return {
@@ -258,6 +236,24 @@ const reopen = async () => {
   )
   await until('view()?.editor')
   trace()
+}
+
+/** Each retained-draft scenario starts from saved source, even after a failed predecessor. */
+const discardPending = async () => {
+  run(
+    'if(window.__humanCanvas.process){app.vault.process=window.__humanCanvas.process;delete window.__humanCanvas.process}return true'
+  )
+  if (!run<boolean>('return !!view()?.editor')) {
+    run(
+      "app.workspace.getLeavesOfType('canvas').filter(leaf=>leaf.view.file?.path===path).forEach(leaf=>leaf.detach());return true"
+    )
+    await reopen()
+  }
+  if (run<boolean>('return view().documentLease.document.session.dirty')) {
+    await click('Discard local draft')
+    await press(textButton('.abele-canvas-choice', 'Discard local draft'))
+    await saved()
+  }
 }
 
 describe.skipIf(!available)('human canvas creation and editing with real input', () => {
@@ -519,6 +515,7 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
         saved: boolean
       }
       try {
+        await discardPending()
         const before = run<string>(
           'return await app.vault.read(app.vault.getAbstractFileByPath(path))'
         )
@@ -586,12 +583,30 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
   )
 
   it('honestly blocks a changed-source draft after native handoff and discards only local pending work', async () => {
+    await discardPending()
+    failSave()
+    try {
+      await addText('Retained human text', false)
+      await until("button('Retry save')&&!button('Retry save').hidden")
+      await press('view().containerEl.querySelector(\'[aria-label="Open in Obsidian Canvas"]\')')
+      await until("document.querySelector('.abele-canvas-choice')")
+      await press(textButton('.abele-canvas-choice', 'Retain draft and open native'))
+      await until("app.workspace.getLeavesOfType('canvas').some(leaf=>leaf.view.file?.path===path)")
+    } finally {
+      restoreProcess()
+    }
+    // A deliberate source revision makes this scenario independent of native formatting on unload.
+    run(`
+      app.workspace.getLeavesOfType('canvas').find(leaf=>leaf.view.file?.path===path).detach()
+      await app.vault.process(app.vault.getAbstractFileByPath(path),source=>source+'\\n')
+      return true
+    `)
+    await reopen()
     const before = run<string>('return await app.vault.read(app.vault.getAbstractFileByPath(path))')
     const retained = run<boolean>(
       "return view().viewer.graph.nodes.some(node=>node.text==='Retained human text')"
     )
-    // The preceding retry settles asynchronously (slower on a phone): witness its outcome
-    // before reading it, and still report the state reached when it never comes.
+    // Witness this scenario's conflict before reading it, including on a slower phone.
     await until(
       "button('Retry save')?.disabled&&view().contentEl.textContent.includes('source changed')"
     ).catch(() => undefined)
