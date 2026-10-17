@@ -9,7 +9,7 @@ import {
 } from './scriptTrustStorage'
 import { newStateId } from '@/sync/ids'
 import { storageOf } from '@/sync/vaultWrites'
-import { assertNoScriptContextHold } from './scriptContextHold'
+import { assertNoScriptContextHold, SCRIPT_CONTEXT_HOLD_FILE } from './scriptContextHold'
 import { legacyScriptPolicy } from './legacyScriptPolicy'
 import { TRUST_KEY } from '../ScriptTrust'
 import { rememberLocalScriptVersion } from './localScriptUpgrade'
@@ -17,6 +17,7 @@ import {
   assertCurrentScriptConnection,
   hasScriptConnection,
   scriptConnectionKey,
+  scriptOutsideEverySyncScope,
   isDisconnectedPersonalScriptContext,
 } from './scriptConnection'
 import {
@@ -47,12 +48,21 @@ interface CheckedPermission {
   connection: string
 }
 const permissions = new WeakMap<ParsedScript, CheckedPermission | null>()
+/** The connection context a plain local (provenance-free) script was checked under. */
+const localContexts = new WeakMap<ParsedScript, { connection: string; outside: boolean }>()
 
 /** Synchronous final fence: no awaited read separates policy validation from compilation. */
 export function assertScriptContext(app: App, script: ParsedScript): void {
   assertNoScriptContextHold(storageOf(app))
   if (!permissions.has(script)) throw new Error('Script has no checked execution snapshot')
   const permission = permissions.get(script)
+  const local = permission ? undefined : localContexts.get(script)
+  if (local?.outside) {
+    // Checked as lying outside every connection: no connection governs it, unless one
+    // started covering its folder since the check.
+    if (scriptOutsideEverySyncScope(storageOf(app), script.path)) return
+    throw new Error('Script connection changed during the execution check')
+  }
   if (permission) {
     permission.provenance.assertRevision(script.path, permission.generation)
     if (permission.connection !== scriptConnectionKey(storageOf(app)))
@@ -68,7 +78,12 @@ export function assertScriptContext(app: App, script: ParsedScript): void {
     id?: string
     binding?: ScriptBinding
   } | null
-  if (expected === null && !current && !hasScriptConnection(storageOf(app))) return
+  if (expected === null && !current) {
+    if (!hasScriptConnection(storageOf(app))) return
+    // A sync connection that was already there when the check started does not turn a
+    // local script into a foreign one; only a connection that changed since then does.
+    if (local && local.connection === scriptConnectionKey(storageOf(app))) return
+  }
   if (
     expected &&
     current?.binding &&
@@ -79,6 +94,13 @@ export function assertScriptContext(app: App, script: ParsedScript): void {
     return
   }
   throw new Error('Script connection changed during the execution check')
+}
+/** The non-sync part of scriptTrustFor: an isolated protected context still blocks. */
+async function localScriptContext(app: App): Promise<null> {
+  assertNoScriptContextHold(storageOf(app))
+  if (await app.vault.adapter.exists(SCRIPT_CONTEXT_HOLD_FILE))
+    throw new Error('Script execution blocked while a protected context is isolated')
+  return null
 }
 const decode = (bytes: Uint8Array) => new TextDecoder('utf-8', { fatal: true }).decode(bytes)
 const equal = (a: Uint8Array, b: Uint8Array) =>
@@ -116,11 +138,13 @@ async function checkedScriptForExecution(
 ): Promise<ParsedScript> {
   const read = async () => new Uint8Array(await app.vault.adapter.readBinary(path))
   const connection = scriptConnectionKey(storageOf(app))
+  // A script outside every sync connection's folder is not consulted against sync at all.
+  const outside = scriptOutsideEverySyncScope(storageOf(app), path)
   const bytes = await read()
   let trust: Awaited<ReturnType<typeof scriptTrustFor>>
   let recovered: ManagedScript | null = null
   try {
-    trust = await scriptTrustFor(app)
+    trust = outside ? await localScriptContext(app) : await scriptTrustFor(app)
   } catch (error) {
     if (!(error instanceof ScriptTrustRecoveryRequired) || !confirm) throw error
     const sha = await sha256(bytes)
@@ -283,6 +307,7 @@ async function checkedScriptForExecution(
     if (!meta) throw new Error('Current script has no name header')
     const script = { path, meta, code: extractScriptBody(source), commandId: '' }
     permissions.set(script, permission)
+    if (!permission) localContexts.set(script, { connection, outside })
     assertScriptContext(app, script)
     if (versionToRemember !== null) {
       // Persist only AFTER the final synchronous context fence, never from an invalidated

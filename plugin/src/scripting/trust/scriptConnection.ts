@@ -1,6 +1,9 @@
 import type { LocalStorage } from '@/sync/ledgerId'
 import { CONNECTION_KEY, inspectConnection } from '@/sync/connection'
 import type { ScriptBinding } from './ScriptProvenance'
+import { caseKey } from '@abele/sync-protocol'
+import { LEDGER_KEY } from '@/sync/ledgerId'
+import { SCOPED_CONNECTION_KEY } from '@/sync/scoped/scopedJoin'
 import {
   selectedConnectionStorage,
   ConnectionRegistry,
@@ -137,4 +140,43 @@ export function assertCurrentScriptConnection(
   ) {
     throw new Error('Script connection changed; execution blocked')
   }
+}
+
+/**
+ * True only when every token connection is a folder connection whose folder does not hold
+ * this script, and no whole-vault (legacy) connection or ledger exists. Such a script is
+ * the owner's own local file: connections elsewhere in the vault do not govern it.
+ * Anything uncertain (a group scope, the root folder, no scope yet) counts as covering it.
+ */
+export function scriptOutsideEverySyncScope(storage: LocalStorage | null, path: string): boolean {
+  if (!storage || storage.loadLocalStorage(REGISTRY_KEY) == null) return false
+  const legacy = storage.loadLocalStorage(CONNECTION_KEY) as { vaultId?: unknown } | null
+  const ledger = storage.loadLocalStorage(LEDGER_KEY) as { stateId?: unknown } | null
+  if (legacy?.vaultId || ledger?.stateId || storage.loadLocalStorage(SCOPED_CONNECTION_KEY) != null)
+    return false
+  let records: ReturnType<ConnectionRegistry['records']>
+  try {
+    records = ConnectionRegistry.open(storage).records()
+  } catch {
+    return false
+  }
+  if (!records.length) return false
+  const trim = (value: string) => value.replace(/^\/+|\/+$/g, '')
+  const file = caseKey(trim(path))
+  const outside = (root: string | undefined) => {
+    if (root === undefined) return true
+    const folder = caseKey(trim(root))
+    return !!folder && file !== folder && !file.startsWith(folder + '/')
+  }
+  return records.every((record) => {
+    const scopes = [record.scope, record.pending?.scope]
+    if (!record.scope && !record.pending) return false
+    if (scopes.some((scope) => scope && scope.kind !== 'folder')) return false
+    return (
+      outside(record.scope?.path) &&
+      outside(record.pending?.scope.path) &&
+      outside(record.localRoot) &&
+      outside(record.rootIssue?.kind === 'moved' ? record.rootIssue.path : undefined)
+    )
+  })
 }
