@@ -734,7 +734,8 @@ export class TokenEngines {
                 ? runtime.covers(path)
                 : record.scope.kind === 'folder' &&
                   (record.scope.path === '/' || withinSyncPath(path, localRoot)),
-            capture: (paths) => editCopiesOf(this.app.vault).capture(ordinary, paths),
+            capture: (paths, fingerprint) =>
+              editCopiesOf(this.app.vault).capture(ordinary, paths, fingerprint),
             rememberIdentity: (path) => this.localFiles.remember(path),
             hydratedIdentity: (path) => this.localFiles.hydrated(path),
           })
@@ -760,6 +761,7 @@ export class TokenEngines {
         fence.assertReady()
         runtime = new TokenEngineRuntime({
           transferBudget: transferBudgetOf(this.app.vault),
+          mobile: Platform.isMobile,
           id: record.id,
           localRoot,
           comparing: (comparison) => this.ui.publish(record.id, { comparison }),

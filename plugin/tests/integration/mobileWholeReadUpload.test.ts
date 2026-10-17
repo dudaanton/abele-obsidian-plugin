@@ -1,3 +1,4 @@
+import { gateMobileSource } from '@/sync/mobileLargeFileGate'
 import { connectionError } from '@/sync/tokenUi'
 import { MobileWholeReadLimitError } from '@/sync/mobileWholeRead'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -69,4 +70,35 @@ it('reuses a successfully uploaded hash for offload without another whole read a
     'Recorded file changed; file kept'
   )
   expect(readBinary).toHaveBeenCalledOnce()
+})
+
+it('drops the whole upload buffer before a hydration or another adapter can read a large file', async () => {
+  const size = 51 * MiB
+  const readBinary = vi.fn(async () => new ArrayBuffer(size))
+  const adapter = {
+    stat: async () => ({ type: 'file', size, mtime: 1, ctime: 1 }),
+    readBinary,
+  } as unknown as DataAdapter
+  const first = await new BoundedVaultIo(adapter).openUploadRead('first.bin')
+  const remoteRead = vi.fn(async () => new Uint8Array(1))
+  const remote = gateMobileSource({
+    size,
+    read: remoteRead,
+    assertUnchanged: async () => {},
+    close: async () => {},
+  })
+  const reading = remote.read(0, 1)
+  const second = new BoundedVaultIo(adapter).openUploadRead('second.bin')
+  await Promise.resolve()
+  expect(remoteRead).not.toHaveBeenCalled()
+  expect(readBinary).toHaveBeenCalledTimes(1)
+  await first.close()
+  await reading
+  expect(mobileReadSnapshot().retainedBytes).toBe(0)
+  expect(readBinary).toHaveBeenCalledTimes(1)
+  await remote.close()
+  const source = await second
+  expect(readBinary).toHaveBeenCalledTimes(2)
+  await source.close()
+  expect(mobileReadSnapshot().retainedBytes).toBe(0)
 })

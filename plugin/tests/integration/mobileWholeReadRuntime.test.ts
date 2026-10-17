@@ -128,6 +128,29 @@ it('scans and publishes a large whole-read source once before the normal path co
     vi.mocked(fs.fingerprint).mockResolvedValueOnce({ size: 16, sha: 'b'.repeat(64), mtime: 1 })
     expect(await port.fingerprint('small.bin')).toMatchObject({ size: 16 })
     expect(fs.fingerprint).toHaveBeenCalledWith('small.bin')
+    // A fully verified received version is already acknowledged by this server, too.
+    const receivedSha = 'c'.repeat(64)
+    const http = Reflect.get(one.client, 'http')
+    const close = vi.fn(async () => {})
+    vi.spyOn(http, 'openRange').mockResolvedValue({
+      size: 4,
+      read: async (_offset: number, length: number) => new Uint8Array(length),
+      assertUnchanged: async () => {},
+      close,
+    })
+    const received = await one.client.openVersion('sample-received', 'sample-v2', {
+      size: 4,
+      sha: receivedSha,
+    })
+    await received.read(2, 2)
+    await received.assertUnchanged()
+    expect(Reflect.get(one, 'wholeReadUploads').has(receivedSha)).toBe(false)
+    await received.read(0, 4)
+    await received.assertUnchanged()
+    expect(Reflect.get(one, 'wholeReadUploads').has(receivedSha)).toBe(true)
+    await received.close()
+    expect(close).toHaveBeenCalledOnce()
+
     expect(readBinary).toHaveBeenCalledOnce()
     await one.sync()
     expect(readBinary).toHaveBeenCalledOnce()

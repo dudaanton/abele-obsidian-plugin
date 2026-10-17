@@ -1,3 +1,4 @@
+import { gateMobileSource } from './mobileLargeFileGate'
 import { FINGERPRINT_UPLOAD } from './mobileWholeRead'
 import { connectionPrivateRoot } from './connectionPaths'
 import { assertPhysicalPath } from './external/projection'
@@ -68,6 +69,7 @@ import { LocalFolderPlacement, LocalPlacementError } from './localFolderPlacemen
 import { verifyFolderSet, type FolderEntries } from './verifyFolderSet'
 
 export interface TokenEngineOptions {
+  mobile?: boolean
   id: string
   encoded: string
   fs: FileSystem
@@ -725,15 +727,23 @@ export class TokenEngineRuntime
     this.client.openVersion = async (fileId, versionId, expected, signal) => {
       const path = this.incomingNames.get(fileId) ?? (await options.state.byFileId(fileId))?.path
       if (path) this.progress.current(path)
-      const source = await openVersion(fileId, versionId, expected, signal)
+      const opened = await openVersion(fileId, versionId, expected, signal)
+      const source = options.mobile ? gateMobileSource(opened, signal) : opened
+      let receivedThrough = 0
       return new Proxy(source, {
         get: (target, key) => {
           if (key === 'read')
             return async (offset: number, length: number, signal?: AbortSignal) => {
               const bytes = await target.read(offset, length, signal)
+              if (offset === receivedThrough) receivedThrough += bytes.length
               if (path) this.receivedPaths.add(path)
               this.progress.bytes(fileId + ':' + versionId, offset, bytes.length)
               return bytes
+            }
+          if (key === 'assertUnchanged')
+            return async () => {
+              await target.assertUnchanged()
+              if (receivedThrough === expected.size) this.wholeReadUploads.add(expected.sha)
             }
           const value = Reflect.get(target, key)
           return typeof value === 'function' ? value.bind(target) : value

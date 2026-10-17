@@ -1,3 +1,4 @@
+import { mobileLargeFileGate, MOBILE_LARGE_SOURCE, isLargeMobileFile } from '../mobileLargeFileGate'
 import { vaultDisk, guardedVaultAdapter } from '../vaultPathLinks'
 import { connectionHost, connectionPrivateArea } from '../connectionPaths'
 import type { App, DataAdapter, EventRef } from 'obsidian'
@@ -310,35 +311,45 @@ export class ExternalFileHost {
       },
       writeStagingSource: async (path, source, expected, assertEffect, signal) => {
         await transferBudgetOf(this.app.vault).run(async () => {
-          // Writes use the same guarded placement/effect adapter as whole-byte callers.
-          const io = new BoundedVaultIo(
-            mutateAdapter,
-            () => {
-              this.assertOwned()
-              assertEffect()
-            },
-            (work) => this.effect(work),
-            vaultDisk(this.app.vault),
-            this.app.vault.configDir,
-            undefined,
-            this.options.platform === 'mobile'
-          )
-          const mtime = this.options.stagingMtime?.(path) ?? Date.now()
-          assertEffect()
-          await io.create(path, mtime)
-          const hash = incremental.create()
-          let offset = 0
-          for await (const bytes of chunks(source, 1024 * 1024, signal)) {
+          const releaseLarge =
+            this.options.platform === 'mobile' &&
+            isLargeMobileFile(expected.size) &&
+            !Reflect.get(source, MOBILE_LARGE_SOURCE)
+              ? await mobileLargeFileGate.acquire(signal)
+              : undefined
+          try {
+            // Writes use the same guarded placement/effect adapter as whole-byte callers.
+            const io = new BoundedVaultIo(
+              mutateAdapter,
+              () => {
+                this.assertOwned()
+                assertEffect()
+              },
+              (work) => this.effect(work),
+              vaultDisk(this.app.vault),
+              this.app.vault.configDir,
+              undefined,
+              this.options.platform === 'mobile'
+            )
+            const mtime = this.options.stagingMtime?.(path) ?? Date.now()
             assertEffect()
-            hash.update(bytes)
-            await io.append(path, offset, bytes, mtime, signal)
-            offset += bytes.length
+            await io.create(path, mtime)
+            const hash = incremental.create()
+            let offset = 0
+            for await (const bytes of chunks(source, 1024 * 1024, signal)) {
+              assertEffect()
+              hash.update(bytes)
+              await io.append(path, offset, bytes, mtime, signal)
+              offset += bytes.length
+            }
+            const sha = Array.from(hash.digest(), (byte) =>
+              byte.toString(16).padStart(2, '0')
+            ).join('')
+            if (offset !== expected.size || sha !== expected.sha)
+              throw new ExternalFilePortError('local-changed')
+          } finally {
+            releaseLarge?.()
           }
-          const sha = Array.from(hash.digest(), (byte) => byte.toString(16).padStart(2, '0')).join(
-            ''
-          )
-          if (offset !== expected.size || sha !== expected.sha)
-            throw new ExternalFilePortError('local-changed')
         }, signal)
       },
       install: async (from, to, assertEffect) => {

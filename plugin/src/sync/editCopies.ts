@@ -92,7 +92,11 @@ export class EditCopies {
     return values as EditCopy[]
   }
   /** Called with all affected path leases held, before any placement can erase the current bytes. */
-  async capture(fs: FileSystem, paths: readonly string[]): Promise<void> {
+  async capture(
+    fs: FileSystem,
+    paths: readonly string[],
+    acknowledgedFingerprint?: (path: string) => Promise<{ size: number; sha: string }>
+  ): Promise<void> {
     this.filesystem = fs
     if (!this.expected.length) return
     const batches = new Map<
@@ -119,7 +123,10 @@ export class EditCopies {
         if (await destination.accepts(path, before.size)) destinations.push(destination)
       }
       if (!destinations.length) continue
-      const identity = await fingerprintFile(fs, path, sha256)
+      const identity =
+        before.size > 50 * 1024 * 1024 && acknowledgedFingerprint
+          ? await acknowledgedFingerprint(path)
+          : await fingerprintFile(fs, path, sha256)
       const sha = identity.sha
       const needed: Destination[] = []
       for (const destination of destinations) {

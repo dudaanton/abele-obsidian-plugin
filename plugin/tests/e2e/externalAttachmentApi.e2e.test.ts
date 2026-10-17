@@ -1,3 +1,4 @@
+import { verifyBoundedAttachmentRead } from './helpers/boundedAttachmentRead'
 import { decodeAccessToken } from '@abele/sync-protocol'
 import { AccessClient, sha256 } from '@abele/sync-core'
 import { beforeEach, afterEach, describe, expect, it } from 'vitest'
@@ -73,12 +74,18 @@ async function attachment(folderToken = false, size = 26, raiseCap = true) {
   return { id, path, sha, size, encoded, version }
 }
 
-async function roundTrip(folderToken = false, size = 26, departure = false, raiseCap = true) {
+async function roundTrip(
+  folderToken = false,
+  size = 26,
+  departure = false,
+  raiseCap = true,
+  verifyRead = size <= 50 * 1024 * 1024
+) {
   const file = await attachment(folderToken, size, raiseCap)
   const outcome = await live.primary.long<RoundTrip>(
     'v2 attachment eviction and hydration',
     `
-    const id=${JSON.stringify(file.id)},path=${JSON.stringify(file.path)},size=${size},maximum=size===${LARGE}
+    const id=${JSON.stringify(file.id)},path=${JSON.stringify(file.path)},size=${size},maximum=size===${LARGE}||size>50*1024*1024
     const memory=(${residentMemorySampler.toString()})(window)
     const sampling=maximum&&memory!==null
     let baseline=0,peakMemory=0,samples=0,memoryError=maximum&&!sampling?'Resident-memory sampler required':null,timer,samplingFlight=null
@@ -97,7 +104,7 @@ async function roundTrip(folderToken = false, size = 26, departure = false, rais
       const evicted=await host.evict(id,path)
       const missing=!await adapter.exists(path),sidecar=await adapter.exists(path+'.abele-ref')
       let verifiedRead=null
-      if(!maximum){
+      if(${verifyRead}){
         phase('Reading offloaded attachment')
         const record=svc.registry.records().find(one=>one.id===id)
         const store=await api.externalState.IndexedDbStateStore.open(indexedDB,record.ledgerId)
@@ -105,9 +112,14 @@ async function roundTrip(folderToken = false, size = 26, departure = false, rais
         const state=await api.externalState.ExternalState.open(store,record.ledgerId,document.binding)
         const readHost=new api.ExternalFileHost(app,{platform:${JSON.stringify(onPhone() ? 'mobile' : 'desktop')},assertOwned:()=>probe.assertCurrent()})
         try{
+          if(size>50*1024*1024){
+            const head=await store.get(path);
+            verifiedRead=await (${verifyBoundedAttachmentRead.toString()})(probe,head,90)&&!await adapter.exists(path);
+          }else{
           const reader=new api.AttachmentStore({state,ledger:store,host:readHost,binding:document.binding,assertOwned:()=>probe.assertCurrent(),serial:{run:work=>probe.runExclusive(work)},sync:()=>probe.sync(),scriptsFolder:()=> 'Scripts',verify:(file,input)=>probe.verify(file,input),download:(file,version)=>probe.download(file,version)})
           const head=await store.get(path),read=await reader.read(head.fileId,{expectedVersionId:head.versionId})
           verifiedRead=read.bytes?.length===size&&read.bytes.every(byte=>byte===90)&&!await adapter.exists(path)
+          }
         }finally{readHost.close();store.close()}
         probe.reset()
       }
@@ -172,7 +184,7 @@ describe('v2 external attachments on live adapters', () => {
         return {timeOrigin:performance.timeOrigin,loadId:window.__abeleAttachmentLoadId}
       `)
       const before = identity()
-      const result = await roundTrip(false, MOBILE_MAX_FILE_BYTES, false, false)
+      const result = await roundTrip(false, MOBILE_MAX_FILE_BYTES, false, false, true)
       expect(wasReloaded(before, identity()), 'Obsidian was reloaded during the case').toBe(false)
       expect(result).toMatchObject({
         evicted: { status: 'complete', reclaimedBytes: MOBILE_MAX_FILE_BYTES },

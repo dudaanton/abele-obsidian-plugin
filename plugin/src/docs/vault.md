@@ -2528,7 +2528,10 @@ proxies validate the path before this capability runs. Native/ranged hosts keep 
 scan/upload flow. The default mobile selective size cap uses the same 200 MiB constant.
 Non-upload readers, including book readers and unknown external-file verification, retain the
 50 MiB whole-read guard. Successful uploads retain only their incremental hash and unchanged
-file stamp for later offload verification; the upload buffer is released.
+file stamp for later offload verification; the upload buffer is released. A shared mobile large-file gate holds other large uploads and
+hydration until that buffer has been dropped; closing or cancelling a queued hydration removes
+its waiter. Offload preservation uses the same unchanged receipt when comparing destination
+bases, without authorizing a whole read for edited or unknown files.
 
 The exchange snapshot's `localReads` counters expose reads, delivered chunks, consumed bytes,
 active sources, current/peak source-held buffers and maximum incoming backing-buffer size.

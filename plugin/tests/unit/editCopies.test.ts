@@ -107,3 +107,41 @@ it('refuses replacement if an expected destination cannot persist its copy', asy
   await expect(copies.capture(fs, ['sample.md'])).rejects.toThrow(/capture/)
   expect(await fs.read('sample.md')).toEqual(new Uint8Array([1]))
 })
+
+it('permits offload of a large acknowledged mobile file without a fresh read or another preserved copy', async () => {
+  const fs = new MemoryFileSystem(),
+    store = new MemoryStateStore(),
+    copies = new EditCopies()
+  const size = 200 * 1024 * 1024,
+    sha = 'a'.repeat(64),
+    path = 'sample.bin'
+  const base = {
+    path,
+    wirePath: path,
+    fileId: 'sample-file',
+    versionId: 'sample-version',
+    sha,
+    size,
+    mtime: 10,
+  }
+  await store.put(base)
+  fs.stat = async () => ({ path, size, mtime: 10 })
+  fs.fingerprint = vi.fn(async () => {
+    throw new Error('Bounded file reads are unavailable; the fallback limit is 50 MiB')
+  })
+  const receipt = vi.fn(async () => ({ size, sha, mtime: 10 }))
+  const open = vi.fn(async () => {
+    throw new Error('Unexpected large preservation read')
+  })
+  fs.openRead = open
+  copies.expect(['sample'])
+  copies.register('sample', store, () => true)
+  await copies.capture(fs, [path], receipt)
+  expect(receipt).toHaveBeenCalledWith(path)
+  expect(fs.fingerprint).not.toHaveBeenCalled()
+  expect(open).not.toHaveBeenCalled()
+  expect(await copies.list(store)).toEqual([])
+  receipt.mockRejectedValueOnce(new Error('Recorded file changed; file kept'))
+  await expect(copies.capture(fs, [path], receipt)).rejects.toThrow('Recorded file changed')
+  expect(await store.get(path)).toEqual(base)
+})

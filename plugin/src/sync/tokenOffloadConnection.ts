@@ -42,7 +42,10 @@ export async function tokenOffloadConnection(input: {
   sync(): Promise<void>
   includes(path: string): boolean
   available?(): boolean
-  capture(paths: string[]): Promise<void>
+  capture(
+    paths: string[],
+    fingerprint?: (path: string) => Promise<{ size: number; sha: string }>
+  ): Promise<void>
   rememberIdentity(path: string): void
   hydratedIdentity(path: string): void
 }) {
@@ -79,20 +82,18 @@ export async function tokenOffloadConnection(input: {
     )
     return next
   }
-  const host = placedExternalHost(
-    new ExternalFileHost(input.app, {
-      platform: nativeChunkPort(vaultDisk(input.app.vault)).available ? 'desktop' : 'mobile',
-      assertOwned: () => fence.assertReady(),
-      effect: (work) => fence.effect(work),
-      placement: manager.locks,
-      beforeRemoval: (path) => input.capture([path]),
-      assertRemovalAllowed: (path) => {
-        if (devicePinned(input.app, path)) throw new ExternalFilePortError('pinned')
-      },
-      stagingMtime: (path) => stagingMtimes.get(path) ?? Date.now(),
-    }),
-    input.placement
-  )
+  const localHost: ExternalFileHost = new ExternalFileHost(input.app, {
+    platform: nativeChunkPort(vaultDisk(input.app.vault)).available ? 'desktop' : 'mobile',
+    assertOwned: () => fence.assertReady(),
+    effect: (work) => fence.effect(work),
+    placement: manager.locks,
+    beforeRemoval: (path) => input.capture([path], (one) => localHost.fingerprint(one)),
+    assertRemovalAllowed: (path) => {
+      if (devicePinned(input.app, path)) throw new ExternalFilePortError('pinned')
+    },
+    stagingMtime: (path) => stagingMtimes.get(path) ?? Date.now(),
+  })
+  const host = placedExternalHost(localHost, input.placement)
   const describe = async (
     path: string,
     record?: ExternalRecord

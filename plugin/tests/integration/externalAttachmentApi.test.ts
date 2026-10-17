@@ -1,3 +1,7 @@
+import { vaultDisk } from '@/sync/vaultPathLinks'
+import { EditCopies } from '@/sync/editCopies'
+import { BoundedVaultIo } from '@/sync/boundedVaultIo'
+import { sha256 as incremental } from '@noble/hashes/sha2'
 import { preservePrivateArtifacts, privateArtifactRecovered } from '@/sync/privateRecovery'
 import { describe, expect, it, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
@@ -1776,6 +1780,45 @@ it('keeps unresolved hydration quarantine in place so recovery can still settle 
     expect((await s.api.materializeForDisconnect({ operationId: 'sample-departure' })).status).toBe(
       'complete'
     )
+  } finally {
+    s.close()
+  }
+})
+
+it('completes large offload when pre-removal capture verifies the unchanged write receipt without reading', async () => {
+  const s = await setup()
+  const size = 200 * 1024 * 1024
+  const adapter = s.fake.vault.adapter
+  const stat = adapter.stat.bind(adapter)
+  vi.spyOn(adapter, 'stat').mockImplementation(async (name) => {
+    const value = await stat(name)
+    return name === path && value ? { ...value, size, mtime: 1000 } : value
+  })
+  // The virtual file models a completed streamed write; only its stamp is materialized.
+  const hash = incremental.create().update(content)
+  await new BoundedVaultIo(vaultDisk(s.fake.vault)).recordWrite(path, size, hash)
+  s.base.size = size
+  await s.store.put({ ...s.base, wirePath: path })
+  const copies = new EditCopies()
+  copies.expect(['sample'])
+  copies.register('sample', s.store, () => true)
+  const fs = new ObsidianFileSystem(s.fake as unknown as App)
+  fs.stat = async (name) => (name === path ? { path, size, mtime: 1000 } : null)
+  Reflect.get(s.host, 'options').beforeRemoval = (one: string) =>
+    copies.capture(fs, [one], (name) => s.host.fingerprint(name))
+  const read = vi.spyOn(adapter, 'readBinary')
+  try {
+    expect(
+      await s.api.evict(s.base.fileId, {
+        operationId: 'sample-large-offload',
+        expectedRevision: 0,
+        expectedVersionId: s.base.versionId,
+      })
+    ).toEqual({ status: 'complete', reclaimedBytes: size })
+    expect(await adapter.exists(path)).toBe(false)
+    expect(await adapter.exists(path + '.abele-ref')).toBe(true)
+    expect(read.mock.calls.filter(([name]) => name === path)).toHaveLength(0)
+    expect(await copies.list(s.store)).toEqual([])
   } finally {
     s.close()
   }

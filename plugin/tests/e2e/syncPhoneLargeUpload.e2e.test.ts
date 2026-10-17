@@ -23,7 +23,7 @@ for (const offload of [false, true])
         a = s.primary,
         id = await s.connect(),
         path = s.root + '/sample-large.bin'
-      const beforeReads = a.run<{ bytesRead: number; chunks: number }>(
+      const beforeReads = a.run<{ bytesRead: number; chunks: number; wholeReads: number }>(
         `return host.live.get(${JSON.stringify(id)}).trace.snapshot().localReads`
       )
       const created = await a.long<{ type: string; size: number } | null>(
@@ -68,12 +68,14 @@ for (const offload of [false, true])
         const afterReads = a.run<{
           bytesRead: number
           chunks: number
+          wholeReads: number
           maxChunkBytes: number
           peakReaderBytes: number
           maxOutputBytes: number
         }>(`return host.live.get(${JSON.stringify(id)}).trace.snapshot().localReads`)
         expect(afterReads.bytesRead - beforeReads.bytesRead).toBeGreaterThanOrEqual(size)
         expect(a.run<number>('return window.__largeUploadReadCount')).toBe(1)
+        expect(afterReads.wholeReads - beforeReads.wholeReads).toBe(1)
         const memory = await a.long<{
           baseline: number
           peak: number
@@ -95,7 +97,11 @@ for (const offload of [false, true])
         expect(afterReads.maxOutputBytes).toBeLessThanOrEqual(chunk)
         expect(afterReads.peakReaderBytes).toBeLessThanOrEqual(afterReads.maxChunkBytes + chunk)
         expect(afterReads.maxChunkBytes).toBe(size)
-        console.info('large single-read bounds', afterReads)
+        console.info('large single-read bounds', {
+          ...afterReads,
+          wholeReadDelta: afterReads.wholeReads - beforeReads.wholeReads,
+          fixtureReads: a.run<number>('return window.__largeUploadReadCount'),
+        })
         expect(head.size).toBe(size)
         const source = await s
           .client()

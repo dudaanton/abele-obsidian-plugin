@@ -1,3 +1,4 @@
+import { MOBILE_LARGE_SOURCE } from './mobileLargeFileGate'
 import { sha256 } from './external/hash'
 import {
   type FileSystem,
@@ -175,19 +176,22 @@ export class TokenOffloadCoordinator {
         try {
           provider.assertOwned()
           let done = 0
-          return {
-            size: source.size,
-            signal: source.signal,
-            ...(source.stamp ? { stamp: source.stamp } : {}),
-            read: async (offset, length, cancellation) => {
-              const bytes = await source.read(offset, length, cancellation)
-              done = Math.max(done, offset + bytes.length)
-              this.progress(head.path, { done, total: head.size })
-              return bytes
+          return Object.assign(
+            {
+              size: source.size,
+              signal: source.signal,
+              ...(source.stamp ? { stamp: source.stamp } : {}),
+              read: async (offset: number, length: number, cancellation?: AbortSignal) => {
+                const bytes = await source.read(offset, length, cancellation)
+                done = Math.max(done, offset + bytes.length)
+                this.progress(head.path, { done, total: head.size })
+                return bytes
+              },
+              assertUnchanged: () => source.assertUnchanged(),
+              close: () => source.close(),
             },
-            assertUnchanged: () => source.assertUnchanged(),
-            close: () => source.close(),
-          }
+            { [MOBILE_LARGE_SOURCE]: Reflect.get(source, MOBILE_LARGE_SOURCE) }
+          )
         } catch (error) {
           await source.close()
           throw error

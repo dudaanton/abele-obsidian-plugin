@@ -21,6 +21,8 @@ export function tokenSyncProbe(runtime: TokenEngineRuntime, assertCurrent: () =>
     runExclusive: <T>(work: () => Promise<T>) => runtime.engine.runExclusive(work),
     verify: (...args: Parameters<typeof runtime.client.verifyExternalFile>) =>
       retryTransientOperation(() => runtime.client.verifyExternalFile(...args), assertCurrent),
+    openVersion: (...args: Parameters<typeof runtime.client.openVersion>) =>
+      retryTransientOperation(() => runtime.client.openVersion(...args), assertCurrent),
     download: (...args: Parameters<typeof runtime.client.versionBytes>) =>
       retryTransientOperation(() => runtime.client.versionBytes(...args), assertCurrent),
     stats: () => ({ peakDownloads, downloadCount, verificationCount }),

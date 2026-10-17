@@ -1,3 +1,4 @@
+import { mobileLargeFileGate } from './mobileLargeFileGate'
 import { nativeChunkPort } from './vaultPathLinks'
 import { guardedVaultAdapter, ensureVaultDirectory } from './vaultPathLinks'
 import type { DataAdapter, Stat } from 'obsidian'
@@ -274,8 +275,8 @@ export class BoundedVaultIo {
       }
     }
   }
-  openUploadRead(path: string, expected?: SourceStamp): Promise<ChunkSource> {
-    return this.openSource(path, expected, true)
+  openUploadRead(path: string, expected?: SourceStamp, signal?: AbortSignal): Promise<ChunkSource> {
+    return this.openSource(path, expected, true, signal)
   }
   openRead(path: string, expected?: SourceStamp): Promise<ChunkSource> {
     return this.openSource(path, expected, false)
@@ -283,7 +284,8 @@ export class BoundedVaultIo {
   private async openSource(
     path: string,
     expected: SourceStamp | undefined,
-    wholeFileUpload: boolean
+    wholeFileUpload: boolean,
+    signal?: AbortSignal
   ): Promise<ChunkSource> {
     const original = stampOf(await this.stat(path))
     if (expected && original.generation !== expected.generation)
@@ -299,6 +301,7 @@ export class BoundedVaultIo {
       !resource && files ? this.sequentialMobile?.open(path, original.size) : undefined
     let fallback: Uint8Array | null = null
     const meter = mobileReadMeter()
+    let releaseLarge: (() => void) | undefined
     if (!handle && !access) {
       if (!wholeFileUpload && original.size > PHONE_FALLBACK_BYTES)
         throw new EngineError(
@@ -308,17 +311,27 @@ export class BoundedVaultIo {
       if (original.size > MOBILE_WHOLE_READ_MAX) throw new MobileWholeReadLimitError(original.size)
       // iOS delivers the whole file anyway. Read directly, avoiding a fetch body plus a copy.
       // Slice only the outgoing part: the bridge must never receive the whole backing buffer.
-      this.assertOwned()
-      if (!small) meter.wholeRead()
-      fallback = new Uint8Array(await this.disk.readBinary(path))
-      this.assertOwned()
-      if (fallback.length !== original.size)
-        throw new EngineError('conflict', `${path} changed while reading`)
-      if (!small) {
-        console.debug('[abele-sync] mobile whole-file read', { bytes: fallback.byteLength })
-        meter.opened()
-        meter.chunk(fallback.length, fallback.byteLength, MOBILE_WHOLE_READ_MAX)
-        meter.hold(fallback.byteLength)
+      if (!small) releaseLarge = await mobileLargeFileGate.acquire(signal)
+      try {
+        this.assertOwned()
+        signal?.throwIfAborted()
+        if (!small) meter.wholeRead()
+        fallback = new Uint8Array(await this.disk.readBinary(path))
+        this.assertOwned()
+        if (fallback.length !== original.size)
+          throw new EngineError('conflict', `${path} changed while reading`)
+        if (!small) {
+          console.debug('[abele-sync] mobile whole-file read', { bytes: fallback.byteLength })
+          meter.opened()
+          meter.chunk(fallback.length, fallback.byteLength, MOBILE_WHOLE_READ_MAX)
+          meter.hold(fallback.byteLength)
+        }
+      } catch (error) {
+        fallback = null
+        meter.hold(0)
+        meter.closed()
+        releaseLarge?.()
+        throw error
       }
     }
     let closed = false
@@ -385,7 +398,11 @@ export class BoundedVaultIo {
         meter.hold(0)
         meter.closed()
         await sequential?.close()
-        await handle?.close()
+        try {
+          await handle?.close()
+        } finally {
+          releaseLarge?.()
+        }
       },
     }
   }
@@ -416,7 +433,7 @@ export class BoundedVaultIo {
       }
       if (acknowledged?.(identity)) return { ...stampOf(stat), ...identity }
     }
-    const source = await this.openUploadRead(path)
+    const source = await this.openUploadRead(path, undefined, signal)
     const hash = sha256.create()
     try {
       const identity = await fingerprintSource(
