@@ -25,7 +25,17 @@ export async function openUtilityDialog(name: keyof typeof dialogs): Promise<voi
   }
 }
 
-const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'])
+const IMAGE_EXTENSIONS = new Set([
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'webp',
+  'bmp',
+  'svg',
+  'heic',
+  'heif',
+])
 let preview: ComponentDialog | null = null
 
 /** The file menu's preview keeps the same folder ordering and selected starting picture. */

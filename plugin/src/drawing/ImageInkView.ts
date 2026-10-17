@@ -11,16 +11,21 @@ import {
   ItemView,
   Menu,
   Notice,
+  Platform,
   Scope,
   TFile,
   type ViewStateResult,
   type WorkspaceLeaf,
 } from 'obsidian'
-import { reactive } from 'vue'
+import { reactive, watch } from 'vue'
 import { confirmDialog } from '@/components/obsidian/dialogs'
 import { ChatService } from '@/ai/ChatService'
 import { DrawingSession } from './DrawingSession'
-import { drawingKeys, mountDrawingBar } from './drawingTab'
+import { drawingKeys, shapeMenu, thicknessMenu, zoomMenu } from './drawingTab'
+import { mountKit } from '@/components/obsidian/mount'
+import PictureSession from '@/components/drawing/PictureSession.vue'
+import { cropChanged, croppedSize, wholePicture } from './crop'
+import { PictureHistory, type PictureSessionState } from './pictureSession'
 import type { KitMount } from '@/components/obsidian/mount'
 import { drawnPath, flatten, formatOf } from './imageInk'
 import { emptyDrawingModel, type DrawingModel } from './model'
@@ -47,12 +52,27 @@ export class ImageInkView extends ItemView {
   private replaceAttachment = ''
   /** The embed in a note the picture was opened from; null when it came from anywhere else. */
   private embed: EmbedAnchor | null = null
-  private image: HTMLImageElement | null = null
+  private image: HTMLImageElement | ImageBitmap | null = null
+  private preview: ImageBitmap | null = null
+  private loadVersion = 0
+  private readonly history = new PictureHistory()
+  readonly editor: PictureSessionState = reactive({
+    crop: wholePicture(),
+    cropping: false,
+    dirty: false,
+    status: null,
+    width: 0,
+    height: 0,
+    camera: { x: 0, y: 0, zoom: 1 },
+  })
 
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
     this.scope = new Scope(this.app.scope)
-    drawingKeys(this.scope, this.model, () => this.session)
+    drawingKeys(this.scope, this.model, () => this.session, {
+      undo: () => this.restoreEdit(false),
+      redo: () => this.restoreEdit(true),
+    })
   }
 
   getViewType(): string {
@@ -65,35 +85,123 @@ export class ImageInkView extends ItemView {
 
   getDisplayText(): string {
     const name = this.path.slice(this.path.lastIndexOf('/') + 1)
-    return name ? `Drawing on ${name}` : 'Drawing on a picture'
+    return name ? `Editing ${name}` : 'Editing a picture'
   }
 
   async onOpen(): Promise<void> {
     this.contentEl.empty()
     this.contentEl.addClass('abele-drawing-view')
-    const bar = this.contentEl.createDiv({ cls: 'abele-drawing-view__bar' })
-    const stage = this.contentEl.createDiv({ cls: 'abele-drawing-view__stage' })
-    this.session = new DrawingSession(stage, this.model, {
-      app: this.app,
-      path: () => this.path,
-      openNote: () => {},
-      changed: () => {},
-      stopped: () => {},
-    })
-    this.vue = mountDrawingBar(
-      bar,
-      this.model,
-      () => this.session,
-      (e) => this.moreMenu(e),
-      this
+    this.vue = mountKit(
+      this.contentEl,
+      PictureSession,
+      {
+        model: this.model,
+        state: this.editor,
+        actions: {
+          ready: (stage: HTMLElement, textParent: HTMLElement) =>
+            this.makeSession(stage, textParent),
+          cancel: (): void => {
+            void this.cancel()
+          },
+          save: (e: MouseEvent) => this.moreMenu(e),
+          shape: (e: MouseEvent) => shapeMenu(e, this.model, this.session),
+          thickness: (e: MouseEvent) => thicknessMenu(e, this.model, this.session),
+          zoom: (e: MouseEvent) => {
+            if (Platform.isPhone) this.fitPicture()
+            else zoomMenu(e, this.session, () => this.fitPicture())
+          },
+          fit: () => this.fitPicture(),
+          commit: () => this.checkpoint(),
+          undo: () => this.restoreEdit(false),
+          redo: () => this.restoreEdit(true),
+        },
+      },
+      { owner: this }
+    )
+    this.register(
+      watch(
+        () => this.editor.crop,
+        () => {
+          this.editor.dirty = cropChanged(this.editor.crop) || !!this.session?.items.items.length
+        },
+        { deep: true }
+      )
     )
   }
 
+  private makeSession(stage: HTMLElement, textParent: HTMLElement): DrawingSession {
+    this.session = new DrawingSession(stage, this.model, {
+      textParent,
+      app: this.app,
+      path: () => this.path,
+      openNote: () => {},
+      changed: () => {
+        this.editor.dirty = true
+        this.checkpoint()
+      },
+      stopped: () => {},
+      cameraChanged: (camera) => {
+        this.editor.camera = { ...camera }
+      },
+    })
+    this.session.setFinger(true)
+    return this.session
+  }
+
+  private checkpoint(): void {
+    this.history.record(this.editor.crop, this.session?.items.items ?? [])
+    this.model.canUndo = this.history.canUndo
+    this.model.canRedo = this.history.canRedo
+  }
+
+  private fitPicture(): void {
+    const session = this.session
+    if (!session || !this.editor.width) return
+    const { width, height, crop } = this.editor
+    const sw = crop.turns % 2 ? height : width
+    const sh = crop.turns % 2 ? width : height
+    const w = session.surface.width
+    const h = session.surface.height
+    const zoom = Math.max(0.001, Math.min(20, Math.max(1, w - 64) / sw, Math.max(1, h - 64) / sh))
+    session.setCamera({ x: width / 2 - w / 2 / zoom, y: height / 2 - h / 2 / zoom, zoom })
+  }
+
+  private restoreEdit(redo: boolean): void {
+    const state = redo ? this.history.redo() : this.history.undo()
+    if (!state || !this.session) return
+    this.editor.crop = state.crop
+    this.session.load([...state.items])
+    this.editor.dirty = true
+    this.model.canUndo = this.history.canUndo
+    this.model.canRedo = this.history.canRedo
+  }
+
+  async cancel(): Promise<boolean> {
+    if (this.editor.status?.kind === 'saving') return false
+    if (
+      this.editor.dirty &&
+      !(await confirmDialog({
+        title: 'Discard picture edits?',
+        message: 'The unsaved edits will be lost. The picture stays as it was.',
+        confirmText: 'Discard edits',
+        confirmTooltip: 'Close without saving',
+      }))
+    )
+      return false
+    this.leaf.detach()
+    return true
+  }
+
   async onClose(): Promise<void> {
+    this.loadVersion++
     this.vue?.unmount()
     this.vue = null
     this.session?.destroy()
     this.session = null
+    if (this.image && 'close' in this.image) this.image.close()
+    this.image = null
+    this.preview?.close()
+    this.preview = null
   }
 
   async setState(state: unknown, result: ViewStateResult): Promise<void> {
@@ -103,12 +211,14 @@ export class ImageInkView extends ItemView {
       embed?: unknown
       replaceAttachment?: unknown
       chatVersion?: unknown
+      crop?: unknown
     }
     const path = typeof s.path === 'string' ? s.path : ''
     this.chat = typeof s.chat === 'string' ? s.chat : ''
     this.chatVersion = typeof s.chatVersion === 'number' ? s.chatVersion : null
     this.replaceAttachment = typeof s.replaceAttachment === 'string' ? s.replaceAttachment : ''
     this.embed = anchorOf(s.embed)
+    this.editor.cropping = s.crop === true
     if (path && path !== this.path) {
       this.path = path
       await this.loadPicture()
@@ -123,31 +233,81 @@ export class ImageInkView extends ItemView {
       chatVersion: this.chatVersion,
       embed: this.embed,
       replaceAttachment: this.replaceAttachment,
+      crop: this.editor.cropping,
     }
   }
 
   /** The picture, under an empty sheet of ink, ready to draw on. */
   private async loadPicture(): Promise<void> {
+    const version = ++this.loadVersion
     const file = this.app.vault.getAbstractFileByPath(this.path)
     const session = this.session
     if (!(file instanceof TFile) || !session) return
-    const image = new Image()
-    image.src = vaultUrl(this.app, file)
+    let image: HTMLImageElement | ImageBitmap
     try {
-      await image.decode()
+      if (typeof createImageBitmap === 'function') {
+        try {
+          image = await createImageBitmap(new Blob([await this.app.vault.readBinary(file)]))
+        } catch {
+          image = new Image()
+          image.src = vaultUrl(this.app, file)
+          await image.decode()
+        }
+      } else {
+        image = new Image()
+        image.src = vaultUrl(this.app, file)
+        await image.decode()
+      }
     } catch {
+      if (version !== this.loadVersion) return
       new Notice(`The picture could not be read: ${file.path}`)
+      this.editor.status = {
+        kind: 'error',
+        text: 'The picture could not be decoded on this device. The file is unchanged.',
+      }
       return
     }
+    const width = 'naturalWidth' in image ? image.naturalWidth : image.width
+    const height = 'naturalHeight' in image ? image.naturalHeight : image.height
+    let preview: ImageBitmap | null = null
+    if (typeof createImageBitmap === 'function' && Math.max(width, height) > 2048) {
+      const scale = 2048 / Math.max(width, height)
+      try {
+        preview = await createImageBitmap(image, {
+          resizeWidth: Math.max(1, Math.round(width * scale)),
+          resizeHeight: Math.max(1, Math.round(height * scale)),
+          resizeQuality: 'high',
+        })
+      } catch (error) {
+        console.debug('[Abele] picture preview uses the source image', error)
+      }
+    }
+    if (version !== this.loadVersion || this.session !== session) {
+      if ('close' in image) image.close()
+      preview?.close()
+      return
+    }
+    if (this.image && 'close' in this.image) this.image.close()
+    this.preview?.close()
     this.image = image
+    this.preview = preview
+    this.editor.width = width
+    this.editor.height = height
+    this.editor.status = null
+    this.editor.crop = wholePicture()
+    this.editor.dirty = false
     session.load([])
+    this.history.reset(this.editor.crop, [])
     // A tab just made has no size yet: the picture is fitted once it has one.
     session.whenSized(() => {
+      if (version !== this.loadVersion || this.session !== session) return
       session.setBackdrop({
-        image,
-        rect: { x: 0, y: 0, w: image.naturalWidth, h: image.naturalHeight },
+        image: this.preview ?? image,
+        rect: { x: 0, y: 0, w: width, h: height },
       })
-      session.start()
+      this.fitPicture()
+      if (this.editor.cropping) session.stop()
+      else session.start()
     })
     ;(this.leaf as unknown as { updateHeader?: () => void }).updateHeader?.()
   }
@@ -158,34 +318,71 @@ export class ImageInkView extends ItemView {
     const menu = new Menu()
     const file = this.app.vault.getAbstractFileByPath(this.path)
     if (file instanceof TFile) {
-      if (formatOf(file.extension).sameKind)
-        menu.addItem((item) =>
-          item
-            .setTitle('Save over the picture')
-            .setIcon('save')
-            .onClick(() => void this.saveOver(file))
-        )
+      const format = formatOf(file.extension)
+      const kind = format.mime === 'image/jpeg' ? 'JPEG' : 'PNG'
       menu.addItem((item) =>
         item
-          .setTitle('Save as a new picture')
+          .setTitle(
+            format.sameKind
+              ? 'Save over the picture'
+              : `Save over the picture (${file.extension.toUpperCase()} needs a ${kind} copy)`
+          )
+          .setDisabled(!formatOf(file.extension).sameKind)
+          .setIcon('save')
+          .onClick(() => void this.saving(() => this.saveOver(file)))
+      )
+      menu.addItem((item) =>
+        item
+          .setTitle(format.sameKind ? 'Save as a new picture' : `Save as a new ${kind} picture`)
           .setIcon('image-plus')
-          .onClick(() => void this.saveNew(file))
+          .onClick(() => void this.saving(() => this.saveNew(file)))
       )
       if (this.embed)
         menu.addItem((item) =>
           item
             .setTitle('Save as a new picture and replace it in the note')
             .setIcon('replace')
-            .onClick(() => void this.saveInNote(file))
+            .onClick(() => void this.saving(() => this.saveInNote(file)))
         )
       menu.addItem((item) =>
         item
-          .setTitle(this.chat ? 'Send back to the chat' : 'Send to the chat')
+          .setTitle(
+            `${this.chat ? 'Send back to the chat' : 'Send to the chat'} (${this.outputSize()})`
+          )
           .setIcon('send')
-          .onClick(() => void this.sendToChat(file))
+          .onClick(() => void this.saving(() => this.sendToChat(file)))
       )
     }
     menu.showAtMouseEvent(e)
+  }
+
+  private outputSize(): string {
+    const size = croppedSize(this.editor.crop, this.editor.width, this.editor.height)
+    return `${size.width} × ${size.height}`
+  }
+
+  private async saving(action: () => Promise<unknown>): Promise<void> {
+    if (!this.editor.width || !this.editor.height) return
+    if (this.editor.status?.kind === 'saving') return
+    const mp = Math.round((this.editor.width * this.editor.height) / 1e6)
+    const crop = JSON.stringify(this.editor.crop)
+    const ink = [...(this.session?.items.items ?? [])]
+    this.editor.status = { kind: 'saving', text: `Saving ${mp || '<1'} MP…` }
+    try {
+      await new Promise<void>((resolve) => this.contentEl.win.setTimeout(resolve, 32))
+      const saved = await action()
+      if (saved) {
+        const current = this.session?.items.items ?? []
+        this.editor.dirty =
+          JSON.stringify(this.editor.crop) !== crop ||
+          current.length !== ink.length ||
+          current.some((item, i) => item !== ink[i])
+      }
+      this.editor.status = null
+    } catch (error) {
+      console.warn('[Abele] picture save failed', error)
+      this.editor.status = { kind: 'error', text: `Could not save the picture: ${String(error)}` }
+    }
   }
 
   private async picture(file: TFile): Promise<Blob | null> {
@@ -196,15 +393,17 @@ export class ImageInkView extends ItemView {
     return flatten(
       this.contentEl.ownerDocument,
       image,
-      image.naturalWidth,
-      image.naturalHeight,
+      this.editor.width,
+      this.editor.height,
       session.items.items,
-      formatOf(file.extension)
+      formatOf(file.extension),
+      this.editor.crop
     )
   }
 
   /** The picture, drawn on, in the original's place — asked about first. */
   async saveOver(file: TFile, asked = false): Promise<boolean> {
+    if (!formatOf(file.extension).sameKind) return false
     if (!asked && !(await confirmOver(this.app, file.name))) return false
     const blob = await this.picture(file)
     if (!blob) return false

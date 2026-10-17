@@ -2214,6 +2214,11 @@ arrives.
 
 ## Drawings
 
+The picture editor saves crop, quarter turns, mirror and ink together as flattened pixels at
+the source resolution, clipped to the crop frame. Copies use a free `drawn` name beside the
+source. PNG, JPEG and WebP retain their format; HEIC/HEIF copies are JPEG and cannot overwrite
+their source. Edits remain in the open editor until explicitly saved or discarded.
+
 A drawing is an `.svg` file anywhere in the vault whose root element carries
 `data-abele-drawing="1"`; it opens in the plugin's drawing tab, while every other SVG stays in
 Obsidian's picture view. It is an ordinary picture — white paper sized to what is drawn plus a

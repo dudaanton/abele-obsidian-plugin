@@ -105,6 +105,17 @@ the writing is small.
 
 ## Drawing on pictures
 
+The gallery viewer's **Crop** button opens the picture editor with its frame ready to drag.
+Choose Free, Original, Square, 4:3 or 16:9; picking 4:3 or 16:9 again switches to portrait.
+Drag the frame or its handles, turn left, mirror, or reset. Two fingers pan and zoom; one
+finger draws or moves the frame. On a phone, the tools sit below the picture and Cancel and
+Save stay above it. Cancel asks before discarding unsaved edits.
+
+**Save** opens Obsidian's menu. Cropping, turning and mirroring apply to both the full resolution
+picture and its ink; ink outside the frame is clipped. Sending to chat shows the output dimensions.
+HEIC and HEIF pictures, where the device can decode them, are saved as JPEG copies; overwrite
+is disabled. A save error stays visible and keeps the edits so saving can be tried again.
+
 A picture in the vault — PNG, JPEG, WebP, GIF or BMP — opens in a tab with the same tools, the
 picture under the ink, from wherever you are looking at it:
 

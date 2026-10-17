@@ -14,7 +14,7 @@ export interface Camera {
 export const MIN_ZOOM = 0.05
 export const MAX_ZOOM = 20
 
-const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z))
+const clampZoom = (z: number, minimum = MIN_ZOOM) => Math.min(MAX_ZOOM, Math.max(minimum, z))
 
 export const toScreen = (c: Camera, x: number, y: number): [number, number] => [
   (x - c.x) * c.zoom,
@@ -42,8 +42,14 @@ export const panBy = (c: Camera, dx: number, dy: number): Camera => ({
 })
 
 /** The camera zoomed by a factor, the point of the drawing under a screen point staying there. */
-export function zoomAt(c: Camera, sx: number, sy: number, factor: number): Camera {
-  const zoom = clampZoom(c.zoom * factor)
+export function zoomAt(
+  c: Camera,
+  sx: number,
+  sy: number,
+  factor: number,
+  minimum = MIN_ZOOM
+): Camera {
+  const zoom = clampZoom(c.zoom * factor, minimum)
   const [wx, wy] = toWorld(c, sx, sy)
   return { x: wx - sx / zoom, y: wy - sy / zoom, zoom }
 }

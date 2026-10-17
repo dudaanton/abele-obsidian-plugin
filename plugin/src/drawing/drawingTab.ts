@@ -17,7 +17,8 @@ import { keepDrawingThickness } from './penThickness'
 export function drawingKeys(
   scope: Scope,
   model: DrawingModel,
-  session: () => DrawingSession | null
+  session: () => DrawingSession | null,
+  history?: { undo(): void; redo(): void }
 ): void {
   const typing = () => !!session()?.pick.typing
   scope.register([], 'Escape', () => {
@@ -28,12 +29,14 @@ export function drawingKeys(
   })
   scope.register(['Mod'], 'z', () => {
     if (typing()) return true
-    session()?.undo()
+    if (history) history.undo()
+    else session()?.undo()
     return false
   })
   scope.register(['Mod', 'Shift'], 'z', () => {
     if (typing()) return true
-    session()?.redo()
+    if (history) history.redo()
+    else session()?.redo()
     return false
   })
   for (const key of ['Delete', 'Backspace'])
@@ -74,7 +77,11 @@ export function mountDrawingBar(
 }
 
 /** Fine, medium or bold, kept for every drawing from now on. */
-function thicknessMenu(e: MouseEvent, model: DrawingModel, session: DrawingSession | null): void {
+export function thicknessMenu(
+  e: MouseEvent,
+  model: DrawingModel,
+  session: DrawingSession | null
+): void {
   const menu = new Menu()
   for (const t of THICKNESSES)
     menu.addItem((item) =>
@@ -90,7 +97,11 @@ function thicknessMenu(e: MouseEvent, model: DrawingModel, session: DrawingSessi
 }
 
 /** The shape tool: taken up, or — when it is in hand already — which shape it draws. */
-function shapeMenu(e: MouseEvent, model: DrawingModel, session: DrawingSession | null): void {
+export function shapeMenu(
+  e: MouseEvent,
+  model: DrawingModel,
+  session: DrawingSession | null
+): void {
   if (model.tool !== 'shape') {
     session?.setTool('shape')
     return
@@ -113,7 +124,7 @@ function shapeMenu(e: MouseEvent, model: DrawingModel, session: DrawingSession |
   menu.showAtMouseEvent(e)
 }
 
-function zoomMenu(e: MouseEvent, session: DrawingSession | null): void {
+export function zoomMenu(e: MouseEvent, session: DrawingSession | null, fit?: () => void): void {
   const menu = new Menu()
   menu.addItem((item) =>
     item
@@ -138,6 +149,10 @@ function zoomMenu(e: MouseEvent, session: DrawingSession | null): void {
       .setTitle('Show the whole drawing')
       .setIcon('maximize')
       .onClick(() => {
+        if (fit) {
+          fit()
+          return
+        }
         const backdrop = session?.backdrop
         if (backdrop) session?.show(backdrop.rect)
         else session?.fit()

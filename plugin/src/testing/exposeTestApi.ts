@@ -128,6 +128,7 @@ import { singleHopRequest } from '@/github/transport'
 import { connectionApproval } from '@/github/approveConnection'
 import { endpoints } from '@/github/urls'
 import { newDrawing, openImageInk } from '@/drawing/files'
+import { previewImage } from '@/commands/utilityDialogs'
 import { transportOf } from '@/sync/environment'
 import { desktopTransport as syncDesktopTransport } from '@/sync/desktopTransport'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
@@ -341,6 +342,7 @@ interface AbeleTestApi {
   newDrawing: typeof newDrawing
   /** A picture opened to draw on. */
   openImageInk: typeof openImageInk
+  previewImage: typeof previewImage
   ScriptService: typeof ScriptService
   SelectionScriptPicker: typeof SelectionScriptPicker
   /** Which versions of the scripts this device vouches for; `reset()` rereads what is stored. */
@@ -998,6 +1000,7 @@ export function exposeTestApi(plugin: Plugin): void {
     secrets,
     newDrawing,
     openImageInk,
+    previewImage,
     ScriptService,
     SelectionScriptPicker,
     ScriptTrust,

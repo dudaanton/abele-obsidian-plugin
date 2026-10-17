@@ -68,7 +68,14 @@
           @click="emit('zoom', $event)"
         />
         <span class="abele-picture-editor__save" @click="saveAt">
-          <Button text="Save" accent trailing-icon="chevron-down" :loading="saving" :tooltip="saveTooltip" />
+          <Button
+            text="Save"
+            accent
+            trailing-icon="chevron-down"
+            :loading="saving"
+            :disabled="!ready"
+            :tooltip="saveTooltip"
+          />
         </span>
       </template>
     </ToolBar>
@@ -82,7 +89,14 @@
         @click="emit('zoom', $event)"
       />
       <span class="abele-picture-editor__save" @click="saveAt">
-        <Button text="Save" accent trailing-icon="chevron-down" :loading="saving" :tooltip="saveTooltip" />
+        <Button
+          text="Save"
+          accent
+          trailing-icon="chevron-down"
+          :loading="saving"
+          :disabled="!ready"
+          :tooltip="saveTooltip"
+        />
       </span>
     </div>
 
@@ -204,9 +218,7 @@ import {
   type CropState,
 } from '@/drawing/crop'
 
-export type PictureEditorStatus =
-  | { kind: 'saving'; text: string; progress?: number }
-  | { kind: 'error'; text: string }
+import type { PictureEditorStatus } from '@/drawing/pictureSession'
 
 type Tool = DrawingTool | 'crop'
 
@@ -218,11 +230,12 @@ const props = withDefaults(
     cropping: boolean
     /** Something was drawn, cropped or turned since the picture was opened. */
     dirty?: boolean
+    ready?: boolean
     status?: PictureEditorStatus | null
     /** The tools at the bottom, under the thumb; by default on a phone. */
     phone?: boolean
   }>(),
-  { dirty: false, status: null, phone: () => Platform.isPhone }
+  { dirty: false, ready: true, status: null, phone: () => Platform.isPhone }
 )
 
 const emit = defineEmits<{
@@ -283,7 +296,7 @@ function pick(tool: Tool, e: MouseEvent) {
 }
 
 function saveAt(e: MouseEvent) {
-  if (!saving.value) emit('save', e)
+  if (!saving.value && props.ready) emit('save', e)
 }
 </script>
 
@@ -357,7 +370,6 @@ function saveAt(e: MouseEvent) {
   padding: var(--size-4-1) var(--size-4-2);
   border-bottom: 1px solid var(--background-modifier-border);
 }
-
 
 // The two rows under the thumb, as Obsidian's own bar over the keyboard: on the primary
 // background, a hairline above, glyphs a finger's size.

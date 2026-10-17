@@ -53,6 +53,21 @@ export function aspectLabel(aspect: CropAspect, upright: boolean): string {
 export const shownRatio = (width: number, height: number, turns: number) =>
   turns % 2 ? height / width : width / height
 
+/** The same orientation for the preview, live ink and full resolution export. */
+export function orientPicture(
+  ctx: Pick<CanvasRenderingContext2D, 'translate' | 'scale' | 'rotate'>,
+  width: number,
+  height: number,
+  state: Pick<CropState, 'turns' | 'flipped'>,
+  centerX = width / 2,
+  centerY = height / 2
+): void {
+  ctx.translate(centerX, centerY)
+  ctx.scale(state.flipped ? -1 : 1, 1)
+  ctx.rotate((-state.turns * Math.PI) / 2)
+  ctx.translate(-width / 2, -height / 2)
+}
+
 /**
  * The frame's width over its height in pixels for a preset, or null when it may be any shape.
  * `picture` is the shown picture's own width over height.
@@ -153,6 +168,17 @@ export const turnRectLeft = (r: CropRect): CropRect => ({
   h: r.w,
 })
 
+/** Keep the selected part and its aspect when the displayed picture turns left. */
+export function turnPictureLeft(state: CropState): CropState {
+  return {
+    ...state,
+    rect: turnRectLeft(state.rect),
+    upright: state.aspect === '4:3' || state.aspect === '16:9' ? !state.upright : state.upright,
+    // Mirroring reverses the direction of a turn in source coordinates.
+    turns: ((state.turns + (state.flipped ? 3 : 1)) % 4) as CropState['turns'],
+  }
+}
+
 /** The frame after the picture is mirrored left to right. */
 export const flipRect = (r: CropRect): CropRect => ({ ...r, x: 1 - r.x - r.w })
 
@@ -168,7 +194,7 @@ export function croppedSize(state: CropState, width: number, height: number) {
   const shownW = state.turns % 2 ? height : width
   const shownH = state.turns % 2 ? width : height
   return {
-    width: Math.round(state.rect.w * shownW),
-    height: Math.round(state.rect.h * shownH),
+    width: Math.max(1, Math.round(state.rect.w * shownW)),
+    height: Math.max(1, Math.round(state.rect.h * shownH)),
   }
 }

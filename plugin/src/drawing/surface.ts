@@ -17,7 +17,7 @@
  */
 import { guardSurface } from '@/ink/guard'
 import type { InkRoute } from '@/ink/route'
-import { panBy, toWorld, zoomAt, type Camera } from './camera'
+import { MIN_ZOOM, panBy, toWorld, zoomAt, type Camera } from './camera'
 import { DrawingRenderer } from './renderer'
 import { PAPER } from './drawingFile'
 
@@ -63,6 +63,9 @@ type Touch =
   | { kind: 'pan'; x: number; y: number; x0: number; y0: number; moved: boolean }
 
 export class DrawingSurface {
+  minimumZoom = MIN_ZOOM
+  /** Optional inverse of a presentation transform, in surface CSS pixels. */
+  mapClientPoint: ((point: { clientX: number; clientY: number }) => [number, number]) | null = null
   readonly el: HTMLElement
   readonly renderer: DrawingRenderer
   private readonly live: HTMLCanvasElement
@@ -168,6 +171,7 @@ export class DrawingSurface {
     const c = this.host.camera()
     const r = this.win.devicePixelRatio || 1
     ctx.setTransform(r * c.zoom, 0, 0, r * c.zoom, -c.x * r * c.zoom, -c.y * r * c.zoom)
+    this.renderer.presentation?.(ctx)
     this.host.overlay?.(ctx, c.zoom)
     for (const t of this.touches.values()) if (t.kind === 'tool') t.gesture.paint?.(ctx, c.zoom)
     ctx.globalAlpha = 1
@@ -176,6 +180,7 @@ export class DrawingSurface {
 
   /** A point of the screen, in the drawing's units. */
   worldAt(e: { clientX: number; clientY: number }): [number, number] {
+    if (this.mapClientPoint) return toWorld(this.host.camera(), ...this.mapClientPoint(e))
     const rect = this.el.getBoundingClientRect()
     return toWorld(this.host.camera(), e.clientX - rect.left, e.clientY - rect.top)
   }
@@ -285,7 +290,7 @@ export class DrawingSurface {
       const cx1 = (e.clientX + other.x) / 2 - rect.left
       const cy1 = (e.clientY + other.y) / 2 - rect.top
       let c = this.host.camera()
-      if (before > 4 && after > 4) c = zoomAt(c, cx0, cy0, after / before)
+      if (before > 4 && after > 4) c = zoomAt(c, cx0, cy0, after / before, this.minimumZoom)
       c = panBy(c, cx1 - cx0, cy1 - cy0)
       this.host.setCamera(c)
     } else {
@@ -326,7 +331,8 @@ export class DrawingSurface {
           this.host.camera(),
           e.clientX - rect.left,
           e.clientY - rect.top,
-          Math.exp(-step * 0.01)
+          Math.exp(-step * 0.01),
+          this.minimumZoom
         )
       )
       return

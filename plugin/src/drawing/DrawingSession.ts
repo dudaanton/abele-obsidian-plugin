@@ -33,6 +33,9 @@ import { WIDTHS, type DrawingModel, type DrawingTool, type Thickness } from './m
 const SETTLE_MS = 140
 
 export interface SessionHost {
+  /** A separately transformed layer for picture text fields. */
+  textParent?: HTMLElement
+  cameraChanged?(camera: Camera): void
   app: App
   /** The drawing's own path, for the notes on it to resolve their links from. */
   path(): string
@@ -84,7 +87,7 @@ export class DrawingSession {
       drop: (text, x, y) => this.dropped(text, x, y),
     })
     this.notes = new NoteLayer(this.surface.el, host.app, () => host.path())
-    this.pick = new DrawingPick(parent, this.items, model, {
+    this.pick = new DrawingPick(host.textParent ?? parent, this.items, model, {
       camera: () => this.cam,
       paint: (skip) => {
         this.surface.renderer.paint(this.items.items, this.cam, skip)
@@ -277,6 +280,7 @@ export class DrawingSession {
   // ————— The camera —————
 
   setCamera(c: Camera): void {
+    this.host.cameraChanged?.(c)
     this.cam = c
     this.model.zoom = c.zoom
     this.pick.follow(c)
@@ -298,7 +302,15 @@ export class DrawingSession {
 
   /** Zoomed by a factor about the middle of the view. */
   zoomBy(factor: number): void {
-    this.setCamera(zoomAt(this.cam, this.surface.width / 2, this.surface.height / 2, factor))
+    this.setCamera(
+      zoomAt(
+        this.cam,
+        this.surface.width / 2,
+        this.surface.height / 2,
+        factor,
+        this.surface.minimumZoom
+      )
+    )
   }
 
   /** The whole drawing in view, no larger than 100%; the start of the page for an empty one. */

@@ -120,6 +120,8 @@ export interface Backdrop {
 const QUICK_MS = 8
 
 export class DrawingRenderer {
+  /** A picture editor's world-space turn/mirror, shared by its backdrop and ink. */
+  presentation: ((ctx: CanvasRenderingContext2D) => void) | null = null
   private readonly ctx: CanvasRenderingContext2D
   private readonly snap: HTMLCanvasElement
   private snapCamera: Camera | null = null
@@ -171,6 +173,7 @@ export class DrawingRenderer {
   private setCamera(ctx: CanvasRenderingContext2D, c: Camera): void {
     const r = this.ratio()
     ctx.setTransform(r * c.zoom, 0, 0, r * c.zoom, -c.x * r * c.zoom, -c.y * r * c.zoom)
+    this.presentation?.(ctx)
   }
 
   /** Paints everything the camera shows, and keeps the picture. */
@@ -183,7 +186,9 @@ export class DrawingRenderer {
     this.lastPainted = paintItems(
       ctx,
       items,
-      visibleRect(camera, this.width, this.height),
+      this.presentation && this.backdrop
+        ? this.backdrop.rect
+        : visibleRect(camera, this.width, this.height),
       camera.zoom,
       skip
     )

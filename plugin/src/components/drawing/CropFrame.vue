@@ -5,7 +5,16 @@
     class="abele-crop-frame"
     :class="{ 'is-dragging': held !== null }"
     data-ignore-swipe="true"
-    @contextmenu.prevent
+    @contextmenu.prevent.stop
+    @pointerdown.stop
+    @pointermove.stop
+    @pointerup.stop
+    @pointercancel.stop
+    @wheel.prevent.stop="wheel"
+    @pointerdown.capture="track"
+    @pointermove.capture="navigate"
+    @pointerup.capture="release"
+    @pointercancel.capture="release"
   >
     <div class="abele-crop-frame__shade" :style="frameStyle" aria-hidden="true" />
     <div
@@ -47,7 +56,62 @@ const props = defineProps<{
   /** The shown picture's width over its height. */
   picture: number
 }>()
-const emit = defineEmits<{ 'update:rect': [rect: CropRect] }>()
+const emit = defineEmits<{
+  'update:rect': [rect: CropRect]
+  navigate: [
+    from: { clientX: number; clientY: number },
+    to: { clientX: number; clientY: number },
+    factor: number,
+  ]
+  commit: []
+}>()
+const pointers = new Map<number, { clientX: number; clientY: number }>()
+let pinched = false
+function track(e: PointerEvent) {
+  ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+  pointers.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY })
+  if (pointers.size > 1) {
+    pinched = true
+    ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+  }
+}
+function wheel(e: WheelEvent) {
+  const from = { clientX: e.clientX, clientY: e.clientY }
+  const unit = e.deltaMode === 1 ? 16 : 1
+  if (e.ctrlKey || e.metaKey)
+    emit('navigate', from, from, Math.exp(-Math.max(-50, Math.min(50, e.deltaY * unit)) * 0.01))
+  else
+    emit(
+      'navigate',
+      from,
+      { clientX: e.clientX - e.deltaX * unit, clientY: e.clientY - e.deltaY * unit },
+      1
+    )
+}
+function release(e: PointerEvent) {
+  pointers.delete(e.pointerId)
+  if (!pointers.size) pinched = false
+}
+function navigate(e: PointerEvent) {
+  const before = pointers.get(e.pointerId)
+  if (!before) return
+  const other = [...pointers.entries()].find(([id]) => id !== e.pointerId)?.[1]
+  if (other) {
+    e.preventDefault()
+    const distance = Math.hypot(before.clientX - other.clientX, before.clientY - other.clientY)
+    const after = Math.hypot(e.clientX - other.clientX, e.clientY - other.clientY)
+    emit(
+      'navigate',
+      {
+        clientX: (before.clientX + other.clientX) / 2,
+        clientY: (before.clientY + other.clientY) / 2,
+      },
+      { clientX: (e.clientX + other.clientX) / 2, clientY: (e.clientY + other.clientY) / 2 },
+      distance > 4 && after > 4 ? after / distance : 1
+    )
+  }
+  pointers.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY })
+}
 
 const HANDLES: CropHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
 
@@ -64,14 +128,15 @@ const frameStyle = computed(() => ({
 
 function hold(handle: CropHandle, e: PointerEvent) {
   const box = frame.value?.parentElement?.getBoundingClientRect()
-  if (!box || !box.width || !box.height || e.button > 0) return
+  if (!box || !box.width || !box.height || e.button > 0 || pinched) return
   e.preventDefault()
   const start = { ...props.rect }
   const from = { x: e.clientX, y: e.clientY }
   const target = e.currentTarget as HTMLElement
   target.setPointerCapture?.(e.pointerId)
   held.value = handle
-  const move = (m: PointerEvent) =>
+  const move = (m: PointerEvent) => {
+    if (pinched) return
     emit(
       'update:rect',
       dragRect(
@@ -83,7 +148,9 @@ function hold(handle: CropHandle, e: PointerEvent) {
         props.picture
       )
     )
+  }
   const drop = () => {
+    emit('commit')
     held.value = null
     target.removeEventListener('pointermove', move)
     target.removeEventListener('pointerup', drop)
@@ -109,6 +176,7 @@ function nudge(e: KeyboardEvent) {
     'update:rect',
     dragRect(props.rect, e.shiftKey ? 'se' : 'move', d[0], d[1], props.ratio, props.picture)
   )
+  emit('commit')
 }
 </script>
 
