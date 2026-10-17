@@ -9,6 +9,23 @@ import { PictureHistory } from '@/drawing/pictureSession'
 vi.mock('@/components/obsidian/dialogs', () => ({ confirmDialog: vi.fn() }))
 afterEach(() => vi.restoreAllMocks())
 
+it('updates the view header to the filename when a picture is opened', async () => {
+  const titleEl = document.createElement('div')
+  titleEl.textContent = 'Editing a picture'
+  const host = {
+    path: '',
+    editor: { cropping: false },
+    titleEl,
+    loadPicture: vi.fn(async () => {}),
+  }
+  await ImageInkView.prototype.setState.call(
+    host as never,
+    { path: 'Pictures/sample.png' },
+    {} as never
+  )
+  expect(titleEl.textContent).toBe('sample.png')
+})
+
 it('undoes and redoes crop and ink in their edit order', () => {
   const history = new PictureHistory()
   const original = wholePicture()

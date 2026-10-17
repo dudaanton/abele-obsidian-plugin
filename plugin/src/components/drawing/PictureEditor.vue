@@ -3,70 +3,24 @@
     <!-- On a computer one row over the picture, as a drawing has; on a phone only what ends the
          editing stays on top, and the tools go down under the thumb. -->
     <ToolBar v-if="!phone" class="abele-picture-editor__bar" label="Editing the picture">
-      <Button text="Cancel" plain :tooltip="cancelTooltip" @click="emit('cancel')" />
-      <ToolBarGroup class="abele-picture-editor__group">
-        <Icon
-          v-for="t in TOOLS"
-          :key="t.id"
-          :icon="t.id === 'shape' ? SHAPE_ICONS[model.shape] : t.icon"
-          :tooltip="t.tooltip"
-          :active="toolNow === t.id"
-          class="abele-picture-editor__tool"
-          :class="`abele-picture-editor__tool_${t.id}`"
-          @click="pick(t.id, $event)"
-        />
-      </ToolBarGroup>
-      <ToolBarGroup class="abele-picture-editor__group abele-picture-editor__context">
-        <template v-if="cropping">
+      <div class="abele-picture-editor__primary">
+        <Button text="Cancel" plain :tooltip="cancelTooltip" @click="emit('cancel')" />
+        <ToolBarGroup class="abele-picture-editor__group abele-picture-editor__desktop-tools">
           <Icon
-            v-for="a in CROP_ASPECTS"
-            :key="a.id"
-            :text-right="aspectLabel(a.id, crop.aspect === a.id && crop.upright)"
-            :tooltip="a.tooltip"
-            :active="crop.aspect === a.id"
-            class="abele-picture-editor__aspect"
-            @click="emit('aspect', a.id)"
+            v-for="t in TOOLS"
+            :key="t.id"
+            :icon="t.id === 'shape' ? SHAPE_ICONS[model.shape] : t.icon"
+            :tooltip="t.tooltip"
+            :active="toolNow === t.id"
+            class="abele-picture-editor__tool"
+            :class="`abele-picture-editor__tool_${t.id}`"
+            @click="pick(t.id, $event)"
           />
-          <Icon icon="rotate-ccw" tooltip="Turn a quarter to the left" @click="emit('turn')" />
-          <Icon icon="flip-horizontal-2" tooltip="Mirror left to right" @click="emit('flip')" />
-        </template>
-        <template v-else>
-          <Icon
-            v-for="c in colors"
-            :key="c"
-            icon="circle"
-            :color="c === 'black' ? undefined : c"
-            :active="current === c"
-            :tooltip="`Draw in ${c}`"
-            class="abele-picture-editor__swatch"
-            :class="{ 'abele-picture-editor__swatch_ink': c === 'black' }"
-            @click="emit('color', c)"
-          />
-          <Icon
-            icon="line-squiggle"
-            :tooltip="`Thickness: ${model.thickness}`"
-            @click="emit('thickness', $event)"
-          />
-        </template>
-      </ToolBarGroup>
-      <ToolBarGroup class="abele-picture-editor__group">
-        <Icon icon="undo-2" tooltip="Undo" :disabled="!canUndo" @click="emit('undo')" />
-        <Icon icon="redo-2" tooltip="Redo" :disabled="!canRedo" @click="emit('redo')" />
-      </ToolBarGroup>
-      <template #end>
-        <Button
-          v-if="cropping && changed"
-          text="Reset"
-          quiet
-          tooltip="Back to the whole picture, not turned"
-          @click="emit('reset')"
-        />
-        <Icon
-          :text-right="zoomText"
-          icon="zoom-in"
-          tooltip="Zoom: the whole picture, 100%, in or out"
-          @click="emit('zoom', $event)"
-        />
+        </ToolBarGroup>
+        <ToolBarGroup class="abele-picture-editor__group abele-picture-editor__history">
+          <Icon icon="undo-2" tooltip="Undo" :disabled="!canUndo" @click="emit('undo')" />
+          <Icon icon="redo-2" tooltip="Redo" :disabled="!canRedo" @click="emit('redo')" />
+        </ToolBarGroup>
         <span class="abele-picture-editor__save" @click="saveAt">
           <Button
             text="Save"
@@ -77,7 +31,56 @@
             :tooltip="saveTooltip"
           />
         </span>
-      </template>
+      </div>
+      <div class="abele-picture-editor__secondary">
+        <ToolBarGroup class="abele-picture-editor__group abele-picture-editor__context">
+          <template v-if="cropping">
+            <Icon
+              v-for="a in CROP_ASPECTS"
+              :key="a.id"
+              :text-right="aspectLabel(a.id, crop.aspect === a.id && crop.upright)"
+              :tooltip="a.tooltip"
+              :active="crop.aspect === a.id"
+              class="abele-picture-editor__aspect"
+              @click="emit('aspect', a.id)"
+            />
+            <Icon icon="rotate-ccw" tooltip="Turn a quarter to the left" @click="emit('turn')" />
+            <Icon icon="flip-horizontal-2" tooltip="Mirror left to right" @click="emit('flip')" />
+            <Button
+              v-if="cropping && changed"
+              text="Reset"
+              quiet
+              tooltip="Back to the whole picture, not turned"
+              @click="emit('reset')"
+            />
+          </template>
+          <template v-else>
+            <Icon
+              v-for="c in colors"
+              :key="c"
+              icon="circle"
+              :color="c === 'black' ? undefined : c"
+              :active="current === c"
+              :tooltip="`Draw in ${c}`"
+              class="abele-picture-editor__swatch"
+              :class="{ 'abele-picture-editor__swatch_ink': c === 'black' }"
+              @click="emit('color', c)"
+            />
+            <Icon
+              icon="line-squiggle"
+              :tooltip="`Thickness: ${model.thickness}`"
+              @click="emit('thickness', $event)"
+            />
+          </template>
+        </ToolBarGroup>
+        <Icon
+          :text-right="zoomText"
+          icon="zoom-in"
+          class="abele-picture-editor__desktop-zoom"
+          tooltip="Zoom: the whole picture, 100%, in or out"
+          @click="emit('zoom', $event)"
+        />
+      </div>
     </ToolBar>
 
     <div v-else class="abele-picture-editor__top">
@@ -302,11 +305,90 @@ function saveAt(e: MouseEvent) {
 
 <style lang="scss">
 .abele-picture-editor {
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
   background-color: var(--background-primary);
+}
+
+.abele-picture-editor__bar {
+  flex-wrap: nowrap;
+}
+
+.abele-picture-editor__primary,
+.abele-picture-editor__secondary {
+  display: contents;
+}
+
+.abele-picture-editor__desktop-tools {
+  order: 1;
+}
+.abele-picture-editor__context {
+  order: 2;
+  padding-block: var(--size-4-1);
+  min-width: 0;
+  flex-shrink: 1;
+  // Tool options scroll within their group when the single desktop row has no more room.
+  overflow-x: auto;
+  > * {
+    flex: 0 0 auto;
+  }
+}
+.abele-picture-editor__history {
+  order: 3;
+  margin-left: auto;
+}
+.abele-picture-editor__desktop-zoom {
+  order: 4;
+  flex: 0 0 auto;
+}
+.abele-picture-editor__primary > .abele-picture-editor__save {
+  order: 5;
+  flex: 0 0 auto;
+}
+.abele-picture-editor__primary > button {
+  flex: 0 0 auto;
+}
+
+@container (max-width: 42em) {
+  .abele-picture-editor__bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .abele-picture-editor__primary,
+  .abele-picture-editor__secondary {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: var(--size-2-1);
+    min-width: 0;
+  }
+  .abele-picture-editor__secondary {
+    // A narrow pane keeps options on one row and lets them scroll, as the phone context row does.
+    overflow-x: auto;
+    .abele-picture-editor__context {
+      flex: 0 0 auto;
+      overflow: visible;
+    }
+    .abele-picture-editor__desktop-zoom {
+      margin-left: auto;
+    }
+  }
+}
+
+@container (max-width: 26em) {
+  .abele-picture-editor__primary .abele-picture-editor__desktop-tools {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding-block: var(--size-4-1);
+    // Only the tools slide; Cancel, undo/redo and Save remain within reach at the pane edges.
+    overflow-x: auto;
+    > * {
+      flex: 0 0 auto;
+    }
+  }
 }
 
 .abele-picture-editor__save {

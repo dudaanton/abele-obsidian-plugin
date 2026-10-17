@@ -60,6 +60,46 @@ describe.skipIf(!available)('picture crop from the viewer', () => {
         const view = await until(() => app.workspace.getLeavesOfType('abele-image-ink').map(l => l.view).find(v => v.session && v.editor.width))
         await until(() => view.contentEl.querySelector('.abele-crop-frame'))
         await screenshot('crop-open')
+        const narrowShot = async (name) => {
+          const pane = view.containerEl.closest('.workspace-leaf')
+          const prior = pane.getAttribute('style')
+          try {
+            pane.style.width = '500px'; pane.style.maxWidth = '500px'; pane.style.flex = '0 0 500px'
+            await wait(250)
+            view.fitPicture()
+            const bar = view.contentEl.querySelector('.abele-picture-editor__bar')
+            const center = (el) => { const r = el.getBoundingClientRect(); return r.y + r.height / 2 }
+            const rows = []
+            for (const button of bar.querySelectorAll('button'))
+              if (!rows.some(y => Math.abs(y - center(button)) < 3)) rows.push(center(button))
+            await screenshot(name)
+            if (Math.abs(bar.getBoundingClientRect().width - 500) > 4) throw Error('Narrow pane was not 500px')
+            if (rows.length !== 2) throw Error('Narrow toolbar has ' + rows.length + ' rows')
+            const primary = bar.querySelector('.abele-picture-editor__primary')
+            const cancel = primary.querySelector('button')
+            const save = primary.querySelector('.abele-picture-editor__save button')
+            for (const button of primary.querySelectorAll('button'))
+              if (Math.abs(center(button) - center(cancel)) > 3) throw Error('Primary controls wrapped')
+            const pinned = () => {
+              const bounds = bar.getBoundingClientRect()
+              if (cancel.getBoundingClientRect().left < bounds.left || save.getBoundingClientRect().right > bounds.right)
+                throw Error('Cancel or Save escaped the pane')
+            }
+            pinned()
+            if (!view.containerEl.querySelector('.view-header-title')?.textContent.includes(original.name)) throw Error('Header lacks picture filename')
+            pane.style.width = '300px'; pane.style.maxWidth = '300px'; pane.style.flex = '0 0 300px'
+            await wait(100)
+            pinned()
+            const tools = primary.querySelector('.abele-picture-editor__desktop-tools')
+            if (tools.scrollWidth <= tools.clientWidth || getComputedStyle(tools).overflowX !== 'auto')
+              throw Error('Very narrow tools do not scroll')
+          } finally {
+            if (prior === null) pane.removeAttribute('style'); else pane.setAttribute('style', prior)
+            await wait(250)
+            view.fitPicture()
+          }
+        }
+        if (!${phone}) await narrowShot('narrow-crop-open')
         const wc = require('@electron/remote').getCurrentWebContents()
         const handle = view.contentEl.querySelector('.abele-crop-frame__handle_se').getBoundingClientRect()
         const start = { x: handle.x + handle.width / 2, y: handle.y + handle.height / 2 }
@@ -106,6 +146,7 @@ describe.skipIf(!available)('picture crop from the viewer', () => {
         view.editor.status = { kind: 'saving', text: 'Saving 48 MP…' }; await screenshot('saving')
         view.editor.status = null
         click('Pen'); await screenshot('draw')
+        if (!${phone}) await narrowShot('narrow-draw')
         view.session.zoomBy(2); await screenshot('zoomed')
         view.contentEl.querySelector('.abele-picture-editor__save').click(); await screenshot('save-menu')
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))

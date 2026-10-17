@@ -224,6 +224,9 @@ export class ImageInkView extends ItemView {
       await this.loadPicture()
     }
     await super.setState(state, result)
+    ;(this as unknown as { titleEl?: HTMLElement }).titleEl?.setText(
+      this.path.slice(this.path.lastIndexOf('/') + 1) || 'Editing a picture'
+    )
   }
 
   getState(): Record<string, unknown> {
