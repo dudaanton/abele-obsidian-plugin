@@ -95,9 +95,9 @@ Buttons on notes that run a command or a script, and which notes each one shows 
 
 Named links that run a script or a command. See [Links](scripts#links).
 
-## GitHub
+## Git hosting
 
-Turning GitHub tabs on, the token and server, page width, how people are shown, and code search.
+Turning GitHub, Forgejo and Gitea tabs on, the tokens and servers, page width, how people are shown, and code search.
 See [GitHub](github).
 
 ## Nodes
