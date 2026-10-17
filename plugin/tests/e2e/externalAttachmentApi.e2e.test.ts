@@ -207,7 +207,7 @@ describe('v2 external attachments on live adapters', () => {
   )
   let maximum: Awaited<ReturnType<typeof roundTrip>>
   let maximumFlight: ReturnType<typeof roundTrip> | undefined
-  const maximumResult = () => (maximumFlight ??= roundTrip(false, LARGE))
+  const maximumResult = () => (maximumFlight ??= roundTrip(false, LARGE, false, true, false))
   it(
     `transfers a ${LARGE_LABEL} attachment and hydrates concurrent requests`,
     async () => {

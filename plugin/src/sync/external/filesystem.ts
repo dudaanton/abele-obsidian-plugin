@@ -153,19 +153,20 @@ export class ExternalFileEffects {
     const original = source
     let closed = false,
       entered = false
-    source = {
-      size: original.size,
-      ...(original.stamp ? { stamp: original.stamp } : {}),
-      ...(original.signal ? { signal: original.signal } : {}),
-      read: (offset, length, cancellation) => original.read(offset, length, cancellation),
-      assertUnchanged: () => original.assertUnchanged(),
-      close: async () => {
-        if (!closed) {
-          closed = true
-          await original.close()
-        }
+    source = new Proxy(original, {
+      get: (target, key) => {
+        if (key === 'close')
+          return async () => {
+            if (!closed) {
+              closed = true
+              await original.close()
+            }
+          }
+        // Preserve source capabilities, including ownership of a lazy transfer gate.
+        const value = Reflect.get(target, key)
+        return typeof value === 'function' ? value.bind(target) : value
       },
-    }
+    })
     return this.track<ExternalEffectResult>(async () => {
       entered = true
       try {
