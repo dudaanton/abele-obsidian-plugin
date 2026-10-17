@@ -127,6 +127,27 @@ defineProps<{
   }
 }
 
+// On a phone a row with a state dot and a button with words stacks: beside the button its name
+// was squeezed into a column a few letters wide. Under the name the state and the actions stay
+// on one line: the dot, the button taking what is left, the glyphs after it.
+body.is-phone
+  .abele-obsidian-setting:has(> .setting-item-control > .abele-status-dot):has(
+    > .setting-item-control > .abele-obsidian-button
+  ) {
+  grid-template-columns: minmax(0, 1fr);
+
+  > .setting-item-control {
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: flex-start;
+
+    > .abele-obsidian-button {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+  }
+}
+
 // In a window the rows stand at its edge, so a heading among them does too: Obsidian insets a
 // heading for a card of settings that is not there.
 .modal:not(.mod-settings) .abele-obsidian-setting.setting-item-heading:where(:not(.setting-group *)) {
