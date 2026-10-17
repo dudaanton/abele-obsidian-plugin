@@ -111,6 +111,16 @@ const screen = (x: number, y: number) =>
   run<number[]>(
     `const v=view().viewer,c=v.camera,r=v.stage.getBoundingClientRect();return [Math.round(r.left+(${x}-c.x)*c.zoom),Math.round(r.top+(${y}-c.y)*c.zoom)]`
   )
+/** Pixels beside an endpoint, from the actual painted surface (without selection overlays). */
+const startPixels = (x: number, y: number) =>
+  run<number>(`const v=view().viewer,c=v.camera,s=v.canvas,k=s.width/v.stage.clientWidth
+    const pixels=s.getContext('2d').getImageData(Math.round((${x}-c.x-16)*c.zoom*k),Math.round((${y}-c.y-16)*c.zoom*k),Math.round(32*c.zoom*k),Math.round(32*c.zoom*k)).data
+    return pixels.reduce((hash,byte)=>Math.imul(hash^byte,16777619)>>>0,2166136261)`)
+const bothEnds = async () => {
+  await press(`view().contentEl.querySelector('[aria-label="Arrow ends"]')`)
+  await press(menuItem('Arrows at both ends'))
+  await saved()
+}
 const middle = (id: string) =>
   run<number[]>(
     `const v=view().viewer,n=v.graph.nodes.find(n=>n.id===${JSON.stringify(id)}),c=v.camera,r=v.stage.getBoundingClientRect();return [Math.round(r.left+(n.x+n.width/2-c.x)*c.zoom),Math.round(r.top+(n.y+n.height/2-c.y)*c.zoom)]`
@@ -277,6 +287,15 @@ describe.skipIf(!available)('the canvas by hand', () => {
     await key('Enter')
     await saved()
     await until(`(await read()).edges.some(e=>e.label==='Sample feeds')`)
+    const start = run<number[]>(
+      `const b=view().viewer.graph.nodes.find(n=>n.id==='beta');return [b.x+b.width/2,b.y+b.height]`
+    )
+    const before = startPixels(start[0], start[1])
+    await bothEnds()
+    await until(
+      `(await read()).edges.some(e=>e.label==='Sample feeds'&&e.fromEnd==='arrow'&&(e.toEnd??'arrow')==='arrow')`
+    )
+    await expect.poll(() => startPixels(start[0], start[1])).not.toEqual(before)
     shot('connection-labelled')
     run(`view().viewer.setCamera(${JSON.stringify(camera)});return true`)
     // Let go over nothing: a menu there offers what to make at its end.
@@ -477,4 +496,30 @@ describe.skipIf(!available)('the canvas by hand', () => {
     expect(after.dx).toBe(after.x - frame.x)
     shot('frame-carried')
   }, 120_000)
+
+  it.each(['Draw free line', 'Draw free arrow'])(
+    'paints and saves both ends of %s from the ends menu',
+    async (tool) => {
+      await reopen()
+      run(`view().viewer.setCamera({x:0,y:900,zoom:1});return true`)
+      await chrome.click(tool)
+      const y = tool === 'Draw free line' ? 1050 : 1150
+      await input(screen(50, y), screen(250, y))
+      await saved()
+      const id = run<string>(`return view().editor.controls.picked().ids[0]`)
+      expect(id).toBeTruthy()
+      const before = startPixels(50, y)
+      await bothEnds()
+      await until(
+        `(await read()).abele.lines.some(l=>l.id===${JSON.stringify(id)}&&l.fromEnd==='arrow'&&l.toEnd==='arrow')`
+      )
+      await expect.poll(() => startPixels(50, y)).not.toEqual(before)
+      shot(tool === 'Draw free line' ? 'line-both-ends' : 'arrow-both-ends')
+      await reopen()
+      await until(
+        `view().viewer.graph.abele.lines.some(l=>l.id===${JSON.stringify(id)}&&l.fromEnd==='arrow'&&l.toEnd==='arrow')`
+      )
+    },
+    120_000
+  )
 })

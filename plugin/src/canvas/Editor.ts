@@ -210,7 +210,9 @@ export class CanvasEditor {
     value: (field: CanvasField): string => this.field(field).value,
     set: (field: CanvasField, value: string): void => {
       this.field(field).value = value
-      this.refresh()
+      // Chrome menus edit the hidden fields without focusing the properties panel.
+      // Keep those pending values until Apply reads them.
+      this.refresh(false)
     },
     picked: (): CanvasPicked => this.picked(),
     editing: (): string | null => this.editing,
@@ -1585,7 +1587,7 @@ export class CanvasEditor {
     }
     return { ids: [...this.selected], kinds, rect, anchor }
   }
-  refresh(): void {
+  refresh(syncProperties = true): void {
     if (this.destroyed) return
     this.inputAdapter?.validate()
     // What is in hand, for what the cards let through: with a pen nothing in a card answers.
@@ -1696,6 +1698,7 @@ export class CanvasEditor {
     const connection = this.connection()
     this.properties.hidden = !connection || active || !this.inkControls.hidden
     if (
+      syncProperties &&
       connection &&
       (connection.id !== this.propertyId ||
         !this.properties.contains(this.properties.ownerDocument.activeElement))

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { emptyCanvas, type CanvasGraph } from '@/canvas/core/model'
+import { linesOf } from '@/canvas/core/primitives'
 import { cards, pointer, setup } from '../helpers/canvasEditorHarness'
 
 describe('human canvas ink editing', () => {
@@ -488,6 +489,39 @@ describe('human shapes and connections', () => {
     expect(s.document.session.graph).toEqual(graph)
     expect(s.publish).not.toHaveBeenCalled()
   })
+  it.each(['connection', 'line', 'arrow'])(
+    'applies both arrow ends from chrome controls to a %s',
+    async (kind) => {
+      const graph = cards()
+      graph.edges[0].toEnd = 'none'
+      if (kind !== 'connection') {
+        graph.edges = []
+        graph.abele = {
+          lines: [
+            {
+              version: 1,
+              id: 'connection',
+              from: { x: 260, y: 80 },
+              to: { x: 300, y: 80 },
+              toEnd: kind === 'arrow' ? 'arrow' : 'none',
+            },
+          ],
+        }
+      }
+      const s = setup(graph)
+      s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
+      pointer(s, 'pointerdown', 280, 80)
+      pointer(s, 'pointerup', 280, 80)
+      expect(s.viewer.selection.has('connection')).toBe(true)
+      s.editor.controls.set('from-end', 'arrow')
+      s.editor.controls.set('to-end', 'arrow')
+      s.editor.controls.press('Apply connection style')
+      await vi.waitFor(() => expect(s.publish).toHaveBeenCalledOnce())
+      const saved = s.document.session.committed.graph
+      const element = kind === 'connection' ? saved.edges[0] : linesOf(saved)[0]
+      expect(element).toMatchObject({ fromEnd: 'arrow', toEnd: 'arrow' })
+    }
+  )
   it('applying an unchanged connection style does not write or add history', () => {
     const s = setup(cards())
     s.viewer.setCamera({ x: 0, y: 0, zoom: 1 })
