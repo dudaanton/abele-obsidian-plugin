@@ -206,11 +206,10 @@ it('pairs through the real node UI, confirms locally, runs fake prompts and fenc
       await until(()=>document.querySelector('.prompt .suggestion-item'));
       await until(()=>[...document.querySelectorAll('.suggestion-item')].some(item=>item.querySelector('.suggestion-title')?.textContent==='pi'));
       [...document.querySelectorAll('.suggestion-item')].find(item=>item.querySelector('.suggestion-title')?.textContent==='pi').click();
-      await until(()=>[...document.querySelectorAll('.modal button')].some(b=>b.textContent.trim()==='Allow execution'));
-      [...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Allow execution').click();
       // The new chat opens as a tab of the sidebar chat, the agent named in its header.
       const piTab=()=>chats.tabOrder.value.find(id=>!before.has(id)&&chats.getNodeSession(id)?.provider.value==='pi');
       await until(()=>piTab());
+      if([...document.querySelectorAll('.modal button')].some(b=>b.textContent.trim()==='Trust folder'))throw Error('Already trusted folder asked for trust again');
       await until(()=>chat()?.querySelector('.abele-node-chat__agent')?.textContent.trim()==='pi');
       const piSession=chats.getNodeSession(piTab()).reference.sessionId;
       await until(()=>model.sessions.value.find(s=>s.session.session_id===piSession)?.target?.id===workspace.id);

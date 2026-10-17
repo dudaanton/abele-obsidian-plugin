@@ -11,6 +11,8 @@ const f = vi.hoisted(() => ({
   refresh: vi.fn(async () => {}),
   execution: vi.fn(),
   session: vi.fn(),
+  project: vi.fn(async () => ({ trust: 'trusted' })),
+  confirm: vi.fn(async () => true),
 }))
 vi.mock('@/stores/GlobalStore', () => ({
   GlobalStore: {
@@ -35,7 +37,10 @@ vi.mock('@/node/NodeService', () => ({
       nodes: ref([]),
       connection: () => ({
         state: ref('connected'),
-        client: { describe: async () => ({ providers: [{ provider: 'fake', available: true }] }) },
+        client: {
+          getProject: f.project,
+          describe: async () => ({ providers: [{ provider: 'fake', available: true }] }),
+        },
       }),
     }),
   },
@@ -49,7 +54,7 @@ vi.mock('@/components/nodeWork/NodeSuggestModal', () => ({
     open() {}
   },
 }))
-vi.mock('@/components/obsidian/dialogs', () => ({ confirmDialog: async () => true }))
+vi.mock('@/components/obsidian/dialogs', () => ({ confirmDialog: f.confirm }))
 vi.mock('@/node/NodePathMutations', () => ({
   NodePathMutations: class {
     trust = vi.fn()
@@ -103,6 +108,21 @@ function model() {
 }
 
 describe('selected node file context', () => {
+  it('asks in plain words before trusting a new folder and respects cancellation', async () => {
+    f.project.mockResolvedValueOnce({ trust: 'untrusted' })
+    f.confirm.mockResolvedValueOnce(false)
+    await newNodePathChat(model(), target, 'Sample code')
+    f.choose!({ id: 'fake' })
+    await vi.waitFor(() =>
+      expect(f.confirm).toHaveBeenCalledWith({
+        title: 'Trust this folder for agents?',
+        message: expect.stringContaining('/sample/app'),
+        confirmText: 'Trust folder',
+      })
+    )
+    expect(f.session).not.toHaveBeenCalled()
+    expect(f.open).not.toHaveBeenCalled()
+  })
   it('creates a target-bound node chat and seeds its draft, never sends a provider turn', async () => {
     f.session.mockResolvedValue({ session_id: 'sample-session', title: 'New chat' })
     const quote = selectionQuote('src/sample.ts', {
@@ -125,6 +145,7 @@ describe('selected node file context', () => {
       )
     )
     expect(f.session).toHaveBeenCalledWith(target, 'New chat', 'fake')
+    expect(f.confirm).not.toHaveBeenCalled()
   })
   it('finds a chat in the place search under its branch and opens it, offering nothing it cannot do', () => {
     const opened = vi.fn()

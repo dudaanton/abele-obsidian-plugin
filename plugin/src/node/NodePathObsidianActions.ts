@@ -1,6 +1,8 @@
 import { h, shallowRef } from 'vue'
 import { Notice } from 'obsidian'
 import type { ChatSession } from '@/ai/ChatSession'
+import type { NodeChatPresenter } from './NodeChatPresenter'
+import { sourceQuote } from '@/helpers/sourceQuote'
 import { NodeSuggestModal } from '@/components/nodeWork/NodeSuggestModal'
 import Setting from '@/components/obsidian/Setting.vue'
 import Dropdown from '@/components/obsidian/Dropdown.vue'
@@ -57,15 +59,29 @@ const lastTime = (session: ChatSession) =>
  * used. Each row says its agent, when it was last used and what was last asked in it, so chats
  * with one name are told apart; one that already reaches `has` says so under its name.
  */
-export async function chooseNodePathChat(
+export function chooseNodePathChat(
   has?: (session: ChatSession) => string | undefined
-): Promise<ChatSession | undefined> {
+): Promise<ChatSession | undefined>
+export function chooseNodePathChat(
+  has: undefined,
+  includeNode: true
+): Promise<ChatSession | NodeChatPresenter | undefined>
+export async function chooseNodePathChat(
+  has?: (session: ChatSession) => string | undefined,
+  includeNode = false
+): Promise<ChatSession | NodeChatPresenter | undefined> {
   const { ChatService } = await import('@/ai/ChatService')
   const service = ChatService.getInstance()
   const open = service.activeSession?.value
   const sessions = [...service.getAllSessions()].sort(
     (a, b) => Number(b === open) - Number(a === open) || lastTime(b) - lastTime(a)
   )
+  const nodes = includeNode
+    ? service.tabOrder.value.flatMap((id) => {
+        const node = service.getNodeSession(id)
+        return node ? [node] : []
+      })
+    : []
   return new Promise((resolve) => {
     class Picker extends NodeSuggestModal {
       onClose(): void {
@@ -76,28 +92,41 @@ export async function chooseNodePathChat(
     }
     new Picker(
       GlobalStore.getInstance().app,
-      sessions.map((session) => {
-        const when = lastTime(session)
-        const already = has?.(session)
-        return {
-          id: session.id,
-          title: session.chatTitle.value || 'Chat',
-          icon: already ? 'folder-check' : 'messages-square',
-          kind: already ? `Already has access to ${already}` : 'Obsidian chat',
-          current: session === open,
-          note: [
-            session === open ? 'Open now' : '',
-            session.agent?.value?.name ?? '',
-            when ? ago(when) : '',
-            // A chat nothing was asked in yet says so, rather than standing there unnamed.
-            lastQuestion(session) || 'no questions yet',
-          ]
-            .filter(Boolean)
-            .join(' · '),
-        }
-      }),
+      [
+        ...nodes.map((node) => ({
+          id: node.id,
+          title: node.label.value,
+          icon: 'messages-square',
+          kind: 'Node chat',
+          current: service.activeTabId?.value === node.id,
+        })),
+        ...sessions.map((session) => {
+          const when = lastTime(session)
+          const already = has?.(session)
+          return {
+            id: session.id,
+            title: session.chatTitle.value || 'Chat',
+            icon: already ? 'folder-check' : 'messages-square',
+            kind: already ? `Already has access to ${already}` : 'Obsidian chat',
+            current: session === open,
+            note: [
+              session === open ? 'Open now' : '',
+              session.agent?.value?.name ?? '',
+              when ? ago(when) : '',
+              // A chat nothing was asked in yet says so, rather than standing there unnamed.
+              lastQuestion(session) || 'no questions yet',
+            ]
+              .filter(Boolean)
+              .join(' · '),
+          }
+        }),
+      ],
       'Which chat gets access',
-      (item) => resolve(sessions.find((session) => session.id === item.id)),
+      (item) =>
+        resolve(
+          nodes.find((node) => node.id === item.id) ??
+            sessions.find((session) => session.id === item.id)
+        ),
       'Open an Obsidian chat first'
     ).open()
   })
@@ -210,7 +239,7 @@ export function createNodePathObsidianActions(): NodePathOwnerActions {
   }
 }
 async function add(captured: NodePathContext, ask: boolean): Promise<void> {
-  const session = await chooseNodePathChat()
+  const session = await chooseNodePathChat(undefined, true)
   if (!session) return
   let reference: ObsidianNodeContext = {
     node_id: captured.target.registrationId,
@@ -244,6 +273,23 @@ async function add(captured: NodePathContext, ask: boolean): Promise<void> {
   }
   if (text === undefined)
     throw new Error('Open a retained file or commit before adding its context.')
+  if ('reference' in session) {
+    const lines = captured.lines
+      ? `:${captured.lines.start}${captured.lines.end === captured.lines.start ? '' : `-${captured.lines.end}`}`
+      : ''
+    const side = captured.side && captured.side !== 'after' ? ` (${captured.side})` : ''
+    const quote = sourceQuote(
+      `${captured.path ?? captured.commit ?? 'Selected code'}${lines}${side}`,
+      text
+    )
+    const draft = session.draft.value
+    draft.text = draft.text ? `${draft.text}\n\n${quote}` : quote
+    const { ChatService } = await import('@/ai/ChatService')
+    const chats = ChatService.getInstance()
+    chats.switchTab(session.id)
+    await chats.revealSidebar({ focus: true })
+    return
+  }
   if (ask) await askNodeContextInObsidianChat(session, reference, text)
   else await addNodeContextToObsidianChat(session, reference, text)
   const { ChatService } = await import('@/ai/ChatService')

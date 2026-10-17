@@ -21,7 +21,13 @@
         <Icon
           icon="x"
           class="abele-chat-tabs__close"
-          :tooltip="tab.isActive ? closeTip : 'Close tab'"
+          :tooltip="
+            tab.id.startsWith('node:')
+              ? t('node.chat.closeTab')
+              : tab.isActive
+                ? closeTip
+                : 'Close tab'
+          "
           @click.stop="emit('close', tab.id)"
         />
       </div>
@@ -42,6 +48,7 @@
 import { nextTick, onMounted, ref, watch } from 'vue'
 import Icon from './obsidian/Icon.vue'
 import { withShortcut } from '@/ai/chatTabKeyMap'
+import { t } from '@/i18n'
 
 export interface TabInfo {
   id: string

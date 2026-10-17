@@ -10,6 +10,7 @@ import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import AiChatTabs, { type TabInfo } from '@/components/AiChatTabs.vue'
+import Icon from '@/components/obsidian/Icon.vue'
 
 const tab = (id: string, isActive = false): TabInfo => ({
   id,
@@ -34,6 +35,16 @@ function stripOf(view: ReturnType<typeof mount>) {
 }
 
 describe('the strip of chat tabs', () => {
+  it('closes only the chosen node tab without selecting or closing the adjacent blank tab', async () => {
+    const view = mount(AiChatTabs, {
+      props: { tabs: [tab('sample-blank'), tab('node:sample', true)], canCreate: true },
+    })
+    expect(view.findAllComponents(Icon)[1].props('tooltip')).toContain('session stays on the node')
+    await view.findAll('.abele-chat-tabs__close')[1].trigger('click')
+    expect(view.emitted('close')).toEqual([['node:sample']])
+    expect(view.emitted('select')).toBeUndefined()
+    view.unmount()
+  })
   it('scrolls a tab into view when it becomes the active one', async () => {
     const tabs = [tab('a', true), tab('b'), tab('c'), tab('d')]
     const view = mount(AiChatTabs, { props: { tabs, canCreate: true } })
@@ -85,7 +96,9 @@ describe('the strip of chat tabs', () => {
 
   it('turns a mouse wheel into sideways scrolling, so the middle of a full strip is reachable', () => {
     const ids = Array.from({ length: 20 }, (_, i) => `t${i}`)
-    const view = mount(AiChatTabs, { props: { tabs: ids.map((id, i) => tab(id, i === 0)), canCreate: false } })
+    const view = mount(AiChatTabs, {
+      props: { tabs: ids.map((id, i) => tab(id, i === 0)), canCreate: false },
+    })
     const strip = stripOf(view)
     Object.defineProperty(strip, 'scrollWidth', { value: 2000, configurable: true })
     Object.defineProperty(strip, 'clientWidth', { value: 300, configurable: true })

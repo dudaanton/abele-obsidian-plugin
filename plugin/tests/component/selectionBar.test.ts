@@ -50,6 +50,7 @@ it('comes up over words in its scope and names the picked action with them', asy
   expect(
     [...bar()!.querySelectorAll('[data-action]')].map((e) => (e as HTMLElement).dataset.action)
   ).toEqual(['ask', 'add', 'note'])
+  expect(bar()!.textContent).toContain(ASK.tooltip)
   bar()!.querySelector<HTMLElement>('[data-action="note"]')!.click()
   await flushPromises()
   expect(wrapper!.emitted('pick')?.[0]).toEqual(['note', { text: 'Sample words' }])

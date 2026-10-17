@@ -145,6 +145,12 @@ export const lv = {
   'kit.qrCode': 'QR kods',
   'kit.askSelection': 'Jautāt aģentam par šo jaunā sarunā',
   'kit.addSelection': 'Pievienot atvērtajai sarunai',
+  'node.trust.title': 'Vai uzticēties šai mapei aģentu darbam?',
+  'node.trust.message':
+    'Aģenti varēs izpildīt komandas un mainīt failus mapē {path}. Uzticies šai mapei tikai tad, ja zini tās saturu. Aģenta darbam vari sekot sarunā un tur to apturēt.',
+  'node.trust.allow': 'Uzticēties mapei',
+  'node.chat.closeTab':
+    'Aizvērt cilni — sesija paliek mezglā. Atver to mezgla panelī, lai sekotu darbam vai to apturētu.',
   'kit.noteSelection': 'Ievietot pēdējā atvērtajā piezīmē',
   'kit.linkSelection': 'Kopēt saiti uz šīm rindām',
   'kit.saving': 'Saglabā…',

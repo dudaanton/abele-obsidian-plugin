@@ -143,6 +143,12 @@ export const de = {
   'kit.qrCode': 'QR-Code',
   'kit.askSelection': 'Den Agenten in einem neuen Chat dazu fragen',
   'kit.addSelection': 'Zum geöffneten Chat hinzufügen',
+  'node.trust.title': 'Diesem Ordner für Agenten vertrauen?',
+  'node.trust.message':
+    'Agenten können in {path} Befehle ausführen und Dateien ändern. Vertraue diesem Ordner nur, wenn du seinen Inhalt kennst. Du kannst den Agenten im Chat verfolgen und dort stoppen.',
+  'node.trust.allow': 'Ordner vertrauen',
+  'node.chat.closeTab':
+    'Tab schließen — die Sitzung bleibt auf dem Knoten. Öffne sie über die Knotenleiste, um sie zu verfolgen oder zu stoppen.',
   'kit.noteSelection': 'In die zuletzt geöffnete Notiz einfügen',
   'kit.linkSelection': 'Link zu diesen Zeilen kopieren',
   'kit.saving': 'Wird gespeichert…',

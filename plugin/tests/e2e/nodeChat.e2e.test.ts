@@ -341,9 +341,8 @@ const showPlace = async (folder, branch) => {
         await placeMenu('New chat here');
         await until(() => [...document.querySelectorAll('.suggestion-item')].some(item => item.querySelector('.suggestion-title')?.textContent === 'Claude Code'));
         [...document.querySelectorAll('.suggestion-item')].find(item => item.querySelector('.suggestion-title')?.textContent === 'Claude Code').click();
-        await until(() => [...document.querySelectorAll('.modal button')].some(b => b.textContent.trim() === 'Allow execution'));
-        [...document.querySelectorAll('.modal button')].find(b => b.textContent.trim() === 'Allow execution').click();
         const tab = await until(() => chats.tabOrder.value.find(id => !before.has(id) && chats.getNodeSession(id)));
+        if ([...document.querySelectorAll('.modal button')].some(b => b.textContent.trim() === 'Trust folder')) throw Error('Already trusted folder asked for trust again');
         const presenter = chats.getNodeSession(tab);
         await until(() => model.sessions.value.some(s => s.session.session_id === presenter.reference.sessionId && s.target.id === worktree));
         const root = await until(() => [...document.querySelectorAll('.abele-node-chat')].find(r => r.dataset.sessionId === presenter.reference.sessionId && r.getBoundingClientRect().width > 0));

@@ -341,4 +341,8 @@ it('restores discriminated node tabs without instantiating local execution or va
   await chats.closeTab(node!.id)
   expect(chats.tabOrder.value).toHaveLength(1)
   expect(chats.activeSession.value).not.toBeNull()
+  const blank = chats.activeSession.value
+  await chats.closeTab(node!.id)
+  expect(chats.activeSession.value).toBe(blank)
+  expect(chats.tabOrder.value).toEqual([blank!.id])
 })

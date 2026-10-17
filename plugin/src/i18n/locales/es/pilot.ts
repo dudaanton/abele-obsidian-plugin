@@ -146,6 +146,12 @@ export const es = {
   'kit.qrCode': 'Código QR',
   'kit.askSelection': 'Preguntar al agente sobre esto en un chat nuevo',
   'kit.addSelection': 'Añadir al chat abierto',
+  'node.trust.title': '¿Confiar en esta carpeta para los agentes?',
+  'node.trust.message':
+    'Los agentes podrán ejecutar comandos y cambiar archivos en {path}. Confía en esta carpeta solo si conoces su contenido. Puedes seguir al agente en su chat y detenerlo allí.',
+  'node.trust.allow': 'Confiar en la carpeta',
+  'node.chat.closeTab':
+    'Cerrar pestaña: la sesión permanece en el nodo. Ábrela desde el panel del nodo para seguirla o detenerla.',
   'kit.noteSelection': 'Insertar en la última nota abierta',
   'kit.linkSelection': 'Copiar un enlace a estas líneas',
   'kit.saving': 'Guardando…',

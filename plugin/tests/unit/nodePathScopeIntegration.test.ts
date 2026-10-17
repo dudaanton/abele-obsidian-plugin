@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 import {
   chooseNodePathChat,
@@ -10,6 +10,15 @@ const f = vi.hoisted(() => ({
   items: [] as any[],
   sessions: [] as any[],
   revoke: vi.fn(),
+  switch: vi.fn(),
+  reveal: vi.fn(async () => {}),
+  node: {
+    id: 'node:sample-registration:sample-session',
+    label: { value: 'Remote chat' },
+    reference: { registrationId: 'sample-registration' },
+    draft: { value: { text: 'Existing draft' } },
+    send: vi.fn(),
+  },
 }))
 vi.mock('@/components/nodeWork/NodeSuggestModal', () => ({
   NodeSuggestModal: class {
@@ -27,7 +36,15 @@ vi.mock('@/components/nodeWork/NodeSuggestModal', () => ({
   },
 }))
 vi.mock('@/ai/ChatService', () => ({
-  ChatService: { getInstance: () => ({ getAllSessions: () => f.sessions }) },
+  ChatService: {
+    getInstance: () => ({
+      getAllSessions: () => f.sessions,
+      tabOrder: { value: [f.node.id] },
+      getNodeSession: () => f.node,
+      switchTab: f.switch,
+      revealSidebar: f.reveal,
+    }),
+  },
 }))
 vi.mock('@/stores/GlobalStore', () => ({ GlobalStore: { getInstance: () => ({ app: {} }) } }))
 vi.mock('@/ai/tools/node/owner', () => ({
@@ -40,7 +57,38 @@ vi.mock('@/ai/tools/node/owner', () => ({
   }),
 }))
 
+beforeEach(() => {
+  f.picker = undefined
+})
 describe('node row scope integration', () => {
+  it('offers node chats when choosing a context destination', async () => {
+    void chooseNodePathChat(undefined, true)
+    await vi.waitFor(() => expect(f.items.some((i) => i.id === f.node.id)).toBe(true))
+    f.picker.choose({ id: f.node.id })
+  })
+  it('appends readable selected code to the chosen node draft without sending', async () => {
+    const adding = createNodePathObsidianActions().add({
+      target: {
+        registrationId: 'sample-registration',
+        nodeId: 'sample-node',
+        projectId: 'sample-project',
+        kind: 'worktree',
+        id: 'sample-tree',
+      },
+      path: 'src/sample.ts',
+      selection: 'const sample = 1',
+      lines: { start: 2, end: 4 },
+      side: 'before',
+    })
+    await vi.waitFor(() => expect(f.picker).toBeDefined())
+    f.picker.choose({ id: f.node.id })
+    await adding
+    expect(f.node.draft.value.text).toBe(
+      'Existing draft\n\nsrc/sample.ts:2-4 (before)\n\n> const sample = 1'
+    )
+    expect(f.switch).toHaveBeenCalledWith(f.node.id)
+    expect(f.node.send).not.toHaveBeenCalled()
+  })
   it('retains the explicit chosen chat when the native prompt closes before delivering its choice', async () => {
     const session = { id: 'sample-chat', chatTitle: ref('Sample chat') }
     f.sessions = [session]

@@ -128,7 +128,7 @@ export async function openNodeChat(
 ): Promise<void> {
   const { ChatService } = await import('@/ai/ChatService')
   const chats = ChatService.getInstance()
-  await chats.openNodeSession({
+  const opening = chats.openNodeSession({
     kind: 'node-session',
     nodeId: state.target.nodeId,
     registrationId: state.target.registrationId,
@@ -142,5 +142,5 @@ export async function openNodeChat(
       draft.text = draft.text ? `${draft.text}\n\n${text}` : text
     }
   }
-  await chats.revealSidebar({ focus: true })
+  await Promise.all([opening, chats.revealSidebar({ focus: true })])
 }

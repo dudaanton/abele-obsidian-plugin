@@ -1,5 +1,6 @@
 import { nodeErrorNotice } from './errorNotice'
 import { Menu, Notice, Platform } from 'obsidian'
+import { t } from '@/i18n'
 import type { WorktreeEntry } from '@abele/node-protocol'
 import { NodeSuggestModal } from '@/components/nodeWork/NodeSuggestModal'
 import { confirmDialog } from '@/components/obsidian/dialogs'
@@ -567,16 +568,18 @@ async function approveNodePathExecution(
     throw new Error('Reconnect before approving agent execution.')
   const folder = model.folders.value.find((f) => f.id === target.projectId),
     copy = model.copy(target)
+  const project = await connection.client.getProject(target.projectId)
   if (
+    project.trust !== 'trusted' &&
     !(await confirmDialog({
-      title: 'Allow agent execution in this target?',
-      message: `Allow the node agent to execute in ${copy?.path ?? folder?.path ?? 'this target'}? This trusts its registered project and enables execution for this exact folder or worktree identity. Reading, listing or attaching alone never enables execution.`,
-      confirmText: 'Allow execution',
+      title: t('node.trust.title'),
+      message: t('node.trust.message', { path: copy?.path ?? folder?.path ?? project.root_path }),
+      confirmText: t('node.trust.allow'),
     }))
   )
     return false
   const mutations = new NodePathMutations(connection.client)
-  await mutations.trust(target.projectId)
+  if (project.trust !== 'trusted') await mutations.trust(target.projectId)
   await mutations.execution(target)
   return true
 }

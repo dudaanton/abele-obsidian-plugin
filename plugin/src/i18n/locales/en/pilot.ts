@@ -138,6 +138,12 @@ export const en = {
   'kit.qrCode': 'QR code',
   'kit.askSelection': 'Ask the agent about this in a new chat',
   'kit.addSelection': 'Add to the open chat',
+  'node.trust.title': 'Trust this folder for agents?',
+  'node.trust.message':
+    'Agents can run commands and change files in {path}. Trust this folder only if you know its contents. You can follow the agent in its chat and stop it there.',
+  'node.trust.allow': 'Trust folder',
+  'node.chat.closeTab':
+    'Close tab — the session stays on the node. Reopen it from the node panel to follow or stop it.',
   'kit.noteSelection': 'Insert into the note you were last in',
   'kit.linkSelection': 'Copy a link to these lines',
   'kit.saving': 'Saving…',

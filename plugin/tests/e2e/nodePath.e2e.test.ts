@@ -9,6 +9,7 @@ import { connect, type Socket } from 'node:net'
 import { evalLong, evalRaw, reloadApp } from './helpers/obsidianCli'
 import { targets } from './helpers/target'
 import { checkNodeFileMenuGeometry } from '../helpers/nodeFileMenuGeometry'
+import { checkNodeChatGeometry } from '../helpers/nodeChatGeometry'
 
 targets('desktop')
 const cli = process.env.ABELE_NODE_CLI
@@ -332,10 +333,21 @@ it('pairs and opens target-bound node files history editor and fake chats in the
       kind: 'worktree',
       id: ids.root,
     }
-    const open = async (kind: string, extra = {}, target = rootTarget) =>
-      evalLong(
+    const open = async (
+      kind: string,
+      extra: { sessionId?: string; title?: string; [key: string]: unknown } = {},
+      target = rootTarget
+    ) => {
+      // Chat leaves from old layouts migrate asynchronously. Revealing that disposable
+      // leaf races the sidebar reveal; use the same chat destination as the node panel.
+      if (kind === 'chat')
+        return evalLong(
+          `(async()=>{${prelude}const chats=api.ChatService.getInstance();await chats.openNodeSession(${JSON.stringify({ kind: 'node-session', nodeId: target.nodeId, registrationId: target.registrationId, sessionId: extra.sessionId, title: extra.title ?? '' })});await chats.revealSidebar({focus:false});await until(()=>visible('.abele-node-chat')?.dataset.sessionId===${JSON.stringify(extra.sessionId)});return 'opened sidebar chat'})()`
+        )
+      return evalLong(
         `(async()=>{const leaf=app.workspace.getLeaf('tab');await leaf.setViewState({type:${JSON.stringify('abele-node-' + kind)},active:true,state:${JSON.stringify({ kind, target, ...extra })}});await app.workspace.revealLeaf(leaf);return 'opened'})()`
       )
+    }
     const timings = await evalLong(
       `(async()=>{${prelude}const connection=nodes.connection(${JSON.stringify(registration)}),client=connection.client,records=[];const methods=['observe','status','blob','content','compare','patch','tree','history'];const originals=methods.map(name=>[name,client.repository[name]]);for(const [name,original] of originals)client.repository[name]=async function(...args){const start=performance.now();try{return await original.apply(this,args)}finally{records.push({name,ms:Math.round(performance.now()-start)})}};try{const start=performance.now(),leaf=app.workspace.getLeaf('tab');await leaf.setViewState({type:'abele-node-file',active:true,state:${JSON.stringify({ kind: 'file', target: rootTarget, path: 'sample.md' })}});const shellMs=Math.round(performance.now()-start);await until(()=>leaf.view.file?.document.value);await until(()=>leaf.containerEl.querySelector('.cm-line'));const totalMs=Math.round(performance.now()-start);leaf.detach();return JSON.stringify({shellMs,totalMs,records})}finally{for(const [name,original] of originals)client.repository[name]=original}})()`
     )
@@ -380,10 +392,23 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     await clearSelection()
     await selectText('.abele-file-view .cm-line')
     await evalLong(
-      `(async()=>{${prelude}visible('.abele-selection-bar_placed').querySelector('[data-action=ask]').click();await until(()=>[...document.querySelectorAll('.suggestion-item')].some(i=>i.textContent.includes('Fake')));[...document.querySelectorAll('.suggestion-item')].find(i=>i.textContent.includes('Fake')).click();await until(()=>[...document.querySelectorAll('.modal button')].some(b=>b.textContent.trim()==='Allow execution'));[...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Allow execution').click();const chats=api.ChatService.getInstance();await until(()=>chats.getNodeSession(chats.activeTabId.value)?.draft.value.text.includes('src/sample.ts:1')&&visible('.abele-node-chat textarea')?.value.includes('src/sample.ts:1'));const presenter=chats.getNodeSession(chats.activeTabId.value);if(presenter.binding.value?.target.worktree_id!==${JSON.stringify(ids.root)}||presenter.isStreaming.value)throw Error('Selected quote was sent or followed the drawer target');if(!presenter.draft.value.text.includes('> export const value = 3')||/"(?:node_context|node_id|content_id)"/.test(presenter.draft.value.text))throw Error('Node draft is not a readable excerpt');return 'quoted to target-bound node draft'})()`
+      `(async()=>{${prelude}visible('.abele-selection-bar_placed').querySelector('[data-action=ask]').click();await until(()=>[...document.querySelectorAll('.suggestion-item')].some(i=>i.textContent.includes('Fake')));[...document.querySelectorAll('.suggestion-item')].find(i=>i.textContent.includes('Fake')).click();await until(()=>[...document.querySelectorAll('.modal button')].some(b=>b.textContent.trim()==='Trust folder'));return 'trust ready'})()`
+    )
+    await capture('desktop-folder-trust')
+    await evalLong(
+      `(async()=>{${prelude}[...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Trust folder').click();const chats=api.ChatService.getInstance();await until(()=>chats.getNodeSession(chats.activeTabId.value)?.draft.value.text.includes('src/sample.ts:1')&&visible('.abele-node-chat textarea')?.value.includes('src/sample.ts:1'));const presenter=chats.getNodeSession(chats.activeTabId.value);await until(()=>presenter.binding.value);if(presenter.binding.value?.target.worktree_id!==${JSON.stringify(ids.root)}||presenter.isStreaming.value)throw Error('Selected quote was sent or followed the drawer target');if(!presenter.draft.value.text.includes('> export const value = 3')||/"(?:node_context|node_id|content_id)"/.test(presenter.draft.value.text))throw Error('Node draft is not a readable excerpt');return 'quoted to target-bound node draft'})()`
     )
     await clearSelection()
     await capture('desktop-node-selection-context')
+    await selectText('.abele-file-view .cm-line')
+    await evalLong(
+      `(async()=>{${prelude}const chats=api.ChatService.getInstance(),node=chats.getNodeSession(chats.activeTabId.value);const before=node.draft.value.text;visible('.abele-selection-bar_placed').querySelector('[data-action=add]').click();await until(()=>document.querySelector('.abele-node-suggestion_current'));document.querySelector('.abele-node-suggestion_current').click();await until(()=>node.draft.value.text.length>before.length);if(!node.draft.value.text.startsWith(before+'\\n\\n')||node.isStreaming.value)throw Error('Selection replaced the draft or sent a turn');return 'added selection to open node chat'})()`
+    )
+    await clearSelection()
+    await evalLong(
+      `(async()=>{${prelude}const chats=api.ChatService.getInstance(),node=chats.getNodeSession(chats.activeTabId.value),blank=chats.createTab();chats.switchTab(node.id);await chats.closeTab(node.id);if(!chats.getSession(blank)||!chats.tabOrder.value.includes(blank))throw Error('Closing node chat removed blank vault chat');await chats.openNodeSession(node.reference);await chats.closeTab(blank);return 'only node tab closed, session reopened'})()`
+    )
+
     await open('file', {
       path: 'src/sample.ts',
       debug: {
@@ -440,7 +465,7 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     )
     await open('chat', { sessionId, title: 'Sample fake chat' })
     await evalLong(
-      `(async()=>{${prelude}const chats=api.ChatService.getInstance();const presenter=chats.getNodeSession(chats.tabOrder.value.find(id=>chats.getNodeSession(id)?.reference.sessionId===${JSON.stringify(sessionId)}));await presenter.send('Sample task',[{kind:'hang'}]);await until(()=>presenter.isStreaming.value);const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});await model.refresh();if(!model.folders.value.flatMap(f=>f.copies).find(c=>c.id===${JSON.stringify(ids.root)}).running)throw Error('No running marker');return 'running'})()`
+      `(async()=>{${prelude}const chats=api.ChatService.getInstance();await until(()=>chats.tabOrder.value.some(id=>chats.getNodeSession(id)?.reference.sessionId===${JSON.stringify(sessionId)}));const presenter=chats.getNodeSession(chats.tabOrder.value.find(id=>chats.getNodeSession(id)?.reference.sessionId===${JSON.stringify(sessionId)}));await until(()=>presenter.projection.value.session?.session_id===${JSON.stringify(sessionId)}&&presenter.nodeDescription.value&&presenter.binding.value?.target.worktree_id===${JSON.stringify(ids.root)});await presenter.send('Sample task',[{kind:'hang'}]);if(presenter.error.value||presenter.draftNotice.value)throw Error('Fake turn was not admitted: '+(presenter.error.value||presenter.draftNotice.value));await until(()=>presenter.isStreaming.value);const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});await model.refresh();if(!model.folders.value.flatMap(f=>f.copies).find(c=>c.id===${JSON.stringify(ids.root)}).running)throw Error('No running marker');return 'running'})()`
     )
     await capture('desktop-chat-running')
     await evalLong(
@@ -533,6 +558,19 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     await selectText('.abele-file-view .cm-line')
     await capture('phone-file-selection')
     await clearSelection()
+    await evalLong(
+      `(async()=>{${prelude}const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});window.__selectionTrustPlace=model.selected.value;await model.select(${JSON.stringify(ids.plain)});app.workspace.leftSplit.expand();await until(()=>visible('.abele-node-place__name')?.textContent==='plain-folder');return 'plain folder for trust'})()`
+    )
+    await evalLong(
+      `(async()=>{${prelude}(await placeMenu('New chat here')).click();await until(()=>[...document.querySelectorAll('.suggestion-item')].some(i=>i.textContent.includes('Fake')));[...document.querySelectorAll('.suggestion-item')].find(i=>i.textContent.includes('Fake')).click();await until(()=>[...document.querySelectorAll('.modal button')].some(b=>b.textContent.trim()==='Trust folder'));return 'phone trust prompt'})()`
+    )
+    await capture('phone-folder-trust')
+    await evalLong(
+      `(async()=>{${prelude}[...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Cancel').click();await until(()=>!document.querySelector('.modal button.mod-warning'));return 'trust cancelled'})()`
+    )
+    await evalLong(
+      `(async()=>{${prelude}await api.NodePathService.getInstance().model(${JSON.stringify(registration)}).select(window.__selectionTrustPlace);delete window.__selectionTrustPlace;app.workspace.leftSplit.collapse();return 'original folder restored'})()`
+    )
     await open('file', {
       path: 'src/sample.ts',
       debug: {
@@ -570,8 +608,13 @@ it('pairs and opens target-bound node files history editor and fake chats in the
       { sessionId, title: 'Sample fake chat' },
       { ...rootTarget, id: ids.external }
     )
+    // Unlike a file, the chat lives in the foreground drawer. Keep it open while measuring.
     await evalLong(
-      `(async()=>{${prelude}app.workspace.leftSplit.collapse();await until(()=>visible('.abele-worktree-chip')?.textContent.includes('topic'));const toolbar=visible('.abele-node-chat .abele-chat-input__toolbar'),navbar=visible('.mobile-navbar');if(navbar&&toolbar.getBoundingClientRect().bottom>navbar.getBoundingClientRect().top+1)throw Error('Node composer actions are covered by the native mobile navbar');return 'phone chat'})()`
+      `(async()=>{${prelude}await until(()=>visible('.abele-worktree-chip')?.textContent.includes('topic'));return 'phone chat visible'})()`
+    )
+    await capture('phone-chat-before-navbar-check')
+    await evalLong(
+      `(async()=>{${prelude}await until(()=>visible('.abele-worktree-chip')?.textContent.includes('topic'));const toolbar=visible('.abele-node-chat .abele-chat-input__toolbar'),navbar=visible('.mobile-navbar');(${checkNodeChatGeometry.toString()})(toolbar.getBoundingClientRect(),navbar?.getBoundingClientRect()??null,{width:innerWidth,height:innerHeight},(x,y)=>!!navbar?.contains(document.elementFromPoint(x,y)));return 'phone chat'})()`
     )
     await capture('phone-chat')
     await open('editor', { path: 'src/sample.ts' })

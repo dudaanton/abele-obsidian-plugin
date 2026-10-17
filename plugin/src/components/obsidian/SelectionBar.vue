@@ -1,6 +1,6 @@
 <template>
-  <!-- Over words selected in code or a file, the way a note's selection gets its menu: glyphs for
-       what is done with them, named in their tooltips. In the body, as Obsidian's own menus are:
+  <!-- Over words selected in code or a file, the way a note's selection gets its menu: named
+       actions with glyphs. In the body, as Obsidian's own menus are:
        a pane's containment would otherwise shift where a fixed bar lands. -->
   <Teleport v-if="picked" to="body">
     <div
@@ -18,6 +18,7 @@
         :key="a.id"
         :icon="a.icon"
         :tooltip="a.tooltip"
+        :text-right="a.tooltip"
         :data-action="a.id"
         @click="pick(a.id)"
       />
@@ -191,7 +192,9 @@ onBeforeUnmount(() => {
   position: fixed;
   z-index: var(--layer-popover);
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
+  max-width: calc(100vw - var(--size-4-4));
   gap: var(--size-2-2);
   padding: var(--size-2-2);
   border: var(--border-width) solid var(--background-modifier-border);
@@ -201,6 +204,12 @@ onBeforeUnmount(() => {
   visibility: hidden;
   user-select: none;
   -webkit-user-select: none;
+
+  .abele-obsidian-icon {
+    justify-content: flex-start;
+    white-space: normal;
+    text-align: start;
+  }
 
   &_placed {
     visibility: visible;
