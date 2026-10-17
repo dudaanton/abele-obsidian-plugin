@@ -17,7 +17,8 @@ export interface TreeEntry {
   sha?: string
 }
 
-export type NodeKind = 'dir' | 'file' | 'submodule'
+import type { NodeKind } from '@/repository/model'
+export type { NodeKind } from '@/repository/model'
 
 interface RepoLike {
   host: string

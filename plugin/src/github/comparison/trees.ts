@@ -5,20 +5,8 @@ export interface TreeReader {
   root: TreeNode
   expand(node: TreeNode): Promise<void>
 }
-export interface FileChange {
-  path: string
-  previousPath?: string
-  status:
-    | 'added'
-    | 'removed'
-    | 'modified'
-    | 'renamed'
-    | 'mode changed'
-    | 'type changed'
-    | 'unchanged'
-  base?: TreeNode
-  target?: TreeNode
-}
+import type { FileChange } from '@/repository/model'
+export type { FileChange } from '@/repository/model'
 const equal = (a: TreeNode, b: TreeNode) =>
   !!a.sha && a.sha === b.sha && a.mode === b.mode && a.kind === b.kind
 

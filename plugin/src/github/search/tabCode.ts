@@ -33,14 +33,12 @@ import {
 } from './source'
 import type { CodeNav } from './navAddon'
 
-export type Scope = 'changes' | 'repo' | 'names'
+import type { Scope } from '@/repository/search'
+export type { Scope } from '@/repository/search'
 
 /** The changes a tab shows, and how a line in them is linked. */
-export interface TabChanges {
-  files: DiffFile[]
-  /** The link to a changed file, or a line in it: the pull request's files, or the commit. */
-  lineUrl(hash: string, side?: 'L' | 'R', line?: number): string
-}
+import type { TabChanges } from '@/repository/search'
+export type { TabChanges } from '@/repository/search'
 
 export interface TabCodeSource {
   /** A detached account view cannot open delayed results or pickers. */

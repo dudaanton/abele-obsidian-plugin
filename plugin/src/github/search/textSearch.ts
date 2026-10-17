@@ -4,23 +4,11 @@
  * without letter case, and an optional path glob.
  */
 
-export interface CodeQuery {
-  text: string
-  regex?: boolean
-  caseSensitive?: boolean
-  /** Only whole words — for "find references". */
-  wholeWord?: boolean
-}
+import type { CodeQuery } from '@/repository/search'
+export type { CodeQuery } from '@/repository/search'
 
-export interface LineMatch {
-  /** 1-based. */
-  line: number
-  /** 0-based, in UTF-16 units of the line. */
-  column: number
-  length: number
-  /** The line itself, cut to a readable length around the match. */
-  text: string
-}
+import type { LineMatch } from '@/repository/search'
+export type { LineMatch } from '@/repository/search'
 
 export class QueryError extends Error {}
 

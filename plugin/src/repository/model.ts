@@ -1,15 +1,13 @@
 /** Shared repository view data. GitHub readers re-export these names for existing callers. */
-import type { DiffFile } from '@/github/api'
-import type { NodeKind } from '@/github/tree/fileTree'
-import type { FileChange } from '@/github/comparison/trees'
-import type { BlobContent, TextDiff } from '@/github/comparison/text'
+import type { DiffFile } from './conversation'
+export type NodeKind = 'dir' | 'file' | 'submodule'
 import type {
   RepositoryTree,
   RepositoryWorkspace,
   RepositoryStatus,
   RepositoryComparisonMode,
 } from './source'
-export type { DiffFile } from '@/github/api'
+export type { DiffFile } from './conversation'
 
 export interface CommitSummary {
   sha: string
@@ -213,4 +211,39 @@ export interface CodeResults {
 export interface RepositoryLink {
   label: string
   url: string
+}
+
+export interface FileChange {
+  path: string
+  previousPath?: string
+  status:
+    | 'added'
+    | 'removed'
+    | 'modified'
+    | 'renamed'
+    | 'mode changed'
+    | 'type changed'
+    | 'unchanged'
+  base?: TreeNode
+  target?: TreeNode
+}
+
+export interface TextDiff {
+  lines: DiffLine[]
+  additions: number
+  deletions: number
+}
+
+export type BlobContent =
+  | { kind: 'text' | 'lfs'; text: string }
+  | { kind: 'binary' | 'unsupported'; text?: undefined }
+
+export type DiffLineType = 'hunk' | 'add' | 'del' | 'ctx' | 'note'
+
+export interface DiffLine {
+  type: DiffLineType
+  /** The line without its leading `+`, `-` or space. A hunk header is kept whole. */
+  text: string
+  old?: number
+  new?: number
 }

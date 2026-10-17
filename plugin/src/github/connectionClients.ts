@@ -1,6 +1,7 @@
 import { GithubClient, type Requester } from './client'
 import { endpoints } from './urls'
 import type { GithubConnection } from './connections'
+import { isGithubConnection } from './connections'
 
 /** Connection credentials are captured once per generation, never rediscovered halfway through a load. */
 export class ConnectionClients {
@@ -17,7 +18,7 @@ export class ConnectionClients {
     const rows = this.connections()
     for (const [id, entry] of this.clients) {
       const row = rows.find((c) => c.id === id)
-      if (!row || entry.signature !== this.signature(row)) {
+      if (!row || !isGithubConnection(row) || entry.signature !== this.signature(row)) {
         entry.client.retire()
         this.clients.delete(id)
         this.onRetire()
@@ -34,6 +35,8 @@ export class ConnectionClients {
     this.reconcile()
     const row = this.connections().find((c) => c.id === id)
     if (!row) throw new Error('The GitHub connection was deleted or is unknown.')
+    if (!isGithubConnection(row))
+      throw new Error('This provider is unavailable in the GitHub adapter.')
     const found = this.clients.get(id)
     if (found) return found.client
     const token = this.secret(row.keyId).trim()

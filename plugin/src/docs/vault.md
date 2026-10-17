@@ -1716,6 +1716,20 @@ provider/model pair takes precedence, and an empty global selection follows the 
 
 ## GitHub connection settings
 
+Connection records may also carry a `provider` string. Missing means GitHub; existing IDs and
+keychain slots are retained. Other provider records retain their full normalized deployment
+base (scheme, host, port and path) in `server`. Unknown provider names survive normalization
+and transfer but are unavailable to the GitHub adapter. Only GitHub records participate in the
+old single-server credential projection or legacy agent-grant migration. Transfer credential
+bindings include provider and deployment path; replacing a connection cannot retarget an
+existing slot. This does not enable additional providers or introduce a new inbox.
+
+New remote adapters have a version-1 workspace target with provider, connection, normalized
+deployment, full repository path and original URL. Restoration validates the API binding and
+repository URL boundary and discards unrecognized fields. Unknown target versions/providers
+remain unavailable. Existing GitHub URL-only leaves, snippets and comparison-pin keys retain
+their format; this adds no persistent source-content cache.
+
 The plugin's `github.connections` list in settings holds stable connection IDs, names, server
 addresses, repository-owner patterns, per-server default marks, and optional account metadata
 (discovered login, avatar URL and access-check time). Each `keyId` names a keychain slot, never

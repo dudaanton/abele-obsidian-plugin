@@ -191,6 +191,11 @@ account except one's own. A settings file with a URL and no `mapStyle` means tha
 
 ## GitHub
 
+The persisted connection container also preserves an optional `provider` field for provider
+adapters. An omitted field means GitHub. Records for unavailable providers retain their IDs,
+deployment bases and key references through transfer; GitHub operations never use their keys.
+They are excluded from the compatibility `github.server` and `github.keyId` projection.
+
 `github.enabled` is the whole integration, off unless the person turned it on: GitHub issues,
 pull requests, discussions, commits and files at a ref open in tabs of their own, read only.
 `github.openLinks` decides whether a click on such a link in a note opens that tab instead of

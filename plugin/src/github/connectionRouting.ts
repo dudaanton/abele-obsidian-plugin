@@ -1,4 +1,5 @@
 import type { GithubConnection } from './connections'
+import { isGithubConnection } from './connections'
 import { endpoints, normaliseHost } from './urls'
 
 export interface RoutingInput {
@@ -27,9 +28,10 @@ export interface ConnectionCandidate {
 
 /** Link aliases are not authenticated destinations: schemes and ports still distinguish servers. */
 export function sameConnectionServer(
-  connection: Pick<GithubConnection,'server'>,
+  connection: Pick<GithubConnection, 'server' | 'provider'>,
   target: Pick<RoutingInput, 'host' | 'origin'>
 ): boolean {
+  if (!isGithubConnection(connection)) return false
   const e = endpoints(connection.server)
   if (e.webHost !== normaliseHost(target.host)) return false
   if (!target.origin) return true
@@ -84,7 +86,7 @@ export function routeConnections(
   const anonymous =
     publicOrigin &&
     normaliseHost(input.host) === 'github.com' &&
-    !connections.some((c) => endpoints(c.server).webHost === 'github.com')
+    !connections.some((c) => isGithubConnection(c) && endpoints(c.server).webHost === 'github.com')
   const serverRows = connections.filter((c) => sameConnectionServer(c, input))
   // Host-only targets cannot choose between servers sharing a hostname but differing by port/scheme.
   if (!input.origin && new Set(serverRows.map((c) => endpoints(c.server).origin)).size > 1)

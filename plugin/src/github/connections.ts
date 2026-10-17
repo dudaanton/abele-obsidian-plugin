@@ -1,27 +1,43 @@
 import { endpoints } from './urls'
 import type { GithubSettings } from './settings'
+import { deployment } from '@/forge/identity'
 
-/** Stable, non-secret identifier; names and discovered logins may change independently. */
-export interface GithubConnection {
-  id: string
-  name: string
-  server: string
-  keyId: string
-  owners: string[]
-  isDefault: boolean
-  account?: { login: string; avatarUrl?: string }
-  checkedAt?: number
-  expiresAt?: string
-}
+import type { ForgeConnection as GithubConnection } from '@/forge/model'
+export type { ForgeConnection as GithubConnection } from '@/forge/model'
 
 const serverId = (address: string): string => endpoints(address).origin
+
+export const isGithubConnection = (connection: Pick<GithubConnection, 'provider'>): boolean =>
+  connection.provider === undefined || connection.provider === 'github'
+
+export function connectionBinding(
+  connection: Pick<GithubConnection, 'provider' | 'server'>
+): string {
+  return isGithubConnection(connection)
+    ? JSON.stringify(['github', serverId(connection.server)])
+    : JSON.stringify([connection.provider, deployment('forgejo', connection.server).webBase])
+}
+
+export function validProviderServer(
+  connection: Pick<GithubConnection, 'provider' | 'server'>
+): boolean {
+  if (isGithubConnection(connection))
+    return !connection.server || validConnectionServer(connection.server)
+  try {
+    deployment('forgejo', connection.server)
+    return typeof connection.provider === 'string' && /^[a-z][a-z0-9-]*$/.test(connection.provider)
+  } catch {
+    return false
+  }
+}
 
 /** A persisted list always wins over the compatibility fields, including an empty list. */
 export function normalizeConnections(
   raw: unknown,
   legacy: { server?: string; keyId?: string }
 ): GithubConnection[] {
-  if (raw === undefined && legacy.server !== undefined && typeof legacy.server !== 'string') return []
+  if (raw === undefined && legacy.server !== undefined && typeof legacy.server !== 'string')
+    return []
   const old = typeof legacy.server === 'string' ? legacy.server.trim() : ''
   const keyId = typeof legacy.keyId === 'string' ? legacy.keyId : ''
   const migrated =
@@ -55,14 +71,19 @@ export function normalizeConnections(
       continue
     // Invalid server syntax must never silently map credentials to public GitHub.
     const inputServer = c.server.trim()
-    if (inputServer && !validConnectionServer(inputServer)) continue
-    const server = inputServer && endpoints(inputServer).webHost === 'github.com' ? '' : inputServer
-    const identity = serverId(server)
+    if (!validProviderServer({ ...c, server: inputServer })) continue
+    const server = isGithubConnection(c)
+      ? inputServer && endpoints(inputServer).webHost === 'github.com'
+        ? ''
+        : inputServer
+      : deployment('forgejo', inputServer).webBase
+    const identity = connectionBinding({ ...c, server })
     const isDefault = c.isDefault === true && !defaults.has(identity)
     if (isDefault) defaults.add(identity)
     seen.add(c.id)
     result.push({
       id: c.id,
+      ...(c.provider !== undefined ? { provider: c.provider } : {}),
       name: c.name,
       server,
       keyId: c.keyId,
@@ -85,7 +106,7 @@ export function normalizeConnections(
     })
   }
   for (const c of result) {
-    const identity = serverId(c.server)
+    const identity = connectionBinding(c)
     if (!defaults.has(identity)) {
       c.isDefault = true
       defaults.add(identity)
@@ -119,7 +140,8 @@ export function validConnectionServer(address: string): boolean {
 }
 
 export function preferredConnection(connections: GithubConnection[]): GithubConnection | undefined {
-  return connections.find((c) => !c.server && c.isDefault) ?? connections.find((c) => c.isDefault)
+  const github = connections.filter(isGithubConnection)
+  return github.find((c) => !c.server && c.isDefault) ?? github.find((c) => c.isDefault)
 }
 
 /** One old-version device can represent only one server. Retain the migrated server while present. */
@@ -127,7 +149,9 @@ export function projectLegacy(settings: GithubSettings): GithubSettings {
   const chosen =
     settings.connections.find(
       (c) =>
-        c.isDefault && serverId(c.server) === serverId(settings.legacyServer ?? settings.server)
+        isGithubConnection(c) &&
+        c.isDefault &&
+        serverId(c.server) === serverId(settings.legacyServer ?? settings.server)
     ) ?? preferredConnection(settings.connections)
   const oldOrigin = endpoints(settings.legacyServer ?? settings.server).origin
   const bare = /^[^:/\s]+\/[^:/\s]+$/.test(settings.defaultRepo)

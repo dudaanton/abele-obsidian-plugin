@@ -9,7 +9,11 @@
  * unchanged answer is a 304 with no body, and GitHub does not count it against the hourly limit —
  * which is what makes reopening the same pull request free.
  */
-import type { RequestUrlParam, RequestUrlResponse } from 'obsidian'
+import {
+  withoutCredentials,
+  type HttpRequest as RequestUrlParam,
+  type HttpResponse as RequestUrlResponse,
+} from '@/forge/transport'
 import { singleHopRequest } from './transport'
 import { shallowRef } from 'vue'
 import { normaliseHost, type Endpoints } from './urls'
@@ -377,18 +381,11 @@ export class GithubClient {
       next.port === web.port &&
       hostWithin(normaliseHost(next.hostname), this.endpoints.webHost)
     const anonymous = anonymousRedirect || !(purpose === 'image' ? approvedImage : approvedApi)
-    const headers = { ...request.headers }
+    let headers = { ...request.headers }
     if (anonymous) {
       // Signed archive URLs are followed anonymously. Once a chain leaves the credential's
       // boundary it cannot regain credentials by redirecting back into it.
-      for (const name of Object.keys(headers)) {
-        if (
-          ['authorization', 'if-none-match', 'cookie', 'proxy-authorization'].includes(
-            name.toLowerCase()
-          )
-        )
-          delete headers[name]
-      }
+      headers = withoutCredentials(headers)
     }
     return this.send({ ...request, url: next.href, headers }, purpose, hops + 1, anonymous)
   }
@@ -624,9 +621,10 @@ export class GithubClient {
       'graphql'
     )
 
-    let body: { data?: T; errors?: { type?: string; message: string }[] } | null = null
+    type Envelope = { data?: T; errors?: { type?: string; message: string }[] }
+    let body: Envelope | null = null
     try {
-      body = response.json
+      body = response.json as Envelope | null
     } catch {
       body = null
     }

@@ -14,17 +14,21 @@ import type {
   RepositoryLink,
 } from './model'
 /** Repository reads bind to one source and authority generation. */
-import type { GithubTarget } from '@/github/urls'
-import type { ItemData, PinnedLoad } from '@/github/loadItem'
-import type { LanguageShare, ItemRow, ReleaseData } from '@/github/repoPage/repoHome'
-import type { Scope, TabChanges } from '@/github/search/tabCode'
-import type { CodeQuery } from '@/github/search/textSearch'
-import type { Stage } from '@/github/search/source'
-import type { DefinitionHit } from '@/github/search/definitions'
-import type { LineSpan } from '@/github/permalinks'
+import type { GithubRepositoryCapabilities } from '@/forge/githubCapabilities'
+export type { GithubRepositoryCapabilities } from '@/forge/githubCapabilities'
+import type { Scope, TabChanges, CodeQuery, Stage, DefinitionHit, LineSpan } from './search'
+import type { Deployment } from '@/forge/model'
+import { deploymentKey } from '@/forge/identity'
 
 export type RepositoryIdentity =
   | { provider: 'github'; connection: string; server: string; repository: string }
+  | {
+      provider: 'forgejo' | 'gitea' | 'gitlab'
+      connection: string
+      deployment: Deployment
+      repository: string
+      remoteId?: string
+    }
   | { provider: 'node'; installation: string; node: string; project: string; workspace: string }
 export type RepositoryRevision =
   | { kind: 'commit'; commit: string }
@@ -105,18 +109,6 @@ export interface RepositoryNavigation {
   ): string
   blobLink(commit: string, path: string, lines: LineSpan): RepositoryLink
 }
-export interface GithubRepositoryCapabilities {
-  loadTarget(
-    target: GithubTarget,
-    promote: (target: GithubTarget) => void,
-    pinned?: PinnedLoad
-  ): Promise<ItemData>
-  listUrl(kind: 'issues' | 'pulls' | 'releases'): string
-  languages(): Promise<LanguageShare[]>
-  issues(): Promise<ItemRow[]>
-  pulls(): Promise<ItemRow[]>
-  release(): Promise<ReleaseData | null>
-}
 export interface RepositorySource {
   readonly identity: RepositoryIdentity
   readonly cacheNamespace: string
@@ -176,10 +168,17 @@ export const sourceKey = (identity: RepositoryIdentity): string =>
         identity.server,
         identity.repository.toLowerCase(),
       ])
-    : JSON.stringify([
-        'node',
-        identity.installation,
-        identity.node,
-        identity.project,
-        identity.workspace,
-      ])
+    : identity.provider !== 'node'
+      ? JSON.stringify([
+          identity.provider,
+          identity.connection,
+          deploymentKey(identity.deployment),
+          identity.remoteId ?? identity.repository,
+        ])
+      : JSON.stringify([
+          'node',
+          identity.installation,
+          identity.node,
+          identity.project,
+          identity.workspace,
+        ])

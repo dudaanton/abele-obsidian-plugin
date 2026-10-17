@@ -9,7 +9,7 @@
  * come first for that reason.
  */
 import type { IndexedFile } from './repoIndex'
-import { searchText, type LineMatch } from './textSearch'
+import { searchText } from './textSearch'
 
 export type Lang =
   | 'ts'
@@ -199,9 +199,8 @@ const TEST_FILE = [
 export const isTestPath = (path: string): boolean =>
   TEST_DIR.test(path) || TEST_FILE.some((re) => re.test(path))
 
-export interface DefinitionHit extends LineMatch {
-  path: string
-}
+import type { DefinitionHit } from '@/repository/search'
+export type { DefinitionHit } from '@/repository/search'
 
 const dirOf = (path: string) => path.slice(0, path.lastIndexOf('/') + 1)
 

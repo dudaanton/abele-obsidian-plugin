@@ -1,5 +1,8 @@
 /** Single-hop adapters. Obsidian requestUrl follows redirects with Authorization unchanged. */
-import type { RequestUrlParam, RequestUrlResponse } from 'obsidian'
+import type {
+  HttpRequest as RequestUrlParam,
+  HttpResponse as RequestUrlResponse,
+} from '@/forge/transport'
 
 interface NativeHttp {
   request(

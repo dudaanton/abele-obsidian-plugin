@@ -12,8 +12,13 @@
  */
 import type { AbeleSettings } from '@/services/AbeleConfig'
 import { githubSettingsFrom } from '@/github/settings'
-import { projectLegacy, validConnectionServer, type GithubConnection } from '@/github/connections'
-import { endpoints } from '@/github/urls'
+import {
+  projectLegacy,
+  validConnectionServer,
+  validProviderServer,
+  connectionBinding,
+  type GithubConnection,
+} from '@/github/connections'
 import type { AiSettings } from '@/ai/types'
 import { savedKeysWithIds } from '@/ai/savedKeyIds'
 import { DEFAULT_TRANSCRIPTION } from '@/ai/transcription'
@@ -363,7 +368,7 @@ export const SECTIONS: Section[] = [
         current.connections.some(
           (c) =>
             c.keyId === incoming.keyId &&
-            endpoints(c.server).origin !== endpoints(incoming.server ?? '').origin
+            connectionBinding(c) !== connectionBinding({ server: incoming.server ?? '' })
         )
       ) {
         throw new Error(
@@ -673,7 +678,7 @@ export function applyEntries(
       typeof c.name !== 'string' ||
       typeof c.keyId !== 'string' ||
       typeof c.server !== 'string' ||
-      (c.server.trim() && !validConnectionServer(c.server.trim())) ||
+      !validProviderServer({ ...c, server: c.server.trim() }) ||
       entry.secretIds?.some((id) => id !== c.keyId)
     ) {
       throw new Error(
@@ -714,9 +719,9 @@ export function applyEntries(
     const github = githubSettingsFrom(next.github)
     next.github = github
     const owners = new Map<string, string>()
-    const bind = (keyId: string | undefined, server: string) => {
+    const bind = (keyId: string | undefined, server: string, provider?: string) => {
       if (!keyId) return
-      const origin = endpoints(server).origin
+      const origin = connectionBinding({ server, provider })
       const previous = owners.get(keyId)
       if (previous && previous !== origin)
         throw new Error(
@@ -725,7 +730,8 @@ export function applyEntries(
       owners.set(keyId, origin)
     }
     const bindSettings = (value: ReturnType<typeof githubSettingsFrom>) => {
-      for (const connection of value.connections) bind(connection.keyId, connection.server)
+      for (const connection of value.connections)
+        bind(connection.keyId, connection.server, connection.provider)
       bind(
         value.notifications.boundKeyId ?? value.notifications.keyId,
         value.notifications.boundServer ?? value.server

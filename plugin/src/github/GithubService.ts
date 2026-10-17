@@ -23,6 +23,7 @@ import { DEFAULT_GITHUB_SETTINGS, type GithubSettings } from './settings'
 import { forgetRepoTrees } from './tree/repoTree'
 import { forgetCodeIndexes } from './search/source'
 import { rememberRepo } from './open/repoList'
+import { isGithubConnection } from './connections'
 
 export const GITHUB_VIEW_TYPE = 'abele-github'
 
@@ -57,7 +58,7 @@ export function githubHosts(): string[] {
     ...new Set([
       'github.com',
       endpoints(settings.server).webHost,
-      ...(settings.connections ?? []).map((c) => endpoints(c.server).webHost),
+      ...(settings.connections ?? []).filter(isGithubConnection).map((c) => endpoints(c.server).webHost),
     ]),
   ]
 }
@@ -169,7 +170,7 @@ export function notificationsClient(): { client: GithubClient; separate: boolean
   const token = keyId ? (secrets().get(keyId) ?? '').trim() : ''
   notificationClients.reconcile()
   if (!token) {
-    const main=settings.connections?.find(c=>c.isDefault && endpoints(c.server).origin===endpoints(settings.server).origin)
+    const main=settings.connections?.find(c=>isGithubConnection(c) && c.isDefault && endpoints(c.server).origin===endpoints(settings.server).origin)
     return {client:main ? connectionClient(main.id) : githubClient(),separate:false}
   }
   return {client:notificationClients.client('notifications'),separate:true}

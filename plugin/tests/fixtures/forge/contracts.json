@@ -1,0 +1,135 @@
+[
+  {
+    "kind": "forgejo",
+    "version": "11.0.0",
+    "source": "https://codeberg.org/forgejo/forgejo/raw/tag/v11.0.0/templates/swagger/v1_json.tmpl",
+    "sha256": "8eadb817dcdc477e4790587f4243c24d007b576f4d8e8344e4d738df8a83a047",
+    "createPullProperties": [
+      "assignee",
+      "assignees",
+      "base",
+      "body",
+      "due_date",
+      "head",
+      "labels",
+      "milestone",
+      "title"
+    ],
+    "changedFileProperties": [
+      "additions",
+      "changes",
+      "contents_url",
+      "deletions",
+      "filename",
+      "html_url",
+      "previous_filename",
+      "raw_url",
+      "status"
+    ],
+    "compareProperties": ["commits", "files", "total_commits"],
+    "notificationStatuses": ["unread", "read", "pinned"],
+    "createPullExample": {
+      "title": "Sample change",
+      "body": "Sample description",
+      "head": "topic/sample",
+      "base": "main"
+    },
+    "changedFileExample": {
+      "filename": "src/sample.ts",
+      "status": "modified",
+      "additions": 2,
+      "deletions": 1
+    },
+    "compareExample": {
+      "commits": [],
+      "total_commits": 0,
+      "files": []
+    },
+    "notificationStatusParameter": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Show notifications with the provided status types. Options are: unread, read and/or pinned. Defaults to unread & pinned.",
+      "name": "status-types",
+      "in": "query"
+    },
+    "notificationSnapshotParameter": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Describes the last point that notifications were checked. Anything updated since this time will not be updated.",
+      "name": "last_read_at",
+      "in": "query"
+    },
+    "compareParameters": ["owner", "repo", "basehead"],
+    "blamePaths": []
+  },
+  {
+    "kind": "gitea",
+    "version": "1.24.0",
+    "source": "https://raw.githubusercontent.com/go-gitea/gitea/v1.24.0/templates/swagger/v1_json.tmpl",
+    "sha256": "569c1c05537eeb1fbcd040146f5e99268692c8826b28b517dc2208b721e39707",
+    "createPullProperties": [
+      "assignee",
+      "assignees",
+      "base",
+      "body",
+      "due_date",
+      "head",
+      "labels",
+      "milestone",
+      "reviewers",
+      "team_reviewers",
+      "title"
+    ],
+    "changedFileProperties": [
+      "additions",
+      "changes",
+      "contents_url",
+      "deletions",
+      "filename",
+      "html_url",
+      "previous_filename",
+      "raw_url",
+      "status"
+    ],
+    "compareProperties": ["commits", "total_commits"],
+    "notificationStatuses": ["unread", "read", "pinned"],
+    "createPullExample": {
+      "title": "Sample change",
+      "body": "Sample description",
+      "head": "topic/sample",
+      "base": "main"
+    },
+    "changedFileExample": {
+      "filename": "src/sample.ts",
+      "status": "modified",
+      "additions": 2,
+      "deletions": 1
+    },
+    "compareExample": {
+      "commits": [],
+      "total_commits": 0
+    },
+    "notificationStatusParameter": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "collectionFormat": "multi",
+      "description": "Show notifications with the provided status types. Options are: unread, read and/or pinned. Defaults to unread & pinned.",
+      "name": "status-types",
+      "in": "query"
+    },
+    "notificationSnapshotParameter": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Describes the last point that notifications were checked. Anything updated since this time will not be updated.",
+      "name": "last_read_at",
+      "in": "query"
+    },
+    "compareParameters": ["owner", "repo", "basehead"],
+    "blamePaths": []
+  }
+]

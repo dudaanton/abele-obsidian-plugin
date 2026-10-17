@@ -1,4 +1,5 @@
 import type { GithubConnection } from './connections'
+import { isGithubConnection } from './connections'
 import { GITHUB_TOOLS } from '@/ai/types'
 
 export type ConnectionMode = 'off' | 'ask' | 'auto'
@@ -25,7 +26,7 @@ export function migrateLegacyConnectionAccess(
   agents: (ConnectionAgent & { toolModes: Record<string, ConnectionMode> })[],
   connections: GithubConnection[]
 ): boolean {
-  const legacy = connections.find((c) => c.id === 'github-legacy')
+  const legacy = connections.find((c) => isGithubConnection(c) && c.id === 'github-legacy')
   let changed = false
   for (const agent of agents) {
     if (agent.githubConnections !== undefined) continue

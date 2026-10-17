@@ -1,5 +1,80 @@
 import type { GithubTarget } from '@/github/urls'
 import type { RepositoryTarget, RepositoryRevision, RepositoryLocation } from './source'
+import type { Deployment } from '@/forge/model'
+import { deployment, deploymentKey } from '@/forge/identity'
+
+/** New remote adapters use versioned state; existing GitHub URL leaves remain unchanged. */
+export interface ForgeTabTarget {
+  version: 1
+  provider: 'forgejo' | 'gitea' | 'gitlab'
+  connection: string
+  deployment: Deployment
+  repository: string
+  url: string
+  revision?: RepositoryRevision
+}
+
+export function savedForgeTarget(state: unknown): ForgeTabTarget | null {
+  if (!state || typeof state !== 'object') return null
+  const target = (state as { sourceTarget?: unknown }).sourceTarget
+  if (!target || typeof target !== 'object') return null
+  const row = target as Record<string, unknown>
+  if (
+    row.version !== 1 ||
+    !['forgejo', 'gitea', 'gitlab'].includes(row.provider as string) ||
+    typeof row.connection !== 'string' ||
+    typeof row.repository !== 'string' ||
+    typeof row.url !== 'string' ||
+    !row.deployment ||
+    typeof row.deployment !== 'object'
+  )
+    return null
+  const provider = row.provider as ForgeTabTarget['provider']
+  const raw = row.deployment as Deployment
+  try {
+    const base = deployment(provider, raw.webBase)
+    if (deploymentKey(base) !== deploymentKey(raw)) return null
+    const parts = row.repository.split('/')
+    if (
+      parts.length < 2 ||
+      parts.some(
+        (part) =>
+          !part ||
+          ['.', '..'].includes(part) ||
+          part.includes('\\') ||
+          [...part].some((character) => character.charCodeAt(0) < 32)
+      )
+    )
+      return null
+    const repo = new URL(`${base.webBase}/${parts.map(encodeURIComponent).join('/')}`)
+    const url = new URL(row.url)
+    if (
+      url.username ||
+      url.password ||
+      url.origin !== repo.origin ||
+      !(url.pathname === repo.pathname || url.pathname.startsWith(`${repo.pathname}/`))
+    )
+      return null
+    const revision = row.revision as Record<string, unknown> | undefined
+    const resolved: RepositoryRevision | undefined =
+      revision?.kind === 'commit' &&
+      typeof revision.commit === 'string' &&
+      /^[a-f\d]{40}$/i.test(revision.commit)
+        ? { kind: 'commit', commit: revision.commit }
+        : undefined
+    return {
+      version: 1,
+      provider,
+      connection: row.connection,
+      deployment: base,
+      repository: row.repository,
+      url: row.url,
+      ...(resolved ? { revision: resolved } : {}),
+    }
+  } catch {
+    return null
+  }
+}
 
 /** GitHub conversations retain their web URL; node targets contain only opaque IDs and paths. */
 export type RepositoryTabTarget =
@@ -12,6 +87,7 @@ export type RepositoryTabTarget =
       revision?: RepositoryRevision
     }
   | ({ provider: 'node' } & RepositoryTarget)
+  | ForgeTabTarget
 
 export function githubTabTarget(
   url: string,
@@ -112,7 +188,8 @@ export function savedNodeTarget(
     )
       return null
     if (location.kind === 'file' && !location.path) return null
-    if (location.contentId !== undefined && (location.kind !== 'file' || !id(location.contentId))) return null
+    if (location.contentId !== undefined && (location.kind !== 'file' || !id(location.contentId)))
+      return null
   } else if (location.kind === 'home') {
     if (location.ref !== undefined && !text(location.ref)) return null
   } else if (location.kind === 'commit') {
@@ -124,7 +201,11 @@ export function savedNodeTarget(
       (!text(location.baseName) || location.baseName.length > 255 || !location.base)
     )
       return null
-    if (location.mode !== undefined && !['endpoint', 'merge-base', 'staged', 'unstaged'].includes(location.mode as string)) return null
+    if (
+      location.mode !== undefined &&
+      !['endpoint', 'merge-base', 'staged', 'unstaged'].includes(location.mode as string)
+    )
+      return null
   } else return null
   const selection = location.lines as Record<string, unknown> | undefined
   if (
@@ -170,7 +251,9 @@ export function savedNodeTarget(
               ...(location.base ? { base: location.base as string } : {}),
               ...(location.baseName ? { baseName: location.baseName as string } : {}),
               direct: location.direct !== false,
-              ...(location.mode ? { mode: location.mode as 'endpoint' | 'merge-base' | 'staged' | 'unstaged' } : {}),
+              ...(location.mode
+                ? { mode: location.mode as 'endpoint' | 'merge-base' | 'staged' | 'unstaged' }
+                : {}),
             }
           : {
               kind: location.kind,

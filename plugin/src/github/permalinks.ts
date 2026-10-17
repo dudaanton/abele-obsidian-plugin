@@ -34,10 +34,8 @@ export interface DiffSpan {
 }
 
 /** Lines of the document a selection covers, 1-based and inclusive. */
-export interface LineSpan {
-  from: number
-  to: number
-}
+import type { LineSpan } from '@/repository/search'
+export type { LineSpan } from '@/repository/search'
 
 const web = repoWeb
 

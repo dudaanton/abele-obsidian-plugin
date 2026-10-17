@@ -109,7 +109,8 @@ export class TooLargeError extends Error {
 export const mb = (bytes: number) =>
   `${(bytes / 1024 / 1024).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`
 
-export type Stage = 'listing' | 'downloading' | 'unpacking' | 'indexing'
+import type { Stage } from '@/repository/search'
+export type { Stage } from '@/repository/search'
 
 export interface IndexRequest {
   limitBytes: number

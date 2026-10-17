@@ -6,15 +6,10 @@
  * and what the gutter shows.
  */
 
-export type DiffLineType = 'hunk' | 'add' | 'del' | 'ctx' | 'note'
+export type { DiffLineType } from '@/repository/model'
 
-export interface DiffLine {
-  type: DiffLineType
-  /** The line without its leading `+`, `-` or space. A hunk header is kept whole. */
-  text: string
-  old?: number
-  new?: number
-}
+import type { DiffLine } from '@/repository/model'
+export type { DiffLine } from '@/repository/model'
 
 const HUNK = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/
 

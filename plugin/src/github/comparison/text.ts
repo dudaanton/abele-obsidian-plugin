@@ -1,14 +1,9 @@
 import { diff } from '@codemirror/merge'
-import type { DiffLine } from '../patch'
 
-export interface TextDiff {
-  lines: DiffLine[]
-  additions: number
-  deletions: number
-}
-export type BlobContent =
-  | { kind: 'text' | 'lfs'; text: string }
-  | { kind: 'binary' | 'unsupported'; text?: undefined }
+import type { TextDiff, DiffLine } from '@/repository/model'
+export type { TextDiff } from '@/repository/model'
+import type { BlobContent } from '@/repository/model'
+export type { BlobContent } from '@/repository/model'
 
 export function decodeBlob(bytes: Uint8Array): BlobContent {
   if ((bytes[0] === 255 && bytes[1] === 254) || (bytes[0] === 254 && bytes[1] === 255))
