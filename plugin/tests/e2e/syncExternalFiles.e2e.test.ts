@@ -2,7 +2,7 @@ import { afterEach, expect, it } from 'vitest'
 import { join } from 'node:path'
 import { liveSuite } from './helpers/syncLiveCases'
 import { captureSyncScreen } from './helpers/syncScreens'
-import { screenshot } from './helpers/phone'
+import { screenshot, driver } from './helpers/phone'
 import { shotDir } from './helpers/shots'
 import { targets, onPhone } from './helpers/target'
 import type { SyncDriver } from './helpers/syncDriver'
@@ -11,6 +11,7 @@ import {
   externalEditorEmbed,
   externalReadingPreviewAction,
 } from './helpers/externalFileSelectors'
+import { dismissNativeSheet, withNativeSheetCleanup } from './helpers/nativeSheetCleanup'
 import { detachExternalFileLeaves } from './helpers/externalFileLeaves'
 
 targets('desktop', 'phone')
@@ -28,6 +29,15 @@ afterEach(async () => {
 })
 // Stack ordering: the sync fixture resets/drains first, then the hook above closes its cards.
 const fixture = liveSuite(false)
+// Stack ordering: clear native UI before the fixture attempts any WebView reset, even on timeout.
+afterEach(async () => {
+  if (onPhone()) await dismissNativeSheet((args) => driver(args, 10_000))
+})
+
+async function openingStep(work: () => Promise<void>): Promise<void> {
+  if (onPhone()) await withNativeSheetCleanup(work, (args) => driver(args, 10_000))
+  else await work()
+}
 
 async function shot(a: SyncDriver, state: string, selector: string): Promise<void> {
   const name = 'external-' + state + (onPhone() ? '-phone' : '-desktop')
@@ -140,22 +150,24 @@ it('offloads real synced attachments and opens cards separately from downloading
   expect(a.exists(image + '.abele-ref')).toBe(false)
   expect(a.read(note)).toBe(`# Sample attachments\n\n![[${image}]]\n\n![[${other}]]\n`)
   await shot(a, 'embed-local', '.workspace-leaf.mod-active .markdown-preview-view')
-  await openCard(a, other)
-  s.server.suspend()
-  try {
-    a.run(
-      `await press(document.querySelector(${JSON.stringify(card)}),'Download');await poll(()=>document.querySelector(${JSON.stringify(card + '__progress')}));return true`
+  await openingStep(async () => {
+    await openCard(a, other)
+    s.server.suspend()
+    try {
+      a.run(
+        `await press(document.querySelector(${JSON.stringify(card)}),'Download');await poll(()=>document.querySelector(${JSON.stringify(card + '__progress')}));return true`
+      )
+      await shot(a, 'card-downloading', card)
+      expect(a.exists(other)).toBe(false)
+    } finally {
+      s.server.resume()
+    }
+    await a.long(
+      'card download becomes local',
+      `await poll(()=>!!app.vault.getFileByPath(${JSON.stringify(other)}));return true`
     )
-    await shot(a, 'card-downloading', card)
-    expect(a.exists(other)).toBe(false)
-  } finally {
-    s.server.resume()
-  }
-  await a.long(
-    'card download becomes local',
-    `await poll(()=>!!app.vault.getFileByPath(${JSON.stringify(other)}));return true`
-  )
-  expect(a.read(other)).toBe('sample document fixture bytes')
+    expect(a.read(other)).toBe('sample document fixture bytes')
+  })
 }, 180000)
 
 it('retains offloaded stubs when the real server is offline and shows a newer server version', async () => {
@@ -210,10 +222,12 @@ it('retains offloaded stubs when the real server is offline and shows a newer se
   )
   await shot(a, 'card-newer', card)
   expect(a.exists(path)).toBe(false)
-  a.run(`await press(document.querySelector(${JSON.stringify(card)}),'Download');return true`)
-  await a.long(
-    'download newer version',
-    `await poll(()=>!!app.vault.getFileByPath(${JSON.stringify(path)}));return true`
-  )
-  expect(a.read(path)).toBe('sample newer server bytes')
+  await openingStep(async () => {
+    a.run(`await press(document.querySelector(${JSON.stringify(card)}),'Download');return true`)
+    await a.long(
+      'download newer version',
+      `await poll(()=>!!app.vault.getFileByPath(${JSON.stringify(path)}));return true`
+    )
+    expect(a.read(path)).toBe('sample newer server bytes')
+  })
 }, 180000)

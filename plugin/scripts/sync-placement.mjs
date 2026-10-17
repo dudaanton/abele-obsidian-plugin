@@ -14,7 +14,7 @@ async function coordinatePlacement(fs, paths, work, preserve = true) {
 }
 async function* inventoryDirectories(fs) {
   const read = fs[Symbol.for('abele.sync.inventory-directories-v1')];
-  if (read) yield* await read.call(fs);
+  if (read) yield* await read.call(fs, true);
   else yield* fs.listDirectories();
 }
 async function inventoryChildren(fs, parent, path) {

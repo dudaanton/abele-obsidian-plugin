@@ -68,6 +68,7 @@ const stageOperations = new WeakMap<object, Set<string>>()
 type DirectoryInfo = { path: string; identity: string; mtime: number }
 type InventoryChild = { path: string; kind: 'file' | 'directory'; identity?: string }
 interface InventoryPass {
+  publishedParents?: Set<string>
   directories?: Promise<DirectoryInfo[]>
   listings: Map<string, Promise<ListedFiles>>
   mutations: Set<string>
@@ -188,11 +189,15 @@ export class ObsidianFileSystem implements FileSystem {
           }
         : null
     const inventory = this.inventory
-    const invalidate = (file: { path: string; children?: unknown[] }, previous?: string) => {
+    const invalidate = (
+      file: { path: string; children?: unknown[] },
+      previous?: string,
+      created = false
+    ) => {
       this.invalidateRootChain([file.path, ...(previous ? [previous] : [])])
       if (!inventory) return
       for (const path of [file.path, ...(previous ? [previous] : [])]) {
-        if (inventory.mutations.has(path)) {
+        if (created && inventory.mutations.has(path)) {
           if (file.children) inventory.mutations.delete(path)
           continue
         }
@@ -201,11 +206,16 @@ export class ObsidianFileSystem implements FileSystem {
           for (const key of cache.keys())
             if (key === path || (file.children && key.startsWith(path + '/'))) cache.delete(key)
         }
-        if (file.children) inventory.directories = undefined
+        if (file.children) {
+          inventory.directories = undefined
+          for (const parent of inventory.publishedParents ?? [])
+            if (parent === path || parent.startsWith(path + '/'))
+              inventory.publishedParents?.delete(parent)
+        }
       }
     }
     const refs = [
-      this.app.vault.on('create', (file) => invalidate(file)),
+      this.app.vault.on('create', (file) => invalidate(file, undefined, true)),
       this.app.vault.on('delete', (file) => invalidate(file)),
       this.app.vault.on('rename', (file, previous) => invalidate(file, previous)),
     ]
@@ -213,6 +223,7 @@ export class ObsidianFileSystem implements FileSystem {
       return await work()
     } finally {
       try {
+        await this.settleInventoryParents()
         await inventory?.directories
         await Promise.all([
           ...(inventory?.listings.values() ?? []),
@@ -226,7 +237,8 @@ export class ObsidianFileSystem implements FileSystem {
       }
     }
   }
-  async [INVENTORY_DIRECTORIES](): Promise<DirectoryInfo[]> {
+  async [INVENTORY_DIRECTORIES](settle = false): Promise<DirectoryInfo[]> {
+    if (settle) await this.settleInventoryParents()
     const read = async () => {
       const result = []
       for await (const directory of this.listDirectories()) result.push(directory)
@@ -266,6 +278,13 @@ export class ObsidianFileSystem implements FileSystem {
             files.add(path)
         return [
           ...[...files].map((path) => ({ path, kind: 'file' as const })),
+          ...[...(inventory.publishedParents ?? [])]
+            .filter(
+              (path) =>
+                folderOf(path).replace(/^\/$/, '') === parent &&
+                !directories.some((one) => one.path === path)
+            )
+            .map((path) => ({ path, kind: 'directory' as const })),
           ...directories
             .filter((one) => folderOf(one.path).replace(/^\/$/, '') === parent)
             .map((one) => ({ path: one.path, kind: 'directory' as const, identity: one.identity })),
@@ -338,6 +357,14 @@ export class ObsidianFileSystem implements FileSystem {
           }))
         )
     }
+  }
+  private async settleInventoryParents(): Promise<void> {
+    const inventory = this.inventory
+    if (!inventory?.publishedParents?.size) return
+    const parents = [...inventory.publishedParents]
+    // Retain membership until all identity reads have settled; a failed pass is discarded.
+    for (const path of parents) await this.rememberInventoryParents(path)
+    for (const path of parents) inventory.publishedParents.delete(path)
   }
   private async rememberInventoryParents(path: string): Promise<void> {
     if (!path) return
@@ -708,6 +735,7 @@ export class ObsidianFileSystem implements FileSystem {
       this.inventory.listings.clear()
       this.inventory.children.clear()
       this.inventory.indexedChildren.clear()
+      this.inventory.publishedParents?.clear()
     }
   }
   async removeDirectory(path: string, expectedIdentity?: string): Promise<void> {
@@ -720,6 +748,7 @@ export class ObsidianFileSystem implements FileSystem {
       this.inventory.listings.clear()
       this.inventory.children.clear()
       this.inventory.indexedChildren.clear()
+      this.inventory.publishedParents?.clear()
     }
   }
   needsRecoveryHandshake(): boolean {
@@ -1541,10 +1570,46 @@ export class ObsidianFileSystem implements FileSystem {
   private wrote(paths: readonly string[], known?: 'file' | null): void {
     this.invalidateRootChain(paths)
     this.updateInventory(paths, known)
-    for (const path of paths)
-      void this.rememberInventoryParents(
-        known === 'file' ? folderOf(path).replace(/^\/$/, '') : path
-      ).catch((error) => console.debug('[abele-sync] inventory update failed', error))
+    for (const path of paths) {
+      const parent = known === 'file' ? folderOf(path).replace(/^\/$/, '') : path
+      if (known === 'file' && this.inventory?.directories !== undefined) {
+        // Publication proves these parents exist. Expose membership immediately, but batch
+        // their durable birth/identity reads before directory inventory is consumed again.
+        const inventory = this.inventory
+        inventory.publishedParents ??= new Set()
+        const parts = parent.split('/')
+        for (let length = 1; length <= parts.length; length++) {
+          const prefix = parts.slice(0, length).join('/')
+          if (!this.withinFileScope(prefix) || inventory.publishedParents.has(prefix)) continue
+          inventory.publishedParents.add(prefix)
+          const containing = folderOf(prefix).replace(/^\/$/, '')
+          inventory.indexedChildren.delete(containing)
+          const listing = inventory.listings.get(containing)
+          if (listing !== undefined)
+            inventory.listings.set(
+              containing,
+              listing.then((before) => ({
+                files: before.files,
+                folders: [...new Set([...before.folders, prefix])],
+              }))
+            )
+          const children = inventory.children.get(containing)
+          if (children !== undefined)
+            inventory.children.set(
+              containing,
+              children.then((before) =>
+                before.some((one) => one.path === prefix)
+                  ? before
+                  : [...before, { path: prefix, kind: 'directory' as const }]
+              )
+            )
+        }
+      } else {
+        void this.rememberInventoryParents(parent).catch((error) =>
+          console.debug('[abele-sync] inventory update failed', error)
+        )
+      }
+    }
 
     if (paths.some((path) => path.startsWith(this.configDir + '/'))) this.configInventory = null
     this.runtimeFence?.assertOwned()
