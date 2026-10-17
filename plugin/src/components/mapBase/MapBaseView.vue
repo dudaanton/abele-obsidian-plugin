@@ -278,8 +278,17 @@ function drawMarks() {
     return { place, x: p.x, y: p.y }
   })
   const atMax = m.getZoom() >= Math.min(props.maxZoom, 18) - 0.01
+  // The place picked, or pointed at in the list, always stands on its own, never inside a group.
+  const apart = (p: { place: MapPlace }) =>
+    p.place.id === selected.value || p.place.id === hovered.value
   const marks = props.group
-    ? groupMarks(points, atMax ? 0.5 : 44)
+    ? [
+        ...groupMarks(
+          points.filter((p) => !apart(p)),
+          atMax ? 0.5 : 44
+        ),
+        ...points.filter(apart).map((p) => ({ kind: 'place' as const, ...p })),
+      ]
     : points.map((p) => ({ kind: 'place' as const, ...p }))
   for (const mark of marks) {
     if (mark.kind === 'place') {
