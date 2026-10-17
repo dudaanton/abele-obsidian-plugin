@@ -124,6 +124,13 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 const recovery = () => new Error('Token connection registry requires recovery')
 
 /**
+ * The last document validated per storage, with the exact stored text it was validated from.
+ * Shared by every registry over the same storage; any write through a registry drops it, and
+ * a stored text that differs in any way (a write from elsewhere) is validated again.
+ */
+const validatedDocuments = new WeakMap<LocalStorage, { text: string; doc: Document }>()
+
+/**
  * One credential kind. Legacy state is never imported. Writes are verified before
  * proceeding; a prepared token binding can resume after interrupted provisioning.
  */
@@ -132,11 +139,11 @@ export class TokenConnectionRegistry {
   static open(local: LocalStorage): TokenConnectionRegistry {
     const registry = new TokenConnectionRegistry(local)
     if (local.loadLocalStorage(TOKEN_REGISTRY_KEY) != null) {
-      registry.document()
+      registry.validated()
       return registry
     }
     registry.write(TOKEN_REGISTRY_KEY, { version: 2, selectedId: '', records: [] })
-    registry.document()
+    registry.validated()
     return registry
   }
   private empty(localId: string): TokenConnectionRecord {
@@ -156,11 +163,26 @@ export class TokenConnectionRegistry {
     }
   }
   private write(key: string, value: unknown): void {
+    if (key === TOKEN_REGISTRY_KEY) validatedDocuments.delete(this.local)
     this.local.saveLocalStorage(key, clone(value))
     if (!same(this.local.loadLocalStorage(key), value)) throw recovery()
   }
+  /** A private copy to change and write back. */
   private document(): Document {
-    const parsed = documentSchema.safeParse(this.local.loadLocalStorage(TOKEN_REGISTRY_KEY))
+    return clone(this.validated())
+  }
+  /** The validated document, read-only: shared with later reads until the storage changes. */
+  private validated(): Document {
+    const raw = this.local.loadLocalStorage(TOKEN_REGISTRY_KEY)
+    const text = JSON.stringify(raw)
+    const known = validatedDocuments.get(this.local)
+    if (known && known.text === text) return known.doc
+    const doc = clone(this.check(raw))
+    validatedDocuments.set(this.local, { text, doc })
+    return doc
+  }
+  private check(raw: unknown): Document {
+    const parsed = documentSchema.safeParse(raw)
     if (!parsed.success) throw recovery()
     const doc = parsed.data,
       ids = new Set<string>(),
@@ -200,10 +222,10 @@ export class TokenConnectionRegistry {
     return doc
   }
   get selectedId(): string {
-    return this.document().selectedId
+    return this.validated().selectedId
   }
   records(): TokenConnectionRecord[] {
-    return clone(this.document().records)
+    return clone(this.validated().records)
   }
   private record(doc: Document, localId: string): TokenConnectionRecord {
     const record = doc.records.find((entry) => entry.id === localId)
@@ -390,11 +412,11 @@ export class TokenConnectionRegistry {
   }
   /** New engine state is device-only and permanently bound to this local ID. */
   storage(localId: string): LocalStorage {
-    this.record(this.document(), localId)
+    this.record(this.validated(), localId)
     return Object.assign(
       {
         loadLocalStorage: (key: string) => {
-          const record = this.record(this.document(), localId)
+          const record = this.record(this.validated(), localId)
           if (isLegacyAccessSlot(key)) return null
           return key.startsWith('abele-sync-token-state:')
             ? clone(record.state[key] ?? null)
