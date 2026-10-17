@@ -133,6 +133,257 @@ const probeLib = `(() => {
       }
     },
 
+    async compareNoteCaret() {
+      const c = composer()
+      const appearance = (view) => ({
+        content: getComputedStyle(view.contentDOM).caretColor,
+        line: getComputedStyle(view.contentDOM.querySelector('.cm-line')).caretColor,
+        primaryCursors: [...view.scrollDOM.querySelectorAll('.cm-cursor-primary')].filter((el) => {
+          const style = getComputedStyle(el)
+          return style.display !== 'none' && style.visibility !== 'hidden' && el.getBoundingClientRect().height > 0
+        }).length,
+      })
+      let leaf = null
+      let file = null
+      try {
+        file = await app.vault.create('composer-caret-' + Date.now() + '.md', 'sample')
+        leaf = app.workspace.getLeaf('tab')
+        await leaf.openFile(file, { active: true })
+        await leaf.setViewState({ type: 'markdown', state: { file: file.path, mode: 'source' }, active: true })
+        leaf.view.editor.focus()
+        await wait(300)
+        const note = appearance(leaf.view.editor.cm)
+        await chats.revealSidebar({ focus: false })
+        c.focus()
+        await wait(300)
+        const result = { note, composer: appearance(window.__abeleTest.noteFieldView(c.field)) }
+        fs.writeFileSync(${JSON.stringify(SHOTS)} + '/composer-caret-comparison.json', JSON.stringify(result, null, 2))
+        return result
+      } finally {
+        leaf?.detach()
+        if (file) await app.vault.delete(file)
+        await chats.revealSidebar({ focus: false })
+        c.focus()
+        await wait(300)
+      }
+    },
+
+    async typingTrace(target = null, label = 'phone-typing') {
+      if (!target) await chats.revealSidebar({ focus: false })
+      const c = target || composer()
+      c.set('sample ')
+      c.focus()
+      await wait(300)
+      const liveView = () => target ? target.liveView() : window.__abeleTest.noteFieldView(composer().field)
+      const view = liveView()
+      const content = view.contentDOM
+      if (!content.getClientRects().length || !view.hasFocus) throw new Error('typing target must be visible and focused')
+      const cdp = win.webContents.debugger
+      const owned = !cdp.isAttached()
+      if (owned) cdp.attach('1.3')
+      const box = (el) => {
+        const r = el.getBoundingClientRect()
+        return [r.x, r.y, r.width, r.height]
+      }
+      const snapshot = () => ({
+        field: box(c.field), content: box(content),
+        scrollTop: view.scrollDOM.scrollTop,
+        text: view.state.doc.toString(),
+        selection: view.state.selection.main.head,
+        nativeOffset: document.getSelection()?.anchorOffset,
+        caretColor: getComputedStyle(content).caretColor,
+        lineCaretColor: getComputedStyle(content.querySelector('.cm-line')).caretColor,
+        toolbar: document.querySelector('.mobile-toolbar') && box(document.querySelector('.mobile-toolbar')),
+        cursorLayers: [...c.field.querySelectorAll('.cm-cursorLayer')].map((el) => ({
+          animation: getComputedStyle(el).animationName,
+          duration: getComputedStyle(el).animationDuration,
+          opacity: getComputedStyle(el).opacity,
+        })),
+        cursors: [...c.field.querySelectorAll('.cm-cursor')].map((el) => ({
+          box: box(el), display: getComputedStyle(el).display,
+        })),
+      })
+      const initial = snapshot()
+      const steps = []
+      let transactions = []
+      let selectionWrites = []
+      let focusCalls = 0
+      let resizes = []
+      const toolbar = document.querySelector('.mobile-toolbar')
+      const watched = [c.field, content, toolbar].filter(Boolean)
+      const sizes = new Map(watched.map((el) => [el, box(el).slice(2)]))
+      const resizing = new ResizeObserver((entries) => {
+        for (const { target } of entries) {
+          const size = box(target).slice(2)
+          if (JSON.stringify(sizes.get(target)) !== JSON.stringify(size)) {
+            resizes.push({ target: target === toolbar ? 'toolbar' : target === content ? 'content' : 'field', size })
+            sizes.set(target, size)
+          }
+        }
+      })
+      for (const el of watched) resizing.observe(el)
+      const originalFocus = content.focus
+      content.focus = function (...args) {
+        focusCalls++
+        return originalFocus.apply(this, args)
+      }
+      const selection = document.getSelection()
+      const selectionMethods = new Map()
+      for (const name of ['collapse', 'extend', 'setBaseAndExtent', 'removeAllRanges', 'addRange']) {
+        const original = selection[name]
+        selectionMethods.set(name, original)
+        selection[name] = function (...args) {
+          selectionWrites.push({ method: name, stack: new Error().stack })
+          return original.apply(this, args)
+        }
+      }
+      const original = view.update
+      view.update = function (updates) {
+        for (const tr of updates) {
+          const changes = []
+          tr.changes.iterChanges((from, to, _a, _b, inserted) =>
+            changes.push({ from, to, insert: inserted.toString() }))
+          transactions.push({ changes, selection: tr.selection?.main.head, input: tr.isUserEvent('input'),
+            scrollIntoView: tr.scrollIntoView })
+        }
+        return original.call(this, updates)
+      }
+      try {
+        for (const character of 'typing') {
+          transactions = []
+          selectionWrites = []
+          focusCalls = 0
+          resizes = []
+          const before = snapshot()
+          const line = content.querySelector('.cm-line')
+          const nativeAnchor = document.getSelection()?.anchorNode
+          const mutations = []
+          const observer = new MutationObserver((records) => {
+            for (const r of records) mutations.push({
+              type: r.type, attribute: r.attributeName,
+              removed: [...r.removedNodes].map((n) => n.textContent),
+            })
+          })
+          observer.observe(content, { subtree: true, childList: true, characterData: true, attributes: true })
+          try {
+            await cdp.sendCommand('Input.insertText', { text: character })
+            await wait(120)
+            steps.push({ character, before, after: snapshot(), transactions, mutations, selectionWrites, focusCalls, resizes,
+              sameField: target ? target.liveView().dom === c.field : composer().field === c.field,
+              sameEditor: liveView() === view && content.isConnected && liveView().contentDOM === content,
+              sameLine: line === content.querySelector('.cm-line'),
+              sameAnchor: nativeAnchor === document.getSelection()?.anchorNode })
+          } finally { observer.disconnect() }
+        }
+      } finally {
+        view.update = original
+        resizing.disconnect()
+        content.focus = originalFocus
+        for (const [name, original] of selectionMethods) selection[name] = original
+        if (owned) cdp.detach()
+      }
+      const result = { initial, steps, shot: await shoot(label) }
+      fs.writeFileSync(${JSON.stringify(SHOTS)} + '/' + label + '.json', JSON.stringify(result, null, 2))
+      return result
+    },
+
+    async compareTypingTrace() {
+      const chat = await this.typingTrace()
+      let leaf = null
+      let file = null
+      try {
+        file = await app.vault.create('composer-typing-' + Date.now() + '.md', 'sample ')
+        leaf = app.workspace.getLeaf('tab')
+        await leaf.openFile(file, { active: true })
+        await leaf.setViewState({ type: 'markdown', state: { file: file.path, mode: 'source' }, active: true })
+        const editor = leaf.view.editor
+        const target = {
+          field: editor.cm.dom,
+          set: (text) => editor.cm.dispatch({ changes: { from: 0, to: editor.cm.state.doc.length, insert: text }, selection: { anchor: text.length } }),
+          focus: () => editor.focus(),
+          liveView: () => leaf.view.editor.cm,
+        }
+        const note = await this.typingTrace(target, 'phone-note-typing')
+        return { chat, note }
+      } finally {
+        leaf?.detach()
+        if (file) await app.vault.delete(file)
+        await chats.revealSidebar({ focus: false })
+        composer().focus()
+        await wait(300)
+      }
+    },
+
+    async textareaTypingTrace() {
+      const steps = []
+      const cdp = win.webContents.debugger
+      const owned = !cdp.isAttached()
+      if (owned) cdp.attach('1.3')
+      try {
+        await window.__abeleTest.openNodeSessionFixture('empty')
+        const root = await until(() => document.querySelector('.abele-node-chat textarea')?.closest('.abele-node-chat'), 5000)
+        if (!root) throw new Error('no plain-text composer')
+        const c = window.__abeleTest.composer(root)
+        c.set('sample ')
+        c.focus()
+        document.documentElement.style.setProperty('--keyboard-height', '${KEYBOARD}px')
+        const event = new Event('keyboardWillShow')
+        event.keyboardHeight = ${KEYBOARD}
+        window.dispatchEvent(event)
+        await wait(600)
+        const field = c.field
+        if (!field.getClientRects().length || document.activeElement !== field) throw new Error('plain-text typing target must be visible and focused')
+        const snapshot = () => ({ field: rect(field), text: field.value, scrollTop: field.scrollTop,
+          selection: [field.selectionStart, field.selectionEnd] })
+        const descriptor = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')
+        const originalSelection = field.setSelectionRange
+        const originalFocus = field.focus
+        let valueWrites = 0, selectionWrites = 0, focusCalls = 0
+        Object.defineProperty(field, 'value', { configurable: true,
+          get() { return descriptor.get.call(this) },
+          set(value) { valueWrites++; descriptor.set.call(this, value) } })
+        field.setSelectionRange = function (...args) { selectionWrites++; return originalSelection.apply(this, args) }
+        field.focus = function (...args) { focusCalls++; return originalFocus.apply(this, args) }
+        try {
+          for (const character of 'typing') {
+            valueWrites = 0; selectionWrites = 0; focusCalls = 0
+            const before = snapshot()
+            const styles = []
+            const observer = new MutationObserver((records) => styles.push(...records.map((r) => r.oldValue)))
+            observer.observe(field, { attributes: true, attributeFilter: ['style'], attributeOldValue: true })
+            try {
+              await cdp.sendCommand('Input.insertText', { text: character })
+              await wait(120)
+              steps.push({ character, before, after: snapshot(), styles, valueWrites, selectionWrites, focusCalls,
+                sameField: window.__abeleTest.composer(root).field === field && field.isConnected })
+            } finally { observer.disconnect() }
+          }
+        } finally {
+          delete field.value
+          field.setSelectionRange = originalSelection
+          field.focus = originalFocus
+        }
+        const shot = await shoot('phone-textarea-typing')
+        c.set(Array.from({ length: 12 }, () => 'sample line').join('\\n'))
+        await wait(150)
+        const long = { ...snapshot(), overflow: getComputedStyle(field).overflowY, shot: await shoot('phone-textarea-long') }
+        c.set('two\\nlines')
+        await wait(150)
+        const short = { ...snapshot(), overflow: getComputedStyle(field).overflowY, shot: await shoot('phone-textarea-short') }
+        c.set('')
+        await wait(150)
+        const empty = { ...snapshot(), overflow: getComputedStyle(field).overflowY, shot: await shoot('phone-textarea-empty') }
+        const result = { steps, shot, long, short, empty, maxHeight: parseFloat(getComputedStyle(field).maxHeight) }
+        fs.writeFileSync(${JSON.stringify(SHOTS)} + '/phone-textarea-typing.json', JSON.stringify(result, null, 2))
+        return result
+      } finally {
+        document.documentElement.style.removeProperty('--keyboard-height')
+        window.dispatchEvent(new Event('keyboardWillHide'))
+        await window.__abeleTest.closeNodeSessionFixture()
+        if (owned) cdp.detach()
+      }
+    },
+
     async toggle() {
       const button = chatEl().querySelector('.abele-chat-input__expand')
       if (!button) throw new Error('no expand button')
@@ -403,12 +654,18 @@ interface Measure {
   shot: string
 }
 
+interface CaretComparison {
+  note: { content: string; line: string; primaryCursors: number }
+  composer: { content: string; line: string; primaryCursors: number }
+}
+
 const available = isObsidianRunning() && hasTestApi()
 
 const DRAFT = 'A long thought with **bold**, a list:\n- one\n- two\nand a link to [[sample-note]]'
 
 describe.skipIf(!available)('the chat composer, opened out', () => {
   let opened: { editor: boolean; livePreview: boolean }
+  let caret: CaretComparison
   let collapsed: Measure
   let expanded: Measure
   let suggest: { open: boolean; activeIsComposer: boolean }
@@ -424,6 +681,7 @@ describe.skipIf(!available)('the chat composer, opened out', () => {
     setFocusEmulation(true)
     try {
       opened = await step('open()')
+      caret = await step('compareNoteCaret()')
       await step(`write(${JSON.stringify(DRAFT)})`)
       collapsed = await step('measure("desktop-collapsed")')
       await step('toggle()')
@@ -469,6 +727,10 @@ describe.skipIf(!available)('the chat composer, opened out', () => {
   it('is Obsidian’s note editor, in live preview', () => {
     expect(opened.editor).toBe(true)
     expect(opened.livePreview).toBe(true)
+  })
+
+  it('uses the same native and drawn caret as an ordinary note editor', () => {
+    expect(caret.composer).toEqual(caret.note)
   })
 
   it('opens out to fill the chat, the conversation hidden under it', () => {
@@ -524,6 +786,49 @@ describe.skipIf(!available)('the chat composer, opened out', () => {
     let size: [number, number] = [0, 0]
     let up: Measure
     let typedDown: Measure
+    let phoneCaret: CaretComparison
+    let typing: {
+      steps: Array<{
+        character: string
+        before: { field: number[]; content: number[]; scrollTop: number; text: string }
+        after: {
+          field: number[]
+          content: number[]
+          scrollTop: number
+          text: string
+          selection: number
+        }
+        sameLine: boolean
+        sameAnchor: boolean
+        sameField: boolean
+        sameEditor: boolean
+        resizes: Array<{ target: string; size: number[] }>
+        selectionWrites: Array<{ method: string; stack: string }>
+        focusCalls: number
+        transactions: Array<{
+          changes: Array<{ from: number; to: number; insert: string }>
+          input: boolean
+          selection?: number
+        }>
+      }>
+    }
+    let noteTyping: typeof typing
+    let textareaTyping: {
+      long: { field: { height: number }; overflow: string }
+      short: { field: { height: number }; overflow: string }
+      empty: { field: { height: number }; overflow: string }
+      maxHeight: number
+      steps: Array<{
+        character: string
+        before: { field: object; text: string; scrollTop: number }
+        after: { field: object; text: string; scrollTop: number; selection: number[] }
+        styles: string[]
+        valueWrites: number
+        selectionWrites: number
+        focusCalls: number
+        sameField: boolean
+      }>
+    }
     const tapAreas: Array<{ gaps: number[]; misses: unknown[]; shot: string }> = []
 
     beforeAll(async () => {
@@ -540,7 +845,15 @@ describe.skipIf(!available)('the chat composer, opened out', () => {
       setFocusEmulation(true)
       try {
         await step('open()')
+        phoneCaret = await step('compareNoteCaret()')
         tapAreas.push(await step('tapArea("phone-empty-tap-area")'))
+        await step('keyboard(true)')
+        const traces = await step<{ chat: typeof typing; note: typeof typing }>(
+          'compareTypingTrace()'
+        )
+        typing = traces.chat
+        noteTyping = traces.note
+        await step('keyboard(false)')
         await step('write("sample draft")')
         tapAreas.push(await step('tapArea("phone-filled-tap-area")'))
         await step('toggle()')
@@ -553,6 +866,7 @@ describe.skipIf(!available)('the chat composer, opened out', () => {
         await step(`write(${JSON.stringify(lines)})`)
         typedDown = await step('measure("phone-expanded-typed")')
         await step('keyboard(false)')
+        textareaTyping = await step('textareaTypingTrace()')
       } finally {
         await step('close()')
       }
@@ -566,6 +880,61 @@ describe.skipIf(!available)('the chat composer, opened out', () => {
         )
       await reloadApp('app.emulateMobile(false)')
     }, 180_000)
+
+    it('types without moving the field or rewriting existing content and selection', () => {
+      for (const report of [typing, noteTyping]) {
+        expect(report.steps).toHaveLength(6)
+        for (const step of report.steps) {
+          expect(step.after.field, JSON.stringify(step)).toEqual(step.before.field)
+          expect(step.after.content, JSON.stringify(step)).toEqual(step.before.content)
+          expect(step.after.scrollTop, JSON.stringify(step)).toBe(step.before.scrollTop)
+          expect(step.after.text).toBe(step.before.text + step.character)
+          expect(step.after.selection).toBe(step.after.text.length)
+          expect(step.sameLine, JSON.stringify(step)).toBe(true)
+          expect(step.sameAnchor, JSON.stringify(step)).toBe(true)
+          expect(step.sameField, JSON.stringify(step)).toBe(true)
+          expect(step.sameEditor, JSON.stringify(step)).toBe(true)
+          expect(step.resizes, JSON.stringify(step)).toEqual([])
+          expect(step.selectionWrites, JSON.stringify(step)).toEqual([])
+          expect(step.focusCalls, JSON.stringify(step)).toBe(0)
+          expect(
+            step.transactions.filter(
+              (tr) => !tr.input && (tr.changes.length || tr.selection !== undefined)
+            ),
+            JSON.stringify(step)
+          ).toEqual([])
+          const changes = step.transactions.flatMap((tr) => tr.changes)
+          expect(changes, JSON.stringify(step)).toEqual([
+            { from: step.before.text.length, to: step.before.text.length, insert: step.character },
+          ])
+        }
+      }
+    })
+
+    it('uses the note editor’s computed caret colors and primary cursor count', () => {
+      expect(phoneCaret.composer).toEqual(phoneCaret.note)
+    })
+
+    it('leaves the plain-text composer height, value, selection and DOM alone while typing', () => {
+      expect(textareaTyping.steps).toHaveLength(6)
+      for (const step of textareaTyping.steps) {
+        expect(step.after.field, JSON.stringify(step)).toEqual(step.before.field)
+        expect(step.after.scrollTop).toBe(step.before.scrollTop)
+        expect(step.after.text).toBe(step.before.text + step.character)
+        expect(step.after.selection).toEqual([step.after.text.length, step.after.text.length])
+        expect(step.styles, JSON.stringify(step)).toEqual([])
+        expect(step.valueWrites).toBe(0)
+        expect(step.selectionWrites).toBe(0)
+        expect(step.focusCalls).toBe(0)
+        expect(step.sameField).toBe(true)
+      }
+      expect(textareaTyping.long.field.height).toBeLessThanOrEqual(textareaTyping.maxHeight + 1)
+      expect(textareaTyping.long.overflow).toBe('auto')
+      expect(textareaTyping.short.field.height).toBeLessThan(textareaTyping.long.field.height)
+      expect(textareaTyping.short.overflow).toBe('hidden')
+      expect(textareaTyping.empty.field.height).toBeLessThan(textareaTyping.short.field.height)
+      expect(textareaTyping.empty.field.height).toBeGreaterThan(0)
+    })
 
     it('fills the chat above the keyboard', () => {
       const floor = Math.min(up.keyboardTop, up.toolbarTop ?? Infinity)

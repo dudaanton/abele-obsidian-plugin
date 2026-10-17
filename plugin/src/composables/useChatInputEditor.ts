@@ -60,17 +60,48 @@ export function useChatInputEditor(options: InputEditorOptions) {
       el.style.removeProperty('overflow-y')
       return
     }
-    // One line at least and eight at most (Obsidian's line height): the stylesheet holds both
-    // limits, so the field is let down to its least and grown to what the text needs.
-    el.style.removeProperty('height')
-    const most = parseFloat(getComputedStyle(el).maxHeight) || Infinity
-    el.style.height = `${Math.min(el.scrollHeight, most)}px`
-    el.style.overflowY = el.scrollHeight > most ? 'auto' : 'hidden'
+    const style = getComputedStyle(el)
+    const most = parseFloat(style.maxHeight) || Infinity
+    let needed = el.scrollHeight
+    // scrollHeight includes the current height, so shrinking needs a separate measurement.
+    // Never collapse the live field to measure it: that resets the caret's layout on every
+    // input, even while the words still fit on the same line.
+    if (el.style.height && needed <= el.clientHeight) {
+      const measure = el.cloneNode(false) as HTMLTextAreaElement
+      measure.removeAttribute('id')
+      measure.removeAttribute('name')
+      measure.classList.remove('abele-chat-input__field')
+      measure.setAttribute('aria-hidden', 'true')
+      measure.tabIndex = -1
+      measure.value = el.value
+      Object.assign(measure.style, {
+        position: 'fixed',
+        left: '0',
+        top: '0',
+        visibility: 'hidden',
+        pointerEvents: 'none',
+        width: style.width,
+        height: '0px',
+        minHeight: '0px',
+        maxHeight: 'none',
+        overflowY: 'hidden',
+      })
+      el.parentElement?.appendChild(measure)
+      try {
+        needed = measure.scrollHeight
+      } finally {
+        measure.remove()
+      }
+    }
+    const height = `${Math.min(needed, most)}px`
+    const overflow = needed > most ? 'auto' : 'hidden'
+    if (el.style.height !== height) el.style.height = height
+    if (el.style.overflowY !== overflow) el.style.overflowY = overflow
   }
 
   const onInput = (e: Event) => {
     text.value = (e.target as HTMLTextAreaElement).value
-    nextTick(autoResize)
+    // The text watcher sizes native and external changes alike, once per update.
   }
 
   const syncText = (value: string) => {
@@ -78,7 +109,7 @@ export function useChatInputEditor(options: InputEditorOptions) {
       echoed = value
       editor.set(value)
     }
-    nextTick(autoResize)
+    void nextTick(autoResize)
   }
 
   /** `atEnd` puts the cursor after what is already typed — text somebody else put there. */

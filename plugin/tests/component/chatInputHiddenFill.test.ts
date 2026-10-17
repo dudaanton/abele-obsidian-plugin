@@ -37,6 +37,72 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+})
+
+it('does not reset the focused textarea height or selection on a same-line input', async () => {
+  const wrapper = mount(AiChatInput, {
+    attachTo: document.body,
+    props: {
+      textOnly: true,
+      isStreaming: false,
+      isBusy: false,
+      canContinue: false,
+      tokenDisplay: '',
+      scopeLabel: '',
+    },
+  })
+  const field = wrapper.get('textarea').element as HTMLTextAreaElement
+  field.style.height = '36px'
+  field.style.maxHeight = '204px'
+  field.style.overflowY = 'hidden'
+  field.style.width = '300px'
+  field.getClientRects = () => [new DOMRect(0, 0, 300, 36)] as never
+  Object.defineProperty(field, 'clientHeight', {
+    configurable: true,
+    get: () => Number.parseFloat(field.style.height) || 36,
+  })
+  vi.spyOn(HTMLTextAreaElement.prototype, 'scrollHeight', 'get').mockImplementation(function (
+    this: HTMLTextAreaElement
+  ) {
+    return Math.max(
+      Number.parseFloat(this.style.height) || 0,
+      this.value.split('\n').length * 24 + 12
+    )
+  })
+  const mutations: MutationRecord[] = []
+  const observer = new MutationObserver((records) => mutations.push(...records))
+  observer.observe(field, { attributes: true, attributeFilter: ['style'], attributeOldValue: true })
+  try {
+    field.focus()
+    field.value = 'sample text'
+    field.setSelectionRange(3, 3)
+    field.dispatchEvent(new Event('input', { bubbles: true }))
+    await flushPromises()
+
+    expect(mutations.map((m) => m.oldValue)).toEqual([])
+    expect(wrapper.get('textarea').element).toBe(field)
+    expect(document.activeElement).toBe(field)
+    expect(field.selectionStart).toBe(3)
+    expect(field.selectionEnd).toBe(3)
+    expect(field.style.height).toBe('36px')
+
+    field.value = Array.from({ length: 12 }, () => 'sample line').join('\n')
+    field.dispatchEvent(new Event('input', { bubbles: true }))
+    await flushPromises()
+    expect(field.style.height).toBe('204px')
+    expect(field.style.overflowY).toBe('auto')
+
+    field.value = 'two\nlines'
+    field.dispatchEvent(new Event('input', { bubbles: true }))
+    await flushPromises()
+    expect(field.style.height).toBe('60px')
+    expect(field.style.overflowY).toBe('hidden')
+    expect(wrapper.findAll('textarea')).toHaveLength(1)
+  } finally {
+    observer.disconnect()
+    wrapper.unmount()
+  }
 })
 
 describe('text put in while the chat is hidden', () => {
