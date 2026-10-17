@@ -105,11 +105,21 @@ function ready() {
     observer = new View(measure)
     observer.observe(doc.body)
   }
-  // A picture that does not arrive leaves its place, quiet, at the size the card gave it.
+  // A picture that does not arrive leaves a quiet plate in its place, at the size the card gave it.
+  const missing = (img: HTMLImageElement) => {
+    // The frame's own document, which has none of Obsidian's helpers on its elements.
+    // eslint-disable-next-line obsidianmd/prefer-create-el
+    const plate = doc.createElement('div')
+    plate.className = `${img.className} picture is-missing`.trim()
+    plate.setAttribute('role', 'img')
+    plate.setAttribute('aria-label', img.alt)
+    img.replaceWith(plate)
+    measure()
+  }
   doc.querySelectorAll('img').forEach((img) => {
     img.addEventListener('load', measure)
-    img.addEventListener('error', () => img.classList.add('is-broken'))
-    if (img.complete && !img.naturalWidth && img.getAttribute('src')) img.classList.add('is-broken')
+    img.addEventListener('error', () => missing(img))
+    if (img.complete && !img.naturalWidth && img.getAttribute('src')) missing(img)
   })
   doc.addEventListener('click', onClick)
 }
@@ -182,6 +192,8 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: var(--size-4-2);
   margin-top: var(--size-2-3);
+  // Room for the last glyph's focus ring inside the chat's edge.
+  padding-inline-end: var(--size-2-2);
   color: var(--text-faint);
   font-size: var(--font-ui-smaller);
 }

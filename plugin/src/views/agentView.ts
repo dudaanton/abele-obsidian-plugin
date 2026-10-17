@@ -88,10 +88,11 @@ img { display: block; max-width: 100%; }
   background: var(--background-primary); }
 .card > img, .card .picture { width: 100%; aspect-ratio: 4 / 3; object-fit: cover;
   background: var(--background-secondary); }
+.picture.is-missing { background: var(--background-modifier-hover); }
 .card .body { display: flex; flex: 1; flex-direction: column; gap: var(--size-2-2);
   padding: var(--size-4-2) var(--size-4-3) var(--size-4-3); }
 .title { font-weight: var(--font-semibold); line-height: var(--line-height-tight); }
-.price { font-weight: var(--font-semibold); font-variant-numeric: tabular-nums; }
+.price { font-weight: var(--font-semibold); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .meta { color: var(--text-muted); font-size: var(--font-ui-small); line-height: var(--line-height-tight); }
 .tag { display: inline-block; padding: 0 var(--size-4-1); border-radius: var(--radius-s);
   background: var(--background-modifier-hover); color: var(--text-muted); font-size: var(--font-ui-smaller); }
@@ -108,7 +109,11 @@ img { display: block; max-width: 100%; }
 table { width: 100%; border-collapse: collapse; font-size: var(--font-ui-small); }
 th, td { padding: var(--size-2-3) var(--size-4-2); border-bottom: 1px solid var(--background-modifier-border); text-align: start; }
 th { color: var(--text-muted); font-weight: var(--font-semibold); }
-img.is-broken { visibility: hidden; }
+@media (max-width: 24em) {
+  .card { flex-direction: row; }
+  .card > img, .card .picture { flex: none; width: 5.5em; aspect-ratio: auto; align-self: stretch; }
+  .card .body { padding: var(--size-4-2) var(--size-4-2) var(--size-4-2) var(--size-4-3); }
+}
 `
 
 const DROPPED = 'script, iframe, frame, object, embed, form, base, meta, link, noscript'
