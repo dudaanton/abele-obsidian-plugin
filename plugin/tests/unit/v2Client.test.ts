@@ -18,6 +18,28 @@ const authority = {
   limits: { max_file_bytes: 1024, quota_bytes: null },
 }
 describe('v2 token client', () => {
+  it.each([' ', '\t', '\n', '\r\n', '\u00a0', '\u200b', ' \t\r\n\u00a0\u200b'])(
+    'ignores pasted whitespace %j throughout a padded token',
+    (whitespace) => {
+      const paddedToken = { ...token, scope: { ...token.scope, id: 'rootx' } }
+      const text = btoa(JSON.stringify(paddedToken))
+      expect(text.endsWith('==')).toBe(true)
+      expect(decodeAccessToken(whitespace + text.split('').join(whitespace) + whitespace)).toEqual(
+        paddedToken
+      )
+    }
+  )
+  it.each([
+    () => encoded().slice(0, -1),
+    () => encoded() + '=',
+    () => encoded().slice(0, 12) + '!' + encoded().slice(13),
+    () => btoa('{'),
+    () => btoa(JSON.stringify({ ...token, key: 'short' })),
+    () => 'A'.repeat(8196),
+  ])('keeps damaged tokens rejected as bad-token', (damage) => {
+    expect(() => decodeAccessToken(damage())).toThrow(V2ClientError)
+    expect(() => decodeAccessToken(damage())).toThrow('Sync connection: bad-token')
+  })
   it('decodes the QR payload without Node APIs and rejects malformed or insecure tokens', () => {
     expect(decodeAccessToken(encoded())).toEqual(token)
     for (const text of [

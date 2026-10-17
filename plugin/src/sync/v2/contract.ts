@@ -41,7 +41,7 @@ export function encodeAccessToken(value: V2AccessToken): string {
 }
 export function decodeAccessToken(text: string): V2AccessToken {
   try {
-    const encoded = text.trim()
+    const encoded = text.replace(/[\s\u200b]/g, '')
     if (
       encoded.length > 8192 ||
       !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)
