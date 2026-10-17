@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * What the map says when it has nothing, or not everything, to draw: one plate at the top of
  * the map with what is the matter and the one thing that helps. A place that cannot be drawn is
@@ -30,65 +31,59 @@ export function plateFor(
     case 'no-property':
       return {
         icon: 'map-pin',
-        title: 'Where are the coordinates?',
-        text: "Pick the property or formula that holds each place's coordinates.",
-        action: 'Configure view',
+        title: t('maps.noProperty'),
+        text: t('maps.pickProperty'),
+        action: t('maps.configure'),
       }
     case 'no-records':
       return {
         icon: 'map',
-        title: 'No notes in this base yet',
-        text: ctx.phone
-          ? 'Press and hold the map to add a place there.'
-          : 'Right-click the map to add a place there.',
+        title: t('maps.noRecords'),
+        text: ctx.phone ? t('maps.hold') : t('maps.rightClick'),
       }
     case 'filtered':
       return {
         icon: 'list-filter',
-        title: 'No place matches the filters',
-        text: 'The filters leave nothing to show.',
-        action: 'Filters',
+        title: t('maps.filtered'),
+        text: t('maps.filtersEmpty'),
         variant: 'no-matches',
       }
     case 'searched':
       return {
         icon: 'search-x',
-        title: 'Nothing found',
-        text: `No place in this base matches “${ctx.query ?? ''}”.`,
+        title: t('maps.nothing'),
+        text: t('maps.searchEmpty', { query: ctx.query ?? '' }),
         variant: 'no-matches',
       }
     case 'no-coordinates':
       return {
         icon: 'map-pin-off',
-        title:
-          ctx.notes === 1
-            ? 'The note has no coordinates'
-            : `None of ${ctx.notes} notes has coordinates`,
-        text: 'Add coordinates to a note, or pick another property in the view settings.',
-        action: 'Show the notes',
+        title: t('maps.noneCoordinates', { count: ctx.notes }),
+        text: t('maps.addCoordinates'),
+        action: t('maps.showNotes'),
       }
     case 'offline':
       return {
         icon: 'wifi-off',
-        title: 'The map could not load',
-        text: 'No connection to the map server. The places are still here.',
-        action: 'Try again',
+        title: t('maps.loadFailed'),
+        text: t('maps.offline'),
+        action: t('maps.retry'),
         variant: 'error',
       }
     case 'no-webgl':
       return {
         icon: 'monitor-x',
-        title: 'This device cannot draw maps',
-        text: 'Graphics acceleration is off or unavailable here.',
-        action: 'Show as a list',
+        title: t('maps.noWebgl'),
+        text: t('maps.graphics'),
+
         variant: 'error',
       }
     case 'lost-context':
       return {
         icon: 'monitor-x',
-        title: 'The map stopped drawing',
-        text: 'The graphics card let go of it, often after sleep.',
-        action: 'Draw again',
+        title: t('maps.stopped'),
+        text: t('maps.lostContext'),
+        action: t('maps.drawAgain'),
         variant: 'error',
       }
     default:

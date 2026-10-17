@@ -1955,6 +1955,23 @@ With place restoration off, the timeline starts at today. Search windows are not
 
 ## Places
 
+The separate Abele Bases map view uses `type: abele-map`; the `map` type remains owned by
+Obsidian Maps. It reads the upstream 0.2.2 option keys `coordinates`, `markerIcon`,
+`markerColor`, `center`, `defaultZoom`, `minZoom`, `maxZoom`, `mapHeight`, `mapTiles` and
+`mapTilesDark`. Selectors are native Bases property IDs (`note.*`, `formula.*`); Bases owns
+formula evaluation, filters, search and row order. `groupNearby` defaults to true and can be
+set to false for separate markers. Map viewing, panning, theme changes and filtering do not
+write notes or Base configuration. History camera state is ephemeral. Only explicit menu
+actions save `center` or `defaultZoom`. Native Bases note creation writes a compatible
+`lat, lon` string into an ordinary note property chosen by the user, never a formula output.
+
+Plugin settings store `mapBackgrounds`, an ordered list of `{ id, name, light, dark }` objects;
+`light` and `dark` are URL arrays. Multiple raster templates draw layers. Missing dark URLs
+fall back to the light URLs. The list travels in the Maps settings-transfer section.
+Explicitly copying upstream backgrounds reads its `tileSets` list without writing it.
+Background selection in an open map and device-location watches are not persisted. Location
+watches are released when that map closes. This view does not migrate existing maps.
+
 A place is a note with its coordinates in one property, written `lat, lon` — `coordinates:
 "56.9496, 24.1052"` by default, or whatever `mapCoordinatesProperty` names in this vault. The
 map block accepts both `coordinates` and `location`. Five decimals is about a metre, which is

@@ -1,3 +1,4 @@
+import type { Background } from '@/maps/core/model'
 import type { MapStyleChoice } from '@/helpers/mapStyles'
 import type { AiChatHistoryEntry, AiSettings } from '@/ai/types'
 import type { AutomationRule } from '@/automations/types'
@@ -76,6 +77,7 @@ export class AbeleConfig {
   public automations: AutomationRule[] = []
   public mapCoordinatesProperty: string
   public mapStyle: MapStyleChoice | undefined
+  public mapBackgrounds: Background[] = []
   public mapStyleUrl: string
   public snippetsFolder: string
   public traceNotesFolder: string

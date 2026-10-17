@@ -1,3 +1,4 @@
+import { copyMapLocation } from '@/maps/copyLocation'
 import { t } from '@/i18n'
 import { type Editor, Notice, type Plugin } from 'obsidian'
 import dayjs from 'dayjs'
@@ -42,6 +43,15 @@ interface CoreCommandHost extends Plugin {
 
 /** The general palette and ribbon section, independent of the AI feature switches. */
 export function registerCoreCommands(plugin: CoreCommandHost) {
+  const locationAbort = new AbortController()
+  plugin.register(() => locationAbort.abort())
+  plugin.addCommand({
+    id: 'copy-current-map-location',
+    name: t('commands.copy-current-map-location'),
+    callback: () => {
+      void copyMapLocation(locationAbort.signal)
+    },
+  })
   plugin.addCommand({
     id: 'review-key-destinations',
     name: t('commands.review-key-destinations'),

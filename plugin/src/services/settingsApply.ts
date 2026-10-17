@@ -1,3 +1,4 @@
+import { backgroundsFrom } from '@/maps/core/model'
 import { zenSettings } from '@/zen/zenSession'
 import { migrateAgents } from '@/ai/agents/migration'
 import { mergeChatIndex } from '@/ai/chatIndexFile'
@@ -218,6 +219,7 @@ export function applySettingsTo(
   config.mapCoordinatesProperty =
     settings?.mapCoordinatesProperty ?? DEFAULT_SETTINGS.mapCoordinatesProperty
   config.mapStyle = settings?.mapStyle
+  config.mapBackgrounds = backgroundsFrom(settings?.mapBackgrounds)
   config.mapStyleUrl = settings?.mapStyleUrl ?? DEFAULT_SETTINGS.mapStyleUrl
   config.snippetsFolder = settings?.snippetsFolder ?? DEFAULT_SETTINGS.snippetsFolder
   config.traceNotesFolder =
@@ -320,6 +322,7 @@ export function exportSettingsOf(config: AbeleConfig, outOfSettings: boolean): A
     mapCoordinatesProperty: config.mapCoordinatesProperty,
     mapStyle: config.mapStyle,
     mapStyleUrl: config.mapStyleUrl,
+    mapBackgrounds: config.mapBackgrounds,
     snippetsFolder: config.snippetsFolder,
     traceNotesFolder: config.traceNotesFolder,
     zen: config.zen,

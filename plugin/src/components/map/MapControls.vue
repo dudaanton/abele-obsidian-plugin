@@ -2,8 +2,8 @@
   <!-- The map's glyphs as the canvas floats its own: Obsidian Canvas's control column. -->
   <div class="canvas-controls abele-map-controls">
     <div class="canvas-control-group">
-      <ControlItem icon="plus" tooltip="Zoom in" @click="emit('zoom', 1)" />
-      <ControlItem icon="minus" tooltip="Zoom out" @click="emit('zoom', -1)" />
+      <ControlItem icon="plus" :tooltip="t('maps.zoomIn')" @click="emit('zoom', 1)" />
+      <ControlItem icon="minus" :tooltip="t('maps.zoomOut')" @click="emit('zoom', -1)" />
     </div>
     <div class="canvas-control-group">
       <!-- Only once the map is turned or tilted: the way back to north up. -->
@@ -12,7 +12,7 @@
         class="abele-map-controls__north"
         :style="{ '--abele-map-bearing': `${-state.bearing}deg` }"
         icon="navigation-2"
-        tooltip="Point north"
+        :tooltip="t('maps.north')"
         @click="emit('north')"
       />
       <ControlItem
@@ -24,18 +24,23 @@
       />
       <ControlItem
         :icon="state.full ? 'minimize' : 'maximize'"
-        :tooltip="state.full ? 'Exit full screen' : 'Full screen'"
+        :tooltip="state.full ? t('maps.exitFull') : t('maps.full')"
         @click="emit('full')"
       />
     </div>
     <!-- A base's map: which background it is drawn on. -->
     <div v-if="layers" class="canvas-control-group">
-      <ControlItem icon="layers" tooltip="Background" @click="(e: MouseEvent) => emit('layers', e)" />
+      <ControlItem
+        icon="layers"
+        :tooltip="t('maps.background')"
+        @click="(e: MouseEvent) => emit('layers', e)"
+      />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 // What a map in a note or a chat offers to do, in the plugin's glyphs with words in tooltips:
 // zoom, back to north once turned, where the device is, and the whole screen.
 import { computed } from 'vue'
@@ -45,12 +50,12 @@ import type { MapControlsState } from './mapControlsState'
 const props = defineProps<{ state: MapControlsState; layers?: boolean }>()
 const locateTip = computed(() =>
   props.state.locating
-    ? 'Finding where you are…'
+    ? t('maps.locating')
     : props.state.locationOff
-      ? 'Location is off for Obsidian'
+      ? t('maps.locationOff')
       : props.state.following
-        ? 'Following you. Press to stop'
-        : 'Show my location'
+        ? t('maps.following')
+        : t('maps.showLocation')
 )
 const emit = defineEmits<{
   zoom: [step: 1 | -1]

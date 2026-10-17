@@ -1,36 +1,38 @@
 <template>
   <ObsidianModal
-    :title="isNew ? 'New background' : 'Edit background'"
+    :size="Platform.isPhone ? 'tall' : undefined"
+    :title="isNew ? t('maps.newBackground') : t('maps.editBackground')"
     close-in-footer
     @close="emit('close')"
   >
     <div class="abele-map-bg-editor">
-      <Setting name="Name" :error="nameError">
-        <Input v-model="name" placeholder="Topographic" />
+      <Setting :name="t('maps.name')" :error="nameError">
+        <Input v-model="name" :placeholder="t('maps.name')" />
       </Setting>
       <!-- Addresses are long: each field under its words, the dialog's full width. -->
       <div class="abele-map-bg-editor__field">
-        <div class="setting-item-name">Light</div>
+        <div class="setting-item-name">{{ t('maps.light') }}</div>
         <div class="setting-item-description">
-          One address per line: a style.json, or tile templates with {z}/{x}/{y}. Several templates
-          are drawn as layers, one over the other.
+          {{ t('maps.addressHint') }}
         </div>
-        <textarea
+        <Input
           v-model="light"
+          as-text-area
           class="abele-map-bg-editor__urls"
-          rows="3"
+          :rows="3"
           spellcheck="false"
           placeholder="https://tiles.example.com/{z}/{x}/{y}.png"
         />
         <div v-if="lightError" class="abele-map-bg-editor__error">{{ lightError }}</div>
       </div>
       <div class="abele-map-bg-editor__field">
-        <div class="setting-item-name">Dark</div>
-        <div class="setting-item-description">Optional. Without it the light one is used in a dark theme too.</div>
-        <textarea
+        <div class="setting-item-name">{{ t('maps.dark') }}</div>
+        <div class="setting-item-description">{{ t('maps.darkHint') }}</div>
+        <Input
           v-model="dark"
+          as-text-area
           class="abele-map-bg-editor__urls"
-          rows="3"
+          :rows="3"
           spellcheck="false"
           placeholder="https://tiles.example.com/dark/{z}/{x}/{y}.png"
         />
@@ -38,14 +40,16 @@
     </div>
     <template #footer>
       <div class="modal-button-container">
-        <Button text="Cancel" tooltip="Close without saving" @click="emit('close')" />
-        <Button text="Save" accent tooltip="Save the background" @click="save" />
+        <Button :text="t('maps.cancel')" :tooltip="t('kit.cancelTooltip')" @click="emit('close')" />
+        <Button :text="t('maps.save')" accent :tooltip="t('maps.save')" @click="save" />
       </div>
     </template>
   </ObsidianModal>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+import { Platform } from 'obsidian'
 // One background's name and addresses. Nothing is saved until Save; Cancel and Escape leave the
 // list as it was. A name and at least one light address are needed.
 import { computed, ref } from 'vue'
@@ -68,9 +72,9 @@ const lines = (s: string) =>
     .split('\n')
     .map((l) => l.trim())
     .filter(Boolean)
-const nameError = computed(() => (tried.value && !name.value.trim() ? 'Give it a name' : ''))
+const nameError = computed(() => (tried.value && !name.value.trim() ? t('maps.giveName') : ''))
 const lightError = computed(() =>
-  tried.value && !lines(light.value).length ? 'At least one address is needed' : ''
+  tried.value && !lines(light.value).length ? t('maps.needAddress') : ''
 )
 
 function save() {

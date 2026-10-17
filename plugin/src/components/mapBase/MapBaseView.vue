@@ -39,14 +39,17 @@
     </div>
 
     <div class="abele-map-base__stage">
-      <div ref="mapEl" class="abele-map abele-map-base__map" />
+      <div ref="mapEl" :hidden="noMap" class="abele-map abele-map-base__map" />
 
       <div class="abele-map-base__corner">
-        <div v-if="!listShown || phone" class="canvas-controls abele-map-base__plate-group">
+        <div
+          v-if="!batchOne && (!listShown || phone)"
+          class="canvas-controls abele-map-base__plate-group"
+        >
           <div class="canvas-control-group">
             <ControlItem
               :icon="phone ? 'list' : 'panel-left-open'"
-              :tooltip="phone ? 'Show as a list' : 'List beside the map'"
+              :tooltip="phone ? t('maps.showList') : t('maps.listBeside')"
               @click="showList"
             />
           </div>
@@ -72,8 +75,8 @@
         layers
         @zoom="(s: 1 | -1) => (s > 0 ? map?.zoomIn() : map?.zoomOut())"
         @north="map?.resetNorthPitch()"
-        @locate="emit('locate')"
-        @full="emit('full')"
+        @locate="locate"
+        @full="full"
         @layers="openBackgrounds"
       />
 
@@ -91,7 +94,12 @@
       </div>
     </div>
 
-    <ObsidianModal v-if="card" :size="phone ? 'tall' : undefined" modal-class="abele-map-card-modal" @close="card = null">
+    <ObsidianModal
+      v-if="card"
+      :size="phone ? 'tall' : undefined"
+      modal-class="abele-map-card-modal"
+      @close="card = null"
+    >
       <MapPlaceCard
         :place="card"
         :distance="distances[card.id]"
@@ -114,15 +122,17 @@
 </template>
 
 <script setup lang="ts">
-// The plugin's own Bases view, "Abele map", beside Obsidian Maps' "Map" rather than in its place:
+// The plugin's own Bases view, t('maps.viewName'), beside Obsidian Maps' "Map" rather than in its place:
 // it reads the same view settings, so a base moves over by picking it. Every note of the base that has coordinates as a mark of its glyph and
 // colour, Obsidian Maps' behaviour first (a press opens the note, pointing shows the properties,
 // the menus on a mark and on the map), and on top of it the place card, the list beside the map
 // sorted by distance, and nearby places joined into groups. Nothing is written by looking: the
 // view's centre and zoom change only by their menu items.
 import { computed, onMounted, onUnmounted, reactive, ref, shallowRef, watch } from 'vue'
-import { Keymap, Platform } from 'obsidian'
-import type { Map as MapLibreMap, Marker, Popup } from 'maplibre-gl'
+import { Keymap, Platform, Notice } from 'obsidian'
+import type { Map as MapLibreMap, Marker, Popup, StyleSpecification } from 'maplibre-gl'
+import { loadBackgroundStyle } from '@/maps/backgroundStyle'
+import { popupLayout } from '@/maps/core/popupLayout'
 import { loadMaplibre } from '@/helpers/loadMaplibre'
 import { ControlItem } from '../obsidian/ControlItem'
 import Icon from '../obsidian/Icon.vue'
@@ -135,14 +145,16 @@ import MapControls from '../map/MapControls.vue'
 import MapPlaceCard from './MapPlaceCard.vue'
 import MapPlaceList from './MapPlaceList.vue'
 import MapPlaceHover from './MapPlaceHover.vue'
-import { groupElement, pinElement } from './pins'
+import { t } from '@/i18n'
+import { mapLongPress } from '@/maps/longPress'
+import { MapFollowing } from '@/maps/core/following'
+import { PlaceLayers, PLACE_LAYER, CLUSTER_LAYER } from '@/maps/layers'
+import { camera, wrapLongitude, type Camera } from '@/maps/core/model'
 import { backgroundMenu, mapMenu, placeMenu, sortMenu, spotMenu } from './menus'
 import { plateFor, type MapProblem } from './problems'
 import {
   distance,
   formatDistance,
-  groupMarks,
-  skipWords,
   type MapPlace,
   type MapSkipped,
   type MapSortFrom,
@@ -154,13 +166,19 @@ import './mapBase.css'
 const props = withDefaults(
   defineProps<{
     places: MapPlace[]
+    batchOne?: boolean
+    history?: Camera
+    renderHover?: (place: MapPlace) => HTMLElement | null
+    decoratePlaceMenu?: (menu: Menu, place: MapPlace) => void
+    retryToken?: number
+    themeToken?: number
     skipped?: MapSkipped[]
-    /** Join nearby places; a view saved before the setting existed keeps separate marks. */
+    /** Nearby grouping is enabled unless explicitly switched off. */
     group?: boolean
     /** The style the map is drawn with; empty draws a plain ground (no connection). */
     styleUrl: string | object
     background: string
-    backgrounds: string[]
+    backgrounds: (string | { id: string; name: string })[]
     center?: { lat: number; lon: number }
     zoom?: number
     minZoom?: number
@@ -178,12 +196,21 @@ const props = withDefaults(
   }>(),
   {
     skipped: () => [],
-    group: false,
+    group: true,
     minZoom: 0,
     maxZoom: 18,
     problem: null,
     height: 400,
     cardState: 'ready',
+    history: undefined,
+    renderHover: undefined,
+    decoratePlaceMenu: undefined,
+    retryToken: 0,
+    themeToken: 0,
+    center: undefined,
+    zoom: undefined,
+    searchText: '',
+    me: null,
   }
 )
 const emit = defineEmits<{
@@ -201,6 +228,9 @@ const emit = defineEmits<{
   locate: []
   full: []
   'update:list': [on: boolean]
+  camera: [state: Camera]
+  failure: [problem: MapProblem]
+  hover: [place: MapPlace, event: MouseEvent]
 }>()
 
 const phone = Platform.isPhone
@@ -236,11 +266,7 @@ const noMap = computed(() => props.problem === 'no-webgl')
 const plate = computed(() =>
   plateFor(props.problem, { phone, query: props.searchText, notes: props.skipped.length })
 )
-const skippedTip = computed(() =>
-  props.skipped.length === 1
-    ? '1 note is not on the map'
-    : `${props.skipped.length} notes are not on the map`
-)
+const skippedTip = computed(() => t('maps.skipped', { count: props.skipped.length }))
 
 // The list's order: the base's own, or nearest first from the person or the map's centre.
 const from = computed(() => (sortFrom.value === 'me' ? props.me : sortCentre.value) ?? null)
@@ -262,110 +288,90 @@ const ordered = computed(() => {
 })
 
 // ── The map ────────────────────────────────────────────────────────────────────────────────
-let markers: Marker[] = []
 let hoverPopup: Popup | null = null
 let hoverTimer = 0
+let timerWindow: Window
 let meMarker: Marker | null = null
 let lib: typeof import('maplibre-gl') | null = null
 
-function drawMarks() {
+let layers: PlaceLayers | null = null
+let styleGeneration = 0
+let retainedBackground: StyleSpecification = { version: 8, sources: {}, layers: [] }
+function requestBackground() {
   const m = map.value
-  if (!m || !lib) return
-  markers.forEach((mk) => mk.remove())
-  markers = []
-  const doc = mapEl.value!.ownerDocument
-  const points = props.places.map((place) => {
-    const p = m.project([place.lon, place.lat])
-    return { place, x: p.x, y: p.y }
-  })
-  const atMax = m.getZoom() >= Math.min(props.maxZoom, 18) - 0.01
-  // The place picked, or pointed at in the list, always stands on its own, never inside a group.
-  const apart = (p: { place: MapPlace }) =>
-    p.place.id === selected.value || p.place.id === hovered.value
-  const marks = props.group
-    ? [
-        ...groupMarks(
-          points.filter((p) => !apart(p)),
-          atMax ? 0.5 : 44
-        ),
-        ...points.filter(apart).map((p) => ({ kind: 'place' as const, ...p })),
-      ]
-    : points.map((p) => ({ kind: 'place' as const, ...p }))
-  for (const mark of marks) {
-    if (mark.kind === 'place') {
-      const el = pinElement(doc, mark.place)
-      el.classList.toggle('is-selected', mark.place.id === selected.value)
-      el.classList.toggle('is-hovered', mark.place.id === hovered.value)
-      wirePin(el, mark.place)
-      markers.push(
-        new lib.Marker({ element: el }).setLngLat([mark.place.lon, mark.place.lat]).addTo(m)
-      )
-    } else {
-      const el = groupElement(doc, mark.places.length, mark.sameSpot)
-      const ll = m.unproject([mark.x, mark.y])
-      el.addEventListener('click', (e) => {
-        e.stopPropagation()
-        openGroup(mark.places, mark.sameSpot || atMax, el)
-      })
-      markers.push(new lib.Marker({ element: el }).setLngLat(ll).addTo(m))
-    }
-  }
+  if (!m) return
+  const generation = ++styleGeneration
+  void loadBackgroundStyle(props.styleUrl)
+    .then((style) => {
+      if (!disposed && map.value === m && generation === styleGeneration)
+        m.setStyle(style, { diff: false })
+    })
+    .catch(() => {
+      if (!disposed) emit('failure', 'offline')
+    })
 }
-
-function wirePin(el: HTMLElement, place: MapPlace) {
-  el.addEventListener('click', (e) => {
-    e.stopPropagation()
-    pressPlace(place, e)
-  })
-  el.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') pressPlace(place, e as unknown as MouseEvent)
-  })
-  el.addEventListener('contextmenu', (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    placeMenuAt(place, e)
-  })
-  if (phone) return
-  el.addEventListener('mouseenter', () => showHover(place))
-  el.addEventListener('mouseleave', hideHoverSoon)
+function drawMarks() {
+  if (map.value && layers)
+    void layers.update(props.places, props.group).catch(() => {
+      if (!disposed) emit('failure', 'offline')
+    })
 }
 
 /** A press on a mark: Obsidian Maps opens the note; on a phone, and beside the list, the card. */
 function pressPlace(place: MapPlace, e?: MouseEvent) {
-  if (phone) return openCard(place)
+  if (phone && !props.batchOne) return openCard(place)
   if (listShown.value) return pickFromList(place)
   emit('open', place, e && Keymap.isModEvent(e) ? 'tab' : 'here')
 }
 
 function showHover(place: MapPlace) {
-  window.clearTimeout(hoverTimer)
+  timerWindow?.clearTimeout(hoverTimer)
   if (!map.value || !lib) return
-  if (!place.properties.some((p) => p.value) && !place.title) return
+  if (!place.properties.length) return
   hoverPopup?.remove()
-  const content = mapEl.value!.ownerDocument.createElement('div')
-  renderKit(content, MapPlaceHover, {
-    place,
-    onOpen: (e: MouseEvent) => emit('open', place, Keymap.isModEvent(e) ? 'tab' : 'here'),
+  const content = props.renderHover
+    ? props.renderHover(place)
+    : mapEl.value.ownerDocument.win.createDiv()
+  if (!content) return
+  if (!props.renderHover)
+    renderKit(content, MapPlaceHover, {
+      place,
+      onOpen: (e: MouseEvent) => emit('open', place, Keymap.isModEvent(e) ? 'tab' : 'here'),
+    })
+  content.addEventListener('mouseenter', (event) => {
+    timerWindow?.clearTimeout(hoverTimer)
+    emit('hover', place, event)
   })
-  content.addEventListener('mouseenter', () => window.clearTimeout(hoverTimer))
   content.addEventListener('mouseleave', hideHoverSoon)
+  const container = map.value.getContainer()
+  const layout = popupLayout(
+    { width: container.clientWidth, height: container.clientHeight },
+    map.value.project([place.lon, place.lat]),
+    parseFloat(
+      container.ownerDocument.defaultView.getComputedStyle(container).getPropertyValue('--size-4-3')
+    ) || 12
+  )
+  content.setCssProps({ '--abele-map-popup-height': `${layout.height}px` })
   const popup = new lib.Popup({
     closeButton: false,
-    closeOnClick: true,
-    offset: 18,
+    closeOnClick: false,
+    anchor: layout.anchor,
+    offset: layout.offset,
     className: 'abele-map-base__hover',
-    maxWidth: 'none',
+    maxWidth: `${layout.width}px`,
   })
     .setLngLat([place.lon, place.lat])
     .setDOMContent(content)
     .addTo(map.value)
-  popup.on('close', () => unrenderKit(content))
+  popup.on('close', () => {
+    if (!props.renderHover) unrenderKit(content)
+  })
   hoverPopup = popup
 }
 
 function hideHoverSoon() {
-  window.clearTimeout(hoverTimer)
-  hoverTimer = window.setTimeout(() => {
+  timerWindow?.clearTimeout(hoverTimer)
+  hoverTimer = timerWindow.setTimeout(() => {
     hoverPopup?.remove()
     hoverPopup = null
   }, 300)
@@ -386,38 +392,51 @@ function leftOf(e: Event) {
 /** A menu opened by a control: under the control, whichever way it was pressed. */
 function under(e: Event) {
   const el = (e.currentTarget || e.target) as Element | null
-  return el instanceof Element ? below(el.closest('[role=button], .canvas-control-item') ?? el) : { x: 0, y: 0 }
+  return el?.instanceOf(Element)
+    ? below(el.closest('[role=button], .canvas-control-item') ?? el)
+    : { x: 0, y: 0 }
 }
 
-function openGroup(places: MapPlace[], spot: boolean, el: HTMLElement) {
+function openGroup(places: MapPlace[], spot: boolean, position: { x: number; y: number }) {
   if (!spot && map.value && lib) {
     const b = new lib.LngLatBounds()
     places.forEach((p) => b.extend([p.lon, p.lat]))
     map.value.fitBounds(b, { padding: 80, maxZoom: props.maxZoom })
     return
   }
-  spotMenu(places, (p) => (listShown.value && !phone ? pickFromList(p) : openCard(p))).showAtPosition(
-    below(el)
-  )
+  spotMenu(places, (p) =>
+    props.batchOne
+      ? emit('open', p, 'here')
+      : listShown.value && !phone
+        ? pickFromList(p)
+        : openCard(p)
+  ).showAtPosition(position)
 }
 
 function placeMenuAt(place: MapPlace, e: MouseEvent) {
   hoverPopup?.remove()
-  placeMenu(place, {
-    open: (p, where) => emit('open', p, where),
-    card: openCard,
-    copy,
-    remove: (p) => emit('remove', p),
-  }).showAtMouseEvent(e)
+  const menu = placeMenu(
+    place,
+    {
+      open: (p, where) => emit('open', p, where),
+      card: props.batchOne ? (p) => emit('open', p, 'here') : openCard,
+      copy,
+      remove: (p) => emit('remove', p),
+    },
+    !props.batchOne
+  )
+  props.decoratePlaceMenu?.(menu, place)
+  menu.showAtMouseEvent(e)
 }
 
 function mapMenuAt(lat: number, lon: number, x: number, y: number) {
+  lon = wrapLongitude(lon)
   const zoom = map.value?.getZoom() ?? 12
   mapMenu(lat, lon, zoom, {
     create: () => emit('create', lat, lon),
     copy: () => emit('copied', `${lat.toFixed(5)}, ${lon.toFixed(5)}`),
     centre: () => emit('centre', lat, lon),
-    zoom: () => emit('saveZoom', Math.round(zoom)),
+    zoom: () => emit('saveZoom', Math.round(zoom * 10) / 10),
   }).showAtPosition({ x, y })
 }
 
@@ -502,7 +521,9 @@ function openSkipped(e: MouseEvent | KeyboardEvent) {
   for (const s of props.skipped) {
     menu.addItem((i) =>
       i
-        .setTitle(`${s.title} · ${s.detail ?? skipWords[s.reason]}`)
+        .setTitle(
+          `${s.title} · ${s.detail ?? t(s.reason === 'no-coordinates' ? 'maps.noCoordinates' : s.reason === 'formula-error' ? 'maps.formulaError' : 'maps.unreadable')}`
+        )
         .setIcon(s.reason === 'no-coordinates' ? 'file' : 'file-warning')
         .onClick(() =>
           emit(
@@ -527,43 +548,135 @@ function plateAction(e: MouseEvent) {
 
 async function create() {
   if (noMap.value || !mapEl.value) return
+  timerWindow = mapEl.value.ownerDocument.defaultView
   lib = await loadMaplibre()
+  if (disposed) return
+  const initial = camera(
+    props.places,
+    {
+      center: props.center ? [props.center.lat, props.center.lon] : null,
+      zoom: props.zoom,
+      minZoom: props.minZoom,
+      maxZoom: props.maxZoom,
+    },
+    props.history
+  )
   const m = new lib.Map({
     container: mapEl.value,
-    style: props.styleUrl as string,
+    // Places become usable immediately, independently of the background server's response.
+    style:
+      typeof props.styleUrl === 'string'
+        ? retainedBackground
+        : (props.styleUrl as StyleSpecification),
     // Nothing to fit and no centre set: the whole world, not a point in the ocean at 0, 0.
-    center: props.center ? [props.center.lon, props.center.lat] : [10, 30],
-    zoom: props.center || props.places.length ? (props.zoom ?? 12) : 1.5,
+    center: initial.center,
+    zoom: initial.zoom,
     minZoom: props.minZoom,
     maxZoom: props.maxZoom,
+    // A tall viewport must not silently raise an explicitly configured zoom of zero.
+    transformConstrain: (center, zoom) => ({
+      center: new lib.LngLat(center.lng, Math.max(-85.051129, Math.min(85.051129, center.lat))),
+      zoom: Math.max(props.minZoom, Math.min(props.maxZoom, zoom)),
+    }),
     cooperativeGestures: !!props.embedded,
     attributionControl: { compact: true },
+    locale: {
+      'Map.Title': t('maps.viewName'),
+      'Marker.Title': t('maps.currentLocation'),
+      'AttributionControl.ToggleAttribution': t('maps.attribution'),
+      'AttributionControl.MapFeedback': t('maps.feedback'),
+      'CooperativeGesturesHandler.WindowsHelpText': t('maps.scrollHelp', { key: 'Ctrl' }),
+      'CooperativeGesturesHandler.MacHelpText': t('maps.scrollHelp', { key: '⌘' }),
+      'CooperativeGesturesHandler.MobileHelpText': t('maps.touchHelp'),
+    },
   })
   map.value = m
+  layers = new PlaceLayers(m, mapEl.value.ownerDocument)
+  m.on('style.load', () => {
+    retainedBackground = m.getStyle()
+    drawMarks()
+  })
+  m.on('error', () => {
+    emit('failure', 'offline')
+    // A failed style URL must not prevent the base's own places from being drawn.
+    if (!m.getStyle()?.version) m.setStyle(retainedBackground)
+  })
+  m.on('idle', () => {
+    if (!m.getSource('abele-places')) drawMarks()
+  })
+  m.on('webglcontextlost', () => emit('failure', 'lost-context'))
+  m.on('click', PLACE_LAYER, (event) => {
+    const id = event.features?.[0]?.properties?.id
+    const place = props.places.find((p) => p.id === id)
+    if (place) pressPlace(place, event.originalEvent)
+  })
+  m.on('mouseenter', PLACE_LAYER, (event) => {
+    m.getCanvas().addClass('abele-map-base__pointer')
+    const place = props.places.find((p) => p.id === event.features?.[0]?.properties?.id)
+    if (place && !phone) showHover(place)
+  })
+  m.on('mouseleave', PLACE_LAYER, () => {
+    m.getCanvas().removeClass('abele-map-base__pointer')
+    hideHoverSoon()
+  })
+  m.on('contextmenu', PLACE_LAYER, (event) => {
+    const place = props.places.find((p) => p.id === event.features?.[0]?.properties?.id)
+    if (place) {
+      event.originalEvent.preventDefault()
+      placeMenuAt(place, event.originalEvent)
+    }
+  })
+  m.on('click', CLUSTER_LAYER, (event) => {
+    void (async () => {
+      const feature = event.features?.[0]
+      if (!feature) return
+      const source = layers.source()
+      const id = Number(feature.properties?.cluster_id)
+      const leaves = await source.getClusterLeaves(id, Number(feature.properties?.point_count), 0)
+      if (disposed) return
+      const ids = new Set(leaves.map((f) => f.properties?.id))
+      const places = props.places.filter((p) => ids.has(p.id))
+      const same = places.every((p) => p.lat === places[0]?.lat && p.lon === places[0]?.lon)
+      if (same || m.getZoom() >= props.maxZoom - 1)
+        openGroup(places, true, { x: event.originalEvent.clientX, y: event.originalEvent.clientY })
+      else m.easeTo({ center: event.lngLat, zoom: await source.getClusterExpansionZoom(id) })
+    })().catch(() => console.debug('[maps] Cluster changed before it could open'))
+  })
+  resize = new ResizeObserver(() => m.resize())
+  resize.observe(mapEl.value)
+
   m.addControl(new lib.ScaleControl({ maxWidth: 100, unit: 'metric' }), 'bottom-left')
   m.on('load', () =>
     mapEl.value
       ?.querySelector('.maplibregl-ctrl-attrib')
       ?.classList.remove('maplibregl-compact-show')
   )
+  m.on('dragstart', () => locationFollow?.pan())
   m.on('rotate', () => {
     controls.bearing = m.getBearing()
     controls.turned = Math.abs(controls.bearing) > 0.5
   })
   m.on('moveend', () => {
-    if (props.group) drawMarks()
+    emit('camera', { center: [m.getCenter().lng, m.getCenter().lat], zoom: m.getZoom() })
     if (sortFrom.value === 'centre' && sortCentre.value) {
       const c = m.getCenter()
       stale.value = distance(sortCentre.value, { lat: c.lat, lon: c.lng }) > 150
     }
   })
-  m.on('contextmenu', (e) =>
+  m.on('contextmenu', (e) => {
+    e.originalEvent.preventDefault()
+    if (
+      m.queryRenderedFeatures(e.point, {
+        layers: m.getLayer(PLACE_LAYER) ? [PLACE_LAYER, CLUSTER_LAYER] : [],
+      }).length
+    )
+      return
     mapMenuAt(e.lngLat.lat, e.lngLat.lng, e.originalEvent.clientX, e.originalEvent.clientY)
-  )
+  })
   wireLongPress(m)
   // The view may have been laid out after the map was made: measure again before fitting.
   m.resize()
-  if (!props.center && props.places.length) {
+  if (!props.history && !props.center && props.places.length) {
     const b = new lib.LngLatBounds()
     props.places.forEach((p) => b.extend([p.lon, p.lat]))
     if (props.places.length === 1) m.jumpTo({ center: b.getCenter(), zoom: props.zoom ?? 15 })
@@ -574,39 +687,34 @@ async function create() {
         maxZoom: props.zoom ?? 16,
       })
   }
+  if (!props.history && props.zoom != null) m.setZoom(props.zoom)
   resort()
   drawMarks()
   drawMe()
+  if (typeof props.styleUrl === 'string') requestBackground()
 }
 
 /** A phone has no right press: holding a finger still on the map opens the same menu. */
 function wireLongPress(m: MapLibreMap) {
-  let timer = 0
-  let start: { x: number; y: number } | null = null
   const canvas = m.getCanvasContainer()
-  canvas.addEventListener('touchstart', (e) => {
-    if (e.touches.length !== 1) return
-    const t = e.touches[0]
-    start = { x: t.clientX, y: t.clientY }
-    timer = window.setTimeout(() => {
-      const r = canvas.getBoundingClientRect()
-      const ll = m.unproject([start!.x - r.left, start!.y - r.top])
-      mapMenuAt(ll.lat, ll.lng, start!.x, start!.y)
-    }, 550)
+  cancelLongPress = mapLongPress(canvas, (x, y) => {
+    const box = canvas.getBoundingClientRect()
+    const point: [number, number] = [x - box.left, y - box.top]
+    const ll = m.unproject(point)
+    const features = m.getLayer(PLACE_LAYER)
+      ? m.queryRenderedFeatures(point, { layers: [PLACE_LAYER] })
+      : []
+    const place = props.places.find((p) => p.id === features[0]?.properties?.id)
+    if (place) placeMenuAt(place, new MouseEvent('contextmenu', { clientX: x, clientY: y }))
+    else mapMenuAt(ll.lat, ll.lng, x, y)
   })
-  canvas.addEventListener('touchmove', (e) => {
-    const t = e.touches[0]
-    if (start && Math.hypot(t.clientX - start.x, t.clientY - start.y) > 8)
-      window.clearTimeout(timer)
-  })
-  canvas.addEventListener('touchend', () => window.clearTimeout(timer))
 }
 
 function drawMe() {
   meMarker?.remove()
   meMarker = null
   if (!props.me || !map.value || !lib) return
-  const dot = mapEl.value!.ownerDocument.createElement('div')
+  const dot = mapEl.value.ownerDocument.win.createDiv()
   dot.className = 'abele-map-base__me'
   meMarker = new lib.Marker({ element: dot })
     .setLngLat([props.me.lon, props.me.lat])
@@ -616,9 +724,19 @@ function drawMe() {
 watch(() => [props.places, props.group], drawMarks)
 watch(hovered, drawMarks)
 watch(() => props.me, drawMe)
+watch(() => [props.styleUrl, props.themeToken] as const, requestBackground)
 watch(
-  () => props.styleUrl,
-  (s) => map.value?.setStyle(s as string)
+  () => props.history,
+  (state) => {
+    if (state) map.value?.jumpTo(state)
+  }
+)
+watch(
+  () => props.retryToken,
+  () => {
+    if (map.value) requestBackground()
+    else void create().catch(() => emit('failure', 'no-webgl'))
+  }
 )
 // A place gone from the base (a filter, the search) is no longer picked.
 watch(
@@ -631,13 +749,98 @@ watch(
   }
 )
 // The list opening or closing changes the map's width: MapLibre is told, the view stays put.
-watch(listShown, () => requestAnimationFrame(() => map.value?.resize()))
+watch(listShown, () =>
+  mapEl.value?.ownerDocument.defaultView?.requestAnimationFrame(() => map.value?.resize())
+)
 
-onMounted(() => void create())
+let disposed = false
+let resize: ResizeObserver | null = null
+let cancelLongPress = () => {}
+let stopFullscreen = () => {}
+let locationFollow: MapFollowing | null = null
+function locate() {
+  if (!locationFollow)
+    locationFollow = new MapFollowing(
+      mapEl.value?.ownerDocument.defaultView?.navigator.geolocation,
+      (point) => {
+        map.value?.easeTo({
+          center: [point.lon, point.lat],
+          zoom: Math.min(props.maxZoom, Math.max(15, map.value.getZoom())),
+        })
+        drawLocation(point)
+      },
+      (error) => {
+        controls.following = !!locationFollow?.active
+        controls.locating = !!locationFollow?.pending
+        controls.locationOff = !!locationFollow?.denied
+        if (error)
+          new Notice(
+            t(
+              error === 1
+                ? 'maps.locationDenied'
+                : error === 3
+                  ? 'maps.locationTimeout'
+                  : 'maps.locationUnavailable'
+            )
+          )
+      }
+    )
+  locationFollow.toggle()
+}
+function drawLocation(point: { lat: number; lon: number }) {
+  meMarker?.remove()
+  if (!lib || !map.value || !mapEl.value) return
+  const dot = mapEl.value.ownerDocument.win.createDiv()
+  dot.className = 'abele-map-base__me'
+  meMarker = new lib.Marker({ element: dot }).setLngLat([point.lon, point.lat]).addTo(map.value)
+}
+function full() {
+  const el = mapEl.value?.closest('.abele-map-base')
+  if (!el) return
+  if (el.ownerDocument.fullscreenElement)
+    void el.ownerDocument.exitFullscreen().catch(() => new Notice(t('maps.fullUnavailable')))
+  else if (typeof el.requestFullscreen === 'function')
+    void el.requestFullscreen().catch(() => new Notice(t('maps.fullUnavailable')))
+  else new Notice(t('maps.fullUnavailable'))
+}
+watch(
+  () => props.center,
+  (c) => {
+    if (c) map.value?.setCenter([c.lon, c.lat])
+  }
+)
+watch(
+  () => props.zoom,
+  (z) => {
+    if (z != null) map.value?.setZoom(z)
+  }
+)
+watch(
+  () => [props.minZoom, props.maxZoom],
+  () => {
+    map.value?.setMinZoom(props.minZoom)
+    map.value?.setMaxZoom(props.maxZoom)
+  }
+)
+onMounted(() => {
+  const doc = mapEl.value.ownerDocument
+  const updateFullscreen = () => {
+    controls.full = !!doc.fullscreenElement
+  }
+  doc.addEventListener('fullscreenchange', updateFullscreen)
+  stopFullscreen = () => doc.removeEventListener('fullscreenchange', updateFullscreen)
+  void create().catch(() => emit('failure', 'no-webgl'))
+})
 onUnmounted(() => {
-  window.clearTimeout(hoverTimer)
+  disposed = true
+  resize?.disconnect()
+  cancelLongPress()
+  stopFullscreen()
+  layers?.dispose()
+  locationFollow?.dispose()
+  meMarker?.remove()
+  timerWindow?.clearTimeout(hoverTimer)
   hoverPopup?.remove()
-  markers.forEach((m) => m.remove())
   map.value?.remove()
 })
 
@@ -663,4 +866,3 @@ defineExpose({
   markStale: () => (stale.value = true),
 })
 </script>
-

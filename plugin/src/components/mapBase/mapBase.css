@@ -247,6 +247,10 @@
 .abele-map-base__hover .maplibregl-popup-content {
   padding: var(--size-4-3);
 }
+.abele-map-hover {
+  max-height: var(--abele-map-popup-height, none);
+  overflow-y: auto;
+}
 .abele-map-base .maplibregl-ctrl-bottom-left .maplibregl-ctrl-scale {
   margin: var(--size-4-2);
 }
@@ -264,4 +268,12 @@
 }
 .is-phone .abele-map-base:not(.abele-map-base_embedded) .abele-map-list__rows {
   padding-bottom: calc(var(--view-bottom-spacing, 0px) + var(--size-4-2));
+}
+
+.abele-map-base-host {
+  height: 100%;
+  min-height: 0;
+}
+.abele-map-base__pointer {
+  cursor: pointer;
 }

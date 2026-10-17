@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { requestCurrentLocation, LOCATION_TIMEOUT_MS } from '@/location/currentLocation'
+import {
+  requestCurrentLocation,
+  LOCATION_TIMEOUT_MS,
+  locationError,
+} from '@/location/currentLocation'
 
 // Invented positions only; no device or network is used by these tests.
 const position = {
@@ -109,4 +113,8 @@ describe('one current device position', () => {
       )
     ).rejects.toThrow(/unavailable/i)
   })
+})
+it('keeps a machine-readable error code for translated callers', () => {
+  expect(locationError(1)).toHaveProperty('code', 1)
+  expect(locationError(3)).toHaveProperty('code', 3)
 })

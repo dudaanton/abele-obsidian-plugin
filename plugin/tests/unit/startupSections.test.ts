@@ -22,7 +22,27 @@ describe('startup sections', () => {
       ['abele-find-and-replace', 'Find and replace', 'replace-all'],
       ['abele-calendar', 'Calendar', 'calendar-days'],
       ['abele-timeline', 'Timeline', 'gantt-chart'],
+      ['abele-map', 'Abele map', 'map'],
     ])
+    expect(registerBasesView.mock.calls.some(([id]) => id === 'map')).toBe(false)
+    const mapOptions = registerBasesView.mock.calls[4][1].options()
+    expect(
+      mapOptions.find((option: { key: string }) => option.key === 'groupNearby')
+    ).toMatchObject({ default: true })
+    expect(mapOptions.map((option: { key: string }) => option.key)).toEqual(
+      expect.arrayContaining([
+        'coordinates',
+        'markerIcon',
+        'markerColor',
+        'center',
+        'defaultZoom',
+        'minZoom',
+        'maxZoom',
+        'mapHeight',
+        'mapTiles',
+        'mapTilesDark',
+      ])
+    )
     expect(registerBasesView.mock.calls[0][1].options()).toEqual([
       {
         key: 'chartType',

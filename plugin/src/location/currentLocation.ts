@@ -11,18 +11,30 @@ export interface CurrentLocation {
 export type LocationProvider = Pick<Geolocation, 'getCurrentPosition'>
 export const LOCATION_TIMEOUT_MS = 15_000
 
+export class LocationRequestError extends Error {
+  constructor(
+    public readonly code: number,
+    message: string
+  ) {
+    super(message)
+  }
+}
+
 export function locationError(code: number): Error {
   switch (code) {
     case 1:
-      return new Error(
+      return new LocationRequestError(
+        code,
         'Location permission was denied. Allow location for Obsidian in the device privacy settings and, if prompted, allow it for this page, then try again.'
       )
     case 3:
-      return new Error(
+      return new LocationRequestError(
+        code,
         'Location request timed out. Check Location Services and Obsidian permissions in the device settings, then try again; this platform may not have a location provider.'
       )
     default:
-      return new Error(
+      return new LocationRequestError(
+        code,
         'Location is unavailable on this device. Enable Location Services and allow Obsidian in the device privacy settings, then try again. If the platform has no location provider, use a device that supports location or give a place manually.'
       )
   }

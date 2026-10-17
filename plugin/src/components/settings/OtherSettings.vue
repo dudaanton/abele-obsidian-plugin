@@ -128,6 +128,7 @@
         />
       </Setting>
       <MapStylePreview :choice="mapStyle" :url="savedMapStyleUrl" />
+      <MapBackgroundSettings />
     </Section>
     <Section :title="t('settings.OtherSettings.the_plugin.cb8c07f4')">
       <Setting
@@ -163,6 +164,7 @@ import Input from '../obsidian/Input.vue'
 import Checkbox from '../obsidian/Checkbox.vue'
 import Button from '../obsidian/Button.vue'
 import AttachmentRulesSettings from './AttachmentRulesSettings.vue'
+import MapBackgroundSettings from './MapBackgroundSettings.vue'
 import MapStylePreview from './MapStylePreview.vue'
 import { openChangelog } from '@/changelog/ChangelogView'
 import { AbeleConfig } from '@/services/AbeleConfig'

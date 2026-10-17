@@ -361,6 +361,21 @@ describe('settings that arrived later than the transfer did', () => {
       mapStyleUrl: 'https://maps.example/style.json',
     })
   })
+  it('round-trips named backgrounds with every light and dark layer', () => {
+    const mapBackgrounds = [
+      {
+        id: 'sample-terrain',
+        name: 'Sample terrain',
+        light: [
+          'https://example.test/base/{z}/{x}/{y}.png',
+          'https://example.test/labels/{z}/{x}/{y}.png',
+        ],
+        dark: ['https://example.test/dark.json'],
+      },
+    ]
+    const entry = find(collectEntries(settings({ mapBackgrounds })), 'maps', 'maps')!
+    expect(applyEntries([entry], settings()).mapBackgrounds).toEqual(mapBackgrounds)
+  })
 
   it('carries the sidebar width of a tablet beside the one of a phone', () => {
     const entries = collectEntries(

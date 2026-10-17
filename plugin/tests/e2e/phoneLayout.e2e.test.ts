@@ -112,6 +112,10 @@ const SHOTS = shotDir('abele-phone')
  * differ.
  */
 const DIALOGS = [
+  'map-background',
+  'map-background-error',
+  'map-background-long',
+  'map-formula-create',
   'native-pr-create',
   'chat-artifacts-empty',
   'chat-artifacts',

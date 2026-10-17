@@ -1,3 +1,4 @@
+import type { Background } from '@/maps/core/model'
 import type { MapStyleChoice } from '@/helpers/mapStyles'
 import { AiSettings, DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { type AutomationRule } from '@/automations/types'
@@ -77,6 +78,7 @@ export interface AbeleSettings {
   /** Which look maps are drawn in: a free style, one that follows the theme, or one's own. */
   mapStyle?: MapStyleChoice
   /** A MapLibre style URL of one's own, used when `mapStyle` is `custom`. */
+  mapBackgrounds?: Background[]
   mapStyleUrl?: string
   // Other
   snippetsFolder?: string
@@ -319,6 +321,7 @@ export const DEFAULT_SETTINGS: Required<Omit<AbeleSettings, 'secretStore'>> = {
   // Read through `mapStyleUrl()`: absent in an older file that holds a URL means that URL.
   mapStyle: 'theme',
   mapStyleUrl: '',
+  mapBackgrounds: [],
   snippetsFolder: '',
   traceNotesFolder: 'Trace',
   zen: { width: 700, windows: {} },

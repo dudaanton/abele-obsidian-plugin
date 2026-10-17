@@ -1,45 +1,40 @@
 <template>
-  <Setting
-    heading
-    name="Backgrounds"
-    desc="What a base's map can be drawn on, picked from the map's layers glyph. The map style above always comes first."
-  />
+  <Setting heading :name="t('maps.backgrounds')" :desc="t('maps.backgroundHint')" />
   <Setting v-for="(bg, index) in backgrounds" :key="bg.id" :name="bg.name" :desc="summary(bg)">
-    <Icon icon="arrow-up" tooltip="Move up" :disabled="index === 0" @click="move(index, -1)" />
+    <Icon
+      icon="arrow-up"
+      :tooltip="t('maps.up')"
+      :disabled="index === 0"
+      @click="move(index, -1)"
+    />
     <Icon
       icon="arrow-down"
-      tooltip="Move down"
+      :tooltip="t('maps.down')"
       :disabled="index === backgrounds.length - 1"
       @click="move(index, 1)"
     />
-    <Icon icon="pencil" tooltip="Edit" @click="emit('edit', bg)" />
-    <Icon icon="trash-2" tooltip="Delete" @click="emit('remove', bg)" />
+    <Icon icon="pencil" :tooltip="t('maps.edit')" @click="emit('edit', bg)" />
+    <Icon icon="trash-2" :tooltip="t('maps.remove')" @click="emit('remove', bg)" />
   </Setting>
   <Setting
     v-if="!backgrounds.length"
-    name="No backgrounds of your own"
-    desc="Add a style.json or tile address of any provider."
+    :name="t('maps.noBackgrounds')"
+    :desc="t('maps.addressHint')"
   />
-  <Setting
-    name="Add a background"
-    desc="A style address, or one or more tile templates drawn as layers."
-  >
-    <Button text="Add" tooltip="Add a background" @click="emit('add')" />
+  <Setting class="abele-map-bg-add" :name="t('maps.addBackground')" :desc="t('maps.addressHint')">
+    <Button :text="t('maps.add')" :tooltip="t('maps.addBackground')" @click="emit('add')" />
   </Setting>
-  <Setting
-    v-if="fromMaps"
-    name="Backgrounds of Obsidian Maps"
-    :desc="`${fromMaps} found. They are copied here; Obsidian Maps keeps its own.`"
-  >
+  <Setting v-if="fromMaps" :name="t('maps.fromMaps')" :desc="t('maps.importHint')">
     <Button
-      :text="`Copy ${fromMaps}`"
-      tooltip="Copy the backgrounds of Obsidian Maps"
+      :text="t('maps.copyBackgrounds')"
+      :tooltip="t('maps.copyBackgrounds')"
       @click="emit('import')"
     />
   </Setting>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 // The named backgrounds a base's map offers, Obsidian Maps' tile sets: each with light addresses
 // and, if it has them, dark ones; moved up and down, edited and deleted in place, and the ones
 // Obsidian Maps already has copied over without touching its own.
@@ -47,7 +42,6 @@ import Setting from '../obsidian/Setting.vue'
 import Icon from '../obsidian/Icon.vue'
 import Button from '../obsidian/Button.vue'
 import type { MapBackground } from '../mapBase/places'
-
 
 const props = defineProps<{ backgrounds: MapBackground[]; fromMaps?: number }>()
 const emit = defineEmits<{
@@ -60,12 +54,10 @@ const emit = defineEmits<{
 
 const kind = (urls: string[]) =>
   urls.length === 1 && !urls[0].includes('{z}')
-    ? 'style'
-    : urls.length === 1
-      ? '1 tile layer'
-      : `${urls.length} tile layers`
+    ? t('maps.style')
+    : t('maps.tileLayers', { count: urls.length })
 const summary = (bg: MapBackground) =>
-  `${kind(bg.light)} · ${bg.dark.length ? 'light and dark' : 'light only, dark uses it too'}`
+  `${kind(bg.light)} · ${bg.dark.length ? t('maps.bothThemes') : t('maps.lightOnly')}`
 
 function move(index: number, step: -1 | 1) {
   const list = [...props.backgrounds]

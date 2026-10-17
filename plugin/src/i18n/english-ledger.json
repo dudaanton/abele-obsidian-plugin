@@ -24328,5 +24328,1075 @@
       "es",
       "de"
     ]
+  },
+  "maps.viewName": {
+    "englishHash": "dc3c7f3e4b407fbd18b35696e2dd0cfe3c7bde1b2d591e36dac7510f9dec8b3c",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.coordinates": {
+    "englishHash": "0a23dd135bbf69024051b41aecb67306f39c06da455bcd122b5952efacc98f57",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.markerIcon": {
+    "englishHash": "bfefa154c0ee8f58c48f6a002912b4d17a81a23d5172d9c6148f40368e0a2341",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.markerColor": {
+    "englishHash": "2e0e5192f3243c94e7acf425de3a00b4c6baa092f046c9c18a7478e210a6a2f0",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.center": {
+    "englishHash": "d2c16ab4132a7f6f1007d96a9fee7c32e5d61bfe98404f960583065085641dc0",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.defaultZoom": {
+    "englishHash": "3f63978bf237d02d038d9b2bc00b6849ca40ea2736f518acef6882a8d8256e15",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.minZoom": {
+    "englishHash": "b7fdb4382661b259b2867b0e1aced9dc2d48de1059bce884bd11b56ef12be460",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.maxZoom": {
+    "englishHash": "1d245e5fb5519c1a63f8d2344cc17d092b98aa894e76b8602a9a143ce266cb7d",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.mapHeight": {
+    "englishHash": "d01833e48584a67e6a0c69f56618ca393eec1f856cc9537140ed7f2908a07077",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.groupNearby": {
+    "englishHash": "9c35ad21d0a87740195042113c279e432a186678bb7ce4638431b7ec3e69faa8",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.mapTiles": {
+    "englishHash": "b8988f7bb751451047be48af0fbed51f494d18f25de1b0e43c8348d0c47d5f45",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.mapTilesDark": {
+    "englishHash": "ad484d2825bb060b4772a8a3a08ec54995ab4d1f13967a98806e0830e3627dd3",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.copied": {
+    "englishHash": "637c843d2492bbe3d17ead8d93423cf66a5975c15ea55f67016c1cfe5f9a269d",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.copyFailed": {
+    "englishHash": "16b0c5eaabe6403b7b23ba4fdd10c17cfa1ce40152b1486e5b391a56a4a3811a",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.delete": {
+    "englishHash": "688d27c5fd2f9e1258d54619d807afb4f772d5a63939702e1b781a66deebaf34",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.createFailed": {
+    "englishHash": "8a40b82da99509a0380f7288f18a456a1353caf62810dfd3b2700a18c5b83e64",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.saveFailed": {
+    "englishHash": "8598206678d3e2100be70f2442884710887e8f5de7ff39a9a403e95f0ecd7750",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.locationDenied": {
+    "englishHash": "25ac6217ea09bac29276e161d91c94a04d195c84607fe8e0effa90066e63c264",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.locationTimeout": {
+    "englishHash": "010187d5d2d9c6c0bbf035b1421070eec847d9fb95f415449bbc941df90a5c6a",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.locationUnavailable": {
+    "englishHash": "6db9f196cd4e9a68c5b91c83a344dacefbe997e2ca9386a06f2d3079249a633d",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.locating": {
+    "englishHash": "6bce88e8f1626426c03accf58f2f75daa5e783e5db61c2567fe187796bd6c83a",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.zoomIn": {
+    "englishHash": "bcc27ef1ba6bb7ad87591a92e0826421104a4803df9dae370b26dbf66dd01bb0",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.zoomOut": {
+    "englishHash": "90b09facb109c18221cee44fed1e2ec68d0ec7fcf72c8241d8f5ce12c657df9b",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.north": {
+    "englishHash": "245097f5ea0e0a618e80836ded01f61dbe6589f2ff9675fb596f03686906a72e",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.locationOff": {
+    "englishHash": "70a8fb191ae42a787825dd45d76bee5949c0b9793df7d288ef24c72b82f7ce70",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.following": {
+    "englishHash": "7d7b59f9be9b097347eb915e1c98328451850496d56493321f707aa5a9cd8fe8",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.showLocation": {
+    "englishHash": "9be5477ba6251b7eba064f066eccbeb7db2680f3e4aff76fd1544e37375ccb8b",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.exitFull": {
+    "englishHash": "87a29792619d11870495a1081fb9eb6acd1eb6f73c5baf5bf234e9119c86f417",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.full": {
+    "englishHash": "9dfc8b4a4f8ee69b8c16ae0462707e9f72b81337305e136ffe8849276c745993",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.background": {
+    "englishHash": "d51a1f7a9f9e4056a10f29cd4dc0e0220d7d06d3754a4cfb84c50bfc540896d5",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.tab": {
+    "englishHash": "8b5a3812fac98b3a65d6368a92699ae5753f3d6648c9d29d5156f3f7fa89a537",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.split": {
+    "englishHash": "ebf157ff6780d96ef8c331e27a796ede447c66cc90bf63820c9167cbe3189e95",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.window": {
+    "englishHash": "1022875552018982cd1276765819a59d045042413e026c172f36e17466d16aee",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.card": {
+    "englishHash": "2a0e5602ba4371051827814a1535f400f3cd5284044f92efc20f20cb2510cb7a",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.copy": {
+    "englishHash": "6dd7164b7fae5095dfd014d57f7dd409035bb77433b89c2353a159c62bd7c045",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.newHere": {
+    "englishHash": "4817a85c1931f5d90b5f1a34028b2049e37fda8a017a8e4e77c73086628390ba",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.setCenter": {
+    "englishHash": "61aaa56d551369b22cbe611a8357199be4e4a6070b9c3daffe8577e85ce638d0",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.manage": {
+    "englishHash": "826afb96b14b4ea334476c1df1a25e75fa20dd5a95cf7f74d02a3fe3a36d6c9f",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.noCoordinates": {
+    "englishHash": "a5d267a6fe043660c6098badc2595e31f7bb4ef59c4241d8c97307003446c9bb",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.unreadable": {
+    "englishHash": "de9374f81349e3d607b2e4b907024b016c3c95c6dc35cd56535d2d055921f57f",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.formulaError": {
+    "englishHash": "00b12b676909d5ea08a772ff2e1f562d4a6c9881b9e24c14c996cdc782aff89a",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.noProperty": {
+    "englishHash": "f0fbf68d36bd952dfb57422bc50901af2aa6cbac7d9094c4ded73ebcb1efc34c",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.pickProperty": {
+    "englishHash": "a6f3b56de79bdc13232aa4e8173544a39794f83f8bca876f7dd4e3abb8dd8440",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.configure": {
+    "englishHash": "f079d64f3d7588a1aa20f0b2cc6e776b6fd9a899e1bc828fc5a1c25e968348f0",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.noRecords": {
+    "englishHash": "567efa5ba8729c5e3f7297c8b52d70b8af10a0a5e5c631abf991735e62f1ca7b",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.hold": {
+    "englishHash": "cc9102e5a7c58836c9005c923e66102d31e022ea76819b91e43d9e1cf68b55a0",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.rightClick": {
+    "englishHash": "d1039c4783fb5eee5815fe76dd5b1d9be496e48786182e1bb86e137e2669ddf0",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.filtered": {
+    "englishHash": "b28c9fe6811f8e5dcbd149d8ce48352333c5813e08128ed5f02615ebca004006",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.filtersEmpty": {
+    "englishHash": "f23511ea2506fcbf95df4d33a60129f43c9e39f3d3f142f60a4ef2f384ad62ab",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.filters": {
+    "englishHash": "7bea5715b80de993883e1e48c8b0e4ac47f4887e1bd59f6d911081f2e0a349f5",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.nothing": {
+    "englishHash": "6a3a2b488f99d41733e63118d7e79050e5c3aa5003e5cd7550437ad94518ec46",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.addCoordinates": {
+    "englishHash": "48f057be470ef55c85a1c39f9f7cceb07e0cba74efe104ef37ce1878ef0fbb3b",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.showNotes": {
+    "englishHash": "66a7b2399d577326db4428e91464915dfb054ac93a11930a09b080b484885fd9",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.loadFailed": {
+    "englishHash": "7c90fff949ee0a3501eeed81b626b527c6034b82143ac5ebee8757f58480baa0",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.offline": {
+    "englishHash": "a6a6872467f710597ce99742ddce15d9db3e31589b38c9df2ba8f1fe1b6db3c9",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.retry": {
+    "englishHash": "d37e111627bb03394c703e1a463dcaeccc854b395b47fb11555e02cc44db47ca",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.noWebgl": {
+    "englishHash": "180f9a6b378f3650675da3405a7718fc7cca0e495c5ddd29f0e77602845adae4",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.graphics": {
+    "englishHash": "e4deb051d296a674581c97ce8a65b6ceb8f6ef7b8021da0ed3adaa4aae66654a",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.stopped": {
+    "englishHash": "40e31f73d3448b6fc5d241fabe42d738258f2d1aaa5822db2bce80910b7d3238",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.lostContext": {
+    "englishHash": "2cac72c7b00dcbd398a8bcace99b0c697f04f32c43f13297f71891747fba2378",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.drawAgain": {
+    "englishHash": "c49df73ee05c472433a9f637d474df997d39668f8f54e3b1cc209112409d0bf5",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.backgrounds": {
+    "englishHash": "cf462d40d78947243e15e089a0fbba233355b0296085c954ca1593f9f35d0c0d",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.up": {
+    "englishHash": "e52cae158d6576726a5f598697dbe208858f827247cffb2cb2d96331a025d753",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.down": {
+    "englishHash": "80efd2f87c34c98cfa5935c060cc068537019546014a370b3e8f39c7b1b5a269",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.edit": {
+    "englishHash": "56d874b76cae7ec85ac8551aa4d182e83f6e8515b6e6ca01d96841fa3f968797",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.remove": {
+    "englishHash": "48a15ab1be1c2b4bebc2e4176d6822df5ca41bb3a7aeaab91473c9bf0a95bd2a",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.add": {
+    "englishHash": "6e9e47d2ffb07a5b18381c9bdebc034713b11f5c988a445922319d0c83a648bb",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.addBackground": {
+    "englishHash": "fcc5e9570ff0b3c5e3094bda4705cfa2225c2264ce2b9615ef76a7f7a48c6143",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.newBackground": {
+    "englishHash": "4d322c5d641b6d5876abf5c3d51c34c00ace8b202d52e539a19bcf737b8f7e50",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.editBackground": {
+    "englishHash": "ed1cc75660bd4045b207ad088c3ac41b1ac8968e264a26265542959dc7805482",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.name": {
+    "englishHash": "1bf1c976c35b8144fd38e80b9b794f714b94feaab978c5481e51975964909394",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.light": {
+    "englishHash": "1ed3c00b10c9601b0911fab0f0f907a62a9c33866b727f13cfe92540bf086547",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.dark": {
+    "englishHash": "45fc83e1a4639aa1f0e357647b32c60c62c70eca309b1a978f0a49af5f5cb189",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.cancel": {
+    "englishHash": "4d3f40f04c4288052255b978663d11d047fb80c63470cb4e0b2aba39660b50ed",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.save": {
+    "englishHash": "79cc631d62b4a3c5c62950b43cb43041f1870f6adffbf5e2fb65758d11db1ca3",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.giveName": {
+    "englishHash": "babc45f6e94463d90710fd5e60de3759f6111791b4a28b07e8af45da4f52072e",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.needAddress": {
+    "englishHash": "2c2fe3213c6c8ab188473d13cba1b1cc931ee3968ee2362d6ada329fce0b2fb8",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.createNote": {
+    "englishHash": "b140c6ca4e8bb7c90913e1b5d3fa42c8f4f0daf7fb2f3867e8a468766422230f",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.formulaWhy": {
+    "englishHash": "b460c5a2685add5e2488fa24f83d638d1e7ca12c91d27cbc41043331184df70d",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.skipped": {
+    "englishHash": "fcb61da3cd284dca82a7d484b24e890d66273d84577535e1ac975343b0a11054",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.noneCoordinates": {
+    "englishHash": "c8f7271446caa52ac37573f613f4a9ea4da3ce142d0669e62000378635220df4",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.copyValue": {
+    "englishHash": "2e93c018f61d46964b09dea3a17fa7ad15187523b6b4915183da2562e502d2b2",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.saveZoom": {
+    "englishHash": "4b903f564131e4d0dd85c1802bfa01272ab2c2cbab785873136eec7a0eb8d313",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.placesHere": {
+    "englishHash": "a7a396f63fa583ccb1ef1e9cee8190e737abee7cddb8ef5ce6bf0477adaaea7f",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.searchEmpty": {
+    "englishHash": "ebb3e9a455f7e4dfadbb7c9e5c9aa54e9d725b4a60da90feb3910dc40f5cb0cd",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.backgroundHint": {
+    "englishHash": "35ce858c094d68866a7aca7528c61276d9d2f06ea9a60da894616b3d29de0764",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.noBackgrounds": {
+    "englishHash": "b39cf389e68c7a957da74a1ad69ffa02f1738df47d98692afced39e522be8f9c",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.addressHint": {
+    "englishHash": "6e305bf773a78e6d7ada03f87dadbdc92478b307fef993d4462054e44ac9ef76",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.darkHint": {
+    "englishHash": "ac15d8f63d0c6bdcb9bef62369fd7f4b5a19f4354b0663e0657afe23868d4be2",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.fromMaps": {
+    "englishHash": "972ccb76e10454ba2e0395132aa9d1a5673763016eee4d20c7d027ef6ae6bf73",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.copyBackgrounds": {
+    "englishHash": "6dc0331ce880a1d48537daa0f2cd07e54db04987336e73be0b407c04a7dcb3e6",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.importHint": {
+    "englishHash": "329965cfee140bcd96ec30f4aac04a0ffadae3bfc609afaf7cc94e76bec13c13",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.tileLayers": {
+    "englishHash": "5ad3a72ab9bfd6482aca973a8a99ae1178d0f5bc864f6b83624709b38257cadd",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.style": {
+    "englishHash": "23b03c80e48aefde80e79efaad4f7fd4000355f2e3eb871dc57c37df3aab9e30",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.lightOnly": {
+    "englishHash": "59379e69e7a8f7418c923cba1e4f11b1c2c706b2ea9229894da270751238bb81",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.bothThemes": {
+    "englishHash": "ca8ff63a40690be116932bd3f3531937c13be64edfe3598f09f3d0500673b792",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.deleteFailed": {
+    "englishHash": "daff0b4ead7073fa8831da36d4a4857bbd65fc37c2bef8b4333758c082ff764a",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "commands.copy-current-map-location": {
+    "englishHash": "637410e937a2c12c94f41039620d47ee7bd674b79b06b4326a37836b2e3d293f",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.fullUnavailable": {
+    "englishHash": "5dbd2f16246ce3ff1acb8bdd4ddb5c42446e83cfbc50f4d5b70e4a1d1f59f4e9",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.showList": {
+    "englishHash": "1a9493e34fd505f05ea73102142cd435aef79a1e8f50250f4c561685f911029a",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.listBeside": {
+    "englishHash": "09bdab7e1c516b7c21847f971b3a87bb7ce0607e614fe4c638877a6f7a5a1ffd",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.placeGone": {
+    "englishHash": "7ddb82cfd3b2df071db0d1027afa2fb74b17cdfbe164557cf455fbb76aa37902",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.attribution": {
+    "englishHash": "05fde62708b9c93ddc9aa44a02b718f148e1ce356bf3ec38600e7e35412ec01c",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.feedback": {
+    "englishHash": "c5faf595cf1af64a06fdf11805de5fa6405f92e6d746cf6e6c0a19e37697aeed",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.touchHelp": {
+    "englishHash": "fcaddf2b90849da08f1e92affbdbd085e3454908b7ff88439d33d8d62fad9dca",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.scrollHelp": {
+    "englishHash": "ba75ee5eccf022fa603a63ca1460c617941b8685c4e368fa29dde00020d9231d",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.currentLocation": {
+    "englishHash": "21070f684ae63e75a8f8b7d0e81fa8c3dff2b940e81ea6204d4057e33df829c8",
+    "context": "Bases map view and backgrounds",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

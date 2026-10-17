@@ -335,7 +335,12 @@ export const SECTIONS: Section[] = [
     'timeTrackableNoteTypes',
     'timeTrackAllNotes',
   ]),
-  rootBlock('maps', 'Maps', ['mapCoordinatesProperty', 'mapStyle', 'mapStyleUrl']),
+  rootBlock('maps', 'Maps', [
+    'mapCoordinatesProperty',
+    'mapStyle',
+    'mapStyleUrl',
+    'mapBackgrounds',
+  ]),
   rootBlock('github', 'GitHub', ['github'], {
     // Compatibility fields are never offered here: otherwise choosing this block alone leaks
     // an unselected connection's key through the old keyId alias.

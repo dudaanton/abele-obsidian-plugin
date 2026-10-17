@@ -14,6 +14,8 @@ import TokenUiFixture from './TokenUiFixture.vue'
 import NodeSyntaxFixture from './NodeSyntaxFixture.vue'
 import EnvironmentDialog from '@/components/debugger/http/EnvironmentDialog.vue'
 import PullRequestDialog from '@/components/nodeWork/PullRequestDialog.vue'
+import MapBackgroundEditor from '@/components/settings/MapBackgroundEditor.vue'
+import MapFormulaCreate from '@/components/mapBase/MapFormulaCreate.vue'
 
 export interface DialogFixtureOptions {
   /** Inspect all synthetic recipient-row variants, without inheriting ambient rights. */
@@ -167,6 +169,26 @@ const mountNodeQuestion = (kind: 'select' | 'input') =>
   )
 
 const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise<void>> = {
+  'map-background': () => mountAlone(MapBackgroundEditor),
+  'map-background-error': () => mountAlone(MapBackgroundEditor, { showErrors: true }),
+  'map-background-long': () =>
+    mountAlone(MapBackgroundEditor, {
+      background: {
+        id: 'sample-background',
+        name: 'Sample terrain with a long descriptive background name',
+        light: [
+          'https://example.test/sample-terrain/{z}/{x}/{y}.png',
+          'https://example.test/sample-labels/{z}/{x}/{y}.png',
+        ],
+        dark: ['https://example.test/sample-dark/{z}/{x}/{y}.png'],
+      },
+    }),
+  'map-formula-create': () =>
+    mountAlone(MapFormulaCreate, {
+      formula: 'formula.position',
+      coordinates: '12, 20',
+      properties: ['coordinates', 'position'],
+    }),
   'native-pr-create': () =>
     mountAlone(
       defineComponent({

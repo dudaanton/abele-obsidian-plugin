@@ -1,11 +1,14 @@
 <template>
-  <ObsidianModal title="New note here" close-in-footer @close="emit('close')">
-    <p class="abele-map-formula__why">
-      This view takes coordinates from <code>{{ formula }}</code
-      >, and a formula cannot be written to. Pick the property the new note keeps its coordinates
-      in.
+  <ObsidianModal
+    :size="Platform.isPhone ? 'tall' : undefined"
+    :title="t('maps.newHere')"
+    close-in-footer
+    @close="emit('close')"
+  >
+    <p v-if="formula" class="abele-map-formula__why">
+      {{ t('maps.formulaWhy') }} <code>{{ formula }}</code>
     </p>
-    <Setting name="Coordinates property" :desc="`The note gets ${coordinates} in it.`">
+    <Setting :name="t('maps.coordinates')" :desc="coordinates">
       <Dropdown
         :options="choices"
         :model-value="picked"
@@ -14,12 +17,12 @@
     </Setting>
     <template #footer>
       <div class="modal-button-container">
-        <Button text="Cancel" tooltip="Create nothing" @click="emit('close')" />
+        <Button :text="t('maps.cancel')" :tooltip="t('kit.cancelTooltip')" @click="emit('close')" />
         <Button
-          text="Create note"
+          :text="t('maps.createNote')"
           accent
           :disabled="!picked"
-          tooltip="Create the note with these coordinates"
+          :tooltip="t('maps.createNote')"
           @click="emit('create', picked)"
         />
       </div>
@@ -28,6 +31,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+import { Platform } from 'obsidian'
 // A note made from the map when the view's coordinates come from a formula: where to write them
 // is asked first, from the base's ordinary properties; until then nothing is created, and no
 // property named after the formula ever appears.

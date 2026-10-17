@@ -1,3 +1,5 @@
+import { MapView, MAP_VIEW_ID, mapViewOptions } from '@/bases/MapView'
+import { t } from '@/i18n'
 import { CHART_VIEW_ID, ChartView } from '@/bases/ChartView'
 import { BaseProbeView, probeFor } from '@/analytics/sources/baseProbe'
 import { FIND_AND_REPLACE_VIEW_ID, FindAndReplaceView } from '@/bases/FindAndReplaceView'
@@ -99,5 +101,11 @@ export function registerBasesViews(plugin: Plugin) {
     icon: 'gantt-chart',
     factory: (controller, containerEl) => new TimelineView(controller, containerEl),
     options: timelineViewOptions,
+  })
+  plugin.registerBasesView(MAP_VIEW_ID, {
+    name: t('maps.viewName'),
+    icon: 'map',
+    factory: (controller, containerEl) => new MapView(controller, containerEl),
+    options: mapViewOptions,
   })
 }
