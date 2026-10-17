@@ -3295,4 +3295,5 @@ export const ru = {
   'settings.git.serverAddressError':
     'Только адрес: без имени пользователя, параметров запроса и части после #',
   'settings.git.noteLabel': 'заметка',
+  'settings.transfer.oneKeyToStore': 'Один ключ для сохранения выбранных элементов.',
 } satisfies TranslationCatalog

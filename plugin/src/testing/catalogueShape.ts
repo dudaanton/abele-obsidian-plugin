@@ -50,6 +50,7 @@ export const CATALOGUE_COMPONENTS = [
   'GroupHeading',
   'Icon',
   'IconPicker',
+  'I18nText',
   'Image',
   'Input',
   'LabelDot',

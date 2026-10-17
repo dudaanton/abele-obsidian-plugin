@@ -3262,4 +3262,5 @@ export const de = {
   'settings.git.serverAddressError':
     'Nur die Adresse: ohne Benutzername, Abfrage oder Fragment nach #',
   'settings.git.noteLabel': 'Notiz',
+  'settings.transfer.oneKeyToStore': 'Ein Schlüssel zum Speichern der ausgewählten Elemente.',
 } satisfies TranslationCatalog

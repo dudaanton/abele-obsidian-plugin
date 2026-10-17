@@ -108,8 +108,8 @@ describe('complete settings migration', () => {
     const english = createTranslator('en', catalogs)
     const russian = createTranslator('ru', catalogs)
     const key = 'settings.GithubSettings.value_value_kept_on_this.ceefdd92'
-    expect(english(key, { count: 1 })).toMatch(/^1 person kept on this device\./)
-    expect(english(key, { count: 21 })).toMatch(/^21 people kept on this device\./)
+    expect(english(key, { count: 1 })).toMatch(/^1 person is kept on this device\./)
+    expect(english(key, { count: 21 })).toMatch(/^21 people are kept on this device\./)
     expect([1, 2, 5, 21].map((count) => russian(key, { count }).split('.')[0])).toEqual([
       'На этом устройстве сохранён 1 пользователь',
       'На этом устройстве сохранены 2 пользователя',

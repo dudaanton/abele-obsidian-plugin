@@ -3287,4 +3287,5 @@ export const es = {
   'settings.git.serverAddressError':
     'Solo la dirección: sin usuario, consulta ni fragmento después de #',
   'settings.git.noteLabel': 'nota',
+  'settings.transfer.oneKeyToStore': 'Una clave para guardar los elementos seleccionados.',
 } satisfies TranslationCatalog

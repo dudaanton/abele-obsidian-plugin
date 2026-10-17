@@ -5130,7 +5130,7 @@
     ]
   },
   "settings.GithubSettings.value_value_kept_on_this.ceefdd92": {
-    "englishHash": "0e8ff7d3f866fe9f89517cf4780ed9a2c08054a961b12934e88cfccf7f0cd936",
+    "englishHash": "c835727a6806367c0f74fd87210d17f205dbd06fe24ff85894f6b468e39a2a8a",
     "context": "Settings control, explanatory text, or display-only metadata",
     "reviewedLocales": [
       "ru",
@@ -23591,6 +23591,16 @@
   },
   "settings.git.noteLabel": {
     "englishHash": "e956b81f46c9bc48007ee2c42fb2338ec458f910138c5b13a20829c271a7609b",
+    "context": "Settings control, explanatory text, or display-only metadata",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.transfer.oneKeyToStore": {
+    "englishHash": "83e169a5ea20efd179d3216f3db15cb8685d587293a432c265d4297401eab896",
     "context": "Settings control, explanatory text, or display-only metadata",
     "reviewedLocales": [
       "ru",

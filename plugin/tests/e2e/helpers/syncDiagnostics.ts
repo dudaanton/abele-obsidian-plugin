@@ -4,10 +4,13 @@ import type { VaultCli } from './obsidianCli'
 import { onPhone } from './target'
 import { screenshot } from './phone'
 import { transferText } from '../../../src/sync/transferProgress'
+import { englishSyncText } from '../../../src/sync/presentation'
 
 /** Synchronous snapshots must remain available while an engine or ledger read is stuck. */
 export const SYNC_SNAPSHOT = `
-const transferText = ${transferText.toString()};
+const transferFormatter = ${transferText.toString()};
+const englishSyncText = ${englishSyncText.toString()};
+const transferText = one => transferFormatter(one, englishSyncText);
 const syncSnapshot = () => {
  const host=app.plugins.plugins.abele?.tokenEngines, ui=host?.ui;
  const docs=[...new Set([document,app.setting.activeTab?.containerEl.ownerDocument].filter(Boolean))];

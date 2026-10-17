@@ -156,7 +156,7 @@ const dropAt = ref<number | null>(null)
 // The name alone: whether an agent is a utility one says nothing about its place in the list.
 const nameOf = (entry: InterceptorEntry) =>
   props.choices.find((c) => c.value === keyOf(entry))?.label ??
-  props.choices.find((c) => c.value === keyOf(entry))?.display ??
+  props.choices.find((c) => c.value === keyOf(entry))?.display.replace(/ · utility$/, '') ??
   (entry.script
     ? t('settings.ai.InterceptorList.script_value_missing.31a4f5d0', {
         value0: String(entry.script),

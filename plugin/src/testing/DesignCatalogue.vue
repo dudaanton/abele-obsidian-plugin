@@ -459,6 +459,11 @@
             /></div></Section
       ></template>
       <template v-else-if="page === 'controls'">
+        <p>
+          <I18nText text="An inline value: ⟪value⟫."
+            ><template #value><code>sample</code></template></I18nText
+          >
+        </p>
         <Setting name="Notebook name"
           ><Input v-model="draft" placeholder="Work notes" aria-label="Notebook name"
         /></Setting>
@@ -718,6 +723,7 @@ import Search from '@/components/obsidian/Search.vue'
 import Slider from '@/components/obsidian/Slider.vue'
 import Section from '@/components/obsidian/Section.vue'
 import Setting from '@/components/obsidian/Setting.vue'
+import I18nText from '@/components/obsidian/I18nText.vue'
 import NotePicker from '@/components/obsidian/NotePicker.vue'
 import Tabs from '@/components/obsidian/Tabs.vue'
 import Breadcrumbs from '@/components/obsidian/Breadcrumbs.vue'

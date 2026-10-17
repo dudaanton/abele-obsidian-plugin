@@ -13,6 +13,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
+import { en } from '@/i18n/locales/en/pilot'
 import { inspectDesign, inspectCss } from '../helpers/designParser'
 import { parse as parseSfc } from '@vue/compiler-sfc'
 import { baseParse, NodeTypes, type TemplateChildNode } from '@vue/compiler-dom'
@@ -601,8 +602,12 @@ describe('the design standard', () => {
     // The shared row moves its codes under the name when narrow, so a name never shrinks to
     // fragments beside them; new and replacing are codes with their words in the tooltip.
     expect(source).toMatch(/<EntryRow[^>]*class="abele-transfer-scan__entry"/)
-    expect(source).toContain("'Replaces the one already on this device'")
-    expect(source).toContain("'Not on this device yet'")
+    const replaces = 'settings.transfer.TransferScanModal.replaces_the_one_already_on.a7c76324'
+    const missing = 'settings.transfer.TransferScanModal.not_on_this_device_yet.591f425a'
+    expect(source).toContain(`'${replaces}'`)
+    expect(source).toContain(`'${missing}'`)
+    expect(en[replaces]).toBe('Replaces the one already on this device')
+    expect(en[missing]).toBe('Not on this device yet')
   })
 
   it('wraps shared phone modal titles inside space reserved for native close controls', () => {

@@ -3231,4 +3231,5 @@ export const lv = {
     'Izmantot pēc noklusējuma serverim {value0}',
   'settings.git.serverAddressError': 'Tikai adrese: bez lietotājvārda, vaicājuma vai daļas pēc #',
   'settings.git.noteLabel': 'piezīme',
+  'settings.transfer.oneKeyToStore': 'Viena atslēga izvēlēto vienumu saglabāšanai.',
 } satisfies TranslationCatalog

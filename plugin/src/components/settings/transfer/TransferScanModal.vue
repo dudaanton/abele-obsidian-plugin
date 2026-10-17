@@ -417,11 +417,13 @@ const keysCount = computed(() => {
 })
 
 const keysSummary = computed(() =>
-  keysCount.value
-    ? t('settings.transfer.TransferScanModal.value_to_store_for_the.22f67128', {
-        value0: String(settingsCount('key', keysCount.value)),
-      })
-    : t('settings.transfer.TransferScanModal.no_keys_to_store_for.40b27ff7')
+  keysCount.value === 1
+    ? t('settings.transfer.oneKeyToStore')
+    : keysCount.value
+      ? t('settings.transfer.TransferScanModal.value_to_store_for_the.22f67128', {
+          value0: String(settingsCount('key', keysCount.value)),
+        })
+      : t('settings.transfer.TransferScanModal.no_keys_to_store_for.40b27ff7')
 )
 
 const madeAt = computed(() => {

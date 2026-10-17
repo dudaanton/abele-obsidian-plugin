@@ -615,9 +615,9 @@ export const en = {
   'settings.GithubSettings.name.dcd1d522': 'Name',
   'settings.GithubSettings.login.9d6322c1': 'Login',
   'settings.GithubSettings.value_value_kept_on_this.ceefdd92': {
-    one: '{count} person kept on this device. Clear them to have every name and picture asked for again — after someone changed theirs, say.',
+    one: '{count} person is kept on this device. Clear them to have every name and picture asked for again — after someone changed theirs, say.',
     other:
-      '{count} people kept on this device. Clear them to have every name and picture asked for again — after someone changed theirs, say.',
+      '{count} people are kept on this device. Clear them to have every name and picture asked for again — after someone changed theirs, say.',
   },
   'settings.GithubSettings.none_kept_on_this_device.bfb58c42': 'None kept on this device yet.',
   'settings.ImageModelEditModal.add_image_model.6b3a2d66': 'Add Image Model',
@@ -3137,4 +3137,5 @@ export const en = {
   'settings.GithubSettings.make_default_for_value.ded3e105': 'Make default for {value0}',
   'settings.git.serverAddressError': 'Only the address: no login, query or # part',
   'settings.git.noteLabel': 'note',
+  'settings.transfer.oneKeyToStore': 'One key to store for the selected items.',
 } as const
