@@ -68,7 +68,7 @@
           @click="emit('zoom', $event)"
         />
         <span class="abele-picture-editor__save" @click="saveAt">
-          <Button text="Save" accent :loading="saving" :tooltip="saveTooltip" />
+          <Button text="Save" accent trailing-icon="chevron-down" :loading="saving" :tooltip="saveTooltip" />
         </span>
       </template>
     </ToolBar>
@@ -82,7 +82,7 @@
         @click="emit('zoom', $event)"
       />
       <span class="abele-picture-editor__save" @click="saveAt">
-        <Button text="Save" accent :loading="saving" :tooltip="saveTooltip" />
+        <Button text="Save" accent trailing-icon="chevron-down" :loading="saving" :tooltip="saveTooltip" />
       </span>
     </div>
 

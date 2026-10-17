@@ -194,6 +194,8 @@ function nudge(e: KeyboardEvent) {
     content: '';
     position: absolute;
     border: 0 solid var(--text-on-accent);
+    // A faint edge of the viewer's black, so a white corner still reads over a white sky.
+    filter: drop-shadow(0 0 1px color-mix(in srgb, var(--lightbox-background) 60%, transparent));
   }
 
   &_nw,
