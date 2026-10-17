@@ -167,6 +167,14 @@ export class ObsidianFileSystem implements FileSystem {
   private readonly fileScope?: ObsidianFileSystemOptions['fileScope']
   private inventory: InventoryPass | null = null
   private inventoryDepth = 0
+  // Connection-local metadata proof; root/ancestor events retire it before reuse.
+  private rootChain: { root: string; linked: Promise<boolean> } | undefined
+
+  private invalidateRootChain(paths: readonly string[]): void {
+    const root = this.scopedRoot()
+    if (root && paths.some((path) => path === root || root.startsWith(path + '/')))
+      this.rootChain = undefined
+  }
 
   async [Symbol.for('abele.sync.inventory-pass-v1')]<T>(work: () => Promise<T>): Promise<T> {
     // Shared filesystem instances may have overlapping engines. Never share their snapshots.
@@ -181,6 +189,7 @@ export class ObsidianFileSystem implements FileSystem {
         : null
     const inventory = this.inventory
     const invalidate = (file: { path: string; children?: unknown[] }, previous?: string) => {
+      this.invalidateRootChain([file.path, ...(previous ? [previous] : [])])
       if (!inventory) return
       for (const path of [file.path, ...(previous ? [previous] : [])]) {
         if (inventory.mutations.has(path)) {
@@ -247,8 +256,10 @@ export class ObsidianFileSystem implements FileSystem {
         const files = new Set(
           (node?.children ?? []).filter((one) => !one.children).map((one) => one.path)
         )
+        // Indexed siblings already prove membership. Only watcher-lagged names need I/O.
         for (const path of this.awaitingIndex)
           if (
+            !files.has(path) &&
             folderOf(path).replace(/^\/$/, '') === parent &&
             (await this.rawStat(path))?.type === 'file'
           )
@@ -688,6 +699,7 @@ export class ObsidianFileSystem implements FileSystem {
     await this.rememberInventoryParents(path)
   }
   async moveDirectory(from: string, to: string): Promise<void> {
+    this.invalidateRootChain([from, to])
     this.runtimeFence?.assertReady()
     await this.beforeEngineMutation?.([from, to])
     await this.directories.move(from, to)
@@ -699,6 +711,7 @@ export class ObsidianFileSystem implements FileSystem {
     }
   }
   async removeDirectory(path: string, expectedIdentity?: string): Promise<void> {
+    this.invalidateRootChain([path])
     this.runtimeFence?.assertReady()
     await this.beforeEngineMutation?.([path])
     await this.directories.remove(path, expectedIdentity)
@@ -1526,6 +1539,7 @@ export class ObsidianFileSystem implements FileSystem {
 
   /** Tell the host what the engine changed on disk (`onEngineWrite`). */
   private wrote(paths: readonly string[], known?: 'file' | null): void {
+    this.invalidateRootChain(paths)
     this.updateInventory(paths, known)
     for (const path of paths)
       void this.rememberInventoryParents(
@@ -1575,7 +1589,13 @@ export class ObsidianFileSystem implements FileSystem {
    */
   watch(cb: (paths: string[]) => void): () => void {
     this.runtimeFence?.assertReady()
+    this.rootChain = undefined
+    const rootChanges = [
+      this.app.vault.on('create', (file) => this.invalidateRootChain([file.path])),
+      this.app.vault.on('delete', (file) => this.invalidateRootChain([file.path])),
+    ]
     const directoryRename = this.app.vault.on('rename', (file, previous) => {
+      this.invalidateRootChain([previous, file.path])
       if ('children' in file && this.withinFileScope(previous) && this.withinFileScope(file.path))
         this.directories.renamed(previous, file.path)
     })
@@ -1600,6 +1620,8 @@ export class ObsidianFileSystem implements FileSystem {
     return () => {
       watcher.stop()
       this.app.vault.offref(directoryRename)
+      for (const ref of rootChanges) this.app.vault.offref(ref)
+      this.rootChain = undefined
       stopMutations()
       if (this.pollNow === watcher.kick) this.pollNow = null
     }
@@ -1734,7 +1756,10 @@ export class ObsidianFileSystem implements FileSystem {
       // These are synthetic scaffolding in the scoped port. The root check below
       // validates their real chain without exporting their paths to general callers.
       if (root.startsWith(path + '/')) return false
-      if (path === root) return rootSymlink()
+      if (path === root) {
+        if (this.rootChain?.root !== root) this.rootChain = { root, linked: rootSymlink() }
+        return this.rootChain.linked
+      }
     }
     const adapter = this.adapter as DataAdapter & {
       getFullPath?(path: string): string

@@ -23,6 +23,7 @@ import {
   smallPullCounts,
 } from '../helpers/smallPullBounds'
 import { emptyPullSummary, summarizePull } from '@/sync/pullOperationCounts'
+import { connectionAdapter } from '@/sync/connectionScope'
 import { ExchangeTrace } from '@/sync/exchangeTrace'
 
 async function measure(
@@ -30,7 +31,8 @@ async function measure(
   baseline: boolean | 'chunk-stage',
   count: number,
   isolateTransport = false,
-  diagnostics = true
+  diagnostics = true,
+  folder = false
 ) {
   const root = await native.mkdtemp(join(tmpdir(), 'sample-pull-'))
   const trace = isolateTransport && diagnostics ? new ExchangeTrace() : null
@@ -223,6 +225,17 @@ async function measure(
   let steadyNativeCalls: string[] = []
   const perFile: ReturnType<typeof smallPullCounts>[] = []
   const disk = new ObsidianFileSystem(app as never, {
+      ...(folder
+        ? {
+            fileScope: 'Container/Shared',
+            connectionId: 'sample',
+            adapter: connectionAdapter(
+              app.vault.adapter,
+              'Container/Shared',
+              '.abele-sync/connections/sample'
+            ),
+          }
+        : {}),
       diagnostic: !diagnostics
         ? undefined
         : (operation, startedAt, outcome, paths) => {
@@ -249,6 +262,24 @@ async function measure(
   )
   const started = performance.now()
   try {
+    if (folder) {
+      await native.mkdir(path('Container/Shared/Notes'), { recursive: true })
+      const inventory = Reflect.get(disk, Symbol.for('abele.sync.inventory-pass-v1'))
+      return await inventory.call(disk, async () => {
+        const directories = await Reflect.get(
+          disk,
+          Symbol.for('abele.sync.inventory-directories-v1')
+        ).call(disk)
+        expect(directories.map((one: { path: string }) => one.path)).toContain('Container/Shared')
+        return await run()
+      })
+    }
+    return await run()
+  } finally {
+    quiet?.mockRestore()
+    await native.rm(root, { recursive: true, force: true })
+  }
+  async function run() {
     for (let i = 0; i < count; i++) {
       const eventStart = timings.length
       const requestStart = counts.requests
@@ -257,7 +288,7 @@ async function measure(
         seq: i + 1,
         file_id: 'sample-' + i,
         version_id: 'sample-version',
-        path: `Notes/sample-${i}.md`,
+        path: `${folder ? 'Container/Shared/' : ''}Notes/sample-${i}.md`,
         prev_path: null,
         op: 'create',
         kind: 'note',
@@ -353,9 +384,6 @@ async function measure(
       steadyNativeCalls,
       elapsedMs: performance.now() - started,
     }
-  } finally {
-    quiet?.mockRestore()
-    await native.rm(root, { recursive: true, force: true })
   }
 }
 
@@ -455,3 +483,9 @@ it.each([
   },
   60000
 )
+
+it('keeps native folder connection small pulls within the live bridge bound', async () => {
+  const result = await measure(true, false, 3, true, true, true)
+  console.log('[folder pull calls]', JSON.stringify(result))
+  for (const file of result.perFile) assertSmallPullBounds(file)
+})

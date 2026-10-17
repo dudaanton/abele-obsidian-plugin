@@ -972,72 +972,80 @@ it.each([false, true])(
   30000
 )
 
-it('hydrates through a held download while an edit lands and another connection transfers', async () => {
-  const servers = await Promise.all([v2Server(), v2Server()])
-  const factory = new IDBFactory()
-  vi.stubGlobal('window', {
-    indexedDB: factory,
-    setTimeout,
-    clearTimeout,
-    setInterval,
-    clearInterval,
-  })
-  const app = buildFakeVault([])
-  Object.assign(app.workspace, { iterateAllLeaves: () => {} })
-  const users = await Promise.all(
-    servers.map((server) =>
-      createUser(
-        { db: server.db, pepper: server.config.tokenPepper },
-        'Sample user',
-        server.address
+it.each([true, false])(
+  'hydrates through a held download while an edit lands and another connection transfers (original available=%s)',
+  async (available) => {
+    const servers = await Promise.all([v2Server(), v2Server()])
+    const factory = new IDBFactory()
+    vi.stubGlobal('window', {
+      indexedDB: factory,
+      setTimeout,
+      clearTimeout,
+      setInterval,
+      clearInterval,
+    })
+    const app = buildFakeVault([])
+    withDesktopFs(app)
+    Object.assign(app.workspace, { iterateAllLeaves: () => {} })
+    const users = await Promise.all(
+      servers.map((server) =>
+        createUser(
+          { db: server.db, pepper: server.config.tokenPepper },
+          'Sample user',
+          server.address
+        )
       )
     )
-  )
-  const s = await nativeTokenFixture(app, users[0].token, globalThis.fetch, factory)
-  try {
-    await s.ui.connect(users[1].token)
-    const other = s.registry.records().find((one) => one.id !== s.id)!.id
-    await s.ui.sync(other)
-    await app.vault.adapter.mkdir('Race')
-    await app.vault.adapter.write('Race/race.bin', 'old retained version')
-    await s.ui.sync(s.id)
-    await s.ui.sync(other)
-    expect(await s.host.evict(s.id, 'Race/race.bin')).toMatchObject({ status: 'complete' })
-    await s.ui.pause(s.id, true)
-    await s.ui.pause(other, true)
-    const host = s.host as unknown as { live: Map<string, TokenEngineRuntime> }
-    const binding = s.ui.runtimes.get(s.id)!
-    const gate = holdTokenDownload(host.live.get(s.id)!, () => binding.assertCurrent())
+    const s = await nativeTokenFixture(app, users[0].token, globalThis.fetch, factory)
     try {
-      const opened = s.host.hydrate('Race/race.bin').then(
-        () => true,
-        () => false
+      await s.ui.connect(users[1].token)
+      const other = s.registry.records().find((one) => one.id !== s.id)!.id
+      await s.ui.sync(other)
+      await app.vault.adapter.mkdir('Race')
+      await app.vault.adapter.write('Race/race.bin', 'old retained version')
+      await s.ui.sync(s.id)
+      await s.ui.sync(other)
+      expect(await s.host.evict(s.id, 'Race/race.bin')).toMatchObject({ status: 'complete' })
+      await s.ui.pause(s.id, true)
+      await s.ui.pause(other, true)
+      const host = s.host as unknown as { live: Map<string, TokenEngineRuntime> }
+      Reflect.set(host.live.get(s.id)!, 'serverAvailable', available)
+      // The shared offload view may hydrate through either authorized provider.
+      const gates = [s.id, other].map((id) =>
+        holdTokenDownload(host.live.get(id)!, () => s.ui.runtimes.get(id)!.assertCurrent())
       )
-      await Promise.race([
-        gate.ready,
-        opened.then((hydrated) => {
-          throw new Error('hydration finished without downloading: ' + hydrated)
-        }),
-      ])
-      await app.vault.create('Race/race.bin', 'newest local edit')
-      await s.ui.pause(other, false)
-      const transfer = host.live
-        .get(other)!
-        .sync()
-        .catch(() => {})
-      gate.release()
-      await opened
-      await transfer
-      expect(await app.vault.adapter.read('Race/race.bin')).toBe('newest local edit')
+      try {
+        const opened = s.host.hydrate('Race/race.bin').then(
+          () => true,
+          () => false
+        )
+        await Promise.race([
+          ...gates.map((gate) => gate.ready),
+          opened.then((hydrated) => {
+            throw new Error('hydration finished without downloading: ' + hydrated)
+          }),
+        ])
+        await app.vault.create('Race/race.bin', 'newest local edit')
+        await s.ui.pause(other, false)
+        const transfer = host.live
+          .get(other)!
+          .sync()
+          .catch(() => {})
+        gates.forEach((gate) => gate.release())
+        await opened
+        await transfer
+        expect(await app.vault.adapter.read('Race/race.bin')).toBe('newest local edit')
+      } finally {
+        gates.forEach((gate) => gate.close())
+      }
     } finally {
-      gate.close()
+      await s.host.close()
+      await Promise.all(servers.map((server) => server.close()))
+      vi.unstubAllGlobals()
     }
-  } finally {
-    await s.host.close()
-    await Promise.all(servers.map((server) => server.close()))
-    vi.unstubAllGlobals()
-  }
-}, 30000)
+  },
+  30000
+)
 
 it('holds all children of a deleted folder before any recursive directory commit, then restores them', async () => {
   const server = await v2Server()

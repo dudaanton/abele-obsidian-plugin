@@ -24,6 +24,7 @@ it.each([
   { host: true, reconnect: false, count: snapshotFiles, native: false },
   { host: true, reconnect: true, count: 3, native: false },
   { host: true, reconnect: false, count: 128, native: true },
+  { host: true, reconnect: false, count: 1, native: true },
 ])(
   'pulls a pre-token folder snapshot across pages into a populated vault without a directory scan per item (host=$host, reconnect=$reconnect, native=$native)',
   async ({ host, reconnect, count, native }) => {
@@ -49,7 +50,7 @@ it.each([
       path
     ) {
       const finish = beginPull.call(this, size, path)
-      if (!host || reconnect || native || captured) return finish
+      if (!host || reconnect || (native && count !== 1) || captured) return finish
       captured = capturing = true
       return (complete) => {
         finish(complete)
@@ -65,7 +66,11 @@ it.each([
           diagnosticCalls++
         }
       })
-    const scope = { kind: 'folder' as const, id: 'shared-folder', path: 'Shared sample' }
+    const scope = {
+      kind: 'folder' as const,
+      id: 'shared-folder',
+      path: count === 1 ? 'Container/Shared sample' : 'Shared sample',
+    }
     const bytes = new TextEncoder().encode('seeded before token issuance')
     const sha = await sha256(bytes)
     const directories = Array.from({ length: 12 }, (_, i) => ({
@@ -175,11 +180,17 @@ it.each([
         : []),
     ])
     if (native) {
+      const rawStat = app.vault.adapter.stat.bind(app.vault.adapter)
       const read = app.vault.adapter.readBinary.bind(app.vault.adapter)
       const write = app.vault.adapter.writeBinary.bind(app.vault.adapter)
       Object.assign(app.vault.adapter, {
         getFullPath: (path: string) => path,
         fsPromises: {
+          lstat: async (path: string) => {
+            if (!(await rawStat(path)))
+              throw Object.assign(new Error('missing'), { code: 'ENOENT' })
+            return { isSymbolicLink: () => false }
+          },
           open: async (path: string, flags: string) => {
             if (flags === 'wx') await write(path, new ArrayBuffer(0))
             return {
@@ -272,6 +283,10 @@ it.each([
           fetchPort
         )
       } else await runtime.sync()
+      if (host && native && count === 1) {
+        console.log('[cold native host pull]', JSON.stringify({ firstPull, events }))
+        assertSmallPullBounds(firstPull!.small.max)
+      }
       if (host && !reconnect && !native) {
         expect(firstPull!.small.count).toBe(1)
         expect(firstPull!.small.max).toMatchObject({ bridge: 15, preparationBridge: 2 })
@@ -416,7 +431,7 @@ it.each([
 )
 
 it('keeps the initial and reconnected token pull within two directory scans', () => {
-  expect(directoryScanCounts).toHaveLength(5)
+  expect(directoryScanCounts).toHaveLength(6)
   for (const count of directoryScanCounts) expect(count).toBeLessThanOrEqual(2)
 })
 

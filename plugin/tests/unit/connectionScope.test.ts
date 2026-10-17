@@ -206,3 +206,42 @@ it('checks both native operands and retains shared coordination through the insp
   expect(transferBudgetOf(scoped.vault)).toBe(transferBudgetOf(app.vault))
   expect(externalCoordinationOf(scoped.vault)).toBe(externalCoordinationOf(app.vault))
 })
+
+it.each([
+  { event: 'rename', changed: 'Container/Shared' },
+  { event: 'delete', changed: 'Container/Shared' },
+  { event: 'rename', changed: 'Container' },
+  { event: 'delete', changed: 'Container' },
+] as const)(
+  'reuses the bound root chain until $event of $changed invalidates it',
+  async ({ event, changed }) => {
+    const root = 'Container/Shared'
+    const app = buildFakeVault([{ path: root + '/kept.md', content: 'kept' }])
+    let linked = false
+    const lstat = vi.fn(async (full: string) => ({
+      isSymbolicLink: () => linked && full === '/sample-vault/' + root,
+    }))
+    Object.assign(app.vault.adapter, {
+      getFullPath: (path: string) => '/sample-vault/' + path,
+      fsPromises: { lstat },
+    })
+    const adapter = connectionAdapter(app.vault.adapter, root, connectionPrivateRoot('sample'))
+    const fs = new ObsidianFileSystem(app as never, { adapter, fileScope: root })
+    const stop = fs.watch(() => {})
+    try {
+      await fs.mkdir(root + '/One')
+      await fs.mkdir(root + '/Two')
+      expect(lstat.mock.calls.filter(([path]) => path === '/sample-vault/' + root)).toHaveLength(1)
+      app.emit(
+        'vault',
+        event,
+        { path: event === 'rename' ? 'Container/Moved' : changed, children: [] },
+        changed
+      )
+      linked = true
+      await expect(fs.mkdir(root + '/Three')).rejects.toMatchObject({ code: 'conflict' })
+    } finally {
+      stop()
+    }
+  }
+)

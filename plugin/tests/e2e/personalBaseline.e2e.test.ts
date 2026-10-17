@@ -180,18 +180,18 @@ liveCase(
     const outcome = await a.long<{ bytes: string; hydrated: boolean }>(
       'race opening with an edit and transfer',
       `
-      const gate=window.__abeleTest.holdTokenDownload(${JSON.stringify(source)})
+      const gates=[${JSON.stringify(source)},${JSON.stringify(other)}].map(id=>window.__abeleTest.holdTokenDownload(id))
       try{
         const opened=host.hydrate(${JSON.stringify(path)}).then(()=>true,()=>false)
-        await gate.ready
+        await Promise.race([...gates.map(gate=>gate.ready),opened.then(()=>{throw new Error('Hydration finished before the download race')})])
         await app.vault.create(${JSON.stringify(path)},'newest local edit')
         await svc.pause(${JSON.stringify(other)},false)
         const transfer=svc.runtimes.get(${JSON.stringify(other)}).sync().catch(()=>{})
-        gate.release()
+        gates.forEach(gate=>gate.release())
         const hydrated=await opened
         await transfer
         return {hydrated,bytes:await app.vault.adapter.read(${JSON.stringify(path)})}
-      }finally{gate.close()}
+      }finally{gates.forEach(gate=>gate.close())}
     `
     )
     expect(outcome.bytes).toBe('newest local edit')
