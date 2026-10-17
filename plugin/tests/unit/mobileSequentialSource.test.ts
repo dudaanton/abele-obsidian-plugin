@@ -1,3 +1,5 @@
+import { mobileStreamFixture } from '../helpers/mobileStreamFixture'
+import { mobileReadSnapshot } from '@/sync/mobileReadDiagnostics'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { DataAdapter } from 'obsidian'
 import { mobilePaths, probeSequentialFiles } from '@/sync/mobileSequentialSource'
@@ -94,8 +96,9 @@ it('rejects callback errors and deletes the probe file', async () => {
   expect(JSON.stringify(events)).toContain('sample failure')
 })
 
-it('uses the same sequential probe in the plugin diagnostic and large-file preflight', async () => {
+it('shares the sequential diagnostic and preflight probe, then reads a small file once through the adapter', async () => {
   const f = setup()
+  const readBinary = vi.spyOn(f.adapter, 'readBinary').mockResolvedValue(f.content.buffer)
   vi.stubGlobal('Capacitor', { Plugins: { Filesystem: f.files } })
   const io = new BoundedVaultIo(f.adapter)
   const diagnostic = await io.diagnoseMobile()
@@ -103,11 +106,39 @@ it('uses the same sequential probe in the plugin diagnostic and large-file prefl
   expect(
     diagnostic.events.filter((event) => event.step === 'chunk').map((event) => event.bytes)
   ).toEqual([4096, 4096, 4096, 4096, 4096])
+  expect(readBinary).not.toHaveBeenCalled()
   await io.requireTransfer(200 * 1024 * 1024)
+  expect(readBinary).not.toHaveBeenCalled()
+  const nativeCalls = f.files.readFileInChunks.mock.calls.length
   const source = await io.openRead('sample.bin')
   expect((await source.read(0, 1024 * 1024))[0]).toBe(73)
   await source.close()
+  expect(readBinary).toHaveBeenCalledExactlyOnceWith('sample.bin')
+  expect(f.files.readFileInChunks).toHaveBeenCalledTimes(nativeCalls)
   expect(f.probe.size).toBe(0)
+})
+
+it('does not whole-read a large mobile file during diagnostic, preflight or ordinary opening; only uploading reads once', async () => {
+  const f = mobileStreamFixture(51 * 1024 * 1024)
+  const io = new BoundedVaultIo(f.adapter)
+  const before = mobileReadSnapshot()
+  expect(await io.diagnoseMobile()).toMatchObject({ available: false, mode: 'unavailable' })
+  expect(f.readBinary).not.toHaveBeenCalled()
+  await io.requireTransfer(f.size)
+  expect(f.readBinary).not.toHaveBeenCalled()
+  await expect(io.openRead('sample.bin')).rejects.toThrow('50 MiB')
+  expect(f.readBinary).not.toHaveBeenCalled()
+  const source = await io.openUploadRead('sample.bin')
+  try {
+    expect((await source.read(0, 1024 * 1024))[0]).toBe(73)
+    expect(f.readBinary).toHaveBeenCalledExactlyOnceWith('sample.bin')
+    expect(mobileReadSnapshot().wholeReads - before.wholeReads).toBe(1)
+  } finally {
+    await source.close()
+  }
+  expect(f.counts.largeFetches).toBe(0)
+  expect(f.probes.size).toBe(0)
+  expect(mobileReadSnapshot().retainedBytes).toBe(0)
 })
 
 it('rejects oversized native callbacks before decoding or retaining their bytes', async () => {

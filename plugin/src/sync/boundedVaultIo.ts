@@ -291,7 +291,7 @@ export class BoundedVaultIo {
     const raw = this.raw
     const handle = raw.open && raw.fullPath ? await raw.open(raw.fullPath(path), 'r') : null
     // A stat-bounded small read avoids a resource fetch for every note in a first pull.
-    const small = original.size <= MAX_CHUNK_BYTES
+    const small = original.size <= PHONE_FALLBACK_BYTES
     const access = handle || small ? null : await this.mobile()
     const files = access?.files
     const resource = access && this.resourceMobile
@@ -309,15 +309,17 @@ export class BoundedVaultIo {
       // iOS delivers the whole file anyway. Read directly, avoiding a fetch body plus a copy.
       // Slice only the outgoing part: the bridge must never receive the whole backing buffer.
       this.assertOwned()
-      meter.wholeRead()
+      if (!small) meter.wholeRead()
       fallback = new Uint8Array(await this.disk.readBinary(path))
       this.assertOwned()
       if (fallback.length !== original.size)
         throw new EngineError('conflict', `${path} changed while reading`)
-      console.debug('[abele-sync] mobile whole-file read', { bytes: fallback.byteLength })
-      meter.opened()
-      meter.chunk(fallback.length, fallback.byteLength, MOBILE_WHOLE_READ_MAX)
-      meter.hold(fallback.byteLength)
+      if (!small) {
+        console.debug('[abele-sync] mobile whole-file read', { bytes: fallback.byteLength })
+        meter.opened()
+        meter.chunk(fallback.length, fallback.byteLength, MOBILE_WHOLE_READ_MAX)
+        meter.hold(fallback.byteLength)
+      }
     }
     let closed = false
     const unchanged = async () => {
@@ -364,9 +366,11 @@ export class BoundedVaultIo {
           bytes = await readMobileChunk(files, this.mobilePath(path), offset, length, signal)
         } else {
           bytes = fallback.slice(offset, offset + length)
-          meter.output(bytes.length)
-          meter.hold(fallback.byteLength + bytes.byteLength)
-          meter.hold(fallback.byteLength)
+          if (!small) {
+            meter.output(bytes.length)
+            meter.hold(fallback.byteLength + bytes.byteLength)
+            meter.hold(fallback.byteLength)
+          }
         }
         signal?.throwIfAborted()
         this.assertOwned()
@@ -391,7 +395,8 @@ export class BoundedVaultIo {
   async fingerprintForUpload(
     path: string,
     consume: (identity: ContentIdentity, source: ChunkSource) => Promise<void>,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    acknowledged?: (identity: ContentIdentity) => boolean
   ) {
     const stat = await this.stat(path)
     if (
@@ -401,6 +406,16 @@ export class BoundedVaultIo {
     )
       return undefined
     signal?.throwIfAborted()
+    const receipt = this.receipts.get(path)
+    if (receipt && receipt.stamp.size === stat.size && receipt.stamp.mtime === stat.mtime) {
+      const identity = {
+        size: stat.size,
+        sha: Array.from(receipt.hash.clone().digest(), (byte) =>
+          byte.toString(16).padStart(2, '0')
+        ).join(''),
+      }
+      if (acknowledged?.(identity)) return { ...stampOf(stat), ...identity }
+    }
     const source = await this.openUploadRead(path)
     const hash = sha256.create()
     try {
@@ -426,7 +441,6 @@ export class BoundedVaultIo {
     }
   }
   async fingerprint(path: string, signal?: AbortSignal, boundedOnly = false, fresh = false) {
-    if (fresh) this.receipts.delete(path)
     if (this.raw.open && this.raw.fullPath) {
       const before = stampOf(await this.stat(path))
       const handle = await this.raw.open(this.raw.fullPath(path), 'r')
@@ -472,7 +486,8 @@ export class BoundedVaultIo {
       // turn an invalidated receipt into an automatic whole-file eviction proof.
       if (this.metadataReceipts && stamp.size > PHONE_FALLBACK_BYTES)
         throw new EngineError('conflict', 'Recorded file changed; file kept')
-      this.receipts.delete(path)
+      if (stamp.size !== receipt.stamp.size || stamp.mtime !== receipt.stamp.mtime)
+        this.receipts.delete(path)
     }
     if (
       boundedOnly &&

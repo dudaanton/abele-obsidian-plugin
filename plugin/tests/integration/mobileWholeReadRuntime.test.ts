@@ -1,6 +1,7 @@
+import { mobileStreamFixture } from '../helpers/mobileStreamFixture'
+import { mobileReadSnapshot } from '@/sync/mobileReadDiagnostics'
 import { sourcesFromScan } from '../../node_modules/@abele/sync-core/dist/pushSources.js'
 import { afterEach, expect, it, vi } from 'vitest'
-import type { DataAdapter } from 'obsidian'
 import { MemoryFileSystem, MemoryStateStore, selectiveDefaults } from '@abele/sync-core'
 import { encodeAccessToken } from '@abele/sync-protocol'
 import { BoundedVaultIo } from '@/sync/boundedVaultIo'
@@ -14,12 +15,10 @@ import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
 const MiB = 1024 * 1024
 afterEach(() => vi.unstubAllGlobals())
 it('scans and publishes a large whole-read source once before the normal path commit', async () => {
-  const size = 51 * MiB
-  const readBinary = vi.fn(async () => new ArrayBuffer(size))
-  const io = new BoundedVaultIo({
-    stat: async () => ({ type: 'file', size, mtime: 1, ctime: 1 }),
-    readBinary,
-  } as unknown as DataAdapter)
+  const size = 200 * MiB
+  const fixture = mobileStreamFixture(size)
+  const readBinary = fixture.readBinary
+  const io = new BoundedVaultIo(fixture.adapter)
   const fs = new MemoryFileSystem()
   // Keep inventory virtual so the test accounts for only the actual mobile source buffer.
   fs.list = async function* () {
@@ -42,6 +41,7 @@ it('scans and publishes a large whole-read source once before the normal path co
   const metadata = new MemoryStateStore()
   let complete = 0,
     committed = false
+  let concurrent: Promise<unknown[]> | undefined
   const one = new TokenEngineRuntime({
     id: 'sample',
     encoded: encodeAccessToken({ v: 1, address, key: 'a'.repeat(43), scope }),
@@ -66,13 +66,16 @@ it('scans and publishes a large whole-read source once before the normal path co
         })
       if (path === '/v2/manifest' || path === '/v2/changes')
         return Response.json({ items: [], cursor: 0, next: null })
-      if (path.endsWith('/begin'))
+      if (path.endsWith('/begin')) {
+        const port = Reflect.get(one.engine, 'opts').fs
+        concurrent ??= Promise.all([port[fresh]('sample.bin'), port.fingerprint('sample.bin')])
         return Response.json({
           upload_id: 'sample-upload',
           part_size: MiB,
-          parts: 51,
+          parts: 200,
           received: [],
         })
+      }
       if (path.endsWith('/complete')) {
         complete++
         return new Response(null, { status: 204 })
@@ -100,15 +103,34 @@ it('scans and publishes a large whole-read source once before the normal path co
   try {
     await one.sync()
     expect(committed).toBe(true)
+    await concurrent
+    expect(fixture.counts.largeFetches).toBe(0)
     expect(readBinary).toHaveBeenCalledOnce()
     expect(fs.fingerprint).not.toHaveBeenCalled()
     expect(fs.openRead).not.toHaveBeenCalled()
-    // Revalidation enters through the fresh-fingerprint capability rather than fingerprint().
+    // Revalidation after an acknowledged upload uses its unchanged stamp and hash, not another read.
     const port = Reflect.get(one.engine, 'opts').fs
-    expect(await port[fresh]('sample.bin')).toMatchObject({ size })
-    expect(readBinary).toHaveBeenCalledTimes(2)
+    const baseline = mobileReadSnapshot()
+    const checks = await Promise.all([
+      port[fresh]('sample.bin'),
+      port[fresh]('sample.bin'),
+      port.fingerprint('sample.bin'),
+    ])
+    expect(checks.every((one) => one.size === size)).toBe(true)
+    expect(readBinary).toHaveBeenCalledOnce()
+    expect(mobileReadSnapshot().retainedBytes).toBe(0)
+    expect(mobileReadSnapshot().peakRetainedBytes).toBe(size + MiB)
+    expect(mobileReadSnapshot().maxChunkBytes).toBe(size)
+    expect(fixture.counts.bytesProduced).toBe(size)
+    expect(mobileReadSnapshot().wholeReads - baseline.wholeReads).toBe(0)
     expect(fs.fingerprint).not.toHaveBeenCalled()
     expect(fs.openRead).not.toHaveBeenCalled()
+    vi.mocked(fs.fingerprint).mockResolvedValueOnce({ size: 16, sha: 'b'.repeat(64), mtime: 1 })
+    expect(await port.fingerprint('small.bin')).toMatchObject({ size: 16 })
+    expect(fs.fingerprint).toHaveBeenCalledWith('small.bin')
+    expect(readBinary).toHaveBeenCalledOnce()
+    await one.sync()
+    expect(readBinary).toHaveBeenCalledOnce()
   } finally {
     await one.close()
   }

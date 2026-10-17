@@ -2519,7 +2519,10 @@ the server has acknowledged.
 
 For large whole-read uploads, the scan hashes and publishes the content-addressed blob while
 the same buffer is open. The ordinary engine still owns commits and path changes, and its
-later blob check uses acknowledgements retained for that cycle to avoid reopening the file. This avoids retaining every scanned file in
+later blob check uses acknowledged uploads and a matching process-local size/mtime receipt
+to avoid reopening the file, including revalidation scans and later cycles. Server generation
+changes invalidate those upload acknowledgements. Concurrent fingerprints of one path share
+the same in-flight operation; no full buffer remains after it settles. This avoids retaining every scanned file in
 memory until the upload phase. A server hit closes the buffer immediately. Scope and placement
 proxies validate the path before this capability runs. Native/ranged hosts keep the ordinary
 scan/upload flow. The default mobile selective size cap uses the same 200 MiB constant.
@@ -2529,6 +2532,8 @@ file stamp for later offload verification; the upload buffer is released.
 
 The exchange snapshot's `localReads` counters expose reads, delivered chunks, consumed bytes,
 active sources, current/peak source-held buffers and maximum incoming backing-buffer size.
+Ordinary files up to 50 MiB use the adapter directly and appear in the normal adapter-call
+diagnostics; they do not increment the large-upload `wholeReads` counter.
 For a whole-file read, one delivered chunk is the complete file. These counters measure
 JavaScript-owned buffers; native/browser resident memory requires platform sampling.
 The append-only large pull needs none of these local readers. If its process-local receipt is

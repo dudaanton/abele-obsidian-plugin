@@ -68,6 +68,10 @@ it.each([50, 200])(
     })
     try {
       await host.requireTransfer(size)
+      if (mib > 50) {
+        // An ordinary fresh scan cannot read this file; it must not erase the download proof.
+        await expect(fs.fingerprint('sample.bin')).rejects.toThrow('50 MiB')
+      }
       expect(await host.fingerprint('sample.bin')).toMatchObject(identity)
       await app.vault.adapter.remove('sample.bin')
       const artifact = {

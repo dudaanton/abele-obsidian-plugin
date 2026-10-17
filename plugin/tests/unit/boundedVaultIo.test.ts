@@ -1,3 +1,4 @@
+import { mobileReadSnapshot } from '@/sync/mobileReadDiagnostics'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { desktopFsPort } from '../helpers/desktopRequire'
 import type { DataAdapter } from 'obsidian'
@@ -302,4 +303,21 @@ it('keeps small reads on the adapter after a whole-file upload read', async () =
   }
   expect(f.fetcher.mock.calls.length).toBe(before)
   expect(smallRead).toHaveBeenCalledTimes(2)
+})
+
+it('keeps a 2 MiB mobile file on the original adapter path without large-upload diagnostics or resource probes', async () => {
+  const fixture = mobileStreamFixture(2 * MiB)
+  const before = mobileReadSnapshot()
+  const io = new BoundedVaultIo(fixture.adapter)
+  const source = await io.openRead('sample.bin')
+  try {
+    expect((await source.read(0, MiB)).length).toBe(MiB)
+  } finally {
+    await source.close()
+  }
+  expect(fixture.readBinary).toHaveBeenCalledOnce()
+  expect(fixture.fetcher).not.toHaveBeenCalled()
+  expect(fixture.readFileInChunks).not.toHaveBeenCalled()
+  expect(fixture.readFile).not.toHaveBeenCalled()
+  expect(mobileReadSnapshot().wholeReads).toBe(before.wholeReads)
 })

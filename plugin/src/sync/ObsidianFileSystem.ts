@@ -1330,9 +1330,10 @@ export class ObsidianFileSystem implements FileSystem {
   async [FINGERPRINT_UPLOAD](
     path: string,
     consume: (identity: { size: number; sha: string }, source: ChunkSource) => Promise<void>,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    acknowledged?: (identity: ContentIdentity) => boolean
   ) {
-    const identity = await this.io.fingerprintForUpload(path, consume, signal)
+    const identity = await this.io.fingerprintForUpload(path, consume, signal, acknowledged)
     if (!identity) return undefined
     this.observedBases.set(caseKey(path), { sha: identity.sha })
     return { ...identity, mtime: stamp(identity.mtime) }

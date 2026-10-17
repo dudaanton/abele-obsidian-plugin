@@ -126,6 +126,8 @@ export class TokenEngineRuntime
 {
   readonly trace = new ExchangeTrace()
   private readonly wholeReadUploads = new Set<string>()
+  private readonly uploadFingerprints = new Map<string, Promise<unknown>>()
+  private readonly largeUploadPaths = new Set<string>()
   readonly engine: SyncEngine
   readonly client: V2EngineClient
   readonly actions: TokenActions
@@ -623,7 +625,7 @@ export class TokenEngineRuntime
     this.client.includes = (path) =>
       includes(path) || (this.active && this.permitted && this.assetPaths.has(path))
     this.client.prepare = async (fs, state, excluded) => {
-      this.wholeReadUploads.clear()
+      this.largeUploadPaths.clear()
       this.readyToPublish = false
       this.acceptHandshake = true
       if (options.rootExists && (await state.getCursor()) > 0 && !(await options.rootExists()))
@@ -675,7 +677,9 @@ export class TokenEngineRuntime
         options.state,
         excluded
       )
-      this.generation = await options.state.getMeta(GENERATION_KEY)
+      const generation = await options.state.getMeta(GENERATION_KEY)
+      if (generation !== this.generation) this.wholeReadUploads.clear()
+      this.generation = generation
       const reconciliation = await readReconciliation(options.state)
       options.changed({ ...this.engine.status, reconciliation })
       // state() includes an effects-capable changes decoder; replay stays fenced here.
@@ -903,6 +907,7 @@ export class TokenEngineRuntime
               if (name === 'list') this.inventoryTotal = completed
             }
             const candidate = (path: string) => this.namedCandidate(path)
+            const largeUploads = this.largeUploadPaths
             const checkRoot = () => this.checkRoot()
             const nameTracked = async () => {
               if (this.token.scope.kind !== 'group') return
@@ -916,6 +921,10 @@ export class TokenEngineRuntime
               try {
                 for await (const info of value.call(target)) {
                   if (name === 'list' && !candidate(info.path)) continue
+                  if (name === 'list') {
+                    if (info.size > 50 * 1024 * 1024) largeUploads.add(info.path)
+                    else largeUploads.delete(info.path)
+                  }
                   completed++
                   yield info
                 }
@@ -951,8 +960,9 @@ export class TokenEngineRuntime
                 if (this.compared.size === 0) options.comparing?.({ completed: 0, total })
                 const bytes =
                   name === 'fingerprint' || name === Symbol.for('abele.sync.fingerprint-fresh-v1')
-                    ? ((await this.fingerprintForUpload(target, path)) ??
-                      (await value.call(target, path)))
+                    ? ((this.largeUploadPaths.has(path)
+                        ? await this.fingerprintForUpload(target, path)
+                        : undefined) ?? (await value.call(target, path)))
                     : await connectStage(
                         'Comparing files',
                         'Comparing a local file could not finish. Try syncing again.',
@@ -979,7 +989,6 @@ export class TokenEngineRuntime
       ...(options.paths?.scriptsFolder ? { scriptsFolder: options.paths.scriptsFolder } : {}),
       ...(options.fallbackMs ? { fallbackMs: options.fallbackMs } : {}),
       onSync: (report) => {
-        this.wholeReadUploads.clear()
         this.serverAvailable = true
         this.trace.finishPull(true)
         this.pendingFolders.clear()
@@ -1855,10 +1864,13 @@ export class TokenEngineRuntime
       | ((
           path: string,
           consume: (identity: { size: number; sha: string }, source: ChunkSource) => Promise<void>,
-          signal: AbortSignal
+          signal: AbortSignal,
+          acknowledged: (identity: { size: number; sha: string }) => boolean
         ) => Promise<unknown>)
     if (!fingerprint) return undefined
-    return this.transferBudget.run(() =>
+    const pending = this.uploadFingerprints.get(path)
+    if (pending !== undefined) return pending
+    const work = this.transferBudget.run(() =>
       fingerprint.call(
         fs,
         path,
@@ -1874,9 +1886,16 @@ export class TokenEngineRuntime
           )
           this.wholeReadUploads.add(identity.sha)
         },
-        this.requests.signal
+        this.requests.signal,
+        (identity: { sha: string }) => this.wholeReadUploads.has(identity.sha)
       )
     )
+    this.uploadFingerprints.set(path, work)
+    try {
+      return await work
+    } finally {
+      this.uploadFingerprints.delete(path)
+    }
   }
   async reconcile(): Promise<void> {
     this.assertHeld()
