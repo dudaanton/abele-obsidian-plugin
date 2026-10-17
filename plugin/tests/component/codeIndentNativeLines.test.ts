@@ -4,6 +4,32 @@ import type { Plugin } from 'obsidian'
 import { EditorState, StateEffect, StateField, type Extension } from '@codemirror/state'
 import { Decoration, EditorView, type MeasureRequest } from '@codemirror/view'
 import { codeGuideExtension, registerCodeIndentGuides } from '@/codeIndent/register'
+import { nativeCodeLines } from '@/codeIndent/nativeLines'
+
+it('preserves fractional layout insets and measures the entire leading indent', () => {
+  const row = document.createElement('div')
+  row.className = 'cm-line HyperMD-codeblock-bg abele-code-guides'
+  row.style.cssText = 'padding-inline-start: 45.5px; text-indent: -29.25px'
+  row.textContent = '    child'
+  const contentDOM = document.createElement('div')
+  contentDOM.append(row)
+  document.body.append(contentDOM)
+  const bounds = vi.spyOn(Range.prototype, 'getBoundingClientRect').mockImplementation(function () {
+    return new DOMRect(36, 20, this.endOffset - this.startOffset === 4 ? 29.25 : 7, 20)
+  })
+  const rowBounds = vi
+    .spyOn(row, 'getBoundingClientRect')
+    .mockReturnValue(new DOMRect(20, 20, 400, 20))
+  try {
+    const view = { contentDOM, state: EditorState.create({ doc: '    child' }), posAtDOM: () => 0 }
+    const result = nativeCodeLines(view as unknown as EditorView, 4, () => 'code')
+    expect(result.metrics.get(1)).toEqual({ cell: 7.3125, inset: 16.25 })
+  } finally {
+    bounds.mockRestore()
+    rowBounds.mockRestore()
+    contentDOM.remove()
+  }
+})
 
 const DOC = 'prose\n```js\nroot\n  child\n\n    deep\n```\n  prose'
 // Obsidian's line/background decorators and token spans need not have equivalent
@@ -46,9 +72,9 @@ it('decorates native background/token lines after measurement without parser-nam
   const measure = vi.spyOn(EditorView.prototype, 'requestMeasure').mockImplementation((request) => {
     if (request) requests.push(request)
   })
-  const bounds = vi
-    .spyOn(Range.prototype, 'getBoundingClientRect')
-    .mockReturnValue(new DOMRect(36, 20, 7, 20))
+  const bounds = vi.spyOn(Range.prototype, 'getBoundingClientRect').mockImplementation(function () {
+    return new DOMRect(36, 20, 7 * (this.endOffset - this.startOffset), 20)
+  })
   const originalBounds = HTMLElement.prototype.getBoundingClientRect
   const rowsBounds = vi
     .spyOn(HTMLElement.prototype, 'getBoundingClientRect')

@@ -31,11 +31,20 @@ export function nativeCodeLines(
     if (!first || !/^[\t ]/.test(first.data)) continue
     const range = element.ownerDocument.createRange()
     range.setStart(first, 0)
-    range.setEnd(first, 1)
+    const indent = /^[\t ]+/.exec(first.data)[0]
+    let columns = 0
+    for (const char of indent) columns += char === '\t' ? tabSize - (columns % tabSize) : 1
+    range.setEnd(first, indent.length)
     const rect = range.getBoundingClientRect()
-    const cell = rect.width / (first.data[0] === '\t' ? tabSize : 1)
-    if (cell > 0)
-      metrics.set(number, { cell, inset: rect.left - element.getBoundingClientRect().left })
+    const cell = rect.width / columns
+    const style = element.ownerDocument.defaultView.getComputedStyle(element)
+    // Range coordinates may be rounded by WebKit. Keep the native layout inset
+    // in CSS pixels, undoing our hanging indent when measuring decorated lines.
+    const padding = parseFloat(style.paddingInlineStart)
+    const inset = Number.isFinite(padding)
+      ? padding + (parseFloat(style.textIndent) || 0)
+      : rect.left - element.getBoundingClientRect().left
+    if (cell > 0) metrics.set(number, { cell, inset })
   }
   // A visible native code line confirms membership. Locate only that block's source
   // boundaries when its opening/closing lines are outside the mounted viewport.
