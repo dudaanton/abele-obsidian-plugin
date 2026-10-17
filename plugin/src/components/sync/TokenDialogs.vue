@@ -355,7 +355,7 @@ async function revoke() {
   if (alive && epoch === generation) tokens.value = listed
 }
 async function approve() {
-  if (props.candidate) await props.ui.approve(props.candidate)
+  if (props.candidate) await props.ui.approve(props.candidate, { background: true })
 }
 async function reject() {
   if (props.candidate) await props.ui.reject(props.candidate)

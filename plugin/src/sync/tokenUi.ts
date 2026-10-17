@@ -317,7 +317,7 @@ export class TokenUi {
   readonly available = shallowRef(false)
   readonly runtimes = new Map<string, TokenUiRuntime>()
   readonly approvalStatus = shallowRef<Record<string, string>>({})
-  private readonly installing = new Set<string>()
+  private readonly installing = new Map<string, Promise<void>>()
   private readonly deletionFacts = new Map<
     string,
     import('@/components/sync/serverDelete').ServerDeleteFacts
@@ -403,7 +403,7 @@ export class TokenUi {
     for (const candidate of candidates) {
       const runtime = this.runtimes.get(candidate.source.id)
       if (candidate.status === 'queued') {
-        this.installApproval(candidate)
+        void this.installApproval(candidate)
         continue
       }
       if (!runtime || !this.trusted(candidate.source) || this.installing.has(candidate.id)) continue
@@ -411,14 +411,15 @@ export class TokenUi {
       const assertAllowed = () => {
         if (!this.trusted(candidate.source)) throw revoked
       }
-      this.installing.add(candidate.id)
+      const installation = reviews.executables.approve([candidate.id], {
+        apply: async (one) => {
+          assertAllowed()
+          await runtime.apply(one, assertAllowed)
+        },
+      })
+      this.installing.set(candidate.id, installation)
       try {
-        await reviews.executables.approve([candidate.id], {
-          apply: async (one) => {
-            assertAllowed()
-            await runtime.apply(one, assertAllowed)
-          },
-        })
+        await installation
         this.recordEvent(
           candidate.source.id,
           `Installed code from ${scopeName(candidate.source.scope)}: ${local(candidate.source.id, candidate.path)}`
@@ -940,7 +941,11 @@ export class TokenUi {
     // The server lists exactly the tokens this caller may revoke, including root-owner access.
     return (await this.client(id).tokens()).items
   }
-  async approve(candidate: ExecutableCandidate): Promise<void> {
+  /** Background callers acknowledge durable consent without waiting for installation. */
+  async approve(
+    candidate: ExecutableCandidate,
+    options: { background?: boolean } = {}
+  ): Promise<void> {
     if (!this.reviews) throw new Error('File exchange is not available in this build')
     const record = this.registry.records().find((one) => one.id === candidate.source.id)
     if (!record || sourceIdentity(reviewSourceOf(record)) !== sourceIdentity(candidate.source))
@@ -950,29 +955,37 @@ export class TokenUi {
       candidate.id,
       'Approved — will be installed as soon as the connection is available.'
     )
-    this.installApproval(candidate)
+    const installation = this.installApproval(candidate)
     if (!this.runtimes.has(candidate.source.id) && !record.paused)
       void this.retryConnection(record.id, () => {
         if (!this.registry.records().some((one) => one.id === record.id))
           throw new Error('Connection cancelled')
       })
-        .then(() => this.installApproval(candidate))
+        .then(() => {
+          void this.installApproval(candidate)
+        })
         .catch((error) => {
           this.setApprovalStatus(
             candidate.id,
             'Approved — waiting for the connection. ' + connectionError(error)
           )
         })
+    if (installation !== undefined && !options.background) {
+      await installation
+      await this.refreshReviews()
+    }
   }
   private setApprovalStatus(id: string, text: string): void {
     this.approvalStatus.value = { ...this.approvalStatus.value, [id]: text }
   }
-  private installApproval(candidate: ExecutableCandidate): void {
+  private installApproval(candidate: ExecutableCandidate): Promise<void> | undefined {
+    const existing = this.installing.get(candidate.id)
+    if (existing !== undefined) return existing
     const runtime = this.runtimes.get(candidate.source.id)
-    if (!runtime || !this.reviews || this.installing.has(candidate.id)) return
-    this.installing.add(candidate.id)
-    void this.reviews.executables
-      .approve([candidate.id], runtime)
+    if (!runtime || !this.reviews) return
+    const installation = this.reviews.executables.approve([candidate.id], runtime)
+    this.installing.set(candidate.id, installation)
+    void installation
       .then(() => {
         this.setApprovalStatus(candidate.id, 'Approved and installed.')
         void this.refreshReviews().catch((error) =>
@@ -989,6 +1002,7 @@ export class TokenUi {
       .finally(() => {
         this.installing.delete(candidate.id)
       })
+    return installation
   }
   async reject(candidate: ExecutableCandidate): Promise<void> {
     await this.reviews?.executables.reject([candidate.id])

@@ -26,7 +26,7 @@ it('accepts approval before runtime registration and shows progress and errors b
     candidate = ui.candidates.value[0]
   ui.runtimes.clear()
   let fail!: (error: Error) => void
-  vi.spyOn(ui, 'approve').mockImplementation(
+  const approve = vi.spyOn(ui, 'approve').mockImplementation(
     () =>
       new Promise((_, reject) => {
         fail = reject
@@ -46,6 +46,7 @@ it('accepts approval before runtime registration and shows progress and errors b
   const button = view.findAllComponents(Button).find((one) => one.props('text') === 'Approve')!
   expect(button.props('disabled')).toBe(false)
   await button.trigger('click')
+  expect(approve).toHaveBeenCalledExactlyOnceWith(candidate, { background: true })
   expect(button.props('text')).toBe('Approving…')
   fail(Object.assign(new Error('Sample approval could not be saved'), { code: 'startup-stage' }))
   await flushPromises()
