@@ -37,9 +37,12 @@ describe('startup mark boundaries', () => {
         startupStepAsync: async (name: string) => {
           events.push(name)
         },
-        startupStep: (name: string) => {
+        startupStep: (name: string, run: () => void) => {
           events.push(name)
+          if (name === 'locale') run()
         },
+        initializeLocale: (locale: string) => events.push(`initializeLocale:${locale}`),
+        hostLocale: () => ({ format: 'de' }),
         createPluginSecrets: () => ({}),
         setSecrets: noop,
         initializeDestinations: noop,
@@ -65,6 +68,8 @@ describe('startup mark boundaries', () => {
         'evalEnd',
         'onloadStart',
         'onloadEnd',
+        'locale',
+        'initializeLocale:de',
         'layoutStart',
         'layoutEnd',
       ]) {
@@ -78,6 +83,9 @@ describe('startup mark boundaries', () => {
       before('evalStart', 'evalEnd')
       before('evalEnd', 'onloadStart')
       before('onloadStart', 'onloadEnd')
+      before('onloadStart', 'locale')
+      before('locale', 'initializeLocale:de')
+      before('initializeLocale:de', 'settings')
       before('layoutStart', 'layoutEnd')
       before('links', 'onloadEnd')
       before('time tracking index', 'layoutEnd')

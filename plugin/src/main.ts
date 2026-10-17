@@ -312,12 +312,14 @@ export default class AbelePlugin extends Plugin {
   }
 
   async onload() {
-    initializeLocale(process.env.NODE_ENV !== 'production' ? 'en' : hostLocale().format)
     markLoad('onloadStart')
     try {
       // Every step below runs on its own: one that throws is named in the console and the rest of
       // the start goes on, instead of leaving the sidebars and everything after it unregistered.
       beginStartup()
+      startupStep('locale', () =>
+        initializeLocale(process.env.NODE_ENV !== 'production' ? 'en' : hostLocale().format)
+      )
       // First, so it runs before every other layout-ready callback registered below.
       this.app.workspace.onLayoutReady(() => markLoad('layoutStart'))
       dayjs.extend(weekday)
