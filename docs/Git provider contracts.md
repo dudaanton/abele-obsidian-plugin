@@ -1,7 +1,7 @@
 # Git provider contracts
 
 The provider boundary separates deployment identity, single-hop HTTP, credential authority,
-URL codecs and repository reads. GitHub is the implemented adapter. Existing commands,
+URL codecs and repository reads. GitHub, Forgejo and Gitea have implemented adapters. Existing commands,
 tool names, tabs, snippets and notification behavior retain their GitHub contracts.
 
 Deployments include provider, scheme, host, port and base path. Credentials belong to a
@@ -33,5 +33,25 @@ not a distinct API implementation. No account responses or credentials are recor
 | Notification completion | Both expose unread, read and pinned states. Mark read is available; a distinct Done operation is unsupported. Read must not be relabeled Done or mapped to pinned. |
 | Blame and repository Discussions | No corresponding endpoints are present in either inspected schema. Unsupported capabilities must remain explicit. |
 
-The schema support table describes API evidence, not availability of an installed adapter.
-It does not turn on additional provider connections or change the existing GitHub inbox.
+The schema support table describes the inspected API baselines, not a promise about every
+server version. Connections select their provider explicitly; an unknown server or provider
+never falls back to GitHub. Codeberg uses the Forgejo adapter and credential rules.
+
+## Milestone behavior
+
+Forgejo/Gitea support repository home, refs, trees, files, issue and pull-request lists and
+conversations, reviews, changed files, commits, endpoint comparisons, immutable archive search,
+heuristic definitions, pickers, people, snippets and the selected connection's inbox. Native
+comparison metadata does not establish merge-base semantics; pinned endpoint comparisons
+reconstruct changes from fixed trees and blobs. Missing patches, incomplete results and
+unavailable precise diff anchors remain visible limitations.
+
+The eight `forge_*` tools and eight `github_*` compatibility names use the selected provider.
+Each invoked tool keeps its own permission and the connection's Off/Ask/Auto ceiling. The tools
+are read-only; explicit interface actions for comments, merging and node PR creation are
+separate writes. An unknown write outcome is not automatically retried.
+
+GitLab remains unavailable pending its adapter and acceptance stage. Preserving a future
+provider record through settings migration does not enable its transport or grant agent access.
+
+See [Git providers](Git%20providers.md) for setup, migration and supported API gaps.

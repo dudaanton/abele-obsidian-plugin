@@ -70,6 +70,19 @@ for (const provider of ['forgejo', 'gitea'] as const) {
               }
               await wait(150)
               const current = root || leaf?.view.containerEl
+              if (${JSON.stringify(layout)} === 'phone') {
+                const top = current?.querySelector('.abele-github-header__top')
+                if (top) {
+                  const boxes = [...top.querySelectorAll('.abele-github-header__repo, .abele-github-header__actions > .abele-obsidian-icon')]
+                    .map(el => ({name:el.getAttribute('aria-label') || el.className, box:el.getBoundingClientRect()}))
+                    .filter(row => row.box.width > 0 && row.box.height > 0)
+                  const centers = boxes.map(row => row.box.top + row.box.height / 2)
+                  if (boxes.some(row => row.box.right > innerWidth + 1 || row.box.left < -1))
+                    throw Error('Header actions overflow the phone viewport in '+name)
+                  if (Math.max(...centers) - Math.min(...centers) > 2)
+                    throw Error('Header must stay on one row in '+name+': '+JSON.stringify(boxes.map(row => ({name:row.name,top:row.box.top,width:row.box.width,height:row.box.height}))))
+                }
+              }
               const viewport = current?.querySelector('.view-content')
               if (viewport) largestSideways = Math.max(largestSideways, viewport.scrollWidth - viewport.clientWidth)
               const image = await require('@electron/remote').getCurrentWebContents().capturePage()
@@ -121,6 +134,7 @@ for (const provider of ['forgejo', 'gitea'] as const) {
             if (!root.textContent.includes('Loader hangs')) throw Error('Native issue list missing')
             await shoot('issue-list',root)
             root = await open('missing-widgets')
+            if (!(await until(() => root.textContent.includes(${JSON.stringify((provider === 'gitea' ? 'Gitea' : 'Forgejo') + ' refused the request (404).')})))) throw Error('Repository refusal named the wrong service')
             await shoot('missing-repository',root)
             root = await open('private-widgets','one')
             if (!(await until(() => root.textContent.includes('404')))) throw Error('Explicit account unexpectedly fell back')
@@ -366,6 +380,7 @@ for (const provider of ['forgejo', 'gitea'] as const) {
             const added = await until(() => config.github.connections.find(c => c.provider === ${JSON.stringify(provider)} && c.account?.login === 'sample-account-two'))
             if (!added || written.get(added.keyId) !== 'invented-connection-two') throw Error('Save did not retain the checked connection with its own credential')
             const row = [...settings.querySelectorAll('.setting-item')].find(el => el.textContent.includes(added.name))
+            if (settings.closest('.modal')?.querySelector('.modal-title')?.textContent !== 'Git hosting') throw Error('Shared connection page must use the neutral title')
             row.scrollIntoView({block:'center'}); await shoot('saved')
             return {account,tokenExposed,pictures,saved:true}
             } finally { store.set = oldSet; store.get = oldGet; store.version.value++ }
@@ -385,6 +400,71 @@ for (const provider of ['forgejo', 'gitea'] as const) {
         else await probe()
       }, 300_000)
     }
+    for (const layout of ['desktop', 'phone'] as const) {
+      it(`shows native agent access and transfer bindings in ${layout}`, async () => {
+        const probe = async () => {
+          enable()
+          try {
+            const result = evalAsync<boolean>(
+              `(async () => {
+              ${PRELUDE}
+              const shoot = async name => {
+                await wait(250)
+                const image = await require('@electron/remote').getCurrentWebContents().capturePage()
+                require('fs').writeFileSync(${JSON.stringify(shots + '/' + layout + '-')}+name+'.png',image.toPNG())
+              }
+              const dismiss = async () => {
+                document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}))
+                if (!(await until(() => !document.querySelector('.modal')))) throw Error('Dialog did not close')
+              }
+              window.__abeleTest.openDialog('github-agent-access')
+              const config = window.__abeleTest.AbeleConfig.getInstance()
+              config.github.connections.forEach(row => { row.provider=${JSON.stringify(provider)}; row.server=${JSON.stringify(server.origin + '/forge')} })
+              config.version.value++
+              const access = await until(() => [...document.querySelectorAll('.abele-agent-editor .setting-item')].find(row => row.textContent.includes('Sample connection 1')))
+              if (!access || !access.textContent.includes(${JSON.stringify(provider)})) throw Error('Native agent connection identity missing')
+              if (access.querySelector('select')?.value !== 'off') throw Error('Native connection inherited access')
+              access.scrollIntoView({block:'start'}); await shoot('agent-access-long')
+              const modes = access.querySelector('select')
+              const agent = window.__abeleTest.AgentRegistry.getInstance().list().find(row => row.name === 'Sample connection permissions')
+              for (const mode of ['ask','auto']) {
+                modes.value = mode; modes.dispatchEvent(new Event('change',{bubbles:true}))
+                if (!(await until(() => agent.githubConnections['sample-0'] === mode))) throw Error('Native connection mode was not retained')
+                await shoot('agent-access-'+mode)
+              }
+              const missing = [...document.querySelectorAll('.abele-agent-editor .setting-item')].find(row => row.textContent.includes('missing-sample'))
+              if (!missing || missing.querySelector('select')?.value !== 'ask') throw Error('Deleted connection lost its permission')
+              missing.scrollIntoView({block:'center'}); await shoot('agent-access-missing')
+              await dismiss()
+              const entry = window.__abeleTest.collectTransferEntries(config.exportSettings())
+              const native = entry.filter(row => row.section === 'github-connections' && row.data.provider === ${JSON.stringify(provider)})
+              if (!native.length) throw Error('Native transfer entries missing')
+              window.__abeleTest.openDialog('transfer-preview',{transferPayload:{v:1,at:'2026-01-01T00:00:00Z',entries:native,secrets:{}}})
+              const preview = await until(() => document.querySelector('.abele-transfer-preview'))
+              if (!preview || !preview.textContent.includes(${JSON.stringify(provider === 'gitea' ? 'Gitea' : 'Forgejo')})) throw Error('Native transfer label missing')
+              await shoot('transfer-without-keys')
+              await dismiss()
+              const keys = Object.fromEntries(native.flatMap(row => row.secretIds || []).map(id => [id,'invented-transfer-secret']))
+              window.__abeleTest.openDialog('transfer-preview',{transferPayload:{v:1,at:'2026-01-01T00:00:00Z',entries:native,secrets:keys}})
+              const withKeys = await until(() => document.querySelector('.abele-transfer-preview'))
+              if (!withKeys || withKeys.textContent.includes('invented-transfer-secret')) throw Error('Transfer preview exposed a key')
+              await shoot('transfer-with-keys')
+              await dismiss()
+              return true
+            })()`,
+              120_000
+            )
+            expect(result).toBe(true)
+          } finally {
+            closeDialogs()
+            restoreGithub()
+          }
+        }
+        if (layout === 'phone') await withEmulatedPhone(probe)
+        else await probe()
+      }, 180_000)
+    }
+
     it('runs all neutral tools and an operation-local native Ask grant through the execution factory', () => {
       enable()
       try {

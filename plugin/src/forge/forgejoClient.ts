@@ -9,8 +9,11 @@ import {
 } from './transport'
 
 export class ForgejoError extends Error {
-  constructor(readonly status: number) {
-    super(`Forgejo refused the request (${status}).`)
+  constructor(
+    readonly status: number,
+    service = 'Forgejo'
+  ) {
+    super(`${service} refused the request (${status}).`)
   }
 }
 export class ForgejoUnknownWrite extends Error {
@@ -23,6 +26,9 @@ const uncertainWrites = new Set<string>()
 
 /** Native Forgejo REST reads. Transport is single-hop and never follows server links. */
 export class ForgejoClient {
+  private get service(): string {
+    return this.deployment.kind === 'gitea' ? 'Gitea' : 'Forgejo'
+  }
   get hasToken(): boolean {
     return !!this.token
   }
@@ -196,18 +202,21 @@ export class ForgejoClient {
             : {}),
         })
       } catch {
-        throw new Error('Could not reach the Forgejo service.')
+        throw new Error(`Could not reach the ${this.service} service.`)
       }
       if (result.status >= 300 && result.status < 400)
-        throw new Error('Forgejo redirected the request; check the configured server address.')
-      if (result.status < 200 || result.status >= 300) throw new ForgejoError(result.status)
+        throw new Error(
+          `${this.service} redirected the request; check the configured server address.`
+        )
+      if (result.status < 200 || result.status >= 300)
+        throw new ForgejoError(result.status, this.service)
       if (mode === 'none' || result.status === 204) return undefined
       try {
         return (
           mode === 'bytes' ? result.arrayBuffer : mode === 'text' ? result.text : result.json
         ) as T
       } catch {
-        throw new Error('Forgejo returned an unreadable response.')
+        throw new Error(`${this.service} returned an unreadable response.`)
       }
     })
   }

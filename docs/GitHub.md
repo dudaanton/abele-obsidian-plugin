@@ -1,5 +1,9 @@
 # GitHub
 
+Forgejo, Gitea and the Codeberg preset use these repository screens with provider-specific
+URLs and capability limits. See [Git providers](Git%20providers.md) for setup, migration,
+account selection and the supported API gaps. The GitHub behavior below remains available.
+
 Abele can show GitHub issues, pull requests, discussions, commits, comparisons and files in tabs inside
 Obsidian, so a link in a note opens the thing it points at without a trip to the browser. It
 reads repository content only; the notifications panel can mark threads Read or Done. It is off

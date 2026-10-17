@@ -109,7 +109,7 @@ export const ru = {
   'settings.tabs.ai': 'ИИ-агент',
   'settings.tabs.scripts': 'Скрипты',
   'settings.tabs.links': 'Ссылки',
-  'settings.tabs.github': 'GitHub',
+  'settings.tabs.github': 'Git-хостинг',
   'settings.tabs.nodes': 'Ноды',
   'settings.tabs.reader': 'Книги',
   'settings.tabs.quickButton': 'Быстрая кнопка',
@@ -561,23 +561,23 @@ export const ru = {
   'settings.GithubConnectionEditor.the_access_check_failed.90fa9dca':
     'Проверка доступа не удалась.',
   'settings.GithubSettings.open_github_issues_pull_requests.ad94cf5c':
-    'Открывайте проблемы GitHub, запросы на включение, обсуждения, коммиты и файлы на вкладках здесь, а ваши уведомления — на боковой панели. Содержимое репозитория доступно только для чтения. Уведомления можно пометить как прочитанные или выполненные.',
+    'Открывайте репозитории, задачи, пул-реквесты, коммиты и файлы GitHub, Forgejo и Gitea во вкладках, а уведомления — в боковой панели. Доступные действия зависят от сервиса.',
   'settings.GithubSettings.open_github_links_in_obsidian.815b1959':
-    'Открытие ссылок GitHub в Obsidian',
+    'Открывать ссылки Git в Obsidian',
   'settings.GithubSettings.a_click_on_a_supported.f005fa1f':
-    'Щелчок по поддерживаемой ссылке GitHub в заметке открывает ее на вкладке здесь. Другие ссылки GitHub и любая ссылка, нажатая с удержанием Alt, по-прежнему переходят в браузер.',
+    'Поддерживаемая ссылка на репозиторий открывается во вкладке. Другие ссылки и ссылки с зажатой Alt открываются в браузере.',
   'settings.GithubSettings.default_repository.525a8366': 'Репозиторий по умолчанию',
   'settings.GithubSettings.where_the_command_open_github.750aa580':
-    'Когда команда Открыть ссылку или элемент GitHub ищет пустой номер 123, заголовок, ветку или фиксацию, когда ни одна вкладка GitHub не открыта. владелец/репо или ссылка на него.',
+    'Где команда Open GitHub link or item ищет объект, если нет контекста вкладки репозитория. Укажите owner/repo или ссылку; при неоднозначном имени выберите подключение.',
   'settings.GithubSettings.owner_repo.65e817ee': 'владелец/репо',
   'settings.GithubSettings.pinned_repositories.03dccfeb': 'Закрепленные репозитории',
   'settings.GithubSettings.first_in_open_github_repository.067f8a9c':
-    'Сначала в репозитории Open GitHub… и перенесите на другие ваши устройства с настройками. Закрепите его из этого средства выбора (Alt+Enter) или из меню вкладки GitHub.',
+    'Первыми в Open GitHub repository…; переносятся с настройками. Закрепите репозиторий в этом списке (Alt+Enter) или в меню вкладки репозитория.',
   'settings.GithubSettings.nothing_pinned_yet.0b27e4d1': 'Еще ничего не закреплено.',
   'settings.GithubSettings.unpin_this_repository.91038877': 'Открепить этот репозиторий',
   'settings.GithubSettings.connections.dc273117': 'Соединения',
   'settings.GithubSettings.a_fine_grained_personal_access.d3f9cea9':
-    'Детализированный токен личного доступа с доступом только для чтения к содержимому, проблемам, запросам на включение и обсуждениям для репозиториев, которые вы хотите прочитать. Каждое соединение имеет свой собственный сервер и учетную запись; выберите одно значение по умолчанию для каждого сервера. Для уведомлений требуется классический токен с областью уведомлений, заданной в разделе «Токен уведомлений» ниже.',
+    'У каждого подключения свой сервис, сервер и аккаунт; выберите основное для каждого сервера. Для просмотра нужен токен с доступом на чтение репозитория. Для уведомлений GitHub нужен классический токен с правом notifications.',
   'settings.GithubSettings.no_connections_public_github_com.534d40f4':
     'Никаких связей. Публичные репозитории github.com читаются анонимно.',
   'settings.GithubSettings.default.2a7e0b7b': ' · По умолчанию',
@@ -635,8 +635,8 @@ export const ru = {
   'settings.GithubSettings.largest_repository_to_download_mb.c4edc368':
     'Самый большой репозиторий для загрузки (МБ)',
   'settings.GithubSettings.its_files_at_that_version.5d039cfc':
-    'Его файлы в этой версии сложились. Вместо этого поиск большего размера осуществляется с помощью собственного поиска кода GitHub, который знает только ветку по умолчанию и требует токена.',
-  'settings.GithubSettings.delete_github_connection.e4dfa050': 'Удалить соединение с GitHub',
+    'Общий размер файлов этой версии. Для больших репозиториев GitHub используется серверный поиск по основной ветке с токеном. Forgejo и Gitea сообщают о превышении лимита архива.',
+  'settings.GithubSettings.delete_github_connection.e4dfa050': 'Удалить подключение Git',
   'settings.GithubSettings.delete_connection.e960651b': 'Удалить соединение',
   'settings.GithubSettings.delete_value_its_local_token.b78722f1':
     'Удалить {value0}? Его локальный токен будет забыт; остальные связи сохраняются.',
@@ -3334,7 +3334,7 @@ export const ru = {
   'settings.git.githubId': 'github',
   'settings.git.askingNative': 'Запрос к {service}…',
   'settings.git.accessCheckCancelled': 'Проверка доступа отменена.',
-  'settings.git.repositoryConnections': 'Подключения к Git-репозиториям',
+  'settings.git.repositoryConnections': 'Подключения Git',
   'settings.metadata.ca4a628311f7879a': 'Git-репозитории',
   'settings.metadata.b9227122bad532e6': 'Вкладки репозиториев',
   'debuggerAccess.title': 'Доступ агента к отладчику',
@@ -3380,4 +3380,6 @@ export const ru = {
   'debuggerAccess.action.evaluate': 'вычисление / изменение переменной',
   'debuggerAccess.mode.ask': 'запрашивать',
   'debuggerAccess.mode.allowAll': 'разрешить всё',
+  'settings.git.reloadService': 'Загрузить заново из Git-сервиса',
+  'settings.git.openBrowser': 'Открыть в браузере',
 } satisfies TranslationCatalog

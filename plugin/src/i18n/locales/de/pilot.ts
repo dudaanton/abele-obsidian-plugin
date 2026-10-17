@@ -108,7 +108,7 @@ export const de = {
   'settings.tabs.ai': 'KI-Agent',
   'settings.tabs.scripts': 'Skripte',
   'settings.tabs.links': 'Links',
-  'settings.tabs.github': 'GitHub',
+  'settings.tabs.github': 'Git-Hosting',
   'settings.tabs.nodes': 'Knoten',
   'settings.tabs.reader': 'Bücher',
   'settings.tabs.quickButton': 'Schnellschaltfläche',
@@ -568,24 +568,23 @@ export const de = {
   'settings.GithubConnectionEditor.the_access_check_failed.90fa9dca':
     'Die Zugriffsprüfung ist fehlgeschlagen.',
   'settings.GithubSettings.open_github_issues_pull_requests.ad94cf5c':
-    'Öffnen Sie hier GitHub-Issues, Pull Requests, Diskussionen, Commits und Dateien in Tabs und Ihre Benachrichtigungen in einer Seitenleiste. Der Repository-Inhalt ist schreibgeschützt. Benachrichtigungen können als gelesen oder erledigt markiert werden.',
-  'settings.GithubSettings.open_github_links_in_obsidian.815b1959':
-    'Öffnen Sie GitHub-Links in Obsidian',
+    'Öffne Repositories, Issues, Pull Requests, Commits und Dateien von GitHub, Forgejo und Gitea in Tabs und Benachrichtigungen in der Seitenleiste. Verfügbare Aktionen hängen vom Dienst ab.',
+  'settings.GithubSettings.open_github_links_in_obsidian.815b1959': 'Git-Links in Obsidian öffnen',
   'settings.GithubSettings.a_click_on_a_supported.f005fa1f':
-    'Ein Klick auf einen unterstützten GitHub-Link in einer Notiz öffnet diese hier in einem Tab. Andere GitHub-Links und alle Links, auf die bei gedrückter Alt-Taste geklickt wird, gelangen weiterhin zum Browser.',
+    'Unterstützte Repository-Links öffnen sich in einem Tab. Andere Links und mit gedrückter Alt-Taste angeklickte Links öffnen sich im Browser.',
   'settings.GithubSettings.default_repository.525a8366': 'Standard-Repository',
   'settings.GithubSettings.where_the_command_open_github.750aa580':
-    'Wobei der Befehl „GitHub-Link oder -Element öffnen“ nach einer einfachen #123, einem Titel, einem Zweig oder einem Commit sucht, wenn kein GitHub-Tab geöffnet ist. Besitzer/Repo oder ein Link dorthin.',
+    'Wo Open GitHub link or item sucht, wenn kein Repository-Tab den Kontext liefert. Nutze owner/repo oder einen Link; wähle bei mehrdeutigen Namen eine Verbindung.',
   'settings.GithubSettings.owner_repo.65e817ee': 'Eigentümer/Repo',
   'settings.GithubSettings.pinned_repositories.03dccfeb': 'Angepinnte Repositorys',
   'settings.GithubSettings.first_in_open_github_repository.067f8a9c':
-    'Zuerst im Open GitHub-Repository… und mit den Einstellungen auf Ihre anderen Geräte übertragen. Pinne einen über diesen Picker (Alt+Enter) oder über das Menü einer GitHub-Registerkarte.',
+    'Zuerst in Open GitHub repository…; wird mit den Einstellungen übertragen. Pinne ein Repository dort (Alt+Enter) oder im Menü eines Repository-Tabs an.',
   'settings.GithubSettings.nothing_pinned_yet.0b27e4d1': 'Noch nichts angepinnt.',
   'settings.GithubSettings.unpin_this_repository.91038877':
     'Lösen Sie die Fixierung dieses Repositorys',
   'settings.GithubSettings.connections.dc273117': 'Verbindungen',
   'settings.GithubSettings.a_fine_grained_personal_access.d3f9cea9':
-    'Ein differenziertes persönliches Zugriffstoken mit schreibgeschütztem Zugriff auf Inhalte, Probleme, Pull-Anfragen und Diskussionen für die Repositorys, die Sie lesen möchten. Jede Verbindung verfügt über einen eigenen Server und ein eigenes Konto. Wählen Sie einen Standard pro Server. Für Benachrichtigungen ist ein klassisches Token mit dem Benachrichtigungsbereich erforderlich, der unten im Abschnitt „Benachrichtigungstoken“ festgelegt wird.',
+    'Jede Verbindung hat einen eigenen Dienst, Server und ein eigenes Konto; wähle einen Standard pro Server. Zum Durchsuchen genügt ein Token mit Lesezugriff auf das Repository. GitHub-Benachrichtigungen benötigen ein klassisches Token mit der Berechtigung notifications.',
   'settings.GithubSettings.no_connections_public_github_com.534d40f4':
     'Keine Verbindungen. Öffentliche github.com-Repositories werden anonym gelesen.',
   'settings.GithubSettings.default.2a7e0b7b': ' · Standard',
@@ -644,8 +643,8 @@ export const de = {
   'settings.GithubSettings.largest_repository_to_download_mb.c4edc368':
     'Größtes Repository zum Herunterladen (MB)',
   'settings.GithubSettings.its_files_at_that_version.5d039cfc':
-    'Seine Dateien in dieser Version, summiert. Ein größerer Zweig wird stattdessen über GitHubs eigene Codesuche durchsucht, die nur den Standardzweig kennt und ein Token benötigt.',
-  'settings.GithubSettings.delete_github_connection.e4dfa050': 'GitHub-Verbindung löschen',
+    'Gesamtgröße der Dateien dieser Version. Größere GitHub-Repositories nutzen die Serversuche im Standardbranch mit einem Token. Forgejo und Gitea melden stattdessen das Archivlimit.',
+  'settings.GithubSettings.delete_github_connection.e4dfa050': 'Git-Verbindung löschen',
   'settings.GithubSettings.delete_connection.e960651b': 'Verbindung löschen',
   'settings.GithubSettings.delete_value_its_local_token.b78722f1':
     '{value0} löschen? Sein lokaler Token wird vergessen; andere Verbindungen bleiben erhalten.',
@@ -3306,7 +3305,7 @@ export const de = {
   'settings.git.githubId': 'github',
   'settings.git.askingNative': '{service} wird abgefragt…',
   'settings.git.accessCheckCancelled': 'Diese Zugriffsprüfung wurde abgebrochen.',
-  'settings.git.repositoryConnections': 'Verbindungen zu Git-Repositories',
+  'settings.git.repositoryConnections': 'Git-Verbindungen',
   'settings.metadata.ca4a628311f7879a': 'Git-Repositories',
   'settings.metadata.b9227122bad532e6': 'Repository-Tabs',
   'debuggerAccess.title': 'Debuggerzugriff für den Agenten',
@@ -3355,4 +3354,6 @@ export const de = {
   'debuggerAccess.action.evaluate': 'Auswerten / Variable ändern',
   'debuggerAccess.mode.ask': 'Nachfragen',
   'debuggerAccess.mode.allowAll': 'Alles erlauben',
+  'settings.git.reloadService': 'Erneut vom Git-Dienst laden',
+  'settings.git.openBrowser': 'Im Browser öffnen',
 } satisfies TranslationCatalog

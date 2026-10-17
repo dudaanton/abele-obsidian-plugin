@@ -111,7 +111,7 @@ export const es = {
   'settings.tabs.ai': 'Agente de IA',
   'settings.tabs.scripts': 'Scripts',
   'settings.tabs.links': 'Enlaces',
-  'settings.tabs.github': 'GitHub',
+  'settings.tabs.github': 'Alojamiento de Git',
   'settings.tabs.nodes': 'Nodos',
   'settings.tabs.reader': 'Libros',
   'settings.tabs.quickButton': 'Botón rápido',
@@ -568,23 +568,22 @@ export const es = {
   'settings.GithubConnectionEditor.the_access_check_failed.90fa9dca':
     'La verificación de acceso falló.',
   'settings.GithubSettings.open_github_issues_pull_requests.ad94cf5c':
-    'Abra problemas de GitHub, solicitudes de extracción, debates, confirmaciones y archivos en pestañas aquí, y sus notificaciones en una barra lateral. El contenido del repositorio es de sólo lectura. Las notificaciones se pueden marcar como leídas o hechas.',
-  'settings.GithubSettings.open_github_links_in_obsidian.815b1959':
-    'Abrir enlaces de GitHub en Obsidian',
+    'Abre repositorios, incidencias, solicitudes de cambios, commits y archivos de GitHub, Forgejo y Gitea en pestañas, y notificaciones en una barra lateral. Las acciones disponibles dependen del servicio.',
+  'settings.GithubSettings.open_github_links_in_obsidian.815b1959': 'Abrir enlaces Git en Obsidian',
   'settings.GithubSettings.a_click_on_a_supported.f005fa1f':
-    'Un clic en un enlace de GitHub compatible en una nota lo abre en una pestaña aquí. Otros enlaces de GitHub y cualquier enlace en el que se haga clic con la tecla Alt presionada seguirán yendo al navegador.',
+    'Los enlaces de repositorios compatibles se abren en una pestaña. Los demás enlaces y los pulsados con Alt se abren en el navegador.',
   'settings.GithubSettings.default_repository.525a8366': 'Repositorio predeterminado',
   'settings.GithubSettings.where_the_command_open_github.750aa580':
-    'Donde el comando Abrir enlace o elemento de GitHub busca un simple #123, un título, una rama o una confirmación cuando no hay ninguna pestaña de GitHub abierta. propietario/repositorio, o un enlace al mismo.',
+    'Dónde busca Open GitHub link or item cuando ninguna pestaña de repositorio aporta contexto. Usa owner/repo o un enlace; elige una conexión si el nombre es ambiguo.',
   'settings.GithubSettings.owner_repo.65e817ee': 'propietario/repositorio',
   'settings.GithubSettings.pinned_repositories.03dccfeb': 'Repositorios anclados',
   'settings.GithubSettings.first_in_open_github_repository.067f8a9c':
-    'Primero en el repositorio Open GitHub… y llevado a sus otros dispositivos con la configuración. Fije uno desde ese selector (Alt+Enter) o desde el menú de una pestaña de GitHub.',
+    'Primero en Open GitHub repository…; se transfieren con los ajustes. Fija un repositorio desde ese selector (Alt+Enter) o el menú de una pestaña de repositorio.',
   'settings.GithubSettings.nothing_pinned_yet.0b27e4d1': 'Nada fijado todavía.',
   'settings.GithubSettings.unpin_this_repository.91038877': 'Desanclar este repositorio',
   'settings.GithubSettings.connections.dc273117': 'Conexiones',
   'settings.GithubSettings.a_fine_grained_personal_access.d3f9cea9':
-    'Un token de acceso personal detallado con acceso de solo lectura a contenidos, problemas, solicitudes de extracción y debates para los repositorios que desea leer. Cada conexión tiene su propio servidor y cuenta; elija un valor predeterminado por servidor. Las notificaciones necesitan un token clásico con el alcance de las notificaciones, establecido en Token de notificaciones a continuación.',
+    'Cada conexión tiene su propio servicio, servidor y cuenta; elige una predeterminada por servidor. Para explorar, usa un token con acceso de lectura al repositorio. Las notificaciones de GitHub requieren un token clásico con el permiso notifications.',
   'settings.GithubSettings.no_connections_public_github_com.534d40f4':
     'Sin conexiones. Los repositorios públicos de github.com se leen de forma anónima.',
   'settings.GithubSettings.default.2a7e0b7b': ' · Por defecto',
@@ -643,8 +642,8 @@ export const es = {
   'settings.GithubSettings.largest_repository_to_download_mb.c4edc368':
     'Repositorio más grande para descargar (MB)',
   'settings.GithubSettings.its_files_at_that_version.5d039cfc':
-    'Sus archivos en esa versión, sumados. En cambio, se busca una más grande a través de la búsqueda de código propia de GitHub, que solo conoce la rama predeterminada y necesita un token.',
-  'settings.GithubSettings.delete_github_connection.e4dfa050': 'Eliminar conexión de GitHub',
+    'Tamaño total de los archivos en esa revisión. Los repositorios GitHub mayores usan la búsqueda del servidor en la rama predeterminada con un token. Forgejo y Gitea indican el límite del archivo.',
+  'settings.GithubSettings.delete_github_connection.e4dfa050': 'Eliminar conexión Git',
   'settings.GithubSettings.delete_connection.e960651b': 'Eliminar conexión',
   'settings.GithubSettings.delete_value_its_local_token.b78722f1':
     '¿Eliminar {value0}? Su token local será olvidado; se mantienen otras conexiones.',
@@ -3330,7 +3329,7 @@ export const es = {
   'settings.git.githubId': 'github',
   'settings.git.askingNative': 'Consultando {service}…',
   'settings.git.accessCheckCancelled': 'Se canceló esta comprobación de acceso.',
-  'settings.git.repositoryConnections': 'Conexiones a repositorios Git',
+  'settings.git.repositoryConnections': 'Conexiones Git',
   'settings.metadata.ca4a628311f7879a': 'Repositorios Git',
   'settings.metadata.b9227122bad532e6': 'Pestañas de repositorios',
   'debuggerAccess.title': 'Acceso del agente al depurador',
@@ -3379,4 +3378,6 @@ export const es = {
   'debuggerAccess.action.evaluate': 'evaluar / modificar variable',
   'debuggerAccess.mode.ask': 'preguntar',
   'debuggerAccess.mode.allowAll': 'permitir todo',
+  'settings.git.reloadService': 'Volver a cargar desde el servicio Git',
+  'settings.git.openBrowser': 'Abrir en el navegador',
 } satisfies TranslationCatalog

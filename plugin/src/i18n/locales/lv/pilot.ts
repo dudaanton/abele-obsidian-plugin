@@ -110,7 +110,7 @@ export const lv = {
   'settings.tabs.ai': 'MI aģents',
   'settings.tabs.scripts': 'Skripti',
   'settings.tabs.links': 'Saites',
-  'settings.tabs.github': 'GitHub',
+  'settings.tabs.github': 'Git hostings',
   'settings.tabs.nodes': 'Mezgli',
   'settings.tabs.reader': 'Grāmatas',
   'settings.tabs.quickButton': 'Ātrā poga',
@@ -557,23 +557,22 @@ export const lv = {
   'settings.GithubConnectionEditor.the_access_check_failed.90fa9dca':
     'Piekļuves pārbaude neizdevās.',
   'settings.GithubSettings.open_github_issues_pull_requests.ad94cf5c':
-    'Atveriet GitHub problēmas, izvelciet pieprasījumus, diskusijas, saistības un failus cilnēs šeit un savus paziņojumus sānjoslā. Krātuves saturs ir tikai lasāms. Paziņojumus var atzīmēt kā izlasītus vai Gatavus.',
-  'settings.GithubSettings.open_github_links_in_obsidian.815b1959':
-    'Atveriet GitHub saites pakalpojumā Obsidian',
+    'Atveriet GitHub, Forgejo un Gitea repozitorijus, problēmas, izmaiņu pieprasījumus, komitus un failus cilnēs, bet paziņojumus sānjoslā. Pieejamās darbības ir atkarīgas no pakalpojuma.',
+  'settings.GithubSettings.open_github_links_in_obsidian.815b1959': 'Atvērt Git saites Obsidian',
   'settings.GithubSettings.a_click_on_a_supported.f005fa1f':
-    'Noklikšķinot uz atbalstītas GitHub saites piezīmē, tā tiek atvērta šeit esošā cilnē. Citas GitHub saites un visas saites, uz kurām noklikšķināts, turot nospiestu taustiņu Alt, joprojām pāriet uz pārlūkprogrammu.',
+    'Atbalstīta repozitorija saite atveras cilnē. Citas saites un saites, uz kurām noklikšķina ar nospiestu Alt, atveras pārlūkā.',
   'settings.GithubSettings.default_repository.525a8366': 'Noklusējuma repozitorijs',
   'settings.GithubSettings.where_the_command_open_github.750aa580':
-    'Kur komanda Atvērt GitHub saiti vai vienumu meklē tukšu #123, nosaukumu, filiāli vai saistību, ja nav atvērta neviena GitHub cilne. īpašnieks/repo vai saite uz to.',
+    'Kur komanda Open GitHub link or item meklē objektu, ja nav repozitorija cilnes konteksta. Norādiet owner/repo vai saiti; ja nosaukums nav viennozīmīgs, izvēlieties savienojumu.',
   'settings.GithubSettings.owner_repo.65e817ee': 'īpašnieks/repo',
   'settings.GithubSettings.pinned_repositories.03dccfeb': 'Piespraustas krātuves',
   'settings.GithubSettings.first_in_open_github_repository.067f8a9c':
-    'Vispirms Open GitHub repozitorijā… un ar iestatījumiem pārnes uz citām ierīcēm. Piespraudiet vienu no atlasītāja (Alt+Enter) vai no GitHub cilnes izvēlnes.',
+    'Pirmie sarakstā Open GitHub repository…; tiek pārsūtīti kopā ar iestatījumiem. Piespraudiet repozitoriju šajā izvēlnē (Alt+Enter) vai repozitorija cilnes izvēlnē.',
   'settings.GithubSettings.nothing_pinned_yet.0b27e4d1': 'Vēl nekas nav piesprausts.',
   'settings.GithubSettings.unpin_this_repository.91038877': 'Atspraust šo krātuvi',
   'settings.GithubSettings.connections.dc273117': 'Savienojumi',
   'settings.GithubSettings.a_fine_grained_personal_access.d3f9cea9':
-    'Precīza personiskās piekļuves pilnvara ar tikai lasīšanas piekļuvi saturam, problēmām, izvilkšanas pieprasījumiem un diskusijām krātuvēm, kuras vēlaties lasīt. Katram savienojumam ir savs serveris un konts; izvēlieties vienu noklusējumu katram serverim. Paziņojumiem ir nepieciešams klasisks marķieris ar paziņojumu tvērumu, kas iestatīts tālāk sadaļā Paziņojumu marķieris.',
+    'Katram savienojumam ir savs pakalpojums, serveris un konts; izvēlieties noklusējuma savienojumu katram serverim. Pārlūkošanai izmantojiet tokenu ar repozitorija lasīšanas piekļuvi. GitHub paziņojumiem vajadzīgs klasiskais tokens ar notifications tiesībām.',
   'settings.GithubSettings.no_connections_public_github_com.534d40f4':
     'Nav savienojumu. Publiskās github.com krātuves tiek lasītas anonīmi.',
   'settings.GithubSettings.default.2a7e0b7b': ' · Noklusējums',
@@ -632,8 +631,8 @@ export const lv = {
   'settings.GithubSettings.largest_repository_to_download_mb.c4edc368':
     'Lielākā lejupielādējamā krātuve (MB)',
   'settings.GithubSettings.its_files_at_that_version.5d039cfc':
-    'Tās faili šajā versijā, summēti. Lielāks tiek meklēts, izmantojot paša GitHub koda meklēšanu, kas zina tikai noklusējuma filiāli un kam ir nepieciešams marķieris.',
-  'settings.GithubSettings.delete_github_connection.e4dfa050': 'Dzēst GitHub savienojumu',
+    'Failu kopējais izmērs šajā versijā. Lielākiem GitHub repozitorijiem izmanto servera meklēšanu noklusējuma zarā ar tokenu. Forgejo un Gitea ziņo par arhīva ierobežojumu.',
+  'settings.GithubSettings.delete_github_connection.e4dfa050': 'Dzēst Git savienojumu',
   'settings.GithubSettings.delete_connection.e960651b': 'Dzēst savienojumu',
   'settings.GithubSettings.delete_value_its_local_token.b78722f1':
     'Vai dzēst {value0}? Tā vietējais marķieris tiks aizmirsts; citi savienojumi tiek saglabāti.',
@@ -3272,7 +3271,7 @@ export const lv = {
   'settings.git.githubId': 'github',
   'settings.git.askingNative': 'Pieprasījums uz {service}…',
   'settings.git.accessCheckCancelled': 'Šī piekļuves pārbaude tika atcelta.',
-  'settings.git.repositoryConnections': 'Git repozitoriju savienojumi',
+  'settings.git.repositoryConnections': 'Git savienojumi',
   'settings.metadata.ca4a628311f7879a': 'Git repozitoriji',
   'settings.metadata.b9227122bad532e6': 'Repozitoriju cilnes',
   'debuggerAccess.title': 'Aģenta piekļuve atkļūdotājam',
@@ -3321,4 +3320,6 @@ export const lv = {
   'debuggerAccess.action.evaluate': 'izteiksmes izpilde / mainīgā maiņa',
   'debuggerAccess.mode.ask': 'jautāt',
   'debuggerAccess.mode.allowAll': 'atļaut visu',
+  'settings.git.reloadService': 'Pārlādēt no Git pakalpojuma',
+  'settings.git.openBrowser': 'Atvērt pārlūkā',
 } satisfies TranslationCatalog

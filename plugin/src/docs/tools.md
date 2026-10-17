@@ -608,6 +608,13 @@ next-page/line offsets. For native search, name a repository: code uses its fixe
 not a global server code index; issue/PR qualifiers are translated or explicitly refused.
 Unsupported blame/discussions and precise native diff selections report their limitations.
 Open carries the same captured account/grant into every asynchronous tab read.
+Codeberg uses a Forgejo connection; it is not a separate provider or permission. Forgejo and
+Gitea retain their exact deployment base, including port and path. A short repository shared
+by several connections requires an explicit choice; a full URL must match that binding.
+Missing credentials, deleted connections and revoked generations cannot supply cached or late
+answers. Draft creation, threaded review replies and notification Done are unavailable in the
+inspected native APIs. Interface writes are separate from these read-only tools. GitLab
+records may be preserved in settings but no GitLab tool adapter is available yet.
 
 `github_views`, `github_read`, `github_pr_files`, `github_file`, `github_commits`,
 `github_search`, `github_grep`, `github_open`.

@@ -1,7 +1,10 @@
 <template>
   <header ref="root" class="abele-github-header" :class="{ 'abele-github-header_path': crumbs }">
     <div class="abele-github-header__top">
-      <DrawerViewSwitch icon="github" name="GitHub" />
+      <DrawerViewSwitch
+        icon="github"
+        :name="native ? t('settings.GithubSettings.git_hosting.a3002011') : 'GitHub'"
+      />
       <div v-if="$slots.controls" class="abele-github-header__controls">
         <slot name="controls" />
       </div>
@@ -67,7 +70,13 @@
         <Icon
           v-bind="nativeAction"
           icon="refresh-cw"
-          :tooltip="node ? 'Refresh from the node' : 'Load again from GitHub'"
+          :tooltip="
+            node
+              ? 'Refresh from the node'
+              : native
+                ? t('settings.git.reloadService')
+                : 'Load again from GitHub'
+          "
           :disabled="loading"
           @keydown.enter.prevent="loading || emit('refresh')"
           @keydown.space.prevent="loading || emit('refresh')"
@@ -77,7 +86,7 @@
           v-if="url"
           v-bind="nativeAction"
           icon="external-link"
-          tooltip="Open this on GitHub in the browser"
+          :tooltip="native ? t('settings.git.openBrowser') : 'Open this on GitHub in the browser'"
           @keydown.enter.prevent="emit('browser')"
           @keydown.space.prevent="emit('browser')"
           @click="emit('browser')"
@@ -124,6 +133,8 @@
 
 <script setup lang="ts">
 import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
+import { t } from '@/i18n'
+import { isNativeForge } from '@/forge/native'
 import { computed, ref } from 'vue'
 import { useRepositorySource } from '@/repository/context'
 import { useResizeObserver } from '@vueuse/core'
@@ -173,6 +184,7 @@ withDefaults(
 
 const source = useRepositorySource()
 const node = computed(() => source.value?.identity.provider === 'node')
+const native = computed(() => isNativeForge(source.value?.identity.provider))
 const nativeAction = computed(() =>
   node.value ? { class: 'clickable-icon', role: 'button', tabindex: 0 } : {}
 )
@@ -343,6 +355,20 @@ const stateTone = (state: string) =>
     color: var(--text-muted);
     font-size: var(--font-ui-small);
     overflow-wrap: anywhere;
+  }
+}
+// Keep the repository and its navigation together; truncate the label before wrapping actions.
+body.is-phone .abele-github:not(.abele-github_node) {
+  .abele-github-header__repo {
+    flex-basis: 0;
+  }
+  .abele-github-header__actions {
+    flex-wrap: nowrap;
+    flex-shrink: 0;
+    gap: 0;
+  }
+  .abele-github-header_path .abele-github-header__repo {
+    display: none;
   }
 }
 </style>

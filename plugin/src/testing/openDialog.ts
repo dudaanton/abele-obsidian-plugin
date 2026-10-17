@@ -4,6 +4,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { mountKit } from '@/components/obsidian/mount'
 import { networkDecision } from '@/slides/liveAdapter'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { t } from '@/i18n'
 import { reviewKeyDestinations } from '@/secrets/destinationReview'
 import { approveScriptKeyRequest } from '@/secrets/requestApproval'
 import { destinationFixture } from './destinationFixture'
@@ -18,6 +19,7 @@ export interface DialogFixtureOptions {
   /** Inspect all synthetic recipient-row variants, without inheriting ambient rights. */
   recipientRows?: boolean
   agentsState?: import('./agentsFixture').AgentsFixtureState
+  transferPayload?: import('@/transfer/types').TransferPayload
 }
 import TextCommentDialog from '@/components/TextCommentDialog.vue'
 import { textCommentFixture } from './textCommentFixture'
@@ -644,9 +646,14 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
     }),
   'transfer-send': () =>
     mountAlone(TransferSendModal, { frames: ['ABELE-TRANSFER'], text: 'ABELE', code: '1234' }),
-  'transfer-preview': () =>
+  'transfer-preview': (options) =>
     mountAlone(TransferPreviewModal, {
-      payload: { v: 1, at: new Date().toISOString(), entries: [], secrets: {} },
+      payload: options?.transferPayload ?? {
+        v: 1,
+        at: new Date().toISOString(),
+        entries: [],
+        secrets: {},
+      },
       codes: 1,
     }),
   'transfer-scan': () => mountAlone(TransferScanModal),
@@ -750,7 +757,11 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
           return () =>
             h(
               ObsidianModal,
-              { title: 'GitHub connections', size: 'tall', onClose: () => emit('close') },
+              {
+                title: t('settings.GithubSettings.git_hosting.a3002011'),
+                size: 'tall',
+                onClose: () => emit('close'),
+              },
               { default: () => h(GithubSettings) }
             )
         },

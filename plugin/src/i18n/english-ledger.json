@@ -820,7 +820,7 @@
     ]
   },
   "settings.tabs.github": {
-    "englishHash": "5dd692a6c790e52044d7a2d0d4851016cf1764d6112700543acd5b1ec88bbb55",
+    "englishHash": "deeb896fe4c1a5bb17bcfddc0c998915bf36352fa159a9b4b6347e61f4b82c2a",
     "context": "Provider brand; unchanged across all locales.",
     "reviewedLocales": [
       "ru",
@@ -4470,7 +4470,7 @@
     ]
   },
   "settings.GithubSettings.open_github_issues_pull_requests.ad94cf5c": {
-    "englishHash": "9f85146c88949b0db5f5a531e0fcc66d37cbeb026bf18f3d6fc2b18ab1b1a30d",
+    "englishHash": "1e211d024a241d94ca9cb328e109e9986cc1005e54572a022ce4c1751db5923a",
     "context": "Settings control, explanatory text, or display-only metadata",
     "reviewedLocales": [
       "ru",
@@ -4480,7 +4480,7 @@
     ]
   },
   "settings.GithubSettings.open_github_links_in_obsidian.815b1959": {
-    "englishHash": "abcd5f38f59ad28ce105a11ee6ca5eed3f3c2db92129930383104ea780b0ca1f",
+    "englishHash": "7eb5853272c90a20eee3fad660aa60de96c336e3dbb204bdebbe5f3b8249686b",
     "context": "Settings control, explanatory text, or display-only metadata",
     "reviewedLocales": [
       "ru",
@@ -4490,7 +4490,7 @@
     ]
   },
   "settings.GithubSettings.a_click_on_a_supported.f005fa1f": {
-    "englishHash": "c78e83448048a4b620e4efef6125e1954901d1272972ab1c0aa7f6a5e23b38b2",
+    "englishHash": "b47bde2f4198aa681bf6706b5d357572bf1d0a188bb821bb2f3ba3029d35a80e",
     "context": "Settings control, explanatory text, or display-only metadata",
     "reviewedLocales": [
       "ru",
@@ -4510,7 +4510,7 @@
     ]
   },
   "settings.GithubSettings.where_the_command_open_github.750aa580": {
-    "englishHash": "5f0cb489517c1d76589b9da3a6423b5f1f8b4d0b1a9252d80efe7af7fc48d256",
+    "englishHash": "9c75e08e921200113d9cba69c5d3e5f8d02cf17328624ad4bd3fd95664216655",
     "context": "Settings control, explanatory text, or display-only metadata",
     "reviewedLocales": [
       "ru",
@@ -4540,7 +4540,7 @@
     ]
   },
   "settings.GithubSettings.first_in_open_github_repository.067f8a9c": {
-    "englishHash": "2240d34b9ae0fcb2dea2119d663f37bd5ab56be0405ae384db86bf5d91ff2da3",
+    "englishHash": "ad101f0759f9e5b01a7867faf3b40ea897e796797a25d57151a34279d2553bf0",
     "context": "Settings control, explanatory text, or display-only metadata",
     "reviewedLocales": [
       "ru",
@@ -4580,7 +4580,7 @@
     ]
   },
   "settings.GithubSettings.a_fine_grained_personal_access.d3f9cea9": {
-    "englishHash": "17723fe7c4771353a21ce0195a1ec0b465a26c6b2019df2c803f988bafac7b2b",
+    "englishHash": "3d2f9739203e3d809fad02d1f1130651073c19b38995721cb7c9fe070ef60c2d",
     "context": "Settings control, explanatory text, or display-only metadata",
     "reviewedLocales": [
       "ru",
@@ -4970,7 +4970,7 @@
     ]
   },
   "settings.GithubSettings.its_files_at_that_version.5d039cfc": {
-    "englishHash": "c6d4dfed3821435d3a35919801c1193f6bb66f989deb76cc54fa3c499f33970e",
+    "englishHash": "50f272247d5624c4afadd7eedb67ede847a44091a5535bd50a634cde8343adfd",
     "context": "Settings control, explanatory text, or display-only metadata",
     "reviewedLocales": [
       "ru",
@@ -4980,7 +4980,7 @@
     ]
   },
   "settings.GithubSettings.delete_github_connection.e4dfa050": {
-    "englishHash": "a154a8a2df8a978e3b0ef8f82e329f1381016912bb39688ff96c10e5f33df9d3",
+    "englishHash": "e303cf8642b74b11f6898016b7f2df51457eeba62619f9c446068b84d780b3f5",
     "context": "Settings control, explanatory text, or display-only metadata",
     "reviewedLocales": [
       "ru",
@@ -23690,7 +23690,7 @@
     ]
   },
   "settings.git.repositoryConnections": {
-    "englishHash": "adb4bc75f37d5822d9ef1ce3f1f79211ec7ce7cb2e9c0a059479c156e0b03cb2",
+    "englishHash": "faab21b96bca3092be126a9f1ed1d20782a1a7864a5609003c3906e8bffd1adc",
     "context": "Git connection settings and operation permissions",
     "reviewedLocales": [
       "ru",
@@ -24292,6 +24292,26 @@
   "debuggerAccess.mode.allowAll": {
     "englishHash": "6a47a2ab32cc05e14dab8c791e302baf2e52dfb6a23abcf5cf6a87f81e067cd9",
     "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.git.openBrowser": {
+    "englishHash": "46ae98843ca39eab9920c27818a0845118aed9a018fa71e0d9b5ff2e951b2b1a",
+    "context": "Shared Git repository navigation action",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.git.reloadService": {
+    "englishHash": "d16637b903801472ed711a56a910d96c695b68dfb075f1cb846411e35ea6229a",
+    "context": "Shared Git repository navigation action",
     "reviewedLocales": [
       "ru",
       "lv",

@@ -1737,6 +1737,12 @@ and transfer but are unavailable to the GitHub adapter. Only GitHub records part
 old single-server credential projection or legacy agent-grant migration. Transfer credential
 bindings include provider and deployment path; replacing a connection cannot retarget an
 existing slot. Forgejo and Gitea adapters share the existing inbox pane; its account selection retains a connection ID, never a credential.
+Codeberg presets persist as `provider: forgejo` with the Codeberg deployment base. Defaults
+are independent per provider and exact deployment; account connections keep separate IDs and
+key references even on one server. Transfer without keys preserves those references, so a
+missing key remains unavailable rather than becoming anonymous access or another account.
+New connections do not inherit legacy GitHub agent grants. Removing or rebinding a connection
+retires its cached/pending authority without changing remote repositories or node files.
 
 New remote adapters have a version-1 workspace target with provider, connection, normalized
 deployment, full repository path and original URL. Restoration validates the API binding and

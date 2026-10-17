@@ -11,6 +11,10 @@ const metadata = new Map<string, MessageKey>(
     .filter(([key, value]) => key.startsWith('settings.metadata.') && typeof value === 'string')
     .map(([key, value]) => [value as string, key as MessageKey])
 )
+// Older transfer payloads and tool metadata retain their stable labels on the wire.
+metadata.set('GitHub', 'settings.GithubSettings.git_hosting.a3002011')
+metadata.set('GitHub connections', 'settings.git.repositoryConnections')
+metadata.set('GitHub tabs', 'settings.metadata.b9227122bad532e6')
 const blockSections = new Set<string>(
   SECTIONS.filter((section) => section.kind === 'block').map((section) => section.id)
 )

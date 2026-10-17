@@ -103,7 +103,7 @@ export const en = {
   'settings.tabs.ai': 'AI Agent',
   'settings.tabs.scripts': 'Scripts',
   'settings.tabs.links': 'Links',
-  'settings.tabs.github': 'GitHub',
+  'settings.tabs.github': 'Git hosting',
   'settings.tabs.nodes': 'Nodes',
   'settings.tabs.reader': 'Books',
   'settings.tabs.quickButton': 'Quick button',
@@ -546,22 +546,22 @@ export const en = {
   'settings.GithubConnectionEditor.asking_github.5becc057': 'Asking GitHub…',
   'settings.GithubConnectionEditor.the_access_check_failed.90fa9dca': 'The access check failed.',
   'settings.GithubSettings.open_github_issues_pull_requests.ad94cf5c':
-    'Open GitHub issues, pull requests, discussions, commits and files in tabs here, and your notifications in a sidebar. Repository content is read-only. Notifications can be marked read or Done.',
-  'settings.GithubSettings.open_github_links_in_obsidian.815b1959': 'Open GitHub links in Obsidian',
+    'Open repositories, issues, pull requests, commits and files from GitHub, Forgejo and Gitea in tabs, and notifications in a sidebar. Available actions depend on the service.',
+  'settings.GithubSettings.open_github_links_in_obsidian.815b1959': 'Open Git links in Obsidian',
   'settings.GithubSettings.a_click_on_a_supported.f005fa1f':
-    'A click on a supported GitHub link in a note opens it in a tab here. Other GitHub links, and any link clicked with Alt held, still go to the browser.',
+    'A supported repository link opens in a tab. Other links, and links clicked with Alt held, open in the browser.',
   'settings.GithubSettings.default_repository.525a8366': 'Default repository',
   'settings.GithubSettings.where_the_command_open_github.750aa580':
-    'Where the command Open GitHub link or item looks up a bare #123, a title, a branch or a commit when no GitHub tab is open. owner/repo, or a link into it.',
+    'Where Open GitHub link or item looks up an item when no repository tab supplies context. Use owner/repo or a repository link; choose a connection for an ambiguous name.',
   'settings.GithubSettings.owner_repo.65e817ee': 'owner/repo',
   'settings.GithubSettings.pinned_repositories.03dccfeb': 'Pinned repositories',
   'settings.GithubSettings.first_in_open_github_repository.067f8a9c':
-    "First in Open GitHub repository…, and carried to your other devices with the settings. Pin one from that picker (Alt+Enter) or from a GitHub tab's menu.",
+    'First in Open GitHub repository…, and transferred with settings. Pin a repository from that picker (Alt+Enter) or a repository tab menu.',
   'settings.GithubSettings.nothing_pinned_yet.0b27e4d1': 'Nothing pinned yet.',
   'settings.GithubSettings.unpin_this_repository.91038877': 'Unpin this repository',
   'settings.GithubSettings.connections.dc273117': 'Connections',
   'settings.GithubSettings.a_fine_grained_personal_access.d3f9cea9':
-    'A fine-grained personal access token with read-only access to Contents, Issues, Pull requests and Discussions for the repositories you want to read. Each connection has its own server and account; choose one default per server. Notifications need a classic token with the notifications scope, set in Notifications token below.',
+    'Each connection has its own service, server and account; choose one default per server. Use a token with repository read access for browsing. GitHub notifications require a classic token with the notifications scope.',
   'settings.GithubSettings.no_connections_public_github_com.534d40f4':
     'No connections. Public github.com repositories are read anonymously.',
   'settings.GithubSettings.default.2a7e0b7b': ' · Default',
@@ -620,8 +620,8 @@ export const en = {
   'settings.GithubSettings.largest_repository_to_download_mb.c4edc368':
     'Largest repository to download (MB)',
   'settings.GithubSettings.its_files_at_that_version.5d039cfc':
-    "Its files at that version, added up. A larger one is searched through GitHub's own code search instead, which knows only the default branch and needs a token.",
-  'settings.GithubSettings.delete_github_connection.e4dfa050': 'Delete GitHub connection',
+    'Total file size at that revision. Larger GitHub repositories fall back to server code search on the default branch, requiring a token. Forgejo and Gitea report the archive limit instead.',
+  'settings.GithubSettings.delete_github_connection.e4dfa050': 'Delete Git connection',
   'settings.GithubSettings.delete_connection.e960651b': 'Delete connection',
   'settings.GithubSettings.delete_value_its_local_token.b78722f1':
     'Delete {value0}? Its local token will be forgotten; other connections are kept.',
@@ -3176,7 +3176,7 @@ export const en = {
   'settings.git.githubId': 'github',
   'settings.git.askingNative': 'Asking {service}…',
   'settings.git.accessCheckCancelled': 'This access check was cancelled.',
-  'settings.git.repositoryConnections': 'Git repository connections',
+  'settings.git.repositoryConnections': 'Git connections',
   'settings.metadata.ca4a628311f7879a': 'Git repositories',
   'settings.metadata.b9227122bad532e6': 'Repository tabs',
   'debuggerAccess.title': 'Agent debugger access',
@@ -3221,4 +3221,6 @@ export const en = {
   'debuggerAccess.action.evaluate': 'evaluate / set variable',
   'debuggerAccess.mode.ask': 'ask',
   'debuggerAccess.mode.allowAll': 'allow all',
+  'settings.git.reloadService': 'Reload from the Git service',
+  'settings.git.openBrowser': 'Open this in the browser',
 } as const
