@@ -3,6 +3,7 @@ import { hashes } from 'virtual:abele-i18n'
 import { initializeLocale } from './index'
 import { resolveLocale } from './core'
 import { loadCatalog } from './loader'
+import { vaultDisk } from '@/sync/vaultPathLinks'
 
 /** Load before mounting UI: existing surfaces resolve labels once at mount. */
 export async function initializePluginLocale(plugin: Plugin, raw: string): Promise<void> {
@@ -11,7 +12,7 @@ export async function initializePluginLocale(plugin: Plugin, raw: string): Promi
   if (language === 'en') return
   let timeout: number | undefined
   const catalog = await loadCatalog({
-    storage: plugin.app.vault.adapter,
+    storage: vaultDisk(plugin.app.vault),
     directory: plugin.manifest.dir ?? `${plugin.app.vault.configDir}/plugins/${plugin.manifest.id}`,
     version: plugin.manifest.version,
     language,
