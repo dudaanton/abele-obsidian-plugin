@@ -3389,6 +3389,8 @@ export const de = {
   'maps.showLocation': 'Meinen Standort anzeigen',
   'maps.exitFull': 'Vollbild beenden',
   'maps.full': 'Vollbild',
+  'maps.fitPlaces': 'Alle Orte anzeigen',
+  'maps.defaultBackground': 'Standard',
   'maps.background': 'Hintergrund',
   'maps.tab': 'In neuem Tab öffnen',
   'maps.split': 'Rechts öffnen',

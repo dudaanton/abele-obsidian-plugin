@@ -23,8 +23,8 @@
         @click="emit('locate')"
       />
       <ControlItem
-        :icon="state.full ? 'minimize' : 'maximize'"
-        :tooltip="state.full ? t('maps.exitFull') : t('maps.full')"
+        :icon="fit ? 'scan' : state.full ? 'minimize' : 'maximize'"
+        :tooltip="fit ? t('maps.fitPlaces') : state.full ? t('maps.exitFull') : t('maps.full')"
         @click="emit('full')"
       />
     </div>
@@ -47,7 +47,7 @@ import { computed } from 'vue'
 import { ControlItem } from '../obsidian/ControlItem'
 import type { MapControlsState } from './mapControlsState'
 
-const props = defineProps<{ state: MapControlsState; layers?: boolean }>()
+const props = defineProps<{ state: MapControlsState; layers?: boolean; fit?: boolean }>()
 const locateTip = computed(() =>
   props.state.locating
     ? t('maps.locating')

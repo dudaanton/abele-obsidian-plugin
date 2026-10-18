@@ -296,11 +296,14 @@ export class MapView extends BasesView {
     const backgrounds = settings.mapBackgrounds ?? []
     if (
       this.selectedBackground !== 'view:tiles' &&
+      this.selectedBackground !== 'default' &&
       !backgrounds.some((b) => `named:${b.id}` === this.selectedBackground)
     )
       this.selectedBackground = null
     const selected =
-      backgrounds.find((b) => `named:${b.id}` === this.selectedBackground) ?? backgrounds[0]
+      this.selectedBackground === 'default'
+        ? undefined
+        : (backgrounds.find((b) => `named:${b.id}` === this.selectedBackground) ?? backgrounds[0])
     const urls = (v: unknown): string[] =>
       typeof v === 'string' && v.trim()
         ? [v.trim()]
@@ -313,10 +316,11 @@ export class MapView extends BasesView {
     const viewTiles =
       light.length > 0 && (!this.selectedBackground || this.selectedBackground === 'view:tiles')
     this.state.backgrounds = [
+      { id: 'default', name: t('maps.defaultBackground') },
       ...(light.length ? [{ id: 'view:tiles', name: t('maps.mapTiles') }] : []),
       ...backgrounds.map((b) => ({ id: `named:${b.id}`, name: b.name })),
     ]
-    this.state.background = viewTiles ? 'view:tiles' : selected ? `named:${selected.id}` : ''
+    this.state.background = viewTiles ? 'view:tiles' : selected ? `named:${selected.id}` : 'default'
     const chosenLight = viewTiles ? light : (selected?.light ?? [])
     const chosenDark = viewTiles ? dark : (selected?.dark ?? [])
     const chosenUrls = isDark && chosenDark.length ? chosenDark : chosenLight

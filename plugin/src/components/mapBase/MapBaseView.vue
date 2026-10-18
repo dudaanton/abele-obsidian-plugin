@@ -75,6 +75,7 @@
         class="abele-map-base__controls"
         :state="controls"
         layers
+        fit
         @zoom="(s: 1 | -1) => (s > 0 ? map?.zoomIn() : map?.zoomOut())"
         @north="map?.resetNorthPitch()"
         @locate="locate"
@@ -96,12 +97,7 @@
       </div>
     </div>
 
-    <ObsidianModal
-      v-if="card"
-      :size="phone ? 'tall' : undefined"
-      modal-class="abele-map-card-modal"
-      @close="card = null"
-    >
+    <ObsidianModal v-if="card" phone-sheet modal-class="abele-map-card-modal" @close="card = null">
       <MapPlaceCard
         :place="card"
         :footer-host="cardFooter"
@@ -463,6 +459,8 @@ function under(e: Event) {
 
 function openGroup(places: MapPlace[], spot: boolean, position: { x: number; y: number }) {
   if (!spot && map.value && lib) {
+    if (!places.length) return
+    map.value.resize()
     const b = new lib.LngLatBounds()
     places.forEach((p) => b.extend([p.lon, p.lat]))
     map.value.fitBounds(b, { padding: 80, maxZoom: props.maxZoom })
@@ -700,7 +698,8 @@ async function create() {
       const same = places.every((p) => p.lat === places[0]?.lat && p.lon === places[0]?.lon)
       if (same || m.getZoom() >= props.maxZoom - 1)
         openGroup(places, true, { x: event.originalEvent.clientX, y: event.originalEvent.clientY })
-      else m.easeTo({ center: event.lngLat, zoom: await source.getClusterExpansionZoom(id) })
+      else
+        openGroup(places, false, { x: event.originalEvent.clientX, y: event.originalEvent.clientY })
     })().catch(() => console.debug('[maps] Cluster changed before it could open'))
   })
   resize = new ResizeObserver(() => m.resize())
@@ -859,13 +858,8 @@ function drawLocation(point: { lat: number; lon: number }) {
   meMarker = new lib.Marker({ element: dot }).setLngLat([point.lon, point.lat]).addTo(map.value)
 }
 function full() {
-  const el = mapEl.value?.closest('.abele-map-base')
-  if (!el) return
-  if (el.ownerDocument.fullscreenElement)
-    void el.ownerDocument.exitFullscreen().catch(() => new Notice(t('maps.fullUnavailable')))
-  else if (typeof el.requestFullscreen === 'function')
-    void el.requestFullscreen().catch(() => new Notice(t('maps.fullUnavailable')))
-  else new Notice(t('maps.fullUnavailable'))
+  if (!props.places.length) return
+  openGroup(props.places, false, { x: 0, y: 0 })
 }
 watch(
   () => props.center,

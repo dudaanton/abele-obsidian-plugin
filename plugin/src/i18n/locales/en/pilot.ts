@@ -3256,6 +3256,8 @@ export const en = {
   'maps.showLocation': 'Show my location',
   'maps.exitFull': 'Exit full screen',
   'maps.full': 'Full screen',
+  'maps.fitPlaces': 'Fit all places',
+  'maps.defaultBackground': 'Default',
   'maps.background': 'Background',
   'maps.tab': 'Open in new tab',
   'maps.split': 'Open to the right',

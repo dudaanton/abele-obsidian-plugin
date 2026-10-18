@@ -3413,6 +3413,8 @@ export const es = {
   'maps.showLocation': 'Mostrar mi ubicación',
   'maps.exitFull': 'Salir de pantalla completa',
   'maps.full': 'Pantalla completa',
+  'maps.fitPlaces': 'Mostrar todos los lugares',
+  'maps.defaultBackground': 'Predeterminado',
   'maps.background': 'Fondo',
   'maps.tab': 'Abrir en nueva pestaña',
   'maps.split': 'Abrir a la derecha',

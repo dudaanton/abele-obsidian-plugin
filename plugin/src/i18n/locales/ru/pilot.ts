@@ -3415,6 +3415,8 @@ export const ru = {
   'maps.showLocation': 'Моя геопозиция',
   'maps.exitFull': 'Выйти из полного экрана',
   'maps.full': 'Полный экран',
+  'maps.fitPlaces': 'Показать все места',
+  'maps.defaultBackground': 'По умолчанию',
   'maps.background': 'Подложка',
   'maps.tab': 'Открыть в новой вкладке',
   'maps.split': 'Открыть справа',

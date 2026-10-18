@@ -45,9 +45,11 @@ export function mapRows(
           return ''
         }
       }
-      const properties = popupProperties(row, order, Object.values(selectors)).map(
-        ({ id, value }) => ({ name: displayName(id), value: value.toString() })
-      )
+      const properties = popupProperties(row, order, [
+        ...Object.values(selectors),
+        'file.name',
+      ]).map(({ id, value }) => ({ name: displayName(id), value: value.toString() }))
+      while (properties[0]?.value.trim() === base.title.trim()) properties.shift()
       places.push({
         ...base,
         id: base.path,

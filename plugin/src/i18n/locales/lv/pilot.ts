@@ -3355,6 +3355,8 @@ export const lv = {
   'maps.showLocation': 'Rādīt manu atrašanās vietu',
   'maps.exitFull': 'Iziet no pilnekrāna',
   'maps.full': 'Pilnekrāns',
+  'maps.fitPlaces': 'Rādīt visas vietas',
+  'maps.defaultBackground': 'Noklusējuma',
   'maps.background': 'Fons',
   'maps.tab': 'Atvērt jaunā cilnē',
   'maps.split': 'Atvērt pa labi',
