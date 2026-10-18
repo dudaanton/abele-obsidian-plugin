@@ -330,7 +330,7 @@ for (const layout of onPhone() ? ['phone'] : ['desktop', 'emulated-phone'])
         await poll(()=>!svc.registry.records().some(one=>one.id===${JSON.stringify(id)})&&!(${dialog}));
         return true
       `)
-        expect((await s.items()).some((one) => one.path === path)).toBe(false)
+        await expect(s.items()).rejects.toMatchObject({ code: 'scope_deleted' })
         expect(a.read(path)).toBe('Retained while stopping')
         await shot(a, 'retry-done-' + layout, '.token-sync-settings')
       } finally {
