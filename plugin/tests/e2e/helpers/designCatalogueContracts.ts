@@ -14,6 +14,7 @@ import { shotDir } from './shots'
 import { KIT_COLORS } from '../../../src/constants/colors'
 import { designCaptureExpression } from '../../helpers/designCapture'
 import { lintDesign, type DesignSnapshot } from '../../helpers/designLint'
+import { settledGeometry } from '../../helpers/settledGeometry'
 
 const directory = process.env.DESIGN_LINT_OUT_DIR ?? shotDir('design-lint')
 
@@ -108,7 +109,14 @@ export const PHONE_CATALOGUE_CONTRACTS: Contract[] = [
     async () => {
       const result = JSON.parse(
         await evalLong(
-          `(async()=>{try{window.__abeleTest.openDesignCatalogue('navigation');await new Promise(r=>setTimeout(r,150));return [...document.querySelector('.abele-design-catalogue').querySelectorAll('.abele-tabs__tab, .abele-breadcrumbs__item, .abele-fold-heading.is-collapsible, .abele-tree-item__self.is-clickable')].map(el=>({width:el.getBoundingClientRect().width,height:el.getBoundingClientRect().height,glyph:el.querySelector('svg')?.getBoundingClientRect().width}));}finally{window.__abeleTest.closeDesignCatalogue()}})()`
+          `(async()=>{try{
+            window.__abeleTest.openDesignCatalogue('navigation');
+            return await (${settledGeometry.toString()})(
+              ()=>[...document.querySelectorAll('.abele-design-catalogue .abele-tabs__tab, .abele-design-catalogue .abele-breadcrumbs__item, .abele-design-catalogue .abele-fold-heading.is-collapsible, .abele-design-catalogue .abele-tree-item__self.is-clickable')].map(el=>({width:el.getBoundingClientRect().width,height:el.getBoundingClientRect().height,glyph:el.querySelector('svg')?.getBoundingClientRect().width})),
+              ()=>new Promise(r=>setTimeout(r,50)),Date.now,10000,400,
+              rows=>rows.length>=7&&rows.every(r=>r.width>0&&r.height>0)
+            );
+          }finally{window.__abeleTest.closeDesignCatalogue()}})()`
         )
       ) as { width: number; height: number; glyph?: number }[]
       expect(result.length).toBeGreaterThanOrEqual(7)

@@ -130,6 +130,7 @@ const DIALOGS = [
   'agents',
   'agents-tabs',
   'node-pairing',
+  'node-pairing-long',
   'node-pairing-waiting',
   'node-pairing-recovery',
   'node-pairing-endpoint',
