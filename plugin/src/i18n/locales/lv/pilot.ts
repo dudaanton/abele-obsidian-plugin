@@ -3322,4 +3322,5 @@ export const lv = {
   'debuggerAccess.mode.allowAll': 'atļaut visu',
   'settings.git.reloadService': 'Pārlādēt no Git pakalpojuma',
   'settings.git.openBrowser': 'Atvērt pārlūkā',
+  'settings.metadata.gitHosting': 'Git hostings',
 } satisfies TranslationCatalog

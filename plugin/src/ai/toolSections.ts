@@ -147,6 +147,7 @@ export const TOOL_SECTIONS: readonly ToolSectionDefinition[] = [
   {
     id: 'github',
     group: 'GitHub',
+    label: 'Git hosting',
     description:
       'GitHub, read-only: issues, pull requests, their files, commits, code search and files at a version, and the GitHub tabs open in the app. Open this when the person mentions an issue, a pull request or a repository on GitHub.',
     howTo:

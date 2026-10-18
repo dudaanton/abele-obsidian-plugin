@@ -7,6 +7,7 @@ import {
   TOOL_SECTIONS,
   sectionToolDescriptions,
   sectionToolName,
+  sectionLabel,
 } from '../toolSections'
 import { createReadFileTool } from './ReadFileTool'
 import { READ_BUDGET, READ_RESULT, READ_RESULT_DESCRIPTION } from '../resultStore'
@@ -235,7 +236,7 @@ const isNodeTool = (name: string, category: string | undefined) =>
 export function getSectionToolRegistry(): ToolInfo[] {
   return TOOL_SECTIONS.map((section) => ({
     name: sectionToolName(section.id),
-    label: `Open ${section.group}`,
+    label: `Open ${sectionLabel(section.group)}`,
     category: section.group,
     description: section.description,
   }))

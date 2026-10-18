@@ -3380,4 +3380,5 @@ export const es = {
   'debuggerAccess.mode.allowAll': 'permitir todo',
   'settings.git.reloadService': 'Volver a cargar desde el servicio Git',
   'settings.git.openBrowser': 'Abrir en el navegador',
+  'settings.metadata.gitHosting': 'Alojamiento de Git',
 } satisfies TranslationCatalog

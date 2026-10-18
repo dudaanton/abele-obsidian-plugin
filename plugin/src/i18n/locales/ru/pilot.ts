@@ -3382,4 +3382,5 @@ export const ru = {
   'debuggerAccess.mode.allowAll': 'разрешить всё',
   'settings.git.reloadService': 'Загрузить заново из Git-сервиса',
   'settings.git.openBrowser': 'Открыть в браузере',
+  'settings.metadata.gitHosting': 'Git-хостинг',
 } satisfies TranslationCatalog

@@ -2,7 +2,7 @@ import { en } from './locales/en/pilot'
 import { t } from './index'
 import type { MessageKey } from './types'
 import { SECTIONS } from '../transfer/entries'
-import { TOOL_SECTIONS, sectionToolName } from '../ai/toolSections'
+import { TOOL_SECTIONS, sectionToolName, sectionLabel } from '../ai/toolSections'
 import { isMcpToolName } from '../ai/mcp/names'
 
 // Only plugin-owned display metadata is looked up here; user names and wire labels stay raw.
@@ -35,7 +35,8 @@ export function settingsToolLabel(tool: { name: string; label: string }): string
   )
     return tool.label
   const section = toolSections.get(tool.name)
-  if (section) return t('settings.tools.openSection', { section: settingsLabel(section) })
+  if (section)
+    return t('settings.tools.openSection', { section: settingsLabel(sectionLabel(section)) })
   return settingsLabel(tool.label)
 }
 

@@ -3223,4 +3223,5 @@ export const en = {
   'debuggerAccess.mode.allowAll': 'allow all',
   'settings.git.reloadService': 'Reload from the Git service',
   'settings.git.openBrowser': 'Open this in the browser',
+  'settings.metadata.gitHosting': 'Git hosting',
 } as const

@@ -24318,5 +24318,15 @@
       "es",
       "de"
     ]
+  },
+  "settings.metadata.gitHosting": {
+    "englishHash": "deeb896fe4c1a5bb17bcfddc0c998915bf36352fa159a9b4b6347e61f4b82c2a",
+    "context": "Provider-neutral Git section display label; legacy group ID is preserved",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

@@ -3356,4 +3356,5 @@ export const de = {
   'debuggerAccess.mode.allowAll': 'Alles erlauben',
   'settings.git.reloadService': 'Erneut vom Git-Dienst laden',
   'settings.git.openBrowser': 'Im Browser öffnen',
+  'settings.metadata.gitHosting': 'Git-Hosting',
 } satisfies TranslationCatalog
