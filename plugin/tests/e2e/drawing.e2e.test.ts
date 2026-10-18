@@ -103,7 +103,11 @@ const PRELUDE = `
     const img = await Promise.race([require('@electron/remote').getCurrentWebContents().capturePage(), wait(8000).then(() => null)])
     if (img) { require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true }); require('fs').writeFileSync(${JSON.stringify(SHOTS)} + '/drawing-' + name + '.png', img.toPNG()) }
   }
-  const closeAll = async () => { for (const leaf of app.workspace.getLeavesOfType('abele-image-ink')) leaf.detach(); await wait(500) }
+  const closeAll = async () => {
+    for (const leaf of app.workspace.getLeavesOfType('abele-image-ink'))
+      if (leaf.view.getState().path?.startsWith(DIR + '/')) leaf.detach()
+    await app.workspace.requestSaveLayout.run()
+  }
   const newOne = async () => {
     await until(() => app.workspace.layoutReady, 15000)
     const file = DIR + "/sample-smoothing.png"
@@ -132,6 +136,19 @@ const run = <T>(body: string): T =>
 
 describe.skipIf(!available)('the picture editor and shared ink', () => {
   let size: [number, number] = [0, 0]
+  const cleanup = () =>
+    evalAsync(
+      `(async () => {
+        for (const leaf of app.workspace.getLeavesOfType('abele-image-ink'))
+          if (leaf.view.getState().path?.startsWith(${JSON.stringify(DIR + '/')})) leaf.detach()
+        for (const leaf of app.workspace.getLeavesOfType('image')) if (leaf.view.file?.path.startsWith(${JSON.stringify(DIR + '/')})) leaf.detach()
+        await app.workspace.requestSaveLayout.run()
+        const dir = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})
+        if (dir) await app.vault.delete(dir, true)
+        return true
+      })()`,
+      60_000
+    )
 
   beforeAll(() => {
     attachDebugger()
@@ -149,22 +166,13 @@ describe.skipIf(!available)('the picture editor and shared ink', () => {
   }, 90_000)
 
   afterAll(async () => {
-    evalAsync(
-      `(async () => {
-        for (const leaf of app.workspace.getLeavesOfType('abele-image-ink'))
-          if (leaf.view.getState().path?.startsWith(${JSON.stringify(DIR + '/')})) leaf.detach()
-        for (const leaf of app.workspace.getLeavesOfType('image')) if (leaf.view.file?.path.startsWith(${JSON.stringify(DIR)})) leaf.detach()
-        await app.workspace.requestSaveLayout.run()
-        const dir = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})
-        if (dir) await app.vault.delete(dir, true)
-        return 'ok'
-      })()`,
-      60_000
-    )
+    cleanup()
     if (evalJson<boolean>('app.isMobile')) {
       if (size[0]) await setWindowSize(size[0], size[1])
       await reload('app.emulateMobile(false)')
     }
+    // Each emulation has its own saved layout. Clear any restored fixture in desktop too.
+    cleanup()
   }, 180_000)
 
   it('draws on a picture, and saves it as a new one, over the old one, or sends it to the chat', () => {
@@ -220,6 +228,7 @@ describe.skipIf(!available)('the picture editor and shared ink', () => {
 
   it('keeps stylus micro-smoothing bounded with raw and drawn strokes side by side', async () => {
     for (const mobile of [false, true]) {
+      run('await closeAll(); return true')
       await setWindowSize(mobile ? 390 : 1000, mobile ? 844 : 800)
       await reload(`app.emulateMobile(${mobile})`)
       for (const zoom of [1, 4]) {
