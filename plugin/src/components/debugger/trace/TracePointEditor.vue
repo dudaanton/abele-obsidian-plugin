@@ -119,12 +119,15 @@ function add(name: string) {
   adding.value?.focus()
 }
 const drop = (name: string) => (take.value = take.value.filter((n) => n !== name))
-const save = () =>
+const save = () => {
+  // Keep includes the expression still being typed, just as selecting a suggestion does.
+  add(added.value)
   emit('save', {
-    take: take.value,
+    take: [...take.value],
     when: when.value.trim() || undefined,
     note: note.value.trim() || undefined,
   })
+}
 
 const root = ref<HTMLElement>()
 onMounted(() => {

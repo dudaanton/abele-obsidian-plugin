@@ -215,7 +215,7 @@ const onTrail = computed(() => new Set(props.trail?.stops.map((s) => s.step) ?? 
 const pick = (id: string) => emit('pick', id)
 function openStep(step: TraceStep) {
   pick(step.id)
-  if (step.place) emit('reveal', step.place.file, step.place.line)
+  if (props.trail) emit('unfollow')
 }
 /** Back to the steps on a phone: the host puts it on its header's back arrow, as views do. */
 function back() {

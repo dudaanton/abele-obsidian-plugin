@@ -27,6 +27,41 @@ const run: TraceRun = {
 }
 
 describe('a record point set up under its line', () => {
+  it('keeps a typed custom expression when Keep is clicked directly', async () => {
+    const w = mount(TracePointEditor, { props: { line: 4, inScope: ['sample'] } })
+    await w.get('.multi-select-input').setValue('globalThis.sampleCount')
+    await w.get('[aria-label="Keep (Enter)"]').trigger('click')
+    expect(w.emitted('save')?.[0]?.[0]).toEqual({
+      take: ['globalThis.sampleCount'],
+      when: undefined,
+      note: undefined,
+    })
+    w.unmount()
+  })
+
+  it('prefills a custom expression and saved fields, keeping suggestions and cancel isolated', async () => {
+    const point = {
+      file: 'sample.ts',
+      line: 4,
+      state: 'set' as const,
+      kind: 'record' as const,
+      take: ['globalThis.sampleCount'],
+      when: 'sample.ok',
+      note: 'Sample count',
+    }
+    const w = mount(TracePointEditor, { props: { line: 4, point, inScope: ['sample'] } })
+    expect(w.get('.multi-select-pill-content').text()).toBe('globalThis.sampleCount')
+    expect(w.get('[aria-label="Take sample"]').exists()).toBe(true)
+    expect((w.findAll('input')[1].element as HTMLInputElement).value).toBe('sample.ok')
+    expect((w.findAll('input')[2].element as HTMLInputElement).value).toBe('Sample count')
+    await w.get('[aria-label="Take sample"]').trigger('click')
+    await w.get('.abele-trace-point').trigger('keydown', { key: 'Escape' })
+    expect(point.take).toEqual(['globalThis.sampleCount'])
+    expect(w.emitted('save')).toBeUndefined()
+    expect(w.emitted('cancel')).toHaveLength(1)
+    w.unmount()
+  })
+
   it('takes an offered name and keeps the point on Enter', async () => {
     const w = mount(TracePointEditor, { props: { line: 4, inScope: ['sample', 'other'] } })
     await w.get('[aria-label="Take sample"]').trigger('click')
@@ -69,13 +104,29 @@ describe('a recorded run', () => {
     w.unmount()
   })
 
+  it('selects a top-level step and leaves the followed trail to show its values', async () => {
+    const w = mount(TraceRunView, {
+      props: { run, trail: { value: 'sample', stops: [{ step: 's2', path: 'sample' }] } },
+    })
+    await w.get('.abele-trace-run__step > .tree-item-self').trigger('click')
+    expect(w.emitted('pick')).toEqual([['s1']])
+    expect(w.emitted('unfollow')).toEqual([[]])
+    expect(w.emitted('reveal')).toBeUndefined()
+    await w.setProps({ picked: 's1', trail: undefined })
+    expect(w.get('.abele-trace-step').text()).toContain('GET /sample')
+    w.unmount()
+  })
   it.each(['.abele-tree-item__text', '.abele-trace-glyph'])(
-    'opens a child step source from %s and still picks its details',
+    'opens a child step value from %s while staying in the run',
     async (selector) => {
       const w = mount(TraceRunView, { props: { run } })
       const step = w.get('.tree-item-children .abele-trace-run__step')
       await step.get(selector).trigger('click')
       expect(w.emitted('pick')).toEqual([['s2']])
+      expect(w.emitted('reveal')).toBeUndefined()
+      await w.setProps({ picked: 's2' })
+      expect(w.get('.abele-trace-step').text()).toContain('sample')
+      await w.get('.abele-trace-step__place').trigger('click')
       expect(w.emitted('reveal')).toEqual([['src/sample.ts', 4]])
       w.unmount()
     }

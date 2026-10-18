@@ -219,6 +219,7 @@ it('opens a recorded run as a tab of steps, a step with its values by shape, and
     await shot('2026-10-14-trace-run-desktop');
     document.querySelector('.abele-trace-run__step .abele-tree-item__self, .abele-trace-run__step .tree-item-self')?.click();
     await until(()=>document.querySelector('.abele-trace-step'),'step detail');
+    if(app.workspace.activeLeaf?.view.getViewType()!=='abele-trace-run')throw Error('Selecting a step left the run');
     await until(()=>document.querySelector('.abele-trace-step .abele-trace-shape, .abele-trace-step .abele-trace-value .tree-item-children'),'shape filled');
     const place=document.querySelector('.abele-trace-step__place')?.textContent.trim()??'';
     const values=[...document.querySelectorAll('.abele-trace-step .abele-trace-value > .tree-item-self .abele-tree-item__text, .abele-trace-step .abele-trace-value .abele-tree-item__text')].map(e=>e.textContent.trim()).slice(0,4);
@@ -330,6 +331,8 @@ it('reads the run on a phone: the steps whole-screen, a step over them', async (
       await shot('2026-10-14-trace4-run-phone');
       document.querySelector('.abele-trace-run__step .abele-tree-item__self, .abele-trace-run__step .tree-item-self')?.click();
       await until(()=>document.querySelector('.abele-trace-step'),'step detail');
+      if(app.workspace.activeLeaf?.view.getViewType()!=='abele-trace-run')throw Error('Selecting a step left the run');
+      await until(()=>document.querySelector('.abele-trace-step .abele-trace-value')?.textContent.includes('xmlText'),'selected step values');
       await shot('2026-10-14-trace4-step-phone');
       const root=document.querySelector('.abele-trace-run');
       const out={steps:document.querySelectorAll('.abele-trace-run__step').length,detail:!!document.querySelector('.abele-trace-step'),overflow:root.scrollWidth-root.clientWidth};

@@ -529,6 +529,7 @@ const folderName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?
   min-height: 0;
 }
 .abele-debug-panel .nav-buttons-container {
+  min-width: 0;
   flex-wrap: wrap;
 }
 .abele-debug-panel__program {

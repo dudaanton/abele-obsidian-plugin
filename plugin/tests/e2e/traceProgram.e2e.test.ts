@@ -295,6 +295,26 @@ it('runs a JavaScript program picked from Debug, records at a point set in its m
     const held=stackRows(),stop=debugState0(),restartWhileHeld=restartOn();
     await shot('2026-10-14-trace4-frames-desktop');
     await recordPoint(4,['sum','item']);
+    const trace=api.DebuggerService.instance.active.value.trace;
+    const original=trace.points[0].breakpoint_id;
+    const editPoint=async()=>{
+      const mark=document.querySelector('button.abele-debug-source__point.abele-breakpoint-mark_record')??document.querySelector('button.abele-debug-source__point .abele-breakpoint-mark_record')?.closest('button')??[...document.querySelectorAll('button.abele-debug-source__point')].find(b=>b.getAttribute('aria-label')?.startsWith('Record point'));
+      mark.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:40,clientY:200}));
+      press(await until(()=>item('Edit'),'Edit record point'));
+      return await until(()=>document.querySelector('.abele-trace-point .multi-select-input'),'edit form');
+    };
+    const custom='globalThis.process.pid';
+    const input=await editPoint();
+    if(document.querySelector('.abele-trace-point [aria-label="Take '+custom+'"]'))throw Error('custom expression unexpectedly offered');
+    input.value=custom;input.dispatchEvent(new Event('input',{bubbles:true}));await wait(100);
+    press(document.querySelector('.abele-trace-point [aria-label="Keep (Enter)"]'));
+    await until(()=>!document.querySelector('.abele-trace-point')&&trace.points[0]?.take.includes(custom),'custom expression persisted');
+    await editPoint();
+    await until(()=>[...document.querySelectorAll('.abele-trace-point .multi-select-pill-content')].some(p=>p.textContent===custom),'custom expression prefilled');
+    await shot('trace-point-custom-prefilled-desktop');
+    press(document.querySelector('.abele-trace-point [aria-label="Leave as it was (Escape)"]'));
+    await until(()=>!document.querySelector('.abele-trace-point'),'edit cancelled');
+    if(trace.points.length!==1||trace.points[0].breakpoint_id!==original||!trace.points[0].take.includes(custom))throw Error('edit duplicated or cancelled point changed');
     await shot('2026-10-14-trace-margin-live-desktop');
     await goOn();
     ${READ_RUN}
@@ -380,6 +400,9 @@ it('on a phone: the picker offers the file open in a tab, the stack folds Node, 
       // The drawer slides in: wait until the panel stands still inside the screen.
       let last='';await until(()=>{const r=document.querySelector('.abele-debug-panel').getBoundingClientRect(),now=r.left+','+r.width;const still=now===last&&r.left>=0&&r.right<=innerWidth+1&&r.width>200;last=now;return still},'debug drawer open').catch(()=>console.debug('[debugger] the drawer did not settle before the picture'));
       const held=stackRows(),stop=debugState0();
+      const panelGeometry=()=>JSON.stringify([...document.querySelectorAll('.abele-debug-panel, .abele-debug-panel > .nav-header, .abele-debug-panel .nav-buttons-container, .abele-debug-panel .nav-action-button')].map(el=>{const r=el.getBoundingClientRect();return {cls:el.className,label:el.getAttribute('aria-label'),x:r.x,y:r.y,w:r.width,h:r.height,css:{height:getComputedStyle(el).height,position:getComputedStyle(el).position,flex:getComputedStyle(el).flex}}}));
+      const controls=[...document.querySelectorAll('.abele-debug-panel .nav-action-button')];
+      if(!controls.length||controls.some(el=>{const r=el.getBoundingClientRect();return r.width<=0||r.height<=0||r.left<0||r.right>innerWidth+1||r.top<0||r.bottom>innerHeight}))throw Error('Debugger actions outside phone viewport: '+panelGeometry());
       await shot('2026-10-14-trace4-frames-phone');
       const panel=document.querySelector('.abele-debug-panel'),overflow=panel.scrollWidth-panel.clientWidth;
       press(document.querySelector('.abele-debug-panel [aria-label^="Stop"]'));
