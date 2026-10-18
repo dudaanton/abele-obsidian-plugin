@@ -23918,5 +23918,385 @@
       "es",
       "de"
     ]
+  },
+  "debuggerAccess.title": {
+    "englishHash": "c9c79c541fd84c593ce84281fa30e119ab8e1bf173debecddcab3ed818966665",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.request": {
+    "englishHash": "20ae93eeea8ba863cf38767c57c550d8416db03927b2a464608a0daae56f7f6c",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.chatFolder": {
+    "englishHash": "e233beb142faebffc883b43e366d8178a4a61127677a8057d8acb3a3211e0e87",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.scope": {
+    "englishHash": "d20599542b3e078e24f31322dfe0551a95bbb034f018535cfbdda688c3057b2c",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.allowed": {
+    "englishHash": "f9a6fd10b9711bf39ebb5b0d7bafa66a5d1d0c60fe49316433045ba694a04262",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.denied": {
+    "englishHash": "fbd0c9ad923b07b831de2e0239734a581bae603da0e63d4d4043c120a32a2403",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.expiredRequest": {
+    "englishHash": "26dbde01bc69f24775ec0efb0087ab59c9a47269eead6688ef591d8deae53d67",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.allow": {
+    "englishHash": "1a4f4f0184374647563db94b5d8e98c2cb10266a20d5523c203a55b057fe18e5",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.deny": {
+    "englishHash": "148b42082da7c57c7021a9fd518f151d031f6113382b57c1f0c311f2915fdee1",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.issued": {
+    "englishHash": "216e36e25a11c6dcc9ced1700afd66c04cb676c83c7dbf7bd5c5ea5d5e191817",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.issuerOnly": {
+    "englishHash": "26302310621d2ec33931e8c580b47293c9e37d1a9619842e06d9e6be85dad031",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.refresh": {
+    "englishHash": "8a66ad4ea5a09cee9b4ffcc7d050ef1c841560e3ea1ec1083a4d5f60f4b81c57",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.updateNode": {
+    "englishHash": "94debd88de59501aeafaca5efcec2d637bc0cc8b10a9e920e27d35bd84f6dfd8",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.empty": {
+    "englishHash": "d6b1f496f5a348c2a45bf926f318b333cde00ac19e5414589313e763aa356879",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.revoke": {
+    "englishHash": "9d55576cb7dbb22d166053855dd56b6d8eae56e62b137e30e687d82e232b85d3",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.deleteTip": {
+    "englishHash": "191155f99796a149fd04b4e0097854068a45c7dd63c9b41f9580f7e301b6499b",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.grantsUnavailable": {
+    "englishHash": "6fd14d2c0556ec50debf2a09dee15fd7d9f1673d1e513266df04d0b8bcd895fe",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.changeFailed": {
+    "englishHash": "6a24c391f57614a30f9b7020b4fe495671077ab1c6198d9cdf28cea5b665bd7c",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.state.revoked": {
+    "englishHash": "76b70566093da1e613465b1a6ac0d036ba7df5ae33245a31c8d98037aa20ff85",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.state.expired": {
+    "englishHash": "cf4298ec374b0cd6a43393c2bccd5bd819a3462f85521878f62c3f2dc21c5c81",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.state.active": {
+    "englishHash": "57f14656b00dff9c8554da37fda54e1a86a69c5cd0dfa00b94b20b75a6b8f23b",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.grantDescription": {
+    "englishHash": "405c063d0110c492638a030ad001956bf8851138978a51c004c8fd82ebd1841d",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.refreshRequests": {
+    "englishHash": "19b4ea4dc2d22f47b97cd79dd3a2dacd5b98b02977702235d30bb5df2dddcc14",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.unavailable": {
+    "englishHash": "0be43e25ac9fe7305e82925dfcb69ff9aff3eae358277193a1b6585f54a2dd88",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.stale": {
+    "englishHash": "84a0d487de34756bcafdd89dd4ab0d44bc551f824d57264d7a420248de35ed24",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.action.read": {
+    "englishHash": "9cc73317bae2d8cdb97402f48a527cbca0c56570fbd159ab8a1f0a9249e5dc88",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.action.step": {
+    "englishHash": "9f1121c0eb042766193f4fd39c9f83d7a0d7fbe2fdc801e5e7be2c98df695f55",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.action.continue": {
+    "englishHash": "798704431429a5c34fd621e62676d7b38f3032e7bba2193056e756ed6cd9a1f4",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.action.pause": {
+    "englishHash": "905937b057e8693afc351416195ab1f0875c12e9c1a03704f78e2c842e2a5b60",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.action.breakpoints": {
+    "englishHash": "755922ca3ddf74171cd1d6335b6b123a6db8f3ac49c41302b0c8b271c6dbc8f3",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.action.launch": {
+    "englishHash": "093e6da7673286c11e8f128371ec6d6a1b145fb5c2da15846e49edf41153de67",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.action.attach": {
+    "englishHash": "59eef77bb0bae7025409c52498325b7907864588f0610b02a0727e827dff9f79",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.action.detach": {
+    "englishHash": "039b9cb14cd4cab24932c4a96ea968caa090e2091dbb6b9435b37f08162dca1a",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.action.terminate": {
+    "englishHash": "a4c9f12a49ea999a18150ebaecf23d320ca62c19689082984e6ae4453befdfc9",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.action.expressions": {
+    "englishHash": "95631865d9132a4681e3134a64d23163c97925da36a3f663e678a5d2dcc724b0",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.action.evaluate": {
+    "englishHash": "1b04c08496da9de10a9e7d510fd2bf487a7894f0342cfb8e5d3ea42d35ad219e",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.mode.ask": {
+    "englishHash": "d57b7224480b764176e2362c15005dce3a4305d800ab9eb8ade9a13e53b6f508",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debuggerAccess.mode.allowAll": {
+    "englishHash": "6a47a2ab32cc05e14dab8c791e302baf2e52dfb6a23abcf5cf6a87f81e067cd9",
+    "context": "Debugger agent access request and grant management",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

@@ -1,19 +1,26 @@
 <template>
   <RequestCard class="abele-debugger-access-card" :waiting="!decision">
-    <strong>Let the agent use the debugger in {{ request.folder || 'this chat’s folder' }}</strong>
-    <span>{{ request.program }} · {{ request.access }}</span>
-    <span class="setting-item-description"
-      >This run and program only. Expressions still require separate approval.</span
-    >
+    <strong>{{
+      t('debuggerAccess.request', { folder: request.folder || t('debuggerAccess.chatFolder') })
+    }}</strong>
+    <span>{{ request.program }} · {{ debuggerAccessLabel(request.access) }}</span>
+    <span class="setting-item-description">{{ t('debuggerAccess.scope') }}</span>
     <span v-if="decision" role="status">{{
-      decision === 'allow'
-        ? 'Debugger access allowed. The agent can retry its call.'
-        : 'Debugger access denied.'
+      decision === 'allow' ? t('debuggerAccess.allowed') : t('debuggerAccess.denied')
     }}</span>
-    <span v-else-if="expired" role="status">This request expired. Ask the agent to try again.</span>
+    <span v-else-if="expired" role="status">{{ t('debuggerAccess.expiredRequest') }}</span>
     <div v-else class="abele-debugger-access-card__actions">
-      <Button text="Allow" :disabled="disabled" @click="emit('decide', 'allow')" />
-      <Button text="Deny" :disabled="disabled" @click="emit('decide', 'deny')" />
+      <Button
+        :text="t('debuggerAccess.allow')"
+        accent
+        :disabled="disabled"
+        @click="emit('decide', 'allow')"
+      />
+      <Button
+        :text="t('debuggerAccess.deny')"
+        :disabled="disabled"
+        @click="emit('decide', 'deny')"
+      />
     </div>
   </RequestCard>
 </template>
@@ -23,6 +30,9 @@ import RequestCard from '@/components/obsidian/RequestCard.vue'
 import Button from '@/components/obsidian/Button.vue'
 import { useDisplayClock } from '@/composables/useDisplayClock'
 import type { DebuggerAccessRequest } from './access'
+import { debuggerAccessLabel } from './access'
+import { useI18n } from '@/i18n/useI18n'
+const { t } = useI18n()
 const props = defineProps<{
   request: DebuggerAccessRequest
   disabled?: boolean

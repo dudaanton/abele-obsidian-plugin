@@ -1,16 +1,14 @@
 <template>
-  <Modal title="Agent debugger access" size="tall" @close="emit('close')">
+  <Modal :title="t('debuggerAccess.title')" size="tall" @close="emit('close')">
+    <p class="setting-item-description">{{ label }} · {{ t('debuggerAccess.issued') }}</p>
     <p class="setting-item-description">
-      {{ label }} · Grants issued by you on this device. Access ends when its run ends.
+      {{ t('debuggerAccess.issuerOnly') }}
     </p>
-    <p class="setting-item-description">
-      Other owners’ grants are hidden. Only the owner who issued a grant can revoke or delete it.
-    </p>
-    <Button text="Refresh" :disabled="busy" @click="load" />
-    <p v-if="!model.supported && loaded" role="status">{{ UPDATE_NODE }}</p>
+    <Button :text="t('debuggerAccess.refresh')" :disabled="busy" @click="load" />
+    <p v-if="!model.supported && loaded" role="status">{{ t('debuggerAccess.updateNode') }}</p>
     <p v-if="error" role="alert">{{ error }}</p>
     <p v-if="loaded && model.supported && !model.grants.length">
-      No debugger grants issued by you.
+      {{ t('debuggerAccess.empty') }}
     </p>
     <Setting
       v-for="grant in model.grants"
@@ -21,13 +19,13 @@
       <Icon
         v-if="!grant.revoked"
         icon="shield-off"
-        tooltip="Revoke debugger access"
+        :tooltip="t('debuggerAccess.revoke')"
         :disabled="busy || !model.canManage(grant)"
         @click="change(grant.grant_id, false)"
       />
       <Icon
         icon="trash-2"
-        tooltip="Delete this grant. Only grants you issued can be deleted. Operation history is retained."
+        :tooltip="t('debuggerAccess.deleteTip')"
         :disabled="busy || !model.canManage(grant)"
         @click="change(grant.grant_id, true)"
       />
@@ -41,7 +39,10 @@ import Modal from '@/components/obsidian/Modal.vue'
 import Setting from '@/components/obsidian/Setting.vue'
 import Button from '@/components/obsidian/Button.vue'
 import Icon from '@/components/obsidian/Icon.vue'
-import { DebuggerAccess, UPDATE_NODE, type DebuggerGrant } from './access'
+import { DebuggerAccess, debuggerAccessLabel, type DebuggerGrant } from './access'
+import { useI18n } from '@/i18n/useI18n'
+import { formatDate } from '@/i18n'
+const { t, locale } = useI18n()
 const props = defineProps<{ connection: NodeConnection; label: string }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 const model = reactive(
@@ -58,7 +59,7 @@ async function load() {
     await model.loadGrants(await props.connection.client.describe())
     loaded.value = true
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Debugger grants unavailable'
+    error.value = e instanceof Error ? e.message : t('debuggerAccess.grantsUnavailable')
   } finally {
     busy.value = false
   }
@@ -72,18 +73,27 @@ async function change(id: string, remove: boolean) {
     if (remove) await model.remove(id)
     else await model.revoke(id)
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Debugger grant could not be changed'
+    error.value = e instanceof Error ? e.message : t('debuggerAccess.changeFailed')
   } finally {
     busy.value = false
   }
 }
 function grantDescription(grant: DebuggerGrant) {
   const state = grant.revoked
-    ? 'Revoked'
+    ? t('debuggerAccess.state.revoked')
     : Date.parse(grant.expires_at) <= Date.now()
-      ? 'Expired'
-      : 'Active'
-  return `${state} · ${grant.actions.join(', ')} · ${grant.mode} · ${grant.conversation_id} · Expires ${new Date(grant.expires_at).toLocaleString()}`
+      ? t('debuggerAccess.state.expired')
+      : t('debuggerAccess.state.active')
+  return t('debuggerAccess.grantDescription', {
+    state,
+    actions: grant.actions.map(debuggerAccessLabel).join(', '),
+    mode: grant.mode === 'ask' ? t('debuggerAccess.mode.ask') : t('debuggerAccess.mode.allowAll'),
+    conversation: grant.conversation_id,
+    expires: formatDate(new Date(grant.expires_at), locale.format, {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    }),
+  })
 }
 onMounted(load)
 </script>

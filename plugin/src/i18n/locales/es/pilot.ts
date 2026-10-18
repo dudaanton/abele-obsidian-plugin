@@ -3333,4 +3333,50 @@ export const es = {
   'settings.git.repositoryConnections': 'Conexiones a repositorios Git',
   'settings.metadata.ca4a628311f7879a': 'Repositorios Git',
   'settings.metadata.b9227122bad532e6': 'Pestañas de repositorios',
+  'debuggerAccess.title': 'Acceso del agente al depurador',
+  'debuggerAccess.request': 'Permitir que el agente use el depurador en {folder}',
+  'debuggerAccess.chatFolder': 'la carpeta de este chat',
+  'debuggerAccess.scope':
+    'Solo esta ejecución y este programa. Las expresiones requieren una aprobación aparte.',
+  'debuggerAccess.allowed': 'Acceso al depurador permitido. El agente puede repetir la llamada.',
+  'debuggerAccess.denied': 'Acceso al depurador denegado.',
+  'debuggerAccess.expiredRequest':
+    'Esta solicitud ha caducado. Pide al agente que lo intente de nuevo.',
+  'debuggerAccess.allow': 'Permitir',
+  'debuggerAccess.deny': 'Denegar',
+  'debuggerAccess.issued':
+    'Permisos que has concedido en este dispositivo. El acceso termina al finalizar la ejecución.',
+  'debuggerAccess.issuerOnly':
+    'Los permisos de otros propietarios están ocultos. Solo quien concedió un permiso puede revocarlo o eliminarlo.',
+  'debuggerAccess.refresh': 'Actualizar',
+  'debuggerAccess.updateNode':
+    'Actualiza este nodo para gestionar el acceso del agente al depurador.',
+  'debuggerAccess.empty': 'No has concedido permisos para el depurador.',
+  'debuggerAccess.revoke': 'Revocar el acceso al depurador',
+  'debuggerAccess.deleteTip':
+    'Eliminar este permiso. Solo puedes eliminar los permisos que concediste. Se conserva el historial de operaciones.',
+  'debuggerAccess.grantsUnavailable': 'Los permisos del depurador no están disponibles',
+  'debuggerAccess.changeFailed': 'No se pudo modificar el permiso del depurador',
+  'debuggerAccess.state.revoked': 'Revocado',
+  'debuggerAccess.state.expired': 'Caducado',
+  'debuggerAccess.state.active': 'Activo',
+  'debuggerAccess.grantDescription':
+    '{state} · {actions} · {mode} · {conversation} · Caduca {expires}',
+  'debuggerAccess.refreshRequests': 'Actualizar solicitudes del depurador',
+  'debuggerAccess.unavailable': 'El acceso al depurador no está disponible',
+  'debuggerAccess.stale':
+    'Esta solicitud del depurador ya no está pendiente. Se han actualizado las solicitudes pendientes.',
+  'debuggerAccess.action.read': 'lectura',
+  'debuggerAccess.action.step': 'paso',
+  'debuggerAccess.action.continue': 'continuar',
+  'debuggerAccess.action.pause': 'pausa',
+  'debuggerAccess.action.breakpoints': 'puntos de interrupción',
+  'debuggerAccess.action.launch': 'iniciar',
+  'debuggerAccess.action.attach': 'conectar',
+  'debuggerAccess.action.detach': 'desconectar',
+  'debuggerAccess.action.terminate': 'terminar',
+  'debuggerAccess.action.expressions': 'expresiones',
+  'debuggerAccess.action.evaluate': 'evaluar / modificar variable',
+  'debuggerAccess.mode.ask': 'preguntar',
+  'debuggerAccess.mode.allowAll': 'permitir todo',
 } satisfies TranslationCatalog

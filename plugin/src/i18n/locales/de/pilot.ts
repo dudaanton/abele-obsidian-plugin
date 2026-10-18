@@ -3309,4 +3309,50 @@ export const de = {
   'settings.git.repositoryConnections': 'Verbindungen zu Git-Repositories',
   'settings.metadata.ca4a628311f7879a': 'Git-Repositories',
   'settings.metadata.b9227122bad532e6': 'Repository-Tabs',
+  'debuggerAccess.title': 'Debuggerzugriff für den Agenten',
+  'debuggerAccess.request': 'Dem Agenten die Nutzung des Debuggers in {folder} erlauben',
+  'debuggerAccess.chatFolder': 'diesem Chatordner',
+  'debuggerAccess.scope':
+    'Nur für diesen Lauf und dieses Programm. Ausdrücke erfordern weiterhin eine gesonderte Freigabe.',
+  'debuggerAccess.allowed': 'Debuggerzugriff erlaubt. Der Agent kann den Aufruf wiederholen.',
+  'debuggerAccess.denied': 'Debuggerzugriff abgelehnt.',
+  'debuggerAccess.expiredRequest':
+    'Diese Anfrage ist abgelaufen. Bitte den Agenten, es erneut zu versuchen.',
+  'debuggerAccess.allow': 'Erlauben',
+  'debuggerAccess.deny': 'Ablehnen',
+  'debuggerAccess.issued':
+    'Von dir auf diesem Gerät erteilte Berechtigungen. Der Zugriff endet mit dem Lauf.',
+  'debuggerAccess.issuerOnly':
+    'Berechtigungen anderer Eigentümer sind ausgeblendet. Nur wer eine Berechtigung erteilt hat, kann sie widerrufen oder löschen.',
+  'debuggerAccess.refresh': 'Aktualisieren',
+  'debuggerAccess.updateNode':
+    'Aktualisiere diesen Knoten, um den Debuggerzugriff des Agenten zu verwalten.',
+  'debuggerAccess.empty': 'Du hast keine Debuggerberechtigungen erteilt.',
+  'debuggerAccess.revoke': 'Debuggerzugriff widerrufen',
+  'debuggerAccess.deleteTip':
+    'Diese Berechtigung löschen. Nur selbst erteilte Berechtigungen können gelöscht werden. Der Vorgangsverlauf bleibt erhalten.',
+  'debuggerAccess.grantsUnavailable': 'Debuggerberechtigungen sind nicht verfügbar',
+  'debuggerAccess.changeFailed': 'Die Debuggerberechtigung konnte nicht geändert werden',
+  'debuggerAccess.state.revoked': 'Widerrufen',
+  'debuggerAccess.state.expired': 'Abgelaufen',
+  'debuggerAccess.state.active': 'Aktiv',
+  'debuggerAccess.grantDescription':
+    '{state} · {actions} · {mode} · {conversation} · Gültig bis {expires}',
+  'debuggerAccess.refreshRequests': 'Debuggeranfragen aktualisieren',
+  'debuggerAccess.unavailable': 'Debuggerzugriff ist nicht verfügbar',
+  'debuggerAccess.stale':
+    'Diese Debuggeranfrage wartet nicht mehr auf eine Entscheidung. Die ausstehenden Anfragen wurden aktualisiert.',
+  'debuggerAccess.action.read': 'Lesen',
+  'debuggerAccess.action.step': 'Schritt',
+  'debuggerAccess.action.continue': 'Fortsetzen',
+  'debuggerAccess.action.pause': 'Pause',
+  'debuggerAccess.action.breakpoints': 'Haltepunkte',
+  'debuggerAccess.action.launch': 'Starten',
+  'debuggerAccess.action.attach': 'Anhängen',
+  'debuggerAccess.action.detach': 'Trennen',
+  'debuggerAccess.action.terminate': 'Beenden',
+  'debuggerAccess.action.expressions': 'Ausdrücke',
+  'debuggerAccess.action.evaluate': 'Auswerten / Variable ändern',
+  'debuggerAccess.mode.ask': 'Nachfragen',
+  'debuggerAccess.mode.allowAll': 'Alles erlauben',
 } satisfies TranslationCatalog

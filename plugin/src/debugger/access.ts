@@ -1,5 +1,7 @@
 import { z } from 'zod'
 import { DebuggerGrantSchema } from '@abele/node-protocol'
+import { t } from '@/i18n'
+import type { MessageKey } from '@/i18n/types'
 
 // Additive wire adapter until the browser SDK includes debugger.access.v1.
 const Request = z.object({
@@ -36,7 +38,24 @@ export function debuggerAccessSupported(raw: unknown): boolean {
     .safeParse(description.data.capabilities.capabilities['debugger.access.v1'])
   return status.success
 }
-export const UPDATE_NODE = 'Update this node to manage agent debugger access.'
+const ACTION_LABELS = {
+  read: 'debuggerAccess.action.read',
+  step: 'debuggerAccess.action.step',
+  continue: 'debuggerAccess.action.continue',
+  pause: 'debuggerAccess.action.pause',
+  breakpoints: 'debuggerAccess.action.breakpoints',
+  launch: 'debuggerAccess.action.launch',
+  attach: 'debuggerAccess.action.attach',
+  detach: 'debuggerAccess.action.detach',
+  terminate: 'debuggerAccess.action.terminate',
+  expressions: 'debuggerAccess.action.expressions',
+  'evaluate/setVariable': 'debuggerAccess.action.evaluate',
+} as const satisfies Record<string, MessageKey>
+export function debuggerAccessLabel(action: string): string {
+  return Object.hasOwn(ACTION_LABELS, action)
+    ? t(ACTION_LABELS[action as keyof typeof ACTION_LABELS])
+    : action
+}
 
 /** Owner-channel access workflow; never dispatches or replays an agent debugger operation. */
 export class DebuggerAccess {
@@ -85,9 +104,8 @@ export class DebuggerAccess {
         (error as { code?: string }).code ?? (error instanceof Error ? error.message : '')
       if (code === 'stale_state') {
         await this.load(this.description)
-        this.error =
-          'This debugger request is no longer pending. Pending requests have been refreshed.'
-      } else this.error = error instanceof Error ? error.message : 'Debugger access unavailable'
+        this.error = t('debuggerAccess.stale')
+      } else this.error = error instanceof Error ? error.message : t('debuggerAccess.unavailable')
     } finally {
       this.busy = false
     }

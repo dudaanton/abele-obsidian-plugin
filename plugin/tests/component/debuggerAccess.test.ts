@@ -7,6 +7,8 @@ import DebuggerGrantsDialog from '@/debugger/DebuggerGrantsDialog.vue'
 import Modal from '@/components/obsidian/Modal.vue'
 import { accessRequest, accessDescription, accessGrant } from '../fixtures/debuggerAccess'
 import { useVault } from '../helpers/testEnv'
+import { initializeLocale } from '@/i18n'
+import { catalogs } from '@/i18n/catalogs'
 
 it.each(['allow', 'deny'] as const)(
   'offers an explicit %s action and names the program and folder',
@@ -14,6 +16,12 @@ it.each(['allow', 'deny'] as const)(
     const w = mount(DebuggerAccessCard, { props: { request: accessRequest } })
     expect(w.text()).toContain('/sample/project')
     expect(w.text()).toContain('sample-server.js')
+    expect(
+      w
+        .findAll('button')
+        .find((b) => b.text() === 'Allow')!
+        .classes()
+    ).toContain('mod-cta')
     await w
       .findAll('button')
       .find((b) => b.text().toLowerCase() === decision)!
@@ -105,4 +113,34 @@ it('disables offline and expired request actions', async () => {
   expect(w.text()).toContain('expired')
   expect(w.findAll('button')).toHaveLength(0)
   w.unmount()
+})
+it('translates debugger consent and grant descriptions while keeping program identities intact', async () => {
+  useVault([])
+  initializeLocale('ru', catalogs.ru)
+  const card = mount(DebuggerAccessCard, { props: { request: accessRequest } })
+  const request = vi.fn(async () => [accessGrant])
+  const dialog = mount(DebuggerGrantsDialog, {
+    props: {
+      label: 'Sample node',
+      connection: {
+        connect: vi.fn(),
+        client: { request, describe: async () => accessDescription },
+      } as never,
+    },
+    global: { stubs: { Modal: { template: '<div><slot /></div>', props: ['title', 'size'] } } },
+  })
+  try {
+    await flushPromises()
+    expect(card.text()).toContain('Разрешить агенту пользоваться отладчиком')
+    expect(card.text()).toContain('sample-server.js · чтение')
+    expect(card.findAll('button').map((b) => b.text())).toEqual(['Разрешить', 'Отклонить'])
+    expect(dialog.findComponent(Modal).props('title')).toBe('Доступ агента к отладчику')
+    expect(dialog.text()).toContain('Действует · чтение · запрашивать')
+    expect(dialog.text()).toContain('sample-debug')
+    expect(dialog.find('[aria-label="Отозвать доступ к отладчику"]').exists()).toBe(true)
+  } finally {
+    card.unmount()
+    dialog.unmount()
+    initializeLocale('en')
+  }
 })

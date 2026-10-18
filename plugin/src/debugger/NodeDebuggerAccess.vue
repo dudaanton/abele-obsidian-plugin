@@ -4,7 +4,7 @@
       v-if="presenter.debuggerAvailable.value && !model.supported"
       class="setting-item-description"
     >
-      {{ UPDATE_NODE }}
+      {{ t('debuggerAccess.updateNode') }}
     </p>
     <DebuggerAccessCard
       v-for="request in requests"
@@ -17,7 +17,7 @@
     <p v-if="model.error" role="alert">{{ model.error }}</p>
     <Button
       v-if="model.error"
-      text="Refresh debugger requests"
+      :text="t('debuggerAccess.refreshRequests')"
       :disabled="offline || model.busy"
       @click="refresh"
     />
@@ -26,7 +26,9 @@
 <script setup lang="ts">
 import { computed, reactive, watch, onUnmounted } from 'vue'
 import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
-import { DebuggerAccess, UPDATE_NODE } from './access'
+import { DebuggerAccess } from './access'
+import { useI18n } from '@/i18n/useI18n'
+const { t } = useI18n()
 import DebuggerAccessCard from './DebuggerAccessCard.vue'
 import Button from '@/components/obsidian/Button.vue'
 const props = defineProps<{ presenter: NodeChatPresenter }>()
@@ -50,7 +52,7 @@ async function refresh() {
       await model.load(props.presenter.nodeDescription.value)
     }
   } catch (error) {
-    model.error = error instanceof Error ? error.message : 'Debugger access unavailable'
+    model.error = error instanceof Error ? error.message : t('debuggerAccess.unavailable')
   } finally {
     loading = false
   }

@@ -3275,4 +3275,50 @@ export const lv = {
   'settings.git.repositoryConnections': 'Git repozitoriju savienojumi',
   'settings.metadata.ca4a628311f7879a': 'Git repozitoriji',
   'settings.metadata.b9227122bad532e6': 'Repozitoriju cilnes',
+  'debuggerAccess.title': 'Aģenta piekļuve atkļūdotājam',
+  'debuggerAccess.request': 'Atļaut aģentam izmantot atkļūdotāju: {folder}',
+  'debuggerAccess.chatFolder': 'šīs sarunas mape',
+  'debuggerAccess.scope':
+    'Tikai šai izpildei un programmai. Izteiksmju izpildei joprojām vajadzīgs atsevišķs apstiprinājums.',
+  'debuggerAccess.allowed': 'Piekļuve atkļūdotājam atļauta. Aģents var atkārtot izsaukumu.',
+  'debuggerAccess.denied': 'Piekļuve atkļūdotājam liegta.',
+  'debuggerAccess.expiredRequest':
+    'Pieprasījuma termiņš beidzies. Lūdziet aģentam mēģināt vēlreiz.',
+  'debuggerAccess.allow': 'Atļaut',
+  'debuggerAccess.deny': 'Noraidīt',
+  'debuggerAccess.issued':
+    'Jūsu šajā ierīcē piešķirtās atļaujas. Piekļuve beidzas līdz ar izpildes beigām.',
+  'debuggerAccess.issuerOnly':
+    'Citu īpašnieku atļaujas ir paslēptas. Atļauju var atsaukt vai dzēst tikai tās piešķīrējs.',
+  'debuggerAccess.refresh': 'Atsvaidzināt',
+  'debuggerAccess.updateNode':
+    'Atjauniniet šo mezglu, lai pārvaldītu aģenta piekļuvi atkļūdotājam.',
+  'debuggerAccess.empty': 'Jūs neesat piešķīris piekļuves atļaujas atkļūdotājam.',
+  'debuggerAccess.revoke': 'Atsaukt piekļuvi atkļūdotājam',
+  'debuggerAccess.deleteTip':
+    'Dzēst šo atļauju. Var dzēst tikai paša piešķirtās atļaujas. Darbību vēsture tiek saglabāta.',
+  'debuggerAccess.grantsUnavailable': 'Atkļūdotāja atļaujas nav pieejamas',
+  'debuggerAccess.changeFailed': 'Neizdevās mainīt atkļūdotāja atļauju',
+  'debuggerAccess.state.revoked': 'Atsaukta',
+  'debuggerAccess.state.expired': 'Beigusies',
+  'debuggerAccess.state.active': 'Aktīva',
+  'debuggerAccess.grantDescription':
+    '{state} · {actions} · {mode} · {conversation} · Beidzas {expires}',
+  'debuggerAccess.refreshRequests': 'Atsvaidzināt atkļūdotāja pieprasījumus',
+  'debuggerAccess.unavailable': 'Piekļuve atkļūdotājam nav pieejama',
+  'debuggerAccess.stale':
+    'Šis atkļūdotāja pieprasījums vairs negaida lēmumu. Gaidīšanas saraksts ir atsvaidzināts.',
+  'debuggerAccess.action.read': 'lasīšana',
+  'debuggerAccess.action.step': 'solis',
+  'debuggerAccess.action.continue': 'turpināšana',
+  'debuggerAccess.action.pause': 'pauze',
+  'debuggerAccess.action.breakpoints': 'pārtraukumpunkti',
+  'debuggerAccess.action.launch': 'palaišana',
+  'debuggerAccess.action.attach': 'pievienošana',
+  'debuggerAccess.action.detach': 'atvienošana',
+  'debuggerAccess.action.terminate': 'izbeigšana',
+  'debuggerAccess.action.expressions': 'izteiksmes',
+  'debuggerAccess.action.evaluate': 'izteiksmes izpilde / mainīgā maiņa',
+  'debuggerAccess.mode.ask': 'jautāt',
+  'debuggerAccess.mode.allowAll': 'atļaut visu',
 } satisfies TranslationCatalog

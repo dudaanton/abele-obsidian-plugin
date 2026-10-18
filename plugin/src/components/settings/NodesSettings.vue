@@ -301,7 +301,7 @@ const more = (event: MouseEvent, node: RegisteredNode) => {
   menu.addSeparator()
   menu.addItem((i) =>
     i
-      .setTitle('Agent debugger access')
+      .setTitle(t('debuggerAccess.title'))
       .setIcon('bug')
       .onClick(() => {
         debuggerGrantNode.value = node
