@@ -34,6 +34,15 @@
   </TreeItem>
   <!-- Saved results stay in the conversation when the work's details fold away. -->
   <slot v-if="!open" name="results" />
+  <template v-if="!open">
+    <ChatToolFiles
+      v-for="call in calls"
+      :key="call.id"
+      class="abele-chat-run__files"
+      :message="call"
+      :resource-opener="resourceOpener"
+    />
+  </template>
   <!-- A node call in the run was refused for want of access: its way through stays in sight
        with the run folded; opened, it is on the call's own line. -->
   <NodeAccessRefusal
@@ -51,6 +60,7 @@ import { t } from '@/i18n'
 import { computed, ref, watchEffect } from 'vue'
 import { setTooltip } from 'obsidian'
 import TreeItem from './obsidian/TreeItem.vue'
+import ChatToolFiles from './chat/ChatToolFiles.vue'
 import Icon from './obsidian/Icon.vue'
 import NodeAccessRefusal from './chat/NodeAccessRefusal.vue'
 import type { NodeAccessRefusal as NodeAccessRefusalData } from '@/ai/tools/node/accessRefusal'
@@ -62,6 +72,7 @@ const props = defineProps<{
   id: string
   calls: ChatMessage[]
   open: boolean
+  resourceOpener?: (path: string) => void
   /** Ways the chat went from a call inside the run, when it branched there. */
   forks?: number
   /** Whether the chat has since been given what a refused node call wanted. */

@@ -94,15 +94,8 @@
           @contextmenu.prevent="showActions"
         >
           <span class="abele-chat-msg__tool-name">{{ readableToolName(message.toolName) }}</span>
-          <span
-            class="abele-chat-msg__tool-summary"
-            :class="{ 'abele-chat-msg__tool-link': toolFilePath }"
-            :role="toolFilePath ? 'link' : undefined"
-            :tabindex="toolFilePath ? 0 : undefined"
-            @click="openToolFile"
-            @keydown.enter="openToolFile"
-            >{{ toolSummary }}</span
-          >
+          <ChatToolFiles v-if="toolFilePath" :message="message" :resource-opener="resourceOpener" />
+          <span v-else class="abele-chat-msg__tool-summary">{{ toolSummary }}</span>
           <span
             v-if="
               message.toolName === 'delegate' &&
@@ -442,6 +435,7 @@ import NodeAccessRefusal from './chat/NodeAccessRefusal.vue'
 import type { NodeAccessRefusal as Refusal } from '@/ai/tools/node/accessRefusal'
 import type { NodeScopeEntry } from '@/ai/nodeScope'
 import ChatToolImage from './chat/ChatToolImage.vue'
+import ChatToolFiles from './chat/ChatToolFiles.vue'
 import AiChatMessageDetails from './AiChatMessageDetails.vue'
 import AiChatMessageInterceptor from './AiChatMessageInterceptor.vue'
 import { HIGHLIGHT_COLORS, type HighlightColor } from '@/reader/highlights'
@@ -674,7 +668,6 @@ const {
   mapConfig,
   toolSummary,
   toolFilePath,
-  openToolFile,
   contentPicture,
   previewContentImage,
   onAttachmentContextMenu,

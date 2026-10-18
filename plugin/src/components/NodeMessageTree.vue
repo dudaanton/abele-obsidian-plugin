@@ -10,6 +10,7 @@
       :id="block.id"
       :calls="block.calls"
       :open="isOpen(block)"
+      :resource-opener="openResource"
       @update:open="(open) => chosen.set(block.id, open)"
     >
       <template v-for="message in block.messages" :key="message.id">

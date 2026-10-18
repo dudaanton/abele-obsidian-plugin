@@ -4,7 +4,8 @@ import type { ChatMessage } from '@/ai/types'
 import { toolImage } from '@/ai/chatArtifacts'
 import { isImagePath } from '@/ai/tools/ReadImageTool'
 import { normalizeMapBlock, type MapConfig } from '@/helpers/mapConfig'
-import { extractResultPath, toolSummary as toolSummaryOf } from '@/ai/toolLine'
+import { toolSummary as toolSummaryOf } from '@/ai/toolLine'
+import { toolFilePaths } from '@/ai/toolFiles'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { openVaultFile } from '@/ai/openChat'
 import { ChatService } from '@/ai/ChatService'
@@ -19,20 +20,6 @@ interface ChatMessageMediaProps {
 }
 
 export function useChatMessageMedia(props: ChatMessageMediaProps) {
-  const FILE_VERB = /(^|[_-])(write|edit|create|read|append|patch|update|multiedit)([_-]|$)/i
-  const FILE_TOOLS = [
-    'read',
-    'edit',
-    'write',
-    'create',
-    'rm',
-    'mv',
-    'cp',
-    'read_image',
-    'look_at_drawing',
-    'apply_template',
-  ]
-
   /**
    * The map a map tool drew, ready to render — or nothing, for every other tool.
    *
@@ -50,30 +37,7 @@ export function useChatMessageMedia(props: ChatMessageMediaProps) {
   const toolSummary = computed(() => toolSummaryOf(props.message))
 
   /** Path to open when clicking the tool summary (result path for mv/cp, otherwise path param) */
-  const toolFilePath = computed(() => {
-    const name = props.message.toolName
-    // Another agent says which file its call works on.
-    if (props.message.toolPath) return props.message.toolPath
-    if (!name) return ''
-    const p = props.message.toolParams
-    if (!p) return ''
-    if (FILE_TOOLS.includes(name)) {
-      if (name === 'mv' || name === 'cp') return String(p.to || '')
-      if (name === 'apply_template') return extractResultPath(props.message.toolResult)
-      return String(p.path || '')
-    }
-    // Another agent's or a server's file tools (Write, edit_note, read_file…): whatever made,
-    // changed or read a file opens it, by whichever name its path came under.
-    if (!FILE_VERB.test(name)) return ''
-    const path = p.path ?? p.file_path ?? p.filePath ?? p.note_path ?? p.notePath
-    return typeof path === 'string' ? path : ''
-  })
-
-  const openToolFile = () => {
-    if (!toolFilePath.value) return
-    if (props.resourceOpener) props.resourceOpener(toolFilePath.value)
-    else void openVaultFile(toolFilePath.value)
-  }
+  const toolFilePath = computed(() => toolFilePaths(props.message)[0] ?? '')
 
   const imagePath = computed(() =>
     props.resourceOpener ? '' : (toolImage(props.message)?.path ?? '')
@@ -205,7 +169,6 @@ export function useChatMessageMedia(props: ChatMessageMediaProps) {
     mapConfig,
     toolSummary,
     toolFilePath,
-    openToolFile,
     imagePath,
     imageUrl,
     viewerOpen,

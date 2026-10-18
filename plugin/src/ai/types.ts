@@ -700,6 +700,10 @@ export interface ChatMessage {
   toolTitle?: string
   /** The file a tool call works on, as its agent reports it. */
   toolPath?: string
+  /** All structured locations reported by a provider, retained in saved history. */
+  toolPaths?: string[]
+  /** The node place captured at execution, independent of later chat selections. */
+  toolNodeTarget?: import('./nodeScope').NodeScopeTarget
   /** A map a tool drew — shown under the call, the way a diff or a screenshot is. */
   toolMap?: MapBlock
   usage?: ChatMessageUsage

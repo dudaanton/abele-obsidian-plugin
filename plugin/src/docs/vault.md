@@ -183,6 +183,10 @@ guards. Credential retirement clears them. No persistent private-source cache is
 
 ## Node path views (device-local)
 
+Chat tool records retain explicit provider file locations and the resolved node/project/target
+of node file calls. These are presentation references, not access grants. Folded calls keep
+their file paths visible; opening a node path uses its remote place, never vault resolution.
+
 The Node drawer and its main-area file, history, chat and code-editor leaves retain only
 registration/node/project IDs, an opaque workspace or worktree target, relative file paths
 and session IDs in the workspace layout. They never store node credentials or claim chat

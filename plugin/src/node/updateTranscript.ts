@@ -245,7 +245,8 @@ export class UpdateTranscript {
     else m.toolParams ??= {}
     m.toolTitle = known.title || undefined
     const path = known.locations[0]?.path ?? known.diffs[0]?.path
-    if (path) m.toolPath = path
+    m.toolPath = path
+    m.toolPaths = [...new Set([...known.locations, ...known.diffs].map((item) => item.path))]
     const status = known.status
     m.toolStatus = status === 'failed' ? 'rejected' : 'approved'
     const text = known.content

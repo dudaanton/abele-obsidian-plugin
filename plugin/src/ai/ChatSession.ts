@@ -1474,6 +1474,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         const ctx: ToolContext = {
           scope: this.scopeResolver,
           session: this,
+          onNodeFileTarget: (target) => {
+            if (this.destroyed || this.conversationVersion.value !== version) return
+            this.updateChatMessage(
+              (m) => m.role === 'tool-call' && m.toolCallId === id,
+              (m) => ({ ...m, toolNodeTarget: structuredClone(target) })
+            )
+          },
           agentId: tool.name === 'zip' ? ownerAgent?.id : this.agent.value?.id,
           app: invocationApp,
           validateWrite: () => {

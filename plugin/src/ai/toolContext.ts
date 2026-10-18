@@ -15,6 +15,8 @@ export interface ToolContext {
   /** Original host and live invocation/write validity, currently consumed by create-only ZIP. */
   app?: App
   validateWrite?: () => void
+  /** Presentation evidence for the file call's resolved place; grants no access. */
+  onNodeFileTarget?: (target: import('./nodeScope').NodeScopeTarget) => void
 }
 
 /** The invocation's owned file facade; direct callers use the ordinary host. */
