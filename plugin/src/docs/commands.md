@@ -221,5 +221,7 @@ them. Incoming executable changes require approving the exact reviewed version.
   there for a walk-through rather than retelling it
 - Create script · Create CSS snippet · Reload CSS snippets
 - Dictate into the note — records, transcribes, and puts the words at the cursor
+- Copy current location coordinates — asks the device for its position and copies it as
+  `latitude, longitude`, ready for a note's coordinates property; nothing is stored or sent
 
 Each script in the vault also appears as its own command, **Script: <name>**.
