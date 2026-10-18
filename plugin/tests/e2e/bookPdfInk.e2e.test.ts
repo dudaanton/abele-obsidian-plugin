@@ -445,7 +445,7 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
       await ready(() => view.model.ink.tool === 'marker', 'marker tool')
       const f = reach(view, doc)
       await draw(f.left + f.width * 0.2, f.top + f.height * 0.4, f.left + f.width * 0.7, f.top + f.height * 0.4, 'pen')
-      const marker = doc.querySelectorAll(':scope > svg.abele-ink path[stroke]').length
+      const marker = doc.querySelectorAll(':scope > svg.abele-ink path[fill="#f5c400"][fill-opacity="0.4"]').length
       click(view, '.abele-book-ink__done')
       const overlayGone = !!(await until(() => !q(view, '.abele-ink-overlay')))
       const footer = !!(await until(() => q(view, '.abele-book-reader__footer')))

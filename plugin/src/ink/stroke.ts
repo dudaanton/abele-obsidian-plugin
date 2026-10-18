@@ -5,10 +5,10 @@
  * Points are in the page's own units — a PDF page at 100% — so a stroke keeps its place and size
  * at every zoom. The pen is drawn as a filled outline whose width follows the pressure, the way
  * ink from a nib looks; the marker is a wide, even, see-through line. Native nib geometry is
- * constructed here; imported pencil strokes retain their source renderer through a profile.
+ * constructed here; newer hand-drawn and imported strokes use a shared freehand profile.
  */
 
-import { freedrawPath, freedrawCenterline, type FreedrawProfile } from './freedraw'
+import { freedrawPath, freedrawCenterline, freedrawOutline, type FreedrawProfile } from './freedraw'
 
 export type InkTool = 'pen' | 'marker'
 
@@ -52,7 +52,7 @@ export interface InkStroke {
   points: number[]
   /** Already bounded at input; do not ease the stored samples a second time. */
   linear?: true
-  /** Imported pencil geometry; absent on existing and hand-drawn native strokes. */
+  /** Shared freehand geometry; absent on legacy native strokes. */
   freedraw?: FreedrawProfile
 }
 
@@ -305,8 +305,11 @@ function penPath(raw: Pt[]): string {
  * The path drawn for a stroke. The pen: its outline, round nibs joined by bands, at the width the
  * pressure gave each point, to be filled. The marker: the line itself, to be stroked at its width.
  */
+export const filledStroke = (stroke: Pick<InkStroke, 'tool' | 'freedraw'>): boolean =>
+  stroke.tool === 'pen' || !!stroke.freedraw
+
 export function strokePath(stroke: InkStroke): string {
-  if (stroke.tool === 'pen' && stroke.freedraw) return freedrawPath(stroke)
+  if (stroke.freedraw) return freedrawPath(stroke)
   const pts = points(stroke)
   if (!pts.length) return ''
   if (stroke.tool === 'marker') {
@@ -319,7 +322,7 @@ export function strokePath(stroke: InkStroke): string {
 
 /** Rendered centreline samples for clients that cut/pick a curved stroke rather than its chords. */
 export function strokeCenterline(stroke: InkStroke): number[] {
-  if (stroke.tool === 'pen' && stroke.freedraw) return freedrawCenterline(stroke)
+  if (stroke.freedraw) return freedrawCenterline(stroke)
   const pts = points(stroke),
     pressure = (r: number) => Math.max(0, Math.min(1, ((r * 2) / stroke.size - 0.4) / 1.2))
   if (stroke.tool === 'pen') return simplify(densify(pts)).flatMap((p) => [p.x, p.y, pressure(p.r)])
@@ -369,6 +372,7 @@ function distSq(px: number, py: number, ax: number, ay: number, bx: number, by: 
 
 /** Whether an eraser of `radius` at a point touches the stroke. */
 export function hitStroke(stroke: InkStroke, x: number, y: number, radius: number): boolean {
+  if (stroke.freedraw) return hitOutline(freedrawOutline(stroke), x, y, radius)
   const pts = strokeCenterline(stroke)
   const half = stroke.tool === 'marker' ? stroke.size / 2 : penWidth(stroke.size, 1) / 2
   const reach = (radius + half) ** 2
@@ -377,4 +381,16 @@ export function hitStroke(stroke: InkStroke, x: number, y: number, radius: numbe
   for (let i = 0; i + 5 < pts.length; i += 3)
     if (distSq(x, y, pts[i], pts[i + 1], pts[i + 3], pts[i + 4]) <= reach) return true
   return false
+}
+
+/** Shared by the page and canvas adapters, including nonuniformly transformed canvas ink. */
+export function hitOutline(outline: number[][], x: number, y: number, radius: number): boolean {
+  let inside = false
+  for (let i = 0, j = outline.length - 1; i < outline.length; j = i++) {
+    const [ax, ay] = outline[j],
+      [bx, by] = outline[i]
+    if (distSq(x, y, ax, ay, bx, by) <= radius * radius) return true
+    if (ay > y !== by > y && x < ((bx - ax) * (y - ay)) / (by - ay) + ax) inside = !inside
+  }
+  return inside
 }

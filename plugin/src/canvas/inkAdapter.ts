@@ -1,8 +1,7 @@
 /** Pointer sampling only; one completed stroke uses the editor's existing draft/history. */
 import { nanoid } from 'nanoid'
 import { toWorld } from '../drawing/camera'
-import { StylusSmoother } from '../ink/smoothing'
-import { roundPoint } from '../ink/stroke'
+import { liveFreedraw } from '../ink/freedraw'
 import { routePointer } from '../ink/route'
 import { attachmentAt, type CanvasInk, type InkEntry } from './core/ink'
 import { paintInkEntry, type CanvasTheme } from './core/painter'
@@ -12,7 +11,6 @@ import { recognizeStroke, type Recognized } from './core/recognize'
 import type { CanvasOperation } from './core/edit'
 
 interface InkGesture {
-  smoother: StylusSmoother | null
   id: number
   pen: boolean
   entry: InkEntry
@@ -60,11 +58,11 @@ export class CanvasInkInput {
       color: brush.color,
       size: brush.size,
       points: [],
-      ...(event.pointerType === 'pen' ? { linear: true as const } : {}),
+      linear: true,
+      freedraw: liveFreedraw(event.pointerType === 'pen'),
       ...(node ? { frame: { width: node.width, height: node.height } } : {}),
     }
     this.gesture = {
-      smoother: event.pointerType === 'pen' ? new StylusSmoother(this.viewer.camera.zoom) : null,
       id: event.pointerId,
       pen: event.pointerType === 'pen',
       entry: { stroke, node },
@@ -84,20 +82,14 @@ export class CanvasInkInput {
       node = g.entry.node,
       rect = this.viewer.stage.getBoundingClientRect()
     const [x, y] = toWorld(this.viewer.camera, event.clientX - rect.left, event.clientY - rect.top)
-    if (g.pen && event.pressure > 0) g.pressure = event.pressure
-    if (g.pen) return [x - (node?.x ?? 0), y - (node?.y ?? 0), g.pressure]
-    return roundPoint(x - (node?.x ?? 0), y - (node?.y ?? 0), g.pen ? g.pressure : 0.5)
+    if (g.pen) g.pressure = Math.min(1, Math.max(0, event.pressure))
+    return [x - (node?.x ?? 0), y - (node?.y ?? 0), g.pen ? g.pressure : 0.5]
   }
   private add(event: PointerEvent): void {
     const g = this.gesture,
       p = this.sample(event),
       points = g.entry.stroke.points,
       n = points.length
-    if (g.smoother) {
-      g.smoother.add(p[0], p[1], p[2])
-      g.entry.stroke.points = g.smoother.points
-      return
-    }
     if (n >= 3 && points[n - 3] === p[0] && points[n - 2] === p[1]) return
     points.push(...p)
   }

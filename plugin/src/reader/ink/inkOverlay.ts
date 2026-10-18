@@ -10,7 +10,8 @@
  * The stroke being drawn is shown on a canvas here, at the pen's full rate; on lifting, it goes to
  * its page, which draws it as part of itself (`inkLayer.ts`).
  */
-import { strokePath, MARKER_OPACITY, inkLiteral, roundPoint, type InkStroke } from './stroke'
+import { strokePath, filledStroke, MARKER_OPACITY, inkLiteral, type InkStroke } from './stroke'
+import { liveFreedraw } from '@/ink/freedraw'
 import type { InkRoute } from './inkRoute'
 import { swipeDirection } from '../swipe'
 import { guardSurface } from './inkGuard'
@@ -57,7 +58,6 @@ type Gesture =
       hit: InkPageHit
       brush: Omit<InkStroke, 'points'>
       points: number[]
-      ahead: number[]
     }
   | { kind: 'erase'; x: number; y: number }
   | {
@@ -171,7 +171,12 @@ export class InkOverlay {
     }
     const hit = this.host.pageAt(e.clientX, e.clientY)
     if (!hit) return
-    const g: Gesture = { kind: 'ink', hit, brush, points: [], ahead: [] }
+    const g: Gesture = {
+      kind: 'ink',
+      hit,
+      brush: { ...brush, linear: true, freedraw: liveFreedraw(e.pointerType === 'pen') },
+      points: [],
+    }
     this.gestures.set(e.pointerId, g)
     this.addPoint(g, e)
     this.paint()
@@ -191,11 +196,6 @@ export class InkOverlay {
     const all = events.length ? events : [e]
     if (g.kind === 'ink') {
       for (const one of all) this.addPoint(g, one)
-      g.ahead = []
-      for (const next of e.getPredictedEvents?.() ?? []) {
-        const [x, y, p] = this.toPage(g, next)
-        g.ahead.push(x, y, p)
-      }
       this.paint()
     } else if (g.kind === 'erase') {
       for (const one of all) this.erase(one.clientX, one.clientY)
@@ -224,7 +224,7 @@ export class InkOverlay {
     if (!g) return
     if (g.kind === 'ink') {
       if (!cancelled || g.points.length > 3) {
-        g.ahead = []
+        if (!cancelled) this.addPoint(g, e)
         this.host.commit(g.hit.index, { ...g.brush, points: g.points })
       }
     } else if (g.kind === 'erase') this.host.eraseEnd()
@@ -310,8 +310,8 @@ export class InkOverlay {
     const x = ((e.clientX - rect.left) / rect.width) * width
     const y = ((e.clientY - rect.top) / rect.height) * height
     // A pen reports its pressure; a mouse and a finger report none worth reading.
-    const p = e.pointerType === 'pen' && e.pressure > 0 ? e.pressure : 0.5
-    return roundPoint(x, y, p)
+    const p = e.pointerType === 'pen' ? Math.min(1, Math.max(0, e.pressure)) : 0.5
+    return [x, y, p]
   }
 
   private addPoint(g: Extract<Gesture, { kind: 'ink' }>, e: PointerEvent): void {
@@ -378,10 +378,10 @@ export class InkOverlay {
         ratio * (rect.left - base.left),
         ratio * (rect.top - base.top)
       )
-      const stroke: InkStroke = { ...g.brush, points: [...g.points, ...g.ahead] }
+      const stroke: InkStroke = { ...g.brush, points: g.points }
       const path = new Path2D(strokePath(stroke))
       const color = inkLiteral(stroke.color)
-      if (stroke.tool === 'marker') {
+      if (!filledStroke(stroke)) {
         ctx.globalAlpha = MARKER_OPACITY
         ctx.globalCompositeOperation = 'multiply'
         ctx.strokeStyle = color
@@ -390,8 +390,8 @@ export class InkOverlay {
         ctx.lineJoin = 'round'
         ctx.stroke(path)
       } else {
-        ctx.globalAlpha = 1
-        ctx.globalCompositeOperation = 'source-over'
+        ctx.globalAlpha = stroke.tool === 'marker' ? MARKER_OPACITY : 1
+        ctx.globalCompositeOperation = stroke.tool === 'marker' ? 'multiply' : 'source-over'
         ctx.fillStyle = color
         ctx.fill(path)
       }

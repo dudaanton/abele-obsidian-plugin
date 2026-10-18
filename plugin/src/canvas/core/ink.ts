@@ -1,6 +1,7 @@
 /** Versioned ink in native Canvas extensions; geometry has no host or persistence dependency. */
 import { z } from 'zod'
-import { penWidth, strokePath, strokeCenterline } from '../../ink/stroke'
+import { hitOutline, penWidth, strokePath, strokeCenterline } from '../../ink/stroke'
+import { freedrawOutline } from '../../ink/freedraw'
 import { insideLoop } from '../../drawing/selection'
 import { canvasVisibility } from './visibility'
 import { bounds, type CanvasGraph, type CanvasNode, type Rect } from './model'
@@ -254,6 +255,17 @@ function centreline(stroke: CanvasInk): number[] {
   return p
 }
 export function hitInk(entry: InkEntry, x: number, y: number, radius: number): boolean {
+  if (entry.stroke.freedraw) {
+    const t = inkTransform(entry)
+    const outline = freedrawOutline(entry.stroke)
+    if (t.x === 0 && t.y === 0 && t.sx === 1 && t.sy === 1) return hitOutline(outline, x, y, radius)
+    return hitOutline(
+      outline.map(([px, py]) => [t.x + px * t.sx, t.y + py * t.sy]),
+      x,
+      y,
+      radius
+    )
+  }
   const p = centreline(entry.stroke)
   for (let i = 0; i < p.length; i += 3) {
     const a = p.slice(i, i + 3),
@@ -328,7 +340,7 @@ export function lassoInk(graph: CanvasGraph, loop: readonly number[]): string[] 
     .map((n) => n.id)
   for (const entry of inkEntries(graph)) {
     const t = inkTransform(entry),
-      p = entry.stroke.points
+      p = entry.stroke.freedraw ? centreline(entry.stroke) : entry.stroke.points
     let total = 0,
       inside = 0
     for (let i = 0; i < p.length; i += Math.max(1, Math.floor(p.length / 120)) * 3) {

@@ -173,7 +173,7 @@ export function paintInkEntry(
     theme
   )
   ctx.setLineDash([])
-  if (stroke.tool === 'pen') ctx.fill(path)
+  if (stroke.tool === 'pen' || stroke.freedraw) ctx.fill(path)
   else {
     ctx.lineWidth = stroke.size
     ctx.lineCap = ctx.lineJoin = 'round'

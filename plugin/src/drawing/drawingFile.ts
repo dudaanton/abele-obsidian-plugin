@@ -17,7 +17,7 @@
  *
  * Everything here works on text, so it is tested without a vault.
  */
-import { MARKER_OPACITY, inkLiteral, strokePath } from '@/ink/stroke'
+import { MARKER_OPACITY, filledStroke, inkLiteral, strokePath } from '@/ink/stroke'
 import {
   LINE_HEIGHT,
   TEXT_FONT,
@@ -90,10 +90,9 @@ export function itemElement(item: DrawingItem): string {
   const color = inkLiteral(item.color)
   let out: string
   if (item.type === 'stroke') {
-    const paint =
-      item.tool === 'marker'
-        ? `fill="none" stroke="${color}" stroke-opacity="${MARKER_OPACITY}" stroke-width="${item.size}" stroke-linecap="round" stroke-linejoin="round" style="mix-blend-mode:multiply"`
-        : `fill="${color}"`
+    const paint = !filledStroke(item)
+      ? `fill="none" stroke="${color}" stroke-opacity="${MARKER_OPACITY}" stroke-width="${item.size}" stroke-linecap="round" stroke-linejoin="round" style="mix-blend-mode:multiply"`
+      : `fill="${color}"${item.tool === 'marker' ? ` fill-opacity="${MARKER_OPACITY}" style="mix-blend-mode:multiply"` : ''}`
     out = `<path d="${compactPath(strokePath(item), item.linear ? 1000 : 10)}" ${paint}/>`
   } else if (item.type === 'shape') {
     const line = `fill="none" stroke="${color}" stroke-width="${item.size}" stroke-linecap="round" stroke-linejoin="round"`

@@ -18,6 +18,7 @@ import {
   type InkColor,
   type InkTool,
 } from '@/ink/stroke'
+import { readFreedraw, type FreedrawProfile } from '@/ink/freedraw'
 
 export interface StrokeItem {
   id: string
@@ -28,6 +29,7 @@ export interface StrokeItem {
   /** `x, y, pressure` for each point, one after the other. */
   points: number[]
   linear?: true
+  freedraw?: FreedrawProfile
 }
 
 export type ShapeKind = 'rect' | 'ellipse' | 'line' | 'arrow'
@@ -245,7 +247,8 @@ const r1 = (n: number) => Math.round(n * 10) / 10
 /** The item moved by a distance. */
 export function moveItem<T extends DrawingItem>(item: T, dx: number, dy: number): T {
   if (item.type === 'stroke') {
-    const points = item.points.map((v, i) => (i % 3 === 2 ? v : r1(v + (i % 3 === 0 ? dx : dy))))
+    const round = item.freedraw ? (n: number) => n : r1
+    const points = item.points.map((v, i) => (i % 3 === 2 ? v : round(v + (i % 3 === 0 ? dx : dy))))
     return { ...item, points }
   }
   if (item.type === 'shape')
@@ -263,9 +266,15 @@ const r3 = (n: number) => Math.round(n * 1000) / 1000
 
 /** The item scaled by `k` about a point, its width and its letters with it. */
 export function scaleItem<T extends DrawingItem>(item: T, ox: number, oy: number, k: number): T {
-  const sx = (x: number) => r1(ox + (x - ox) * k)
-  const sy = (y: number) => r1(oy + (y - oy) * k)
-  const size = hasColor(item) ? Math.round(item.size * k * 100) / 100 : 0
+  const precise = item.type === 'stroke' && !!item.freedraw
+  const round = precise ? (n: number) => n : r1
+  const sx = (x: number) => round(ox + (x - ox) * k)
+  const sy = (y: number) => round(oy + (y - oy) * k)
+  const size = hasColor(item)
+    ? precise
+      ? item.size * k
+      : Math.round(item.size * k * 100) / 100
+    : 0
   if (item.type === 'stroke') {
     const points = item.points.map((v, i) => (i % 3 === 2 ? v : i % 3 === 0 ? sx(v) : sy(v)))
     return { ...item, points, size }
@@ -306,6 +315,7 @@ export function itemFrom(raw: unknown): DrawingItem | null {
       size: size ?? 2,
       points: o.points as number[],
       ...(o.linear === true ? { linear: true as const } : {}),
+      ...(readFreedraw(o.freedraw) ? { freedraw: readFreedraw(o.freedraw) } : {}),
     }
   }
   if (o.type === 'shape') {

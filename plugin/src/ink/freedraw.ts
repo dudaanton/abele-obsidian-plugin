@@ -1,4 +1,4 @@
-/** Source-compatible geometry for imported pencil strokes; native ink keeps its own renderer. */
+/** Shared freehand geometry for live ink and imported pencil strokes; legacy ink stays readable. */
 import { getStroke, getStrokePoints, type StrokeOptions } from 'perfect-freehand'
 
 export interface FreedrawProfile {
@@ -7,9 +7,27 @@ export interface FreedrawProfile {
 }
 
 interface FreedrawStroke {
+  tool?: 'pen' | 'marker'
   size: number
   points: number[]
   freedraw?: FreedrawProfile
+}
+
+export const liveFreedraw = (pen: boolean): FreedrawProfile => ({
+  simulatePressure: !pen,
+  streamline: 0.5,
+})
+
+export function readFreedraw(value: unknown): FreedrawProfile | undefined {
+  const p = value as Partial<FreedrawProfile> | null
+  return p &&
+    typeof p.simulatePressure === 'boolean' &&
+    typeof p.streamline === 'number' &&
+    Number.isFinite(p.streamline) &&
+    p.streamline >= 0 &&
+    p.streamline <= 1
+    ? { simulatePressure: p.simulatePressure, streamline: p.streamline }
+    : undefined
 }
 
 function input(stroke: FreedrawStroke): number[][] {
@@ -29,8 +47,8 @@ function input(stroke: FreedrawStroke): number[][] {
  */
 function options(stroke: FreedrawStroke): StrokeOptions & { size: number } {
   return {
-    size: stroke.size / Math.SQRT2,
-    thinning: 0.6,
+    size: stroke.tool === 'marker' ? stroke.size : stroke.size / Math.SQRT2,
+    thinning: stroke.tool === 'marker' ? 0 : 0.6,
     smoothing: 0.5,
     streamline: stroke.freedraw?.streamline,
     simulatePressure: stroke.freedraw?.simulatePressure,
@@ -44,13 +62,46 @@ export function freedrawPath(stroke: FreedrawStroke): string {
   const outline = getStroke(input(stroke), options(stroke))
   if (!outline.length) return ''
   const first = outline[0]
-  let d = `M${first[0]} ${first[1]}Q`
+  let d = `M${first[0]} ${first[1]}`
   for (let i = 0; i < outline.length; i++) {
     const a = outline[i],
       b = outline[(i + 1) % outline.length]
-    d += `${a[0]} ${a[1]} ${(a[0] + b[0]) / 2} ${(a[1] + b[1]) / 2} `
+    d += `Q${a[0]} ${a[1]} ${(a[0] + b[0]) / 2} ${(a[1] + b[1]) / 2}`
   }
   return `${d}L${first[0]} ${first[1]}Z`
+}
+
+const outlines = new WeakMap<FreedrawStroke, number[][]>()
+/** Immutable completed strokes share the painted quadratic boundary, within a tenth unit. */
+export function freedrawOutline(stroke: FreedrawStroke): number[][] {
+  const known = outlines.get(stroke)
+  if (known) return known
+  const outline = getStroke(input(stroke), options(stroke))
+  const out: number[][] = []
+  let from = outline[0]
+  if (from) out.push(from)
+  for (let i = 0; i < outline.length; i++) {
+    const b = outline[i],
+      c = outline[(i + 1) % outline.length]
+    const to = [(b[0] + c[0]) / 2, (b[1] + c[1]) / 2]
+    const steps = Math.max(
+      1,
+      Math.ceil(Math.sqrt(Math.hypot(from[0] - 2 * b[0] + to[0], from[1] - 2 * b[1] + to[1]) / 0.4))
+    )
+    for (let k = 1; k <= steps; k++) {
+      const t = k / steps,
+        u = 1 - t
+      out.push([
+        u * u * from[0] + 2 * u * t * b[0] + t * t * to[0],
+        u * u * from[1] + 2 * u * t * b[1] + t * t * to[1],
+      ])
+    }
+    from = to
+  }
+  // The source closes its outline with a short straight segment through the first vertex.
+  if (outline.length) out.push(outline[0])
+  outlines.set(stroke, out)
+  return out
 }
 
 /** Picking follows the streamlined centreline rather than the raw stair-stepped samples. */
@@ -78,7 +129,8 @@ export function freedrawCenterline(stroke: FreedrawStroke): number[] {
     const p = pts[i]
     if (i < pts.length - 1 && total - p.runningLength < 3) continue
     const pressure = opts.simulatePressure ? simulated(previous, p.distance) : p.pressure
-    const diameter = 2 * size * Math.sin(((0.2 + 0.6 * pressure) * Math.PI) / 2)
+    const diameter =
+      stroke.tool === 'marker' ? size : 2 * size * Math.sin(((0.2 + 0.6 * pressure) * Math.PI) / 2)
     // Erasing consumes native half-pressure widths. Bake the source nib response once.
     const nativePressure = Math.max(0, Math.min(1, (diameter / stroke.size - 0.4) / 1.2))
     out.push(p.point[0], p.point[1], nativePressure)

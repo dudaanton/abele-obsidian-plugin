@@ -3,7 +3,7 @@
  * the size the page is drawn. It is part of the page, so it scrolls, zooms and turns dark with it.
  * Styled on the elements themselves: a page carries none of the reader's styles.
  */
-import { MARKER_OPACITY, inkLiteral, strokePath } from './stroke'
+import { MARKER_OPACITY, filledStroke, inkLiteral, strokePath } from './stroke'
 import type { InkPage } from './inkFile'
 
 export const INK_CLASS = 'abele-ink'
@@ -48,14 +48,17 @@ export function drawInk(doc: Document, page: InkPage | undefined): void {
     const path = doc.createElementNS(SVG, 'path')
     path.setAttribute('d', strokePath(stroke))
     const color = inkLiteral(stroke.color)
-    if (stroke.tool === 'marker') {
+    if (!filledStroke(stroke)) {
       path.setAttribute('fill', 'none')
       path.setAttribute('stroke', color)
       path.setAttribute('stroke-opacity', String(MARKER_OPACITY))
       path.setAttribute('stroke-width', String(stroke.size))
       path.setAttribute('stroke-linecap', 'round')
       path.setAttribute('stroke-linejoin', 'round')
-    } else path.setAttribute('fill', color)
+    } else {
+      path.setAttribute('fill', color)
+      if (stroke.tool === 'marker') path.setAttribute('fill-opacity', String(MARKER_OPACITY))
+    }
     svg.append(path)
   }
   root.appendChild(svg)

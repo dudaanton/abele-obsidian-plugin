@@ -7,6 +7,7 @@
  * are, a text block when its middle is.
  */
 import { boundsOf, hitItem, union, type DrawingItem, type Rect } from './items'
+import { strokeCenterline } from '@/ink/stroke'
 
 /** Whether a point is inside a loop given as `x, y` pairs one after the other. */
 export function insideLoop(loop: readonly number[], x: number, y: number): boolean {
@@ -26,7 +27,7 @@ export function insideLoop(loop: readonly number[], x: number, y: number): boole
 function samples(item: DrawingItem): [number, number][] {
   if (item.type === 'stroke') {
     const out: [number, number][] = []
-    const pts = item.points
+    const pts = item.freedraw ? strokeCenterline(item) : item.points
     // Enough points for the question, not every one of a long stroke.
     const step = Math.max(1, Math.floor(pts.length / 3 / 40)) * 3
     for (let i = 0; i + 1 < pts.length; i += step) out.push([pts[i], pts[i + 1]])

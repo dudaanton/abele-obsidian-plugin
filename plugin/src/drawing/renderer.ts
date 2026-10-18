@@ -8,7 +8,7 @@
  * full paint comes when the movement rests. When a full paint is quick, it is simply done every
  * frame.
  */
-import { MARKER_OPACITY, inkLiteral, strokePath } from '@/ink/stroke'
+import { MARKER_OPACITY, filledStroke, inkLiteral, strokePath } from '@/ink/stroke'
 import { arrowHeadPath, baselineOf, writtenPaths } from './drawingFile'
 import { paintNoteCard } from './noteCard'
 import {
@@ -69,9 +69,9 @@ export function paintItem(ctx: CanvasRenderingContext2D, item: DrawingItem, note
   }
   const path = pathOf(item)
   if (!path) return
-  if (item.type === 'stroke' && item.tool === 'pen') {
-    ctx.globalAlpha = 1
-    ctx.globalCompositeOperation = 'source-over'
+  if (item.type === 'stroke' && filledStroke(item)) {
+    ctx.globalAlpha = item.tool === 'marker' ? MARKER_OPACITY : 1
+    ctx.globalCompositeOperation = item.tool === 'marker' ? 'multiply' : 'source-over'
     ctx.fillStyle = color
     ctx.fill(path)
     return

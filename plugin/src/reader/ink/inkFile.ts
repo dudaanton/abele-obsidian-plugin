@@ -23,12 +23,14 @@
  */
 import {
   MARKER_OPACITY,
+  filledStroke,
   inkLiteral,
   isInkColor,
   strokePath,
   type InkStroke,
   type InkTool,
 } from './stroke'
+import { readFreedraw } from '@/ink/freedraw'
 
 /** A page's ink: the page's size in its own units, and its strokes, oldest first. */
 export interface InkPage {
@@ -65,13 +67,17 @@ const esc = (text: string) =>
 /** A stroke as the path the file holds: its shape, and what it was drawn with. */
 function strokeElement(stroke: InkStroke): string {
   const color = inkLiteral(stroke.color)
-  const paint =
-    stroke.tool === 'marker'
-      ? `fill="none" stroke="${color}" stroke-opacity="${MARKER_OPACITY}" stroke-width="${stroke.size}" stroke-linecap="round" stroke-linejoin="round" style="mix-blend-mode:multiply"`
-      : `fill="${color}"`
+  const paint = !filledStroke(stroke)
+    ? `fill="none" stroke="${color}" stroke-opacity="${MARKER_OPACITY}" stroke-width="${stroke.size}" stroke-linecap="round" stroke-linejoin="round" style="mix-blend-mode:multiply"`
+    : `fill="${color}"${stroke.tool === 'marker' ? ` fill-opacity="${MARKER_OPACITY}" style="mix-blend-mode:multiply"` : ''}`
   return (
     `<path d="${esc(strokePath(stroke))}" ${paint} data-tool="${stroke.tool}" ` +
-    `data-color="${stroke.color}" data-size="${stroke.size}" data-points="${stroke.points.join(' ')}"/>`
+    `data-color="${stroke.color}" data-size="${stroke.size}" data-points="${stroke.points.join(' ')}"` +
+    (stroke.linear ? ' data-linear="1"' : '') +
+    (stroke.freedraw
+      ? ` data-simulate-pressure="${stroke.freedraw.simulatePressure}" data-streamline="${stroke.freedraw.streamline}"`
+      : '') +
+    '/>'
   )
 }
 
@@ -115,11 +121,22 @@ export function parseInkSvg(text: string): InkPage | null {
     const points = a['data-points'].trim().split(/\s+/).map(Number)
     if (points.length < 3 || points.length % 3 || points.some((n) => !Number.isFinite(n))) continue
     const size = Number(a['data-size'])
+    const freedraw = readFreedraw({
+      simulatePressure:
+        a['data-simulate-pressure'] === 'true'
+          ? true
+          : a['data-simulate-pressure'] === 'false'
+            ? false
+            : undefined,
+      streamline: Number(a['data-streamline']),
+    })
     strokes.push({
       tool: a['data-tool'] as InkTool,
       color: isInkColor(a['data-color']) ? a['data-color'] : 'black',
       size: size > 0 && size < 200 ? size : 2,
       points,
+      ...(a['data-linear'] === '1' ? { linear: true as const } : {}),
+      ...(freedraw ? { freedraw } : {}),
     })
   }
   return { width, height, strokes }

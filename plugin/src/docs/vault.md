@@ -665,10 +665,13 @@ even when its bounds reach outside that owner. It appears with the owner in walk
 free ink is revealed by its ID. Fit, node crops, embeds, agent pictures and exports include ink.
 Human pen/marker gestures use the shared `add_ink {stroke,node?}` edit operation, one history
 item on completion. Cancellation discards the whole preview; no predictions are saved.
-Newly migrated Excalidraw pencil ink also stores `freedraw:{simulatePressure,streamline}`.
-Its unrounded samples are rendered with perfect-freehand's source width, pressure easing and
-quadratic outline; `size` remains the half-pressure diameter. Native ink and older migrated
-canvases without this profile retain their rendering. Partial erasing bakes the streamlined
+New hand-drawn ink and migrated Excalidraw pencil ink also store
+`freedraw:{simulatePressure,streamline}`. New gestures keep unrounded samples and `linear:true`;
+pen pointers preserve real pressure, including zero, while mouse/finger pressure is simulated.
+Perfect-freehand supplies the pressure easing, round caps and quadratic outline for live paint,
+saved ink and exports. Pen `size` remains the half-pressure diameter; markers retain uniform
+width and opacity and store a filled outline. Older strokes without this profile retain their
+rendering. Partial erasing bakes the streamlined
 centreline and equivalent native nib widths into the resulting fragments, removing the profile
 so they are not streamlined twice.
 An explicit single-drawing migration creates a new canvas beside prior results; bulk migration
@@ -2286,6 +2289,11 @@ A page whose last stroke is erased has its file and its callout removed. Renamin
 PDF renames its ink folder and files. A change to a file from another device is drawn when it
 arrives.
 
+New reader strokes additionally store `data-linear="1"`, `data-simulate-pressure="true|false"`
+and `data-streamline="0.5"`. These preserve the same freehand outline after reload; the original
+tool, size, colour and point attributes remain, so older readers still open the files. New
+marker paths use a filled outline with `fill-opacity="0.4"`; older marker paths remain stroked.
+
 ## Drawings
 
 The picture editor saves crop, quarter turns, mirror and ink together as flattened pixels at
@@ -2303,11 +2311,12 @@ the items oldest (lowest) first, each with an `id` and a `type`:
 - `stroke` — `tool` (`pen` or `marker`), `color`, `size`, and `d`, its points packed: the first
   `x, y, pressure` as they are (pressure in hundredths), every one after it as the step from the
   one before;
-  new stylus strokes instead keep full-precision smoothed triples in `points` and `linear: true`.
-  This flag disables legacy render-time input easing. Both flagged and unflagged strokes use
-  shared curve interpolation for painting and picking; rendering never replaces stored samples
-  with fitted points. The SVG outline still uses compact relative commands. Canvas ink uses the
-  same optional flag. Existing points and pressure are retained when old strokes render more smoothly;
+  new hand-drawn strokes instead keep full-precision sampled triples in `points`, `linear:true`
+  and `freedraw:{simulatePressure,streamline}`. The profile preserves real pen pressure or
+  simulates mouse/finger pressure and supplies the same outline for painting, picking and
+  export. The SVG outline uses compact relative commands. Legacy packed and linear strokes
+  retain their renderer; no old stroke data is rewritten. Metadata remains version 1 with the
+  original point/tool/size fields, so older plugin versions still open new drawings;
 - `shape` — `kind` (`rect`, `ellipse`, `line`, `arrow`), the two corners or ends `x1 y1 x2 y2`,
   `color`, `size`;
 - `text` — `x`, `y` (the top left), `text` (lines split by `\n`), `size`, `color`.
