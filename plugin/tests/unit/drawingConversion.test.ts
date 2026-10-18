@@ -1,6 +1,74 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { drawingSvg } from '@/drawing/drawingFile'
 import { convertDrawings, type DrawingMigrationStore } from '@/drawing/conversion'
+import { registerDrawingConversion } from '@/drawing/conversionCommand'
+import { buildFakeVault } from '../helpers/fakeVault'
+import type { Plugin } from 'obsidian'
+
+async function commandGuard(block: 'source' | 'destination' | 'occupied' | 'none') {
+  const source = drawingSvg({ items: [stroke] })
+  const app = buildFakeVault([{ path: 'Sketch.svg', raw: source }])
+  Object.assign(app.vault.adapter, {
+    getFullPath: (path: string) => path,
+    fsPromises: {
+      lstat: async (path: string) => ({
+        isSymbolicLink: () =>
+          (block === 'source' && path === 'Sketch.svg') ||
+          (block === 'destination' && path === 'Sketch.canvas'),
+      }),
+    },
+  })
+  if (block === 'occupied') {
+    const rename = app.vault.adapter.rename.bind(app.vault.adapter)
+    app.vault.adapter.rename = async (from, to) => {
+      await app.vault.adapter.write(to, 'Existing canvas')
+      return rename(from, to)
+    }
+  }
+  const rawRead = vi.spyOn(app.vault, 'read')
+  const rawCreate = vi.spyOn(app.vault, 'create')
+  let callback: () => unknown = () => {
+    throw new Error('Command not registered')
+  }
+  registerDrawingConversion({
+    app,
+    addCommand: (command: { callback: () => unknown }) => {
+      callback = command.callback
+    },
+  } as unknown as Plugin)
+  await callback()
+  return { app, rawRead, rawCreate, source }
+}
+
+describe('conversion command filesystem boundary', () => {
+  it('keeps a canvas created after the absence check and removes only its staging copy', async () => {
+    const { app, source } = await commandGuard('occupied')
+    expect(await app.vault.adapter.read('Sketch.canvas')).toBe('Existing canvas')
+    expect(await app.vault.adapter.read('Sketch.svg')).toBe(source)
+    expect((await app.vault.adapter.list('')).files.sort()).toEqual(['Sketch.canvas', 'Sketch.svg'])
+  })
+  it('refuses a linked source without reading it through the raw vault', async () => {
+    const { app, rawRead, rawCreate } = await commandGuard('source')
+    expect(rawRead).not.toHaveBeenCalled()
+    expect(rawCreate).not.toHaveBeenCalled()
+    expect(await app.vault.adapter.exists('Sketch.canvas')).toBe(false)
+  })
+  it('refuses a linked destination without publishing or leaving staging files', async () => {
+    const { app, rawRead, rawCreate } = await commandGuard('destination')
+    expect(rawRead).not.toHaveBeenCalled()
+    expect(rawCreate).not.toHaveBeenCalled()
+    expect(await app.vault.adapter.exists('Sketch.canvas')).toBe(false)
+    expect(await app.vault.adapter.list('')).toMatchObject({ files: ['Sketch.svg'] })
+  })
+  it('publishes readable canvas data through the adapter and preserves the original', async () => {
+    const { app, rawRead, rawCreate, source } = await commandGuard('none')
+    expect(rawRead).not.toHaveBeenCalled()
+    expect(rawCreate).not.toHaveBeenCalled()
+    expect(JSON.parse(await app.vault.adapter.read('Sketch.canvas')).abele.ink).toHaveLength(1)
+    expect(await app.vault.adapter.read('Sketch.svg')).toBe(source)
+    expect((await app.vault.adapter.list('')).files.sort()).toEqual(['Sketch.canvas', 'Sketch.svg'])
+  })
+})
 
 function store(initial: Record<string, string>) {
   const files = new Map(Object.entries(initial))
