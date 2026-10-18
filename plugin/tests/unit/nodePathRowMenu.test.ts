@@ -137,6 +137,10 @@ it.each(['node', 'place', 'file'] as const)(
     for (const title of ['Debug', 'Run a program', 'Attach to a running program'])
       expect(snapshot).toContainEqual({ title, disabled: false })
     expect(snapshot!.some((item) => /Checking/.test(item.title))).toBe(false)
+    if (kind === 'place') {
+      const titles = snapshot!.map((item) => item.title)
+      expect(titles.indexOf('Debug')).toBeLessThan(titles.indexOf('New worktree'))
+    }
   }
 )
 

@@ -114,16 +114,20 @@ function withRowMenu(
   if (!folder) return
   const target = { ...model.target(id === folder.id ? (folder.copies[0]?.id ?? id) : id) }
   const connection = NodeService.getInstance().connection(model.registrationId)
-  if (connection.state.value !== 'connected')
-    return show(rowMenu(model, folder, target, undefined, into, panel))
+  const menu = into ?? new Menu()
   // A repository's menu shows whether its other worktrees are open, and a folder's whether it
   // takes the repository's Claude permissions, so it asks the node first.
   nodePathAction(async () => {
-    const [external, project] = await Promise.all([
-      folder.git ? projectExternalBrowsing(connection.client, target.projectId) : undefined,
-      connection.client.getProject(folder.id).catch((): undefined => undefined),
-    ])
-    show(rowMenu(model, folder, target, external, into, panel, project))
+    const [external, project] =
+      connection.state.value === 'connected'
+        ? await Promise.all([
+            folder.git ? projectExternalBrowsing(connection.client, target.projectId) : undefined,
+            connection.client.getProject(folder.id).catch((): undefined => undefined),
+          ])
+        : [undefined, undefined]
+    await addFolderDebugMenu(menu, target)
+    menu.addSeparator()
+    show(rowMenu(model, folder, target, external, menu, panel, project))
   })
 }
 function rowMenu(
@@ -393,8 +397,13 @@ export function showNodePathNodeMenu(model: NodePathModel, event: MouseEvent): v
     menu.showAtPosition(at)
   })
 }
-async function nodeItems(model: NodePathModel, menu: Menu, target?: PathTarget): Promise<Menu> {
-  await addFolderDebugMenu(menu, target)
+async function nodeItems(
+  model: NodePathModel,
+  menu: Menu,
+  target?: PathTarget,
+  debug = true
+): Promise<Menu> {
+  if (debug) await addFolderDebugMenu(menu, target)
   const service = NodeService.getInstance()
   menu.addItem((i) =>
     i
@@ -754,7 +763,7 @@ export function showNodePathPlaceMenu(
     )
     m.addSeparator()
     nodePathAction(async () => {
-      await nodeItems(model, m, target ?? undefined)
+      await nodeItems(model, m, target ?? undefined, !target)
       m.showAtPosition(at)
     })
   }
@@ -792,6 +801,5 @@ export function showNodePathPlaceMenu(
         .setDisabled(!model.port.branch)
         .onClick(() => chooseNodePathBase(model))
     )
-  menu.addSeparator()
   withRowMenu(model, id, tail, menu, true)
 }
