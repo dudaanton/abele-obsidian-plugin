@@ -34,6 +34,18 @@ export class NodePathMutations {
     const key = JSON.stringify([method, logicalKey])
     const intent = await this.client.store.transaction((raw) => {
       const intents = ((raw as IntentState).nodePathIntents ??= {})
+      const previous = intents[key]
+      const refusal = previous && raw.results[previous.id]?.error
+      // Only a new explicit registration action retires a terminal refusal, including
+      // receipts persisted before this policy. Keep receipts themselves for reconciliation.
+      // Transport uncertainty has no definitive receipt and must retain the original intent.
+      if (
+        method === 'project.register' &&
+        previous?.method === method &&
+        refusal &&
+        !['disconnected', 'outcome_unknown', 'storage_unavailable'].includes(refusal)
+      )
+        delete intents[key]
       return (intents[key] ??= { id: crypto.randomUUID(), method, params })
     })
     if (intent.method !== method) throw new UiError(uiMessage('streamBError.d7e2b0292d'))
@@ -82,8 +94,8 @@ export class NodePathMutations {
   }
   async register(path: string): Promise<Project> {
     const params = { path, trust: 'untrusted' as const, exact_root: true }
-    const project = await this.intent('project.register', params, (id) =>
-      this.client.nodePath.register(params, id)
+    const project = await this.intent('project.register', params, (id, retained) =>
+      this.client.nodePath.register(MethodSchemas['project.register'].parse(retained), id)
     )
     await this.client.store.transaction((raw) => {
       const intents = (raw as IntentState).nodePathIntents ?? {}

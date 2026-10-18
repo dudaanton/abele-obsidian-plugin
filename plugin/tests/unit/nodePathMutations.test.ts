@@ -1,11 +1,107 @@
 import { describe, expect, it, vi } from 'vitest'
-import { MemoryClientStore, NodePathClient } from '@abele/node-client'
+import { MemoryClientStore, NodePathClient, NodeClient } from '@abele/node-client'
+import { ChannelError } from '@abele/channel-protocol'
 import { NodePathMutations } from '@/node/NodePathMutations'
 import { NodeClientStore } from '@/node/NodeClientStore'
 import { IDBFactory } from 'fake-indexeddb'
 import { WorktreePageSchema } from '@abele/node-protocol'
 
 describe('owner folder intents', () => {
+  it.each([false, true])(
+    'starts a fresh explicit Open after a terminal receipt, persisted=%s',
+    async (persisted) => {
+      const factory = new IDBFactory()
+      let store = new NodeClientStore('sample-register', factory)
+      const params = { path: '/sample/reopened', trust: 'untrusted', exact_root: true }
+      const key = JSON.stringify(['project.register', params])
+      await store.transaction((state) => {
+        state.node_id = 'sample-node'
+        if (persisted) {
+          state.nodePathIntents = {
+            [key]: { id: 'old-register', method: 'project.register', params },
+          }
+          state.results['old-register'] = {
+            error: 'stale_revision',
+            request: { method: 'project.register', params },
+          }
+        }
+      })
+      if (persisted) {
+        store.close()
+        store = new NodeClientStore('sample-register', factory)
+      }
+      const client = new NodeClient(
+        { profile: 'local-token-v1', url: 'ws://127.0.0.1:1/channel', token: 'sample-token' },
+        store
+      )
+      vi.spyOn(client, 'connected', 'get').mockReturnValue(true)
+      const sent: string[] = []
+      const project = {
+        project_id: 'project-sample',
+        root_path: params.path,
+        repository_path: null,
+        git_common_dir: null,
+        trust: 'untrusted',
+        use_repository_claude_permissions: false,
+        created_at: '2025-01-01T00:00:00Z',
+      }
+      vi.spyOn(client, 'flush').mockImplementation(async () => {
+        await store.transaction((state) => {
+          const entry = state.outbox[0]
+          if (!entry) return
+          sent.push(entry.operation_id)
+          state.results[entry.operation_id] = {
+            ...(!persisted && sent.length === 1
+              ? { error: 'stale_revision' }
+              : { result: project }),
+            request: { method: entry.method, params: entry.params },
+          }
+          state.outbox = []
+        })
+      })
+      if (!persisted) {
+        await expect(new NodePathMutations(client).register(params.path)).rejects.toThrow(
+          'stale_revision'
+        )
+        expect(sent).toHaveLength(1)
+      }
+      await expect(new NodePathMutations(client).register(params.path)).resolves.toEqual(project)
+      expect(sent).toHaveLength(persisted ? 1 : 2)
+      expect(new Set(sent).size).toBe(sent.length)
+      expect(await client.operationResult(persisted ? 'old-register' : sent[0])).toMatchObject({
+        error: 'stale_revision',
+      })
+      store.close()
+    }
+  )
+  it.each(['disconnected', 'outcome_unknown', 'storage_unavailable', 'reply lost'])(
+    'retains registration ID and params across reopen after %s',
+    async (code) => {
+      const factory = new IDBFactory()
+      const store = new NodeClientStore('sample-unknown-register', factory)
+      const mutations = vi
+        .fn()
+        .mockRejectedValueOnce(code === 'reply lost' ? new Error(code) : new ChannelError(code))
+        .mockResolvedValueOnce({
+          project_id: 'project-sample',
+          root_path: '/sample/reopened',
+          repository_path: null,
+          git_common_dir: null,
+          trust: 'untrusted',
+          use_repository_claude_permissions: false,
+          created_at: '2025-01-01T00:00:00Z',
+        })
+      const nodePath = new NodePathClient(async () => {}, mutations)
+      await expect(
+        new NodePathMutations({ store, nodePath }).register('/sample/reopened')
+      ).rejects.toThrow(code)
+      store.close()
+      const reopened = new NodeClientStore('sample-unknown-register', factory)
+      await new NodePathMutations({ store: reopened, nodePath }).register('/sample/reopened')
+      expect(mutations.mock.calls[1]).toEqual(mutations.mock.calls[0])
+      reopened.close()
+    }
+  )
   it('survives reopening the strict device-local client store after an unknown folder operation', async () => {
     const factory = new IDBFactory()
     const store = new NodeClientStore('sample-folder-intent', factory)
