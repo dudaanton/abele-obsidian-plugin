@@ -8,11 +8,46 @@ import { strokePath } from '@/ink/stroke'
 import type { StrokeItem } from '@/drawing/items'
 import { boundsOf, moveItem, scaleItem } from '@/drawing/items'
 import { inkBounds } from '@/canvas/core/ink'
-import { freedrawOutline } from '@/ink/freedraw'
+import { freedrawOutline, liveFreedraw } from '@/ink/freedraw'
 import { handwriting } from '../helpers/handwriting'
 import { createHash } from 'node:crypto'
 
 afterEach(() => vi.unstubAllGlobals())
+for (const pointer of ['pen', 'mouse', 'finger', 'stored'] as const) {
+  it(`preserves mean outline width for ${pointer} at the same size`, () => {
+    const points = Array.from({ length: 121 }, (_, i) => [
+      20 + i * 2,
+      60 + 18 * Math.sin(i / 18),
+      0.5,
+    ]).flat()
+    const stroke = {
+      tool: 'pen' as const,
+      color: 'black' as const,
+      size: 4,
+      points,
+      linear: true as const,
+    }
+    const area = (path: string) => {
+      const ctx = createCanvas(300, 120).getContext('2d')
+      ctx.fill(new Path2D(path))
+      const rgba = ctx.getImageData(0, 0, 300, 120).data
+      let sum = 0
+      for (let i = 3; i < rgba.length; i += 4) sum += rgba[i] / 255
+      return sum
+    }
+    const before = area(strokePath(stroke))
+    const loaded = parseInkSvg(inkSvg({ width: 300, height: 120, strokes: [stroke] }))!.strokes[0]
+    const after = area(
+      strokePath({
+        ...(pointer === 'stored' ? loaded : stroke),
+        ...(pointer === 'stored' ? {} : { freedraw: liveFreedraw() }),
+      })
+    )
+    // Same centreline length: alpha area ratio measures mean painted width, including caps.
+    expect(after / before).toBeGreaterThanOrEqual(0.9)
+    expect(after / before).toBeLessThanOrEqual(1.1)
+  })
+}
 it('includes the actual freehand cap in drawing and canvas selection bounds', () => {
   const stroke: StrokeItem = {
     tool: 'marker',

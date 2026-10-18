@@ -13,8 +13,10 @@ interface FreedrawStroke {
   freedraw?: FreedrawProfile
 }
 
-export const liveFreedraw = (pen: boolean): FreedrawProfile => ({
-  simulatePressure: !pen,
+// Live input already records real pressure or a neutral .5 for sensorless pointers.
+// Velocity simulation would turn ordinary mouse/finger sample spacing into a thinner nib.
+export const liveFreedraw = (): FreedrawProfile => ({
+  simulatePressure: false,
   streamline: 0.5,
 })
 

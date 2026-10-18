@@ -45,7 +45,7 @@ describe.skipIf(!available)('live pencil input and frame cost', () => {
           tool: 'pen'
           size: number
           points: number[]
-          freedraw: { simulatePressure: boolean }
+          freedraw: { simulatePressure: boolean; streamline: number }
         }[]
         paint95: number
         frame95: number
@@ -113,7 +113,7 @@ describe.skipIf(!available)('live pencil input and frame cost', () => {
       })()`,
         180_000
       )
-      expect(result.strokes.map((s) => s.freedraw?.simulatePressure)).toEqual([false, true, true])
+      expect(result.strokes.map((s) => s.freedraw?.simulatePressure)).toEqual([false, false, false])
       result.strokes.forEach((s, row) => {
         expect(s.points[0], 'input x stays in the same world frame').toBeCloseTo(35, 5)
         expect(s.points[1], 'each pointer has a separate visible stroke row').toBeCloseTo(
@@ -146,6 +146,27 @@ describe.skipIf(!available)('live pencil input and frame cost', () => {
           points,
         })
       })
+      const after = result.strokes.map((stroke) => strokePath({ ...stroke, color: 'black' }))
+      const widthRatios = evalAsync<number[]>(`(()=>{
+        const area=d=>{
+          const canvas=document.createElement('canvas');canvas.width=400;canvas.height=500
+          const ctx=canvas.getContext('2d');ctx.fill(new Path2D(d))
+          const rgba=ctx.getImageData(0,0,400,500).data
+          let sum=0;for(let i=3;i<rgba.length;i+=4)sum+=rgba[i]/255
+          return sum
+        }
+        const before=${JSON.stringify(before)},after=${JSON.stringify(after)}
+        return after.map((path,i)=>area(path)/area(before[i]))
+      })()`)
+      console.log('Mean painted width ratios', mobile ? 'phone' : 'desktop', widthRatios)
+      for (const [i, pointer] of ['pen', 'mouse', 'finger'].entries()) {
+        expect
+          .soft(widthRatios[i], pointer + ' mean width vs previous renderer')
+          .toBeGreaterThanOrEqual(0.9)
+        expect
+          .soft(widthRatios[i], pointer + ' mean width vs previous renderer')
+          .toBeLessThanOrEqual(1.1)
+      }
       expect(
         evalAsync<boolean>(`(async()=>{
         ${WAIT_PRELUDE}

@@ -174,7 +174,7 @@ export class InkOverlay {
     const g: Gesture = {
       kind: 'ink',
       hit,
-      brush: { ...brush, linear: true, freedraw: liveFreedraw(e.pointerType === 'pen') },
+      brush: { ...brush, linear: true, freedraw: liveFreedraw() },
       points: [],
     }
     this.gestures.set(e.pointerId, g)

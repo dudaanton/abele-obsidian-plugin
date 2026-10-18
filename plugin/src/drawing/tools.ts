@@ -42,10 +42,10 @@ export function strokeGesture(
   ctx: ToolContext,
   brush: Brush,
   start: WorldPoint,
-  stylus = false
+  _stylus = false
 ): ToolGesture {
   const points: number[] = []
-  const mode = { linear: true as const, freedraw: liveFreedraw(stylus) }
+  const mode = { linear: true as const, freedraw: liveFreedraw() }
   const add = (pt: WorldPoint) => {
     const { x, y, p } = pt
     const n = points.length

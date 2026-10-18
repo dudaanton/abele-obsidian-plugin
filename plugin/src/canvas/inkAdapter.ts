@@ -59,7 +59,7 @@ export class CanvasInkInput {
       size: brush.size,
       points: [],
       linear: true,
-      freedraw: liveFreedraw(event.pointerType === 'pen'),
+      freedraw: liveFreedraw(),
       ...(node ? { frame: { width: node.width, height: node.height } } : {}),
     }
     this.gesture = {

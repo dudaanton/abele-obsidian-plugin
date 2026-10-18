@@ -58,7 +58,10 @@ describe('shared live freehand input and persistence', () => {
         })
       )
       const stroke = complete.mock.calls[0][0][0].stroke
-      expect(stroke.freedraw).toEqual({ simulatePressure: pointerType !== 'pen', streamline: 0.5 })
+      expect(stroke.freedraw).toEqual({
+        simulatePressure: false,
+        streamline: 0.5,
+      })
       expect(stroke.points.slice(-3)).toEqual([50.019, 21.037, pointerType === 'pen' ? 0 : 0.5])
     })
   }
@@ -76,7 +79,7 @@ describe('shared live freehand input and persistence', () => {
       const stroke = items.items[0]
       expect(stroke).toMatchObject({
         linear: true,
-        freedraw: { simulatePressure: !stylus, streamline: 0.5 },
+        freedraw: { simulatePressure: false, streamline: 0.5 },
       })
       expect(stroke.type === 'stroke' && stroke.points).toEqual(
         samples.flatMap((p) => [p.x, p.y, p.p])
@@ -168,7 +171,7 @@ describe('shared live freehand input and persistence', () => {
           )
         const stroke = commit.mock.calls[0][1] as InkStroke
         expect(stroke.freedraw).toEqual({
-          simulatePressure: pointerType !== 'pen',
+          simulatePressure: false,
           streamline: 0.5,
         })
         expect(stroke.points.slice(-3)).toEqual([40, 20, pointerType === 'pen' ? 0 : 0.5])
