@@ -136,6 +136,91 @@ it.each(['network', 'staging', 'trusted'])(
   }
 )
 
+it.each(['manifest page', 'note download'])(
+  'a caller waiting on sync gets the real result of the run restarted after an approved installation (%s)',
+  async (blockedAt) => {
+    const fixture = tokenUiFixture(),
+      source = fixture.candidates.value[0].source
+    const wire = await server('Scripts/sample.js', '// approved bytes', source.address)
+    const noteBytes = new TextEncoder().encode('sample note')
+    const note = {
+      ...wire.item,
+      file_id: 'note-file',
+      version_id: 'note-version',
+      path: 'Notes/sample.md',
+      sha: await sha256(noteBytes),
+      size: noteBytes.length,
+      kind: 'note',
+    }
+    const send = wire.fetch.getMockImplementation()!
+    let blocked = 0
+    let release!: () => void
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    wire.fetch.mockImplementation(async (input, init) => {
+      const url = new URL(String(input))
+      if (blockedAt === 'manifest page' && url.pathname === '/v2/manifest') {
+        if (url.searchParams.has('next')) {
+          // The first read blocks until the installation cancels it; the restarted run reads freely.
+          if (blocked++ === 0)
+            await new Promise<void>((_, reject) =>
+              init?.signal?.addEventListener(
+                'abort',
+                () => reject(new DOMException('Cancelled', 'AbortError')),
+                { once: true }
+              )
+            )
+          return Response.json({ items: [note], cursor: 1, next: null })
+        }
+        return Response.json({ items: [wire.item], cursor: 1, next: 'next-page' })
+      }
+      if (url.pathname === '/v2/manifest')
+        return Response.json({ items: [wire.item, note], cursor: 1, next: null })
+      if (url.pathname === '/v2/files/note-file/content') {
+        // A transport that does not honour cancellation: only the engine's stop ends the wait.
+        if (blocked++ === 0) await held
+        return new Response(noteBytes)
+      }
+      const response = await send(input, init)
+      if (url.pathname === '/v2/connection')
+        return Response.json({ ...(await response.json()), token_id: source.tokenId })
+      return response
+    })
+    const failed = vi.fn(),
+      events: string[] = []
+    const fs = new MemoryFileSystem(),
+      one = runtime(wire, fs, undefined, undefined, null, {
+        id: source.id,
+        failed,
+        event: (text) => events.push(text),
+      })
+    let outcome: unknown = 'pending'
+    const pull = one.runtime.sync().then(
+      () => (outcome = 'synced'),
+      (error: unknown) => (outcome = error)
+    )
+    try {
+      await vi.waitFor(() => expect(blocked).toBe(1))
+      const [candidate] = await one.reviews.executables.pending()
+      await one.reviews.executables.approve([candidate.id], {
+        apply: (approved) => one.runtime.apply(approved),
+      })
+      expect(new TextDecoder().decode(await fs.read(candidate.path))).toBe('// approved bytes')
+      await pull
+      expect(outcome).toBe('synced')
+      expect(new TextDecoder().decode(await fs.read(note.path))).toBe('sample note')
+      expect(await one.state.getCursor()).toBe(1)
+      expect(failed).not.toHaveBeenCalled()
+      expect(events.filter((text) => text.startsWith('Error:'))).toEqual([])
+    } finally {
+      release()
+      await pull
+      await one.runtime.close()
+    }
+  }
+)
+
 it('rejects a changed manifest generation before placement and reviews, then handshakes again', async () => {
   const wire = await server('Notes/sample.md', 'remote bytes')
   const original = wire.fetch.getMockImplementation()!

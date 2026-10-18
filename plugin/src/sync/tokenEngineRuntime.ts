@@ -148,6 +148,8 @@ export class TokenEngineRuntime
   private readonly requests = new AbortController()
   private readonly readRequests = new Set<AbortController>()
   private reviewYield = 0
+  // Counts installations that stopped a run, so a caller can tell its run was yielded.
+  private reviewInterruptions = 0
   private reviewApplications = Promise.resolve()
   private readonly reviewYielded = new EngineError(
     'offline',
@@ -1041,7 +1043,7 @@ export class TokenEngineRuntime
         this.trace.finishPull(false)
         this.pendingFolders.clear()
         this.folderProgress.clear()
-        if (error !== this.reviewYielded) options.event?.('Error: ' + connectionError(error))
+        if (!this.yieldedForReview(error)) options.event?.('Error: ' + connectionError(error))
         this.progress.clear()
         this.pulling = false
         options.pulling?.()
@@ -1064,7 +1066,7 @@ export class TokenEngineRuntime
         )
           this.engine.pause()
         options.comparing?.()
-        if (error !== this.reviewYielded) options.failed(error)
+        if (!this.yieldedForReview(error)) options.failed(error)
       },
       log: (line) => {
         this.trace.log(line)
@@ -1900,8 +1902,33 @@ export class TokenEngineRuntime
     await this.checkRoot()
     await this.refreshHolds()
     this.assertHeld()
-    await this.engine.sync()
+    await this.syncThroughReviews()
     await this.outbox.drain(retryHeld)
+  }
+  /** A run an approved installation stopped on purpose is not the caller's failure: an
+   * offline error while installing (the engine's own `sync stopped` included) waits for the
+   * installation and its restarted engine, then asks again and returns that run's result. */
+  private yieldedForReview(error: unknown, since = this.reviewInterruptions): boolean {
+    return (
+      error === this.reviewYielded ||
+      (error instanceof EngineError &&
+        error.code === 'offline' &&
+        (this.reviewYield > 0 || this.reviewInterruptions !== since))
+    )
+  }
+  private async syncThroughReviews(): Promise<void> {
+    for (let attempt = 0; ; attempt++) {
+      const since = this.reviewInterruptions
+      try {
+        await this.engine.sync()
+        return
+      } catch (error) {
+        if (attempt >= 3 || !this.active || !this.yieldedForReview(error, since)) throw error
+        console.debug('[abele-sync] sync yielded to an approved installation; syncing again')
+        await this.reviewApplications
+        this.assertHeld()
+      }
+    }
   }
   private async fingerprintForUpload(fs: FileSystem, path: string) {
     const fingerprint = Reflect.get(fs, FINGERPRINT_UPLOAD) as
@@ -2163,7 +2190,7 @@ export class TokenEngineRuntime
     // Enqueue after releasing the path lease: core may itself be waiting for that lease.
     const key = await this.outbox.enqueue(copy)
     await this.outbox.drain(false, key)
-    await this.engine.sync()
+    await this.syncThroughReviews()
   }
   publications() {
     return this.outbox.state()
@@ -2177,7 +2204,10 @@ export class TokenEngineRuntime
     // Yield blocked reads through the engine scheduler; issued writes still settle.
     // Restarting preserves the engine's pause state and resumes the retained pull.
     const interrupted = this.engine.status.state === 'syncing'
-    if (interrupted) this.reviewYield++
+    if (interrupted) {
+      this.reviewYield++
+      this.reviewInterruptions++
+    }
     try {
       if (interrupted) {
         // Manifest reads stage review metadata in the host, so core waits for them
