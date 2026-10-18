@@ -122,6 +122,19 @@ interface MetaRow {
  * WebKit dropping a transaction, which gets one more go on a fresh connection (`once`).
  */
 export class IndexedDbStateStore implements StateStore, ExternalStatePort {
+  private normalizationCache: Map<string, Promise<string | null>> | null = null
+  private normalizationPassDepth = 0
+
+  async [Symbol.for('abele.sync.normalization-pass-v1')]<T>(work: () => Promise<T>): Promise<T> {
+    // Overlapping passes never share a snapshot. Only the ordinary single-owner pass caches.
+    this.normalizationCache = ++this.normalizationPassDepth === 1 ? new Map() : null
+    try {
+      return await work()
+    } finally {
+      this.normalizationPassDepth--
+      this.normalizationCache = null
+    }
+  }
   readonly externalDurability = 'durable' as const
   private transactionPending = 0
   private externalPhasePending = false
@@ -383,6 +396,25 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
    */
   async getMeta(key: string): Promise<string | null> {
     this.assertRecovery()
+    const cache =
+      !this.overlay &&
+      !this.transactionPending &&
+      (key === 'normalization-collisions' || key === 'normalization-directory-collisions')
+        ? this.normalizationCache
+        : null
+    const previous = cache?.get(key)
+    if (previous !== undefined) return previous
+    const loading = this.readMeta(key)
+    cache?.set(key, loading)
+    try {
+      return await loading
+    } catch (error) {
+      if (cache?.get(key) === loading) cache.delete(key)
+      throw error
+    }
+  }
+
+  private async readMeta(key: string): Promise<string | null> {
     const value = await this.metaValue(own(key))
     if (value === null) return null
     if (typeof value !== 'string') throw new EngineError('io', `the stored ${key} is not a string`)
@@ -615,16 +647,21 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
   }
 
   private async setMetaValue(what: string, key: string, value: unknown): Promise<void> {
+    this.normalizationCache?.delete(key.slice('plugin:'.length))
     const overlay = this.overlay
     if (overlay) {
       overlay.meta.set(key, value)
       return
     }
-    await this.write(what, [META], async (tx) => {
-      const meta = tx.objectStore(META)
-      if (value === null) await wait(meta.delete(key))
-      else await wait(meta.put({ key, value } satisfies MetaRow))
-    })
+    try {
+      await this.write(what, [META], async (tx) => {
+        const meta = tx.objectStore(META)
+        if (value === null) await wait(meta.delete(key))
+        else await wait(meta.put({ key, value } satisfies MetaRow))
+      })
+    } finally {
+      this.normalizationCache?.delete(key.slice('plugin:'.length))
+    }
   }
 
   /** A readonly transaction around `fn`. Anything the driver raises comes back as `io`. */

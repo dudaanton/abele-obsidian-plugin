@@ -72,7 +72,10 @@ export function syncPlacementPlugin() {
           'async cycle() {',
           `async cycle() {
           const pass = this.ctx.opts.fs[Symbol.for('abele.sync.inventory-pass-v1')];
-          return pass ? pass.call(this.ctx.opts.fs, () => this.cycleUnlocked()) : this.cycleUnlocked();
+          const state = this.ctx.opts.state;
+          const metadataPass = state[Symbol.for('abele.sync.normalization-pass-v1')];
+          const run = () => metadataPass ? metadataPass.call(state, () => this.cycleUnlocked()) : this.cycleUnlocked();
+          return pass ? pass.call(this.ctx.opts.fs, run) : run();
         }
         async cycleUnlocked() {`
         )
