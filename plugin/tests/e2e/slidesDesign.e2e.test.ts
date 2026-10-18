@@ -331,7 +331,20 @@ Third caption
         const overlaps=lines.flatMap((x,i)=>lines.slice(i+1).filter(y=>Math.min(x.right,y.right)-Math.max(x.left,y.left)>1&&Math.min(x.bottom,y.bottom)-Math.max(x.top,y.top)>1)).length
         const edge=s=>s.querySelector('h2').getBoundingClientRect().left-s.getBoundingClientRect().left
         const article={overlaps,edge:edge(art),firstPara:para.getBoundingClientRect().left-art.getBoundingClientRect().left,cls:art.className,columns:getComputedStyle(artBody).columnCount,size:parseFloat(getComputedStyle(para).fontSize),heading:parseFloat(getComputedStyle(art.querySelector('h2')).fontSize),overflow:artBody.scrollHeight-artBody.clientHeight,slideBottom:art.getBoundingClientRect().bottom,bodyBottom:artBody.getBoundingClientRect().bottom}
-        await shot(3,'article')
+        const renderer=window.__abeleTest.slideImageRenderer,originalPng=renderer.toPng
+        let exportedOverlaps,exportedLayout
+        renderer.toPng=(root,options)=>originalPng(root,{...options,onclone:async clone=>{
+          await options.onclone?.(clone)
+          const host=document.createElement('div');host.style.cssText='position:fixed;left:-20000px;top:0;width:1280px;height:720px'
+          document.body.append(host);host.append(clone)
+          try {
+            const measure=el=>({height:getComputedStyle(el).height,blockSize:el.style.blockSize,inlineHeight:el.style.height,rects:[...el.getClientRects()].map(b=>({x:b.x,y:b.y,width:b.width,height:b.height}))})
+            exportedLayout={source:[...root.querySelectorAll('.abele-slide-article p')].map(measure),clone:[...clone.querySelectorAll('.abele-slide-article p')].map(measure)}
+            const lines=[...clone.querySelectorAll('.abele-slide-article p')].flatMap(p=>{const r=document.createRange();r.selectNodeContents(p);return [...r.getClientRects()].filter(b=>b.width>1&&b.height>1)})
+            exportedOverlaps=lines.flatMap((x,i)=>lines.slice(i+1).filter(y=>Math.min(x.right,y.right)-Math.max(x.left,y.left)>1&&Math.min(x.bottom,y.bottom)-Math.max(x.top,y.top)>1)).length
+          } finally {clone.remove();host.remove()}
+        }})
+        try {await shot(3,'article')} finally {renderer.toPng=originalPng}
         // The window itself as well: the slide tool's picture is drawn from a copy of the page.
         {const fs=require('fs');art.scrollIntoView();await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));fs.writeFileSync(${JSON.stringify(SHOTS)}+'/more-article-window.png',(await require('@electron/remote').getCurrentWebContents().capturePage()).toPNG())}
         await v.go(3);await settle()
@@ -339,7 +352,7 @@ Third caption
         const gallery={cls:g.className,cells:cells.map(c=>{const img=c.querySelector('img'),cap=[...c.querySelectorAll('p')].find(p=>!p.querySelector('img'))||c;return {img:rect(img),caption:rect(cap),text:c.textContent.trim()}})}
         await shot(4,'gallery')
         const report=JSON.parse((await tools.find(t=>t.name==='deck_check').execute('sample-check',{path},undefined,ctx)).content[0].text)
-        return JSON.stringify({a,b,article,gallery,overflow:report.slides.flatMap(s=>s.issues).filter(i=>i.kind==='overflow')})
+        return JSON.stringify({a,b,article,exportedOverlaps,exportedLayout,gallery,overflow:report.slides.flatMap(s=>s.issues).filter(i=>i.kind==='overflow')})
       } finally { leaf.detach();await app.vault.delete(file) }
     })()`)
     )
@@ -364,6 +377,7 @@ Third caption
     expect(result.article.bodyBottom).toBeLessThanOrEqual(result.article.slideBottom + 1)
     // Two columns of one text: no line laid over another, and the deck's one left edge kept.
     expect(result.article.overlaps).toBe(0)
+    expect(result.exportedOverlaps, JSON.stringify(result.exportedLayout)).toBe(0)
     expect(Math.abs(result.article.edge - result.a.edge)).toBeLessThan(1)
     expect(Math.abs(result.article.firstPara - result.a.edge)).toBeLessThan(1)
     expect(result.gallery.cls).toContain('abele-slide-gallery')

@@ -6,6 +6,7 @@ declare module 'dom-to-image-more' {
     quality?: number
     bgcolor?: string
     filter?: (node: Node) => boolean
+    onclone?: (clone: HTMLElement) => void | Promise<void>
   }
 
   function toPng(node: HTMLElement, options?: Options): Promise<string>

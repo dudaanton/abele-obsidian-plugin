@@ -132,5 +132,40 @@ export function slidePicture(
 ): Promise<string> {
   const { width, height } = fitSlide(1280, 1280, aspect)
   // Keep the deck root and its scoped stylesheet in the clone, not just the slide section.
-  return domtoimage.toPng(root, { width, height })
+  return domtoimage.toPng(root, {
+    width,
+    height,
+    onclone(clone) {
+      const flow =
+        '.abele-slide-article .abele-slide-region-body :is(p, ul, ol, li, blockquote, pre)'
+      const originals = root.querySelectorAll<HTMLElement>(flow)
+      const copies = clone.querySelectorAll<HTMLElement>(flow)
+      originals.forEach((original, index) => {
+        // Typed OM keeps `auto` distinct from a height authored in a stylesheet,
+        // whereas getComputedStyle resolves both to pixels after column layout.
+        const declared = (
+          original as HTMLElement & {
+            computedStyleMap?: () => { get(property: string): { toString(): string } | undefined }
+          }
+        )
+          .computedStyleMap?.()
+          .get('height')
+          ?.toString()
+        if (declared && declared !== 'auto') return
+        // Resolved block heights belong to the source's column layout. Freezing them
+        // into the clone makes the following paragraph start over remaining lines.
+        // Keep authored inline dimensions; otherwise let the copied text flow again.
+        for (const property of ['height', 'block-size']) {
+          const value = original.style.getPropertyValue(property)
+          if (value)
+            copies[index].style.setProperty(
+              property,
+              value,
+              original.style.getPropertyPriority(property)
+            )
+          else copies[index].style.removeProperty(property)
+        }
+      })
+    },
+  })
 }

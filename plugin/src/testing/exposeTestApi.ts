@@ -78,6 +78,7 @@ import { ScriptRuns } from '@/scripting/ScriptRuns'
 import { AutomationService } from '@/automations/AutomationService'
 import { ScriptViewService } from '@/scripting/view/ScriptViewService'
 import { createScreenshotTool } from '@/ai/tools/ScreenshotTool'
+import slideImageRenderer from 'dom-to-image-more'
 import { createGeocodeTool, createPlacesTool, createRouteTool } from '@/ai/tools/GeoTools'
 import { createGithubTools } from '@/ai/tools/github'
 import { createAgentTools } from '@/ai/tools'
@@ -373,6 +374,7 @@ interface AbeleTestApi {
   githubEndpoints: typeof endpoints
   /** Every tool an agent could be handed now, MCP servers' included, to call as an agent would. */
   createAgentTools: typeof createAgentTools
+  slideImageRenderer: typeof slideImageRenderer
   networkSecurity: {
     normalizeMapBlock: typeof normalizeMapBlock
     reviewKeyDestinations: typeof reviewKeyDestinations
@@ -1026,6 +1028,7 @@ export function exposeTestApi(plugin: Plugin): void {
     GithubClient,
     githubEndpoints: endpoints,
     createAgentTools,
+    slideImageRenderer,
     networkSecurity: {
       normalizeMapBlock,
       reviewKeyDestinations,
