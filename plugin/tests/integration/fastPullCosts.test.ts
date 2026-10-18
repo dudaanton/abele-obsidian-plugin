@@ -85,7 +85,7 @@ async function measure(folder: boolean) {
     expect(report.applied).toBe(32)
     expect(report.held).toEqual([])
     expect(maximum).toBe(8)
-    expect(bridge).toBeLessThanOrEqual(32 * 7 + 8)
+    expect(bridge).toBeLessThanOrEqual(32 * 5 + 8)
     expect(writes).toBeLessThanOrEqual(32 * 2 + 1)
     expect(placements.mock.calls.map(([path]) => path)).toEqual(changes.map((one) => one.path))
     for (const change of changes) expect(await fs.read(change.path)).toEqual(change.bytes)

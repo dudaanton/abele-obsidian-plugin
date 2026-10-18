@@ -158,7 +158,9 @@ export function syncPlacementPlugin() {
         code = replaceOnce(
           code,
           'if (!sameStat(beforeTarget, await this.fs.stat(target)))',
-          `const checkedTarget = await this.fs.stat(target);
+          `// A new target is checked after durable intent below, then published exclusively.
+        const checkedTarget = entry === null && from === null && firstTarget === null && beforeTarget === null
+          ? null : await this.fs.stat(target);
         if (!sameStat(beforeTarget, checkedTarget))`
         )
         code = replaceOnce(

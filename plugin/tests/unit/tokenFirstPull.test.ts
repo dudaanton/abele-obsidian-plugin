@@ -290,16 +290,16 @@ it.each([
       }
       if (host && !reconnect && !native) {
         expect(firstPull!.small.count).toBe(1)
-        expect(firstPull!.small.max).toMatchObject({ bridge: 12, preparationBridge: 1 })
+        expect(firstPull!.small.max).toMatchObject({ bridge: 10, preparationBridge: 1 })
         assertSmallPullBounds(firstPull!.small.max)
-        // One of the seven initial target stats inventories local edit copies.
-        // The remaining 12 include the cold owned staging mkdir and write.
+        // One of the five initial target stats inventories local edit copies.
+        // The remaining 10 include the cold owned staging mkdir and write.
         expect(
           events
             .filter((event) => event.operation.startsWith('adapter '))
             .map((event) => event.operation)
         ).toEqual([
-          ...Array<string>(7).fill('adapter stat'),
+          ...Array<string>(5).fill('adapter stat'),
           'adapter exists',
           'adapter exists',
           'adapter mkdir',

@@ -1614,7 +1614,9 @@ export class ObsidianFileSystem implements FileSystem {
     this.runtimeFence?.assertReady()
     const key = caseKey(path),
       expected = this.observedBases.get(key)
-    const standing = await this.onlyFileOrNothing(path)
+    // An observed absence authorizes only exclusive creation. The adapter's rename
+    // refuses an occupied target, including a file created after the core's last check.
+    const standing = expected && 'absent' in expected ? null : await this.onlyFileOrNothing(path)
     if (standing && standing.size > MAX_CHUNK_BYTES)
       throw new EngineError('conflict', 'Existing file requires bounded streaming replacement')
     const before = standing === null ? null : await this.disk.readBinary(path)
