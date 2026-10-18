@@ -4,13 +4,14 @@ import { openNodeChat } from '@/node/nodePathNavigation'
 const f = vi.hoisted(() => ({
   draft: { value: { text: '' } },
   open: vi.fn(),
+  refresh: vi.fn(async () => {}),
   reveal: vi.fn(async () => {}),
 }))
 vi.mock('@/ai/ChatService', () => ({
   ChatService: {
     getInstance: () => ({
       openNodeSession: f.open,
-      getNodeSession: () => ({ draft: f.draft }),
+      getNodeSession: () => ({ draft: f.draft, refresh: f.refresh }),
       revealSidebar: f.reveal,
     }),
   },
@@ -18,6 +19,10 @@ vi.mock('@/ai/ChatService', () => ({
 
 it('shows the selected code draft while the remote session is still loading', async () => {
   let loaded!: () => void
+  f.refresh.mockImplementationOnce(async () => {
+    await Promise.resolve()
+    f.draft.value.text = 'Saved sample draft'
+  })
   f.open.mockReturnValue(
     new Promise<void>((resolve) => {
       loaded = resolve
@@ -40,7 +45,7 @@ it('shows the selected code draft while the remote session is still loading', as
   )
   try {
     await vi.waitFor(() => expect(f.reveal).toHaveBeenCalled())
-    expect(f.draft.value.text).toBe('Selected sample code')
+    expect(f.draft.value.text).toBe('Saved sample draft\n\nSelected sample code')
   } finally {
     loaded()
     await opening

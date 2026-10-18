@@ -138,6 +138,9 @@ export async function openNodeChat(
   if (text) {
     const presenter = chats.getNodeSession(`node:${state.target.registrationId}:${state.sessionId}`)
     if (presenter) {
+      // Restore the local draft before editing it; connecting to the node may take
+      // much longer, so do not wait for the remote part of opening the session.
+      await (presenter.refresh?.() ?? opening)
       const draft = presenter.draft.value
       draft.text = draft.text ? `${draft.text}\n\n${text}` : text
     }
