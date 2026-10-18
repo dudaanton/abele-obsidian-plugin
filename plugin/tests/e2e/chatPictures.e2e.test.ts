@@ -356,6 +356,7 @@ describe.skipIf(!available)('chat pictures and image import in the running brows
         view.contentEl.querySelector('.abele-picture-editor__tool_pen').click()
         await until(() => !view.contentEl.querySelector('.abele-crop-frame'))
         view.session.items.add([{ id: 'sample-mark', type: 'shape', kind: 'line', x1: 10, y1: 10, x2: 80, y2: 50, color: 'red', size: 4 }])
+        view.session.paint()
         await capture('editor-drawn')
         if (!(await view.sendToChat(source))) throw new Error('The picture was not saved')
         await until(() => paneHost(sourcePane)?.querySelector('.abele-chat-input__attachments img')?.getAttribute('alt')?.includes('drawn'))
