@@ -443,7 +443,17 @@ describe.skipIf(!available)('canvas eraser and lasso with real pointer input', (
         observer?.observe({entryTypes:['longtask']})
         const times=[]
         try{
-          edit.down(event(0,80));await frame();inkFrames=0;cardFrames=0
+          edit.down(event(0,80))
+          // Draft status and its ResizeObserver may schedule a full paint on entry. Start the
+          // move-only measurement after that work settles, retaining the exact paint budget.
+          let quiet=0,previous=-1
+          for(let i=0;i<120&&quiet<4;i++){
+            await frame()
+            const painted=inkFrames+cardFrames
+            quiet=painted===previous&&!v.frame&&!v.inkFrame?quiet+1:0;previous=painted
+          }
+          if(quiet<4)throw Error('Gesture entry did not settle before profiling moves')
+          inkFrames=0;cardFrames=0
           for(let i=0;i<120;i++){
             const e={...event(i*2,80),getCoalescedEvents:()=>[event(i*2-1,80)]}
             const start=performance.now();edit.move(e);times.push(performance.now()-start)
