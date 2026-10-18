@@ -23,6 +23,7 @@ afterEach(async () => {
   await view?.onClose()
   view?.containerEl.remove()
   view = undefined
+  vi.useRealTimers()
   vi.restoreAllMocks()
 })
 
@@ -114,6 +115,7 @@ describe('an agent-opened tab capability', () => {
   })
 
   it('clears a visible tab when its selected connection becomes an unavailable provider', async () => {
+    vi.useFakeTimers()
     const { view } = setup('off')
     await view.setState(
       {
@@ -124,11 +126,27 @@ describe('an agent-opened tab capability', () => {
       { history: false }
     )
     await view.onOpen()
-    await vi.waitFor(() => expect(view.model.screen.title).toBeTruthy())
+    await flushPromises()
+    expect(view.model.screen.title).toBeTruthy()
+    // The title precedes the batched profile lookup on the unchanged default connection.
+    // Finish that initial work before measuring requests caused by the provider switch.
+    await vi.runOnlyPendingTimersAsync()
+    await flushPromises()
+    expect(view.containerEl.textContent).toContain('Sample Author')
+    expect(request.mock.calls.filter(([r]) => r.url.endsWith('/graphql'))).toEqual([
+      [
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: 'Bearer invented-default',
+          }),
+        }),
+      ],
+    ])
     const count = request.mock.calls.length
     AbeleConfig.getInstance().github.connections[1].provider = 'gitlab'
     AbeleConfig.getInstance().version.value++
     await flushPromises()
+    await vi.runOnlyPendingTimersAsync()
     expect(view.containerEl.textContent).toMatch(/GitLab.*available in a later version/i)
     expect(view.model.screen.title).toBe('')
     expect(request).toHaveBeenCalledTimes(count)
