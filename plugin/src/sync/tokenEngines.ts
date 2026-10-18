@@ -109,15 +109,17 @@ export class TokenEngines {
       this.activityEpoch.delete(id)
       this.activityReports.delete(id)
     }
-    ui.stopRuntime = (id) => this.engines.remove(id)
-    ui.abandonRuntime = (id) => {
-      this.engines.forget(id)
-      this.live.delete(id)
-      this.pending.delete(id)
-      this.offloadPorts.get(id)?.close()
-      this.offloadPorts.delete(id)
-      this.refreshDestinations()
-      ui.runtimes.delete(id)
+    ui.stopRuntime = async (id) => {
+      // Remote-only files still need authenticated hydration before requests are aborted.
+      // This preparation shares the bounded deletion wait and retains every recovery guard.
+      await this.offloadPorts.get(id)?.prepareDisconnect()
+      // Abort network work, but keep the host's ownership and recovery ports until the
+      // writer drains and departure safety is checked. Only disconnect removes the host.
+      const runtime = this.live.get(id)
+      if (runtime) {
+        await runtime.disconnect()
+        ui.runtimes.delete(id)
+      } else await this.engines.remove(id)
     }
     ui.connectionForgotten = async (id) => {
       await this.engines.remove(id)

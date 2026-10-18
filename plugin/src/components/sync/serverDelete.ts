@@ -28,9 +28,28 @@ export const serverDeleteSource = shallowRef<ServerDeleteSource | null>(null)
 export const READ_ONLY =
   'This key can only read. Only someone who can change these files can delete them.'
 
+export class ServerDeleteWait extends Error {
+  constructor(stage: 'stop' | 'safety' | 'disconnect') {
+    super(
+      (stage === 'stop'
+        ? 'Sync is still stopping.'
+        : stage === 'safety'
+          ? 'Safety check is still running.'
+          : 'Local disconnect is still finishing.') +
+        ' Local files are kept. Try Delete from the server again.'
+    )
+  }
+}
+
 /** Only an explicit pre-request failure can promise that nothing was deleted. */
 export function serverDeleteFailure(host: string, error: unknown): string {
-  return (error as { deletionOutcome?: unknown } | null)?.deletionOutcome === 'not-deleted'
+  const notDeleted =
+    (error as { deletionOutcome?: unknown } | null)?.deletionOutcome === 'not-deleted'
+  if (error instanceof ServerDeleteWait)
+    return notDeleted
+      ? error.message
+      : t('streamC.6225fbec300d3010', { v1: String(host) }) + ' ' + error.message
+  return notDeleted
     ? t('streamC.a44e6513a64073e4', { v1: String(host) })
     : t('streamC.6225fbec300d3010', { v1: String(host) })
 }

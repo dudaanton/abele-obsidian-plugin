@@ -1,4 +1,5 @@
 import { settingsSyncText } from '@/i18n/settingsSync'
+import { ServerDeleteWait } from '@/components/sync/serverDelete'
 import { t } from '@/i18n'
 import { englishSyncText, type SyncText } from './presentation'
 import { MobileWholeReadLimitError } from './mobileWholeRead'
@@ -312,11 +313,10 @@ export class TokenUi {
   stopRuntime: (id: string) => Promise<void> = async (id) => {
     await this.runtimes.get(id)?.disconnect()
   }
-  /** Forget a stopped runtime whose draining did not finish in time; it is already fenced. */
-  abandonRuntime: (id: string) => void = (id) => {
-    this.runtimes.delete(id)
-  }
-  /** How long a deletion waits for the connection's running sync to drain before going on. */
+  private readonly deletionStops = new Map<string, Promise<void>>()
+  private readonly deletionGuards = new Map<string, Promise<void>>()
+  private readonly deletionDisconnects = new Map<string, Promise<void>>()
+  /** How long a deletion waits before returning a retryable failure. */
   runtimeStopLimitMs = 15000
   connectionForgotten: (id: string) => Promise<void> = async () => {}
   retryConnection: (id: string, assertCurrent: () => void) => Promise<void> = async (
@@ -785,9 +785,11 @@ export class TokenUi {
     const running = this.deletions.get(id)
     if (running !== undefined) return running
     // An earlier attempt may already have committed, even if this retry fails before sending.
-    let requested = !!this.registry.records().find((one) => one.id === id)?.state[
-      'abele-sync-token-state:server-delete'
-    ]
+    let requested =
+      this.deletionDisconnects.has(id) ||
+      !!this.registry.records().find((one) => one.id === id)?.state[
+        'abele-sync-token-state:server-delete'
+      ]
     const work = this.performServerDeletion(id, () => {
       requested = true
     })
@@ -801,6 +803,8 @@ export class TokenUi {
     return work
   }
   private async performServerDeletion(id: string, requesting: () => void): Promise<void> {
+    const disconnecting = this.deletionDisconnects.get(id)
+    if (disconnecting !== undefined) return this.waitForDeletion(disconnecting, 'disconnect')
     const identity = () => {
       const row = this.registry.records().find((one) => one.id === id)
       return (
@@ -836,14 +840,21 @@ export class TokenUi {
     }
     assertCurrent()
     const client = this.client(id)
-    await this.connectionChangeGuard(id, assertCurrent)
-    assertCurrent()
     storage.saveLocalStorage(slot, attempt)
     this.registry.setStatus(id, 'error')
     this.publish(id, {
       error: 'Server deletion is awaiting confirmation. Retry Delete from the server.',
     })
     await this.stopForDeletion(id)
+    assertCurrent()
+    let checking = this.deletionGuards.get(id)
+    if (checking === undefined) {
+      checking = Promise.resolve()
+        .then(() => this.connectionChangeGuard(id, assertCurrent))
+        .finally(() => this.deletionGuards.delete(id))
+      this.deletionGuards.set(id, checking)
+    }
+    await this.waitForDeletion(checking, 'safety')
     assertCurrent()
     if (!attempt.result) {
       requesting()
@@ -858,36 +869,50 @@ export class TokenUi {
       ],
     })
     assertCurrent()
-    await this.disconnect(id)
+    const finishing = Promise.resolve()
+      .then(() => this.disconnect(id))
+      .finally(() => this.deletionDisconnects.delete(id))
+    this.deletionDisconnects.set(id, finishing)
+    await this.waitForDeletion(finishing, 'disconnect')
   }
   /**
    * A paused engine still finishes its running pass, so its transfers and commits would race
    * the deletion and could keep it from ever being sent. Stop the connection instead; the saved
    * deletion attempt keeps it from starting again until the deletion settles or it is
-   * disconnected. Stopping fences every further request at once, so a drain that does not finish
-   * in time is abandoned rather than awaited.
+   * disconnected. A timeout releases the UI attempt, but retains the actual drain and its
+   * ownership barrier. Retry joins that same drain; deletion never races an overdue writer.
    */
   private async stopForDeletion(id: string): Promise<void> {
-    let timer: number | undefined
-    const stopping = Promise.resolve()
-      .then(() => this.stopRuntime(id))
-      .then(
-        () => 'stopped' as const,
-        (error: unknown) => {
+    let stopping = this.deletionStops.get(id)
+    if (stopping === undefined) {
+      stopping = Promise.resolve()
+        .then(() => this.stopRuntime(id))
+        .catch((error: unknown) => {
+          this.deletionStops.delete(id)
           console.debug('[Abele Sync] Connection stop before server deletion failed', id, error)
-          return 'stopped' as const
-        }
-      )
-    const outcome = await Promise.race([
-      stopping,
-      new Promise<'late'>((resolve) => {
-        timer = window.setTimeout(() => resolve('late'), this.runtimeStopLimitMs)
-      }),
-    ])
-    window.clearTimeout(timer)
-    if (outcome === 'late') {
-      console.debug('[Abele Sync] Connection did not finish stopping; deleting anyway', id)
-      this.abandonRuntime(id)
+          throw error
+        })
+      this.deletionStops.set(id, stopping)
+    }
+    await this.waitForDeletion(stopping, 'stop')
+  }
+  private async waitForDeletion(
+    work: Promise<void>,
+    stage: 'stop' | 'safety' | 'disconnect'
+  ): Promise<void> {
+    let timer: number | undefined
+    try {
+      await Promise.race([
+        work,
+        new Promise<never>((_, reject) => {
+          timer = window.setTimeout(() => {
+            console.debug('[Abele Sync] Server deletion is waiting', stage)
+            reject(new ServerDeleteWait(stage))
+          }, this.runtimeStopLimitMs)
+        }),
+      ])
+    } finally {
+      window.clearTimeout(timer)
     }
   }
   async sync(id: string): Promise<void> {
@@ -954,6 +979,7 @@ export class TokenUi {
     await this.reviews?.executables.forgetSource(id)
     // Local disconnect is not revocation: other tokens and all local files remain untouched.
     this.registry.finishForgotten(this.secrets, id)
+    this.deletionStops.delete(id)
     this.runtimes.delete(id)
     const activity = { ...this.activity.value }
     delete activity[id]

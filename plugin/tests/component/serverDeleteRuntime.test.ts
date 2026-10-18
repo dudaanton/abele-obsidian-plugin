@@ -2,6 +2,7 @@ import { expect, it, vi } from 'vitest'
 import { tokenUiFixture } from '@/testing/tokenUiFixture'
 import { V2Client } from '@/sync/v2/client'
 import { TokenUi, SCOPE_DELETED, type TokenUiRuntime } from '@/sync/tokenUi'
+import { serverDeleteFailure } from '@/components/sync/serverDelete'
 
 it('distinguishes failure before sending from an uncertain request or an earlier pending attempt', async () => {
   const ui = tokenUiFixture(),
@@ -255,7 +256,7 @@ it('stops a connection that can no longer pause and deletes on the first attempt
   expect(ui.rows.value.some((one) => one.id === id)).toBe(false)
 })
 
-it('does not wait forever for a running connection that never stops before deleting', async () => {
+it('returns a retryable failure without deleting or forgetting a connection that never drains', async () => {
   const ui = tokenUiFixture(),
     id = ui.rows.value[0].id
   ui.runtimeStopLimitMs = 20
@@ -263,13 +264,78 @@ it('does not wait forever for a running connection that never stops before delet
   vi.spyOn(ui, 'client').mockReturnValue({ deleteScope: remove } as unknown as V2Client)
   const never = () => new Promise<void>(() => {})
   ui.bind(id, runningRuntime({ pause: never, disconnect: never }))
-  const outcome = await Promise.race([
-    ui.deleteFromServer(id).then(() => 'deleted'),
-    new Promise((resolve) => setTimeout(() => resolve('still waiting'), 2000)),
-  ])
-  expect(outcome).toBe('deleted')
-  expect(remove).toHaveBeenCalledTimes(1)
-  expect(ui.rows.value.some((one) => one.id === id)).toBe(false)
+  const failure = await ui.deleteFromServer(id).catch((error: unknown) => error)
+  expect(String(failure)).toContain('still stopping')
+  expect(serverDeleteFailure('sync.example', failure)).toContain('still stopping')
+  await expect(ui.deleteFromServer(id)).rejects.toThrow('still stopping')
+  expect(remove).not.toHaveBeenCalled()
+  expect(ui.rows.value.some((one) => one.id === id)).toBe(true)
+})
+
+it('bounds a stuck lifecycle inspection and Retry joins it before sending', async () => {
+  const ui = tokenUiFixture(),
+    id = ui.rows.value[0].id
+  ui.runtimeStopLimitMs = 20
+  const remove = vi.fn().mockResolvedValue({ cursor: 1, files: 2, revoked_tokens: [] })
+  vi.spyOn(ui, 'client').mockReturnValue({ deleteScope: remove } as unknown as V2Client)
+  let release!: () => void
+  const guard = vi
+    .fn()
+    .mockImplementationOnce(
+      () =>
+        new Promise<void>((done) => {
+          release = done
+        })
+    )
+    .mockResolvedValue(undefined)
+  ui.connectionChangeGuard = guard
+  await expect(ui.deleteFromServer(id)).rejects.toThrow('Safety check is still running')
+  await expect(ui.deleteFromServer(id)).rejects.toThrow('Safety check is still running')
+  expect(guard).toHaveBeenCalledTimes(1)
+  expect(remove).not.toHaveBeenCalled()
+  release()
+  await ui.deleteFromServer(id)
+  expect(remove).toHaveBeenCalledOnce()
+})
+
+it('does not treat a failed stop as drained and can retry the stop', async () => {
+  const ui = tokenUiFixture(),
+    id = ui.rows.value[0].id
+  const remove = vi.fn().mockResolvedValue({ cursor: 1, files: 2, revoked_tokens: [] })
+  vi.spyOn(ui, 'client').mockReturnValue({ deleteScope: remove } as unknown as V2Client)
+  ui.stopRuntime = vi
+    .fn()
+    .mockRejectedValueOnce(new Error('Drain failed'))
+    .mockResolvedValue(undefined)
+  await expect(ui.deleteFromServer(id)).rejects.toThrow('Drain failed')
+  expect(remove).not.toHaveBeenCalled()
+  await ui.deleteFromServer(id)
+  expect(ui.stopRuntime).toHaveBeenCalledTimes(2)
+  expect(remove).toHaveBeenCalledOnce()
+})
+
+it('bounds post-receipt disconnect and Retry joins it without sending the deletion again', async () => {
+  const ui = tokenUiFixture(),
+    id = ui.rows.value[0].id
+  ui.runtimeStopLimitMs = 20
+  const remove = vi.fn().mockResolvedValue({ cursor: 1, files: 2, revoked_tokens: [] })
+  vi.spyOn(ui, 'client').mockReturnValue({ deleteScope: remove } as unknown as V2Client)
+  let release!: () => void
+  ui.connectionChangeGuard = vi
+    .fn()
+    .mockResolvedValueOnce(undefined)
+    .mockImplementationOnce(
+      () =>
+        new Promise<void>((done) => {
+          release = done
+        })
+    )
+  await expect(ui.deleteFromServer(id)).rejects.toMatchObject({ deletionOutcome: 'unknown' })
+  const retry = ui.deleteFromServer(id)
+  release()
+  await retry
+  expect(remove).toHaveBeenCalledOnce()
+  expect(ui.registry.records().some((one) => one.id === id)).toBe(false)
 })
 
 it('stops the connection before sending and retries a lost answer with the same key, never a second deletion', async () => {

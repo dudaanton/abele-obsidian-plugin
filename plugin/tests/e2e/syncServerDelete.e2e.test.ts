@@ -14,6 +14,7 @@ import { V2Client } from '../../src/sync/v2/client'
 import { issueDeletionDevice, deletionFolder } from '../helpers/serverDeleteSetup'
 import { assertNoNativeSheet, dismissNativeSheet } from './helpers/nativeSheetCleanup'
 import { clickSyncMenu } from './helpers/syncMenuClick'
+import { enterPhone, reloadApp } from './helpers/obsidianCli'
 
 targets('desktop', 'phone')
 const fixture = liveSuite(false)
@@ -277,6 +278,50 @@ it('keeps an in-progress confirmation open and shows a real server error without
     closeSyncScreens(a)
   }
 }, 180000)
+
+for (const layout of onPhone() ? ['phone'] : ['desktop', 'emulated-phone'])
+  it(
+    'explains an overdue stop and retries without restarting on ' + layout,
+    async () => {
+      const s = fixture(),
+        a = s.primary,
+        path = s.root + '/sample.md'
+      try {
+        if (layout === 'emulated-phone') await enterPhone()
+        await s.put(path, 'Retained while stopping')
+        const id = await s.connect()
+        await openConfirmation(a, id, 'stop-' + layout)
+        a.run(`
+        const original=svc.stopRuntime,limit=svc.runtimeStopLimitMs;
+        window.__deletionStop={original,limit};
+        svc.runtimeStopLimitMs=100;
+        svc.stopRuntime=async id=>{await original(id);await new Promise(resolve=>{window.__deletionStop.release=resolve})};
+        await press(${dialog},'Delete from the server');
+        await poll(()=>textOf((${dialog})?.querySelector('[role="alert"]')).includes('Sync is still stopping'));
+        return true
+      `)
+        expect(a.run(`return !buttonIn(${dialog},'Try again').disabled`)).toBe(true)
+        expect((await s.items()).some((one) => one.path === path)).toBe(true)
+        expect(a.read(path)).toBe('Retained while stopping')
+        await shot(a, 'still-stopping-' + layout, factsSelector)
+        a.run(`
+        window.__deletionStop.release();
+        await press(${dialog},'Try again');
+        await poll(()=>!svc.registry.records().some(one=>one.id===${JSON.stringify(id)})&&!(${dialog}));
+        return true
+      `)
+        expect((await s.items()).some((one) => one.path === path)).toBe(false)
+        expect(a.read(path)).toBe('Retained while stopping')
+      } finally {
+        a.run(
+          `const held=window.__deletionStop;if(held){held.release?.();svc.stopRuntime=held.original;svc.runtimeStopLimitMs=held.limit;delete window.__deletionStop}return true`
+        )
+        closeSyncScreens(a)
+        if (layout === 'emulated-phone') await reloadApp('app.emulateMobile(false)')
+      }
+    },
+    180000
+  )
 
 it('shows another device stopped by scope_deleted after the owner deletes the same server scope', async () => {
   const s = fixture(),
