@@ -4,9 +4,11 @@
  *
  * Points are in the page's own units — a PDF page at 100% — so a stroke keeps its place and size
  * at every zoom. The pen is drawn as a filled outline whose width follows the pressure, the way
- * ink from a nib looks; the marker is a wide, even, see-through line. Written here rather than
- * taken from a library: the shapes are simple, and nothing has to be added to the plugin for them.
+ * ink from a nib looks; the marker is a wide, even, see-through line. Native nib geometry is
+ * constructed here; imported pencil strokes retain their source renderer through a profile.
  */
+
+import { freedrawPath, freedrawCenterline, type FreedrawProfile } from './freedraw'
 
 export type InkTool = 'pen' | 'marker'
 
@@ -50,6 +52,8 @@ export interface InkStroke {
   points: number[]
   /** Already bounded at input; do not ease the stored samples a second time. */
   linear?: true
+  /** Imported pencil geometry; absent on existing and hand-drawn native strokes. */
+  freedraw?: FreedrawProfile
 }
 
 /** The pen's width at a pressure: as set at half pressure, thinner lighter, wider harder. */
@@ -302,6 +306,7 @@ function penPath(raw: Pt[]): string {
  * pressure gave each point, to be filled. The marker: the line itself, to be stroked at its width.
  */
 export function strokePath(stroke: InkStroke): string {
+  if (stroke.tool === 'pen' && stroke.freedraw) return freedrawPath(stroke)
   const pts = points(stroke)
   if (!pts.length) return ''
   if (stroke.tool === 'marker') {
@@ -314,6 +319,7 @@ export function strokePath(stroke: InkStroke): string {
 
 /** Rendered centreline samples for clients that cut/pick a curved stroke rather than its chords. */
 export function strokeCenterline(stroke: InkStroke): number[] {
+  if (stroke.tool === 'pen' && stroke.freedraw) return freedrawCenterline(stroke)
   const pts = points(stroke),
     pressure = (r: number) => Math.max(0, Math.min(1, ((r * 2) / stroke.size - 0.4) / 1.2))
   if (stroke.tool === 'pen') return simplify(densify(pts)).flatMap((p) => [p.x, p.y, pressure(p.r)])

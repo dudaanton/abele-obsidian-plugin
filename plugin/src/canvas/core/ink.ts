@@ -15,6 +15,13 @@ export const inkSchema = z
     color: z.string().regex(/^(?:[1-6]|#[0-9a-fA-F]{6})?$/),
     size: z.number().positive(),
     linear: z.literal(true).optional(),
+    freedraw: z
+      .object({
+        simulatePressure: z.boolean(),
+        streamline: z.number().min(0).max(1),
+      })
+      .strict()
+      .optional(),
     points: z
       .array(z.number())
       .min(3)
@@ -296,7 +303,13 @@ export function eraseInk(
     }
   }
   finish()
-  return runs.map((points, i) => ({ ...entry.stroke, id: i ? id() : entry.stroke.id, points }))
+  const { freedraw, ...native } = entry.stroke
+  return runs.map((points, i) => ({
+    ...native,
+    ...(freedraw ? { linear: true as const } : {}),
+    id: i ? id() : entry.stroke.id,
+    points,
+  }))
 }
 /** Majority sampling reuses the drawing lasso's polygon policy, in world space. */
 export function lassoInk(graph: CanvasGraph, loop: readonly number[]): string[] {

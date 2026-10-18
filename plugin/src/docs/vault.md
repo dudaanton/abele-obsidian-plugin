@@ -655,6 +655,12 @@ even when its bounds reach outside that owner. It appears with the owner in walk
 free ink is revealed by its ID. Fit, node crops, embeds, agent pictures and exports include ink.
 Human pen/marker gestures use the shared `add_ink {stroke,node?}` edit operation, one history
 item on completion. Cancellation discards the whole preview; no predictions are saved.
+Newly migrated Excalidraw pencil ink also stores `freedraw:{simulatePressure,streamline}`.
+Its unrounded samples are rendered with perfect-freehand's source width, pressure easing and
+quadratic outline; `size` remains the half-pressure diameter. Native ink and older migrated
+canvases without this profile retain their rendering. Partial erasing bakes the streamlined
+centreline and equivalent native nib widths into the resulting fragments, removing the profile
+so they are not streamlined twice.
 Whole/partial eraser sweeps and lasso edits use that same history. Partial cuts keep the first
 fragment's ID and give further fragments fresh IDs, interpolating pressure at cut boundaries.
 `update_ink` changes a compatible stroke; `attach_ink` changes its owner while composing the
