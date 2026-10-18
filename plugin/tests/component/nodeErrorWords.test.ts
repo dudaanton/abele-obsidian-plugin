@@ -21,3 +21,23 @@ it('retains a transient error diagnostic without displaying it as the notice', (
   expect(notice.messageEl.querySelector('span')?.title).toBe('unauthorized')
   notice.hide()
 })
+
+it('shows an unknown code in persistent errors and keeps the raw tooltip', () => {
+  const raw = 'Not accepted: Future_Failure.'
+  const wrapper = mount(NodeErrorText, { props: { error: raw } })
+  expect(wrapper.text()).toBe(
+    'The node could not complete the request. Check the details before trying again. (Future_Failure)'
+  )
+  expect(wrapper.attributes('title')).toBe(raw)
+  wrapper.unmount()
+})
+
+it('shows an unknown code in notices and keeps the raw tooltip', () => {
+  const raw = 'Not accepted: Future_Failure.'
+  const notice = nodeErrorNotice(new Error(raw))
+  expect(notice.messageEl.textContent).toBe(
+    'The node could not complete the request. Check the details before trying again. (Future_Failure)'
+  )
+  expect(notice.messageEl.querySelector('span')?.title).toBe(raw)
+  notice.hide()
+})

@@ -22,9 +22,9 @@ it.each([
   ],
   [
     'future_refusal',
-    'The node could not complete the request. Check the details before trying again.',
+    'The node could not complete the request. Check the details before trying again. (future_refusal)',
   ],
-])('explains %s without showing the code', (code, expected) => {
+])('explains %s', (code, expected) => {
   expect(nodeErrorWords(code)).toBe(expected)
 })
 it('recognizes codes wrapped by receipt errors', () => {
@@ -57,7 +57,9 @@ it('does not describe a refused pairing address as an untrusted project', () => 
   )
 })
 it('uses the generic fallback for unknown codes even when their names contain familiar words', () => {
-  expect(nodeErrorWords('future_tls_failure')).toBe(nodeErrorWords('future_refusal'))
+  expect(nodeErrorWords('future_tls_failure')).toBe(
+    'The node could not complete the request. Check the details before trying again. (future_tls_failure)'
+  )
 })
 
 it.each(['en', 'ru', 'lv', 'es', 'de'] as const)(
@@ -81,6 +83,10 @@ it.each(['en', 'ru', 'lv', 'es', 'de'] as const)(
       'paired_route_host_not_accepted',
     ]) {
       const result = nodeErrorWords(code)
+      if (code === 'future_refusal') {
+        expect(result).toBe(`${catalogs[locale]['node.error.generic']} (${code})`)
+        continue
+      }
       expect(result).not.toContain(code)
       expect(
         Object.entries(catalogs[locale]).some(
@@ -88,5 +94,15 @@ it.each(['en', 'ru', 'lv', 'es', 'de'] as const)(
         )
       ).toBe(true)
     }
+  }
+)
+
+it.each(['FUTURE_FAILURE', 'future-code', 'futurecode', 'Not accepted: Future_Failure.'])(
+  'preserves the original spelling of an unknown code in %s',
+  (raw) => {
+    const code = raw === 'Not accepted: Future_Failure.' ? 'Future_Failure' : raw
+    expect(nodeErrorWords(raw)).toBe(
+      `The node could not complete the request. Check the details before trying again. (${code})`
+    )
   }
 )

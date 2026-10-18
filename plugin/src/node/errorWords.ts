@@ -155,5 +155,13 @@ export function nodeErrorWords(error: string | null | undefined): string {
     .split(' ')
     .map((value) => explanations.get(value))
     .find(Boolean)
-  return t(key ?? 'node.error.generic')
+  if (key) return t(key)
+  const originalCode = code
+    .split(' ')
+    .map((value) => {
+      const start = raw.indexOf(value)
+      return error.trim().slice(start, start + value.length)
+    })
+    .join(' ')
+  return `${t('node.error.generic')} (${originalCode})`
 }
