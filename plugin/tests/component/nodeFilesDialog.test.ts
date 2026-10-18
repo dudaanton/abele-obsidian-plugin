@@ -179,7 +179,7 @@ it('opens a linked resource even if the previously browsed folder no longer exis
     expect(wrapper.find('.sample-code').exists()).toBe(true)
     const alert = wrapper.find('[role="alert"]')
     expect(alert.text()).toBe(
-      'The node could not complete the request. Check the details before trying again.'
+      'The node could not complete the request. Check the details before trying again. (not_found)'
     )
     expect(alert.find('[title="not_found"]').exists()).toBe(true)
   } finally {
