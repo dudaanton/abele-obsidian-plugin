@@ -1,5 +1,4 @@
 <template>
-  <Setting heading :name="t('maps.backgrounds')" :desc="t('maps.backgroundHint')" />
   <Setting v-for="(bg, index) in backgrounds" :key="bg.id" :name="bg.name" :desc="summary(bg)">
     <Icon
       icon="arrow-up"

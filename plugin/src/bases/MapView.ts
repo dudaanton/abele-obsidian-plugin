@@ -1,3 +1,4 @@
+import { vaultDisk } from '@/sync/vaultPathLinks'
 import type { BackgroundSource } from '@/maps/backgroundStyle'
 import { externalLinkPath } from '@/sync/external/fileAccess'
 import { openAbeleSettings } from '@/components/settings/settingsTab'
@@ -274,7 +275,7 @@ export class MapView extends BasesView {
     const file = this.app.vault.getFileByPath(place.path)
     if (!file) return { state: 'deleted' as const }
     try {
-      const source = await this.app.vault.cachedRead(file)
+      const source = await vaultDisk(this.app.vault).read(file.path)
       if (this.app.vault.getFileByPath(place.path) !== file) return { state: 'deleted' as const }
       return {
         state: 'ready' as const,

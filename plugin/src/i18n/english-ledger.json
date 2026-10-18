@@ -25658,5 +25658,25 @@
       "es",
       "de"
     ]
+  },
+  "maps.lightAddressExample": {
+    "englishHash": "75972dd1dc43d677a8fef76cacf7b32e00cef83266b73c6148ab999d467288fa",
+    "context": "Map background address examples; URL template tokens remain literal in every locale",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.darkAddressExample": {
+    "englishHash": "2906eb84c74a35afc81218edf769f0d63e6a8e3f727389be0cc86928f4f85e9a",
+    "context": "Map background address examples; URL template tokens remain literal in every locale",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

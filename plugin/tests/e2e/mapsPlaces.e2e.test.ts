@@ -181,14 +181,17 @@ it.each([false, true])(
         if (hover.left < mapBox.left - 1 || hover.right > mapBox.right + 1 || hover.top < mapBox.top - 1 || hover.bottom > mapBox.bottom + 1) throw Error('Selected hover is clipped')
         await shot('selected-hover')
       }
-      const read = app.vault.cachedRead
+      const getFile = app.vault.getFileByPath
+      const errorPath = 'ScaleTest/MapCardsFixture/Unreadable.md'
+      const indexedFile = { path: errorPath }
       try {
-        app.vault.cachedRead = async file => { if (file.path === place('Empty').path) throw Error('sample read failure'); return read.call(app.vault, file) }
-        api.openCard(place('Empty'))
+        // Simulate a stale index entry whose file cannot be read from disk.
+        app.vault.getFileByPath = path => path === errorPath ? indexedFile : getFile.call(app.vault, path)
+        api.openCard({ ...place('Empty'), id: 'unreadable', path: errorPath })
         await until(() => card()?.textContent.includes('could not be read'), 'read failure')
         await shot('card-error')
         await closeCard()
-      } finally { app.vault.cachedRead = read }
+      } finally { app.vault.getFileByPath = getFile }
       // Keep a stale marker record: the card must explain a note removed since rendering.
       api.openCard({ ...place('Empty'), id: 'removed', path: 'ScaleTest/MapCardsFixture/Removed.md' })
       await until(() => card()?.textContent.includes('This note is gone'), 'deleted note')

@@ -16,6 +16,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { openComponentDialog } from '@/modal/componentDialog'
 import { t } from '@/i18n'
+import { vaultDisk } from '@/sync/vaultPathLinks'
 import type { Background } from '@/maps/core/model'
 import MapBackgrounds from './MapBackgrounds.vue'
 import MapBackgroundEditor from './MapBackgroundEditor.vue'
@@ -30,8 +31,9 @@ onMounted(async () => {
   const vault = GlobalStore.getInstance().app.vault
   const path = `${vault.configDir}/plugins/maps/data.json`
   try {
-    if (!(await vault.adapter.exists(path))) return
-    const data = JSON.parse(await vault.adapter.read(path)) as { tileSets?: unknown }
+    const disk = vaultDisk(vault)
+    if (!(await disk.exists(path))) return
+    const data = JSON.parse(await disk.read(path)) as { tileSets?: unknown }
     if (!Array.isArray(data.tileSets)) return
     importable.value = data.tileSets.flatMap((v: Record<string, unknown>) =>
       typeof v.id === 'string' &&

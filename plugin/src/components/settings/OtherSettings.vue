@@ -128,6 +128,8 @@
         />
       </Setting>
       <MapStylePreview :choice="mapStyle" :url="savedMapStyleUrl" />
+    </Section>
+    <Section :title="t('maps.backgrounds')" :desc="t('maps.backgroundHint')">
       <MapBackgroundSettings />
     </Section>
     <Section :title="t('settings.OtherSettings.the_plugin.cb8c07f4')">

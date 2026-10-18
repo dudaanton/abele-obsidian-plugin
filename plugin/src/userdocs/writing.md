@@ -186,6 +186,10 @@ if asked, the page. If permission is denied, location is unavailable or the requ
 working location provider: check system Location Services and Obsidian's privacy permissions,
 or use a device that supports location. No guessed or IP-based position is substituted.
 
+**Copy current location coordinates** in the command palette copies a fresh device position
+as `latitude, longitude` for pasting into a note. It requests location permission when needed;
+if the position is unavailable, nothing is copied.
+
 ## Find and replace
 
 **Find and replace in frontmatter and content of all notes, matching the criteria** changes many

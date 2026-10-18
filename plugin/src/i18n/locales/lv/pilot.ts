@@ -1,5 +1,7 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const lv = {
+  'maps.lightAddressExample': 'https://tiles.example.com/{z}/{x}/{y}.png',
+  'maps.darkAddressExample': 'https://tiles.example.com/dark/{z}/{x}/{y}.png',
   'node.error.size': 'Pieprasījums ir pārāk liels. Samaziniet tā izmēru un mēģiniet vēlreiz.',
   'node.error.route':
     'Mezgla adrese tika noraidīta. Pārbaudiet pāra izveides uzaicinājumā atļauto adresi.',

@@ -1,5 +1,7 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const es = {
+  'maps.lightAddressExample': 'https://tiles.example.com/{z}/{x}/{y}.png',
+  'maps.darkAddressExample': 'https://tiles.example.com/dark/{z}/{x}/{y}.png',
   'node.error.size': 'La solicitud es demasiado grande. Reduce su tamaño y vuelve a intentarlo.',
   'node.error.route':
     'Se rechazó la dirección del nodo. Comprueba la dirección permitida por la invitación de vinculación.',

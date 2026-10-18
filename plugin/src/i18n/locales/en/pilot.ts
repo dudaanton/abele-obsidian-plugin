@@ -1,4 +1,6 @@
 export const en = {
+  'maps.lightAddressExample': 'https://tiles.example.com/{z}/{x}/{y}.png',
+  'maps.darkAddressExample': 'https://tiles.example.com/dark/{z}/{x}/{y}.png',
   'node.error.size': 'The request is too large. Reduce its size and try again.',
   'node.error.route':
     'The node address was refused. Check the address allowed by the pairing invitation.',

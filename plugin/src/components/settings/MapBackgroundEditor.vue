@@ -21,7 +21,7 @@
           class="abele-map-bg-editor__urls"
           :rows="3"
           spellcheck="false"
-          placeholder="https://tiles.example.com/{z}/{x}/{y}.png"
+          :placeholder="t('maps.lightAddressExample')"
         />
         <div v-if="lightError" class="abele-map-bg-editor__error">{{ lightError }}</div>
       </div>
@@ -34,7 +34,7 @@
           class="abele-map-bg-editor__urls"
           :rows="3"
           spellcheck="false"
-          placeholder="https://tiles.example.com/dark/{z}/{x}/{y}.png"
+          :placeholder="t('maps.darkAddressExample')"
         />
       </div>
     </div>

@@ -199,7 +199,7 @@ it('loads current card content and resolves gallery links relative to the note, 
       vault: {
         getFileByPath: (path: string) =>
           path === file.path ? currentFile : path === image.path ? image : null,
-        cachedRead,
+        adapter: { read: cachedRead },
         getResourcePath: () => 'app://sample',
         getMarkdownFiles: () => [file],
       },
