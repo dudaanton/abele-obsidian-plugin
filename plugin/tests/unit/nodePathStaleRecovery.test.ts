@@ -240,3 +240,20 @@ it('requires reselection when a plain folder keeps its project but changes works
   expect(model.current.value).toBeUndefined()
   expect(model.error.value).not.toBe('')
 })
+it('clears the stale notice after explicitly choosing the replacement target', async () => {
+  const { model, port } = fixture()
+  await model.selectTarget(target)
+  const replacement = { ...target, id: 'replacement-tree' }
+  port.catalogue.mockResolvedValueOnce({
+    folders: [],
+    targets: [replacement],
+    sessions: [],
+    capabilities: [],
+  })
+  await model.refresh()
+  expect(model.error.value).not.toBe('')
+  await model.select(replacement.id)
+  expect(model.current.value).toEqual(replacement)
+  expect(model.error.value).toBe('')
+  expect(port.watch.mock.calls).toHaveLength(2)
+})

@@ -683,6 +683,7 @@ export class NodePathModel {
     if (this.disposed || generation !== this.selectionGeneration) return
     this.openMode(target)
     if (watchError) throw watchError
+    uiField(this.error, 'value', uiErrorMessage(''))
   }
   /**
    * A place opens on its files, or on its changes when it has some. History and pull requests
