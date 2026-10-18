@@ -23878,5 +23878,45 @@
       "es",
       "de"
     ]
+  },
+  "node.trust.title": {
+    "englishHash": "09fcd322f5220a8e994fcc5b88f75e9c3d74d284387b8605be94cca53103a5ed",
+    "context": "Node folder trust approval title",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.trust.message": {
+    "englishHash": "c4a8f74c089fabaa30543c3adbf90cf47d8628993d33f9e7b498cd95bb249b90",
+    "context": "Node folder trust explanation; {path} names the chosen folder; commands and file changes are visible and stoppable in chat",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.trust.allow": {
+    "englishHash": "ea1d5c1349a0157e66d107f33f28e1cb3cd807507150597e8a0ec5b5163d4800",
+    "context": "Node folder trust approval confirmation button",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.chat.closeTab": {
+    "englishHash": "f776ab084f55cd93cf69969a16f06444fddbd4fa290d6e76a29db341069c7f79",
+    "context": "Node chat tab close tooltip; the remote session remains available through the node panel",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

@@ -5,6 +5,7 @@ import type { NodePathModel } from '@/node/NodePathModel'
 
 const fixture = vi.hoisted(() => ({
   open: vi.fn(),
+  project: vi.fn(async () => ({ trust: 'trusted', root_path: '/sample/project' })),
   choose: undefined as unknown as (item: { id: string }) => void,
 }))
 vi.mock('@/components/nodeWork/NodeSuggestModal', () => ({
@@ -21,7 +22,10 @@ vi.mock('@/stores/GlobalStore', () => ({
 vi.mock('@/node/NodeService', () => ({
   NodeService: {
     getInstance: () => ({
-      connection: () => ({ state: { value: 'connected' }, client: { describe: async () => ({}) } }),
+      connection: () => ({
+        state: { value: 'connected' },
+        client: { describe: async () => ({}), getProject: fixture.project },
+      }),
     }),
   },
 }))
@@ -103,4 +107,5 @@ it('opens a newly created chat without waiting for the catalogue and recursive t
     false
   )
   expect(model.selectedChat.value).toBe('sample-session')
+  expect(fixture.project).toHaveBeenCalledWith(target.projectId)
 })
