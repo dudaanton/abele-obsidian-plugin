@@ -148,6 +148,10 @@ it('scans and publishes a large whole-read source once before the normal path co
     await received.read(0, 4)
     await received.assertUnchanged()
     expect(Reflect.get(one, 'wholeReadUploads').has(receivedSha)).toBe(true)
+    // Receiving bytes proves nothing about this token's right to commit them: a scoped server
+    // admits a new sha only against this principal's own upload, so the blob check must still
+    // send it. Otherwise a note whose content this device once received is never committed.
+    expect(await one.client.hasBlob(receivedSha)).toBe(false)
     await received.close()
     expect(close).toHaveBeenCalledOnce()
 
@@ -207,4 +211,71 @@ it('uses the upload-only reader when opening a journal or scan source through pl
     'outside scope'
   )
   expect(upload).toHaveBeenCalledOnce()
+})
+
+it('spends an own upload acknowledgement on the commit that used it, but keeps it after a rejection', async () => {
+  const scope = { kind: 'folder' as const, id: 'root', path: '/' }
+  const metadata = new MemoryStateStore()
+  const kept = 'd'.repeat(64),
+    spent = 'e'.repeat(64),
+    lost = 'f'.repeat(64)
+  let failNext = false
+  const one = new TokenEngineRuntime({
+    id: 'sample',
+    encoded: encodeAccessToken({
+      v: 1,
+      address: 'https://sync.example',
+      key: 'a'.repeat(43),
+      scope,
+    }),
+    fs: new MemoryFileSystem(),
+    state: new MemoryStateStore(),
+    selective: selectiveDefaults(),
+    reviews: {
+      attachments: new AttachmentConsent(metadata),
+      executables: new ExecutableReview(metadata),
+      close: () => {},
+    },
+    fetch: async (input, init) => {
+      const path = new URL(String(input)).pathname
+      if (path !== '/v2/commit') throw new Error('Unexpected route: ' + path)
+      if (failNext) throw new TypeError('sample network loss')
+      const ops = JSON.parse(String(init?.body)).ops as { sha: string; path: string }[]
+      return Response.json({
+        cursor: 1,
+        results: ops.map((op, index) =>
+          op.sha === kept
+            ? { status: 'rejected', code: 'quota_exceeded', message: 'sample quota' }
+            : {
+                status: 'applied',
+                file_id: 'sample-file-' + index,
+                version_id: 'sample-version-' + index,
+                seq: 1,
+                path: op.path,
+                sha: op.sha,
+                size: 1,
+                mtime: 1,
+              }
+        ),
+      })
+    },
+    changed: () => {},
+    failed: () => {},
+    covers: async () => false,
+  })
+  try {
+    const acknowledged = Reflect.get(one, 'uploadEntitlements') as Set<string>
+    for (const sha of [kept, spent, lost]) acknowledged.add(sha)
+    const create = (sha: string, path: string) =>
+      ({ op: 'create', path, sha, size: 1, mtime: 1 }) as const
+    await one.client.commitRaw([create(kept, 'kept.md'), create(spent, 'spent.md')], 'sample-1')
+    expect(await one.client.hasBlob(kept)).toBe(true)
+    expect(await one.client.hasBlob(spent)).toBe(false)
+    failNext = true
+    await expect(one.client.commitRaw([create(lost, 'lost.md')], 'sample-2')).rejects.toThrow()
+    // The server may have consumed it before the response was lost; upload again rather than guess.
+    expect(await one.client.hasBlob(lost)).toBe(false)
+  } finally {
+    await one.close()
+  }
 })

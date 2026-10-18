@@ -127,7 +127,12 @@ export class TokenEngineRuntime
   implements ConnectionRuntime, Omit<TokenUiRuntime, 'historyClient'>
 {
   readonly trace = new ExchangeTrace()
+  /** Hashes whose bytes this server holds: own uploads and fully verified received versions.
+   * Only lets a matching local receipt stand in for rereading a large file. */
   private readonly wholeReadUploads = new Set<string>()
+  /** Own uploads no commit has used yet. A scoped server admits a new sha only against this
+   * principal's own upload and spends it on commit, so only these may skip the blob upload. */
+  private readonly uploadEntitlements = new Set<string>()
   private readonly uploadFingerprints = new Map<string, Promise<unknown>>()
   private readonly largeUploadPaths = new Set<string>()
   readonly engine: SyncEngine
@@ -637,7 +642,7 @@ export class TokenEngineRuntime
       ...(options.WebSocket ? { WebSocket: options.WebSocket } : {}),
     })
     const hasBlob = this.client.hasBlob.bind(this.client)
-    this.client.hasBlob = async (sha) => this.wholeReadUploads.has(sha) || (await hasBlob(sha))
+    this.client.hasBlob = async (sha) => this.uploadEntitlements.has(sha) || (await hasBlob(sha))
     const prepare = this.client.prepare.bind(this.client)
     const includes = this.client.includes.bind(this.client)
     this.client.includes = (path) =>
@@ -696,7 +701,10 @@ export class TokenEngineRuntime
         excluded
       )
       const generation = await options.state.getMeta(GENERATION_KEY)
-      if (generation !== this.generation) this.wholeReadUploads.clear()
+      if (generation !== this.generation) {
+        this.wholeReadUploads.clear()
+        this.uploadEntitlements.clear()
+      }
       this.generation = generation
       const reconciliation = await readReconciliation(options.state)
       options.changed({ ...this.engine.status, reconciliation })
@@ -1029,6 +1037,7 @@ export class TokenEngineRuntime
       },
       onFail: (error) => {
         this.wholeReadUploads.clear()
+        this.uploadEntitlements.clear()
         this.trace.finishPull(false)
         this.pendingFolders.clear()
         this.folderProgress.clear()
@@ -1107,7 +1116,17 @@ export class TokenEngineRuntime
     })
     const commit = this.client.commitRaw.bind(this.client)
     this.client.commitRaw = async (ops, key) => {
-      const outcome = await commit(ops, key)
+      let outcome: Awaited<ReturnType<typeof commit>>
+      try {
+        outcome = await commit(ops, key)
+      } catch (error) {
+        // The server may have spent the upload before the response was lost.
+        for (const op of ops) if ('sha' in op) this.uploadEntitlements.delete(op.sha)
+        throw error
+      }
+      for (const [index, op] of ops.entries())
+        if ('sha' in op && outcome.body.results[index]?.status !== 'rejected')
+          this.uploadEntitlements.delete(op.sha)
       for (const [index, result] of outcome.body.results.entries()) {
         const op = ops[index]
         const path =
@@ -1911,6 +1930,7 @@ export class TokenEngineRuntime
             this.transferBudget.maxChunkBytes
           )
           this.wholeReadUploads.add(identity.sha)
+          this.uploadEntitlements.add(identity.sha)
         },
         this.requests.signal,
         (identity: { sha: string }) => this.wholeReadUploads.has(identity.sha)
