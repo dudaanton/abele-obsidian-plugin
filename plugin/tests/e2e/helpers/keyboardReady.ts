@@ -91,9 +91,18 @@ export async function keyboardReady<P>(
       lost = 0
     }
     const was = read(el)
+    const started = Date.now()
     await type('x', paths[at])
     sent++
     const arrived = await until(() => read(el) !== was, 1500)
+    console.debug('[phone-keyboard-probe]', {
+      path: paths[at],
+      probe: sent,
+      arrived,
+      elapsed: Date.now() - started,
+      remaining: end - Date.now(),
+      evidence: evidence(),
+    })
     delivered = arrived ? delivered + 1 : 0
     lost = arrived ? 0 : lost + 1
   }

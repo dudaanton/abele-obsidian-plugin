@@ -232,6 +232,25 @@ const probeLib = `(() => {
       }
       return 'typed'
     },
+    // A native typing call can finish before the editor transaction arrives. Do not start
+    // another readiness probe in that gap: it would race the text it is meant to follow.
+    async acknowledged(which, expected) {
+      const el = fieldOf(which)
+      const read = () => {
+        if (which === 'last-field') return el.value
+        const view = window.__abeleTest.noteFieldView(el.closest('.cm-editor').parentElement) ||
+          window.__abeleTest.noteFieldView(el.closest('.cm-editor'))
+        if (!view) throw new Error('the note editor is not mounted')
+        return view.state.doc.toString()
+      }
+      if (!(await until(() => read() === expected, 5000))) {
+        throw new Error('native input was not acknowledged: ' + JSON.stringify({
+          which, expected, actual: read(), keyboard: keyboardHeight(),
+          active: document.activeElement?.tagName + '.' + document.activeElement?.className,
+        }))
+      }
+      return 'acknowledged'
+    },
     async measure(which) {
       await wait(300)
       const settledIn = await settled()
@@ -300,8 +319,14 @@ async function runProbe(): Promise<Report> {
       await step(`focused(${JSON.stringify(which)})`)
       at = `type into ${which}`
       // A line at a time on a phone, as a person types.
-      if (onPhone()) for (const line of TEXT[which].split(/(?<=\n)/)) typeText(line)
-      else await step(`type(${JSON.stringify(TEXT[which])})`)
+      if (onPhone()) {
+        let expected = ''
+        for (const line of TEXT[which].split(/(?<=\n)/)) {
+          typeText(line)
+          expected += line
+          await step(`acknowledged(${JSON.stringify(which)},${JSON.stringify(expected)})`)
+        }
+      } else await step(`type(${JSON.stringify(TEXT[which])})`)
       at = `measure ${which}`
       report[which] = (await step(`measure(${JSON.stringify(which)})`)) as Typed
     }
@@ -393,6 +418,7 @@ describe.skipIf(!available)('typing into a long form on a phone, keyboard up', (
     '%s: the keyboard came up and the text went in',
     (label) => {
       const s = report[label]
+      expect(s, report.run?.error ?? 'field was not measured').toBeDefined()
       expect(s.keyboardTop).toBeLessThan(PHONE.height - 200)
       // A layout that never stops moving with the keyboard up is a fault of its own.
       expect(s.settledIn).toBeGreaterThanOrEqual(0)
@@ -404,6 +430,7 @@ describe.skipIf(!available)('typing into a long form on a phone, keyboard up', (
     '%s: what is typed stands in the dialog’s body, above the keyboard and the toolbar over it',
     (label) => {
       const s = report[label]
+      expect(s, report.run?.error ?? 'field was not measured').toBeDefined()
       const floor = Math.min(s.keyboardTop, s.toolbarTop ?? Infinity)
       expect(s.field[0]).toBeGreaterThanOrEqual(s.dialogTop)
       expect(s.field[1]).toBeLessThanOrEqual(floor)
@@ -415,6 +442,7 @@ describe.skipIf(!available)('typing into a long form on a phone, keyboard up', (
 
   it.each(['last-field', 'note-field'])('%s: the form’s Run stands above the keyboard', (label) => {
     const s = report[label]
+    expect(s, report.run?.error ?? 'field was not measured').toBeDefined()
     expect(s.run).toBeLessThanOrEqual(Math.min(s.keyboardTop, s.toolbarTop ?? Infinity))
   })
 })
