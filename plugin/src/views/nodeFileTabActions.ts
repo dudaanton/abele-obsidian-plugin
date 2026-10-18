@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { Notice, Platform, type App, type Menu } from 'obsidian'
 import { NodeService } from '@/node/NodeService'
 import { pathPages } from '@/node/NodePathClientPort'
@@ -38,31 +39,29 @@ export class NodeFileTabActions {
     if (editing?.active.value) {
       add(
         'pencil',
-        editing.dirty.value
-          ? 'Stop editing; the edits stay until you save or discard them'
-          : 'Stop editing',
+        editing.dirty.value ? t('streamBMeta.239735d1f5') : t('streamB.stopEditing.ec8404'),
         () => this.stop(),
         true
       )
-      add('undo-2', 'Discard the edits', () => this.host.act(() => editing.discard()))
+      add('undo-2', t('streamBMeta.8357152356'), () => this.host.act(() => editing.discard()))
       if (editing.locked.value && this.host.saved()?.target.kind === 'worktree')
-        add('lock', 'Allow saving in this worktree…', () => this.host.act(() => this.unlock()))
+        add('lock', t('streamBMeta.9df4bdb9e7'), () => this.host.act(() => this.unlock()))
       add(
         'save',
-        editing.dirty.value ? 'Save to the node · ⌘ S' : 'Nothing to save',
+        editing.dirty.value ? t('streamBMeta.dc0210c641') : t('streamBMeta.de2bbb30c1'),
         () => this.host.act(() => editing.save()),
         editing.dirty.value
       )
       return
     }
-    add('file-diff', 'Toggle whole file / comparison', () => {
+    add('file-diff', t('streamBMeta.a6c485d8de'), () => {
       const file = this.host.file()
       if (file) file.mode.value = file.mode.value === 'diff' ? 'file' : 'diff'
     })
     if (Platform.isPhone) return
-    add('chevron-left', 'Previous changed file', () => this.step(-1))
-    add('chevron-right', 'Next changed file', () => this.step(1))
-    add('pencil', 'Edit the file', () => this.start())
+    add('chevron-left', t('streamBMeta.55f8f16499'), () => this.step(-1))
+    add('chevron-right', t('streamBMeta.123245f14b'), () => this.step(1))
+    add('pencil', t('streamBMeta.de780488d5'), () => this.start())
   }
   paneMenu(menu: Menu): void {
     const item = (title: string, icon: string, run: () => void, disabled = false) =>
@@ -70,14 +69,19 @@ export class NodeFileTabActions {
         i.setTitle(title).setIcon(icon).setSection('action').onClick(run)
         if (disabled) i.setDisabled(true)
       })
-    item('Previous changed file', 'chevron-left', () => this.step(-1))
-    item('Next changed file', 'chevron-right', () => this.step(1))
+    item(t('streamBMeta.55f8f16499'), 'chevron-left', () => this.step(-1))
+    item(t('streamBMeta.123245f14b'), 'chevron-right', () => this.step(1))
     const editing = this.host.editing()
     if (editing?.active.value) {
-      item('Save', 'save', () => this.host.act(() => editing.save()), !editing.dirty.value)
-      item('Discard the edits', 'undo-2', () => this.host.act(() => editing.discard()))
-      item('Stop editing', 'pencil-off', () => this.stop())
-    } else item('Edit the file', 'pencil', () => this.start())
+      item(
+        t('streamB.save.1509f5'),
+        'save',
+        () => this.host.act(() => editing.save()),
+        !editing.dirty.value
+      )
+      item(t('streamBMeta.8357152356'), 'undo-2', () => this.host.act(() => editing.discard()))
+      item(t('streamB.stopEditing.ec8404'), 'pencil-off', () => this.stop())
+    } else item(t('streamBMeta.de780488d5'), 'pencil', () => this.start())
   }
   step(by: 1 | -1): void {
     this.host.act(() => this.host.file()?.step(by))
@@ -106,17 +110,21 @@ export class NodeFileTabActions {
     )
     const row = rows.find((r) => r.worktree_id === state.target.id)
     if (!row || row.kind !== 'external') {
-      new Notice('This is not an external worktree.')
+      new Notice(t('streamBMeta.97ca175fd0'))
       return
     }
     const enabled = editing.locked.value
     if (
       !(await confirmDialog({
-        title: enabled ? 'Allow editing in this worktree?' : 'Turn off worktree editing?',
+        title: enabled
+          ? t('streamB.allowEditingInThisWorktree.0b5778')
+          : t('streamB.turnOffWorktreeEditing.6f96b7'),
         message: enabled
-          ? `Allow current files in ${row.path_label} to be saved by confirmed node owners? This grants neither chat scope nor agent execution.`
-          : 'Stop new saves in this external worktree? Local drafts and unresolved evidence are kept.',
-        confirmText: enabled ? 'Allow editing' : 'Turn off editing',
+          ? t('streamBMeta.68f7375d89', { v0: row.path_label })
+          : t('streamBMeta.d71ef981e2'),
+        confirmText: enabled
+          ? t('streamB.allowEditing.8195ed')
+          : t('streamB.turnOffEditing.b065b8'),
       }))
     )
       return

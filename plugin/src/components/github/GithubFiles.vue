@@ -1,14 +1,14 @@
 <template>
   <div class="abele-github-files">
     <div class="abele-github-files__summary">
-      {{ files.length }} {{ files.length === 1 ? 'file' : 'files' }} changed
+      {{ t('streamBCount.changedFiles', { count: files.length }) }}
       <template v-if="!countsPending">
         <span class="abele-github-file__add">+{{ additions }}</span>
         <span class="abele-github-file__del">−{{ deletions }}</span>
       </template>
     </div>
     <div v-if="anchor && !anchored" class="abele-github-files__missing">
-      The file this link points at is not among the changed files.
+      {{ t('streamB.theFileThisLinkPointsAtIs.734bff') }}
     </div>
     <GithubDiffFile
       v-for="file in files"
@@ -21,14 +21,15 @@
       @loaded="patchEpoch++"
       @open="(url: string, pane: PaneType | false) => emit('open', url, pane)"
     />
-    <EmptyState v-if="!files.length" text="No files changed." />
+    <EmptyState v-if="!files.length" :text="t('streamB.noFilesChanged.68c489')" />
     <div v-if="!complete" class="abele-github-files__missing">
-      Only the first {{ files.length }} files are shown; open the original change for the rest.
+      {{ t('streamBMeta.060854f39b', { p0: String(files.length) }) }}
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, ref } from 'vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import GithubDiffFile from './GithubDiffFile.vue'

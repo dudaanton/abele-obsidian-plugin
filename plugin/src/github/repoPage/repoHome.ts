@@ -1,3 +1,6 @@
+import { uiFields, uiMessage } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
+import { agentText } from '@/i18n/streamBText'
 import type { RepoMeta, RepoHomeData, RefList } from '@/repository/model'
 export type { RepoMeta, RepoHomeData, RefList } from '@/repository/model'
 /**
@@ -75,13 +78,17 @@ const repoName = (r: RepoLike) => `${r.owner}/${r.repo}`
  * The root folder at exactly `ref`. A branch may hold slashes, and here the ref is known whole,
  * so it goes as one part: `loadFolder` then has only the one split to try.
  */
-async function rootAt(client: GithubClient, t: RepoLike, ref: string): Promise<FolderData> {
+async function rootAt(
+  client: GithubClient,
+  translationItem: RepoLike,
+  ref: string
+): Promise<FolderData> {
   const tree: Of<'tree'> = {
     kind: 'tree',
-    host: t.host,
-    origin: t.origin,
-    owner: t.owner,
-    repo: t.repo,
+    host: translationItem.host,
+    origin: translationItem.origin,
+    owner: translationItem.owner,
+    repo: translationItem.repo,
     rest: [ref],
   }
   return loadFolder(client, tree)
@@ -99,33 +106,39 @@ export function homeUrl(r: RepoLike, ref?: string, defaultBranch?: string): stri
  */
 export async function loadRepoHome(
   client: GithubClient,
-  t: Of<'repo'>,
+  translationItem: Of<'repo'>,
   root?: FolderData
 ): Promise<RepoHomeData> {
-  const metaAsked = client.get<RawRepo>(repoApiPath(t), { what: repoName(t) })
+  const metaAsked = client.get<RawRepo>(repoApiPath(translationItem), {
+    what: repoName(translationItem),
+  })
   // With the ref known, both are asked at once; without it, the repository says which it is.
-  const folderAsked = root ? Promise.resolve(root) : t.ref ? rootAt(client, t, t.ref) : null
+  const folderAsked = root
+    ? Promise.resolve(root)
+    : translationItem.ref
+      ? rootAt(client, translationItem, translationItem.ref)
+      : null
   // Waited for together below; an early refusal of the folder is not left unhandled meanwhile.
   folderAsked?.catch(() => {})
-  const meta = repoMeta(await metaAsked, t)
-  const ref = t.ref ?? meta.defaultBranch
+  const meta = repoMeta(await metaAsked, translationItem)
+  const ref = translationItem.ref ?? meta.defaultBranch
   let folder: FolderData
   try {
-    folder = await (folderAsked ?? rootAt(client, t, ref))
+    folder = await (folderAsked ?? rootAt(client, translationItem, ref))
   } catch (e) {
     // A repository with no commits has no root to list; GitHub says "This repository is empty".
     const none = e instanceof GithubError && (e.kind === 'empty' || e.kind === 'not-found')
-    if (!none || t.ref) throw e
+    if (!none || translationItem.ref) throw e
     return {
       meta,
       ref,
       path: '',
       entries: [],
-      url: homeUrl(t, ref, meta.defaultBranch),
+      url: homeUrl(translationItem, ref, meta.defaultBranch),
       empty: true,
     }
   }
-  return { ...folder, meta, url: homeUrl(t, t.ref, meta.defaultBranch) }
+  return { ...folder, meta, url: homeUrl(translationItem, translationItem.ref, meta.defaultBranch) }
 }
 
 // --- What is asked for once the page is up ---
@@ -149,14 +162,20 @@ export function languageShares(bytes: Record<string, number>): LanguageShare[] {
   const rest = sorted.slice(LANGUAGES_SHOWN).reduce((sum, [, n]) => sum + n, 0)
   const share = (n: number) => Math.round((n / total) * 1000) / 10
   const out = shown.map(([name, n]) => ({ name, percent: share(n) }))
-  if (rest) out.push({ name: 'Other', percent: share(rest) })
+  if (rest) out.push({ name: t('streamB.other.f97e9d'), percent: share(rest) })
   return out
 }
 
 export async function loadLanguages(client: GithubClient, r: RepoLike): Promise<LanguageShare[]> {
-  const bytes = await client.get<Record<string, number>>(`${repoApiPath(r)}/languages`, {
-    what: `the languages of ${repoName(r)}`,
-  })
+  const bytes = await client.get<Record<string, number>>(
+    `${repoApiPath(r)}/languages`,
+    uiFields(
+      {
+        what: agentText('streamB.theLanguagesOf.ac6b3b', { v0: String(repoName(r)) }),
+      },
+      { what: uiMessage('streamB.theLanguagesOf.ac6b3b', { v0: String(repoName(r)) }) }
+    )
+  )
   return languageShares(bytes ?? {})
 }
 
@@ -200,7 +219,10 @@ export const FRESHEST = 5
 export async function loadOpenPulls(client: GithubClient, r: RepoLike): Promise<ItemRow[]> {
   const list = await client.get<RawItem[]>(
     `${repoApiPath(r)}/pulls?state=open&sort=created&direction=desc&per_page=${FRESHEST}`,
-    { what: `the pull requests of ${repoName(r)}` }
+    uiFields(
+      { what: agentText('streamB.thePullRequestsOf.7ecee1', { v0: String(repoName(r)) }) },
+      { what: uiMessage('streamB.thePullRequestsOf.7ecee1', { v0: String(repoName(r)) }) }
+    )
   )
   return list.slice(0, FRESHEST).map((p) => itemRow(p, `${repoWeb(r)}/pull/${p.number}`))
 }
@@ -213,7 +235,10 @@ export async function loadOpenIssues(client: GithubClient, r: RepoLike): Promise
   const q = `repo:${repoName(r)} is:issue is:open`
   const found = await client.get<{ items?: RawItem[] }>(
     `/search/issues?q=${encodeURIComponent(q)}&sort=created&order=desc&per_page=${FRESHEST}`,
-    { what: `the issues of ${repoName(r)}` }
+    uiFields(
+      { what: agentText('streamB.theIssuesOf.853087', { v0: String(repoName(r)) }) },
+      { what: uiMessage('streamB.theIssuesOf.853087', { v0: String(repoName(r)) }) }
+    )
   )
   return (found.items ?? [])
     .filter((i) => !i.pull_request)
@@ -255,7 +280,15 @@ export async function loadLatestRelease(
       prerelease?: boolean
       author?: { login?: string } | null
       html_url?: string
-    }>(`${repoApiPath(r)}/releases/latest`, { what: `the releases of ${repoName(r)}` })
+    }>(
+      `${repoApiPath(r)}/releases/latest`,
+      uiFields(
+        {
+          what: agentText('streamB.theReleasesOf.ce952d', { v0: String(repoName(r)) }),
+        },
+        { what: uiMessage('streamB.theReleasesOf.ce952d', { v0: String(repoName(r)) }) }
+      )
+    )
     return {
       name: rel.name?.trim() || rel.tag_name,
       tag: rel.tag_name,
@@ -278,16 +311,28 @@ const REF_PAGE = 100
 
 export async function loadRefs(client: GithubClient, r: RepoLike): Promise<RefList> {
   const [branches, tags] = await Promise.all([
-    client.get<{ name: string }[]>(`${repoApiPath(r)}/branches?per_page=${REF_PAGE}`, {
-      what: `the branches of ${repoName(r)}`,
-    }),
-    client.get<{ name: string }[]>(`${repoApiPath(r)}/tags?per_page=${REF_PAGE}`, {
-      what: `the tags of ${repoName(r)}`,
-    }),
+    client.get<{ name: string }[]>(
+      `${repoApiPath(r)}/branches?per_page=${REF_PAGE}`,
+      uiFields(
+        {
+          what: agentText('streamB.theBranchesOf.53ceb4', { v0: String(repoName(r)) }),
+        },
+        { what: uiMessage('streamB.theBranchesOf.53ceb4', { v0: String(repoName(r)) }) }
+      )
+    ),
+    client.get<{ name: string }[]>(
+      `${repoApiPath(r)}/tags?per_page=${REF_PAGE}`,
+      uiFields(
+        {
+          what: agentText('streamB.theTagsOf.a74f34', { v0: String(repoName(r)) }),
+        },
+        { what: uiMessage('streamB.theTagsOf.a74f34', { v0: String(repoName(r)) }) }
+      )
+    ),
   ])
   return {
     branches: branches.map((b) => b.name),
-    tags: tags.map((t) => t.name),
+    tags: tags.map((translationItem) => translationItem.name),
     more: branches.length >= REF_PAGE || tags.length >= REF_PAGE,
   }
 }
@@ -301,12 +346,15 @@ export async function refsStarting(
   const ask = (kind: 'heads' | 'tags') =>
     client.get<{ ref: string }[]>(
       `${repoApiPath(r)}/git/matching-refs/${kind}/${prefix.split('/').map(encodeURIComponent).join('/')}`,
-      { what: `the branches and tags of ${repoName(r)}` }
+      uiFields(
+        { what: agentText('streamB.theBranchesAndTagsOf.4d7d79', { v0: String(repoName(r)) }) },
+        { what: uiMessage('streamB.theBranchesAndTagsOf.4d7d79', { v0: String(repoName(r)) }) }
+      )
     )
   const [heads, tags] = await Promise.all([ask('heads'), ask('tags')])
   return {
     branches: heads.map((h) => h.ref.replace(/^refs\/heads\//, '')),
-    tags: tags.map((t) => t.ref.replace(/^refs\/tags\//, '')),
+    tags: tags.map((translationItem) => translationItem.ref.replace(/^refs\/tags\//, '')),
     more: false,
   }
 }

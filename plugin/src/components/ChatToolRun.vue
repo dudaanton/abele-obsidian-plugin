@@ -45,6 +45,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, ref, watchEffect } from 'vue'
 import { setTooltip } from 'obsidian'
 import TreeItem from './obsidian/TreeItem.vue'
@@ -76,9 +77,9 @@ const refused = computed(
 )
 
 const STATE_LABEL: Record<RunState, string> = {
-  running: 'The agent is working on it',
-  waiting: 'Waiting for your approval',
-  failed: 'Refused or failed',
+  running: t('streamB.theAgentIsWorkingOnIt.fd0a64'),
+  waiting: t('streamB.waitingForYourApproval.af7a94'),
+  failed: t('streamB.refusedOrFailed.18ffb0'),
   done: '',
 }
 
@@ -93,7 +94,11 @@ watchEffect(() => dot.value && setTooltip(dot.value, STATE_LABEL[state.value]))
 const fork = ref<HTMLElement>()
 watchEffect(
   () =>
-    fork.value && setTooltip(fork.value, `The chat went ${props.forks} ways from a call in here`)
+    fork.value &&
+    setTooltip(
+      fork.value,
+      t('streamB.theChatWentWaysFromACall.6a5477', { v0: String(props.forks) })
+    )
 )
 </script>
 

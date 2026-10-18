@@ -1,7 +1,11 @@
 <template>
   <div class="abele-github-folder">
-    <div class="abele-github-folder__list" role="tree" aria-label="Folders and files">
-      <EmptyState v-if="!folder.entries.length" text="This folder is empty." />
+    <div
+      class="abele-github-folder__list"
+      role="tree"
+      :aria-label="t('streamB.foldersAndFiles.ff0bb0')"
+    >
+      <EmptyState v-if="!folder.entries.length" :text="t('streamB.thisFolderIsEmpty.bd88d7')" />
       <TreeItem
         v-for="entry in paged.visible.value"
         :key="entry.path"
@@ -14,7 +18,11 @@
         @click="open(entry, $event)"
       />
       <div v-if="paged.hasMore.value" ref="sentinel" class="abele-github-folder__more">
-        {{ paged.total.value - paged.visible.value.length }} more…
+        {{
+          t('streamBMeta.42adc2e400', {
+            p0: String(paged.total.value - paged.visible.value.length),
+          })
+        }}
       </div>
     </div>
 
@@ -26,7 +34,10 @@
     >
       <div class="abele-github-folder__readme-name">{{ readme.name }}</div>
       <EmptyState v-if="readmeText.error.value" :text="readmeText.error.value" />
-      <EmptyState v-else-if="readmeText.data.value === null" text="Loading the README…" />
+      <EmptyState
+        v-else-if="readmeText.data.value === null"
+        :text="t('streamB.loadingTheReadme.1f7b3a')"
+      />
       <GithubText
         v-else-if="isMarkdownPath(readme.path) && source?.identity.provider !== 'node'"
         :text="readmeText.data.value"
@@ -40,6 +51,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { openExternal } from '@/helpers/openExternal'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { PaneType } from 'obsidian'
@@ -118,7 +130,7 @@ const readmeFile = computed<RepoFile>(() => ({
 }))
 const readmeText = useLoad(async () => {
   const r = readme.value
-  return r ? source.value.text(props.folder.ref, r.path, 'the README') : ''
+  return r ? source.value.text(props.folder.ref, r.path, t('streamB.theReadme.1d0b79')) : ''
 })
 /**
  * Words selected in the README are the README's: asked about, linked and quoted as that file at
@@ -130,7 +142,7 @@ watch(readmeEl, (el, old) => {
   if (!el) return
   registerProse(el, {
     what: 'README',
-    name: 'the README',
+    name: t('streamB.theReadme.1d0b79'),
     link: () => {
       const r = readme.value
       if (!r) return null

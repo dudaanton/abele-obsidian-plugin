@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import type { Job } from '@abele/node-client'
 import type { ChatMessage } from '@/ai/types'
 import { readAgentReplyText } from '@/ai/replyLinks'
@@ -10,30 +11,45 @@ export function shortNodePath(path: string, width = 40): string {
 }
 export function nodeJobLabel(job: Job): string {
   const creating = job.kind === 'workspace.create'
-  if (job.state === 'succeeded') return creating ? 'Workspace created' : 'Workspace removed'
+  if (job.state === 'succeeded')
+    return creating ? t('streamB.workspaceCreated.246b46') : t('streamB.workspaceRemoved.942308')
   if (job.state === 'needs_attention' || job.state === 'failed')
-    return creating ? 'Workspace creation needs attention' : 'Workspace removal needs attention'
+    return creating
+      ? t('streamB.workspaceCreationNeedsAttention.be51f9')
+      : t('streamB.workspaceRemovalNeedsAttention.89fa4e')
   if (job.state === 'queued')
-    return creating ? 'Waiting to create workspace…' : 'Waiting to remove workspace…'
-  if (!creating) return 'Removing workspace…'
-  if (job.phase === 'branch_created') return 'Preparing worktree files…'
-  if (job.phase === 'worktree_created') return 'Finishing workspace setup…'
-  return 'Creating workspace branch…'
+    return creating
+      ? t('streamB.waitingToCreateWorkspace.f65232')
+      : t('streamB.waitingToRemoveWorkspace.c2e5f2')
+  if (!creating) return t('streamB.removingWorkspace.0e65ca')
+  if (job.phase === 'branch_created') return t('streamB.preparingWorktreeFiles.5544f7')
+  if (job.phase === 'worktree_created') return t('streamB.finishingWorkspaceSetup.b25c56')
+  return t('streamB.creatingWorkspaceBranch.549f3c')
 }
 export const workspaceStateLabels = {
-  provisioning: 'Creating',
-  ready: 'Ready',
-  removing: 'Removing',
-  removed: 'Removed',
-  needs_attention: 'Needs attention',
+  get provisioning() {
+    return t('streamB.creating.3b951e')
+  },
+  get ready() {
+    return t('streamB.ready.5fa7aa')
+  },
+  get removing() {
+    return t('streamB.removing.9f2c59')
+  },
+  get removed() {
+    return t('streamB.removed.4118fb')
+  },
+  get needs_attention() {
+    return t('streamB.needsAttention.c1ebc7')
+  },
 }
 export function promptExpiry(expires: number | undefined, now: number): string {
   if (!Number.isFinite(expires)) return ''
   const remaining = expires - now
   if (remaining > 10 * 60000) return ''
-  if (remaining <= 0) return 'Expiry due'
-  if (remaining < 60000) return 'Expires in less than a minute'
-  return `Expires in ${Math.ceil(remaining / 60000)} min`
+  if (remaining <= 0) return t('streamB.expiryDue.3efa11')
+  if (remaining < 60000) return t('streamB.expiresInLessThanAMinute.5ff634')
+  return t('streamB.expiresInMin.5e064b', { v0: String(Math.ceil(remaining / 60000)) })
 }
 export interface QueueState {
   label: string
@@ -76,13 +92,13 @@ export function nodeQueueView(
       shown.push({ id, role: 'user', ...queuedQuestion(queued.text), timestamp: 0 })
       ids.add(id)
     }
-    states[id] = { label: 'Queued', inputId: queued.id }
+    states[id] = { label: t('streamB.queued.661ff4'), inputId: queued.id }
   }
   for (const queued of device) {
     const id = `operation:${queued.id}`
     if (ids.has(id)) continue
     shown.push({ id, role: 'user', ...queuedQuestion(queued.text), timestamp: 0 })
-    states[id] = { label: 'Queued on this device' }
+    states[id] = { label: t('streamB.queuedOnThisDevice.49559a') }
     ids.add(id)
   }
   return { messages: shown, states }

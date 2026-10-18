@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { choiceDialog } from '@/components/obsidian/dialogs'
 import type { RepositoryReadApproval } from '@/ai/tools/node'
 
@@ -6,15 +7,23 @@ export function repositoryReadApproval(): RepositoryReadApproval {
   return async (target, signal) =>
     (await choiceDialog(
       {
-        title: 'Allow repository reads for this chat?',
-        message: `Allow this chat to read project ${target.project} on node ${target.node} (installation ${target.installation}), including its available external worktrees? Repository content may be sent to the chat model and remain in chat history. This permission lasts for this conversation until revoked or the plugin restarts.`,
+        title: t('streamB.allowRepositoryReadsForThisChat.569319'),
+        message: t('streamB.allowThisChatToReadProjectOn.3248fe', {
+          v0: String(target.project),
+          v1: String(target.node),
+          v2: String(target.installation),
+        }),
         choices: [
-          { value: null, text: 'Cancel', tooltip: 'Do not let this chat read the project' },
+          {
+            value: null,
+            text: t('streamB.cancel.19766e'),
+            tooltip: t('streamB.doNotLetThisChatReadThe.49c47c'),
+          },
           {
             value: 'allow',
-            text: 'Allow this chat',
+            text: t('streamB.allowThisChat.845aa9'),
             cta: true,
-            tooltip: 'Let this chat read the project until revoked',
+            tooltip: t('streamB.letThisChatReadTheProjectUntil.d81795'),
           },
         ],
       },

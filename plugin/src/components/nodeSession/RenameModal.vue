@@ -1,14 +1,14 @@
 <template>
   <!-- A new name for the session: one field, as Obsidian asks for a note's. -->
-  <Modal title="Rename the session" close-in-footer phone-sheet @close="emit('close')">
+  <Modal :title="t('chat.renameTitle')" close-in-footer phone-sheet @close="emit('close')">
     <Input v-model="name" class="abele-rename__field" @keydown.enter.prevent="confirm" />
     <template #footer>
-      <Button text="Cancel" tooltip="Keep the name it has" @click="emit('close')" />
+      <Button :text="t('chat.cancel')" :tooltip="t('chat.keepName')" @click="emit('close')" />
       <Button
-        text="Rename"
+        :text="t('chat.rename')"
         accent
         :disabled="!name.trim() || name.trim() === title"
-        tooltip="Rename it here, in the node panel and in Agents"
+        :tooltip="t('chat.renameTip')"
         @click="confirm"
       />
     </template>
@@ -16,6 +16,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { ref } from 'vue'
 import Modal from '../obsidian/Modal.vue'
 import Input from '../obsidian/Input.vue'

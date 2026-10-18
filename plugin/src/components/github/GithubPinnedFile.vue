@@ -9,49 +9,53 @@
         <span class="abele-github-file__add">+{{ file.text?.additions ?? '—' }}</span>
         <span class="abele-github-file__del">−{{ file.text?.deletions ?? '—' }}</span>
       </span>
-      <span v-if="file.change.base"
-        >Base:
-        {{
-          file.change.base.size === undefined ? 'unknown size' : formatSize(file.change.base.size)
-        }}
-        · {{ file.change.base.mode ?? 'unknown mode' }}</span
-      >
-      <span v-if="file.change.target"
-        >Target:
-        {{
-          file.change.target.size === undefined
-            ? 'unknown size'
-            : formatSize(file.change.target.size)
-        }}
-        · {{ file.change.target.mode ?? 'unknown mode' }}</span
-      >
+      <span v-if="file.change.base">{{
+        t('streamBMeta.0b656ed5b2', {
+          p0: String(
+            file.change.base.size === undefined
+              ? t('streamB.unknownSize.f5d2f9')
+              : formatSize(file.change.base.size)
+          ),
+          p1: String(file.change.base.mode ?? t('streamB.unknownMode.08641d')),
+        })
+      }}</span>
+      <span v-if="file.change.target">{{
+        t('streamBMeta.f1b4d3b037', {
+          p0: String(
+            file.change.target.size === undefined
+              ? t('streamB.unknownSize.f5d2f9')
+              : formatSize(file.change.target.size)
+          ),
+          p1: String(file.change.target.mode ?? t('streamB.unknownMode.08641d')),
+        })
+      }}</span>
       <Button
         v-if="file.change.base"
-        text="Open base"
+        :text="t('streamB.openBase.48e652')"
         icon="external-link"
-        tooltip="Open the base side on GitHub"
+        :tooltip="t('streamB.openTheBaseSideOnGithub.857fdc')"
         @click="openSide('base')"
       />
       <Button
         v-if="file.change.target"
-        text="Open target"
+        :text="t('streamB.openTarget.d2e00c')"
         icon="external-link"
-        tooltip="Open the target side on GitHub"
+        :tooltip="t('streamB.openTheTargetSideOnGithub.00e8b3')"
         @click="openSide('target')"
       />
     </div>
-    <EmptyState v-if="file.note" :text="file.note" />
+    <EmptyState v-if="file.note" :text="presentUiField(file, 'note')" />
     <Button
       v-if="file.canLoadLarge"
-      :text="busy ? 'Computing diff…' : 'Load large diff'"
+      :text="busy ? t('streamB.computingDiff.f5db61') : t('streamB.loadLargeDiff.3c64be')"
       :disabled="busy"
       icon="file-diff"
-      tooltip="Compute this file's diff beyond the automatic budget"
+      :tooltip="t('streamB.computeThisFileSDiffBeyondThe.b8edc1')"
       @click="emit('large')"
     />
     <EmptyState
       v-if="file.text && !file.text.additions && !file.text.deletions"
-      text="No changes in the text of this file."
+      :text="t('streamB.noChangesInTheTextOfThis.e4d45d')"
     />
     <div v-if="file.text?.lines.length" ref="editor" class="abele-github-code" />
     <Teleport v-if="barHost && selected && linker" :to="barHost">
@@ -67,6 +71,9 @@
 </template>
 
 <script setup lang="ts">
+import { presentUiField } from '@/i18n/streamBErrors'
+
+import { t } from '@/i18n'
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import Button from '../obsidian/Button.vue'
 import Badge from '../obsidian/Badge.vue'
@@ -105,12 +112,18 @@ const barHost = shallowRef<HTMLElement | null>(null)
 const lines = computed(() => props.file.text?.lines ?? [])
 const label = computed(() =>
   selected.value
-    ? `Lines ${selected.value.start}–${selected.value.end}${selected.value.side === 'L' ? ', base' : ', target'}`
+    ? t('streamB.lines.0c6261', {
+        v0: String(selected.value.start),
+        v1: String(selected.value.end),
+        v2: String(
+          selected.value.side === 'L' ? t('streamBMeta.78b994fe44') : t('streamBMeta.3598f24e4d')
+        ),
+      })
     : ''
 )
 const selectedLink = () => {
   const s = selected.value
-  if (!s) throw new Error('No lines selected.')
+  if (!s) throw new Error(t('streamB.noLinesSelected.8564d5'))
   return source.value
     ? source.value.navigation.blobLink(
         s.side === 'L' ? props.file.baseSha : props.file.targetSha,
@@ -130,7 +143,7 @@ const selectedQuote = () => ({
   diff: true,
 })
 const selectedSnippet = () => {
-  if (!picked.value) throw new Error('No lines selected.')
+  if (!picked.value) throw new Error(t('streamB.noLinesSelected.8564d5'))
   return diffSnippet(selectedLink(), props.file.path, lines.value, picked.value)
 }
 const clear = () => {

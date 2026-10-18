@@ -1,3 +1,13 @@
+import {
+  uiFields,
+  uiMessage,
+  uiField,
+  type UiMessage,
+  UiError,
+  uiErrorMessage,
+} from '@/i18n/streamBErrors'
+
+import { agentText } from '@/i18n/streamBText'
 import type { FileCounts, ComparisonIndex, PinnedFile } from '@/repository/model'
 export type { FileCounts, ComparisonIndex, PinnedFile } from '@/repository/model'
 import { shallowReactive } from 'vue'
@@ -188,9 +198,15 @@ export class ComparisonService {
       const answer = await this.client.get<{
         merge_base_commit?: { sha: string }
         files?: { filename: string; previous_filename?: string; status: string; sha?: string }[]
-      }>(`${repoApiPath(this.repo)}/compare/${base}...${target}?per_page=1`, {
-        what: 'optional rename metadata',
-      })
+      }>(
+        `${repoApiPath(this.repo)}/compare/${base}...${target}?per_page=1`,
+        uiFields(
+          {
+            what: agentText('streamB.optionalRenameMetadata.66e0fb'),
+          },
+          { what: uiMessage('streamB.optionalRenameMetadata.66e0fb') }
+        )
+      )
       if (answer.merge_base_commit?.sha !== base) return
       for (const file of answer.files ?? []) {
         if (file.status !== 'renamed' || !file.previous_filename || !file.sha) continue
@@ -219,7 +235,7 @@ export class ComparisonService {
   private async blob(node?: TreeNode, signal?: AbortSignal): Promise<BlobContent> {
     this.check(signal)
     if (!node) return { kind: 'text', text: '' }
-    if (!node.sha) throw new Error('GitHub sent no blob identity.')
+    if (!node.sha) throw new UiError(uiMessage('streamBError.082cf53674'))
     const known = this.blobs.get(node.sha)
     if (known) {
       this.blobs.delete(node.sha)
@@ -232,23 +248,21 @@ export class ComparisonService {
       const pending = this.limited(async () => {
         const answer = await this.client.get<{ encoding?: string; content?: string }>(
           `${repoApiPath(this.repo)}/git/blobs/${encodeURIComponent(node.sha)}`,
-          { what: `the immutable file ${node.path}` }
+          uiFields(
+            { what: agentText('streamB.theImmutableFile.98892f', { v0: String(node.path) }) },
+            { what: uiMessage('streamB.theImmutableFile.98892f', { v0: String(node.path) }) }
+          )
         )
         if (
           !['base64', 'utf-8', 'utf8'].includes(answer.encoding ?? '') ||
           typeof answer.content !== 'string'
         )
-          throw new Error(
-            'GitHub did not supply supported blob bytes. The API may limit this file; open either side on GitHub.'
-          )
+          throw new UiError(uiMessage('streamBError.dfd0b68e6f'))
         const bytes =
           answer.encoding === 'base64'
             ? base64Bytes(answer.content)
             : new TextEncoder().encode(answer.content)
-        if (bytes.byteLength > MAX_BYTES)
-          throw new Error(
-            'This file exceeds the comparison memory budget. Open each side separately.'
-          )
+        if (bytes.byteLength > MAX_BYTES) throw new UiError(uiMessage('streamBError.b2ceed2130'))
         const content = decodeBlob(bytes)
         const size = content.text?.length ? content.text.length * 2 : 0
         this.check(controller.signal)
@@ -303,8 +317,7 @@ export class ComparisonService {
     if (!change) {
       await index.target.reveal(path)
       const node = findNode(index.target.root, path)
-      if (!node || node.kind === 'dir')
-        throw new Error('The file was not found in the comparison tree.')
+      if (!node || node.kind === 'dir') throw new UiError(uiMessage('streamBError.4f737e4ab7'))
       change = { path, status: 'unchanged', base: node, target: node }
     }
     const result: PinnedFile = {
@@ -315,23 +328,18 @@ export class ComparisonService {
       change,
     }
     const nodes = [change.base, change.target].filter((n): n is TreeNode => !!n)
-    const unavailable = (note: string, canLoadLarge = false) => {
-      result.note = note
+    const unavailable = (note: UiMessage, canLoadLarge = false) => {
+      uiField(result, 'note', note)
       result.canLoadLarge = canLoadLarge
       index.counts.set(path, { state: 'unavailable' })
       return result
     }
     if (nodes.some((n) => n.kind === 'submodule' || n.mode === '160000'))
-      return unavailable('Submodule commit changed. No repository is followed automatically.')
+      return unavailable(uiMessage('streamBError.4e7bc5e16d'))
     if (nodes.some((n) => (n.size ?? MAX_BYTES + 1) > MAX_BYTES))
-      return unavailable(
-        'The file size is unknown or exceeds the comparison memory budget. Open either side separately.'
-      )
+      return unavailable(uiMessage('streamBError.4d89c4f1ef'))
     if (!large && nodes.some((n) => (n.size ?? 0) > AUTOMATIC_BYTES))
-      return unavailable(
-        'Large file: load its text explicitly, or open either side separately.',
-        true
-      )
+      return unavailable(uiMessage('streamBError.61af9130fa'), true)
     index.counts.set(path, { state: 'pending' })
     try {
       const [before, after] = await Promise.all([
@@ -342,15 +350,12 @@ export class ComparisonService {
       result.before = before
       result.after = after
       if ([before, after].some((c) => c.kind === 'binary' || c.kind === 'unsupported'))
-        return unavailable('Binary or unsupported encoding. Text counts are unavailable (—).')
+        return unavailable(uiMessage('streamBError.02c437689c'))
       if (
         !large &&
         (before.text.match(/\n/g)?.length ?? 0) + (after.text.match(/\n/g)?.length ?? 0) > 20000
       )
-        return unavailable(
-          'Many lines: load the diff explicitly, or open either side separately.',
-          true
-        )
+        return unavailable(uiMessage('streamBError.71722fe4dc'), true)
       result.text = await this.limited(() => computeDiff(before.text, after.text, signal), signal)
       this.check(signal)
       index.counts.set(path, {
@@ -359,20 +364,19 @@ export class ComparisonService {
         deletions: result.text.deletions,
       })
       if (before.text.includes('\r\n') !== after.text.includes('\r\n'))
-        result.note = 'Line endings differ between the base and target (CRLF / LF).'
+        uiField(result, 'note', uiMessage('streamBError.cb3497631d'))
       if ([before, after].some((c) => c.kind === 'lfs'))
-        result.note = 'Git LFS pointer text only. No payload is downloaded.'
+        uiField(result, 'note', uiMessage('streamBError.f1497cb1f1'))
       if (nodes.some((n) => n.mode === '120000'))
-        result.note = 'Symlink text only. The link is not followed.'
+        uiField(result, 'note', uiMessage('streamBError.ed3d83967c'))
       return result
     } catch (error) {
       if (signal?.aborted && index.counts.get(path)?.state === 'pending') index.counts.delete(path)
       this.check(signal)
-      const message = error instanceof Error ? error.message : String(error)
       return unavailable(
         error instanceof GithubError && error.kind === 'network'
-          ? `This part is not cached for offline use. ${message}`
-          : message
+          ? uiMessage('streamBError.a97a5c3772', { v0: uiErrorMessage(error) })
+          : uiErrorMessage(error)
       )
     }
   }

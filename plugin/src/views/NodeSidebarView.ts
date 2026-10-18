@@ -1,3 +1,5 @@
+import { presentUiError } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 import { ItemView, Notice, Platform, type ViewStateResult, type WorkspaceLeaf } from 'obsidian'
 import { h, shallowRef, watch, type WatchStopHandle } from 'vue'
 import { z } from 'zod'
@@ -9,7 +11,7 @@ import {
   localNodeRegistrationUrl,
   type LocalNode,
 } from '@/node/localDiscovery'
-import { formatTimestamp } from '@/helpers/displayFormat'
+import { streamBTime as formatTimestamp } from '@/i18n/streamBDate'
 import { NODE_SIDEBAR_VIEW, openNodePathTab } from '@/node/nodePathNavigation'
 import {
   nodePathAction,
@@ -46,7 +48,7 @@ export class NodeSidebarView extends ItemView {
     return NODE_SIDEBAR_VIEW
   }
   getDisplayText(): string {
-    return 'Node'
+    return t('streamB.node.e93372')
   }
   getIcon(): string {
     return 'server'
@@ -179,8 +181,8 @@ export class NodeSidebarView extends ItemView {
             onDiscard: (path: string) => {
               if (model) nodePathAction(() => discardNodePathFile(model, path))
             },
-            onOpenPull: (number: number) => new Notice(`Pull request #${number}`),
-            onConnectService: () => new Notice('Connect a Git service in Abele settings.'),
+            onOpenPull: (number: number) => new Notice(t('streamBMeta.7721daf433', { v0: number })),
+            onConnectService: () => new Notice(t('streamBMeta.167ee6d92e')),
             onRefresh: () => {
               if (model && connection)
                 nodePathAction(() => connection.connect().then(() => model.refreshCurrent()))
@@ -240,7 +242,7 @@ export class NodeSidebarView extends ItemView {
         if (!controller.signal.aborted) {
           this.localPhase.value = 'found'
           this.localError.value =
-            error instanceof Error ? error.message : 'Could not connect the local node.'
+            error instanceof Error ? presentUiError(error) : t('streamBMeta.4d2680119a')
         }
       }
     })

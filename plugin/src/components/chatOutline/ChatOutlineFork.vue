@@ -4,7 +4,7 @@
   <TreeItem
     class="abele-chat-outline__fork"
     icon="split"
-    :text="fork.parentId ? 'Branches' : 'Starts'"
+    :text="fork.parentId ? t('streamB.branches.2eee03') : t('streamB.starts.96dbed')"
     collapsible
     :collapsed="!outline.isOpen(`fork:${fork.id}`)"
     :data-fork-id="fork.id"
@@ -55,6 +55,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import TreeItem from '../obsidian/TreeItem.vue'
 // The branches hold questions, which hold branches: the two lists draw each other.
 import ChatOutlineTurns from './ChatOutlineTurns.vue'

@@ -1,3 +1,5 @@
+import { t } from '@/i18n'
+import { streamBLabel } from '@/i18n/streamBLabels'
 import { watch, type Ref, type WatchStopHandle } from 'vue'
 import type { AttentionRow } from './attention'
 import {
@@ -161,8 +163,10 @@ export class NodeAttentionWatch {
       const { target } = entry
       const text =
         entry.state === 'online'
-          ? `${entry.unreadable} ${entry.unreadable === 1 ? 'session' : 'sessions'} could not be read`
-          : TEXT[entry.state]
+          ? t('streamBRest.unreadableSessions', {
+              count: entry.unreadable,
+            })
+          : streamBLabel(TEXT[entry.state])
       rows.push({
         key: `node-coverage:${target.id}`,
         reference: {
@@ -172,8 +176,8 @@ export class NodeAttentionWatch {
           sessionId: '',
         },
         title: target.label,
-        agent: 'Node',
-        source: `Node · ${target.label}`,
+        agent: t('streamB.node.e93372'),
+        source: `${t('streamB.node.ebb5f8')} ${target.label}`,
         ...(entry.state === 'offline' ? { offline: true } : {}),
         reasons: [{ kind: 'delivery', id: `node-coverage:${target.id}`, at: 0, text }],
       })

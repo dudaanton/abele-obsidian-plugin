@@ -1,27 +1,34 @@
+import { UiError, uiMessage, uiErrorMessage, presentUiError, uiField } from '@/i18n/streamBErrors'
+
+import { t } from '@/i18n'
 import { computed, ref, shallowRef, watch, type WatchStopHandle } from 'vue'
 import { z } from 'zod'
 import type { FakeStep, Prompt } from '@abele/node-client'
-import type { SessionCommand } from '@abele/node-protocol'
+import {
+  type SessionCommand,
+  PromptSchema,
+  TargetChangedRefusalSchema,
+  validateParams,
+} from '@abele/node-protocol'
 import type { ChatPresentationSession, ChatReference } from '@/ai/ChatPresentationSession'
 import type { ChatDraft, ChatReplyTo } from '@/ai/types'
 import { agentReplyText } from '@/ai/replyLinks'
 import { mobileBackground } from '@/ai/mobileBackground'
 import { reduceTranscript } from './NodeTranscriptReducer'
 import type { NodeConnection } from './NodeService'
-import type { NodeClientState } from './NodeClientStore'
+import { type NodeClientState, readStore } from './NodeClientStore'
 import { nodeQueueView } from './presentation'
 import { promptAnswerStates, type PromptAnswerState } from './promptAnswers'
-import { FrameCodec } from '@abele/channel-protocol'
+import { FrameCodec, type JournalEvent } from '@abele/channel-protocol'
 import { NodeFilesModel, nodeResourceTarget, type CodeLineRange } from './NodeFilesModel'
-import { PromptSchema, TargetChangedRefusalSchema, validateParams } from '@abele/node-protocol'
+
 import type { PathTarget } from './NodePathModel'
 import { wirePathTarget } from './nodePathChat'
 import { nodeProviders, nodeDebuggerSupported } from './providers'
 import { NodeSessionControl } from './NodeSessionControl'
 import { catchUp, openWindow, readOlder, windowAt } from './sessionWindow'
 import { StableMessages } from './stableMessages'
-import { readStore } from './NodeClientStore'
-import type { JournalEvent } from '@abele/channel-protocol'
+
 import {
   chatMovedNotice,
   supportsExpectedTarget,
@@ -44,8 +51,8 @@ const NORMALIZED_ARTIFACT_EVENTS = new Set([
   'pi.tool.result',
 ])
 /** Immutable bytes that cannot be projected; transport/storage failures are retryable. */
-class UnusableArtifactError extends Error {}
-class OfflineTurnError extends Error {}
+class UnusableArtifactError extends UiError {}
+class OfflineTurnError extends UiError {}
 /** The longest an event waits to be shown while others keep arriving. */
 const REFRESH_MS = 50
 /** Events after which a long-lived session's settings, process or context may have changed. */
@@ -177,7 +184,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
     })
     const expected = connection.client.target.expected_node_id
     if (expected && expected !== reference.nodeId)
-      throw new Error('Node tab identity does not match its registration')
+      throw new UiError(uiMessage('streamB.nodeTabIdentityDoesNotMatchIts.8a5f7e'))
     this.stopDraftWatch = watch(
       () => [this.draft.value.text, this.draftNotice.value],
       () => {
@@ -300,7 +307,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
           if (draft && this.draftRevision === draftRevision && this.draftRevision === 0) {
             this.restoringDraft = true
             this.draft.value.text = draft.text
-            this.draftNotice.value = draft.notice
+            uiField(this.draftNotice, 'value', uiErrorMessage(draft.notice))
             this.restoringDraft = false
           }
         }
@@ -359,7 +366,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
             id: entry.operation_id,
             text:
               entry.method === 'review.submit'
-                ? 'Review batch'
+                ? t('streamB.reviewBatch.c6d574')
                 : (entry.params as { text: string }).text,
           }))
       }
@@ -441,30 +448,24 @@ export class NodeChatPresenter implements ChatPresentationSession {
       const online = () =>
         !this.destroyed && this.connection.state.value === 'connected' && client.connected
       if (!online())
-        throw new OfflineTurnError(
-          'Draft not sent because the node is offline. Send again when connected.'
-        )
+        throw new OfflineTurnError(uiMessage('streamB.draftNotSentBecauseTheNodeIs.f195f2'))
       if (this.descriptionRequested && this.nodeDescription.value === undefined) {
         await this.describe()
         if (this.nodeDescription.value === undefined)
-          throw new Error(
-            'The node description is not ready. Nothing was sent. Reconnect before sending again.'
-          )
+          throw new UiError(uiMessage('streamB.theNodeDescriptionIsNotReadyNothing.388d3c'))
       }
       guarded = supportsExpectedTarget(this.nodeDescription.value)
       if (guarded && !expected && binding !== null)
-        throw new Error(
-          'The chat target is not ready. Nothing was sent. Refresh before sending again.'
-        )
+        throw new UiError(uiMessage('streamB.theChatTargetIsNotReadyNothing.125636'))
       if (captured) {
         if (
           captured.nodeId !== this.reference.nodeId ||
           captured.registrationId !== this.reference.registrationId
         )
-          throw new Error('The displayed worktree belongs to another node.')
+          throw new UiError(uiMessage('streamB.theDisplayedWorktreeBelongsToAnotherNode.5d9afd'))
         if (guarded) {
           if (JSON.stringify(expected?.target) !== JSON.stringify(wirePathTarget(captured)))
-            throw new Error(chatMovedNotice)
+            throw new UiError(uiMessage('streamBError.f87df21e8e'))
         } else {
           const actual = await client.nodePath.sessionWorktreeGet({
             session_id: this.reference.sessionId,
@@ -473,9 +474,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
             actual.project_id !== captured.projectId ||
             JSON.stringify(actual.target) !== JSON.stringify(wirePathTarget(captured))
           )
-            throw new Error(
-              'The session worktree changed; review the current target before sending.'
-            )
+            throw new UiError(uiMessage('streamB.theSessionWorktreeChangedReviewTheCurrent.9cd2c5'))
         }
       }
       const observed_seq = await client.cursor(this.reference.sessionId)
@@ -491,9 +490,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
       await client.store.transaction((s) => {
         // The final fence runs under the store lock, not before an asynchronous SDK enqueue.
         if (!online())
-          throw new OfflineTurnError(
-            'Draft not sent because the node is offline. Send again when connected.'
-          )
+          throw new OfflineTurnError(uiMessage('streamB.draftNotSentBecauseTheNodeIs.f195f2'))
         s.operationRequests ??= {}
         s.operationRequests[operation_id] = { method: 'session.send', params }
         s.outbox.push({ operation_id, method: 'session.send', params })
@@ -514,16 +511,17 @@ export class NodeChatPresenter implements ChatPresentationSession {
       const receipt = await client.operationResult(operation_id)
       if (TargetChangedRefusalSchema.safeParse(receipt?.result).success) {
         retain = true
-        this.draftNotice.value = chatMovedNotice
+        uiField(this.draftNotice, 'value', uiMessage('streamBError.f87df21e8e'))
         await this.refreshBinding().catch((error: unknown) => this.report(error))
       } else if (receipt?.error) {
-        this.error.value = `Not accepted: ${receipt.error}`
+        this.error.value = t('streamB.notAccepted.8790d7', { v0: String(receipt.error) })
         retain = true
       }
     } catch (error) {
-      if (error instanceof OfflineTurnError) this.draftNotice.value = error.message
+      if (error instanceof OfflineTurnError)
+        uiField(this.draftNotice, 'value', uiErrorMessage(error))
       else if (error instanceof Error && error.message === chatMovedNotice) {
-        this.draftNotice.value = chatMovedNotice
+        uiField(this.draftNotice, 'value', uiMessage('streamBError.f87df21e8e'))
         await this.refreshBinding().catch((failure: unknown) => this.report(failure))
       } else this.report(error)
       const persisted = operationId
@@ -540,7 +538,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
     } finally {
       if (!retain && this.draft.value.text === submittedDraft) {
         this.draft.value.text = ''
-        this.draftNotice.value = ''
+        uiField(this.draftNotice, 'value', uiErrorMessage(''))
       }
       if (retain) this.persistDraft(this.destroyed)
       await this.draftWrite.catch((error: unknown) => this.report(error))
@@ -554,9 +552,10 @@ export class NodeChatPresenter implements ChatPresentationSession {
     try {
       prompt = PromptSchema.parse(prompt)
       if (prompt.session_id !== this.reference.sessionId)
-        throw new Error('Prompt belongs to another session')
+        throw new UiError(uiMessage('streamB.promptBelongsToAnotherSession.004dde'))
       if (prompt.state !== 'pending') return
-      if (!client.connected) throw new Error('Reconnect before answering a prompt')
+      if (!client.connected)
+        throw new UiError(uiMessage('streamB.reconnectBeforeAnsweringAPrompt.5439ec'))
       const { session_id, prompt_id, run_id, revision, action_digest } = prompt
       const params = validateParams('prompt.answer', {
         session_id,
@@ -581,7 +580,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
         const answers = promptAnswerStates(state, session_id)
         if (answers[prompt_id]) return { queued: false, answers }
         if (state.node_id !== this.reference.nodeId)
-          throw new Error('Node identity does not match this prompt')
+          throw new UiError(uiMessage('streamB.nodeIdentityDoesNotMatchThisPrompt.97ed86'))
         state.outbox.push({ operation_id: operationId, method: 'prompt.answer', params })
         return { queued: true, answers: promptAnswerStates(state, session_id) }
       })
@@ -589,8 +588,12 @@ export class NodeChatPresenter implements ChatPresentationSession {
       if (admission.queued) {
         await client.flush()
         const receipt = await client.operationResult(operationId)
-        if (!receipt) throw new Error('Answer sent; waiting for confirmation')
-        if (receipt.error) throw new Error(`Answer not accepted: ${receipt.error}`)
+        if (!receipt)
+          throw new UiError(uiMessage('streamB.answerSentWaitingForConfirmation.86b29d'))
+        if (receipt.error)
+          throw new UiError(
+            uiMessage('streamB.answerNotAccepted.2eafc0', { v0: String(receipt.error) })
+          )
       }
     } catch (error) {
       this.report(error)
@@ -602,8 +605,9 @@ export class NodeChatPresenter implements ChatPresentationSession {
     try {
       prompt = PromptSchema.parse(prompt)
       if (prompt.session_id !== this.reference.sessionId)
-        throw new Error('Prompt belongs to another session')
-      if (!this.connection.client.connected) throw new Error('Reconnect before stopping a run')
+        throw new UiError(uiMessage('streamB.promptBelongsToAnotherSession.004dde'))
+      if (!this.connection.client.connected)
+        throw new UiError(uiMessage('streamB.reconnectBeforeStoppingARun.5e2dbd'))
       const current = this.projection.value.prompts.find((p) => p.prompt_id === prompt.prompt_id)
       if (!current || current.state !== 'pending' || current.run_id !== prompt.run_id) return
       // session.interrupt atomically denies all pending prompts and interrupts the worker.
@@ -656,7 +660,8 @@ export class NodeChatPresenter implements ChatPresentationSession {
       await this.refresh()
     } catch (error) {
       this.olderState.value = 'failed'
-      this.olderError.value = error instanceof Error ? error.message : 'The node did not answer'
+      this.olderError.value =
+        error instanceof Error ? presentUiError(error) : t('streamB.theNodeDidNotAnswer.e6f94c')
       console.debug('[Abele node] earlier page unavailable', error)
     }
   }
@@ -755,7 +760,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
   openFiles(path?: string, range?: CodeLineRange): void {
     const workspace = this.workspaceId.value
     if (!workspace) {
-      this.error.value = 'This session has no workspace'
+      this.error.value = t('streamB.thisSessionHasNoWorkspace.39ee2a')
       return
     }
     const bindingKey = JSON.stringify(expectedBinding(this.binding.value))
@@ -778,14 +783,14 @@ export class NodeChatPresenter implements ChatPresentationSession {
           expected:
             expectedBinding(this.binding.value) ?? (this.binding.value === null ? null : undefined),
           onMoved: async () => {
-            this.draftNotice.value = chatMovedNotice
+            uiField(this.draftNotice, 'value', uiMessage('streamBError.f87df21e8e'))
             await this.refreshBinding()
           },
         }
       )
     }
     if (this.filesOpener) this.filesOpener(this.filesModel, path, range)
-    else this.error.value = 'Open this session in the chat to browse its files'
+    else this.error.value = t('streamB.openThisSessionInTheChatTo.43bbc8')
   }
 
   async artifact(artifactId: string): Promise<string> {
@@ -813,10 +818,10 @@ export class NodeChatPresenter implements ChatPresentationSession {
     try {
       payload = JSON.parse(text)
     } catch {
-      throw new UnusableArtifactError('Invalid normalized artifact JSON')
+      throw new UnusableArtifactError(uiMessage('streamB.invalidNormalizedArtifactJson.e7d91a'))
     }
     if (!payload || typeof payload !== 'object' || Array.isArray(payload))
-      throw new UnusableArtifactError('Invalid normalized artifact')
+      throw new UnusableArtifactError(uiMessage('streamB.invalidNormalizedArtifact.035180'))
     const data = payload as Record<string, unknown>
     await this.connection.client.store.transaction((raw) => {
       ;((raw as NodeClientState).artifactData ??= {})[id] = data
@@ -842,19 +847,19 @@ export class NodeChatPresenter implements ChatPresentationSession {
         result.total > 1024 * 1024 ||
         typeof result.base64 !== 'string'
       )
-        throw new UnusableArtifactError('Invalid node artifact')
+        throw new UnusableArtifactError(uiMessage('streamB.invalidNodeArtifact.2e5eda'))
       let bytes: Uint8Array
       try {
         bytes = Uint8Array.from(atob(result.base64), (char) => char.charCodeAt(0))
       } catch {
-        throw new UnusableArtifactError('Invalid artifact encoding')
+        throw new UnusableArtifactError(uiMessage('streamB.invalidArtifactEncoding.f399e3'))
       }
       if (
         bytes.length > 128 * 1024 ||
         offset + bytes.length > result.total ||
         (!bytes.length && offset < result.total)
       )
-        throw new UnusableArtifactError('Incomplete node artifact')
+        throw new UnusableArtifactError(uiMessage('streamB.incompleteNodeArtifact.895d5f'))
       parts.push(bytes)
       offset += bytes.length
       if (offset >= result.total) break
@@ -868,13 +873,14 @@ export class NodeChatPresenter implements ChatPresentationSession {
     try {
       return new TextDecoder('utf-8', { fatal: true }).decode(all)
     } catch {
-      throw new UnusableArtifactError('Invalid artifact encoding')
+      throw new UnusableArtifactError(uiMessage('streamB.invalidArtifactEncoding.f399e3'))
     }
   }
 
   private report(error: unknown): void {
     if (!this.destroyed)
-      this.error.value = error instanceof Error ? error.message : 'Node request failed'
+      this.error.value =
+        error instanceof Error ? presentUiError(error) : t('streamB.nodeRequestFailed.3ded00')
   }
   destroy(): void {
     this.destroyed = true

@@ -1,3 +1,4 @@
+import { presentUiError } from '@/i18n/streamBErrors'
 import { ref, shallowRef, onScopeDispose, getCurrentScope, type Ref, type ShallowRef } from 'vue'
 
 export interface Loaded<T> {
@@ -28,7 +29,7 @@ export function useLoad<T>(fetch: () => Promise<T>): Loaded<T> {
     } catch (e) {
       if (mine !== generation) return
       console.debug('[Abele] GitHub request failed', e)
-      error.value = e instanceof Error ? e.message : String(e)
+      error.value = presentUiError(e)
     } finally {
       if (mine === generation) loading.value = false
     }

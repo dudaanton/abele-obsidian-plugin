@@ -1,4 +1,5 @@
 import { isNativeForge, nativeLabel } from '@/forge/native'
+import { t } from '@/i18n'
 /**
  * A tab showing one GitHub item: an issue, a pull request, a discussion, a commit or a file.
  *
@@ -19,7 +20,7 @@ import { mountKit, type KitMount } from '@/components/obsidian/mount'
 import { secrets } from '@/secrets/SecretStore'
 import { readConnectionItem } from './connectionRead'
 import { GithubError } from './client'
-import type { GithubTarget } from './urls'
+import { type GithubTarget, shortName, targetKey } from './urls'
 import {
   githubTabTarget,
   savedGithubTarget,
@@ -34,7 +35,7 @@ import { isGithubConnection, connectionUnavailableReason } from './connections'
 import { clientForTab, tabAccessSnapshot, nativeSourceForTab } from './tabConnectionAccess'
 import GithubItem from '@/components/github/GithubItem.vue'
 import NodeRepositoryItem from '@/components/NodeRepositoryItem.vue'
-import { shortName, targetKey } from './urls'
+
 import type { GithubViewModel } from './model'
 import type { PinnedLoad } from './loadItem'
 import { chatSubject, emptyScreen } from './screen'
@@ -81,7 +82,7 @@ export class GithubView extends ItemView {
     return this.model.target
       ? shortName(this.model.target)
       : this.model.sourceTarget?.provider === 'node'
-        ? 'Repository'
+        ? t('streamB.repository.13d6ff')
         : 'GitHub'
   }
 
@@ -150,7 +151,7 @@ export class GithubView extends ItemView {
       this.model.url = ''
       this.model.connectionId = undefined
       Object.assign(this.model.screen, emptyScreen())
-      this.model.screen.error = 'The saved repository source target is invalid.'
+      this.model.screen.error = t('streamB.theSavedRepositorySourceTargetIsInvalid.800aa1')
       this.title = ''
       this.refreshHeader()
       await super.setState(state, result)
@@ -209,9 +210,7 @@ export class GithubView extends ItemView {
         this.model.sourceTarget = saved ?? undefined
         this.model.connectionId = connectionId
         this.model.connectionIntent = 'manual'
-        this.unavailableConnection(
-          'The saved Forgejo connection was removed or changed. Choose a connection for this server.'
-        )
+        this.unavailableConnection(t('streamB.theSavedForgejoConnectionWasRemovedOr.16449b'))
         await super.setState(state, result)
         return
       }
@@ -233,8 +232,9 @@ export class GithubView extends ItemView {
       this.model.connectionNotice = ''
       if (connectionId && !exists) {
         connectionId = undefined
-        this.model.connectionNotice =
-          'The saved connection was removed. Selected another connection using the link rules.'
+        this.model.connectionNotice = t(
+          'streamB.theSavedConnectionWasRemovedSelectedAnother.bcec78'
+        )
       }
       if (target) {
         const chosen = resolveConnectionCandidates(target, {
@@ -284,7 +284,7 @@ export class GithubView extends ItemView {
     ;(this as unknown as { titleEl?: HTMLElement }).titleEl?.setText(this.getDisplayText())
   }
 
-  /** Whether "Chat about this" has something to open a chat about: the item has loaded. */
+  /** Whether t('streamB.chatAboutThis.b6a19c') has something to open a chat about: the item has loaded. */
   canChatAbout(): boolean {
     return !!this.model.screen.link && !!AbeleConfig.getInstance().ai?.enabled
   }
@@ -309,7 +309,10 @@ export class GithubView extends ItemView {
       menu.addItem((item) =>
         item
           .setTitle(
-            `Open as ${connection.name}${connection.account ? ` · ${connection.account.login}` : ''}`
+            t('streamB.openAs.df90f7', {
+              v0: String(connection.name),
+              v1: String(connection.account ? ` · ${connection.account.login}` : ''),
+            })
           )
           .setIcon('user-round')
           .setChecked(connection.id === this.model.connectionId)
@@ -330,7 +333,9 @@ export class GithubView extends ItemView {
     if (current)
       menu.addItem((item) =>
         item
-          .setTitle(`Always use ${current.name} for ${target.owner}`)
+          .setTitle(
+            t('streamB.alwaysUseFor.f1758d', { v0: String(current.name), v1: String(target.owner) })
+          )
           .setChecked(current.owners.some((o) => o.toLowerCase() === target.owner.toLowerCase()))
           .onClick(async () => {
             const settings = githubSettings(),
@@ -357,32 +362,39 @@ export class GithubView extends ItemView {
     this.accountMenu(menu)
     menu.addItem((item) =>
       item
-        .setTitle('Open another GitHub item…')
+        .setTitle(t('streamB.openAnotherGithubItem.f3d512'))
         .setIcon('github')
         .setSection('open')
         .onClick(() => new OpenPicker(this.app).open())
     )
     menu.addItem((item) =>
       item
-        .setTitle('Open GitHub repository…')
+        .setTitle(t('streamB.openGithubRepository.6e2381'))
         .setIcon('book-marked')
         .setSection('open')
         .onClick(() => new RepoPicker(this.app).open())
     )
     menu.addItem((item) =>
       item
-        .setTitle('GitHub notifications')
+        .setTitle(t('streamB.githubNotifications.e44213'))
         .setIcon('bell')
         .setSection('open')
         .onClick(() => void revealSidebarView(this.app, GITHUB_NOTIFICATIONS_VIEW_TYPE))
     )
-    const t = this.model.target
-    if (t) {
-      const repo = { host: t.host, origin: t.origin, owner: t.owner, repo: t.repo }
+    const translationItem = this.model.target
+    if (translationItem) {
+      const repo = {
+        host: translationItem.host,
+        origin: translationItem.origin,
+        owner: translationItem.owner,
+        repo: translationItem.repo,
+      }
       const pinned = isPinned(repo)
       menu.addItem((item) =>
         item
-          .setTitle(pinned ? 'Unpin repository' : 'Pin repository')
+          .setTitle(
+            pinned ? t('streamB.unpinRepository.c0e68f') : t('streamB.pinRepository.b4007a')
+          )
           .setIcon(pinned ? 'pin-off' : 'pin')
           .setSection('open')
           .onClick(() => void setPinned(repo, !pinned))
@@ -391,7 +403,7 @@ export class GithubView extends ItemView {
     if (!this.canChatAbout()) return
     menu.addItem((item) =>
       item
-        .setTitle('Chat about this')
+        .setTitle(t('streamB.chatAboutThis.b6a19c'))
         .setIcon('message-square-plus')
         .setSection('action')
         .onClick(() => this.chatAbout())
@@ -439,10 +451,10 @@ export class GithubView extends ItemView {
               !sameConnectionServer(row, this.model.target)
             ) {
               this.unavailableConnection(
-                'The Forgejo connection was removed or changed. Choose a connection for this server.'
+                t('streamB.theForgejoConnectionWasRemovedOrChanged.b37637')
               )
               return h(EmptyState, {
-                text: 'The Forgejo connection was removed or changed. Choose a connection for this server.',
+                text: t('streamB.theForgejoConnectionWasRemovedOrChanged.b37637'),
               })
             }
             const source = nativeSourceForTab(
@@ -497,8 +509,9 @@ export class GithubView extends ItemView {
           if (id && !row && this.model.target) {
             const chosen = resolveConnectionCandidates(this.model.target)[0]
             this.model.connectionId = chosen?.id || undefined
-            this.model.connectionNotice =
-              'The connection was removed; selected another using the link rules.'
+            this.model.connectionNotice = t(
+              'streamB.theConnectionWasRemovedSelectedAnotherUsing.237314'
+            )
             Object.assign(this.model.screen, emptyScreen())
           }
           const rawClient = this.model.connectionId
@@ -531,7 +544,7 @@ export class GithubView extends ItemView {
             accountName: (githubSettings().connections ?? []).some(isGithubConnection)
               ? row
                 ? `${row.name}${row.account ? ` · ${row.account.login}` : ''}`
-                : 'Anonymous'
+                : t('streamB.anonymous.e7a8aa')
               : undefined,
             onChooseAccount: () => {
               const menu = new Menu()
@@ -555,7 +568,7 @@ export class GithubView extends ItemView {
                     startedUrl = this.model.url
                   const result = await readConnectionItem(this.model, target, retry, pinned)
                   if (this.model.connectionId !== startedId || this.model.url !== startedUrl)
-                    throw new GithubError('other', 'The tab changed while loading.')
+                    throw new GithubError('other', t('streamB.theTabChangedWhileLoading.263cd5'))
                   promote(result.shown)
                   if (result.notice) this.model.connectionNotice = result.notice
                   this.model.connectionId = result.connectionId || undefined

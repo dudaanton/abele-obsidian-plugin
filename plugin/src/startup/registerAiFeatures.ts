@@ -1,5 +1,13 @@
 import { t } from '@/i18n'
-import { type Editor, MarkdownView, Notice, TFile, TFolder, type TAbstractFile } from 'obsidian'
+import {
+  type Editor,
+  MarkdownView,
+  Notice,
+  TFile,
+  TFolder,
+  type TAbstractFile,
+  type Plugin,
+} from 'obsidian'
 import { watch } from 'vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { commentHereInView } from '@/commands/commentCommands'
@@ -25,7 +33,6 @@ import { openQuickMenu } from '@/quickButton/open'
 import { HeaderCommands } from '@/headerButtons/viewActions'
 import { moveFooterFolds } from '@/composables/useFooterFold'
 import { moveFooterView } from '@/composables/useFooterView'
-import type { Plugin } from 'obsidian'
 
 interface AiFeatureHost extends Plugin {
   activateView(viewType: string): Promise<void>
@@ -130,7 +137,7 @@ export function registerAiFeatures(
 
       menu.addItem((item) => {
         item
-          .setTitle('Ask here')
+          .setTitle(t('streamB.askHere.7b4ec4'))
           .setIcon('message-circle-plus')
           .onClick(() => {
             void commentHereInView(view)
@@ -164,9 +171,7 @@ export function registerAiFeatures(
       ])
         .then(() => followChatBindingRename(oldPath, file.path))
         .catch((error) => {
-          new Notice(
-            'Could not follow a card rename in chat links. Reopen the source before changing links.'
-          )
+          new Notice(t('streamB.couldNotFollowACardRenameIn.37cba1'))
           console.error('[Abele] Card link rename failed', error)
         })
     })

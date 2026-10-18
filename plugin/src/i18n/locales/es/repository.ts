@@ -1,0 +1,15 @@
+export const repository = {
+  'repository.find': 'Buscar en esta pestaña',
+  'repository.case': 'Distinguir mayúsculas y minúsculas',
+  'repository.check': 'Qué comprobar',
+  'repository.askAgain': 'Volver a consultar GitHub',
+  'repository.base': 'Base: {ref} · {sha}',
+  'repository.target': 'Destino: {sha}',
+  'repository.changeBase': 'Cambiar base',
+  'repository.chooseBase': 'Elegir otra base fija de comparación',
+  'repository.unpin': 'Desanclar',
+  'repository.restoreViews': 'Restaurar las vistas originales de los archivos del repositorio',
+  'repository.showComparison': 'Mostrar comparación',
+  'repository.originalFile': 'Archivo original',
+  'repository.switchTab': 'Cambiar solo esta pestaña, manteniendo la base del repositorio',
+} as const

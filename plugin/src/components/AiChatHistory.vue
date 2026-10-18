@@ -1,5 +1,5 @@
 <template>
-  <ObsidianModal title="Chat history" size="tall" @close="emit('close')">
+  <ObsidianModal :title="t('streamB.chatHistory.05a05a')" size="tall" @close="emit('close')">
     <!-- Every chat had, by day, newest first. Obsidian's own search field on top, and beside it
          as glyphs, the way its search pane has them: searching the messages too, and the order. -->
     <div class="abele-chat-history" @keydown.down="intoList">
@@ -8,22 +8,30 @@
           ref="searchRef"
           v-model="query"
           class="abele-chat-history__search abele-chat-history__field"
-          :placeholder="contentSearch ? 'Search titles and messages…' : 'Search titles…'"
-          label="Search chats"
+          :placeholder="
+            contentSearch
+              ? t('streamB.searchTitlesAndMessages.d2c785')
+              : t('streamB.searchTitles.72dd0f')
+          "
+          :label="t('streamB.searchChats.02a39c')"
           input-class="abele-chat-history__search"
         />
         <Icon
           icon="text-search"
           class="abele-chat-history__content"
           :active="contentSearch"
-          :label="contentSearch ? 'Searching messages too' : 'Search in messages too'"
+          :label="
+            contentSearch
+              ? t('streamB.searchingMessagesToo.4127c2')
+              : t('streamB.searchInMessagesToo.508f7c')
+          "
           @click="setContentSearch(!contentSearch)"
         />
         <Icon
           icon="arrow-down-wide-narrow"
           class="abele-chat-history__order"
           aria-haspopup="menu"
-          :label="`Sorted by ${orderLabel.toLowerCase()}`"
+          :label="t('streamB.sortedBy.def07f', { v0: String(orderLabel.toLowerCase()) })"
           @click="orderMenu"
         />
       </div>
@@ -31,10 +39,12 @@
       <!-- The first search in the messages reads every chat once: a quiet line while it does. -->
       <div v-if="reading" class="abele-chat-history__status" aria-live="polite">
         <Icon icon="loader" size="xs" :interactive="false" class="abele-chat-history__spinner" />
-        <span>Reading chats</span>
+        <span>{{ t('streamB.readingChats.e3a5c7') }}</span>
         <MetaLine
           class="abele-chat-history__progress"
-          :aria-label="`${reading.done} of ${reading.total}`"
+          :aria-label="
+            t('streamB.of.ef59ff', { v0: String(reading.done), v1: String(reading.total) })
+          "
           :facts="[{ key: '0', value: `${reading.done}/${reading.total}` }]"
         />
       </div>
@@ -43,16 +53,16 @@
         v-if="filtered.length === 0 && !reading && allChats.length === 0"
         class="abele-chat-history__empty"
         icon="history"
-        text="No chats yet"
+        :text="t('streamB.noChatsYet.269208')"
       />
       <EmptyState
         v-else-if="filtered.length === 0 && !reading"
         class="abele-chat-history__empty"
         variant="no-matches"
-        text="No matches"
+        :text="t('streamB.noMatches.2df01a')"
       >
         <template v-if="!contentSearch" #action>
-          <Button text="Search in messages" @click="setContentSearch(true)" />
+          <Button :text="t('streamB.searchInMessages.b463e2')" @click="setContentSearch(true)" />
         </template>
       </EmptyState>
 
@@ -75,8 +85,8 @@
                 :tone="tabState(chat.path) === 'waiting' ? 'orange' : 'accent'"
                 :label="
                   tabState(chat.path) === 'waiting'
-                    ? 'Open in a tab, waiting for you'
-                    : 'Open in a tab'
+                    ? t('streamB.openInATabWaitingForYou.0240d8')
+                    : t('streamB.openInATab.6f3a85')
                 "
               />
             </template>
@@ -93,7 +103,7 @@
               <Icon
                 class="abele-chat-history__delete"
                 icon="trash"
-                tooltip="Delete chat"
+                :tooltip="t('streamB.deleteChat.93291d')"
                 @click="remove(chat.path)"
               />
             </template>
@@ -106,6 +116,8 @@
 </template>
 
 <script setup lang="ts">
+import { streamBCount } from '@/i18n/streamBCounts'
+import { t } from '@/i18n'
 import {
   ref,
   computed,
@@ -122,7 +134,7 @@ import Card from './obsidian/Card.vue'
 import Icon from './obsidian/Icon.vue'
 import Button from './obsidian/Button.vue'
 import Search from './obsidian/Search.vue'
-import { formatTimestamp } from '@/helpers/displayFormat'
+import { streamBTime as formatTimestamp } from '@/i18n/streamBDate'
 import EmptyState from './obsidian/EmptyState.vue'
 import MetaLine from './obsidian/MetaLine.vue'
 import StatusDot from './obsidian/StatusDot.vue'
@@ -336,11 +348,11 @@ onBeforeUnmount(() => {
 const metaOf = (chat: AiChatHistoryEntry): string[] => {
   const hit = hits.value.get(chat.path)
   if (!hit) return [formatDate(chat)]
-  const matches = hit.count === 1 ? '1 match' : `${hit.count} matches`
+  const matches = streamBCount(hit.count, 'match')
   // The message found may be from another day than the one the chat stands under.
   const sameDay = dayjs(hit.timestamp).format(DATE_FORMAT) === dayOf(chat)
   const at = formatTimestamp(hit.timestamp, { mode: 'absolute' })
-  return [matches, sameDay && at.datetime ? at.exact.split(', ')[1] : at.exact]
+  return [matches, sameDay && at.datetime ? at.clock : at.exact]
 }
 
 const { visible, hasMore, sentinel } = usePagedList(() => filtered.value, PAGE_SIZE)
@@ -393,7 +405,7 @@ onBeforeUnmount(() => {
 const formatDate = (chat: AiChatHistoryEntry) => {
   const at = dateOf(chat)
   const time = formatTimestamp(at ?? chat.created, { mode: 'absolute' })
-  return time.datetime ? time.exact.split(', ')[1] : time.label
+  return time.datetime ? time.clock : time.label
 }
 
 const select = (path: string) => {
@@ -410,8 +422,8 @@ const remove = async (path: string) => {
   const { app } = GlobalStore.getInstance()
   if (
     !(await confirmDialog({
-      title: 'Delete chat',
-      message: 'Delete this chat and its comments? This cannot be undone.',
+      title: t('streamB.deleteChat.93291d'),
+      message: t('streamB.deleteThisChatAndItsCommentsThis.0cb2ce'),
     }))
   )
     return

@@ -1,3 +1,4 @@
+import { uiField, uiMessage, uiErrorMessage } from '@/i18n/streamBErrors'
 import { ref, type Ref } from 'vue'
 import { AgentsService } from '@/agents/AgentsService'
 import { NodeClient } from '@abele/node-client'
@@ -79,7 +80,7 @@ export class NodeConnection {
           return
         }
         this.delegation.connectionChanged()
-        this.error.value = ''
+        uiField(this.error, 'value', uiErrorMessage(''))
         this.state.value = 'connected'
         console.debug('[Abele node] connected')
       })
@@ -113,8 +114,7 @@ export class NodeConnection {
           }
           await this.client.flush()
           this.state.value = 'connected'
-          this.error.value =
-            'A saved node stream is no longer authorized; retained child transcripts can still be opened.'
+          uiField(this.error, 'value', uiMessage('streamBError.64d6fbbc80'))
           return
         }
         console.debug('[Abele node] connect failed', {
@@ -122,7 +122,11 @@ export class NodeConnection {
         })
         if (generation === this.generation) {
           this.state.value = 'offline'
-          this.error.value = error instanceof Error ? error.message : 'Connection failed'
+          uiField(
+            this.error,
+            'value',
+            error instanceof Error ? uiErrorMessage(error) : uiMessage('streamBError.596c52f1eb')
+          )
         }
         throw error
       })
@@ -144,7 +148,7 @@ export class NodeConnection {
     ++this.generation
     window.clearTimeout(this.timer)
     this.state.value = 'offline'
-    this.error.value = ''
+    uiField(this.error, 'value', uiErrorMessage(''))
     const old = this.connecting
     await old?.catch(() => {})
     console.debug('[Abele node] disconnect: authorization refresh')

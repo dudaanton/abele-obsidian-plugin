@@ -1,3 +1,4 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import { nanoid } from 'nanoid'
 import { TFile } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -11,7 +12,7 @@ import type {
 } from '@/selection/bindings'
 import type { ChatSelectionSnapshot, ChatRevision } from '@/selection/types'
 import { sameRevision } from '@/selection/revisionMapping'
-import { ensureCapturedAnchor } from './chatAnchorStore'
+import { ensureCapturedAnchor, prepareSelectionRevision } from './chatAnchorStore'
 import { prepareChatBindingEdit, renameBoundMessage } from './chatBindingEdits'
 import { replyMarkdownText } from './replyMarkdown'
 import { BindingWriteFailure } from './chatBindingWrite'
@@ -19,7 +20,7 @@ import type { ChatSession } from './ChatSession'
 import type { ChatMessage } from './types'
 import { ChatStorage } from './ChatStorage'
 import { bindingProof, transferBindingOwnership } from './chatBindingProof'
-import { prepareSelectionRevision } from './chatAnchorStore'
+
 import type { ReplyTextRenderer } from './replyPassage'
 
 const key = (entry: SelectionBindingRecovery) => entry.id ?? entry.operation?.id ?? ''
@@ -63,7 +64,7 @@ export class ChatSelectionBindings {
       app.vault.getAbstractFileByPath(targetPath) ??
       app.vault.getAbstractFileByPath(`${targetPath}.md`)
     if (!(target instanceof TFile) || target.extension !== 'md')
-      throw new Error(`No card at ${targetPath}. Nothing was linked.`)
+      throw new UiError(uiMessage('streamBError.ae22638387', { v0: String(targetPath) }))
     const existing = this.session.bindingState().recovery.find((entry) => {
       const captured = entry.snapshot?.source ?? entry.operation?.captured
       return (
@@ -105,7 +106,7 @@ export class ChatSelectionBindings {
 
   async retry(operationId: string): Promise<SelectionBindingResult> {
     const entry = this.session.bindingState().recovery.find((e) => key(e) === operationId)
-    if (!entry) throw new Error('This binding recovery is unavailable.')
+    if (!entry) throw new UiError(uiMessage('streamBError.c64a25b1e7'))
     const evidence = this.session
       .bindingState()
       .messages.some((m) =>
@@ -131,16 +132,14 @@ export class ChatSelectionBindings {
     try {
       signal?.throwIfAborted()
       if (!entry.snapshot || !entry.anchorId)
-        throw new Error('This older recovery lacks a captured selection. Select the source again.')
+        throw new UiError(uiMessage('streamBError.b4c33a7187'))
       const index = await ChatStorage.getInstance().selectionIdentityIndex()
       const paths = index.filter((item) => item.chatId === entry.snapshot!.source.chatId)
       if (paths.length !== 1 || paths[0].path !== this.session.currentChatFile.value?.path)
-        throw new Error(
-          'The conversation identity is missing or duplicated. Choose and reopen the source before linking.'
-        )
+        throw new UiError(uiMessage('streamBError.5294b23ea9'))
       const target = GlobalStore.getInstance().app.vault.getAbstractFileByPath(entry.targetPath)
       if (!(target instanceof TFile))
-        throw new Error(`The card at ${entry.targetPath} is unavailable. Nothing was linked.`)
+        throw new UiError(uiMessage('streamBError.937df32b6e', { v0: String(entry.targetPath) }))
       // Persist uncertainty BEFORE publication. A crash at any later point is never permission to retry blindly.
       entry = {
         ...entry,
@@ -156,7 +155,7 @@ export class ChatSelectionBindings {
         const snapshot = entry.snapshot!
         const message = state.messages.find((m) => m.id === snapshot.source.messageId)
         if (!message || message.draft || message.role !== snapshot.source.role)
-          throw new Error('The saved source message is unavailable.')
+          throw new UiError(uiMessage('streamBError.1bf6bcdd28'))
         const existing = message.decorationOperations?.find((op) => op.id === operationId)
         if (existing) {
           entry = {
@@ -172,11 +171,11 @@ export class ChatSelectionBindings {
         }
         ensureCapturedAnchor(message, snapshot.source.chatId, snapshot, () => entry.anchorId!)
         if (!message.selection?.anchors.some((a) => a.id === entry.anchorId))
-          throw new Error('The durable source anchor is unavailable.')
+          throw new UiError(uiMessage('streamBError.fbbba2cf78'))
         if (
           message.decorationOperations?.some((op) => op.anchorId === entry.anchorId && !op.undoneAt)
         )
-          throw new Error('This selection already has a card link.')
+          throw new UiError(uiMessage('streamBError.265ca86a61'))
         const patch = await prepareChatBindingEdit(
           message.content,
           snapshot.text,
@@ -190,7 +189,7 @@ export class ChatSelectionBindings {
           message.selection.versions.find((v) => sameRevision(v.reference, snapshot.source))
             ?.projection.text
         )
-          throw new Error('The source renderer changed. Select the source again.')
+          throw new UiError(uiMessage('streamBError.633d52e3cb'))
         signal?.throwIfAborted()
         const resulting = { ...snapshot.source, revisionId: nanoid() }
         const operation: SelectionBindingOperation = {
@@ -261,8 +260,7 @@ export class ChatSelectionBindings {
       nextId: nanoid,
       project: () => ({ version: message.selection!.versions[0].projection.version, text }),
     })
-    if (prior.projection.text !== text)
-      throw new Error('Cannot prove annotation placement on this source revision.')
+    if (prior.projection.text !== text) throw new UiError(uiMessage('streamBError.65a4ef0134'))
     const reference = { ...prior.reference, revisionId }
     const version: ChatRevision = { reference, content, projection: prior.projection }
     return {
@@ -325,7 +323,7 @@ export class ChatSelectionBindings {
       )
       const operation = message?.decorationOperations?.find((op) => op.id === operationId)
       if (!message || !operation || operation.undoneAt)
-        throw new Error('This link cannot be removed with its recorded inverse.')
+        throw new UiError(uiMessage('streamBError.b82437d2ea'))
       const proof = bindingProof(message, operation)
       const content = undoBindingEdit(message.content, proof.content, proof.patch)
       const projected = await this.render(content)

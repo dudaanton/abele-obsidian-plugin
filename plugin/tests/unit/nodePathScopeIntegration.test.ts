@@ -1,4 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { catalogs as testCatalogs } from '@/i18n/catalogs'
+import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest'
+import { initializeLocale } from '@/i18n'
 import { ref } from 'vue'
 import {
   chooseNodePathChat,
@@ -20,6 +22,10 @@ const f = vi.hoisted(() => ({
     send: vi.fn(),
   },
 }))
+afterEach(() => {
+  initializeLocale('en', testCatalogs['en' as keyof typeof testCatalogs])
+  f.picker = undefined
+})
 vi.mock('@/components/nodeWork/NodeSuggestModal', () => ({
   NodeSuggestModal: class {
     constructor(
@@ -88,6 +94,21 @@ describe('node row scope integration', () => {
     )
     expect(f.switch).toHaveBeenCalledWith(f.node.id)
     expect(f.node.send).not.toHaveBeenCalled()
+  })
+  it('translates chat picker kind tooltips while keeping its selected identity', async () => {
+    initializeLocale('ru', testCatalogs['ru' as keyof typeof testCatalogs])
+    const first = { id: 'sample-first', chatTitle: ref('Sample first') }
+    const second = { id: 'sample-second', chatTitle: ref('Sample second') }
+    f.sessions = [first, second]
+    f.picker = undefined
+    const pending = chooseNodePathChat((session) =>
+      session.id === first.id ? 'sample-folder' : undefined
+    )
+    await vi.waitFor(() => expect(f.picker).toBeDefined())
+    expect(f.items[0].kind).toBe('Уже есть доступ к sample-folder')
+    expect(f.items[1].kind).toBe('Чат Obsidian')
+    f.picker.choose({ id: second.id })
+    expect(await pending).toBe(second)
   })
   it('retains the explicit chosen chat when the native prompt closes before delivering its choice', async () => {
     const session = { id: 'sample-chat', chatTitle: ref('Sample chat') }

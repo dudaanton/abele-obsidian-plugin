@@ -22,10 +22,10 @@
       <span v-if="comment.location" class="abele-github-comment__location">{{
         comment.location
       }}</span>
-      <Badge v-if="comment.badge === 'Answer'" text="Answer" accent />
+      <Badge v-if="comment.badge === 'Answer'" :text="t('streamB.answer.b2a3aa')" accent />
       <span v-else-if="comment.badge" class="abele-github-comment__state">
-        <StatusDot :tone="reviewTone(comment.badge)" :label="comment.badge" />
-        <span class="abele-github-comment__state-word">{{ comment.badge }}</span>
+        <StatusDot :tone="reviewTone(comment.badge)" :label="streamBLabel(comment.badge)" />
+        <span class="abele-github-comment__state-word">{{ streamBLabel(comment.badge) }}</span>
       </span>
       <GithubLinkActions
         v-if="linker && link"
@@ -42,19 +42,20 @@
       :repo="repo"
       as-document
     />
-    <EmptyState v-else-if="!comment.badge" text="No text." />
+    <EmptyState v-else-if="!comment.badge" :text="t('streamB.noText.70b2f0')" />
 
     <div v-if="comment.replies?.length" class="abele-github-comment__replies">
       <GithubComment v-for="r in comment.replies" :key="r.id" :comment="r" :target="target" reply />
       <div v-if="comment.moreReplies" class="abele-github-comment__more">
-        {{ comment.moreReplies }} more {{ comment.moreReplies === 1 ? 'reply' : 'replies' }} on
-        GitHub.
+        {{ t('streamBCount.moreReplies', { count: comment.moreReplies }) }}
       </div>
     </div>
   </article>
 </template>
 
 <script setup lang="ts">
+import { streamBLabel } from '@/i18n/streamBLabels'
+import { t } from '@/i18n'
 import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue'
 import Badge from '../obsidian/Badge.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
@@ -86,8 +87,9 @@ const props = withDefaults(
 
 /** A review's state as a colour: approved green, changes asked red, the rest quiet. */
 function reviewTone(state: string): 'green' | 'red' | 'faint' {
-  if (state === 'Approved') return 'green'
-  if (state === 'Changes requested') return 'red'
+  const code = state.toLowerCase().replace(/_/g, ' ')
+  if (code === 'approved') return 'green'
+  if (code === 'changes requested' || code === 'request changes') return 'red'
   return 'faint'
 }
 
@@ -122,10 +124,10 @@ const what = computed(() => {
   const anchor = props.comment.anchor ?? ''
   if (props.body) {
     const kind = linker?.item()?.kind
-    return kind === 'pull' ? 'pull request' : (kind ?? 'item')
+    return kind === 'pull' ? t('streamB.pullRequest.763fae') : (kind ?? 'item')
   }
   if (anchor.startsWith('pullrequestreview-')) return 'review'
-  if (anchor.startsWith('discussion_r')) return 'review comment'
+  if (anchor.startsWith('discussion_r')) return t('streamB.reviewComment.5b3ba3')
   return props.reply ? 'reply' : 'comment'
 })
 

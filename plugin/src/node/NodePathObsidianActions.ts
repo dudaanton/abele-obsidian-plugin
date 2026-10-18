@@ -1,3 +1,7 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
+import { presentUiError } from '@/i18n/streamBErrors'
+import { streamBAgo as ago } from '@/i18n/streamBDate'
+import { t } from '@/i18n'
 import { h, shallowRef } from 'vue'
 import { Notice } from 'obsidian'
 import type { ChatSession } from '@/ai/ChatSession'
@@ -42,15 +46,7 @@ function lastQuestion(session: ChatSession): string {
   return words.length > 60 ? `${words.slice(0, 59).trimEnd()}…` : words
 }
 /** How long ago, in the fewest words: «5 min ago», «3 h ago», «2 days ago». */
-function ago(at: number, now = Date.now()): string {
-  const min = Math.round((now - at) / 60_000)
-  if (min < 1) return 'just now'
-  if (min < 60) return `${min} min ago`
-  const h = Math.round(min / 60)
-  if (h < 24) return `${h} h ago`
-  const d = Math.round(h / 24)
-  return d === 1 ? 'yesterday' : `${d} days ago`
-}
+
 const lastTime = (session: ChatSession) =>
   Math.max(0, ...(session.messages?.value ?? []).map((m) => m.timestamp ?? 0))
 
@@ -97,7 +93,7 @@ export async function chooseNodePathChat(
           id: node.id,
           title: node.label.value,
           icon: 'messages-square',
-          kind: 'Node chat',
+          kind: t('streamB.reapply.5ae0dc4e40'),
           current: service.activeTabId?.value === node.id,
         })),
         ...sessions.map((session) => {
@@ -105,29 +101,31 @@ export async function chooseNodePathChat(
           const already = has?.(session)
           return {
             id: session.id,
-            title: session.chatTitle.value || 'Chat',
+            title: session.chatTitle.value || t('streamB.chat.460b3a'),
             icon: already ? 'folder-check' : 'messages-square',
-            kind: already ? `Already has access to ${already}` : 'Obsidian chat',
+            kind: already
+              ? t('streamB.pickerAlreadyHasAccess', { place: already })
+              : t('streamB.pickerObsidianChat'),
             current: session === open,
             note: [
-              session === open ? 'Open now' : '',
+              session === open ? t('streamB.openNow.14b67e') : '',
               session.agent?.value?.name ?? '',
               when ? ago(when) : '',
               // A chat nothing was asked in yet says so, rather than standing there unnamed.
-              lastQuestion(session) || 'no questions yet',
+              lastQuestion(session) || t('streamB.noQuestionsYet.d88156'),
             ]
               .filter(Boolean)
               .join(' · '),
           }
         }),
       ],
-      'Which chat gets access',
+      t('streamB.whichChatGetsAccess.dfde18'),
       (item) =>
         resolve(
           nodes.find((node) => node.id === item.id) ??
             sessions.find((session) => session.id === item.id)
         ),
-      'Open an Obsidian chat first'
+      t('streamB.openAnObsidianChatFirst.a28781')
     ).open()
   })
 }
@@ -152,39 +150,50 @@ export function createNodePathObsidianActions(): NodePathOwnerActions {
         accessCovers(reach(s), stored) ? where : undefined
       )
       if (!session) return
-      const chat = session.chatTitle.value || 'Chat'
+      const chat = session.chatTitle.value || t('streamB.chat.460b3a')
       const had = reach(session).find((e) => accessCovers([e], stored))
       const access = shallowRef<'read' | 'edit'>(had?.access ?? 'edit'),
         error = shallowRef(''),
         busy = shallowRef(false)
       return new Promise<void>((resolve) => {
         nodePathDialog(
-          'Give a chat access',
+          t('streamB.giveAChatAccess.bd22cb'),
           (close) =>
             h('div', [
               h(Setting, {
                 name: chat,
                 desc: [
-                  `Folder: ${names.folder ?? where}`,
-                  ...(names.branch ? [`Worktree: ${names.branch}`] : []),
-                  `on the ${names.node} node`,
+                  t('streamB.folder.01d84d', { v0: String(names.folder ?? where) }),
+                  ...(names.branch
+                    ? [t('streamB.worktree.3e8f5b', { v0: String(names.branch) })]
+                    : []),
+                  t('streamB.onTheNode.22b6f0', { v0: String(names.node) }),
                 ].join(' · '),
               }),
               h(
                 Setting,
                 {
-                  name: 'Access',
+                  name: t('streamB.access.ec5ba0'),
                   desc: had
-                    ? `Already has ${had.access === 'edit' ? 'read and edit' : 'read'} access. Whether changes ask first follows the chat's permission mode.`
-                    : 'Whether file changes ask first still follows this chat’s permission mode.',
+                    ? t('streamB.alreadyHasAccessWhetherChangesAskFirst.14a91e', {
+                        v0: String(
+                          had.access === 'edit'
+                            ? t('streamB.readAndEdit.4067e8')
+                            : t('streamBMeta.3316348dba')
+                        ),
+                      })
+                    : t('streamB.whetherFileChangesAskFirstStillFollows.519f4b'),
                 },
                 {
                   default: () =>
                     h(Dropdown, {
                       modelValue: access.value,
                       options: [
-                        { value: 'read', display: 'Read files' },
-                        { value: 'edit', display: 'Read and edit files' },
+                        {
+                          value: 'read',
+                          display: t('streamB.readFiles.4e792b'),
+                        },
+                        { value: 'edit', display: t('streamB.readAndEditFiles.3cfbdf') },
                       ],
                       'onUpdate:modelValue': (value: string) => {
                         if (value === 'read' || value === 'edit') access.value = value
@@ -194,9 +203,9 @@ export function createNodePathObsidianActions(): NodePathOwnerActions {
               ),
               error.value ? h('div', { role: 'alert', class: 'mod-warning' }, error.value) : null,
               h('div', { class: 'modal-button-container' }, [
-                h(Button, { text: 'Cancel', onClick: close }),
+                h(Button, { text: t('streamB.cancel.19766e'), onClick: close }),
                 h(Button, {
-                  text: had ? 'Save' : 'Give access',
+                  text: had ? t('streamB.save.1509f5') : t('streamB.giveAccess.ad2cee'),
                   accent: true,
                   loading: busy.value,
                   onClick: () => {
@@ -210,14 +219,22 @@ export function createNodePathObsidianActions(): NodePathOwnerActions {
                       .then(() => {
                         close()
                         new Notice(
-                          `${chat} can ${access.value === 'edit' ? 'read and edit' : 'read'} ${where}`
+                          t('streamB.can.085228', {
+                            v0: String(chat),
+                            v1: String(
+                              access.value === 'edit'
+                                ? t('streamB.readAndEdit.4067e8')
+                                : t('streamBMeta.3316348dba')
+                            ),
+                            v2: String(where),
+                          })
                         )
                       })
                       .catch((failure: unknown) => {
                         error.value =
                           failure instanceof Error
-                            ? failure.message
-                            : 'Could not approve chat scope'
+                            ? presentUiError(failure)
+                            : t('streamB.couldNotApproveChatScope.4b6f14')
                       })
                       .finally(() => {
                         busy.value = false
@@ -272,7 +289,7 @@ async function add(captured: NodePathContext, ask: boolean): Promise<void> {
     ].join('\n\n')
   }
   if (text === undefined)
-    throw new Error('Open a retained file or commit before adding its context.')
+    throw new UiError(uiMessage('streamB.openARetainedFileOrCommitBefore.874932'))
   if ('reference' in session) {
     const lines = captured.lines
       ? `:${captured.lines.start}${captured.lines.end === captured.lines.start ? '' : `-${captured.lines.end}`}`

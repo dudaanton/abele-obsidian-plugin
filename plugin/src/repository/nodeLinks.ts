@@ -1,3 +1,4 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import { savedNodeTarget, type RepositoryTabTarget } from './state'
 import type { RepositoryLocation, RepositoryIdentity, RepositoryRevision } from './source'
 
@@ -10,7 +11,7 @@ export function nodeRepositoryLink(
   revision?: RepositoryRevision
 ): string {
   const clean = savedNodeTarget({ sourceTarget: { provider: 'node', source, location, revision } })
-  if (!clean) throw new Error('Invalid node repository location')
+  if (!clean) throw new UiError(uiMessage('streamBError.72bcafd83f'))
   return prefix + encodeURIComponent(JSON.stringify(clean))
 }
 export function parseNodeRepositoryLink(url: string): NodeRepositoryTarget | null {

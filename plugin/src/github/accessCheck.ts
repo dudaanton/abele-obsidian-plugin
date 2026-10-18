@@ -1,3 +1,5 @@
+import { uiFields, uiMessage } from '@/i18n/streamBErrors'
+import { agentText } from '@/i18n/streamBText'
 /**
  * "Check access": what this device's token can read, asked of GitHub one permission at a time.
  *
@@ -10,8 +12,8 @@
  * that never left the keychain, or a github.com link read while an Enterprise server is
  * configured, looks from outside exactly like a token with no access.
  */
-import type { GithubClient, Probe, TokenInfo } from './client'
-import { GithubError } from './client'
+import { type GithubClient, type Probe, type TokenInfo, GithubError } from './client'
+
 import { header } from './refusal'
 import { normaliseHost } from './urls'
 
@@ -53,7 +55,7 @@ export function parseRepoInput(input: string, defaultHost: string): RepoRef | nu
   const repo = rawRepo?.replace(/\.git$/, '')
   if (!owner || !repo || !NAME.test(owner) || !NAME.test(repo)) return null
   if (owner === 'orgs' || owner === 'enterprises' || owner === 'settings') return null
-  return { host, owner, repo, ...(host !== 'github.com' ? {origin:url.origin} : {}) }
+  return { host, owner, repo, ...(host !== 'github.com' ? { origin: url.origin } : {}) }
 }
 
 export type RowState = 'ok' | 'refused' | 'skipped'
@@ -207,12 +209,24 @@ export async function checkAccess({
   }
 
   const identity = client.hasToken
-    ? client.probe<{ login?: string; avatar_url?: string }>('/user', {
-        what: 'the account the token belongs to',
-      })
-    : client.probe<{ rate?: { remaining: number; limit: number } }>('/rate_limit', {
-        what: 'the request limit',
-      })
+    ? client.probe<{ login?: string; avatar_url?: string }>(
+        '/user',
+        uiFields(
+          {
+            what: agentText('streamB.theAccountTheTokenBelongsTo.299185'),
+          },
+          { what: uiMessage('streamB.theAccountTheTokenBelongsTo.299185') }
+        )
+      )
+    : client.probe<{ rate?: { remaining: number; limit: number } }>(
+        '/rate_limit',
+        uiFields(
+          {
+            what: agentText('streamB.theRequestLimit.a1cdda'),
+          },
+          { what: uiMessage('streamB.theRequestLimit.a1cdda') }
+        )
+      )
 
   const rows: Promise<AccessRow>[] = []
   if (repo) {

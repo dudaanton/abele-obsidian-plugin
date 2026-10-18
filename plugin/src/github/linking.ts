@@ -1,3 +1,6 @@
+import { UiError, uiMessage, presentUiError } from '@/i18n/streamBErrors'
+
+import { t } from '@/i18n'
 /**
  * What a GitHub tab does with a link to a place inside it: copies it, or writes it into the note
  * the person was last in.
@@ -61,12 +64,16 @@ export function recentNoteView(app: App): MarkdownView | null {
 export function insertLink(app: App, link: GithubLink): boolean {
   const view = recentNoteView(app)
   if (!view) {
-    new Notice('Open a note to put the link in')
+    new Notice(t('streamB.openANoteToPutTheLink.14071e'))
     return false
   }
   const end = insertOnOwnLine(view.editor, markdownLink(link))
   view.editor.setCursor(end)
-  new Notice(`Link added to ${view.file?.basename ?? 'the note'}`)
+  new Notice(
+    t('streamB.linkAddedTo.19208c', {
+      v0: String(view.file?.basename ?? t('streamB.theNote.00c4d8')),
+    })
+  )
   return true
 }
 
@@ -79,18 +86,20 @@ export function insertLink(app: App, link: GithubLink): boolean {
 export function insertSnippet(app: App, snippet: SnippetBlock): boolean {
   const view = recentNoteView(app)
   if (!view) {
-    new Notice('Open a note to put this in')
+    new Notice(t('streamB.openANoteToPutThisIn.9ea4fe'))
     return false
   }
   const end = insertBlockOnOwnLine(view.editor, formatSnippet(snippet))
   view.editor.setCursor(end)
-  new Notice(`Added to ${view.file?.basename ?? 'the note'}`)
+  new Notice(
+    t('streamB.addedTo.83d927', { v0: String(view.file?.basename ?? t('streamB.theNote.00c4d8')) })
+  )
   return true
 }
 
 export async function copyLink(link: GithubLink): Promise<void> {
   await navigator.clipboard.writeText(markdownLink(link))
-  new Notice('Link copied')
+  new Notice(t('streamB.linkCopied.d12860'))
 }
 
 /** A linker's `copy` and `insert`, which wait for a link that is still being made. */
@@ -101,7 +110,7 @@ export function sharing(
     try {
       await then(await made)
     } catch (e) {
-      new Notice(`Could not make the link: ${e instanceof Error ? e.message : String(e)}`)
+      new Notice(t('streamB.couldNotMakeTheLink.e80e3a', { v0: String(presentUiError(e)) }))
     }
   }
   return {
@@ -133,25 +142,25 @@ export function createLinker(o: {
 
   return {
     item() {
-      const t = o.shown()
+      const translationItem = o.shown()
       const data = o.data()
-      if (!t || !data) return null
+      if (!translationItem || !data) return null
       const repo = {
-        provider: t.provider,
-        host: t.host,
-        origin: t.origin,
-        owner: t.owner,
-        repo: t.repo,
+        provider: translationItem.provider,
+        host: translationItem.host,
+        origin: translationItem.origin,
+        owner: translationItem.owner,
+        repo: translationItem.repo,
       }
-      switch (t.kind) {
+      switch (translationItem.kind) {
         case 'issue':
         case 'pull':
         case 'discussion':
           return {
             ...repo,
-            kind: t.kind,
-            number: t.number,
-            ...(t.kind === 'pull'
+            kind: translationItem.kind,
+            number: translationItem.number,
+            ...(translationItem.kind === 'pull'
               ? { headSha: (data as import('@/repository/conversation').PullData).headSha }
               : {}),
           }
@@ -159,8 +168,8 @@ export function createLinker(o: {
           return {
             ...repo,
             kind: 'commit',
-            sha: (data as CommitData).sha || t.sha,
-            pull: t.pull,
+            sha: (data as CommitData).sha || translationItem.sha,
+            pull: translationItem.pull,
             headSha: (data as CommitData).sha,
             baseSha: (data as CommitData).parentSha,
           }
@@ -178,19 +187,20 @@ export function createLinker(o: {
     },
     title: o.title,
     async blobLink(span) {
-      const t = o.shown()
+      const translationItem = o.shown()
       const blob = o.data() as BlobData | null
-      if (t?.kind !== 'blob' || !blob) throw new Error('no file is shown')
+      if (translationItem?.kind !== 'blob' || !blob)
+        throw new UiError(uiMessage('streamB.noFileIsShown.f8d822'))
       const client = o.client(),
         source = o.source?.()
-      const key = `${source ? sourceKey(source.identity) : ''}:${(source ?? client).cacheNamespace}:${t.host}/${t.owner}/${t.repo}@${blob.resolvedCommit ?? blob.ref}`
+      const key = `${source ? sourceKey(source.identity) : ''}:${(source ?? client).cacheNamespace}:${translationItem.host}/${translationItem.owner}/${translationItem.repo}@${blob.resolvedCommit ?? blob.ref}`
       let asked = shas.get(key)
       if (asked === undefined) {
         asked = blob.resolvedCommit
           ? Promise.resolve(blob.resolvedCommit)
           : source
             ? source.resolve(blob.ref)
-            : commitSha(client, t, blob.ref)
+            : commitSha(client, translationItem, blob.ref)
         shas.set(key, asked)
         // A failure is not kept: the next press asks again.
         asked.catch(() => shas.delete(key))
@@ -199,7 +209,7 @@ export function createLinker(o: {
       source?.assertCurrent()
       return source
         ? source.navigation.blobLink(sha, blob.path, span)
-        : blobLink(t, sha, blob.path, span)
+        : blobLink(translationItem, sha, blob.path, span)
     },
     ...share,
     async insertSnippet(snippet) {

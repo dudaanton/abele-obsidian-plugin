@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { choiceDialog } from '@/components/obsidian/dialogs'
 import type { ConnectionApproval } from './agentAccess'
 
@@ -6,14 +7,24 @@ export function connectionApproval(): ConnectionApproval {
   return async (connection, signal) =>
     (await choiceDialog(
       {
-        title: 'Allow Git connection?',
-        message: `Allow this agent operation to use ${connection.name} on ${connection.server || 'github.com'}${connection.account ? ` as ${connection.account.login}` : ''}? Repository content may be sent to the agent's model.`,
+        title: t('streamB.reapply.a8ad766dc5'),
+        message: t('streamB.allowThisAgentOperationToUseOn.0a3cea', {
+          v0: connection.name,
+          v1: connection.server || 'github.com',
+          v2: connection.account
+            ? t('streamBMeta.6464d6bfa2', { account: connection.account.login })
+            : '',
+        }),
         choices: [
-          { value: null, text: 'Cancel', tooltip: 'Do not use this Git connection' },
+          {
+            value: null,
+            text: t('streamB.cancel.19766e'),
+            tooltip: t('streamB.reapply.bbcda844c9'),
+          },
           {
             value: 'allow',
-            text: 'Allow once',
-            tooltip: 'Permit this operation only; keep asking next time',
+            text: t('streamB.allowOnce.168511'),
+            tooltip: t('streamB.permitThisOperationOnlyKeepAskingNext.ca64c2'),
           },
         ],
       },

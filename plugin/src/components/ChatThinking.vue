@@ -5,7 +5,7 @@
     class="abele-chat-thinking"
     :class="{ 'abele-chat-thinking_live': streaming }"
     icon="brain"
-    :text="streaming ? 'Thinking' : 'Thought'"
+    :text="streaming ? t('chat.thinking') : t('chat.thought')"
     :collapsible="!!text"
     :collapsed="!open"
     :plain="!text"
@@ -23,6 +23,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, ref } from 'vue'
 import TreeItem from './obsidian/TreeItem.vue'
 import Markdown from './obsidian/Markdown.vue'

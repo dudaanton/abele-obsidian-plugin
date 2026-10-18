@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import type { TFile } from 'obsidian'
 import type { AiChatHistoryEntry } from './types'
 
@@ -10,8 +11,18 @@ import type { AiChatHistoryEntry } from './types'
 export type HistoryOrder = 'last' | 'created'
 
 export const HISTORY_ORDERS: { value: HistoryOrder; display: string }[] = [
-  { value: 'last', display: 'Last message' },
-  { value: 'created', display: 'Date created' },
+  {
+    value: 'last',
+    get display() {
+      return t('streamB.lastMessage.ee5c88')
+    },
+  },
+  {
+    value: 'created',
+    get display() {
+      return t('streamB.dateCreated.fa91f7')
+    },
+  },
 ]
 
 /** Where this device keeps the order last chosen: one person's habit, not the vault's. */

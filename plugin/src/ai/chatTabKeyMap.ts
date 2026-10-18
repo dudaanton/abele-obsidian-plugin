@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * Which key does what in the chat's tabs, and how a key is written — no service, no scope, so
  * the tab strip can name its keys without loading the chat. `chatTabKeys.ts` puts them to work.
@@ -53,16 +54,16 @@ export function tabAt(order: readonly string[], n: number): string | null {
   return order[n - 1] ?? null
 }
 
-const KEY_NAMES: Record<string, [mac: string, other: string]> = {
-  ArrowLeft: ['←', 'Left'],
-  ArrowRight: ['→', 'Right'],
-  PageUp: ['⇞', 'PageUp'],
-  PageDown: ['⇟', 'PageDown'],
-}
+const keyNames = (): Record<string, [mac: string, other: string]> => ({
+  ArrowLeft: ['←', t('streamBRest.keyLeft')],
+  ArrowRight: ['→', t('streamBRest.keyRight')],
+  PageUp: ['⇞', t('streamBRest.keyPageUp')],
+  PageDown: ['⇟', t('streamBRest.keyPageDown')],
+})
 
 /** A key as the platform writes it: ⌥⌘← on a Mac (and an iPad), Ctrl+Alt+Left elsewhere. */
 export function keyLabel({ modifiers, key }: ChatTabKey, mac = Platform.isMacOS): string {
-  const name = KEY_NAMES[key]?.[mac ? 0 : 1] ?? (key.length === 1 ? key.toUpperCase() : key)
+  const name = keyNames()[key]?.[mac ? 0 : 1] ?? (key.length === 1 ? key.toUpperCase() : key)
   if (mac) {
     // In the order a Mac menu writes them.
     const glyphs: [Modifier, string][] = [
@@ -97,5 +98,5 @@ export function withShortcut(name: string, action: ChatTabAction): string {
 
 /** The stop control's name with its key: «Stop (⌃C)» on a Mac, «Stop (Ctrl+C)» elsewhere. */
 export function stopTooltip(mac = Platform.isMacOS): string {
-  return `Stop (${keyLabel({ modifiers: ['Ctrl'], key: 'c' }, mac)})`
+  return `${t('streamB.stop.cae7d5')} (${keyLabel({ modifiers: ['Ctrl'], key: 'c' }, mac)})`
 }

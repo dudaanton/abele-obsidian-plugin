@@ -1,3 +1,12 @@
+import {
+  uiFieldMessage,
+  uiFields,
+  uiMessage,
+  copyUiField,
+  uiField,
+  UiError,
+} from '@/i18n/streamBErrors'
+
 import { reactive } from 'vue'
 import type {
   NodeClient,
@@ -54,8 +63,7 @@ export type NodeRepositoryClient = Pick<
 type NodeIdentity = Extract<RepositoryIdentity, { provider: 'node' }>
 const isStale = (error: unknown) =>
   !!error && typeof error === 'object' && (error as { code?: unknown }).code === 'stale_revision'
-const staleComparison = () =>
-  new Error('The current files changed while they were compared. Retry to compare them again.')
+const staleComparison = () => new UiError(uiMessage('streamBError.9ae33c33a2'))
 type Page<T> = { entries: T[]; cursor: string | null; incomplete: boolean; omissions: string[] }
 type Commit = Awaited<ReturnType<RepositoryClient['commit']>>
 const summary = (c: Commit): CommitSummary => ({
@@ -178,10 +186,7 @@ export class NodeRepositorySource implements RepositorySource {
     return !this.disposed && !this.retired && (this.labels.isCurrent?.() ?? true)
   }
   assertCurrent() {
-    if (!this.isCurrent)
-      throw new Error(
-        'This node repository is no longer available. Reconnect or choose a workspace.'
-      )
+    if (!this.isCurrent) throw new UiError(uiMessage('streamBError.a890b77334'))
   }
   private async read<T>(work: () => Promise<T>): Promise<T> {
     this.assertCurrent()
@@ -189,7 +194,7 @@ export class NodeRepositorySource implements RepositorySource {
     const value = await work()
     this.assertCurrent()
     if (generation !== this.authorityGeneration)
-      throw new Error('Repository authorization changed during this read. Refresh deliberately.')
+      throw new UiError(uiMessage('streamBError.1d3298ac1d'))
     return value
   }
   private get target() {
@@ -228,10 +233,7 @@ export class NodeRepositorySource implements RepositorySource {
     if (ref === 'WORKTREE') ref = WORKING_TREE
     this.assertCurrent()
     if (this.revisions.has(ref)) return ref
-    if (ref.startsWith(workingPrefix))
-      throw new Error(
-        'This Working tree observation expired. Refresh to inspect the current files.'
-      )
+    if (ref.startsWith(workingPrefix)) throw new UiError(uiMessage('streamBError.b46591df0d'))
     let pending = this.aliases.get(ref)
     if (!pending) {
       // Taken before asking: every batch after this mark may be missing from the observation.
@@ -260,7 +262,7 @@ export class NodeRepositorySource implements RepositorySource {
   private async at(ref: string): Promise<NodeRevision> {
     const key = await this.resolve(ref)
     const revision = this.revisions.get(key)
-    if (!revision) throw new Error('This repository revision expired. Refresh deliberately.')
+    if (!revision) throw new UiError(uiMessage('streamBError.1a2309dd33'))
     return revision
   }
   private async pages<T>(
@@ -285,9 +287,7 @@ export class NodeRepositorySource implements RepositorySource {
         bytes > 4 * 1024 * 1024 ||
         (page.cursor && cursors.has(page.cursor))
       )
-        throw new Error(
-          'This repository listing exceeds the view limit. Narrow the path or search.'
-        )
+        throw new UiError(uiMessage('streamBError.b930e16c73'))
       cursor = page.cursor ?? undefined
       if (cursor) cursors.add(cursor)
     } while (cursor)
@@ -339,8 +339,7 @@ export class NodeRepositorySource implements RepositorySource {
   }
   async defaultBranch() {
     const page = await this.read(() => this.client.repository.refs(this.target))
-    if (!page.default_branch)
-      throw new Error('No default branch is known. Choose a branch to compare against.')
+    if (!page.default_branch) throw new UiError(uiMessage('streamBError.7de42eef4a'))
     return page.default_branch
   }
   async metadata(): Promise<RepoHomeData['meta']> {
@@ -367,7 +366,7 @@ export class NodeRepositorySource implements RepositorySource {
     const workspaces = await this.workspaces()
     const selected = workspaces.find((w) => w.id === this.identity.workspace)
     if (!selected || selected.availability !== 'available')
-      throw new Error('This workspace is missing or unavailable. Choose another workspace.')
+      throw new UiError(uiMessage('streamBError.696ab2ea7b'))
     const folder = await this.folder(ref, '')
     const revision = await this.at(folder.ref)
     const status = await this.status()
@@ -505,15 +504,18 @@ export class NodeRepositorySource implements RepositorySource {
         this.client.repository.content({ ...this.target, content_id: contentId, offset: 0 })
       )
       if (first.total > limit)
-        return {
-          ref,
-          path,
-          text: '',
-          contentId,
-          url: this.navigation.file(ref, path),
-          note: 'This retained file is too large for automatic display.',
-          canLoadLarge: !larger && first.total <= 16 * 1024 * 1024,
-        }
+        return uiFields(
+          {
+            ref,
+            path,
+            text: '',
+            contentId,
+            url: this.navigation.file(ref, path),
+            note: 'This retained file is too large for automatic display.',
+            canLoadLarge: !larger && first.total <= 16 * 1024 * 1024,
+          },
+          { note: uiMessage('streamBError.888e010715') }
+        )
       const text = await this.content(contentId, limit)
       this.rememberContent(ref, path, contentId)
       return { ref, path, text, contentId, url: this.navigation.file(ref, path) }
@@ -529,15 +531,24 @@ export class NodeRepositorySource implements RepositorySource {
       : blob.too_large || blob.requires_larger_load
         ? 'This file is too large for automatic display.'
         : undefined
-    return {
-      ref: sha,
-      path,
-      text: !note && blob.content_id ? await this.content(blob.content_id, limit) : '',
-      url: this.navigation.file(sha, path),
-      contentId: blob.content_id,
-      canLoadLarge: blob.requires_larger_load && !blob.too_large,
-      note,
-    }
+    return uiFields(
+      {
+        ref: sha,
+        path,
+        text: !note && blob.content_id ? await this.content(blob.content_id, limit) : '',
+        url: this.navigation.file(sha, path),
+        contentId: blob.content_id,
+        canLoadLarge: blob.requires_larger_load && !blob.too_large,
+        note,
+      },
+      {
+        note: blob.binary
+          ? uiMessage('streamBError.6018e8db9e')
+          : blob.too_large || blob.requires_larger_load
+            ? uiMessage('streamBError.96018da9a1')
+            : undefined,
+      }
+    )
   }
   private rememberContent(ref: string, path: string, id: string) {
     this.fileContents.set(JSON.stringify([ref, path]), id)
@@ -550,7 +561,7 @@ export class NodeRepositorySource implements RepositorySource {
   }
   async text(ref: string, path: string) {
     const blob = await this.blob(ref, path)
-    if (blob.note) throw new Error(blob.note)
+    if (blob.note) throw new UiError(uiFieldMessage(blob, 'note'))
     return blob.text
   }
   async status() {
@@ -610,10 +621,7 @@ export class NodeRepositorySource implements RepositorySource {
         for (const child of node.children ?? []) await walk(child)
         return
       }
-      if (files.length >= 4096)
-        throw new Error(
-          'This root commit exceeds the changed-file view limit. Browse its tree instead.'
-        )
+      if (files.length >= 4096) throw new UiError(uiMessage('streamBError.88e5c20cd0'))
       const file: DiffFile = {
         path: node.path,
         status: 'added',
@@ -626,11 +634,11 @@ export class NodeRepositorySource implements RepositorySource {
       file.loadPatch = async () => {
         const blob = await this.blob(ref, node.path)
         if (blob.note) {
-          file.diffNote = blob.note
+          copyUiField(blob, 'note', file, 'diffNote')
           return
         }
         const lines = blob.text.match(/[^\n]*\n|[^\n]+$/g) ?? []
-        if (lines.length > 100000) throw new Error('This file exceeds the diff line limit.')
+        if (lines.length > 100000) throw new UiError(uiMessage('streamBError.b0f4afdb21'))
         file.patch = `--- /dev/null\n+++ b/${node.path}\n@@ -0,0 +1,${lines.length} @@\n${lines.map((line) => '+' + line.replace(/\n$/, '')).join('\n')}`
         file.additions = lines.length
       }
@@ -666,7 +674,7 @@ export class NodeRepositorySource implements RepositorySource {
           commit: {
             sha,
             author: line.commit ? line.author : 'Uncommitted',
-            message: line.commit ? '' : 'Working tree',
+            message: line.commit ? '' : WORKING_TREE,
             date: '',
           },
         })
@@ -753,7 +761,7 @@ export class NodeRepositorySource implements RepositorySource {
             : undefined
           this.assertCurrent()
           file.patch = patch
-          file.diffNote = !patch ? 'No text patch is available for this file.' : undefined
+          uiField(file, 'diffNote', !patch ? uiMessage('streamBError.d2999e7b21') : undefined)
           const lines = patch ? parsePatch(patch) : []
           file.additions = lines.filter((l) => l.type === 'add').length
           file.deletions = lines.filter((l) => l.type === 'del').length
@@ -809,36 +817,46 @@ export class NodeRepositorySource implements RepositorySource {
           })
         )
     }
-    return {
-      base: baseSha,
-      ...(baseName && baseName !== baseSha ? { baseName } : {}),
-      head: headSha,
-      direct: manifest.mode !== 'merge-base',
-      mode: manifest.mode,
-      status: manifest.entries.length ? 'changed' : 'identical',
-      aheadBy: divergence?.ahead ?? null,
-      behindBy: divergence?.behind ?? null,
-      totalCommits: commits.length,
-      commits,
-      commitsComplete:
-        !headHistory.cursor &&
-        !baseHistory.cursor &&
-        !headHistory.incomplete &&
-        !baseHistory.incomplete,
-      files: await this.diffFiles(manifest),
-      filesComplete: true,
-      additions: 0,
-      deletions: 0,
-      headSha,
-      mergeBaseSha: baseSha,
-      url: this.navigation.comparison(baseSha, headSha, direct, manifest.mode, baseName),
-      note:
-        manifest.head.kind === 'working'
-          ? 'Files can change while you look. Refresh to update.'
-          : manifest.mode === 'merge-base'
-            ? 'Changes since the common ancestor.'
-            : undefined,
-    }
+    return uiFields(
+      {
+        base: baseSha,
+        ...(baseName && baseName !== baseSha ? { baseName } : {}),
+        head: headSha,
+        direct: manifest.mode !== 'merge-base',
+        mode: manifest.mode,
+        status: manifest.entries.length ? 'changed' : 'identical',
+        aheadBy: divergence?.ahead ?? null,
+        behindBy: divergence?.behind ?? null,
+        totalCommits: commits.length,
+        commits,
+        commitsComplete:
+          !headHistory.cursor &&
+          !baseHistory.cursor &&
+          !headHistory.incomplete &&
+          !baseHistory.incomplete,
+        files: await this.diffFiles(manifest),
+        filesComplete: true,
+        additions: 0,
+        deletions: 0,
+        headSha,
+        mergeBaseSha: baseSha,
+        url: this.navigation.comparison(baseSha, headSha, direct, manifest.mode, baseName),
+        note:
+          manifest.head.kind === 'working'
+            ? 'Files can change while you look. Refresh to update.'
+            : manifest.mode === 'merge-base'
+              ? 'Changes since the common ancestor.'
+              : undefined,
+      },
+      {
+        note:
+          manifest.head.kind === 'working'
+            ? uiMessage('streamBError.b2d5677c39')
+            : manifest.mode === 'merge-base'
+              ? uiMessage('streamBError.f3d48d14b9')
+              : undefined,
+      }
+    )
   }
   async comparison(base: string, head: string, signal?: AbortSignal): Promise<ComparisonIndex> {
     if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError')
@@ -911,18 +929,21 @@ export class NodeRepositorySource implements RepositorySource {
         deletions: text.deletions,
       })
     this.assertCurrent()
-    return {
-      baseSha: index.baseSha,
-      targetSha: index.targetSha,
-      path,
-      index,
-      change,
-      before,
-      after,
-      text,
-      note: !text ? 'Binary or large file · open each side separately.' : undefined,
-      canLoadLarge: !text && !large,
-    }
+    return uiFields(
+      {
+        baseSha: index.baseSha,
+        targetSha: index.targetSha,
+        path,
+        index,
+        change,
+        before,
+        after,
+        text,
+        note: !text ? 'Binary or large file · open each side separately.' : undefined,
+        canLoadLarge: !text && !large,
+      },
+      { note: !text ? uiMessage('streamBError.9da9b97d87') : undefined }
+    )
   }
   async search(request: RepositorySearch): Promise<CodeResults> {
     const revision = await this.at(request.ref),

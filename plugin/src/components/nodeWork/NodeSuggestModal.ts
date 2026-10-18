@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 // Choosing one thing on the node — a folder, a worktree, a branch — with Obsidian's own
 // quick-switcher prompt: type to filter, arrows to move, Enter to choose. Each row is the thing's
 // glyph (its kind in the tooltip), its name, a faint line under it, and a code at the end.
@@ -41,15 +42,15 @@ export class NodeSuggestModal extends SuggestModal<NodeSuggestion> {
     private items: NodeSuggestion[],
     placeholder: string,
     private onChoose: (item: NodeSuggestion) => void,
-    empty = 'Nothing matches',
+    empty = t('streamBMeta.965b516df3'),
     hint?: NodeSuggestHint
   ) {
     super(app)
     this.setPlaceholder(placeholder)
     this.setInstructions([
-      { command: '↑↓', purpose: 'to navigate' },
-      { command: '↵', purpose: 'to choose' },
-      { command: 'esc', purpose: 'to dismiss' },
+      { command: '↑↓', purpose: t('streamBMeta.5a70bdb083') },
+      { command: '↵', purpose: t('streamBMeta.89c0a2bd17') },
+      { command: 'esc', purpose: t('streamBMeta.29e1c55a84') },
     ])
     this.emptyStateText = empty
     if (hint) this.showHint(hint)
@@ -65,7 +66,7 @@ export class NodeSuggestModal extends SuggestModal<NodeSuggestion> {
     if (hint.tooltip) setTooltip(button, hint.tooltip)
     button.addEventListener('click', () => {
       button.disabled = true
-      button.setText('Waiting for the node…')
+      button.setText(t('streamB.waitingForTheNode.7225c7'))
       hint.onAction()
     })
     this.resultContainerEl.before(el)

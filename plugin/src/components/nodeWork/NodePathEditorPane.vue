@@ -1,9 +1,11 @@
 <template>
   <div class="abele-node-main">
     <div v-if="error" role="alert"><NodeErrorText :error="error" /></div>
-    <div v-if="offline" role="status">Offline · your local draft is retained.</div>
+    <div v-if="offline" role="status">
+      {{ t('streamB.offlineYourLocalDraftIsRetained.ae9db3') }}
+    </div>
     <div v-if="locked" role="status">
-      Saving is not allowed in this worktree yet. Allow it with the lock in the tab's header.
+      {{ t('streamB.savingIsNotAllowedInThisWorktree.8eb83d') }}
     </div>
     <NodeFileSaveState :model="model" :offline="offline" :locked="locked" :actions="false" />
     <GithubCode
@@ -19,6 +21,7 @@
 </template>
 <script setup lang="ts">
 import NodeErrorText from '@/components/NodeErrorText.vue'
+import { t } from '@/i18n'
 import type { NodeFilesModel } from '@/node/NodeFilesModel'
 import GithubCode from '../github/GithubCode.vue'
 import NodeFileSaveState from '../NodeFileSaveState.vue'

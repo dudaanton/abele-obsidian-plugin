@@ -1,6 +1,6 @@
 <template>
   <!-- The reply as it was first written, and what has changed in it since. -->
-  <ObsidianModal title="Original reply" size="tall" @close="emit('close')">
+  <ObsidianModal :title="t('streamB.originalReply.424857')" size="tall" @close="emit('close')">
     <div class="abele-reply-original">
       <!-- Changed by several in a row: each one's version, what it changed from the one before,
            and what it said about it. -->
@@ -23,8 +23,8 @@
     </div>
     <template v-if="canUndo" #footer>
       <Button
-        text="Undo last change"
-        tooltip="Put the reply back as it was before its last change"
+        :text="t('streamB.undoLastChange.1095dd')"
+        :tooltip="t('streamB.putTheReplyBackAsItWas.f1858b')"
         @click="undo"
       />
     </template>
@@ -32,6 +32,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+import { streamBDate } from '@/i18n/streamBDate'
 import { computed, ref } from 'vue'
 import dayjs from 'dayjs'
 import ObsidianModal from './obsidian/Modal.vue'
@@ -44,15 +46,15 @@ const props = defineProps<{ message: ChatMessage }>()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'undo'): void }>()
 // What changed comes first: a long reply read whole again only hides the few words that moved.
 const TABS = [
-  { id: 'changes', label: 'Changes' },
-  { id: 'original', label: 'Original' },
+  { id: 'changes', label: t('streamB.changes.bbd4b6') },
+  { id: 'original', label: t('streamB.original.88d759') },
 ]
 const tab = ref('changes')
 
 // Every change still in force, in the order they were made; the last one is what the chat shows.
 const steps = computed(() => (props.message.revisions ?? []).filter((r) => !r.undoneAt))
 const versionTabs = computed(() => [
-  { id: 'original', label: 'Original' },
+  { id: 'original', label: t('streamB.original.88d759') },
   ...steps.value.map((r, i) => ({ id: String(i), label: `${i + 1} · ${r.author}` })),
 ])
 // Opens on the last change: what the chat shows now, and why.
@@ -60,8 +62,11 @@ const version = ref(String(Math.max(0, steps.value.length - 1)))
 const chosen = computed(() => steps.value[Number(version.value)] ?? steps.value.at(-1))
 const versionLine = computed(() =>
   version.value === 'original'
-    ? 'As the agent wrote it'
-    : `What ${chosen.value.author} changed · ${dayjs(chosen.value.at).format('D MMM HH:mm')}`
+    ? t('streamB.asTheAgentWroteIt.b44975')
+    : t('streamB.whatChanged.e9dd31', {
+        v0: String(chosen.value.author),
+        v1: String(streamBDate(dayjs(chosen.value.at), 'D MMM HH:mm')),
+      })
 )
 /** What the interceptor of the chosen version said under the answer, if anything. */
 const said = computed(() =>

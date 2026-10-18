@@ -2,20 +2,20 @@
   <!-- Everything this chat made, changed or is linked to, as rows like the file explorer's: what
        the chat did to it as a glyph, the time, a dot when the file is gone. A row opens its file;
        its ⋯ (or a right click) holds the rest. -->
-  <Modal title="Files from this chat" size="tall" @close="emit('close')">
+  <Modal :title="t('streamB.filesFromThisChat.781223')" size="tall" @close="emit('close')">
     <div class="abele-chat-artifacts">
       <EmptyState
         v-if="!sections.some((section) => section.items.length)"
         icon="boxes"
-        text="Nothing from this chat yet"
+        :text="t('streamB.nothingFromThisChatYet.28a6ad')"
       />
       <section
         v-for="section in sections.filter((s) => s.items.length)"
-        :key="section.label"
+        :key="section.id"
         :aria-label="section.label"
       >
         <ListSectionHeader :text="section.label" :count="section.items.length" />
-        <div v-if="section.label === 'Images'" class="abele-chat-artifacts__images">
+        <div v-if="section.id === 'images'" class="abele-chat-artifacts__images">
           <div
             v-for="artifact in section.items"
             :key="artifact.path"
@@ -31,7 +31,7 @@
               :chat-id="owner.id"
               :version="version"
             />
-            <StatusDot v-else tone="red" label="File missing" />
+            <StatusDot v-else tone="red" :label="t('streamB.fileMissing.f52ede')" />
           </div>
         </div>
         <template v-else>
@@ -43,7 +43,7 @@
             :text="title(artifact.path)"
             :icon="section.icon"
             :path="artifact.path"
-            :note="
+            :where="
               artifact.path.includes('/')
                 ? artifact.path.slice(0, artifact.path.lastIndexOf('/'))
                 : undefined
@@ -54,7 +54,11 @@
           >
             <template #end>
               <span class="abele-chat-artifacts__codes">
-                <StatusDot v-if="!available(artifact.path)" tone="red" label="File missing" />
+                <StatusDot
+                  v-if="!available(artifact.path)"
+                  tone="red"
+                  :label="t('streamB.fileMissing.f52ede')"
+                />
                 <Icon
                   v-else
                   :icon="ORIGIN[origin(artifact)].icon"
@@ -71,7 +75,7 @@
                 icon="more-horizontal"
                 size="xs"
                 class="abele-chat-artifacts__more"
-                :label="`More for ${title(artifact.path)}`"
+                :label="t('streamB.moreFor.8c1b1d', { v0: String(title(artifact.path)) })"
                 @click.stop="menu($event, artifact, true)"
               />
             </template>
@@ -81,18 +85,24 @@
     </div>
     <template #footer>
       <Button
-        text="Attach current note"
+        :text="t('streamB.attachCurrentNote.a1222e')"
         icon="link"
         :disabled="!canAttachCurrent"
-        :tooltip="canMutate ? 'Link this chat to the note in front' : 'Save the chat first'"
+        :tooltip="
+          canMutate
+            ? t('streamB.linkThisChatToTheNoteIn.6eec1e')
+            : t('streamB.saveTheChatFirst.4428d0')
+        "
         @click="attachCurrent"
       />
       <Button
-        text="Attach a note…"
+        :text="t('streamB.attachANote.37b0ab')"
         icon="file-search"
         :disabled="!canMutate"
         :tooltip="
-          canMutate ? 'Choose a note or script to link to this chat' : 'Save the chat first'
+          canMutate
+            ? t('streamB.chooseANoteOrScriptToLink.b126d9')
+            : t('streamB.saveTheChatFirst.4428d0')
         "
         @click="attachPicked"
       />
@@ -101,9 +111,10 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { Menu, Notice, setTooltip, type EventRef, type TAbstractFile } from 'obsidian'
-import { formatTimestamp } from '@/helpers/displayFormat'
+import { streamBTime as formatTimestamp } from '@/i18n/streamBDate'
 import Modal from './obsidian/Modal.vue'
 import TreeItem from './obsidian/TreeItem.vue'
 import Button from './obsidian/Button.vue'
@@ -140,17 +151,20 @@ const version = ref(0)
 const artifacts = computed(() => artifactsOf(owner))
 const sections = computed(() => [
   {
-    label: 'Notes',
+    id: 'notes',
+    label: t('streamB.notes.8a7525'),
     icon: 'file-text',
     items: artifacts.value.notes,
   },
   {
-    label: 'Images',
+    id: 'images',
+    label: t('streamB.images.be7e2f'),
     icon: 'image',
     items: artifacts.value.images,
   },
   {
-    label: 'Scripts',
+    id: 'scripts',
+    label: t('streamB.scripts.8d0e6b'),
     icon: 'file-code-2',
     items: artifacts.value.scripts,
   },
@@ -184,9 +198,9 @@ const available = (path: string) => {
 const title = (path: string) => path.split('/').pop()?.replace(/\.md$/, '') || path
 /** What the chat did to a file, as one glyph; the words are its tooltip. */
 const ORIGIN: Record<'created' | 'changed' | 'linked', { icon: string; label: string }> = {
-  created: { icon: 'file-plus', label: 'Created in this chat' },
-  changed: { icon: 'file-pen', label: 'Changed in this chat' },
-  linked: { icon: 'link', label: 'Linked to this chat' },
+  created: { icon: 'file-plus', label: t('streamB.createdInThisChat.df25c9') },
+  changed: { icon: 'file-pen', label: t('streamB.changedInThisChat.c555c2') },
+  linked: { icon: 'link', label: t('streamB.linkedToThisChat.0049fa') },
 }
 const origin = (artifact: ChatArtifact): keyof typeof ORIGIN => {
   const origins = artifact.sources.map((source) => source.origin)
@@ -194,13 +208,13 @@ const origin = (artifact: ChatArtifact): keyof typeof ORIGIN => {
   return origins.includes('Changed') ? 'changed' : 'linked'
 }
 const IMAGE_ORIGIN: Partial<Record<ArtifactOrigin, string>> = {
-  Uploaded: 'Uploaded',
-  Generated: 'Made by the agent',
-  Edited: 'Edited by the agent',
-  Screenshot: 'Screenshot',
-  Downloaded: 'Downloaded',
-  Viewed: 'Viewed by the agent',
-  Drawing: 'Drawing',
+  Uploaded: t('streamB.uploaded.3cc376'),
+  Generated: t('streamB.madeByTheAgent.7c6b06'),
+  Edited: t('streamB.editedByTheAgent.4719cd'),
+  Screenshot: t('streamB.screenshot.029320'),
+  Downloaded: t('streamB.downloaded.f0b073'),
+  Viewed: t('streamB.viewedByTheAgent.ee3d07'),
+  Drawing: t('streamB.drawing.39de47'),
 }
 const latest = (artifact: ChatArtifact): number | undefined => {
   const times = artifact.sources.flatMap((source) =>
@@ -215,12 +229,12 @@ const when = (artifact: ChatArtifact) => {
   const at = latest(artifact)
   const time = formatTimestamp(at)
   if (!time.datetime) return time.label
-  return time.label.startsWith('Today,') ? time.exact.split(', ')[1] : time.exact.split(', ')[0]
+  return time.today ? time.clock : time.day
 }
 const describe = (el: unknown, artifact: ChatArtifact) => {
   if (!(el instanceof HTMLElement)) return
   const origins = [...new Set(artifact.sources.map((s) => IMAGE_ORIGIN[s.origin]).filter(Boolean))]
-  const words = available(artifact.path) ? origins.join(', ') : 'File missing'
+  const words = available(artifact.path) ? origins.join(', ') : t('streamB.fileMissing.f52ede')
   setTooltip(el, [title(artifact.path), words, when(artifact)].filter(Boolean).join(' · '))
 }
 const navigable = (artifact: ChatArtifact) =>
@@ -231,7 +245,9 @@ const navigable = (artifact: ChatArtifact) =>
 const run = (job: Promise<unknown>) => {
   void job.catch(
     (error: unknown) =>
-      new Notice(error instanceof Error ? error.message : 'Could not change the chat’s artifacts')
+      new Notice(
+        error instanceof Error ? error.message : t('streamB.couldNotChangeTheChatSArtifacts.6aae3e')
+      )
   )
 }
 const open = (path: string) => {
@@ -246,21 +262,21 @@ const menu = (event: MouseEvent, artifact: ChatArtifact, linked: boolean) => {
   if (source)
     menu.addItem((item) =>
       item
-        .setTitle('Show in chat')
+        .setTitle(t('streamB.showInChat.dbda69'))
         .setIcon('message-square')
         .onClick(() => emit('reveal', source.messageId))
     )
   if (found)
     menu.addItem((item) =>
       item
-        .setTitle('Reveal in explorer')
+        .setTitle(t('streamB.revealInExplorer.cde4ec'))
         .setIcon('folder')
         .onClick(() => run(revealArtifact(artifact.path)))
     )
   if (linked)
     menu.addItem((item) =>
       item
-        .setTitle('Unlink from chat')
+        .setTitle(t('streamB.unlinkFromChat.b48043'))
         .setIcon('unlink')
         .setSection('danger')
         .setWarning(true)

@@ -12,6 +12,7 @@
       'abele-obsidian-button_warning': warning,
       'abele-obsidian-button_loading': loading,
       'abele-obsidian-button_block': block,
+      'abele-obsidian-button_wrap': wrap,
       'abele-obsidian-button_disabled': disabled,
       'abele-obsidian-button_quiet': quiet,
     }"
@@ -52,6 +53,8 @@ const props = defineProps<{
   loading?: boolean
   /** As wide as the place it stands in. */
   block?: boolean
+  /** Let a long label wrap within the available width, growing the native button vertically. */
+  wrap?: boolean
   /** Muted words with no box, as Obsidian's own "Collapse all" over a list: a small action beside
    *  a list's heading rather than a button of the window. */
   quiet?: boolean
@@ -164,6 +167,25 @@ watch(
 .abele-obsidian-button_block {
   justify-content: center;
   width: 100%;
+}
+
+.abele-obsidian-button.abele-obsidian-button_wrap {
+  min-width: 0;
+  max-width: 100%;
+  height: auto;
+  min-height: var(--input-height);
+  padding-block: var(--size-4-1);
+  white-space: normal;
+
+  .abele-obsidian-button__label {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .abele-obsidian-button__icon,
+  .abele-obsidian-button__trailing-icon {
+    flex-shrink: 0;
+  }
 }
 
 .abele-obsidian-button_loading {

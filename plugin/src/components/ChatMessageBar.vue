@@ -4,7 +4,7 @@
        the branches that part from it stay. A phone, which cannot point, keeps the ⋯ that holds
        every action, and the time. -->
   <div class="abele-chat-msg__bar">
-    <span class="abele-chat-msg__quick" role="group" aria-label="Message actions">
+    <span class="abele-chat-msg__quick" role="group" :aria-label="t('chat.messageActions')">
       <template v-if="!mobile">
         <!-- Replying to the agent's words, as in a messenger: the words selected in this answer,
              or all of it, go into the message being written, where the cursor is. -->
@@ -12,37 +12,37 @@
           v-if="canReply"
           icon="reply"
           size="xs"
-          label="Reply to this"
+          :label="t('chat.replyThis')"
           @pointerdown="captureSelection"
           @click="emit('reply')"
         />
-        <Icon icon="copy" size="xs" label="Copy message" @click="emit('copy')" />
+        <Icon icon="copy" size="xs" :label="t('chat.copyMessage')" @click="emit('copy')" />
         <template v-if="!readOnly">
           <Icon
             v-if="message.role === 'user'"
             icon="pencil"
             size="xs"
-            label="Edit"
+            :label="t('chat.edit')"
             @click="emit('edit-message', message.id)"
           />
           <Icon
             v-else
             icon="rotate-cw"
             size="xs"
-            label="Retry"
+            :label="t('chat.retry')"
             @click="emit('retry-message', message.id)"
           />
           <Icon
             icon="file-input"
             size="xs"
-            label="Insert into note"
+            :label="t('chat.insertNote')"
             @click="emit('insert-into-note', message.id)"
           />
           <Icon
             v-if="canComment"
             icon="message-square"
             size="xs"
-            label="Ask here"
+            :label="t('chat.askHere')"
             @pointerdown="captureSelection"
             @click="askHere"
           />
@@ -52,7 +52,7 @@
         v-if="!readOnly || mobile"
         icon="ellipsis"
         size="xs"
-        label="More message actions"
+        :label="t('chat.moreActions')"
         aria-haspopup="menu"
         @click="(event: MouseEvent) => emit('actions', event)"
       />
@@ -63,7 +63,7 @@
       :text="shortTime"
       plain
       class="clickable-icon abele-chat-msg__icon abele-chat-msg__time"
-      label="Message details"
+      :label="t('chat.details')"
       :tooltip="timeTooltip"
       :aria-expanded="expanded"
       @click="emit('details')"
@@ -74,9 +74,10 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed } from 'vue'
 import { Platform } from 'obsidian'
-import { formatTimestamp } from '@/helpers/displayFormat'
+import { streamBTime as formatTimestamp } from '@/i18n/streamBDate'
 import Button from './obsidian/Button.vue'
 import Icon from './obsidian/Icon.vue'
 import type { ChatMessage } from '@/ai/types'
@@ -104,14 +105,14 @@ const emit = defineEmits<{
 const mobile = Platform.isMobile
 const formatted = computed(() => formatTimestamp(props.message.timestamp, { diagnostic: true }))
 const shortTime = computed(() =>
-  formatted.value.datetime ? formatted.value.exact.split(', ')[1].slice(0, 5) : 'Time unknown'
+  formatted.value.datetime ? formatted.value.clock : t('chat.timeUnknown')
 )
 
 /** The whole date, and what the answer cost, in the time's tooltip. */
 const timeTooltip = computed(() => {
   const usage = props.message.usage
   const date = formatted.value.exact
-  return usage ? `${date} · ${usage.total} tokens` : date
+  return usage ? t('chat.timeTokens', { date, count: usage.total }) : date
 })
 </script>
 

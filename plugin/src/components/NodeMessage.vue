@@ -22,7 +22,7 @@
           message.toolResult
             ? toolResultText(message.toolResult)
             : message.content === 'Allowed by your Claude settings'
-              ? 'Claude settings'
+              ? t('streamB.claudeSettings.5f3600')
               : nodeErrorWords(message.content)
         }}</span
       ></template
@@ -35,11 +35,11 @@
             v-if="message.retryInputId"
             class="clickable-icon"
             type="button"
-            aria-label="Send again"
+            :aria-label="t('streamB.sendAgain.feead9')"
             :disabled="offline"
             @click="emit('retry', message.id)"
           >
-            <Icon icon="rotate-cw" tooltip="Send again" no-hover />
+            <Icon icon="rotate-cw" :tooltip="t('streamB.sendAgain.feead9')" no-hover />
           </button>
         </div>
       </div>
@@ -51,8 +51,8 @@
           icon="x"
           role="button"
           tabindex="0"
-          aria-label="Cancel queued input"
-          tooltip="Cancel queued input"
+          :aria-label="t('streamB.cancelQueuedInput.dea22f')"
+          :tooltip="t('streamB.cancelQueuedInput.dea22f')"
           :disabled="offline"
           @click="emit('cancel', queueState.inputId!)"
           @keydown.enter.prevent="!offline && emit('cancel', queueState.inputId!)"
@@ -63,8 +63,9 @@
   </AiChatMessage>
 </template>
 <script setup lang="ts">
-import { nodeErrorWords } from '@/node/errorWords'
 import NodeErrorText from '@/components/NodeErrorText.vue'
+import { nodeErrorWords } from '@/node/errorWords'
+import { t } from '@/i18n'
 import type { ChatMessage, ChatReplyTo } from '@/ai/types'
 import { toolResultText } from '@/ai/toolLine'
 import type { QueueState } from '@/node/presentation'

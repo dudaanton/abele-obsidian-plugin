@@ -1,89 +1,106 @@
 <template>
   <div class="abele-chat-msg__details">
-    <div v-if="actions" class="abele-chat-msg__actions" role="group" aria-label="Message actions">
-      <button type="button" class="clickable-icon" aria-label="Copy message" @click="emit('copy')">
-        <Icon icon="copy" tooltip="Copy message" no-hover />
+    <div
+      v-if="actions"
+      class="abele-chat-msg__actions"
+      role="group"
+      :aria-label="t('streamB.messageActions.f532ee')"
+    >
+      <button
+        type="button"
+        class="clickable-icon"
+        :aria-label="t('streamB.copyMessage.457efe')"
+        @click="emit('copy')"
+      >
+        <Icon icon="copy" :tooltip="t('streamB.copyMessage.457efe')" no-hover />
       </button>
       <template v-if="!readOnlyHistory">
         <button
           v-if="message.role === 'user'"
           type="button"
           class="clickable-icon"
-          aria-label="Edit"
+          :aria-label="t('streamB.edit.464c4f')"
           @click="emit('edit-message', message.id)"
         >
-          <Icon icon="pencil" tooltip="Edit" no-hover />
+          <Icon icon="pencil" :tooltip="t('streamB.edit.464c4f')" no-hover />
         </button>
         <button
           v-if="message.role === 'assistant' || message.role === 'tool-call'"
           type="button"
           class="clickable-icon"
-          aria-label="Retry"
+          :aria-label="t('streamB.retry.942087')"
           @click="emit('retry-message', message.id)"
         >
-          <Icon icon="rotate-cw" tooltip="Retry" no-hover />
+          <Icon icon="rotate-cw" :tooltip="t('streamB.retry.942087')" no-hover />
         </button>
         <button
           v-if="message.role === 'user' || message.role === 'assistant'"
           type="button"
           class="clickable-icon"
-          aria-label="Insert into note"
+          :aria-label="t('streamB.insertIntoNote.be3d5a')"
           @click="emit('insert-into-note', message.id)"
         >
-          <Icon icon="file-input" tooltip="Insert into note" no-hover />
+          <Icon icon="file-input" :tooltip="t('streamB.insertIntoNote.be3d5a')" no-hover />
         </button>
         <button
           v-if="canComment && (message.role === 'assistant' || message.role === 'user')"
           type="button"
           class="clickable-icon"
-          aria-label="Ask here"
+          :aria-label="t('streamB.askHere.7b4ec4')"
           @pointerdown="captureSelection"
           @click="askHere"
         >
-          <Icon icon="message-square" tooltip="Ask here" no-hover />
+          <Icon icon="message-square" :tooltip="t('streamB.askHere.7b4ec4')" no-hover />
         </button>
         <button
           type="button"
           class="clickable-icon"
-          aria-label="More message actions"
+          :aria-label="t('streamB.moreMessageActions.d1a0bd')"
           aria-haspopup="menu"
           @click="emit('actions', $event)"
         >
-          <Icon icon="ellipsis" tooltip="More message actions" no-hover />
+          <Icon icon="ellipsis" :tooltip="t('streamB.moreMessageActions.d1a0bd')" no-hover />
         </button>
       </template>
     </div>
     <div class="abele-chat-msg__detail-time">{{ formatTime(message.timestamp) }}</div>
     <div v-if="message.usage" class="abele-chat-msg__detail-row">
-      <span class="abele-chat-msg__detail-label">Tokens</span>
+      <span class="abele-chat-msg__detail-label">{{ t('streamB.tokens.a039df') }}</span>
       <span
-        >in: {{ message.usage.input }} / out: {{ message.usage.output }} / total:
-        {{ message.usage.total
-        }}<template v-if="message.usage.speed"> · {{ message.usage.speed }} t/s</template></span
+        >{{
+          t('streamBMeta.92b76bc427', {
+            p0: String(message.usage.input),
+            p1: String(message.usage.output),
+            p2: String(message.usage.total),
+          })
+        }}<template v-if="message.usage.speed">
+          {{ t('streamBMeta.d46f6ad65a', { p0: String(message.usage.speed) }) }}</template
+        ></span
       >
     </div>
     <div v-for="mark in message.highlights ?? []" :key="mark.id" class="abele-chat-msg__detail-row">
       <span :class="`abele-highlight abele-highlight--${mark.color}`">{{ mark.quote }}</span>
       <Button
-        text="Remove"
-        :tooltip="`Remove highlight: ${mark.quote}`"
-        :aria-label="`Remove highlight: ${mark.quote}`"
+        :text="t('streamB.remove.c3812f')"
+        :tooltip="t('streamB.removeHighlight.a3dfce', { v0: String(mark.quote) })"
+        :aria-label="t('streamB.removeHighlight.a3dfce', { v0: String(mark.quote) })"
         @click="emit('remove-highlight', message.id, mark.id)"
       />
     </div>
     <div v-if="message.toolParams" class="abele-chat-msg__detail-row">
-      <span class="abele-chat-msg__detail-label">Params</span>
+      <span class="abele-chat-msg__detail-label">{{ t('streamB.params.7ffdd4') }}</span>
       <pre data-find-part="params">{{ toolParamsText(message.toolParams) }}</pre>
     </div>
     <div v-if="message.toolResult" class="abele-chat-msg__detail-row">
-      <span class="abele-chat-msg__detail-label">Result</span>
+      <span class="abele-chat-msg__detail-label">{{ t('streamB.result.6e7d50') }}</span>
       <pre data-find-part="result">{{ toolResultText(message.toolResult) }}</pre>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { formatTimestamp } from '@/helpers/displayFormat'
+import { t } from '@/i18n'
+import { streamBTime as formatTimestamp } from '@/i18n/streamBDate'
 import Icon from './obsidian/Icon.vue'
 import Button from './obsidian/Button.vue'
 import type { ChatMessage } from '@/ai/types'

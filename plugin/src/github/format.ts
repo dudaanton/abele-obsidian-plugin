@@ -1,19 +1,8 @@
-import dayjs from 'dayjs'
+import { streamBGithubDate } from '@/i18n/streamBDate'
 
 /** A timestamp from GitHub, the way the rest of the plugin writes dates. */
-export function formatDate(iso: string | undefined): string {
-  if (!iso) return ''
-  const d = dayjs(iso)
-  return d.isValid() ? d.format('D MMM YYYY, HH:mm') : ''
-}
-
-/** A date for a narrow row: no year when it is this year's. */
-export function shortDate(iso: string | undefined): string {
-  if (!iso) return ''
-  const d = dayjs(iso)
-  if (!d.isValid()) return ''
-  return d.format(d.isSame(dayjs(), 'year') ? 'D MMM, HH:mm' : 'D MMM YYYY')
-}
+export const formatDate = (iso: string | undefined): string => streamBGithubDate(iso)
+export const shortDate = (iso: string | undefined): string => streamBGithubDate(iso, true)
 
 /** The first line of a commit message, and the rest. */
 export function splitMessage(message: string): { title: string; body: string } {

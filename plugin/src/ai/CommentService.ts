@@ -1,3 +1,5 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 import { ref, shallowReactive, watch, type Ref, type WatchStopHandle } from 'vue'
 import { Notice, TFile, TFolder } from 'obsidian'
 import dayjs from 'dayjs'
@@ -103,8 +105,11 @@ export class CommentService implements CommentInfoSource {
   }
 
   private presentationTarget(id: string): string {
-    return (this.sessions.get(id) ?? this.expanded.get(id))?.currentChatFile.value?.path ??
-      ChatStorage.getInstance().discussionPathFor(id) ?? `discussion:${id}`
+    return (
+      (this.sessions.get(id) ?? this.expanded.get(id))?.currentChatFile.value?.path ??
+      ChatStorage.getInstance().discussionPathFor(id) ??
+      `discussion:${id}`
+    )
   }
 
   /**
@@ -112,15 +117,19 @@ export class CommentService implements CommentInfoSource {
    * told: the one that lost the open card and the one that gained it. They are usually the
    * same note, which is what the set is for.
    */
-  private readonly openWatcher = watch(this.open, (id, previous) => {
-    this.lastOnScreen = this.onScreen(id)
-    const notes = new Set<string>()
-    for (const which of [previous, id]) {
-      const note = which ? this.sessionFor(which)?.anchor.value?.note : null
-      if (note) notes.add(note)
-    }
-    for (const note of notes) dispatchCommentsChanged(note)
-  }, { flush: 'sync' })
+  private readonly openWatcher = watch(
+    this.open,
+    (id, previous) => {
+      this.lastOnScreen = this.onScreen(id)
+      const notes = new Set<string>()
+      for (const which of [previous, id]) {
+        const note = which ? this.sessionFor(which)?.anchor.value?.note : null
+        if (note) notes.add(note)
+      }
+      for (const note of notes) dispatchCommentsChanged(note)
+    },
+    { flush: 'sync' }
+  )
 
   /**
    * Whether the open comment is actually in front of the person: its tab is the active one and
@@ -254,7 +263,11 @@ export class CommentService implements CommentInfoSource {
     const current = presentationCurrent ?? chats.fileOpenGuard(file)
     await chats.openChatFile(file, current)
     const session = chats.activeSession.value
-    if (!chats.isForegroundPresentation(current) || session?.currentChatFile.value?.path !== file.path) return false
+    if (
+      !chats.isForegroundPresentation(current) ||
+      session?.currentChatFile.value?.path !== file.path
+    )
+      return false
     await chats.revealSidebar({ focus: false, current })
     return chats.isForegroundPresentation(current) && chats.activeSession.value === session
   }
@@ -278,11 +291,13 @@ export class CommentService implements CommentInfoSource {
     // refused release is terminal for its caller, not permission to retry with a new token.
     if (chats.getSession(session.id)) return chats.releaseSession(session.id, isCurrent)
     // A holder without a tab can only clear its mark inside the same queue as a reopen.
-    return chats.mutatePresentation(() => {
-      if ((isCurrent && !isCurrent()) || chats.getSession(session.id)) return false
-      this.releasePresentationNow(session)
-      return true
-    }) ?? false
+    return (
+      chats.mutatePresentation(() => {
+        if ((isCurrent && !isCurrent()) || chats.getSession(session.id)) return false
+        this.releasePresentationNow(session)
+        return true
+      }) ?? false
+    )
   }
 
   /** True for a comment that has been opened as a chat: `ChatService` owns it now. */
@@ -491,7 +506,7 @@ export class CommentService implements CommentInfoSource {
   ): Promise<ChatSession | null> {
     const chat = parent.currentChatFile.value
     if (!chat) {
-      new Notice('Send something in this chat first: it is not saved yet')
+      new Notice(t('streamB.sendSomethingInThisChatFirstIt.fc7c43'))
       return null
     }
 
@@ -575,7 +590,7 @@ export class CommentService implements CommentInfoSource {
     // Publishing the file can wake a marker's reader before creation resumes. Acquire its
     // shared load instead of constructing a second writer with an independent checkpoint.
     const session = await this.load(id, file)
-    if (!session) throw new Error('The new discussion could not be loaded.')
+    if (!session) throw new UiError(uiMessage('streamBError.963ca9ee5b'))
     return session
   }
 
@@ -584,7 +599,7 @@ export class CommentService implements CommentInfoSource {
     const path = session.currentChatFile.value?.path
     const storage = ChatStorage.getInstance()
     if (!path || storage.discussionIdAt(path) !== id || storage.discussionPathFor(id) !== path)
-      throw new Error('The discussion identity was not resolved for this file.')
+      throw new UiError(uiMessage('streamBError.73cf5550f9'))
     this.sessions.set(id, session)
     this.missing.delete(id)
     this.watchState(id, session)
@@ -681,7 +696,13 @@ export class CommentService implements CommentInfoSource {
   }
 
   /** Contents-list inspection must not create a writer, migrate a file or repair a safety copy. */
-  async navigationPreview(id: string): Promise<(Pick<ChatSession, 'messages' | 'messageComments' | 'isDestroyed'> & Partial<Pick<ChatSession, 'allMessages'>>) | null> {
+  async navigationPreview(
+    id: string
+  ): Promise<
+    | (Pick<ChatSession, 'messages' | 'messageComments' | 'isDestroyed'> &
+        Partial<Pick<ChatSession, 'allMessages'>>)
+    | null
+  > {
     const known = this.sessionFor(id)
     if (known) return known
     const { app } = GlobalStore.getInstance()
@@ -864,7 +885,10 @@ export class CommentService implements CommentInfoSource {
           session.chatTitle.value = previousTitle
           session.bindAgent(previousAgentId)
           session.restoreOverrides(previousOverrides)
-          throw new Error('The expansion could not be confirmed. Check the saved conversation before retrying.', { cause: confirmationError })
+          throw new Error(
+            'The expansion could not be confirmed. Check the saved conversation before retrying.',
+            { cause: confirmationError }
+          )
         }
         if (recovered.metadata.kind !== 'chat') {
           if (recovered.unchanged) {
@@ -1022,7 +1046,7 @@ export class CommentService implements CommentInfoSource {
         },
         () => {
           if (this.sessionOnFile(child.path))
-            throw new Error('The comment was opened. Retry the rename.')
+            throw new UiError(uiMessage('streamBError.1fa876b018'))
         }
       )
     }
@@ -1212,11 +1236,11 @@ export class CommentService implements CommentInfoSource {
     const { app } = GlobalStore.getInstance()
     const file = app.vault.getAbstractFileByPath(path)
     if (!(file instanceof TFile) || file.extension !== 'abchat')
-      throw new Error('The parent chat is unavailable.')
+      throw new UiError(uiMessage('streamBError.774edb1289'))
     const parsed = parseChat(await app.vault.read(file))
     const message =
       parsed.metadata?.type === 'abele-chat' && parsed.messages.find((m) => m.id === id)
-    if (!message) throw new Error('The parent reply is unavailable.')
+    if (!message) throw new UiError(uiMessage('streamBError.d7e135b1f7'))
     return message
   }
 
@@ -1230,8 +1254,7 @@ export class CommentService implements CommentInfoSource {
       if (file instanceof TFile) comments = parseChatMetadata(await app.vault.read(file))?.comments
     }
     const start = comments?.find((comment) => comment.id === commentId)?.start
-    if (start === undefined)
-      throw new Error('The selected passage is unavailable. Start a new comment.')
+    if (start === undefined) throw new UiError(uiMessage('streamBError.7190d9a20e'))
     return start
   }
 
@@ -1251,20 +1274,20 @@ export class CommentService implements CommentInfoSource {
     const { app } = GlobalStore.getInstance()
     const file = app.vault.getAbstractFileByPath(proposal.parent)
     if (!(file instanceof TFile) || file.extension !== 'abchat')
-      throw new Error('The parent chat is unavailable.')
+      throw new UiError(uiMessage('streamBError.774edb1289'))
     const checkOwner = () => {
       // A tab opened during the read: it owns this file now. Retrying goes through that owner.
       if (this.sessionOnFile(proposal.parent))
-        throw new Error('The parent chat was opened. Review the proposal again.')
+        throw new UiError(uiMessage('streamBError.e5ad2cbf8c'))
     }
     await ChatStorage.getInstance().transformDiscussion(
       file,
       (content) => {
         const parsed = parseChat(content)
         if (parsed.metadata?.type !== 'abele-chat')
-          throw new Error('The parent chat is unavailable.')
+          throw new UiError(uiMessage('streamBError.774edb1289'))
         const message = parsed.messages.find((m) => m.id === proposal.message)
-        if (!message) throw new Error('The parent reply is unavailable.')
+        if (!message) throw new UiError(uiMessage('streamBError.d7e135b1f7'))
         const after = change(message)
         const messages = parsed.messages.map((m) => (m.id === message.id ? after : m))
         return serializeChat({

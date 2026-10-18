@@ -1,3 +1,4 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 /**
  * A chat file rewritten whole so that a crash at any moment leaves one whole copy of it.
  *
@@ -53,7 +54,7 @@ export async function rewriteChat(
     tornChat(prior, parsedPrior) &&
     (await adapter.exists(copy))
   )
-    throw new Error('This chat needs reopening. Reopen it before making changes.')
+    throw new UiError(uiMessage('streamBError.2b71f61299'))
   // A readable log may still have an earlier torn append. Copying those damaged bytes
   // would make readChat reject the only backup after this rewrite truncates the main file.
   // Retain the recognised prior state as a whole v2 snapshot, never the proposed annotation.
@@ -80,7 +81,7 @@ export async function rewriteChat(
     if (check || expected !== undefined)
       await app.vault.process(file, (current) => {
         if (expected !== undefined && current !== expected)
-          throw new Error('This chat changed elsewhere. Reopen it before saving.')
+          throw new UiError(uiMessage('streamBError.065c492383'))
         check?.(current)
         if (check) previous = current
         writeStarted = true
@@ -144,8 +145,7 @@ export async function transformChat(
   if (content === previous) return
   await rewriteChat(app, file, content, (current) => {
     check?.()
-    if (current !== previous)
-      throw new Error('This chat changed elsewhere. Reopen it before making changes.')
+    if (current !== previous) throw new UiError(uiMessage('streamBError.c85c1160fb'))
   })
 }
 

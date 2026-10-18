@@ -1,3 +1,5 @@
+import { streamBCount as plural } from '@/i18n/streamBCounts'
+import { t } from '@/i18n'
 import { h } from 'vue'
 import { Notice } from 'obsidian'
 import { GitRefusal } from './nodePathGit'
@@ -11,7 +13,6 @@ import type { NodePathModel } from './NodePathModel'
 import { confirmDialog, promptDialog } from '@/components/obsidian/dialogs'
 
 const app = () => GlobalStore.getInstance().app
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
 /** Discarding a file's changes, asked first, saying what goes: a new file is deleted. */
 export async function discardNodePathFile(model: NodePathModel, path: string): Promise<void> {
@@ -19,12 +20,12 @@ export async function discardNodePathFile(model: NodePathModel, path: string): P
   if (!change) return
   if (
     !(await confirmDialog({
-      title: 'Discard the changes?',
+      title: t('streamB.discardTheChanges.eea9a3'),
       message:
         change.kind === 'added'
-          ? `${path} is new and not committed. Discarding deletes the file.`
-          : `What changed in ${path} since the last commit is lost. Staged parts stay.`,
-      confirmText: 'Discard',
+          ? t('streamB.isNewAndNotCommittedDiscardingDeletes.a528f2', { v0: String(path) })
+          : t('streamB.whatChangedInSinceTheLastCommit.235fe2', { v0: String(path) }),
+      confirmText: t('streamB.discard.eb1a70'),
     }))
   )
     return
@@ -38,9 +39,9 @@ export async function takeNodePathStep(model: NodePathModel, id: BranchStep['id'
   if (!copy || !state) return
   if (id === 'create-branch') {
     const name = await promptDialog({
-      title: 'Make a branch here',
-      placeholder: 'branch-name',
-      submitText: 'Make branch',
+      title: t('streamB.makeABranchHere.d03d79'),
+      placeholder: t('streamBRest.branchName'),
+      submitText: t('streamB.makeBranch.bd53a1'),
     })
     if (name) await model.createBranch(name)
     return
@@ -58,21 +59,28 @@ export async function takeNodePathStep(model: NodePathModel, id: BranchStep['id'
       if (!lease || !lease.ahead || !lease.behind) throw error
       if (
         !(await confirmDialog({
-          title: 'Replace the branch on the remote?',
-          message: `${copy.branch} was rebased after it was pushed, so its copy on the remote has ${plural(lease.behind, 'commit')} it no longer has. Pushing replaces that copy, unless someone changed it since it was last fetched.`,
-          confirmText: 'Push and replace',
+          title: t('streamB.replaceTheBranchOnTheRemote.a153c5'),
+          message: t('streamB.wasRebasedAfterItWasPushedSo.8f5682', {
+            v0: String(copy.branch),
+            v1: String(plural(lease.behind, 'commit')),
+          }),
+          confirmText: t('streamB.pushAndReplace.1a2195'),
         }))
       )
         return
       await model.push(lease.commit)
     }
-    new Notice(id === 'publish' ? `${copy.branch} is on the remote now.` : 'Pushed.')
+    new Notice(
+      id === 'publish'
+        ? t('streamB.isOnTheRemoteNow.cd837b', { v0: String(copy.branch) })
+        : t('streamB.pushed.73b8b1')
+    )
     return
   }
   const base = state.base ?? 'main'
   if (id === 'update') {
     const dirty = model.changes.value.filter((c) => c.kind !== 'added').length
-    nodePathDialog(`Update from ${base}`, (close) =>
+    nodePathDialog(t('streamB.updateFrom.e2481b', { v0: String(base) }), (close) =>
       h(UpdateDialog, {
         branch: copy.branch,
         base,
@@ -90,7 +98,11 @@ export async function takeNodePathStep(model: NodePathModel, id: BranchStep['id'
             .update()
             .then(({ conflicts }) => {
               if (conflicts.length)
-                new Notice(`The rebase stopped on ${plural(conflicts.length, 'file')} in conflict.`)
+                new Notice(
+                  t('streamB.theRebaseStoppedOnInConflict.71b2d1', {
+                    v0: String(plural(conflicts.length, 'file')),
+                  })
+                )
             })
             .catch((error: unknown) => model.report(error))
         },
@@ -100,7 +112,7 @@ export async function takeNodePathStep(model: NodePathModel, id: BranchStep['id'
   }
   if (id === 'create-pr') {
     const commits = model.panelBranch.value?.committed.length ?? 0
-    nodePathDialog('Create pull request', (close) =>
+    nodePathDialog(t('streamB.createPullRequest.71e2bc'), (close) =>
       h(PullRequestDialog, {
         branch: copy.branch,
         base,
@@ -117,7 +129,7 @@ export async function takeNodePathStep(model: NodePathModel, id: BranchStep['id'
           void model
             .createPull({ ...pr, base })
             .then((made) => {
-              new Notice(`Pull request #${made.number} is open.`)
+              new Notice(t('streamB.pullRequestIsOpen.d1d0c4', { v0: String(made.number) }))
               if (made.url) void openGithubUrl(app(), made.url)
             })
             .catch((error: unknown) => model.report(error))

@@ -1,34 +1,34 @@
 <template>
-  <div class="abele-node-save" aria-label="File save state">
+  <div class="abele-node-save" :aria-label="t('streamB.fileSaveState.5e9528')">
     <!-- Where the tab's header saves and discards, only an unresolved save keeps its check here. -->
     <div v-if="actions || model.draft.value?.pending" class="abele-node-save__actions">
       <Button
         v-if="!model.editing.value"
-        text="Edit file"
-        tooltip="Start a local draft from the loaded file"
+        :text="t('streamB.editFile.9608dd')"
+        :tooltip="t('streamB.startALocalDraftFromTheLoaded.a1f50f')"
         icon="pencil"
         :disabled="locked || busy || !model.fileEditable.value || !!model.draft.value?.pending"
         @click="act(() => model.beginEditing())"
       />
       <Button
         v-else-if="model.draft.value?.pending"
-        text="Check save"
-        tooltip="Check the original save operation without creating a new save"
+        :text="t('streamB.checkSave.7d4382')"
+        :tooltip="t('streamB.checkTheOriginalSaveOperationWithoutCreating.3e35d0')"
         icon="refresh-cw"
         :disabled="busy || offline"
         @click="act(() => model.checkSave())"
       />
       <Button
         v-else
-        text="Save file"
-        tooltip="Save this draft using its original content identity"
+        :text="t('streamB.saveFile.2a6f7e')"
+        :tooltip="t('streamB.saveThisDraftUsingItsOriginalContent.2ae727')"
         icon="save"
         :disabled="
           locked ||
           offline ||
           busy ||
           !model.draftDirty.value ||
-          !!model.draftError.value ||
+          !!presentUiField(model.draftError, 'value') ||
           model.draft.value?.status === 'conflict'
         "
         @click="act(() => model.saveFile())"
@@ -37,7 +37,7 @@
         v-if="!needsChoice"
         class="clickable-icon"
         icon="refresh-cw"
-        tooltip="Reload current version"
+        :tooltip="t('streamB.reloadCurrentVersion.6ac0f0')"
         role="button"
         tabindex="0"
         :disabled="busy || offline || !model.canReloadDraft.value || !!model.draft.value?.pending"
@@ -48,10 +48,10 @@
         v-if="!needsChoice && model.draft.value && !model.draft.value.pending"
         class="clickable-icon"
         icon="undo-2"
-        tooltip="Discard local draft"
+        :tooltip="t('streamB.discardLocalDraft.ab60bd')"
         role="button"
         tabindex="0"
-        :disabled="busy || !!model.draftError.value"
+        :disabled="busy || !!presentUiField(model.draftError, 'value')"
         @click="act(() => model.discardDraft())"
         @keydown.enter.prevent="act(() => model.discardDraft())"
       />
@@ -59,54 +59,72 @@
     <div v-if="needsChoice" class="abele-node-save__state" role="status">
       <span>{{
         error ||
-        model.draftError.value ||
-        (model.draft.value?.status === 'conflict' ? 'Conflict · on disk.' : 'Changed on disk.')
+        presentUiField(model.draftError, 'value') ||
+        (model.draft.value?.status === 'conflict'
+          ? t('streamB.conflictOnDisk.6a2045')
+          : t('streamB.changedOnDisk.c12f35'))
       }}</span>
       <Button
-        text="Reload"
-        tooltip="Discard my draft and load the version now on disk"
+        :text="t('streamB.reload.bdc090')"
+        :tooltip="t('streamB.discardMyDraftAndLoadTheVersion.3d7ebf')"
         :disabled="busy || offline || !model.canReloadDraft.value"
         @click="reload"
       />
       <Button
-        text="Keep mine"
-        tooltip="Keep my text and base the next Save on the version now on disk"
-        :disabled="locked || busy || offline || !!model.draftError.value || !model.draft.value"
+        :text="t('streamB.keepMine.0335c8')"
+        :tooltip="t('streamB.keepMyTextAndBaseTheNext.792ea5')"
+        :disabled="
+          locked ||
+          busy ||
+          offline ||
+          !!presentUiField(model.draftError, 'value') ||
+          !model.draft.value
+        "
         @click="keepMine"
       />
     </div>
     <span v-else-if="error || model.draftError.value" role="alert"
       ><NodeErrorText :error="error || model.draftError.value"
     /></span>
-    <span v-else-if="model.draft.value?.pending" role="alert"
-      >Save outcome unknown · keep this draft. Reconnect and check the same save; do not submit it
-      again. Inspect the retained predecessor before recovery.</span
-    >
+    <span v-else-if="model.draft.value?.pending" role="alert">{{
+      t('streamB.saveOutcomeUnknownKeepThisDraftReconnect.8ce6f7')
+    }}</span>
     <span v-else-if="model.draft.value?.status === 'rejected'" role="alert"
-      >Save rejected · <NodeErrorText :error="model.draft.value.error" />. Your local draft is
-      retained.</span
+      >{{ t('streamB.saveRejected.be1e12') }} <NodeErrorText :error="model.draft.value.error" />{{
+        t('streamB.yourLocalDraftIsRetained.49b72f')
+      }}</span
     >
-    <span v-else-if="model.draft.value?.status === 'saved' && !model.draftDirty.value" role="status"
-      >Saved · the node confirmed this version. External editors may change it afterwards.</span
+    <span
+      v-else-if="model.draft.value?.status === 'saved' && !model.draftDirty.value"
+      role="status"
+      >{{ t('streamB.savedTheNodeConfirmedThisVersionExternal.f4f869') }}</span
     >
-    <span v-else-if="model.editing.value && model.draft.value" role="status"
-      >Unsent edit · stored only on this device. Save uses the version you started from.</span
-    >
+    <span v-else-if="model.editing.value && model.draft.value" role="status">{{
+      t('streamB.unsentEditStoredOnlyOnThisDevice.49091f')
+    }}</span>
     <details v-if="model.draft.value?.result">
-      <summary>Save receipt and retained predecessor</summary>
+      <summary>{{ t('streamB.saveReceiptAndRetainedPredecessor.25d4a8') }}</summary>
       <div class="abele-node-save__receipt">
-        Operation · {{ model.draft.value.result.operation_id }}<br />Outcome ·
-        {{ model.draft.value.result.state }}<br />
-        Predecessor · {{ model.draft.value.result.predecessor_content_id || 'See recovery path' }}
+        {{ t('streamBMeta.76be2c0593', { p0: String(model.draft.value.result.operation_id) })
+        }}<br />{{ t('streamBMeta.f6c522a17e', { p0: String(model.draft.value.result.state) })
+        }}<br />
+        {{
+          t('streamBMeta.128c2c42e3', {
+            p0: String(
+              model.draft.value.result.predecessor_content_id || t('streamB.seeRecoveryPath.496219')
+            ),
+          })
+        }}
         <template v-if="model.draft.value.result.recovery_path"
-          ><br />Recovery copy · node storage ·
-          {{ model.draft.value.result.recovery_path }}</template
+          ><br />{{
+            t('streamBMeta.3d39268985', { p0: String(model.draft.value.result.recovery_path) })
+          }}</template
         >
       </div>
       <Button
         v-if="model.draft.value.result.predecessor_content_id"
-        text="Read retained predecessor"
-        tooltip="Read the retained bytes from before the save"
+        :text="t('streamB.readRetainedPredecessor.8ffc86')"
+        :tooltip="t('streamB.readTheRetainedBytesFromBeforeThe.24a9fc')"
         :disabled="busy || offline"
         @click="act(() => model.readPredecessor())"
       />
@@ -120,6 +138,8 @@
 </template>
 <script setup lang="ts">
 import NodeErrorText from '@/components/NodeErrorText.vue'
+import { presentUiField, presentUiError } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 import { computed, ref } from 'vue'
 import type { NodeFilesModel } from '@/node/NodeFilesModel'
 import type { FileDraftSnapshot } from '@/node/fileDrafts'
@@ -159,7 +179,7 @@ async function act(work: () => Promise<unknown>) {
   try {
     await work()
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    error.value = presentUiError(e)
   } finally {
     busy.value = false
   }
@@ -176,14 +196,15 @@ const reload = () =>
     if (
       hasChanges &&
       !(await confirmDialog({
-        title: 'Discard local draft?',
-        message: `Discard your unsaved text in ${path} and load the version now on disk?`,
-        confirmText: 'Reload',
-        confirmTooltip: 'Discard the local draft and read the file from the node',
+        title: t('streamB.discardLocalDraft.bdaf92'),
+        message: t('streamB.discardYourUnsavedTextInAndLoad.e0be81', { v0: String(path) }),
+        confirmText: t('streamB.reload.bdc090'),
+        confirmTooltip: t('streamB.discardTheLocalDraftAndReadThe.4dd6dd'),
       }))
     )
       return
-    if (path !== model.filePath.value) throw new Error('File view changed before reload')
+    if (path !== model.filePath.value)
+      throw new Error(t('streamB.fileViewChangedBeforeReload.9da237'))
     await (props.reload ? props.reload(shown) : model.reloadCurrent(shown))
     emit('reconciled')
   })
@@ -201,6 +222,7 @@ const keepMine = () =>
   align-items: flex-start;
   gap: var(--size-4-2);
   min-width: 0;
+  overflow-wrap: anywhere;
   color: var(--text-muted);
   font-size: var(--font-ui-small);
   &__state {

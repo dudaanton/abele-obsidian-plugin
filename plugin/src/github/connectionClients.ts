@@ -1,7 +1,7 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import { GithubClient, type Requester } from './client'
 import { endpoints } from './urls'
-import type { GithubConnection } from './connections'
-import { isGithubConnection } from './connections'
+import { type GithubConnection, isGithubConnection } from './connections'
 
 /** Connection credentials are captured once per generation, never rediscovered halfway through a load. */
 export class ConnectionClients {
@@ -34,9 +34,8 @@ export class ConnectionClients {
   client(id: string): GithubClient {
     this.reconcile()
     const row = this.connections().find((c) => c.id === id)
-    if (!row) throw new Error('The GitHub connection was deleted or is unknown.')
-    if (!isGithubConnection(row))
-      throw new Error('This provider is unavailable in the GitHub adapter.')
+    if (!row) throw new UiError(uiMessage('streamBError.c2583399b1'))
+    if (!isGithubConnection(row)) throw new UiError(uiMessage('streamBError.8e264bfe49'))
     const found = this.clients.get(id)
     if (found) return found.client
     const token = this.secret(row.keyId).trim()

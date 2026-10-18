@@ -1,3 +1,4 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 /**
  * The file operations rewind needs, over Obsidian's vault where a file is in its index and its
  * adapter where it is not — a file kept in a dot-folder is on disk but never indexed.
@@ -68,7 +69,7 @@ export class VaultFs {
 
   /** Fresh operation facade: revision guards are consumed only by this restore's writes. */
   checked(expected: Map<string, After>, emptyFolders?: Set<string>): VaultFs {
-    if (!this.checkedApp) throw new Error('Revision-checked undo is not available')
+    if (!this.checkedApp) throw new UiError(uiMessage('streamBError.c151463743'))
     return new VaultFs(this.checkedApp(expected, emptyFolders))
   }
 
@@ -162,7 +163,7 @@ export class VaultFs {
       if (file instanceof TFile && expected !== undefined) {
         await this.app.vault.process(file, (current) => {
           if (file.path !== path || contentHash(current) !== expected)
-            throw new Error('Changed since the undo snapshot: left untouched')
+            throw new UiError(uiMessage('streamBError.80abc63be7'))
           return before.text
         })
         return
@@ -184,7 +185,7 @@ export class VaultFs {
       }
       if (this.adapter.writeBinary) return this.adapter.writeBinary(path, blob)
     }
-    throw new Error(`Nothing kept to put back at ${path}`)
+    throw new UiError(uiMessage('streamBError.f23e7f24df', { v0: String(path) }))
   }
 
   /** Sends a file or folder to the trash the way the person's settings say. */

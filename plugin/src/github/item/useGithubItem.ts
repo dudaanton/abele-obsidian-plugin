@@ -1,3 +1,7 @@
+import { UiError, uiMessage, presentUiError } from '@/i18n/streamBErrors'
+import { WORKING_TREE } from '@/repository/node'
+
+import { t } from '@/i18n'
 import { computed, nextTick, onBeforeUnmount, provide, ref, watch } from 'vue'
 import type { CompareSection } from '@/github/compareSection'
 import { basePins } from '@/github/comparison/pins'
@@ -46,10 +50,10 @@ export function useGithubItem(props: GithubItemProps) {
       props.source?.identity.provider === 'node' &&
       props.sourceLocation &&
       'ref' in props.sourceLocation &&
-      props.sourceLocation.ref === 'Working tree'
+      props.sourceLocation.ref === WORKING_TREE
   )
   const browseRef = computed(() =>
-    liveWorkingView.value && !projectPin.value ? 'Working tree' : undefined
+    liveWorkingView.value && !projectPin.value ? WORKING_TREE : undefined
   )
   const liveEditableFile = computed(
     () => !!browseRef.value && props.sourceLocation?.kind === 'file'
@@ -128,7 +132,7 @@ export function useGithubItem(props: GithubItemProps) {
         pinned?: PinnedLoad
       ) => {
         if (currentClient.github) return currentClient.github.loadTarget(target, promote, pinned)
-        if (!props.sourceLocation) throw new Error('Select an explicit repository location.')
+        if (!props.sourceLocation) throw new UiError(uiMessage('streamBError.0e5771af81'))
         if (props.sourceLocation.kind === 'file' && pinned?.base) {
           const location = props.sourceLocation
           return (async () => {
@@ -154,23 +158,23 @@ export function useGithubItem(props: GithubItemProps) {
     const key = `${sourceKey(currentClient.identity)}:${currentClient.cacheNamespace}:${targetKey(currentTarget)}:${JSON.stringify(props.sourceLocation ?? null)}`
     const data = await read(
       currentTarget,
-      (t) => {
+      (translationItem) => {
         if (active && generation === loadGeneration && currentClient === source.value) {
-          promoted.value = t
+          promoted.value = translationItem
           // Promotion still belongs to the original blob link's immutable target.
           if (
             currentTarget.kind === 'blob' &&
-            t.kind === 'tree' &&
+            translationItem.kind === 'tree' &&
             projectPin.value &&
             !props.model.originalFile &&
-            /^[0-9a-f]{40}$/i.test(t.rest[0])
+            /^[0-9a-f]{40}$/i.test(translationItem.rest[0])
           ) {
             frozenTarget = {
               key,
               resolved: {
-                sha: t.rest[0],
-                ref: t.rest[0],
-                path: t.rest.slice(1).join('/'),
+                sha: translationItem.rest[0],
+                ref: translationItem.rest[0],
+                path: translationItem.rest.slice(1).join('/'),
                 kind: 'dir',
               },
             }
@@ -211,10 +215,7 @@ export function useGithubItem(props: GithubItemProps) {
   const commits = useLoad(async () => {
     if (source.value?.github?.pullCommits) {
       const result = await source.value.github.pullCommits((shown.value as Of<'pull'>).number)
-      if (!result.complete)
-        throw new Error(
-          'Not all pull request commits could be listed. Open the service to read the rest.'
-        )
+      if (!result.complete) throw new UiError(uiMessage('streamBError.74656128ba'))
       return result.commits
     }
     return loadPullCommits(client(), shown.value as Of<'pull'>)
@@ -292,7 +293,7 @@ export function useGithubItem(props: GithubItemProps) {
           main.data.value = loaded
       } catch (error) {
         if (active && generation === loadGeneration && main.data.value === data)
-          main.error.value = error instanceof Error ? error.message : String(error)
+          main.error.value = presentUiError(error)
       } finally {
         largeBusy.value = false
       }
@@ -306,7 +307,7 @@ export function useGithubItem(props: GithubItemProps) {
         main.data.value = { ...data, comparison: result }
     } catch (error) {
       if (!signal.aborted && active && generation === loadGeneration)
-        main.error.value = error instanceof Error ? error.message : String(error)
+        main.error.value = presentUiError(error)
     } finally {
       largeBusy.value = false
     }
@@ -323,24 +324,27 @@ export function useGithubItem(props: GithubItemProps) {
   )
   const anchor = computed(() => target.value?.anchor)
   const fileAnchor = computed(() => {
-    const t = target.value
-    return t && (t.kind === 'pull' || t.kind === 'commit' || t.kind === 'compare')
-      ? t.file
+    const translationItem = target.value
+    return translationItem &&
+      (translationItem.kind === 'pull' ||
+        translationItem.kind === 'commit' ||
+        translationItem.kind === 'compare')
+      ? translationItem.file
       : undefined
   })
   const blobRange = computed(() => (target.value?.kind === 'blob' ? target.value.lines : undefined))
   const blobPlain = computed(() => (target.value?.kind === 'blob' ? !!target.value.plain : false))
   /** The file on screen, for the links and images of its rendered view. */
   const blobFile = computed<RepoFile | null>(() => {
-    const t = target.value
+    const translationItem = target.value
     const b = blob.value
-    if (!t || !b) return null
+    if (!translationItem || !b) return null
     return {
-      provider: t.provider,
-      host: t.host,
-      origin: t.origin,
-      owner: t.owner,
-      repo: t.repo,
+      provider: translationItem.provider,
+      host: translationItem.host,
+      origin: translationItem.origin,
+      owner: translationItem.owner,
+      repo: translationItem.repo,
       ref: b.resolvedCommit ?? b.ref,
       path: b.path,
     }
@@ -358,15 +362,21 @@ export function useGithubItem(props: GithubItemProps) {
     if (c && !c.files.length && c.commits.length && !fileAnchor.value) compareTab.value = 'commits'
   })
   const pullTabs = computed(() => [
-    { id: 'conversation', label: 'Conversation', icon: 'message-square' },
+    { id: 'conversation', label: t('streamB.conversation.ccca18'), icon: 'message-square' },
     {
       id: 'files',
-      label: pull.value?.changedFiles != null ? `Files (${pull.value.changedFiles})` : 'Files',
+      label:
+        pull.value?.changedFiles != null
+          ? t('streamB.files.88ed9f', { v0: String(pull.value.changedFiles) })
+          : t('streamB.files.abc7e9'),
       icon: 'file-diff',
     },
     {
       id: 'commits',
-      label: pull.value?.commitsCount != null ? `Commits (${pull.value.commitsCount})` : 'Commits',
+      label:
+        pull.value?.commitsCount != null
+          ? t('streamB.commits.48c0fb', { v0: String(pull.value.commitsCount) })
+          : t('streamB.commits.d09648'),
       icon: 'git-commit-horizontal',
     },
   ])
@@ -486,8 +496,8 @@ export function useGithubItem(props: GithubItemProps) {
     () => loadKey.value,
     (key) => {
       if (!key || !props.enabled) return
-      const t = target.value
-      pullTab.value = t.kind === 'pull' ? t.tab : 'conversation'
+      const translationItem = target.value
+      pullTab.value = translationItem.kind === 'pull' ? translationItem.tab : 'conversation'
       compareTab.value = 'files'
       void reload()
     },
@@ -496,9 +506,9 @@ export function useGithubItem(props: GithubItemProps) {
   watch(
     () => props.model.nonce,
     () => {
-      const t = target.value
-      if (t?.kind === 'pull') pullTab.value = t.tab
-      if (t?.kind === 'compare' && t.file) compareTab.value = 'files'
+      const translationItem = target.value
+      if (translationItem?.kind === 'pull') pullTab.value = translationItem.tab
+      if (translationItem?.kind === 'compare' && translationItem.file) compareTab.value = 'files'
       void scrollToAnchor()
     }
   )

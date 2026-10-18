@@ -1,3 +1,13 @@
+import {
+  uiJoin,
+  type UiMessage,
+  uiField,
+  uiFieldMessage,
+  uiFields,
+  uiMessage,
+  UiError,
+} from '@/i18n/streamBErrors'
+
 import type { RepositorySource, RepositoryTree } from '@/repository/source'
 import type { BlobData, FolderData, RepoMeta, TreeNode, CommitSummary } from '@/repository/model'
 import type {
@@ -97,7 +107,7 @@ export function forgejoRepository(client: ForgejoClient, repository: string): Re
   const lists = forgejoLists(client, api, web)
   const people = new Map<string, Promise<import('@/repository/model').RepositoryPerson>>()
   const unavailable = async (): Promise<never> => {
-    throw new Error('Not available for this service in this version.')
+    throw new UiError(uiMessage('streamBError.1209bb12ff'))
   }
   const encodePath = (path: string) => path.split('/').map(encodeURIComponent).join('/')
   const rawMeta = () => client.get<RawRepo>(api)
@@ -143,8 +153,7 @@ export function forgejoRepository(client: ForgejoClient, repository: string): Re
     const sha = (
       await client.get<{ sha: string }>(`${api}/commits/${encodeURIComponent(qualified)}`)
     ).sha
-    if (!/^[a-f\d]{40}$/i.test(sha))
-      throw new Error('The service did not return an immutable commit.')
+    if (!/^[a-f\d]{40}$/i.test(sha)) throw new UiError(uiMessage('streamBError.d4d581aba2'))
     return sha
   }
   const items = async (pull: boolean): Promise<ItemRow[]> => {
@@ -197,23 +206,26 @@ export function forgejoRepository(client: ForgejoClient, repository: string): Re
       complete: result.complete,
       reviewCommentsProblem,
       files: result.value.map((file) => {
-        const shown: DiffFile = {
-          path: file.filename,
-          previousPath: file.previous_filename,
-          status:
-            file.status === 'deleted'
-              ? 'removed'
-              : file.status === 'changed'
-                ? 'modified'
-                : file.status,
-          additions: file.additions ?? 0,
-          deletions: file.deletions ?? 0,
-          countsPending: file.additions === undefined || file.deletions === undefined,
-          hash: '',
-          patch: undefined,
-          reviewComments: comments.get(file.filename) ?? [],
-          diffNote: 'This service returns a file summary without a patch.',
-        }
+        const shown: DiffFile = uiFields(
+          {
+            path: file.filename,
+            previousPath: file.previous_filename,
+            status:
+              file.status === 'deleted'
+                ? 'removed'
+                : file.status === 'changed'
+                  ? 'modified'
+                  : file.status,
+            additions: file.additions ?? 0,
+            deletions: file.deletions ?? 0,
+            countsPending: file.additions === undefined || file.deletions === undefined,
+            hash: '',
+            patch: undefined,
+            reviewComments: comments.get(file.filename) ?? [],
+            diffNote: 'This service returns a file summary without a patch.',
+          },
+          { diffNote: uiMessage('streamBError.921180cd63') }
+        )
         shown.loadPatch = async () => {
           client.session.assertCurrent()
           patches ??= client.text(`${api}/pulls/${number}.diff`).catch((error) => {
@@ -229,7 +241,7 @@ export function forgejoRepository(client: ForgejoClient, repository: string): Re
           )
           shown.diffNote = shown.patch
             ? undefined
-            : 'No text patch is available for this file (binary, empty, renamed, or truncated).'
+            : uiField(shown, 'diffNote', uiMessage('streamBError.ce4159a6ef'))
         }
         return shown
       }),
@@ -319,7 +331,7 @@ export function forgejoRepository(client: ForgejoClient, repository: string): Re
   const folder = async (ref: string, path: string, knownCommit?: string): Promise<FolderData> => {
     const resolvedCommit = knownCommit ?? (await resolve(ref)),
       raw = await contents(resolvedCommit, path)
-    if (!Array.isArray(raw)) throw new Error('This path is a file.')
+    if (!Array.isArray(raw)) throw new UiError(uiMessage('streamBError.f1fe763173'))
     return {
       ref,
       resolvedCommit,
@@ -343,39 +355,52 @@ export function forgejoRepository(client: ForgejoClient, repository: string): Re
   const blob = async (ref: string, path: string, knownCommit?: string): Promise<BlobData> => {
     const resolvedCommit = knownCommit ?? (await resolve(ref)),
       raw = await contents(resolvedCommit, path)
-    if (Array.isArray(raw) || raw.type === 'dir') throw new Error('This path is a folder.')
+    if (Array.isArray(raw) || raw.type === 'dir')
+      throw new UiError(uiMessage('streamBError.b305654ab9'))
+    let noteMessage: UiMessage | undefined
     let text = '',
       note: string | undefined
     if (raw.type === 'symlink' || raw.type === 'submodule')
-      note = 'This entry is a link, not a regular file.'
-    else if ((raw.size ?? 0) > 2 * 1024 * 1024) note = 'This file is too large to display.'
+      note =
+        ((noteMessage = uiMessage('streamBError.01fa8fb2a8')),
+        'This entry is a link, not a regular file.')
+    else if ((raw.size ?? 0) > 2 * 1024 * 1024)
+      note =
+        ((noteMessage = uiMessage('streamBError.af130c9cfc')), 'This file is too large to display.')
     else if (raw.encoding !== 'base64' || raw.content === undefined)
-      note = 'The service did not return the file contents.'
+      note =
+        ((noteMessage = uiMessage('streamBError.fe05b9bbe4')),
+        'The service did not return the file contents.')
     else {
       const bytes = Uint8Array.from(atob(raw.content.replace(/\s/g, '')), (c) => c.charCodeAt(0))
-      if (bytes.includes(0)) note = 'Binary file.'
+      if (bytes.includes(0))
+        note = ((noteMessage = uiMessage('streamBError.9ff28c9fad')), 'Binary file.')
       else {
         try {
           text = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
         } catch {
-          note = 'Binary or non-UTF-8 file.'
+          note = ((noteMessage = uiMessage('streamBError.329a3b9f4a')), 'Binary or non-UTF-8 file.')
         }
       }
     }
-    return {
-      ref,
-      resolvedCommit,
-      path,
-      text,
-      contentId: raw.sha,
-      url: fileUrl(resolvedCommit, path),
-      ...(note ? { note } : {}),
-    }
+    return uiFields(
+      {
+        ref,
+        resolvedCommit,
+        path,
+        text,
+        contentId: raw.sha,
+        url: fileUrl(resolvedCommit, path),
+        ...(note ? { note } : {}),
+      },
+      { note: noteMessage }
+    )
   }
   const conversation = async (number: number, pull: boolean): Promise<Conversation> => {
     const comments: Comment[] = []
     let complete = true
     const problems: string[] = []
+    const problemMessages: UiMessage[] = []
     try {
       const page = await client.pages<RawComment>(`${api}/issues/${number}/comments`)
       comments.push(
@@ -392,6 +417,7 @@ export function forgejoRepository(client: ForgejoClient, repository: string): Re
     } catch {
       client.session.assertCurrent()
       complete = false
+      problemMessages.push(uiMessage('streamBError.f5b8b2ba78'))
       problems.push('The conversation could not be read from this service.')
     }
     if (pull) {
@@ -415,44 +441,56 @@ export function forgejoRepository(client: ForgejoClient, repository: string): Re
       } catch {
         client.session.assertCurrent()
         complete = false
+        problemMessages.push(uiMessage('streamBError.9acce75256'))
         problems.push('The pull request reviews could not be read from this service.')
       }
     }
-    return {
-      comments: comments.sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
-      complete,
-      problem: problems.join(' ') || undefined,
-    }
+    return uiFields(
+      {
+        comments: comments.sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+        complete,
+        problem: problems.join(' ') || undefined,
+      },
+      { problem: uiJoin(problemMessages, ' ') }
+    )
   }
   const issue = async (number: number, pull: boolean): Promise<IssueData | PullData> => {
     const raw = await client.get<RawIssue>(`${api}/${pull ? 'pulls' : 'issues'}/${number}`)
-    const { comments, complete, problem } = await conversation(number, pull)
-    const result: IssueData = {
-      number: raw.number,
-      title: raw.title,
-      body: raw.body ?? '',
-      state: raw.merged ? 'merged' : raw.state,
-      createdAt: raw.created_at,
-      author: raw.user?.login ?? 'ghost',
-      labels: (raw.labels ?? []).map((l) => ({ name: l.name, color: l.color ?? '' })),
-      url: `${web}/${pull ? 'pulls' : 'issues'}/${number}`,
-      comments,
-      commentsComplete: complete,
-      commentsProblem: problem,
-      isPull: !!raw.pull_request,
-    }
+    const talk = await conversation(number, pull)
+    const { comments, complete, problem } = talk
+    const result: IssueData = uiFields(
+      {
+        number: raw.number,
+        title: raw.title,
+        body: raw.body ?? '',
+        state: raw.merged ? 'merged' : raw.state,
+        createdAt: raw.created_at,
+        author: raw.user?.login ?? 'ghost',
+        labels: (raw.labels ?? []).map((l) => ({ name: l.name, color: l.color ?? '' })),
+        url: `${web}/${pull ? 'pulls' : 'issues'}/${number}`,
+        comments,
+        commentsComplete: complete,
+        commentsProblem: problem,
+        isPull: !!raw.pull_request,
+      },
+      { commentsProblem: uiFieldMessage(talk, 'problem') }
+    )
     if (!pull) return result
-    return {
-      ...result,
-      base: raw.base?.ref ?? '',
-      head: raw.head?.ref ?? '',
-      baseSha: raw.base?.sha,
-      headSha: raw.head?.sha,
-      additions: null,
-      deletions: null,
-      changedFiles: null,
-      commitsCount: null,
-    }
+    return uiFields(
+      {
+        ...result,
+        base: raw.base?.ref ?? '',
+        head: raw.head?.ref ?? '',
+        baseSha: raw.base?.sha,
+        headSha: raw.head?.sha,
+        additions: null,
+        deletions: null,
+        changedFiles: null,
+        commitsCount: null,
+      },
+      {},
+      result
+    )
   }
   const tree = async (sha: string): Promise<RepositoryTree> => {
     const answer = await client.get<{ tree: TreeEntry[]; truncated?: boolean }>(
@@ -463,17 +501,17 @@ export function forgejoRepository(client: ForgejoClient, repository: string): Re
       const top = await client.get<{ tree: TreeEntry[]; truncated?: boolean }>(
         `${api}/git/trees/${encodeURIComponent(sha)}`
       )
-      if (top.truncated) throw new Error('The service did not return a complete root tree.')
+      if (top.truncated) throw new UiError(uiMessage('streamBError.2f27e1a646'))
       root = { name: '', path: '', kind: 'dir', children: childrenFrom('', top.tree) }
     } else root = buildTree(answer.tree)
     const expand: RepositoryTree['expand'] = async (node) => {
       client.session.assertCurrent()
       if (node.kind !== 'dir' || node.children) return
-      if (!node.sha) throw new Error('The service did not return the folder tree identity.')
+      if (!node.sha) throw new UiError(uiMessage('streamBError.dae9ef12db'))
       const raw = await client.get<{ tree: TreeEntry[]; truncated?: boolean }>(
         `${api}/git/trees/${encodeURIComponent(node.sha)}`
       )
-      if (raw.truncated) throw new Error('The service did not return a complete folder tree.')
+      if (raw.truncated) throw new UiError(uiMessage('streamBError.f308135e99'))
       node.children = childrenFrom(node.path, raw.tree)
     }
     return {
@@ -634,7 +672,7 @@ export function forgejoRepository(client: ForgejoClient, repository: string): Re
     blob: (ref, path) => blob(ref, path),
     text: async (ref, path) => {
       const data = await blob(ref, path)
-      if (data.note) throw new Error(data.note)
+      if (data.note) throw new UiError(uiFieldMessage(data, 'note'))
       return data.text
     },
     workspaces: async () => [],
@@ -695,7 +733,7 @@ export function forgejoRepository(client: ForgejoClient, repository: string): Re
           `${target.owner}/${target.repo}` !== repository ||
           target.origin !== client.deployment.webBase
         )
-          throw new Error('This target belongs to another repository or deployment.')
+          throw new UiError(uiMessage('streamBError.cd278c1617'))
         if (target.kind === 'repo') return source.home(target.ref)
         if (target.kind === 'issue') {
           const data = await issue(target.number, false)
@@ -726,7 +764,7 @@ export function forgejoRepository(client: ForgejoClient, repository: string): Re
               if (!(error instanceof ForgejoError && error.status === 404)) throw error
             }
           }
-          if (!ref) throw new Error('This reference could not be found on the service.')
+          if (!ref) throw new UiError(uiMessage('streamBError.43d93bea97'))
           if (target.refKind) refKinds.set(ref, target.refKind)
           if (pinned.base && target.kind === 'blob') {
             const index = await comparisons.index(pinned.base.baseSha, sha, pinned.signal)

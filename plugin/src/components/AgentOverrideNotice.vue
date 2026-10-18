@@ -6,7 +6,7 @@
     v-show="agentName && isOverridden"
     class="abele-override-notice__reset"
     icon="rotate-ccw"
-    :tooltip="`This chat's own setting. Follow ${agentName} again`"
+    :tooltip="t('streamB.thisChatSOwnSettingFollowAgain.1f60fd', { v0: String(agentName) })"
     @click="reset"
   />
   <div v-else-if="agentName" class="abele-override-notice setting-item-description">
@@ -17,13 +17,14 @@
       v-if="isOverridden && showReset"
       class="abele-override-notice__reset"
       icon="undo-2"
-      :tooltip="`Drop this chat's own setting and follow ${agentName} again`"
+      :tooltip="t('streamB.dropThisChatSOwnSettingAnd.942697', { v0: String(agentName) })"
       @click="reset"
     />
   </div>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed } from 'vue'
 import Icon from './obsidian/Icon.vue'
 import { ChatService } from '@/ai/ChatService'
@@ -44,7 +45,12 @@ const props = withDefaults(
     overridden?: string
     showReset?: boolean
   }>(),
-  { fromAgent: '', overridden: 'Overridden for this chat.', showReset: true, compact: false }
+  {
+    fromAgent: '',
+    overridden: () => t('streamB.overriddenForThisChat.82e726'),
+    showReset: true,
+    compact: false,
+  }
 )
 
 const session = computed(() => ChatService.getInstance().activeSession.value)

@@ -3,29 +3,31 @@
     <template v-if="step === 'paste'">
       <div class="abele-pair__where">
         <div class="abele-pair__where-title">
-          <span class="abele-pair__step">1</span>On the computer with the node
+          <span class="abele-pair__step">1</span>{{ t('streamB.onTheComputerWithTheNode.b7be2d') }}
         </div>
-        <p class="abele-pair__text">Run this in a terminal. It prints a pairing code.</p>
+        <p class="abele-pair__text">{{ t('streamB.runThisInATerminalItPrints.5103b0') }}</p>
         <div class="abele-pair__command">
           <code>abele-node pair</code>
           <Icon
             icon="copy"
             size="xs"
-            tooltip="Copy the command"
+            :tooltip="t('streamB.copyTheCommand.5a6778')"
             @click="emit('copy', 'abele-node pair')"
           />
         </div>
       </div>
 
       <div class="abele-pair__where">
-        <div class="abele-pair__where-title"><span class="abele-pair__step">2</span>Here</div>
+        <div class="abele-pair__where-title">
+          <span class="abele-pair__step">2</span>{{ t('streamB.here.aa3b17') }}
+        </div>
         <Input
           v-model="text"
           as-text-area
           :rows="3"
           :invalid="!!badCode"
-          placeholder="Paste the pairing code"
-          aria-label="Pairing code"
+          :placeholder="t('streamB.pasteThePairingCode.b4df6e')"
+          :aria-label="t('streamB.pairingCode.1c5ea2')"
           class="abele-pair__code-field"
         />
         <div v-if="badCode" class="abele-pair__error" role="alert">
@@ -35,7 +37,11 @@
         <!-- What the code holds, read out of it at once, to be checked against the node. -->
         <!-- What the code holds, to check against the node: who it is, its key, how long the
              code works. The name leads; the key is a grid of fours, read group by group. -->
-        <div v-if="parsed && !badCode" class="abele-pair__card" aria-label="What the code holds">
+        <div
+          v-if="parsed && !badCode"
+          class="abele-pair__card"
+          :aria-label="t('streamB.whatTheCodeHolds.b1f4d6')"
+        >
           <span class="abele-pair__card-icon"><Icon icon="server" :interactive="false" /></span>
           <div class="abele-pair__card-body">
             <div class="abele-pair__card-head">
@@ -43,7 +49,12 @@
                 ref="nameEl"
                 class="abele-pair__card-name"
                 :aria-label="
-                  parsed.nodeId ? `${parsed.name} · Node ID ${parsed.nodeId}` : parsed.name
+                  parsed.nodeId
+                    ? t('streamB.nodeId.09229d', {
+                        v0: String(parsed.name),
+                        v1: String(parsed.nodeId),
+                      })
+                    : parsed.name
                 "
                 >{{ parsed.name }}</span
               >
@@ -51,7 +62,12 @@
                 ><Icon icon="clock" size="xs" :interactive="false" />{{ shortExpiry }}</span
               >
             </div>
-            <div ref="keyEl" class="abele-pair__key" role="group" aria-label="Node key">
+            <div
+              ref="keyEl"
+              class="abele-pair__key"
+              role="group"
+              :aria-label="t('streamB.nodeKey.40e220')"
+            >
               <span v-for="(group, i) in groups" :key="i">{{ group }}</span>
             </div>
           </div>
@@ -61,26 +77,30 @@
         <template v-if="parsed && !badCode">
           <Setting
             class="abele-pair__setting"
-            name="Address"
-            :desc="host.trim() === parsed.host ? 'From the code.' : `The code says ${parsed.host}.`"
+            :name="t('streamB.address.56ef8f')"
+            :desc="
+              host.trim() === parsed.host
+                ? t('streamB.fromTheCode.f017c4')
+                : t('streamB.theCodeSays.d00149', { v0: String(parsed.host) })
+            "
             :error="nodeErrorWords(hostError)"
             :title="hostError"
           >
             <Input
               v-model="host"
               :invalid="!!hostError"
-              aria-label="Address"
+              :aria-label="t('streamB.address.56ef8f')"
               autocomplete="off"
               spellcheck="false"
             />
           </Setting>
           <Setting
             class="abele-pair__setting"
-            name="Port"
+            :name="t('streamB.port.72e9a5')"
             :desc="
               port.trim() === String(parsed.port)
-                ? 'From the code.'
-                : `The code says ${parsed.port}.`
+                ? t('streamB.fromTheCode.f017c4')
+                : t('streamB.theCodeSays.d00149', { v0: String(parsed.port) })
             "
             :error="portValid ? undefined : 'A number from 1 to 65535.'"
           >
@@ -88,7 +108,7 @@
               v-model="port"
               :invalid="!portValid"
               inputmode="numeric"
-              aria-label="Port"
+              :aria-label="t('streamB.port.72e9a5')"
               autocomplete="off"
             />
           </Setting>
@@ -96,8 +116,8 @@
         <Setting
           v-if="parsed && keyChanged && !badCode"
           class="abele-pair__changed"
-          name="The key is not the one from before"
-          desc="This device knew this node by another key. Connect only if the node really got a new one."
+          :name="t('streamB.theKeyIsNotTheOneFrom.a85859')"
+          :desc="t('streamB.thisDeviceKnewThisNodeByAnother.234e08')"
         >
           <Checkbox :is-enabled="confirmed" @toggle="confirmed = !confirmed" />
         </Setting>
@@ -106,19 +126,19 @@
       <div class="modal-button-container abele-modal__actions">
         <Button
           v-if="phone && canScan"
-          text="Scan"
+          :text="t('streamB.scan.ea1c51')"
           icon="scan-qr-code"
-          tooltip="Read the code with the camera"
+          :tooltip="t('streamB.readTheCodeWithTheCamera.978c34')"
           @click="emit('scan')"
         />
         <Button
-          text="Connect"
+          :text="t('streamB.connect.1a2303')"
           accent
           :loading="busy"
           :disabled="
             busy || !parsed || !!badCode || !host.trim() || !portValid || (keyChanged && !confirmed)
           "
-          tooltip="Ask the node to let this device in"
+          :tooltip="t('streamB.askTheNodeToLetThisDevice.ec5dc3')"
           @click="connect"
         />
       </div>
@@ -127,16 +147,20 @@
     <template v-else>
       <div class="abele-pair__where">
         <div class="abele-pair__where-title">
-          <span class="abele-pair__step">3</span>On {{ parsed?.name ?? 'the node' }}, approve this
-          device
+          <span class="abele-pair__step">3</span
+          >{{
+            parsed?.name != null
+              ? t('streamBMeta.51155c5366', { p0: parsed.name })
+              : t('streamBMeta.a9b55dc3b6')
+          }}
         </div>
-        <p class="abele-pair__text">Run this there and choose this device in the list:</p>
+        <p class="abele-pair__text">{{ t('streamB.runThisThereAndChooseThisDevice.8fcdab') }}</p>
         <div class="abele-pair__command">
           <code>abele-node approve-pair</code>
           <Icon
             icon="copy"
             size="xs"
-            tooltip="Copy the command"
+            :tooltip="t('streamB.copyTheCommand.5a6778')"
             @click="emit('copy', 'abele-node approve-pair')"
           />
         </div>
@@ -147,19 +171,28 @@
         </div>
       </div>
       <div class="abele-pair__waiting" role="status">
-        <StatusDot tone="orange" pulse label="Waiting for the node" />
-        <span>Waiting for {{ parsed?.name ?? 'the node' }}…</span>
+        <StatusDot tone="orange" pulse :label="t('streamB.waitingForTheNode.c5b266')" />
+        <span>{{
+          parsed?.name != null
+            ? t('streamBMeta.c4644407f1', { p0: parsed.name })
+            : t('streamBMeta.7225c72e63')
+        }}</span>
       </div>
       <div class="modal-button-container abele-modal__actions">
-        <Button text="Back" tooltip="Use another code" @click="emit('back')" />
+        <Button
+          :text="t('streamB.back.76900f')"
+          :tooltip="t('streamB.useAnotherCode.ffaa97')"
+          @click="emit('back')"
+        />
       </div>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { nodeErrorWords } from '@/node/errorWords'
 import NodeErrorText from '@/components/NodeErrorText.vue'
+import { nodeErrorWords } from '@/node/errorWords'
+import { t } from '@/i18n'
 // Connecting this device to AbeleNode. The node prints a pairing code; pasted here, it is read at
 // once and what it holds is shown to check: the node's name, where it is, its key. Connect asks the
 // node, and the owner lets the device in there, choosing it by the name shown here. The dialog
@@ -225,7 +258,7 @@ const tried = ref(props.error && parsed.value ? `${parsed.value.host}:${parsed.v
 // A node that did not answer is said on the address it was asked at, until that is changed.
 const hostError = computed(() =>
   !host.value.trim()
-    ? 'Where the node is: a name or an IP address.'
+    ? t('streamB.whereTheNodeIsANameOr.d3d178')
     : props.error && tried.value === `${host.value.trim()}:${port.value.trim()}`
       ? props.error
       : undefined
@@ -259,13 +292,16 @@ watch(
   () => {
     // The node's id is for telling two nodes of one name apart: under the pointer, not in the card.
     if (nameEl.value)
-      setTooltip(nameEl.value, parsed.value?.nodeId ? `Node ID ${parsed.value.nodeId}` : '')
-    if (expiresEl.value) setTooltip(expiresEl.value, `Valid until ${parsed.value?.expires ?? ''}`)
-    if (keyEl.value)
       setTooltip(
-        keyEl.value,
-        'The node key. The node printed the same one; check it group by group.'
+        nameEl.value,
+        parsed.value?.nodeId ? t('streamB.nodeId.e37430', { v0: String(parsed.value.nodeId) }) : ''
       )
+    if (expiresEl.value)
+      setTooltip(
+        expiresEl.value,
+        t('streamB.validUntil.67df53', { v0: String(parsed.value?.expires ?? '') })
+      )
+    if (keyEl.value) setTooltip(keyEl.value, t('streamB.theNodeKeyTheNodePrintedThe.68673a'))
   },
   { flush: 'post' }
 )

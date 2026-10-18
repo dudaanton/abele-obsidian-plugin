@@ -26,13 +26,14 @@
       <div v-if="hasMore" ref="sentinel" class="abele-run-branch__sentinel" />
 
       <p v-if="!branch.messages.length" class="abele-run-branch__empty">
-        This task recorded no messages.
+        {{ t('streamB.thisTaskRecordedNoMessages.171f3b') }}
       </p>
     </div>
   </component>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, ref } from 'vue'
 import TreeItem from './obsidian/TreeItem.vue'
 import StatusDot from './obsidian/StatusDot.vue'
@@ -55,9 +56,9 @@ const tone = computed(
   () =>
     (
       ({
-        running: { tone: 'accent', label: 'Working on it' },
-        error: { tone: 'red', label: 'Failed' },
-        aborted: { tone: 'faint', label: 'Interrupted' },
+        running: { tone: 'accent', label: t('streamB.workingOnIt.d55b6d') },
+        error: { tone: 'red', label: t('streamB.failed.031a8f') },
+        aborted: { tone: 'faint', label: t('streamB.interrupted.132d12') },
       }) as const
     )[props.branch.status as 'running' | 'error' | 'aborted']
 )

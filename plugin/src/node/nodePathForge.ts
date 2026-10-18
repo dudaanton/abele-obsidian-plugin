@@ -1,3 +1,5 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 import type { PullRequestSummary } from '@/components/nodeWork/types'
 import { githubClient, githubSettings } from '@/github/GithubService'
 import { isGithubConnection, connectionUnavailableReason } from '@/github/connections'
@@ -132,7 +134,7 @@ export const githubForge: PathForge = {
     try {
       const { items } = await githubClient(repo.host).list<RawPull>(
         `${path(repo)}/pulls?state=open`,
-        { what: 'the pull requests' }
+        { what: t('streamB.thePullRequests.d2ab03') }
       )
       return { connected: true, pulls: items.map(pullSummary) }
     } catch (error) {
@@ -147,11 +149,12 @@ export const githubForge: PathForge = {
       return nativeWrites(forgejoConnectionClient(native.id), `${repo.owner}/${repo.name}`).create(
         pull
       )
-    if (repo.kind !== 'github') throw new Error('Pull requests can be opened on GitHub only.')
+    if (repo.kind !== 'github')
+      throw new UiError(uiMessage('streamB.pullRequestsCanBeOpenedOnGithub.86a00a'))
     const unavailable = unavailableProvider(repo)
     if (unavailable) throw new Error(unavailable)
     const answer = await githubClient(repo.host).call<RawPull>('POST', `${path(repo)}/pulls`, {
-      what: 'the new pull request',
+      what: t('streamB.theNewPullRequest.56f7c6'),
       body: {
         title: pull.title,
         body: pull.body,
@@ -160,7 +163,8 @@ export const githubForge: PathForge = {
         draft: pull.draft,
       },
     })
-    if (answer.error || !answer.body) throw answer.error ?? new Error('GitHub did not answer.')
+    if (answer.error || !answer.body)
+      throw answer.error ?? new UiError(uiMessage('streamB.githubDidNotAnswer.c568a3'))
     return {
       number: answer.body.number,
       ...(answer.body.html_url ? { url: answer.body.html_url } : {}),

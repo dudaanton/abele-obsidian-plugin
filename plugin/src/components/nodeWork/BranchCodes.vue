@@ -21,7 +21,9 @@
       tabindex="0"
       @click="emit('choose-base')"
       @keydown.enter.prevent="emit('choose-base')"
-      ><Icon icon="circle-help" size="xs" :interactive="false" />no base</span
+      ><Icon icon="circle-help" size="xs" :interactive="false" />{{
+        t('streamB.noBase.09b6e3')
+      }}</span
     >
     <span
       v-if="state.base"
@@ -59,6 +61,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 // The branch's codes, in one line: «← main ↑2 ↓1», a red triangle with the files still in
 // conflict, the pull request's glyph and number with a dot for its checks. Used in the worktree's
 // page header and, smaller, over the side panel's files, so both say it the same way.
@@ -107,9 +110,9 @@ const checkTone = computed(() =>
 const checkWords = computed(
   () =>
     ({
-      passing: 'Checks passed',
-      failing: 'A check failed',
-      pending: 'Checks are running',
+      passing: t('streamB.checksPassed.b63c39'),
+      failing: t('streamB.aCheckFailed.97a7bb'),
+      pending: t('streamB.checksAreRunning.052330'),
       none: '',
     })[props.state.pr?.checks ?? 'none']
 )
@@ -124,31 +127,48 @@ function tips() {
     setTooltip(
       baseEl.value,
       s.base
-        ? `Compared with ${s.base}${props.pickable ? ' · click to compare with another branch' : ''}`
-        : 'No branch to compare with was found · choose one'
+        ? t('streamB.comparedWith.ddcb99', {
+            v0: String(s.base),
+            v1: String(props.pickable ? t('streamB.clickToCompareWithAnotherBranch.424a0d') : ''),
+          })
+        : t('streamB.noBranchToCompareWithWasFound.dc1435')
     )
   if (driftEl.value)
     setTooltip(
       driftEl.value,
       !s.ahead && !s.behind
-        ? `The same as ${s.base}`
-        : `${plural(s.ahead, 'commit')} not in ${s.base} · ${s.base} has ${plural(s.behind, 'commit')} this branch has not`
+        ? t('streamB.theSameAs.794a1d', { v0: String(s.base) })
+        : t('streamB.notInHasThisBranchHasNot.8c804a', {
+            v0: String(plural(s.ahead, 'commit')),
+            v1: String(s.base),
+            v2: String(s.base),
+            v3: String(plural(s.behind, 'commit')),
+          })
     )
   if (stopEl.value && s.stopped)
     setTooltip(
       stopEl.value,
-      `The ${s.stopped.kind} onto ${s.stopped.onto} stopped · ${plural(s.stopped.conflicts, 'file')} in conflict`
+      t('streamB.theOntoStoppedInConflict.a8699d', {
+        v0: String(s.stopped.kind),
+        v1: String(s.stopped.onto),
+        v2: String(plural(s.stopped.conflicts, 'file')),
+      })
     )
   if (prEl.value && s.pr)
     setTooltip(
       prEl.value,
-      `Pull request #${s.pr.number} · ${s.pr.state}${checkWords.value ? ` · ${checkWords.value.toLowerCase()}` : ''}${
-        s.pr.review === 'changes'
-          ? ' · changes requested'
-          : s.pr.review === 'approved'
-            ? ' · approved'
-            : ''
-      } · open it`
+      t('streamB.pullRequestOpenIt.3de8d1', {
+        v0: String(s.pr.number),
+        v1: String(s.pr.state),
+        v2: String(checkWords.value ? ` · ${checkWords.value.toLowerCase()}` : ''),
+        v3: String(
+          s.pr.review === 'changes'
+            ? t('streamB.changesRequested.fbd6fc')
+            : s.pr.review === 'approved'
+              ? ' · approved'
+              : ''
+        ),
+      })
     )
 }
 onMounted(tips)

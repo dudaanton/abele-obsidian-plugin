@@ -1,6 +1,8 @@
 import { isNativeForge, nativeLabel } from '@/forge/native'
 import { forgejoConnectionClient } from '@/forge/forgejoConnections'
 import { nativeOpenRows } from '@/forge/forgejoDirectory'
+import { presentUiError } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 /**
  * "Open on GitHub": Obsidian's own picker, into which a GitHub link is pasted or a number, a
  * title, a branch or a commit is typed, with what GitHub has for it offered while typing.
@@ -64,14 +66,14 @@ export const forgetLastPicked = () => {
 }
 
 const repoOfTarget = (model: GithubViewModel | undefined): RepoRef | null => {
-  const t = model?.target
-  return t
+  const translationItem = model?.target
+  return translationItem
     ? {
-        provider: t.provider,
-        host: t.host,
-        ...(t.origin ? { origin: t.origin } : {}),
-        owner: t.owner,
-        repo: t.repo,
+        provider: translationItem.provider,
+        host: translationItem.host,
+        ...(translationItem.origin ? { origin: translationItem.origin } : {}),
+        owner: translationItem.owner,
+        repo: translationItem.repo,
       }
     : null
 }
@@ -184,13 +186,15 @@ export class OpenPicker extends SuggestModal<OpenRow> {
     this.limit = 50
     // Short enough for a phone's field; the empty list under it names the repository.
     this.setPlaceholder(
-      this.repo ? 'Link, #123, title, branch or commit' : 'Link, owner/repo#123 or owner/repo'
+      this.repo
+        ? t('streamB.link123TitleBranchOrCommit.2fe2be')
+        : t('streamB.linkOwnerRepo123OrOwnerRepo.4e01f0')
     )
     this.setInstructions([
-      { command: '↑↓', purpose: 'to navigate' },
-      { command: '↵', purpose: 'to open' },
-      { command: 'mod ↵', purpose: 'to open in a new tab' },
-      { command: 'esc', purpose: 'to dismiss' },
+      { command: '↑↓', purpose: t('streamB.toNavigate.5a70bd') },
+      { command: '↵', purpose: t('streamB.toOpen.9c91ea') },
+      { command: 'mod ↵', purpose: t('streamB.toOpenInANewTab.e3fdb8') },
+      { command: 'esc', purpose: t('streamB.toDismiss.29e1c5') },
     ])
     this.modalEl.addClass('abele-github-open')
   }
@@ -231,8 +235,7 @@ export class OpenPicker extends SuggestModal<OpenRow> {
 
   getSuggestions(query: string): OpenRow[] {
     if (this.invalidated) {
-      this.emptyStateText =
-        'GitHub settings or keys changed. Reopen the picker to search with current connections.'
+      this.emptyStateText = t('streamB.githubSettingsOrKeysChangedReopenThe.e96509')
       return []
     }
     if (this.timer !== null) window.clearTimeout(this.timer)
@@ -258,13 +261,12 @@ export class OpenPicker extends SuggestModal<OpenRow> {
           (!this.repo || sameConnectionServer(c, this.repo))
       )
       if (!available) {
-        this.emptyStateText =
-          'This repository connection is unavailable. Choose a connected service.'
+        this.emptyStateText = t('streamB.reapply.dd58f0ab87')
         return []
       }
       const cached = this.nativeRows.get(query)
       if (cached) {
-        this.emptyStateText = cached.length ? '' : 'No matching items for this service.'
+        this.emptyStateText = cached.length ? '' : t('streamB.reapply.78fff2324a')
         return cached
       }
       if (!this.nativePending.has(query)) {
@@ -286,8 +288,7 @@ export class OpenPicker extends SuggestModal<OpenRow> {
                 this.nativeRows.set(query, [
                   {
                     kind: 'note',
-                    title:
-                      error instanceof Error ? error.message : 'The service could not be searched.',
+                    title: error instanceof Error ? error.message : t('streamB.reapply.2a86819a2f'),
                   },
                 ])
             )
@@ -297,7 +298,7 @@ export class OpenPicker extends SuggestModal<OpenRow> {
             })
         }, DEBOUNCE_MS)
       }
-      this.emptyStateText = 'Searching this service…'
+      this.emptyStateText = t('streamB.reapply.3565fe3f64')
       return []
     }
     const q = this.parse(query)
@@ -341,7 +342,7 @@ export class OpenPicker extends SuggestModal<OpenRow> {
 
   async choose(row: OpenRow, pane: 'tab' | false): Promise<boolean> {
     if (this.invalidated) {
-      new Notice('GitHub settings or keys changed. Reopen the picker.')
+      new Notice(t('streamB.githubSettingsOrKeysChangedReopenThe.6e2846'))
       return false
     }
     if (row.kind === 'note') return false
@@ -350,7 +351,7 @@ export class OpenPicker extends SuggestModal<OpenRow> {
       try {
         url = await row.resolve()
       } catch (e) {
-        new Notice(e instanceof Error ? e.message : String(e))
+        new Notice(presentUiError(e))
         return false
       }
     }
@@ -385,7 +386,7 @@ export class OpenPicker extends SuggestModal<OpenRow> {
     if (row.repo) lastPicked = row.repo
     const chosen = row.repo ? this.choice(row.repo.host, row.repo) : undefined
     if (chosen?.client.isCurrent === false) {
-      new Notice('The connection changed. Reopen the picker to search with its current token.')
+      new Notice(t('streamB.theConnectionChangedReopenThePickerTo.67b398'))
       return false
     }
     const manual = this.contextManual && chosen?.id === this.contextId
@@ -399,7 +400,7 @@ export class OpenPicker extends SuggestModal<OpenRow> {
           ...(manual ? { manual: true } : {}),
         })
       : await openGithubUrl(this.app, url, pane)
-    if (!opened) new Notice('Abele cannot show that in a GitHub tab.')
+    if (!opened) new Notice(t('streamB.abeleCannotShowThatInAGithub.86e00c'))
     return opened
   }
 }

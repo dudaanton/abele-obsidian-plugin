@@ -4,8 +4,8 @@
       ref="inputRef"
       class="abele-github-find__input"
       :model-value="query"
-      placeholder="Find in this tab"
-      aria-label="Find in this tab"
+      :placeholder="t('repository.find')"
+      :aria-label="t('repository.find')"
       @update:model-value="onInput"
       @keydown="onKey"
     />
@@ -14,22 +14,23 @@
       <Icon
         icon="case-sensitive"
         :active="caseSensitive"
-        tooltip="Match letter case"
+        :tooltip="t('repository.case')"
         @click="toggleCase"
       />
       <Icon
         icon="arrow-up"
-        tooltip="Previous match (Shift+Enter)"
+        :tooltip="t('chat.previousMatch')"
         :disabled="!count"
         @click="step(-1)"
       />
-      <Icon icon="arrow-down" tooltip="Next match (Enter)" :disabled="!count" @click="step(1)" />
-      <Icon icon="x" tooltip="Close the find bar (Esc)" @click="emit('close')" />
+      <Icon icon="arrow-down" :tooltip="t('chat.nextMatch')" :disabled="!count" @click="step(1)" />
+      <Icon icon="x" :tooltip="t('chat.closeFind')" @click="emit('close')" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import Input from '../obsidian/Input.vue'
 import Icon from '../obsidian/Icon.vue'
@@ -54,8 +55,8 @@ const count = computed(() => (void tick.value, finder.value?.count ?? 0))
 const countText = computed(() => {
   void tick.value
   if (!query.value) return ''
-  if (!count.value) return 'No results'
-  return `${(finder.value?.current ?? 0) + 1} of ${count.value}`
+  if (!count.value) return t('chat.noResults')
+  return t('chat.position', { position: (finder.value?.current ?? 0) + 1, count: count.value })
 })
 
 let timer = 0

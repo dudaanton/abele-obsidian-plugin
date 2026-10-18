@@ -3,6 +3,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+import { presentUiField } from '@/i18n/streamBErrors'
 import { computed, ref, watch } from 'vue'
 import Breadcrumbs, { type Crumb } from './obsidian/Breadcrumbs.vue'
 import { CommentService, type TrailStep } from '@/ai/CommentService'
@@ -23,15 +25,17 @@ const props = defineProps<{ session: ChatSession }>()
 const steps = ref<TrailStep[]>([])
 
 const TOOLTIP: Record<TrailStep['kind'], string> = {
-  note: 'Back to the note, at the passage this started from',
-  chat: 'Back to the chat, at the message this was asked about',
-  comment: 'Back to this side discussion, at the message the next one was asked about',
+  note: t('streamB.backToTheNoteAtThePassage.63dae5'),
+  chat: t('streamB.backToTheChatAtTheMessage.eea9db'),
+  comment: t('streamB.backToThisSideDiscussionAtThe.5757e9'),
 }
 
 const crumbs = computed<Crumb[]>(() =>
   steps.value.map((step) => ({
-    label: step.missing ? `${step.title} (deleted)` : step.title,
-    tooltip: step.missing ? 'This has been deleted' : TOOLTIP[step.kind],
+    label: step.missing
+      ? t('streamB.deleted.4e0f0d', { v0: presentUiField(step, 'title') })
+      : presentUiField(step, 'title'),
+    tooltip: step.missing ? t('streamB.thisHasBeenDeleted.ede806') : TOOLTIP[step.kind],
   }))
 )
 

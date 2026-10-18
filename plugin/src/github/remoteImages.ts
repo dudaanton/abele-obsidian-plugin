@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /** GitHub pictures load normally; other sites wait behind a button naming the host. */
 import { imageSource, type RepoFile } from './markdownLinks'
 
@@ -23,11 +24,11 @@ function placeholder(img: Element, src: string, approved: Set<string>): HTMLElem
   const doc = img.ownerDocument
   const button = doc.win.createEl('button')
   const url = new URL(src)
-  const alt = img.getAttribute('alt') || 'Image'
+  const alt = img.getAttribute('alt') || t('streamB.image.1aa4cb')
   button.type = 'button'
   button.className = 'abele-remote-image'
   button.textContent = `${alt} · ${url.host}`
-  button.setAttribute('aria-label', `Load image from ${url.host}`)
+  button.setAttribute('aria-label', t('streamB.loadImageFrom.429a6c', { v0: String(url.host) }))
   button.addEventListener('click', (event) => {
     event.preventDefault()
     event.stopPropagation()

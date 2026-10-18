@@ -1,3 +1,5 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 /**
  * One chat's rewind log: what its agent changed in the vault, turn by turn, and the way back.
  *
@@ -169,9 +171,7 @@ export class ChatRewind implements Recording {
         console.warn('[Abele] Rewind log not written', err)
         if (!this.failureNotified) {
           this.failureNotified = true
-          new Notice(
-            'Abele could not save an undo snapshot. Undo is incomplete until a later save succeeds.'
-          )
+          new Notice(t('streamB.abeleCouldNotSaveAnUndoSnapshot.96b58f'))
         }
       })
     return this.writing
@@ -264,7 +264,7 @@ export class ChatRewind implements Recording {
   ): Promise<RestoreResult> {
     if (!this.journalKey) {
       const journal = this.journal()
-      if (!journal) throw new Error('This undo plan no longer belongs to this chat; reopen it')
+      if (!journal) throw new UiError(uiMessage('streamBError.8d7c0dc93d'))
       return journal.apply(plan, choices)
     }
     await this.load()
@@ -281,7 +281,7 @@ export class ChatRewind implements Recording {
         ...(plan.units?.flatMap((unit) => unit.refs) ?? []),
       ].some((ref) => !available.has(ref))
     )
-      throw new Error('This undo plan no longer belongs to this chat; reopen it')
+      throw new UiError(uiMessage('streamBError.8d7c0dc93d'))
     const owned = new Set(
       this.entries.value
         .filter((entry) => entry.chat === key)

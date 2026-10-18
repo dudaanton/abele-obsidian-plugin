@@ -2,7 +2,7 @@
   <div class="abele-github-blame-range">
     <Button
       class="clickable-icon abele-github-blame-range__open"
-      :text="splitMessage(commit.message).title"
+      :text="messageLabel"
       :disabled="!commit.sha"
       :tooltip="details"
       @click="open"
@@ -16,22 +16,24 @@
       <span class="abele-github-blame-range__author">
         <GithubUser v-if="commit.login" :login="commit.login" :avatar="commit.avatar" />
         <template v-else
-          ><Avatar :src="commit.avatar" :name="commit.author" />{{ commit.author }}</template
+          ><Avatar :src="commit.avatar" :name="authorLabel" />{{ authorLabel }}</template
         >
       </span>
       <span class="abele-github-blame-range__date">{{ relativeDate }}</span>
-      <span class="abele-github-blame-range__message">{{
-        splitMessage(commit.message).title
-      }}</span>
+      <span class="abele-github-blame-range__message">{{ messageLabel }}</span>
     </Button>
-    <ObsidianModal v-if="detailsOpen" title="Line blame" @close="detailsOpen = false">
+    <ObsidianModal
+      v-if="detailsOpen"
+      :title="t('streamB.lineBlame.1194b3')"
+      @close="detailsOpen = false"
+    >
       <div class="abele-github-blame-detail-body">
-        <p>{{ commit.author }} · {{ formatDate(commit.date) }}</p>
+        <p>{{ authorLabel }} · {{ formatDate(commit.date) }}</p>
         <p>{{ commit.sha }}</p>
         <div class="abele-github-blame-details">{{ commit.message }}</div>
         <Button
-          text="Open commit"
-          tooltip="Open this commit in the GitHub tab"
+          :text="t('streamB.openCommit.f1ac56')"
+          :tooltip="t('streamB.openThisCommitInTheGithubTab.2d2b83')"
           @click="openCommit"
         />
       </div>
@@ -40,6 +42,8 @@
 </template>
 
 <script setup lang="ts">
+import { t, currentLocale, relativeFormatter } from '@/i18n'
+import { streamBLabel } from '@/i18n/streamBLabels'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { formatDate, splitMessage } from '@/github/format'
 import type { CommitSummary } from '@/repository/model'
@@ -50,14 +54,20 @@ import ObsidianModal from '../obsidian/Modal.vue'
 
 const props = defineProps<{ commit: CommitSummary }>()
 const emit = defineEmits<{ (e: 'open', sha: string): void }>()
+const authorLabel = computed(() =>
+  props.commit.sha ? props.commit.author : streamBLabel(props.commit.author)
+)
+const messageLabel = computed(() =>
+  props.commit.sha ? splitMessage(props.commit.message).title : streamBLabel(props.commit.message)
+)
 const details = computed(
   () =>
-    `${props.commit.author} · ${formatDate(props.commit.date)}\n${props.commit.sha}\n${props.commit.message}`
+    `${authorLabel.value} · ${formatDate(props.commit.date)}\n${props.commit.sha}\n${props.commit.sha ? props.commit.message : messageLabel.value}`
 )
 const relativeDate = computed(() => {
   const seconds = (Date.parse(props.commit.date) - Date.now()) / 1000
   if (!Number.isFinite(seconds)) return ''
-  const format = new Intl.RelativeTimeFormat('en', { numeric: 'auto', style: 'short' })
+  const format = relativeFormatter(currentLocale().format, { numeric: 'auto', style: 'short' })
   for (const [unit, length] of [
     ['year', 31536000],
     ['month', 2592000],

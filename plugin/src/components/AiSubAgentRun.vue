@@ -27,14 +27,17 @@
         icon="external-link"
         class="abele-run__open"
         size="xs"
-        tooltip="Open this run in its own tab"
+        :tooltip="t('streamB.openThisRunInItsOwnTab.cd4a0c')"
         @click.stop="openInTab"
       />
     </template>
 
     <div class="abele-run__body">
-      <EmptyState v-if="loading" text="Loading the transcript…" />
-      <EmptyState v-else-if="!branches.length" text="Nothing was recorded for this run." />
+      <EmptyState v-if="loading" :text="t('streamB.loadingTheTranscript.c222b6')" />
+      <EmptyState
+        v-else-if="!branches.length"
+        :text="t('streamB.nothingWasRecordedForThisRun.cb7940')"
+      />
 
       <template v-else>
         <!-- One task: straight to its messages, with no list to click through. -->
@@ -61,6 +64,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, onMounted, ref, watch, watchEffect } from 'vue'
 import { Notice, setTooltip } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
@@ -89,9 +93,9 @@ const {
 
 type State = 'running' | 'failed' | 'aborted' | 'done'
 const STATE_LABEL: Record<State, string> = {
-  running: 'Working on it',
-  failed: 'Finished with errors',
-  aborted: 'Interrupted',
+  running: t('streamB.workingOnIt.d55b6d'),
+  failed: t('streamB.finishedWithErrors.7e5a76'),
+  aborted: t('streamB.interrupted.132d12'),
   done: '',
 }
 const state = computed<State>(
@@ -138,7 +142,7 @@ watch(
 
 async function openInTab(): Promise<void> {
   const opened = await ChatService.getInstance().openRun(props.run.runId)
-  if (!opened) new Notice('That run is no longer stored in this vault.')
+  if (!opened) new Notice(t('streamB.thatRunIsNoLongerStoredIn.3d59c5'))
 }
 </script>
 

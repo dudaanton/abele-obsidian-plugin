@@ -17,6 +17,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, ref, watch, watchEffect } from 'vue'
 import { setTooltip } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'
@@ -67,7 +68,7 @@ watch(
     const said = await Promise.all(
       entries.map(
         async (e) =>
-          `${nodeScopeTitle(await nodeScopeNames(e))}, ${e.access === 'edit' ? 'read and edit' : 'read'}`
+          `${nodeScopeTitle(await nodeScopeNames(e))}, ${e.access === 'edit' ? t('streamB.readAndEdit.4067e8') : t('streamBMeta.3316348dba')}`
       )
     )
     if (turn !== naming) return
@@ -80,41 +81,47 @@ watch(
 const text = computed(() => {
   const r = props.refusal,
     n = names.value
-  if (props.given) return 'Access given. Ask the agent to try again'
-  if (r.kind === 'no-access' && !r.node_id) return 'This chat has no node access'
+  if (props.given) return t('streamB.accessGivenAskTheAgentToTry.160b85')
+  if (r.kind === 'no-access' && !r.node_id) return t('streamB.thisChatHasNoNodeAccess.4bde3f')
   if (r.kind === 'no-access')
-    return `No ${r.access === 'edit' ? 'edit ' : ''}access to ${place.value} on the ${n.node} node`
+    return r.access === 'edit'
+      ? t('streamBMeta.641c6cacec', { place: place.value, node: n.node })
+      : t('streamBMeta.c6598f664c', { place: place.value, node: n.node })
   if (r.kind === 'not-approved')
     return approving.value.length
-      ? `Not approved on this device: ${approving.value.join(' · ')}`
-      : 'Not approved on this device'
+      ? t('streamB.notApprovedOnThisDevice.fbb3a1', { v0: String(approving.value.join(' · ')) })
+      : t('streamB.notApprovedOnThisDevice.f3612d')
   if (r.kind === 'no-worktree')
-    return `${n.folder ?? place.value} has no worktree named ${r.wanted ?? 'that'}`
-  return `The ${n.node} node is not connected`
+    return t('streamB.hasNoWorktreeNamed.602aac', {
+      v0: String(n.folder ?? place.value),
+      v1: String(r.wanted ?? t('streamBMeta.8e7fc0236a')),
+    })
+  return t('streamB.theNodeIsNotConnected.16c387', { v0: String(n.node) })
 })
 // A worktree that is not there: the tooltip says which ones are.
 const textEl = ref<HTMLElement | null>(null)
 watchEffect(() => {
   const known = props.refusal.kind === 'no-worktree' ? (props.refusal.known ?? []) : []
-  if (textEl.value && known.length) setTooltip(textEl.value, `Worktrees there: ${known.join(', ')}`)
+  if (textEl.value && known.length)
+    setTooltip(textEl.value, t('streamB.worktreesThere.cddd03', { v0: String(known.join(', ')) }))
 })
 const action = computed(() =>
   props.refusal.kind === 'no-access'
-    ? 'Give this chat access'
+    ? t('streamB.giveThisChatAccess.8eaead')
     : props.refusal.kind === 'not-approved'
-      ? 'Approve on this device'
+      ? t('streamB.approveOnThisDevice.e68f82')
       : props.refusal.kind === 'offline'
-        ? 'Open the Node panel'
+        ? t('streamB.openTheNodePanel.489e2d')
         : ''
 )
 const actionTooltip = computed(() =>
   props.refusal.kind === 'no-access'
     ? props.refusal.node_id
-      ? `Open this chat's Node access with ${place.value} chosen`
-      : "Open this chat's Node access"
+      ? t('streamB.openThisChatSNodeAccessWith.91b58c', { v0: String(place.value) })
+      : t('streamB.openThisChatSNodeAccess.6a8fb4')
     : props.refusal.kind === 'not-approved'
-      ? 'This chat’s node access came from another device; confirm these places here'
-      : 'Connect or wake the node'
+      ? t('streamB.thisChatSNodeAccessCameFrom.935985')
+      : t('streamB.connectOrWakeTheNode.0e8fa4')
 )
 </script>
 

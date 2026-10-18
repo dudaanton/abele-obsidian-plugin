@@ -1,3 +1,4 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import type { GithubTarget } from './urls'
 import { text, whole } from './toolParameters'
 
@@ -18,7 +19,7 @@ export function commitRequest(
   const head = text(params.head) || (t?.kind === 'compare' ? t.head : '')
   const base = text(params.base) || (t?.kind === 'compare' ? t.base : undefined)
   if (head && (base || t?.kind === 'compare')) return { kind: 'compare', head, base }
-  if (base || head) throw new Error('A comparison needs both base and head.')
+  if (base || head) throw new UiError(uiMessage('streamBError.b33ee5dc76'))
   const explicitPull = params.pull !== undefined ? whole(params.pull, 0) || undefined : undefined
   const pull =
     explicitPull ??

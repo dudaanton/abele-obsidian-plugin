@@ -87,7 +87,7 @@
                 <span
                   v-if="c.hash === baseAt"
                   class="abele-history__tag"
-                  :data-tip="`${base} is here`"
+                  :data-tip="t('streamB.isHere.1f91f3', { v0: String(base) })"
                   ><Icon icon="home" size="xs" :interactive="false" />{{ base }}</span
                 >
               </span>
@@ -103,15 +103,22 @@
           </div>
         </section>
       </div>
-      <div v-if="!commits.length" class="search-empty-state">No commits yet.</div>
+      <div v-if="!commits.length" class="search-empty-state">
+        {{ t('streamB.noCommitsYet.053cea') }}
+      </div>
       <div v-if="more" class="abele-history__more">
-        <Button text="Show older" tooltip="Load the commits before these" @click="emit('more')" />
+        <Button
+          :text="t('streamB.showOlder.ade7cb')"
+          :tooltip="t('streamB.loadTheCommitsBeforeThese.416b88')"
+          @click="emit('more')"
+        />
       </div>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 // The history of a folder or a worktree in the main area, a tab of its own: commits by day like a
 // repository's commit list, a click opens the commit with each file it changed compared. Above
 // the list, how far the worktree has gone from the main branch, in arrows and numbers.
@@ -185,8 +192,10 @@ const statsOf = (c: CommitSummary) =>
     : undefined)
 const dotTip = (c: CommitSummary) =>
   [
-    c.unseen ? 'New since you last looked' : '',
-    c.only ? `Not in ${props.base} yet` : `In ${props.base}`,
+    c.unseen ? t('streamB.newSinceYouLastLooked.ea40a1') : '',
+    c.only
+      ? t('streamB.notInYet.afee32', { v0: String(props.base) })
+      : t('streamB.in.8b3475', { v0: String(props.base) }),
   ]
     .filter(Boolean)
     .join(' · ')
@@ -199,15 +208,21 @@ const tips = () => {
     setTooltip(
       aheadEl.value,
       props.copy?.ahead === undefined
-        ? 'Ahead count unavailable; select a reference branch in repository settings.'
-        : `${plural(props.copy.ahead, 'commit')} ahead of ${props.base ?? 'the selected reference'}`
+        ? t('streamB.aheadCountUnavailableSelectAReferenceBranch.743076')
+        : t('streamB.aheadOf.671506', {
+            v0: String(plural(props.copy.ahead, 'commit')),
+            v1: String(props.base ?? t('streamB.theSelectedReference.7fff17')),
+          })
     )
   if (behindEl.value)
     setTooltip(
       behindEl.value,
       props.copy?.behind === undefined
-        ? 'Behind count unavailable; select a reference branch in repository settings.'
-        : `${plural(props.copy.behind, 'commit')} behind ${props.base ?? 'the selected reference'}`
+        ? t('streamB.behindCountUnavailableSelectAReferenceBranch.621d55')
+        : t('streamB.behind.861d2a', {
+            v0: String(plural(props.copy.behind, 'commit')),
+            v1: String(props.base ?? t('streamB.theSelectedReference.7fff17')),
+          })
     )
   root.value
     ?.querySelectorAll<HTMLElement>('[data-tip]')

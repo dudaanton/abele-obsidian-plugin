@@ -1,3 +1,4 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import type { NodeImagePreview } from '@/components/nodeWork/types'
 import { readNodeBytes } from './NodeFilesModel'
 
@@ -22,8 +23,8 @@ export async function readNodeImage(
   const mime = mimes[path.split('.').pop()?.toLowerCase() ?? '']
   if (!mime) throw new Error(binaryRefusal)
   if (blob.too_large || blob.size > NODE_IMAGE_MAX_BYTES)
-    throw new Error('Image preview is limited to 4 MiB.')
-  if (!blob.content_id) throw new Error('Image content is unavailable for preview.')
+    throw new UiError(uiMessage('streamBError.b98a7f8f5f'))
+  if (!blob.content_id) throw new UiError(uiMessage('streamBError.8f82f94ebf'))
   const bytes = await readNodeBytes(read, NODE_IMAGE_MAX_BYTES)
   const prefix = (...values: number[]) => values.every((value, i) => bytes[i] === value)
   const ascii = (start: number, text: string) =>

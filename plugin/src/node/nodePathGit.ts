@@ -1,3 +1,4 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import type { RepositoryRevision } from '@abele/node-protocol'
 import type { PullRequestSummary } from '@/components/nodeWork/types'
 import type { PathTarget } from './NodePathModel'
@@ -140,10 +141,7 @@ function settle<T extends { state: string }>(result: Outcome<T>): T {
       failed.code
     )
   }
-  if (result.state === 'outcome_unknown')
-    throw new Error(
-      'The node lost track of this git action. Refresh to see what happened before trying again.'
-    )
+  if (result.state === 'outcome_unknown') throw new UiError(uiMessage('streamBError.576e97984e'))
   return result as T
 }
 const conflicts = (result: { state: string; conflicted_paths?: string[] }) =>
@@ -188,7 +186,7 @@ export function nodePathGit(git: NodeGitClient): PathGit {
       )
     },
     async discard(target, seen, list) {
-      if (seen.kind !== 'working') throw new Error('Refresh the folder before discarding.')
+      if (seen.kind !== 'working') throw new UiError(uiMessage('streamBError.23563064bf'))
       settle(
         await git.discard({
           worktree_id: target.id,
@@ -224,7 +222,7 @@ export function nodePathGit(git: NodeGitClient): PathGit {
     },
     async push(target, seen, lease) {
       const at = head(seen)
-      if (!at) throw new Error('There is nothing to push yet: the branch has no commits.')
+      if (!at) throw new UiError(uiMessage('streamBError.1248b93aec'))
       settle(
         await git.push({
           worktree_id: target.id,
@@ -234,11 +232,11 @@ export function nodePathGit(git: NodeGitClient): PathGit {
       )
     },
     async fetch(target) {
-      if (!git.fetch) throw new Error('Update the node to fetch from the remote.')
+      if (!git.fetch) throw new UiError(uiMessage('streamBError.b2c46ecdf3'))
       settle(await git.fetch({ worktree_id: target.id }))
     },
     async createBranch(target, name, startPoint, seen) {
-      if (!git.createBranch) throw new Error('Update the node to make a branch here.')
+      if (!git.createBranch) throw new UiError(uiMessage('streamBError.5e20368923'))
       settle(
         await git.createBranch({
           worktree_id: target.id,

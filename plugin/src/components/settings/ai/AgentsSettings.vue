@@ -5,7 +5,7 @@
         v-for="agent in agents"
         :key="agent.id"
         :title="agent.name"
-        :description="agent.description"
+        :description="streamBAgentDescription(agent.description)"
         :meta="metaFor(agent)"
         clickable
         @click="editingId = agent.id"
@@ -83,6 +83,7 @@
 <script setup lang="ts">
 import { settingsCount } from '@/i18n/settingsCounts'
 import { t } from '@/i18n'
+import { streamBAgentDescription } from '@/i18n/streamBLabels'
 import { computed, ref } from 'vue'
 import Button from '../../obsidian/Button.vue'
 import Icon from '../../obsidian/Icon.vue'

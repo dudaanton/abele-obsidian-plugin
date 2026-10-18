@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { nanoid } from 'nanoid'
 import type { NodeScopeEntry, NodeScopeTarget } from '../nodeScope'
 import type { SectionOpening } from '../toolSections'
@@ -165,16 +166,51 @@ export interface InterceptorEntry {
 }
 
 export const INTERCEPTOR_CHECKS_OPTIONS: { value: InterceptorChecks; display: string }[] = [
-  { value: 'message', display: 'Your messages' },
-  { value: 'answer', display: "The agent's answers" },
-  { value: 'both', display: 'Both' },
+  {
+    value: 'message',
+    get display() {
+      return t('streamB.yourMessages.befc6e')
+    },
+  },
+  {
+    value: 'answer',
+    get display() {
+      return t('streamB.theAgentSAnswers.f39b19')
+    },
+  },
+  {
+    value: 'both',
+    get display() {
+      return t('streamB.both.b6c1d8')
+    },
+  },
 ]
 
 export const INTERCEPTOR_CONTEXT_OPTIONS = [
-  { value: '0', display: 'Draft only' },
-  { value: '4', display: 'Last 4 messages' },
-  { value: '10', display: 'Last 10 messages' },
-  { value: '-1', display: 'Whole conversation' },
+  {
+    value: '0',
+    get display() {
+      return t('streamB.draftOnly.0ca9f9')
+    },
+  },
+  {
+    value: '4',
+    get display() {
+      return t('streamB.last4Messages.65c3ce')
+    },
+  },
+  {
+    value: '10',
+    get display() {
+      return t('streamB.last10Messages.87e460')
+    },
+  },
+  {
+    value: '-1',
+    get display() {
+      return t('streamB.wholeConversation.27ba02')
+    },
+  },
 ]
 
 /**

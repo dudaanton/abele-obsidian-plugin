@@ -3,12 +3,13 @@
     class="abele-parent-link"
     icon="corner-left-up"
     :text-right="title"
-    :tooltip="`Started by ${title}. Open it`"
+    :tooltip="t('chat.parent', { title })"
     @click="emit('open')"
   />
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 // Where a session came from: the one that started it, a press away, at the end of the line that
 // says where it works.
 import Icon from '../obsidian/Icon.vue'

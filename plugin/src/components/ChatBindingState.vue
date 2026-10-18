@@ -1,19 +1,22 @@
 <template>
   <details v-if="entries.length" class="abele-chat-bindings" :open="needsRecovery">
-    <summary>Card links · {{ entries.length }}</summary>
+    <summary>{{ t('streamBMeta.7408127a4b', { p0: String(entries.length) }) }}</summary>
     <div class="abele-chat-binding-list">
       <div v-for="entry in entries" :key="key(entry)" class="setting-item mod-action">
         <div class="setting-item-info">
           <div class="setting-item-name">
-            {{ entry.snapshot?.text ?? entry.operation?.patch.before ?? 'Card link' }}
+            {{
+              entry.snapshot?.text ?? entry.operation?.patch.before ?? t('streamB.cardLink.e7a4fe')
+            }}
           </div>
-          <div class="setting-item-description">{{ entry.targetPath }} · {{ entry.status }}</div>
+          <div class="setting-item-description">
+            {{ entry.targetPath }} · {{ streamBLabel(entry.status) }}
+          </div>
           <details v-if="entry.evidence">
-            <summary>Details</summary>
+            <summary>{{ t('streamB.details.45989d') }}</summary>
             <p>{{ entry.evidence }}</p>
             <p v-if="entry.status === 'uncertain'">
-              Keep the card. Reopen this conversation to inspect persisted source. An uncertain
-              publication is never retried automatically.
+              {{ t('streamB.keepTheCardReopenThisConversationTo.8fc2a0') }}
             </p>
           </details>
         </div>
@@ -21,7 +24,7 @@
           <button
             type="button"
             class="clickable-icon"
-            aria-label="Card link actions"
+            :aria-label="t('streamB.cardLinkActions.92a67e')"
             aria-haspopup="menu"
             @click="actions(entry, $event)"
           >
@@ -34,6 +37,9 @@
 </template>
 
 <script setup lang="ts">
+import { streamBLabel } from '@/i18n/streamBLabels'
+import { presentUiError } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 import { computed } from 'vue'
 import { Menu, Notice, TFile } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
@@ -50,20 +56,18 @@ const needsRecovery = computed(() =>
 )
 const key = (entry: SelectionBindingRecovery) => entry.id ?? entry.operation?.id ?? entry.targetPath
 const run = (work: () => Promise<unknown>) =>
-  void work().catch(
-    (error) => new Notice(error instanceof Error ? error.message : String(error), 10000)
-  )
+  void work().catch((error) => new Notice(presentUiError(error), 10000))
 function actions(entry: SelectionBindingRecovery, event: MouseEvent) {
   const { app } = GlobalStore.getInstance()
   const menu = new Menu()
   menu.addItem((item) =>
     item
-      .setTitle('Open card')
+      .setTitle(t('streamB.openCard.4fc58b'))
       .setIcon('file')
       .onClick(() => {
         const target = app.vault.getAbstractFileByPath(entry.targetPath)
         if (!(target instanceof TFile)) {
-          new Notice(`The card at ${entry.targetPath} is unavailable`)
+          new Notice(t('streamB.theCardAtIsUnavailable.0b6d01', { v0: String(entry.targetPath) }))
           return
         }
         void app.workspace.openLinkText(
@@ -77,7 +81,7 @@ function actions(entry: SelectionBindingRecovery, event: MouseEvent) {
   if (source && anchorId)
     menu.addItem((item) =>
       item
-        .setTitle('Copy source link')
+        .setTitle(t('streamB.copySourceLink.e877eb'))
         .setIcon('link')
         .onClick(() =>
           run(async () => {
@@ -87,32 +91,34 @@ function actions(entry: SelectionBindingRecovery, event: MouseEvent) {
                 anchorId,
               })
             )
-            new Notice('Source link copied')
+            new Notice(t('streamB.sourceLinkCopied.606e32'))
           })
         )
     )
   if (entry.status === 'applied')
     menu.addItem((item) =>
       item
-        .setTitle('Remove link (undo binding)')
+        .setTitle(t('streamB.removeLinkUndoBinding.caca98'))
         .setIcon('undo-2')
         .onClick(() =>
           run(async () => {
             await new ChatSelectionBindings(props.session).undo(key(entry))
-            new Notice('Link removed. The card was kept.')
+            new Notice(t('streamB.linkRemovedTheCardWasKept.1a74cd'))
           })
         )
     )
   if (entry.status === 'pending' || entry.status === 'known-not-written')
     menu.addItem((item) =>
       item
-        .setTitle('Retry binding only')
+        .setTitle(t('streamB.retryBindingOnly.c54a8a'))
         .setIcon('rotate-cw')
         .onClick(() =>
           run(async () => {
             const result = await new ChatSelectionBindings(props.session).retry(key(entry))
             new Notice(
-              result.status === 'applied' ? 'Card linked' : (result.reason ?? result.status),
+              result.status === 'applied'
+                ? t('streamB.cardLinked.e1d170')
+                : (result.reason ?? result.status),
               10000
             )
           })

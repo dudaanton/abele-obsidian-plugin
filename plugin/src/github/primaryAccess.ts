@@ -1,5 +1,7 @@
-import type { GithubClient } from './client'
-import { GithubError } from './client'
+import { uiFields, uiMessage } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
+import { type GithubClient, GithubError } from './client'
+
 import { targetKey, type GithubTarget } from './urls'
 import { commitHistoryQuery, type CommitRequest } from './commitRequest'
 import { withFallback } from './sections'
@@ -38,9 +40,15 @@ export async function primaryAccess(
       await withFallback<unknown>(
         client,
         () =>
-          client.get(`${base}/pulls/${target.number}/commits?per_page=1`, {
-            what: "the pull request's commits",
-          }),
+          client.get(
+            `${base}/pulls/${target.number}/commits?per_page=1`,
+            uiFields(
+              {
+                what: t('streamB.thePullRequestSCommits.a26e4d'),
+              },
+              { what: uiMessage('streamB.thePullRequestSCommits.a26e4d') }
+            )
+          ),
         () => graphqlCommits(client, target)
       )
       return

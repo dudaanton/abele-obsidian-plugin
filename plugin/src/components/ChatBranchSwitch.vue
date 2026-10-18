@@ -4,14 +4,14 @@
   <span
     class="abele-chat-branch"
     role="group"
-    :aria-label="`Branch ${index + 1} of ${choices.length}`"
+    :aria-label="t('chat.branchPosition', { position: index + 1, count: choices.length })"
   >
     <Icon
       icon="chevron-left"
       size="xs"
-      label="Previous branch"
+      :label="t('chat.previousBranch')"
       :disabled="index <= 0"
-      disabled-reason="This is the first branch"
+      :disabled-reason="t('chat.firstBranch')"
       @click="emit('switch', choices[index - 1].id)"
     />
     <Button
@@ -20,22 +20,23 @@
       icon="git-branch"
       class="abele-chat-branch__count"
       :text="`${index + 1}/${choices.length}`"
-      :label="`Branch ${index + 1} of ${choices.length}`"
-      tooltip="Show all branches from here"
+      :label="t('chat.branchPosition', { position: index + 1, count: choices.length })"
+      :tooltip="t('chat.allBranches')"
       @click="showAll"
     />
     <Icon
       icon="chevron-right"
       size="xs"
-      label="Next branch"
+      :label="t('chat.nextBranch')"
       :disabled="index >= choices.length - 1"
-      disabled-reason="This is the last branch"
+      :disabled-reason="t('chat.lastBranch')"
       @click="emit('switch', choices[index + 1].id)"
     />
   </span>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { ref } from 'vue'
 import { Menu } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
@@ -87,7 +88,7 @@ function showAll() {
     menu.addSeparator()
     menu.addItem((item) =>
       item
-        .setTitle('New branch from here')
+        .setTitle(t('chat.newBranch'))
         .setIcon('git-branch-plus')
         .onClick(() => emit('new'))
     )

@@ -1,0 +1,41 @@
+{
+  "repository.find": {
+    "englishHash": "0738909cc9f56f9b7748d2109e92a959cd8d271959e5d00871353374fa5fa02d"
+  },
+  "repository.case": {
+    "englishHash": "9d6817d46c13f23ae41cea4c95f68da88ce2d953e79d150678cc753b70aa5c36"
+  },
+  "repository.check": {
+    "englishHash": "ab887661cb2cf92034613da4d7e3ecb72b56eccdd4f92faad0950187f7fa7edc"
+  },
+  "repository.askAgain": {
+    "englishHash": "97ef776c7e44843ccc0f9a8060884dff79190416db1de62abe1638be3c2cbb48"
+  },
+  "repository.base": {
+    "englishHash": "2f6f2b9c86c781286dcc07c0434b91764d7ac731bd8b190427509ee88858a954"
+  },
+  "repository.target": {
+    "englishHash": "562d3b7ba221057ad84431dc2c99ed5b2db423283585ca77a1b783e1d9878c01"
+  },
+  "repository.changeBase": {
+    "englishHash": "b5436435e98a9ad92645c5b4e6becd1ce466fa3f513704ea10a5db6406d82911"
+  },
+  "repository.chooseBase": {
+    "englishHash": "c0844d88c46f52c551911ba498ab545a207e85058f50df301247c729046ace49"
+  },
+  "repository.unpin": {
+    "englishHash": "4920a6efba8c217b8b08fad199aed733e96de5f45d93b0c5072fe4b404365bec"
+  },
+  "repository.restoreViews": {
+    "englishHash": "04b8fd58717d122bb1a422780f883e46fb1ca5af5f4238ad7ee8e82b0acdf8da"
+  },
+  "repository.showComparison": {
+    "englishHash": "8b907f019eda2dd0d5e1eedc804d55fcde176faed974d7a3eee0eef528c4dbf0"
+  },
+  "repository.originalFile": {
+    "englishHash": "13955ba90ce815952d037e611ff1613a85d6ea5e705f62842c64917ffacd7531"
+  },
+  "repository.switchTab": {
+    "englishHash": "3e7bc191d6ad13c764e61866bca5ab7dec32118c42d147a584c4013ac4305e19"
+  }
+}

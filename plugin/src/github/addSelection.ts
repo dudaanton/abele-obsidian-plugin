@@ -1,3 +1,5 @@
+import { presentUiError } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 import { ChatService } from '@/ai/ChatService'
 import { Notice } from 'obsidian'
 import { githubChatText, type Quote } from './chatAbout'
@@ -10,7 +12,7 @@ export async function addGithubSelection(link: Promise<GithubLink>, quote: Quote
     const version = session?.conversationVersion.value
     const text = githubChatText(await link, quote)
     if (!session) {
-      new Notice('Open a chat to add this code')
+      new Notice(t('streamB.openAChatToAddThisCode.40a65f'))
       return
     }
     chats.pendingInput.value = {
@@ -23,7 +25,9 @@ export async function addGithubSelection(link: Promise<GithubLink>, quote: Quote
     await chats.revealSidebar()
   } catch (error) {
     new Notice(
-      `Could not add selected code: ${error instanceof Error ? error.message : String(error)}`
+      t('streamB.couldNotAddSelectedCode.682609', {
+        v0: String(error instanceof Error ? presentUiError(error) : String(error)),
+      })
     )
   }
 }

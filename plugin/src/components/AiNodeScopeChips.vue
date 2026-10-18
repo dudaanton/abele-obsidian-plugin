@@ -2,7 +2,7 @@
   <div
     v-if="(!errorsOnly && entries.length) || !parsed.success || error"
     class="abele-node-scope-chips"
-    aria-label="Chat node access"
+    :aria-label="t('streamB.chatNodeAccess.32c6d1')"
   >
     <!-- Each place by its names, folder and branch; reading or editing by its glyph, the node
          and the words in the tooltip. -->
@@ -21,7 +21,7 @@
       <Icon
         icon="x"
         with-bg
-        :tooltip="`Take ${title(entry)} out of this chat's access`"
+        :tooltip="t('streamB.takeOutOfThisChatSAccess.91415d', { v0: String(title(entry)) })"
         @click="remove(entry)"
       />
     </div>
@@ -30,19 +30,20 @@
       class="abele-node-scope-chips__place"
       icon="crosshair"
       :text-right="selectedTitle"
-      :tooltip="`The agent works in ${selectedTitle} now. Change it in this chat's access.`"
+      :tooltip="t('streamB.theAgentWorksInNowChangeIt.8fbd65', { v0: String(selectedTitle) })"
       @click="emit('open')"
     />
     <EmptyState
       v-if="!parsed.success"
       variant="error"
-      text="Invalid node scope. Review this chat's scope settings."
+      :text="t('streamB.invalidNodeScopeReviewThisChatS.1118dc')"
     />
     <EmptyState v-if="error" variant="error" :text="error" />
   </div>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, ref, watch } from 'vue'
 import type { ChatSession } from '@/ai/ChatSession'
 import {
@@ -96,7 +97,11 @@ const fallback = (entry: NodeScopeEntry): NodeScopeNames => ({ node: entry.node_
 const title = (entry: NodeScopeEntry) =>
   nodeScopeTitle(names.value[nodeScopeKey(entry)] ?? fallback(entry))
 const sentence = (entry: NodeScopeEntry) =>
-  `${nodeScopeSentence(names.value[nodeScopeKey(entry)] ?? fallback(entry), entry.access)}. Change it in this chat's access.`
+  t('streamB.changeItInThisChatSAccess.a3d5c8', {
+    v0: String(
+      nodeScopeSentence(names.value[nodeScopeKey(entry)] ?? fallback(entry), entry.access)
+    ),
+  })
 const selectedTitle = computed(() =>
   selectedNames.value
     ? nodeScopeTitle(selectedNames.value)
@@ -109,7 +114,8 @@ async function remove(entry: NodeScopeEntry) {
   try {
     await removeObsidianChatNodeAccess(chat, entry)
   } catch (failure) {
-    error.value = failure instanceof Error ? failure.message : 'Could not remove node access'
+    error.value =
+      failure instanceof Error ? failure.message : t('streamB.couldNotRemoveNodeAccess.b9f4e0')
   }
 }
 </script>

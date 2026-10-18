@@ -1,3 +1,4 @@
+import { uiField, uiErrorMessage, uiMessage } from '@/i18n/streamBErrors'
 import { ref, shallowRef, markRaw } from 'vue'
 import type { RepositoryRevision } from '@abele/node-protocol'
 import type { CommitSummary } from '@/components/nodeWork/types'
@@ -38,10 +39,14 @@ export class NodePathHistoryModel {
         : page.entries
       this.cursor.value = page.cursor
       this.revision = page.revision
-      this.error.value = ''
+      uiField(this.error, 'value', uiErrorMessage(''))
     } catch (error) {
       if (generation === this.generation)
-        this.error.value = error instanceof Error ? error.message : 'Could not load history'
+        uiField(
+          this.error,
+          'value',
+          error instanceof Error ? uiErrorMessage(error) : uiMessage('streamBError.c4dfa2b119')
+        )
       throw error
     } finally {
       if (generation === this.generation) this.busy.value = false
@@ -73,7 +78,11 @@ export class NodePathHistoryModel {
       )
     } catch (error) {
       if (generation === this.generation)
-        this.error.value = error instanceof Error ? error.message : 'Could not load commit'
+        uiField(
+          this.error,
+          'value',
+          error instanceof Error ? uiErrorMessage(error) : uiMessage('streamBError.a11a2d3c13')
+        )
       throw error
     } finally {
       if (generation === this.generation) this.busy.value = false
@@ -86,7 +95,7 @@ export class NodePathHistoryModel {
       ? this.commits.value.map((c) => (c.hash === hash ? commit : c))
       : [...this.commits.value, commit]
     this.openCommit.value = hash
-    this.error.value = ''
+    uiField(this.error, 'value', uiErrorMessage(''))
     return true
   }
   back(): void {

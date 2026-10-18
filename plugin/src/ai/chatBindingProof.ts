@@ -1,3 +1,4 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import { ownedBindingRange } from '@/selection/bindingEdits'
 import type { SelectionBindingOperation } from '@/selection/bindings'
 import { sameRevision } from '@/selection/revisionMapping'
@@ -8,7 +9,7 @@ export function bindingProof(message: ChatMessage, operation: SelectionBindingOp
   const content =
     message.selection?.versions.find((v) => sameRevision(v.reference, reference))?.content ??
     operation.publishedContent
-  if (content === undefined) throw new Error('The link ownership revision is unavailable.')
+  if (content === undefined) throw new UiError(uiMessage('streamBError.378c4d115b'))
   const start = operation.ownership?.start ?? operation.patch.range.start
   const after = operation.ownership?.after ?? operation.patch.after
   const patch = { ...operation.patch, range: { ...operation.patch.range, start }, after }

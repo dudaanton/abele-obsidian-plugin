@@ -1,5 +1,5 @@
 <template>
-  <Modal title="This chat" size="tall" @close="emit('close')">
+  <Modal :title="t('streamB.thisChat.60e292')" size="tall" @close="emit('close')">
     <ChatOutlinePane
       v-bind="props"
       :preview="preview"
@@ -20,6 +20,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { useTemplateRef } from 'vue'
 import Modal from '../obsidian/Modal.vue'
 import { Platform } from 'obsidian'

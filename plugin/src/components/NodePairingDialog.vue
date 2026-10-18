@@ -1,25 +1,33 @@
 <template>
-  <Modal title="Pair a remote node" @close="emit('close')">
+  <Modal :title="t('streamB.pairARemoteNode.0cc6ed')" @close="emit('close')">
     <div class="abele-node-pairing">
       <template v-if="!invite">
         <p>
-          On the node, create an invitation with <code>abele-node pair invite</code>. Keep it
-          private. Paste its JSON or photograph its QR code.
+          {{ t('streamB.onTheNodeCreateAnInvitationWith.ef6ee3') }}
+          <code>abele-node pair invite</code>{{ t('streamB.keepItPrivatePasteItsJsonOr.8c08df') }}
         </p>
-        <Setting name="Node label"
-          ><Input v-model="label" aria-label="Remote node label"
+        <Setting :name="t('streamB.nodeLabel.30d828')"
+          ><Input v-model="label" :aria-label="t('streamB.remoteNodeLabel.a83cf4')"
         /></Setting>
-        <Setting name="Invitation">
+        <Setting :name="t('streamB.invitation.af4ea0')">
           <Input
             v-model="raw"
             as-text-area
-            aria-label="Node invitation"
-            placeholder="Paste invitation JSON"
+            :aria-label="t('streamB.nodeInvitation.8bfe00')"
+            :placeholder="t('streamB.pasteInvitationJson.7183a3')"
           />
         </Setting>
         <div class="abele-node-pairing__actions">
-          <Button text="Scan invitation QR" :disabled="busy" @click="photo?.click()" />
-          <Button text="Review invitation" :disabled="busy || !raw.trim()" @click="review" />
+          <Button
+            :text="t('streamB.scanInvitationQr.4d2cf3')"
+            :disabled="busy"
+            @click="photo?.click()"
+          />
+          <Button
+            :text="t('streamB.reviewInvitation.a26f0c')"
+            :disabled="busy || !raw.trim()"
+            @click="review"
+          />
         </div>
         <input
           ref="photo"
@@ -27,50 +35,57 @@
           type="file"
           accept="image/*"
           capture="environment"
-          aria-label="Invitation QR photo"
+          :aria-label="t('streamB.invitationQrPhoto.e89adb')"
           @change="readPhoto"
         />
         <Button
           v-for="device in pending"
           :key="device.node_id"
-          :text="`Resume pairing: ${device.enrollment!.label}`"
+          wrap
+          :text="t('streamB.resumePairing.36faff', { v0: String(device.enrollment.label) })"
           @click="resume(device)"
         />
       </template>
       <template v-else>
         <p>{{ label }} · {{ invite.endpoint }}</p>
-        <p>Compare the full node key fingerprint with the owner before pairing:</p>
-        <code aria-label="Node key fingerprint">{{ invite.node_fingerprint }}</code>
+        <p>{{ t('streamB.compareTheFullNodeKeyFingerprintWith.913ed9') }}</p>
+        <code :aria-label="t('streamB.nodeKeyFingerprint.4514b9')">{{
+          invite.node_fingerprint
+        }}</code>
         <template v-if="previousPin && previousPin !== invite.node_fingerprint">
-          <p>The node key changed. A failed connection never authorizes this change.</p>
-          <p>Previously pinned node key:</p>
+          <p>{{ t('streamB.theNodeKeyChangedAFailedConnection.230e3c') }}</p>
+          <p>{{ t('streamB.previouslyPinnedNodeKey.d8ed7d') }}</p>
           <code>{{ previousPin }}</code>
           <label class="abele-node-pairing__verification">
-            <input v-model="verified" type="checkbox" aria-label="Owner verified new node key" />
-            I independently verified the new node key with the owner.
+            <input
+              v-model="verified"
+              type="checkbox"
+              :aria-label="t('streamB.ownerVerifiedNewNodeKey.403281')"
+            />
+            {{ t('streamB.iIndependentlyVerifiedTheNewNodeKey.24ae0f') }}
           </label>
         </template>
         <template v-if="previousEndpoint && previousEndpoint !== invite.endpoint">
-          <p>The endpoint changed. Compare both addresses with the owner before connecting.</p>
-          <p>Previously bound endpoint:</p>
-          <code aria-label="Previous node endpoint">{{ previousEndpoint }}</code>
-          <p>New endpoint:</p>
-          <code aria-label="New node endpoint">{{ invite.endpoint }}</code>
+          <p>{{ t('streamB.theEndpointChangedCompareBothAddressesWith.ec60d9') }}</p>
+          <p>{{ t('streamB.previouslyBoundEndpoint.c22df0') }}</p>
+          <code :aria-label="t('streamB.previousNodeEndpoint.eeb0fd')">{{ previousEndpoint }}</code>
+          <p>{{ t('streamB.newEndpoint.980eb5') }}</p>
+          <code :aria-label="t('streamB.newNodeEndpoint.6af731')">{{ invite.endpoint }}</code>
           <label class="abele-node-pairing__verification">
             <input
               v-model="endpointVerified"
               type="checkbox"
-              aria-label="Owner verified new endpoint"
+              :aria-label="t('streamB.ownerVerifiedNewEndpoint.dbc9e4')"
             />
-            I independently verified the new endpoint with the owner.
+            {{ t('streamB.iIndependentlyVerifiedTheNewEndpointWith.f9249c') }}
           </label>
         </template>
         <template v-if="!node">
           <p v-if="deviceFingerprint">
-            This device's fingerprint: <code>{{ deviceFingerprint }}</code>
+            {{ t('streamB.thisDeviceSFingerprint.21e53a') }} <code>{{ deviceFingerprint }}</code>
           </p>
           <Button
-            text="Pair this device"
+            :text="t('streamB.pairThisDevice.f7815e')"
             accent
             :disabled="
               busy ||
@@ -80,40 +95,56 @@
             "
             @click="pair"
           />
-          <p>Only owner confirmation of this device's exact fingerprint grants access.</p>
-          <Button text="Use another invitation" :disabled="busy" @click="reset" />
+          <p>{{ t('streamB.onlyOwnerConfirmationOfThisDeviceS.4f42cd') }}</p>
+          <Button
+            :text="t('streamB.useAnotherInvitation.5681b8')"
+            :disabled="busy"
+            @click="reset"
+          />
         </template>
         <template v-else>
           <p role="status">
-            {{ connected ? 'Connected over paired WSS' : 'Waiting for owner confirmation' }}
+            {{
+              connected
+                ? t('streamB.connectedOverPairedWss.f5f622')
+                : t('streamB.waitingForOwnerConfirmation.4a882d')
+            }}
           </p>
-          <p>Ask the owner to compare this full device fingerprint and confirm it on the node:</p>
-          <code aria-label="Device key fingerprint">{{ deviceFingerprint }}</code>
-          <p>Installation: {{ installationId }}</p>
-          <p v-if="!connected">
-            Leave this open, or return to Nodes later. A lost reply can be recovered with the same
-            invitation and the same device key.
-          </p>
-          <Button text="Check owner confirmation" :disabled="busy || connected" @click="check" />
-          <Button text="Use another invitation" :disabled="busy" @click="reset" />
+          <p>{{ t('streamB.askTheOwnerToCompareThisFull.bc9571') }}</p>
+          <code :aria-label="t('streamB.deviceKeyFingerprint.a129dd')">{{
+            deviceFingerprint
+          }}</code>
+          <p>{{ t('streamBMeta.55a08c3f08', { p0: String(installationId) }) }}</p>
+          <p v-if="!connected">{{ t('streamB.leaveThisOpenOrReturnToNodes.3517f3') }}</p>
+          <Button
+            :text="t('streamB.checkOwnerConfirmation.f02ff7')"
+            :disabled="busy || connected"
+            @click="check"
+          />
+          <Button
+            :text="t('streamB.useAnotherInvitation.5681b8')"
+            :disabled="busy"
+            @click="reset"
+          />
         </template>
       </template>
       <p v-if="message" role="alert"><NodeErrorText :error="message" /></p>
       <p>
-        Revocation is done by the owner with <code>abele-node pair revoke</code>. To re-pair, use a
-        fresh invitation bound to the same installation. Removing a connection here does not revoke
-        node access or delete history.
+        {{ t('streamB.revocationIsDoneByTheOwnerWith.3898eb') }} <code>abele-node pair revoke</code
+        >{{ t('streamB.toRePairUseAFreshInvitation.e0e6d1') }}
       </p>
     </div>
   </Modal>
 </template>
 <script setup lang="ts">
 import NodeErrorText from '@/components/NodeErrorText.vue'
+import { presentUiError } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 import { ref, onMounted, onUnmounted } from 'vue'
 import { InviteSchema, assertPairedEndpoint, type PairingInvite } from '@abele/channel-protocol'
 import type { NodeService } from '@/node/NodeService'
-import type { RegisteredNode } from '@/node/NodeRegistry'
-import { isPairedNode } from '@/node/NodeRegistry'
+import { type RegisteredNode, isPairedNode } from '@/node/NodeRegistry'
+
 import { claimedEnrollment, type EnrollingDevice } from '@/node/NodeDeviceKeyStore'
 import { invitationPhoto } from '@/node/invitationPhoto'
 import Modal from './obsidian/Modal.vue'
@@ -140,7 +171,7 @@ const installationId = ref('')
 let closed = false
 let timer: ReturnType<typeof setTimeout> | undefined
 const report = (error: unknown) => {
-  message.value = error instanceof Error ? error.message : 'Pairing failed'
+  message.value = error instanceof Error ? presentUiError(error) : t('streamB.pairingFailed.6c52d2')
 }
 const review = async () => {
   message.value = ''
@@ -156,7 +187,7 @@ const review = async () => {
     invite.value = parsed
     raw.value = ''
   } catch {
-    message.value = 'Invalid invitation. Paste the complete invitation JSON from the node.'
+    message.value = t('streamB.invalidInvitationPasteTheCompleteInvitationJson.cc55de')
   }
 }
 const resume = async (device: EnrollingDevice) => {
@@ -233,8 +264,7 @@ const pair = async () => {
   } catch (error) {
     deviceFingerprint.value = await props.service.deviceFingerprint(current.node_id).catch(() => '')
     report(error)
-    message.value +=
-      '. Retry with this same invitation to recover a lost reply; do not create a new device key.'
+    message.value += t('streamBMeta.2e55855058')
   } finally {
     busy.value = false
   }
@@ -247,7 +277,7 @@ const check = async () => {
   let retry = true
   try {
     const target = node.value
-    const invitation = invite.value!
+    const invitation = invite.value
     const expected = claimedEnrollment(await props.service.deviceKeys.load(target.expectedNodeId))
     await props.service.connection(target.id).connect()
     if (closed) return
@@ -259,7 +289,7 @@ const check = async () => {
       !(await props.service.deviceKeys.finishEnrollment(target.expectedNodeId, expected))
     ) {
       retry = false
-      message.value = 'Pairing changed in another window. Resume the current invitation.'
+      message.value = t('streamB.pairingChangedInAnotherWindowResumeThe.bf435e')
       return
     }
     connected.value = true

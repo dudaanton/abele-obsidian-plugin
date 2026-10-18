@@ -24,7 +24,7 @@
       "
       type="button"
       class="clickable-icon abele-chat-msg__icon"
-      aria-label="Message actions and details"
+      :aria-label="t('streamB.messageActionsAndDetails.74eaef')"
       :aria-expanded="expanded"
       @pointerdown="comments.captureFresh"
       @click="expanded = !expanded"
@@ -69,10 +69,17 @@
         v-if="message.fromSession"
         href="#"
         class="abele-chat-msg__from"
-        :aria-label="`Open ${message.fromSession.title || 'the session that wrote this'}`"
+        :aria-label="
+          t('streamB.open.863533', {
+            v0: String(message.fromSession.title || t('streamB.theSessionThatWroteThis.e9de2c')),
+          })
+        "
         @click.prevent="emit('open-session', message.fromSession.id)"
         ><Icon icon="bot" size="xs" :interactive="false" />{{
-          [message.fromSession.agent, message.fromSession.title || 'Another session']
+          [
+            message.fromSession.agent,
+            message.fromSession.title || t('streamB.anotherSession.cc0abe'),
+          ]
             .filter(Boolean)
             .join(' · ')
         }}</a
@@ -118,10 +125,10 @@
           />
           <span v-if="message.toolStatus === 'rejected'" class="abele-chat-msg__tool-err-badge">{{
             message.toolExecution === 'interrupted'
-              ? 'interrupted'
+              ? t('streamB.interrupted.d512d9')
               : message.toolExecution === 'not-run'
-                ? 'not run'
-                : 'failed'
+                ? t('streamB.notRun.b4a984')
+                : t('streamB.failed.5d28a9')
           }}</span>
           <ChatBranchSwitch
             v-if="branches"
@@ -135,9 +142,9 @@
             class="abele-chat-msg__tool-branch"
             icon="git-branch-plus"
             size="xs"
-            tooltip="Branch from here: go on from this call in a new branch"
+            :tooltip="t('streamB.branchFromHereGoOnFromThis.39238c')"
             :disabled="branchBlocked"
-            disabled-reason="Wait for the active turn to finish"
+            :disabled-reason="t('streamB.waitForTheActiveTurnToFinish.82aa36')"
             @click.stop="branchFromHere"
           />
         </span>
@@ -186,7 +193,7 @@
           @click="emit('review-revision', message.id)"
         >
           <template v-if="proposalOpen(message.replyProposal)" #end>
-            <StatusDot tone="orange" label="Waiting for your decision" />
+            <StatusDot tone="orange" :label="t('streamB.waitingForYourDecision.027404')" />
           </template>
         </TreeItem>
 
@@ -261,7 +268,9 @@
         <!-- The plan an agent keeps, where it first wrote it, as it stands now. -->
         <SessionPlan v-else-if="message.sessionPlan" :entries="message.sessionPlan" />
         <template v-else-if="message.content.length > 100">
-          <span class="abele-chat-msg__compact-label">── Conversation compacted ──</span>
+          <span class="abele-chat-msg__compact-label">{{
+            t('streamB.conversationCompacted.d6d381')
+          }}</span>
           <div v-if="expanded" class="abele-chat-msg__compact-summary">
             <Markdown
               :text="message.content"
@@ -364,8 +373,12 @@
         size="xs"
         :tooltip="
           message.answerCheck.of
-            ? `${message.answerCheck.by} is checking this answer · ${message.answerCheck.at} of ${message.answerCheck.of}`
-            : `${message.answerCheck.by} is checking this answer`
+            ? t('streamB.isCheckingThisAnswerOf.2fe197', {
+                v0: String(message.answerCheck.by),
+                v1: String(message.answerCheck.at),
+                v2: String(message.answerCheck.of),
+              })
+            : t('streamB.isCheckingThisAnswer.19e9e4', { v0: String(message.answerCheck.by) })
         "
       />
       <!-- With several in a row, which one is reading: a quiet count beside the turning glyph. -->
@@ -411,10 +424,10 @@
         @click="emit('confirm-draft', message.id)"
       >
         <!-- After a failed check, sending goes on without the interceptors still to come. -->
-        {{ interceptorError ? 'Send as is' : 'Send' }}
+        {{ interceptorError ? t('streamB.sendAsIs.f10c92') : t('streamB.send.f6f468') }}
       </button>
       <button class="abele-chat-msg__draft-btn" @click="emit('edit-draft', message.id)">
-        Edit
+        {{ t('streamB.edit.464c4f') }}
       </button>
     </div>
 
@@ -435,11 +448,12 @@
 <script setup lang="ts">
 import NodeErrorText from '@/components/NodeErrorText.vue'
 import { readableToolName } from '@/ai/toolLine'
+import { t } from '@/i18n'
 import SyntaxText from './SyntaxText.vue'
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { flashMessagePassage, flashExactSelection, messageRenderedText } from '@/ai/messageComments'
 import type { ChatRevision, RenderedRange } from '@/selection/types'
-import { formatTimestamp } from '@/helpers/displayFormat'
+import { streamBTime as formatTimestamp } from '@/i18n/streamBDate'
 import { Menu, Notice, Platform } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
 import TreeItem from './obsidian/TreeItem.vue'
@@ -600,9 +614,9 @@ const question = computed(() =>
 async function copyMessage() {
   try {
     await navigator.clipboard.writeText(props.message.content || props.message.toolResult || '')
-    new Notice('Message copied')
+    new Notice(t('streamB.messageCopied.ed1122'))
   } catch {
-    new Notice('Could not copy the message')
+    new Notice(t('streamB.couldNotCopyTheMessage.edba99'))
   }
 }
 
@@ -620,38 +634,51 @@ function showActions(event: MouseEvent) {
     menu.addItem((item) => item.setTitle(title).setIcon(icon).setSection(section).onClick(action))
   // A phone shows only the ⋯ under a message, so everything is in its menu there.
   if (Platform.isMobile && (props.message.role === 'user' || props.message.role === 'assistant')) {
-    if (answerable.value) add('Reply', 'reply', 'direct', () => comments.replyHere())
-    add('Copy', 'copy', 'direct', () => void copyMessage())
+    if (answerable.value)
+      add(t('streamB.reply.c253f4'), 'reply', 'direct', () => comments.replyHere())
+    add(t('streamB.copy.e21f93'), 'copy', 'direct', () => void copyMessage())
     if (!props.readOnlyHistory) {
       if (props.message.role === 'user')
-        add('Edit', 'pencil', 'direct', () => emit('edit-message', props.message.id))
-      else add('Retry', 'rotate-cw', 'direct', () => emit('retry-message', props.message.id))
-      add('Insert into note', 'file-input', 'direct', () =>
+        add(t('streamB.edit.464c4f'), 'pencil', 'direct', () =>
+          emit('edit-message', props.message.id)
+        )
+      else
+        add(t('streamB.retry.942087'), 'rotate-cw', 'direct', () =>
+          emit('retry-message', props.message.id)
+        )
+      add(t('streamB.insertIntoNote.be3d5a'), 'file-input', 'direct', () =>
         emit('insert-into-note', props.message.id)
       )
-      if (props.canComment) add('Ask here', 'message-square', 'direct', () => comments.askHere())
+      if (props.canComment)
+        add(t('streamB.askHere.7b4ec4'), 'message-square', 'direct', () => comments.askHere())
     }
   }
   if (props.readOnlyHistory) return menu.showAtMouseEvent(event)
   if (props.message.role === 'user')
-    add('Repeat', 'repeat', 'message', () => emit('repeat-message', props.message.id))
+    add(t('streamB.repeat.b6b7a0'), 'repeat', 'message', () =>
+      emit('repeat-message', props.message.id)
+    )
   if (props.message.role !== 'tool-call' || canForkCall.value)
     menu.addItem((item) =>
       item
-        .setTitle('Branch from here')
+        .setTitle(t('streamB.branchFromHere.35ed21'))
         .setIcon('git-branch')
         .setSection('conversation')
         .setDisabled(!!props.branchBlocked)
         .onClick(() => branchFromHere())
     )
   if (props.canClone && !props.message.draft)
-    add('New chat from here', 'copy-plus', 'conversation', () =>
+    add(t('streamB.newChatFromHere.0e1fec'), 'copy-plus', 'conversation', () =>
       emit('clone-chat', props.message.id)
     )
   if (props.message.role === 'user' && props.canRewind) {
-    add('Rewind', 'history', 'changes', () => emit('rewind', props.message.id, 'since'))
+    add(t('streamB.rewind.26b658'), 'history', 'changes', () =>
+      emit('rewind', props.message.id, 'since')
+    )
     if (props.changedFiles)
-      add('Undo changes', 'undo-2', 'changes', () => emit('rewind', props.message.id, 'turn'))
+      add(t('streamB.undoChanges.ba0624'), 'undo-2', 'changes', () =>
+        emit('rewind', props.message.id, 'turn')
+      )
   }
   if (event.type === 'contextmenu') {
     menu.showAtMouseEvent(event)
@@ -694,18 +721,23 @@ const editedLabel = computed(() => {
   const revision = lastRevision.value
   if (!revision) return ''
   const state = revision.undoneAt
-    ? 'Change undone'
+    ? t('streamB.changeUndone.e18ed8')
     : revision.by === 'interceptor'
-      ? `Replaced by ${revision.author}`
-      : `Edited by ${revision.author}`
-  return `${state} · ${formatTimestamp(revision.at, { diagnostic: true }).exact} · the reply before`
+      ? t('streamB.replacedBy.2a28e0', { v0: String(revision.author) })
+      : t('streamB.editedBy.f8de4d', { v0: String(revision.author) })
+  return t('streamB.theReplyBefore.7ea725', {
+    v0: String(state),
+    v1: String(formatTimestamp(revision.at, { diagnostic: true }).exact),
+  })
 })
 const proposalOpen = (proposal: ReplyProposal) =>
   proposal.status === 'pending' || proposal.application === 'pending'
 const proposalText = (proposal: ReplyProposal) => {
-  if (proposal.application === 'pending') return 'Accepted change, not applied yet'
-  if (proposal.status === 'pending') return 'Proposed change to a reply'
-  return proposal.status === 'accepted' ? 'Change accepted' : 'Change rejected'
+  if (proposal.application === 'pending') return t('streamB.acceptedChangeNotAppliedYet.5e02cb')
+  if (proposal.status === 'pending') return t('streamB.proposedChangeToAReply.04e863')
+  return proposal.status === 'accepted'
+    ? t('streamB.changeAccepted.36085f')
+    : t('streamB.changeRejected.867e26')
 }
 
 function onMessageClick(event: MouseEvent) {
@@ -720,7 +752,7 @@ function onMessageClick(event: MouseEvent) {
   for (const color of HIGHLIGHT_COLORS)
     menu.addItem((item) =>
       item
-        .setTitle(`Make it ${color}`)
+        .setTitle(t('streamB.makeIt.2a1398', { v0: String(color) }))
         .setIcon('highlighter')
         .setChecked(mark.color === color)
         .onClick(() => emit('recolor-highlight', props.message.id, mark.id, color))
@@ -728,7 +760,7 @@ function onMessageClick(event: MouseEvent) {
   menu.addSeparator()
   menu.addItem((item) =>
     item
-      .setTitle('Remove highlight')
+      .setTitle(t('streamB.removeHighlight.aab650'))
       .setIcon('eraser')
       .onClick(() => emit('remove-highlight', props.message.id, mark.id))
   )

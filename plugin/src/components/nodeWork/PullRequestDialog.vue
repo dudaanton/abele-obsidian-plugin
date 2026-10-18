@@ -3,7 +3,7 @@
     <div class="abele-pr-dialog__where">
       <Icon icon="git-pull-request-create" size="xs" :interactive="false" />
       <span
-        ><b>{{ branch }}</b> into
+        ><b>{{ branch }}</b> {{ t('streamB.into.6b847a') }}
         <a
           class="abele-pr-dialog__base"
           role="button"
@@ -16,39 +16,54 @@
       >
     </div>
     <label class="abele-pr-dialog__field">
-      <span class="setting-item-name">Title</span>
-      <Input v-model="title" aria-label="Title" placeholder="What the branch does" />
+      <span class="setting-item-name">{{ t('streamB.title.7e8cd2') }}</span>
+      <Input
+        v-model="title"
+        :aria-label="t('streamB.title.7e8cd2')"
+        :placeholder="t('streamB.whatTheBranchDoes.dc5ac5')"
+      />
     </label>
     <label class="abele-pr-dialog__field">
-      <span class="setting-item-name">Description</span>
+      <span class="setting-item-name">{{ t('streamB.description.526e00') }}</span>
       <textarea
         v-model="body"
         class="abele-pr-dialog__body"
         rows="6"
-        aria-label="Description"
-        placeholder="Why, and what to look at"
+        :aria-label="t('streamB.description.526e00')"
+        :placeholder="t('streamB.whyAndWhatToLookAt.04a840')"
       />
     </label>
     <Setting
       v-if="draftSupported"
-      name="Draft"
-      desc="Not ready for review yet; it can be marked ready later."
+      :name="t('streamB.draft.ebf12e')"
+      :desc="t('streamB.notReadyForReviewYetItCan.4da700')"
     >
-      <Checkbox :is-enabled="draft" aria-label="Open as a draft" @toggle="draft = !draft" />
+      <Checkbox
+        :is-enabled="draft"
+        :aria-label="t('streamB.openAsADraft.ee25cd')"
+        @toggle="draft = !draft"
+      />
     </Setting>
     <p v-else class="setting-item-description">
-      Draft creation is not available for this service API.
+      {{ t('streamB.reapply.0aba8ff480') }}
     </p>
     <div class="modal-button-container">
-      <Button text="Cancel" tooltip="Close without opening anything" @click="emit('cancel')" />
       <Button
-        :text="pushed ? 'Create' : 'Push and create'"
+        :text="t('streamB.cancel.19766e')"
+        :tooltip="t('streamB.closeWithoutOpeningAnything.d07e2a')"
+        @click="emit('cancel')"
+      />
+      <Button
+        :text="pushed ? t('streamB.create.475949') : t('streamB.pushAndCreate.64ee42')"
         accent
         :disabled="!title.trim()"
         :tooltip="
           pushed
-            ? `Open the pull request on ${host}`
-            : `Push ${branch} first, then open the pull request on ${host}`
+            ? t('streamB.openThePullRequestOn.652a4b', { v0: String(host) })
+            : t('streamB.pushFirstThenOpenThePullRequest.68d2ff', {
+                v0: String(branch),
+                v1: String(host),
+              })
         "
         @click="emit('create', { title: title.trim(), body, draft })"
       />
@@ -57,6 +72,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 // Opening a pull request for a worktree's branch: into which branch, a title and a description
 // filled from its commits, as a draft or not. The branch is pushed first when it is not yet.
 import { ref } from 'vue'

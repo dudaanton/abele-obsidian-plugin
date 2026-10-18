@@ -1,4 +1,6 @@
 import { isNativeForge } from '@/forge/native'
+import { uiFields, UiError, uiMessage } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 /**
  * The GitHub integration's shared state: the client for the configured server and token, and
  * the one road by which a URL becomes an open tab.
@@ -143,7 +145,17 @@ export function githubClient(host?: string): GithubClient {
         ? 'a token is set, but the keychain on this device has nothing under it. Paste the token again in Abele settings → GitHub, or, if keys are synced, unlock them in Abele settings → Transfer → Synced keys.'
         : undefined
 
-  return cachedClient(ends, token, noTokenReason)
+  return uiFields(cachedClient(ends, token, noTokenReason), {
+    noTokenReason:
+      stored && !useConfigured
+        ? uiMessage('streamBError.cace6bbbbf', {
+            v0: String(configured.webHost),
+            v1: String(normaliseHost(host ?? '')),
+          })
+        : !stored && settings.keyId
+          ? uiMessage('streamBError.ad2081e8e0')
+          : undefined,
+  })
 }
 
 function cachedClient(ends: Endpoints, token: string, noTokenReason?: string): GithubClient {
@@ -178,7 +190,7 @@ const notificationClients = new ConnectionClients(
       ? [
           {
             id: 'notifications',
-            name: 'GitHub notifications',
+            name: t('streamB.githubNotifications.e44213'),
             server: settings.notifications?.boundServer ?? settings.server,
             keyId,
             owners: [] as string[],
@@ -218,15 +230,11 @@ export function checkGithubAccess(repoInput: string): Promise<AccessReport> {
   const text = repoInput.trim()
   const repo = text ? parseRepoInput(text, tokenHost) : null
   if (text && !repo) {
-    return Promise.reject(
-      new Error(`"${text}" is not a repository. Give owner/name, or any link into the repository.`)
-    )
+    return Promise.reject(new UiError(uiMessage('streamBError.bb2a67e714', { v0: String(text) })))
   }
   if (repo && !githubHosts().includes(normaliseHost(repo.host))) {
     return Promise.reject(
-      new Error(
-        `${repo.host} is neither github.com nor the server set above, so nothing here reads it.`
-      )
+      new UiError(uiMessage('streamBError.9cfa0264aa', { v0: String(repo.host) }))
     )
   }
   return checkAccess({

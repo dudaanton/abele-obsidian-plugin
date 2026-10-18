@@ -1,3 +1,6 @@
+import { catalogs as testCatalogs } from '@/i18n/catalogs'
+import { initializeLocale } from '@/i18n'
+import { presentUiError, presentUiField } from '@/i18n/streamBErrors'
 import { describe, expect, it, vi } from 'vitest'
 import { ProjectSchema, WorktreePageSchema, SessionSchema } from '@abele/node-protocol'
 import {
@@ -529,4 +532,23 @@ describe('bound node file tabs', () => {
     expect(tab.document.value?.path).toBe('other.ts')
     expect(tab.mode.value).toBe('file')
   })
+})
+
+it('localizes offline file errors without changing their original message', async () => {
+  const { model } = fake()
+  model.online.value = false
+  initializeLocale('ru', testCatalogs['ru' as keyof typeof testCatalogs])
+  try {
+    const error = await model.openFile(target(), 'sample-unretained.txt').catch((error) => error)
+    expect(error.message).toBe('This file is not retained on this device. Reconnect to open it.')
+    expect(presentUiError(error)).toBe(
+      'Файл не сохранён на этом устройстве. Подключитесь заново, чтобы открыть его.'
+    )
+    model.report(error)
+    expect(model.error.value).toBe(error.message)
+    expect(presentUiField(model.error, 'value')).toBe(presentUiError(error))
+  } finally {
+    model.destroy()
+    initializeLocale('en', testCatalogs['en' as keyof typeof testCatalogs])
+  }
 })

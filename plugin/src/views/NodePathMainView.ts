@@ -1,3 +1,5 @@
+import { presentUiError, UiError, uiMessage } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 import {
   ItemView,
   type Menu,
@@ -72,10 +74,10 @@ export class NodePathMainView extends ItemView {
     // On a phone the title row keeps the file's name: one glyph beside it, the rest in the view's
     // own menu (onPaneMenu), and the way back to the node is the drawer's button on the left.
     if (Platform.isMobile && !Platform.isPhone)
-      this.addAction('arrow-left', 'Back to node', () => this.backToNode())
+      this.addAction('arrow-left', t('streamBMeta.22cfd62325'), () => this.backToNode())
     if (viewType === 'abele-node-file') this.fileTab.render()
     if (viewType === 'abele-node-history')
-      this.addAction('arrow-left', 'Back to commits', () => this.history?.back())
+      this.addAction('arrow-left', t('streamBMeta.e2bb136400'), () => this.history?.back())
   }
   private backToNode(): void {
     this.act(() => revealNodeDrawer(this.app.workspace, this.saved?.target.registrationId))
@@ -90,7 +92,7 @@ export class NodePathMainView extends ItemView {
       }
       menu.addItem((i) =>
         i
-          .setTitle('Back to node')
+          .setTitle(t('streamBMeta.22cfd62325'))
           .setIcon('server')
           .setSection('action')
           .onClick(() => this.backToNode())
@@ -113,10 +115,10 @@ export class NodePathMainView extends ItemView {
   getDisplayText(): string {
     const state = this.saved
     return state?.kind === 'file' || state?.kind === 'editor'
-      ? (state.path.split('/').pop() ?? 'File')
+      ? (state.path.split('/').pop() ?? t('streamB.file.50009c'))
       : state?.kind === 'chat'
         ? state.title
-        : 'Node history'
+        : t('streamBMeta.c37e36d928')
   }
   getState(): Record<string, unknown> {
     return this.saved ? { ...this.saved } : {}
@@ -135,7 +137,7 @@ export class NodePathMainView extends ItemView {
   async setState(raw: unknown, result: ViewStateResult): Promise<void> {
     const parsed = NodePathTabSchema.parse(raw)
     if (nodePathViewType(parsed) !== this.viewType)
-      throw new Error('The node tab kind does not match its host.')
+      throw new UiError(uiMessage('streamBMeta.40ea2d02b7'))
     if (parsed.kind === 'editor') {
       // An editor tab from an earlier version becomes the file's own tab, editing. The leaf is
       // switched once Obsidian has finished admitting this state: switching it from inside its
@@ -200,7 +202,8 @@ export class NodePathMainView extends ItemView {
     void Promise.resolve()
       .then(run)
       .catch((error: unknown) => {
-        this.error.value = error instanceof Error ? error.message : 'Node action failed'
+        this.error.value =
+          error instanceof Error ? presentUiError(error) : t('streamB.nodeActionFailed.35c41e')
         new Notice(this.error.value)
       })
   }
@@ -226,7 +229,8 @@ export class NodePathMainView extends ItemView {
     const lifetime = this.lifetime
     void loading.catch((error: unknown) => {
       if (lifetime !== this.lifetime) return
-      this.error.value = error instanceof Error ? error.message : 'Could not load node tab'
+      this.error.value =
+        error instanceof Error ? presentUiError(error) : t('streamBMeta.522e5db689')
       console.debug('[Abele node] tab load failed', this.error.value)
       if (!this.ui) this.contentEl.setText(this.error.value)
     })
@@ -246,7 +250,7 @@ export class NodePathMainView extends ItemView {
     )
     if (!node || node.expectedNodeId !== state.target.nodeId) {
       this.contentEl.createDiv({
-        text: 'This node registration is missing or has changed. Reconnect the original node to reopen this tab.',
+        text: t('streamBMeta.aea59ff9c0'),
       })
       return
     }
@@ -403,7 +407,8 @@ export class NodePathMainView extends ItemView {
       }
       if (lifetime === this.lifetime && state.edit)
         await editing.start(state.path).catch((error: unknown) => {
-          this.error.value = error instanceof Error ? error.message : 'Could not start editing'
+          this.error.value =
+            error instanceof Error ? presentUiError(error) : t('streamBMeta.8d247c53c5')
         })
     } else if (state.kind === 'history') {
       const history = (this.history = new NodePathHistoryModel(model.port, state.target))

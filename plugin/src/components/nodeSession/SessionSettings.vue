@@ -18,6 +18,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 // How the session runs, in one quiet control at the composer's foot: its permission mode as a
 // glyph, red when it asks about nothing; the model's family in a word; how full the context is,
 // as a share that turns orange near the end. The effort and the account are its tooltip. It opens one menu of everything the session can
@@ -50,15 +51,18 @@ const effort = computed(() => label(props.live.choices.efforts, settings.value.e
 const said = computed(() => model.value.split(' ')[0])
 const counts = computed(() =>
   props.live.context
-    ? `${tokens(props.live.context.used)} of ${tokens(props.live.context.limit)}`
-    : 'not reported yet'
+    ? t('chat.contextTokens', {
+        used: tokens(props.live.context.used),
+        limit: tokens(props.live.context.limit),
+      })
+    : t('chat.notReported')
 )
 const facts = computed(() =>
   [
-    `${model.value}, effort ${effort.value.toLowerCase()}`,
+    t('chat.modelEffort', { model: model.value, effort: effort.value.toLowerCase() }),
     label(props.live.choices.accounts, settings.value.account),
     `${MODE[settings.value.mode].label}: ${MODE[settings.value.mode].said}`,
-    `Context ${counts.value}`,
+    t('chat.context', { value: counts.value }),
   ].join('\n')
 )
 
@@ -78,16 +82,16 @@ function open(event?: MouseEvent): void {
   menu.addItem((i) =>
     i
       .setTitle(
-        props.live.context ? `Compact the context… · ${counts.value}` : 'Compact the context…'
+        props.live.context
+          ? t('chat.compactMenuCount', { value: counts.value })
+          : t('chat.compactMenu')
       )
       .setIcon('fold-vertical')
       .setSection('Context')
       .onClick(() => emit('compact'))
   )
   if (props.busy)
-    menu.addItem((i) =>
-      i.setTitle('What follows applies from the next message').setIsLabel(true).setSection('Note')
-    )
+    menu.addItem((i) => i.setTitle(t('chat.nextMessage')).setIsLabel(true).setSection('Note'))
   const group = (
     title: string,
     list: SessionChoice[],
@@ -105,17 +109,21 @@ function open(event?: MouseEvent): void {
           .onClick(() => set(c.id))
       )
   }
-  group('Model', choices.models, settings.value.model, (model) => props.live.change({ model }))
-  group('Effort', choices.efforts, settings.value.effort, (effort) => props.live.change({ effort }))
-  group('Account', choices.accounts, settings.value.account, (account) =>
+  group(t('chat.model'), choices.models, settings.value.model, (model) =>
+    props.live.change({ model })
+  )
+  group(t('chat.effort'), choices.efforts, settings.value.effort, (effort) =>
+    props.live.change({ effort })
+  )
+  group(t('chat.account'), choices.accounts, settings.value.account, (account) =>
     props.live.change({ account })
   )
-  menu.addItem((i) => i.setTitle('Permissions').setIsLabel(true).setSection('Permissions'))
+  menu.addItem((i) => i.setTitle(t('chat.permissions')).setIsLabel(true).setSection('Permissions'))
   for (const mode of choices.modes ?? (Object.keys(MODE) as PermissionMode[])) {
     const off = mode === 'bypass' && !choices.bypassAllowed
     menu.addItem((i) =>
       i
-        .setTitle(off ? `${MODE[mode].label} · turned off on this node` : MODE[mode].label)
+        .setTitle(off ? t('chat.modeDisabled', { mode: MODE[mode].label }) : MODE[mode].label)
         .setIcon(MODE[mode].icon)
         .setChecked(mode === settings.value.mode)
         .setDisabled(off)

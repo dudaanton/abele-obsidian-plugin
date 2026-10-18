@@ -7,21 +7,23 @@
       class="abele-commit-box__message"
       as-text-area
       :rows="1"
-      placeholder="Message"
-      aria-label="Commit message"
+      :placeholder="t('streamB.message.2f7766')"
+      :aria-label="t('streamB.commitMessage.26306d')"
       :disabled="disabled"
       @keydown.enter.meta.prevent="commit"
       @keydown.enter.ctrl.prevent="commit"
     />
     <Button
       class="abele-commit-box__commit"
-      text="Commit"
+      :text="t('streamBMeta.commitAction')"
       icon="git-commit-horizontal"
       :disabled="disabled || !message.trim() || conflicts > 0"
       :tooltip="
         conflicts > 0
-          ? 'Fix the files in conflict first'
-          : `Commit the ${plural(staged, 'staged file')} · ⌘ Enter`
+          ? t('streamB.fixTheFilesInConflictFirst.a31072')
+          : t('streamB.commitTheEnter.85d92e', {
+              v0: String(plural(staged, 'staged file')),
+            })
       "
       @click="commit"
     />
@@ -29,6 +31,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 // The commit field over a worktree's changes, shown while something is staged.
 import { nextTick, onMounted, ref, watch } from 'vue'
 import Button from '../obsidian/Button.vue'

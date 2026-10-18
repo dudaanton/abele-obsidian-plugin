@@ -1,3 +1,5 @@
+import { streamBLabel } from '@/i18n/streamBLabels'
+import { t } from '@/i18n'
 /**
  * Read-only CodeMirror editors for a file's diff and for a file at a ref.
  *
@@ -107,11 +109,15 @@ function mount(
           ? [
               history(),
               keymap.of([...defaultKeymap, ...historyKeymap]),
-              EditorView.contentAttributes.of({ 'aria-label': 'Workspace file editor' }),
+              EditorView.contentAttributes.of({
+                'aria-label': t('streamB.workspaceFileEditor.753cf7'),
+              }),
               EditorView.updateListener.of((update) => {
                 if (
                   update.docChanged &&
-                  !update.transactions.some((t) => t.annotation(restoredText))
+                  !update.transactions.some((translationItem) =>
+                    translationItem.annotation(restoredText)
+                  )
                 )
                   onChange(update.state.doc.toString())
               }),
@@ -244,7 +250,9 @@ function diffParts(
       ...(handlers ? { domEventHandlers: handlers } : {}),
     })
 
-  const state = EditorState.create({ doc: lines.map((l) => l.text).join('\n') })
+  const state = EditorState.create({
+    doc: lines.map((l) => (l.type === 'note' ? streamBLabel(l.text) : l.text)).join('\n'),
+  })
   const decorations = lineDecorations(state, (n) =>
     [TYPE_CLASS[lines[n - 1]?.type ?? 'ctx']].filter(Boolean)
   )

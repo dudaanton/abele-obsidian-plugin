@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { nanoid } from 'nanoid'
 import { ItemView, WorkspaceLeaf, App, type Menu } from 'obsidian'
@@ -23,7 +24,7 @@ export class AiSidebarView extends ItemView {
   }
 
   getDisplayText() {
-    return 'Abele AI chat'
+    return t('streamB.abeleAiChat.08f891')
   }
 
   static getIcon() {
@@ -38,7 +39,7 @@ export class AiSidebarView extends ItemView {
   fillQuickMenu(menu: Menu): void {
     menu.addItem((item) =>
       item
-        .setTitle('Start a new chat')
+        .setTitle(t('streamB.startANewChat.61025e'))
         .setIcon('plus')
         .onClick(
           () => void import('@/ai/ChatService').then((m) => m.ChatService.getInstance().newTab())

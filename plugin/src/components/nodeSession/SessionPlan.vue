@@ -4,12 +4,14 @@
   <div
     class="abele-session-plan"
     role="group"
-    :aria-label="`Plan, ${done} of ${entries.length} done`"
+    :aria-label="t('chat.planProgress', { done, count: entries.length })"
   >
     <div class="abele-session-plan__head">
       <Icon icon="list-checks" size="xs" :interactive="false" />
-      <span>Plan</span>
-      <span class="abele-session-plan__count">{{ done }} of {{ entries.length }}</span>
+      <span>{{ t('chat.plan') }}</span>
+      <span class="abele-session-plan__count">{{
+        t('chat.planCount', { done, count: entries.length })
+      }}</span>
     </div>
     <ul class="abele-session-plan__steps">
       <li
@@ -31,13 +33,18 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed } from 'vue'
 import Icon from '../obsidian/Icon.vue'
 import type { SessionPlanEntry } from '@/node/sessionLive'
 
 const props = defineProps<{ entries: SessionPlanEntry[] }>()
 const GLYPH = { pending: 'circle', in_progress: 'circle-dot', completed: 'circle-check' } as const
-const SAID = { pending: 'To do', in_progress: 'Doing now', completed: 'Done' } as const
+const SAID = {
+  pending: t('chat.todo'),
+  in_progress: t('chat.doing'),
+  completed: t('chat.done'),
+} as const
 const done = computed(() => props.entries.filter((e) => e.status === 'completed').length)
 </script>
 

@@ -1,3 +1,5 @@
+import { presentUiError } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 /**
  * "Chat about this" and "Ask here" from a GitHub tab: a new chat whose input already holds a link
  * to what the person is looking at — the item, the lines they selected with their code quoted
@@ -92,6 +94,10 @@ export async function askAboutGithub(
     await chatAboutGithub(await link, quote)
   } catch (e) {
     console.error('[Abele] Chat about a GitHub item failed:', e)
-    new Notice(`Could not open a chat: ${e instanceof Error ? e.message : String(e)}`)
+    new Notice(
+      t('streamB.couldNotOpenAChat.dc5e95', {
+        v0: String(e instanceof Error ? presentUiError(e) : String(e)),
+      })
+    )
   }
 }

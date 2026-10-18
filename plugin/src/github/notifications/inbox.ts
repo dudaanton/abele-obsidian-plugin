@@ -1,3 +1,6 @@
+import { uiFields, uiMessage } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
+import { agentText } from '@/i18n/streamBText'
 /**
  * The notifications of the account the token belongs to: listed, marked read or done on GitHub.
  *
@@ -232,10 +235,17 @@ export class NotificationInbox {
     }
 
     const base = `/notifications?all=${which === 'all'}&per_page=${PER_PAGE}`
-    const first = await this.client.call<unknown>('GET', `${base}&page=1`, {
-      what: 'the notifications',
-      headers: kept?.lastModified ? { 'If-Modified-Since': kept.lastModified } : {},
-    })
+    const first = await this.client.call<unknown>(
+      'GET',
+      `${base}&page=1`,
+      uiFields(
+        {
+          what: agentText('streamB.theNotifications.c16680'),
+          headers: kept?.lastModified ? { 'If-Modified-Since': kept.lastModified } : {},
+        },
+        { what: uiMessage('streamB.theNotifications.c16680') }
+      )
+    )
     if (first.error) this.refuse(first)
 
     const poll = Number(header(first.headers, 'x-poll-interval'))
@@ -257,9 +267,16 @@ export class NotificationInbox {
         truncated = true
         break
       }
-      const next = await this.client.call<unknown>('GET', `${base}&page=${page}`, {
-        what: 'the notifications',
-      })
+      const next = await this.client.call<unknown>(
+        'GET',
+        `${base}&page=${page}`,
+        uiFields(
+          {
+            what: agentText('streamB.theNotifications.c16680'),
+          },
+          { what: uiMessage('streamB.theNotifications.c16680') }
+        )
+      )
       if (next.error) this.refuse(next)
       items.push(...parseNotifications(next.body))
       batch = Array.isArray(next.body) ? next.body.length : 0
@@ -325,7 +342,10 @@ export class NotificationInbox {
     const answer = await this.client.call(
       'DELETE',
       `/notifications/threads/${encodeURIComponent(id)}`,
-      { what: 'marking the notification done' }
+      uiFields(
+        { what: t('streamB.markingTheNotificationDone.2c6f64') },
+        { what: uiMessage('streamB.markingTheNotificationDone.2c6f64') }
+      )
     )
     // A write failure is not a failure to list notifications. Preserve SSO/policy causes
     // instead of replacing them with generic advice to add the read scope.
@@ -363,7 +383,10 @@ export class NotificationInbox {
     const answer = await this.client.call(
       'PATCH',
       `/notifications/threads/${encodeURIComponent(id)}`,
-      { what: 'marking the notification read' }
+      uiFields(
+        { what: t('streamB.markingTheNotificationRead.7af6fe') },
+        { what: uiMessage('streamB.markingTheNotificationRead.7af6fe') }
+      )
     )
     if (answer.error) this.refuse(answer)
     this.markKept((n) => n.id === id)
@@ -384,11 +407,18 @@ export class NotificationInbox {
     const path = repo
       ? `/repos/${repo.split('/').map(encodeURIComponent).join('/')}/notifications`
       : '/notifications'
-    const answer = await this.client.call('PUT', path, {
-      what: 'marking the notifications read',
-      // Do not force all notifications read: last_read_at must protect later activity.
-      body: { last_read_at: listedAt },
-    })
+    const answer = await this.client.call(
+      'PUT',
+      path,
+      uiFields(
+        {
+          what: t('streamB.markingTheNotificationsRead.cad261'),
+          // Do not force all notifications read: last_read_at must protect later activity.
+          body: { last_read_at: listedAt },
+        },
+        { what: uiMessage('streamB.markingTheNotificationsRead.cad261') }
+      )
+    )
     if (answer.error) this.refuse(answer)
     this.markKept(
       (n) => (!repo || n.repo === repo) && Date.parse(n.updatedAt) <= Date.parse(listedAt)
@@ -407,9 +437,15 @@ export class NotificationInbox {
     if (d.kind === 'browser') return { url: d.url, tab: false }
     if (d.kind === 'ask') {
       try {
-        const release = await this.client.get<{ html_url?: string }>(d.apiUrl, {
-          what: 'the release',
-        })
+        const release = await this.client.get<{ html_url?: string }>(
+          d.apiUrl,
+          uiFields(
+            {
+              what: agentText('streamB.theRelease.425102'),
+            },
+            { what: uiMessage('streamB.theRelease.425102') }
+          )
+        )
         return { url: release.html_url || d.fallback, tab: false }
       } catch {
         return { url: d.fallback, tab: false }

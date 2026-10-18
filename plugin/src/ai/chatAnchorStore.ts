@@ -1,3 +1,4 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import { createChatAnchor, resolveChatAnchor } from '@/selection/anchors'
 import { sameRevision } from '@/selection/revisionMapping'
 import type {
@@ -30,12 +31,12 @@ export function prepareSelectionRevision(
   const versions = message.selection?.versions ?? []
   const existing = versions.filter((version) => sameRevision(version.reference, reference))
   if (existing.length > 1 || (existing.length && existing[0].content !== message.content))
-    throw new Error('The selection revision changed. Reopen the chat before selecting again.')
+    throw new UiError(uiMessage('streamBError.d0994129e6'))
   const projection = ports.project(message.content)
   if (!chatId || !revisionId || !projection.version)
-    throw new Error('Revision and projection identities must not be empty')
+    throw new UiError(uiMessage('streamBError.746178d21f'))
   if (existing.length && JSON.stringify(existing[0].projection) !== JSON.stringify(projection))
-    throw new Error('The selection projection changed. Use a compatible renderer.')
+    throw new UiError(uiMessage('streamBError.ed46dd4b52'))
   const revision: ChatRevision =
     existing[0] ??
     Object.freeze({
@@ -72,7 +73,7 @@ export function ensureCapturedAnchor(
     versions[0].content !== message.content ||
     source.role !== message.role
   )
-    throw new Error('The captured selection revision changed. Select the passage again.')
+    throw new UiError(uiMessage('streamBError.e6d5371478'))
   // Validate even when reusing an existing anchor. Never search for the quote in source text.
   const candidate = createChatAnchor(snapshot, versions[0], () => 'validation')
   const existing = selection.anchors.find(
@@ -86,7 +87,7 @@ export function ensureCapturedAnchor(
   )
   const anchor = existing ?? createChatAnchor(snapshot, versions[0], nextId)
   if (!existing && selection.anchors.some((item) => item.id === anchor.id))
-    throw new Error('Anchor identity must be unique')
+    throw new UiError(uiMessage('streamBError.c65ee43131'))
   return {
     anchor,
     selection: existing ? selection : { ...selection, anchors: [...selection.anchors, anchor] },

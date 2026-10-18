@@ -56,14 +56,14 @@
       </span>
       <span v-if="file.staged || file.unstaged || file.untracked" class="abele-github-file__note">{{
         file.untracked
-          ? 'New'
+          ? t('streamB.new.18fdd5')
           : file.staged && file.unstaged
-            ? 'Partly ready'
+            ? t('streamB.partlyReady.235772')
             : file.staged
-              ? 'Ready'
-              : 'Edited'
+              ? t('streamB.ready.5fa7aa')
+              : t('streamB.edited.7117f0')
       }}</span>
-      <Badge v-if="file.status !== 'modified'" :text="file.status" />
+      <Badge v-if="file.status !== 'modified'" :text="streamBLabel(file.status)" />
       <Icon
         v-if="openUrl"
         class="abele-github-file__open"
@@ -81,19 +81,23 @@
     </div>
 
     <div v-if="expanded" class="abele-github-file__body">
-      <EmptyState v-if="patchBusy" text="Loading the file changes…" />
+      <EmptyState v-if="patchBusy" :text="t('streamB.loadingTheFileChanges.167dbf')" />
       <div v-else-if="patchError" role="alert">
         {{ patchError }}
-        <Icon icon="refresh-cw" tooltip="Try loading the file changes again" @click="loadPatch" />
+        <Icon
+          icon="refresh-cw"
+          :tooltip="t('streamB.tryLoadingTheFileChangesAgain.28e507')"
+          @click="loadPatch"
+        />
       </div>
       <div v-else-if="lines.length" ref="editorEl" class="abele-github-code" />
       <EmptyState v-else>
         {{
           file.diffNote
-            ? file.diffNote
+            ? presentUiField(file, 'diffNote')
             : file.patch === undefined
-              ? 'GitHub does not show this diff here — the file is binary or its diff is too large.'
-              : 'No changes in the text of this file.'
+              ? t('streamB.githubDoesNotShowThisDiffHere.57adba')
+              : t('streamB.noChangesInTheTextOfThis.e4d45d')
         }}
       </EmptyState>
       <!-- After the empty note, not between it and the diff: `v-else` pairs with its neighbour. -->
@@ -109,7 +113,7 @@
         />
       </Teleport>
       <div v-if="anchor?.line && !highlight.length" class="abele-github-file__note">
-        Line {{ anchor.line }} is in a part of the file the diff does not show.
+        {{ t('streamBMeta.1a5a5ef822', { p0: String(anchor.line) }) }}
       </div>
       <div v-if="file.reviewComments.length" class="abele-github-file__comments">
         <GithubComment
@@ -124,6 +128,10 @@
 </template>
 
 <script setup lang="ts">
+import { presentUiField, presentUiError } from '@/i18n/streamBErrors'
+import { streamBLabel } from '@/i18n/streamBLabels'
+
+import { t } from '@/i18n'
 import { useResizeObserver } from '@vueuse/core'
 import { openExternal } from '@/helpers/openExternal'
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
@@ -136,13 +144,20 @@ import { LINKER } from '@/github/linking'
 import { diffSnippet, type SnippetBlock } from '@/github/snippetBlock'
 import { SCREEN, diffCode, markExpanded } from '@/github/screen'
 import type { Quote } from '@/github/chatAbout'
-import { diffLink, diffSpan, type DiffSpan, type GithubLink } from '@/github/permalinks'
+import {
+  diffLink,
+  diffSpan,
+  type DiffSpan,
+  type GithubLink,
+  fileUrl,
+  lineOnSide,
+} from '@/github/permalinks'
 import type { DiffFile } from '@/repository/model'
 import type { DiffFileAnchor } from '@/github/urls'
 import { linesFor, parsePatch } from '@/github/patch'
 import { mountDiff, type Viewer } from '@/github/codeViewer'
 import { LINE_CONTEXT, elementTop, pinIntoView } from '@/github/scrollTo'
-import { fileUrl, lineOnSide } from '@/github/permalinks'
+
 import { paneForClick } from '@/github/links'
 import { ancestors, treeUrl } from '@/github/tree/fileTree'
 import { useRepositorySource } from '@/repository/context'
@@ -203,8 +218,7 @@ const loadPatch = async () => {
       emit('loaded')
     }
   } catch (error) {
-    if (generation === patchGeneration)
-      patchError.value = error instanceof Error ? error.message : String(error)
+    if (generation === patchGeneration) patchError.value = presentUiError(error)
   } finally {
     if (generation === patchGeneration) {
       patchBusy.value = false
@@ -249,29 +263,32 @@ const selectedLines = shallowRef<{ from: number; to: number } | null>(null)
 const selectedLabel = computed(() => {
   const s = selectedSpan.value
   if (!s) return ''
-  const lines = s.start === s.end ? `Line ${s.start}` : `Lines ${s.start}–${s.end}`
-  return s.side === 'L' ? `${lines}, before the change` : lines
+  const lines =
+    s.start === s.end
+      ? t('streamB.line.257307', { v0: String(s.start) })
+      : t('streamB.lines.64d8a3', { v0: String(s.start), v1: String(s.end) })
+  return s.side === 'L' ? t('streamB.beforeTheChange.ea7b20', { v0: String(lines) }) : lines
 })
 
 const selectedLink = (): GithubLink => {
   const item = linker?.item()
-  if (!selectedSpan.value) throw new Error('nothing is selected')
+  if (!selectedSpan.value) throw new Error(t('streamB.nothingIsSelected.e695b9'))
   const span = selectedSpan.value
   const ref = span.side === 'L' ? props.refs?.base : props.refs?.head
   if (source.value?.identity.provider !== 'github' && !ref)
-    throw new Error('This index side is available in the retained patch, not as a whole-file link.')
+    throw new Error(t('streamB.thisIndexSideIsAvailableInThe.d5e265'))
   if (source.value?.identity.provider !== 'github' && ref)
     return source.value.navigation.blobLink(
       ref,
       span.side === 'L' ? (props.file.previousPath ?? props.file.path) : props.file.path,
       { from: span.start, to: span.end }
     )
-  if (!item) throw new Error('nothing is selected')
+  if (!item) throw new Error(t('streamB.nothingIsSelected.e695b9'))
   return diffLink(item, props.file, selectedSpan.value)
 }
 
 const selectedSnippet = (): SnippetBlock => {
-  if (!selectedLines.value) throw new Error('nothing is selected')
+  if (!selectedLines.value) throw new Error(t('streamB.nothingIsSelected.e695b9'))
   return diffSnippet(selectedLink(), props.file.path, lines.value, selectedLines.value)
 }
 
@@ -338,7 +355,7 @@ const draw = async () => {
 const deleted = computed(() => props.file.status === 'removed')
 const openUrl = computed(() => urlAt(undefined))
 const openTooltip = computed(() =>
-  deleted.value ? 'Open the whole file as it was before the change' : 'Open the whole file'
+  deleted.value ? t('streamB.openTheWholeFileAsItWas.da1a9d') : t('streamB.openTheWholeFile.2728cd')
 )
 
 function urlAt(line: number | undefined): string | null {

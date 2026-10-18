@@ -14,8 +14,13 @@
         <Badge v-for="label in item.labels" :key="label.name" :text="label.name" />
       </div>
       <div class="abele-github-list-row__meta">
-        #{{ item.number }} · {{ item.state === 'draft' ? 'draft ' : '' }}opened
-        {{ formatDate(item.createdAt) }} by {{ item.author
+        {{
+          t('streamBMeta.955e73e134', {
+            p0: String(item.number),
+            p1: String(item.state === 'draft' ? t('streamB.draft.ce0014') : ''),
+            p2: String(formatDate(item.createdAt)),
+            p3: String(item.author),
+          })
         }}<template v-if="item.category"> · {{ item.category }}</template
         ><template v-if="item.milestone"> · {{ item.milestone }}</template>
       </div>
@@ -27,6 +32,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { openExternal } from '@/helpers/openExternal'
 import { computed } from 'vue'
 import type { PaneType } from 'obsidian'

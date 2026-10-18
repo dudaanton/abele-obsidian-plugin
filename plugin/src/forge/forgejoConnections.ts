@@ -1,4 +1,5 @@
 import { isNativeForge } from '@/forge/native'
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import { effectScope, watch, reactive } from 'vue'
 import { ancestors, findNode } from '@/github/tree/fileTree'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -55,7 +56,7 @@ export function forgejoConnectionClient(id: string, transport?: HttpTransport): 
   const row = () => AbeleConfig.getInstance().github.connections.find((r) => r.id === id)
   const current = row()
   if (!current || !isNativeForge(current.provider))
-    throw new Error('The Forgejo connection was removed or changed.')
+    throw new UiError(uiMessage('streamBError.48c142c51b'))
   watchAuthorities()
   reconcile()
   let authority = authorities.get(id)
@@ -72,11 +73,8 @@ export function forgejoConnectionClient(id: string, transport?: HttpTransport): 
       generation: captured.generation,
       assertCurrent: () => {
         if (captured.retired || captured.signature !== signature(id))
-          throw new Error('The Forgejo connection was removed or changed; reload this tab.')
-        if (current.keyId && !token)
-          throw new Error(
-            'The connection token is unavailable on this device; unlock synced keys or add the token.'
-          )
+          throw new UiError(uiMessage('streamBError.7351aeb8ca'))
+        if (current.keyId && !token) throw new UiError(uiMessage('streamBError.233dcaa94f'))
       },
     },
     transport ?? singleHopRequest,

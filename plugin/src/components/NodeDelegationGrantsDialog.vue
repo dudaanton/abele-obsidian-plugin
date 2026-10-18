@@ -1,31 +1,35 @@
 <template>
-  <Modal title="Node delegation grants" @close="emit('close')">
+  <Modal :title="t('streamB.nodeDelegationGrants.1272e9')" @close="emit('close')">
     <div class="abele-node-grants">
-      <p>{{ label }} · Owner approval for this device and parent chat only.</p>
-      <p>
-        Children run with the node's user account in their own workspaces, not a filesystem sandbox.
-        Human permissions and extension questions stay in the child chat. Grants, task identities
-        and mailboxes never transfer with settings.
-      </p>
+      <p>{{ t('streamBMeta.3f37debec2', { p0: String(label) }) }}</p>
+      <p>{{ t('streamB.childrenRunWithTheNodeSUser.8cdc22') }}</p>
       <p v-if="error" role="alert"><NodeErrorText :error="error" /></p>
       <Setting
-        name="Parent chat"
-        desc="Open the plugin chat to authorize, then choose it here. A copied chat needs its own grant."
+        :name="t('streamB.parentChat.1620e0')"
+        :desc="t('streamB.openThePluginChatToAuthorizeThen.e18cb4')"
       >
-        <select v-model="parentId" aria-label="Delegation parent chat" :disabled="busy">
-          <option value="">Choose a parent chat</option>
+        <select
+          v-model="parentId"
+          :aria-label="t('streamB.delegationParentChat.463b32')"
+          :disabled="busy"
+        >
+          <option value="">{{ t('streamB.chooseAParentChat.c09df4') }}</option>
           <option v-for="parent in parents" :key="parent.id" :value="parent.id">
             {{ parent.title }}
           </option>
         </select>
       </Setting>
-      <p v-if="parentId">Parent reference: {{ parentId }}</p>
+      <p v-if="parentId">{{ t('streamBMeta.a664ea62e3', { p0: String(parentId) }) }}</p>
       <Setting
-        name="Project"
-        desc="An explicit registered project on the node; no wildcard access."
+        :name="t('streamB.project.985959')"
+        :desc="t('streamB.anExplicitRegisteredProjectOnTheNode.b5d07e')"
       >
-        <select v-model="projectId" aria-label="Delegation project" :disabled="busy">
-          <option value="">Choose a project</option>
+        <select
+          v-model="projectId"
+          :aria-label="t('streamB.delegationProject.baacde')"
+          :disabled="busy"
+        >
+          <option value="">{{ t('streamB.chooseAProject.8ba607') }}</option>
           <option v-for="project in projects" :key="project.project_id" :value="project.project_id">
             {{ project.root_path }}
           </option>
@@ -34,14 +38,18 @@
       <NodePath
         v-if="selectedProject"
         :path="selectedProject.root_path"
-        label="Full delegation project path"
+        :label="t('streamB.fullDelegationProjectPath.c833d0')"
       />
       <Setting
-        name="Provider"
-        desc="Only providers reported available by this node can be approved."
+        :name="t('streamB.provider.472590')"
+        :desc="t('streamB.onlyProvidersReportedAvailableByThisNode.9de37b')"
       >
-        <select v-model="provider" aria-label="Delegation provider" :disabled="busy">
-          <option value="">Choose a provider</option>
+        <select
+          v-model="provider"
+          :aria-label="t('streamB.delegationProvider.303067')"
+          :disabled="busy"
+        >
+          <option value="">{{ t('streamB.chooseAProvider.e1d36c') }}</option>
           <option v-for="item in available" :key="item.provider" :value="item.provider">
             {{ providerLabel(item.provider) }}
           </option>
@@ -49,28 +57,28 @@
       </Setting>
       <Setting
         v-if="provider === 'fake'"
-        name="Allow non-executing fake children"
-        desc="Explicit fixture approval. Fake sessions do not execute code."
+        :name="t('streamB.allowNonExecutingFakeChildren.58349d')"
+        :desc="t('streamB.explicitFixtureApprovalFakeSessionsDoNot.77d477')"
       >
         <Checkbox
           :is-enabled="allowFake"
-          aria-label="Allow fake delegation"
+          :aria-label="t('streamB.allowFakeDelegation.18dbe3')"
           @toggle="allowFake = !allowFake"
         />
       </Setting>
       <Setting
-        name="Approve controller actions"
-        desc="Create tasks, send follow-ups, read status/mailbox and cancel. Does not grant permission-answer rights."
+        :name="t('streamB.approveControllerActions.82e918')"
+        :desc="t('streamB.createTasksSendFollowUpsReadStatus.d2c283')"
       >
         <Checkbox
           :is-enabled="confirmed"
-          aria-label="Approve delegation actions"
+          :aria-label="t('streamB.approveDelegationActions.c4bad7')"
           @toggle="confirmed = !confirmed"
         />
       </Setting>
       <div class="abele-node-grants__actions">
         <Button
-          text="Approve grant"
+          :text="t('streamB.approveGrant.136382')"
           accent
           :disabled="
             busy ||
@@ -82,12 +90,12 @@
           "
           @click="approve"
         />
-        <Button text="Refresh" :disabled="busy" @click="load" />
+        <Button :text="t('streamB.refresh.0e9161')" :disabled="busy" @click="load" />
       </div>
-      <section aria-label="Approved delegation grants">
-        <h3>Grants on this device</h3>
+      <section :aria-label="t('streamB.approvedDelegationGrants.bedd70')">
+        <h3>{{ t('streamB.grantsOnThisDevice.4c0616') }}</h3>
         <p v-if="!grants.length">
-          No delegation grants. Enrollment alone does not authorize an agent.
+          {{ t('streamB.noDelegationGrantsEnrollmentAloneDoesNot.58c8bb') }}
         </p>
         <Setting
           v-for="grant in grants"
@@ -97,7 +105,7 @@
         >
           <Button
             v-if="!grant.revoked"
-            text="Revoke grant"
+            :text="t('streamB.revokeGrant.f90e3f')"
             :disabled="busy"
             @click="revoke(grant.grant_id)"
           />
@@ -109,6 +117,8 @@
 </template>
 <script setup lang="ts">
 import NodeErrorText from '@/components/NodeErrorText.vue'
+import { presentUiError } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 import { computed, onMounted, ref, watch } from 'vue'
 import type { DelegationGrant, Project } from '@abele/node-client'
 import type { NodeDelegationController } from '@/node/NodeDelegationController'
@@ -152,7 +162,7 @@ const grants = ref<DelegationGrant[]>([])
 const available = computed(() => providers.value.filter(providerAvailable))
 const parentTitle = (id: string) => props.parents.find((p) => p.id === id)?.title ?? id
 const grantDescription = (g: DelegationGrant) =>
-  `${g.revoked ? 'Revoked' : 'Approved'} · ${g.providers.map(providerLabel).join(', ')} · ${g.project_ids.map((id) => projects.value.find((p) => p.project_id === id)?.root_path ?? id).join(', ') || 'No projects (fake only)'} · ${g.actions.join(', ')}`
+  `${g.revoked ? t('streamB.revoked.f6f738') : t('streamB.approved.87b42e')} · ${g.providers.map(providerLabel).join(', ')} · ${g.project_ids.map((id) => projects.value.find((p) => p.project_id === id)?.root_path ?? id).join(', ') || t('streamB.noProjectsFakeOnly.1c6fc2')} · ${g.actions.join(', ')}`
 const act = async (work: () => Promise<void>) => {
   if (busy.value) return
   busy.value = true
@@ -160,7 +170,7 @@ const act = async (work: () => Promise<void>) => {
   try {
     await work()
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Node unavailable'
+    error.value = e instanceof Error ? presentUiError(e) : t('streamB.nodeUnavailable.14c28f')
   } finally {
     busy.value = false
   }
@@ -187,7 +197,7 @@ const approve = () =>
       !provider.value ||
       (provider.value === 'fake' && !allowFake.value)
     )
-      throw new Error('Explicit approval required')
+      throw new Error(t('streamB.explicitApprovalRequired.eebe04'))
     await props.controller.approve({
       parent_id: parentId.value,
       project_ids: projectId.value ? [projectId.value] : [],
@@ -196,14 +206,13 @@ const approve = () =>
     })
     grants.value = await props.controller.grants()
     confirmed.value = false
-    message.value = 'Grant approved. Enable the Nodes tool group in this parent agent to delegate.'
+    message.value = t('streamB.grantApprovedEnableTheNodesToolGroup.261be9')
   })
 const revoke = (id: string) =>
   act(async () => {
     await props.controller.revoke(id)
     grants.value = await props.controller.grants()
-    message.value =
-      'Grant revoked. Active delegations are cancelled on the node; files and transcripts are retained.'
+    message.value = t('streamB.grantRevokedActiveDelegationsAreCancelledOn.42cb77')
   })
 onMounted(load)
 </script>

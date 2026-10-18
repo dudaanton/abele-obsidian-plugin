@@ -1,37 +1,28 @@
 <template>
   <!-- Asks the session to retell what was said so far and start again from the retelling: what
        to keep in focus, and what to send once it is done, so the work goes on by itself. -->
-  <Modal title="Compact the context" close-in-footer phone-sheet @close="emit('close')">
+  <Modal :title="t('chat.compactTitle')" close-in-footer phone-sheet @close="emit('close')">
     <p class="abele-compact__said">
-      <template v-if="context">{{ used }} of {{ limit }} in the context now. </template>Everything
-      said stays readable above the line.
+      <template v-if="context">{{ t('chat.contextNow', { used, limit }) }}</template
+      >{{ t('chat.readable') }}
     </p>
     <label class="abele-compact__field">
-      <span class="setting-item-name">What to keep in focus</span>
-      <textarea
-        ref="focusEl"
-        v-model="focus"
-        rows="3"
-        placeholder="The task and where it stopped"
-      />
+      <span class="setting-item-name">{{ t('chat.focus') }}</span>
+      <textarea ref="focusEl" v-model="focus" rows="3" :placeholder="t('chat.focusHint')" />
     </label>
-    <Setting name="Continue afterwards" desc="Send this once compacting is done">
+    <Setting :name="t('chat.continueAfter')" :desc="t('chat.sendAfter')">
       <Checkbox :is-enabled="then" @toggle="then = !then" />
     </Setting>
     <Input v-if="then" v-model="next" class="abele-compact__next" />
     <template #footer>
-      <Button text="Cancel" tooltip="Close this and change nothing" @click="emit('close')" />
-      <Button
-        text="Compact"
-        accent
-        tooltip="Retell the conversation and go on from the retelling"
-        @click="confirm"
-      />
+      <Button :text="t('chat.cancel')" :tooltip="t('chat.cancelTip')" @click="emit('close')" />
+      <Button :text="t('chat.compact')" accent :tooltip="t('chat.compactTip')" @click="confirm" />
     </template>
   </Modal>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, onMounted, ref } from 'vue'
 import Modal from '../obsidian/Modal.vue'
 import Setting from '../obsidian/Setting.vue'

@@ -1,3 +1,6 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
+
+import { t } from '@/i18n'
 import { Notice, TFile, type PaneType } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ChatService } from './ChatService'
@@ -21,16 +24,25 @@ import { choiceDialog } from '@/components/obsidian/dialogs'
 /** Every copy is an explicit choice, including the file at the link's path hint. */
 export function chooseAnchorSource(paths: string[]): Promise<string | null> {
   return choiceDialog({
-    title: 'Choose selection source',
-    message:
-      'Several copies of this conversation have the same identity. Choose the source to open; none is selected automatically.',
-    items: paths.map((path) => ({ value: path, text: path, tooltip: `Open ${path}` })),
-    choices: [{ value: null, text: 'Cancel', tooltip: 'Open none of them' }],
+    title: t('streamB.chooseSelectionSource.c51d6a'),
+    message: t('streamB.severalCopiesOfThisConversationHaveThe.c7abd8'),
+    items: paths.map((path) => ({
+      value: path,
+      text: path,
+      tooltip: t('streamB.open.863533', { v0: String(path) }),
+    })),
+    choices: [
+      {
+        value: null,
+        text: t('streamB.cancel.19766e'),
+        tooltip: t('streamB.openNoneOfThem.815417'),
+      },
+    ],
   })
 }
 
 /** Validation conflicts are distinct from transport/storage errors. */
-export class SelectionCaptureConflict extends Error {}
+export class SelectionCaptureConflict extends UiError {}
 
 /** Capture source evidence synchronously; no identity or revision write until invoked. */
 export function captureSelectionSource(
@@ -61,13 +73,9 @@ export function captureSelectionSource(
       current.selection?.revisionId !== revisionId ||
       current.revisions !== revisions
     )
-      throw new SelectionCaptureConflict(
-        'The captured selection changed. Select the passage again.'
-      )
+      throw new SelectionCaptureConflict(uiMessage('streamBError.d88eacf052'))
     if ((await replyMarkdownText(current.content)) !== renderedText)
-      throw new SelectionCaptureConflict(
-        'The rendered selection changed. Select the passage again.'
-      )
+      throw new SelectionCaptureConflict(uiMessage('streamBError.925bf88df9'))
     const checked = session.allMessages.value.find((message) => message.id === messageId)
     if (
       !checked ||
@@ -75,17 +83,13 @@ export function captureSelectionSource(
       checked.selection?.revisionId !== revisionId ||
       checked.revisions !== revisions
     )
-      throw new SelectionCaptureConflict(
-        'The captured selection changed. Select the passage again.'
-      )
+      throw new SelectionCaptureConflict(uiMessage('streamBError.d88eacf052'))
     signal?.throwIfAborted()
     const revision = await session.ensureSelectionRevision(messageId, {
       nextId: nanoid,
       project: (source) => {
         if (source !== content)
-          throw new SelectionCaptureConflict(
-            'The captured selection changed. Select the passage again.'
-          )
+          throw new SelectionCaptureConflict(uiMessage('streamBError.d88eacf052'))
         return { version: CHAT_TEXT_PROJECTION_VERSION, text: renderedText }
       },
     })
@@ -99,9 +103,7 @@ export function captureSelectionSource(
       sentence: renderedText,
     })
     if (snapshot.text !== quote)
-      throw new SelectionCaptureConflict(
-        'The captured selection changed. Select the passage again.'
-      )
+      throw new SelectionCaptureConflict(uiMessage('streamBError.d88eacf052'))
     return snapshot
   }
 }
@@ -135,7 +137,7 @@ export async function openSelectionLink(href: string): Promise<void> {
   try {
     const parsed = parseAnchorLink(href)
     if (!parsed) {
-      new Notice('This selection link is invalid')
+      new Notice(t('streamB.thisSelectionLinkIsInvalid.4d77cc'))
       return
     }
     const { app } = GlobalStore.getInstance()
@@ -143,7 +145,7 @@ export async function openSelectionLink(href: string): Promise<void> {
     if (!current()) return
     const found = resolveAnchorPath(parsed.address.chatId, parsed.pathHint, index)
     if (found.status === 'missing') {
-      new Notice('The selection source has been deleted or is unavailable')
+      new Notice(t('streamB.theSelectionSourceHasBeenDeletedOr.ec03de'))
       return
     }
     const path = found.status === 'found' ? found.path : await chooseAnchorSource(found.paths)
@@ -154,22 +156,17 @@ export async function openSelectionLink(href: string): Promise<void> {
       !(file instanceof TFile) ||
       (await inspectChat(app, file)).metadata?.chatId !== parsed.address.chatId
     ) {
-      new Notice('The selection source changed. Open the link again.')
+      new Notice(t('streamB.theSelectionSourceChangedOpenTheLink.cedf06'))
       return
     }
     if (!current()) return
     await openChat(file, current)
     const session = service.getSessionByFile(file.path)
-    if (
-      !session ||
-      service.activeSession.value !== session ||
-      !current()
-    )
-      return
+    if (!session || service.activeSession.value !== session || !current()) return
     const anchor = await session.getAnchor(parsed.address.chatId, parsed.address.anchorId)
     if (!current() || service.activeSession.value !== session) return
     if (!anchor) {
-      new Notice('This selection is no longer available. Reopen the chat and try again.')
+      new Notice(t('streamB.thisSelectionIsNoLongerAvailableReopen.5bcecc'))
       return
     }
     const target = resolveAnchorReturn(
@@ -181,15 +178,15 @@ export async function openSelectionLink(href: string): Promise<void> {
     if (target.status !== 'ready') {
       new Notice(
         target.status === 'missing'
-          ? 'This selection is no longer available'
-          : 'This selection has conflicting identities'
+          ? t('streamB.thisSelectionIsNoLongerAvailable.33d597')
+          : t('streamB.thisSelectionHasConflictingIdentities.636493')
       )
       return
     }
     if (!session.messages.value.some((message) => message.id === target.messageId))
       session.switchBranch(target.leafId)
     if (!session.messages.value.some((message) => message.id === target.messageId)) {
-      new Notice('Finish the current reply before returning to another branch')
+      new Notice(t('streamB.finishTheCurrentReplyBeforeReturningTo.ffbe13'))
       return
     }
     service.pendingAnchorReturn.value = { sessionId: session.id, target }
@@ -274,7 +271,7 @@ export async function revealAnswer(anchor: CommentAnchor, commentId?: string): P
   const { app } = GlobalStore.getInstance()
   const chat = app.vault.getAbstractFileByPath(anchor.note)
   if (!anchor.message || !(chat instanceof TFile)) {
-    new Notice('The chat this was asked in has been deleted')
+    new Notice(t('streamB.theChatThisWasAskedInHas.3d88bd'))
     return false
   }
   await openChat(chat)
@@ -307,8 +304,8 @@ export async function revealAnchor(commentId: string, anchor: CommentAnchor): Pr
   if (!(file instanceof TFile)) {
     new Notice(
       anchor.cfi
-        ? 'The book this was asked in has been deleted'
-        : 'The note this was asked in has been deleted'
+        ? t('streamB.theBookThisWasAskedInHas.cf69ff')
+        : t('streamB.theNoteThisWasAskedInHas.28e5eb')
     )
     return false
   }

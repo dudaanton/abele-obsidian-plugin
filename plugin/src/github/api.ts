@@ -1,3 +1,8 @@
+import { uiFields, uiMessage, uiFieldMessage, type UiMessage } from '@/i18n/streamBErrors'
+
+import { uiProblemMessage, problems, secondary, withFallback } from './sections'
+
+import { agentText } from '@/i18n/streamBText'
 import type { CommitSummary, CommitData, BlobData } from '@/repository/model'
 export type { CommitSummary, CommitData, BlobData } from '@/repository/model'
 /**
@@ -25,7 +30,6 @@ import {
   type PathComment,
   type RawFile,
 } from './graphql'
-import { problems, secondary, withFallback } from './sections'
 
 type Of<K extends GithubTarget['kind']> = Extract<GithubTarget, { kind: K }>
 
@@ -55,8 +59,8 @@ export type {
 
 type RepoLike = { owner: string; repo: string }
 
-const repoPath = (t: RepoLike) =>
-  `/repos/${encodeURIComponent(t.owner)}/${encodeURIComponent(t.repo)}`
+const repoPath = (translationItem: RepoLike) =>
+  `/repos/${encodeURIComponent(translationItem.owner)}/${encodeURIComponent(translationItem.repo)}`
 
 const labels = (raw: any[] | undefined): Label[] =>
   (raw ?? [])
@@ -79,18 +83,28 @@ const issueComment = (c: any): Comment => ({
 const EMPTY: Listed<Comment> = { items: [], complete: true }
 
 /** An item's conversation comments: `/issues/N/comments`, for an issue and a pull request alike. */
-const conversationComments = (client: GithubClient, t: Of<'issue'> | Of<'pull'>, what: string) =>
+const conversationComments = (
+  client: GithubClient,
+  translationItem: Of<'issue'> | Of<'pull'>,
+  what: string
+) =>
   secondary(
     client,
     EMPTY,
     async () => {
       const { items, complete } = await client.list<any>(
-        `${repoPath(t)}/issues/${t.number}/comments`,
+        `${repoPath(translationItem)}/issues/${translationItem.number}/comments`,
         { what }
       )
       return { items: items.map(issueComment), complete }
     },
-    () => graphqlComments(client, t, t.kind === 'pull' ? 'pullRequest' : 'issue', what)
+    () =>
+      graphqlComments(
+        client,
+        translationItem,
+        translationItem.kind === 'pull' ? 'pullRequest' : 'issue',
+        what
+      )
   )
 
 /**
@@ -99,45 +113,54 @@ const conversationComments = (client: GithubClient, t: Of<'issue'> | Of<'pull'>,
  */
 export async function loadIssueConversation(
   client: GithubClient,
-  t: Of<'issue'>
+  translationItem: Of<'issue'>
 ): Promise<Conversation> {
-  const comments = await conversationComments(client, t, "the issue's comments")
-  return {
-    comments: comments.value.items,
-    complete: comments.value.complete,
-    problem: problems([comments.error], 'Issues'),
-  }
+  const comments = await conversationComments(client, translationItem, "the issue's comments")
+  return uiFields(
+    {
+      comments: comments.value.items,
+      complete: comments.value.complete,
+      problem: problems([comments.error], 'Issues'),
+    },
+    { problem: uiProblemMessage([comments.error], 'Issues') }
+  )
 }
 
 export async function loadPullConversation(
   client: GithubClient,
-  t: Of<'pull'>
+  translationItem: Of<'pull'>
 ): Promise<Conversation> {
   const [comments, reviews] = await Promise.all([
-    conversationComments(client, t, "the pull request's comments"),
+    conversationComments(client, translationItem, "the pull request's comments"),
     secondary(
       client,
       EMPTY,
       async () => {
         const { items, complete } = await client.list<any>(
-          `${repoPath(t)}/pulls/${t.number}/reviews`,
-          { what: "the pull request's reviews" }
+          `${repoPath(translationItem)}/pulls/${translationItem.number}/reviews`,
+          uiFields(
+            { what: agentText('streamB.thePullRequestSReviews.c14282') },
+            { what: uiMessage('streamB.thePullRequestSReviews.c14282') }
+          )
         )
         return {
           items: items.filter((r: any) => reviewShown(r.state, r.body)).map(review),
           complete,
         }
       },
-      () => graphqlReviews(client, t)
+      () => graphqlReviews(client, translationItem)
     ),
   ])
-  return {
-    comments: [...comments.value.items, ...reviews.value.items].sort((a, b) =>
-      a.createdAt.localeCompare(b.createdAt)
-    ),
-    complete: comments.value.complete && reviews.value.complete,
-    problem: problems([comments.error, reviews.error], 'Pull requests'),
-  }
+  return uiFields(
+    {
+      comments: [...comments.value.items, ...reviews.value.items].sort((a, b) =>
+        a.createdAt.localeCompare(b.createdAt)
+      ),
+      complete: comments.value.complete && reviews.value.complete,
+      problem: problems([comments.error, reviews.error], 'Pull requests'),
+    },
+    { problem: uiProblemMessage([comments.error, reviews.error], 'Pull requests') }
+  )
 }
 
 const review = (r: any): Comment => ({
@@ -152,77 +175,111 @@ const review = (r: any): Comment => ({
 })
 
 /** The issue itself decides whether there is a tab; its comments only whether they are shown. */
-export async function loadIssue(client: GithubClient, t: Of<'issue'>): Promise<IssueData> {
+export async function loadIssue(
+  client: GithubClient,
+  translationItem: Of<'issue'>
+): Promise<IssueData> {
   const [issue, conversation] = await Promise.all([
-    client.get<any>(`${repoPath(t)}/issues/${t.number}`, { what: 'the issue' }),
-    loadIssueConversation(client, t),
+    client.get<any>(
+      `${repoPath(translationItem)}/issues/${translationItem.number}`,
+      uiFields(
+        {
+          what: agentText('streamB.theIssue.f53d52'),
+        },
+        { what: uiMessage('streamB.theIssue.f53d52') }
+      )
+    ),
+    loadIssueConversation(client, translationItem),
   ])
-  return {
-    title: issue.title,
-    number: issue.number,
-    url: issue.html_url,
-    author: login(issue.user),
-    authorAvatar: avatarOf(issue.user),
-    createdAt: issue.created_at,
-    state: issueState(issue),
-    labels: labels(issue.labels),
-    body: issue.body ?? '',
-    comments: conversation.comments,
-    commentsComplete: conversation.complete,
-    commentsProblem: conversation.problem,
-    isPull: !!issue.pull_request,
-  }
+  return uiFields(
+    {
+      title: issue.title,
+      number: issue.number,
+      url: issue.html_url,
+      author: login(issue.user),
+      authorAvatar: avatarOf(issue.user),
+      createdAt: issue.created_at,
+      state: issueState(issue),
+      labels: labels(issue.labels),
+      body: issue.body ?? '',
+      comments: conversation.comments,
+      commentsComplete: conversation.complete,
+      commentsProblem: conversation.problem,
+      isPull: !!issue.pull_request,
+    },
+    { commentsProblem: uiFieldMessage(conversation, 'problem') }
+  )
 }
 
 /** The pull request itself decides whether there is a tab; each of its sections only itself. */
-export async function loadPull(client: GithubClient, t: Of<'pull'>): Promise<PullData> {
+export async function loadPull(
+  client: GithubClient,
+  translationItem: Of<'pull'>
+): Promise<PullData> {
   const [pull, conversation] = await Promise.all([
-    client.get<any>(`${repoPath(t)}/pulls/${t.number}`, { what: 'the pull request' }),
-    loadPullConversation(client, t),
+    client.get<any>(
+      `${repoPath(translationItem)}/pulls/${translationItem.number}`,
+      uiFields(
+        {
+          what: agentText('streamB.thePullRequest.a620e4'),
+        },
+        { what: uiMessage('streamB.thePullRequest.a620e4') }
+      )
+    ),
+    loadPullConversation(client, translationItem),
   ])
 
-  return {
-    title: pull.title,
-    number: pull.number,
-    url: pull.html_url,
-    author: login(pull.user),
-    authorAvatar: avatarOf(pull.user),
-    createdAt: pull.created_at,
-    state: pullState(pull),
-    labels: labels(pull.labels),
-    body: pull.body ?? '',
-    comments: conversation.comments,
-    commentsComplete: conversation.complete,
-    commentsProblem: conversation.problem,
-    base: pull.base?.ref ?? '',
-    head: pull.head?.label ?? pull.head?.ref ?? '',
-    headSha: pull.head?.sha,
-    baseSha: pull.base?.sha,
-    additions: pull.additions ?? 0,
-    deletions: pull.deletions ?? 0,
-    changedFiles: pull.changed_files ?? 0,
-    commitsCount: pull.commits ?? 0,
-  }
+  return uiFields(
+    {
+      title: pull.title,
+      number: pull.number,
+      url: pull.html_url,
+      author: login(pull.user),
+      authorAvatar: avatarOf(pull.user),
+      createdAt: pull.created_at,
+      state: pullState(pull),
+      labels: labels(pull.labels),
+      body: pull.body ?? '',
+      comments: conversation.comments,
+      commentsComplete: conversation.complete,
+      commentsProblem: conversation.problem,
+      base: pull.base?.ref ?? '',
+      head: pull.head?.label ?? pull.head?.ref ?? '',
+      headSha: pull.head?.sha,
+      baseSha: pull.base?.sha,
+      additions: pull.additions ?? 0,
+      deletions: pull.deletions ?? 0,
+      changedFiles: pull.changed_files ?? 0,
+      commitsCount: pull.commits ?? 0,
+    },
+    { commentsProblem: uiFieldMessage(conversation, 'problem') }
+  )
 }
 
 export async function diffFiles(
   raw: any[],
   reviewComments: PathComment[] = [],
-  diffNote?: string
+  diffNote?: string,
+  diffNoteMessage?: UiMessage
 ): Promise<DiffFile[]> {
   return Promise.all(
-    raw.map(async (f: any) => ({
-      path: f.filename,
-      previousPath: f.previous_filename,
-      status: f.status,
-      additions: f.additions ?? 0,
-      deletions: f.deletions ?? 0,
-      patch: f.patch,
-      hash: await diffAnchorHash(f.filename),
-      blobUrl: f.blob_url,
-      reviewComments: reviewComments.filter((c) => c.path === f.filename).map((c) => c.comment),
-      diffNote,
-    }))
+    raw.map(async (f: any) =>
+      uiFields(
+        {
+          path: f.filename,
+          previousPath: f.previous_filename,
+          status: f.status,
+          additions: f.additions ?? 0,
+          deletions: f.deletions ?? 0,
+          patch: f.patch,
+          hash: await diffAnchorHash(f.filename),
+          blobUrl: f.blob_url,
+          reviewComments: reviewComments.filter((c) => c.path === f.filename).map((c) => c.comment),
+          diffNote,
+        },
+        { diffNote: diffNoteMessage }
+      )
+    )
   )
 }
 
@@ -248,36 +305,63 @@ const NO_DIFFS =
  * item — refused both ways, the section says so — while refused review comments leave the
  * files shown without them.
  */
-export async function loadPullFiles(client: GithubClient, t: Of<'pull'>): Promise<FilesData> {
-  const base = `${repoPath(t)}/pulls/${t.number}`
+export async function loadPullFiles(
+  client: GithubClient,
+  translationItem: Of<'pull'>
+): Promise<FilesData> {
+  const base = `${repoPath(translationItem)}/pulls/${translationItem.number}`
   const [files, reviewComments] = await Promise.all([
     withFallback<{ files: RawFile[]; complete: boolean; diffNote?: string }>(
       client,
       async () => {
-        const { items, complete } = await client.list<any>(`${base}/files`, {
-          what: "the pull request's changed files",
-        })
+        const { items, complete } = await client.list<any>(
+          `${base}/files`,
+          uiFields(
+            {
+              what: agentText('streamB.thePullRequestSChangedFiles.670acf'),
+            },
+            { what: uiMessage('streamB.thePullRequestSChangedFiles.670acf') }
+          )
+        )
         return { files: items, complete }
       },
-      async () => ({ ...(await graphqlFiles(client, t)), diffNote: NO_DIFFS })
+      async () =>
+        uiFields(
+          { ...(await graphqlFiles(client, translationItem)), diffNote: NO_DIFFS },
+          { diffNote: uiMessage('streamBError.edafd9ed12') }
+        )
     ),
     secondary<Listed<PathComment>>(
       client,
       { items: [], complete: true },
       async () => {
-        const { items, complete } = await client.list<any>(`${base}/comments`, {
-          what: "the pull request's review comments",
-        })
+        const { items, complete } = await client.list<any>(
+          `${base}/comments`,
+          uiFields(
+            {
+              what: agentText('streamB.thePullRequestSReviewComments.c7c06e'),
+            },
+            { what: uiMessage('streamB.thePullRequestSReviewComments.c7c06e') }
+          )
+        )
         return { items: items.map(restReviewComment), complete }
       },
-      () => graphqlReviewComments(client, t)
+      () => graphqlReviewComments(client, translationItem)
     ),
   ])
-  return {
-    files: await diffFiles(files.files, reviewComments.value.items, files.diffNote),
-    complete: files.complete,
-    reviewCommentsProblem: problems([reviewComments.error], 'Pull requests'),
-  }
+  return uiFields(
+    {
+      files: await diffFiles(
+        files.files,
+        reviewComments.value.items,
+        files.diffNote,
+        uiFieldMessage(files, 'diffNote')
+      ),
+      complete: files.complete,
+      reviewCommentsProblem: problems([reviewComments.error], 'Pull requests'),
+    },
+    { reviewCommentsProblem: uiProblemMessage([reviewComments.error], 'Pull requests') }
+  )
 }
 
 /** A commit from REST: by its account when git's author is linked to one. */
@@ -292,24 +376,39 @@ export const restCommit = (c: any): CommitSummary => ({
 
 export async function loadPullCommits(
   client: GithubClient,
-  t: Of<'pull'>
+  translationItem: Of<'pull'>
 ): Promise<CommitSummary[]> {
   return withFallback(
     client,
     async () => {
-      const { items } = await client.list<any>(`${repoPath(t)}/pulls/${t.number}/commits`, {
-        what: "the pull request's commits",
-      })
+      const { items } = await client.list<any>(
+        `${repoPath(translationItem)}/pulls/${translationItem.number}/commits`,
+        uiFields(
+          {
+            what: agentText('streamB.thePullRequestSCommits.a26e4d'),
+          },
+          { what: uiMessage('streamB.thePullRequestSCommits.a26e4d') }
+        )
+      )
       return items.map(restCommit)
     },
-    () => graphqlCommits(client, t)
+    () => graphqlCommits(client, translationItem)
   )
 }
 
-export async function loadCommit(client: GithubClient, t: Of<'commit'>): Promise<CommitData> {
-  const c = await client.get<any>(`${repoPath(t)}/commits/${encodeURIComponent(t.sha)}`, {
-    what: 'the commit',
-  })
+export async function loadCommit(
+  client: GithubClient,
+  translationItem: Of<'commit'>
+): Promise<CommitData> {
+  const c = await client.get<any>(
+    `${repoPath(translationItem)}/commits/${encodeURIComponent(translationItem.sha)}`,
+    uiFields(
+      {
+        what: agentText('streamB.theCommit.5479d7'),
+      },
+      { what: uiMessage('streamB.theCommit.5479d7') }
+    )
+  )
   return {
     ...restCommit(c),
     parentSha: c.parents?.[0]?.sha,
@@ -343,11 +442,11 @@ query($owner: String!, $repo: String!, $number: Int!) {
 
 export async function loadDiscussion(
   client: GithubClient,
-  t: Of<'discussion'>
+  translationItem: Of<'discussion'>
 ): Promise<DiscussionData> {
   const data = await client.graphql<any>(
     DISCUSSION_QUERY,
-    { owner: t.owner, repo: t.repo, number: t.number },
+    { owner: translationItem.owner, repo: translationItem.repo, number: translationItem.number },
     'the discussion'
   )
   const d = data.repository?.discussion
@@ -401,11 +500,17 @@ export async function commitSha(
   ref: string
 ): Promise<string> {
   if (/^[0-9a-f]{40}$/i.test(ref)) return ref.toLowerCase()
-  const sha = await client.get<string>(`${repoPath(repo)}/commits/${encodeURIComponent(ref)}`, {
-    accept: 'application/vnd.github.sha',
-    text: true,
-    what: 'the commit the file was read at',
-  })
+  const sha = await client.get<string>(
+    `${repoPath(repo)}/commits/${encodeURIComponent(ref)}`,
+    uiFields(
+      {
+        accept: 'application/vnd.github.sha',
+        text: true,
+        what: agentText('streamB.theCommitTheFileWasReadAt.96ab0d'),
+      },
+      { what: uiMessage('streamB.theCommitTheFileWasReadAt.96ab0d') }
+    )
+  )
   return shaOf(sha)
 }
 
@@ -449,19 +554,22 @@ export class FolderError extends GithubError {
   }
 }
 
-export async function loadBlob(client: GithubClient, t: Of<'blob'>): Promise<BlobData> {
+export async function loadBlob(
+  client: GithubClient,
+  translationItem: Of<'blob'>
+): Promise<BlobData> {
   let lastError: unknown = null
   // Capped: a deep path with no match would otherwise cost one request per segment.
-  for (const { ref, path } of blobCandidates(t.rest).slice(0, 6)) {
+  for (const { ref, path } of blobCandidates(translationItem.rest).slice(0, 6)) {
     try {
-      const text = await client.fileText(t, path, ref, 'the file')
+      const text = await client.fileText(translationItem, path, ref, 'the file')
       // A folder answers with its listing — a README's link to `packages/core` is one.
       if (isFolderListing(text)) throw new FolderError(ref, path)
       return {
         ref,
         path,
         text,
-        url: `${repoWeb(t)}/blob/${t.rest.join('/')}`,
+        url: `${repoWeb(translationItem)}/blob/${translationItem.rest.join('/')}`,
       }
     } catch (e) {
       // Only "no such ref or path" means try the next split; anything else is the answer.

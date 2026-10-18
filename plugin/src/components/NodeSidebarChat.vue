@@ -9,12 +9,15 @@
     @choose-worktree="chooseWorktree"
     @start-with="startWith"
   >
-    <template #lead><DrawerViewSwitch icon="bot" name="Abele AI chat" /></template>
+    <template #lead
+      ><DrawerViewSwitch icon="bot" :name="t('streamB.abeleAiChat.08f891')"
+    /></template>
   </NodeChatView>
 </template>
 
 <script setup lang="ts">
 import { nodeErrorNotice } from '@/node/errorNotice'
+import { t } from '@/i18n'
 import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 import { computed } from 'vue'
 import NodeChatView from './NodeChatView.vue'
@@ -51,14 +54,14 @@ const placeProps = computed(() => {
     switches: p.switches,
   }
 })
-const report = (error: unknown) => nodeErrorNotice(error, 'The node could not do that')
+const report = (error: unknown) => nodeErrorNotice(error, t('streamB.theNodeCouldNotDoThat.89c955'))
 const openResource = (resource: string, bound?: PathTarget) => {
   const target = bound ?? place?.value.target
   if (target) void openNodeChatResource(resource, target).catch(report)
   else props.presenter.openResource(resource)
 }
 const withModel = (run: (m: NodePathModel) => Promise<unknown> | void) => {
-  if (!model) return report(new Error('Reconnect this node from the Node panel first.'))
+  if (!model) return report(new Error(t('streamB.reconnectThisNodeFromTheNodePanel.04c245')))
   void Promise.resolve(run(model)).catch(report)
 }
 const chooseWorktree = () =>
@@ -69,7 +72,7 @@ const chooseWorktree = () =>
 const startWith = (choice: AgentChoice) =>
   withModel(async (m) => {
     const target = place?.value.target
-    if (!target) throw new Error('Choose a folder for the new chat in the Node panel.')
+    if (!target) throw new Error(t('streamB.chooseAFolderForTheNewChat.da4144'))
     const { startNodePathChat } = await import('@/node/NodePathController')
     startNodePathChat(m, target, choice)
   })

@@ -1,3 +1,4 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import type { Support } from './model'
 
 /** Exact inspected releases only. Version discovery must not guess newer API guarantees. */
@@ -11,7 +12,7 @@ export function schemaSupport(
   compareFiles: Support
 } {
   if (!((kind === 'forgejo' && version === '11.0.0') || (kind === 'gitea' && version === '1.24.0')))
-    throw new Error('No inspected schema contract for this provider version.')
+    throw new UiError(uiMessage('streamBError.3aef34f6c5'))
   return {
     draftCreate: {
       supported: false,

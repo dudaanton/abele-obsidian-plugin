@@ -10,14 +10,14 @@
         class="abele-tool-approval__more"
         icon="more-horizontal"
         size="xs"
-        label="More ways to answer"
+        :label="t('streamB.moreWaysToAnswer.7be48c')"
         @click="moreMenu"
       />
     </div>
     <Disclosure
       v-if="message.toolName?.startsWith('mcp__')"
       v-model="originalOpen"
-      label="Original action"
+      :label="t('streamB.originalAction.67ccdf')"
     >
       <code>{{ message.toolName }}</code>
     </Disclosure>
@@ -33,18 +33,22 @@
     <template v-else-if="message.toolName === 'node_propose_edit'">
       <div class="abele-tool-approval__path">{{ params.path }}</div>
       <div class="abele-tool-approval__param">
-        Node · {{ params.node }} · Project · {{ params.project }} · Worktree ·
-        {{ params.workspace }}
+        {{
+          t('streamBMeta.d79ce7049b', {
+            p0: String(params.node),
+            p1: String(params.project),
+            p2: String(params.workspace),
+          })
+        }}
       </div>
       <div class="abele-tool-approval__param">
-        Expected content · {{ params.expected_content_id }}
+        {{ t('streamBMeta.c5ba19dc83', { p0: String(params.expected_content_id) }) }}
       </div>
       <pre
         class="abele-tool-approval__code"
       ><code><SyntaxText :text="String(params.text || '')" :path="String(params.path || params.file_path || '')" /></code></pre>
       <div class="abele-tool-approval__note">
-        Approve this exact edit as a local draft only. Save in the repository tab is a separate
-        owner action. Read permission does not allow edits.
+        {{ t('streamB.approveThisExactEditAsALocal.771c1e') }}
       </div>
     </template>
 
@@ -84,7 +88,7 @@
         :text-right="wordPreview.new"
         class="abele-tool-approval__diff"
       />
-      <div v-else>{{ wordPreviewError || 'Preparing Office edit preview…' }}</div>
+      <div v-else>{{ wordPreviewError || t('streamB.preparingOfficeEditPreview.bf8daa') }}</div>
       <pre
         class="abele-tool-approval__code"
       ><code>{{ JSON.stringify(params, null, 2) }}</code></pre>
@@ -98,7 +102,9 @@
         :text-right="deckPreview.new"
         class="abele-tool-approval__diff"
       />
-      <div v-else>{{ deckPreviewError || 'Preparing presentation edit preview…' }}</div>
+      <div v-else>
+        {{ deckPreviewError || t('streamB.preparingPresentationEditPreview.5f5c0f') }}
+      </div>
     </template>
 
     <!-- eval_js: show code -->
@@ -141,7 +147,7 @@
         <span>{{ settingsWrite.warning }}</span>
       </div>
       <div v-else-if="settingsWrite.deviceOnly" class="abele-tool-approval__note">
-        Only this device.
+        {{ t('streamB.onlyThisDevice.1987f1') }}
       </div>
     </template>
 
@@ -164,14 +170,16 @@
     </template>
 
     <div v-if="keyInfo?.names.length" class="abele-tool-approval__param">
-      <span>Saved keys: {{ keyInfo.names.join(', ') }} → {{ keyInfo.origin }}</span>
-      <span
-        >Allow this address remembers it for these keys on this device. Send once approves only this
-        request; it does not change the allowed list or tool permissions.</span
-      >
+      <span>{{
+        t('streamBMeta.0621e57a02', {
+          p0: String(keyInfo.names.join(', ')),
+          p1: String(keyInfo.origin),
+        })
+      }}</span>
+      <span>{{ t('streamB.allowThisAddressRemembersItForThese.668613') }}</span>
       <Button
         v-if="keyInfo.missing.length"
-        text="Allow this address for these keys"
+        :text="t('streamB.allowThisAddressForTheseKeys.b0828e')"
         :disabled="keyApprovalBusy"
         @click="allowKeyAddress"
       />
@@ -182,7 +190,7 @@
       <Input
         :model-value="editedArgs"
         as-text-area
-        placeholder="Edit arguments (JSON)"
+        :placeholder="t('streamB.editArgumentsJson.43eaac')"
         @update:model-value="editedArgs = $event"
       />
       <div v-if="parseError" class="abele-tool-approval__parse-error">{{ parseError }}</div>
@@ -192,21 +200,29 @@
       {{ parseError }}
     </div>
     <div class="abele-tool-approval__actions">
-      <Button text="Deny" tooltip="Do not let the agent do this" @click="reject" />
+      <Button
+        :text="t('streamB.deny.05a2d7')"
+        :tooltip="t('streamB.doNotLetTheAgentDoThis.a3a900')"
+        @click="reject"
+      />
       <Button
         :text="
-          keyInfo && !keyInfo.missing.length ? 'Send once' : isEditing ? 'Allow as edited' : 'Allow'
+          keyInfo && !keyInfo.missing.length
+            ? t('streamB.sendOnce.477fa5')
+            : isEditing
+              ? t('streamB.allowAsEdited.0a3da0')
+              : t('streamB.allow.e213c1')
         "
         accent
         :disabled="keyApprovalBusy"
-        tooltip="Let the agent do exactly this, once"
+        :tooltip="t('streamB.letTheAgentDoExactlyThisOnce.db2a63')"
         @click="approve"
       />
       <!-- Stop ends the agent's turn as well as denying this; it stands apart, on the left. -->
       <Button
         class="abele-tool-approval__stop"
-        text="Stop"
-        tooltip="Deny and stop the agent"
+        :text="t('streamB.stop.cae7d5')"
+        :tooltip="t('streamB.denyAndStopTheAgent.7e1188')"
         @click="stop"
       />
     </div>
@@ -214,6 +230,8 @@
 </template>
 
 <script setup lang="ts">
+import { presentUiError } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 import SyntaxText from './SyntaxText.vue'
 import { ref, computed, watch, onUnmounted } from 'vue'
 import {
@@ -234,9 +252,9 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { Menu, TFile } from 'obsidian'
 import { KIND_ICON, toolKind } from '@/ai/toolRuns'
 import { readableToolName } from '@/ai/toolLine'
-import { WRITE_TOOLS, DECK_WRITE_TOOLS } from '@/ai/types'
+import { WRITE_TOOLS, DECK_WRITE_TOOLS, type ChatMessage } from '@/ai/types'
 import { NODE_EDIT_TOOLS, NODE_MUTATION_TOOLS } from '@/ai/tools/node/agent'
-import type { ChatMessage } from '@/ai/types'
+
 import { prepareWordChange } from '@/word/vaultAdapter'
 import type { WordEdit } from '@/word/edit'
 import { prepareWorkbookChange } from '@/spreadsheet/vaultAdapter'
@@ -333,7 +351,7 @@ const allowKeyAddress = async () => {
             secretRequestForTool(props.message.toolName ?? '', effectiveParams.value)
           ) !== binding
         )
-          throw new Error('The request changed')
+          throw new Error(t('streamB.theRequestChanged.5f08c5'))
       },
       () => {
         keyRevision.value++
@@ -363,9 +381,7 @@ const allowKeyAddress = async () => {
       await s.approveToolCall(isEditing.value ? args : undefined)
   } catch {
     keyRevision.value++
-    if (!unmounted)
-      parseError.value =
-        'Could not save key permission. Review the current request and key destinations, then retry.'
+    if (!unmounted) parseError.value = t('streamB.couldNotSaveKeyPermissionReviewThe.0d67e9')
   } finally {
     keyApprovalController = null
     if (!unmounted) keyApprovalBusy.value = false
@@ -384,7 +400,7 @@ function moreMenu(event?: MouseEvent) {
   if (canAllowAll.value)
     menu.addItem((i) =>
       i
-        .setTitle(`Always allow ${props.message.toolName}`)
+        .setTitle(t('streamB.alwaysAllow.804099', { v0: String(props.message.toolName) }))
         .setIcon('check-check')
         .setDisabled(keyApprovalBusy.value)
         .onClick(() => void allowAll())
@@ -392,14 +408,16 @@ function moreMenu(event?: MouseEvent) {
   if (canApproveAllWrites.value)
     menu.addItem((i) =>
       i
-        .setTitle('Always allow writes in scope')
+        .setTitle(t('streamB.alwaysAllowWritesInScope.f6706f'))
         .setIcon('pencil-line')
         .setDisabled(keyApprovalBusy.value)
         .onClick(() => void approveAllWrites())
     )
   menu.addItem((i) =>
     i
-      .setTitle(isEditing.value ? 'Stop editing' : 'Edit before allowing')
+      .setTitle(
+        isEditing.value ? t('streamB.stopEditing.ec8404') : t('streamB.editBeforeAllowing.a9f70a')
+      )
       .setIcon('braces')
       .onClick(() => toggleEdit())
   )
@@ -414,19 +432,19 @@ function moreMenu(event?: MouseEvent) {
 const headerText = computed(() => {
   switch (props.message.toolName) {
     case 'create':
-      return 'Create file'
+      return t('streamB.createFile.6990d3')
     case 'edit':
-      return 'Edit file'
+      return t('streamB.editFile.9608dd')
     case 'rm':
-      return 'Delete file'
+      return t('streamB.deleteFile.28e18d')
     case 'mv':
-      return 'Move file'
+      return t('streamB.moveFile.f83e6d')
     case 'cp':
-      return 'Copy file'
+      return t('streamB.copyFile.b60f1c')
     case 'eval_js':
-      return 'Execute JavaScript'
+      return t('streamB.executeJavascript.b50b90')
     case 'write_settings':
-      return 'Change a setting'
+      return t('streamB.changeASetting.a6101e')
     default: {
       // A tool's own name, said as words: run_command → Run command.
       return readableToolName(props.message.toolName ?? 'tool')
@@ -482,17 +500,17 @@ watch(
     try {
       const path = String(params.value.path || '')
       if (!session.value?.scopeResolver.isInScope(path))
-        throw new Error('Document is outside this chat’s scope')
+        throw new Error(t('streamB.documentIsOutsideThisChatSScope.e410dd'))
       if (
         ['image_insert', 'image_replace'].includes(String(params.value.operation)) &&
         !session.value.scopeResolver.isInScope(String(params.value.image_path || ''))
       )
-        throw new Error('Image is outside this chat’s scope')
+        throw new Error(t('streamB.imageIsOutsideThisChatSScope.06fe27'))
       const app = GlobalStore.getInstance().app
       const file = app.vault.getAbstractFileByPath(path)
-      if (!(file instanceof TFile)) throw new Error('Document not found')
+      if (!(file instanceof TFile)) throw new Error(t('streamB.documentNotFound.271799'))
       if (!session.value.scopeResolver.isInScope(file.path))
-        throw new Error('Document is outside this chat’s scope')
+        throw new Error(t('streamB.documentIsOutsideThisChatSScope.e410dd'))
       const prepared =
         props.message.toolName === 'xlsx_write'
           ? await prepareWorkbookChange(
@@ -531,10 +549,10 @@ watch(
       let old = ''
       if (name === 'deck_edit') {
         if (!session.value?.scopeResolver.isInScope(String(p.path || '')))
-          throw new Error('Presentation is outside this chat’s scope')
+          throw new Error(t('streamB.presentationIsOutsideThisChatSScope.9783f3'))
         const app = GlobalStore.getInstance().app
         const file = app.vault.getAbstractFileByPath(String(p.path || ''))
-        if (!(file instanceof TFile)) throw new Error('Presentation not found')
+        if (!(file instanceof TFile)) throw new Error(t('streamB.presentationNotFound.427397'))
         old = await app.vault.read(file)
       }
       const next =
@@ -562,7 +580,7 @@ const parseError = ref('')
 const approve = () => {
   if (keyApprovalBusy.value) return
   if (props.message.toolName?.startsWith('mcp_') && !props.message.toolCallId) {
-    parseError.value = 'This MCP call has no recorded identity. Ask for a new tool call.'
+    parseError.value = t('streamB.thisMcpCallHasNoRecordedIdentity.da54ff')
     return
   }
   if (isEditing.value) {
@@ -571,7 +589,9 @@ const approve = () => {
       parseError.value = ''
       session.value?.approveToolCall(modified, false, props.message.toolCallId)
     } catch (err: unknown) {
-      parseError.value = `Invalid JSON: ${err instanceof Error ? err.message : String(err)}`
+      parseError.value = t('streamB.invalidJson.2a60dd', {
+        v0: String(presentUiError(err)),
+      })
       return
     }
   } else {
@@ -629,7 +649,7 @@ const allowAll = () => {
   if (!s || !name) return
   if (name.startsWith('mcp_')) {
     if (!props.message.toolCallId) {
-      parseError.value = 'This MCP call has no recorded identity. Ask for a new tool call.'
+      parseError.value = t('streamB.thisMcpCallHasNoRecordedIdentity.da54ff')
       return
     }
     void s.approveToolCall(undefined, true, props.message.toolCallId)

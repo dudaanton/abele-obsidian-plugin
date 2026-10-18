@@ -4,7 +4,11 @@
        words in the tooltips. Under them, the branch or version the changes are counted against
        when it is not what git has saved. -->
   <div class="abele-node-modes" :class="{ 'abele-node-modes_header': header }">
-    <div class="abele-node-modes__row" role="tablist" aria-label="What the panel shows">
+    <div
+      class="abele-node-modes__row"
+      role="tablist"
+      :aria-label="t('streamB.whatThePanelShows.f7979a')"
+    >
       <Icon
         v-for="m in shown"
         :key="m.id"
@@ -31,12 +35,14 @@
         tabindex="0"
         @click="emit('compare')"
         @keydown.enter.prevent="emit('compare')"
-        >vs {{ against }}</span
+        >{{ t('streamBMeta.906befedbd', { p0: String(against) }) }}</span
       >
       <Icon
         icon="x"
         size="xs"
-        :tooltip="`Stop comparing with ${against}: changes against what git has saved`"
+        :tooltip="
+          t('streamB.stopComparingWithChangesAgainstWhatGit.b79a64', { v0: String(against) })
+        "
         @click="emit('stop-compare')"
       />
     </div>
@@ -44,6 +50,8 @@
 </template>
 
 <script setup lang="ts">
+import { streamBWord } from '@/i18n/streamBCounts'
+import { t } from '@/i18n'
 /**
  * The node panel's modes under its place: files, changes, history and pull requests. A folder
  * without git has files only; a folder no git service knows has no pull requests.
@@ -77,23 +85,41 @@ const emit = defineEmits<{
 
 const shown = computed(() =>
   [
-    { id: 'files' as const, icon: 'folder-tree', tooltip: 'Files', on: true, count: 0 },
+    {
+      id: 'files' as const,
+      icon: 'folder-tree',
+      tooltip: t('streamB.files.abc7e9'),
+      on: true,
+      count: 0,
+    },
     {
       id: 'changes' as const,
       icon: 'file-diff',
       tooltip: props.changes
-        ? `Changes: ${props.changes} ${props.changes === 1 ? 'file' : 'files'}${props.against ? ` against ${props.against}` : ''}`
-        : 'Changes: none',
+        ? t('streamB.changes.7bbbe3', {
+            v0: String(props.changes),
+            v1: String(streamBWord(props.changes, 'file')),
+            v2: String(
+              props.against ? t('streamB.against.b9a515', { v0: String(props.against) }) : ''
+            ),
+          })
+        : t('streamB.changesNone.199632'),
       on: props.git,
       count: props.changes ?? 0,
     },
-    { id: 'history' as const, icon: 'history', tooltip: 'History', on: props.git, count: 0 },
+    {
+      id: 'history' as const,
+      icon: 'history',
+      tooltip: t('streamB.history.0e7696'),
+      on: props.git,
+      count: 0,
+    },
     {
       id: 'pulls' as const,
       icon: 'git-pull-request',
       tooltip: props.openPulls
-        ? `Pull requests: ${props.openPulls} open`
-        : 'Pull requests: none open',
+        ? t('streamB.pullRequestsOpen.4985bb', { v0: String(props.openPulls) })
+        : t('streamB.pullRequestsNoneOpen.ee4bfb'),
       on: props.git && props.pulls,
       count: props.openPulls ?? 0,
     },
@@ -101,8 +127,11 @@ const shown = computed(() =>
       id: 'sessions' as const,
       icon: 'messages-square',
       tooltip: props.sessions?.waiting
-        ? `Sessions: ${props.sessions.waiting} waiting for you of ${props.sessions.total}`
-        : `Sessions: ${props.sessions?.total ?? 0}`,
+        ? t('streamB.sessionsWaitingForYouOf.3b0ff3', {
+            v0: String(props.sessions.waiting),
+            v1: String(props.sessions.total),
+          })
+        : t('streamB.sessions.3cd117', { v0: String(props.sessions?.total ?? 0) }),
       on: !!props.sessions,
       // Only those waiting for you are counted, in orange: the rest are there when you look.
       count: props.sessions?.waiting ?? 0,
@@ -114,7 +143,10 @@ const shown = computed(() =>
 const againstEl = ref<HTMLElement>()
 const tip = () =>
   againstEl.value &&
-  setTooltip(againstEl.value, `Changes are counted against ${props.against} · choose another`)
+  setTooltip(
+    againstEl.value,
+    t('streamB.changesAreCountedAgainstChooseAnother.ddcbb4', { v0: String(props.against) })
+  )
 onMounted(tip)
 watch(() => props.against, tip, { flush: 'post' })
 </script>

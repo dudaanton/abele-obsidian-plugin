@@ -1,0 +1,110 @@
+{
+  "streamBCount.file": {
+    "englishHash": "f8e05d3ccf2e6277c0b8cb30d6aa3d9acf9ba5a2b5cb7d7181a8cb2857b60096"
+  },
+  "streamBWord.file": {
+    "englishHash": "bf658dd637752f52c1dc1babc31117722d130198ec3337c5299a6c0a3a2ba44b"
+  },
+  "streamBCount.stagedFile": {
+    "englishHash": "78d731bf2ea9702237c65481fb661dfbc6696a3326cb4da044ba26e47672a2c7"
+  },
+  "streamBWord.stagedFile": {
+    "englishHash": "475d9f01f842a122e001db15aa040dcad3d120be9cab6965f63ec8a3910d6c92"
+  },
+  "streamBCount.changedFile": {
+    "englishHash": "a1e6fa1834186fa32116d962740efbf4b0befc20b967f8aa3fe40a2d6395c13f"
+  },
+  "streamBWord.changedFile": {
+    "englishHash": "389947a3620d9a9f7bc9c24ee4d7daeacf6db984450b8e9d4eabf3ef31c3d378"
+  },
+  "streamBCount.commit": {
+    "englishHash": "f2f6688366a5aa743b09027cb9f4e21830c0667fd17e37814bec2f3a86cf8e09"
+  },
+  "streamBWord.commit": {
+    "englishHash": "994ed7eb9ca2412957a0bc30cf208b0957f34e03f04c9ccd69d3dc60848f94fb"
+  },
+  "streamBCount.byte": {
+    "englishHash": "30c732bf993149b9d2b9f44e6f1235c037e6385ef37c7326af2196ea999665e7"
+  },
+  "streamBWord.byte": {
+    "englishHash": "f462500c509319891ef63e9edf0f0840f3a5b9887f6ba00151cebe21d4f00b2c"
+  },
+  "streamBCount.line": {
+    "englishHash": "72cd3a1b5ddc5d2895a55139fdb048abb26cfdff69a5a765f38eb2e0dbeef8ed"
+  },
+  "streamBWord.line": {
+    "englishHash": "e2319b10712e60c3175a519b0e89ff83fe25eadb632ab59f5a260fb889c25b62"
+  },
+  "streamBCount.question": {
+    "englishHash": "0feabec53b778bc90eb76fe222e06f12a82d573e2703923c8c0369fdde140f8d"
+  },
+  "streamBWord.question": {
+    "englishHash": "90d24fff01c026f1b3e3cf01d0da245eabc6f4ba32a5d2cea647541175537178"
+  },
+  "streamBCount.discussion": {
+    "englishHash": "9dd45860ba47a7ddda70d6b94140a0f2afe3ad5f5cf1d6b80116dc10cb9b02d2"
+  },
+  "streamBWord.discussion": {
+    "englishHash": "82ec90cfbe4f1140c8ef556f478a31898db15c74c258ef1b0f330959c2c01270"
+  },
+  "streamBCount.toolCall": {
+    "englishHash": "3eb702a20fcccc9c3bf4c6ea7ea3c190c548e24d1d63de08ec93959673d34465"
+  },
+  "streamBWord.toolCall": {
+    "englishHash": "ada488b53560a0fec88597f95e26641d79503d13cc015528258a071a8619585e"
+  },
+  "streamBCount.match": {
+    "englishHash": "3c1152c3ef35314c75a810d5b7d33e2223a14f6bbb7ccefdf1fc08ffd1fc51af"
+  },
+  "streamBWord.match": {
+    "englishHash": "c44e121beb33665e50dddf5e1cb782b45cf239b2f98a188c124d63806439f210"
+  },
+  "streamBCount.reply": {
+    "englishHash": "ec5a7b16aa1afd74bc27c8e73528886ff9eba73c7f25548a95c8045642319f50"
+  },
+  "streamBWord.reply": {
+    "englishHash": "c635822cfbd7ca6d7b0ebd0511c7b5256431258238b891f480778dd005e08866"
+  },
+  "streamBCount.comment": {
+    "englishHash": "ae733ec4fb3446b14622d685858e7fae75d7c7e08cc743fd8e6f3613d53fd84e"
+  },
+  "streamBWord.comment": {
+    "englishHash": "3f1c967960d1543a518f33ede2f70be86507e04bd1f56f84367ea913d8a3a806"
+  },
+  "streamBCount.message": {
+    "englishHash": "a54f77c79f83e355f130889436b1edb6c3d887d0c30b738ffad5816cfeeb092b"
+  },
+  "streamBWord.message": {
+    "englishHash": "05ddbbac6d13dc061ea1c29c1fe36b3fac7299044dfd5e450ae362824ff187ff"
+  },
+  "streamBCount.token": {
+    "englishHash": "6c6c9a22de0dd9bc1e4205d0633275449c1032b77cfd2fe7f9fe5657a3926a73"
+  },
+  "streamBWord.token": {
+    "englishHash": "1a1a27ed632641c2791011e592498aa1e22d679f6f2123a3c1e992558d711fac"
+  },
+  "streamBCount.clearedOverrides": {
+    "englishHash": "016db1c6972d6480f7ca22ac9baf77187a167dabe5a010aba78019e9006527c3"
+  },
+  "streamBCount.task": {
+    "englishHash": "1cf01f0f4b0771388871400aa412d55448f7d5c20e451362e1037b4ca7e90542"
+  },
+  "streamBWord.task": {
+    "englishHash": "70b62cf9ccb091f4d80e68b17c01ac9b5d95ad1769e3a3aa840fd61bb94fb29c"
+  },
+  "streamBCount.copy": {
+    "englishHash": "943d5797dbf9f34ee8b982c9a0c5cd5344525ccf2d6e31cf97f77ab67ef64327"
+  },
+  "streamBWord.copy": {
+    "englishHash": "725f32b4b58ffef1f688178439ec2531b75e88ccf1e203a53525c7c1ea31c288"
+  },
+  "streamBCount.moreReplies": {
+    "englishHash": "8c16038f1ec5b4d939941e814df95a0add2f400e236c8a12f40f4d84095aa35d"
+  },
+  "streamBCount.changedFiles": {
+    "englishHash": "a7c605a1b09d22c133f3fc730cc890cdb1032012a4c08155272ec0fdefd53e06"
+  },
+  "streamBCount.missingComments": {
+    "englishHash": "317c5c91ed8134cec82be5c63156d9cebe738c272dfab1a6e87dbc5cf228e340"
+  }
+}

@@ -6,7 +6,7 @@
         role="button"
         tabindex="0"
         icon="git-branch"
-        tooltip="Choose a version to compare with"
+        :tooltip="t('streamB.chooseAVersionToCompareWith.0ba68b')"
         @click="chooseBase"
         @keydown.enter.prevent="chooseBase"
       />
@@ -17,15 +17,19 @@
         tabindex="0"
         icon="list-filter"
         :text-right="modes.find((mode) => mode.value === (data.mode || 'endpoint'))?.display"
-        tooltip="Choose changes to review"
+        :tooltip="t('streamB.chooseChangesToReview.b4e34d')"
         @click="chooseMode"
         @keydown.enter.prevent="chooseMode"
       />
     </div>
-    <GithubNotice v-if="data.note" :text="data.note" :retry="false" />
+    <GithubNotice
+      v-if="presentUiField(data, 'note')"
+      :text="presentUiField(data, 'note')"
+      :retry="false"
+    />
     <EmptyState
       v-if="data.status === 'identical'"
-      text="These two are the same: there is nothing to compare."
+      :text="t('streamB.theseTwoAreTheSameThereIs.b24ad1')"
     />
     <template v-else>
       <Tabs
@@ -52,18 +56,24 @@
       <template v-else>
         <EmptyState
           v-if="!data.commits.length"
-          :text="`${data.head} has no commits that ${data.base} has not.`"
+          :text="
+            t('streamB.hasNoCommitsThatHasNot.945f58', {
+              v0: String(data.head),
+              v1: String(data.base),
+            })
+          "
         />
         <GithubCommits v-else :commits="data.commits" @open="openCommit" />
         <div v-if="!data.commitsComplete" class="abele-github-compare__more">
-          <template v-if="source?.identity.provider === 'node'"
-            >The commit list is a bounded window. Open a commit or narrow the selected version to
-            inspect more history.</template
-          >
-          <template v-else
-            >{{ data.commits.length }} of {{ data.totalCommits }} commits are listed here; the rest
-            are on GitHub.</template
-          >
+          <template v-if="source?.identity.provider === 'node'">{{
+            t('streamB.theCommitListIsABoundedWindow.593273')
+          }}</template>
+          <template v-else>{{
+            t('streamBMeta.03e06e2d54', {
+              p0: String(data.commits.length),
+              p1: String(data.totalCommits),
+            })
+          }}</template>
         </div>
       </template>
     </template>
@@ -71,6 +81,8 @@
 </template>
 
 <script setup lang="ts">
+import { presentUiField } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 import { computed } from 'vue'
 import { Menu, type PaneType } from 'obsidian'
 import EmptyState from '../obsidian/EmptyState.vue'
@@ -106,22 +118,25 @@ const emit = defineEmits<{
 const tabs = computed(() => [
   {
     id: 'files',
-    label: `Files (${props.data.files.length}${props.data.filesComplete ? '' : '+'})`,
+    label: t('streamB.files.f92746', {
+      v0: String(props.data.files.length),
+      v1: String(props.data.filesComplete ? '' : '+'),
+    }),
     icon: 'file-diff',
   },
   {
     id: 'commits',
-    label: `Commits (${props.data.totalCommits})`,
+    label: t('streamB.commits.48c0fb', { v0: String(props.data.totalCommits) }),
     icon: 'git-commit-horizontal',
   },
 ])
 
 const source = useRepositorySource()
 const modes = [
-  { value: 'endpoint', display: 'All changes' },
-  { value: 'staged', display: 'Ready for commit' },
-  { value: 'unstaged', display: 'Other edits' },
-  { value: 'merge-base', display: 'From common ancestor' },
+  { value: 'endpoint', display: t('streamB.allChanges.a0a8c3') },
+  { value: 'staged', display: t('streamB.readyForCommit.a9d967') },
+  { value: 'unstaged', display: t('streamB.otherEdits.62210d') },
+  { value: 'merge-base', display: t('streamB.fromCommonAncestor.886311') },
 ]
 const chooseMode = (event?: MouseEvent | KeyboardEvent) => {
   const menu = new Menu()

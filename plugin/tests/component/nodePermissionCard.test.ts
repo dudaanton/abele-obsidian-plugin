@@ -3,6 +3,26 @@ import { expect, it, vi } from 'vitest'
 import NodePermissionCard from '@/components/NodePermissionCard.vue'
 import AiToolApproval from '@/components/AiToolApproval.vue'
 import { useVault } from '../helpers/testEnv'
+it('separates the translated refusal label from its retained diagnostic', () => {
+  useVault([])
+  const wrapper = mount(NodePermissionCard, {
+    props: {
+      prompt: { prompt_id: 'sample-question', state: 'pending' } as never,
+      disabled: false,
+      answerState: {
+        state: 'failed',
+        choice: 'deny',
+        error: 'Sample response lost',
+      } as never,
+    },
+  })
+  try {
+    expect(wrapper.text()).toContain('not accepted: Sample response lost')
+  } finally {
+    wrapper.unmount()
+  }
+})
+
 it.each(['confirm', 'trust'] as const)('preserves the unnamed %s question label', (kind) => {
   useVault([])
   const wrapper = mount(NodePermissionCard, {

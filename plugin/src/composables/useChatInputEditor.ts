@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { ref, nextTick, onMounted, onUnmounted, type Ref } from 'vue'
 import { TFile, type Scope } from 'obsidian'
 import type { Extension } from '@codemirror/state'
@@ -211,7 +212,7 @@ export function useChatInputEditor(options: InputEditorOptions) {
     echoed = text.value
     editor = createEmbeddedEditor(GlobalStore.getInstance().app, host, {
       value: text.value,
-      placeholder: 'Message...',
+      placeholder: t('streamB.editorMessagePlaceholder'),
       onChange: (value) => {
         echoed = value
         text.value = value

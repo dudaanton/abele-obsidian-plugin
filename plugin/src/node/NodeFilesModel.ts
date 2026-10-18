@@ -1,3 +1,5 @@
+import { uiField, uiErrorMessage, uiMessage, UiError } from '@/i18n/streamBErrors'
+
 import { computed, readonly, ref, shallowRef, markRaw } from 'vue'
 import type {
   NodeClient,
@@ -31,7 +33,8 @@ import { type FileDraft, type FileDraftSnapshot, type DraftReceipt } from './fil
 const draftConflict =
   'Local draft changed in another view. Copy your visible text before reloading the shared draft.'
 const assertDraftRevision = (draft: FileDraft | undefined, revision: string | null) => {
-  if ((draft?.revision ?? null) !== revision) throw new Error(draftConflict)
+  if ((draft?.revision ?? null) !== revision)
+    throw new UiError(uiMessage('streamBError.4d299e3ab0'))
 }
 export type { FileDraft } from './fileDrafts'
 
@@ -111,11 +114,11 @@ export async function readNodeBytes(
       part.total > maxBytes ||
       (total !== undefined && total !== part.total)
     )
-      throw new Error('Invalid or too large node content')
+      throw new UiError(uiMessage('streamBError.ac7deb53ca'))
     total = part.total
     const bytes = Uint8Array.from(atob(part.base64), (c) => c.charCodeAt(0))
     if (bytes.length > 131072 || offset + bytes.length > total || (!bytes.length && offset < total))
-      throw new Error('Incomplete node content')
+      throw new UiError(uiMessage('streamBError.3e93167395'))
     chunks.push(bytes)
     offset += bytes.length
   } while (offset < total)
@@ -174,12 +177,9 @@ export class NodeDocumentSource implements CodeDocumentSource {
     text: string
   ) {
     if (doc.binary || doc.tooLarge || doc.text === undefined || doc.text.length > 32768)
-      throw new Error('This file is not editable in the bounded text editor')
+      throw new UiError(uiMessage('streamBError.61353475a2'))
     const params = this.parseWrite(path, doc.contentId, text)
-    if (!params.success)
-      throw new Error(
-        'The text editor accepts existing UTF-8 files up to 32768 characters, outside Git metadata'
-      )
+    if (!params.success) throw new UiError(uiMessage('streamBError.99ca5e24c2'))
     return params.data
   }
   async edit(
@@ -189,8 +189,7 @@ export class NodeDocumentSource implements CodeDocumentSource {
     expectedRevision = this.observed.get(path)?.revision ?? null,
     guard?: () => void
   ) {
-    if (text.length > 16 * 1024 * 1024)
-      throw new Error('Local draft exceeds the retained-content limit; copy it before closing')
+    if (text.length > 16 * 1024 * 1024) throw new UiError(uiMessage('streamBError.83795aa299'))
     return this.transaction(path, (drafts, key) => {
       guard?.()
       const previous = drafts[key]
@@ -198,8 +197,7 @@ export class NodeDocumentSource implements CodeDocumentSource {
       if (!previous || previous.status === 'saved') this.writable(path, doc, doc.text ?? '')
       // Existing drafts belong to their retained baseline, even when current contents became
       // binary/large. Editing them locally never adopts that new file version implicitly.
-      if (previous?.pending)
-        throw new Error('This save is unresolved; check its original outcome before editing')
+      if (previous?.pending) throw new UiError(uiMessage('streamBError.164ef4c4d9'))
       const draft: FileDraft = {
         ...(previous && previous.status !== 'saved'
           ? previous
@@ -214,25 +212,18 @@ export class NodeDocumentSource implements CodeDocumentSource {
   }
   async save(path: string, shown: FileDraftSnapshot | undefined = this.observed.get(path)) {
     if (!shown) return undefined
-    if (this.admitSave && !this.admitSave())
-      throw new Error('Reconnect before saving; your local draft is retained.')
+    if (this.admitSave && !this.admitSave()) throw new UiError(uiMessage('streamBError.bcc3e13a88'))
     const draft = await this.transaction(path, (drafts, key) => {
       if (this.admitSave && !this.admitSave())
-        throw new Error('Reconnect before saving; your local draft is retained.')
+        throw new UiError(uiMessage('streamBError.bcc3e13a88'))
       const draft = drafts[key]
       assertDraftRevision(draft, shown.revision)
       if (!draft || draft.text !== shown.text || draft.baseContentId !== shown.baseContentId)
-        throw new Error(draftConflict)
+        throw new UiError(uiMessage('streamBError.4d299e3ab0'))
       if (draft.pending || draft.status === 'saved') return draft
-      if (draft.status === 'conflict')
-        throw new Error(
-          'Inspect the current version and explicitly use it as the base before saving again'
-        )
+      if (draft.status === 'conflict') throw new UiError(uiMessage('streamBError.26e0c3b094'))
       const parsed = this.parseWrite(path, shown.baseContentId, shown.text)
-      if (!parsed.success)
-        throw new Error(
-          'This draft exceeds the UTF-8 save limit of 32768 characters or contains unsupported text. Your local draft is retained.'
-        )
+      if (!parsed.success) throw new UiError(uiMessage('streamBError.a5f9367699'))
       draft.revision = crypto.randomUUID()
       draft.pending = { operationId: crypto.randomUUID(), params: parsed.data }
       draft.result = undefined
@@ -255,8 +246,7 @@ export class NodeDocumentSource implements CodeDocumentSource {
       if (this.admitSave) {
         const method = 'worktree_id' in pending.params ? 'repository.v1.write' : 'workspace.write'
         await this.client.store.transaction((state) => {
-          if (!this.admitSave!())
-            throw new Error('Reconnect before saving; your local draft is retained.')
+          if (!this.admitSave!()) throw new UiError(uiMessage('streamBError.bcc3e13a88'))
           if (
             !state.outbox.some((entry) => entry.operation_id === pending.operationId) &&
             !state.results[pending.operationId]
@@ -290,10 +280,10 @@ export class NodeDocumentSource implements CodeDocumentSource {
         result.path !== path ||
         result.expected_content_id !== pending.params.expected_content_id)
     )
-      throw new Error('Invalid file save receipt identity')
+      throw new UiError(uiMessage('streamBError.6077692b27'))
     return this.transaction(path, (drafts, key) => {
       const current = drafts[key]
-      if (!current) throw new Error(draftConflict)
+      if (!current) throw new UiError(uiMessage('streamBError.4d299e3ab0'))
       if (current.pending?.operationId !== pending.operationId) {
         if (
           current.result?.operation_id === pending.operationId &&
@@ -301,7 +291,7 @@ export class NodeDocumentSource implements CodeDocumentSource {
           ['saved', 'conflict', 'rejected'].includes(current.status)
         )
           return current
-        throw new Error(draftConflict)
+        throw new UiError(uiMessage('streamBError.4d299e3ab0'))
       }
       if (!result && !error) {
         current.status = 'outcome_unknown'
@@ -337,8 +327,7 @@ export class NodeDocumentSource implements CodeDocumentSource {
     return this.transaction(path, (drafts, key) => {
       const current = drafts[key]
       assertDraftRevision(current, expectedRevision)
-      if (!current || current.pending)
-        throw new Error('This save is unresolved; cannot change its precondition')
+      if (!current || current.pending) throw new UiError(uiMessage('streamBError.67ccffde77'))
       this.writable(path, doc, doc.text ?? '')
       current.revision = crypto.randomUUID()
       current.baseContentId = doc.contentId!
@@ -351,8 +340,7 @@ export class NodeDocumentSource implements CodeDocumentSource {
   discard(path: string, expectedRevision = this.observed.get(path)?.revision ?? null) {
     return this.transaction(path, (drafts, key) => {
       assertDraftRevision(drafts[key], expectedRevision)
-      if (drafts[key]?.pending)
-        throw new Error('This save is unresolved; keep its draft and evidence')
+      if (drafts[key]?.pending) throw new UiError(uiMessage('streamBError.3d90fa2b83'))
       delete drafts[key]
     })
   }
@@ -614,7 +602,7 @@ export class NodeFilesModel {
       this.draft.value = draft
       this.draftText.value = draft?.text ?? doc.text ?? ''
       this.editing.value = !!draft && draft.status !== 'saved'
-      this.draftError.value = ''
+      uiField(this.draftError, 'value', uiErrorMessage(''))
       this.persistingEdit = Promise.resolve()
     }
     this.predecessorText.value = undefined
@@ -629,7 +617,7 @@ export class NodeFilesModel {
     const path = this.filePath.value,
       doc = this.document.value,
       generation = this.fileGeneration
-    if (!doc || !this.fileEditable.value) throw new Error('This file is not editable')
+    if (!doc || !this.fileEditable.value) throw new UiError(uiMessage('streamBError.dfd2326f20'))
     let draft = await this.documents.draft(path)
     if (draft?.status === 'saved') {
       // A confirmed old save is history, not an unsent edit of the newly loaded version.
@@ -647,7 +635,7 @@ export class NodeFilesModel {
       doc = this.document.value,
       generation = this.fileGeneration
     if (!doc || this.saving.value || this.draft.value?.pending)
-      return Promise.reject(new Error('This save is unresolved'))
+      return Promise.reject(new UiError(uiMessage('streamBError.04e25ee78d')))
     const expectedAtInput = this.draft.value?.revision ?? null
     this.editGeneration++
     this.draftText.value = text
@@ -668,15 +656,18 @@ export class NodeFilesModel {
       .then((draft) => {
         if (generation === this.fileGeneration) {
           this.draft.value = draft
-          this.draftError.value = ''
+          uiField(this.draftError, 'value', uiErrorMessage(''))
         }
       })
       .catch((e: unknown) => {
         if (generation === this.fileGeneration)
-          this.draftError.value =
+          uiField(
+            this.draftError,
+            'value',
             e instanceof Error && e.message === draftConflict
-              ? draftConflict
-              : 'Local draft could not be stored. Keep this window open and copy your text before closing.'
+              ? uiMessage('streamBError.4d299e3ab0')
+              : uiMessage('streamBError.94302699b3')
+          )
         throw e
       })
     this.persistingEdit = task
@@ -693,8 +684,8 @@ export class NodeFilesModel {
         this.draft.value &&
         draft.baseContentId !== this.draft.value.baseContentId)
     ) {
-      this.draftError.value = draftConflict
-      throw new Error(draftConflict)
+      uiField(this.draftError, 'value', uiMessage('streamBError.4d299e3ab0'))
+      throw new UiError(uiMessage('streamBError.4d299e3ab0'))
     }
     this.draft.value = draft
   }
@@ -710,7 +701,7 @@ export class NodeFilesModel {
     try {
       await this.persistingEdit
       if (generation !== this.fileGeneration)
-        throw new Error('File view changed before save admission')
+        throw new UiError(uiMessage('streamBError.e61aa4bddc'))
       const draft = this.draft.value
       admissionStarted = !!draft
       if (draft)
@@ -723,7 +714,7 @@ export class NodeFilesModel {
         this.acceptOperationDraft(completed, completed)
     } catch (e) {
       localConflict = e instanceof Error && e.message === draftConflict
-      if (localConflict) this.draftError.value = draftConflict
+      if (localConflict) uiField(this.draftError, 'value', uiMessage('streamBError.4d299e3ab0'))
       throw e
     } finally {
       try {
@@ -747,7 +738,7 @@ export class NodeFilesModel {
         this.acceptOperationDraft(completed, completed)
     } catch (e) {
       localConflict = e instanceof Error && e.message === draftConflict
-      if (localConflict) this.draftError.value = draftConflict
+      if (localConflict) uiField(this.draftError, 'value', uiMessage('streamBError.4d299e3ab0'))
       throw e
     } finally {
       if (!localConflict) {
@@ -767,16 +758,15 @@ export class NodeFilesModel {
       generation = this.fileSelectionGeneration
     const check = () => {
       if (generation !== this.fileSelectionGeneration || path !== this.filePath.value)
-        throw new Error('File view changed before draft reconciliation')
+        throw new UiError(uiMessage('streamBError.3d0331c807'))
       assertDraftRevision(this.draft.value, shown?.revision ?? null)
       if (
         shown &&
         (this.draftText.value !== shown.text ||
           this.draft.value?.baseContentId !== shown.baseContentId)
       )
-        throw new Error(draftConflict)
-      if (this.draft.value?.pending)
-        throw new Error('This save is unresolved; keep its draft and evidence')
+        throw new UiError(uiMessage('streamBError.4d299e3ab0'))
+      if (this.draft.value?.pending) throw new UiError(uiMessage('streamBError.3d90fa2b83'))
     }
     await this.persistingEdit
     check()
@@ -794,7 +784,7 @@ export class NodeFilesModel {
         generation = this.fileSelectionGeneration
       const document = await this.documents.read(path)
       if (generation !== this.fileSelectionGeneration)
-        throw new Error('File view changed before reload')
+        throw new UiError(uiMessage('streamB.fileViewChangedBeforeReload.9da237'))
       await this.openFile(path, undefined, this.fileRange.value, document)
       return
     }
@@ -805,18 +795,18 @@ export class NodeFilesModel {
     this.draft.value = undefined
     this.draftText.value = document.text ?? ''
     this.editing.value = false
-    this.draftError.value = ''
+    uiField(this.draftError, 'value', uiErrorMessage(''))
     this.predecessorText.value = undefined
   }
   async keepMine(shown: FileDraftSnapshot | null = this.draftSnapshot()) {
-    if (!shown) throw new Error('There is no local draft to keep')
+    if (!shown) throw new UiError(uiMessage('streamBError.896b98b01e'))
     const { path, generation, document } = await this.currentForReconciliation(shown)
     const draft = await this.documents.rebase(path, document, shown.revision)
     if (generation !== this.fileSelectionGeneration) return
     this.document.value = document
     this.draft.value = draft
     this.editing.value = true
-    this.draftError.value = ''
+    uiField(this.draftError, 'value', uiErrorMessage(''))
   }
   async rebaseDraft() {
     const path = this.filePath.value,
@@ -890,7 +880,7 @@ export class NodeFilesModel {
         comment: 'selection',
       }).success
     )
-      throw new Error('invalid_anchor: select no more than 200 lines for one comment')
+      throw new UiError(uiMessage('streamBError.17dd70d322'))
     const context = selectedContext(file.document.patch, {
       path: file.path,
       side: span.side === 'L' ? 'old' : 'new',
@@ -905,7 +895,7 @@ export class NodeFilesModel {
     })
   }
   private assertEditable() {
-    if (this.reviewLocked.value) throw new Error('Waiting for the submitted review')
+    if (this.reviewLocked.value) throw new UiError(uiMessage('streamBError.ad8aa99210'))
   }
   removeComment(index: number) {
     this.assertEditable()
@@ -914,13 +904,10 @@ export class NodeFilesModel {
   async addComment(selection: ReviewSelection, comment: string) {
     this.assertEditable()
     // A known invalid length must not wait for WebCrypto before surfacing the rejection.
-    if (comment.trim().length > 2000)
-      throw new Error(
-        'Review exceeds node limits: at most 32 comments, 200 lines and 2000 characters per comment'
-      )
+    if (comment.trim().length > 2000) throw new UiError(uiMessage('streamBError.2d8481c0c6'))
     const context_hash = await contextHash(selection.context)
     this.assertEditable() // Submission may have started while WebCrypto was pending.
-    if (!comment.trim()) throw new Error('Enter a comment')
+    if (!comment.trim()) throw new UiError(uiMessage('streamBError.7a17a125e6'))
     const anchor = {
       node_id: this.nodeId,
       workspace_id: this.workspaceId,
@@ -940,15 +927,13 @@ export class NodeFilesModel {
         anchors: candidate,
       }).success
     )
-      throw new Error(
-        'Review exceeds node limits: at most 32 comments, 200 lines and 2000 characters per comment'
-      )
+      throw new UiError(uiMessage('streamBError.2d8481c0c6'))
     this.draftComments.value = Object.freeze([...this.draftComments.value, Object.freeze(anchor)])
   }
   async submit() {
     if (this.submitting.value) return
     if (this.pendingReview.value) return this.checkReview()
-    if (!this.sessionId) throw new Error('Open a workspace session before sending a review')
+    if (!this.sessionId) throw new UiError(uiMessage('streamBError.3bf18401ad'))
     if (!this.comments.value.length) return
     const anchors = Object.freeze(
       this.draftComments.value.map((anchor) => Object.freeze({ ...anchor }))
@@ -957,9 +942,7 @@ export class NodeFilesModel {
     this.submitting.value = true
     try {
       if (this.reviewGuarded && !this.reviewTargetReady)
-        throw new Error(
-          'The chat target is not ready. Nothing was sent. Reopen the review before sending.'
-        )
+        throw new UiError(uiMessage('streamBError.535c73617c'))
       const { operation_id } = await this.client.submitReview({
         session_id: this.sessionId,
         observed_seq: await this.client.cursor(this.sessionId),
@@ -998,7 +981,7 @@ export class NodeFilesModel {
         await refresh?.catch(() => {
           console.debug('[Abele node] review target refresh failed after refusal')
         })
-        throw new Error(chatMovedNotice)
+        throw new UiError(uiMessage('streamBError.f87df21e8e'))
       }
       this.reviewStatus.value = result.stale.some(Boolean)
         ? 'Review accepted · the workspace changed or could not be rechecked; retained selections were sent and marked stale.'

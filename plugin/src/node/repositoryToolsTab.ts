@@ -1,3 +1,4 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import type { RepositorySource, RepositoryTarget } from '@/repository/source'
 import {
   nodeRepositoryToolsHost,
@@ -33,13 +34,12 @@ export function attachNodeRepositoryToolsTab(
     options?: OpenNodeRepositoryOptions
   ) => Promise<unknown> = openNodeRepository
 ): () => void {
-  if (source.identity.provider !== 'node') throw new Error('Expected a node repository')
+  if (source.identity.provider !== 'node') throw new UiError(uiMessage('streamBError.0702fbb835'))
   const identity = source.identity
   if (!controllers.has(connection)) controllers.set(connection, crypto.randomUUID())
   const assertCurrent = () => {
     source.assertCurrent()
-    if (!connection.client.connected)
-      throw new Error('Node offline; reconnect before agent repository reads.')
+    if (!connection.client.connected) throw new UiError(uiMessage('streamBError.69096135bb'))
   }
   const guarded = new Proxy(source, {
     get(target, key) {
@@ -78,7 +78,7 @@ export function attachNodeRepositoryToolsTab(
         project !== identity.project ||
         workspace !== identity.workspace
       )
-        throw new Error('Repository navigation does not match the approved source.')
+        throw new UiError(uiMessage('streamBError.0e3c3b3571'))
       const ref = workingRef(revision?.ref ?? WORKING_TREE)
       const options: OpenNodeRepositoryOptions = revision?.base
         ? { location: { kind: 'comparison', base: revision.base, head: ref, direct: true } }

@@ -1,3 +1,4 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import type { GithubTarget } from '@/github/urls'
 import type { Deployment } from './model'
 import { isMarkdownPath } from '@/github/markdownPreview'
@@ -10,7 +11,7 @@ const segment = (value: string) => {
     value.includes('\\') ||
     [...value].some((c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127)
   )
-    throw new Error('Invalid Forgejo path segment.')
+    throw new UiError(uiMessage('streamBError.b83e5c8317'))
   return encodeURIComponent(value)
 }
 const pathParts = (value: string) => value.split('/').map(segment).join('/')
@@ -18,7 +19,7 @@ const pathParts = (value: string) => value.split('/').map(segment).join('/')
 /** Only configured deployment routes are interpreted; unsupported routes stay browser exits. */
 export function forgejoUrls(base: Deployment) {
   const repository = (repo: string) => {
-    if (repo.split('/').length !== 2) throw new Error('Invalid Forgejo repository.')
+    if (repo.split('/').length !== 2) throw new UiError(uiMessage('streamBError.8016408637'))
     return `${base.webBase}/${pathParts(repo)}`
   }
   const file = (

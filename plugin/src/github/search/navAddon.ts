@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * Go to definition in a GitHub code viewer, the way an editor does it: Mod-click on a name jumps
  * to where it is declared, and holding Mod while pointing underlines the name that would be
@@ -116,20 +117,22 @@ function navMenu(nav: CodeNav, view: EditorView, name: string): Menu {
   const menu = new Menu()
   menu.addItem((item) =>
     item
-      .setTitle(`Go to definition of ${name}`)
+      .setTitle(t('streamB.goToDefinitionOf.14ff5d', { v0: String(name) }))
       .setIcon('locate')
       .onClick((): void => void nav.goToDefinition(name, nav.pathOf(view.dom)))
   )
   menu.addItem((item) =>
     item
-      .setTitle(`Find references to ${name}`)
+      .setTitle(t('streamB.findReferencesTo.7601fd', { v0: String(name) }))
       .setIcon('search')
       .onClick(() => nav.findReferences(name))
   )
   const selected = selectedIn(view)
   menu.addItem((item) =>
     item
-      .setTitle(selected ? 'Copy' : `Copy ${name}`)
+      .setTitle(
+        selected ? t('streamB.copy.e21f93') : t('streamB.copy.759008', { v0: String(name) })
+      )
       .setIcon('copy')
       .onClick((): void => void navigator.clipboard.writeText(selected || name))
   )

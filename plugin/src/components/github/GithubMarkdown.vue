@@ -16,7 +16,11 @@
           v-if="b.kind !== 'definitions'"
           class="abele-github-md__handle"
           icon="link"
-          :tooltip="`Select ${linesLabel({ from: b.start, to: b.end }).toLowerCase()} — Shift-click to extend`"
+          :tooltip="
+            t('streamB.selectShiftClickToExtend.216c50', {
+              v0: String(linesLabel({ from: b.start, to: b.end }).toLowerCase()),
+            })
+          "
           @click="pick(i, $event)"
         />
         <div :ref="(el) => setContent(i, el)" class="abele-github-md__content" />
@@ -29,6 +33,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Component, Platform } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'

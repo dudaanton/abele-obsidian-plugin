@@ -5,16 +5,20 @@
       <Button
         v-if="allUrl"
         class="abele-github-home__all"
-        text="All"
-        :tooltip="allTooltip ?? 'Open the whole list on GitHub in the browser'"
+        :text="t('streamB.all.a52ace')"
+        :tooltip="allTooltip ?? t('streamB.openTheWholeListOnGithubIn.db8eae')"
         @click="openAll"
       />
     </div>
     <div v-if="error" class="abele-github-home-list__error">
       <EmptyState :text="error" />
-      <Icon icon="refresh-cw" tooltip="Ask GitHub again" @click="emit('retry')" />
+      <Icon
+        icon="refresh-cw"
+        :tooltip="t('streamB.askGithubAgain.5a9135')"
+        @click="emit('retry')"
+      />
     </div>
-    <EmptyState v-else-if="rows === null" text="Loading…" />
+    <EmptyState v-else-if="rows === null" :text="t('streamB.loading.ba3bbb')" />
     <EmptyState v-else-if="!rows.length" :text="empty" />
     <div v-else class="abele-github-home-list__rows" role="tree" :aria-label="title">
       <TreeItem
@@ -31,6 +35,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { openExternal } from '@/helpers/openExternal'
 import type { PaneType } from 'obsidian'
 import Button from '../obsidian/Button.vue'

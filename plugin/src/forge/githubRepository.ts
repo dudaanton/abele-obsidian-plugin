@@ -1,3 +1,5 @@
+import { uiFields, uiMessage } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 import { loadItem } from '@/github/loadItem'
 import type { GithubClient } from '@/github/client'
 import { commitSha, loadBlob, loadCommit, restCommit } from '@/github/api'
@@ -78,7 +80,10 @@ export function createGithubRepositorySource(
         return (
           await client.get<{ sha: string }>(
             `${repoApiPath(base)}/commits/${encodeURIComponent(ref)}`,
-            { what: 'the comparison base commit' }
+            uiFields(
+              { what: t('streamB.theComparisonBaseCommit.ac86ee') },
+              { what: uiMessage('streamB.theComparisonBaseCommit.ac86ee') }
+            )
           )
         ).sha
       return ref ? commitSha(client, base, ref) : resolveSha(client, base)
@@ -102,7 +107,10 @@ export function createGithubRepositorySource(
       const query = `sha=${encodeURIComponent(ref)}${path ? `&path=${encodeURIComponent(path)}` : ''}&per_page=100`
       const rows = await client.get<Parameters<typeof restCommit>[0][]>(
         `${repoApiPath(base)}/commits?${query}`,
-        { what: 'the repository commits' }
+        uiFields(
+          { what: t('streamB.theRepositoryCommits.2a55d7') },
+          { what: uiMessage('streamB.theRepositoryCommits.2a55d7') }
+        )
       )
       return rows.map(restCommit)
     },

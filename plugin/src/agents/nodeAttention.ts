@@ -1,3 +1,5 @@
+import { presentUiError } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 import { nodePages } from '@/node/nodePages'
 import type { JournalEvent } from '@abele/channel-protocol'
 import type { AttentionReason, AttentionRow } from './attention'
@@ -31,7 +33,14 @@ export interface NodeAttentionTarget {
   expectedNodeId: string
 }
 
-const AGENTS: Record<string, string> = { claude: 'Claude', pi: 'pi', codex: 'Codex', fake: 'Fake' }
+const AGENTS: Record<string, string> = {
+  claude: 'Claude',
+  pi: 'pi',
+  codex: 'Codex',
+  get fake() {
+    return t('streamB.fake.84561d')
+  },
+}
 /** Enough to keep a busy list moving, few enough not to crowd the node's channel. */
 const PARALLEL = 6
 
@@ -80,10 +89,10 @@ export async function readNodeAttention(
           nodeId: node.expectedNodeId,
           sessionId: session.session_id,
         },
-        title: session.title || 'Untitled session',
+        title: session.title || t('streamB.untitledSession.3d9b66'),
         agent: AGENTS[session.provider] ?? session.provider,
         model: session.settings?.model || undefined,
-        source: `Node · ${node.label}`,
+        source: t('streamB.node.01630d', { v0: String(node.label) }),
         reasons,
         updatedAt: Date.now(),
       })
@@ -91,7 +100,7 @@ export async function readNodeAttention(
       unreadable++
       console.debug('[Abele agents] node session unreadable', {
         session: session.session_id,
-        error: error instanceof Error ? error.message : String(error),
+        error: presentUiError(error),
       })
     }
   }

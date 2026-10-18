@@ -1,4 +1,5 @@
 import { isNativeForge } from '@/forge/native'
+import { uiFields, uiMessage, UiError } from '@/i18n/streamBErrors'
 import type { Deployment, ReadResult } from './model'
 import { deployment, deploymentKey } from './identity'
 import {
@@ -14,11 +15,13 @@ export class ForgejoError extends Error {
     service = 'Forgejo'
   ) {
     super(`${service} refused the request (${status}).`)
+    uiFields(this, { message: uiMessage('streamB.reapply.6e7d058624', { service, status }) })
   }
 }
 export class ForgejoUnknownWrite extends Error {
   constructor() {
     super('The write outcome is unknown. Check the service before submitting again.')
+    uiFields(this, { message: uiMessage('streamB.reapply.fe1da263e8') })
     this.name = 'ForgejoUnknownWrite'
   }
 }
@@ -57,7 +60,7 @@ export class ForgejoClient {
       !isNativeForge(deployment.kind) ||
       deploymentKey(deployment) !== deploymentKey(this.normalized(deployment))
     )
-      throw new Error('Invalid Forgejo deployment.')
+      throw new UiError(uiMessage('streamBError.0495ef01d3'))
   }
 
   private normalized(value: Deployment): Deployment {
@@ -161,7 +164,7 @@ export class ForgejoClient {
     write?: { method: string; body?: unknown }
   ): Promise<T> {
     if (!path.startsWith('/') || path.startsWith('//') || /[\\#\r\n]/.test(path))
-      throw new Error('Invalid Forgejo API path.')
+      throw new UiError(uiMessage('streamBError.b51a173612'))
     const parts = path.split('?')[0].split('/')
     if (
       parts.some((part) => {
@@ -173,10 +176,10 @@ export class ForgejoClient {
         )
       })
     )
-      throw new Error('Invalid Forgejo API path.')
+      throw new UiError(uiMessage('streamBError.b51a173612'))
     const url = new URL(`${this.deployment.apiBase}${path}`)
     if ([...url.searchParams.keys()].some((key) => /token|authorization|password/i.test(key)))
-      throw new Error('Credentials cannot appear in an API URL.')
+      throw new UiError(uiMessage('streamBError.0f69117eda'))
     return checkedRead(this.session, async () => {
       const headers: Record<string, string> = {
         Accept:
@@ -202,12 +205,10 @@ export class ForgejoClient {
             : {}),
         })
       } catch {
-        throw new Error(`Could not reach the ${this.service} service.`)
+        throw new UiError(uiMessage('streamB.reapply.8622691f85', { service: this.service }))
       }
       if (result.status >= 300 && result.status < 400)
-        throw new Error(
-          `${this.service} redirected the request; check the configured server address.`
-        )
+        throw new UiError(uiMessage('streamB.reapply.a07e7b8875', { service: this.service }))
       if (result.status < 200 || result.status >= 300)
         throw new ForgejoError(result.status, this.service)
       if (mode === 'none' || result.status === 204) return undefined
@@ -216,7 +217,7 @@ export class ForgejoClient {
           mode === 'bytes' ? result.arrayBuffer : mode === 'text' ? result.text : result.json
         ) as T
       } catch {
-        throw new Error(`${this.service} returned an unreadable response.`)
+        throw new UiError(uiMessage('streamB.reapply.65f64d1367', { service: this.service }))
       }
     })
   }
@@ -229,13 +230,13 @@ export class ForgejoClient {
       !Number.isInteger(maxPages) ||
       maxPages < 1
     )
-      throw new Error('Invalid Forgejo pagination limit.')
+      throw new UiError(uiMessage('streamBError.5f32006dc8'))
     const value: T[] = []
     for (let page = 1; page <= maxPages; page++) {
       const rows = await this.get<T[]>(
         `${path}${path.includes('?') ? '&' : '?'}limit=${limit}&page=${page}`
       )
-      if (!Array.isArray(rows)) throw new Error('Invalid Forgejo page response.')
+      if (!Array.isArray(rows)) throw new UiError(uiMessage('streamBError.31f4a37ff9'))
       value.push(...rows)
       if (rows.length < limit) return { value, complete: true, notes: [] }
     }

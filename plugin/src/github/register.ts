@@ -129,14 +129,14 @@ export function registerGithub(plugin: Plugin): void {
       if (!githubSettings().enabled || !parseForSettings(url)) return
       menu.addItem((item) =>
         item
-          .setTitle('Open in Obsidian')
+          .setTitle(t('streamB.openInObsidian.1a4d2f'))
           .setIcon('github')
           .setSection('open')
           .onClick(() => void openGithubUrl(app, url))
       )
       menu.addItem((item) =>
         item
-          .setTitle('Open in Obsidian in a new tab')
+          .setTitle(t('streamB.openInObsidianInANewTab.a77e57'))
           .setIcon('github')
           .setSection('open')
           .onClick(() => void openGithubUrl(app, url, 'tab'))

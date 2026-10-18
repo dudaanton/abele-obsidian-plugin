@@ -1,16 +1,19 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
+
+import { t } from '@/i18n'
 import { providerKey } from '@/secrets/destinations'
 import { TabIntentQueue, type TabIntent } from './TabIntentQueue'
 import { ref, computed, shallowRef, toRaw } from 'vue'
 import { nanoid } from 'nanoid'
 import { copyChatData } from './chatClone'
 import { serializeChat } from './ChatLog'
-import type { ChatMessage } from './types'
+import { type ChatMessage, DEFAULT_AI_SETTINGS } from './types'
 import { App, Notice, TFile } from 'obsidian'
 import dayjs from 'dayjs'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import type { ModelConfig } from './client'
-import { DEFAULT_AI_SETTINGS } from './types'
+
 import { requestTimeoutSeconds } from './requestTimeout'
 import { AgentRegistry } from './agents/AgentRegistry'
 import { getNoteBody } from '@/helpers/notesUtils'
@@ -22,7 +25,11 @@ import { AI_SIDEBAR_VIEW_TYPE } from '@/constants/views'
 import { revealSidebarView } from '@/views/revealSidebarView'
 import { buildCommentContext } from './commentContext'
 import { buildMessageCommentContext } from './messageComments'
-import { LocalChatPresenter, type ChatPresentationSession, type ChatReference } from './ChatPresentationSession'
+import {
+  LocalChatPresenter,
+  type ChatPresentationSession,
+  type ChatReference,
+} from './ChatPresentationSession'
 import { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import { NodeService } from '@/node/NodeService'
 
@@ -124,7 +131,12 @@ export class ChatService {
     focusComposer?: boolean
   } | null>(null)
   /** A comment return can address a passage within that message, in one specific chat. */
-  public readonly pendingPassage = ref<{ path: string; message: string; quote: string; start?: number } | null>(null)
+  public readonly pendingPassage = ref<{
+    path: string
+    message: string
+    quote: string
+    start?: number
+  } | null>(null)
 
   /**
    * A result of the search across chats, for the chat component: once the chat at `path` is in
@@ -223,21 +235,32 @@ export class ChatService {
       const activeIndex = Math.max(0, Math.min(state.activeIndex || 0, state.tabs.length - 1))
       const order = [activeIndex, ...state.tabs.map((_, i) => i).filter((i) => i !== activeIndex)]
       const slots: Array<string | undefined> = []
-      const publish = (index: number, session: ChatSession | NodeChatPresenter) => this.mutatePresentation(() => {
-        if (generation !== this.restoreGeneration || (session instanceof ChatSession && session.isDestroyed)) return false
-        if (!this.tabOrder.value.includes(session.id) && !this.canCreateTab) return false
-        slots[index] = session.id
-        if (session instanceof NodeChatPresenter) this.nodeSessions.set(session.id, this.linkNodeSessions(session))
-        else this.sessions.set(session.id, session)
-        const restored = slots.filter((id): id is string => !!id && (this.sessions.has(id) || this.nodeSessions.has(id)))
-        // Tabs opened while restoration was reading stay after the saved layout.
-        this.tabOrder.value = [...new Set([...restored, ...this.tabOrder.value])]
-        // Select once. Background hydration must not steal a later user selection.
-        if (!this.activeTabId.value) this.activeTabId.value = session.id
-        if (session instanceof ChatSession)
-          CommentService.getInstance().showPresentationNow(session, this.activeTabId.value === session.id)
-        return true
-      })
+      const publish = (index: number, session: ChatSession | NodeChatPresenter) =>
+        this.mutatePresentation(() => {
+          if (
+            generation !== this.restoreGeneration ||
+            (session instanceof ChatSession && session.isDestroyed)
+          )
+            return false
+          if (!this.tabOrder.value.includes(session.id) && !this.canCreateTab) return false
+          slots[index] = session.id
+          if (session instanceof NodeChatPresenter)
+            this.nodeSessions.set(session.id, this.linkNodeSessions(session))
+          else this.sessions.set(session.id, session)
+          const restored = slots.filter(
+            (id): id is string => !!id && (this.sessions.has(id) || this.nodeSessions.has(id))
+          )
+          // Tabs opened while restoration was reading stay after the saved layout.
+          this.tabOrder.value = [...new Set([...restored, ...this.tabOrder.value])]
+          // Select once. Background hydration must not steal a later user selection.
+          if (!this.activeTabId.value) this.activeTabId.value = session.id
+          if (session instanceof ChatSession)
+            CommentService.getInstance().showPresentationNow(
+              session,
+              this.activeTabId.value === session.id
+            )
+          return true
+        })
 
       for (const index of order) {
         if (index !== activeIndex) {
@@ -258,11 +281,23 @@ export class ChatService {
         const tab = state.tabs[index]
         if ('sessionId' in tab) {
           try {
-            const presenter = new NodeChatPresenter(tab, NodeService.getInstance().connection(tab.registrationId))
-            if (!publish(index, presenter)) { presenter.destroy(); continue }
+            const presenter = new NodeChatPresenter(
+              tab,
+              NodeService.getInstance().connection(tab.registrationId)
+            )
+            if (!publish(index, presenter)) {
+              presenter.destroy()
+              continue
+            }
             // Offline cache restoration must not wait for network admission.
-            void presenter.load().catch((error: unknown) => console.error('[Abele] Node history could not be loaded', error))
-          } catch (error) { console.error('[Abele] Node tab could not be restored', error) }
+            void presenter
+              .load()
+              .catch((error: unknown) =>
+                console.error('[Abele] Node history could not be loaded', error)
+              )
+          } catch (error) {
+            console.error('[Abele] Node tab could not be restored', error)
+          }
           continue
         }
         if (!tab.chatFilePath) {
@@ -281,7 +316,12 @@ export class ChatService {
             return created
           })
           if (generation !== this.restoreGeneration) return
-          if (session && !publish(index, session) && !session.commentId && !this.sessions.has(session.id))
+          if (
+            session &&
+            !publish(index, session) &&
+            !session.commentId &&
+            !this.sessions.has(session.id)
+          )
             session.destroy()
         } catch (e) {
           console.error(`[Abele] Failed to restore tab ${tab.chatFilePath}:`, e)
@@ -360,13 +400,16 @@ export class ChatService {
     const clone = this.sessions.get(cloneId)!
     clone.preparingClone.value = true
     const version = clone.conversationVersion.value
-    const isCurrent = () => this.sessions.get(cloneId) === clone && clone.conversationVersion.value === version
+    const isCurrent = () =>
+      this.sessions.get(cloneId) === clone && clone.conversationVersion.value === version
     const storage = ChatStorage.getInstance()
     const runs = RunStorage.getInstance()
     const copies: RunFile[] = []
     const stillOpen = () => {
-      if (this.sessions.get(cloneId) !== clone) throw new Error('The new chat tab was closed.')
-      if (!isCurrent() || !clone.preparingClone.value) throw new Error('The chat copy was cancelled.')
+      if (this.sessions.get(cloneId) !== clone)
+        throw new UiError(uiMessage('streamBError.fa96a837ce'))
+      if (!isCurrent() || !clone.preparingClone.value)
+        throw new UiError(uiMessage('streamBError.93215f7df9'))
     }
     let file: TFile | null = null
     try {
@@ -375,10 +418,7 @@ export class ChatService {
           const reference = message.subAgentRun
           if (!reference) continue
           const original = await runs.load(reference.runId, { readOnly: true })
-          if (!original)
-            throw new Error(
-              'A delegated transcript is unavailable. Reopen the source chat and try again.'
-            )
+          if (!original) throw new UiError(uiMessage('streamBError.2f113794db'))
           const run = copyChatData(original)
           run.runId = nanoid()
           run.parentChat = parentChat
@@ -397,17 +437,17 @@ export class ChatService {
       await copyRuns(snapshot.messages, '')
       stillOpen()
       for (const run of copies)
-        if (!(await runs.save(run))) throw new Error('Could not save a delegated transcript.')
+        if (!(await runs.save(run))) throw new UiError(uiMessage('streamBError.8f777786c2'))
       file = await storage.saveChat(snapshot, {
         kind: 'rewrite',
         content: serializeChat(snapshot),
         records: 1 + snapshot.messages.length + (snapshot.internalMessages?.length ?? 0),
       })
-      if (!file) throw new Error('Could not save the new chat.')
+      if (!file) throw new UiError(uiMessage('streamBError.f327a9464f'))
       stillOpen()
       for (const run of copies.filter((run) => !run.parentChat)) {
         run.parentChat = file.path
-        if (!(await runs.save(run))) throw new Error('Could not save a delegated transcript.')
+        if (!(await runs.save(run))) throw new UiError(uiMessage('streamBError.8f777786c2'))
       }
       stillOpen()
       await clone.initializeClone(file, isCurrent)
@@ -428,7 +468,9 @@ export class ChatService {
         if (this.sessions.has(tabId)) this.switchTab(tabId)
       }
       new Notice(
-        `Could not create a new chat: ${error instanceof Error ? error.message : String(error)}`
+        t('streamB.couldNotCreateANewChat.f2a0db', {
+          v0: String(error instanceof Error ? error.message : String(error)),
+        })
       )
     }
   }
@@ -445,12 +487,14 @@ export class ChatService {
    */
   newTab(): string {
     const intent = this.presentations.begin('new-tab', false)
-    return this.presentations.apply(intent, () => {
-      this.tabSelectionRevision++
-      const id = this.createTabNow()
-      this.requestFocus()
-      return id
-    }) ?? this.activeTabId.value!
+    return (
+      this.presentations.apply(intent, () => {
+        this.tabSelectionRevision++
+        const id = this.createTabNow()
+        this.requestFocus()
+        return id
+      }) ?? this.activeTabId.value!
+    )
   }
 
   /**
@@ -485,16 +529,20 @@ export class ChatService {
     const intent = this.presentations.begin(file.path, false)
     const current = this.intentGuard(intent)
     const previous = this.sessions.get(tabId)
-    const session = await this.loadFile(file, () => {
-      const holder = this.sessions.get(tabId)
-      // A comment belongs to its marker; an in-flight load has already reserved its holder.
-      if (holder && holder.kind !== 'comment' && !this.isLoading(holder)) return holder
-      if (!this.canCreateTab) {
-        new Notice(ChatService.TABS_FULL)
-        return null
-      }
-      return this.sessions.get(this.createTabNow(this.presentations.selected(intent))) ?? null
-    }, current)
+    const session = await this.loadFile(
+      file,
+      () => {
+        const holder = this.sessions.get(tabId)
+        // A comment belongs to its marker; an in-flight load has already reserved its holder.
+        if (holder && holder.kind !== 'comment' && !this.isLoading(holder)) return holder
+        if (!this.canCreateTab) {
+          new Notice(ChatService.TABS_FULL)
+          return null
+        }
+        return this.sessions.get(this.createTabNow(this.presentations.selected(intent))) ?? null
+      },
+      current
+    )
     if (session) await this.presentLoadedSession(intent, session, previous)
   }
 
@@ -508,7 +556,9 @@ export class ChatService {
    * no-op there looks exactly like something that opened out of sight.
    */
   /** What a person is told when the bar will take no more; said by whoever asked first. */
-  static readonly TABS_FULL = `Close one of the ${MAX_TABS} open tabs first`
+  static get TABS_FULL() {
+    return t('streamBMeta.19dfe9890f', { count: MAX_TABS })
+  }
 
   /**
    * Whether this session could be shown as a tab right now — it already is one, or there is
@@ -519,28 +569,38 @@ export class ChatService {
    * Silent, unlike `adoptSession`: nothing has been attempted yet.
    */
   hasRoomFor(session: ChatSession): boolean {
-    return this.mutatePresentation(() => this.sessions.has(session.id) || this.canCreateTab) ?? false
+    return (
+      this.mutatePresentation(() => this.sessions.has(session.id) || this.canCreateTab) ?? false
+    )
   }
 
   /** Reserve capacity for an irreversible metadata promotion while its save runs outside the queue. */
   reserveTab(session: ChatSession): (() => void) | null {
-    return this.presentations.mutateImmediate(() => {
-      if (!this.sessions.has(session.id) && !this.canCreateTab) return null
-      this.tabReservations.add(session)
-      return () => { this.mutatePresentation(() => this.tabReservations.delete(session)) }
-    }) ?? null
+    return (
+      this.presentations.mutateImmediate(() => {
+        if (!this.sessions.has(session.id) && !this.canCreateTab) return null
+        this.tabReservations.add(session)
+        return () => {
+          this.mutatePresentation(() => this.tabReservations.delete(session))
+        }
+      }) ?? null
+    )
   }
 
   adoptSession(session: ChatSession, current?: () => boolean): boolean {
     if (!current) this.tabSelectionRevision++
-    const intent = (current && this.presentationGuards.get(current)) ??
+    const intent =
+      (current && this.presentationGuards.get(current)) ??
       this.presentations.begin(session.currentChatFile.value?.path ?? session.id, true, current)
-    if (!this.presentations.retarget(intent, session.currentChatFile.value?.path ?? session.id)) return false
-    return this.presentations.apply(intent, () => {
-      if (session.isDestroyed || !this.adoptSessionNow(session)) return false
-      CommentService.getInstance().showPresentationNow(session)
-      return true
-    }) ?? false
+    if (!this.presentations.retarget(intent, session.currentChatFile.value?.path ?? session.id))
+      return false
+    return (
+      this.presentations.apply(intent, () => {
+        if (session.isDestroyed || !this.adoptSessionNow(session)) return false
+        CommentService.getInstance().showPresentationNow(session)
+        return true
+      }) ?? false
+    )
   }
 
   private adoptSessionNow(session: ChatSession): boolean {
@@ -582,19 +642,32 @@ export class ChatService {
    * `focus: false` for a caller that opens something of its own over the chat — the find bar,
    * the history's search — which takes the cursor itself.
    */
-  async revealSidebar({ focus = true, current }: { focus?: boolean; current?: () => boolean } = {}): Promise<void> {
+  async revealSidebar({
+    focus = true,
+    current,
+  }: { focus?: boolean; current?: () => boolean } = {}): Promise<void> {
     // Revealing is a continuation, not a fresh tab-selection action. Unscoped callers can
     // reveal the current foreground, but can never supersede an opening already in flight.
-    const intent = (current && this.presentationGuards.get(current)) ??
-      this.presentations.captureForeground() ?? this.presentations.begin('sidebar', false, current)
+    const intent =
+      (current && this.presentationGuards.get(current)) ??
+      this.presentations.captureForeground() ??
+      this.presentations.begin('sidebar', false, current)
     if (current && !current()) return
-    if (!(await this.presentations.applyAsync(intent, () => this.presentations.selected(intent))) ||
-      !this.presentations.selected(intent)) return
+    if (
+      !(await this.presentations.applyAsync(intent, () => this.presentations.selected(intent))) ||
+      !this.presentations.selected(intent)
+    )
+      return
     // Workspace animation is I/O too. It cannot hold the tab queue or create a new intent
     // when it completes; only a still-current foreground action may request composer focus.
     await revealSidebarView(GlobalStore.getInstance().app, AI_SIDEBAR_VIEW_TYPE)
     this.presentations.apply(intent, () => {
-      if (focus && (!current || current()) && this.presentations.selected(intent) && ChatService.isBlank(this.activeSession.value))
+      if (
+        focus &&
+        (!current || current()) &&
+        this.presentations.selected(intent) &&
+        ChatService.isBlank(this.activeSession.value)
+      )
         this.requestFocus()
     })
   }
@@ -724,7 +797,9 @@ export class ChatService {
    * the tab bar is where its last edits were made.
    */
   /** Only intent admission and atomic UI decisions run here; no disk/model work. */
-  mutatePresentation<T>(work: () => T): T | undefined { return this.presentations.mutate(work) }
+  mutatePresentation<T>(work: () => T): T | undefined {
+    return this.presentations.mutate(work)
+  }
 
   private intentGuard(intent: TabIntent): () => boolean {
     const current = () => this.presentations.valid(intent)
@@ -737,9 +812,15 @@ export class ChatService {
     return !!intent && this.presentations.selected(intent)
   }
 
-  contextualOpenGuard(target: ChatSession | string | null | undefined, current?: () => boolean): () => boolean {
+  contextualOpenGuard(
+    target: ChatSession | string | null | undefined,
+    current?: () => boolean
+  ): () => boolean {
     if (current && this.presentationGuards.has(current)) return current
-    const key = typeof target === 'string' ? target : target?.currentChatFile.value?.path ?? target?.id ?? 'contextual-slot'
+    const key =
+      typeof target === 'string'
+        ? target
+        : (target?.currentChatFile.value?.path ?? target?.id ?? 'contextual-slot')
     return this.intentGuard(this.presentations.begin(key, true, current))
   }
 
@@ -748,39 +829,64 @@ export class ChatService {
     if (pending) return pending
     const saving = session.saveForRelease()
     this.releaseSaves.set(session, saving)
-    void saving.finally(() => { if (this.releaseSaves.get(session) === saving) this.releaseSaves.delete(session) }).catch(() => {})
+    void saving
+      .finally(() => {
+        if (this.releaseSaves.get(session) === saving) this.releaseSaves.delete(session)
+      })
+      .catch(() => {})
     return saving
   }
 
   async releaseSession(tabId: string, current?: () => boolean): Promise<boolean> {
     const session = this.sessions.get(tabId)
     if (!session) return false
-    const intent = current && this.presentationGuards.get(current) ||
+    const intent =
+      (current && this.presentationGuards.get(current)) ||
       this.presentations.begin(session.currentChatFile.value?.path ?? tabId, false, current)
-    if (!(await this.presentations.applyAsync(intent, () => this.sessions.get(tabId) === session && !session.isDestroyed)) ||
-      !this.presentations.valid(intent)) return false
+    if (
+      !(await this.presentations.applyAsync(
+        intent,
+        () => this.sessions.get(tabId) === session && !session.isDestroyed
+      )) ||
+      !this.presentations.valid(intent)
+    )
+      return false
     await this.saveForRelease(session)
-    return await this.presentations.applyAsync(intent, () => {
-      if (session.isDestroyed || this.sessions.get(tabId) !== session) return false
-      this.dropTabNow(tabId)
-      return true
-    }) ?? false
+    return (
+      (await this.presentations.applyAsync(intent, () => {
+        if (session.isDestroyed || this.sessions.get(tabId) !== session) return false
+        this.dropTabNow(tabId)
+        return true
+      })) ?? false
+    )
   }
 
   /** Save outside the queue, then release/reuse the contextual slot and check capacity atomically. */
-  async presentContextualSession(session: ChatSession, current: () => boolean, previous?: ChatSession | null): Promise<boolean> {
+  async presentContextualSession(
+    session: ChatSession,
+    current: () => boolean,
+    previous?: ChatSession | null
+  ): Promise<boolean> {
     const intent = this.presentationGuards.get(current)
-    if (!intent) throw new Error('Contextual presentation requires an admitted intent.')
-    if (!this.presentations.retarget(intent, session.currentChatFile.value?.path ?? session.id)) return false
+    if (!intent) throw new UiError(uiMessage('streamBError.2e42fe1f95'))
+    if (!this.presentations.retarget(intent, session.currentChatFile.value?.path ?? session.id))
+      return false
     const comments = CommentService.getInstance()
     // An expanded discussion is an independent chat, never a replacement for the comment slot.
     if (session.kind !== 'comment') return this.presentLoadedSession(intent, session, previous)
-    const contextualTabs = () => [...this.sessions.values()].filter((other) =>
-      other !== session && other.kind === 'comment' && other.commentId && comments.isShown(other.commentId)
-    )
+    const contextualTabs = () =>
+      [...this.sessions.values()].filter(
+        (other) =>
+          other !== session &&
+          other.kind === 'comment' &&
+          other.commentId &&
+          comments.isShown(other.commentId)
+      )
     const saved = new Set<ChatSession>()
     while (current()) {
-      const releases = await this.presentations.applyAsync(intent, () => contextualTabs().filter((other) => !saved.has(other)))
+      const releases = await this.presentations.applyAsync(intent, () =>
+        contextualTabs().filter((other) => !saved.has(other))
+      )
       if (!releases || !current()) return false
       await Promise.all(releases.map((other) => this.saveForRelease(other)))
       releases.forEach((other) => saved.add(other))
@@ -812,7 +918,9 @@ export class ChatService {
    * because a comment whose file has just been deleted needs exactly this and neither of the
    * others: there is nothing left to save it into, and the session is destroyed elsewhere.
    */
-  dropTab(tabId: string): void { this.mutatePresentation(() => this.dropTabNow(tabId)) }
+  dropTab(tabId: string): void {
+    this.mutatePresentation(() => this.dropTabNow(tabId))
+  }
 
   private dropTabNow(tabId: string, keepBlank = true): void {
     const session = this.sessions.get(tabId)
@@ -864,11 +972,19 @@ export class ChatService {
   private linkNodeSessions(presenter: NodeChatPresenter): NodeChatPresenter {
     const { nodeId, registrationId } = presenter.reference
     presenter.openSession = (sessionId) =>
-      void this.openNodeSession({ kind: 'node-session', nodeId, registrationId, sessionId, title: '' })
+      void this.openNodeSession({
+        kind: 'node-session',
+        nodeId,
+        registrationId,
+        sessionId,
+        title: '',
+      })
     return presenter
   }
 
-  getNodeSession(tabId: string): NodeChatPresenter | null { return this.nodeSessions.get(tabId) ?? null }
+  getNodeSession(tabId: string): NodeChatPresenter | null {
+    return this.nodeSessions.get(tabId) ?? null
+  }
 
   getPresentation(tabId: string): ChatPresentationSession | null {
     const node = this.nodeSessions.get(tabId)
@@ -877,14 +993,27 @@ export class ChatService {
     return local ? new LocalChatPresenter(local) : null
   }
 
-  async openNodeSession(reference: Extract<ChatReference, { kind: 'node-session' }>): Promise<void> {
+  async openNodeSession(
+    reference: Extract<ChatReference, { kind: 'node-session' }>
+  ): Promise<void> {
     this.tabSelectionRevision++
     const id = `node:${reference.registrationId}:${reference.sessionId}`
     const intent = this.presentations.begin(id, true)
     const presenter = this.presentations.apply(intent, () => {
-      if (this.nodeSessions.has(id)) { this.switchTabNow(id); return null }
-      if (!this.canCreateTab) { new Notice(ChatService.TABS_FULL); return null }
-      const presenter = this.linkNodeSessions(new NodeChatPresenter(reference, NodeService.getInstance().connection(reference.registrationId)))
+      if (this.nodeSessions.has(id)) {
+        this.switchTabNow(id)
+        return null
+      }
+      if (!this.canCreateTab) {
+        new Notice(ChatService.TABS_FULL)
+        return null
+      }
+      const presenter = this.linkNodeSessions(
+        new NodeChatPresenter(
+          reference,
+          NodeService.getInstance().connection(reference.registrationId)
+        )
+      )
       this.nodeSessions.set(id, presenter)
       this.tabOrder.value = [...this.tabOrder.value, id]
       this.activeTabId.value = id
@@ -914,19 +1043,24 @@ export class ChatService {
     this.tabSelectionRevision++
     const tabId = `run:${runId}`
     const intent = this.presentations.begin(tabId, true)
-    if (this.presentations.apply(intent, () => {
-      if (!this.runTabs.has(tabId)) return false
-      this.switchTabNow(tabId)
+    if (
+      this.presentations.apply(intent, () => {
+        if (!this.runTabs.has(tabId)) return false
+        this.switchTabNow(tabId)
+        return true
+      })
+    )
       return true
-    })) return true
     const run = await RunStorage.getInstance().load(runId)
     if (!run) return false
-    return this.presentations.apply(intent, () => {
-      this.runTabs.set(tabId, run)
-      this.tabOrder.value = [...this.tabOrder.value, tabId]
-      this.activeTabId.value = tabId
-      return true
-    }) ?? false
+    return (
+      this.presentations.apply(intent, () => {
+        this.runTabs.set(tabId, run)
+        this.tabOrder.value = [...this.tabOrder.value, tabId]
+        this.activeTabId.value = tabId
+        return true
+      }) ?? false
+    )
   }
 
   private closeRunTab(tabId: string): void {
@@ -949,42 +1083,71 @@ export class ChatService {
   }
 
   /** Shared file I/O has no contextual-tab effects; callers apply its result in the queue. */
-  private loadFile(file: TFile, create: () => ChatSession | null, current?: () => boolean): Promise<ChatSession | null> {
+  private loadFile(
+    file: TFile,
+    create: () => ChatSession | null,
+    current?: () => boolean
+  ): Promise<ChatSession | null> {
     const request: FileOpenRequest = { create, current }
     const pending = this.loadingFiles.get(file.path)
-    if (pending) { pending.requests.set(Symbol(), request); return pending.ready }
+    if (pending) {
+      pending.requests.set(Symbol(), request)
+      return pending.ready
+    }
     const existing = this.getSessionByFile(file.path)
-    if (existing) return existing.reconcileForSelectionReturn(current).then(() =>
-      existing.isDestroyed || existing.currentChatFile.value?.path !== file.path ? null : existing
-    )
+    if (existing)
+      return existing
+        .reconcileForSelectionReturn(current)
+        .then(() =>
+          existing.isDestroyed || existing.currentChatFile.value?.path !== file.path
+            ? null
+            : existing
+        )
     let complete!: (session: ChatSession | null) => void
     let fail!: (error: unknown) => void
-    const ready = new Promise<ChatSession | null>((resolve, reject) => { complete = resolve; fail = reject })
-    const entry = { session: null as ChatSession | null, ready, requests: new Map([[Symbol(), request]]) }
+    const ready = new Promise<ChatSession | null>((resolve, reject) => {
+      complete = resolve
+      fail = reject
+    })
+    const entry = {
+      session: null as ChatSession | null,
+      ready,
+      requests: new Map([[Symbol(), request]]),
+    }
     this.loadingFiles.set(file.path, entry)
     const generation = this.restoreGeneration
     void (async () => {
       try {
         const prepared = await ChatStorage.getInstance().prepareDiscussion(file)
         let session: ChatSession | null = null
-        if (prepared.identity) session = await CommentService.getInstance().load(prepared.identity, file)
+        if (prepared.identity)
+          session = await CommentService.getInstance().load(prepared.identity, file)
         else {
-          session = this.mutatePresentation(() => {
-            for (const waiter of entry.requests.values()) {
-              if (waiter.current && !waiter.current()) continue
-              const holder = waiter.create()
-              if (holder) return holder
-            }
-            return null
-          }) ?? null
+          session =
+            this.mutatePresentation(() => {
+              for (const waiter of entry.requests.values()) {
+                if (waiter.current && !waiter.current()) continue
+                const holder = waiter.create()
+                if (holder) return holder
+              }
+              return null
+            }) ?? null
         }
         entry.session = session
-        if (!session) { complete(null); return }
+        if (!session) {
+          complete(null)
+          return
+        }
         if (!prepared.identity) await session.load(file)
-        if (generation !== this.restoreGeneration) { session.destroy(); complete(null) }
-        else complete(session)
-      } catch (error) { fail(error) }
-      finally { if (this.loadingFiles.get(file.path) === entry) this.loadingFiles.delete(file.path) }
+        if (generation !== this.restoreGeneration) {
+          session.destroy()
+          complete(null)
+        } else complete(session)
+      } catch (error) {
+        fail(error)
+      } finally {
+        if (this.loadingFiles.get(file.path) === entry) this.loadingFiles.delete(file.path)
+      }
     })()
     return ready
   }
@@ -1028,11 +1191,15 @@ export class ChatService {
   ): Promise<boolean> {
     const raw = toRaw(file)
     const inherited = scopeCurrent && this.presentationGuards.get(scopeCurrent)
-    const intent = inherited ?? this.presentations.begin(file.path, true, scopeCurrent ?? selectionReturn)
+    const intent =
+      inherited ?? this.presentations.begin(file.path, true, scopeCurrent ?? selectionReturn)
     this.contextualLoads.set(raw, intent)
     let opening: Promise<void>
-    try { opening = selectionReturn ? this.openChatFile(file, selectionReturn) : this.openChatFile(file) }
-    finally { if (this.contextualLoads.get(raw) === intent) this.contextualLoads.delete(raw) }
+    try {
+      opening = selectionReturn ? this.openChatFile(file, selectionReturn) : this.openChatFile(file)
+    } finally {
+      if (this.contextualLoads.get(raw) === intent) this.contextualLoads.delete(raw)
+    }
     await opening
     return this.presentations.valid(intent) && !!this.getSessionByFile(file.path)
   }
@@ -1041,7 +1208,8 @@ export class ChatService {
   async openChatFile(file: TFile, selectionReturn?: () => boolean): Promise<void> {
     if (selectionReturn && !selectionReturn()) return
     this.tabSelectionRevision++
-    const intent = this.contextualLoads.get(toRaw(file)) ??
+    const intent =
+      this.contextualLoads.get(toRaw(file)) ??
       (selectionReturn && this.presentationGuards.get(selectionReturn)) ??
       this.presentations.begin(file.path, false, selectionReturn)
     // A link's file becomes authoritative only after identity resolution. Keep the original
@@ -1049,13 +1217,20 @@ export class ChatService {
     if (!this.presentations.retarget(intent, file.path)) return
     const current = this.intentGuard(intent)
     const previous = this.activeSession.value
-    const session = await this.loadFile(file, () => {
-      if (!current()) return null
-      const active = this.activeSession.value
-      if (ChatService.isBlank(active) && !this.isLoading(active)) return active
-      if (!this.canCreateTab) { new Notice(ChatService.TABS_FULL); return null }
-      return this.sessions.get(this.createTabNow(this.presentations.selected(intent))) ?? null
-    }, current)
+    const session = await this.loadFile(
+      file,
+      () => {
+        if (!current()) return null
+        const active = this.activeSession.value
+        if (ChatService.isBlank(active) && !this.isLoading(active)) return active
+        if (!this.canCreateTab) {
+          new Notice(ChatService.TABS_FULL)
+          return null
+        }
+        return this.sessions.get(this.createTabNow(this.presentations.selected(intent))) ?? null
+      },
+      current
+    )
     if (!session || !current()) return
     if (selectionReturn) await session.reconcileForSelectionReturn(current)
     if (intent.contextual && session.kind === 'comment') {
@@ -1066,17 +1241,30 @@ export class ChatService {
   }
 
   /** Generic/attention opens keep independent tabs, but only the latest action selects one. */
-  private async presentLoadedSession(intent: TabIntent, session: ChatSession, previous?: ChatSession | null): Promise<boolean> {
-    return await this.presentations.applyAsync(intent, () => {
-      if (session.isDestroyed || session.moving.value) return false
-      if (!this.sessions.has(session.id) && !this.canCreateTab) { new Notice(ChatService.TABS_FULL); return false }
-      this.sessions.set(session.id, session)
-      if (!this.tabOrder.value.includes(session.id)) this.tabOrder.value = [...this.tabOrder.value, session.id]
-      if (this.presentations.selected(intent)) this.selectLoadedNow(session, previous)
-      CommentService.getInstance().showPresentationNow(session, this.presentations.selected(intent))
-      this.saveTabs()
-      return true
-    }) ?? false
+  private async presentLoadedSession(
+    intent: TabIntent,
+    session: ChatSession,
+    previous?: ChatSession | null
+  ): Promise<boolean> {
+    return (
+      (await this.presentations.applyAsync(intent, () => {
+        if (session.isDestroyed || session.moving.value) return false
+        if (!this.sessions.has(session.id) && !this.canCreateTab) {
+          new Notice(ChatService.TABS_FULL)
+          return false
+        }
+        this.sessions.set(session.id, session)
+        if (!this.tabOrder.value.includes(session.id))
+          this.tabOrder.value = [...this.tabOrder.value, session.id]
+        if (this.presentations.selected(intent)) this.selectLoadedNow(session, previous)
+        CommentService.getInstance().showPresentationNow(
+          session,
+          this.presentations.selected(intent)
+        )
+        this.saveTabs()
+        return true
+      })) ?? false
+    )
   }
 
   /**
@@ -1099,18 +1287,24 @@ export class ChatService {
     if (session) {
       await session.reset()
     } else {
-      session = this.presentations.apply(intent, () => {
-        if (!this.canCreateTab) { new Notice(ChatService.TABS_FULL); return null }
-        return this.sessions.get(this.createTabNow()) ?? null
-      }) ?? null
+      session =
+        this.presentations.apply(intent, () => {
+          if (!this.canCreateTab) {
+            new Notice(ChatService.TABS_FULL)
+            return null
+          }
+          return this.sessions.get(this.createTabNow()) ?? null
+        }) ?? null
       if (!session) return null
     }
 
-    return this.presentations.apply(intent, () => {
-      if (!session || session.isDestroyed) return null
-      this.switchTabNow(session.id)
-      return session
-    }) ?? null
+    return (
+      this.presentations.apply(intent, () => {
+        if (!session || session.isDestroyed) return null
+        this.switchTabNow(session.id)
+        return session
+      }) ?? null
+    )
   }
 
   getAllSessions(): ChatSession[] {
@@ -1118,9 +1312,11 @@ export class ChatService {
   }
 
   private get occupiedTabCount(): number {
-    return this.tabOrder.value.length + [...this.tabReservations].filter((session) =>
-      !this.tabOrder.value.includes(session.id)
-    ).length
+    return (
+      this.tabOrder.value.length +
+      [...this.tabReservations].filter((session) => !this.tabOrder.value.includes(session.id))
+        .length
+    )
   }
 
   get canCreateTab(): boolean {
@@ -1136,7 +1332,7 @@ export class ChatService {
     if (!provider || provider.models.length === 0) {
       provider = config.providers.find((p) => p.models.length > 0)
     }
-    if (!provider) throw new Error('No provider with models configured')
+    if (!provider) throw new UiError(uiMessage('streamBError.22b988efd0'))
 
     let model = provider.models.find((m) => m.id === config.activeModelId)
     if (!model) {
@@ -1303,7 +1499,7 @@ export class ChatService {
     if (!provider || provider.models.length === 0) {
       provider = config.providers.find((p) => p.models.length > 0)
     }
-    if (!provider) throw new Error('No provider with models configured')
+    if (!provider) throw new UiError(uiMessage('streamBError.22b988efd0'))
 
     let model = provider.models.find((m) => m.id === modelId)
     if (!model) {

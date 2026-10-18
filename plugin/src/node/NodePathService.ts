@@ -1,3 +1,4 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import { watch, type WatchStopHandle } from 'vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { NodeService } from './NodeService'
@@ -47,8 +48,7 @@ export class NodePathService {
     if (existing) return existing
     const service = NodeService.getInstance(),
       node = service.nodes.value.find((n) => n.id === registrationId)
-    if (!node)
-      throw new Error('This node registration is missing. Reconnect it from the Node panel.')
+    if (!node) throw new UiError(uiMessage('streamBError.29f8c77828'))
     const connection = service.connection(registrationId)
     const port = new NodePathClientPort(
       connection.client,

@@ -1,3 +1,6 @@
+import { presentUiError } from '@/i18n/streamBErrors'
+import { agentText } from '@/i18n/streamBText'
+import { t } from '@/i18n'
 /** Execution state, not conversation content. No host or model dependencies. */
 export interface LocalAttention {
   run?: { id: string; at: number; status: 'running' | 'interrupted' | 'done'; target?: string }
@@ -228,26 +231,28 @@ export function restoreIndexedErrors(
         id: reason.id,
         at: reason.at,
         target: reason.target,
-        text: reason.text ?? 'Error details were not saved.',
+        text: reason.text ?? agentText('streamB.errorDetailsWereNotSaved.7381e0'),
       })
     }
   return errors
 }
 
 export function reasonLabel(reason: AttentionReason): string {
-  if (reason.uncertain) return 'Request status is uncertain. Open the conversation to check.'
+  if (reason.uncertain) return t('streamB.requestStatusIsUncertainOpenTheConversation.81df1b')
   switch (reason.kind) {
     case 'approval':
-      return `Permission needed: ${reason.text ?? ''}`
+      return t('streamBMeta.9db301c8a1', { v0: presentUiError(reason.text ?? '') })
     case 'question':
-      return `${reason.interrupted ? 'Work interrupted · ' : ''}${reason.text ?? 'Waiting for a reply'}`
+      return `${reason.interrupted ? t('streamBMeta.a4c58d950f') : ''}${reason.text ?? t('streamBMeta.b55c4b4242')}`
     case 'error':
-      return `Run failed: ${reason.text ?? ''}`
+      return t('streamBMeta.6c4c4258ea', {
+        v0: reason.text ?? t('streamB.errorDetailsWereNotSaved.7381e0'),
+      })
     case 'interrupted':
-      return 'Work interrupted'
+      return t('streamBMeta.8231de9d20')
     case 'running':
-      return 'Working on this device'
+      return t('streamBMeta.ce7c1452b0')
     case 'delivery':
-      return reason.text ?? 'Updating…'
+      return reason.text ?? t('streamBMeta.dfe40efe92')
   }
 }

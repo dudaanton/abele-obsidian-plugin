@@ -1,3 +1,6 @@
+import { streamBLabel } from '@/i18n/streamBLabels'
+import { t } from '@/i18n'
+import { streamBCount } from '@/i18n/streamBCounts'
 // The codes the node screens speak in: a glyph per kind of change and per kind of copy, with the
 // words for their tooltips. One place, so a square means the same thing in every view.
 import type { KitColor } from '@/constants/colors'
@@ -13,16 +16,16 @@ export const changeGlyphs: Record<ChangeKind, { icon: string; color: KitColor }>
 
 export const changeLabel = (c: FileChange) =>
   ({
-    modified: 'Modified',
-    added: 'New file',
-    deleted: 'Deleted',
-    renamed: `Renamed from ${c.from ?? ''}`,
-    conflict: 'Conflict: both sides changed it',
+    modified: streamBLabel('Modified'),
+    added: streamBLabel('New file'),
+    deleted: streamBLabel('Deleted'),
+    renamed: t('streamBMeta.5f2b9e1925', { path: c.from ?? '' }),
+    conflict: streamBLabel('Conflict: both sides changed it'),
   })[c.kind] +
   (c.stage === 'staged'
-    ? ' · staged'
+    ? streamBLabel(' · staged')
     : c.stage === 'partly' || c.partlyStaged
-      ? ' · partly staged'
+      ? streamBLabel(' · partly staged')
       : '') +
   (c.when ? ` · ${c.when}` : '')
 
@@ -37,12 +40,12 @@ export const copyIcon = (copy: CopySummary) =>
 
 export const copyKind = (copy: CopySummary) =>
   copy.missing
-    ? 'Not found on the node'
+    ? streamBLabel('Not found on the node')
     : copy.kind === 'project'
-      ? 'The folder itself'
+      ? streamBLabel('The folder itself')
       : copy.kind === 'detached'
-        ? `Detached at ${copy.branch}`
-        : 'Worktree'
+        ? t('streamBMeta.358c86cabc', { branch: copy.branch })
+        : t('streamBMeta.c893ba3003')
 
 /** A file's glyph by its kind, as an icon set for the file explorer draws them. */
 export function fileIcon(name: string): string {
@@ -68,4 +71,4 @@ export const fileName = (path: string) => path.slice(path.lastIndexOf('/') + 1)
 export const dirName = (path: string) =>
   path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
 
-export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
+export const plural = streamBCount

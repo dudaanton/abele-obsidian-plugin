@@ -2,37 +2,41 @@
   <div class="abele-node-panel" :class="`abele-node-panel_${phase}`">
     <!-- Before there is a node: find the one on this computer, or connect another. -->
     <div v-if="phase !== 'ready'" class="abele-node-panel__intro" :aria-busy="phase === 'looking'">
-      <DrawerViewSwitch icon="server" name="Node" />
+      <DrawerViewSwitch icon="server" :name="t('streamB.node.e93372')" />
       <span ref="introIconEl" class="abele-node-panel__intro-icon" aria-hidden="true" />
       <template v-if="phase === 'looking'">
-        <div class="abele-node-panel__intro-title">Looking for AbeleNode…</div>
-        <div class="abele-node-panel__intro-text">On this computer</div>
+        <div class="abele-node-panel__intro-title">
+          {{ t('streamB.lookingForAbelenode.1a9273') }}
+        </div>
+        <div class="abele-node-panel__intro-text">{{ t('streamB.onThisComputer.e6af7e') }}</div>
       </template>
       <template v-else-if="phase === 'found' || phase === 'connecting'">
         <div class="abele-node-panel__intro-title">{{ node?.name }}</div>
         <div class="abele-node-panel__intro-text">
-          AbeleNode {{ node?.version }} is running on this computer
+          {{ t('streamBMeta.8dd0b9551d', { p0: String(node?.version) }) }}
         </div>
       </template>
       <template v-else-if="phase === 'not-found'">
-        <div class="abele-node-panel__intro-title">No node on this computer</div>
+        <div class="abele-node-panel__intro-title">
+          {{ t('streamB.noNodeOnThisComputer.f0b1d9') }}
+        </div>
         <div class="abele-node-panel__intro-text">
-          Install AbeleNode and it shows up here by itself.
+          {{ t('streamB.installAbelenodeAndItShowsUpHere.4a8223') }}
         </div>
         <div class="abele-node-panel__command">
           <code class="abele-node-panel__command-text">{{ installCommand }}</code>
           <Icon
             icon="copy"
             size="xs"
-            tooltip="Copy the command"
+            :tooltip="t('streamB.copyTheCommand.5a6778')"
             @click="emit('copy', installCommand)"
           />
         </div>
       </template>
       <template v-else-if="phase === 'remote'">
-        <div class="abele-node-panel__intro-title">Connect a computer</div>
+        <div class="abele-node-panel__intro-title">{{ t('streamB.connectAComputer.6b399f') }}</div>
         <div class="abele-node-panel__intro-text">
-          Agents and folders live on a computer running AbeleNode. Pair this device with it.
+          {{ t('streamB.agentsAndFoldersLiveOnAComputer.069ba6') }}
         </div>
       </template>
       <div v-if="error" class="abele-node-panel__notice" role="alert">
@@ -41,17 +45,17 @@
       <div class="abele-node-panel__intro-actions">
         <Button
           v-if="phase === 'found' || phase === 'connecting'"
-          text="Connect"
+          :text="t('streamB.connect.1a2303')"
           accent
           :loading="phase === 'connecting'"
-          tooltip="Connect Abele to the node on this computer"
+          :tooltip="t('streamB.connectAbeleToTheNodeOnThis.b21243')"
           @click="emit('connect')"
         />
         <Button
           v-if="phase === 'remote'"
-          text="Connect a computer"
+          :text="t('streamB.connectAComputer.6b399f')"
           accent
-          tooltip="Pair with AbeleNode on a computer"
+          :tooltip="t('streamB.pairWithAbelenodeOnAComputer.383f91')"
           @click="emit('connect-other')"
         />
         <a
@@ -61,7 +65,7 @@
           tabindex="0"
           @click="emit('connect-other')"
           @keydown.enter="emit('connect-other')"
-          >Connect another computer</a
+          >{{ t('streamB.connectAnotherComputer.be5462') }}</a
         >
       </div>
     </div>
@@ -71,7 +75,7 @@
         <!-- Where the panel chooses what it shows, its modes stand here as the file explorer's
              buttons do, and the actions move to the place's menu. -->
         <div class="nav-buttons-container">
-          <DrawerViewSwitch icon="server" name="Node" />
+          <DrawerViewSwitch icon="server" :name="t('streamB.node.e93372')" />
           <slot v-if="$slots.nav" name="nav" />
           <template v-else>
             <Icon
@@ -79,10 +83,10 @@
               icon="message-square-plus"
               :tooltip="
                 !chatAvailable
-                  ? 'Update the node to enable target-bound sessions'
+                  ? t('streamB.updateTheNodeToEnableTargetBound.f96dc8')
                   : here
-                    ? `New chat in ${here}`
-                    : 'Open a folder first'
+                    ? t('streamB.newChatIn.988d48', { v0: String(here) })
+                    : t('streamB.openAFolderFirst.005043')
               "
               :disabled="!here || !chatAvailable || node.status !== 'connected'"
               @click="emit('new-chat')"
@@ -91,21 +95,25 @@
               v-if="!historyInPanel"
               class="nav-action-button"
               icon="history"
-              :tooltip="here ? `History of ${here}` : 'Open a folder first'"
+              :tooltip="
+                here
+                  ? t('streamB.historyOf.792738', { v0: String(here) })
+                  : t('streamB.openAFolderFirst.005043')
+              "
               :disabled="!here || !git"
               @click="emit('history')"
             />
             <Icon
               class="nav-action-button"
               icon="folder-plus"
-              tooltip="Open folder"
+              :tooltip="t('streamB.openFolder.6a9084')"
               :disabled="node.status !== 'connected'"
               @click="emit('open-folder')"
             />
             <Icon
               class="nav-action-button"
               icon="refresh-cw"
-              tooltip="Refresh"
+              :tooltip="t('streamB.refresh.0e9161')"
               @click="emit('refresh')"
             />
           </template>
@@ -121,14 +129,19 @@
           class="abele-node-panel__node-menu"
           icon="more-horizontal"
           size="xs"
-          tooltip="Node menu"
+          :tooltip="t('streamB.nodeMenu.72a622')"
           @click="(e: MouseEvent) => emit('menu', e)"
         />
       </div>
 
       <div v-if="node.status === 'offline'" class="abele-node-panel__notice" role="status">
-        <span>As of {{ node.seen }}</span>
-        <Icon icon="rotate-cw" size="xs" tooltip="Try to reconnect" @click="emit('retry')" />
+        <span>{{ t('streamBMeta.5a4afa4c2b', { p0: String(node.seen) }) }}</span>
+        <Icon
+          icon="rotate-cw"
+          size="xs"
+          :tooltip="t('streamB.tryToReconnect.aedae4')"
+          @click="emit('retry')"
+        />
       </div>
 
       <div v-if="error" class="abele-node-panel__notice" role="alert">
@@ -136,15 +149,15 @@
       </div>
       <div v-if="empty" class="abele-node-panel__intro abele-node-panel__intro_empty">
         <div class="abele-node-panel__intro-text">
-          Open a folder on {{ node.name }} to see its files and changes.
+          {{ t('streamBMeta.f7d3ed8268', { p0: String(node.name) }) }}
         </div>
         <div class="abele-node-panel__intro-actions">
           <Button
-            text="Open folder"
+            :text="t('streamB.openFolder.6a9084')"
             icon="folder-plus"
             accent
             :disabled="node.status !== 'connected'"
-            tooltip="Choose a folder on the node, or make a new one"
+            :tooltip="t('streamB.chooseAFolderOnTheNodeOr.ae4e56')"
             @click="emit('open-folder')"
           />
         </div>
@@ -156,6 +169,7 @@
 
 <script setup lang="ts">
 import NodeErrorText from '@/components/NodeErrorText.vue'
+import { t } from '@/i18n'
 import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 // The node's side panel, a tab of the left sidebar beside the file explorer: the computer where
 // agents work, with its connection dot, and under it whatever layout of folders and files the
@@ -224,10 +238,12 @@ const nodeTone = computed(() =>
 )
 const nodeLabel = computed(() =>
   props.node?.status === 'connected'
-    ? `Connected, live${props.updated ? ` · last change ${props.updated}` : ''}`
+    ? `Connected, live${props.updated ? t('streamB.lastChange.7614ac', { v0: String(props.updated) }) : ''}`
     : props.node?.status === 'connecting'
-      ? 'Reconnecting…'
-      : `Offline · last heard ${props.node?.seen ?? 'a while ago'}`
+      ? t('streamB.reconnecting.27b803')
+      : t('streamB.offlineLastHeard.25ba43', {
+          v0: String(props.node?.seen ?? t('streamB.aWhileAgo.ccf9d4')),
+        })
 )
 
 const introIconEl = ref<HTMLElement>()

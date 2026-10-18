@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { ref } from 'vue'
 import type { AttentionRow } from '@/agents/attention'
 
@@ -75,7 +76,9 @@ export function agentsFixture(state: AgentsFixtureState = 'mixed') {
     agent: 'Node',
     source: 'Node · Sample node',
     offline: true,
-    reasons: [{ kind: 'delivery', id: 'sample-connection', at: 0, text: 'Offline' }],
+    reasons: [
+      { kind: 'delivery', id: 'sample-connection', at: 0, text: t('streamB.offline.a17947') },
+    ],
   }
   const rows =
     state === 'empty'

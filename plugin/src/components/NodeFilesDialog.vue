@@ -1,9 +1,9 @@
 <template>
-  <Modal title="Workspace files and review" size="full" @close="close">
+  <Modal :title="t('streamB.workspaceFilesAndReview.1b959c')" size="full" @close="close">
     <div class="abele-node-files">
       <div v-if="onRepository" class="abele-node-files__actions">
         <Button
-          text="Open repository"
+          :text="t('streamB.openRepository.2284f8')"
           icon="folder-git-2"
           :disabled="busy || offline"
           @click="
@@ -13,35 +13,47 @@
             })
           "
         />
-        <span>Files, workspaces, commits and Working tree changes in a tab.</span>
+        <span>{{ t('streamB.filesWorkspacesCommitsAndWorkingTreeChanges.cbff1e') }}</span>
       </div>
-      <div class="abele-node-files__actions" role="tablist" aria-label="Workspace views">
-        <Button text="Files" :accent="tab === 'files'" @click="tab = 'files'" />
-        <Button text="Diffs" :accent="tab === 'diffs'" @click="tab = 'diffs'" />
-        <Button text="History" :accent="tab === 'history'" @click="history" />
+      <div
+        class="abele-node-files__actions"
+        role="tablist"
+        :aria-label="t('streamB.workspaceViews.808336')"
+      >
+        <Button
+          :text="t('streamB.files.abc7e9')"
+          :accent="tab === 'files'"
+          @click="tab = 'files'"
+        />
+        <Button
+          :text="t('streamB.diffs.1c4721')"
+          :accent="tab === 'diffs'"
+          @click="tab = 'diffs'"
+        />
+        <Button :text="t('streamB.history.0e7696')" :accent="tab === 'history'" @click="history" />
       </div>
       <p v-if="error" role="alert"><NodeErrorText :error="error" /></p>
       <p v-if="offline" role="status">
-        Offline · retained views remain available. Reconnect to browse.
+        {{ t('streamB.offlineRetainedViewsRemainAvailableReconnectTo.d47525') }}
       </p>
       <template v-if="tab === 'files'">
         <div class="abele-node-files__actions">
           <Button
             v-if="model.directory.value"
-            text="Parent folder"
+            :text="t('streamB.parentFolder.158f5a')"
             icon="arrow-up"
             :disabled="busy || offline"
             @click="act(() => model.list(parent, false, lifetime.signal))"
           />
           <Button
-            text="Refresh folder"
+            :text="t('streamB.refreshFolder.f962de')"
             icon="refresh-cw"
             :disabled="busy || offline"
             @click="act(() => model.list(model.directory.value, false, lifetime.signal))"
           />
           <span class="abele-node-files__path">{{ model.directory.value || '/' }}</span>
         </div>
-        <div aria-label="Workspace files" class="abele-node-files__listing">
+        <div :aria-label="t('streamB.workspaceFiles.bb2e2d')" class="abele-node-files__listing">
           <button
             v-for="entry in model.entries.value"
             :key="entry.path"
@@ -62,22 +74,22 @@
             <span>{{ entry.name }}</span
             ><small>{{
               entry.kind === 'symlink'
-                ? 'Symbolic link · not followed'
+                ? t('streamB.symbolicLinkNotFollowed.a17fac')
                 : entry.kind === 'file'
-                  ? `${entry.size} bytes`
+                  ? t('streamB.bytes.869a57', { v0: String(entry.size) })
                   : ''
             }}</small>
           </button>
           <Button
             v-if="model.next.value"
-            text="More files"
+            :text="t('streamB.moreFiles.594130')"
             :disabled="busy || offline"
             @click="act(() => model.list(model.directory.value, true, lifetime.signal))"
           />
         </div>
         <template v-if="model.document.value">
           <h3 class="abele-node-files__path">{{ model.filePath.value }}</h3>
-          <p>{{ model.document.value.size }} bytes · retained version</p>
+          <p>{{ t('streamBMeta.6fce708969', { p0: String(model.document.value.size) }) }}</p>
           <NodeFileSaveState
             :model="model"
             :offline="offline"
@@ -92,14 +104,14 @@
               !model.document.value.tooLarge
             "
           >
-            This version is read only. The bounded editor accepts UTF-8 text up to 32,768 characters
-            and does not edit Git metadata.
+            {{ t('streamB.thisVersionIsReadOnlyTheBounded.89264a') }}
           </p>
           <p v-if="model.document.value.tooLarge">
-            This file exceeds the node's retained-content limit. Its size is shown without loading
-            its contents.
+            {{ t('streamB.thisFileExceedsTheNodeSRetained.5707a2') }}
           </p>
-          <p v-else-if="model.document.value.binary">Binary file · no text preview.</p>
+          <p v-else-if="model.document.value.binary">
+            {{ t('streamB.binaryFileNoTextPreview.6018e8') }}
+          </p>
           <template
             v-if="
               model.draft.value || (!model.document.value.binary && !model.document.value.tooLarge)
@@ -110,10 +122,11 @@
                 model.draft.value && (model.document.value.binary || model.document.value.tooLarge)
               "
             >
-              Retained local text · the current file cannot be shown as text. Your draft remains
-              readable and copyable below.
+              {{ t('streamB.retainedLocalTextTheCurrentFileCannot.545af1') }}
             </p>
-            <p v-if="model.document.value.large">Large file · retained content shown below.</p>
+            <p v-if="model.document.value.large">
+              {{ t('streamB.largeFileRetainedContentShownBelow.0bab19') }}
+            </p>
             <GithubCode
               :key="model.filePath.value"
               :text="
@@ -138,48 +151,57 @@
                 model.draftText.value !== model.document.value.text
               "
             >
-              <summary>Last loaded version · reload to inspect current contents</summary>
+              <summary>{{ t('streamB.lastLoadedVersionReloadToInspectCurrent.bf3b4f') }}</summary>
               <GithubCode :text="model.document.value.text || ''" :path="model.filePath.value" />
             </details>
           </template>
         </template>
       </template>
       <template v-else-if="tab === 'diffs'">
-        <Setting name="Next snapshot comparison">
+        <Setting :name="t('streamB.nextSnapshotComparison.221fdf')">
           <select
             v-model="mode"
-            aria-label="Diff mode"
+            :aria-label="t('streamB.diffMode.83c93c')"
             :disabled="busy || offline"
             @change="loadDiff"
           >
-            <option value="head">HEAD / worktree</option>
-            <option value="staged">Staged · HEAD / index</option>
-            <option value="unstaged">Unstaged · index / worktree</option>
-            <option value="base">Branch / base · merge-base to HEAD</option>
-            <option value="commit">Commit change</option>
+            <option value="head">{{ t('streamB.headWorktree.6b9a2c') }}</option>
+            <option value="staged">{{ t('streamB.stagedHeadIndex.c6d80a') }}</option>
+            <option value="unstaged">{{ t('streamB.unstagedIndexWorktree.01bbb6') }}</option>
+            <option value="base">{{ t('streamB.branchBaseMergeBaseToHead.9de11c') }}</option>
+            <option value="commit">{{ t('streamB.commitChange.8a5497') }}</option>
           </select>
         </Setting>
-        <Setting v-if="mode === 'commit'" name="Commit identity"
-          ><Input v-model="commit" aria-label="Commit identity" placeholder="Full commit hash"
+        <Setting v-if="mode === 'commit'" :name="t('streamB.commitIdentity.c32322')"
+          ><Input
+            v-model="commit"
+            :aria-label="t('streamB.commitIdentity.c32322')"
+            :placeholder="t('streamB.fullCommitHash.952238')"
         /></Setting>
         <Button
-          text="Open new snapshot"
+          :text="t('streamB.openNewSnapshot.7ba70f')"
           icon="refresh-cw"
           :disabled="busy || offline || (mode === 'commit' && !commit)"
           @click="loadDiff"
         />
         <p v-if="model.snapshot.value" class="abele-node-files__path">
-          Immutable snapshot · {{ model.snapshot.value.diff_id }}<br />
-          Current comparison · {{ diffModeLabels[model.snapshot.value.mode] }}
+          {{ t('streamBMeta.3135711e46', { p0: String(model.snapshot.value.diff_id) }) }}<br />
+          {{
+            t('streamBMeta.f2ed32069a', { p0: String(diffModeLabels[model.snapshot.value.mode]) })
+          }}
           <template v-if="model.snapshot.value.commit"
-            ><br />Commit · {{ model.snapshot.value.commit }}</template
+            ><br />{{
+              t('streamBMeta.66e576cb3c', { p0: String(model.snapshot.value.commit) })
+            }}</template
           >
           <template v-if="model.snapshot.value.merge_base"
-            ><br />Merge-base · {{ model.snapshot.value.merge_base }}</template
+            ><br />{{
+              t('streamBMeta.d24b776832', { p0: String(model.snapshot.value.merge_base) })
+            }}</template
           >
         </p>
         <p v-if="model.snapshot.value && !model.files.value.length">
-          No changes in this comparison.
+          {{ t('streamB.noChangesInThisComparison.a1a1f5') }}
         </p>
         <GithubDiffFile
           v-for="file in model.files.value"
@@ -190,7 +212,7 @@
         >
           <template #selection="{ span, label }"
             ><Button
-              :text="`Comment · ${label}`"
+              :text="t('streamB.comment.e5dbf9', { v0: String(label) })"
               icon="message-square"
               :disabled="model.reviewLocked.value || !model.sessionId"
               @click="select(file, span, true)"
@@ -198,27 +220,42 @@
         </GithubDiffFile>
         <div v-if="selection && commenting" class="abele-node-files__comment">
           <p class="abele-node-files__path">
-            {{ selection.path }} · {{ selection.span.side === 'L' ? 'Before' : 'After' }} · lines
-            {{ selection.span.start }}–{{ selection.span.end }} · snapshot {{ selection.diffId }}
+            {{
+              t('streamBMeta.76abe4b076', {
+                p0: String(selection.path),
+                p1: String(
+                  selection.span.side === 'L'
+                    ? t('streamB.before.9bb725')
+                    : t('streamB.after.7b68fe')
+                ),
+                p2: String(selection.span.start),
+                p3: String(selection.span.end),
+                p4: String(selection.diffId),
+              })
+            }}
           </p>
-          <Setting name="Review comment">
+          <Setting :name="t('streamB.reviewComment.c8866a')">
             <textarea
               v-model="comment"
-              aria-label="Review comment"
+              :aria-label="t('streamB.reviewComment.c8866a')"
               rows="3"
               maxlength="2000"
               :disabled="model.reviewLocked.value"
             />
           </Setting>
           <Button
-            text="Add to review"
+            :text="t('streamB.addToReview.24cfb7')"
             :disabled="busy || !comment.trim() || model.reviewLocked.value"
             @click="addComment"
           />
         </div>
       </template>
       <template v-else>
-        <Button text="Refresh history" :disabled="busy || offline" @click="history" />
+        <Button
+          :text="t('streamB.refreshHistory.70f3d2')"
+          :disabled="busy || offline"
+          @click="history"
+        />
         <div class="abele-node-files__listing">
           <button
             v-for="row in model.logs.value"
@@ -233,14 +270,14 @@
         </div>
         <Button
           v-if="model.logs.value.length"
-          text="More commits"
+          :text="t('streamB.moreCommits.9b6bfa')"
           :disabled="busy || offline"
           @click="act(() => model.loadLog(true, lifetime.signal))"
         />
       </template>
       <details v-if="model.comments.value.length" open>
         <summary>
-          Review batch · {{ model.comments.value.length }} comments across retained snapshots
+          {{ t('streamBMeta.4b9a66feb9', { p0: String(model.comments.value.length) }) }}
         </summary>
         <div
           v-for="(anchor, index) in model.comments.value"
@@ -252,7 +289,7 @@
           </p>
           <p>{{ anchor.comment }}</p>
           <Button
-            text="Remove comment"
+            :text="t('streamB.removeComment.6c9206')"
             :disabled="model.reviewLocked.value || busy"
             @click="model.removeComment(index)"
           />
@@ -260,7 +297,7 @@
       </details>
       <p v-if="model.reviewStatus.value" role="status">{{ model.reviewStatus.value }}</p>
       <details v-if="model.submittedReview.value.length">
-        <summary>Last submitted review · retained selections</summary>
+        <summary>{{ t('streamB.lastSubmittedReviewRetainedSelections.62e0f6') }}</summary>
         <div
           v-for="(item, index) in model.submittedReview.value"
           :key="index"
@@ -274,39 +311,39 @@
           <p>
             {{
               item.stale
-                ? 'Stale · workspace changed or could not be rechecked. Original selection was sent.'
-                : 'Selection matched at acceptance.'
+                ? t('streamB.staleWorkspaceChangedOrCouldNotBe.878186')
+                : t('streamB.selectionMatchedAtAcceptance.8e2c0b')
             }}
           </p>
           <p>{{ item.anchor.comment }}</p>
         </div>
       </details>
-      <p v-if="!model.sessionId">
-        Browse only. Open files from a workspace session to send review comments.
-      </p>
+      <p v-if="!model.sessionId">{{ t('streamB.browseOnlyOpenFilesFromAWorkspace.fdf960') }}</p>
     </div>
     <template #footer>
       <Button
         v-if="model.pendingReview.value"
-        text="Check queued review"
+        :text="t('streamB.checkQueuedReview.1bcc6a')"
         :disabled="busy"
         @click="act(() => model.checkReview())"
       />
       <Button
         v-else
-        :text="`Send review (${model.comments.value.length})`"
+        :text="t('streamB.sendReview.f0f751', { v0: String(model.comments.value.length) })"
         accent
         :disabled="
           busy || model.reviewLocked.value || !model.sessionId || !model.comments.value.length
         "
         @click="act(() => model.submit())"
       />
-      <Button text="Close" @click="close" />
+      <Button :text="t('streamB.close.7d9eb7')" @click="close" />
     </template>
   </Modal>
 </template>
 <script setup lang="ts">
 import NodeErrorText from '@/components/NodeErrorText.vue'
+import { presentUiField, presentUiError } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import type { DiffMode } from '@abele/node-client'
 import type { DiffSpan } from '@/github/permalinks'
@@ -365,11 +402,11 @@ const tab = ref(props.initialTab || 'files'),
   comment = ref(''),
   commenting = ref(!!props.initialSelection)
 const diffModeLabels: Record<DiffMode, string> = {
-  head: 'HEAD / worktree',
-  staged: 'Staged · HEAD / index',
-  unstaged: 'Unstaged · index / worktree',
-  base: 'Branch / base · merge-base to HEAD',
-  commit: 'Commit change',
+  head: t('streamB.headWorktree.6b9a2c'),
+  staged: t('streamB.stagedHeadIndex.c6d80a'),
+  unstaged: t('streamB.unstagedIndexWorktree.01bbb6'),
+  base: t('streamB.branchBaseMergeBaseToHead.9de11c'),
+  commit: t('streamB.commitChange.8a5497'),
 }
 watch(
   () => props.model.snapshot.value,
@@ -389,14 +426,15 @@ async function act(work: () => Promise<unknown>) {
   try {
     await work()
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Node request failed'
+    error.value = e instanceof Error ? presentUiError(e) : t('streamB.nodeRequestFailed.3ded00')
   } finally {
     busy.value = false
   }
 }
 const editText = (text: string) => {
   void props.model.editText(text).catch((e: unknown) => {
-    error.value = e instanceof Error ? e.message : 'Local draft could not be stored'
+    error.value =
+      e instanceof Error ? presentUiError(e) : t('streamB.localDraftCouldNotBeStored.4af2a9')
   })
 }
 const open = (entry: { path: string; kind: string }) =>
@@ -438,7 +476,7 @@ function select(file: NodeDiffFile, span: DiffSpan | null, show = false) {
         next?.span.end !== selection.value?.span.end ||
         next?.span.side !== selection.value?.span.side)
     ) {
-      error.value = 'Add or clear the current comment before choosing another selection'
+      error.value = t('streamB.addOrClearTheCurrentCommentBefore.fd7216')
       return
     }
     if (next) selection.value = next
@@ -449,7 +487,7 @@ function select(file: NodeDiffFile, span: DiffSpan | null, show = false) {
       selection.value = null
     if (show) commenting.value = true
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Invalid selection'
+    error.value = e instanceof Error ? presentUiError(e) : t('streamB.invalidSelection.a2f76c')
   }
 }
 const addComment = () =>
@@ -467,7 +505,7 @@ onMounted(
       const reads: Promise<unknown>[] = []
       if (props.model.draftError.value) {
         // An unpersisted private copy must stay visible until an explicit reload/copy action.
-        error.value = props.model.draftError.value
+        error.value = presentUiField(props.model.draftError, 'value')
       } else if (props.initialPath) {
         reads.push(
           props.initialRange

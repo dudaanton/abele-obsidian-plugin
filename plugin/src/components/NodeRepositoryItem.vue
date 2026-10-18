@@ -4,10 +4,10 @@
       v-if="error"
       :text="nodeErrorWords(error)"
       :title="error"
-      retry-tooltip="Ask the node again"
+      :retry-tooltip="t('streamBMeta.afdea7c2c1')"
       @retry="load"
     />
-    <EmptyState v-else text="Connecting to the node…" />
+    <EmptyState v-else :text="t('streamB.connectingToTheNode.2fcf9c')" />
   </div>
   <GithubItem
     v-else
@@ -31,7 +31,7 @@
           tabindex="0"
           icon="git-branch"
           :text-right="pickerLabel(shownRef)"
-          tooltip="Choose a workspace or version"
+          :tooltip="t('streamB.chooseAWorkspaceOrVersion.2b9825')"
           :disabled="offline"
           @click="chooseRepository(file?.path)"
           @keydown.enter.prevent="chooseRepository(file?.path)"
@@ -41,7 +41,7 @@
           role="button"
           tabindex="0"
           icon="panel-left"
-          tooltip="Show in the node panel"
+          :tooltip="t('streamB.showInTheNodePanel.2cb7ed')"
           @click="showInPanel"
           @keydown.enter.prevent="showInPanel"
         />
@@ -50,7 +50,7 @@
           role="button"
           tabindex="0"
           icon="folder-git-2"
-          tooltip="Repository actions"
+          :tooltip="t('streamB.repositoryActions.706113')"
           :disabled="offline || settingsBusy"
           @click="externalMenu"
           @keydown.enter.prevent="externalMenu"
@@ -58,31 +58,37 @@
       </div>
     </template>
     <template #repository-details>
-      <span v-if="offline" role="status">Node offline · reconnect to refresh.</span>
+      <span v-if="offline" role="status">{{
+        t('streamB.nodeOfflineReconnectToRefresh.bc3a90')
+      }}</span>
       <Setting
         v-if="external && live"
-        name="External workspace editing"
+        :name="t('streamB.externalWorkspaceEditing.87e932')"
         :desc="
           editingEnabled
-            ? 'Editing allowed for this worktree. Git actions are not enabled.'
-            : 'Read only until you allow editing for this worktree.'
+            ? t('streamB.editingAllowedForThisWorktreeGitActions.a6e1ec')
+            : t('streamB.readOnlyUntilYouAllowEditingFor.949b5a')
         "
       >
         <Checkbox
           class="abele-node-repository__editing"
           :is-enabled="editingEnabled"
-          aria-label="Allow external workspace editing"
+          :aria-label="t('streamB.allowExternalWorkspaceEditing.057b47')"
           :aria-disabled="offline || settingsBusy"
           @toggle="toggleEditing"
         />
       </Setting>
-      <span v-else-if="external" class="abele-node-repository__meta"
-        >External workspace · historical version · read only</span
-      >
+      <span v-else-if="external" class="abele-node-repository__meta">{{
+        t('streamB.externalWorkspaceHistoricalVersionReadOnly.326d23')
+      }}</span>
       <template v-if="historyOpen">
         <div class="abele-node-repository__actions">
-          <span>File history</span
-          ><Icon icon="x" tooltip="Close file history" @click="historyOpen = false" />
+          <span>{{ t('streamB.fileHistory.9f9c57') }}</span
+          ><Icon
+            icon="x"
+            :tooltip="t('streamB.closeFileHistory.60f34c')"
+            @click="historyOpen = false"
+          />
         </div>
         <EmptyState
           v-if="historyError"
@@ -101,6 +107,8 @@
 <script setup lang="ts">
 import { nodeErrorNotice } from '@/node/errorNotice'
 import { nodeErrorWords } from '@/node/errorWords'
+import { presentUiField, presentUiError } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 import { computed, onBeforeUnmount, reactive, ref, shallowRef, watch } from 'vue'
 import { Menu, type PaneType } from 'obsidian'
 import { confirmDialog } from '@/components/obsidian/dialogs'
@@ -165,12 +173,20 @@ const toggleEditing = async () => {
   try {
     if (
       !(await confirmDialog({
-        title: enabled ? 'Allow editing in this worktree?' : 'Turn off worktree editing?',
+        title: enabled
+          ? t('streamB.allowEditingInThisWorktree.0b5778')
+          : t('streamB.turnOffWorktreeEditing.6f96b7'),
         message: enabled
-          ? `Allow current files in ${selected.value?.label || 'this external worktree'} to be saved by confirmed node owners? This applies only to this worktree identity, not agent execution or Git actions. Chat edits still require per-edit approval.`
-          : 'Stop new saves in this external worktree? Local drafts and unresolved save evidence are kept.',
-        confirmText: enabled ? 'Allow editing' : 'Turn off editing',
-        confirmTooltip: enabled ? 'Allow saves for this worktree identity' : 'Stop new saves',
+          ? t('streamB.allowCurrentFilesInToBeSaved.1b8dd3', {
+              v0: String(selected.value?.label || t('streamB.thisExternalWorktree.15dcfe')),
+            })
+          : t('streamB.stopNewSavesInThisExternalWorktree.e3beec'),
+        confirmText: enabled
+          ? t('streamB.allowEditing.8195ed')
+          : t('streamB.turnOffEditing.b065b8'),
+        confirmTooltip: enabled
+          ? t('streamB.allowSavesForThisWorktreeIdentity.2a5187')
+          : t('streamB.stopNewSaves.fcebed'),
       }))
     )
       return
@@ -207,13 +223,15 @@ const selected = computed(() =>
 )
 const external = computed(() => selected.value?.kind === 'external')
 const live = computed(() => 'ref' in location.value && location.value.ref === WORKING_TREE)
-const projectName = ref('Project')
+const projectName = ref(t('streamB.project.985959'))
 const updateTitle = () =>
-  props.onTitle?.(`${projectName.value} · ${selected.value?.label || 'Workspace'}`)
+  props.onTitle?.(
+    `${projectName.value} · ${selected.value?.label || t('streamB.workspace.87bb59')}`
+  )
 const pickerLabel = (ref?: string) =>
   ref && /^[a-f\d]{40,64}$/i.test(ref)
     ? ref.slice(0, 7)
-    : selected.value?.branch?.replace(/^refs\/heads\//, '') || 'Files'
+    : selected.value?.branch?.replace(/^refs\/heads\//, '') || t('streamB.files.abc7e9')
 const chooseRepository = (path?: string) => {
   if (!source.value || offline.value) return
   new RepositoryPicker(
@@ -241,8 +259,7 @@ const load = async () => {
   try {
     const service = NodeService.getInstance(),
       registered = service.nodes.value.find((node) => node.id === current.source.node)
-    if (!registered)
-      throw new Error('This node was removed. Reconnect it in Abele settings → Nodes.')
+    if (!registered) throw new Error(t('streamB.thisNodeWasRemovedReconnectItIn.0c8327'))
     const transport = service.connection(registered.id)
     connection.value = transport
     await transport.connect()
@@ -254,15 +271,13 @@ const load = async () => {
       principal.installation !== current.source.installation ||
       principal.node !== registered.expectedNodeId
     )
-      throw new Error(
-        'This node connection belongs to another installation. Open the repository again.'
-      )
+      throw new Error(t('streamB.thisNodeConnectionBelongsToAnotherInstallation.8f2100'))
     const project = await transport.client.getProject(current.source.project)
-    if (!project) throw new Error('This project is no longer registered on the node.')
+    if (!project) throw new Error(t('streamB.thisProjectIsNoLongerRegisteredOn.ffde6b'))
     const authority = transport.authorizationGeneration
     const labels = {
       node: registered.label,
-      project: project.root_path.split(/[\\/]/).pop() || 'Project',
+      project: project.root_path.split(/[\\/]/).pop() || t('streamB.project.985959'),
       isCurrent: () =>
         alive &&
         transport.authorizationGeneration === authority &&
@@ -309,34 +324,33 @@ const load = async () => {
       selection: () => props.model.screen.selection,
       proposeEdit: async (proposal, guard) => {
         const editor = documents.value
-        if (!editor) throw new Error('Repository editor unavailable')
+        if (!editor) throw new Error(t('streamB.repositoryEditorUnavailable.0080d2'))
         guard()
         if (
-          editor.draftError.value ||
+          presentUiField(editor.draftError, 'value') ||
           (editor.draftDirty.value && editor.filePath.value === proposal.path)
         )
-          throw new Error('Keep or discard the visible local draft before proposing another edit')
+          throw new Error(t('streamB.keepOrDiscardTheVisibleLocalDraft.00265b'))
         const permission = await transport.client.repository.editingStatus({
           worktree_id: next.identity.workspace,
         })
         guard()
-        if (!permission.enabled)
-          throw new Error('Editing is off for this worktree; the owner must enable it first')
+        if (!permission.enabled) throw new Error(t('streamB.editingIsOffForThisWorktreeThe.f829ed'))
         const document = await editor.documents.read(proposal.path)
         guard()
         if (document.contentId !== proposal.expected_content_id)
-          throw new Error('The proposed base changed; read the file and ask for new approval')
+          throw new Error(t('streamB.theProposedBaseChangedReadTheFile.26cdf8'))
         const existing = await editor.documents.draft(proposal.path)
         guard()
         if (existing && existing.status !== 'saved')
-          throw new Error('A local draft already exists. Review it before proposing another edit')
+          throw new Error(t('streamB.aLocalDraftAlreadyExistsReviewIt.d70337'))
         if (existing) await editor.documents.discard(proposal.path, existing.revision)
         await editor.documents.edit(proposal.path, document, proposal.text, null, guard)
         guard()
         await editor.openFile(proposal.path, undefined, undefined, document)
         editor.editing.value = true
         open(next.navigation.file(WORKING_TREE, proposal.path))
-        return 'Approved proposal retained as a local draft in the repository tab. The owner must explicitly Save; no node file was written.'
+        return t('streamB.approvedProposalRetainedAsALocalDraft.b372ef')
       },
     })
     workspaces.value = catalog
@@ -347,7 +361,9 @@ const load = async () => {
     void next.startWatching(live.value)
   } catch (reason) {
     if (alive && mine === generation) {
-      error.value = `Node unavailable · ${reason instanceof Error ? reason.message : String(reason)}`
+      error.value = t('streamB.nodeUnavailable.8856e0', {
+        v0: String(presentUiError(reason)),
+      })
       props.model.screen.error = error.value
     }
   }
@@ -419,7 +435,7 @@ const externalMenu = (event?: MouseEvent | KeyboardEvent) => {
     if (at.kind === 'file') {
       menu.addItem((item) =>
         item
-          .setTitle('File history')
+          .setTitle(t('streamB.fileHistory.9f9c57'))
           .setIcon('git-commit-horizontal')
           .onClick(() => {
             void showHistory(at.ref, at.path)
@@ -428,11 +444,11 @@ const externalMenu = (event?: MouseEvent | KeyboardEvent) => {
     }
   }
   menu.addItem((item) =>
-    item.setTitle('Show in the node panel').setIcon('panel-left').onClick(showInPanel)
+    item.setTitle(t('streamB.showInTheNodePanel.2cb7ed')).setIcon('panel-left').onClick(showInPanel)
   )
   menu.addItem((item) =>
     item
-      .setTitle('Compare with another version')
+      .setTitle(t('streamB.compareWithAnotherVersion.505d39'))
       .setIcon('git-compare')
       .onClick(() => {
         const at = location.value,
@@ -440,7 +456,7 @@ const externalMenu = (event?: MouseEvent | KeyboardEvent) => {
         // A node tab has no base bar to show or undo a pinned base: open the comparison itself,
         // and drop a base an earlier version of this menu pinned out of sight.
         const app = GlobalStore.getInstance().app,
-          repo = presentation.target!
+          repo = presentation.target
         new BasePicker(app, source.value!, repo, (pin) => {
           basePins(app).unpin(repo, source.value!.identity)
           open(
@@ -451,7 +467,7 @@ const externalMenu = (event?: MouseEvent | KeyboardEvent) => {
   )
   menu.addItem((item) =>
     item
-      .setTitle('Chat about this')
+      .setTitle(t('streamB.chatAboutThis.b6a19c'))
       .setIcon('message-square-plus')
       .onClick(() => {
         void import('@/github/GithubView').then(({ GithubView }) =>
@@ -468,7 +484,7 @@ const externalMenu = (event?: MouseEvent | KeyboardEvent) => {
     const at = frozen.location
     menu.addItem((item) =>
       item
-        .setTitle('Swap versions')
+        .setTitle(t('streamB.swapVersions.b4c982'))
         .setIcon('arrow-left-right')
         .onClick(() => open(source.value!.navigation.comparison(at.head, at.base!, true)))
     )
@@ -477,14 +493,18 @@ const externalMenu = (event?: MouseEvent | KeyboardEvent) => {
   if (source.value && presentation.target && pins.get(presentation.target, source.value.identity))
     menu.addItem((item) =>
       item
-        .setTitle('Stop comparing files')
+        .setTitle(t('streamB.stopComparingFiles.20cf7a'))
         .setIcon('pin-off')
         .onClick(() => pins.unpin(presentation.target!, source.value!.identity))
     )
   if (presentation.target?.kind === 'blob')
     menu.addItem((item) =>
       item
-        .setTitle(presentation.originalFile ? 'Show comparison' : 'Original file')
+        .setTitle(
+          presentation.originalFile
+            ? t('streamB.showComparison.ca884c')
+            : t('streamB.originalFile.0ee08b')
+        )
         .setIcon('file-text')
         .onClick(() => {
           presentation.originalFile = !presentation.originalFile
@@ -493,7 +513,7 @@ const externalMenu = (event?: MouseEvent | KeyboardEvent) => {
     )
   menu.addItem((item) =>
     item
-      .setTitle('Allow external workspace browsing')
+      .setTitle(t('streamB.allowExternalWorkspaceBrowsing.565667'))
       .setIcon('folder-git-2')
       .onClick(() => {
         void configure(true)
@@ -501,7 +521,7 @@ const externalMenu = (event?: MouseEvent | KeyboardEvent) => {
   )
   menu.addItem((item) =>
     item
-      .setTitle('Stop browsing external workspaces')
+      .setTitle(t('streamB.stopBrowsingExternalWorkspaces.03d51a'))
       .setIcon('folder-closed')
       .onClick(() => {
         void configure(false)
@@ -522,7 +542,7 @@ const showHistory = async (ref: string, path: string) => {
   try {
     history.value = await source.value!.commits(ref, path)
   } catch (error) {
-    historyError.value = error instanceof Error ? error.message : String(error)
+    historyError.value = presentUiError(error)
   }
 }
 watch(
@@ -546,9 +566,9 @@ watch(
       setPresentation(
         source.value.identity.node === target.value?.source.node
           ? NodeService.getInstance().nodes.value.find((n) => n.id === target.value?.source.node)
-              ?.label || 'Node'
-          : 'Node',
-        presentation.target?.repo || 'Project'
+              ?.label || t('streamB.node.e93372')
+          : t('streamB.node.e93372'),
+        presentation.target?.repo || t('streamB.project.985959')
       )
   }
 )
@@ -567,7 +587,7 @@ watch(
     detachTools()
     source.value?.dispose()
     source.value = undefined
-    error.value = 'This node was removed. Reconnect it before browsing.'
+    error.value = t('streamB.thisNodeWasRemovedReconnectItBefore.514170')
     Object.assign(props.model.screen, {
       link: null,
       selection: null,

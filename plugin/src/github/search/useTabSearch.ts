@@ -1,4 +1,5 @@
 import { isNativeForge } from '@/forge/native'
+import { UiError, uiMessage, uiFieldMessage } from '@/i18n/streamBErrors'
 /**
  * The search a GitHub tab carries — find in the tab, code search, go to definition — wired to
  * what the tab has loaded. Kept out of the tab component so that component only says where the
@@ -135,7 +136,12 @@ export function useTabSearch(o: TabSearchOptions) {
     if (t.kind === 'pull') {
       if (!o.files.data.value) await o.files.load()
       const files = o.files.data.value?.files
-      if (!files) throw new Error(o.files.error.value ?? "The pull request's files did not load.")
+      if (!files)
+        throw new UiError(
+          o.files.error.value != null
+            ? uiFieldMessage(o.files.error, 'value')
+            : uiMessage('streamBError.8bd81bdfdd')
+        )
       return {
         files,
         lineUrl: (hash, side, line) =>

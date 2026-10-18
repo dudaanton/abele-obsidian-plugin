@@ -40,7 +40,7 @@
           <Icon
             icon="x"
             class="abele-chat-input__attachment-remove"
-            :tooltip="`Remove ${attachmentName(a.path)}`"
+            :tooltip="t('streamB.remove.9fc927', { v0: String(attachmentName(a.path)) })"
             @click="attachments.splice(i, 1)"
           />
         </div>
@@ -61,7 +61,7 @@
         ref="inputEl"
         :value="text"
         class="abele-chat-input__field abele-chat-input__textarea"
-        placeholder="Message…"
+        :placeholder="t('streamB.message.fc7150')"
         rows="1"
         @input="onInput"
         @keydown="onKeydown"
@@ -91,7 +91,7 @@
           <Icon
             v-if="!textOnly && !isBusy && !importing"
             icon="paperclip"
-            tooltip="Attach a file"
+            :tooltip="t('streamB.attachAFile.21298c')"
             @click="showAttachMenu"
           />
           <!-- What the agent may reach, as a glyph with a count: the whole vault, or so many
@@ -123,7 +123,9 @@
           <Icon
             v-if="!isBusy && !importing"
             icon="mic"
-            :tooltip="voiceOpen ? 'Close voice input' : 'Dictate a message'"
+            :tooltip="
+              voiceOpen ? t('streamB.closeVoiceInput.e88eea') : t('streamB.dictateAMessage.1393f9')
+            "
             :class="{ 'abele-chat-input__mic_open': voiceOpen }"
             @click="voiceOpen = !voiceOpen"
           />
@@ -131,7 +133,7 @@
             <Icon
               v-if="text.trim() || attachments.length"
               icon="send-horizontal"
-              tooltip="Send when the agent gets there"
+              :tooltip="t('streamB.sendWhenTheAgentGetsThere.99298e')"
               class="abele-chat-input__send"
               data-keeps-focus
               @click="send"
@@ -147,7 +149,9 @@
             v-else-if="isBusy || importing"
             icon="loader"
             no-hover
-            :tooltip="importing ? 'Copying the files into the vault' : 'Busy'"
+            :tooltip="
+              importing ? t('streamB.copyingTheFilesIntoTheVault.69a783') : t('streamB.busy.2b9cf7')
+            "
             class="abele-chat-input__spinner"
           />
           <template v-else>
@@ -164,7 +168,7 @@
             <Icon
               v-if="canContinue && !text.trim() && !attachments.length"
               icon="play"
-              tooltip="Continue where the agent stopped"
+              :tooltip="t('streamB.continueWhereTheAgentStopped.ea04e7')"
               class="abele-chat-input__continue"
               @click="emit('continue')"
             />
@@ -175,7 +179,7 @@
                 'abele-chat-input__send',
                 { 'abele-chat-input__disabled': !text.trim() && !attachments.length },
               ]"
-              :tooltip="sendLabel ?? 'Send'"
+              :tooltip="sendLabel ?? t('streamB.send.f6f468')"
               data-keeps-focus
               @click="send"
             />
@@ -197,6 +201,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { ref, computed, inject, nextTick, watch } from 'vue'
 import { TFile, type Scope } from 'obsidian'
 import { CHAT_KEY_SCOPE } from '@/ai/chatKeyScope'
@@ -338,7 +343,9 @@ const {
 })
 const stopTip = stopTooltip()
 const expandLabel = computed(() =>
-  expanded.value ? 'Collapse the message field' : 'Expand the message field'
+  expanded.value
+    ? t('streamB.collapseTheMessageField.0637b4')
+    : t('streamB.expandTheMessageField.0b9d03')
 )
 
 const setExpanded = (value: boolean) => {
@@ -427,8 +434,8 @@ const noteDisabled = computed(() => !!props.noteBlocked || text.value.trim().len
 
 const noteTooltip = computed(() =>
   props.noteBlocked
-    ? 'Finish or dismiss the pending step before keeping a note'
-    : 'Save as note, without asking the agent (Alt+Enter)'
+    ? t('streamB.finishOrDismissThePendingStepBefore.928303')
+    : t('streamB.saveAsNoteWithoutAskingTheAgent.a9a082')
 )
 
 /** Kept, not sent: the words go into the conversation and no agent is started. */
@@ -561,7 +568,8 @@ const quote = (to: ChatReplyTo) => {
     marked.value.set(n, to)
     return placeLine(replyMarker(n))
   }
-  if (replyTokens(text.value).some((t) => samePlace(t.reply, to))) return focus()
+  if (replyTokens(text.value).some((translationItem) => samePlace(translationItem.reply, to)))
+    return focus()
   placeLine(replyToken(to))
 }
 

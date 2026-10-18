@@ -1,3 +1,4 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import type { ClientState, NodeClient, Project } from '@abele/node-client'
 import {
   NodePathMethodSchemas,
@@ -33,8 +34,7 @@ export class NodePathMutations {
       const intents = ((raw as IntentState).nodePathIntents ??= {})
       return (intents[key] ??= { id: crypto.randomUUID(), method, params })
     })
-    if (intent.method !== method)
-      throw new Error('The retained folder operation has changed. Inspect it before retrying.')
+    if (intent.method !== method) throw new UiError(uiMessage('streamBError.d7e2b0292d'))
     const result = await send(intent.id, intent.params)
     // A typed receipt is known, not just an operation ID. Failed/unknown calls keep their intent.
     await this.client.store.transaction((raw) => {
@@ -138,16 +138,12 @@ export class NodePathMutations {
     if (retained) {
       if (retained.pending) await this.client.flush?.()
       const receipt = await this.client.operationResult?.(retained.id)
-      if (!receipt)
-        throw new Error('Deletion outcome unknown. Reconnect and check the original removal.')
+      if (!receipt) throw new UiError(uiMessage('streamBError.a0a1c7d80c'))
       if (receipt.error)
-        throw new Error(
-          `The original removal was refused: ${receipt.error}. Its receipt is retained.`
-        )
+        throw new UiError(uiMessage('streamBError.fcff0cdbbc', { v0: String(receipt.error) }))
       return WorkspaceJobResultSchema.parse(receipt.result)
     }
-    if (!this.client.removeWorkspace)
-      throw new Error('Managed worktree removal is not available in this client.')
+    if (!this.client.removeWorkspace) throw new UiError(uiMessage('streamBError.96b7c749ee'))
     return this.client.removeWorkspace(workspaceId)
   }
   async delete(target: PathTarget, row: WorktreeEntry, observation: string) {
@@ -165,15 +161,12 @@ export class NodePathMutations {
           id
         )
         if (result.state === 'outcome_unknown')
-          throw new Error(
-            'Deletion outcome unknown. Keep the target and check the same operation before trying again.'
-          )
+          throw new UiError(uiMessage('streamBError.35eb88371d'))
         return result
       },
       { worktree_id: target.id }
     )
-    if (result.state === 'conflict')
-      throw new Error('The worktree changed. Refresh and review it before deleting.')
+    if (result.state === 'conflict') throw new UiError(uiMessage('streamBError.8d6b5aefb7'))
     return result
   }
 }

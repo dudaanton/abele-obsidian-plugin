@@ -1,3 +1,4 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import type { DeviceKeyStore, PairedDevice, PairedWssConnector } from '@abele/node-client'
 import {
   generateIdentity,
@@ -95,7 +96,7 @@ export class NodeDeviceKeyStore implements DeviceKeyStore {
     nodeId: string,
     work: (device: PairedDevice | undefined) => Promise<{ device: PairedDevice; result: T }>
   ): Promise<T> {
-    if (!this.locks) throw new Error('Remote pairing requires Web Locks on this device')
+    if (!this.locks) throw new UiError(uiMessage('streamBError.5c9cd52ff0'))
     return this.locks.request(`abele-node-keys-${this.namespace}-${nodeId}`, async () => {
       const { device, result } = await work(await this.load(nodeId))
       if (
@@ -104,7 +105,7 @@ export class NodeDeviceKeyStore implements DeviceKeyStore {
         device.private_key.type !== 'private' ||
         device.private_key.algorithm.name !== 'ECDSA'
       )
-        throw new Error('Invalid non-extractable device key')
+        throw new UiError(uiMessage('streamBError.6982c7def2'))
       const db = await this.open()
       await new Promise<void>((resolve, reject) => {
         const tx = db.transaction('keys', 'readwrite', { durability: 'strict' })

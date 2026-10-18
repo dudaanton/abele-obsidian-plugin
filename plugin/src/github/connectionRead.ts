@@ -1,3 +1,4 @@
+import { agentText } from '@/i18n/streamBText'
 import { ConnectionFallback } from './connectionFallback'
 import { primaryAccess } from './primaryAccess'
 import { clientForTab, tabAccessSnapshot, tabConnectionAllowed } from './tabConnectionAccess'
@@ -47,7 +48,9 @@ export async function readConnectionItem(
     repo: `${target.origin ?? `https://${target.host}`}/${target.owner}/${target.repo}`,
     item: targetKey(target),
     generation: connectionGeneration,
-    label: (id) => githubSettings().connections.find((c) => c.id === id)?.name ?? 'Anonymous',
+    label: (id) =>
+      githubSettings().connections.find((c) => c.id === id)?.name ??
+      agentText('streamB.anonymous.e7a8aa'),
     manual: model.connectionIntent === 'manual',
     read: async (id) => {
       if (!permitted(id))

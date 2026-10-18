@@ -17,12 +17,14 @@
       <Icon
         class="abele-github-tree__open-folder"
         icon="folder-open"
-        tooltip="Open this folder's page"
+        :tooltip="t('streamB.openThisFolderSPage.c6bb60')"
         @click.stop="emit('page', node, $event)"
       />
     </template>
     <template v-if="node.kind === 'dir'">
-      <div v-if="!node.children" class="abele-github-tree__note">Loading…</div>
+      <div v-if="!node.children" class="abele-github-tree__note">
+        {{ t('streamB.loading.ba3bbb') }}
+      </div>
       <GithubTreeNode
         v-for="child in paged.visible.value"
         :key="`${child.kind}:${child.path}`"
@@ -37,13 +39,18 @@
         @page="(n: TreeNode, e: MouseEvent) => emit('page', n, e)"
       />
       <div v-if="paged.hasMore.value" ref="sentinel" class="abele-github-tree__note">
-        {{ paged.total.value - paged.visible.value.length }} more…
+        {{
+          t('streamBMeta.42adc2e400', {
+            p0: String(paged.total.value - paged.visible.value.length),
+          })
+        }}
       </div>
     </template>
   </TreeItem>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import TreeItem from '../obsidian/TreeItem.vue'
 import Icon from '../obsidian/Icon.vue'

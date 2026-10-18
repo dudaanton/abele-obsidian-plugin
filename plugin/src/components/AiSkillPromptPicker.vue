@@ -1,6 +1,6 @@
 <template>
   <div ref="rootEl" class="abele-sp-picker">
-    <Input v-model="search" placeholder="Search..." />
+    <Input v-model="search" :placeholder="t('streamB.search.7f5538')" />
 
     <div class="abele-sp-picker__list">
       <template v-if="kind === 'skills'">
@@ -18,7 +18,7 @@
         <EmptyState
           v-if="filteredSkills.length === 0"
           :variant="search ? 'no-matches' : 'empty'"
-          text="No skills found"
+          :text="t('streamB.noSkillsFound.52777c')"
         />
       </template>
       <template v-else>
@@ -36,7 +36,7 @@
         <EmptyState
           v-if="filteredPrompts.length === 0"
           :variant="search ? 'no-matches' : 'empty'"
-          text="No prompts found"
+          :text="t('streamB.noPromptsFound.a31fbf')"
         />
       </template>
     </div>
@@ -44,6 +44,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { ref, computed, onMounted, onBeforeUnmount, useTemplateRef } from 'vue'
 import { TFile } from 'obsidian'
 import Input from './obsidian/Input.vue'

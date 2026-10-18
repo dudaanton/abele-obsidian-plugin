@@ -17,14 +17,14 @@
         ref="progress"
         class="abele-chat-question__progress"
         role="img"
-        :aria-label="`Question ${index + 1} of ${count}`"
+        :aria-label="t('chat.questionPosition', { position: index + 1, count })"
         >{{ index + 1 }}/{{ count }}</span
       >
       <Icon
         class="abele-chat-question__skip"
         icon="x"
         size="xs"
-        :label="count > 1 ? 'Skip these questions' : 'Skip this question'"
+        :label="count > 1 ? t('chat.skipQuestions') : t('chat.skipQuestion')"
         @click="emit('skip')"
       />
     </div>
@@ -44,20 +44,21 @@
         <span class="abele-chat-question__answer">{{ option }}</span>
       </Button>
       <Button
-        text="Your own answer"
+        :text="t('chat.ownAnswer')"
         plain
         type="button"
         class="abele-chat-question__option abele-chat-question__option_own"
         @click="emit('own')"
       >
         <Icon class="abele-chat-question__key" icon="pencil" size="xs" :interactive="false" />
-        <span class="abele-chat-question__answer">Your own answer</span>
+        <span class="abele-chat-question__answer">{{ t('chat.ownAnswer') }}</span>
       </Button>
     </div>
   </RequestCard>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { ref, watchEffect } from 'vue'
 import { setTooltip } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
@@ -80,7 +81,11 @@ const emit = defineEmits<{
 
 const progress = ref<HTMLElement>()
 watchEffect(() => {
-  if (progress.value) setTooltip(progress.value, `Question ${props.index + 1} of ${props.count}`)
+  if (progress.value)
+    setTooltip(
+      progress.value,
+      t('chat.questionPosition', { position: props.index + 1, count: props.count })
+    )
 })
 
 /** A digit picks that answer while the card has the keyboard; Escape skips. */

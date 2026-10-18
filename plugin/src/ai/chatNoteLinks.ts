@@ -1,3 +1,4 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 /**
  * Linking a chat to a note by hand, and unlinking it.
  *
@@ -93,7 +94,7 @@ async function rewriteLinks(
     },
     () => {
       if (ChatService.getInstance().getSessionByFile(chatPath))
-        throw new Error('The chat was opened. Update its links through the session.')
+        throw new UiError(uiMessage('streamBError.40172d0726'))
     }
   )
   if (!result) return false

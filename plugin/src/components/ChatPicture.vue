@@ -1,5 +1,9 @@
 <template>
-  <button class="abele-chat-picture" :aria-label="`Preview ${name}`" @click="open = true">
+  <button
+    class="abele-chat-picture"
+    :aria-label="t('streamB.preview.5df5f2', { v0: String(name) })"
+    @click="open = true"
+  >
     <img v-if="url" :src="url" :alt="name" loading="lazy" />
     <span>{{ name }}</span>
   </button>
@@ -16,6 +20,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { TFile, type EventRef } from 'obsidian'
 import GalleryViewer from './GalleryViewer.vue'

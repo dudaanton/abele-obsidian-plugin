@@ -115,7 +115,13 @@ const probe = (screen: string) => `(async () => {
       await capture('selection-bar','.abele-chat-selection')
       selection.removeAllRanges();document.dispatchEvent(new Event('selectionchange'))
     }
-    document.querySelector('.abele-ai-chat__header-actions [aria-label="Open a chat you have had"]').click()
+    const history = document.querySelector('.abele-ai-chat__header-actions [aria-label="Open a chat you have had"]')
+    if (history) history.click()
+    else {
+      document.querySelector('.abele-ai-chat__header-actions [aria-label="More chat actions"]').click()
+      await until(() => [...document.querySelectorAll('.menu .menu-item')].some(item => item.textContent.trim() === 'Open a chat you have had'))
+      ;[...document.querySelectorAll('.menu .menu-item')].find(item => item.textContent.trim() === 'Open a chat you have had').click()
+    }
     await capture('history','.abele-chat-history')
     await close()
   } catch(error) { report.error=String(error.message??error) }

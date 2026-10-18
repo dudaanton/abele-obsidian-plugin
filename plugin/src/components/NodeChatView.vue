@@ -17,7 +17,7 @@
           :text="agentName"
           trailing-icon="chevron-down"
           aria-haspopup="menu"
-          :label="`Agent: ${agentName}. Start a chat with another`"
+          :label="t('streamB.agentStartAChatWithAnother.42d6fb', { v0: String(agentName) })"
           @click="chooseAgent"
         />
       </div>
@@ -28,8 +28,8 @@
           with-bg
           role="button"
           tabindex="0"
-          aria-label="New chat or node session"
-          tooltip="New chat"
+          :aria-label="t('streamB.newChatOrNodeSession.79b072')"
+          :tooltip="t('streamB.newChat.db1838')"
           @click="emit('new-chat')"
           @keydown.enter.prevent="emit('new-chat')"
           @keydown.space.prevent="emit('new-chat')"
@@ -39,8 +39,8 @@
           with-bg
           role="button"
           tabindex="0"
-          aria-label="More chat actions"
-          tooltip="More chat actions"
+          :aria-label="t('streamB.moreChatActions.8bc495')"
+          :tooltip="t('streamB.moreChatActions.8bc495')"
           @click="openMenu"
           @keydown.enter.prevent="openMenu"
           @keydown.space.prevent="openMenu"
@@ -91,14 +91,16 @@
           <span
             :aria-label="
               presenter.olderError?.value
-                ? `Could not read earlier messages: ${presenter.olderError.value}`
+                ? t('streamB.couldNotReadEarlierMessages.fff300', {
+                    v0: String(presenter.olderError.value),
+                  })
                 : undefined
             "
-            >Could not read earlier messages</span
+            >{{ t('streamB.couldNotReadEarlierMessages.5f0162') }}</span
           >
-          <Button text="Try again" @click="loadOlder" />
+          <Button :text="t('streamB.tryAgain.d8b839')" @click="loadOlder" />
         </template>
-        <span v-else>Loading earlier messages…</span>
+        <span v-else>{{ t('streamB.loadingEarlierMessages.b8507b') }}</span>
       </div>
       <NodeDebugActions
         v-if="presenter.reference"
@@ -159,7 +161,12 @@
               : presenter.answer(prompt, choice, value)
         "
       />
-      <div v-if="working" class="abele-ai-chat__typing" role="status" aria-label="Agent is working">
+      <div
+        v-if="working"
+        class="abele-ai-chat__typing"
+        role="status"
+        :aria-label="t('streamB.reapply.49bf5144e2')"
+      >
         <span class="abele-ai-chat__typing-dot" />
         <span class="abele-ai-chat__typing-dot" />
         <span class="abele-ai-chat__typing-dot" />
@@ -170,14 +177,15 @@
         class="abele-ai-chat__error"
         role="alert"
       >
-        Not accepted: {{ rejected.text }} · <NodeErrorText :error="rejected.error" />
+        {{ t('streamB.reapply.1eca68d7d7') }} {{ rejected.text }} ·
+        <NodeErrorText :error="rejected.error" />
       </div>
     </div>
     <MetaLine
       v-if="presenter.draftNotice?.value && presenter.draft.value.text"
       class="abele-node-chat__draft-note"
       role="status"
-      :facts="[{ key: '0', value: presenter.draftNotice.value }]"
+      :facts="[{ key: '0', value: presentUiField(presenter.draftNotice, 'value') }]"
     />
     <!-- What a long-lived session keeps going between its answers, over the composer. -->
     <BackgroundTasks
@@ -194,7 +202,9 @@
       v-model:expanded="expanded"
       :conversation-draft="presenter.draft.value"
       send-clearing="owner"
-      :send-label="presenter.draftNotice?.value ? 'Send again' : 'Send'"
+      :send-label="
+        presenter.draftNotice?.value ? t('streamB.sendAgain.feead9') : t('streamB.send.f6f468')
+      "
       :is-streaming="working"
       :is-busy="sending"
       :text-only="true"
@@ -244,11 +254,11 @@
     />
     <ConfirmModal
       v-if="stopOpen && live"
-      title="Stop the session?"
+      :title="t('streamB.stopTheSession.efff95')"
       :message="stopSaid"
-      confirm-text="Stop"
-      confirm-tooltip="Stop the answer, what runs in the background and the session's process"
-      cancel-tooltip="Keep the session running"
+      :confirm-text="t('streamB.stop.cae7d5')"
+      :confirm-tooltip="t('streamB.stopTheAnswerWhatRunsInThe.ee84a5')"
+      :cancel-tooltip="t('streamB.keepTheSessionRunning.bc0329')"
       @close="stopOpen = false"
       @confirm="
         () => {
@@ -261,6 +271,9 @@
 </template>
 <script setup lang="ts">
 import NodeErrorText from '@/components/NodeErrorText.vue'
+import { presentUiField } from '@/i18n/streamBErrors'
+import { streamBCount } from '@/i18n/streamBCounts'
+import { t } from '@/i18n'
 import { computed, nextTick, ref, watch, onUnmounted } from 'vue'
 import { Menu, Notice } from 'obsidian'
 import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
@@ -327,16 +340,16 @@ const stopFiles = props.presenter.setFilesOpener?.((model, path, range) =>
 )
 onUnmounted(() => stopFiles?.())
 const labels = {
-  offline: 'Offline',
-  queued: 'Queued',
-  accepted: 'Accepted',
-  running: 'Running',
-  'needs-attention': 'Needs attention',
-  idle: 'Connected · Idle',
+  offline: t('streamB.offline.a17947'),
+  queued: t('streamB.queued.661ff4'),
+  accepted: t('streamB.accepted.a00fb0'),
+  running: t('streamB.running.f4ccae'),
+  'needs-attention': t('streamB.needsAttention.c1ebc7'),
+  idle: t('streamB.connectedIdle.6dc24f'),
 }
 const status = computed(() =>
   props.presenter.connection.state.value === 'connecting'
-    ? 'Connecting…'
+    ? t('streamB.connecting.72021e')
     : labels[props.presenter.state.value]
 )
 /** The node this chat runs on, by the name it was paired under. */
@@ -345,14 +358,16 @@ const nodeLabel = computed(() => {
     return (
       NodeService.getInstance().nodes.value.find(
         (n) => n.id === props.presenter.reference.registrationId
-      )?.label ?? 'Node'
+      )?.label ?? t('streamB.node.e93372')
     )
   } catch {
     // Node connections did not load: the chat still says it runs on a node.
-    return 'Node'
+    return t('streamB.node.e93372')
   }
 })
-const placeTip = computed(() => `On ${nodeLabel.value} · ${status.value}`)
+const placeTip = computed(() =>
+  t('streamB.on.9d0cd0', { v0: String(nodeLabel.value), v1: String(status.value) })
+)
 const sessionAgent = () =>
   (props.presenter.projection.value.session as { agent?: string } | undefined)?.agent
 /** The agent this chat runs, by the name people know it: an ACP agent by its own. */
@@ -433,8 +448,12 @@ const slashItems = computed<SlashItem[] | undefined>(() => {
 /** What stopping the session ends, named. */
 const stopSaid = computed(() => {
   const n = live.value?.background.length ?? 0
-  const tasks = n ? `, ${n === 1 ? 'the task' : `${n} tasks`} running in the background` : ''
-  return `This stops the answer${tasks} and the session's process. The conversation stays; your next message starts the session again.`
+  const tasks = n
+    ? t('streamB.runningInTheBackground.9c70fa', {
+        v0: String(n === 1 ? t('streamB.theTask.fd27a4') : streamBCount(n, 'task')),
+      })
+    : ''
+  return t('streamB.thisStopsTheAnswerAndTheSession.a76301', { v0: String(tasks) })
 })
 /** A session command chosen after «/», or typed with its words. */
 const onCommand = (command: string) => {
@@ -502,7 +521,7 @@ const openMenu = (event: MouseEvent | KeyboardEvent) => {
   const menu = new Menu()
   menu.addItem((i) =>
     i
-      .setTitle('Log raw session records')
+      .setTitle(t('streamB.logRawSessionRecords.1c0258'))
       .setIcon('bug')
       .onClick(() => {
         console.debug('[Abele node] raw session records', {
@@ -510,13 +529,13 @@ const openMenu = (event: MouseEvent | KeyboardEvent) => {
           records: props.presenter.projection.value.unknown,
           artifacts: props.presenter.projection.value.artifacts,
         })
-        new Notice('Raw session records logged to the developer console')
+        new Notice(t('streamB.rawSessionRecordsLoggedToTheDeveloper.5fd714'))
       })
   )
   if (props.presenter.debuggerAvailable?.value === true)
     menu.addItem((i) =>
       i
-        .setTitle('Debug')
+        .setTitle(t('streamB.debug.1a03bd'))
         .setIcon('bug-play')
         .onClick(() => {
           void openNodeDebugger(props.presenter)
@@ -525,7 +544,7 @@ const openMenu = (event: MouseEvent | KeyboardEvent) => {
   if (props.presenter.debuggerAvailable?.value === true)
     menu.addItem((i) =>
       i
-        .setTitle('Run a program')
+        .setTitle(t('streamB.runAProgram.ac87e8'))
         .setIcon('play')
         .onClick(() => {
           void startNodeProgram(props.presenter)
@@ -534,7 +553,7 @@ const openMenu = (event: MouseEvent | KeyboardEvent) => {
   if (props.presenter.debuggerAvailable?.value === true)
     menu.addItem((i) =>
       i
-        .setTitle('Attach to a running program')
+        .setTitle(t('streamB.attachToARunningProgram.66133a'))
         .setIcon('plug')
         .onClick(() => {
           void attachNodeProgram(props.presenter)
@@ -543,21 +562,23 @@ const openMenu = (event: MouseEvent | KeyboardEvent) => {
   if (props.presenter.workspaceId?.value)
     menu.addItem((i) =>
       i
-        .setTitle('Browse workspace files')
+        .setTitle(t('streamB.browseWorkspaceFiles.748cc2'))
         .setIcon('folder-open')
         .onClick(() => props.presenter.openFiles())
     )
-  menu.addItem((i) => i.setTitle('Folders and worktrees').setIcon('server').onClick(workspaces))
+  menu.addItem((i) =>
+    i.setTitle(t('streamB.foldersAndWorktrees.29c05e')).setIcon('server').onClick(workspaces)
+  )
   menu.addItem((i) =>
     i
-      .setTitle('Rename…')
+      .setTitle(t('streamB.rename.6fa62b'))
       .setIcon('pencil')
       .onClick(() => (renameOpen.value = true))
   )
   if (live.value)
     menu.addItem((i) =>
       i
-        .setTitle('Stop the session…')
+        .setTitle(t('streamB.stopTheSession.0215d3'))
         .setIcon('octagon-x')
         .setWarning(true)
         .setSection('danger')
@@ -565,7 +586,7 @@ const openMenu = (event: MouseEvent | KeyboardEvent) => {
     )
   menu.addItem((i) =>
     i
-      .setTitle('Reconnect')
+      .setTitle(t('streamB.reconnect.bf8a9e'))
       .setIcon('refresh-cw')
       .onClick(() => {
         void props.presenter.connection.connect().catch(() => {})
@@ -574,7 +595,7 @@ const openMenu = (event: MouseEvent | KeyboardEvent) => {
   if (props.presenter.provider?.value === 'fake')
     menu.addItem((i) =>
       i
-        .setTitle('Ask for permission')
+        .setTitle(t('streamB.askForPermission.7bd9e9'))
         .setIcon('shield-alert')
         .setChecked(permissionFixture.value)
         .onClick(() => {
@@ -617,7 +638,7 @@ const showReply = (to: ChatReplyTo) => {
     `[data-node-message="${CSS.escape(to.messageId)}"]`
   )
   if (!el) {
-    new Notice('That message is no longer in this chat')
+    new Notice(t('streamB.thatMessageIsNoLongerInThis.b1fd76'))
     return
   }
   el.scrollIntoView({ block: 'center' })

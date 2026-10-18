@@ -31,14 +31,18 @@
     />
 
     <template v-else-if="session?.preparingClone?.value">
-      <DrawerViewSwitch icon="bot" name="Abele AI chat" />
-      <EmptyState text="Creating chat copy…" role="status" />
+      <DrawerViewSwitch icon="bot" :name="t('streamB.abeleAiChat.08f891')" />
+      <EmptyState :text="t('streamB.creatingChatCopy.296d47')" role="status" />
     </template>
 
     <template v-else>
       <!-- Header -->
       <div class="abele-ai-chat__header">
-        <DrawerViewSwitch icon="bot" name="Abele AI chat" @shown="inDrawer = $event" />
+        <DrawerViewSwitch
+          icon="bot"
+          :name="t('streamB.abeleAiChat.08f891')"
+          @shown="inDrawer = $event"
+        />
         <AiAgentSelector />
         <!-- What is used all the time, in sight: find, the outline, the history, a new chat.
              Everything else this chat is set up with is in ⋯. Other chats waiting for you show
@@ -52,7 +56,7 @@
             v-if="commentSession"
             icon="corner-up-left"
             with-bg
-            tooltip="Back to the passage this is about"
+            :tooltip="t('streamB.backToThePassageThisIsAbout.5b41fe')"
             @click="backToNote"
           />
           <!-- Find words in this conversation; Cmd/Ctrl+F does the same from inside the chat. -->
@@ -63,7 +67,7 @@
             icon="search"
             with-bg
             class="abele-ai-chat__find"
-            tooltip="Find in this chat"
+            :tooltip="t('streamB.findInThisChat.49be9b')"
             @click="find.open()"
           />
           <Icon
@@ -71,21 +75,26 @@
             icon="list-tree"
             with-bg
             class="abele-ai-chat__navigation"
-            tooltip="Outline of this chat"
+            :tooltip="t('streamB.outlineOfThisChat.60a8ef')"
             @click="openNavigation()"
           />
           <Icon
             v-if="!inDrawer"
             icon="history"
             with-bg
-            tooltip="Open a chat you have had"
+            :tooltip="t('streamB.openAChatYouHaveHad.31b24c')"
             @click="historyOpen = true"
           />
-          <Icon icon="plus" with-bg tooltip="Start a new chat" @click="onNewChatMenu" />
+          <Icon
+            icon="plus"
+            with-bg
+            :tooltip="t('streamB.startANewChat.61025e')"
+            @click="onNewChatMenu"
+          />
           <SheetHeaderActions
             class="abele-ai-chat__overflow"
             :actions="headerOverflowActions"
-            overflow-label="More chat actions"
+            :overflow-label="t('streamB.moreChatActions.8bc495')"
             @action="onHeaderOverflowAction"
           />
         </div>
@@ -149,13 +158,16 @@
           icon="tree-deciduous"
           :title="session?.agent.value?.name"
         >
-          {{ session?.agent.value?.description || "What's on your mind?" }}
+          {{
+            streamBAgentDescription(session?.agent.value?.description || '') ||
+            t('streamB.whatSOnYourMind.a3e9a8')
+          }}
           <template v-if="scopeSummary" #action>
             <Icon
               class="abele-ai-chat__empty-scope"
               :icon="access.icon"
               :text-right="scopeSummary"
-              tooltip="What the agent can reach"
+              :tooltip="t('streamB.whatTheAgentCanReach.9e1cc9')"
               @click="openSetup('scope')"
             />
           </template>
@@ -165,8 +177,8 @@
         <div v-if="olderCount" class="abele-ai-chat__older">
           <Icon
             icon="chevron-up"
-            :text-right="`${olderCount} earlier messages`"
-            :label="`Show ${olderCount} earlier messages`"
+            :text-right="t('streamB.earlierMessages.244bfd', { v0: String(olderCount) })"
+            :label="t('streamB.showEarlierMessages.ef4b3d', { v0: String(olderCount) })"
             @click="loadOlder"
           />
         </div>
@@ -246,14 +258,14 @@
             <Icon
               icon="pencil"
               size="xs"
-              tooltip="Edit queued message"
+              :tooltip="t('streamB.editQueuedMessage.250ac6')"
               class="abele-ai-chat__queued-edit"
               @click="onEditQueued(q.id)"
             />
             <Icon
               icon="x"
               size="xs"
-              tooltip="Remove from the queue"
+              :tooltip="t('streamB.removeFromTheQueue.b7ff8b')"
               class="abele-ai-chat__queued-remove"
               @click="onRemoveQueued(q.id)"
             />
@@ -263,11 +275,11 @@
         <!-- Background task indicators -->
         <div v-if="isGeneratingTitle" class="abele-ai-chat__aux-status">
           <Icon icon="heading" />
-          <span>Generating title...</span>
+          <span>{{ t('streamB.generatingTitle.05899d') }}</span>
         </div>
         <div v-if="isCompacting" class="abele-ai-chat__aux-status">
           <Icon icon="minimize-2" />
-          <span>Compacting conversation...</span>
+          <span>{{ t('streamB.compactingConversation.ab0f65') }}</span>
         </div>
 
         <!-- Tool approval -->
@@ -289,8 +301,8 @@
         <div v-if="reconnecting" class="setting-item-description" role="status" aria-live="polite">
           {{
             reconnecting === 'waiting'
-              ? 'Waiting to reconnect when the app returns…'
-              : 'Reconnecting…'
+              ? t('streamB.waitingToReconnectWhenTheAppReturns.650855')
+              : t('streamB.reconnecting.27b803')
           }}
         </div>
         <LocalAttentionPanel v-if="session" :session="session" />
@@ -299,22 +311,42 @@
         <RequestCard v-if="error" class="abele-ai-chat__error" role="alert">
           <div class="abele-ai-chat__error-line">
             <span class="abele-ai-chat__error-dot" aria-hidden="true" />
-            <span class="abele-ai-chat__error-text">{{ error }}</span>
+            <span class="abele-ai-chat__error-text">{{ presentUiError(error) }}</span>
             <span
               v-if="retrying"
               class="abele-ai-chat__error-retry"
-              :aria-label="`Trying again in ${retrying.secondsLeft}s, attempt ${retrying.attempt} of ${retrying.of}`"
-              >{{ retrying.secondsLeft }}s · {{ retrying.attempt }}/{{ retrying.of }}</span
+              :aria-label="
+                t('streamB.tryingAgainInSAttemptOf.76e164', {
+                  v0: String(retrying.secondsLeft),
+                  v1: String(retrying.attempt),
+                  v2: String(retrying.of),
+                })
+              "
+              >{{
+                t('streamBMeta.2272da57df', {
+                  p0: String(retrying.secondsLeft),
+                  p1: String(retrying.attempt),
+                  p2: String(retrying.of),
+                })
+              }}</span
             >
           </div>
           <div class="abele-ai-chat__error-actions">
-            <Button v-if="retrying" text="Stop trying" @click="session?.cancelAutoRetry()" />
+            <Button
+              v-if="retrying"
+              :text="t('streamB.stopTrying.859edf')"
+              @click="session?.cancelAutoRetry()"
+            />
             <Button
               v-if="hasFallbackModel"
-              :text="`Retry on ${fallbackModelName}`"
+              :text="t('streamB.retryOn.47fd64', { v0: String(fallbackModelName) })"
               @click="onRetryWithFallback"
             />
-            <Button :text="retrying ? 'Retry now' : 'Retry'" accent @click="onRetryRequest" />
+            <Button
+              :text="retrying ? t('streamB.retryNow.5148c3') : t('streamB.retry.942087')"
+              accent
+              @click="onRetryRequest"
+            />
           </div>
         </RequestCard>
       </div>
@@ -333,20 +365,20 @@
           pendingNavigation
             ? pendingNavigation.label
             : editingId
-              ? 'Editing your message: sending starts a new branch'
+              ? t('streamB.editingYourMessageSendingStartsANew.8deca0')
               : branchingAfter?.role === 'tool-call'
-                ? 'New branch after this call'
-                : 'New branch after this answer'
+                ? t('streamB.newBranchAfterThisCall.dcbdaf')
+                : t('streamB.newBranchAfterThisAnswer.fa0bc6')
         }}</span>
         <Icon
           icon="x"
           size="xs"
           :label="
             pendingNavigation
-              ? 'Cancel branch switch'
+              ? t('streamB.cancelBranchSwitch.c3daca')
               : editingId
-                ? 'Cancel editing'
-                : 'Back to where the chat went on'
+                ? t('streamB.cancelEditing.d07a5a')
+                : t('streamB.backToWhereTheChatWentOn.ff3fef')
           "
           @click="
             pendingNavigation
@@ -437,10 +469,9 @@
     <AiChatSetup v-if="setupOpen" :open="setupTab" @close="setupOpen = false" />
     <ConfirmModal
       v-if="deleting"
-      title="Delete chat"
-      message="Delete this chat? Its file, the runs it delegated and its entry in the history
-        all go. This cannot be undone."
-      confirm-tooltip="Delete this chat"
+      :title="t('streamB.deleteChat.93291d')"
+      :message="t('streamB.deleteThisChatItsFileTheRuns.3538d3')"
+      :confirm-tooltip="t('streamB.deleteThisChat.45b0a7')"
       @confirm="deleteChat"
       @close="deleting = false"
     />
@@ -454,6 +485,9 @@
 </template>
 
 <script setup lang="ts">
+import { presentUiError, presentUiMessage } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
+import { streamBAgentDescription } from '@/i18n/streamBLabels'
 import { ASK_EVENT } from '@/views/agentView'
 import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 import {
@@ -522,9 +556,13 @@ import AiNodeScopeChips from './AiNodeScopeChips.vue'
 import { nodeScopeNames, nodeScopeSentence } from '@/ai/tools/node/scopeNames'
 import { fileMentions } from '@/ai/fileMentions'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { parseTemplateVariables, applyTemplateVariables } from '@/templates/TemplateParser'
+import {
+  parseTemplateVariables,
+  applyTemplateVariables,
+  type TemplateVariable,
+} from '@/templates/TemplateParser'
 import { allowTemplateExecution } from '@/templates/TemplateTrust'
-import type { TemplateVariable } from '@/templates/TemplateParser'
+
 import type { ChatDraft, ChatMessage, ChatReplyTo, MessageComment } from '@/ai/types'
 import { agentReplyText, composerText } from '@/ai/replyLinks'
 import { sameConversation, type ConversationOwner } from '@/ai/draftImports'
@@ -593,7 +631,14 @@ const abortQuestions = () => {
   session.value?.abortQuestions()
 }
 const pendingToolCalls = computed(() => session.value?.pendingToolCalls.value ?? [])
-const error = computed(() => session.value?.error.value ?? null)
+const error = computed(() => {
+  const current = session.value
+  return current?.error.value
+    ? current.errorPresentation?.value
+      ? presentUiMessage(current.errorPresentation.value)
+      : current.error.value
+    : null
+})
 // Only the presented chat is seen; background discovery/load never acknowledges failures.
 watch(
   [session, () => session.value?.currentChatFile.value],
@@ -604,7 +649,9 @@ watch(
         .catch(
           (error: unknown) =>
             new Notice(
-              error instanceof Error ? error.message : 'Could not save the acknowledgements'
+              error instanceof Error
+                ? presentUiError(error)
+                : t('streamB.couldNotSaveTheAcknowledgements.f9ca22')
             )
         )
   },
@@ -621,14 +668,14 @@ const tabInfos = computed(() =>
     if (run) {
       return {
         id,
-        label: `${run.agentName} run`,
+        label: t('streamB.run.a1533f', { v0: String(run.agentName) }),
         isStreaming: false,
         isActive: id === chatService.activeTabId.value,
       }
     }
 
     const s = chatService.getPresentation(id)
-    const label = s?.label.value || 'New chat'
+    const label = s?.label.value || t('streamB.newChat.db1838')
     const local = chatService.getSession(id)
     return {
       id,
@@ -781,7 +828,9 @@ const onSwitchBranch = (childId: string) => {
     if (target && pendingNavigation.value)
       pendingNavigation.value = {
         ...pendingNavigation.value,
-        label: `Switches to «${navigationTitle(target)}» when the agent finishes`,
+        label: t('streamB.switchesToWhenTheAgentFinishes.9ba25e', {
+          v0: String(navigationTitle(target)),
+        }),
       }
     return
   }
@@ -866,7 +915,10 @@ const onNodeAccess = (refusal: NodeAccessRefusal, named?: NodeScopeEntry[]) => {
     void approveObsidianChatNodeAccess(s, chosen)
       .then(() => (approvedHere.value = new Set([...approvedHere.value, refusal.node_id])))
       .catch(
-        (e: unknown) => new Notice(e instanceof Error ? e.message : 'Could not approve node access')
+        (e: unknown) =>
+          new Notice(
+            e instanceof Error ? presentUiError(e) : t('streamB.couldNotApproveNodeAccess.da714e')
+          )
       )
     return
   }
@@ -901,8 +953,7 @@ const replyReview = shallowRef<{
   proposal: ReplyProposal
   decide: (accept: boolean) => Promise<void>
 } | null>(null)
-const reportReplyError = (error: unknown) =>
-  new Notice(error instanceof Error ? error.message : String(error))
+const reportReplyError = (error: unknown) => new Notice(presentUiError(error))
 const captureLink = (id: string, quote: string, start: number, text: string) => {
   const s = session.value
   if (!s) return undefined
@@ -1085,11 +1136,11 @@ const contextTokens = computed(() => {
 })
 
 const tokenDisplay = computed(() => {
-  const t = contextTokens.value
-  if (t === 0) return ''
+  const translationItem = contextTokens.value
+  if (translationItem === 0) return ''
   const ctx = contextWindow.value
   const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
-  return ctx ? `${fmt(t)}/${fmt(ctx)}` : fmt(t)
+  return ctx ? `${fmt(translationItem)}/${fmt(ctx)}` : fmt(translationItem)
 })
 
 /** What a new chat works with, said in full under the agent: «Full vault», «2 files, 1 folder». */
@@ -1139,10 +1190,10 @@ const access = computed(() => {
     ? summary
     : (scope.entries?.value ?? []).map((entry) => `${entry.type}: ${entry.path}`).join(' · ')
   const nodes = nodeSaid.value.slice(0, nodeAccess.value.length)
-  const said = [files, ...nodes].filter(Boolean).join(' · ') || 'No files'
+  const said = [files, ...nodes].filter(Boolean).join(' · ') || t('streamB.noFiles.c219d9')
   const places = (full ? 0 : (scope?.entries?.value.length ?? 0)) + nodes.length
   return {
-    label: `Access: ${said}`,
+    label: t('streamB.access.0fce24', { v0: String(said) }),
     icon: full && !nodes.length ? 'vault' : 'folder-lock',
     code: full && !nodes.length ? '' : String(places),
   }
@@ -1185,8 +1236,8 @@ const moving = computed(() => !!session.value?.moving.value)
 const blocked = computed(() => midTurn.value || moving.value)
 const blockedTooltip = computed(() =>
   moving.value
-    ? 'This comment is being moved'
-    : 'The agent is still working — finish or dismiss the pending step first'
+    ? t('streamB.thisCommentIsBeingMoved.94e97b')
+    : t('streamB.theAgentIsStillWorkingFinishOr.ad253f')
 )
 
 /**
@@ -1218,11 +1269,11 @@ async function openAsChat(): Promise<void> {
   if (!id) return
 
   if (moving.value) {
-    new Notice('Already moving this comment')
+    new Notice(t('streamB.alreadyMovingThisComment.596a16'))
     return
   }
   const moved = await CommentService.getInstance().expand(id)
-  if (moved === 'busy') new Notice('Finish or dismiss the pending step first')
+  if (moved === 'busy') new Notice(t('streamB.finishOrDismissThePendingStepFirst.c3ffef'))
 }
 
 /**
@@ -1234,7 +1285,7 @@ async function openAsChat(): Promise<void> {
  */
 async function onNote(text: string, replyTo?: ChatReplyTo[]): Promise<void> {
   const kept = await session.value?.addUserNote(text, replyTo)
-  if (kept === false) new Notice('Finish or dismiss the pending step first')
+  if (kept === false) new Notice(t('streamB.finishOrDismissThePendingStepFirst.c3ffef'))
 }
 
 /**
@@ -1334,11 +1385,11 @@ const revealMessage = async (
   if (!s) return
   if (!s.messages.value.some((m) => m.id === messageId)) {
     if (currentBranchOnly) {
-      new Notice('That message is no longer in the current branch')
+      new Notice(t('streamB.thatMessageIsNoLongerInThe.cd245c'))
       return
     }
     if (!s.allMessages.value.some((m) => m.id === messageId)) {
-      new Notice('That message is no longer in this chat')
+      new Notice(t('streamB.thatMessageIsNoLongerInThis.b1fd76'))
       return
     }
     s.switchBranch(messageId)
@@ -1659,7 +1710,7 @@ function pendingFor(tabId: string | null | undefined): PendingInput | null {
     pending.conversationVersion !== attachmentOwner.value?.version
   ) {
     if (chatService.pendingInput.value === pending) chatService.pendingInput.value = null
-    new Notice('The conversation changed. Attach the saved picture to the intended chat.')
+    new Notice(t('streamB.theConversationChangedAttachTheSavedPicture.a1c452'))
     return null
   }
   return pending
@@ -1865,7 +1916,7 @@ const applyAiModelProperty = (modelKey: string | undefined) => {
   if (resolvedProviderId && resolvedModelId) {
     chatService.switchModel(resolvedProviderId, resolvedModelId)
   } else {
-    new Notice(`Model not found: ${modelKey}`)
+    new Notice(t('streamB.modelNotFound.19e2c3', { v0: String(modelKey) }))
   }
 }
 
@@ -1888,7 +1939,7 @@ const onSkillCommand = async (command: string) => {
 
   const skills = discoverSkills()
   if (!skills.some((s) => s.name === skillName)) {
-    new Notice(`Unknown command: /${skillName}`)
+    new Notice(t('streamB.unknownCommand.bdfb15', { v0: String(skillName) }))
     return
   }
 
@@ -2093,17 +2144,17 @@ const headerOverflowActions = computed<HeaderAction[]>(() => [
   ...(phone
     ? [
         ...(inDrawer.value
-          ? [{ id: 'history', label: 'Open a chat you have had', icon: 'history' }]
+          ? [{ id: 'history', label: t('streamB.openAChatYouHaveHad.31b24c'), icon: 'history' }]
           : []),
-        { id: 'find', label: 'Find in this chat', icon: 'search' },
-        { id: 'outline', label: 'Outline of this chat', icon: 'list-tree' },
+        { id: 'find', label: t('streamB.findInThisChat.49be9b'), icon: 'search' },
+        { id: 'outline', label: t('streamB.outlineOfThisChat.60a8ef'), icon: 'list-tree' },
       ]
     : []),
   ...(commentSession.value
     ? [
         {
           id: 'promote',
-          label: 'Turn this comment into an ordinary chat',
+          label: t('streamB.turnThisCommentIntoAnOrdinaryChat.183d06'),
           icon: 'messages-square',
           disabled: blocked.value,
           reason: blockedTooltip.value,
@@ -2112,33 +2163,35 @@ const headerOverflowActions = computed<HeaderAction[]>(() => [
     : []),
   {
     id: 'setup',
-    label: 'Access, tools and chat settings',
+    label: t('streamB.accessToolsAndChatSettings.756b84'),
     icon: 'sliders-horizontal',
   },
   ...(commentSession.value
     ? []
-    : [{ id: 'artifacts', label: 'Files from this chat', icon: 'boxes' }]),
-  ...(agentsNeedYou.value ? [] : [{ id: 'agents', label: 'Agents', icon: 'activity' }]),
+    : [{ id: 'artifacts', label: t('streamB.filesFromThisChat.781223'), icon: 'boxes' }]),
+  ...(agentsNeedYou.value
+    ? []
+    : [{ id: 'agents', label: t('streamB.agents.279b44'), icon: 'activity' }]),
   ...(commentSession.value
     ? []
     : [
         {
           id: 'reload',
-          label: 'Reload from file',
+          label: t('streamB.reloadFromFile.2aa723'),
           icon: 'refresh-cw',
           section: 'file',
           disabled: !session.value?.currentChatFile.value,
-          reason: 'nothing written yet',
+          reason: t('streamB.nothingWrittenYet.9aea7a'),
         },
-        { id: 'debug', label: 'Copy debug data', icon: 'bug', section: 'file' },
+        { id: 'debug', label: t('streamB.copyDebugData.866a72'), icon: 'bug', section: 'file' },
         {
           id: 'delete',
-          label: 'Delete chat',
+          label: t('streamB.deleteChat.93291d'),
           icon: 'trash-2',
           section: 'danger',
           warning: true,
           disabled: !session.value?.currentChatFile.value,
-          reason: 'nothing written yet',
+          reason: t('streamB.nothingWrittenYet.9aea7a'),
         },
       ]),
 ])
@@ -2237,19 +2290,19 @@ const onLoadChat = async (file: TFile, found?: { query: string; messageId: strin
 const reloadChat = async () => {
   const file = session.value?.currentChatFile.value
   if (!file) {
-    new Notice('No chat file to reload')
+    new Notice(t('streamB.noChatFileToReload.094465'))
     return
   }
   await session.value?.load(file)
-  new Notice('Chat reloaded from disk')
+  new Notice(t('streamB.chatReloadedFromDisk.131044'))
 }
 
 const showDebug = () => {
   const data = JSON.stringify(session.value?.getDebugData() ?? {}, null, 2)
   console.debug('[Abele AI Debug]', data)
   navigator.clipboard.writeText(data).then(
-    () => new Notice('Debug JSON copied to clipboard'),
-    () => new Notice('Failed to copy to clipboard')
+    () => new Notice(t('streamB.debugJsonCopiedToClipboard.24c959')),
+    () => new Notice(t('streamB.failedToCopyToClipboard.978a1d'))
   )
 }
 </script>

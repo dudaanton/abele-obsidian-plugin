@@ -15,6 +15,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 /**
  * Everything a chat is set up with, in one dialog: what the agent may reach, which tools it may
  * use, and how this chat behaves.
@@ -41,13 +42,26 @@ const tab = ref(['scope', 'permissions', 'settings'].includes(props.open) ? prop
 
 /** Words, not glyphs: three plain words explain themselves; the tooltip carries the rest. */
 const tabs: Tab[] = [
-  { id: 'scope', label: 'Access', tooltip: 'What this chat may read and write' },
-  { id: 'permissions', label: 'Tools', tooltip: 'Which tools may run, and which ask first' },
-  { id: 'settings', label: 'Chat', tooltip: 'The model, the prompt and how this chat behaves' },
+  {
+    id: 'scope',
+    label: t('streamB.access.ec5ba0'),
+    tooltip: t('streamB.whatThisChatMayReadAndWrite.241f37'),
+  },
+  {
+    id: 'permissions',
+    label: t('streamB.tools.ea93d6'),
+    tooltip: t('streamB.whichToolsMayRunAndWhichAsk.466c37'),
+  },
+  {
+    id: 'settings',
+    label: t('streamB.chat.460b3a'),
+    tooltip: t('streamB.theModelThePromptAndHowThis.ad5e02'),
+  },
 ]
 
 const title = computed(
-  () => ChatService.getInstance().activeSession.value?.chatTitle.value || 'New chat'
+  () =>
+    ChatService.getInstance().activeSession.value?.chatTitle.value || t('streamB.newChat.db1838')
 )
 </script>
 

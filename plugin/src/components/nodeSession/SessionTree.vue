@@ -3,7 +3,7 @@
        under those theirs. A glyph for the kind, the state as a dot at the end, the time quiet
        beside it; a red shield where a session asks about nothing. Deeper than two, folded. -->
   <div class="abele-session-tree">
-    <EmptyState v-if="!sessions.length" icon="messages-square" text="No sessions here yet" />
+    <EmptyState v-if="!sessions.length" icon="messages-square" :text="t('chat.noSessions')" />
     <SessionTreeRow
       v-for="session in sessions"
       :key="session.id"
@@ -17,6 +17,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import EmptyState from '../obsidian/EmptyState.vue'
 import SessionTreeRow from './SessionTreeRow.vue'
 import type { ChildSession } from './types'

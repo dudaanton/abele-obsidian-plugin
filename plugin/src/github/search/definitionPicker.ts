@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * The choice between several places a name looks declared: Obsidian's own picker, each row the
  * file and line with the line's text under it, the nearest first. Typing narrows by path.
@@ -16,8 +17,13 @@ export class DefinitionPicker extends SuggestModal<DefinitionHit> {
     private readonly choose: (hit: DefinitionHit, newTab: boolean) => void
   ) {
     super(app)
-    this.setPlaceholder(`${hits.length} places look like they declare ${name} — pick one`)
-    this.emptyStateText = 'No definition in a path like that.'
+    this.setPlaceholder(
+      t('streamB.placesLookLikeTheyDeclarePickOne.a4b5da', {
+        v0: String(hits.length),
+        v1: String(name),
+      })
+    )
+    this.emptyStateText = t('streamB.noDefinitionInAPathLikeThat.964449')
     this.limit = 100
   }
 

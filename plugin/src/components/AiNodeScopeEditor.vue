@@ -2,22 +2,24 @@
   <div ref="root" class="abele-node-scope-editor">
     <Setting
       class="abele-node-scope-editor__head"
-      name="Node access"
-      desc="Separate from vault access. A whole node includes future registered folders."
+      :name="t('streamB.nodeAccess.bc448d')"
+      :desc="t('streamB.separateFromVaultAccessAWholeNode.da122f')"
     >
-      <Icon icon="refresh-cw" tooltip="Refresh nodes" @click="loadNodes" />
+      <Icon icon="refresh-cw" :tooltip="t('streamB.refreshNodes.d0c8aa')" @click="loadNodes" />
     </Setting>
-    <EmptyState v-if="loading" variant="loading" text="Loading node folders…" />
+    <EmptyState v-if="loading" variant="loading" :text="t('streamB.loadingNodeFolders.1fb024')" />
     <EmptyState v-if="error" variant="error" :text="error" />
     <EmptyState
       v-if="!parsed.success"
       variant="error"
-      text="Invalid node scope. Clear it and choose access again."
+      :text="t('streamB.invalidNodeScopeClearItAndChoose.50b4c7')"
     >
-      <template #action><Button text="Clear node access" @click="clear" /></template>
+      <template #action
+        ><Button :text="t('streamB.clearNodeAccess.cf2e5c')" @click="clear"
+      /></template>
     </EmptyState>
     <!-- What this chat may reach on its nodes, as the vault's places above it. -->
-    <div class="abele-scope-mgr__entries" role="list" aria-label="Node access">
+    <div class="abele-scope-mgr__entries" role="list" :aria-label="t('streamB.nodeAccess.bc448d')">
       <div
         v-for="entry in entries"
         :key="nodeScopeKey(entry)"
@@ -27,25 +29,28 @@
         <Icon :icon="entry.kind === 'node' ? 'server' : 'folder-git-2'" />
         <span class="abele-scope-mgr__entry-path">{{ label(entry) }}</span>
         <span class="abele-scope-mgr__entry-type">
-          {{ entry.access === 'edit' ? 'read and edit' : 'read' }}
+          {{ entry.access === 'edit' ? t('streamB.readAndEdit.4067e8') : t('streamB.read.331634') }}
         </span>
         <Icon
           class="abele-scope-mgr__entry-remove"
           icon="x"
-          :tooltip="`Remove ${label(entry)} from chat access`"
+          :tooltip="t('streamB.removeFromChatAccess.f736f6', { v0: String(label(entry)) })"
           @click="remove(entry)"
         />
       </div>
-      <EmptyState v-if="!entries.length && !loading && nodes.length" text="No node access yet." />
+      <EmptyState
+        v-if="!entries.length && !loading && nodes.length"
+        :text="t('streamB.noNodeAccessYet.e2bac7')"
+      />
     </div>
     <template v-if="nodes.length">
-      <Setting name="Node">
+      <Setting :name="t('streamB.node.e93372')">
         <Dropdown :model-value="node" :options="nodeOptions" @update:model-value="chooseNode" />
       </Setting>
       <Setting
         v-if="node"
-        name="Folder"
-        desc="Whole node includes every registered folder, now and in the future."
+        :name="t('streamB.folder.74ccd4')"
+        :desc="t('streamB.wholeNodeIncludesEveryRegisteredFolderNow.3773fc')"
       >
         <Dropdown
           :model-value="project"
@@ -55,8 +60,8 @@
       </Setting>
       <Setting
         v-if="project"
-        name="Worktree"
-        desc="Whole folder includes its valid worktrees. Choosing one does not give access to the others."
+        :name="t('streamB.worktree.c893ba')"
+        :desc="t('streamB.wholeFolderIncludesItsValidWorktreesChoosing.172ffc')"
       >
         <Dropdown
           :model-value="target"
@@ -66,8 +71,8 @@
       </Setting>
       <Setting
         v-if="node"
-        name="Access"
-        desc="Edit permits file changes; whether they ask first follows this chat's permission mode."
+        :name="t('streamB.access.ec5ba0')"
+        :desc="t('streamB.editPermitsFileChangesWhetherTheyAsk.f54437')"
       >
         <Dropdown
           :model-value="access"
@@ -76,7 +81,7 @@
         />
         <Button
           class="abele-node-scope-editor__add"
-          text="Add access"
+          :text="t('streamB.addAccess.94a120')"
           :accent="wanted"
           :disabled="busy || loading"
           @click="add"
@@ -85,19 +90,20 @@
     </template>
     <EmptyState
       v-else-if="!loading"
-      text="No nodes connected here. Connect one from the Node panel."
+      :text="t('streamB.noNodesConnectedHereConnectOneFrom.a6484f')"
     />
     <Setting
       v-if="entries.length"
-      name="Local approval"
-      desc="Confirm this chat's configured access on this device. Copied or synced settings do not grant access by themselves."
+      :name="t('streamB.localApproval.1982d9')"
+      :desc="t('streamB.confirmThisChatSConfiguredAccessOn.df414a')"
     >
-      <Button text="Approve on this device" :disabled="busy" @click="approve" />
+      <Button :text="t('streamB.approveOnThisDevice.e68f82')" :disabled="busy" @click="approve" />
     </Setting>
   </div>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, nextTick, ref, onMounted, onUnmounted, watch } from 'vue'
 import {
   nodeScopeNames,
@@ -147,21 +153,24 @@ const loading = ref(false),
   error = ref('')
 let generation = 0
 const nodeOptions = computed(() => [
-  { value: '', display: 'Choose a node' },
+  { value: '', display: t('streamB.chooseANode.8e9aff') },
   ...nodes.value.map((entry) => ({ value: entry.id, display: entry.label })),
 ])
 const projectOptions = computed(() => {
   // By name, as the node panel says a folder; its `~` path only where two share a name.
   const labels = folderLabels(projects.value.map((entry) => entry.label))
   return [
-    { value: '', display: 'Whole node' },
+    { value: '', display: t('streamB.wholeNode.7eee73') },
     ...projects.value.map((entry, i) => ({ value: entry.id, display: labels[i] })),
   ]
 })
-const targetOptions = computed(() => [{ value: '', display: 'Whole folder' }, ...targets.value])
+const targetOptions = computed(() => [
+  { value: '', display: t('streamB.wholeFolder.b38f07') },
+  ...targets.value,
+])
 const accessOptions = [
-  { value: 'read', display: 'Read' },
-  { value: 'edit', display: 'Read and edit' },
+  { value: 'read', display: t('streamB.read.9b9a8d') },
+  { value: 'edit', display: t('streamB.readAndEdit.03b53d') },
 ]
 /** Each entry by its names — node, folder, branch — looked up from the node, never its ids. */
 const names = ref<Record<string, NodeScopeNames>>({})
@@ -184,7 +193,7 @@ async function loadNodes() {
   try {
     nodes.value = (await nodeAgentHost()).nodes()
   } catch (failure) {
-    error.value = failure instanceof Error ? failure.message : 'Could not load nodes'
+    error.value = failure instanceof Error ? failure.message : t('streamB.couldNotLoadNodes.260985')
   }
 }
 async function chooseNode(value: string) {
@@ -201,7 +210,7 @@ async function chooseNode(value: string) {
     const host = await nodeAgentHost(),
       connection = host.connection(value)
     if (!connection.client.connected)
-      throw new Error('Node offline. Reconnect before choosing folders.')
+      throw new Error(t('streamB.nodeOfflineReconnectBeforeChoosingFolders.e3c368'))
     let after: string | undefined
     for (let page = 0; page < 64; page++) {
       const batch = await connection.client.listProjects(after)
@@ -215,13 +224,14 @@ async function chooseNode(value: string) {
       )
       if (batch.length < 100) return
       const next = batch.at(-1).project_id
-      if (next === after) throw new Error('Invalid folder cursor')
+      if (next === after) throw new Error(t('streamB.invalidFolderCursor.8d7983'))
       after = next
     }
-    throw new Error('Too many folders to list')
+    throw new Error(t('streamB.tooManyFoldersToList.7ffc78'))
   } catch (failure) {
     if (generation === version)
-      error.value = failure instanceof Error ? failure.message : 'Could not load folders'
+      error.value =
+        failure instanceof Error ? failure.message : t('streamB.couldNotLoadFolders.d44279')
   } finally {
     if (generation === version) loading.value = false
   }
@@ -238,7 +248,7 @@ async function chooseProject(value: string) {
   try {
     const connection = (await nodeAgentHost()).connection(nodeId)
     if (!connection.client.connected)
-      throw new Error('Node offline. Reconnect before choosing worktrees.')
+      throw new Error(t('streamB.nodeOfflineReconnectBeforeChoosingWorktrees.a20c86'))
     const git = projects.value.find((project) => project.id === value)?.git
     let cursor: string | undefined
     for (let page = 0; page < 64; page++) {
@@ -264,13 +274,14 @@ async function chooseProject(value: string) {
         )
       )
       if (!result.cursor) return
-      if (cursor === result.cursor) throw new Error('Invalid worktree cursor')
+      if (cursor === result.cursor) throw new Error(t('streamB.invalidWorktreeCursor.cb1bdb'))
       cursor = result.cursor
     }
-    throw new Error('Too many worktrees to list')
+    throw new Error(t('streamB.tooManyWorktreesToList.543350'))
   } catch (failure) {
     if (generation === version)
-      error.value = failure instanceof Error ? failure.message : 'Could not load worktrees'
+      error.value =
+        failure instanceof Error ? failure.message : t('streamB.couldNotLoadWorktrees.b82e5c')
   } finally {
     if (generation === version) loading.value = false
   }
@@ -281,7 +292,8 @@ async function perform(work: () => Promise<void>) {
   try {
     await work()
   } catch (failure) {
-    error.value = failure instanceof Error ? failure.message : 'Could not save node scope'
+    error.value =
+      failure instanceof Error ? failure.message : t('streamB.couldNotSaveNodeScope.b43acb')
   } finally {
     busy.value = false
   }

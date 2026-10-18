@@ -6,7 +6,7 @@
        you or has failed. Nothing goes on, no line. -->
   <div v-if="count" class="abele-bg-tasks">
     <TreeItem
-      :text="`${count} in the background`"
+      :text="t('chat.backgroundCount', { count })"
       icon="layers"
       :label="said"
       collapsible
@@ -32,14 +32,25 @@
           :key="task.id"
           class="abele-bg-tasks__task"
           :class="{ 'abele-bg-tasks__task_command': task.kind === 'command' }"
-          :text="task.title"
+          :text="presentUiField(task, 'title')"
           :icon="KIND[task.kind].icon"
           :flair="span(now - task.since)"
-          :label="`${KIND[task.kind].said}: ${task.title}, for ${span(now - task.since)}`"
+          :label="
+            t('chat.taskDuration', {
+              kind: KIND[task.kind].said,
+              title: presentUiField(task, 'title'),
+              duration: span(now - task.since),
+            })
+          "
           inert
         >
           <template v-if="canStop" #actions>
-            <Icon icon="x" size="xs" tooltip="Stop this task" @click.stop="emit('stop', task.id)" />
+            <Icon
+              icon="x"
+              size="xs"
+              :tooltip="t('chat.stopTask')"
+              @click.stop="emit('stop', task.id)"
+            />
           </template>
         </TreeItem>
       </div>
@@ -48,6 +59,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+import { presentUiField } from '@/i18n/streamBErrors'
 import { computed, ref } from 'vue'
 import TreeItem from '../obsidian/TreeItem.vue'
 import StatusDot from '../obsidian/StatusDot.vue'
@@ -72,9 +85,9 @@ const props = withDefaults(
 const emit = defineEmits<{ stop: [id: string]; open: [id: string] }>()
 
 const KIND = {
-  command: { icon: 'square-terminal', said: 'A command' },
-  monitor: { icon: 'eye', said: 'Watching' },
-  agent: { icon: 'bot', said: 'An agent' },
+  command: { icon: 'square-terminal', said: t('chat.command') },
+  monitor: { icon: 'eye', said: t('chat.watching') },
+  agent: { icon: 'bot', said: t('chat.anAgent') },
 } as const
 
 const all = (list: ChildSession[]): ChildSession[] =>
@@ -89,17 +102,18 @@ const count = computed(() => props.sessions.length + props.tasks.length)
 const tone = computed(() =>
   counted.value.waiting ? 'orange' : counted.value.failed ? 'red' : 'accent'
 )
-const said = computed(
-  () =>
-    [
-      counted.value.waiting && `${counted.value.waiting} wait for you`,
-      counted.value.failed && `${counted.value.failed} stopped with an error`,
-      counted.value.running && `${counted.value.running} working`,
-      counted.value.done && `${counted.value.done} done`,
-      props.tasks.length && `${props.tasks.length} running`,
+const said = computed(() =>
+  t('chat.backgroundSummary', {
+    summary: [
+      counted.value.waiting && t('chat.backgroundWaiting', { count: counted.value.waiting }),
+      counted.value.failed && t('chat.backgroundFailed', { count: counted.value.failed }),
+      counted.value.running && t('chat.backgroundWorking', { count: counted.value.running }),
+      counted.value.done && t('chat.backgroundDone', { count: counted.value.done }),
+      props.tasks.length && t('chat.backgroundRunning', { count: props.tasks.length }),
     ]
       .filter(Boolean)
-      .join(' · ') + '; the session wakes when one ends'
+      .join(' · '),
+  })
 )
 const open = ref(props.expanded || !!(counted.value.waiting || counted.value.failed))
 </script>

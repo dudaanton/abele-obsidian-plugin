@@ -1,3 +1,6 @@
+import { uiFields, uiMessage, UiError } from '@/i18n/streamBErrors'
+
+import { t } from '@/i18n'
 /**
  * A repository's file tree at one commit, as the tree panel shows it.
  *
@@ -54,15 +57,17 @@ export class RepoTree {
     const pending = this.reading.get(node.path)
     if (pending !== undefined) return pending
     const read = (async () => {
-      if (!node.sha) throw new Error(`GitHub named no tree for ${node.path}.`)
+      if (!node.sha)
+        throw new UiError(uiMessage('streamBError.fc0bde16c0', { v0: String(node.path) }))
       const answer = await this.client.get<TreeAnswer>(
         `${repoApiPath(this.repo)}/git/trees/${encodeURIComponent(node.sha)}`,
-        { what: `the folder ${node.path}` }
+        uiFields(
+          { what: t('streamB.theFolder.f78538', { v0: String(node.path) }) },
+          { what: uiMessage('streamB.theFolder.f78538', { v0: String(node.path) }) }
+        )
       )
       if (answer.truncated || !Array.isArray(answer.tree))
-        throw new Error(
-          `GitHub did not send a complete tree for ${node.path}. Retry when it is available.`
-        )
+        throw new UiError(uiMessage('streamBError.cae3891ed5', { v0: String(node.path) }))
       this.client.assertCurrent?.()
       node.children = childrenFrom(node.path, answer.tree)
     })()
@@ -106,18 +111,32 @@ const keyOf = (repo: RepoRef, sha: string) =>
 
 async function read(client: GithubClient, repo: RepoRef, sha: string): Promise<RepoTree> {
   const base = `${repoApiPath(repo)}/git/trees/${encodeURIComponent(sha)}`
-  const whole = await client.get<TreeAnswer>(`${base}?recursive=1`, {
-    what: "the repository's file list",
-  })
-  if (!Array.isArray(whole.tree)) throw new Error('GitHub sent no repository tree.')
+  const whole = await client.get<TreeAnswer>(
+    `${base}?recursive=1`,
+    uiFields(
+      {
+        what: t('streamB.theRepositorySFileList.9791ab'),
+      },
+      { what: uiMessage('streamB.theRepositorySFileList.9791ab') }
+    )
+  )
+  if (!Array.isArray(whole.tree)) throw new UiError(uiMessage('streamBError.6ab83b4090'))
   if (!whole.truncated) {
     return new RepoTree(client, repo, sha, buildTree(whole.tree ?? []), false)
   }
   // Part of a tree cannot be told from the whole of it: the top level is read on its own, and
   // each folder below when it is opened.
-  const top = await client.get<TreeAnswer>(base, { what: "the repository's file list" })
+  const top = await client.get<TreeAnswer>(
+    base,
+    uiFields(
+      {
+        what: t('streamB.theRepositorySFileList.9791ab'),
+      },
+      { what: uiMessage('streamB.theRepositorySFileList.9791ab') }
+    )
+  )
   if (top.truncated || !Array.isArray(top.tree))
-    throw new Error('GitHub did not send a complete top-level tree.')
+    throw new UiError(uiMessage('streamBError.61746dfc8f'))
   const root: TreeNode = {
     name: '',
     path: '',

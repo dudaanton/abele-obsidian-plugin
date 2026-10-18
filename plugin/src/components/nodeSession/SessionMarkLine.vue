@@ -30,6 +30,8 @@
 
 <script setup lang="ts">
 import NodeErrorText from '@/components/NodeErrorText.vue'
+import { t } from '@/i18n'
+import { presentUiField } from '@/i18n/streamBErrors'
 import { computed, onMounted, ref } from 'vue'
 import { setTooltip } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'
@@ -53,19 +55,23 @@ const glyph = computed(() =>
 )
 const said = computed(() => {
   const { mark } = props
-  if (mark.kind === 'notice') return mark.text ?? ''
-  if (mark.kind === 'compacting') return 'Compacting…'
-  if (mark.kind === 'woke') return `Woke: ${mark.text ?? 'a background task ended'}`
-  if (mark.kind === 'failed') return `Compacting failed${mark.text ? `: ${mark.text}` : ''}`
+  if (mark.kind === 'notice') return presentUiField(mark, 'text')
+  if (mark.kind === 'compacting') return t('chat.compacting')
+  if (mark.kind === 'woke')
+    return t('chat.woke', {
+      text: mark.text == null ? t('chat.backgroundEnded') : presentUiField(mark, 'text'),
+    })
+  if (mark.kind === 'failed')
+    return t('chat.compactFailed', { reason: mark.text ? `: ${presentUiField(mark, 'text')}` : '' })
   return mark.before && mark.after
-    ? `Compacted · ${tokens(mark.before)} → ${tokens(mark.after)}`
-    : 'Compacted'
+    ? t('chat.compactedCounts', { before: tokens(mark.before), after: tokens(mark.after) })
+    : t('chat.compacted')
 })
 const label = ref<HTMLElement>()
 onMounted(() => {
   const tip = [
-    props.mark.focus && `Kept in focus: ${props.mark.focus}`,
-    props.summary && (open.value ? 'Hide the retelling' : 'Show the retelling'),
+    props.mark.focus && t('chat.keptFocus', { focus: props.mark.focus }),
+    props.summary && (open.value ? t('chat.hideSummary') : t('chat.showSummary')),
   ]
     .filter(Boolean)
     .join('\n')

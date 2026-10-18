@@ -1,3 +1,5 @@
+import { uiFields, uiErrorMessage, UiError, uiMessage } from '@/i18n/streamBErrors'
+
 /**
  * Turning a stretch of a chat's log into what a restore does, and doing it.
  *
@@ -194,6 +196,8 @@ export async function planRestore(entries: RewindEntry[], fs: VaultFs): Promise<
     }
   })
 
+  for (const item of shown)
+    if (item.reason) uiFields(item, { reason: uiMessage('streamBError.7281f22f0a') })
   return {
     units,
     items: shown.sort((a, b) => a.path.localeCompare(b.path)),
@@ -252,9 +256,7 @@ export async function applyRestore(
     try {
       for (const [path, expected] of unit.expected) {
         if (currentAfter(await fs.current(path)) !== expected)
-          throw new Error(
-            `Changed since the undo snapshot at ${path}: this restore step was refused`
-          )
+          throw new UiError(uiMessage('streamBError.5712d96570', { v0: String(path) }))
       }
       await step(
         fs.checked(
@@ -267,10 +269,12 @@ export async function applyRestore(
       result.restored.push(item.path)
     } catch (err) {
       unit.failed = true
-      result.failed.push({
-        path: item.path,
-        error: err instanceof Error ? err.message : String(err),
-      })
+      result.failed.push(
+        uiFields(
+          { path: item.path, error: err instanceof Error ? err.message : String(err) },
+          { error: uiErrorMessage(err) }
+        )
+      )
     }
   }
   const of = (...actions: RestoreItem['action'][]) =>
@@ -284,9 +288,9 @@ export async function applyRestore(
     await run(item, async (safe) => {
       const target = item.target
       const data = target.t === 'binary' && target.blob ? await blob(target.blob) : undefined
-      if (target.t === 'binary' && !data) throw new Error('The kept copy is gone')
+      if (target.t === 'binary' && !data) throw new UiError(uiMessage('streamBError.fe09e1fe71'))
       if (currentAfter(await fs.current(item.path)) !== item.expected)
-        throw new Error('Changed since the undo snapshot: left untouched')
+        throw new UiError(uiMessage('streamBError.80abc63be7'))
       await safe.put(item.path, target, data ?? undefined, item.expected)
     })
   }
@@ -300,7 +304,8 @@ export async function applyRestore(
   for (const item of moves) await run(item, (safe) => safe.move(item.from as string, item.path))
   for (const item of of('remove-folder').sort((a, b) => depth(b.path) - depth(a.path))) {
     await run(item, async (safe) => {
-      if (!(await safe.removeIfEmpty(item.path))) throw new Error('Not empty: kept')
+      if (!(await safe.removeIfEmpty(item.path)))
+        throw new UiError(uiMessage('streamBError.39ea7818db'))
     })
   }
   for (const unit of units) if (!unit.failed) result.refs.push(...unit.refs)

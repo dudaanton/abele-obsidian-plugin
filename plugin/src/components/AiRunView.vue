@@ -2,10 +2,10 @@
   <div class="abele-run-view">
     <div class="abele-run-view__header">
       <div class="abele-run-view__title">
-        <DrawerViewSwitch icon="bot" name="Abele AI chat" />
+        <DrawerViewSwitch icon="bot" :name="t('streamB.abeleAiChat.08f891')" />
         <Icon icon="bot" no-hover />
         <span class="abele-run-view__agent">{{ run.agentName }}</span>
-        <Badge class="abele-run-view__badge" text="read-only" />
+        <Badge class="abele-run-view__badge" :text="t('streamB.readOnly.4fed39')" />
       </div>
 
       <div class="abele-run-view__task">{{ run.task }}</div>
@@ -15,7 +15,7 @@
         class="abele-run-view__parent"
         icon="corner-up-left"
         :tooltip="run.parentChat"
-        text-right="Back to the chat that started this"
+        :text-right="t('streamB.backToTheChatThatStartedThis.b01b86')"
         @click="openParent"
       />
     </div>
@@ -27,12 +27,13 @@
         :branch="branch"
         :show-item="run.branches.length > 1"
       />
-      <EmptyState v-if="!run.branches.length" text="This run recorded nothing." />
+      <EmptyState v-if="!run.branches.length" :text="t('streamB.thisRunRecordedNothing.0d338a')" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 import { TFile } from 'obsidian'
 import Icon from './obsidian/Icon.vue'

@@ -358,7 +358,270 @@
     "views/UserDocsView.ts",
     "drawing/pictureEntries.ts",
     "linter/LinterView.ts",
-    "components/debugger/valueFormat.ts"
+    "components/debugger/valueFormat.ts",
+    "components/ChatFindBar.vue",
+    "components/ChatThinking.vue",
+    "components/ChatMessageBar.vue",
+    "components/ChatSelectionBar.vue",
+    "components/ChatBranchSwitch.vue",
+    "components/ChatAnchorHistory.vue",
+    "components/chat/ChatBranchTitle.vue",
+    "components/chat/ChatReplyCard.vue",
+    "components/ChatQuestionCard.vue",
+    "components/ChatToolModes.vue",
+    "components/nodeSession/CompactModal.vue",
+    "components/nodeSession/RenameModal.vue",
+    "components/nodeSession/ParentLink.vue",
+    "components/nodeSession/SessionPlan.vue",
+    "components/nodeSession/SessionMarkLine.vue",
+    "components/nodeSession/SessionTree.vue",
+    "components/nodeSession/types.ts",
+    "components/nodeSession/SessionSettings.vue",
+    "components/nodeSession/BackgroundTasks.vue",
+    "components/nodeSession/SessionTreeRow.vue",
+    "components/github/GithubFindBar.vue",
+    "components/github/GithubNotice.vue",
+    "components/github/GithubBaseBar.vue",
+    "agents/AgentsService.ts",
+    "agents/attention.ts",
+    "agents/nodeAttention.ts",
+    "ai/ChatService.ts",
+    "ai/ChatSession.ts",
+    "ai/CommentService.ts",
+    "ai/agents/types.ts",
+    "ai/chatHistoryOrder.ts",
+    "ai/chatNavigationDiscussionSearch.ts",
+    "ai/mcp/settings.ts",
+    "ai/messageCards.ts",
+    "ai/openChat.ts",
+    "ai/rewind/ChatRewind.ts",
+    "ai/toolSections.ts",
+    "components/AgentOverrideNotice.vue",
+    "components/AgentsListDialog.vue",
+    "components/AiAgentSelector.vue",
+    "components/AiChat.vue",
+    "components/AiChatHistory.vue",
+    "components/AiChatInput.vue",
+    "components/AiChatMessage.vue",
+    "components/AiChatMessageDetails.vue",
+    "components/AiChatMessageInterceptor.vue",
+    "components/AiChatSettings.vue",
+    "components/AiChatSetup.vue",
+    "components/AiChatTabs.vue",
+    "components/AiCommentTrail.vue",
+    "components/AiNodeScopeChips.vue",
+    "components/AiNodeScopeEditor.vue",
+    "components/AiReplyOriginalDialog.vue",
+    "components/AiReplyRevisionDialog.vue",
+    "components/AiRewindDialog.vue",
+    "components/AiRunBranch.vue",
+    "components/AiRunMessage.vue",
+    "components/AiRunView.vue",
+    "components/AiScopeManager.vue",
+    "components/AiSkillPromptPicker.vue",
+    "components/AiSubAgentRun.vue",
+    "components/AiToolApproval.vue",
+    "components/ChatAccess.vue",
+    "components/ChatArtifacts.vue",
+    "components/ChatBindingState.vue",
+    "components/ChatPicture.vue",
+    "components/ChatSlashSuggest.vue",
+    "components/ChatToolRun.vue",
+    "components/ChatsList.vue",
+    "components/NodeChatView.vue",
+    "components/NodeDelegationCard.vue",
+    "components/NodeDelegationGrantsDialog.vue",
+    "components/NodeFileSaveState.vue",
+    "components/NodeFilesDialog.vue",
+    "components/NodeMessage.vue",
+    "components/NodePairingDialog.vue",
+    "components/NodePermissionCard.vue",
+    "components/NodeRepositoryItem.vue",
+    "components/NodeSidebarChat.vue",
+    "components/chat/AgentView.vue",
+    "components/chat/NodeAccessRefusal.vue",
+    "components/chatOutline/ChatOutlineDialog.vue",
+    "components/chatOutline/ChatOutlineDiscussion.vue",
+    "components/chatOutline/ChatOutlineFork.vue",
+    "components/chatOutline/ChatOutlinePane.vue",
+    "components/chatOutline/ChatOutlineResults.vue",
+    "components/github/GithubBlameRange.vue",
+    "components/github/GithubBlob.vue",
+    "components/github/GithubBreadcrumbs.vue",
+    "components/github/GithubCodeSearch.vue",
+    "components/github/GithubComment.vue",
+    "components/github/GithubCompare.vue",
+    "components/github/GithubDiffFile.vue",
+    "components/github/GithubFiles.vue",
+    "components/github/GithubFolder.vue",
+    "components/github/GithubHeader.vue",
+    "components/github/GithubItem.vue",
+    "components/github/GithubLayout.vue",
+    "components/github/GithubLinkActions.vue",
+    "components/github/GithubList.vue",
+    "components/github/GithubListRow.vue",
+    "components/github/GithubMarkdown.vue",
+    "components/github/GithubNotifications.vue",
+    "components/github/GithubPinnedFile.vue",
+    "components/github/GithubProseActions.vue",
+    "components/github/GithubRepoHome.vue",
+    "components/github/GithubRepoList.vue",
+    "components/github/GithubSelectionBar.vue",
+    "components/github/GithubSnippet.vue",
+    "components/github/GithubThread.vue",
+    "components/github/GithubTreeNode.vue",
+    "components/github/GithubTreePanel.vue",
+    "components/nodeWork/BranchCodes.vue",
+    "components/nodeWork/ChangeCodes.vue",
+    "components/nodeWork/CommitBox.vue",
+    "components/nodeWork/FileTree.vue",
+    "components/nodeWork/FileTreeLevel.vue",
+    "components/nodeWork/FileView.vue",
+    "components/nodeWork/FolderPicker.vue",
+    "components/nodeWork/HistoryView.vue",
+    "components/nodeWork/NodeModes.vue",
+    "components/nodeWork/NodePanel.vue",
+    "components/nodeWork/NodePathEditorPane.vue",
+    "components/nodeWork/NodePathFilePane.vue",
+    "components/nodeWork/NodePathHistoryPane.vue",
+    "components/nodeWork/NodePathSidebar.vue",
+    "components/nodeWork/NodePlace.vue",
+    "components/nodeWork/NodePullList.vue",
+    "components/nodeWork/NodeSuggestModal.ts",
+    "components/nodeWork/PairDialog.vue",
+    "components/nodeWork/PullRequestDialog.vue",
+    "components/nodeWork/UpdateDialog.vue",
+    "components/nodeWork/WorktreeChip.vue",
+    "components/nodeWork/WorktreeDialog.vue",
+    "components/nodeWork/WorktreeSwitchLine.vue",
+    "components/nodeWork/branchStep.ts",
+    "forge/githubRepository.ts",
+    "github/GithubService.ts",
+    "github/GithubView.ts",
+    "github/accessCheck.ts",
+    "github/addSelection.ts",
+    "github/api.ts",
+    "github/approveConnection.ts",
+    "github/chatAbout.ts",
+    "github/codeViewer.ts",
+    "github/comparison/BasePicker.ts",
+    "github/comparison/pins.ts",
+    "github/comparison/service.ts",
+    "github/connectionRead.ts",
+    "github/connections.ts",
+    "github/item/useGithubItem.ts",
+    "github/linking.ts",
+    "github/lists/listQuery.ts",
+    "github/notifications/inbox.ts",
+    "github/notifications/model.ts",
+    "github/open/OpenPicker.ts",
+    "github/open/RepoPicker.ts",
+    "github/open/repoList.ts",
+    "github/open/search.ts",
+    "github/primaryAccess.ts",
+    "github/refusal.ts",
+    "github/register.ts",
+    "github/remoteImages.ts",
+    "github/repoPage/RefPicker.ts",
+    "github/repoPage/repoHome.ts",
+    "github/search/definitionPicker.ts",
+    "github/search/navAddon.ts",
+    "github/search/source.ts",
+    "github/search/tabCode.ts",
+    "github/tree/folder.ts",
+    "github/tree/repoTree.ts",
+    "github/users.ts",
+    "node/NodeChatPresenter.ts",
+    "node/NodePairingDialogHost.ts",
+    "node/NodePathController.ts",
+    "node/NodePathDialogs.ts",
+    "node/NodePathObsidianActions.ts",
+    "node/NodeSessionControl.ts",
+    "node/RepositoryPicker.ts",
+    "node/nodePathForge.ts",
+    "node/nodePathGitActions.ts",
+    "node/openRepository.ts",
+    "node/openSession.ts",
+    "node/presentation.ts",
+    "node/repositoryReadApproval.ts",
+    "node/repositorySettings.ts",
+    "repository/node.ts",
+    "startup/registerAiFeatures.ts",
+    "github/itemHead.ts",
+    "components/nodeWork/codes.ts",
+    "components/chatOutline/outline.ts",
+    "ai/ChatPresentationSession.ts",
+    "github/useLoad.ts",
+    "github/sections.ts",
+    "github/client.ts",
+    "github/connectionClients.ts",
+    "node/invitationPhoto.ts",
+    "forge/forgejoClient.ts",
+    "forge/forgejoConnections.ts",
+    "forge/forgejoRepository.ts",
+    "forge/forgejoUrls.ts",
+    "forge/github.ts",
+    "forge/identity.ts",
+    "forge/schemaSupport.ts",
+    "github/compare.ts",
+    "github/format.ts",
+    "github/tree/useTreePanel.ts",
+    "node/NodePairingModel.ts",
+    "github/comparison/text.ts",
+    "github/permalinks.ts",
+    "views/AiSidebarView.ts",
+    "views/NodeSidebarView.ts",
+    "views/NodePathMainView.ts",
+    "views/nodeFileTabActions.ts",
+    "node/NodeFilesModel.ts",
+    "node/NodePathClientPort.ts",
+    "node/NodePathHistoryModel.ts",
+    "node/NodePathModel.ts",
+    "node/NodePathMutations.ts",
+    "node/NodePathService.ts",
+    "node/localDiscovery.ts",
+    "node/nodeImagePreview.ts",
+    "node/nodePages.ts",
+    "node/nodePathGit.ts",
+    "node/nodePathNavigation.ts",
+    "node/openFiles.ts",
+    "node/repositoryToolsTab.ts",
+    "agents/AttentionReader.ts",
+    "ai/ChatDigest.ts",
+    "ai/ChatStorage.ts",
+    "ai/RunStorage.ts",
+    "ai/chatAnchorStore.ts",
+    "ai/chatBindingEdits.ts",
+    "ai/chatBindingProof.ts",
+    "ai/chatBindingRenames.ts",
+    "ai/chatBindings.ts",
+    "ai/chatBranchCuts.ts",
+    "ai/chatCopy.ts",
+    "ai/chatNoteLinks.ts",
+    "ai/commentIdentity.ts",
+    "ai/nodeScope.ts",
+    "ai/replyAnnotations.ts",
+    "ai/rewind/checkedMutation.ts",
+    "ai/rewind/restore.ts",
+    "ai/rewind/vaultFs.ts",
+    "ai/transcription.ts",
+    "github/commitRequest.ts",
+    "github/comparison/compute.ts",
+    "repository/nodeLinks.ts",
+    "github/search/useTabSearch.ts",
+    "node/NodeDeviceKeyStore.ts",
+    "node/NodeService.ts",
+    "ai/chatBindingWrite.ts",
+    "github/search/textSearch.ts",
+    "github/item/useItemPresentation.ts",
+    "ai/commentTrail.ts",
+    "github/comparison/diff.worker.ts",
+    "node/liveTranscript.ts",
+    "ai/toolRuns.ts",
+    "composables/useChatInputEditor.ts",
+    "agents/NodeAttentionWatch.ts",
+    "ai/chatTabKeyMap.ts",
+    "github/markdownPreview.ts"
   ],
   "exceptions": [
     {
@@ -810,6 +1073,291 @@
       "path": "word/WordParagraphEditor.vue",
       "text": "strike",
       "reason": "Inline formatting operation ID"
+    },
+    {
+      "path": "ai/agents/types.ts",
+      "text": "New agent",
+      "reason": "Stored default agent name remains independent of UI language"
+    },
+    {
+      "path": "ai/toolSections.ts",
+      "text": "Projects on the person's paired computers (nodes): reading and searching code in a project folder or Git worktree, editing files there, checking Git status, diffs, branches and history, the open repository tabs, handing a task to a coding agent that runs on a node, reading a run the debugger recorded there, and the project's saved HTTP requests. Open this whenever the person talks about a project, repository, branch, worktree, commit or a source file that is not a vault note. Not for vault notes — the file tools handle those.",
+      "reason": "Agent-facing tool instructions remain English"
+    },
+    {
+      "path": "ai/toolSections.ts",
+      "text": "The tasks kept in this vault's notes: what is due, overdue, done or open, by date, project or group. Open this when the person asks about their tasks, plans, deadlines or what to do next.",
+      "reason": "Agent-facing tool instructions remain English"
+    },
+    {
+      "path": "ai/toolSections.ts",
+      "text": "Money recorded in the vault: transactions, accounts, categories, spending and income over a period. Open this for any question about what was spent, earned or paid, balances or budgets.",
+      "reason": "Agent-facing tool instructions remain English"
+    },
+    {
+      "path": "ai/toolSections.ts",
+      "text": "Structured data across many notes: properties, bases, logs, backlinks, statistics computed over notes, and checking notes against the vault's conventions (lint). Open this when a question spans many notes or needs numbers rather than one note's text.",
+      "reason": "Agent-facing tool instructions remain English"
+    },
+    {
+      "path": "ai/toolSections.ts",
+      "text": "Obsidian canvases (.canvas files): reading one, creating a new one, adding, moving and connecting cards, laying them out, drawing step-by-step diagrams and exporting a canvas as a picture. Open this whenever the person mentions a canvas, a board, a diagram or a mind map.",
+      "reason": "Agent-facing tool instructions remain English"
+    },
+    {
+      "path": "ai/toolSections.ts",
+      "text": "Books and PDFs in the vault: their contents, reading and searching them, showing a place in the reader, and the person's highlights and bookmarks. Open this when the person asks about a book, a quote from one, or their highlights.",
+      "reason": "Agent-facing tool instructions remain English"
+    },
+    {
+      "path": "ai/toolSections.ts",
+      "text": "Word documents (.docx) in the vault: reading, searching and editing them. Open this when the person asks about a .docx file.",
+      "reason": "Agent-facing tool instructions remain English"
+    },
+    {
+      "path": "ai/toolSections.ts",
+      "text": "Spreadsheets (.xlsx) in the vault: their sheets, reading and searching cells, writing values. Open this when the person asks about an .xlsx file or a table kept in one.",
+      "reason": "Agent-facing tool instructions remain English"
+    },
+    {
+      "path": "ai/toolSections.ts",
+      "text": "Slide decks: creating, reading, editing and checking a presentation, and presenting it. Open this when the person wants slides or a talk.",
+      "reason": "Agent-facing tool instructions remain English"
+    },
+    {
+      "path": "ai/toolSections.ts",
+      "text": "The internet: web search, fetching a page or an API, downloading an image or a file into the vault. Open this when the answer is not in the vault and needs current or outside information.",
+      "reason": "Agent-facing tool instructions remain English"
+    },
+    {
+      "path": "ai/toolSections.ts",
+      "text": "GitHub, read-only: issues, pull requests, their files, commits, code search and files at a version, and the GitHub tabs open in the app. Open this when the person mentions an issue, a pull request or a repository on GitHub.",
+      "reason": "Agent-facing tool instructions remain English"
+    },
+    {
+      "path": "ai/toolSections.ts",
+      "text": "Places and routes: the current location, finding an address or places nearby, and building a route drawn on a map. Open this for any question about where something is or how to get there.",
+      "reason": "Agent-facing tool instructions remain English"
+    },
+    {
+      "path": "ai/toolSections.ts",
+      "text": "Making pictures: generating an image from a description, or editing an image in the vault. Open this when the person asks for a picture to be drawn or changed. Not for looking at an image — the file tools read images.",
+      "reason": "Agent-facing tool instructions remain English"
+    },
+    {
+      "path": "ai/toolSections.ts",
+      "text": "Your own memory between chats: remembering something the person wants you to keep, and forgetting it. Open this when the person says to remember or forget something.",
+      "reason": "Agent-facing tool instructions remain English"
+    },
+    {
+      "path": "ai/toolSections.ts",
+      "text": "Handing work to other agents: running sub-agents on many items in parallel, each with a fresh context. Open this for batch work over many notes or items. Not for a coding agent on a node — that is in Nodes.",
+      "reason": "Agent-facing tool instructions remain English"
+    },
+    {
+      "path": "ai/toolSections.ts",
+      "text": "The app itself: opening a note or file in a tab, taking a screenshot of what is on screen, inspecting a view's elements, and running JavaScript in a sandbox for calculations. Open this when the person asks to show, open or look at something in the app.",
+      "reason": "Agent-facing tool instructions remain English"
+    },
+    {
+      "path": "ai/toolSections.ts",
+      "text": "Note templates: listing them and creating a new note from one. Open this when the person asks to create a note of a kind the vault has a template for (a meeting, a task, a journal entry…).",
+      "reason": "Agent-facing tool instructions remain English"
+    },
+    {
+      "path": "ai/toolSections.ts",
+      "text": "Reference for writing special blocks: chart code blocks, template syntax and the script API. Open this before writing a chart, a template or a script.",
+      "reason": "Agent-facing tool instructions remain English"
+    },
+    {
+      "path": "ai/toolSections.ts",
+      "text": "The vault's scripts: running them, creating a new script, and answering a form a script shows. Open this when the person asks to run or write a script.",
+      "reason": "Agent-facing tool instructions remain English"
+    },
+    {
+      "path": "ai/toolSections.ts",
+      "text": "The plugin's own settings: reading them and changing them. Open this only when the person asks to see or change a setting.",
+      "reason": "Agent-facing tool instructions remain English"
+    },
+    {
+      "path": "components/AiChat.vue",
+      "text": "text/plain",
+      "reason": "MIME type"
+    },
+    {
+      "path": "components/AiToolApproval.vue",
+      "text": ".js",
+      "reason": "Filename extension"
+    },
+    {
+      "path": "components/ChatSlashSuggest.vue",
+      "text": "compact",
+      "reason": "Stable slash-command token"
+    },
+    {
+      "path": "components/ChatSlashSuggest.vue",
+      "text": "/compact",
+      "reason": "Stable slash-command token"
+    },
+    {
+      "path": "components/ChatSlashSuggest.vue",
+      "text": "new",
+      "reason": "Stable slash-command token"
+    },
+    {
+      "path": "components/ChatSlashSuggest.vue",
+      "text": "/new",
+      "reason": "Stable slash-command token"
+    },
+    {
+      "path": "components/ChatSlashSuggest.vue",
+      "text": "load",
+      "reason": "Stable slash-command token"
+    },
+    {
+      "path": "components/ChatSlashSuggest.vue",
+      "text": "/load",
+      "reason": "Stable slash-command token"
+    },
+    {
+      "path": "components/NodePairingDialog.vue",
+      "text": "abele-node pair invite",
+      "reason": "Literal command to run on the node"
+    },
+    {
+      "path": "components/NodePairingDialog.vue",
+      "text": "abele-node pair revoke",
+      "reason": "Literal command to run on the node"
+    },
+    {
+      "path": "components/chat/AgentView.vue",
+      "text": "AgentView",
+      "reason": "Product identity or literal filename"
+    },
+    {
+      "path": "components/github/GithubFolder.vue",
+      "text": "README",
+      "reason": "Product identity or literal filename"
+    },
+    {
+      "path": "components/nodeWork/NodePanel.vue",
+      "text": "AbeleNode",
+      "reason": "Product identity or literal filename"
+    },
+    {
+      "path": "components/nodeWork/PairDialog.vue",
+      "text": "abele-node pair",
+      "reason": "Literal command to run on the node"
+    },
+    {
+      "path": "components/nodeWork/PairDialog.vue",
+      "text": "abele-node approve-pair",
+      "reason": "Literal command to run on the node"
+    },
+    {
+      "path": "components/nodeWork/WorktreeDialog.vue",
+      "text": "new-branch",
+      "reason": "Stable example branch identifier"
+    },
+    {
+      "path": "github/connections.ts",
+      "text": "GitHub Enterprise",
+      "reason": "Product identity or literal filename"
+    },
+    {
+      "path": "node/NodeSessionControl.ts",
+      "text": "compact",
+      "reason": "Stable slash-command token"
+    },
+    {
+      "path": "node/NodeSessionControl.ts",
+      "text": "model",
+      "reason": "Stable slash-command token"
+    },
+    {
+      "path": "node/NodeSessionControl.ts",
+      "text": "effort",
+      "reason": "Stable slash-command token"
+    },
+    {
+      "path": "node/NodeSessionControl.ts",
+      "text": "mode",
+      "reason": "Stable slash-command token"
+    },
+    {
+      "path": "node/NodeSessionControl.ts",
+      "text": "rename",
+      "reason": "Stable slash-command token"
+    },
+    {
+      "path": "node/NodeSessionControl.ts",
+      "text": "stop",
+      "reason": "Stable slash-command token"
+    },
+    {
+      "path": "node/nodePathGitActions.ts",
+      "text": "branch-name",
+      "reason": "Stable example branch identifier"
+    },
+    {
+      "path": "repository/node.ts",
+      "text": "(?:function|class|const|let|interface|type)\\s+",
+      "reason": "Search regular-expression syntax"
+    },
+    {
+      "path": "repository/node.ts",
+      "text": "\\b",
+      "reason": "Search regular-expression syntax"
+    },
+    {
+      "path": "github/comparison/text.ts",
+      "text": "\\ No newline at end of ",
+      "reason": "Diff notation and endpoint identifiers stay language-independent."
+    },
+    {
+      "path": "github/comparison/text.ts",
+      "text": "base",
+      "reason": "Diff notation and endpoint identifiers stay language-independent."
+    },
+    {
+      "path": "github/comparison/text.ts",
+      "text": "target",
+      "reason": "Diff notation and endpoint identifiers stay language-independent."
+    },
+    {
+      "path": "github/comparison/text.ts",
+      "text": " file",
+      "reason": "Diff notation and endpoint identifiers stay language-independent."
+    },
+    {
+      "path": "github/permalinks.ts",
+      "text": " by ",
+      "reason": "Stored link text stays independent of the UI language."
+    },
+    {
+      "path": "ai/replyAnnotations.ts",
+      "text": "[Owner-reviewed correction to an earlier reply]\n",
+      "reason": "Stored conversation correction marker; agent-facing content remains language-independent."
+    },
+    {
+      "path": "ai/transcription.ts",
+      "text": "Gemini 3.5 Flash Lite",
+      "reason": "Provider model name; preserve the configured identity."
+    },
+    {
+      "path": "ai/transcription.ts",
+      "text": "Voxtral Small (Mistral)",
+      "reason": "Provider model name; preserve the configured identity."
+    },
+    {
+      "path": "components/AiChatTabs.vue",
+      "text": "node:",
+      "reason": "Stable node chat tab identifier prefix"
+    },
+    {
+      "path": "components/github/GithubComment.vue",
+      "text": " · comment by ",
+      "reason": "Stored comment link label remains independent of UI language"
     }
   ],
   "commandFiles": [

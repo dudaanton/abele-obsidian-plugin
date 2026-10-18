@@ -1,3 +1,5 @@
+import { presentUiError } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 /**
  * "Switch branch or tag" on a repository's front page: Obsidian's own picker over the repository's
  * branches and tags, filtered as it is typed into. The first hundred of each are asked for once;
@@ -51,11 +53,11 @@ export class RefPicker extends SuggestModal<RefRow> {
   ) {
     super(app)
     this.limit = 50
-    this.setPlaceholder('Branch or tag')
+    this.setPlaceholder(t('streamB.branchOrTag.fba325'))
     this.setInstructions([
-      { command: '↑↓', purpose: 'to navigate' },
-      { command: '↵', purpose: 'to switch' },
-      { command: 'esc', purpose: 'to dismiss' },
+      { command: '↑↓', purpose: t('streamBMeta.5a70bdb083') },
+      { command: '↵', purpose: t('streamBMeta.a64052354e') },
+      { command: 'esc', purpose: t('streamBMeta.29e1c55a84') },
     ])
     this.modalEl.addClass('abele-github-refs')
   }
@@ -84,17 +86,17 @@ export class RefPicker extends SuggestModal<RefRow> {
       this.problem = ''
     } catch (e) {
       this.listed = null
-      this.problem = e instanceof Error ? e.message : String(e)
+      this.problem = e instanceof Error ? presentUiError(e) : String(e)
       return [{ kind: 'note', name: this.problem }]
     }
     const rows = refRows(lists, query)
-    this.emptyStateText = 'No branch or tag like that.'
+    this.emptyStateText = t('streamBMeta.42a79f2537')
     return rows
   }
 
   renderSuggestion(row: RefRow, el: HTMLElement): void {
     const notes = [
-      row.name === this.current && row.kind !== 'note' ? 'shown now' : '',
+      row.name === this.current && row.kind !== 'note' ? t('streamBMeta.f5b932bdd8') : '',
       row.kind === 'branch' && row.name === this.defaultBranch ? 'default' : '',
     ].filter(Boolean)
     this.rows.draw(el, {

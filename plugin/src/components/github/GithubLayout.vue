@@ -12,7 +12,7 @@
         <slot name="panel" />
         <PanelResizeHandle
           class="abele-github-layout__resize"
-          label="File tree width"
+          :label="t('streamB.fileTreeWidth.09ff7e')"
           v-bind="divider"
         />
       </div>
@@ -24,6 +24,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 /**
  * A repository tab's frame: the content, and — while it is open — the file tree panel beside it on a
  * wide screen, or over it as a drawer on a narrow one. Each part scrolls on its own.

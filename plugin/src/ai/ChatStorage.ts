@@ -1,3 +1,5 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
+
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AgentsService } from '@/agents/AgentsService'
 import { mergeAttentionTruth, settledAttention } from '@/agents/attention'
@@ -36,8 +38,7 @@ import {
 type AttentionProjection = (content: string) => Promise<ChatAttentionSnapshot>
 
 function assertChatTarget(content: string): void {
-  if (isRunTranscript(content))
-    throw new Error('A delegated run cannot be saved or loaded as a chat.')
+  if (isRunTranscript(content)) throw new UiError(uiMessage('streamBError.79654b25ba'))
 }
 
 /** The same dates `messageTimes` reads from a file, from a conversation in memory. */
@@ -207,7 +208,7 @@ export class ChatStorage {
           throw error
         }
         if (GlobalStore.getInstance().app.vault !== vault)
-          throw new Error('The discussion vault changed during discovery.')
+          throw new UiError(uiMessage('streamBError.705ef1d387'))
         if (
           file.path !== path ||
           file.stat.mtime !== mtime ||
@@ -373,7 +374,7 @@ export class ChatStorage {
         (current.torn || current.damaged || !current.metadata) &&
         (await app.vault.adapter.exists(chatCopyPath(app, file.path)))
       )
-        throw new Error('This chat needs reopening. Reopen it before saving.')
+        throw new UiError(uiMessage('streamBError.3fe6722d6b'))
     }
     for (let attempt = 0; attempt < 8; attempt++) {
       const path = canonicalDiscussionPath(file.path)
@@ -444,14 +445,11 @@ export class ChatStorage {
       if (identity) {
         const owners = this.discussionIds.get(identity)
         if (owners && [...owners].some((owner) => owner !== path))
-          throw new DiscussionIdentityConflict(
-            'Conflicting discussion owners. Resolve the files explicitly.',
-            identity
-          )
+          throw new DiscussionIdentityConflict(uiMessage('streamBError.a32bd46d12'), identity)
       }
       if (file.path !== path) continue
       if (toRaw(app.vault.getAbstractFileByPath(path)) !== file)
-        throw new Error('The discussion was deleted while being prepared.')
+        throw new UiError(uiMessage('streamBError.653067e964'))
       let committed = previous
       if (identity && (metadata.commentId !== identity || metadata.commentLocation !== path)) {
         const next = { ...metadata, commentId: identity, commentLocation: path }
@@ -465,14 +463,14 @@ export class ChatStorage {
           await rewriteChat(app, file, content, (current) => {
             if (current !== previous) {
               changed = true
-              throw new Error('Discussion revision changed.')
+              throw new UiError(uiMessage('streamBError.f43a0fbfa4'))
             }
             if (file.path !== path) {
               changed = true
-              throw new Error('Discussion revision moved.')
+              throw new UiError(uiMessage('streamBError.3fcb34cb40'))
             }
             if (toRaw(app.vault.getAbstractFileByPath(path)) !== file)
-              throw new Error('The discussion was deleted while being prepared.')
+              throw new UiError(uiMessage('streamBError.653067e964'))
           })
         } catch (error) {
           if (changed) continue
@@ -503,16 +501,13 @@ export class ChatStorage {
       if (identity) {
         await this.refreshDiscussionIndex()
         if ([...(this.discussionIds.get(identity) ?? [])].some((owner) => owner !== path))
-          throw new DiscussionIdentityConflict(
-            'Conflicting discussion owners. Resolve the files explicitly.',
-            identity
-          )
+          throw new DiscussionIdentityConflict(uiMessage('streamBError.a32bd46d12'), identity)
       }
       // Index reconciliation itself awaits I/O. A rename or sync replacement during that
       // final await must be reread before returning the committed snapshot to an adopter.
       if (file.path !== path || (await app.vault.read(file)) !== committed) continue
       if (toRaw(app.vault.getAbstractFileByPath(path)) !== file)
-        throw new Error('The discussion was deleted while being prepared.')
+        throw new UiError(uiMessage('streamBError.653067e964'))
       if (this.discussionRenames.get(file) === rename) this.discussionRenames.delete(file)
       return {
         snapshot: project ? snapshot : parseChat(committed),
@@ -521,7 +516,7 @@ export class ChatStorage {
         content: committed,
       }
     }
-    throw new Error('The discussion keeps changing. Reopen it after synchronization finishes.')
+    throw new UiError(uiMessage('streamBError.8bbaf67475'))
   }
 
   /** Non-session writers use the same reservation and gate as session saves. */
@@ -574,14 +569,24 @@ export class ChatStorage {
     )
     if (!prepared.identity) {
       await rewriteChat(
-        GlobalStore.getInstance().app, file, content, check, prepared.content, retainPublication
+        GlobalStore.getInstance().app,
+        file,
+        content,
+        check,
+        prepared.content,
+        retainPublication
       )
       return
     }
     await this.withDiscussionFile(file, async () => {
       const verified = await this.prepareDiscussionLocked(file, undefined, false)
       await rewriteChat(
-        GlobalStore.getInstance().app, file, content, check, verified.content, retainPublication
+        GlobalStore.getInstance().app,
+        file,
+        content,
+        check,
+        verified.content,
+        retainPublication
       )
       await this.prepareDiscussionLocked(file)
     })
@@ -663,9 +668,9 @@ export class ChatStorage {
           prepared.identity !== snapshot.metadata.commentId &&
           (prepared.identity || isDiscussion(snapshot.metadata))
         )
-          throw new Error('Discussion identity changed elsewhere. Reconcile before saving.')
+          throw new UiError(uiMessage('streamBError.33d4df464a'))
         if (prepared.identity && matchesRevision && !matchesRevision(prepared.snapshot))
-          throw new Error('This discussion changed elsewhere. Reconcile before saving.')
+          throw new UiError(uiMessage('streamBError.0550ea75bd'))
         return this.savePreparedChat(snapshot, plan, existingFile, prepared.content)
       })
     return this.savePreparedChat(snapshot, plan)
@@ -679,7 +684,7 @@ export class ChatStorage {
   ): Promise<TFile | null> {
     const { app } = GlobalStore.getInstance()
     let { metadata } = snapshot
-    if (metadata.type !== 'abele-chat') throw new Error('Only a chat can be saved as a chat log.')
+    if (metadata.type !== 'abele-chat') throw new UiError(uiMessage('streamBError.bd60b807a8'))
 
     if (plan.kind === 'noop') return existingFile ?? null
 
@@ -697,14 +702,14 @@ export class ChatStorage {
           disk.metadata.commentId !== metadata.commentId ||
           disk.metadata.commentLocation !== existingFile.path)
       )
-        throw new Error('Discussion identity changed elsewhere. Reconcile before saving.')
+        throw new UiError(uiMessage('streamBError.33d4df464a'))
       if (
         plan.kind === 'append' &&
         (!disk.metadata ||
           ((disk.torn || disk.damaged) &&
             (await app.vault.adapter.exists(chatCopyPath(app, existingFile.path)))))
       ) {
-        throw new Error('This chat needs reopening before saving its attention state.')
+        throw new UiError(uiMessage('streamBError.1117c0caf4'))
       }
       const guarded =
         metadata.attention !== undefined ||
@@ -737,8 +742,7 @@ export class ChatStorage {
       if (isDiscussion(metadata) && plan.kind === 'append') {
         // Checked append: sync may arrive after preparation but before the actual write.
         await app.vault.process(existingFile, (current) => {
-          if (current !== previous)
-            throw new Error('This discussion changed elsewhere. Reconcile before saving.')
+          if (current !== previous) throw new UiError(uiMessage('streamBError.0550ea75bd'))
           return current + plan.data
         })
       } else if (plan.kind === 'append') await app.vault.append(existingFile, plan.data)
@@ -764,7 +768,7 @@ export class ChatStorage {
       this.noteMessageTimes(existingFile.path, snapshot)
       const confirmed = await this.prepareDiscussionLocked(existingFile)
       if (isDiscussion(metadata) && confirmed.identity !== metadata.commentId)
-        throw new Error('Discussion identity changed during saving. Reconcile before saving again.')
+        throw new UiError(uiMessage('streamBError.8f516a3c74'))
       AgentsService.getInstance().saved(existingFile.path, confirmed.snapshot.metadata ?? metadata)
       return existingFile
     }
@@ -1203,7 +1207,7 @@ export class ChatStorage {
       if (JSON.stringify(touched) === JSON.stringify(metadata.touched)) continue
       await this.transformDiscussion(file, (content) => {
         const current = parseChatMetadata(content)
-        if (!current) throw new Error('The chat is unavailable.')
+        if (!current) throw new UiError(uiMessage('streamBError.1af2ceac85'))
         return (
           content +
           serializeMetadata({

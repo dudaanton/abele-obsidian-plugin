@@ -1,3 +1,4 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import type { DataAdapter } from 'obsidian'
 import { contentHash } from '../readGuard'
 import { bytesHash, isTextPath } from './vaultFs'
@@ -38,12 +39,11 @@ export async function checkedMutation<T>(
         actual = isTextPath(path)
           ? contentHash(await inside(adapter, () => adapter.read(path)))
           : bytesHash(await inside(adapter, () => adapter.readBinary(path)))
-      if (actual !== expected.get(path))
-        throw new Error('Changed since the undo snapshot: left untouched')
+      if (actual !== expected.get(path)) throw new UiError(uiMessage('streamBError.80abc63be7'))
       if (actual === 'folder' && emptyFolders.has(path)) {
         const listing = await inside(adapter, () => adapter.list(path))
         if (listing.files.length || listing.folders.length)
-          throw new Error('Folder has other contents: left untouched')
+          throw new UiError(uiMessage('streamBError.4306093b59'))
       }
     }
     const result = await inside(adapter, mutate)
@@ -52,6 +52,6 @@ export async function checkedMutation<T>(
     return result
   }
   // An adapter without a queue cannot close the read/write race. Refuse before issuing IO.
-  if (!adapter.queue) throw new Error('This storage cannot perform revision-checked undo')
+  if (!adapter.queue) throw new UiError(uiMessage('streamBError.6afac342ef'))
   return adapter.queue(run)
 }

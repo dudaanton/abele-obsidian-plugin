@@ -5,8 +5,10 @@
         ref="inputRef"
         v-model="query"
         class="abele-github-search__query"
-        :placeholder="scope === 'names' ? 'File name' : 'Search code'"
-        aria-label="What to search for"
+        :placeholder="
+          scope === 'names' ? t('streamB.fileName.3efed3') : t('streamB.searchCode.c33868')
+        "
+        :aria-label="t('streamB.whatToSearchFor.f03868')"
         @keydown="onKey"
       />
       <div class="abele-github-search__toggles">
@@ -14,24 +16,24 @@
           v-if="scope !== 'names'"
           icon="case-sensitive"
           :active="caseSensitive"
-          tooltip="Match letter case"
+          :tooltip="t('streamB.matchLetterCase.25489d')"
           @click="caseSensitive = !caseSensitive"
         />
         <Icon
           v-if="scope !== 'names'"
           icon="whole-word"
           :active="wholeWord"
-          tooltip="Match whole words only"
+          :tooltip="t('streamB.matchWholeWordsOnly.2a7c87')"
           @click="wholeWord = !wholeWord"
         />
         <Icon
           v-if="scope !== 'names'"
           icon="regex"
           :active="regex"
-          tooltip="Read the query as a regular expression"
+          :tooltip="t('streamB.readTheQueryAsARegularExpression.917119')"
           @click="regex = !regex"
         />
-        <Icon icon="x" tooltip="Close code search" @click="emit('close')" />
+        <Icon icon="x" :tooltip="t('streamB.closeCodeSearch.22b261')" @click="emit('close')" />
       </div>
     </div>
 
@@ -41,20 +43,20 @@
         v-if="scope !== 'names'"
         v-model="glob"
         class="abele-github-search__glob"
-        placeholder="In files like src/**/*.ts"
-        aria-label="Only in files matching"
+        :placeholder="t('streamB.inFilesLikeSrcTs.feb03e')"
+        :aria-label="t('streamB.onlyInFilesMatching.d5d937')"
         @keydown="onKey"
       />
       <Button
-        text="Search"
+        :text="t('streamB.search.49c266')"
         icon="search"
         :disabled="running || !ready || !query.trim()"
         :tooltip="
           running
-            ? 'A search is running'
+            ? t('streamB.aSearchIsRunning.c94c40')
             : !ready
-              ? 'Waiting for the tab to load'
-              : 'Search with these settings'
+              ? t('streamB.waitingForTheTabToLoad.fa689d')
+              : t('streamB.searchWithTheseSettings.43d86f')
         "
         @click="run"
       />
@@ -63,14 +65,16 @@
     <div v-if="running" class="abele-github-search__progress">
       <span>{{ stageText }}</span>
       <Button
-        text="Cancel"
-        tooltip="Stop waiting for this search. A download already started finishes and is kept for the next one."
+        :text="t('streamB.cancel.19766e')"
+        :tooltip="t('streamB.stopWaitingForThisSearchADownload.2cb523')"
         @click="cancel"
       />
     </div>
-    <div v-else-if="error" class="abele-github-search__error">{{ error }}</div>
+    <div v-else-if="error" class="abele-github-search__error">{{ presentUiError(error) }}</div>
     <template v-else-if="results">
-      <div v-if="results.note" class="abele-github-search__note">{{ results.note }}</div>
+      <div v-if="results.note" class="abele-github-search__note">
+        {{ presentUiField(results, 'note') }}
+      </div>
       <div class="abele-github-search__summary">{{ summary }}</div>
       <div class="abele-github-search__results">
         <div v-for="file in results.files" :key="file.path" class="abele-github-search__file">
@@ -107,6 +111,11 @@
 </template>
 
 <script setup lang="ts">
+import { streamBLabel } from '@/i18n/streamBLabels'
+import { presentUiField, presentUiError } from '@/i18n/streamBErrors'
+import { streamBWord } from '@/i18n/streamBCounts'
+
+import { t } from '@/i18n'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Keymap } from 'obsidian'
 import Input from '../obsidian/Input.vue'
@@ -177,9 +186,19 @@ const queryKey = () =>
   ])
 
 const scopes = computed(() => [
-  ...(props.hasChanges ? [{ value: 'changes', display: 'Only the changed files' }] : []),
-  { value: 'repo', display: `Whole repository at ${props.code.refLabel()}` },
-  { value: 'names', display: `File names at ${props.code.refLabel()}` },
+  ...(props.hasChanges
+    ? [{ value: 'changes', display: t('streamB.onlyTheChangedFiles.308397') }]
+    : []),
+  {
+    value: 'repo',
+    display: t('streamB.wholeRepositoryAt.3217d1', {
+      v0: String(streamBLabel(props.code.refLabel())),
+    }),
+  },
+  {
+    value: 'names',
+    display: t('streamB.fileNamesAt.cec59e', { v0: String(streamBLabel(props.code.refLabel())) }),
+  },
 ])
 
 const summary = computed(() => {
@@ -187,13 +206,18 @@ const summary = computed(() => {
   if (!r) return ''
   const files = r.files.length
   if (scope.value === 'names') {
-    if (!files) return 'No file has a name like that.'
-    return `${files}${r.capped ? '+' : ''} ${files === 1 ? 'file' : 'files'}`
+    if (!files) return t('streamB.noFileHasANameLikeThat.6774e4')
+    return `${files}${r.capped ? '+' : ''} ${streamBWord(files, 'file')}`
   }
-  if (!files) return 'Nothing found.'
+  if (!files) return t('streamB.nothingFound.eb1fa1')
   const lines = r.files.reduce((n, f) => n + f.lines.length, 0)
-  const shown = `${lines} ${lines === 1 ? 'line' : 'lines'} in ${files} ${files === 1 ? 'file' : 'files'}`
-  return r.capped ? `${shown} — the first of more; narrow the search to see the rest.` : shown
+  const shown = t('streamB.in.e099b7', {
+    v0: String(lines),
+    v1: String(streamBWord(lines, 'line')),
+    v2: String(files),
+    v3: String(streamBWord(files, 'file')),
+  })
+  return r.capped ? t('streamB.theFirstOfMoreNarrowTheSearch.712c6f', { v0: String(shown) }) : shown
 })
 
 const parts = (line: ResultLine) => {
@@ -219,7 +243,7 @@ const run = async () => {
   const mine = (abort = new AbortController())
   running.value = true
   error.value = ''
-  stageText.value = 'Searching…'
+  stageText.value = t('streamB.searching.c31723')
   try {
     const found = await props.code.search(
       scope.value,
@@ -237,7 +261,7 @@ const run = async () => {
     if (e instanceof DOMException && e.name === 'AbortError') return
     console.debug('[Abele] code search failed', e)
     results.value = null
-    error.value = e instanceof Error ? e.message : String(e)
+    error.value = presentUiError(e)
   } finally {
     if (abort === mine) {
       running.value = false

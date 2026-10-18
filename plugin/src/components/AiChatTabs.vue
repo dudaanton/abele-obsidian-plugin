@@ -6,7 +6,7 @@
         :key="tab.id"
         class="abele-chat-tabs__chip"
         :class="{ 'abele-chat-tabs__chip--active': tab.isActive }"
-        :title="tab.label || 'New chat'"
+        :title="tab.label || t('streamB.newChat.db1838')"
         @click="emit('select', tab.id)"
       >
         <!-- A chat in another tab says where it is by a dot: waiting for you, or at work. -->
@@ -15,9 +15,11 @@
           class="abele-chat-tabs__dot"
           :class="{ 'abele-chat-tabs__dot_waiting': tab.waiting }"
           role="img"
-          :aria-label="tab.waiting ? 'Waiting for you' : 'The agent is working'"
+          :aria-label="
+            tab.waiting ? t('streamB.waitingForYou.9f760a') : t('streamB.theAgentIsWorking.c2556c')
+          "
         />
-        <span class="abele-chat-tabs__label">{{ tab.label || 'New chat' }}</span>
+        <span class="abele-chat-tabs__label">{{ tab.label || t('streamB.newChat.db1838') }}</span>
         <Icon
           icon="x"
           class="abele-chat-tabs__close"
@@ -26,7 +28,7 @@
               ? t('node.chat.closeTab')
               : tab.isActive
                 ? closeTip
-                : 'Close tab'
+                : t('streamB.closeTab.50a3f9')
           "
           @click.stop="emit('close', tab.id)"
         />
@@ -45,10 +47,10 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { nextTick, onMounted, ref, watch } from 'vue'
 import Icon from './obsidian/Icon.vue'
 import { withShortcut } from '@/ai/chatTabKeyMap'
-import { t } from '@/i18n'
 
 export interface TabInfo {
   id: string
@@ -68,8 +70,8 @@ const strip = ref<HTMLElement | null>(null)
 
 // The keys are named on the controls they stand for. Cmd+W closes the tab in front, so only
 // that tab's × says so.
-const closeTip = withShortcut('Close tab', 'close')
-const newTip = withShortcut('New chat', 'create')
+const closeTip = withShortcut(t('streamB.closeTab.50a3f9'), 'close')
+const newTip = withShortcut(t('streamB.newChat.db1838'), 'create')
 
 /** The width of the fade the add button paints over the right end of the strip. */
 const FADE_PX = 12

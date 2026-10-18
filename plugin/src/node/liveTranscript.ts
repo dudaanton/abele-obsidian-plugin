@@ -1,5 +1,7 @@
 import type { ChatMessage } from '@/ai/types'
 import type { BackgroundTask, ContextUse } from './sessionLive'
+import { uiField, uiMessage } from '@/i18n/streamBErrors'
+import { agentText } from '@/i18n/streamBText'
 
 /** What the journal says about a long-lived session beside its messages. */
 export interface LiveProjection {
@@ -89,15 +91,15 @@ export class LiveTranscript {
         this.tasks = list.map((task) => {
           const id = String(task.task_id)
           if (!this.since.has(id)) this.since.set(id, at)
-          return {
+          const described = typeof task.description === 'string' && task.description
+          const item: BackgroundTask = {
             id,
             kind: taskKind(typeof task.task_type === 'string' ? task.task_type : null),
-            title:
-              typeof task.description === 'string' && task.description
-                ? task.description
-                : 'A background task',
+            title: described || agentText('streamB.unnamedBackgroundTask'),
             since: this.since.get(id) ?? at,
           }
+          if (!described) uiField(item, 'title', uiMessage('streamB.unnamedBackgroundTask'))
+          return item
         })
         return true
       }
@@ -202,7 +204,11 @@ export class LiveTranscript {
 
   private dropCompaction(): void {
     if (!this.compaction) return
-    this.compaction.sessionMark = { kind: 'failed', text: 'it stopped with the session' }
+    this.compaction.sessionMark = {
+      kind: 'failed',
+      text: agentText('streamB.stoppedWithSession'),
+    }
+    uiField(this.compaction.sessionMark, 'text', uiMessage('streamB.stoppedWithSession'))
     this.compaction = undefined
   }
 

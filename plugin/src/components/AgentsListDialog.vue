@@ -2,19 +2,19 @@
   <!-- Every conversation where an agent waits for you, works, or has lost its node: rows like
        the chat history's, a dot for the state, one line of what it waits on, the time. A row
        opens its chat where it waits; agent, model, folder and source are its tooltip. -->
-  <ObsidianModal title="Agents" @close="emit('close')">
+  <ObsidianModal :title="t('streamB.agents.279b44')" @close="emit('close')">
     <div class="abele-agents">
       <div class="abele-agents__head">
         <Search
           v-model="query"
           class="abele-agents__field"
-          label="Search conversations and agents"
-          placeholder="Search…"
+          :label="t('streamB.searchConversationsAndAgents.b17aaa')"
+          :placeholder="t('streamB.search.733626')"
         />
         <Icon
           class="abele-agents__all-seen"
           icon="check-check"
-          label="Mark all as seen; waiting questions and permissions stay"
+          :label="t('streamB.markAllAsSeenWaitingQuestionsAnd.922269')"
           :disabled="busy || !hasDismissible"
           @click="allSeen"
         />
@@ -28,7 +28,7 @@
         class="abele-agents__empty"
         :variant="query ? 'no-matches' : 'empty'"
         :icon="query ? undefined : 'bot'"
-        :text="query ? 'No matches' : 'No agents at work'"
+        :text="query ? t('streamB.noMatches.2df01a') : t('streamB.noAgentsAtWork.d321e1')"
       />
       <section v-for="section in sections.filter((s) => s.rows.length)" :key="section.title">
         <ListSectionHeader :text="section.title" :count="section.rows.length" />
@@ -55,7 +55,7 @@
               v-if="reconnectable(row)"
               class="abele-agents__reconnect"
               icon="refresh-cw"
-              tooltip="Reconnect to this node; does not restart work"
+              :tooltip="t('streamB.reconnectToThisNodeDoesNotRestart.6854d1')"
               :disabled="busy"
               @click="reconnect(row)"
             />
@@ -76,6 +76,9 @@
 </template>
 
 <script setup lang="ts">
+import { streamBDate, streamBTimestamp } from '@/i18n/streamBDate'
+
+import { t } from '@/i18n'
 import { computed, onMounted, ref } from 'vue'
 import ObsidianModal from './obsidian/Modal.vue'
 import Card from './obsidian/Card.vue'
@@ -95,7 +98,7 @@ import {
   type AttentionReason,
 } from '@/agents/attention'
 const actionLabel = (reason: AttentionReason) =>
-  `${reason.kind === 'error' ? 'Mark as seen' : 'Dismiss'} · ${reasonLabel(reason)}`
+  `${reason.kind === 'error' ? t('streamB.markAsSeen.20383a') : t('streamB.dismiss.48845b')} · ${reasonLabel(reason)}`
 const unavailable = (row: AttentionRow) => row.reference.kind === 'node' && !row.reference.sessionId
 const props = defineProps<{
   source?: Pick<AgentsService, 'rows' | 'incomplete' | 'status' | 'open' | 'markSeen'> &
@@ -126,16 +129,19 @@ const sections = computed(() => {
     (r) => !r.reasons.some(needsAttention) && !r.reasons.some((s) => s.kind === 'running')
   )
   return [
-    { title: 'Waiting for you', rows: rows.filter((r) => r.reasons.some(needsAttention)) },
     {
-      title: 'Working',
+      title: t('streamB.waitingForYou.9f760a'),
+      rows: rows.filter((r) => r.reasons.some(needsAttention)),
+    },
+    {
+      title: t('streamB.working.a92f04'),
       rows: rows.filter(
         (r) => !r.reasons.some(needsAttention) && r.reasons.some((s) => s.kind === 'running')
       ),
     },
-    { title: 'Offline', rows: rest.filter((r) => r.offline) },
+    { title: t('streamB.offline.a17947'), rows: rest.filter((r) => r.offline) },
     // Connected, but not confirmed: a node whose list failed, a decision still being saved.
-    { title: 'Not checked', rows: rest.filter((r) => !r.offline) },
+    { title: t('streamB.notChecked.d16948'), rows: rest.filter((r) => !r.offline) },
   ]
 })
 const primary = (row: AttentionRow) =>
@@ -154,7 +160,7 @@ const tone = (row: AttentionRow) => {
 /** What it waits on, in one line: the question itself, the action asked for, what failed. */
 const said = (row: AttentionRow) => {
   const approvals = row.reasons.filter((r) => r.kind === 'approval').length
-  if (approvals > 1) return `${approvals} permissions`
+  if (approvals > 1) return t('streamBRest.permissions', { count: approvals })
   const reason = primary(row)
   if (reason.uncertain) return reasonLabel(reason)
   return reason.text || reasonLabel(reason)
@@ -163,7 +169,9 @@ const said = (row: AttentionRow) => {
 const when = (row: AttentionRow) => {
   const at = primary(row).at
   if (!at) return ''
-  return dayjs(at).isSame(dayjs(), 'day') ? dayjs(at).format('HH:mm') : dayjs(at).format('D MMM')
+  return dayjs(at).isSame(dayjs(), 'day')
+    ? dayjs(at).format('HH:mm')
+    : streamBDate(dayjs(at), 'D MMM')
 }
 const dismissible = (row: AttentionRow) => row.reasons.filter(canDismissAttention)
 const reconnectable = (row: AttentionRow) =>
@@ -172,14 +180,25 @@ const label = (row: AttentionRow) => {
   const approvals = row.reasons.filter((r) => r.kind === 'approval').length
   const reason = primary(row)
   if (reason.kind === 'question' && !reason.interrupted && !reason.uncertain)
-    return `Waiting for a reply · ${reasonLabel(reason)}`
-  return approvals > 1 ? `Waiting for ${approvals} permissions` : reasonLabel(reason)
+    return t('streamB.waitingForAReply.7d20b6', { v0: String(reasonLabel(reason)) })
+  return approvals > 1
+    ? t('streamB.waitingForPermissions.c48c32', { v0: String(approvals) })
+    : reasonLabel(reason)
 }
 const age = (row: AttentionRow) => {
   const at = primary(row).at
   return at
-    ? `Since ${new Date(at).toLocaleString()}${row.updatedAt ? ` · Last confirmed: ${new Date(row.updatedAt).toLocaleString()}` : ''}`
-    : 'Waiting time unknown'
+    ? t('streamB.since.e5ff65', {
+        v0: String(streamBTimestamp(new Date(at))),
+        v1: String(
+          row.updatedAt
+            ? t('streamB.lastConfirmed.4e1d71', {
+                v0: String(streamBTimestamp(new Date(row.updatedAt))),
+              })
+            : ''
+        ),
+      })
+    : t('streamB.waitingTimeUnknown.2f3f0d')
 }
 const open = async (row: AttentionRow, reply = false) => {
   failure.value = ''
@@ -189,7 +208,8 @@ const open = async (row: AttentionRow, reply = false) => {
       : await source.open(row, primary(row))
     if (opened) emit('close')
   } catch (error) {
-    failure.value = error instanceof Error ? error.message : 'Conversation unavailable'
+    failure.value =
+      error instanceof Error ? error.message : t('streamB.conversationUnavailable.6117bc')
   }
 }
 const reconnect = async (row: AttentionRow) => {
@@ -197,9 +217,11 @@ const reconnect = async (row: AttentionRow) => {
   failure.value = ''
   try {
     await (source.reconnect ?? ((r) => AgentsService.getInstance().reconnect(r)))(row)
-    feedback.value = `${row.title} · Connected. Sessions may still be unavailable.`
+    feedback.value = t('streamB.connectedSessionsMayStillBeUnavailable.2742b1', {
+      v0: String(row.title),
+    })
   } catch (error) {
-    failure.value = error instanceof Error ? error.message : 'Could not reconnect'
+    failure.value = error instanceof Error ? error.message : t('streamB.couldNotReconnect.886045')
   } finally {
     busy.value = false
   }
@@ -223,7 +245,8 @@ const allSeen = async () => {
             if (['error', 'interrupted'].includes(reason.kind))
               await source.markSeen(row, reason.id)
   } catch (error) {
-    failure.value = error instanceof Error ? error.message : 'Could not save the acknowledgements'
+    failure.value =
+      error instanceof Error ? error.message : t('streamB.couldNotSaveTheAcknowledgements.f9ca22')
   } finally {
     busy.value = false
   }
@@ -234,7 +257,8 @@ const seen = async (row: AttentionRow, id: string) => {
   try {
     await source.markSeen(row, id)
   } catch (error) {
-    failure.value = error instanceof Error ? error.message : 'Could not save the acknowledgement'
+    failure.value =
+      error instanceof Error ? error.message : t('streamB.couldNotSaveTheAcknowledgement.438d4e')
   } finally {
     busy.value = false
   }

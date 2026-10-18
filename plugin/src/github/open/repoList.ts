@@ -1,3 +1,6 @@
+import { uiFields, uiMessage } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
+import { agentText } from '@/i18n/streamBText'
 /**
  * The repositories "Open GitHub repository…" offers: pinned ones (in the settings, so they travel
  * to other devices), the ones opened lately on this device, the person's own and those they
@@ -83,14 +86,14 @@ export function repoFromUrl(url: string, saved?: Partial<PinnedRepo>): RepoRef |
   } catch {
     return null
   }
-  const t = parseGithubUrl(url, [host])
+  const translationItem = parseGithubUrl(url, [host])
   const origin = new URL(url).origin
-  return t?.kind === 'repo'
+  return translationItem?.kind === 'repo'
     ? {
-        host: t.host,
-        owner: t.owner,
-        repo: t.repo,
-        ...(origin !== `https://${t.host}` ? { origin } : {}),
+        host: translationItem.host,
+        owner: translationItem.owner,
+        repo: translationItem.repo,
+        ...(origin !== `https://${translationItem.host}` ? { origin } : {}),
       }
     : null
 }
@@ -217,9 +220,20 @@ export function accountRepos(client: GithubClient, now = Date.now()): Promise<Ac
   const lists = Promise.allSettled([
     client.list<RawRepo>(
       '/user/repos?sort=pushed&affiliation=owner,collaborator,organization_member',
-      { what: 'your repositories' }
+      uiFields(
+        { what: agentText('streamB.yourRepositories.326f88') },
+        { what: uiMessage('streamB.yourRepositories.326f88') }
+      )
     ),
-    client.list<RawRepo>('/user/starred?sort=created', { what: 'your starred repositories' }),
+    client.list<RawRepo>(
+      '/user/starred?sort=created',
+      uiFields(
+        {
+          what: agentText('streamB.yourStarredRepositories.d0fea2'),
+        },
+        { what: uiMessage('streamB.yourStarredRepositories.d0fea2') }
+      )
+    ),
   ]).then(([own, starred]): AccountRepos => {
     if (own.status === 'rejected' && starred.status === 'rejected') throw own.reason
     const failed = own.status === 'rejected' ? own : starred.status === 'rejected' ? starred : null
@@ -235,7 +249,7 @@ export function accountRepos(client: GithubClient, now = Date.now()): Promise<Ac
       problem: failed
         ? failed.reason instanceof Error
           ? failed.reason.message.split('\n')[0]
-          : 'GitHub could not be asked.'
+          : t('streamB.githubCouldNotBeAsked.b4b43c')
         : undefined,
     }
   })
@@ -251,7 +265,13 @@ export const forgetAccountRepos = (client: GithubClient) => accounts.delete(clie
 export async function searchRepos(client: GithubClient, text: string): Promise<RepoEntry[]> {
   const found = await client.get<{ items?: RawRepo[] }>(
     `/search/repositories?q=${encodeURIComponent(`${text} in:name`)}&per_page=10`,
-    { what: 'repositories' }
+    uiFields(
+      { what: t('streamB.repositories.a80388') },
+      { what: uiMessage('streamB.repositories.a80388') }
+    )
+  )
+  return (found.items ?? []).map((r) =>
+    entryOf(client.endpoints.webHost, r, client.endpoints.origin)
   )
   return (found.items ?? []).map((r) =>
     entryOf(client.endpoints.webHost, r, client.endpoints.origin)
@@ -261,11 +281,21 @@ export async function searchRepos(client: GithubClient, text: string): Promise<R
 // --- The rows ---
 
 const GROUP_NOTE: Record<RepoGroup, string> = {
-  pinned: 'Pinned',
-  recent: 'Recent',
-  own: 'Yours',
-  starred: 'Starred',
-  found: 'Found on GitHub',
+  get pinned() {
+    return t('streamB.pinned.f20c87')
+  },
+  get recent() {
+    return t('streamB.recent.690dbe')
+  },
+  get own() {
+    return t('streamB.yours.54b26f')
+  },
+  get starred() {
+    return t('streamB.starred.07a2d5')
+  },
+  get found() {
+    return t('streamB.foundOnGithub.671885')
+  },
 }
 
 export const groupName = (g: RepoGroup): string => GROUP_NOTE[g]

@@ -1,3 +1,5 @@
+import { uiFields, uiMessage } from '@/i18n/streamBErrors'
+import { agentText } from '@/i18n/streamBText'
 import type { FolderEntry, FolderData } from '@/repository/model'
 export type { FolderEntry, FolderData } from '@/repository/model'
 /**
@@ -25,8 +27,8 @@ export class NotAFolderError extends GithubError {
 const encodePath = (path: string) => path.split('/').map(encodeURIComponent).join('/')
 
 /** The contents API's address for a folder; the root has no path at all. */
-const folderApiPath = (t: Of<'tree'>, path: string, ref: string) =>
-  `${repoApiPath(t)}/contents${path ? `/${encodePath(path)}` : ''}?ref=${encodeURIComponent(ref)}`
+const folderApiPath = (translationItem: Of<'tree'>, path: string, ref: string) =>
+  `${repoApiPath(translationItem)}/contents${path ? `/${encodePath(path)}` : ''}?ref=${encodeURIComponent(ref)}`
 
 interface Listed {
   name?: string
@@ -88,20 +90,35 @@ export function formatSize(bytes: number): string {
  * The folder a `tree/…` link names. A branch may hold slashes, so each split of the link is
  * asked in turn, the shortest ref first, as for a file.
  */
-export async function loadFolder(client: GithubClient, t: Of<'tree'>): Promise<FolderData> {
+export async function loadFolder(
+  client: GithubClient,
+  translationItem: Of<'tree'>
+): Promise<FolderData> {
   let lastError: unknown = null
   // Capped: a deep path with no match would otherwise cost one request per segment.
-  for (const { ref, path } of treeCandidates(t.rest).slice(0, 6)) {
+  for (const { ref, path } of treeCandidates(translationItem.rest).slice(0, 6)) {
     try {
-      const body = await client.get<unknown>(folderApiPath(t, path, ref), {
-        what: path ? `the folder ${path}` : 'the repository',
-      })
+      const body = await client.get<unknown>(
+        folderApiPath(translationItem, path, ref),
+        uiFields(
+          {
+            what: path
+              ? agentText('streamB.theFolder.f78538', { v0: String(path) })
+              : agentText('streamB.theRepository.60b3b0'),
+          },
+          {
+            what: path
+              ? uiMessage('streamB.theFolder.f78538', { v0: String(path) })
+              : uiMessage('streamB.theRepository.60b3b0'),
+          }
+        )
+      )
       if (!Array.isArray(body)) throw new NotAFolderError(ref, path)
       return {
         ref,
         path,
         entries: folderEntries(body as Listed[]),
-        url: `${repoWeb(t)}/tree/${t.rest.map(encodeURIComponent).join('/')}`,
+        url: `${repoWeb(translationItem)}/tree/${translationItem.rest.map(encodeURIComponent).join('/')}`,
       }
     } catch (e) {
       if (!(e instanceof GithubError) || e.kind !== 'not-found') throw e

@@ -1,3 +1,7 @@
+import { catalogs as testCatalogs } from '@/i18n/catalogs'
+import { initializeLocale } from '@/i18n'
+import { presentUiField } from '@/i18n/streamBErrors'
+import type { NodeClientState } from '@/node/NodeClientStore'
 import { afterEach, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 import { NodeClient, MemoryClientStore } from '@abele/node-client'
@@ -332,4 +336,22 @@ it('keeps newer composer edits when an earlier turn is admitted', async () => {
   await reopened.refresh()
   expect(reopened.draft.value.text).toBe('Sample next draft')
   reopened.destroy()
+})
+
+it('keeps the saved offline notice independent of the interface language', async () => {
+  const { presenter, store } = await setup()
+  initializeLocale('ru', testCatalogs['ru' as keyof typeof testCatalogs])
+  try {
+    await presenter.send('Sample retained draft')
+    const original = 'Draft not sent because the node is offline. Send again when connected.'
+    expect(presenter.draftNotice.value).toBe(original)
+    expect(presentUiField(presenter.draftNotice, 'value')).not.toBe(original)
+    await (presenter as unknown as { draftWrite: Promise<void> }).draftWrite
+    expect(
+      await store.transaction((s) => (s as NodeClientState).chatDrafts?.[reference.sessionId])
+    ).toEqual({ text: 'Sample retained draft', notice: original })
+  } finally {
+    presenter.destroy()
+    initializeLocale('en', testCatalogs['en' as keyof typeof testCatalogs])
+  }
 })

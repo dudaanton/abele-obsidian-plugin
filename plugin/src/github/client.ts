@@ -1,3 +1,11 @@
+import {
+  uiMessage,
+  uiFields,
+  uiFieldMessage,
+  redactUiFields,
+  type UiMessage,
+} from '@/i18n/streamBErrors'
+
 /**
  * Access to the GitHub API. Reads, plus notification-inbox writes: marking notifications
  * read or Done (`notifications/`).
@@ -63,18 +71,28 @@ export class GithubError extends Error {
     this.needed = refusal?.needed
     this.githubSaid = refusal?.githubSaid
     this.graphqlNote = refusal?.graphql
+    if (refusal)
+      uiFields(this, {
+        reason: uiFieldMessage(refusal, 'reason'),
+        fix: refusal.fix ? uiFieldMessage(refusal, 'fix') : undefined,
+        graphql: refusal.graphql ? uiFieldMessage(refusal, 'graphql') : undefined,
+      })
   }
 
   /** The refusal again, to be said differently or with more to it. */
   get refusal(): Refusal {
-    return {
-      kind: this.kind,
-      reason: this.reason,
-      fix: this.fix,
-      needed: this.needed,
-      githubSaid: this.githubSaid,
-      graphql: this.graphqlNote,
-    }
+    return uiFields(
+      {
+        kind: this.kind,
+        reason: this.reason,
+        fix: this.fix,
+        needed: this.needed,
+        githubSaid: this.githubSaid,
+        graphql: this.graphqlNote,
+      },
+      {},
+      this
+    )
   }
 }
 
@@ -88,11 +106,20 @@ export function errorFor(
   body: unknown,
   hasToken: boolean,
   what = 'this item',
-  noTokenReason?: string
+  noTokenReason?: string,
+  presentation?: { what?: UiMessage; noTokenReason?: UiMessage }
 ): GithubError {
   const raw = typeof body === 'object' && body ? (body as { message?: unknown }).message : ''
   const message = typeof raw === 'string' ? raw : ''
-  const refusal = explainRefusal({ status, headers, message, hasToken, what, noTokenReason })
+  const refusal = explainRefusal({
+    status,
+    headers,
+    message,
+    hasToken,
+    what,
+    noTokenReason,
+    presentation,
+  })
   return new GithubError(refusal.kind, refusal.reason, status, refusal)
 }
 
@@ -183,9 +210,12 @@ export class GithubClient {
   }
   assertCurrent(): void {
     if (!this.current)
-      throw new GithubError(
-        'other',
-        'The GitHub connection changed; retry with its current credentials.'
+      throw uiFields(
+        new GithubError(
+          'other',
+          'The GitHub connection changed; retry with its current credentials.'
+        ),
+        { reason: uiMessage('streamBError.cdc8d9cfa0') }
       )
   }
   private cache = new Map<string, Cached>()
@@ -233,9 +263,15 @@ export class GithubClient {
     status: number,
     headers: Record<string, string> | undefined,
     body: unknown,
-    what?: string
+    what?: string,
+    whatMessage?: UiMessage
   ): GithubError {
-    return this.safeError(errorFor(status, headers, body, this.hasToken, what, this.noTokenReason))
+    return this.safeError(
+      errorFor(status, headers, body, this.hasToken, what, this.noTokenReason, {
+        what: what !== undefined ? whatMessage : undefined,
+        noTokenReason: uiFieldMessage(this, 'noTokenReason'),
+      })
+    )
   }
 
   private hideCredential(text: string): string {
@@ -244,14 +280,26 @@ export class GithubClient {
 
   private safeError(error: GithubError): GithubError {
     const refusal = error.refusal
-    return new GithubError(error.kind, this.hideCredential(error.message), error.status, {
-      ...refusal,
-      reason: this.hideCredential(refusal.reason),
-      fix: refusal.fix && this.hideCredential(refusal.fix),
-      needed: refusal.needed && this.hideCredential(refusal.needed),
-      githubSaid: refusal.githubSaid && this.hideCredential(refusal.githubSaid),
-      graphql: refusal.graphql && this.hideCredential(refusal.graphql),
-    })
+    return new GithubError(
+      error.kind,
+      this.hideCredential(error.message),
+      error.status,
+      redactUiFields(
+        uiFields(
+          {
+            ...refusal,
+            reason: this.hideCredential(refusal.reason),
+            fix: refusal.fix && this.hideCredential(refusal.fix),
+            needed: refusal.needed && this.hideCredential(refusal.needed),
+            githubSaid: refusal.githubSaid && this.hideCredential(refusal.githubSaid),
+            graphql: refusal.graphql && this.hideCredential(refusal.graphql),
+          },
+          {},
+          refusal
+        ),
+        (value) => this.hideCredential(value)
+      )
+    )
   }
 
   get tokenInfo(): TokenInfo {
@@ -276,9 +324,16 @@ export class GithubClient {
   ): Promise<RequestUrlResponse> {
     this.assertCurrent()
     if (Date.now() < this.retryAt) {
-      throw new GithubError(
-        'rate-limit',
-        `GitHub requests are paused until ${new Date(this.retryAt).toLocaleTimeString()}. Retry then.`
+      throw uiFields(
+        new GithubError(
+          'rate-limit',
+          `GitHub requests are paused until ${new Date(this.retryAt).toLocaleTimeString()}. Retry then.`
+        ),
+        {
+          reason: uiMessage('streamBError.2ea0bf550b', {
+            v0: String(new Date(this.retryAt).toLocaleTimeString()),
+          }),
+        }
       )
     }
     let url: URL
@@ -314,14 +369,18 @@ export class GithubClient {
           throw new Error('avatar destination')
       }
     } catch {
-      throw new GithubError('other', 'GitHub request destination is not permitted.')
+      throw uiFields(new GithubError('other', 'GitHub request destination is not permitted.'), {
+        reason: uiMessage('streamBError.0eb5b3ed5a'),
+      })
     }
     let response: RequestUrlResponse
     try {
       response = await this.request({ ...request, throw: false })
     } catch {
       // The transport may include request headers or URLs (including credentials) in its errors.
-      throw new GithubError('network', `Could not reach ${url.host}.`)
+      throw uiFields(new GithubError('network', `Could not reach ${url.host}.`), {
+        reason: uiMessage('streamBError.1c867e3040', { v0: String(url.host) }),
+      })
     }
     this.assertCurrent()
     const remaining = header(response.headers, 'x-ratelimit-remaining')
@@ -359,16 +418,23 @@ export class GithubClient {
     const location = header(response.headers, 'location')
     if (![301, 302, 303, 307, 308].includes(response.status) || !location) return response
     if (hops >= 5 || request.method !== 'GET') {
-      throw new GithubError('other', 'GitHub redirected this request; it was not repeated.')
+      throw uiFields(
+        new GithubError('other', 'GitHub redirected this request; it was not repeated.'),
+        { reason: uiMessage('streamBError.6a1efa8857') }
+      )
     }
     let next: URL
     try {
       next = new URL(location, url)
     } catch {
-      throw new GithubError('other', 'GitHub returned an invalid redirect.')
+      throw uiFields(new GithubError('other', 'GitHub returned an invalid redirect.'), {
+        reason: uiMessage('streamBError.c2ad5cd823'),
+      })
     }
     if (url.protocol === 'https:' && next.protocol !== 'https:') {
-      throw new GithubError('other', 'GitHub redirected to an insecure destination.')
+      throw uiFields(new GithubError('other', 'GitHub redirected to an insecure destination.'), {
+        reason: uiMessage('streamBError.6523b94909'),
+      })
     }
     const api = new URL(this.endpoints.api)
     const base = api.pathname.replace(/\/$/, '')
@@ -415,7 +481,13 @@ export class GithubClient {
       } catch {
         // An error page rather than JSON; the status says enough.
       }
-      throw this.refusal(response.status, response.headers, body, options.what)
+      throw this.refusal(
+        response.status,
+        response.headers,
+        body,
+        options.what,
+        uiFieldMessage(options, 'what')
+      )
     }
 
     const body = (options.text ? response.text : response.json) as unknown
@@ -444,7 +516,13 @@ export class GithubClient {
       'download'
     )
     if (response.status < 200 || response.status >= 300) {
-      throw this.refusal(response.status, response.headers, null, options.what)
+      throw this.refusal(
+        response.status,
+        response.headers,
+        null,
+        options.what,
+        uiFieldMessage(options, 'what')
+      )
     }
     const type = header(response.headers, 'content-type')?.split(';')[0].trim()
     return { bytes: response.arrayBuffer, type: type || undefined }
@@ -491,7 +569,9 @@ export class GithubClient {
   ): Promise<Uint8Array> {
     if (carriesContent(object)) return base64Bytes(object.content)
     if (!object.sha) {
-      throw new GithubError('other', `GitHub sent ${what} without its contents.`)
+      throw uiFields(new GithubError('other', `GitHub sent ${what} without its contents.`), {
+        reason: uiMessage('streamBError.dae8766b06', { v0: String(what) }),
+      })
     }
     const blob = await this.get<{ content?: string; encoding?: string }>(
       `${repoApiPath(repo)}/git/blobs/${encodeURIComponent(object.sha)}`,
@@ -499,7 +579,9 @@ export class GithubClient {
     )
     if (blob.encoding === 'base64') return base64Bytes(blob.content ?? '')
     if (typeof blob.content === 'string') return new TextEncoder().encode(blob.content)
-    throw new GithubError('other', `GitHub sent ${what} without its contents.`)
+    throw uiFields(new GithubError('other', `GitHub sent ${what} without its contents.`), {
+      reason: uiMessage('streamBError.dae8766b06', { v0: String(what) }),
+    })
   }
 
   /** One request, uncached, answered with its status and headers whatever they are. */
@@ -541,7 +623,15 @@ export class GithubClient {
       status: response.status,
       headers,
       body,
-      error: ok ? undefined : this.refusal(response.status, headers, body, options.what),
+      error: ok
+        ? undefined
+        : this.refusal(
+            response.status,
+            headers,
+            body,
+            options.what,
+            uiFieldMessage(options, 'what')
+          ),
     }
   }
 
@@ -570,7 +660,9 @@ export class GithubClient {
     try {
       parsed = new URL(url)
     } catch {
-      throw new GithubError('other', 'Invalid picture URL.')
+      throw uiFields(new GithubError('other', 'Invalid picture URL.'), {
+        reason: uiMessage('streamBError.a0ebbf6573'),
+      })
     }
     const web = new URL(this.endpoints.origin)
     const host = normaliseHost(parsed.hostname)
@@ -589,7 +681,10 @@ export class GithubClient {
     }
     const type = header(response.headers, 'content-type')?.split(';')[0].trim() || 'image/png'
     if (!type.startsWith('image/')) {
-      throw new GithubError('other', `GitHub sent ${type} where a picture was expected.`)
+      throw uiFields(
+        new GithubError('other', `GitHub sent ${type} where a picture was expected.`),
+        { reason: uiMessage('streamBError.04b71aa0cc', { v0: String(type) }) }
+      )
     }
     return `data:${type};base64,${bytesBase64(new Uint8Array(response.arrayBuffer))}`
   }
@@ -606,9 +701,17 @@ export class GithubClient {
     options: { allowMissing?: boolean } = {}
   ): Promise<T> {
     if (!this.token) {
-      throw new GithubError(
-        'auth',
-        `GitHub requires a signed-in request to read ${what ?? 'this data'} through GraphQL. Add a token in Abele settings → GitHub.${this.noTokenReason ? ` ${this.noTokenReason}` : ''}`
+      throw uiFields(
+        new GithubError(
+          'auth',
+          `GitHub requires a signed-in request to read ${what ?? 'this data'} through GraphQL. Add a token in Abele settings → GitHub.${this.noTokenReason ? ` ${this.noTokenReason}` : ''}`
+        ),
+        {
+          reason: uiMessage('streamBError.147dd984fc', {
+            v0: String(what ?? 'this data'),
+            v1: String(this.noTokenReason ? ` ${this.noTokenReason}` : ''),
+          }),
+        }
       )
     }
     const response = await this.send(
@@ -649,7 +752,10 @@ export class GithubClient {
         this.hideCredential(`GitHub: ${errors.map((e) => e.message).join('; ')}`)
       )
     }
-    if (!body?.data) throw new GithubError('other', 'GitHub sent back an empty answer.')
+    if (!body?.data)
+      throw uiFields(new GithubError('other', 'GitHub sent back an empty answer.'), {
+        reason: uiMessage('streamBError.c7437fbf46'),
+      })
     return body.data
   }
 }

@@ -1,34 +1,42 @@
 <template>
-  <aside ref="panel" class="abele-github-tree" aria-label="The repository's files">
+  <aside
+    ref="panel"
+    class="abele-github-tree"
+    :aria-label="t('streamB.theRepositorySFiles.09d59f')"
+  >
     <div class="abele-github-tree__head">
-      <span class="abele-github-tree__title">Files</span>
+      <span class="abele-github-tree__title">{{ t('streamB.files.abc7e9') }}</span>
       <Badge v-if="version" :text="shortRef(version.ref)" />
       <Icon
         class="abele-github-tree__close"
         icon="x"
-        tooltip="Close the file tree"
+        :tooltip="t('streamB.closeTheFileTree.e79881')"
         @click="emit('close')"
       />
     </div>
     <Tabs v-if="comparisonIndex" v-model="projectMode" :tabs="projectModes" level="secondary" />
-    <Search v-model="query" class="abele-github-tree__filter" placeholder="Filter by name" />
+    <Search
+      v-model="query"
+      class="abele-github-tree__filter"
+      :placeholder="t('streamB.filterByName.6e35e2')"
+    />
     <div ref="body" class="abele-github-tree__body">
       <div v-if="error" class="abele-github-tree__error">
         <GithubNotice :text="error" @retry="load" />
       </div>
-      <EmptyState v-else-if="!tree" text="Loading the files…" />
+      <EmptyState v-else-if="!tree" :text="t('streamB.loadingTheFiles.83257e')" />
       <template v-else>
         <div
           v-if="tree.truncated && query && (!comparisonIndex || projectMode === 'all')"
           class="abele-github-tree__note"
         >
-          The repository is too large to list at once: only the folders opened so far are filtered.
+          {{ t('streamB.theRepositoryIsTooLargeToList.6d980c') }}
         </div>
         <div v-if="query && !filtered?.matches" class="abele-github-tree__note">
-          No name holds “{{ query.trim() }}”.
+          {{ t('streamBMeta.dba9469b3c', { p0: String(query.trim()) }) }}
         </div>
         <div v-else-if="filtered?.capped" class="abele-github-tree__note">
-          The first {{ filtered.matches }} matches. Type more to narrow them.
+          {{ t('streamBMeta.2e603f4889', { p0: String(filtered.matches) }) }}
         </div>
         <div role="tree">
           <GithubTreeNode
@@ -45,7 +53,11 @@
             @page="(n: TreeNode) => openFolder(n, false)"
           />
           <div v-if="paged.hasMore.value" ref="sentinel" class="abele-github-tree__note">
-            {{ paged.total.value - paged.visible.value.length }} more…
+            {{
+              t('streamBMeta.42adc2e400', {
+                p0: String(paged.total.value - paged.visible.value.length),
+              })
+            }}
           </div>
         </div>
       </template>
@@ -54,12 +66,21 @@
 </template>
 
 <script setup lang="ts">
+import { presentUiError } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 import { openExternal } from '@/helpers/openExternal'
 import { computed, nextTick, onBeforeUnmount, reactive, ref, shallowRef, watch } from 'vue'
 import Tabs from '../obsidian/Tabs.vue'
 import { type ComparisonIndex } from '@/github/comparison/service'
 import { projectTree } from '@/github/comparison/trees'
-import { findNode as findTargetNode } from '@/github/tree/fileTree'
+import {
+  findNode as findTargetNode,
+  adoptChildren,
+  ancestors,
+  filterTree,
+  findNode,
+  type TreeNode,
+} from '@/github/tree/fileTree'
 import { Keymap, type PaneType } from 'obsidian'
 import Badge from '../obsidian/Badge.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
@@ -70,13 +91,7 @@ import GithubTreeNode from './GithubTreeNode.vue'
 import type { GithubClient } from '@/github/client'
 import { paneForClick } from '@/github/links'
 import { usePagedList } from '@/composables/usePagedList'
-import {
-  adoptChildren,
-  ancestors,
-  filterTree,
-  findNode,
-  type TreeNode,
-} from '@/github/tree/fileTree'
+
 import { useRepositorySource } from '@/repository/context'
 import type { RepositoryTree } from '@/repository/source'
 
@@ -132,8 +147,8 @@ watch(
   }
 )
 const projectModes = [
-  { id: 'all', label: 'All files' },
-  { id: 'changed', label: 'Changed files' },
+  { id: 'all', label: t('streamB.allFiles.866956') },
+  { id: 'changed', label: t('streamB.changedFiles.5d4041') },
 ]
 let cancellation = new AbortController()
 const changeLabels = computed(() => {
@@ -181,16 +196,16 @@ const load = async () => {
     const index =
       props.comparison ??
       (props.baseSha ? await source.value.comparison(props.baseSha, v.sha, signal) : null)
-    const t = index?.target ?? (await source.value.tree(v.sha))
+    const translationItem = index?.target ?? (await source.value.tree(v.sha))
     if (mine !== generation) return
     version.value = index ? { ref: index.targetSha, sha: index.targetSha } : v
     comparisonIndex.value = index
-    tree.value = t
+    tree.value = translationItem
     void showCurrent()
   } catch (e) {
     if (mine !== generation) return
     console.debug('[Abele] GitHub file tree failed', e)
-    error.value = e instanceof Error ? e.message : String(e)
+    error.value = presentUiError(e)
   }
 }
 /**
@@ -287,17 +302,17 @@ const sentinel = paged.sentinel
 
 /** The file on screen: its folders opened, read first where the tree is read a folder at a time. */
 async function showCurrent() {
-  const t = tree.value
+  const translationItem = tree.value
   const c = props.current
-  if (!t || !c) return
+  if (!translationItem || !c) return
   try {
-    await t.reveal(c.path)
-    const folder = c.kind === 'dir' ? findNode(t.root, c.path) : null
-    if (folder) await t.expand(folder)
+    await translationItem.reveal(c.path)
+    const folder = c.kind === 'dir' ? findNode(translationItem.root, c.path) : null
+    if (folder) await translationItem.expand(folder)
   } catch (e) {
     console.debug('[Abele] GitHub file tree: a folder did not load', e)
   }
-  if (t !== tree.value) return
+  if (translationItem !== tree.value) return
   for (const folder of ancestors(c.path)) expanded.add(folder)
   if (c.kind === 'dir' && c.path) expanded.add(c.path)
   await nextTick()
@@ -319,7 +334,7 @@ watch(
 
 const shortRef = (ref: string) =>
   source.value?.identity.provider === 'node' && ref.startsWith('working-')
-    ? 'Current files'
+    ? t('streamB.currentFiles.eef7a2')
     : /^[0-9a-f]{40}$/i.test(ref)
       ? ref.slice(0, 7)
       : ref

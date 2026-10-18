@@ -10,7 +10,7 @@
     >
       <Icon icon="message-square" />
       <span
-        >{{ message.interceptorName || 'Interceptor' }} ({{
+        >{{ message.interceptorName || t('streamB.interceptor.e71231') }} ({{
           message.interceptorChat?.length || 0
         }})</span
       >
@@ -22,7 +22,7 @@
         @click="emit('toggle', message.id)"
       >
         <Icon icon="chevron-down" />
-        <span>{{ message.interceptorName || 'Interceptor' }}</span>
+        <span>{{ message.interceptorName || t('streamB.interceptor.e71231') }}</span>
       </div>
       <!-- Several in a row: which one has the message now, while it waits there. -->
       <div v-if="step" class="abele-chat-msg__interceptor-step">{{ step }}</div>
@@ -61,7 +61,9 @@
       </div>
       <div v-if="interceptorError" class="abele-chat-msg__interceptor-error">
         <span>{{ interceptorError }}</span>
-        <button class="abele-chat-msg__draft-btn" @click="emit('retry', message.id)">Retry</button>
+        <button class="abele-chat-msg__draft-btn" @click="emit('retry', message.id)">
+          {{ t('streamB.retry.942087') }}
+        </button>
       </div>
       <div
         v-if="
@@ -72,7 +74,7 @@
         <textarea
           :value="text"
           class="abele-chat-msg__interceptor-textarea"
-          placeholder="Reply..."
+          :placeholder="t('streamB.reply.772fa5')"
           rows="1"
           @input="text = ($event.target as HTMLTextAreaElement).value"
           @keydown.shift.enter.prevent="emit('reply')"
@@ -84,6 +86,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed } from 'vue'
 import Icon from './obsidian/Icon.vue'
 import Markdown from './obsidian/Markdown.vue'
@@ -106,7 +109,11 @@ const emit = defineEmits<{
 const step = computed(() => {
   const wait = props.message.draft ? props.message.interceptorWait : undefined
   return wait && wait.of > 1
-    ? `${wait.at} of ${wait.of}: ${props.message.interceptorName ?? ''}`
+    ? t('streamB.of.5ae35d', {
+        v0: String(wait.at),
+        v1: String(wait.of),
+        v2: String(props.message.interceptorName ?? ''),
+      })
     : ''
 })
 const severalSpeak = computed(

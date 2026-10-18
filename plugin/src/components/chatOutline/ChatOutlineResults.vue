@@ -48,6 +48,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 // What a search of the chat found, grouped by the question each match is under (or by the
 // discussion it is in), so a hit reads with the place it belongs to.
 import { computed, reactive } from 'vue'
@@ -108,7 +109,7 @@ const groups = computed<Group[]>(() => {
       out.set(key, {
         key,
         icon: 'message-circle',
-        title: question ? navigationTitle(question) : 'Message',
+        title: question ? navigationTitle(question) : t('streamB.message.2f7766'),
         note: branch,
         open: () => emit('jump', ownerId),
         hits: [],

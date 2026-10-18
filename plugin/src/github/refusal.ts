@@ -1,3 +1,5 @@
+import { uiFields, uiMessage, uiJoin, type UiMessage } from '@/i18n/streamBErrors'
+import { agentText as t } from '@/i18n/streamBText'
 /**
  * Why GitHub refused a request, in words a person can act on.
  *
@@ -60,11 +62,21 @@ export const header = (
 }
 
 const PERMISSION_NAMES: Record<string, string> = {
-  metadata: 'Metadata',
-  contents: 'Contents',
-  issues: 'Issues',
-  pull_requests: 'Pull requests',
-  discussions: 'Discussions',
+  get metadata() {
+    return t('streamB.metadata.9eddf5')
+  },
+  get contents() {
+    return t('streamB.contents.437aea')
+  },
+  get issues() {
+    return t('streamB.issues.666067')
+  },
+  get pull_requests() {
+    return t('streamB.pullRequests.d9e3f2')
+  },
+  get discussions() {
+    return t('streamB.discussions.60157c')
+  },
 }
 
 const permissionName = (key: string) =>
@@ -114,6 +126,7 @@ export interface RefusalInput {
   what: string
   /** Why no token went with the request although one is set. */
   noTokenReason?: string
+  presentation?: { what?: UiMessage; noTokenReason?: UiMessage }
 }
 
 export function explainRefusal(input: RefusalInput): Refusal {
@@ -122,63 +135,124 @@ export function explainRefusal(input: RefusalInput): Refusal {
   // "add a token" would send the person to set what is already set.
   if (input.hasToken || !input.noTokenReason) return refusal
   if (refusal.kind === 'rate-limit' || refusal.kind === 'empty') return refusal
-  return { ...refusal, fix: `No token was sent: ${input.noTokenReason}` }
+  return uiFields<Refusal>(
+    { ...refusal, fix: `No token was sent: ${input.noTokenReason}` },
+    {
+      fix: uiMessage('streamBError.2858c527cf', {
+        v0: input.presentation?.noTokenReason ?? input.noTokenReason,
+      }),
+    },
+    refusal
+  )
 }
 
-function explainAsSent({ status, headers, message, hasToken, what }: RefusalInput): Refusal {
+function explainAsSent({
+  status,
+  headers,
+  message,
+  hasToken,
+  what,
+  presentation,
+}: RefusalInput): Refusal {
   const githubSaid = message || undefined
   const needed = neededPermissions(header(headers, 'x-accepted-github-permissions'))
   const base = { githubSaid, needed }
 
   if (status === 401) {
-    return {
-      ...base,
-      kind: 'auth',
-      reason: hasToken
-        ? `GitHub did not accept the token when asked for ${what}.`
-        : `GitHub asks for a token to show ${what}.`,
-      fix: hasToken
-        ? 'It may be mistyped, expired or revoked. Set a new one in Abele settings → GitHub.'
-        : 'Add one in Abele settings → GitHub.',
-    }
+    return uiFields<Refusal>(
+      {
+        ...base,
+        kind: 'auth',
+        reason: hasToken
+          ? `GitHub did not accept the token when asked for ${what}.`
+          : `GitHub asks for a token to show ${what}.`,
+        fix: hasToken
+          ? 'It may be mistyped, expired or revoked. Set a new one in Abele settings → GitHub.'
+          : 'Add one in Abele settings → GitHub.',
+      },
+      {
+        reason: hasToken
+          ? uiMessage('streamBError.6e74ee0eb3', { v0: presentation?.what ?? what })
+          : uiMessage('streamBError.69e3e92a4b', { v0: presentation?.what ?? what }),
+        fix: hasToken ? uiMessage('streamBError.d10c3511be') : uiMessage('streamBError.1de332c345'),
+      }
+    )
   }
 
   const remaining = header(headers, 'x-ratelimit-remaining')
   if (status === 429 || (status === 403 && remaining === '0')) {
     const reset = Number(header(headers, 'x-ratelimit-reset'))
-    return {
-      ...base,
-      kind: 'rate-limit',
-      reason: hasToken
-        ? 'The GitHub request limit for this token is used up.'
-        : 'The GitHub limit for requests without a token (60 an hour) is used up.',
-      fix:
-        (reset ? `It resets at ${new Date(reset * 1000).toLocaleTimeString()}.` : '') +
-        (hasToken ? '' : `${reset ? ' ' : ''}A token raises it to 5000.`),
-    }
+    return uiFields<Refusal>(
+      {
+        ...base,
+        kind: 'rate-limit',
+        reason: hasToken
+          ? 'The GitHub request limit for this token is used up.'
+          : 'The GitHub limit for requests without a token (60 an hour) is used up.',
+        fix:
+          (reset ? `It resets at ${new Date(reset * 1000).toLocaleTimeString()}.` : '') +
+          (hasToken ? '' : `${reset ? ' ' : ''}A token raises it to 5000.`),
+      },
+      {
+        reason: hasToken
+          ? uiMessage('streamBError.bc5d838c06')
+          : uiMessage('streamBError.27106edf75'),
+        fix: uiJoin(
+          [
+            ...(reset
+              ? [
+                  uiMessage('streamBError.3d90b66898', {
+                    v0: new Date(reset * 1000).toLocaleTimeString(),
+                  }),
+                ]
+              : []),
+            ...(!hasToken ? [uiMessage('streamBError.0af4d24f00', { v0: reset ? ' ' : '' })] : []),
+          ],
+          ''
+        ),
+      }
+    )
   }
 
   const sso = header(headers, 'x-github-sso')
   if (status === 403 && (sso || /SAML enforcement|single sign-on/i.test(message))) {
     const url = sso ? /url=([^;\s]+)/.exec(sso)?.[1] : undefined
-    return {
-      ...base,
-      kind: 'sso',
-      reason:
-        'This organisation uses single sign-on, and the token has not been authorised for it.',
-      fix: url
-        ? `Authorise it here: ${url}`
-        : 'Authorise it on GitHub: Settings → Personal access tokens → the token → Configure SSO.',
-    }
+    return uiFields<Refusal>(
+      {
+        ...base,
+        kind: 'sso',
+        reason:
+          'This organisation uses single sign-on, and the token has not been authorised for it.',
+        fix: url
+          ? `Authorise it here: ${url}`
+          : 'Authorise it on GitHub: Settings → Personal access tokens → the token → Configure SSO.',
+      },
+      {
+        reason: uiMessage('streamBError.9bbd87f900'),
+        fix: url
+          ? uiMessage('streamBError.85596cf701', { v0: String(url) })
+          : uiMessage('streamBError.98f3a2fad0'),
+      }
+    )
   }
 
   if (/IP allow list/i.test(message)) {
-    return {
-      ...base,
-      kind: 'ip-allow-list',
-      reason: `${the(orgIn(message))} only accepts requests from its allowed IP addresses, and this device's address is not on the list. The token itself is fine.`,
-      fix: 'Connect through the office network or VPN the organisation allows, or ask an organisation owner to add this address. The same token keeps working from a machine that is on the list, which is why it can work elsewhere and not here.',
-    }
+    return uiFields<Refusal>(
+      {
+        ...base,
+        kind: 'ip-allow-list',
+        reason: `${the(orgIn(message))} only accepts requests from its allowed IP addresses, and this device's address is not on the list. The token itself is fine.`,
+        fix: 'Connect through the office network or VPN the organisation allows, or ask an organisation owner to add this address. The same token keeps working from a machine that is on the list, which is why it can work elsewhere and not here.',
+      },
+      {
+        reason: uiMessage('streamBError.525a59abdd', {
+          v0: orgIn(message)
+            ? uiMessage('streamBError.679b703e6c', { v0: orgIn(message) })
+            : uiMessage('streamBError.f6a1bafa2b'),
+        }),
+        fix: uiMessage('streamBError.cc22835989'),
+      }
+    )
   }
 
   if (
@@ -187,12 +261,23 @@ function explainAsSent({ status, headers, message, hasToken, what }: RefusalInpu
     )
   ) {
     const days = /greater than (\d+) days/i.exec(message)?.[1]
-    return {
-      ...base,
-      kind: 'policy',
-      reason: `${the(orgIn(message))} refuses fine-grained tokens that are valid for longer than it allows${days ? ` (${days} days)` : ''}.`,
-      fix: "Shorten the token's expiration on GitHub — GitHub's message below has the link — or make a new token with a shorter one.",
-    }
+    return uiFields<Refusal>(
+      {
+        ...base,
+        kind: 'policy',
+        reason: `${the(orgIn(message))} refuses fine-grained tokens that are valid for longer than it allows${days ? ` (${days} days)` : ''}.`,
+        fix: "Shorten the token's expiration on GitHub — GitHub's message below has the link — or make a new token with a shorter one.",
+      },
+      {
+        reason: uiMessage('streamBError.8a4e28441e', {
+          v0: orgIn(message)
+            ? uiMessage('streamBError.679b703e6c', { v0: orgIn(message) })
+            : uiMessage('streamBError.f6a1bafa2b'),
+          v1: days ? uiMessage('streamBError.d860f8f34f', { v0: days }) : '',
+        }),
+        fix: uiMessage('streamBError.deabf54f35'),
+      }
+    )
   }
 
   if (
@@ -200,68 +285,124 @@ function explainAsSent({ status, headers, message, hasToken, what }: RefusalInpu
       message
     )
   ) {
-    return {
-      ...base,
-      kind: 'policy',
-      reason: `${the(orgIn(message))} does not accept fine-grained personal access tokens at all.`,
-      fix: 'Only an organisation owner can change that (organisation settings → Personal access tokens). Until then its repositories cannot be read with this kind of token.',
-    }
+    return uiFields<Refusal>(
+      {
+        ...base,
+        kind: 'policy',
+        reason: `${the(orgIn(message))} does not accept fine-grained personal access tokens at all.`,
+        fix: 'Only an organisation owner can change that (organisation settings → Personal access tokens). Until then its repositories cannot be read with this kind of token.',
+      },
+      {
+        reason: uiMessage('streamBError.23ae822430', {
+          v0: orgIn(message)
+            ? uiMessage('streamBError.679b703e6c', { v0: orgIn(message) })
+            : uiMessage('streamBError.f6a1bafa2b'),
+        }),
+        fix: uiMessage('streamBError.867dbd63be'),
+      }
+    )
   }
 
   if (/forbids access via a personal access token \(classic\)/i.test(message)) {
-    return {
-      ...base,
-      kind: 'policy',
-      reason: `${the(orgIn(message))} does not accept classic personal access tokens.`,
-      fix: 'Make a fine-grained token instead, with the organisation as its Resource owner.',
-    }
+    return uiFields<Refusal>(
+      {
+        ...base,
+        kind: 'policy',
+        reason: `${the(orgIn(message))} does not accept classic personal access tokens.`,
+        fix: 'Make a fine-grained token instead, with the organisation as its Resource owner.',
+      },
+      {
+        reason: uiMessage('streamBError.cb67a9c5e8', {
+          v0: orgIn(message)
+            ? uiMessage('streamBError.679b703e6c', { v0: orgIn(message) })
+            : uiMessage('streamBError.f6a1bafa2b'),
+        }),
+        fix: uiMessage('streamBError.4d980c1a74'),
+      }
+    )
   }
 
   if (/OAuth App access restrictions/i.test(message)) {
-    return {
-      ...base,
-      kind: 'policy',
-      reason: `${the(orgIn(message))} restricts which apps may read its data, and this token is caught by it.`,
-      fix: 'Use a fine-grained token with the organisation as its Resource owner, or ask an owner to allow access.',
-    }
+    return uiFields<Refusal>(
+      {
+        ...base,
+        kind: 'policy',
+        reason: `${the(orgIn(message))} restricts which apps may read its data, and this token is caught by it.`,
+        fix: 'Use a fine-grained token with the organisation as its Resource owner, or ask an owner to allow access.',
+      },
+      {
+        reason: uiMessage('streamBError.6c498d7d3c', {
+          v0: orgIn(message)
+            ? uiMessage('streamBError.679b703e6c', { v0: orgIn(message) })
+            : uiMessage('streamBError.f6a1bafa2b'),
+        }),
+        fix: uiMessage('streamBError.c81e0c8baa'),
+      }
+    )
   }
 
   if (
     status === 403 &&
     /Resource not accessible by (personal access token|integration)/i.test(message)
   ) {
-    return {
-      ...base,
-      kind: 'forbidden',
-      reason: `GitHub refused ${what} to this token.`,
-      fix: 'A fine-grained token is refused like this when it lacks that permission, when this repository is not among the repositories it was given, or when its Resource owner is your own account rather than the organisation — a fine-grained token only reaches the repositories of the one owner chosen when it was made. A token still waiting for an organisation owner to approve it reads public data only.',
-    }
+    return uiFields<Refusal>(
+      {
+        ...base,
+        kind: 'forbidden',
+        reason: `GitHub refused ${what} to this token.`,
+        fix: 'A fine-grained token is refused like this when it lacks that permission, when this repository is not among the repositories it was given, or when its Resource owner is your own account rather than the organisation — a fine-grained token only reaches the repositories of the one owner chosen when it was made. A token still waiting for an organisation owner to approve it reads public data only.',
+      },
+      {
+        reason: uiMessage('streamBError.9909829c59', { v0: presentation?.what ?? what }),
+        fix: uiMessage('streamBError.e6f3c80ade'),
+      }
+    )
   }
 
   if (status === 403) {
-    return {
-      ...base,
-      kind: 'forbidden',
-      reason: `GitHub refused ${what}.`,
-    }
+    return uiFields<Refusal>(
+      {
+        ...base,
+        kind: 'forbidden',
+        reason: `GitHub refused ${what}.`,
+      },
+      { reason: uiMessage('streamBError.e048ee47d3', { v0: presentation?.what ?? what }) }
+    )
   }
 
   if (status === 404 && /repository is empty/i.test(message)) {
-    return { ...base, kind: 'empty', reason: 'The repository is empty: it has no files yet.' }
+    return uiFields<Refusal>(
+      { ...base, kind: 'empty', reason: 'The repository is empty: it has no files yet.' },
+      { reason: uiMessage('streamBError.33dca72ade') }
+    )
   }
 
   if (status === 404) {
-    return {
-      ...base,
-      kind: 'not-found',
-      reason: `GitHub found nothing for ${what}.`,
-      fix: hasToken
-        ? 'Either it does not exist, or the token cannot see it: GitHub answers "not found" rather than "forbidden" for a private repository a token has no access to. Check that the repository is selected in the token, that the token\'s Resource owner is the organisation that owns the repository (a token made under your own account cannot see an organisation\'s private repositories), and, if the organisation requires approval, that an owner has approved the token.'
-        : 'If the repository is private, add a token in Abele settings → GitHub.',
-    }
+    return uiFields<Refusal>(
+      {
+        ...base,
+        kind: 'not-found',
+        reason: `GitHub found nothing for ${what}.`,
+        fix: hasToken
+          ? 'Either it does not exist, or the token cannot see it: GitHub answers "not found" rather than "forbidden" for a private repository a token has no access to. Check that the repository is selected in the token, that the token\'s Resource owner is the organisation that owns the repository (a token made under your own account cannot see an organisation\'s private repositories), and, if the organisation requires approval, that an owner has approved the token.'
+          : 'If the repository is private, add a token in Abele settings → GitHub.',
+      },
+      {
+        reason: uiMessage('streamBError.67711ed6a1', { v0: presentation?.what ?? what }),
+        fix: hasToken ? uiMessage('streamBError.690d176ada') : uiMessage('streamBError.8dc365ec07'),
+      }
+    )
   }
 
-  return { ...base, kind: 'other', reason: `GitHub answered ${status} for ${what}.` }
+  return uiFields<Refusal>(
+    { ...base, kind: 'other', reason: `GitHub answered ${status} for ${what}.` },
+    {
+      reason: uiMessage('streamBError.6c1e1f640d', {
+        v0: String(status),
+        v1: presentation?.what ?? what,
+      }),
+    }
+  )
 }
 
 /** The refusal as the lines a person reads: cause and fix, then the permission, then GitHub. */

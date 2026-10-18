@@ -1,3 +1,4 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import { z } from 'zod'
 import type { SessionOverrides } from './agents/types'
 import { NodeAccessRefusalError } from './tools/node/accessRefusal'
@@ -101,17 +102,14 @@ export class NodeScopeLedger {
     chosen = nodeScopeEntries(chat)
   ): void {
     const identity = chat.nodeScopeIdentity
-    if (!identity) throw new Error('Save this chat before approving node scope')
+    if (!identity) throw new UiError(uiMessage('streamBError.fa179ed984'))
     const current = new Set(nodeScopeEntries(chat).map(nodeScopeKey))
     const entries = { ...this.approvals[identity]?.entries }
     for (const [key] of Object.entries(entries)) if (!current.has(key)) delete entries[key]
     for (const entry of chosen) {
       const key = nodeScopeKey(entry),
         principal = principals[entry.node_id]
-      if (!current.has(key) || !principal)
-        throw new Error(
-          'Owner approval must identify an exact configured scope entry and principal'
-        )
+      if (!current.has(key) || !principal) throw new UiError(uiMessage('streamBError.427b10788e'))
       entries[key] = { entry: NodeScopeEntrySchema.parse(entry), principal }
     }
     this.commit({ ...this.approvals, [identity]: { entries, nonce: crypto.randomUUID() } })
@@ -173,9 +171,7 @@ export class NodeScopeLedger {
         chat.conversationVersion.value !== conversation ||
         chat.branchSelectionVersion !== branch
       )
-        throw new Error(
-          'Local owner node scope approval is missing, changed or revoked for this chat'
-        )
+        throw new UiError(uiMessage('streamBError.80385f9f65'))
     }
     check()
     return check

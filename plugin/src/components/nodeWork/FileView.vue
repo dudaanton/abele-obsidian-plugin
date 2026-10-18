@@ -56,6 +56,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 // A file of the node in the main area. A changed file opens on its comparison, the way a commit
 // page does; the whole file is one switch away in the view's header, beside opening it in the
 // code editor and the arrows to the previous and next changed file. Selected text — in the
@@ -96,9 +97,9 @@ const emit = defineEmits<{
 
 const metadataNote = computed(() =>
   props.change?.pending
-    ? 'Loading changes…'
+    ? t('streamB.loadingChanges.99f48f')
     : props.change?.binary
-      ? 'Binary file · no text diff.'
+      ? t('streamB.binaryFileNoTextDiff.1dcb4a')
       : props.change?.previewNote
 )
 const imageUrl = ref('')

@@ -1,4 +1,5 @@
 import { isNativeForge } from '@/forge/native'
+import { t } from '@/i18n'
 import { endpoints } from './urls'
 import type { GithubSettings } from './settings'
 import { deployment } from '@/forge/identity'
@@ -59,7 +60,7 @@ export function normalizeConnections(
       ? [
           {
             id: 'github-legacy',
-            name: old ? 'GitHub Enterprise' : 'GitHub',
+            name: old ? 'GitHub Enterprise' : t('streamB.github.f911e4'),
             server: old,
             keyId,
             owners: [] as string[],

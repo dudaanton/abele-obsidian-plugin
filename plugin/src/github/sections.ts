@@ -1,3 +1,11 @@
+import {
+  uiFields,
+  uiMessage,
+  presentUiError,
+  uiFieldMessage,
+  type UiMessage,
+} from '@/i18n/streamBErrors'
+import { streamBLabelMessage } from '@/i18n/streamBLabels'
 /**
  * The parts of an item that are not the item itself.
  *
@@ -7,7 +15,6 @@
  * the tab still shows everything else and says in that section's place what was refused.
  */
 import { GithubError, type GithubClient } from './client'
-import { refusalText } from './refusal'
 
 /** REST refused this one endpoint rather than the token or the network — worth asking GraphQL. */
 const endpointRefused = (e: unknown): e is GithubError =>
@@ -45,7 +52,24 @@ export async function withFallback<T>(
       return value
     } catch (g) {
       console.debug('[Abele] GitHub GraphQL refused it too', g)
-      throw new GithubError(e.kind, e.message, e.status, { ...e.refusal, graphql: graphqlNote(g) })
+      throw new GithubError(
+        e.kind,
+        e.message,
+        e.status,
+        uiFields(
+          { ...e.refusal, graphql: graphqlNote(g) },
+          {
+            graphql:
+              g instanceof GithubError && g.githubSaid
+                ? uiMessage('streamBError.a51346d01d', { v0: g.githubSaid })
+                : uiMessage('streamBError.2eac8a11cd', {
+                    v0:
+                      g instanceof GithubError ? uiFieldMessage(g.refusal, 'reason') : messageOf(g),
+                  }),
+          },
+          e.refusal
+        )
+      )
     }
   }
 }
@@ -79,21 +103,47 @@ export async function secondary<T>(
  * accepts, or answers "not found" about an item just read, "add the permission" would send the
  * person to grant what the token already has. The server refused this one request; say that.
  */
-export function problemText(error: unknown, proven?: string): string {
-  if (!(error instanceof GithubError)) return messageOf(error)
+function sectionError(error: unknown, proven?: string): unknown {
+  if (!(error instanceof GithubError)) return error
   const r = error.refusal
   const namesProven = !!proven && !!r.needed?.includes(`${proven} (read)`)
   if ((r.kind === 'forbidden' && namesProven) || (r.kind === 'not-found' && proven)) {
-    return refusalText({
-      ...r,
-      fix: `The same token read the item itself${
-        namesProven
-          ? `, which takes ${proven} (read) — one of the permissions this request accepts`
-          : ''
-      }. So this is not a permission missing from the token: the server refuses this one request. The rest of the item is shown; open it on GitHub for this part.`,
-    })
+    return new GithubError(
+      error.kind,
+      error.message,
+      error.status,
+      uiFields(
+        {
+          ...r,
+          fix: `The same token read the item itself${
+            namesProven
+              ? `, which takes ${proven} (read) — one of the permissions this request accepts`
+              : ''
+          }. So this is not a permission missing from the token: the server refuses this one request. The rest of the item is shown; open it on GitHub for this part.`,
+        },
+        {
+          fix: namesProven
+            ? uiMessage('streamBError.2528c26585', { v0: streamBLabelMessage(proven ?? '') })
+            : uiMessage('streamBError.6b52eb9983'),
+        },
+        r
+      )
+    )
   }
-  return error.message
+  return error
+}
+export function problemText(error: unknown, proven?: string): string {
+  return messageOf(sectionError(error, proven))
+}
+export function uiProblemMessage(errors: unknown[], proven?: string): UiMessage {
+  return {
+    original: problems(errors, proven) ?? '',
+    localized: () =>
+      errors
+        .filter((e) => e !== undefined)
+        .map((e) => presentUiError(sectionError(e, proven)))
+        .join('\n\n'),
+  }
 }
 
 /** Several sections' problems as one notice; nothing when all of them were read. */

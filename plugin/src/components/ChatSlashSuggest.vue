@@ -33,6 +33,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, nextTick, ref, watch } from 'vue'
 import type { TFile } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
@@ -66,10 +67,10 @@ const KIND_GLYPH = {
   agent: 'terminal',
 } as const
 const KIND_SAID = {
-  command: 'Chat command',
-  skill: 'Skill',
-  prompt: 'Prompt',
-  agent: "The agent's own command",
+  command: t('streamB.chatCommand.2d5630'),
+  skill: t('streamB.skill.6df1bb'),
+  prompt: t('streamB.prompt.5c3912'),
+  agent: t('streamB.theAgentSOwnCommand.01f314'),
 } as const
 
 const COMMANDS: SlashItem[] = [
@@ -77,10 +78,15 @@ const COMMANDS: SlashItem[] = [
     kind: 'command',
     name: 'compact',
     title: '/compact',
-    description: 'Shorten what was said so far',
+    description: t('streamB.shortenWhatWasSaidSoFar.178e6d'),
   },
-  { kind: 'command', name: 'new', title: '/new', description: 'Start a new chat' },
-  { kind: 'command', name: 'load', title: '/load', description: 'Open a chat you have had' },
+  { kind: 'command', name: 'new', title: '/new', description: t('streamB.startANewChat.61025e') },
+  {
+    kind: 'command',
+    name: 'load',
+    title: '/load',
+    description: t('streamB.openAChatYouHaveHad.31b24c'),
+  },
 ]
 
 const all = computed<SlashItem[]>(() => {

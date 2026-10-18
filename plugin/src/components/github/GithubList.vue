@@ -7,11 +7,15 @@
         :placeholder="DEFAULT_QUERY[target.list]"
         @keydown.enter.prevent="apply(draft)"
       />
-      <Button text="Search" tooltip="List what this query finds" @click="apply(draft)" />
+      <Button
+        :text="t('streamB.search.49c266')"
+        :tooltip="t('streamB.listWhatThisQueryFinds.b1adf1')"
+        @click="apply(draft)"
+      />
       <Icon
         v-if="target.query !== DEFAULT_QUERY[target.list]"
         icon="rotate-ccw"
-        tooltip="Back to the list GitHub starts with"
+        :tooltip="t('streamB.backToTheListGithubStartsWith.f5f777')"
         @click="apply(DEFAULT_QUERY[target.list])"
       />
     </div>
@@ -26,10 +30,10 @@
 
     <div class="abele-github-list__filters">
       <label class="abele-github-list__filter">
-        <span>Author</span>
+        <span>{{ t('streamB.author.d95082') }}</span>
         <Input
           :model-value="one('author')"
-          placeholder="login"
+          :placeholder="t('streamB.login.428821')"
           @change="(e: Event) => set('author', (e.target as HTMLInputElement).value)"
           @keydown.enter.prevent="
             (e: KeyboardEvent) => set('author', (e.target as HTMLInputElement).value)
@@ -37,10 +41,10 @@
         />
       </label>
       <label v-if="target.list !== 'discussions'" class="abele-github-list__filter">
-        <span>Assignee</span>
+        <span>{{ t('streamB.assignee.5e20d2') }}</span>
         <Input
           :model-value="one('assignee')"
-          placeholder="login"
+          :placeholder="t('streamB.login.428821')"
           @change="(e: Event) => set('assignee', (e.target as HTMLInputElement).value)"
           @keydown.enter.prevent="
             (e: KeyboardEvent) => set('assignee', (e.target as HTMLInputElement).value)
@@ -48,26 +52,26 @@
         />
       </label>
       <label v-if="choices.labels.length" class="abele-github-list__filter">
-        <span>Label</span>
+        <span>{{ t('streamB.label.0e6637') }}</span>
         <Dropdown
-          :options="optionsOf(choices.labels, 'Any label')"
+          :options="optionsOf(choices.labels, t('streamB.anyLabel.a52d54'))"
           :model-value="one('label')"
           @update:model-value="(v: string) => set('label', v)"
         />
       </label>
       <label v-if="choices.milestones.length" class="abele-github-list__filter">
-        <span>Milestone</span>
+        <span>{{ t('streamB.milestone.9e8624') }}</span>
         <Dropdown
-          :options="optionsOf(choices.milestones, 'Any milestone')"
+          :options="optionsOf(choices.milestones, t('streamB.anyMilestone.8db5f5'))"
           :model-value="one('milestone')"
           @update:model-value="(v: string) => set('milestone', v)"
         />
       </label>
       <label v-if="target.list === 'pulls' && !native" class="abele-github-list__filter">
-        <span>Review</span>
+        <span>{{ t('streamB.review.aff076') }}</span>
         <Dropdown
           :options="[
-            { value: '', display: 'Any review' },
+            { value: '', display: t('streamB.anyReview.12530f') },
             ...REVIEWS.map((r) => ({ value: r.value, display: r.label })),
           ]"
           :model-value="one('review')"
@@ -75,32 +79,32 @@
         />
       </label>
       <label v-if="target.list === 'pulls' && !native" class="abele-github-list__filter">
-        <span>Draft</span>
+        <span>{{ t('streamB.draft.ebf12e') }}</span>
         <Dropdown
           :options="[
-            { value: '', display: 'Drafts and ready' },
-            { value: 'true', display: 'Drafts only' },
-            { value: 'false', display: 'Ready only' },
+            { value: '', display: t('streamB.draftsAndReady.ccf064') },
+            { value: 'true', display: t('streamB.draftsOnly.f1f1be') },
+            { value: 'false', display: t('streamB.readyOnly.9f871b') },
           ]"
           :model-value="one('draft')"
           @update:model-value="(v: string) => set('draft', v)"
         />
       </label>
       <label v-if="choices.categories.length" class="abele-github-list__filter">
-        <span>Category</span>
+        <span>{{ t('streamB.category.292c06') }}</span>
         <Dropdown
-          :options="optionsOf(choices.categories, 'Any category')"
+          :options="optionsOf(choices.categories, t('streamB.anyCategory.b64819'))"
           :model-value="one('category')"
           @update:model-value="(v: string) => set('category', v)"
         />
       </label>
       <label v-if="target.list === 'discussions'" class="abele-github-list__filter">
-        <span>Answer</span>
+        <span>{{ t('streamB.answer.b2a3aa') }}</span>
         <Dropdown
           :options="[
-            { value: '', display: 'Answered or not' },
-            { value: 'answered', display: 'Answered' },
-            { value: 'unanswered', display: 'Unanswered' },
+            { value: '', display: t('streamB.answeredOrNot.61dbd9') },
+            { value: 'answered', display: t('streamB.answered.665590') },
+            { value: 'unanswered', display: t('streamB.unanswered.aa9654') },
           ]"
           :model-value="answered"
           @update:model-value="
@@ -110,7 +114,7 @@
         />
       </label>
       <label class="abele-github-list__filter">
-        <span>Sort</span>
+        <span>{{ t('streamB.sort.bec690') }}</span>
         <Dropdown
           :options="SORTS.map((s) => ({ value: s.id, display: s.label }))"
           :model-value="sortId"
@@ -130,21 +134,22 @@
       />
     </div>
     <div v-if="moreError" class="abele-github-list__more-error">
-      <GithubNotice
-        :text="moreError"
-        retry-tooltip="Ask GitHub for the next page again"
-        @retry="more"
-      />
+      <GithubNotice :text="moreError" :retry-tooltip="t('streamBMeta.eb11578b6e')" @retry="more" />
     </div>
     <ScrollMore
       v-else-if="next !== null"
       :loading="loadingMore"
       :shown="items.length"
-      :label="`${items.length} of ${shownTotal}${data.totalKnown === false ? '+' : ''} shown, more below`"
+      :label="
+        t('streamB.ofShownMoreBelow.fcc2cb', {
+          v0: String(items.length),
+          v1: `${shownTotal}${data.totalKnown === false ? '+' : ''}`,
+        })
+      "
       @more="more"
     />
     <div v-else-if="!native && data.total > SEARCH_CAP_SHOWN" class="abele-github-list__cap">
-      GitHub's search shows the first thousand; narrow the query to see the rest.
+      {{ t('streamB.githubSSearchShowsTheFirstThousand.9509b3') }}
     </div>
   </div>
 </template>
@@ -152,6 +157,9 @@
 <script setup lang="ts">
 import { useRepositorySource } from '@/repository/context'
 import { isNativeForge } from '@/forge/native'
+import { streamBNumber } from '@/i18n/streamBDate'
+import { presentUiError } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 import { computed, ref, shallowRef, watch } from 'vue'
 import type { PaneType } from 'obsidian'
 import Button from '../obsidian/Button.vue'
@@ -238,12 +246,22 @@ const sortId = computed(() => {
   return `${sort}-${order}`
 })
 
-const count = (n: number | null) => (n === null ? '' : ` ${n.toLocaleString()}`)
+const count = (n: number | null) => (n === null ? '' : ` ${streamBNumber(n)}`)
 const stateTabs = computed(() => [
-  { id: 'open', label: `Open${count(props.data.counts.open)}`, icon: 'circle-dot' },
-  { id: 'closed', label: `Closed${count(props.data.counts.closed)}`, icon: 'circle-check' },
-  ...(props.target.list === 'pulls' ? [{ id: 'merged', label: 'Merged', icon: 'git-merge' }] : []),
-  { id: 'all', label: 'All', icon: 'list' },
+  {
+    id: 'open',
+    label: t('streamB.open.b764ff', { v0: String(count(props.data.counts.open)) }),
+    icon: 'circle-dot',
+  },
+  {
+    id: 'closed',
+    label: t('streamB.closed.a8d1e6', { v0: String(count(props.data.counts.closed)) }),
+    icon: 'circle-check',
+  },
+  ...(props.target.list === 'pulls'
+    ? [{ id: 'merged', label: t('streamB.merged.bd0a06'), icon: 'git-merge' }]
+    : []),
+  { id: 'all', label: t('streamB.all.a52ace'), icon: 'list' },
 ])
 
 const optionsOf = (values: string[], any: string) => [
@@ -287,14 +305,14 @@ watch(
   },
   { immediate: true }
 )
-const shownTotal = computed(() => Math.min(props.data.total, SEARCH_CAP_SHOWN).toLocaleString())
+const shownTotal = computed(() => streamBNumber(Math.min(props.data.total, SEARCH_CAP_SHOWN)))
 
 const emptyText = computed(() =>
   props.target.list === 'pulls'
-    ? 'No pull requests match this query.'
+    ? t('streamB.noPullRequestsMatchThisQuery.82c64e')
     : props.target.list === 'issues'
-      ? 'No issues match this query.'
-      : 'No discussions match this query.'
+      ? t('streamB.noIssuesMatchThisQuery.3f344a')
+      : t('streamB.noDiscussionsMatchThisQuery.fb1b50')
 )
 
 const more = async () => {
@@ -315,7 +333,8 @@ const more = async () => {
     next.value = page.next
   } catch (e) {
     if (props.data === data)
-      moreError.value = e instanceof Error ? e.message : 'GitHub could not be asked.'
+      moreError.value =
+        e instanceof Error ? presentUiError(e) : t('streamB.githubCouldNotBeAsked.b4b43c')
   } finally {
     loadingMore.value = false
   }

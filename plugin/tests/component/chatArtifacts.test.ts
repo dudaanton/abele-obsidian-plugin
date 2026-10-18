@@ -1,3 +1,5 @@
+import { catalogs as testCatalogs } from '@/i18n/catalogs'
+import { initializeLocale } from '@/i18n'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { defineComponent, h, nextTick, ref, shallowRef } from 'vue'
@@ -24,6 +26,7 @@ let session: ChatSession
 let view: VueWrapper | undefined
 const mountView = () => (view = mount(ChatArtifacts, { props: { session } }))
 beforeEach(() => {
+  initializeLocale('en', testCatalogs['en' as keyof typeof testCatalogs])
   app = useVault([
     { path: 'Notes/sample.md' },
     { path: 'Scripts/sample.js' },
@@ -55,6 +58,7 @@ beforeEach(() => {
   } as unknown as ChatSession
 })
 afterEach(() => {
+  initializeLocale('en', testCatalogs['en' as keyof typeof testCatalogs])
   view?.unmount()
   view = undefined
   vi.restoreAllMocks()
@@ -209,4 +213,11 @@ describe('chat artifacts dialog', () => {
     expect(dialog.props('session').id).toBe('other')
     expect(dialog.emitted('close')).toHaveLength(1)
   })
+})
+
+it('keeps image rendering and readable path rows when section labels are translated', () => {
+  initializeLocale('ru', testCatalogs['ru' as keyof typeof testCatalogs])
+  mountView()
+  expect(view!.findAll('.abele-chat-artifacts__images button')).toHaveLength(1)
+  expect(row('Notes/sample.md').find('.abele-tree-item__where').text()).toBe('Notes')
 })

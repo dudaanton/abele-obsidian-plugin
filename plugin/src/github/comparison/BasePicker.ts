@@ -1,3 +1,5 @@
+import { presentUiError } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 import { SuggestModal, type App } from 'obsidian'
 import { SuggestionRows } from '@/components/obsidian/suggestionRows'
 import type { GithubClient } from '../client'
@@ -30,9 +32,9 @@ export class BasePicker extends SuggestModal<Row> {
   ) {
     super(app)
     this.modalEl.addClass('abele-github-base-picker')
-    this.setPlaceholder('Compare against a commit SHA, branch or tag')
+    this.setPlaceholder(t('streamB.compareAgainstACommitShaBranchOr.5f70e6'))
     this.setInstructions([
-      { command: '↵', purpose: 'look it up, then compare against it' },
+      { command: '↵', purpose: t('streamB.lookItUpThenCompareAgainstIt.c9b6e6') },
       { command: 'esc', purpose: 'cancel' },
     ])
   }
@@ -54,7 +56,7 @@ export class BasePicker extends SuggestModal<Row> {
         return this.closed || generation !== this.queryGeneration ? [] : [{ name, pin }]
       } catch (error) {
         this.resolved.delete(name)
-        return [{ name, note: error instanceof Error ? error.message : String(error) }]
+        return [{ name, note: error instanceof Error ? presentUiError(error) : String(error) }]
       }
     }
     try {
@@ -69,7 +71,7 @@ export class BasePicker extends SuggestModal<Row> {
       return await this.refs
     } catch {
       this.refs = undefined
-      return [{ name: 'Paste a commit SHA, branch or tag above.' }]
+      return [{ name: t('streamB.pasteACommitShaBranchOrTag.7898fd') }]
     }
   }
   /**
@@ -88,7 +90,9 @@ export class BasePicker extends SuggestModal<Row> {
             : 'git-branch',
       title: row.name,
       // Only what is worth reading: the commit a name was found at, or why it was not.
-      note: row.pin ? `Compare against commit ${row.pin.baseSha.slice(0, 7)}` : row.note,
+      note: row.pin
+        ? t('streamB.compareAgainstCommit.38db2d', { v0: String(row.pin.baseSha.slice(0, 7)) })
+        : row.note,
     })
   }
   selectSuggestion(row: Row, event: MouseEvent | KeyboardEvent): void {

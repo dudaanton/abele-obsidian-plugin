@@ -23,30 +23,34 @@
       class="abele-github"
       :class="{ 'abele-github_node': source?.identity.provider === 'node' }"
     >
-      <DrawerViewSwitch v-if="!enabled || !target" icon="github" name="GitHub" />
+      <DrawerViewSwitch
+        v-if="!enabled || !target"
+        icon="github"
+        :name="t('streamB.github.f911e4')"
+      />
       <EmptyState
         v-if="!enabled"
         icon="github"
         badge="power-off"
-        title="GitHub is off"
-        text="Turn it on to see issues, pull requests and notifications here."
+        :title="t('streamB.githubIsOff.f16b79')"
+        :text="t('streamB.turnItOnToSeeIssuesPull.ee04f8')"
       >
         <template #action>
           <Button
-            text="Open GitHub settings"
-            tooltip="Turn GitHub on in the settings"
+            :text="t('streamB.openGithubSettings.a40b53')"
+            :tooltip="t('streamB.turnGithubOnInTheSettings.5f00a5')"
             @click="openGithubSettings"
           />
         </template>
       </EmptyState>
 
       <div v-else-if="!target" class="abele-github__fallback">
-        <EmptyState text="This is not a GitHub link a tab here can show." />
+        <EmptyState :text="t('streamB.thisIsNotAGithubLinkA.42c627')" />
         <Button
           v-if="model.url"
-          text="Open in browser"
+          :text="t('streamB.openInBrowser.62a2dc')"
           icon="external-link"
-          tooltip="Open the link in the browser instead"
+          :tooltip="t('streamB.openTheLinkInTheBrowserInstead.4a1897')"
           @click="openInBrowser(model.url)"
         />
       </div>
@@ -57,7 +61,7 @@
           class="abele-github__account"
           :text="accountName"
           icon="user-round"
-          tooltip="Open as another account"
+          :tooltip="t('streamB.openAsAnotherAccount.4e5a6d')"
           @click="onChooseAccount?.()"
         />
         <GithubFindBar
@@ -149,7 +153,7 @@
         <span
           v-if="main.error.value && liveEditableFile && documentModel?.draft.value"
           role="status"
-          >Current disk version unavailable · your local draft is kept. {{ main.error.value }}</span
+          >{{ t('streamBMeta.70c9a87a0b', { p0: String(main.error.value) }) }}</span
         >
         <div
           v-if="main.error.value && !(liveEditableFile && documentModel?.draft.value)"
@@ -161,10 +165,12 @@
           v-else-if="!main.data.value"
           :text="
             source?.identity.provider === 'node'
-              ? 'Loading from the node…'
+              ? t('streamB.loadingFromTheNode.a6287a')
               : isNativeForge(source?.identity.provider)
-                ? `Loading from ${nativeLabel(source?.identity.provider)}…`
-                : 'Loading from GitHub…'
+                ? t('streamB.reapply.2b976bb443', {
+                    service: nativeLabel(source?.identity.provider),
+                  })
+                : t('streamB.loadingFromGithub.20d317')
           "
         />
 
@@ -177,7 +183,7 @@
             :comments="issue.comments"
             :anchor="anchor"
             :incomplete="!issue.commentsComplete"
-            :problem="issue.commentsProblem"
+            :problem="presentUiField(issue, 'commentsProblem')"
             :retrying="conversationRetrying"
             @retry="retryConversation"
           />
@@ -206,7 +212,7 @@
             :comments="pull.comments"
             :anchor="anchor"
             :incomplete="!pull.commentsComplete"
-            :problem="pull.commentsProblem"
+            :problem="presentUiField(pull, 'commentsProblem')"
             :retrying="conversationRetrying"
             @retry="retryConversation"
           />
@@ -214,11 +220,14 @@
             <div v-if="files.error.value" class="abele-github__error">
               <GithubNotice :text="files.error.value" @retry="files.load" />
             </div>
-            <EmptyState v-else-if="!files.data.value" text="Loading the changed files…" />
+            <EmptyState
+              v-else-if="!files.data.value"
+              :text="t('streamB.loadingTheChangedFiles.fe355d')"
+            />
             <template v-else>
               <GithubNotice
-                v-if="files.data.value.reviewCommentsProblem"
-                :text="files.data.value.reviewCommentsProblem"
+                v-if="presentUiField(files.data.value, 'reviewCommentsProblem')"
+                :text="presentUiField(files.data.value, 'reviewCommentsProblem')"
                 :busy="files.loading.value"
                 @retry="files.load"
               />
@@ -236,7 +245,10 @@
             <div v-if="commits.error.value" class="abele-github__error">
               <GithubNotice :text="commits.error.value" @retry="commits.load" />
             </div>
-            <EmptyState v-else-if="!commits.data.value" text="Loading the commits…" />
+            <EmptyState
+              v-else-if="!commits.data.value"
+              :text="t('streamB.loadingTheCommits.71b89c')"
+            />
             <GithubCommits v-else :commits="commits.data.value" @open="openCommit" />
           </template>
         </template>
@@ -273,11 +285,11 @@
         />
 
         <template v-else-if="shown.kind === 'blob' && blob">
-          <EmptyState v-if="blob.note" :text="blob.note" />
+          <EmptyState v-if="presentUiField(blob, 'note')" :text="presentUiField(blob, 'note')" />
           <Button
             v-if="blob.canLoadLarge && source?.largeBlob"
-            text="Load larger file"
-            tooltip="Load this retained version up to the larger file limit"
+            :text="t('streamB.loadLargerFile.3df8d3')"
+            :tooltip="t('streamB.loadThisRetainedVersionUpToThe.be4ae8')"
             icon="file-text"
             :disabled="largeBusy"
             @click="loadLarge"
@@ -300,7 +312,7 @@
             :writable="editingAllowed"
             :offline="nodeOffline"
             :content-id="blob.contentId"
-            :document-note="blob.note"
+            :document-note="presentUiField(blob, 'note')"
             :range="blobRange"
             :plain="blobPlain"
             :mode="model.mode"
@@ -363,6 +375,8 @@
 </template>
 
 <script setup lang="ts">
+import { presentUiField } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 import { isNativeForge, nativeLabel } from '@/forge/native'
 import { computed, ref } from 'vue'

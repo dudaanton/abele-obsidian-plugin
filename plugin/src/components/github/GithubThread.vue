@@ -3,19 +3,20 @@
     <GithubComment :comment="opening" :target="anchor" body />
     <GithubComment v-for="c in comments" :key="c.id" :comment="c" :target="anchor" />
     <GithubNotice v-if="problem" :text="problem" :busy="retrying" @retry="emit('retry')" />
-    <div v-else-if="!comments.length" class="abele-github-thread__note">No comments yet.</div>
+    <div v-else-if="!comments.length" class="abele-github-thread__note">
+      {{ t('streamB.noCommentsYet.b7cba9') }}
+    </div>
     <div v-if="missing > 0" class="abele-github-thread__note">
-      {{ missing }} more {{ missing === 1 ? 'comment is' : 'comments are' }} in the original
-      conversation.
+      {{ t('streamBCount.missingComments', { count: missing }) }}
     </div>
     <div v-else-if="incomplete && !problem" class="abele-github-thread__note">
-      Only the first {{ comments.length }} comments are shown; open the original conversation for
-      the rest.
+      {{ t('streamBMeta.7be439b701', { p0: String(comments.length) }) }}
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed } from 'vue'
 import GithubComment from './GithubComment.vue'
 import GithubNotice from './GithubNotice.vue'

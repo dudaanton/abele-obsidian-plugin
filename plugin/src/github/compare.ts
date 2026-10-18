@@ -1,3 +1,4 @@
+import { uiFields, uiMessage } from '@/i18n/streamBErrors'
 import type { CompareData } from '@/repository/model'
 export type { CompareData } from '@/repository/model'
 /**
@@ -10,8 +11,8 @@ export type { CompareData } from '@/repository/model'
  * limit for the whole comparison. So the first page is read for the files and the counts, and the
  * pages after it only for the rest of the commits.
  */
-import type { GithubClient } from './client'
-import { GithubError } from './client'
+import { type GithubClient, GithubError } from './client'
+
 import type { GithubTarget } from './urls'
 import { repoWeb } from './origin'
 import { diffFiles, restCommit } from './api'
@@ -121,25 +122,33 @@ async function restCompare(
         ? first.base_commit?.sha
         : undefined)
 
-  return {
-    base,
-    head: t.head,
-    direct: t.direct,
-    status,
-    aheadBy: first.ahead_by ?? 0,
-    behindBy: first.behind_by ?? 0,
-    totalCommits: total,
-    commits,
-    commitsComplete: complete && commits.length >= total,
-    files,
-    filesComplete: files.length < MAX_FILES,
-    additions: files.reduce((n, f) => n + f.additions, 0),
-    deletions: files.reduce((n, f) => n + f.deletions, 0),
-    mergeBaseSha: first.merge_base_commit?.sha,
-    headSha,
-    url: compareUrl(t, base, t.head, t.direct),
-    note: t.direct && (status === 'diverged' || status === 'behind') ? DIRECT_NOTE : undefined,
-  }
+  return uiFields(
+    {
+      base,
+      head: t.head,
+      direct: t.direct,
+      status,
+      aheadBy: first.ahead_by ?? 0,
+      behindBy: first.behind_by ?? 0,
+      totalCommits: total,
+      commits,
+      commitsComplete: complete && commits.length >= total,
+      files,
+      filesComplete: files.length < MAX_FILES,
+      additions: files.reduce((n, f) => n + f.additions, 0),
+      deletions: files.reduce((n, f) => n + f.deletions, 0),
+      mergeBaseSha: first.merge_base_commit?.sha,
+      headSha,
+      url: compareUrl(t, base, t.head, t.direct),
+      note: t.direct && (status === 'diverged' || status === 'behind') ? DIRECT_NOTE : undefined,
+    },
+    {
+      note:
+        t.direct && (status === 'diverged' || status === 'behind')
+          ? uiMessage('streamBError.c169cf0a0c')
+          : undefined,
+    }
+  )
 }
 
 const COMPARE_QUERY = `
@@ -179,23 +188,26 @@ async function graphqlCompare(
   const commits = commitsFromGraphql({ nodes: nodes.map((n) => ({ commit: n })) })
   const total: number = c.commits?.totalCount ?? commits.length
   const status = String(c.status ?? '').toLowerCase()
-  return {
-    base,
-    head: t.head,
-    direct: t.direct,
-    status,
-    aheadBy: c.aheadBy ?? 0,
-    behindBy: c.behindBy ?? 0,
-    totalCommits: total,
-    commits,
-    commitsComplete: commits.length >= total,
-    files: [],
-    filesComplete: false,
-    additions: 0,
-    deletions: 0,
-    url: compareUrl(t, base, t.head, t.direct),
-    note: NO_DIFFS,
-  }
+  return uiFields(
+    {
+      base,
+      head: t.head,
+      direct: t.direct,
+      status,
+      aheadBy: c.aheadBy ?? 0,
+      behindBy: c.behindBy ?? 0,
+      totalCommits: total,
+      commits,
+      commitsComplete: commits.length >= total,
+      files: [],
+      filesComplete: false,
+      additions: 0,
+      deletions: 0,
+      url: compareUrl(t, base, t.head, t.direct),
+      note: NO_DIFFS,
+    },
+    { note: uiMessage('streamBError.591f69a90b') }
+  )
 }
 
 /** The same comparison the other way round: what base has that head has not. */

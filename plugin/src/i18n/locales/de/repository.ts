@@ -1,0 +1,15 @@
+export const repository = {
+  'repository.find': 'In diesem Tab suchen',
+  'repository.case': 'Groß-/Kleinschreibung beachten',
+  'repository.check': 'Was zu prüfen ist',
+  'repository.askAgain': 'GitHub erneut abfragen',
+  'repository.base': 'Basis: {ref} · {sha}',
+  'repository.target': 'Ziel: {sha}',
+  'repository.changeBase': 'Basis ändern',
+  'repository.chooseBase': 'Andere feste Vergleichsbasis wählen',
+  'repository.unpin': 'Lösen',
+  'repository.restoreViews': 'Ursprüngliche Dateiansichten des Repositorys wiederherstellen',
+  'repository.showComparison': 'Vergleich anzeigen',
+  'repository.originalFile': 'Originaldatei',
+  'repository.switchTab': 'Nur diesen Tab wechseln, Repositorybasis beibehalten',
+} as const

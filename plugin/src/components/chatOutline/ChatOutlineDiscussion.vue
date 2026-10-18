@@ -33,6 +33,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import TreeItem from '../obsidian/TreeItem.vue'
 import { useOutline } from './context'
@@ -71,11 +72,11 @@ onMounted(async () => {
 
 const gone = computed(() => circular || (!pending.value && !loaded.value))
 const title = computed(() => {
-  if (circular) return 'Leads back to a discussion above'
-  if (pending.value) return 'Reading…'
-  if (!loaded.value) return 'Gone, unreadable or not synced yet'
+  if (circular) return t('streamB.leadsBackToADiscussionAbove.2b077a')
+  if (pending.value) return t('streamB.reading.874bfa')
+  if (!loaded.value) return t('streamB.goneUnreadableOrNotSyncedYet.67e298')
   const first = loaded.value.messages.find((m) => m.role === 'user' && !m.draft)
-  return first ? navigationTitle(first) : 'Empty discussion'
+  return first ? navigationTitle(first) : t('streamB.emptyDiscussion.f14433')
 })
 const children = computed(() =>
   loaded.value

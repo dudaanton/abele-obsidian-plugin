@@ -4,8 +4,8 @@
       <Search
         v-model="query"
         class="abele-file-tree__search"
-        placeholder="Find a file"
-        aria-label="Find a file by name or path"
+        :placeholder="t('streamB.findAFile.423001')"
+        :aria-label="t('streamB.findAFileByNameOrPath.d42472')"
       />
       <!-- A phone's panel has no room for three glyphs beside the field: one, the view shown,
            and the three in its menu, opened at the glyph. -->
@@ -13,7 +13,7 @@
         v-if="git && modes && phone"
         class="abele-file-tree__mode"
         :icon="MODES.find((m) => m.id === mode)?.icon ?? 'folder-tree'"
-        tooltip="Which files to show"
+        :tooltip="t('streamB.whichFilesToShow.f6fdf2')"
         aria-haspopup="menu"
         @click="modeMenu"
       />
@@ -22,7 +22,7 @@
         class="abele-file-tree__mode"
         :class="{ 'is-active': mode === 'all' }"
         icon="folder-tree"
-        tooltip="All files"
+        :tooltip="t('streamB.allFiles.866956')"
         :aria-pressed="mode === 'all'"
         @click="emit('update:mode', 'all')"
       />
@@ -31,7 +31,7 @@
         class="abele-file-tree__mode"
         :class="{ 'is-active': mode === 'changed-tree' }"
         icon="folder-git-2"
-        :tooltip="`Changed files in their folders · ${changes.length}`"
+        :tooltip="t('streamB.changedFilesInTheirFolders.55c297', { v0: String(changes.length) })"
         :aria-pressed="mode === 'changed-tree'"
         @click="emit('update:mode', 'changed-tree')"
       />
@@ -40,7 +40,7 @@
         class="abele-file-tree__mode"
         :class="{ 'is-active': mode === 'changed' }"
         icon="file-diff"
-        :tooltip="`Only changed files, staged apart · ${changes.length}`"
+        :tooltip="t('streamB.onlyChangedFilesStagedApart.bcb221', { v0: String(changes.length) })"
         :aria-pressed="mode === 'changed'"
         @click="emit('update:mode', 'changed')"
       />
@@ -53,13 +53,25 @@
             class="abele-file-tree__state-failed"
             icon="alert-triangle"
             size="xs"
-            :tooltip="`Couldn't read the files. Try again${progress.error ? ` · ${progress.error}` : ''}`"
+            :tooltip="
+              t('streamB.couldnTReadTheFilesTryAgain.5ae5c2', {
+                v0: String(progress.error ? ` · ${progress.error}` : ''),
+              })
+            "
             @click="emit('retry')"
           />
           <ResultMark
             v-else
             state="working"
-            :text="`Reading the files…${progress.count ? ` ${progress.count.toLocaleString()} so far` : ''}`"
+            :text="
+              t('streamB.readingTheFiles.149032', {
+                v0: String(
+                  progress.count
+                    ? t('streamB.soFar.4464f4', { v0: String(streamBNumber(progress.count)) })
+                    : ''
+                ),
+              })
+            "
           />
         </template>
       </span>
@@ -82,14 +94,24 @@
             size="xs"
             :tooltip="progress.error"
           />
-          <span class="abele-file-tree__status-text">Couldn't read the files.</span>
-          <Icon icon="rotate-ccw" size="xs" tooltip="Try again" @click="emit('retry')" />
+          <span class="abele-file-tree__status-text">{{
+            t('streamB.couldnTReadTheFiles.9a7e62')
+          }}</span>
+          <Icon
+            icon="rotate-ccw"
+            size="xs"
+            :tooltip="t('streamB.tryAgain.d8b839')"
+            @click="emit('retry')"
+          />
         </template>
         <template v-else>
-          <ResultMark state="working" text="Reading the files" />
+          <ResultMark state="working" :text="t('streamB.readingTheFiles.6ce37f')" />
           <span class="abele-file-tree__status-text"
-            >Reading the files…<template v-if="progress.count">
-              {{ progress.count.toLocaleString() }} so far</template
+            >{{ t('streamB.readingTheFiles.86a22c')
+            }}<template v-if="progress.count">
+              {{
+                t('streamBMeta.549a8796e9', { p0: String(streamBNumber(progress.count)) })
+              }}</template
             ></span
           >
         </template>
@@ -110,16 +132,23 @@
           <template v-if="hit.change" #end><ChangeCodes :change="hit.change" /></template>
         </TreeItem>
         <div v-if="matches.length > found.length" class="abele-file-tree__note">
-          {{ found.length }} of {{ matches.length.toLocaleString() }} · type more to narrow
+          {{
+            t('streamBMeta.eeb4efb354', {
+              p0: String(found.length),
+              p1: String(streamBNumber(matches.length)),
+            })
+          }}
         </div>
-        <div v-if="!found.length && !progress" class="search-empty-state">No file matches.</div>
+        <div v-if="!found.length && !progress" class="search-empty-state">
+          {{ t('streamB.noFileMatches.076cff') }}
+        </div>
         <div v-if="progress" class="abele-file-tree__note">
           {{
             progress.state === 'failed'
-              ? 'Searched only the files read so far.'
+              ? t('streamB.searchedOnlyTheFilesReadSoFar.8941c5')
               : found.length
-                ? 'Still reading the files; more may match.'
-                : 'Still reading the files…'
+                ? t('streamB.stillReadingTheFilesMoreMayMatch.4df218')
+                : t('streamB.stillReadingTheFiles.e4cd3c')
           }}
         </div>
       </template>
@@ -141,7 +170,11 @@
               <Icon
                 :icon="group.id === 'staged' ? 'minus' : 'plus'"
                 size="xs"
-                :tooltip="group.id === 'staged' ? 'Unstage all' : 'Stage all'"
+                :tooltip="
+                  group.id === 'staged'
+                    ? t('streamB.unstageAll.2aed2d')
+                    : t('streamB.stageAll.24f4c8')
+                "
                 @click.stop="emit(group.id === 'staged' ? 'unstage-all' : 'stage-all')"
               />
             </template>
@@ -163,7 +196,7 @@
                   v-if="group.id === 'unstaged' && change.kind !== 'conflict'"
                   icon="undo-2"
                   size="xs"
-                  tooltip="Discard the changes to this file…"
+                  :tooltip="t('streamB.discardTheChangesToThisFile.f1468a')"
                   @click.stop="emit('discard', change.path)"
                 />
                 <Icon
@@ -171,10 +204,10 @@
                   size="xs"
                   :tooltip="
                     group.id === 'staged'
-                      ? 'Unstage'
+                      ? t('streamB.unstage.033f86')
                       : change.kind === 'conflict'
-                        ? 'Mark resolved and stage'
-                        : 'Stage'
+                        ? t('streamB.markResolvedAndStage.b8565a')
+                        : t('streamB.stage.de8388')
                   "
                   @click.stop="emit(group.id === 'staged' ? 'unstage' : 'stage', change.path)"
                 />
@@ -183,7 +216,11 @@
           </TreeItem>
         </template>
         <div v-if="!changes.length && !branchChanges.length" class="search-empty-state">
-          {{ base ? `Nothing differs from ${base}.` : 'Nothing changed.' }}
+          {{
+            base
+              ? t('streamB.nothingDiffersFrom.71f83c', { v0: String(base) })
+              : t('streamB.nothingChanged.874ab5')
+          }}
         </div>
         <div v-if="more" class="abele-file-tree__note">
           {{ more }}
@@ -211,7 +248,11 @@
                 <Icon
                   :icon="group.id === 'staged' ? 'minus' : 'plus'"
                   size="xs"
-                  :tooltip="group.id === 'staged' ? 'Unstage all' : 'Stage all'"
+                  :tooltip="
+                    group.id === 'staged'
+                      ? t('streamB.unstageAll.2aed2d')
+                      : t('streamB.stageAll.24f4c8')
+                  "
                   @click.stop="emit(group.id === 'staged' ? 'unstage-all' : 'stage-all')"
                 />
               </template>
@@ -240,7 +281,11 @@
           @menu="(e, path) => emit('menu', e, path)"
         />
         <div v-if="!allChanges.length" class="search-empty-state">
-          {{ base ? `Nothing differs from ${base}.` : 'Nothing changed.' }}
+          {{
+            base
+              ? t('streamB.nothingDiffersFrom.71f83c', { v0: String(base) })
+              : t('streamB.nothingChanged.874ab5')
+          }}
         </div>
       </template>
 
@@ -257,19 +302,25 @@
           @open="(path) => emit('open', path)"
           @menu="(e, path) => emit('menu', e, path)"
         />
-        <TreeItem v-if="cursors?.['']" text="Load more files" @click="emit('more', '')" />
+        <TreeItem
+          v-if="cursors?.['']"
+          :text="t('streamB.loadMoreFiles.5c455f')"
+          @click="emit('more', '')"
+        />
         <div v-if="!entries.length && !progress" class="search-empty-state">
-          The folder is empty.
+          {{ t('streamB.theFolderIsEmpty.9bce31') }}
         </div>
       </template>
       <div v-if="git && (mode === 'all' || query.trim())" class="abele-file-tree__note">
-        Ignored files are not shown.
+        {{ t('streamB.ignoredFilesAreNotShown.6bee96') }}
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { streamBNumber } from '@/i18n/streamBDate'
+import { t } from '@/i18n'
 // The files of a folder or a worktree in the side panel, the way the file explorer lists a vault:
 // folders open in place, a click on a file opens it in the main area. Git speaks in codes at the
 // row's end: a coloured square for the kind of change, an accent dot for a change you have not
@@ -321,7 +372,7 @@ const props = withDefaults(
     selected: undefined,
     stale: false,
     git: true,
-    label: 'Files',
+    label: () => t('streamB.files.abc7e9'),
     cursors: undefined,
     progress: undefined,
     branchChanges: () => [],
@@ -347,9 +398,13 @@ const emit = defineEmits<{
 const phone = Platform.isPhone
 /** The three views, as the computer's glyphs say them and the phone's menu lists them. */
 const MODES: { id: FileTreeMode; icon: string; title: string }[] = [
-  { id: 'all', icon: 'folder-tree', title: 'All files' },
-  { id: 'changed-tree', icon: 'folder-git-2', title: 'Changed files in their folders' },
-  { id: 'changed', icon: 'file-diff', title: 'Only changed files, staged apart' },
+  { id: 'all', icon: 'folder-tree', title: t('streamB.allFiles.866956') },
+  {
+    id: 'changed-tree',
+    icon: 'folder-git-2',
+    title: t('streamB.changedFilesInTheirFolders.efb6ff'),
+  },
+  { id: 'changed', icon: 'file-diff', title: t('streamB.onlyChangedFilesStagedApart.500e8a') },
 ]
 /** The phone's one glyph: the three views in a menu at it, the one shown ticked. */
 function modeMenu(event: MouseEvent) {
@@ -410,20 +465,22 @@ const toggle = (id: string) => {
 const groups = computed(() => [
   {
     id: 'unstaged' as const,
-    title: 'Changes',
-    tip: 'Changed in the working tree, not staged',
+    title: t('streamB.changes.bbd4b6'),
+    tip: t('streamB.changedInTheWorkingTreeNotStaged.df3eee'),
     files: props.changes.filter((c) => c.stage !== 'staged'),
   },
   {
     id: 'staged' as const,
-    title: 'Staged',
-    tip: 'Staged for the next commit',
+    title: t('streamB.staged.daec45'),
+    tip: t('streamB.stagedForTheNextCommit.fb5957'),
     files: props.changes.filter((c) => c.stage === 'staged' || c.stage === 'partly'),
   },
   {
     id: 'committed' as const,
-    title: 'Committed',
-    tip: `Committed on this branch, not in ${props.base ?? 'its base'}`,
+    title: t('streamB.committed.dd9061'),
+    tip: t('streamB.committedOnThisBranchNotIn.28b056', {
+      v0: String(props.base ?? t('streamB.itsBase.6fb4dc')),
+    }),
     files: props.branchChanges,
   },
 ])

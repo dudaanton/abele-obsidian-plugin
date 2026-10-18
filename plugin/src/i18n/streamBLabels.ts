@@ -1,0 +1,136 @@
+import type { UiMessage } from './streamBErrors'
+import { t } from './index'
+const labels = {
+  '\\ No newline at end of base file': 'streamBRest.noNewlineBase',
+  '\\ No newline at end of target file': 'streamBRest.noNewlineTarget',
+
+  Offline: 'streamB.offline.a17947',
+  'Connecting…': 'streamB.connecting.72021e',
+  "Can't load this node's sessions right now": 'streamBRest.sessionsUnavailable',
+
+  'the default branch': 'streamBMeta.69fa18e11c',
+  approved: 'streamBMeta.2687f86ed6',
+  'changes requested': 'streamBMeta.525ad2636a',
+  'request changes': 'streamBMeta.1a9472f2ec',
+  commented: 'streamBMeta.42674d19d5',
+  dismissed: 'streamBMeta.7111684708',
+  'Current files': 'streamB.currentFiles.eef7a2',
+  open: 'streamBMeta.2348f99874',
+  closed: 'streamBMeta.c3eefb58d7',
+  merged: 'streamBMeta.3f8f09c8e0',
+  draft: 'streamBMeta.7743ce348d',
+  'not planned': 'streamBMeta.45d158cb5a',
+  answered: 'streamBMeta.68c780cd13',
+  unanswered: 'streamBMeta.03468376ff',
+  identical: 'streamBMeta.319e2ba078',
+  ahead: 'streamBMeta.d0b4034c6c',
+  behind: 'streamBMeta.b1b886ce5f',
+  diverged: 'streamBMeta.78ceaaede7',
+  modified: 'streamBMeta.b80012851c',
+  added: 'streamBMeta.279b8a60f4',
+  removed: 'streamBMeta.e1f79758cc',
+  renamed: 'streamBMeta.017e9e217a',
+  copied: 'streamBMeta.fb30593ca3',
+  Approved: 'streamBMeta.87b42e40c2',
+  'Changes requested': 'streamBMeta.10a92a8ad3',
+  Commented: 'streamBMeta.a5e6f5812f',
+  Dismissed: 'streamBMeta.9d74727714',
+  Pending: 'streamBMeta.331551b0de',
+  pending: 'streamBMeta.62a2fed3d6',
+  resolved: 'streamBMeta.dc676b4285',
+  expired: 'streamBMeta.fa64ea1e82',
+  cancelled: 'streamBMeta.8b47045eb7',
+  allow: 'streamBMeta.4100837357',
+  deny: 'streamBMeta.3026a0ca48',
+  applied: 'streamBMeta.b4267ce93c',
+  undone: 'streamBMeta.5d4391f62a',
+  'known-not-written': 'streamBMeta.ea6bf5f094',
+  uncertain: 'streamBMeta.96642b36a8',
+  running: 'streamBMeta.c071cf5f5e',
+  starting: 'streamBMeta.59dbf36d99',
+  succeeded: 'streamBMeta.5dceaeceb6',
+  failed: 'streamBMeta.5d28a90f44',
+  lost: 'streamBMeta.76f75e6129',
+  stopped: 'streamBMeta.8322e87d24',
+  Metadata: 'streamBMeta.9eddf573cb',
+  Contents: 'streamBMeta.437aea62a5',
+  Issues: 'streamBMeta.666067dd37',
+  'Pull requests': 'streamBMeta.d9e3f26028',
+  Discussions: 'streamBMeta.60157cfcfe',
+  Modified: 'streamBMeta.e8ce5dcaf4',
+  'New file': 'streamBMeta.44dedd0f97',
+  Deleted: 'streamBMeta.b48ff39c2e',
+  'Conflict: both sides changed it': 'streamBMeta.3f99901828',
+  ' · staged': 'streamBMeta.15337081ef',
+  ' · partly staged': 'streamBMeta.b5f1e0ca15',
+  'Not found on the node': 'streamBMeta.3882757698',
+  'The folder itself': 'streamBMeta.b55d48da85',
+  Tool: 'streamBMeta.2e53bdcd07',
+  'Ahead: unknown': 'streamBMeta.162899fff5',
+  'Behind: unknown': 'streamBMeta.220216bd7e',
+  'Files, search and git history on folders this chat was given on a node. What it can reach is set per chat in Node access.':
+    'streamBMeta.354509b1c9',
+  'Work interrupted · ': 'streamBMeta.a4c58d950f',
+  'Waiting for a reply': 'streamBMeta.b55c4b4242',
+  'Work interrupted': 'streamBMeta.8231de9d20',
+  'Working on this device': 'streamBMeta.ce7c1452b0',
+  'Updating…': 'streamBMeta.dfe40efe92',
+  '. Retry with this same invitation to recover a lost reply; do not create a new device key.':
+    'streamBMeta.2e55855058',
+  'Nothing matches': 'streamBMeta.965b516df3',
+  'to navigate': 'streamBMeta.5a70bdb083',
+  'to choose': 'streamBMeta.89c0a2bd17',
+  'to dismiss': 'streamBMeta.29e1c55a84',
+  'to switch': 'streamBMeta.a64052354e',
+  'No branch or tag like that.': 'streamBMeta.42a79f2537',
+  'shown now': 'streamBMeta.f5b932bdd8',
+  'Repository · its front page': 'streamBMeta.2b2a826200',
+  'approval requested': 'streamBMeta.8eae081635',
+  assigned: 'streamBMeta.2ebb929480',
+  author: 'streamBMeta.6364858689',
+  'CI activity': 'streamBMeta.e7fc4d67f0',
+  comment: 'streamBMeta.c44bb2fd51',
+  invitation: 'streamBMeta.a3013c082c',
+  subscribed: 'streamBMeta.abc12f8d66',
+  'feature requested': 'streamBMeta.25fe1eda04',
+  mentioned: 'streamBMeta.51c55fa573',
+  'review requested': 'streamBMeta.4e499f153c',
+  'advisory credit': 'streamBMeta.139d04f1f0',
+  'security alert': 'streamBMeta.145b4343be',
+  'state change': 'streamBMeta.11c5448327',
+  watching: 'streamBMeta.19bda4aa00',
+  'team mentioned': 'streamBMeta.9f741ba611',
+  Worktree: 'streamBMeta.c893ba3003',
+  'Working tree': 'streamBMeta.f90114ae9e',
+  ', base': 'streamBMeta.78b994fe44',
+  ', target': 'streamBMeta.3598f24e4d',
+  that: 'streamBMeta.8e7fc0236a',
+  this: 'streamBMeta.1eb7960241',
+  read: 'streamBMeta.3316348dba',
+  'Empty tree': 'streamBMeta.d7b935abb7',
+  'type changed': 'streamBMeta.fc3ef65af2',
+  Uncommitted: 'streamBMeta.d8194812c0',
+  'Incomplete comparison': 'streamBMeta.fdaefbc963',
+  'Commit changes': 'streamBMeta.c137a48499',
+} as const
+export function streamBLabel(value: string): string {
+  const key = labels[value as keyof typeof labels]
+  return key ? t(key) : value
+}
+
+export function streamBLabelMessage(value: string): string | UiMessage {
+  const key = labels[value as keyof typeof labels]
+  return key ? { key, params: {} } : value
+}
+
+const agentDescriptions = {
+  'Migrated from the global AI settings.': 'streamBRest.migratedGlobal',
+  'Migrated from interceptors.': 'streamBRest.migratedInterceptors',
+  'Answers comment chats anchored in a note.': 'streamBRest.commentDescription',
+} as const
+
+/** Only built-in descriptions are translated; custom prose is displayed as saved. */
+export function streamBAgentDescription(value: string): string {
+  const key = agentDescriptions[value as keyof typeof agentDescriptions]
+  return key ? t(key) : value
+}

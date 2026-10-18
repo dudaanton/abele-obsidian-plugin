@@ -6,9 +6,13 @@
         v-if="source"
         icon="git-commit-horizontal"
         :active="blaming"
-        label="Toggle line blame"
+        :label="t('streamB.toggleLineBlame.bcbda1')"
         :aria-pressed="blaming"
-        :tooltip="blaming ? 'Hide who changed each line' : 'Show who last changed each line'"
+        :tooltip="
+          blaming
+            ? t('streamB.hideWhoChangedEachLine.062ce7')
+            : t('streamB.showWhoLastChangedEachLine.e5d723')
+        "
         @click="toggleBlame"
       />
     </Teleport>
@@ -17,7 +21,7 @@
         <div v-if="range" class="abele-github-blob__range">
           {{ linesLabel({ from: range.start, to: range.end }) }}
           <span v-if="range.start > lineCount" class="abele-github-blob__warning">
-            — the file has only {{ lineCount }} lines.
+            {{ t('streamBMeta.80a8f4615e', { p0: String(lineCount) }) }}
           </span>
         </div>
         <Tabs
@@ -46,12 +50,12 @@
           editor.draftText.value !== editor.document.value.text
         "
       >
-        <summary>Last loaded version</summary>
+        <summary>{{ t('streamB.lastLoadedVersion.43fdff') }}</summary>
         <GithubCode :text="editor.document.value.text" :path="file.path" />
       </details>
     </template>
     <div v-if="editorError" role="alert">{{ editorError }}</div>
-    <div v-if="blaming && blameBusy" role="status">Loading line blame…</div>
+    <div v-if="blaming && blameBusy" role="status">{{ t('streamB.loadingLineBlame.b1680c') }}</div>
     <GithubNotice
       v-if="blaming && blameError"
       :text="blameError"
@@ -128,6 +132,8 @@
 </template>
 
 <script setup lang="ts">
+import { presentUiError } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 import { computed, inject, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import Icon from '../obsidian/Icon.vue'
 import GithubNotice from './GithubNotice.vue'
@@ -261,7 +267,8 @@ const editText = (text: string) => {
   if (!props.writable || !props.editor) return
   props.editor.editing.value = true
   void props.editor.editText(text).catch((e: unknown) => {
-    editorError.value = e instanceof Error ? e.message : 'The local draft could not be stored'
+    editorError.value =
+      e instanceof Error ? presentUiError(e) : t('streamB.theLocalDraftCouldNotBeStored.2645b0')
   })
 }
 watch(
@@ -282,7 +289,9 @@ watch(
     } catch (e) {
       if (mine === editorGeneration)
         editorError.value =
-          e instanceof Error ? e.message : 'The local editor could not reload this draft'
+          e instanceof Error
+            ? presentUiError(e)
+            : t('streamB.theLocalEditorCouldNotReloadThis.600b24')
     }
   },
   { immediate: true }
@@ -306,8 +315,7 @@ const askBlame = async () => {
     const ranges = await current.blame(props.file.ref, props.file.path)
     if (request === blameRequest) blameRanges.value = ranges
   } catch (error) {
-    if (request === blameRequest)
-      blameError.value = error instanceof Error ? error.message : String(error)
+    if (request === blameRequest) blameError.value = presentUiError(error)
   } finally {
     if (request === blameRequest) blameBusy.value = false
   }
@@ -357,11 +365,16 @@ const mode = computed(() => {
 const modes = [
   {
     id: 'preview',
-    label: 'Preview',
+    label: t('streamB.preview.324b13'),
     icon: 'eye',
-    tooltip: 'The file rendered, as GitHub shows it',
+    tooltip: t('streamB.theFileRenderedAsGithubShowsIt.e1d69b'),
   },
-  { id: 'code', label: 'Code', icon: 'code', tooltip: 'The file as it is written, line by line' },
+  {
+    id: 'code',
+    label: t('streamB.code.340f46'),
+    icon: 'code',
+    tooltip: t('streamB.theFileAsItIsWrittenLine.9867e9'),
+  },
 ]
 const lineCount = computed(() => props.text.split('\n').length)
 
@@ -391,7 +404,7 @@ watch(
 )
 
 const selectedLink = () => {
-  if (!linker || !selected.value) throw new Error('nothing is selected')
+  if (!linker || !selected.value) throw new Error(t('streamB.nothingIsSelected.e695b9'))
   return linker.blobLink(selected.value)
 }
 const selectedQuote = (): Quote => {
@@ -410,7 +423,7 @@ watch(
     if (!screen) return
     screen.selection =
       s && !unsaved.value
-        ? { path: props.file.path, label: linesLabel(s), code: selectedQuote().code }
+        ? { path: props.file.path, label: linesLabel(s, false), code: selectedQuote().code }
         : null
     screen.selectionChat =
       s && linker && !unsaved.value ? { link: selectedLink, quote: selectedQuote } : null
@@ -420,7 +433,7 @@ watch(
 
 const selectedSnippet = async () => {
   const span = selected.value
-  if (!span) throw new Error('nothing is selected')
+  if (!span) throw new Error(t('streamB.nothingIsSelected.e695b9'))
   return codeSnippet(await selectedLink(), props.file.path, props.text, span)
 }
 

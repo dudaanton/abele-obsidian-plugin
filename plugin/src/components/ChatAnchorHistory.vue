@@ -1,15 +1,11 @@
 <template>
   <!-- Words saved from a reply that has changed since: where they were found, on one quiet line;
        the words; and, when they belong to an earlier version, that version with them lit. -->
-  <ObsidianModal title="Saved selection" size="tall" @close="emit('close')">
+  <ObsidianModal :title="t('chat.savedSelection')" size="tall" @close="emit('close')">
     <div class="abele-anchor-history">
       <p class="abele-anchor-history__state">
         <Icon :icon="historical ? 'history' : 'search-x'" size="xs" no-hover />
-        {{
-          historical
-            ? 'From an earlier version of this reply'
-            : 'Could not find it in the reply as it is now'
-        }}
+        {{ historical ? t('chat.earlierReply') : t('chat.selectionMissing') }}
       </p>
       <Quote :text="anchor.snapshot.text" />
       <Markdown
@@ -23,6 +19,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, ref } from 'vue'
 import ObsidianModal from './obsidian/Modal.vue'
 import Markdown from './obsidian/Markdown.vue'

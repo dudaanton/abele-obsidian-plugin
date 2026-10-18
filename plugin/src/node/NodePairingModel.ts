@@ -1,3 +1,5 @@
+import { uiFields, uiErrorMessage, UiError, uiMessage } from '@/i18n/streamBErrors'
+
 import { shallowRef, markRaw } from 'vue'
 import type { PairedWssConnector } from '@abele/node-client'
 import { decodePairCode, type PairCodePayload } from '@abele/node-protocol'
@@ -42,18 +44,24 @@ export class NodePairingModel {
       if (!current()) return
       client = await this.session.connect(deviceName, address)
       if (!current() || !client) return
-      if (!client.connected) throw new Error('Authenticated node connection did not complete.')
+      if (!client.connected) throw new UiError(uiMessage('streamBError.81d9f5765b'))
       await this.adopt(client, payload, current)
       adopted = true
       if (current()) this.state.value = { ...this.state.value, phase: 'connected' }
     } catch (error) {
       if (client && !adopted) await client.disconnect().catch(() => {})
       if (current())
-        this.state.value = {
-          ...this.state.value,
-          phase: 'error',
-          error: error instanceof Error ? error.message : 'Could not connect the node',
-        }
+        this.state.value = uiFields(
+          {
+            ...this.state.value,
+            phase: 'error',
+            error: error instanceof Error ? error.message : 'Could not connect the node',
+          },
+          {
+            error:
+              error instanceof Error ? uiErrorMessage(error) : uiMessage('streamBError.19af983be6'),
+          }
+        )
     }
   }
   cancel(): void {

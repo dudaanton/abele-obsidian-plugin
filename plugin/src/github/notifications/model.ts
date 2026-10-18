@@ -1,3 +1,4 @@
+import { t, currentLocale, relativeFormatter, dateFormatter } from '@/i18n'
 /**
  * GitHub notifications as the Notifications API sends them, and where each one leads.
  *
@@ -70,39 +71,127 @@ export const parseNotifications = (raw: unknown): GithubNotification[] =>
     : []
 
 const TYPES: Record<string, { label: string; icon: string }> = {
-  Issue: { label: 'Issue', icon: 'circle-dot' },
-  PullRequest: { label: 'Pull request', icon: 'git-pull-request' },
-  Discussion: { label: 'Discussion', icon: 'messages-square' },
-  Release: { label: 'Release', icon: 'tag' },
-  Commit: { label: 'Commit', icon: 'git-commit-horizontal' },
-  CheckSuite: { label: 'Checks', icon: 'circle-play' },
-  WorkflowRun: { label: 'Workflow run', icon: 'circle-play' },
-  RepositoryInvitation: { label: 'Invitation', icon: 'mail' },
-  RepositoryVulnerabilityAlert: { label: 'Security alert', icon: 'shield-alert' },
-  RepositoryDependabotAlertsThread: { label: 'Dependabot alert', icon: 'shield-alert' },
-  SecurityAdvisory: { label: 'Security advisory', icon: 'shield-alert' },
+  Issue: {
+    get label() {
+      return t('streamB.issue.48dc76')
+    },
+    icon: 'circle-dot',
+  },
+  PullRequest: {
+    get label() {
+      return t('streamB.pullRequest.f3dba6')
+    },
+    icon: 'git-pull-request',
+  },
+  Discussion: {
+    get label() {
+      return t('streamB.discussion.5eb6cf')
+    },
+    icon: 'messages-square',
+  },
+  Release: {
+    get label() {
+      return t('streamB.release.e020e3')
+    },
+    icon: 'tag',
+  },
+  Commit: {
+    get label() {
+      return t('streamB.commit.82a9c4')
+    },
+    icon: 'git-commit-horizontal',
+  },
+  CheckSuite: {
+    get label() {
+      return t('streamB.checks.de07d0')
+    },
+    icon: 'circle-play',
+  },
+  WorkflowRun: {
+    get label() {
+      return t('streamB.workflowRun.d6d341')
+    },
+    icon: 'circle-play',
+  },
+  RepositoryInvitation: {
+    get label() {
+      return t('streamB.invitation.af4ea0')
+    },
+    icon: 'mail',
+  },
+  RepositoryVulnerabilityAlert: {
+    get label() {
+      return t('streamB.securityAlert.9ed298')
+    },
+    icon: 'shield-alert',
+  },
+  RepositoryDependabotAlertsThread: {
+    get label() {
+      return t('streamB.dependabotAlert.d39a6a')
+    },
+    icon: 'shield-alert',
+  },
+  SecurityAdvisory: {
+    get label() {
+      return t('streamB.securityAdvisory.6b4e06')
+    },
+    icon: 'shield-alert',
+  },
 }
 
 /** The subject type in words and as a glyph; an unknown type is shown by its own name. */
 export const subjectType = (type: string): { label: string; icon: string } =>
-  TYPES[type] ?? { label: type.replace(/([a-z])([A-Z])/g, '$1 $2') || 'Notification', icon: 'bell' }
+  TYPES[type] ?? {
+    label: type.replace(/([a-z])([A-Z])/g, '$1 $2') || t('streamB.notification.7d31b8'),
+    icon: 'bell',
+  }
 
 const REASONS: Record<string, string> = {
-  approval_requested: 'approval requested',
-  assign: 'assigned',
-  author: 'author',
-  ci_activity: 'CI activity',
-  comment: 'comment',
-  invitation: 'invitation',
-  manual: 'subscribed',
-  member_feature_requested: 'feature requested',
-  mention: 'mentioned',
-  review_requested: 'review requested',
-  security_advisory_credit: 'advisory credit',
-  security_alert: 'security alert',
-  state_change: 'state change',
-  subscribed: 'watching',
-  team_mention: 'team mentioned',
+  get approval_requested() {
+    return t('streamBMeta.8eae081635')
+  },
+  get assign() {
+    return t('streamBMeta.2ebb929480')
+  },
+  get author() {
+    return t('streamBMeta.6364858689')
+  },
+  get ci_activity() {
+    return t('streamBMeta.e7fc4d67f0')
+  },
+  get comment() {
+    return t('streamBMeta.c44bb2fd51')
+  },
+  get invitation() {
+    return t('streamBMeta.a3013c082c')
+  },
+  get manual() {
+    return t('streamBMeta.abc12f8d66')
+  },
+  get member_feature_requested() {
+    return t('streamBMeta.25fe1eda04')
+  },
+  get mention() {
+    return t('streamBMeta.51c55fa573')
+  },
+  get review_requested() {
+    return t('streamBMeta.4e499f153c')
+  },
+  get security_advisory_credit() {
+    return t('streamBMeta.139d04f1f0')
+  },
+  get security_alert() {
+    return t('streamBMeta.145b4343be')
+  },
+  get state_change() {
+    return t('streamBMeta.11c5448327')
+  },
+  get subscribed() {
+    return t('streamBMeta.19bda4aa00')
+  },
+  get team_mention() {
+    return t('streamBMeta.9f741ba611')
+  },
 }
 
 /** Why the notification arrived, in words. */
@@ -200,6 +289,21 @@ export function ago(iso: string, now = Date.now()): string {
   const then = Date.parse(iso)
   if (!Number.isFinite(then)) return ''
   const minutes = Math.floor((now - then) / 60_000)
+  if (currentLocale().language !== 'en') {
+    const locale = currentLocale().format
+    const hours = Math.floor(minutes / 60),
+      days = Math.floor(hours / 24)
+    const format = relativeFormatter(locale, { numeric: 'auto', style: 'narrow' })
+    if (minutes < 1) return format.format(0, 'second')
+    if (minutes < 60) return format.format(-minutes, 'minute')
+    if (hours < 24) return format.format(-hours, 'hour')
+    if (days < 30) return format.format(-days, 'day')
+    return dateFormatter(locale, {
+      day: 'numeric',
+      month: 'short',
+      ...(new Date(now).getFullYear() === new Date(then).getFullYear() ? {} : { year: 'numeric' }),
+    }).format(new Date(then))
+  }
   if (minutes < 1) return 'now'
   if (minutes < 60) return `${minutes}m`
   const hours = Math.floor(minutes / 60)

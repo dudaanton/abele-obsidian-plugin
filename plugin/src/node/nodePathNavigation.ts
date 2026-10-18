@@ -1,3 +1,4 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import type { Workspace } from 'obsidian'
 import { z } from 'zod'
 import type { PathTarget } from './NodePathModel'
@@ -77,7 +78,7 @@ export async function revealNodeDrawer(
   registrationId?: string
 ): Promise<void> {
   const leaf = workspace.getLeavesOfType(NODE_SIDEBAR_VIEW)[0] ?? workspace.getLeftLeaf(false)
-  if (!leaf) throw new Error('A left sidebar leaf is not available.')
+  if (!leaf) throw new UiError(uiMessage('streamBError.b43838f570'))
   await leaf.setViewState({
     type: NODE_SIDEBAR_VIEW,
     active: true,

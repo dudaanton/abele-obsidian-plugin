@@ -8,10 +8,30 @@ import { createHash } from 'node:crypto'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const presentation =
-  /^(?:label|display|title|text|description|desc|placeholder|tooltip|name|heading|message|emptyText|confirmText|submitText|cancelTooltip|confirmTooltip|submitTooltip|detailsLabel|overflowLabel|disabledReason|aria-label|aria-description|text-right|disabled-reason|replace-placeholder|save-tooltip|more-label|what|data-tip|confirm-tooltip|cancel-tooltip|submit-tooltip|confirm-text|submit-text|details-label|overflow-label|empty-text)$/
+  /^(?:label|display|title|text|description|desc|placeholder|tooltip|name|heading|message|emptyText|confirmText|submitText|cancelTooltip|confirmTooltip|submitTooltip|detailsLabel|overflowLabel|disabledReason|aria-label|aria-description|text-right|disabled-reason|replace-placeholder|save-tooltip|retry-tooltip|send-label|more-label|what|data-tip|confirm-tooltip|cancel-tooltip|submit-tooltip|confirm-text|submit-text|details-label|overflow-label|empty-text)$/
 const sinks =
   /^(?:Notice|setTitle|setName|setDesc|setText|setTooltip|setPlaceholder|createEl|createDiv|createSpan|addCommand|setAttribute)$/
 const readable = (text) => /[\p{L}]/u.test(text) && !/^\s*$/.test(text)
+
+// Helper arguments are catalog identities; unknown words remain ordinary guard candidates.
+function catalogWords(file, plural = false) {
+  const source = readFileSync(join(root, 'src/i18n/locales/en', file), 'utf8')
+  const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true)
+  const words = new Set()
+  function visit(node) {
+    if (ts.isPropertyAssignment(node) && ts.isStringLiteral(node.initializer)) {
+      const value = node.initializer.text
+      if (plural && /^\{count\} /.test(value)) words.add(value.slice(8))
+      else if (!plural && !value.includes('{')) words.add(value)
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(ast)
+  return words
+}
+let displayWordCache, countWordCache
+const displayWords = () => (displayWordCache ??= catalogWords('streamBMeta.ts'))
+const countWords = () => (countWordCache ??= catalogWords('streamBCounts.ts', true))
 
 export function areaFor(path) {
   const parts = path.split('/')
@@ -55,7 +75,54 @@ export function extract(path, source) {
   function script(code, offset = 0, expression = false) {
     const ast = ts.createSourceFile(path + '.ts', code, ts.ScriptTarget.Latest, true)
     const literals = (node, context) => {
-      if (ts.isCallExpression(node) && node.expression.getText(ast) === 't') return
+      if (
+        ts.isCallExpression(node) &&
+        ['t', 'agentText', 'uiMessage'].includes(node.expression.getText(ast))
+      )
+        return
+      if (
+        ts.isCallExpression(node) &&
+        ['presentUiField', 'uiFieldMessage'].includes(node.expression.getText(ast))
+      ) {
+        const fields = new Set([
+          'value',
+          'title',
+          'text',
+          'message',
+          'reason',
+          'fix',
+          'graphql',
+          'note',
+          'diffNote',
+          'problem',
+          'commentsProblem',
+          'reviewCommentsProblem',
+          'what',
+          'noTokenReason',
+        ])
+        for (const [index, arg] of [...node.arguments].entries()) {
+          if (index === 1 && ts.isStringLiteral(arg) && fields.has(arg.text)) continue
+          literals(arg, context)
+        }
+        return
+      }
+      if (
+        ts.isCallExpression(node) &&
+        ['plural', 'streamBWord', 'streamBLabel'].includes(node.expression.getText(ast))
+      ) {
+        const helper = node.expression.getText(ast)
+        for (const [index, arg] of [...(node.arguments ?? [])].entries()) {
+          if (
+            ts.isStringLiteral(arg) &&
+            (helper === 'streamBLabel'
+              ? displayWords().has(arg.text)
+              : index > 0 && countWords().has(arg.text))
+          )
+            continue
+          literals(arg, context)
+        }
+        return
+      }
       if (
         ts.isBinaryExpression(node) &&
         [

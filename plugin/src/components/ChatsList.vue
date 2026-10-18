@@ -2,7 +2,7 @@
   <div class="abele-chats-list" data-abele-anchor="section:chats">
     <ListSectionHeader
       class-prefix="abele-chats-list"
-      text="Chats"
+      :text="t('streamB.chats.ef5b40')"
       :count="chats.length"
       :fold="fold"
     />
@@ -25,7 +25,7 @@
           <Icon
             class="abele-chats-list__detach"
             icon="unlink"
-            :tooltip="`Detach this chat from the ${subject}`"
+            :tooltip="t('streamB.detachThisChatFromThe.861a43', { v0: String(subject) })"
             @click="detach(chat)"
           />
         </template>
@@ -36,6 +36,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed } from 'vue'
 import type { ChatLink } from '@/entities/ChatLink'
 import Card from './obsidian/Card.vue'
@@ -67,7 +68,8 @@ const metaOf = (chat: ChatLink): string[] => (chat.touchedAt ? [compactDate(chat
 /** Who the chat is with is a fact for the pointer, not a coloured label on every card. */
 const describe = (card: unknown, chat: ChatLink) => {
   const el = (card as { $el?: unknown } | null)?.$el
-  if (el instanceof HTMLElement && chat.agentName) setTooltip(el, `Agent: ${chat.agentName}`)
+  if (el instanceof HTMLElement && chat.agentName)
+    setTooltip(el, t('streamB.agent.c60697', { v0: String(chat.agentName) }))
 }
 
 const detach = (chat: ChatLink) => {

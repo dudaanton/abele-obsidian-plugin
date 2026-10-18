@@ -1,3 +1,4 @@
+import { catalogs as testCatalogs } from '@/i18n/catalogs'
 /**
  * The chat's composer is Obsidian's note editor, and it opens out over the whole chat for
  * writing at length.
@@ -21,6 +22,7 @@ import { DEFAULT_AI_SETTINGS, type ChatMessage } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
 import { fakeChatSession } from '../helpers/fakeChatSession'
 import { fakeNoteEditors, resetFakeNoteEditors } from '../helpers/fakeNoteEditor'
+import { initializeLocale } from '@/i18n'
 
 vi.mock('@/editor/embeddedEditor', () => import('../helpers/fakeNoteEditor'))
 
@@ -34,6 +36,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  initializeLocale('en', testCatalogs['en' as keyof typeof testCatalogs])
   for (const w of mounted.splice(0)) w.unmount()
   vi.restoreAllMocks()
 })
@@ -55,6 +58,23 @@ function composer(props: Record<string, unknown> = {}) {
 }
 
 const editor = () => fakeNoteEditors[fakeNoteEditors.length - 1]
+
+it.each([
+  ['en', 'Message...'],
+  ['ru', 'Сообщение…'],
+  ['lv', 'Ziņojums…'],
+  ['es', 'Mensaje…'],
+  ['de', 'Nachricht…'],
+])(
+  'localizes the borrowed editor placeholder without changing the draft in %s',
+  (locale, placeholder) => {
+    initializeLocale(locale, testCatalogs[locale as keyof typeof testCatalogs])
+    composer()
+    expect(editor().placeholder).toBe(placeholder)
+    editor().type('Sample draft {literal}')
+    expect(editor().value).toBe('Sample draft {literal}')
+  }
+)
 
 it('leaves native edit gestures uncancelled and preserves the selection', () => {
   const wrapper = composer()
@@ -250,13 +270,16 @@ describe('the chat around an opened composer', () => {
     input.vm.addAttachment(app.vault.getAbstractFileByPath('sample-note.md') as TFile)
     editor().type('half written')
     ChatService.getInstance().pendingInput.value = {
-      text: '', tabId: 'tab-a', attachments: ['sample-image-drawn.png'],
+      text: '',
+      tabId: 'tab-a',
+      attachments: ['sample-image-drawn.png'],
       replaceAttachment: 'sample-image.png',
     }
     await nextTick()
     await nextTick()
     expect(input.vm.takeDraft().attachments.map((f: TFile) => f.path)).toEqual([
-      'sample-note.md', 'sample-image-drawn.png',
+      'sample-note.md',
+      'sample-image-drawn.png',
     ])
     expect(editor().value).toBe('half written')
   })

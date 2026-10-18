@@ -6,7 +6,9 @@
       :options="options"
       @update:model-value="onSelect"
     />
-    <span v-else class="abele-agent-selector__empty">No agent configured</span>
+    <span v-else class="abele-agent-selector__empty">{{
+      t('streamB.noAgentConfigured.ed3683')
+    }}</span>
 
     <!-- The model is the agent's and is not repeated here. Only a chat that answers with a model
          of its own says so, by the agent: the model's name on the chosen wash; pressed, the
@@ -30,6 +32,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, ref, watchEffect } from 'vue'
 import { Menu, Notice, setTooltip } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -77,7 +80,10 @@ const options = computed(() => {
   // A chat with nothing in it yet can still go to a node: its agents are picked there.
   if (session.value && !session.value.messages.value.length)
     for (const node of nodes())
-      listed.push({ value: `${NODE}${node.id}`, display: `On ${node.label}…` })
+      listed.push({
+        value: `${NODE}${node.id}`,
+        display: t('streamB.on.c83a54', { v0: String(node.label) }),
+      })
 
   return listed
 })
@@ -111,11 +117,18 @@ const agentModelLabel = computed(() => {
 
 const modelButton = ref<HTMLElement>()
 watchEffect(() => {
-  const agent = session.value?.agent.value?.name ?? 'the agent'
+  const agent = session.value?.agent.value?.name ?? t('streamB.theAgent.c770ef')
   if (modelButton.value)
     setTooltip(
       modelButton.value,
-      `This chat answers with ${modelLabel.value}${agentModelLabel.value ? `, not ${agent}'s ${agentModelLabel.value}` : ''}. Change or go back`
+      t('streamB.thisChatAnswersWithChangeOrGo.6b12b6', {
+        v0: String(modelLabel.value),
+        v1: String(
+          agentModelLabel.value
+            ? t('streamB.notS.284282', { v0: String(agent), v1: String(agentModelLabel.value) })
+            : ''
+        ),
+      })
     )
 })
 
@@ -139,11 +152,13 @@ function showModels() {
             void s.save()
           })
       )
-  const agent = s.agent.value?.name ?? 'the agent'
+  const agent = s.agent.value?.name ?? t('streamB.theAgent.c770ef')
   menu.addItem((item) =>
     item
       .setTitle(
-        agentModelLabel.value ? `Follow ${agent}: ${agentModelLabel.value}` : `Follow ${agent}`
+        agentModelLabel.value
+          ? t('streamB.follow.4322cb', { v0: String(agent), v1: String(agentModelLabel.value) })
+          : t('streamB.follow.810f3e', { v0: String(agent) })
       )
       .setIcon('rotate-ccw')
       .setSection('back')
@@ -164,7 +179,8 @@ const onSelect = (agentId: string) => {
     const node = nodes().find((n) => `${NODE}${n.id}` === agentId)
     if (node)
       void pickNodeSession(node).catch(
-        (error: unknown) => new Notice(error instanceof Error ? error.message : 'Node unavailable')
+        (error: unknown) =>
+          new Notice(error instanceof Error ? error.message : t('streamB.nodeUnavailable.14c28f'))
       )
     return
   }
@@ -175,9 +191,7 @@ const onSelect = (agentId: string) => {
   // loud rather than silently, since it can undo a scope somebody narrowed on purpose.
   const overridden = Object.keys(s.overrides.value).length
   if (overridden) {
-    new Notice(
-      `Switched agent — ${overridden} per-chat override${overridden === 1 ? '' : 's'} cleared`
-    )
+    new Notice(t('streamBCount.clearedOverrides', { count: overridden }))
   }
 
   s.switchAgent(agentId)

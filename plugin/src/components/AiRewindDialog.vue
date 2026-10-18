@@ -5,14 +5,20 @@
   <ObsidianModal :title="title" size="tall" close-in-footer @close="emit('close')">
     <div class="abele-rewind">
       <template v-if="mode === 'since'">
-        <Setting name="Put files back" :desc="restorable ? '' : 'Nothing here can be put back'">
+        <Setting
+          :name="t('streamB.putFilesBack.2a77d8')"
+          :desc="restorable ? '' : t('streamB.nothingHereCanBePutBack.400ae2')"
+        >
           <Checkbox
             :is-enabled="files && restorable"
             :disabled="!restorable || busy"
             @toggle="files = !files"
           />
         </Setting>
-        <Setting name="Go back in chat" desc="To this message, as editing it does">
+        <Setting
+          :name="t('streamB.goBackInChat.1cec2a')"
+          :desc="t('streamB.toThisMessageAsEditingItDoes.134485')"
+        >
           <Checkbox
             :is-enabled="conversation"
             :disabled="busy"
@@ -21,7 +27,7 @@
         </Setting>
       </template>
 
-      <EmptyState v-if="loading" text="Reading the files…" />
+      <EmptyState v-if="loading" :text="t('streamB.readingTheFiles.86a22c')" />
       <EmptyState v-else-if="!items.length" icon="file-check" :text="emptyText" />
 
       <div v-else class="abele-rewind__files">
@@ -55,13 +61,13 @@
         </TreeItem>
       </div>
 
-      <p v-if="error" class="abele-rewind__error" role="alert">{{ error }}</p>
+      <p v-if="error" class="abele-rewind__error" role="alert">{{ presentUiError(error) }}</p>
     </div>
 
     <template #footer>
       <Button
-        text="Cancel"
-        tooltip="Leave the conversation and files unchanged"
+        :text="t('streamB.cancel.19766e')"
+        :tooltip="t('streamB.leaveTheConversationAndFilesUnchanged.bfec57')"
         :disabled="busy"
         @click="emit('close')"
       />
@@ -80,6 +86,9 @@
 </template>
 
 <script setup lang="ts">
+import { presentUiField, presentUiError } from '@/i18n/streamBErrors'
+
+import { t } from '@/i18n'
 import { computed, onMounted, ref } from 'vue'
 import { Notice, setTooltip } from 'obsidian'
 import ObsidianModal from './obsidian/Modal.vue'
@@ -140,14 +149,18 @@ const restorable = computed(() =>
   items.value.some((i) => i.action !== 'unrestorable' && !i.conflict)
 )
 
-const title = computed(() => (props.mode === 'since' ? 'Rewind to here' : 'Undo changes'))
+const title = computed(() =>
+  props.mode === 'since' ? t('streamB.rewindToHere.447575') : t('streamB.undoChanges.ba0624')
+)
 const lead = computed(() =>
-  props.mode === 'since' ? 'Changed from here on' : 'Changed by this turn'
+  props.mode === 'since'
+    ? t('streamB.changedFromHereOn.047528')
+    : t('streamB.changedByThisTurn.a30d48')
 )
 const emptyText = computed(() =>
   props.mode === 'since'
-    ? 'The agent changed no files from here on.'
-    : 'This turn changed no files that are still to be put back.'
+    ? t('streamB.theAgentChangedNoFilesFromHere.fd371d')
+    : t('streamB.thisTurnChangedNoFilesThatAre.c4ff8f')
 )
 /** One button does what the switches say; with both off there is nothing for it to do. */
 const acting = computed(() =>
@@ -158,26 +171,33 @@ const acting = computed(() =>
 /** The button puts files back: it says so and is drawn as the dangerous one. */
 const puttingBack = computed(() => restorable.value && (props.mode === 'turn' || files.value))
 const actionText = computed(() => {
-  if (!puttingBack.value) return 'Go back in chat'
+  if (!puttingBack.value) return t('streamB.goBackInChat.1cec2a')
   return props.mode === 'since' && conversation.value
-    ? 'Put files back and go back'
-    : 'Put files back'
+    ? t('streamB.putFilesBackAndGoBack.d25972')
+    : t('streamB.putFilesBack.2a77d8')
 })
 const actionTooltip = computed(() => {
   if (props.mode === 'turn')
-    return restorable.value ? 'Put the files back as they were' : 'Nothing here can be put back'
+    return restorable.value
+      ? t('streamB.putTheFilesBackAsTheyWere.a6c276')
+      : t('streamB.nothingHereCanBePutBack.400ae2')
   const doFiles = files.value && restorable.value
-  if (doFiles && conversation.value) return 'Put the files back and go back to this message'
-  if (doFiles) return 'Put the files back; the chat stays as it is'
-  if (conversation.value) return 'Go back to this message; the files stay as they are'
-  return 'Switch on what to take back'
+  if (doFiles && conversation.value) return t('streamB.putTheFilesBackAndGoBack.699c27')
+  if (doFiles) return t('streamB.putTheFilesBackTheChatStays.7df626')
+  if (conversation.value) return t('streamB.goBackToThisMessageTheFiles.6c1885')
+  return t('streamB.switchOnWhatToTakeBack.fb162f')
 })
 
 /** A file that cannot follow the rewind says so with a dot; the words are its tooltip. */
 function stateOf(item: RestoreItem): { tone: 'orange' | 'red'; label: string } | undefined {
-  if (item.action === 'unrestorable') return { tone: 'red', label: 'Cannot be put back' }
-  if (item.reason) return { tone: 'orange', label: `Left as it is: ${item.reason}` }
-  if (item.conflict) return { tone: 'orange', label: 'Changed since; left as it is' }
+  if (item.action === 'unrestorable')
+    return { tone: 'red', label: t('streamB.cannotBePutBack.997377') }
+  if (item.reason)
+    return {
+      tone: 'orange',
+      label: t('streamB.leftAsItIs.a4be48', { v0: presentUiField(item, 'reason') }),
+    }
+  if (item.conflict) return { tone: 'orange', label: t('streamB.changedSinceLeftAsItIs.f18403') }
 }
 
 function describe(row: unknown, item: RestoreItem): void {
@@ -188,16 +208,16 @@ function describe(row: unknown, item: RestoreItem): void {
 }
 
 function flairOf(item: RestoreItem): string {
-  if (item.action === 'unrestorable') return 'Cannot be put back'
-  if (item.reason) return 'Owner not verified'
-  if (item.conflict) return 'Changed since'
+  if (item.action === 'unrestorable') return t('streamB.cannotBePutBack.997377')
+  if (item.reason) return t('streamB.ownerNotVerified.48629d')
+  if (item.conflict) return t('streamB.changedSince.3441d8')
   const words: Record<ItemAction, string> = {
-    rewrite: 'Text put back',
-    recreate: 'Made again',
-    remove: 'To the trash',
-    'move-back': 'Moved back',
-    'remove-folder': 'Removed if empty',
-    'recreate-folder': 'Made again',
+    rewrite: t('streamB.textPutBack.0591c3'),
+    recreate: t('streamB.madeAgain.1cd6bb'),
+    remove: t('streamB.toTheTrash.55b6e4'),
+    'move-back': t('streamB.movedBack.c6bc4e'),
+    'remove-folder': t('streamB.removedIfEmpty.c7dabc'),
+    'recreate-folder': t('streamB.madeAgain.1cd6bb'),
     unrestorable: '',
   }
   return words[item.action]
@@ -205,26 +225,25 @@ function flairOf(item: RestoreItem): string {
 
 function explain(item: RestoreItem): string {
   // The dot's tooltip is out of reach on a touch screen: the opened row says why too.
-  if (item.reason) return item.reason
-  if (item.conflict)
-    return 'Undo will not change this file. The comparison below is for reference only.'
+  if (item.reason) return presentUiField(item, 'reason')
+  if (item.conflict) return t('streamB.undoWillNotChangeThisFileThe.bbb8a4')
   switch (item.action) {
     case 'rewrite':
       return item.diff
-        ? 'Its text goes back to what it was. First as it is now, then as it will be.'
-        : 'Its content goes back to what it was.'
+        ? t('streamB.itsTextGoesBackToWhatIt.a829e2')
+        : t('streamB.itsContentGoesBackToWhatIt.065757')
     case 'recreate':
-      return 'It was deleted or moved away, and is made again as it was.'
+      return t('streamB.itWasDeletedOrMovedAwayAnd.3f4699')
     case 'remove':
-      return 'The agent made it. It goes to the trash.'
+      return t('streamB.theAgentMadeItItGoesTo.03907a')
     case 'move-back':
-      return `Moved back from ${item.from}.`
+      return t('streamB.movedBackFrom.9118ee', { v0: String(item.from) })
     case 'remove-folder':
-      return 'The agent made this folder. It goes once nothing is left in it.'
+      return t('streamB.theAgentMadeThisFolderItGoes.c73453')
     case 'recreate-folder':
-      return 'The agent removed this folder. It is made again.'
+      return t('streamB.theAgentRemovedThisFolderItIs.bc8795')
     case 'unrestorable':
-      return 'Too large to have been kept, and not simply moved: it stays as it is.'
+      return t('streamB.tooLargeToHaveBeenKeptAnd.3a10b5')
   }
 }
 
@@ -235,7 +254,7 @@ onMounted(async () => {
         ? await props.rewind.planSince(props.since)
         : await props.rewind.planTurn(props.messageId)
   } catch (err) {
-    error.value = err instanceof Error ? err.message : String(err)
+    error.value = presentUiError(err)
   } finally {
     loading.value = false
   }
@@ -243,10 +262,12 @@ onMounted(async () => {
 
 function report(result: RestoreResult): void {
   const parts: string[] = []
-  if (result.restored.length) parts.push(`${result.restored.length} put back`)
-  if (result.skipped.length) parts.push(`${result.skipped.length} left as they are`)
+  if (result.restored.length)
+    parts.push(t('streamB.putBack.313739', { v0: String(result.restored.length) }))
+  if (result.skipped.length)
+    parts.push(t('streamB.leftAsTheyAre.69c9f8', { v0: String(result.skipped.length) }))
   if (result.failed.length) parts.push(`${result.failed.length} failed`)
-  if (parts.length) new Notice(`Files: ${parts.join(', ')}.`)
+  if (parts.length) new Notice(t('streamB.files.3affc3', { v0: String(parts.join(', ')) }))
   for (const failure of result.failed) {
     console.warn('[Abele] Rewind could not restore', failure.path, failure.error)
   }
@@ -260,7 +281,9 @@ async function finish(files: boolean, conversation: boolean): Promise<void> {
       const result = await props.rewind.apply(plan.value, {})
       report(result)
       if (result.failed.length && !conversation) {
-        error.value = result.failed.map((f) => `${f.path}: ${f.error}`).join('\n')
+        error.value = result.failed
+          .map((f) => `${f.path}: ${presentUiField(f, 'error')}`)
+          .join('\n')
         plan.value = await (props.mode === 'since'
           ? props.rewind.planSince(props.since)
           : props.rewind.planTurn(props.messageId))
@@ -270,7 +293,7 @@ async function finish(files: boolean, conversation: boolean): Promise<void> {
     if (conversation) emit('conversation', props.messageId)
     emit('close')
   } catch (err) {
-    error.value = err instanceof Error ? err.message : String(err)
+    error.value = presentUiError(err)
   } finally {
     busy.value = false
   }

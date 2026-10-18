@@ -1,4 +1,6 @@
 import { nodeErrorNotice } from './errorNotice'
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 import { Notice, SuggestModal, type App, type PaneType, type WorkspaceLeaf } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { GITHUB_VIEW_TYPE } from '@/github/GithubService'
@@ -35,7 +37,7 @@ export async function openNodeRepository(
     node: state.node_id,
   }))
   if (!principal.installation || !principal.node)
-    throw new Error('Reconnect this node before opening a repository.')
+    throw new UiError(uiMessage('streamB.reconnectThisNodeBeforeOpeningARepository.aecd15'))
   const source = new NodeRepositorySource(
     connection.client,
     { provider: 'node', installation: principal.installation, node, project, workspace: 'catalog' },
@@ -45,7 +47,7 @@ export async function openNodeRepository(
   source.dispose()
   const selected = catalog.find((row) => row.id === workspace || row.workspaceId === workspace)
   if (!selected)
-    throw new Error('This workspace is no longer registered. Choose another workspace.')
+    throw new UiError(uiMessage('streamB.thisWorkspaceIsNoLongerRegisteredChoose.cc4a7d'))
   // A folder or worktree as a whole is the node panel's; the tab shows files, commits and
   // comparisons in it.
   if (!options.path && !options.location) return revealNodePlace(node, selected.id)
@@ -85,10 +87,11 @@ export async function revealNodePlace(node: string, worktree: string): Promise<W
   const app = GlobalStore.getInstance().app
   await revealNodeDrawer(app.workspace, node)
   const model = NodePathService.getInstance().model(node)
-  if (!model.targets.value.some((t) => t.id === worktree)) await model.refresh()
+  if (!model.targets.value.some((translationItem) => translationItem.id === worktree))
+    await model.refresh()
   await model.select(worktree)
   const leaf = app.workspace.getLeavesOfType(NODE_SIDEBAR_VIEW)[0]
-  if (!leaf) throw new Error('The node panel could not be opened.')
+  if (!leaf) throw new UiError(uiMessage('streamB.theNodePanelCouldNotBeOpened.e839fd'))
   return leaf
 }
 
@@ -99,7 +102,7 @@ export async function openNodeRepositoryTarget(
   pane: PaneType | false = false
 ): Promise<WorkspaceLeaf> {
   const clean = savedNodeTarget({ sourceTarget: target })
-  if (!clean) throw new Error('Invalid node repository target')
+  if (!clean) throw new UiError(uiMessage('streamB.invalidNodeRepositoryTarget.bdf89c'))
   const leaves = app.workspace.getLeavesOfType(GITHUB_VIEW_TYPE)
   const sameWorkspace = (leaf: WorkspaceLeaf) => {
     const saved = (leaf.view as unknown as { model?: { sourceTarget?: NodeRepositoryTarget } })
@@ -142,7 +145,7 @@ const report = (work: Promise<unknown>) => {
 export function chooseNodeRepository(app: App): void {
   const service = NodeService.getInstance()
   if (!service.nodes.value.length) {
-    new Notice('Connect a node in Abele settings first.')
+    new Notice(t('streamB.connectANodeInAbeleSettingsFirst.2843ae'))
     return
   }
   new RepositoryPicker(
@@ -160,11 +163,11 @@ export function chooseNodeRepository(app: App): void {
             const page = await connection.client.listProjects(after)
             projects.push(...page)
             if (page.length < 100) break
-            after = page.at(-1)!.project_id
+            after = page.at(-1).project_id
             if (projects.length >= 1000) break
           } while (after)
           if (!projects.length) {
-            new Notice('This node has no registered folders. Open one in the node panel.')
+            new Notice(t('streamB.thisNodeHasNoRegisteredFoldersOpen.b6407c'))
             return
           }
           new RepositoryPicker(
@@ -175,7 +178,7 @@ export function chooseNodeRepository(app: App): void {
               report(
                 (async () => {
                   const installation = await connection.client.store.transaction(
-                    (state) => state.installation_id!
+                    (state) => state.installation_id
                   )
                   const source = new NodeRepositorySource(
                     connection.client,
@@ -191,24 +194,24 @@ export function chooseNodeRepository(app: App): void {
                   const workspaces = await source.workspaces()
                   source.dispose()
                   if (!workspaces.length) {
-                    new Notice('This project has no available workspaces.')
+                    new Notice(t('streamB.thisProjectHasNoAvailableWorkspaces.33ecc3'))
                     return
                   }
                   new RepositoryPicker(
                     app,
                     workspaces,
                     (workspace) =>
-                      `${workspace.label} · ${workspace.branch?.replace(/^refs\/heads\//, '') || 'No branch'}${workspace.kind === 'external' ? ' · External' : ''}${workspace.dirty ? ' · Changes' : ''}`,
+                      `${workspace.label} · ${workspace.branch?.replace(/^refs\/heads\//, '') || t('streamB.noBranch.db114a')}${workspace.kind === 'external' ? ' · External' : ''}${workspace.dirty ? ' · Changes' : ''}`,
                     (workspace) =>
                       report(openNodeRepository(node.id, project.project_id, workspace.id)),
-                    'Choose a workspace'
+                    t('streamB.chooseAWorkspace.995c08')
                   ).open()
                 })()
               ),
-            'Choose a project'
+            t('streamB.chooseAProject.8ba607')
           ).open()
         })()
       ),
-    'Choose a node'
+    t('streamB.chooseANode.8e9aff')
   ).open()
 }

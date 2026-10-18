@@ -1,3 +1,5 @@
+import { uiFields, uiMessage } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 /**
  * Who the people in a GitHub tab are: the name on each login's profile and their picture, looked
  * up once and kept for a week.
@@ -23,9 +25,10 @@ import { GithubError, type GithubClient } from './client'
 
 /** Server/login remains the people-cache boundary; an explicit scheme or port is part of that server. */
 export function peopleServer(client: GithubClient): string {
-  const url=new URL(client.endpoints.origin)
-  return url.protocol==='https:' && !url.port ? client.endpoints.webHost :
-    `${url.protocol}//${client.endpoints.webHost}${url.port ? ':'+url.port : ''}`
+  const url = new URL(client.endpoints.origin)
+  return url.protocol === 'https:' && !url.port
+    ? client.endpoints.webHost
+    : `${url.protocol}//${client.endpoints.webHost}${url.port ? ':' + url.port : ''}`
 }
 
 /** How long a name or a picture is trusted before it is asked for again. */
@@ -140,7 +143,7 @@ export class GithubUsers {
 
   /** Waits for the cache on disk to be read — for a test, and for the tools. */
   ready(): Promise<void> {
-    return this.loaded ??= this.load()
+    return (this.loaded ??= this.load())
   }
 
   /** How many people are kept. */
@@ -285,7 +288,10 @@ export class GithubUsers {
       try {
         const u = await client.get<{ name?: string | null; avatar_url?: string }>(
           `/users/${encodeURIComponent(login)}`,
-          { what: `${login}'s profile` }
+          uiFields(
+            { what: t('streamB.sProfile.d0e6f5', { v0: String(login) }) },
+            { what: uiMessage('streamB.sProfile.d0e6f5', { v0: String(login) }) }
+          )
         )
         this.settle(host, login, { name: u?.name || null, avatarUrl: u?.avatar_url })
       } catch (e) {

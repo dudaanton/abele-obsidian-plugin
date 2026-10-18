@@ -1,3 +1,4 @@
+import { t as translateUi } from '@/i18n'
 /**
  * What a GitHub tab needs to place itself in its repository: the breadcrumbs of a file or a
  * folder, the file tree panel's state, and the version both link at. Kept out of the tab component
@@ -151,7 +152,7 @@ export function useTreePanel(o: TreePanelOptions) {
     return t && d && (t.kind === 'blob' || t.kind === 'tree' || t.kind === 'repo')
       ? shortRef(
           source().identity.provider === 'node' && d.ref.startsWith('working-')
-            ? 'Current files'
+            ? translateUi('streamB.currentFiles.eef7a2')
             : d.ref
         )
       : undefined

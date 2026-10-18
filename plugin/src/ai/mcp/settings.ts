@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * The rules the MCP settings screen works by, kept apart from it so they can be tested alone.
  */
@@ -37,8 +38,8 @@ export function nameClash(servers: McpServer[], name: string, exceptId: string):
 export function notifyMcpPermissionReset(reset: string[]): void {
   if (!reset.length) return
   new Notice(
-    'Some saved MCP permissions could not be matched safely. Matched tools now ask before running. ' +
-      'Review these choices in agent Access settings or the chat permissions:\n' +
+    t('streamB.someSavedMcpPermissionsCouldNotBe.f2de51') +
+      t('streamB.reviewTheseChoicesInAgentAccessSettings.bc68ce') +
       reset.join('\n'),
     0
   )

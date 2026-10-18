@@ -13,6 +13,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 // One branch in the menu the branch count opens: how it starts, then its facts as codes, its
 // words in labels. Rendered into the item's title with `renderKit`, so the item has its size
 // before Obsidian places the menu; flat and prop-only.
@@ -20,18 +21,16 @@ import { computed } from 'vue'
 import Icon from '@/components/obsidian/Icon.vue'
 import StatusDot from '@/components/obsidian/StatusDot.vue'
 import type { BranchChoice } from '@/ai/chatBranches'
-import { formatTimestamp } from '@/helpers/displayFormat'
+import { streamBTime as formatTimestamp } from '@/i18n/streamBDate'
 
 const props = defineProps<Omit<BranchChoice, 'id'>>()
 
 const TONE = {
-  waiting: { dot: 'orange', label: 'Waiting for your approval' },
-  failed: { dot: 'red', label: 'Refused or failed' },
+  waiting: { dot: 'orange', label: t('chat.waitingApproval') },
+  failed: { dot: 'red', label: t('chat.failed') },
 } as const
 
-const questionsLabel = computed(() => `${props.questions} questions in it`)
+const questionsLabel = computed(() => t('chat.questions', { count: props.questions }))
 const time = computed(() => formatTimestamp(props.timestamp, { diagnostic: true }))
-const clock = computed(() =>
-  time.value.datetime ? time.value.exact.split(', ')[1].slice(0, 5) : time.value.label
-)
+const clock = computed(() => (time.value.datetime ? time.value.clock : time.value.label))
 </script>

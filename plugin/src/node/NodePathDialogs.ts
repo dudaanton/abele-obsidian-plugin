@@ -1,4 +1,6 @@
 import { nodeErrorNotice } from './errorNotice'
+import { UiError, uiMessage, presentUiError } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 import { h, shallowRef } from 'vue'
 import Modal from '@/components/obsidian/Modal.vue'
 import { mountKit } from '@/components/obsidian/mount'
@@ -42,7 +44,7 @@ export async function openNodeFolderPicker(
   connection: NodeConnection
 ): Promise<void> {
   if (!model.capabilities.value.includes('node_path_v2'))
-    throw new Error('Update this node to enable exact folder selection.')
+    throw new UiError(uiMessage('streamB.updateThisNodeToEnableExactFolder.063fba'))
   const client = connection.client,
     mutations = new NodePathMutations(client)
   type Directory = Awaited<ReturnType<typeof client.nodePath.directories>>
@@ -58,16 +60,19 @@ export async function openNodeFolderPicker(
     const cursors = new Set<string>()
     let cursor = first.cursor
     while (cursor) {
-      if (cursors.has(cursor)) throw new Error('Directory pagination did not advance')
+      if (cursors.has(cursor))
+        throw new UiError(uiMessage('streamB.directoryPaginationDidNotAdvance.2bab6c'))
       cursors.add(cursor)
       const next = await client.nodePath.directories({ path: first.path, cursor })
       if (next.incomplete)
-        throw new Error(next.omissions.join(' · ') || 'Incomplete directory listing')
+        throw new Error(
+          next.omissions.join(' · ') || t('streamB.incompleteDirectoryListing.fcb072')
+        )
       entries.push(...next.entries)
       cursor = next.cursor
     }
     if (first.incomplete)
-      throw new Error(first.omissions.join(' · ') || 'Incomplete directory listing')
+      throw new Error(first.omissions.join(' · ') || t('streamB.incompleteDirectoryListing.fcb072'))
     const value = { ...first, entries }
     if (!closed) listings.value = { ...listings.value, [normalize(first.path)]: value }
     return value
@@ -84,13 +89,16 @@ export async function openNodeFolderPicker(
             listings.value = {
               ...listings.value,
               [key]: {
-                error: error instanceof Error ? error.message : 'Could not list this folder',
+                error:
+                  error instanceof Error
+                    ? error.message
+                    : t('streamB.couldNotListThisFolder.f08423'),
               },
             }
         })
         .finally(() => pending.delete(key))
     }
-    if (!cached) return { error: 'Loading folders…' }
+    if (!cached) return { error: t('streamB.loadingFolders.d0aa0d') }
     if ('error' in cached) return cached
     return {
       entries: cached.entries.map((entry) => {
@@ -102,7 +110,7 @@ export async function openNodeFolderPicker(
           ...(known?.git
             ? {
                 git: {
-                  branch: known.copies[0]?.branch ?? 'No commits',
+                  branch: known.copies[0]?.branch ?? t('streamB.noCommits.951903'),
                   copies: known.copies.length,
                 },
               }
@@ -115,7 +123,7 @@ export async function openNodeFolderPicker(
     if (busy.value) return
     // Said, not swallowed: a press of Open that does nothing reads as a broken button.
     if (connection.state.value !== 'connected') {
-      actionError.value = 'The node is not connected. Reconnect it, then open the folder.'
+      actionError.value = t('streamB.theNodeIsNotConnectedReconnectIt.0c7e13')
       return
     }
     busy.value = true
@@ -126,7 +134,7 @@ export async function openNodeFolderPicker(
           name = path.slice(at + 1)
         const directory = listings.value[parent]
         if (!directory || 'error' in directory)
-          throw new Error('Inspect the parent directory before creating a folder.')
+          throw new UiError(uiMessage('streamB.inspectTheParentDirectoryBeforeCreatingA.5e40b4'))
         path = await mutations.mkdir(directory.directory_id, name, parent)
       }
       let project
@@ -134,17 +142,21 @@ export async function openNodeFolderPicker(
         project = await mutations.register(path)
       } catch (error) {
         if (create)
-          actionError.value = `The folder was created at ${path}, but could not be opened. It was not deleted.`
+          actionError.value = t('streamB.theFolderWasCreatedAtButCould.d1dea3', {
+            v0: String(path),
+          })
         throw error
       }
       await model.refresh()
-      const target = model.targets.value.find((t) => t.projectId === project.project_id)
+      const target = model.targets.value.find(
+        (translationItem) => translationItem.projectId === project.project_id
+      )
       if (target) await model.select(target.id)
       if (!closed) close()
     } catch (error) {
       actionError.value = [
         actionError.value,
-        error instanceof Error ? error.message : 'Folder action failed',
+        error instanceof Error ? presentUiError(error) : t('streamB.folderActionFailed.7e771a'),
       ]
         .filter(Boolean)
         .join(' ')
@@ -153,7 +165,7 @@ export async function openNodeFolderPicker(
     }
   }
   nodePathDialog(
-    'Open folder on node',
+    t('streamB.openFolderOnNode.71b43e'),
     (close) =>
       h('div', { class: 'abele-folder-picker-dialog', 'aria-busy': busy.value }, [
         actionError.value ? h('div', { role: 'alert' }, actionError.value) : null,
@@ -190,7 +202,7 @@ export async function openNodeWorktreeDialog(
   target: PathTarget
 ): Promise<void> {
   if (!model.capabilities.value.includes('node_path_worktrees'))
-    throw new Error('Update this node to enable named worktree creation.')
+    throw new UiError(uiMessage('streamB.updateThisNodeToEnableNamedWorktree.4570c7'))
   const [rows, refs] = await Promise.all([
     pathPages((cursor) =>
       connection.client.repository.worktrees({
@@ -209,7 +221,7 @@ export async function openNodeWorktreeDialog(
     error = shallowRef(''),
     busy = shallowRef(false)
   const mutations = new NodePathMutations(connection.client)
-  nodePathDialog('New worktree', (close) =>
+  nodePathDialog(t('streamB.newWorktree.4f210a'), (close) =>
     h('div', { 'aria-busy': busy.value }, [
       error.value ? h('div', { role: 'alert' }, error.value) : null,
       h(WorktreeDialog, {
@@ -220,8 +232,13 @@ export async function openNodeWorktreeDialog(
         onChooseBase: () =>
           new NodeSuggestModal(
             GlobalStore.getInstance().app,
-            branches.map((b) => ({ id: b, title: b, icon: 'git-branch', kind: 'Branch' })),
-            'Start from branch',
+            branches.map((b) => ({
+              id: b,
+              title: b,
+              icon: 'git-branch',
+              kind: t('streamB.branch.52656e'),
+            })),
+            t('streamB.startFromBranch.c8e69f'),
             (item) => {
               base.value = item.id
             }
@@ -237,19 +254,24 @@ export async function openNodeWorktreeDialog(
               if (job.state !== 'succeeded')
                 nodeErrorNotice(
                   job.state === 'failed' || job.state === 'needs_attention'
-                    ? (job.error ?? 'Worktree creation needs attention.')
-                    : 'Worktree creation is in progress. Refresh the folder to check its result.'
+                    ? (job.error ?? t('streamB.worktreeCreationNeedsAttention.ca407a'))
+                    : t('streamB.worktreeCreationIsInProgressRefreshThe.b895d6')
                 )
               else {
                 const selected = model.targets.value.find(
-                  (t) => model.copy(t)?.branch === branch && t.projectId === target.projectId
+                  (translationItem) =>
+                    model.copy(translationItem)?.branch === branch &&
+                    translationItem.projectId === target.projectId
                 )
                 if (selected) await model.select(selected.id)
               }
               close()
             })
             .catch((failure: unknown) => {
-              error.value = failure instanceof Error ? failure.message : 'Could not create worktree'
+              error.value =
+                failure instanceof Error
+                  ? failure.message
+                  : t('streamB.couldNotCreateWorktree.d782d3')
             })
             .finally(() => {
               busy.value = false

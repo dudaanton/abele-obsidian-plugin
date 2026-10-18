@@ -15,7 +15,10 @@
         field="permissionMode"
         from-agent="Permission mode comes from this chat's agent."
       />
-      <Setting name="Permission mode" desc="Controls which file operations require your approval.">
+      <Setting
+        :name="t('streamB.permissionMode.c7a8e6')"
+        :desc="t('streamB.controlsWhichFileOperationsRequireYourApproval.2a4ffa')"
+      >
         <Dropdown
           :model-value="permissionMode"
           :options="PERMISSION_OPTIONS"
@@ -27,6 +30,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed } from 'vue'
 import Setting from './obsidian/Setting.vue'
 import Dropdown from './obsidian/Dropdown.vue'

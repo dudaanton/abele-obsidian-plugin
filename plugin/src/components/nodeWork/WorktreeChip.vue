@@ -14,6 +14,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 // Where a chat's agent works, in the chat's header: the folder and the worktree. Pressing it
 // moves the chat to another worktree of the same folder; the agent can move itself too, and
 // either way the chat says so in a line of its own.
@@ -33,7 +34,7 @@ const tip = () =>
   el.value &&
   setTooltip(
     el.value,
-    `${copyKind(props.copy)} · ${props.copy.path} · ${props.disabled ? 'Switching requires an idle session and target execution support' : 'press to switch'}`
+    `${copyKind(props.copy)} · ${props.copy.path} · ${props.disabled ? t('streamB.switchingRequiresAnIdleSessionAndTarget.cc39c8') : t('streamB.pressToSwitch.3082da')}`
   )
 onMounted(tip)
 watch(() => props.copy, tip, { flush: 'post' })

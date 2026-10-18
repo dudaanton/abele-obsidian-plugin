@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { computed, type Ref } from 'vue'
 import type { ChatMessage } from './types'
 import type { ChatSession } from './ChatSession'
@@ -42,7 +43,7 @@ export class LocalChatPresenter implements ChatPresentationSession {
   }
   readonly label: Readonly<Ref<string>>
   constructor(readonly session: ChatSession) {
-    this.label = computed(() => session.chatTitle.value || 'New chat')
+    this.label = computed(() => session.chatTitle.value || t('streamB.newChat.db1838'))
   }
   get id() {
     return this.session.id

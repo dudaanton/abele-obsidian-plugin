@@ -1,3 +1,5 @@
+import { t } from '@/i18n'
+import { agentText } from '@/i18n/streamBText'
 /**
  * The rendered view of a markdown file from GitHub: which mode a tab opens in, which source lines
  * a rendered block stands for, how picking blocks becomes a selection of lines, and the text each
@@ -237,8 +239,11 @@ export function blockSource(block: MdBlock, sources: Sources): string {
 }
 
 /** "Line 4", "Lines 4–9". */
-export function linesLabel(span: LineSpan): string {
-  return span.from === span.to ? `Line ${span.from}` : `Lines ${span.from}–${span.to}`
+export function linesLabel(span: LineSpan, presentation = true): string {
+  const translate = presentation ? t : agentText
+  return span.from === span.to
+    ? translate('streamB.line.257307', { v0: String(span.from) })
+    : translate('streamBRest.lineRange', { from: span.from, to: span.to })
 }
 
 /**

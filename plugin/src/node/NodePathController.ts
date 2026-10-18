@@ -1,6 +1,7 @@
 import { nodeErrorNotice } from './errorNotice'
-import { Menu, Notice, Platform } from 'obsidian'
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import { t } from '@/i18n'
+import { Menu, Notice, Platform } from 'obsidian'
 import type { WorktreeEntry } from '@abele/node-protocol'
 import { NodeSuggestModal } from '@/components/nodeWork/NodeSuggestModal'
 import { confirmDialog } from '@/components/obsidian/dialogs'
@@ -33,7 +34,7 @@ const app = () => GlobalStore.getInstance().app
 export const nodePathAction = (run: () => Promise<unknown> | void): void => {
   void Promise.resolve()
     .then(run)
-    .catch((error: unknown) => nodeErrorNotice(error, 'Node action failed'))
+    .catch((error: unknown) => nodeErrorNotice(error, t('streamB.nodeActionFailed.35c41e')))
 }
 export function showNodePathFileMenu(event: MouseEvent, raw: NodePathContext): void {
   event.preventDefault()
@@ -43,13 +44,13 @@ export function showNodePathFileMenu(event: MouseEvent, raw: NodePathContext): v
   if (context.path) {
     menu.addItem((i) =>
       i
-        .setTitle('Open')
+        .setTitle(t('streamB.open.ed077f'))
         .setIcon('file-text')
         .onClick(() =>
           nodePathAction(() =>
             openNodePathTab(
               app().workspace,
-              { kind: 'file', target: context.target, path: context.path! },
+              { kind: 'file', target: context.target, path: context.path },
               Platform.isMobile
             )
           )
@@ -57,7 +58,7 @@ export function showNodePathFileMenu(event: MouseEvent, raw: NodePathContext): v
     )
     menu.addItem((i) =>
       i
-        .setTitle('Edit')
+        .setTitle(t('streamB.edit.464c4f'))
         .setIcon('pencil')
         .setDisabled(context.revision?.kind === 'commit')
         .onClick(() =>
@@ -73,21 +74,21 @@ export function showNodePathFileMenu(event: MouseEvent, raw: NodePathContext): v
   }
   menu.addItem((i) =>
     i
-      .setTitle('Ask here')
+      .setTitle(t('streamB.askHere.7b4ec4'))
       .setIcon('message-square')
       .setDisabled(!owner)
       .onClick(() => nodePathAction(() => owner!.ask(context)))
   )
   menu.addItem((i) =>
     i
-      .setTitle('Add to chat')
+      .setTitle(t('streamB.addToChat.b33b61'))
       .setIcon('messages-square')
       .setDisabled(!owner)
       .onClick(() => nodePathAction(() => owner!.add(context)))
   )
   menu.addItem((i) =>
     i
-      .setTitle(context.path ? 'Copy path' : 'Copy commit')
+      .setTitle(context.path ? t('streamB.copyPath.720ff4') : t('streamB.copyCommit.ecaa70'))
       .setIcon('copy')
       .onClick(() =>
         nodePathAction(() => navigator.clipboard.writeText(context.path ?? context.commit ?? ''))
@@ -158,21 +159,23 @@ function rowMenu(
     run: () => Promise<unknown> | void
   ) => danger.push([title, icon, enabled, run])
   if (!panel) {
-    add('New chat', 'message-square-plus', online, () => newNodePathChat(model, target))
-    add('History', 'history', git, () =>
+    add(t('streamB.newChat.db1838'), 'message-square-plus', online, () =>
+      newNodePathChat(model, target)
+    )
+    add(t('streamB.history.0e7696'), 'history', git, () =>
       openNodePathTab(app().workspace, { kind: 'history', target }, Platform.isMobile)
     )
-    add('Refresh folder', 'refresh-cw', online, () => model.reloadTarget(target))
+    add(t('streamB.refreshFolder.f962de'), 'refresh-cw', online, () => model.reloadTarget(target))
   }
   if (git) {
     add(
-      'New worktree',
+      t('streamB.newWorktree.4f210a'),
       'git-branch-plus',
       online && model.capabilities.value.includes('node_path_worktrees'),
       () => openNodeWorktreeDialog(model, connection, target)
     )
     add(
-      'Attach a worktree',
+      t('streamB.attachAWorktree.e28b2d'),
       'link',
       online && model.capabilities.value.includes('node_path_v2'),
       async () => {
@@ -189,12 +192,12 @@ function rowMenu(
             .filter((w) => !w.listed && w.availability === 'available')
             .map((w) => ({
               id: w.worktree_id,
-              title: w.branch?.replace(/^refs\/heads\//, '') ?? 'Detached',
+              title: w.branch?.replace(/^refs\/heads\//, '') ?? t('streamB.detached.134385'),
               note: w.path_label,
               icon: 'git-branch',
-              kind: 'Existing worktree',
+              kind: t('streamB.pickerExistingWorktree'),
             })),
-          'Attach an existing worktree',
+          t('streamB.attachAnExistingWorktree.52c0f9'),
           (item) =>
             nodePathAction(async () => {
               const row = rows.find((entry) => entry.worktree_id === item.id)
@@ -223,13 +226,13 @@ function rowMenu(
         checked
       )
     if (external === undefined) {
-      browsing(true, 'Allow external workspace browsing')
-      browsing(false, 'Stop browsing external workspaces')
-    } else browsing(!external, 'Browse external workspaces', external)
+      browsing(true, t('streamB.allowExternalWorkspaceBrowsing.565667'))
+      browsing(false, t('streamB.stopBrowsingExternalWorkspaces.03d51a'))
+    } else browsing(!external, t('streamB.browseExternalWorkspaces.7e9d46'), external)
     const row = folder.copies.find((c) => c.id === target.id)
     if (row?.kind !== 'project') {
       addDanger(
-        'Remove from the list',
+        t('streamB.removeFromTheList.f532c3'),
         'unlink',
         online && model.capabilities.value.includes('node_path_v2'),
         async () => {
@@ -244,7 +247,7 @@ function rowMenu(
         }
       )
       addDanger(
-        'Delete the worktree…',
+        t('streamB.deleteTheWorktree.ca8a5f'),
         'trash',
         online && model.capabilities.value.includes('node_path_worktrees'),
         async () => {
@@ -257,23 +260,29 @@ function rowMenu(
           )
           const selected = rows.find((w) => w.worktree_id === target.id)
           if (!selected || selected.kind === 'root')
-            throw new Error('This worktree is no longer available for deletion.')
+            throw new UiError(uiMessage('streamB.thisWorktreeIsNoLongerAvailableFor.44dd46'))
           if (
             !(await confirmDialog({
-              title: 'Delete worktree?',
-              message: `Delete ${selected.path_label}? This removes the working copy, not its branch. Dirty, ignored and untracked files block deletion.`,
-              confirmText: 'Delete worktree',
+              title: t('streamB.deleteWorktree.89ba18'),
+              message: t('streamB.deleteThisRemovesTheWorkingCopyNot.d7af59', {
+                v0: String(selected.path_label),
+              }),
+              confirmText: t('streamB.deleteWorktree.348a63'),
             }))
           )
             return
           const observation = await connection.client.repository.observe({ worktree_id: target.id })
           if (observation.revision.kind !== 'working')
-            throw new Error('The node did not return a current observation.')
+            throw new UiError(uiMessage('streamB.theNodeDidNotReturnACurrent.beb9d0'))
           if (selected.kind === 'managed' && selected.workspace_id) {
             const reservation = await new NodePathMutations(connection.client).removeManaged(
               selected.workspace_id
             )
-            new Notice(`Deletion accepted; refresh to check job ${reservation.job_id}.`)
+            new Notice(
+              t('streamB.deletionAcceptedRefreshToCheckJob.de2efa', {
+                v0: String(reservation.job_id),
+              })
+            )
           } else
             await new NodePathMutations(connection.client).delete(
               target,
@@ -286,28 +295,32 @@ function rowMenu(
     }
   } else
     add(
-      'Make it a Git repository…',
+      t('streamB.makeItAGitRepository.d23582'),
       'folder-git-2',
       online && model.capabilities.value.includes('node_path_v2'),
       async () => {
         if (
           !(await confirmDialog({
-            title: 'Initialize Git repository?',
-            message: `Initialize Git in ${folder.path}? No first commit is created.`,
-            confirmText: 'Initialize Git',
+            title: t('streamB.initializeGitRepository.9ce562'),
+            message: t('streamB.initializeGitInNoFirstCommitIs.2c7d56', {
+              v0: String(folder.path),
+            }),
+            confirmText: t('streamB.initializeGit.4ee149'),
           }))
         )
           return
         await new NodePathMutations(connection.client).init(folder.id, 'main')
         await model.refresh()
-        const root = model.targets.value.find((t) => t.projectId === folder.id)
+        const root = model.targets.value.find(
+          (translationItem) => translationItem.projectId === folder.id
+        )
         if (root) await model.select(root.id)
       }
     )
-  add('Give a chat access…', 'folder-key', !!owner, () =>
+  add(t('streamB.giveAChatAccess.8fcd7f'), 'folder-key', !!owner, () =>
     owner!.grant(freezeNodePathContext({ target }))
   )
-  add('Copy path', 'copy', true, () =>
+  add(t('streamB.copyPath.720ff4'), 'copy', true, () =>
     navigator.clipboard.writeText(
       folder.copies.find((c) => c.id === target.id)?.path ?? folder.path
     )
@@ -315,7 +328,7 @@ function rowMenu(
   const root = !git || folder.copies.find((c) => c.id === target.id)?.kind === 'project'
   if (project && root)
     add(
-      'Use the repository’s Claude permissions',
+      t('streamB.useTheRepositorySClaudePermissions.fe13bf'),
       'shield-check',
       online,
       async () => {
@@ -328,12 +341,12 @@ function rowMenu(
       project.use_repository_claude_permissions
     )
   if (root)
-    addDanger('Remove the folder from the node…', 'list-x', online, async () => {
+    addDanger(t('streamB.removeTheFolderFromTheNode.9e68fe'), 'list-x', online, async () => {
       if (
         !(await confirmDialog({
-          title: 'Remove the folder from the node?',
-          message: `${folder.path} stays on disk, with its files and branches. Delete its worktrees first.`,
-          confirmText: 'Remove folder',
+          title: t('streamB.removeTheFolderFromTheNode.8ba1a8'),
+          message: t('streamB.staysOnDiskWithItsFilesAnd.a19f63', { v0: String(folder.path) }),
+          confirmText: t('streamB.removeFolder.f2a987'),
         }))
       )
         return
@@ -361,7 +374,10 @@ export function showNodePathNodeMenu(model: NodePathModel, event: MouseEvent): v
 function nodeItems(model: NodePathModel, menu: Menu): Menu {
   const service = NodeService.getInstance()
   menu.addItem((i) =>
-    i.setTitle('Connect another node').setIcon('server').onClick(openNodePathPairing)
+    i
+      .setTitle(t('streamB.connectAnotherNode.3738cb'))
+      .setIcon('server')
+      .onClick(openNodePathPairing)
   )
   for (const node of service.nodes.value)
     menu.addItem((i) =>
@@ -385,30 +401,29 @@ function nodeItems(model: NodePathModel, menu: Menu): Menu {
   if (node) {
     menu.addItem((i) =>
       i
-        .setTitle('Node details')
+        .setTitle(t('streamB.nodeDetails.835881'))
         .setIcon('info')
         .onClick(() => {
-          nodePathDialog('Node details', () =>
+          nodePathDialog(t('streamB.nodeDetails.835881'), () =>
             h('div', [
               h('p', node.label),
               h('p', node.url),
-              h('p', `Node ID: ${node.expectedNodeId}`),
+              h('p', t('streamB.nodeId.780a6d', { v0: String(node.expectedNodeId) })),
             ])
           )
         })
     )
     menu.addItem((i) =>
       i
-        .setTitle('Disconnect this device…')
+        .setTitle(t('streamB.disconnectThisDevice.e1a820'))
         .setIcon('unplug')
         .onClick(() =>
           nodePathAction(async () => {
             if (
               await confirmDialog({
-                title: 'Disconnect node?',
-                message:
-                  'Remove this device’s saved connection. This does not delete folders, worktrees or node sessions.',
-                confirmText: 'Disconnect',
+                title: t('streamB.disconnectNode.c336da'),
+                message: t('streamB.removeThisDeviceSSavedConnectionThis.40e1d5'),
+                confirmText: t('streamB.disconnect.acfc5b'),
               })
             )
               service.remove(model.registrationId)
@@ -424,7 +439,7 @@ export async function attachNodePathWorktree(
   row: WorktreeEntry
 ): Promise<void> {
   if (row.project_id !== target.projectId)
-    throw new Error('The selected worktree belongs to another project.')
+    throw new UiError(uiMessage('streamB.theSelectedWorktreeBelongsToAnotherProject.09bd1b'))
   const connection = NodeService.getInstance().connection(model.registrationId)
   await new NodePathMutations(connection.client).selection(target.projectId, row.worktree_id, true)
   const selecting = model.selectTarget(
@@ -432,7 +447,7 @@ export async function attachNodePathWorktree(
     {
       id: row.worktree_id,
       kind: row.kind === 'root' ? 'project' : row.detached ? 'detached' : 'worktree',
-      branch: row.branch?.replace(/^refs\/heads\//, '') ?? 'Detached',
+      branch: row.branch?.replace(/^refs\/heads\//, '') ?? t('streamB.detached.134385'),
       path: row.path_label,
       changed: 0,
     }
@@ -454,7 +469,7 @@ export function agentSuggestions(choices: AgentChoice[]) {
     title: c.label,
     ...(c.unavailable ? { note: c.unavailable, disabled: c.unavailable } : {}),
     icon: agentIcon(c.provider),
-    kind: c.agent ? 'Agent over ACP' : 'Agent',
+    kind: c.agent ? t('streamB.pickerAcpAgent') : t('streamB.agent.11b39c'),
   }))
 }
 export const agentChoiceId = (c: AgentChoice): string =>
@@ -465,18 +480,21 @@ export async function newNodePathChat(
   target = model.current.value,
   initialText?: string
 ): Promise<void> {
-  if (!target) throw new Error('Choose a folder or worktree first.')
+  if (!target) throw new UiError(uiMessage('streamB.chooseAFolderOrWorktreeFirst.007e1a'))
   if (!model.capabilities.value.includes('node_path_execution'))
-    throw new Error(
-      'Update this node to enable chats bound to root, plain and external folders. Existing managed sessions remain available.'
-    )
+    throw new UiError(uiMessage('streamB.updateThisNodeToEnableChatsBound.ad6e82'))
   const bound = Object.freeze({ ...target }),
     connection = NodeService.getInstance().connection(model.registrationId)
   const choices = agentChoices(nodeProviders(await connection.client.describe()))
-  new NodeSuggestModal(app(), agentSuggestions(choices), 'Choose the agent', (item) => {
-    const choice = choices.find((c) => agentChoiceId(c) === item.id && !c.unavailable)
-    startNodePathChat(model, bound, choice, initialText)
-  }).open()
+  new NodeSuggestModal(
+    app(),
+    agentSuggestions(choices),
+    t('streamB.chooseTheAgent.8f3bf5'),
+    (item) => {
+      const choice = choices.find((c) => agentChoiceId(c) === item.id && !c.unavailable)
+      startNodePathChat(model, bound, choice, initialText)
+    }
+  ).open()
 }
 
 /**
@@ -493,10 +511,10 @@ export function startNodePathChat(
     connection = NodeService.getInstance().connection(model.registrationId)
   nodePathAction(async () => {
     if (!(await approveNodePathExecution(model, bound))) return
-    if (!choice) throw new Error('The selected agent is no longer available.')
+    if (!choice) throw new UiError(uiMessage('streamB.theSelectedAgentIsNoLongerAvailable.b7a53d'))
     const session = await new NodePathMutations(connection.client).session(
       bound,
-      'New chat',
+      t('streamB.newChat.db1838'),
       choice.provider,
       ...(choice.agent ? [choice.agent] : [])
     )
@@ -517,13 +535,11 @@ export async function chooseSessionWorktree(
   sessionId: string
 ): Promise<void> {
   if (!model.capabilities.value.includes('node_path_execution'))
-    throw new Error('Update this node to enable session worktree switching.')
+    throw new UiError(uiMessage('streamB.updateThisNodeToEnableSessionWorktree.31708c'))
   const connection = NodeService.getInstance().connection(model.registrationId)
   const session = await connection.client.getSession(sessionId)
   if (session.native_session_id && !model.capabilities.value.includes('node_path_native_switching'))
-    throw new Error(
-      'This node cannot safely continue a provider-bound conversation in another worktree yet. Keep this chat in its current target.'
-    )
+    throw new UiError(uiMessage('streamB.thisNodeCannotSafelyContinueAProvider.9a5301'))
   const binding = await connection.client.nodePath.sessionWorktreeGet({ session_id: sessionId })
   const from = bindPathTarget(
     { nodeId: model.nodeId, registrationId: model.registrationId },
@@ -531,32 +547,32 @@ export async function chooseSessionWorktree(
     binding.target
   )
   const targets = model.targets.value.filter(
-    (t) =>
-      t.projectId === from.projectId &&
-      (t.id !== from.id || t.kind !== from.kind) &&
-      !model.copy(t)?.missing
+    (translationItem) =>
+      translationItem.projectId === from.projectId &&
+      (translationItem.id !== from.id || translationItem.kind !== from.kind) &&
+      !model.copy(translationItem)?.missing
   )
   new NodeSuggestModal(
     app(),
-    targets.map((t) => ({
-      id: t.id,
+    targets.map((translationItem) => ({
+      id: translationItem.id,
       title:
-        model.copy(t)?.branch ??
-        model.folders.value.find((f) => f.id === t.projectId)?.name ??
-        'Folder',
-      note: model.copy(t)?.path,
+        model.copy(translationItem)?.branch ??
+        model.folders.value.find((f) => f.id === translationItem.projectId)?.name ??
+        t('streamB.folder.74ccd4'),
+      note: model.copy(translationItem)?.path,
       icon: 'git-branch',
-      kind: 'Worktree',
+      kind: t('streamB.worktree.c893ba'),
     })),
-    'Move this idle chat to a worktree',
+    t('streamB.moveThisIdleChatToAWorktree.cfe156'),
     (item) =>
       nodePathAction(async () => {
-        const to = targets.find((t) => t.id === item.id)
+        const to = targets.find((translationItem) => translationItem.id === item.id)
         if (!to || !(await approveNodePathExecution(model, to))) return
         await new NodePathMutations(connection.client).switch(sessionId, from, to)
         await model.refresh()
       }),
-    'No other available worktree in this folder'
+    t('streamB.noOtherAvailableWorktreeInThisFolder.024797')
   ).open()
 }
 async function approveNodePathExecution(
@@ -565,7 +581,7 @@ async function approveNodePathExecution(
 ): Promise<boolean> {
   const connection = NodeService.getInstance().connection(model.registrationId)
   if (connection.state.value !== 'connected')
-    throw new Error('Reconnect before approving agent execution.')
+    throw new UiError(uiMessage('streamB.reconnectBeforeApprovingAgentExecution.f803e9'))
   const folder = model.folders.value.find((f) => f.id === target.projectId),
     copy = model.copy(target)
   const project = await connection.client.getProject(target.projectId)
@@ -596,7 +612,7 @@ export function pickNodePathPlace(model: NodePathModel, openChat: (id: string) =
     (list ?? []).map((chat) => ({
       id: `chat:${chat.id}`,
       icon: 'message-square',
-      kind: 'Chat',
+      kind: t('streamB.chat.460b3a'),
       title: chat.title,
       note: [where, chat.when].filter(Boolean).join(' · '),
     }))
@@ -610,7 +626,9 @@ export function pickNodePathPlace(model: NodePathModel, openChat: (id: string) =
             kind: copyKind(copy),
             title: `${folder.name} / ${copy.branch}`,
             note: copy.path,
-            ...(copy.changed ? { count: { value: copy.changed, label: 'changed files' } } : {}),
+            ...(copy.changed
+              ? { count: { value: copy.changed, label: t('streamB.changedFiles.4743a8') } }
+              : {}),
             current: copy.id === model.selected.value,
           },
           ...chats(copy.chats, `${folder.name} / ${copy.branch}`),
@@ -619,7 +637,7 @@ export function pickNodePathPlace(model: NodePathModel, openChat: (id: string) =
           {
             id: folder.id,
             icon: 'folder',
-            kind: 'Folder',
+            kind: t('streamB.folder.74ccd4'),
             title: folder.name,
             note: folder.path,
             current: folder.id === model.selected.value,
@@ -630,12 +648,14 @@ export function pickNodePathPlace(model: NodePathModel, openChat: (id: string) =
   new NodeSuggestModal(
     app(),
     items,
-    `Folder, branch or chat on ${node?.label ?? 'the node'}`,
+    node?.label != null
+      ? t('streamB.folderBranchOrChatOn.4055f1', { v0: node.label })
+      : t('streamBMeta.6e72d9e69a'),
     (item) =>
       item.id.startsWith('chat:')
         ? openChat(item.id.slice(5))
         : nodePathAction(() => model.select(item.id)),
-    'No folder or branch matches'
+    t('streamB.noFolderOrBranchMatches.5b24c7')
   ).open()
 }
 /**
@@ -646,13 +666,13 @@ export function chooseNodePathBase(model: NodePathModel): void {
   nodePathAction(async () => {
     if (!model.panelBranch.value) await model.loadPanelBranch()
     const branch = model.panelBranch.value
-    if (!branch) throw new Error('This place has no branch to compare.')
+    if (!branch) throw new UiError(uiMessage('streamB.thisPlaceHasNoBranchToCompare.4b54f1'))
     const kind = (ref: string) =>
       ref.startsWith('refs/tags/')
-        ? { icon: 'tag', kind: 'Tag' }
+        ? { icon: 'tag', kind: t('streamB.pickerTag') }
         : ref.startsWith('refs/remotes/')
-          ? { icon: 'cloud', kind: 'Remote branch' }
-          : { icon: 'git-branch', kind: 'Branch' }
+          ? { icon: 'cloud', kind: t('streamB.pickerRemoteBranch') }
+          : { icon: 'git-branch', kind: t('streamB.branch.52656e') }
     new NodeSuggestModal(
       app(),
       branch.refs.map((ref) => ({
@@ -661,12 +681,12 @@ export function chooseNodePathBase(model: NodePathModel): void {
         title: shortRef(ref),
         current: ref === (model.panelBase.value || branch.state.baseRef),
       })),
-      'Compare with a branch or tag',
+      t('streamB.compareWithABranchOrTag.a6c277'),
       (item) => {
         model.panelBase.value = item.id
         model.panelMode.value = 'changes'
       },
-      'No branch or tag matches'
+      t('streamB.noBranchOrTagMatches.f98366')
     ).open()
   })
 }
@@ -687,14 +707,14 @@ export function showNodePathPlaceMenu(
     m.addSeparator()
     m.addItem((i) =>
       i
-        .setTitle('Open a folder…')
+        .setTitle(t('streamB.openAFolder.d0a43e'))
         .setIcon('folder-plus')
         .setDisabled(!online)
         .onClick(() => nodePathAction(() => openFolderForNode(model)))
     )
     m.addItem((i) =>
       i
-        .setTitle('Refresh')
+        .setTitle(t('streamB.refresh.0e9161'))
         .setIcon('refresh-cw')
         .onClick(() =>
           nodePathAction(() =>
@@ -714,21 +734,23 @@ export function showNodePathPlaceMenu(
   const git = model.currentFolder.value?.git ?? false
   menu.addItem((i) =>
     i
-      .setTitle('New chat here')
+      .setTitle(t('streamB.newChatHere.f62c3c'))
       .setIcon('message-square-plus')
       .setDisabled(!online || !model.capabilities.value.includes('node_path_execution'))
       .onClick(() => nodePathAction(() => newNodePathChat(model)))
   )
   menu.addItem((i) =>
     i
-      .setTitle(git ? 'Switch to another branch…' : 'Choose another folder…')
+      .setTitle(
+        git ? t('streamB.switchToAnotherBranch.b4d908') : t('streamB.chooseAnotherFolder.13df5b')
+      )
       .setIcon(git ? 'git-branch' : 'folder')
       .onClick(() => pickNodePathPlace(model, openChat))
   )
   if (git && model.port.git && model.current.value.kind === 'worktree')
     menu.addItem((i) =>
       i
-        .setTitle('Fetch from the remote')
+        .setTitle(t('streamB.fetchFromTheRemote.0b0ee5'))
         .setIcon('cloud-download')
         .setDisabled(!online || !!model.gitBusy.value)
         .onClick(() => nodePathAction(() => model.fetch()))
@@ -736,7 +758,7 @@ export function showNodePathPlaceMenu(
   if (git && model.current.value.kind === 'worktree')
     menu.addItem((i) =>
       i
-        .setTitle('Compare with…')
+        .setTitle(t('streamB.compareWith.b33c54'))
         .setIcon('git-compare')
         .setDisabled(!model.port.branch)
         .onClick(() => chooseNodePathBase(model))

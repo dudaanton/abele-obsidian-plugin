@@ -18,7 +18,7 @@
             :icon="p.state === 'draft' ? 'git-pull-request-draft' : 'git-pull-request'"
             size="xs"
             :interactive="false"
-            :tooltip="p.state === 'draft' ? 'Draft' : 'Open'"
+            :tooltip="p.state === 'draft' ? t('streamB.draft.ebf12e') : t('streamB.open.ed077f')"
           />
         </template>
         {{ p.title }}
@@ -31,10 +31,10 @@
             :pulse="p.checks === 'pending'"
             :label="
               p.checks === 'passing'
-                ? 'Checks passed'
+                ? t('streamB.checksPassed.b63c39')
                 : p.checks === 'failing'
-                  ? 'A check failed'
-                  : 'Checks are running'
+                  ? t('streamB.aCheckFailed.97a7bb')
+                  : t('streamB.checksAreRunning.052330')
             "
           />
           <Icon
@@ -42,35 +42,33 @@
             icon="check"
             size="xs"
             :interactive="false"
-            tooltip="Approved"
+            :tooltip="t('streamB.approved.87b42e')"
           />
           <Icon
             v-else-if="p.review === 'changes'"
             icon="message-square-warning"
             size="xs"
             :interactive="false"
-            tooltip="Changes were asked for"
+            :tooltip="t('streamB.changesWereAskedFor.a90f15')"
           />
         </template>
       </EntryRow>
     </template>
-    <EmptyState
-      v-else-if="!remote"
-      text="The node does not say which remote this folder pushes to, so its pull requests cannot be listed yet."
-    />
+    <EmptyState v-else-if="!remote" :text="t('streamB.theNodeDoesNotSayWhichRemote.a707a6')" />
     <EmptyState
       v-else-if="!connected"
-      text="Pull requests come from the git service this folder lives on."
+      :text="t('streamB.pullRequestsComeFromTheGitService.758966')"
     >
       <template #action>
-        <Button text="Connect a git service" @click="emit('connect')" />
+        <Button :text="t('streamB.connectAGitService.a3f1cc')" @click="emit('connect')" />
       </template>
     </EmptyState>
-    <EmptyState v-else text="No open pull requests." />
+    <EmptyState v-else :text="t('streamB.noOpenPullRequests.ad909a')" />
   </div>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 /** The node panel's pull requests mode: the open ones of the folder, from its git service. */
 import Icon from '../obsidian/Icon.vue'
 import StatusDot from '../obsidian/StatusDot.vue'

@@ -7,7 +7,7 @@
     :git="model?.currentFolder.value?.git"
     :updated="node?.seen"
     :chat-available="model?.capabilities.value.includes('node_path_execution') ?? false"
-    :error="error ?? model?.error.value"
+    :error="error ?? (model ? presentUiField(model.error, 'value') : undefined)"
     @connect="emit('connect')"
     @connect-other="emit('pair')"
     @open-folder="emit('open-folder')"
@@ -36,7 +36,7 @@
     </template>
     <template v-if="model">
       <NodePlace
-        :node="node?.name ?? 'the node'"
+        :node="node?.name"
         :folder="model.currentFolder.value?.name"
         :branch="git ? model.currentCopy.value?.branch : undefined"
         :busy="model.busy.value"
@@ -56,27 +56,33 @@
       <!-- A rebase stopped on conflicts: go on once they are resolved and staged, or stop it. -->
       <div v-if="stopped" class="abele-node-sidebar__stopped" role="status">
         <Icon icon="triangle-alert" size="xs" color="red" :interactive="false" />
-        <span class="abele-node-sidebar__stopped-text"
-          >The {{ stopped.kind }} onto {{ stopped.onto }} stopped · {{ stopped.conflicts }} in
-          conflict</span
-        >
+        <span class="abele-node-sidebar__stopped-text">{{
+          t('streamBMeta.stoppedOperation', {
+            kind: stopped.kind,
+            ref: stopped.onto,
+            count: stopped.conflicts,
+          })
+        }}</span>
         <Button
-          text="Continue"
+          :text="t('streamB.continue.31fbef')"
           :disabled="!!model.gitBusy.value || offline || stopped.conflicts > 0"
           :loading="model.gitBusy.value === 'continue'"
           :tooltip="
             stopped.conflicts > 0
-              ? `Stage the ${stopped.conflicts} ${stopped.conflicts === 1 ? 'file' : 'files'} in conflict first`
-              : `Finish the ${stopped.kind}`
+              ? t('streamB.stageTheInConflictFirst.9f0b2f', {
+                  v0: String(stopped.conflicts),
+                  v1: String(streamBWord(stopped.conflicts, 'file')),
+                })
+              : t('streamB.finishThe.72914d', { v0: String(stopped.kind) })
           "
           @click="act(() => model!.continueStopped(stopped!.kind))"
         />
         <Button
-          :text="`Stop the ${stopped.kind}`"
+          :text="t('streamB.stopThe.b0527e', { v0: String(stopped.kind) })"
           quiet
           :disabled="!!model.gitBusy.value || offline"
           :loading="model.gitBusy.value === 'abort'"
-          :tooltip="`Put the branch back as it was before the ${stopped.kind}`"
+          :tooltip="t('streamB.putTheBranchBackAsItWas.b6174b', { v0: String(stopped.kind) })"
           @click="act(() => model!.abortStopped(stopped!.kind))"
         />
       </div>
@@ -100,7 +106,11 @@
         />
       </div>
       <div v-if="!model.current.value" class="search-empty-state">
-        Choose a folder on {{ node?.name ?? 'the node' }} in the row above.
+        {{
+          node?.name != null
+            ? t('streamBMeta.7be7370b62', { p0: node.name })
+            : t('streamBMeta.b8b90dce28')
+        }}
       </div>
       <FileTree
         v-else-if="mode === 'files' || mode === 'changes'"
@@ -118,7 +128,11 @@
         :git="git"
         :stale="node?.status !== 'connected'"
         :selected="file"
-        :label="`Files of ${model.currentCopy.value?.branch ?? model.currentFolder.value?.name}`"
+        :label="
+          t('streamB.filesOf.dd59b9', {
+            v0: String(model.currentCopy.value?.branch ?? model.currentFolder.value?.name),
+          })
+        "
         @retry="model.refreshCurrent().catch((error) => model.report(error))"
         @expand="(path) => model.loadFolder(path).catch((error) => model.report(error))"
         @more="(path) => model.loadMore(path).catch((error) => model.report(error))"
@@ -165,6 +179,9 @@
 </template>
 <script setup lang="ts">
 import NodeErrorText from '@/components/NodeErrorText.vue'
+import { presentUiField } from '@/i18n/streamBErrors'
+import { streamBWord } from '@/i18n/streamBCounts'
+import { t } from '@/i18n'
 // The node's side panel: one place (a folder and its branch) chosen from a row that opens the
 // search of all of them, and the place's files, changes, history or pull requests under it.
 import { computed, watch } from 'vue'

@@ -2,31 +2,39 @@
   <!-- Only while a base is pinned: choosing one is a glyph in the header, nothing to show here. -->
   <div v-if="pin" class="abele-github-base">
     <template v-if="pin">
-      <Badge :text="`Base: ${pin.enteredRef} · ${pin.baseSha.slice(0, 7)}`" :title="pin.baseSha" />
-      <Badge v-if="targetSha" :text="`Target: ${targetSha.slice(0, 7)}`" :title="targetSha" />
+      <Badge
+        :text="t('repository.base', { ref: pin.enteredRef, sha: pin.baseSha.slice(0, 7) })"
+        :title="pin.baseSha"
+      />
+      <Badge
+        v-if="targetSha"
+        :text="t('repository.target', { sha: targetSha.slice(0, 7) })"
+        :title="targetSha"
+      />
       <Button
-        text="Change base"
+        :text="t('repository.changeBase')"
         icon="git-compare"
-        tooltip="Choose another frozen comparison base"
+        :tooltip="t('repository.chooseBase')"
         @click="choose"
       />
       <Button
-        text="Unpin"
+        :text="t('repository.unpin')"
         icon="pin-off"
-        tooltip="Restore original repository file views"
+        :tooltip="t('repository.restoreViews')"
         @click="pins.unpin(repo, source?.identity)"
       />
       <Button
         v-if="file"
-        :text="original ? 'Show comparison' : 'Original file'"
+        :text="original ? t('repository.showComparison') : t('repository.originalFile')"
         icon="file-text"
-        tooltip="Switch this tab only, keeping the repository base"
+        :tooltip="t('repository.switchTab')"
         @click="emit('original', !original)"
       />
     </template>
   </div>
 </template>
 <script setup lang="ts">
+import { t } from '@/i18n'
 import Button from '../obsidian/Button.vue'
 import Badge from '../obsidian/Badge.vue'
 import { GlobalStore } from '@/stores/GlobalStore'

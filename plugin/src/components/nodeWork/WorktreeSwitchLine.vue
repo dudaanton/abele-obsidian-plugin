@@ -3,7 +3,9 @@
     <div class="abele-worktree-switch__line" />
     <span class="abele-worktree-switch__label">
       <Icon icon="git-branch" size="xs" :interactive="false" />
-      <span>{{ by === 'agent' ? 'Agent moved to' : 'Moved to' }}</span>
+      <span>{{
+        by === 'agent' ? t('streamB.agentMovedTo.cdbf32') : t('streamB.movedTo.44f8b8')
+      }}</span>
       <span class="abele-worktree-switch__branch">{{ branch }}</span>
     </span>
     <div class="abele-worktree-switch__line" />
@@ -11,6 +13,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 // A line in the chat where the work moved to another worktree, like a date divider: everything
 // under it happened there.
 import Icon from '../obsidian/Icon.vue'

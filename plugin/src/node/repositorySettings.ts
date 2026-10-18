@@ -1,3 +1,5 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 import type { NodeClient } from '@abele/node-client'
 import type { RepositorySource } from '@/repository/source'
 import type { confirmDialog } from '@/components/obsidian/dialogs'
@@ -6,14 +8,14 @@ type ConfirmOptions = Parameters<typeof confirmDialog>[0]
 
 /** What the person is asked before a project's other worktrees are opened to browsing, or closed. */
 export const externalBrowsingConfirm = (enabled: boolean): ConfirmOptions => ({
-  title: 'External workspace browsing',
+  title: t('streamB.externalWorkspaceBrowsing.5db838'),
   message: enabled
-    ? 'Allow this project’s other Git worktrees to be browsed by confirmed node owners? They remain read only. This does not allow agent execution or editing.'
-    : 'Stop browsing external workspaces for this project? Open external views and retained reads lose access.',
-  confirmText: enabled ? 'Allow browsing' : 'Stop browsing',
+    ? t('streamB.allowThisProjectSOtherGitWorktrees.82c5e5')
+    : t('streamB.stopBrowsingExternalWorkspacesForThisProject.6c1610'),
+  confirmText: enabled ? t('streamB.allowBrowsing.faa6e2') : t('streamB.stopBrowsing.5698d3'),
   confirmTooltip: enabled
-    ? 'Allow read-only browsing of external workspaces'
-    : 'Stop external workspace reads',
+    ? t('streamB.allowReadOnlyBrowsingOfExternalWorkspaces.1e6e32')
+    : t('streamB.stopExternalWorkspaceReads.930da5'),
 })
 
 /** Owner UI only: project browsing opt-in is distinct from agent grants and provider admission. */
@@ -24,7 +26,8 @@ export async function changeExternalBrowsing(
   confirm: () => Promise<boolean>
 ): Promise<boolean> {
   source.assertCurrent()
-  if (source.identity.provider !== 'node') throw new Error('Select a node repository first.')
+  if (source.identity.provider !== 'node')
+    throw new UiError(uiMessage('streamB.selectANodeRepositoryFirst.643b80'))
   const project = source.identity.project
   if (!(await confirm())) return false
   source.assertCurrent()

@@ -1,3 +1,4 @@
+import { UiError, uiErrorMessage } from '@/i18n/streamBErrors'
 import type { ChatMessage } from './types'
 import type { SelectionBindingRecovery } from '@/selection/bindings'
 
@@ -15,11 +16,11 @@ export interface ChatBindingStoragePort {
   changeBindings<T>(change: (state: BindingState) => Promise<BindingStateChange<T>>): Promise<T>
   inspectBindingWrite(operationId: string): Promise<boolean>
 }
-export class BindingWriteFailure extends Error {
+export class BindingWriteFailure extends UiError {
   constructor(
     readonly uncertain: boolean,
     readonly cause: unknown
   ) {
-    super(cause instanceof Error ? cause.message : String(cause))
+    super(uiErrorMessage(cause))
   }
 }

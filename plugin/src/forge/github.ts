@@ -1,3 +1,4 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 /** GitHub composition root. Its URL and API quirks stay inside this adapter. */
 import type { GithubClient } from '@/github/client'
 import { parseGithubUrl, type Endpoints, type GithubTarget } from '@/github/urls'
@@ -14,12 +15,12 @@ export function githubProvider(
   const deployment = { kind: 'github' as const, webBase: endpoints.origin, apiBase: endpoints.api }
   const assertRepository = (repo: RepoId) => {
     if (deploymentKey(repo.deployment) !== deploymentKey(deployment))
-      throw new Error('The repository belongs to another deployment.')
+      throw new UiError(uiMessage('streamBError.8e9468f2f5'))
     if (
       !/^[^/]+\/[^/]+$/.test(repo.fullPath) ||
       repo.fullPath.split('/').some((part) => ['.', '..'].includes(part))
     )
-      throw new Error('Invalid GitHub repository path.')
+      throw new UiError(uiMessage('streamBError.ee5b3b4622'))
   }
   return {
     deployment,

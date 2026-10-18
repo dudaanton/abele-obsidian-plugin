@@ -1,5 +1,12 @@
-import { MarkdownRenderChild, MarkdownView, Notice, TFile } from 'obsidian'
-import type { MarkdownPostProcessorContext } from 'obsidian'
+import { t } from '@/i18n'
+import {
+  MarkdownRenderChild,
+  MarkdownView,
+  Notice,
+  TFile,
+  type MarkdownPostProcessorContext,
+} from 'obsidian'
+
 import { h } from 'vue'
 import dayjs from 'dayjs'
 import customParseFormat from 'dayjs/plugin/customParseFormat'
@@ -130,7 +137,7 @@ export async function insertMessageCard(session: ChatSession, messageId: string)
 
   const view = targetView(session)
   if (!view) {
-    new Notice('Open a note to put the message in')
+    new Notice(t('streamB.openANoteToPutTheMessage.6ffc9a'))
     return false
   }
 
@@ -138,7 +145,7 @@ export async function insertMessageCard(session: ChatSession, messageId: string)
   if (!session.currentChatFile.value) await session.save()
   const chat = session.currentChatFile.value?.path
   if (!chat) {
-    new Notice('The chat has not been saved yet')
+    new Notice(t('streamB.theChatHasNotBeenSavedYet.55ef51'))
     return false
   }
 
@@ -150,7 +157,9 @@ export async function insertMessageCard(session: ChatSession, messageId: string)
     text: message.content,
   })
   insertBlockOnOwnLine(view.editor, block)
-  new Notice(`Added to ${view.file?.basename ?? 'the note'}`)
+  new Notice(
+    t('streamB.addedTo.83d927', { v0: String(view.file?.basename ?? t('streamB.theNote.00c4d8')) })
+  )
   return true
 }
 
@@ -177,7 +186,7 @@ export async function openMessage(block: MessageBlock, notePath?: string): Promi
   if (!file) {
     file = await findChatByMessage(block.message)
     if (!file) {
-      new Notice('The chat this message came from is gone')
+      new Notice(t('streamB.theChatThisMessageCameFromIs.16f9af'))
       return
     }
     const note = notePath ? vault.getFileByPath(notePath) : null
@@ -270,7 +279,7 @@ export function registerMessageCardBlock(
   register(MESSAGE_BLOCK, (source, el, ctx) => {
     const block = parseMessageBlock(source)
     if (!block) {
-      el.createDiv({ cls: 'abele-map-error', text: 'This message card names no chat' })
+      el.createDiv({ cls: 'abele-map-error', text: t('streamB.thisMessageCardNamesNoChat.77e722') })
       return
     }
     const host = el.createDiv({ cls: 'abele-message-card' })
@@ -291,7 +300,12 @@ export function registerMessageCardBlock(
             },
             {
               // The delete icon a chat's own card has in the history, in the same place.
-              actions: () => h(Icon, { icon: 'trash', tooltip: 'Remove card', onClick: remove }),
+              actions: () =>
+                h(Icon, {
+                  icon: 'trash',
+                  tooltip: t('streamB.removeCard.dcf7d3'),
+                  onClick: remove,
+                }),
               default: () => h(Markdown, { text: block.text, filePath: ctx.sourcePath }),
             }
           ),

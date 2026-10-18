@@ -1,3 +1,4 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import { ChatService } from './ChatService'
 import { CommentService } from './CommentService'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -57,9 +58,7 @@ export function followChatBindingRename(oldPath: string, newPath: string): Promi
         }),
         (current) => {
           if (current !== prior || owner(file.path))
-            throw new Error(
-              'The binding source changed during card rename. Reopen it before making changes.'
-            )
+            throw new UiError(uiMessage('streamBError.c6b341f583'))
         }
       )
     }

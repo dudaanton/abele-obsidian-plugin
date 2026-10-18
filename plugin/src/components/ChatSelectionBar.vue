@@ -10,23 +10,21 @@
   >
     <!-- Glyphs in one row, as Obsidian's own toolbar on a phone; the words are their labels. -->
     <!-- Replying to the words goes on in this chat; asking about them opens a discussion apart. -->
-    <Icon v-if="canReply && shown.highlight" icon="reply" label="Reply" @click="reply" />
-    <Icon icon="message-circle-plus" label="Ask here" @click="ask" />
-    <Icon v-if="shown.copyLink" icon="link" label="Copy link to selection" @click="copyLink" />
+    <Icon v-if="canReply && shown.highlight" icon="reply" :label="t('chat.reply')" @click="reply" />
+    <Icon icon="message-circle-plus" :label="t('chat.askHere')" @click="ask" />
+    <Icon v-if="shown.copyLink" icon="link" :label="t('chat.copySelection')" @click="copyLink" />
     <template v-if="shown.script">
       <Icon
         v-for="item in pinned"
         :key="item.script"
         :icon="item.icon || 'scroll-text'"
         :data-script="item.script"
-        :label="`Run ${item.label} on these words`"
+        :label="t('chat.runScript', { name: item.label })"
         @click="script(item.script)"
       />
       <Icon
         icon="scroll-text"
-        :label="
-          pinned.length ? 'Run another script on these words…' : 'Run a script on these words…'
-        "
+        :label="pinned.length ? t('chat.runAnother') : t('chat.runAny')"
         @click="script()"
       />
     </template>
@@ -34,13 +32,14 @@
       v-if="shown.highlight"
       icon="highlighter"
       data-highlight-action="true"
-      label="Highlight the selected words"
+      :label="t('chat.highlight')"
       @click="highlight"
     />
   </div>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef } from 'vue'
 import { Platform } from 'obsidian'
 import Icon from './obsidian/Icon.vue'

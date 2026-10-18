@@ -1,10 +1,13 @@
+import { UiError, uiMessage, uiFields } from '@/i18n/streamBErrors'
+
+import { t } from '@/i18n'
 /**
  * Where searchable code comes from: the commit a tab stands on, the file list at that commit, the
  * whole repository at it as an in-memory index, and — for a repository too big to download —
  * GitHub's own code search, which only knows the default branch.
  */
-import type { GithubClient } from '../client'
-import { GithubError } from '../client'
+import { type GithubClient, GithubError } from '../client'
+
 import { commitSha } from '../api'
 import { gunzip } from './tar'
 import { IndexCache, RepoIndex, indexKey, type SearchResult } from './repoIndex'
@@ -21,9 +24,15 @@ const repoPath = (r: RepoRef) =>
 
 /** The branch a repository opens on, for a tab — an issue, a discussion — that names no commit. */
 export async function defaultBranch(client: GithubClient, repo: RepoRef): Promise<string> {
-  const data = await client.get<{ default_branch?: string }>(repoPath(repo), {
-    what: 'the repository',
-  })
+  const data = await client.get<{ default_branch?: string }>(
+    repoPath(repo),
+    uiFields(
+      {
+        what: t('streamB.theRepository.60b3b0'),
+      },
+      { what: uiMessage('streamB.theRepository.60b3b0') }
+    )
+  )
   return data.default_branch ?? 'main'
 }
 
@@ -58,9 +67,15 @@ export async function loadTree(
   const data = await client.get<{
     tree?: Array<{ path: string; type: string; size?: number }>
     truncated?: boolean
-  }>(`${repoPath(repo)}/git/trees/${encodeURIComponent(sha)}?recursive=1`, {
-    what: "the repository's file list",
-  })
+  }>(
+    `${repoPath(repo)}/git/trees/${encodeURIComponent(sha)}?recursive=1`,
+    uiFields(
+      {
+        what: t('streamB.theRepositorySFileList.9791ab'),
+      },
+      { what: uiMessage('streamB.theRepositorySFileList.9791ab') }
+    )
+  )
   const files = (data.tree ?? [])
     .filter((e) => e.type === 'blob')
     .map((e) => ({ path: e.path, size: e.size ?? 0 }))
@@ -91,7 +106,7 @@ export function matchFileNames(files: TreeFile[], query: string, limit = 200): T
     .map((s) => s.file)
 }
 
-export class TooLargeError extends Error {
+export class TooLargeError extends UiError {
   constructor(
     readonly totalBytes: number,
     readonly limitBytes: number,
@@ -99,8 +114,8 @@ export class TooLargeError extends Error {
   ) {
     super(
       truncated
-        ? 'GitHub would not list the whole repository — it is too big to download for a search.'
-        : `The repository is ${mb(totalBytes)} at this commit, more than the ${mb(limitBytes)} set in Abele settings → GitHub.`
+        ? uiMessage('streamBError.bcb47435bb')
+        : uiMessage('streamBError.52ab21f79c', { v0: mb(totalBytes), v1: mb(limitBytes) })
     )
     this.name = 'TooLargeError'
   }
@@ -158,14 +173,20 @@ export async function repoIndex(
         // A guarded client can revoke capability while the archive is being unpacked. The
         // awaiting caller below reports that refusal; this independent callback must not reject.
         let current = false
-        try { current = client.isCurrent !== false } catch { return }
+        try {
+          current = client.isCurrent !== false
+        } catch {
+          return
+        }
         if (current) indexes.set(key, index)
       },
-      () => { if (building.get(key) === pending) building.delete(key) }
+      () => {
+        if (building.get(key) === pending) building.delete(key)
+      }
     )
   }
   const index = await pending
-  if (startedIn !== generation) throw new Error('GitHub code search was reset')
+  if (startedIn !== generation) throw new UiError(uiMessage('streamBError.908ff82a4d'))
   if (client.isCurrent === false) client.assertCurrent()
   if (request.signal?.aborted) throw new DOMException('Cancelled', 'AbortError')
   return index
@@ -186,7 +207,10 @@ async function build(
   const t0 = performance.now()
   const { bytes: archive } = await client.bytes(
     `${repoPath(repo)}/tarball/${encodeURIComponent(sha)}`,
-    { what: "the repository's archive" }
+    uiFields(
+      { what: t('streamB.theRepositorySArchive.3dc412') },
+      { what: uiMessage('streamB.theRepositorySArchive.3dc412') }
+    )
   )
   const t1 = performance.now()
   onStage?.('unpacking')
@@ -244,10 +268,16 @@ export async function githubCodeSearch(
   const data = await client.get<{
     total_count?: number
     items?: Array<{ path: string; text_matches?: Array<{ fragment?: string }> }>
-  }>(`/search/code?q=${encodeURIComponent(q)}&per_page=${Math.min(100, limit)}`, {
-    accept: 'application/vnd.github.text-match+json',
-    what: 'code search',
-  })
+  }>(
+    `/search/code?q=${encodeURIComponent(q)}&per_page=${Math.min(100, limit)}`,
+    uiFields(
+      {
+        accept: 'application/vnd.github.text-match+json',
+        what: t('streamB.codeSearch.999710'),
+      },
+      { what: uiMessage('streamB.codeSearch.999710') }
+    )
+  )
   const items = data.items ?? []
   const fragments: Record<string, string[]> = {}
   for (const item of items) {

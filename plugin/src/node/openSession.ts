@@ -1,4 +1,5 @@
 import { nodeErrorNotice } from './errorNotice'
+import { t } from '@/i18n'
 import type { NodeSession } from './nodePages'
 import { revealNodeDrawer } from './nodePathNavigation'
 import { FuzzySuggestModal, Menu, Notice, type App } from 'obsidian'
@@ -21,7 +22,7 @@ class SessionPicker extends FuzzySuggestModal<SessionChoice> {
     private readonly choose: (item: SessionChoice) => Promise<void>
   ) {
     super(app)
-    this.setPlaceholder('Pick a session or manage projects and workspaces')
+    this.setPlaceholder(t('streamB.pickASessionOrManageProjectsAnd.aa10cd'))
   }
   getItems(): SessionChoice[] {
     return this.choices
@@ -31,7 +32,7 @@ class SessionPicker extends FuzzySuggestModal<SessionChoice> {
   }
   onChooseItem(item: SessionChoice): void {
     void this.choose(item).catch((error: unknown) =>
-      nodeErrorNotice(error, 'Could not open node session')
+      nodeErrorNotice(error, t('streamB.couldNotOpenNodeSession.18a82e'))
     )
   }
 }
@@ -42,12 +43,17 @@ export async function pickNodeSession(node: RegisteredNode, after?: string): Pro
   await connection.connect()
   const sessions = await connection.client.listSessions(after)
   const choices: SessionChoice[] = [
-    { title: 'Folders and worktrees in the node panel…', workspaces: true },
-    ...(chats.canCreateTab ? [{ title: 'Create new fake session (non-executing)' }] : []),
+    { title: t('streamB.foldersAndWorktreesInTheNodePanel.5a6dba'), workspaces: true },
+    ...(chats.canCreateTab
+      ? [{ title: t('streamB.createNewFakeSessionNonExecuting.77ff93') }]
+      : []),
     ...sessions,
   ]
   if (sessions.length)
-    choices.push({ title: 'More sessions…', moreAfter: sessions[sessions.length - 1].session_id })
+    choices.push({
+      title: t('streamB.moreSessions.5cbb6f'),
+      moreAfter: sessions[sessions.length - 1].session_id,
+    })
   const app = GlobalStore.getInstance().app
   ;(app as unknown as { setting?: { close(): void } }).setting?.close()
   new SessionPicker(app, choices, async (choice) => {
@@ -96,7 +102,7 @@ export async function revealNodeSession(
 /** A node's folders, worktrees and chats live in its side panel, opened here for that node. */
 export function openNodePanel(node: RegisteredNode): void {
   void revealNodeDrawer(GlobalStore.getInstance().app.workspace, node.id).catch((e: unknown) =>
-    nodeErrorNotice(e, 'Could not open the node panel')
+    nodeErrorNotice(e, t('streamB.couldNotOpenTheNodePanel.38471a'))
   )
 }
 
@@ -106,7 +112,7 @@ export function newChatMenu(local: () => void, position: { x: number; y: number 
   try {
     service = NodeService.getInstance()
   } catch {
-    new Notice('Node connections could not be loaded. Local chat is still available.')
+    new Notice(t('streamB.nodeConnectionsCouldNotBeLoadedLocal.db2b66'))
     local()
     return
   }
@@ -115,15 +121,17 @@ export function newChatMenu(local: () => void, position: { x: number; y: number 
     return
   }
   const menu = new Menu()
-  menu.addItem((item) => item.setTitle('Local chat').setIcon('message-circle').onClick(local))
+  menu.addItem((item) =>
+    item.setTitle(t('streamB.localChat.1d9795')).setIcon('message-circle').onClick(local)
+  )
   for (const node of service.nodes.value)
     menu.addItem((item) =>
       item
-        .setTitle(`Session on ${node.label}`)
+        .setTitle(t('streamB.sessionOn.431145', { v0: String(node.label) }))
         .setIcon('server')
         .onClick(() => {
           void pickNodeSession(node).catch((error: unknown) =>
-            nodeErrorNotice(error, 'Node unavailable')
+            nodeErrorNotice(error, t('streamB.nodeUnavailable.14c28f'))
           )
         })
     )

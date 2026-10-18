@@ -1,4 +1,6 @@
 import { nodeErrorWords } from './errorWords'
+import { streamBLabel } from '@/i18n/streamBLabels'
+import { t } from '@/i18n'
 import { SuggestModal, type App } from 'obsidian'
 import { SuggestionRows } from '@/components/obsidian/suggestionRows'
 import type { RepositorySource, RepositoryWorkspace } from '@/repository/source'
@@ -22,7 +24,7 @@ export class RepositoryPicker extends SuggestModal<Choice> {
     private path?: string
   ) {
     super(app)
-    this.setPlaceholder('Workspace, branch or version')
+    this.setPlaceholder(t('streamB.workspaceBranchOrVersion.dbefef'))
   }
   async getSuggestions(query: string): Promise<Choice[]> {
     try {
@@ -31,7 +33,7 @@ export class RepositoryPicker extends SuggestModal<Choice> {
         [...refs.branches, ...refs.tags].map((ref) => ({
           kind: 'version' as const,
           id: ref,
-          label: nodeRevisionLabel(ref),
+          label: streamBLabel(nodeRevisionLabel(ref)),
         }))
       )
       const rows: Choice[] = [
@@ -41,8 +43,10 @@ export class RepositoryPicker extends SuggestModal<Choice> {
           label: w.label,
           meta: [
             w.branch?.replace(/^refs\/heads\//, ''),
-            w.kind === 'external' ? 'External · read only' : 'Workspace',
-            w.dirty ? 'Changes' : '',
+            w.kind === 'external'
+              ? t('streamB.externalReadOnly.19fbc5')
+              : t('streamB.workspace.87bb59'),
+            w.dirty ? t('streamB.changes.bbd4b6') : '',
             w.availability !== 'available' ? w.availability : '',
           ]
             .filter(Boolean)
@@ -63,7 +67,7 @@ export class RepositoryPicker extends SuggestModal<Choice> {
     this.rows.draw(el, {
       icon: row.kind === 'workspace' ? 'folder-git-2' : 'git-branch',
       title: row.label,
-      note: row.meta || (row.kind === 'version' ? 'Version' : ''),
+      note: row.meta || (row.kind === 'version' ? t('streamB.version.dd1679') : ''),
       keepNote: true,
     })
   }
@@ -77,7 +81,7 @@ export class RepositoryPicker extends SuggestModal<Choice> {
 
   onChooseSuggestion(row: Choice) {
     this.source.assertCurrent()
-    if (row.kind === 'workspace') this.choose(this.source.navigation.workspace!(row.id))
+    if (row.kind === 'workspace') this.choose(this.source.navigation.workspace(row.id))
     else if (row.kind === 'version')
       this.choose(
         this.path

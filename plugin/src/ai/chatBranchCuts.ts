@@ -1,3 +1,4 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import type { ChatMessage } from './types'
 import type { AssistantMessage, Message } from './client'
 
@@ -21,11 +22,11 @@ export function projectBranchCuts(
   for (const boundary of boundaries) {
     const target = byId.get(boundary.after)
     if (!target || (boundary.root && boundary.parent !== target.id))
-      throw new Error('The branch boundary no longer matches its continuation')
+      throw new UiError(uiMessage('streamBError.04fe344540'))
     const rootIndex = boundary.root
       ? history.findIndex((message) => message.chatMessageId === boundary.root)
       : history.length
-    if (rootIndex < 0) throw new Error('The branch boundary has no recorded continuation')
+    if (rootIndex < 0) throw new UiError(uiMessage('streamBError.fa7d4d15ec'))
     let assistantIndex = -1
     let partIndex = -1
     if (target.role === 'tool-call' && target.toolCallId) {
@@ -36,8 +37,7 @@ export function projectBranchCuts(
           message.chatMessageId === target.id &&
           message.toolCallId === target.toolCallId
       )
-      if (resultIndex < 0)
-        throw new Error('The selected call has no recorded result for this branch boundary')
+      if (resultIndex < 0) throw new UiError(uiMessage('streamBError.9fdbe22680'))
       for (let index = resultIndex - 1; index >= 0; index--) {
         const message = history[index]
         if (message.role !== 'assistant') continue
@@ -52,24 +52,22 @@ export function projectBranchCuts(
           break
         }
         // A result must belong to the immediately preceding assistant exchange.
-        throw new Error('The selected result does not match the branch boundary turn')
+        throw new UiError(uiMessage('streamBError.c66ba4f778'))
       }
-      if (assistantIndex < 0) throw new Error('The selected result has no assistant turn')
+      if (assistantIndex < 0) throw new UiError(uiMessage('streamBError.c321617b3f'))
     } else if (target.role === 'assistant') {
       assistantIndex = history.findIndex(
         (message, index) =>
           index < rootIndex && message.role === 'assistant' && message.chatMessageId === target.id
       )
-      if (assistantIndex < 0) throw new Error('The assistant branch boundary has no recorded turn')
+      if (assistantIndex < 0) throw new UiError(uiMessage('streamBError.aba841b1a9'))
       const message = history[assistantIndex] as AssistantMessage
       if (!Array.isArray(message.content)) continue
       const firstCall = message.content.findIndex((part) => part.type === 'toolCall')
       if (firstCall < 0) continue
       partIndex = firstCall - 1
     } else {
-      throw new Error(
-        'A branch context boundary must follow an assistant message or completed call'
-      )
+      throw new UiError(uiMessage('streamBError.2791c36446'))
     }
 
     const original = history[assistantIndex] as AssistantMessage
@@ -89,7 +87,7 @@ export function projectBranchCuts(
           !results.some((message) => message.role === 'toolResult' && message.toolCallId === id)
       )
     )
-      throw new Error('A call before the branch boundary has no recorded result')
+      throw new UiError(uiMessage('streamBError.2a38171bba'))
     const owners = new Set(
       results.flatMap((message) => (message.chatMessageId ? [message.chatMessageId] : []))
     )

@@ -737,6 +737,18 @@ describe('button content', () => {
 })
 
 describe('Button parts and states', () => {
+  it('opts long labels into wrapping without changing the native button action', async () => {
+    const view = mount(Button, { props: { text: 'Sample long action label' } })
+    expect(view.classes()).not.toContain('abele-obsidian-button_wrap')
+    await view.setProps({ wrap: true })
+    expect(view.classes()).toContain('abele-obsidian-button_wrap')
+    expect(view.get('.abele-obsidian-button__label').text()).toBe('Sample long action label')
+    expect(view.attributes('type')).toBe('button')
+    await view.trigger('click')
+    expect(view.emitted('click')).toHaveLength(1)
+    view.unmount()
+  })
+
   it('names its parts and its kind', () => {
     const view = mount(Button, {
       props: {

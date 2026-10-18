@@ -1,3 +1,4 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import AttentionWorker from '@/ai/chatAttention.worker?worker&inline'
 import { parseChatAttention, type ChatAttentionSnapshot } from '@/ai/ChatLog'
 
@@ -16,7 +17,7 @@ export class AttentionReader {
   >()
 
   async read(content: string, yieldControl: () => Promise<void>): Promise<ChatAttentionSnapshot> {
-    if (this.disposed) throw new Error('Attention discovery stopped')
+    if (this.disposed) throw new UiError(uiMessage('streamB.attentionDiscoveryStopped.fc2dc9'))
     if (content.length < 256 * 1024 || this.unavailable || typeof Worker === 'undefined')
       return parseChatAttention(content, yieldControl)
     if (!this.worker) {
@@ -56,7 +57,7 @@ export class AttentionReader {
     this.worker = undefined
     this.unavailable = true
     for (const pending of this.pending.values())
-      pending.reject(new Error('Conversation could not be checked'))
+      pending.reject(new UiError(uiMessage('streamBError.b1d3226846')))
     this.pending.clear()
   }
   destroy(): void {

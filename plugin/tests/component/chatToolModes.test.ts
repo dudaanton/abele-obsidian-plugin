@@ -1,8 +1,10 @@
+import { catalogs as testCatalogs } from '@/i18n/catalogs'
 /**
  * The chat's tools, as a tree: groups with a count and the group's mode glyph, tools under them
  * with their own. A glyph opens the three modes; the group's sets every tool in it at once.
  * Tools that are always there take no choice and stay folded under «Always on».
  */
+import { initializeLocale } from '@/i18n'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { Menu } from 'obsidian'
@@ -102,4 +104,33 @@ describe('the tools a chat may use', () => {
     expect(group(view, 'Files').props('collapsed')).toBe(false)
     expect(group(view, label).exists()).toBe(true)
   })
+})
+
+it('translates mode menus while emitting stable permission values in every language', async () => {
+  for (const language of ['ru', 'lv', 'es', 'de']) {
+    initializeLocale(language, testCatalogs[language as keyof typeof testCatalogs])
+    const shown = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
+    const view = mount(ChatToolModes, { props: { toolModes: {} } })
+    try {
+      await view
+        .get('[data-tool-group="Files"] .abele-tree-item__end .clickable-icon')
+        .trigger('click')
+      const menu = shown.mock.contexts.at(-1) as Menu
+      expect(menu.items[2].checked).toBe(true)
+      expect(menu.items.map((item) => item.title)).not.toEqual([
+        'Ask first',
+        'Run on its own',
+        'Off',
+      ])
+      for (const [index, mode] of ['ask', 'auto', 'off'].entries()) {
+        menu.items[index].handler!()
+        const [modes] = view.emitted('updateMany')!.at(-1) as [Record<string, string>]
+        expect(new Set(Object.values(modes))).toEqual(new Set([mode]))
+      }
+    } finally {
+      view.unmount()
+      shown.mockRestore()
+      initializeLocale('en', testCatalogs['en' as keyof typeof testCatalogs])
+    }
+  }
 })

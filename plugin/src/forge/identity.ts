@@ -1,9 +1,10 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import type { Deployment, ForgeKind } from './model'
 
 /** Normalize before binding a credential, retaining scheme, port and deployment path. */
 export function deployment(kind: ForgeKind, address: string): Deployment {
   const input = address.trim()
-  if (!input || /[?#\\]/.test(input)) throw new Error('Invalid forge deployment base.')
+  if (!input || /[?#\\]/.test(input)) throw new UiError(uiMessage('streamBError.1ea731dddc'))
   const absolute = /^[a-z][a-z\d+.-]*:\/\//i.test(input) ? input : `https://${input}`
   const path = absolute.replace(/^[a-z][a-z\d+.-]*:\/\/[^/]+/i, '')
   if (
@@ -15,10 +16,10 @@ export function deployment(kind: ForgeKind, address: string): Deployment {
       }
     })
   )
-    throw new Error('Invalid forge deployment path.')
+    throw new UiError(uiMessage('streamBError.5e61d71bfc'))
   const url = new URL(absolute)
   if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || !url.hostname)
-    throw new Error('Invalid forge deployment base.')
+    throw new UiError(uiMessage('streamBError.1ea731dddc'))
   const webBase = `${url.origin}${url.pathname.replace(/\/+$/, '')}`
   const apiBase =
     kind === 'github'

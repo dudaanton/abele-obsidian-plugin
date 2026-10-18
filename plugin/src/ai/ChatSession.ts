@@ -1,3 +1,6 @@
+import { uiErrorMessage, type UiMessage, UiError, uiMessage } from '@/i18n/streamBErrors'
+
+import { t } from '@/i18n'
 import {
   computed,
   effectScope,
@@ -25,17 +28,18 @@ import { DEFAULT_RETRY, backoffDelay, isTransient } from './retry'
 import { AgentLoop, failedToolResult } from './client/AgentLoop'
 import { nodeAccessRefusalOf } from './tools/node/accessRefusal'
 import { mobileBackground } from './mobileBackground'
-import type {
-  AgentEvent,
-  AgentTool,
-  AgentToolResult,
-  Message,
-  ModelConfig,
-  ReadMark,
-  TextContent,
-  ThinkingContent,
-  ToolCallContent,
-  ToolDefinition,
+import {
+  type AgentEvent,
+  type AgentTool,
+  type AgentToolResult,
+  type Message,
+  type ModelConfig,
+  type ReadMark,
+  type TextContent,
+  type ThinkingContent,
+  type ToolCallContent,
+  type ToolDefinition,
+  type UserContentPart,
 } from './client'
 import { projectBranchCuts } from './chatBranchCuts'
 import { ChatStorage } from './ChatStorage'
@@ -121,6 +125,7 @@ import {
   type ScopeEntry,
   type SessionOverrides,
   toolDiscoveryMode,
+  type InterceptorEntry,
 } from './agents/types'
 import {
   ChatMessage,
@@ -133,21 +138,20 @@ import {
   WRITE_TOOLS,
   DECK_WRITE_TOOLS,
   migrateOldPermissions,
+  type CommentAnchor,
+  type ChatDraft,
+  type MessageComment,
+  type ToolMode,
+  type PermissionMode,
+  type AiSettings,
+  type SubAgentRunRef,
+  type QueuedMessage,
+  type DelegationWakeFence,
+  type ChatReplyTo,
 } from './types'
-import type {
-  CommentAnchor,
-  ChatDraft,
-  MessageComment,
-  ToolMode,
-  PermissionMode,
-  AiSettings,
-  SubAgentRunRef,
-  QueuedMessage,
-  DelegationWakeFence,
-  ChatReplyTo,
-} from './types'
+
 import type { CommentState } from '@/editor/CommentPlugin'
-import type { UserContentPart } from './client'
+
 import { createAgentTools, getToolRegistry } from './tools'
 import { isScriptPath } from '@/scripting/scriptPath'
 import { createEditSelectionTool } from './tools/EditSelectionTool'
@@ -181,7 +185,7 @@ import {
   SINGLE_ENTRY_ID,
   withLegacyPatch,
 } from './interceptor/entries'
-import type { InterceptorEntry } from './agents/types'
+
 import { matchesPattern } from './interceptor/pattern'
 import {
   getPathToLeaf,
@@ -426,6 +430,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   public readonly isExecutingTool = ref(false)
   public readonly currentChatFile = shallowRef<TFile | null>(null)
   public readonly error = ref<string | null>(null)
+  public readonly errorPresentation = shallowRef<UiMessage | null>(null)
   public readonly attention = ref<LocalAttention>({})
   private restoringAttention = false
   private readonly attentionAcks = new Set<string>()
@@ -520,7 +525,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       await this.save()
       const settled = settledAttention(this.committedAttention)
       if (ids.some((id) => !settled.has(id)))
-        throw new Error('Could not save the acknowledgement. Try again.')
+        throw new UiError(uiMessage('streamBError.d132590f46'))
     } finally {
       for (const id of ids) this.attentionAcks.delete(id)
     }
@@ -1136,10 +1141,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   }
 
   toolDefs(): ToolDefinition[] {
-    return this.getTools().map((t) => ({
-      name: t.name,
-      description: t.description,
-      parameters: t.parameters,
+    return this.getTools().map((translationItem) => ({
+      name: translationItem.name,
+      description: translationItem.description,
+      parameters: translationItem.parameters,
     }))
   }
 
@@ -1222,6 +1227,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     if (this.isStreaming.value || this.isExecutingTool.value) return
     if (this.allInternalMessages.length === 0) return
 
+    this.errorPresentation.value = null
     this.error.value = null
     try {
       await this.runAgentLoop()
@@ -1340,10 +1346,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         this.kind === 'run'
           ? undefined
           : async (connection, signal) =>
-              (await import('@/github/approveConnection')).connectionApproval()(
-                connection,
-                signal
-              ),
+              (await import('@/github/approveConnection')).connectionApproval()(connection, signal),
     })
 
     // Overrides win over the agent's own tool modes, so a chat that narrowed its permissions
@@ -1395,7 +1398,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
           ...withSelection,
           ...allTools.filter(
             (tool) =>
-              BOOK_READ_TOOLS.has(tool.name) && !withSelection.some((t) => t.name === tool.name)
+              BOOK_READ_TOOLS.has(tool.name) &&
+              !withSelection.some((translationItem) => translationItem.name === tool.name)
           ),
         ]
       : withSelection
@@ -1480,9 +1484,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
               this.agent.value !== ownerAgent ||
               GlobalStore.getInstance().app !== invocationApp
             )
-              throw new Error('ZIP invocation owner changed')
+              throw new UiError(uiMessage('streamBError.e4184853d0'))
             if (!(ctx.interactive && ctx.approved) && this.needsApproval('zip', invocationParams))
-              throw new Error('ZIP write operations are not permitted without approval')
+              throw new UiError(uiMessage('streamBError.960fe81dfd'))
           },
           skillCeiling: this.skillCeiling,
           interactive: this.kind !== 'run',
@@ -1637,6 +1641,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         } else if (se.type === 'thinking_delta') {
           this.streamingThinking.value += se.delta
         } else if (se.type === 'error') {
+          this.errorPresentation.value = se.error ? null : uiMessage('streamBError.545311af41')
           this.error.value = se.error || 'Unknown streaming error'
           console.error('[Abele AI]', se.error)
         }
@@ -1676,9 +1681,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
           const chatMsg: ChatMessage = {
             id: nanoid(),
             role: 'assistant',
-            content: textParts.map((t) => t.text).join(''),
+            content: textParts.map((translationItem) => translationItem.text).join(''),
             thinking: thinkingParts.length
-              ? thinkingParts.map((t) => t.thinking).join('')
+              ? thinkingParts.map((translationItem) => translationItem.thinking).join('')
               : undefined,
             usage: am.usage
               ? {
@@ -1770,7 +1775,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     msg.parentId = this.activeLeafId || undefined
     if (this.pendingBranchCut) {
       if (msg.parentId !== this.pendingBranchCut)
-        throw new Error('The branch boundary changed before its continuation')
+        throw new UiError(uiMessage('streamBError.cf2e4ddaac'))
       msg.branchCutAfter = this.pendingBranchCut
       this.pendingBranchCut = undefined
     }
@@ -1990,6 +1995,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.isStreaming.value = true
     this.streamingContent.value = ''
     this.streamingThinking.value = ''
+    this.errorPresentation.value = null
     this.error.value = null
     // Give a new conversation a durable reference during a long first request. Fast turns
     // still use their ordinary single save; later transitions use the small local index.
@@ -1998,6 +2004,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     try {
       const model = this.resolveModel()
       if (!model) {
+        this.errorPresentation.value = this.agent.value
+          ? uiMessage('streamBError.338214ff83', { v0: this.agent.value.name })
+          : uiMessage('streamBError.a07cc0a057')
         this.error.value = this.agent.value
           ? `Agent "${this.agent.value.name}" has no usable model configured`
           : 'No agent is configured'
@@ -2108,6 +2117,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       if (err instanceof DOMException && err.name === 'AbortError') return
       const errObj = err instanceof Error ? err : new Error(String(err))
       if (errObj.name === 'AbortError') return
+      this.errorPresentation.value = errObj.message
+        ? uiErrorMessage(errObj)
+        : uiMessage('streamBError.0f56130f3d')
       this.error.value = errObj.message || 'An unknown error occurred'
       console.error('[Abele AI]', err)
     } finally {
@@ -2232,7 +2244,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
               (m) => m.toolCallId === tc.id,
               (m) => ({ ...m, toolStatus: 'pending' })
             )
-            throw new Error('Could not save the permission. The operation did not start.')
+            throw new UiError(uiMessage('streamBError.55409a75b4'))
           }
           if (controller.signal.aborted) {
             this.settleInterruptedCall(tc, 'not-run')
@@ -2345,10 +2357,12 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     // The person approved this very call: a tool its modes allow runs even if its section is
     // not in the current offer, as a call stopped for approval before the open was saved.
     const tool =
-      tools.find((t) => t.name === tc.name) ??
+      tools.find((translationItem) => translationItem.name === tc.name) ??
       this.hiddenTool(tc.name) ??
       this.wrapToolsForSession(
-        (this.lastOffer?.sections ?? []).flatMap((s) => s.tools).filter((t) => t.name === tc.name)
+        (this.lastOffer?.sections ?? [])
+          .flatMap((s) => s.tools)
+          .filter((translationItem) => translationItem.name === tc.name)
       )[0]
     const identityRefusal = pendingMcpToolRefusal(tc, AbeleConfig.getInstance().ai.mcpServers)
     if (
@@ -2542,7 +2556,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       : undefined
     if (isCurrent && !isCurrent()) return
     if (this.preparingClone.value) {
-      new Notice('Wait for the chat copy to finish.')
+      new Notice(t('streamB.waitForTheChatCopyToFinish.389500'))
       return
     }
     // Only a new explicit send can resume after Stop; automatic mailbox sends carry a fence.
@@ -2568,11 +2582,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     // The interceptor looks first, when there is one and the message is its kind. Never in a
     // run, where nobody is there to send a draft on.
     if (!isCurrent && this.interceptorHolds(content)) {
+      this.errorPresentation.value = null
       this.error.value = null
       return sendThroughChain(this.scriptSendHost(), content, attachments, replyTo)
     }
 
     const gen = this.generation
+    this.errorPresentation.value = null
     this.error.value = null
     this.userMessageCount++
     this.wroteThisTurn = false
@@ -3252,6 +3268,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.streamingThinking.value = ''
     this.pendingToolCalls.value = []
     this.currentChatFile.value = null
+    this.errorPresentation.value = null
     this.error.value = null
     this.attention.value = {}
     this.committedAttention = {}
@@ -3391,7 +3408,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
 
   async changeReply(id: string, change: (message: ChatMessage) => ChatMessage): Promise<void> {
     if (this.isMidTurn || this.isBusy || this.moving.value)
-      throw new Error('This chat is working. Wait for its turn to finish.')
+      throw new UiError(uiMessage('streamBError.854a5410e5'))
     try {
       await this.writeReplyChange(id, change)
     } finally {
@@ -3410,14 +3427,14 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.replyChanging = true
     try {
       const file = this.currentChatFile.value
-      if (!file) throw new Error('The reply is no longer available.')
+      if (!file) throw new UiError(uiMessage('streamBError.3865c0186d'))
       while (this.writing) await this.writing
       const { app } = GlobalStore.getInstance()
       if (!this.log.matches(parseChat(await app.vault.read(file))))
-        throw new Error('This chat changed elsewhere. Reopen it before making changes.')
+        throw new UiError(uiMessage('streamBError.c85c1160fb'))
       await this.flush()
       const before = this.allChatMessages.find((m) => m.id === id)
-      if (!before) throw new Error('The reply is no longer available.')
+      if (!before) throw new UiError(uiMessage('streamBError.3865c0186d'))
       const after = change(before)
       const snapshot = this.snapshot()
       const messages = snapshot.messages.map((m) => (m.id === id ? after : m))
@@ -3461,13 +3478,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   ): Promise<void> {
     while (this.writing) await this.writing
     if (this.replyChanging || this.moving.value)
-      throw new Error('This reply is being changed. Try again when it finishes.')
+      throw new UiError(uiMessage('streamBError.c5908dd3f8'))
     const file = this.currentChatFile.value
-    if (!file) throw new Error('The reply is no longer available.')
+    if (!file) throw new UiError(uiMessage('streamBError.3865c0186d'))
     const operation = Promise.resolve().then(async () => {
       const before = this.allChatMessages.find((m) => m.id === id)
       if (!before || before.role !== 'assistant' || before.draft)
-        throw new Error('Only saved model replies can be highlighted.')
+        throw new UiError(uiMessage('streamBError.8d825ed127'))
       const highlights = change(before.highlights ?? [])
       const snapshot = this.snapshot()
       // Internal records are appended in place by the running turn; freeze this write's cut.
@@ -3504,7 +3521,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         captured.revisions !== message.revisions ||
         (captured.selection && captured.selection.revisionId !== message.selection?.revisionId)
       )
-        throw new Error('The captured selection revision changed. Select the passage again.')
+        throw new UiError(uiMessage('streamBError.e6d5371478'))
       const { selection, revision } = prepareSelectionRevision(message, chatId, ports)
       return { selection, result: revision }
     })
@@ -3519,7 +3536,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
           (m) => m.id !== message.id && m.selection?.anchors.some((item) => item.id === anchor.id)
         )
       )
-        throw new Error('Anchor identity must be unique within the chat.')
+        throw new UiError(uiMessage('streamBError.9ed6e7f6a7'))
       return { selection, result: anchor }
     })
   }
@@ -3559,17 +3576,17 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     const file = this.currentChatFile.value
     const check = () => {
       if (this.destroyed || generation !== this.generation || this.currentChatFile.value !== file)
-        throw new Error('The captured conversation changed.')
+        throw new UiError(uiMessage('streamBError.392bcbe1e7'))
     }
     check()
     if (this.replyChanging || this.moving.value || this.kind === 'run')
-      throw new Error('This message is being changed. Try again when it finishes.')
-    if (!file) throw new Error('Only saved chat messages can have selection anchors.')
+      throw new UiError(uiMessage('streamBError.a2091f71aa'))
+    if (!file) throw new UiError(uiMessage('streamBError.0d2f0c2bed'))
     const operation = Promise.resolve().then(async () => {
       check()
       const message = this.findMessage(id)
       if (!message || message.draft || (message.role !== 'user' && message.role !== 'assistant'))
-        throw new Error('Only saved user or model messages can have selection anchors.')
+        throw new UiError(uiMessage('streamBError.36e8bead5c'))
       const chatId = this.chatIdentity ?? nextId()
       const { selection, result } = change(message, chatId)
       const snapshot = this.snapshot()
@@ -3623,7 +3640,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         this.moving.value ||
         this.kind === 'run'
       )
-        throw new Error('The captured conversation changed. Reopen it before linking.')
+        throw new UiError(uiMessage('streamBError.eda0e6622d'))
     }
     let attempted = false
     const operation = Promise.resolve().then(async () => {
@@ -3707,11 +3724,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     if (this.delegationParentId) return this.delegationParentId
     const file = this.currentChatFile.value
     const generation = this.generation
-    if (!file || this.kind === 'run')
-      throw new Error('Save this parent chat before approving node delegation')
+    if (!file || this.kind === 'run') throw new UiError(uiMessage('streamBError.c93dfca065'))
     const check = () => {
       if (this.destroyed || generation !== this.generation || this.currentChatFile.value !== file)
-        throw new Error('The parent conversation changed')
+        throw new UiError(uiMessage('streamBError.132388cd4d'))
     }
     check()
     const operation = Promise.resolve().then(async () => {
@@ -3770,10 +3786,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     check?: () => void,
     onAttempt?: () => void
   ): Promise<void> {
-    if (this.bindingWriteBlocked)
-      throw new Error(
-        'A link publication is uncertain. Reopen this chat to inspect its persisted source before writing.'
-      )
+    if (this.bindingWriteBlocked) throw new UiError(uiMessage('streamBError.7d35f0db1e'))
     this.localRevision++
     const written = serializeChat(snapshot)
     const { app } = GlobalStore.getInstance()
@@ -3785,7 +3798,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         (content) => {
           check?.()
           if (!this.log.matches(parseChat(content)))
-            throw new Error('This chat changed elsewhere. Reopen it before making changes.')
+            throw new UiError(uiMessage('streamBError.c85c1160fb'))
           attempted = true
           onAttempt?.()
         },
@@ -3816,7 +3829,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     color: HighlightColor = 'yellow'
   ): Promise<void> {
     if (!quote.trim() || !Number.isInteger(start) || start < 0 || !HIGHLIGHT_COLORS.includes(color))
-      throw new Error('Select some words in a model reply first.')
+      throw new UiError(uiMessage('streamBError.e0774494e5'))
     await this.changeReplyHighlights(id, (marks) => {
       const kept = marks.filter((h) => h.quote !== quote || h.start !== start)
       return [...kept, { id: nanoid(), quote, start, color }]
@@ -3824,10 +3837,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   }
 
   async recolorReplyHighlight(id: string, highlight: string, color: HighlightColor): Promise<void> {
-    if (!HIGHLIGHT_COLORS.includes(color)) throw new Error('Choose a highlight colour.')
+    if (!HIGHLIGHT_COLORS.includes(color)) throw new UiError(uiMessage('streamBError.5d1f47524d'))
     await this.changeReplyHighlights(id, (marks) => {
       if (!marks.some((h) => h.id === highlight))
-        throw new Error('The highlight is no longer available.')
+        throw new UiError(uiMessage('streamBError.218b14f26c'))
       return marks.map((h) => (h.id === highlight ? { ...h, color } : h))
     })
   }
@@ -3856,15 +3869,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
 
   async decideReplyProposal(id: string, accept: boolean): Promise<void> {
     if (this.replyDeciding || this.isMidTurn || this.isBusy)
-      throw new Error('Wait for this chat to finish its turn.')
+      throw new UiError(uiMessage('streamBError.9b77d73c1b'))
     let proposal = this.allChatMessages.find((m) => m.id === id)?.replyProposal
     if (proposal?.status === 'accepted' && !accept)
-      throw new Error(
-        'This proposal was accepted. Finish applying it, then use Undo on the parent reply.'
-      )
+      throw new UiError(uiMessage('streamBError.9390b6928f'))
     const resumable = proposal?.status === 'accepted' && proposal.application === 'pending'
     if (!proposal || (proposal.status !== 'pending' && !resumable))
-      throw new Error('This proposal is no longer pending.')
+      throw new UiError(uiMessage('streamBError.879f176aec'))
     this.replyDeciding = true
     try {
       // Commit the owner decision first under the child file's compare-and-swap guard.
@@ -3963,8 +3974,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     await this.save()
     // Automatic flush is deliberately best-effort: it logs write errors and keeps dirty=true.
     // Releasing/closing must not mistake that fulfilled Promise for a durable save.
-    if (this.dirty || this.writing !== null)
-      throw new Error('This chat still has unsaved changes. Try saving it again before closing.')
+    if (this.dirty || this.writing !== null) throw new UiError(uiMessage('streamBError.dee0fd6565'))
   }
 
   /** Inspect current source after an expansion's write/confirmation failed, without replaying it. */
@@ -3972,13 +3982,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     const file = this.currentChatFile.value
     const id = this.commentId
     if (!file || !id || this.writing || this.isBusy || this.isMidTurn)
-      throw new Error('The expansion cannot be confirmed while the conversation is changing.')
+      throw new UiError(uiMessage('streamBError.80d27f4757'))
     const path = file.path,
       version = this.conversationVersion.value,
       revision = this.localRevision
     const main = await inspectMainChat(GlobalStore.getInstance().app, file)
     if (!main?.metadata || main.metadata.commentId !== id || main.metadata.commentLocation !== path)
-      throw new Error('The saved discussion is unavailable or has changed identity.')
+      throw new UiError(uiMessage('streamBError.97188092c4'))
     // Refresh the exact file binding too; a failed readback left its pre-write observation stale.
     const { snapshot: saved, identity } = await ChatStorage.getInstance().prepareDiscussion(
       file,
@@ -3999,7 +4009,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       this.conversationVersion.value !== version ||
       this.localRevision !== revision
     )
-      throw new Error('The discussion changed while confirming the expansion.')
+      throw new UiError(uiMessage('streamBError.ab47750c92'))
     // No confirmed change: preserve local pending work; the caller can restore its old binding.
     if (this.log.matchesDiscussionRevision(saved)) return { metadata, unchanged: true }
     // Never replace local edits that arrived during the failed write, or merge a foreign history
@@ -4009,9 +4019,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       JSON.stringify(saved.messages) !== JSON.stringify(this.allChatMessages) ||
       JSON.stringify(saved.internalMessages) !== JSON.stringify(this.allInternalMessages)
     )
-      throw new Error(
-        'Local work changed. Confirm the saved conversation before retrying expansion.'
-      )
+      throw new UiError(uiMessage('streamBError.cfe8f23fc1'))
     if (this.persistTimer !== null) window.clearTimeout(this.persistTimer)
     this.persistTimer = null
     this.dirty = false
@@ -4226,7 +4234,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         this.currentChatFile.value !== file ||
         this.conversationVersion.value !== version
       )
-        throw new Error('The selection source changed. Open the link again.')
+        throw new UiError(uiMessage('streamB.theSelectionSourceChangedOpenTheLink.cedf06'))
       await this.reconcileSelectionSnapshot(isCurrent)
     })()
     this.selectionReconciliation = operation
@@ -4240,7 +4248,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   private async reconcileSelectionSnapshot(isCurrent: () => boolean): Promise<void> {
     const file = this.currentChatFile.value
     const version = this.conversationVersion.value
-    if (!file) throw new Error('The selection source is no longer open.')
+    if (!file) throw new UiError(uiMessage('streamBError.92f4905c24'))
     while (this.writing) await this.writing
     if (!isCurrent()) return
     const localRevision = this.localRevision
@@ -4257,19 +4265,18 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       this.currentChatFile.value !== file ||
       this.conversationVersion.value !== version
     )
-      throw new Error('The selection source changed. Open the link again.')
+      throw new UiError(uiMessage('streamB.theSelectionSourceChangedOpenTheLink.cedf06'))
     if (this.localRevision !== localRevision)
-      throw new Error('This chat changed while returning. Open the link again.')
+      throw new UiError(uiMessage('streamBError.0bda7be5eb'))
     if (!result || this.log.matches(result)) return
     if (this.dirty || this.writing || this.isBusy || this.isMidTurn || this.moving.value)
-      throw new Error(
-        'This chat changed elsewhere. Finish or save the local work before returning to the selection.'
-      )
+      throw new UiError(uiMessage('streamBError.4d4b0467c4'))
     // Do not use load/reset: reset saves the old snapshot and retires the local draft.
     this.abortBackground()
     this.readGuard.settle()
     this.results.settle()
     this.summarizer.forgetRecap()
+    this.errorPresentation.value = null
     this.error.value = null
     this.lastModelId = ''
     const restoring = this.restoringAttention
@@ -4293,7 +4300,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       this.currentChatFile.value ||
       this.allChatMessages.length
     )
-      throw new Error('The chat copy was cancelled.')
+      throw new UiError(uiMessage('streamBError.93215f7df9'))
     await this.restoreLoadedChat(file, result, { readOnly: true })
   }
 
@@ -4459,7 +4466,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       this.isStreaming.value ||
       this.isExecutingTool.value ||
       this.pendingToolCalls.value.length > 0
-    if (busy) new Notice(`The chat is busy — stop it or wait for the turn to finish to ${action}`)
+    if (busy) new Notice(t('streamB.theChatIsBusyStopItOr.62cfb3', { v0: String(action) }))
     return busy
   }
 
@@ -4477,7 +4484,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       this.preparingClone.value ||
       this.branchSwitchBlocked
     ) {
-      new Notice('The chat is busy — stop it or wait for the turn to finish to branch')
+      new Notice(t('streamB.theChatIsBusyStopItOr.19c674'))
       return
     }
     const target = this.allChatMessages.find((message) => message.id === messageId)
@@ -4496,7 +4503,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       target.role === 'tool-call' &&
       (target.toolStatus === 'pending' || target.toolResult === undefined)
     ) {
-      new Notice('Wait for the call to return before branching from it')
+      new Notice(t('streamB.waitForTheCallToReturnBefore.01692d'))
       return
     }
     if (cut) {
@@ -4508,7 +4515,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         )
       } catch (error) {
         new Notice(
-          error instanceof Error ? error.message : 'This call has no verified context boundary'
+          error instanceof Error
+            ? error.message
+            : t('streamB.thisCallHasNoVerifiedContextBoundary.4a5c1b')
         )
         return
       }
@@ -4761,6 +4770,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
    */
   private async runTurnFor(bubble: ChatMessage, policy?: ToolPolicy): Promise<void> {
     const gen = this.generation
+    this.errorPresentation.value = null
     this.error.value = null
     this.userMessageCount++
     this.wroteThisTurn = false
@@ -4810,10 +4820,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   }
 
   getDebugData(): Record<string, unknown> {
-    const tools = this.getTools().map((t) => ({
-      name: t.name,
-      description: t.description,
-      parameters: t.parameters,
+    const tools = this.getTools().map((translationItem) => ({
+      name: translationItem.name,
+      description: translationItem.description,
+      parameters: translationItem.parameters,
     }))
     return {
       systemPrompt: this.chatService.getSystemPrompt(this),

@@ -21,7 +21,7 @@
       v-if="parts.rest"
       v-model="open"
       class="abele-github-notice__more"
-      label="What to check"
+      :label="t('repository.check')"
     >
       <div class="abele-github-notice__rest">{{ parts.rest }}</div>
     </Disclosure>
@@ -29,6 +29,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, ref } from 'vue'
 import Disclosure from '../obsidian/Disclosure.vue'
 import Icon from '../obsidian/Icon.vue'
@@ -46,7 +47,7 @@ const props = withDefaults(
     retry?: boolean
     retryTooltip?: string
   }>(),
-  { busy: false, retry: true, retryTooltip: 'Ask GitHub again' }
+  { busy: false, retry: true, retryTooltip: () => t('repository.askAgain') }
 )
 
 const emit = defineEmits<{

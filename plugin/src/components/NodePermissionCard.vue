@@ -22,7 +22,7 @@
     <Disclosure
       v-if="prompt.input || prompt.tool_name"
       v-model="detailOpen"
-      label="Original action"
+      :label="t('streamB.originalAction.67ccdf')"
     >
       <code v-if="prompt.tool_name">{{ prompt.tool_name }}</code>
       <Diff
@@ -44,18 +44,29 @@
       class="abele-node-permission__note"
       role="status"
     >
-      Answer sent ·
-      {{ answerState.choice === 'allow' ? (isQuestion ? 'Answer' : 'Approve') : 'Deny' }}
+      {{
+        t('streamBMeta.7c3c58a4a0', {
+          p0: String(
+            answerState.choice === 'allow'
+              ? isQuestion
+                ? t('streamB.answer.b2a3aa')
+                : t('streamB.approve.6007ac')
+              : t('streamB.deny.05a2d7')
+          ),
+        })
+      }}
       <template v-if="answerState.value !== undefined"> · {{ answerState.value }}</template>
-      <template v-if="answerState.state === 'pending'"> · waiting for confirmation</template>
-      <template v-if="answerState.error">
-        · not accepted: <NodeErrorText :error="answerState.error"
+      <template v-if="answerState.state === 'pending'">{{
+        t('streamB.waitingForConfirmation.bc8582')
+      }}</template>
+      <template v-if="answerState.error"
+        >{{ t('streamB.notAccepted.0f11a8') }} <NodeErrorText :error="answerState.error"
       /></template>
       <div class="abele-tool-approval__actions">
         <Button
-          text="Stop"
+          :text="t('streamB.stop.cae7d5')"
           :disabled="disabled"
-          tooltip="Reject and stop the agent"
+          :tooltip="t('streamB.rejectAndStopTheAgent.7da416')"
           @click="!disabled && emit('stop')"
         />
       </div>
@@ -65,38 +76,44 @@
       <select
         v-if="prompt.kind === 'select'"
         v-model="value"
-        aria-label="Question answer"
+        :aria-label="t('streamB.questionAnswer.e9700c')"
         :disabled="disabled"
       >
-        <option value="">Choose an answer</option>
+        <option value="">{{ t('streamB.chooseAnAnswer.8cf0e3') }}</option>
         <option v-for="option in prompt.options" :key="option" :value="option">{{ option }}</option>
       </select>
       <Input
         v-if="prompt.kind === 'input'"
         v-model="value"
         as-text-area
-        aria-label="Question answer"
+        :aria-label="t('streamB.questionAnswer.e9700c')"
         :disabled="disabled"
       />
       <div class="abele-tool-approval__actions">
         <Button
-          text="Deny"
+          :text="t('streamB.deny.05a2d7')"
           :disabled="disabled"
-          tooltip="Do not allow this action"
+          :tooltip="t('streamB.doNotAllowThisAction.90f17c')"
           @click="emit('answer', 'deny')"
         />
         <Button
-          :text="isQuestion ? 'Answer' : fake ? 'Allow' : 'Approve'"
+          :text="
+            isQuestion
+              ? t('streamB.answer.b2a3aa')
+              : fake
+                ? t('streamB.allow.e213c1')
+                : t('streamB.approve.6007ac')
+          "
           accent
           :disabled="disabled || !valid"
-          tooltip="Approve exactly this action or answer this question once"
+          :tooltip="t('streamB.approveExactlyThisActionOrAnswerThis.518d23')"
           @click="approve"
         />
         <Button
           class="abele-tool-approval__stop"
-          text="Stop"
+          :text="t('streamB.stop.cae7d5')"
           :disabled="disabled"
-          tooltip="Reject and stop the agent"
+          :tooltip="t('streamB.rejectAndStopTheAgent.7da416')"
           @click="!disabled && emit('stop')"
         />
       </div>
@@ -107,12 +124,12 @@
         :state="prompt.delivered ? 'done' : 'skipped'"
         :text="
           prompt.delivered
-            ? 'Decision delivered to provider'
-            : 'Decision saved; delivery not confirmed'
+            ? t('streamB.decisionDeliveredToProvider.784839')
+            : t('streamB.decisionSavedDeliveryNotConfirmed.75c4c8')
         "
       />
-      {{ isQuestion ? 'Question' : 'Permission' }} {{ prompt.state
-      }}{{ prompt.choice ? ': ' + prompt.choice : '' }}
+      {{ isQuestion ? t('streamB.question.289aff') : t('streamB.permission.229efc') }}
+      {{ streamBLabel(prompt.state) }}{{ prompt.choice ? ': ' + streamBLabel(prompt.choice) : '' }}
       <template v-if="prompt.value !== undefined && prompt.value !== null">
         · {{ prompt.value }}</template
       >
@@ -120,8 +137,8 @@
         ·
         {{
           prompt.delivered
-            ? 'Decision delivered to provider'
-            : 'Decision saved; delivery not confirmed'
+            ? t('streamB.decisionDeliveredToProvider.784839')
+            : t('streamB.decisionSavedDeliveryNotConfirmed.75c4c8')
         }}</template
       >
     </div>
@@ -129,6 +146,8 @@
 </template>
 <script setup lang="ts">
 import NodeErrorText from '@/components/NodeErrorText.vue'
+import { streamBLabel } from '@/i18n/streamBLabels'
+import { t } from '@/i18n'
 import { computed, ref, watch } from 'vue'
 import type { Prompt } from '@abele/node-client'
 import { toolSummary, readableToolName } from '@/ai/toolLine'

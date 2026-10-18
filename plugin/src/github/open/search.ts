@@ -1,3 +1,5 @@
+import { uiFields, uiMessage } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 /**
  * What the "Open on GitHub" picker offers for an input: the rows it can show at once, and the
  * questions to GitHub that fill in the rest.
@@ -84,16 +86,36 @@ const KIND_OF_TARGET: Record<GithubTarget['kind'], RowKind> = {
 }
 
 const KIND_NAME: Record<RowKind, string> = {
-  pull: 'Pull request',
-  issue: 'Issue',
-  discussion: 'Discussion',
-  commit: 'Commit',
-  compare: 'Comparison',
-  branch: 'Branch',
-  repo: 'Repository',
-  file: 'File',
-  folder: 'Folder',
-  list: 'List',
+  get pull() {
+    return t('streamB.pullRequest.f3dba6')
+  },
+  get issue() {
+    return t('streamB.issue.48dc76')
+  },
+  get discussion() {
+    return t('streamB.discussion.5eb6cf')
+  },
+  get commit() {
+    return t('streamB.commit.82a9c4')
+  },
+  get compare() {
+    return t('streamB.comparison.571527')
+  },
+  get branch() {
+    return t('streamB.branch.52656e')
+  },
+  get repo() {
+    return t('streamB.repository.13d6ff')
+  },
+  get file() {
+    return t('streamB.file.50009c')
+  },
+  get folder() {
+    return t('streamB.folder.74ccd4')
+  },
+  get list() {
+    return t('streamB.list.6f202f')
+  },
   note: '',
 }
 
@@ -115,11 +137,15 @@ const firstLine = (text: string | undefined) => (text ?? '').split('\n')[0].trim
 function problem(e: unknown, search: boolean): string {
   if (e instanceof GithubError) {
     if (e.kind === 'rate-limit' && search) {
-      return 'GitHub takes only a few searches a minute (10 without a token, 30 with one). Pause a moment, then type again.'
+      return t('streamB.githubTakesOnlyAFewSearchesA.412946')
     }
     return [e.reason, e.fix].filter(Boolean).join(' ')
   }
-  return e instanceof Error ? e.message : typeof e === 'string' ? e : 'GitHub could not be asked.'
+  return e instanceof Error
+    ? e.message
+    : typeof e === 'string'
+      ? e
+      : t('streamB.githubCouldNotBeAsked.b4b43c')
 }
 
 const isGone = (e: unknown) => e instanceof GithubError && (e.status === 404 || e.status === 410)
@@ -173,8 +199,11 @@ export class OpenSearch {
       return [
         {
           kind: 'discussion',
-          title: `Discussion #${n}`,
-          note: `${repoName(repo)} has no issue or pull request #${n}; it may be a discussion, which GitHub shows only with a token`,
+          title: t('streamB.discussion.b5b5e7', { v0: String(n) }),
+          note: t('streamB.hasNoIssueOrPullRequestIt.2b75ea', {
+            v0: String(repoName(repo)),
+            v1: String(n),
+          }),
           url: itemUrl(repo, 'discussion', n),
           repo,
         },
@@ -188,12 +217,17 @@ export class OpenSearch {
       where
     )
     const d = data.repository?.discussion
-    if (!d) throw new GithubError('not-found', `${repoName(repo)} has nothing numbered #${n}.`, 404)
+    if (!d)
+      throw new GithubError(
+        'not-found',
+        t('streamB.hasNothingNumbered.7b85d4', { v0: String(repoName(repo)), v1: String(n) }),
+        404
+      )
     return [
       {
         kind: 'discussion',
         title: d.title,
-        note: `${where} · Discussion · ${discussionState(d)}`,
+        note: t('streamB.discussion.b1a6bb', { v0: String(where), v1: String(discussionState(d)) }),
         url: itemUrl(repo, 'discussion', n),
         repo,
       },
@@ -204,7 +238,10 @@ export class OpenSearch {
     const q = `repo:${repoName(repo)} ${text} in:title`
     const found = await this.clientFor(repo.host, repo).get<{ items?: RawIssue[] }>(
       `/search/issues?q=${encodeURIComponent(q)}&per_page=${SEARCH_RESULTS}`,
-      { what: `the issues of ${repoName(repo)}` }
+      uiFields(
+        { what: t('streamB.theIssuesOf.853087', { v0: String(repoName(repo)) }) },
+        { what: uiMessage('streamB.theIssuesOf.853087', { v0: String(repoName(repo)) }) }
+      )
     )
     return (found.items ?? []).map((issue) => {
       const kind = issue.pull_request ? 'pull' : 'issue'
@@ -232,7 +269,7 @@ export class OpenSearch {
     }>(
       'query($q:String!){search(query:$q,type:DISCUSSION,first:5){nodes{... on Discussion{number title closed isAnswered}}}}',
       { q: `repo:${repoName(repo)} ${text} in:title` },
-      `the discussions of ${repoName(repo)}`
+      t('streamB.theDiscussionsOf.88e759', { v0: String(repoName(repo)) })
     )
     return (data.search?.nodes ?? [])
       .filter((d): d is { number: number; title: string } => !!d?.number && !!d.title)
@@ -259,18 +296,24 @@ export class OpenSearch {
   private async branches(repo: RepoRef): Promise<OpenRow[]> {
     const page = await this.clientFor(repo.host, repo).get<{ name: string }[]>(
       `${repoApiPath(repo)}/branches?per_page=${BRANCH_PAGE}`,
-      { what: `the branches of ${repoName(repo)}` }
+      uiFields(
+        { what: t('streamB.theBranchesOf.53ceb4', { v0: String(repoName(repo)) }) },
+        { what: uiMessage('streamB.theBranchesOf.53ceb4', { v0: String(repoName(repo)) }) }
+      )
     )
     const rows = page.map((b) => this.branchRow(repo, b.name))
     // A full page means there are more: say so to `view`, which then asks by prefix as well.
-    if (page.length >= BRANCH_PAGE) rows.push({ kind: 'note', title: 'more' })
+    if (page.length >= BRANCH_PAGE) rows.push({ kind: 'note', title: t('streamB.more.187897') })
     return rows
   }
 
   private async branchesStarting(repo: RepoRef, prefix: string): Promise<OpenRow[]> {
     const refs = await this.clientFor(repo.host, repo).get<{ ref: string }[]>(
       `${repoApiPath(repo)}/git/matching-refs/heads/${encodeRef(prefix)}`,
-      { what: `the branches of ${repoName(repo)}` }
+      uiFields(
+        { what: t('streamB.theBranchesOf.53ceb4', { v0: String(repoName(repo)) }) },
+        { what: uiMessage('streamB.theBranchesOf.53ceb4', { v0: String(repoName(repo)) }) }
+      )
     )
     return refs
       .slice(0, BRANCH_RESULTS)
@@ -282,12 +325,20 @@ export class OpenSearch {
       const c = await this.clientFor(repo.host, repo).get<{
         sha: string
         commit?: { message?: string; author?: { name?: string } }
-      }>(`${repoApiPath(repo)}/commits/${encodeURIComponent(sha)}`, { what: 'the commit' })
+      }>(
+        `${repoApiPath(repo)}/commits/${encodeURIComponent(sha)}`,
+        uiFields(
+          {
+            what: t('streamB.theCommit.5479d7'),
+          },
+          { what: uiMessage('streamB.theCommit.5479d7') }
+        )
+      )
       return [
         {
           kind: 'commit',
           title: firstLine(c.commit?.message) || c.sha.slice(0, 7),
-          note: `${repoName(repo)}@${c.sha.slice(0, 7)} · Commit${c.commit?.author?.name ? ` by ${c.commit.author.name}` : ''}`,
+          note: `${repoName(repo)}@${c.sha.slice(0, 7)} · Commit${c.commit?.author?.name ? t('streamB.by.e2474f', { v0: String(c.commit.author.name) }) : ''}`,
           url: commitUrl(repo, c.sha),
           repo,
         },
@@ -303,7 +354,7 @@ export class OpenSearch {
     return {
       kind: 'repo',
       title: repoName(repo),
-      note: ['Repository', description?.trim()].filter(Boolean).join(' · '),
+      note: [t('streamB.repository.13d6ff'), description?.trim()].filter(Boolean).join(' · '),
       // The front page, at the default branch: the address of the repository itself.
       url: repoWeb(repo),
       repo,
@@ -335,9 +386,15 @@ export class OpenSearch {
         default_branch: string
         description?: string | null
       }[]
-    }>(`/search/repositories?q=${encodeURIComponent(`${text} in:name`)}&per_page=6`, {
-      what: 'repositories',
-    })
+    }>(
+      `/search/repositories?q=${encodeURIComponent(`${text} in:name`)}&per_page=6`,
+      uiFields(
+        {
+          what: t('streamB.repositories.a80388'),
+        },
+        { what: uiMessage('streamB.repositories.a80388') }
+      )
+    )
     return (found.items ?? []).map((r) =>
       this.repoRow({ host, owner: r.owner.login, repo: r.name }, r.description)
     )
@@ -350,7 +407,7 @@ export class OpenSearch {
       const settled = this.settled.get(lookup.key)
       const url = settled?.rows.find((r) => r.url)?.url
       if (url) return url
-      throw new Error(settled?.error ?? 'GitHub has nothing under that.')
+      throw new Error(settled?.error ?? t('streamB.githubHasNothingUnderThat.371590'))
     }
   }
 
@@ -364,7 +421,7 @@ export class OpenSearch {
         lookup.placeholder = {
           kind: 'repo',
           title: repoName(q.repo),
-          note: 'Repository · its front page',
+          note: t('streamBMeta.2b2a826200'),
           resolve: this.resolver(lookup),
           repo: q.repo,
         }
@@ -380,7 +437,7 @@ export class OpenSearch {
         lookup.placeholder = {
           kind: 'issue',
           title: `#${q.number}`,
-          note: `${repoName(repo)} · looking it up…`,
+          note: t('streamBMeta.601f9f0a0b', { v0: String(repoName(repo)) }),
           resolve: this.resolver(lookup),
           repo,
         }
@@ -490,21 +547,20 @@ export class OpenSearch {
           rows: [],
           pending: false,
           message: contextRepo
-            ? `Type a number, words of a title, a branch or a commit in ${repoName(contextRepo)} — or paste a link.`
-            : 'Paste a GitHub link, or type owner/repo, owner/repo#123, or owner/repo and words of a title.',
+            ? t('streamB.typeANumberWordsOfATitle.ac825e', { v0: String(repoName(contextRepo)) })
+            : t('streamB.pasteAGithubLinkOrTypeOwner.10a7eb'),
         }
       case 'foreign':
         return {
           rows: [],
           pending: false,
-          message: `${q.host} is neither github.com nor the server set in Abele settings → GitHub.`,
+          message: t('streamB.isNeitherGithubComNorTheServer.be167c', { v0: String(q.host) }),
         }
       case 'unreadable':
         return {
           rows: [],
           pending: false,
-          message:
-            'That link names no repository. Paste a link to an issue, pull request, discussion, commit, branch or file.',
+          message: t('streamB.thatLinkNamesNoRepositoryPasteA.54b3cb'),
         }
       case 'link':
         return {
@@ -512,7 +568,9 @@ export class OpenSearch {
             {
               kind: KIND_OF_TARGET[q.target.kind],
               title: shortName(q.target),
-              note: `${KIND_NAME[KIND_OF_TARGET[q.target.kind]]} · open this link`,
+              note: t('streamBMeta.94baf70fc0', {
+                v0: String(KIND_NAME[KIND_OF_TARGET[q.target.kind]]),
+              }),
               url: q.url,
               repo: { host: q.target.host, owner: q.target.owner, repo: q.target.repo },
             },
@@ -525,7 +583,10 @@ export class OpenSearch {
           return {
             rows: [],
             pending: false,
-            message: `${range} in which repository? Type owner/repo ${range}, or open a GitHub tab first.`,
+            message: t('streamB.inWhichRepositoryTypeOwnerRepoOr.2fee0a', {
+              v0: String(range),
+              v1: String(range),
+            }),
           }
         }
         return {
@@ -535,8 +596,8 @@ export class OpenSearch {
               title: range,
               note: `${repoName(q.repo)} · Comparison · ${
                 q.direct
-                  ? `${q.base} and ${q.head} side by side`
-                  : `what ${q.head} has that ${q.base} has not`
+                  ? t('streamBMeta.b6fbdd868e', { v0: String(q.base), v1: String(q.head) })
+                  : t('streamBMeta.3fcf1e30fc', { v0: String(q.head), v1: String(q.base) })
               }`,
               url: compareUrl(q.repo, q.base, q.head, q.direct),
               repo: q.repo,
@@ -550,7 +611,10 @@ export class OpenSearch {
           return {
             rows: [],
             pending: false,
-            message: `#${q.number} in which repository? Type owner/repo#${q.number}, open a GitHub tab first, or set a default repository in Abele settings → GitHub.`,
+            message: t('streamB.inWhichRepositoryTypeOwnerRepoOpen.9400af', {
+              v0: String(q.number),
+              v1: String(q.number),
+            }),
           }
         }
         break
@@ -584,23 +648,23 @@ export class OpenSearch {
         rows: [
           ...unique,
           ...errors.map((e) => ({ kind: 'note' as const, title: e })),
-          ...(pending ? [{ kind: 'note' as const, title: 'Asking GitHub…' }] : []),
+          ...(pending ? [{ kind: 'note' as const, title: t('streamB.askingGithub.5becc0') }] : []),
         ],
         pending,
       }
     }
-    if (pending) return { rows: [], pending, message: 'Asking GitHub…' }
+    if (pending) return { rows: [], pending, message: t('streamB.askingGithub.5becc0') }
     if (errors.length > 0) return { rows: [], pending, message: errors.join(' ') }
     if (q.kind === 'text' && !q.repo && !q.named && q.text.length < MIN_SEARCH) {
-      return { rows: [], pending, message: 'Keep typing…' }
+      return { rows: [], pending, message: t('streamB.keepTyping.de7456') }
     }
     return {
       rows: [],
       pending,
       message:
         q.kind === 'text' && q.repo
-          ? `Nothing in ${repoName(q.repo)} has a title or branch like that.`
-          : 'GitHub has nothing like that.',
+          ? t('streamB.nothingInHasATitleOrBranch.0e724d', { v0: String(repoName(q.repo)) })
+          : t('streamB.githubHasNothingLikeThat.8fdbe1'),
     }
   }
 }

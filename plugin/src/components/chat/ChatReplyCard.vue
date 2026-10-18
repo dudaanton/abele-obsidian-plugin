@@ -18,13 +18,14 @@
       v-if="removable"
       icon="x"
       class="abele-chat-reply-card__remove"
-      :tooltip="'Take this reply out'"
+      :tooltip="t('chat.removeReply')"
       @click.stop="emit('remove')"
     />
   </div>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, onMounted, ref, watch } from 'vue'
 import { setTooltip } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'
@@ -44,11 +45,7 @@ const emit = defineEmits<{ (e: 'open'): void; (e: 'remove'): void }>()
 
 const words = computed(() => props.to.quote.replace(/\s+/g, ' ').trim())
 const label = computed(() =>
-  props.gone
-    ? 'Its message is in another branch of this chat'
-    : props.removable
-      ? 'The agent gets a link to these words, not the words again; click to see them'
-      : 'Go to the words this answered'
+  props.gone ? t('chat.replyGone') : props.removable ? t('chat.replyLink') : t('chat.replyGo')
 )
 const el = ref<HTMLElement>()
 const tip = () => el.value && setTooltip(el.value, label.value)

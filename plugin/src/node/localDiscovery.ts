@@ -1,12 +1,13 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import { Platform } from 'obsidian'
 import { LocalDiscovery, type DesktopRuntime } from './localDiscoveryCore'
 export type { LocalNode } from './localDiscoveryCore'
 export function localNodeRegistrationUrl(endpoint: string): string {
   if (!/^ws:\/\/127\.0\.0\.1:\d+\/channel$/.test(endpoint))
-    throw new Error('The protected local channel must be exact loopback.')
+    throw new UiError(uiMessage('streamBError.eed78d87c1'))
   const url = new URL(endpoint)
   if (!url.port || Number(url.port) < 1 || Number(url.port) > 65535)
-    throw new Error('Invalid local node port')
+    throw new UiError(uiMessage('streamBError.5f035cba63'))
   return `http://127.0.0.1:${url.port}`
 }
 /** The protected discovery implementation is shared with the node SDK; only this loader knows Obsidian. */

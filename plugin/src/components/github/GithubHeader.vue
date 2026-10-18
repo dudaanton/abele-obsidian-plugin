@@ -3,7 +3,9 @@
     <div class="abele-github-header__top">
       <DrawerViewSwitch
         icon="github"
-        :name="native ? t('settings.GithubSettings.git_hosting.a3002011') : 'GitHub'"
+        :name="
+          native ? t('settings.GithubSettings.git_hosting.a3002011') : t('streamB.github.f911e4')
+        "
       />
       <div v-if="$slots.controls" class="abele-github-header__controls">
         <slot name="controls" />
@@ -19,7 +21,11 @@
           v-bind="nativeAction"
           icon="folder-tree"
           :active="tree"
-          :tooltip="tree ? 'Hide the file tree' : 'Show the repository\'s files beside this'"
+          :tooltip="
+            tree
+              ? t('streamB.hideTheFileTree.0da55e')
+              : t('streamB.showTheRepositorySFilesBesideThis.e1d212')
+          "
           @keydown.enter.prevent="emit('tree')"
           @keydown.space.prevent="emit('tree')"
           @click="emit('tree')"
@@ -28,7 +34,7 @@
           v-if="swap"
           v-bind="nativeAction"
           icon="arrow-left-right"
-          tooltip="Swap base and head: what base has that head has not"
+          :tooltip="t('streamB.swapBaseAndHeadWhatBaseHas.b665db')"
           @keydown.enter.prevent="emit('swap')"
           @keydown.space.prevent="emit('swap')"
           @click="emit('swap')"
@@ -37,7 +43,7 @@
           v-if="compare"
           v-bind="nativeAction"
           icon="git-compare"
-          tooltip="Compare against a branch, tag or commit…"
+          :tooltip="t('streamB.compareAgainstABranchTagOrCommit.23b381')"
           @keydown.enter.prevent="emit('compare')"
           @keydown.space.prevent="emit('compare')"
           @click="emit('compare')"
@@ -45,7 +51,7 @@
         <Icon
           v-bind="nativeAction"
           icon="search"
-          tooltip="Find in this tab (Mod+F)"
+          :tooltip="t('streamB.findInThisTabModF.de7869')"
           @click="emit('find')"
           @keydown.enter.prevent="emit('find')"
           @keydown.space.prevent="emit('find')"
@@ -53,7 +59,7 @@
         <Icon
           v-bind="nativeAction"
           icon="file-search"
-          tooltip="Search the code: this change, the whole repository, or file names"
+          :tooltip="t('streamB.searchTheCodeThisChangeTheWhole.b06270')"
           @keydown.enter.prevent="emit('search')"
           @keydown.space.prevent="emit('search')"
           @click="emit('search')"
@@ -62,7 +68,7 @@
           v-if="chat"
           v-bind="nativeAction"
           icon="message-square-plus"
-          tooltip="Chat about this: a new chat with a link to it in the input"
+          :tooltip="t('streamB.chatAboutThisANewChatWith.a3e982')"
           @keydown.enter.prevent="emit('chat')"
           @keydown.space.prevent="emit('chat')"
           @click="emit('chat')"
@@ -72,10 +78,10 @@
           icon="refresh-cw"
           :tooltip="
             node
-              ? 'Refresh from the node'
+              ? t('streamB.refreshFromTheNode.dade74')
               : native
                 ? t('settings.git.reloadService')
-                : 'Load again from GitHub'
+                : t('streamB.loadAgainFromGithub.2429ac')
           "
           :disabled="loading"
           @keydown.enter.prevent="loading || emit('refresh')"
@@ -86,7 +92,11 @@
           v-if="url"
           v-bind="nativeAction"
           icon="external-link"
-          :tooltip="native ? t('settings.git.openBrowser') : 'Open this on GitHub in the browser'"
+          :tooltip="
+            native
+              ? t('settings.git.openBrowser')
+              : t('streamB.openThisOnGithubInTheBrowser.c80abc')
+          "
           @keydown.enter.prevent="emit('browser')"
           @keydown.space.prevent="emit('browser')"
           @click="emit('browser')"
@@ -108,7 +118,10 @@
       <div v-if="state || labels?.length" class="abele-github-header__badges">
         <!-- The state as a dot of GitHub's own meaning, the labels as words with their colour. -->
         <span v-if="state" class="abele-github-header__state">
-          <StatusDot :tone="stateTone(state)" :label="`State: ${state}`" />{{ state }}
+          <StatusDot
+            :tone="stateTone(state)"
+            :label="t('streamB.state.2a3ddf', { v0: String(streamBLabel(state)) })"
+          />{{ streamBLabel(state) }}
         </span>
         <span
           v-for="label in labels"
@@ -132,8 +145,9 @@
 </template>
 
 <script setup lang="ts">
-import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 import { t } from '@/i18n'
+import { streamBLabel } from '@/i18n/streamBLabels'
+import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 import { isNativeForge } from '@/forge/native'
 import { computed, ref } from 'vue'
 import { useRepositorySource } from '@/repository/context'

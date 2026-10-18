@@ -16,11 +16,27 @@
         <Badge v-for="topic in meta.topics" :key="topic" :text="topic" color="blue" />
       </div>
       <div v-if="source?.github" class="abele-github-home__stats">
-        <Icon icon="star" no-hover :text-right="`${formatCount(meta.stars)} stars`" />
-        <Icon icon="git-fork" no-hover :text-right="`${formatCount(meta.forks)} forks`" />
-        <Icon icon="eye" no-hover :text-right="`${formatCount(meta.watchers)} watching`" />
+        <Icon
+          icon="star"
+          no-hover
+          :text-right="t('streamB.stars.07b802', { v0: String(formatCount(meta.stars)) })"
+        />
+        <Icon
+          icon="git-fork"
+          no-hover
+          :text-right="t('streamB.forks.d8d183', { v0: String(formatCount(meta.forks)) })"
+        />
+        <Icon
+          icon="eye"
+          no-hover
+          :text-right="t('streamB.watching.7d9193', { v0: String(formatCount(meta.watchers)) })"
+        />
         <Icon v-if="meta.license" icon="scale" no-hover :text-right="meta.license" />
-        <Icon icon="git-branch" no-hover :text-right="`default ${meta.defaultBranch}`" />
+        <Icon
+          icon="git-branch"
+          no-hover
+          :text-right="t('streamB.default.1a6902', { v0: String(meta.defaultBranch) })"
+        />
       </div>
     </div>
 
@@ -28,22 +44,22 @@
       <Button
         class="abele-github-home__ref"
         icon="git-branch"
-        :text="shortRef(nodeRevisionLabel(home.ref))"
-        tooltip="Switch to another branch or tag: the files and the README follow"
+        :text="shortRef(streamBLabel(nodeRevisionLabel(home.ref)))"
+        :tooltip="t('streamB.switchToAnotherBranchOrTagThe.fd1dd7')"
         @click="switchRef"
       />
       <Button
         v-if="meta.defaultBranch && home.ref !== meta.defaultBranch"
         icon="undo-2"
         :text="meta.defaultBranch"
-        tooltip="Back to the default branch"
+        :tooltip="t('streamB.backToTheDefaultBranch.f1545a')"
         @click="emit('open', homeUrl(repo, undefined), false)"
       />
       <Button
         class="abele-github-home__files"
         icon="folder-tree"
-        text="Files"
-        tooltip="Show the repository's file tree beside the page"
+        :text="t('streamB.files.abc7e9')"
+        :tooltip="t('streamB.showTheRepositorySFileTreeBeside.d02c9b')"
         @click="emit('tree')"
       />
     </div>
@@ -53,7 +69,7 @@
         <GithubRepoList
           v-if="release.data.value || release.error.value"
           list="release"
-          title="Latest release"
+          :title="t('streamB.latestRelease.4abf09')"
           :rows="releaseRows"
           :error="release.error.value"
           empty=""
@@ -65,7 +81,7 @@
         <GithubRepoList
           v-if="source?.github"
           list="pulls"
-          title="Open pull requests"
+          :title="t('streamB.openPullRequests.c9293d')"
           :rows="pullRows"
           :error="pulls.error.value"
           empty="No open pull requests."
@@ -77,7 +93,7 @@
         <GithubRepoList
           v-if="source?.github && meta.hasIssues"
           list="issues"
-          title="Open issues"
+          :title="t('streamB.openIssues.28aa00')"
           :rows="issueRows"
           :error="issues.error.value"
           empty="No open issues."
@@ -91,10 +107,14 @@
           class="abele-github-home__langs"
           data-list="languages"
         >
-          <FoldHeading text="Languages" />
+          <FoldHeading :text="t('streamB.languages.318655')" />
           <div v-if="languages.error.value" class="abele-github-home__langs-error">
             <EmptyState :text="languages.error.value" />
-            <Icon icon="refresh-cw" tooltip="Ask GitHub again" @click="languages.load" />
+            <Icon
+              icon="refresh-cw"
+              :tooltip="t('streamB.askGithubAgain.5a9135')"
+              @click="languages.load"
+            />
           </div>
           <div
             v-if="languages.data.value?.length"
@@ -123,7 +143,7 @@
       </div>
 
       <div class="abele-github-home__main">
-        <EmptyState v-if="home.empty" text="This repository is empty: it has no files yet." />
+        <EmptyState v-if="home.empty" :text="t('streamB.thisRepositoryIsEmptyItHasNo.140abf')" />
         <GithubFolder
           v-else
           :folder="home"
@@ -138,6 +158,8 @@
 </template>
 
 <script setup lang="ts">
+import { streamBLabel } from '@/i18n/streamBLabels'
+import { t } from '@/i18n'
 import { computed, watch } from 'vue'
 import type { PaneType } from 'obsidian'
 import Badge from '../obsidian/Badge.vue'

@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * The query of a list of pull requests, issues or discussions, in GitHub's own search syntax —
  * `is:open label:bug author:ann sort:updated-desc` — which is the one source of truth: the field
@@ -31,8 +32,8 @@ const keyOf = (token: string): string | null => {
 export function qualifier(query: string, key: string): string[] {
   const k = key.toLowerCase()
   return tokens(query)
-    .filter((t) => keyOf(t) === k)
-    .map((t) => unquote(t.slice(t.indexOf(':') + 1)))
+    .filter((translationItem) => keyOf(translationItem) === k)
+    .map((translationItem) => unquote(translationItem.slice(translationItem.indexOf(':') + 1)))
 }
 
 /**
@@ -47,10 +48,12 @@ export function setQualifier(
   among?: string[]
 ): string {
   const k = key.toLowerCase()
-  const kept = tokens(query).filter((t) => {
-    if (keyOf(t) !== k) return true
+  const kept = tokens(query).filter((translationItem) => {
+    if (keyOf(translationItem) !== k) return true
     if (!among) return false
-    return !among.includes(unquote(t.slice(t.indexOf(':') + 1)).toLowerCase())
+    return !among.includes(
+      unquote(translationItem.slice(translationItem.indexOf(':') + 1)).toLowerCase()
+    )
   })
   if (value) kept.push(`${key}:${quote(value)}`)
   return kept.join(' ')
@@ -76,10 +79,30 @@ export interface SortOption {
 }
 
 export const SORTS: SortOption[] = [
-  { id: 'created-desc', label: 'Newest' },
-  { id: 'created-asc', label: 'Oldest' },
-  { id: 'comments-desc', label: 'Most commented' },
-  { id: 'updated-desc', label: 'Recently updated' },
+  {
+    id: 'created-desc',
+    get label() {
+      return t('streamB.newest.d15efa')
+    },
+  },
+  {
+    id: 'created-asc',
+    get label() {
+      return t('streamB.oldest.505dc4')
+    },
+  },
+  {
+    id: 'comments-desc',
+    get label() {
+      return t('streamB.mostCommented.e68ba2')
+    },
+  },
+  {
+    id: 'updated-desc',
+    get label() {
+      return t('streamB.recentlyUpdated.474b2a')
+    },
+  },
 ]
 
 /** `sort:updated-desc` as the search API takes it: apart from the query, as two parameters. */
@@ -107,8 +130,28 @@ export function searchQuery(kind: ListKind, repo: string, query: string): string
 
 /** The review a pull request list may be narrowed to: GitHub's `review:` values. */
 export const REVIEWS: { value: string; label: string }[] = [
-  { value: 'none', label: 'No reviews' },
-  { value: 'required', label: 'Review required' },
-  { value: 'approved', label: 'Approved' },
-  { value: 'changes_requested', label: 'Changes requested' },
+  {
+    value: 'none',
+    get label() {
+      return t('streamB.noReviews.f29c76')
+    },
+  },
+  {
+    value: 'required',
+    get label() {
+      return t('streamB.reviewRequired.f0742e')
+    },
+  },
+  {
+    value: 'approved',
+    get label() {
+      return t('streamB.approved.87b42e')
+    },
+  },
+  {
+    value: 'changes_requested',
+    get label() {
+      return t('streamB.changesRequested.10a92a')
+    },
+  },
 ]

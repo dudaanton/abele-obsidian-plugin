@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { ref, type Ref } from 'vue'
 import type { NodeClient } from '@abele/node-client'
 import type { LiveSessionState } from '@abele/node-protocol'
@@ -21,11 +22,21 @@ const modeOf = (wire: string): PermissionMode =>
 /** Claude Code's model aliases: the node takes them, and does not list its models yet. */
 const MODEL_ALIASES = ['opus', 'sonnet', 'haiku']
 const EFFORT_LABEL: Record<string, string> = {
-  low: 'Low',
-  medium: 'Medium',
-  high: 'High',
-  xhigh: 'Extra high',
-  max: 'Max',
+  get low() {
+    return t('streamB.low.f793de')
+  },
+  get medium() {
+    return t('streamB.medium.8e588c')
+  },
+  get high() {
+    return t('streamB.high.c4ebc6')
+  },
+  get xhigh() {
+    return t('streamB.extraHigh.70eb32')
+  },
+  get max() {
+    return t('streamB.max.a1a593')
+  },
 }
 
 /** «Opus», «Opus 5.5» from `opus` or `claude-opus-5-5`; anything else as the node says it. */
@@ -36,16 +47,53 @@ export function modelLabel(model: string): string {
   return found[2] ? `${family} ${found[2].replace(/-/g, '.')}` : family
 }
 
-const accountLabel = (name: string): string => (name === 'default' ? 'Main subscription' : name)
+const accountLabel = (name: string): string =>
+  name === 'default' ? t('streamB.mainSubscription.7b9f84') : name
 
 /** The commands a node session takes after «/», before its skills. */
 export const SESSION_COMMANDS: NodeSessionLive['commands'] = [
-  { name: 'compact', description: 'Compact the context', kind: 'command' },
-  { name: 'model', description: 'Choose the model', kind: 'command' },
-  { name: 'effort', description: 'Choose how hard it thinks', kind: 'command' },
-  { name: 'mode', description: 'Choose what it asks you about', kind: 'command' },
-  { name: 'rename', description: 'Rename the session', kind: 'command' },
-  { name: 'stop', description: 'Stop the session and what it runs', kind: 'command' },
+  {
+    name: 'compact',
+    get description() {
+      return t('streamB.compactTheContext.64080c')
+    },
+    kind: 'command',
+  },
+  {
+    name: 'model',
+    get description() {
+      return t('streamB.chooseTheModel.b5529e')
+    },
+    kind: 'command',
+  },
+  {
+    name: 'effort',
+    get description() {
+      return t('streamB.chooseHowHardItThinks.9c5116')
+    },
+    kind: 'command',
+  },
+  {
+    name: 'mode',
+    get description() {
+      return t('streamB.chooseWhatItAsksYouAbout.4091f5')
+    },
+    kind: 'command',
+  },
+  {
+    name: 'rename',
+    get description() {
+      return t('streamB.renameTheSession.8b6333')
+    },
+    kind: 'command',
+  },
+  {
+    name: 'stop',
+    get description() {
+      return t('streamB.stopTheSessionAndWhatItRuns.761fd9')
+    },
+    kind: 'command',
+  },
 ]
 
 export interface SessionActions {

@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import type { ChatMessage, MessageComment } from './types'
 import {
   buildChatNavigation,
@@ -71,7 +72,10 @@ export async function searchNavigationDiscussions(options: {
     if (!data) {
       const entry = {
         discussionId: comment.id,
-        label: [...trail, navigationExcerpt(comment.quote ?? '') || 'Discussion'].join(' › '),
+        label: [
+          ...trail,
+          navigationExcerpt(comment.quote ?? '') || t('streamB.discussion.5eb6cf'),
+        ].join(' › '),
       }
       result.unavailable.push(entry)
       options.onUnavailable?.(entry)

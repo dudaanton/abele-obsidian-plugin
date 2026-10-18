@@ -3,7 +3,11 @@
     <!-- While GitHub is off, only the drawer switch remains available. -->
     <div v-show="enabled || inDrawer" class="nav-header">
       <div class="nav-buttons-container abele-github-notifications__buttons">
-        <DrawerViewSwitch icon="bell" name="GitHub notifications" @shown="inDrawer = $event" />
+        <DrawerViewSwitch
+          icon="bell"
+          :name="t('streamB.githubNotifications.e44213')"
+          @shown="inDrawer = $event"
+        />
         <Icon
           v-if="enabled"
           class="clickable-icon nav-action-button abele-github-notifications__refresh"
@@ -18,8 +22,8 @@
           icon="check-check"
           :tooltip="
             state.repo
-              ? `Mark all of ${state.repo} as read on GitHub (keep in inbox, not Done)`
-              : 'Mark all as read on GitHub (keep in inbox, not Done)'
+              ? t('streamB.markAllOfAsReadOnGithub.cdde52', { v0: String(state.repo) })
+              : t('streamB.markAllAsReadOnGithubKeep.960d11')
           "
           :disabled="busy || !unreadCount"
           @click="markAllRead"
@@ -28,7 +32,7 @@
           v-if="enabled"
           class="clickable-icon nav-action-button abele-github-notifications__on-github"
           icon="external-link"
-          tooltip="Open the notifications on GitHub"
+          :tooltip="t('streamB.openTheNotificationsOnGithub.b3e403')"
           :disabled="!enabled"
           @click="emit('external', inboxUrl)"
         />
@@ -58,12 +62,16 @@
 
     <div v-if="enabled && locallyHidden" class="abele-github-notifications__error" role="status">
       <GithubNotice
-        :text="`GitHub still lists ${locallyHidden} unchanged notification(s) after accepting Done (HTTP 204). Local fallback: hidden for this session only. Check the inbox on GitHub; changed notifications will be shown again.`"
+        :text="
+          t('streamB.githubStillListsUnchangedNotificationSAfter.155190', {
+            v0: String(locallyHidden),
+          })
+        "
         :retry="false"
       />
       <Button
-        text="Show locally hidden"
-        tooltip="Forget local Done memory and show what GitHub lists"
+        :text="t('streamB.showLocallyHidden.046e90')"
+        :tooltip="t('streamB.forgetLocalDoneMemoryAndShowWhat.829caa')"
         :disabled="busy"
         @click="clearDoneMemory"
       />
@@ -77,13 +85,13 @@
       v-if="!enabled"
       icon="github"
       badge="power-off"
-      title="GitHub is off"
-      text="Turn it on to see issues, pull requests and notifications here."
+      :title="t('streamB.githubIsOff.f16b79')"
+      :text="t('streamB.turnItOnToSeeIssuesPull.ee04f8')"
     >
       <template #action>
         <Button
-          text="Open GitHub settings"
-          tooltip="Turn GitHub on in the settings"
+          :text="t('streamB.openGithubSettings.a40b53')"
+          :tooltip="t('streamB.turnGithubOnInTheSettings.5f00a5')"
           @click="openGithubSettings"
         />
       </template>
@@ -91,7 +99,7 @@
     <div v-else-if="error" class="abele-github-notifications__error">
       <GithubNotice :text="error" :busy="busy" @retry="refresh(true)" />
     </div>
-    <EmptyState v-else-if="items === null" text="Loading from GitHub…" />
+    <EmptyState v-else-if="items === null" :text="t('streamB.loadingFromGithub.20d317')" />
     <EmptyState v-else-if="!shown.length" :text="emptyText" />
     <div v-else class="abele-github-notifications__list" role="list">
       <div
@@ -126,7 +134,7 @@
           <span class="abele-github-notification__mark" @click.stop @keydown.enter.stop>
             <Icon
               icon="check"
-              tooltip="Done on GitHub (remove from inbox)"
+              :tooltip="t('streamB.doneOnGithubRemoveFromInbox.bc553f')"
               :disabled="busy || marking.has(n.id)"
               @click="markDone(n)"
             />
@@ -134,13 +142,15 @@
         </div>
       </div>
       <div v-if="truncated" class="abele-github-notifications__more">
-        GitHub has more than these. The rest are on GitHub.
+        {{ t('streamB.githubHasMoreThanTheseTheRest.4e4d15') }}
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { presentUiError } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 import type { PaneType } from 'obsidian'
@@ -234,8 +244,16 @@ const shown = computed(() =>
 const unreadCount = computed(() => shown.value.filter((n) => n.unread).length)
 
 const whichTabs = computed(() => [
-  { id: 'unread', label: 'Unread', tooltip: 'Only the notifications not read yet' },
-  { id: 'all', label: 'All', tooltip: 'GitHub inbox: read and unread, not Done' },
+  {
+    id: 'unread',
+    label: t('streamB.unread.1b9f38'),
+    tooltip: t('streamB.onlyTheNotificationsNotReadYet.10b690'),
+  },
+  {
+    id: 'all',
+    label: t('streamB.all.a52ace'),
+    tooltip: t('streamB.githubInboxReadAndUnreadNotDone.a8370f'),
+  },
 ])
 
 const repoOptions = computed(() => {
@@ -243,7 +261,7 @@ const repoOptions = computed(() => {
   for (const n of items.value ?? []) counts.set(n.repo, (counts.get(n.repo) ?? 0) + 1)
   if (props.state.repo && !counts.has(props.state.repo)) counts.set(props.state.repo, 0)
   return [
-    { value: '', display: 'All repositories' },
+    { value: '', display: t('streamB.allRepositories.77fe4e') },
     ...[...counts]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([repo, count]) => ({ value: repo, display: `${repo} (${count})` })),
@@ -251,11 +269,13 @@ const repoOptions = computed(() => {
 })
 
 const emptyText = computed(() =>
-  props.state.which === 'unread' ? 'No unread notifications.' : 'No notifications.'
+  props.state.which === 'unread'
+    ? t('streamB.noUnreadNotifications.7b9676')
+    : t('streamB.noNotifications.0b7899')
 )
 
-const refreshTooltip = computed(
-  () => `Ask GitHub now (it asks to be polled every ${pollSeconds.value} s)`
+const refreshTooltip = computed(() =>
+  t('streamB.askGithubNowItAsksToBe.32aca0', { v0: String(pollSeconds.value) })
 )
 
 /**
@@ -328,7 +348,7 @@ async function refresh(force = false) {
     }
   } catch (e) {
     if (props.enabled && client === reader().client && which === props.state.which)
-      error.value = e instanceof Error ? e.message : String(e)
+      error.value = presentUiError(e)
   } finally {
     finishBusy()
   }
@@ -396,7 +416,7 @@ async function markDone(n: GithubNotification) {
   } catch (e) {
     if (props.enabled && client === reader().client && source === displayedInbox.value) {
       failedDoneId.value = n.id
-      doneError.value = e instanceof Error ? e.message : String(e)
+      doneError.value = presentUiError(e)
     }
   } finally {
     marking.delete(n.id)
@@ -426,7 +446,7 @@ async function markAllRead() {
     items.value = (items.value ?? []).map((n) => read.get(n.id) ?? n)
     error.value = ''
   } catch (e) {
-    if (client === reader().client) error.value = e instanceof Error ? e.message : String(e)
+    if (client === reader().client) error.value = presentUiError(e)
   } finally {
     finishBusy()
   }

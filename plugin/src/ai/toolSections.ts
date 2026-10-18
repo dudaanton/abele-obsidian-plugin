@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * The sections an agent opens its tools by, and what each one says of itself.
  *
@@ -40,9 +41,12 @@ export const TOOL_SECTIONS: readonly ToolSectionDefinition[] = [
   {
     id: 'nodes',
     group: 'Nodes',
-    label: 'Node',
-    summary:
-      'Files, search and git history on folders this chat was given on a node. What it can reach is set per chat in Node access.',
+    get label() {
+      return t('streamB.node.e93372')
+    },
+    get summary() {
+      return t('streamBMeta.354509b1c9')
+    },
     description:
       "Projects on the person's paired computers (nodes): reading and searching code in a project folder or Git worktree, editing files there, checking Git status, diffs, branches and history, the open repository tabs, handing a task to a coding agent that runs on a node, reading a run the debugger recorded there, and the project's saved HTTP requests. Open this whenever the person talks about a project, repository, branch, worktree, commit or a source file that is not a vault note. Not for vault notes — the file tools handle those.",
     howTo: [
@@ -147,7 +151,7 @@ export const TOOL_SECTIONS: readonly ToolSectionDefinition[] = [
   {
     id: 'github',
     group: 'GitHub',
-    label: 'Git hosting',
+    label: t('settings.GithubSettings.git_hosting.a3002011'),
     description:
       'GitHub, read-only: issues, pull requests, their files, commits, code search and files at a version, and the GitHub tabs open in the app. Open this when the person mentions an issue, a pull request or a repository on GitHub.',
     howTo:
@@ -385,28 +389,48 @@ export const NODE_ACTIONS: readonly {
 }[] = [
   {
     id: 'read',
-    label: 'Read files and search',
-    desc: 'Open, list and search files; status, diffs and history in git.',
+    get label() {
+      return t('streamB.readFilesAndSearch.6ded96')
+    },
+    get desc() {
+      return t('streamB.openListAndSearchFilesStatusDiffs.18a909')
+    },
   },
   {
     id: 'edit',
-    label: 'Edit files',
-    desc: 'Create, change, move, copy and delete files.',
+    get label() {
+      return t('streamB.editFiles.562123')
+    },
+    get desc() {
+      return t('streamB.createChangeMoveCopyAndDeleteFiles.e0b897')
+    },
   },
   {
     id: 'worktrees',
-    label: 'Worktrees',
-    desc: 'List a folder’s worktrees and switch between them.',
+    get label() {
+      return t('streamB.worktrees.aec2f9')
+    },
+    get desc() {
+      return t('streamB.listAFolderSWorktreesAndSwitch.d44270')
+    },
   },
   {
     id: 'delegate',
-    label: 'Hand work to a node agent',
-    desc: 'Give a task to a coding agent on a node, follow it, send it more and cancel it.',
+    get label() {
+      return t('streamB.handWorkToANodeAgent.e90a0f')
+    },
+    get desc() {
+      return t('streamB.giveATaskToACodingAgent.29a212')
+    },
   },
   {
     id: 'debugger',
-    label: 'Debugger runs',
-    desc: 'Read the runs the debugger recorded, mark their steps, add record points and write them up; read, save, import and send the project’s saved requests.',
+    get label() {
+      return t('streamB.debuggerRuns.b907a9')
+    },
+    get desc() {
+      return t('streamB.readTheRunsTheDebuggerRecordedMark.c7ad7a')
+    },
   },
 ]
 

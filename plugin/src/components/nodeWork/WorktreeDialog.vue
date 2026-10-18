@@ -1,11 +1,11 @@
 <template>
   <div class="abele-worktree-dialog">
-    <Setting name="Branch" :desc="branchNote" :error="problem">
+    <Setting :name="t('streamB.branch.52656e')" :desc="branchNote" :error="problem">
       <Input
         ref="field"
         v-model="branch"
-        placeholder="new-branch"
-        aria-label="Branch"
+        :placeholder="t('streamBRest.newBranch')"
+        :aria-label="t('streamB.branch.52656e')"
         :invalid="!!problem"
         autocomplete="off"
         spellcheck="false"
@@ -13,16 +13,18 @@
       />
     </Setting>
     <Setting
-      name="Start from"
+      :name="t('streamB.startFrom.eb3f51')"
       :desc="
-        existing ? 'Not needed: the branch is already there.' : 'The branch the new one begins at.'
+        existing
+          ? t('streamB.notNeededTheBranchIsAlreadyThere.df9541')
+          : t('streamB.theBranchTheNewOneBeginsAt.ed8c2d')
       "
     >
       <Button
         :text="base"
         icon="git-branch"
         :disabled="existing"
-        tooltip="Choose the branch to start from"
+        :tooltip="t('streamB.chooseTheBranchToStartFrom.aea1e2')"
         class="abele-worktree-dialog__base"
         @click="emit('choose-base')"
       />
@@ -32,12 +34,16 @@
       <span class="abele-worktree-dialog__path">{{ where }}</span>
     </div>
     <div class="modal-button-container">
-      <Button text="Cancel" tooltip="Close without making anything" @click="emit('cancel')" />
       <Button
-        text="Create"
+        :text="t('streamB.cancel.19766e')"
+        :tooltip="t('streamB.closeWithoutMakingAnything.16ddc1')"
+        @click="emit('cancel')"
+      />
+      <Button
+        :text="t('streamB.create.475949')"
         accent
         :disabled="!branch.trim() || !!problem"
-        tooltip="Make the worktree on the node"
+        :tooltip="t('streamB.makeTheWorktreeOnTheNode.6bf7e0')"
         @click="create"
       />
     </div>
@@ -45,6 +51,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 // A new worktree of a repository: a branch, and the branch it starts from. Typing the name of a
 // branch that is already there checks that one out instead, and the line under the name says
 // so. The node picks the folder itself; the last line shows where.
@@ -79,18 +86,20 @@ const name = computed(() => branch.value.trim())
 const existing = computed(() => props.branches.includes(name.value))
 const problem = computed(() =>
   props.taken.includes(name.value)
-    ? `${name.value} is already open in another worktree.`
+    ? t('streamB.isAlreadyOpenInAnotherWorktree.f512a1', { v0: String(name.value) })
     : /\s|\.\.|[~^:?*[\\]/.test(name.value)
-      ? 'A branch name has no spaces and none of ~ ^ : ? * [ \\'
+      ? t('streamB.aBranchNameHasNoSpacesAnd.7799d9')
       : undefined
 )
 const branchNote = computed(() =>
-  existing.value ? 'This branch is already there; the worktree checks it out.' : 'A new branch.'
+  existing.value
+    ? t('streamB.thisBranchIsAlreadyThereTheWorktree.9f5288')
+    : t('streamB.aNewBranch.f45871')
 )
 const where = computed(() =>
   props.home
     ? `${props.home}/${name.value || '…'}`
-    : 'The node chooses the folder for this worktree.'
+    : t('streamB.theNodeChoosesTheFolderForThis.d87a64')
 )
 
 function create() {

@@ -15,14 +15,18 @@
     >
       <Icon :icon="branch ? 'git-branch' : 'folder'" size="xs" :interactive="false" />
       <span v-if="branch ?? folder" class="abele-node-place__name">{{ branch ?? folder }}</span>
-      <span v-else class="abele-node-place__none">Choose a folder</span>
+      <span v-else class="abele-node-place__none">{{ t('streamB.chooseAFolder.5c71b8') }}</span>
       <span v-if="busy" class="abele-node-place__busy" aria-hidden="true" />
       <Icon icon="chevrons-up-down" size="xs" :interactive="false" />
     </div>
     <Icon
       icon="more-horizontal"
       size="xs"
-      :tooltip="folder ? `What can be done in ${branch ?? folder}` : 'Node menu'"
+      :tooltip="
+        folder
+          ? t('streamB.whatCanBeDoneIn.7581a7', { v0: String(branch ?? folder) })
+          : t('streamB.nodeMenu.72a622')
+      "
       @click="emit('menu', $event)"
     />
     <!-- Under the name, quiet: the folder the branch is checked out in, then whatever the page
@@ -36,6 +40,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 /**
  * The node panel's one place picker: a row that names the node, folder and branch the panel shows
  * and opens the search over all of them. Replaces the folder tree that stood above the files.
@@ -46,7 +51,7 @@ import Icon from '../obsidian/Icon.vue'
 
 const props = defineProps<{
   /** The node's name, for the tooltip; the node itself stands in the row above. */
-  node: string
+  node?: string
   folder?: string
   branch?: string
   /** The node is still answering: the tree stays as it was, a spinner says so here. */
@@ -60,8 +65,17 @@ const tip = () =>
   setTooltip(
     rowEl.value,
     props.folder
-      ? `${[props.folder, props.branch].filter(Boolean).join(' / ')} · choose another folder or branch on ${props.node}`
-      : `Choose a folder on ${props.node}`
+      ? props.node != null
+        ? t('streamB.chooseAnotherFolderOrBranchOn.9b35de', {
+            v0: String([props.folder, props.branch].filter(Boolean).join(' / ')),
+            v1: String(props.node),
+          })
+        : t('streamBMeta.55bed39f71', {
+            v0: String([props.folder, props.branch].filter(Boolean).join(' / ')),
+          })
+      : props.node != null
+        ? t('streamB.chooseAFolderOn.117554', { v0: String(props.node) })
+        : t('streamBMeta.b433400677')
   )
 onMounted(tip)
 watch(() => [props.folder, props.branch, props.node], tip)

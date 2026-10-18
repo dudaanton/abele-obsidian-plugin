@@ -1,3 +1,7 @@
+import { streamBLabel } from '@/i18n/streamBLabels'
+import { uiMessage, uiErrorMessage, presentUiError } from '@/i18n/streamBErrors'
+
+import { t } from '@/i18n'
 import type { ResultFile, CodeResults } from '@/repository/model'
 export type { ResultLine, ResultFile, CodeResults } from '@/repository/model'
 /**
@@ -33,11 +37,11 @@ import {
 } from './source'
 import type { CodeNav } from './navAddon'
 
-import type { Scope } from '@/repository/search'
+import { type Scope, type TabChanges } from '@/repository/search'
 export type { Scope } from '@/repository/search'
 
 /** The changes a tab shows, and how a line in them is linked. */
-import type { TabChanges } from '@/repository/search'
+
 export type { TabChanges } from '@/repository/search'
 
 export interface TabCodeSource {
@@ -75,10 +79,18 @@ export const blobUrl = (r: RepoRef, ref: string, path: string, line?: number) =>
   }`
 
 export const STAGE_TEXT: Record<Stage, string> = {
-  listing: 'Listing the files…',
-  downloading: 'Downloading the repository…',
-  unpacking: 'Unpacking…',
-  indexing: 'Indexing…',
+  get listing() {
+    return t('streamB.listingTheFiles.e6dc84')
+  },
+  get downloading() {
+    return t('streamB.downloadingTheRepository.1c0f44')
+  },
+  get unpacking() {
+    return t('streamB.unpacking.4b57c3')
+  },
+  get indexing() {
+    return t('streamB.indexing.740c08')
+  },
 }
 
 export class TabCode implements CodeNav {
@@ -173,7 +185,8 @@ export class TabCode implements CodeNav {
     if (!this.captured) {
       const snapshot = this.snapshot()
       const result = await snapshot.code.search(scope, query, glob, onStage, signal)
-      if (!snapshot.current()) throw new DOMException('The GitHub tab changed.', 'AbortError')
+      if (!snapshot.current())
+        throw new DOMException(t('streamB.theGithubTabChanged.ce8a42'), 'AbortError')
       return result
     }
     if (this.src.source) {
@@ -210,7 +223,7 @@ export class TabCode implements CodeNav {
       total: hits.length,
       capped: hits.length >= 200,
       note: tree.truncated
-        ? `GitHub listed only the first ${tree.files.length} files of this repository.`
+        ? t('streamB.githubListedOnlyTheFirstFilesOf.9b06a1', { v0: String(tree.files.length) })
         : undefined,
     }
   }
@@ -222,14 +235,16 @@ export class TabCode implements CodeNav {
     const sha = await this.src.sha()
     const client = this.src.client()
     const repo = this.src.repo()
-    const fetchWhole: FetchWhole = (path) => client.fileText(repo, path, sha, 'the file')
+    const fetchWhole: FetchWhole = (path) =>
+      client.fileText(repo, path, sha, t('streamB.theFile.994659'))
     const result = await searchChanges(changes.files, query, { glob, fetchWhole })
     return {
       files: result.files.map((f) => ({
         path: f.path,
         url: changes.lineUrl(f.hash),
         lines: f.matches.map((m) => ({
-          label: m.side === 'L' ? `${m.line} before` : String(m.line),
+          label:
+            m.side === 'L' ? t('streamB.before.c55eec', { v0: String(m.line) }) : String(m.line),
           text: m.text,
           column: m.column,
           length: m.length,
@@ -277,7 +292,7 @@ export class TabCode implements CodeNav {
   private async searchOnGithub(query: CodeQuery, why: TooLargeError): Promise<CodeResults> {
     if (query.regex) {
       throw new QueryError(
-        `${why.message} GitHub's own code search, which is used instead, takes no regular expressions.`
+        uiMessage('streamB.githubSOwnCodeSearchWhichIs.5f4d1a', { v0: uiErrorMessage(why) })
       )
     }
     const client = this.src.client()
@@ -303,7 +318,10 @@ export class TabCode implements CodeNav {
       })),
       total: result.total,
       capped: result.capped,
-      note: `${why.message} These results are from GitHub's own code search, which knows only the default branch (${branch}) and shows fragments rather than lines.`,
+      note: t('streamB.theseResultsAreFromGithubSOwn.74c32c', {
+        v0: String(why.message),
+        v1: String(branch),
+      }),
     }
   }
 
@@ -318,13 +336,22 @@ export class TabCode implements CodeNav {
     const repo = this.src.repo()
     let notice: Notice | null = null
     const onStage = (stage: Stage) => {
-      notice ??= new Notice(`Looking for ${name}…`, 0)
-      notice.setMessage(`Looking for ${name}: ${STAGE_TEXT[stage].toLowerCase()}`)
+      notice ??= new Notice(t('streamB.lookingFor.5a47ff', { v0: String(name) }), 0)
+      notice.setMessage(
+        t('streamB.lookingFor.9fa36d', {
+          v0: String(name),
+          v1: String(STAGE_TEXT[stage].toLowerCase()),
+        })
+      )
     }
     try {
       const sha = await this.src.sha()
       let hits: DefinitionHit[] = []
-      let where = `${repo.owner}/${repo.repo} at ${this.src.refLabel()}`
+      let where = t('streamB.at.85ba94', {
+        v0: String(repo.owner),
+        v1: String(repo.repo),
+        v2: streamBLabel(this.src.refLabel()),
+      })
       // The whole file is on screen: a name it declares needs nothing else.
       const shown = this.src.blob()
       const sameFile = shown?.path === fromPath ? findDefinitions([shown], name, fromPath) : []
@@ -359,17 +386,20 @@ export class TabCode implements CodeNav {
           hits = await this.definitionsInTab(name, fromPath)
           where =
             e instanceof TooLargeError
-              ? 'the files open in this tab (the repository is too large to download)'
-              : `the files open in this tab (the repository could not be downloaded: ${
-                  e instanceof Error ? e.message : String(e)
-                })`
+              ? t('streamB.theFilesOpenInThisTabThe.27bff3')
+              : t('streamB.theFilesOpenInThisTabThe.7532d6', {
+                  v0: String(e instanceof Error ? presentUiError(e) : String(e)),
+                })
         }
       }
       notice?.hide()
       notice = null
       if (hits.length === 0) {
         new Notice(
-          `No definition of ${name} found in ${where}. The lookup goes by pattern, so it can miss one.`
+          t('streamB.noDefinitionOfFoundInTheLookup.5185c9', {
+            v0: String(name),
+            v1: String(where),
+          })
         )
       } else if (hits.length === 1) {
         this.src.open(
@@ -383,7 +413,12 @@ export class TabCode implements CodeNav {
     } catch (e) {
       notice?.hide()
       console.debug('[Abele] go to definition failed', e)
-      new Notice(`Could not look up ${name}: ${e instanceof Error ? e.message : String(e)}`)
+      new Notice(
+        t('streamB.couldNotLookUp.4c28ac', {
+          v0: String(name),
+          v1: String(e instanceof Error ? presentUiError(e) : String(e)),
+        })
+      )
     }
   }
 

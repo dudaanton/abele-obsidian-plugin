@@ -1,7 +1,10 @@
 <template>
   <!-- By how often each is changed: the model, the prompt, the interceptor, then the rest. -->
   <div class="abele-chat-settings">
-    <Setting name="Model" desc="The one this chat answers with.">
+    <Setting
+      :name="t('streamB.model.5e2c61')"
+      :desc="t('streamB.theOneThisChatAnswersWith.87902f')"
+    >
       <AgentOverrideNotice field="modelId" compact />
       <Dropdown
         :model-value="modelKey"
@@ -9,33 +12,44 @@
         @update:model-value="selectModel($event)"
       />
     </Setting>
-    <Setting name="System prompt" desc="The global one, a note, or words for this chat only.">
+    <Setting
+      :name="t('streamB.systemPrompt.561257')"
+      :desc="t('streamB.theGlobalOneANoteOrWords.1ed3c2')"
+    >
       <Dropdown
         :model-value="promptMode"
         :options="promptModes"
         @update:model-value="setPromptMode($event as PromptMode)"
       />
     </Setting>
-    <Setting v-if="promptMode === 'note'" name="Note" desc="Read the system prompt from this note.">
+    <Setting
+      v-if="promptMode === 'note'"
+      :name="t('streamB.note.d8da2c')"
+      :desc="t('streamB.readTheSystemPromptFromThisNote.55cfc7')"
+    >
       <Search
         :model-value="notePath"
-        label="System prompt note"
-        placeholder="Path to note..."
+        :label="t('streamB.systemPromptNote.ac9d27')"
+        :placeholder="t('streamB.pathToNote.ef6763')"
         :suggester="FileSuggest"
         @update:model-value="updateNotePath"
       />
     </Setting>
-    <Setting v-if="promptMode === 'custom'" name="Prompt" desc="Only this chat uses this text.">
+    <Setting
+      v-if="promptMode === 'custom'"
+      :name="t('streamB.prompt.5c3912')"
+      :desc="t('streamB.onlyThisChatUsesThisText.54cd9a')"
+    >
       <Input
         :model-value="customText"
         as-text-area
-        aria-label="System prompt for this chat"
-        placeholder="Enter system prompt..."
+        :aria-label="t('streamB.systemPromptForThisChat.b8e244')"
+        :placeholder="t('streamB.enterSystemPrompt.d27123')"
         @update:model-value="updateCustomText"
       />
     </Setting>
     <!-- The agent's interceptors, this chat's own list, or none: the same list as the agent's. -->
-    <Setting name="Interceptors" :desc="interceptorDesc">
+    <Setting :name="t('streamB.interceptors.803987')" :desc="interceptorDesc">
       <Dropdown
         :model-value="chatListMode"
         :options="chatListOptions"
@@ -50,17 +64,20 @@
       :headed="false"
       @update:entries="setChatEntries"
     />
-    <Setting name="Hide reasoning" desc="Show only a spinner while the model is thinking.">
+    <Setting
+      :name="t('streamB.hideReasoning.d1ba69')"
+      :desc="t('streamB.showOnlyASpinnerWhileTheModel.7190c4')"
+    >
       <Checkbox :is-enabled="hideReasoning" @toggle="toggleHideReasoning" />
     </Setting>
     <!-- Read grants can outlive the current scope or come from the agent's scope. -->
     <Setting
-      name="Node repository access"
-      desc="Revoke this chat's repository read grants. Later reads require a new owner approval."
+      :name="t('streamB.nodeRepositoryAccess.6872c0')"
+      :desc="t('streamB.revokeThisChatSRepositoryReadGrants.bbd7b8')"
     >
       <Button
-        text="Revoke repository access"
-        tooltip="Require new owner approval for repository reads"
+        :text="t('streamB.revokeRepositoryAccess.e74a4e')"
+        :tooltip="t('streamB.requireNewOwnerApprovalForRepositoryReads.c9cf26')"
         @click="revokeNodeReads"
       />
     </Setting>
@@ -68,6 +85,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { nodeRepositoryToolsHost } from '@/ai/tools/node'
 import { revokeObsidianChatNodeApproval } from '@/ai/tools/node/owner'
 import { ref, computed } from 'vue'
@@ -155,26 +173,26 @@ const agentDefaultLabel = computed(() => {
   const one = list.length === 1 ? list[0] : null
   const name = one
     ? one.script
-      ? `script ${one.script}`
+      ? t('streamB.script.fa8b35', { v0: String(one.script) })
       : AgentRegistry.getInstance().get(one.agentId)?.name
     : list.length > 1
-      ? `${list.length} in a row`
+      ? t('streamB.inARow.77e90c', { v0: String(list.length) })
       : ''
-  return `Agent default (${name || 'off'})`
+  return t('streamB.agentDefault.c10e26', { v0: String(name || t('chat.offState')) })
 })
 
 const chatListOptions = computed(() => [
   { value: FOLLOW_AGENT, display: agentDefaultLabel.value },
-  { value: OWN_LIST, display: 'Own for this chat' },
-  { value: '', display: 'Off' },
+  { value: OWN_LIST, display: t('streamB.ownForThisChat.c94676') },
+  { value: '', display: t('streamB.off.ca7981') },
 ])
 
 const interceptorDesc = computed(() =>
   chatListMode.value === FOLLOW_AGENT
-    ? "Check your messages, the agent's answers or both, one after another. This chat uses the agent's list."
+    ? t('streamB.checkYourMessagesTheAgentSAnswers.0cd85a')
     : chatListMode.value === OWN_LIST
-      ? "This chat's own list, in this order, each given what the one before returned. The agent's no longer applies here."
-      : "None for this chat; the agent's no longer applies here."
+      ? t('streamB.thisChatSOwnListInThis.efbed2')
+      : t('streamB.noneForThisChatTheAgentS.b60bce')
 )
 
 function chooseChatList(mode: string) {
@@ -208,9 +226,9 @@ const toggleHideReasoning = () => {
 
 type PromptMode = 'default' | 'note' | 'custom'
 const promptModes = [
-  { value: 'default', display: 'Use global default' },
-  { value: 'note', display: 'From vault note' },
-  { value: 'custom', display: 'Custom for this chat' },
+  { value: 'default', display: t('streamB.useGlobalDefault.a83c91') },
+  { value: 'note', display: t('streamB.fromVaultNote.05da07') },
+  { value: 'custom', display: t('streamB.customForThisChat.b2d855') },
 ]
 
 const promptMode = ref<PromptMode>(

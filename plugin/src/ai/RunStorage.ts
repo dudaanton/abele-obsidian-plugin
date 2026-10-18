@@ -1,3 +1,4 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import { TFile, TFolder } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -92,8 +93,7 @@ export class RunStorage {
       if (existing instanceof TFile) {
         const previous = await this.readContent(existing)
         await rewriteChat(app, existing, content, (current) => {
-          if (current !== previous)
-            throw new Error('This run changed elsewhere. Reopen it before making changes.')
+          if (current !== previous) throw new UiError(uiMessage('streamBError.9c6ece335c'))
         })
         return existing
       }

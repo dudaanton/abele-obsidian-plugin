@@ -5,6 +5,8 @@ import type { ChatSession } from './ChatSession'
 import { parseChat, parseChatMetadata } from './ChatLog'
 import { firstQuestion, isChatLog } from './chatText'
 import type { CommentAnchor } from './types'
+import { uiField, uiMessage } from '@/i18n/streamBErrors'
+import { agentText } from '@/i18n/streamBText'
 
 /**
  * The chain a comment hangs from: a comment on a message of a chat, a comment on a message of
@@ -75,13 +77,15 @@ export async function commentTrail(
   const own = session.currentChatFile.value?.path
   if (!anchor || !own) return []
 
+  const title = commentName(session) || anchor.quote
   const current: TrailStep = {
     kind: 'comment',
     path: own,
     id: session.commentId ?? baseName(own),
     anchor,
-    title: commentName(session) || anchor.quote || 'New question',
+    title: title || agentText('streamB.newQuestion'),
   }
+  if (!title) uiField(current, 'title', uiMessage('streamB.newQuestion'))
   return [...(await stepsAbove(source, anchor.note, new Set([own]))), current]
 }
 
@@ -144,7 +148,15 @@ async function commentStep(source: TrailSource, path: string): Promise<TrailStep
   const { app } = GlobalStore.getInstance()
   const file = app.vault.getAbstractFileByPath(path)
   if (!(file instanceof TFile)) {
-    return { kind: 'comment', path, id, title: 'Deleted', missing: true }
+    const step: TrailStep = {
+      kind: 'comment',
+      path,
+      id,
+      title: agentText('streamBMeta.b48ff39c2e'),
+      missing: true,
+    }
+    uiField(step, 'title', uiMessage('streamBMeta.b48ff39c2e'))
+    return step
   }
 
   const parsed = parseChat(await app.vault.cachedRead(file))

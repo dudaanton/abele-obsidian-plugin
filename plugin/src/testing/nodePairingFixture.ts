@@ -2,7 +2,10 @@ import { ref } from 'vue'
 import type { NodeService } from '@/node/NodeService'
 
 /** Presentation-only enrollment; no real key, invitation or connection is used. */
-export function nodePairingFixture(mode: 'waiting' | 'recovery' | 'endpoint') {
+export function nodePairingFixture(
+  mode: 'waiting' | 'recovery' | 'endpoint',
+  label = 'Sample remote node'
+) {
   const invite = {
     endpoint: 'wss://sample.example.ts.net:8443/channel',
     node_id: 'sample-node',
@@ -13,7 +16,7 @@ export function nodePairingFixture(mode: 'waiting' | 'recovery' | 'endpoint') {
   }
   const node = {
     id: 'sample-registration',
-    label: 'Sample remote node',
+    label,
     expectedNodeId: invite.node_id,
     url: invite.endpoint,
     profile: 'paired-wss-v1',

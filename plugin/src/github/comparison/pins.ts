@@ -1,3 +1,6 @@
+import { uiFields, uiMessage, UiError } from '@/i18n/streamBErrors'
+
+import { t } from '@/i18n'
 import { shallowRef } from 'vue'
 import { sourceKey, type RepositoryIdentity, type RepositorySource } from '@/repository/source'
 import { commitSha } from '../api'
@@ -107,18 +110,20 @@ export class BasePins {
   }
   async resolve(client: GithubClient, repo: Repository, enteredRef: string): Promise<BasePin> {
     const ref = enteredRef.trim()
-    if (!ref) throw new Error('Enter a commit, branch or tag.')
+    if (!ref) throw new UiError(uiMessage('streamBError.f731db85bb'))
     const baseSha = /^[a-f\d]{40}$/i.test(ref)
       ? (
           await client.get<{ sha: string }>(
             `${repoApiPath(repo)}/commits/${encodeURIComponent(ref)}`,
-            { what: 'the comparison base commit' }
+            uiFields(
+              { what: t('streamB.theComparisonBaseCommit.ac86ee') },
+              { what: uiMessage('streamB.theComparisonBaseCommit.ac86ee') }
+            )
           )
         ).sha
       : await commitSha(client, repo, ref)
     client.assertCurrent()
-    if (!/^[a-f\d]{40}$/i.test(baseSha))
-      throw new Error('GitHub did not resolve that ref to a commit SHA.')
+    if (!/^[a-f\d]{40}$/i.test(baseSha)) throw new UiError(uiMessage('streamBError.7b457d7047'))
     return {
       origin: new URL(repo.origin ?? `https://${repo.host}`).origin,
       owner: repo.owner.toLowerCase(),
@@ -133,11 +138,10 @@ export class BasePins {
     enteredRef: string
   ): Promise<BasePin> {
     const ref = enteredRef.trim()
-    if (!ref) throw new Error('Enter a commit, branch or tag.')
+    if (!ref) throw new UiError(uiMessage('streamBError.f731db85bb'))
     const baseSha = await source.resolve(ref, true)
     source.assertCurrent()
-    if (!/^[a-f\d]{40}$/i.test(baseSha))
-      throw new Error('The source did not resolve that ref to a commit SHA.')
+    if (!/^[a-f\d]{40}$/i.test(baseSha)) throw new UiError(uiMessage('streamBError.dfd5e00f0d'))
     return {
       ...(source.identity.provider !== 'github' ? { source: { ...source.identity } } : {}),
       origin:

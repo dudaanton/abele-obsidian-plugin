@@ -1,5 +1,5 @@
 <template>
-  <nav class="abele-github-crumbs" aria-label="Where this is in the repository">
+  <nav class="abele-github-crumbs" :aria-label="t('streamB.whereThisIsInTheRepository.e9ece6')">
     <template v-for="(crumb, i) in crumbs" :key="i">
       <span v-if="i > 0" class="abele-github-crumbs__sep" aria-hidden="true">/</span>
       <!-- A real link, so hovering shows where it goes and a right click offers what a link does. -->
@@ -22,6 +22,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { openExternal } from '@/helpers/openExternal'
 import type { PaneType } from 'obsidian'
 import Badge from '../obsidian/Badge.vue'

@@ -1,3 +1,4 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import NodeFilesDialog from '@/components/NodeFilesDialog.vue'
 import { mountKit } from '@/components/obsidian/mount'
 import type { NodeFilesModel, CodeLineRange } from './NodeFilesModel'
@@ -24,7 +25,7 @@ export function openNodeFiles(
       onRepository: async () => {
         const service = NodeService.getInstance()
         const node = service.nodes.value.find((node) => node.expectedNodeId === model.nodeId)
-        if (!node) throw new Error('Reconnect this node before opening its repository.')
+        if (!node) throw new UiError(uiMessage('streamBError.4ec802bae5'))
         const connection = service.connection(node.id)
         await connection.connect()
         const workspace = await connection.client.getWorkspace(model.workspaceId)

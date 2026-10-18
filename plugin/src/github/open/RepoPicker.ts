@@ -1,3 +1,5 @@
+import { presentUiError } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 /**
  * "Open GitHub repository…": Obsidian's own picker over the repositories there are to open —
  * pinned, recent on this device, the person's own and starred — narrowed as it is typed into, with
@@ -49,7 +51,7 @@ const ICONS: Record<RepoRow['group'], string> = {
 
 /** The first line of a refusal: the cause, without the fix, for a line of the picker. */
 const problemOf = (e: unknown): string =>
-  e instanceof Error ? e.message.split('\n')[0] : 'GitHub could not be asked.'
+  e instanceof Error ? presentUiError(e).split('\n')[0] : t('streamB.githubCouldNotBeAsked.b4b43c')
 
 const OWNER_REPO = /^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/
 
@@ -90,13 +92,13 @@ export class RepoPicker extends SuggestModal<RepoRow> {
       ? new URL(this.nativeClient.deployment.webBase).hostname
       : this.client.endpoints.webHost
     this.limit = 50
-    this.setPlaceholder('Repository name, owner/repo')
+    this.setPlaceholder(t('streamB.repositoryNameOwnerRepo.65acb4'))
     this.setInstructions([
-      { command: '↑↓', purpose: 'to navigate' },
-      { command: '↵', purpose: 'to open' },
-      { command: 'mod ↵', purpose: 'to open in a new tab' },
-      { command: 'alt ↵', purpose: 'to pin or unpin' },
-      { command: 'esc', purpose: 'to dismiss' },
+      { command: '↑↓', purpose: t('streamB.toNavigate.5a70bd') },
+      { command: '↵', purpose: t('streamB.toOpen.9c91ea') },
+      { command: 'mod ↵', purpose: t('streamB.toOpenInANewTab.e3fdb8') },
+      { command: 'alt ↵', purpose: t('streamB.toPinOrUnpin.139a0d') },
+      { command: 'esc', purpose: t('streamB.toDismiss.29e1c5') },
     ])
     this.modalEl.addClass('abele-github-repos')
     this.scope.register(['Alt'], 'Enter', () => {
@@ -129,7 +131,7 @@ export class RepoPicker extends SuggestModal<RepoRow> {
       { flush: 'sync' }
     )
     if (!this.hasToken) {
-      this.accountProblem = 'Your own and starred repositories are listed with a token.'
+      this.accountProblem = t('streamB.yourOwnAndStarredRepositoriesAreListed.c486b2')
       return
     }
     void (
@@ -171,7 +173,9 @@ export class RepoPicker extends SuggestModal<RepoRow> {
   private async togglePin(repo: RepoRef): Promise<void> {
     const pin = !isPinned(repo)
     await setPinned(repo, pin)
-    new Notice(`${repo.owner}/${repo.repo} ${pin ? 'pinned' : 'unpinned'}.`)
+    new Notice(
+      `${repo.owner}/${repo.repo} ${pin ? t('streamB.pinned.3fab5c') : t('streamB.unpinned.a83844')}.`
+    )
     this.refresh()
   }
 
@@ -235,7 +239,7 @@ export class RepoPicker extends SuggestModal<RepoRow> {
 
   getSuggestions(query: string): RepoRow[] {
     if (this.invalidated) {
-      this.emptyStateText = 'The GitHub connection changed. Reopen this picker.'
+      this.emptyStateText = t('streamB.theGithubConnectionChangedReopenThisPicker.c24845')
       return []
     }
     this.search(query)
@@ -248,13 +252,15 @@ export class RepoPicker extends SuggestModal<RepoRow> {
     else if (!this.account && this.hasToken && !this.accountProblem && !query.trim()) {
       notes.push({
         group: 'note',
-        title: `Asking ${this.nativeClient ? nativeLabel(this.nativeClient.deployment.kind) : 'GitHub'} for your repositories…`,
+        title: t('streamB.reapply.6e1f5aa2c1', {
+          service: this.nativeClient ? nativeLabel(this.nativeClient.deployment.kind) : 'GitHub',
+        }),
       })
     }
     this.emptyStateText =
       query.trim().length >= MIN_SEARCH
-        ? 'Nothing like that yet — asking GitHub…'
-        : 'Type a repository name.'
+        ? t('streamB.nothingLikeThatYetAskingGithub.c8401e')
+        : t('streamB.typeARepositoryName.98b009')
     return [...rows, ...notes]
   }
 
@@ -280,7 +286,7 @@ export class RepoPicker extends SuggestModal<RepoRow> {
 
   async choose(repo: RepoRef, pane: 'tab' | false): Promise<boolean> {
     if (this.invalidated || this.client?.isCurrent === false) {
-      new Notice('The GitHub connection changed. Reopen this picker.')
+      new Notice(t('streamB.theGithubConnectionChangedReopenThisPicker.c24845'))
       return false
     }
     if (this.nativeClient) {
@@ -296,7 +302,8 @@ export class RepoPicker extends SuggestModal<RepoRow> {
             { connectionId: this.connectionId }
           )
         : await openGithubUrl(this.app, repoUrlOf(repo), pane)
-    if (!opened) new Notice(`Abele cannot show ${repoKey(repo)} in a GitHub tab.`)
+    if (!opened)
+      new Notice(t('streamB.abeleCannotShowInAGithubTab.9f85ff', { v0: String(repoKey(repo)) }))
     return opened
   }
 }

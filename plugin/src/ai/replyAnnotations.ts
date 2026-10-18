@@ -1,3 +1,4 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import { nanoid } from 'nanoid'
 import { bindingProof, undecoratedMessage } from './chatBindingProof'
 import type { HighlightColor } from '@/reader/highlights'
@@ -47,14 +48,9 @@ export interface ReplyProposal {
 /** Never infer a source range from a rendered offset: markdown offsets are different. */
 export function sourcePassage(source: string, quote: string): { from: number; old: string } {
   const from = source.indexOf(quote)
-  if (!quote || from < 0)
-    throw new Error(
-      'The selection crosses markdown formatting. Select a passage within one text run instead.'
-    )
+  if (!quote || from < 0) throw new UiError(uiMessage('streamBError.f853b4f079'))
   if (source.indexOf(quote, from + 1) !== -1)
-    throw new Error(
-      'The selected passage is ambiguous. Select more surrounding words and start a new comment.'
-    )
+    throw new UiError(uiMessage('streamBError.bafdbeb11b'))
   return { from, old: quote }
 }
 
@@ -63,18 +59,17 @@ export function acceptRevision(
   proposal: ReplyProposal,
   at: number
 ): ChatMessage {
-  if (proposal.status !== 'pending') throw new Error('This proposal is no longer pending.')
+  if (proposal.status !== 'pending') throw new UiError(uiMessage('streamBError.879f176aec'))
   if (message.role !== 'assistant' || message.id !== proposal.message)
-    throw new Error('The model reply is unavailable.')
-  if (message.content !== proposal.before)
-    throw new Error('The reply has changed. Ask for a new proposal; nothing was changed.')
+    throw new UiError(uiMessage('streamBError.eb171d94e0'))
+  if (message.content !== proposal.before) throw new UiError(uiMessage('streamBError.9647637c1d'))
   if (
     !Number.isInteger(proposal.from) ||
     proposal.from < 0 ||
     !proposal.old ||
     message.content.slice(proposal.from, proposal.from + proposal.old.length) !== proposal.old
   )
-    throw new Error('The selected passage no longer matches.')
+    throw new UiError(uiMessage('streamBError.fa49b0d63c'))
   const after =
     message.content.slice(0, proposal.from) +
     proposal.text +
@@ -124,7 +119,7 @@ export function interceptorRevision(
   author: string,
   at: number
 ): ChatMessage {
-  if (message.role !== 'assistant') throw new Error('The model reply is unavailable.')
+  if (message.role !== 'assistant') throw new UiError(uiMessage('streamBError.eb171d94e0'))
   return revised(message, text, { proposal: '', by: 'interceptor', author, at })
 }
 
@@ -132,13 +127,13 @@ export function undoRevision(message: ChatMessage, at: number): ChatMessage {
   const revisions = [...(message.revisions ?? [])]
   const index = revisions.findLastIndex((revision) => !revision.undoneAt)
   const revision = revisions[index]
-  if (!revision) throw new Error('This revision can no longer be undone.')
+  if (!revision) throw new UiError(uiMessage('streamBError.fcaee3188e'))
   const afterSemantic = undecoratedMessage({ ...message, content: revision.after }, true).content
   if (
     revision.after !== message.content &&
     afterSemantic !== undecoratedMessage(message, true).content
   )
-    throw new Error('This revision can no longer be undone.')
+    throw new UiError(uiMessage('streamBError.fcaee3188e'))
   // A separately removed decoration must not return with semantic Undo.
   const before = undecoratedMessage(
     {
@@ -156,9 +151,7 @@ export function undoRevision(message: ChatMessage, at: number): ChatMessage {
       bindingProof(message, operation)
       bindingProof({ ...message, content: before }, operation)
     } catch {
-      throw new Error(
-        'Cannot prove card links will be preserved by undoing this correction. Remove or resolve the card links first; nothing was changed.'
-      )
+      throw new UiError(uiMessage('streamBError.b5535ff74d'))
     }
   }
   revisions[index] = { ...revision, undoneAt: at }

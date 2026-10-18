@@ -365,6 +365,14 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
   },
   'node-pairing': () =>
     mountAlone(NodePairingDialog, { ...nodePairingFixture('waiting'), resumeNodeId: undefined }),
+  'node-pairing-long': () =>
+    mountAlone(NodePairingDialog, {
+      ...nodePairingFixture(
+        'waiting',
+        'Sample remote project with a long enrollment label ' + 'sampleproject'.repeat(4)
+      ),
+      resumeNodeId: undefined,
+    }),
   'node-pairing-waiting': () => mountAlone(NodePairingDialog, nodePairingFixture('waiting')),
   'node-pairing-recovery': () => mountAlone(NodePairingDialog, nodePairingFixture('recovery')),
   'node-pairing-endpoint': () => mountAlone(NodePairingDialog, nodePairingFixture('endpoint')),

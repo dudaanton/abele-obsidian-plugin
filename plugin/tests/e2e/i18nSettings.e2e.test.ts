@@ -141,7 +141,7 @@ const probe = (locale: string, phone: boolean) => `(async () => {
     }
     try {
       // The fixture changes only the in-memory settings. No script runs and nothing is saved.
-      config.ai = { ...aiBefore, enabled: true, startupScripts: [{ script: 'sample-missing-script', devices: 'both' }] }
+      config.ai = { ...aiBefore, enabled: true, startupScripts: [{ script: 'sample-missing-script', devices: 'both' }], agents: (aiBefore.agents || []).map((agent, index) => index === 0 ? { ...agent, description: 'Migrated from the global AI settings.' } : agent) }
       for (const id of pageIds) {
         const content = await display(id)
         await captureContent('-page-' + id, content)
@@ -155,6 +155,10 @@ const probe = (locale: string, phone: boolean) => `(async () => {
           await settle(content)
           await captureContent('-page-' + id + '-' + nested, content)
           measureContent(id + '/' + nested, content)
+          if (id === 'ai' && nested === 'agents' && config.ai.agents.length) {
+            if (content.textContent.includes('Migrated from the global AI settings.')) throw new Error('Built-in agent description is untranslated')
+            if (!config.ai.agents.some(agent => agent.description === 'Migrated from the global AI settings.')) throw new Error('Displaying settings rewrote a stored description')
+          }
           if (id === 'ai' && nested === 'mcp') {
             content.querySelector('[data-testid="settings-mcp-add"]').click()
             const editor = await until(() => d.querySelector('.abele-mcp-server'))
@@ -257,7 +261,7 @@ describe.skipIf(!isObsidianRunning())('translated Settings navigation', () => {
             'AI Agent',
             'Scripts',
             'Nodes',
-            'GitHub',
+            'Git hosting',
             'Quick button',
             'Header buttons',
             'Sync',

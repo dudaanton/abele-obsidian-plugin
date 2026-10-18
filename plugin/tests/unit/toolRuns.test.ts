@@ -1,8 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { catalogs as testCatalogs } from '@/i18n/catalogs'
+import { afterEach, describe, expect, it } from 'vitest'
+import { initializeLocale } from '@/i18n'
 import { chatBlocks, ownLine, runKind, runState, runSummary, toolKind } from '@/ai/toolRuns'
 import type { ChatMessage } from '@/ai/types'
 
 let n = 0
+afterEach(() => initializeLocale('en', testCatalogs['en' as keyof typeof testCatalogs]))
 const call = (toolName: string, extra: Partial<ChatMessage> = {}): ChatMessage =>
   ({
     id: `c${++n}`,
@@ -16,6 +19,19 @@ const call = (toolName: string, extra: Partial<ChatMessage> = {}): ChatMessage =
   }) as ChatMessage
 const say = (role: 'user' | 'assistant', content: string): ChatMessage =>
   ({ id: `m${++n}`, role, content, timestamp: n }) as ChatMessage
+
+it('translates run status summaries without changing tool identities or their content', () => {
+  initializeLocale('ru', testCatalogs['ru' as keyof typeof testCatalogs])
+  const pending = call('run_command', {
+    toolStatus: 'pending',
+    content: 'Sample command {literal}',
+  })
+  const original = JSON.stringify(pending)
+  expect(runSummary([pending])).toBe('Запрошено выполнение')
+  expect(runSummary([call('read', { toolResult: undefined })])).toBe('Чтение')
+  expect(runSummary([call('read'), call('read')])).toBe('Прочитано 2')
+  expect(JSON.stringify(pending)).toBe(original)
+})
 
 describe('the kind of work a tool does', () => {
   it('is read from its name', () => {

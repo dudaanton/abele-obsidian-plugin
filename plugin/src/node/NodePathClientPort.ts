@@ -1,3 +1,5 @@
+import { uiErrorMessage, UiError, uiMessage } from '@/i18n/streamBErrors'
+
 import type { NodeClient } from '@abele/node-client'
 import { sessionActivity } from './sessionActivity'
 import { ChannelError } from '@abele/channel-protocol'
@@ -62,10 +64,14 @@ export async function pathPages<T>(
   for (;;) {
     const page = await read(cursor)
     if (page.incomplete)
-      throw new Error(page.omissions.join(' · ') || 'The node returned an incomplete listing')
+      throw new UiError(
+        page.omissions.join(' · ')
+          ? uiErrorMessage(new Error(page.omissions.join(' · ')))
+          : uiMessage('streamBError.e12006025a')
+      )
     entries.push(...page.entries)
     if (!page.cursor) return entries
-    if (visited.has(page.cursor)) throw new Error('Node pagination did not advance')
+    if (visited.has(page.cursor)) throw new UiError(uiMessage('streamBError.fd3e95b2aa'))
     visited.add(page.cursor)
     cursor = page.cursor
   }
@@ -189,8 +195,8 @@ export class NodePathClientPort implements NodePathPort {
     if (!git || !forge) return undefined
     return async (target, pull) => {
       const info = await git.info(target)
-      if (!info.forge) throw new Error('The node does not say which remote this branch pushes to.')
-      if (!info.branch) throw new Error('A pull request needs a branch, not a detached commit.')
+      if (!info.forge) throw new UiError(uiMessage('streamBError.91f21e6d95'))
+      if (!info.branch) throw new UiError(uiMessage('streamBError.474dc449ab'))
       const made = await forge.create(info.forge, { ...pull, head: info.branch })
       this.forgePulls.clear()
       return made
@@ -350,7 +356,7 @@ export class NodePathClientPort implements NodePathPort {
    */
   async branch(target: PathTarget, base?: string): Promise<PathBranch> {
     if (target.kind !== 'worktree' || !this.capabilities.includes('node_path_v2'))
-      throw new Error('Branch state requires an updated node.')
+      throw new UiError(uiMessage('streamBError.d4a2fc884b'))
     const own = this.worktrees.get(target.id)?.branch ?? null
     const name = own ? branchName(own) : null
     const [divergence, refs] = await Promise.all([
@@ -501,10 +507,7 @@ export class NodePathClientPort implements NodePathPort {
     )
     const out = await Promise.all(
       entries.map(async (entry): Promise<TreeEntry | undefined> => {
-        if (++budget.count > 10000)
-          throw new Error(
-            'This folder exceeds the 10,000-entry tree limit. Use the repository browser for paginated browsing.'
-          )
+        if (++budget.count > 10000) throw new UiError(uiMessage('streamBError.6714d255c9'))
         if (entry.kind === 'file') return { path: entry.path, name: entry.name, kind: 'file' }
         if (entry.kind === 'directory')
           return {
@@ -539,7 +542,11 @@ export class NodePathClientPort implements NodePathPort {
           )
         : await this.treeRead(() => this.client.listFiles(target.id, path, cursor))
     if ('incomplete' in page && page.incomplete)
-      throw new Error(page.omissions.join(' · ') || 'The node returned an incomplete listing')
+      throw new UiError(
+        page.omissions.join(' · ')
+          ? uiErrorMessage(new Error(page.omissions.join(' · ')))
+          : uiMessage('streamBError.e12006025a')
+      )
     return {
       revision,
       cursor: 'cursor' in page ? page.cursor : (page.next ?? null),
@@ -561,10 +568,8 @@ export class NodePathClientPort implements NodePathPort {
     blob: Awaited<ReturnType<NodeClient['repository']['blob']>>
   ) {
     if (!blob.content_id || blob.binary || blob.requires_larger_load || blob.too_large)
-      throw new Error(
-        blob.binary
-          ? 'Binary file: no text preview.'
-          : 'This file needs an explicit larger load in the repository browser.'
+      throw new UiError(
+        blob.binary ? uiMessage('streamBError.3cdea71657') : uiMessage('streamBError.9ba095fdb1')
       )
     return {
       text: await readNodeText(
@@ -610,7 +615,7 @@ export class NodePathClientPort implements NodePathPort {
   ): Promise<Pick<PathDocument, 'text' | 'contentId' | 'image'>> {
     if (isNodeImagePath(path)) {
       if (blob.size > NODE_IMAGE_MAX_BYTES || blob.too_large)
-        throw new Error('Image preview is limited to 4 MiB.')
+        throw new UiError(uiMessage('streamBError.b98a7f8f5f'))
       if (blob.requires_larger_load)
         blob = await this.client.repository.blob({
           worktree_id: target.id,
@@ -638,10 +643,9 @@ export class NodePathClientPort implements NodePathPort {
     path: string,
     mode: 'staged' | 'unstaged'
   ): Promise<string> {
-    if (revision.kind !== 'working')
-      throw new Error('A working comparison requires an observation.')
+    if (revision.kind !== 'working') throw new UiError(uiMessage('streamBError.9bc23eb575'))
     if (!revision.head && !this.capabilities.includes('node_path_v2'))
-      throw new Error('Unborn working-tree comparisons require an updated node.')
+      throw new UiError(uiMessage('streamBError.aecd43ae62'))
     const manifest = await this.client.repository.compare({
       worktree_id: target.id,
       base: revision.head ? { kind: 'commit', commit: revision.head } : { kind: 'empty' },
@@ -649,14 +653,17 @@ export class NodePathClientPort implements NodePathPort {
       mode,
     })
     if (manifest.incomplete)
-      throw new Error(manifest.omissions.join(' · ') || 'Incomplete comparison')
+      throw new UiError(
+        manifest.omissions.join(' · ')
+          ? uiErrorMessage(new Error(manifest.omissions.join(' · ')))
+          : uiMessage('streamBMeta.fdaefbc963')
+      )
     const blob = await this.client.repository.patch({
       worktree_id: target.id,
       comparison_id: manifest.comparison_id,
       path,
     })
-    if (!blob.content_id || blob.binary)
-      throw new Error('No text comparison is available for this file.')
+    if (!blob.content_id || blob.binary) throw new UiError(uiMessage('streamBError.8647963b04'))
     return readNodeText(
       (offset) =>
         this.client.repository.content({
@@ -707,7 +714,7 @@ export class NodePathClientPort implements NodePathPort {
           ),
         }
       if (!blob.content_id || blob.large || blob.too_large)
-        throw new Error('This file cannot be previewed as bounded text.')
+        throw new UiError(uiMessage('streamBError.23d06ee9cc'))
       return {
         target,
         path,
@@ -735,10 +742,7 @@ export class NodePathClientPort implements NodePathPort {
       const observedChange = entries.find((entry) => entry.path === path)
       if (!observedChange) return undefined
       const change = { ...observedChange }
-      if (change.kind === 'conflict')
-        throw new Error(
-          'Resolve the conflict in the code editor or repository browser; a single comparison would omit a side.'
-        )
+      if (change.kind === 'conflict') throw new UiError(uiMessage('streamBError.6e57d7786b'))
       const mode = stage ?? (change.stage === 'staged' ? 'staged' : 'unstaged')
       if (
         change.kind === 'deleted' &&
@@ -775,9 +779,7 @@ export class NodePathClientPort implements NodePathPort {
     else if ('error' in bytes) throw bytes.error
     else loaded = bytes.value
     if (loaded.image && compared?.mode === 'staged' && compared.change.stage === 'partly')
-      throw new Error(
-        'Staged image preview requires a Git index blob read, which this connection does not support.'
-      )
+      throw new UiError(uiMessage('streamBError.a3b91e1549'))
     if (loaded.image)
       return {
         ...loaded,
@@ -811,7 +813,7 @@ export class NodePathClientPort implements NodePathPort {
     return this.interactive(() => this.readHistory(target, cursor, frozen))
   }
   private async readHistory(target: PathTarget, cursor?: string, frozen?: RepositoryRevision) {
-    if (target.kind !== 'worktree') throw new Error('A plain folder has no Git history.')
+    if (target.kind !== 'worktree') throw new UiError(uiMessage('streamBError.d822bad866'))
     const observed =
       frozen ?? (await this.client.repository.observe({ worktree_id: target.id })).revision
     const revision: RepositoryRevision | undefined =
@@ -827,7 +829,12 @@ export class NodePathClientPort implements NodePathPort {
       cursor,
       limit: 100,
     })
-    if (page.incomplete) throw new Error(page.omissions.join(' · ') || 'Incomplete history')
+    if (page.incomplete)
+      throw new UiError(
+        page.omissions.join(' · ')
+          ? uiErrorMessage(new Error(page.omissions.join(' · ')))
+          : uiMessage('streamBError.7d3850fd71')
+      )
     return { entries: page.entries.map(commitSummary), cursor: page.cursor, revision }
   }
   /** A commit and every file it changed, contents included. */
@@ -1134,7 +1141,7 @@ export function reverseNodePatch(text: string, patch: string): string {
     /^rename to /m.test(patch)
   )
     return text
-  if (!hunks.length && patch.trim()) throw new Error('No bounded text hunks in this patch.')
+  if (!hunks.length && patch.trim()) throw new UiError(uiMessage('streamBError.aa6abd6309'))
   const afterLength = output.length
   for (const hunk of hunks.reverse()) {
     if (hunk.start + hunk.after.length === afterLength && hunk.before.length)
@@ -1142,9 +1149,7 @@ export function reverseNodePatch(text: string, patch: string): string {
     if (
       output.slice(hunk.start, hunk.start + hunk.after.length).join('\n') !== hunk.after.join('\n')
     )
-      throw new Error(
-        'The retained patch does not match this file. Refresh to capture a new comparison.'
-      )
+      throw new UiError(uiMessage('streamBError.0e5dd7f8f9'))
     output.splice(hunk.start, hunk.after.length, ...hunk.before)
   }
   return output.length ? output.join('\n') + (beforeHasNewline ? '\n' : '') : ''

@@ -4,7 +4,7 @@
       ><StatusDot
         v-if="change.unseen"
         tone="accent"
-        :label="`Changed since you looked · ${change.when ?? ''}`"
+        :label="t('streamB.changedSinceYouLooked.be7af5', { v0: String(change.when ?? '') })"
     /></span>
     <Icon
       :icon="changeGlyphs[change.kind].icon"
@@ -17,6 +17,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 // What happened to a file, at the end of its row: the coloured square for the kind of change,
 // and before it an accent dot while the change is one you have not looked at.
 import Icon from '../obsidian/Icon.vue'

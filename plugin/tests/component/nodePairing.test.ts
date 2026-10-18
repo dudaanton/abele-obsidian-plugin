@@ -284,3 +284,24 @@ it('does not change a node pin automatically; explicit recovery displays both fi
     wrapper.unmount()
   }
 })
+
+it('offers a wrapping kit action for a long pending enrollment label', async () => {
+  const { service } = fixture()
+  const label = 'Sample remote project with a long pending enrollment label'
+  service.deviceKeys.pending.mockResolvedValue([
+    {
+      node_id: invite.node_id,
+      enrollment: { invite, label },
+    },
+  ] as never)
+  const wrapper = mount(NodePairingDialog, { ...options, props: { service: service as never } })
+  try {
+    await flushPromises()
+    const action = wrapper.findAll('button').find((button) => button.text().includes(label))!
+    expect(action.exists()).toBe(true)
+    expect(action.classes()).toContain('abele-obsidian-button_wrap')
+    expect(action.text()).toBe(`Resume pairing: ${label}`)
+  } finally {
+    wrapper.unmount()
+  }
+})

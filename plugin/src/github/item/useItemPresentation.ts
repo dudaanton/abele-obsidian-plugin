@@ -1,6 +1,7 @@
 import { isNativeForge } from '@/forge/native'
+import { t } from '@/i18n'
 import { openExternal } from '@/helpers/openExternal'
-import { computed, provide, watch } from 'vue'
+import { computed, provide, watch, type Ref } from 'vue'
 import type { CompareSection } from '@/github/compareSection'
 import { type RepositorySource } from '@/repository/source'
 import { itemHead, itemTabTitle, placeLink, type ItemHead } from '@/github/itemHead'
@@ -17,7 +18,7 @@ import { repoWeb } from '@/github/origin'
 import { bodyLink, type GithubLink } from '@/github/permalinks'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { type BlobData } from '@/github/api'
-import type { Ref } from 'vue'
+
 import type { Loaded } from '@/github/useLoad'
 import type { BasePin } from '@/github/comparison/pins'
 import type { GithubItemProps } from './types'
@@ -44,7 +45,7 @@ export function useItemPresentation(options: PresentationOptions) {
     return props.model.url || data?.url || ''
   })
   const head = computed<ItemHead>(() => {
-    const head = itemHead(shown.value, main.data.value)
+    const head = itemHead(shown.value, main.data.value, false)
     if (source.value?.identity.provider === 'node' && shown.value?.kind === 'repo')
       return { ...head, title: shown.value.repo, state: undefined }
     if (source.value?.identity.provider === 'node' && compared.value)
@@ -58,6 +59,23 @@ export function useItemPresentation(options: PresentationOptions) {
           : [],
       }
     return head
+  })
+  const displayHead = computed<ItemHead>(() => {
+    const display = itemHead(shown.value, main.data.value)
+    if (source.value?.identity.provider === 'node' && shown.value?.kind === 'repo')
+      return { ...display, title: shown.value.repo, state: undefined }
+    if (source.value?.identity.provider === 'node' && compared.value) {
+      const c = compared.value
+      const ref = (value: string) =>
+        value.startsWith('working-') ? t('streamB.currentFiles.eef7a2') : shortNodeRef(value)
+      return {
+        ...display,
+        title: [c.baseName ?? ref(c.base), ref(c.head)].join(' → '),
+        state: undefined,
+        meta: c.baseName ? [t('streamBMeta.1c2ea9144d', { v0: c.baseName, v1: ref(c.base) })] : [],
+      }
+    }
+    return display
   })
   const shortNodeRef = (ref: string) =>
     ref.startsWith('working-')
@@ -152,7 +170,7 @@ export function useItemPresentation(options: PresentationOptions) {
   }
   const tabTitle = computed(() =>
     shown.value && main.data.value
-      ? itemTabTitle(shown.value, main.data.value, head.value.title)
+      ? itemTabTitle(shown.value, main.data.value, displayHead.value.title)
       : ''
   )
   watch(tabTitle, (title) => {
@@ -183,5 +201,15 @@ export function useItemPresentation(options: PresentationOptions) {
         : `${repoWeb(t)}/pull/${t.number}/commits/${sha}`
     )
   }
-  return { browserUrl, head, linker, repo, screen, chatAbout, openInBrowser, swapSides, openCommit }
+  return {
+    browserUrl,
+    head: displayHead,
+    linker,
+    repo,
+    screen,
+    chatAbout,
+    openInBrowser,
+    swapSides,
+    openCommit,
+  }
 }

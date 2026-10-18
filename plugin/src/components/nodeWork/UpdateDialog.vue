@@ -1,37 +1,46 @@
 <template>
   <div class="abele-update-dialog">
     <p class="abele-update-dialog__text">
-      {{ base }} has {{ plural(behind, 'commit') }} that {{ branch }} has not.
-      <template v-if="dirty && clean"
-        >Commit or discard the {{ plural(dirty, 'changed file') }} first: only a branch with
-        nothing uncommitted is updated.</template
-      >
-      <template v-else-if="dirty"
-        >The {{ plural(dirty, 'file') }} not committed stay as they are.</template
-      >
+      {{ t('streamBMeta.updateSummary', { base, commits: plural(behind, 'commit'), branch }) }}
+      <template v-if="dirty && clean">{{
+        t('streamBMeta.commitFirst', { files: plural(dirty, 'changed file') })
+      }}</template>
+      <template v-else-if="dirty">{{
+        t('streamBMeta.keepUncommitted', { files: plural(dirty, 'file') })
+      }}</template>
     </p>
     <p v-if="ways.length === 1" class="abele-update-dialog__text">
       {{ how === 'rebase' ? rebaseWords : mergeWords }}
     </p>
-    <Setting v-else name="How" :desc="how === 'rebase' ? rebaseWords : mergeWords">
+    <Setting
+      v-else
+      :name="t('streamB.how.7470bd')"
+      :desc="how === 'rebase' ? rebaseWords : mergeWords"
+    >
       <Dropdown
         :options="[
-          { value: 'rebase', display: `Rebase onto ${base}` },
-          { value: 'merge', display: `Merge ${base} in` },
+          { value: 'rebase', display: t('streamB.rebaseOnto.c43878', { v0: String(base) }) },
+          { value: 'merge', display: t('streamB.mergeIn.5f5c6b', { v0: String(base) }) },
         ]"
         :model-value="how"
-        aria-label="How to bring the commits in"
+        :aria-label="t('streamB.howToBringTheCommitsIn.b8e828')"
         @update:model-value="(v: string) => (how = v as 'rebase' | 'merge')"
       />
     </Setting>
     <div class="modal-button-container">
-      <Button text="Cancel" tooltip="Close and change nothing" @click="emit('cancel')" />
       <Button
-        text="Update"
+        :text="t('streamB.cancel.19766e')"
+        :tooltip="t('streamB.closeAndChangeNothing.2ce3af')"
+        @click="emit('cancel')"
+      />
+      <Button
+        :text="t('streamB.update.c1c100')"
         accent
         :disabled="clean && dirty > 0"
         :tooltip="
-          how === 'rebase' ? `Rebase ${branch} onto ${base}` : `Merge ${base} into ${branch}`
+          how === 'rebase'
+            ? t('streamB.rebaseOnto.708b25', { v0: String(branch), v1: String(base) })
+            : t('streamB.mergeInto.017ff8', { v0: String(base), v1: String(branch) })
         "
         @click="emit('update', how)"
       />
@@ -40,6 +49,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 // Bringing a branch up to date with its base: rebase it onto the base, or merge the base in. Says
 // what each does to the branch; a stop on conflicts is shown on the worktree's page afterwards.
 import { ref } from 'vue'
@@ -79,14 +89,17 @@ const emit = defineEmits<{
   (e: 'cancel'): void
 }>()
 const how = ref(props.ways.includes(props.initial) ? props.initial : props.ways[0])
-const rebaseWords = `The branch's own commits are replayed on top of ${props.base}; history stays one line.${
-  !props.pushed
-    ? ''
-    : props.force
-      ? ' The pushed branch will have to be replaced on the next push.'
-      : ' The pushed branch then differs from its copy on the remote, and pushing it is refused until that copy is replaced.'
-}`
-const mergeWords = `One merge commit brings ${props.base} in; the branch's commits stay as they are.`
+const rebaseWords = t('streamB.theBranchSOwnCommitsAreReplayed.d9b3bd', {
+  v0: String(props.base),
+  v1: String(
+    !props.pushed
+      ? ''
+      : props.force
+        ? t('streamB.thePushedBranchWillHaveToBe.72d3c5')
+        : t('streamB.thePushedBranchThenDiffersFromIts.56db93')
+  ),
+})
+const mergeWords = t('streamB.oneMergeCommitBringsInTheBranch.80f922', { v0: String(props.base) })
 </script>
 
 <style lang="scss">

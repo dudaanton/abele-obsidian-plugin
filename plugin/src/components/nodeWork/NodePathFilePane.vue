@@ -1,10 +1,12 @@
 <template>
   <div class="abele-node-main">
-    <div v-if="model.busy.value" role="status">Loading file…</div>
+    <div v-if="model.busy.value" role="status">{{ t('streamB.loadingFile.e937ad') }}</div>
     <div v-if="model.error.value" role="alert"><NodeErrorText :error="model.error.value" /></div>
-    <div v-if="offline" role="status">Offline · retained version.</div>
+    <div v-if="offline" role="status">{{ t('streamB.offlineRetainedVersion.ddf2fd') }}</div>
     <template v-if="model.document.value">
-      <div v-if="model.document.value.note" role="status">{{ model.document.value.note }}</div>
+      <div v-if="model.document.value.note" role="status">
+        {{ presentUiField(model.document.value, 'note') }}
+      </div>
       <NodePathDebugFile
         v-if="debug"
         v-show="model.mode.value === 'file'"
@@ -30,6 +32,8 @@
 </template>
 <script setup lang="ts">
 import NodeErrorText from '@/components/NodeErrorText.vue'
+import { presentUiField } from '@/i18n/streamBErrors'
+import { t } from '@/i18n'
 import type { NodePathFileModel } from '@/node/NodePathModel'
 import FileView from './FileView.vue'
 import NodePathDebugFile from './NodePathDebugFile.vue'

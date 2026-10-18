@@ -3,7 +3,7 @@
        quiet line saying whose it is, and what can be done with it. -->
   <div ref="host" class="abele-agent-view" :class="{ 'is-window': inWindow }">
     <div v-if="broken" class="abele-agent-view__broken">
-      <span>This view can’t be shown.</span>
+      <span>{{ t('streamB.thisViewCanTBeShown.46bc81') }}</span>
     </div>
     <pre v-if="broken || source" class="abele-agent-view__source"><code>{{ html }}</code></pre>
     <div v-if="!broken && !source" ref="stage" class="abele-agent-view__stage">
@@ -12,7 +12,7 @@
         ref="frame"
         class="abele-agent-view__frame"
         :style="{ height: frameHeight, maxHeight: inWindow ? undefined : '32em' }"
-        title="View by the agent"
+        :title="t('streamB.viewByTheAgent.d4be6b')"
         tabindex="-1"
         sandbox="allow-same-origin"
         referrerpolicy="no-referrer"
@@ -24,7 +24,7 @@
     <div v-if="!inWindow" class="abele-agent-view__foot">
       <span class="abele-agent-view__whose">
         <Icon icon="layout-panel-top" size="xs" :interactive="false" />
-        <span>View by the agent</span>
+        <span>{{ t('streamB.viewByTheAgent.d4be6b') }}</span>
       </span>
       <span class="abele-agent-view__actions">
         <Icon
@@ -32,26 +32,32 @@
           :icon="source ? 'eye' : 'code-xml'"
           :active="source"
           size="xs"
-          :tooltip="source ? 'Show the view' : 'Show its HTML'"
+          :tooltip="source ? t('streamB.showTheView.e1a4b3') : t('streamB.showItsHtml.ca58f6')"
           @click="source = !source"
         />
-        <Icon icon="copy" size="xs" tooltip="Copy its HTML" @click="copy" />
+        <Icon icon="copy" size="xs" :tooltip="t('streamB.copyItsHtml.fd15f2')" @click="copy" />
         <Icon
           v-if="!broken"
           icon="maximize-2"
           size="xs"
-          tooltip="Open it larger, in a window"
+          :tooltip="t('streamB.openItLargerInAWindow.4ed25d')"
           @click="opened = true"
         />
       </span>
     </div>
-    <ObsidianModal v-if="opened" title="View by the agent" size="tall" @close="opened = false">
+    <ObsidianModal
+      v-if="opened"
+      :title="t('streamB.viewByTheAgent.d4be6b')"
+      size="tall"
+      @close="opened = false"
+    >
       <AgentView :html="html" in-window @ask="ask" />
     </ObsidianModal>
   </div>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 /**
  * A view an agent wrote in its answer, drawn in a frame of its own: no scripts, no forms, no way
  * into Obsidian. The frame shares the page's origin only so the plugin can measure it and read
@@ -389,7 +395,7 @@ function ask(text: string) {
 
 async function copy() {
   await navigator.clipboard.writeText(props.html)
-  new Notice('HTML copied')
+  new Notice(t('streamB.htmlCopied.29ef6b'))
 }
 
 onMounted(() => {

@@ -12,7 +12,7 @@
           v-if="!message.subAgentRun"
           class="abele-chat-run abele-run-msg__tool"
           :icon="KIND_ICON[toolKind(message.toolName)]"
-          :text="message.toolName ?? 'tool'"
+          :text="message.toolName ?? t('streamB.tool.7c9bbe')"
           :note="params"
           :collapsible="!!message.toolResult"
           :collapsed="!resultOpen"
@@ -29,8 +29,7 @@
           :depth="depth + 1"
         />
         <p v-else class="abele-run-msg__note">
-          {{ message.subAgentRun.agentName }} went on further; open the run in its own tab to
-          follow.
+          {{ t('streamBMeta.ea7b694e1c', { p0: String(message.subAgentRun.agentName) }) }}
         </p>
       </template>
 
@@ -40,6 +39,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, ref } from 'vue'
 import Icon from './obsidian/Icon.vue'
 import TreeItem from './obsidian/TreeItem.vue'

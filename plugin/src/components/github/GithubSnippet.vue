@@ -11,7 +11,7 @@
   </Card>
   <div v-else class="abele-github-snippet abele-github-snippet_unread">
     <div class="abele-github-snippet__note">
-      This GitHub snippet has no address or label any more, so it is shown as written.
+      {{ t('streamB.thisGithubSnippetHasNoAddressOr.bd0cb2') }}
     </div>
     <pre class="abele-github-snippet__raw"><code>{{ source }}</code></pre>
   </div>
@@ -19,6 +19,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { t } from '@/i18n'
 import Card from '../obsidian/Card.vue'
 import GithubText from './GithubText.vue'
 import { repoOfUrl } from '@/github/safeMarkdown'

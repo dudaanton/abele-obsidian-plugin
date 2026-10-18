@@ -7,7 +7,7 @@
       class="abele-folder-picker__path"
       placeholder="~/"
       :invalid="!!listing.error"
-      aria-label="Folder path"
+      :aria-label="t('streamB.folderPath.98bca2')"
       autocomplete="off"
       spellcheck="false"
       aria-controls="abele-folder-picker-list"
@@ -20,7 +20,7 @@
       id="abele-folder-picker-list"
       class="abele-folder-picker__list"
       role="listbox"
-      :aria-label="`Folders in ${dir}`"
+      :aria-label="t('streamB.foldersIn.442bd6', { v0: String(dir) })"
     >
       <div
         v-for="(row, i) in rows"
@@ -50,13 +50,17 @@
             :interactive="false"
         /></span>
         <span class="abele-folder-picker__name">{{
-          row.up ? '..' : row.create ? `New folder “${row.name}”` : row.name
+          row.up
+            ? '..'
+            : row.create
+              ? t('streamB.newFolder.98de54', { v0: String(row.name) })
+              : row.name
         }}</span>
         <span v-if="row.git" class="abele-folder-picker__branch">{{ row.git.branch }}</span>
-        <StatusDot v-if="row.open" tone="accent" label="Already open" />
+        <StatusDot v-if="row.open" tone="accent" :label="t('streamB.alreadyOpen.390a95')" />
       </div>
       <div v-if="!rows.length && !listing.error" class="abele-folder-picker__empty">
-        No folders here. Type a name to make one.
+        {{ t('streamB.noFoldersHereTypeANameTo.186077') }}
       </div>
     </div>
 
@@ -73,27 +77,31 @@
     </div>
 
     <div class="modal-button-container">
-      <Button text="Cancel" tooltip="Close without opening" @click="emit('cancel')" />
+      <Button
+        :text="t('streamB.cancel.19766e')"
+        :tooltip="t('streamB.closeWithoutOpening.6ac107')"
+        @click="emit('cancel')"
+      />
       <Button
         v-if="target?.open"
-        text="Show"
+        :text="t('streamB.show.0df6f1')"
         accent
-        tooltip="Show this folder in the node panel"
+        :tooltip="t('streamB.showThisFolderInTheNodePanel.956b62')"
         @click="emit('show', target.path)"
       />
       <Button
         v-else-if="target?.create"
-        text="Create"
+        :text="t('streamB.create.475949')"
         accent
-        tooltip="Make this folder on the node and open it"
+        :tooltip="t('streamB.makeThisFolderOnTheNodeAnd.2f40a6')"
         @click="emit('create', target.path)"
       />
       <Button
         v-else
-        text="Open"
+        :text="t('streamB.open.ed077f')"
         accent
         :disabled="!target || !!listing.error"
-        tooltip="Open this folder in Abele"
+        :tooltip="t('streamB.openThisFolderInAbele.ffbcdf')"
         @click="target && emit('open', target.path)"
       />
     </div>
@@ -102,6 +110,8 @@
 
 <script setup lang="ts">
 import NodeErrorText from '@/components/NodeErrorText.vue'
+import { streamBCount } from '@/i18n/streamBCounts'
+import { t } from '@/i18n'
 // Choosing a folder on the node: a path field over the folders it leads to, the way Obsidian's
 // own pickers put the input over the list. Typing filters and completes, arrows move, Enter goes
 // into the highlighted folder, Backspace on an empty segment goes up. The line under the list
@@ -195,19 +205,26 @@ const target = computed<Row | null>(() => {
 
 const facts = (d: Row) =>
   d.create
-    ? 'New folder'
+    ? t('streamB.newFolder.cf28f4')
     : d.inspected === false
-      ? 'Folder on the node · inspected when opened'
+      ? t('streamB.folderOnTheNodeInspectedWhenOpened.1d38f2')
       : d.git
-        ? `Git repository · ${d.git.branch}${d.git.copies > 1 ? ` · ${d.git.copies} copies` : ''}`
-        : 'Plain folder · files only'
+        ? t('streamB.gitRepository.7012e9', {
+            v0: String(d.git.branch),
+            v1: String(d.git.copies > 1 ? ` · ${streamBCount(d.git.copies, 'copy')}` : ''),
+          })
+        : t('streamB.plainFolderFilesOnly.94ca51')
 
 function go(path: string) {
   query.value = path.endsWith('/') ? path : `${path}/`
   void nextTick(() => field.value?.inputRef?.focus())
 }
 
-const choose = (t: Row) => emit(t.create ? 'create' : t.open ? 'show' : 'open', t.path)
+const choose = (translationItem: Row) =>
+  emit(
+    translationItem.create ? 'create' : translationItem.open ? 'show' : 'open',
+    translationItem.path
+  )
 
 function onKey(e: KeyboardEvent) {
   const row = rows.value[index.value]

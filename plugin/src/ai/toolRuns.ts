@@ -1,15 +1,8 @@
+import { t } from '@/i18n'
 import type { ChatMessage } from './types'
 
 /** What a tool does, in the words and glyph a run of the agent's work is told by. */
-export type ToolKind =
-  | 'start'
-  | 'search'
-  | 'read'
-  | 'write'
-  | 'delete'
-  | 'run'
-  | 'ask'
-  | 'other'
+export type ToolKind = 'start' | 'search' | 'read' | 'write' | 'delete' | 'run' | 'ask' | 'other'
 
 const KINDS: [RegExp, ToolKind][] = [
   // A node tool that starts another session or a worker; its name may carry its server's prefix.
@@ -37,16 +30,48 @@ export const KIND_ICON: Record<ToolKind, string> = {
   other: 'wrench',
 }
 
-const KIND_WORDS: Record<ToolKind, [string, string, string]> = {
-  start: ['Started', 'Starting', 'Start requested'],
-  search: ['Searched', 'Searching', 'Search requested'],
-  read: ['Read', 'Reading', 'Read requested'],
-  write: ['Wrote', 'Writing', 'Write requested'],
-  delete: ['Deleted', 'Deleting', 'Delete requested'],
-  run: ['Ran', 'Running', 'Run requested'],
-  ask: ['Asked', 'Asking', 'Question requested'],
-  other: ['Used a tool', 'Using a tool', 'Tool requested'],
-}
+const KIND_WORDS = {
+  start: [
+    'streamB.runSummary.start.done',
+    'streamB.runSummary.start.running',
+    'streamB.runSummary.start.waiting',
+  ],
+  search: [
+    'streamB.runSummary.search.done',
+    'streamB.runSummary.search.running',
+    'streamB.runSummary.search.waiting',
+  ],
+  read: [
+    'streamB.runSummary.read.done',
+    'streamB.runSummary.read.running',
+    'streamB.runSummary.read.waiting',
+  ],
+  write: [
+    'streamB.runSummary.write.done',
+    'streamB.runSummary.write.running',
+    'streamB.runSummary.write.waiting',
+  ],
+  delete: [
+    'streamB.runSummary.delete.done',
+    'streamB.runSummary.delete.running',
+    'streamB.runSummary.delete.waiting',
+  ],
+  run: [
+    'streamB.runSummary.run.done',
+    'streamB.runSummary.run.running',
+    'streamB.runSummary.run.waiting',
+  ],
+  ask: [
+    'streamB.runSummary.ask.done',
+    'streamB.runSummary.ask.running',
+    'streamB.runSummary.ask.waiting',
+  ],
+  other: [
+    'streamB.runSummary.other.done',
+    'streamB.runSummary.other.running',
+    'streamB.runSummary.other.waiting',
+  ],
+} as const
 
 /** Where a run stands: running, waiting for you, refused or failed somewhere in it, or done. */
 export type RunState = 'running' | 'waiting' | 'failed' | 'done'
@@ -97,7 +122,7 @@ export function runSummary(calls: readonly ChatMessage[]): string {
   return order
     .map((kind) => {
       const n = counts.get(kind)
-      const word = KIND_WORDS[kind][kind === going ? 1 : waiting.has(kind) ? 2 : 0]
+      const word = t(KIND_WORDS[kind][kind === going ? 1 : waiting.has(kind) ? 2 : 0])
       return n > 1 ? `${word} ${n}` : word
     })
     .join(' · ')

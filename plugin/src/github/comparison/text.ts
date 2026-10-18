@@ -23,12 +23,21 @@ export function decodeBlob(bytes: Uint8Array): BlobContent {
 /** Line tokens retain their terminators: an empty file is not one empty line. */
 const tokens = (text: string): string[] => text.match(/[^\n]*\n|[^\n]+$/g) ?? []
 
+export class DiffComputationError extends Error {
+  constructor(readonly code: 'line-budget' | 'distinct-lines') {
+    super(
+      code === 'line-budget'
+        ? 'This diff exceeds the line budget. Open each side separately.'
+        : 'Too many distinct lines to compare safely. Open each side separately.'
+    )
+  }
+}
+
 /** Reuse CodeMirror's diff engine on line identities, not word-cleaned character changes. */
 export function fullDiff(before: string, after: string): TextDiff {
   const a = tokens(before),
     b = tokens(after)
-  if (a.length + b.length > 100000)
-    throw new Error('This diff exceeds the line budget. Open each side separately.')
+  if (a.length + b.length > 100000) throw new DiffComputationError('line-budget')
   const ids = new Map<string, string>()
   const encode = (lines: string[]) =>
     lines
@@ -36,8 +45,7 @@ export function fullDiff(before: string, after: string): TextDiff {
         let id = ids.get(line)
         if (!id) {
           // One UTF-16 unit per line keeps the diff's offsets identical to line indexes.
-          if (ids.size >= 60000)
-            throw new Error('Too many distinct lines to compare safely. Open each side separately.')
+          if (ids.size >= 60000) throw new DiffComputationError('distinct-lines')
           const code = ids.size + 1
           id = String.fromCharCode(code >= 0xd800 ? code + 0x800 : code)
           ids.set(line, id)

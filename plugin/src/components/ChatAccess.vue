@@ -1,12 +1,12 @@
 <template>
   <div class="abele-chat-access">
-    <Setting name="Vault" heading />
+    <Setting :name="t('streamB.vault.5d55c4')" heading />
     <Setting
-      name="Full vault access"
+      :name="t('streamB.fullVaultAccess.e59147')"
       :desc="
         fullVault
-          ? 'The agent may read and change every file in the vault.'
-          : 'The agent sees only what is listed below.'
+          ? t('streamB.theAgentMayReadAndChangeEvery.7215c4')
+          : t('streamB.theAgentSeesOnlyWhatIsListed.dd8d63')
       "
     >
       <Checkbox :is-enabled="fullVault" @toggle="emit('update:fullVault', !fullVault)" />
@@ -19,7 +19,7 @@
       class="abele-chat-access__list"
       :class="{ 'abele-chat-access__list_covered': fullVault }"
       role="tree"
-      aria-label="What the chat may touch"
+      :aria-label="t('streamB.whatTheChatMayTouch.4a49ab')"
     >
       <TreeItem
         v-for="entry in entries"
@@ -35,30 +35,30 @@
           <Icon
             icon="x"
             size="xs"
-            :tooltip="`Remove ${kinds[entry.type]}`"
+            :tooltip="t('streamB.remove.9fc927', { v0: String(kinds[entry.type]) })"
             @click.stop="emit('remove', entry)"
           />
         </template>
         <TreeItem v-for="m in entry.members ?? []" :key="m" :text="m" icon="file-text" plain />
       </TreeItem>
       <div v-if="!entries.length" class="abele-chat-access__empty">
-        Nothing yet. The agent sees only what you add here.
+        {{ t('streamB.nothingYetTheAgentSeesOnlyWhat.92e05b') }}
       </div>
       <div class="abele-chat-access__add">
         <Button
-          text="Add…"
+          :text="t('streamB.add.aa2dcd')"
           icon="plus"
-          tooltip="Add a file, folder, group or pattern"
+          :tooltip="t('streamB.addAFileFolderGroupOrPattern.4da856')"
           @click="emit('add')"
         />
       </div>
     </div>
 
     <template v-if="node">
-      <Setting name="Nodes" heading />
+      <Setting :name="t('streamB.nodes.7ac362')" heading />
       <Setting
-        :name="`All of ${node.name}`"
-        desc="Every folder opened on the node, and any it opens later."
+        :name="t('streamB.allOf.f6e7e0', { v0: String(node.name) })"
+        :desc="t('streamB.everyFolderOpenedOnTheNodeAnd.20f63b')"
       >
         <Checkbox :is-enabled="nodeWhole" @toggle="emit('update:nodeWhole', !nodeWhole)" />
       </Setting>
@@ -66,7 +66,7 @@
         class="abele-chat-access__list"
         :class="{ 'abele-chat-access__list_covered': nodeWhole }"
         role="tree"
-        :aria-label="`Folders on ${node.name}`"
+        :aria-label="t('streamB.foldersOn.64abc5', { v0: String(node.name) })"
       >
         <template v-for="f in node.folders" :key="f.id">
           <!-- A repository is only a heading here: its worktrees are what is given. A plain
@@ -107,6 +107,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 // What a chat's agent may touch: the vault (all of it, or picked files, folders, groups and
 // patterns) and the nodes (all of one, or picked folders and worktrees on it). One list per
 // place, each thing by its glyph with the number of files it covers; Add opens one chooser for
@@ -149,7 +150,12 @@ const emit = defineEmits<{
 }>()
 
 const icons = { file: 'file-text', folder: 'folder', group: 'boxes', pattern: 'asterisk' }
-const kinds = { file: 'the file', folder: 'the folder', group: 'the group', pattern: 'the pattern' }
+const kinds = {
+  file: t('streamB.theFile.994659'),
+  folder: t('streamB.theFolder.667f7a'),
+  group: t('streamB.theGroup.3e5646'),
+  pattern: t('streamB.thePattern.880c7c'),
+}
 const open = reactive(new Set<string>())
 const toggle = (path: string) => (open.has(path) ? open.delete(path) : open.add(path))
 </script>

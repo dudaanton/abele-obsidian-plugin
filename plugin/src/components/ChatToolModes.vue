@@ -7,26 +7,27 @@
       <Search
         v-model="query"
         class="abele-chat-tools__field"
-        label="Search tools"
-        placeholder="Search tools…"
+        :label="t('chat.searchTools')"
+        :placeholder="t('chat.searchToolsHint')"
         autofocus
       />
       <!-- Every tool at once, the same menu as a group's. -->
       <Icon
-        :icon="MODE[shared(optional) ?? 'mixed'].icon"
+        :icon="sharedMode(optional).icon"
         class="abele-chat-tools__all"
         aria-haspopup="menu"
-        :label="`All tools: ${MODE[shared(optional) ?? 'mixed'].said}`"
+        :label="t('chat.allTools', { mode: sharedMode(optional).said })"
         @click="(e: MouseEvent) => modeMenu(e, optional)"
       />
       <AgentOverrideNotice field="toolModes" compact />
     </div>
 
-    <div class="abele-chat-tools__tree" role="tree" aria-label="Tools">
+    <div class="abele-chat-tools__tree" role="tree" :aria-label="t('chat.tools')">
       <TreeItem
         v-for="group in shown"
         :key="group.category"
-        :text="group.category"
+        :text="groupLabel(group)"
+        :data-tool-group="group.category"
         :flair="String(group.tools.length)"
         :icon="group.mcp ? 'plug' : undefined"
         collapsible
@@ -36,10 +37,10 @@
         <template #end>
           <Icon
             v-if="optionalOf(group).length"
-            :icon="MODE[shared(optionalOf(group)) ?? 'mixed'].icon"
+            :icon="sharedMode(optionalOf(group)).icon"
             size="xs"
             aria-haspopup="menu"
-            :label="`${group.category}: ${MODE[shared(optionalOf(group)) ?? 'mixed'].said}`"
+            :label="`${groupLabel(group)}: ${sharedMode(optionalOf(group)).said}`"
             @click.stop="(e: MouseEvent) => modeMenu(e, optionalOf(group))"
             @keydown.stop
           />
@@ -66,7 +67,7 @@
         <!-- Tools that are always there take no choice: one quiet branch, open to see which. -->
         <TreeItem
           v-if="coreOf(group).length"
-          text="Always on"
+          :text="t('chat.alwaysOn')"
           :flair="String(coreOf(group).length)"
           collapsible
           :collapsed="!coreOpen.has(group.category)"
@@ -82,12 +83,14 @@
           />
         </TreeItem>
       </TreeItem>
-      <EmptyState v-if="!shown.length" variant="no-matches" text="No tools match" />
+      <EmptyState v-if="!shown.length" variant="no-matches" :text="t('chat.noTools')" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+import { settingsLabel, settingsToolLabel } from '@/i18n/settingsLabels'
 import { computed, reactive, ref } from 'vue'
 import { Menu } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
@@ -107,10 +110,10 @@ const emit = defineEmits<{
 
 /** A mode as a glyph, and the words for its tooltip and its menu item. */
 const MODE = {
-  ask: { icon: 'shield-question', said: 'asks first', item: 'Ask first' },
-  auto: { icon: 'zap', said: 'runs on its own', item: 'Run on its own' },
-  off: { icon: 'circle-off', said: 'off', item: 'Off' },
-  mixed: { icon: 'shield-ellipsis', said: 'mixed', item: '' },
+  ask: { icon: 'shield-question', said: t('chat.asksFirst'), item: t('chat.askFirst') },
+  auto: { icon: 'zap', said: t('chat.runsAlone'), item: t('chat.runAlone') },
+  off: { icon: 'circle-off', said: t('chat.offState'), item: t('chat.off') },
+  mixed: { icon: 'shield-ellipsis', said: t('chat.mixed'), item: '' },
 } as const
 
 interface Tool {
@@ -124,13 +127,18 @@ interface Group {
   mcp: boolean
 }
 
+const groupLabel = (group: Group) => (group.mcp ? group.category : settingsLabel(group.category))
 const query = ref('')
 
 const groups = computed<Group[]>(() => {
   const byCategory = new Map<string, Tool[]>()
   for (const tool of getToolRegistry()) {
     const list = byCategory.get(tool.category) ?? []
-    list.push({ name: tool.name, key: tool.permissionKey ?? tool.name, label: tool.label })
+    list.push({
+      name: tool.name,
+      key: tool.permissionKey ?? tool.name,
+      label: settingsToolLabel(tool),
+    })
     byCategory.set(tool.category, list)
   }
   return [...byCategory].map(([category, tools]) => ({
@@ -146,7 +154,7 @@ const shown = computed<Group[]>(() => {
   if (!q) return groups.value
   return groups.value
     .map((group) =>
-      group.category.toLowerCase().includes(q)
+      groupLabel(group).toLowerCase().includes(q) || group.category.toLowerCase().includes(q)
         ? group
         : { ...group, tools: group.tools.filter((t) => t.label.toLowerCase().includes(q)) }
     )
@@ -166,6 +174,8 @@ const shared = (tools: Tool[]): ToolMode | null => {
 }
 
 /** The three modes, the current one ticked; for one tool, a group, or all of them. */
+const sharedMode = (tools: Tool[]) => MODE[shared(tools) ?? 'mixed']
+
 const modeMenu = (event: MouseEvent, tools: Tool[]) => {
   const current = shared(tools)
   const menu = new Menu()

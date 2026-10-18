@@ -1,3 +1,7 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
+import { streamBDate } from '@/i18n/streamBDate'
+import { agentText } from '@/i18n/streamBText'
+import { t } from '@/i18n'
 import { computed, ref, shallowRef, watch, type WatchStopHandle } from 'vue'
 import dayjs from 'dayjs'
 import { Notice, SuggestModal, TFile, setTooltip, type App } from 'obsidian'
@@ -73,11 +77,16 @@ export class AgentsService {
       this.nodesIncomplete.value ||
       this.rows.value.some((row) => row.uncertain)
   )
-  readonly status = ref('Updating…')
+  readonly status = ref(t('streamB.updating.dfe40e'))
   readonly badge = computed(() => attentionBadge(this.rows.value, this.incomplete.value))
-  readonly tooltip = computed(
-    () =>
-      `Agents · Needs attention: ${this.badge.value.attention}. Working: ${this.badge.value.running}${this.incomplete.value ? ' · Some conversations could not be checked' : ''}`
+  readonly tooltip = computed(() =>
+    t('streamB.agentsNeedsAttentionWorking.1e76e0', {
+      v0: String(this.badge.value.attention),
+      v1: String(this.badge.value.running),
+      v2: String(
+        this.incomplete.value ? t('streamB.someConversationsCouldNotBeChecked.0f3db0') : ''
+      ),
+    })
   )
   private readonly files = new Map<string, AttentionRow>()
   private readonly removed = new Set<string>()
@@ -212,9 +221,12 @@ export class AgentsService {
         path,
         ...(isDiscussion(metadata) && metadata.commentId ? { commentId: metadata.commentId } : {}),
       },
-      title: metadata.title || path.split('/').pop() || 'Chat',
-      agent: AgentRegistry.getInstance().get(metadata.agentId ?? '')?.name || 'Agent',
-      source: isDiscussion(metadata) ? `Discussion · ${metadata.anchor?.note ?? ''}` : 'Chat',
+      title: metadata.title || path.split('/').pop() || t('streamB.chat.460b3a'),
+      agent:
+        AgentRegistry.getInstance().get(metadata.agentId ?? '')?.name || t('streamB.agent.11b39c'),
+      source: isDiscussion(metadata)
+        ? t('streamB.discussion.c5d2c7', { v0: String(metadata.anchor?.note ?? '') })
+        : t('streamB.chat.460b3a'),
       model: metadata.modelId || AgentRegistry.getInstance().get(metadata.agentId ?? '')?.modelId,
       folder: (metadata.anchor?.note || path).split('/').slice(0, -1).join('/') || '/',
       quote: metadata.anchor?.quote,
@@ -229,7 +241,6 @@ export class AgentsService {
       this.truths.get(path)
     ).map((reason) => ({
       ...reason,
-      ...(reason.kind === 'error' && !reason.text ? { text: 'Error details were not saved.' } : {}),
       ...(!live && reason.kind === 'running' ? { kind: 'interrupted' as const } : {}),
     }))
     row.uncertain =
@@ -270,7 +281,7 @@ export class AgentsService {
         reasons: row.reasons.map((r) => ({ ...r, uncertain: true })),
       })
     this.localIncomplete.value = true
-    this.status.value = 'Some conversations could not be checked. Open them to check their status.'
+    this.status.value = t('streamB.someConversationsCouldNotBeCheckedOpen.dcc424')
   }
   /** Old tool-result records are positive resolutions too; absence of a call is not. */
   private async inspect(
@@ -279,7 +290,7 @@ export class AgentsService {
     const app = GlobalStore.getInstance().app
     const yieldControl = async () => {
       await attentionIdle()
-      if (this.disposed) throw new Error('Attention discovery stopped')
+      if (this.disposed) throw new UiError(uiMessage('streamB.attentionDiscoveryStopped.fc2dc9'))
     }
     const text = await app.vault.read(file)
     let parsed = await this.reader.read(text, yieldControl)
@@ -372,7 +383,7 @@ export class AgentsService {
                 ...reason,
                 kind: 'delivery' as const,
                 uncertain: true,
-                text: 'Saving your decision…',
+                text: t('streamB.savingYourDecision.237a47'),
               }
             : reason
       )
@@ -422,7 +433,7 @@ export class AgentsService {
         }
       } catch {
         this.localIncomplete.value = true
-        this.status.value = 'Could not save the agents list'
+        this.status.value = t('streamB.couldNotSaveTheAgentsList.f7f148')
       }
     }
   }
@@ -442,7 +453,7 @@ export class AgentsService {
         this.startedAt = now
       }
     } catch {
-      this.status.value = 'Could not save the agents list baseline'
+      this.status.value = t('streamB.couldNotSaveTheAgentsListBaseline.e22210')
     }
     // Load durable evidence before enabling any publication, including node registry changes.
     // The last local copy is explicitly incomplete until the authoritative files are read.
@@ -461,8 +472,8 @@ export class AgentsService {
             key: path,
             reference: entry.reference,
             title: path.split('/').pop()!,
-            agent: 'Agent',
-            source: 'Updating…',
+            agent: t('streamB.agent.11b39c'),
+            source: t('streamB.updating.dfe40e'),
             reasons: reconcileAttentionReasons(
               entry.reasons.map((reason: AttentionReason) =>
                 reason.kind === 'running' ? { ...reason, kind: 'interrupted' } : reason
@@ -472,7 +483,7 @@ export class AgentsService {
           })
         }
     } catch {
-      this.status.value = 'Could not read the agents list'
+      this.status.value = t('streamB.couldNotReadTheAgentsList.9dbd89')
     }
     try {
       const stored = GlobalStore.getInstance().app.loadLocalStorage(REVISIONS_KEY)
@@ -551,13 +562,15 @@ export class AgentsService {
           this.files.set(file.path, {
             ...row,
             source:
-              row.reference.kind === 'local' && row.reference.commentId ? 'Discussion' : 'Chat',
+              row.reference.kind === 'local' && row.reference.commentId
+                ? t('streamB.discussion.5eb6cf')
+                : t('streamB.chat.460b3a'),
             reasons: row.reasons.map((reason) => ({
               ...reason,
               ...(reason.kind === 'running' ? { kind: 'interrupted' as const } : {}),
               uncertain: false,
               ...(reason.kind === 'error'
-                ? { text: 'Open the conversation for error details.' }
+                ? { text: agentText('streamB.openTheConversationForErrorDetails.43dc40') }
                 : {}),
             })),
           })
@@ -608,9 +621,7 @@ export class AgentsService {
       if (!paths.has(path)) this.deleted(path)
     failed ||= this.startedAt === undefined
     this.localIncomplete.value = failed
-    this.status.value = failed
-      ? 'Some conversations could not be read. Open them to check their status.'
-      : ''
+    this.status.value = failed ? t('streamB.someConversationsCouldNotBeReadOpen.dac81a') : ''
     this.publish()
   }
   /** A changed file costs one read, not a vault scan on every streamed token. */
@@ -763,7 +774,7 @@ export class AgentsService {
         file,
         (content) => {
           const metadata = parseChatMetadata(content)
-          if (!metadata) throw new Error('Conversation unavailable')
+          if (!metadata) throw new UiError(uiMessage('streamB.conversationUnavailable.6117bc'))
           const state = metadata.attention ?? {}
           return (
             content +
@@ -786,7 +797,7 @@ export class AgentsService {
         },
         () => {
           if ([...this.live.keys()].some((s) => s.currentChatFile.value?.path === file.path))
-            throw new Error('Conversation opened. Try again.')
+            throw new UiError(uiMessage('streamB.conversationOpenedTryAgain.bf6557'))
         }
       )
     }
@@ -821,7 +832,7 @@ export class AgentsService {
     if (!ref.path && ref.sessionId) {
       const session = chats.getSession(ref.sessionId)
       if (!session) {
-        new Notice('Conversation is no longer available')
+        new Notice(t('streamB.conversationIsNoLongerAvailable.67047f'))
         return false
       }
       const current = chats.contextualOpenGuard(session)
@@ -845,7 +856,7 @@ export class AgentsService {
     const file = GlobalStore.getInstance().app.vault.getAbstractFileByPath(ref.path)
     if (!(file instanceof TFile)) {
       this.deleted(row.key)
-      new Notice('Conversation is no longer available')
+      new Notice(t('streamB.conversationIsNoLongerAvailable.67047f'))
       return false
     }
     const presentationCurrent = chats.fileOpenGuard(file)
@@ -874,8 +885,7 @@ export class AgentsService {
       )
         return false
       const current = this.liveRow(session)
-      if (current?.uncertain)
-        new Notice('Could not confirm the current status. Opened the saved conversation.')
+      if (current?.uncertain) new Notice(t('streamB.couldNotConfirmTheCurrentStatusOpened.254502'))
       // A foreground opening acknowledges saved failures only, never questions or tools.
       await this.markChatSeen(session)
       if (
@@ -885,7 +895,7 @@ export class AgentsService {
         return false
       // Missing index evidence is not recreated into the conversation.
       if (reason.kind !== 'error' && !current?.reasons.some((r) => r.id === reason.id))
-        new Notice('Already answered or request no longer active')
+        new Notice(t('streamB.alreadyAnsweredOrRequestNoLongerActive.c589fa'))
       const target =
         reason.target ||
         (reason.kind === 'approval'
@@ -916,7 +926,7 @@ export class AgentsService {
         const last = local?.messages.value.at(-1)
         return {
           id,
-          label: chats.getPresentation(id)?.label.value || 'Chat',
+          label: chats.getPresentation(id)?.label.value || t('streamB.chat.460b3a'),
           waiting:
             !!local && (local.pendingToolCalls.value.length > 0 || !!local.pendingQuestions.value),
           working: !!local?.isStreaming.value,
@@ -980,8 +990,8 @@ export function chooseAttentionTab(
               ? [
                   {
                     flair: dayjs(tab.at).isSame(dayjs(), 'day')
-                      ? dayjs(tab.at).format('HH:mm')
-                      : dayjs(tab.at).format('D MMM'),
+                      ? streamBDate(dayjs(tab.at), 'HH:mm')
+                      : streamBDate(dayjs(tab.at), 'D MMM'),
                     cls: 'abele-close-tab__time',
                   },
                 ]
@@ -989,7 +999,9 @@ export function chooseAttentionTab(
             ...(tab.waiting || tab.working
               ? [
                   {
-                    dot: tab.waiting ? 'Waiting for you' : 'The agent is working',
+                    dot: tab.waiting
+                      ? t('streamB.waitingForYou.9f760a')
+                      : t('streamB.theAgentIsWorking.c2556c'),
                     cls: `abele-close-tab__dot ${tab.waiting ? 'abele-close-tab__dot_waiting' : ''}`,
                   },
                 ]
@@ -1002,7 +1014,9 @@ export function chooseAttentionTab(
         void close(tab.id).then(
           () => resolve(true),
           (error) => {
-            new Notice(error instanceof Error ? error.message : 'Could not close the tab')
+            new Notice(
+              error instanceof Error ? error.message : t('streamB.couldNotCloseTheTab.f9ace0')
+            )
             resolve(false)
           }
         )
@@ -1017,11 +1031,11 @@ export function chooseAttentionTab(
         }, 0)
       }
     })(app)
-    modal.setPlaceholder('Close which chat?')
+    modal.setPlaceholder(t('streamB.closeWhichChat.ab65c6'))
     modal.setInstructions([
-      { command: '↑↓', purpose: 'to choose' },
-      { command: '↵', purpose: 'to close it' },
-      { command: 'esc', purpose: 'to keep them all' },
+      { command: '↑↓', purpose: t('streamB.toChoose.89c0a2') },
+      { command: '↵', purpose: t('streamB.toCloseIt.5c8e37') },
+      { command: 'esc', purpose: t('streamB.toKeepThemAll.fe39d4') },
     ])
     modal.modalEl.classList.add('abele-close-tab')
     // How full the tabs are, as a code in the field's corner: every one taken.
@@ -1029,7 +1043,8 @@ export function chooseAttentionTab(
       cls: 'abele-close-tab__count',
       text: `${tabs.length}/${tabs.length}`,
     })
-    if (count) setTooltip(count, `All ${tabs.length} chat tabs are open`)
+    if (count)
+      setTooltip(count, t('streamB.allChatTabsAreOpen.153ec9', { v0: String(tabs.length) }))
     modal.open()
   })
 }

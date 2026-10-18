@@ -1,3 +1,4 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import { TFile } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -104,8 +105,7 @@ export async function backfillSummary(path: string, signal: AbortSignal): Promis
       return content + serializeMetadata({ ...latest, summary })
     },
     () => {
-      if (service.getSessionByFile(path))
-        throw new Error('The chat was opened. Summarize it through its session.')
+      if (service.getSessionByFile(path)) throw new UiError(uiMessage('streamBError.573c6d85e4'))
     }
   )
   return recorded

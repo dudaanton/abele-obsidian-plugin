@@ -20,7 +20,7 @@
     <Card
       v-for="row in report.rows"
       :key="row.permission"
-      :title="row.permission"
+      :title="streamBLabel(row.permission)"
       :icon="ICONS[row.state]"
       :subtitle="row.status ? `${row.request} → ${row.status}` : row.request"
       :description="rowLines(row)"
@@ -33,6 +33,8 @@
 </template>
 
 <script setup lang="ts">
+import { presentUiError } from '@/i18n/streamBErrors'
+import { streamBLabel } from '@/i18n/streamBLabels'
 import { t } from '@/i18n'
 /**
  * What "Check access" found: one card for the token — was it sent, whose is it, to which API —
@@ -107,18 +109,28 @@ const tokenLines = computed(() => {
       })
     )
   }
-  if (r.identityError) lines.push(r.identityError)
+  if (r.identityError) lines.push(presentUiError(r.identityError))
   lines.push(t('settings.GithubAccessReport.api_value.011cfaea', { value0: String(r.api) }))
-  if (r.rateLimit) lines.push(`${r.rateLimit[0].toUpperCase()}${r.rateLimit.slice(1)}.`)
+  if (r.rateLimit)
+    lines.push(presentUiError(`${r.rateLimit[0].toUpperCase()}${r.rateLimit.slice(1)}.`))
   return lines.join('\n')
 })
 
 const rowLines = (row: AccessRow): string | undefined => {
   const lines: string[] = []
-  if (row.reason) lines.push(row.fix ? `${row.reason} ${row.fix}` : row.reason)
+  if (row.reason)
+    lines.push(
+      row.fix
+        ? `${presentUiError(row.reason)} ${presentUiError(row.fix)}`
+        : presentUiError(row.reason)
+    )
   if (row.needed)
     lines.push(
-      t('settings.GithubAccessReport.needs_value.9e07998c', { value0: String(row.needed) })
+      t('settings.GithubAccessReport.needs_value.9e07998c', {
+        value0: String(
+          row.needed.replace(/Metadata|Contents|Pull requests|Discussions|Issues/g, streamBLabel)
+        ),
+      })
     )
   if (row.githubSaid)
     lines.push(

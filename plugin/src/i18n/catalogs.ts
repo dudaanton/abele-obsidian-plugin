@@ -1,3 +1,33 @@
+import { streamBMeta as deStreamBMeta } from './locales/de/streamBMeta'
+import { streamBMeta as esStreamBMeta } from './locales/es/streamBMeta'
+import { streamBMeta as lvStreamBMeta } from './locales/lv/streamBMeta'
+import { streamBMeta as ruStreamBMeta } from './locales/ru/streamBMeta'
+import { streamBMeta as enStreamBMeta } from './locales/en/streamBMeta'
+import { streamBCounts as deStreamBCounts } from './locales/de/streamBCounts'
+import { streamBCounts as esStreamBCounts } from './locales/es/streamBCounts'
+import { streamBCounts as lvStreamBCounts } from './locales/lv/streamBCounts'
+import { streamBCounts as ruStreamBCounts } from './locales/ru/streamBCounts'
+import { streamBCounts as enStreamBCounts } from './locales/en/streamBCounts'
+import { streamBErrors as deStreamBErrors } from './locales/de/streamBErrors'
+import { streamBErrors as esStreamBErrors } from './locales/es/streamBErrors'
+import { streamBErrors as lvStreamBErrors } from './locales/lv/streamBErrors'
+import { streamBErrors as ruStreamBErrors } from './locales/ru/streamBErrors'
+import { streamBErrors as enStreamBErrors } from './locales/en/streamBErrors'
+import { streamB as deStreamB } from './locales/de/streamB'
+import { streamB as esStreamB } from './locales/es/streamB'
+import { streamB as lvStreamB } from './locales/lv/streamB'
+import { streamB as ruStreamB } from './locales/ru/streamB'
+import { streamB as enStreamB } from './locales/en/streamB'
+import { repository as deRepository } from './locales/de/repository'
+import { repository as esRepository } from './locales/es/repository'
+import { repository as lvRepository } from './locales/lv/repository'
+import { repository as ruRepository } from './locales/ru/repository'
+import { repository as enRepository } from './locales/en/repository'
+import { chat as deChat } from './locales/de/chat'
+import { chat as esChat } from './locales/es/chat'
+import { chat as lvChat } from './locales/lv/chat'
+import { chat as ruChat } from './locales/ru/chat'
+import { chat as enChat } from './locales/en/chat'
 import { en } from './locales/en/pilot'
 import { ru } from './locales/ru/pilot'
 import { lv } from './locales/lv/pilot'
@@ -20,7 +50,18 @@ import { extra as lvStreamCExtra } from './locales/lv/streamCExtra'
 import { extra as esStreamCExtra } from './locales/es/streamCExtra'
 import { extra as deStreamCExtra } from './locales/de/streamCExtra'
 
-export const english = { ...en, ...enTasks, ...enStreamC, ...enStreamCExtra }
+export const english = {
+  ...en,
+  ...enTasks,
+  ...enStreamC,
+  ...enStreamCExtra,
+  ...enChat,
+  ...enRepository,
+  ...enStreamB,
+  ...enStreamBErrors,
+  ...enStreamBCounts,
+  ...enStreamBMeta,
+}
 
 export type TranslationCatalog = {
   [K in keyof typeof en]: (typeof en)[K] extends string ? string : Exclude<Message, string>
@@ -28,10 +69,54 @@ export type TranslationCatalog = {
 // Keep the full registry available to tooling without retaining it in English-only consumers.
 export const catalogs = /* @__PURE__ */ (() => ({
   en: english,
-  ru: { ...ru, ...ruTasks, ...ruStreamC, ...ruStreamCExtra },
-  lv: { ...lv, ...lvTasks, ...lvStreamC, ...lvStreamCExtra },
-  es: { ...es, ...esTasks, ...esStreamC, ...esStreamCExtra },
-  de: { ...de, ...deTasks, ...deStreamC, ...deStreamCExtra },
+  ru: {
+    ...ru,
+    ...ruTasks,
+    ...ruStreamC,
+    ...ruStreamCExtra,
+    ...ruChat,
+    ...ruRepository,
+    ...ruStreamB,
+    ...ruStreamBErrors,
+    ...ruStreamBCounts,
+    ...ruStreamBMeta,
+  },
+  lv: {
+    ...lv,
+    ...lvTasks,
+    ...lvStreamC,
+    ...lvStreamCExtra,
+    ...lvChat,
+    ...lvRepository,
+    ...lvStreamB,
+    ...lvStreamBErrors,
+    ...lvStreamBCounts,
+    ...lvStreamBMeta,
+  },
+  es: {
+    ...es,
+    ...esTasks,
+    ...esStreamC,
+    ...esStreamCExtra,
+    ...esChat,
+    ...esRepository,
+    ...esStreamB,
+    ...esStreamBErrors,
+    ...esStreamBCounts,
+    ...esStreamBMeta,
+  },
+  de: {
+    ...de,
+    ...deTasks,
+    ...deStreamC,
+    ...deStreamCExtra,
+    ...deChat,
+    ...deRepository,
+    ...deStreamB,
+    ...deStreamBErrors,
+    ...deStreamBCounts,
+    ...deStreamBMeta,
+  },
 }))()
 
 const placeholders = (text: string) =>

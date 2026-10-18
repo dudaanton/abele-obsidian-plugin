@@ -26,7 +26,12 @@
         ><span class="abele-change-codes__dot" /><span class="abele-change-codes__glyph">
           <StatusDot
             :tone="inside(entry)!.unseen ? 'accent' : 'orange'"
-            :label="`${plural(inside(entry)!.count, 'changed file')} inside${inside(entry)!.unseen ? ', some you have not looked at' : ''}`"
+            :label="
+              t('streamB.inside.d7a7ae', {
+                v0: String(plural(inside(entry)!.count, 'changed file')),
+                v1: String(inside(entry)!.unseen ? t('streamB.someYouHaveNotLookedAt.5608b1') : ''),
+              })
+            "
           /> </span
       ></span>
     </template>
@@ -35,7 +40,7 @@
         v-if="stage === 'unstaged' && entry.change.kind !== 'conflict'"
         icon="undo-2"
         size="xs"
-        tooltip="Discard the changes to this file…"
+        :tooltip="t('streamB.discardTheChangesToThisFile.f1468a')"
         @click.stop="emit('discard', entry.path)"
       />
       <Icon
@@ -43,10 +48,10 @@
         size="xs"
         :tooltip="
           stage === 'staged'
-            ? 'Unstage'
+            ? t('streamB.unstage.033f86')
             : entry.change.kind === 'conflict'
-              ? 'Mark resolved and stage'
-              : 'Stage'
+              ? t('streamB.markResolvedAndStage.b8565a')
+              : t('streamB.stage.de8388')
         "
         @click.stop="emit(stage === 'staged' ? 'unstage' : 'stage', entry.path)"
       />
@@ -69,13 +74,14 @@
     />
     <TreeItem
       v-if="entry.kind === 'folder' && cursors?.[entry.path]"
-      text="Load more files"
+      :text="t('streamB.loadMoreFiles.5c455f')"
       @click.stop="emit('more', entry.path)"
     />
   </TreeItem>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 // One level of the file tree; folders hold the next level and open in place. A folded folder
 // with changes inside carries a dot, accent when some of them are new to you. Under a group of the
 // working tree each changed file stages, unstages or discards from glyphs under the pointer.

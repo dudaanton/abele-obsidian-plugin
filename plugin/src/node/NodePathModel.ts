@@ -1,3 +1,5 @@
+import { uiFields, uiField, uiErrorMessage, uiMessage, UiError } from '@/i18n/streamBErrors'
+
 import { computed, ref, shallowRef, markRaw } from 'vue'
 import type { SessionActivity } from './sessionActivity'
 import { ChannelError } from '@abele/channel-protocol'
@@ -309,7 +311,7 @@ export class NodePathModel {
     const target = this.targets.value.find(
       (t) => t.id === id || (t.kind === 'workspace' && t.projectId === id)
     )
-    if (!target) throw new Error('This target is no longer available. Refresh its folder.')
+    if (!target) throw new UiError(uiMessage('streamBError.cbbb077a00'))
     return { ...target }
   }
   async start(): Promise<void> {
@@ -382,9 +384,9 @@ export class NodePathModel {
       target = this.current.value,
       seen = this.inspection.value?.revision
     if (!git || !target || target.kind !== 'worktree')
-      throw new Error('Git actions need an updated node.')
-    if (!seen) throw new Error('Refresh the folder first.')
-    if (this.gitBusy.value) throw new Error('Another git action is still running.')
+      throw new UiError(uiMessage('streamBError.d15771e911'))
+    if (!seen) throw new UiError(uiMessage('streamBError.54a4d809c8'))
+    if (this.gitBusy.value) throw new UiError(uiMessage('streamBError.607e975b14'))
     this.gitBusy.value = id
     try {
       return await run(git, target, seen)
@@ -418,7 +420,7 @@ export class NodePathModel {
   createBranch(name: string): Promise<void> {
     return this.gitAct('create-branch', (git, target, seen) => {
       const at = seen.kind === 'commit' ? seen.commit : seen.head
-      if (!at) throw new Error('There is no commit here to start a branch at.')
+      if (!at) throw new UiError(uiMessage('streamBError.97797a06f1'))
       return git.createBranch(target, name, at, seen)
     })
   }
@@ -443,7 +445,7 @@ export class NodePathModel {
   }
   async createPull(pull: NewPull): Promise<{ number: number; url?: string }> {
     const target = this.current.value
-    if (!target || !this.port.createPull) throw new Error('Pull requests need an updated node.')
+    if (!target || !this.port.createPull) throw new UiError(uiMessage('streamBError.890a0701f9'))
     const made = await this.port.createPull(target, pull)
     void this.loadPanelBranch().catch((error) => this.report(error))
     return made
@@ -487,7 +489,7 @@ export class NodePathModel {
       this.decorate()
       if (this.disposed || generation !== this.catalogueGeneration) return
       this.receivedAt.value = this.now()
-      this.error.value = ''
+      uiField(this.error, 'value', uiErrorMessage(''))
     } catch (error) {
       if (generation === this.catalogueGeneration) this.report(error)
       throw error
@@ -500,7 +502,7 @@ export class NodePathModel {
   }
   async selectTarget(target: PathTarget, copy?: CopySummary): Promise<void> {
     if (target.nodeId !== this.nodeId || target.registrationId !== this.registrationId)
-      throw new Error('This target belongs to another node registration.')
+      throw new UiError(uiMessage('streamBError.8a0e599716'))
     if (!this.targets.value.some((entry) => pathTargetKey(entry) === pathTargetKey(target)))
       this.targets.value = [...this.targets.value, { ...target }]
     if (copy)
@@ -522,7 +524,7 @@ export class NodePathModel {
     this.stopWatch = undefined
     if (!this.online.value) {
       if (!this.inspections.value[pathTargetKey(target)])
-        throw new Error('This target’s files were not retained. Reconnect to load them.')
+        throw new UiError(uiMessage('streamBError.e1b43e1573'))
       this.openMode(target)
       return
     }
@@ -793,7 +795,7 @@ export class NodePathModel {
       return Promise.resolve()
     const read = this.serialTarget(target, async () => {
       if (this.disposed) return
-      if (!this.online.value) throw new Error('Reconnect to load this folder’s unretained entries.')
+      if (!this.online.value) throw new UiError(uiMessage('streamBError.b4836687ce'))
       this.setProgress(target, 'reading')
       const activeCursor = more ? this.cursors.value[key]?.[path] : undefined
       if (more && !activeCursor) return
@@ -801,11 +803,12 @@ export class NodePathModel {
         ? this.pageRevisions.get(key)?.get(path)
         : this.knownRead(target)?.revision
       if (more && target.kind === 'worktree' && !revision)
-        throw new Error('Refresh the folder before continuing its expired listing.')
+        throw new UiError(uiMessage('streamBError.29f751894a'))
       const mark = this.batchMark(target)
       const page = await tree.call(this.port, target, path, activeCursor ?? undefined, revision)
       if (this.disposed) return
-      if (more && page.cursor === activeCursor) throw new Error('Node pagination did not advance')
+      if (more && page.cursor === activeCursor)
+        throw new UiError(uiMessage('streamBError.fd3e95b2aa'))
       this.publishPage(target, path, page, more)
       this.catchUp(target, mark)
       this.setProgress(target)
@@ -941,12 +944,15 @@ export class NodePathModel {
     const cacheKey = JSON.stringify([pathTargetKey(target), path, stage, revision])
     if (!this.online.value) {
       const retained = this.retained.get(cacheKey)
-      if (!retained)
-        throw new Error('This file is not retained on this device. Reconnect to open it.')
-      return {
-        ...retained.document,
-        note: 'Offline · retained version. Reconnect to capture current bytes.',
-      }
+      if (!retained) throw new UiError(uiMessage('streamBError.d6473017d0'))
+      return uiFields(
+        {
+          ...retained.document,
+          note: 'Offline · retained version. Reconnect to capture current bytes.',
+        },
+        { note: uiMessage('streamBError.cf3ad06448') },
+        retained.document
+      )
     }
     const key = pathTargetKey(target)
     let known = revision ? undefined : this.knownRead(target)
@@ -968,7 +974,7 @@ export class NodePathModel {
       file.target.projectId !== target.projectId ||
       file.target.registrationId !== target.registrationId
     )
-      throw new Error('The file response belongs to another target.')
+      throw new UiError(uiMessage('streamBError.4566a5a6f4'))
     if (!publish(file)) return file
     // An accepted display still owns its retained bytes even if target metadata advanced.
     // Only promotion into the shared working-revision cache is fenced by that epoch.
@@ -1055,7 +1061,11 @@ export class NodePathModel {
       ?.copies.find((c) => c.id === target.id)
   }
   report(error: unknown): void {
-    this.error.value = error instanceof Error ? error.message : 'Could not load the node'
+    uiField(
+      this.error,
+      'value',
+      error instanceof Error ? uiErrorMessage(error) : uiMessage('streamBError.6097572d7b')
+    )
   }
   destroy(): void {
     this.disposed = true
@@ -1100,10 +1110,14 @@ export class NodePathFileModel {
       this.document.value = file
       this.stage = stage
       this.mode.value = file.change ? 'diff' : 'file'
-      this.error.value = ''
+      uiField(this.error, 'value', uiErrorMessage(''))
     } catch (error) {
       if (generation === this.generation)
-        this.error.value = error instanceof Error ? error.message : 'Could not read file'
+        uiField(
+          this.error,
+          'value',
+          error instanceof Error ? uiErrorMessage(error) : uiMessage('streamBError.2bf254e296')
+        )
       throw error
     } finally {
       if (generation === this.generation) this.busy.value = false

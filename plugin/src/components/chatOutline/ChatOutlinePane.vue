@@ -1,7 +1,11 @@
 <template>
   <div ref="root" class="abele-chat-outline" tabindex="-1" @keydown="onKey">
     <div class="abele-chat-outline__search">
-      <Search v-model="query" placeholder="Find in this chat…" :autofocus="autofocus" />
+      <Search
+        v-model="query"
+        :placeholder="t('streamB.findInThisChat.af2c63')"
+        :autofocus="autofocus"
+      />
       <Icon
         v-for="b in toggles"
         :key="b.icon"
@@ -16,7 +20,12 @@
     <div v-if="pending" class="abele-chat-outline__note" aria-live="polite">
       <Icon icon="clock" size="xs" :interactive="false" />
       <span class="abele-chat-outline__note-text">{{ pending }}</span>
-      <Icon icon="x" size="xs" tooltip="Cancel the branch switch" @click="emit('cancel-pending')" />
+      <Icon
+        icon="x"
+        size="xs"
+        :tooltip="t('streamB.cancelTheBranchSwitch.bd0ae7')"
+        @click="emit('cancel-pending')"
+      />
     </div>
 
     <!-- While searching: how many found, and how far through the discussions, which can be stopped. -->
@@ -31,7 +40,7 @@
           v-if="searchRunning"
           icon="square"
           size="xs"
-          tooltip="Stop reading the discussions"
+          :tooltip="t('streamB.stopReadingTheDiscussions.b5dca6')"
           @click="cancelSearch"
         />
       </template>
@@ -41,7 +50,7 @@
       ref="list"
       class="abele-chat-outline__list"
       role="tree"
-      aria-label="This chat"
+      :aria-label="t('streamB.thisChat.60e292')"
       @scroll="rememberScroll"
     >
       <ChatOutlineResults
@@ -57,7 +66,9 @@
         @discussion="(id, m, part, q) => emit('discussion', id, m, part, q)"
       />
       <template v-else>
-        <div v-if="!sent.length" class="search-empty-state">Nothing sent yet.</div>
+        <div v-if="!sent.length" class="search-empty-state">
+          {{ t('streamB.nothingSentYet.a5ff06') }}
+        </div>
         <ChatOutlineTurns
           :messages="messages"
           :comments="comments"
@@ -83,7 +94,9 @@
           @click="b.run"
         />
         <span class="abele-chat-outline__keys">
-          <span><kbd>↑↓</kbd> move</span><span><kbd>→</kbd> open</span><span><kbd>↵</kbd> go</span>
+          <span><kbd>↑↓</kbd> {{ t('streamB.move.683a62') }}</span
+          ><span><kbd>→</kbd> {{ t('streamB.open.2348f9') }}</span
+          ><span><kbd>↵</kbd> {{ t('streamB.go.4cd0e2') }}</span>
         </span>
       </div>
     </Teleport>
@@ -91,6 +104,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 // A chat's outline: the questions by day, what followed each folded under it, branches and
 // discussions, and a search over the chat. A dialog over the chat in the right sidebar, opened
 // from the chat's header and closed by a jump.
@@ -192,19 +206,19 @@ const hits = computed(() => searchChatNavigation(searchedMessages.value, query.v
 const moves = computed(() => [
   {
     icon: 'arrow-up-to-line',
-    label: 'To the start',
+    label: t('streamB.toTheStart.781abc'),
     disabled: !sent.value.length,
     run: () => emit('start'),
   },
   {
     icon: 'arrow-down-to-line',
-    label: 'To the latest',
+    label: t('streamB.toTheLatest.0e7207'),
     disabled: !sent.value.length,
     run: () => emit('latest'),
   },
   {
     icon: 'undo-2',
-    label: 'Back to where you were',
+    label: t('streamB.backToWhereYouWere.1e76ec'),
     disabled: !props.canGoBack,
     run: () => emit('back'),
   },
@@ -213,16 +227,16 @@ const toggles = computed(() => [
   {
     icon: 'split',
     label: everyBranch.value
-      ? 'Searching every branch of this chat'
-      : 'Search every branch of this chat',
+      ? t('streamB.searchingEveryBranchOfThisChat.dcfe88')
+      : t('streamB.searchEveryBranchOfThisChat.e23584'),
     active: everyBranch.value,
     run: () => (everyBranch.value = !everyBranch.value),
   },
   {
     icon: 'messages-square',
     label: discussions.value
-      ? 'Searching discussions too, nested ones included'
-      : 'Search discussions too, nested ones included',
+      ? t('streamB.searchingDiscussionsTooNestedOnesIncluded.22938b')
+      : t('streamB.searchDiscussionsTooNestedOnesIncluded.bc7b5c'),
     active: discussions.value,
     run: () => (discussions.value = !discussions.value),
   },
@@ -304,10 +318,13 @@ onBeforeUnmount(invalidateSearch)
 
 const found = computed(() => {
   const n = hits.value.length + discussionHits.value.length
-  if (n) return `${plural(n, 'match', 'matches')}${searchCanceled.value ? ' · Search stopped' : ''}`
-  if (searchRunning.value) return 'Nothing yet'
-  if (searchCanceled.value) return 'Search stopped'
-  return everyBranch.value ? 'Nothing in this chat' : 'Nothing on this branch'
+  if (n)
+    return `${plural(n, 'match', 'matches')}${searchCanceled.value ? t('streamB.searchStopped.bd232c') : ''}`
+  if (searchRunning.value) return t('streamB.nothingYet.5becee')
+  if (searchCanceled.value) return t('streamB.searchStopped.090ad7')
+  return everyBranch.value
+    ? t('streamB.nothingInThisChat.642500')
+    : t('streamB.nothingOnThisBranch.c31cc3')
 })
 
 const rememberScroll = () => {

@@ -1,3 +1,4 @@
+import { t, currentLocale, dateFormatter, relativeFormatter } from '@/i18n'
 // What a chat's outline draws under one question, and the codes it marks rows with. Plain
 // functions over the navigation model, so the rows can be built and tested without a chat open.
 import dayjs from 'dayjs'
@@ -39,8 +40,12 @@ export function toneOf(tools: readonly ChatMessage[]): OutlineTone | undefined {
 }
 
 export const toneLabel: Record<OutlineTone, string> = {
-  waiting: 'Waiting for your approval',
-  failed: 'Refused or failed',
+  get waiting() {
+    return t('chat.waitingApproval')
+  },
+  get failed() {
+    return t('chat.failed')
+  },
 }
 
 export function toolIcon(tool: ChatMessage): string {
@@ -51,13 +56,23 @@ export function toolIcon(tool: ChatMessage): string {
 
 /** The tools a run of calls used, each once, in the order first used. */
 export function toolNames(tools: readonly ChatMessage[]): string {
-  return [...new Set(tools.map((t) => t.toolName || 'Tool'))].join(', ')
+  return [...new Set(tools.map((tool) => tool.toolName || t('streamBMeta.2e53bdcd07')))].join(', ')
 }
 
 export const dayKey = (at: number) => dayjs(at).format('YYYY-MM-DD')
 
 export function dayLabel(at: number, now = Date.now()): string {
   const day = dayjs(at).startOf('day')
+  if (currentLocale().language !== 'en') {
+    const offset = day.diff(dayjs(now).startOf('day'), 'day')
+    if (offset === 0 || offset === -1)
+      return relativeFormatter(currentLocale().format, { numeric: 'auto' }).format(offset, 'day')
+    return dateFormatter(currentLocale().format, {
+      day: 'numeric',
+      month: 'long',
+      ...(day.year() === dayjs(now).year() ? {} : { year: 'numeric' }),
+    }).format(day.toDate())
+  }
   const relative = relativeDayLabel(day.diff(dayjs(now).startOf('day'), 'day'))
   if (relative === 'Today' || relative === 'Yesterday') return relative
   return day.format(day.year() === dayjs(now).year() ? 'D MMMM' : 'D MMMM YYYY')

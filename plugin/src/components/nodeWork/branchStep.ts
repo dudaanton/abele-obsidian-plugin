@@ -1,6 +1,6 @@
+import { streamBCount as plural } from '@/i18n/streamBCounts'
+import { t } from '@/i18n'
 import type { BranchState, CopySummary } from './types'
-
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
 /** One step a branch is waiting for, as a button: what it says, its glyph, whether it leads. */
 export interface BranchStep {
@@ -23,44 +23,50 @@ export function nextStep(
   if (copy.kind === 'detached')
     return {
       id: 'create-branch' as const,
-      text: 'Make a branch here',
+      text: t('streamB.makeABranchHere.d03d79'),
       icon: 'git-branch-plus',
       accent: false,
-      tooltip: 'Start a branch at this commit, to keep work made on it',
+      tooltip: t('streamB.startABranchAtThisCommitTo.6d4995'),
     }
   if (s.stopped) return null
   if (!s.base) return null
   if (!s.upstream && s.ahead)
     return {
       id: 'publish' as const,
-      text: 'Publish branch',
+      text: t('streamB.publishBranch.e1f596'),
       icon: 'cloud-upload',
       accent: true,
-      tooltip: `Push ${copy.branch} to the remote for the first time`,
+      tooltip: t('streamB.pushToTheRemoteForTheFirst.7fed3e', { v0: String(copy.branch) }),
     }
   if (s.unpushed)
     return {
       id: 'push' as const,
-      text: `Push ${s.unpushed}`,
+      text: t('streamB.push.907dbf', { v0: String(s.unpushed) }),
       icon: 'arrow-up',
       accent: true,
-      tooltip: `Push ${plural(s.unpushed, 'commit')} to ${s.upstream}`,
+      tooltip: t('streamB.pushTo.5871ee', {
+        v0: String(plural(s.unpushed, 'commit')),
+        v1: String(s.upstream),
+      }),
     }
   if (s.behind)
     return {
       id: 'update' as const,
-      text: `Update from ${s.base}`,
+      text: t('streamB.updateFrom.e2481b', { v0: String(s.base) }),
       icon: 'arrow-down',
       accent: !s.ahead,
-      tooltip: `Bring in ${plural(s.behind, 'commit')} from ${s.base}…`,
+      tooltip: t('streamB.bringInFrom.1db03b', {
+        v0: String(plural(s.behind, 'commit')),
+        v1: String(s.base),
+      }),
     }
   if (s.ahead && !s.pr)
     return {
       id: 'create-pr' as const,
-      text: 'Create pull request',
+      text: t('streamB.createPullRequest.71e2bc'),
       icon: 'git-pull-request-create',
       accent: true,
-      tooltip: `Ask to merge ${copy.branch} into ${s.base}…`,
+      tooltip: t('streamB.askToMergeInto.bc4f1c', { v0: String(copy.branch), v1: String(s.base) }),
     }
   return null
 }

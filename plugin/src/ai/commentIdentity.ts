@@ -1,3 +1,5 @@
+import { UiError, uiMessage, uiErrorMessage, type UiMessage } from '@/i18n/streamBErrors'
+
 /** Storage-independent discussion identity policy. Local indexes never decide ownership. */
 export interface DiscussionIdentityData {
   kind?: string
@@ -5,12 +7,12 @@ export interface DiscussionIdentityData {
   commentId?: string
   commentLocation?: string
 }
-export class DiscussionIdentityConflict extends Error {
+export class DiscussionIdentityConflict extends UiError {
   constructor(
-    message: string,
+    message: string | UiMessage,
     readonly ownerId?: string
   ) {
-    super(message)
+    super(typeof message === 'string' ? uiErrorMessage(message) : message)
     this.name = 'DiscussionIdentityConflict'
   }
 }
@@ -25,7 +27,7 @@ export function canonicalDiscussionPath(path: string): string {
     .split('/')
     .filter((part) => part && part !== '.')
   if (path.startsWith('/') || parts.some((part) => part === '..'))
-    throw new Error('A discussion location must be a vault-relative path.')
+    throw new UiError(uiMessage('streamBError.1a2dbbb5a6'))
   return parts.join('/')
 }
 
@@ -47,8 +49,7 @@ export async function discussionIdentity(
   if (!isDiscussion(data)) return undefined
   const path = canonicalDiscussionPath(logicalPath)
   if (data.commentLocation) {
-    if (!data.commentId)
-      throw new DiscussionIdentityConflict('The discussion has a location but no identity.')
+    if (!data.commentId) throw new DiscussionIdentityConflict(uiMessage('streamBError.74479aa0dc'))
     return canonicalDiscussionPath(data.commentLocation) === path
       ? data.commentId
       : forkId(data.commentId, path)
@@ -61,10 +62,7 @@ export async function discussionIdentity(
       .replace(/\.abchat$/, '')
   if (canonicalDiscussionPath(markerPath(historical)) !== path) {
     if (data.commentId && legacyOwnerEstablished) return forkId(historical, path)
-    throw new DiscussionIdentityConflict(
-      'Ambiguous legacy discussion. Resolve its identity explicitly before opening it.',
-      data.commentId
-    )
+    throw new DiscussionIdentityConflict(uiMessage('streamBError.3603052616'), data.commentId)
   }
   return historical
 }

@@ -1,3 +1,5 @@
+import { uiErrorMessage, UiError, uiMessage } from '@/i18n/streamBErrors'
+
 /**
  * Turning a recording into words.
  *
@@ -84,7 +86,7 @@ const unwrap = (text: string): string =>
 
 export async function transcribe(wav: Uint8Array, options: TranscribeOptions): Promise<string> {
   if (!options.apiKey) {
-    throw new Error('No API key for transcription. Add an OpenRouter key in the voice settings.')
+    throw new UiError(uiMessage('streamBError.a58f1e0c12'))
   }
 
   const response = await requestUrl({
@@ -118,7 +120,11 @@ export async function transcribe(wav: Uint8Array, options: TranscribeOptions): P
   }
 
   if (response.status >= 300) {
-    throw new Error(body?.error?.message || `Transcription failed (${response.status})`)
+    throw new UiError(
+      body?.error?.message
+        ? uiErrorMessage(new Error(body.error.message))
+        : uiMessage('streamBError.7fce93039c', { v0: String(response.status) })
+    )
   }
 
   return unwrap(body?.choices?.[0]?.message?.content ?? '')

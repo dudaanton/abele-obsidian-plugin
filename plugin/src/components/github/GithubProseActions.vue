@@ -6,7 +6,7 @@
     class="abele-selection-bar abele-github-prose"
     :class="{ 'abele-selection-bar_placed': placed }"
     role="toolbar"
-    aria-label="Selection"
+    :aria-label="t('streamB.selection.ca4067')"
     :style="{ top: `${place.top}px`, left: `${place.left}px` }"
     data-find-skip
     data-prose-skip
@@ -25,6 +25,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import {
   computed,
   inject,
@@ -77,7 +78,11 @@ const touch = Platform.isMobile
 
 /** What text in no comment is, by what the tab shows. */
 const pageName = () =>
-  screen.kind === 'commit' ? 'the commit message' : screen.kind === 'blob' ? 'the file' : 'the page'
+  screen.kind === 'commit'
+    ? t('streamB.theCommitMessage.e36d75')
+    : screen.kind === 'blob'
+      ? t('streamB.theFile.994659')
+      : t('streamB.thePage.aafdd3')
 
 /** The selection as it is now, if it is prose in this tab; `inside` whether it is in the tab at all. */
 function read(): { prose: ProseSelection | null; range: Range | null; inside: boolean } {
@@ -135,7 +140,13 @@ const done = () => {
 const actions = computed<SelectionAction[]>(() => [
   ...(linker.canAsk() ? [ASK] : []),
   NOTE,
-  { id: 'link', icon: 'link', tooltip: `Copy a link to ${shown.value?.where ?? 'this'}` },
+  {
+    id: 'link',
+    icon: 'link',
+    tooltip: t('streamB.copyALinkTo.8a9c2b', {
+      v0: String(shown.value?.where ?? t('streamBMeta.1eb7960241')),
+    }),
+  },
 ])
 
 function run(id: string) {

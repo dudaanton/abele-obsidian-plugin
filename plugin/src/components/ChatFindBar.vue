@@ -4,8 +4,8 @@
       ref="inputRef"
       class="abele-chat-find__input"
       :model-value="query"
-      placeholder="Find in this chat"
-      label="Find in this chat"
+      :placeholder="t('chat.find')"
+      :label="t('chat.find')"
       suffix-class="abele-chat-find__count"
       :suffix="countText"
       :suffix-label="countLabel"
@@ -14,22 +14,23 @@
     <div class="abele-chat-find__actions">
       <Icon
         icon="arrow-up"
-        tooltip="Previous match (Shift+Enter)"
+        :tooltip="t('chat.previousMatch')"
         :disabled="!count"
         @click="emit('previous')"
       />
       <Icon
         icon="arrow-down"
-        tooltip="Next match (Enter)"
+        :tooltip="t('chat.nextMatch')"
         :disabled="!count"
         @click="emit('next')"
       />
-      <Icon icon="x" tooltip="Close the find bar (Esc)" @click="emit('close')" />
+      <Icon icon="x" :tooltip="t('chat.closeFind')" @click="emit('close')" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import Search from './obsidian/Search.vue'
 import Icon from './obsidian/Icon.vue'
@@ -67,7 +68,11 @@ const countText = computed(() =>
   props.query.trim() ? (props.count ? `${props.position}/${props.count}` : '0') : ''
 )
 const countLabel = computed(() =>
-  props.query.trim() ? (props.count ? `${props.position} of ${props.count}` : 'No results') : ''
+  props.query.trim()
+    ? props.count
+      ? t('chat.position', { position: props.position, count: props.count })
+      : t('chat.noResults')
+    : ''
 )
 
 const onKey = (e: KeyboardEvent) => {

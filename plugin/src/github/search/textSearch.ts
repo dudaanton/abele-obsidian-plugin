@@ -1,16 +1,17 @@
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
+
 /**
  * The query language shared by every search over code here — the tab's code search, the
  * definition lookup and the agent's `github_grep`: plain text or a regular expression, with or
  * without letter case, and an optional path glob.
  */
 
-import type { CodeQuery } from '@/repository/search'
+import { type CodeQuery, type LineMatch } from '@/repository/search'
 export type { CodeQuery } from '@/repository/search'
 
-import type { LineMatch } from '@/repository/search'
 export type { LineMatch } from '@/repository/search'
 
-export class QueryError extends Error {}
+export class QueryError extends UiError {}
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
@@ -21,7 +22,9 @@ export function compileQuery(q: CodeQuery): RegExp {
   try {
     return new RegExp(source, `g${q.caseSensitive ? '' : 'i'}m`)
   } catch (e) {
-    throw new QueryError(`Not a valid regular expression: ${e instanceof Error ? e.message : e}`)
+    throw new QueryError(
+      uiMessage('streamBError.dd4481bfbe', { v0: String(e instanceof Error ? e.message : e) })
+    )
   }
 }
 

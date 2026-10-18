@@ -25,6 +25,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { computed } from 'vue'
 import { Platform } from 'obsidian'
 import Button from '../obsidian/Button.vue'
@@ -65,32 +66,31 @@ const actions = computed<Action[]>(() => {
   const { linker, link, snippet, quote } = props
   const list: Action[] = [
     {
-      name: 'Copy link',
+      name: t('streamB.copyLink.dbf362'),
       icon: 'link',
-      tooltip: 'Copy a link to these lines',
+      tooltip: t('streamB.copyALinkToTheseLines.44c635'),
       run: () => void linker.copy(link()),
     },
     {
-      name: 'Insert into note',
+      name: t('streamB.insertIntoNote.be3d5a'),
       icon: 'text-cursor-input',
-      tooltip: 'Insert a link to these lines into the note you were last in',
+      tooltip: t('streamB.insertALinkToTheseLinesInto.d64ef0'),
       run: () => void linker.insert(link()),
     },
   ]
   if (snippet) {
     list.push({
-      name: 'Insert with code',
+      name: t('streamB.insertWithCode.7226b2'),
       icon: 'file-code',
-      tooltip:
-        'Insert these lines into the note you were last in, as a card holding the code itself',
+      tooltip: t('streamB.insertTheseLinesIntoTheNoteYou.7596a8'),
       run: () => void linker.insertSnippet(snippet()),
     })
   }
   if (quote && linker.canAsk()) {
     list.push({
-      name: 'Ask here',
+      name: t('streamB.askHere.7b4ec4'),
       icon: 'message-circle-plus',
-      tooltip: 'Open a new chat with a link to these lines and their code in its input',
+      tooltip: t('streamB.openANewChatWithALink.c0815b'),
       run: () => void linker.ask(link(), quote()),
     })
   }
