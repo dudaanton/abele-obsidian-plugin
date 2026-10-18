@@ -16,8 +16,8 @@ export interface NodeClientState extends ClientState {
   chatDrafts?: Record<string, { text: string; notice: string }>
   /** Exact submitted bytes stay hidden until a guarded turn has a terminal receipt. */
   turnDrafts?: Record<string, { sessionId: string; text: string }>
-  /** Owner folder/worktree intents retain one operation ID until a typed receipt is known. */
-  nodePathIntents?: Record<string, { id: string; method: string; params: unknown }>
+  /** Owner intents retain unknown operations and successful mkdir paths pending registration. */
+  nodePathIntents?: Record<string, { id: string; method: string; params: unknown; result?: string }>
   /** Replaceable artifact payload cache; journal references remain untouched. */
   artifactData?: Record<string, Record<string, unknown>>
   /** Streams kept as a window of their latest events (`sessionWindow.ts`): how many. */
@@ -55,7 +55,12 @@ const StateSchema = z
       .record(
         z.string(),
         z
-          .object({ id: z.string().min(1).max(128), method: z.string(), params: z.unknown() })
+          .object({
+            id: z.string().min(1).max(128),
+            method: z.string(),
+            params: z.unknown(),
+            result: z.string().min(1).optional(),
+          })
           .strict()
       )
       .optional(),

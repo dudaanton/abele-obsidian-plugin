@@ -5,6 +5,8 @@ import { NodePathMutations } from '@/node/NodePathMutations'
 import { NodePathModel, pathTargetKey, type NodePathPort } from '@/node/NodePathModel'
 import { NodePathClientPort } from '@/node/NodePathClientPort'
 import { nodeErrorWords } from '@/node/errorWords'
+import { NodeClientStore } from '@/node/NodeClientStore'
+import { IDBFactory } from 'fake-indexeddb'
 import { nodeRepositoryFixture, identity } from '../helpers/nodeRepositoryFixture'
 
 const target = {
@@ -61,20 +63,27 @@ it('retires a definitive stale mkdir intent but preserves unknown operations and
   expect(mkdir.mock.calls[3]).toEqual(mkdir.mock.calls[2])
 })
 it('retains the created path after registration fails so reopening never repeats mkdir', async () => {
+  const factory = new IDBFactory()
   const mkdir = vi.fn(async () => ({ path: '/sample/new' }))
   const register = vi
     .fn()
     .mockRejectedValueOnce(new ChannelError('disconnected'))
     .mockResolvedValueOnce({ project_id: 'sample-project' })
-  const client = { store: new MemoryClientStore(), nodePath: { mkdir, register } }
+  const client = {
+    store: new NodeClientStore('sample-created-intent', factory),
+    nodePath: { mkdir, register },
+  }
   const first = new NodePathMutations(client as never)
   await first.mkdir('old-id', 'new', '/sample')
   await expect(first.register('/sample/new')).rejects.toThrow('disconnected')
-  const reopened = new NodePathMutations(client as never)
+  client.store.close()
+  const reopenedStore = new NodeClientStore('sample-created-intent', factory)
+  const reopened = new NodePathMutations({ ...client, store: reopenedStore } as never)
   expect(await reopened.mkdir('fresh-id', 'new', '/sample')).toBe('/sample/new')
   await reopened.register('/sample/new')
   expect(mkdir).toHaveBeenCalledOnce()
   expect(register.mock.calls[1][1]).toBe(register.mock.calls[0][1])
+  reopenedStore.close()
 })
 it('refreshes an inactive target once, discards observation and pagination, and restores its watch', async () => {
   const { model, port, stop } = fixture()
