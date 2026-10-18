@@ -39,6 +39,7 @@ export const liveSyncFiles = [
   'syncDialogs',
   'syncTransfer',
   'syncPhone',
+  'syncPhoneFirstPull',
   'syncExternalFiles',
   'personalBaseline',
 ]
