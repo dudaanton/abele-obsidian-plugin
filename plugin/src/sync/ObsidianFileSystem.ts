@@ -177,6 +177,19 @@ export class ObsidianFileSystem implements FileSystem {
   private inventoryDepth = 0
   private writtenStat: FileInfo | null = null
 
+  async [Symbol.for('abele.sync.index-absent-v1')](path: string): Promise<boolean> {
+    this.runtimeFence?.assertReady()
+    // This is a preflight hint, never permission to publish. The raw target check
+    // under the placement lease still protects files that have not reached the index.
+    if (!this.inventory || this.awaitingIndex.has(path) || this.inventory.mutations.has(path))
+      return false
+    if (this.app.vault.getAbstractFileByPath(path)) return false
+    const parent = this.app.vault.getAbstractFileByPath(folderOf(path))
+    if (!(parent instanceof TFolder)) return false
+    const key = caseKey(path)
+    return !parent.children.some((child) => caseKey(child.path) === key)
+  }
+
   async [Symbol.for('abele.sync.written-stat-v1')](
     path: string,
     wrote: { size: number; mtime: number }

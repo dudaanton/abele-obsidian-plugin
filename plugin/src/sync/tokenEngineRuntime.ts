@@ -1702,6 +1702,8 @@ export class TokenEngineRuntime
       if ((error as { code?: string }).code === 'path_taken') return
       throw error
     }
+    const absent = Reflect.get(this.options.fs, Symbol.for('abele.sync.index-absent-v1'))
+    if (identity === null && absent && (await absent.call(this.options.fs, item.path))) return
     const before = await this.options.fs.stat(item.path)
     if (!before) return
     if (

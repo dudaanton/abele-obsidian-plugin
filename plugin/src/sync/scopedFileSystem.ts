@@ -153,7 +153,8 @@ export function scopedFileSystem(
         key === Symbol.for('abele.sync.directory-identity-v1') ||
         key === FINGERPRINT_UPLOAD ||
         key === UPLOAD_READ ||
-        key === Symbol.for('abele.sync.written-stat-v1')
+        key === Symbol.for('abele.sync.written-stat-v1') ||
+        key === Symbol.for('abele.sync.index-absent-v1')
       )
         return async (path: string, ...args: unknown[]) => {
           if (key === 'stat') assertStage(path)
