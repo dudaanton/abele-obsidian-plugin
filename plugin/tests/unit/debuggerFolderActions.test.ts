@@ -1,6 +1,8 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
-import { folderDebugReason } from '@/debugger/folderActions'
+import { addFolderDebugMenu, folderDebugReason } from '@/debugger/folderActions'
+import { NodeService } from '@/node/NodeService'
+import type { Menu } from 'obsidian'
 import { startProgram } from '@/debugger/startProgram'
 import { attachToProgram } from '@/debugger/attachProgram'
 import { DebuggerService } from '@/debugger/DebuggerService'
@@ -22,6 +24,77 @@ afterEach(() => {
   DebuggerService.instance.destroy()
   vi.restoreAllMocks()
 })
+
+// Native menus freeze their rows at show time, ignoring subsequent item mutations.
+it.each(['ready', 'refused', 'reconnected', 'offline'])(
+  'settles delayed %s readiness before the native snapshot',
+  async (state) => {
+    const context = owner()
+    vi.spyOn(NodeService, 'getInstance').mockReturnValue({
+      connection: () => context.connection,
+    } as never)
+    let release!: () => void
+    const delayed = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    vi.mocked(context.connection.client.describe).mockImplementationOnce(async () => {
+      await delayed
+      return {
+        capabilities: {
+          capabilities: { debugger_v1: { status: 'supported', evidence: 'sample' } },
+        },
+      } as never
+    })
+    if (state === 'refused')
+      vi.mocked(context.connection.client.request).mockRejectedValueOnce(
+        new Error('Permission refused')
+      )
+    const rows: { title: string; disabled: boolean }[] = []
+    let snapshot: typeof rows = []
+    const menu = {
+      addItem(build: (item: unknown) => void) {
+        const row = { title: '', disabled: false }
+        rows.push(row)
+        const item = {
+          setTitle(title: string) {
+            row.title = title
+            return item
+          },
+          setDisabled(disabled: boolean) {
+            row.disabled = disabled
+            return item
+          },
+          setIcon() {
+            return item
+          },
+          onClick() {
+            return item
+          },
+        }
+        build(item)
+      },
+      showAtPosition() {
+        snapshot = structuredClone(rows)
+      },
+    }
+    const display = (async () => {
+      await addFolderDebugMenu(menu as unknown as Menu, context.target)
+      menu.showAtPosition()
+    })()
+    await Promise.resolve()
+    expect(snapshot).toEqual([])
+    if (state === 'reconnected' || state === 'offline') context.connection.state.value = 'offline'
+    if (state === 'reconnected') context.connection.state.value = 'connected'
+    release()
+    await display
+    expect(snapshot).toHaveLength(3)
+    expect(snapshot.every((row) => row.disabled === (state !== 'ready'))).toBe(true)
+    expect(snapshot.some((row) => /Checking/.test(row.title))).toBe(false)
+    if (state === 'refused') expect(snapshot[0].title).toContain('Permission refused')
+    if (state === 'reconnected' || state === 'offline')
+      expect(snapshot[0].title).toMatch(/Reconnect/)
+  }
+)
 function owner() {
   const request = vi.fn(async (method: string): Promise<unknown> => {
     if (method === 'debugger.v1.sessions') return []
@@ -82,6 +155,39 @@ it('negotiates folder support with a read-only listing, then checks installed pr
     limit: 1,
   })
 })
+it.each(['generation', 'target', 'reconnect', 'failure'])(
+  'rejects %s changes during the final profile check without caching readiness',
+  async (change) => {
+    const context = owner()
+    let generation = 0
+    Object.defineProperty(context.connection, 'authorizationGeneration', { get: () => generation })
+    const target = { url: 'ws://sample.invalid/channel' }
+    Object.defineProperty(context.connection.client, 'target', { value: target })
+    const request = vi.mocked(context.connection.client.request)
+    let release!: () => void
+    const pending = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    request
+      .mockImplementationOnce(async () => [])
+      .mockImplementationOnce(async () => {
+        await pending
+        if (change === 'failure') throw new Error('Profile check refused')
+        return [{ id: 'js-ts-native' }]
+      })
+    const checking = folderDebugReason(context)
+    await vi.waitFor(() => expect(request).toHaveBeenCalledWith('debugger.v1.profiles', {}))
+    if (change === 'generation') generation++
+    if (change === 'target') target.url = 'ws://other.invalid/channel'
+    if (change === 'reconnect') {
+      context.connection.state.value = 'offline'
+      context.connection.state.value = 'connected'
+    }
+    release()
+    expect(await checking).toMatch(change === 'failure' ? /Profile check refused/ : /Reconnect/)
+    expect(await folderDebugReason(context)).toBe('')
+  }
+)
 it('explains an old node, a disabled debugger, an absent profile and an offline connection', async () => {
   const context = owner()
   const request = vi.mocked(context.connection.client.request)
@@ -95,4 +201,11 @@ it('explains an old node, a disabled debugger, an absent profile and an offline 
   expect(await folderDebugReason(context)).toMatch(/not installed/)
   context.connection.state.value = 'offline'
   expect(await folderDebugReason(context)).toMatch(/Reconnect/)
+})
+it('keeps message-less negotiation failures disabled', async () => {
+  const context = owner()
+  vi.mocked(context.connection.client.describe).mockRejectedValueOnce(new Error(''))
+  expect(await folderDebugReason(context)).toMatch(/off/)
+  vi.mocked(context.connection.client.request).mockRejectedValueOnce(new Error(''))
+  expect(await folderDebugReason(context)).toMatch(/off/)
 })

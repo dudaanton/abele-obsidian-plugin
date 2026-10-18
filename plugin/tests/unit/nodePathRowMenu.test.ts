@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 import { Menu } from 'obsidian'
-import { showNodePathNodeMenu, showNodePathPlaceMenu } from '@/node/NodePathController'
+import {
+  showNodePathFileMenu,
+  showNodePathNodeMenu,
+  showNodePathPlaceMenu,
+} from '@/node/NodePathController'
 
 const f = vi.hoisted(() => ({
   request: vi.fn<(method: string, params: unknown) => Promise<unknown>>(),
@@ -87,12 +91,54 @@ it('offers debugger actions in the node header menu', async () => {
   f.request.mockResolvedValueOnce([]).mockResolvedValueOnce([{ id: 'js-ts-native' }])
   const show = vi.spyOn(Menu.prototype, 'showAtPosition')
   showNodePathNodeMenu(model(), new MouseEvent('click'))
+  await vi.waitFor(() => expect(show).toHaveBeenCalled())
   const menu = show.mock.instances[0] as unknown as Shown
   await vi.waitFor(() => {
     expect(menu.items.map((item) => item.title)).toContain('Run a program')
     expect(menu.items.map((item) => item.title)).toContain('Attach to a running program')
   })
 })
+
+it.each(['node', 'place', 'file'] as const)(
+  'freezes settled debugger readiness at the actual %s menu display boundary',
+  async (kind) => {
+    let release!: () => void
+    const pending = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    f.describe.mockImplementationOnce(async () => {
+      await pending
+      return {
+        capabilities: {
+          capabilities: { debugger_v1: { status: 'supported', evidence: 'sample' } },
+        },
+      }
+    })
+    f.request.mockImplementation(async (method) => {
+      if (method === 'debugger.v1.profiles') return [{ id: 'js-ts-native' }]
+      if (method === 'debugger.v1.sessions') return []
+      return { project_id: 'sample-project', external_read: false }
+    })
+    let snapshot: { title: string; disabled: boolean }[] | undefined
+    vi.spyOn(Menu.prototype, 'showAtPosition').mockImplementation(function (this: Menu) {
+      snapshot = (this as unknown as { items: { title: string; disabled: boolean }[] }).items.map(
+        ({ title, disabled }) => ({ title, disabled })
+      )
+      return this
+    })
+    const event = new MouseEvent('contextmenu')
+    if (kind === 'node') showNodePathNodeMenu(model(), event)
+    else if (kind === 'place') showNodePathPlaceMenu(model(), event, () => {})
+    else showNodePathFileMenu(event, { target, path: 'sample.js' })
+    await vi.waitFor(() => expect(f.describe).toHaveBeenCalled())
+    expect(snapshot).toBeUndefined()
+    release()
+    await vi.waitFor(() => expect(snapshot).toBeDefined())
+    for (const title of ['Debug', 'Run a program', 'Attach to a running program'])
+      expect(snapshot).toContainEqual({ title, disabled: false })
+    expect(snapshot!.some((item) => /Checking/.test(item.title))).toBe(false)
+  }
+)
 
 describe('the place menu', () => {
   it('starts with a new chat and switching place, then the folder’s items, then the node', async () => {

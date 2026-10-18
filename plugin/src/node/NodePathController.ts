@@ -96,8 +96,11 @@ export function showNodePathFileMenu(event: MouseEvent, raw: NodePathContext): v
         nodePathAction(() => navigator.clipboard.writeText(context.path ?? context.commit ?? ''))
       )
   )
-  addFolderDebugMenu(menu, context.target, context.path)
-  menu.showAtPosition(position(event))
+  const at = position(event)
+  nodePathAction(async () => {
+    await addFolderDebugMenu(menu, context.target, context.path)
+    menu.showAtPosition(at)
+  })
 }
 /** The folder's or worktree's menu, built once the node said whether outside worktrees are open. */
 function withRowMenu(
@@ -383,10 +386,15 @@ export async function removeNodePathFolder(
   if (wasSelected && next) await model.select(next.id)
 }
 export function showNodePathNodeMenu(model: NodePathModel, event: MouseEvent): void {
-  nodeItems(model, new Menu()).showAtPosition(position(event))
+  const at = position(event)
+  const target = model.current.value && { ...model.current.value }
+  nodePathAction(async () => {
+    const menu = await nodeItems(model, new Menu(), target ?? undefined)
+    menu.showAtPosition(at)
+  })
 }
-function nodeItems(model: NodePathModel, menu: Menu, debug = true): Menu {
-  if (debug) addFolderDebugMenu(menu, model.current.value ?? undefined)
+async function nodeItems(model: NodePathModel, menu: Menu, target?: PathTarget): Promise<Menu> {
+  await addFolderDebugMenu(menu, target)
   const service = NodeService.getInstance()
   menu.addItem((i) =>
     i
@@ -718,6 +726,7 @@ export function showNodePathPlaceMenu(
   openChat: (id: string) => void
 ): void {
   const at = position(event)
+  const target = model.current.value && { ...model.current.value }
   const online =
     NodeService.getInstance().connection(model.registrationId).state.value === 'connected'
   const menu = new Menu()
@@ -744,8 +753,10 @@ export function showNodePathPlaceMenu(
         )
     )
     m.addSeparator()
-    nodeItems(model, m, !model.current.value)
-    m.showAtPosition(at)
+    nodePathAction(async () => {
+      await nodeItems(model, m, target ?? undefined)
+      m.showAtPosition(at)
+    })
   }
   const id = model.selected.value
   if (!id || !model.current.value) return tail(menu)
@@ -781,7 +792,6 @@ export function showNodePathPlaceMenu(
         .setDisabled(!model.port.branch)
         .onClick(() => chooseNodePathBase(model))
     )
-  addFolderDebugMenu(menu, model.current.value)
   menu.addSeparator()
   withRowMenu(model, id, tail, menu, true)
 }

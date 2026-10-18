@@ -1,4 +1,5 @@
-import { Menu, Notice, type MenuItem, type Plugin } from 'obsidian'
+import { Menu, Notice, type Plugin } from 'obsidian'
+import { watch } from 'vue'
 import { t } from '@/i18n'
 import { NodeService } from '@/node/NodeService'
 import { NodePathService } from '@/node/NodePathService'
@@ -21,31 +22,53 @@ export function folderOwner(target: PathTarget): FolderDebugOwner {
 export async function folderDebugReason(owner: FolderDebugOwner): Promise<string> {
   if (owner.connection.state.value !== 'connected') return t('debug.offline')
   const client = owner.connection.client
+  const generation = owner.connection.authorizationGeneration
+  const identity = JSON.stringify(client.target)
+  let interrupted = false
+  const stop = watch(
+    owner.connection.state,
+    () => {
+      interrupted = true
+    },
+    { flush: 'sync' }
+  )
+  const current = () =>
+    !interrupted &&
+    owner.connection.state.value === 'connected' &&
+    generation === owner.connection.authorizationGeneration &&
+    identity === JSON.stringify(client.target)
   try {
-    if (!nodeDebuggerSupported(await client.describe())) return t('debug.off')
+    const description = await client.describe()
+    if (!current()) return t('debug.offline')
+    if (!nodeDebuggerSupported(description)) return t('debug.off')
     try {
       await client.request('debugger.v1.sessions', { ...debugOwnerParams(owner), limit: 1 })
     } catch (error) {
       console.debug('[debugger] Folder ownership unavailable', error)
-      const message = error instanceof Error ? error.message : String(error)
+      const message = (error instanceof Error ? error.message : String(error)) || t('debug.off')
+      if (!current()) return t('debug.offline')
       return /invalid_params|invalid_request|unsupported_method|conversation_id|validation/i.test(
         message
       )
         ? t('debug.update')
-        : owner.connection.state.value !== 'connected'
-          ? t('debug.offline')
-          : message
+        : message
     }
+    if (!current()) return t('debug.offline')
     const profiles = await client.request('debugger.v1.profiles', {})
+    if (!current()) return t('debug.offline')
     if (
       !Array.isArray(profiles) ||
       !profiles.some((profile: { id?: string }) => profile?.id === 'js-ts-native')
     )
       return t('debug.install')
-    return owner.connection.state.value === 'connected' ? '' : t('debug.offline')
+    return ''
   } catch (error) {
     console.debug('[debugger] Folder availability unavailable', error)
-    return error instanceof Error ? error.message : t('debug.off')
+    return !current()
+      ? t('debug.offline')
+      : (error instanceof Error && error.message) || t('debug.off')
+  } finally {
+    stop()
   }
 }
 
@@ -98,21 +121,24 @@ export async function runFolderDebug(
   }
 }
 
-/** Native rows are present while support is checked, including on an old or offline node. */
-export function addFolderDebugMenu(menu: Menu, target?: PathTarget, program?: string): void {
+/** Callers must await readiness before showing a native menu, which snapshots its rows. */
+export async function addFolderDebugMenu(
+  menu: Menu,
+  target?: PathTarget,
+  program?: string
+): Promise<void> {
   target = target && Object.freeze({ ...target })
-  const rows: { item: MenuItem; action: Action }[] = []
+  const reason = target ? await folderDebugReason(folderOwner(target)) : t('debug.noFolder')
   for (const [action, icon] of [
     ['open', 'bug-play'],
     ['run', 'play'],
     ['attach', 'plug'],
   ] as const) {
     menu.addItem((item) => {
-      rows.push({ item, action })
       item
-        .setTitle(`${titles[action]()} — ${target ? t('debug.checking') : t('debug.noFolder')}`)
+        .setTitle(reason ? `${titles[action]()} — ${reason}` : titles[action]())
         .setIcon(icon)
-        .setDisabled(true)
+        .setDisabled(!!reason)
       item.onClick(() => {
         if (target)
           void runFolderDebug(
@@ -123,14 +149,6 @@ export function addFolderDebugMenu(menu: Menu, target?: PathTarget, program?: st
       })
     })
   }
-  if (!target) return
-  const owner = folderOwner(target)
-  void folderDebugReason(owner).then((reason) => {
-    for (const { item, action } of rows)
-      item
-        .setTitle(reason ? `${titles[action]()} — ${reason}` : titles[action]())
-        .setDisabled(!!reason)
-  })
 }
 
 /** The active file's folder first, otherwise the place selected in the node panel. */

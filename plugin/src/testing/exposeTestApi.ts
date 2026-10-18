@@ -19,6 +19,7 @@ import { ChatService } from '@/ai/ChatService'
 import { mountDebugSource } from '@/debugger/sourceExtension'
 import { openTraceRun, openTraceValue } from '@/debugger/trace/TraceTabs'
 import { DebuggerService } from '@/debugger/DebuggerService'
+import { openDebuggerMenuFixture, closeDebuggerMenuFixture } from './debuggerMenuScreen'
 import {
   openDebuggerAccessFixture,
   closeDebuggerAccessFixture,
@@ -300,6 +301,8 @@ interface AbeleTestApi {
   openTraceRun: typeof openTraceRun
   openTraceValue: typeof openTraceValue
   DebuggerService: typeof DebuggerService
+  openDebuggerMenuFixture: typeof openDebuggerMenuFixture
+  closeDebuggerMenuFixture: typeof closeDebuggerMenuFixture
   openDebuggerAccessFixture: typeof openDebuggerAccessFixture
   closeDebuggerAccessFixture: typeof closeDebuggerAccessFixture
   retryDebuggerAccessFixture: typeof retryDebuggerAccessFixture
@@ -973,6 +976,8 @@ export function exposeTestApi(plugin: Plugin): void {
     openTraceRun,
     openTraceValue,
     DebuggerService,
+    openDebuggerMenuFixture,
+    closeDebuggerMenuFixture,
     openDebuggerAccessFixture,
     closeDebuggerAccessFixture,
     retryDebuggerAccessFixture,
