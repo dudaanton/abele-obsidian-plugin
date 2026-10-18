@@ -2,7 +2,12 @@ import { expect, it, vi } from 'vitest'
 import { ChannelError } from '@abele/channel-protocol'
 import { MemoryClientStore } from '@abele/node-client'
 import { NodePathMutations } from '@/node/NodePathMutations'
-import { NodePathModel, pathTargetKey, type NodePathPort } from '@/node/NodePathModel'
+import {
+  NodePathModel,
+  pathTargetKey,
+  type NodePathPort,
+  type PathTarget,
+} from '@/node/NodePathModel'
 import { NodePathClientPort } from '@/node/NodePathClientPort'
 import { nodeErrorWords } from '@/node/errorWords'
 import { NodeClientStore } from '@/node/NodeClientStore'
@@ -31,6 +36,7 @@ function fixture() {
     })),
     watch: vi.fn(async () => stop),
     invalidate: vi.fn(),
+    subscribe: vi.fn(async () => vi.fn()),
   }
   const model = new NodePathModel(
     target.nodeId,
@@ -257,3 +263,195 @@ it('clears the stale notice after explicitly choosing the replacement target', a
   expect(model.error.value).toBe('')
   expect(port.watch.mock.calls).toHaveLength(2)
 })
+
+const rootFolder = {
+  id: target.projectId,
+  name: 'Sample',
+  path: '/sample/repository',
+  git: true,
+  copies: [
+    { id: target.id, kind: 'project' as const, branch: 'trunk', path: 'repository', changed: 0 },
+  ],
+}
+it('rebinds a restored root selection to the unique current identity and reads it afresh', async () => {
+  const { model, port } = fixture()
+  model.folders.value = [rootFolder]
+  await model.selectTarget(target)
+  const snapshot = model.snapshot()
+  const restored = new NodePathModel(target.nodeId, target.registrationId, port as never, new Map())
+  restored.restoreSnapshot(snapshot)
+  const replacement = { ...target, id: 'replacement-tree' }
+  port.catalogue.mockResolvedValueOnce({
+    folders: [{ ...rootFolder, copies: [{ ...rootFolder.copies[0], id: replacement.id }] }],
+    targets: [replacement],
+    sessions: [{ session: { session_id: 'sample-chat' }, target }],
+    capabilities: [],
+  } as never)
+  await restored.refresh()
+  expect(restored.current.value).toEqual(replacement)
+  expect(restored.error.value).toBe('')
+  expect(port.inspect.mock.calls.at(-1)?.[0]).toEqual(replacement)
+  expect(restored.sessions.value[0].target).toEqual(target)
+  expect(restored.inspections.value[pathTargetKey(target)]).toBeUndefined()
+  model.destroy()
+  restored.destroy()
+})
+it.each(['ambiguous', 'path', 'root', 'project', 'kind', 'missing'])(
+  'requires explicit selection for a replacement with %s identity',
+  async (difference) => {
+    const { model, port } = fixture()
+    model.folders.value = [rootFolder]
+    await model.selectTarget(target)
+    const replacement = { ...target, id: 'replacement-tree' }
+    const folder = { ...rootFolder, copies: [{ ...rootFolder.copies[0], id: replacement.id }] }
+    if (difference === 'path')
+      folder.copies[0] = { ...folder.copies[0], kind: 'worktree' as never, path: '/sample/other' }
+    if (difference === 'root') folder.path = '/sample/other'
+    if (difference === 'project') {
+      replacement.projectId = 'other-project'
+      folder.id = replacement.projectId
+    }
+    if (difference === 'kind') folder.git = false
+    if (difference === 'missing') folder.copies[0] = { ...folder.copies[0], missing: true } as never
+    port.catalogue.mockResolvedValueOnce({
+      folders: [folder],
+      targets:
+        difference === 'ambiguous'
+          ? [replacement, { ...replacement, id: 'second-tree' }]
+          : [replacement],
+      sessions: [],
+      capabilities: [],
+    } as never)
+    if (difference === 'ambiguous') folder.copies.push({ ...folder.copies[0], id: 'second-tree' })
+    await model.refresh()
+    expect(model.current.value).toBeUndefined()
+    expect(model.error.value).not.toBe('')
+    model.destroy()
+  }
+)
+
+it.each(['refreshCurrent', 'reconnected', 'stale read', 'startup'])(
+  'opens the matched root after %s without retaining a stale error',
+  async (trigger) => {
+    const { model, port } = fixture()
+    model.folders.value = [rootFolder]
+    await model.selectTarget(target)
+    const replacement = { ...target, id: 'replacement-tree' }
+    port.catalogue.mockResolvedValue({
+      folders: [{ ...rootFolder, copies: [{ ...rootFolder.copies[0], id: replacement.id }] }],
+      targets: [replacement],
+      sessions: [],
+      capabilities: [],
+    } as never)
+    if (trigger === 'stale read') {
+      port.inspect.mockRejectedValueOnce(new ChannelError('stale_resource'))
+      await model.reloadTarget(target)
+    } else if (trigger === 'startup') await model.start()
+    else await model[trigger as 'refreshCurrent' | 'reconnected']()
+    expect(model.current.value).toEqual(replacement)
+    expect(model.error.value).toBe('')
+    expect(port.inspect.mock.calls.at(-1)?.[0]).toEqual(replacement)
+    model.destroy()
+  }
+)
+
+it.each(['plain folder', 'managed worktree'])(
+  'persists enough metadata to rebind a %s without moving its chats',
+  async (kind) => {
+    const { model, port } = fixture()
+    const plain = kind === 'plain folder'
+    const selected: PathTarget = plain
+      ? { ...target, kind: 'workspace' }
+      : {
+          ...target,
+          location: { root: rootFolder.path, path: '/sample/worktrees/feature', kind: 'managed' },
+        }
+    const folder = plain
+      ? { ...rootFolder, git: false, copies: [] }
+      : {
+          ...rootFolder,
+          copies: [{ ...rootFolder.copies[0], kind: 'worktree' as const, path: 'feature' }],
+        }
+    model.targets.value = [selected]
+    model.folders.value = [folder]
+    await model.selectTarget(selected)
+    const restored = new NodePathModel(
+      target.nodeId,
+      target.registrationId,
+      port as never,
+      new Map()
+    )
+    restored.restoreSnapshot(model.snapshot())
+    const replacement = { ...selected, id: 'replacement-tree' }
+    port.catalogue.mockResolvedValueOnce({
+      folders: [
+        { ...folder, copies: folder.copies.map((copy) => ({ ...copy, id: replacement.id })) },
+      ],
+      targets: [replacement],
+      sessions: [],
+      capabilities: [],
+    } as never)
+    await restored.refresh()
+    expect(restored.current.value).toEqual(replacement)
+    expect(restored.error.value).toBe('')
+    model.destroy()
+    restored.destroy()
+  }
+)
+
+it('keeps a missing restored selection unresolved at startup instead of choosing another folder', async () => {
+  const { model, port } = fixture()
+  model.folders.value = [rootFolder]
+  await model.selectTarget(target)
+  port.catalogue.mockResolvedValueOnce({
+    folders: [],
+    targets: [{ ...target, id: 'unrelated-tree', projectId: 'other-project' }],
+    sessions: [],
+    capabilities: [],
+  })
+  await model.start()
+  expect(model.current.value).toBeUndefined()
+  expect(model.error.value).not.toBe('')
+  expect(port.watch).toHaveBeenCalledOnce()
+  model.destroy()
+})
+
+it.each(['different path', 'basename only', 'different registration', 'chat incarnation'])(
+  'does not rebind a worktree with %s',
+  async (difference) => {
+    const { model, port } = fixture()
+    const selected: PathTarget = {
+      ...target,
+      location: { root: rootFolder.path, path: '/sample/one/feature', kind: 'managed' },
+      ...(difference === 'chat incarnation' ? { incarnation: 'sample-incarnation' } : {}),
+    }
+    if (difference === 'basename only') delete selected.location
+    model.targets.value = [selected]
+    const folder = {
+      ...rootFolder,
+      copies: [{ ...rootFolder.copies[0], kind: 'worktree' as const, path: 'feature' }],
+    }
+    model.folders.value = [folder]
+    await model.selectTarget(selected)
+    const replacement: PathTarget = {
+      ...target,
+      id: 'replacement-tree',
+      location: {
+        root: rootFolder.path,
+        path: difference === 'different path' ? '/sample/two/feature' : '/sample/one/feature',
+        kind: 'managed',
+      },
+      ...(difference === 'different registration' ? { registrationId: 'other-registration' } : {}),
+    }
+    port.catalogue.mockResolvedValueOnce({
+      folders: [{ ...folder, copies: [{ ...folder.copies[0], id: replacement.id }] }],
+      targets: [replacement],
+      sessions: [],
+      capabilities: [],
+    } as never)
+    await model.refresh()
+    expect(model.current.value).toBeUndefined()
+    expect(model.error.value).not.toBe('')
+    model.destroy()
+  }
+)

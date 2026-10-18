@@ -77,6 +77,14 @@ const target = z
     kind: z.enum(['worktree', 'workspace']),
     id,
     incarnation: id.optional(),
+    location: z
+      .object({
+        root: text,
+        path: text,
+        kind: z.enum(['root', 'managed', 'external', 'folder']),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
 /** Presentation cache, not wire payloads, credentials, byte storage or chat authorization. */

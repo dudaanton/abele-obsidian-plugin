@@ -65,6 +65,11 @@ describe('validated node path reads', () => {
     expect(data.folders[0].copies.map((c) => c.id)).toEqual([identity.workspace])
     expect(data.sessions[0].target?.id).toBe(identity.workspace)
     expect(data.capabilities).not.toContain('node_path_v2')
+    expect(data.targets[0].location).toEqual({
+      root: project.root_path,
+      path: project.root_path,
+      kind: 'root',
+    })
   })
   it('maps untracked, partly staged and deleted raw status without claiming change stamps on legacy nodes', async () => {
     const { port } = fake()

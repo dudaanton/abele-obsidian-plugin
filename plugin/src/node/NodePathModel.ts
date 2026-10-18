@@ -7,6 +7,7 @@ import { formatTimestamp } from '@/helpers/displayFormat'
 import { NodePathSnapshotSchema, emptySnapshotChange } from './nodePathSnapshot'
 import { applyPathChanges, type PathTreeBatch } from './nodePathChanges'
 import { NodePathHistoryModel } from './NodePathHistoryModel'
+import { replacementTarget, type TargetLocation } from './nodeTargetIdentity'
 import type { PathGit } from './nodePathGit'
 import type { NodeClient } from '@abele/node-client'
 import type { RepositoryRevision } from '@abele/node-protocol'
@@ -31,6 +32,7 @@ export interface PathTarget {
   id: string
   /** Session binding incarnation, present only on an observed chat target. */
   incarnation?: string
+  location?: TargetLocation
 }
 export const pathTargetKey = (target: PathTarget) =>
   JSON.stringify([target.nodeId, target.kind, target.id])
@@ -324,7 +326,9 @@ export class NodePathModel {
       return
     }
     this.stopCatalog = stop
+    const generation = this.selectionGeneration
     await this.refresh()
+    if (generation !== this.selectionGeneration) return
     const selected = this.current.value ?? this.targets.value[0]
     if (selected) await this.select(selected.id)
   }
@@ -347,10 +351,20 @@ export class NodePathModel {
   }
   async refreshCurrent(): Promise<void> {
     const target = this.current.value
+    const folders = this.folders.value
     // The selected root is read again without waiting on the catalogue, which may stall;
     // once the catalogue answers, a target that is gone surfaces as stale.
     const listed = this.refresh().then(() => {
-      if (target && !this.hasTarget(target)) throw new ChannelError('stale_resource')
+      if (target && !this.hasTarget(target)) {
+        const replacement = replacementTarget(
+          target,
+          folders,
+          this.targets.value,
+          this.folders.value
+        )
+        if (!replacement || this.current.value?.id !== replacement.id)
+          throw new ChannelError('stale_resource')
+      }
     })
     await Promise.all([
       listed,
@@ -447,13 +461,17 @@ export class NodePathModel {
       console.debug('[Abele] node path: refreshing a stale target', target.id, error.code)
       this.discardTarget(target)
       if (error.code === 'stale_resource') {
+        const folders = this.folders.value
         await this.refresh()
         if (!this.hasTarget(target)) {
+          const replacement =
+            selected && replacementTarget(target, folders, this.targets.value, this.folders.value)
+          if (replacement && this.current.value?.id === replacement.id) return
           this.report(error)
           throw error
         }
       }
-      // Only a read is retried. Changed IDs and session bindings are never substituted.
+      // Only a read is retried. Session bindings are never substituted.
       try {
         if (
           renewWatch &&
@@ -605,6 +623,8 @@ export class NodePathModel {
       const catalogue = await this.port.catalogue()
       if (this.disposed || generation !== this.catalogueGeneration) return
       const previous = this.targets.value
+      const selected = this.current.value
+      const previousFolders = this.folders.value
       this.targets.value = catalogue.targets.map((t) => ({ ...t }))
       const removed = previous.filter((target) => !this.hasTarget(target))
       const removedSelected = removed.some(
@@ -612,9 +632,12 @@ export class NodePathModel {
           target.id === this.selected.value ||
           (target.kind === 'workspace' && target.projectId === this.selected.value)
       )
+      const replacement =
+        removedSelected && selected
+          ? replacementTarget(selected, previousFolders, this.targets.value, catalogue.folders)
+          : undefined
       for (const target of removed) this.discardTarget(target)
-      // Plain folders select by project ID. Keeping that selection would silently pick a
-      // replacement root workspace even though its opaque identity has changed.
+      // Retire the old selection before opening any independently matched replacement.
       if (removedSelected) this.selected.value = ''
       this.sessions.value = catalogue.sessions
       this.capabilities.value = catalogue.capabilities
@@ -623,7 +646,10 @@ export class NodePathModel {
       if (this.disposed || generation !== this.catalogueGeneration) return
       this.receivedAt.value = this.now()
       uiField(this.error, 'value', uiErrorMessage(''))
-      if (removedSelected) this.report(new ChannelError('stale_resource'))
+      if (replacement) {
+        console.debug('[Abele] node path: recovering panel selection', selected?.id, replacement.id)
+        await this.selectTargetOnce(replacement)
+      } else if (removedSelected) this.report(new ChannelError('stale_resource'))
     } catch (error) {
       if (generation === this.catalogueGeneration) this.report(error)
       throw error
