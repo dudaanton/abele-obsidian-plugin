@@ -195,16 +195,38 @@ it.each(onPhone() ? [true] : [false, true])(
       const searchIcon = toolbar.querySelector('svg.lucide-search, [data-icon="search"]')
       const search = [...toolbar.querySelectorAll('[aria-label]')].find(el => String(el.getAttribute('aria-label')).toLowerCase().startsWith('search')) ?? searchIcon?.closest('.clickable-icon, .bases-toolbar-item, [role="button"]') ?? searchIcon?.parentElement
       if (!search) throw Error('native search missing')
-      search.click()
-      const input = await until(() => document.activeElement?.tagName === 'INPUT' && document.activeElement, 'search input')
-      input.value = 'No matching sample'
-      input.dispatchEvent(new Event('input', { bubbles: true }))
+      const doc = root.ownerDocument
+      const visible = el => {
+        const box = el.getBoundingClientRect()
+        return box.width > 0 && box.height > 0 && getComputedStyle(el).visibility !== 'hidden'
+      }
+      const previousInputs = new Set([...doc.querySelectorAll('input')].filter(visible))
+      const tapSearchElement = async el => {
+        if (!window.__e2eHost) return el.click()
+        const box = el.getBoundingClientRect()
+        if (!visible(el)) throw Error('Search control is not visible')
+        await window.__e2eHost.tap(box.left + box.width / 2, box.top + box.height / 2)
+      }
+      // WebKit requires a native gesture to bring up its keyboard. A DOM click need not focus
+      // the field, and a visible field is not necessarily document.activeElement on a phone.
+      await tapSearchElement(search)
+      const input = await until(() => [...doc.querySelectorAll('input')].find(el => visible(el) && !previousInputs.has(el)), 'search input')
+      if (window.__e2eHost) {
+        if (doc.activeElement !== input) await tapSearchElement(input)
+        await shot('list-search-open')
+        await window.__e2eHost.type('No matching sample')
+      } else {
+        await shot('list-search-open')
+        input.value = 'No matching sample'
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+      }
       await until(() => !component.props.places.length && !root.querySelector('.abele-map-base__pin.is-selected'), 'filtered selection cleared')
       await shot('list-empty-search')
       input.value = ''
       input.dispatchEvent(new Event('input', { bubbles: true }))
       await until(() => component.props.places.length === 5, 'cleared search')
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      if (window.__e2eHost) input.blur()
       api.select(place('One').id)
       const kept = [map.getCenter().lng, map.getCenter().lat, map.getZoom()]
       api.hideList()
