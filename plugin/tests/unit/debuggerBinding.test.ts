@@ -5,6 +5,65 @@ import { DebuggerControlMethodSchemas } from '@abele/node-protocol'
 import { DebuggerBinding } from '@/debugger/DebuggerService'
 import { debuggerStatus } from '../fixtures/debugger'
 import type { NodeConnection } from '@/node/NodeService'
+it('shows a native launch that terminates before its first stop without replaying any effect', async () => {
+  const starting = debuggerStatus({
+    lifecycle: 'configuring',
+    execution: 'unknown',
+    threads: [],
+    selected_thread_id: null,
+    thread_inventory: 'unknown',
+    all_threads_status: 'unknown',
+    event_seq: 1,
+  })
+  const active = debuggerStatus({
+    execution: 'unknown',
+    threads: [],
+    selected_thread_id: null,
+    thread_inventory: 'unknown',
+    all_threads_status: 'unknown',
+    event_seq: 3,
+  })
+  const ended = debuggerStatus({
+    lifecycle: 'terminated',
+    execution: 'unknown',
+    threads: [],
+    selected_thread_id: null,
+    thread_inventory: 'unknown',
+    all_threads_status: 'unknown',
+    event_seq: 7,
+  })
+  let waits = 0
+  const rpc = vi.fn(async (method: string, raw: unknown) => {
+    if (method === 'debugger.v1.status') return starting
+    if (method === 'debugger.v1.wait')
+      return {
+        wait_id: (raw as { wait_id: string }).wait_id,
+        reason: ++waits === 1 ? 'event' : 'cancelled',
+        elapsed_ms: 0,
+        snapshot: waits === 1 ? active.snapshot : ended.snapshot,
+      }
+    throw new Error('Unexpected sample RPC')
+  })
+  const connection = {
+    state: ref('connected'),
+    client: { request: rpc, debugger: new DebuggerClient(rpc) },
+  } as unknown as NodeConnection
+  const binding = new DebuggerBinding(connection, 'sample-folder', 'sample-registration')
+  vi.spyOn(binding, 'refresh').mockResolvedValue(undefined)
+  try {
+    await binding.open('sample-debug')
+    await vi.waitFor(() => expect(binding.controller.session.status).toBe('exited'))
+    expect(binding.controller.snapshot?.event_seq).toBe(7)
+    expect(binding.controller.error).toBe('')
+    expect(rpc.mock.calls.map(([method]) => method)).toEqual([
+      'debugger.v1.status',
+      'debugger.v1.wait',
+      'debugger.v1.wait',
+    ])
+  } finally {
+    binding.destroy()
+  }
+})
 it('reads retained terminal output when the node cancels a wait on program exit', async () => {
   const terminal = structuredClone(debuggerStatus().snapshot)
   terminal.lifecycle = 'terminated'

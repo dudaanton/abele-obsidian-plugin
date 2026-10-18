@@ -239,6 +239,44 @@ const RUN = (program: string, shots = '', via = 'Run a program') => `
   await until(()=>app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.getState().path===${JSON.stringify(program)}&&l.containerEl.querySelector('.abele-debug-source__point')),'debug source loaded',600);
   await until(()=>{const b=document.querySelector('[aria-label="Continue (F5)"]');return b&&b.offsetParent&&!b.disabled},'visible Continue offered',600);`
 
+it('restarts an ended folder program through node RPC without a debugger presenter', async () => {
+  const result = await inAppLong<{
+    differentSession: boolean
+    conversation: unknown
+  }>(`(async()=>{${prelude}
+    const client=nodes.connection(${JSON.stringify(registration)}).client;
+    let id;
+    const state=async()=> (await client.request('debugger.v1.status',{debug_session_id:id})).snapshot;
+    const stopped=async label=>{
+      for(let i=0;i<100;i++){
+        const s=await state();
+        if(s.execution==='stopped')return s;
+        if(['terminated','detached','failed','connection-lost'].includes(s.lifecycle))throw Error(label+' ended before its first stop: '+JSON.stringify(s));
+        await client.request('debugger.v1.wait',{debug_session_id:id,incarnation:s.incarnation,after_event_seq:s.event_seq,wait_id:crypto.randomUUID(),kinds:['stopped','lifecycle'],timeout_ms:200});
+      }
+      throw Error(label+' did not stop: '+JSON.stringify(await state()));
+    };
+    const stop=async()=>{
+      const s=await state();
+      if(['terminated','detached','failed','connection-lost'].includes(s.lifecycle))return;
+      const r=await client.request(s.target.process_ownership==='owned'?'debugger.v1.terminate':'debugger.v1.detach',{operation_id:crypto.randomUUID(),debug_session_id:id,incarnation:s.incarnation,expected_state_revision:s.state_revision});
+      if(r.outcome!=='completed')throw Error('Native stop did not complete: '+JSON.stringify(r));
+    };
+    try{
+      const started=await client.request('debugger.v1.start',{operation_id:crypto.randomUUID(),folder:{kind:'workspace',workspace_id:${JSON.stringify(folder.id)}},program:'src/journey.cjs',argv:[],sources:[]});
+      id=started.debug_session_id;
+      await stopped('Initial native launch');
+      await stop();
+      const previous=id;
+      const restarted=await client.request('debugger.v1.restart',{operation_id:crypto.randomUUID(),debug_session_id:previous});
+      id=restarted.debug_session_id;
+      const s=await stopped('Native restart');
+      return {differentSession:id!==previous,conversation:s.target.conversation_id};
+    }finally{if(id)await stop()}
+  })()`)
+  expect(result).toEqual({ differentSession: true, conversation: null })
+}, 120000)
+
 it.each(['desktop', 'phone'])(
   'opens folder debugging from the node menu without any chat on %s',
   async (device) => {
