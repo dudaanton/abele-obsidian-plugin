@@ -241,6 +241,9 @@ export class AgentsService {
       this.truths.get(path)
     ).map((reason) => ({
       ...reason,
+      ...(reason.kind === 'error' && !reason.text
+        ? { text: agentText('streamB.errorDetailsWereNotSaved.7381e0') }
+        : {}),
       ...(!live && reason.kind === 'running' ? { kind: 'interrupted' as const } : {}),
     }))
     row.uncertain =
