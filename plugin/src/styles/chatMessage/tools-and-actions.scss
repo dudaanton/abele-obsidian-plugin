@@ -451,6 +451,23 @@ button.abele-chat-msg__icon:not(.abele-chat-msg__time) {
   min-width: 6ch;
 }
 
+// File paths get the row's full width below the action and status. A long path must not
+// compete with either for a narrow column, and an action must stay readable beside a failure.
+.abele-chat-msg__tool-line.abele-chat-msg__tool-line_files {
+  flex-wrap: wrap;
+  align-items: baseline;
+
+  > .abele-chat-tool-files {
+    flex: 0 0 100%;
+    order: 1;
+  }
+
+  > .abele-chat-msg__tool-name {
+    flex: none;
+    overflow: visible;
+  }
+}
+
 // A call's body is exactly its line's height: clipped, it cut the focus ring of the glyphs on the
 // line. It still keeps wide details from spilling sideways, with room for a ring.
 .abele-chat-msg_tool-call > .abele-chat-msg__body {

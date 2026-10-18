@@ -2,6 +2,7 @@ import { mount } from '@vue/test-utils'
 import { expect, it, vi } from 'vitest'
 import ChatToolRun from '@/components/ChatToolRun.vue'
 import ChatToolFiles from '@/components/chat/ChatToolFiles.vue'
+import AiChatMessage from '@/components/AiChatMessage.vue'
 import { toolFilePaths } from '@/ai/toolFiles'
 import type { ChatMessage } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
@@ -55,6 +56,19 @@ it('keeps a completed node replacement linked when its run folds', () => {
   })
   try {
     expect(wrapper.get('[role="link"]').text()).toBe('src/sample.ts')
+  } finally {
+    wrapper.unmount()
+  }
+})
+
+it('does not reserve summary width when a failed read has no path or summary', () => {
+  useVault([])
+  const wrapper = mount(AiChatMessage, {
+    props: { message: call({ toolParams: {}, toolStatus: 'rejected' }) },
+  })
+  try {
+    expect(wrapper.get('.abele-chat-msg__tool-name').text()).toBe('Read')
+    expect(wrapper.find('.abele-chat-msg__tool-summary').exists()).toBe(false)
   } finally {
     wrapper.unmount()
   }

@@ -96,7 +96,9 @@
         >
           <span class="abele-chat-msg__tool-name">{{ readableToolName(message.toolName) }}</span>
           <ChatToolFiles v-if="toolFilePath" :message="message" :resource-opener="resourceOpener" />
-          <span v-else class="abele-chat-msg__tool-summary">{{ toolSummary }}</span>
+          <span v-else-if="toolSummary" class="abele-chat-msg__tool-summary">{{
+            toolSummary
+          }}</span>
           <span
             v-if="
               message.toolName === 'delegate' &&
