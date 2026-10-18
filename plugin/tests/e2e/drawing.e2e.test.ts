@@ -149,11 +149,12 @@ describe.skipIf(!available)('the picture editor and shared ink', () => {
   }, 90_000)
 
   afterAll(async () => {
-    evalRaw(
+    evalAsync(
       `(async () => {
-        for (const leaf of app.workspace.getLeavesOfType('abele-image-ink')) leaf.detach()
+        for (const leaf of app.workspace.getLeavesOfType('abele-image-ink'))
+          if (leaf.view.getState().path?.startsWith(${JSON.stringify(DIR + '/')})) leaf.detach()
         for (const leaf of app.workspace.getLeavesOfType('image')) if (leaf.view.file?.path.startsWith(${JSON.stringify(DIR)})) leaf.detach()
-        await new Promise((r) => setTimeout(r, 2500))
+        await app.workspace.requestSaveLayout.run()
         const dir = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})
         if (dir) await app.vault.delete(dir, true)
         return 'ok'
