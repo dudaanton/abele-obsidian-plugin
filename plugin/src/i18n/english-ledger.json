@@ -25900,7 +25900,7 @@
     ]
   },
   "commands.convert-drawings-to-canvases": {
-    "englishHash": "04d8993dbc3bb994aaedc1708609ca0414cdafd1891a57a432b3a1221f528fbe",
+    "englishHash": "00c5cd5ebd9963ea425115f9a16d43a7e48e6487842b24b8aa3647d6c7c8f862",
     "context": "Legacy drawing conversion command and result notice",
     "reviewedLocales": [
       "ru",
@@ -25910,7 +25910,7 @@
     ]
   },
   "drawing.conversion-result": {
-    "englishHash": "3e3719f558e82038299f6f26eb174af02056911c570a97165c2abbb99b5244bb",
+    "englishHash": "bc7379ed74eba390fad0e9105e2ba52a0ffdeb6d8364a36673cc81e18e0d56b1",
     "context": "Legacy drawing conversion command and result notice",
     "reviewedLocales": [
       "ru",

@@ -3,6 +3,7 @@ import ts from 'typescript'
 import { expect, it } from 'vitest'
 import { WAIT_PRELUDE } from '../e2e/helpers/wait'
 import { canvasBackgroundGesture } from '../e2e/helpers/canvasBackgroundGesture'
+import { drawingSvg } from '../../src/drawing/drawingFile'
 
 const files = [
   'bookSidebarResize',
@@ -10,7 +11,9 @@ const files = [
   'canvasAcceptance',
   'canvasExport',
   'canvasInk',
-  'drawingMenu',
+  'drawing',
+  'drawingConversion',
+  'drawingEmbed',
   'githubProseAsk',
   'githubTree',
   'slidesDesign',
@@ -27,6 +30,9 @@ it.each(files)('parses %s browser programs without executing the app', (file) =>
     Buffer,
     WAIT_PRELUDE,
     canvasBackgroundGesture,
+    drawingSvg,
+    directory: 'Sample probe',
+    svg: drawingSvg({ items: [] }),
     DIR: 'Sample probe',
     BOOK: 'Sample probe/sample.epub',
     PDF: 'Sample probe/sample.pdf',
