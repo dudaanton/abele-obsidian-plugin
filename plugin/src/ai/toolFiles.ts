@@ -1,8 +1,16 @@
 import type { ChatMessage } from './types'
-import { extractResultPath } from './toolLine'
+
+/** The path in a known file tool's structured result line. */
+export function extractResultPath(result?: string): string {
+  if (!result) return ''
+  const match = result.match(/^(?:Created|Saved|Edited):\s*(.+)$/m)
+  return match?.[1]?.trim() || ''
+}
 
 /** Explicit file arguments and provider locations only; never infer files from prose. */
-export function toolFilePaths(message: ChatMessage): string[] {
+export function toolFilePaths(
+  message: Pick<ChatMessage, 'toolName' | 'toolParams' | 'toolResult' | 'toolPath' | 'toolPaths'>
+): string[] {
   const paths = (values: unknown[]) => [
     ...new Set(values.filter((p): p is string => typeof p === 'string' && p.trim().length > 0)),
   ]

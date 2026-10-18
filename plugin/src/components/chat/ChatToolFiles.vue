@@ -60,4 +60,16 @@ function open(path: string) {
   display: flex;
   font-size: var(--font-ui-small);
 }
+.abele-chat-msg__tool-line_files {
+  flex-wrap: wrap;
+  align-items: baseline;
+
+  > .abele-chat-tool-files {
+    flex: 1 1 12ch;
+  }
+
+  > .abele-chat-msg__tool-name {
+    flex-shrink: 0;
+  }
+}
 </style>

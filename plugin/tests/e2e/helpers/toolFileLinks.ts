@@ -36,10 +36,11 @@ export async function checkToolFileLinks(node: boolean, phone: boolean) {
         await until(()=>root().querySelector('.abele-chat-run__calls .abele-chat-tool-files'))
         const expanded=links().map(el=>el.textContent)
         const expandedClipped=clipped()
+        const cramped=links().filter(el=>el.textContent.length>80&&el.getBoundingClientRect().width<80).map(el=>el.textContent)
         await shot('expanded-long-missing')
         let reopened=folded
         if(!node){await session.save();chatFile=session.currentChatFile.value;await chats.closeTab(tab);await chats.openChatFile(chatFile);session=chats.getSessionByFile(chatFile.path);tab=session.id;await until(()=>links().length===paths.length);reopened=links().map(el=>el.textContent);await shot('reopened')}
-        return JSON.stringify({paths,folded,expanded,reopened,opened,foldedClipped,expandedClipped})
+        return JSON.stringify({paths,folded,expanded,reopened,opened,foldedClipped,expandedClipped,cramped})
       } finally {
         if(node){chats.nodeSessions.delete(tab);chats.tabOrder.value=chats.tabOrder.value.filter(id=>id!==tab)}else{if(tab)await chats.closeTab(tab);if(chatFile)await app.vault.delete(chatFile)}
         chats.activeTabId.value=prior;owned.detach()
@@ -51,6 +52,7 @@ export async function checkToolFileLinks(node: boolean, phone: boolean) {
     expect(result.reopened).toEqual(result.paths)
     expect(result.foldedClipped).toEqual([])
     expect(result.expandedClipped).toEqual([])
+    expect(result.cramped).toEqual([])
     if (node) expect(result.opened).toEqual([result.paths[0]])
   }
   if (phone) await withEmulatedPhone(run)

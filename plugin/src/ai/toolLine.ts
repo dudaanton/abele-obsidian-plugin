@@ -1,4 +1,6 @@
 import type { ChatMessage } from './types'
+import { extractResultPath, toolFilePaths } from './toolFiles'
+export { extractResultPath } from './toolFiles'
 
 /**
  * What a tool call shows of itself in a chat, as text.
@@ -26,17 +28,15 @@ export function readableToolName(name?: string): string {
 export const truncate = (s: string, max: number): string =>
   s.length > max ? s.slice(0, max) + '…' : s
 
-/** The path in a result like "Created: path" or "Saved: path". */
-export function extractResultPath(result?: string): string {
-  if (!result) return ''
-  const match = result.match(/^(?:Created|Saved|Edited):\s*(.+)$/m)
-  return match?.[1]?.trim() || ''
-}
-
 /** The short thing after the tool's name on its line: the file, the address, the query. */
 export function toolSummary(
-  message: Pick<ChatMessage, 'toolName' | 'toolParams' | 'toolResult' | 'toolTitle'>
+  message: Pick<
+    ChatMessage,
+    'toolName' | 'toolParams' | 'toolResult' | 'toolTitle' | 'toolPath' | 'toolPaths'
+  >
 ): string {
+  const paths = toolFilePaths(message)
+  if (paths.length) return paths.join(' ')
   const said = paramsSummary(message)
   if (said || !message.toolTitle) return said
   // Another agent's own words for the call, without the name the line already starts with.

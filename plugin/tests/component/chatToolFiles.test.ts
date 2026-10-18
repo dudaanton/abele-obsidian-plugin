@@ -12,6 +12,7 @@ import { openNodeToolFile } from '@/node/openToolFile'
 import { NodeService } from '@/node/NodeService'
 import { openNodeChatResource } from '@/node/nodeChatPlace'
 import { openVaultFile } from '@/ai/openChat'
+import { toolSummary } from '@/ai/toolLine'
 
 vi.mock('@/node/nodeChatPlace', () => ({ openNodeChatResource: vi.fn() }))
 vi.mock('@/ai/openChat', () => ({ openVaultFile: vi.fn() }))
@@ -43,6 +44,16 @@ it('keeps all provider paths without duplicates or prose guesses', () => {
   ).toEqual([])
   expect(toolFilePaths(call({ toolParams: { path: { bogus: true } } }))).toEqual([])
   expect(toolFilePaths(call({ toolParams: {}, toolResult: 'Read sample.md' }))).toEqual([])
+})
+
+it('indexes the same full paths that the tool line shows', () => {
+  const path = 'Sample/' + 'long-folder/'.repeat(25) + 'sample.md'
+  expect(toolSummary(call({ toolParams: { path, description: 'A generic description' } }))).toBe(
+    path
+  )
+  expect(toolSummary(call({ toolPaths: ['src/one.ts', 'src/two.ts'] }))).toBe(
+    'src/one.ts src/two.ts'
+  )
 })
 it('keeps paths outside folded raw details and opens the remote context by keyboard', async () => {
   useVault([])

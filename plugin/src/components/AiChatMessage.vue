@@ -90,6 +90,7 @@
         <span
           v-if="!ownLine(message)"
           class="abele-chat-msg__tool-line"
+          :class="{ 'abele-chat-msg__tool-line_files': toolFilePath }"
           data-find-part="tool"
           @contextmenu.prevent="showActions"
         >
