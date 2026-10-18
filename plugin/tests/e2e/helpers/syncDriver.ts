@@ -444,6 +444,18 @@ export async function shaOf(text: string): Promise<string> {
   return Buffer.from(digest).toString('hex')
 }
 
-function removal(paths: string[]): string {
-  return `for(const path of ${JSON.stringify(paths)}){const file=app.vault.getAbstractFileByPath(path); if(file) await app.vault.delete(file,true); else {const stat=await app.vault.adapter.stat(path);if(stat?.type==='file')await app.vault.adapter.remove(path);else if(stat)throw new Error('Unindexed directory requires explicit cleanup: '+path);if(await app.vault.adapter.exists(path))throw new Error('Deletion did not complete: '+path)}} return true`
+/**
+ * Deletes paths in the page. A folder goes note by note, deepest first, and only then the
+ * emptied folders: Obsidian deletes an indexed folder in one synchronous run that pays, for every
+ * note under it, a rescan of every cached note. A peer's fixture of five thousand notes held the
+ * page for 45-55 s that way on the Studio, so the call driving the removal got no answer. One note
+ * at a time costs the same in total, and the page yields to other calls between notes.
+ */
+export function removal(paths: string[]): string {
+  return `const yieldPage=()=>new Promise(resolve=>setTimeout(resolve,0));let lastYield=Date.now();
+for(const path of ${JSON.stringify(paths)}){const file=app.vault.getAbstractFileByPath(path);
+if(file){if(file.children){const notes=[],folders=[];const walk=folder=>{for(const child of [...folder.children]){if(child.children){walk(child);folders.push(child)}else notes.push(child)}};walk(file);
+for(const one of [...notes,...folders]){if(app.vault.getAbstractFileByPath(one.path)===one)await app.vault.delete(one,true);if(Date.now()-lastYield>=50){await yieldPage();lastYield=Date.now()}}}
+await app.vault.delete(file,true)}
+else {const stat=await app.vault.adapter.stat(path);if(stat?.type==='file')await app.vault.adapter.remove(path);else if(stat)throw new Error('Unindexed directory requires explicit cleanup: '+path);if(await app.vault.adapter.exists(path))throw new Error('Deletion did not complete: '+path)}} return true`
 }
