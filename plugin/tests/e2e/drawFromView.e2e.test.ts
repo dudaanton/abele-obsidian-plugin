@@ -92,7 +92,9 @@ const PRELUDE = `
 const run = <T>(body: string): T =>
   evalAsync<T>(
     `(async () => { ${PRELUDE}
+      const previousInks = new Set(inks())
       try { ${body} } catch (e) { return { error: String((e && e.stack) || e) } }
+      finally { for (const leaf of inks()) if (!previousInks.has(leaf)) leaf.detach() }
     })()`,
     120_000
   )

@@ -312,6 +312,7 @@ describe.skipIf(!available)('chat pictures and image import in the running brows
       const previous = chats.activeTabId.value
       const tab = chats.createTab()
       let view
+      const previousInks = new Set(app.workspace.getLeavesOfType('abele-image-ink'))
       const files = []
       const session = chats.getSession(tab)
       ${PANE_PRELUDE}
@@ -347,6 +348,13 @@ describe.skipIf(!available)('chat pictures and image import in the running brows
         preview.querySelector('[data-icon="pen-line"], .lucide-pen-line').closest('.abele-obsidian-icon').click()
         view = await until(() => app.workspace.getLeavesOfType('abele-image-ink').map(l => l.view).find(v => v.image && v.session?.surface.width > 0))
         await capture('editor-open')
+        view.contentEl.querySelector('.abele-picture-editor__tool_crop').click()
+        await until(() => view.contentEl.querySelector('.abele-crop-frame'))
+        view.contentEl.querySelector('[aria-label="Square"]').click()
+        await capture('editor-cropped')
+        view.restoreEdit(false)
+        view.contentEl.querySelector('.abele-picture-editor__tool_pen').click()
+        await until(() => !view.contentEl.querySelector('.abele-crop-frame'))
         view.session.items.add([{ id: 'sample-mark', type: 'shape', kind: 'line', x1: 10, y1: 10, x2: 80, y2: 50, color: 'red', size: 4 }])
         await capture('editor-drawn')
         if (!(await view.sendToChat(source))) throw new Error('The picture was not saved')
@@ -366,7 +374,8 @@ describe.skipIf(!available)('chat pictures and image import in the running brows
       } catch (e) { return { error: String(e?.stack || e), ownership: evidence(session) } }
       finally {
         document.body.style.setProperty('--safe-area-inset-top', safeTop)
-        view?.leaf.detach()
+        for (const leaf of app.workspace.getLeavesOfType('abele-image-ink'))
+          if (!previousInks.has(leaf)) leaf.detach()
         await chats.closeTab(tab)
         for (const file of files) if (app.vault.getAbstractFileByPath(file.path)) await app.vault.delete(file)
         if (previous) chats.switchTab(previous)
