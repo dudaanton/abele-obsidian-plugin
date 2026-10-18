@@ -1,12 +1,16 @@
 import type { FolderSummary } from '@/components/nodeWork/types'
 import type { PathTarget } from './NodePathModel'
+import { z } from 'zod'
 
 /** Catalogue metadata used only to recover the panel selection, never chat authority. */
-export interface TargetLocation {
-  root: string
-  path: string
-  kind: 'root' | 'managed' | 'external' | 'folder'
-}
+export const TargetLocationSchema = z
+  .object({
+    root: z.string().max(4096),
+    path: z.string().max(4096),
+    kind: z.enum(['root', 'managed', 'external', 'folder']),
+  })
+  .strict()
+export type TargetLocation = z.infer<typeof TargetLocationSchema>
 
 function location(target: PathTarget, folders: FolderSummary[]): TargetLocation | undefined {
   const matches = folders.filter((folder) => folder.id === target.projectId)

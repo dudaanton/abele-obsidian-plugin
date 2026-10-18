@@ -14,6 +14,17 @@ const target = (id = 'tree-a') => ({
   id,
 })
 describe('main area node leaves', () => {
+  it('opens a catalogue target carrying selection recovery metadata without changing its binding', () => {
+    const located = {
+      ...target(),
+      location: { root: '/sample/repo', path: '/sample/repo', kind: 'root' as const },
+    }
+    const state = NodePathTabSchema.parse({ kind: 'file', target: located, path: 'sample.ts' })
+    expect(state.target).toEqual(located)
+    expect(nodePathTabKey(state)).toBe(
+      nodePathTabKey({ kind: 'file', target: target(), path: 'sample.ts' })
+    )
+  })
   it('uncovers a source on a phone by closing both drawers, leaving desktop panes alone', () => {
     const workspace = { leftSplit: { collapse: vi.fn() }, rightSplit: { collapse: vi.fn() } }
     closeNodePathDrawers(workspace as never, false)

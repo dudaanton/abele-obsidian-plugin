@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { TargetLocationSchema } from './nodeTargetIdentity'
 import type { TreeEntry, FileChange } from '@/components/nodeWork/types'
 const id = z.string().min(1).max(128)
 const text = z.string().max(4096)
@@ -77,14 +78,7 @@ const target = z
     kind: z.enum(['worktree', 'workspace']),
     id,
     incarnation: id.optional(),
-    location: z
-      .object({
-        root: text,
-        path: text,
-        kind: z.enum(['root', 'managed', 'external', 'folder']),
-      })
-      .strict()
-      .optional(),
+    location: TargetLocationSchema.optional(),
   })
   .strict()
 /** Presentation cache, not wire payloads, credentials, byte storage or chat authorization. */

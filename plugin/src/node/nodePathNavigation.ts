@@ -2,6 +2,7 @@ import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import type { Workspace } from 'obsidian'
 import { z } from 'zod'
 import type { PathTarget } from './NodePathModel'
+import { TargetLocationSchema } from './nodeTargetIdentity'
 export const NODE_SIDEBAR_VIEW = 'abele-node-sidebar'
 export const NODE_FILE_VIEW = 'abele-node-file'
 export const NODE_HISTORY_VIEW = 'abele-node-history'
@@ -16,6 +17,7 @@ const target = z
     kind: z.enum(['worktree', 'workspace']),
     id,
     incarnation: id.optional(),
+    location: TargetLocationSchema.optional(),
   })
   .strict()
 export const NodePathDebugMappingSchema = z
