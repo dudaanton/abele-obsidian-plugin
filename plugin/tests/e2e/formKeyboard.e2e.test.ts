@@ -106,9 +106,9 @@ const probeLib = `(() => {
     ? [...document.querySelectorAll('.modal .abele-script-form__input')].pop()
     : document.querySelector('.modal .abele-script-form .cm-content')
 
+  const viewOf = (editor) => window.__abeleTest.noteFieldView(editor.closest('.abele-note-editor-field__editor'))
   const caretOf = (editor) => {
-    const view = window.__abeleTest.noteFieldView(editor.closest('.cm-editor').parentElement) ||
-      window.__abeleTest.noteFieldView(editor.closest('.cm-editor'))
+    const view = viewOf(editor)
     if (view && view.coordsAtPos) {
       const c = view.coordsAtPos(view.state.selection.main.head)
       if (c) return c
@@ -206,10 +206,10 @@ const probeLib = `(() => {
       const has = () => document.activeElement === el || el.contains(document.activeElement)
       if (!(await until(has, 3000))) throw new Error('the touch did not reach ' + which)
       if (host) {
-        await until(() => keyboardHeight() > 0, 5000)
-        // Until the keyboard has finished coming up: letters typed while it slides in are lost.
-        // Its height and the toolbar and dialog over it have stopped moving.
+        // Geometry is measured after typing. Native responder readiness is proved by the
+        // driver's real keyboard checks and delivered probes, not a possibly absent CSS height.
         await still(layout)
+        if (which === 'note-field') await shoot('note-field-focused')
       } else {
         document.documentElement.style.setProperty('--keyboard-height', '${KEYBOARD}px')
         const shown = new Event('keyboardWillShow')
@@ -238,8 +238,7 @@ const probeLib = `(() => {
       const el = fieldOf(which)
       const read = () => {
         if (which === 'last-field') return el.value
-        const view = window.__abeleTest.noteFieldView(el.closest('.cm-editor').parentElement) ||
-          window.__abeleTest.noteFieldView(el.closest('.cm-editor'))
+        const view = viewOf(el)
         if (!view) throw new Error('the note editor is not mounted')
         return view.state.doc.toString()
       }
@@ -274,6 +273,7 @@ const probeLib = `(() => {
         error: '',
       }
     },
+    failure: () => shoot('failure'),
     async close() {
       document.activeElement && document.activeElement.blur()
       if (!host) {
@@ -322,7 +322,9 @@ async function runProbe(): Promise<Report> {
       if (onPhone()) {
         let expected = ''
         for (const line of TEXT[which].split(/(?<=\n)/)) {
-          typeText(line)
+          // Key taps use the visible keyboard directly; accessibility focus typing can
+          // acknowledge a contenteditable call without delivering its characters.
+          typeText(line, which === 'note-field' ? 'keys' : undefined)
           expected += line
           await step(`acknowledged(${JSON.stringify(which)},${JSON.stringify(expected)})`)
         }
@@ -331,6 +333,12 @@ async function runProbe(): Promise<Report> {
       report[which] = (await step(`measure(${JSON.stringify(which)})`)) as Typed
     }
   } catch (e) {
+    let failureShot = ''
+    try {
+      failureShot = String(await step('failure()'))
+    } catch {
+      /* Preserve the typing error. */
+    }
     report.run = {
       field: [0, 0],
       keyboardTop: 0,
@@ -340,7 +348,7 @@ async function runProbe(): Promise<Report> {
       run: 0,
       value: '',
       settledIn: 0,
-      shot: '',
+      shot: failureShot,
       error: `${at}: ${String((e as Error)?.message ?? e)}`,
     }
   } finally {

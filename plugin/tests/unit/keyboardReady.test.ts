@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { keyboardReady } from '../e2e/helpers/keyboardReady'
 
 /** The phone's typing into an input: the first `deaf` calls are lost, as on a keyboard not ready. */
@@ -34,11 +34,40 @@ const field = (value: string) => {
 }
 
 afterEach(() => {
+  vi.useRealTimers()
   document.body.replaceChildren()
   document.body.removeAttribute('style')
 })
 
 describe('keyboardReady', () => {
+  it('uses native delivery when keyboard geometry is missing instead of spending the probe budget on it', async () => {
+    vi.useFakeTimers()
+    const input = field('Sample')
+    document.body.style.setProperty('--keyboard-height', '0px')
+    let calls = 0
+    const started = Date.now()
+    let elapsed = 0
+    const ready = keyboardReady(
+      async (text) => {
+        await new Promise((resolve) => setTimeout(resolve, 6000))
+        if (++calls > 1) input.value += text
+      },
+      ['keys'],
+      20_000,
+      (n) => {
+        input.value = input.value.slice(0, -n)
+      }
+    ).then((path) => {
+      elapsed = Date.now() - started
+      return path
+    })
+    const checked = expect(ready).resolves.toBe('keys')
+    await vi.advanceTimersByTimeAsync(25_000)
+    await checked
+    expect(calls).toBe(3)
+    expect(input.value).toBe('Sample')
+    expect(elapsed).toBeLessThan(20_000)
+  })
   it('probes until the keyboard takes input, then leaves the field as it was', async () => {
     const input = field('Sample')
     const { calls, type } = keyboardInto(input, 2)

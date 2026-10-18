@@ -13,10 +13,17 @@ function installProbe() {
   }
   visit(tree)
   let value = ''
-  const editor = { closest: () => ({ parentElement: {} }) }
+  const host = {}
+  const editor = {
+    closest: (selector: string) =>
+      selector === '.abele-note-editor-field__editor' ? host : { parentElement: {} },
+  }
   const page = {
     __e2eHost: {},
-    __abeleTest: { noteFieldView: () => ({ state: { doc: { toString: () => value } } }) },
+    __abeleTest: {
+      noteFieldView: (el: unknown) =>
+        el === host ? { state: { doc: { toString: () => value } } } : null,
+    },
     __formProbe: undefined as unknown as {
       acknowledged: (which: string, expected: string) => Promise<string>
     },

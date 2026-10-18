@@ -50,25 +50,30 @@ export async function keyboardReady<P>(
       value: editable() ? read(editable()!).slice(-40) : null,
     })
 
-  // The focused field and the keyboard over it, its height holding still (no longer sliding in).
-  let height = -1,
-    still = 0
-  for (const shown = Date.now() + timeoutMs / 2; Date.now() < shown; await wait(100)) {
-    const now = editable() ? keyboard() : 0
-    still = now > 1 && now === height ? still + 1 : 0
-    height = now
-    if (still >= 3) break
-  }
   const el = editable()
   if (!el) throw new Error('No focused field to type into: ' + evidence())
 
   // A selection is the caller's to replace and a probe would replace it first: there the settled
   // keyboard is all the evidence there is.
-  if (plain(el)) {
-    const input = el as HTMLInputElement
-    if (input.selectionStart !== null && input.selectionStart !== input.selectionEnd)
-      return paths[0]
-  } else if (getSelection()?.isCollapsed === false) return paths[0]
+  const selected = plain(el)
+    ? (el as HTMLInputElement).selectionStart !== null &&
+      (el as HTMLInputElement).selectionStart !== (el as HTMLInputElement).selectionEnd
+    : getSelection()?.isCollapsed === false
+  if (selected) {
+    let height = -1,
+      still = 0
+    for (const shown = Date.now() + timeoutMs / 2; Date.now() < shown; await wait(100)) {
+      const now = document.activeElement === el ? keyboard() : 0
+      still = now > 1 && now === height ? still + 1 : 0
+      height = now
+      if (still >= 3) break
+    }
+    if (document.activeElement !== el) throw new Error('The field lost focus: ' + evidence())
+    return paths[0]
+  }
+  // A contenteditable can have the native keyboard while its page still reports zero height.
+  // The driver checks the real keyboard; delivered probes prove readiness without consuming
+  // half the input deadline on an unrelated geometry notification.
   const before = read(el)
   const until = async (done: () => boolean, ms: number) => {
     for (const stop = Math.min(end, Date.now() + ms); Date.now() < stop; await wait(50))
