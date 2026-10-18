@@ -1,7 +1,8 @@
 import { nodeErrorNotice } from './errorNotice'
 import { UiError, uiMessage, presentUiError } from '@/i18n/streamBErrors'
 import { t } from '@/i18n'
-import { h, shallowRef } from 'vue'
+import { h, shallowRef, watch } from 'vue'
+import { ChannelError } from '@abele/channel-protocol'
 import Modal from '@/components/obsidian/Modal.vue'
 import { mountKit } from '@/components/obsidian/mount'
 import FolderPicker from '@/components/nodeWork/FolderPicker.vue'
@@ -56,8 +57,10 @@ export async function openNodeFolderPicker(
   const actionError = shallowRef(''),
     busy = shallowRef(false)
   let closed = false
+  let listingEpoch = 0
   const normalize = (path: string) => path.replace(/\/$/, '') || '/'
-  const load = async (path?: string): Promise<Directory> => {
+  const load = async (path?: string, retry = true): Promise<Directory> => {
+    const epoch = listingEpoch
     const first = await client.nodePath.directories(path ? { path: normalize(path) } : {})
     const entries = [...first.entries]
     const cursors = new Set<string>()
@@ -66,7 +69,18 @@ export async function openNodeFolderPicker(
       if (cursors.has(cursor))
         throw new UiError(uiMessage('streamB.directoryPaginationDidNotAdvance.2bab6c'))
       cursors.add(cursor)
-      const next = await client.nodePath.directories({ path: first.path, cursor })
+      let next: Directory
+      try {
+        next = await client.nodePath.directories({ path: first.path, cursor })
+      } catch (error) {
+        if (
+          retry &&
+          error instanceof ChannelError &&
+          ['stale_cursor', 'stale_resource'].includes(error.code)
+        )
+          return load(first.path, false)
+        throw error
+      }
       if (next.incomplete)
         throw new Error(
           next.omissions.join(' · ') || t('streamB.incompleteDirectoryListing.fcb072')
@@ -77,18 +91,35 @@ export async function openNodeFolderPicker(
     if (first.incomplete)
       throw new Error(first.omissions.join(' · ') || t('streamB.incompleteDirectoryListing.fcb072'))
     const value = { ...first, entries }
-    if (!closed) listings.value = { ...listings.value, [normalize(first.path)]: value }
+    if (!closed && epoch === listingEpoch)
+      listings.value = { ...listings.value, [normalize(first.path)]: value }
     return value
   }
-  const home = await load()
+  const stopConnection = watch(
+    connection.state,
+    () => {
+      listingEpoch++
+      pending.clear()
+      listings.value = {}
+    },
+    { flush: 'sync' }
+  )
+  let home: Directory
+  try {
+    home = await load()
+  } catch (error) {
+    stopConnection()
+    throw error
+  }
   const browse = (dir: string): { entries: NodeDirectory[] } | { error: string } => {
     const key = normalize(dir),
       cached = listings.value[key]
     if (!cached && !pending.has(key)) {
+      const epoch = listingEpoch
       pending.add(key)
       void load(key)
         .catch((error: unknown) => {
-          if (!closed)
+          if (!closed && epoch === listingEpoch)
             listings.value = {
               ...listings.value,
               [key]: {
@@ -99,7 +130,9 @@ export async function openNodeFolderPicker(
               },
             }
         })
-        .finally(() => pending.delete(key))
+        .finally(() => {
+          if (epoch === listingEpoch) pending.delete(key)
+        })
     }
     if (!cached) return { error: t('streamB.loadingFolders.d0aa0d') }
     if ('error' in cached) return cached
@@ -138,7 +171,21 @@ export async function openNodeFolderPicker(
         const directory = listings.value[parent]
         if (!directory || 'error' in directory)
           throw new UiError(uiMessage('streamB.inspectTheParentDirectoryBeforeCreatingA.5e40b4'))
-        path = await mutations.mkdir(directory.directory_id, name, parent)
+        try {
+          path = await mutations.mkdir(directory.directory_id, name, parent)
+        } catch (error) {
+          if (error instanceof ChannelError && error.code === 'stale_resource') {
+            // Do not replay the mutation. The next explicit Create uses the refreshed ID
+            // and a new logical intent; the field still holds the requested child name.
+            listings.value = Object.fromEntries(
+              Object.entries(listings.value).filter(([key]) => key !== parent)
+            )
+            await load(parent)
+            actionError.value = t('node.folderRefreshed')
+            return
+          }
+          throw error
+        }
       }
       let project
       try {
@@ -195,6 +242,7 @@ export async function openNodeFolderPicker(
       ]),
     () => {
       closed = true
+      stopConnection()
     },
     true
   )

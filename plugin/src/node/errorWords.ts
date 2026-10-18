@@ -5,6 +5,7 @@ type NodeErrorKey = Extract<MessageKey, `node.error.${string}`>
 
 // Exact protocol/client codes: new codes get the generic explanation until classified.
 const groups: readonly [NodeErrorKey, readonly string[]][] = [
+  ['node.error.staleResource', ['stale_resource']],
   ['node.error.unknownOutcome', ['outcome_unknown', 'delivery_unknown', 'idempotency_mismatch']],
   [
     'node.error.tls',

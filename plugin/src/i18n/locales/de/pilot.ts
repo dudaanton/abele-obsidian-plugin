@@ -23,6 +23,10 @@ export const de = {
   'node.error.identity':
     'Der Knoten oder das Ziel hat sich geändert. Identität prüfen und erneut verbinden.',
   'node.error.stale': 'Die Daten haben sich geändert. Vor einem erneuten Versuch aktualisieren.',
+  'node.error.staleResource':
+    'Der Ordner oder die Arbeitskopie hat sich geändert. Aktualisieren und erneut auswählen.',
+  'node.folderRefreshed':
+    'Der Ordner wurde aktualisiert. Erneut auf Erstellen klicken, um den angegebenen Ordner zu erstellen.',
   'node.error.trust':
     'Dieser Ordner ist nicht vertrauenswürdig. Vor dem Fortfahren die Vertrauenseinstellungen prüfen.',
   'node.error.unavailable':

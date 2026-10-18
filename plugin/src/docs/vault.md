@@ -213,6 +213,16 @@ remains unread. Owner folder/worktree operations keep `nodePathIntents` in the e
 installation-local node client IndexedDB state until a typed receipt is known. Reopening a
 folder picker reuses an unresolved operation's original parent handle, request and ID; it
 never guesses that an operation ID alone means the filesystem effect succeeded.
+A definitive `stale_resource` mkdir refusal retires only that failed logical intent. The
+picker refreshes its parent handle, preserves the requested child name and waits for a new
+Create action, which gets a new operation ID. Disconnects, timeouts and unknown outcomes
+retain the original operation and parameters for reconciliation. A successful mkdir keeps
+its created path in the logical intent until registration succeeds, so retrying registration
+does not create the folder again. Directory handles and cursors are never persisted;
+reconnection discards them along with mutable target observations, pagination and watches.
+Stale target reads refresh the catalogue and retry once only for the same target identity.
+A replaced target or stale session binding requires explicit reselection; recovery never
+rebinds sessions or transfers execution/editing approval.
 
 ## Node repository tabs (device-local)
 

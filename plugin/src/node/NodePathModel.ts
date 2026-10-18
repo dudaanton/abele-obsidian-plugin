@@ -95,6 +95,7 @@ export interface PathCatalogue {
 }
 /** Transport-independent product port. Wire validation belongs to the node client. */
 export interface NodePathPort {
+  invalidate?(target?: PathTarget): void
   catalogue(): Promise<PathCatalogue>
   inspect(
     target: PathTarget,
@@ -235,6 +236,7 @@ export class NodePathModel {
   private folderLoads = new Map<string, Promise<void>>()
   private revisions = new Map<string, { at: number; read: KnownPathRead }>()
   private revisionEpochs = new Map<string, number>()
+  private resourceEpochs = new Map<string, number>()
   private pageRevisions = new Map<string, Map<string, RepositoryRevision | undefined>>()
   /** Per target, the change batches applied so far and the latest of them. */
   private batches = new Map<string, { count: number; recent: PathTreeBatch[] }>()
@@ -345,12 +347,128 @@ export class NodePathModel {
   }
   async refreshCurrent(): Promise<void> {
     const target = this.current.value
+    await this.refresh()
+    if (target && !this.hasTarget(target)) throw new ChannelError('stale_resource')
     await Promise.all([
-      this.refresh(),
       target ? this.reloadTarget(target) : Promise.resolve(),
       this.panelMode.value === 'history' ? this.loadPanelHistory() : Promise.resolve(),
       this.panelMode.value === 'pulls' ? this.loadPanelPulls() : Promise.resolve(),
     ])
+  }
+  async reconnected(): Promise<void> {
+    const target = this.current.value
+    for (const known of this.targets.value) this.discardTarget(known)
+    this.port.invalidate?.()
+    const generation = this.selectionGeneration
+    await this.refresh()
+    if (this.disposed || generation !== this.selectionGeneration) return
+    if (target) {
+      if (!this.hasTarget(target)) throw new ChannelError('stale_resource')
+      await this.selectTarget(target)
+    }
+  }
+  private hasTarget(target: PathTarget): boolean {
+    return this.targets.value.some(
+      (entry) =>
+        pathTargetKey(entry) === pathTargetKey(target) &&
+        entry.projectId === target.projectId &&
+        entry.registrationId === target.registrationId
+    )
+  }
+  private discardTarget(target: PathTarget): void {
+    const key = pathTargetKey(target)
+    this.invalidateRevision(target)
+    this.resourceEpochs.set(key, (this.resourceEpochs.get(key) ?? 0) + 1)
+    this.pageRevisions.delete(key)
+    this.batches.delete(key)
+    this.treeLoads.delete(key)
+    for (const request of this.folderLoads.keys())
+      if ((JSON.parse(request) as [string])[0] === key) this.folderLoads.delete(request)
+    this.inspections.value = Object.fromEntries(
+      Object.entries(this.inspections.value).filter(([id]) => id !== key)
+    )
+    this.cursors.value = Object.fromEntries(
+      Object.entries(this.cursors.value).filter(([id]) => id !== key)
+    )
+    this.port.invalidate?.(target)
+    if (this.selected.value === (target.kind === 'workspace' ? target.projectId : target.id)) {
+      ++this.selectionGeneration
+      this.stopWatch?.()
+      this.stopWatch = undefined
+      this.panelHistory.value?.destroy()
+      this.panelHistory.value = undefined
+      this.panelBranch.value = undefined
+      this.panelPulls.value = undefined
+    }
+  }
+  private watchTarget(target: PathTarget): Promise<() => void> {
+    const epoch = this.resourceEpochs.get(pathTargetKey(target)) ?? 0
+    const current = () =>
+      !this.disposed && epoch === (this.resourceEpochs.get(pathTargetKey(target)) ?? 0)
+    return this.port.watch(
+      target,
+      () => {
+        if (!current()) return
+        void this.reloadTarget(target).catch((e) => {
+          // The tree already says it failed, with a retry, without moving its rows; a notice
+          // over it would push them down on every failed background read.
+          if (this.progress.value[pathTargetKey(target)]?.state === 'failed')
+            console.debug('[Abele] node path: reading the files again failed', e)
+          else this.report(e)
+        })
+      },
+      (batch) => {
+        if (current()) this.applyBatch(target, batch)
+      }
+    )
+  }
+  private async recoverRead(
+    target: PathTarget,
+    read: () => Promise<void>,
+    renewWatch = true,
+    retryRead = read
+  ): Promise<void> {
+    const epoch = this.resourceEpochs.get(pathTargetKey(target)) ?? 0
+    try {
+      return await read()
+    } catch (error) {
+      if (this.disposed || epoch !== (this.resourceEpochs.get(pathTargetKey(target)) ?? 0)) return
+      if (
+        !(error instanceof ChannelError) ||
+        !['stale_resource', 'stale_revision', 'stale_cursor'].includes(error.code)
+      )
+        throw error
+      const selected =
+        this.current.value && pathTargetKey(this.current.value) === pathTargetKey(target)
+      console.debug('[Abele] node path: refreshing a stale target', target.id, error.code)
+      this.discardTarget(target)
+      if (error.code === 'stale_resource') {
+        await this.refresh()
+        if (!this.hasTarget(target)) {
+          this.report(error)
+          throw error
+        }
+      }
+      // Only a read is retried. Changed IDs and session bindings are never substituted.
+      try {
+        if (
+          renewWatch &&
+          selected &&
+          this.current.value &&
+          pathTargetKey(this.current.value) === pathTargetKey(target)
+        ) {
+          const generation = this.selectionGeneration
+          const stop = await this.watchTarget(target)
+          if (this.disposed || generation !== this.selectionGeneration) stop()
+          else this.stopWatch = stop
+        }
+        return await retryRead()
+      } catch (retryError) {
+        this.discardTarget(target)
+        this.report(retryError)
+        throw retryError
+      }
+    }
   }
   /** The selected worktree's commits for the panel, the first page read again. */
   async loadPanelHistory(): Promise<void> {
@@ -482,7 +600,10 @@ export class NodePathModel {
     try {
       const catalogue = await this.port.catalogue()
       if (this.disposed || generation !== this.catalogueGeneration) return
+      const previous = this.targets.value
       this.targets.value = catalogue.targets.map((t) => ({ ...t }))
+      const removed = previous.filter((target) => !this.hasTarget(target))
+      for (const target of removed) this.discardTarget(target)
       this.sessions.value = catalogue.sessions
       this.capabilities.value = catalogue.capabilities
       this.folders.value = catalogue.folders
@@ -490,6 +611,14 @@ export class NodePathModel {
       if (this.disposed || generation !== this.catalogueGeneration) return
       this.receivedAt.value = this.now()
       uiField(this.error, 'value', uiErrorMessage(''))
+      if (
+        removed.some(
+          (target) =>
+            target.id === this.selected.value ||
+            (target.kind === 'workspace' && target.projectId === this.selected.value)
+        )
+      )
+        this.report(new ChannelError('stale_resource'))
     } catch (error) {
       if (generation === this.catalogueGeneration) this.report(error)
       throw error
@@ -501,6 +630,9 @@ export class NodePathModel {
     return this.selectTarget(this.target(id))
   }
   async selectTarget(target: PathTarget, copy?: CopySummary): Promise<void> {
+    return this.recoverRead(target, () => this.selectTargetOnce(target, copy), false)
+  }
+  private async selectTargetOnce(target: PathTarget, copy?: CopySummary): Promise<void> {
     if (target.nodeId !== this.nodeId || target.registrationId !== this.registrationId)
       throw new UiError(uiMessage('streamBError.8a0e599716'))
     if (!this.targets.value.some((entry) => pathTargetKey(entry) === pathTargetKey(target)))
@@ -532,19 +664,7 @@ export class NodePathModel {
     // what changed until the stream started, and reading again would race whatever comes next.
     let stop: (() => void) | undefined, watchError: unknown
     try {
-      stop = await this.port.watch(
-        target,
-        () => {
-          void this.reloadTarget(target).catch((e) => {
-            // The tree already says it failed, with a retry, without moving its rows; a notice
-            // over it would push them down on every failed background read.
-            if (this.progress.value[pathTargetKey(target)]?.state === 'failed')
-              console.debug('[Abele] node path: reading the files again failed', e)
-            else this.report(e)
-          })
-        },
-        (batch) => this.applyBatch(target, batch)
-      )
+      stop = await this.watchTarget(target)
     } catch (error) {
       watchError = error
     }
@@ -554,7 +674,7 @@ export class NodePathModel {
     }
     this.stopWatch = stop
     const pending = this.treeLoads.get(pathTargetKey(target))
-    await (pending?.promise ?? this.reloadTarget(target))
+    await (pending?.promise ?? this.reloadTargetOnce(target))
     if (this.disposed || generation !== this.selectionGeneration) return
     this.openMode(target)
     if (watchError) throw watchError
@@ -569,6 +689,9 @@ export class NodePathModel {
       this.panelMode.value = this.changes.value.length ? 'changes' : 'files'
   }
   async reloadTarget(target: PathTarget, files = true): Promise<void> {
+    return this.recoverRead(target, () => this.reloadTargetOnce(target, files))
+  }
+  private async reloadTargetOnce(target: PathTarget, files = true): Promise<void> {
     if (this.disposed) return
     if (!files) return this.serialTarget(target, () => this.readTarget(target, false))
     this.invalidateRevision(target)
@@ -580,6 +703,7 @@ export class NodePathModel {
     }
     // Never continually supersede a large listing before it can publish. Burst invalidations
     // share this read and request one fresh observation afterwards, without losing freshness.
+    const epoch = this.resourceEpochs.get(key) ?? 0
     const load = { dirty: false, promise: Promise.resolve() }
     this.treeLoads.set(key, load)
     load.promise = (async () => {
@@ -590,9 +714,9 @@ export class NodePathModel {
         } catch (error) {
           if (!load.dirty) throw error
         }
-      } while (load.dirty && !this.disposed)
+      } while (load.dirty && !this.disposed && epoch === (this.resourceEpochs.get(key) ?? 0))
     })().finally(() => {
-      this.treeLoads.delete(key)
+      if (this.treeLoads.get(key) === load) this.treeLoads.delete(key)
     })
     return load.promise
   }
@@ -795,6 +919,7 @@ export class NodePathModel {
       return Promise.resolve()
     const read = this.serialTarget(target, async () => {
       if (this.disposed) return
+      const epoch = this.resourceEpochs.get(key) ?? 0
       if (!this.online.value) throw new UiError(uiMessage('streamBError.b4836687ce'))
       this.setProgress(target, 'reading')
       const activeCursor = more ? this.cursors.value[key]?.[path] : undefined
@@ -806,28 +931,37 @@ export class NodePathModel {
         throw new UiError(uiMessage('streamBError.29f751894a'))
       const mark = this.batchMark(target)
       const page = await tree.call(this.port, target, path, activeCursor ?? undefined, revision)
-      if (this.disposed) return
+      if (this.disposed || epoch !== (this.resourceEpochs.get(key) ?? 0)) return
       if (more && page.cursor === activeCursor)
         throw new UiError(uiMessage('streamBError.fd3e95b2aa'))
       this.publishPage(target, path, page, more)
       this.catchUp(target, mark)
       this.setProgress(target)
+    }).catch((error: unknown) => {
+      if (!this.disposed)
+        this.setProgress(
+          target,
+          'failed',
+          error instanceof Error ? error.message : 'Could not read folder'
+        )
+      throw error
     })
-      .catch((error: unknown) => {
-        if (!this.disposed)
-          this.setProgress(
-            target,
-            'failed',
-            error instanceof Error ? error.message : 'Could not read folder'
-          )
-        throw error
-      })
-      .finally(() => this.folderLoads.delete(requestKey))
-    this.folderLoads.set(requestKey, read)
-    return read
+    const recovering = this.recoverRead(
+      target,
+      () => read,
+      true,
+      () => this.reloadTargetOnce(target)
+    )
+    this.folderLoads.set(requestKey, recovering)
+    return recovering.finally(() => {
+      if (this.folderLoads.get(requestKey) === recovering) this.folderLoads.delete(requestKey)
+    })
   }
   private async readTarget(target: PathTarget, files: boolean): Promise<void> {
     if (this.disposed) return
+    const epoch = this.resourceEpochs.get(pathTargetKey(target)) ?? 0
+    const outdated = () =>
+      this.disposed || epoch !== (this.resourceEpochs.get(pathTargetKey(target)) ?? 0)
     if (files && this.port.tree) {
       this.setProgress(target, 'reading')
       try {
@@ -840,7 +974,7 @@ export class NodePathModel {
           revision?: RepositoryRevision
         ) => read.call(this.port, at, path, cursor, revision)
         const first = await tree(target, '')
-        if (this.disposed) return
+        if (outdated()) return
         // A refresh keeps the folders the person opened filled, and as many of each one's pages
         // as were loaded, while it reads each again at the new observation: a folder is swapped
         // in only once all of them are read, so the tree neither collapses, shortens nor jumps.
@@ -865,7 +999,7 @@ export class NodePathModel {
           return { ...page, entries: [...entries.values()], cursor }
         }
         const page = await pages('', first, previous.length)
-        if (this.disposed) return
+        if (outdated()) return
         this.publishPage(target, '', page, false, true)
         for (const { path, loaded } of opened) {
           try {
@@ -874,10 +1008,15 @@ export class NodePathModel {
               await tree(target, path, undefined, page.revision),
               loaded
             )
-            if (this.disposed) return
+            if (outdated()) return
             this.publishPage(target, path, folder, false, true)
           } catch (error) {
             console.debug('[Abele] node path: an opened folder was not read again', path, error)
+            if (
+              error instanceof ChannelError &&
+              ['stale_resource', 'stale_revision', 'stale_cursor'].includes(error.code)
+            )
+              throw error
           }
         }
         this.catchUp(target, mark)
@@ -900,7 +1039,7 @@ export class NodePathModel {
     const treeGeneration = files ? (this.treeGenerations.get(key) ?? 0) + 1 : undefined
     if (treeGeneration !== undefined) this.treeGenerations.set(key, treeGeneration)
     let inspection = await this.port.inspect(target, files, this.knownRead(target)?.revision)
-    if (this.disposed) return
+    if (outdated()) return
     const current = this.inspections.value[key]
     if (generation !== this.targetGenerations.get(key)) {
       // A metadata-only read must not cancel the only in-flight file listing. Keep the

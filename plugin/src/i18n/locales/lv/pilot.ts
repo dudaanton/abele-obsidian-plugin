@@ -22,6 +22,10 @@ export const lv = {
   'node.error.identity':
     'Mezgls vai mērķis ir mainījies. Pārbaudiet identitāti un izveidojiet savienojumu vēlreiz.',
   'node.error.stale': 'Dati ir mainījušies. Pirms atkārtota mēģinājuma atsvaidziniet tos.',
+  'node.error.staleResource':
+    'Mape vai darba kopija ir mainījusies. Atsvaidziniet sarakstu un izvēlieties to vēlreiz.',
+  'node.folderRefreshed':
+    'Mape tika atsvaidzināta. Nospiediet Izveidot vēlreiz, lai izveidotu norādīto mapi.',
   'node.error.trust':
     'Šī mape nav uzticama. Pirms turpināšanas pārbaudiet uzticamības iestatījumus.',
   'node.error.unavailable': 'Šī funkcija nav pieejama. Pārbaudiet mezgla iestatījumus un versiju.',

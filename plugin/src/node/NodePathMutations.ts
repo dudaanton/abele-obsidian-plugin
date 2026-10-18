@@ -1,5 +1,6 @@
 import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import type { ClientState, NodeClient, Project } from '@abele/node-client'
+import { ChannelError } from '@abele/channel-protocol'
 import {
   NodePathMethodSchemas,
   MethodSchemas,
@@ -27,7 +28,8 @@ export class NodePathMutations {
     method: string,
     params: unknown,
     send: (id: string, retained: unknown) => Promise<T>,
-    logicalKey: unknown = params
+    logicalKey: unknown = params,
+    retainResult = false
   ): Promise<T> {
     const key = JSON.stringify([method, logicalKey])
     const intent = await this.client.store.transaction((raw) => {
@@ -35,10 +37,30 @@ export class NodePathMutations {
       return (intents[key] ??= { id: crypto.randomUUID(), method, params })
     })
     if (intent.method !== method) throw new UiError(uiMessage('streamBError.d7e2b0292d'))
-    const result = await send(intent.id, intent.params)
+    if (retainResult && intent.result !== undefined) return intent.result as T
+    let result: T
+    try {
+      result = await send(intent.id, intent.params)
+    } catch (error) {
+      // This terminal refusal performed no mkdir. Unknown outcomes keep their original ID
+      // and parameters, even if the picker has since obtained another parent handle.
+      if (
+        method === 'filesystem.v1.mkdir' &&
+        error instanceof ChannelError &&
+        error.code === 'stale_resource'
+      )
+        await this.client.store.transaction((raw) => {
+          const intents = (raw as IntentState).nodePathIntents
+          if (intents?.[key]?.id === intent.id) delete intents[key]
+        })
+      throw error
+    }
     // A typed receipt is known, not just an operation ID. Failed/unknown calls keep their intent.
     await this.client.store.transaction((raw) => {
-      delete (raw as IntentState).nodePathIntents?.[key]
+      const intents = (raw as IntentState).nodePathIntents
+      if (intents?.[key]?.id !== intent.id) return
+      if (retainResult) intents[key].result = result
+      else delete intents[key]
     })
     return result
   }
@@ -54,14 +76,21 @@ export class NodePathMutations {
             id
           )
         ).path,
-      parentPath ? { parentPath, name } : params
+      parentPath ? { parentPath, name } : params,
+      true
     )
   }
-  register(path: string): Promise<Project> {
+  async register(path: string): Promise<Project> {
     const params = { path, trust: 'untrusted' as const, exact_root: true }
-    return this.intent('project.register', params, (id) =>
+    const project = await this.intent('project.register', params, (id) =>
       this.client.nodePath.register(params, id)
     )
+    await this.client.store.transaction((raw) => {
+      const intents = (raw as IntentState).nodePathIntents ?? {}
+      for (const [key, intent] of Object.entries(intents))
+        if (intent.method === 'filesystem.v1.mkdir' && intent.result === path) delete intents[key]
+    })
+    return project
   }
   init(project_id: string, initial_branch: string): Promise<Project> {
     const params = { project_id, initial_branch }

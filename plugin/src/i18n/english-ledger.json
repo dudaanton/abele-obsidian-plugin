@@ -25898,5 +25898,25 @@
       "es",
       "de"
     ]
+  },
+  "node.error.staleResource": {
+    "englishHash": "393e525e94420b58ff1861b908342dc0e51d6c6945bcb79a576bd540b5878806",
+    "context": "Node stale resource recovery and folder picker refresh; owner action is required before retrying a mutation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.folderRefreshed": {
+    "englishHash": "a3193410bdcfad28091c1248a4cc5ac4dc5f8d249197933c3e34862d744e795a",
+    "context": "Node stale resource recovery and folder picker refresh; owner action is required before retrying a mutation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

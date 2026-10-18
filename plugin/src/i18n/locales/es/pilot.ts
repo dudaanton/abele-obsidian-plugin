@@ -22,6 +22,10 @@ export const es = {
   'node.error.identity':
     'El nodo o el destino ha cambiado. Comprueba su identidad y vuelve a conectar.',
   'node.error.stale': 'Los datos han cambiado. Actualiza antes de reintentar.',
+  'node.error.staleResource':
+    'La carpeta o copia de trabajo ha cambiado. Actualiza y vuelve a seleccionarla.',
+  'node.folderRefreshed':
+    'La carpeta se ha actualizado. Pulsa Crear de nuevo para crear la carpeta indicada.',
   'node.error.trust':
     'Esta carpeta no es de confianza. Revisa la configuración de confianza antes de continuar.',
   'node.error.unavailable':

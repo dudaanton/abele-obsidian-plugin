@@ -45,6 +45,57 @@ interface Layout {
 }
 
 describe.skipIf(!available)('node folder dialog layout', () => {
+  it.each([false, true])(
+    'keeps the requested name and shows refreshed recovery on mobile=%s',
+    async (mobile) => {
+      await reloadApp(`app.emulateMobile(${mobile})`)
+      const cli = vaultCli(activeVaultName())
+      const size = mobile ? [390, 844] : [1280, 900]
+      const result = cli.evalAwait<{
+        message: string
+        path: string
+        bottom: number
+        height: number
+      }>(`(async () => {
+      const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
+      const win = require('@electron/remote').getCurrentWindow()
+      win.setContentSize(${size[0]}, ${size[1]})
+      await wait(300)
+      window.__abeleTest.openDialog('node-folder-picker-stale')
+      let picker
+      for (let i = 0; i < 50 && !picker; i++) {
+        await wait(100)
+        picker = document.querySelector('.abele-folder-picker')
+      }
+      if (!picker) throw Error('The folder picker did not open')
+      const modal = picker.closest('.modal')
+      try {
+        const input = picker.querySelector('input')
+        input.value = '/home/username/sample-created'
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        await wait(100)
+        const create = [...picker.querySelectorAll('button')].find(b => b.textContent.trim() === 'Create')
+        if (!create) throw Error('Create action missing')
+        create.click()
+        let alert
+        for (let i = 0; i < 50 && !alert; i++) {
+          await wait(100)
+          alert = modal.querySelector('[role="alert"]')
+        }
+        if (!alert) throw Error('Recovery message missing')
+        await wait(300)
+        const image = await win.webContents.capturePage()
+        require('node:fs').writeFileSync(${JSON.stringify(shots)} + '/${mobile ? 'phone' : 'desktop'}-stale.png', image.resize({ width: innerWidth, height: innerHeight }).toPNG())
+        return { message: alert.textContent, path: input.value, bottom: picker.querySelector('.modal-button-container').getBoundingClientRect().bottom, height: innerHeight }
+      } finally {
+        modal.querySelector('.modal-close-button')?.click()
+      }
+    })()`)
+      expect(result.message).toContain('refreshed')
+      expect(result.path).toBe('/home/username/sample-created')
+      expect(result.bottom).toBeLessThanOrEqual(result.height)
+    }
+  )
   it.each([false, true])('fits its content, or the phone sheet, on mobile=%s', async (mobile) => {
     await reloadApp(`app.emulateMobile(${mobile})`)
     const cli = vaultCli(activeVaultName())

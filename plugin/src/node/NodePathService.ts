@@ -88,17 +88,15 @@ export class NodePathService {
         model.online.value = state === 'connected'
         if (state === 'connected')
           void model
-            .refresh()
+            .reconnected()
             .then(async () => {
               if (
                 connection.state.value !== 'connected' ||
                 this.models.get(registrationId) !== model
               )
                 return
-              // Re-list first, then acquire fresh watches before reading the selected
-              // folder. Leases and capabilities from the previous process are stale.
-              const target = model.current.value
-              if (target) await model.select(target.id)
+              // reconnected() re-lists, drops the previous process's handles and reselects;
+              // panels that read their own lists reload after it.
               if (model.panelMode.value === 'history') await model.loadPanelHistory()
               if (model.panelMode.value === 'pulls') await model.loadPanelPulls()
             })

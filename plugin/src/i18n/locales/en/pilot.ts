@@ -19,6 +19,9 @@ export const en = {
   'node.error.pairing': 'Pairing could not be completed. Check the invitation and pair again.',
   'node.error.identity': 'The node or target has changed. Check its identity and reconnect.',
   'node.error.stale': 'The data has changed. Refresh before trying again.',
+  'node.error.staleResource': 'The folder or worktree has changed. Refresh and choose it again.',
+  'node.folderRefreshed':
+    'The folder was refreshed. Press Create again to create the requested folder.',
   'node.error.trust': 'This folder is not trusted. Review its trust settings before continuing.',
   'node.error.unavailable':
     'This feature is unavailable. Check the node configuration and version.',

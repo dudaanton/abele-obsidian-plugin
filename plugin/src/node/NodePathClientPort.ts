@@ -159,6 +159,20 @@ export class NodePathClientPort implements NodePathPort {
     /** The git service a folder's remote lives on, for its pull requests. */
     private readonly forge?: PathForge
   ) {}
+  invalidate(target?: PathTarget): void {
+    if (target) {
+      this.worktrees.delete(target.id)
+      for (const key of this.statusReads.keys()) {
+        const [nodeId, id] = JSON.parse(key) as [string, string]
+        if (nodeId === target.nodeId && id === target.id) this.statusReads.delete(key)
+      }
+    } else {
+      this.statusReads.clear()
+      this.worktrees.clear()
+      this.subscribedSessions.clear()
+      this.description = undefined
+    }
+  }
   /** Git writes, once the node says it has them and its client speaks them. */
   get git(): PathGit | undefined {
     const git = (this.client.repository as unknown as { git?: NodeGitClient }).git
@@ -302,7 +316,15 @@ export class NodePathClientPort implements NodePathPort {
             ...(binding.incarnation ? { incarnation: binding.incarnation } : {}),
           }
         } catch (error) {
-          if (!(error instanceof ChannelError && error.code === 'workspace_required')) throw error
+          if (
+            !(
+              error instanceof ChannelError &&
+              ['workspace_required', 'stale_resource'].includes(error.code)
+            )
+          )
+            throw error
+          // A dead binding is unresolved, never rebound to a replacement worktree.
+          target = undefined
         }
       }
       if (target && !this.subscribedSessions.has(session.session_id)) {
