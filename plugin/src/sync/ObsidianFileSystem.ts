@@ -72,6 +72,7 @@ const stageOperations = new WeakMap<object, Set<string>>()
 type DirectoryInfo = { path: string; identity: string; mtime: number }
 type InventoryChild = { path: string; kind: 'file' | 'directory'; identity?: string }
 interface InventoryPass {
+  indexedNames?: Map<string, Set<string>>
   parentFolders?: Set<string>
   publishedParents?: Set<string>
   directories?: Promise<DirectoryInfo[]>
@@ -186,8 +187,13 @@ export class ObsidianFileSystem implements FileSystem {
     if (this.app.vault.getAbstractFileByPath(path)) return false
     const parent = this.app.vault.getAbstractFileByPath(folderOf(path))
     if (!(parent instanceof TFolder)) return false
-    const key = caseKey(path)
-    return !parent.children.some((child) => caseKey(child.path) === key)
+    const cache = (this.inventory.indexedNames ??= new Map())
+    let names = cache.get(parent.path)
+    if (names === undefined) {
+      names = new Set(parent.children.map((child) => caseKey(child.path)))
+      cache.set(parent.path, names)
+    }
+    return !names.has(caseKey(path))
   }
 
   async [Symbol.for('abele.sync.written-stat-v1')](
@@ -236,6 +242,10 @@ export class ObsidianFileSystem implements FileSystem {
           if (file.children) inventory.mutations.delete(path)
           continue
         }
+        inventory.indexedNames?.delete(folderOf(path).replace(/^\/$/, ''))
+        for (const parent of inventory.indexedNames?.keys() ?? [])
+          if (parent === path || parent.startsWith(path + '/'))
+            inventory.indexedNames?.delete(parent)
         for (const cache of [inventory.listings, inventory.children, inventory.indexedChildren]) {
           cache.delete(folderOf(path).replace(/^\/$/, ''))
           for (const key of cache.keys())
@@ -346,6 +356,8 @@ export class ObsidianFileSystem implements FileSystem {
     if (!inventory) return
     for (const path of paths) {
       const parent = folderOf(path) === '/' ? '' : folderOf(path)
+      if (known === 'file') inventory.indexedNames?.get(parent)?.add(caseKey(path))
+      else inventory.indexedNames?.delete(parent)
       if (
         !inventory.children.has(parent) &&
         !inventory.indexedChildren.has(parent) &&

@@ -1,4 +1,5 @@
 import { expect, it, vi } from 'vitest'
+import type { TFolder } from 'obsidian'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
 import { scopedFileSystem } from '@/sync/scopedFileSystem'
@@ -8,6 +9,34 @@ import { PullPlacer } from '../../node_modules/@abele/sync-core/dist/pullPlace.j
 
 const absent = Symbol.for('abele.sync.index-absent-v1')
 const pass = Symbol.for('abele.sync.inventory-pass-v1')
+
+it('reads a populated folder index once per pass for many incoming paths', async () => {
+  const app = buildFakeVault(
+    Array.from({ length: 3000 }, (_, i) => ({
+      path: `notes/sample-${i}.md`,
+      content: 'sample',
+    }))
+  )
+  const fs = new ObsidianFileSystem(app as never)
+  const folder = app.vault.getAbstractFileByPath('notes') as TFolder
+  const children = folder.children
+  let reads = 0
+  Object.defineProperty(folder, 'children', {
+    configurable: true,
+    get: () => {
+      reads++
+      return children
+    },
+  })
+  await Reflect.get(fs, pass).call(fs, async () => {
+    for (let i = 0; i < 32; i++)
+      expect(await Reflect.get(fs, absent).call(fs, `notes/new-${i}.md`)).toBe(true)
+    expect(reads).toBe(1)
+    const added = await app.vault.create('notes/added.md', 'independent bytes')
+    app.emit('vault', 'create', added)
+    expect(await Reflect.get(fs, absent).call(fs, 'notes/ADDED.md')).toBe(false)
+  })
+})
 
 it('uses the folder index only inside a pass and preserves case and Unicode aliases', async () => {
   const app = buildFakeVault([
