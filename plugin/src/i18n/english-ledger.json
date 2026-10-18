@@ -23738,5 +23738,145 @@
       "es",
       "de"
     ]
+  },
+  "node.error.size": {
+    "englishHash": "426200773cb4be76a88ea0154e9cb340609fb7f3a79af100878e78273f827e56",
+    "context": "Node error explanation and recovery advice; original diagnostic retained in a tooltip",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.route": {
+    "englishHash": "1422f3f7e7db543f8a5eaee9cd0290cd438977814d8d55c59433328307b33fb5",
+    "context": "Node error explanation and recovery advice; original diagnostic retained in a tooltip",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.tls": {
+    "englishHash": "1b5459c8d3639c65638658e0463f39b0fb6525f19868bd80a863a59f6a7080ed",
+    "context": "Node error explanation and recovery advice; original diagnostic retained in a tooltip",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.access": {
+    "englishHash": "e2bbba1f9e6888dad6fa0c1d6902905d414ce87909e647d2025218c7a3e14284",
+    "context": "Node error explanation and recovery advice; original diagnostic retained in a tooltip",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.unknownOutcome": {
+    "englishHash": "1c72defa573c7bc73eb11b8652c9f20ec35f056cb4c0895f4240ff3bccefbccc",
+    "context": "Node error explanation and recovery advice; original diagnostic retained in a tooltip",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.limit": {
+    "englishHash": "4db8056ac42b5a8c64a71a5538c51b9db3242c6146b7daf8b7975aa25b470e18",
+    "context": "Node error explanation and recovery advice; original diagnostic retained in a tooltip",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.debugger": {
+    "englishHash": "7600ba481dc2c7cf7635d1bbe099ef0c854d8a0b684e9d76e62ef8dddb6a7ca0",
+    "context": "Node error explanation and recovery advice; original diagnostic retained in a tooltip",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.generic": {
+    "englishHash": "f0523eedb071339d22e17b07694b3f203694e70571863aa439ec01afa8f3d48e",
+    "context": "Node error explanation and recovery advice; original diagnostic retained in a tooltip",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.connection": {
+    "englishHash": "cd5b3917baa643c7c1af50c7b64321bb2a74883a61ac23cec50c1bb3fee40d9f",
+    "context": "Node error explanation and recovery advice; original diagnostic retained in a tooltip",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.pairing": {
+    "englishHash": "faa516bdf7c9456724929903847ef9f833bf66cfedcb797daddbc742ea9e459d",
+    "context": "Node error explanation and recovery advice; original diagnostic retained in a tooltip",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.identity": {
+    "englishHash": "ba365ba4f3114ea774168efa09458c48c36e6f7593b9e76b5f268b2a2778e8f8",
+    "context": "Node error explanation and recovery advice; original diagnostic retained in a tooltip",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.stale": {
+    "englishHash": "2d51075b3d3a54c685f16dc4e0123bd401e3cdb9e8fce2e55f99bec369e09472",
+    "context": "Node error explanation and recovery advice; original diagnostic retained in a tooltip",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.trust": {
+    "englishHash": "8ec7f12d64967aaa9d2a0bc0a3228dd9023fdc76b57c8ca652445f7485816852",
+    "context": "Node error explanation and recovery advice; original diagnostic retained in a tooltip",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.unavailable": {
+    "englishHash": "4a760443d953f3863681ce2cb1ba44cc4a626c0ac6af0398d6acbd898c283cc0",
+    "context": "Node error explanation and recovery advice; original diagnostic retained in a tooltip",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

@@ -61,7 +61,10 @@ const addButton = (modal: {
 it('says how each node is doing and where it is, an error code in words', () => {
   screen()
   expect(setting('Sample desk').props('desc')).toBe('Connected · http://127.0.0.1:7777')
-  expect(setting('Sample server').props('desc')).toBe('node unreachable · https://sample.invalid')
+  expect(setting('Sample server').props('desc')).toBe(
+    'The node is disconnected. Check the connection and reconnect. · https://sample.invalid'
+  )
+  expect(setting('Sample server').attributes('title')).toBe('node_unreachable')
 })
 
 it('pairs a node on another computer from a row of its own', async () => {

@@ -42,6 +42,10 @@ it('preserves existing plain explanations', () => {
   expect(nodeErrorWords('Connected')).toBe('Connected')
 })
 
+it('explains the node unreachable code as a connection failure', () => {
+  expect(nodeErrorWords('node_unreachable')).toBe(nodeErrorWords('unreachable'))
+})
+
 it('distinguishes request size limits from temporary limits', () => {
   expect(nodeErrorWords('record_too_large')).toBe(
     'The request is too large. Reduce its size and try again.'

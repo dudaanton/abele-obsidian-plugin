@@ -87,6 +87,7 @@ const groups: readonly [NodeErrorKey, readonly string[]][] = [
       'offline',
       'disconnected',
       'unreachable',
+      'node_unreachable',
       'remote_unreachable',
       'paired_route_unreachable',
       'connect_before_queueing',
