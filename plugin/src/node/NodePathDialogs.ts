@@ -10,7 +10,7 @@ import { NodeSuggestModal } from '@/components/nodeWork/NodeSuggestModal'
 import { GlobalStore } from '@/stores/GlobalStore'
 import type { NodeConnection } from './NodeService'
 import { NodePathMutations } from './NodePathMutations'
-import { pathPages } from './NodePathClientPort'
+import { pathPages, supportedNodePathCapabilities } from './NodePathClientPort'
 import type { NodePathModel, PathTarget } from './NodePathModel'
 import type { NodeDirectory } from '@/components/nodeWork/types'
 
@@ -43,7 +43,10 @@ export async function openNodeFolderPicker(
   model: NodePathModel,
   connection: NodeConnection
 ): Promise<void> {
-  if (!model.capabilities.value.includes('node_path_v2'))
+  // Catalogue reads can still be pending or fail on an unrelated stale handle.
+  // Ask the node itself before deciding that this feature needs an update.
+  const capabilities = supportedNodePathCapabilities(await connection.client.describe())
+  if (!capabilities.includes('node_path_v2'))
     throw new UiError(uiMessage('streamB.updateThisNodeToEnableExactFolder.063fba'))
   const client = connection.client,
     mutations = new NodePathMutations(client)

@@ -43,6 +43,9 @@ export function nodeFolderPickerFixture(): Promise<void> {
   const connection = {
     state: shallowRef('connected'),
     client: {
+      describe: async () => ({
+        capabilities: { capabilities: { node_path_v2: { status: 'supported' } } },
+      }),
       nodePath: {
         directories: (args: { path?: string }) => Promise.resolve(listing(args.path ?? HOME)),
       },
