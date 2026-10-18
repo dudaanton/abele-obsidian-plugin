@@ -142,8 +142,10 @@ export function nodeErrorWords(error: string | null | undefined): string {
   if (!error) return ''
   const raw = error.trim().toLowerCase()
   const tokens = raw.match(/\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g)
+  const wrapped = raw.match(/[:·]\s*([a-z][a-z0-9_-]*)(?=$|[.!;,)\s])/)?.[1]
   const code =
     tokens?.join(' ') ??
+    (wrapped && explanations.has(wrapped) ? wrapped : undefined) ??
     error.trim().match(/(?:^|:\s*)([a-z][a-z0-9_-]*)[.!]?$/)?.[1] ??
     (/^[A-Z][A-Z0-9_]+$/.test(error.trim()) ? raw : undefined)
   // Existing prose, including provider explanations, remains useful as written.

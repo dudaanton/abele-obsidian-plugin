@@ -30,6 +30,9 @@ it.each([
 it('recognizes codes wrapped by receipt errors', () => {
   expect(nodeErrorWords('Not accepted: unauthorized')).toBe(nodeErrorWords('unauthorized'))
   expect(nodeErrorWords('UNAUTHORIZED')).toBe(nodeErrorWords('unauthorized'))
+  expect(
+    nodeErrorWords('The original removal was refused: unauthorized. Its receipt is retained.')
+  ).toBe(nodeErrorWords('unauthorized'))
 })
 it('preserves existing plain explanations', () => {
   expect(nodeErrorWords('Your local draft is retained.')).toBe('Your local draft is retained.')
