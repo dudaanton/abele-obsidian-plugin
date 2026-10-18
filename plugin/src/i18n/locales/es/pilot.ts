@@ -1,5 +1,7 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const es = {
+  'node.error.folderUnavailable':
+    'Esta carpeta ya no está disponible en el nodo. Puede haberse eliminado o haber dejado de ser un repositorio.',
   'maps.lightAddressExample': 'https://tiles.example.com/{z}/{x}/{y}.png',
   'maps.darkAddressExample': 'https://tiles.example.com/dark/{z}/{x}/{y}.png',
   'node.error.size': 'La solicitud es demasiado grande. Reduce su tamaño y vuelve a intentarlo.',

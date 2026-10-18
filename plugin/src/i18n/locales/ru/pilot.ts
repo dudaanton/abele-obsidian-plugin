@@ -1,5 +1,7 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const ru = {
+  'node.error.folderUnavailable':
+    'Эта папка больше недоступна на узле. Возможно, её удалили или она больше не является репозиторием.',
   'maps.lightAddressExample': 'https://tiles.example.com/{z}/{x}/{y}.png',
   'maps.darkAddressExample': 'https://tiles.example.com/dark/{z}/{x}/{y}.png',
   'node.error.size': 'Запрос слишком большой. Уменьшите его размер и повторите попытку.',

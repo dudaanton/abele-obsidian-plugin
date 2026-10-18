@@ -262,7 +262,7 @@ export class NodePathClientPort implements NodePathPort {
             cursor,
             ...(enriched ? { include_selection: true } : {}),
           })
-        ).catch((error: unknown) => {
+        ).catch((error: unknown): WorktreeEntry[] => {
           if (!(error instanceof ChannelError) || error.code !== 'repository_unavailable')
             throw error
           console.debug('[Abele] node path: registered repository unavailable', project.project_id)

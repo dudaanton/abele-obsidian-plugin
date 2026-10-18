@@ -1,5 +1,7 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const de = {
+  'node.error.folderUnavailable':
+    'Dieser Ordner ist auf dem Knoten nicht mehr verfügbar. Er wurde möglicherweise entfernt oder ist kein Repository mehr.',
   'maps.lightAddressExample': 'https://tiles.example.com/{z}/{x}/{y}.png',
   'maps.darkAddressExample': 'https://tiles.example.com/dark/{z}/{x}/{y}.png',
   'node.error.size': 'Die Anfrage ist zu groß. Größe reduzieren und erneut versuchen.',

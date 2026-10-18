@@ -136,9 +136,11 @@ describe('the node panel instead of the workspaces window', () => {
     await removeNodePathFolder(m as never, folder)
     expect(f.client.removeProject).toHaveBeenCalledExactlyOnceWith(folder.id)
     expect(m.refresh).toHaveBeenCalledOnce()
-    expect(f.confirm).toHaveBeenLastCalledWith(expect.objectContaining({
-      message: expect.stringContaining('stays on disk'),
-    }))
+    expect(f.confirm).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining('stays on disk'),
+      })
+    )
   })
   it('reads bounded pages until empty, never mistakes a short page for the end', async () => {
     const read = vi.fn(async (after?: string) => (after ? [] : [{ id: 'p' }]))
