@@ -25678,5 +25678,25 @@
       "es",
       "de"
     ]
+  },
+  "maps.fitPlaces": {
+    "englishHash": "1e1314522eed6c6bfc2573aed0d0f891f97c349c2605da2cfc487f6a45cb72d9",
+    "context": "Map control that frames every place of the view",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.defaultBackground": {
+    "englishHash": "4671f27432f3b6b300007d243e81ffda7f4b34dc4989f9f809e69471b7abe3db",
+    "context": "Name of the built-in map background in the background picker",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }
