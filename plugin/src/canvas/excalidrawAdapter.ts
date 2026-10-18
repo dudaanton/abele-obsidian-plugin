@@ -154,9 +154,9 @@ export function reportLine(report: FileReport): string {
   )
 }
 
-/** Migrates one drawing and opens its canvas — the new one, or the one made before. */
+/** An explicit migration makes a fresh canvas; bulk migration still skips existing results. */
 export async function migrateDrawing(app: App, file: TFile): Promise<FileReport> {
-  const report = await migrateOne(new ObsidianExcalidrawVault(app), file.path)
+  const report = await migrateOne(new ObsidianExcalidrawVault(app), file.path, { force: true })
   new Notice(reportLine(report), report.losses.length ? 10000 : 5000)
   const target = report.target ? app.vault.getAbstractFileByPath(report.target) : null
   if (target instanceof TFile) await openCanvas(app, target)

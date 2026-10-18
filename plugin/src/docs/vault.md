@@ -661,6 +661,8 @@ quadratic outline; `size` remains the half-pressure diameter. Native ink and old
 canvases without this profile retain their rendering. Partial erasing bakes the streamlined
 centreline and equivalent native nib widths into the resulting fragments, removing the profile
 so they are not streamlined twice.
+An explicit single-drawing migration creates a new canvas beside prior results; bulk migration
+skips drawings already converted. Neither rewrites a prior canvas.
 Whole/partial eraser sweeps and lasso edits use that same history. Partial cuts keep the first
 fragment's ID and give further fragments fresh IDs, interpolating pressure at cut boundaries.
 `update_ink` changes a compatible stroke; `attach_ink` changes its owner while composing the
