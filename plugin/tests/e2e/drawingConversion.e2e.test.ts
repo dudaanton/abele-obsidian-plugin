@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { randomUUID } from 'node:crypto'
 import { drawingSvg } from '../../src/drawing/drawingFile'
 import { evalAsync } from './helpers/githubLive'
-import { hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
+import { enterPhone, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
 import { shotDir } from './helpers/shots'
 
 const available = isObsidianRunning() && hasTestApi()
@@ -35,7 +35,8 @@ describe.skipIf(!available)('legacy conversion command', () => {
   })
   for (const mobile of [false, true])
     it(`converts without changing originals (${mobile ? 'phone' : 'desktop'})`, async () => {
-      await reloadApp(`app.emulateMobile(${mobile})`)
+      if (mobile) await enterPhone()
+      else await reloadApp('app.emulateMobile(false)')
       const result = evalAsync<{
         unchanged: boolean
         duplicate: boolean
@@ -60,6 +61,9 @@ describe.skipIf(!available)('legacy conversion command', () => {
       const leaf=app.workspace.getLeaf('tab');await leaf.setViewState({type:'abele-canvas',state:{file:dest},active:true});await app.workspace.revealLeaf(leaf)
       await until(()=>leaf.view.viewer?.stage?.clientWidth)
       await wait(600)
+      for(const notice of document.querySelectorAll('.notice'))
+        if(notice.textContent?.startsWith('Drawings:'))notice.click()
+      await wait(200)
       const image=await require('@electron/remote').getCurrentWebContents().capturePage()
       require('fs').mkdirSync(${JSON.stringify(shots)},{recursive:true})
       require('fs').writeFileSync(${JSON.stringify(shots)}+'/${mobile ? 'phone' : 'desktop'}-converted.png',image.toPNG())

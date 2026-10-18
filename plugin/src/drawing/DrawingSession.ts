@@ -1,3 +1,4 @@
+import './surface.scss'
 /**
  * A drawing open in a tab: its items, the camera, the tools, drawing mode and undo — everything
  * between the surface that is touched (`surface.ts`) and the picture editor that saves it.

@@ -374,10 +374,11 @@ describe.skipIf(!available)('a drawing in a note', () => {
       await input('mouseReleased', g.left + g.width / 2, g.top + g.height / 2, 'mouse', 0)
       const view = await until(() => views().find((v) => v.file?.path === file.path && v.contentEl.querySelector('img')), 8000)
       const readOnly = !view.session && !view.contentEl.querySelector('canvas,button')
+      const opened = view?.file.path
       view?.leaf.detach()
       b[1].querySelector('.abele-drawing-embed__go').click()
       const plain = (await until(() => views().find((v) => v.file?.path === file.path), 8000))?.file.path
-      return { away, over, opened: view?.file.path, readOnly, plain }
+      return { away, over, opened, readOnly, plain }
     `)
     expect(desk.error).toBeUndefined()
     expect(desk.away).toBe('0')
