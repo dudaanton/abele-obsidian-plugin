@@ -512,7 +512,6 @@ export const extra = {
   'streamC.59ea4a5d3ad331f3': 'Step {v1}{v2}',
   'streamC.fd70fc0d384f857e': 'Frame: {v1}',
   'streamC.5643906c62bc8ea2': 'Canvas could not be created: {v1}',
-  'streamC.cffe9477c08e0ea2': '{v1} diagram',
   'streamC.2d8009648825a67e': 'Walkthrough steps unavailable; showing the diagram: {v1}',
   'streamC.24d9050826ca52a8': 'Diagram could not be shown: {v1}',
   'streamC.c19783d8edc70d82': 'Resize {v1} corner',

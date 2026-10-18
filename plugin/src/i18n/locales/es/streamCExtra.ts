@@ -533,7 +533,6 @@ export const extra = {
   'streamC.59ea4a5d3ad331f3': 'Paso {v1}{v2}',
   'streamC.fd70fc0d384f857e': 'Marco: {v1}',
   'streamC.5643906c62bc8ea2': 'No se pudo crear el lienzo: {v1}',
-  'streamC.cffe9477c08e0ea2': 'Diagrama {v1}',
   'streamC.2d8009648825a67e': 'Pasos de presentación no disponibles; se muestra el diagrama: {v1}',
   'streamC.24d9050826ca52a8': 'No se pudo mostrar el diagrama: {v1}',
   'streamC.c19783d8edc70d82': 'Redimensionar desde la esquina {v1}',

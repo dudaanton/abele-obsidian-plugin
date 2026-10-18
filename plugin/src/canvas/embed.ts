@@ -6,7 +6,8 @@ import { canvasPicture } from './pictureAdapter'
 import { parseCanvas } from './core/model'
 import { stepsOf } from './core/steps'
 import { openCanvas } from './opening'
-import { bindCanvasTap } from './tap'
+import { bindCanvasPicture } from './tap'
+import { CANVAS_IMAGE_VIEW_TYPE } from './imageOpening'
 
 const claimed = new WeakSet<HTMLElement>()
 export function embeddedCanvas(app: App, embed: HTMLElement, sourcePath: string): TFile | null {
@@ -20,7 +21,6 @@ export class CanvasEmbed extends MarkdownRenderChild {
   private image: HTMLImageElement
   private narration: HTMLElement
   private status: HTMLElement
-  private play: HTMLButtonElement
   private observer: MutationObserver | null = null
   private token = 0
   private stopped = true
@@ -40,25 +40,19 @@ export class CanvasEmbed extends MarkdownRenderChild {
     this.image = doc.win.createEl('img')
     this.image.className = 'abele-canvas-embed-picture'
     this.image.draggable = false
-    const actions = doc.win.createDiv()
-    actions.className = 'abele-canvas-embed-actions'
-    const button = (label: string, action: () => void) => {
-      const b = doc.win.createEl('button')
-      b.type = 'button'
-      b.textContent = label
-      b.setAttribute('aria-label', t('streamC.cffe9477c08e0ea2', { v1: String(label) }))
-      this.register(bindCanvasTap(b, action))
-      actions.append(b)
-      return b
-    }
-    button('Open', () => this.open(false))
-    this.play = button('Play', () => this.open(true))
+    this.register(
+      bindCanvasPicture(
+        this.image,
+        () => this.open(true),
+        () => this.open(false)
+      )
+    )
     this.narration = doc.win.createDiv()
     this.narration.className = 'abele-canvas-embed-narration'
     this.status = doc.win.createDiv()
     this.status.className = 'abele-canvas-embed-status'
     this.status.setAttribute('role', 'status')
-    this.box.append(this.image, actions, this.narration, this.status)
+    this.box.append(this.image, this.narration, this.status)
   }
   onload(): void {
     this.stopped = false
@@ -99,17 +93,27 @@ export class CanvasEmbed extends MarkdownRenderChild {
     this.embed.removeClass('abele-canvas-embed-source')
     claimed.delete(this.embed)
   }
-  private open(play: boolean): void {
+  private open(picture: boolean): void {
+    if (this.stopped) return
     const file = embeddedCanvas(this.app, this.embed, this.sourcePath())
     if (!file) return
-    try {
-      void openCanvas(this.app, file, {
-        ...canvasEmbedOptions(this.embed.getAttribute('src') ?? ''),
-        play,
-      })
-    } catch (error) {
+    const leaf =
+      this.app.workspace
+        .getLeavesOfType('markdown')
+        .find((leaf) => leaf.view.containerEl.contains(this.embed)) ??
+      this.app.workspace.getLeaf(false)
+    const options = canvasEmbedOptions(this.embed.getAttribute('src') ?? '')
+    void (
+      picture
+        ? leaf.setViewState({
+            type: CANVAS_IMAGE_VIEW_TYPE,
+            state: { file: file.path, ...options },
+            active: true,
+          })
+        : openCanvas(this.app, file, { ...options, play: false }, leaf)
+    ).catch((error) => {
       this.status.setText(String(error))
-    }
+    })
   }
   private async refresh(): Promise<void> {
     if (this.stopped) return
@@ -122,10 +126,9 @@ export class CanvasEmbed extends MarkdownRenderChild {
       if (!file) throw new Error('Embedded diagram is missing')
       const options = canvasEmbedOptions(this.embed.getAttribute('src') ?? '')
       const graph = parseCanvas(await this.app.vault.read(file))
-      let stepError = '',
-        playable = false
+      let stepError = ''
       try {
-        playable = stepsOf(graph).length > 0
+        stepsOf(graph)
       } catch (error) {
         stepError = String(error)
       }
@@ -148,12 +151,10 @@ export class CanvasEmbed extends MarkdownRenderChild {
       this.box.setCssStyles({ width: Number.isFinite(width) && width > 0 ? `${width}px` : '100%' })
       this.narration.setText(picture.say ?? '')
       this.status.setText(stepError ? t('streamC.2d8009648825a67e', { v1: String(stepError) }) : '')
-      this.play.disabled = !playable
     } catch (error) {
       if (!this.stopped && token === this.token && !signal.aborted) {
         this.status.setText(t('streamC.24d9050826ca52a8', { v1: String(String(error)) }))
         this.image.removeAttribute('src')
-        this.play.disabled = true
       }
     }
   }

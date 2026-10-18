@@ -48,12 +48,7 @@ it.each([
         )
       )
       expect(embed.querySelector('img')?.getAttribute('src')).toMatch(/^data:image\/png/)
-      expect(
-        (embed.querySelector('[aria-label="Play diagram"]') as HTMLButtonElement).disabled
-      ).toBe(true)
-      expect(
-        (embed.querySelector('[aria-label="Open diagram"]') as HTMLButtonElement).disabled
-      ).toBe(false)
+      expect(embed.querySelector('button')).toBeNull()
       embed.setAttribute('src', 'sample.canvas#step=1')
       await vi.waitFor(() => expect(paint).toHaveBeenCalledTimes(2))
       expect(paint.mock.calls[1][3].step).toBeUndefined()

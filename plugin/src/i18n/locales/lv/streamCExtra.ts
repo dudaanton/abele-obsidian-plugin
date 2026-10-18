@@ -526,7 +526,6 @@ export const extra = {
   'streamC.59ea4a5d3ad331f3': 'Solis {v1}{v2}',
   'streamC.fd70fc0d384f857e': 'Rāmis: {v1}',
   'streamC.5643906c62bc8ea2': 'Audeklu nevarēja izveidot: {v1}',
-  'streamC.cffe9477c08e0ea2': 'Diagramma {v1}',
   'streamC.2d8009648825a67e': 'Apskates soļi nav pieejami; redzama diagramma: {v1}',
   'streamC.24d9050826ca52a8': 'Diagrammu nevarēja parādīt: {v1}',
   'streamC.c19783d8edc70d82': 'Mainīt izmēru aiz stūra {v1}',

@@ -10,11 +10,14 @@ import { newCanvas } from './editorControls'
 import { canvasNewFileLocation } from './newFileLocation'
 import { registerExcalidrawMigration } from './excalidrawAdapter'
 import './viewer.css'
+import { CanvasImageView } from './CanvasImageView'
+import { CANVAS_IMAGE_VIEW_TYPE } from './imageOpening'
 
 export function registerCanvas(plugin: Plugin): void {
   const { app } = plugin
   canvasDocuments(app).registerLifecycle(plugin)
   plugin.registerView(CANVAS_VIEW_TYPE, (leaf) => new CanvasView(leaf))
+  plugin.registerView(CANVAS_IMAGE_VIEW_TYPE, (leaf) => new CanvasImageView(leaf))
   app.workspace.onLayoutReady(() => {
     plugin.register(canvasNewFileLocation(app, () => AbeleConfig.getInstance().canvasViewer))
   })

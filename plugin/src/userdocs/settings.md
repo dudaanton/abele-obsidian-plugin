@@ -171,7 +171,9 @@ imported on a phone, drawings and diagram exports follow the same rules. Add a r
 **Open canvases in Abele** chooses the default for newly opened `.canvas` tabs. On uses the
 read-only [diagram viewer](drawing#canvas-diagrams) with walkthrough steps; off uses native
 Canvas. An individual viewer tab can always return to native Canvas from its header. This
-preference travels with settings; diagram embeds keep their picture and Open/Play actions.
+preference travels with settings. Click or tap a diagram embed once to view its picture, or
+twice to open the source canvas. Use Edit in the image viewer header to edit the source.
+Back returns to the preceding picture or note.
 
 Service keys now stay with their configured address. If an address changes by sync, import,
 or an agent, the key is held on this device. Run **Abele: Review key destinations** from the

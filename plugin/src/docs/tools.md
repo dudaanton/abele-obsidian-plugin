@@ -461,7 +461,7 @@ when a single native Canvas editor is open; close duplicate editor tabs before w
 Canvas remains available via the viewer's native action. Abele's viewer plays the
 walkthrough with arrows/Space, Previous/Next buttons, blank-area taps and horizontal swipes;
 Escape/All shows the whole diagram. Use `![[sample.canvas#step=2]]` inside a note for a static
-step picture with Open/Play actions. The viewer never writes camera or playback into the diagram.
+step picture. A single click or tap opens the image viewer; a double click or tap opens the source canvas. The image viewer header has an Edit action, and Back returns to the previous view. The viewer never writes camera or playback into the diagram.
 
 ## Files
 

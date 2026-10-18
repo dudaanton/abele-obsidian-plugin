@@ -11,13 +11,9 @@ export async function nativeCanvas(leaf: WorkspaceLeaf, file: TFile): Promise<vo
 export async function openCanvas(
   app: App,
   file: TFile,
-  state: Record<string, unknown> = {}
+  state: Record<string, unknown> = {},
+  leaf: WorkspaceLeaf = app.workspace.getLeaf(false)
 ): Promise<void> {
-  const leaf =
-    app.workspace
-      .getLeavesOfType(CANVAS_VIEW_TYPE)
-      .find((l) => (l.view as { file?: TFile }).file?.path === file.path) ??
-    app.workspace.getLeaf('tab')
   nativeCanvasLeaves.delete(leaf)
   await leaf.setViewState({
     type: CANVAS_VIEW_TYPE,

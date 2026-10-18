@@ -2479,11 +2479,6 @@
     "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
     "reviewedLocales": ["ru", "lv", "es", "de"]
   },
-  "streamC.cffe9477c08e0ea2": {
-    "englishHash": "22eab9f91a1a3b0a047ce9963b08161d88a8735071f04436ca8daf9f8491ed85",
-    "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
-    "reviewedLocales": ["ru", "lv", "es", "de"]
-  },
   "streamC.2d8009648825a67e": {
     "englishHash": "321b7d38712c98cfe4c883955d5efb5cf8a1f26fae117efd2e81708569be1bc3",
     "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",

@@ -1,5 +1,5 @@
 <template>
-  <ObsidianModal :title="title" size="full" @close="close">
+  <component :is="embedded ? 'div' : ObsidianModal" :title="title" size="full" @close="close">
     <div class="abele-gallery-viewer" @click.self="close">
       <!-- Where in the gallery, and the file's size and date: one quiet line under the title. -->
       <div class="abele-gallery-viewer__info">{{ facts }}</div>
@@ -76,26 +76,26 @@
           @click="drawOnImage()"
         />
         <ObsidianIcon
-          v-if="isLocal"
+          v-if="isLocal && !snapshot"
           icon="rotate-cw"
           tooltip="Turn a quarter to the right"
           @click="rotateImage"
         />
         <ObsidianIcon
-          v-if="!isLocal"
+          v-if="!isLocal && !snapshot"
           icon="download"
           tooltip="Save it into the vault"
           @click="downloadImage"
         />
         <ObsidianIcon
-          v-if="isLocal"
+          v-if="isLocal && !snapshot"
           icon="more-horizontal"
           tooltip="More: reveal, strip metadata, reduce, cover"
           @click="showMoreMenu"
         />
       </div>
     </div>
-  </ObsidianModal>
+  </component>
 </template>
 
 <script setup lang="ts">
@@ -123,6 +123,9 @@ const props = defineProps<{
   images: ViewerImage[]
   startIndex: number
   galleryFilePath: string
+  /** A generated snapshot in a workspace leaf, with the same image gestures. */
+  embedded?: boolean
+  snapshot?: boolean
   chatId?: string
   /** An unsent image: the drawing returned to the chat replaces this attachment. */
   replaceAttachment?: string
@@ -188,7 +191,7 @@ const facts = computed(() =>
 )
 
 /** A picture in the vault that can be drawn on: the pen opens it in a drawing tab. */
-const drawable = computed(() => isLocal.value && isDrawable(resolveFile()))
+const drawable = computed(() => !props.snapshot && isLocal.value && isDrawable(resolveFile()))
 
 // One editor for both: cropping opens it with the frame in hand, drawing with the pen.
 function drawOnImage(crop = false) {
@@ -232,6 +235,12 @@ const {
   }
 )
 const imageStyle = computed(() => ({
+  // Transform geometry uses natural pixels. A workspace pane's responsive image rules must
+  // not shrink the untransformed image a second time (the modal has no such host rules).
+  width: imageEl.value?.naturalWidth ? `${imageEl.value.naturalWidth}px` : undefined,
+  height: imageEl.value?.naturalHeight ? `${imageEl.value.naturalHeight}px` : undefined,
+  maxWidth: 'none',
+  maxHeight: 'none',
   transform: `translate(${view.value.x}px, ${view.value.y}px) scale(${view.value.scale})`,
 }))
 

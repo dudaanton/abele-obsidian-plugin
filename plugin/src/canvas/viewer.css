@@ -1,4 +1,8 @@
 /* Geometry only; every visual token comes from the host theme. */
+.abele-canvas-image-view > div,
+.abele-canvas-image-view .abele-gallery-viewer {
+  height: 100%;
+}
 .abele-canvas-view.view-content {
   padding: 0;
   overflow: hidden;
@@ -16,8 +20,7 @@
   color: var(--text-normal);
   background: var(--background-primary);
 }
-.abele-canvas-controls,
-.abele-canvas-embed-actions {
+.abele-canvas-controls {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -25,8 +28,7 @@
   padding: var(--size-4-2);
   flex-shrink: 0;
 }
-.abele-canvas-controls button,
-.abele-canvas-embed-actions button {
+.abele-canvas-controls button {
   min-height: 36px;
 }
 .abele-canvas-counter {

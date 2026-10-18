@@ -70,6 +70,60 @@ describe.skipIf(!available)('new native Canvas opening', () => {
     dismissOwnNotices('Could not open diagram')
   }, 120_000)
 
+  it('opens embedded snapshots with Edit and returns through image and canvas history to the note', () => {
+    expect(
+      run<boolean>(`
+      const canvas = await app.vault.create(dir + '/sample-picture.canvas', JSON.stringify({ nodes: [
+        { id: 'alpha', type: 'text', text: 'Sample picture', x: 0, y: 0, width: 240, height: 120 }
+      ], edges: [] }))
+      const note = await app.vault.create(dir + '/sample-embed.md', '![[sample-picture.canvas]]')
+      window.__canvasOpeningFiles.push(canvas.path, note.path)
+      const leaf = app.workspace.getLeaf('tab')
+      window.__canvasEmbedLeaf = leaf
+      await leaf.openFile(note, { state: { mode: 'preview' } })
+      await app.workspace.revealLeaf(leaf)
+      const until = async test => { for(let i=0;i<100;i++){if(test())return;await wait(100)}throw Error('Embed navigation timed out: '+leaf.view.getViewType()) }
+      await until(() => leaf.view.containerEl.querySelector('.abele-canvas-embed-picture[src]'))
+      if(leaf.view.containerEl.querySelector('.abele-canvas-embed-actions')) throw Error('Embed actions still rendered')
+      const image = leaf.view.containerEl.querySelector('.abele-canvas-embed-picture')
+      if (${onPhone()}) {
+        for(const type of ['pointerdown','pointerup']) image.dispatchEvent(new PointerEvent(type,{pointerId:1,pointerType:'touch',clientX:30,clientY:20,bubbles:true,cancelable:true}))
+      } else image.click()
+      await until(() => leaf.view.getViewType() === 'abele-canvas-image' && leaf.view.contentEl.querySelector('.abele-gallery-viewer__image'))
+      const action = leaf.view.containerEl.querySelector('.view-header [data-icon="pencil"], .view-action[aria-label="Edit"]')
+      if(!action) throw Error('Missing Edit header action')
+      return true
+    `)
+    ).toBe(true)
+    shoot('embedded-image-edit')
+    expect(
+      run<boolean>(`
+      const leaf = window.__canvasEmbedLeaf
+      let phase = 'edit'
+      const until = async test => { for(let i=0;i<100;i++){if(test())return;await wait(100)}throw Error('Back navigation timed out at '+phase+': '+leaf.view.getViewType()) }
+      const action = leaf.view.containerEl.querySelector('.view-header [data-icon="pencil"], .view-action[aria-label="Edit"]')
+      action.closest('.clickable-icon').click()
+      await until(() => leaf.view.getViewType() === 'abele-canvas')
+      phase = 'canvas to image'
+      await leaf.history.back()
+      await until(() => leaf.view.getViewType() === 'abele-canvas-image' && leaf.view.contentEl.querySelector('.abele-gallery-viewer__image'))
+      phase = 'image to note'
+      await leaf.history.back()
+      await until(() => leaf.view.getViewType() === 'markdown')
+      await until(() => leaf.view.containerEl.querySelector('.abele-canvas-embed-picture[src]'))
+      const image = leaf.view.containerEl.querySelector('.abele-canvas-embed-picture')
+      if (${onPhone()}) {
+        for(let i=0;i<2;i++) for(const type of ['pointerdown','pointerup']) image.dispatchEvent(new PointerEvent(type,{pointerId:1,pointerType:'touch',clientX:30,clientY:20,bubbles:true,cancelable:true}))
+      } else { image.click(); image.dispatchEvent(new MouseEvent('dblclick',{bubbles:true,cancelable:true})) }
+      await until(() => leaf.view.getViewType() === 'abele-canvas')
+      await leaf.history.back()
+      await until(() => leaf.view.getViewType() === 'markdown')
+      delete window.__canvasEmbedLeaf
+      return leaf.view.file.path.endsWith('/sample-embed.md')
+    `)
+    ).toBe(true)
+  }, 120_000)
+
   it('opens the native new-file command in the default viewer without initializing or overwriting bytes', () => {
     const result = run<{ type: string; bytes: string; nodes: number; error: boolean }>(`
       const leaf = app.workspace.getLeaf('tab'); await app.workspace.revealLeaf(leaf)

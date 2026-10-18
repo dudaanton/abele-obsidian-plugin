@@ -718,7 +718,9 @@ that tab native until reopened in Abele. A view switch never writes the diagram.
 editor and stored version differ, adoption waits for native saving/reloading rather than deciding
 which version to overwrite; pending edits remain in their native tab. Camera and selected step live only in the workspace
 leaf state, not the `.canvas` file. `![[sample.canvas#step=N]]`, `#node=id` and `#part=x,y,width,height` embeds store only
-that link in the note; their pictures are transient. User whole-canvas PNG/SVG/PDF exports go
+that link in the note; their pictures are transient. Opening an embed as an image keeps the source
+path and crop/step in workspace navigation state and regenerates the picture; it creates no
+image attachment. Edit opens that source canvas in the same leaf. User whole-canvas PNG/SVG/PDF exports go
 into the ordinary attachments folder as new files; current-view and step PNG/SVG exports remain
 available. `canvas_export` creates the exact new output path supplied by the agent. Neither
 changes the canvas source. SVG embeds PNG pixels, not editable vector paths; PDF stores one
