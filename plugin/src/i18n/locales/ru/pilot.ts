@@ -1,7 +1,5 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const ru = {
-  'node.error.folderUnavailable':
-    'Эта папка больше недоступна на узле. Возможно, её удалили или она больше не является репозиторием.',
   'maps.lightAddressExample': 'https://tiles.example.com/{z}/{x}/{y}.png',
   'maps.darkAddressExample': 'https://tiles.example.com/dark/{z}/{x}/{y}.png',
   'node.error.size': 'Запрос слишком большой. Уменьшите его размер и повторите попытку.',
@@ -24,6 +22,8 @@ export const ru = {
   'node.error.stale': 'Данные изменились. Обновите их перед повторной попыткой.',
   'node.error.staleResource':
     'Папка или рабочая копия изменилась. Обновите список и выберите её снова.',
+  'node.error.folderUnavailable':
+    'Эта папка больше недоступна на узле. Возможно, её удалили или она больше не является репозиторием.',
   'node.folderRefreshed':
     'Папка обновлена. Нажмите «Создать» ещё раз, чтобы создать указанную папку.',
   'node.error.trust':

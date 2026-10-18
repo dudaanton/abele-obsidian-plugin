@@ -1,7 +1,5 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const lv = {
-  'node.error.folderUnavailable':
-    'Šī mape mezglā vairs nav pieejama. Iespējams, tā ir noņemta vai vairs nav repozitorijs.',
   'maps.lightAddressExample': 'https://tiles.example.com/{z}/{x}/{y}.png',
   'maps.darkAddressExample': 'https://tiles.example.com/dark/{z}/{x}/{y}.png',
   'node.error.size': 'Pieprasījums ir pārāk liels. Samaziniet tā izmēru un mēģiniet vēlreiz.',
@@ -26,6 +24,8 @@ export const lv = {
   'node.error.stale': 'Dati ir mainījušies. Pirms atkārtota mēģinājuma atsvaidziniet tos.',
   'node.error.staleResource':
     'Mape vai darba kopija ir mainījusies. Atsvaidziniet sarakstu un izvēlieties to vēlreiz.',
+  'node.error.folderUnavailable':
+    'Šī mape mezglā vairs nav pieejama. Iespējams, tā ir noņemta vai vairs nav repozitorijs.',
   'node.folderRefreshed':
     'Mape tika atsvaidzināta. Nospiediet Izveidot vēlreiz, lai izveidotu norādīto mapi.',
   'node.error.trust':

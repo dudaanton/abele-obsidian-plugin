@@ -25908,5 +25908,15 @@
       "es",
       "de"
     ]
+  },
+  "node.error.folderUnavailable": {
+    "englishHash": "f035601ad7a36c126718d34066f7c5a09cc93213d8656bfe763150b5031ea2a6",
+    "context": "Registered node folder is unavailable; distinguish it from recoverable target reselection and offer confirmed unregistering without deleting files",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

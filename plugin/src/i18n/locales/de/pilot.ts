@@ -1,7 +1,5 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const de = {
-  'node.error.folderUnavailable':
-    'Dieser Ordner ist auf dem Knoten nicht mehr verfügbar. Er wurde möglicherweise entfernt oder ist kein Repository mehr.',
   'maps.lightAddressExample': 'https://tiles.example.com/{z}/{x}/{y}.png',
   'maps.darkAddressExample': 'https://tiles.example.com/dark/{z}/{x}/{y}.png',
   'node.error.size': 'Die Anfrage ist zu groß. Größe reduzieren und erneut versuchen.',
@@ -27,6 +25,8 @@ export const de = {
   'node.error.stale': 'Die Daten haben sich geändert. Vor einem erneuten Versuch aktualisieren.',
   'node.error.staleResource':
     'Der Ordner oder die Arbeitskopie hat sich geändert. Aktualisieren und erneut auswählen.',
+  'node.error.folderUnavailable':
+    'Dieser Ordner ist auf dem Knoten nicht mehr verfügbar. Er wurde möglicherweise entfernt oder ist kein Repository mehr.',
   'node.folderRefreshed':
     'Der Ordner wurde aktualisiert. Erneut auf Erstellen klicken, um den angegebenen Ordner zu erstellen.',
   'node.error.trust':
