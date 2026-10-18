@@ -12,6 +12,7 @@ import { namedDeck, deckSlide } from './DeckTools'
 import { parseDeck } from '@/slides/core/markdown'
 import { presentationDeck } from '@/slides/core/sources'
 import { inspectDeckSlide, slidePicture } from '@/slides/inspection'
+import { waitForPaint } from '@/helpers/paint'
 
 export function findLeafByFile(path: string): WorkspaceLeaf | null {
   const { app } = GlobalStore.getInstance()
@@ -72,6 +73,9 @@ interface RemoteLike {
  * web contents are not the current ones) and the phone.
  */
 export const captureVisible: Capturer = async (el, rect) => {
+  const win = el.ownerDocument.defaultView
+  if (!win) throw new Error('Screenshot window is unavailable')
+  await waitForPaint(win)
   const remote = electronRemote()
   if (remote && el.ownerDocument === document) {
     const image = await remote.getCurrentWebContents().capturePage(rect)

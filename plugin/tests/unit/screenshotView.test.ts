@@ -7,7 +7,12 @@
  * exactly what would have been photographed.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { createScreenshotTool, visibleRect, type VisibleRect } from '@/ai/tools/ScreenshotTool'
+import {
+  captureVisible,
+  createScreenshotTool,
+  visibleRect,
+  type VisibleRect,
+} from '@/ai/tools/ScreenshotTool'
 import { GlobalStore } from '@/stores/GlobalStore'
 import type { ScriptViewModel } from '@/views/ScriptView'
 import { View, type ViewHost } from '@/scripting/view/View'
@@ -39,6 +44,51 @@ const tab = (over: Partial<ScriptViewModel>): ScriptViewModel =>
   }) as ScriptViewModel
 
 let shots: Array<{ el: HTMLElement; rect: VisibleRect }>
+
+it('captures the current painted frame after changing the visible content', async () => {
+  const frames: FrameRequestCallback[] = []
+  const raf = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+    frames.push(callback)
+    return frames.length
+  })
+  const descriptor = Object.getOwnPropertyDescriptor(window, 'require')
+  const capturePage = vi.fn(async () => ({ toDataURL: () => 'data:image/png;base64,AAAA' }))
+  Object.defineProperty(window, 'require', {
+    configurable: true,
+    value: () => ({ remote: { getCurrentWebContents: () => ({ capturePage }) } }),
+  })
+  try {
+    const result = captureVisible(document.createElement('div'), {
+      x: 0,
+      y: 0,
+      width: 300,
+      height: 200,
+    })
+    expect(capturePage).not.toHaveBeenCalled()
+    frames.shift()!(0)
+    await Promise.resolve()
+    expect(capturePage).not.toHaveBeenCalled()
+    frames.shift()!(16)
+    await expect(result).resolves.toBe('data:image/png;base64,AAAA')
+    expect(capturePage).toHaveBeenCalledTimes(1)
+    vi.useFakeTimers()
+    const stalled = captureVisible(document.createElement('div'), {
+      x: 0,
+      y: 0,
+      width: 300,
+      height: 200,
+    })
+    const refused = expect(stalled).rejects.toThrow('Screenshot window is not painting')
+    await vi.advanceTimersByTimeAsync(3000)
+    await refused
+    expect(capturePage).toHaveBeenCalledTimes(1)
+  } finally {
+    vi.useRealTimers()
+    raf.mockRestore()
+    if (descriptor) Object.defineProperty(window, 'require', descriptor)
+    else Reflect.deleteProperty(window, 'require')
+  }
+})
 const capture = async (el: HTMLElement, rect: VisibleRect) => {
   shots.push({ el, rect })
   return 'data:image/png;base64,AAAA'

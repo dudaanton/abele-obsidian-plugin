@@ -12,6 +12,7 @@ import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 import { SAMPLE_IMAGE, SAMPLE_VIDEO } from '../fixtures/slides'
 import { RESTORE_PHONE_SCRIPT } from './helpers/phoneState'
+import { waitForPaint } from '@/helpers/paint'
 
 targets('desktop', 'phone')
 
@@ -115,6 +116,7 @@ const PRELUDE = `
   await viewer.ready
   const active = () => viewer.viewport.querySelector('.abele-slide:not([hidden])')
   const picture = async (name) => {
+    await (${waitForPaint.toString()})(window)
     const path = ${JSON.stringify(SHOTS)}+'/'+name+'.png'
     if(window.__e2eHost) return await window.__e2eHost.shot(path)
     const fs=require('fs');fs.mkdirSync(${JSON.stringify(SHOTS)},{recursive:true})
@@ -240,6 +242,19 @@ describe.skipIf(!available)('presentation notes in the running app', () => {
       const map=active().querySelector('.maplibregl-canvas'), marker=active().querySelector('.maplibregl-marker')
       const m=map.getBoundingClientRect(),p=marker.getBoundingClientRect()
       result.map={width:map.width,logical:map.clientWidth,scaled:m.width,center:p.left+p.width/2,expected:m.left+m.width/2,lost:map.getContext('webgl2')?.isContextLost() ?? false}
+      const slideElement=active(),oldBackground=slideElement.style.backgroundColor
+      try {
+        // A visible pixel proves the image belongs to this frame, not the previous chart.
+        slideElement.style.backgroundColor='rgb(0, 255, 0)'
+        result.mapFrameShot=await picture('map-current-frame')
+        if(!window.__e2eHost){
+          const image=new Image();image.src='data:image/png;base64,'+require('fs').readFileSync(result.mapFrameShot).toString('base64');await image.decode()
+          const pixels=document.createElement('canvas');pixels.width=image.width;pixels.height=image.height
+          const context=pixels.getContext('2d');context.drawImage(image,0,0)
+          const b=slideElement.getBoundingClientRect()
+          result.mapFrame=[...context.getImageData(Math.round((b.left+8)*image.width/innerWidth),Math.round((b.top+8)*image.height/innerHeight),1,1).data]
+        }
+      } finally {slideElement.style.backgroundColor=oldBackground}
       result.mapShot=await picture('map')
       return JSON.stringify(result)
     })()`)
@@ -250,6 +265,7 @@ describe.skipIf(!available)('presentation notes in the running app', () => {
     expect(r.map.width).toBeGreaterThan(0)
     expect(Math.abs(r.map.center - r.map.expected)).toBeLessThan(5)
     expect(r.map.lost).toBe(false)
+    if (!onPhone()) expect(r.mapFrame).toEqual([0, 255, 0, 255])
   })
 
   it('lays out split columns, grid cells, full-bleed media and centered slides on the fixed canvas', async () => {
