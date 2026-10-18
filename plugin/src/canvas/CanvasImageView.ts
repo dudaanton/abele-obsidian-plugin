@@ -1,5 +1,6 @@
 import { ItemView, TFile, type ViewStateResult } from 'obsidian'
 import { t } from '@/i18n'
+import { vaultDisk } from '@/sync/vaultPathLinks'
 import GalleryViewer from '@/components/GalleryViewer.vue'
 import { mountKit, type KitMount } from '@/components/obsidian/mount'
 import { canvasPicture } from './pictureAdapter'
@@ -46,7 +47,7 @@ export class CanvasImageView extends ItemView {
     try {
       const picture = await canvasPicture(
         this.app,
-        parseCanvas(await this.app.vault.read(file)),
+        parseCanvas(await vaultDisk(this.app.vault).read(file.path)),
         file.path,
         { ...state, maxSide: 3200 },
         () => true,
