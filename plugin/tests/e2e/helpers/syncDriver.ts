@@ -371,8 +371,8 @@ export class SyncDriver {
   remove(paths: string[], cleanup = false): void {
     this.run(removal(paths), cleanup)
   }
-  /** The same removal as a tracked long action: a fixture tree of a thousand files can take
-   * longer to delete than one ordinary eval may run. */
+  /** Teardown of a fixture tree, as a tracked long action deleting note by note: a large tree
+   * can take longer to delete than one ordinary eval may run. Not for behavioural deletions. */
   async removeTree(
     paths: string[],
     cleanup = false,
@@ -380,7 +380,7 @@ export class SyncDriver {
   ): Promise<void> {
     await this.long<boolean>(
       'remove ' + paths.join(', '),
-      removal(paths),
+      removal(paths, true),
       false,
       timeoutMs,
       cleanup
@@ -445,17 +445,21 @@ export async function shaOf(text: string): Promise<string> {
 }
 
 /**
- * Deletes paths in the page. A folder goes note by note, deepest first, and only then the
- * emptied folders: Obsidian deletes an indexed folder in one synchronous run that pays, for every
- * note under it, a rescan of every cached note. A peer's fixture of five thousand notes held the
- * page for 45-55 s that way on the Studio, so the call driving the removal got no answer. One note
- * at a time costs the same in total, and the page yields to other calls between notes.
+ * Deletes paths in the page. A behavioural action deletes a folder the way a user does, with
+ * Obsidian's own folder deletion. Teardown (`incremental`) deletes a fixture tree note by note,
+ * deepest first, then the emptied folders, yielding to the page as it goes: Obsidian's folder
+ * deletion updates links for every deleted note across the whole vault in one synchronous run,
+ * so deleting a very large tree in one call can block the page.
  */
-export function removal(paths: string[]): string {
-  return `const yieldPage=()=>new Promise(resolve=>setTimeout(resolve,0));let lastYield=Date.now();
-for(const path of ${JSON.stringify(paths)}){const file=app.vault.getAbstractFileByPath(path);
-if(file){if(file.children){const notes=[],folders=[];const walk=folder=>{for(const child of [...folder.children]){if(child.children){walk(child);folders.push(child)}else notes.push(child)}};walk(file);
-for(const one of [...notes,...folders]){if(app.vault.getAbstractFileByPath(one.path)===one)await app.vault.delete(one,true);if(Date.now()-lastYield>=50){await yieldPage();lastYield=Date.now()}}}
-await app.vault.delete(file,true)}
+function removal(paths: string[], incremental = false): string {
+  const tree = incremental
+    ? `if(file.children){const notes=[],folders=[];const walk=folder=>{for(const child of [...folder.children]){if(child.children){walk(child);folders.push(child)}else notes.push(child)}};walk(file);
+for(const one of [...notes,...folders]){if(app.vault.getAbstractFileByPath(one.path)===one)await app.vault.delete(one,true);if(Date.now()-lastYield>=50){await yieldPage();lastYield=Date.now()}}}`
+    : ''
+  const prelude = incremental
+    ? 'const yieldPage=()=>new Promise(resolve=>setTimeout(resolve,0));let lastYield=Date.now();'
+    : ''
+  return `${prelude}for(const path of ${JSON.stringify(paths)}){const file=app.vault.getAbstractFileByPath(path);
+if(file){${tree}await app.vault.delete(file,true)}
 else {const stat=await app.vault.adapter.stat(path);if(stat?.type==='file')await app.vault.adapter.remove(path);else if(stat)throw new Error('Unindexed directory requires explicit cleanup: '+path);if(await app.vault.adapter.exists(path))throw new Error('Deletion did not complete: '+path)}} return true`
 }
