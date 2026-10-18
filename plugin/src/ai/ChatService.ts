@@ -970,6 +970,7 @@ export class ChatService {
 
   /** A node chat opens the sessions it names (one it started, one that wrote to it) as tabs of their own. */
   private linkNodeSessions(presenter: NodeChatPresenter): NodeChatPresenter {
+    presenter.onTitle = () => this.saveTabs()
     const { nodeId, registrationId } = presenter.reference
     presenter.openSession = (sessionId) =>
       void this.openNodeSession({

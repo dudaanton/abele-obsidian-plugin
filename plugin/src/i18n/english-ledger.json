@@ -25698,5 +25698,205 @@
       "es",
       "de"
     ]
+  },
+  "debug.open": {
+    "englishHash": "91dc776203d11dac35d68d30732798b33c5da3f0a6368b4e0eed7de2e8625c92",
+    "context": "Node folder debugger action or availability reason",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.run": {
+    "englishHash": "25a5a52c1714eadfdceb1993e29ad07b494cd27836366487378734845dfeb9b3",
+    "context": "Node folder debugger action or availability reason",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.attach": {
+    "englishHash": "999aec29dfa5779e8b00d9a7b050f63b8b0dabc54e07c3abe9e7bc7a5c9fccf5",
+    "context": "Node folder debugger action or availability reason",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.checking": {
+    "englishHash": "45be5212fad17cafe8cf38b2bee514c35de531796cfc10fc3279cdeb3cca766d",
+    "context": "Node folder debugger action or availability reason",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.offline": {
+    "englishHash": "cf5a8545fe60449f87621971ce75c89d798d735be6b9aa4160b923d85c82761a",
+    "context": "Node folder debugger action or availability reason",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.off": {
+    "englishHash": "955d0d10861b9a4ab56bc6c15de3ab5f40ad73d822cad04fc38f1501ce6fcf4c",
+    "context": "Node folder debugger action or availability reason",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.update": {
+    "englishHash": "868f29f890a917b2c7e29d42088e5697737f4d7179e74d7da1563f8dc007579c",
+    "context": "Node folder debugger action or availability reason",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.install": {
+    "englishHash": "4ae1377ca92dfbae89de38168a7c0889b461436b786c6bee599389212170b00f",
+    "context": "Node folder debugger action or availability reason",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.noFolder": {
+    "englishHash": "3b6e146928c7f5fc7c3732cb67bb1e1d29775f51701df420cacbaa957e3aa9b0",
+    "context": "Node folder debugger action or availability reason",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.pathKind": {
+    "englishHash": "4bf211adbaa4602a65b73b03d0ec6320c862081ec147dff186ca8e372a8b4acb",
+    "context": "Node folder debugger action or availability reason",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.programPlaceholder": {
+    "englishHash": "3af0b6e2453969b5c4607922281779e777883132f1712a50a267f67085ece728",
+    "context": "Node folder debugger action or availability reason",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.programEmpty": {
+    "englishHash": "1d0d3d4d9d1776a585ac327741113d2cbe8886b87f3859049ec332e354e1ef3e",
+    "context": "Node folder debugger action or availability reason",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.thisFolder": {
+    "englishHash": "c0b0a4b9cc1bd03a47088053d2f4de4241a568ae603ca780eb801ac771bb17e6",
+    "context": "Node folder debugger action or availability reason",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.insideFolder": {
+    "englishHash": "0a4e127036c5f0b8397a73c2f55a814bba93bc53f28888ad217735eaecbe2c89",
+    "context": "Node folder debugger action or availability reason",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.outsideFolder": {
+    "englishHash": "9dc1b83787816e389d03faa3b47c1a31ca603947c4930de162c624f0fbaab091",
+    "context": "Node folder debugger action or availability reason",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.executionTitle": {
+    "englishHash": "8d0585b9d0e2005b2a9054092e2c5d89bc9050769a74f37953261cd189e1f650",
+    "context": "Shared execution confirmation for folder debugging",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.executionMessage": {
+    "englishHash": "9f86e2b710e4adf40bd6cd86ed08f3f3e37c0d97235c9db911ec11b8b6eb5f4f",
+    "context": "Shared execution confirmation for folder debugging",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.empty": {
+    "englishHash": "cc6b8774dc92fb3ae63574e0dfd7185088825f4503881b3e55828d86b9a825e1",
+    "context": "Debugger empty pane: both folder and chat entry points",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.outsideTitle": {
+    "englishHash": "32a9985f3c30925ad209ef1c50df3dbbaf590229e385c382f3f0898b25acb585",
+    "context": "Folder-owned debugger attachment confirmation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.outsideMessage": {
+    "englishHash": "2022f29a2e458ea9220fd5430c3cbe3c9ac54ece3f7970b2eb981b0328a5a211",
+    "context": "Folder-owned debugger attachment confirmation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

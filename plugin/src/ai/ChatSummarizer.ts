@@ -8,6 +8,7 @@ import { requestSummary } from './ChatDigest'
 import { conversationLines } from './chatText'
 import { DEFAULT_AI_SETTINGS, type ChatMessage } from './types'
 import { estimateTokens } from './tokens'
+import { generateChatTitle } from './chatTitle'
 import { isReplyCorrection } from './replyAnnotations'
 
 /**
@@ -60,8 +61,6 @@ export interface SummarizerHost {
  */
 export class ChatSummarizer {
   private static readonly AUTO_COMPACT_THRESHOLD = 0.9
-  private static readonly TITLE_MAX_LENGTH = 60
-  private static readonly TITLE_MSG_PREVIEW_LENGTH = 200
   private static readonly COMPACT_SYSTEM_PROMPT =
     'You summarize conversations. Reply with ONLY the summary, nothing else.'
   private static readonly RECAP_SYSTEM_PROMPT =
@@ -103,42 +102,12 @@ export class ChatSummarizer {
   async generateTitle(): Promise<void> {
     this.host.isGeneratingTitle.value = true
     try {
-      const config = AbeleConfig.getInstance().ai
-      const model = this.host.auxiliaryModel()
-      const client = new OpenAIClient()
-
-      const msgs = this.host.messages.value
-        .filter((m) => m.role === 'user' || m.role === 'assistant')
-        .slice(0, 6)
-        .map((m) => `[${m.role}]: ${m.content.slice(0, ChatSummarizer.TITLE_MSG_PREVIEW_LENGTH)}`)
-        .join('\n')
-
-      const titlePrompt = (
-        config.prompts?.titleGeneration || DEFAULT_AI_SETTINGS.prompts.titleGeneration
-      ).replace('{{messages}}', msgs)
-      const titleSystem = config.prompts?.titleSystem || DEFAULT_AI_SETTINGS.prompts.titleSystem
-
-      const titleMessages: Message[] = [
-        { role: 'user', content: titlePrompt, timestamp: Date.now() },
-      ]
-
-      let title = ''
-      const signal = this.host.backgroundSignal()
-      for await (const event of client.stream(
-        model,
-        titleSystem,
-        titleMessages,
-        this.host.toolDefs(),
-        { signal }
-      )) {
-        if (event.type === 'text_delta') title += event.delta
-      }
-
-      title = title
-        .trim()
-        .replace(/^["']|["']$/g, '')
-        .replace(/[\\/:*?"<>|]/g, '-')
-        .slice(0, ChatSummarizer.TITLE_MAX_LENGTH)
+      const title = await generateChatTitle(
+        this.host.messages.value,
+        this.host.auxiliaryModel(),
+        this.host.backgroundSignal(),
+        this.host.toolDefs()
+      )
 
       if (!title || title === this.host.chatTitle.value) return
 

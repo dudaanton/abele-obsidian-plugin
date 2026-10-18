@@ -4,7 +4,7 @@ import { t } from '@/i18n'
 // Debug panel as a started program's does. Detaching leaves the program running.
 import { Notice } from 'obsidian'
 import { z } from 'zod'
-import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
+import { debugOwnerParams, isFolderOwner, type DebugOwner } from './owner'
 import { NodeSuggestModal, type NodeSuggestion } from '@/components/nodeWork/NodeSuggestModal'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { confirmDialog } from '@/components/obsidian/dialogs'
@@ -41,10 +41,15 @@ const shortPath = (path: string) => {
 const lastPart = (path: string) => path.split('/').filter(Boolean).pop() ?? path
 
 /** One row per program: its command, then where it runs, its process and its port. */
-export function programSuggestions(programs: WaitingProgram[]): NodeSuggestion[] {
+export function programSuggestions(
+  programs: WaitingProgram[],
+  folderOwned = false
+): NodeSuggestion[] {
   return programs.map((p) => {
     const where = p.in_chat_folder
-      ? t('streamC.a54b7b8a7606db01')
+      ? folderOwned
+        ? t('debug.thisFolder')
+        : t('streamC.a54b7b8a7606db01')
       : p.project
         ? t('streamC.22573c4be7ad1c95', { v1: lastPart(p.project.path) })
         : p.cwd
@@ -53,7 +58,13 @@ export function programSuggestions(programs: WaitingProgram[]): NodeSuggestion[]
     return {
       id: `${p.pid}:${p.port}`,
       icon: p.in_chat_folder ? 'plug' : 'folder-output',
-      kind: p.in_chat_folder ? t('streamC.3c5da2fc19b842c2') : t('streamC.dfd5c6aac1c2399b'),
+      kind: p.in_chat_folder
+        ? folderOwned
+          ? t('debug.insideFolder')
+          : t('streamC.3c5da2fc19b842c2')
+        : folderOwned
+          ? t('debug.outsideFolder')
+          : t('streamC.dfd5c6aac1c2399b'),
       title: p.command,
       note: `${where} · pid ${p.pid} · port ${p.port}`,
     }
@@ -68,7 +79,7 @@ function chatPath(program: WaitingProgram, open: string[]) {
 }
 
 export async function attachToProgram(
-  presenter: NodeChatPresenter,
+  presenter: DebugOwner,
   program: WaitingProgram,
   show: (sessionId: string) => Promise<void>,
   outsideFolder = false
@@ -80,7 +91,7 @@ export async function attachToProgram(
   const started = StartResultSchema.parse(
     await presenter.connection.client.request('debugger.v1.attachProgram', {
       operation_id: crypto.randomUUID(),
-      conversation_id: presenter.reference.sessionId,
+      ...debugOwnerParams(presenter),
       pid: program.pid,
       port: program.port,
       sources: open,
@@ -121,7 +132,7 @@ function failed(e: unknown) {
 
 /** Asks which waiting program to attach to; one outside the chat's folder asks once more. */
 export async function askAndAttachProgram(
-  presenter: NodeChatPresenter,
+  presenter: DebugOwner,
   show: (sessionId: string) => Promise<void>
 ) {
   try {
@@ -133,7 +144,7 @@ export async function askAndAttachProgram(
     }
     const { programs } = ProgramsSchema.parse(
       await presenter.connection.client.request('debugger.v1.programs', {
-        conversation_id: presenter.reference.sessionId,
+        ...debugOwnerParams(presenter),
       })
     )
     console.debug('[debugger] Programs waiting for a debugger', programs.length)
@@ -141,7 +152,7 @@ export async function askAndAttachProgram(
     const byId = new Map(programs.map((p) => [`${p.pid}:${p.port}`, p]))
     new NodeSuggestModal(
       app,
-      programSuggestions(programs),
+      programSuggestions(programs, isFolderOwner(presenter)),
       t('streamC.b5f49b30dbe29380'),
       (item) => {
         const program = byId.get(item.id)
@@ -149,11 +160,18 @@ export async function askAndAttachProgram(
         void (async () => {
           if (!program.in_chat_folder) {
             const yes = await confirmDialog({
-              title: t('streamC.e49e9a0569c8f926'),
-              message: t('streamC.c87c48a5c3813f55', {
-                v1: String(program.command),
-                v2: String(program.cwd ?? t('streamC.323ca97e9290d6b0')),
-              }),
+              title: isFolderOwner(presenter)
+                ? t('debug.outsideTitle')
+                : t('streamC.e49e9a0569c8f926'),
+              message: isFolderOwner(presenter)
+                ? t('debug.outsideMessage', {
+                    command: program.command,
+                    path: program.cwd ?? t('streamC.323ca97e9290d6b0'),
+                  })
+                : t('streamC.c87c48a5c3813f55', {
+                    v1: program.command,
+                    v2: program.cwd ?? t('streamC.323ca97e9290d6b0'),
+                  }),
               confirmText: t('streamC.d406ade2958cb5b6'),
               confirmTooltip: t('streamC.f733edcdd847a681'),
             })

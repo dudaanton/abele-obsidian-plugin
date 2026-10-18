@@ -995,7 +995,7 @@ cursors are device/node-side, not transferable settings or synced secrets.
 
 A run is what the debugger recorded while a record point was set: a record point is a
 breakpoint that takes named values whole each time the program passes and lets it go on. The
-person starts the program from the chat's menu (**Run a program**) or attaches to one already
+person starts the program from a node folder, file or chat menu, or the command palette (**Run a program**) or attaches to one already
 running with `node --inspect` (**Attach to a running program**); no tool starts or attaches a
 program, and both kinds record the same way. The run lives on the node; these tools read it a little at a time from the debug session open in
 the Debug panel, and say so when there is none. Each answer stops at 80 lines or 6 KB, which no

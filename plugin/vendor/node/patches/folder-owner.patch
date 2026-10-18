@@ -1,0 +1,47 @@
+diff --git a/packages/node-protocol/src/debugger-control.ts b/packages/node-protocol/src/debugger-control.ts
+index d6f52b1..c8da35e 100644
+--- a/packages/node-protocol/src/debugger-control.ts
++++ b/packages/node-protocol/src/debugger-control.ts
+@@ -2 +2 @@ import { z } from 'zod'
+-import { DebuggerMethodSchemas } from './debugger.js'
++import { DebuggerMethodSchemas, DebuggerOwnerShape, hasDebuggerOwner } from './debugger.js'
+@@ -85 +85 @@ export const DebuggerStartSchema = z
+-    conversation_id: id,
++    ...DebuggerOwnerShape,
+@@ -90,0 +91 @@ export const DebuggerStartSchema = z
++  .refine(hasDebuggerOwner, 'debugger owner required')
+@@ -99 +100,4 @@ export type DebuggerStartResult = z.infer<typeof DebuggerStartResultSchema>
+-export const DebuggerProgramsSchema = z.object({ conversation_id: id }).strict()
++export const DebuggerProgramsSchema = z
++  .object(DebuggerOwnerShape)
++  .strict()
++  .refine(hasDebuggerOwner, 'debugger owner required')
+@@ -124 +128 @@ export const DebuggerAttachProgramSchema = z
+-    conversation_id: id,
++    ...DebuggerOwnerShape,
+@@ -130,0 +135 @@ export const DebuggerAttachProgramSchema = z
++  .refine(hasDebuggerOwner, 'debugger owner required')
+@@ -137,0 +143 @@ export const DebuggerControlMethodSchemas = {
++  'debugger.v1.restart': z.object({ operation_id: id, debug_session_id: id }).strict(),
+diff --git a/packages/node-protocol/src/debugger.ts b/packages/node-protocol/src/debugger.ts
+index af0edfb..e555e6a 100644
+--- a/packages/node-protocol/src/debugger.ts
++++ b/packages/node-protocol/src/debugger.ts
+@@ -1,0 +2,8 @@ import { z } from 'zod'
++import { ExecutionTargetSchema } from './turn.js'
++
++export const DebuggerOwnerShape = {
++  conversation_id: z.string().min(1).max(128).optional(),
++  folder: ExecutionTargetSchema.optional(),
++}
++export const hasDebuggerOwner = (p: { conversation_id?: string; folder?: unknown }) =>
++  !!(p.conversation_id || p.folder)
+@@ -40 +48 @@ export const DebuggerTargetSchema = z
+-    conversation_id: id,
++    conversation_id: id.nullable(),
+@@ -352,2 +360,3 @@ export const DebuggerMethodSchemas = {
+-    .object({ conversation_id: id, limit: z.number().int().min(1).max(128).default(128) })
+-    .strict(),
++    .object({ ...DebuggerOwnerShape, limit: z.number().int().min(1).max(128).default(128) })
++    .strict()
++    .refine(hasDebuggerOwner, 'debugger owner required'),

@@ -527,6 +527,7 @@ const folderName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
 }
 // The native phone drawer is narrower than a full row of debugger controls.
 .abele-debug-panel > .nav-header {

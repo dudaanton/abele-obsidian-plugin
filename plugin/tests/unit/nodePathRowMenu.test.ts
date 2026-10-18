@@ -1,21 +1,30 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 import { Menu } from 'obsidian'
-import { showNodePathPlaceMenu } from '@/node/NodePathController'
+import { showNodePathNodeMenu, showNodePathPlaceMenu } from '@/node/NodePathController'
 
 const f = vi.hoisted(() => ({
   request: vi.fn<(method: string, params: unknown) => Promise<unknown>>(),
   settings: vi.fn(async () => ({})),
   refresh: vi.fn(async () => {}),
+  describe: vi.fn(async (): Promise<unknown> => ({ capabilities: { capabilities: {} } })),
 }))
 vi.mock('@/stores/GlobalStore', () => ({ GlobalStore: { getInstance: () => ({ app: {} }) } }))
 vi.mock('@/node/NodeService', () => ({
   NodeService: {
     getInstance: () => ({
-      nodes: ref([]),
+      nodes: ref([
+        {
+          id: 'sample-registration',
+          expectedNodeId: 'sample-node',
+          label: 'Sample node',
+          url: 'ws://127.0.0.1:7777/channel',
+        },
+      ]),
       connection: () => ({
         state: ref('connected'),
         client: {
+          describe: f.describe,
           request: f.request,
           setRepositorySettings: f.settings,
           getProject: async () => ({ use_repository_claude_permissions: false }),
@@ -70,6 +79,20 @@ async function opened(): Promise<Shown> {
 }
 const allow = (menu: Shown) =>
   menu.items.find((i) => i.title === 'Allow external workspace browsing')!
+
+it('offers debugger actions in the node header menu', async () => {
+  f.describe.mockResolvedValueOnce({
+    capabilities: { capabilities: { debugger_v1: { status: 'supported', evidence: 'sample' } } },
+  })
+  f.request.mockResolvedValueOnce([]).mockResolvedValueOnce([{ id: 'js-ts-native' }])
+  const show = vi.spyOn(Menu.prototype, 'showAtPosition')
+  showNodePathNodeMenu(model(), new MouseEvent('click'))
+  const menu = show.mock.instances[0] as unknown as Shown
+  await vi.waitFor(() => {
+    expect(menu.items.map((item) => item.title)).toContain('Run a program')
+    expect(menu.items.map((item) => item.title)).toContain('Attach to a running program')
+  })
+})
 
 describe('the place menu', () => {
   it('starts with a new chat and switching place, then the folder’s items, then the node', async () => {
@@ -151,7 +174,17 @@ describe('the place menu’s external-worktrees item', () => {
 describe('where the place menu opens', () => {
   const button = () => {
     const el = document.createElement('div')
-    el.getBoundingClientRect = () => ({ left: 290, right: 314, top: 100, bottom: 124, width: 24, height: 24, x: 290, y: 100 }) as DOMRect
+    el.getBoundingClientRect = () =>
+      ({
+        left: 290,
+        right: 314,
+        top: 100,
+        bottom: 124,
+        width: 24,
+        height: 24,
+        x: 290,
+        y: 100,
+      }) as DOMRect
     document.body.appendChild(el)
     return el
   }

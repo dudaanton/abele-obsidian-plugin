@@ -14,6 +14,7 @@ import type { ChatPresentationSession, ChatReference } from '@/ai/ChatPresentati
 import type { ChatDraft, ChatReplyTo } from '@/ai/types'
 import { agentReplyText } from '@/ai/replyLinks'
 import { mobileBackground } from '@/ai/mobileBackground'
+import { generateChatTitle } from '@/ai/chatTitle'
 import { reduceTranscript } from './NodeTranscriptReducer'
 import type { NodeConnection } from './NodeService'
 import { type NodeClientState, readStore } from './NodeClientStore'
@@ -172,6 +173,8 @@ export class NodeChatPresenter implements ChatPresentationSession {
   private readonly interruptingRuns = new Set<string>()
   private readonly backgroundStoppedRuns = new Set<string>()
   private endBackgroundTurn?: () => void
+  private readonly titleAbort = new AbortController()
+  private titleAttempted = false
 
   constructor(
     readonly reference: Extract<ChatReference, { kind: 'node-session' }>,
@@ -353,6 +356,11 @@ export class NodeChatPresenter implements ChatPresentationSession {
         projection.session ??= this.sessionRecord.value
         projection.children = this.stable.children(projection.children)
         this.projection.value = projection
+        if (projection.session && this.reference.title !== projection.session.title) {
+          this.reference.title = projection.session.title
+          this.onTitle?.()
+        }
+        this.nameConversation()
         this.updateBackgroundTurn()
         this.rejected.value = rejected
         this.receipts.value = receipts
@@ -374,6 +382,46 @@ export class NodeChatPresenter implements ChatPresentationSession {
       this.refreshing = undefined
     })
     return this.refreshing
+  }
+
+  /** Persist on the node so its catalog and every device see the same title. */
+  private nameConversation(): void {
+    if (
+      this.titleAttempted ||
+      this.destroyed ||
+      this.connection.state.value !== 'connected' ||
+      this.projection.value.state !== 'idle' ||
+      !this.messages.value.some((message) => message.role === 'user' && message.content.trim()) ||
+      !['', 'New chat', 'Fake session'].includes(this.label.value)
+    )
+      return
+    this.titleAttempted = true
+    const original = this.label.value
+    void (async () => {
+      try {
+        const { ChatService } = await import('@/ai/ChatService')
+        if (this.destroyed) return
+        const title = await generateChatTitle(
+          this.messages.value,
+          ChatService.getInstance().getAuxiliaryModelConfig(),
+          this.titleAbort.signal
+        )
+        if (!title || this.destroyed || this.label.value !== original) return
+        // A rename made elsewhere during generation wins over this convenience title.
+        const session = await this.connection.client.getSession(this.reference.sessionId)
+        if (
+          this.destroyed ||
+          this.connection.state.value !== 'connected' ||
+          this.label.value !== original ||
+          session.title !== original
+        )
+          return
+        await this.connection.client.renameSession(this.reference.sessionId, title)
+        if (!this.destroyed) await this.refresh()
+      } catch (error) {
+        console.debug('[Abele node] Chat title unavailable', error)
+      }
+    })()
   }
 
   /** An open chat owns its remote run's audio; queue/connection state is not a run. */
@@ -710,6 +758,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
 
   /** Opens another session of this node in its own chat tab; set by whoever owns the tabs. */
   openSession?: (sessionId: string) => void
+  onTitle?: () => void
 
   /** Stops whatever runs now, turns and compacting alike, and keeps the session. */
   async interruptAll(): Promise<void> {
@@ -884,6 +933,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
   }
   destroy(): void {
     this.destroyed = true
+    this.titleAbort.abort()
     if (this.refreshTimer !== undefined) window.clearTimeout(this.refreshTimer)
     this.releaseBackgroundTurn()
     this.backgroundStoppedRuns.clear()

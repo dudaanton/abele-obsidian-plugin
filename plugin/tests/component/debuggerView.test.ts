@@ -113,7 +113,7 @@ describe('debugger panel', () => {
     expect(empty.find('.abele-empty-state__icon').exists()).toBe(true)
     expect(empty.find('.abele-empty-state__title').text()).toBe('No debug session')
     expect(empty.find('.abele-empty-state__description').text()).toBe(
-      'Open Debug from a node chat.'
+      'Open Debug from a node folder or chat menu.'
     )
     w.unmount()
   })

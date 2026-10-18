@@ -1,5 +1,6 @@
 import { nodeErrorNotice } from './errorNotice'
 import { UiError, uiMessage } from '@/i18n/streamBErrors'
+import { addFolderDebugMenu } from '@/debugger/folderActions'
 import { t } from '@/i18n'
 import { Menu, Notice, Platform } from 'obsidian'
 import type { WorktreeEntry } from '@abele/node-protocol'
@@ -94,6 +95,7 @@ export function showNodePathFileMenu(event: MouseEvent, raw: NodePathContext): v
         nodePathAction(() => navigator.clipboard.writeText(context.path ?? context.commit ?? ''))
       )
   )
+  addFolderDebugMenu(menu, context.target, context.path)
   menu.showAtPosition(position(event))
 }
 /** The folder's or worktree's menu, built once the node said whether outside worktrees are open. */
@@ -371,7 +373,8 @@ function rowMenu(
 export function showNodePathNodeMenu(model: NodePathModel, event: MouseEvent): void {
   nodeItems(model, new Menu()).showAtPosition(position(event))
 }
-function nodeItems(model: NodePathModel, menu: Menu): Menu {
+function nodeItems(model: NodePathModel, menu: Menu, debug = true): Menu {
+  if (debug) addFolderDebugMenu(menu, model.current.value ?? undefined)
   const service = NodeService.getInstance()
   menu.addItem((i) =>
     i
@@ -575,9 +578,10 @@ export async function chooseSessionWorktree(
     t('streamB.noOtherAvailableWorktreeInThisFolder.024797')
   ).open()
 }
-async function approveNodePathExecution(
+export async function approveNodePathExecution(
   model: NodePathModel,
-  target: PathTarget
+  target: PathTarget,
+  purpose: 'agent' | 'debugger' = 'agent'
 ): Promise<boolean> {
   const connection = NodeService.getInstance().connection(model.registrationId)
   if (connection.state.value !== 'connected')
@@ -588,8 +592,10 @@ async function approveNodePathExecution(
   if (
     project.trust !== 'trusted' &&
     !(await confirmDialog({
-      title: t('node.trust.title'),
-      message: t('node.trust.message', { path: copy?.path ?? folder?.path ?? project.root_path }),
+      title: purpose === 'debugger' ? t('debug.executionTitle') : t('node.trust.title'),
+      message: t(purpose === 'debugger' ? 'debug.executionMessage' : 'node.trust.message', {
+        path: copy?.path ?? folder?.path ?? project.root_path,
+      }),
       confirmText: t('node.trust.allow'),
     }))
   )
@@ -726,7 +732,7 @@ export function showNodePathPlaceMenu(
         )
     )
     m.addSeparator()
-    nodeItems(model, m)
+    nodeItems(model, m, !model.current.value)
     m.showAtPosition(at)
   }
   const id = model.selected.value
@@ -763,6 +769,7 @@ export function showNodePathPlaceMenu(
         .setDisabled(!model.port.branch)
         .onClick(() => chooseNodePathBase(model))
     )
+  addFolderDebugMenu(menu, model.current.value)
   menu.addSeparator()
   withRowMenu(model, id, tail, menu, true)
 }

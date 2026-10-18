@@ -407,11 +407,16 @@ left out and named, so you can put it back as a saved key.
 
 ## Debugging a program on a node
 
-A node chat can debug a Node.js program on the node's machine, in the chat's folder. The items
-below appear once the node runs with `--debugger`, and work once its JavaScript debugger is
-installed (`abele-node debugger install js`). Everything starts from the chat's **⋯** menu:
+You can debug a Node.js program in a node folder without opening a chat. Choose the folder in
+the node panel, then use the node's **⋯** menu, the folder or file menu, or **Run a program**,
+**Attach to a running program** and **Debug** in the command palette. A selected node file
+supplies the command's folder; otherwise the node panel's selected folder is used.
+Unavailable menu actions say whether to reconnect, update the node, enable `--debugger`, or
+install its JavaScript debugger (`abele-node debugger install js`). Running code requires
+trusting the registered project and allowing execution in the selected folder or worktree.
+Existing chats keep the same actions in their **⋯** menu:
 
-- **Run a program** starts a JavaScript file of the chat's folder under the debugger. Pick one of
+- **Run a program** starts a JavaScript file of the selected folder under the debugger. Pick one of
   the files open from that folder or type its path. It waits on its first line, so you can set
   breakpoints before it goes on.
 - **Attach to a running program** connects to a program that is already running with its
@@ -419,8 +424,8 @@ installed (`abele-node debugger install js`). Everything starts from the chat's 
   `--inspect-brk` to hold it on its first line). The list shows each Node.js program on the
   node's machine that waits for a debugger: its command, the folder it runs from, its process and
   port. Nothing in the list means no program was started with `--inspect`: start one and open the
-  list again. A program that runs outside the chat's folder is attached only after you confirm it.
-- **Debug** opens the chat's debug sessions again.
+  list again. A program that runs outside the selected folder is attached only after you confirm it.
+- **Debug** opens that folder's debug sessions again. Chat-menu actions keep their chat scope.
 
 The session opens in the **Debug** panel on the right: Continue, step, pause, the call stack,
 variables and watches. The program's own file opens with a margin beside its lines: click it to

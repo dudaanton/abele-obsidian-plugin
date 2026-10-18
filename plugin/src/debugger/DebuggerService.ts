@@ -2,6 +2,7 @@ import { t } from '@/i18n'
 import { computed, shallowRef, watch, type WatchStopHandle } from 'vue'
 import type { NodeConnection } from '@/node/NodeService'
 import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
+import { debugIdentity, debugOwnerParams, type DebugOwner } from './owner'
 import { DebuggerSnapshotSchema } from '@abele/node-protocol'
 import { z } from 'zod'
 import { DebuggerController } from './DebuggerController'
@@ -69,6 +70,12 @@ export class DebuggerBinding {
     return this.controller.snapshot?.debug_session_id
   }
   async open(sessionId: string) {
+    console.debug(
+      '[debugger] Opening observation',
+      sessionId,
+      this.disposed,
+      this.connection.state.value
+    )
     if (this.disposed) return
     this.stopWatch()
     this.controller.invalidate()
@@ -77,6 +84,7 @@ export class DebuggerBinding {
     const abort = (this.abort = new AbortController())
     try {
       const result = await this.connection.client.debugger.status(sessionId)
+      console.debug('[debugger] Snapshot read', sessionId, result.snapshot.lifecycle)
       if (abort.signal.aborted || this.disposed) return
       if (!this.trace && (await this.recordsRuns())) {
         this.trace = new TraceSession(
@@ -288,15 +296,12 @@ export class DebuggerService {
   private key(registrationId: string, conversationId: string) {
     return JSON.stringify([registrationId, conversationId])
   }
-  binding(presenter: NodeChatPresenter) {
-    const key = this.key(presenter.reference.registrationId, presenter.reference.sessionId)
+  binding(presenter: DebugOwner) {
+    const identity = debugIdentity(presenter)
+    const key = this.key(identity.registrationId, identity.key)
     let binding = this.bindings.get(key)
     if (!binding) {
-      binding = new DebuggerBinding(
-        presenter.connection,
-        presenter.reference.sessionId,
-        presenter.reference.registrationId
-      )
+      binding = new DebuggerBinding(presenter.connection, identity.key, identity.registrationId)
       this.bindings.set(key, binding)
     }
     return binding
@@ -304,12 +309,12 @@ export class DebuggerService {
   forSource(registrationId: string, conversationId: string) {
     return this.bindings.get(this.key(registrationId, conversationId))
   }
-  async sessions(presenter: NodeChatPresenter) {
+  async sessions(presenter: DebugOwner) {
     await presenter.connection.connect()
     if (!nodeDebuggerSupported(await presenter.connection.client.describe()))
       throw new Error('This node does not advertise debugger support')
     const result = await presenter.connection.client.request('debugger.v1.sessions', {
-      conversation_id: presenter.reference.sessionId,
+      ...debugOwnerParams(presenter),
     })
     return z.array(z.unknown().transform((raw) => DebuggerSnapshotSchema.parse(raw))).parse(result)
   }

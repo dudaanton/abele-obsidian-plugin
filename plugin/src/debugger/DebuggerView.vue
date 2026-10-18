@@ -5,7 +5,7 @@
       v-if="!binding"
       icon="bug"
       :title="t('streamC.50fc3bac49e8e935')"
-      :text="t('streamC.63761e1b8399d6fe')"
+      :text="t('debug.empty')"
     />
     <template v-else>
       <div v-if="error" class="abele-debug-view__error" role="alert">
@@ -128,6 +128,7 @@ function breakpoint(file: string, line: number) {
 }
 function retry() {
   const b = binding.value
+  console.debug('[debugger] Reconnect requested', b?.sessionId)
   if (b?.sessionId)
     void b.connection
       .connect()

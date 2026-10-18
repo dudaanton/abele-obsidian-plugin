@@ -5,9 +5,8 @@ import { t } from '@/i18n'
 import { Notice, Platform, type Workspace } from 'obsidian'
 import { watch } from 'vue'
 import { z } from 'zod'
-import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
+import { debugIdentity, debugOwnerParams, debugTarget, type DebugOwner } from './owner'
 import type { PathTarget } from '@/node/NodePathModel'
-import { readChatBinding } from '@/node/expectedTarget'
 import { NODE_FILE_VIEW, NodePathTabSchema, openNodePathTab } from '@/node/nodePathNavigation'
 import { NodeSuggestModal, type NodeSuggestion } from '@/components/nodeWork/NodeSuggestModal'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -26,19 +25,7 @@ const RUNNABLE = /\.[cm]?js$/
 const SOURCE = /\.(?:[cm]?[jt]s|[jt]sx)$/
 
 /** The chat's folder as a node file tab addresses it; undefined while the chat has none. */
-export async function chatTarget(presenter: NodeChatPresenter): Promise<PathTarget | undefined> {
-  const binding = await readChatBinding(presenter.connection.client, presenter.reference.sessionId)
-  if (!binding) return undefined
-  const target = binding.target
-  return {
-    nodeId: presenter.reference.nodeId,
-    registrationId: presenter.reference.registrationId,
-    projectId: binding.project_id,
-    kind: target.kind,
-    id: target.kind === 'worktree' ? target.worktree_id : target.workspace_id,
-    ...(binding.incarnation ? { incarnation: binding.incarnation } : {}),
-  }
-}
+export const chatTarget = debugTarget
 
 export const sameFolder = (a: PathTarget, b: PathTarget) =>
   a.registrationId === b.registrationId && a.kind === b.kind && a.id === b.id
@@ -121,7 +108,7 @@ function untilHeld(binding: DebuggerBinding): Promise<void> {
 
 /** Tells the panel which file each source id of a new session is, so breakpoints read as files. */
 export async function registerSources(
-  presenter: NodeChatPresenter,
+  presenter: DebugOwner,
   started: StartResult,
   target: PathTarget
 ) {
@@ -132,8 +119,8 @@ export async function registerSources(
   )
   for (const s of started.sources)
     DebuggerService.instance.registerSource(
-      presenter.reference.registrationId,
-      presenter.reference.sessionId,
+      debugIdentity(presenter).registrationId,
+      debugIdentity(presenter).key,
       s.source_id,
       s.path,
       started.debug_session_id,
@@ -146,14 +133,14 @@ export async function registerSources(
 /** Gives the files a new session took their margin: those already open from the chat's folder
  * where they are, and `main` (the program's own file, else the first one taken) in a tab. */
 export async function openSources(
-  presenter: NodeChatPresenter,
+  presenter: DebugOwner,
   started: StartResult,
   incarnation: string,
   target: PathTarget,
   main?: string
 ) {
   const debugOf = (sourceId: string) => ({
-    conversationId: presenter.reference.sessionId,
+    conversationId: debugIdentity(presenter).key,
     sourceId,
     debugSessionId: started.debug_session_id,
     incarnation,
@@ -184,7 +171,7 @@ export async function openSources(
 }
 
 export async function startProgram(
-  presenter: NodeChatPresenter,
+  presenter: DebugOwner,
   program: string,
   sources: string[],
   target: PathTarget,
@@ -195,7 +182,7 @@ export async function startProgram(
   const started = StartResultSchema.parse(
     await client.request('debugger.v1.start', {
       operation_id: crypto.randomUUID(),
-      conversation_id: presenter.reference.sessionId,
+      ...debugOwnerParams(presenter),
       program,
       argv: [],
       sources: sources.filter((s) => s !== program),
@@ -256,14 +243,14 @@ export class ProgramPicker extends NodeSuggestModal {
     const typed = query.trim()
     const open = super.getSuggestions(query)
     return typed && !open.some((i) => i.title === typed)
-      ? [{ id: typed, icon: 'play', kind: t('streamC.30b1f4852187a445'), title: typed }, ...open]
+      ? [{ id: typed, icon: 'play', kind: t('debug.pathKind'), title: typed }, ...open]
       : open
   }
 }
 
 /** Asks which program to run, offering the JavaScript files open from this chat's folder. */
 export async function askAndStartProgram(
-  presenter: NodeChatPresenter,
+  presenter: DebugOwner,
   show: (sessionId: string) => Promise<void>
 ) {
   const failed = (e: Error | string) => {
@@ -295,9 +282,9 @@ export async function askAndStartProgram(
     new ProgramPicker(
       app,
       offered,
-      t('streamC.486c5879e3e830f3'),
+      t('debug.programPlaceholder'),
       (item) => void startProgram(presenter, item.id, open, target, show).catch(failed),
-      t('streamC.48dd6af61587e02d')
+      t('debug.programEmpty')
     ).open()
   } catch (e) {
     failed(e as Error)

@@ -15,7 +15,13 @@ targets('desktop')
 const SHOTS = shotDir('abele-debug-journey')
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 async function inAppLong<T>(script: string): Promise<T> {
-  return JSON.parse(await evalLong(script, 150_000)) as T
+  try {
+    return JSON.parse(await evalLong(script, 150_000)) as T
+  } catch (error) {
+    throw new Error(
+      `node: ${daemonExit || 'running'}\n${daemonErrors}\n${error instanceof Error ? error.message : String(error)}`
+    )
+  }
 }
 /** What the app answered, or why not, with what the node said on its way out. */
 function inApp<T>(script: string): T {
@@ -32,7 +38,7 @@ function inApp<T>(script: string): T {
     )
   }
 }
-const prelude = `const wait=ms=>new Promise(r=>setTimeout(r,ms)),until=async(fn,what,tries=300)=>{for(let i=0;i<tries;i++){const v=fn();if(v)return v;await wait(50)}await shot('journey-failure-'+what.replace(/[^a-z0-9]+/gi,'-'));throw Error('Did not converge: '+what+'; '+debugState0()+'; '+debugState())};
+const prelude = `const wait=ms=>new Promise(r=>setTimeout(r,ms)),until=async(fn,what,tries=300)=>{for(let i=0;i<tries;i++){const v=fn();if(v)return v;await wait(50)}await shot('journey-failure-'+what.replace(/[^a-z0-9]+/gi,'-'));throw Error('Did not converge: '+what+'; '+debugState0()+'; '+debugState()+'; events: '+await debugEvents())};
 const api=window.__abeleTest,nodes=api.NodeService.getInstance(),chats=api.ChatService.getInstance();
 const shot=async name=>{await wait(300);const image=await require('@electron/remote').getCurrentWebContents().capturePage();require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/'+name+'.png',image.toPNG())};
 const item=title=>[...document.querySelectorAll('.menu-item')].find(i=>i.querySelector('.menu-item-title')?.textContent.trim()===title);
@@ -60,8 +66,9 @@ const recordPoint=async (line,takes,root)=>{
   await until(()=>said().startsWith('Record point ·'),'record point confirmed: '+said(),400).catch(()=>{throw Error('record point not confirmed: '+debugState())});
 };
 window.__dbgLog=[];if(!console.__wrapped){const d=console.debug.bind(console);console.debug=(...a)=>{if(/^\\[(debugger|trace|Abele node)\\]/.test(String(a[0])))window.__dbgLog.push(a.map(x=>x instanceof Error?x.message+' '+(x.code??''):typeof x==='string'?x:JSON.stringify(x)?.slice(0,300)).join(' '));d(...a)};console.__wrapped=true}
+const debugEvents=async()=>{const b=api.DebuggerService.instance.active.value,s=b?.controller.snapshot;if(!s)return null;try{return JSON.stringify(await b.connection.client.request('debugger.v1.replay',{cursor:{debug_session_id:s.debug_session_id,incarnation:s.incarnation,event_seq:0}}))}catch(e){return String(e)}};
 const debugState=()=>JSON.stringify({log:window.__dbgLog.slice(-10),notices:[...document.querySelectorAll('.notice')].map(n=>n.textContent)})+' '+debugState0();
-const debugState0=()=>{const b=api.DebuggerService.instance.active.value,c=b?.controller,n=c?.snapshot;return JSON.stringify({recent:window.__dbgLog.slice(-5),highlight:[...document.querySelectorAll(".abele-debug-source__line_here")].filter(e=>e.offsetParent).map(e=>e.textContent),status:c?.session.status,error:c?.error,lifecycle:n?.lifecycle,execution:n?.execution,threads:n?.threads?.map(t=>[t.status,t.stop?.reason,t.stop?.description,t.stop?.hit_breakpoint_ids?.length]),identity:n?.target.build_identity,bps:n?.breakpoints?.map(x=>[x.source_id,x.line,x.status]),known:c?.knownBreakpoints?.().map(x=>[x.sourceId,x.line,x.state,x.file]),points:b?.trace?.points?.map(p=>p.breakpoint_id.slice(0,6)),actions:c?.actions?.slice(-3).map(a=>[a.kind,a.status,a.result])})};
+const debugState0=()=>{const b=api.DebuggerService.instance.active.value,c=b?.controller,n=c?.snapshot,sdk=b?.sessionId?b.connection.client.debugger.current(b.sessionId):null;return JSON.stringify({sdk:sdk&&{observation:sdk.observation,reason:sdk.reason,lifecycle:sdk.snapshot?.lifecycle,execution:sdk.snapshot?.execution},recent:window.__dbgLog.slice(-5),highlight:[...document.querySelectorAll(".abele-debug-source__line_here")].filter(e=>e.offsetParent).map(e=>e.textContent),status:c?.session.status,error:c?.error,lifecycle:n?.lifecycle,execution:n?.execution,threads:n?.threads?.map(t=>[t.status,t.stop?.reason,t.stop?.description,t.stop?.hit_breakpoint_ids?.length]),identity:n?.target.build_identity,bps:n?.breakpoints?.map(x=>[x.source_id,x.line,x.status]),known:c?.knownBreakpoints?.().map(x=>[x.sourceId,x.line,x.state,x.file]),points:b?.trace?.points?.map(p=>p.breakpoint_id.slice(0,6)),actions:c?.actions?.slice(-3).map(a=>[a.kind,a.status,a.result])})};
 const goOn=async()=>{
   const go=await until(()=>[...document.querySelectorAll('[aria-label="Continue (F5)"]')].find(b=>!b.classList.contains('is-disabled')&&!b.hasAttribute('disabled')),'Continue offered');
   press(go);
@@ -176,11 +183,11 @@ beforeAll(async () => {
   let errors = ''
   child.stdout!.on('data', (b) => {
     output += b
-    daemonErrors = (daemonErrors + b).slice(-2000)
+    daemonErrors = (daemonErrors + new Date().toISOString() + ' ' + b).slice(-16000)
   })
   child.stderr!.on('data', (b) => {
     errors += b
-    daemonErrors = (daemonErrors + b).slice(-2000)
+    daemonErrors = (daemonErrors + new Date().toISOString() + ' ' + b).slice(-16000)
   })
   child.on('exit', (code, signal) => (daemonExit = `daemon exited ${code ?? signal}`))
   for (let i = 0; !output.includes('"listening"'); i++) {
@@ -232,6 +239,133 @@ const RUN = (program: string, shots = '', via = 'Run a program') => `
   await until(()=>app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.getState().path===${JSON.stringify(program)}&&l.containerEl.querySelector('.abele-debug-source__point')),'debug source loaded',600);
   await until(()=>{const b=document.querySelector('[aria-label="Continue (F5)"]');return b&&b.offsetParent&&!b.disabled},'visible Continue offered',600);`
 
+it.each(['desktop', 'phone'])(
+  'opens folder debugging from the node menu without any chat on %s',
+  async (device) => {
+    const probe = async (name: string) => {
+      const result = await inAppLong<{
+        conversation: unknown
+        chats: number
+        sessions: number
+      }>(`(async()=>{${prelude}
+      const visible=selector=>[...document.querySelectorAll(selector)].find(e=>e.offsetParent);
+      const registration=${JSON.stringify(registration)},connection=nodes.connection(registration),client=connection.client;
+      for(const id of [...chats.tabOrder.value].filter(id=>id.startsWith('node:')))chats.closeTab(id);
+      for(const session of await client.listSessions())await client.deleteSession(session.session_id);
+      app.workspace.rightSplit.collapse();
+      const model=api.NodePathService.getInstance().model(registration);
+      await model.refresh();
+      const target=model.targets.value.find(t=>t.projectId===${JSON.stringify(folder.projectId)});
+      if(!target)throw Error('No registered folder target');
+      await model.selectTarget(target);
+      const leaf=app.workspace.getLeavesOfType('abele-node-sidebar')[0]??app.workspace.getLeftLeaf(false);
+      await leaf.setViewState({type:'abele-node-sidebar',active:true,state:{registrationId:registration}});
+      await app.workspace.revealLeaf(leaf);app.workspace.leftSplit.expand();
+      press(await until(()=>visible('.abele-node-place [aria-label^="What can be done"]'),'node main menu'));
+      await until(()=>item('Run a program')&&!item('Run a program').classList.contains('is-disabled'),'folder run enabled');
+      if(!item('Attach to a running program'))throw Error('No folder attach action');
+      await shot(${JSON.stringify(name + '-node-menu')});
+      const dismiss=async()=>{document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}));await wait(250);await app.workspace.revealLeaf(leaf);app.workspace.leftSplit.expand();await wait(250)};
+      await dismiss();
+      press(await until(()=>visible('.abele-node-place [aria-label^="What can be done"]'),'folder menu'));
+      await until(()=>item('Run a program')&&!item('Run a program').classList.contains('is-disabled'),'folder menu ready');
+      await shot(${JSON.stringify(name + '-folder-menu')});await dismiss();
+      model.panelMode.value='files';
+      if(!visible('.abele-node-panel [data-path="src/journey.cjs"]'))press(await until(()=>visible('.abele-node-panel [data-path="src"]'),'source folder'));
+      const file=await until(()=>visible('.abele-node-panel [data-path="src/journey.cjs"]'),'source file row'),r=file.getBoundingClientRect();
+      file.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:r.left+20,clientY:r.top+10}));
+      await until(()=>item('Run a program')&&!item('Run a program').classList.contains('is-disabled'),'file menu ready');
+      await shot(${JSON.stringify(name + '-file-menu')});await dismiss();
+      if(!app.commands.commands['abele:node-folder-debug-run'])throw Error('Folder debug command missing');
+      press(await until(()=>visible('.abele-node-place [aria-label^="What can be done"]'),'node menu again'));
+      await until(()=>item('Run a program')&&!item('Run a program').classList.contains('is-disabled'),'node menu ready');
+      press(item('Run a program'));
+      const allow=await until(()=>[...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Allow execution'),'execution confirmation');
+      press(allow);
+      const input=await until(()=>document.querySelector('.prompt input'),'program picker');
+      input.value='src/journey.cjs';input.dispatchEvent(new Event('input',{bubbles:true}));
+      press(await until(()=>[...document.querySelectorAll('.prompt .suggestion-item')].find(el=>el.textContent.includes('src/journey.cjs')),'program suggestion'));
+      await until(()=>api.DebuggerService.instance.active.value?.controller.session.status==='paused','folder debugger paused',500);
+      const binding=api.DebuggerService.instance.active.value;
+      await shot(${JSON.stringify(name + '-debugger-no-chat')});
+      await until(()=>visible('.abele-debug-panel'),'visible folder debugger');
+      const snapshot=binding.controller.snapshot;
+      const result={conversation:snapshot.target.conversation_id,chats:chats.tabOrder.value.filter(id=>id.startsWith('node:')).length,sessions:(await client.listSessions()).length};
+      await binding.controller.command('stop');
+      await binding.rerun();
+      await until(()=>binding.controller.session.status==='paused','folder restart after exit',500);
+      if(binding.controller.snapshot.target.conversation_id!==null)throw Error('Restart acquired a chat owner');
+      await binding.controller.command('stop');
+      return result;
+    })()`)
+      expect(result).toEqual({ conversation: null, chats: 0, sessions: 0 })
+    }
+    try {
+      if (device === 'desktop') await probe('folder-desktop')
+      else
+        await withEmulatedPhone(async () => {
+          openChat()
+          await probe('folder-phone')
+        })
+    } finally {
+      openChat()
+    }
+  },
+  300000
+)
+
+it('persists an automatically generated node title in the tab and node session list', async () => {
+  const probe = async (name: string) => {
+    const result = await inAppLong<{ title: string; reopened: string }>(`(async()=>{${prelude}
+      const registration=${JSON.stringify(registration)},client=nodes.connection(registration).client;
+      const model=api.NodePathService.getInstance().model(registration);await model.refresh();
+      const target=model.targets.value.find(t=>t.projectId===${JSON.stringify(folder.projectId)});
+      const wire=target.kind==='worktree'?{kind:'worktree',worktree_id:target.id}:{kind:'workspace',workspace_id:target.id};
+      await client.nodePath.execution({project_id:target.projectId,target:wire,enabled:true},crypto.randomUUID());
+      const helper=chats.getAuxiliaryModelConfig,fetch=window.fetch;
+      const fake='http://sample-title-helper.invalid/v1';
+      const nl=String.fromCharCode(10);
+      window.fetch=async(url,init)=>String(url).startsWith(fake)
+        ?new Response('data: '+JSON.stringify({choices:[{delta:{content:'Sample refactoring'},finish_reason:null}]})+nl+nl+'data: [DONE]'+nl+nl,{headers:{'Content-Type':'text/event-stream'}})
+        :fetch(url,init);
+      chats.getAuxiliaryModelConfig=()=>({id:'sample-helper',name:'Sample',baseUrl:fake,apiKey:'',contextWindow:1000,maxTokens:100,supportsReasoning:false});
+      let session,tab;
+      try {
+        session=await client.nodePath.createSession({title:'New chat',provider:'fake',target:wire},crypto.randomUUID());
+        const reference={kind:'node-session',registrationId:registration,nodeId:nodes.nodes.value.find(n=>n.id===registration).expectedNodeId,sessionId:session.session_id,title:'New chat'};
+        tab='node:'+registration+':'+session.session_id;
+        await chats.openNodeSession(reference);await chats.revealSidebar({focus:false});
+        const presenter=chats.getNodeSession(tab);
+        await presenter.send('Refactor the sample',[{kind:'chunk',text:'The sample is refactored.'}]);
+        await until(()=>presenter.label.value==='Sample refactoring','automatic node title',500);
+        await shot(${JSON.stringify('node-automatic-title-' + name + '-tab')});
+        chats.closeTab(tab);await chats.openNodeSession(reference);
+        const reopened=chats.getNodeSession(tab).label.value;
+        await model.refresh();await model.selectTarget(target);model.panelMode.value='sessions';
+        const leaf=app.workspace.getLeavesOfType('abele-node-sidebar')[0]??app.workspace.getLeftLeaf(false);
+        await leaf.setViewState({type:'abele-node-sidebar',active:true,state:{registrationId:registration}});
+        await app.workspace.revealLeaf(leaf);app.workspace.leftSplit.expand();
+        await until(()=>document.querySelector('.abele-node-panel')?.textContent.includes('Sample refactoring'),'named node list');
+        await shot(${JSON.stringify('node-automatic-title-' + name + '-list')});
+        return {title:(await client.getSession(session.session_id)).title,reopened};
+      } finally {
+        window.fetch=fetch;chats.getAuxiliaryModelConfig=helper;
+        if(tab)chats.closeTab(tab);if(session)await client.deleteSession(session.session_id);
+      }
+    })()`)
+    expect(result).toEqual({ title: 'Sample refactoring', reopened: 'Sample refactoring' })
+  }
+  try {
+    await probe('desktop')
+    await withEmulatedPhone(async () => {
+      openChat()
+      await probe('phone')
+    })
+  } finally {
+    openChat()
+  }
+}, 240000)
+
 it('walks from source through stepping, recording, analysis, a crash, restart and reattach', async () => {
   const seen = await inAppLong<{
     values: number[]
@@ -243,8 +377,8 @@ it('walks from source through stepping, recording, analysis, a crash, restart an
   }>(`(async()=>{${prelude}
     const failures=[];
     const visible=selector=>[...document.querySelectorAll(selector)].find(e=>e.offsetParent);
-    const enabled=label=>{const e=visible('[aria-label="'+label+'"]');return e&&!e.disabled?e:null};
-    const control=async label=>press(await until(()=>enabled(label),label+' available'));
+    const enabled=(label,scope='')=>{const e=visible(scope+' [aria-label="'+label+'"]');return e&&!e.disabled?e:null};
+    const control=async (label,scope)=>press(await until(()=>enabled(label,scope),label+' available'));
     const paused=()=>visible('.abele-debug-panel_paused');
     const rowNamed=name=>[...document.querySelectorAll('.abele-debug-value_row')].find(r=>{const text=r.querySelector(':scope > .tree-item-self .abele-tree-item__text')?.textContent.trim();return text===name||(name==='Local'&&text?.startsWith('Local: '))});
     const expand=async name=>{
@@ -394,7 +528,7 @@ it('walks from source through stepping, recording, analysis, a crash, restart an
     await nodes.connection(${JSON.stringify(registration)}).refreshAuthorization();
     await until(()=>visible('.abele-debug-panel_lost'),'connection loss shown');
     await shot('journey-disconnected');
-    await control('Try to reconnect');
+    await control('Try to reconnect','.abele-debug-panel');
     await until(()=>paused(),'reconnected to the held program');
     await shot('journey-reconnected');
     await control('Stop (Shift+F5)');
@@ -468,3 +602,61 @@ it('on a phone: breakpoint navigation uncovers the source and highlights its lin
     expect(result).toEqual({ highlighted: true, drawersClosed: true })
   })
 }, 180000)
+
+it('shows disabled debugger actions with the debugger off on desktop and phone', async () => {
+  if (child && child.exitCode === null && child.signalCode === null) {
+    const stopped = new Promise<void>((resolve) => child!.once('exit', () => resolve()))
+    child.kill('SIGTERM')
+    await stopped
+  }
+  child = spawn(
+    process.execPath,
+    [
+      process.env.ABELE_NODE_CLI!,
+      'start',
+      '--state-dir',
+      resolve(dir, 'state'),
+      '--port',
+      String(port),
+      '--claude-path',
+      resolve('tests/fixtures/nodeClaude.mjs'),
+      '--json',
+    ],
+    { stdio: ['ignore', 'pipe', 'pipe'] }
+  )
+  let output = '',
+    errors = ''
+  child.stdout!.on('data', (chunk) => {
+    output += chunk
+  })
+  child.stderr!.on('data', (chunk) => {
+    errors += chunk
+  })
+  for (let attempt = 0; !output.includes('"listening"'); attempt++) {
+    if (attempt > 500 || child.exitCode !== null) throw Error(errors || 'Daemon startup deadline')
+    await wait(20)
+  }
+  const capture = async (name: string) => {
+    const result = await inAppLong<{ actions: number; disabled: boolean }>(`(async()=>{${prelude}
+      const registration=${JSON.stringify(registration)};
+      for(const id of [...chats.tabOrder.value].filter(id=>id.startsWith('node:')))await chats.closeTab(id);
+      app.workspace.rightSplit.collapse();
+      await nodes.connection(registration).connect();
+      const model=api.NodePathService.getInstance().model(registration);await model.refresh();
+      if(!model.current.value)await model.selectTarget(model.targets.value[0]);
+      const leaf=app.workspace.getLeavesOfType('abele-node-sidebar')[0]??app.workspace.getLeftLeaf(false);
+      await leaf.setViewState({type:'abele-node-sidebar',active:true,state:{registrationId:registration}});
+      await app.workspace.revealLeaf(leaf);app.workspace.leftSplit.expand();
+      press(await until(()=>[...document.querySelectorAll('.abele-node-place [aria-label^="What can be done"]')].find(el=>el.offsetParent),'node menu'));
+      await until(()=>[...document.querySelectorAll('.menu-item-title')].some(el=>el.textContent.includes('The debugger is off on this node')),'disabled reason');
+      const rows=[...document.querySelectorAll('.menu-item')].filter(el=>el.querySelector('.menu-item-title')?.textContent.includes('The debugger is off on this node'));
+      await shot(${JSON.stringify(name)});
+      const result={actions:rows.length,disabled:rows.every(el=>el.classList.contains('is-disabled'))};
+      document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}));
+      return result;
+    })()`)
+    expect(result).toEqual({ actions: 3, disabled: true })
+  }
+  await capture('folder-desktop-disabled')
+  await withEmulatedPhone(() => capture('folder-phone-disabled'))
+}, 120000)

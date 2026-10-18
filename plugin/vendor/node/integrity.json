@@ -67,10 +67,10 @@
     "id": "@abele/node-protocol@0.0.0",
     "name": "@abele/node-protocol",
     "version": "0.0.0",
-    "size": 110268,
-    "unpackedSize": 1099973,
-    "shasum": "8e9d8666c936e608ea71033dff6c6ddcf7b0edd4",
-    "integrity": "sha512-W9Bo6HyC3TT7F5cDFCht4z2oWK7G+hHLk1vFn+U8VXB5rVf2exXDwd7ghRjcrQ8nSwk+6HrJDKn0U+SrymxdLg==",
+    "size": 111106,
+    "unpackedSize": 1115543,
+    "shasum": "a25756fbf4561cbd1b4ca92f423da13c934bd26a",
+    "integrity": "sha512-vpv8T0u9QBm+jo5PnTGrNvnoBh7RzeN7ieB/U9H41UX9bFBBiFpZaV0DhNdyh0beTFCFEsLFL1Uavd06DYq+xQ==",
     "filename": "abele-node-protocol-0.0.0.tgz",
     "files": [
       {
@@ -105,32 +105,32 @@
       },
       {
         "path": "dist/debugger-control.d.ts",
-        "size": 31887,
+        "size": 43411,
         "mode": 420
       },
       {
         "path": "dist/debugger-control.js",
-        "size": 6971,
+        "size": 7279,
         "mode": 420
       },
       {
         "path": "dist/debugger-control.js.map",
-        "size": 6237,
+        "size": 6463,
         "mode": 420
       },
       {
         "path": "dist/debugger.d.ts",
-        "size": 151051,
+        "size": 153822,
         "mode": 420
       },
       {
         "path": "dist/debugger.js",
-        "size": 14690,
+        "size": 15034,
         "mode": 420
       },
       {
         "path": "dist/debugger.js.map",
-        "size": 16465,
+        "size": 16862,
         "mode": 420
       },
       {
