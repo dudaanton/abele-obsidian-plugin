@@ -119,6 +119,11 @@ describe.skipIf(!available)('finance chart resizing', () => {
           widths.push([m.container, m.css, m.buffer])
           if (${mobile}) phoneLayouts.push(m)
         }
+        const root = leaf.view.containerEl.querySelector('.abele-finance-sidebar')
+        root.scrollTop = 0
+        await wait(200)
+        const overviewShot = ${JSON.stringify(shots)} + '/finance-overview-' + ${JSON.stringify(mobile ? 'phone' : 'desktop')} + '.png'
+        require('node:fs').writeFileSync(overviewShot, (await win.webContents.capturePage()).toPNG())
         chart().scrollIntoView({ block: 'center' })
         await wait(200)
         const shot = ${JSON.stringify(shots)} + '/finance-' + ${JSON.stringify(mobile ? 'phone' : 'desktop')} + '.png'

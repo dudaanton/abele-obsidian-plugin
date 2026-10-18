@@ -23,11 +23,21 @@
       @custom-applied="onCustomApplied"
     />
 
+    <Tabs
+      v-if="currencyTabs.length > 1"
+      v-model="selectedPeriodCurrency"
+      :tabs="currencyTabs"
+      level="secondary"
+      class="abele-finance-sidebar__currency-tabs"
+    />
+
     <!-- Currency Balance Cards -->
     <div v-if="currencyCards.length || totalCard" class="abele-finance-sidebar__cards">
-      <!-- Everything held, in every currency, as one sum at today's rates: first, since it is the
-           one answer to «how much do I have»; the exact cards of each currency follow. -->
-      <div v-if="totalCard" class="abele-finance-sidebar__card abele-finance-sidebar__card_total">
+      <div
+        v-if="totalCard"
+        v-show="approxPeriod"
+        class="abele-finance-sidebar__card abele-finance-sidebar__card_total"
+      >
         <div class="abele-finance-sidebar__card-balance">
           <ApproxAmount
             :amount="totalCard.assets"
@@ -63,7 +73,12 @@
           </div>
         </div>
       </div>
-      <div v-for="card in currencyCards" :key="card.currency" class="abele-finance-sidebar__card">
+      <div
+        v-for="card in currencyCards"
+        v-show="card.currency === selectedPeriodCurrency"
+        :key="card.currency"
+        class="abele-finance-sidebar__card"
+      >
         <div class="abele-finance-sidebar__card-balance">
           {{ formatAmount(card.assets) }}
           <span class="abele-finance-sidebar__card-currency">{{ card.currency }}</span>
@@ -101,13 +116,6 @@
 
     <!-- Period Summary -->
     <section class="abele-finance-sidebar__section">
-      <Tabs
-        v-if="periodCurrencies.length > 1"
-        v-model="selectedPeriodCurrency"
-        :tabs="currencyTabs"
-        level="secondary"
-        class="abele-finance-sidebar__currency-tabs"
-      />
       <!-- A period with nothing in it says so once, in place of zero rows and an empty chart. -->
       <EmptyState
         v-if="periodEmpty"
@@ -419,7 +427,7 @@ const {
   periodEmpty,
   periodCurrencies,
   selectedPeriodCurrency,
-  currencyTabs,
+  currencyTabs: periodCurrencyTabs,
   periodTotals,
   periodIncome,
   periodExpenses,
@@ -436,6 +444,18 @@ const {
   rates: () => ({ table: ratesTable(), display: exchangeRates.display }),
 })
 const approxPeriod = computed(() => selectedPeriodCurrency.value === ALL_CURRENCIES)
+// Balances remain selectable even when their currency has no activity in this period.
+const currencyTabs = computed(() => {
+  const codes = new Set([
+    ...pinnedCurrenciesList.value,
+    ...periodCurrencies.value.filter((code) => code !== ALL_CURRENCIES),
+  ])
+  const tabs = [...codes].map((code) => ({ id: code, label: code }))
+  const converted = periodCurrencyTabs.value.find((tab) => tab.id === ALL_CURRENCIES)
+  if (converted || totalCard.value)
+    tabs.unshift(converted ?? { id: ALL_CURRENCIES, label: `≈ ${exchangeRates.display}` })
+  return tabs
+})
 // One currency in the period has no tab to name it: its code stands beside the amounts instead.
 const periodCode = computed(() =>
   periodCurrencies.value.length === 1 ? periodCurrencies.value[0] : ''

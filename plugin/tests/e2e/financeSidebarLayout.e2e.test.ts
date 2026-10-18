@@ -49,6 +49,9 @@ interface Report {
   blockGaps: number[]
   /** Whether the period summary's currency switcher is the kit's tab strip. */
   currencyTabsKit: boolean
+  selectorAboveCards: boolean
+  visibleCurrencies: string[]
+  selectedCurrency: string
   /** Date dividers whose contents reach past their own right edge, with by how much. */
   overflowingDividers: string[]
 }
@@ -75,7 +78,7 @@ const probeScript = `(async () => {
   const FOLDER = ${JSON.stringify(FOLDER)}
   const TYPE = 'abele-finance-sidebar-view'
   const ws = app.workspace
-  const report = { error: '', cards: [], cardGaps: [], cardRules: [], lentRule: null, tabsGap: 0, blockGaps: [], currencyTabsKit: false, overflowingDividers: [] }
+  const report = { error: '', cards: [], cardGaps: [], cardRules: [], lentRule: null, tabsGap: 0, blockGaps: [], currencyTabsKit: false, selectorAboveCards: false, visibleCurrencies: [], selectedCurrency: '', overflowingDividers: [] }
   const wasCollapsed = ws.rightSplit.collapsed
   const oldSize = ws.rightSplit.size
   let leaf = null
@@ -151,10 +154,14 @@ const probeScript = `(async () => {
       }
     }
 
-    const cards = [...el.querySelectorAll('.abele-finance-sidebar__card')]
+    const cards = [...el.querySelectorAll('.abele-finance-sidebar__card')].filter(card => card.checkVisibility())
     report.cards = cards.map(box)
     for (let i = 1; i < cards.length; i++) report.cardGaps.push(round(box(cards[i]).top - box(cards[i - 1]).bottom))
-    report.cardRules = [...el.querySelectorAll('.abele-finance-sidebar__card-details')].map(rule)
+    report.cardRules = [...el.querySelectorAll('.abele-finance-sidebar__card-details')].filter(card => card.checkVisibility()).map(rule)
+    const currencyTabs = el.querySelector('.abele-finance-sidebar__currency-tabs')
+    report.selectorAboveCards = box(currencyTabs).bottom <= box(cards[0]).top
+    report.visibleCurrencies = cards.map(card => card.querySelector('.abele-finance-sidebar__card-currency')?.textContent.trim())
+    report.selectedCurrency = currencyTabs.querySelector('[aria-selected="true"]').dataset.tabId
 
     const lent = el.querySelector('.abele-finance-sidebar__summary--debt')
     report.lentRule = rule(lent)
@@ -213,9 +220,9 @@ describe.skipIf(!available)('the finance sidebar, filled, at a sidebar width', (
     }
   })
 
-  it('leaves more room between two currencies than inside one', () => {
-    const inside = report.cardRules[0].above + report.cardRules[0].paddingTop
-    for (const gap of report.cardGaps) expect(gap).toBeGreaterThan(inside)
+  it('shows only the selected balance with its selector above the cards', () => {
+    expect(report.selectorAboveCards).toBe(true)
+    expect(report.visibleCurrencies).toEqual([report.selectedCurrency])
   })
 
   it('keeps the chart tabs off the rows above them', () => {

@@ -17,6 +17,7 @@ import { FOOTER_VIEW_KEY, resetFooterView } from '@/composables/useFooterView'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { VaultWatcherWrapper } from '@/helpers/VaultWatcherWrapper'
 import { formatAmount } from '@/helpers/moneyFormat'
+import { exchangeRates } from '@/finance/rates/exchangeRates'
 import { openFile } from '@/helpers/vaultUtils'
 import type { FakeFileSpec } from '../helpers/fakeVault'
 import { useVault } from '../helpers/testEnv'
@@ -154,6 +155,7 @@ async function settle() {
 }
 async function sidebar() {
   wrapper = mount(FinanceSidebar, {
+    attachTo: document.body,
     shallow: true,
     global: { renderStubDefaultSlot: true, stubs: { Chart: false, SidebarPanel: false } },
   })
@@ -197,6 +199,60 @@ async function period(start: string, end: string) {
 }
 
 describe('finance sidebar — period money and charts', () => {
+  it('shows the converted balance alone on the aggregate tab and restores a currency balance', async () => {
+    const oldTable = exchangeRates.table
+    exchangeRates.table = {
+      base: 'USD',
+      fetchedAt: '2024-03-01T00:00:00Z',
+      fetchedOn: '2024-03-01',
+      rates: { EUR: { perUsd: 0.9, date: '2024-03-01', source: 'sample' } },
+    }
+    try {
+      const view = await sidebar()
+      const tabs = view.findComponent('.abele-finance-sidebar__currency-tabs')
+      const visibleCards = () =>
+        view.findAll('.abele-finance-sidebar__card').filter((card) => card.isVisible())
+      expect(visibleCards()).toHaveLength(1)
+      expect(visibleCards()[0].classes()).not.toContain('abele-finance-sidebar__card_total')
+      tabs.vm.$emit('update:modelValue', '*')
+      await settle()
+      expect(visibleCards()).toHaveLength(1)
+      expect(visibleCards()[0].classes()).toContain('abele-finance-sidebar__card_total')
+      tabs.vm.$emit('update:modelValue', 'USD')
+      await settle()
+      expect(visibleCards()).toHaveLength(1)
+      expect(visibleCards()[0].find('.abele-finance-sidebar__card-currency').text()).toBe('USD')
+    } finally {
+      exchangeRates.table = oldTable
+    }
+  })
+
+  it('selects balance cards above the balances, including in an inactive period', async () => {
+    const view = await sidebar()
+    const tabs = () => view.findComponent('.abele-finance-sidebar__currency-tabs')
+    const visibleCards = () =>
+      view
+        .findAll('.abele-finance-sidebar__card')
+        .filter((card) => card.isVisible())
+        .map((card) => card.find('.abele-finance-sidebar__card-currency').text())
+    expect(visibleCards()).toEqual(['EUR'])
+    expect(
+      tabs().element.compareDocumentPosition(view.find('.abele-finance-sidebar__cards').element) & 4
+    ).toBe(4)
+    tabs().vm.$emit('update:modelValue', 'USD')
+    await settle()
+    expect(visibleCards()).toEqual(['USD'])
+    await period('2025-01-01', '2025-01-31')
+    expect(
+      tabs()
+        .props('tabs')
+        .map((tab: { id: string }) => tab.id)
+    ).toContain('EUR')
+    tabs().vm.$emit('update:modelValue', 'EUR')
+    await settle()
+    expect(visibleCards()).toEqual(['EUR'])
+  })
+
   it('counts a mixed category on both pies and the calendar without counting category transfers', async () => {
     store.balanceIndex.value!.cleanup()
     store.transactionsList.value!.cleanup()
