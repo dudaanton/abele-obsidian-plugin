@@ -80,6 +80,7 @@
         @north="map?.resetNorthPitch()"
         @locate="locate"
         @full="full"
+        @fit="fitAll"
         @layers="openBackgrounds"
       />
 
@@ -863,9 +864,17 @@ function drawLocation(point: { lat: number; lon: number }) {
   dot.className = 'abele-map-base__me'
   meMarker = new lib.Marker({ element: dot }).setLngLat([point.lon, point.lat]).addTo(map.value)
 }
-function full() {
+function fitAll() {
   if (!props.places.length) return
   openGroup(props.places, false, { x: 0, y: 0 })
+}
+function full() {
+  const el = mapEl.value?.closest('.abele-map-base')
+  if (!el) return
+  if (el.ownerDocument.fullscreenElement)
+    void el.ownerDocument.exitFullscreen().catch(() => new Notice(t('maps.fullUnavailable')))
+  else if (typeof el.requestFullscreen === 'function')
+    void el.requestFullscreen().catch(() => new Notice(t('maps.fullUnavailable')))
 }
 watch(
   () => props.center,

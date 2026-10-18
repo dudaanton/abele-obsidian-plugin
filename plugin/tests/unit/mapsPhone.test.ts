@@ -3,6 +3,7 @@ import { flushPromises, shallowMount } from '@vue/test-utils'
 import { Platform, StringValue, type BasesEntry } from 'obsidian'
 import MapBaseView from '@/components/mapBase/MapBaseView.vue'
 import MapControls from '@/components/map/MapControls.vue'
+import { ControlItem } from '@/components/obsidian/ControlItem'
 import Modal from '@/components/obsidian/Modal.vue'
 import { mapRows } from '@/bases/mapRows'
 const fake = vi.hoisted(() => ({
@@ -87,20 +88,36 @@ const places = [
 ]
 let wrapper: ReturnType<typeof shallowMount> | undefined
 const originalPhone = Platform.isPhone
+const originalFullscreen = Object.getOwnPropertyDescriptor(
+  HTMLElement.prototype,
+  'requestFullscreen'
+)
 afterEach(() => {
   wrapper?.unmount()
   wrapper = undefined
   ;(Platform as { isPhone: boolean }).isPhone = originalPhone
   fake.handlers.clear()
   vi.clearAllMocks()
+  if (originalFullscreen)
+    Object.defineProperty(HTMLElement.prototype, 'requestFullscreen', originalFullscreen)
+  else Reflect.deleteProperty(HTMLElement.prototype, 'requestFullscreen')
 })
 async function view() {
   wrapper = shallowMount(MapBaseView, {
     props: { places, styleUrl: {}, background: '', backgrounds: [] },
+    global: { stubs: { MapControls: false } },
   })
   await flushPromises()
   fake.fitBounds.mockClear()
   return wrapper
+}
+function control(w: ReturnType<typeof shallowMount>, label: string) {
+  const item = w
+    .getComponent(MapControls)
+    .findAllComponents(ControlItem)
+    .find((item) => item.props('tooltip') === label)
+  if (!item) throw Error(`Missing control: ${label}`)
+  return item
 }
 it('frames cluster leaves even when a touch lands away from the cluster centre', async () => {
   await view()
@@ -118,14 +135,45 @@ it('frames cluster leaves even when a touch lands away from the cluster centre',
   ])
   expect(fake.easeTo).not.toHaveBeenCalled()
 })
-it('the frame control fits all places instead of requesting fullscreen', async () => {
+it('the fit-all control frames all places independently of fullscreen', async () => {
   const w = await view()
-  w.findComponent(MapControls).vm.$emit('full')
+  control(w, 'Fit all places').vm.$emit('click')
   expect(fake.fitBounds).toHaveBeenCalledOnce()
   expect(fake.fitBounds.mock.calls[0][0].toArray()).toEqual([
     [20, 12],
     [20.02, 12.03],
   ])
+})
+it('requests desktop fullscreen from its own control while keeping a separate fit-all action', async () => {
+  const requestFullscreen = vi.fn().mockResolvedValue(undefined)
+  Object.defineProperty(HTMLElement.prototype, 'requestFullscreen', {
+    configurable: true,
+    value: requestFullscreen,
+  })
+  const w = await view()
+  control(w, 'Full screen').vm.$emit('click')
+  expect(requestFullscreen).toHaveBeenCalledOnce()
+  expect(requestFullscreen.mock.contexts[0]).toBe(w.element)
+  expect(fake.fitBounds).not.toHaveBeenCalled()
+  const fit = control(w, 'Fit all places')
+  expect(fit.props('icon')).not.toBe(control(w, 'Full screen').props('icon'))
+  fit.vm.$emit('click')
+  expect(fake.fitBounds).toHaveBeenCalledOnce()
+})
+it('hides fullscreen when its API is missing and keeps fit-all available', async () => {
+  Object.defineProperty(HTMLElement.prototype, 'requestFullscreen', {
+    configurable: true,
+    value: undefined,
+  })
+  const w = await view()
+  expect(
+    w
+      .getComponent(MapControls)
+      .findAllComponents(ControlItem)
+      .some((item) => item.props('tooltip') === 'Full screen')
+  ).toBe(false)
+  control(w, 'Fit all places').vm.$emit('click')
+  expect(fake.fitBounds).toHaveBeenCalledOnce()
 })
 it('a phone place card uses the content-sized native sheet', async () => {
   ;(Platform as { isPhone: boolean }).isPhone = true

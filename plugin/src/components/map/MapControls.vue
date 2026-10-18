@@ -1,6 +1,6 @@
 <template>
   <!-- The map's glyphs as the canvas floats its own: Obsidian Canvas's control column. -->
-  <div class="canvas-controls abele-map-controls">
+  <div ref="controlsEl" class="canvas-controls abele-map-controls">
     <div class="canvas-control-group">
       <ControlItem icon="plus" :tooltip="t('maps.zoomIn')" @click="emit('zoom', 1)" />
       <ControlItem icon="minus" :tooltip="t('maps.zoomOut')" @click="emit('zoom', -1)" />
@@ -22,9 +22,11 @@
         :disabled="state.locating"
         @click="emit('locate')"
       />
+      <ControlItem v-if="fit" icon="scan" :tooltip="t('maps.fitPlaces')" @click="emit('fit')" />
       <ControlItem
-        :icon="fit ? 'scan' : state.full ? 'minimize' : 'maximize'"
-        :tooltip="fit ? t('maps.fitPlaces') : state.full ? t('maps.exitFull') : t('maps.full')"
+        v-if="fullscreenSupported"
+        :icon="state.full ? 'minimize' : 'maximize'"
+        :tooltip="state.full ? t('maps.exitFull') : t('maps.full')"
         @click="emit('full')"
       />
     </div>
@@ -43,11 +45,16 @@
 import { t } from '@/i18n'
 // What a map in a note or a chat offers to do, in the plugin's glyphs with words in tooltips:
 // zoom, back to north once turned, where the device is, and the whole screen.
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ControlItem } from '../obsidian/ControlItem'
 import type { MapControlsState } from './mapControlsState'
 
 const props = defineProps<{ state: MapControlsState; layers?: boolean; fit?: boolean }>()
+const controlsEl = ref<HTMLElement>()
+const fullscreenSupported = ref(false)
+onMounted(() => {
+  fullscreenSupported.value = typeof controlsEl.value?.requestFullscreen === 'function'
+})
 const locateTip = computed(() =>
   props.state.locating
     ? t('maps.locating')
@@ -62,6 +69,7 @@ const emit = defineEmits<{
   north: []
   locate: []
   full: []
+  fit: []
   layers: [event: MouseEvent]
 }>()
 </script>

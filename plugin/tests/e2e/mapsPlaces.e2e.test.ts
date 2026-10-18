@@ -94,6 +94,11 @@ it.each(onPhone() ? [true] : [false, true])(
     const card = () => document.querySelector('.abele-map-card-modal .abele-map-card')
     const closeCard = async () => { const close = await until(() => card()?.closest('.modal')?.querySelector('.modal-header-button, .modal-close-button'), 'card close action'); close.click(); await until(() => !card(), 'closed card') }
       await until(() => component.props.places.length === 5, 'five places')
+      const fullControl = root.querySelector('[aria-label="Full screen"]')
+      if (!!fullControl !== (typeof root.requestFullscreen === 'function')) throw Error('Fullscreen control does not match API availability')
+      const fitControl = root.querySelector('[aria-label="Fit all places"]')
+      if (!fitControl) throw Error('Fit-all control missing')
+      if (fullControl && fullControl.querySelector('svg')?.getAttribute('class') === fitControl.querySelector('svg')?.getAttribute('class')) throw Error('Fit-all and fullscreen use the same icon')
       const before = await app.vault.adapter.read(${JSON.stringify(basePath)})
       map.jumpTo({ center: [20, 12], zoom: 1.5 })
       const cluster = await until(() => map.getLayer('abele-place-clusters') && map.queryRenderedFeatures({ layers: ['abele-place-clusters'] }).find(f => f.properties.point_count === 5), 'all places clustered')
