@@ -2312,6 +2312,15 @@ const showDebug = () => {
 </script>
 
 <style lang="scss">
+// The native phone header is fixed above view-content. Anchor the absolute chat to that
+// content box, whose position and size already account for the header and bottom navigation.
+body.is-phone
+  .workspace-split.mod-root
+  .workspace-leaf-content[data-type='abele-ai-sidebar-view']
+  > .view-content {
+  position: relative;
+}
+
 .abele-ai-chat {
   // The chat stands as far from the pane's edges as the plugin's other side panels do (money,
   // accounts, time): its header, its messages and the field to write in, on one edge.
