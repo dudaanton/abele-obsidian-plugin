@@ -209,3 +209,51 @@ it('keeps message-less negotiation failures disabled', async () => {
   vi.mocked(context.connection.client.request).mockRejectedValueOnce(new Error(''))
   expect(await folderDebugReason(context)).toMatch(/off/)
 })
+
+it.each(['describe', 'sessions', 'profiles'])(
+  'retains current-peer %s failures offline but discards failures after peer replacement',
+  async (stage) => {
+    for (const change of ['offline', 'reconnected', 'retry-failed', 'generation', 'target']) {
+      const context = owner()
+      let generation = 0
+      Object.defineProperty(context.connection, 'authorizationGeneration', {
+        get: () => generation,
+      })
+      const target = { url: 'ws://sample.invalid/channel' }
+      Object.defineProperty(context.connection.client, 'target', { value: target })
+      let enter!: () => void, release!: () => void
+      const entered = new Promise<void>((resolve) => {
+        enter = resolve
+      })
+      const pending = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const fail = async () => {
+        enter()
+        await pending
+        throw new Error('No answer from the node. Reconnecting.')
+      }
+      if (stage === 'describe')
+        vi.mocked(context.connection.client.describe).mockImplementationOnce(fail)
+      else
+        vi.mocked(context.connection.client.request).mockImplementation(async (method) => {
+          if (method === `debugger.v1.${stage}`) return fail()
+          return []
+        })
+      const checking = folderDebugReason(context)
+      await entered
+      context.connection.state.value = 'offline'
+      if (change === 'reconnected') context.connection.state.value = 'connected'
+      if (change === 'retry-failed') {
+        context.connection.state.value = 'connecting'
+        context.connection.state.value = 'offline'
+      }
+      if (change === 'generation') generation++
+      if (change === 'target') target.url = 'ws://other.invalid/channel'
+      release()
+      expect(await checking, `${stage}/${change}`).toBe(
+        change === 'offline' ? 'No answer from the node. Reconnecting.' : 'Reconnect to the node'
+      )
+    }
+  }
+)

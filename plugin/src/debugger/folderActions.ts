@@ -25,18 +25,22 @@ export async function folderDebugReason(owner: FolderDebugOwner): Promise<string
   const generation = owner.connection.authorizationGeneration
   const identity = JSON.stringify(client.target)
   let interrupted = false
+  let replaced = false
   const stop = watch(
     owner.connection.state,
-    () => {
+    (state) => {
       interrupted = true
+      if (state !== 'offline') replaced = true
     },
     { flush: 'sync' }
   )
-  const current = () =>
-    !interrupted &&
-    owner.connection.state.value === 'connected' &&
+  // Going offline invalidates success, but its failure still explains this attempt.
+  // A new connection attempt invalidates errors from the previous peer as well.
+  const samePeer = () =>
+    !replaced &&
     generation === owner.connection.authorizationGeneration &&
     identity === JSON.stringify(client.target)
+  const current = () => !interrupted && owner.connection.state.value === 'connected' && samePeer()
   try {
     const description = await client.describe()
     if (!current()) return t('debug.offline')
@@ -46,7 +50,7 @@ export async function folderDebugReason(owner: FolderDebugOwner): Promise<string
     } catch (error) {
       console.debug('[debugger] Folder ownership unavailable', error)
       const message = (error instanceof Error ? error.message : String(error)) || t('debug.off')
-      if (!current()) return t('debug.offline')
+      if (!samePeer()) return t('debug.offline')
       return /invalid_params|invalid_request|unsupported_method|conversation_id|validation/i.test(
         message
       )
@@ -64,7 +68,7 @@ export async function folderDebugReason(owner: FolderDebugOwner): Promise<string
     return ''
   } catch (error) {
     console.debug('[debugger] Folder availability unavailable', error)
-    return !current()
+    return !samePeer()
       ? t('debug.offline')
       : (error instanceof Error && error.message) || t('debug.off')
   } finally {
