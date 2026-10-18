@@ -280,9 +280,9 @@ it.each(['desktop', 'phone'])(
       press(await until(()=>visible('.abele-node-place [aria-label^="What can be done"]'),'node menu again'));
       await until(()=>item('Run a program')&&!item('Run a program').classList.contains('is-disabled'),'node menu ready');
       press(item('Run a program'));
-      const allow=await until(()=>[...document.querySelectorAll('.modal button')].find(b=>b.textContent.trim()==='Allow execution'),'execution confirmation');
-      press(allow);
-      const input=await until(()=>document.querySelector('.prompt input'),'program picker');
+      // The fixture project is already trusted: opening another program must not ask again.
+      const input=await until(()=>document.querySelector('.prompt input'),'trusted-folder program picker');
+      if([...document.querySelectorAll('.modal button')].some(b=>b.textContent.trim()==='Allow execution'))throw Error('Trusted folder asked for execution confirmation');
       input.value='src/journey.cjs';input.dispatchEvent(new Event('input',{bubbles:true}));
       press(await until(()=>[...document.querySelectorAll('.prompt .suggestion-item')].find(el=>el.textContent.includes('src/journey.cjs')),'program suggestion'));
       await until(()=>api.DebuggerService.instance.active.value?.controller.session.status==='paused','folder debugger paused',500);
@@ -471,14 +471,18 @@ it('walks from source through stepping, recording, analysis, a crash, restart an
     const values=[];
     for(const row of steps().slice(0,3)){
       press(row.querySelector('.tree-item-self'));
-      await sourceAt(6,'journey-step-row-source-'+values.length);
-      await returnToRun();
-      await until(()=>document.querySelector('.abele-trace-step'),'recorded detail');
+      // Picking a row inspects it in place; only the detail's source link leaves the run.
+      await until(()=>row.querySelector('.tree-item-self.is-active')&&visible('.abele-trace-run')&&visible('.abele-trace-step'),'recorded detail in run');
       const value=await until(()=>[...document.querySelectorAll('.abele-trace-step .abele-trace-value')].find(e=>e.querySelector('.abele-tree-item__text')?.textContent.trim()==='n'),'recorded n');
       if(value.querySelector('.abele-trace-value__failed'))throw Error('Record capture failed: '+value.textContent);
       values.push(Number(value.querySelector('.abele-tree-item__note')?.textContent.trim()));
+      press(await until(()=>visible('.abele-trace-step__source'),'step source link'));
+      await sourceAt(6,'journey-step-row-source-'+(values.length-1));
+      await returnToRun();
     }
     press(steps()[0].querySelector('.abele-trace-glyph'));
+    await until(()=>steps()[0].querySelector('.tree-item-self.is-active')&&visible('.abele-trace-run')&&visible('.abele-trace-step'),'glyph inspects step in run');
+    press(await until(()=>visible('.abele-trace-step__source'),'selected step source link'));
     await sourceAt(6,'journey-step-diamond-source');
     await returnToRun();
     press(document.querySelector('.abele-trace-step__head .abele-trace-glyph'));
