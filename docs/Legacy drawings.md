@@ -16,6 +16,12 @@ view. Keep the original SVGs, which existing embeds and mixed-content previews s
 
 Conversions record the source path in `abele.drawingSource`. Repeating the command skips
 sources with an existing conversion, even after edits to either file. Unrelated canvas names
-are never overwritten. If the converted canvas is deleted, a subsequent run may create it
+are never overwritten. New conversions also record a source-content hash in
+`abele.drawingSourceHash`, allowing a byte-preserving rename or move to find the earlier
+conversion when the old source path is gone. Identical originals that still coexist remain
+separate drawings. Older conversions without a hash retain path-based matching.
+If the converted canvas is deleted, a subsequent run may create it
 again. Malformed or unsupported metadata is reported without changing the source. The final
 notice gives counts; detailed per-file results appear in the developer console.
+Invalid raw sizes, colours, pressure or freehand profiles are rejected before the display
+reader can substitute defaults, leaving those drawings unconverted and unchanged.

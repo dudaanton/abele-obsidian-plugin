@@ -26,6 +26,67 @@ const stroke = {
 }
 
 describe('legacy drawing conversion', () => {
+  it('does not collapse identical drawings that still exist at separate paths', async () => {
+    const source = drawingSvg({ items: [stroke] })
+    const { files, io } = store({ 'First.svg': source })
+    await convertDrawings(io)
+    files.set('Second.svg', source)
+    expect((await convertDrawings(io)).map((result) => result.status)).toEqual([
+      'existing',
+      'converted',
+    ])
+    expect(files.has('Second.canvas')).toBe(true)
+  })
+
+  it('recognises a folder move that moves both source and converted canvas', async () => {
+    const source = drawingSvg({ items: [{ ...stroke, linear: undefined }] })
+    const { files, io } = store({ 'Folder/Sketch.svg': source })
+    await convertDrawings(io)
+    const canvas = files.get('Folder/Sketch.canvas')!
+    files.clear()
+    files.set('Moved/Sketch.svg', source)
+    files.set('Moved/Sketch.canvas', canvas)
+    expect(await convertDrawings(io)).toEqual([
+      { source: 'Moved/Sketch.svg', destination: 'Moved/Sketch.canvas', status: 'existing' },
+    ])
+    expect(files.size).toBe(2)
+    expect(files.get('Moved/Sketch.svg')).toBe(source)
+  })
+  it.each(['Renamed.svg', 'Other/Sketch.svg', 'Moved/Folder/Sketch.svg'])(
+    'recognises an earlier conversion after moving the original to %s',
+    async (destination) => {
+      const source = drawingSvg({ items: [stroke] })
+      const { files, io } = store({ 'Folder/Sketch.svg': source })
+      await convertDrawings(io)
+      const canvas = files.get('Folder/Sketch.canvas')!
+      files.delete('Folder/Sketch.svg')
+      files.set(destination, source)
+      const before = [...files]
+      expect(await convertDrawings(io)).toEqual([
+        { source: destination, destination: 'Folder/Sketch.canvas', status: 'existing' },
+      ])
+      expect([...files]).toEqual(before)
+      expect(files.get('Folder/Sketch.canvas')).toBe(canvas)
+    }
+  )
+  it.each([
+    { size: -1 },
+    { size: 3000 },
+    { color: 'unknown' },
+    { freedraw: { simulatePressure: false, streamline: 2 } },
+    { freedraw: { simulatePressure: 'yes', streamline: 0.5 } },
+    { linear: 'true' },
+    { points: [0, 0, -0.1] },
+    { d: [0, 0, 50, 1, 1, 60], points: undefined },
+  ])('refuses raw fields the display reader would normalize: %j', async (fields) => {
+    const source = drawingSvg({ items: [stroke] }).replace(
+      /<metadata id="abele-drawing">[\s\S]*?<\/metadata>/,
+      `<metadata id="abele-drawing">${JSON.stringify({ v: 1, items: [{ ...stroke, ...fields }] })}</metadata>`
+    )
+    const { files, io } = store({ 'Invalid.svg': source })
+    expect((await convertDrawings(io))[0]).toMatchObject({ status: 'failed' })
+    expect([...files]).toEqual([['Invalid.svg', source]])
+  })
   it('preserves ink and source bytes, and repeating creates nothing', async () => {
     const source = drawingSvg({ items: [stroke] })
     const { files, io } = store({ 'Sketch.svg': source, 'Sketch.canvas': 'unrelated' })

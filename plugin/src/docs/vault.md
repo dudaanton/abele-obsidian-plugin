@@ -2366,10 +2366,16 @@ legacy embed renderer remains available, without an editing action for the drawi
 
 The explicit **Convert legacy drawings to canvases** command scans all SVGs in the vault.
 Each new `.canvas` stores `abele.drawingSource` with the original vault-relative SVG path.
+It also stores `abele.drawingSourceHash`, the SHA-256 of the original SVG bytes. If that path
+no longer exists, matching bytes identify a renamed or moved source, including folder moves.
+Identical SVGs that still coexist at their recorded paths remain separate drawings. Older
+conversions without a hash retain path-based matching.
 Repeating conversion finds that provenance anywhere in the vault and skips that source,
 including when the source or destination was edited. A deleted destination can be converted
 again. Existing filenames without matching provenance get a numbered alternative, never an
 overwrite. Failed or unsupported metadata is reported and the original remains untouched.
+Raw metadata is validated before the tolerant display reader: invalid sizes, colours, pressure
+or freedraw profiles are unsupported, never silently repaired during conversion.
 
 Pen and marker strokes become root `abele.ink`, retaining coordinates, pressure, width,
 linear mode and freedraw profiles; named drawing colours become their literal RGB values.
