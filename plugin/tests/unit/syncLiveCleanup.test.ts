@@ -110,7 +110,7 @@ it('shares one teardown when a timeout hook and its late body both close the sam
   const reset = vi.spyOn(live.primary, 'resetTokenState').mockImplementation(async () => {
     await waiting
   })
-  vi.spyOn(live.primary, 'remove').mockImplementation(() => {})
+  vi.spyOn(live.primary, 'removeTree').mockResolvedValue(undefined)
   vi.spyOn(live.primary, 'run').mockReturnValue(true)
   const saved = (
     live as unknown as { saved: Map<typeof live.primary, { ignore: null; file: null }> }
@@ -136,7 +136,9 @@ it('attempts both pool resets and restores each pool even when the first reset f
   const forced = devices.map((device) =>
     vi.spyOn(device, 'forceResetTokenState').mockResolvedValue()
   )
-  const removals = devices.map((device) => vi.spyOn(device, 'remove').mockImplementation(() => {}))
+  const removals = devices.map((device) =>
+    vi.spyOn(device, 'removeTree').mockResolvedValue(undefined)
+  )
   const restorations = devices.map((device) => vi.spyOn(device, 'run').mockReturnValue(true))
   const saved = (
     live as unknown as {
@@ -185,7 +187,7 @@ it('reports both cleanup failures while still restoring the lease', async () => 
     new Error('guarded recovery required')
   )
   const restore = vi.spyOn(live.primary, 'run').mockReturnValue(true)
-  const remove = vi.spyOn(live.primary, 'remove').mockImplementation(() => {})
+  const remove = vi.spyOn(live.primary, 'removeTree').mockResolvedValue(undefined)
   const saved = (
     live as unknown as {
       saved: Map<typeof live.primary, { ignore: string | null; file: string | null }>
@@ -214,7 +216,7 @@ it('uses the full reset fallback when a successful reset leaves persisted record
       throw new Error('Token pool reset left connection records')
     return true as never
   })
-  vi.spyOn(live.primary, 'remove').mockImplementation(() => {})
+  vi.spyOn(live.primary, 'removeTree').mockResolvedValue(undefined)
   await live.close()
   expect(fallback).toHaveBeenCalledOnce()
   expect(
@@ -238,7 +240,7 @@ it('reports retained records after the fallback while still restoring the lease'
       throw new Error('Token pool reset left connection records')
     return true as never
   })
-  const remove = vi.spyOn(live.primary, 'remove').mockImplementation(() => {})
+  const remove = vi.spyOn(live.primary, 'removeTree').mockResolvedValue(undefined)
   await expect(live.close()).rejects.toThrow('Token pool reset left connection records')
   expect(remove).toHaveBeenCalledWith([live.root], true)
   expect(run.mock.calls.some(([body]) => body.includes('sample original ignore'))).toBe(true)

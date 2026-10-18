@@ -246,7 +246,7 @@ export class TokenSyncLive {
       }
       try {
         // Fixture files are the only notes this case owns. Reset itself never touches files.
-        device.remove([this.root], true)
+        await device.removeTree([this.root], true)
       } catch (error) {
         failures.push(error)
       }
