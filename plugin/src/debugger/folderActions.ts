@@ -149,14 +149,25 @@ function commandTarget(): PathTarget | undefined {
     : undefined
 }
 export function registerFolderDebugCommands(plugin: Plugin): void {
-  for (const action of ['open', 'run', 'attach'] as const)
-    plugin.addCommand({
-      id: `node-folder-debug-${action}`,
-      name: titles[action](),
-      callback: () => {
-        const target = commandTarget()
-        if (target) void runFolderDebug(target, action)
-        else new Notice(t('debug.noFolder'))
-      },
-    })
+  const callback = (action: 'open' | 'run' | 'attach') => () => {
+    const target = commandTarget()
+    if (target) void runFolderDebug(target, action)
+    else new Notice(t('debug.noFolder'))
+  }
+  // Each name is a literal t() call so the command reference test can resolve it.
+  plugin.addCommand({
+    id: 'node-folder-debug-open',
+    name: t('debug.open'),
+    callback: callback('open'),
+  })
+  plugin.addCommand({
+    id: 'node-folder-debug-run',
+    name: t('debug.run'),
+    callback: callback('run'),
+  })
+  plugin.addCommand({
+    id: 'node-folder-debug-attach',
+    name: t('debug.attach'),
+    callback: callback('attach'),
+  })
 }

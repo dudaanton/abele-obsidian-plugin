@@ -223,5 +223,8 @@ them. Incoming executable changes require approving the exact reviewed version.
 - Dictate into the note — records, transcribes, and puts the words at the cursor
 - Copy current location coordinates — asks the device for its position and copies it as
   `latitude, longitude`, ready for a note's coordinates property; nothing is stored or sent
+- Debug · Run a program · Attach to a running program — debugging on a node for the folder of the
+  active node file (or the place selected in the node panel), without opening a chat; says why when
+  the node, the folder or the debugger is not available
 
 Each script in the vault also appears as its own command, **Script: <name>**.
