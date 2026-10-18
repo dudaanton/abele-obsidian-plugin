@@ -2,9 +2,25 @@ import { expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { reactive, nextTick } from 'vue'
 import PictureSession from '@/components/drawing/PictureSession.vue'
+import PictureEditor from '@/components/drawing/PictureEditor.vue'
 import { emptyDrawingModel } from '@/drawing/model'
 import type { DrawingSession } from '@/drawing/DrawingSession'
 import { wholePicture } from '@/drawing/crop'
+
+it.each([false, true])('renders phone tools with cropping=%s', async (cropping) => {
+  const wrapper = mount(PictureEditor, {
+    props: { model: emptyDrawingModel(), crop: wholePicture(), cropping, phone: true },
+  })
+  expect(wrapper.findAll('.abele-picture-editor__tools .abele-picture-editor__tool')).toHaveLength(
+    7
+  )
+  await wrapper.get('.abele-picture-editor__tool_crop').trigger('click')
+  expect(wrapper.emitted('crop')).toHaveLength(1)
+  await wrapper.get('.abele-picture-editor__tool_pen').trigger('click')
+  expect(wrapper.emitted('tool')).toEqual([['pen']])
+  expect(wrapper.find('.abele-picture-editor__stage').exists()).toBe(true)
+  wrapper.unmount()
+})
 
 it('clips picture and ink after crop and reveals the source on re-entry', async () => {
   const state = reactive({

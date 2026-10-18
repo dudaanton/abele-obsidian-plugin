@@ -210,7 +210,7 @@
         <span class="abele-picture-editor__divider" aria-hidden="true" />
         <div class="abele-picture-editor__tools">
           <Icon
-            v-for="t in TOOLS"
+            v-for="tool in TOOLS"
             :key="tool.id"
             :icon="tool.id === 'shape' ? SHAPE_ICONS[model.shape] : tool.icon"
             :tooltip="tool.tooltip"
