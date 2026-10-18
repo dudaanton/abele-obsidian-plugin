@@ -48,6 +48,34 @@ it('keeps all provider paths without duplicates or prose guesses', () => {
   expect(toolFilePaths(call({ toolParams: {}, toolResult: 'Read sample.md' }))).toEqual([])
 })
 
+it.each(['read', 'write', 'create', 'Read', 'Write', 'node_read', 'node_write'])(
+  'places a folded single %s path inside the action row',
+  async (toolName) => {
+    useVault([])
+    const path = 'Sample/' + 'long-folder/'.repeat(25) + 'sample.md'
+    const open = vi.fn()
+    const wrapper = mount(ChatToolRun, {
+      props: {
+        id: 'single',
+        calls: [call({ toolName, toolParams: { path } })],
+        open: false,
+        resourceOpener: open,
+      },
+    })
+    try {
+      const link = wrapper.get('.tree-item-self').get('[role="link"]')
+      expect(link.text()).toBe(path)
+      expect(link.attributes('title')).toBe(path)
+      await link.trigger('keydown', { key: 'Enter' })
+      expect(open).toHaveBeenCalledExactlyOnceWith(path)
+      expect(wrapper.emitted('update:open')).toBeUndefined()
+      expect(wrapper.findAll('[role="link"]')).toHaveLength(1)
+    } finally {
+      wrapper.unmount()
+    }
+  }
+)
+
 it('keeps a completed node replacement linked when its run folds', () => {
   useVault([])
   const message = call({ toolName: 'node_replace', toolParams: { path: 'src/sample.ts' } })

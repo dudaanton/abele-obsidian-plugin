@@ -17,6 +17,12 @@ export async function checkToolFileLinks(node: boolean, phone: boolean) {
       const messages=paths.map((path,i)=>({id:'sample-file-'+i,role:'tool-call',timestamp:i+1,content:'',toolName:['read','write','create','read'][i],toolParams:{path,description:'A description instead of a path'},toolStatus:i===3?'rejected':'approved',toolResult:i===3?'File not found':'Sample raw result'}))
       messages.push({id:'sample-no-path',role:'tool-call',timestamp:6,content:'',toolName:'read',toolParams:{},toolStatus:'rejected',toolResult:'No path supplied'})
       if(node){messages[0].toolName='Read';messages[0].toolPath=paths[0];messages[0].toolParams={};messages[1].toolPaths=[paths[1],'src/second.ts'];paths.splice(2,0,'src/second.ts')}
+      const singlePaths=['Sample/single-read.md','Sample/single-write.md','Sample/single-create.md','Sample/'+('long-folder/').repeat(12)+'single.md']
+      const singles=singlePaths.flatMap((path,i)=>[
+        {id:'single-call-'+i,role:'tool-call',timestamp:10+i*2,content:'',toolName:(node?['Read','Write','node_write','Read']:['read','write','create','read'])[i],toolParams:{path},toolStatus:'approved',toolResult:'Sample result'},
+        {id:'single-answer-'+i,role:'assistant',timestamp:11+i*2,content:'Sample operation complete.'}
+      ])
+      messages.unshift(...singles);paths.unshift(...singlePaths)
       const opened=[]
       const presenter={id:'sample-file-links-node',reference:{kind:'node-session',nodeId:'sample-node',registrationId:'sample-registration',sessionId:'sample-session',title:'Sample file calls'},label:{value:'Sample file calls'},provider:{value:'claude'},state:{value:'idle'},isStreaming:{value:false},connection:{state:{value:'connected'},error:{value:''}},error:{value:''},draft:{value:{text:'',attachments:[]}},queued:{value:[]},rejected:{value:[]},messages:{value:messages},projection:{value:{activeRuns:[],queuedInputs:[],children:{},artifacts:[],unknown:[],prompts:[]}},send:async()=>{},answer:async()=>{},cancelInput:async()=>{},interrupt:async()=>{},openResource:path=>opened.push(path),destroy:()=>{}}
       const root=()=>owned.view.containerEl
@@ -28,11 +34,20 @@ export async function checkToolFileLinks(node: boolean, phone: boolean) {
         await owned.setViewState({type:'abele-ai-sidebar-view',active:true})
         await until(()=>links().length===paths.length)
         const folded=links().map(el=>el.textContent)
-        const clipped=()=>links().filter(el=>el.scrollWidth>el.clientWidth+1).map(el=>el.textContent)
+        const singleGeometry=()=>singlePaths.map(path=>{
+          const el=links().find(el=>el.textContent===path),row=el?.closest('.tree-item-self'),name=row?.querySelector('.abele-tree-item__text')
+          if(!row||!name)return false
+          const a=name.getBoundingClientRect(),b=el.getBoundingClientRect(),r=row.getBoundingClientRect()
+          return Math.abs(a.top-b.top)<2&&b.left>=a.right&&b.width>30&&b.right<=r.right+1&&el.title===path&&getComputedStyle(el).whiteSpace==='nowrap'
+        })
+        const geometry=singleGeometry()
+        const clipped=()=>links().filter(el=>!el.closest('.abele-chat-run__inline-file')&&el.scrollWidth>el.clientWidth+1).map(el=>el.textContent)
         const foldedClipped=clipped()
         await shot('folded-long-missing')
+        links()[0].scrollIntoView({block:'start'});await shot('folded-single-actions')
+        links()[links().length-1].scrollIntoView({block:'end'});await shot('folded-multi-file')
         if(node){links()[0].dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await wait(50)}
-        root().querySelector('.abele-chat-run > .tree-item-self').click()
+        root().querySelectorAll('.abele-chat-run > .tree-item-self').forEach(el=>el.click())
         await until(()=>root().querySelector('.abele-chat-run__calls .abele-chat-tool-files'))
         const expanded=links().map(el=>el.textContent)
         const expandedClipped=clipped()
@@ -43,9 +58,10 @@ export async function checkToolFileLinks(node: boolean, phone: boolean) {
         }).map(el=>el.textContent)
         const cutNames=[...root().querySelectorAll('.abele-chat-msg__tool-name')].filter(el=>el.scrollWidth>el.clientWidth+1).map(el=>el.textContent)
         await shot('expanded-long-missing')
-        let reopened=folded
-        if(!node){await session.save();chatFile=session.currentChatFile.value;await chats.closeTab(tab);await chats.openChatFile(chatFile);session=chats.getSessionByFile(chatFile.path);tab=session.id;await until(()=>links().length===paths.length);reopened=links().map(el=>el.textContent);await shot('reopened')}
-        return JSON.stringify({paths,folded,expanded,reopened,opened,foldedClipped,expandedClipped,cramped,squeezed,cutNames})
+        links()[links().length-1].scrollIntoView({block:'end'});await shot('expanded-multi-file')
+        let reopened=folded,reopenedGeometry=geometry
+        if(!node){await session.save();chatFile=session.currentChatFile.value;await chats.closeTab(tab);await chats.openChatFile(chatFile);session=chats.getSessionByFile(chatFile.path);tab=session.id;await until(()=>links().length===paths.length);reopened=links().map(el=>el.textContent);reopenedGeometry=singleGeometry();await shot('reopened')}
+        return JSON.stringify({paths,folded,expanded,reopened,opened,geometry,reopenedGeometry,foldedClipped,expandedClipped,cramped,squeezed,cutNames})
       } finally {
         if(node){chats.nodeSessions.delete(tab);chats.tabOrder.value=chats.tabOrder.value.filter(id=>id!==tab)}else{if(tab)await chats.closeTab(tab);if(chatFile)await app.vault.delete(chatFile)}
         chats.activeTabId.value=prior;owned.detach()
@@ -55,6 +71,8 @@ export async function checkToolFileLinks(node: boolean, phone: boolean) {
     expect(result.folded).toEqual(result.paths)
     expect(result.expanded).toEqual(result.paths)
     expect(result.reopened).toEqual(result.paths)
+    expect(result.geometry).toEqual([true, true, true, true])
+    expect(result.reopenedGeometry).toEqual([true, true, true, true])
     expect(result.foldedClipped).toEqual([])
     expect(result.expandedClipped).toEqual([])
     expect(result.cramped).toEqual([])

@@ -4,7 +4,7 @@
        one by one, each with what it was given and what came back. -->
   <TreeItem
     class="abele-chat-run"
-    :class="`abele-chat-run_${state}`"
+    :class="[`abele-chat-run_${state}`, { 'abele-chat-run_inline-file': inlineFile && !open }]"
     :icon="icon"
     :text="summary"
     collapsible
@@ -14,6 +14,12 @@
     @click="emit('update:open', !open)"
   >
     <template #end>
+      <ChatToolFiles
+        v-if="!open && inlineFile"
+        class="abele-chat-run__inline-file"
+        :message="calls[0]"
+        :resource-opener="resourceOpener"
+      />
       <span class="abele-chat-run__codes">
         <!-- The chat went more than one way from a call inside: opened, the switch is on it. -->
         <span v-if="forks" ref="fork" class="abele-chat-run__fork"
@@ -34,7 +40,7 @@
   </TreeItem>
   <!-- Saved results stay in the conversation when the work's details fold away. -->
   <slot v-if="!open" name="results" />
-  <template v-if="!open">
+  <template v-if="!open && !inlineFile">
     <ChatToolFiles
       v-for="call in calls"
       :key="call.id"
@@ -67,6 +73,7 @@ import type { NodeAccessRefusal as NodeAccessRefusalData } from '@/ai/tools/node
 import type { ChatMessage } from '@/ai/types'
 import type { NodeScopeEntry } from '@/ai/nodeScope'
 import { KIND_ICON, runKind, runState, runSummary, type RunState } from '@/ai/toolRuns'
+import { toolFilePaths } from '@/ai/toolFiles'
 
 const props = defineProps<{
   id: string
@@ -101,6 +108,9 @@ const icon = computed(() =>
   state.value === 'running' ? 'loader' : KIND_ICON[runKind(props.calls)]
 )
 const summary = computed(() => runSummary(props.calls))
+const inlineFile = computed(
+  () => props.calls.length === 1 && toolFilePaths(props.calls[0]).length === 1
+)
 
 const dot = ref<HTMLElement>()
 watchEffect(() => dot.value && setTooltip(dot.value, STATE_LABEL[state.value]))
@@ -131,6 +141,32 @@ watchEffect(
 }
 .abele-chat-run_running > .tree-item-self .abele-tree-item__glyph svg {
   animation: abele-chat-run-spin 1.2s linear infinite;
+}
+.abele-chat-run_inline-file > .tree-item-self {
+  .tree-item-inner {
+    flex: 0 0 auto;
+  }
+  .tree-item-flair-outer,
+  .abele-tree-item__end {
+    min-width: 0;
+    flex: 0 1 auto;
+  }
+  .abele-tree-item__text {
+    white-space: nowrap;
+  }
+  .abele-chat-run__codes {
+    flex-shrink: 0;
+  }
+}
+.abele-chat-tool-files.abele-chat-run__inline-file {
+  flex-wrap: nowrap;
+  overflow: hidden;
+
+  > .abele-chat-msg__tool-link {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 }
 @keyframes abele-chat-run-spin {
   to {
