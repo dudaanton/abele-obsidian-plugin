@@ -20,7 +20,7 @@ const run = <T>(body: string): T =>
 })()`,
     120_000
   )
-const shoot = (name: string) => {
+const capture = (name: string) => {
   const path = `${SHOTS}/${name}.png`
   if (onPhone()) screenshot(path)
   else
@@ -29,7 +29,12 @@ const shoot = (name: string) => {
     )
 }
 
-describe.skipIf(!available)('new native Canvas opening', () => {
+describe.skipIf(!available).each(mobile ? [true] : onPhone() ? [false] : [false, true])(
+  'new native Canvas opening (mobile=%s)',
+  openingCases
+)
+function openingCases(mobile: boolean): void {
+  const shoot = (name: string) => capture(`${mobile ? 'mobile' : 'desktop'}-${name}`)
   let size: number[] | null = null
   beforeAll(async () => {
     if (mobile && !onPhone()) {
@@ -58,7 +63,7 @@ describe.skipIf(!available)('new native Canvas opening', () => {
       if (window.__canvasOpeningOwned) { const folder = app.vault.getAbstractFileByPath(dir); if (folder) await app.vault.delete(folder, true) }
       if (window.__canvasOpeningLayout) await app.workspace.changeLayout(window.__canvasOpeningLayout)
       if (window.__canvasOpeningPreference !== undefined) window.__abeleTest.AbeleConfig.getInstance().canvasViewer = window.__canvasOpeningPreference
-      delete window.__canvasOpeningFiles; delete window.__canvasOpeningOwned; delete window.__canvasOpeningLayout; delete window.__canvasOpeningPreference
+      delete window.__canvasNavigation; delete window.__canvasOpeningFiles; delete window.__canvasOpeningOwned; delete window.__canvasOpeningLayout; delete window.__canvasOpeningPreference
       return true
     `)
     if (size) {
@@ -69,6 +74,89 @@ describe.skipIf(!available)('new native Canvas opening', () => {
     }
     dismissOwnNotices('Could not open diagram')
   }, 120_000)
+
+  it('navigates host-opened canvases with Back and Forward without renderer entries', () => {
+    expect(
+      run<boolean>(`
+      const bytes = JSON.stringify({ nodes: [{ id: 'sample', type: 'text', text: 'Navigation sample', x: 0, y: 0, width: 240, height: 120 }], edges: [] })
+      const canvas = await app.vault.create(dir + '/sample-navigation.canvas', bytes)
+      const note = await app.vault.create(dir + '/sample-navigation.md', 'Navigation origin')
+      window.__canvasOpeningFiles.push(canvas.path, note.path)
+      const leaf = app.workspace.getLeaf('tab')
+      window.__canvasNavigation = { leaf, canvas, note, bytes }
+      await leaf.openFile(note); await app.workspace.revealLeaf(leaf)
+      await leaf.openFile(canvas)
+      for (let i=0;i<100 && (leaf.working || leaf.view.getViewType() !== 'abele-canvas');i++) await wait(100)
+      return leaf.view.getViewType() === 'abele-canvas'
+    `)
+    ).toBe(true)
+    shoot('navigation-host-canvas')
+    expect(
+      run<boolean>(`
+      const { leaf, canvas, note, bytes } = window.__canvasNavigation
+      const until = async (file, type) => {
+        for(let i=0;i<100;i++) { if(!leaf.working && leaf.view.file === file && leaf.view.getViewType() === type) return; await wait(100) }
+        throw Error('Navigation stuck at ' + leaf.view.getViewType() + ': ' + leaf.view.file?.path)
+      }
+      for(let i=0;i<3;i++) {
+        await leaf.history.back(); await until(note, 'markdown')
+        await leaf.history.forward(); await until(canvas, 'abele-canvas')
+      }
+      await leaf.openFile(note); await until(note, 'markdown')
+      await leaf.history.back(); await until(canvas, 'abele-canvas')
+      await leaf.history.back(); await until(note, 'markdown')
+      return await app.vault.read(canvas) === bytes
+    `)
+    ).toBe(true)
+    shoot('navigation-back-note')
+    expect(
+      run<boolean>(`
+      const { leaf, note } = window.__canvasNavigation
+      // Native unload uses the host serializer; start its round trip in that format.
+      // The viewer round trip above independently asserts compact source byte equality.
+      const bytes = ${JSON.stringify(['{', '\t"nodes":[],', '\t"edges":[]', '}'].join('\n'))}
+      const canvas = await app.vault.create(dir + '/sample-native-navigation.canvas', bytes)
+      window.__canvasOpeningFiles.push(canvas.path)
+      await leaf.openFile(canvas); await wait(400)
+      const action = leaf.view.containerEl.querySelector('[aria-label="Open in Obsidian Canvas"]')
+      if (!action) throw Error('Missing native opt-out action')
+      action.closest('.clickable-icon').click(); await wait(400)
+      if (leaf.view.getViewType() !== 'canvas') throw Error('Native opt-out was adopted')
+      await leaf.openFile(note); await wait(200)
+      await leaf.history.back(); await wait(400)
+      if (leaf.view.getViewType() !== 'canvas' || leaf.view.file !== canvas) throw Error('Native history lost opt-out')
+      const unchanged = await app.vault.read(canvas) === bytes
+      delete window.__canvasNavigation
+      return unchanged
+    `)
+    ).toBe(true)
+    shoot('navigation-native-opt-out')
+  }, 120_000)
+
+  // BUG: the host native editor reformats compact JSON on unload without an edit.
+  // Retain the byte guarantee; adoption must not suppress native editor saves globally.
+  it.fails(
+    'preserves compact source bytes after explicitly opening and leaving the native editor',
+    () => {
+      expect(
+        run<boolean>(`
+      const bytes = '{"nodes":[],"edges":[]}'
+      const canvas = await app.vault.create(dir + '/sample-native-compact.canvas', bytes)
+      const note = await app.vault.create(dir + '/sample-native-compact.md', 'Native return')
+      window.__canvasOpeningFiles.push(canvas.path, note.path)
+      const leaf = app.workspace.getLeaf('tab')
+      await leaf.openFile(canvas); await app.workspace.revealLeaf(leaf); await wait(400)
+      const action = leaf.view.containerEl.querySelector('[aria-label="Open in Obsidian Canvas"]')
+      if (!action) throw Error('Missing native opt-out action')
+      action.closest('.clickable-icon').click(); await wait(400)
+      if (leaf.view.getViewType() !== 'canvas') throw Error('Native opt-out was adopted')
+      await leaf.openFile(note); await wait(200)
+      return await app.vault.read(canvas) === bytes
+    `)
+      ).toBe(true)
+    },
+    120_000
+  )
 
   it('opens embedded snapshots with Edit and returns through image and canvas history to the note', () => {
     expect(
@@ -277,7 +365,15 @@ describe.skipIf(!available)('new native Canvas opening', () => {
     { nodes: [], edges: [] },
     {
       nodes: [
-        { id: 'sample', type: 'text', text: 'Sample content', x: 0, y: 0, width: 200, height: 100 },
+        {
+          id: 'sample',
+          type: 'text',
+          text: 'Sample content',
+          x: 0,
+          y: 0,
+          width: 200,
+          height: 100,
+        },
       ],
       edges: [],
     },
@@ -360,4 +456,4 @@ describe.skipIf(!available)('new native Canvas opening', () => {
     })
     shoot('unsaved-native-edit')
   }, 120_000)
-})
+}

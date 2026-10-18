@@ -81,7 +81,10 @@ export async function adoptCanvasLeaves(app: App): Promise<void> {
         (leaf.view as { file?: TFile }).file?.path !== file.path
       )
         continue
-      await leaf.setViewState({ ...leaf.getViewState(), type: CANVAS_VIEW_TYPE })
+      // Adoption replaces a renderer for the same navigation, not the document.
+      // Host popstate suppresses recording the outgoing native Canvas in Back history.
+      const adopted = { ...leaf.getViewState(), type: CANVAS_VIEW_TYPE, popstate: true }
+      await leaf.setViewState(adopted)
     } catch (error) {
       // A broken or pending file must not prevent independent leaves from opening.
       errors.push(error)

@@ -50,6 +50,7 @@ it('adopts a zero-byte new canvas only when the native graph is empty, without w
   expect(leaf.setViewState).toHaveBeenCalledWith({
     type: 'abele-canvas',
     state: { file: 'sample.canvas' },
+    popstate: true,
   })
   expect(save).not.toHaveBeenCalled()
   expect(cancel).toHaveBeenCalledOnce()
@@ -241,4 +242,32 @@ it('leaves explicit native opt-outs alone even when they have pending edits', as
   await adoptCanvasLeaves(app)
   expect(save).not.toHaveBeenCalled()
   expect(leaf.setViewState).not.toHaveBeenCalled()
+})
+
+it('replaces the native renderer without adding a workspace history entry', async () => {
+  const { app, leaf } = setup()
+  const prior = { type: 'markdown', state: { file: 'sample-note.md' } }
+  const native = {
+    type: 'canvas',
+    state: { file: 'sample.canvas', viewState: { x: 40, y: 20, zoom: 1 } },
+    pinned: true,
+  }
+  const back = [prior]
+  const forward = [{ type: 'markdown', state: { file: 'sample-next.md' } }]
+  vi.spyOn(leaf, 'getViewState').mockReturnValue(native)
+  vi.spyOn(leaf, 'setViewState').mockImplementation(async (state) => {
+    // Host setViewState records the outgoing view on a type change, unless popstate.
+    if (state.type !== native.type && !(state as { popstate?: boolean }).popstate) {
+      back.push(native)
+      forward.length = 0
+    }
+  })
+  await adoptCanvasLeaves(app)
+  expect(leaf.setViewState).toHaveBeenCalledWith({
+    ...native,
+    type: 'abele-canvas',
+    popstate: true,
+  })
+  expect(back).toEqual([prior])
+  expect(forward).toEqual([{ type: 'markdown', state: { file: 'sample-next.md' } }])
 })
