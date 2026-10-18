@@ -97,7 +97,13 @@
       </div>
     </div>
 
-    <ObsidianModal v-if="card" phone-sheet modal-class="abele-map-card-modal" @close="card = null">
+    <ObsidianModal
+      v-if="card"
+      phone-sheet
+      content-sized
+      modal-class="abele-map-card-modal"
+      @close="card = null"
+    >
       <MapPlaceCard
         :place="card"
         :footer-host="cardFooter"

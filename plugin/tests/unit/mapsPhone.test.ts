@@ -133,6 +133,7 @@ it('a phone place card uses the content-sized native sheet', async () => {
   ;(w.vm as unknown as { openCard: (p: (typeof places)[0]) => void }).openCard(places[0])
   await flushPromises()
   expect(w.findComponent(Modal).props('phoneSheet')).toBe(true)
+  expect(w.findComponent(Modal).props('contentSized')).toBe(true)
   expect(w.findComponent(Modal).props('size')).toBeUndefined()
 })
 it('does not turn a filename or repeated title into the card and list subtitle', () => {

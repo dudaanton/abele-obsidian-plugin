@@ -2,15 +2,20 @@
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { evalJson, evalLong, evalRaw, reloadApp, enterPhone } from './helpers/obsidianCli'
 import { shotDir } from './helpers/shots'
+import { onPhone, targets } from './helpers/target'
+
+targets('desktop', 'phone')
 
 const folder = 'ScaleTest/MapCardsFixture'
 const basePath = `${folder}/Places.base`
 const shots = shotDir('maps-places')
 let original: { size: number[]; mobile: boolean }
 beforeAll(async () => {
-  original = evalJson(
-    `({ size: require('@electron/remote').getCurrentWindow().getSize(), mobile: document.body.classList.contains('is-mobile') })`
-  )
+  original = onPhone()
+    ? { size: [], mobile: true }
+    : evalJson(
+        `({ size: require('@electron/remote').getCurrentWindow().getSize(), mobile: document.body.classList.contains('is-mobile') })`
+      )
   const result = await evalLong(`(async () => {
     await app.vault.adapter.mkdir(${JSON.stringify(folder)})
     await app.vault.create(${JSON.stringify(`${folder}/sample.svg`)}, '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400"><rect width="640" height="400" fill="#d5e7ef"/><circle cx="490" cy="85" r="40" fill="#f4d477"/><path d="M0 350 180 100 370 350 490 190 640 350V400H0Z" fill="#668d76"/></svg>')
@@ -21,7 +26,7 @@ beforeAll(async () => {
       ['Many', '::abele-gallery::\\n![[missing.png]]\\n![[sample.svg|First picture]]\\n![[sample.svg|Second picture]]', '12, 20'],
       ['Sample place with a long descriptive name and sampleidentifier012345678901234567890123456789', 'Another sample place.', '14, 22'],
       ['Long', '# Long sample note\\n\\n~~~js\\nconst sample = 1\\n~~~\\n\\n' + 'A long paragraph with sample content. '.repeat(400), '13, 21'],
-    ]) await app.vault.create(${JSON.stringify(folder)} + '/' + name + '.md', '---\\ncoordinates: ' + coords + '\\nkind: Sample place\\n---\\n' + text)
+    ]) await app.vault.create(${JSON.stringify(folder)} + '/' + name + '.md', '---\\ncoordinates: ' + coords + (name === 'Empty' ? '' : '\\nkind: Sample place') + '\\n---\\n' + text)
     return 'ready'
   })()`)
   expect(result).toBe('ready')
@@ -31,18 +36,21 @@ afterAll(async () => {
     for (const leaf of app.workspace.getLeavesOfType('bases')) if (leaf.view.file?.path === ${JSON.stringify(basePath)}) leaf.detach()
     const file = app.vault.getAbstractFileByPath(${JSON.stringify(folder)})
     if (file) await app.vault.delete(file, true)
-    require('@electron/remote').getCurrentWindow().setSize(${original?.size.join(',') ?? '1000,800'})
+    if (!${onPhone()}) require('@electron/remote').getCurrentWindow().setSize(${original?.size.join(',') || '1000,800'})
     return 'clean'
   })()`)
+  if (onPhone()) return
   await reloadApp(`app.emulateMobile(${original?.mobile ?? false})`)
   evalRaw(
     `require('@electron/remote').getCurrentWindow().setSize(${original?.size.join(',') ?? '1000,800'})`
   )
 })
-it.each([false, true])(
+it.each(onPhone() ? [true] : [false, true])(
   'cards, gallery return, list selection and camera, mobile=%s',
   async (mobile) => {
-    if (mobile) await enterPhone(390, 844)
+    if (onPhone()) {
+      /* The harness owns the real phone's geometry. */
+    } else if (mobile) await enterPhone(390, 844)
     else {
       await reloadApp('app.emulateMobile(false)')
       evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(1100,850)`)
@@ -56,7 +64,12 @@ it.each([false, true])(
     }
     const shot = async name => {
       await wait(350)
-      if (${mobile} && (innerWidth !== 390 || innerHeight !== 844)) throw Error('Phone viewport changed: ' + innerWidth + 'x' + innerHeight)
+      if (${mobile && !onPhone()} && (innerWidth !== 390 || innerHeight !== 844)) throw Error('Phone viewport changed: ' + innerWidth + 'x' + innerHeight)
+      if (window.__e2eHost) {
+        const saved = await window.__e2eHost.shot(${JSON.stringify(shots)} + '/phone-' + name + '.png')
+        if (String(saved).startsWith('no picture:')) throw Error(saved)
+        return
+      }
       const fs = require('fs'); fs.mkdirSync(${JSON.stringify(shots)}, { recursive: true })
       fs.writeFileSync(${JSON.stringify(shots)} + '/' + ${JSON.stringify(mobile ? 'phone-' : 'desktop-')} + name + '.png', (await require('@electron/remote').getCurrentWebContents().capturePage()).toPNG())
     }
@@ -82,6 +95,27 @@ it.each([false, true])(
     const closeCard = async () => { const close = await until(() => card()?.closest('.modal')?.querySelector('.modal-header-button, .modal-close-button'), 'card close action'); close.click(); await until(() => !card(), 'closed card') }
       await until(() => component.props.places.length === 5, 'five places')
       const before = await app.vault.adapter.read(${JSON.stringify(basePath)})
+      map.jumpTo({ center: [20, 12], zoom: 1.5 })
+      const cluster = await until(() => map.getLayer('abele-place-clusters') && map.queryRenderedFeatures({ layers: ['abele-place-clusters'] }).find(f => f.properties.point_count === 5), 'all places clustered')
+      const clusterPoint = map.project(cluster.geometry.coordinates)
+      const tap = { x: clusterPoint.x + 5, y: clusterPoint.y + 5 }
+      map.fire('click', { point: tap, lngLat: map.unproject(tap), originalEvent: new MouseEvent('click', { clientX: tap.x, clientY: tap.y }) })
+      const allFramed = () => component.props.places.every(p => {
+        const point = map.project([p.lon, p.lat]); const box = map.getContainer()
+        return point.x >= 40 && point.y >= 40 && point.x <= box.clientWidth - 40 && point.y <= box.clientHeight - 40
+      })
+      await until(() => !map.isMoving() && map.getZoom() > 3 && allFramed(), 'cluster tap framed its places')
+      await until(() => map.getLayer('abele-place-symbols') && map.getLayer('abele-place-clusters') && map.queryRenderedFeatures({ layers: ['abele-place-symbols', 'abele-place-clusters'] }).length, 'marks after cluster tap')
+      await shot('map-after-cluster')
+      map.jumpTo({ center: [30, 20], zoom: 14 })
+      root.querySelector('[aria-label="Fit all places"]').click()
+      await until(() => !map.isMoving() && allFramed(), 'fit all places')
+      root.querySelector('[aria-label="Background"]').click()
+      await until(() => [...document.querySelectorAll('.menu-item-title')].some(el => el.textContent === 'Default'), 'built-in background choice')
+      await shot('background-picker')
+      const defaultChoice = [...document.querySelectorAll('.menu-item')].find(el => el.querySelector('.menu-item-title')?.textContent === 'Default')
+      if (component.props.background !== 'default') throw Error('Default background is not current')
+      defaultChoice.click()
       const camera = [map.getCenter().lng, map.getCenter().lat, map.getZoom()]
       for (const name of ['Empty', 'One', 'Many', 'Long']) {
         api.openCard(place(name))
@@ -103,6 +137,10 @@ it.each([false, true])(
         const openAction = modal.querySelector('.abele-map-card__foot button')
         const actionBox = openAction?.getBoundingClientRect()
         const modalBox = modal.getBoundingClientRect()
+        if (name === 'Empty') {
+          if (card().querySelector('.abele-meta-line')) throw Error('Title-only card has a repeated subtitle')
+          if (${mobile} && modalBox.height > innerHeight / 2) throw Error('Title-only card fills the phone screen')
+        }
         if (!actionBox || actionBox.top < modalBox.top || actionBox.bottom > modalBox.bottom + 1) throw Error('Open action scrolled out of the card')
         if (${mobile} && !modal.classList.contains('mod-lg')) throw Error('phone card is not native tall sheet')
         await closeCard()

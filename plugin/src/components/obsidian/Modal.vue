@@ -38,6 +38,8 @@ const props = defineProps<{
    * sized to what it holds; `tall` and `full` ask for it already.
    */
   phoneSheet?: boolean
+  /** Let a short phone sheet follow its content while keeping the host's sheet placement. */
+  contentSized?: boolean
   /** Extra classes on the dialog, for its own rules and for a test to find it by. */
   modalClass?: string | string[]
 }>()
@@ -90,6 +92,7 @@ onBeforeMount(() => {
 
   modal.value.modalEl.addClass('abele-modal')
   if (props.phoneSheet) modal.value.modalEl.addClass('mod-lg')
+  if (props.contentSized) modal.value.modalEl.addClass('abele-modal_content-sized')
   const el = modal.value.bodyEl
   el.id = id.value
   wrapper.value = el
@@ -117,6 +120,10 @@ const emit = defineEmits<{
 </script>
 
 <style lang="scss">
+body.is-phone .modal.mod-lg.abele-modal_content-sized {
+  height: auto;
+}
+
 // Keep native phone title typography, reserving space for both touch-sized controls.
 body.is-phone .modal.abele-modal .modal-title {
   max-width: calc(100% - (var(--touch-size-m) + var(--size-4-2)) * 2);

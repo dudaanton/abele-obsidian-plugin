@@ -254,7 +254,7 @@
   margin: var(--size-4-2);
 }
 
-/* The card's dialog: as wide as a reading column on a desktop, Obsidian's tall sheet on a phone. */
+/* The card's dialog: a reading column on desktop, a content-sized native sheet on a phone. */
 body:not(.is-phone) .modal.abele-map-card-modal {
   width: min(calc(var(--size-4-12) * 11), 92vw);
 }

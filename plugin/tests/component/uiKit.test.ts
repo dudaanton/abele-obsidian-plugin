@@ -631,6 +631,13 @@ describe('Modal', () => {
     expect(classOf(sheet)).not.toContain('abele-modal_wide')
   })
 
+  it('can size a native phone sheet to its content', () => {
+    const sheet = mount(ObsidianModal, { props: { phoneSheet: true, contentSized: true } })
+    expect(classOf(sheet)).toContain('mod-lg')
+    expect(classOf(sheet)).toContain('abele-modal_content-sized')
+    expect(classOf(sheet)).not.toContain('abele-modal_tall')
+  })
+
   /**
    * A rule of ours has to be able to name the element this component appends. Reaching it as
    * `.modal-content > div` would make every such rule depend on the shape of the DOM the kit
