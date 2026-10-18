@@ -273,6 +273,29 @@ const rootFolder = {
     { id: target.id, kind: 'project' as const, branch: 'trunk', path: 'repository', changed: 0 },
   ],
 }
+it('shows an unavailable registered folder without retrying stale reads or watches', async () => {
+  const { model, port, stop } = fixture()
+  model.folders.value = [rootFolder]
+  await model.selectTarget(target)
+  const unavailable = { ...target, kind: 'workspace' as const, id: 'sample-workspace' }
+  port.catalogue.mockResolvedValue({
+    folders: [{ ...rootFolder, missing: true, copies: [] }],
+    targets: [unavailable],
+    sessions: [],
+    capabilities: [],
+  } as never)
+  await model.refresh()
+  expect(model.currentFolder.value?.missing).toBe(true)
+  expect(model.error.value).toBe('repository_unavailable')
+  expect(model.entries.value).toEqual([])
+  await model.select(unavailable.id)
+  expect(model.error.value).toBe('repository_unavailable')
+  expect(port.inspect).toHaveBeenCalledOnce()
+  expect(port.watch).toHaveBeenCalledOnce()
+  expect(stop).toHaveBeenCalledOnce()
+  expect(nodeErrorWords(model.error.value)).not.toContain('choose')
+  model.destroy()
+})
 it('rebinds a restored root selection to the unique current identity and reads it afresh', async () => {
   const { model, port } = fixture()
   model.folders.value = [rootFolder]

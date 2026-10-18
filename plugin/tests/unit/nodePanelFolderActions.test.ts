@@ -11,6 +11,7 @@ import {
   newNodePathChat,
   pickNodePathPlace,
   showNodePathPlaceMenu,
+  removeNodePathFolder,
 } from '@/node/NodePathController'
 import { NodePathMutations } from '@/node/NodePathMutations'
 import { nodePages } from '@/node/nodePages'
@@ -121,6 +122,24 @@ function client(over: Record<string, unknown> = {}) {
 }
 
 describe('the node panel instead of the workspaces window', () => {
+  it('unregisters an unavailable folder through the existing project API without filesystem actions', async () => {
+    client()
+    const m = model()
+    const folder = {
+      id: 'sample-project',
+      name: 'Sample',
+      path: '/sample/removed',
+      git: true,
+      missing: true,
+      copies: [],
+    }
+    await removeNodePathFolder(m as never, folder)
+    expect(f.client.removeProject).toHaveBeenCalledExactlyOnceWith(folder.id)
+    expect(m.refresh).toHaveBeenCalledOnce()
+    expect(f.confirm).toHaveBeenLastCalledWith(expect.objectContaining({
+      message: expect.stringContaining('stays on disk'),
+    }))
+  })
   it('reads bounded pages until empty, never mistakes a short page for the end', async () => {
     const read = vi.fn(async (after?: string) => (after ? [] : [{ id: 'p' }]))
     expect(await nodePages(read, (p) => p.id)).toHaveLength(1)

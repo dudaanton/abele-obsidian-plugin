@@ -221,6 +221,14 @@ export class NodePathModel {
   readonly currentCopy = computed(() =>
     this.currentFolder.value?.copies.find((c) => c.id === this.selected.value)
   )
+  readonly unavailable = computed(
+    () =>
+      !!(
+        this.currentFolder.value?.missing ||
+        this.currentCopy.value?.missing ||
+        this.error.value === 'repository_unavailable'
+      )
+  )
   private retained = new Map<string, { document: PathDocument; bytes: number }>()
   private retainedBytes = 0
   private disposed = false
@@ -356,6 +364,8 @@ export class NodePathModel {
     // once the catalogue answers, a target that is gone surfaces as stale.
     const listed = this.refresh().then(() => {
       if (target && !this.hasTarget(target)) {
+        if (this.currentFolder.value?.missing && this.current.value?.projectId === target.projectId)
+          return
         const replacement = replacementTarget(
           target,
           folders,
@@ -464,6 +474,11 @@ export class NodePathModel {
         const folders = this.folders.value
         await this.refresh()
         if (!this.hasTarget(target)) {
+          if (
+            this.currentFolder.value?.missing &&
+            this.current.value?.projectId === target.projectId
+          )
+            return
           const replacement =
             selected && replacementTarget(target, folders, this.targets.value, this.folders.value)
           if (replacement && this.current.value?.id === replacement.id) return
@@ -634,7 +649,9 @@ export class NodePathModel {
       )
       const replacement =
         removedSelected && selected
-          ? replacementTarget(selected, previousFolders, this.targets.value, catalogue.folders)
+          ? catalogue.folders.some((f) => f.id === selected.projectId && f.missing)
+            ? this.targets.value.find((t) => t.projectId === selected.projectId)
+            : replacementTarget(selected, previousFolders, this.targets.value, catalogue.folders)
           : undefined
       for (const target of removed) this.discardTarget(target)
       // Retire the old selection before opening any independently matched replacement.
@@ -649,6 +666,9 @@ export class NodePathModel {
       if (replacement) {
         console.debug('[Abele] node path: recovering panel selection', selected?.id, replacement.id)
         await this.selectTargetOnce(replacement)
+      } else if (this.currentFolder.value?.missing || this.currentCopy.value?.missing) {
+        if (this.current.value) this.discardTarget(this.current.value)
+        this.report(new ChannelError('repository_unavailable'))
       } else if (removedSelected) this.report(new ChannelError('stale_resource'))
     } catch (error) {
       if (generation === this.catalogueGeneration) this.report(error)
@@ -683,6 +703,11 @@ export class NodePathModel {
       ++this.branchGeneration
     }
     this.selected.value = next
+    if (this.currentFolder.value?.missing || this.currentCopy.value?.missing) {
+      this.discardTarget(target)
+      this.report(new ChannelError('repository_unavailable'))
+      return
+    }
     this.stopWatch?.()
     this.stopWatch = undefined
     if (!this.online.value) {
@@ -721,6 +746,13 @@ export class NodePathModel {
       this.panelMode.value = this.changes.value.length ? 'changes' : 'files'
   }
   async reloadTarget(target: PathTarget, files = true): Promise<void> {
+    if (
+      this.folders.value.find((f) => f.id === target.projectId)?.missing ||
+      this.copy(target)?.missing
+    ) {
+      this.report(new ChannelError('repository_unavailable'))
+      return
+    }
     return this.recoverRead(target, () => this.reloadTargetOnce(target, files))
   }
   private async reloadTargetOnce(target: PathTarget, files = true): Promise<void> {

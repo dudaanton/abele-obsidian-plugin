@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { spawn, execFile, type ChildProcess } from 'node:child_process'
 import { promisify } from 'node:util'
-import { mkdirSync, mkdtempSync, writeFileSync, rmSync, realpathSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync, rmSync, realpathSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import { createServer } from 'node:http'
@@ -482,6 +482,31 @@ it('pairs and opens target-bound node files history editor and fake chats in the
       `(async()=>{${prelude}const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});await model.select(${JSON.stringify(ids.plain)});await until(()=>visible('.abele-node-place__name')?.textContent==='plain-folder');if(tab('Changes')||tab('History'))throw Error('A plain folder shows git modes');return 'plain'})()`
     )
     await capture('desktop-plain')
+    const removedRepo = resolve(home, 'removed-repository')
+    mkdirSync(removedRepo)
+    await git('-C', removedRepo, 'init', '--initial-branch=trunk')
+    await git(
+      '-C',
+      removedRepo,
+      '-c',
+      'user.name=Sample',
+      '-c',
+      'user.email=sample@example.com',
+      'commit',
+      '--allow-empty',
+      '-m',
+      'Initial fixture'
+    )
+    mkdirSync(resolve(removedRepo, '.abele'))
+    writeFileSync(resolve(removedRepo, '.abele/retained.txt'), 'Retained local data\n')
+    const removedProject = await evalLong(
+      `(async()=>{${prelude}const client=nodes.connection(${JSON.stringify(registration)}).client;const project=await client.nodePath.register({path:${JSON.stringify(removedRepo)},trust:'untrusted',exact_root:true});const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});await model.refresh();await model.select(model.targets.value.find(t=>t.projectId===project.project_id).id);return project.project_id})()`
+    )
+    rmSync(resolve(removedRepo, '.git'), { recursive: true })
+    await evalLong(
+      `(async()=>{${prelude}const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});await model.refresh();await until(()=>visible('.abele-node-panel [role="alert"]')?.textContent.includes('no longer available'));if(visible('.abele-node-panel')?.textContent.includes('choose it again'))throw Error('Unavailable folder asks for reselection');if(visible('.abele-file-tree'))throw Error('Unavailable folder retains a file tree');if(visible('.abele-node-place__name')?.textContent==='trunk')throw Error('Unavailable folder still looks like a branch');if(!button(visible('.abele-node-panel [role="alert"]'),'Remove the folder from the node…'))throw Error('No unregister action');return 'unavailable folder'})()`
+    )
+    await capture('desktop-folder-unavailable')
     // A phone registry contains paired nodes, not a desktop-only loopback registration.
     await evalLong(
       `(()=>{window.__abeleTest.NodeService.getInstance().remove(${JSON.stringify(localRegistration)});return 'desktop registration removed'})()`
@@ -509,6 +534,16 @@ it('pairs and opens target-bound node files history editor and fake chats in the
       `(async()=>{${prelude}const sidebar=app.workspace.getLeavesOfType('abele-node-sidebar')[0];await sidebar.view.setState({registrationId:${JSON.stringify(registration)}},{});await app.workspace.revealLeaf(sidebar);app.workspace.leftSplit.expand();await until(()=>visible('.abele-node-panel_ready'));return 'paired drawer'})()`
     )
     await capture('phone-changes')
+    await evalLong(
+      `(async()=>{${prelude}const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});await model.select(model.targets.value.find(t=>t.projectId===${JSON.stringify(removedProject)}).id);await until(()=>visible('.abele-node-panel [role="alert"]')?.textContent.includes('no longer available'));if(visible('.abele-node-panel')?.textContent.includes('choose it again'))throw Error('Unavailable folder asks for reselection');return 'phone unavailable folder'})()`
+    )
+    await capture('phone-folder-unavailable')
+    await evalLong(
+      `(async()=>{${prelude}button(visible('.abele-node-panel [role="alert"]'),'Remove the folder from the node…').click();await until(()=>document.querySelector('.modal')&&button(document.querySelector('.modal'),'Remove folder'));button(document.querySelector('.modal'),'Remove folder').click();const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});await until(()=>!model.folders.value.some(f=>f.id===${JSON.stringify(removedProject)}));await model.select(${JSON.stringify(ids.root)});return 'unregistered without deleting files'})()`
+    )
+    expect(readFileSync(resolve(removedRepo, '.abele/retained.txt'), 'utf8')).toBe(
+      'Retained local data\n'
+    )
     await checkFileLookup('phone')
     await evalLong(
       `(async()=>{${prelude}const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});model.selectedChat.value=${JSON.stringify(sessionId)};await model.select(${JSON.stringify(ids.external)});await until(()=>visible('.abele-node-place__name')?.textContent==='topic');visible('.abele-node-place__row').click();await until(()=>[...document.querySelectorAll('.prompt .suggestion-title')].some(t=>t.textContent==='Sample fake chat'));return 'nested phone rows'})()`

@@ -208,6 +208,10 @@ are not restored from that cache. It contains neither credentials, file bytes no
 that a retained agent is still running. Loaded file text is additionally retained in a bounded
 4 MiB session-memory cache for offline reopening. History and editor drafts keep their existing
 lifetimes; reconnect reloads mutable state without replacing drafts or frozen commit views.
+Registered repositories reported as unavailable remain visible as unavailable folders rather
+than failing the entire catalogue. Their retained file observations are discarded. The panel
+offers the existing confirmed project-unregister action, which removes only the registration,
+never files or leftover local data on disk.
 `abele-node-local-state-dir` and `abele-node-device-name` are device-local discovery/enrollment
 preferences. An edited paired TLS route is stored separately as `transportUrl`; the signed
 canonical endpoint, node pin and non-extractable device key remain unchanged.

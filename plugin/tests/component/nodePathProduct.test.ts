@@ -56,6 +56,7 @@ describe('product node sidebar', () => {
       inspection: shallowRef(undefined),
       loadPanelHistory: vi.fn(async () => {}),
       loadPanelPulls: vi.fn(async () => {}),
+      unavailable: ref(false),
       error: ref(''),
       busy: ref(false),
       capabilities: shallowRef<string[]>([]),
@@ -242,6 +243,7 @@ describe('the branch in the panel', () => {
       loadPanelBranch: vi.fn(async () => {}),
       loadPanelHistory: vi.fn(async () => {}),
       loadPanelPulls: vi.fn(async () => {}),
+      unavailable: ref(false),
       error: ref(''),
       busy: ref(false),
       capabilities: shallowRef<string[]>([]),
@@ -267,6 +269,25 @@ describe('the branch in the panel', () => {
     expect(view.find('[aria-label="Unstage"]').exists()).toBe(false)
     await view.get('.abele-branch-codes__base').trigger('click')
     expect(view.emitted('compare')).toHaveLength(1)
+    view.unmount()
+  })
+  it('shows an unavailable folder notice and unregister action instead of a stale branch and files', () => {
+    const model = branchModel()
+    model.unavailable.value = true
+    Object.assign(model.currentFolder.value, { missing: true })
+    model.error.value = 'repository_unavailable'
+    const view = mount(NodePathSidebar, {
+      props: {
+        model: model as never,
+        phase: 'ready',
+        node: { name: 'Sample node', status: 'connected' },
+      },
+    })
+    expect(view.get('[role="alert"]').text()).toContain('no longer available')
+    expect(view.text()).not.toContain('choose it again')
+    expect(view.get('.abele-node-place__name').text()).toBe('sample-app')
+    expect(view.find('.abele-file-tree').exists()).toBe(false)
+    expect(view.get('[role="alert"] button').text()).toBe('Remove the folder from the node…')
     view.unmount()
   })
   it('names the chosen base over the files and goes back to the default with its cross', async () => {
@@ -339,6 +360,7 @@ describe('git actions in the panel', () => {
       loadPanelHistory: vi.fn(async () => {}),
       loadPanelPulls: vi.fn(async () => {}),
       report: vi.fn(),
+      unavailable: ref(false),
       error: ref(''),
       busy: ref(false),
       capabilities: shallowRef<string[]>(['repository_git_write_v1']),

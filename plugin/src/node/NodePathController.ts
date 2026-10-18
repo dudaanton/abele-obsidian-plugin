@@ -29,6 +29,7 @@ import { showNodePairingDialog } from './NodePairingDialogHost'
 import { h } from 'vue'
 import { shortRef } from './presentation'
 import { copyIcon, copyKind } from '@/components/nodeWork/codes'
+import type { FolderSummary } from '@/components/nodeWork/types'
 import { nodePathMenuPosition as position } from './nodePathMenuPosition'
 
 const app = () => GlobalStore.getInstance().app
@@ -327,7 +328,8 @@ function rowMenu(
       folder.copies.find((c) => c.id === target.id)?.path ?? folder.path
     )
   )
-  const root = !git || folder.copies.find((c) => c.id === target.id)?.kind === 'project'
+  const root =
+    folder.missing || !git || folder.copies.find((c) => c.id === target.id)?.kind === 'project'
   if (project && root)
     add(
       t('streamB.useTheRepositorySClaudePermissions.fe13bf'),
@@ -343,21 +345,9 @@ function rowMenu(
       project.use_repository_claude_permissions
     )
   if (root)
-    addDanger(t('streamB.removeTheFolderFromTheNode.9e68fe'), 'list-x', online, async () => {
-      if (
-        !(await confirmDialog({
-          title: t('streamB.removeTheFolderFromTheNode.8ba1a8'),
-          message: t('streamB.staysOnDiskWithItsFilesAnd.a19f63', { v0: String(folder.path) }),
-          confirmText: t('streamB.removeFolder.f2a987'),
-        }))
-      )
-        return
-      // The folder confirmed, not whatever the panel shows by now.
-      await connection.client.removeProject(folder.id)
-      await model.refresh()
-      const next = model.targets.value[0]
-      if (model.current.value?.projectId === folder.id && next) await model.select(next.id)
-    })
+    addDanger(t('streamB.removeTheFolderFromTheNode.9e68fe'), 'list-x', online, () =>
+      removeNodePathFolder(model, folder)
+    )
   if (danger.length) menu.addSeparator()
   for (const [title, icon, enabled, run] of danger)
     menu.addItem((i) =>
@@ -369,6 +359,28 @@ function rowMenu(
         .onClick(() => nodePathAction(run))
     )
   return menu
+}
+/** Unregisters only the confirmed project. It never removes filesystem contents. */
+export async function removeNodePathFolder(
+  model: NodePathModel,
+  folder: FolderSummary
+): Promise<void> {
+  const projectId = folder.id
+  if (
+    !(await confirmDialog({
+      title: t('streamB.removeTheFolderFromTheNode.8ba1a8'),
+      message: t('streamB.staysOnDiskWithItsFilesAnd.a19f63', { v0: String(folder.path) }),
+      confirmText: t('streamB.removeFolder.f2a987'),
+    }))
+  )
+    return
+  const connection = NodeService.getInstance().connection(model.registrationId)
+  await connection.client.removeProject(projectId)
+  const wasSelected = model.current.value?.projectId === projectId
+  if (wasSelected) model.selected.value = ''
+  await model.refresh()
+  const next = model.targets.value[0]
+  if (wasSelected && next) await model.select(next.id)
 }
 export function showNodePathNodeMenu(model: NodePathModel, event: MouseEvent): void {
   nodeItems(model, new Menu()).showAtPosition(position(event))

@@ -255,13 +255,33 @@ export class NodePathClientPort implements NodePathPort {
         (w) => w.workspace_id
       )
       if (project.repository_path) {
+        let unavailable = false
         const rows = await pathPages((cursor) =>
           this.client.repository.worktrees({
             project_id: project.project_id,
             cursor,
             ...(enriched ? { include_selection: true } : {}),
           })
-        )
+        ).catch((error: unknown) => {
+          if (!(error instanceof ChannelError) || error.code !== 'repository_unavailable')
+            throw error
+          console.debug('[Abele] node path: registered repository unavailable', project.project_id)
+          unavailable = true
+          return []
+        })
+        if (unavailable) {
+          const root = workspaces.find((w) => w.kind === 'root' && w.state !== 'removed')
+          if (root) targets.push(this.binding(project.project_id, 'workspace', root.workspace_id))
+          folders.push({
+            id: project.project_id,
+            name: project.root_path.split('/').pop() || project.root_path,
+            path: project.root_path,
+            git: true,
+            missing: true,
+            copies: [],
+          })
+          continue
+        }
         rows.sort((a, b) => Number(b.kind === 'root') - Number(a.kind === 'root'))
         const listed = rows.filter((w) =>
           enriched ? w.listed === true || w.kind === 'root' : w.kind !== 'external'
@@ -327,7 +347,9 @@ export class NodePathClientPort implements NodePathPort {
           if (
             !(
               error instanceof ChannelError &&
-              ['workspace_required', 'stale_resource'].includes(error.code)
+              ['workspace_required', 'stale_resource', 'repository_unavailable'].includes(
+                error.code
+              )
             )
           )
             throw error

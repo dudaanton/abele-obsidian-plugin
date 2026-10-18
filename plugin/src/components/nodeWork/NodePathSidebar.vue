@@ -6,8 +6,15 @@
     :here="model?.currentCopy.value?.branch ?? model?.currentFolder.value?.name"
     :git="model?.currentFolder.value?.git"
     :updated="node?.seen"
-    :chat-available="model?.capabilities.value.includes('node_path_execution') ?? false"
-    :error="error ?? (model ? presentUiField(model.error, 'value') : undefined)"
+    :chat-available="
+      !model?.unavailable.value &&
+      (model?.capabilities.value.includes('node_path_execution') ?? false)
+    "
+    :error="
+      model?.unavailable.value
+        ? 'repository_unavailable'
+        : (error ?? (model ? presentUiField(model.error, 'value') : undefined))
+    "
     @connect="emit('connect')"
     @connect-other="emit('pair')"
     @open-folder="emit('open-folder')"
@@ -20,7 +27,7 @@
   >
     <!-- The panel's modes stand in its header, as the file explorer's buttons do; what stood
          there as glyphs is in the place's menu. -->
-    <template v-if="model?.current.value" #nav>
+    <template v-if="model?.current.value && !model.unavailable.value" #nav>
       <NodeModes
         v-model:mode="model.panelMode.value"
         header
@@ -34,11 +41,26 @@
         @stop-compare="model.panelBase.value = ''"
       />
     </template>
+    <template #error-action>
+      <Button
+        v-if="
+          model?.unavailable.value &&
+          model.currentFolder.value &&
+          (model.currentFolder.value.missing ||
+            model.currentCopy.value?.kind === 'project' ||
+            model.current.value?.kind === 'workspace')
+        "
+        quiet
+        :text="t('streamB.removeTheFolderFromTheNode.9e68fe')"
+        :disabled="offline"
+        @click="act(() => removeNodePathFolder(model!, model!.currentFolder.value!))"
+      />
+    </template>
     <template v-if="model">
       <NodePlace
         :node="node?.name"
         :folder="model.currentFolder.value?.name"
-        :branch="git ? model.currentCopy.value?.branch : undefined"
+        :branch="git && !model.unavailable.value ? model.currentCopy.value?.branch : undefined"
         :busy="model.busy.value"
         @pick="emit('pick-place')"
         @menu="emit('place-menu', $event)"
@@ -53,127 +75,131 @@
           @choose-base="emit('compare')"
         />
       </NodePlace>
-      <!-- A rebase stopped on conflicts: go on once they are resolved and staged, or stop it. -->
-      <div v-if="stopped" class="abele-node-sidebar__stopped" role="status">
-        <Icon icon="triangle-alert" size="xs" color="red" :interactive="false" />
-        <span class="abele-node-sidebar__stopped-text">{{
-          t('streamBMeta.stoppedOperation', {
-            kind: stopped.kind,
-            ref: stopped.onto,
-            count: stopped.conflicts,
-          })
-        }}</span>
-        <Button
-          :text="t('streamB.continue.31fbef')"
-          :disabled="!!model.gitBusy.value || offline || stopped.conflicts > 0"
-          :loading="model.gitBusy.value === 'continue'"
-          :tooltip="
-            stopped.conflicts > 0
-              ? t('streamB.stageTheInConflictFirst.9f0b2f', {
-                  v0: String(stopped.conflicts),
-                  v1: String(streamBWord(stopped.conflicts, 'file')),
-                })
-              : t('streamB.finishThe.72914d', { v0: String(stopped.kind) })
-          "
-          @click="act(() => model!.continueStopped(stopped!.kind))"
-        />
-        <Button
-          :text="t('streamB.stopThe.b0527e', { v0: String(stopped.kind) })"
-          quiet
-          :disabled="!!model.gitBusy.value || offline"
-          :loading="model.gitBusy.value === 'abort'"
-          :tooltip="t('streamB.putTheBranchBackAsItWas.b6174b', { v0: String(stopped.kind) })"
-          @click="act(() => model!.abortStopped(stopped!.kind))"
-        />
-      </div>
-      <!-- One action at a time: the commit while something is staged, else the branch's next step. -->
-      <CommitBox
-        v-if="canGit && mode === 'changes' && staged"
-        class="abele-node-sidebar__commit"
-        :staged="staged"
-        :conflicts="conflicts"
-        :disabled="!!model.gitBusy.value || offline"
-        @commit="(message) => act(() => model!.commit(message))"
-      />
-      <div v-else-if="step" class="abele-node-sidebar__step">
-        <Button
-          :text="step.text"
-          :icon="step.icon"
-          :tooltip="step.tooltip"
-          :disabled="!!model.gitBusy.value || offline"
-          :loading="model.gitBusy.value === (step.id === 'publish' ? 'push' : step.id)"
-          @click="emit('step', step.id)"
-        />
-      </div>
-      <div v-if="!model.current.value" class="search-empty-state">
-        {{
-          node?.name != null
-            ? t('streamBMeta.7be7370b62', { p0: node.name })
-            : t('streamBMeta.b8b90dce28')
-        }}
-      </div>
-      <FileTree
-        v-else-if="mode === 'files' || mode === 'changes'"
-        :key="`${model.current.value?.id}:${mode}`"
-        :entries="model.entries.value"
-        :cursors="model.treeCursors.value"
-        :progress="model.treeProgress.value"
-        :changes="model.changes.value"
-        :branch-changes="mode === 'changes' ? (branch?.committed ?? []) : []"
-        :base="branch?.state.base ?? undefined"
-        :grouped="mode === 'changes'"
-        :actions="canGit && mode === 'changes' && !offline"
-        :mode="mode === 'files' ? 'all' : 'changed-tree'"
-        :modes="false"
-        :git="git"
-        :stale="node?.status !== 'connected'"
-        :selected="file"
-        :label="
-          t('streamB.filesOf.dd59b9', {
-            v0: String(model.currentCopy.value?.branch ?? model.currentFolder.value?.name),
-          })
-        "
-        @retry="model.refreshCurrent().catch((error) => model.report(error))"
-        @expand="(path) => model.loadFolder(path).catch((error) => model.report(error))"
-        @more="(path) => model.loadMore(path).catch((error) => model.report(error))"
-        @open="(path, stage) => emit('open-file', path, stage === 'committed' ? undefined : stage)"
-        @menu="(event, path) => emit('file-menu', event, path)"
-        @stage="(path) => act(() => model!.stage([path]))"
-        @unstage="(path) => act(() => model!.unstage([path]))"
-        @stage-all="act(() => model!.stage('all'))"
-        @unstage-all="act(() => model!.unstage('all'))"
-        @discard="(path) => emit('discard', path)"
-      />
-      <!-- The node's sessions at this place, each opening its chat. -->
-      <SessionTree
-        v-else-if="mode === 'sessions'"
-        class="abele-node-sidebar__sessions"
-        :sessions="sessions"
-        :active="model.selectedChat.value || undefined"
-        @open="(id) => emit('open-chat', id)"
-      />
-      <div v-else-if="mode === 'history'" class="abele-node-sidebar__history">
-        <div v-if="history?.error.value" class="abele-node-sidebar__error" role="alert">
-          <NodeErrorText :error="history.error.value" />
+      <template v-if="!model.unavailable.value">
+        <!-- A rebase stopped on conflicts: go on once they are resolved and staged, or stop it. -->
+        <div v-if="stopped" class="abele-node-sidebar__stopped" role="status">
+          <Icon icon="triangle-alert" size="xs" color="red" :interactive="false" />
+          <span class="abele-node-sidebar__stopped-text">{{
+            t('streamBMeta.stoppedOperation', {
+              kind: stopped.kind,
+              ref: stopped.onto,
+              count: stopped.conflicts,
+            })
+          }}</span>
+          <Button
+            :text="t('streamB.continue.31fbef')"
+            :disabled="!!model.gitBusy.value || offline || stopped.conflicts > 0"
+            :loading="model.gitBusy.value === 'continue'"
+            :tooltip="
+              stopped.conflicts > 0
+                ? t('streamB.stageTheInConflictFirst.9f0b2f', {
+                    v0: String(stopped.conflicts),
+                    v1: String(streamBWord(stopped.conflicts, 'file')),
+                  })
+                : t('streamB.finishThe.72914d', { v0: String(stopped.kind) })
+            "
+            @click="act(() => model!.continueStopped(stopped!.kind))"
+          />
+          <Button
+            :text="t('streamB.stopThe.b0527e', { v0: String(stopped.kind) })"
+            quiet
+            :disabled="!!model.gitBusy.value || offline"
+            :loading="model.gitBusy.value === 'abort'"
+            :tooltip="t('streamB.putTheBranchBackAsItWas.b6174b', { v0: String(stopped.kind) })"
+            @click="act(() => model!.abortStopped(stopped!.kind))"
+          />
         </div>
-        <HistoryView
-          :commits="history?.commits.value ?? []"
-          :copy="model.currentCopy.value"
-          :head="false"
-          :more="!!history?.cursor.value"
-          :base="model.inspection.value?.base"
-          @open-commit="(hash) => emit('open-commit', hash)"
-          @more="history?.load(true).catch((error) => model?.report(error))"
+        <!-- One action at a time: the commit while something is staged, else the branch's next step. -->
+        <CommitBox
+          v-if="canGit && mode === 'changes' && staged"
+          class="abele-node-sidebar__commit"
+          :staged="staged"
+          :conflicts="conflicts"
+          :disabled="!!model.gitBusy.value || offline"
+          @commit="(message) => act(() => model!.commit(message))"
         />
-      </div>
-      <NodePullList
-        v-else
-        :pulls="pulls?.pulls ?? []"
-        :connected="pulls?.connected ?? false"
-        :remote="!!pulls?.remote"
-        @open="(n) => emit('open-pull', n)"
-        @connect="emit('connect-service')"
-      />
+        <div v-else-if="step" class="abele-node-sidebar__step">
+          <Button
+            :text="step.text"
+            :icon="step.icon"
+            :tooltip="step.tooltip"
+            :disabled="!!model.gitBusy.value || offline"
+            :loading="model.gitBusy.value === (step.id === 'publish' ? 'push' : step.id)"
+            @click="emit('step', step.id)"
+          />
+        </div>
+        <div v-if="!model.current.value" class="search-empty-state">
+          {{
+            node?.name != null
+              ? t('streamBMeta.7be7370b62', { p0: node.name })
+              : t('streamBMeta.b8b90dce28')
+          }}
+        </div>
+        <FileTree
+          v-else-if="mode === 'files' || mode === 'changes'"
+          :key="`${model.current.value?.id}:${mode}`"
+          :entries="model.entries.value"
+          :cursors="model.treeCursors.value"
+          :progress="model.treeProgress.value"
+          :changes="model.changes.value"
+          :branch-changes="mode === 'changes' ? (branch?.committed ?? []) : []"
+          :base="branch?.state.base ?? undefined"
+          :grouped="mode === 'changes'"
+          :actions="canGit && mode === 'changes' && !offline"
+          :mode="mode === 'files' ? 'all' : 'changed-tree'"
+          :modes="false"
+          :git="git"
+          :stale="node?.status !== 'connected'"
+          :selected="file"
+          :label="
+            t('streamB.filesOf.dd59b9', {
+              v0: String(model.currentCopy.value?.branch ?? model.currentFolder.value?.name),
+            })
+          "
+          @retry="model.refreshCurrent().catch((error) => model.report(error))"
+          @expand="(path) => model.loadFolder(path).catch((error) => model.report(error))"
+          @more="(path) => model.loadMore(path).catch((error) => model.report(error))"
+          @open="
+            (path, stage) => emit('open-file', path, stage === 'committed' ? undefined : stage)
+          "
+          @menu="(event, path) => emit('file-menu', event, path)"
+          @stage="(path) => act(() => model!.stage([path]))"
+          @unstage="(path) => act(() => model!.unstage([path]))"
+          @stage-all="act(() => model!.stage('all'))"
+          @unstage-all="act(() => model!.unstage('all'))"
+          @discard="(path) => emit('discard', path)"
+        />
+        <!-- The node's sessions at this place, each opening its chat. -->
+        <SessionTree
+          v-else-if="mode === 'sessions'"
+          class="abele-node-sidebar__sessions"
+          :sessions="sessions"
+          :active="model.selectedChat.value || undefined"
+          @open="(id) => emit('open-chat', id)"
+        />
+        <div v-else-if="mode === 'history'" class="abele-node-sidebar__history">
+          <div v-if="history?.error.value" class="abele-node-sidebar__error" role="alert">
+            <NodeErrorText :error="history.error.value" />
+          </div>
+          <HistoryView
+            :commits="history?.commits.value ?? []"
+            :copy="model.currentCopy.value"
+            :head="false"
+            :more="!!history?.cursor.value"
+            :base="model.inspection.value?.base"
+            @open-commit="(hash) => emit('open-commit', hash)"
+            @more="history?.load(true).catch((error) => model?.report(error))"
+          />
+        </div>
+        <NodePullList
+          v-else
+          :pulls="pulls?.pulls ?? []"
+          :connected="pulls?.connected ?? false"
+          :remote="!!pulls?.remote"
+          @open="(n) => emit('open-pull', n)"
+          @connect="emit('connect-service')"
+        />
+      </template>
     </template>
   </NodePanel>
 </template>
@@ -186,6 +212,7 @@ import { t } from '@/i18n'
 // search of all of them, and the place's files, changes, history or pull requests under it.
 import { computed, watch } from 'vue'
 import type { NodePathModel } from '@/node/NodePathModel'
+import { removeNodePathFolder } from '@/node/NodePathController'
 import NodePanel from './NodePanel.vue'
 import NodePlace from './NodePlace.vue'
 import NodeModes from './NodeModes.vue'
@@ -234,7 +261,9 @@ const emit = defineEmits<{
   discard: [path: string]
   'open-chat': [id: string]
 }>()
-const git = computed(() => props.model?.currentFolder.value?.git ?? false)
+const git = computed(
+  () => !props.model?.unavailable.value && (props.model?.currentFolder.value?.git ?? false)
+)
 /** A folder without git has its files and its sessions only, whatever mode was last chosen. */
 const mode = computed(() => {
   const chosen = props.model?.panelMode.value

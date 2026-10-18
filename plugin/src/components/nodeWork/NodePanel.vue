@@ -146,6 +146,7 @@
 
       <div v-if="error" class="abele-node-panel__notice" role="alert">
         <NodeErrorText :error="error" />
+        <slot name="error-action" />
       </div>
       <div v-if="empty" class="abele-node-panel__intro abele-node-panel__intro_empty">
         <div class="abele-node-panel__intro-text">
@@ -356,6 +357,7 @@ body.is-phone .abele-node-panel__link {
 }
 .abele-node-panel__notice {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--size-4-2);
