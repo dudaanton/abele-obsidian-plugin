@@ -270,6 +270,10 @@ const SEND_INTO = (shots: string) => `
   await shot(${JSON.stringify(shots + '-requests-filter')});
   runEl.querySelector('.abele-trace-run .tree-item-children .abele-trace-run__step .abele-tree-item__text').click();
   await until(()=>runEl.querySelector('.abele-trace-step__title')?.textContent.trim()==='server.js:9'&&[...runEl.querySelectorAll('.abele-trace-value .abele-tree-item__text')].some(e=>e.textContent.trim()==='order'),'step values opened');
+  await until(()=>app.workspace.activeLeaf===runLeaf,'step inspected in the run');
+  await shot(${JSON.stringify(shots + '-flow-values')});
+  const source=await until(()=>runEl.querySelector('.abele-trace-step__source'),'explicit step source link');
+  source.click();
   await until(()=>app.workspace.activeLeaf?.getViewState().type==='abele-node-file','step source revealed');
   app.workspace.setActiveLeaf(runLeaf,{focus:true});
   await app.workspace.revealLeaf(runLeaf);
