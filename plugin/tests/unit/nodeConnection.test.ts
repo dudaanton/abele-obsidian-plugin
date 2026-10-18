@@ -120,6 +120,7 @@ it('refreshes paired authorization without stranding an open presenter or accept
         })
     ),
     disconnect: vi.fn(async () => {}),
+    describe: vi.fn(async () => ({})),
   }
   const store = { close: vi.fn() }
   const connection = new NodeConnection(client as never, store as never)
@@ -129,6 +130,7 @@ it('refreshes paired authorization without stranding an open presenter or accept
   finish()
   await oldAttempt
   await refreshed
+  expect(client.describe).not.toHaveBeenCalled()
   expect(client.disconnect).toHaveBeenCalledTimes(2)
   expect(store.close).not.toHaveBeenCalled()
   expect(connection.client).toBe(client)

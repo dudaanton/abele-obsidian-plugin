@@ -118,10 +118,15 @@ export class NodeConnection {
     this.connecting = this.client
       .connect()
       .then(async () => {
+        if (this.disposed || generation !== this.generation) {
+          console.debug('[Abele node] disconnect: stale admission')
+          await this.client.disconnect()
+          return
+        }
         // Re-negotiate capabilities on every admitted transport, before exposing it.
         if (this.client.describe) await this.client.describe()
         if (this.disposed || generation !== this.generation) {
-          console.debug('[Abele node] disconnect: stale admission')
+          console.debug('[Abele node] disconnect: stale capability response')
           await this.client.disconnect()
           return
         }
