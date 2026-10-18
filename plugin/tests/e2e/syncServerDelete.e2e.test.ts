@@ -1,6 +1,7 @@
 import { afterEach, expect, it } from 'vitest'
 import { AccessClient } from '@abele/sync-core'
 import { randomUUID } from 'node:crypto'
+import { sha256, V2EngineClient } from '@abele/sync-core'
 import { join } from 'node:path'
 import { liveSuite } from './helpers/syncLiveCases'
 import { captureSyncScreen, closeSyncScreens } from './helpers/syncScreens'
@@ -176,6 +177,69 @@ it.each([
     }
   },
   180000
+)
+
+it.skipIf(onPhone())(
+  'deletes a large folder while its first download is still running, without a restart',
+  async () => {
+    const s = fixture(),
+      a = s.primary
+    const folder = s.root + '/Field Notes',
+      first = folder + '/first.md',
+      sibling = s.root + '/unrelated.md'
+    await s.put(first, 'First sample field note')
+    await s.put(sibling, 'Unrelated server note')
+    const scope = await deletionFolder(s.server.rootToken, folder, fixtureFetch)
+    expect(scope).toBeDefined()
+    const token = await s.server.issue(
+      { kind: 'folder', id: scope!.file_id },
+      'Sample folder device'
+    )
+    const id = await s.connect(a, token)
+    // Enough synthetic files that the next download pass is still running when Delete is pressed.
+    const owner = new V2EngineClient(s.server.rootToken, { fetch: fixtureFetch })
+    const ops = []
+    for (let i = 0; i < 900; i++) {
+      const bytes = new TextEncoder().encode(
+        i % 45 === 0 ? 'sample attachment '.repeat(60000) : 'Sample field note ' + i
+      )
+      const sha = await sha256(bytes)
+      await owner.putBlob(sha, bytes)
+      const name = i % 45 === 0 ? `sample-${i}.bin` : `sample-${i}.md`
+      ops.push({
+        op: 'create' as const,
+        path: folder + '/' + name,
+        sha,
+        size: bytes.length,
+        mtime: Date.now(),
+      })
+    }
+    for (let i = 0; i < ops.length; i += 100) await s.commit(ops.slice(i, i + 100))
+    try {
+      a.run(
+        `void svc.sync(${JSON.stringify(id)}).catch(()=>{});await poll(()=>app.plugins.plugins.abele.tokenEngines.live.get(${JSON.stringify(id)})?.engine.status.state==='syncing',30000,'download pass to start');return true`
+      )
+      await openConfirmation(a, id, 'in-flight')
+      const elapsed = await a.long<{ ms: number; syncing: boolean }>(
+        'delete while syncing',
+        `const syncing=app.plugins.plugins.abele.tokenEngines.live.get(${JSON.stringify(id)})?.engine.status.state==='syncing';const started=Date.now();await press(${dialog},'Delete from the server');await poll(()=>!svc.registry.records().some(one=>one.id===${JSON.stringify(id)})&&!(${dialog})||(${dialog})?.querySelector('[role="alert"]'),90000,'deletion to finish');const alert=(${dialog})?.querySelector('[role="alert"]');if(alert) throw new Error('Deletion failed: '+textOf(alert));return {ms:Date.now()-started,syncing}`
+      )
+      console.log('[server delete in flight]', JSON.stringify(elapsed))
+      expect(elapsed.syncing).toBe(true)
+      expect(a.rows().some((row) => row.id === id)).toBe(false)
+      expect(a.read(first)).toBe('First sample field note')
+      const items = await s.items()
+      expect(items.some((one) => one.path.startsWith(folder + '/'))).toBe(false)
+      expect(items.some((one) => one.path === sibling)).toBe(true)
+      // Nothing restarts the stopped connection after the deletion.
+      expect(
+        a.run(`return app.plugins.plugins.abele.tokenEngines.live.has(${JSON.stringify(id)})`)
+      ).toBe(false)
+    } finally {
+      closeSyncScreens(a)
+    }
+  },
+  300000
 )
 
 it('keeps an in-progress confirmation open and shows a real server error without removing local files', async () => {
