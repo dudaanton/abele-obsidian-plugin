@@ -347,9 +347,13 @@ export class NodePathModel {
   }
   async refreshCurrent(): Promise<void> {
     const target = this.current.value
-    await this.refresh()
-    if (target && !this.hasTarget(target)) throw new ChannelError('stale_resource')
+    // The selected root is read again without waiting on the catalogue, which may stall;
+    // once the catalogue answers, a target that is gone surfaces as stale.
+    const listed = this.refresh().then(() => {
+      if (target && !this.hasTarget(target)) throw new ChannelError('stale_resource')
+    })
     await Promise.all([
+      listed,
       target ? this.reloadTarget(target) : Promise.resolve(),
       this.panelMode.value === 'history' ? this.loadPanelHistory() : Promise.resolve(),
       this.panelMode.value === 'pulls' ? this.loadPanelPulls() : Promise.resolve(),
