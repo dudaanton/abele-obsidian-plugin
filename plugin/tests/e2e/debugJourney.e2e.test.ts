@@ -631,7 +631,9 @@ it('on a phone: breakpoint navigation uncovers the source and highlights its lin
         await shot('journey-phone-breakpoint-list');
         press(row().querySelector('.abele-breakpoint-mark'));
         const highlighted=await until(()=>[...document.querySelectorAll('.abele-debug-source__line_here')].some(e=>e.offsetParent&&e.textContent.trim()==='const item = inspectItem(n)'),'source line visible');
-        await until(()=>app.workspace.leftSplit.collapsed&&app.workspace.rightSplit.collapsed,'drawers closed');
+        // Highlighting precedes the asynchronous leaf reveal. Collapsed drawers alone can
+        // describe the old layout while that reveal is still activating the source.
+        await until(()=>app.workspace.activeLeaf===source&&app.workspace.leftSplit.collapsed&&app.workspace.rightSplit.collapsed,'source active and drawers closed');
         await shot('journey-phone-breakpoint-source');
         const persisted=!!highlighted&&[...document.querySelectorAll('.abele-debug-source__line_here')].some(e=>e.offsetParent&&e.textContent.trim()==='const item = inspectItem(n)');if(!persisted)throw Error('Source highlight did not persist; '+debugState());return {highlighted:persisted,drawersClosed:app.workspace.leftSplit.collapsed&&app.workspace.rightSplit.collapsed};
       } finally {
