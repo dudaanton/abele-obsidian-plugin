@@ -28,11 +28,54 @@ export class NodeConnection {
   private generation = 0
   private timer?: number
   private connecting?: Promise<void>
+  private transportGeneration = 0
+  private retryGeneration = 0
+  private lastHealthCheck = 0
   constructor(
     readonly client: NodeClient,
     readonly store: NodeClientStore
   ) {
     this.delegation = new NodeDelegationController(client, store)
+    // The SDK supplies wire deadlines. This host deadline also bounds timer grace
+    // while backgrounded, and publishes failure before callers render their error.
+    const request = client.request?.bind(client)
+    if (request)
+      client.request = async (method, params) => {
+        const generation = this.transportGeneration
+        let timer: number | undefined
+        try {
+          return await Promise.race([
+            request(method, params),
+            new Promise<never>((_, reject) => {
+              timer = window.setTimeout(
+                () => reject(new ChannelError('outcome_unknown')),
+                /^(project|workspace|review|repository)\./.test(method) ? 60000 : 10000
+              )
+            }),
+          ])
+        } catch (error) {
+          if (
+            error instanceof ChannelError &&
+            ['outcome_unknown', 'disconnected'].includes(error.code)
+          ) {
+            const failure = new ChannelError(
+              error.code,
+              'No answer from the node. Reconnecting; the request may have completed.'
+            )
+            if (!this.disposed && generation === this.transportGeneration) {
+              ++this.transportGeneration
+              this.state.value = 'offline'
+              uiField(this.error, 'value', uiErrorMessage(failure))
+              console.debug('[Abele node] request lost; reconnecting', { method })
+              void this.client.disconnect().catch(() => {})
+            }
+            throw failure
+          }
+          throw error
+        } finally {
+          window.clearTimeout(timer)
+        }
+      }
   }
 
   refreshDelegations(): Promise<void> {
@@ -70,10 +113,13 @@ export class NodeConnection {
       backgroundAudio: mobileBackground.active,
     })
     this.state.value = 'connecting'
+    ++this.transportGeneration
     const generation = this.generation
     this.connecting = this.client
       .connect()
       .then(async () => {
+        // Re-negotiate capabilities on every admitted transport, before exposing it.
+        if (this.client.describe) await this.client.describe()
         if (this.disposed || generation !== this.generation) {
           console.debug('[Abele node] disconnect: stale admission')
           await this.client.disconnect()
@@ -146,6 +192,7 @@ export class NodeConnection {
    */
   async refreshAuthorization(): Promise<void> {
     ++this.generation
+    ++this.transportGeneration
     window.clearTimeout(this.timer)
     this.state.value = 'offline'
     uiField(this.error, 'value', uiErrorMessage(''))
@@ -158,15 +205,38 @@ export class NodeConnection {
 
   /** Plugin-owned retry/foreground lifetime, independent of which tab is visible. */
   start(): void {
+    window.clearTimeout(this.timer)
+    const retryGeneration = ++this.retryGeneration
     const generation = this.generation
     const tick = async () => {
-      if (this.disposed) return
+      if (
+        this.disposed ||
+        retryGeneration !== this.retryGeneration ||
+        generation !== this.generation
+      )
+        return
       if (!this.client.connected) {
         this.state.value = 'offline'
         await this.connect('retry_tick').catch(() => {})
-      } else this.state.value = 'connected'
-      await this.refreshDelegations().catch(() => {})
-      if (!this.disposed && generation === this.generation)
+      } else if (Date.now() - this.lastHealthCheck >= 15000) {
+        this.lastHealthCheck = Date.now()
+        // A live socket alone does not prove the peer is answering requests.
+        const transportGeneration = this.transportGeneration
+        await this.client
+          .describe()
+          .then(() => {
+            if (!this.disposed && transportGeneration === this.transportGeneration)
+              this.state.value = 'connected'
+          })
+          .catch(() => {})
+      }
+      // Mailbox restoration must never own the transport retry lifetime.
+      void this.refreshDelegations().catch(() => {})
+      if (
+        !this.disposed &&
+        generation === this.generation &&
+        retryGeneration === this.retryGeneration
+      )
         this.timer = window.setTimeout((): void => {
           void tick()
         }, 2000)
@@ -177,6 +247,7 @@ export class NodeConnection {
   destroy(): void {
     this.disposed = true
     ++this.generation
+    ++this.transportGeneration
     this.state.value = 'offline'
     window.clearTimeout(this.timer)
     console.debug('[Abele node] disconnect: connection destroyed')

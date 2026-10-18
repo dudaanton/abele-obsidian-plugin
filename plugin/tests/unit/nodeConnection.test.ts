@@ -1,6 +1,113 @@
 import { expect, it, vi } from 'vitest'
 import { NodeConnection } from '@/node/NodeService'
 import { ChannelError } from '@abele/channel-protocol'
+import { FrameCodec, LIMITS } from '@abele/channel-protocol'
+import { RecordQueue } from '@abele/channel-client'
+import { MemoryClientStore, NodeClient } from '@abele/node-client'
+import { folderDebugReason } from '@/debugger/folderActions'
+
+vi.mock('@/debugger/register', () => ({}))
+
+it('settles a folder menu on a silent transport and describes the replacement peer', async () => {
+  vi.useFakeTimers()
+  let silent = false
+  let instance = 0
+  const described: number[] = []
+  const connector = {
+    async connect() {
+      const current = ++instance
+      const queue = new RecordQueue()
+      return {
+        authority: { installation_id: 'sample-installation', profile: 'local-token-v1' },
+        welcome: {
+          node_id: 'sample-node',
+          instance_id: `sample-instance-${current}`,
+          limits: LIMITS,
+        },
+        transport: {
+          receive: () => queue,
+          async close() {
+            queue.end()
+          },
+          async send(bytes: Uint8Array) {
+            const frame = FrameCodec.decode(bytes)
+            if (silent) return
+            if (frame.kind === 'request') {
+              if (frame.method === 'node.describe') described.push(current)
+              queue.push(
+                FrameCodec.encode({
+                  kind: 'response',
+                  request_id: frame.request_id,
+                  result: { capabilities: { capabilities: {} } },
+                })
+              )
+            } else if (frame.kind === 'ping') queue.push(FrameCodec.encode({ kind: 'pong' }))
+          },
+        },
+      }
+    },
+  }
+  const client = new NodeClient(
+    { url: 'ws://127.0.0.1:12345/channel', profile: 'local-token-v1', token: 'sample-token' },
+    new MemoryClientStore(),
+    connector as never
+  )
+  const connection = new NodeConnection(client, { close() {} } as never)
+  vi.spyOn(connection, 'refreshDelegations').mockResolvedValue()
+  try {
+    await connection.connect()
+    connection.start()
+    await Promise.resolve()
+    silent = true
+    const reason = folderDebugReason({ connection } as never)
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(await reason).toMatch(/no answer from the node/i)
+    expect(connection.state.value).toBe('offline')
+    silent = false
+    await vi.advanceTimersByTimeAsync(4000)
+    expect(connection.state.value).toBe('connected')
+    expect(instance).toBe(2)
+    expect(described).toContain(2)
+  } finally {
+    connection.destroy()
+    await client.disconnect()
+    vi.useRealTimers()
+  }
+})
+
+it('bounds a silent peer and reconnects despite stalled delegation restore', async () => {
+  vi.useFakeTimers()
+  let silent = true
+  const client = {
+    connected: true,
+    request: vi.fn(async (..._args: unknown[]) => (silent ? new Promise<unknown>(() => {}) : {})),
+    describe() {
+      return this.request('node.describe', {})
+    },
+    connect: vi.fn(async () => {
+      client.connected = true
+    }),
+    disconnect: vi.fn(async () => {
+      client.connected = false
+    }),
+  }
+  const connection = new NodeConnection(client as never, { close() {} } as never)
+  vi.spyOn(connection, 'refreshDelegations').mockImplementation(() => new Promise(() => {}))
+  try {
+    connection.start()
+    const failed = expect(connection.client.describe()).rejects.toThrow(/no answer from the node/i)
+    await vi.advanceTimersByTimeAsync(10000)
+    await failed
+    expect(connection.state.value).toBe('offline')
+    silent = false
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(client.connect).toHaveBeenCalled()
+    expect(connection.state.value).toBe('connected')
+  } finally {
+    connection.destroy()
+    vi.useRealTimers()
+  }
+})
 
 it('refreshes paired authorization without stranding an open presenter or accepting a late old transport', async () => {
   let finish!: () => void
@@ -39,11 +146,16 @@ it('keeps an admitted node usable when a previously cached mailbox is revoked', 
       throw new ChannelError('unauthorized')
     }),
     flush: vi.fn(async () => {}),
-    subscribe: vi.fn(async (stream: string) => { if (stream === 'revoked') throw new ChannelError('unauthorized') }),
+    subscribe: vi.fn(async (stream: string) => {
+      if (stream === 'revoked') throw new ChannelError('unauthorized')
+    }),
     disconnect: vi.fn(async () => {}),
   }
   const state = { cursors: { revoked: 1, healthy: 2 } as Record<string, number> }
-  const store = { transaction: vi.fn(async (work: (s: typeof state) => unknown) => work(state)), close: vi.fn() }
+  const store = {
+    transaction: vi.fn(async (work: (s: typeof state) => unknown) => work(state)),
+    close: vi.fn(),
+  }
   const connection = new NodeConnection(client as never, store as never)
   await connection.connect()
   expect(connection.state.value).toBe('connected')
