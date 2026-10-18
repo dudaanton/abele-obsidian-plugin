@@ -7,7 +7,8 @@ import type { ChatMessage } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
 import { parseChat, serializeChat } from '@/ai/ChatLog'
 import { UpdateTranscript } from '@/node/updateTranscript'
-import { setup } from '../helpers/nodeAgentFixture'
+import { setup, setupGit } from '../helpers/nodeAgentFixture'
+import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import { openNodeToolFile } from '@/node/openToolFile'
 import { NodeService } from '@/node/NodeService'
 import { openNodeChatResource } from '@/node/nodeChatPlace'
@@ -44,6 +45,50 @@ it('keeps all provider paths without duplicates or prose guesses', () => {
   ).toEqual([])
   expect(toolFilePaths(call({ toolParams: { path: { bogus: true } } }))).toEqual([])
   expect(toolFilePaths(call({ toolParams: {}, toolResult: 'Read sample.md' }))).toEqual([])
+})
+
+it('keeps a completed node replacement linked when its run folds', () => {
+  useVault([])
+  const message = call({ toolName: 'node_replace', toolParams: { path: 'src/sample.ts' } })
+  const wrapper = mount(ChatToolRun, {
+    props: { id: 'replacement', calls: [message], open: false, resourceOpener: vi.fn() },
+  })
+  try {
+    expect(wrapper.get('[role="link"]').text()).toBe('src/sample.ts')
+  } finally {
+    wrapper.unmount()
+  }
+})
+
+it('captures the resolved Git worktree before saving a file link', async () => {
+  const { session, factory } = setupGit()
+  const { createNodeAgentTools } = await import('@/ai/tools/node/agent')
+  const snapshots: unknown[] = []
+  await createNodeAgentTools(factory)
+    .find((tool) => tool.name === 'node_read')!
+    .execute(
+      'sample-root-read',
+      {
+        node: 'sample-node',
+        project: 'sample-project',
+        workspace: 'sample-workspace',
+        target_kind: 'workspace',
+        path: 'sample.txt',
+      },
+      undefined,
+      {
+        session,
+        interactive: true,
+        onNodeFileTarget: (target) => snapshots.push(structuredClone(target)),
+      } as unknown as import('@/ai/toolContext').ToolContext
+    )
+  expect(snapshots).toEqual([
+    {
+      node_id: 'sample-node',
+      project_id: 'sample-project',
+      target: { kind: 'worktree', worktree_id: 'sample-tree' },
+    },
+  ])
 })
 
 it('indexes the same full paths that the tool line shows', () => {
@@ -216,7 +261,9 @@ it('persists the executed node identity and opens only that remote place', async
     vi.mocked(NodeService.getInstance).mockReturnValue({
       nodes: { value: [] },
     } as unknown as NodeService)
-    await expect(openNodeToolFile('Sample/notes.md', target)).rejects.toThrow('unavailable')
+    await expect(openNodeToolFile('Sample/notes.md', target)).rejects.toEqual(
+      new UiError(uiMessage('streamB.nodeUnavailable.14c28f'))
+    )
     expect(openNodeChatResource).not.toHaveBeenCalled()
   } finally {
     vi.restoreAllMocks()

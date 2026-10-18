@@ -21,7 +21,7 @@ export function toolFilePaths(
   if (name === 'apply_template') return paths([extractResultPath(message.toolResult) || p.path])
   if (['mv', 'cp', 'node_mv', 'node_cp'].includes(name)) return paths([p.to])
   if (
-    !['rm', 'read_image', 'look_at_drawing'].includes(name) &&
+    !['rm', 'read_image', 'look_at_drawing', 'node_replace'].includes(name) &&
     !/(^|[_-])(write|edit|create|read|append|patch|update|multiedit)([_-]|$)/i.test(name)
   )
     return []

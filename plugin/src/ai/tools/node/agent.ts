@@ -536,7 +536,6 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
       }
       const target = targetOf(session, params)
       target.node_id = host.nodeId?.(target.node_id) ?? target.node_id
-      if (['node_read', ...NODE_MUTATION_TOOLS].includes(name)) ctx?.onNodeFileTarget?.(target)
       let mutation:
         | { store: NodeMutationStore; key: string; chat: string; retry?: NodeMutationRecord }
         | undefined
@@ -579,6 +578,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
           { kind: 'no-access', node_id: target.node_id, ...wanted }
         )
       await safe(() => resolveNodeTarget(client, target, scopes, guard))
+      if (['node_read', ...NODE_MUTATION_TOOLS].includes(name)) ctx?.onNodeFileTarget?.(target)
       const id = nodeTargetId(target.target),
         git = target.target.kind === 'worktree'
       const access = NODE_MUTATION_TOOLS.includes(name) ? 'edit' : 'read'
