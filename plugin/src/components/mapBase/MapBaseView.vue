@@ -137,7 +137,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref, shallowRef, watch } from 'vue'
 import { Keymap, Platform, Notice } from 'obsidian'
 import type { Map as MapLibreMap, Marker, Popup, StyleSpecification } from 'maplibre-gl'
-import { loadBackgroundStyle } from '@/maps/backgroundStyle'
+import { loadBackgroundStyle, type BackgroundSource } from '@/maps/backgroundStyle'
 import { popupLayout } from '@/maps/core/popupLayout'
 import { loadMaplibre } from '@/helpers/loadMaplibre'
 import { ControlItem } from '../obsidian/ControlItem'
@@ -188,6 +188,7 @@ const props = withDefaults(
     group?: boolean
     /** The style the map is drawn with; empty draws a plain ground (no connection). */
     styleUrl: string | object
+    backgroundSource?: BackgroundSource
     background: string
     backgrounds: (string | { id: string; name: string })[]
     center?: { lat: number; lon: number }
@@ -212,6 +213,7 @@ const props = withDefaults(
     maxZoom: 18,
     problem: null,
     height: 400,
+    backgroundSource: 'base',
     cardState: 'ready',
     history: undefined,
     loadPlace: undefined,
@@ -318,7 +320,7 @@ function requestBackground() {
   const m = map.value
   if (!m) return
   const generation = ++styleGeneration
-  void loadBackgroundStyle(props.styleUrl)
+  void loadBackgroundStyle(props.styleUrl, props.backgroundSource)
     .then((style) => {
       if (!disposed && map.value === m && generation === styleGeneration)
         m.setStyle(style, { diff: false })
@@ -782,7 +784,7 @@ function drawMe() {
 
 watch(() => [props.places, props.group], drawMarks)
 watch(() => props.me, drawMe)
-watch(() => [props.styleUrl, props.themeToken] as const, requestBackground)
+watch(() => [props.styleUrl, props.backgroundSource, props.themeToken] as const, requestBackground)
 watch(
   () => props.history,
   (state) => {

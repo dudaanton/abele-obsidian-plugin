@@ -1,15 +1,19 @@
 import { requestUrl } from 'obsidian'
 import type { StyleSpecification } from 'maplibre-gl'
 
+export type BackgroundSource = 'base' | 'settings' | 'default'
+
 type Request = (url: string) => Promise<{ status: number; json: unknown }>
 const hostRequest: Request = (url) => requestUrl({ url, throw: false })
 
-/** Host transport matches the upstream style loader; MapLibre still owns tile requests. */
+/** Only explicitly configured named backgrounds may use host transport. All other URLs stay with MapLibre. */
 export async function loadBackgroundStyle(
   style: string | object,
+  source: BackgroundSource = 'base',
   request: Request = hostRequest
 ): Promise<string | StyleSpecification> {
   if (typeof style !== 'string') return style as StyleSpecification
+  if (source !== 'settings') return style
   try {
     const response = await request(style)
     if (response.status < 200 || response.status >= 300) return style

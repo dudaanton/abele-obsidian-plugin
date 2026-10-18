@@ -1,3 +1,4 @@
+import type { BackgroundSource } from '@/maps/backgroundStyle'
 import { externalLinkPath } from '@/sync/external/fileAccess'
 import { openAbeleSettings } from '@/components/settings/settingsTab'
 import {
@@ -62,6 +63,7 @@ interface MapViewState {
   list: boolean
   contentToken: number
   styleUrl: ReturnType<typeof backgroundStyle>
+  backgroundSource: BackgroundSource
   background: string
   backgrounds: { id: string; name: string }[]
   center?: { lat: number; lon: number }
@@ -94,6 +96,7 @@ export class MapView extends BasesView {
     list: false,
     contentToken: 0,
     styleUrl: backgroundStyle([]),
+    backgroundSource: 'default',
     background: '',
     backgrounds: [],
     center: undefined,
@@ -315,7 +318,9 @@ export class MapView extends BasesView {
     this.state.background = viewTiles ? 'view:tiles' : selected ? `named:${selected.id}` : ''
     const chosenLight = viewTiles ? light : (selected?.light ?? [])
     const chosenDark = viewTiles ? dark : (selected?.dark ?? [])
-    const style = backgroundStyle(isDark && chosenDark.length ? chosenDark : chosenLight, isDark)
+    const chosenUrls = isDark && chosenDark.length ? chosenDark : chosenLight
+    this.state.backgroundSource = viewTiles ? 'base' : chosenUrls.length ? 'settings' : 'default'
+    const style = backgroundStyle(chosenUrls, isDark)
     if (JSON.stringify(this.state.styleUrl) !== JSON.stringify(style)) this.state.styleUrl = style
   }
   private open(place: MapPlace, where: 'here' | 'tab' | 'split' | 'window'): void {

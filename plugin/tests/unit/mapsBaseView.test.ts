@@ -81,8 +81,9 @@ afterEach(() => {
 
 it('reads without writes, preserves a moved camera on row updates, and gates formula creation', async () => {
   const { StringValue } = await import('obsidian')
+  let baseTiles: string | undefined
   const config = {
-    get: (key: string) => (key === 'center' ? '0, 0' : undefined),
+    get: (key: string) => (key === 'center' ? '0, 0' : key === 'mapTiles' ? baseTiles : undefined),
     getAsPropertyId: (key: string) => (key === 'coordinates' ? 'formula.position' : null),
     getEvaluatedFormula: () => null,
     getOrder: () => [],
@@ -110,6 +111,7 @@ it('reads without writes, preserves a moved camera on row updates, and gates for
   view.onDataUpdated()
   await nextTick()
   expect(captured.props?.places).toMatchObject([{ lat: 1, lon: 2 }])
+  expect(captured.props?.backgroundSource).toBe('default')
   expect(captured.props?.batchOne).not.toBe(true)
   captured.props!['onUpdate:list'](true)
   await nextTick()
@@ -150,6 +152,17 @@ it('reads without writes, preserves a moved camera on row updates, and gates for
   view.onDataUpdated()
   await nextTick()
   expect(captured.props!.styleUrl).toBe('https://example.test/one.json')
+  expect(captured.props!.backgroundSource).toBe('settings')
+  baseTiles = 'https://example.test/one.json'
+  captured.props!.onBackground('view:tiles')
+  view.onDataUpdated()
+  await nextTick()
+  expect(captured.props!.styleUrl).toBe(baseTiles)
+  expect(captured.props!.backgroundSource).toBe('base')
+  captured.props!.onBackground('named:one')
+  await nextTick()
+  expect(captured.props!.styleUrl).toBe(baseTiles)
+  expect(captured.props!.backgroundSource).toBe('settings')
   expect(config.set).not.toHaveBeenCalled()
   captured.props!.onCreate(12, 20)
   expect(create).not.toHaveBeenCalled()

@@ -1,6 +1,27 @@
 import { expect, it, vi } from 'vitest'
 import { loadBackgroundStyle } from '@/maps/backgroundStyle'
 import type { StyleSpecification } from 'maplibre-gl'
+import { requestUrl } from 'obsidian'
+
+vi.mock('obsidian', async (original) => ({
+  ...(await original<object>()),
+  requestUrl: vi
+    .fn()
+    .mockResolvedValue({ status: 200, json: { version: 8, sources: {}, layers: [] } }),
+}))
+
+it('never sends base or default background URLs to the host transport, even when a settings URL matches', async () => {
+  const url = 'https://example.test/style.json'
+  vi.mocked(requestUrl).mockClear()
+  expect(await loadBackgroundStyle(url)).toBe(url)
+  expect(await loadBackgroundStyle(url, 'base')).toBe(url)
+  expect(await loadBackgroundStyle(url, 'default')).toBe(url)
+  expect(requestUrl).not.toHaveBeenCalled()
+  expect(await loadBackgroundStyle(url, 'settings')).toMatchObject({ version: 8 })
+  expect(requestUrl).toHaveBeenCalledExactlyOnceWith({ url, throw: false })
+  await loadBackgroundStyle(url, 'base')
+  expect(requestUrl).toHaveBeenCalledTimes(1)
+})
 
 it('loads style JSON through the injected host transport and resolves its relative assets', async () => {
   const style = {
@@ -11,7 +32,11 @@ it('loads style JSON through the injected host transport and resolves its relati
     layers: [],
   }
   const request = vi.fn().mockResolvedValue({ status: 200, json: style })
-  const loaded = await loadBackgroundStyle('https://example.test/maps/style.json', request)
+  const loaded = await loadBackgroundStyle(
+    'https://example.test/maps/style.json',
+    'settings',
+    request
+  )
   expect(request).toHaveBeenCalledWith('https://example.test/maps/style.json')
   expect(loaded).toMatchObject({
     sprite: 'https://example.test/maps/sprites/main',
@@ -22,9 +47,9 @@ it('loads style JSON through the injected host transport and resolves its relati
 it('passes raster specifications through and retains the URL fallback on host transport failure', async () => {
   const raster: StyleSpecification = { version: 8, sources: {}, layers: [] }
   const request = vi.fn().mockRejectedValue(Error('offline'))
-  expect(await loadBackgroundStyle(raster, request)).toBe(raster)
+  expect(await loadBackgroundStyle(raster, 'settings', request)).toBe(raster)
   expect(request).not.toHaveBeenCalled()
-  expect(await loadBackgroundStyle('https://example.test/style.json', request)).toBe(
+  expect(await loadBackgroundStyle('https://example.test/style.json', 'settings', request)).toBe(
     'https://example.test/style.json'
   )
 })
@@ -43,6 +68,7 @@ it('resolves the upstream Mapbox source, sprite and font protocols without conta
   })
   const style = await loadBackgroundStyle(
     'https://api.mapbox.com/styles/v1/sample-owner/sample-style?access_token=sample-token',
+    'settings',
     request
   )
   expect(style).toMatchObject({

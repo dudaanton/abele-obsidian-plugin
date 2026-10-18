@@ -31,6 +31,9 @@ URL or raster tile templates; multiple templates draw multiple layers. Dark URLs
 without them the light background is also used in dark mode. Per-view `mapTiles` and
 `mapTilesDark` remain supported. Backgrounds can be copied from Obsidian Maps without changing
 its settings. The layers button switches backgrounds for the current open map.
+Style URLs in a `.base` file and the built-in defaults load through the browser and require
+the provider to allow cross-origin requests. Named settings backgrounds can load style JSON
+through Obsidian’s network API; their tiles, fonts and sprites still load through the browser.
 
 The location button requests permission and follows your position. Panning pauses following;
 press the button to resume, or press while following to stop. Closing the map releases its
