@@ -102,6 +102,7 @@ describe.skipIf(!available)('pencil migration through the real command and ink p
           { zoom: number; thickness: number; difference: number }[]
         >(`(async()=>{
           ${WAIT_PRELUDE}
+          app.workspace.leftSplit.collapse();app.workspace.rightSplit.collapse()
           const file=app.vault.getAbstractFileByPath(${JSON.stringify(stored.path)})
           const leaf=app.workspace.getLeaf('tab')
           try{
@@ -109,6 +110,7 @@ describe.skipIf(!available)('pencil migration through the real command and ink p
             await app.workspace.revealLeaf(leaf)
             const v=await until(()=>leaf.view.viewer?.graph?.abele?.ink?.length===${elements.length}&&leaf.view.viewer)
             if(!v)throw Error('Ink viewer not ready')
+            await new Promise(r=>setTimeout(r,250))
             const reference=${JSON.stringify(paths)}
             const phase=v.graph.abele.ink[0].freedraw?'after':'before'
             const results=[]
@@ -146,16 +148,28 @@ describe.skipIf(!available)('pencil migration through the real command and ink p
               for(let i=3;i<a.length;i+=4){actual+=a[i];total+=b[i];difference+=Math.abs(a[i]-b[i])}
               results.push({zoom:c.zoom,thickness:actual/total,difference:difference/total})
             }
-            // Separate native ink canvas, using exactly the existing hand-sampled fixture.
+            // Baseline native path (pinned by the unit regression) versus the real ink painter.
             const nativePath=${JSON.stringify(handPath)}
-            const hand=document.createElement('canvas');hand.width=180;hand.height=160
-            hand.style.cssText='position:fixed;left:20px;top:120px;background:white;z-index:10000'
-            hand.getContext('2d').fill(new Path2D(nativePath));document.body.append(hand)
-            try{
-              await new Promise(r=>requestAnimationFrame(r))
+            v.load({nodes:[],edges:[],abele:{ink:[${JSON.stringify({ ...handwriting, color: '', version: 1, id: 'sample-hand' })}]}},true)
+            v.setCamera({x:80-v.stage.clientWidth/2,y:80-v.stage.clientHeight/2,zoom:1})
+            v.drawInk()
+            await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))
+            const plane=v.inkCanvas,ctx=plane.getContext('2d'),c=v.camera,ratio=plane.width/v.stage.clientWidth
+            const actual=ctx.getImageData(0,0,plane.width,plane.height).data
+            ctx.resetTransform();ctx.clearRect(0,0,plane.width,plane.height)
+            ctx.setTransform(ratio,0,0,ratio,-c.x*ratio,-c.y*ratio)
+            ctx.fillStyle=getComputedStyle(v.el).getPropertyValue('--text-normal')||'#1e1e1e'
+            ctx.fill(new Path2D(nativePath))
+            const baseline=ctx.getImageData(0,0,plane.width,plane.height).data
+            let nativeDifference=0,nativeArea=0
+            for(let i=3;i<actual.length;i+=4){nativeDifference+=Math.abs(actual[i]-baseline[i]);nativeArea+=baseline[i]}
+            if(!nativeArea||nativeDifference/nativeArea>0.001)throw Error('Native hand-sampled ink changed')
+            for(const nativePhase of ['before','after']){
+              if(nativePhase==='after')v.drawInk()
+              await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))
               const image=await require('@electron/remote').getCurrentWebContents().capturePage()
-              require('fs').writeFileSync(${JSON.stringify(shots)}+'/'+${JSON.stringify(sample.name + '-' + (mobile ? 'phone' : 'desktop'))}+'-hand-'+phase+'.png',image.toPNG())
-            }finally{hand.remove()}
+              require('fs').writeFileSync(${JSON.stringify(shots)}+'/'+${JSON.stringify(sample.name + '-' + (mobile ? 'phone' : 'desktop'))}+'-hand-'+nativePhase+'.png',image.toPNG())
+            }
             return results
           }finally{leaf.detach()}
         })()`)
