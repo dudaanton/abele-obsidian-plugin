@@ -671,7 +671,8 @@ pen pointers preserve real pressure, including zero, while mouse/finger pressure
 Perfect-freehand supplies the pressure easing, round caps and quadratic outline for live paint,
 saved ink and exports. Pen `size` remains the half-pressure diameter; markers retain uniform
 width and opacity and store a filled outline. Older strokes without this profile retain their
-rendering. Partial erasing bakes the streamlined
+rendering. Picking and selection bounds follow the displayed quadratic outline, including
+short-stroke caps. Partial erasing bakes the streamlined
 centreline and equivalent native nib widths into the resulting fragments, removing the profile
 so they are not streamlined twice.
 An explicit single-drawing migration creates a new canvas beside prior results; bulk migration

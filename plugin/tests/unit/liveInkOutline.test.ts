@@ -6,11 +6,37 @@ import { drawInk } from '@/reader/ink/inkLayer'
 import { inkSvg, parseInkSvg } from '@/reader/ink/inkFile'
 import { strokePath } from '@/ink/stroke'
 import type { StrokeItem } from '@/drawing/items'
-import { moveItem, scaleItem } from '@/drawing/items'
+import { boundsOf, moveItem, scaleItem } from '@/drawing/items'
+import { inkBounds } from '@/canvas/core/ink'
+import { freedrawOutline } from '@/ink/freedraw'
 import { handwriting } from '../helpers/handwriting'
 import { createHash } from 'node:crypto'
 
 afterEach(() => vi.unstubAllGlobals())
+it('includes the actual freehand cap in drawing and canvas selection bounds', () => {
+  const stroke: StrokeItem = {
+    tool: 'marker',
+    color: 'yellow',
+    size: 12,
+    id: 'sample',
+    type: 'stroke',
+    linear: true,
+    freedraw: { simulatePressure: false, streamline: 0.5 },
+    points: [80, 80, 0.5],
+  }
+  const drawing = boundsOf(stroke)
+  const canvas = inkBounds({ stroke: { ...stroke, color: '', version: 1 } })
+  for (const [x, y] of freedrawOutline(stroke)) {
+    expect(x).toBeGreaterThanOrEqual(drawing.x)
+    expect(x).toBeLessThanOrEqual(drawing.x + drawing.w)
+    expect(y).toBeGreaterThanOrEqual(drawing.y)
+    expect(y).toBeLessThanOrEqual(drawing.y + drawing.h)
+    expect(x).toBeGreaterThanOrEqual(canvas.x)
+    expect(x).toBeLessThanOrEqual(canvas.x + canvas.width)
+    expect(y).toBeGreaterThanOrEqual(canvas.y)
+    expect(y).toBeLessThanOrEqual(canvas.y + canvas.height)
+  }
+})
 it('keeps the same freehand outline and precision when a selection moves or scales', () => {
   const stroke: StrokeItem = {
     ...handwriting,

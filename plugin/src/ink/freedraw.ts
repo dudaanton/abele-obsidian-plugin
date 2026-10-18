@@ -104,6 +104,29 @@ export function freedrawOutline(stroke: FreedrawStroke): number[][] {
   return out
 }
 
+/** Bounds include short-stroke caps, which can extend beyond a centreline nib radius. */
+export function freedrawBounds(stroke: FreedrawStroke): {
+  x: number
+  y: number
+  width: number
+  height: number
+} {
+  const outline = freedrawOutline(stroke)
+  if (!outline.length) return { x: 0, y: 0, width: 0, height: 0 }
+  let x = Infinity,
+    y = Infinity,
+    right = -Infinity,
+    bottom = -Infinity
+  for (const [px, py] of outline) {
+    x = Math.min(x, px)
+    y = Math.min(y, py)
+    right = Math.max(right, px)
+    bottom = Math.max(bottom, py)
+  }
+  // The flattened quadratic boundary differs from the curve by at most .1 units.
+  return { x: x - 0.1, y: y - 0.1, width: right - x + 0.2, height: bottom - y + 0.2 }
+}
+
 /** Picking follows the streamlined centreline rather than the raw stair-stepped samples. */
 export function freedrawCenterline(stroke: FreedrawStroke): number[] {
   const opts = options(stroke),

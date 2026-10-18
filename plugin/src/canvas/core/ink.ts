@@ -1,7 +1,7 @@
 /** Versioned ink in native Canvas extensions; geometry has no host or persistence dependency. */
 import { z } from 'zod'
 import { hitOutline, penWidth, strokePath, strokeCenterline } from '../../ink/stroke'
-import { freedrawOutline } from '../../ink/freedraw'
+import { freedrawBounds, freedrawOutline } from '../../ink/freedraw'
 import { insideLoop } from '../../drawing/selection'
 import { canvasVisibility } from './visibility'
 import { bounds, type CanvasGraph, type CanvasNode, type Rect } from './model'
@@ -180,6 +180,10 @@ const boundsCache = new WeakMap<CanvasInk, Rect>()
 export function inkBounds(entry: InkEntry): Rect {
   const s = entry.stroke
   let local = boundsCache.get(s)
+  if (!local && s.freedraw) {
+    local = freedrawBounds(s)
+    boundsCache.set(s, local)
+  }
   if (!local) {
     // Catmull-Rom segments lie inside their Bezier control hull, including overshoot.
     const p = s.points,

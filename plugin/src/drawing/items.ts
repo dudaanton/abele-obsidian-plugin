@@ -18,7 +18,7 @@ import {
   type InkColor,
   type InkTool,
 } from '@/ink/stroke'
-import { readFreedraw, type FreedrawProfile } from '@/ink/freedraw'
+import { freedrawBounds, readFreedraw, type FreedrawProfile } from '@/ink/freedraw'
 
 export interface StrokeItem {
   id: string
@@ -126,6 +126,12 @@ const boundsCache = new WeakMap<DrawingItem, Rect>()
 export function boundsOf(item: DrawingItem): Rect {
   const known = boundsCache.get(item)
   if (known) return known
+  if (item.type === 'stroke' && item.freedraw) {
+    const b = freedrawBounds(item)
+    const rect = { x: b.x, y: b.y, w: b.width, h: b.height }
+    boundsCache.set(item, rect)
+    return rect
+  }
   let out: Rect
   if (item.type === 'stroke') {
     const pts = strokeCenterline(item)
