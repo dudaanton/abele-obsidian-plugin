@@ -5,9 +5,7 @@ import { t } from '@/i18n'
  * What every tab that is drawn in shares — a drawing's own and a picture drawn on: its keys, and
  * the bar over it with the menus its buttons open. The tab adds the rest of its "more" menu.
  */
-import { Menu, type Component, type Scope } from 'obsidian'
-import DrawingBar from '@/components/drawing/DrawingBar.vue'
-import { mountKit, type KitMount } from '@/components/obsidian/mount'
+import { Menu, type Scope } from 'obsidian'
 import type { DrawingSession } from './DrawingSession'
 import { THICKNESSES, type DrawingModel } from './model'
 import { SHAPE_KINDS, type ShapeKind } from './items'
@@ -48,35 +46,6 @@ export function drawingKeys(
       session()?.deletePicked()
       return false
     })
-}
-
-/** The bar, mounted over a drawing, its buttons wired to the session. */
-export function mountDrawingBar(
-  el: HTMLElement,
-  model: DrawingModel,
-  session: () => DrawingSession | null,
-  more: (e: MouseEvent) => void,
-  owner?: Component
-): KitMount {
-  return mountKit(
-    el,
-    DrawingBar,
-    {
-      model,
-      onToggle: () => session()?.toggle(),
-      onTool: (tool: DrawingModel['tool']) => session()?.setTool(tool),
-      onShape: (e: MouseEvent) => shapeMenu(e, model, session()),
-      onDelete: () => session()?.deletePicked(),
-      onColor: (color: DrawingModel['penColor']) => session()?.setColor(color),
-      onThickness: (e: MouseEvent) => thicknessMenu(e, model, session()),
-      onFinger: (on: boolean) => session()?.setFinger(on),
-      onUndo: () => session()?.undo(),
-      onRedo: () => session()?.redo(),
-      onZoom: (e: MouseEvent) => zoomMenu(e, session()),
-      onMore: more,
-    },
-    { owner }
-  )
 }
 
 /** Fine, medium or bold, kept for every drawing from now on. */

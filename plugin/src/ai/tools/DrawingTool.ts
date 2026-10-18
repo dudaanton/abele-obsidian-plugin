@@ -1,6 +1,6 @@
 /**
- * `look_at_drawing`: the agent sees a drawing — all of it, a part of it named in its own units,
- * or what the person picked with the lasso in the open drawing — as a picture, with a line saying
+ * `look_at_drawing`: the agent sees a legacy drawing or a part named in its own units
+ * as a picture, with a line saying
  * where on the drawing that part is and the text typed on it. Reading handwriting is the model's:
  * the picture is painted large enough for it.
  */
@@ -9,31 +9,17 @@ import type { AgentTool, UserContentPart } from '../client'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { paperOf, parseDrawingSvg } from '@/drawing/drawingFile'
 import { parseView, formatView } from '@/drawing/embedFormat'
-import { drawingCanvas, withMargin } from '@/drawing/rasterize'
-import { DRAWING_VIEW_TYPE } from '@/drawing/viewType'
-import type { DrawingView } from '@/drawing/DrawingView'
+import { drawingCanvas } from '@/drawing/rasterize'
 import { intersects, boundsOf, type Rect } from '@/drawing/items'
 
 export const LOOK_AT_DRAWING = 'look_at_drawing'
-
-/** What the person picked in the open tab of a drawing, with room round it; null for nothing. */
-function pickedIn(path: string): Rect | null {
-  const { app } = GlobalStore.getInstance()
-  for (const leaf of app.workspace.getLeavesOfType(DRAWING_VIEW_TYPE)) {
-    const view = leaf.view as DrawingView
-    if (view.file?.path !== path) continue
-    const box = view.session?.pick.box()
-    if (box) return withMargin(box)
-  }
-  return null
-}
 
 export function createLookAtDrawingTool(): AgentTool {
   return {
     name: LOOK_AT_DRAWING,
     label: 'Look at drawing',
     description:
-      "See a drawing made in the plugin (an .svg whose file says it is one) as a picture — the whole of it, a part, or what the person picked with the lasso in its open tab. Use it to read handwriting, describe or answer about a sketch. `area` is \"x y width height\" in the drawing's own units, the numbers of a note's `#part=x,y,w,h` embed (or an older `[!drawing|…]` callout); the reply says the whole drawing's bounds so you can ask for a closer part.",
+      "See a drawing made in the plugin (an .svg whose file says it is one) as a picture — the whole of it or a part. Use it to read handwriting, describe or answer about a sketch. `area` is \"x y width height\" in the drawing's own units, the numbers of a note's `#part=x,y,w,h` embed (or an older `[!drawing|…]` callout); the reply says the whole drawing's bounds so you can ask for a closer part.",
     parameters: {
       type: 'object',
       properties: {
@@ -41,10 +27,6 @@ export function createLookAtDrawingTool(): AgentTool {
         area: {
           type: 'string',
           description: 'Optional: "x y width height" of the part to see, in the drawing’s units',
-        },
-        picked: {
-          type: 'boolean',
-          description: 'Optional: see what the person picked with the lasso in the open drawing',
         },
       },
       required: ['path'],
@@ -59,8 +41,7 @@ export function createLookAtDrawingTool(): AgentTool {
       const whole = paperOf(data.items)
       let area: Rect | null = null
       if (params.picked === true) {
-        area = pickedIn(path)
-        if (!area) throw new Error('Nothing is picked in an open tab of that drawing.')
+        throw new Error('Nothing is picked in an open tab of that drawing.')
       } else if (typeof params.area === 'string' && params.area.trim()) {
         area = parseView(params.area)
         if (!area) throw new Error('`area` must be four numbers: x y width height.')

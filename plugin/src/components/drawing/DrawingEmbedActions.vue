@@ -35,14 +35,13 @@ const props = defineProps<{ adjusting: boolean }>()
 
 const emit = defineEmits<{
   adjust: []
-  draw: []
   open: []
   whole: []
   cancel: []
   keep: []
 }>()
 
-type Name = 'adjust' | 'open' | 'go' | 'whole' | 'cancel' | 'keep'
+type Name = 'adjust' | 'go' | 'whole' | 'cancel' | 'keep'
 
 const actions = computed<{ cls: Name; icon: string; tooltip: string }[]>(() =>
   props.adjusting
@@ -53,7 +52,6 @@ const actions = computed<{ cls: Name; icon: string; tooltip: string }[]>(() =>
       ]
     : [
         { cls: 'adjust', icon: 'scan', tooltip: t('streamC.b0c1506a8d1c7cbc') },
-        { cls: 'open', icon: 'pen-line', tooltip: t('streamC.4135581a73854a6c') },
         { cls: 'go', icon: 'arrow-up-right', tooltip: t('streamC.2ae0db4c29318e7a') },
       ]
 )
@@ -62,7 +60,6 @@ function press(event: MouseEvent, name: Name): void {
   event.preventDefault()
   event.stopPropagation()
   if (name === 'adjust') emit('adjust')
-  else if (name === 'open') emit('draw')
   else if (name === 'go') emit('open')
   else if (name === 'whole') emit('whole')
   else if (name === 'cancel') emit('cancel')

@@ -162,6 +162,9 @@ export const lv = {
   'kit.noteSelection': 'Ievietot pēdējā atvērtajā piezīmē',
   'kit.linkSelection': 'Kopēt saiti uz šīm rindām',
   'kit.saving': 'Saglabā…',
+  'commands.convert-drawings-to-canvases': 'Pārvērst vecos zīmējumus audeklos',
+  'drawing.conversion-result':
+    'Zīmējumi: pārveidoti {converted}, jau pārveidoti {existing}, kļūdas {failed}. Oriģināli saglabāti.',
   'commands.migrate-excalidraw-drawing': 'Pārvietot šo Excalidraw zīmējumu uz audeklu',
   'commands.migrate-excalidraw-vault': 'Pārvietot visus Excalidraw zīmējumus uz audekliem',
   'commands.new-canvas': 'Jauns audekls',
@@ -172,8 +175,6 @@ export const lv = {
   'commands.column-options': 'Kolonnu opcijas',
   'commands.remove-columns': 'Noņemt kolonnas',
   'commands.add-text-comment': 'Pievienot komentāru',
-  'commands.new-drawing': 'Jauns zīmējums',
-  'commands.insert-drawing': 'Ievietot jaunu zīmējumu',
   'commands.open-node-repository': 'Atvērt mezgla repozitoriju',
   'commands.chat-about-github-item': 'Apspriest šo GitHub vienumu',
   'commands.open-github-repository': 'Atvērt GitHub repozitoriju…',

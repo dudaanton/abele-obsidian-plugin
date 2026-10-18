@@ -2320,8 +2320,8 @@ source. PNG, JPEG and WebP retain their format; HEIC/HEIF copies are JPEG and ca
 their source. Edits remain in the open editor until explicitly saved or discarded.
 
 A drawing is an `.svg` file anywhere in the vault whose root element carries
-`data-abele-drawing="1"`; it opens in the plugin's drawing tab, while every other SVG stays in
-Obsidian's picture view. It is an ordinary picture — white paper sized to what is drawn plus a
+`data-abele-drawing="1"`. Standalone editing and creation have been removed; SVGs open in
+Obsidian's picture view and saved legacy drawing tabs are read-only. It is an ordinary picture — white paper sized to what is drawn plus a
 margin, one element per item — so `![[Sketch.svg]]` shows it in a note without the plugin. What
 the plugin reads back is only the JSON in `<metadata id="abele-drawing">`: `{ "v": 1, "items": [...] }`,
 the items oldest (lowest) first, each with an `id` and a `type`:
@@ -2341,8 +2341,7 @@ the items oldest (lowest) first, each with an `id` and a `type`:
 - `text` — `x`, `y` (the top left), `text` (lines split by `\n`), `size`, `color`.
 - `note` — a note shown on the drawing: `path` (the note's vault path), its box `x`, `y`, `w`, `h`,
   and `scale`, the drawing's units per pixel of the note's text. The file's picture shows it as a
-  card with the note's name; the drawing's tab shows the note itself. A note renamed or moved in
-  Obsidian is followed there.
+  card with the note's name. Legacy SVG metadata is no longer rewritten on note renames.
 
 Colours are names: `black`, `red`, `blue`, `green`, `yellow`, `pink`. Units are CSS pixels at
 100%.
@@ -2362,9 +2361,22 @@ Older notes name the part in a callout of type `drawing` round the embed,
 `> [!drawing|120 40 800 500]` with `> ![[Drawings/Sketch.svg]]` under it; those still show the
 part, and a part changed there is kept in the callout.
 
-One drawing may be embedded several times in a note, each with its own part and size. Do not
-write a drawing's file yourself — the picture and the data must agree, and only the drawing tab
-keeps them so.
+One drawing may be embedded several times in a note, each with its own part and size. The
+legacy embed renderer remains available, without an editing action for the drawing itself.
+
+The explicit **Convert legacy drawings to canvases** command scans all SVGs in the vault.
+Each new `.canvas` stores `abele.drawingSource` with the original vault-relative SVG path.
+Repeating conversion finds that provenance anywhere in the vault and skips that source,
+including when the source or destination was edited. A deleted destination can be converted
+again. Existing filenames without matching provenance get a numbered alternative, never an
+overwrite. Failed or unsupported metadata is reported and the original remains untouched.
+
+Pen and marker strokes become root `abele.ink`, retaining coordinates, pressure, width,
+linear mode and freedraw profiles; named drawing colours become their literal RGB values.
+For mixed drawings, a file node to the original SVG sits beside the editable ink, preserving
+an exact read-only picture of shapes, text, note cards and their original layering. Those
+legacy objects are not converted to editable canvas objects. No original or note embed is
+rewritten, moved or deleted. The picture editor and reader ink retain their existing formats.
 
 ## Temporary execution context hold
 

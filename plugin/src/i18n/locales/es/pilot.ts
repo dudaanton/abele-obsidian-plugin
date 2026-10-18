@@ -163,6 +163,9 @@ export const es = {
   'kit.noteSelection': 'Insertar en la última nota abierta',
   'kit.linkSelection': 'Copiar un enlace a estas líneas',
   'kit.saving': 'Guardando…',
+  'commands.convert-drawings-to-canvases': 'Convertir dibujos antiguos en lienzos',
+  'drawing.conversion-result':
+    'Dibujos: {converted} convertidos, {existing} ya convertidos, {failed} fallidos. Originales conservados.',
   'commands.migrate-excalidraw-drawing': 'Migrar este dibujo de Excalidraw a un lienzo',
   'commands.migrate-excalidraw-vault': 'Migrar todos los dibujos de Excalidraw a lienzos',
   'commands.new-canvas': 'Nuevo lienzo',
@@ -173,8 +176,6 @@ export const es = {
   'commands.column-options': 'Opciones de columnas',
   'commands.remove-columns': 'Eliminar columnas',
   'commands.add-text-comment': 'Añadir comentario',
-  'commands.new-drawing': 'Nuevo dibujo',
-  'commands.insert-drawing': 'Insertar un nuevo dibujo',
   'commands.open-node-repository': 'Abrir el repositorio del nodo',
   'commands.chat-about-github-item': 'Conversar sobre este elemento de GitHub',
   'commands.open-github-repository': 'Abrir repositorio de GitHub…',

@@ -5,7 +5,6 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createLookAtDrawingTool } from '@/ai/tools/DrawingTool'
-import { drawingQuestion } from '@/drawing/askAgent'
 import { rasterScale, withMargin } from '@/drawing/rasterize'
 import { drawingSvg } from '@/drawing/drawingFile'
 import { CORE_TOOLS } from '@/ai/types'
@@ -65,15 +64,6 @@ describe('looking at a drawing', () => {
 
   it('is one of the tools every agent has, like reading a picture', () => {
     expect(CORE_TOOLS.has('look_at_drawing')).toBe(true)
-  })
-})
-
-describe('asking about a drawing', () => {
-  it('begins the question with the drawing, and the part picked', () => {
-    expect(drawingQuestion('[[D/Sketch.svg]]', null, 'ask')).toBe('Look at [[D/Sketch.svg]]: ')
-    expect(drawingQuestion('[[D/Sketch.svg]]', { x: 1, y: 2, w: 30, h: 40 }, 'transcribe')).toBe(
-      'Transcribe the handwriting in the part of [[D/Sketch.svg]] at 1 2 30 40 (picked) as text, keeping its lines and lists.'
-    )
   })
 })
 

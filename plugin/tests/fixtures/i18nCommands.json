@@ -21,10 +21,6 @@
   "comments/register.ts": {
     "add-text-comment": "Add comment"
   },
-  "drawing/register.ts": {
-    "new-drawing": "New drawing",
-    "insert-drawing": "Insert a new drawing"
-  },
   "github/register.ts": {
     "open-node-repository": "Open node repository",
     "chat-about-github-item": "Chat about this GitHub item",
@@ -121,5 +117,8 @@
   },
   "zen/registerZen.ts": {
     "toggle-zen-mode": "Toggle zen mode"
+  },
+  "drawing/conversionCommand.ts": {
+    "convert-drawings-to-canvases": "Convert legacy drawings to canvases"
   }
 }

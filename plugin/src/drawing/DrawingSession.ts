@@ -1,6 +1,6 @@
 /**
  * A drawing open in a tab: its items, the camera, the tools, drawing mode and undo — everything
- * between the surface that is touched (`surface.ts`) and the file that is written (`DrawingView`).
+ * between the surface that is touched (`surface.ts`) and the picture editor that saves it.
  *
  * Drawing is a mode, turned on and off with the first button of the bar: while it is on, the
  * surface answers the tools; while it is off, every touch moves the drawing. Either way nothing

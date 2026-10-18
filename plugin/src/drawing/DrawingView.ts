@@ -1,289 +1,38 @@
-import { t } from '@/i18n'
-/**
- * A drawing in a tab of its own: the bar over it, the surface under it, and the file behind it.
- *
- * The file is an SVG (`drawingFile.ts`), read and written through Obsidian's own text file view,
- * so saving waits for a pause, a change from another device is read in as it arrives, and closing
- * the tab writes what was waiting. Where the drawing was looked at from is kept with the tab.
- */
-import {
-  Menu,
-  Notice,
-  Scope,
-  TextFileView,
-  type TFile,
-  type ViewStateResult,
-  type WorkspaceLeaf,
-} from 'obsidian'
-import { reactive } from 'vue'
-import { drawingKeys, mountDrawingBar } from './drawingTab'
-import type { KitMount } from '@/components/obsidian/mount'
-import { drawingSvg, parseDrawingSvg } from './drawingFile'
-import { cameraFrom, type Camera } from './camera'
-import { DrawingSession } from './DrawingSession'
-import { emptyDrawingModel, type DrawingModel } from './model'
-import { keptDrawingThickness } from './penThickness'
+/** Read-only compatibility for previously saved drawing tabs. */
+import { TextFileView } from 'obsidian'
 import { DRAWING_VIEW_TYPE } from './viewType'
-import { copyEmbed } from './files'
-import { visibleRect } from './camera'
-import { drawingPng, withMargin } from './rasterize'
-import { askAboutDrawing, attachDrawingToChat } from './askAgent'
-import { AbeleConfig } from '@/services/AbeleConfig'
-import { pickNote } from '@/helpers/suggesters/NotePicker'
-import type { Rect } from './items'
-
+import { vaultUrl } from '@/helpers/vaultUrl'
 export { DRAWING_VIEW_TYPE }
 
 export class DrawingView extends TextFileView {
-  readonly model: DrawingModel = reactive({
-    ...emptyDrawingModel(),
-    thickness: keptDrawingThickness(),
-  })
-  session: DrawingSession | null = null
-  private vue: KitMount | null = null
-  /** What was last read or written, so the vault's news of our own write is not a change. */
-  private known = ''
-  /** A camera from the tab's saved state, waiting for the drawing to be read. */
-  private pendingCamera: Camera | null = null
-  /** Drawing asked for before the drawing was read: a new drawing opens ready to draw on. */
-  private pendingDraw = false
-  /** A part of the drawing to show once it is read: an embed's place, opened to draw on. */
-  private pendingArea: Rect | null = null
-  private placed = false
-
-  constructor(leaf: WorkspaceLeaf) {
-    super(leaf)
-    this.scope = new Scope(this.app.scope)
-    drawingKeys(this.scope, this.model, () => this.session)
-  }
-
+  private source = ''
   getViewType(): string {
     return DRAWING_VIEW_TYPE
   }
-
-  getIcon(): string {
-    return 'pen-line'
-  }
-
   getDisplayText(): string {
-    return this.file?.basename ?? t('streamC.39de4731eedc9da7')
+    return this.file?.basename ?? 'SVG'
   }
-
+  getIcon(): string {
+    return 'image'
+  }
   canAcceptExtension(extension: string): boolean {
     return extension === 'svg'
   }
-
-  async onOpen(): Promise<void> {
-    this.contentEl.empty()
-    this.contentEl.addClass('abele-drawing-view')
-    const bar = this.contentEl.createDiv({ cls: 'abele-drawing-view__bar' })
-    const stage = this.contentEl.createDiv({ cls: 'abele-drawing-view__stage' })
-    this.session = new DrawingSession(stage, this.model, {
-      app: this.app,
-      path: () => this.file?.path ?? '',
-      openNote: (path) => void this.app.workspace.openLinkText(path, this.file?.path ?? '', 'tab'),
-      changed: () => this.requestSave(),
-      stopped: () => void this.save(),
-    })
-    this.vue = mountDrawingBar(
-      bar,
-      this.model,
-      () => this.session,
-      (e) => this.moreMenu(e),
-      this
-    )
-    // The drawing to the chat in front, as a picture, from the tab's header.
-    if (AbeleConfig.getInstance().ai.enabled)
-      this.addAction('paperclip', t('streamC.2622d0434f9aee70'), () => {
-        const box = this.session?.pick.box()
-        void this.attachToChat(box ? withMargin(box) : null)
-      })
-    // A note shown on the drawing follows its changes.
-    this.registerEvent(
-      this.app.vault.on('modify', (file) => {
-        if (file.path.endsWith('.md')) this.session?.noteChanged(file.path)
-      })
-    )
-  }
-
-  async onClose(): Promise<void> {
-    this.vue?.unmount()
-    this.vue = null
-    // What is drawn now is what a save still waiting writes once the surface is gone.
-    if (this.session) this.getViewData()
-    this.session?.destroy()
-    this.session = null
-  }
-
   getViewData(): string {
-    // Closed: the drawing as it was last, never an empty one written over it.
-    if (!this.session) return this.known
-    const text = drawingSvg({ items: [...this.session.items.items] })
-    this.known = text
-    return text
+    return this.source
   }
-
   setViewData(data: string, clear: boolean): void {
-    const session = this.session
-    if (!session) return
-    if (!clear && data === this.known) return
-    this.known = data
-    const parsed = parseDrawingSvg(data)
-    session.load(parsed?.items ?? [])
-    if (clear || !this.placed) this.place()
+    if (clear) this.clear()
+    this.source = data
+    this.contentEl.empty()
+    if (this.file) {
+      const image = this.contentEl.createEl('img', { cls: 'abele-legacy-drawing' })
+      image.src = vaultUrl(this.app, this.file)
+      image.alt = this.file.basename
+    }
   }
-
   clear(): void {
-    this.placed = false
-    this.session?.stop()
-    this.session?.load([])
-  }
-
-  /** Where the drawing is looked at from when it opens: as it was left, or all of it. */
-  private place(): void {
-    const session = this.session
-    if (!session) return
-    // A tab just made, or opened behind another, has no size yet; the camera waits for one.
-    if (!session.surface.width) {
-      session.whenSized(() => this.place())
-      return
-    }
-    this.placed = true
-    if (this.pendingArea) session.show(this.pendingArea)
-    else if (this.pendingCamera) session.setCamera(this.pendingCamera)
-    else session.fit()
-    this.pendingArea = null
-    this.pendingCamera = null
-    if (this.pendingDraw) session.start()
-    this.pendingDraw = false
-  }
-
-  async setState(state: unknown, result: ViewStateResult): Promise<void> {
-    const s = (state ?? {}) as { camera?: unknown; draw?: unknown; area?: unknown }
-    this.pendingCamera = cameraFrom(s.camera)
-    if (s.draw === true) this.pendingDraw = true
-    const area = s.area as Rect | undefined
-    if (area && [area.x, area.y, area.w, area.h].every(Number.isFinite) && area.w > 0 && area.h > 0)
-      this.pendingArea = { x: area.x, y: area.y, w: area.w, h: area.h }
-    await super.setState(state, result)
-    // The same file again, with a place or drawing asked for: nothing is read, so act now.
-    if (this.placed && (this.pendingArea || this.pendingDraw)) this.place()
-  }
-
-  getState(): Record<string, unknown> {
-    const state = super.getState()
-    if (this.session) state.camera = { ...this.session.camera }
-    return state
-  }
-
-  // ————— Menus —————
-
-  /** What else can be done with the drawing; later stages add to it. */
-  protected moreMenu(e: MouseEvent): void {
-    const menu = new Menu()
-    const file = this.file
-    const session = this.session
-    if (file && session) {
-      menu.addItem((item) =>
-        item
-          .setTitle(t('streamC.ad81ff266693f689'))
-          .setIcon('clipboard-copy')
-          .onClick(() => {
-            const { width, height } = session.surface
-            void copyEmbed(`![[${file.path}]]`, visibleRect(session.camera, width, height))
-          })
-      )
-      menu.addItem((item) =>
-        item
-          .setTitle(t('streamC.c5fc4b896c70bca9'))
-          .setIcon('sticky-note')
-          .onClick(async () => {
-            const note = await pickNote(this.app, { placeholder: t('streamC.980edb5aac3e769c') })
-            if (note) this.session?.addNote(note.path)
-          })
-      )
-      // What is picked, when something is; else the whole drawing.
-      const box = session.pick.box()
-      const area = box ? withMargin(box) : null
-      const what = area ? t('streamC.ebc42458d8f8d165') : t('streamC.80502948e357ef9b')
-      menu.addItem((item) =>
-        item
-          .setTitle(t('streamC.f53b4d84714bf719', { v1: String(what) }))
-          .setIcon('image-down')
-          .onClick(() => void this.exportPng(area))
-      )
-      menu.addItem((item) =>
-        item
-          .setTitle(t('streamC.d746ae6fc2622a21', { v1: String(what) }))
-          .setIcon('copy')
-          .onClick(() => void this.copyPicture(area))
-      )
-      if (AbeleConfig.getInstance().ai.enabled) {
-        const link = `[[${file.path}]]`
-        menu.addItem((item) =>
-          item
-            .setTitle(t('streamC.39e2b28e77d9d21f', { v1: String(what) }))
-            .setIcon('paperclip')
-            .onClick(() => void this.attachToChat(area))
-        )
-        menu.addItem((item) =>
-          item
-            .setTitle(t('streamC.0a8899be19cdf1fb', { v1: String(what) }))
-            .setIcon('message-circle-question')
-            .onClick(() => void askAboutDrawing(file, link, area, 'ask'))
-        )
-        menu.addItem((item) =>
-          item
-            .setTitle(t('streamC.9608f9746d26bb37', { v1: String(what) }))
-            .setIcon('text-cursor-input')
-            .onClick(() => void askAboutDrawing(file, link, area, 'transcribe'))
-        )
-      }
-    }
-    this.app.workspace.trigger('file-menu', menu, this.file, 'more-options', this.leaf)
-    menu.showAtMouseEvent(e)
-  }
-
-  /** A PNG of the drawing, or of a part, beside the drawing; says where. */
-  async exportPng(area: Rect | null): Promise<TFile | null> {
-    const file = this.file
-    const session = this.session
-    if (!file || !session) return null
-    try {
-      const blob = await drawingPng(this.contentEl.ownerDocument, session.items.items, area)
-      const dir = file.parent && file.parent.path !== '/' ? `${file.parent.path}/` : ''
-      let path = `${dir}${file.basename}.png`
-      for (let n = 2; this.app.vault.getAbstractFileByPath(path); n++)
-        path = `${dir}${file.basename} ${n}.png`
-      const png = await this.app.vault.createBinary(path, await blob.arrayBuffer())
-      new Notice(t('streamC.929a747e8b44fb91', { v1: String(png.path) }))
-      return png
-    } catch (e) {
-      new Notice(t('streamC.6b9973d3c4172e3c', { v1: String(String(e)) }))
-      return null
-    }
-  }
-
-  /** A PNG of the drawing, or of a part, attached to what is being written in the chat in front. */
-  async attachToChat(area: Rect | null): Promise<TFile | null> {
-    const file = this.file
-    const session = this.session
-    if (!file || !session) return null
-    const items = [...session.items.items]
-    return attachDrawingToChat(this.app, file, !!area, () =>
-      drawingPng(this.contentEl.ownerDocument, items, area)
-    )
-  }
-
-  private async copyPicture(area: Rect | null): Promise<void> {
-    const session = this.session
-    if (!session) return
-    try {
-      const blob = await drawingPng(this.contentEl.ownerDocument, session.items.items, area)
-      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
-      new Notice(t('streamC.eed0a4efb12bfd6c'))
-    } catch (e) {
-      new Notice(t('streamC.8ea2344415d12bb5', { v1: String(String(e)) }))
-    }
+    this.source = ''
+    this.contentEl.empty()
   }
 }

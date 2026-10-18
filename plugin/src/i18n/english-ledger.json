@@ -1299,26 +1299,6 @@
       "de"
     ]
   },
-  "commands.new-drawing": {
-    "englishHash": "c348dd5ba3c7fddb93b32550664fb1fe3ce1504550be25b333999fe001802017",
-    "context": "Command palette name or ribbon tooltip; command IDs remain unchanged",
-    "reviewedLocales": [
-      "ru",
-      "lv",
-      "es",
-      "de"
-    ]
-  },
-  "commands.insert-drawing": {
-    "englishHash": "756f9ab116b0d6e57fa6f13dc5e19356db98d6112f06c3f13f2d000c074a1617",
-    "context": "Command palette name or ribbon tooltip; command IDs remain unchanged",
-    "reviewedLocales": [
-      "ru",
-      "lv",
-      "es",
-      "de"
-    ]
-  },
   "commands.open-node-repository": {
     "englishHash": "2e864b87add68f93ded94689b45556ff4537d6d4e27b59cd57f0007378620cf8",
     "context": "Command palette name or ribbon tooltip; command IDs remain unchanged",
@@ -25912,6 +25892,26 @@
   "node.error.folderUnavailable": {
     "englishHash": "f035601ad7a36c126718d34066f7c5a09cc93213d8656bfe763150b5031ea2a6",
     "context": "Registered node folder is unavailable; distinguish it from recoverable target reselection and offer confirmed unregistering without deleting files",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "commands.convert-drawings-to-canvases": {
+    "englishHash": "04d8993dbc3bb994aaedc1708609ca0414cdafd1891a57a432b3a1221f528fbe",
+    "context": "Legacy drawing conversion command and result notice",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "drawing.conversion-result": {
+    "englishHash": "3e3719f558e82038299f6f26eb174af02056911c570a97165c2abbb99b5244bb",
+    "context": "Legacy drawing conversion command and result notice",
     "reviewedLocales": [
       "ru",
       "lv",

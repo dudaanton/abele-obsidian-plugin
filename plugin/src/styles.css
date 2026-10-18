@@ -760,6 +760,10 @@ body.is-mobile .abele-comment-marker_pending::after {
  * A drawing shown in a note (`drawing/embed.ts`): its own callout, the part it names filling the
  * note's width, the picture Obsidian embedded hidden under it, and two buttons in the corner.
  */
+.abele-legacy-drawing {
+  max-width: 100%;
+}
+
 .callout[data-callout='drawing'] {
   --callout-icon: lucide-pen-line;
   --callout-color: var(--callout-default);

@@ -152,8 +152,11 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
 
 ## Media
 
-- New drawing — creates a drawing and opens it
-- Insert a new drawing — creates a drawing and embeds it at the cursor
+- Convert legacy drawings to canvases — converts standalone drawing SVGs throughout the vault,
+  leaving originals and note embeds untouched. Repeating skips existing conversions; unrelated
+  canvas names are never overwritten. Pen and marker strokes become editable canvas ink.
+  Drawings with shapes, text or note cards also keep an exact original preview beside the ink.
+  A completion notice reports converted, existing and failed counts; the console lists details.
 - New canvas — asks for a name, creates an empty `.canvas`, and opens the human editor. Its
   controls add text, files and links; completing text publishes one shared-session transaction
 - Open current canvas in diagram viewer — opens the active `.canvas` in the Abele editor,

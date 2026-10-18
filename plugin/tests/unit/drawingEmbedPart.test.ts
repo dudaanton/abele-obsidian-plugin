@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { drawingEmbed, partOfLink, withEmbedPart } from '@/drawing/embedFormat'
-import { copyEmbed, insertDrawing } from '@/drawing/files'
+import { copyEmbed } from '@/drawing/files'
 import { useVault } from '../helpers/testEnv'
 
 describe('the part of a drawing in its link', () => {
@@ -81,15 +81,6 @@ describe('a drawing put into a note', () => {
         revealLeaf: async () => {},
       },
     })
-  })
-
-  it('is its embed alone, with no callout round it', async () => {
-    let written = ''
-    const note = app.vault.getAbstractFileByPath('Notes/Plan.md') as never
-    const file = await insertDrawing(app as never, note, (text) => (written = text))
-    expect(file).not.toBeNull()
-    expect(written).toBe(`![[${file!.name}]]\n`)
-    expect(written).not.toContain('[!drawing')
   })
 
   it('is copied as its embed alone, the part shown in the link', async () => {

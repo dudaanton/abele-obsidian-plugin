@@ -1,14 +1,7 @@
 import { t } from '@/i18n'
-/**
- * Drawings as files: telling one from any other SVG, making one, and opening one in its tab.
- *
- * A drawing is an `.svg`, and so is every other picture of that kind in a vault, which Obsidian
- * shows in its own image tab. Taking `.svg` over would take them all; so it stays Obsidian's, and
- * a tab of theirs that opens one of ours — its root carries `data-abele-drawing` — is switched to
- * the drawing's tab as it opens. Every other SVG opens as it always did.
- */
-import { Notice, TFile, TFolder, normalizePath, type App, type PaneType } from 'obsidian'
-import { emptyDrawingSvg, isDrawingSvg } from './drawingFile'
+/** Legacy drawing identification and read-only opening; picture-editor entry points. */
+import { Notice, TFile, type App, type PaneType } from 'obsidian'
+import { isDrawingSvg } from './drawingFile'
 import { drawingEmbed } from './embedFormat'
 import { DRAWING_VIEW_TYPE, IMAGE_INK_VIEW_TYPE } from './viewType'
 import type { DrawingView } from './DrawingView'
@@ -34,58 +27,6 @@ export async function isDrawingFile(app: App, file: TFile): Promise<boolean> {
   return drawing
 }
 
-interface LeafLike {
-  view: { getViewType(): string; file?: TFile | null }
-  getViewState(): { type: string; state?: Record<string, unknown> }
-  setViewState(state: { type: string; state?: Record<string, unknown> }): Promise<void>
-}
-
-/** Every one of Obsidian's image tabs showing a drawing moves to the drawing's tab. */
-export async function adoptDrawingLeaves(app: App): Promise<number> {
-  const leaves: LeafLike[] = []
-  app.workspace.iterateAllLeaves((leaf) => {
-    const l = leaf as unknown as LeafLike
-    if (l.view.getViewType() === 'image' && l.view.file?.extension === 'svg') leaves.push(l)
-  })
-  let moved = 0
-  for (const leaf of leaves) {
-    const file = leaf.view.file
-    if (!file || !(await isDrawingFile(app, file))) continue
-    const vs = leaf.getViewState()
-    try {
-      await leaf.setViewState({ ...vs, type: DRAWING_VIEW_TYPE, state: { file: file.path } })
-      moved++
-    } catch (e) {
-      console.warn('[Abele] could not open a drawing in its tab', e)
-    }
-  }
-  return moved
-}
-
-/** A name for a new drawing in a folder, one no file has yet. */
-function freePath(app: App, folder: string, base: string): string {
-  const dir = folder && folder !== '/' ? `${folder}/` : ''
-  for (let n = 1; ; n++) {
-    const path = normalizePath(`${dir}${base}${n > 1 ? ` ${n}` : ''}.svg`)
-    if (!app.vault.getAbstractFileByPath(path)) return path
-  }
-}
-
-/** Makes a new drawing, in a folder or where new notes go, and opens it ready to draw on. */
-export async function newDrawing(app: App, folder?: TFolder): Promise<TFile | null> {
-  const parent =
-    folder ?? app.fileManager.getNewFileParent(app.workspace.getActiveFile()?.path ?? '')
-  const base = `Drawing ${window.moment().format('YYYY-MM-DD HH.mm')}`
-  try {
-    const file = await app.vault.create(freePath(app, parent.path, base), emptyDrawingSvg())
-    await openDrawing(app, file, { draw: true })
-    return file
-  } catch (e) {
-    new Notice(t('streamC.7d52073c6a08b4d8', { v1: String(String(e)) }))
-    return null
-  }
-}
-
 /** Opens a drawing in a tab of its own, or in the one already showing it. */
 export async function openDrawing(
   app: App,
@@ -103,28 +44,6 @@ export async function openDrawing(
     active: true,
   })
   await app.workspace.revealLeaf(leaf)
-}
-
-/**
- * A new drawing for a note: made where the note's attachments go, shown in the note at the
- * cursor, and opened beside it ready to draw on. Says the text it put in the note.
- */
-export async function insertDrawing(
-  app: App,
-  note: TFile,
-  insert: (text: string) => void
-): Promise<TFile | null> {
-  const name = `Drawing ${window.moment().format('YYYY-MM-DD HH.mm.ss')}.svg`
-  try {
-    const path = await app.fileManager.getAvailablePathForAttachment(name, note.path)
-    const file = await app.vault.create(path, emptyDrawingSvg())
-    insert(`!${app.fileManager.generateMarkdownLink(file, note.path)}\n`)
-    await openDrawing(app, file, { draw: true }, 'split')
-    return file
-  } catch (e) {
-    new Notice(t('streamC.7d52073c6a08b4d8', { v1: String(String(e)) }))
-    return null
-  }
 }
 
 /** A drawing's embed on the clipboard, the part shown named in it, to paste into a note. */

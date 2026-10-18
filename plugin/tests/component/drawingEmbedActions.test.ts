@@ -21,16 +21,14 @@ function bar(props: Record<string, unknown> = {}) {
 }
 
 describe('the drawing embed buttons', () => {
-  it('offers to change the part, draw and open, as named icon buttons', () => {
+  it('offers to change the part and open read-only, as named icon buttons', () => {
     const el = bar()
-    expect(names(el)).toEqual(['adjust', 'open', 'go'])
+    expect(names(el)).toEqual(['adjust', 'go'])
     const adjust = el.querySelector('.abele-drawing-embed__adjust')!
     expect(adjust.tagName).toBe('BUTTON')
     expect(adjust.classList.contains('clickable-icon')).toBe(true)
     expect(adjust.getAttribute('aria-label')).toBe('Change the part of the drawing shown here')
-    expect(el.querySelector('.abele-drawing-embed__open')?.getAttribute('aria-label')).toBe(
-      'Open the drawing here to draw on'
-    )
+    expect(el.querySelector('.abele-drawing-embed__open')).toBeNull()
     expect(el.querySelector('.abele-drawing-embed__go')?.getAttribute('aria-label')).toBe(
       'Open the drawing'
     )
@@ -50,7 +48,6 @@ describe('the drawing embed buttons', () => {
   it('says which was pressed, and keeps the press from the note', () => {
     const on = {
       onAdjust: vi.fn(),
-      onDraw: vi.fn(),
       onOpen: vi.fn(),
       onWhole: vi.fn(),
       onCancel: vi.fn(),
@@ -68,7 +65,6 @@ describe('the drawing embed buttons', () => {
       go.dispatchEvent(new Event(type, { bubbles: true, cancelable: true }))
     go.dispatchEvent(lift)
     go.click()
-    el.querySelector<HTMLElement>('.abele-drawing-embed__open')!.click()
     el.querySelector<HTMLElement>('.abele-drawing-embed__adjust')!.click()
     renderKit(el, DrawingEmbedActions, { adjusting: true, ...on })
     for (const cls of ['whole', 'cancel', 'keep'])

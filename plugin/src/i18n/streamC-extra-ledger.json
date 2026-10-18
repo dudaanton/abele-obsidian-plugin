@@ -1384,16 +1384,6 @@
     "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
     "reviewedLocales": ["ru", "lv", "es", "de"]
   },
-  "streamC.ebc42458d8f8d165": {
-    "englishHash": "58e371fcdf5fc21ac448e319a7af545683da262f21c3a03f26c6e1d8c7b963a6",
-    "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
-    "reviewedLocales": ["ru", "lv", "es", "de"]
-  },
-  "streamC.80502948e357ef9b": {
-    "englishHash": "b0db324ac9535d34cc9d9f47fe968c0ad541841275602c9e11a65b2282e7918e",
-    "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
-    "reviewedLocales": ["ru", "lv", "es", "de"]
-  },
   "streamC.26bb6c1a72d4f414": {
     "englishHash": "1a1ff7663fb08b47b67446b195cf61da116bef379358e6a0e213d3e3b38bcaeb",
     "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
@@ -2189,56 +2179,6 @@
     "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
     "reviewedLocales": ["ru", "lv", "es", "de"]
   },
-  "streamC.be9250a0c06701b4": {
-    "englishHash": "a4fa388390f6b0e2987d953e3b1c5b66b263e0ed9511d63fa467b0b7684de190",
-    "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
-    "reviewedLocales": ["ru", "lv", "es", "de"]
-  },
-  "streamC.0e7965dd29a07264": {
-    "englishHash": "a746c4165c5fedd4cd690adb619d3154082cfd4e57120050ef497358bb8b172a",
-    "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
-    "reviewedLocales": ["ru", "lv", "es", "de"]
-  },
-  "streamC.2111554ba1ee3f40": {
-    "englishHash": "74f897c92c2230ba729e561f6dc64b434cf6e03c116b192e41e7e4ebadf04fa9",
-    "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
-    "reviewedLocales": ["ru", "lv", "es", "de"]
-  },
-  "streamC.39b52264e221fbfd": {
-    "englishHash": "3269f833ce2d0477207d1f8bcca0169780a738cb140520a0d5a2dc0d90300c7c",
-    "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
-    "reviewedLocales": ["ru", "lv", "es", "de"]
-  },
-  "streamC.1107ed5026ab81e5": {
-    "englishHash": "7e14aa5e74e41ab8f1fabcccc3d2f3ae8a73b0a3d5315164186f5358f429b567",
-    "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
-    "reviewedLocales": ["ru", "lv", "es", "de"]
-  },
-  "streamC.43dc5dc2cb996b74": {
-    "englishHash": "2f036dd88c1004d426e24d39574c7ae97d7b62b7355ba1ec1c84a55cf3d5caff",
-    "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
-    "reviewedLocales": ["ru", "lv", "es", "de"]
-  },
-  "streamC.b2316adced5740f4": {
-    "englishHash": "86bdbdad91912a85c182dc3168a6ebe29ea6dc4d50e2b9926ba3b3f89a9fd604",
-    "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
-    "reviewedLocales": ["ru", "lv", "es", "de"]
-  },
-  "streamC.76ae701a335c3127": {
-    "englishHash": "9baf2f5648f2fafd16190d430bd735c4fe3f12cf0b82dca354e7deb69c9e2672",
-    "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
-    "reviewedLocales": ["ru", "lv", "es", "de"]
-  },
-  "streamC.31a208dab4d92ca1": {
-    "englishHash": "361c0e3b67f55087a2ae4c0ec4514395b9a86906923486e832b8ebfa871d8efe",
-    "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
-    "reviewedLocales": ["ru", "lv", "es", "de"]
-  },
-  "streamC.b6978af9c0c02ea5": {
-    "englishHash": "0d4d885a6fdfe67dbca714833e1fc00723b2711b81afba1e918fcb7e7b1e5ced",
-    "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
-    "reviewedLocales": ["ru", "lv", "es", "de"]
-  },
   "streamC.3c25f9961925260d": {
     "englishHash": "b0729c810d150f1174097f6487fe9356048ce60a1469757d265e69a776381e43",
     "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
@@ -2251,11 +2191,6 @@
   },
   "streamC.b0c1506a8d1c7cbc": {
     "englishHash": "eb368b69b4ee11401738ccac6c90cdb63d20436429a8cb016b97972940c62987",
-    "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
-    "reviewedLocales": ["ru", "lv", "es", "de"]
-  },
-  "streamC.4135581a73854a6c": {
-    "englishHash": "8de5f2f21ff8e7c937edf1152698b161ac1c1719241fdefbc5380f05270638f6",
     "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
     "reviewedLocales": ["ru", "lv", "es", "de"]
   },
@@ -2894,36 +2829,6 @@
     "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
     "reviewedLocales": ["ru", "lv", "es", "de"]
   },
-  "streamC.f53b4d84714bf719": {
-    "englishHash": "255ce545a5b7d24fce5315ae82f201af1bee16851fe035e6b099b377848066fa",
-    "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
-    "reviewedLocales": ["ru", "lv", "es", "de"]
-  },
-  "streamC.d746ae6fc2622a21": {
-    "englishHash": "639e595ed00dba861df801184b450340534db7054ed9b24b19ba551598b01853",
-    "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
-    "reviewedLocales": ["ru", "lv", "es", "de"]
-  },
-  "streamC.39e2b28e77d9d21f": {
-    "englishHash": "960c2df9908f20a6a1c81d6359cbac135db6d52e2c885b093180a625d2d80794",
-    "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
-    "reviewedLocales": ["ru", "lv", "es", "de"]
-  },
-  "streamC.0a8899be19cdf1fb": {
-    "englishHash": "d1e096e536a3575205fb52cae7d4ebe82c21cb4a683775b0bb1f6e435aa9175b",
-    "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
-    "reviewedLocales": ["ru", "lv", "es", "de"]
-  },
-  "streamC.9608f9746d26bb37": {
-    "englishHash": "d6dbbbc23ef87d8add8b39a67b3dd054b6b9fe033f395bc63c9fe50171327b8e",
-    "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
-    "reviewedLocales": ["ru", "lv", "es", "de"]
-  },
-  "streamC.8ea2344415d12bb5": {
-    "englishHash": "6e96d22073c458ffef860e6843f791b25788b634d88dfa2bb9b29e792bcfd363",
-    "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
-    "reviewedLocales": ["ru", "lv", "es", "de"]
-  },
   "streamC.f24b493d2b6e3f17": {
     "englishHash": "2e8ccb6a78c9a662a405ace7ff735ee30c0ae18f3f0e45deb495378797878370",
     "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
@@ -2976,11 +2881,6 @@
   },
   "streamC.5f081782590e50ea": {
     "englishHash": "19618e80a1397f48531cab3cae096d8cc0adb9fedbbda58fcc87a0733c52d28a",
-    "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
-    "reviewedLocales": ["ru", "lv", "es", "de"]
-  },
-  "streamC.7d52073c6a08b4d8": {
-    "englishHash": "e4ccbbd3ea1f5a38c122a82b811b247e4e3b9f93bc4d422005ca8dc8ae757f6e",
     "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
     "reviewedLocales": ["ru", "lv", "es", "de"]
   },
@@ -7329,26 +7229,6 @@
     "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
     "reviewedLocales": ["ru", "lv", "es", "de"]
   },
-  "streamC.ad81ff266693f689": {
-    "englishHash": "07378ffd59fa764e633e741d8817555e7b6d10460f27d61d6b62cc54b5f55b18",
-    "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
-    "reviewedLocales": ["ru", "lv", "es", "de"]
-  },
-  "streamC.c5fc4b896c70bca9": {
-    "englishHash": "e95f1c037e6011899da459e7dfcffbe673c07b431fc1b446456ffa33b943a5d0",
-    "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
-    "reviewedLocales": ["ru", "lv", "es", "de"]
-  },
-  "streamC.980edb5aac3e769c": {
-    "englishHash": "d2ae6e0ed7c5f02b019babea5509f8a48b33d084cce6f71923ec0fe72a7f2880",
-    "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
-    "reviewedLocales": ["ru", "lv", "es", "de"]
-  },
-  "streamC.eed0a4efb12bfd6c": {
-    "englishHash": "beb5c0e29e68f0a2e03740c45adf7a31c62fc4736b75a3983f6b8aab250b918b",
-    "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
-    "reviewedLocales": ["ru", "lv", "es", "de"]
-  },
   "streamC.6a1fdeb0e7061b71": {
     "englishHash": "980f67484e3cf966eeb222643b7613ca3f2d4669e96f8769f807f5c4917d2979",
     "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
@@ -7491,11 +7371,6 @@
   },
   "streamC.565fc92e27c98417": {
     "englishHash": "dc6e4a0f82642e2168e3c5e8135949fe4e71dd99490d47f0368c30ddb7f6cd9a",
-    "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
-    "reviewedLocales": ["ru", "lv", "es", "de"]
-  },
-  "streamC.76625b036abd0f6c": {
-    "englishHash": "11c8d42d24fe2f04bf83495be5c5f5f9118e3322ba90c78838af602150a2afbb",
     "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
     "reviewedLocales": ["ru", "lv", "es", "de"]
   },

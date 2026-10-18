@@ -436,10 +436,6 @@ export class DrawingEmbed extends MarkdownRenderChild {
       onCancel: () => this.endAdjust(false),
       onKeep: () => this.endAdjust(true),
       onAdjust: () => this.startAdjust(),
-      onDraw: () => {
-        const area = this.shown()
-        void openDrawing(this.app, this.file, area ? { area, draw: true } : { draw: true })
-      },
       onOpen: () => {
         const area = this.view
         void openDrawing(this.app, this.file, area ? { area } : {})

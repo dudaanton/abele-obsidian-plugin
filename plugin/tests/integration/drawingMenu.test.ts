@@ -2,7 +2,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Menu, TFolder, type Plugin } from 'obsidian'
 import { registerDrawing } from '@/drawing/register'
-import { newDrawing } from '@/drawing/files'
 
 vi.mock('@/drawing/DrawingView', () => ({
   DRAWING_VIEW_TYPE: 'abele-drawing',
@@ -71,44 +70,33 @@ function host() {
 }
 
 describe('the folder drawing menu', () => {
-  it.each(['before', 'after'])(
-    'distinguishes its drawing from another provider registered %s it',
-    (order) => {
-      const h = host()
-      const other = () =>
-        h.events.on('file-menu', (menu) => {
-          ;(menu as Menu).addItem((item) => item.setTitle('New drawing').setIcon('other-drawing'))
-        })
-      if (order === 'before') other()
-      const unload = h.plugin()
-      if (order === 'after') other()
-      try {
-        const menu = h.menu()
-        expect(menu.items.map((item) => item.title).sort()).toEqual([
-          'New Abele drawing',
-          'New drawing',
-        ])
-        const ours = menu.items.find((item) => item.title === 'New Abele drawing')!
-        expect(ours.icon).toBe('pen-line')
-        expect(ours.section).toBe('action-primary')
-        ours.handler!()
-        expect(newDrawing).toHaveBeenCalledWith(expect.anything(), h.folder)
-      } finally {
-        unload()
-      }
+  it.each(['before', 'after'])('leaves another provider registered %s it alone', (order) => {
+    const h = host()
+    const other = () =>
+      h.events.on('file-menu', (menu) => {
+        ;(menu as Menu).addItem((item) => item.setTitle('New drawing').setIcon('other-drawing'))
+      })
+    if (order === 'before') other()
+    const unload = h.plugin()
+    if (order === 'after') other()
+    try {
+      const menu = h.menu()
+      expect(menu.items.map((item) => item.title)).toEqual(['New drawing'])
+    } finally {
+      unload()
     }
-  )
+  })
 
-  it('adds one item to each new menu and removes the handler on unload and re-enable', () => {
+  it('never adds standalone drawing creation on enable or re-enable', () => {
     const h = host()
     let unload = h.plugin()
     try {
-      expect(h.menu().items).toHaveLength(1)
-      expect(h.menu().items).toHaveLength(1)
+      expect(h.menu().items).toHaveLength(0)
+      expect(h.menu().items).toHaveLength(0)
       unload()
       expect(h.menu().items).toHaveLength(0)
       unload = h.plugin()
-      expect(h.menu().items).toHaveLength(1)
+      expect(h.menu().items).toHaveLength(0)
     } finally {
       unload()
     }

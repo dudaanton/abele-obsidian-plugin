@@ -1,31 +1,12 @@
 import { t } from '@/i18n'
-/**
- * The drawing's hooks into Obsidian: its tab, drawings opening in it, the ways to make one, and
- * drawings shown in notes.
- */
+/** Picture editing and read-only legacy drawing compatibility. */
 import { ViewPlugin } from '@codemirror/view'
-import {
-  Platform,
-  TFile,
-  TFolder,
-  editorInfoField,
-  type Editor,
-  type MarkdownView,
-  type Plugin,
-} from 'obsidian'
+import { Platform, TFile, editorInfoField, type Plugin } from 'obsidian'
 import { DRAWING_VIEW_TYPE, DrawingView } from './DrawingView'
 import { DRAWABLE_PICTURES, IMAGE_INK_VIEW_TYPE, ImageInkView } from './ImageInkView'
-import {
-  adoptDrawingLeaves,
-  copyEmbed,
-  openImageInk,
-  insertDrawing,
-  isDrawingFile,
-  known,
-  newDrawing,
-} from './files'
+import { copyEmbed, openImageInk, isDrawingFile, known } from './files'
 import { drawingEmbedProcessor, drawingEmbedsInEditor } from './embed'
-import { followNoteRename } from './noteRenames'
+import { registerDrawingConversion } from './conversionCommand'
 import {
   DRAW_ON_PICTURE,
   PenOnPictureTabs,
@@ -38,23 +19,8 @@ export function registerDrawing(plugin: Plugin): void {
   plugin.registerView(DRAWING_VIEW_TYPE, (leaf) => new DrawingView(leaf))
   plugin.registerView(IMAGE_INK_VIEW_TYPE, (leaf) => new ImageInkView(leaf))
 
-  let pending = 0
-  const adopt = () => {
-    window.clearTimeout(pending)
-    pending = window.setTimeout((): void => void adoptDrawingLeaves(app), 30)
-  }
-  app.workspace.onLayoutReady(adopt)
-  plugin.registerEvent(app.workspace.on('file-open', adopt))
-  plugin.registerEvent(app.workspace.on('layout-change', adopt))
-  plugin.register(() => window.clearTimeout(pending))
+  registerDrawingConversion(plugin)
   plugin.registerEvent(app.vault.on('delete', (file) => known.delete(file.path)))
-  // A note shown on drawings follows its renames there.
-  plugin.registerEvent(
-    app.vault.on('rename', (file, oldPath) => {
-      if (file instanceof TFile && file.extension === 'md')
-        void followNoteRename(app, oldPath, file.path)
-    })
-  )
 
   // A drawing's callout in a note shows the part of it the callout names.
   plugin.registerMarkdownPostProcessor(drawingEmbedProcessor(app))
@@ -66,34 +32,6 @@ export function registerDrawing(plugin: Plugin): void {
         (view) => view.state.field(editorInfoField, false)?.file?.path ?? ''
       )
     )
-  )
-
-  plugin.addCommand({
-    id: 'new-drawing',
-    name: t('commands.new-drawing'),
-    icon: 'pen-line',
-    callback: () => void newDrawing(app),
-  })
-
-  const insertHere = (editor: Editor, view: MarkdownView) => {
-    if (view.file) void insertDrawing(app, view.file, (text) => editor.replaceSelection(text))
-  }
-  plugin.addCommand({
-    id: 'insert-drawing',
-    name: t('commands.insert-drawing'),
-    icon: 'pen-line',
-    editorCallback: (editor, view) => insertHere(editor, view as MarkdownView),
-  })
-  plugin.registerEvent(
-    app.workspace.on('editor-menu', (menu, editor, view) => {
-      menu.addItem((item) =>
-        item
-          .setTitle(t('commands.insert-drawing'))
-          .setIcon('pen-line')
-          .setSection('insert')
-          .onClick(() => insertHere(editor, view as MarkdownView))
-      )
-    })
   )
 
   // Drawing begun where a picture is looked at: a pen in the header of Obsidian's own picture
@@ -127,16 +65,6 @@ export function registerDrawing(plugin: Plugin): void {
 
   plugin.registerEvent(
     app.workspace.on('file-menu', (menu, file, source) => {
-      if (file instanceof TFolder) {
-        menu.addItem((item) =>
-          item
-            .setTitle(t('streamC.76625b036abd0f6c'))
-            .setIcon('pen-line')
-            .setSection('action-primary')
-            .onClick(() => void newDrawing(app, file))
-        )
-        return
-      }
       if (file instanceof TFile && DRAWABLE_PICTURES.includes(file.extension.toLowerCase())) {
         // Opened on a picture embedded in a note: the embed it was, to save back in its place.
         const anchor = source === 'link-context-menu' ? embeds.take(file.path) : null

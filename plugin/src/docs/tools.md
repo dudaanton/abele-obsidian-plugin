@@ -519,7 +519,7 @@ step picture. A single click or tap opens the image viewer; a double click or ta
   and leaves an empty one empty.
 - `look_at_drawing` is how to see a drawing (an `.svg` the plugin made — see the vault section):
   all of it, a part by `area` (`x y width height` in its units — the numbers of an embed's
-  `#part=x,y,w,h`, or of an older `[!drawing|…]` callout), or `picked: true` for what the person picked with the lasso in its open tab. Read
+  `#part=x,y,w,h`, or of an older `[!drawing|…]` callout), for a read-only legacy drawing. Read
   handwriting from it when asked to transcribe; the reply gives the whole drawing's bounds, so
   ask again for a closer part when the writing is small. `read_image` on a drawing shows it whole.
 

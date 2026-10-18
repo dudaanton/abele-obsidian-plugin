@@ -135,7 +135,7 @@ import { GithubClient } from '@/github/client'
 import { singleHopRequest } from '@/github/transport'
 import { connectionApproval } from '@/github/approveConnection'
 import { endpoints } from '@/github/urls'
-import { newDrawing, openImageInk } from '@/drawing/files'
+import { openImageInk } from '@/drawing/files'
 import { previewImage } from '@/commands/utilityDialogs'
 import { transportOf } from '@/sync/environment'
 import { desktopTransport as syncDesktopTransport } from '@/sync/desktopTransport'
@@ -351,8 +351,6 @@ interface AbeleTestApi {
   showChangelogOffer: typeof showOffer
   /** The synced secret store: status, lock, unlock — driven live. */
   secrets: typeof secrets
-  /** A new drawing in a folder, opened ready to draw on. */
-  newDrawing: typeof newDrawing
   /** A picture opened to draw on. */
   openImageInk: typeof openImageInk
   previewImage: typeof previewImage
@@ -1017,7 +1015,6 @@ export function exposeTestApi(plugin: Plugin): void {
     AbeleConfig,
     originalNotePlaceHookTypes,
     secrets,
-    newDrawing,
     openImageInk,
     previewImage,
     ScriptService,

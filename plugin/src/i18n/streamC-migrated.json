@@ -47,7 +47,6 @@
     "components/debugger/trace/TraceValueTab.vue",
     "components/debugger/trace/format.ts",
     "components/drawing/CropFrame.vue",
-    "components/drawing/DrawingBar.vue",
     "components/drawing/DrawingEmbedActions.vue",
     "components/drawing/PictureEditor.vue",
     "components/external/ExternalFileEmbed.vue",

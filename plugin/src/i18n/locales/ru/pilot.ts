@@ -161,6 +161,9 @@ export const ru = {
   'kit.noteSelection': 'Вставить в последнюю открытую заметку',
   'kit.linkSelection': 'Копировать ссылку на эти строки',
   'kit.saving': 'Сохранение…',
+  'commands.convert-drawings-to-canvases': 'Преобразовать старые рисунки в холсты',
+  'drawing.conversion-result':
+    'Рисунки: преобразовано {converted}, уже преобразовано {existing}, ошибок {failed}. Оригиналы сохранены.',
   'commands.migrate-excalidraw-drawing': 'Перенести этот рисунок Excalidraw на холст',
   'commands.migrate-excalidraw-vault': 'Перенести все рисунки Excalidraw на холсты',
   'commands.new-canvas': 'Новый холст',
@@ -171,8 +174,6 @@ export const ru = {
   'commands.column-options': 'Параметры столбцов',
   'commands.remove-columns': 'Удалить столбцы',
   'commands.add-text-comment': 'Добавить комментарий',
-  'commands.new-drawing': 'Новый рисунок',
-  'commands.insert-drawing': 'Вставить новый рисунок',
   'commands.open-node-repository': 'Открыть репозиторий ноды',
   'commands.chat-about-github-item': 'Обсудить этот элемент GitHub',
   'commands.open-github-repository': 'Открыть репозиторий GitHub…',

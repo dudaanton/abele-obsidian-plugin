@@ -154,6 +154,9 @@ export const en = {
   'kit.noteSelection': 'Insert into the note you were last in',
   'kit.linkSelection': 'Copy a link to these lines',
   'kit.saving': 'Saving…',
+  'commands.convert-drawings-to-canvases': 'Convert legacy drawings to canvases',
+  'drawing.conversion-result':
+    'Drawings: {converted} converted, {existing} already converted, {failed} failed. Originals kept.',
   'commands.migrate-excalidraw-drawing': 'Migrate this Excalidraw drawing to a canvas',
   'commands.migrate-excalidraw-vault': 'Migrate all Excalidraw drawings to canvases',
   'commands.new-canvas': 'New canvas',
@@ -164,8 +167,6 @@ export const en = {
   'commands.column-options': 'Column options',
   'commands.remove-columns': 'Remove columns',
   'commands.add-text-comment': 'Add comment',
-  'commands.new-drawing': 'New drawing',
-  'commands.insert-drawing': 'Insert a new drawing',
   'commands.open-node-repository': 'Open node repository',
   'commands.chat-about-github-item': 'Chat about this GitHub item',
   'commands.open-github-repository': 'Open GitHub repository…',

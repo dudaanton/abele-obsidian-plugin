@@ -100,11 +100,7 @@ const PRELUDE = `
     })) throw new Error('embedded drawing image did not load')
     await box.querySelector('img').decode()
   }
-  const drawingReady = async (view) => {
-    if (!await until(() => view?.session?.surface.width > 0 && view.session.surface.height > 0 &&
-      view.contentEl.querySelector('.abele-drawing-bar__mode')?.getBoundingClientRect().width > 0))
-      throw new Error('drawing surface did not become ready')
-  }
+
 `
 
 const run = <T>(body: string): T =>
@@ -132,15 +128,9 @@ describe.skipIf(!available)('a drawing in a note', () => {
       // are folded for this file and put back as they were.
       app.workspace.leftSplit.collapse()
       app.workspace.rightSplit.collapse()
-      await window.__abeleTest.newDrawing(app, app.vault.getAbstractFileByPath(DIR))
-      const view = await until(() => views().find((v) => v.session && v.file && v.model.on && v.session.surface.width > 0), 10000)
-      await drawingReady(view)
-      const b = view.session.surface.el.getBoundingClientRect()
-      await stroke([[b.left + 120, b.top + 120], [b.left + 200, b.top + 200], [b.left + 280, b.top + 120], [b.left + 360, b.top + 200]])
-      view.contentEl.querySelector('.abele-drawing-bar__mode').click()
-      await until(async () => (await read(view.file.path)).includes('<path d="M'), 5000)
-      window.__embedDrawing = view.file.path
-      return { name: view.file.name }
+      const file = await app.vault.create(DIR + '/sample.svg', ${JSON.stringify(drawingSvg({ items: [{ id: 'sample', type: 'stroke', tool: 'pen', color: 'black', size: 4, points: [100, 100, 0.5, 350, 200, 0.5, 150, 300, 0.5] }] }))})
+      window.__embedDrawing = file.path
+      return { name: file.name }
     `)
     if (r.error) throw new Error(r.error)
   }, 90_000)
@@ -167,32 +157,6 @@ describe.skipIf(!available)('a drawing in a note', () => {
     )
   }, 180_000)
 
-  it('keeps what was drawn when the tab is closed right after, and the note shows it', () => {
-    const r = run<{ error?: string; kept?: boolean; ink?: number }>(`
-      await closeAll()
-      await window.__abeleTest.newDrawing(app, app.vault.getAbstractFileByPath(DIR))
-      const view = await until(() => views().find((v) => v.session && v.file && v.model.on && v.session.surface.width > 0), 10000)
-      await drawingReady(view)
-      const file = view.file
-      const b = view.session.surface.el.getBoundingClientRect()
-      await stroke([[b.left + 100, b.top + 100], [b.left + 300, b.top + 160], [b.left + 120, b.top + 220]])
-      view.contentEl.querySelector('.abele-drawing-bar__mode').click()
-      await until(async () => (await read(file.path)).includes('<path d="M'), 5000)
-      // Closed at once: the save still waiting must not write an empty drawing after it.
-      view.leaf.detach()
-      // Observation window: a pending save must not empty the drawing after closing it.
-      await wait(3000)
-      const kept = (await read(file.path)).includes('<path d="M')
-      const leaf = await note('Closed', '![[' + file.name + ']]\\n', 'preview')
-      const box = await until(() => boxes(leaf).find((x) => x.querySelector('img')?.complete && x.clientWidth), 8000)
-      await pictureReady(box)
-      return { kept, ink: box ? await ink(box) : 0 }
-    `)
-    expect(r.error).toBeUndefined()
-    expect(r.kept).toBe(true)
-    expect(r.ink).toBeGreaterThan(100)
-  })
-
   it('draws what is drawn when embedded the plain way, at its own size, and follows a new stroke', () => {
     const r = run<{
       error?: string
@@ -211,11 +175,6 @@ describe.skipIf(!available)('a drawing in a note', () => {
       const path = file.path
       const savedBefore = await read(path)
       const paper = Number(/viewBox="[-\\d.]+ [-\\d.]+ ([\\d.]+)/.exec(savedBefore)[1])
-      const drawingLeaf = app.workspace.getLeaf('tab')
-      await drawingLeaf.openFile(file)
-      const view = await until(() => views().find((v) => v.file?.path === path && v.session?.surface.width), 8000)
-      await drawingReady(view)
-      // Put the note beside the drawing BEFORE either ink-area measurement.
       const noteLeaf = await note('Plain', '# Plain\\n\\n![[' + file.name + ']]\\n\\nAfter.\\n', 'source', 'split')
       const box = await until(() => boxes(noteLeaf).find((b) => b.querySelector('img')?.complete && b.clientWidth), 8000)
       await pictureReady(box)
@@ -229,20 +188,34 @@ describe.skipIf(!available)('a drawing in a note', () => {
       await shoot('plain-live')
       // A stroke drawn with the note open beside the drawing shows in the note.
       const src = box.querySelector('img').src
-      app.workspace.setActiveLeaf(drawingLeaf, { focus:false })
-      view.contentEl.querySelector('.abele-drawing-bar__mode').click()
-      if (!await until(() => view.model.on)) throw new Error('drawing mode did not turn on')
-      const b = view.session.surface.el.getBoundingClientRect(), camera=view.session.camera
-      const points=[[90,280],[340,310],[100,350],[340,390]]
-      await stroke(points.map(([x,y]) => [b.left+(x-camera.x)*camera.zoom,b.top+(y-camera.y)*camera.zoom]))
-      const savedAfter = await until(async () => { const text=await read(path);const data=JSON.parse(/<metadata id="abele-drawing">([\\s\\S]*?)<\\/metadata>/.exec(text)[1]);return data.items.length===2&&text }, 8000)
-      if (!savedAfter) throw Error('new stroke not saved')
+      await app.vault.modify(file, ${JSON.stringify(
+        drawingSvg({
+          items: [
+            {
+              id: 'sample-first',
+              type: 'stroke',
+              tool: 'pen',
+              color: 'black',
+              size: 2.4,
+              points: [80, 110, 0.5, 390, 400, 0.5],
+            },
+            {
+              id: 'sample-second',
+              type: 'stroke',
+              tool: 'pen',
+              color: 'black',
+              size: 2.4,
+              points: [90, 280, 0.5, 340, 310, 0.5, 100, 350, 0.5, 340, 390, 0.5],
+            },
+          ],
+        })
+      )})
+      const savedAfter = await read(path)
       const moved = await until(() => { const now = boxes(noteLeaf)[0]; return now && now.querySelector('img').src !== src && now }, 8000)
       await pictureReady(moved)
       const measuredAfter = await measuredInk(moved, noteLeaf, /viewBox="([^"]+)"/.exec(savedAfter)[1])
       const after = { ink: measuredAfter.ink, src: !!moved }
       await shoot('plain-live-after')
-      view.leaf.detach()
       await noteLeaf.setViewState({ type: 'markdown', state: { file: noteLeaf.view.file.path, mode: 'preview' } })
       const rb = await until(() => boxes(noteLeaf).find((b) => b.querySelector('img')?.complete && b.clientWidth), 8000)
       await pictureReady(rb)
@@ -338,19 +311,9 @@ describe.skipIf(!available)('a drawing in a note', () => {
     }>(`
       await closeAll()
       const file = app.vault.getAbstractFileByPath(window.__embedDrawing)
-      // The command at the cursor: the embed and nothing round it.
-      const ins = await note('Inserted', 'Before\\n', 'source')
-      ins.view.editor.setCursor({ line: 1, ch: 0 })
-      app.commands.executeCommandById('abele:insert-drawing')
-      const inserted = await until(() => { const t = ins.view.editor.getValue(); return t.includes('![[') && t }, 8000)
-      await until(() => views().length, 8000)
-      for (const v of views()) v.leaf.detach()
-      await until(() => !views().length)
-      const made = /!\\[\\[([^\\]]+)\\]\\]/.exec(inserted || '')?.[1]
-      const madeFile = made && app.metadataCache.getFirstLinkpathDest(made, ins.view.file.path)
-      // Shown by the plugin, in live preview, with no callout.
+      const inserted = 'Before\\n![[' + file.name + ']]\\n'
+      const ins = await note('Inserted', inserted, 'source')
       const shown = !!(await until(() => boxes(ins).find((b) => b.clientWidth && !b.closest('.callout')), 8000))
-      if (madeFile) await app.vault.delete(madeFile)
       // A part changed on an embed alone goes into that embed's link.
       const leaf = await note('Part in link', 'Part\\n\\n![[' + file.name + ']]\\n\\n![[' + file.name + ']]\\n', 'source')
       const two = await until(() => { const b = boxes(leaf); return b.length === 2 && b.every((x) => x.clientWidth && x.querySelector('img')?.complete) && b }, 8000)
@@ -387,7 +350,7 @@ describe.skipIf(!available)('a drawing in a note', () => {
       away?: string
       over?: string
       opened?: string
-      zoom?: number
+      readOnly?: boolean
       plain?: string
     }>(`
       await closeAll()
@@ -409,21 +372,19 @@ describe.skipIf(!available)('a drawing in a note', () => {
       await cdp.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', x: Math.round(g.left + g.width / 2), y: Math.round(g.top + g.height / 2) })
       await input('mousePressed', g.left + g.width / 2, g.top + g.height / 2, 'mouse', 1)
       await input('mouseReleased', g.left + g.width / 2, g.top + g.height / 2, 'mouse', 0)
-      const view = await until(() => views().find((v) => v.file?.path === file.path && v.session?.surface.width), 8000)
-      await drawingReady(view)
-      await until(() => view.session.camera.zoom > 1.5)
-      const zoom = view?.session.camera.zoom
+      const view = await until(() => views().find((v) => v.file?.path === file.path && v.contentEl.querySelector('img')), 8000)
+      const readOnly = !view.session && !view.contentEl.querySelector('canvas,button')
       view?.leaf.detach()
       b[1].querySelector('.abele-drawing-embed__go').click()
       const plain = (await until(() => views().find((v) => v.file?.path === file.path), 8000))?.file.path
-      return { away, over, opened: view?.file.path, zoom, plain }
+      return { away, over, opened: view?.file.path, readOnly, plain }
     `)
     expect(desk.error).toBeUndefined()
     expect(desk.away).toBe('0')
     expect(desk.over).toBe('1')
     expect(desk.opened).toMatch(/\.svg$/)
-    // The part is 120 wide: it opens zoomed in on it.
-    expect(desk.zoom).toBeGreaterThan(1.5)
+    // Opening a legacy embed must not restore the removed editor.
+    expect(desk.readOnly).toBe(true)
     expect(desk.plain).toBe(desk.opened)
 
     await reloadApp('app.emulateMobile(true)')
