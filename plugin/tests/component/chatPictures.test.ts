@@ -4,6 +4,9 @@ import { TFile } from 'obsidian'
 import AiChatInput from '@/components/AiChatInput.vue'
 import AiChatMessage from '@/components/AiChatMessage.vue'
 import GalleryViewer from '@/components/GalleryViewer.vue'
+import ChatToolRun from '@/components/ChatToolRun.vue'
+import ChatToolImage from '@/components/chat/ChatToolImage.vue'
+import { h } from 'vue'
 import { useVault } from '../helpers/testEnv'
 import { resolveAttachmentsForApi } from '@/ai/attachments'
 
@@ -16,12 +19,20 @@ beforeEach(() => {
   ;(app.vault as any).getResourcePath = (f: TFile) => `app://sample/${f.path}`
   document.body.replaceChildren()
 })
-afterEach(() => { for (const w of mounted.splice(0)) w.unmount() })
+afterEach(() => {
+  for (const w of mounted.splice(0)) w.unmount()
+})
 
 it('shows a pending thumbnail and opens the plugin preview without sending', async () => {
-  const w = mount(AiChatInput, { props: {
-    isStreaming: false, isBusy: false, canContinue: false, tokenDisplay: '', scopeLabel: '',
-  } })
+  const w = mount(AiChatInput, {
+    props: {
+      isStreaming: false,
+      isBusy: false,
+      canContinue: false,
+      tokenDisplay: '',
+      scopeLabel: '',
+    },
+  })
   mounted.push(w)
   w.vm.addAttachment(image)
   await w.vm.$nextTick()
@@ -34,9 +45,17 @@ it('shows a pending thumbnail and opens the plugin preview without sending', asy
 })
 
 it('opens sent image attachments in the plugin preview', async () => {
-  const w = mount(AiChatMessage, { props: { message: {
-    id: 'sample', role: 'user', content: '', timestamp: 1, attachments: [image.path],
-  } } })
+  const w = mount(AiChatMessage, {
+    props: {
+      message: {
+        id: 'sample',
+        role: 'user',
+        content: '',
+        timestamp: 1,
+        attachments: [image.path],
+      },
+    },
+  })
   mounted.push(w)
   await w.get('.abele-chat-msg__attachments img').trigger('click')
   expect(w.findComponent(GalleryViewer).exists()).toBe(true)
@@ -44,9 +63,16 @@ it('opens sent image attachments in the plugin preview', async () => {
 })
 
 it('opens image embeds in assistant replies in the plugin preview', async () => {
-  const w = mount(AiChatMessage, { props: { message: {
-    id: 'reply', role: 'assistant', content: `![[${image.path}]]`, timestamp: 1,
-  } } })
+  const w = mount(AiChatMessage, {
+    props: {
+      message: {
+        id: 'reply',
+        role: 'assistant',
+        content: `![[${image.path}]]`,
+        timestamp: 1,
+      },
+    },
+  })
   mounted.push(w)
   const embed = document.createElement('span')
   embed.className = 'internal-embed'
@@ -64,4 +90,71 @@ it('gives the model both the picture and its exact file path', async () => {
   const parts = await resolveAttachmentsForApi([image.path])
   expect(parts).toContainEqual({ type: 'text', text: `[Image: ${image.path}]` })
   expect(parts).toContainEqual({ type: 'image_url', image_url: { url: `vault:${image.path}` } })
+})
+
+it('keeps a saved generated image visible after its run folds', async () => {
+  const message = {
+    id: 'generated',
+    role: 'tool-call' as const,
+    content: '',
+    timestamp: 1,
+    toolName: 'generate_image',
+    toolStatus: 'approved' as const,
+    toolResult: `Image saved: ${image.path}`,
+    toolImagePath: image.path,
+  }
+  const w = mount(ChatToolRun, {
+    props: { id: 'run', calls: [message], open: true },
+    slots: {
+      default: () => h(AiChatMessage, { message }),
+      results: () => h(ChatToolImage, { message }),
+    },
+  })
+  mounted.push(w)
+  expect(w.findAll('.abele-chat-msg__image-preview')).toHaveLength(1)
+  await w.setProps({ open: false })
+  expect(w.find('.abele-chat-msg__image-preview').exists()).toBe(true)
+  await w.get('.abele-chat-msg__image-preview').trigger('click')
+  expect(w.findComponent(GalleryViewer).exists()).toBe(true)
+  const saved = JSON.parse(JSON.stringify(message))
+  const reopened = mount(ChatToolRun, {
+    props: { id: 'run', calls: [saved], open: false },
+    slots: { results: () => h(ChatToolImage, { message: saved }) },
+  })
+  mounted.push(reopened)
+  expect(reopened.findAll('.abele-chat-msg__image-preview')).toHaveLength(1)
+})
+
+it('shows completion immediately but keeps no-image, failed and missing results empty', async () => {
+  const message = {
+    id: 'generated',
+    role: 'tool-call' as const,
+    content: '',
+    timestamp: 1,
+    toolName: 'generate_image',
+    toolStatus: 'approved' as const,
+  }
+  const w = mount(ChatToolImage, { props: { message } })
+  mounted.push(w)
+  expect(w.find('img').exists()).toBe(false)
+  const completed = {
+    ...message,
+    toolResult: `Image saved: ${image.path}`,
+    toolImagePath: image.path,
+  }
+  await w.setProps({ message: completed })
+  expect(w.get('img').attributes('src')).toContain(image.path)
+  for (const invalid of [
+    { ...completed, toolImagePath: undefined },
+    { ...completed, toolStatus: 'rejected' as const },
+    { ...completed, toolResult: 'No image returned' },
+    {
+      ...completed,
+      toolResult: 'Image saved: Attachments/missing.png',
+      toolImagePath: 'Attachments/missing.png',
+    },
+  ]) {
+    await w.setProps({ message: invalid })
+    expect(w.find('img').exists()).toBe(false)
+  }
 })

@@ -32,6 +32,8 @@
       <slot />
     </div>
   </TreeItem>
+  <!-- Saved results stay in the conversation when the work's details fold away. -->
+  <slot v-if="!open" name="results" />
   <!-- A node call in the run was refused for want of access: its way through stays in sight
        with the run folded; opened, it is on the call's own line. -->
   <NodeAccessRefusal

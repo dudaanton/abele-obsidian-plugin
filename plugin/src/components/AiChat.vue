@@ -198,6 +198,9 @@
             @update:open="(open) => setRunOpen(block.id, open)"
             @node-access="onNodeAccess"
           >
+            <template #results>
+              <ChatToolImage v-for="msg in block.calls" :key="msg.id" :message="msg" />
+            </template>
             <AiChatMessage
               v-for="msg in block.messages"
               :key="msg.id"
@@ -542,6 +545,7 @@ import { navigationTitle } from '@/ai/chatNavigation'
 import { branchSwitches, newBranchAfter } from '@/ai/chatBranches'
 import { callState, chatBlocks, type ChatBlock } from '@/ai/toolRuns'
 import ChatToolRun from './ChatToolRun.vue'
+import ChatToolImage from './chat/ChatToolImage.vue'
 import ChatThinking from './ChatThinking.vue'
 import ChatQuestionCard from './ChatQuestionCard.vue'
 import AiRewindDialog from './AiRewindDialog.vue'

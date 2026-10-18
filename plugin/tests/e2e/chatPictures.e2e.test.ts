@@ -46,6 +46,84 @@ const PANE_PRELUDE = `
 `
 
 describe.skipIf(!available)('chat pictures and image import in the running browser', () => {
+  it.each(onPhone() ? ['phone'] : ['desktop', 'emulated phone'])(
+    'keeps generated pixels visible through completion, folding and reopening on %s',
+    async (layout) => {
+      const run = async () =>
+        JSON.parse(
+          await evalLong(
+            `(async () => {
+        const wait = ms => new Promise(r => setTimeout(r, ms))
+        const until = async fn => { for (let i = 0; i < 160; i++) { const value = fn(); if (value) return value; await wait(50) } throw Error('Generated preview did not appear') }
+        const chats = window.__abeleTest.ChatService.getInstance()
+        const prior = chats.activeTabId.value
+        let tab = chats.createTab(), session = chats.getSession(tab), chatFile
+        const originalTools = session.getTools
+        ${PANE_PRELUDE}
+        let pane
+        const path = ${JSON.stringify(DIR)} + '/generated-' + ${JSON.stringify(layout)} + '.png'
+        try {
+          pane = await makePane()
+          session.permissionMode.value = 'allow-all'
+          await session.addUserNote('Create a synthetic picture')
+          const canvas = document.createElement('canvas'); canvas.width = 96; canvas.height = 64
+          canvas.getContext('2d').fillRect(0, 0, 96, 64)
+          const blob = await new Promise(r => canvas.toBlob(r, 'image/png'))
+          session.getTools = () => [{ name: 'generate_image', label: 'Generate image', parameters: {}, execute: async () => {
+            await app.vault.createBinary(path, await blob.arrayBuffer())
+            return { content: [{ type: 'text', text: 'Image saved: ' + path }], details: { imagePath: path } }
+          } }]
+          const call = { id: 'sample-generated-preview', name: 'generate_image', arguments: { prompt: 'Synthetic square' } }
+          session.pendingToolCalls.value = [call]
+          session.ensurePendingToolCallMessage(call)
+          const preview = () => pane.view.containerEl.querySelector('.abele-chat-msg__image-preview')
+          const before = !!preview()
+          await session.executeCurrentPendingTool(call, call.arguments, undefined, true)
+          session.updateVisibleMessages()
+          let img = await until(preview); await img.decode()
+          const immediate = img.naturalWidth
+          const folded = !!pane.view.containerEl.querySelector('.abele-chat-run.is-collapsed')
+          await capture('generated-immediate-' + ${JSON.stringify(layout)})
+          await session.save(); chatFile = session.currentChatFile.value
+          session.getTools = originalTools
+          await chats.closeTab(tab)
+          await chats.openChatFile(chatFile)
+          session = chats.getSessionByFile(chatFile.path); tab = session.id
+          img = await until(preview); await img.decode()
+          const reopened = img.naturalWidth
+          await capture('generated-reopened-' + ${JSON.stringify(layout)})
+          img.click()
+          await until(() => document.querySelector('.abele-gallery-viewer'))
+          document.querySelector('.abele-gallery-viewer').closest('.modal').querySelector('.modal-close-button, .modal-header-button').click()
+          for (const state of ['no-pixels', 'missing', 'failed']) {
+            session.updateChatMessage(m => m.toolName === 'generate_image', m => ({ ...m,
+              toolImagePath: state === 'no-pixels' ? undefined : state === 'missing' ? path + '.png' : path,
+              toolResult: 'Image saved: ' + (state === 'missing' ? path + '.png' : path),
+              toolStatus: state === 'failed' ? 'rejected' : 'approved',
+            }))
+            await until(() => !preview())
+            await capture('generated-' + state + '-' + ${JSON.stringify(layout)})
+          }
+          return { before, immediate, reopened, folded }
+        } finally {
+          session.getTools = originalTools
+          await chats.closeTab(tab)
+          if (prior) chats.switchTab(prior)
+          for (const leaf of ownedPanes) if (leaf.view.containerEl.isConnected) leaf.detach()
+          if (previousLeaf?.view.containerEl.isConnected) app.workspace.setActiveLeaf(previousLeaf, { focus: false })
+          if (chatFile && app.vault.getAbstractFileByPath(chatFile.path)) await app.vault.delete(chatFile)
+          const file = app.vault.getAbstractFileByPath(path); if (file) await app.vault.delete(file)
+        }
+      })()`,
+            120_000
+          )
+        )
+      const result = layout === 'emulated phone' ? await withEmulatedPhone(run) : await run()
+      expect(result).toEqual({ before: false, immediate: 96, reopened: 96, folded: true })
+    },
+    180_000
+  )
+
   beforeAll(() => {
     evalRaw(`(async () => {
       if (!app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})) await app.vault.createFolder(${JSON.stringify(DIR)})

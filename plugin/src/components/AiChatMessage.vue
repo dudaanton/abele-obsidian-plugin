@@ -197,28 +197,7 @@
           </template>
         </TreeItem>
 
-        <div
-          v-if="message.toolStatus === 'approved' && imageUrl"
-          class="abele-chat-msg__image-wrap"
-        >
-          <img
-            :src="imageUrl"
-            class="abele-chat-msg__image-preview"
-            @click="openImagePreview"
-            @contextmenu.prevent="onImageContextMenu"
-          />
-          <span v-if="imagePath" class="abele-chat-msg__image-link" @click="openImagePreview">{{
-            imagePath
-          }}</span>
-          <GalleryViewer
-            v-if="viewerOpen"
-            :images="viewerImages"
-            :start-index="0"
-            :gallery-file-path="imagePath || ''"
-            :chat-id="ChatService.getInstance().activeTabId.value ?? ''"
-            @close="viewerOpen = false"
-          />
-        </div>
+        <ChatToolImage :message="message" :resource-opener="resourceOpener" />
         <AbeleMap
           v-if="message.toolStatus === 'approved' && mapConfig"
           :config="mapConfig"
@@ -462,6 +441,7 @@ import AiReplyOriginalDialog from './AiReplyOriginalDialog.vue'
 import NodeAccessRefusal from './chat/NodeAccessRefusal.vue'
 import type { NodeAccessRefusal as Refusal } from '@/ai/tools/node/accessRefusal'
 import type { NodeScopeEntry } from '@/ai/nodeScope'
+import ChatToolImage from './chat/ChatToolImage.vue'
 import AiChatMessageDetails from './AiChatMessageDetails.vue'
 import AiChatMessageInterceptor from './AiChatMessageInterceptor.vue'
 import { HIGHLIGHT_COLORS, type HighlightColor } from '@/reader/highlights'
@@ -695,15 +675,9 @@ const {
   toolSummary,
   toolFilePath,
   openToolFile,
-  imagePath,
-  imageUrl,
-  viewerOpen,
-  viewerImages,
   contentPicture,
   previewContentImage,
-  openImagePreview,
   onAttachmentContextMenu,
-  onImageContextMenu,
   openAttachment,
 } = useChatMessageMedia(props)
 
