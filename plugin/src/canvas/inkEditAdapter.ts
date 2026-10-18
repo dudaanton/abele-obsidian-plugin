@@ -3,8 +3,16 @@ import { nanoid } from 'nanoid'
 import { toWorld } from '../drawing/camera'
 import { boxPart } from '../drawing/selection'
 import { ERASER_RADIUS } from '../drawing/tools'
-import { inkEntries, inkBounds, hitInk, eraseInk, lassoInk, replaceInk } from './core/ink'
-import { bounds, canvasFingerprint, cloneCanvas, type CanvasGraph, type Rect } from './core/model'
+import {
+  inkEntries,
+  inkBounds,
+  hitInk,
+  eraseInk,
+  lassoInk,
+  replaceInk,
+  type InkEntry,
+} from './core/ink'
+import { bounds, canvasFingerprint, type CanvasGraph, type Rect } from './core/model'
 import { editCanvas, type CanvasOperation } from './core/edit'
 import { hitNode, selectNode } from './core/selection'
 import type { InputPorts } from './input'
@@ -24,6 +32,7 @@ interface Gesture {
   box: Rect | null
   active: boolean
   ops: CanvasOperation[]
+  entries: InkEntry[]
 }
 export function inkSelectionBounds(graph: CanvasGraph, ids: ReadonlySet<string>): Rect | null {
   const rects = [
@@ -87,6 +96,7 @@ export class CanvasInkEditInput {
       loop: [...start],
       active: false,
       ops: [],
+      entries: [],
     }
     this.gesture = g
     if (mode === 'erase' || mode === 'partial') {
@@ -95,6 +105,10 @@ export class CanvasInkEditInput {
         return true
       }
       g.active = true
+      // Only ink containers change during erasing. Own their shallow wrappers once, retaining
+      // immutable strokes (and their geometry caches), card payloads and the source graph.
+      g.preview = { ...graph, nodes: graph.nodes.map((node) => ({ ...node })) }
+      g.entries = inkEntries(g.preview)
       this.erase(start)
     }
     this.viewer.drawInk()
@@ -104,20 +118,20 @@ export class CanvasInkEditInput {
     const g = this.gesture,
       radius = ERASER_RADIUS / this.viewer.camera.zoom,
       distance = Math.hypot(point[0] - g.at[0], point[1] - g.at[1]),
-      steps = Math.max(1, Math.ceil(distance / (radius / 2))),
-      preview = cloneCanvas(g.preview)
+      steps = Math.max(1, Math.ceil(distance / (radius / 2)))
     // Sweep between samples: fast mouse/finger input cannot jump over a stroke.
     for (let i = 1; i <= steps; i++) {
       const x = g.at[0] + ((point[0] - g.at[0]) * i) / steps,
         y = g.at[1] + ((point[1] - g.at[1]) * i) / steps
-      for (const entry of inkEntries(preview)) {
-        if (!hitInk(entry, x, y, radius)) continue
-        replaceInk(preview, entry, g.mode === 'erase' ? [] : eraseInk(entry, x, y, radius, nanoid))
-      }
+      g.entries = g.entries.flatMap((entry) => {
+        if (!hitInk(entry, x, y, radius)) return [entry]
+        const strokes = g.mode === 'erase' ? [] : eraseInk(entry, x, y, radius, nanoid)
+        replaceInk(g.preview, entry, strokes)
+        return strokes.map((stroke) => ({ stroke, ...(entry.node ? { node: entry.node } : {}) }))
+      })
     }
-    g.preview = preview
     g.at = point
-    this.viewer.graph = preview
+    this.viewer.graph = g.preview
     this.viewer.drawInk()
   }
   move(event: PointerEvent): void {

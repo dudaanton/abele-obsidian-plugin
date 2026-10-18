@@ -259,6 +259,14 @@ function centreline(stroke: CanvasInk): number[] {
   return p
 }
 export function hitInk(entry: InkEntry, x: number, y: number, radius: number): boolean {
+  const box = inkBounds(entry)
+  if (
+    x + radius < box.x ||
+    y + radius < box.y ||
+    x - radius > box.x + box.width ||
+    y - radius > box.y + box.height
+  )
+    return false
   if (entry.stroke.freedraw) {
     const t = inkTransform(entry)
     const outline = freedrawOutline(entry.stroke)

@@ -407,4 +407,65 @@ describe.skipIf(!available)('canvas eraser and lasso with real pointer input', (
     await saved()
     expect(source()).toEqual(before)
   }, 120_000)
+  it('profiles erasing and lasso on 300 cards without repainting the card layer per sample', async () => {
+    await until('view()?.editor')
+    run(`
+      const ink=i=>({version:1,id:'sample-ink-'+i,tool:'pen',color:'1',size:3,
+        freedraw:{simulatePressure:false,streamline:0.5},
+        points:Array.from({length:100},(_,j)=>[j*2,80+i*30+Math.sin(j/5)*10,0.5]).flat()})
+      const graph={nodes:Array.from({length:300},(_,i)=>({id:'sample-card-'+i,type:'text',
+        text:'Sample content '.repeat(150),x:(i%20)*250,y:Math.floor(i/20)*150,width:200,height:100})),
+        edges:[],abele:{ink:[0,1,2].map(ink)}}
+      await app.vault.modify(app.vault.getAbstractFileByPath(path),JSON.stringify(graph));return true
+    `)
+    await until('view().viewer.graph.nodes.length===300')
+    for (const tool of ['eraser', 'partial-eraser', 'lasso']) {
+      const result = run<{
+        total: number
+        max: number
+        inkFrames: number
+        cardFrames: number
+        longTasks: number | null
+      }>(`
+        const v=view().viewer,edit=v.input.inkEdit
+        view().editor.controls.useTool(${JSON.stringify(tool)})
+        v.setCamera({x:0,y:0,zoom:1})
+        const frame=()=>new Promise(r=>requestAnimationFrame(r))
+        await frame();await frame()
+        const r=v.stage.getBoundingClientRect()
+        const event=(x,y)=>({pointerId:71,pointerType:'mouse',clientX:r.left+x,clientY:r.top+y})
+        let inkFrames=0,cardFrames=0
+        const ink=v.paintInk,paint=v.paint
+        v.paintInk=function(...args){inkFrames++;return ink.apply(this,args)}
+        v.paint=function(...args){cardFrames++;return paint.apply(this,args)}
+        const tasks=[],supported=typeof PerformanceObserver!=='undefined'&&PerformanceObserver.supportedEntryTypes?.includes('longtask')
+        const observer=supported?new PerformanceObserver(list=>tasks.push(...list.getEntries())):null
+        observer?.observe({entryTypes:['longtask']})
+        const times=[]
+        try{
+          edit.down(event(0,80));await frame();inkFrames=0;cardFrames=0
+          for(let i=0;i<120;i++){
+            const e={...event(i*2,80),getCoalescedEvents:()=>[event(i*2-1,80)]}
+            const start=performance.now();edit.move(e);times.push(performance.now()-start)
+            if(i%4===3)await frame()
+          }
+          await frame()
+          const result={total:times.reduce((a,b)=>a+b,0),max:Math.max(...times),inkFrames,cardFrames,
+            longTasks:supported?tasks.length+observer.takeRecords().length:null}
+          edit.up(event(240,80));return result
+        }finally{observer?.disconnect();v.paintInk=ink;v.paint=paint;edit.cancel()}
+      `)
+      console.info(`Card-heavy canvas ${tool}: ${JSON.stringify(result)}`)
+      expect(result.max).toBeLessThan(50)
+      expect(result.total / 120).toBeLessThan(8)
+      expect(result.inkFrames).toBe(30)
+      expect(result.cardFrames).toBe(0)
+      if (tool !== 'lasso') {
+        await saved()
+        await click('Undo canvas change')
+        await saved()
+      }
+    }
+    shot('card-heavy-ink')
+  }, 180_000)
 })
