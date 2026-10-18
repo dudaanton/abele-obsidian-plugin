@@ -23719,16 +23719,6 @@
       "de"
     ]
   },
-  "settings.sync.presentation.40b37f5462cc5a19": {
-    "englishHash": "8643db853b4e1adf021ec3dfcb52bf04f79ec984b555a02747b647e35586609d",
-    "context": "Settings control, explanatory text, or display-only metadata",
-    "reviewedLocales": [
-      "ru",
-      "lv",
-      "es",
-      "de"
-    ]
-  },
   "settings.sync.presentation.7dd20272337b469c": {
     "englishHash": "8abbfafa197891746d58806087441904fde0c095371232400db9a357f6d0cdcf",
     "context": "Settings control, explanatory text, or display-only metadata",

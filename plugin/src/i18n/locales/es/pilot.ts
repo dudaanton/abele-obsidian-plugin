@@ -2862,7 +2862,6 @@ export const es = {
   'settings.sync.presentation.fe7c4c6f414c4083': 'Grupo fuera de esta conexión',
   'settings.sync.presentation.97c769d2eaf4ca1c': 'Carpeta fuera de esta conexión',
   'settings.sync.presentation.f56643958aeae61b': 'Grupo: {name}',
-  'settings.sync.presentation.40b37f5462cc5a19': 'Abrir historial de versiones',
   'settings.sync.presentation.7dd20272337b469c': 'Abrir historial de versiones · {name}',
   'settings.sync.presentation.cb44fe2561afccff': 'Bóveda entera',
   'settings.sync.presentation.5c802e6401aca4d2': 'Carpeta: {path}',

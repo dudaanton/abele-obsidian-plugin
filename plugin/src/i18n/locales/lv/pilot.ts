@@ -2812,7 +2812,6 @@ export const lv = {
   'settings.sync.presentation.fe7c4c6f414c4083': 'Grupa ārpus šī savienojuma',
   'settings.sync.presentation.97c769d2eaf4ca1c': 'Mape ārpus šī savienojuma',
   'settings.sync.presentation.f56643958aeae61b': 'Grupa: {name}',
-  'settings.sync.presentation.40b37f5462cc5a19': 'Atvērt versiju vēsturi',
   'settings.sync.presentation.7dd20272337b469c': 'Atvērt versiju vēsturi · {name}',
   'settings.sync.presentation.cb44fe2561afccff': 'Visa velve',
   'settings.sync.presentation.5c802e6401aca4d2': 'Mape: {path}',

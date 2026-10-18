@@ -95,9 +95,10 @@ it('offers no version history on a note outside every connection', () => {
   expect(historyItems([agents, books], 'elsewhere.md')).toEqual([])
 })
 
-it('offers one plain item on a note inside one connection', () => {
+// Obsidian's own Sync adds "Open version history" to the same menu; ours never shares its name.
+it('names the one connection on a note inside it, apart from the Obsidian Sync item', () => {
   const history = historyItems([agents, books], 'Agents Test/inside.md')
-  expect(history.map((item) => item.title)).toEqual(['Open version history'])
+  expect(history.map((item) => item.title)).toEqual(['Open version history · Agents Test'])
   history[0].run!()
   expect(historyConnection.value).toBe('agents')
   expect(GlobalStore.getInstance().versionHistoryPath.value).toBe('Agents Test/inside.md')
@@ -117,7 +118,7 @@ it('names each connection when two hold the same note, never by its server', () 
 
 it('keeps connections that are not running out of the menu', () => {
   const history = historyItems([agents, { ...books, history: false }], 'Shared/both.md')
-  expect(history.map((item) => item.title)).toEqual(['Open version history'])
+  expect(history.map((item) => item.title)).toEqual(['Open version history · Agents Test'])
 })
 
 it('tells apart two connections with the same short name', () => {

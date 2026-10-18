@@ -2863,7 +2863,6 @@ export const ru = {
   'settings.sync.presentation.fe7c4c6f414c4083': 'Группа вне этой связи',
   'settings.sync.presentation.97c769d2eaf4ca1c': 'Папка за пределами этого подключения',
   'settings.sync.presentation.f56643958aeae61b': 'Группа: {name}',
-  'settings.sync.presentation.40b37f5462cc5a19': 'Открыть историю версий',
   'settings.sync.presentation.7dd20272337b469c': 'Открыть историю версий · {name}',
   'settings.sync.presentation.cb44fe2561afccff': 'Целое хранилище',
   'settings.sync.presentation.5c802e6401aca4d2': 'Папка: {path}',

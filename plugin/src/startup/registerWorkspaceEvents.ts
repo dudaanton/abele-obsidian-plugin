@@ -94,8 +94,9 @@ export function registerWorkspaceEvents(plugin: Plugin) {
       if (!(file instanceof TFile)) return
 
       // "Open version history" for a file a running connection syncs: inside its folder or
-      // group and not kept out by its ignore rules. Only when several connections hold the
-      // file does each item carry the connection's short name; never its server address.
+      // group and not kept out by its ignore rules. Every item carries the connection's short
+      // name, never its server address: Obsidian's own Sync adds a plain "Open version history"
+      // to the same menu, and two entries under one name cannot be told apart.
       const ui = tokenUi.value
       const holders = (ui?.rows.value ?? []).filter((row) => {
         const runtime = ui?.runtimes.get(row.id)
@@ -109,11 +110,7 @@ export function registerWorkspaceEvents(plugin: Plugin) {
           : names[index]
         menu.addItem((item) => {
           item
-            .setTitle(
-              holders.length > 1
-                ? settingsSyncText('Open version history · {name}', { name })
-                : settingsSyncText('Open version history')
-            )
+            .setTitle(settingsSyncText('Open version history · {name}', { name }))
             .setIcon('history')
             .onClick(() => {
               historyConnection.value = row.id

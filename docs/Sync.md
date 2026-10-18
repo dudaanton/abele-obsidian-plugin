@@ -325,11 +325,11 @@ other keep the edit, and the file comes back.
 
 ## Version history
 
-Right-click a file in the file list and choose **Open version history**. The item is shown only
-for a file a running connection on this device syncs: inside its folder or group and not kept out
-by its ignore rules. When two connections hold the same file there is one item per connection,
-named after its folder or group. Obsidian's own Sync, when it is on, adds an item of its own under
-the same name. Versions are read in pages of fifty; **Load older** appends the next retained page, so
+Right-click a file in the file list and choose **Open version history · *connection***. The item
+is shown only for a file a running connection on this device syncs: inside its folder or group and
+not kept out by its ignore rules. It is always named after the connection's folder or group, and
+when two connections hold the same file there is one item per connection. Obsidian's own Sync, when
+it is on, adds a plain **Open version history** of its own; that one opens Obsidian's history. Versions are read in pages of fifty; **Load older** appends the next retained page, so
 versions beyond the first fifty can also be previewed and restored. Every version the server keeps
 is listed with its number, what happened
 (created, edited, deleted…) and when. A merged version also says whose version it kept, or
