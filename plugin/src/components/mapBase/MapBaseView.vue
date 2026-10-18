@@ -14,12 +14,14 @@
       <MapPlaceCard
         v-if="paneCard"
         :place="paneCard"
+        :load-place="loadPlace"
+        :content-token="contentToken"
         :distance="distances[paneCard.id]"
         pane
         @back="paneCard = null"
         @open="emit('open', paneCard!, 'here')"
         @copy="copy(paneCard!)"
-        @photo="(i: number) => openViewer(paneCard!, i)"
+        @photo="(i: number, photos) => openViewer({ ...paneCard!, photos }, i)"
         @menu="(e: MouseEvent) => placeMenuAt(paneCard!, e)"
       />
       <MapPlaceList
@@ -28,10 +30,10 @@
         :selected="selected"
         :sort-from="sortFrom"
         :distances="distances"
-        :stale="stale"
+        :stale="stale && sortFrom === 'centre'"
         :searched="problem === 'searched'"
+        :filtered="problem === 'filtered'"
         @select="pickFromList"
-        @hover="(id: string | null) => (hovered = id)"
         @sort="openSortMenu"
         @resort="resort"
         @hide="hideList"
@@ -102,14 +104,18 @@
     >
       <MapPlaceCard
         :place="card"
+        :footer-host="cardFooter"
+        :load-place="loadPlace"
+        :content-token="contentToken"
         :distance="distances[card.id]"
         :state="cardState"
         @open="emit('open', card!, 'here')"
         @show="showOnMap(card!)"
         @copy="copy(card!)"
-        @photo="(i: number) => openViewer(card!, i)"
+        @photo="(i: number, photos) => openViewer({ ...card!, photos }, i)"
         @menu="(e: MouseEvent) => placeMenuAt(card!, e)"
       />
+      <template #footer><div ref="cardFooter" class="abele-map-base__card-actions" /></template>
     </ObsidianModal>
     <GalleryViewer
       v-if="viewer"
@@ -142,7 +148,10 @@ import ObsidianModal from '../obsidian/Modal.vue'
 import { renderKit, unrenderKit } from '../obsidian/mount'
 import GalleryViewer, { type ViewerImage } from '../GalleryViewer.vue'
 import MapControls from '../map/MapControls.vue'
-import MapPlaceCard from './MapPlaceCard.vue'
+import MapPlaceCard, { type CardContent } from './MapPlaceCard.vue'
+import { viewerPhotos } from '@/maps/cardContent'
+import { pinElement } from './pins'
+import { selectionLayout } from '@/maps/core/selection'
 import MapPlaceList from './MapPlaceList.vue'
 import MapPlaceHover from './MapPlaceHover.vue'
 import { t } from '@/i18n'
@@ -167,6 +176,8 @@ const props = withDefaults(
   defineProps<{
     places: MapPlace[]
     batchOne?: boolean
+    loadPlace?: (place: MapPlace) => Promise<CardContent>
+    contentToken?: number
     history?: Camera
     renderHover?: (place: MapPlace) => HTMLElement | null
     decoratePlaceMenu?: (menu: Menu, place: MapPlace) => void
@@ -203,6 +214,8 @@ const props = withDefaults(
     height: 400,
     cardState: 'ready',
     history: undefined,
+    loadPlace: undefined,
+    contentToken: 0,
     renderHover: undefined,
     decoratePlaceMenu: undefined,
     retryToken: 0,
@@ -237,14 +250,15 @@ const phone = Platform.isPhone
 const mapEl = ref<HTMLElement>()
 const map = shallowRef<MapLibreMap | null>(null)
 const selected = ref<string | null>(null)
-const hovered = ref<string | null>(null)
 const card = shallowRef<MapPlace | null>(null)
 const paneCard = shallowRef<MapPlace | null>(null)
+const cardFooter = shallowRef<HTMLElement>()
 const viewer = shallowRef<{ images: ViewerImage[]; index: number; path: string } | null>(null)
 const listShown = computed(() => !!props.list)
 const sortFrom = ref<MapSortFrom>('centre')
 const sortCentre = ref<{ lat: number; lon: number } | null>(null)
 const stale = ref(false)
+const located = shallowRef<{ lat: number; lon: number } | null>(null)
 const controls = reactive({
   turned: false,
   bearing: 0,
@@ -269,12 +283,13 @@ const plate = computed(() =>
 const skippedTip = computed(() => t('maps.skipped', { count: props.skipped.length }))
 
 // The list's order: the base's own, or nearest first from the person or the map's centre.
-const from = computed(() => (sortFrom.value === 'me' ? props.me : sortCentre.value) ?? null)
+const location = computed(() => props.me ?? located.value)
+const from = computed(() => (sortFrom.value === 'me' ? location.value : sortCentre.value) ?? null)
 const distances = computed<Record<string, string>>(() => {
   // A distance means something from the person, or beside the list sorted from the centre.
   const origin =
-    props.me && (sortFrom.value !== 'centre' || !listShown.value)
-      ? props.me
+    location.value && (sortFrom.value !== 'centre' || !listShown.value)
+      ? location.value
       : listShown.value && sortFrom.value === 'centre'
         ? sortCentre.value
         : null
@@ -292,6 +307,8 @@ let hoverPopup: Popup | null = null
 let hoverTimer = 0
 let timerWindow: Window
 let meMarker: Marker | null = null
+let selectionMarker: Marker | null = null
+let selectionOffset: [number, number] = [0, 0]
 let lib: typeof import('maplibre-gl') | null = null
 
 let layers: PlaceLayers | null = null
@@ -311,16 +328,59 @@ function requestBackground() {
     })
 }
 function drawMarks() {
+  selectionMarker?.remove()
+  selectionMarker = null
+  const m = map.value
+  const chosen = selectionLayout(
+    props.places,
+    selected.value,
+    props.group,
+    m
+      ? (place) => {
+          const container = m.getContainer()
+          return {
+            point: m.project([place.lon, place.lat]),
+            width: container.clientWidth,
+            height: container.clientHeight,
+          }
+        }
+      : undefined
+  )
+  const place = chosen.place
+  selectionOffset = chosen.offset
+  if (place && map.value && lib) {
+    const pin = pinElement(mapEl.value.ownerDocument, place, (event) => pressPlace(place, event))
+    pin.addClass('is-selected')
+    pin.addEventListener('contextmenu', (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+      placeMenuAt(place, event)
+    })
+    if (!phone) {
+      pin.addEventListener('mouseenter', () => showHover(place))
+      pin.addEventListener('mouseleave', hideHoverSoon)
+    }
+    selectionMarker = new lib.Marker({ element: pin, offset: selectionOffset })
+      .setLngLat([place.lon, place.lat])
+      .addTo(map.value)
+  }
   if (map.value && layers)
-    void layers.update(props.places, props.group).catch(() => {
+    void layers.update(chosen.points, props.group).catch(() => {
       if (!disposed) emit('failure', 'offline')
     })
 }
 
-/** A press on a mark: Obsidian Maps opens the note; on a phone, and beside the list, the card. */
+/** Map presses open notes; phone presses open cards; the desktop list selects its row. */
 function pressPlace(place: MapPlace, e?: MouseEvent) {
-  if (phone && !props.batchOne) return openCard(place)
-  if (listShown.value) return pickFromList(place)
+  if (e && Keymap.isModEvent(e)) return emit('open', place, 'tab')
+  if (phone && !props.batchOne) {
+    select(place.id)
+    return openCard(place)
+  }
+  if (listShown.value) {
+    select(place.id)
+    return
+  }
   emit('open', place, e && Keymap.isModEvent(e) ? 'tab' : 'here')
 }
 
@@ -344,9 +404,11 @@ function showHover(place: MapPlace) {
   })
   content.addEventListener('mouseleave', hideHoverSoon)
   const container = map.value.getContainer()
+  const projected = map.value.project([place.lon, place.lat])
+  const shift = selected.value === place.id ? selectionOffset : [0, 0]
   const layout = popupLayout(
     { width: container.clientWidth, height: container.clientHeight },
-    map.value.project([place.lon, place.lat]),
+    { x: projected.x + shift[0], y: projected.y + shift[1] },
     parseFloat(
       container.ownerDocument.defaultView.getComputedStyle(container).getPropertyValue('--size-4-3')
     ) || 12
@@ -356,7 +418,7 @@ function showHover(place: MapPlace) {
     closeButton: false,
     closeOnClick: false,
     anchor: layout.anchor,
-    offset: layout.offset,
+    offset: [layout.offset[0] + shift[0], layout.offset[1] + shift[1]],
     className: 'abele-map-base__hover',
     maxWidth: `${layout.width}px`,
   })
@@ -446,39 +508,36 @@ function copy(place: MapPlace) {
 
 function openCard(place: MapPlace) {
   hoverPopup?.remove()
-  card.value = place
+  select(place.id)
+  if (listShown.value && !phone) paneCard.value = place
+  else card.value = place
 }
 
 function openViewer(place: MapPlace, index: number) {
-  const images = (place.photos ?? [])
-    .filter((p) => !p.missing)
-    .map<ViewerImage>((p) => ({
-      url: p.url,
-      alt: p.caption ?? '',
-      type: 'local',
-      path: p.path,
-      description: p.caption,
-    }))
-  viewer.value = { images, index: Math.min(index, images.length - 1), path: place.path }
+  const data = viewerPhotos(place.photos ?? [], index)
+  if (data) viewer.value = { ...data, path: place.path }
 }
 
 function showOnMap(place: MapPlace) {
   card.value = null
+  if (phone && listShown.value) emit('update:list', false)
   select(place.id)
   map.value?.flyTo({ center: [place.lon, place.lat], zoom: Math.max(map.value.getZoom(), 15) })
 }
 
 function pickFromList(place: MapPlace, e?: MouseEvent) {
   if (e && Keymap.isModEvent(e)) return emit('open', place, 'tab')
-  if (phone) return openCard(place)
   select(place.id)
-  paneCard.value = place
   const m = map.value
-  if (!m) return
+  if (!m) {
+    if (phone) openCard(place)
+    return
+  }
   const p = m.project([place.lon, place.lat])
   const c = m.getContainer()
   if (p.x < 40 || p.y < 40 || p.x > c.clientWidth - 40 || p.y > c.clientHeight - 40)
     m.easeTo({ center: [place.lon, place.lat] })
+  if (phone) openCard(place)
 }
 
 function select(id: string | null) {
@@ -495,7 +554,7 @@ function hideList() {
 }
 
 function openSortMenu(e: MouseEvent) {
-  sortMenu(sortFrom.value, !!props.me, (f) => {
+  sortMenu(sortFrom.value, !!location.value, (f) => {
     sortFrom.value = f
     if (f === 'centre') resort()
   }).showAtPosition(under(e))
@@ -660,7 +719,7 @@ async function create() {
     emit('camera', { center: [m.getCenter().lng, m.getCenter().lat], zoom: m.getZoom() })
     if (sortFrom.value === 'centre' && sortCentre.value) {
       const c = m.getCenter()
-      stale.value = distance(sortCentre.value, { lat: c.lat, lon: c.lng }) > 150
+      stale.value = distance(sortCentre.value, { lat: c.lat, lon: c.lng }) > 0.1
     }
   })
   m.on('contextmenu', (e) => {
@@ -722,7 +781,6 @@ function drawMe() {
 }
 
 watch(() => [props.places, props.group], drawMarks)
-watch(hovered, drawMarks)
 watch(() => props.me, drawMe)
 watch(() => [props.styleUrl, props.themeToken] as const, requestBackground)
 watch(
@@ -742,8 +800,11 @@ watch(
 watch(
   () => props.places,
   (list) => {
+    if (paneCard.value)
+      paneCard.value = list.find((p) => p.id === paneCard.value?.id) ?? paneCard.value
+    if (card.value) card.value = list.find((p) => p.id === card.value?.id) ?? card.value
     if (selected.value && !list.some((p) => p.id === selected.value)) {
-      selected.value = null
+      select(null)
       paneCard.value = null
     }
   }
@@ -788,6 +849,7 @@ function locate() {
   locationFollow.toggle()
 }
 function drawLocation(point: { lat: number; lon: number }) {
+  located.value = point
   meMarker?.remove()
   if (!lib || !map.value || !mapEl.value) return
   const dot = mapEl.value.ownerDocument.win.createDiv()
@@ -839,6 +901,7 @@ onUnmounted(() => {
   layers?.dispose()
   locationFollow?.dispose()
   meMarker?.remove()
+  selectionMarker?.remove()
   timerWindow?.clearTimeout(hoverTimer)
   hoverPopup?.remove()
   map.value?.remove()
@@ -848,6 +911,10 @@ defineExpose({
   map,
   openCard,
   select,
+  pressPlace,
+  showList,
+  hideList,
+  resort,
   pickFromList,
   hoverPlace: (id: string) => {
     const p = props.places.find((x) => x.id === id)

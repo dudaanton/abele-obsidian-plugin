@@ -9,19 +9,24 @@ afterEach(() => vi.restoreAllMocks())
 
 it('shares one glyph raster across thousands of points and restores layers after a style switch', async () => {
   const raster = vi.fn(() => ({ data: new Uint8ClampedArray(64 * 64 * 4), width: 64, height: 64 }))
+  const clusterText = vi.fn()
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
     beginPath() {},
     arc() {},
     fill() {},
     drawImage() {},
     getImageData: raster,
-    fillText() {},
+    fillText() {
+      clusterText(this.fillStyle)
+    },
   } as unknown as CanvasRenderingContext2D)
   vi.spyOn(HTMLImageElement.prototype, 'decode').mockResolvedValue()
   const sources = new Map()
   const images = new Set()
   const layers = new Set()
   const container = document.body.createDiv()
+  container.style.setProperty('--text-normal', '#222222')
+  container.style.setProperty('--background-primary', '#ffffff')
   const fake = {
     isStyleLoaded: () => true,
     getContainer: () => container,
@@ -60,6 +65,7 @@ it('shares one glyph raster across thousands of points and restores layers after
   expect(container.children.length).toBe(0)
   await resolveImage('abele-cluster-2')
   expect(images.has('abele-cluster-2')).toBe(true)
+  expect(clusterText).toHaveBeenCalledWith('#ffffff')
   await renderer.update([{ ...places[0], lat: 14 }], true)
   expect(sources.get('abele-places').setData).toHaveBeenCalledWith(
     expect.objectContaining({

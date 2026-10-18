@@ -25398,5 +25398,265 @@
       "es",
       "de"
     ]
+  },
+  "maps.backList": {
+    "englishHash": "9e879a74507d0d7e24196cef31cc8f755253c5fb0e9e5428955b69a8b3245cc5",
+    "context": "Bases map place card and list",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.cardGone": {
+    "englishHash": "e5a893c13fc8ca980754da9df73f8c06a2fce9d6211cae6a8452445fa50ff5ee",
+    "context": "Bases map place card and list",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.cardGoneText": {
+    "englishHash": "c6870f5b4819c59ecef5cdd9defdb68f0f60acfa2fdb4d8c7032ed7d6cc07c8f",
+    "context": "Bases map place card and list",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.cardError": {
+    "englishHash": "a95e88f525a3455e7a5a3b16e1d306711c9a39b1e97062ebfb917ef594d7ed55",
+    "context": "Bases map place card and list",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.cardErrorText": {
+    "englishHash": "b83d23578a5ec11cf6b54e6a8c90625b6b5d04aff10789a7f19a05c9a2734d64",
+    "context": "Bases map place card and list",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.imageMissing": {
+    "englishHash": "ca1084e3f0c20206f1a1a342eb3633f8076f427849a38c7c65f5d775e2515dc7",
+    "context": "Bases map place card and list",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.openPicture": {
+    "englishHash": "35e107aef5ea7216949854131709269bd0d7479507d607c1bf0aa8a14524c6d1",
+    "context": "Bases map place card and list",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.open": {
+    "englishHash": "cd66a102c7aa1b6f3d913ca7c845e3a0b19e50df27117ee6a4fbe0b814b80b4c",
+    "context": "Bases map place card and list",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.openNote": {
+    "englishHash": "f70ab87eb8bf8af2b2bba58bc163dfec671aef5b2a1816b537640ff8afe35941",
+    "context": "Bases map place card and list",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.showMap": {
+    "englishHash": "e9e700ddcb9d8c10be767df4e3dd3538e5db705ebd4a94372fc50b5e8be1c476",
+    "context": "Bases map place card and list",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.more": {
+    "englishHash": "b505059391c661b1473fd8a68aa093a6f426f8831666e9a316f09f75e3863e75",
+    "context": "Bases map place card and list",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.straightLine": {
+    "englishHash": "7b7e04cb9aa9b54ebd48643e2b169e630e75b50c319bc75c6ce4051ec97304dd",
+    "context": "Bases map place card and list",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.mapFace": {
+    "englishHash": "e5af23742fec04a1d8f0e6ccce45d6152bbba74f33079bf6c92e8d71d4db2aa1",
+    "context": "Bases map place card and list",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.hideList": {
+    "englishHash": "0cfa02eacf94ca0352e16d662901c0c6e5e5be0c4834ff1df6353a469d05c572",
+    "context": "Bases map place card and list",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.sortLabel": {
+    "englishHash": "f8f810a7e2bbbad09571af35bc48243be7218006d0cafe8464e39c209e00a9b5",
+    "context": "Bases map place card and list",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.resort": {
+    "englishHash": "b137b0fb3addad1f6715de4993f89530803ba5f5c53c27f4956833731d3a9cd4",
+    "context": "Bases map place card and list",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.placeCount": {
+    "englishHash": "3310b0221ad5389e4480cfeb4447e5af81456205498c9085d01574f30eebf116",
+    "context": "Bases map place card and list",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.listSearchEmpty": {
+    "englishHash": "4d2b8b7ab4a35a03088b7baa54973309447157a3f8114346ab48dd69f1fdde7b",
+    "context": "Bases map place card and list",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.listEmpty": {
+    "englishHash": "34930b85d1c6d237ef16802dd8cffd1ecff79f529053b412e40d24a11a235a0c",
+    "context": "Bases map place card and list",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.sortBase": {
+    "englishHash": "09004e8f4fd37e84bd8dc9331777f8e084acb8a81293cb35147869d1a09b40a1",
+    "context": "Bases map place card and list",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.sortMe": {
+    "englishHash": "0e005f3534820ac242d85102b513c702815007fad9e75022dcdc0c2abbc8184b",
+    "context": "Bases map place card and list",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.sortCentre": {
+    "englishHash": "e485ab5f2769a29a9f7bd40843ebfb615964ad270acfb20a64def638dd2847a6",
+    "context": "Bases map place card and list",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.metres": {
+    "englishHash": "ec36a098b3b44810fa1a02b6e5125ede7cbbc3c9ada939594da48024fef76d51",
+    "context": "Bases map place card and list",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.kilometres": {
+    "englishHash": "15aa627c609961ae5fb4e0868168b8f60a0da2779b9802a8f4c1a702d5a17325",
+    "context": "Bases map place card and list",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.distanceCentre": {
+    "englishHash": "12631dd144c5b112ddbc25b57685e1c243efe92a7f4b335b11c3c2c55336f9ee",
+    "context": "Bases map place card and list",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "maps.distanceMe": {
+    "englishHash": "aa708206aec272c8618b105294e448bc3af0c114f19d986638d8077ddfe70446",
+    "context": "Bases map place card and list",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

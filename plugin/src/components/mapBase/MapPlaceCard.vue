@@ -5,44 +5,49 @@
         v-if="pane"
         class="abele-map-card__back"
         icon="arrow-left"
-        tooltip="Back to the list"
+        :tooltip="t('maps.backList')"
         @click="emit('back')"
       />
-      <PlaceGlyph v-if="state !== 'deleted'" :place="place" />
+      <PlaceGlyph v-if="status !== 'deleted'" :place="loaded" />
       <div class="abele-map-card__titles">
         <div class="abele-map-card__title">{{ place.title }}</div>
-        <MetaLine v-if="facts.length && state === 'ready'" :facts="facts" />
+        <MetaLine v-if="facts.length && status === 'ready'" :facts="facts" />
       </div>
     </div>
 
     <EmptyState
-      v-if="state === 'deleted'"
+      v-if="status === 'deleted'"
       icon="file-x"
-      title="This note is gone"
-      text="It was deleted or moved since the map was drawn."
+      :title="t('maps.cardGone')"
+      :text="t('maps.cardGoneText')"
     />
     <EmptyState
-      v-else-if="state === 'error'"
+      v-else-if="status === 'error'"
       variant="error"
       icon="file-warning"
-      title="The note could not be read"
-      text="The map still has the place. Open the note to see what is wrong."
+      :title="t('maps.cardError')"
+      :text="t('maps.cardErrorText')"
     />
 
+    <EmptyState v-else-if="status === 'loading'" icon="loader" :title="t('kit.loading')" />
     <template v-else>
-      <div v-if="place.photos?.length" class="abele-map-card__photos" role="list">
+      <div v-if="photos.length" class="abele-map-card__photos" role="list">
         <div
-          v-for="(photo, index) in place.photos"
-          :key="photo.path"
+          v-for="(photo, index) in photos"
+          :key="`${index}:${photo.path}`"
           class="abele-map-card__photo"
           role="listitem"
         >
           <div
             v-if="photo.missing"
             class="abele-map-card__photo-missing"
-            :aria-label="`${photo.path} is not in the vault`"
+            :aria-label="t('maps.imageMissing', { path: photo.path })"
           >
-            <Icon icon="image-off" no-hover :tooltip="`${photo.path} is not in the vault`" />
+            <Icon
+              icon="image-off"
+              no-hover
+              :tooltip="t('maps.imageMissing', { path: photo.path })"
+            />
           </div>
           <img
             v-else
@@ -50,9 +55,10 @@
             :alt="photo.caption || ''"
             tabindex="0"
             role="button"
-            :aria-label="`Open ${photo.caption || 'the picture'}`"
-            @click="emit('photo', index)"
-            @keydown.enter.prevent="emit('photo', index)"
+            :aria-label="t('maps.openPicture', { caption: photo.caption || place.title })"
+            @error="failed = new Set([...failed, photo.url])"
+            @click="emit('photo', index, photos)"
+            @keydown.enter.prevent="emit('photo', index, photos)"
           />
         </div>
       </div>
@@ -64,31 +70,38 @@
         </template>
       </div>
 
-      <div v-if="place.text" class="abele-map-card__text markdown-rendered">
-        <p v-for="(para, i) in paragraphs" :key="i">{{ para }}</p>
-      </div>
+      <Markdown
+        v-if="loaded.text"
+        class="abele-map-card__text"
+        :text="loaded.text"
+        :file-path="place.path"
+        trusted
+        as-document
+      />
     </template>
 
-    <div class="abele-map-card__foot">
-      <Button
-        v-if="state !== 'deleted'"
-        text="Open"
-        accent
-        :block="phone"
-        tooltip="Open the note"
-        @click="emit('open')"
-      />
-      <div class="abele-map-card__glyphs">
-        <Icon v-if="!pane" icon="map-pin" tooltip="Show on the map" @click="emit('show')" />
-        <Icon icon="copy" tooltip="Copy coordinates" @click="emit('copy')" />
-        <Icon
-          v-if="state !== 'deleted'"
-          icon="more-horizontal"
-          tooltip="More"
-          @click="(e: MouseEvent) => emit('menu', e)"
+    <Teleport :to="footerHost ?? 'body'" :disabled="!footerHost">
+      <div class="abele-map-card__foot">
+        <Button
+          v-if="status !== 'deleted'"
+          :text="t('maps.open')"
+          accent
+          :block="phone"
+          :tooltip="t('maps.openNote')"
+          @click="emit('open')"
         />
+        <div class="abele-map-card__glyphs">
+          <Icon v-if="!pane" icon="map-pin" :tooltip="t('maps.showMap')" @click="emit('show')" />
+          <Icon icon="copy" :tooltip="t('maps.copy')" @click="emit('copy')" />
+          <Icon
+            v-if="status !== 'deleted'"
+            icon="more-horizontal"
+            :tooltip="t('maps.more')"
+            @click="(e: MouseEvent) => emit('menu', e)"
+          />
+        </div>
       </div>
-    </div>
+    </Teleport>
   </div>
 </template>
 
@@ -96,49 +109,94 @@
 // A place as a card: its name, what the view shows about it, the pictures of its galleries and
 // the note's text, and the way into the note. On a phone a press on a mark opens it; on a desktop
 // it is a mark's menu item, and in the list beside the map it takes the list's place.
-import { computed } from 'vue'
+import { computed, shallowRef, watch, onBeforeUnmount } from 'vue'
+import { t } from '@/i18n'
+import Markdown from '../obsidian/Markdown.vue'
 import { Platform } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'
 import Button from '../obsidian/Button.vue'
 import MetaLine from '../obsidian/MetaLine.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import PlaceGlyph from './PlaceGlyph.vue'
-import type { MapPlace } from './places'
+import type { MapPlace, MapPlacePhoto } from './places'
+
+export type CardContent = {
+  state: 'ready' | 'deleted' | 'error'
+  text?: string
+  photos?: MapPlacePhoto[]
+}
 
 const props = withDefaults(
   defineProps<{
     place: MapPlace
     distance?: string
+    footerHost?: HTMLElement
     /** In the pane beside the map, with the way back to the list. */
     pane?: boolean
     state?: 'ready' | 'deleted' | 'error'
+    loadPlace?: (place: MapPlace) => Promise<CardContent>
+    contentToken?: number
   }>(),
-  { state: 'ready', distance: undefined }
+  {
+    state: 'ready',
+    distance: undefined,
+    footerHost: undefined,
+    loadPlace: undefined,
+    contentToken: 0,
+  }
 )
 const emit = defineEmits<{
   open: []
   back: []
   show: []
   copy: []
-  photo: [index: number]
+  photo: [index: number, photos: MapPlacePhoto[]]
   menu: [event: MouseEvent]
 }>()
 
 const phone = Platform.isPhone
+const failed = shallowRef(new Set<string>())
+const content = shallowRef<CardContent | null>(null)
+const pending = shallowRef(false)
+let generation = 0
+watch(
+  () => [props.place, props.contentToken, props.loadPlace],
+  async () => {
+    const mine = ++generation
+    failed.value = new Set()
+    if (!props.loadPlace) {
+      content.value = null
+      pending.value = false
+      return
+    }
+    pending.value = true
+    try {
+      const result = await props.loadPlace(props.place)
+      if (mine === generation) content.value = result
+    } catch {
+      if (mine === generation) content.value = { state: 'error' }
+    } finally {
+      if (mine === generation) pending.value = false
+    }
+  },
+  { immediate: true }
+)
+onBeforeUnmount(() => {
+  generation++
+})
+const loaded = computed(() => ({ ...props.place, ...content.value }))
+const photos = computed(() =>
+  (loaded.value.photos ?? []).map((p) => ({ ...p, missing: p.missing || failed.value.has(p.url) }))
+)
+const status = computed(() => (pending.value ? 'loading' : (content.value?.state ?? props.state)))
 // The first property names the place's kind; it goes up beside the distance, the rest below.
 const facts = computed(() =>
   [
-    { key: '0', value: props.place.properties[0]?.value },
-    { key: '1', value: props.distance && `${props.distance} in a straight line` },
+    { key: '0', value: loaded.value.properties[0]?.value },
+    { key: '1', value: props.distance && t('maps.straightLine', { distance: props.distance }) },
   ].filter((f) => f.value)
 )
-const shown = computed(() => props.place.properties.slice(1))
-const paragraphs = computed(() =>
-  (props.place.text ?? '')
-    .split(/\n{2,}/)
-    .map((p) => p.trim())
-    .filter(Boolean)
-)
+const shown = computed(() => loaded.value.properties.slice(1))
 </script>
 
 <style>

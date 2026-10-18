@@ -7,22 +7,46 @@ import type { MapPlace } from './places'
  * same colour, so the place is still there to press. A group is a plate with how many it holds.
  */
 
-export function pinElement(doc: Document, place: MapPlace): HTMLElement {
-  const pin = doc.createElement('div')
+export function pinElement(
+  doc: Document,
+  place: MapPlace,
+  activate?: (event: MouseEvent) => void
+): HTMLElement {
+  const pin = doc.win.createDiv()
   pin.className = 'abele-map-base__pin'
   pin.dataset.place = place.id
   pin.setAttribute('role', 'button')
   pin.setAttribute('aria-label', place.title)
   pin.tabIndex = 0
-  if (place.color) pin.style.setProperty('--abele-pin-color', place.color)
+  applyColor(pin, place.color)
   const known = !!place.icon && !!getIcon(place.icon)
-  if (known) setIcon(pin, place.icon!)
+  if (known) setIcon(pin, place.icon)
   else pin.classList.add('abele-map-base__pin_dot')
+  if (activate) {
+    pin.addEventListener('click', (event) => {
+      event.stopPropagation()
+      activate(event)
+    })
+    pin.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return
+      event.preventDefault()
+      event.stopPropagation()
+      pin.dispatchEvent(
+        new MouseEvent('click', {
+          bubbles: true,
+          ctrlKey: event.ctrlKey,
+          metaKey: event.metaKey,
+          shiftKey: event.shiftKey,
+          altKey: event.altKey,
+        })
+      )
+    })
+  }
   return pin
 }
 
 export function groupElement(doc: Document, count: number, sameSpot: boolean): HTMLElement {
-  const group = doc.createElement('div')
+  const group = doc.win.createDiv()
   group.className = 'abele-map-base__group'
   group.setAttribute('role', 'button')
   group.tabIndex = 0
@@ -43,7 +67,15 @@ export function groupElement(doc: Document, count: number, sameSpot: boolean): H
 export function placeGlyph(el: HTMLElement, place: MapPlace): void {
   el.empty?.()
   el.className = 'abele-map-base__glyph'
-  if (place.color) el.style.setProperty('--abele-pin-color', place.color)
+  applyColor(el, place.color)
   if (place.icon && getIcon(place.icon)) setIcon(el, place.icon)
   else el.classList.add('abele-map-base__glyph_dot')
+}
+
+/** A missing or malformed colour falls back to the theme, including after a live update. */
+function applyColor(el: HTMLElement, color?: string): void {
+  el.style.removeProperty('--abele-pin-color')
+  const probe = el.ownerDocument.win.createSpan()
+  if (color) probe.style.color = color
+  if (color && probe.style.color) el.style.setProperty('--abele-pin-color', color)
 }

@@ -15,6 +15,7 @@ import NodeSyntaxFixture from './NodeSyntaxFixture.vue'
 import EnvironmentDialog from '@/components/debugger/http/EnvironmentDialog.vue'
 import PullRequestDialog from '@/components/nodeWork/PullRequestDialog.vue'
 import MapBackgroundEditor from '@/components/settings/MapBackgroundEditor.vue'
+import MapPlaceCard from '@/components/mapBase/MapPlaceCard.vue'
 import MapFormulaCreate from '@/components/mapBase/MapFormulaCreate.vue'
 
 export interface DialogFixtureOptions {
@@ -189,6 +190,30 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
       coordinates: '12, 20',
       properties: ['coordinates', 'position'],
     }),
+  'map-place-card': () =>
+    mountAlone(
+      defineComponent({
+        setup: () => () =>
+          h(
+            Modal,
+            { size: 'tall', modalClass: 'abele-map-card-modal' },
+            {
+              default: () =>
+                h(MapPlaceCard, {
+                  place: {
+                    id: 'sample',
+                    path: 'Sample.md',
+                    title: 'Sample place with a long descriptive title',
+                    lat: 12,
+                    lon: 20,
+                    properties: [{ name: 'Kind', value: 'Grove' }],
+                    text: 'A sample note with readable content.',
+                  },
+                }),
+            }
+          ),
+      })
+    ),
   'native-pr-create': () =>
     mountAlone(
       defineComponent({

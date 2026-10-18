@@ -18,7 +18,8 @@ Click a group to zoom in, or choose among places sharing one position.
 
 Hover a marker on a computer to inspect the selected properties. Click to open the note;
 use the usual modifier key to open another tab. The marker menu offers opening actions,
-coordinate copying and deletion with confirmation. On a phone, tap opens the note.
+coordinate copying and deletion with confirmation. On a phone, tap opens a place card with an **Open** action. On a computer, choose
+**Place card** from the marker menu to read it without leaving the map.
 
 Right-click the map (press and hold on a phone) to create a note there, copy coordinates,
 set the view's default centre or save its zoom. Creating a note uses Bases' native new-note
@@ -38,3 +39,19 @@ location watch. **Copy current location coordinates** is also available in the c
 Backgrounds require a connection to their provider; no offline regions are downloaded.
 When a background fails, places remain available and **Try again** reloads the background.
 Map rendering requires WebGL graphics acceleration.
+
+The place card shows the selected properties, read-only note content and pictures from
+Abele galleries. Tap a picture to open the gallery viewer; closing it returns to the same
+card. Missing pictures, deleted notes and read errors are shown in the card. The dialog keeps
+**Open** visible while a long note scrolls.
+
+Use the panel glyph to show **List beside the map**. On a phone, the list and map are two
+faces switched with the list/map glyph. Selection, native Bases search and camera stay in
+place when switching. Select a row to reveal its marker outside nearby groups; selecting a
+marker highlights its row. At identical coordinates, the selected mark sits apart from the remaining
+group so both remain accessible. Its stored coordinates stay the same. Use its menu to open
+the card on a computer.
+
+The sort menu offers the Base’s order, distance from the map centre, or distance from your
+location when available. Distances are straight-line distances, not routes. Moving the map
+keeps the current list order: the refresh glyph sorts from the new centre when you choose.

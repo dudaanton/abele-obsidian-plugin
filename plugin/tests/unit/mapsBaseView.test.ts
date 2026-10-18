@@ -8,6 +8,7 @@ const captured = vi.hoisted(() => ({
   props: null as Record<string, any> | null,
   dialog: null as Record<string, any> | null,
   backgrounds: [] as Background[],
+  retainedPath: null as string | null,
 }))
 vi.mock('@/components/mapBase/MapBaseView.vue', async () => {
   const { defineComponent, h } = await import('vue')
@@ -20,6 +21,10 @@ vi.mock('@/components/mapBase/MapBaseView.vue', async () => {
     }),
   }
 })
+vi.mock('@/sync/external/fileAccess', () => ({
+  externalLinkPath: (app: any, link: string, source: string) =>
+    captured.retainedPath ?? app.metadataCache.getFirstLinkpathDest(link, source)?.path ?? null,
+}))
 vi.mock('@/components/mapBase/MapFormulaCreate.vue', () => ({ default: {} }))
 vi.mock('@/services/AbeleConfig', () => ({
   AbeleConfig: {
@@ -69,6 +74,7 @@ vi.mock('obsidian', async (original) => {
   }
 })
 afterEach(() => {
+  captured.retainedPath = null
   captured.props = captured.dialog = null
   document.body.empty()
 })
@@ -104,6 +110,13 @@ it('reads without writes, preserves a moved camera on row updates, and gates for
   view.onDataUpdated()
   await nextTick()
   expect(captured.props?.places).toMatchObject([{ lat: 1, lon: 2 }])
+  expect(captured.props?.batchOne).not.toBe(true)
+  captured.props!['onUpdate:list'](true)
+  await nextTick()
+  expect(captured.props?.list).toBe(true)
+  expect(await captured.props!.loadPlace(captured.props!.places[0])).toMatchObject({
+    state: 'deleted',
+  })
   expect(config.set).not.toHaveBeenCalled()
   const create = (view as unknown as { createFileForView: ReturnType<typeof vi.fn> })
     .createFileForView
@@ -149,4 +162,58 @@ it('reads without writes, preserves a moved camera on row updates, and gates for
   expect(controller.app.workspace.openLinkText).not.toHaveBeenCalled()
   view.onunload()
   expect(host.children).toHaveLength(0)
+})
+
+it('loads current card content and resolves gallery links relative to the note, without writing', async () => {
+  const file = { path: 'Sample/Place.md', basename: 'Place' }
+  let currentFile: typeof file | null = file
+  const image = { path: 'Sample/sample.png', stat: { mtime: 1, size: 10 } }
+  const cachedRead = vi
+    .fn()
+    .mockResolvedValue(
+      '---\nkind: sample\n---\n# Sample body\n\n::abele-gallery::\n![[sample.png]]'
+    )
+  const resolve = vi.fn((): typeof image | null => image)
+  const controller = {
+    config: {
+      get: () => undefined,
+      getAsPropertyId: () => 'note.coordinates',
+      getOrder: () => [],
+      getDisplayName: (id: string) => id,
+    },
+    data: { data: [{ file, getValue: () => ({ toString: () => '12, 20' }) }] },
+    app: {
+      vault: {
+        getFileByPath: (path: string) =>
+          path === file.path ? currentFile : path === image.path ? image : null,
+        cachedRead,
+        getResourcePath: () => 'app://sample',
+        getMarkdownFiles: () => [file],
+      },
+      metadataCache: { getFirstLinkpathDest: resolve },
+    },
+  }
+  const view = new MapView(controller as unknown as QueryController, document.body.createDiv())
+  view.onDataUpdated()
+  await nextTick()
+  const result = await captured.props!.loadPlace(captured.props!.places[0])
+  expect(result).toMatchObject({
+    state: 'ready',
+    text: '# Sample body',
+    photos: [{ url: 'app://sample?1-10', missing: false }],
+  })
+  expect(resolve).toHaveBeenCalledWith('sample.png', file.path)
+  resolve.mockReturnValueOnce(null)
+  captured.retainedPath = image.path
+  expect(await captured.props!.loadPlace(captured.props!.places[0])).toMatchObject({
+    photos: [{ missing: false }],
+  })
+  cachedRead.mockRejectedValueOnce(Error('sample read error'))
+  expect(await captured.props!.loadPlace(captured.props!.places[0])).toEqual({ state: 'error' })
+  cachedRead.mockImplementationOnce(async () => {
+    currentFile = null
+    throw Error('sample removed during read')
+  })
+  expect(await captured.props!.loadPlace(captured.props!.places[0])).toEqual({ state: 'deleted' })
+  view.onunload()
 })

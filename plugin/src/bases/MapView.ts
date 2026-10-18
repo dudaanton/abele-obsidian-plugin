@@ -1,3 +1,4 @@
+import { externalLinkPath } from '@/sync/external/fileAccess'
 import { openAbeleSettings } from '@/components/settings/settingsTab'
 import {
   BasesView,
@@ -26,6 +27,8 @@ import { mapRows, mapValue, popupProperties } from './mapRows'
 import type { MapPlace, MapSkipped } from '@/maps/core/records'
 import type { MapProblem } from '@/components/mapBase/problems'
 import { t } from '@/i18n'
+import { cardContent } from '@/maps/cardContent'
+import { vaultUrl } from '@/helpers/vaultUrl'
 
 export const MAP_VIEW_ID = 'abele-map'
 export function mapViewOptions(): BasesAllOptions[] {
@@ -56,7 +59,8 @@ interface MapViewState {
   places: MapPlace[]
   skipped: MapSkipped[]
   group: boolean
-  batchOne: boolean
+  list: boolean
+  contentToken: number
   styleUrl: ReturnType<typeof backgroundStyle>
   background: string
   backgrounds: { id: string; name: string }[]
@@ -87,7 +91,8 @@ export class MapView extends BasesView {
     places: [],
     skipped: [],
     group: true,
-    batchOne: true,
+    list: false,
+    contentToken: 0,
     styleUrl: backgroundStyle([]),
     background: '',
     backgrounds: [],
@@ -109,6 +114,22 @@ export class MapView extends BasesView {
     this.state.embedded = !!container.closest('.bases-embed, .block-language-base')
   }
   onload(): void {
+    // Body and image changes also refresh an open card when its Bases values stay the same.
+    this.registerEvent(
+      this.app.vault.on('modify', () => {
+        this.state.contentToken++
+      })
+    )
+    this.registerEvent(
+      this.app.vault.on('delete', () => {
+        this.state.contentToken++
+      })
+    )
+    this.registerEvent(
+      this.app.vault.on('rename', () => {
+        this.state.contentToken++
+      })
+    )
     this.registerEvent(
       this.app.workspace.on('css-change', () => {
         this.state.themeToken++
@@ -124,6 +145,7 @@ export class MapView extends BasesView {
   }
   onDataUpdated(): void {
     if (this.disposed) return
+    this.state.contentToken++
     const config = this.config
     const selector = config.getAsPropertyId('coordinates')
     const result = mapRows(
@@ -178,6 +200,10 @@ export class MapView extends BasesView {
           h(MapBaseView, {
             ...this.state,
             history: this.state.restoredCamera,
+            loadPlace: (place: MapPlace) => this.loadPlace(place),
+            'onUpdate:list': (on: boolean) => {
+              this.state.list = on
+            },
             renderHover: (place: MapPlace) => this.popup(place),
             decoratePlaceMenu: (menu: Menu, place: MapPlace) => {
               const file = this.app.vault.getFileByPath(place.path)
@@ -240,6 +266,26 @@ export class MapView extends BasesView {
     }
     const box = this.el.getBoundingClientRect()
     menu.showAtPosition({ x: box.left + 16, y: box.top + 16 })
+  }
+  private async loadPlace(place: MapPlace) {
+    const file = this.app.vault.getFileByPath(place.path)
+    if (!file) return { state: 'deleted' as const }
+    try {
+      const source = await this.app.vault.cachedRead(file)
+      if (this.app.vault.getFileByPath(place.path) !== file) return { state: 'deleted' as const }
+      return {
+        state: 'ready' as const,
+        ...cardContent(source, (path) => {
+          const resolved = externalLinkPath(this.app, path, file.path)
+          const image = resolved ? this.app.vault.getFileByPath(resolved) : null
+          return image ? vaultUrl(this.app, image) : null
+        }),
+      }
+    } catch {
+      return {
+        state: this.app.vault.getFileByPath(place.path) ? ('error' as const) : ('deleted' as const),
+      }
+    }
   }
   private updateBackground(): void {
     const settings = AbeleConfig.getInstance()

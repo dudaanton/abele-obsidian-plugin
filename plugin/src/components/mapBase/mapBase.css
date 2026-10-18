@@ -28,7 +28,7 @@
 }
 .abele-map-base__side {
   flex: none;
-  width: var(--abele-side-width);
+  width: min(var(--abele-side-width), 45%);
   min-height: 0;
   overflow-y: auto;
   border-inline-end: var(--border-width) solid var(--background-modifier-border);
@@ -68,10 +68,9 @@
   height: var(--icon-xs);
   stroke-width: var(--icon-xs-stroke-width);
 }
-/* No glyph, or one Obsidian does not know: a smaller dot of the same colour, still pressable;
-   with no colour either, grey, so it never reads as a kind drawn in the accent. */
+/* No glyph, or one Obsidian does not know: a smaller dot of the same colour, still pressable. */
 .abele-map-base__pin.abele-map-base__pin_dot {
-  background-color: var(--abele-pin-color, var(--text-muted));
+  background-color: var(--abele-pin-color, var(--interactive-accent));
   width: var(--size-4-3);
   height: var(--size-4-3);
 }
@@ -175,7 +174,7 @@
   width: var(--size-4-2);
   height: var(--size-4-2);
   border-radius: 50%;
-  background-color: var(--abele-pin-color, var(--text-muted));
+  background-color: var(--abele-pin-color, var(--interactive-accent));
 }
 
 /* ── Over the map ──────────────────────────────────────────────────────── */
@@ -256,7 +255,7 @@
 }
 
 /* The card's dialog: as wide as a reading column on a desktop, Obsidian's tall sheet on a phone. */
-.modal.abele-map-card-modal {
+body:not(.is-phone) .modal.abele-map-card-modal {
   width: min(calc(var(--size-4-12) * 11), 92vw);
 }
 
@@ -276,4 +275,8 @@
 }
 .abele-map-base__pointer {
   cursor: pointer;
+}
+
+.abele-map-base__card-actions {
+  width: 100%;
 }

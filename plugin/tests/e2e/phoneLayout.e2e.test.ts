@@ -116,6 +116,7 @@ const DIALOGS = [
   'map-background-error',
   'map-background-long',
   'map-formula-create',
+  'map-place-card',
   'native-pr-create',
   'chat-artifacts-empty',
   'chat-artifacts',

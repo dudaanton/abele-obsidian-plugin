@@ -1971,6 +1971,12 @@ fall back to the light URLs. The list travels in the Maps settings-transfer sect
 Explicitly copying upstream backgrounds reads its `tileSets` list without writing it.
 Background selection in an open map and device-location watches are not persisted. Location
 watches are released when that map closes. This view does not migrate existing maps.
+Place-card contents are read on demand from current notes; Abele gallery pictures use the
+same local-link resolution and viewer as galleries. Cards do not save note content.
+List visibility, selected place, sorting origin and refreshed centre are temporary per-view
+state, not stored options. Moving the camera does not reorder the list until refresh.
+Distances measure a straight line; they do not request routes. A selected coincident marker
+can move visually apart from its remaining group without changing the stored coordinates.
 
 A place is a note with its coordinates in one property, written `lat, lon` — `coordinates:
 "56.9496, 24.1052"` by default, or whatever `mapCoordinatesProperty` names in this vault. The

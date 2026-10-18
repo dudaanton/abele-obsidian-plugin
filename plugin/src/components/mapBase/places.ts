@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 export type {
   MapPlace,
   MapPlaceProperty,
@@ -53,21 +54,12 @@ export function groupMarks(
   return marks
 }
 
-/** Straight-line distance in metres, not a route. */
-export function distance(a: { lat: number; lon: number }, b: { lat: number; lon: number }): number {
-  const rad = Math.PI / 180
-  const dLat = (b.lat - a.lat) * rad
-  const dLon = (b.lon - a.lon) * rad
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLon / 2) ** 2
-  return 2 * 6_371_000 * Math.asin(Math.sqrt(h))
-}
+export { distance } from '@/maps/core/distance'
 
 export function formatDistance(metres: number): string {
-  if (metres < 1000) return `${Math.round(metres / 10) * 10} m`
-  if (metres < 10_000) return `${(metres / 1000).toFixed(1)} km`
-  return `${Math.round(metres / 1000)} km`
+  if (metres < 1000) return t('maps.metres', { value: Math.round(metres / 10) * 10 })
+  if (metres < 10_000) return t('maps.kilometres', { value: (metres / 1000).toFixed(1) })
+  return t('maps.kilometres', { value: Math.round(metres / 1000) })
 }
 
 export function formatCoordinates(lat: number, lon: number): string {
@@ -78,9 +70,15 @@ export function formatCoordinates(lat: number, lon: number): string {
 export type MapSortFrom = 'base' | 'me' | 'centre'
 
 export const sortWords: Record<MapSortFrom, string> = {
-  base: "The base's order",
-  me: 'Nearest to me',
-  centre: 'Nearest to the map centre',
+  get base() {
+    return t('maps.sortBase')
+  },
+  get me() {
+    return t('maps.sortMe')
+  },
+  get centre() {
+    return t('maps.sortCentre')
+  },
 }
 
 /** A named background of a base's map: Obsidian Maps' tile set, light addresses and optional dark. */

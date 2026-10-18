@@ -13,7 +13,10 @@ export class MapFollowing {
     private geo: Pick<Geolocation, 'watchPosition' | 'clearWatch'> | undefined,
     private move: (point: Point) => void,
     private changed: (error?: number) => void,
-    private clock = { setTimeout, clearTimeout }
+    private clock = {
+      setTimeout: setTimeout.bind(undefined),
+      clearTimeout: clearTimeout.bind(undefined),
+    }
   ) {}
   toggle(): void {
     if (this.disposed) return

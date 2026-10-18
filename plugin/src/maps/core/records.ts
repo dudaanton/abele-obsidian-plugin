@@ -6,7 +6,13 @@
 
 export type MapPlaceProperty = { name: string; value: string }
 
-export type MapPlacePhoto = { path: string; url: string; caption?: string; missing?: boolean }
+export type MapPlacePhoto = {
+  path: string
+  url: string
+  caption?: string
+  missing?: boolean
+  type?: 'local' | 'remote'
+}
 
 export type MapPlace = {
   id: string

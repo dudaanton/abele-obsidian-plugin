@@ -65,3 +65,28 @@ it('bounds a provider that never answers and releases its watchdog', () => {
     vi.useRealTimers()
   }
 })
+
+it('calls default browser timers with their global receiver rather than the clock wrapper', () => {
+  const set = vi.fn(function (this: unknown) {
+    if (this !== undefined && this !== globalThis && this !== window)
+      throw new TypeError('Illegal invocation')
+    return 7
+  })
+  const clear = vi.fn(function (this: unknown) {
+    if (this !== undefined && this !== globalThis && this !== window)
+      throw new TypeError('Illegal invocation')
+  })
+  vi.stubGlobal('setTimeout', set)
+  vi.stubGlobal('clearTimeout', clear)
+  try {
+    const geo = { watchPosition: vi.fn(() => 1), clearWatch: vi.fn() }
+    const following = new MapFollowing(geo, vi.fn(), vi.fn())
+    expect(() => following.toggle()).not.toThrow()
+    expect(geo.watchPosition).toHaveBeenCalledOnce()
+    expect(() => following.dispose()).not.toThrow()
+    expect(clear).toHaveBeenCalledWith(7)
+    expect(geo.clearWatch).toHaveBeenCalledWith(1)
+  } finally {
+    vi.unstubAllGlobals()
+  }
+})

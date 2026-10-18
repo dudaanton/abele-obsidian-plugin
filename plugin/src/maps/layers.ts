@@ -26,11 +26,11 @@ export class PlaceLayers {
     const canvas = this.doc.win.createEl('canvas')
     canvas.width = canvas.height = 96
     const context = canvas.getContext('2d')
-    context.fillStyle = style.getPropertyValue('--background-primary').trim() || '#fff'
+    context.fillStyle = style.getPropertyValue('--text-normal').trim() || '#222'
     context.beginPath()
     context.arc(48, 48, 40, 0, Math.PI * 2)
     context.fill()
-    context.fillStyle = style.getPropertyValue('--text-normal').trim() || '#222'
+    context.fillStyle = style.getPropertyValue('--background-primary').trim() || '#fff'
     context.font = `26px ${style.getPropertyValue('--font-interface').trim() || 'sans-serif'}`
     context.textAlign = 'center'
     context.textBaseline = 'middle'
