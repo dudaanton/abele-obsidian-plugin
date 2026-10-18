@@ -187,7 +187,7 @@ export class DrawingSurface {
 
   private point(e: PointerEvent): WorldPoint {
     const [x, y] = this.worldAt(e)
-    const p = e.pointerType === 'pen' ? Math.min(1, Math.max(0, e.pressure)) : 0.5
+    const p = e.pointerType === 'pen' && e.pressure > 0 ? Math.min(1, e.pressure) : 0.5
     return { x, y, p }
   }
 
@@ -264,7 +264,7 @@ export class DrawingSurface {
       const events = e.getCoalescedEvents?.() ?? []
       const samples = e.pointerType === 'pen' ? [...events, e] : events.length ? events : [e]
       const all = samples.map((one) => {
-        if (e.pointerType === 'pen') t.pressure = Math.min(1, Math.max(0, one.pressure))
+        if (one.pressure > 0) t.pressure = Math.min(1, one.pressure)
         const point = this.point(one)
         if (e.pointerType === 'pen') point.p = t.pressure
         return point

@@ -5,7 +5,8 @@
  * touches the screen itself, so they are tested without a canvas.
  */
 import { liveFreedraw } from '@/ink/freedraw'
-import { type InkColor, type InkTool } from '@/ink/stroke'
+import { StylusSmoother } from '@/ink/smoothing'
+import { roundPoint, type InkColor, type InkTool } from '@/ink/stroke'
 import type { DrawingItems, ItemChange } from './history'
 import {
   boundsOf,
@@ -42,12 +43,14 @@ export function strokeGesture(
   ctx: ToolContext,
   brush: Brush,
   start: WorldPoint,
-  _stylus = false
+  stylus = false
 ): ToolGesture {
-  const points: number[] = []
-  const mode = { linear: true as const, freedraw: liveFreedraw() }
+  const smoother = stylus ? new StylusSmoother(ctx.zoom()) : null
+  const points: number[] = smoother?.points ?? []
+  const mode = { ...(stylus ? { linear: true as const } : {}), freedraw: liveFreedraw() }
   const add = (pt: WorldPoint) => {
-    const { x, y, p } = pt
+    if (smoother) return smoother.add(pt.x, pt.y, pt.p)
+    const [x, y, p] = roundPoint(pt.x, pt.y, pt.p)
     const n = points.length
     if (n >= 3 && points[n - 3] === x && points[n - 2] === y) return
     points.push(x, y, p)

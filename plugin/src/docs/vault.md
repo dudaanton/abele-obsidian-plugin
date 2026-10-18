@@ -666,8 +666,11 @@ free ink is revealed by its ID. Fit, node crops, embeds, agent pictures and expo
 Human pen/marker gestures use the shared `add_ink {stroke,node?}` edit operation, one history
 item on completion. Cancellation discards the whole preview; no predictions are saved.
 New hand-drawn ink and migrated Excalidraw pencil ink also store
-`freedraw:{simulatePressure,streamline}`. New gestures keep unrounded samples and `linear:true`.
-Pen pointers preserve real pressure, including zero; mouse/finger input records neutral .5
+`freedraw:{simulatePressure,streamline}`. Canvas and drawing gestures retain their established
+stored sampling: bounded full-precision stylus points with `linear:true`, and rounded
+mouse/finger points without that flag. Lift-off retains the last contact pressure at the
+endpoint. Reader gestures keep full-precision samples and `linear:true`.
+Pen pointers preserve contact pressure; mouse/finger input records neutral .5
 pressure. Live profiles use `simulatePressure:false` so velocity cannot shrink sensorless nibs
 below the selected diameter. Imported profiles retain their source pressure response.
 Perfect-freehand supplies the pressure easing, round caps and quadratic outline for live paint,
@@ -2314,8 +2317,9 @@ the items oldest (lowest) first, each with an `id` and a `type`:
 - `stroke` — `tool` (`pen` or `marker`), `color`, `size`, and `d`, its points packed: the first
   `x, y, pressure` as they are (pressure in hundredths), every one after it as the step from the
   one before;
-  new hand-drawn strokes instead keep full-precision sampled triples in `points`, `linear:true`
-  and `freedraw:{simulatePressure,streamline}`. The profile preserves real pen pressure or
+  hand-drawn stylus strokes keep bounded full-precision triples in `points`, `linear:true`
+  and `freedraw:{simulatePressure,streamline}`; mouse/finger strokes retain rounded triples
+  and omit `linear`. The profile preserves real pen pressure or
   uses neutral .5 pressure for sensorless mouse/finger nibs and supplies the same outline for
   painting, picking and export. The SVG outline uses compact relative commands. Legacy packed
   and linear strokes retain their renderer; no old stroke data is rewritten. Metadata remains version 1 with the

@@ -745,9 +745,8 @@ describe.skipIf(!available)('the drawing canvas', () => {
             const stroke = items(view).at(-1)
             if (!stroke.linear) throw new Error('Stylus input was not bounded')
             view.session.items.add([{ ...stroke, freedraw: undefined, id: 'raw-' + k, points: raw }])
-            // A final position delivered on pointerup carries its actual zero pressure.
-            // A stationary tap keeps its one contact sample rather than adding a duplicate.
-            const expected = xy.flatMap(([x, y], i) => [(b.left + 150 + x - b.left) / z, (b.top + oy + y - b.top) / z, i === xy.length - 1 && xy.length > 1 ? 0 : 0.5])
+            // Lift-off retains the last contact pressure, including a newly delivered endpoint.
+            const expected = xy.flatMap(([x, y]) => [(b.left + 150 + x - b.left) / z, (b.top + oy + y - b.top) / z, 0.5])
             if (stroke.points.length !== expected.length) throw new Error('Lost samples')
             deviations.push(Math.max(...xy.map((_, i) => Math.hypot(stroke.points[i * 3] - expected[i * 3], stroke.points[i * 3 + 1] - expected[i * 3 + 1]) * z)))
             endpoints.push(JSON.stringify(stroke.points.slice(-3)) === JSON.stringify(expected.slice(-3)))

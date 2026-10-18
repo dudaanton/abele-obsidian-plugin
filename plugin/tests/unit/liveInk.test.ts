@@ -4,7 +4,8 @@ import { DrawingItems } from '@/drawing/history'
 import { drawingSvg, parseDrawingSvg } from '@/drawing/drawingFile'
 import { inkSvg, parseInkSvg } from '@/reader/ink/inkFile'
 import { InkOverlay } from '@/reader/ink/inkOverlay'
-import { hitStroke, strokePath, type InkStroke } from '@/ink/stroke'
+import { hitStroke, strokePath, roundPoint, type InkStroke } from '@/ink/stroke'
+import { StylusSmoother } from '@/ink/smoothing'
 import { inkPath, inkSchema } from '@/canvas/core/ink'
 import { CanvasInkInput } from '@/canvas/inkAdapter'
 import type { CanvasViewer } from '@/canvas/Viewer'
@@ -19,7 +20,7 @@ const samples = Array.from({ length: 121 }, (_, i) => ({
 
 describe('shared live freehand input and persistence', () => {
   for (const pointerType of ['pen', 'mouse', 'touch']) {
-    it(`records canvas ${pointerType} pressure mode and full precision`, () => {
+    it(`preserves canvas ${pointerType} storage precision and contact pressure`, () => {
       const stage = document.createElement('div'),
         complete = vi.fn()
       const viewer = {
@@ -62,11 +63,13 @@ describe('shared live freehand input and persistence', () => {
         simulatePressure: false,
         streamline: 0.5,
       })
-      expect(stroke.points.slice(-3)).toEqual([50.019, 21.037, pointerType === 'pen' ? 0 : 0.5])
+      expect(stroke.points.slice(-3)).toEqual(
+        pointerType === 'pen' ? [50.019, 21.037, 0.2] : [50, 21, 0.5]
+      )
     })
   }
   for (const stylus of [true, false]) {
-    it(`records source samples and pressure mode for ${stylus ? 'pen' : 'mouse/finger'}`, () => {
+    it(`preserves stored sampling and pressure mode for ${stylus ? 'pen' : 'mouse/finger'}`, () => {
       const items = new DrawingItems()
       const gesture = strokeGesture(
         { items, zoom: () => 1, added: vi.fn(), repaint: vi.fn(), changed: vi.fn() },
@@ -78,11 +81,13 @@ describe('shared live freehand input and persistence', () => {
       gesture.end(false)
       const stroke = items.items[0]
       expect(stroke).toMatchObject({
-        linear: true,
         freedraw: { simulatePressure: false, streamline: 0.5 },
       })
+      expect('linear' in stroke ? stroke.linear : undefined).toBe(stylus ? true : undefined)
+      const bounded = new StylusSmoother(1)
+      for (const p of samples) bounded.add(p.x, p.y, p.p)
       expect(stroke.type === 'stroke' && stroke.points).toEqual(
-        samples.flatMap((p) => [p.x, p.y, p.p])
+        stylus ? bounded.points : samples.flatMap((p) => roundPoint(p.x, p.y, p.p))
       )
       const svg = drawingSvg({ items: [stroke] })
       const loaded = parseDrawingSvg(svg)!.items[0]
