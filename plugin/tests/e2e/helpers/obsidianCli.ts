@@ -675,12 +675,17 @@ export function closeStrayWindows(): number {
       for (const w of remote.BrowserWindow.getAllWindows()) {
         if (w.id === main.id || w.isDestroyed()) continue
         // Obsidian titles a popout after its vault: "Settings - <vault> - Obsidian 1.x".
-        const title = w.getTitle()
-        const ours = title.includes(' - ' + app.vault.getName() + ' - ')
-        const orphan = ours && app.workspace.floatingSplit.children.length === 0
-        if ((ours && title.startsWith('Settings')) || orphan) {
-          w.destroy()
-          closed++
+        try {
+          const title = w.getTitle()
+          const ours = title.includes(' - ' + app.vault.getName() + ' - ')
+          const orphan = ours && app.workspace.floatingSplit.children.length === 0
+          if ((ours && title.startsWith('Settings')) || orphan) {
+            w.destroy()
+            closed++
+          }
+        } catch (error) {
+          // The app may finish closing a popout after enumeration or the first liveness check.
+          if (!w.isDestroyed()) throw error
         }
       }
       return closed
