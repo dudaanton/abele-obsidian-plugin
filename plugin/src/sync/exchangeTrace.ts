@@ -354,8 +354,9 @@ export class ExchangeTrace {
 }
 
 function pullPathMatches(target: string, path: string, operation: string): boolean {
-  // Cold parent creation may be for the shared private staging root rather than target's parent.
-  if (operation === 'adapter mkdir' || operation === 'native mkdir') return true
+  // Cold folder creation belongs to a pull only for the target's own ancestors or the shared
+  // private staging root. Folders made meanwhile for other files or by the directory pass are
+  // other file I/O, or every concurrent pull would be charged for them.
   const name = path.replaceAll('\\', '/').normalize('NFC'),
     wanted = target.normalize('NFC')
   if (
@@ -381,8 +382,17 @@ function pullPathMatches(target: string, path: string, operation: string): boole
       directory.endsWith('/.abele-sync-work'))
   )
     return true
-  return (
-    ancestorPattern.test(operation) &&
-    (wanted.startsWith(name + '/') || (parent && name.endsWith('/' + parent)))
+  if (!ancestorPattern.test(operation)) return false
+  // Creating the staging root may first create its own private parents.
+  if (
+    operation.endsWith(' mkdir') &&
+    /(?:^|\/)\.abele-sync(?:\/connections(?:\/[^/]+)?)?$/.test(name)
   )
+    return true
+  // Any ancestor of the target, vault-relative or absolute (native paths carry the vault root).
+  for (let at = wanted.indexOf('/'); at > 0; at = wanted.indexOf('/', at + 1)) {
+    const ancestor = wanted.slice(0, at)
+    if (name === ancestor || name.endsWith('/' + ancestor)) return true
+  }
+  return false
 }

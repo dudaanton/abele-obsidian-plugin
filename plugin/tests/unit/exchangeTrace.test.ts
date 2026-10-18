@@ -229,3 +229,27 @@ it('names a stalled operation synchronously and removes it after success or fail
   ).rejects.toThrow('io')
   expect(trace.snapshot().active).toEqual([])
 })
+
+it.each(['adapter mkdir', 'native mkdir'])(
+  'charges a pull only for its own folders and the staging root, not a concurrent %s elsewhere',
+  async (operation) => {
+    const trace = new ExchangeTrace()
+    await trace.pull(
+      100,
+      async () => {
+        // Its own cold parent and the shared staging root belong to the pull.
+        trace.record(operation, Date.now(), 'complete', ['Section-1/Topic-2'])
+        trace.record(operation, Date.now(), 'complete', ['.abele-sync/connections/sample/writes'])
+        // Folders created meanwhile for other files or by the directory pass do not.
+        trace.record(operation, Date.now(), 'complete', ['Section-3/Topic-4'])
+        trace.record(operation, Date.now(), 'complete', ['Section-1/Topic-20'])
+        return true
+      },
+      'Section-1/Topic-2/sample.md'
+    )
+    const pulls = trace.snapshot().firstSync.pulls
+    const key = operation.startsWith('adapter ') ? 'bridge' : 'native'
+    expect(pulls.small.max[key]).toBe(2)
+    expect(pulls.otherFileIo[key]).toBe(2)
+  }
+)
