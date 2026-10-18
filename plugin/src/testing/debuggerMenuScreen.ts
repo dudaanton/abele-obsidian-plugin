@@ -65,7 +65,14 @@ export async function openDebuggerMenuFixture(
     current: ref(target),
     selected: ref(target.id),
     currentFolder: ref({ id: target.projectId, git: false }),
-    folders: ref([{ id: target.projectId, path: '/sample/project', git: false, copies: [] }]),
+    folders: ref([
+      {
+        id: target.projectId,
+        path: '/sample/project',
+        git: false,
+        copies: [{ id: target.id, kind: 'project', path: '/sample/project' }],
+      },
+    ]),
     target: () => target,
     capabilities: ref([]),
     port: {},
@@ -119,7 +126,10 @@ export async function openDebuggerMenuFixture(
     const result = await Promise.race([
       snapshot,
       new Promise<never>((_, reject) => {
-        timer = window.setTimeout(() => reject(new Error('Debugger menu did not settle')), 5000)
+        timer = window.setTimeout(
+          () => reject(new Error(`Debugger menu did not settle: ${kind}/${state}`)),
+          5000
+        )
       }),
     ])
     return result
