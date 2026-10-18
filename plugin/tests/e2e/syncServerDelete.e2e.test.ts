@@ -14,7 +14,7 @@ import { V2Client } from '../../src/sync/v2/client'
 import { issueDeletionDevice, deletionFolder } from '../helpers/serverDeleteSetup'
 import { assertNoNativeSheet, dismissNativeSheet } from './helpers/nativeSheetCleanup'
 import { clickSyncMenu } from './helpers/syncMenuClick'
-import { enterPhone, reloadApp } from './helpers/obsidianCli'
+import { reloadAs, setWindowSize, windowSize } from './helpers/phoneWindow'
 
 targets('desktop', 'phone')
 const fixture = liveSuite(false)
@@ -285,15 +285,22 @@ for (const layout of onPhone() ? ['phone'] : ['desktop', 'emulated-phone'])
     async () => {
       const s = fixture(),
         a = s.primary,
-        path = s.root + '/sample.md'
+        path = s.root + '/sample.md',
+        size = onPhone() ? undefined : windowSize(a.vault())
       try {
-        if (layout === 'emulated-phone') await enterPhone()
+        if (layout === 'emulated-phone') {
+          await setWindowSize(a.vault(), 390, 844)
+          await reloadAs(a.vault(), true)
+          // Layout emulation has no native phone HTTP bridge. Reuse the explicit desktop
+          // host the shared helper installed for this synthetic server, including UI probes.
+          a.run(`svc.transport=app.plugins.plugins.abele.tokenEngines.deps.fetch;return true`)
+        }
         await s.put(path, 'Retained while stopping')
         const id = await s.connect()
         await openConfirmation(a, id, 'stop-' + layout)
         a.run(`
         const original=svc.stopRuntime,limit=svc.runtimeStopLimitMs;
-        window.__deletionStop={original,limit};
+        window.__deletionStop={original,limit,id:${JSON.stringify(id)},temp:${JSON.stringify(s.root + '/.sample-refusal.tmp')}};
         svc.runtimeStopLimitMs=100;
         svc.stopRuntime=async id=>{await original(id);await new Promise(resolve=>{window.__deletionStop.release=resolve})};
         await press(${dialog},'Delete from the server');
@@ -305,19 +312,36 @@ for (const layout of onPhone() ? ['phone'] : ['desktop', 'emulated-phone'])
         expect(a.read(path)).toBe('Retained while stopping')
         await shot(a, 'still-stopping-' + layout, factsSelector)
         a.run(`
+        svc.runtimeStopLimitMs=window.__deletionStop.limit;
         window.__deletionStop.release();
+        const entries=app.loadLocalStorage('abele-sync-writes')||[];
+        app.saveLocalStorage('abele-sync-writes',[...entries,{owner:${JSON.stringify(id)},target:${JSON.stringify(path)},temp:window.__deletionStop.temp}]);
+        await press(${dialog},'Try again');
+        await poll(()=>textOf((${dialog})?.querySelector('[role="alert"]')).includes('installation or retained-byte recovery is unfinished'));
+        return true
+      `)
+        expect((await s.items()).some((one) => one.path === path)).toBe(true)
+        expect(a.read(path)).toBe('Retained while stopping')
+        await shot(a, 'local-refusal-' + layout, factsSelector)
+        a.run(`
+        const held=window.__deletionStop,entries=app.loadLocalStorage('abele-sync-writes')||[];
+        app.saveLocalStorage('abele-sync-writes',entries.filter(one=>!(one.owner===held.id&&one.temp===held.temp)));
         await press(${dialog},'Try again');
         await poll(()=>!svc.registry.records().some(one=>one.id===${JSON.stringify(id)})&&!(${dialog}));
         return true
       `)
         expect((await s.items()).some((one) => one.path === path)).toBe(false)
         expect(a.read(path)).toBe('Retained while stopping')
+        await shot(a, 'retry-done-' + layout, '.token-sync-settings')
       } finally {
         a.run(
-          `const held=window.__deletionStop;if(held){held.release?.();svc.stopRuntime=held.original;svc.runtimeStopLimitMs=held.limit;delete window.__deletionStop}return true`
+          `const held=window.__deletionStop;if(held){held.release?.();const entries=app.loadLocalStorage('abele-sync-writes')||[];app.saveLocalStorage('abele-sync-writes',entries.filter(one=>!(one.owner===held.id&&one.temp===held.temp)));svc.stopRuntime=held.original;svc.runtimeStopLimitMs=held.limit;delete window.__deletionStop}return true`
         )
         closeSyncScreens(a)
-        if (layout === 'emulated-phone') await reloadApp('app.emulateMobile(false)')
+        if (layout === 'emulated-phone') {
+          await reloadAs(a.vault(), false)
+          await setWindowSize(a.vault(), ...size!)
+        }
       }
     },
     180000

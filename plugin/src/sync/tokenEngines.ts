@@ -127,6 +127,12 @@ export class TokenEngines {
     }
     ui.retryConnection = async (id, assertCurrent) => {
       assertCurrent()
+      const state = ui.registry.records().find((one) => one.id === id)?.state
+      if (
+        state?.['abele-sync-token-state:server-delete'] ||
+        state?.['abele-sync-token-state:scope-deleted']
+      )
+        throw new Error('Server deletion is awaiting confirmation; this connection cannot restart.')
       const retry = this.retries.get(id)
       if (retry) await retry(assertCurrent)
       else await ui.connectionsChanged(assertCurrent)
@@ -965,6 +971,14 @@ export class TokenEngines {
       this.startupCancels.delete(record.id)
     }
     const begin = () => {
+      // Retry callbacks can outlive a deletion timeout or wait across its durable marker.
+      // Check at the actual start boundary, before replacing any owned runtime or fence.
+      const state = this.ui.registry.records().find((one) => one.id === record.id)?.state
+      if (
+        state?.['abele-sync-token-state:server-delete'] ||
+        state?.['abele-sync-token-state:scope-deleted']
+      )
+        throw new Error('Server deletion is awaiting confirmation; this connection cannot restart.')
       active = true
       fence = undefined
       stateHandle = undefined

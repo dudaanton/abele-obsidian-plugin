@@ -157,6 +157,26 @@ it('keeps an overdue writer owned and retries the exact deletion after it drains
     })
     device = await nativeTokenFixture(app, issued.token, transport)
     const { ui, id, registry } = device
+    await root.create('Field Notes/sample.js', 'export const sample = 1')
+    await ui.sync(id)
+    await ui.refreshReviews()
+    const candidate = ui.candidates.value.find((one) => one.path === 'Field Notes/sample.js')!
+    expect(candidate).toBeDefined()
+    const otherFolder = (await root.commit([{ op: 'mkdir', path: 'Other Notes' }])).results[0] as {
+      file_id: string
+    }
+    await root.create('Other Notes/sample.js', 'export const other = 2')
+    const otherToken = await owner.issue({
+      scope: { kind: 'folder', id: otherFolder.file_id },
+      label: 'Other sample device',
+    })
+    await ui.connect(otherToken.token)
+    const otherId = registry.records().find((one) => one.scope?.id === otherFolder.file_id)!.id
+    await ui.connectionsChanged()
+    await ui.sync(otherId)
+    await ui.refreshReviews()
+    const otherCandidate = ui.candidates.value.find((one) => one.path === 'Other Notes/sample.js')!
+    expect(otherCandidate).toBeDefined()
     ui.runtimeStopLimitMs = 50
     await root.create('Field Notes/late.md', 'late sample note')
     holdWrites = true
@@ -179,6 +199,15 @@ it('keeps an overdue writer owned and retries the exact deletion after it drains
     holdWrites = false
     release!()
     await syncing
+    await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(false))
+    const retry = vi.spyOn(ui, 'retryConnection')
+    await ui.approve(candidate, { background: true })
+    expect(retry).not.toHaveBeenCalled()
+    await expect(ui.retryConnection(id, () => {})).rejects.toThrow('awaiting confirmation')
+    expect(ui.runtimes.has(id)).toBe(false)
+    expect(await app.vault.adapter.exists('Field Notes/sample.js')).toBe(false)
+    await ui.approve(otherCandidate)
+    expect(await app.vault.adapter.read('Other Notes/sample.js')).toBe('export const other = 2')
     await expect(ui.deleteFromServer(id)).rejects.toMatchObject({ deletionOutcome: 'unknown' })
     await ui.deleteFromServer(id)
     expect(keys).toEqual([key, key])

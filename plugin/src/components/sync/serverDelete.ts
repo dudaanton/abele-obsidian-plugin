@@ -1,4 +1,5 @@
 import { t } from '@/i18n'
+import { ExternalRecoveryRequired } from '@/sync/external/recovery'
 /**
  * What deleting one connection's files from the server would take: its whole scope (vault,
  * folder or group) goes to the server's trash, its key and every key inside it are revoked,
@@ -45,10 +46,23 @@ export class ServerDeleteWait extends Error {
 export function serverDeleteFailure(host: string, error: unknown): string {
   const notDeleted =
     (error as { deletionOutcome?: unknown } | null)?.deletionOutcome === 'not-deleted'
-  if (error instanceof ServerDeleteWait)
-    return notDeleted
-      ? error.message
-      : t('streamC.6225fbec300d3010', { v1: String(host) }) + ' ' + error.message
+  let reason: string | undefined
+  if (error instanceof ServerDeleteWait) reason = error.message
+  else if (error instanceof ExternalRecoveryRequired)
+    // Render only locally defined reasons, never arbitrary exception or server response text.
+    reason = error.message.includes('installation or retained-byte recovery is unfinished')
+      ? 'Local installation or retained-byte recovery is unfinished. The connection and recovery evidence remain intact.'
+      : 'Local external-file recovery or disconnect preparation is required. The connection and recovery evidence remain intact.'
+  else {
+    const stage = (error as { deletionStage?: unknown } | null)?.deletionStage
+    if (stage === 'stop')
+      reason = 'Sync could not finish stopping. Local files are kept. Try again.'
+    if (stage === 'safety' || stage === 'disconnect')
+      reason =
+        'Local safety checks could not finish. Files and recovery evidence are kept. Try again.'
+  }
+  if (reason)
+    return notDeleted ? reason : t('streamC.6225fbec300d3010', { v1: String(host) }) + ' ' + reason
   return notDeleted
     ? t('streamC.a44e6513a64073e4', { v1: String(host) })
     : t('streamC.6225fbec300d3010', { v1: String(host) })

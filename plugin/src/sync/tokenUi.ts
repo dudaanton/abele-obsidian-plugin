@@ -911,6 +911,13 @@ export class TokenUi {
           }, this.runtimeStopLimitMs)
         }),
       ])
+    } catch (error) {
+      throw Object.assign(
+        error instanceof Error ? error : new Error('Local deletion step failed'),
+        {
+          deletionStage: stage,
+        }
+      )
     } finally {
       window.clearTimeout(timer)
     }
@@ -1028,6 +1035,12 @@ export class TokenUi {
       candidate.id,
       'Approved — will be installed as soon as the connection is available.'
     )
+    const currentState = this.registry.records().find((one) => one.id === record.id)?.state
+    if (
+      currentState?.['abele-sync-token-state:server-delete'] ||
+      currentState?.['abele-sync-token-state:scope-deleted']
+    )
+      return
     const installation = this.installApproval(candidate)
     if (!this.runtimes.has(candidate.source.id) && !record.paused)
       void this.retryConnection(record.id, () => {
@@ -1052,6 +1065,12 @@ export class TokenUi {
     this.approvalStatus.value = { ...this.approvalStatus.value, [id]: text }
   }
   private installApproval(candidate: ExecutableCandidate): Promise<void> | undefined {
+    const state = this.registry.records().find((one) => one.id === candidate.source.id)?.state
+    if (
+      state?.['abele-sync-token-state:server-delete'] ||
+      state?.['abele-sync-token-state:scope-deleted']
+    )
+      return
     const existing = this.installing.get(candidate.id)
     if (existing !== undefined) return existing
     const runtime = this.runtimes.get(candidate.source.id)

@@ -3,6 +3,63 @@ import { tokenUiFixture } from '@/testing/tokenUiFixture'
 import { V2Client } from '@/sync/v2/client'
 import { TokenUi, SCOPE_DELETED, type TokenUiRuntime } from '@/sync/tokenUi'
 import { serverDeleteFailure } from '@/components/sync/serverDelete'
+import { flushPromises, mount } from '@vue/test-utils'
+import ServerDeleteModal from '@/components/sync/ServerDeleteModal.vue'
+import { ExternalRecoveryRequired } from '@/sync/external/recovery'
+
+it.each([
+  new Error('sample-response-bytes'),
+  new ExternalRecoveryRequired('sample-response-bytes'),
+])('keeps unrecognized local exception details out of deletion messages (%s)', (error) => {
+  Object.assign(error, { deletionOutcome: 'not-deleted', deletionStage: 'safety' })
+  const reason = serverDeleteFailure('sync.example', error)
+  expect(reason).not.toContain('sample-response-bytes')
+  expect(reason).not.toContain('did not answer')
+  expect(reason).toMatch(/recovery|safety checks/)
+})
+
+it.each([false, true])(
+  'renders a local recovery refusal without hiding earlier request uncertainty (pending=%s)',
+  async (pending) => {
+    const ui = tokenUiFixture(),
+      id = ui.rows.value[0].id
+    if (pending)
+      ui.registry
+        .storage(id)
+        .saveLocalStorage('abele-sync-token-state:server-delete', { key: 'sample-attempt' })
+    ui.connectionChangeGuard = async () => {
+      throw new ExternalRecoveryRequired('installation or retained-byte recovery is unfinished')
+    }
+    const view = mount(ServerDeleteModal, {
+      attachTo: document.body,
+      props: {
+        name: 'Sample folder',
+        host: 'sync.example',
+        facts: { files: 1, bytes: 1, canWrite: true, access: [] },
+        remove: () => ui.deleteFromServer(id),
+      },
+    })
+    try {
+      const button = [...document.querySelectorAll('button')].find(
+        (one) => one.textContent?.trim() === 'Delete from the server'
+      )!
+      button.click()
+      await flushPromises()
+      const reason = document.querySelector('[role="alert"]')!.textContent!
+      expect(reason).toContain('installation or retained-byte recovery is unfinished')
+      expect(reason.includes('may already be deleted')).toBe(pending)
+      expect(reason.includes('did not answer')).toBe(false)
+      expect(
+        [...document.querySelectorAll('button')].find(
+          (one) => one.textContent?.trim() === 'Try again'
+        )!.disabled
+      ).toBe(false)
+    } finally {
+      view.unmount()
+      document.body.innerHTML = ''
+    }
+  }
+)
 
 it('distinguishes failure before sending from an uncertain request or an earlier pending attempt', async () => {
   const ui = tokenUiFixture(),
