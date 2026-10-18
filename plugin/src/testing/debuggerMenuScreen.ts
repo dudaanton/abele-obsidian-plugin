@@ -1,4 +1,4 @@
-import { Menu } from 'obsidian'
+import { Menu, type MenuItem } from 'obsidian'
 import { ref } from 'vue'
 import { NodeService, type NodeConnection } from '@/node/NodeService'
 import type { NodePathModel, PathTarget } from '@/node/NodePathModel'
@@ -84,7 +84,7 @@ export async function openDebuggerMenuFixture(
       ? (connection as unknown as NodeConnection)
       : originalConnection.call(service, id)
   Menu.prototype.addItem = function (build) {
-    return originalAdd.call(this, (item) => {
+    return originalAdd.call(this, (item: MenuItem) => {
       const row = { title: '', disabled: false }
       const list = rows.get(this) ?? []
       list.push(row)
