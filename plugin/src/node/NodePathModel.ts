@@ -603,7 +603,15 @@ export class NodePathModel {
       const previous = this.targets.value
       this.targets.value = catalogue.targets.map((t) => ({ ...t }))
       const removed = previous.filter((target) => !this.hasTarget(target))
+      const removedSelected = removed.some(
+        (target) =>
+          target.id === this.selected.value ||
+          (target.kind === 'workspace' && target.projectId === this.selected.value)
+      )
       for (const target of removed) this.discardTarget(target)
+      // Plain folders select by project ID. Keeping that selection would silently pick a
+      // replacement root workspace even though its opaque identity has changed.
+      if (removedSelected) this.selected.value = ''
       this.sessions.value = catalogue.sessions
       this.capabilities.value = catalogue.capabilities
       this.folders.value = catalogue.folders
@@ -611,14 +619,7 @@ export class NodePathModel {
       if (this.disposed || generation !== this.catalogueGeneration) return
       this.receivedAt.value = this.now()
       uiField(this.error, 'value', uiErrorMessage(''))
-      if (
-        removed.some(
-          (target) =>
-            target.id === this.selected.value ||
-            (target.kind === 'workspace' && target.projectId === this.selected.value)
-        )
-      )
-        this.report(new ChannelError('stale_resource'))
+      if (removedSelected) this.report(new ChannelError('stale_resource'))
     } catch (error) {
       if (generation === this.catalogueGeneration) this.report(error)
       throw error

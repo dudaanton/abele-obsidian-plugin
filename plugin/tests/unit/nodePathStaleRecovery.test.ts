@@ -216,3 +216,18 @@ it('does not publish an old tree page that finishes after reconnect invalidated 
   expect(model.entries.value).toEqual([])
   expect(tree).toHaveBeenCalledTimes(2)
 })
+it('requires reselection when a plain folder keeps its project but changes workspace identity', async () => {
+  const { model, port } = fixture()
+  const plain = { ...target, kind: 'workspace' as const, id: 'sample-workspace' }
+  model.targets.value = [plain]
+  await model.selectTarget(plain)
+  port.catalogue.mockResolvedValueOnce({
+    folders: [],
+    targets: [{ ...plain, id: 'replacement-workspace' }],
+    sessions: [],
+    capabilities: [],
+  } as never)
+  await model.refresh()
+  expect(model.current.value).toBeUndefined()
+  expect(model.error.value).not.toBe('')
+})
