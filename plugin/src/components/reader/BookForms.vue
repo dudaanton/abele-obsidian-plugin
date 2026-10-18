@@ -1,32 +1,24 @@
 <template>
-  <ObsidianModal title="Underline everywhere" @close="emit('cancel')">
+  <ObsidianModal :title="t('streamC.efe4eba1ad28627b')" @close="emit('cancel')">
     <!-- The comment dialog's own look: a quote over a field. -->
     <div class="abele-book-comment abele-book-forms">
       <blockquote class="abele-book-comment__quote">
         {{ shortText(highlight.text, 200) }}
       </blockquote>
-      <Input
-        v-model="text"
-        as-text-area
-        :rows="3"
-        placeholder="The word's forms, separated by commas"
-      />
-      <div class="setting-item-description">
-        Each form is underlined wherever it stands as a whole word in this book, and a tap on it
-        leads to this highlight. Leave the field empty to stop.
-      </div>
+      <Input v-model="text" as-text-area :rows="3" :placeholder="t('streamC.29cebfc193aa3faa')" />
+      <div class="setting-item-description">{{ t('streamC.4bcfb8af403a1338') }}</div>
     </div>
     <template #footer>
       <Button
         v-if="highlight.forms?.length"
-        text="Stop underlining"
-        tooltip="Keep the highlight, underline its word nowhere else"
+        :text="t('streamC.95f9b652844789c7')"
+        :tooltip="t('streamC.b3348cd57ac0a0a7')"
         @click="emit('save', [])"
       />
       <Button
-        text="Save"
+        :text="t('settings.GithubConnectionEditor.save.1509f561')"
         accent
-        tooltip="Keep the forms with the highlight in its note"
+        :tooltip="t('streamC.98234fe4a6949fb3')"
         @click="emit('save', parseForms(text))"
       />
     </template>
@@ -34,6 +26,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 /**
  * The forms of a highlight's word to underline everywhere in the book, kept with the highlight
  * in its note (`src/reader/vocab/`). Filled in with the highlighted word the first time.

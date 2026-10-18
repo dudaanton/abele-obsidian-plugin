@@ -20,7 +20,7 @@
       class="abele-word-line__field"
       :value="draft ?? text"
       rows="1"
-      :aria-label="`Paragraph ${paragraph.number}`"
+      :aria-label="t('streamC.54c5c35aab75e0a4', { v1: String(paragraph.number) })"
       @input="onInput"
       @select="onSelect"
       @keyup="onSelect"
@@ -34,7 +34,9 @@
       :tabindex="readOnly || paragraph.locked ? undefined : 0"
       :role="readOnly || paragraph.locked ? undefined : 'button'"
       :aria-label="
-        readOnly || paragraph.locked ? undefined : `Write in paragraph ${paragraph.number}`
+        readOnly || paragraph.locked
+          ? undefined
+          : t('streamC.fd303b58a0fd47cb', { v1: String(paragraph.number) })
       "
       @click="emit('open')"
       @keydown.enter.prevent="emit('open')"
@@ -58,13 +60,15 @@
         size="xs"
         class="abele-word-line__lock"
         :interactive="false"
-        tooltip="Word keeps this paragraph as it is; change it in Word"
+        :tooltip="t('streamC.6c8f45812a211409')"
       />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 import { computed, nextTick, ref, watch } from 'vue'
 import Icon from '@/components/obsidian/Icon.vue'
 import { paragraphText, type WordPageParagraph, type WordPageRun } from './pageModel'

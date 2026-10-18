@@ -219,6 +219,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 /**
  * One node of a script's view, as the kit component it stands for.
  *
@@ -402,7 +404,10 @@ async function readNote(path: string) {
   const gen = ++readGen
   const { app } = GlobalStore.getInstance()
   const file = app.vault.getAbstractFileByPath(path)
-  const text = file instanceof TFile ? await app.vault.cachedRead(file) : `File not found: ${path}`
+  const text =
+    file instanceof TFile
+      ? await app.vault.cachedRead(file)
+      : t('streamC.55d7b9311f83d862', { v1: String(path) })
   if (gen === readGen) fileText.value = text
 }
 

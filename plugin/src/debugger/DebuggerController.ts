@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { z } from 'zod'
 import {
   DebuggerActorSchema,
@@ -49,8 +50,7 @@ export interface DebuggerTransport {
 /** What a refused or uncertain command says in the panel: words for the codes a person can act
  * on, the code itself for the rest. */
 export function receiptMessage(code: string): string {
-  if (code === 'build_identity_unverified')
-    return 'Breakpoints are off here: the file is not proven to be the code that runs. It changed after the program started, or it was built without a source map. Restart the program to set them.'
+  if (code === 'build_identity_unverified') return t('streamC.991cd1e53c5b4624')
   return code
 }
 const empty = (): DebugSession => ({
@@ -276,7 +276,7 @@ export class DebuggerController {
       action.status = 'denied'
     else if (receipt.dispatch !== 'not_dispatched' || receipt.outcome === 'outcome_unknown') {
       action.status = 'unknown'
-      action.result = `Execution outcome unknown · ${receipt.code ?? receipt.outcome}; no action will be replayed`
+      action.result = t('streamC.de044a672af115e3', { v1: String(receipt.code ?? receipt.outcome) })
     } else {
       action.status = 'expired'
       action.result = receipt.code ?? receipt.outcome
@@ -356,7 +356,7 @@ export class DebuggerController {
         return await work(invocation)
       } catch (e) {
         if (!this.matches(invocation)) return undefined
-        this.error = e instanceof Error ? e.message : 'Debugger request failed'
+        this.error = e instanceof Error ? e.message : t('streamC.6fd9013400843e8c')
         this.disconnected()
         throw e
       }
@@ -520,7 +520,7 @@ export class DebuggerController {
   }
   setMode(mode: 'ask' | 'allow') {
     if (!this.grantId) {
-      this.error = 'No live agent grant is bound to this debugger session'
+      this.error = t('streamC.52b7148b81772c48')
       this.notify()
       return Promise.resolve()
     }
@@ -654,10 +654,11 @@ export class DebuggerController {
             entry.outcome === 'outcome_unknown' || a.status === 'unknown' ? 'unknown' : 'expired'
           const detail =
             typeof data?.code === 'string' ? data.code : entry.outcome.replaceAll('_', ' ')
-          a.result = a.status === 'unknown' ? `Execution outcome unknown · ${detail}` : detail
+          a.result =
+            a.status === 'unknown' ? t('streamC.90e0c7eafb4fa1a1', { v1: String(detail) }) : detail
         }
         if (entry.outcome === 'completed' && entry.payload_status === 'expired')
-          a.result = 'Result is no longer retained'
+          a.result = t('streamC.293e117d569d3395')
         if (entry.outcome === 'proposed' && entry.stop?.location)
           a.at = `${this.path(entry.stop.location.source_id) ?? entry.stop.location.source_id}:${entry.stop.location.line}`
         if (data) {
@@ -684,13 +685,13 @@ export class DebuggerController {
           const children = page.map((v) => ({
             ...v,
             handle: v.handle ?? undefined,
-            type: `Observed at ${entry.observed_at}`,
+            type: t('streamC.b80a82ba3f216c8d', { v1: String(entry.observed_at) }),
           }))
           this.updateVariable(inspection.handle, (value) => ({
             ...value,
             children,
             handle: undefined,
-            value: `${children.length} values`,
+            value: t('streamC.bde728921e9f7497', { v1: String(children.length) }),
           }))
         }
         this.inspections.delete(entry.operation_id)
@@ -714,7 +715,7 @@ export class DebuggerController {
     if (!this.current || generation !== this.serial) return
     if (page.kind === 'fresh_snapshot_required') {
       this.outputAfter = page.cursor.event_seq
-      this.error = 'Earlier debugger output is unavailable; showing retained state'
+      this.error = t('streamC.77d9d5f541c31209')
       this.observe({ observation: 'current', snapshot: page.snapshot })
     } else {
       for (const e of page.events) {
@@ -763,9 +764,9 @@ export class DebuggerController {
         ...value,
         value:
           result.outcome === 'pending'
-            ? 'Waiting for approval in chat'
+            ? t('streamC.24cd8beaf24a1a26')
             : result.outcome === 'completed'
-              ? 'Awaiting result'
+              ? t('streamC.ce9dc7a8bc7d98f2')
               : receiptMessage(result.code ?? result.outcome),
       }))
       this.notify()
@@ -834,7 +835,7 @@ export class DebuggerController {
       // No implicit getters, formatters or recursion. Scope handles need explicit inspection.
       this.session.variables = result.data.items.map((s) => ({
         name: s.name,
-        value: s.handle ? 'Expand to inspect' : 'Unavailable',
+        value: s.handle ? t('streamC.76eedf5e0f835b5e') : t('streamC.ca184496974204a0'),
         handle: s.handle ?? undefined,
       }))
       this.notify()
@@ -846,7 +847,7 @@ export class DebuggerController {
         this.session.watches.push({ expression })
       const frame_handle = invocation.frameHandles[invocation.frame]
       if (!frame_handle) {
-        this.error = 'Select a current frame to evaluate this expression'
+        this.error = t('streamC.8f55c062960e8261')
         this.notify()
         return
       }

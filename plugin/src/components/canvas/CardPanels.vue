@@ -5,6 +5,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 import { computed, onMounted, onUnmounted, reactive } from 'vue'
 import Header from '@/components/Header.vue'
 import Footer from '@/components/Footer.vue'
@@ -27,20 +29,25 @@ const codes = computed(() =>
     {
       key: 'tasks',
       icon: 'check-square',
-      label: 'Open tasks',
+      label: t('streamC.87cfa1a507a2864e'),
       count: [...relations.tasks.values()].filter((t) => !t.taskNotFound && !t.completedAt).length,
     },
     {
       key: 'backlinks',
       icon: 'files',
-      label: 'Linked notes',
+      label: t('streamC.b9ab3f71c623d00d'),
       count: [...relations.notes.values()].filter((n) => n.filePath !== props.path).length,
     },
-    { key: 'logs', icon: 'notebook-pen', label: 'Logs', count: relations.logs.size },
+    {
+      key: 'logs',
+      icon: 'notebook-pen',
+      label: t('settings.tabs.logs'),
+      count: relations.logs.size,
+    },
     {
       key: 'time',
       icon: 'timer',
-      label: 'Time entries',
+      label: t('streamC.8544899cdd6eae6c'),
       count: [...relations.timeEntries.values()].filter((e) => !e.entryNotFound).length,
     },
   ].filter((code) => code.count > 0)

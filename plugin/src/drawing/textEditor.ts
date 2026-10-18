@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * Typing a block of text on a drawing: an ordinary text field laid over the drawing where the
  * block goes, in the block's letters at the size the view shows them, so what is typed is where it
@@ -36,7 +37,7 @@ export class TextEditor {
     this.el.className = 'abele-drawing-text'
     this.el.value = text
     this.el.spellcheck = true
-    this.el.setAttribute('aria-label', 'Text on the drawing')
+    this.el.setAttribute('aria-label', t('streamC.db79c3d2dedcd1e1'))
     this.el.setAttribute('rows', '1')
     this.el.addEventListener('input', () => this.fit())
     this.el.addEventListener('blur', () => this.close())

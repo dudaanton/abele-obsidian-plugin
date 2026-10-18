@@ -5,8 +5,8 @@
       <div class="abele-linter__actions">
         <Button
           v-if="running"
-          text="Stop"
-          tooltip="Stop linting; what was found so far stays"
+          :text="t('streamC.cae7d57bc067a514')"
+          :tooltip="t('streamC.10e4bb5da5dbdffe')"
           @click="service.cancel()"
         />
         <template v-else>
@@ -14,33 +14,32 @@
           <Icon
             v-if="report"
             icon="refresh-cw"
-            :tooltip="`Lint ${report.scope} again`"
+            :tooltip="t('streamC.9f55e591be6ea579', { v1: lintScope(report) })"
             @click="service.rerun()"
           />
           <Button
-            text="Lint vault"
+            :text="t('commands.linter-lint-vault')"
             :accent="!report"
-            tooltip="Check every note of the vault against the rules"
+            :tooltip="t('streamC.c13fca605559129b')"
             @click="run({ kind: 'vault' })"
           />
           <Button
             v-if="report"
-            text="Fix all"
+            :text="t('streamC.9c6601edc6114a97')"
             :accent="!!counts.fixable"
             :disabled="!counts.fixable || !!fixing"
             :tooltip="
               counts.fixable
-                ? `Fix the ${counts.fixable} issues the rules can fix, in ${counts.fixableNotes} notes`
-                : 'Nothing found here can be fixed by itself'
+                ? t('streamC.f9af0997b840d4d8', {
+                    v1: String(counts.fixable),
+                    v2: String(counts.fixableNotes),
+                  })
+                : t('streamC.21f3a5d8646cf187')
             "
             @click="confirmingFixAll = true"
           />
         </template>
-        <Icon
-          icon="settings"
-          tooltip="Choose the rules and where they apply"
-          @click="openSettings"
-        />
+        <Icon icon="settings" :tooltip="t('streamC.111a6602cec2e1aa')" @click="openSettings" />
       </div>
     </div>
 
@@ -48,16 +47,18 @@
       <Progress
         :value="fixing.done"
         :max="fixing.total"
-        :label="`Fixing ${fixing.done} of ${fixing.total} notes`"
+        :label="
+          t('streamC.d25a152a27c87512', { v1: String(fixing.done), v2: String(fixing.total) })
+        "
       />
-      <span>Fixing {{ fixing.done }} of {{ fixing.total }} notes…</span>
+      <span>{{ t('streamC.1b64458dc8462a21', { v1: fixing.done, v2: fixing.total }) }}</span>
     </div>
     <div
       v-for="(error, rule) in report?.ruleErrors ?? {}"
       :key="rule"
       class="abele-linter__note abele-linter__note_error"
     >
-      The rule {{ titleOf(String(rule)) }} failed and was skipped: {{ error }}
+      {{ t('streamC.14737c67bc06e9e5', { v1: titleOf(String(rule)), v2: error }) }}
     </div>
 
     <template v-if="report && report.issues.length">
@@ -81,19 +82,19 @@
               <Icon
                 v-if="group.kind === 'note'"
                 icon="file-text"
-                tooltip="Open the note"
+                :tooltip="t('streamC.b1d2100244425687')"
                 @click="open(group.key, 0)"
               />
               <Icon
                 v-if="group.kind === 'note' && group.fixable"
                 icon="file-diff"
-                tooltip="See what fixing this note would change"
+                :tooltip="t('streamC.06accf2779ad633b')"
                 @click="showPreview(group.key)"
               />
               <Icon
                 v-if="group.kind === 'note' && group.fixable"
                 icon="wand-sparkles"
-                tooltip="Fix what can be fixed in this note"
+                :tooltip="t('streamC.4832a2894a11363d')"
                 @click="fixNote(group.key)"
               />
             </div>
@@ -121,15 +122,19 @@
                 v-if="issue.fixable"
                 class="abele-linter__fix"
                 icon="wand"
-                :tooltip="`Fix this: ${titleOf(issue.rule)}`"
+                :tooltip="t('streamC.fcad7825dabb93cb', { v1: String(titleOf(issue.rule)) })"
                 @click.stop="fixIssue(issue)"
               />
             </div>
             <Button
               v-if="group.issues.length > issueLimit(group.key)"
               class="abele-linter__more"
-              :text="`Show ${Math.min(PAGE, group.issues.length - issueLimit(group.key))} more`"
-              tooltip="List more of what was found here"
+              :text="
+                t('streamC.c4768d6c510ec49c', {
+                  v1: String(Math.min(PAGE, group.issues.length - issueLimit(group.key))),
+                })
+              "
+              :tooltip="t('streamC.080cc3b0beee3164')"
               @click="moreIssues(group.key)"
             />
           </div>
@@ -137,45 +142,52 @@
         <Button
           v-if="groups.length > groupLimit"
           class="abele-linter__more"
-          :text="`Show ${Math.min(PAGE, groups.length - groupLimit)} more of ${groups.length}`"
-          tooltip="List more of the notes or rules"
+          :text="
+            t('streamC.0839719837a66052', {
+              v1: String(Math.min(PAGE, groups.length - groupLimit)),
+              v2: String(groups.length),
+            })
+          "
+          :tooltip="t('streamC.2b8ca3f76b571343')"
           @click="groupLimit += PAGE"
         />
       </div>
     </template>
-    <EmptyState
-      v-else-if="!report"
-      text="Lint the vault, a folder or a note: the commands start with “Lint”, and a folder’s or a note’s menu has it too."
-    />
-    <EmptyState v-else-if="!running" text="Nothing found. Every note follows the rules." />
+    <EmptyState v-else-if="!report" :text="t('streamC.d229ba1a04492441')" />
+    <EmptyState v-else-if="!running" :text="t('streamC.e79677c818876872')" />
 
     <ConfirmModal
       v-if="confirmingFixAll"
-      title="Fix all"
-      :message="`Fix ${counts.fixable} issues in ${counts.fixableNotes} notes? The rules rewrite those notes; what they cannot fix stays in the list. A note that changes while it is being fixed is left as it is.`"
-      confirm-text="Fix"
-      :confirm-tooltip="`Rewrite the ${counts.fixableNotes} notes`"
+      :title="t('streamC.9c6601edc6114a97')"
+      :message="
+        t('streamC.6737a83b8f4a2a41', {
+          v1: String(counts.fixable),
+          v2: String(counts.fixableNotes),
+        })
+      "
+      :confirm-text="t('streamC.21f1595b614ffc31')"
+      :confirm-tooltip="t('streamC.da1aab65cba58527', { v1: String(counts.fixableNotes) })"
       @confirm="fixAll"
       @close="confirmingFixAll = false"
     />
 
     <ObsidianModal
       v-if="preview"
-      :title="`Fixing ${preview.title}`"
+      :title="t('streamC.6b1ee87f8b2e504e', { v1: String(preview.title) })"
       size="tall"
       @close="preview = null"
     >
       <div class="abele-linter__preview">
-        <EmptyState v-if="preview.before === preview.after" text="Fixing would change nothing." />
+        <EmptyState v-if="preview.before === preview.after" :text="t('streamC.e5a7ffa6411a62f0')" />
         <Diff v-else :text-left="preview.before" :text-right="preview.after" />
       </div>
       <template #footer>
-        <Button text="Cancel" tooltip="Close this and change nothing" @click="preview = null" />
+        <Button :text="t('kit.cancel')" :tooltip="t('kit.cancelTooltip')" @click="preview = null" />
         <Button
-          text="Fix"
+          :text="t('streamC.21f1595b614ffc31')"
           accent
           :disabled="preview.before === preview.after"
-          tooltip="Write these changes into the note"
+          :tooltip="t('streamC.681a8f0df93d5ddc')"
           @click="applyPreview"
         />
       </template>
@@ -184,6 +196,10 @@
 </template>
 
 <script setup lang="ts">
+import { lintHeadline, lintScope } from '@/i18n/streamCLinter'
+import { settingsLabel } from '@/i18n/settingsLabels'
+import { t } from '@/i18n'
+
 /**
  * The linter's tab: what the last run found, grouped by note or by rule, folded and paged so a
  * vault's worth of findings stays light; a line opens the note there, a wand fixes it, and the
@@ -205,13 +221,7 @@ import { LinterService } from '@/linter/LinterService'
 import { UNREADABLE } from '@/linter/engine'
 import { ScriptService } from '@/scripting/ScriptService'
 import { openIssue } from '@/linter/openIssue'
-import {
-  groupIssues,
-  reportCounts,
-  reportHeadline,
-  type GroupBy,
-  type IssueGroup,
-} from '@/linter/grouping'
+import { groupIssues, reportCounts, type GroupBy, type IssueGroup } from '@/linter/grouping'
 import { openAbeleSettings } from '@/components/settings/settingsTab'
 import type { LintIssue, LintTarget } from '@/linter/types'
 
@@ -227,19 +237,23 @@ const report = service.report
 const fixing = service.fixing
 const running = computed(() => !!report.value?.running)
 const counts = computed(() => reportCounts(report.value))
-const headline = computed(() => reportHeadline(report.value))
+const headline = computed(() => lintHeadline(report.value))
 
 const groupBy = ref<GroupBy>('note')
 const groupTabs = [
-  { id: 'note', label: 'By note', tooltip: 'Each note with what was found in it' },
-  { id: 'rule', label: 'By rule', tooltip: 'Each rule with the notes that break it' },
+  { id: 'note', label: t('streamC.b716655030acbc5b'), tooltip: t('streamC.90992ca042856827') },
+  { id: 'rule', label: t('streamC.fe9cb0d88b402e30'), tooltip: t('streamC.f0974712f4a3a655') },
 ]
 
 const titles = computed(() => {
   void ScriptService.getInstance().scriptList.value
   return new Map([
-    ...service.allRules().map((r) => [r.id, r.title] as [string, string]),
-    [UNREADABLE, 'Could not be read'] as [string, string],
+    ...service
+      .allRules()
+      .map(
+        (r) => [r.id, r.source === 'builtin' ? settingsLabel(r.title) : r.title] as [string, string]
+      ),
+    [UNREADABLE, t('settings.CalendarsSettings.could_not_be_read.51a02791')] as [string, string],
   ])
 })
 const titleOf = (id: string): string => titles.value.get(id) ?? id

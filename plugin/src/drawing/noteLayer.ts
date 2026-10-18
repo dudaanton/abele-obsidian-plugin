@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * Notes shown on a drawing, in its tab: each note rendered as Obsidian renders it, in a card of
  * its box, under the ink — what is drawn goes over a note. A card is a picture of its note: a
@@ -119,7 +120,7 @@ export class NoteLayer {
     if (!(file instanceof TFile)) {
       card.body.createEl('p', {
         cls: 'abele-drawing-note__missing',
-        text: 'This note is not in the vault.',
+        text: t('streamC.565fc92e27c98417'),
       })
       return
     }

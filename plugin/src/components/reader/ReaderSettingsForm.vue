@@ -35,7 +35,7 @@
       >
         <Input
           :model-value="fontsFolder"
-          placeholder="Fonts"
+          :placeholder="t('streamC.3680fcad01f4bfc6')"
           @update:model-value="setFontsFolder"
         />
       </Setting>

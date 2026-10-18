@@ -4,26 +4,28 @@
       ref="field"
       v-model="text"
       as-text-area
-      :aria-label="`Edit paragraph ${paragraph.number}`"
+      :aria-label="t('streamC.bb4dd3b610336ee0', { v1: String(paragraph.number) })"
       :disabled="!paragraph.editable || readOnly"
     />
     <div role="status">{{ status }}</div>
     <Button
-      text="Save"
+      :text="t('settings.GithubConnectionEditor.save.1509f561')"
       accent
-      tooltip="Save the paragraph text"
+      :tooltip="t('streamC.4e3f207fd5809528')"
       :disabled="!paragraph.editable || readOnly || busy"
       @click="run(paragraphTextEdit(paragraph, currentText()), true)"
     />
-    <Button text="Cancel" tooltip="Close without saving" :disabled="busy" @click="cancel" />
+    <Button
+      :text="t('kit.cancel')"
+      :tooltip="t('streamC.bb5e6ee5e7fd97a9')"
+      :disabled="busy"
+      @click="cancel"
+    />
 
     <template v-if="paragraph.editable">
-      <div class="setting-item-description">
-        Select text above to format it or add a link. With no selection, the whole paragraph is
-        used.
-      </div>
+      <div class="setting-item-description">{{ t('streamC.4f756acc7ba4ecc6') }}</div>
       <Section class="abele-word-editor-section">
-        <strong class="abele-word-editor-label">Formatting</strong>
+        <strong class="abele-word-editor-label">{{ t('streamC.29d4198e41d8221a') }}</strong>
         <Button
           v-for="item in FORMATS"
           :key="item.name"
@@ -35,84 +37,89 @@
         <Dropdown
           v-model="style"
           :options="styles"
-          aria-label="Paragraph style"
+          :aria-label="t('streamC.9aa08be49bddd559')"
           :disabled="readOnly"
         />
         <Button
-          text="Apply style"
-          tooltip="Give the paragraph the chosen style"
+          :text="t('streamC.1745c4124fdc6401')"
+          :tooltip="t('streamC.f14fcdb0f1b80f19')"
           :disabled="locked"
           @click="run({ ...base('style'), style_id: style })"
         />
-        <Dropdown v-model="list" :options="LISTS" aria-label="List kind" :disabled="readOnly" />
+        <Dropdown
+          v-model="list"
+          :options="LISTS"
+          :aria-label="t('streamC.fbe8962b55d41984')"
+          :disabled="readOnly"
+        />
         <Button
-          text="Apply list"
-          tooltip="Make the paragraph the chosen kind of list item"
+          :text="t('streamC.05273844af652b5d')"
+          :tooltip="t('streamC.765a3e36365d3ad6')"
           :disabled="locked"
           @click="run({ ...base('list'), list: list as WordEdit['list'] })"
         />
       </Section>
       <Section class="abele-word-editor-section">
-        <strong class="abele-word-editor-label">Paragraphs</strong>
+        <strong class="abele-word-editor-label">{{ t('streamC.d2ef75e86bb76390') }}</strong>
         <Input
           v-model="added"
-          aria-label="New paragraph text"
-          placeholder="New paragraph text"
+          :aria-label="t('streamC.6b3089754496aee4')"
+          :placeholder="t('streamC.6b3089754496aee4')"
           :disabled="readOnly"
         />
         <Button
-          text="Add paragraph below"
-          tooltip="Add a paragraph with this text after this one"
+          :text="t('streamC.98388c4cd9d7c6ed')"
+          :tooltip="t('streamC.1ddb710bdc77fc82')"
           :disabled="locked"
           @click="run({ ...base('paragraph_add'), text: added })"
         />
         <Button
-          text="Split at cursor"
-          tooltip="Split the paragraph in two where the cursor is"
+          :text="t('streamC.bb4a0b48b83d4496')"
+          :tooltip="t('streamC.f4f56215be93d167')"
           :disabled="locked"
           @click="run({ ...base('paragraph_split'), offset: fieldEl()?.selectionStart ?? 0 })"
         />
         <Button
-          text="Merge with next"
-          tooltip="Join the next paragraph onto this one"
+          :text="t('streamC.2e0a6cdd619108b4')"
+          :tooltip="t('streamC.464a707a4d99d4be')"
           :disabled="locked"
           @click="run(base('paragraph_merge'))"
         />
         <Button
-          text="Delete paragraph"
-          tooltip="Delete this paragraph"
+          :text="t('streamC.14d3db3b974f65b8')"
+          :tooltip="t('streamC.eedcdf69ed8fc8dc')"
           :disabled="locked"
           @click="run(base('paragraph_delete'))"
         />
       </Section>
       <Section class="abele-word-editor-section">
-        <strong class="abele-word-editor-label">Links</strong>
+        <strong class="abele-word-editor-label">{{ t('settings.tabs.links') }}</strong>
         <Input
           v-model="url"
-          aria-label="Link URL"
-          placeholder="Link address"
+          :aria-label="t('streamC.9dfd0b9f8f42b404')"
+          :placeholder="t('streamC.13844ffc728705a2')"
           :disabled="readOnly"
         />
         <Button
-          text="Apply link"
-          tooltip="Link the selected words to this address"
+          :text="t('streamC.e810e30ed767b221')"
+          :tooltip="t('streamC.0e5a9bd10c0eeb5b')"
           :disabled="locked"
           @click="run({ ...base('link'), ...range(), url })"
         />
         <Button
-          text="Remove link"
-          tooltip="Take the link off the selected words"
+          :text="t('streamC.4953f897094826d3')"
+          :tooltip="t('streamC.4fed66766017a7bb')"
           :disabled="locked"
           @click="run({ ...base('link'), ...range(), url: '' })"
         />
       </Section>
     </template>
-    <div v-else class="setting-item-description">
-      This paragraph contains read-only structure. Inline images can still be selected below.
-    </div>
+    <div v-else class="setting-item-description">{{ t('streamC.8c085488d3b9ae6a') }}</div>
 
     <Section v-if="paragraph.table && paragraph.editable" class="abele-word-editor-section">
-      <strong class="abele-word-editor-label">Table {{ paragraph.table }}</strong>
+      <strong class="abele-word-editor-label"
+        >{{ t('streamC.16d1c9050a0b32e8') }} {{ paragraph.table }}</strong
+      >
       <label v-for="item in cellFields" :key="item.label">
         {{ item.label }}
         <Input
@@ -125,20 +132,20 @@
         />
       </label>
       <Button
-        text="Add row below"
-        tooltip="Add a table row below this one"
+        :text="t('streamC.3d48302e0e564436')"
+        :tooltip="t('streamC.ac29ee4f59bda346')"
         :disabled="locked"
         @click="run({ ...base('row_add'), ...cell() })"
       />
       <Button
-        text="Delete row"
-        tooltip="Delete this table row"
+        :text="t('streamC.5260f6b2fa9f539a')"
+        :tooltip="t('streamC.1b0f7b9eebfbca86')"
         :disabled="locked"
         @click="run({ ...base('row_delete'), ...cell() })"
       />
       <Button
-        text="Merge cells"
-        tooltip="Merge the cells up to the last row and column"
+        :text="t('streamC.d042a07a3d5f7c72')"
+        :tooltip="t('streamC.4888a148ab2dc755')"
         :disabled="locked"
         @click="
           run({
@@ -150,21 +157,26 @@
         "
       />
       <Button
-        text="Split cells"
-        tooltip="Split merged cells apart again"
+        :text="t('streamC.ec306591839f83d2')"
+        :tooltip="t('streamC.d43f5339edf1f747')"
         :disabled="locked"
         @click="run({ ...base('cells_split'), ...cell() })"
       />
     </Section>
 
     <Section v-if="!paragraph.protected" class="abele-word-editor-section">
-      <strong class="abele-word-editor-label">Inline images</strong>
-      <Dropdown v-model="picture" :options="pictures" aria-label="Image" :disabled="readOnly" />
+      <strong class="abele-word-editor-label">{{ t('streamC.1a1f337f74d0915b') }}</strong>
+      <Dropdown
+        v-model="picture"
+        :options="pictures"
+        :aria-label="t('streamC.1aa4cb0bcca76e92')"
+        :disabled="readOnly"
+      />
       <Input
         ref="pathField"
         v-model="path"
-        aria-label="Vault image path"
-        placeholder="Vault image path"
+        :aria-label="t('streamC.ec2051eb304f51db')"
+        :placeholder="t('streamC.ec2051eb304f51db')"
         :disabled="readOnly"
       />
       <label v-for="item in sizeFields" :key="item.label">
@@ -179,26 +191,26 @@
         />
       </label>
       <Button
-        text="Insert image"
-        tooltip="Insert the vault image at the cursor, or at the end"
+        :text="t('streamC.cf3a92dadb38f288')"
+        :tooltip="t('streamC.438bba1ff2e908d9')"
         :disabled="locked"
         @click="run({ ...base('image_insert'), ...image(), offset: insertAt() })"
       />
       <Button
-        text="Replace image"
-        tooltip="Put the vault image in place of the chosen one"
+        :text="t('streamC.fcedcb5edd38a849')"
+        :tooltip="t('streamC.c5a3081773ccece5')"
         :disabled="locked"
         @click="run({ ...base('image_replace'), ...image() })"
       />
       <Button
-        text="Resize image"
-        tooltip="Give the chosen image this width and height"
+        :text="t('streamC.ab28be14e4fa6152')"
+        :tooltip="t('streamC.7bd92f4e55e7f5dd')"
         :disabled="locked"
         @click="run({ ...base('image_resize'), ...image() })"
       />
       <Button
-        text="Delete image"
-        tooltip="Delete the chosen image"
+        :text="t('streamC.fbbc98ee63a50b30')"
+        :tooltip="t('streamC.999624402fdc880d')"
         :disabled="locked"
         @click="run({ ...base('image_delete'), ...image() })"
       />
@@ -207,6 +219,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 // Plain desktop fields acting on the package's own operations, one group per subject. Each
 // button sends one edit to the host, which saves it and redraws the page.
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
@@ -228,20 +242,35 @@ const props = defineProps<{
 }>()
 
 const FORMATS = [
-  { name: 'bold', label: 'Bold', property: 'b', tooltip: 'Bold the selected words' },
-  { name: 'italic', label: 'Italic', property: 'i', tooltip: 'Italicise the selected words' },
-  { name: 'underline', label: 'Underline', property: 'u', tooltip: 'Underline the selected words' },
+  {
+    name: 'bold',
+    label: t('settings.reader.stroke.bold'),
+    property: 'b',
+    tooltip: t('streamC.c928d1fdad9a95bf'),
+  },
+  {
+    name: 'italic',
+    label: t('streamC.9bf37cb58a694456'),
+    property: 'i',
+    tooltip: t('streamC.f0cf2bd8b4862a89'),
+  },
+  {
+    name: 'underline',
+    label: t('streamC.02f843261112c2d8'),
+    property: 'u',
+    tooltip: t('streamC.9ac223819b96fac3'),
+  },
   {
     name: 'strike',
-    label: 'Strikethrough',
+    label: t('streamC.9aabbcb2c18def7b'),
     property: 'strike',
-    tooltip: 'Strike through the selected words',
+    tooltip: t('streamC.3812c6f851b7bd4f'),
   },
 ] as const
 const LISTS = [
-  { value: 'none', display: 'No list' },
-  { value: 'bullet', display: 'Bulleted list' },
-  { value: 'decimal', display: 'Numbered list' },
+  { value: 'none', display: t('streamC.eacd31d849f9f7ed') },
+  { value: 'bullet', display: t('streamC.ce51b395cd6b5ece') },
+  { value: 'decimal', display: t('streamC.cc62f6c7b2a82fd1') },
 ]
 
 const readOnly = computed(() => !!props.host.readOnly)
@@ -271,10 +300,10 @@ const added = ref('')
 const url = ref(props.doc.links.find((l) => l.paragraph === props.paragraph.number)?.url ?? '')
 
 const cellFields = [
-  { key: 'row', label: 'Row' },
-  { key: 'column', label: 'Grid column' },
-  { key: 'lastRow', label: 'Last row' },
-  { key: 'lastColumn', label: 'Last column' },
+  { key: 'row', label: t('streamC.95110d74c4c00912') },
+  { key: 'column', label: t('streamC.22756377abd254bf') },
+  { key: 'lastRow', label: t('streamC.d4b57e76ee2fdc3c') },
+  { key: 'lastColumn', label: t('streamC.d92de968c0ae5e69') },
 ] as const
 const cellValues = reactive({
   row: String(props.paragraph.row ?? 1),
@@ -289,19 +318,21 @@ const cell = () => ({
 })
 
 const pictures = [
-  { value: '0', display: 'New image' },
+  { value: '0', display: t('streamC.1699c31990887ee5') },
   ...props.doc.images
     .filter((i) => i.paragraph === props.paragraph.number)
     .map((i) => ({
       value: String(i.number),
-      display: `Image ${i.number}${i.inline ? '' : ' (floating, read-only)'}`,
+      display: i.inline
+        ? t('streamC.82e2773be1f2ecda', { v1: i.number })
+        : t('streamC.2d4c1a845d0a6751', { v1: i.number }),
     })),
 ]
 const picture = ref('0')
 const path = ref('')
 const sizeFields = [
-  { key: 'width', label: 'Width (px)' },
-  { key: 'height', label: 'Height (px)' },
+  { key: 'width', label: t('streamC.bad5f0ee7ade0c10') },
+  { key: 'height', label: t('streamC.a8af39afa89df046') },
 ] as const
 const size = reactive({ width: '120', height: '80' })
 // Choosing an existing picture starts from its own size; a new one keeps what was typed.
@@ -357,7 +388,7 @@ const closeSuggestions = () => suggestions.forEach((s) => s.close())
 async function run(edit: WordEdit, textChange = false): Promise<void> {
   if (readOnly.value || busy.value) return
   if (!textChange && currentText() !== props.paragraph.text) {
-    status.value = 'Save text changes before formatting or changing structure.'
+    status.value = t('streamC.7142a8dca36f2519')
     return
   }
   busy.value = true

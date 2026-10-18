@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { Notice, type App } from 'obsidian'
 import { recentNoteView } from '@/github/linking'
 import { insertBlockOnOwnLine } from '@/helpers/editorHelpers'
@@ -10,11 +11,11 @@ export type CodeSelection = Pick<FileSelection, 'text'> &
 export function insertCodeSelection(app: App, path: string, selection: FileSelection): void {
   const view = recentNoteView(app)
   if (!view) {
-    new Notice('Open a note to put this in')
+    new Notice(t('streamC.9ea4fea45da7892b'))
     return
   }
   view.editor.setCursor(insertBlockOnOwnLine(view.editor, selectionQuote(path, selection)))
-  new Notice('Selected code added to the note')
+  new Notice(t('streamC.df176fc5cbbf3cb1'))
 }
 
 /** Prepare the draft only; the user sends it. */
@@ -27,7 +28,7 @@ export async function chatCodeSelection(
   const chats = ChatService.getInstance()
   const session = action === 'ask' ? await chats.openBlankChat() : chats.activeSession.value
   if (!session) {
-    new Notice('Open a chat to add this code')
+    new Notice(t('streamC.40a65f8d386581f1'))
     return
   }
   chats.pendingInput.value = {

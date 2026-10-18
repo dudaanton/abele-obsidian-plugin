@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * Drawing on a picture, in a tab of its own: the picture under the ink, the same bar and tools as
  * a drawing, and, in the bar's menu, what becomes of it — saved over the picture, saved beside it
@@ -85,7 +86,7 @@ export class ImageInkView extends ItemView {
 
   getDisplayText(): string {
     const name = this.path.slice(this.path.lastIndexOf('/') + 1)
-    return name ? `Editing ${name}` : 'Editing a picture'
+    return name ? t('streamC.94111802c24f52b4', { v1: name }) : t('streamC.56519e2968b73608')
   }
 
   async onOpen(): Promise<void> {
@@ -189,10 +190,10 @@ export class ImageInkView extends ItemView {
     if (
       this.editor.dirty &&
       !(await confirmDialog({
-        title: 'Discard picture edits?',
-        message: 'The unsaved edits will be lost. The picture stays as it was.',
-        confirmText: 'Discard edits',
-        confirmTooltip: 'Close without saving',
+        title: t('streamC.6a1fdeb0e7061b71'),
+        message: t('streamC.f2c025e7abe4188b'),
+        confirmText: t('streamC.50d2a807150f48e7'),
+        confirmTooltip: t('streamC.bb5e6ee5e7fd97a9'),
       }))
     )
       return false
@@ -233,7 +234,7 @@ export class ImageInkView extends ItemView {
     }
     await super.setState(state, result)
     ;(this as unknown as { titleEl?: HTMLElement }).titleEl?.setText(
-      this.path.slice(this.path.lastIndexOf('/') + 1) || 'Editing a picture'
+      this.path.slice(this.path.lastIndexOf('/') + 1) || t('streamC.56519e2968b73608')
     )
   }
 
@@ -271,10 +272,10 @@ export class ImageInkView extends ItemView {
       }
     } catch {
       if (version !== this.loadVersion) return
-      new Notice(`The picture could not be read: ${file.path}`)
+      new Notice(t('streamC.f24b493d2b6e3f17', { v1: String(file.path) }))
       this.editor.status = {
         kind: 'error',
-        text: 'The picture could not be decoded on this device. The file is unchanged.',
+        text: t('streamC.55efe49cff3852b9'),
       }
       return
     }
@@ -335,8 +336,11 @@ export class ImageInkView extends ItemView {
         item
           .setTitle(
             format.sameKind
-              ? 'Save over the picture'
-              : `Save over the picture (${file.extension.toUpperCase()} needs a ${kind} copy)`
+              ? t('streamC.76f66891dfdf21fb')
+              : t('streamC.02831eb021583227', {
+                  v1: String(file.extension.toUpperCase()),
+                  v2: String(kind),
+                })
           )
           .setDisabled(!formatOf(file.extension).sameKind)
           .setIcon('save')
@@ -344,21 +348,25 @@ export class ImageInkView extends ItemView {
       )
       menu.addItem((item) =>
         item
-          .setTitle(format.sameKind ? 'Save as a new picture' : `Save as a new ${kind} picture`)
+          .setTitle(
+            format.sameKind
+              ? t('streamC.7972106248fd152d')
+              : t('streamC.8aa7ee357a6dc665', { v1: String(kind) })
+          )
           .setIcon('image-plus')
           .onClick(() => void this.saving(() => this.saveNew(file)))
       )
       if (this.embed)
         menu.addItem((item) =>
           item
-            .setTitle('Save as a new picture and replace it in the note')
+            .setTitle(t('streamC.361dd254eef701e6'))
             .setIcon('replace')
             .onClick(() => void this.saving(() => this.saveInNote(file)))
         )
       menu.addItem((item) =>
         item
           .setTitle(
-            `${this.chat ? 'Send back to the chat' : 'Send to the chat'} (${this.outputSize()})`
+            `${this.chat ? t('streamC.0d07d65a1d7f3d58') : t('streamC.2e14053220311e8b')} (${this.outputSize()})`
           )
           .setIcon('send')
           .onClick(() => void this.saving(() => this.sendToChat(file)))
@@ -378,7 +386,10 @@ export class ImageInkView extends ItemView {
     const mp = Math.round((this.editor.width * this.editor.height) / 1e6)
     const crop = JSON.stringify(this.editor.crop)
     const ink = [...(this.session?.items.items ?? [])]
-    this.editor.status = { kind: 'saving', text: `Saving ${mp || '<1'} MP…` }
+    this.editor.status = {
+      kind: 'saving',
+      text: t('streamC.53c5e7c59a68d603', { v1: String(mp || '<1') }),
+    }
     try {
       await new Promise<void>((resolve) => this.contentEl.win.setTimeout(resolve, 32))
       const saved = await action()
@@ -392,7 +403,10 @@ export class ImageInkView extends ItemView {
       this.editor.status = null
     } catch (error) {
       console.warn('[Abele] picture save failed', error)
-      this.editor.status = { kind: 'error', text: `Could not save the picture: ${String(error)}` }
+      this.editor.status = {
+        kind: 'error',
+        text: t('streamC.1989a39653aa3a9d', { v1: String(String(error)) }),
+      }
     }
   }
 
@@ -419,7 +433,7 @@ export class ImageInkView extends ItemView {
     const blob = await this.picture(file)
     if (!blob) return false
     await this.app.vault.modifyBinary(file, await blob.arrayBuffer())
-    new Notice(`Saved over ${file.name}`)
+    new Notice(t('streamC.50152f270b1104e2', { v1: String(file.name) }))
     return true
   }
 
@@ -436,7 +450,7 @@ export class ImageInkView extends ItemView {
       (p) => !!this.app.vault.getAbstractFileByPath(p)
     )
     const made = await this.app.vault.createBinary(path, await blob.arrayBuffer())
-    if (notice) new Notice(`Saved as ${made.path}`)
+    if (notice) new Notice(t('streamC.929a747e8b44fb91', { v1: String(made.path) }))
     return made
   }
 
@@ -460,13 +474,13 @@ export class ImageInkView extends ItemView {
     })
     if (start < 0) {
       new Notice(
-        `Saved as ${made.path}. The picture in ${note.basename} was not replaced: the note has changed`
+        t('streamC.54bf13c68a38027a', { v1: String(made.path), v2: String(note.basename) })
       )
       return false
     }
     // Saved again, the embed now showing the new picture is the one replaced.
     this.embed = { note: embed.note, start, original: link }
-    new Notice(`Saved as ${made.path} and put in its place in ${note.basename}`)
+    new Notice(t('streamC.3ea2d3c9e9d9948a', { v1: String(made.path), v2: String(note.basename) }))
     return true
   }
 
@@ -483,17 +497,13 @@ export class ImageInkView extends ItemView {
         chats.getSession(tabId) === origin &&
         origin.conversationVersion.value === version)
     if (!owns()) {
-      new Notice(
-        'The original conversation changed. Save the picture and attach it to the intended chat.'
-      )
+      new Notice(t('streamC.b902033c2d32612f'))
       return false
     }
     const made = await this.saveNew(file, false)
     if (!made) return false
     if (!owns()) {
-      new Notice(
-        `Saved as ${made.path}. The conversation changed; attach the picture to the intended chat.`
-      )
+      new Notice(t('streamC.a064579ac3c4ad14', { v1: String(made.path) }))
       return false
     }
     if (tabId) chats.switchTab(tabId)
@@ -525,9 +535,9 @@ function anchorOf(value: unknown): EmbedAnchor | null {
 /** Asks before a picture is written over. */
 function confirmOver(app: App, name: string): Promise<boolean> {
   return confirmDialog({
-    title: 'Save over the picture?',
-    message: `${name} is replaced by the picture with the drawing on it. The picture as it is now is lost.`,
-    confirmText: 'Save over it',
-    confirmTooltip: 'Replace the picture with the one drawn on',
+    title: t('streamC.e0147a1c6218d486'),
+    message: t('streamC.567ded0b4024e8b1', { v1: String(name) }),
+    confirmText: t('streamC.a2967782f063300f'),
+    confirmTooltip: t('streamC.c5079110cc29d7b4'),
   })
 }

@@ -11,9 +11,12 @@ import { CanvasEditor } from '@/canvas/Editor'
 import { CanvasViewer } from '@/canvas/Viewer'
 import { CanvasDocument } from '@/canvas/documentRegistry'
 import { emptyCanvas } from '@/canvas/core/model'
+import { initializeLocale } from '../helpers/i18n'
+import { streamCUI } from '@/i18n/streamCLabels'
 
 const cleanups: (() => void)[] = []
 afterEach(() => cleanups.splice(0).forEach((fn) => fn()))
+afterEach(() => initializeLocale('en'))
 
 function canvas() {
   const el = document.createElement('div')
@@ -37,7 +40,13 @@ function canvas() {
   })
   const file = Object.assign(new TFile(), { path: 'sample.canvas' })
   const snapshot = { graph: emptyCanvas(), revision: 'initial' }
-  const doc = new CanvasDocument(file, snapshot, async () => snapshot, () => false, () => {})
+  const doc = new CanvasDocument(
+    file,
+    snapshot,
+    async () => snapshot,
+    () => false,
+    () => {}
+  )
   const editor = new CanvasEditor(viewer, {
     document: () => doc,
     publish: async () => {},
@@ -61,6 +70,22 @@ function canvas() {
 }
 
 describe('the canvas controls under a finger', () => {
+  it('dispatches stable editor commands from translated tools', () => {
+    for (const language of ['ru', 'lv', 'es', 'de']) {
+      initializeLocale(language)
+      const { wrapper, editor } = canvas()
+      const label = streamCUI('Pen (P)')
+      const pen = [
+        ...wrapper.element.ownerDocument.querySelectorAll<HTMLElement>(
+          '.abele-canvas-chrome [aria-label]'
+        ),
+      ].find((el) => el.getAttribute('aria-label') === label)
+      expect(pen, language).toBeDefined()
+      pen!.click()
+      expect(editor.controls.tool(), language).toBe('pen')
+    }
+  })
+
   it('a touch on a tool is not cancelled by the canvas under it, so it becomes a tap', () => {
     const { wrapper } = canvas()
     const pen = wrapper.element.ownerDocument.querySelector<HTMLElement>('[aria-label="Pen (P)"]')!

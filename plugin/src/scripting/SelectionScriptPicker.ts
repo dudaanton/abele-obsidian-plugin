@@ -1,3 +1,6 @@
+import { streamCUI } from '@/i18n/streamCLabels'
+
+import { t } from '@/i18n'
 import { FuzzySuggestModal, Notice, type App, type FuzzyMatch } from 'obsidian'
 import { h } from 'vue'
 import { SuggestionRows } from '@/components/obsidian/suggestionRows'
@@ -36,7 +39,11 @@ export async function setOnSelectionMenu(
   if (surface === 'book') config.reader = { ...readerSettingsFrom(config.reader), selectionScripts }
   else config.ai = { ...config.ai, chatSelectionScripts: selectionScripts }
   await config.saveSettings()
-  new Notice(`${script} is ${on ? 'on' : 'off'} the ${surface} menu`)
+  new Notice(
+    on
+      ? t('streamC.3147c963a54355d8', { v1: script, v2: streamCUI(surface) })
+      : t('streamC.e19d7cd81fecf6c7', { v1: script, v2: streamCUI(surface) })
+  )
 }
 
 /** Native searchable suggestions, shared by reader and chat; long lists scroll natively. */
@@ -50,10 +57,13 @@ export class SelectionScriptPicker extends FuzzySuggestModal<ParsedScript> {
     private readonly surface: SelectionMenuSurface = 'book'
   ) {
     super(app)
-    this.setPlaceholder('Run a script on these words…')
+    this.setPlaceholder(t('streamC.f653b3885fe7dc71'))
     this.setInstructions([
-      { command: '↵', purpose: 'to run' },
-      { command: 'pin', purpose: `to keep it on the ${surface} selection menu` },
+      { command: '↵', purpose: t('streamC.a3d78ca02f8b3a78') },
+      {
+        command: 'pin',
+        purpose: surface === 'book' ? t('streamC.162e1e23c7826001') : t('streamC.8f8049725d611793'),
+      },
     ])
   }
 

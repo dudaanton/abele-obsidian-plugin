@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { ItemView, type App, type WorkspaceLeaf } from 'obsidian'
 import LinterPanel from '@/components/linter/LinterPanel.vue'
 import { mountKit, type KitMount } from '@/components/obsidian/mount'
@@ -26,7 +27,7 @@ export class LinterView extends ItemView {
   }
 
   getDisplayText(): string {
-    return 'Linter'
+    return t('streamC.99bede8d66cf77d4')
   }
 
   static getIcon(): string {

@@ -1,7 +1,11 @@
 <template>
   <div class="abele-book-search">
     <div class="abele-book-search__field">
-      <Search :model-value="query" placeholder="Search the book…" @update:model-value="onInput" />
+      <Search
+        :model-value="query"
+        :placeholder="t('streamC.069043eb45e8d4c1')"
+        @update:model-value="onInput"
+      />
     </div>
     <div class="abele-book-search__status">{{ status }}</div>
     <div class="abele-book-search__list">
@@ -28,6 +32,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 /**
  * Search through a whole book or PDF. Results come in chapter by chapter, or page by page, while
  * the search goes on; a result goes to its place and marks the words.
@@ -70,10 +76,14 @@ onMounted(() => {
 
 const status = computed(() => {
   const s = props.search
-  if (s.query.trim().length < 2) return 'Type at least two letters.'
-  const n = s.count === 1 ? '1 result' : `${s.count} results`
-  if (s.running) return `${n} so far · ${Math.round(s.progress * 100)}%`
-  return s.count ? n : 'Nothing found.'
+  if (s.query.trim().length < 2) return t('streamC.02a16962ce32a96e')
+  const n = t('streamC.results', { count: s.count })
+  if (s.running)
+    return t('streamC.a422bfdbba13404f', {
+      v1: String(n),
+      v2: String(Math.round(s.progress * 100)),
+    })
+  return s.count ? n : t('streamC.eb1fa11281bc28f6')
 })
 </script>
 

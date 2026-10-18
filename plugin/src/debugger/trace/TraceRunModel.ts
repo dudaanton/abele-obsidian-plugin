@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 // A run open in its tab: the steps, the step picked and what its values are made of, a value
 // followed through the run. Shapes and changes are asked of the node only for the step looked at.
 import { reactive } from 'vue'
@@ -33,7 +34,7 @@ export class TraceRunModel {
       if (wanted) this.picked = wanted
       if (this.picked) await this.fill(this.picked)
     } catch (e) {
-      this.error = e instanceof Error ? e.message : 'The run could not be read'
+      this.error = e instanceof Error ? e.message : t('streamC.77490b1334072a11')
       console.debug('[trace] Run unavailable', e)
     }
     this.changed()
@@ -99,7 +100,7 @@ export class TraceRunModel {
         plain !== '' && !Number.isNaN(asNumber) && /^-?[\d.]+$/.test(plain) ? asNumber : plain
       this.trail = trail(await this.rpc.follow(this.projectId, this.runId, needle))
     } catch (e) {
-      this.error = e instanceof Error ? e.message : 'The value could not be followed'
+      this.error = e instanceof Error ? e.message : t('streamC.d7e1cbd199d663cc')
     }
     this.changed()
   }

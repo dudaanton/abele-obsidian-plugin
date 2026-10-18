@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import {
   EditableFileView,
   Notice,
@@ -80,7 +81,7 @@ export class DeckView extends EditableFileView {
     return DECK_VIEW_TYPE
   }
   getDisplayText(): string {
-    return this.file?.basename ?? 'Presentation'
+    return this.file?.basename ?? t('streamC.5d5ee15775006a81')
   }
   getIcon(): string {
     return 'presentation'
@@ -196,13 +197,13 @@ export class DeckView extends EditableFileView {
     )
     if (audienceBootstraps.has(this.leaf) || this.positioning > 0) this.viewer.suspendMedia(true)
     this.viewer
-      .button('Present: with notes and a clock', () => void this.startPresenter(), 'presentation')
+      .button(t('streamC.a95eb1424971b166'), () => void this.startPresenter(), 'presentation')
       .classList.add('abele-deck-presenter-action')
     this.viewer
-      .button('Edit the source', () => void this.edit(false), 'code-2')
+      .button(t('streamC.8bd49b656a35b091'), () => void this.edit(false), 'code-2')
       .classList.add('abele-deck-editor-action')
     this.viewer
-      .button('Edit the source beside the slides', () => void this.edit(true), 'columns-2')
+      .button(t('streamC.a8d62d0179b99467'), () => void this.edit(true), 'columns-2')
       .classList.add('abele-deck-editor-action')
   }
 
@@ -289,7 +290,10 @@ export class DeckView extends EditableFileView {
       audience.show = show
       audience.viewer.follow(show)
       audience.viewer.root.classList.add('abele-deck-audience')
-      audience.viewer.button('Fullscreen', () => void audience.viewer?.present(true))
+      audience.viewer.button(
+        t('streamC.c461dbb2bab7d8bc'),
+        () => void audience.viewer?.present(true)
+      )
       const audienceDoc = audience.contentEl.ownerDocument
       audienceDoc.defaultView?.addEventListener('beforeunload', end)
       show.onEnd(() => {
@@ -308,7 +312,9 @@ export class DeckView extends EditableFileView {
     } catch (error) {
       show.end()
       new Notice(
-        `Presentation could not be started: ${error instanceof Error ? error.message : error}`
+        t('streamC.f0f0032c562542dc', {
+          v1: String(error instanceof Error ? error.message : error),
+        })
       )
     }
   }

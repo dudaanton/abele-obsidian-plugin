@@ -17,6 +17,7 @@ import StagedSettingsBlock from '@/components/sync/StagedSettingsBlock.vue'
 import Button from '@/components/obsidian/Button.vue'
 import { TokenSettingsPort } from '@/sync/tokenSettingsPort'
 import { useVault } from '../helpers/testEnv'
+import { initializeLocale } from '../helpers/i18n'
 
 /** The dialog itself is Obsidian's; unwrapping it puts the body where a query can reach it. */
 const STUBS = { ObsidianModal: { template: '<div><slot /></div>' } }
@@ -209,6 +210,23 @@ describe('the settings-arrived dialog', () => {
 })
 
 describe('the settings block on the Sync tab', () => {
+  it('resolves its default action after the host language initializes', () => {
+    initializeLocale('ru')
+    const view = mount(StagedSettingsBlock, {
+      props: { changes: [change('.obsidian/app.json', 'Sample device')], names: {} },
+      global: { stubs: STUBS },
+    })
+    try {
+      expect(view.findAllComponents(Button).map((b) => b.props('text'))).toContain(
+        'Перезагрузить сейчас'
+      )
+      expect(view.text()).toContain('От Sample device.')
+    } finally {
+      view.unmount()
+      initializeLocale('en')
+    }
+  })
+
   it('offers Apply and reload and Keep, and no Later', () => {
     const view = mount(StagedSettingsBlock, {
       props: { changes: CHANGES, names: NAMES, applyText: 'Apply and reload' },

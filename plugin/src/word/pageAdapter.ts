@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import type { WordPackage, WordParagraph } from './package'
 import type {
   WordMark,
@@ -138,7 +139,7 @@ export async function wordPageModel(doc: WordPackage): Promise<WordPageModel> {
         number: image.number,
         paragraph: image.paragraph,
         src: `data:${mime};base64,${btoa(binary)}`,
-        alt: `Image ${image.number}`,
+        alt: t('streamC.82e2773be1f2ecda', { v1: String(image.number) }),
         width: image.width,
         height: image.height,
       }

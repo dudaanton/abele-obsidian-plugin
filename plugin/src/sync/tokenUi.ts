@@ -1,3 +1,5 @@
+import { settingsSyncText } from '@/i18n/settingsSync'
+import { t } from '@/i18n'
 import { englishSyncText, type SyncText } from './presentation'
 import { MobileWholeReadLimitError } from './mobileWholeRead'
 import { FolderScopeError } from './scopedFileSystem'
@@ -161,8 +163,10 @@ export const scopeShortName = (scope: V2Scope | null, text: SyncText = englishSy
       : scope.path === '/'
         ? text('Whole vault')
         : scope.path.split('/').pop()
-export const connectionName = (record: Pick<TokenConnectionRecord, 'scope' | 'address'>) =>
-  scopeName(record.scope) + ' · ' + new URL(record.address).host
+export const connectionName = (
+  record: Pick<TokenConnectionRecord, 'scope' | 'address'>,
+  text: SyncText = englishSyncText
+) => scopeName(record.scope, text) + ' · ' + new URL(record.address).host
 export const statusName = (status: string, text: SyncText = englishSyncText) =>
   text(
     (
@@ -757,10 +761,13 @@ export class TokenUi {
               (authority.scope.kind === 'folder' &&
                 one.scope.path.startsWith(authority.scope.path + '/')))
         )
-        .map((one) => ({ label: one.label, scope: scopeName(one.scope) })),
+        .map((one) => ({ label: one.label, scope: scopeName(one.scope, settingsSyncText) })),
     }
     if (authority.token_id && !tokens.items.some((one) => one.id === authority.token_id))
-      facts.access.unshift({ label: 'This connection', scope: scopeName(authority.scope) })
+      facts.access.unshift({
+        label: t('streamC.8cc283e26ae77aa1'),
+        scope: scopeName(authority.scope, settingsSyncText),
+      })
     this.deletionFacts.set(id, facts)
     return facts
   }
@@ -837,7 +844,7 @@ export class TokenUi {
     this.publish(id, {
       events: [
         ...(this.activity.value[id]?.events ?? []),
-        { at: Date.now(), text: 'Deleted from the server. Local files kept.' },
+        { at: Date.now(), text: t('streamC.eb5f15550a0803de') },
       ],
     })
     assertCurrent()

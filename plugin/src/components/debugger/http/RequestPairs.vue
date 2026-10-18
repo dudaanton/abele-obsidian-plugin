@@ -22,14 +22,18 @@
         type="checkbox"
         class="abele-http-pairs__on"
         :checked="!pair.off"
-        :aria-label="pair.off ? `Send ${pair.key}` : `Leave ${pair.key} out`"
+        :aria-label="
+          pair.off
+            ? t('streamC.3d1afac7ffed82e8', { v1: String(pair.key) })
+            : t('streamC.1d1bbfbf2916a4f7', { v1: String(pair.key) })
+        "
         @change="emit('change', i, { ...pair, off: !pair.off })"
       />
       <input
         type="text"
         class="abele-http-pairs__key"
         :value="pair.key"
-        :aria-label="`Name of line ${i + 1}`"
+        :aria-label="t('streamC.85b6b76ba422c796', { v1: String(i + 1) })"
         spellcheck="false"
         @change="emit('change', i, { ...pair, key: ($event.target as HTMLInputElement).value })"
       />
@@ -45,7 +49,7 @@
         type="text"
         class="abele-http-pairs__value"
         :value="pair.value"
-        :aria-label="`Value of ${pair.key}`"
+        :aria-label="t('streamC.f311f28dffba3c36', { v1: String(pair.key) })"
         :aria-invalid="pair.missing ? 'true' : undefined"
         spellcheck="false"
         @change="emit('change', i, { ...pair, value: ($event.target as HTMLInputElement).value })"
@@ -54,7 +58,7 @@
         class="abele-http-pairs__remove"
         icon="x"
         size="xs"
-        :tooltip="`Remove ${pair.key}`"
+        :tooltip="t('streamC.77f34651d2fffa76', { v1: String(pair.key) })"
         @click="emit('remove', i)"
       />
     </div>
@@ -75,6 +79,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 import { onMounted, onUpdated, ref } from 'vue'
 import { setTooltip } from 'obsidian'
 import Icon from '../../obsidian/Icon.vue'
@@ -105,10 +111,7 @@ function add(event: Event) {
 const secretEls = ref<HTMLElement[]>([])
 const tips = () => {
   for (const el of secretEls.value)
-    setTooltip(
-      el,
-      el.dataset.missing ?? 'From the keys of the plugin, by name; the node gets it for one send'
-    )
+    setTooltip(el, el.dataset.missing ?? t('streamC.252467dc4f58399e'))
 }
 onMounted(tips)
 onUpdated(tips)

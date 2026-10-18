@@ -63,25 +63,27 @@
          header's own close would only say the same thing twice. -->
     <template #footer>
       <Button
-        :text="asksSomething ? 'Cancel' : 'Close'"
+        :text="asksSomething ? t('kit.cancel') : t('sync.window.close')"
         type="button"
-        :tooltip="asksSomething ? 'Close this and run nothing' : 'Close this'"
+        :tooltip="asksSomething ? t('streamC.a628d0d5e309a3e4') : t('streamC.7de2b4f3cdf0898d')"
         @click="onCancel"
       />
       <!-- Nothing to fill in means nothing to run: the form is something to read. -->
       <Button
         v-if="asksSomething"
-        text="Run"
+        :text="t('streamC.00d60e31a4e6b834')"
         accent
         type="submit"
         :form="formId"
-        tooltip="Run the script with these answers"
+        :tooltip="t('streamC.a3f1d328d052bccf')"
       />
     </template>
   </ObsidianModal>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 import { computed, reactive, onMounted, onBeforeUnmount, useTemplateRef } from 'vue'
 import ObsidianModal from './obsidian/Modal.vue'
 import Checkbox from './obsidian/Checkbox.vue'
@@ -136,8 +138,8 @@ const ownHeading = computed(() => {
 
 /** "Script Parameters" is the wrong heading for something that asks for no parameters. */
 const title = computed(() => {
-  if (asksSomething.value) return props.heading || 'Script Parameters'
-  return titleField.value?.label || ownHeading.value || 'Script'
+  if (asksSomething.value) return props.heading || t('streamC.6b00cd946049eadd')
+  return titleField.value?.label || ownHeading.value || t('streamC.102acc10e67a297d')
 })
 
 const bodyOf = (field: FormField): string => {

@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 // Writes the note about a run into the folder the settings name, in the vault or anywhere on this
 // computer, and opens it. A note already there is left alone: a new one is made next to it.
 import { Notice, TFile } from 'obsidian'
@@ -66,6 +67,6 @@ export async function writeRunNote(state: TraceRunState, rpc?: TraceRpc): Promis
     const file = app.vault.getAbstractFileByPath(path)
     if (file instanceof TFile) await app.workspace.getLeaf('tab').openFile(file)
   }
-  new Notice(`Note written: ${path}`)
+  new Notice(t('streamC.3cb5b7a0491d2a70', { v1: String(path) }))
   return path
 }

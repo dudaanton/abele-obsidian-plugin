@@ -18,6 +18,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 // The source file in its tab of the main area, in the plugin's code viewer, with what a debugger
 // adds: a margin before the line numbers where a press sets or removes a breakpoint, and the line
 // the program stands on, marked across the whole width. The marks are the panel's: a red disc,
@@ -72,11 +74,15 @@ const extras = new Compartment()
 /** Where the setup of a record point is drawn: a block under its line. */
 const editorHost = shallowRef<HTMLElement | null>(null)
 
-const words = { set: 'Stops here', pending: 'Not confirmed yet', rejected: 'Cannot stop here' }
+const words = {
+  set: t('streamC.e8041f01a8c14622'),
+  pending: t('streamC.96584d78f43835f6'),
+  rejected: t('streamC.3f1facb79cc50b40'),
+}
 const recordWords = {
-  set: 'Record point',
-  pending: 'Record point, not confirmed yet',
-  rejected: 'Cannot record here',
+  set: t('streamC.06905f2ac0915241'),
+  pending: t('streamC.0ea0c8ad44c38c29'),
+  rejected: t('streamC.6adbfde88c55906a'),
 }
 
 class Mark extends GutterMarker {
@@ -115,8 +121,8 @@ class Mark extends GutterMarker {
       ? `${(record ? recordWords : words)[this.point.state]}${this.point.reason ? `: ${this.point.reason}` : ''}`
       : ''
     const label = this.point
-      ? `${said} · press to remove · right-click for more`
-      : `Stop at line ${this.line} · right-click for a record point`
+      ? t('streamC.38b9d675845ab96b', { v1: String(said) })
+      : t('streamC.eb19cd4d6df5378c', { v1: String(this.line) })
     el.setAttribute('aria-label', label)
     setTooltip(el, label)
     const line = this.line
@@ -163,8 +169,8 @@ class Tail extends WidgetType {
     el.setText(this.hits > 1 ? `${this.text} · ×${this.hits}` : this.text)
     const label =
       this.hits > 1
-        ? `Taken ${this.hits} times; the last shown · press for the steps`
-        : 'Press for the step'
+        ? t('streamC.9a684a03320b4ca2', { v1: String(this.hits) })
+        : t('streamC.8f4c910e565cad23')
     el.setAttribute('aria-label', label)
     setTooltip(el, label)
     el.onclick = () => emit('open-hits', this.line)

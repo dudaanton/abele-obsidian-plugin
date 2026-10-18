@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * How far into the chapter and the book the page on screen is, beyond the one percentage the
  * progress line had: the page of the chapter and how many are left in it, as Apple Books and
@@ -71,15 +72,17 @@ export function progressText(
 ): string | null {
   if (show === 'percent') return percent
   if (!progress) return null
-  if (show === 'page') return `Page ${progress.page} of ${progress.pages}`
+  if (show === 'page')
+    return t('streamC.03b645777c434fa7', { v1: String(progress.page), v2: String(progress.pages) })
   if (show === 'left') {
     const left = progress.pages - progress.page
-    return left === 0
-      ? 'Last page in chapter'
-      : `${left} ${left === 1 ? 'page' : 'pages'} left in chapter`
+    return left === 0 ? t('streamC.59f494f4a625f9a0') : t('streamC.pagesLeft', { count: left })
   }
   if (progress.location === null || progress.locations === null) return null
-  return `Loc ${progress.location} of ${progress.locations}`
+  return t('streamC.a05148b61afbc018', {
+    v1: String(progress.location),
+    v2: String(progress.locations),
+  })
 }
 
 /** The next way of showing the measure after `show`, skipping any with nothing to say. */

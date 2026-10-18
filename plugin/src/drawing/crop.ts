@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * Cropping a picture: a frame over it, a shape the frame keeps, and how the picture is turned and
  * mirrored. The frame is kept in fractions of the picture as it is shown (turned and mirrored), so
@@ -26,11 +27,47 @@ export interface CropState {
 }
 
 export const CROP_ASPECTS: readonly { id: CropAspect; label: string; tooltip: string }[] = [
-  { id: 'free', label: 'Free', tooltip: 'Any shape' },
-  { id: 'original', label: 'Original', tooltip: 'The picture’s own shape' },
-  { id: 'square', label: 'Square', tooltip: 'Square' },
-  { id: '4:3', label: '4:3', tooltip: '4:3, and 3:4 when picked again' },
-  { id: '16:9', label: '16:9', tooltip: '16:9, and 9:16 when picked again' },
+  {
+    id: 'free',
+    get label() {
+      return t('streamC.f411a1fb62758b4c')
+    },
+    get tooltip() {
+      return t('streamC.0d56a805d561372a')
+    },
+  },
+  {
+    id: 'original',
+    get label() {
+      return t('streamC.88d759ea02cef4b8')
+    },
+    get tooltip() {
+      return t('streamC.08cc39d8159477ab')
+    },
+  },
+  {
+    id: 'square',
+    get label() {
+      return t('streamC.c11092bc0861591e')
+    },
+    get tooltip() {
+      return t('streamC.c11092bc0861591e')
+    },
+  },
+  {
+    id: '4:3',
+    label: '4:3',
+    get tooltip() {
+      return t('streamC.b7f2168099e9da3c')
+    },
+  },
+  {
+    id: '16:9',
+    label: '16:9',
+    get tooltip() {
+      return t('streamC.ad941a358e482935')
+    },
+  },
 ]
 
 /** The whole picture, nothing cut, not turned. */

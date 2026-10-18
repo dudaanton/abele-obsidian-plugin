@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import type { App } from 'obsidian'
 import { mountKit, type KitMount } from '@/components/obsidian/mount'
 import CanvasPublicationReview from '@/components/canvas/CanvasPublicationReview.vue'
@@ -5,9 +6,7 @@ import type { CanvasPublicationOutcome } from './core/session'
 import type { CanvasPublicationReview as Review } from './obsidianStore'
 
 export function canvasPublicationStatus(outcome: CanvasPublicationOutcome): string {
-  return outcome === 'unknown'
-    ? 'Canvas publication outcome is uncertain; retained work needs local review.'
-    : 'The canvas write was confirmed, but local acknowledgment is pending; retained work needs local review.'
+  return outcome === 'unknown' ? t('streamC.0875b7517098c910') : t('streamC.45ff3754e5110bf9')
 }
 
 /**

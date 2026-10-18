@@ -1,16 +1,26 @@
 <template>
-  <div class="abele-book-ink" role="toolbar" aria-label="Drawing" data-ignore-swipe="true">
+  <div
+    class="abele-book-ink"
+    role="toolbar"
+    :aria-label="t('streamC.39de4731eedc9da7')"
+    data-ignore-swipe="true"
+  >
     <!-- The way out sits on the left, where the pen that turned drawing on was. -->
-    <Icon icon="check" tooltip="Stop drawing" class="abele-book-ink__done" @click="emit('done')" />
+    <Icon
+      icon="check"
+      :tooltip="t('streamC.2f6a897afbb198e3')"
+      class="abele-book-ink__done"
+      @click="emit('done')"
+    />
     <div class="abele-book-ink__group">
       <Icon
-        v-for="t in TOOLS"
-        :key="t.id"
-        :icon="t.icon"
-        :tooltip="t.tooltip"
-        :active="ink.tool === t.id"
+        v-for="tool in TOOLS"
+        :key="tool.id"
+        :icon="tool.icon"
+        :tooltip="tool.tooltip"
+        :active="ink.tool === tool.id"
         class="abele-book-ink__tool"
-        @click="emit('tool', t.id)"
+        @click="emit('tool', tool.id)"
       />
     </div>
     <div class="abele-book-ink__group">
@@ -20,14 +30,14 @@
         icon="circle"
         :color="c === 'black' ? undefined : c"
         :active="current === c"
-        :tooltip="`Draw in ${c}`"
+        :tooltip="t('streamC.acd278bfc91387ff', { v1: streamCLabel(c) })"
         class="abele-book-ink__swatch"
         :class="{ 'abele-book-ink__swatch_ink': c === 'black' }"
         @click="emit('color', c)"
       />
       <Icon
         icon="line-squiggle"
-        :tooltip="`Thickness: ${ink.thickness}`"
+        :tooltip="t('streamC.a14055dd728bec45', { v1: streamCLabel(ink.thickness) })"
         class="abele-book-ink__thickness"
         @click="thickness"
       />
@@ -37,22 +47,20 @@
         v-if="ink.touch"
         icon="pointer"
         :active="ink.finger"
-        :tooltip="
-          ink.finger ? 'A finger draws: tap to let it move the pages' : 'Draw with a finger too'
-        "
+        :tooltip="ink.finger ? t('streamC.d3b08e8bb2193fc0') : t('streamC.6b28e49ffe9b8b69')"
         class="abele-book-ink__finger"
         @click="emit('finger', !ink.finger)"
       />
       <Icon
         icon="undo-2"
-        tooltip="Undo"
+        :tooltip="t('streamC.a8283ade31856f71')"
         :disabled="!ink.canUndo"
         class="abele-book-ink__undo"
         @click="emit('undo')"
       />
       <Icon
         icon="redo-2"
-        tooltip="Redo"
+        :tooltip="t('streamC.74273989b0966e23')"
         :disabled="!ink.canRedo"
         class="abele-book-ink__redo"
         @click="emit('redo')"
@@ -62,6 +70,9 @@
 </template>
 
 <script setup lang="ts">
+import { streamCLabel } from '@/i18n/streamCLabels'
+import { t } from '@/i18n'
+
 /**
  * The row under a PDF's page while drawing is on: the pen, the marker, the eraser, the tool's
  * colours and thickness, drawing with a finger (a touch screen only), undo and redo, and the way out on the
@@ -87,9 +98,9 @@ const emit = defineEmits<{
 }>()
 
 const TOOLS: { id: InkToolName; icon: string; tooltip: string }[] = [
-  { id: 'pen', icon: 'pen-line', tooltip: 'Pen: the harder it presses, the wider the line' },
-  { id: 'marker', icon: 'highlighter', tooltip: 'Marker' },
-  { id: 'eraser', icon: 'eraser', tooltip: 'Eraser: takes away the whole stroke it touches' },
+  { id: 'pen', icon: 'pen-line', tooltip: t('streamC.2b62e979a01b8587') },
+  { id: 'marker', icon: 'highlighter', tooltip: t('streamC.13ce08699c85c1f2') },
+  { id: 'eraser', icon: 'eraser', tooltip: t('streamC.84f2425d2b761cc5') },
 ]
 
 /** The thickness menu, under the button that opened it. */

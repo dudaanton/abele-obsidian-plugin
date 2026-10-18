@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { ItemView, type App, type ViewStateResult, type WorkspaceLeaf } from 'obsidian'
 import { reactive } from 'vue'
 import UserDocs from '@/components/docs/UserDocs.vue'
@@ -26,7 +27,7 @@ export class UserDocsView extends ItemView {
   }
 
   getDisplayText(): string {
-    return 'Abele documentation'
+    return t('streamC.18fcfb72b71ea682')
   }
 
   static getIcon(): string {

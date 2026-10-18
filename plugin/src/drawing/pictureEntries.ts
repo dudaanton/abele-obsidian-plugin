@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * Drawing on a picture, begun where the picture is looked at: a pen in the header of Obsidian's
  * own picture tab, and "Draw on this picture" in the menu of a picture embedded in a note — in
@@ -49,7 +50,7 @@ export class PenOnPictureTabs {
     for (const tab of live) {
       const pen = this.pens.get(tab)
       if (isDrawable(tab.file) && !pen) {
-        const el = tab.addAction('pen-line', DRAW_ON_PICTURE, () => {
+        const el = tab.addAction('pen-line', t('streamC.c8496bb4b6a7f90a'), () => {
           if (tab.file) this.open(tab.file.path)
         })
         el.classList.add(PEN_ACTION_CLASS)
@@ -186,7 +187,7 @@ export class PictureEmbedMenus {
     const menu = new Menu()
     menu.addItem((item) =>
       item
-        .setTitle(DRAW_ON_PICTURE)
+        .setTitle(t('streamC.c8496bb4b6a7f90a'))
         .setIcon('pen-line')
         .onClick(() => this.open(found.file.path, found.anchor))
     )

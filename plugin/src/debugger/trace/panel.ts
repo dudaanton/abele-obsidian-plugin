@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 // What the debugger's panel and a source's margin do about recording: menus, the runs folder,
 // the record point editor's moves. The panel and the margin stay presentational; this is their host.
 import { Menu, Notice } from 'obsidian'
@@ -9,17 +10,17 @@ import type { PointEdit } from './TraceSession'
 
 const app = () => GlobalStore.getInstance().app
 const fail = (e: unknown) =>
-  new Notice(e instanceof Error ? e.message : 'The node did not take the change')
+  new Notice(e instanceof Error ? e.message : t('streamC.6e28a0a349894a63'))
 
 /** Before the first record point of a project: where its runs go on the node's disk. */
 async function askFolderOnce(binding: DebuggerBinding) {
   const trace = binding.trace
   if (!trace?.status || trace.status.chosen || trace.runs.length) return
   const folder = await promptDialog({
-    title: 'Where to keep recorded runs',
+    title: t('streamC.dd72f56b85fd4140'),
     placeholder: trace.status.folder,
     value: trace.status.folder,
-    submitText: 'Keep them here',
+    submitText: t('streamC.2e88fc37f9e0ed60'),
   })
   if (folder) await trace.chooseFolder(folder)
 }
@@ -57,33 +58,33 @@ export function marginMenu(
   if (!known) {
     menu.addItem((i) =>
       i
-        .setTitle('Add breakpoint')
+        .setTitle(t('streamC.0bb179c57e2cf318'))
         .setIcon('circle')
         .onClick(() => void binding.controller.toggleBreakpoint(sourceId, line).catch(fail))
     )
     if (trace)
       menu.addItem((i) =>
         i
-          .setTitle('Add record point')
+          .setTitle(t('settings.metadata.bf774e203130976f'))
           .setIcon('diamond')
           .onClick(() => edit(line))
       )
   } else if (record && trace) {
     menu.addItem((i) =>
       i
-        .setTitle('Edit')
+        .setTitle(t('settings.GithubSettings.edit.464c4ffd'))
         .setIcon('pencil')
         .onClick(() => edit(line))
     )
     menu.addItem((i) =>
       i
-        .setTitle('Make it a breakpoint')
+        .setTitle(t('streamC.fc4e5ab706e49e20'))
         .setIcon('circle')
         .onClick(() => void trace.toBreakpoint(record.id).catch(fail))
     )
     menu.addItem((i) =>
       i
-        .setTitle('Remove')
+        .setTitle(t('settings.nodes.remove'))
         .setIcon('trash-2')
         .onClick(() => void trace.removePoint(record.id).catch(fail))
     )
@@ -91,13 +92,13 @@ export function marginMenu(
     if (trace)
       menu.addItem((i) =>
         i
-          .setTitle('Make it a record point')
+          .setTitle(t('streamC.14d9f603fe59ff44'))
           .setIcon('diamond')
           .onClick(() => edit(line))
       )
     menu.addItem((i) =>
       i
-        .setTitle('Remove breakpoint')
+        .setTitle(t('streamC.d7f159f16e10153a'))
         .setIcon('trash-2')
         .onClick(() => void binding.controller.removeBreakpoint(known.id).catch(fail))
     )
@@ -129,13 +130,13 @@ export function runMenu(binding: DebuggerBinding, runId: string, event: MouseEve
   const menu = new Menu()
   menu.addItem((i) =>
     i
-      .setTitle('Rename')
+      .setTitle(t('streamC.3064d79a295cefe4'))
       .setIcon('pencil')
       .onClick(async () => {
         const name = await promptDialog({
-          title: 'Rename the run',
+          title: t('streamC.77e7c70c8e75a435'),
           value: run.name,
-          submitText: 'Rename',
+          submitText: t('streamC.3064d79a295cefe4'),
         })
         if (name)
           await trace.rpc
@@ -146,20 +147,20 @@ export function runMenu(binding: DebuggerBinding, runId: string, event: MouseEve
   )
   menu.addItem((i) =>
     i
-      .setTitle('Copy where it is on disk')
+      .setTitle(t('streamC.b0c7071a6a483a94'))
       .setIcon('copy')
       .onClick(() => void navigator.clipboard.writeText(`${trace.folder}/${runId}`).catch(fail))
   )
   menu.addSeparator()
   menu.addItem((i) =>
     i
-      .setTitle('Delete')
+      .setTitle(t('kit.delete'))
       .setIcon('trash-2')
       .setWarning(true)
       .onClick(async () => {
         const sure = await confirmDialog({
-          title: 'Delete the run',
-          message: `“${run.name}” and every value it took are deleted from the node’s disk. Notes about it stay, their links lead nowhere.`,
+          title: t('streamC.86f16744d55a4b90'),
+          message: t('streamC.3cca62b42dab0c64', { v1: String(run.name) }),
         })
         if (sure)
           await trace.rpc
@@ -176,21 +177,16 @@ export async function folderMenu(binding: DebuggerBinding) {
   const trace = binding.trace
   if (!trace) return
   const folder = await promptDialog({
-    title: 'Where to keep recorded runs',
+    title: t('streamC.dd72f56b85fd4140'),
     value: trace.folder,
-    submitText: 'Keep them here',
+    submitText: t('streamC.2e88fc37f9e0ed60'),
   })
   if (folder && folder !== trace.folder) await trace.chooseFolder(folder).catch(fail)
 }
 
 export function browserMenu(event: MouseEvent) {
   const menu = new Menu()
-  menu.addItem((i) =>
-    i
-      .setTitle("The browser's requests are not recorded yet: only the code is")
-      .setIcon('globe')
-      .setDisabled(true)
-  )
+  menu.addItem((i) => i.setTitle(t('streamC.12fa837ba890cb5a')).setIcon('globe').setDisabled(true))
   menu.showAtMouseEvent(event)
 }
 

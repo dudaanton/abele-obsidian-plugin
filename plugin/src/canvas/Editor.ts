@@ -1,3 +1,6 @@
+import { streamCUI } from '@/i18n/streamCLabels'
+
+import { t } from '@/i18n'
 /**
  * Human interaction over the existing shared document. Every change applies in memory at once,
  * one undo step each; writing the file is batched by the write scheduler, later and less often.
@@ -355,7 +358,7 @@ export class CanvasEditor {
       'textarea'
     ) as HTMLTextAreaElement
     this.text.rows = 4
-    this.text.setAttribute('aria-label', 'Canvas card text')
+    this.text.setAttribute('aria-label', t('streamC.fa05c70541d019b0'))
     this.panel.append(this.text)
     this.status = doc.createElementNS('http://www.w3.org/1999/xhtml', 'div')
     this.status.className = 'abele-canvas-status abele-canvas-editor-status'
@@ -415,7 +418,7 @@ export class CanvasEditor {
     this.inkSelectionControls = make('details')
     this.inkSelectionControls.className = 'abele-canvas-ink-selection'
     const inkSummary = make('summary')
-    inkSummary.textContent = 'Selection actions'
+    inkSummary.textContent = t('streamC.b847ffdd0a1bfe55')
     this.inkSelectionControls.append(inkSummary)
     const inkActions = make('div')
     inkActions.className = 'abele-canvas-controls'
@@ -480,14 +483,14 @@ export class CanvasEditor {
     this.properties = make('details')
     this.properties.className = 'abele-canvas-connection-properties'
     const summary = make('summary')
-    summary.textContent = 'Connection style'
+    summary.textContent = t('streamC.481269723d697ba4')
     this.properties.append(summary)
     const fields = make('div')
     fields.className = 'abele-canvas-controls'
     this.properties.append(fields)
     this.label = make('input')
     this.label.type = 'text'
-    this.label.setAttribute('aria-label', 'Connection label')
+    this.label.setAttribute('aria-label', t('streamC.052e8911351abcd4'))
     this.label.placeholder = 'Connection label'
     fields.append(this.label)
     this.button('Apply connection style', 'Apply', () => this.applyConnection(), fields)
@@ -747,15 +750,15 @@ export class CanvasEditor {
       'http://www.w3.org/1999/xhtml',
       'select'
     ) as HTMLSelectElement
-    select.setAttribute('aria-label', label)
-    select.title = label
+    select.setAttribute('aria-label', streamCUI(label))
+    select.title = streamCUI(label)
     for (const [value, text] of options) {
       const option = parent.ownerDocument.createElementNS(
         'http://www.w3.org/1999/xhtml',
         'option'
       ) as HTMLOptionElement
       option.value = value
-      option.textContent = text
+      option.textContent = streamCUI(text)
       select.append(option)
     }
     parent.append(select)
@@ -767,9 +770,9 @@ export class CanvasEditor {
       'button'
     ) as HTMLButtonElement
     button.type = 'button'
-    button.textContent = text
-    button.setAttribute('aria-label', label)
-    button.title = label
+    button.textContent = streamCUI(text)
+    button.setAttribute('aria-label', streamCUI(label))
+    button.title = streamCUI(label)
     parent.append(button)
     this.buttons.set(label, button)
     this.listen(button, 'click', () => {
@@ -783,7 +786,9 @@ export class CanvasEditor {
   }
   private fail(error: unknown): void {
     this.ports.notice(
-      `Canvas change did not complete: ${error instanceof Error ? error.message : 'Local failure'}`
+      t('streamC.f7b9ae50b6f30312', {
+        v1: String(error instanceof Error ? error.message : 'Local failure'),
+      })
     )
     this.refresh()
   }
@@ -1716,7 +1721,7 @@ export class CanvasEditor {
             'option'
           ) as HTMLOptionElement
           option.value = value
-          option.textContent = 'Retain existing'
+          option.textContent = t('streamC.039954cf0fa6ff58')
           select.append(option)
         }
         select.value = value
@@ -1812,39 +1817,40 @@ export class CanvasEditor {
       !!this.geometry || !retained || !!document?.recovery || !!session?.publicationOutcome
     discard.disabled =
       this.waiting || this.composing || (!!session?.busy && this.ownedDraft !== document)
-    const penHint =
-      'Draw on a card to attach ink; start on the background for free ink. Two fingers navigate.'
-    const eraserHint = 'Drag over ink to erase. Two fingers navigate; Undo restores the gesture.'
+    const penHint = t('streamC.457e7e91a3fe2e28')
+    const eraserHint = t('streamC.fcc47565254eaf00')
     this.status.textContent = this.geometry
       ? this.tool === 'pen' || this.tool === 'marker'
         ? penHint
         : this.tool === 'eraser' || this.tool === 'partial-eraser'
           ? eraserHint
-          : 'Canvas gesture in progress…'
+          : t('streamC.25a31d11602c91ed')
       : retained
-        ? 'Unsaved canvas work — retained in memory only; not saved. Reloading or crashing can lose it.' +
+        ? t('streamC.f279db8d921ff3d0') +
           (session.conflict || (document.draftPath && document.draftPath !== document.file.path)
-            ? ' The source changed; retry is blocked. Keep or explicitly discard this local draft.'
+            ? t('streamC.561e76edd2ead70e')
             : '') +
           (!document.draftPath && !document.recovery && !session.publicationOutcome
-            ? ' Discard this local history preview before trying Undo or Redo again.'
+            ? t('streamC.3c773ee737f2e8f9')
             : '')
         : this.waiting
-          ? 'Canvas operation in progress…'
+          ? t('streamC.48ea1c88b1564839')
           : this.selected.size
             ? this.selected.size === 1
-              ? `Selected ${node?.type ?? (ink.length ? 'stroke' : 'connection')}`
-              : `${this.selected.size} objects selected`
+              ? t('streamC.d4ade37b33886e61', {
+                  v1: String(node?.type ?? (ink.length ? 'stroke' : 'connection')),
+                })
+              : t('streamC.bc70fd8cafb9d70f', { v1: String(this.selected.size) })
             : this.tool === 'lasso'
-              ? 'Circle cards and ink to select; drag the selection to move or its corner to scale. Open Selection actions to edit it.'
+              ? t('streamC.d41bb075722fed4a')
               : this.tool === 'eraser' || this.tool === 'partial-eraser'
                 ? eraserHint
                 : this.tool === 'pen' || this.tool === 'marker'
                   ? penHint
                   : this.tool === 'connect'
-                    ? 'Drag from a card to another card to connect them.'
+                    ? t('streamC.8a08f7993bfe5d71')
                     : this.tool === 'line' || this.tool === 'arrow'
-                      ? 'Drag to draw a free line or arrow.'
+                      ? t('streamC.50b7e42bb305982a')
                       : ''
     for (const fn of this.watchers) fn()
   }
@@ -2084,7 +2090,7 @@ export class CanvasEditor {
     await this.viewer.el.ownerDocument.defaultView?.navigator.clipboard
       ?.writeText(text)
       .catch(() => {})
-    this.ports.notice(`Copied ${count} to the clipboard`)
+    this.ports.notice(t('streamC.0e75a6d879b5ea3f', { v1: String(count) }))
     return true
   }
   /** What was copied, kept here too, for a clipboard the page may not read back. */

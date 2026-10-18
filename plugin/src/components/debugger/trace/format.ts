@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 // How a run's numbers read: sizes the way a file list says them, times from the run's start.
 import type { TraceStep } from './types'
 
@@ -16,10 +17,10 @@ export function since(ms: number): string {
 
 /** What the glyph before a step says, for its tooltip. */
 export function kindWords(step: TraceStep): string {
-  if (step.kind === 'probe') return 'Taken at a record point'
-  if (step.kind === 'error') return 'An exception'
-  if (step.kind === 'browser-lost') return 'The browser tab went away'
-  return `${step.sent ? 'A request you sent' : 'A browser request'}${step.status ? `, ${step.status}` : ''}`
+  if (step.kind === 'probe') return t('streamC.87baa9bb75b99f13')
+  if (step.kind === 'error') return t('streamC.5f5364de8ce3a57d')
+  if (step.kind === 'browser-lost') return t('streamC.4e8d7f10d8e9f475')
+  return `${step.sent ? t('streamC.fd6ff1c88db4072e') : t('streamC.4fcfb007acf1f0e2')}${step.status ? `, ${step.status}` : ''}`
 }
 
 /** Everything the step took, in one size. */

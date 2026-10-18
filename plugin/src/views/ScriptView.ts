@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { ItemView, WorkspaceLeaf, type ViewStateResult } from 'obsidian'
 import { nanoid } from 'nanoid'
 import { shallowReactive, watch, type WatchStopHandle } from 'vue'
@@ -79,7 +80,7 @@ export class ScriptView extends ItemView {
   }
 
   getDisplayText() {
-    return this.model.view?.title ?? this.model.saved?.script ?? 'Script view'
+    return this.model.view?.title ?? this.model.saved?.script ?? t('streamC.62d3afdf1763af2e')
   }
 
   getIcon() {

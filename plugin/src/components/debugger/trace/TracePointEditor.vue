@@ -6,17 +6,17 @@
     ref="root"
     class="abele-trace-point"
     role="group"
-    :aria-label="`Record point at line ${line}`"
+    :aria-label="t('streamC.f40baf3eaf35ae5a', { v1: String(line) })"
     @keydown.esc.prevent="emit('cancel')"
   >
-    <span class="abele-trace-point__label">Take</span>
+    <span class="abele-trace-point__label">{{ t('streamC.8b862ba45dceddf7') }}</span>
     <div class="abele-trace-point__field">
       <div class="multi-select-container abele-trace-point__take">
         <div v-for="name in take" :key="name" class="multi-select-pill">
           <div class="multi-select-pill-content">{{ name }}</div>
           <Icon
             icon="x"
-            tooltip="Do not take this"
+            :tooltip="t('streamC.f7f1471b20393db0')"
             class="multi-select-pill-remove-button"
             @click="drop(name)"
           />
@@ -25,8 +25,8 @@
           ref="adding"
           v-model="added"
           class="multi-select-input"
-          :placeholder="take.length ? 'Add' : 'A name or an expression'"
-          aria-label="A name or an expression to take"
+          :placeholder="take.length ? t('settings.nodes.add') : t('streamC.deff2140ae9298d6')"
+          :aria-label="t('streamC.658c0b04dc2be861')"
           spellcheck="false"
           autocomplete="off"
           @keydown.enter.prevent="added.trim() ? add(added) : save()"
@@ -39,7 +39,7 @@
           :key="name"
           type="button"
           class="abele-trace-point__offer"
-          :aria-label="`Take ${name}`"
+          :aria-label="t('streamC.45859579bad18461', { v1: String(name) })"
           @click="add(name)"
         >
           + {{ name }}
@@ -47,40 +47,42 @@
       </div>
     </div>
 
-    <span class="abele-trace-point__label">When</span>
+    <span class="abele-trace-point__label">{{
+      t('settings.scripts.AutomationsEditor.when.cf9c7aa2')
+    }}</span>
     <Input
       v-model="when"
       class="abele-trace-point__code"
-      placeholder="Always"
-      aria-label="Fire only when this holds"
+      :placeholder="t('streamC.de9f057a471cdb8d')"
+      :aria-label="t('streamC.f6ec2c568705e307')"
       spellcheck="false"
       autocomplete="off"
       @keydown.enter.prevent="save"
     />
 
-    <span class="abele-trace-point__label">Note</span>
+    <span class="abele-trace-point__label">{{
+      t('settings.ai.AgentEditorModal.note.d8da2c49')
+    }}</span>
     <Input
       v-model="note"
-      placeholder="What happens here"
-      aria-label="What happens here: the run's step reads by it"
+      :placeholder="t('streamC.50024c1448c282ff')"
+      :aria-label="t('streamC.9ec399c83d2d2aaa')"
       @keydown.enter.prevent="save"
     />
 
     <div class="abele-trace-point__glyphs">
-      <Icon icon="trash-2" tooltip="Remove the point" @click="emit('remove')" />
-      <Icon
-        icon="circle"
-        tooltip="Make it a breakpoint: stop here"
-        @click="emit('to-breakpoint')"
-      />
+      <Icon icon="trash-2" :tooltip="t('streamC.267100ec1a3fd5ae')" @click="emit('remove')" />
+      <Icon icon="circle" :tooltip="t('streamC.6d124d50562f4c8c')" @click="emit('to-breakpoint')" />
       <span class="abele-trace-point__gap" />
-      <Icon icon="x" tooltip="Leave as it was (Escape)" @click="emit('cancel')" />
-      <Icon icon="check" tooltip="Keep (Enter)" @click="save" />
+      <Icon icon="x" :tooltip="t('streamC.6bba1520238f0cc2')" @click="emit('cancel')" />
+      <Icon icon="check" :tooltip="t('streamC.f0b24b84e41d1522')" @click="save" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 // What a record point takes, set up where it is: the names the editor sees on its line are
 // offered under the field, an expression is typed in with `as` for its name. Only what is named
 // is taken: with nothing named a pass is a step with its place and no values.

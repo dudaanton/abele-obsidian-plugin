@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { Notice, type App, type TFolder } from 'obsidian'
 import { promptDialog } from '@/components/obsidian/dialogs'
 import { newDocumentParent } from '@/helpers/newDocument'
@@ -6,10 +7,10 @@ import { DECK_VIEW_TYPE } from './opening'
 export async function newDeck(app: App, folder?: TFolder): Promise<void> {
   const parent = newDocumentParent(app, folder)
   const name = await promptDialog({
-    title: 'New presentation',
-    label: 'Presentation name',
-    placeholder: 'Presentation name',
-    submitText: 'Create',
+    title: t('commands.new-presentation'),
+    label: t('streamC.5145bae74d66be5b'),
+    placeholder: t('streamC.5145bae74d66be5b'),
+    submitText: t('kit.create'),
     autofocus: false,
     validate: (value) => {
       if (
@@ -35,7 +36,9 @@ export async function newDeck(app: App, folder?: TFolder): Promise<void> {
   } catch (error) {
     console.error('[Abele] Presentation creation failed:', error)
     new Notice(
-      `Presentation could not be created: ${error instanceof Error ? error.message : 'unknown error'}`
+      t('streamC.cfeba168b4a56a5f', {
+        v1: String(error instanceof Error ? error.message : 'unknown error'),
+      })
     )
   }
 }

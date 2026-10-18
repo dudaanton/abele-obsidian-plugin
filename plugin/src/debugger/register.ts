@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { ItemView, SuggestModal, Notice, type Plugin } from 'obsidian'
 import { mountKit, type KitMount } from '@/components/obsidian/mount'
 import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
@@ -16,7 +17,7 @@ export class DebugView extends ItemView {
     return DEBUG_VIEW_TYPE
   }
   getDisplayText() {
-    return 'Debug'
+    return t('streamC.1a03bd2fd107c453')
   }
   getIcon() {
     return 'bug-play'
@@ -59,7 +60,7 @@ class SessionPicker extends SuggestModal<DebuggerSnapshot> {
     private readonly sessions: DebuggerSnapshot[]
   ) {
     super(GlobalStore.getInstance().app)
-    this.setPlaceholder('Select a debug session')
+    this.setPlaceholder(t('streamC.95b22255ddc6fba2'))
   }
   getSuggestions(query: string) {
     return this.sessions.filter((s) =>
@@ -108,7 +109,9 @@ export async function openNodeDebugger(presenter: NodeChatPresenter) {
   } catch (e) {
     console.debug('[debugger] Debug session selection unavailable', e)
     new Notice(
-      e instanceof Error ? `Debug unavailable: ${e.message}` : 'Debug unavailable on this node'
+      e instanceof Error
+        ? t('streamC.d7d8996f39a79106', { v1: String(e.message) })
+        : t('streamC.c53799db18f59411')
     )
   }
 }

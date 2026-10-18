@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * What a book tab's ⋯ menu offers besides Obsidian's own: pages or scrolling, e-ink mode, zen mode, a link to the place
  * on screen, a chat about it, the search, the highlights, the bookmarks and the text and layout settings.
@@ -36,14 +37,14 @@ export function fillZoomMenu(menu: Menu, zoom: (way: ZoomWay) => void, steps = t
   if (steps) {
     menu.addItem((item) =>
       item
-        .setTitle('Zoom in')
+        .setTitle(t('streamC.0e47f09a748fa132'))
         .setIcon('zoom-in')
         .setSection('zoom')
         .onClick(() => zoom('in'))
     )
     menu.addItem((item) =>
       item
-        .setTitle('Zoom out')
+        .setTitle(t('streamC.bc7b631a689b45ca'))
         .setIcon('zoom-out')
         .setSection('zoom')
         .onClick(() => zoom('out'))
@@ -51,21 +52,21 @@ export function fillZoomMenu(menu: Menu, zoom: (way: ZoomWay) => void, steps = t
   }
   menu.addItem((item) =>
     item
-      .setTitle('Fit the width')
+      .setTitle(t('streamC.b2c88623527a0b38'))
       .setIcon('move-horizontal')
       .setSection('zoom')
       .onClick(() => zoom('fit-width'))
   )
   menu.addItem((item) =>
     item
-      .setTitle('Fit the page')
+      .setTitle(t('streamC.cb5dd60c9caab342'))
       .setIcon('maximize')
       .setSection('zoom')
       .onClick(() => zoom('fit-page'))
   )
   menu.addItem((item) =>
     item
-      .setTitle('Zoom as set')
+      .setTitle(t('streamC.c26eb6efcf1208ea'))
       .setIcon('scan')
       .setSection('zoom')
       .onClick(() => zoom('reset'))
@@ -88,9 +89,7 @@ export function fillBookMenu(menu: Menu, host: BookMenuHost): void {
     menu.addItem((item) =>
       item
         .setTitle(
-          flow === 'paginated'
-            ? 'Scroll instead of turning pages'
-            : 'Turn pages instead of scrolling'
+          flow === 'paginated' ? t('streamC.b193196ebea3c987') : t('streamC.2fcacd657e1e9318')
         )
         .setIcon(flow === 'paginated' ? 'scroll-text' : 'book-open')
         .setSection('view')
@@ -98,14 +97,14 @@ export function fillBookMenu(menu: Menu, host: BookMenuHost): void {
     )
   menu.addItem((item) =>
     item
-      .setTitle(eink().on ? 'Turn e-ink mode off on this device' : 'E-ink mode on this device')
+      .setTitle(eink().on ? t('streamC.4ec0dd26f1d2c582') : t('streamC.b80959434c39717b'))
       .setIcon('tablet')
       .setSection('view')
       .onClick(() => setEink({ on: !eink().on }))
   )
   menu.addItem((item) =>
     item
-      .setTitle(zen().on ? 'Leave zen mode' : 'Zen mode')
+      .setTitle(zen().on ? t('streamC.5a5d656221488227') : t('streamC.7224fdd49808f1f2'))
       .setIcon(zen().on ? 'shrink' : 'expand')
       .setSection('view')
       .onClick(() => setZen(!zen().on))
@@ -113,7 +112,7 @@ export function fillBookMenu(menu: Menu, host: BookMenuHost): void {
   if (host.ready) {
     menu.addItem((item) =>
       item
-        .setTitle(host.pdf ? 'Copy link to this page' : 'Copy link to this place')
+        .setTitle(host.pdf ? t('streamC.1436a78da83958e6') : t('streamC.8c3732073eaf785d'))
         .setIcon('link')
         .setSection('action')
         .onClick(() => host.copyLink())
@@ -121,7 +120,7 @@ export function fillBookMenu(menu: Menu, host: BookMenuHost): void {
     if (host.canAsk)
       menu.addItem((item) =>
         item
-          .setTitle('Chat about this')
+          .setTitle(t('commands.chat-about-current-note'))
           .setIcon('message-square-plus')
           .setSection('action')
           .onClick(() => host.ask())
@@ -131,35 +130,35 @@ export function fillBookMenu(menu: Menu, host: BookMenuHost): void {
   if (draw)
     menu.addItem((item) =>
       item
-        .setTitle(host.drawing ? 'Stop drawing' : 'Draw on the pages')
+        .setTitle(host.drawing ? t('streamC.2f6a897afbb198e3') : t('streamC.5c70b136b98e494f'))
         .setIcon(host.drawing ? 'pen-off' : 'pen-line')
         .setSection('action')
         .onClick(() => draw())
     )
   menu.addItem((item) =>
     item
-      .setTitle('Search in the book')
+      .setTitle(t('streamC.95110cecd26a94f4'))
       .setIcon('search')
       .setSection('view')
       .onClick(() => host.openSearch())
   )
   menu.addItem((item) =>
     item
-      .setTitle('Highlights')
+      .setTitle(t('settings.components.reader.BookNotesSettings.highlights.6e517828'))
       .setIcon('highlighter')
       .setSection('view')
       .onClick(() => host.showHighlights())
   )
   menu.addItem((item) =>
     item
-      .setTitle('Bookmarks')
+      .setTitle(t('streamC.96316f0f6404dbe1'))
       .setIcon('bookmark')
       .setSection('view')
       .onClick(() => host.showBookmarks())
   )
   menu.addItem((item) =>
     item
-      .setTitle('Text and layout…')
+      .setTitle(t('streamC.0388c88eef928da2'))
       .setIcon('a-large-small')
       .setSection('view')
       .onClick(() => host.openSettings())

@@ -19,7 +19,7 @@
     <Progress
       v-if="state === 'downloading'"
       class="abele-external-embed__bar"
-      :label="`Downloading ${file.name}`"
+      :label="t('streamC.fd7881a3dd88b6a4', { v1: String(file.name) })"
       :value="progress?.done"
       :max="progress?.total ?? file.size"
     />
@@ -29,7 +29,7 @@
     class="internal-embed is-loaded file-embed mod-generic abele-external-embed abele-external-embed_card"
     role="link"
     tabindex="0"
-    :aria-label="`Open ${file.name}`"
+    :aria-label="t('streamC.3d5ce0e92464fbb0', { v1: String(file.name) })"
     @click="emit('open')"
     @keydown.enter.prevent="emit('open')"
   >
@@ -57,7 +57,7 @@
     <Progress
       v-if="state === 'downloading'"
       class="abele-external-embed__bar"
-      :label="`Downloading ${file.name}`"
+      :label="t('streamC.fd7881a3dd88b6a4', { v1: String(file.name) })"
       :value="progress?.done"
       :max="progress?.total ?? file.size"
     />
@@ -65,6 +65,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 /**
  * An embed whose file is on the sync server only. Pressing the row opens the file's tab, as an
  * embedded file opens in Obsidian; the glyph at its end downloads. The note's text stays as it was; once the file
@@ -90,7 +92,10 @@ const emit = defineEmits<{ download: []; retry: []; open: [] }>()
 
 const facts = computed(() =>
   props.state === 'downloading' && props.progress
-    ? `${formatBytes(props.progress.done)} of ${formatBytes(props.progress.total)}`
+    ? t('streamC.16b40c1318912162', {
+        v1: formatBytes(props.progress.done),
+        v2: formatBytes(props.progress.total),
+      })
     : externalFacts(props.file).slice(1).join(' · ')
 )
 const glyph = computed(() =>
@@ -106,15 +111,15 @@ const tip = computed(() => {
   const size = formatBytes(props.file.size)
   switch (props.state) {
     case 'offline':
-      return `On the server only · ${size} · not available offline`
+      return t('streamC.800ba8f4eb79ac69', { v1: size })
     case 'downloading':
-      return 'Downloading…'
+      return t('streamC.a778d3492af219c3')
     case 'failed':
-      return 'Did not download · try again'
+      return t('streamC.08c838659894afc7')
     case 'changed':
-      return `A newer version is on the server · ${size} · download`
+      return t('streamC.f3186776a8fc2f42', { v1: size })
     default:
-      return `On the server only · ${size} · download`
+      return t('streamC.a280e5e94e32c787', { v1: size })
   }
 })
 function act() {

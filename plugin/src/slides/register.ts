@@ -21,7 +21,7 @@ export function registerSlides(plugin: Plugin): void {
       if (file instanceof TFolder)
         menu.addItem((item) =>
           item
-            .setTitle('New presentation')
+            .setTitle(t('commands.new-presentation'))
             .setIcon('presentation')
             .onClick(() => void newDeck(app, file))
         )
@@ -116,13 +116,13 @@ export function registerSlides(plugin: Plugin): void {
         return
       menu.addItem((item) =>
         item
-          .setTitle('Open presentation')
+          .setTitle(t('commands.open-presentation'))
           .setIcon('presentation')
           .onClick(() => void open(file, leaf ?? app.workspace.getLeaf('tab')))
       )
       menu.addItem((item) =>
         item
-          .setTitle('Edit presentation source')
+          .setTitle(t('streamC.06692322c7aa5231'))
           .setIcon('file-pen')
           .onClick(() => {
             const target = leaf ?? app.workspace.getLeaf('tab')
@@ -153,7 +153,7 @@ export function registerSlides(plugin: Plugin): void {
       if (!actions.has(view))
         actions.set(
           view,
-          view.addAction('presentation', 'Open presentation', () => {
+          view.addAction('presentation', t('streamC.4c3cd91f9873a96b'), () => {
             if (view.file) void open(view.file, leaf)
           })
         )

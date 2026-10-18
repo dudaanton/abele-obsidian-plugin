@@ -12,6 +12,9 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+import { streamCUI } from '@/i18n/streamCLabels'
+
 import { computed, ref } from 'vue'
 import { Notice } from 'obsidian'
 import Icon from '@/components/obsidian/Icon.vue'
@@ -32,10 +35,10 @@ const props = defineProps<{
 const place = ref(props.placeOf())
 const label = computed(() =>
   place.value === 'setting'
-    ? `Take it off the ${props.surface} menu`
+    ? t('streamC.21fdc31f2e37536a', { v1: streamCUI(props.surface) })
     : place.value === 'header'
-      ? `On the ${props.surface} menu by its header`
-      : `Keep it on the ${props.surface} menu`
+      ? t('streamC.b4c91d9caa7fa4a2', { v1: streamCUI(props.surface) })
+      : t('streamC.14b7521ff3c57061', { v1: streamCUI(props.surface) })
 )
 
 // The native suggestion scope uses Enter to run the selected row. A focused pin owns

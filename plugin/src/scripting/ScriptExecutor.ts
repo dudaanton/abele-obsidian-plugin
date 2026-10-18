@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { Notice, MarkdownView } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 
@@ -127,10 +128,10 @@ export class ScriptExecutor {
         void this.openRuns()
       })
     }
-    this.statusBarEl.setAttribute('aria-label', 'Show script runs')
+    this.statusBarEl.setAttribute('aria-label', t('commands.show-script-runs'))
 
     const only = running.length === 1 ? running[0] : null
-    const label = only ? only.name : `${running.length} scripts`
+    const label = only ? only.name : t('streamC.67b6061a094cd9cf', { v1: String(running.length) })
     this.statusBarEl.setText(only?.note ? `▶ ${label} — ${only.note}` : `▶ ${label}`)
   }
 
@@ -469,13 +470,13 @@ export class ScriptExecutor {
       if (result.trim()) {
         new Notice(result.length > 500 ? result.slice(0, 500) + '...' : result, 10000)
       } else {
-        new Notice(`Script "${script.meta.name}" completed.`)
+        new Notice(t('streamC.fab9504c01636dad', { v1: String(script.meta.name) }))
       }
     } catch (err) {
       // Left waiting in the dialog just now: nothing more to say.
       if (err instanceof ScriptWaitingError) return
       const msg = err instanceof Error ? err.message : String(err)
-      new Notice(`Script error: ${msg}`, 10000)
+      new Notice(t('streamC.5f7ef21a7e6d0579', { v1: String(msg) }), 10000)
       console.error(`[ScriptService] Error executing ${path}:`, err)
     }
   }

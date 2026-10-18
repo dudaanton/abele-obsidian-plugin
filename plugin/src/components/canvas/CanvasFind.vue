@@ -10,36 +10,38 @@
         <Search
           ref="field"
           :model-value="query"
-          label="Find on the canvas"
-          placeholder="Find on the canvas…"
+          :label="t('streamC.c884c0baeb3d433c')"
+          :placeholder="t('streamC.474760b5bcacc492')"
           autofocus
           @update:model-value="change"
           @keydown="key"
         />
         <div v-if="query" class="document-search-count">
-          {{ matches.length ? `${at + 1} / ${matches.length}` : 'No results' }}
+          {{ matches.length ? `${at + 1} / ${matches.length}` : t('streamC.a43619f321175f57') }}
         </div>
       </div>
       <div class="document-search-buttons">
         <Icon
           icon="arrow-up"
-          tooltip="Previous match (Shift+Enter)"
+          :tooltip="t('streamC.a1ac3c3a93fa2373')"
           :disabled="!matches.length"
           @click="step(-1)"
         />
         <Icon
           icon="arrow-down"
-          tooltip="Next match (Enter)"
+          :tooltip="t('streamC.115967f77ac62494')"
           :disabled="!matches.length"
           @click="step(1)"
         />
-        <Icon icon="x" tooltip="Close (Esc)" @click="close" />
+        <Icon icon="x" :tooltip="t('streamC.961b2a04403ed07f')" @click="close" />
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { CanvasEditor } from '@/canvas/Editor'
 import type { CanvasViewer } from '@/canvas/Viewer'

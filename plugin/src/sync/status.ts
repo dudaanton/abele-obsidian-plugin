@@ -2,6 +2,7 @@ import type { EngineStatus } from '@abele/sync-core'
 import SyncStatusItem from '@/components/sync/SyncStatusItem.vue'
 import { renderKit } from '@/components/obsidian/mount'
 import { formatWhen } from './format'
+import { t } from '@/i18n'
 
 /**
  * What the plugin says sync is doing, in one word and one line.
@@ -129,12 +130,7 @@ export const statusWarns = (status: SyncStatus): boolean =>
 
 /** The tooltip's line for held deletions: how many, and where they are decided. */
 export function heldLine(count: number): string {
-  const files =
-    count === 1 ? '1 file deleted on this device is' : `${count} files deleted on this device are`
-  return (
-    `${files} held back from the other devices, because so many went at once. Decide on the ` +
-    'Sync tab whether they are deleted everywhere or put back.'
-  )
+  return t('sync.status.heldLine', { count })
 }
 
 /**
@@ -143,12 +139,12 @@ export function heldLine(count: number): string {
  * synced*. Nothing is being sent at that moment, and saying it is all through would be a lie.
  */
 export function statusLabel(status: SyncStatus): string {
-  if (leadsWithHeld(status)) return HELD_LABEL
+  if (leadsWithHeld(status)) return t('sync.status.held')
   if (leadsWithConflicts(status))
-    return status.conflicts === 1 ? '1 conflict' : `${status.conflicts} conflicts`
-  if (leadsWithReview(status)) return 'To review'
-  if (status.state === 'idle' && status.pending > 0) return 'Waiting'
-  return STATUS_LABEL[status.state]
+    return t('sync.status.conflicts', { count: status.conflicts ?? 0 })
+  if (leadsWithReview(status)) return t('sync.status.review')
+  if (status.state === 'idle' && status.pending > 0) return t('sync.status.waiting')
+  return t(`sync.status.${status.state}`)
 }
 
 /**
@@ -168,12 +164,12 @@ export function statusText(status: SyncStatus): string {
 
 /** The tooltip's line for settings from other devices waiting to be applied. */
 export function stagedLine(count: number): string {
-  return `Settings waiting (${count}) — Apply and reload on the Sync tab.`
+  return t('sync.status.stagedLine', { count })
 }
 
 /** How many changes, in words: `1 change is`, `3 changes are`. */
 export function changesAre(count: number): string {
-  return count === 1 ? '1 change is' : `${count} changes are`
+  return t('sync.status.changesAre', { count })
 }
 
 /**
@@ -181,24 +177,21 @@ export function changesAre(count: number): string {
  * last got through, and what went wrong if anything did.
  */
 export function statusTooltip(status: SyncStatus): string {
-  const lines = [`Abele Sync: ${statusLabel(status)}`]
+  const lines = [t('sync.status.title', { status: statusLabel(status) })]
   if (status.state === 'syncing' && status.pending > 0) {
-    lines.push(`${status.pending} ${status.pending === 1 ? 'change' : 'changes'} found to send`)
+    lines.push(t('sync.status.found', { count: status.pending }))
   }
   if (status.state === 'idle' && status.pending > 0) {
-    lines.push(`${changesAre(status.pending)} waiting to be sent`)
+    lines.push(t('sync.status.unsent', { count: status.pending }))
   }
   if (status.heldDeletes > 0) lines.push(heldLine(status.heldDeletes))
   if ((status.conflicts ?? 0) > 0)
-    lines.push(
-      `${status.conflicts === 1 ? '1 conflict copy was' : `${status.conflicts} conflict copies were`} saved beside the original. Open them on the Sync tab.`
-    )
-  if ((status.review ?? 0) > 0)
-    lines.push(`${status.review} waiting for your decision on the Sync tab.`)
+    lines.push(t('sync.status.copies', { count: status.conflicts ?? 0 }))
+  if ((status.review ?? 0) > 0) lines.push(t('sync.status.decision', { count: status.review ?? 0 }))
   if (status.deferred > 0) lines.push(stagedLine(status.deferred))
-  if (status.state === 'joining') lines.push('Connecting to the sync server.')
+  if (status.state === 'joining') lines.push(t('sync.status.connecting'))
   else if (status.state !== 'disconnected') {
-    lines.push(`Last sync ${formatWhen(status.lastSyncAt)}`)
+    lines.push(t('sync.status.last', { when: formatWhen(status.lastSyncAt) }))
   }
   if (status.lastError !== null) lines.push(status.lastError)
   return lines.join('\n')

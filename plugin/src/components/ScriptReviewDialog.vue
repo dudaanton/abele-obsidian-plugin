@@ -11,24 +11,22 @@
     <template #footer>
       <Button
         v-if="refused"
-        text="Close"
-        tooltip="Close this; the script does not run here"
+        :text="t('sync.window.close')"
+        :tooltip="t('streamC.7ecb1503458c2bfc')"
         accent
         @click="emit('close')"
       />
       <template v-else>
         <Button
-          text="Not now"
+          :text="t('streamC.a0e63d7c7125d29a')"
           :tooltip="
-            kind === 'template'
-              ? 'Leave commands and plugin methods waiting'
-              : 'Leave it waiting; nothing runs it'
+            kind === 'template' ? t('streamC.e8cd9f3661d65b5c') : t('streamC.29df5c3b30b40b43')
           "
           @click="emit('close')"
         />
         <Button
-          text="Confirm"
-          tooltip="Let this version run on this device"
+          :text="t('area.confirm')"
+          :tooltip="t('streamC.806ec0dcbd1f1c1c')"
           accent
           @click="confirm"
         />
@@ -38,6 +36,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Platform } from 'obsidian'
 import { EditorView, lineNumbers } from '@codemirror/view'
@@ -71,19 +71,23 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>()
 
-const title = computed(() => `Confirm ${props.kind} "${props.name}"`)
+const title = computed(() =>
+  props.kind === 'template'
+    ? t('streamC.c86ec84954d8c60f', { v1: props.name })
+    : t('streamC.1da957bdede67571', { v1: props.name })
+)
 const why = computed(() =>
   props.kind === 'template'
-    ? 'This template can run commands or call plugin methods. Those parts will not run until you confirm this version on this device. Review the execution settings and the full template below. Confirmation does not reapply the template; use it again afterwards.'
+    ? t('streamC.e5d18ee925811f2e')
     : props.refused
-      ? 'This version arrived through a connection that is not allowed to bring scripts to this device, so it does not run here. Change the script on this device to run it.'
+      ? t('streamC.267901fa4acc3c7f')
       : props.previous !== undefined
-        ? 'This script changed without being written on this device — through sync or another app. Buttons, automations, startup and agents will not run it until you confirm the change here.'
-        : 'This script appeared without being written on this device — through sync or another app. Buttons, automations, startup and agents will not run it until you confirm it here.'
+        ? t('streamC.089afe41eb761bbe')
+        : t('streamC.4c4da1c3aec6e9b4')
 )
 const pathLine = computed(() =>
   props.previous !== undefined
-    ? `${props.path} — changes against the version last confirmed here`
+    ? t('streamC.2f74fb6c99f673c4', { v1: String(props.path) })
     : props.path
 )
 

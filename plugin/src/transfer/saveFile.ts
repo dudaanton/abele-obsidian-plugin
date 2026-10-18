@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * "Save a file" on the sending screen: where the transfer goes when it goes as a file.
  *
@@ -117,7 +118,9 @@ export function platformRoads(win: Window): SaveRoads {
           }
           const picked = await desktop.remote.dialog.showSaveDialog({
             defaultPath: folder ? `${folder}/${name}` : name,
-            filters: [{ name: 'Text', extensions: ['txt'] }],
+            filters: [
+              { name: t('settings.ai.AgentEditorModal.text.71988c4d'), extensions: ['txt'] },
+            ],
             properties: ['showOverwriteConfirmation'],
           })
           return picked.canceled || !picked.filePath ? null : picked.filePath

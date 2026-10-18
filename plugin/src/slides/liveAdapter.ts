@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import type { App } from 'obsidian'
 import { choiceDialog } from '@/components/obsidian/dialogs'
 import { shallowReactive } from 'vue'
@@ -25,16 +26,19 @@ export function networkDecision(app: App, path: string): Promise<boolean> {
   const existing = pending.get(key)
   if (existing) return existing
   const decision = choiceDialog<'offline' | 'network'>({
-    title: 'Allow network access?',
-    message:
-      'Interactive HTML can send data to websites, including by navigating inside its frame. Without permission only static HTML is shown, with scripts disabled. The frame cannot read the vault or Obsidian.',
+    title: t('streamC.9d5e8fa2b811ff82'),
+    message: t('streamC.45781bfb2ff820d1'),
     choices: [
-      { value: 'offline', text: 'Keep offline', tooltip: 'Show only static HTML, scripts off' },
+      {
+        value: 'offline',
+        text: t('streamC.d500aec1883e1426'),
+        tooltip: t('streamC.9d698979ba759518'),
+      },
       {
         value: 'network',
-        text: 'Allow network',
+        text: t('streamC.fe3628f05e5dd6a7'),
         cta: true,
-        tooltip: 'Let this HTML reach websites',
+        tooltip: t('streamC.256211b2b01cacd6'),
       },
     ],
   })

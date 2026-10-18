@@ -1,14 +1,19 @@
 <template>
   <!-- The ribbon's link: the words it goes on, one field for the address, Link. A link already on
        them is shown to change, and can be taken off from here as well. -->
-  <Modal title="Link" @close="emit('close')">
-    <Setting name="Address" :desc="words ? `On «${words}»` : 'On the whole paragraph'">
+  <Modal :title="t('settings.CalendarsSettings.link.a6a32dbc')" @close="emit('close')">
+    <Setting
+      :name="t('settings.nodes.address')"
+      :desc="
+        words ? t('streamC.ad608dd2dd23cc0c', { v1: String(words) }) : t('streamC.3db686ec30bc2c1e')
+      "
+    >
       <Input
         ref="field"
         class="abele-word-link__field"
         :model-value="address"
         placeholder="https://"
-        aria-label="Link address"
+        :aria-label="t('streamC.13844ffc728705a2')"
         @update:model-value="address = $event"
         @keydown.enter="submit"
       />
@@ -17,18 +22,22 @@
       <div class="abele-word-link__foot">
         <Button
           v-if="current"
-          text="Remove link"
+          :text="t('streamC.4953f897094826d3')"
           quiet
-          tooltip="Take the link off, keep the words"
+          :tooltip="t('streamC.c4c3db6cdb0f52b7')"
           @click="emit('link', '')"
         />
         <span class="abele-word-link__gap" />
-        <Button text="Cancel" tooltip="Close without linking" @click="emit('close')" />
         <Button
-          text="Link"
+          :text="t('kit.cancel')"
+          :tooltip="t('streamC.4756b05203a5e674')"
+          @click="emit('close')"
+        />
+        <Button
+          :text="t('settings.CalendarsSettings.link.a6a32dbc')"
           accent
           :disabled="!ready"
-          :tooltip="ready ? 'Link the words to this address' : 'Link: type an address first'"
+          :tooltip="ready ? t('streamC.3c7194acaa7d998d') : t('streamC.cca707d56b5cea7f')"
           @click="submit"
         />
       </div>
@@ -37,6 +46,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 import { computed, onMounted, ref } from 'vue'
 import Modal from '@/components/obsidian/Modal.vue'
 import Setting from '@/components/obsidian/Setting.vue'

@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { ItemView, Notice, type Plugin, type WorkspaceLeaf } from 'obsidian'
 import { h, reactive } from 'vue'
 import DebugValueView from '@/components/debugger/DebugValueView.vue'
@@ -18,7 +19,7 @@ export class DebugValueTab extends ItemView {
     mode: 'formatted' | 'raw'
     wrap: boolean
   }>({
-    name: 'Debug value',
+    name: t('streamC.399df71222a9aa22'),
     value: '',
     type: undefined,
     mode: 'formatted',
@@ -27,17 +28,17 @@ export class DebugValueTab extends ItemView {
 
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
-    this.addAction('braces', 'Toggle raw value', () => {
+    this.addAction('braces', t('streamC.ebe86e6f444bdd2c'), () => {
       this.model.mode = this.model.mode === 'raw' ? 'formatted' : 'raw'
     })
-    this.addAction('wrap-text', 'Toggle line wrapping', () => {
+    this.addAction('wrap-text', t('streamC.e4a9d8818437be3e'), () => {
       this.model.wrap = !this.model.wrap
     })
-    this.addAction('copy', 'Copy raw value', () => {
+    this.addAction('copy', t('streamC.15780ff7783d4ecb'), () => {
       if (this.available)
         void navigator.clipboard.writeText(this.model.value).catch((e) => {
           console.debug('[debugger] Value copy failed', e)
-          new Notice('Could not copy the debug value')
+          new Notice(t('streamC.1a74d0457855c3b0'))
         })
     })
   }
@@ -63,7 +64,7 @@ export class DebugValueTab extends ItemView {
     this.vue = this.available
       ? mountKit(this.contentEl, { render: () => h(DebugValueView, { ...this.model }) })
       : mountKit(this.contentEl, EmptyState, {
-          text: 'Value unavailable. Open it again from the debugger.',
+          text: t('streamC.0d0317057c562796'),
         })
   }
   async onOpen() {

@@ -42,7 +42,7 @@ export function registerReader(plugin: Plugin): void {
     name: t('commands.reader-toggle-eink'),
     callback: () => {
       setEink({ on: !eink().on })
-      new Notice(eink().on ? 'E-ink mode is on for books on this device.' : 'E-ink mode is off.')
+      new Notice(eink().on ? t('streamC.89e8a4d2e8ece60c') : t('streamC.968aec1addc3f049'))
     },
   })
   // Zen mode, the device's own choice too (`zen.ts`).
@@ -108,7 +108,7 @@ export function registerReader(plugin: Plugin): void {
       if (leaf?.view.getViewType() === BOOK_VIEW_TYPE) return
       menu.addItem((item) =>
         item
-          .setTitle('Open in Abele reader')
+          .setTitle(t('streamC.82369f7c47319120'))
           .setIcon('book-open')
           .setSection('open')
           .onClick(() => {

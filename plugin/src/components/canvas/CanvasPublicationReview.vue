@@ -1,6 +1,6 @@
 <template>
   <ObsidianModal
-    title="Review retained canvas change"
+    :title="t('streamC.fa66a4a663b325ab')"
     modal-class="abele-canvas-publication-review"
     :can-close="dismiss"
     @close="close"
@@ -30,14 +30,14 @@
       <template v-if="screen === 'review'">
         <Button
           key="review-keep"
-          text="Keep retained work"
-          tooltip="Close the review and keep the retained copy"
+          :text="t('streamC.e730e89a0b710cf9')"
+          :tooltip="t('streamC.ab266caf32dd1a55')"
           @click="close"
         />
         <Button
           key="review-discard"
-          text="Discard local pending copy…"
-          tooltip="Ask before discarding the local pending copy"
+          :text="t('streamC.1e0a126c418ca2f9')"
+          :tooltip="t('streamC.8e1ecdb071fa63d6')"
           warning
           @click="screen = 'confirm'"
         />
@@ -45,14 +45,14 @@
       <template v-else-if="screen === 'confirm'">
         <Button
           key="confirm-cancel"
-          text="Cancel"
-          tooltip="Close the review and keep the retained copy"
+          :text="t('kit.cancel')"
+          :tooltip="t('streamC.ab266caf32dd1a55')"
           @click="close"
         />
         <Button
           key="confirm-discard"
-          text="Discard local pending copy"
-          tooltip="Drop the local pending copy; the canvas file is not touched"
+          :text="t('streamC.4c7d7301a6a119cd')"
+          :tooltip="t('streamC.a7e9d453871beae4')"
           warning
           :disabled="discarding"
           @click="onDiscard"
@@ -61,8 +61,8 @@
       <Button
         v-else
         key="failed-keep"
-        text="Keep retained work"
-        tooltip="Close the review and keep the retained copy"
+        :text="t('streamC.e730e89a0b710cf9')"
+        :tooltip="t('streamC.ab266caf32dd1a55')"
         @click="close"
       />
     </template>
@@ -70,6 +70,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import ObsidianModal from '@/components/obsidian/Modal.vue'
 import Button from '@/components/obsidian/Button.vue'
@@ -100,16 +102,11 @@ const emit = defineEmits<{
 }>()
 
 const TEXT = {
-  matching:
-    'Matching file contents do not acknowledge this attempt. Keep the retained copy, or discard only local pending work. Any desired change afterward is a new ordinary edit after rereading the current file, not replay of this attempt.',
-  native:
-    'A native editor is open. Its unsaved contents are separate from persisted source; this review neither cancels native saves nor proves that this attempt succeeded.',
-  confirm:
-    'Discard the retained pending copy and its unresolved attempt evidence? This does not undo any changes already written to the canvas file. The file may already contain this change. No file contents will be written or restored, and no history entry will be added.',
-  written:
-    'The source write was confirmed. Discard does not reconstruct the missing local acknowledgment or history entry.',
-  reread:
-    'After discarding, reread the current file before making a new independently chosen edit. This does not authorize replaying the old attempt.',
+  matching: t('streamC.1924f5fad81966a8'),
+  native: t('streamC.87de9b5e1122c152'),
+  confirm: t('streamC.0e98d321e02e8080'),
+  written: t('streamC.43a08b10a933141d'),
+  reread: t('streamC.9bc503dfa7bf318f'),
 }
 
 const screen = ref<'review' | 'confirm' | 'failed'>('review')
@@ -118,9 +115,8 @@ const failure = ref('')
 const anchor = ref<HTMLElement | null>(null)
 let finished = false
 
-const parseError = computed(
-  () =>
-    `Persisted source cannot be parsed: ${props.review.source.error}. Discard does not repair or rewrite it.`
+const parseError = computed(() =>
+  t('streamC.62d470a828fadb6a', { v1: String(props.review.source.error) })
 )
 
 // Shown as text only, in `<pre>` by interpolation: source and extension contents cannot execute
@@ -128,31 +124,34 @@ const parseError = computed(
 const sections = computed(() => [
   {
     kind: 'source',
-    title: 'Current persisted source',
+    title: t('streamC.6799a1715e5a5fc7'),
     value: props.review.source.bytes,
     graph: props.review.source.graph,
   },
   {
     kind: 'proposed',
-    title: 'Retained proposed draft — not persisted-source evidence',
+    title: t('streamC.082b40eea5afad3f'),
     value: JSON.stringify(props.review.evidence.proposed, null, 2),
     graph: props.review.evidence.proposed,
   },
   {
     kind: 'baseline',
-    title: 'Original baseline (historical)',
+    title: t('streamC.c6169f810c546ba1'),
     value: JSON.stringify(props.review.evidence.baseline, null, 2),
     graph: props.review.evidence.baseline.graph,
   },
 ])
 
 function graphSummary(graph: CanvasGraph): string {
-  return `${graph.nodes.length} node${graph.nodes.length === 1 ? '' : 's'}, ${graph.edges.length} connection${graph.edges.length === 1 ? '' : 's'}. Preview: ${
-    graph.nodes
-      .slice(0, 3)
-      .map((node) => labelOf(node).slice(0, 120))
-      .join('; ') || '(empty)'
-  }. Expand for full data.`
+  return t('streamC.03d7f53e71425578', {
+    v1: t('streamC.graphNodes', { count: graph.nodes.length }),
+    v2: t('streamC.graphEdges', { count: graph.edges.length }),
+    v3:
+      graph.nodes
+        .slice(0, 3)
+        .map((node) => labelOf(node).slice(0, 120))
+        .join('; ') || t('streamC.d29a0939bcb51176'),
+  })
 }
 
 function revoke(): void {
@@ -186,8 +185,8 @@ async function commitDiscard(): Promise<void> {
     if (!finished) close()
   } catch (cause) {
     if (finished) return
-    const message = cause instanceof Error ? cause.message : 'Local choice could not complete'
-    failure.value = `${message}. Close and reopen the review; retained work has not been discarded by this obsolete choice.`
+    const message = cause instanceof Error ? cause.message : t('streamC.6c92820b72ce4dcf')
+    failure.value = t('streamC.3c846dc47c38405f', { v1: String(message) })
     screen.value = 'failed'
   }
 }

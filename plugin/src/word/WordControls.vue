@@ -6,9 +6,7 @@
     @close="emit('close')"
   >
     <div v-if="editor.readOnly" class="abele-word-read-only">
-      <div class="setting-item-description">
-        Read only. Use the agent to edit this document on mobile.
-      </div>
+      <div class="setting-item-description">{{ t('streamC.a924951db88cd81f') }}</div>
       <WordPageLine v-if="preview" :paragraph="preview" :editing="false" :read-only="true" />
       <figure v-for="picture in pictures" :key="picture.number" class="abele-word-page__image">
         <img
@@ -24,6 +22,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import Modal from '@/components/obsidian/Modal.vue'
 import { mountWordEditor, type DesktopEditHost } from './desktopEditor'

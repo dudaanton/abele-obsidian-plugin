@@ -18,41 +18,51 @@
       <template #action>
         <div v-if="state === 'downloading'" class="abele-external-view__progress">
           <Progress
-            :label="`Downloading ${file.name}`"
+            :label="t('streamC.fd7881a3dd88b6a4', { v1: String(file.name) })"
             :value="progress?.done"
             :max="progress?.total ?? file.size"
           />
           <div class="abele-external-view__progress-line">
             <span>{{
               progress
-                ? `${formatBytes(progress.done)} of ${formatBytes(progress.total)}`
-                : 'Starting…'
+                ? t('streamC.16b40c1318912162', {
+                    v1: String(formatBytes(progress.done)),
+                    v2: String(formatBytes(progress.total)),
+                  })
+                : t('streamC.bbe5fc3b9ef39f99')
             }}</span>
-            <Button text="Cancel" quiet tooltip="Stop; the stub stays" @click="emit('cancel')" />
+            <Button
+              :text="t('kit.cancel')"
+              quiet
+              :tooltip="t('streamC.e5e373eab56d6532')"
+              @click="emit('cancel')"
+            />
           </div>
         </div>
         <div v-else class="abele-external-view__actions">
           <Button
-            :text="state === 'failed' ? 'Try again' : 'Download'"
+            :text="
+              state === 'failed' ? t('streamC.d8b8392e2c542950') : t('streamC.d6eafe8235910042')
+            "
             icon="download"
             accent
             :block="narrow"
             :disabled="state === 'offline'"
             :tooltip="
               state === 'offline'
-                ? 'Not available offline'
+                ? t('streamC.8aab7890501c8d51')
                 : state === 'changed'
-                  ? 'Download the newer version from the server'
-                  : 'Download it to this device; a rule may move it back to the server later'
+                  ? t('streamC.c8ecbb6c20f7c61d')
+                  : t('streamC.d0121119ce10108a')
             "
             @click="emit(state === 'failed' ? 'retry' : 'download')"
           />
           <Button
-            text="Keep on this device"
+            :text="t('commands.external-file-pin')"
             icon="pin"
             :block="narrow"
             :disabled="state === 'offline'"
-            tooltip="Download it and keep it here; no rule moves it to the server again"
+            :tooltip="t('streamC.d27f523cddd156dc')"
             @click="emit('keep')"
           />
         </div>
@@ -62,6 +72,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 /**
  * The tab of a file kept on the sync server only. Its stub names the file; this says what it is,
  * where it is now and offers to bring it here, once or to keep. Offline, a newer version on the
@@ -92,13 +104,15 @@ const emit = defineEmits<{ download: []; keep: []; cancel: []; retry: [] }>()
 const where = computed(() => {
   switch (props.state) {
     case 'offline':
-      return 'Not available offline'
+      return t('streamC.8aab7890501c8d51')
     case 'changed':
-      return 'A newer version is on the server'
+      return t('streamC.ba5ea463055e38ff')
     case 'failed':
-      return props.error ? `Did not download: ${props.error}` : 'Did not download'
+      return props.error
+        ? t('streamC.170593a68983c251', { v1: props.error })
+        : t('streamC.130a2155aee9da72')
     default:
-      return `On the server since ${props.file.since}`
+      return t('streamC.22a2962c55c4cfe0', { v1: props.file.since })
   }
 })
 const whereClass = computed(() => ({

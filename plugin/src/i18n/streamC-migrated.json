@@ -1,0 +1,299 @@
+{
+  "files": [
+    "canvas/CanvasView.ts",
+    "canvas/Editor.ts",
+    "canvas/Viewer.ts",
+    "canvas/canvasFind.ts",
+    "canvas/editorControls.ts",
+    "canvas/embed.ts",
+    "canvas/excalidrawAdapter.ts",
+    "canvas/input.ts",
+    "canvas/pickedActions.ts",
+    "canvas/register.ts",
+    "canvas/webCard.ts",
+    "components/ScriptApprovalModal.vue",
+    "components/ScriptFormModal.vue",
+    "components/ScriptNode.vue",
+    "components/ScriptReviewDialog.vue",
+    "components/ScriptRuns.vue",
+    "components/ScriptView.vue",
+    "components/canvas/CanvasChrome.vue",
+    "components/canvas/CanvasFind.vue",
+    "components/canvas/CanvasFrames.vue",
+    "components/canvas/CanvasPublicationReview.vue",
+    "components/canvas/CardNoteCodes.vue",
+    "components/canvas/CardPanels.vue",
+    "components/canvas/chromeMenus.ts",
+    "components/canvas/chromeTools.ts",
+    "components/debugger/BreakpointMark.vue",
+    "components/debugger/DebugActionCard.vue",
+    "components/debugger/DebugCallStack.vue",
+    "components/debugger/DebugPanel.vue",
+    "components/debugger/DebugSource.vue",
+    "components/debugger/DebugValues.vue",
+    "components/debugger/http/EnvironmentDialog.vue",
+    "components/debugger/http/HttpSendPreview.vue",
+    "components/debugger/http/MethodMark.vue",
+    "components/debugger/http/RequestPairs.vue",
+    "components/debugger/http/RequestScriptPicker.ts",
+    "components/debugger/http/RequestView.vue",
+    "components/debugger/http/RequestsPanel.vue",
+    "components/debugger/trace/TracePointEditor.vue",
+    "components/debugger/trace/TraceRunView.vue",
+    "components/debugger/trace/TraceShape.vue",
+    "components/debugger/trace/TraceStepDetail.vue",
+    "components/debugger/trace/TraceTrail.vue",
+    "components/debugger/trace/TraceValueRow.vue",
+    "components/debugger/trace/TraceValueTab.vue",
+    "components/debugger/trace/format.ts",
+    "components/drawing/CropFrame.vue",
+    "components/drawing/DrawingBar.vue",
+    "components/drawing/DrawingEmbedActions.vue",
+    "components/drawing/PictureEditor.vue",
+    "components/external/ExternalFileEmbed.vue",
+    "components/external/ExternalFileView.vue",
+    "components/external/externalFormat.ts",
+    "components/linter/LinterPanel.vue",
+    "components/mermaid/MermaidDiagram.vue",
+    "components/reader/BookBookmarks.vue",
+    "components/reader/BookComment.vue",
+    "components/reader/BookContents.vue",
+    "components/reader/BookEink.vue",
+    "components/reader/BookFigureViewer.vue",
+    "components/reader/BookFooter.vue",
+    "components/reader/BookForms.vue",
+    "components/reader/BookHighlights.vue",
+    "components/reader/BookInkBar.vue",
+    "components/reader/BookReader.vue",
+    "components/reader/BookRepairLinks.vue",
+    "components/reader/BookSearch.vue",
+    "components/reader/BookSearchBar.vue",
+    "components/reader/BookSelectionBar.vue",
+    "components/reader/BookSpeechBar.vue",
+    "components/reader/ReaderSettingsForm.vue",
+    "components/sync/ConnectionWindow.vue",
+    "components/sync/DeletedFilesModal.vue",
+    "components/sync/HeldDeletesBlock.vue",
+    "components/sync/HeldDeletesModal.vue",
+    "components/sync/RestoreSince.vue",
+    "components/sync/ServerDeleteModal.vue",
+    "components/sync/SettingsArrivedModal.vue",
+    "components/sync/StagedSettingsBlock.vue",
+    "components/sync/TokenDialogs.vue",
+    "components/sync/TokenQrReader.vue",
+    "components/sync/VersionHistoryModal.vue",
+    "components/sync/serverDelete.ts",
+    "components/sync/sharingText.ts",
+    "debugger/DebugValueTab.ts",
+    "debugger/DebuggerController.ts",
+    "debugger/DebuggerService.ts",
+    "debugger/DebuggerView.vue",
+    "debugger/attachProgram.ts",
+    "debugger/register.ts",
+    "debugger/startProgram.ts",
+    "debugger/trace/TraceTabs.ts",
+    "debugger/trace/notesFolder.ts",
+    "debugger/trace/panel.ts",
+    "debugger/trace/runNote.ts",
+    "drawing/DrawingView.ts",
+    "drawing/ImageInkView.ts",
+    "drawing/askAgent.ts",
+    "drawing/crop.ts",
+    "drawing/drawingTab.ts",
+    "drawing/embed.ts",
+    "drawing/files.ts",
+    "drawing/noteLayer.ts",
+    "drawing/register.ts",
+    "drawing/textEditor.ts",
+    "linter/LinterService.ts",
+    "reader/bookMenu.ts",
+    "reader/readingProgress.ts",
+    "reader/register.ts",
+    "scripting/ScriptExecutor.ts",
+    "scripting/ScriptService.ts",
+    "scripting/SelectionScriptPicker.ts",
+    "scripting/SelectionScriptPin.vue",
+    "scripting/runFromBook.ts",
+    "scripting/runFromChat.ts",
+    "scripting/runScript.ts",
+    "scripting/scriptReview.ts",
+    "scripting/toolbarButtons.ts",
+    "scripting/view/ScriptViewService.ts",
+    "slides/DeckView.ts",
+    "slides/core/DeckViewer.ts",
+    "slides/core/PresenterView.ts",
+    "slides/liveAdapter.ts",
+    "slides/newDeck.ts",
+    "slides/register.ts",
+    "spreadsheet/WorkbookGrid.vue",
+    "spreadsheet/XlsxView.ts",
+    "sync/external/embed.ts",
+    "sync/external/registerActions.ts",
+    "sync/format.ts",
+    "sync/heldDeletes.ts",
+    "sync/phoneSyncAction.ts",
+    "sync/privateRecovery.ts",
+    "sync/stagedSettings.ts",
+    "sync/status.ts",
+    "sync/tokenUi.ts",
+    "transfer/saveFile.ts",
+    "views/CodeView.ts",
+    "views/codeSelectionHost.ts",
+    "word/DocxView.ts",
+    "word/WordControls.vue",
+    "word/WordDetails.vue",
+    "word/WordLinkPrompt.vue",
+    "word/WordPage.vue",
+    "word/WordPageLine.vue",
+    "word/WordPageTable.vue",
+    "word/WordParagraphEditor.vue",
+    "word/WordPicturePicker.ts",
+    "word/controlsTitle.ts",
+    "word/pageAdapter.ts",
+    "canvas/CanvasPublicationReviewModal.ts",
+    "debugger/trace/TraceRunModel.ts",
+    "views/AccountsSidebarView.ts",
+    "views/FinanceSidebarView.ts",
+    "views/ScriptRunsView.ts",
+    "views/ScriptView.ts",
+    "views/TimeTrackingSidebarView.ts",
+    "views/TimelineSidebarView.ts",
+    "views/TodoSidebarView.ts",
+    "views/UserDocsView.ts",
+    "drawing/pictureEntries.ts",
+    "linter/LinterView.ts",
+    "components/debugger/valueFormat.ts"
+  ],
+  "exceptions": [
+    {
+      "path": "canvas/Editor.ts",
+      "text": "Frame",
+      "reason": "Persisted Canvas content; the saved default frame label stays English"
+    },
+    {
+      "path": "canvas/input.ts",
+      "text": "Frame",
+      "reason": "Persisted Canvas content; the saved default frame label stays English"
+    },
+    {
+      "path": "canvas/webCard.ts",
+      "text": "webview",
+      "reason": "DOM tag identifier"
+    },
+    {
+      "path": "canvas/webCard.ts",
+      "text": "div",
+      "reason": "DOM tag identifier"
+    },
+    {
+      "path": "components/ScriptApprovalModal.vue",
+      "text": "SHA-256",
+      "reason": "Cryptographic algorithm identifier"
+    },
+    {
+      "path": "components/debugger/DebugPanel.vue",
+      "text": "aria-label",
+      "reason": "DOM attribute name"
+    },
+    {
+      "path": "components/debugger/http/RequestView.vue",
+      "text": "ms",
+      "reason": "Technical unit"
+    },
+    {
+      "path": "components/debugger/http/RequestView.vue",
+      "text": " ms",
+      "reason": "Technical unit"
+    },
+    {
+      "path": "components/debugger/trace/TraceShape.vue",
+      "text": "ShapeRow",
+      "reason": "Vue component identifier"
+    },
+    {
+      "path": "components/reader/BookEink.vue",
+      "text": "code",
+      "reason": "Keyboard event property name"
+    },
+    {
+      "path": "components/reader/BookEink.vue",
+      "text": "keyCode",
+      "reason": "Keyboard event property name"
+    },
+    {
+      "path": "components/reader/BookSelectionBar.vue",
+      "text": "ab",
+      "reason": "Invariant sample glyphs for highlight shapes"
+    },
+    {
+      "path": "components/reader/ReaderSettingsForm.vue",
+      "text": "PDF",
+      "reason": "File format name"
+    },
+    {
+      "path": "components/reader/ReaderSettingsForm.vue",
+      "text": " px",
+      "reason": "Technical unit"
+    },
+    {
+      "path": "debugger/attachProgram.ts",
+      "text": "debugger_profile_unavailable",
+      "reason": "Protocol error code"
+    },
+    {
+      "path": "debugger/attachProgram.ts",
+      "text": "debugger_program_not_found",
+      "reason": "Protocol error code"
+    },
+    {
+      "path": "debugger/attachProgram.ts",
+      "text": "unsupported_method",
+      "reason": "Protocol method error code"
+    },
+    {
+      "path": "debugger/startProgram.ts",
+      "text": "debugger_profile_unavailable",
+      "reason": "Protocol error code"
+    },
+    {
+      "path": "spreadsheet/WorkbookGrid.vue",
+      "text": "fx",
+      "reason": "Formula indicator"
+    },
+    {
+      "path": "spreadsheet/WorkbookGrid.vue",
+      "text": "General",
+      "reason": "Spreadsheet number-format code"
+    },
+    {
+      "path": "word/WordDetails.vue",
+      "text": " px",
+      "reason": "Technical unit"
+    },
+    {
+      "path": "word/WordLinkPrompt.vue",
+      "text": "https://",
+      "reason": "Literal URL prefix"
+    },
+    {
+      "path": "word/WordParagraphEditor.vue",
+      "text": "bold",
+      "reason": "Inline formatting operation ID"
+    },
+    {
+      "path": "word/WordParagraphEditor.vue",
+      "text": "italic",
+      "reason": "Inline formatting operation ID"
+    },
+    {
+      "path": "word/WordParagraphEditor.vue",
+      "text": "underline",
+      "reason": "Inline formatting operation ID"
+    },
+    {
+      "path": "word/WordParagraphEditor.vue",
+      "text": "strike",
+      "reason": "Inline formatting operation ID"
+    }
+  ]
+}

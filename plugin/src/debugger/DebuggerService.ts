@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { computed, shallowRef, watch, type WatchStopHandle } from 'vue'
 import type { NodeConnection } from '@/node/NodeService'
 import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
@@ -151,7 +152,7 @@ export class DebuggerBinding {
       console.debug('[debugger] Live grant unavailable', error)
       this.controller.clearGrant(
         error instanceof Error
-          ? `Live agent grant unavailable: ${error.message}`
+          ? t('streamC.215acaee0308ca12', { v1: String(error.message) })
           : 'Live agent grant could not be verified'
       )
     }
@@ -249,7 +250,7 @@ export class DebuggerBinding {
   fail(error: unknown) {
     if (this.disposed) return
     console.debug('[debugger] Request unavailable', error)
-    this.controller.error = error instanceof Error ? error.message : 'Debugger unavailable'
+    this.controller.error = error instanceof Error ? error.message : t('streamC.e6d2c5631ed60d81')
     this.controller.disconnected()
   }
   private stopWatch() {

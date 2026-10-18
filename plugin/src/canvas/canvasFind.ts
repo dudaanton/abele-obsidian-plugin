@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * A canvas's contents: its frames and walkthrough steps, by name. Chosen, the canvas shows that
  * place.
@@ -16,16 +17,16 @@ export interface CanvasPlace {
 
 /** A card's words, or a note's, picture's or link's name, on one line. */
 function title(node: CanvasNode): string {
-  if (node.type === 'group') return node.label || 'Frame'
+  if (node.type === 'group') return node.label || t('streamC.d0b50e064a4f8d94')
   if (node.type === 'text')
     return (
       (node.text ?? '')
         .split('\n')
         .map((l) => l.replace(/^#+\s*/, '').trim())
-        .find(Boolean) ?? 'Empty card'
+        .find(Boolean) ?? t('streamC.5b7e33435ad5d064')
     )
   if (node.type === 'file') return `${node.file ?? ''}${node.subpath ?? ''}`
-  return node.url ?? 'Link'
+  return node.url ?? t('streamC.a6a32dbc5618ea39')
 }
 
 /** The canvas's frames, then its walkthrough's steps, in their order. */
@@ -33,7 +34,10 @@ export function canvasContents(graph: CanvasGraph): CanvasPlace[] {
   let steps: CanvasPlace[] = []
   try {
     steps = stepsOf(graph).map((s, i) => ({
-      title: `Step ${i + 1}${s.say ? `: ${s.say.split('\n')[0]}` : ''}`,
+      title: t('streamC.59ea4a5d3ad331f3', {
+        v1: String(i + 1),
+        v2: String(s.say ? `: ${s.say.split('\n')[0]}` : ''),
+      }),
       step: i + 1,
     }))
   } catch {
@@ -42,7 +46,7 @@ export function canvasContents(graph: CanvasGraph): CanvasPlace[] {
   return [
     ...graph.nodes
       .filter((n) => n.type === 'group')
-      .map((node) => ({ title: `Frame: ${title(node)}`, node })),
+      .map((node) => ({ title: t('streamC.fd70fc0d384f857e', { v1: String(title(node)) }), node })),
     ...steps,
   ]
 }
@@ -56,7 +60,7 @@ export class CanvasPlaceModal extends FuzzySuggestModal<CanvasPlace> {
   ) {
     super(app)
     this.setPlaceholder(placeholder)
-    this.emptyStateText = 'Nothing on the canvas matches'
+    this.emptyStateText = t('streamC.2434aa8341aa7904')
   }
   getItems(): CanvasPlace[] {
     return this.places

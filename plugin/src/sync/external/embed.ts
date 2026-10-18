@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { h, shallowRef } from 'vue'
 import {
   MarkdownRenderChild,
@@ -91,8 +92,7 @@ export function mountExternalEmbed(
       })
       .catch((error) => {
         console.debug('[abele-sync] native embed could not be restored', error)
-        if (live && el.getAttribute('src') === raw)
-          el.textContent = 'Downloaded; reopen this embed to display it.'
+        if (live && el.getAttribute('src') === raw) el.textContent = t('streamC.7fb1a45d7eb24451')
       })
   }
   const off = presentation.subscribe(sync)

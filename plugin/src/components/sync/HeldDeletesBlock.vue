@@ -12,7 +12,9 @@
         plain
       />
     </div>
-    <p v-if="more > 0" class="abele-held-deletes__more">and {{ more }} more</p>
+    <p v-if="more > 0" class="abele-held-deletes__more">
+      {{ t('streamC.ebe5ad6c0e172a75', { v1: more }) }}
+    </p>
 
     <p v-if="filedLine !== null" class="abele-held-deletes__filed">{{ filedLine }}</p>
 
@@ -21,17 +23,17 @@
     <div class="abele-held-deletes__actions abele-modal__actions">
       <slot name="actions" :busy="busy" />
       <Button
-        text="Delete everywhere"
+        :text="t('streamC.f8a2cbdf0279acb8')"
         warning
         :disabled="busy"
-        tooltip="Send these deletions to every device; the files go to the server's trash"
+        :tooltip="t('streamC.d429d4f6f384bcd0')"
         @click="askDelete"
       />
       <Button
-        text="Put them back"
+        :text="t('streamC.aadf9df0b8f9e5a1')"
         accent
         :disabled="busy"
-        tooltip="Bring these files back to this device from the server"
+        :tooltip="t('streamC.43c434644e207d71')"
         @click="
           decide(
             'restore',
@@ -43,11 +45,11 @@
 
     <ConfirmModal
       v-if="confirming"
-      :title="`Delete ${filesOf(asked.length)} everywhere?`"
+      :title="t('streamC.d61cb10f33068f31', { v1: String(filesOf(asked.length)) })"
       :message="confirmMessage"
-      confirm-text="Delete everywhere"
-      confirm-tooltip="Send these deletions to every device"
-      cancel-tooltip="Close this; the files stay held"
+      :confirm-text="t('streamC.f8a2cbdf0279acb8')"
+      :confirm-tooltip="t('streamC.43d47a1bdd449e6b')"
+      :cancel-tooltip="t('streamC.9defaa833983d557')"
       @confirm="decide('confirm', asked)"
       @close="confirming = false"
     />
@@ -55,6 +57,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 /**
  * The files the engine holds back after many went at once on this device, and the two answers
  * (phase 3b, decision 8): delete them everywhere, or put them back. Shown in the dialog that asks
@@ -97,8 +101,7 @@ const confirming = ref(false)
 const error = ref<string | null>(null)
 
 const count = computed(() => props.held.length)
-const filesOf = (n: number): string => (n === 1 ? '1 file' : `${n} files`)
-const files = computed(() => filesOf(count.value))
+const filesOf = (n: number): string => t('streamC.files', { count: n })
 /** The files the open confirmation names, fixed when it opened. */
 const asked = ref<string[]>([])
 
@@ -112,32 +115,20 @@ function askDelete(): void {
 const filedLine = computed((): string | null => {
   const filed = sync.heldPrompt.decided.value
   if (filed === null) return null
-  const what = filed.kind === 'confirm' ? 'delete everywhere' : 'put them back'
+  const what =
+    filed.kind === 'confirm' ? t('streamC.d1fde4fc6876b769') : t('streamC.4e2963a97edfbd4f')
   const when =
     sync.status.value.state === 'paused'
-      ? 'when sync is resumed'
-      : 'at the next sync that gets through'
-  return (
-    `Decided: ${what} (${filesOf(filed.count)}), carried out ${when}. ` +
-    'Answering again replaces it.'
-  )
+      ? t('streamC.fe65403108c35eaa')
+      : t('streamC.08afb9fff41772f4')
+  return t('streamC.67a94b415a989c0a', { v1: what, v2: filesOf(filed.count), v3: when })
 })
 const shown = computed(() => props.held.slice(0, LISTED))
 const more = computed(() => Math.max(0, count.value - LISTED))
 
-const lead = computed(
-  () =>
-    `${files.value} ${count.value === 1 ? 'was' : 'were'} deleted on this device at once, so ` +
-    `${count.value === 1 ? 'it is' : 'they are'} held back: the other devices still have ` +
-    `${count.value === 1 ? 'it' : 'them'}. Delete everywhere, or put ` +
-    `${count.value === 1 ? 'it' : 'them'} back here.`
-)
+const lead = computed(() => t('streamC.heldLead', { count: count.value }))
 
-const confirmMessage = computed(
-  () =>
-    `${asked.value.length === 1 ? 'It goes' : 'They go'} to the server's trash and disappear ` +
-    'from every device. Until the trash is swept, Deleted files can bring them back.'
-)
+const confirmMessage = computed(() => t('streamC.heldConfirm', { count: asked.value.length }))
 
 async function decide(kind: 'confirm' | 'restore', fileIds: string[]): Promise<void> {
   if (busy.value) return
@@ -148,7 +139,7 @@ async function decide(kind: 'confirm' | 'restore', fileIds: string[]): Promise<v
     new Notice(decidedNotice(kind, result, sync.status.value.state))
     emit('decided')
   } catch (failure) {
-    error.value = `Nothing was decided: ${reasonOf(failure)}`
+    error.value = t('streamC.569af3e1a0bf7018', { v1: String(reasonOf(failure)) })
   } finally {
     busy.value = false
   }

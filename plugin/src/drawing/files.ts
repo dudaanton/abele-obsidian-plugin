@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * Drawings as files: telling one from any other SVG, making one, and opening one in its tab.
  *
@@ -80,7 +81,7 @@ export async function newDrawing(app: App, folder?: TFolder): Promise<TFile | nu
     await openDrawing(app, file, { draw: true })
     return file
   } catch (e) {
-    new Notice(`The drawing could not be made: ${String(e)}`)
+    new Notice(t('streamC.7d52073c6a08b4d8', { v1: String(String(e)) }))
     return null
   }
 }
@@ -121,7 +122,7 @@ export async function insertDrawing(
     await openDrawing(app, file, { draw: true }, 'split')
     return file
   } catch (e) {
-    new Notice(`The drawing could not be made: ${String(e)}`)
+    new Notice(t('streamC.7d52073c6a08b4d8', { v1: String(String(e)) }))
     return null
   }
 }
@@ -129,7 +130,7 @@ export async function insertDrawing(
 /** A drawing's embed on the clipboard, the part shown named in it, to paste into a note. */
 export async function copyEmbed(embed: string, view?: Rect | null): Promise<void> {
   await navigator.clipboard.writeText(drawingEmbed(embed, view))
-  new Notice('Copied: paste it into a note to show the drawing there')
+  new Notice(t('streamC.8085aa6bd8a9bcdf'))
 }
 
 /**
@@ -149,8 +150,14 @@ export async function openImageInk(
   await leaf.setViewState({
     type: IMAGE_INK_VIEW_TYPE,
     state: {
-      path, chat, embed, replaceAttachment, crop,
-      chatVersion: chat ? ChatService.getInstance().getSession(chat)?.conversationVersion.value : undefined,
+      path,
+      chat,
+      embed,
+      replaceAttachment,
+      crop,
+      chatVersion: chat
+        ? ChatService.getInstance().getSession(chat)?.conversationVersion.value
+        : undefined,
     },
     active: true,
   })

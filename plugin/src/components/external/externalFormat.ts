@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { formatBytes } from '@/helpers/displayFormat'
 import type { ExternalFile } from './types'
 
@@ -16,7 +17,7 @@ export function externalIcon(file: Pick<ExternalFile, 'mime' | 'name'>): string 
 /** What kind of file, in a word: the extension in capitals, as Finder names it. */
 export function externalKind(file: Pick<ExternalFile, 'name'>): string {
   const dot = file.name.lastIndexOf('.')
-  return dot > 0 ? file.name.slice(dot + 1).toUpperCase() : 'File'
+  return dot > 0 ? file.name.slice(dot + 1).toUpperCase() : t('streamC.50009ce1da4d15e1')
 }
 
 function clock(seconds: number): string {

@@ -17,7 +17,7 @@
         class="abele-trace-value__failed"
         icon="circle-x"
         size="xs"
-        :tooltip="`Not taken: ${value.failed}`"
+        :tooltip="t('streamC.c74445736819b71e', { v1: String(value.failed) })"
         no-hover
       />
       <span v-else ref="sizeEl" class="abele-trace-value__size" :aria-label="sizeWords">{{
@@ -29,10 +29,15 @@
         v-if="value.text && value.shape"
         icon="maximize-2"
         size="xs"
-        tooltip="Open whole"
+        :tooltip="t('streamC.cd575f27a80c5b7f')"
         @click.stop="emit('open-whole')"
       />
-      <Icon icon="flag" size="xs" tooltip="Mark this value" @click.stop="emit('mark', '$')" />
+      <Icon
+        icon="flag"
+        size="xs"
+        :tooltip="t('streamC.c9931d04be9bb99b')"
+        @click.stop="emit('mark', '$')"
+      />
     </template>
 
     <template v-if="value.shape">
@@ -60,6 +65,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 import { computed, onMounted, ref, watch } from 'vue'
 import { setTooltip } from 'obsidian'
 import Icon from '../../obsidian/Icon.vue'
@@ -85,9 +92,9 @@ const sizeText = computed(() =>
 )
 const sizeWords = computed(() =>
   props.value.masked
-    ? 'Masked before writing: there is no value on disk'
+    ? t('streamC.d4032f9dc56c6229')
     : props.value.same
-      ? 'The same as the last time it was taken'
+      ? t('streamC.93eb14f85a3d3915')
       : `${bytes(props.value.bytes)}, ${props.value.format}`
 )
 const tip = () => sizeEl.value && setTooltip(sizeEl.value, sizeWords.value)

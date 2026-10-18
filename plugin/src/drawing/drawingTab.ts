@@ -1,3 +1,6 @@
+import { streamCTitle } from '@/i18n/streamCLabels'
+
+import { t } from '@/i18n'
 /**
  * What every tab that is drawn in shares — a drawing's own and a picture drawn on: its keys, and
  * the bar over it with the menus its buttons open. The tab adds the rest of its "more" menu.
@@ -86,7 +89,7 @@ export function thicknessMenu(
   for (const t of THICKNESSES)
     menu.addItem((item) =>
       item
-        .setTitle(t[0].toUpperCase() + t.slice(1))
+        .setTitle(streamCTitle(t))
         .setChecked(model.thickness === t)
         .onClick(() => {
           session?.setThickness(t)
@@ -108,8 +111,8 @@ export function shapeMenu(
   }
   const menu = new Menu()
   const names: Record<ShapeKind, [string, string]> = {
-    rect: ['Box', 'square'],
-    ellipse: ['Ellipse', 'circle'],
+    rect: [t('streamC.512fd3c6042cd1d9'), 'square'],
+    ellipse: [t('streamC.cb1ee8cb964f2362'), 'circle'],
     line: ['Line', 'minus'],
     arrow: ['Arrow', 'move-up-right'],
   }
@@ -128,25 +131,25 @@ export function zoomMenu(e: MouseEvent, session: DrawingSession | null, fit?: ()
   const menu = new Menu()
   menu.addItem((item) =>
     item
-      .setTitle('Zoom in')
+      .setTitle(t('streamC.0e47f09a748fa132'))
       .setIcon('zoom-in')
       .onClick(() => session?.zoomBy(1.25))
   )
   menu.addItem((item) =>
     item
-      .setTitle('Zoom out')
+      .setTitle(t('streamC.bc7b631a689b45ca'))
       .setIcon('zoom-out')
       .onClick(() => session?.zoomBy(0.8))
   )
   menu.addItem((item) =>
     item
-      .setTitle('Actual size')
+      .setTitle(t('streamC.74cdbe70e394d004'))
       .setIcon('scan')
       .onClick(() => session?.actualSize())
   )
   menu.addItem((item) =>
     item
-      .setTitle('Show the whole drawing')
+      .setTitle(t('streamC.b7d4ff614fbde816'))
       .setIcon('maximize')
       .onClick(() => {
         if (fit) {

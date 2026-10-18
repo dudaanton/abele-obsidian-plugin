@@ -20,7 +20,7 @@
       :style="frameStyle"
       tabindex="0"
       role="group"
-      aria-label="Crop frame: drag it or its corners, or move it with the arrow keys"
+      :aria-label="t('streamC.94e8b480a3705c7a')"
       @pointerdown="hold('move', $event)"
       @keydown="nudge"
     >
@@ -38,6 +38,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 /**
  * The frame a picture is cropped to, over the picture as it is shown. Corners resize from the
  * opposite corner, sides from the opposite side, the inside moves it; a kept shape holds while any

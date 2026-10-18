@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { nanoid } from 'nanoid'
 import { ItemView, WorkspaceLeaf, App } from 'obsidian'
@@ -21,7 +22,7 @@ export class ScriptRunsView extends ItemView {
   }
 
   getDisplayText() {
-    return 'Abele script runs'
+    return t('streamC.4cb96d8cc3d6fe75')
   }
 
   static getIcon() {

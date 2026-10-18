@@ -3,7 +3,7 @@
     class="abele-book-selection"
     role="toolbar"
     data-ignore-swipe="true"
-    :aria-label="highlight ? 'Highlight' : 'Selection'"
+    :aria-label="highlight ? t('streamC.07ccd15df32aa7e2') : t('kit.selection')"
   >
     <div class="abele-book-selection__colors abele-glyph-row">
       <!-- On e-ink a colour is shown as the shape its highlight takes, which a grey screen can
@@ -16,10 +16,16 @@
           :active="highlight?.color === c"
           :tooltip="
             highlight
-              ? `Make it ${c}: ${SHAPE_NAMES[einkShape(c)]}`
-              : `Highlight in ${c}: ${SHAPE_NAMES[einkShape(c)]}`
+              ? t('streamC.9ff94b2871da87cf', {
+                  v1: streamCLabel(c),
+                  v2: String(SHAPE_NAMES[einkShape(c)]),
+                })
+              : t('streamC.23555f01f2ded293', {
+                  v1: streamCLabel(c),
+                  v2: String(SHAPE_NAMES[einkShape(c)]),
+                })
           "
-          :aria-label="`${c}, ${SHAPE_NAMES[einkShape(c)]}`"
+          :aria-label="`${streamCLabel(c)}, ${SHAPE_NAMES[einkShape(c)]}`"
           :class="`abele-book-selection__shape abele-book-selection__shape_${einkShape(c)}`"
           :data-color="c"
           @click="emit('color', c)"
@@ -32,7 +38,11 @@
           icon="circle"
           :color="c"
           :active="highlight?.color === c"
-          :tooltip="highlight ? `Make it ${c}` : `Highlight in ${c}`"
+          :tooltip="
+            highlight
+              ? t('streamC.10d5c05487cb0225', { v1: streamCLabel(c) })
+              : t('streamC.c06fc933938a9b36', { v1: streamCLabel(c) })
+          "
           class="abele-book-selection__swatch"
           @click="emit('color', c)"
         />
@@ -41,16 +51,16 @@
     <div class="abele-book-selection__actions">
       <Icon
         icon="message-square"
-        :tooltip="highlight?.comment ? 'Edit the comment' : 'Highlight and write a comment'"
+        :tooltip="
+          highlight?.comment ? t('streamC.745be8170559e2bb') : t('streamC.73d189b8feaa5e0a')
+        "
         @click="emit('comment')"
       />
       <Icon
         v-if="canAsk"
         :icon="highlight?.discussion ? 'messages-square' : 'message-square-plus'"
         :tooltip="
-          highlight?.discussion
-            ? 'Open the discussion about these words'
-            : 'Ask the agent about these words: a discussion kept with them'
+          highlight?.discussion ? t('streamC.c6fec0f39d426672') : t('streamC.b78089158f67f818')
         "
         @click="emit('ask')"
       />
@@ -60,12 +70,12 @@
         class="abele-book-selection__more"
         icon="more-horizontal"
         aria-haspopup="menu"
-        :tooltip="highlight ? 'More for this highlight' : 'More for these words'"
+        :tooltip="highlight ? t('streamC.c621479d31d37d0e') : t('streamC.fe07e933f02c75c4')"
         @click="openMore"
       />
       <Icon
         icon="x"
-        :tooltip="highlight ? 'Close' : 'Clear the selection'"
+        :tooltip="highlight ? t('sync.window.close') : t('streamC.ef8b2814c03baa20')"
         @click="emit('close')"
       />
     </div>
@@ -73,6 +83,9 @@
 </template>
 
 <script setup lang="ts">
+import { streamCLabel } from '@/i18n/streamCLabels'
+import { t } from '@/i18n'
+
 /**
  * What can be done to words selected on the page — highlight them in a colour, comment, link to
  * them, quote them into a note, run a script on them — or to a highlight that was tapped: recolour it, comment, link,
@@ -86,12 +99,12 @@ import { eink, einkShape, type EinkShape } from '@/reader/eink'
 
 /** On e-ink, what each shape a highlight takes is called, for its tooltip. */
 const SHAPE_NAMES: Record<EinkShape, string> = {
-  underline: 'underlined',
-  double: 'underlined twice',
-  dashed: 'a dashed underline',
-  box: 'boxed',
-  'dashed-box': 'in a dashed box',
-  'over-under': 'lined above and below',
+  underline: t('streamC.ef23a7cecf915858'),
+  double: t('streamC.674921a2690cbcff'),
+  dashed: t('streamC.d03d2266d1a2b36a'),
+  box: t('streamC.1fd10d64e0796fee'),
+  'dashed-box': t('streamC.97db3d6467682e74'),
+  'over-under': t('streamC.e541b63c59926194'),
 }
 const einkOn = computed(() => eink().on)
 
@@ -133,31 +146,35 @@ const openMore = (event: MouseEvent) => {
       item.setTitle(title).setIcon(icon).setSection(section).setWarning(warning).onClick(run)
     )
   if (!props.highlight)
-    add('words', 'Read aloud from here', 'audio-lines', () => emit('read-aloud'))
-  add('words', 'Copy a link to this place', 'link', () => emit('copy-link'))
-  add('words', 'Quote into the last note', 'text-quote', () => emit('quote'))
+    add('words', t('streamC.4619ac8735307219'), 'audio-lines', () => emit('read-aloud'))
+  add('words', t('streamC.a07fe21d13f60519'), 'link', () => emit('copy-link'))
+  add('words', t('streamC.750a724fe76f47a8'), 'text-quote', () => emit('quote'))
   for (const s of props.scripts ?? [])
-    add('scripts', `Run ${s.label}`, s.icon, () => emit('script', s.script))
-  if (props.canRunScripts) add('scripts', 'Run a script…', 'terminal', () => emit('script'))
+    add('scripts', t('streamC.c1bfff806c4c1522', { v1: s.label }), s.icon, () =>
+      emit('script', s.script)
+    )
+  if (props.canRunScripts)
+    add('scripts', t('streamC.5a402ae4193038da'), 'terminal', () => emit('script'))
   const h = props.highlight
   if (h) {
     add(
       'highlight',
-      h.forms?.length
-        ? 'Change the words underlined in the book'
-        : 'Underline this word in the book',
+      h.forms?.length ? t('streamC.5e5a008baf522713') : t('streamC.6134b994540e4142'),
       'underline',
       () => emit('forms')
     )
-    add('highlight', 'Open the highlights note', 'file-text', () => emit('open-note', event))
+    add('highlight', t('streamC.2bc80b2883dbd963'), 'file-text', () => emit('open-note', event))
     if (props.repairable) {
-      add('highlight', 'Repair this highlight link…', 'wrench', () => emit('repair', false))
+      add('highlight', t('streamC.5e6a728bf0c4b847'), 'wrench', () => emit('repair', false))
       if ((props.repairCount ?? 0) > 1)
-        add('highlight', `Repair all found links (${props.repairCount})…`, 'wrench', () =>
-          emit('repair', true)
+        add(
+          'highlight',
+          t('streamC.e7bd26947204b0fb', { v1: String(props.repairCount) }),
+          'wrench',
+          () => emit('repair', true)
         )
     }
-    add('remove', 'Remove the highlight', 'trash-2', () => emit('delete'), true)
+    add('remove', t('streamC.1385c21c5accbf32'), 'trash-2', () => emit('delete'), true)
   }
   menu.showAtMouseEvent(event)
 }

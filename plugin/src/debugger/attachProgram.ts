@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 // Attaching the debugger to a Node.js program already running on the node's machine: the node
 // lists what waits for a debugger on loopback, the owner picks one, and the session opens in the
 // Debug panel as a started program's does. Detaching leaves the program running.
@@ -43,18 +44,16 @@ const lastPart = (path: string) => path.split('/').filter(Boolean).pop() ?? path
 export function programSuggestions(programs: WaitingProgram[]): NodeSuggestion[] {
   return programs.map((p) => {
     const where = p.in_chat_folder
-      ? "This chat's folder"
+      ? t('streamC.a54b7b8a7606db01')
       : p.project
-        ? `Project ${lastPart(p.project.path)}`
+        ? t('streamC.22573c4be7ad1c95', { v1: lastPart(p.project.path) })
         : p.cwd
           ? shortPath(p.cwd)
-          : 'Folder unknown'
+          : t('streamC.81c7eebe9413d3cf')
     return {
       id: `${p.pid}:${p.port}`,
       icon: p.in_chat_folder ? 'plug' : 'folder-output',
-      kind: p.in_chat_folder
-        ? "Runs from this chat's folder"
-        : "Runs outside this chat's folder: attaching asks first",
+      kind: p.in_chat_folder ? t('streamC.3c5da2fc19b842c2') : t('streamC.dfd5c6aac1c2399b'),
       title: p.command,
       note: `${where} · pid ${p.pid} · port ${p.port}`,
     }
@@ -111,12 +110,12 @@ function failed(e: unknown) {
   const message = e instanceof Error ? e.message : typeof e === 'string' ? e : 'unknown error'
   new Notice(
     message.includes('debugger_profile_unavailable')
-      ? 'This node cannot debug programs yet: its JavaScript debugger is not installed.'
+      ? t('streamC.acf5135c0244b28e')
       : message.includes('debugger_program_not_found')
-        ? 'That program no longer waits for a debugger. Open the list again.'
+        ? t('streamC.84fca3706ad92141')
         : message.includes('unsupported_method')
-          ? 'This node cannot attach to running programs. Update it.'
-          : `Not attached: ${message}`
+          ? t('streamC.2d7c3895dbbd8c4c')
+          : t('streamC.f266b0b52e1898ac', { v1: String(message) })
   )
 }
 
@@ -129,7 +128,7 @@ export async function askAndAttachProgram(
     await presenter.connection.connect()
     const target = await chatTarget(presenter)
     if (!target) {
-      new Notice('This chat has no folder to debug from')
+      new Notice(t('streamC.9d103b53ab67f9eb'))
       return
     }
     const { programs } = ProgramsSchema.parse(
@@ -143,24 +142,27 @@ export async function askAndAttachProgram(
     new NodeSuggestModal(
       app,
       programSuggestions(programs),
-      'A running Node.js program to attach the debugger to',
+      t('streamC.b5f49b30dbe29380'),
       (item) => {
         const program = byId.get(item.id)
         if (!program) return
         void (async () => {
           if (!program.in_chat_folder) {
             const yes = await confirmDialog({
-              title: 'Attach to a program outside this folder?',
-              message: `${program.command} runs from ${program.cwd ?? 'a folder the node cannot name'}, not from this chat's folder. The debugger can pause it and read its values. Detaching later leaves it running.`,
-              confirmText: 'Attach',
-              confirmTooltip: 'Attach the debugger to this program',
+              title: t('streamC.e49e9a0569c8f926'),
+              message: t('streamC.c87c48a5c3813f55', {
+                v1: String(program.command),
+                v2: String(program.cwd ?? t('streamC.323ca97e9290d6b0')),
+              }),
+              confirmText: t('streamC.d406ade2958cb5b6'),
+              confirmTooltip: t('streamC.f733edcdd847a681'),
             })
             if (!yes) return
           }
           await attachToProgram(presenter, program, show, !program.in_chat_folder)
         })().catch(failed)
       },
-      NOTHING_WAITS
+      t('streamC.5103d93fe1af444f')
     ).open()
   } catch (e) {
     failed(e)

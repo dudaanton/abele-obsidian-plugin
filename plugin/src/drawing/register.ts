@@ -88,7 +88,7 @@ export function registerDrawing(plugin: Plugin): void {
     app.workspace.on('editor-menu', (menu, editor, view) => {
       menu.addItem((item) =>
         item
-          .setTitle('Insert a new drawing')
+          .setTitle(t('commands.insert-drawing'))
           .setIcon('pen-line')
           .setSection('insert')
           .onClick(() => insertHere(editor, view as MarkdownView))
@@ -130,7 +130,7 @@ export function registerDrawing(plugin: Plugin): void {
       if (file instanceof TFolder) {
         menu.addItem((item) =>
           item
-            .setTitle('New Abele drawing')
+            .setTitle(t('streamC.76625b036abd0f6c'))
             .setIcon('pen-line')
             .setSection('action-primary')
             .onClick(() => void newDrawing(app, file))
@@ -154,7 +154,7 @@ export function registerDrawing(plugin: Plugin): void {
       if (!known) return
       menu.addItem((item) =>
         item
-          .setTitle('Copy embed for a note')
+          .setTitle(t('streamC.7210a6fd0179a92e'))
           .setIcon('clipboard-copy')
           .setSection('action')
           .onClick(() => void copyEmbed(`![[${file.path}]]`))

@@ -8,7 +8,7 @@
       <input
         v-model="goAddress"
         class="abele-workbook-address"
-        aria-label="Cell address"
+        :aria-label="t('streamC.b740c237ed4ab69d')"
         spellcheck="false"
         @keydown.enter="go"
         @blur="goAddress = selected"
@@ -19,7 +19,7 @@
           inCell
             ? inCellValue
             : selectedCell?.formulaProblem
-              ? 'Formula unavailable: ' + selectedCell.formulaProblem
+              ? t('streamC.ae255f9c8846dfbc', { v1: selectedCell.formulaProblem })
               : selectedCell?.formula
                 ? selectedCell.formula
                 : String(selectedCell?.value ?? '')
@@ -27,37 +27,41 @@
         <span class="abele-workbook-formula__where">{{ selected }}</span>
       </div>
       <div class="abele-workbook-actions">
-        <Icon icon="zoom-out" tooltip="Zoom out" @click="setZoom(zoom / 1.2)" />
+        <Icon
+          icon="zoom-out"
+          :tooltip="t('streamC.bc7b631a689b45ca')"
+          @click="setZoom(zoom / 1.2)"
+        />
         <Icon
           :text-right="`${Math.round(zoom * 100)}%`"
-          label="Reset zoom"
-          tooltip="Reset zoom"
+          :label="t('streamC.91a661b24f1bc2bf')"
+          :tooltip="t('streamC.91a661b24f1bc2bf')"
           class="abele-workbook-zoom"
           @click="setZoom(1)"
         />
-        <Icon icon="zoom-in" tooltip="Zoom in" @click="setZoom(zoom * 1.2)" />
+        <Icon
+          icon="zoom-in"
+          :tooltip="t('streamC.0e47f09a748fa132')"
+          @click="setZoom(zoom * 1.2)"
+        />
         <template v-if="canEdit">
           <Icon
             icon="pencil"
-            tooltip="Edit this cell and its formatting"
+            :tooltip="t('streamC.e0b23fdfcea011fc')"
             class="abele-workbook-edit"
             :active="editing"
             @click="beginEdit"
           />
           <Icon
             icon="refresh-cw"
-            :tooltip="
-              book.stale
-                ? 'Recalculate: the values shown may be out of date'
-                : 'Recalculate the formulas'
-            "
+            :tooltip="book.stale ? t('streamC.0e74903303a194c7') : t('streamC.84bd94d3c641fc57')"
             :disabled="busy"
             @click="recalculate"
           />
           <Icon
             ref="moreButton"
             icon="more-horizontal"
-            tooltip="Rows: add one at the end, delete the last"
+            :tooltip="t('streamC.f3eb452a0ab58810')"
             :disabled="busy"
             @click="rowMenu"
           />
@@ -66,14 +70,14 @@
           v-else
           icon="lock"
           no-hover
-          :tooltip="
-            book.readOnly
-              ? 'Read-only workbook'
-              : 'View and agent editing: change it here on a computer, or ask the agent'
-          "
+          :tooltip="book.readOnly ? t('streamC.4bb99e60355e0692') : t('streamC.d7bc1099c9fde3c0')"
           class="abele-workbook-mode"
           :text-right="
-            book.readOnly ? 'Read-only workbook' : mobile ? 'View and agent editing' : ''
+            book.readOnly
+              ? t('streamC.4bb99e60355e0692')
+              : mobile
+                ? t('streamC.84e4da5a81f460af')
+                : ''
           "
         />
       </div>
@@ -81,11 +85,11 @@
         v-if="book.sheets.length > 1"
         v-model="sheetName"
         class="dropdown abele-workbook-sheet"
-        aria-label="Sheet"
+        :aria-label="t('streamC.54bf0ebbfb3e0e37')"
         :disabled="busy"
       >
         <option v-for="s in book.sheets" :key="s.name" :value="s.name">
-          {{ s.name }}{{ s.hidden ? ' (hidden)' : '' }}
+          {{ s.name }}{{ s.hidden ? t('streamC.b8bab1f7e039cd31') : '' }}
         </option>
       </select>
     </div>
@@ -102,53 +106,63 @@
     <form v-if="editing && canEdit" class="abele-workbook-editor" @submit.prevent="saveCell">
       <div class="abele-workbook-editor__row">
         <span class="abele-workbook-editor__where">{{ sheetName }}!{{ editAddress }}</span>
-        <select v-model="editType" class="dropdown" aria-label="Cell type">
-          <option value="text">Text</option>
-          <option value="number">Number</option>
-          <option value="boolean">Boolean</option>
-          <option value="formula">Formula</option>
-          <option value="clear">Clear</option>
+        <select v-model="editType" class="dropdown" :aria-label="t('streamC.df3d482d287d96fe')">
+          <option value="text">{{ t('settings.ai.AgentEditorModal.text.71988c4d') }}</option>
+          <option value="number">{{ t('streamC.bd82cf16699be29e') }}</option>
+          <option value="boolean">{{ t('streamC.a066ff921096d0f9') }}</option>
+          <option value="formula">{{ t('streamC.d00bd4ec32e4e1cc') }}</option>
+          <option value="clear">{{ t('kit.clear') }}</option>
         </select>
         <textarea
           v-model="editValue"
-          aria-label="Cell value"
+          :aria-label="t('streamC.47840ba055b544b9')"
           rows="1"
           :disabled="editType === 'clear' || busy"
         />
       </div>
       <div class="abele-workbook-editor__row abele-workbook-format">
-        <span class="abele-workbook-editor__where">Format</span>
-        <input v-model="formatRange" aria-label="Formatting range" spellcheck="false" />
+        <span class="abele-workbook-editor__where">{{ t('streamC.2f343666aaa88c44') }}</span>
+        <input
+          v-model="formatRange"
+          :aria-label="t('streamC.dff9d33a70a638ae')"
+          spellcheck="false"
+        />
         <Icon
           icon="bold"
-          tooltip="Bold"
+          :tooltip="t('settings.reader.stroke.bold')"
           :active="formatBold"
           @click="((formatBold = !formatBold), markFormat('bold'))"
         />
         <Icon
           icon="italic"
-          tooltip="Italic"
+          :tooltip="t('streamC.9bf37cb58a694456')"
           :active="formatItalic"
           @click="((formatItalic = !formatItalic), markFormat('italic'))"
         />
         <input
           v-model="formatFill"
-          aria-label="Fill colour"
-          placeholder="Fill, #RRGGBB"
+          :aria-label="t('streamC.1c298130493715ff')"
+          :placeholder="t('streamC.df0f9fbd3d29d55c')"
           spellcheck="false"
           @input="markFormat('fill')"
         />
         <input
           v-model="numberFormat"
-          aria-label="Number format"
+          :aria-label="t('streamC.457421f8b5d4c967')"
           spellcheck="false"
           @input="markFormat('number_format')"
         />
-        <button type="button" :disabled="busy" @click="saveFormat">Apply formatting</button>
+        <button type="button" :disabled="busy" @click="saveFormat">
+          {{ t('streamC.4d737960f57aaa8c') }}
+        </button>
       </div>
       <div class="abele-workbook-editor__foot">
-        <button type="button" :disabled="busy" @click="editing = false">Cancel</button>
-        <button type="submit" class="mod-cta" :disabled="busy">Save</button>
+        <button type="button" :disabled="busy" @click="editing = false">
+          {{ t('kit.cancel') }}
+        </button>
+        <button type="submit" class="mod-cta" :disabled="busy">
+          {{ t('settings.GithubConnectionEditor.save.1509f561') }}
+        </button>
       </div>
     </form>
     <div
@@ -203,7 +217,7 @@
               class="abele-workbook-cell abele-workbook-cell__field"
               :data-cell="cell.address"
               :style="cell.css"
-              :aria-label="`Cell ${cell.address}`"
+              :aria-label="t('streamC.833f5668fbbd72ce', { v1: String(cell.address) })"
               @keydown="inCellKeys"
               @blur="commitInCell()"
             />
@@ -223,11 +237,18 @@
           </template>
         </template>
       </div>
-      <EmptyState v-else variant="loading" icon="sheet" :title="`Opening ${sheetName}`" />
+      <EmptyState
+        v-else
+        variant="loading"
+        icon="sheet"
+        :title="t('streamC.9c589978693e846b', { v1: String(sheetName) })"
+      />
     </div>
   </div>
 </template>
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { Menu } from 'obsidian'
 import Icon from '../components/obsidian/Icon.vue'
@@ -253,7 +274,7 @@ const statusText = computed(
   () =>
     error.value ||
     props.book.calculationNote ||
-    (props.book.stale ? 'Values may be stale. Recalculation is required.' : '')
+    (props.book.stale ? t('streamC.32f0ac2f6e540bdc') : '')
 )
 const sheetName = ref(
   props.book.sheets.find((s) => s.name === props.initialSheet)?.name ?? props.book.sheets[0].name
@@ -376,7 +397,7 @@ async function saveFormat() {
     if (formatChanged.has('italic')) format.italic = formatItalic.value
     if (formatChanged.has('fill')) format.fill = formatFill.value
     if (formatChanged.has('number_format')) format.number_format = numberFormat.value
-    if (!formatChanged.size) throw new Error('Choose a formatting change first')
+    if (!formatChanged.size) throw new Error(t('streamC.d09bd58d5d52fd70'))
     await props.save({
       operation: 'format',
       sheet: sheetName.value,
@@ -396,13 +417,13 @@ function rowMenu(event: MouseEvent) {
   const menu = new Menu()
   menu.addItem((item) =>
     item
-      .setTitle('Append row')
+      .setTitle(t('streamC.775c0842ed922a81'))
       .setIcon('between-horizontal-end')
       .onClick(() => void changeRow('row_add'))
   )
   menu.addItem((item) =>
     item
-      .setTitle('Delete last row')
+      .setTitle(t('streamC.3f663bb099f29f6c'))
       .setIcon('trash-2')
       .setWarning(true)
       .onClick(() => void changeRow('row_delete'))
@@ -454,11 +475,11 @@ async function saveCell() {
     if (editType.value === 'formula') value = { formula: editValue.value }
     if (editType.value === 'number') {
       if (!editValue.value.trim() || !Number.isFinite(Number(editValue.value)))
-        throw new Error('Enter a finite number')
+        throw new Error(t('streamC.ac69409ff3df45cf'))
       value = Number(editValue.value)
     }
     if (editType.value === 'boolean') {
-      if (!/^(true|false)$/i.test(editValue.value)) throw new Error('Enter TRUE or FALSE')
+      if (!/^(true|false)$/i.test(editValue.value)) throw new Error(t('streamC.b4b35cf46853b453'))
       value = editValue.value.toLowerCase() === 'true'
     }
     if (editType.value === 'clear') value = null
@@ -535,7 +556,7 @@ function rowCells(row: number) {
       address,
       formula: cell?.formula,
       text: pending
-        ? '(pending)'
+        ? t('streamC.6187bb0d6959f72e')
         : formatValue(
             cell?.value ?? null,
             cell?.style.numberFormat ?? 'General',

@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import {
   setIcon,
   setTooltip,
@@ -81,12 +82,12 @@ export class CodeView extends TextFileView {
     this.scope.register(['Mod'], 'd', () => undefined)
 
     // Save and Find where a tab keeps what can be done with it, its header, as glyphs.
-    this.saveAction = this.addAction('save', 'Save the changes (Mod+S)', () => {
+    this.saveAction = this.addAction('save', t('streamC.9d6e26c9ca138daa'), () => {
       void this.save()
       this.setDirty(false)
     })
     this.saveAction.toggle(false)
-    this.addAction('search', 'Find in the file (Mod+F)', () => this.toggleSearch())
+    this.addAction('search', t('streamC.0df49879fe2f3c6a'), () => this.toggleSearch())
   }
 
   /**
@@ -107,7 +108,7 @@ export class CodeView extends TextFileView {
   }
 
   getDisplayText() {
-    return this.file?.name ?? 'Code'
+    return this.file?.name ?? t('streamC.340f463033e0fd5d')
   }
 
   getIcon() {
@@ -283,7 +284,10 @@ export class CodeView extends TextFileView {
     const cursor = new SearchCursor(this.editor.state.doc, term, 0)
     let count = 0
     while (!cursor.next().done) count++
-    this.searchCountEl.textContent = count > 0 ? `${count} found` : 'No results'
+    this.searchCountEl.textContent =
+      count > 0
+        ? t('streamC.aa56c9d3302af396', { v1: String(count) })
+        : t('streamC.a43619f321175f57')
   }
 
   private clearSearch() {
@@ -305,7 +309,7 @@ export class CodeView extends TextFileView {
     const search = header.createDiv({ cls: 'abele-code-search abele-code-search_hidden' })
     this.searchEl = search
     const searchComponent = new TextComponent(search)
-    searchComponent.setPlaceholder('Find...')
+    searchComponent.setPlaceholder(t('streamC.dec802b13c9c7f29'))
     searchComponent.inputEl.addClass('abele-code-search__input')
     this.searchInput = searchComponent.inputEl
     this.searchCountEl = search.createSpan({ cls: 'abele-code-search__count' })
@@ -326,9 +330,9 @@ export class CodeView extends TextFileView {
         }
       })
     }
-    glyph('arrow-up', 'Previous match (Shift+Enter)', () => this.goToPrev())
-    glyph('arrow-down', 'Next match (Enter)', () => this.goToNext())
-    glyph('x', 'Close the search (Escape)', () => this.toggleSearch())
+    glyph('arrow-up', t('streamC.a1ac3c3a93fa2373'), () => this.goToPrev())
+    glyph('arrow-down', t('streamC.115967f77ac62494'), () => this.goToNext())
+    glyph('x', t('streamC.4421ecff0746b96c'), () => this.toggleSearch())
 
     this.searchInput.addEventListener('input', () => this.doSearch())
     this.searchInput.addEventListener('keydown', (e) => {

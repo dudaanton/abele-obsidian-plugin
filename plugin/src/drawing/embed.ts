@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * A drawing in a note — its embed, `![[Sketch.svg]]`, the part of it to show named in the link
  * (`![[Sketch.svg#part=…]]`, `embedFormat.ts`) or, in notes written before, in a callout round it
@@ -246,7 +247,7 @@ export class DrawingEmbed extends MarkdownRenderChild {
     this.actions.className = 'abele-drawing-embed__actions'
     this.handle = doc.createElementNS(XHTML, 'div')
     this.handle.className = 'abele-drawing-embed__resize'
-    this.handle.setAttribute('aria-label', 'Drag to make the drawing bigger or smaller')
+    this.handle.setAttribute('aria-label', t('streamC.2d1649c433a9949f'))
     this.box.append(this.img, this.actions, this.handle)
   }
 
@@ -503,7 +504,7 @@ export class DrawingEmbed extends MarkdownRenderChild {
           ? withEmbedPart(text, { ...place, file: this.file.path, nth }, view)
           : null
     )
-    if (!done) new Notice('The drawing’s place in the note could not be found to keep the part')
+    if (!done) new Notice(t('streamC.6a4c8939e55c3025'))
   }
 
   /** Which of the embeds of this file in its block this one is. */
@@ -526,7 +527,7 @@ export class DrawingEmbed extends MarkdownRenderChild {
     const done = await this.edit((text, place) =>
       place ? withEmbedSize(text, { ...place, file: this.file.path, nth }, size) : null
     )
-    if (!done) new Notice('The drawing’s place in the note could not be found to keep its size')
+    if (!done) new Notice(t('streamC.d2850838a6ae20c5'))
   }
 
   // ————— Resizing —————

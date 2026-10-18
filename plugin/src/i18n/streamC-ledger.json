@@ -1,0 +1,282 @@
+{
+  "sync.phone.offline": {
+    "englishHash": "e79ad6d06303428ac0322a963cb6d3169e69e62d414d56a54c9a65c5eb24733e",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.phone.error": {
+    "englishHash": "e487637985a7a4a03669d3a4dc9d7c9d183c711aea0ccf533207d6ed007fd939",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.phone.held": {
+    "englishHash": "67406023057c6e96e1ac20d2c7d48bbf41bb24c376f73106e621d5725f50af42",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.phone.conflicts": {
+    "englishHash": "9d59cc97b574162bd067579d1137f647d63ab9378cfc690c711790d2a1704671",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.phone.review": {
+    "englishHash": "a7124c2efcf67bf3c05c246fc4bf012829d4211d73dfe082f1e4f6f8e66ca701",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.window.progress": {
+    "englishHash": "7250600afb550494d3041a12e348a0b2e7a8ac21f27058a296e25e776b9cdeff",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.window.notSent": {
+    "englishHash": "7288052d76e9a693c425e73773e78e6d3de196dcd77c82cfdbb3552f5f60fab5",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.window.conflicts": {
+    "englishHash": "f908955507cb998b73b774c581ed6534fb629bd7215daf0e1308d1f3e5d6b266",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.window.conflictsDesc": {
+    "englishHash": "5de71da5e72d9fb614c335a057894e6c5ef38855af8e38a2eebaa8bc42a1cc14",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.window.openCopy": {
+    "englishHash": "5b26cb142808573660a2795fe09ebe0287628c300879e59231976f29bd95f2e0",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.window.waiting": {
+    "englishHash": "a11171189f5835973ad22f2abb2f0bfb5facfc26e9de720edfb8231d728cf53d",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.window.trusted": {
+    "englishHash": "f01b146d04e2f0c2f0832af33f102ce5bbbc323e67e61c37473888b11f08da5a",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.window.trustedDesc": {
+    "englishHash": "ae268a051494b2e2deb028ff5068a1ae99c8b1168870b4a7c4195053fe903907",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.window.recent": {
+    "englishHash": "40dffab858cb0dde6c42a7eca4b252ed99b854cf02b6e78cc9527da95f9b2701",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.window.recentDesc": {
+    "englishHash": "18df39176bf569d934529bb52dfa13f933462159af3bb9822958514fcb97ccae",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.window.disconnect": {
+    "englishHash": "65a1313e7c10d25f98d120d7301709c54eaa87b3951a3406ff9a93fd88df640b",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.window.disconnectTip": {
+    "englishHash": "d3e19c49bd2da84d39efcd261cd7f6a354f81f2e8b402ab739e6a23bfdb660ab",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.window.close": {
+    "englishHash": "d7cf5045c01b2eb981a4b2640ddf66c8de124d3874c0df894afd23a04e256eca",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.window.closeTip": {
+    "englishHash": "ac2c6f5c0da14e1855ac7f93a0f440086e5819bbf5da9ce7048532e4373e34e5",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.window.share": {
+    "englishHash": "a29c366b3398a060e731833e73a91b688169d6b636ca61e3201f8ab9a3b22cae",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.window.shareTip": {
+    "englishHash": "73d5d764d785cb259a67ebc54150164044e09385b0246dd9eec030e1822c70e9",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.window.error": {
+    "englishHash": "319f94bd4eb54baed2158ec6c1e4edc199e6570ea92c5a64354b6a10ee79f5c7",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.status.disconnected": {
+    "englishHash": "8d4ffdaa1e2a4dd322147ddd678e6fdf623f52230c85ffd7d72447e3d2d9e61f",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.status.joining": {
+    "englishHash": "83fb6c3bccaf84f2262487b094cd306bb04e877b89637521ce6ff7f63dc52b72",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.status.idle": {
+    "englishHash": "1a8bc24db16cd2f20ae5163e5328e4e43538ba01d62f0d57e9ae4a7ad716d591",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.status.syncing": {
+    "englishHash": "2371628b3e5afd29b96c39159980b13134fc21d8dea2204c5b99479ea0439101",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.status.paused": {
+    "englishHash": "b0c0000eeb008e928451aa5aedb4b37809c401b106a47f8d281806874ebc21fc",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.status.offline": {
+    "englishHash": "cff17bc0d0c9823ceedf84ea0ab2896bd05d57906c8f6139778ebdc4bd8c1cd7",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.status.error": {
+    "englishHash": "4ce6dbe48e15708221da8b98a7725be72073d3ead602f0c24dd96d2ebbf55127",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.status.held": {
+    "englishHash": "367d9bb6c96ec3e71aeb3f4c5301b4ddb3f8ccff4d526b0a8c449bc8a3ae7c76",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.status.review": {
+    "englishHash": "9d3eec955fa9bcc74a3dba7fd21b48ce71b7bc712fa9a566d0a3dc651c3661b8",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.status.waiting": {
+    "englishHash": "3ec34c9e782a1399c18e6d763972654a7ca783c115ba61a738acbb8e38625ee8",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.status.conflicts": {
+    "englishHash": "1628dae9c75c50afa65280af6a0d15b8d5cab90b86f03b96bacf334460d4142b",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.status.heldLine": {
+    "englishHash": "ce14ca4ea16f4a96dab0ee09659325f2e9af7dbb2e5463259213aa349c32e3f9",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.status.stagedLine": {
+    "englishHash": "47f3bdb368b5f915ab7e4babafb529575b3e8a8966978573b252108a1fd0db68",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.status.changesAre": {
+    "englishHash": "71022f6f7b6995fedb30708d037e99726b4b89c55b29f8ffa0c644db8eb67084",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.status.title": {
+    "englishHash": "fd02c89e5125be6adcfe1a87f38be63d09642c62740ab11936bbc97d218660a3",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.status.found": {
+    "englishHash": "3940692155af19f4d5f8563535825cd0dc5979332f67d8300fc6d7d0885e8b6b",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.status.unsent": {
+    "englishHash": "005e4ddf4da52a97292e385f245a7ea4fb63f9baf6b424dfd83e07d9992572cf",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.status.copies": {
+    "englishHash": "67ff9507779ad9e8bbfc8e1b646683d1491eb212400b949abac6c459d3cc5991",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.status.decision": {
+    "englishHash": "f2054a4aa4cdfc66f83e49429580a2b41bfa79bc7010dcac17a019640a07cd1c",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.status.connecting": {
+    "englishHash": "ad53f9c790cd1138042c7a2c7e887cc8a80f1a75653ea414b896863aefe51bbd",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.status.last": {
+    "englishHash": "97e70a892f75d5a4566ae14e4e8629acc3e7589414a9aa4bf1640c2908a3ef57",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.when.never": {
+    "englishHash": "48c4ee8f1739566a5ab22826f6409654a11b3e7b014f0ec17fc8bef69ac2fba4",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.held.title": {
+    "englishHash": "dd025a52a24ce7fdc603bdbe140a2b0224de501d54746ee22ef780de86547343",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.held.later": {
+    "englishHash": "1365e32a9a477624fa63a6b31caa2d5c42546fe0cc784329023568918d8f4f8f",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.held.laterTip": {
+    "englishHash": "8ffa1d573b8269c4e09258d05d83dc6e254c7b81af9e781420d4eac49bebad0e",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.arrived.title": {
+    "englishHash": "b61b876f097a2b1ab88f221761850a90fa4789f7e7aef3784f458384876b9146",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.arrived.later": {
+    "englishHash": "c19525e91f26d3c4b5974ccb834c600c6d97135b2875e993b910db6a5201e153",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.arrived.laterTip": {
+    "englishHash": "b781e09c934769dd04c5a9ae0c6802a5ca8b9405a856e9c481b147c519369d5a",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.qr.title": {
+    "englishHash": "36532f19d60b9fa9def8c5462f1e404cbacb30df355faa2bc0761793e13163de",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.qr.description": {
+    "englishHash": "1c99f81ee7bbda081f34807231fb5589e48afe6d83766c9e1210b05213e649fe",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.qr.read": {
+    "englishHash": "585612443a90c20ef6a83419931ef4bbf9fdc26cf1f2cd1810cafda6dca786ae",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.qr.readTip": {
+    "englishHash": "a05c87f4eb65b014c7664a3a40608ad14433a22a3583f65e290738cdccd95445",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.qr.missing": {
+    "englishHash": "32aa42a28f4c22b4b5d4d040543a8e100e3570cf3723901ffabd6370c6bb3191",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.qr.error": {
+    "englishHash": "c8da9faef6116250d61ccba7731e5086212148ab0f32c087cfde6b87c6f89d35",
+    "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  }
+}

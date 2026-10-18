@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { nanoid } from 'nanoid'
 import { ItemView, WorkspaceLeaf, App } from 'obsidian'
@@ -21,7 +22,7 @@ export class TodoSidebarView extends ItemView {
   }
 
   getDisplayText() {
-    return 'Abele todo'
+    return t('streamC.0b3b809317939f76')
   }
 
   static getIcon() {

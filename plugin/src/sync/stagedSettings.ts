@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { vaultDisk } from './vaultPathLinks'
 import { ref, type Ref } from 'vue'
 import type { App } from 'obsidian'
@@ -374,11 +375,21 @@ export async function pluginNamesIn(
 
 /** What each settings file is called, by the switch that carries it (as on the Sync tab). */
 const CATEGORY_NAME: Record<string, string> = {
-  main: 'App settings',
-  appearance: 'Appearance',
-  hotkeys: 'Hotkeys',
-  corePlugins: 'Core plugins',
-  communityPlugins: 'Community plugins',
+  get main() {
+    return t('streamC.d43fb8a961ff2d1f')
+  },
+  get appearance() {
+    return t('streamC.3907fa7f80722a6f')
+  },
+  get hotkeys() {
+    return t('streamC.c15f1530d219f94a')
+  },
+  get corePlugins() {
+    return t('streamC.f2e957b0c48b1e30')
+  },
+  get communityPlugins() {
+    return t('streamC.ab57440204b1ffa5')
+  },
 }
 
 /** `.obsidian/plugins/<id>/…` → `<id>`, or null for a path outside a plugin's folder. */
@@ -423,7 +434,7 @@ export function groupStaged(
       continue
     }
     const category = settingsCategory(change.path)
-    categories.add((category !== null && CATEGORY_NAME[category]) || 'Other settings')
+    categories.add((category !== null && CATEGORY_NAME[category]) || t('streamC.a69ace7e2616860c'))
   }
   return { categories: [...categories], plugins: [...plugins], sources: [...sources] }
 }
@@ -431,7 +442,10 @@ export function groupStaged(
 /** `a`, `a and b`, `a, b and c`. */
 export function listed(items: readonly string[]): string {
   if (items.length <= 1) return items[0] ?? ''
-  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`
+  return t('streamC.2cc968ac50f81c8c', {
+    v1: String(items.slice(0, -1).join(', ')),
+    v2: String(items[items.length - 1]),
+  })
 }
 
 /** "App settings, Hotkeys, 2 plugins (Dataview, Tasks)". */
@@ -439,13 +453,10 @@ export function stagedSummary(groups: StagedGroups): string {
   const parts = [...groups.categories]
   const count = groups.plugins.length
   if (count > 0) {
-    parts.push(`${count === 1 ? '1 plugin' : `${count} plugins`} (${groups.plugins.join(', ')})`)
+    parts.push(`${t('streamC.plugins', { count: count })} (${groups.plugins.join(', ')})`)
   }
   return parts.join(', ')
 }
-
-/** `1 file`, `3 files`. */
-const filesOf = (count: number): string => (count === 1 ? '1 file' : `${count} files`)
 
 /** What "Keep this device's" did: the engine's answer, and the shown files it left staged. */
 export interface KeptSettings extends Omit<DeferredKept, 'unshown'> {
@@ -472,83 +483,49 @@ export interface AppliedSettings {
 
 /** What is said once "Reload now" has run. */
 export function appliedNotice(outcome: AppliedSettings | null): string {
-  if (outcome === null) return 'Sync is not running on this device, so nothing was applied.'
+  if (outcome === null) return t('streamC.5ecbd7317810f741')
   const { applied, skipped, reloaded, unshown, failed = [], incomplete } = outcome
   const lines: string[] = []
   if (failed.length > 0 || incomplete) {
     const written = applied.length
-      ? `Applied ${applied.length}: ${applied.join(', ')}. `
-      : 'No files were applied. '
+      ? t('streamC.eb17fcb925416282', { v1: applied.length, v2: applied.join(', ') })
+      : t('streamC.7274ea9cce48d9cd')
     return (
       written +
       (failed.length
-        ? `Failed ${failed.length}: ${failed.map((one) => `${one.path} (${one.reason})`).join('; ')}. `
+        ? t('streamC.6ac8070de87d954a', {
+            v1: failed.length,
+            v2: failed.map((one) => `${one.path} (${one.reason})`).join('; '),
+          })
         : '') +
-      (incomplete ? `The remaining queue could not be read: ${incomplete}. ` : '') +
-      (applied.length
-        ? 'Reload applied settings on the Sync tab before changing settings.'
-        : 'The files remain waiting.')
+      (incomplete ? t('streamC.4c73345bf0a38de1', { v1: incomplete }) : '') +
+      (applied.length ? t('streamC.ab50f04a8353867a') : t('streamC.3a2ed8d8e0351187'))
     )
   }
-  if (applied.length === 0 && skipped.length === 0 && unshown.length === 0) {
-    return 'These settings are no longer waiting, so nothing was applied.'
-  }
-  if (applied.length > 0) {
+  if (applied.length === 0 && skipped.length === 0 && unshown.length === 0)
+    return t('streamC.51b2bfb032c1855f')
+  if (applied.length > 0)
     lines.push(
       reloaded
-        ? 'Settings applied; Obsidian is reloading.'
+        ? t('streamC.5f3ff96c7a50e7af')
         : unshown.length > 0
-          ? 'Settings applied, but Obsidian was not reloaded: answer about the settings that ' +
-            'changed meanwhile first, and change no setting until it is reloaded.'
-          : 'Settings applied. Restart Obsidian to use them, and change no setting before you ' +
-            'do: its save would put the old values back everywhere.'
+          ? t('streamC.1277bcb461f8bfa9')
+          : t('streamC.8eca7f40d690066b')
     )
-  }
-  if (unshown.length > 0) {
-    lines.push(
-      `${filesOf(unshown.length)} changed again while you were looking, so ` +
-        `${unshown.length === 1 ? 'it was' : 'they were'} left waiting and asked about again.`
-    )
-  }
-  if (skipped.length > 0) {
-    lines.push(
-      `${filesOf(skipped.length)} changed on this device since, so this device's ` +
-        `version of ${skipped.length === 1 ? 'it' : 'them'} goes to the other devices instead.`
-    )
-  }
+  if (unshown.length > 0) lines.push(t('streamC.stagedChanged', { count: unshown.length }))
+  if (skipped.length > 0) lines.push(t('streamC.stagedSkipped', { count: skipped.length }))
   return lines.join(' ')
 }
 
-/** What is said once "Keep this device's" has run. */
+/** What is said once the local settings were kept. */
 export function keptNotice(kept: KeptSettings | null): string {
-  if (kept === null) return 'Sync is not running on this device, so nothing was kept.'
+  if (kept === null) return t('streamC.7f5c74442714d8b3')
   const lines: string[] = []
-  if (kept.kept.length > 0) {
-    // "Where they differ": a staged delete kept where this device has no file sends nothing.
-    lines.push(
-      "This device's settings stay as they are; where they differ, they go to the other " +
-        'devices at the next sync.'
-    )
-  }
-  if (kept.left.length > 0) {
-    lines.push(
-      `${filesOf(kept.left.length)} ${kept.left.length === 1 ? 'exists' : 'exist'} only on the ` +
-        'other device and ' +
-        `${kept.left.length === 1 ? 'was' : 'were'} left there.`
-    )
-  }
-  if (kept.blocked.length > 0) {
-    lines.push(
-      `${filesOf(kept.blocked.length)} could not be kept: another file is at that path here. ` +
-        'See the sync log.'
-    )
-  }
-  if (kept.unshown.length > 0) {
-    lines.push(
-      `${filesOf(kept.unshown.length)} changed again while you were looking, so ` +
-        `${kept.unshown.length === 1 ? 'it was' : 'they were'} not kept over and ` +
-        `${kept.unshown.length === 1 ? 'is' : 'are'} asked about again.`
-    )
-  }
-  return lines.length > 0 ? lines.join(' ') : 'These settings are no longer waiting.'
+  if (kept.kept.length > 0) lines.push(t('streamC.a6a16993eff6bd8c'))
+  if (kept.left.length > 0) lines.push(t('streamC.stagedLeft', { count: kept.left.length }))
+  if (kept.blocked.length > 0)
+    lines.push(t('streamC.stagedBlocked', { count: kept.blocked.length }))
+  if (kept.unshown.length > 0)
+    lines.push(t('streamC.stagedUnshown', { count: kept.unshown.length }))
+  return lines.length > 0 ? lines.join(' ') : t('streamC.448adbdbb4785252')
 }

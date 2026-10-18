@@ -1,5 +1,6 @@
 import type { ItemView, Plugin } from 'obsidian'
 import type { SyncStatus } from './status'
+import { t } from '@/i18n'
 
 /**
  * A phone has no status bar, so sync speaks from the header of the open note — and only when
@@ -9,20 +10,24 @@ export function phoneSyncIcon(
   status: SyncStatus
 ): { icon: string; tooltip: string; warning: boolean } | null {
   if (status.state === 'offline')
-    return { icon: 'cloud-off', tooltip: 'Sync: the server is unavailable', warning: false }
+    return { icon: 'cloud-off', tooltip: t('sync.phone.offline'), warning: false }
   if (status.state === 'error')
-    return { icon: 'cloud-alert', tooltip: 'Sync needs attention', warning: true }
+    return { icon: 'cloud-alert', tooltip: t('sync.phone.error'), warning: true }
   if (status.heldDeletes > 0)
-    return { icon: 'cloud-alert', tooltip: 'Sync: deletions are held back', warning: true }
+    return { icon: 'cloud-alert', tooltip: t('sync.phone.held'), warning: true }
   const conflicts = status.conflicts ?? 0
   if (conflicts > 0)
     return {
       icon: 'cloud-alert',
-      tooltip: conflicts === 1 ? 'Sync: 1 conflict copy' : `Sync: ${conflicts} conflict copies`,
+      tooltip: t('sync.phone.conflicts', { count: conflicts }),
       warning: true,
     }
   if ((status.review ?? 0) > 0)
-    return { icon: 'cloud', tooltip: `Sync: ${status.review} waiting for you`, warning: false }
+    return {
+      icon: 'cloud',
+      tooltip: t('sync.phone.review', { count: status.review ?? 0 }),
+      warning: false,
+    }
   return null
 }
 

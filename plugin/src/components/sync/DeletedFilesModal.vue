@@ -1,11 +1,12 @@
 <template>
-  <ObsidianModal title="Deleted files" size="tall" @close="emit('close')">
+  <ObsidianModal
+    :title="t('settings.SyncSettings.deleted_files.5352e2e9')"
+    size="tall"
+    @close="emit('close')"
+  >
     <div ref="root" class="abele-deleted-files">
       <div class="abele-deleted-files__head">
-        <p class="abele-deleted-files__desc">
-          What has been deleted anywhere in this vault and not yet swept. Restoring one brings it
-          back to the path it had, on every device.
-        </p>
+        <p class="abele-deleted-files__desc">{{ t('streamC.9bec2fb48e4c199b') }}</p>
         <!--
           A failure is a line above the list, not a replacement for it: one file the server
           would not bring back leaves every other one on the list and still restorable.
@@ -63,6 +64,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 /**
  * The vault's trash: what has been deleted, and the way back.
  *
@@ -96,11 +99,11 @@ const emit = defineEmits<{ (e: 'close'): void }>()
 
 /** What each kind is called on a screen; the same words the usage card uses. */
 const KIND_LABEL: Record<FileKind, string> = {
-  note: 'Note',
-  canvas: 'Canvas',
-  attachment: 'Attachment',
-  script: 'Script',
-  settings: 'Obsidian settings',
+  note: t('streamC.d8da2c49df39d91d'),
+  canvas: t('streamC.3824a9f4dafe92c6'),
+  attachment: t('streamC.040d2b3689dd1d4c'),
+  script: t('streamC.102acc10e67a297d'),
+  settings: t('streamC.b13708140e4bb421'),
 }
 
 /** The kind of a file as the glyph Obsidian draws it with. */
@@ -116,13 +119,13 @@ const KIND_ICON: Record<FileKind, string> = {
 const nameOf = (path: string) => path.split('/').pop() ?? path
 
 /** What the screen says when there is nothing in the trash, which is the usual case. */
-const EMPTY = 'Nothing has been deleted, or everything deleted has already been swept.'
+const EMPTY = t('streamC.664ef22bb3b2ad3e')
 
 const sync = tokenHistory()
 
 const items = ref<TrashItem[]>([])
 /** What the list says when there is no list: reading, unreachable, or an empty trash. */
-const notice = ref<string | null>('Reading what has been deleted…')
+const notice = ref<string | null>(t('streamC.ea69ff21d9ee12b7'))
 /** What went wrong, said above the list without taking it away. */
 const error = ref<string | null>(null)
 /** The file id being restored, so its row can say so. */
@@ -141,8 +144,8 @@ const metaOf = (item: TrashItem): string[] => {
   const folder = item.path.includes('/') ? item.path.slice(0, item.path.lastIndexOf('/')) : ''
   return [
     ...(folder ? [folder] : []),
-    `Deleted ${formatWhen(item.deleted_at)}`,
-    ...(item.deleted_by ? [`by ${item.deleted_by.name}`] : []),
+    t('streamC.0f37e8a15480928a', { v1: formatWhen(item.deleted_at) }),
+    ...(item.deleted_by ? [t('streamC.5c799fb78f547006', { v1: item.deleted_by.name })] : []),
     formatBytes(item.size),
   ]
 }
@@ -157,9 +160,9 @@ const metaOf = (item: TrashItem): string[] => {
 const idempotencyKey = (): string => (root.value?.win ?? window).crypto.randomUUID()
 
 const buttonTooltip = (item: TrashItem): string => {
-  if (busy.value === item.file_id) return 'Bringing this file back'
-  if (waiting.value.has(item.file_id)) return 'Restored as soon as the one before it is done'
-  return 'Bring this file back to the path it was deleted from'
+  if (busy.value === item.file_id) return t('streamC.3417ab5bcd980d61')
+  if (waiting.value.has(item.file_id)) return t('streamC.dc0cafe58bc581a0')
+  return t('streamC.da366e68d4cdebc9')
 }
 
 /**
@@ -182,7 +185,10 @@ async function restoreOne(item: TrashItem): Promise<void> {
     // A refusal is a 200, not a throw. Announcing it as a restore is how a dialog lies, and
     // the file stays on the list because it is still in the trash.
     if (result.status === 'rejected') {
-      error.value = `${item.path} was not restored: ${result.message}`
+      error.value = t('streamC.d4db346ac512b8e0', {
+        v1: String(item.path),
+        v2: String(result.message),
+      })
       return
     }
     sync.note(`restored ${result.path} from the trash`)
@@ -193,8 +199,8 @@ async function restoreOne(item: TrashItem): Promise<void> {
     new Notice(
       restoredNotice(
         sync.status.value.state,
-        `${result.path} restored.`,
-        `${result.path} is back on the server`
+        t('streamC.70be0bef773b3912', { v1: String(result.path) }),
+        t('streamC.89e923bafc4dfd29', { v1: String(result.path) })
       )
     )
     // Off the list rather than re-read: the whole trash is a round trip, and the one thing
@@ -202,7 +208,10 @@ async function restoreOne(item: TrashItem): Promise<void> {
     items.value = items.value.filter((held) => held.file_id !== item.file_id)
     if (items.value.length === 0) notice.value = EMPTY
   } catch (failure) {
-    error.value = `${item.path} could not be restored: ${reasonOf(failure)}`
+    error.value = t('streamC.237e7ed9588681a4', {
+      v1: String(item.path),
+      v2: String(reasonOf(failure)),
+    })
   } finally {
     busy.value = null
     waiting.value.delete(item.file_id)
@@ -219,7 +228,7 @@ function dropRestored(fileIds: string[]): void {
 onMounted(async () => {
   client = sync.client()
   if (client === null) {
-    notice.value = 'The trash is kept on the server, and this device is not connected to one.'
+    notice.value = t('streamC.ebcf4e46c56fc5c5')
     return
   }
   try {
@@ -229,7 +238,7 @@ onMounted(async () => {
     notice.value = items.value.length === 0 ? EMPTY : null
   } catch (failure) {
     notice.value = null
-    error.value = `The trash could not be read: ${reasonOf(failure)}`
+    error.value = t('streamC.fe2c18869159b80f', { v1: String(reasonOf(failure)) })
   }
 })
 </script>

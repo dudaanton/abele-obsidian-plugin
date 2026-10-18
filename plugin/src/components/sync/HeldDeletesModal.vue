@@ -1,11 +1,11 @@
 <template>
-  <ObsidianModal title="Deletions held back" size="tall" @close="emit('close')">
+  <ObsidianModal :title="t('sync.held.title')" size="tall" @close="emit('close')">
     <HeldDeletesBlock :held="held" :port="port" @decided="emit('close')">
       <template #actions="{ busy }">
         <Button
-          text="Decide later"
+          :text="t('sync.held.later')"
           :disabled="busy"
-          tooltip="Close this; the files stay held, and the Sync tab still has this question"
+          :tooltip="t('sync.held.laterTip')"
           @click="emit('close')"
         />
       </template>
@@ -24,6 +24,9 @@ import type { TokenSettingsPort } from '@/sync/tokenSettingsPort'
 import ObsidianModal from '../obsidian/Modal.vue'
 import Button from '../obsidian/Button.vue'
 import HeldDeletesBlock from './HeldDeletesBlock.vue'
+import { useI18n } from '@/i18n/useI18n'
+
+const { t } = useI18n()
 
 defineProps<{ held: HeldDelete[]; port?: TokenSettingsPort }>()
 

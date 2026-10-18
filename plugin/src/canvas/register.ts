@@ -31,7 +31,7 @@ export function registerCanvas(plugin: Plugin): void {
       }
       adopting = true
       void adoptCanvasLeaves(app)
-        .catch((error) => new Notice(`Could not open diagram: ${String(error)}`))
+        .catch((error) => new Notice(t('streamC.44302fa7e19be922', { v1: String(String(error)) })))
         .finally(() => {
           adopting = false
         })
@@ -60,7 +60,7 @@ export function registerCanvas(plugin: Plugin): void {
       if (!(file instanceof TFile) || file.extension !== 'canvas') return
       menu.addItem((item) =>
         item
-          .setTitle('Open in Abele')
+          .setTitle(t('streamC.e430527f9b5a7603'))
           .setIcon('workflow')
           .onClick(() => void openCanvas(app, file))
       )
@@ -77,7 +77,7 @@ export function registerCanvas(plugin: Plugin): void {
       if (file instanceof TFolder)
         menu.addItem((item) =>
           item
-            .setTitle('New Abele canvas')
+            .setTitle(t('streamC.c2b7bc99f518dd81'))
             .setIcon('workflow')
             .onClick(() => void newCanvas(app, file))
         )

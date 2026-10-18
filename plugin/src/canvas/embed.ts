@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { type EditorView } from '@codemirror/view'
 import { MarkdownRenderChild, TFile, type App, type MarkdownPostProcessorContext } from 'obsidian'
 import { canvasEmbedOptions } from './embedFormat'
@@ -45,7 +46,7 @@ export class CanvasEmbed extends MarkdownRenderChild {
       const b = doc.win.createEl('button')
       b.type = 'button'
       b.textContent = label
-      b.setAttribute('aria-label', `${label} diagram`)
+      b.setAttribute('aria-label', t('streamC.cffe9477c08e0ea2', { v1: String(label) }))
       this.register(bindCanvasTap(b, action))
       actions.append(b)
       return b
@@ -142,17 +143,15 @@ export class CanvasEmbed extends MarkdownRenderChild {
       )
       if (this.stopped || token !== this.token) return
       this.image.src = picture.canvas.toDataURL('image/png')
-      this.image.alt = `${file.basename}${options.step && !stepError ? `, step ${options.step}` : ''}`
+      this.image.alt = `${file.basename}${options.step && !stepError ? t('streamC.ec43c5b583ea7a69', { v1: String(options.step) }) : ''}`
       const width = Number(this.embed.getAttribute('width'))
       this.box.setCssStyles({ width: Number.isFinite(width) && width > 0 ? `${width}px` : '100%' })
       this.narration.setText(picture.say ?? '')
-      this.status.setText(
-        stepError ? `Walkthrough steps unavailable; showing the diagram: ${stepError}` : ''
-      )
+      this.status.setText(stepError ? t('streamC.2d8009648825a67e', { v1: String(stepError) }) : '')
       this.play.disabled = !playable
     } catch (error) {
       if (!this.stopped && token === this.token && !signal.aborted) {
-        this.status.setText(`Diagram could not be shown: ${String(error)}`)
+        this.status.setText(t('streamC.24d9050826ca52a8', { v1: String(String(error)) }))
         this.image.removeAttribute('src')
         this.play.disabled = true
       }

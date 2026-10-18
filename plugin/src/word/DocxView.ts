@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { FileView, Platform, TFile, type WorkspaceLeaf, type Plugin } from 'obsidian'
 import { h, shallowReactive, type VNode } from 'vue'
 import { mountKit, type KitMount } from '@/components/obsidian/mount'
@@ -48,7 +49,7 @@ export class DocxView extends FileView {
     return DOCX_VIEW_TYPE
   }
   getDisplayText() {
-    return this.file?.name ?? 'Word document'
+    return this.file?.name ?? t('streamC.10eea543983323e9')
   }
   getIcon() {
     return 'file-text'
@@ -73,7 +74,7 @@ export class DocxView extends FileView {
     this.contentEl.empty()
     this.contentEl.addClass('abele-word')
     const status = this.contentEl.createDiv({
-      text: 'Opening Word document…',
+      text: t('streamC.fe5d6e07fa36eb22'),
       cls: 'abele-word-status',
       attr: { role: 'status' },
     })
@@ -88,7 +89,7 @@ export class DocxView extends FileView {
       this.unmountPage()
       this.contentEl.empty()
       status.setText(
-        `${this.document ? 'Page unavailable; showing text' : 'Could not open document'}: ${(error as Error).message}`
+        `${this.document ? t('streamC.37449b696f21432e') : t('streamC.640c27da57faef42')}: ${(error as Error).message}`
       )
       this.contentEl.appendChild(status)
       if (this.document) {
@@ -132,7 +133,7 @@ export class DocxView extends FileView {
         if (token !== this.token) return
         this.document = next
         this.state.model = Platform.isMobile
-          ? { ...model, readOnly: 'Use the agent to edit this document on mobile' }
+          ? { ...model, readOnly: t('streamC.33aa26b75e194848') }
           : model
         this.state.save = { state: 'saved' }
       } finally {
@@ -193,7 +194,7 @@ export class DocxView extends FileView {
               },
               onPickImage: (at: { paragraph: number; image: number }) => {
                 close()
-                this.choosePicture('to replace', (path) => ({
+                this.choosePicture(t('streamC.c1008c3415807b95'), (path) => ({
                   operation: 'image_replace',
                   paragraph: at.paragraph,
                   image: at.image,
@@ -226,7 +227,7 @@ export class DocxView extends FileView {
   }
   /** The ribbon's picture: one from the vault, put in at its own size, fitted to the page. */
   private pickImage(paragraph: number): void {
-    this.choosePicture('to insert', async (path) => {
+    this.choosePicture(t('streamC.05ad305c31af2781'), async (path) => {
       const { bytes } = await vaultWordResources(this.app).loadImage(path)
       return {
         operation: 'image_insert',
@@ -258,7 +259,7 @@ export class DocxView extends FileView {
     const model = await wordPageModel(doc)
     if (token !== this.token) return
     this.state.model = Platform.isMobile
-      ? { ...model, readOnly: 'Use the agent to edit this document on mobile' }
+      ? { ...model, readOnly: t('streamC.33aa26b75e194848') }
       : model
     this.state.save = { state: 'idle' }
     const host = this.contentEl.createDiv({ cls: 'abele-word-page-host' })
@@ -303,7 +304,7 @@ export function registerWord(plugin: Plugin): void {
       if (!(file instanceof TFile) || file.extension.toLowerCase() !== 'docx') return
       menu.addItem((item) =>
         item
-          .setTitle('Open in Abele document viewer')
+          .setTitle(t('streamC.b5b5aa9484eeee9a'))
           .setIcon('file-text')
           .onClick(() => {
             void plugin.app.workspace

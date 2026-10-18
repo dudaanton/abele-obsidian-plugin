@@ -1,9 +1,5 @@
 <template>
-  <ObsidianModal
-    title="Settings changed on another device"
-    phone-sheet
-    @close="emit('close', questionKey)"
-  >
+  <ObsidianModal :title="t('sync.arrived.title')" phone-sheet @close="emit('close', questionKey)">
     <StagedSettingsBlock
       :changes="changes"
       :names="names"
@@ -12,9 +8,9 @@
     >
       <template #actions="{ busy }">
         <Button
-          text="Later"
+          :text="t('sync.arrived.later')"
           :disabled="busy"
-          tooltip="Close this; the settings wait, and the Sync tab still has them"
+          :tooltip="t('sync.arrived.laterTip')"
           @click="emit('close', questionKey)"
         />
       </template>
@@ -33,6 +29,9 @@ import type { TokenSettingsPort } from '@/sync/tokenSettingsPort'
 import ObsidianModal from '../obsidian/Modal.vue'
 import Button from '../obsidian/Button.vue'
 import StagedSettingsBlock from './StagedSettingsBlock.vue'
+import { useI18n } from '@/i18n/useI18n'
+
+const { t } = useI18n()
 
 defineProps<{
   changes: ChangeItem[]

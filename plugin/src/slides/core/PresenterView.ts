@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { DeckViewer, interactive } from './DeckViewer'
 import type { BlockRenderer, Deck, MediaResolver } from './model'
 import { slideForKey } from './navigation'
@@ -35,7 +36,7 @@ export class PresenterView {
     this.root = doc.createElement('div')
     this.root.className = `abele-presenter${overlay ? ' abele-deck-presenting' : ''}`
     this.root.tabIndex = 0
-    this.root.setAttribute('aria-label', 'Presenter view')
+    this.root.setAttribute('aria-label', t('streamC.ad53f79d6a64d94d'))
     const toolbar = doc.createElement('div')
     toolbar.className = 'abele-deck-toolbar'
     const button = (label: string, action: () => void) => {
@@ -53,17 +54,17 @@ export class PresenterView {
       toolbar.append(el)
       return el
     }
-    button('Previous', () => show.go('previous'))
-    button('Next', () => show.go('next'))
+    button(t('streamC.a57b08a480b822a0'), () => show.go('previous'))
+    button(t('streamC.1ff57a29d7c9d11b'), () => show.go('next'))
     this.timer = doc.createElement('span')
     this.timer.className = 'abele-presenter-timer'
-    this.timer.setAttribute('aria-label', 'Elapsed time')
+    this.timer.setAttribute('aria-label', t('streamC.4bbe728339ef4a3d'))
     toolbar.append(this.timer)
-    this.pause = button('Pause timer', () => show.toggleTimer())
-    button('Reset timer', () => show.resetTimer())
-    button('End show', () => show.end())
+    this.pause = button(t('streamC.1f84100edfdf1589'), () => show.toggleTimer())
+    button(t('streamC.23d712d2c6eda4e0'), () => show.resetTimer())
+    button(t('streamC.2fa38fa11f3bf17a'), () => show.end())
     this.list = doc.createElement('select')
-    this.list.setAttribute('aria-label', 'Choose slide')
+    this.list.setAttribute('aria-label', t('streamC.0774a403a9b3f62c'))
     this.list.className = 'abele-presenter-list'
     this.list.addEventListener(
       'change',
@@ -88,15 +89,17 @@ export class PresenterView {
       previews.append(section)
       return container
     }
-    this.current = new DeckViewer(preview('Current slide'), renderer, media, { preview: true })
+    this.current = new DeckViewer(preview(t('streamC.8d62407a88b6f379')), renderer, media, {
+      preview: true,
+    })
     this.current.follow(show)
-    this.next = new DeckViewer(preview('Next slide'), renderer, media, {
+    this.next = new DeckViewer(preview(t('streamC.cdc93d1c8fe9a2af')), renderer, media, {
       preview: true,
       revealAll: true,
     })
     this.notes = doc.createElement('div')
     this.notes.className = 'abele-presenter-notes markdown-rendered'
-    this.notes.setAttribute('aria-label', 'Speaker notes')
+    this.notes.setAttribute('aria-label', t('streamC.29e0947258ccee2a'))
     this.root.append(toolbar, previews, this.notes)
     ;(overlay ? doc.body : host).append(this.root)
     this.root.addEventListener('keydown', this.handleKey, {
@@ -121,7 +124,7 @@ export class PresenterView {
       ...deck.slides.map((slide, index) => {
         const option = this.root.ownerDocument.createElement('option')
         option.value = String(index)
-        option.textContent = `${index + 1}. ${slide.title || 'Untitled slide'}`
+        option.textContent = `${index + 1}. ${slide.title || t('streamC.1eadae5cbf6429d2')}`
         return option
       })
     )
@@ -147,7 +150,9 @@ export class PresenterView {
   private updateTimer(): void {
     const seconds = Math.floor(this.show.elapsed / 1000)
     this.timer.textContent = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
-    this.pause.textContent = this.show.running ? 'Pause timer' : 'Resume timer'
+    this.pause.textContent = this.show.running
+      ? t('streamC.1f84100edfdf1589')
+      : t('streamC.e387be69fcbae143')
   }
 
   private async renderNotes(): Promise<void> {
@@ -155,7 +160,7 @@ export class PresenterView {
     this.cleanups.splice(0).forEach((cleanup) => cleanup())
     this.notes.replaceChildren()
     const blocks = this.deck?.slides[this.show.index]?.notes ?? []
-    if (!blocks.length) this.notes.textContent = 'No speaker notes'
+    if (!blocks.length) this.notes.textContent = t('streamC.0afc1d567f62dc10')
     for (const block of blocks) {
       if (this.closed || revision !== this.revision) break
       const el = this.root.ownerDocument.createElement('div')
@@ -166,7 +171,9 @@ export class PresenterView {
         else this.cleanups.push(cleanup)
       } catch (error) {
         if (!this.closed && revision === this.revision)
-          el.textContent = `Notes could not be rendered: ${error instanceof Error ? error.message : error}`
+          el.textContent = t('streamC.24d82bf63f1d76f3', {
+            v1: String(error instanceof Error ? error.message : error),
+          })
       }
     }
   }

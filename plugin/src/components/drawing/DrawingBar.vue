@@ -1,30 +1,28 @@
 <template>
-  <ToolBar class="abele-drawing-bar" label="Drawing">
+  <ToolBar class="abele-drawing-bar" :label="t('streamC.39de4731eedc9da7')">
     <!-- The first button turns drawing on, and in the same place turns it off again. -->
     <Icon
       :icon="model.on ? 'check' : 'pen-line'"
-      :tooltip="model.on ? 'Stop drawing' : 'Draw: the pen, the marker and the eraser'"
+      :tooltip="model.on ? t('streamC.2f6a897afbb198e3') : t('streamC.be9250a0c06701b4')"
       class="abele-drawing-bar__mode"
       @click="emit('toggle')"
     />
     <template v-if="model.on">
       <ToolBarGroup class="abele-drawing-bar__group">
         <Icon
-          v-for="t in TOOLS"
-          :key="t.id"
-          :icon="t.icon"
-          :tooltip="t.tooltip"
-          :active="model.tool === t.id"
+          v-for="tool in TOOLS"
+          :key="tool.id"
+          :icon="tool.icon"
+          :tooltip="tool.tooltip"
+          :active="model.tool === tool.id"
           class="abele-drawing-bar__tool"
-          :class="`abele-drawing-bar__tool_${t.id}`"
-          @click="emit('tool', t.id)"
+          :class="`abele-drawing-bar__tool_${tool.id}`"
+          @click="emit('tool', tool.id)"
         />
         <Icon
           :icon="SHAPE_ICONS[model.shape]"
           :tooltip="
-            model.tool === 'shape'
-              ? 'Which shape: a box, an ellipse, a line or an arrow'
-              : 'Shapes: drag to draw a box, an ellipse, a line or an arrow'
+            model.tool === 'shape' ? t('streamC.0e7965dd29a07264') : t('streamC.2111554ba1ee3f40')
           "
           :active="model.tool === 'shape'"
           class="abele-drawing-bar__tool abele-drawing-bar__tool_shape"
@@ -32,7 +30,7 @@
         />
         <Icon
           icon="type"
-          tooltip="Text: tap where it goes, or on text to change it"
+          :tooltip="t('streamC.39b52264e221fbfd')"
           :active="model.tool === 'text'"
           class="abele-drawing-bar__tool abele-drawing-bar__tool_text"
           @click="emit('tool', 'text')"
@@ -45,14 +43,14 @@
           icon="circle"
           :color="c === 'black' ? undefined : c"
           :active="current === c"
-          :tooltip="`Draw in ${c}`"
+          :tooltip="t('streamC.acd278bfc91387ff', { v1: streamCLabel(c) })"
           class="abele-drawing-bar__swatch"
           :class="{ 'abele-drawing-bar__swatch_ink': c === 'black' }"
           @click="emit('color', c)"
         />
         <Icon
           icon="line-squiggle"
-          :tooltip="`Thickness: ${model.thickness}`"
+          :tooltip="t('streamC.a14055dd728bec45', { v1: streamCLabel(model.thickness) })"
           class="abele-drawing-bar__thickness"
           @click="emit('thickness', $event)"
         />
@@ -61,9 +59,7 @@
         <!-- Always in its place, so the row does not jump; pale while nothing is picked. -->
         <Icon
           icon="trash-2"
-          :tooltip="
-            model.picked ? 'Delete what is picked' : 'Delete: pick something with the lasso first'
-          "
+          :tooltip="model.picked ? t('streamC.1107ed5026ab81e5') : t('streamC.43dc5dc2cb996b74')"
           :disabled="!model.picked"
           class="abele-drawing-bar__delete"
           @click="emit('delete')"
@@ -72,24 +68,20 @@
           v-if="model.touch"
           icon="pointer"
           :active="model.finger"
-          :tooltip="
-            model.finger
-              ? 'A finger draws: tap to let it move the drawing'
-              : 'Draw with a finger too'
-          "
+          :tooltip="model.finger ? t('streamC.b2316adced5740f4') : t('streamC.6b28e49ffe9b8b69')"
           class="abele-drawing-bar__finger"
           @click="emit('finger', !model.finger)"
         />
         <Icon
           icon="undo-2"
-          tooltip="Undo"
+          :tooltip="t('streamC.a8283ade31856f71')"
           :disabled="!model.canUndo"
           class="abele-drawing-bar__undo"
           @click="emit('undo')"
         />
         <Icon
           icon="redo-2"
-          tooltip="Redo"
+          :tooltip="t('streamC.74273989b0966e23')"
           :disabled="!model.canRedo"
           class="abele-drawing-bar__redo"
           @click="emit('redo')"
@@ -100,13 +92,13 @@
       <Icon
         :text-right="zoomText"
         icon="zoom-in"
-        tooltip="Zoom: 100%, the whole drawing, in or out"
+        :tooltip="t('streamC.76ae701a335c3127')"
         class="abele-drawing-bar__zoom"
         @click="emit('zoom', $event)"
       />
       <Icon
         icon="more-horizontal"
-        tooltip="More: export, embed in a note"
+        :tooltip="t('streamC.31a208dab4d92ca1')"
         class="abele-drawing-bar__more"
         @click="emit('more', $event)"
       />
@@ -115,6 +107,9 @@
 </template>
 
 <script setup lang="ts">
+import { streamCLabel } from '@/i18n/streamCLabels'
+import { t } from '@/i18n'
+
 /**
  * The row over a drawing: the button that turns drawing on and off — first, in one place either
  * way — then, while drawing, the tools, the colours and thickness, drawing with a finger (a touch
@@ -146,13 +141,13 @@ const emit = defineEmits<{
 }>()
 
 const TOOLS: { id: DrawingTool; icon: string; tooltip: string }[] = [
-  { id: 'pen', icon: 'pen-line', tooltip: 'Pen: the harder it presses, the wider the line' },
-  { id: 'marker', icon: 'highlighter', tooltip: 'Marker' },
-  { id: 'eraser', icon: 'eraser', tooltip: 'Eraser: takes away the whole stroke it touches' },
+  { id: 'pen', icon: 'pen-line', tooltip: t('streamC.2b62e979a01b8587') },
+  { id: 'marker', icon: 'highlighter', tooltip: t('streamC.13ce08699c85c1f2') },
+  { id: 'eraser', icon: 'eraser', tooltip: t('streamC.84f2425d2b761cc5') },
   {
     id: 'lasso',
     icon: 'lasso',
-    tooltip: 'Lasso: draw round what to pick, then drag it to move, or by its corner to resize',
+    tooltip: t('streamC.b6978af9c0c02ea5'),
   },
 ]
 

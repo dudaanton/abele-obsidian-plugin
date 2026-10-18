@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * Putting scripts from elsewhere in front of the person: one at a time, all that wait, and the
  * notice that says some arrived. The rules of what waits are `ScriptTrust.ts`; the dialog is
@@ -51,7 +52,11 @@ export async function reviewWaiting(service: ScriptService): Promise<void> {
     if (await reviewOne(service, current)) confirmed++
   }
   if (confirmed) {
-    new Notice(confirmed === 1 ? 'Script confirmed.' : `${confirmed} scripts confirmed.`)
+    new Notice(
+      confirmed === 1
+        ? t('streamC.478f6bd180062ca2')
+        : t('streamC.f36a994f556e8457', { v1: String(confirmed) })
+    )
   }
 }
 
@@ -85,13 +90,13 @@ export class WaitingScriptsNotice {
     const names = named.map((s) => `"${s.meta.name}"`).join(', ')
     const message =
       named.length === 1
-        ? `Script ${names} changed without being written on this device. It will not run until you confirm it here.`
-        : `${named.length} scripts changed without being written on this device: ${names}. They will not run until you confirm them here.`
+        ? t('streamC.718e67c242a1079f', { v1: String(names) })
+        : t('streamC.0666f514c3023ab2', { v1: String(named.length), v2: String(names) })
     this.hide()
     this.notice = noticeWithActions(message, [
       {
-        text: 'Review',
-        tooltip: 'Review and confirm the waiting scripts',
+        text: t('settings.ai.GeneralSettings.review.aff0766a'),
+        tooltip: t('streamC.a7cafe8a03721d95'),
         accent: true,
         run: () => {
           this.hide()

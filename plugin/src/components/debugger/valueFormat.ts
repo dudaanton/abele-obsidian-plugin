@@ -1,5 +1,6 @@
 // Reading a value the program holds: what it looks like (JSON, XML, plain text) and the same text
 // laid out to read, one element or key per line. Nothing here runs the value.
+import { t } from '@/i18n'
 
 export type ValueFormat = 'json' | 'xml' | 'text'
 
@@ -78,5 +79,5 @@ export function sizeOf(text: string): string {
   const bytes = new TextEncoder().encode(text).length
   const lines = text.split('\n').length
   const size = bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`
-  return lines > 1 ? `${size} · ${lines} lines` : size
+  return lines > 1 ? t('streamC.valueLines', { size, count: lines }) : size
 }

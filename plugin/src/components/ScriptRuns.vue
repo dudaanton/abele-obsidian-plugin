@@ -1,11 +1,13 @@
 <template>
   <Section class="abele-runs" :title="heading">
-    <template #lead><DrawerViewSwitch icon="terminal" name="Abele script runs" /></template>
+    <template #lead
+      ><DrawerViewSwitch icon="terminal" :name="t('streamC.4cb96d8cc3d6fe75')"
+    /></template>
     <template #actions>
       <Icon
         v-if="runs.length"
         icon="eraser"
-        tooltip="Clear the runs that have ended"
+        :tooltip="t('streamC.8b95c9ec3aca342c')"
         @click="clearFinished"
       />
     </template>
@@ -13,8 +15,8 @@
     <EmptyState
       v-if="!runs.length"
       icon="scroll-text"
-      title="Nothing has run yet"
-      text="Each script run this session shows here: what it said as it went and what came of it."
+      :title="t('streamC.45d9f27c4a161851')"
+      :text="t('streamC.d0b541ce4453299c')"
     />
 
     <div v-else class="abele-runs__list">
@@ -82,24 +84,28 @@
               v-if="run.status === 'running'"
               class="abele-runs__stop"
               icon="square"
-              label="Stop this run"
+              :label="t('streamC.7647f8995bd532e1')"
               @click="stop(run)"
             />
             <!-- An interceptor ran on a message a chat sent; without one there is nothing to run it on. -->
             <template v-else-if="run.source !== 'interceptor'">
-              <Icon icon="rotate-ccw" label="Run again with the same values" @click="again(run)" />
+              <Icon icon="rotate-ccw" :label="t('streamC.c988937248ef00d9')" @click="again(run)" />
               <Icon
                 icon="sliders-horizontal"
-                label="Run again, asking for the values"
+                :label="t('streamC.331da21959964f90')"
                 @click="asNew(run)"
               />
             </template>
-            <Icon icon="file-code-2" label="Open the script" @click="openScript(run)" />
+            <Icon
+              icon="file-code-2"
+              :label="t('streamC.5609bd55ede5c625')"
+              @click="openScript(run)"
+            />
             <Icon
               v-if="run.status !== 'running'"
               class="abele-runs__forget"
               icon="x"
-              label="Take this run off the list"
+              :label="t('streamC.5a61dfde203d228f')"
               @click="ScriptRuns.getInstance().forget(run.id)"
             />
           </div>
@@ -110,6 +116,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 /**
  * What has been run this session.
@@ -137,10 +145,10 @@ const STATUS_ICON: Record<ScriptRun['status'], string> = {
 }
 
 const STATUS_WORD: Record<ScriptRun['status'], string> = {
-  running: 'Running',
-  done: 'Finished',
-  failed: 'Failed',
-  stopped: 'Stopped',
+  running: t('streamC.f4ccae29e1bb0c20'),
+  done: t('streamC.7804f7a79a9eee32'),
+  failed: t('kit.failed'),
+  stopped: t('streamC.1a4f630ac1b69fd0'),
 }
 
 /** A run started from the command palette needs no badge — that is the ordinary way. */
@@ -153,7 +161,7 @@ const SOURCE_WORD: Record<ScriptRun['source'], string> = {
   view: 'view',
   automation: 'automation',
   book: 'book',
-  'chat-selection': 'chat selection',
+  'chat-selection': t('streamC.e6ef8d3889cb897a'),
   startup: 'startup',
   interceptor: 'interceptor',
   request: 'request',
@@ -168,8 +176,10 @@ const opened = reactive(new Set<string>())
 
 const heading = pausedWhileHidden(active, () => {
   const going = runs.value.filter((run) => run.status === 'running').length
-  if (going) return `${going} running`
-  return runs.value.length ? `${runs.value.length} run${runs.value.length > 1 ? 's' : ''}` : 'Runs'
+  if (going) return t('streamC.5415f8541fd5781c', { v1: String(going) })
+  return runs.value.length
+    ? t('streamC.runs', { count: runs.value.length })
+    : t('settings.LinksSettings.runs.848f54e8')
 })
 
 /**
@@ -243,7 +253,7 @@ const openScript = async (run: ScriptRun) => {
   const { app } = GlobalStore.getInstance()
   const file = app.vault.getAbstractFileByPath(run.path)
   if (!(file instanceof TFile)) {
-    new Notice(`Script file is gone: ${run.path}`)
+    new Notice(t('streamC.19d98bc58c1adb89', { v1: String(run.path) }))
     return
   }
   await app.workspace.getLeaf('tab').openFile(file)

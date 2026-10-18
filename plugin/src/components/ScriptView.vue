@@ -8,19 +8,19 @@
   >
     <DrawerViewSwitch
       :icon="model.view?.icon ?? 'scroll-text'"
-      :name="model.view?.title ?? model.saved?.script ?? 'Script view'"
+      :name="model.view?.title ?? model.saved?.script ?? t('streamC.62d3afdf1763af2e')"
     />
     <EmptyState
       v-if="model.status.kind === 'starting'"
-      :text="`Starting ${model.status.script}…`"
+      :text="t('streamC.b4fff366f005d099', { v1: String(model.status.script) })"
     />
 
     <div v-else-if="model.status.kind === 'failed'" class="abele-script-view__failed">
       <EmptyState :text="model.status.message" />
       <Button
-        text="Run again"
+        :text="t('streamC.3e310b75051c78a3')"
         icon="rotate-cw"
-        tooltip="Run the script again and rebuild this view"
+        :tooltip="t('streamC.83e88b5563174bb2')"
         @click="model.runAgain()"
       />
     </div>
@@ -32,7 +32,11 @@
             {{ message }}
           </div>
         </div>
-        <Icon icon="x" tooltip="Dismiss these errors" @click="model.view.dismissErrors()" />
+        <Icon
+          icon="x"
+          :tooltip="t('streamC.f628a8170ba44c7c')"
+          @click="model.view.dismissErrors()"
+        />
       </div>
       <div class="abele-script-view__body">
         <ScriptNode
@@ -47,6 +51,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 /**
  * A script's tab: what it shows while the script is starting, when it failed, and once the
  * view is bound.

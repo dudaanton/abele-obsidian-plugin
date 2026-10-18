@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * What deleting one connection's files from the server would take: its whole scope (vault,
  * folder or group) goes to the server's trash, its key and every key inside it are revoked,
@@ -30,8 +31,8 @@ export const READ_ONLY =
 /** Only an explicit pre-request failure can promise that nothing was deleted. */
 export function serverDeleteFailure(host: string, error: unknown): string {
   return (error as { deletionOutcome?: unknown } | null)?.deletionOutcome === 'not-deleted'
-    ? `Nothing was deleted: ${host} did not answer.`
-    : `No answer from ${host}. It may already be deleted: Try again to find out.`
+    ? t('streamC.a44e6513a64073e4', { v1: String(host) })
+    : t('streamC.6225fbec300d3010', { v1: String(host) })
 }
 
 /** Bytes as a person reads a folder's size. */

@@ -11,12 +11,18 @@
     <div v-if="error !== null" class="abele-mermaid__error">
       <div class="abele-mermaid__error-head">
         <div class="abele-mermaid__error-title">
-          <Icon icon="alert-triangle" color="red" :interactive="false" />
-          This diagram could not be drawn
+          <Icon icon="alert-triangle" color="red" :interactive="false" />{{
+            t('streamC.76525b262a7e2549')
+          }}
         </div>
         <div class="abele-mermaid__error-actions">
-          <Icon v-if="edit" icon="code-2" tooltip="Edit the diagram's source" @click="edit()" />
-          <Icon icon="copy" tooltip="Copy the diagram's source" @click="copySource" />
+          <Icon
+            v-if="edit"
+            icon="code-2"
+            :tooltip="t('streamC.6c195c66e631e071')"
+            @click="edit()"
+          />
+          <Icon icon="copy" :tooltip="t('streamC.1e3698941a27e72f')" @click="copySource" />
         </div>
       </div>
       <pre class="abele-mermaid__error-text">{{ error }}</pre>
@@ -28,7 +34,7 @@
       :class="{ 'abele-mermaid__frame_dragging': dragging }"
       tabindex="0"
       role="figure"
-      aria-label="Mermaid diagram. Drag to move it, arrow keys to pan, plus and minus to zoom."
+      :aria-label="t('streamC.24743700e0c0f4ac')"
       @wheel="onWheel"
       @pointerdown="onPointerDown"
       @pointermove="onPointerMove"
@@ -41,69 +47,77 @@
     </div>
     <div v-if="error === null" class="abele-mermaid__bar">
       <div class="abele-mermaid__controls abele-mermaid__controls_top">
-        <Icon v-if="edit" icon="code-2" tooltip="Edit the diagram's source" @click="edit()" />
-        <Icon
-          icon="copy"
-          tooltip="Copy the diagram: its source, a picture, or SVG"
-          @click="openCopyMenu"
-        />
+        <Icon v-if="edit" icon="code-2" :tooltip="t('streamC.6c195c66e631e071')" @click="edit()" />
+        <Icon icon="copy" :tooltip="t('streamC.36ee7061f4f9c60a')" @click="openCopyMenu" />
         <Icon
           v-if="!full"
           icon="maximize-2"
-          tooltip="Open the diagram full screen"
+          :tooltip="t('streamC.dd2e8905021048d4')"
           class="abele-mermaid__fullscreen"
           @click="fullOpen = true"
         />
       </div>
       <div class="abele-mermaid__controls abele-mermaid__pad">
         <span />
-        <Icon icon="chevron-up" tooltip="Pan up" class="abele-mermaid__pan-up" @click="pan(0, 1)" />
+        <Icon
+          icon="chevron-up"
+          :tooltip="t('streamC.9953a4b5fdb50e20')"
+          class="abele-mermaid__pan-up"
+          @click="pan(0, 1)"
+        />
         <Icon
           icon="zoom-in"
-          tooltip="Zoom in"
+          :tooltip="t('streamC.0e47f09a748fa132')"
           class="abele-mermaid__zoom-in"
           @click="zoom(ZOOM_STEP)"
         />
         <Icon
           icon="chevron-left"
-          tooltip="Pan left"
+          :tooltip="t('streamC.31f1a4732f28d9e5')"
           class="abele-mermaid__pan-left"
           @click="pan(1, 0)"
         />
         <Icon
           icon="scan"
-          tooltip="Fit the whole diagram in the frame"
+          :tooltip="t('streamC.29d85e711b4ef05f')"
           class="abele-mermaid__reset"
           @click="reset"
         />
         <Icon
           icon="chevron-right"
-          tooltip="Pan right"
+          :tooltip="t('streamC.783465164c30f182')"
           class="abele-mermaid__pan-right"
           @click="pan(-1, 0)"
         />
         <span />
         <Icon
           icon="chevron-down"
-          tooltip="Pan down"
+          :tooltip="t('streamC.0c585f2c38cfc2a5')"
           class="abele-mermaid__pan-down"
           @click="pan(0, -1)"
         />
         <Icon
           icon="zoom-out"
-          tooltip="Zoom out"
+          :tooltip="t('streamC.bc7b631a689b45ca')"
           class="abele-mermaid__zoom-out"
           @click="zoom(1 / ZOOM_STEP)"
         />
       </div>
     </div>
-    <Modal v-if="fullOpen" size="full" title="Diagram" @close="fullOpen = false">
+    <Modal
+      v-if="fullOpen"
+      size="full"
+      :title="t('streamC.913c5e96ccce08c1')"
+      @close="fullOpen = false"
+    >
       <MermaidDiagram :source="source" :source-path="sourcePath" full />
     </Modal>
   </div>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 /**
  * A mermaid diagram as GitHub shows one: the width of the note, in a frame you can zoom and
  * drag inside, with a full-screen view and copies of it a click away.
@@ -435,11 +449,11 @@ const copyText = async (text: string, done: string) => {
     new Notice(done)
   } catch (reason) {
     console.debug('Abele: copying a diagram failed', reason)
-    new Notice('Could not copy the diagram')
+    new Notice(t('streamC.e32ddb60c1f345a3'))
   }
 }
 
-const copySource = () => copyText(props.source, 'Diagram source copied')
+const copySource = () => copyText(props.source, t('streamC.7620eda5e4d0df49'))
 
 const markup = (): string => {
   if (!svgEl.value || !root.value) return ''
@@ -456,10 +470,10 @@ const copyPng = async () => {
       .trim()
     const blob = await svgToPng(markup(), natural, background, win())
     await win().navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
-    new Notice('Diagram copied as a picture')
+    new Notice(t('streamC.7e81e38e4e892e29'))
   } catch (reason) {
     console.debug('Abele: copying a diagram as PNG failed', reason)
-    new Notice('Could not copy the diagram as a picture')
+    new Notice(t('streamC.55eaa21ba7d1e169'))
   }
 }
 
@@ -468,22 +482,22 @@ const openCopyMenu = (event: MouseEvent) => {
   const menu = new Menu().setUseNativeMenu(false)
   menu.addItem((item) =>
     item
-      .setTitle('Copy source')
+      .setTitle(t('streamC.9ea1fed5d2c1a18d'))
       .setIcon('code-2')
       .onClick(() => void copySource())
   )
   if (svgEl.value) {
     menu.addItem((item) =>
       item
-        .setTitle('Copy as picture')
+        .setTitle(t('streamC.9623e42f39fba4e4'))
         .setIcon('image')
         .onClick(() => void copyPng())
     )
     menu.addItem((item) =>
       item
-        .setTitle('Copy as SVG')
+        .setTitle(t('streamC.e9078c392aaa2c93'))
         .setIcon('file-code')
-        .onClick(() => void copyText(markup(), 'Diagram copied as SVG'))
+        .onClick(() => void copyText(markup(), t('streamC.6a85f2ea3b2cfd32')))
     )
   }
   menu.showAtMouseEvent(event)

@@ -24,7 +24,9 @@
           ref="stateEl"
           class="canvas-control-item abele-canvas-chrome__save"
           :class="`is-${saveState}`"
-          :aria-label="saveState === 'saving' ? 'Saving' : 'Not saved: open for what to do'"
+          :aria-label="
+            saveState === 'saving' ? t('streamC.096b73624b092bdc') : t('streamC.3b38aeb0e87be97e')
+          "
           @click="menus.saveMenu($event, c)"
         >
           <span class="abele-canvas-chrome__save-dot" />
@@ -34,21 +36,29 @@
 
     <div class="canvas-controls abele-canvas-chrome__view">
       <div class="canvas-control-group abele-canvas-chrome__zoom">
-        <ControlItem icon="plus" tooltip="Zoom in" @click="zoom(1.25)" />
-        <ControlItem icon="rotate-ccw" :tooltip="`Reset zoom (${percent}%)`" @click="zoomTo(1)" />
-        <ControlItem icon="maximize" tooltip="Zoom to fit" @click="viewer.fit()" />
-        <ControlItem icon="minus" tooltip="Zoom out" @click="zoom(0.8)" />
+        <ControlItem icon="plus" :tooltip="t('streamC.0e47f09a748fa132')" @click="zoom(1.25)" />
+        <ControlItem
+          icon="rotate-ccw"
+          :tooltip="t('streamC.d92a0f4c89ca90f1', { v1: String(percent) })"
+          @click="zoomTo(1)"
+        />
+        <ControlItem
+          icon="maximize"
+          :tooltip="t('streamC.543f1a829dea3d92')"
+          @click="viewer.fit()"
+        />
+        <ControlItem icon="minus" :tooltip="t('streamC.bc7b631a689b45ca')" @click="zoom(0.8)" />
       </div>
       <div class="canvas-control-group">
         <ControlItem
           icon="undo-2"
-          tooltip="Undo"
+          :tooltip="t('streamC.a8283ade31856f71')"
           :disabled="state('Undo canvas change').disabled"
           @click="press('Undo canvas change')"
         />
         <ControlItem
           icon="redo-2"
-          tooltip="Redo"
+          :tooltip="t('streamC.74273989b0966e23')"
           :disabled="state('Redo canvas change').disabled"
           @click="press('Redo canvas change')"
         />
@@ -60,28 +70,28 @@
           v-if="viewer.step === null || viewer.step === undefined"
           key="start"
           icon="presentation"
-          :tooltip="`Go through the canvas step by step (${steps} steps)`"
+          :tooltip="t('streamC.10f176ac293bcae3', { v1: String(steps) })"
           @click="step(1)"
         />
         <template v-else>
           <ControlItem
             :key="`back-${viewer.step}`"
             icon="chevron-left"
-            :tooltip="`Previous step (now ${viewer.step} of ${steps})`"
+            :tooltip="t('streamC.4234cbdc3122702b', { v1: String(viewer.step), v2: String(steps) })"
             :disabled="viewer.step <= 1"
             @click="step(-1)"
           />
           <ControlItem
             :key="`next-${viewer.step}`"
             icon="chevron-right"
-            :tooltip="`Next step (now ${viewer.step} of ${steps})`"
+            :tooltip="t('streamC.c07826ab88a35d43', { v1: String(viewer.step), v2: String(steps) })"
             :disabled="viewer.step >= steps"
             @click="step(1)"
           />
           <ControlItem
             key="all"
             icon="x"
-            tooltip="Leave the steps and show all"
+            :tooltip="t('streamC.0e5512a6a7f639e6')"
             @click="allSteps"
           />
         </template>
@@ -95,11 +105,11 @@
       class="canvas-menu abele-canvas-chrome__picked"
       :style="pickedAt"
       role="toolbar"
-      aria-label="Selection"
+      :aria-label="t('kit.selection')"
     >
       <button
         class="clickable-icon abele-canvas-chrome__swatch-button"
-        aria-label="Colour"
+        :aria-label="t('settings.CalendarsSettings.colour.3a9dfa58')"
         @click="menus.colourMenu($event, c, view)"
       >
         <span class="canvas-color-picker-item" :class="colourClass(currentColour)" />
@@ -107,13 +117,13 @@
       <ChromeIcon
         v-if="one && (kind === 'text' || kind === 'shape')"
         :icon="SHAPE_ICONS[currentShape] ?? 'square'"
-        tooltip="Shape"
+        :tooltip="t('streamC.e0e492707f85ff1f')"
         @click="menus.shapeMenu($event, c, view)"
       />
       <ChromeIcon
         v-if="one && (kind === 'text' || kind === 'shape')"
         icon="pencil"
-        tooltip="Edit text"
+        :tooltip="t('streamC.7967d94489951619')"
         :disabled="state('Edit card text').disabled"
         @click="press('Edit card text')"
       />
@@ -122,28 +132,32 @@
         icon="list-tree"
         :tooltip="
           pickedNode?.subpath
-            ? `Shows ${pickedNode.subpath.slice(1)}: show another part`
-            : 'Show one part of the note'
+            ? t('streamC.ce6f20d3275cc4e3', { v1: String(pickedNode.subpath.slice(1)) })
+            : t('streamC.a97ecdfae4389aed')
         "
         @click="menus.partMenu($event, c, view)"
       />
       <ChromeIcon
         v-if="one && (kind === 'file' || kind === 'link')"
         icon="arrow-up-right"
-        tooltip="Open"
+        :tooltip="t('area.taskOpen')"
         @click="press('Open selected card')"
       />
       <template v-if="one && (kind === 'connection' || kind === 'line')">
         <ChromeIcon
           v-if="kind === 'connection'"
           :icon="ROUTE_ICONS[value('routing')] ?? 'spline'"
-          tooltip="Line: straight, elbow or curved"
+          :tooltip="t('streamC.6c459b6120f72829')"
           @click="menus.routeMenu($event, c)"
         />
-        <ChromeIcon icon="move-right" tooltip="Arrow ends" @click="menus.endsMenu($event, c)" />
+        <ChromeIcon
+          icon="move-right"
+          :tooltip="t('streamC.be3867784bcb4d09')"
+          @click="menus.endsMenu($event, c)"
+        />
         <ChromeIcon
           icon="arrow-right-left"
-          tooltip="Reverse the arrows"
+          :tooltip="t('streamC.181f83330547275a')"
           @click="press('Reverse connection arrows')"
         />
       </template>
@@ -152,35 +166,39 @@
       <ChromeIcon
         v-if="attachedInk"
         icon="unlink"
-        tooltip="Detach from its card"
+        :tooltip="t('streamC.59d22e51a9f6c08b')"
         @click="press('Detach selected ink')"
       />
       <ChromeIcon
         v-if="freeInk"
         icon="link"
-        tooltip="Attach to the card under it"
+        :tooltip="t('streamC.3bad0c34a65e8ac3')"
         :disabled="state('Attach selected ink').disabled"
         @click="press('Attach selected ink')"
       />
       <ChromeIcon
         v-if="!one || (kind !== 'group' && kind !== 'connection' && kind !== 'line')"
         icon="frame"
-        tooltip="Frame these"
+        :tooltip="t('streamC.83adabe432e788ba')"
         :disabled="groupLabel === null"
         @click="groupLabel && press(groupLabel)"
       />
       <template v-if="one && kind === 'group'">
-        <ChromeIcon icon="pencil" tooltip="Rename" @click="c.name(picked.ids[0])" />
+        <ChromeIcon
+          icon="pencil"
+          :tooltip="t('streamC.3064d79a295cefe4')"
+          @click="c.name(picked.ids[0])"
+        />
         <ChromeIcon
           :icon="pickedNode?.collapsed ? 'chevrons-up-down' : 'chevrons-down-up'"
           :tooltip="
-            pickedNode?.collapsed ? 'Unfold: show what is inside' : 'Fold: hide what is inside'
+            pickedNode?.collapsed ? t('streamC.755b0e1414a3a08d') : t('streamC.d2ecfb223781440e')
           "
           @click="c.foldFrame(picked.ids[0], !pickedNode?.collapsed)"
         />
         <ChromeIcon
           icon="ungroup"
-          tooltip="Remove the frame, keep what is inside"
+          :tooltip="t('streamC.c402b42f3d4b723e')"
           @click="press('Ungroup selected group')"
         />
       </template>
@@ -188,20 +206,20 @@
       <ChromeIcon
         v-if="one && pickedNode?.abele?.pinned === true"
         icon="pin"
-        tooltip="Pinned in place: press to let it move"
+        :tooltip="t('streamC.1a037ce70f386a6f')"
         :active="true"
         @click="c.setPinned(picked.ids[0], false)"
       />
       <!-- Where there is no Shift to hold: each press on a card then adds it or takes it away. -->
       <ChromeIcon
         icon="list-checks"
-        tooltip="Pick several"
+        :tooltip="t('streamC.d84de13f4229514a')"
         :active="state('Toggle multiple selection').on"
         @click="press('Toggle multiple selection')"
       />
       <ChromeIcon
         icon="more-horizontal"
-        tooltip="More"
+        :tooltip="t('streamC.d47d7cb0e4f8fd2b')"
         @click="menus.moreMenu($event, c, view, host)"
       />
     </div>
@@ -219,7 +237,7 @@
     <ChromeIcon
       v-if="away"
       icon="arrow-up"
-      tooltip="Back to what is on the canvas (Shift+1)"
+      :tooltip="t('streamC.d4045b49c2e70e54')"
       class="abele-canvas-chrome__away"
       :style="away"
       @click="viewer.fit()"
@@ -232,7 +250,7 @@
         class="canvas-path-label is-editing abele-canvas-chrome__label"
         contenteditable="true"
         role="textbox"
-        aria-label="Connection label"
+        :aria-label="t('streamC.052e8911351abcd4')"
         @pointerdown.stop
         @keydown="labelKey"
         @blur="labelDone"
@@ -248,7 +266,7 @@
       ref="toolsBar"
       class="abele-canvas-chrome__tools"
       :class="{ 'abele-canvas-chrome__tools_one-row': !phone }"
-      label="Canvas tools"
+      :label="t('streamC.65f9ce203b6351f1')"
     >
       <ToolBarGroup v-for="(group, g) in shownGroups" :key="g">
         <ChromeIcon
@@ -264,21 +282,23 @@
       <ToolBarGroup v-if="hidden.length">
         <ChromeIcon
           :icon="hiddenActive ? slotIcon(hiddenActive) : 'more-horizontal'"
-          tooltip="More tools"
+          :tooltip="t('streamC.5918cb537c7d940f')"
           :active="!!hiddenActive"
           class="abele-canvas-chrome__tool"
           @click="moreTools($event)"
         />
       </ToolBarGroup>
       <template v-if="penStrip">
-        <ToolBarGroup class="abele-canvas-chrome__pen" label="Colours">
+        <ToolBarGroup class="abele-canvas-chrome__pen" :label="t('streamC.88f20221cac178c4')">
           <!-- Where the row has no room for every colour, the colour in hand stands for them and
                offers the rest; a desktop keeps one row, so the zoom column stays where it is. -->
           <ChromeIcon
             v-if="compactColours"
             icon="circle"
             :color="SWATCH_COLOURS[value('ink-color')]"
-            :tooltip="`Colour: ${COLOUR_NAMES[value('ink-color')]}`"
+            :tooltip="
+              t('streamC.d73de0968acea0bd', { v1: String(COLOUR_NAMES[value('ink-color')]) })
+            "
             class="abele-canvas-chrome__swatch"
             :class="{ 'abele-canvas-chrome__swatch_ink': !value('ink-color') }"
             @click="inkColourMenu($event)"
@@ -289,14 +309,18 @@
             icon="circle"
             :color="SWATCH_COLOURS[col]"
             :active="value('ink-color') === col"
-            :tooltip="`Draw in ${COLOUR_NAMES[col]}`"
+            :tooltip="t('streamC.acd278bfc91387ff', { v1: String(COLOUR_NAMES[col]) })"
             class="abele-canvas-chrome__swatch"
             :class="{ 'abele-canvas-chrome__swatch_ink': !col }"
             @click="set('ink-color', col)"
           />
           <ChromeIcon
             icon="line-squiggle"
-            :tooltip="`Width: ${value('ink-size') || THICKNESSES[1]}`"
+            :tooltip="
+              t('streamC.b1962c0f78318178', {
+                v1: streamCLabel(value('ink-size') || THICKNESSES[1]),
+              })
+            "
             class="abele-canvas-chrome__width"
             @click="widthMenu($event)"
           />
@@ -307,6 +331,9 @@
 </template>
 
 <script setup lang="ts">
+import { streamCLabel, streamCTitle } from '@/i18n/streamCLabels'
+import { t } from '@/i18n'
+
 import { ControlItem } from '../obsidian/ControlItem'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { canvasMenu } from '@/canvas/menu'
@@ -475,7 +502,7 @@ function inkColourMenu(e: MouseEvent) {
   for (const col of COLOURS)
     menu.addItem((item) =>
       item
-        .setTitle(`Draw in ${COLOUR_NAMES[col]}`)
+        .setTitle(t('streamC.acd278bfc91387ff', { v1: String(COLOUR_NAMES[col]) }))
         .setIcon('circle')
         .setChecked(value('ink-color') === col)
         .onClick(() => set('ink-color', col))
@@ -505,7 +532,7 @@ function widthMenu(e: MouseEvent) {
   for (const t of THICKNESSES)
     menu.addItem((item) =>
       item
-        .setTitle(t[0].toUpperCase() + t.slice(1))
+        .setTitle(streamCTitle(t))
         .setChecked((value('ink-size') || THICKNESSES[1]) === t)
         .onClick(() => set('ink-size', t))
     )
@@ -533,8 +560,8 @@ const graph = () => props.viewer.graph
 
 const groupLabel = computed(() => {
   tick.value
-  if (!state('Group selected cards').disabled) return 'Group selected cards'
-  if (!state('Group canvas selection').disabled) return 'Group canvas selection'
+  if (!state('Group selected cards').disabled) return t('streamC.bff9af5bc9820050')
+  if (!state('Group canvas selection').disabled) return t('streamC.33413545c0c6272e')
   return null
 })
 const attachedInk = computed(
@@ -670,7 +697,9 @@ const slotIcon = (slot: Slot) => {
 }
 const slotTooltip = (slot: Slot) =>
   slot.id === 'shape' && tool.value === 'shape'
-    ? `Shape: ${(value('shape') || 'rectangle').replace(/-/g, ' ')} (R, again for the next)`
+    ? t('streamC.d0f8586f87de0bea', {
+        v1: streamCLabel((value('shape') || 'rectangle').replace(/-/g, ' ')),
+      })
     : member(slot).tooltip
 const slotActive = (slot: Slot) =>
   slot.id === 'shape' ? tool.value === 'shape' : slot.members.some((m) => m.id === tool.value)
@@ -690,7 +719,7 @@ function run(slot: Slot, m: Slot['members'][number]) {
     return c.useTool('shape')
   }
   if (slot.id === 'card') return c.useTool('card')
-  press(m.label)
+  press(m.action)
 }
 function familyMenu(slot: Slot, e: MouseEvent) {
   const menu = canvasMenu()

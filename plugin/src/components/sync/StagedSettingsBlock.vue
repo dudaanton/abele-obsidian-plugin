@@ -2,16 +2,11 @@
   <div class="abele-staged-settings">
     <p v-if="changes.length" class="abele-staged-settings__lead">{{ lead }}</p>
     <p v-if="changes.length" class="abele-staged-settings__note">{{ from }}</p>
-    <p class="abele-staged-settings__note">
-      Changing settings here before reloading keeps this device's version everywhere.
-    </p>
-    <p class="abele-staged-settings__note">
-      Keep this device's sends this device's files to the other devices instead; a file only the
-      other device has is left there.
-    </p>
+    <p class="abele-staged-settings__note">{{ t('streamC.8a13443f6c08ad45') }}</p>
+    <p class="abele-staged-settings__note">{{ t('streamC.6da382df69a482c3') }}</p>
 
     <p v-if="written.length" class="abele-staged-settings__note">
-      Written but awaiting reload: {{ written.join(', ') }}. Change no settings before reloading.
+      {{ t('streamC.656c1efb53fc7225', { v1: written.join(', ') }) }}
     </p>
     <p v-if="error !== null" class="abele-staged-settings__error">{{ error }}</p>
 
@@ -19,33 +14,29 @@
       <slot name="actions" :busy="busy" />
       <Button
         v-if="written.length && reloadable"
-        text="Reload applied settings"
+        :text="t('streamC.3f57306bd7ae3d04')"
         :disabled="busy"
-        tooltip="Reload Obsidian to read the settings already written; leave failed files waiting"
+        :tooltip="t('streamC.2cb1129b9a96e4c6')"
         @click="reloadWritten"
       />
       <Button
         v-if="changes.length"
-        text="Keep this device's"
+        :text="t('streamC.01c9fdc2a64e1160')"
         :disabled="busy"
-        :tooltip="
-          busy
-            ? 'Wait: the last answer is still being carried out'
-            : 'Send this device\'s settings to the other devices over the ones that arrived'
-        "
+        :tooltip="busy ? t('streamC.54c5c791d4635615') : t('streamC.4f5523d292d1c309')"
         @click="keep"
       />
       <Button
         v-if="changes.length"
-        :text="reloadable ? applyText : 'Apply'"
+        :text="reloadable ? applyText : t('settings.transfer.TransferScanModal.apply.31e392d1')"
         accent
         :disabled="busy"
         :tooltip="
           busy
-            ? 'Wait: the last answer is still being carried out'
+            ? t('streamC.54c5c791d4635615')
             : reloadable
-              ? 'Write the settings that arrived and reload Obsidian to use them'
-              : 'Write the settings that arrived; restart Obsidian to use them'
+              ? t('streamC.f1ce22cc91505612')
+              : t('streamC.6550735a28c92865')
         "
         @click="apply"
       />
@@ -54,6 +45,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 /**
  * Obsidian settings changed on another device, staged rather than written, and the two answers
  * (phase 3b, decision 11): apply them and reload, or keep this device's. Shown in the dialog that
@@ -89,7 +82,7 @@ const props = withDefaults(
     /** What the apply button says where Obsidian can reload itself. */
     applyText?: string
   }>(),
-  { applyText: 'Reload now', port: undefined }
+  { applyText: () => t('streamC.401ed5e6c7b026d9'), port: undefined }
 )
 
 const emit = defineEmits<{
@@ -108,15 +101,14 @@ const written = computed(() => sync.settingsPrompt.appliedWaiting?.value ?? [])
 
 const groups = computed(() => groupStaged(props.changes, props.names))
 
-const lead = computed(
-  () =>
-    `Obsidian settings changed on another device: ${stagedSummary(groups.value)}. ` +
-    (reloadable
-      ? 'Reload Obsidian to apply them.'
-      : 'Apply them, then restart Obsidian to use them.')
+const lead = computed(() =>
+  t('streamC.a192183a87b1e0e9', {
+    v1: stagedSummary(groups.value),
+    v2: reloadable ? t('streamC.c4f80b852f3d70cb') : t('streamC.31130f5e44df1411'),
+  })
 )
 
-const from = computed(() => `From ${listed(groups.value.sources)}.`)
+const from = computed(() => t('streamC.00b0b93fb888f1c6', { v1: listed(groups.value.sources) }))
 
 async function run(work: () => Promise<string>): Promise<void> {
   if (busy.value) return
@@ -126,7 +118,7 @@ async function run(work: () => Promise<string>): Promise<void> {
     new Notice(await work())
     emit('decided')
   } catch (failure) {
-    error.value = `The operation could not finish: ${reasonOf(failure)}. Check the Sync tab for files awaiting reload.`
+    error.value = t('streamC.b3f2d4a032e619ee', { v1: String(reasonOf(failure)) })
   } finally {
     busy.value = false
   }
@@ -135,8 +127,8 @@ async function run(work: () => Promise<string>): Promise<void> {
 const reloadWritten = (): Promise<void> =>
   run(async () =>
     (await sync.reloadAppliedSettings())
-      ? 'Obsidian is reloading applied settings.'
-      : 'Reload did not start; restart Obsidian before changing settings.'
+      ? t('streamC.c0aa1f3308f0d99b')
+      : t('streamC.b535e9d3b8614a16')
   )
 
 /** The versions this block shows: what either answer is for, and nothing staged since. */

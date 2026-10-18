@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /** Reader-compatible launch adapter. Both sources share admission, parameters and picker UI. */
 import { Notice, type App } from 'obsidian'
 import { ScriptService } from './ScriptService'
@@ -29,7 +30,7 @@ export async function runScriptOnBook(
     if (outcome.status !== 'done') return
     const result = outcome.output
     if (result.trim()) new Notice(result.length > 500 ? `${result.slice(0, 500)}…` : result, 10000)
-    else new Notice(`${script.meta.name}: done`)
+    else new Notice(t('streamC.f079c95a97ab0381', { v1: String(script.meta.name) }))
   } catch (err) {
     if (err instanceof ScriptWaitingError) return
     new Notice(`${script.meta.name}: ${err instanceof Error ? err.message : String(err)}`, 10000)
@@ -44,7 +45,7 @@ export async function setOnBookMenu(script: string, on: boolean): Promise<void> 
 export function pickScriptForBook(app: App, book: BookScriptContext): void {
   const scripts = ScriptService.getInstance().getAll()
   if (!scripts.length) {
-    new Notice('There are no scripts yet: add one to the scripts folder')
+    new Notice(t('streamC.baedb8f5076dd319'))
     return
   }
   const captured = Object.freeze({ ...book })
@@ -59,6 +60,6 @@ export function runOnBook(app: App, book: BookScriptContext, name?: string): voi
   const script = ScriptService.getInstance()
     .getAll()
     .find((s) => s.meta.name === name)
-  if (!script) new Notice(`Script "${name}" not found`)
+  if (!script) new Notice(t('streamC.790d346bac907aa7', { v1: String(name) }))
   else void runScriptOnBook(script, book)
 }

@@ -144,9 +144,8 @@ it.each(views)('%s carries its drawer switch with the view icon', (file, icon) =
 it('scripted sidebar views use their current title and icon', () => {
   const source = readFileSync('src/components/ScriptView.vue', 'utf8')
   expect(source.includes(':icon="model.view?.icon ?? \'scroll-text\'"')).toBe(true)
-  expect(
-    source.includes(':name="model.view?.title ?? model.saved?.script ?? \'Script view\'"')
-  ).toBe(true)
+  // The last fallback is a translated label, so only the order of the sources is pinned.
+  expect(source.includes(':name="model.view?.title ?? model.saved?.script ?? t(')).toBe(true)
 })
 it('follows a view moved into and out of a phone drawer', async () => {
   const { wrapper } = await render(true, false)

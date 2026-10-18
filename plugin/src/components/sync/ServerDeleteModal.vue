@@ -1,19 +1,19 @@
 <template>
   <Modal
-    :title="`Delete ${name} from the server?`"
+    :title="t('streamC.c8219c29ffc4fa52', { v1: String(name) })"
     :can-close="() => !busy"
     close-in-footer
     phone-sheet
     @close="close"
   >
     <dl class="abele-server-delete__facts">
-      <dt>Server</dt>
+      <dt>{{ t('settings.CalendarsSettings.server.aef7de28') }}</dt>
       <dd>{{ host }}</dd>
-      <dt>Files</dt>
-      <dd>{{ facts.files.toLocaleString('en') }}</dd>
-      <dt>Size</dt>
+      <dt>{{ t('settings.metadata.abc7e9892806b047') }}</dt>
+      <dd>{{ facts.files.toLocaleString(currentLocale().format) }}</dd>
+      <dt>{{ t('settings.ImageModelEditModal.size.1af85190') }}</dt>
       <dd>{{ folderSize(facts.bytes) }}</dd>
-      <dt>Access closed</dt>
+      <dt>{{ t('streamC.1acc804ac37f32e3') }}</dt>
       <dd>
         <ul class="abele-server-delete__access">
           <li v-for="one in facts.access" :key="one.label">
@@ -23,18 +23,21 @@
         </ul>
       </dd>
     </dl>
-    <p class="abele-server-delete__note">
-      The files stay in the server's trash for 30 days. This device disconnects and keeps every
-      file. Devices with that access stop and keep their copies.
-    </p>
+    <p class="abele-server-delete__note">{{ t('streamC.ad151a07bc5a6fa5') }}</p>
     <p v-if="failure" class="abele-server-delete__error" role="alert">{{ failure }}</p>
     <template #footer>
-      <Button text="Cancel" tooltip="Close this and change nothing" @click="close" />
+      <Button :text="t('kit.cancel')" :tooltip="t('kit.cancelTooltip')" @click="close" />
       <Button
-        :text="busy ? 'Deleting…' : failure ? 'Try again' : 'Delete from the server'"
+        :text="
+          busy
+            ? t('streamC.43b5894c3e4e2b24')
+            : failure
+              ? t('streamC.d8b8392e2c542950')
+              : t('streamC.2bf85fe0a42ff813')
+        "
         warning
         :disabled="busy || !facts.canWrite"
-        tooltip="Move these files to the server's trash, close every access to them and disconnect"
+        :tooltip="t('streamC.637f261b0b03cd13')"
         @click="confirm"
       />
     </template>
@@ -42,6 +45,8 @@
 </template>
 
 <script setup lang="ts">
+import { t, currentLocale } from '@/i18n'
+
 /**
  * Asks before one connection's files leave the server: which server, how much, and whose
  * access closes with them. While it runs it cannot be closed; uncertainty offers retry.

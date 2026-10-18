@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { nanoid } from 'nanoid'
 import { ItemView, WorkspaceLeaf, App } from 'obsidian'
@@ -21,7 +22,7 @@ export class TimelineSidebarView extends ItemView {
   }
 
   getDisplayText() {
-    return 'Abele timeline'
+    return t('streamC.61fb940da6bc5c6b')
   }
 
   static getIcon() {

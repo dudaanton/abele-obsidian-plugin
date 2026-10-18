@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 // Starting a program of a node chat's folder under the debugger: the node runs it with its own
 // Node and holds it on its first line; the program's file opens with its margin, so record points
 // and breakpoints go in before it goes on. Files open from the same folder take breakpoints too.
@@ -255,7 +256,7 @@ export class ProgramPicker extends NodeSuggestModal {
     const typed = query.trim()
     const open = super.getSuggestions(query)
     return typed && !open.some((i) => i.title === typed)
-      ? [{ id: typed, icon: 'play', kind: "A path in the chat's folder", title: typed }, ...open]
+      ? [{ id: typed, icon: 'play', kind: t('streamC.30b1f4852187a445'), title: typed }, ...open]
       : open
   }
 }
@@ -269,15 +270,15 @@ export async function askAndStartProgram(
     console.debug('[debugger] Program not started', e)
     new Notice(
       e instanceof Error && e.message.includes('debugger_profile_unavailable')
-        ? 'This node cannot run programs under the debugger yet: its JavaScript debugger is not installed.'
-        : `The program did not start: ${e instanceof Error ? e.message : String(e)}`
+        ? t('streamC.fa5e5929ce988f89')
+        : t('streamC.c23252f0ba8471da', { v1: String(e instanceof Error ? e.message : String(e)) })
     )
   }
   try {
     await presenter.connection.connect()
     const target = await chatTarget(presenter)
     if (!target) {
-      new Notice('This chat has no folder to run a program from')
+      new Notice(t('streamC.6bfa573c9d1f5727'))
       return
     }
     const app = GlobalStore.getInstance().app
@@ -287,16 +288,16 @@ export async function askAndStartProgram(
       .map((path) => ({
         id: path,
         icon: 'file-code',
-        kind: 'Open in a tab',
+        kind: t('streamC.6f3a857852cf96a8'),
         title: path,
-        ...(path === defaultProgram(open) ? { note: 'Looked at last' } : {}),
+        ...(path === defaultProgram(open) ? { note: t('streamC.6b612edc8f9e8b34') } : {}),
       }))
     new ProgramPicker(
       app,
       offered,
-      'A JavaScript file to run under the debugger: src/main.js',
+      t('streamC.486c5879e3e830f3'),
       (item) => void startProgram(presenter, item.id, open, target, show).catch(failed),
-      "Type the path of a JavaScript file in this chat's folder"
+      t('streamC.48dd6af61587e02d')
     ).open()
   } catch (e) {
     failed(e as Error)

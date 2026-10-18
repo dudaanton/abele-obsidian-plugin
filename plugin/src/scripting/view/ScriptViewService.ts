@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * Where views meet leaves.
  *
@@ -164,7 +165,7 @@ export class ScriptViewService implements ViewHost {
       await ScriptService.getInstance().ready
       const script = findScriptByName(saved.script)
       if (!script) {
-        leafView.fail(`Script "${saved.script}" not found`)
+        leafView.fail(t('streamC.790d346bac907aa7', { v1: String(saved.script) }))
         return
       }
       await ScriptService.getInstance().execute(script.path, saved.params, {

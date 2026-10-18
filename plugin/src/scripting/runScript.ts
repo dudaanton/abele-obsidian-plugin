@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { Notice } from 'obsidian'
 import { ScriptService } from './ScriptService'
 import { showFormModal } from './formModal'
@@ -59,7 +60,7 @@ export async function runScriptByName(
 ): Promise<void> {
   const script = findScriptByName(name)
   if (!script) {
-    new Notice(`${label}: script "${name}" not found`)
+    new Notice(t('streamC.0e8d28f7870e3c2e', { v1: String(label), v2: String(name) }))
     return
   }
 
@@ -80,7 +81,7 @@ export async function runScriptByName(
     // Put in front of the person to confirm and left waiting: they know, nothing to add.
     if (err instanceof ScriptWaitingError) return
     const msg = err instanceof Error ? err.message : String(err)
-    new Notice(`${label} error: ${msg}`, 10000)
+    new Notice(t('streamC.583d4e5e95dd934b', { v1: String(label), v2: String(msg) }), 10000)
     console.error(`[Abele] Error executing script "${name}":`, err)
   }
 }

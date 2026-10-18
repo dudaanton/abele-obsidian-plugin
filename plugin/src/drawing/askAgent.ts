@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * A drawing handed to the agent from its tab: a new chat, let see this drawing whatever its
  * scope, with the question begun in its input — about all of the drawing or the part picked, or
@@ -43,7 +44,9 @@ export async function askAboutDrawing(
     return true
   } catch (e) {
     console.error('[Abele] Asking about a drawing failed:', e)
-    new Notice(`Could not open a chat: ${e instanceof Error ? e.message : String(e)}`)
+    new Notice(
+      t('streamC.7ea956d728134cf3', { v1: String(e instanceof Error ? e.message : String(e)) })
+    )
     return false
   }
 }
@@ -76,7 +79,9 @@ export async function attachDrawingToChat(
     made = await app.vault.createBinary(path, await blob.arrayBuffer())
   } catch (e) {
     console.error('[Abele] Attaching a drawing to the chat failed:', e)
-    new Notice(`The drawing could not be attached: ${e instanceof Error ? e.message : String(e)}`)
+    new Notice(
+      t('streamC.5f081782590e50ea', { v1: String(e instanceof Error ? e.message : String(e)) })
+    )
     return null
   }
   const session = chats.activeSession.value ?? (await chats.openBlankChat())

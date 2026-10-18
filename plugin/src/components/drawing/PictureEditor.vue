@@ -2,28 +2,38 @@
   <div class="abele-picture-editor" :class="{ 'is-phone-layout': phone }">
     <!-- On a computer one row over the picture, as a drawing has; on a phone only what ends the
          editing stays on top, and the tools go down under the thumb. -->
-    <ToolBar v-if="!phone" class="abele-picture-editor__bar" label="Editing the picture">
+    <ToolBar v-if="!phone" class="abele-picture-editor__bar" :label="t('streamC.7ae5d29673559b54')">
       <div class="abele-picture-editor__primary">
-        <Button text="Cancel" plain :tooltip="cancelTooltip" @click="emit('cancel')" />
+        <Button :text="t('kit.cancel')" plain :tooltip="cancelTooltip" @click="emit('cancel')" />
         <ToolBarGroup class="abele-picture-editor__group abele-picture-editor__desktop-tools">
           <Icon
-            v-for="t in TOOLS"
-            :key="t.id"
-            :icon="t.id === 'shape' ? SHAPE_ICONS[model.shape] : t.icon"
-            :tooltip="t.tooltip"
-            :active="toolNow === t.id"
+            v-for="tool in TOOLS"
+            :key="tool.id"
+            :icon="tool.id === 'shape' ? SHAPE_ICONS[model.shape] : tool.icon"
+            :tooltip="tool.tooltip"
+            :active="toolNow === tool.id"
             class="abele-picture-editor__tool"
-            :class="`abele-picture-editor__tool_${t.id}`"
-            @click="pick(t.id, $event)"
+            :class="`abele-picture-editor__tool_${tool.id}`"
+            @click="pick(tool.id, $event)"
           />
         </ToolBarGroup>
         <ToolBarGroup class="abele-picture-editor__group abele-picture-editor__history">
-          <Icon icon="undo-2" tooltip="Undo" :disabled="!canUndo" @click="emit('undo')" />
-          <Icon icon="redo-2" tooltip="Redo" :disabled="!canRedo" @click="emit('redo')" />
+          <Icon
+            icon="undo-2"
+            :tooltip="t('streamC.a8283ade31856f71')"
+            :disabled="!canUndo"
+            @click="emit('undo')"
+          />
+          <Icon
+            icon="redo-2"
+            :tooltip="t('streamC.74273989b0966e23')"
+            :disabled="!canRedo"
+            @click="emit('redo')"
+          />
         </ToolBarGroup>
         <span class="abele-picture-editor__save" @click="saveAt">
           <Button
-            text="Save"
+            :text="t('settings.GithubConnectionEditor.save.1509f561')"
             accent
             trailing-icon="chevron-down"
             :loading="saving"
@@ -44,13 +54,21 @@
               class="abele-picture-editor__aspect"
               @click="emit('aspect', a.id)"
             />
-            <Icon icon="rotate-ccw" tooltip="Turn a quarter to the left" @click="emit('turn')" />
-            <Icon icon="flip-horizontal-2" tooltip="Mirror left to right" @click="emit('flip')" />
+            <Icon
+              icon="rotate-ccw"
+              :tooltip="t('streamC.af50d37815f01c07')"
+              @click="emit('turn')"
+            />
+            <Icon
+              icon="flip-horizontal-2"
+              :tooltip="t('streamC.151dfcb49d7e932e')"
+              @click="emit('flip')"
+            />
             <Button
               v-if="cropping && changed"
-              text="Reset"
+              :text="t('area.rangeReset')"
               quiet
-              tooltip="Back to the whole picture, not turned"
+              :tooltip="t('streamC.58163234e0425e98')"
               @click="emit('reset')"
             />
           </template>
@@ -61,14 +79,14 @@
               icon="circle"
               :color="c === 'black' ? undefined : c"
               :active="current === c"
-              :tooltip="`Draw in ${c}`"
+              :tooltip="t('streamC.acd278bfc91387ff', { v1: streamCLabel(c) })"
               class="abele-picture-editor__swatch"
               :class="{ 'abele-picture-editor__swatch_ink': c === 'black' }"
               @click="emit('color', c)"
             />
             <Icon
               icon="line-squiggle"
-              :tooltip="`Thickness: ${model.thickness}`"
+              :tooltip="t('streamC.a14055dd728bec45', { v1: streamCLabel(model.thickness) })"
               @click="emit('thickness', $event)"
             />
           </template>
@@ -77,23 +95,23 @@
           :text-right="zoomText"
           icon="zoom-in"
           class="abele-picture-editor__desktop-zoom"
-          tooltip="Zoom: the whole picture, 100%, in or out"
+          :tooltip="t('streamC.51df535f2ea188dd')"
           @click="emit('zoom', $event)"
         />
       </div>
     </ToolBar>
 
     <div v-else class="abele-picture-editor__top">
-      <Button text="Cancel" plain :tooltip="cancelTooltip" @click="emit('cancel')" />
+      <Button :text="t('kit.cancel')" plain :tooltip="cancelTooltip" @click="emit('cancel')" />
       <Icon
         :text-right="zoomText"
-        :tooltip="`Zoom ${zoomText}: tap to see the whole picture`"
+        :tooltip="t('streamC.d0a3885a1d7dbab0', { v1: String(zoomText) })"
         class="abele-picture-editor__zoom"
         @click="emit('zoom', $event)"
       />
       <span class="abele-picture-editor__save" @click="saveAt">
         <Button
-          text="Save"
+          :text="t('settings.GithubConnectionEditor.save.1509f561')"
           accent
           trailing-icon="chevron-down"
           :loading="saving"
@@ -124,7 +142,7 @@
       <div
         class="abele-picture-editor__row abele-picture-editor__row_context"
         role="toolbar"
-        :aria-label="cropping ? 'Crop' : 'Colour and thickness'"
+        :aria-label="cropping ? t('streamC.98caf7c43c6f2c35') : t('streamC.0db96133695cbad7')"
       >
         <template v-if="cropping">
           <Icon
@@ -137,13 +155,17 @@
             @click="emit('aspect', a.id)"
           />
           <span class="abele-picture-editor__divider" aria-hidden="true" />
-          <Icon icon="rotate-ccw" tooltip="Turn a quarter to the left" @click="emit('turn')" />
-          <Icon icon="flip-horizontal-2" tooltip="Mirror left to right" @click="emit('flip')" />
+          <Icon icon="rotate-ccw" :tooltip="t('streamC.af50d37815f01c07')" @click="emit('turn')" />
+          <Icon
+            icon="flip-horizontal-2"
+            :tooltip="t('streamC.151dfcb49d7e932e')"
+            @click="emit('flip')"
+          />
           <Button
             v-if="changed"
-            text="Reset"
+            :text="t('area.rangeReset')"
             quiet
-            tooltip="Back to the whole picture, not turned"
+            :tooltip="t('streamC.58163234e0425e98')"
             @click="emit('reset')"
           />
         </template>
@@ -154,7 +176,7 @@
             icon="circle"
             :color="c === 'black' ? undefined : c"
             :active="current === c"
-            :tooltip="`Draw in ${c}`"
+            :tooltip="t('streamC.acd278bfc91387ff', { v1: streamCLabel(c) })"
             class="abele-picture-editor__swatch"
             :class="{ 'abele-picture-editor__swatch_ink': c === 'black' }"
             @click="emit('color', c)"
@@ -162,7 +184,7 @@
           <span class="abele-picture-editor__divider" aria-hidden="true" />
           <Icon
             icon="line-squiggle"
-            :tooltip="`Thickness: ${model.thickness}`"
+            :tooltip="t('streamC.a14055dd728bec45', { v1: streamCLabel(model.thickness) })"
             @click="emit('thickness', $event)"
           />
         </template>
@@ -171,21 +193,31 @@
       <div
         class="abele-picture-editor__row abele-picture-editor__row_tools"
         role="toolbar"
-        aria-label="Tools"
+        :aria-label="t('settings.ai.AgentEditorModal.tools.ea93d6a2')"
       >
-        <Icon icon="undo-2" tooltip="Undo" :disabled="!canUndo" @click="emit('undo')" />
-        <Icon icon="redo-2" tooltip="Redo" :disabled="!canRedo" @click="emit('redo')" />
+        <Icon
+          icon="undo-2"
+          :tooltip="t('streamC.a8283ade31856f71')"
+          :disabled="!canUndo"
+          @click="emit('undo')"
+        />
+        <Icon
+          icon="redo-2"
+          :tooltip="t('streamC.74273989b0966e23')"
+          :disabled="!canRedo"
+          @click="emit('redo')"
+        />
         <span class="abele-picture-editor__divider" aria-hidden="true" />
         <div class="abele-picture-editor__tools">
           <Icon
             v-for="t in TOOLS"
-            :key="t.id"
-            :icon="t.id === 'shape' ? SHAPE_ICONS[model.shape] : t.icon"
-            :tooltip="t.tooltip"
-            :active="toolNow === t.id"
+            :key="tool.id"
+            :icon="tool.id === 'shape' ? SHAPE_ICONS[model.shape] : tool.icon"
+            :tooltip="tool.tooltip"
+            :active="toolNow === tool.id"
             class="abele-picture-editor__tool"
-            :class="`abele-picture-editor__tool_${t.id}`"
-            @click="pick(t.id, $event)"
+            :class="`abele-picture-editor__tool_${tool.id}`"
+            @click="pick(tool.id, $event)"
           />
         </div>
       </div>
@@ -194,6 +226,9 @@
 </template>
 
 <script setup lang="ts">
+import { streamCLabel } from '@/i18n/streamCLabels'
+import { t } from '@/i18n'
+
 /**
  * Editing a picture: cropping it, turning and mirroring it, and drawing on it, all in one place,
  * with Cancel and Save always in sight. On a computer the tools stand in one row over the picture,
@@ -259,13 +294,13 @@ const emit = defineEmits<{
 }>()
 
 const TOOLS: { id: Tool; icon: string; tooltip: string }[] = [
-  { id: 'crop', icon: 'crop', tooltip: 'Crop, turn or mirror the picture' },
-  { id: 'pen', icon: 'pen-line', tooltip: 'Pen' },
-  { id: 'marker', icon: 'highlighter', tooltip: 'Marker' },
-  { id: 'eraser', icon: 'eraser', tooltip: 'Eraser: takes away the whole stroke it touches' },
-  { id: 'lasso', icon: 'lasso', tooltip: 'Lasso: pick ink to move or resize it' },
-  { id: 'shape', icon: 'square', tooltip: 'Shapes: a box, an ellipse, a line or an arrow' },
-  { id: 'text', icon: 'type', tooltip: 'Text: tap where it goes' },
+  { id: 'crop', icon: 'crop', tooltip: t('streamC.528d7dc2527ae94e') },
+  { id: 'pen', icon: 'pen-line', tooltip: t('streamC.a04bd35be1678964') },
+  { id: 'marker', icon: 'highlighter', tooltip: t('streamC.13ce08699c85c1f2') },
+  { id: 'eraser', icon: 'eraser', tooltip: t('streamC.84f2425d2b761cc5') },
+  { id: 'lasso', icon: 'lasso', tooltip: t('streamC.58e075d61c229017') },
+  { id: 'shape', icon: 'square', tooltip: t('streamC.bcdc888c7fede40c') },
+  { id: 'text', icon: 'type', tooltip: t('streamC.535ec9652a4e8de6') },
 ]
 const SHAPE_ICONS: Record<ShapeKind, string> = {
   rect: 'square',
@@ -288,9 +323,9 @@ const current = computed(() =>
 )
 const zoomText = computed(() => `${Math.round(props.model.zoom * 100)}%`)
 const cancelTooltip = computed(() =>
-  props.dirty ? 'Close without saving: asks first, the file stays as it was' : 'Close the editor'
+  props.dirty ? t('streamC.c35c5dd6abf8ecb6') : t('streamC.12be2f0c2bd83ba6')
 )
-const saveTooltip = 'Save over the picture, as a new one, or send it to the chat'
+const saveTooltip = t('streamC.051a1bd811f7a73e')
 
 function pick(tool: Tool, e: MouseEvent) {
   if (tool === 'crop') emit('crop')

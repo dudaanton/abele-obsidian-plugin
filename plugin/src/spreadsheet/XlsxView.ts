@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { FileView, Platform, TFile, type WorkspaceLeaf, type Plugin } from 'obsidian'
 import { mountKit, type KitMount } from '@/components/obsidian/mount'
 import { readOfficeBytes } from '@/ooxml/vaultAdapter'
@@ -59,7 +60,7 @@ export class XlsxView extends FileView {
     return XLSX_VIEW_TYPE
   }
   getDisplayText() {
-    return this.file?.name ?? 'Excel workbook'
+    return this.file?.name ?? t('streamC.746c3b763c6f6777')
   }
   getIcon() {
     return 'table'
@@ -79,7 +80,10 @@ export class XlsxView extends FileView {
     this.workbook = null
     this.contentEl.empty()
     this.contentEl.addClass('abele-workbook')
-    const status = this.contentEl.createDiv({ text: 'Opening workbook…', attr: { role: 'status' } })
+    const status = this.contentEl.createDiv({
+      text: t('streamC.69ed90e101909e51'),
+      attr: { role: 'status' },
+    })
     try {
       const book = await loadWorkbookBytes(
         await readOfficeBytes(this.app, file),
@@ -123,7 +127,8 @@ export class XlsxView extends FileView {
         },
       })
     } catch (e) {
-      if (token === this.token) status.setText(`Could not open workbook: ${(e as Error).message}`)
+      if (token === this.token)
+        status.setText(t('streamC.a44e9d1d09577f0e', { v1: String((e as Error).message) }))
     }
   }
   async onUnloadFile(): Promise<void> {
@@ -147,7 +152,7 @@ export function registerWorkbooks(plugin: Plugin): void {
         return
       menu.addItem((item) =>
         item
-          .setTitle('Open in Abele workbook viewer')
+          .setTitle(t('streamC.5f4a459e2fbaa349'))
           .setIcon('table')
           .onClick(() => {
             void plugin.app.workspace

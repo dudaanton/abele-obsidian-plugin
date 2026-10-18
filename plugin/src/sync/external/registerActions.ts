@@ -1,4 +1,6 @@
-import { englishSyncText, type SyncText } from '../presentation'
+import type { SyncText } from '../presentation'
+import { settingsSyncText } from '@/i18n/settingsSync'
+import { streamCUI } from '@/i18n/streamCLabels'
 import { t } from '@/i18n'
 import { Notice, TFile, TFolder, type Plugin, type TAbstractFile, type Menu } from 'obsidian'
 import { confirmDialog } from '@/components/obsidian/dialogs'
@@ -15,33 +17,32 @@ export const actionTitles = {
   hydrate: 'Download to this device',
 } as const
 
-export function externalStatus(status: string, text: SyncText = englishSyncText): string {
-  return text(
-    (
-      {
-        complete: 'Done',
-        'cleanup-pending': 'Saved; local cleanup is still pending',
-        pinned: 'Kept on this device. Allow removal first',
-        busy: 'Open in an editor or currently in use. Close it and try again',
-        'local-changed': 'Unsent changes stay on this device. Sync first',
-        'version-changed': 'The version changed. Preview again',
-        'rule-no-longer-matches': 'The file no longer matches this rule. Preview again',
-        offline: 'Unavailable offline',
-        unavailable: 'This file is not available on the server',
-        'not-on-server': 'This version is not yet on the server. Sync first; the file stays here',
-        refused: 'Sync refused this file. Resolve its sync status first; it stays here',
-        'unsupported-server': 'This server does not support offloading',
-        'unsupported-storage': 'This device storage does not support safe offloading',
-        'no-space': 'Not enough space to download safely',
-        collision: 'Another file occupies the destination. Both files were kept',
-        ineligible: 'This file cannot be offloaded',
-        'already-offloaded': 'Already kept only on the server',
-        'approval-required': 'Executable files stay on this device',
-        'warning-required': 'This connection needs an access review before offloading',
-        'recovery-required': 'Sync recovery is required. The file stays here',
-      } as Record<string, string>
-    )[status] ?? status
-  )
+export function externalStatus(status: string, text: SyncText = settingsSyncText): string {
+  const message = (
+    {
+      complete: 'Done',
+      'cleanup-pending': 'Saved; local cleanup is still pending',
+      pinned: 'Kept on this device. Allow removal first',
+      busy: 'Open in an editor or currently in use. Close it and try again',
+      'local-changed': 'Unsent changes stay on this device. Sync first',
+      'version-changed': 'The version changed. Preview again',
+      'rule-no-longer-matches': 'The file no longer matches this rule. Preview again',
+      offline: 'Unavailable offline',
+      unavailable: 'This file is not available on the server',
+      'not-on-server': 'This version is not yet on the server. Sync first; the file stays here',
+      refused: 'Sync refused this file. Resolve its sync status first; it stays here',
+      'unsupported-server': 'This server does not support offloading',
+      'unsupported-storage': 'This device storage does not support safe offloading',
+      'no-space': 'Not enough space to download safely',
+      collision: 'Another file occupies the destination. Both files were kept',
+      ineligible: 'This file cannot be offloaded',
+      'already-offloaded': 'Already kept only on the server',
+      'approval-required': 'Executable files stay on this device',
+      'warning-required': 'This connection needs an access review before offloading',
+      'recovery-required': 'Sync recovery is required. The file stays here',
+    } as Record<string, string>
+  )[status]
+  return message === undefined ? status : text(message)
 }
 
 export async function confirmOffload(
@@ -51,22 +52,32 @@ export async function confirmOffload(
   if (!preview.files.length) {
     new Notice(
       preview.skipped.map((file) => `${file.path}: ${externalStatus(file.status)}`).join('\n') ||
-        'No files match.'
+        t('streamC.2ccf94bf0ca23256')
     )
     return false
   }
   return confirmDialog({
-    title: actionTitles.evict,
+    title: streamCUI(actionTitles.evict),
     size: 'tall',
     message:
-      `${preview.files.length} files · up to ${(preview.bytes / 1024 / 1024).toFixed(2)} MiB freed on this device. Links stay unchanged.\n\n` +
-      preview.files.map((file) => `${file.path} · ${file.size} bytes`).join('\n') +
+      t('streamC.cbf96227cfd83246', {
+        v1: preview.files.length,
+        v2: (preview.bytes / 1024 / 1024).toFixed(2),
+      }) +
+      '\n\n' +
+      preview.files
+        .map((file) =>
+          t('streamC.6529bdb841d34223', { v1: String(file.path), v2: String(file.size) })
+        )
+        .join('\n') +
       (preview.skipped.length
-        ? '\n\nKept here:\n' +
+        ? '\n\n' +
+          t('streamC.de32a506113b3695') +
+          '\n' +
           preview.skipped.map((file) => `${file.path}: ${externalStatus(file.status)}`).join('\n')
         : ''),
-    confirmText: actionTitles.evict,
-    confirmTooltip: 'Remove only the confirmed local versions after server verification',
+    confirmText: streamCUI(actionTitles.evict),
+    confirmTooltip: t('streamC.7e49042a94a6ff74'),
   })
 }
 
@@ -94,7 +105,7 @@ export function registerExternalFileActions(plugin: Plugin): void {
       hash < 0 ? '' : href.slice(hash)
     ).catch((error) => {
       console.debug('[abele-sync] linked external file could not be downloaded', error)
-      new Notice('Could not open the external file card: ' + path)
+      new Notice(t('streamC.da4af4eb96fcc9d1', { v1: path }))
     })
   }
   const listen = (doc: Document) =>
@@ -142,7 +153,7 @@ export function registerExternalFileActions(plugin: Plugin): void {
               await host.pin(path, !pinned)
             }
             results.push(
-              `${path}: ${kind === 'hydrate' ? 'Downloaded to this device' : pinned ? 'Pin removed; confirmed actions may remove the local copy' : 'Kept on this device'}`
+              `${path}: ${kind === 'hydrate' ? t('streamC.0bdee1a2ab7e273e') : pinned ? t('streamC.2c2d8598672f5487') : t('streamC.cd773d4c4aca1c8c')}`
             )
           } catch (error) {
             results.push(
@@ -161,7 +172,7 @@ export function registerExternalFileActions(plugin: Plugin): void {
     for (const kind of Object.keys(actionTitles) as (keyof typeof actionTitles)[])
       menu.addItem((item) =>
         item
-          .setTitle(actionTitles[kind])
+          .setTitle(streamCUI(actionTitles[kind]))
           .setIcon(kind === 'evict' ? 'cloud' : kind === 'hydrate' ? 'download' : 'pin')
           .onClick(() => run(kind, pathsOf(files)))
       )

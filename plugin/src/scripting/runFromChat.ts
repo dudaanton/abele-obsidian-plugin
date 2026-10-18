@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { Notice, type App } from 'obsidian'
 import type { ChatSession } from '@/ai/ChatSession'
 import { captureSelectionSource, SelectionCaptureConflict } from '@/ai/openChat'
@@ -63,7 +64,11 @@ export function chatScriptAction(app: App, target: SelectionLaunchTarget): (name
       else if (outcome.status === 'done') {
         const output = outcome.output.trim()
         new Notice(
-          output ? (output.length > 500 ? `${output.slice(0, 500)}…` : output) : `${name}: done`,
+          output
+            ? output.length > 500
+              ? `${output.slice(0, 500)}…`
+              : output
+            : t('streamC.f079c95a97ab0381', { v1: String(name) }),
           10000
         )
       }
@@ -76,14 +81,14 @@ export function chatScriptAction(app: App, target: SelectionLaunchTarget): (name
   return (name?: string) => {
     const scripts = ScriptService.getInstance().getAll()
     if (!scripts.length) {
-      new Notice('There are no scripts yet: add one to the scripts folder')
+      new Notice(t('streamC.baedb8f5076dd319'))
       return
     }
     if (!name)
       new SelectionScriptPicker(app, scripts, (s) => void run(s.path, s.meta.name), 'chat').open()
     else {
       const script = scripts.find((s) => s.meta.name === name)
-      if (!script) new Notice(`Script "${name}" not found`)
+      if (!script) new Notice(t('streamC.790d346bac907aa7', { v1: String(name) }))
       else void run(script.path, script.meta.name)
     }
   }

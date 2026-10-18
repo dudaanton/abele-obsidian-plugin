@@ -4,18 +4,20 @@
        settings rows, the actions as glyphs; read only, the same rows say what is there. -->
   <div class="abele-word-details">
     <div v-if="readOnly" class="setting-item-description abele-word-details__lead">
-      Read only: {{ readOnly }}
+      {{ t('streamC.23e26f57ea9c6824') }} {{ readOnly }}
     </div>
     <div v-else-if="paragraph?.locked" class="setting-item-description abele-word-details__lead">
-      Word keeps this paragraph as it is; change it in Word.
+      {{ t('streamC.7c709b7fd62ff141') }}
     </div>
 
     <template v-for="picture in pictures" :key="picture.number">
       <Setting
-        :name="pictures.length > 1 ? `Picture ${picture.number}` : 'Size'"
-        :desc="
-          readOnly ? `${picture.width} × ${picture.height} px` : 'In pixels, as Word lays it out'
+        :name="
+          pictures.length > 1
+            ? t('streamC.5d060cc5fbf51975', { v1: String(picture.number) })
+            : t('settings.ImageModelEditModal.size.1af85190')
         "
+        :desc="readOnly ? `${picture.width} × ${picture.height} px` : t('streamC.db68c0f1f080b31c')"
       >
         <template v-if="!readOnly">
           <span class="abele-word-details__size">
@@ -23,7 +25,7 @@
               class="abele-word-details__number"
               type="number"
               :model-value="String(sizes[picture.number]?.width ?? picture.width)"
-              aria-label="Width in pixels"
+              :aria-label="t('settings.GithubSettings.width_in_pixels.b3f8f713')"
               @update:model-value="resize(picture, 'width', $event)"
               @commit="commitSize(picture)"
             />
@@ -32,16 +34,14 @@
               class="abele-word-details__number"
               type="number"
               :model-value="String(sizes[picture.number]?.height ?? picture.height)"
-              aria-label="Height in pixels"
+              :aria-label="t('streamC.fb343686a7ba9437')"
               @update:model-value="resize(picture, 'height', $event)"
               @commit="commitSize(picture)"
             />
           </span>
           <Icon
             :icon="keepRatio ? 'lock' : 'lock-open'"
-            :tooltip="
-              keepRatio ? 'Width and height change together' : 'Width and height change apart'
-            "
+            :tooltip="keepRatio ? t('streamC.95dddb07add2d1b4') : t('streamC.004219dcf8ebc1f3')"
             :active="keepRatio"
             @click="keepRatio = !keepRatio"
           />
@@ -49,17 +49,17 @@
       </Setting>
       <Setting
         v-if="!readOnly"
-        :name="picture.alt || `Picture ${picture.number}`"
-        desc="Put another picture from the vault in its place, or take this one out"
+        :name="picture.alt || t('streamC.5d060cc5fbf51975', { v1: String(picture.number) })"
+        :desc="t('streamC.a44d5102bc4a449e')"
       >
         <Icon
           icon="replace"
-          tooltip="Replace with a picture from the vault"
+          :tooltip="t('streamC.dac6615c097bd19a')"
           @click="emit('pickImage', { paragraph: picture.paragraph, image: picture.number })"
         />
         <Icon
           icon="trash-2"
-          tooltip="Delete this picture"
+          :tooltip="t('streamC.35048622f1052575')"
           @click="edit('image_delete', { image: picture.number }, picture.paragraph)"
         />
       </Setting>
@@ -67,38 +67,32 @@
 
     <template v-if="cell">
       <Setting
-        :name="`Row ${cell.row}`"
+        :name="t('streamC.2a2737ed79dace84', { v1: String(cell.row) })"
         :desc="
           readOnly
-            ? `${cell.rows} rows, ${cell.columns} columns`
-            : 'Of a table with ' + cell.rows + ' rows'
+            ? t('streamC.56e8aba405ebe5d5', { v1: String(cell.rows), v2: String(cell.columns) })
+            : t('streamC.dc82dfd4fd85d148', { v1: cell.rows })
         "
       >
         <template v-if="!readOnly">
           <Icon
             icon="between-horizontal-end"
-            tooltip="Add a row below"
+            :tooltip="t('streamC.86e118ece676f21c')"
             @click="edit('row_add', where())"
           />
           <Icon
             icon="trash-2"
-            :tooltip="
-              cell.rows > 1 ? 'Delete this row' : 'Delete this row: the table has only this one'
-            "
+            :tooltip="cell.rows > 1 ? t('streamC.8269f6bae7e8e2f5') : t('streamC.0350fd4a3af71d7f')"
             :disabled="cell.rows <= 1"
             @click="edit('row_delete', where())"
           />
         </template>
       </Setting>
-      <Setting :name="`Cell in column ${cell.column}`" :desc="spanText">
+      <Setting :name="t('streamC.c43365409c2bf708', { v1: String(cell.column) })" :desc="spanText">
         <template v-if="!readOnly">
           <Icon
             icon="arrow-right-to-line"
-            :tooltip="
-              mergeRight
-                ? 'Merge with the cell to the right'
-                : 'Merge with the cell to the right: this is the last column'
-            "
+            :tooltip="mergeRight ? t('streamC.57243e614ad766c3') : t('streamC.6c381f32b77f5152')"
             :disabled="!mergeRight"
             @click="
               mergeRight &&
@@ -107,11 +101,7 @@
           />
           <Icon
             icon="arrow-down-to-line"
-            :tooltip="
-              mergeDown
-                ? 'Merge with the cell below'
-                : 'Merge with the cell below: this is the last row'
-            "
+            :tooltip="mergeDown ? t('streamC.2e71fcfa0e5294a8') : t('streamC.fdbe208d1f964127')"
             :disabled="!mergeDown"
             @click="
               mergeDown &&
@@ -120,7 +110,7 @@
           />
           <Icon
             icon="table-cells-split"
-            :tooltip="merged ? 'Split back into single cells' : 'Split: this cell is a single one'"
+            :tooltip="merged ? t('streamC.a7e2a5700b26ba3f') : t('streamC.c31a40f8186e4231')"
             :disabled="!merged"
             @click="merged && edit('cells_split', where())"
           />
@@ -133,25 +123,27 @@
         v-for="link in links"
         :key="link.from"
         :name="link.text"
-        :desc="readOnly ? link.url : 'Link'"
+        :desc="readOnly ? link.url : t('settings.CalendarsSettings.link.a6a32dbc')"
       >
         <template v-if="!readOnly">
           <Input
             class="abele-word-details__url"
             type="text"
             :model-value="urls[link.from] ?? link.url"
-            :aria-label="`Address of the link on ${link.text}`"
+            :aria-label="t('streamC.7c7eb462017a137f', { v1: String(link.text) })"
             @update:model-value="urls[link.from] = $event"
             @commit="relink(link)"
           />
-          <Icon icon="unlink" tooltip="Remove the link, keep the words" @click="unlink(link)" />
+          <Icon icon="unlink" :tooltip="t('streamC.b5ca5df039a58ea5')" @click="unlink(link)" />
         </template>
       </Setting>
-      <Setting v-if="!readOnly" name="Join with the next paragraph" :desc="joinText">
+      <Setting v-if="!readOnly" :name="t('streamC.fee2132b98435da1')" :desc="joinText">
         <Icon
           icon="merge"
           :tooltip="
-            next ? 'Join the next paragraph onto this one' : `Join: ${joinText.toLowerCase()}`
+            next
+              ? t('streamC.464a707a4d99d4be')
+              : t('streamC.cdbc19ea533643e3', { v1: String(joinText.toLowerCase()) })
           "
           :disabled="!next"
           @click="next && edit('paragraph_merge', {})"
@@ -162,6 +154,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 import { computed, reactive, ref } from 'vue'
 import Setting from '@/components/obsidian/Setting.vue'
 import Input from '@/components/obsidian/Input.vue'
@@ -262,12 +256,12 @@ const mergeDown = computed(() => {
 })
 const spanText = computed(() => {
   const c = cell.value
-  if (!c || !merged.value) return 'A single cell'
+  if (!c || !merged.value) return t('streamC.f884d3fe81e4e07e')
   const parts = [
-    c.colSpan > 1 ? `${c.colSpan} columns` : '',
-    c.rowSpan > 1 ? `${c.rowSpan} rows` : '',
+    c.colSpan > 1 ? t('streamC.e1c2731d76fcc566', { v1: String(c.colSpan) }) : '',
+    c.rowSpan > 1 ? t('streamC.7970120855009949', { v1: String(c.rowSpan) }) : '',
   ].filter(Boolean)
-  return `Merged across ${parts.join(' and ')}`
+  return t('streamC.4b3ec72ef8f9690d', { v1: String(parts.join(' and ')) })
 })
 const where = () => {
   const c = cell.value
@@ -316,14 +310,16 @@ const joinText = computed(() => {
   if (next.value) {
     const words = paragraphText(next.value)
     return words
-      ? `«${words.length > 40 ? words.slice(0, 40) + '…' : words}» moves up onto its end`
-      : 'The empty one after it goes'
+      ? t('streamC.0084334e7798b7a9', {
+          v1: String(words.length > 40 ? words.slice(0, 40) + '…' : words),
+        })
+      : t('streamC.e192f643e50443bf')
   }
   const at = all.value.findIndex((p) => p.number === props.paragraph)
   const after = all.value[at + 1]
-  if (!after) return 'This is the last paragraph'
-  if (after.locked) return 'Word keeps the next one as it is'
-  return cell.value ? 'This is the last paragraph in the cell' : 'The next one is in a table'
+  if (!after) return t('streamC.63e0f837fd3eb557')
+  if (after.locked) return t('streamC.9c1605ebbf98f9ec')
+  return cell.value ? t('streamC.1a93b1e52bfec786') : t('streamC.b60b568afafea93e')
 })
 
 const keepRatio = ref(true)

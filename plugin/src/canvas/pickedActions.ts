@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * What the canvas's "more" menus do outside the canvas itself: a picture of the picked part saved
  * with the vault's attachments, an embed of it copied, the part attached to the chat or asked
@@ -101,12 +102,15 @@ export function noteParts(
   blocks: string[]
 ): { title: string; subpath: string }[] {
   return [
-    { title: 'The whole note', subpath: '' },
+    { title: t('streamC.c856e661b969b9ab'), subpath: '' },
     ...headings.map((h) => ({
       title: `${'  '.repeat(Math.max(0, h.level - 1))}${h.heading}`,
       subpath: `#${h.heading}`,
     })),
-    ...blocks.map((id) => ({ title: `Block ^${id}`, subpath: `#^${id}` })),
+    ...blocks.map((id) => ({
+      title: t('streamC.ab4596e8ad51ca74', { v1: String(id) }),
+      subpath: `#^${id}`,
+    })),
   ]
 }
 
@@ -118,7 +122,7 @@ class NotePartModal extends FuzzySuggestModal<{ title: string; subpath: string }
     private readonly done: (subpath: string | null) => void
   ) {
     super(app)
-    this.setPlaceholder('Which part of the note the card shows')
+    this.setPlaceholder(t('streamC.612cf82f19be14b6'))
   }
   getItems() {
     return this.parts
@@ -157,10 +161,10 @@ export function canvasHostActions(
           canvas.path
         )
         const made = await app.vault.createBinary(path, await blob.arrayBuffer())
-        new Notice(`Saved as ${made.path}`)
+        new Notice(t('streamC.929a747e8b44fb91', { v1: String(made.path) }))
         return made
       } catch (error) {
-        new Notice(`The picture could not be saved: ${String(error)}`)
+        new Notice(t('streamC.6b9973d3c4172e3c', { v1: String(String(error)) }))
         return null
       }
     },
@@ -169,10 +173,10 @@ export function canvasHostActions(
       if (!canvas) return false
       try {
         await navigator.clipboard.writeText(canvasEmbed(canvas.path, target))
-        new Notice('Embed copied; paste it into a note')
+        new Notice(t('streamC.e562fe46c19b77d7'))
         return true
       } catch (error) {
-        new Notice(`The embed could not be copied: ${String(error)}`)
+        new Notice(t('streamC.9220b5df0f507319', { v1: String(String(error)) }))
         return false
       }
     },
@@ -205,7 +209,7 @@ export function canvasHostActions(
         return true
       } catch (error) {
         console.error('[Abele] Asking about a canvas failed:', error)
-        new Notice(`Could not open a chat: ${String(error)}`)
+        new Notice(t('streamC.7ea956d728134cf3', { v1: String(String(error)) }))
         return false
       }
     },
@@ -222,20 +226,20 @@ export function canvasHostActions(
         const made = await app.vault.create(path, text.endsWith('\n') ? text : `${text}\n`)
         return made.path
       } catch (error) {
-        new Notice(`The note could not be made: ${String(error)}`)
+        new Notice(t('streamC.03ef5be2488698a4', { v1: String(String(error)) }))
         return null
       }
     },
     async trashNote(path) {
       const note = app.vault.getFileByPath(path)
       if (!note) {
-        new Notice(`${path} is no longer in the vault`)
+        new Notice(t('streamC.2b0ab9887f917254', { v1: String(path) }))
         return false
       }
       const sure = await confirm({
-        title: 'Delete the note',
-        message: `${note.basename} goes to the trash and leaves the canvas. Undo brings back the card on the canvas, not the note: restore it from the trash.`,
-        confirmTooltip: 'Move the note to the trash',
+        title: t('streamC.d944888c54407d3f'),
+        message: t('streamC.82439c5b456bc52d', { v1: String(note.basename) }),
+        confirmTooltip: t('streamC.5ed99708de797940'),
       })
       if (!sure) return false
       await app.fileManager.trashFile(note)

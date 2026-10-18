@@ -7,18 +7,18 @@
   <div ref="root" class="abele-requests-panel">
     <div class="nav-header">
       <div class="nav-buttons-container">
-        <DrawerViewSwitch icon="send-horizontal" name="Requests" />
+        <DrawerViewSwitch icon="send-horizontal" :name="t('streamC.ada27592c9578e90')" />
         <Icon
           class="nav-action-button"
           icon="file-plus"
-          tooltip="New request"
+          :tooltip="t('streamC.5977ded363b21808')"
           :disabled="offline || !!notice"
           @click="emit('new-request')"
         />
         <Icon
           class="nav-action-button"
           icon="folder-plus"
-          tooltip="New collection"
+          :tooltip="t('streamC.cefd66fedb8ddd87')"
           :disabled="offline || !!notice"
           @click="emit('new-collection')"
         />
@@ -30,33 +30,33 @@
       v-if="project !== undefined"
       class="abele-requests-panel__project"
       icon="folder-git-2"
-      :text="project || 'Choose a project'"
+      :text="project || t('streamC.8ba607b13cd004a8')"
       :note="node"
-      label="The project whose requests these are"
+      :label="t('streamC.c13c33bfff041c0f')"
       @click="(e: MouseEvent) => emit('project-menu', e)"
     >
       <template #end><Icon icon="chevrons-up-down" size="xs" no-hover /></template>
     </TreeItem>
     <div v-if="offline || notice" class="abele-requests-panel__empty">
-      {{ notice ?? 'Requests open while the node is online.' }}
+      {{ notice ?? t('streamC.48c7b90d4219fbbc') }}
     </div>
     <template v-else>
       <TreeItem
         v-if="recording"
         class="abele-requests-panel__recording"
         :text="recording"
-        label="A recording goes on: a request can be sent into it"
+        :label="t('streamC.ea4b11cd71588b98')"
         @click="emit('show-recording')"
       >
         <template #leading>
-          <StatusDot tone="red" label="Recording" pulse />
+          <StatusDot tone="red" :label="t('streamC.80e8dd1a5a05f707')" pulse />
         </template>
       </TreeItem>
       <TreeItem
         class="abele-requests-panel__environment"
         icon="layers"
-        :text="environment ?? 'No environment'"
-        label="Environment the requests go out in"
+        :text="environment ?? t('streamC.8d33facf68a970a1')"
+        :label="t('streamC.3f9455488037e5ea')"
         @click="(e: MouseEvent) => emit('environment-menu', e)"
       >
         <template #end><Icon icon="chevrons-up-down" size="xs" no-hover /></template>
@@ -83,7 +83,12 @@
         >
           <template #leading><MethodMark :method="r.method" /></template>
           <template #end>
-            <StatusDot v-if="r.id === sending" tone="accent" label="Sending" pulse />
+            <StatusDot
+              v-if="r.id === sending"
+              tone="accent"
+              :label="t('streamC.e595f17fac1d8384')"
+              pulse
+            />
             <span
               v-else-if="r.last"
               class="abele-requests-panel__last"
@@ -92,8 +97,8 @@
               }"
               :aria-label="
                 r.last.failed
-                  ? 'Did not get through the last time'
-                  : `Answered ${r.last.status} the last time`
+                  ? t('streamC.dc67704b48273f10')
+                  : t('streamC.123e5ebc8b447981', { v1: String(r.last.status) })
               "
               >{{ r.last.failed ? '—' : r.last.status }}</span
             >
@@ -102,7 +107,7 @@
             <Icon
               icon="send-horizontal"
               size="xs"
-              tooltip="Send"
+              :tooltip="t('settings.TransferSettings.send.f6f4688f')"
               :disabled="r.id === sending"
               @click.stop="emit('send-request', r.id)"
             />
@@ -110,13 +115,15 @@
         </TreeItem>
       </TreeItem>
       <div v-if="!collections.length" class="abele-requests-panel__empty">
-        Save a request to send it again; the agent can make one too.
+        {{ t('streamC.7297662ec94fa9de') }}
       </div>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 // The requests stand on their own: collections, environments, keys by name, scripts and the
 // answers. Nothing here needs the debugger; a recording only adds a place a request may go into.

@@ -7,13 +7,15 @@
     data-ignore-swipe="true"
   >
     <template v-if="state.heard">
-      <span class="abele-book-eink__key">{{ state.heard.key || '(no name)' }}</span>
-      <span>code {{ state.heard.code || '(empty)' }}</span>
+      <span class="abele-book-eink__key">{{
+        state.heard.key || t('streamC.bd79d62ff6f0106b')
+      }}</span>
+      <span>code {{ state.heard.code || t('streamC.d29a0939bcb51176') }}</span>
       <span>keyCode {{ state.heard.keyCode }}</span>
       <span>{{ whereText }}</span>
       <span>{{ wayText }}</span>
     </template>
-    <span v-else>Press a key or a page button: what the reader hears shows here.</span>
+    <span v-else>{{ t('streamC.e5721d07d50e10a8') }}</span>
   </div>
   <div
     v-if="flash"
@@ -24,6 +26,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 /**
  * What e-ink mode (`src/reader/eink.ts`) puts over the page: the last key the reader heard, while
  * the keys are shown — so the owner of a reader can tell what its page buttons send — and the
@@ -40,21 +44,24 @@ const state = eink()
 
 const whereText = computed(
   () =>
-    ({ page: 'on the page', tab: 'in the tab', app: 'in the app' })[state.heard?.where ?? ''] ??
-    state.heard?.where
+    ({
+      page: t('streamC.ee9e5af3b148e6d0'),
+      tab: t('streamC.4e500285f8464337'),
+      app: t('streamC.9125b9c5cf84f373'),
+    })[state.heard?.where ?? ''] ?? state.heard?.where
 )
 const wayText = computed(() => {
   switch (state.heard?.way) {
     case 'next':
-      return 'turned forward'
+      return t('streamC.d18a8a59aaac307a')
     case 'prev':
-      return 'turned back'
+      return t('streamC.53971b83fb2e185e')
     case 'left':
-      return 'turned left'
+      return t('streamC.4ceba02206f6e3e1')
     case 'right':
-      return 'turned right'
+      return t('streamC.2013108c74aec7e9')
     default:
-      return 'turned nothing'
+      return t('streamC.6d128b7e9cd6974b')
   }
 })
 

@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { scopeCss } from '@/scripting/view/scopeCss'
 import type {
   BlockRenderer,
@@ -105,14 +106,14 @@ export class DeckViewer {
     const label = doc.createElement('span')
     label.id = `${this.scopeId}-label`
     label.hidden = true
-    label.textContent = 'Presentation'
+    label.textContent = t('streamC.5d5ee15775006a81')
     this.root.setAttribute('aria-labelledby', label.id)
     this.root.dataset.deckId = this.scopeId
     this.stylesheet = doc.createElement('style')
     this.toolbar = doc.createElement('div')
     this.toolbar.className = 'abele-deck-toolbar'
     this.previous = this.button(
-      'Previous slide',
+      t('streamC.bfb549220c60fc91'),
       () => {
         void this.go('previous')
         this.root.focus()
@@ -125,7 +126,7 @@ export class DeckViewer {
     this.count.setAttribute('aria-live', 'polite')
     this.toolbar.append(this.count)
     this.next = this.button(
-      'Next slide',
+      t('streamC.cdc93d1c8fe9a2af'),
       () => {
         void this.go('next')
         this.root.focus()
@@ -134,7 +135,7 @@ export class DeckViewer {
     )
     if (!options.icon) this.next.textContent = '→'
     this.play = this.button(
-      'Play',
+      t('streamC.436e61016e26fcb7'),
       () => {
         if (this.placeholder) this.exitPresenting()
         else void this.present(options.fullscreen !== false)
@@ -344,7 +345,7 @@ export class DeckViewer {
     }
     this.count.textContent = deck.slides.length
       ? `${this.index + 1} / ${deck.slides.length}`
-      : 'No slides yet'
+      : t('streamC.b0e0908413ccb545')
     this.applySteps()
     this.scale()
     return Promise.all(wanted.map((i) => this.slides.get(i).ready)).then(() => {
@@ -403,7 +404,7 @@ export class DeckViewer {
       element.classList.add('abele-slide-has-sources')
       const marker = doc.createElement('div')
       marker.className = 'abele-slide-sources-marker'
-      marker.textContent = `Sources: ${slide.sources.length}`
+      marker.textContent = t('streamC.300e03831405dff4', { v1: slide.sources.length })
       element.append(marker)
     }
     const observer = new MutationObserver(() => {
@@ -445,7 +446,9 @@ export class DeckViewer {
             else entry.cleanups.push(cleanup)
           } catch (error) {
             if (!entry.gone)
-              el.textContent = `Slide could not be rendered: ${error instanceof Error ? error.message : error}`
+              el.textContent = t('streamC.96ae4da82dc83d07', {
+                v1: String(error instanceof Error ? error.message : error),
+              })
           }
         }
       })
@@ -506,7 +509,7 @@ export class DeckViewer {
           const button = this.root.ownerDocument.createElement('button')
           button.type = 'button'
           button.className = 'abele-slide-play'
-          button.textContent = 'Play video'
+          button.textContent = t('streamC.43e3c3b1379bb838')
           button.addEventListener(
             'click',
             () => {
@@ -586,14 +589,14 @@ export class DeckViewer {
         if (!current()) return
         frame = target.ownerDocument.createElement('iframe')
         frame.setAttribute('sandbox', network ? 'allow-scripts' : '')
-        frame.setAttribute('title', 'Slide HTML')
+        frame.setAttribute('title', t('streamC.84bd69a63e2d4405'))
         const policy = network
           ? "default-src 'none'; script-src 'unsafe-inline' https:; style-src 'unsafe-inline' https:; img-src data: https:; media-src data: https:; connect-src https:; font-src data: https:; navigate-to https:; form-action 'none'; base-uri 'none'"
           : "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; media-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'"
         const html = network ? block.source : staticHtml(block.source, target.ownerDocument)
         if (!network) {
           label = target.ownerDocument.createElement('p')
-          label.textContent = 'Offline HTML — static only; scripts disabled'
+          label.textContent = t('streamC.0a772a6deb1f4067')
           target.append(label)
         }
         frame.srcdoc = `<meta http-equiv="Content-Security-Policy" content="${policy}">${html}`
@@ -614,7 +617,9 @@ export class DeckViewer {
           else cleanup = dispose ?? null
         } catch (error) {
           if (!signal.aborted && current())
-            target.textContent = `Script could not be run: ${error instanceof Error ? error.message : error}`
+            target.textContent = t('streamC.e7b3e3468c5687a5', {
+              v1: String(error instanceof Error ? error.message : error),
+            })
         }
       }
       await run()
@@ -676,8 +681,8 @@ export class DeckViewer {
       this.hideControls()
       void this.options.presentationHost?.enter()
       if (this.options.icon) this.options.icon(this.play, 'x')
-      else this.play.textContent = 'Exit'
-      this.play.setAttribute('aria-label', 'Exit presentation')
+      else this.play.textContent = t('streamC.d17d84a604994b72')
+      this.play.setAttribute('aria-label', t('streamC.2ca93a4b53619206'))
       this.scale()
     }
     this.root.focus()
@@ -714,8 +719,8 @@ export class DeckViewer {
     this.toolbar.removeAttribute('aria-hidden')
     void this.options.presentationHost?.exit()
     if (this.options.icon) this.options.icon(this.play, 'play')
-    else this.play.textContent = 'Play'
-    this.play.setAttribute('aria-label', 'Play')
+    else this.play.textContent = t('streamC.436e61016e26fcb7')
+    this.play.setAttribute('aria-label', t('streamC.436e61016e26fcb7'))
     if (this.fullscreenOwned) {
       if (this.options.fullscreenHost) void this.options.fullscreenHost.exit().catch(() => {})
       else if (doc.fullscreenElement === this.root) void doc.exitFullscreen().catch(() => {})

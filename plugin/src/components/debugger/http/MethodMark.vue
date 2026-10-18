@@ -12,6 +12,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 import { computed, onMounted, ref, watch } from 'vue'
 import { setTooltip } from 'obsidian'
 import type { HttpMethod } from './types'
@@ -23,13 +25,13 @@ const short = computed(() =>
   props.method === 'DELETE' ? 'DEL' : props.method === 'OPTIONS' ? 'OPT' : props.method
 )
 const words: Record<HttpMethod, string> = {
-  GET: 'GET: reads',
-  POST: 'POST: creates',
-  PUT: 'PUT: replaces',
-  PATCH: 'PATCH: changes a part',
-  DELETE: 'DELETE: removes',
-  HEAD: 'HEAD: reads the headers only',
-  OPTIONS: 'OPTIONS: asks what is allowed',
+  GET: t('streamC.6d521636d1367835'),
+  POST: t('streamC.f553e9e68004ee90'),
+  PUT: t('streamC.cc1ddeac68a0961d'),
+  PATCH: t('streamC.0daefe7dd4ed7f95'),
+  DELETE: t('streamC.92dd38ce684c1863'),
+  HEAD: t('streamC.fbf15d2070b5a136'),
+  OPTIONS: t('streamC.e1a98cfef99e4922'),
 }
 const tip = () => el.value && setTooltip(el.value, words[props.method])
 onMounted(tip)

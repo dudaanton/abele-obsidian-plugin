@@ -25,7 +25,7 @@
               @click="emit('panel-tab', tab.id as PanelTab)"
             />
           </div>
-          <Icon icon="x" tooltip="Close the panel" @click="emit('panel', false)" />
+          <Icon icon="x" :tooltip="t('streamC.6609be677a61a3ed')" @click="emit('panel', false)" />
         </div>
         <BookContents
           v-if="model.panelTab === 'contents'"
@@ -56,7 +56,7 @@
         />
         <PanelResizeHandle
           class="abele-book-reader__resize"
-          label="Navigation panel width"
+          :label="t('streamC.38417554f4f4a922')"
           v-bind="divider"
         />
       </div>
@@ -142,7 +142,7 @@
 
     <ObsidianModal
       v-if="model.settingsOpen"
-      title="Text and layout"
+      :title="t('streamC.ebc4c6dc32590c9a')"
       size="tall"
       @close="emit('settings', false)"
     >
@@ -173,8 +173,8 @@
         <div ref="noteStage" class="abele-book-reader__note-stage" />
         <div class="abele-book-reader__note-actions">
           <Button
-            text="Go to the note"
-            tooltip="Close this and turn to the note in the book"
+            :text="t('streamC.5f037d8bbf1f213f')"
+            :tooltip="t('streamC.eac411ff543c17e5')"
             @click="emit('footnote-go')"
           />
         </div>
@@ -184,6 +184,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 /**
  * What a book tab shows around the page: the contents panel beside it (a drawer over it on a
  * narrow screen), a line under it with the chapter and a slider through the whole book, the
@@ -282,10 +284,14 @@ const emit = defineEmits<{
 const onZoomMenu = (at: { x: number; y: number }, steps: boolean) => emit('zoom-menu', at, steps)
 
 const panelTabs = [
-  { id: 'contents', label: 'Contents', icon: 'list-tree' },
-  { id: 'search', label: 'Search', icon: 'search' },
-  { id: 'highlights', label: 'Highlights', icon: 'highlighter' },
-  { id: 'bookmarks', label: 'Bookmarks', icon: 'bookmark' },
+  { id: 'contents', label: t('streamC.437aea62a5bd6ad4'), icon: 'list-tree' },
+  { id: 'search', label: t('settings.metadata.49c266baaaa70981'), icon: 'search' },
+  {
+    id: 'highlights',
+    label: t('settings.components.reader.BookNotesSettings.highlights.6e517828'),
+    icon: 'highlighter',
+  },
+  { id: 'bookmarks', label: t('streamC.96316f0f6404dbe1'), icon: 'bookmark' },
 ]
 
 /** The words or highlight the bar is about, for a link. */
@@ -336,13 +342,13 @@ const onPick = (entry: TocEntry) => emit('go', entry.href, narrow())
 const noteTitle = computed(() => {
   switch (props.model.footnote?.type) {
     case 'endnote':
-      return 'Endnote'
+      return t('streamC.150c8fdadd594120')
     case 'definition':
-      return 'Definition'
+      return t('streamC.9813fafb098c2180')
     case 'biblioentry':
-      return 'Reference'
+      return t('streamC.71bf90935fc231d2')
     default:
-      return 'Note'
+      return t('streamC.d8da2c49df39d91d')
   }
 })
 

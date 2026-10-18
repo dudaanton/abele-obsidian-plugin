@@ -3,13 +3,13 @@
     <Icon
       v-if="model.canGoBack"
       icon="undo-2"
-      tooltip="Back to where you were before the link"
+      :tooltip="t('streamC.6d4320be353a906c')"
       @click="emit('back')"
     />
     <Icon
       v-if="model.kind === 'pdf'"
       icon="pen-line"
-      tooltip="Draw on the pages"
+      :tooltip="t('streamC.5c70b136b98e494f')"
       class="abele-book-reader__draw"
       @click="emit('draw')"
     />
@@ -17,14 +17,14 @@
       <Icon
         v-if="phone"
         icon="zoom-in"
-        tooltip="Zoom"
+        :tooltip="t('streamC.509c517ede79fef0')"
         class="abele-book-reader__zoom-menu"
         @click="menu($event, true)"
       />
       <template v-else>
         <Icon
           icon="zoom-out"
-          tooltip="Zoom out"
+          :tooltip="t('streamC.bc7b631a689b45ca')"
           class="abele-book-reader__zoom-out"
           @click="emit('zoom', 'out')"
         />
@@ -32,12 +32,12 @@
           <Button
             class="abele-book-reader__measure"
             :text="`${Math.round(model.zoom * 100)}%`"
-            tooltip="Fit the page or its width"
+            :tooltip="t('streamC.0bd2e6df3069b53b')"
           />
         </span>
         <Icon
           icon="zoom-in"
-          tooltip="Zoom in"
+          :tooltip="t('streamC.0e47f09a748fa132')"
           class="abele-book-reader__zoom-in"
           @click="emit('zoom', 'in')"
         />
@@ -49,7 +49,7 @@
       :model-value="Math.round(dragging ?? model.fraction * 1000)"
       :min="0"
       :max="1000"
-      label="Go to a place in the book"
+      :label="t('streamC.55aedf24ff8ee34a')"
       @input="dragging = $event"
       @update:model-value="seek"
     />
@@ -57,7 +57,7 @@
       v-if="measured"
       class="abele-book-reader__percent abele-book-reader__measure"
       :text="text"
-      :tooltip="`Tap to show ${nextLabel}`"
+      :tooltip="t('streamC.efac0f60e83be6ae', { v1: String(nextLabel) })"
       @click="cycle"
     />
     <span v-else class="abele-book-reader__percent">{{ percentText }}</span>
@@ -65,13 +65,15 @@
       class="abele-book-reader__bookmark"
       icon="bookmark"
       :active="marked"
-      :tooltip="marked ? 'Remove the bookmark from this page' : 'Bookmark this page'"
+      :tooltip="marked ? t('streamC.05306519291e56bb') : t('streamC.0b2c1ce24f9e6eb6')"
       @click="emit('bookmark')"
     />
   </div>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 /**
  * The line under a book's page: the way back from a link, under a PDF the pen that turns drawing
  * on and the zoom — out, the scale with the fits behind it, in — the chapter, a slider through the whole book, and a measure of how far into it the page is. In a reflowing book a tap on the
@@ -135,10 +137,10 @@ const text = computed(
   () => progressText(shown.value, props.model.progress, percentText.value) ?? percentText.value
 )
 const LABELS: Record<ProgressShow, string> = {
-  page: 'the page of the chapter',
-  left: 'the pages left in the chapter',
-  location: 'the place in the whole book',
-  percent: 'how far into the book, in percent',
+  page: t('streamC.00700d2b57624056'),
+  left: t('streamC.67b090342bea8823'),
+  location: t('streamC.a5f995e85268e719'),
+  percent: t('streamC.cb60afbecb493c9a'),
 }
 const nextLabel = computed(() => LABELS[nextShow(show.value, props.model.progress)])
 

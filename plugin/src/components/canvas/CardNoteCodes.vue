@@ -3,7 +3,7 @@
     v-if="codes.length"
     class="abele-canvas-card-codes"
     role="group"
-    aria-label="What the note holds"
+    :aria-label="t('streamC.369ae91334e959a8')"
   >
     <Icon
       v-for="code in codes"
@@ -22,6 +22,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 // What a note's footer holds, as a quiet row of codes along the foot of a card too small to show
 // the lists themselves: a glyph and a count each, the words in the tooltip. A click opens the note
 // in a tab beside the canvas, at that list.

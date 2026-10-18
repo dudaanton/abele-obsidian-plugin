@@ -1,3 +1,5 @@
+import { t } from '@/i18n'
+import { notesFolderFailureText } from './notesFolder'
 // A recorded run and a value of it, each as a tab of the main area, like a node file. Both read the
 // node through the owner's connection; neither keeps the values in the saved layout, only where
 // they are: the node, the project, the run, the step and the name.
@@ -59,9 +61,9 @@ function rpcFor(registrationId: string) {
 
 async function markWith(mark: (comment: string) => Promise<unknown>) {
   const comment = await promptDialog({
-    title: 'Mark',
-    placeholder: 'What is worth noting here',
-    submitText: 'Mark',
+    title: t('streamC.d7cda0ca2c8586e5'),
+    placeholder: t('streamC.6305a3e9f1d952cd'),
+    submitText: t('streamC.d7cda0ca2c8586e5'),
   })
   if (comment) await mark(comment)
 }
@@ -74,23 +76,27 @@ export class TraceRunTab extends ItemView {
   private readonly view = shallowRef<{ back(): void } | null>(null)
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
-    this.addAction('file-plus-2', 'Write a note about this run', () => {
+    this.addAction('file-plus-2', t('streamC.d0d83618cf86b38a'), () => {
       if (this.state)
         void import('./runNote')
           .then((m) => (this.state ? m.writeRunNote(this.state) : undefined))
           .catch(
-            (e) => new Notice(e instanceof Error ? e.message : 'The note could not be written')
+            (e) =>
+              new Notice(
+                notesFolderFailureText(e) ??
+                  (e instanceof Error ? e.message : t('streamC.152e2ea521d7f367'))
+              )
           )
     })
-    this.addAction('rotate-cw', 'Read the run again', () => void this.model?.load())
+    this.addAction('rotate-cw', t('streamC.68fc976a42ca1ee1'), () => void this.model?.load())
     if (Platform.isPhone)
-      this.addAction('arrow-left', 'Back to the steps', () => this.view.value?.back())
+      this.addAction('arrow-left', t('streamC.0b6281560bd45e4f'), () => this.view.value?.back())
   }
   getViewType() {
     return TRACE_RUN_VIEW
   }
   getDisplayText() {
-    return this.model?.run?.name ?? this.state?.name ?? 'Run'
+    return this.model?.run?.name ?? this.state?.name ?? t('streamC.runTab')
   }
   getIcon() {
     return 'diamond'
@@ -143,17 +149,19 @@ export class TraceRunTab extends ItemView {
       )
     } catch (e) {
       this.vue = mountKit(this.contentEl, EmptyState, {
-        text: e instanceof Error ? e.message : 'Node unavailable',
+        text: e instanceof Error ? e.message : t('settings.nodes.unavailable'),
       })
       return
     }
     const act = (work: Promise<unknown>): void => {
-      void work.catch((e) => new Notice(e instanceof Error ? e.message : 'The node did not answer'))
+      void work.catch(
+        (e) => new Notice(e instanceof Error ? e.message : t('streamC.e6f94c778a8708b3'))
+      )
     }
     this.vue = mountKit(this.contentEl, {
       render: () => {
         void this.revision.value
-        if (!model.run) return h(EmptyState, { text: model.error || 'Reading the run…' })
+        if (!model.run) return h(EmptyState, { text: model.error || t('streamC.ad507ced0123b1c2') })
         const debuggerBinding = DebuggerService.instance.forRun(
           state.registrationId,
           state.projectId,
@@ -173,7 +181,7 @@ export class TraceRunTab extends ItemView {
           onPick: (step: string | undefined) => act(model.pick(step)),
           onReveal: (file: string, line: number) => {
             if (debuggerBinding) DebuggerService.instance.reveal(debuggerBinding, file, line)
-            else new Notice('Open the debugger of this session to go to the line')
+            else new Notice(t('streamC.d5db98639b66ed79'))
           },
           onOpenValue: (step: string, name: string, path?: string) =>
             act(
@@ -190,7 +198,7 @@ export class TraceRunTab extends ItemView {
           onFollow: (value: string) => act(model.follow(value)),
           onUnfollow: () => model.unfollow(),
           onMark: (step: string, at: string) => act(markWith((c) => model.mark(step, at, c))),
-          onLink: () => new Notice('Links between steps come with a later stage'),
+          onLink: () => new Notice(t('streamC.d022aaa62c8f31a9')),
         })
       },
     })
@@ -215,15 +223,21 @@ export class TraceValueView extends ItemView {
   }>({ runName: '', stepLabel: '', error: '', mode: 'formatted', wrap: false })
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
-    this.addAction('copy', 'Copy the text', () => {
+    this.addAction('copy', t('streamC.a9c0e5986f53d46b'), () => {
       const text = this.model.value?.text
       if (text)
-        void navigator.clipboard.writeText(text).catch(() => new Notice('Could not copy the value'))
+        void navigator.clipboard
+          .writeText(text)
+          .catch(() => new Notice(t('streamC.298783cd63d0a9a9')))
     })
-    this.addAction('wrap-text', 'Toggle line wrapping', () => (this.model.wrap = !this.model.wrap))
-    this.addAction('diff', 'What changed since the step before', () => this.show('changes'))
-    this.addAction('file-text', 'The whole value', () => this.show('whole'))
-    this.addAction('list-tree', 'Its shape', () => this.show('shape'))
+    this.addAction(
+      'wrap-text',
+      t('streamC.e4a9d8818437be3e'),
+      () => (this.model.wrap = !this.model.wrap)
+    )
+    this.addAction('diff', t('streamC.4f8d8f13b2908f24'), () => this.show('changes'))
+    this.addAction('file-text', t('streamC.ddc9c33c12e5979f'), () => this.show('whole'))
+    this.addAction('list-tree', t('streamC.f999218d73af2fbc'), () => this.show('shape'))
   }
   getViewType() {
     return TRACE_VALUE_VIEW
@@ -231,7 +245,7 @@ export class TraceValueView extends ItemView {
   getDisplayText() {
     return this.state
       ? `${this.state.valueName}${this.state.path && this.state.path !== '$' ? ` ${this.state.path}` : ''}`
-      : 'Value'
+      : t('streamC.8e37953d23daca5f')
   }
   getIcon() {
     return 'braces'
@@ -270,7 +284,7 @@ export class TraceValueView extends ItemView {
       render: () => {
         const s = this.state
         const m = this.model
-        if (!s || !m.value) return h(EmptyState, { text: m.error || 'Reading the value…' })
+        if (!s || !m.value) return h(EmptyState, { text: m.error || t('streamC.5b6f846c83f79980') })
         return h(TraceValueTab, {
           runName: m.runName,
           stepLabel: m.stepLabel,
@@ -324,7 +338,7 @@ export class TraceValueView extends ItemView {
           ? await this.whole(rpc, s, c.changes.against.step, c.changes.against.name)
           : ''
         v.changes = {
-          summary: c.changes?.summary ?? 'Nothing to compare with',
+          summary: c.changes?.summary ?? t('streamC.86f8ca0d0827e2ff'),
           before,
           after: await this.whole(rpc, s, s.step, s.valueName),
         }
@@ -335,7 +349,7 @@ export class TraceValueView extends ItemView {
     } catch (e) {
       console.debug('[trace] Value unavailable', e)
       if (this.state === s)
-        this.model.error = e instanceof Error ? e.message : 'The value could not be read'
+        this.model.error = e instanceof Error ? e.message : t('streamC.71d4a48478f0d583')
     }
   }
   /** The value's text, page by page from the node, up to what a tab can hold. */
@@ -365,7 +379,7 @@ export class TraceValueView extends ItemView {
       lines.push(...page.lines)
       if (page.next === undefined || lines.length >= WHOLE_LINES) {
         if (page.next !== undefined)
-          lines.push(`… ${page.total - lines.length} more lines on the node`)
+          lines.push(t('streamC.16b0dc8d7dd2cb94', { v1: String(page.total - lines.length) }))
         break
       }
       from = page.next
@@ -399,10 +413,10 @@ export function registerTraceTabs(plugin: Plugin) {
       (e) =>
         new Notice(
           e instanceof Error && /Reconnect|disconnected|unavailable/i.test(e.message)
-            ? 'The node is away. Open the run again when it is back.'
+            ? t('streamC.e30864cee8d2d9e5')
             : e instanceof Error
               ? e.message
-              : 'The run could not be opened'
+              : t('streamC.aad12ffac73b0f86')
         )
     )
   })

@@ -1,7 +1,11 @@
 <template>
   <!-- A value's shape as a tree of its keys: the type quiet beside each, a list's length, one
        example at a leaf. A leaf can be followed through the run or marked. -->
-  <div class="abele-trace-shape" role="tree" :aria-label="`Shape of ${name}`">
+  <div
+    class="abele-trace-shape"
+    role="tree"
+    :aria-label="t('streamC.23b76a0744ebb96e', { v1: String(name) })"
+  >
     <ShapeRow
       v-for="(child, i) in roots"
       :key="i"
@@ -13,6 +17,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 // The shape is worked out on the node and is small by design: keys and types, how long the lists
 // are, which keys only some elements have, one example per leaf. Deep levels start folded.
 import { computed, defineComponent, h, reactive, type PropType } from 'vue'
@@ -67,7 +73,7 @@ const ShapeRow = defineComponent({
           class: ['abele-trace-shape__row', { 'abele-trace-shape__row_optional': n.optional }],
           text: n.key ?? props.name,
           note: n.example,
-          flair: n.optional ? `${type} · some` : type,
+          flair: n.optional ? t('streamC.cc51eb26f24923b7', { v1: String(type) }) : type,
           collapsible: kids.length > 0,
           collapsed: isFolded(p.path, p.depth),
           role: 'treeitem',
@@ -79,7 +85,7 @@ const ShapeRow = defineComponent({
               ? h(Icon, {
                   icon: 'footprints',
                   size: 'xs',
-                  tooltip: 'Follow this value through the run',
+                  tooltip: t('streamC.297efed4c9a10886'),
                   onClick: (e: MouseEvent) => {
                     e.stopPropagation()
                     emit('follow', p.path, n.example)
@@ -91,7 +97,7 @@ const ShapeRow = defineComponent({
               : h(Icon, {
                   icon: 'flag',
                   size: 'xs',
-                  tooltip: 'Mark this path',
+                  tooltip: t('streamC.430b28d66460bdf6'),
                   onClick: (e: MouseEvent) => {
                     e.stopPropagation()
                     emit('mark', p.path)

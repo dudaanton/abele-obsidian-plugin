@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * Puts the toolbar's scripts where they are pressed: an icon on the left ribbon on a computer,
  * and a place on the phone's toolbar above the keyboard.
@@ -191,6 +192,8 @@ export async function setOnToolbar(
   }
   await config.saveSettings()
   new Notice(
-    on ? `${script.meta.name} is on the toolbar` : `${script.meta.name} is off the toolbar`
+    on
+      ? t('streamC.8262348383279456', { v1: String(script.meta.name) })
+      : t('streamC.2e860fb5e797a7f8', { v1: String(script.meta.name) })
   )
 }

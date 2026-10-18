@@ -3,7 +3,7 @@
        step, the name, the path inside — and one of three ways to read it, picked by glyphs in
        the tab's header: its shape, the whole text, or what changed since the step before. -->
   <div class="abele-trace-value-tab">
-    <div class="abele-trace-value-tab__crumbs" aria-label="Where the value is from">
+    <div class="abele-trace-value-tab__crumbs" :aria-label="t('streamC.d948411258a02660')">
       <span>{{ runName }}</span>
       <span class="abele-trace-value-tab__sep">›</span>
       <span>{{ stepLabel }}</span>
@@ -31,9 +31,9 @@
         :text-left="value.changes.before"
         :text-right="value.changes.after"
         layout="auto"
-        label-before="The step before"
-        label-after="This step"
-        empty-text="Nothing changed."
+        :label-before="t('streamC.8a883a619d5fafea')"
+        :label-after="t('streamC.9d62c9798cba0406')"
+        :empty-text="t('streamC.874ab5c895535572')"
       />
     </template>
     <DebugValueView
@@ -44,11 +44,13 @@
       :mode="mode"
       :wrap="wrap"
     />
-    <EmptyState v-else text="This value has no text to show." />
+    <EmptyState v-else :text="t('streamC.29cdc3975abc8cad')" />
   </div>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 import Diff from '../../Diff.vue'
 import EmptyState from '../../obsidian/EmptyState.vue'
 import DebugValueView from '../DebugValueView.vue'

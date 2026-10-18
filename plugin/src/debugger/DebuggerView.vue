@@ -1,11 +1,11 @@
 <template>
   <div class="abele-debug-view">
-    <DrawerViewSwitch v-if="!binding" icon="bug-play" name="Debug" />
+    <DrawerViewSwitch v-if="!binding" icon="bug-play" :name="t('streamC.1a03bd2fd107c453')" />
     <EmptyState
       v-if="!binding"
       icon="bug"
-      title="No debug session"
-      text="Open Debug from a node chat."
+      :title="t('streamC.50fc3bac49e8e935')"
+      :text="t('streamC.63761e1b8399d6fe')"
     />
     <template v-else>
       <div v-if="error" class="abele-debug-view__error" role="alert">
@@ -41,6 +41,8 @@
 </template>
 <script setup lang="ts">
 import NodeErrorText from '@/components/NodeErrorText.vue'
+import { t } from '@/i18n'
+
 import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import DebugPanel from '@/components/debugger/DebugPanel.vue'

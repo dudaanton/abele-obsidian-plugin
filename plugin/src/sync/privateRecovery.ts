@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { vaultDisk } from './vaultPathLinks'
 import { connectionPrivateArea } from './connectionPaths'
 import { Notice, type App } from 'obsidian'
@@ -91,10 +92,7 @@ const notified = new WeakSet<object>()
 export async function showPrivateRecoveryNotice(app: App, freshCopies = false): Promise<void> {
   if ((!freshCopies && notified.has(app.vault)) || !(await hasRecoveryCopies(app))) return
   notified.add(app.vault)
-  new Notice(
-    `Sync kept recoverable copies in ${recoveryDirectory(app)}. They remain available for manual recovery.`,
-    0
-  )
+  new Notice(t('streamC.4c119f3f4f54bc61', { v1: String(recoveryDirectory(app)) }), 0)
 }
 export async function preservePrivateArtifacts(
   app: App,

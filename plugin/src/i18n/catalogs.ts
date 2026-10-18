@@ -9,8 +9,18 @@ import { tasks as ruTasks } from './locales/ru/tasks'
 import { tasks as lvTasks } from './locales/lv/tasks'
 import { tasks as esTasks } from './locales/es/tasks'
 import { tasks as deTasks } from './locales/de/tasks'
+import { streamC as enStreamC } from './locales/en/streamC'
+import { streamC as ruStreamC } from './locales/ru/streamC'
+import { streamC as lvStreamC } from './locales/lv/streamC'
+import { streamC as esStreamC } from './locales/es/streamC'
+import { streamC as deStreamC } from './locales/de/streamC'
+import { extra as enStreamCExtra } from './locales/en/streamCExtra'
+import { extra as ruStreamCExtra } from './locales/ru/streamCExtra'
+import { extra as lvStreamCExtra } from './locales/lv/streamCExtra'
+import { extra as esStreamCExtra } from './locales/es/streamCExtra'
+import { extra as deStreamCExtra } from './locales/de/streamCExtra'
 
-export const english = { ...en, ...enTasks }
+export const english = { ...en, ...enTasks, ...enStreamC, ...enStreamCExtra }
 
 export type TranslationCatalog = {
   [K in keyof typeof en]: (typeof en)[K] extends string ? string : Exclude<Message, string>
@@ -18,10 +28,10 @@ export type TranslationCatalog = {
 // Keep the full registry available to tooling without retaining it in English-only consumers.
 export const catalogs = /* @__PURE__ */ (() => ({
   en: english,
-  ru: { ...ru, ...ruTasks },
-  lv: { ...lv, ...lvTasks },
-  es: { ...es, ...esTasks },
-  de: { ...de, ...deTasks },
+  ru: { ...ru, ...ruTasks, ...ruStreamC, ...ruStreamCExtra },
+  lv: { ...lv, ...lvTasks, ...lvStreamC, ...lvStreamCExtra },
+  es: { ...es, ...esTasks, ...esStreamC, ...esStreamCExtra },
+  de: { ...de, ...deTasks, ...deStreamC, ...deStreamCExtra },
 }))()
 
 const placeholders = (text: string) =>

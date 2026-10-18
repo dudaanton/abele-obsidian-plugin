@@ -5,26 +5,25 @@
     phone-sheet
     @close="close"
   >
-    <Section
-      v-if="mode === 'connect'"
-      desc="Paste the token you were given, or scan its QR code. It already names the server and what it opens."
-    >
-      <Setting name="Token" :error="error"
-        ><Input v-model="text" password :disabled="busy" placeholder="Paste your token"
+    <Section v-if="mode === 'connect'" :desc="t('streamC.2e58131cb01ed881')">
+      <Setting :name="t('settings.nodes.token')" :error="error"
+        ><Input
+          v-model="text"
+          password
+          :disabled="busy"
+          :placeholder="t('streamC.9547fcece571e82f')"
       /></Setting>
       <TokenQrReader @token="text = $event" />
       <dl v-if="preview" class="abele-token-dialog__facts">
-        <dt>Server</dt>
+        <dt>{{ t('settings.CalendarsSettings.server.aef7de28') }}</dt>
         <dd>{{ preview.address }}</dd>
-        <dt>Opens</dt>
+        <dt>{{ t('streamC.21a71f3e3356eeab') }}</dt>
         <dd>{{ scopeName(preview.scope) }}</dd>
       </dl>
     </Section>
     <template v-if="mode === 'share'">
-      <Section
-        desc="Give someone a folder or group, or connect another device of yours to the whole vault."
-      >
-        <Setting name="What to share" desc="Whole vault is for your own devices.">
+      <Section :desc="t('streamC.18e1ba7b6b08a056')">
+        <Setting :name="t('streamC.75e8080c928c1d79')" :desc="t('streamC.4f546baa0b432a61')">
           <Dropdown
             v-model="selected"
             :options="
@@ -32,13 +31,13 @@
             "
           />
         </Setting>
-        <Setting name="Name" desc="Who or what it is for, to know it later."
-          ><Input v-model="label" maxlength="200" placeholder="A second device, a colleague"
+        <Setting :name="t('settings.nodes.name')" :desc="t('streamC.2553f3da6a705c57')"
+          ><Input v-model="label" maxlength="200" :placeholder="t('streamC.34ad7d66b1a4b1ef')"
         /></Setting>
-        <Setting name="Token">
+        <Setting :name="t('settings.nodes.token')">
           <Button
-            text="Create token"
-            tooltip="Create a separate token for the chosen folder or group"
+            :text="t('streamC.5d8e8e30bc4fbc87')"
+            :tooltip="t('streamC.5cf659b0e45e893c')"
             :disabled="busy || !label.trim() || !choices.length"
             @click="run(issue)"
           />
@@ -46,45 +45,54 @@
       </Section>
       <Section
         v-if="issued"
-        title="New token"
-        desc="Anyone with this token can read and change what it opens. Send it privately."
+        :title="t('streamC.fe46cb83ad1c5a35')"
+        :desc="t('streamC.aab0bee045763bd8')"
       >
         <Input :model-value="issued" as-text-area :rows="3" readonly />
         <div class="abele-token-dialog__copy">
-          <Button text="Copy" tooltip="Copy this token to the clipboard" @click="run(copy)" />
+          <Button
+            :text="t('streamC.e21f935f11d7e966')"
+            :tooltip="t('streamC.09eb0cfa5a45f63f')"
+            @click="run(copy)"
+          />
         </div>
-        <QrCode :text="issued" label="Scan to connect to these shared files" />
+        <QrCode :text="issued" :label="t('streamC.5a883d955eddb4da')" />
       </Section>
-      <Section
-        title="Tokens given"
-        desc="Revoking stops the exchange. What the other side already has stays with them."
-      >
-        <EmptyState v-if="!tokens.length" text="No tokens given yet." />
+      <Section :title="t('streamC.0ec2dd7b5c4d86d6')" :desc="t('streamC.58014ca6d004dc0f')">
+        <EmptyState v-if="!tokens.length" :text="t('streamC.6b86c5e7ac571a2a')" />
         <Setting
           v-for="one in tokens"
           :key="one.id"
           :name="one.label || scopeName(one.scope)"
           :class="{ 'abele-token-dialog__revoked': one.revoked_at }"
-          :desc="scopeName(one.scope) + ' · ' + (one.revoked_at ? 'Revoked' : 'Active')"
+          :desc="
+            scopeName(one.scope) +
+            ' · ' +
+            (one.revoked_at ? t('streamC.f6f738d043929f59') : t('streamC.92340695899bd2d8'))
+          "
         >
           <Icon
             v-if="!one.revoked_at"
             icon="ban"
-            tooltip="Revoke this access…"
+            :tooltip="t('streamC.53c4b05f61d0a6b2')"
             :disabled="busy"
             @click="revoking = one"
           />
         </Setting>
         <Setting
           v-if="revoking"
-          :name="'Revoke ' + revoking.label + '?'"
-          desc="This token stops receiving and sending changes. Other tokens keep working."
+          :name="t('streamC.b026069ed9186c11', { v1: revoking.label })"
+          :desc="t('streamC.0ca72481ed46c6ca')"
         >
-          <Button text="Keep access" tooltip="Cancel revocation" @click="revoking = null" />
           <Button
-            text="Revoke"
+            :text="t('streamC.68cfc92d64dfda70')"
+            :tooltip="t('streamC.2dd446cf82afaa6b')"
+            @click="revoking = null"
+          />
+          <Button
+            :text="t('streamC.87e6d00bbf53ec5a')"
             warning
-            tooltip="Close access for this token"
+            :tooltip="t('streamC.a36c2a6b36af625f')"
             :disabled="busy"
             @click="run(revoke)"
           />
@@ -97,27 +105,27 @@
       :desc="candidate.source.address + ' · ' + scopeName(candidate.source.scope)"
     >
       <dl class="abele-token-dialog__facts">
-        <dt>Change</dt>
+        <dt>{{ t('settings.SecretStoreSettings.change.c0bf75bd') }}</dt>
         <dd>
           {{
             operationName(candidate.operation) +
-            (candidate.previousPath ? ' · From ' + candidate.previousPath : '')
+            (candidate.previousPath
+              ? t('streamC.049da0363ec74d10', { v1: candidate.previousPath })
+              : '')
           }}
         </dd>
-        <dt>Received</dt>
+        <dt>{{ t('streamC.49f19beeecf442ef') }}</dt>
         <dd>{{ time(candidate.receivedAt) }}</dd>
-        <dt>File changed</dt>
+        <dt>{{ t('streamC.7bb841888f37b767') }}</dt>
         <dd>{{ time(candidate.mtime) }}</dd>
       </dl>
-      <p class="abele-token-dialog__note">
-        This exact version is waiting. Approving it does not approve a later change.
-      </p>
+      <p class="abele-token-dialog__note">{{ t('streamC.ac82ccf623b72261') }}</p>
       <pre v-if="candidate.bytes !== null" class="token-sync-content">{{ content }}</pre>
       <p v-else>
         {{
           candidate.operation === 'delete'
-            ? 'This file will be deleted.'
-            : 'The path will change; there is no new content.'
+            ? t('streamC.56f40ae966c6cdc7')
+            : t('streamC.52ec1d3b453da3da')
         }}
       </p>
     </Section>
@@ -126,22 +134,14 @@
       :title="question.path"
       :desc="question.source.address + ' · ' + scopeName(question.source.scope)"
     >
-      <p>
-        This opened note links to a private file. Allow this connection to share the file and its
-        future changes?
-      </p>
-      <p class="abele-token-dialog__note">
-        Other private files and other connections are unaffected.
-      </p>
+      <p>{{ t('streamC.55f8aec9fbec672b') }}</p>
+      <p class="abele-token-dialog__note">{{ t('streamC.0b3e19b37058fc55') }}</p>
     </Section>
     <Section
       v-if="mode === 'disconnect'"
       :desc="scopeName(connection?.scope ?? null) + ' · ' + connection?.address"
     >
-      <p>
-        This connection stops syncing. Every file stays on this device, and other connections keep
-        working.
-      </p>
+      <p>{{ t('streamC.f578c1693841cb3f') }}</p>
     </Section>
     <p
       v-if="error && mode !== 'connect' && mode !== 'review'"
@@ -161,50 +161,54 @@
       <p v-if="mode === 'review' && approval" class="abele-token-dialog__feedback" role="status">
         {{ approval }}
       </p>
-      <Button text="Close" tooltip="Close without making another decision" @click="close" />
+      <Button
+        :text="t('sync.window.close')"
+        :tooltip="t('streamC.87730ff5b531b7c7')"
+        @click="close"
+      />
       <Button
         v-if="mode === 'connect'"
-        text="Connect"
-        tooltip="Connect using this token"
+        :text="t('streamC.1a2303ede07493ac')"
+        :tooltip="t('streamC.3a588cb1a419d7f2')"
         :disabled="busy || !text.trim()"
         accent
         @click="run(connect)"
       />
       <Button
         v-if="mode === 'review'"
-        text="Reject"
-        tooltip="Keep the current local version"
+        :text="t('streamC.ab604a360777735f')"
+        :tooltip="t('streamC.2c4bf7880df41108')"
         :disabled="busy || !!approval"
         @click="run(reject)"
       />
       <Button
         v-if="mode === 'review'"
-        :text="busy ? 'Approving…' : 'Approve'"
-        tooltip="Apply only the version shown here"
+        :text="busy ? t('streamC.approving') : t('streamC.6007acbe30b2cd98')"
+        :tooltip="t('streamC.23581c5816d9589d')"
         :disabled="busy || !!approval"
         accent
         @click="run(approve)"
       />
       <Button
         v-if="mode === 'attachment'"
-        text="Deny"
-        tooltip="Keep this file private for this connection"
+        :text="t('streamC.05a2d7332eb9d8bf')"
+        :tooltip="t('streamC.a7b9c44db806f25e')"
         :disabled="busy"
         @click="run(() => decide(false))"
       />
       <Button
         v-if="mode === 'attachment'"
-        text="Allow"
+        :text="t('streamC.e213c161d5cefa52')"
         accent
-        tooltip="Allow this file through this connection"
+        :tooltip="t('streamC.45803c8cb918898d')"
         :disabled="busy"
         @click="run(() => decide(true))"
       />
       <Button
         v-if="mode === 'disconnect'"
-        text="Disconnect"
+        :text="t('streamC.acfc5be785a9bb3d')"
         warning
-        tooltip="Disconnect and keep local files"
+        :tooltip="t('streamC.79e5f15548ed9c51')"
         :disabled="busy"
         @click="run(disconnect)"
       />
@@ -212,6 +216,10 @@
   </Modal>
 </template>
 <script setup lang="ts">
+import { settingsSyncText } from '@/i18n/settingsSync'
+const scopeName = (scope: Parameters<typeof scopeSource>[0]) => scopeSource(scope, settingsSyncText)
+import { t, currentLocale } from '@/i18n'
+
 import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { Notice } from 'obsidian'
 import Modal from '../obsidian/Modal.vue'
@@ -224,7 +232,7 @@ import Icon from '../obsidian/Icon.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import QrCode from '../obsidian/QrCode.vue'
 import TokenQrReader from './TokenQrReader.vue'
-import { connectionError, scopeName, type TokenUi } from '@/sync/tokenUi'
+import { connectionError, scopeName as scopeSource, type TokenUi } from '@/sync/tokenUi'
 import type { ExecutableCandidate } from '@/sync/executableReview'
 import type { AttachmentQuestion } from '@/sync/attachmentConsent'
 import type { V2Scope, V2TokenInfo } from '@/sync/v2/contract'
@@ -279,11 +287,11 @@ const approval = computed(
 const title = computed(
   () =>
     ({
-      connect: 'Connect to a server',
-      share: 'Share access',
-      review: 'Review incoming code',
-      attachment: 'Share a private file?',
-      disconnect: 'Disconnect?',
+      connect: t('streamC.232ac7de45dec163'),
+      share: t('streamC.4231d8099b0bf71a'),
+      review: t('streamC.8a279c860c0d8c5a'),
+      attachment: t('streamC.a01d1d4a402368c3'),
+      disconnect: t('streamC.112cbf2ce097cdb9'),
     })[props.mode]
 )
 const content = computed(() =>
@@ -296,16 +304,19 @@ const preview = computed(() => {
     return null
   }
 })
-const time = (value: number) => new Date(value).toLocaleString()
+const time = (value: number) =>
+  new Date(value).toLocaleString(
+    currentLocale().language === 'en' ? undefined : currentLocale().format
+  )
 const operationName = (value: string) =>
   (
     ({
-      create: 'New file',
-      modify: 'Changed file',
-      move: 'Renamed or moved file',
-      delete: 'Deleted file',
+      create: t('streamC.44dedd0f97fea3c8'),
+      modify: t('streamC.a9fde979c3f67b7a'),
+      move: t('streamC.efb6e4a587713996'),
+      delete: t('streamC.5b6181a9afd23242'),
     }) as Record<string, string>
-  )[value] ?? 'Changed file'
+  )[value] ?? t('streamC.a9fde979c3f67b7a')
 async function run(action: () => Promise<void>) {
   if (busy.value || !alive) return
   const epoch = generation
@@ -322,7 +333,7 @@ async function run(action: () => Promise<void>) {
 async function connect() {
   await props.ui.connect(text.value, enrollment.signal)
   text.value = ''
-  new Notice('Connection saved')
+  new Notice(t('streamC.1e965e25daad8d30'))
   emit('close')
 }
 async function issue() {
@@ -342,7 +353,7 @@ async function issue() {
 }
 async function copy() {
   await navigator.clipboard.writeText(issued.value)
-  new Notice('Token copied')
+  new Notice(t('streamC.c9feac7acc32ee92'))
 }
 async function revoke() {
   if (!revoking.value) return

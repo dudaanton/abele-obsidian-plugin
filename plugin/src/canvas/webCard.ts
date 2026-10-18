@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * A web page on the canvas, shown the way Obsidian Canvas shows its link nodes: on the desktop in
  * a page of its own (a `webview` in the vault's browsing session, which a site cannot refuse), on
@@ -114,7 +115,7 @@ export class WebCard {
     this.el.dataset.webLive = 'false'
     this.face = this.el.createDiv({ cls: 'abele-canvas-web__face' })
     this.page = this.el.createDiv({ cls: 'abele-canvas-web__page' })
-    if (!/^https?:\/\//i.test(url)) this.fail('Only web addresses can be shown here')
+    if (!/^https?:\/\//i.test(url)) this.fail(t('streamC.c83fb4ac6d20b01b'))
     else if (ports.desktop) this.webview()
     else void this.framed()
     this.render()
@@ -171,7 +172,7 @@ export class WebCard {
       // -3 is a load given up for the next one (a redirect, a link followed), not a failure.
       if (!isMainFrame || errorCode === -3) return
       console.debug('[canvas-web] page failed', { errorCode, errorDescription })
-      this.fail("Couldn't load the page")
+      this.fail(t('streamC.c3acc136071638c4'))
     })
     view.src = this.url
     this.frame = view
@@ -183,13 +184,13 @@ export class WebCard {
       probe = await this.ports.probe(this.url)
     } catch (error) {
       console.debug('[canvas-web] page did not answer', error)
-      if (!this.destroyed) this.fail("Couldn't reach the page")
+      if (!this.destroyed) this.fail(t('streamC.12419f8478ff0f00'))
       return
     }
     if (this.destroyed) return
     this.title = pageTitle(probe.text)
     if (framingRefused(probe.headers)) {
-      this.fail("This site doesn't allow being shown inside the canvas")
+      this.fail(t('streamC.6a620065bb2cf1e6'))
       return
     }
     const frame = this.page.createEl('iframe', { cls: 'abele-canvas-web__frame' })
@@ -216,7 +217,7 @@ export class WebCard {
   private openButton(parent: HTMLElement, text?: string): void {
     const button = parent.createEl('button', {
       cls: text ? 'abele-canvas-web__open' : 'clickable-icon abele-canvas-web__open',
-      attr: { 'aria-label': 'Open web page', type: 'button' },
+      attr: { 'aria-label': t('streamC.01db911744ec1eef'), type: 'button' },
     })
     if (text) button.setText(text)
     else setIcon(button, 'external-link')

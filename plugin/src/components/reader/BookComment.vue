@@ -1,16 +1,16 @@
 <template>
-  <ObsidianModal title="Comment" @close="emit('cancel')">
+  <ObsidianModal :title="t('streamC.44f5e3fbec57be75')" @close="emit('cancel')">
     <div class="abele-book-comment">
       <blockquote class="abele-book-comment__quote">
         {{ shortText(highlight.text, 400) }}
       </blockquote>
-      <Input v-model="text" as-text-area :rows="5" placeholder="What you think of it…" />
+      <Input v-model="text" as-text-area :rows="5" :placeholder="t('streamC.2ccc886e5012897d')" />
     </div>
     <template #footer>
       <Button
-        text="Save"
+        :text="t('settings.GithubConnectionEditor.save.1509f561')"
         accent
-        tooltip="Save the comment in the highlights note"
+        :tooltip="t('streamC.230128dbe25d4abb')"
         @click="emit('save', text)"
       />
     </template>
@@ -18,6 +18,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 /** A comment on a highlight, written under it in the book's highlights note. */
 import { ref } from 'vue'
 import ObsidianModal from '../obsidian/Modal.vue'

@@ -14,7 +14,9 @@
         ref="valueEls"
         class="abele-debug-value"
         :data-tip="
-          [v.type, opensWhole(v) ? 'Click to open it whole' : v.value].filter(Boolean).join(' · ')
+          [v.type, opensWhole(v) ? t('streamC.9c7037a3d0026c7f') : v.value]
+            .filter(Boolean)
+            .join(' · ')
         "
         >{{ v.value }}</span
       >
@@ -34,6 +36,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 // Variables as a tree: name on the left, value at the end of the row, objects open in place. A
 // value the last step changed is drawn in the accent colour; its type is in the tooltip. A value
 // the row shows only the start of — a document, a payload — opens whole in a tab of its own, laid

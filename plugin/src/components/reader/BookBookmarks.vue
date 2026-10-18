@@ -1,10 +1,7 @@
 <template>
   <div class="abele-book-bookmarks">
     <div class="abele-book-bookmarks__list">
-      <EmptyState
-        v-if="!bookmarks.length"
-        text="No bookmarks yet. Tap the bookmark under the page to mark it."
-      />
+      <EmptyState v-if="!bookmarks.length" :text="t('streamC.219efe8a6f25c3f9')" />
       <EntryRow
         v-for="b in bookmarks"
         :key="b.id"
@@ -15,7 +12,9 @@
         @click="emit('go', b)"
         @keydown.enter.prevent="emit('go', b)"
       >
-        <span class="abele-book-bookmarks__label">{{ b.label || 'Untitled' }}</span>
+        <span class="abele-book-bookmarks__label">{{
+          b.label || t('streamC.f59ab8d1331b7b16')
+        }}</span>
         <template #codes>
           <span class="abele-book-bookmarks__date">{{ dateOf(b.created) }}</span>
         </template>
@@ -26,7 +25,7 @@
           <Icon
             class="abele-book-bookmarks__remove"
             icon="trash-2"
-            tooltip="Remove this bookmark"
+            :tooltip="t('streamC.d6593f9957fc34a4')"
             @click.stop="emit('remove', b)"
           />
         </template>
@@ -36,6 +35,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 /**
  * A book's bookmarks, in the book's order: the chapter each is in, the first words of its page
  * and the day it was made. A tap goes there; the bin removes it. The ones on the page on screen

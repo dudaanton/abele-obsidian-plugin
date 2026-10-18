@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * The linter as the app uses it: the rules there are, the run on screen, fixing what it found.
  *
@@ -223,7 +224,7 @@ export class LinterService {
     if (!file || shown.after === shown.before) return 'unchanged'
     const outcome = await writeIfUnchanged(this.app, file, shown.before, shown.after)
     if (outcome === 'changed-underneath') {
-      new Notice(`${file.basename} changed since the preview, so it was left as it is`)
+      new Notice(t('streamC.74d142b614754e1c', { v1: file.basename }))
     }
     await this.relint(path)
     return outcome
@@ -235,7 +236,7 @@ export class LinterService {
     if (!file) return 'unchanged'
     const outcome = await fixFile(this.app, file, this.rules, rule)
     if (outcome === 'changed-underneath') {
-      new Notice(`${file.basename} changed while it was being fixed, so it was left as it is`)
+      new Notice(t('streamC.df097f04fc30f45e', { v1: file.basename }))
     }
     await this.relint(path)
     return outcome
@@ -265,10 +266,8 @@ export class LinterService {
     } finally {
       this.fixing.value = null
     }
-    const skipped = summary.skipped
-      ? `; ${summary.skipped} changed while being fixed and were left as they are`
-      : ''
-    new Notice(`Fixed ${summary.fixed} ${summary.fixed === 1 ? 'note' : 'notes'}${skipped}`)
+    const skipped = summary.skipped ? t('streamC.3826fef96aef2f34', { v1: summary.skipped }) : ''
+    new Notice(t('streamC.lintFixed', { count: summary.fixed, suffix: skipped }))
     return summary
   }
 }

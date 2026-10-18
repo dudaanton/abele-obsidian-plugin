@@ -15,11 +15,11 @@
       v-if="(action.exact || action.detail) && !action.kind.startsWith('trace_')"
       class="abele-debug-action__exact"
     >
-      <summary>Exact action</summary>
+      <summary>{{ t('streamC.26bb6c1a72d4f414') }}</summary>
       <pre>{{ action.exact ?? action.detail }}</pre>
     </details>
     <div v-if="action.awaitingResult" class="abele-debug-action__result" role="status">
-      Awaiting result
+      {{ t('streamC.ce9dc7a8bc7d98f2') }}
     </div>
     <div v-if="action.result" class="abele-debug-action__result">
       <NodeErrorText v-if="action.status !== 'done'" :error="action.result" />
@@ -30,15 +30,15 @@
       class="abele-debug-action__buttons"
     >
       <Button
-        text="Deny"
+        :text="t('streamC.05a2d7332eb9d8bf')"
         :disabled="disabled"
-        tooltip="Do not let the agent do this"
+        :tooltip="t('streamC.a3a900ae248b3e68')"
         @click="emit('deny')"
       />
       <Button
-        text="Allow"
+        :text="t('streamC.e213c161d5cefa52')"
         :disabled="disabled"
-        tooltip="Let the agent do exactly this, once"
+        :tooltip="t('streamC.db2a63b909320df2')"
         @click="emit('allow')"
       />
     </div>
@@ -47,6 +47,8 @@
 
 <script setup lang="ts">
 import NodeErrorText from '@/components/NodeErrorText.vue'
+import { t } from '@/i18n'
+
 // One action of the chat agent in the debug session, where it happened: in the chat, between its
 // messages, like any tool call. Asked: the exact action, where the program stood, Allow and Deny.
 // Done, denied or expired: a glyph at the end says which, the words are in its tooltip; a done
@@ -63,25 +65,25 @@ const props = withDefaults(defineProps<{ action: DebugAction; disabled?: boolean
 const emit = defineEmits<{ (e: 'allow'): void; (e: 'deny'): void }>()
 
 const names: Record<string, string> = {
-  'step-over': 'Step over',
-  'step-into': 'Step into',
-  'step-out': 'Step out',
-  continue: 'Continue',
-  pause: 'Pause',
-  evaluate: 'Evaluate',
-  set: 'Change a value',
-  breakpoint: 'Breakpoint',
-  restart: 'Restart',
-  stop: 'Stop',
-  'record-point': 'Add a record point',
-  record: 'Record a run',
-  trace_timeline: 'Read the steps',
-  trace_shape: 'Read a shape',
-  trace_slice: 'Read a slice',
-  trace_diff: 'Compare two steps',
-  trace_find: 'Find a value',
-  trace_follow: 'Follow a value',
-  trace_mark: 'Mark',
+  'step-over': t('streamC.3d2758bb075c848b'),
+  'step-into': t('streamC.1f581e2445e35faf'),
+  'step-out': t('streamC.1d51cb62f8d46cb0'),
+  continue: t('streamC.31fbef162594de01'),
+  pause: t('streamC.858e4ba7a29fd38b'),
+  evaluate: t('streamC.966591fe7e17f107'),
+  set: t('streamC.e886d80c297e091b'),
+  breakpoint: t('streamC.6df35e37fd3ee650'),
+  restart: t('streamC.6b983a81e5e8099e'),
+  stop: t('streamC.cae7d57bc067a514'),
+  'record-point': t('streamC.695ca711fda0c74d'),
+  record: t('streamC.e773b37f1caf9799'),
+  trace_timeline: t('streamC.07f4b3ad482c015d'),
+  trace_shape: t('streamC.9f761c27da05deec'),
+  trace_slice: t('streamC.b9d944886273016a'),
+  trace_diff: t('streamC.95a07e09165e3bb4'),
+  trace_find: t('streamC.a86dabc0ace138e8'),
+  trace_follow: t('streamC.20c3a692f1425939'),
+  trace_mark: t('streamC.d7cda0ca2c8586e5'),
 }
 const icons: Record<string, string> = {
   'step-over': 'redo-dot',
@@ -116,10 +118,10 @@ const tip = () =>
   setTooltip(
     stateEl.value,
     {
-      done: 'Done',
-      denied: 'You denied it',
-      unknown: props.action.result ?? 'Execution outcome unknown; do not replay',
-      expired: props.action.result ?? 'Not done: the program moved on before it was allowed',
+      done: t('streamC.11a6767d5674c7e4'),
+      denied: t('streamC.176a60da255fb23b'),
+      unknown: props.action.result ?? t('streamC.165b25262bb6405a'),
+      expired: props.action.result ?? t('streamC.056e459c82ac466f'),
       asked: '',
     }[props.action.status]
   )

@@ -1,5 +1,5 @@
 <template>
-  <ObsidianModal title="Version history" size="tall" @close="emit('close')">
+  <ObsidianModal :title="t('streamC.a6df11e706c514f1')" size="tall" @close="emit('close')">
     <div ref="root" class="abele-version-history">
       <div class="abele-version-history__head">
         <p class="abele-version-history__path">{{ path }}</p>
@@ -30,7 +30,7 @@
                 :data-version="version.no"
                 :active="selected === version.version_id"
                 :more="selected === version.version_id"
-                more-label="what restoring it changes"
+                :more-label="t('streamC.5d2ee847168e7be8')"
                 @update:more="select(version)"
                 @click="select(version)"
               >
@@ -39,7 +39,7 @@
                   <Icon
                     icon="check"
                     :interactive="false"
-                    tooltip="The version this device has now"
+                    :tooltip="t('streamC.d5413cb628ce4e4d')"
                   />
                 </template>
                 <template #meta>
@@ -72,9 +72,9 @@
                     </p>
                     <div v-else class="abele-version-history__restore">
                       <Button
-                        text="Restore"
+                        :text="t('streamC.a76e13b9839270eb')"
                         :disabled="busy"
-                        :tooltip="`Make version #${version.no} the current one again`"
+                        :tooltip="t('streamC.de2471dffcbbd587', { v1: String(version.no) })"
                         @click="confirming = version"
                       />
                     </div>
@@ -87,7 +87,7 @@
         <ScrollMore
           v-if="hasOlder"
           :loading="loadingOlder"
-          label="Older versions below"
+          :label="t('streamC.e9ba757bff4c4c50')"
           :shown="versions.length"
           @more="!busy && loadOlder()"
         />
@@ -96,11 +96,11 @@
 
     <ConfirmModal
       v-if="confirming !== null"
-      title="Restore this version?"
+      :title="t('streamC.2bfce226cd8dbd40')"
       :message="confirmMessage"
-      confirm-text="Restore"
-      confirm-tooltip="Put these bytes back as the current version"
-      cancel-tooltip="Close this and leave the file as it is"
+      :confirm-text="t('streamC.a76e13b9839270eb')"
+      :confirm-tooltip="t('streamC.973707a50e4a1a81')"
+      :cancel-tooltip="t('streamC.1923cdb4fe2ad6d2')"
       @confirm="restore"
       @close="confirming = null"
     />
@@ -108,6 +108,8 @@
 </template>
 
 <script setup lang="ts">
+import { t, currentLocale, dateFormatter } from '@/i18n'
+
 /**
  * What has happened to one file, and what putting an old version back would change.
  *
@@ -159,13 +161,13 @@ const PAGE = 50
 
 /** What each version did to the file, in the words a person reads rather than the wire's. */
 const OP_LABEL: Record<VersionOp, string> = {
-  create: 'Created',
-  modify: 'Edited',
-  delete: 'Deleted',
-  move: 'Moved',
-  restore: 'Restored',
-  merge: 'Merged',
-  conflict: 'Conflict',
+  create: t('streamC.d70b9e24bca26b40'),
+  modify: t('streamC.7117f0807129493f'),
+  delete: t('streamC.b48ff39c2e0f5451'),
+  move: t('streamC.b11c9047f3512271'),
+  restore: t('streamC.5d561a1e3f1707d6'),
+  merge: t('streamC.bd0a06202c440a9e'),
+  conflict: t('streamC.014659ab9d98c8fe'),
 }
 
 /**
@@ -200,7 +202,7 @@ const versions = ref<VersionInfo[]>([])
 const hasOlder = ref(false)
 const loadingOlder = ref(false)
 /** What the list says when there is no list: reading, unreachable, unsynced, or empty. */
-const notice = ref<string | null>('Reading this file’s history…')
+const notice = ref<string | null>(t('streamC.6409814de00946cb'))
 /** What went wrong, said above the list without taking it away. */
 const error = ref<string | null>(null)
 const selected = ref<string | null>(null)
@@ -245,20 +247,24 @@ const isText = computed(() => {
  * pressing it.
  */
 function refusalFor(version: VersionInfo): string | null {
-  if (version.version_id === currentVersionId) return 'This is already the current version'
-  if (version.op === 'delete') return 'A deletion holds no content to put back'
+  if (version.version_id === currentVersionId) return t('streamC.dfec40fafda05e97')
+  if (version.op === 'delete') return t('streamC.46d379cc5c2d7232')
   return null
 }
 
 const confirmMessage = computed(() => {
   const version = confirming.value
   if (version === null) return ''
-  const head = `Version #${version.no} of ${props.path} becomes the current one, on this device and every other. Nothing is lost: what the file holds now stays in the history as a version of its own.`
+  const head = t('streamC.1b3291a51cf7a516', { v1: String(version.no), v2: String(props.path) })
   // A restore is about content, never about where the file lives. Saying so matters most for a
   // version that moved the file: restoring it does not put the file back at the old name.
   const moved = version.op === 'move' || version.path !== props.path
   return moved
-    ? `${head} That version had the file at ${version.path}; restoring puts its content back at ${props.path}, where the file is now — the move itself is not undone.`
+    ? t('streamC.60428a25bacbf13f', {
+        v1: String(head),
+        v2: String(version.path),
+        v3: String(props.path),
+      })
     : head
 })
 
@@ -283,10 +289,16 @@ const days = computed(() => {
   for (const version of versions.value) {
     const day = whenOf(version).startOf('day')
     const label = day.isSame(today)
-      ? 'Today'
+      ? t('area.today')
       : day.isSame(today.subtract(1, 'day'))
-        ? 'Yesterday'
-        : day.format(day.isSame(today, 'year') ? 'D MMMM' : 'D MMMM YYYY')
+        ? t('area.yesterday')
+        : currentLocale().language === 'en'
+          ? day.format(day.isSame(today, 'year') ? 'D MMMM' : 'D MMMM YYYY')
+          : dateFormatter(currentLocale().format, {
+              day: 'numeric',
+              month: 'long',
+              ...(day.isSame(today, 'year') ? {} : { year: 'numeric' as const }),
+            }).format(day.toDate())
     const last = out.at(-1)
     if (last?.label === label) last.versions.push(version)
     else out.push({ label, versions: [version] })
@@ -350,29 +362,29 @@ async function select(version: VersionInfo): Promise<void> {
     return
   }
   diff.value = []
-  previewNote.value = 'Reading this version…'
+  previewNote.value = t('streamC.27b5182e35b84b22')
   try {
     const bytes = await client.versionBytes(fileId, version.version_id)
     // The answer to a click that has since been overtaken by another one.
     if (selected.value !== version.version_id) return
     const text = asText(bytes)
     if (text === null) {
-      previewNote.value = 'This version is not text, so there is nothing to show line by line.'
+      previewNote.value = t('streamC.dd9ca06841dd09bc')
       return
     }
     const lines = unifiedDiff(text, await currentText(), {
       from: `${props.path} #${version.no}`,
-      to: `${props.path} as it is now`,
+      to: t('streamC.b9012d040a7ce98e', { v1: String(props.path) }),
     })
     if (selected.value !== version.version_id) return
     if (lines.length === 0) {
-      previewNote.value = 'This version says exactly what the file says now.'
+      previewNote.value = t('streamC.2904ec9fad440eb3')
       return
     }
     diff.value = lines
     previewNote.value = null
   } catch (failure) {
-    previewNote.value = `This version could not be read: ${reasonOf(failure)}`
+    previewNote.value = t('streamC.1eadc37538a0e713', { v1: String(reasonOf(failure)) })
   }
 }
 
@@ -396,7 +408,10 @@ async function restore(): Promise<void> {
     // A refusal is a 200, not a throw: the server answers "no, and here is why" in the same
     // shape it answers "yes". Announcing that as a restore is how a dialog lies.
     if (result.status === 'rejected') {
-      error.value = `Version #${version.no} was not restored: ${result.message}`
+      error.value = t('streamC.c8f0026c4a577efb', {
+        v1: String(version.no),
+        v2: String(result.message),
+      })
       return
     }
     sync.note(`restored ${props.path} to version #${version.no}`)
@@ -406,13 +421,16 @@ async function restore(): Promise<void> {
     new Notice(
       restoredNotice(
         sync.status.value.state,
-        `${result.path} restored to version #${version.no}.`,
-        `${result.path} is at version #${version.no} on the server`
+        t('streamC.657a26320c1cc594', { v1: String(result.path), v2: String(version.no) }),
+        t('streamC.4337c467c01b5298', { v1: String(result.path), v2: String(version.no) })
       )
     )
     emit('close')
   } catch (failure) {
-    error.value = `Version #${version.no} could not be restored: ${reasonOf(failure)}`
+    error.value = t('streamC.f1b0e977fda31813', {
+      v1: String(version.no),
+      v2: String(reasonOf(failure)),
+    })
   } finally {
     busy.value = false
   }
@@ -430,7 +448,7 @@ async function loadOlder(): Promise<void> {
     versions.value.push(...page.filter((version) => !known.has(version.version_id)))
     hasOlder.value = page.length === PAGE
   } catch (failure) {
-    error.value = `Older versions could not be read: ${reasonOf(failure)}`
+    error.value = t('streamC.1f8edbd020b422bb', { v1: String(reasonOf(failure)) })
   } finally {
     loadingOlder.value = false
   }
@@ -439,8 +457,7 @@ async function loadOlder(): Promise<void> {
 onMounted(async () => {
   client = sync.client()
   if (client === null) {
-    notice.value =
-      'A file’s history is kept on the server, and this device is not connected to one.'
+    notice.value = t('streamC.b779eecb7545e22d')
     return
   }
   try {
@@ -448,7 +465,7 @@ onMounted(async () => {
     // open would otherwise leave this dialog reading for ever.
     const entry = await sync.entryFor(props.path)
     if (entry === null) {
-      notice.value = 'This file has not been synced yet, so the server holds no history of it.'
+      notice.value = t('streamC.781271f228aaeffe')
       return
     }
     fileId = entry.fileId
@@ -456,11 +473,10 @@ onMounted(async () => {
     currentId.value = entry.versionId
     versions.value = await client.versions(fileId, { limit: PAGE })
     hasOlder.value = versions.value.length === PAGE
-    notice.value =
-      versions.value.length === 0 ? 'The server holds no versions of this file yet.' : null
+    notice.value = versions.value.length === 0 ? t('streamC.5f44bebed48101a8') : null
   } catch (failure) {
     notice.value = null
-    error.value = `This file’s history could not be read: ${reasonOf(failure)}`
+    error.value = t('streamC.2cb6f24d9193bc1f', { v1: String(reasonOf(failure)) })
   }
 })
 </script>

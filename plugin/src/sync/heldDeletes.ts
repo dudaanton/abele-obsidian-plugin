@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { ref, type Ref } from 'vue'
 import type { HeldDelete } from '@abele/sync-core'
 import type { SyncStatus } from './status'
@@ -180,9 +181,6 @@ export class HeldDeletesPrompt {
   }
 }
 
-/** `3 files`, `1 file`. */
-const filesOf = (count: number): string => (count === 1 ? '1 file' : `${count} files`)
-
 /**
  * What is said once a decision about held deletes was taken: `result` as
  * `SyncService.decideDeletes` answered, and `state` the status sync was left in. A decision a
@@ -195,24 +193,19 @@ export function decidedNotice(
   result: { decided: number; applied: boolean; completed?: number } | null,
   state: SyncStatus['state']
 ): string {
-  if (result === null) return 'Sync is not running on this device, so nothing was decided.'
-  if (result.decided === 0) return 'These files are no longer held, so nothing was decided.'
-  if (kind === 'confirm' && result.completed !== undefined) {
-    const completed = result.completed
-    return (
-      `${filesOf(completed)} ${completed === 1 ? 'was' : 'were'} deleted everywhere; ` +
-      `${filesOf(result.decided - completed)} were not deleted (changed or refused). See the sync log.`
-    )
-  }
-  const files = filesOf(result.decided)
-  const one = result.decided === 1
-  if (result.applied) {
+  if (result === null) return t('streamC.d6d41c20d731165f')
+  if (result.decided === 0) return t('streamC.1acbfff7903e68de')
+  if (kind === 'confirm' && result.completed !== undefined)
+    return t('streamC.heldPartial', {
+      count: result.completed,
+      remaining: t('streamC.files', { count: result.decided - result.completed }),
+    })
+  if (result.applied)
     return kind === 'confirm'
-      ? `${files} ${one ? 'was' : 'were'} deleted everywhere. The server keeps ${one ? 'it' : 'them'} in Deleted files until the trash is swept.`
-      : `${files} ${one ? 'is' : 'are'} coming back.`
-  }
-  const when = state === 'paused' ? 'when sync is resumed' : 'at the next sync that gets through'
+      ? t('streamC.heldDeleted', { count: result.decided })
+      : t('streamC.heldComingBack', { count: result.decided })
+  const when = state === 'paused' ? t('streamC.fe65403108c35eaa') : t('streamC.08afb9fff41772f4')
   return kind === 'confirm'
-    ? `${files} will be deleted everywhere ${when}.`
-    : `${files} will come back ${when}.`
+    ? t('streamC.heldWaitingDelete', { count: result.decided, when: when })
+    : t('streamC.heldWaitingRestore', { count: result.decided, when: when })
 }

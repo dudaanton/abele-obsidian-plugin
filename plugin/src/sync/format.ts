@@ -2,6 +2,7 @@ import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import type { VersionInfo } from '@abele/sync-protocol'
 import type { SyncState } from './status'
+import { currentLocale, relativeFormatter, t } from '@/i18n'
 
 /**
  * The three things the sync screens have to spell out for a person: when something happened,
@@ -21,9 +22,28 @@ dayjs.extend(relativeTime)
 
 /** When it happened, in words a person reads: `2 minutes ago`, or `never` before it has. */
 export function formatWhen(iso: string | null): string {
-  if (iso === null || iso === '') return 'never'
+  if (iso === null || iso === '') return t('sync.when.never')
   const at = dayjs(iso)
-  return at.isValid() ? at.fromNow() : 'never'
+  if (!at.isValid()) return t('sync.when.never')
+  const locale = currentLocale()
+  if (locale.language === 'en') return at.fromNow()
+  const seconds = (at.valueOf() - Date.now()) / 1000
+  const [unit, scale]: [Intl.RelativeTimeFormatUnit, number] =
+    Math.abs(seconds) < 60
+      ? ['second', 1]
+      : Math.abs(seconds) < 3600
+        ? ['minute', 60]
+        : Math.abs(seconds) < 86400
+          ? ['hour', 3600]
+          : Math.abs(seconds) < 2592000
+            ? ['day', 86400]
+            : Math.abs(seconds) < 31536000
+              ? ['month', 2592000]
+              : ['year', 31536000]
+  return relativeFormatter(locale.format, { numeric: 'auto' }).format(
+    Math.round(seconds / scale),
+    unit
+  )
 }
 
 /**
@@ -48,9 +68,9 @@ export function reasonOf(error: unknown): string {
  * file as it now stands on the server.
  */
 export function restoredNotice(state: SyncState, done: string, what: string): string {
-  if (state === 'paused') return `${what}; it reaches this device when sync is resumed.`
+  if (state === 'paused') return t('streamC.570adea191568771', { v1: String(what) })
   if (state === 'offline' || state === 'error') {
-    return `${what}; it reaches this device at the next sync that gets through.`
+    return t('streamC.0ceea3ba34a775a9', { v1: String(what) })
   }
   return done
 }
@@ -68,10 +88,14 @@ export function mergeLine(version: VersionInfo, page: VersionInfo[]): string | u
   const merge = version.merge
   if (version.op !== 'merge' || merge === null) return undefined
   if (version.sha !== null && version.sha === merge.incoming_sha) {
-    return `Kept ${version.actor.name}'s version`
+    return t('streamC.de8e25d3c122e4a8', { v1: String(version.actor.name) })
   }
   const head = page.find((row) => row.version_id === merge.head_version_id)
   if (head === undefined) return undefined
-  if (version.sha === head.sha) return `Kept ${head.actor.name}'s version`
-  return `Merged ${head.actor.name}'s and ${version.actor.name}'s edits`
+  if (version.sha === head.sha)
+    return t('streamC.de8e25d3c122e4a8', { v1: String(head.actor.name) })
+  return t('streamC.f6544cc69e87d10f', {
+    v1: String(head.actor.name),
+    v2: String(version.actor.name),
+  })
 }

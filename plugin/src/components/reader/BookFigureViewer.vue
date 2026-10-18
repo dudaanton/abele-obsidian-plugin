@@ -7,7 +7,7 @@
       data-ignore-swipe="true"
       tabindex="0"
       role="figure"
-      :aria-label="`${title}. Drag to move it, pinch or plus and minus to zoom, swipe down to close.`"
+      :aria-label="t('streamC.bbccfe383a0709c0', { v1: String(title) })"
       @wheel="onWheel"
       @pointerdown="onPointerDown"
       @pointermove="onPointerMove"
@@ -37,19 +37,21 @@
           :width="figure.width + 16"
           :height="figure.height + 16"
           tabindex="-1"
-          title="Table"
+          :title="t('streamC.16d1c9050a0b32e8')"
         />
       </div>
       <div class="abele-book-figure__controls" data-viewer-controls>
-        <Icon icon="zoom-out" tooltip="Zoom out" @click="zoom(1 / 1.4)" />
-        <Icon icon="scan" tooltip="Fit it on the screen" @click="fit" />
-        <Icon icon="zoom-in" tooltip="Zoom in" @click="zoom(1.4)" />
+        <Icon icon="zoom-out" :tooltip="t('streamC.bc7b631a689b45ca')" @click="zoom(1 / 1.4)" />
+        <Icon icon="scan" :tooltip="t('streamC.7617b23f02abab5f')" @click="fit" />
+        <Icon icon="zoom-in" :tooltip="t('streamC.0e47f09a748fa132')" @click="zoom(1.4)" />
       </div>
     </div>
   </ObsidianModal>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 /** A book figure in the shared shell and pointer viewer; tables remain inert. */
 import { computed, ref } from 'vue'
 import ObsidianModal from '../obsidian/Modal.vue'
@@ -59,7 +61,9 @@ import { useViewerPanZoom } from '@/composables/useViewerPanZoom'
 const props = defineProps<{ figure: BookFigure }>()
 const emit = defineEmits<{ close: [] }>()
 const title = computed(() =>
-  props.figure.kind === 'table' ? 'Table' : props.figure.alt.trim() || 'Picture'
+  props.figure.kind === 'table'
+    ? t('streamC.16d1c9050a0b32e8')
+    : props.figure.alt.trim() || t('streamC.9a1c54f55e7cfb1c')
 )
 const frame = ref<HTMLElement | null>(null)
 const {

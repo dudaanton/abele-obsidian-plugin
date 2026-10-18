@@ -6,7 +6,7 @@
     <div class="abele-trace-trail__head">
       <Icon icon="footprints" no-hover />
       <span class="abele-trace-trail__value">{{ trail.value }}</span>
-      <Icon icon="x" tooltip="Back to the step" @click="emit('close')" />
+      <Icon icon="x" :tooltip="t('streamC.4c5d9f6c20a1e610')" @click="emit('close')" />
     </div>
     <!-- Two lines to a stop, so a long path is read whole in a narrow pane: the step, then
          where in it the value was. -->
@@ -34,13 +34,15 @@
     <div v-if="lost" class="tree-item-self abele-trace-trail__stop abele-trace-trail__lost">
       <span class="abele-trace-glyph" aria-hidden="true" />
       <span class="abele-trace-trail__where"
-        >Not seen after {{ lost.label }}, {{ since(lost.at) }}</span
+        >{{ t('streamC.feea6a0e91027022') }} {{ lost.label }}, {{ since(lost.at) }}</span
       >
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 import { computed } from 'vue'
 import Icon from '../../obsidian/Icon.vue'
 import TraceStepGlyph from './TraceStepGlyph.vue'

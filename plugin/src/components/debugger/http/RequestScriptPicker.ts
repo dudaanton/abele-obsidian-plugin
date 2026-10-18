@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { FuzzySuggestModal, type App, type FuzzyMatch } from 'obsidian'
 import { SuggestionRows } from '@/components/obsidian/suggestionRows'
 
@@ -11,7 +12,14 @@ export interface RequestScriptChoice {
 
 type Row = { kind: 'script'; script: RequestScriptChoice } | { kind: 'new'; name: string }
 
-const WHEN = { before: 'before it goes', after: 'after it comes back' } as const
+const WHEN = {
+  get before() {
+    return t('streamC.293ca5bcda5638a2')
+  },
+  get after() {
+    return t('streamC.f15c8074da0c2855')
+  },
+} as const
 
 /**
  * Obsidian's own suggester over the `@request` scripts, as the quick switcher lists notes: the one
@@ -33,13 +41,13 @@ export class RequestScriptPicker extends FuzzySuggestModal<Row> {
   ) {
     super(app)
     this.modalEl.addClass('abele-request-script-picker')
-    this.setPlaceholder(`A script to run ${WHEN[when]}…`)
+    this.setPlaceholder(t('streamC.767ed0b09d66853e', { v1: String(WHEN[when]) }))
     this.setInstructions([
-      { command: '↑↓', purpose: 'to navigate' },
-      { command: '↵', purpose: 'to use it' },
-      { command: 'esc', purpose: 'to leave it as it is' },
+      { command: '↑↓', purpose: t('streamC.5a70bdb08330fafc') },
+      { command: '↵', purpose: t('streamC.a3edac1a4037fdbd') },
+      { command: 'esc', purpose: t('streamC.75f4ad272f4e48da') },
     ])
-    this.emptyStateText = 'No script by that name.'
+    this.emptyStateText = t('streamC.ab6a9a35efbf2e3d')
   }
 
   getItems(): Row[] {
@@ -64,17 +72,16 @@ export class RequestScriptPicker extends FuzzySuggestModal<Row> {
     const row = match.item
     if (row.kind === 'new')
       this.rows.draw(el, {
-        title: `New script «${row.name}»`,
-        note: this.scripts.length
-          ? 'Starts with // @request and opens'
-          : 'No script runs around requests yet; this one starts with // @request and opens',
+        title: t('streamC.c3d0d3219476c62e', { v1: String(row.name) }),
+        note: this.scripts.length ? t('streamC.d119439ec574b165') : t('streamC.704edcb46cabad7d'),
         keepNote: true,
       })
     else
       this.rows.draw(el, {
         title: row.script.name,
         note: row.script.description,
-        aux: row.script.name === this.current ? [{ flair: 'Now' }] : undefined,
+        aux:
+          row.script.name === this.current ? [{ flair: t('streamC.fe18013d93d22f4f') }] : undefined,
       })
   }
 

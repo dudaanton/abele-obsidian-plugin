@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { nanoid } from 'nanoid'
 import { ItemView, WorkspaceLeaf, App } from 'obsidian'
@@ -21,7 +22,7 @@ export class TimeTrackingSidebarView extends ItemView {
   }
 
   getDisplayText() {
-    return 'Abele time tracking'
+    return t('streamC.1278ef2b010eb3b9')
   }
 
   static getIcon() {

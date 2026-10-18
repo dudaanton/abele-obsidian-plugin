@@ -2,7 +2,7 @@
   <div class="abele-debug-panel" :class="`abele-debug-panel_${session.status}`">
     <div class="nav-header">
       <div class="nav-buttons-container">
-        <DrawerViewSwitch icon="bug-play" name="Debug" />
+        <DrawerViewSwitch icon="bug-play" :name="t('streamC.1a03bd2fd107c453')" />
         <Icon
           v-for="b in buttons"
           :key="b.action"
@@ -46,8 +46,13 @@
     </div>
 
     <div v-if="session.status === 'lost'" class="abele-debug-panel__notice" role="status">
-      <span>As of {{ session.seen }}</span>
-      <Icon icon="rotate-cw" size="xs" tooltip="Try to reconnect" @click="emit('retry')" />
+      <span>{{ t('streamC.43157504da6a73f8') }} {{ session.seen }}</span>
+      <Icon
+        icon="rotate-cw"
+        size="xs"
+        :tooltip="t('streamC.aedae4aa865fe618')"
+        @click="emit('retry')"
+      />
     </div>
 
     <div class="abele-debug-panel__groups" :class="{ 'abele-debug-panel__groups_stale': stale }">
@@ -56,18 +61,14 @@
       <TreeItem
         v-if="recording"
         class="abele-debug-panel__group"
-        text="Recording"
-        :flair="`${recording.elapsed} · ${recording.steps} steps`"
+        :text="t('streamC.80e8dd1a5a05f707')"
+        :flair="t('streamC.traceSteps', { elapsed: recording.elapsed, count: recording.steps })"
         collapsible
         :collapsed="folded.has('recording')"
         @click="toggle('recording')"
       >
         <template #end>
-          <StatusDot
-            tone="red"
-            label="Recording: the record points take values as the program goes"
-            pulse
-          />
+          <StatusDot tone="red" :label="t('streamC.dc5a9ac750e65ff2')" pulse />
         </template>
         <TreeItem
           class="abele-debug-panel__browser"
@@ -94,7 +95,7 @@
       <TreeItem
         v-if="!quietWhileRunning"
         class="abele-debug-panel__group"
-        text="Variables"
+        :text="t('streamC.02db55bac5e3f7ce')"
         :flair="frameName"
         collapsible
         :collapsed="folded.has('variables')"
@@ -115,7 +116,7 @@
       <TreeItem
         v-if="!quietWhileRunning"
         class="abele-debug-panel__group"
-        text="Call stack"
+        :text="t('streamC.76b3f5f3a3f28b4a')"
         :flair="live ? String(session.frames.length) : undefined"
         collapsible
         :collapsed="folded.has('stack')"
@@ -133,7 +134,7 @@
 
       <TreeItem
         class="abele-debug-panel__group"
-        text="Breakpoints"
+        :text="t('streamC.aa40ffb1ed16f9a3')"
         :flair="String(session.breakpoints.length)"
         collapsible
         :collapsed="folded.has('breakpoints')"
@@ -153,7 +154,9 @@
               class="abele-debug-panel__hits"
               :class="{ 'abele-debug-panel__hits_none': !b.hits }"
               :aria-label="
-                b.hits ? `Fired ${b.hits} times in the last run` : 'Not reached in the last run'
+                b.hits
+                  ? t('streamC.f9dbc568ce816459', { v1: String(b.hits) })
+                  : t('streamC.1bc63e16126e96be')
               "
               >{{ b.hits }}</span
             >
@@ -163,21 +166,21 @@
             <Icon
               icon="x"
               size="xs"
-              tooltip="Remove"
+              :tooltip="t('settings.nodes.remove')"
               :disabled="locked"
               @click.stop="emit('breakpoint', b.file, b.line)"
             />
           </template>
         </TreeItem>
         <div v-if="!session.breakpoints.length" class="abele-debug-panel__empty">
-          Press the margin of a line to stop there; right-click it for a record point.
+          {{ t('streamC.21ff3a0299b90733') }}
         </div>
       </TreeItem>
 
       <TreeItem
         v-if="runs"
         class="abele-debug-panel__group"
-        text="Runs"
+        :text="t('settings.LinksSettings.runs.848f54e8')"
         :flair="runs.length ? String(runs.length) : undefined"
         collapsible
         :collapsed="folded.has('runs')"
@@ -187,23 +190,23 @@
           v-for="r in runs"
           :key="r.id"
           :text="r.name"
-          :note="`${r.steps} steps · ${r.length}`"
+          :note="t('streamC.runSteps', { count: r.steps, length: r.length })"
           :active="r.id === openRun"
           @click="emit('open-run', r.id)"
           @contextmenu.prevent="(e: MouseEvent) => emit('run-menu', r.id, e)"
         >
           <template v-if="r.cut" #end>
-            <Icon icon="scissors" size="xs" tooltip="Cut short: the node went away" no-hover />
+            <Icon icon="scissors" size="xs" :tooltip="t('streamC.5544ebbc16c05bb6')" no-hover />
           </template>
         </TreeItem>
         <div v-if="!runs.length" class="abele-debug-panel__empty">
-          Run the program with a record point to see what passes it.
+          {{ t('streamC.82111bf7467cde35') }}
         </div>
       </TreeItem>
 
       <TreeItem
         class="abele-debug-panel__group"
-        text="Watch"
+        :text="t('streamC.a71e757324467ccf')"
         :flair="session.watches.length ? String(session.watches.length) : undefined"
         collapsible
         :collapsed="folded.has('watch')"
@@ -227,7 +230,7 @@
           <template #actions>
             <Icon
               icon="x"
-              tooltip="Remove"
+              :tooltip="t('settings.nodes.remove')"
               :disabled="locked"
               @click.stop="emit('unwatch', w.expression)"
             />
@@ -237,8 +240,8 @@
           <Input
             v-model="expression"
             :disabled="locked"
-            placeholder="Add an expression"
-            aria-label="Expression to watch"
+            :placeholder="t('streamC.8d8a5eb1f4b81294')"
+            :aria-label="t('streamC.c1eb7391442f78be')"
             spellcheck="false"
             autocomplete="off"
             @keydown.enter.prevent="watchIt"
@@ -248,7 +251,7 @@
 
       <TreeItem
         class="abele-debug-panel__group"
-        text="Output"
+        :text="t('streamC.b2439bcb8dee14b6')"
         collapsible
         :collapsed="folded.has('output')"
         @click="toggle('output')"
@@ -261,6 +264,8 @@
 
 <script setup lang="ts">
 import { nodeErrorWords } from '@/node/errorWords'
+import { t } from '@/i18n'
+
 import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
 // The debugger's own view, a tab of the right sidebar like Backlinks or Outline: the controls in
 // its header, a line saying what runs and where it stands, and the folding groups a debugger has —
@@ -312,10 +317,17 @@ const modeKnown = computed(
 )
 const modeTooltip = computed(() =>
   !modeKnown.value
-    ? `Agent mode: Unknown · ${props.modeUnavailableReason || (props.session.status === 'lost' ? 'A fresh live grant observation is required after reconnect' : 'No authoritative live agent grant is bound')}`
+    ? t('streamC.0de847c5e3425c01', {
+        v1: String(
+          props.modeUnavailableReason ||
+            (props.session.status === 'lost'
+              ? t('streamC.36b97f36792426ca')
+              : t('streamC.c48c1dd09c60a40f'))
+        ),
+      })
     : props.session.mode === 'allow'
-      ? 'The agent acts without asking, in this session · press to make it ask'
-      : 'The agent asks before each action · press to let it act freely in this session'
+      ? t('streamC.46d88842acfd2359')
+      : t('streamC.b242e821c9e52446')
 )
 
 const emit = defineEmits<{
@@ -340,9 +352,9 @@ const emit = defineEmits<{
 const browserBrief = computed(() => {
   const b = props.recording?.browser
   if (!b) return ''
-  if (b.via === 'har') return 'HAR file'
-  if (b.state === 'none') return 'Not connected'
-  if (b.state === 'lost') return 'Lost'
+  if (b.via === 'har') return t('streamC.865beacb015d6057')
+  if (b.state === 'none') return t('settings.nodes.disconnected')
+  if (b.state === 'lost') return t('streamC.51e1357de85bd272')
   return b.tab ?? ''
 })
 const browserLabel = computed(() => {
@@ -350,16 +362,18 @@ const browserLabel = computed(() => {
   if (!b) return ''
   const via =
     b.via === 'agent'
-      ? "through the agent's Chrome"
+      ? t('streamC.3a986c7151b3317a')
       : b.via === 'har'
-        ? 'from a HAR file'
-        : 'from your Chrome'
-  const hosts = b.hosts.length ? ` · requests to ${b.hosts.join(' and ')}` : ''
+        ? t('streamC.fcf402c1746854df')
+        : t('streamC.fd81bd7ad10c77d4')
+  const hosts = b.hosts.length
+    ? t('streamC.967370e7eb4e94ac', { v1: String(b.hosts.join(' and ')) })
+    : ''
   return b.state === 'connected'
-    ? `Recording ${via}${hosts} · press to change`
+    ? t('streamC.2fab8d8b0adc03a2', { v1: String(via), v2: String(hosts) })
     : b.state === 'lost'
-      ? 'The browser tab went away; the code is still recorded · press to connect again'
-      : 'No browser: only the code is recorded · press to connect'
+      ? t('streamC.560094df9e0997e8')
+      : t('streamC.2433325c377e5062')
 })
 
 const fileName = (path: string) => path.slice(path.lastIndexOf('/') + 1)
@@ -377,9 +391,9 @@ const frameName = computed(() => (live.value ? top.value?.name : undefined))
 const notPaused = computed(() =>
   props.session.status === 'exited'
     ? props.session.attached && props.session.detached
-      ? 'Detached from the program.'
-      : 'The program has ended.'
-    : 'Values show while it is paused.'
+      ? t('streamC.f0b3986f4f53b9bb')
+      : t('streamC.382d66ab8003cc96')
+    : t('streamC.805240eb7f8a5941')
 )
 
 const tones: Record<DebugSession['status'], 'green' | 'orange' | 'red' | 'faint'> = {
@@ -393,18 +407,20 @@ const tone = computed(() => tones[props.session.status])
 const stateLabel = computed(() => {
   const s = props.session
   return s.status === 'paused'
-    ? `Paused${s.reason ? ` on ${s.reason}` : ''}`
+    ? s.reason
+      ? t('streamC.4e9fcd27b044c57c', { v1: s.reason })
+      : t('streamC.e159b06187d369a0')
     : s.status === 'running'
-      ? 'Running'
+      ? t('streamC.f4ccae29e1bb0c20')
       : s.status === 'starting'
-        ? 'Starting…'
+        ? t('streamC.bbe5fc3b9ef39f99')
         : s.status === 'exited'
           ? s.detached && s.attached
-            ? 'Detached · The program runs on'
+            ? t('streamC.4fc04649a9497a39')
             : s.exitCode === undefined
-              ? 'Ended · Exit code unknown'
-              : `Ended with code ${s.exitCode}`
-          : `No connection to the node · as of ${s.seen ?? 'a while ago'}`
+              ? t('streamC.a35ec6a4c0b7f680')
+              : t('streamC.c0d03c6c706a16bc', { v1: String(s.exitCode) })
+          : t('streamC.24b289c6dcaf78b5', { v1: String(s.seen ?? t('streamC.ccf9d42ad6750fd2')) })
 })
 
 // Where runs are recorded the program mostly goes on, or has not started: groups that only fill
@@ -418,14 +434,34 @@ const buttons = computed(() => {
   const on = !locked.value && (s === 'paused' || s === 'running' || s === 'starting')
   return [
     s === 'running'
-      ? { action: 'pause', icon: 'pause', tooltip: 'Pause (F6)', disabled: locked.value }
-      : { action: 'continue', icon: 'play', tooltip: 'Continue (F5)', disabled: !can },
-    { action: 'step-over', icon: 'redo-dot', tooltip: 'Step over (F10)', disabled: !can },
-    { action: 'step-into', icon: 'arrow-down-to-dot', tooltip: 'Step into (F11)', disabled: !can },
+      ? {
+          action: 'pause',
+          icon: 'pause',
+          tooltip: t('streamC.3899d9bf569a5bed'),
+          disabled: locked.value,
+        }
+      : {
+          action: 'continue',
+          icon: 'play',
+          tooltip: t('streamC.fbb23744fc07b4a9'),
+          disabled: !can,
+        },
+    {
+      action: 'step-over',
+      icon: 'redo-dot',
+      tooltip: t('streamC.fa7df5e6e7b985d9'),
+      disabled: !can,
+    },
+    {
+      action: 'step-into',
+      icon: 'arrow-down-to-dot',
+      tooltip: t('streamC.fabd7ebbebab66b8'),
+      disabled: !can,
+    },
     {
       action: 'step-out',
       icon: 'arrow-up-from-dot',
-      tooltip: 'Step out (Shift+F11)',
+      tooltip: t('streamC.b7fc4f16b2465d09'),
       disabled: !can,
     },
     ...(props.reattachAvailable && (s === 'exited' || s === 'lost')
@@ -433,7 +469,7 @@ const buttons = computed(() => {
           {
             action: 'reattach',
             icon: 'plug',
-            tooltip: 'Attach to a running program',
+            tooltip: t('streamC.66133ae321df032b'),
             disabled: props.busy,
           },
         ]
@@ -442,10 +478,10 @@ const buttons = computed(() => {
       action: 'restart',
       icon: 'rotate-ccw',
       tooltip: props.restartAvailable
-        ? 'Restart: the same program from its first line'
+        ? t('streamC.68c3954004c42f92')
         : props.session.attached
-          ? 'Restart: not for a program the debugger attached to'
-          : 'Restart is not available on this node',
+          ? t('streamC.2622f7acff07e917')
+          : t('streamC.ae94325219e7dc49'),
       disabled: props.busy || !props.restartAvailable,
     },
     // A program the node did not start is never stopped from here: the debugger lets go of it.
@@ -453,10 +489,10 @@ const buttons = computed(() => {
       ? {
           action: 'stop',
           icon: 'unplug',
-          tooltip: 'Detach (Shift+F5): the program runs on',
+          tooltip: t('streamC.530f5fac5dfd000f'),
           disabled: !on,
         }
-      : { action: 'stop', icon: 'square', tooltip: 'Stop (Shift+F5)', disabled: !on },
+      : { action: 'stop', icon: 'square', tooltip: t('streamC.801be36befade292'), disabled: !on },
   ]
 })
 
@@ -491,6 +527,9 @@ const folderName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+.abele-debug-panel .nav-buttons-container {
+  flex-wrap: wrap;
 }
 .abele-debug-panel__program {
   display: flex;

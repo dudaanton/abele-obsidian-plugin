@@ -134,14 +134,23 @@ export class ObsidianExcalidrawVault implements ExcalidrawVault {
 
 /** One line for a person about one drawing's migration. */
 export function reportLine(report: FileReport): string {
-  if (report.status === 'failed') return `The drawing could not be migrated: ${report.reason}`
-  if (report.status === 'skipped') return `This drawing already has a canvas: ${report.target}`
+  if (report.status === 'failed')
+    return t('streamC.41ddd18106e858ef', { v1: String(report.reason) })
+  if (report.status === 'skipped')
+    return t('streamC.97bfa2c591c97ac0', { v1: String(report.target) })
   const lost = report.losses.map((l) => l.what.toLowerCase()).join(', ')
   const errors = report.references?.files.filter((file) => file.error) ?? []
   return (
-    `Made ${report.target}. ${report.references?.rewritten ?? 0} references rewritten.` +
-    (lost ? ` Not carried over: ${lost}.` : '') +
-    errors.map((file) => ` Reference update failed in ${file.path}: ${file.error}.`).join('')
+    t('streamC.1744cb89cb205385', {
+      v1: String(report.target),
+      v2: String(report.references?.rewritten ?? 0),
+    }) +
+    (lost ? t('streamC.809074bb701635a5', { v1: String(lost) }) : '') +
+    errors
+      .map((file) =>
+        t('streamC.efc54a5a5e5cbef7', { v1: String(file.path), v2: String(file.error) })
+      )
+      .join('')
   )
 }
 
@@ -192,7 +201,7 @@ export function registerExcalidrawMigration(plugin: Plugin): void {
       if (!(file instanceof TFile) || !isExcalidrawFile(app, file)) return
       menu.addItem((item) =>
         item
-          .setTitle('Migrate to Abele canvas')
+          .setTitle(t('streamC.9100203381f02cfe'))
           .setIcon('workflow')
           .onClick(() => void migrateDrawing(app, file))
       )

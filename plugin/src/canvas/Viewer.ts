@@ -1,3 +1,6 @@
+import { streamCUI } from '@/i18n/streamCLabels'
+
+import { t } from '@/i18n'
 /** DOM viewer with an optional editor input adapter; vault and rendering behavior comes through ports. */
 import { fitRect, panBy, toWorld, visibleRect, zoomAt, type Camera } from '../drawing/camera'
 import { guardSurface } from '../reader/ink/inkGuard'
@@ -134,9 +137,9 @@ export class CanvasViewer {
     const button = (label: string, text: string, action: () => void) => {
       const b = make('button', '', bar) as HTMLButtonElement
       b.type = 'button'
-      b.setAttribute('aria-label', label)
-      b.title = label
-      b.textContent = text
+      b.setAttribute('aria-label', streamCUI(label))
+      b.title = streamCUI(label)
+      b.textContent = streamCUI(text)
       this.listen(b, 'click', () => action())
       return b
     }
@@ -288,16 +291,16 @@ export class CanvasViewer {
     this.next.disabled = !this.steps.length || this.step === this.steps.length
     this.play.disabled = !this.steps.length
     this.counter.textContent =
-      this.step === null ? `${this.steps.length} steps` : `${this.step} / ${this.steps.length}`
+      this.step === null
+        ? t('streamC.3e28d21707fe8fcb', { v1: String(this.steps.length) })
+        : `${this.step} / ${this.steps.length}`
     this.narration.textContent = this.step === null ? '' : (this.steps[this.step - 1]?.say ?? '')
     this.status.textContent = this.error
     this.el.dataset.step = this.step === null ? 'all' : String(this.step)
     // What the canvas does under a finger, said for its mode: steps change only in a walkthrough.
     this.canvas.setAttribute(
       'aria-description',
-      this.step === null
-        ? 'Diagram; drag to pan, pinch or wheel to zoom'
-        : 'Diagram walkthrough; swipe or use the arrow keys to change step'
+      this.step === null ? t('streamC.d524c3e074a3f5d8') : t('streamC.7c317cbf78c47743')
     )
   }
   fit(animate = true): void {

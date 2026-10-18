@@ -1,23 +1,19 @@
 <template>
-  <ObsidianModal title="Review script execution" size="tall" @close="request.answer(false)">
+  <ObsidianModal :title="t('streamC.400b02e9b4d285f6')" size="tall" @close="request.answer(false)">
     <div class="abele-script-approval">
       <div class="abele-script-approval__review">
-        <p class="abele-script-approval__lead">
-          This script has full vault access. Approve only code you trust. This decision applies to
-          these exact bytes on this device only.
-        </p>
+        <p class="abele-script-approval__lead">{{ t('streamC.8e7ae99648a7f988') }}</p>
         <p v-if="request.recovery" class="abele-script-approval__lead">
-          This device no longer has a current identity for this script. Review it to establish a new
-          device-local approval. Other unreviewed scripts stay blocked.
+          {{ t('streamC.aedf4c6ad71685ff') }}
         </p>
         <!-- What is being approved, as a quiet list: which file, from where, and the exact
              bytes, the hash on one line with the whole of it under the pointer. -->
         <dl class="abele-script-approval__facts">
-          <dt>File</dt>
+          <dt>{{ t('streamC.50009ce1da4d15e1') }}</dt>
           <dd>{{ request.path }}</dd>
-          <dt>Connection</dt>
+          <dt>{{ t('streamC.639a40e82b9a96f0') }}</dt>
           <dd>{{ request.identity.binding.endpoint }}</dd>
-          <dt>Identity</dt>
+          <dt>{{ t('streamC.999f23fcd7bec707') }}</dt>
           <dd>{{ request.identity.fileId }}</dd>
           <dt>SHA-256</dt>
           <dd class="abele-script-approval__sha" :title="request.sha">
@@ -53,30 +49,34 @@
         <Button
           v-if="!request.reviewOnly"
           class="abele-script-approval__stop"
-          text="Stop"
+          :text="t('streamC.cae7d57bc067a514')"
           warning
-          tooltip="Reject and stop the agent"
+          :tooltip="t('streamC.7da41674b2e13d57')"
           :disabled="readOnly"
           @click="!readOnly && request.stop()"
         />
         <Button
-          :text="request.reviewOnly ? 'Approve' : 'Approve and run'"
+          :text="request.reviewOnly ? t('streamC.6007acbe30b2cd98') : t('streamC.354f979ed1b2f730')"
           :tooltip="
-            request.reviewOnly
-              ? 'Approve these exact bytes on this device without running'
-              : 'Approve these exact bytes on this device and run'
+            request.reviewOnly ? t('streamC.c41ac14d8fa8f654') : t('streamC.0ad0878743cc2d5a')
           "
           :accent="!readOnly"
           :disabled="readOnly"
           @click="!readOnly && request.answer(true)"
         />
-        <Button text="Cancel" tooltip="Leave this script blocked" @click="request.answer(false)" />
+        <Button
+          :text="t('kit.cancel')"
+          :tooltip="t('streamC.ff41b0cba98260e1')"
+          @click="request.answer(false)"
+        />
       </div>
     </template>
   </ObsidianModal>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 import ObsidianModal from './obsidian/Modal.vue'
 import Button from './obsidian/Button.vue'
 import Tabs from './obsidian/Tabs.vue'

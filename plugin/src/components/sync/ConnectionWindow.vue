@@ -11,7 +11,7 @@
       </div>
       <Progress
         v-if="progress"
-        :label="`${progress.completed} of ${progress.total}`"
+        :label="t('sync.window.progress', { completed: progress.completed, total: progress.total })"
         :value="progress.completed"
         :max="progress.total"
       />
@@ -21,14 +21,14 @@
       </p>
       <p v-if="failure" class="abele-sync-window__error mod-warning" role="alert">{{ failure }}</p>
 
-      <Section v-if="refused.length" title="Not sent">
+      <Section v-if="refused.length" :title="t('sync.window.notSent')">
         <Setting v-for="item in refused" :key="item.path" :name="item.path" :desc="item.reason" />
       </Section>
 
       <Section
         v-if="conflicts.length"
-        title="Conflict copies"
-        desc="Both versions are kept. Open the copy, take what you need, then delete it."
+        :title="t('sync.window.conflicts')"
+        :desc="t('sync.window.conflictsDesc')"
       >
         <EntryRow
           v-for="path in conflicts"
@@ -41,45 +41,45 @@
           }}<template #actions
             ><Icon
               icon="file-text"
-              tooltip="Open the conflict copy"
+              :tooltip="t('sync.window.openCopy')"
               @click.stop="emit('open', path)" /></template
         ></EntryRow>
       </Section>
 
-      <Section v-if="held.length || changes.length" title="Waiting for you">
+      <Section v-if="held.length || changes.length" :title="t('sync.window.waiting')">
         <HeldDeletesBlock v-if="held.length" :held="held" :port="port" />
         <StagedSettingsBlock v-if="changes.length" :changes="changes" :names="{}" :port="port" />
       </Section>
 
       <SelectiveSync />
 
-      <Setting
-        name="Trusted"
-        desc="Automatically installs incoming code and shares linked private files without asking on this device."
-      >
+      <Setting :name="t('sync.window.trusted')" :desc="t('sync.window.trustedDesc')">
         <Checkbox :is-enabled="!!row?.trusted" @toggle="toggleTrusted" />
       </Setting>
 
-      <Section v-if="events?.length" title="Recent">
+      <Section v-if="events?.length" :title="t('sync.window.recent')">
         <p class="abele-sync-window__progress">
-          Recent activity is kept here for this session. Open sync settings from the command palette
-          for diagnostics.
+          {{ t('sync.window.recentDesc') }}
         </p>
         <ConnectionEvents :events="events ?? []" />
       </Section>
     </div>
     <template #footer>
       <Button
-        text="Disconnect…"
+        :text="t('sync.window.disconnect')"
         warning
         class="abele-sync-window__disconnect"
-        tooltip="Stop syncing this connection; the files stay on this device"
+        :tooltip="t('sync.window.disconnectTip')"
         @click="emit('disconnect')"
       />
-      <Button text="Close" tooltip="Close this window" @click="emit('close')" />
       <Button
-        text="Share…"
-        tooltip="Give a folder or group to someone, or connect another device of yours"
+        :text="t('sync.window.close')"
+        :tooltip="t('sync.window.closeTip')"
+        @click="emit('close')"
+      />
+      <Button
+        :text="t('sync.window.share')"
+        :tooltip="t('sync.window.shareTip')"
         @click="emit('share')"
       />
     </template>
@@ -112,6 +112,10 @@ import { TokenSettingsPort } from '@/sync/tokenSettingsPort'
 import { historyConnection } from '@/sync/tokenHistory'
 import type { HeldDelete } from '@abele/sync-core'
 import type { ChangeItem } from '@abele/sync-protocol'
+import { useI18n } from '@/i18n/useI18n'
+import { settingsSyncText, settingsSyncWhen } from '@/i18n/settingsSync'
+
+const { t } = useI18n()
 
 const props = defineProps<{ ui: TokenUi; connectionId: string; error?: string }>()
 const emit = defineEmits<{
@@ -129,7 +133,7 @@ async function toggleTrusted(): Promise<void> {
     props.ui.setTrusted(props.connectionId, !row.value?.trusted)
     await props.ui.refreshReviews()
   } catch {
-    trustError.value = 'The action could not finish. Pending changes have been kept.'
+    trustError.value = t('sync.window.error')
   }
 }
 const liveActivity = computed(() => props.ui.activity.value[props.connectionId])
@@ -156,19 +160,30 @@ watch(liveActivity, (next) => {
   }, wait)
 })
 onBeforeUnmount(() => window.clearTimeout(redraw))
-const name = computed(() => (row.value ? connectionName(row.value).split(' · ')[0] : ''))
+const name = computed(() =>
+  row.value ? connectionName(row.value, settingsSyncText).split(' · ')[0] : ''
+)
 const host = computed(() => (row.value ? new URL(row.value.address).host : ''))
-const line = computed(() => (row.value ? connectionLine(row.value, activity.value) : ''))
+const line = computed(() =>
+  row.value ? connectionLine(row.value, activity.value, settingsSyncText, settingsSyncWhen) : ''
+)
 const tone = computed(() => (row.value ? connectionTone(row.value, activity.value) : 'faint'))
 const progress = computed(() => connectionProgress(activity.value))
 const counts = computed(() => {
   const one = activity.value
   if (one?.transfer) return ''
-  if (one?.pull) return `${one.pull.stage} · ${one.pull.completed} of ${one.pull.total}`
+  if (one?.pull)
+    return `${settingsSyncText(one.pull.stage)} · ${t('sync.window.progress', one.pull)}`
   const stage =
     one?.startup?.stage ??
-    (one?.inspection ? 'Checking the vault' : one?.comparison ? 'Comparing files' : 'Syncing')
-  return progress.value ? `${stage} · ${progress.value.completed} of ${progress.value.total}` : ''
+    (one?.inspection
+      ? t('settings.sync.presentation.54272d517782b52a')
+      : one?.comparison
+        ? t('settings.sync.presentation.6a534e2d9b68ac18')
+        : t('settings.sync.presentation.5c8b9e1ce0a2bc31'))
+  return progress.value
+    ? `${settingsSyncText(stage)} · ${t('sync.window.progress', progress.value)}`
+    : ''
 })
 const failure = computed(() => trustError.value || props.error || activity.value?.error || '')
 const refused = computed(() => activity.value?.refused ?? [])

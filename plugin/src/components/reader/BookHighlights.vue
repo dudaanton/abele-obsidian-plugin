@@ -12,21 +12,22 @@
         class="abele-book-highlights__filter"
         icon="list-filter"
         :active="show !== 'all'"
-        :tooltip="`Show: ${showOptions.find((o) => o.value === show)!.display.toLowerCase()}`"
+        :tooltip="
+          t('streamC.f3e190008b09cb31', {
+            v1: String(showOptions.find((o) => o.value === show)!.display.toLowerCase()),
+          })
+        "
         @click="openShowMenu"
       />
       <Icon
         class="abele-book-highlights__note"
         icon="file-text"
-        tooltip="Open the note these highlights are kept in"
+        :tooltip="t('streamC.928164be86a647a5')"
         @click="emit('open-note', noteClick ?? undefined)"
       />
     </div>
     <div class="abele-book-highlights__list">
-      <EmptyState
-        v-if="!highlights.length"
-        text="No highlights yet. Select words on the page and pick a colour."
-      />
+      <EmptyState v-if="!highlights.length" :text="t('streamC.52477c76cdf96aba')" />
       <!-- A highlight as it is in the book: its words marked in its colour, where it is under them. -->
       <EntryRow
         v-for="h in shown"
@@ -51,7 +52,7 @@
         <template v-if="h.discussion" #aside>
           <Icon
             icon="messages-square"
-            tooltip="Open the discussion about these words"
+            :tooltip="t('streamC.c6fec0f39d426672')"
             @click.stop="emit('discuss', h)"
           />
         </template>
@@ -64,6 +65,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 /**
  * A book's highlights, in the book's order, as its highlights note keeps them — discussions with
  * them, each with the way back into its chat, and a choice to see only one kind or the other.
@@ -89,9 +92,12 @@ const emit = defineEmits<{
 const show = ref('all')
 const noteClick = ref<MouseEvent | null>(null)
 const showOptions = [
-  { value: 'all', display: 'Highlights and discussions' },
-  { value: 'discussions', display: 'Discussions' },
-  { value: 'highlights', display: 'Highlights' },
+  { value: 'all', display: t('streamC.633165cecc5ccf5a') },
+  { value: 'discussions', display: t('streamC.60157cfcfe3f31c3') },
+  {
+    value: 'highlights',
+    display: t('settings.components.reader.BookNotesSettings.highlights.6e517828'),
+  },
 ]
 // The choice of what to show, as Obsidian's own menu with the current one ticked.
 const openShowMenu = (event: MouseEvent) => {

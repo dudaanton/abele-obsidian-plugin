@@ -1,3 +1,6 @@
+import { streamCUI } from '@/i18n/streamCLabels'
+
+import { t } from '@/i18n'
 import {
   EditableFileView,
   Menu,
@@ -114,7 +117,7 @@ export class CanvasView extends EditableFileView {
     return CANVAS_VIEW_TYPE
   }
   getDisplayText(): string {
-    return this.file?.basename ?? 'Diagram'
+    return this.file?.basename ?? t('streamC.913c5e96ccce08c1')
   }
   getIcon(): string {
     return 'workflow'
@@ -129,16 +132,12 @@ export class CanvasView extends EditableFileView {
     this.contentEl.addClass('abele-canvas-view')
     this.viewer = hostCanvasViewer(this.app, this.contentEl, () => this.file?.path ?? '')
     addFileChatAction(this)
-    this.addAction('panel-top', 'Open in Obsidian Canvas', () => {
+    this.addAction('panel-top', t('streamC.758a503bd4ae4622'), () => {
       void this.openNative()
     })
-    this.addAction('image-down', 'Export diagram picture', (e) => this.exportMenu(e))
-    this.addAction('rotate-ccw', 'Recover failed canvas change', (e) => void this.recoveryMenu(e))
-    this.addAction(
-      'image-plus',
-      'Attach to the chat as a picture',
-      () => void this.host.attach(null)
-    )
+    this.addAction('image-down', t('streamC.1f185222365c5152'), (e) => this.exportMenu(e))
+    this.addAction('rotate-ccw', t('streamC.0e3af6865285d64f'), (e) => void this.recoveryMenu(e))
+    this.addAction('image-plus', t('streamC.2622d0434f9aee70'), () => void this.host.attach(null))
     if (this.documentLease) {
       this.attachEditor()
       this.renderDocument(this.documentLease.document)
@@ -169,7 +168,7 @@ export class CanvasView extends EditableFileView {
       }
     } catch (error) {
       if (token === this.refreshToken && !this.closed && this.requestedFile === file) {
-        this.attachmentError = `Diagram could not be read: ${String(error)}`
+        this.attachmentError = t('streamC.40d65b6820096501', { v1: String(String(error)) })
         this.viewer?.status.setText(this.attachmentError)
       }
     }
@@ -207,7 +206,7 @@ export class CanvasView extends EditableFileView {
     for (const entry of paneEntries({
       find: () => this.find(),
       contents: () => this.contents(),
-      exportCanvas: () => this.exportMenu(this.headerEvent('Export diagram picture')),
+      exportCanvas: () => this.exportMenu(this.headerEvent(t('streamC.1f185222365c5152'))),
       copyEmbed: () => {
         const r = this.viewer?.visible()
         if (r)
@@ -246,7 +245,9 @@ export class CanvasView extends EditableFileView {
   }
   /** A click at one of the header's own glyphs, for a menu that opens under it. */
   private headerEvent(label: string): MouseEvent {
-    const r = this.containerEl.querySelector(`[aria-label="${label}"]`)?.getBoundingClientRect()
+    const r = this.containerEl
+      .querySelector(`[aria-label="${streamCUI(label)}"]`)
+      ?.getBoundingClientRect()
     return new MouseEvent('click', { clientX: r?.left ?? 0, clientY: r?.bottom ?? 0 })
   }
   /** Shows a found place: a card or frame picked and framed, or a step gone to. */
@@ -268,7 +269,7 @@ export class CanvasView extends EditableFileView {
       new CanvasPlaceModal(
         this.app,
         canvasContents(this.viewer.graph),
-        'Frames and steps of the canvas',
+        t('streamC.b9ea67f0bdf9f6e2'),
         (p) => this.show(p)
       ).open()
   }
@@ -280,7 +281,7 @@ export class CanvasView extends EditableFileView {
       if (file && this.file === file && epoch === this.refreshToken && !this.closed)
         await nativeCanvas(this.leaf, file)
     } catch (error) {
-      new Notice(`Native Canvas handoff did not complete: ${String(error)}`)
+      new Notice(t('streamC.c2f411c9402b31cf', { v1: String(String(error)) }))
     }
   }
   private releaseDocument(): void {
@@ -297,13 +298,11 @@ export class CanvasView extends EditableFileView {
     this.publicationReviewModal = null
     const lease = this.documentLease
     this.documentLease = null
-    if (lease?.document.recovery)
-      new Notice('Failed canvas change retained; reopen and use the recovery action')
+    if (lease?.document.recovery) new Notice(t('streamC.519ac997057ddcee'))
     else if (lease?.document.session.dirty) {
       const document = lease.document
       void written.then((ok) => {
-        if (!ok || document.session.dirty)
-          new Notice('Unsaved diagram work is retained in this running session')
+        if (!ok || document.session.dirty) new Notice(t('streamC.3eedba3d1ac1979f'))
       })
     }
     lease?.release()
@@ -322,15 +321,15 @@ export class CanvasView extends EditableFileView {
     // editor), so it is not called unsaved there. A leaf without an editor still says so.
     const status = document.session.publicationOutcome
       ? canvasPublicationStatus(document.session.publicationOutcome) +
-        (state.error ? ` Persisted source could not be read: ${state.error}` : '')
+        (state.error ? t('streamC.8a442af8e1d53f95', { v1: String(state.error) }) : '')
       : state.error
-        ? `Diagram could not be read: ${state.error}`
+        ? t('streamC.40d65b6820096501', { v1: String(state.error) })
         : state.conflict
-          ? 'Diagram changed outside this session; pending work is retained'
+          ? t('streamC.3eee7b6973c05abc')
           : state.dirty
             ? this.editor && !this.editor.writeFailing
-              ? 'Changes pending; saving automatically'
-              : 'Diagram has pending session work; it has not been saved'
+              ? t('streamC.3c7ea51de90ff62b')
+              : t('streamC.98afd8dce818ab77')
             : ''
     if (status) this.viewer.status.setText(status)
     // A settled state clears its own message, never someone else's (walkthrough steps).
@@ -348,7 +347,7 @@ export class CanvasView extends EditableFileView {
       try {
         byId = stepsOf(viewer.graph).findIndex((s) => s.id === state.stepId) + 1
       } catch (error) {
-        viewer.status.setText(`Walkthrough steps unavailable: ${String(error)}`)
+        viewer.status.setText(t('streamC.bbbf0ff52ccc9b59', { v1: String(String(error)) }))
       }
     }
     const playback = byId || typeof state.step === 'number' || state.play === true
@@ -403,7 +402,7 @@ export class CanvasView extends EditableFileView {
     const document = this.documentLease?.document,
       file = this.requestedFile
     if (!document || !file || this.closed) {
-      new Notice('No failed canvas change to recover')
+      new Notice(t('streamC.a335fe01ae6991c6'))
       return
     }
     const store = new ObsidianCanvasStore(this.app),
@@ -440,14 +439,14 @@ export class CanvasView extends EditableFileView {
       const snapshot = await store.snapshotFile(file),
         recovery = snapshot.state?.recovery
       if (!recovery) {
-        new Notice('No failed agent proposal; human work has not been changed')
+        new Notice(t('streamC.3ed02144e970a3b3'))
         return
       }
       const menu = canvasMenu()
       const labels = {
-        retry: 'Retry failed change',
-        reapply: 'Reapply failed change to current diagram',
-        discard: 'Discard failed change',
+        retry: t('streamC.4e21a870228f5e81'),
+        reapply: t('streamC.5da19c7e453562f5'),
+        discard: t('streamC.ebb17e3a66bcb72e'),
       }
       for (const action of recovery.actions)
         menu.addItem((item) =>
@@ -461,43 +460,43 @@ export class CanvasView extends EditableFileView {
             try {
               await store.recoverFile(file, snapshot.revision, recovery.proposal, action)
             } catch (error) {
-              new Notice(`Canvas recovery did not complete: ${String(error)}`)
+              new Notice(t('streamC.0ddb44c5ceb3f06d', { v1: String(String(error)) }))
             }
           })
         )
       if (!this.closed && this.requestedFile === file && this.documentLease?.document === document)
         menu.showAtMouseEvent(e)
     } catch (error) {
-      new Notice(`Canvas recovery unavailable: ${String(error)}`)
+      new Notice(t('streamC.06314626bf44a8fa', { v1: String(String(error)) }))
     }
   }
   private exportMenu(e: MouseEvent): void {
     const menu = canvasMenu()
     if (this.exportController)
       menu.addItem((item) =>
-        item.setTitle('Cancel whole-canvas export').onClick(() => this.exportController?.abort())
+        item.setTitle(t('streamC.0ce2f60a341afb70')).onClick(() => this.exportController?.abort())
       )
     for (const format of ['png', 'svg', 'pdf'] as const)
       menu.addItem((item) =>
         item
-          .setTitle(`Export whole canvas as ${format.toUpperCase()}`)
+          .setTitle(t('streamC.286c5a597c60d052', { v1: String(format.toUpperCase()) }))
           .setDisabled(!!this.exportController)
           .onClick(() => void this.exportWhole(format))
       )
     if (this.lastExport)
       menu.addItem((item) =>
-        item.setTitle('Insert exported file into note…').onClick(() => void this.insertExport())
+        item.setTitle(t('streamC.085fde3a213d5a00')).onClick(() => void this.insertExport())
       )
     menu.addSeparator()
     for (const format of ['png', 'svg'] as const) {
       menu.addItem((item) =>
         item
-          .setTitle(`Export current view as ${format.toUpperCase()}`)
+          .setTitle(t('streamC.2c1ee063bfd59fe3', { v1: String(format.toUpperCase()) }))
           .onClick(() => void this.exportPicture(format, false))
       )
       menu.addItem((item) =>
         item
-          .setTitle(`Export each step as ${format.toUpperCase()}`)
+          .setTitle(t('streamC.d79213e9465b796a', { v1: String(format.toUpperCase()) }))
           .onClick(() => void this.exportPicture(format, true))
       )
     }
@@ -525,14 +524,24 @@ export class CanvasView extends EditableFileView {
       if (!this.closed && this.file === file && epoch === this.refreshToken)
         this.lastExport = result.file
       new Notice(
-        `Saved whole canvas: ${result.file.path}${result.warnings.length ? ` (${result.warnings.length} warnings; ${result.warnings.map((w) => w.message).join('; ')})` : ''}`
+        t('streamC.d6fe03169ac9b40f', {
+          v1: String(result.file.path),
+          v2: String(
+            result.warnings.length
+              ? t('streamC.d3490aad36ab4d03', {
+                  v1: String(result.warnings.length),
+                  v2: String(result.warnings.map((w) => w.message).join('; ')),
+                })
+              : ''
+          ),
+        })
       )
       return result.file
     } catch (error) {
       new Notice(
         controller.signal.aborted
-          ? 'Whole-canvas export cancelled'
-          : `Whole-canvas export failed: ${String(error)}`
+          ? t('streamC.bd3350eadcf46b8c')
+          : t('streamC.267b5d8ea08f1971', { v1: String(String(error)) })
       )
       return null
     } finally {
@@ -556,9 +565,9 @@ export class CanvasView extends EditableFileView {
         note,
         (text) => `${text}${text.endsWith('\n') ? '\n' : '\n\n'}!${link}\n`
       )
-      new Notice('Export inserted at the end of the note')
+      new Notice(t('streamC.d918bc0039439865'))
     } catch (error) {
-      new Notice(`Export could not be inserted: ${String(error)}`)
+      new Notice(t('streamC.13eb66cbbcf9f0a1', { v1: String(String(error)) }))
     }
   }
   /** SVG is a self-contained image document, not a second editable canvas format. */
@@ -569,7 +578,7 @@ export class CanvasView extends EditableFileView {
     const graph = viewer.graph,
       steps = each ? stepsOf(graph) : []
     if (each && !steps.length) {
-      new Notice('This diagram has no walkthrough steps')
+      new Notice(t('streamC.eabaeaae389f6614'))
       return []
     }
     const saved: TFile[] = []
@@ -604,9 +613,11 @@ export class CanvasView extends EditableFileView {
           )
         }
       }
-      new Notice(`Saved ${saved.length} diagram picture${saved.length === 1 ? '' : 's'}`)
+      new Notice(t('streamC.savedPictures', { count: saved.length }))
     } catch (error) {
-      new Notice(`Diagram export stopped after ${saved.length} pictures: ${String(error)}`)
+      new Notice(
+        t('streamC.11c2bbca806af05e', { v1: String(saved.length), v2: String(String(error)) })
+      )
     }
     return saved
   }

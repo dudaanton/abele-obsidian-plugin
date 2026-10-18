@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 // Where a note about a recorded run goes: a folder of the vault, or any folder of this computer
 // named by its absolute path. The setting travels to the person's other devices, where that path
 // may not exist; there the note is refused with the reason rather than written somewhere else.
@@ -37,6 +38,28 @@ interface DesktopAdapter {
 
 export class NotesFolderUnavailable extends Error {}
 
+type FolderFailure = { kind: 'unsupported' | 'missing'; path: string }
+const folderFailures = new WeakMap<object, FolderFailure>()
+
+function unavailable(kind: FolderFailure['kind'], path: string): NotesFolderUnavailable {
+  const error = new NotesFolderUnavailable(
+    kind === 'unsupported'
+      ? `The folder for notes about runs, ${path}, is outside the vault, and this device cannot write there. Choose a vault folder in Settings → Nodes.`
+      : `The folder for notes about runs, ${path}, is not on this device. Choose one in Settings → Nodes.`
+  )
+  folderFailures.set(error, { kind, path })
+  return error
+}
+
+/** UI projection; callers still receive the original exception without extra serialized fields. */
+export function notesFolderFailureText(error: unknown): string | undefined {
+  const failure = error && typeof error === 'object' ? folderFailures.get(error) : undefined
+  if (!failure) return undefined
+  return failure.kind === 'unsupported'
+    ? t('streamC.c54aefb5a321afff', { v1: failure.path })
+    : t('streamC.b6bb5feb524bf16c', { v1: failure.path })
+}
+
 /**
  * Writes the note under the first free name (`name.md`, `name 2.md`, …) and says where. A note
  * already there is never overwritten.
@@ -59,15 +82,9 @@ export async function saveRunNote(
     return { path, outside: false }
   }
   const fs = adapter.fsPromises
-  if (!fs)
-    throw new NotesFolderUnavailable(
-      `The folder for notes about runs, ${folder.path}, is outside the vault, and this device cannot write there. Choose a vault folder in Settings → Nodes.`
-    )
+  if (!fs) throw unavailable('unsupported', folder.path)
   const found = await fs.stat(folder.path).catch((): undefined => undefined)
-  if (!found?.isDirectory())
-    throw new NotesFolderUnavailable(
-      `The folder for notes about runs, ${folder.path}, is not on this device. Choose one in Settings → Nodes.`
-    )
+  if (!found?.isDirectory()) throw unavailable('missing', folder.path)
   const sep = folder.path.includes('\\') && !folder.path.includes('/') ? '\\' : '/'
   const base = `${folder.path}${folder.path.endsWith(sep) ? '' : sep}${name}`
   for (let i = 1; ; i++) {
@@ -98,7 +115,7 @@ export async function chooseOutsideFolder(): Promise<string | undefined> {
       | undefined
     if (!remote) return undefined
     const r = await remote.dialog.showOpenDialog({
-      title: 'Folder for notes about recorded runs',
+      title: t('settings.nodes.traceFolder'),
       properties: ['openDirectory', 'createDirectory'],
     })
     return r.canceled ? undefined : r.filePaths[0]

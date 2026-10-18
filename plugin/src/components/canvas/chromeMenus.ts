@@ -1,3 +1,5 @@
+import { streamCLabel } from '@/i18n/streamCLabels'
+import { t } from '@/i18n'
 import { canvasMenu } from '@/canvas/menu'
 /**
  * The canvas's menus, each opened at the button that was pressed: the colour, shape, line and
@@ -41,14 +43,16 @@ export function showAt(menu: Menu, e: MouseEvent): void {
 
 /** Something the menu offers that the prototype does not do yet: it says so and does nothing. */
 const later = (title: string) => (): void =>
-  void new Notice(`${title.replace(/…$/, '')}: not in this prototype yet`)
+  void new Notice(t('streamC.2cc3e53edd691439', { v1: String(title.replace(/…$/, '')) }))
 
 export function colourMenu(e: MouseEvent, c: Controls, p: PickedView): void {
   const menu = canvasMenu()
   for (const v of COLOURS)
     menu.addItem((item) =>
       item
-        .setTitle(v ? COLOUR_NAMES[v][0].toUpperCase() + COLOUR_NAMES[v].slice(1) : 'No colour')
+        .setTitle(
+          v ? COLOUR_NAMES[v][0].toUpperCase() + COLOUR_NAMES[v].slice(1) : t('kit.noColour')
+        )
         .setIcon('circle')
         .setChecked(p.colour === v)
         .onClick(() => applyColour(v, c, p))
@@ -87,9 +91,9 @@ export function shapeMenu(e: MouseEvent, c: Controls, p: PickedView): void {
 export function routeMenu(e: MouseEvent, c: Controls): void {
   const menu = canvasMenu()
   for (const [v, title] of [
-    ['direct', 'Straight'],
-    ['square', 'Elbow'],
-    ['bezier', 'Curved'],
+    ['direct', t('streamC.dc81306b118237b3')],
+    ['square', t('streamC.45bd315f03db1ca0')],
+    ['bezier', t('streamC.c6d7ba0973c76108')],
   ])
     menu.addItem((item) =>
       item
@@ -106,9 +110,9 @@ export function routeMenu(e: MouseEvent, c: Controls): void {
 export function endsMenu(e: MouseEvent, c: Controls): void {
   const menu = canvasMenu()
   for (const [from, to, title, icon] of [
-    ['none', 'arrow', 'Arrow at the end', 'move-right'],
-    ['arrow', 'arrow', 'Arrows at both ends', 'move-horizontal'],
-    ['none', 'none', 'No arrows', 'minus'],
+    ['none', 'arrow', t('streamC.0fdc8654a8591c28'), 'move-right'],
+    ['arrow', 'arrow', t('streamC.0405761e7bee47ab'), 'move-horizontal'],
+    ['none', 'none', t('streamC.c3fd1e1d6aed3a8e'), 'minus'],
   ])
     menu.addItem((item) =>
       item
@@ -154,72 +158,73 @@ export function moreEntries(c: Controls, p: PickedView, host?: CanvasHostActions
     host && p.rect ? () => run(host, partRegion(p.rect)) : later(title)
   const agent: Entry[] = [
     entry(
-      'Attach to the chat as a picture',
+      t('streamC.2622d0434f9aee70'),
       'paperclip',
-      outside('Attach to the chat as a picture', (h, region) => h.attach(region))
+      outside(t('streamC.2622d0434f9aee70'), (h, region) => h.attach(region))
     ),
     entry(
-      'Ask the agent about this',
+      t('streamC.8468e3f2b43168ab'),
       'message-circle-question',
-      outside('Ask the agent about this', (h, region) => h.ask(region, p.ids, 'ask'))
+      outside(t('streamC.8468e3f2b43168ab'), (h, region) => h.ask(region, p.ids, 'ask'))
     ),
   ]
   if (lines)
     return [
-      ...(p.one ? [entry('Edit label', 'text-cursor-input', () => c.editLabel(p.ids[0]))] : []),
-      entry('Bring to front', 'bring-to-front', () => c.act('front')),
-      entry('Send to back', 'send-to-back', () => c.act('back')),
+      ...(p.one
+        ? [entry(t('streamC.6756cc16dcfbe296'), 'text-cursor-input', () => c.editLabel(p.ids[0]))]
+        : []),
+      entry(t('streamC.520cdb7e46095a83'), 'bring-to-front', () => c.act('front')),
+      entry(t('streamC.e3daa79eaf6975f8'), 'send-to-back', () => c.act('back')),
       '-',
-      entry('Delete', 'trash-2', remove, true),
+      entry(t('kit.delete'), 'trash-2', remove, true),
     ]
   if (frame)
     return [
-      entry('Duplicate with what is inside', 'copy-plus', () => c.act('duplicate')),
-      entry('Copy', 'copy', () => c.act('copy')),
+      entry(t('streamC.eb9c27996c5d854d'), 'copy-plus', () => c.act('duplicate')),
+      entry(t('streamC.e21f935f11d7e966'), 'copy', () => c.act('copy')),
       '-',
       ...agent,
       '-',
       entry(
-        'Export frame…',
+        t('streamC.85ba11aa00473464'),
         'image-down',
-        outside('Export frame', (h, region) => h.exportPart(region, p.node?.label || 'frame'))
+        outside(t('streamC.2300e13ca595077b'), (h, region) =>
+          h.exportPart(region, p.node?.label || 'frame')
+        )
       ),
       entry(
-        'Copy embed of this frame',
+        t('streamC.08e56c14a098f63c'),
         'clipboard-copy',
-        host ? () => host.copyEmbed({ node: p.ids[0] }) : later('Copy embed of this frame')
+        host ? () => host.copyEmbed({ node: p.ids[0] }) : later(t('streamC.08e56c14a098f63c'))
       ),
       '-',
-      entry(
-        'Delete frame and what is inside',
-        'trash-2',
-        () => c.act('delete-with-contents'),
-        true
-      ),
+      entry(t('streamC.0962ea885f061eb7'), 'trash-2', () => c.act('delete-with-contents'), true),
     ]
   const out: Entry[] = []
   if (strokes)
     out.push(
       entry(
-        'Read the handwriting',
+        t('streamC.ca5d587094939bbe'),
         'scan-text',
-        outside('Read the handwriting', (h, region) => h.ask(region, p.ids, 'transcribe'))
+        outside(t('streamC.ca5d587094939bbe'), (h, region) => h.ask(region, p.ids, 'transcribe'))
       )
     )
   else
     out.push(
-      entry('Duplicate', 'copy-plus', () => c.act('duplicate')),
-      entry('Copy', 'copy', () => c.act('copy')),
+      entry(t('streamC.02cdaabfca805d6a'), 'copy-plus', () => c.act('duplicate')),
+      entry(t('streamC.e21f935f11d7e966'), 'copy', () => c.act('copy')),
       '-',
-      entry('Bring to front', 'bring-to-front', () => c.act('front')),
-      entry('Send to back', 'send-to-back', () => c.act('back'))
+      entry(t('streamC.520cdb7e46095a83'), 'bring-to-front', () => c.act('front')),
+      entry(t('streamC.e3daa79eaf6975f8'), 'send-to-back', () => c.act('back'))
     )
   // A card pinned in place is picked, but stays where it was put until it is let go.
   if (p.one && card(p.kind)) {
     const pinned = p.node?.abele?.pinned === true
     out.push(
-      entry(pinned ? 'Unpin' : 'Pin in place', pinned ? 'pin-off' : 'pin', () =>
-        c.setPinned(p.ids[0], !pinned)
+      entry(
+        pinned ? t('streamC.ee3c716130546a45') : t('streamC.a4fbdeab16123f9e'),
+        pinned ? 'pin-off' : 'pin',
+        () => c.setPinned(p.ids[0], !pinned)
       )
     )
   }
@@ -227,7 +232,7 @@ export function moreEntries(c: Controls, p: PickedView, host?: CanvasHostActions
   if (note && host)
     out.push(
       '-',
-      entry('Show a part of the note…', 'heading', async () => {
+      entry(t('streamC.d0b8584431f3a0bd'), 'heading', async () => {
         const part = await host.pickPart(note)
         if (part !== null) await c.setSubpath(p.ids[0], part)
       })
@@ -236,7 +241,7 @@ export function moreEntries(c: Controls, p: PickedView, host?: CanvasHostActions
   if (note && p.node) {
     const shown = panelsShown(p.node, c.notePanels())
     out.push({
-      title: 'Show header and footer',
+      title: t('streamC.4dc703cdd6332d19'),
       icon: 'panel-bottom',
       run: () => c.setPanels(p.ids[0], !shown),
       checked: shown,
@@ -245,42 +250,42 @@ export function moreEntries(c: Controls, p: PickedView, host?: CanvasHostActions
   if (p.one && p.kind === 'text')
     out.push(
       '-',
-      entry('Turn into a note', 'file-plus-2', () => c.act('turn-into-note'))
+      entry(t('streamC.9dd6dca01d41eb19'), 'file-plus-2', () => c.act('turn-into-note'))
     )
   out.push('-', ...agent, '-')
   out.push(
     entry(
-      'Export the selection…',
+      t('streamC.27d52c2092812848'),
       'image-down',
-      outside('Export the selection', (h, region) => h.exportPart(region, 'selection'))
+      outside(t('streamC.541a81f2c443195c'), (h, region) => h.exportPart(region, 'selection'))
     ),
     entry(
-      'Copy embed of the selection',
+      t('streamC.5245e0f78016ee93'),
       'clipboard-copy',
-      outside('Copy embed of the selection', (h, region) => h.copyEmbed({ region }))
+      outside(t('streamC.5245e0f78016ee93'), (h, region) => h.copyEmbed({ region }))
     ),
     '-'
   )
   // A note or a web page on the canvas only stands there: taking it off leaves the file alone.
   if (p.one && (p.kind === 'file' || p.kind === 'link')) {
-    out.push(entry('Remove from canvas', 'square-x', remove, p.kind === 'link'))
+    out.push(entry(t('streamC.3e4656c48e2a2332'), 'square-x', remove, p.kind === 'link'))
     const file = p.node?.file
     if (p.kind === 'file')
       out.push(
         entry(
-          'Delete the note…',
+          t('streamC.1927802a36b4bc71'),
           'trash-2',
           host && file
             ? async () => {
                 if (await host.trashNote(file)) remove()
               }
-            : later('Delete the note'),
+            : later(t('streamC.d944888c54407d3f')),
           true
         )
       )
   } else if ([...kinds].some(card) && [...kinds].some((k) => k === 'file'))
-    out.push(entry('Remove from canvas', 'trash-2', remove, true))
-  else out.push(entry('Delete', 'trash-2', remove, true))
+    out.push(entry(t('streamC.3e4656c48e2a2332'), 'trash-2', remove, true))
+  else out.push(entry(t('kit.delete'), 'trash-2', remove, true))
   return out
 }
 /**
@@ -304,7 +309,7 @@ export async function partMenu(
   if (!adding)
     menu.addItem((item) =>
       item
-        .setTitle('The whole note')
+        .setTitle(t('streamC.c856e661b969b9ab'))
         .setIcon('file-text')
         .setChecked(!current)
         .onClick(() => run(''))
@@ -320,12 +325,12 @@ export async function partMenu(
         .onClick(() => run(`#${h.heading}`))
     )
   if (!headings.length)
-    menu.addItem((item) => item.setTitle('This note has no headings').setDisabled(true))
+    menu.addItem((item) => item.setTitle(t('streamC.6b7d02a03f897892')).setDisabled(true))
   else if (!adding) {
     menu.addSeparator()
     menu.addItem((item) =>
       item
-        .setTitle('Add a part beside it…')
+        .setTitle(t('streamC.0a1357518c2ebb29'))
         .setIcon('copy-plus')
         .onClick(() => void partMenu({ currentTarget: button }, c, p, true))
     )
@@ -376,10 +381,14 @@ export function dropMenu(c: Controls): void {
           void c.dropAdd(kind)
         })
     )
-  add('Card', 'sticky-note', 'card')
-  add('Note or file', 'file-text', 'note')
+  add(t('streamC.be3702e3f1af559a'), 'sticky-note', 'card')
+  add(t('streamC.6d1df671bca39f2c'), 'file-text', 'note')
   const shape = c.value('shape') || 'rectangle'
-  add(`Shape: ${shape.replace(/-/g, ' ')}`, SHAPE_ICONS[shape] ?? 'square', 'shape')
+  add(
+    t('streamC.e45def34712fa10c', { v1: streamCLabel(shape.replace(/-/g, ' ')) }),
+    SHAPE_ICONS[shape] ?? 'square',
+    'shape'
+  )
   menu.showAtPosition({ x: drop.screen.x, y: drop.screen.y })
 }
 
@@ -387,13 +396,13 @@ export function saveMenu(e: MouseEvent, c: Controls): void {
   const menu = canvasMenu()
   menu.addItem((i) =>
     i
-      .setTitle('Retry')
+      .setTitle(t('streamC.942087cc2d41e013'))
       .setIcon('refresh-cw')
       .onClick(() => c.press('Retry save'))
   )
   menu.addItem((i) =>
     i
-      .setTitle('Discard the draft…')
+      .setTitle(t('streamC.ced2119ede415de6'))
       .setIcon('trash-2')
       .setWarning(true)
       .onClick(() => c.press('Discard local draft'))
@@ -419,15 +428,15 @@ export function paneEntries(
   tablet = Platform.isTablet
 ): { title: string; icon: string; run: () => unknown; checked?: boolean }[] {
   return [
-    { title: 'Find on the canvas', icon: 'search', run: handlers.find },
-    { title: 'Show contents', icon: 'list', run: handlers.contents },
-    { title: 'Export…', icon: 'image-down', run: handlers.exportCanvas },
-    { title: 'Copy embed of what is shown', icon: 'clipboard-copy', run: handlers.copyEmbed },
-    { title: 'Open in Obsidian Canvas', icon: 'layout-dashboard', run: handlers.openNative },
+    { title: t('streamC.c884c0baeb3d433c'), icon: 'search', run: handlers.find },
+    { title: t('streamC.f2f3ecf5f5992e7b'), icon: 'list', run: handlers.contents },
+    { title: t('streamC.4a4c59c5208e8a7d'), icon: 'image-down', run: handlers.exportCanvas },
+    { title: t('streamC.1b815249fa4a87df'), icon: 'clipboard-copy', run: handlers.copyEmbed },
+    { title: t('streamC.758a503bd4ae4622'), icon: 'layout-dashboard', run: handlers.openNative },
     ...(handlers.notePanels
       ? [
           {
-            title: 'Notes show header and footer',
+            title: t('streamC.dcf9f5e8ec791fb7'),
             icon: 'panel-bottom',
             run: handlers.notePanels.toggle,
             checked: handlers.notePanels.on,
@@ -438,7 +447,7 @@ export function paneEntries(
     ...(handlers.fingerDraws && tablet
       ? [
           {
-            title: 'Draw with a finger',
+            title: t('streamC.417306cf41cba485'),
             icon: 'pointer',
             run: handlers.fingerDraws.toggle,
             checked: handlers.fingerDraws.on,

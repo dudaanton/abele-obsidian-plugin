@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * A drawing in a tab of its own: the bar over it, the surface under it, and the file behind it.
  *
@@ -65,7 +66,7 @@ export class DrawingView extends TextFileView {
   }
 
   getDisplayText(): string {
-    return this.file?.basename ?? 'Drawing'
+    return this.file?.basename ?? t('streamC.39de4731eedc9da7')
   }
 
   canAcceptExtension(extension: string): boolean {
@@ -93,7 +94,7 @@ export class DrawingView extends TextFileView {
     )
     // The drawing to the chat in front, as a picture, from the tab's header.
     if (AbeleConfig.getInstance().ai.enabled)
-      this.addAction('paperclip', 'Attach to the chat as a picture', () => {
+      this.addAction('paperclip', t('streamC.2622d0434f9aee70'), () => {
         const box = this.session?.pick.box()
         void this.attachToChat(box ? withMargin(box) : null)
       })
@@ -185,7 +186,7 @@ export class DrawingView extends TextFileView {
     if (file && session) {
       menu.addItem((item) =>
         item
-          .setTitle('Copy embed of what shows')
+          .setTitle(t('streamC.ad81ff266693f689'))
           .setIcon('clipboard-copy')
           .onClick(() => {
             const { width, height } = session.surface
@@ -194,26 +195,26 @@ export class DrawingView extends TextFileView {
       )
       menu.addItem((item) =>
         item
-          .setTitle('Add a note to the drawing')
+          .setTitle(t('streamC.c5fc4b896c70bca9'))
           .setIcon('sticky-note')
           .onClick(async () => {
-            const note = await pickNote(this.app, { placeholder: 'A note to show on the drawing…' })
+            const note = await pickNote(this.app, { placeholder: t('streamC.980edb5aac3e769c') })
             if (note) this.session?.addNote(note.path)
           })
       )
       // What is picked, when something is; else the whole drawing.
       const box = session.pick.box()
       const area = box ? withMargin(box) : null
-      const what = area ? 'what is picked' : 'the drawing'
+      const what = area ? t('streamC.ebc42458d8f8d165') : t('streamC.80502948e357ef9b')
       menu.addItem((item) =>
         item
-          .setTitle(`Export ${what} as PNG`)
+          .setTitle(t('streamC.f53b4d84714bf719', { v1: String(what) }))
           .setIcon('image-down')
           .onClick(() => void this.exportPng(area))
       )
       menu.addItem((item) =>
         item
-          .setTitle(`Copy ${what} as a picture`)
+          .setTitle(t('streamC.d746ae6fc2622a21', { v1: String(what) }))
           .setIcon('copy')
           .onClick(() => void this.copyPicture(area))
       )
@@ -221,19 +222,19 @@ export class DrawingView extends TextFileView {
         const link = `[[${file.path}]]`
         menu.addItem((item) =>
           item
-            .setTitle(`Attach ${what} to the chat as a picture`)
+            .setTitle(t('streamC.39e2b28e77d9d21f', { v1: String(what) }))
             .setIcon('paperclip')
             .onClick(() => void this.attachToChat(area))
         )
         menu.addItem((item) =>
           item
-            .setTitle(`Ask the agent about ${what}`)
+            .setTitle(t('streamC.0a8899be19cdf1fb', { v1: String(what) }))
             .setIcon('message-circle-question')
             .onClick(() => void askAboutDrawing(file, link, area, 'ask'))
         )
         menu.addItem((item) =>
           item
-            .setTitle(`Transcribe the handwriting in ${what}`)
+            .setTitle(t('streamC.9608f9746d26bb37', { v1: String(what) }))
             .setIcon('text-cursor-input')
             .onClick(() => void askAboutDrawing(file, link, area, 'transcribe'))
         )
@@ -255,10 +256,10 @@ export class DrawingView extends TextFileView {
       for (let n = 2; this.app.vault.getAbstractFileByPath(path); n++)
         path = `${dir}${file.basename} ${n}.png`
       const png = await this.app.vault.createBinary(path, await blob.arrayBuffer())
-      new Notice(`Saved as ${png.path}`)
+      new Notice(t('streamC.929a747e8b44fb91', { v1: String(png.path) }))
       return png
     } catch (e) {
-      new Notice(`The picture could not be saved: ${String(e)}`)
+      new Notice(t('streamC.6b9973d3c4172e3c', { v1: String(String(e)) }))
       return null
     }
   }
@@ -280,9 +281,9 @@ export class DrawingView extends TextFileView {
     try {
       const blob = await drawingPng(this.contentEl.ownerDocument, session.items.items, area)
       await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
-      new Notice('Copied as a picture')
+      new Notice(t('streamC.eed0a4efb12bfd6c'))
     } catch (e) {
-      new Notice(`The picture could not be copied: ${String(e)}`)
+      new Notice(t('streamC.8ea2344415d12bb5', { v1: String(String(e)) }))
     }
   }
 }

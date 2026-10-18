@@ -162,12 +162,12 @@ export class ScriptService {
     const config = AbeleConfig.getInstance()
     const folder = config.ai.scriptsFolder
     if (!folder) {
-      new Notice('Scripts folder is not configured')
+      new Notice(t('streamC.ae25e33a7e3fec9a'))
       return
     }
 
     const { app } = GlobalStore.getInstance()
-    const name = await promptDialog({ title: 'New script' })
+    const name = await promptDialog({ title: t('streamC.4cf2acafe5cc5191') })
 
     if (!name) return
 
@@ -179,7 +179,7 @@ export class ScriptService {
     }
 
     if (app.vault.getAbstractFileByPath(path)) {
-      new Notice(`File already exists: ${path}`)
+      new Notice(t('streamC.2e9b8309ccb5c57a', { v1: String(path) }))
       return
     }
 

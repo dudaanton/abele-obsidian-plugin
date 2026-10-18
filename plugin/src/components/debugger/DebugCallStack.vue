@@ -12,7 +12,7 @@
       <TreeItem
         v-else-if="row.kind === 'internals'"
         class="abele-debug-stack__internals abele-debug-panel__internals"
-        text="Node internals"
+        :text="t('streamC.a5b9334bc062675b')"
         :flair="String(row.frames.length)"
         collapsible
         :collapsed="!opened.has(row.at)"
@@ -56,6 +56,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 import { computed, reactive } from 'vue'
 import TreeItem from '../obsidian/TreeItem.vue'
 import type { DebugFrame } from './types'

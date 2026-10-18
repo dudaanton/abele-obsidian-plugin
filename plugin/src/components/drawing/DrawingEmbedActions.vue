@@ -16,6 +16,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 import { computed } from 'vue'
 import Icon from '../obsidian/Icon.vue'
 
@@ -45,14 +47,14 @@ type Name = 'adjust' | 'open' | 'go' | 'whole' | 'cancel' | 'keep'
 const actions = computed<{ cls: Name; icon: string; tooltip: string }[]>(() =>
   props.adjusting
     ? [
-        { cls: 'whole', icon: 'maximize', tooltip: 'Show the whole drawing' },
-        { cls: 'cancel', icon: 'x', tooltip: 'Leave the part as it was' },
-        { cls: 'keep', icon: 'check', tooltip: 'Keep this part' },
+        { cls: 'whole', icon: 'maximize', tooltip: t('streamC.b7d4ff614fbde816') },
+        { cls: 'cancel', icon: 'x', tooltip: t('streamC.3c25f9961925260d') },
+        { cls: 'keep', icon: 'check', tooltip: t('streamC.f01f7534716f65dc') },
       ]
     : [
-        { cls: 'adjust', icon: 'scan', tooltip: 'Change the part of the drawing shown here' },
-        { cls: 'open', icon: 'pen-line', tooltip: 'Open the drawing here to draw on' },
-        { cls: 'go', icon: 'arrow-up-right', tooltip: 'Open the drawing' },
+        { cls: 'adjust', icon: 'scan', tooltip: t('streamC.b0c1506a8d1c7cbc') },
+        { cls: 'open', icon: 'pen-line', tooltip: t('streamC.4135581a73854a6c') },
+        { cls: 'go', icon: 'arrow-up-right', tooltip: t('streamC.2ae0db4c29318e7a') },
       ]
 )
 

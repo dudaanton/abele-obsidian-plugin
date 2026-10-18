@@ -6,7 +6,7 @@
       v-if="!model.readOnly"
       class="abele-word-page__ribbon"
       role="toolbar"
-      aria-label="Format the paragraph"
+      :aria-label="t('streamC.cac2c644a64cd35a')"
       @mousedown="keepFocus"
     >
       <Dropdown
@@ -14,7 +14,7 @@
         :model-value="current?.style ?? normalStyle?.id ?? ''"
         :options="styleOptions"
         :disabled="!writable"
-        aria-label="Paragraph style"
+        :aria-label="t('streamC.9aa08be49bddd559')"
         @update:model-value="setStyle"
       />
       <span class="abele-word-page__sep" aria-hidden="true" />
@@ -30,42 +30,47 @@
       <span class="abele-word-page__sep" aria-hidden="true" />
       <Icon
         icon="list"
-        tooltip="Bulleted list"
+        :tooltip="t('streamC.ce51b395cd6b5ece')"
         :disabled="!writable"
         :active="current?.list === 'bullet'"
         @click="setList('bullet')"
       />
       <Icon
         icon="list-ordered"
-        tooltip="Numbered list"
+        :tooltip="t('streamC.cc62f6c7b2a82fd1')"
         :disabled="!writable"
         :active="current?.list === 'decimal'"
         @click="setList('decimal')"
       />
       <span class="abele-word-page__sep" aria-hidden="true" />
-      <Icon icon="link" tooltip="Link the selected words" :disabled="!writable" @click="addLink" />
+      <Icon
+        icon="link"
+        :tooltip="t('streamC.c54c33849e060a5e')"
+        :disabled="!writable"
+        @click="addLink"
+      />
       <Icon
         icon="image-plus"
-        tooltip="Insert a picture after this paragraph"
+        :tooltip="t('streamC.b7971c1d0d2dfd5c')"
         :disabled="!current"
         @click="insertImage"
       />
       <span class="abele-word-page__sep" aria-hidden="true" />
       <Icon
         icon="between-horizontal-end"
-        tooltip="Add a paragraph below"
+        :tooltip="t('streamC.f26b3e14344d8155')"
         :disabled="!writable"
         @click="addBelow"
       />
       <Icon
         icon="trash-2"
-        tooltip="Delete this paragraph"
+        :tooltip="t('streamC.eedcdf69ed8fc8dc')"
         :disabled="!writable"
         @click="deleteCurrent"
       />
       <Icon
         icon="settings-2"
-        :tooltip="`${controlsTitle} controls`"
+        :tooltip="t('streamC.5a2aea6905636d1d', { v1: String(controlsTitle) })"
         :disabled="!current"
         @click="advanced"
       />
@@ -79,7 +84,7 @@
             v-if="block.kind === 'image'"
             class="abele-word-page__image"
             :tabindex="model.readOnly ? undefined : 0"
-            :aria-label="`Select picture paragraph ${block.paragraph}`"
+            :aria-label="t('streamC.44c605eae1fa159c', { v1: String(block.paragraph) })"
             @click="selectPicture(block.paragraph)"
             @keydown.enter.prevent="selectPicture(block.paragraph)"
             @keydown.space.prevent="selectPicture(block.paragraph)"
@@ -120,13 +125,13 @@
     <!-- Word's status bar: where you are, how long it is, whether it is saved; the zoom. -->
     <div class="abele-word-page__status" role="status">
       <span v-if="model.readOnly" class="abele-word-page__fact"
-        >Read only: {{ model.readOnly }}</span
+        >{{ t('streamC.23e26f57ea9c6824') }} {{ model.readOnly }}</span
       >
       <template v-else>
-        <span v-if="current" class="abele-word-page__fact"
-          >Paragraph {{ position }} of {{ paragraphs.length }}</span
-        >
-        <span class="abele-word-page__fact">{{ words }} {{ words === 1 ? 'word' : 'words' }}</span>
+        <span v-if="current" class="abele-word-page__fact">{{
+          t('streamC.6b59cb70d719a444', { v1: position, v2: paragraphs.length })
+        }}</span>
+        <span class="abele-word-page__fact">{{ t('streamC.words', { count: words }) }}</span>
         <span
           v-if="save.state !== 'idle'"
           class="abele-word-page__fact"
@@ -138,18 +143,26 @@
         <Icon
           icon="minus"
           size="xs"
-          tooltip="Smaller"
+          :tooltip="t('streamC.00417195b1e2d8d5')"
           :disabled="zoom <= 50"
           @click="zoomBy(-10)"
         />
         <span class="abele-word-page__zoom-value">{{ zoom }}%</span>
-        <Icon icon="plus" size="xs" tooltip="Larger" :disabled="zoom >= 200" @click="zoomBy(10)" />
+        <Icon
+          icon="plus"
+          size="xs"
+          :tooltip="t('streamC.b05e2520a37fd560')"
+          :disabled="zoom >= 200"
+          @click="zoomBy(10)"
+        />
       </span>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { paragraphTextEdit } from './textEditor'
 import Dropdown from '@/components/obsidian/Dropdown.vue'
@@ -191,10 +204,15 @@ const emit = defineEmits<{
 }>()
 
 const MARKS: { mark: WordMark; icon: string; label: string; keys: string }[] = [
-  { mark: 'bold', icon: 'bold', label: 'Bold', keys: 'Mod+B' },
-  { mark: 'italic', icon: 'italic', label: 'Italic', keys: 'Mod+I' },
-  { mark: 'underline', icon: 'underline', label: 'Underline', keys: 'Mod+U' },
-  { mark: 'strike', icon: 'strikethrough', label: 'Strikethrough', keys: 'Mod+Shift+X' },
+  { mark: 'bold', icon: 'bold', label: t('settings.reader.stroke.bold'), keys: 'Mod+B' },
+  { mark: 'italic', icon: 'italic', label: t('streamC.9bf37cb58a694456'), keys: 'Mod+I' },
+  { mark: 'underline', icon: 'underline', label: t('streamC.02f843261112c2d8'), keys: 'Mod+U' },
+  {
+    mark: 'strike',
+    icon: 'strikethrough',
+    label: t('streamC.9aabbcb2c18def7b'),
+    keys: 'Mod+Shift+X',
+  },
 ]
 
 const paragraphs = computed(() => allParagraphs(props.model))
@@ -263,7 +281,7 @@ const writable = computed(() => !!current.value && !current.value.locked)
 const controlsTitle = computed(() =>
   current.value
     ? pageControlsTitle(props.model, current.value.number, pictureChosen.value)
-    : 'Paragraph'
+    : t('streamC.c3b03dd28595bab2')
 )
 const position = computed(() => paragraphs.value.findIndex((p) => p.number === selected.value) + 1)
 
@@ -273,19 +291,21 @@ const normalStyle = computed(() =>
   )
 )
 const styleOptions = computed(() => [
-  ...(normalStyle.value ? [] : [{ value: '', display: 'Normal' }]),
+  ...(normalStyle.value
+    ? []
+    : [{ value: '', display: t('settings.components.reader.ReaderSettingsForm.normal.a7248eeb') }]),
   ...props.model.styles.map((s) => ({ value: s.id, display: s.name || s.id })),
 ])
 
 const saveText = computed(() =>
   props.save.state === 'saving'
-    ? 'Saving…'
+    ? t('streamC.23e39291d6135814')
     : props.save.state === 'saved'
       ? pendingDrafts.size
-        ? 'Unsaved changes'
-        : 'Saved'
+        ? t('streamC.a710c2b90913b537')
+        : t('streamC.b5c120b316c237a0')
       : props.save.state === 'failed'
-        ? `Not saved: ${props.save.reason}`
+        ? t('streamC.7e1efe342c6d71de', { v1: String(props.save.reason) })
         : ''
 )
 

@@ -11,7 +11,7 @@
             :class="`abele-http-method_${request.method.toLowerCase()}`"
             :options="METHODS.map((m) => ({ value: m, display: methodName(m) }))"
             :model-value="request.method"
-            aria-label="Method"
+            :aria-label="t('streamC.52a0f9b65b278850')"
             @update:model-value="
               (m: string) => emit('change', { ...request, method: m as HttpMethod })
             "
@@ -20,7 +20,7 @@
             type="text"
             class="abele-http-request__url"
             :value="request.url"
-            aria-label="Address"
+            :aria-label="t('settings.nodes.address')"
             spellcheck="false"
             @change="emit('change', { ...request, url: ($event.target as HTMLInputElement).value })"
             @keydown.enter.prevent="send"
@@ -35,8 +35,8 @@
             :aria-checked="intoRecording"
             :tooltip="
               intoRecording
-                ? `Goes into the recording of ${recording}; click to send it on its own`
-                : `Sent on its own; click to send it into the recording of ${recording}`
+                ? t('streamC.14015fafa5fabf10', { v1: String(recording) })
+                : t('streamC.1ebadc42989ca38a', { v1: String(recording) })
             "
             @click="emit('into-recording', !intoRecording)"
           />
@@ -46,12 +46,18 @@
           <Button
             class="abele-http-request__send"
             accent
-            :text="outcome?.kind === 'sending' ? 'Sending…' : 'Send'"
+            :text="
+              outcome?.kind === 'sending'
+                ? t('streamC.b8ed5279e897be5d')
+                : t('settings.TransferSettings.send.f6f4688f')
+            "
             :loading="outcome?.kind === 'sending'"
             :disabled="!!blocked || outcome?.kind === 'sending'"
             :tooltip="
               blocked ??
-              `Send it in ${environment}${recording && intoRecording ? ', into the recording' : ''} (Enter)`
+              (recording && intoRecording
+                ? t('streamC.b943fb892c6ec34a', { v1: environment })
+                : t('streamC.74a056ddca844e78', { v1: environment }))
             "
             @click="send"
           />
@@ -93,8 +99,8 @@
               class="abele-http-request__body"
               :value="request.body?.text ?? ''"
               :path="`body.${request.body?.format === 'json' ? 'json' : 'txt'}`"
-              label="Body"
-              placeholder="No body"
+              :label="t('streamC.6ccaa6415b5ee449')"
+              :placeholder="t('streamC.e5c6c6025a921a07')"
               @change="
                 (text: string) =>
                   emit('change', {
@@ -119,20 +125,25 @@
                   ]"
                   :text="request.scripts[when]!"
                   :note="WHEN[when]"
-                  :label="scriptProblems[when] ?? `Open ${request.scripts[when]}`"
+                  :label="
+                    scriptProblems[when] ??
+                    t('streamC.3d5ce0e92464fbb0', { v1: String(request.scripts[when]) })
+                  "
                   @click="emit('open-script', request.scripts[when]!)"
                 >
                   <template #actions>
                     <Icon
                       icon="arrow-left-right"
                       size="xs"
-                      :tooltip="`Run another script ${WHEN[when].toLowerCase()}`"
+                      :tooltip="
+                        t('streamC.bd33ba8a6535f6eb', { v1: String(WHEN[when].toLowerCase()) })
+                      "
                       @click.stop="emit('pick-script', when)"
                     />
                     <Icon
                       icon="x"
                       size="xs"
-                      tooltip="Take it off this request; the script stays"
+                      :tooltip="t('streamC.5d8a9146b2d9c438')"
                       @click.stop="emit('remove-script', when)"
                     />
                   </template>
@@ -143,7 +154,7 @@
                   class="abele-http-request__script_none"
                   icon="plus"
                   :text="WHEN[when]"
-                  :label="`Pick a script to run ${WHEN[when].toLowerCase()}`"
+                  :label="t('streamC.5d6bb3ded416d548', { v1: String(WHEN[when].toLowerCase()) })"
                   @click="emit('pick-script', when)"
                 />
               </template>
@@ -160,7 +171,9 @@
                   <ResultMark
                     v-if="check.passed !== undefined"
                     :state="check.passed ? 'done' : 'error'"
-                    :text="check.passed ? 'Held the last time' : 'Failed the last time'"
+                    :text="
+                      check.passed ? t('streamC.7c376836146b9add') : t('streamC.867b3a58d506de5c')
+                    "
                   />
                 </template>
               </TreeItem>
@@ -174,7 +187,7 @@
            click evens them again. -->
       <PanelResizeHandle
         class="abele-http-request__divider"
-        label="Resize the request"
+        :label="t('streamC.8eb1d1e8b5c337db')"
         v-bind="divider"
       />
 
@@ -206,11 +219,11 @@
           <Tabs v-model="answerTab" level="secondary" :tabs="answerTabs" />
           <div v-if="answerTab === 'body' && compareWith" class="abele-http-request__compare">
             <div class="abele-http-request__compare-head">
-              <span>Compared with the answer of {{ compareWith.at }}</span>
+              <span>{{ t('streamC.06dfcaf5fb7a968a') }} {{ compareWith.at }}</span>
               <Icon
                 icon="x"
                 size="xs"
-                tooltip="Stop comparing"
+                :tooltip="t('streamC.3c42477022526f1c')"
                 @click="emit('compare', undefined)"
               />
             </div>
@@ -219,15 +232,18 @@
               :text-right="outcome.response.body"
               layout="unified"
               :label-before="compareWith.at"
-              label-after="This answer"
-              empty-text="The same body."
+              :label-after="t('streamC.0c2beefde8fa8421')"
+              :empty-text="t('streamC.ea655da9d8ae8bd3')"
             />
           </div>
-          <EmptyState v-else-if="answerTab === 'body' && !outcome.response.body" text="No body." />
+          <EmptyState
+            v-else-if="answerTab === 'body' && !outcome.response.body"
+            :text="t('streamC.c8c2e1d98310b574')"
+          />
           <DebugValueView
             v-else-if="answerTab === 'body'"
             class="abele-http-request__body-view"
-            name="Body"
+            :name="t('streamC.6ccaa6415b5ee449')"
             :value="outcome.response.body"
           />
           <!-- Name and value in two columns, as DevTools lists them: a long value (a policy, a
@@ -263,7 +279,7 @@
                   size="xs"
                   no-hover
                   class="abele-http-request__in-run"
-                  tooltip="Sent into a recording: a step of its run"
+                  :tooltip="t('streamC.09d892425ee70442')"
                 />
                 <span class="abele-http-request__fact">{{
                   h.ms !== undefined ? `${h.ms} ms` : ''
@@ -278,7 +294,7 @@
                 <Icon
                   icon="git-compare"
                   size="xs"
-                  tooltip="Compare with the answer shown"
+                  :tooltip="t('streamC.bb676eb6678e12ad')"
                   :disabled="h.failed || h.id === (shownSend ?? history[0]?.id)"
                   @click.stop="emit('compare', h.id)"
                 />
@@ -296,7 +312,7 @@
               <template #end>
                 <ResultMark
                   :state="c.passed ? 'done' : 'error'"
-                  :text="c.passed ? 'Held' : 'Failed'"
+                  :text="c.passed ? t('streamC.85cd61f8c3c8a01e') : t('kit.failed')"
                 />
               </template>
             </TreeItem>
@@ -317,8 +333,7 @@
         >
           <Icon icon="circle-help" size="xs" no-hover />
           <span>{{
-            outcome.reason ??
-            `No answer in ${outcome.after}. It may have gone through; it is not sent again by itself.`
+            outcome.reason ?? t('streamC.c43b098892a1b5a1', { v1: String(outcome.after) })
           }}</span>
         </div>
         <div
@@ -326,8 +341,8 @@
           class="abele-http-request__notice"
           role="status"
         >
-          <StatusDot tone="accent" label="Sending" pulse />
-          <span>Waiting for the answer…</span>
+          <StatusDot tone="accent" :label="t('streamC.e595f17fac1d8384')" pulse />
+          <span>{{ t('streamC.343517de2f012b5c') }}</span>
         </div>
         <!-- Nothing sent and it cannot go as it is: why, where the answer would be, with the way
              to put it right when that is a key this device lacks. -->
@@ -341,11 +356,11 @@
           <Button
             v-if="missingKey"
             class="abele-http-request__open-keys"
-            text="Open keys"
+            :text="t('streamC.20ddc5d1000b3b31')"
             @click="emit('open-keys')"
           />
         </div>
-        <EmptyState v-else text="Send it to see the answer here." />
+        <EmptyState v-else :text="t('streamC.21e20af8ac700aae')" />
       </div>
     </div>
   </div>
@@ -353,6 +368,8 @@
 
 <script setup lang="ts">
 import NodeErrorText from '@/components/NodeErrorText.vue'
+import { t } from '@/i18n'
+
 // Every part of a request is a fold, so a long body or a dozen headers never push the answer
 // out of sight; what is folded is remembered for the tab. A value that cannot be sent as it is
 // (a key the plugin does not have, a variable with no value) keeps Send off and says why in the
@@ -430,7 +447,10 @@ const emit = defineEmits<{
 }>()
 
 const phone = Platform.isPhone
-const WHEN = { before: 'Before it goes', after: 'After it comes back' } as const
+const WHEN = {
+  before: t('streamC.d733f8c9697720a6'),
+  after: t('streamC.c01b93eb231f467d'),
+} as const
 /** The request side's width in a wide tab, on this device. */
 const HTTP_SPLIT_KEY = 'abele-http-request-width'
 /** When the answer shown was sent, if it is not the latest. */
@@ -454,17 +474,25 @@ const foldEmpty = () => {
 const toggle = (id: string) => (folded.has(id) ? folded.delete(id) : folded.add(id))
 
 const parts = computed(() => [
-  { id: 'params', label: 'Params', count: on(props.request.params) },
-  { id: 'headers', label: 'Headers', count: on(props.request.headers) },
+  { id: 'params', label: t('streamC.7ffdd4b4c44c366a'), count: on(props.request.params) },
+  {
+    id: 'headers',
+    label: t('settings.ai.McpServerModal.headers.194e9fe6'),
+    count: on(props.request.headers),
+  },
   ...(props.request.method === 'GET' || props.request.method === 'HEAD'
     ? []
-    : [{ id: 'body', label: 'Body', count: undefined }]),
+    : [{ id: 'body', label: t('streamC.6ccaa6415b5ee449'), count: undefined }]),
   {
     id: 'scripts',
-    label: 'Scripts',
+    label: t('settings.tabs.scripts'),
     count: [props.request.scripts.before, props.request.scripts.after].filter(Boolean).length,
   },
-  { id: 'checks', label: 'Checks', count: props.request.checks.length },
+  {
+    id: 'checks',
+    label: t('settings.ai.InterceptorSettings.checks.de07d072'),
+    count: props.request.checks.length,
+  },
 ])
 // Every line, the ones left out too: they are there to read and to switch back on.
 const on = (pairs: HttpPair[]) => pairs.length
@@ -492,14 +520,17 @@ const blocked = computed(() => {
     (p) => !p.off && p.missing
   )
   if (missing) return missing.missing
-  return unknownVar.value ? `${unknownVar.value} has no value in ${props.environment}` : undefined
+  return unknownVar.value
+    ? t('streamC.c63d84f2d189cdf0', { v1: String(unknownVar.value), v2: String(props.environment) })
+    : undefined
 })
 /** A key this device does not have, by name, when that is what keeps it from going. */
 const missingKey = computed(() =>
   [...props.request.params, ...props.request.headers].some((p) => !p.off && p.missing && p.secret)
 )
 /** `1 step in code`, `3 steps in code`. */
-const stepsInCode = (n: number) => `${n} ${n === 1 ? 'step' : 'steps'} in code`
+const stepsInCode = (n: number) =>
+  t('streamC.56dbc16aaad1e94c', { v1: String(n), v2: String(n === 1 ? 'step' : 'steps') })
 
 const resolved = computed(() => {
   const query = props.request.params
@@ -549,19 +580,23 @@ const answerTabs = computed(() => {
   const r = props.outcome?.kind === 'answered' ? props.outcome.response : undefined
   const checks = r?.checks ?? []
   return [
-    { id: 'body', label: 'Body' },
-    { id: 'headers', label: 'Headers', badge: r?.headers.length },
+    { id: 'body', label: t('streamC.6ccaa6415b5ee449') },
+    {
+      id: 'headers',
+      label: t('settings.ai.McpServerModal.headers.194e9fe6'),
+      badge: r?.headers.length,
+    },
     ...(checks.length
       ? [
           {
             id: 'checks',
-            label: 'Checks',
+            label: t('settings.ai.InterceptorSettings.checks.de07d072'),
             badge: `${checks.filter((c) => c.passed).length}/${checks.length}`,
           },
         ]
       : []),
     ...(props.history.length > 1
-      ? [{ id: 'history', label: 'History', badge: props.history.length }]
+      ? [{ id: 'history', label: t('streamC.0e76960093379060'), badge: props.history.length }]
       : []),
   ]
 })

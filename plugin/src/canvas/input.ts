@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /** Narrow DOM pointer adapter; camera navigation remains in the existing viewer. */
 import { toScreen, toWorld } from '../drawing/camera'
 import { nanoid } from 'nanoid'
@@ -314,7 +315,13 @@ export function frameOps(graph: CanvasGraph, rect: Rect): CanvasOperation[] {
     inside = new Set(nodesInBox(graph, rect)),
     parents = parentsOf(graph),
     top = [...inside].filter((n) => !inside.has(parents.get(n) ?? ''))
-  if (!top.length) return [{ op: 'add_node', node: { id, kind: 'group', label: 'Frame', ...rect } }]
+  if (!top.length)
+    return [
+      {
+        op: 'add_node',
+        node: { id, kind: 'group', label: 'Frame', ...rect },
+      },
+    ]
   return [
     { op: 'group', id, label: 'Frame', ids: top },
     { op: 'update', id, patch: { ...rect } },
@@ -739,7 +746,7 @@ export class CanvasInput implements CanvasViewerInput {
           ),
           [x, y] = toScreen(this.viewer.camera, rect.x + rect.width, rect.y + rect.height)
         handle.className = 'abele-canvas-resize-handle'
-        handle.setAttribute('aria-label', 'Scale canvas selection')
+        handle.setAttribute('aria-label', t('streamC.56e434627dc26f45'))
         handle.style.left = `${x}px`
         handle.style.top = `${y}px`
         this.overlay.append(handle)
@@ -762,7 +769,7 @@ export class CanvasInput implements CanvasViewerInput {
           [x, y] = toScreen(this.viewer.camera, wx, wy)
         handle.className = 'abele-canvas-resize-handle'
         handle.dataset.corner = corner
-        handle.setAttribute('aria-label', `Resize ${corner} corner`)
+        handle.setAttribute('aria-label', t('streamC.c19783d8edc70d82', { v1: String(corner) }))
         handle.style.left = `${x}px`
         handle.style.top = `${y}px`
         this.overlay.append(handle)
@@ -783,7 +790,7 @@ export class CanvasInput implements CanvasViewerInput {
           [x, y] = toScreen(this.viewer.camera, point.x, point.y)
         handle.className = 'abele-canvas-resize-handle abele-canvas-endpoint-handle'
         handle.dataset.end = end
-        handle.setAttribute('aria-label', `Reconnect ${end} endpoint`)
+        handle.setAttribute('aria-label', t('streamC.bbf76cb6d5ea6f0a', { v1: String(end) }))
         handle.style.left = `${x}px`
         handle.style.top = `${y}px`
         this.overlay.append(handle)
@@ -812,7 +819,7 @@ export class CanvasInput implements CanvasViewerInput {
         )
         if (side === lit) el.classList.add('is-active')
         el.dataset.side = side
-        el.setAttribute('aria-label', `Connect from the ${side} edge`)
+        el.setAttribute('aria-label', t('streamC.3e8c1f27b47e911d', { v1: String(side) }))
         el.style.left = `${x}px`
         el.style.top = `${y}px`
         this.overlay.append(el)

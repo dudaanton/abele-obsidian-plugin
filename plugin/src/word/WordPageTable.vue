@@ -33,7 +33,7 @@
               :key="image.number"
               class="abele-word-page__image"
               :tabindex="readOnly ? undefined : 0"
-              :aria-label="`Select picture paragraph ${p.number}`"
+              :aria-label="t('streamC.44c605eae1fa159c', { v1: String(p.number) })"
               @click="emit('picture', p.number)"
               @keydown.enter.prevent="emit('picture', p.number)"
               @keydown.space.prevent="emit('picture', p.number)"
@@ -55,6 +55,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 import { computed } from 'vue'
 import WordPageLine from './WordPageLine.vue'
 import { tableCells, type WordPageParagraph, type WordPageTable } from './pageModel'

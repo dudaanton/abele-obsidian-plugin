@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 // Choosing a picture from the vault for the document, with Obsidian's own quick-switcher prompt:
 // type to filter, arrows to move, Enter to put it in. Each row is the file's name with its folder
 // under it, as the quick switcher shows a note.
@@ -23,13 +24,15 @@ export class WordPicturePicker extends SuggestModal<WordPictureFile> {
     private onChoose: (file: WordPictureFile) => void
   ) {
     super(app)
-    this.setPlaceholder('Find a picture in the vault…')
+    this.setPlaceholder(t('streamC.ad6b7bbda1eec152'))
     this.setInstructions([
-      { command: '↑↓', purpose: 'to navigate' },
+      { command: '↑↓', purpose: t('streamC.5a70bdb08330fafc') },
       { command: '↵', purpose },
-      { command: 'esc', purpose: 'to dismiss' },
+      { command: 'esc', purpose: t('streamC.29e1c55a841060e9') },
     ])
-    this.emptyStateText = files.length ? 'No picture matches' : 'There are no pictures in the vault'
+    this.emptyStateText = files.length
+      ? t('streamC.59baf6d673c8802f')
+      : t('streamC.e842aa161d0ec1b4')
   }
 
   getSuggestions(query: string): WordPictureFile[] {

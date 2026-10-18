@@ -2,28 +2,33 @@
   <!-- An environment's values as a note's properties: the plain ones written into its file, the
        secrets (a token taken from an answer) kept in memory and never written, and whether a
        request sent into a recording says which step it is. -->
-  <Modal :title="`Environment ${name}`" size="tall" close-in-footer @close="emit('close')">
-    <Section title="Values" desc="Put into requests as {{name}}. Written into the project's file.">
+  <Modal
+    :title="t('streamC.4ef2f9a018360102', { v1: String(name) })"
+    size="tall"
+    close-in-footer
+    @close="emit('close')"
+  >
+    <Section
+      :title="t('streamC.53b09e104f608daa')"
+      :desc="t('streamC.3a0b102a6e0cb082', { v1: '{{name}}' })"
+    >
       <RequestPairs
         :pairs="plain"
-        label="Values"
-        adding="Add a value"
+        :label="t('streamC.53b09e104f608daa')"
+        :adding="t('streamC.e2f9f33fe2df84f9')"
         @change="(i, p) => (plain[i] = p)"
         @remove="(i) => plain.splice(i, 1)"
         @add="(p) => plain.push(p)"
       />
     </Section>
-    <Section
-      title="Kept in memory"
-      desc="Tokens from an answer: never written, blanked wherever they show, gone when Obsidian closes."
-    >
-      <div class="abele-http-env__secrets" role="table" aria-label="Kept in memory">
+    <Section :title="t('streamC.d45a7bc8fc3980d1')" :desc="t('streamC.34151736952f73f8')">
+      <div class="abele-http-env__secrets" role="table" :aria-label="t('streamC.d45a7bc8fc3980d1')">
         <div v-for="(s, i) in secret" :key="i" class="abele-http-env__secret" role="row">
           <input
             type="text"
             class="abele-http-env__key"
             :value="s.key"
-            :aria-label="`Name of secret ${i + 1}`"
+            :aria-label="t('streamC.7c57c42466c69494', { v1: String(i + 1) })"
             spellcheck="false"
             @change="s.key = ($event.target as HTMLInputElement).value.trim()"
           />
@@ -31,39 +36,43 @@
             type="password"
             class="abele-http-env__value"
             :value="s.value"
-            :placeholder="s.value ? '' : 'Not set'"
-            :aria-label="`Value of ${s.key}`"
+            :placeholder="s.value ? '' : t('settings.SecretsListModal.not_set.4895f731')"
+            :aria-label="t('streamC.f311f28dffba3c36', { v1: String(s.key) })"
             autocomplete="off"
             @change="s.value = ($event.target as HTMLInputElement).value"
           />
-          <Icon icon="x" size="xs" :tooltip="`Remove ${s.key}`" @click="secret.splice(i, 1)" />
+          <Icon
+            icon="x"
+            size="xs"
+            :tooltip="t('streamC.77f34651d2fffa76', { v1: String(s.key) })"
+            @click="secret.splice(i, 1)"
+          />
         </div>
         <Button
           plain
           icon="plus"
-          text="Add a secret"
+          :text="t('streamC.98aa52b34c8f07fd')"
           @click="secret.push({ key: '', value: '' })"
         />
       </div>
     </Section>
-    <Section title="Recording">
-      <Setting
-        name="Say the step"
-        desc="A request sent into a recording carries X-Abele-Step, so a record point can take it."
-      >
+    <Section :title="t('streamC.80e8dd1a5a05f707')">
+      <Setting :name="t('streamC.5cd3eca6c2dabe8c')" :desc="t('streamC.9e218b3fae23df71')">
         <Checkbox :is-enabled="stepHeader" @toggle="stepHeader = !stepHeader" />
       </Setting>
     </Section>
     <template #footer>
-      <Button warning text="Delete" @click="emit('remove')" />
+      <Button warning :text="t('kit.delete')" @click="emit('remove')" />
       <span class="abele-http-env__gap" />
-      <Button text="Cancel" @click="emit('close')" />
-      <Button accent text="Save" @click="save" />
+      <Button :text="t('kit.cancel')" @click="emit('close')" />
+      <Button accent :text="t('settings.GithubConnectionEditor.save.1509f561')" @click="save" />
     </template>
   </Modal>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 import { reactive, ref } from 'vue'
 import Button from '../../obsidian/Button.vue'
 import Checkbox from '../../obsidian/Checkbox.vue'

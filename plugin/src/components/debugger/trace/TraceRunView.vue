@@ -9,14 +9,22 @@
   >
     <div v-if="debuggerAvailable" class="nav-header">
       <div class="nav-buttons-container">
-        <Icon icon="bug-play" tooltip="Back to debugger" @click="emit('debugger')" />
+        <Icon icon="bug-play" :tooltip="t('streamC.84822d88013675a1')" @click="emit('debugger')" />
       </div>
     </div>
     <div class="abele-trace-run__body">
       <div class="abele-trace-run__list">
         <div class="abele-trace-run__tools">
-          <Search v-model="query" placeholder="Find in the steps" label="Find in the steps" />
-          <div class="abele-trace-run__filters" role="group" aria-label="Show only">
+          <Search
+            v-model="query"
+            :placeholder="t('streamC.9fac49d7c6068756')"
+            :label="t('streamC.9fac49d7c6068756')"
+          />
+          <div
+            class="abele-trace-run__filters"
+            role="group"
+            :aria-label="t('streamC.a8d71c9610054181')"
+          >
             <Icon
               v-for="f in FILTERS"
               :key="f.id"
@@ -29,9 +37,14 @@
         </div>
         <div v-if="run.cut" class="abele-trace-run__notice" role="status">
           <Icon icon="scissors" size="xs" no-hover />
-          <span>Cut short: the node went away. The steps before it are kept.</span>
+          <span>{{ t('streamC.9f0d328ca5e59604') }}</span>
         </div>
-        <div class="abele-trace-run__steps" role="tree" aria-label="Steps" @keydown="keys">
+        <div
+          class="abele-trace-run__steps"
+          role="tree"
+          :aria-label="t('streamC.1de3df70ddf4faab')"
+          @keydown="keys"
+        >
           <template v-for="row in rows" :key="row.step.id">
             <TreeItem
               class="abele-trace-run__step"
@@ -68,7 +81,7 @@
           </template>
           <EmptyState
             v-if="!rows.length"
-            :text="query || filter ? 'No step matches.' : 'Nothing was recorded.'"
+            :text="query || filter ? t('streamC.5209d2d7f12c56b7') : t('streamC.92fdf94dd7bb7e27')"
           />
         </div>
       </div>
@@ -93,13 +106,15 @@
           @mark="(s, at) => emit('mark', s, at)"
           @link="(l, ok) => emit('link', current!.id, l, ok)"
         />
-        <EmptyState v-else text="Pick a step to see what it took." />
+        <EmptyState v-else :text="t('streamC.65604f36088a877e')" />
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 // Every view of the run is worked out on the node and comes small: a step's values as rows with
 // their shapes, the full text only when a value is opened whole in its own tab. The filters are
 // glyphs, named in their tooltips: only the code, only the browser, only what failed, only what
@@ -144,10 +159,10 @@ const phone = Platform.isPhone
 
 type Filter = 'code' | 'browser' | 'failed' | 'marked'
 const FILTERS: { id: Filter; icon: string; tooltip: string }[] = [
-  { id: 'code', icon: 'diamond', tooltip: 'Only what the record points took' },
-  { id: 'browser', icon: 'arrow-right-left', tooltip: 'Only the requests' },
-  { id: 'failed', icon: 'circle-x', tooltip: 'Only what failed' },
-  { id: 'marked', icon: 'flag', tooltip: 'Only what you marked' },
+  { id: 'code', icon: 'diamond', tooltip: t('streamC.9540f36dd0716eac') },
+  { id: 'browser', icon: 'arrow-right-left', tooltip: t('streamC.0476591b7543e100') },
+  { id: 'failed', icon: 'circle-x', tooltip: t('streamC.f27d62aa1d155f70') },
+  { id: 'marked', icon: 'flag', tooltip: t('streamC.c731de9cd8ee89ec') },
 ]
 const query = ref('')
 const filter = ref<Filter | null>(null)
@@ -239,7 +254,7 @@ const StepEnd = defineComponent({
             size: 'xs',
             noHover: true,
             class: 'abele-trace-run__by-time',
-            tooltip: 'Placed here by time: it ran while the request was out',
+            tooltip: t('streamC.0cf75be03da7c5b6'),
           })
         : null,
       p.step.marked

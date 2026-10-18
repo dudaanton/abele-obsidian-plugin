@@ -50,6 +50,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 import { computed, nextTick, watch } from 'vue'
 import { setIcon, setTooltip } from 'obsidian'
 import type { CanvasEditor } from '@/canvas/Editor'
@@ -87,7 +89,7 @@ const frames = computed<Frame[]>(() => {
     .filter((n) => n.type === 'group')
     .map((n) => ({
       id: n.id,
-      label: n.label || 'Frame',
+      label: n.label || t('streamC.d0b50e064a4f8d94'),
       color: /^[1-6]$/.test(n.color ?? '') ? n.color : '',
       selected: selected.has(n.id),
       collapsed: !!n.collapsed,
@@ -109,9 +111,15 @@ const named = new WeakSet<HTMLElement>()
 /** A label's full name in its tooltip; a label being written gets the caret, its words chosen. */
 function label(el: HTMLElement | null, f: Frame) {
   if (!el) return
-  setTooltip(el, f.collapsed ? `${f.label}: ${f.hidden} inside, folded` : f.label, {
-    placement: 'top',
-  })
+  setTooltip(
+    el,
+    f.collapsed
+      ? t('streamC.b28da6e124647ade', { v1: String(f.label), v2: String(f.hidden) })
+      : f.label,
+    {
+      placement: 'top',
+    }
+  )
   if (!f.naming) return named.delete(el)
   if (named.has(el)) return
   named.add(el)
@@ -127,7 +135,7 @@ function label(el: HTMLElement | null, f: Frame) {
 function fold(el: HTMLElement | null, f: Frame) {
   if (!el || el.childElementCount) return
   setIcon(el, 'chevron-right')
-  setTooltip(el, `Unfold ${f.label}`, { placement: 'top' })
+  setTooltip(el, t('streamC.d362e778d496e34d', { v1: String(f.label) }), { placement: 'top' })
 }
 function finish(e: Event, id: string) {
   const text = (e.target as HTMLElement).innerText.replace(/\s+/g, ' ').trim()

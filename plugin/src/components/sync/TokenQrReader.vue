@@ -1,11 +1,8 @@
 <template>
-  <Setting
-    name="Read a QR code"
-    desc="Take a photo on your phone, or choose a picture of the code."
-  >
+  <Setting :name="t('sync.qr.title')" :desc="t('sync.qr.description')">
     <Button
-      text="Read QR…"
-      tooltip="Use the camera or choose a QR picture"
+      :text="t('sync.qr.read')"
+      :tooltip="t('sync.qr.readTip')"
       :disabled="busy"
       @click="picker?.click()"
     />
@@ -19,6 +16,8 @@ import Setting from '../obsidian/Setting.vue'
 import Button from '../obsidian/Button.vue'
 import { readPhoto } from '@/transfer/photo'
 import { decodeAccessToken } from '@/sync/v2/client'
+import { useI18n } from '@/i18n/useI18n'
+const { t } = useI18n()
 const emit = defineEmits<{ token: [text: string] }>()
 const picker = ref<HTMLInputElement>(),
   busy = ref(false),
@@ -69,10 +68,9 @@ async function read(event: Event) {
       emit('token', token)
       return
     }
-    error.value =
-      'No connection token found. Hold the camera closer so the code fills most of the picture, or paste the token.'
+    error.value = t('sync.qr.missing')
   } catch {
-    error.value = 'The picture could not be read. Try another picture or paste the token.'
+    error.value = t('sync.qr.error')
   } finally {
     URL.revokeObjectURL(url)
     input.value = ''

@@ -1,3 +1,6 @@
+import { streamCUI } from '@/i18n/streamCLabels'
+
+import { t } from '@/i18n'
 /** Obsidian pickers and delivery for the human editor. */
 import { Notice, TFile, type App, type TFolder } from 'obsidian'
 import { choiceDialog, promptDialog } from '@/components/obsidian/dialogs'
@@ -13,10 +16,10 @@ import { newDocumentParent } from '@/helpers/newDocument'
 /** One line of text for the canvas, kept open with the reason while `validate` refuses it. */
 const askCanvasText = (title: string, label: string, validate: (value: string) => string) =>
   promptDialog({
-    title,
-    placeholder: label,
-    label,
-    submitText: 'Create',
+    title: streamCUI(title),
+    placeholder: streamCUI(label),
+    label: streamCUI(label),
+    submitText: t('kit.create'),
     validate,
     modalClass: 'abele-canvas-input',
     // As before: the field waits for a tap, which on a phone is what brings the keyboard up.
@@ -28,9 +31,13 @@ const askCanvasChoice = <T extends string>(
   choices: [T, string][]
 ) =>
   choiceDialog<T>({
-    title,
-    message: description,
-    choices: choices.map(([value, text]) => ({ value, text, warning: value === 'discard' })),
+    title: streamCUI(title),
+    message: streamCUI(description),
+    choices: choices.map(([value, text]) => ({
+      value,
+      text: streamCUI(text),
+      warning: value === 'discard',
+    })),
     modalClass: 'abele-canvas-choice',
   })
 /** The moment as Obsidian stamps a pasted picture's name: 20260102030405. */
@@ -134,6 +141,6 @@ export async function newCanvas(app: App, folder?: TFolder): Promise<void> {
     const file = app.vault.getAbstractFileByPath(path)
     if (file instanceof TFile) await openCanvas(app, file)
   } catch (error) {
-    new Notice(`Canvas could not be created: ${String(error)}`)
+    new Notice(t('streamC.5643906c62bc8ea2', { v1: String(String(error)) }))
   }
 }

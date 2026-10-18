@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { nanoid } from 'nanoid'
 import { ItemView, WorkspaceLeaf, App } from 'obsidian'
@@ -21,7 +22,7 @@ export class FinanceSidebarView extends ItemView {
   }
 
   getDisplayText() {
-    return 'Abele finance'
+    return t('streamC.6db56f5da6e195a5')
   }
 
   static getIcon() {

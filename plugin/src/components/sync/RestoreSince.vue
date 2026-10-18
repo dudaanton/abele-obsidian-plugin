@@ -1,6 +1,6 @@
 <template>
   <div ref="root" class="abele-restore-since">
-    <Setting name="Restore all deleted since" :desc="preview">
+    <Setting :name="t('streamC.f83f455a5e01def4')" :desc="preview">
       <Dropdown :options="PRESETS" :model-value="preset" @update:model-value="choose" />
       <Input
         v-if="preset === 'custom'"
@@ -11,12 +11,16 @@
         @commit="custom = $event"
       />
       <Button
-        :text="busy ? progress : picked.length ? `Restore ${picked.length}…` : 'Restore'"
+        :text="
+          busy
+            ? progress
+            : picked.length
+              ? t('streamC.c427630e171e8231', { v1: String(picked.length) })
+              : t('streamC.a76e13b9839270eb')
+        "
         :disabled="busy || picked.length === 0"
         :tooltip="
-          picked.length === 0
-            ? 'Nothing was deleted since then'
-            : 'Bring back every file deleted since then, on every device'
+          picked.length === 0 ? t('streamC.e0af0bba41478fd8') : t('streamC.0e2dc9528f18865c')
         "
         @click="ask"
       />
@@ -25,11 +29,11 @@
 
     <ConfirmModal
       v-if="confirming"
-      :title="`Restore ${filesOf(asked.length)}?`"
+      :title="t('streamC.8fb5dd7374a932dc', { v1: String(filesOf(asked.length)) })"
       :message="question"
-      confirm-text="Restore"
-      confirm-tooltip="Bring these files back, on every device"
-      cancel-tooltip="Close this and restore nothing"
+      :confirm-text="t('streamC.a76e13b9839270eb')"
+      :confirm-tooltip="t('streamC.a2db04ee689cd83e')"
+      :cancel-tooltip="t('streamC.941bbcc0fabee37a')"
       @confirm="restore"
       @close="confirming = false"
     />
@@ -37,6 +41,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 /**
  * Bringing back everything deleted since a moment (phase 3b, decision 8): the way back from a
  * mass delete that was confirmed, or that happened on a device with no guard.
@@ -68,9 +74,9 @@ import { GlobalStore } from '@/stores/GlobalStore'
 type Preset = 'hour' | 'today' | 'custom'
 
 const PRESETS: { value: Preset; display: string }[] = [
-  { value: 'hour', display: 'the last hour' },
-  { value: 'today', display: 'today' },
-  { value: 'custom', display: 'a time I choose' },
+  { value: 'hour', display: t('streamC.69fed412165fb960') },
+  { value: 'today', display: t('streamC.e0f4f767ac88a930') },
+  { value: 'custom', display: t('streamC.f329145399987d0f') },
 ]
 
 /** How many paths the question names; the rest are counted. */
@@ -91,7 +97,7 @@ const preset = ref<Preset>('hour')
 const now = ref(Date.now())
 const custom = ref(localInput(Date.now() - 60 * 60 * 1000))
 const busy = ref(false)
-const progress = ref('Restoring…')
+const progress = ref(t('streamC.5a4918e0201c877c'))
 const confirming = ref(false)
 const error = ref<string | null>(null)
 /** The files the question was asked about, fixed when it was asked. */
@@ -130,25 +136,25 @@ const picked = computed(() => {
   return props.items.filter((one) => Date.parse(one.deleted_at) >= from)
 })
 
-const filesOf = (count: number): string => (count === 1 ? '1 file' : `${count} files`)
+const filesOf = (count: number): string => t('streamC.files', { count: count })
 
 const preview = computed(() => {
-  if (cutoff.value === null) return 'Give a date and a time.'
+  if (cutoff.value === null) return t('streamC.818a1e91e5ff0885')
   const count = picked.value.length
-  if (count === 0) return 'Nothing was deleted since then.'
-  return `${filesOf(count)} deleted since then, going by when the server recorded each delete.`
+  if (count === 0) return t('streamC.25df34de860b321c')
+  return t('streamC.2ec6ee28e1c8a0f7', { v1: String(filesOf(count)) })
 })
 
 /** `310 by MacBook, 2 by Phone`: who deleted what, most first. */
 function byWhom(items: TrashItem[]): string {
   const counts = new Map<string, number>()
   for (const one of items) {
-    const name = one.deleted_by?.name ?? 'a device not named'
+    const name = one.deleted_by?.name ?? t('streamC.8dfdcc7aa13f0c43')
     counts.set(name, (counts.get(name) ?? 0) + 1)
   }
   return [...counts.entries()]
     .sort((a, b) => b[1] - a[1])
-    .map(([name, count]) => `${count} by ${name}`)
+    .map(([name, count]) => t('streamC.40c235a259c24219', { v1: String(count), v2: String(name) }))
     .join(', ')
 }
 
@@ -156,11 +162,11 @@ const question = computed(() => {
   const items = asked.value
   const names = items.slice(0, NAMED).map((one) => one.path)
   const rest = items.length - names.length
-  const list = rest > 0 ? `${names.join(', ')} and ${rest} more` : names.join(', ')
-  return (
-    `They come back where they were, on every device: ${list}. Deleted ${byWhom(items)}. ` +
-    'A file whose place was taken meanwhile comes back beside it under a new name.'
-  )
+  const list =
+    rest > 0
+      ? t('streamC.07d587805a0f6780', { v1: String(names.join(', ')), v2: String(rest) })
+      : names.join(', ')
+  return t('streamC.1f4be59fa130ef44', { v1: list, v2: byWhom(items) })
 })
 
 /**
@@ -223,14 +229,16 @@ async function restore(): Promise<void> {
   const results: CommitOpResult[] = []
   try {
     for (let at = 0; at < items.length; at += TRASH_RESTORE_MAX) {
-      progress.value = `Restoring… ${at} of ${items.length}`
+      progress.value = t('streamC.1a415e759c80f3bc', { v1: String(at), v2: String(items.length) })
       const ids = items.slice(at, at + TRASH_RESTORE_MAX).map((one) => one.file_id)
       results.push(...(await client.restoreDeletedMany(ids, keyOf(ids))))
     }
   } catch (failure) {
-    error.value =
-      `Restoring stopped after ${results.length} of ${items.length}: ${reasonOf(failure)}. ` +
-      'What came back is on the server; the list shows the rest.'
+    error.value = t('streamC.0c4f6ab39ffe220c', {
+      v1: results.length,
+      v2: items.length,
+      v3: reasonOf(failure),
+    })
     if (results.length > 0) {
       emit('restored', gone(items, results))
       // What came back is on the server; a pull puts it here now rather than at the next poll.
@@ -246,15 +254,13 @@ async function restore(): Promise<void> {
   )
   // The files are back on the server; a pull is what puts them back here.
   await sync.syncNow()
-  const summary =
-    `Restored ${restored}; ${renamed} came back under a new name because the old one was ` +
-    `taken; ${failed} failed.`
+  const summary = t('streamC.86b087f0e635342a', { v1: restored, v2: renamed, v3: failed })
   const state = sync.status.value.state
   new Notice(
     state === 'paused'
-      ? `${summary} They reach this device when sync is resumed.`
+      ? t('streamC.dde0f92cc68c6d75', { v1: String(summary) })
       : state === 'offline' || state === 'error'
-        ? `${summary} They reach this device at the next sync that gets through.`
+        ? t('streamC.4aafe656d9968dce', { v1: String(summary) })
         : summary
   )
   emit('restored', gone(items, results))

@@ -23,7 +23,7 @@
       <Icon
         :icon="step.marked ? 'flag' : 'flag'"
         :active="step.marked"
-        :tooltip="step.marked ? 'Marked: press to take the mark off' : 'Mark this step'"
+        :tooltip="step.marked ? t('streamC.97cefef4e1321514') : t('streamC.51e78a69971ee94f')"
         @click="emit('mark', step.id, '')"
       />
     </div>
@@ -42,14 +42,16 @@
       <span v-if="step.host" class="abele-trace-step__host">{{ step.host }}</span>
       <span v-if="step.status">{{ step.status }}</span>
       <span>{{ since(step.at) }}</span>
-      <span v-if="step.pausedMs" ref="pausedEl">paused {{ step.pausedMs }} ms</span>
+      <span v-if="step.pausedMs" ref="pausedEl">{{
+        t('streamC.ee57e43d17747cbb', { v1: step.pausedMs })
+      }}</span>
     </div>
 
     <div class="abele-trace-step__groups">
       <TreeItem
         v-if="step.stack?.length"
         class="abele-trace-step__group"
-        text="Stack"
+        :text="t('streamC.e551641242ce7246')"
         :flair="String(step.stack.length)"
         collapsible
         :collapsed="!stackOpen"
@@ -89,7 +91,7 @@
       <TreeItem
         v-if="step.links?.length"
         class="abele-trace-step__group"
-        text="Came from"
+        :text="t('streamC.9cf1e8250e14584c')"
         :flair="String(step.links.length)"
         collapsible
         :collapsed="folded.has('links')"
@@ -117,10 +119,15 @@
             <Icon
               icon="check"
               size="xs"
-              tooltip="It came from there"
+              :tooltip="t('streamC.e7f9d5c0521d0e68')"
               @click.stop="emit('link', l, true)"
             />
-            <Icon icon="x" size="xs" tooltip="Not related" @click.stop="emit('link', l, false)" />
+            <Icon
+              icon="x"
+              size="xs"
+              :tooltip="t('streamC.a02aeef91f538c3f')"
+              @click.stop="emit('link', l, false)"
+            />
           </template>
         </TreeItem>
       </TreeItem>
@@ -129,6 +136,8 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { setTooltip } from 'obsidian'
 import Icon from '../../obsidian/Icon.vue'
@@ -156,22 +165,21 @@ const toggle = (id: string) => (folded.has(id) ? folded.delete(id) : folded.add(
 
 const groups = computed(() =>
   [
-    { id: 'values', name: 'Values', values: props.step.values },
-    { id: 'request', name: 'Request', values: props.step.request ?? [] },
-    { id: 'response', name: 'Response', values: props.step.response ?? [] },
+    { id: 'values', name: t('streamC.53b09e104f608daa'), values: props.step.values },
+    { id: 'request', name: t('streamC.59f03d642b41e22f'), values: props.step.request ?? [] },
+    { id: 'response', name: t('streamC.9061383b8e228ef3'), values: props.step.response ?? [] },
   ].filter((g) => g.values.length)
 )
 
 const linkWords = (l: TraceLink) =>
   l.confirmed
-    ? `Confirmed: ${l.value} came from ${l.label}`
-    : `Suggested by the node: the same value in both · confirm or dismiss`
+    ? t('streamC.6178b92f422d1a0f', { v1: String(l.value), v2: String(l.label) })
+    : t('streamC.94ec202235be4177')
 
 const pausedEl = ref<HTMLElement>()
 const linkEls = ref<HTMLElement[]>([])
 function tips() {
-  if (pausedEl.value)
-    setTooltip(pausedEl.value, 'How long the program stood while the values were taken')
+  if (pausedEl.value) setTooltip(pausedEl.value, t('streamC.3cc0a3fe875430a9'))
   linkEls.value.forEach((el, i) => {
     const l = props.step.links?.[i]
     if (l) setTooltip(el, linkWords(l))
