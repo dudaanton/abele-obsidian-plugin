@@ -2525,8 +2525,12 @@ the server has acknowledged.
 For large whole-read uploads, the scan hashes and publishes the content-addressed blob while
 the same buffer is open. The ordinary engine still owns commits and path changes, and its
 later blob check uses acknowledged uploads and a matching process-local size/mtime receipt
-to avoid reopening the file, including revalidation scans and later cycles. Server generation
-changes invalidate those upload acknowledgements. Concurrent fingerprints of one path share
+to avoid reopening the file, including revalidation scans and later cycles. A fully verified
+received version may stand in for a reread the same way, but never for an upload: a scoped server
+admits a new sha only against this principal's own upload and spends it on commit, so the blob
+check skips the upload only for an own upload no commit has used yet (a rejected op keeps it; an
+applied, merged or lost commit spends it). Server generation changes invalidate those upload
+acknowledgements. Concurrent fingerprints of one path share
 the same in-flight operation; no full buffer remains after it settles. This avoids retaining every scanned file in
 memory until the upload phase. A server hit closes the buffer immediately. Scope and placement
 proxies validate the path before this capability runs. Native/ranged hosts keep the ordinary
