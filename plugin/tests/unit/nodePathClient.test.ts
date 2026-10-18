@@ -60,28 +60,29 @@ function fake() {
   return { ...f, client, port }
 }
 describe('validated node path reads', () => {
-  it('retains an unavailable registered repository as a removable folder without losing other projects', async () => {
-    const { client, port } = fake()
-    client.listProjects.mockResolvedValueOnce([
-      project,
-      { ...project, project_id: 'other-project', repository_path: null },
-    ])
-    vi.spyOn(client.repository, 'worktrees').mockRejectedValueOnce(
-      new ChannelError('repository_unavailable')
-    )
-    const catalogue = await port.catalogue()
-    expect(catalogue.folders).toHaveLength(2)
-    expect(catalogue.folders[0]).toMatchObject({
-      id: project.project_id,
-      missing: true,
-      path: project.root_path,
-    })
-    expect(catalogue.targets[0]).toMatchObject({
-      projectId: project.project_id,
-      kind: 'workspace',
-      id: workspace.workspace_id,
-    })
-  })
+  it.each(['repository_unavailable', 'stale_resource'])(
+    'retains a registered repository with catalogue error %s as a removable folder without losing other projects',
+    async (code) => {
+      const { client, port } = fake()
+      client.listProjects.mockResolvedValueOnce([
+        project,
+        { ...project, project_id: 'other-project', repository_path: null },
+      ])
+      vi.spyOn(client.repository, 'worktrees').mockRejectedValueOnce(new ChannelError(code))
+      const catalogue = await port.catalogue()
+      expect(catalogue.folders).toHaveLength(2)
+      expect(catalogue.folders[0]).toMatchObject({
+        id: project.project_id,
+        missing: true,
+        path: project.root_path,
+      })
+      expect(catalogue.targets[0]).toMatchObject({
+        projectId: project.project_id,
+        kind: 'workspace',
+        id: workspace.workspace_id,
+      })
+    }
+  )
   it('lists the root first, does not attach external worktrees implicitly, and binds legacy chats by workspace', async () => {
     const { port } = fake()
     const data = await port.catalogue()

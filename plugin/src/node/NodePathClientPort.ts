@@ -263,7 +263,13 @@ export class NodePathClientPort implements NodePathPort {
             ...(enriched ? { include_selection: true } : {}),
           })
         ).catch((error: unknown): WorktreeEntry[] => {
-          if (!(error instanceof ChannelError) || error.code !== 'repository_unavailable')
+          // The project's fingerprint is checked before filesystem availability. A
+          // removed .git can therefore refuse the entire catalogue as stale_resource.
+          // This is not an obsolete worktree ID: choosing another row cannot repair it.
+          if (
+            !(error instanceof ChannelError) ||
+            !['repository_unavailable', 'stale_resource'].includes(error.code)
+          )
             throw error
           console.debug('[Abele] node path: registered repository unavailable', project.project_id)
           unavailable = true
