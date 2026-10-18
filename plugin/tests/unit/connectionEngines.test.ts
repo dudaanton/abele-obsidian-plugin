@@ -136,3 +136,23 @@ it('does not start queued engines after shutdown and isolates factory failures',
   await engines.close()
   expect(events).toEqual(['failed:broken'])
 })
+
+it('forgets a removed connection whose drain never ends, and only one already removed', async () => {
+  const engines = new ConnectionEngines()
+  const close = vi.fn(() => new Promise<void>(() => {}))
+  const invalidate = vi.fn()
+  engines.start(
+    ['sample'],
+    () => ({ start: async () => {}, close, invalidate }),
+    () => {}
+  )
+  await engines.settled()
+  engines.forget('sample')
+  void engines.remove('sample')
+  expect(invalidate).toHaveBeenCalledOnce()
+  engines.forget('sample')
+  // A second removal and the host shutdown no longer wait on the abandoned drain.
+  await engines.remove('sample')
+  await engines.close()
+  expect(close).toHaveBeenCalledOnce()
+})

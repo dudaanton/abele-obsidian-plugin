@@ -308,6 +308,16 @@ export class TokenUi {
   disconnectRuntime: (id: string) => Promise<void> = async (id) => {
     await this.runtimes.get(id)?.disconnect()
   }
+  /** Stop a connection's sync for good: abort its requests and wait for its effects to drain. */
+  stopRuntime: (id: string) => Promise<void> = async (id) => {
+    await this.runtimes.get(id)?.disconnect()
+  }
+  /** Forget a stopped runtime whose draining did not finish in time; it is already fenced. */
+  abandonRuntime: (id: string) => void = (id) => {
+    this.runtimes.delete(id)
+  }
+  /** How long a deletion waits for the connection's running sync to drain before going on. */
+  runtimeStopLimitMs = 15000
   connectionForgotten: (id: string) => Promise<void> = async () => {}
   retryConnection: (id: string, assertCurrent: () => void) => Promise<void> = async (
     _,
@@ -833,7 +843,7 @@ export class TokenUi {
     this.publish(id, {
       error: 'Server deletion is awaiting confirmation. Retry Delete from the server.',
     })
-    await this.runtimes.get(id)?.pause(true)
+    await this.stopForDeletion(id)
     assertCurrent()
     if (!attempt.result) {
       requesting()
@@ -849,6 +859,36 @@ export class TokenUi {
     })
     assertCurrent()
     await this.disconnect(id)
+  }
+  /**
+   * A paused engine still finishes its running pass, so its transfers and commits would race
+   * the deletion and could keep it from ever being sent. Stop the connection instead; the saved
+   * deletion attempt keeps it from starting again until the deletion settles or it is
+   * disconnected. Stopping fences every further request at once, so a drain that does not finish
+   * in time is abandoned rather than awaited.
+   */
+  private async stopForDeletion(id: string): Promise<void> {
+    let timer: number | undefined
+    const stopping = Promise.resolve()
+      .then(() => this.stopRuntime(id))
+      .then(
+        () => 'stopped' as const,
+        (error: unknown) => {
+          console.debug('[Abele Sync] Connection stop before server deletion failed', id, error)
+          return 'stopped' as const
+        }
+      )
+    const outcome = await Promise.race([
+      stopping,
+      new Promise<'late'>((resolve) => {
+        timer = window.setTimeout(() => resolve('late'), this.runtimeStopLimitMs)
+      }),
+    ])
+    window.clearTimeout(timer)
+    if (outcome === 'late') {
+      console.debug('[Abele Sync] Connection did not finish stopping; deleting anyway', id)
+      this.abandonRuntime(id)
+    }
   }
   async sync(id: string): Promise<void> {
     const record = this.registry.records().find((one) => one.id === id)

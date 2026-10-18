@@ -109,6 +109,16 @@ export class TokenEngines {
       this.activityEpoch.delete(id)
       this.activityReports.delete(id)
     }
+    ui.stopRuntime = (id) => this.engines.remove(id)
+    ui.abandonRuntime = (id) => {
+      this.engines.forget(id)
+      this.live.delete(id)
+      this.pending.delete(id)
+      this.offloadPorts.get(id)?.close()
+      this.offloadPorts.delete(id)
+      this.refreshDestinations()
+      ui.runtimes.delete(id)
+    }
     ui.connectionForgotten = async (id) => {
       await this.engines.remove(id)
       if (ui.registry.records().length === 0) releaseVaultPathGuard(this.app.vault)

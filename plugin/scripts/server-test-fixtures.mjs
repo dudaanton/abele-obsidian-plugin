@@ -5,6 +5,7 @@ export const serverTestFixtures = {
   ABELE_SYNC_DIR: [
     'tokenEngineServer',
     'serverDeleteServer',
+    'serverDeleteInFlight',
     'syncServer',
     'interruptedMoveExchange',
     'externalRepresentationServer',

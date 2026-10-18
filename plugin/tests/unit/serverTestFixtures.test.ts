@@ -43,7 +43,7 @@ describe('server-backed fast-tier fixture gate', () => {
   })
   it('skips only the files that require an absent fixture', () => {
     const skipped = missingServerTests({})
-    expect(skipped).toHaveLength(14)
+    expect(skipped).toHaveLength(15)
     expect(skipped).toContain('tests/integration/serverDeleteServer.test.ts')
     expect(skipped).toContain('tests/integration/interruptedMoveExchange.test.ts')
     expect(skipped).not.toContain('tests/integration/scopedPublicationPush.test.ts')

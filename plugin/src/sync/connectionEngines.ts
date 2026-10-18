@@ -49,6 +49,11 @@ export class ConnectionEngines {
     await Promise.all([owned.runtime.close(), owned.starting])
     if (this.runtimes.get(id) === owned) this.runtimes.delete(id)
   }
+  /** Drop a removed connection whose effects did not drain in time; it was already invalidated. */
+  forget(id: string): void {
+    const owned = this.runtimes.get(id)
+    if (owned?.retiring) this.runtimes.delete(id)
+  }
   async close(): Promise<void> {
     this.closed = true
     await this.reset()

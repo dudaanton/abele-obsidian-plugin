@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import { tokenUiFixture } from '@/testing/tokenUiFixture'
 import { V2Client } from '@/sync/v2/client'
-import { TokenUi, SCOPE_DELETED } from '@/sync/tokenUi'
+import { TokenUi, SCOPE_DELETED, type TokenUiRuntime } from '@/sync/tokenUi'
 
 it('distinguishes failure before sending from an uncertain request or an earlier pending attempt', async () => {
   const ui = tokenUiFixture(),
@@ -221,4 +221,86 @@ it('preserves scope_deleted even on a 401 from a newer server', async () => {
     async () => Response.json({ error: { code: 'scope_deleted' } }, { status: 401 })
   )
   await expect(client.connection()).rejects.toMatchObject({ code: 'scope_deleted' })
+})
+
+function runningRuntime(overrides: Partial<TokenUiRuntime>): TokenUiRuntime {
+  return {
+    sync: async () => {},
+    pause: async () => {},
+    disconnect: async () => {},
+    opened: async () => [],
+    apply: async () => {},
+    ...overrides,
+  } as TokenUiRuntime
+}
+
+it('stops a connection that can no longer pause and deletes on the first attempt, without a restart', async () => {
+  const ui = tokenUiFixture(),
+    id = ui.rows.value[0].id
+  const remove = vi.fn().mockResolvedValue({ cursor: 1, files: 2, revoked_tokens: [] })
+  vi.spyOn(ui, 'client').mockReturnValue({ deleteScope: remove } as unknown as V2Client)
+  const stopped = vi.fn(async () => {})
+  ui.bind(
+    id,
+    runningRuntime({
+      pause: async () => {
+        throw new Error('Connection stopped')
+      },
+      disconnect: stopped,
+    })
+  )
+  await ui.deleteFromServer(id)
+  expect(stopped).toHaveBeenCalled()
+  expect(remove).toHaveBeenCalledTimes(1)
+  expect(ui.rows.value.some((one) => one.id === id)).toBe(false)
+})
+
+it('does not wait forever for a running connection that never stops before deleting', async () => {
+  const ui = tokenUiFixture(),
+    id = ui.rows.value[0].id
+  ui.runtimeStopLimitMs = 20
+  const remove = vi.fn().mockResolvedValue({ cursor: 1, files: 2, revoked_tokens: [] })
+  vi.spyOn(ui, 'client').mockReturnValue({ deleteScope: remove } as unknown as V2Client)
+  const never = () => new Promise<void>(() => {})
+  ui.bind(id, runningRuntime({ pause: never, disconnect: never }))
+  const outcome = await Promise.race([
+    ui.deleteFromServer(id).then(() => 'deleted'),
+    new Promise((resolve) => setTimeout(() => resolve('still waiting'), 2000)),
+  ])
+  expect(outcome).toBe('deleted')
+  expect(remove).toHaveBeenCalledTimes(1)
+  expect(ui.rows.value.some((one) => one.id === id)).toBe(false)
+})
+
+it('stops the connection before sending and retries a lost answer with the same key, never a second deletion', async () => {
+  const ui = tokenUiFixture(),
+    id = ui.rows.value[0].id
+  const order: string[] = []
+  const remove = vi
+    .fn()
+    .mockImplementationOnce(async () => {
+      order.push('request')
+      throw Object.assign(new Error('Sync connection: unreachable'), { code: 'unreachable' })
+    })
+    .mockImplementation(async () => {
+      order.push('request')
+      return { cursor: 1, files: 2, revoked_tokens: [] }
+    })
+  vi.spyOn(ui, 'client').mockReturnValue({ deleteScope: remove } as unknown as V2Client)
+  ui.bind(
+    id,
+    runningRuntime({
+      disconnect: async () => {
+        order.push('stopped')
+      },
+    })
+  )
+  await expect(ui.deleteFromServer(id)).rejects.toMatchObject({ deletionOutcome: 'unknown' })
+  expect(order).toEqual(['stopped', 'request'])
+  await expect(ui.sync(id)).rejects.toThrow('awaiting confirmation')
+  await expect(ui.pause(id, false)).rejects.toThrow('stopped')
+  await ui.deleteFromServer(id)
+  expect(remove).toHaveBeenCalledTimes(2)
+  expect(remove.mock.calls[0][0]).toBe(remove.mock.calls[1][0])
+  expect(ui.rows.value.some((one) => one.id === id)).toBe(false)
 })
