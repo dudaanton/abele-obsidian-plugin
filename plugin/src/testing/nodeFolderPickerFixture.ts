@@ -25,10 +25,14 @@ const NAMES = [
  * The node's "Open folder on node" dialog, through the opener the plugin uses, over a made-up
  * home folder with more folders than the list shows at once.
  */
-export function nodeFolderPickerFixture(stale = false): Promise<void> {
+export function nodeFolderPickerFixture(stale = false, refuseShow = false): Promise<void> {
   const model = {
     capabilities: shallowRef(['node_path_v2']),
-    folders: shallowRef([]),
+    folders: shallowRef(
+      refuseShow
+        ? [{ id: 'sample-project', path: `${HOME}/sample-service`, git: true, copies: [] }]
+        : []
+    ),
     targets: shallowRef([]),
   } as unknown as NodePathModel
   const listing = (path: string) => ({
@@ -50,6 +54,9 @@ export function nodeFolderPickerFixture(stale = false): Promise<void> {
         capabilities: { capabilities: { node_path_v2: { status: 'supported' } } },
       }),
       nodePath: {
+        register: async () => {
+          throw new ChannelError('permission_denied')
+        },
         mkdir: async () => {
           if (stale) throw new ChannelError('stale_resource')
           throw new Error('This fixture only browses folders')

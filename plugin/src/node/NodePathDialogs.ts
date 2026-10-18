@@ -1,4 +1,5 @@
 import { nodeErrorNotice } from './errorNotice'
+import { nodeErrorWords } from './errorWords'
 import { UiError, uiMessage, presentUiError } from '@/i18n/streamBErrors'
 import { t } from '@/i18n'
 import { h, shallowRef, watch } from 'vue'
@@ -163,6 +164,7 @@ export async function openNodeFolderPicker(
       return
     }
     busy.value = true
+    actionError.value = ''
     try {
       if (create) {
         const at = path.lastIndexOf('/'),
@@ -201,12 +203,17 @@ export async function openNodeFolderPicker(
       const target = model.targets.value.find(
         (translationItem) => translationItem.projectId === project.project_id
       )
-      if (target) await model.select(target.id)
+      if (!target) throw new ChannelError('stale_resource')
+      await model.select(target.id)
       if (!closed) close()
     } catch (error) {
       actionError.value = [
         actionError.value,
-        error instanceof Error ? presentUiError(error) : t('streamB.folderActionFailed.7e771a'),
+        error instanceof ChannelError
+          ? `${nodeErrorWords(error.code)} (${error.code})`
+          : error instanceof Error
+            ? presentUiError(error)
+            : t('streamB.folderActionFailed.7e771a'),
       ]
         .filter(Boolean)
         .join(' ')
@@ -229,13 +236,7 @@ export async function openNodeFolderPicker(
             void opened(path, true, close)
           },
           onShow: (path: string) => {
-            const folder = model.folders.value.find((f) => f.path === path)
-            const id = folder?.copies[0]?.id ?? folder?.id
-            if (id)
-              void model
-                .select(id)
-                .then(close)
-                .catch((e) => model.report(e))
+            void opened(path, false, close)
           },
           onCancel: close,
         }),

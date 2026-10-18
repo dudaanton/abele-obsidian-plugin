@@ -381,6 +381,7 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
   // Not its promise: that settles once the dialog is open, and the probes close it themselves.
   'node-folder-picker': () => void nodeFolderPickerFixture(),
   'node-folder-picker-stale': () => void nodeFolderPickerFixture(true),
+  'node-folder-picker-refused': () => void nodeFolderPickerFixture(false, true),
   'node-delegation-grants': () =>
     mountAlone(NodeDelegationGrantsDialog, nodeDelegationGrantsFixture()),
   'node-delegation-card': () =>

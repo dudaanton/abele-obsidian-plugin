@@ -175,6 +175,79 @@ async function press(label: string) {
   button.click()
   await flushPromises()
 }
+function showFixture() {
+  const f = pickerFixture()
+  f.model.folders.value = [
+    { id: 'sample-project', path: '/sample/repo', git: true, copies: [] },
+  ] as never
+  f.directories.mockImplementation(
+    async () =>
+      ({
+        ...directoryPage('/sample'),
+        entries: [{ name: 'repo', path: '/sample/repo' }],
+      }) as never
+  )
+  const register = vi.fn().mockResolvedValue({ project_id: 'fresh-project' })
+  const model = {
+    ...f.model,
+    targets: ref([]),
+    refresh: vi.fn(async () => {}),
+    select: vi.fn(async () => {}),
+  }
+  const connection = {
+    ...f.connection,
+    client: {
+      ...f.client,
+      store: new MemoryClientStore(),
+      nodePath: { ...f.client.nodePath, register },
+    },
+  }
+  return { model, connection, register }
+}
+it('keeps Show refusals visible with words and the protocol code', async () => {
+  const f = showFixture()
+  f.register.mockRejectedValue(new ChannelError('permission_denied'))
+  await openNodeFolderPicker(f.model as never, f.connection as never)
+  await typeChild('repo')
+  await press('Show')
+  const message = document.querySelector('[role="alert"]')?.textContent
+  expect(message).toContain('(permission_denied)')
+  expect(message).not.toBe('permission_denied')
+  expect(document.querySelector('.abele-folder-picker')).not.toBeNull()
+})
+it('refreshes before selecting a newly registered Show project', async () => {
+  const f = showFixture()
+  f.model.refresh.mockImplementation(async () => {
+    f.model.targets.value = [{ id: 'fresh-root', projectId: 'fresh-project' }] as never
+  })
+  await openNodeFolderPicker(f.model as never, f.connection as never)
+  await typeChild('repo')
+  await press('Show')
+  expect(f.register).toHaveBeenCalled()
+  expect(f.model.select).toHaveBeenCalledWith('fresh-root')
+  expect(document.querySelector('.abele-folder-picker')).toBeNull()
+})
+it('keeps Show open when the refreshed catalogue still omits the project', async () => {
+  const f = showFixture()
+  await openNodeFolderPicker(f.model as never, f.connection as never)
+  await typeChild('repo')
+  await press('Show')
+  expect(document.querySelector('[role="alert"]')?.textContent).toContain('(stale_resource)')
+  expect(document.querySelector('.abele-folder-picker')).not.toBeNull()
+})
+it('keeps a Show selection rejection inside the dialog', async () => {
+  const f = showFixture()
+  f.model.refresh.mockImplementation(async () => {
+    f.model.targets.value = [{ id: 'fresh-root', projectId: 'fresh-project' }] as never
+  })
+  f.model.select.mockRejectedValue(new ChannelError('repository_unavailable'))
+  await openNodeFolderPicker(f.model as never, f.connection as never)
+  await typeChild('repo')
+  await press('Show')
+  expect(document.querySelector('[role="alert"]')?.textContent).toContain(
+    '(repository_unavailable)'
+  )
+})
 it.each(['stale_resource', 'stale_cursor'])(
   'restarts a partial directory page once on %s',
   async (code) => {
