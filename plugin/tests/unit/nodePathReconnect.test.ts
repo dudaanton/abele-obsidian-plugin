@@ -32,6 +32,11 @@ vi.mock('@/node/NodePathModel', () => ({
     async select(id: string) {
       fixture.calls.push(`watch:${id}`)
     }
+    // Mirrors NodePathModel.reconnected: re-list, then reselect with a fresh watch.
+    async reconnected() {
+      await this.refresh()
+      await this.select(this.current.value.id)
+    }
     async refreshCurrent() {
       fixture.calls.push('old-watch')
     }
