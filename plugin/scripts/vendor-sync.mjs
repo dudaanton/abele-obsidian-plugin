@@ -8,8 +8,8 @@ import { fileURLToPath } from 'node:url'
 
 const plugin = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const [repo, revision, mode = 'vendor'] = process.argv.slice(2)
-if (!repo || !revision || !['vendor', 'fixture'].includes(mode))
-  throw new Error('Usage: vendor-sync.mjs <repository> <exact revision> [vendor|fixture]')
+if (!repo || !revision || !['vendor', 'fixture', 'notes'].includes(mode))
+  throw new Error('Usage: vendor-sync.mjs <repository> <exact revision> [vendor|fixture|notes]')
 const run = (cmd, args, cwd) => execFileSync(cmd, args, { cwd, stdio: 'inherit' })
 const git = (...args) =>
   execFileSync('git', ['-C', resolve(repo), ...args], { encoding: 'utf8' }).trim()
@@ -26,21 +26,21 @@ const hash = (bytes) => createHash('sha256').update(bytes).digest('hex')
 const lockHash = hash(readFileSync(join(source, 'package-lock.json')))
 run(
   'npm',
-  ['ci', ...(mode === 'vendor' ? ['--ignore-scripts'] : ['--ignore-scripts=false'])],
+  ['ci', ...(mode === 'fixture' ? ['--ignore-scripts=false'] : ['--ignore-scripts'])],
   source
 )
 const config = join(source, 'tsconfig.base.json')
 const options = JSON.parse(readFileSync(config))
-options.compilerOptions.sourceMap = false
+if (mode === 'fixture') options.compilerOptions.sourceMap = false
 writeFileSync(config, JSON.stringify(options, null, 2) + '\n')
 run(
   join(source, 'node_modules/.bin/tsc'),
   [
     '-b',
     '--force',
-    'packages/protocol',
+    ...(mode === 'notes' ? ['packages/notes'] : ['packages/protocol']),
     ...(mode === 'fixture' ? ['packages/server'] : []),
-    'packages/core',
+    ...(mode === 'notes' ? [] : ['packages/core']),
     ...(mode === 'fixture' ? ['packages/cli'] : []),
   ],
   source
@@ -63,7 +63,7 @@ const provenance = {
   npm: execFileSync('npm', ['--version'], { encoding: 'utf8' }).trim(),
   typescript: JSON.parse(readFileSync(join(source, 'node_modules/typescript/package.json')))
     .version,
-  sourceMap: false,
+  sourceMap: options.compilerOptions.sourceMap ?? false,
 }
 if (mode === 'fixture') {
   const files = {}
@@ -83,7 +83,7 @@ if (mode === 'fixture') {
   const output = join(plugin, 'vendor/sync')
   mkdirSync(output, { recursive: true })
   const packages = {}
-  for (const name of ['protocol', 'core']) {
+  for (const name of mode === 'notes' ? ['notes'] : ['protocol', 'core']) {
     const root = join(source, 'packages', name)
     const manifest = JSON.parse(readFileSync(join(root, 'package.json')))
     const packed = JSON.parse(
@@ -109,7 +109,9 @@ if (mode === 'fixture') {
     join(output, 'provenance.json'),
     JSON.stringify(
       {
-        ...provenance,
+        ...(mode === 'notes'
+          ? JSON.parse(readFileSync(join(output, 'provenance.json')))
+          : provenance),
         packages: {
           ...JSON.parse(readFileSync(join(output, 'provenance.json'))).packages,
           ...packages,
