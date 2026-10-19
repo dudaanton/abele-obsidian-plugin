@@ -6,10 +6,16 @@ import type { LocalStorage } from '../ledgerId'
 const journalSchema = z
   .object({
     requestId: z.string().min(1),
-    ops: V2CommitRequestSchema.shape.ops,
-    receipt: V2CommitResponseSchema.nullable(),
+    ops: z.unknown(),
+    receipt: z.unknown(),
   })
   .strict()
+  // Shared protocol schemas use Zod 3; parse them outside the local Zod 4 envelope.
+  .transform((value) => ({
+    ...value,
+    ops: V2CommitRequestSchema.shape.ops.parse(value.ops),
+    receipt: V2CommitResponseSchema.nullable().parse(value.receipt),
+  }))
 
 /** Implement with the connection's device-local state, never settings transfer. */
 export interface TokenJournal {

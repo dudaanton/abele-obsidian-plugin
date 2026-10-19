@@ -1,17 +1,14 @@
-// Retained upload schemas from protocol 10e8f23; receipt follows documented v2 routes.
 import { z } from 'zod'
-import { ShaSchema } from './fileSchemas'
-const id = z.string().min(1)
-const bytes = z.number().int().nonnegative()
-export const UploadBeginRequestSchema = z.object({ size: z.number().int().positive() })
-export type UploadBeginRequest = z.infer<typeof UploadBeginRequestSchema>
+import { UploadBeginRequestSchema as SharedUploadBeginRequestSchema } from '@abele/sync-protocol'
 
-export const UploadBeginResponseSchema = z.object({
-  upload_id: id,
-  part_size: z.number().int().positive(),
-  parts: z.number().int().positive(),
-  received: z.array(z.number().int().nonnegative()).optional(),
-})
-export type UploadBeginResponse = z.infer<typeof UploadBeginResponseSchema>
+export { UploadBeginResponseSchema } from '@abele/sync-protocol'
+export type { UploadBeginResponse } from '@abele/sync-protocol'
 
-export const UploadReceiptSchema = z.object({ sha: ShaSchema, size: bytes }).strict()
+// Optional upstream upload fields remain unknown fields for the plugin's v2 request.
+export const UploadBeginRequestSchema = SharedUploadBeginRequestSchema.pick({ size: true })
+export type UploadBeginRequest = typeof UploadBeginRequestSchema._output
+
+// Keep local until the planned public V2UploadReceiptSchema export is available.
+export const UploadReceiptSchema = z
+  .object({ sha: z.string().regex(/^[0-9a-f]{64}$/), size: z.number().int().nonnegative() })
+  .strict()
