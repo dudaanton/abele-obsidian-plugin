@@ -1,4 +1,9 @@
 {
+  "streamC.readerForward": {
+    "englishHash": "1f7e34c9d11966ffa1963f8cad25a555dec25021fb3008a42d6cf2617d5fb66f",
+    "context": "Reader footer action: return to the next reading place after going back",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
   "streamC.6fd9013400843e8c": {
     "englishHash": "9b7cda3705bc93a81112fb606010a89af40a65b0deb0521d87deff24542ff051",
     "context": "Canvas, sync, debugger, reader and editor display only; identifiers and saved content retain their original bytes",
