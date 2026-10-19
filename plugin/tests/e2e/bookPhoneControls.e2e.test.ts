@@ -258,7 +258,8 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
       const slider = view.contentEl.querySelector('.abele-book-reader__footer input[type=range]')
       const b = slider.getBoundingClientRect(), y = b.top + b.height / 2
       const f0 = view.model.fraction
-      const x0 = b.left + 12
+      const thumb = parseFloat(getComputedStyle(slider).getPropertyValue('--slider-thumb-width')) || 18
+      const x0 = b.left + thumb / 2 + (b.width - thumb) * Number(slider.value) / 1000
       await touch('touchStart', [[x0, y]])
       for (let i = 1; i <= 10; i++) { await touch('touchMove', [[x0 + i * 24, y]]); await wait(20) }
       await touch('touchEnd'); await wait(1200)
@@ -270,6 +271,42 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
     expect(r.error).toBeUndefined()
     expect(r.closed).toEqual([true, true])
     expect(r.fraction![1]).toBeGreaterThan(r.fraction![0] + 0.2)
+  })
+
+  it('swiping across the progress track opens the sidebar without moving the book', async () => {
+    const r = await run<{ error?: string; opened?: boolean[]; unchanged?: boolean[] }>(`
+      const { leaf, view } = await open(${JSON.stringify(RICH)})
+      try {
+        await moved(view, () => view.engine.goTo(view.model.toc[0].href))
+        const opened = [], unchanged = []
+        for (const direction of [1, -1]) {
+          app.workspace.leftSplit.collapse()
+          app.workspace.rightSplit.collapse()
+          await wait(400)
+          const slider = view.contentEl.querySelector('.abele-book-reader__footer input[type=range]')
+          const b = slider.getBoundingClientRect(), y = b.top + b.height / 2
+          const before = view.engine.lastLocation.cfi
+          const x0 = b.left + b.width * (direction === 1 ? 0.3 : 0.9)
+          await touch('touchStart', [[x0, y]])
+          for (let i = 1; i <= 10; i++) {
+            await touch('touchMove', [[x0 + direction * i * (b.width * 0.6 / 10), y]])
+            await wait(20)
+          }
+          await touch('touchEnd'); await wait(1200)
+          opened.push(!(direction === 1 ? app.workspace.leftSplit : app.workspace.rightSplit).collapsed)
+          unchanged.push(view.engine.lastLocation.cfi === before)
+          await shoot('footer-sidebar-swipe-' + direction)
+        }
+        return { opened, unchanged }
+      } finally {
+        app.workspace.leftSplit.collapse()
+        app.workspace.rightSplit.collapse()
+        leaf.detach()
+      }
+    `)
+    expect(r.error).toBeUndefined()
+    expect(r.unchanged).toEqual([true, true])
+    expect(r.opened).toEqual([true, true])
   })
 
   it('the line under the page shows the page of the chapter, and a tap goes round its other ways', async () => {

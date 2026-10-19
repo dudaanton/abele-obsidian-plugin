@@ -1,5 +1,5 @@
 <template>
-  <div class="abele-book-reader__footer" data-ignore-swipe="true">
+  <div class="abele-book-reader__footer" :data-ignore-swipe="zen().on ? 'true' : undefined">
     <Icon
       v-if="model.canGoBack"
       icon="undo-2"
@@ -56,6 +56,7 @@
       :min="0"
       :max="1000"
       :label="t('streamC.55aedf24ff8ee34a')"
+      :thumb-drag-only="!zen().on"
       @input="dragging = $event"
       @update:model-value="seek"
     />
@@ -97,6 +98,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { settingsSlice } from '@/composables/settingsSlice'
 import { percent, type BookModel } from '@/reader/model'
 import { readerSettingsFrom } from '@/reader/settings'
+import { zen } from '@/reader/zen'
 import { nextShow, progressText, type ProgressShow } from '@/reader/readingProgress'
 
 const props = defineProps<{ model: BookModel }>()

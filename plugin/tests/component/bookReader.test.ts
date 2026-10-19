@@ -14,6 +14,7 @@ import { DEFAULT_READER_SETTINGS } from '@/reader/settings'
 import { emptyBookModel, emptySearch, tocEntries, type BookModel } from '@/reader/model'
 import { useVault } from '../helpers/testEnv'
 import type { Bookmark } from '@/reader/bookmarks'
+import { initZen } from '@/reader/zen'
 
 const readyModel = (over: Partial<BookModel> = {}): BookModel =>
   reactive({
@@ -37,6 +38,63 @@ beforeEach(() => {
 })
 
 describe('the line under the page', () => {
+  it('keeps the existing swipe ownership while zen is on', () => {
+    initZen({ loadLocalStorage: () => ({ on: true }), saveLocalStorage: () => {} })
+    const view = mount(BookReader, { props: { model: readyModel() } })
+    try {
+      expect(view.find('.abele-book-reader__footer').attributes('data-ignore-swipe')).toBe('true')
+      expect(view.find('input.slider').attributes('data-ignore-swipe')).toBe('true')
+    } finally {
+      view.unmount()
+      initZen(null)
+    }
+  })
+
+  it('leaves track swipes to the host and reserves only thumb drags', async () => {
+    const view = mount(BookReader, { props: { model: readyModel() } })
+    const slider = view.find('input.slider')
+    const el = slider.element as HTMLInputElement
+    vi.spyOn(el, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 200,
+      height: 44,
+      right: 200,
+      bottom: 44,
+    } as DOMRect)
+    const touch = async (type: string, x: number) => {
+      const event = new Event(type, { bubbles: true, cancelable: true })
+      const point = { clientX: x, clientY: 22 }
+      Object.defineProperty(event, 'changedTouches', { value: [point] })
+      Object.defineProperty(event, 'touches', { value: type === 'touchend' ? [] : [point] })
+      el.dispatchEvent(event)
+      await view.vm.$nextTick()
+      return event
+    }
+    expect(view.find('.abele-book-reader__footer').attributes('data-ignore-swipe')).toBeUndefined()
+    expect(slider.attributes('data-ignore-swipe')).toBeUndefined()
+    expect((await touch('touchstart', 150)).defaultPrevented).toBe(true)
+    expect(slider.attributes('data-ignore-swipe')).toBeUndefined()
+    await touch('touchmove', 190)
+    await touch('touchend', 190)
+    expect(view.emitted('seek')).toBeUndefined()
+    await touch('touchstart', 86)
+    expect(slider.attributes('data-ignore-swipe')).toBe('true')
+    await slider.setValue('650')
+    expect(view.emitted('seek')).toEqual([[0.65]])
+    await touch('touchend', 130)
+    expect(slider.attributes('data-ignore-swipe')).toBeUndefined()
+    await touch('touchstart', 150)
+    await touch('touchend', 150)
+    expect(view.emitted('seek')).toHaveLength(2)
+    await touch('touchstart', 20)
+    await touch('touchcancel', 20)
+    await touch('touchend', 20)
+    expect(view.emitted('seek')).toHaveLength(2)
+    expect(slider.attributes('data-ignore-swipe')).toBeUndefined()
+    view.unmount()
+  })
+
   it('shows and forwards both available history actions', async () => {
     const model = readyModel({ canGoBack: true, canGoForward: true })
     const view = mount(BookReader, { props: { model } })

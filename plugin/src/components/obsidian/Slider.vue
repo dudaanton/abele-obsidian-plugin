@@ -3,7 +3,7 @@
     ref="el"
     class="slider abele-slider"
     type="range"
-    data-ignore-swipe="true"
+    :data-ignore-swipe="thumbDragOnly ? undefined : 'true'"
     :min="min"
     :max="max"
     :step="step"
@@ -12,6 +12,10 @@
     :aria-label="label"
     @input="onInput"
     @change="emit('update:model-value', Number(($event.target as HTMLInputElement).value))"
+    @touchstart="touchStart"
+    @touchmove="touchMove"
+    @touchend="touchEnd"
+    @touchcancel="touchCancel"
   />
 </template>
 
@@ -35,8 +39,10 @@ const props = withDefaults(
     disabled?: boolean
     /** What the slider sets, for the tooltip and for a screen reader. */
     label?: string
+    /** Leave track swipes to the host; only a touch starting on the thumb drags it. */
+    thumbDragOnly?: boolean
   }>(),
-  { min: 0, max: 100, step: 1, disabled: false, label: undefined }
+  { min: 0, max: 100, step: 1, disabled: false, label: undefined, thumbDragOnly: false }
 )
 
 const emit = defineEmits<{
@@ -45,6 +51,63 @@ const emit = defineEmits<{
 }>()
 
 const el = ref<HTMLInputElement>()
+
+let trackTouch: { x: number; y: number; moved: boolean } | null = null
+
+const track = () => {
+  const input = el.value
+  const box = input.getBoundingClientRect()
+  const thumb = parseFloat(getComputedStyle(input).getPropertyValue('--slider-thumb-width')) || 18
+  return { left: box.left + thumb / 2, width: Math.max(1, box.width - thumb), thumb }
+}
+
+const touchStart = (event: TouchEvent) => {
+  if (!props.thumbDragOnly || props.disabled) return
+  trackTouch = null
+  const point = event.touches[0]
+  if (!point || event.touches.length !== 1) return
+  const { left, width, thumb } = track()
+  const ratio = (Number(el.value.value) - props.min) / (props.max - props.min || 1)
+  if (Math.abs(point.clientX - (left + ratio * width)) <= thumb / 2) {
+    // Set synchronously: Obsidian reads this as touchstart bubbles to its gesture handler.
+    el.value.setAttribute('data-ignore-swipe', 'true')
+  } else {
+    // Cancel the native range drag, while letting the host receive the entire gesture.
+    event.preventDefault()
+    trackTouch = { x: point.clientX, y: point.clientY, moved: false }
+  }
+}
+
+const touchMove = (event: TouchEvent) => {
+  if (!trackTouch) return
+  const point = event.touches[0]
+  if (
+    event.touches.length !== 1 ||
+    !point ||
+    Math.hypot(point.clientX - trackTouch.x, point.clientY - trackTouch.y) > 8
+  )
+    trackTouch.moved = true
+}
+
+const touchCancel = () => {
+  trackTouch = null
+  if (props.thumbDragOnly) el.value?.removeAttribute('data-ignore-swipe')
+}
+
+const touchEnd = () => {
+  const tap = trackTouch
+  touchCancel()
+  if (!tap || tap.moved) return
+  const { left, width } = track()
+  // Let the native range enforce its step and bounds for a stationary track tap.
+  el.value.value = String(
+    props.min + Math.min(1, Math.max(0, (tap.x - left) / width)) * (props.max - props.min)
+  )
+  const value = Number(el.value.value)
+  fill(value)
+  emit('input', value)
+  emit('update:model-value', value)
+}
 
 /** Obsidian's slider draws its filled part from this ratio, which its own component keeps set. */
 const fill = (value: number) => {
