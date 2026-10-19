@@ -12,6 +12,12 @@ import { nodeTraceSupported, TraceRpc } from './trace/wire'
 import { Platform } from 'obsidian'
 import type { PathTarget } from '@/node/NodePathModel'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { nodeAdvertisesMethod } from '@/node/advertisedMethods'
+
+export interface SourceAdmission {
+  message: string
+  code?: string
+}
 
 type SourceMapping = {
   path: string
@@ -292,7 +298,7 @@ export class DebuggerService {
   static readonly instance = new DebuggerService()
   readonly sourceRevision = shallowRef(0)
   private readonly folders = new Map<DebuggerBinding, { sessionId: string; target: PathTarget }>()
-  private readonly admissions = new Map<string, Promise<string>>()
+  private readonly admissions = new Map<string, Promise<SourceAdmission>>()
   observeFolder(binding: DebuggerBinding, sessionId: string) {
     const folder = this.folders.get(binding)
     if (folder) {
@@ -334,12 +340,13 @@ export class DebuggerService {
     }
     return undefined
   }
-  async admitFile(target: PathTarget, path: string): Promise<string> {
+  async admitFile(target: PathTarget, path: string): Promise<SourceAdmission> {
     const binding = this.folderBinding(target)
-    if (!binding || !/\.(?:[cm]?[jt]s|[jt]sx)$/.test(path) || this.debugFor(target, path)) return ''
+    if (!binding || !/\.(?:[cm]?[jt]s|[jt]sx)$/.test(path) || this.debugFor(target, path))
+      return { message: '' }
     const sessionId = binding.sessionId
     const incarnation = binding.controller.snapshot?.incarnation
-    if (!sessionId || !incarnation) return ''
+    if (!sessionId || !incarnation) return { message: '' }
     const generation = binding.connection.authorizationGeneration
     const client = binding.connection.client
     const key = JSON.stringify([
@@ -360,18 +367,9 @@ export class DebuggerService {
       binding.controller.snapshot?.incarnation === incarnation
     const attempt = (async () => {
       try {
-        const description = z
-          .object({
-            capabilities: z.object({
-              capabilities: z.object({
-                debugger_v1: z.object({ add_sources: z.boolean().optional() }).optional(),
-              }),
-            }),
-          })
-          .parse(await client.describe())
-        if (!current()) return ''
-        if (!description.capabilities.capabilities.debugger_v1?.add_sources)
-          return t('debug.sourceUpdate')
+        if (!current()) return { message: '' }
+        if (!nodeAdvertisesMethod(client, 'debugger.v1.addSources'))
+          return { message: t('debug.sourceUpdate') }
         const result = z
           .object({
             incarnation: z.string(),
@@ -385,7 +383,7 @@ export class DebuggerService {
               sources: [path],
             })
           )
-        if (!current() || result.incarnation !== incarnation) return ''
+        if (!current() || result.incarnation !== incarnation) return { message: '' }
         console.debug('[debugger] Source admission', path, result)
         for (const source of result.sources)
           this.registerSource(
@@ -399,11 +397,13 @@ export class DebuggerService {
           )
         const refusal = result.refused.find((r) => r.path === path)
         if (refusal) return sourceRefusal(refusal.code)
-        return result.sources.some((s) => s.path === path) ? '' : t('debug.sourceUnavailable')
+        return {
+          message: result.sources.some((s) => s.path === path) ? '' : t('debug.sourceUnavailable'),
+        }
       } catch (error) {
         console.debug('[debugger] Source admission failed', error)
         this.admissions.delete(key)
-        return current() ? t('debug.sourceUnavailable') : ''
+        return { message: current() ? t('debug.sourceUnavailable') : '' }
       }
     })()
     this.admissions.set(key, attempt)
@@ -613,9 +613,12 @@ export class DebuggerService {
   }
 }
 
-export function sourceRefusal(code: string): string {
-  if (code === 'source_map_missing') return t('debug.sourceMap')
-  if (code === 'source_changed') return t('debug.sourceChanged')
-  if (code === 'outside_folder') return t('debug.sourceOutside')
-  return t('debug.sourceUnavailable')
+export function sourceRefusal(code: string): SourceAdmission {
+  if (code === 'debugger_source_no_map') return { message: t('debug.sourceMap') }
+  if (code === 'debugger_source_changed') return { message: t('debug.sourceChanged') }
+  if (code === 'debugger_source_outside_folder') return { message: t('debug.sourceOutside') }
+  if (code === 'debugger_source_conflict') return { message: t('debug.sourceConflict') }
+  if (code === 'debugger_source_limit') return { message: t('debug.sourceLimit') }
+  if (code === 'debugger_source_unavailable') return { message: t('debug.sourceUnreadable') }
+  return { message: t('debug.sourceUnavailable'), code }
 }

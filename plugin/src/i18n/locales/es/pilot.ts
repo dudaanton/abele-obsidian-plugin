@@ -3556,4 +3556,7 @@ export const es = {
   'debug.sourceUnavailable': 'No se pudo añadir el archivo al depurador',
   'debug.entryPlaceholder': 'Buscar un archivo de entrada JavaScript o TypeScript',
   'debug.entryEmpty': 'No se encontraron archivos de entrada JavaScript o TypeScript',
+  'debug.sourceConflict': 'El archivo entra en conflicto con una fuente ya añadida',
+  'debug.sourceLimit': 'Se alcanzó el límite de archivos fuente de la sesión',
+  'debug.sourceUnreadable': 'El archivo no está disponible o no se puede leer',
 } satisfies TranslationCatalog

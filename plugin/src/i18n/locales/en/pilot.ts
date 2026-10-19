@@ -3398,4 +3398,7 @@ export const en = {
   'debug.sourceUnavailable': 'This file could not be admitted to the debugger',
   'debug.entryPlaceholder': 'Search for a JavaScript or TypeScript entry file',
   'debug.entryEmpty': 'No JavaScript or TypeScript entry files found',
+  'debug.sourceConflict': 'This file conflicts with an admitted source',
+  'debug.sourceLimit': 'The session source limit has been reached',
+  'debug.sourceUnreadable': 'This file is unavailable or unreadable',
 } as const

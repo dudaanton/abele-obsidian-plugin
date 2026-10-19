@@ -3499,4 +3499,7 @@ export const lv = {
   'debug.sourceUnavailable': 'Failu neizdevās pievienot atkļūdotājam',
   'debug.entryPlaceholder': 'Meklēt JavaScript vai TypeScript ieejas failu',
   'debug.entryEmpty': 'Nav atrasts neviens JavaScript vai TypeScript ieejas fails',
+  'debug.sourceConflict': 'Fails konfliktē ar jau pievienotu pirmkoda failu',
+  'debug.sourceLimit': 'Sasniegts sesijas pirmkoda failu skaita ierobežojums',
+  'debug.sourceUnreadable': 'Fails nav pieejams vai nav nolasāms',
 } satisfies TranslationCatalog

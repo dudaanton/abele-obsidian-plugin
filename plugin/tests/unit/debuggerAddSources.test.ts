@@ -6,6 +6,8 @@ import { DebuggerService } from '@/debugger/DebuggerService'
 import type { FolderDebugOwner } from '@/debugger/owner'
 import { debuggerSnapshot } from '../fixtures/debugger'
 import { programFiles } from '@/debugger/programFiles'
+import { NodeClient } from '@abele/node-client'
+import { nodeAdvertisesMethod } from '@/node/advertisedMethods'
 
 const target = {
   registrationId: 'sample-node',
@@ -15,6 +17,18 @@ const target = {
   id: 'sample-folder',
 }
 afterEach(() => DebuggerService.instance.destroy())
+it('reads the negotiated welcome from the installed SDK and forgets it on disconnect', async () => {
+  const client = new NodeClient({} as never, {} as never)
+  expect(nodeAdvertisesMethod(client, 'debugger.v1.addSources')).toBe(false)
+  client.attach({
+    welcome: { methods: ['debugger.v1.status', 'debugger.v1.addSources'] },
+    transport: { close: async () => {} },
+  } as never)
+  expect(nodeAdvertisesMethod(client, 'debugger.v1.addSources')).toBe(true)
+  expect(nodeAdvertisesMethod(client, 'debugger.v1.sampleFutureMethod')).toBe(false)
+  await client.disconnect()
+  expect(nodeAdvertisesMethod(client, 'debugger.v1.addSources')).toBe(false)
+})
 function fixture(supported = true, refused: { path: string; code: string }[] = []) {
   const request = vi.fn(async () => ({
     incarnation: 'sample-incarnation',
@@ -28,13 +42,11 @@ function fixture(supported = true, refused: { path: string; code: string }[] = [
       state: ref('connected'),
       client: {
         request,
-        describe: async () => ({
-          capabilities: {
-            capabilities: {
-              debugger_v1: { status: 'supported', ...(supported ? { add_sources: true } : {}) },
-            },
+        channel: {
+          channel: {
+            welcome: { methods: supported ? ['debugger.v1.addSources'] : ['debugger.v1.status'] },
           },
-        }),
+        },
       },
     },
   } as unknown as FolderDebugOwner
@@ -52,7 +64,7 @@ function fixture(supported = true, refused: { path: string; code: string }[] = [
 }
 it('admits a later-opened file once and retains it for restart', async () => {
   const { service, binding, request } = fixture()
-  expect(await service.admitFile(target, 'lib/helper.ts')).toBe('')
+  expect((await service.admitFile(target, 'lib/helper.ts')).message).toBe('')
   expect(service.debugFor(target, 'lib/helper.ts')?.sourceId).toBe('sample-added')
   await service.admitFile(target, 'lib/helper.ts')
   expect(request).toHaveBeenCalledExactlyOnceWith('debugger.v1.addSources', {
@@ -64,16 +76,19 @@ it('admits a later-opened file once and retains it for restart', async () => {
 })
 it('explains an old node without sending an unsupported RPC', async () => {
   const { service, request } = fixture(false)
-  expect(await service.admitFile(target, 'lib/helper.ts')).toMatch(/update.*node/i)
+  expect((await service.admitFile(target, 'lib/helper.ts')).message).toMatch(/update.*node/i)
   expect(request).not.toHaveBeenCalled()
 })
 it.each([
-  ['source_map_missing', /build with source maps/i],
-  ['source_changed', /changed since/i],
-  ['outside_folder', /outside.*folder/i],
+  ['debugger_source_no_map', /build with source maps/i],
+  ['debugger_source_changed', /changed since/i],
+  ['debugger_source_outside_folder', /outside.*folder/i],
+  ['debugger_source_conflict', /conflict/i],
+  ['debugger_source_limit', /limit/i],
+  ['debugger_source_unavailable', /unavailable/i],
 ] as const)('explains refusal %s', async (code, reason) => {
   const { service } = fixture(true, [{ path: 'lib/helper.ts', code }])
-  expect(await service.admitFile(target, 'lib/helper.ts')).toMatch(reason)
+  expect((await service.admitFile(target, 'lib/helper.ts')).message).toMatch(reason)
   expect(service.debugFor(target, 'lib/helper.ts')).toBeUndefined()
 })
 
@@ -106,9 +121,9 @@ it('ignores an admission answer from the previous session incarnation', async ()
 
 it('does not admit a file from another folder', async () => {
   const { service, request } = fixture()
-  expect(await service.admitFile({ ...target, id: 'sample-other-folder' }, 'lib/helper.ts')).toBe(
-    ''
-  )
+  expect(
+    (await service.admitFile({ ...target, id: 'sample-other-folder' }, 'lib/helper.ts')).message
+  ).toBe('')
   expect(request).not.toHaveBeenCalled()
 })
 
@@ -150,7 +165,7 @@ it('gives an already-open tab its margin when its folder session appears', async
 })
 
 it('shows a muted source-map refusal in the file tab', async () => {
-  fixture(true, [{ path: 'lib/helper.ts', code: 'source_map_missing' }])
+  fixture(true, [{ path: 'lib/helper.ts', code: 'debugger_source_no_map' }])
   const wrapper = mount(NodePathFilePane, {
     props: {
       model: {
@@ -165,5 +180,24 @@ it('shows a muted source-map refusal in the file tab', async () => {
   await flushPromises()
   expect(wrapper.find('[role="status"]').text()).toMatch(/build with source maps/i)
   expect(wrapper.findComponent({ name: 'NodePathDebugFile' }).exists()).toBe(false)
+  wrapper.unmount()
+})
+
+it('keeps an unknown refusal code in the tooltip', async () => {
+  fixture(true, [{ path: 'lib/helper.ts', code: 'debugger_sample_future_refusal' }])
+  const wrapper = mount(NodePathFilePane, {
+    props: {
+      model: {
+        document: ref({ target, path: 'lib/helper.ts', text: 'const sample = 1' }),
+        mode: ref('file'),
+        busy: ref(false),
+        error: ref(''),
+      } as never,
+    },
+    global: { stubs: { FileView: true, NodePathDebugFile: true } },
+  })
+  await flushPromises()
+  expect(wrapper.find('[role="status"]').attributes('title')).toBe('debugger_sample_future_refusal')
+  expect(wrapper.find('[role="status"]').text()).toMatch(/could not be admitted/i)
   wrapper.unmount()
 })

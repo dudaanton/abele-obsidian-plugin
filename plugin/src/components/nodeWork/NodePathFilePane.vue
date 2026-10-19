@@ -4,7 +4,9 @@
     <div v-if="model.error.value" role="alert"><NodeErrorText :error="model.error.value" /></div>
     <div v-if="offline" role="status">{{ t('streamB.offlineRetainedVersion.ddf2fd') }}</div>
     <template v-if="model.document.value">
-      <div v-if="admissionReason" role="status">{{ admissionReason }}</div>
+      <div v-if="admissionReason" role="status" :title="admissionCode || undefined">
+        {{ admissionReason }}
+      </div>
       <div v-if="model.document.value.note" role="status">
         {{ presentUiField(model.document.value, 'note') }}
       </div>
@@ -54,6 +56,7 @@ const props = withDefaults(
 )
 const service = DebuggerService.instance
 const admissionReason = ref('')
+const admissionCode = ref('')
 const effectiveDebug = computed(() => {
   void service.sourceRevision.value
   const doc = props.model.document.value
@@ -83,13 +86,17 @@ watch(
 watchEffect((cleanup) => {
   const doc = props.model.document.value
   admissionReason.value = ''
+  admissionCode.value = ''
   if (!doc || effectiveDebug.value || !service.folderBinding(doc.target)) return
   let cancelled = false
   cleanup(() => {
     cancelled = true
   })
   void service.admitFile(doc.target, doc.path).then((reason) => {
-    if (!cancelled) admissionReason.value = reason
+    if (!cancelled) {
+      admissionReason.value = reason.message
+      admissionCode.value = reason.code ?? ''
+    }
   })
 })
 import type { FileSelection } from './fileSelection'

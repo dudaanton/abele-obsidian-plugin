@@ -3558,4 +3558,7 @@ export const ru = {
   'debug.sourceUnavailable': 'Не удалось добавить файл в отладчик',
   'debug.entryPlaceholder': 'Найти стартовый файл JavaScript или TypeScript',
   'debug.entryEmpty': 'Стартовые файлы JavaScript или TypeScript не найдены',
+  'debug.sourceConflict': 'Файл конфликтует с уже добавленным исходником',
+  'debug.sourceLimit': 'Достигнут предел числа исходников в сессии',
+  'debug.sourceUnreadable': 'Файл недоступен или не читается',
 } satisfies TranslationCatalog

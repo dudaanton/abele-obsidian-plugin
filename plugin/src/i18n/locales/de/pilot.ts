@@ -3532,4 +3532,8 @@ export const de = {
   'debug.sourceUnavailable': 'Die Datei konnte nicht zum Debugger hinzugefügt werden',
   'debug.entryPlaceholder': 'JavaScript- oder TypeScript-Einstiegsdatei suchen',
   'debug.entryEmpty': 'Keine JavaScript- oder TypeScript-Einstiegsdateien gefunden',
+  'debug.sourceConflict':
+    'Diese Datei steht im Konflikt mit einer bereits hinzugefügten Quelldatei',
+  'debug.sourceLimit': 'Das Quelldateilimit der Sitzung wurde erreicht',
+  'debug.sourceUnreadable': 'Diese Datei ist nicht verfügbar oder nicht lesbar',
 } satisfies TranslationCatalog

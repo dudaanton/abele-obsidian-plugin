@@ -662,8 +662,7 @@ it.each(['desktop', 'phone'])(
       try {
         ${RUN('src/journey.cjs')}
         const binding=api.DebuggerService.instance.active.value;
-        const description=await binding.connection.client.describe();
-        const supported=description.capabilities.capabilities.debugger_v1?.add_sources===true;
+        const supported=binding.connection.client.channel?.channel?.welcome?.methods?.includes('debugger.v1.addSources')===true;
         const open=async path=>{
           const leaf=app.workspace.getLeaf('tab');
           await leaf.setViewState({type:'abele-node-file',active:true,state:{kind:'file',target:${JSON.stringify(folder)},path}});
