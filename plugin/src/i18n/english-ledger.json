@@ -25928,5 +25928,105 @@
       "es",
       "de"
     ]
+  },
+  "debug.sourceUpdate": {
+    "englishHash": "de9fa535cac5e782cfd401d71e961d5d1c5de800a8b270f9fed758ecb80a3bf6",
+    "context": "Debugger source admission refusal or node update explanation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.sourceMap": {
+    "englishHash": "d5eb620b7a848816246c23e0940ea2e54a2fe9ffab215b785c1c53175765033f",
+    "context": "Debugger source admission refusal or node update explanation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.sourceChanged": {
+    "englishHash": "12b354205c877fa8c902de65f0637399f7c9586690fd28e20bb83424f530d3eb",
+    "context": "Debugger source admission refusal or node update explanation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.sourceOutside": {
+    "englishHash": "edfc60e0120c3247e005eb05b3a9858c1f06ebb28cf62d51f70d53c3340648a9",
+    "context": "Debugger source admission refusal or node update explanation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.sourceUnavailable": {
+    "englishHash": "5d2ebd8f9cdad5ff1bec83cef7bbea5b7817ba3039f9699b87282f65c76602df",
+    "context": "Debugger source admission refusal or node update explanation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.entryPlaceholder": {
+    "englishHash": "4159c40afd7db868d8d079b364d59d522daeb4369909bcd76d386d36c47293a7",
+    "context": "Debugger program picker searches project entry files",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.entryEmpty": {
+    "englishHash": "80b12f8ab9915b365025f5879aeb8dad33ed294733f473c9e13e5eeb53cfc5df",
+    "context": "Debugger program picker searches project entry files",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.sourceConflict": {
+    "englishHash": "71b7e08b11321078b609ab0b0ddd9cbf707f2900e5bc7ae647390b8d7fa4ff65",
+    "context": "Debugger source admission refusal or node update explanation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.sourceLimit": {
+    "englishHash": "dd9d78b605eee99fd1f19a82a87462a6cf3dc9a3d81310aebb3e039b41c2cca8",
+    "context": "Debugger source admission refusal or node update explanation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.sourceUnreadable": {
+    "englishHash": "e2f9a74bba0c509e0b7bd06a482431dd0a5e0149df5ca8ff2a2c24ba8055a2d9",
+    "context": "Debugger source admission refusal or node update explanation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

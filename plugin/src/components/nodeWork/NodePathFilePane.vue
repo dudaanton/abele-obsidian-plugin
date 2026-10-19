@@ -61,6 +61,7 @@ const effectiveDebug = computed(() => {
   void service.sourceRevision.value
   const doc = props.model.document.value
   if (!doc) return undefined
+  if (!doc.target) return props.debug
   // Observe this folder's session revision as well as its mapping changes.
   const binding = service.folderBinding(doc.target)
   const debug = service.debugFor(doc.target, doc.path)
@@ -87,7 +88,7 @@ watchEffect((cleanup) => {
   const doc = props.model.document.value
   admissionReason.value = ''
   admissionCode.value = ''
-  if (!doc || effectiveDebug.value || !service.folderBinding(doc.target)) return
+  if (!doc?.target || effectiveDebug.value || !service.folderBinding(doc.target)) return
   let cancelled = false
   cleanup(() => {
     cancelled = true

@@ -127,6 +127,24 @@ it('does not admit a file from another folder', async () => {
   expect(request).not.toHaveBeenCalled()
 })
 
+it.each([undefined, null])(
+  'leaves panes without a target outside folder source lookup (%s)',
+  (missing) => {
+    const { service } = fixture()
+    service.registerSource(
+      target.registrationId,
+      'sample-chat',
+      'sample-source',
+      'lib/helper.ts',
+      'sample-session',
+      'sample-incarnation',
+      target
+    )
+    expect(service.debugFor(missing, 'lib/helper.ts')).toBeUndefined()
+    expect(service.folderBinding(missing)).toBeUndefined()
+  }
+)
+
 it('lists folder entries through the node, follows pages, and offers open files first', async () => {
   const search = vi
     .fn()

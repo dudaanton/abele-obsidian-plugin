@@ -323,8 +323,9 @@ export class DebuggerService {
       .map((m) => m.path)
   }
   /** Reactive lookup also observes session changes, so a file already open gains its margin. */
-  folderBinding(target: PathTarget) {
+  folderBinding(target: PathTarget | null | undefined) {
     void this.sourceRevision.value
+    if (!target) return undefined
     for (const [binding, folder] of this.folders) {
       void binding.revision.value
       if (
@@ -497,7 +498,8 @@ export class DebuggerService {
   }
   /** The session mapping for a file a node file tab shows, when a live program took that file of
    * that folder: the tab shows its margin however it came to show the file. */
-  debugFor(target: PathTarget, path: string) {
+  debugFor(target: PathTarget | null | undefined, path: string) {
+    if (!target) return undefined
     for (const [key, sources] of this.sources) {
       const [registrationId, conversationId] = JSON.parse(key) as [string, string]
       if (registrationId !== target.registrationId) continue
