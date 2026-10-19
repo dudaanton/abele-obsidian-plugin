@@ -478,7 +478,6 @@ it('pairs and opens target-bound node files history editor and fake chats in the
       `(async()=>{${prelude}await until(()=>visible('.abele-node-main .cm-content')?.contentEditable==='true');const editor=api.codeView(visible('.abele-node-main .cm-content'));editor.dispatch({changes:{from:0,to:editor.state.doc.length,insert:${JSON.stringify('export const value = 4\n')}}});const leaf=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.getState().edit===true);const save=()=>leaf.containerEl.querySelector('.view-action[aria-label="Save to the node · ⌘ S"]');await until(save);save().click();await until(()=>visible('.abele-node-save')?.textContent.includes('Saved ·'));return 'saved'})()`
     )
     await checkCodeGeometry()
-    await checkFileRepositoryTools('phone', registration)
     await capture('desktop-editor')
     await evalLong(
       `(async()=>{${prelude}const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});await model.select(${JSON.stringify(ids.root)});if(visible('.abele-node-panel [aria-label="Open folder"]'))throw Error('The header glyphs stand beside the modes');(await placeMenu('Open a folder…')).click();await until(()=>visible('.abele-folder-picker'));return 'picker'})()`
@@ -624,6 +623,7 @@ it('pairs and opens target-bound node files history editor and fake chats in the
       `(async()=>{${prelude}const view=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.contentEl.contains(visible('.abele-file-view'))).view;view.file.mode.value='file';await until(()=>visible('.abele-file-view .cm-line'));return 'whole file'})()`
     )
     await checkCodeGeometry()
+    await checkFileRepositoryTools('phone', registration)
     await checkFileLineMenu('phone')
     await selectText('.abele-file-view .cm-line')
     await capture('phone-file-selection')
