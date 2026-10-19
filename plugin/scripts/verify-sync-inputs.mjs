@@ -32,6 +32,13 @@ export function verifySyncInputs(root = plugin) {
     const version = input.version
     if (!/^\d+\.\d+\.\d+$/.test(version ?? ''))
       throw new Error(`Missing sync package version: ${name}`)
+    if (
+      !/^[a-f0-9]{40}$/.test(input.commit ?? '') ||
+      !/^[a-f0-9]{64}$/.test(input.lockSha256 ?? '') ||
+      (name !== '@abele/notes' &&
+        (input.commit !== provenance.commit || input.lockSha256 !== provenance.lockSha256))
+    )
+      throw new Error(`Sync package provenance revision mismatch: ${name}`)
     const reference = `file:vendor/sync/${input.archive}`
     if (manifest.dependencies[name] !== reference)
       throw new Error(`Unpinned sync dependency: ${name}`)

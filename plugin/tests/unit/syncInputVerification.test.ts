@@ -35,6 +35,8 @@ function sample() {
       packages: {
         [name]: {
           version: '0.4.0',
+          commit: 'b'.repeat(40),
+          lockSha256: 'c'.repeat(64),
           tree: 'd'.repeat(40),
           archive,
           sha256: sha(payload),
