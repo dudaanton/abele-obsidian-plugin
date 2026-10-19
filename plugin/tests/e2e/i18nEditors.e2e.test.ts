@@ -51,7 +51,7 @@ describe.skipIf(!isObsidianRunning() || !hasTestApi())('localized editors', () =
           fs.mkdirSync(${JSON.stringify(shots)},{recursive:true})
           const shot=async(name,root)=>{
             await wait(400)
-            const controls=root.querySelectorAll('.abele-workbook-bar,.abele-drawing-bar,.abele-mermaid__bar,.abele-modal__footer,.abele-linter__actions,.abele-deck-toolbar')
+            const controls=root.querySelectorAll('.abele-workbook-bar,.abele-picture-editor__bar,.abele-picture-editor__top,.abele-picture-editor__bottom,.abele-mermaid__bar,.abele-modal__footer,.abele-linter__actions,.abele-deck-toolbar')
             for(const el of controls){
               const r=el.getBoundingClientRect()
               if(r.width&&(r.left < -1 || r.right > innerWidth+1 || el.scrollWidth > el.clientWidth+2))
@@ -70,21 +70,31 @@ describe.skipIf(!isObsidianRunning() || !hasTestApi())('localized editors', () =
             for(const [name,b64] of Object.entries(${JSON.stringify(binaries)})) {
               const f=await app.vault.createBinary(dir+'/'+name,Uint8Array.from(atob(b64),c=>c.charCodeAt(0)).buffer);owned.push(f)
             }
+            const picture=document.createElement('canvas');picture.width=320;picture.height=240
+            const ink=picture.getContext('2d');ink.fillStyle='#888';ink.fillRect(0,0,320,240)
+            const blob=await new Promise(resolve=>picture.toBlob(resolve))
+            owned.push(await app.vault.createBinary(dir+'/sample.png',await blob.arrayBuffer()))
             for(const f of owned)before.set(f.path,Buffer.from(await app.vault.readBinary(f)).toString('base64'))
-            const cases=[['sample.docx','abele-word','.abele-word-page'],['sample.xlsx','abele-workbook','.abele-workbook-grid'],['sample.svg','abele-drawing','.abele-drawing-bar'],['sample.md','abele-deck','.abele-deck'],['diagram.md','markdown','.abele-mermaid'],['sample.canvas','abele-canvas','.abele-canvas-chrome'],['','abele-linter','.abele-linter'],['','abele-debug-view','.abele-debug-view']]
+            const cases=[['sample.docx','abele-word','.abele-word-page'],['sample.xlsx','abele-workbook','.abele-workbook-grid'],['sample.svg','abele-drawing','.abele-legacy-drawing'],['sample.png','abele-image-ink','.abele-picture-editor'],['sample.md','abele-deck','.abele-deck'],['diagram.md','markdown','.abele-mermaid'],['sample.canvas','abele-canvas','.abele-canvas-chrome'],['','abele-linter','.abele-linter'],['','abele-debug-view','.abele-debug-view']]
             const leaf=app.workspace.getLeaf('tab')
             for(const [name,type,selector] of cases){
               const file=name ? app.vault.getAbstractFileByPath(dir+'/'+name) : null
-                await leaf.setViewState({type,state:file ? {file:file.path,mode:'preview'} : {},active:true});await app.workspace.revealLeaf(leaf)
+                await leaf.setViewState({type,state:file ? (type==='abele-image-ink' ? {path:file.path,crop:true} : {file:file.path,mode:'preview'}) : {},active:true});await app.workspace.revealLeaf(leaf)
                 if(type==='abele-linter')await linter.run({kind:'notes',paths:[dir+'/diagram.md']})
                 if(type==='abele-deck')await leaf.view.viewer?.ready
                 const root=await until(()=>leaf.view.containerEl.querySelector(selector),20000)
                 if(!root)throw Error('Editor did not mount: '+type)
-                if(type==='abele-drawing')leaf.view.session?.toggle()
+                if(type==='abele-drawing' && leaf.view.containerEl.querySelector('.abele-picture-editor__bar'))throw Error('Legacy drawing must remain read-only')
+                if(type==='abele-image-ink' && !await until(()=>leaf.view.editor.width>0 && leaf.view.session))throw Error('Picture editor did not load')
                 if(type==='markdown'&&!await until(()=>root.querySelector('svg'),20000))throw Error('Diagram did not render')
                 if(type==='abele-word' && root.textContent.includes('Use the agent to edit this document on mobile'))
                   throw Error('Mobile read-only instruction did not translate')
                 await shot(type,leaf.view.containerEl)
+                if(type==='abele-image-ink'){
+                  root.querySelector('.abele-picture-editor__tool_pen').click()
+                  if(!await until(()=>leaf.view.model.tool==='pen' && !leaf.view.editor.cropping))throw Error('Localized picture pen did not activate')
+                  await shot('picture-pen',leaf.view.containerEl)
+                }
                 if(type==='abele-canvas'){
                   const pen=root.querySelector('.abele-canvas-chrome__tool .lucide-pen-line')?.closest('.abele-canvas-chrome__tool')
                   if(!pen)throw Error('Canvas pen control did not mount')
@@ -112,8 +122,8 @@ describe.skipIf(!isObsidianRunning() || !hasTestApi())('localized editors', () =
             return JSON.stringify({failures,unchanged:await Promise.all(owned.map(async f=>before.get(f.path)===Buffer.from(await app.vault.readBinary(f)).toString('base64')))})
           } finally {
             linter.report.value=previousReport
-            for(const type of ['abele-word','abele-workbook','abele-drawing','abele-deck','abele-canvas','markdown'])
-              for(const leaf of app.workspace.getLeavesOfType(type))if(leaf.view.file?.path.startsWith(dir+'/'))leaf.detach()
+            for(const type of ['abele-word','abele-workbook','abele-drawing','abele-image-ink','abele-deck','abele-canvas','markdown'])
+              for(const leaf of app.workspace.getLeavesOfType(type))if((leaf.view.file?.path ?? leaf.view.getState().path ?? '').startsWith(dir+'/'))leaf.detach()
             const folder=app.vault.getAbstractFileByPath(dir);if(folder)await app.vault.delete(folder,true)
             app.saveLocalStorage('mermaid-vault-trust',trust ?? null)
             api.setTestLocale('en')
@@ -124,7 +134,7 @@ describe.skipIf(!isObsidianRunning() || !hasTestApi())('localized editors', () =
           )
         ) as { failures: unknown[]; unchanged: boolean[] }
         expect(result.failures, `${locale} ${phone ? 'phone' : 'desktop'}`).toEqual([])
-        expect(result.unchanged).toEqual([true, true, true, true, true, true])
+        expect(result.unchanged).toEqual([true, true, true, true, true, true, true])
       }
     }
     try {
