@@ -108,7 +108,7 @@ async function checkFileRepositoryTools(shell: 'desktop' | 'phone', registration
     )
     await capture(shell + '-file-blame-loading')
     await evalLong(
-      `(async()=>{${prelude}window.__fileBlameRelease();await until(()=>visible('.abele-file-view .abele-github-blame-range'));if(!visible('.abele-file-view .abele-github-blame-range').textContent.includes('Uncommitted'))throw Error('Working file blame missing');return 'blame on'})()`
+      `(async()=>{${prelude}window.__fileBlameRelease();await until(()=>visible('.abele-file-view .abele-github-blame-range'));if(!visible('.abele-file-view .abele-github-blame-range').textContent.includes('Uncommitted'))throw Error('Working file blame missing');const code=visible('.abele-file-view .abele-github-code'),gutter=visible('.abele-file-view .abele-github-blame'),line=visible('.abele-file-view .cm-line');if(gutter.getBoundingClientRect().width>code.getBoundingClientRect().width*0.4)throw Error('Blame crowds the code');if(line.getBoundingClientRect().height>parseFloat(getComputedStyle(line).lineHeight)*1.5)throw Error('Blame wraps a short code line');return 'blame on'})()`
     )
     await capture(shell + '-file-blame-on')
     await evalLong(
@@ -116,7 +116,7 @@ async function checkFileRepositoryTools(shell: 'desktop' | 'phone', registration
     )
     await capture(shell + '-file-blame-error')
     await evalLong(
-      `(async()=>{${prelude}${connection}.blame=window.__fileBlameOriginal;visible('.abele-file-view .abele-github-notice__retry').click();await until(()=>!visible('.abele-file-view .abele-github-notice')&&visible('.abele-file-view .abele-github-blame-range'));visible('.abele-file-view [aria-label="Toggle line blame"]').click();visible('.abele-file-view').dispatchEvent(new KeyboardEvent('keydown',{key:'f',ctrlKey:true,bubbles:true,cancelable:true}));await until(()=>visible('.abele-file-view .abele-github-find input'));const input=visible('.abele-file-view .abele-github-find input');input.value='value';input.dispatchEvent(new Event('input',{bubbles:true}));await until(()=>visible('.abele-file-view .abele-github-find__match'));return 'find matches file text'})()`
+      `(async()=>{${prelude}${connection}.blame=window.__fileBlameOriginal;visible('.abele-file-view .abele-github-notice__retry').click();await until(()=>!visible('.abele-file-view .abele-github-notice')&&visible('.abele-file-view .abele-github-blame-range'));visible('.abele-file-view [aria-label="Toggle line blame"]').click();visible('.abele-file-view').dispatchEvent(new KeyboardEvent('keydown',{key:'f',ctrlKey:true,bubbles:true,cancelable:true}));await until(()=>visible('.abele-file-view .abele-github-find input'));const input=visible('.abele-file-view .abele-github-find input');input.value='value';input.dispatchEvent(new Event('input',{bubbles:true}));await until(()=>visible('.abele-file-view .abele-github-find__match'));if(input.getBoundingClientRect().width<parseFloat(getComputedStyle(input).fontSize)*4)throw Error('Find input is squeezed by its controls');return 'find matches file text'})()`
     )
     await capture(shell + '-file-search-open')
     await evalLong(

@@ -128,7 +128,8 @@ defineExpose({ focus })
   position: sticky;
   top: 0;
   z-index: var(--layer-cover);
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content max-content;
   align-items: center;
   gap: var(--size-4-2);
   padding: var(--size-4-2);
@@ -138,12 +139,11 @@ defineExpose({ focus })
   box-shadow: var(--shadow-s);
 
   &__input {
-    flex: 1 1 auto;
+    min-width: 0;
   }
 
   &__count {
-    flex-shrink: 0;
-    min-width: 5em;
+    white-space: nowrap;
     color: var(--text-muted);
     font-size: var(--font-ui-small);
     text-align: right;

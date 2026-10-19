@@ -16,7 +16,10 @@
       <span class="abele-github-blame-range__author">
         <GithubUser v-if="commit.login" :login="commit.login" :avatar="commit.avatar" />
         <template v-else
-          ><Avatar :src="commit.avatar" :name="authorLabel" />{{ authorLabel }}</template
+          ><Avatar :src="commit.avatar" :name="authorLabel" /><span
+            class="abele-github-blame-range__name"
+            >{{ authorLabel }}</span
+          ></template
         >
       </span>
       <span class="abele-github-blame-range__date">{{ relativeDate }}</span>
@@ -122,8 +125,8 @@ onBeforeUnmount(() => {
 
 <style lang="scss">
 .abele-github-blame {
-  width: 20rem;
-  max-width: 40vw;
+  width: min(20rem, 35cqi);
+  max-width: 35cqi;
   font-family: var(--font-interface);
   font-size: var(--font-ui-smaller);
   color: var(--text-muted);
@@ -137,8 +140,8 @@ onBeforeUnmount(() => {
   }
 }
 .abele-github-blame-range {
-  width: 20rem;
-  max-width: 40vw;
+  width: min(20rem, 35cqi);
+  max-width: 35cqi;
   height: 1lh;
   overflow: hidden;
 
@@ -174,6 +177,11 @@ onBeforeUnmount(() => {
   &__date {
     flex-shrink: 0;
   }
+  &__name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   &__message {
     overflow: hidden;
     white-space: nowrap;
@@ -182,8 +190,8 @@ onBeforeUnmount(() => {
 }
 .is-mobile .abele-github-blame,
 .is-mobile .abele-github-blame-range {
-  width: 8.75rem;
-  max-width: 36vw;
+  width: min(8.75rem, 35cqi);
+  max-width: 35cqi;
 }
 .is-mobile .abele-github-blame-range__date {
   display: none;

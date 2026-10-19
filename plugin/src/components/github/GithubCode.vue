@@ -150,3 +150,17 @@ defineExpose({
   shows: (span: LineSpan): boolean => viewer?.shows(span.from, span.to) ?? false,
 })
 </script>
+
+<style lang="scss">
+.abele-github-code {
+  // Blame belongs to this pane, which may be much narrower than the window.
+  container-type: inline-size;
+}
+.abele-github-code:has(.abele-github-blame) .cm-content {
+  // Keep identifiers intact; CodeMirror's scroller handles lines wider than the pane.
+  min-width: 24ch;
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+</style>
