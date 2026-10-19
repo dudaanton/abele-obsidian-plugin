@@ -5,8 +5,8 @@
  * everywhere. What is asserted is the contract a screen relies on — what reaches the DOM,
  * what is emitted — never how it looks; happy-dom computes no layout.
  */
-import { describe, it, expect, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { afterEach, describe, it, expect, vi } from 'vitest'
+import { enableAutoUnmount, mount } from '@vue/test-utils'
 import { h, ref, nextTick } from 'vue'
 import Tabs from '@/components/obsidian/Tabs.vue'
 import Checkbox from '@/components/obsidian/Checkbox.vue'
@@ -27,6 +27,8 @@ import Slider from '@/components/obsidian/Slider.vue'
 import Avatar from '@/components/obsidian/Avatar.vue'
 import Breadcrumbs from '@/components/obsidian/Breadcrumbs.vue'
 import { useVault } from '../helpers/testEnv'
+
+enableAutoUnmount(afterEach)
 
 const TABS = [
   { id: 'general', label: 'General' },

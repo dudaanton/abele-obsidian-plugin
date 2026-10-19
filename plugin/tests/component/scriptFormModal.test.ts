@@ -7,7 +7,7 @@
  * and a form made only of those is a document, which the modal has to show as one.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { enableAutoUnmount, mount } from '@vue/test-utils'
 import { Modal } from 'obsidian'
 import ScriptFormModal from '@/components/ScriptFormModal.vue'
 import Markdown from '@/components/obsidian/Markdown.vue'
@@ -59,6 +59,8 @@ beforeEach(() => {
   useVault([])
   resetFakeNoteEditors()
 })
+
+enableAutoUnmount(afterEach)
 
 afterEach(() => {
   document.body.replaceChildren()

@@ -4,7 +4,7 @@
  * the main token, and a refusal names the field where the classic one goes.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mount, flushPromises } from '@vue/test-utils'
+import { enableAutoUnmount, mount, flushPromises } from '@vue/test-utils'
 import GithubSettings from '@/components/settings/GithubSettings.vue'
 import SecretField from '@/components/settings/SecretField.vue'
 import Button from '@/components/obsidian/Button.vue'
@@ -41,6 +41,7 @@ beforeEach(() => {
   resetGithubClients()
 })
 
+enableAutoUnmount(afterEach)
 afterEach(() => vi.restoreAllMocks())
 
 describe('the notifications token setting', () => {

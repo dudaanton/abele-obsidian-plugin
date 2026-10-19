@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { openDialog } from '@/components/obsidian/dialogs'
+import { closeComponentDialogs } from '@/modal/componentDialog'
 import KeyDestinationsModal from '@/components/settings/KeyDestinationsModal.vue'
 import SavedKeyRequestModal from '@/components/settings/SavedKeyRequestModal.vue'
 
@@ -57,7 +58,10 @@ beforeEach(() => {
   state.secrets = []
   state.allow.mockClear()
 })
-afterEach(() => document.body.replaceChildren())
+afterEach(() => {
+  closeComponentDialogs()
+  document.body.replaceChildren()
+})
 
 describe('KeyDestinationsModal', () => {
   it('opens at once with the form in order and hands its shell to the opener', async () => {

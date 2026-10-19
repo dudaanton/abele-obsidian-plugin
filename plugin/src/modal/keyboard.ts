@@ -63,7 +63,7 @@ export function keyboardVar(doc: Document): number {
   const inline = root.style.getPropertyValue(KEYBOARD_VAR)
   if (inline) return px(inline)
   const view = doc.defaultView
-  if (!view) return 0
+  if (!view || typeof view.getComputedStyle !== 'function') return 0
   return px(view.getComputedStyle(root).getPropertyValue(KEYBOARD_VAR))
 }
 
