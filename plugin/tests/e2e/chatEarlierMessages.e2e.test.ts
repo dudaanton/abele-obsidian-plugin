@@ -34,6 +34,7 @@ interface EarlierReport {
   clickLog: string[]
   clickSteps: number
   clickReachedStart: boolean
+  shortFits: boolean
   shortReachedStart: boolean
   shortMarkerGone: boolean
 }
@@ -79,10 +80,10 @@ const script = (layout: string) => `(async () => {
     return records
   }
   const short = () => {
-    // The agent at work: one question, then call after call, folded into a single run.
+    // Repeated reads keep the folded run compact, including its deduplicated file link.
     const records = [{ k: 'msg', id: 's0', role: 'user', content: 'Sort the sample notes', timestamp: 1700000000000 }]
     for (let i = 1; i <= 120; i++)
-      records.push({ k: 'msg', id: 's' + i, parentId: 's' + (i - 1), role: 'tool-call', content: '', toolName: 'read', toolParams: { path: 'Samples/sample-' + i + '.md' }, toolResult: 'Sample note ' + i, toolStatus: 'approved', timestamp: 1700000000000 + i * 1000 })
+      records.push({ k: 'msg', id: 's' + i, parentId: 's' + (i - 1), role: 'tool-call', content: '', toolName: 'read', toolParams: { path: 'Samples/sample.md' }, toolResult: 'Sample note ' + i, toolStatus: 'approved', timestamp: 1700000000000 + i * 1000 })
     records.push({ k: 'msg', id: 's121', parentId: 's120', role: 'assistant', content: 'The sample notes are sorted.', timestamp: 1700000200000 })
     return records
   }
@@ -183,6 +184,9 @@ const script = (layout: string) => `(async () => {
     // A page too short to scroll: the earlier pages come by themselves.
     await openAsHistory(fixtures[2])
     if (!(await until(() => item('s121')))) throw Error('The short sample chat did not open')
+    // Establish the unscrollable precondition before checking automatic paging.
+    report.shortFits = box().clientHeight > 0 && box().scrollHeight <= box().clientHeight + 1
+    if (!report.shortFits) throw Error('Short fixture is scrollable: ' + box().scrollHeight + ' > ' + box().clientHeight)
     report.shortMarkerGone = await until(() => !marker(), 6000)
     await settle()
     report.shortReachedStart = !!item('s0')
@@ -222,6 +226,7 @@ describe.skipIf(!available)('earlier messages of a chat', () => {
       expect(result.clickBoxChange, result.clickLog.join('\n')).toBe(0)
       expect(result.clickDrift).toBeLessThan(2)
       expect(result.clickReachedStart).toBe(true)
+      expect(result.shortFits).toBe(true)
       expect(result.shortMarkerGone).toBe(true)
       expect(result.shortReachedStart).toBe(true)
     },
