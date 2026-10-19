@@ -209,7 +209,7 @@ describe.skipIf(!available)('read-only walkthrough viewer and canvas note embeds
     expect(result.missingWarnings).toBe(0)
     expect(result.same).toBe(true)
   }, 120_000)
-  it('replaces reading and Live Preview embeds, including late native children, and opens the named step', () => {
+  it('replaces reading and Live Preview embeds, including late native children, and double-clicks into the named step', () => {
     const result = run<{
       reading: number
       live: number
@@ -230,31 +230,58 @@ describe.skipIf(!available)('read-only walkthrough viewer and canvas note embeds
       const nativeHidden = embeds.every(e => [...e.children].filter(c => !c.classList.contains('abele-canvas-embed')).every(c => c.getBoundingClientRect().height === 0))
       const says = embeds.some(e => e.textContent.includes('Start with one input concept.'))
       await capture('live-preview-embeds')
-      embeds[0].querySelector('[aria-label="Play diagram"]').click(); await wait(500)
-      return { reading, live, nativeHidden, opened: view().viewer.step, says }
+      embeds[0].querySelector('.abele-canvas-embed-picture').dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); await wait(500)
+      const opened = leaf.view.viewer.step; leaf.detach()
+      return { reading, live, nativeHidden, opened, says }
     `)
     expect(result).toEqual({ reading: 2, live: 2, nativeHidden: true, opened: 2, says: true })
     shoot('embed-play')
   }, 120_000)
-  it('plays the walkthrough from a node embed without cancelling it with the node crop', () => {
-    const result = run<{ playing: number; say: string; opened: number | null; focused: boolean }>(`
-      const file=app.vault.getAbstractFileByPath(${JSON.stringify('Sample walkthrough/sample-embed.md')})
-      const leaf=app.workspace.getLeaf('tab'); await leaf.openFile(file); await app.workspace.revealLeaf(leaf)
-      await leaf.view.setState({mode:'source',source:false},{}); leaf.view.editor.setCursor({line:7,ch:0}); await wait(900)
-      const embed=leaf.view.editor.cm.contentDOM.querySelector('.internal-embed[src*="#node=alpha"]')
-      embed.querySelector('[aria-label="Play diagram"]').click(); await wait(400)
-      const playing=view().viewer.step, say=view().viewer.narration.textContent
-      await app.workspace.revealLeaf(leaf); await wait(200)
-      embed.querySelector('[aria-label="Open diagram"]').click(); await wait(300)
-      const viewer=view().viewer, alpha=viewer.graph.nodes.find(n=>n.id==='alpha')
-      const cx=viewer.camera.x+viewer.stage.clientWidth/(2*viewer.camera.zoom), cy=viewer.camera.y+viewer.stage.clientHeight/(2*viewer.camera.zoom)
-      return {playing,say,opened:viewer.step,focused:Math.abs(cx-alpha.x-alpha.width/2)<1&&Math.abs(cy-alpha.y-alpha.height/2)<1}
+  it('opens a node embed as a picture and preserves its crop when editing or double-clicking', () => {
+    const result = run<{
+      picture: string
+      node: string
+      opened: number | null
+      focused: boolean
+      doubleFocused: boolean
+      same: boolean
+    }>(`
+      const file=app.vault.getAbstractFileByPath(${JSON.stringify(`${DIR}/sample-embed.md`)})
+      const canvas=app.vault.getAbstractFileByPath(path), before=await app.vault.read(canvas)
+      const leaf=app.workspace.getLeaf('tab')
+      const openEmbed=async()=>{
+        await leaf.openFile(file); await app.workspace.revealLeaf(leaf)
+        await leaf.view.setState({mode:'source',source:false},{}); leaf.view.editor.setCursor({line:7,ch:0}); await wait(900)
+        const image=leaf.view.editor.cm.contentDOM.querySelector('.internal-embed[src*="#node=alpha"] .abele-canvas-embed-picture')
+        if(!image?.src.startsWith('data:image/png'))throw Error('Node picture did not render')
+        return image
+      }
+      const focused=()=>{
+        const viewer=leaf.view.viewer, alpha=viewer.graph.nodes.find(n=>n.id==='alpha')
+        const cx=viewer.camera.x+viewer.stage.clientWidth/(2*viewer.camera.zoom), cy=viewer.camera.y+viewer.stage.clientHeight/(2*viewer.camera.zoom)
+        return Math.abs(cx-alpha.x-alpha.width/2)<1&&Math.abs(cy-alpha.y-alpha.height/2)<1
+      }
+      try {
+        (await openEmbed()).click(); await wait(800)
+        const picture=leaf.view.getViewType(), node=leaf.view.getState().node
+        if(picture!=='abele-canvas-image')throw Error('Single click did not open picture')
+        if(!leaf.view.contentEl.querySelector('img'))throw Error('Picture viewer did not render')
+        const edit=leaf.view.containerEl.querySelector('.view-header [data-icon="pencil"], .view-action[aria-label="Edit"]')
+        if(!edit)throw Error('Picture edit action missing')
+        edit.closest('.clickable-icon').click(); await wait(500)
+        const opened=leaf.view.viewer.step, cropFocused=focused()
+        const image=await openEmbed()
+        image.dispatchEvent(new MouseEvent('dblclick',{bubbles:true})); await wait(500)
+        return {picture,node,opened,focused:cropFocused,doubleFocused:focused(),same:before===await app.vault.read(canvas)}
+      } finally { leaf.detach() }
     `)
     expect(result).toEqual({
-      playing: 1,
-      say: 'Refined transform explanation.',
+      picture: 'abele-canvas-image',
+      node: 'alpha',
       opened: null,
       focused: true,
+      doubleFocused: true,
+      same: true,
     })
   }, 120_000)
   it('provides a native per-leaf way back without readopting it and adopts another leaf', () => {
