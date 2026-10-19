@@ -70,6 +70,7 @@ interface Screen {
   sandbox?: string | null
   turned?: boolean
   shot?: string
+  solid?: boolean
 }
 
 /** Each is long on a phone: see `evalLong`. */
@@ -130,6 +131,14 @@ const measure = async (name: string): Promise<Screen> =>
       const bar = document.querySelector('.mobile-navbar')?.getBoundingClientRect()
       report.underBar = bar && bar.height ? Math.max(0, Math.round(whole.bottom - bar.top)) : 0
       const header = leaf.view.containerEl.querySelector('.view-header')?.getBoundingClientRect()
+      const primary = getComputedStyle(view.contentEl).getPropertyValue('--background-primary').trim()
+      const swatch = document.createElement('div')
+      swatch.style.backgroundColor = primary
+      view.contentEl.append(swatch)
+      const expectedBackground = getComputedStyle(swatch).backgroundColor
+      swatch.remove()
+      report.solid = [view.containerEl.querySelector('.view-header'), view.contentEl.querySelector('.abele-book-reader__foot')]
+        .every(el => el && getComputedStyle(el).backgroundColor === expectedBackground)
       report.underHeader = header ? Math.max(0, Math.round(header.bottom - whole.top)) : 0
       const page = engine.renderer.getContents()[0]
       // How far below the header the first line of text starts.
@@ -225,7 +234,16 @@ describe.skipIf(!available)('a book on a phone', () => {
   let savedReader: unknown = null
   const screens: Record<string, Screen> = {}
   let overlays: {
-    drawer?: { left: number; right: number; rows: number } | null
+    drawer?: {
+      left: number
+      right: number
+      width: number
+      aboveNavbar: boolean
+      backdrop: string
+      rows: number
+    } | null
+    history?: { back: boolean; forward: boolean }
+    aboveNavbar?: boolean
     afterPick?: { panel: boolean; chapter: string }
     dialog?: { left: number; right: number; width: number } | null
     search?: {
@@ -326,7 +344,11 @@ describe.skipIf(!available)('a book on a phone', () => {
       await until(() => view.contentEl.querySelector('.abele-book-contents .tree-item-self'))
       await still(() => view.contentEl.querySelector('.abele-book-reader__panel'))
       const panel = view.contentEl.querySelector('.abele-book-reader__panel')?.getBoundingClientRect()
-      report.drawer = panel ? { left: Math.round(panel.left), right: Math.round(panel.right), rows: view.contentEl.querySelectorAll('.abele-book-contents .tree-item-self').length } : null
+      const navbarTop = () => document.querySelector('.mobile-navbar').getBoundingClientRect().top
+      report.drawer = panel ? { left: Math.round(panel.left), right: Math.round(panel.right), width: innerWidth,
+        aboveNavbar: panel.bottom <= navbarTop() + 1,
+        backdrop: getComputedStyle(view.contentEl.querySelector('.abele-book-reader__backdrop')).display,
+        rows: view.contentEl.querySelectorAll('.abele-book-contents .tree-item-self').length } : null
       await shoot('rich-contents')
       // Picking a chapter in the drawer closes it and goes there.
       ;[...view.contentEl.querySelectorAll('.abele-book-contents .tree-item-self')].find((row) => row.textContent.trim() === 'Chapter 2')?.click()
@@ -334,6 +356,15 @@ describe.skipIf(!available)('a book on a phone', () => {
         !view.contentEl.querySelector('.abele-book-reader__panel'))
       await still(() => view.contentEl.querySelector('.abele-book-reader'))
       report.afterPick = { panel: view.model.panel, chapter: view.model.chapter }
+      const back = view.contentEl.querySelector('.abele-book-reader__footer > :first-child .lucide-undo-2')
+      await shoot('rich-jump-back')
+      await view.engine.history.back()
+      await until(() => view.model.canGoForward)
+      await still(() => view.contentEl.querySelector('.abele-book-reader__footer'))
+      report.history = { back: !!back, forward: !!view.contentEl.querySelector('.abele-book-reader__footer .lucide-redo-2') }
+      await shoot('rich-return-forward')
+      await view.engine.history.forward()
+      await until(() => view.model.chapter === 'Chapter 2')
       view.model.settingsOpen = true
       await still(() => document.querySelector('.modal-container .modal'))
       const dialog = document.querySelector('.modal-container .modal')?.getBoundingClientRect()
@@ -408,6 +439,7 @@ describe.skipIf(!available)('a book on a phone', () => {
       await still(() => view.contentEl.querySelector('.abele-book-selection'))
       const barEl = view.contentEl.querySelector('.abele-book-selection')
       const bar = barEl?.getBoundingClientRect()
+      report.aboveNavbar = !!bar && bar.bottom <= navbarTop() + 1
       if (bar) {
         const last = [...barEl.querySelectorAll('[role="button"],button')].at(-1)
         barEl.scrollLeft = barEl.scrollWidth
@@ -433,6 +465,7 @@ describe.skipIf(!available)('a book on a phone', () => {
       view.reading.speech.toggle()
       await still(() => view.contentEl.querySelector('.abele-book-speech'))
       const speaking = view.contentEl.querySelector('.abele-book-speech')?.getBoundingClientRect()
+      report.aboveNavbar = report.aboveNavbar && !!speaking && speaking.bottom <= navbarTop() + 1
       report.speech = speaking
         ? { over: edge('.abele-book-speech'), bottom: Math.round(speaking.bottom), height: window.innerHeight, rows: Math.round(speaking.height) }
         : null
@@ -475,6 +508,7 @@ describe.skipIf(!available)('a book on a phone', () => {
       expect(screens[name]?.over).toBe(0)
       expect(screens[name]?.underBar).toBe(0)
       expect(screens[name]?.underHeader).toBe(0)
+      expect(screens[name]?.solid).toBe(true)
       expect(screens[name]?.text).toBeGreaterThan(20)
       // The text starts close under the header, not a thumb's width below it; a PDF page fits.
       if (name.endsWith('-pdf')) expect(screens[name]?.pageFits).toBe(true)
@@ -490,12 +524,19 @@ describe.skipIf(!available)('a book on a phone', () => {
     }
   )
 
-  it('the contents open as a drawer over the page, and close when a chapter is picked', () => {
+  it('the contents fill the phone above the navbar, and close when a chapter is picked', () => {
     expect(overlays.drawer?.left).toBe(0)
-    expect(overlays.drawer!.right).toBeLessThan(PHONE.width)
+    expect(overlays.drawer!.right).toBe(overlays.drawer!.width)
+    expect(overlays.drawer!.aboveNavbar).toBe(true)
+    expect(overlays.drawer!.backdrop).toBe('none')
     expect(overlays.drawer!.rows).toBeGreaterThanOrEqual(4)
     expect(overlays.afterPick?.panel).toBe(false)
     expect(overlays.afterPick?.chapter).toBe('Chapter 2')
+  })
+
+  it('keeps selection and speech above the navbar and exposes jump history at the row start', () => {
+    expect(overlays.aboveNavbar).toBe(true)
+    expect(overlays.history).toEqual({ back: true, forward: true })
   })
 
   it('the text and layout dialog fits the screen', () => {

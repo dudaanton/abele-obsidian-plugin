@@ -403,6 +403,12 @@ watch(
   padding-bottom: var(--view-bottom-spacing, 0);
 }
 
+// Keep the book's words from showing through either phone chrome surface.
+.is-phone .workspace-leaf-content[data-type='abele-book'] > .view-header,
+.is-phone .abele-book-reader__foot {
+  background-color: var(--background-primary);
+}
+
 .abele-book__mount {
   height: 100%;
 }
@@ -691,5 +697,15 @@ body.abele-eink:has(.mod-active > .abele-book_zen) .mobile-navbar {
   .abele-book-reader__chapter {
     display: none;
   }
+}
+// The phone panel fills the reader above the host's navbar, without a page strip beside it.
+.is-phone .abele-book-reader__panel {
+  width: 100%;
+  box-shadow: none;
+  border-inline-end: none;
+}
+
+.is-phone .abele-book-reader__backdrop {
+  display: none;
 }
 </style>
