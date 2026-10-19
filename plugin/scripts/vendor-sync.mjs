@@ -82,16 +82,10 @@ if (mode === 'fixture') {
 } else {
   const output = join(plugin, 'vendor/sync')
   mkdirSync(output, { recursive: true })
-  const version = `0.0.0-${commit.slice(0, 12)}`
   const packages = {}
   for (const name of ['protocol', 'core']) {
     const root = join(source, 'packages', name)
     const manifest = JSON.parse(readFileSync(join(root, 'package.json')))
-    manifest.version = version
-    if (name === 'core') manifest.dependencies['@abele/sync-protocol'] = version
-    delete manifest.devDependencies
-    delete manifest.scripts
-    writeFileSync(join(root, 'package.json'), JSON.stringify(manifest, null, 2) + '\n')
     const packed = JSON.parse(
       execFileSync('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', output], {
         cwd: root,
@@ -99,6 +93,9 @@ if (mode === 'fixture') {
       })
     )[0]
     packages[manifest.name] = {
+      version: manifest.version,
+      commit,
+      lockSha256: lockHash,
       archive: packed.filename,
       sha256: hash(readFileSync(join(output, packed.filename))),
       integrity: packed.integrity,
@@ -110,6 +107,16 @@ if (mode === 'fixture') {
   }
   writeFileSync(
     join(output, 'provenance.json'),
-    JSON.stringify({ ...provenance, packages }, null, 2) + '\n'
+    JSON.stringify(
+      {
+        ...provenance,
+        packages: {
+          ...JSON.parse(readFileSync(join(output, 'provenance.json'))).packages,
+          ...packages,
+        },
+      },
+      null,
+      2
+    ) + '\n'
   )
 }

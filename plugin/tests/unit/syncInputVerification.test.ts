@@ -34,6 +34,7 @@ function sample() {
       lockSha256: 'c'.repeat(64),
       packages: {
         [name]: {
+          version: '0.4.0',
           tree: 'd'.repeat(40),
           archive,
           sha256: sha(payload),
@@ -71,14 +72,19 @@ function sample() {
   provenance.packages[name].files['dist/index.js'] = sha('sample runtime')
   provenance.packages[name].files['dist/index.d.ts'] = sha('sample types')
   provenance.packages[protocol] = provenance.packages[name]
+  const notes = '@abele/notes'
+  cpSync(installed, join(root, 'node_modules', notes), { recursive: true })
+  provenance.packages[notes] = provenance.packages[name]
   writeFileSync(provenancePath, JSON.stringify(provenance))
   const manifestPath = join(root, 'package.json')
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
   manifest.dependencies[protocol] = manifest.dependencies[name]
+  manifest.dependencies[notes] = manifest.dependencies[name]
   writeFileSync(manifestPath, JSON.stringify(manifest))
   const lockPath = join(root, 'package-lock.json')
   const lock = JSON.parse(readFileSync(lockPath, 'utf8'))
   lock.packages['node_modules/' + protocol] = lock.packages['node_modules/' + name]
+  lock.packages['node_modules/' + notes] = lock.packages['node_modules/' + name]
   writeFileSync(lockPath, JSON.stringify(lock))
   return { root, installed, archive }
 }
@@ -88,7 +94,10 @@ afterEach(() => {
 
 describe('sync input provenance preflight', () => {
   it('verifies the real committed payload and installed packages', () => {
-    expect(verifySyncInputs().commit).toBe('4b57c445777f32230709e743df6d613ab27ece29')
+    const inputs = verifySyncInputs()
+    expect(inputs.packages['@abele/sync-core'].version).toBe('0.4.0')
+    expect(inputs.packages['@abele/sync-protocol'].version).toBe('0.4.0')
+    expect(inputs.packages['@abele/notes'].version).toBe('0.1.0')
   })
   it('refuses provenance that omits one of the pinned inputs', () => {
     const { root } = sample()

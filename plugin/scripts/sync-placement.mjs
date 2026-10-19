@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url'
 const pluginRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 const read = (file) => JSON.parse(readFileSync(file, 'utf8'))
 const provenance = read(join(pluginRoot, 'vendor/sync/provenance.json'))
-const pinnedVersion = `0.0.0-${provenance.commit.slice(0, 12)}`
+const pinnedVersion = provenance.packages['@abele/sync-core'].version
 const pinnedFiles = provenance.packages['@abele/sync-core'].files
 const digest = (code) => createHash('sha256').update(code).digest('hex')
 const marker = '// abele-sync-placement-v1:'

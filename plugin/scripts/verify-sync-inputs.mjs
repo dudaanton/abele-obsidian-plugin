@@ -10,7 +10,7 @@ const read = (file) => JSON.parse(readFileSync(file, 'utf8'))
 export function verifySyncInputs(root = plugin) {
   root = realpathSync(root)
   const provenance = read(join(root, 'vendor/sync/provenance.json'))
-  const names = ['@abele/sync-core', '@abele/sync-protocol']
+  const names = ['@abele/sync-core', '@abele/sync-protocol', '@abele/notes']
   if (
     !/^[a-f0-9]{40}$/.test(provenance.commit ?? '') ||
     !/^[a-f0-9]{64}$/.test(provenance.lockSha256 ?? '') ||
@@ -29,7 +29,9 @@ export function verifySyncInputs(root = plugin) {
     ) {
       throw new Error(`Incomplete sync package inventory: ${name}`)
     }
-    const version = `0.0.0-${provenance.commit.slice(0, 12)}`
+    const version = input.version
+    if (!/^\d+\.\d+\.\d+$/.test(version ?? ''))
+      throw new Error(`Missing sync package version: ${name}`)
     const reference = `file:vendor/sync/${input.archive}`
     if (manifest.dependencies[name] !== reference)
       throw new Error(`Unpinned sync dependency: ${name}`)
@@ -51,7 +53,9 @@ export function verifySyncInputs(root = plugin) {
     if (
       payload.name !== name ||
       payload.version !== version ||
-      (name === '@abele/sync-core' && payload.dependencies?.['@abele/sync-protocol'] !== version)
+      (name === '@abele/sync-core' &&
+        payload.dependencies?.['@abele/sync-protocol'] !==
+          provenance.packages['@abele/sync-protocol'].version)
     )
       throw new Error(`Installed sync revision mismatch: ${name}`)
   }
