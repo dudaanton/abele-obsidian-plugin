@@ -96,10 +96,43 @@ async function checkCodeGeometry() {
   )
 }
 
+async function checkFileRepositoryTools(shell: 'desktop' | 'phone', registration: string) {
+  const connection = `nodes.connection(${JSON.stringify(registration)}).client.repository`
+  try {
+    await evalLong(
+      `(async()=>{${prelude}await until(()=>visible('.abele-file-view.abele-code-nav [aria-label="Toggle line blame"]'));const toggle=visible('.abele-file-view [aria-label="Toggle line blame"]');if(toggle.getAttribute('aria-pressed')!=='false')throw Error('Blame must start off');const repository=${connection};window.__fileBlameOriginal=repository.blame;repository.blame=async(...args)=>{await new Promise(resolve=>window.__fileBlameRelease=resolve);return window.__fileBlameOriginal.apply(repository,args)};return 'blame off'})()`
+    )
+    await capture(shell + '-file-blame-off')
+    await evalLong(
+      `(async()=>{${prelude}visible('.abele-file-view [aria-label="Toggle line blame"]').click();await until(()=>visible('.abele-file-view [role="status"]')?.textContent.includes('Loading line blame'));return 'blame loading'})()`
+    )
+    await capture(shell + '-file-blame-loading')
+    await evalLong(
+      `(async()=>{${prelude}window.__fileBlameRelease();await until(()=>visible('.abele-file-view .abele-github-blame-range'));if(!visible('.abele-file-view .abele-github-blame-range').textContent.includes('Uncommitted'))throw Error('Working file blame missing');return 'blame on'})()`
+    )
+    await capture(shell + '-file-blame-on')
+    await evalLong(
+      `(async()=>{${prelude}const toggle=visible('.abele-file-view [aria-label="Toggle line blame"]');toggle.click();${connection}.blame=async()=>{throw Error('Sample blame unavailable')};toggle.click();await until(()=>visible('.abele-file-view .abele-github-notice')?.textContent.includes('Sample blame unavailable'));return 'blame error'})()`
+    )
+    await capture(shell + '-file-blame-error')
+    await evalLong(
+      `(async()=>{${prelude}${connection}.blame=window.__fileBlameOriginal;visible('.abele-file-view .abele-github-notice__retry').click();await until(()=>!visible('.abele-file-view .abele-github-notice')&&visible('.abele-file-view .abele-github-blame-range'));visible('.abele-file-view [aria-label="Toggle line blame"]').click();visible('.abele-file-view').dispatchEvent(new KeyboardEvent('keydown',{key:'f',ctrlKey:true,bubbles:true,cancelable:true}));await until(()=>visible('.abele-file-view .abele-github-find input'));const input=visible('.abele-file-view .abele-github-find input');input.value='value';input.dispatchEvent(new Event('input',{bubbles:true}));await until(()=>visible('.abele-file-view .abele-github-find__match'));return 'find matches file text'})()`
+    )
+    await capture(shell + '-file-search-open')
+    await evalLong(
+      `(async()=>{${prelude}visible('.abele-file-view .abele-github-find input').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await until(()=>!visible('.abele-file-view .abele-github-find'));const row=visible('.abele-file-view .cm-line');const word=[...row.querySelectorAll('span')].find(el=>el.textContent==='value');if(!word)throw Error('Code identifier missing');const r=word.getBoundingClientRect();word.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:r.left+r.width/2,clientY:r.top+r.height/2}));await until(()=>menuItem('Find references to'));if(menuItem('Copy path'))throw Error('File menu replaced code navigation');document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));return 'code navigation menu'})()`
+    )
+  } finally {
+    await evalLong(
+      `(()=>{${prelude}if(window.__fileBlameOriginal)${connection}.blame=window.__fileBlameOriginal;window.__fileBlameRelease?.();delete window.__fileBlameOriginal;delete window.__fileBlameRelease;return 'restored blame transport'})()`
+    )
+  }
+}
+
 async function checkFileLineMenu(shell: 'desktop' | 'phone') {
   try {
     await evalLong(
-      `(async()=>{${prelude}await clearSelectionForMenu();async function clearSelectionForMenu(){window.getSelection()?.removeAllRanges();document.dispatchEvent(new Event('selectionchange'));await wait(100)}const line=visible('.abele-file-view .cm-line');line.scrollIntoView({block:'center'});await wait(100);const r=line.getBoundingClientRect(),x=r.left+10,y=r.top+r.height/2;line.dispatchEvent(new PointerEvent('contextmenu',{bubbles:true,cancelable:true,clientX:x,clientY:y,pointerType:${JSON.stringify(shell === 'phone' ? 'touch' : 'mouse')},detail:0}));await until(()=>menuItem('Copy path'));const menuEl=menuItem('Copy path').closest('.menu');await new Promise(requestAnimationFrame);await until(()=>!menuEl.getAnimations().some(a=>a.playState==='running')&&getComputedStyle(menuEl).transform==='none');const menu=menuEl.getBoundingClientRect(),anchor=${shell === 'phone' ? 'r.bottom' : 'y'};(${checkNodeFileMenuGeometry.toString()})(menu,{width:innerWidth,height:innerHeight},anchor,document.body.classList.contains('is-phone'));return 'line menu anchored'})()`
+      `(async()=>{${prelude}await clearSelectionForMenu();async function clearSelectionForMenu(){window.getSelection()?.removeAllRanges();document.dispatchEvent(new Event('selectionchange'));await wait(100)}const line=visible('.abele-file-view .cm-line');line.scrollIntoView({block:'center'});await wait(100);const r=line.getBoundingClientRect(),x=r.right-4,y=r.top+r.height/2;line.dispatchEvent(new PointerEvent('contextmenu',{bubbles:true,cancelable:true,clientX:x,clientY:y,pointerType:${JSON.stringify(shell === 'phone' ? 'touch' : 'mouse')},detail:0}));await until(()=>menuItem('Copy path'));const menuEl=menuItem('Copy path').closest('.menu');await new Promise(requestAnimationFrame);await until(()=>!menuEl.getAnimations().some(a=>a.playState==='running')&&getComputedStyle(menuEl).transform==='none');const menu=menuEl.getBoundingClientRect(),anchor=${shell === 'phone' ? 'r.bottom' : 'y'};(${checkNodeFileMenuGeometry.toString()})(menu,{width:innerWidth,height:innerHeight},anchor,document.body.classList.contains('is-phone'));return 'line menu anchored'})()`
     )
     await capture(shell + '-file-line-menu')
   } finally {
@@ -383,6 +416,7 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     )
     await capture('desktop-whole')
     await checkCodeGeometry()
+    await checkFileRepositoryTools('desktop', registration)
     await checkFileLineMenu('desktop')
     await selectText('.abele-file-view .cm-line')
     await capture('desktop-file-selection')
@@ -444,6 +478,7 @@ it('pairs and opens target-bound node files history editor and fake chats in the
       `(async()=>{${prelude}await until(()=>visible('.abele-node-main .cm-content')?.contentEditable==='true');const editor=api.codeView(visible('.abele-node-main .cm-content'));editor.dispatch({changes:{from:0,to:editor.state.doc.length,insert:${JSON.stringify('export const value = 4\n')}}});const leaf=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.getState().edit===true);const save=()=>leaf.containerEl.querySelector('.view-action[aria-label="Save to the node · ⌘ S"]');await until(save);save().click();await until(()=>visible('.abele-node-save')?.textContent.includes('Saved ·'));return 'saved'})()`
     )
     await checkCodeGeometry()
+    await checkFileRepositoryTools('phone', registration)
     await capture('desktop-editor')
     await evalLong(
       `(async()=>{${prelude}const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});await model.select(${JSON.stringify(ids.root)});if(visible('.abele-node-panel [aria-label="Open folder"]'))throw Error('The header glyphs stand beside the modes');(await placeMenu('Open a folder…')).click();await until(()=>visible('.abele-folder-picker'));return 'picker'})()`

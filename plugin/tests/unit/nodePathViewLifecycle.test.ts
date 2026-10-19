@@ -38,7 +38,13 @@ vi.mock('@/node/NodeService', () => ({
       connection: () => ({
         connect: fixture.connect,
         state: { value: 'connected' },
-        client: { onEvent: () => () => {} },
+        client: {
+          onEvent: () => () => {},
+          store: {
+            transaction: async (read: (state: unknown) => unknown) =>
+              read({ installation_id: 'sample-installation' }),
+          },
+        },
       }),
     }),
   },

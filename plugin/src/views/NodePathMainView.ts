@@ -9,7 +9,9 @@ import {
   type ViewStateResult,
   type WorkspaceLeaf,
 } from 'obsidian'
-import { h, shallowRef, watch, type WatchStopHandle } from 'vue'
+import { computed, h, shallowRef, watch, type WatchStopHandle } from 'vue'
+import { NodeRepositorySource } from '@/repository/node'
+import type { RepositoryRevision } from '@/repository/source'
 import { NodeService } from '@/node/NodeService'
 import { DebuggerService } from '@/debugger/DebuggerService'
 import { NodePathService } from '@/node/NodePathService'
@@ -132,6 +134,17 @@ export class NodePathMainView extends ItemView {
       this.act(() => this.editing?.save())
       return false
     })
+    for (const [modifiers, selector] of [
+      [['Mod'], '[data-node-find]'],
+      [['Mod', 'Shift'], '[data-node-search]'],
+    ] as const) {
+      this.scope.register([...modifiers], 'f', () => {
+        const action = this.contentEl.querySelector<HTMLElement>(selector)
+        if (!action) return true
+        action.click()
+        return false
+      })
+    }
     if (this.saved && !this.ui) this.startBinding(this.saved)
   }
   async setState(raw: unknown, result: ViewStateResult): Promise<void> {
@@ -260,7 +273,66 @@ export class NodePathMainView extends ItemView {
     const offline = () => connection.state.value !== 'connected'
     this.error.value = ''
     if (state.kind === 'file') {
+      const principal = await connection.client.store.transaction((current) => ({
+        installation: current.installation_id,
+      }))
+      if (lifetime !== this.lifetime) return
       const file = (this.file = new NodePathFileModel(model, state.target))
+      const repository = shallowRef<NodeRepositorySource>()
+      const revision = computed<RepositoryRevision | undefined>(() => {
+        const value = file.document.value?.revision
+        return value?.kind === 'working'
+          ? {
+              kind: 'working-tree',
+              head: value.head,
+              observation: value.observation_id,
+              observedAt: value.observed_at,
+            }
+          : value
+      })
+      const repositoryRef = computed(() => {
+        const value = revision.value
+        return value?.kind === 'commit'
+          ? value.commit
+          : value
+            ? `working-${value.observation}`
+            : undefined
+      })
+      const authority = connection.authorizationGeneration
+      this.stops.push(
+        watch(
+          () => JSON.stringify(revision.value),
+          () => {
+            const value = revision.value
+            repository.value?.dispose()
+            repository.value = value
+              ? new NodeRepositorySource(
+                  connection.client,
+                  {
+                    provider: 'node',
+                    installation: principal.installation,
+                    node: node.id,
+                    project: state.target.projectId,
+                    workspace: state.target.id,
+                  },
+                  {
+                    node: node.label,
+                    project: '',
+                    isCurrent: () =>
+                      lifetime === this.lifetime &&
+                      connection.authorizationGeneration === authority &&
+                      NodeService.getInstance().nodes.value.some(
+                        (current) =>
+                          current.id === node.id && current.expectedNodeId === node.expectedNodeId
+                      ),
+                  },
+                  value
+                )
+              : undefined
+          }
+        )
+      )
+      this.stops.push(() => repository.value?.dispose())
       const allowed = async () =>
         state.target.kind !== 'worktree' ||
         (await connection.client.repository.editingStatus({ worktree_id: state.target.id })).enabled
@@ -309,11 +381,15 @@ export class NodePathMainView extends ItemView {
                 offline: offline(),
                 error: this.error.value,
                 locked: editing.locked.value,
+                repository: repository.value,
+                revision: repositoryRef.value,
               })
             : h(NodePathFilePane, {
                 model: file,
                 offline: offline(),
                 debug: this.debugOf(state, file),
+                repository: repository.value,
+                revision: repositoryRef.value,
                 onReveal: (line: number) =>
                   this.act(async () => {
                     console.debug('[debugger] Source tab reveal', state.path, line)

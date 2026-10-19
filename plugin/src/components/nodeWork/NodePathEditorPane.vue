@@ -1,5 +1,14 @@
 <template>
-  <div class="abele-node-main">
+  <div ref="root" class="abele-node-main">
+    <div ref="glyphHost" class="abele-file-view__tools" />
+    <NodeFileTools
+      :key="repository?.cacheNamespace ?? ''"
+      :root="root"
+      :glyph-host="glyphHost"
+      :source="repository"
+      :file="{ host: '', owner: '', repo: '', ref: revision ?? '', path: model.filePath.value }"
+      :text="model.draftText.value"
+    />
     <div v-if="error" role="alert"><NodeErrorText :error="error" /></div>
     <div v-if="offline" role="status">
       {{ t('streamB.offlineYourLocalDraftIsRetained.ae9db3') }}
@@ -22,11 +31,23 @@
 <script setup lang="ts">
 import NodeErrorText from '@/components/NodeErrorText.vue'
 import { t } from '@/i18n'
+import { ref } from 'vue'
+import type { RepositorySource } from '@/repository/source'
+import NodeFileTools from './NodeFileTools.vue'
 import type { NodeFilesModel } from '@/node/NodeFilesModel'
 import GithubCode from '../github/GithubCode.vue'
 import NodeFileSaveState from '../NodeFileSaveState.vue'
 withDefaults(
-  defineProps<{ model: NodeFilesModel; error?: string; offline?: boolean; locked?: boolean }>(),
-  { error: '', offline: false, locked: false }
+  defineProps<{
+    model: NodeFilesModel
+    error?: string
+    offline?: boolean
+    locked?: boolean
+    repository?: RepositorySource
+    revision?: string
+  }>(),
+  { error: '', offline: false, locked: false, repository: undefined, revision: undefined }
 )
+const root = ref<HTMLElement>()
+const glyphHost = ref<HTMLElement>()
 </script>

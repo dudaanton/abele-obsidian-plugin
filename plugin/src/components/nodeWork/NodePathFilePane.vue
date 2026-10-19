@@ -32,6 +32,8 @@
         :image="model.document.value.image"
         :change="model.document.value.change"
         :mode="model.mode.value"
+        :repository="repository"
+        :revision="revision"
         @menu="(event, selection) => emit('menu', event, selection)"
         @ask="emit('ask', $event)"
         @add="emit('add', $event)"
@@ -50,9 +52,16 @@ import NodePathDebugFile from './NodePathDebugFile.vue'
 import type { DebugSourceContext } from '@/debugger/sourceExtension'
 import { computed, ref, watch, watchEffect } from 'vue'
 import { DebuggerService } from '@/debugger/DebuggerService'
+import type { RepositorySource } from '@/repository/source'
 const props = withDefaults(
-  defineProps<{ model: NodePathFileModel; offline?: boolean; debug?: DebugSourceContext }>(),
-  { offline: false, debug: undefined }
+  defineProps<{
+    model: NodePathFileModel
+    offline?: boolean
+    debug?: DebugSourceContext
+    repository?: RepositorySource
+    revision?: string
+  }>(),
+  { offline: false, debug: undefined, repository: undefined, revision: undefined }
 )
 const service = DebuggerService.instance
 const admissionReason = ref('')

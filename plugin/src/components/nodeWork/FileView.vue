@@ -1,5 +1,14 @@
 <template>
   <div ref="root" class="abele-file-view" @contextmenu="onMenu">
+    <NodeFileTools
+      v-if="!image && !metadataNote && (mode === 'file' || !change)"
+      :key="repository?.cacheNamespace ?? ''"
+      :root="root"
+      :glyph-host="glyphHost"
+      :source="repository"
+      :file="repositoryFile"
+      :text="text"
+    />
     <Diff
       v-if="!image && !metadataNote && mode === 'diff' && change"
       :text-left="change.before"
@@ -31,11 +40,21 @@
             image ? plural(image.bytes.byteLength, 'byte') : plural(text.split('\n').length, 'line')
           }}
         </span>
+        <span ref="glyphHost" class="abele-file-view__tools" />
       </div>
       <div v-if="metadataNote && !image" class="abele-file-view__metadata abele-file-view__size">
         {{ metadataNote }}
       </div>
       <Image v-if="imageUrl" :src="imageUrl" :alt="path" fit="contain" />
+      <GithubBlob
+        v-else-if="repository && revision && !metadataNote && !image"
+        :key="repository.cacheNamespace"
+        :text="text"
+        :file="repositoryFile"
+        :glyph-host="glyphHost"
+        plain
+        @open="openRepositoryLink"
+      />
       <!-- The plugin's code viewer: the file's own colours, line numbers, selection, search. -->
       <div
         v-else-if="!metadataNote && !image"
@@ -62,7 +81,14 @@ import { t } from '@/i18n'
 // code editor and the arrows to the previous and next changed file. Selected text — in the
 // comparison or in the file — gets a small bar over it to ask the agent about it or add it to the
 // chat or insert it into a note, on a phone as on a computer.
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
+import type { RepositorySource } from '@/repository/source'
+import { REPOSITORY_SOURCE } from '@/repository/context'
+import { parseNodeRepositoryLink } from '@/repository/nodeLinks'
+import { openNodeRepositoryTarget } from '@/node/openRepository'
+import { GlobalStore } from '@/stores/GlobalStore'
+import NodeFileTools from './NodeFileTools.vue'
+import GithubBlob from '../github/GithubBlob.vue'
 import { fileSelection, type FileSelection } from './fileSelection'
 import { mountCode, type CodeViewer } from '@/github/codeViewer'
 import Diff from '../Diff.vue'
@@ -82,8 +108,17 @@ const props = withDefaults(
     image?: NodeImagePreview
     mode?: 'diff' | 'file'
     layout?: 'unified' | 'split'
+    repository?: RepositorySource
+    revision?: string
   }>(),
-  { change: undefined, image: undefined, mode: 'diff', layout: 'unified' }
+  {
+    change: undefined,
+    image: undefined,
+    mode: 'diff',
+    layout: 'unified',
+    repository: undefined,
+    revision: undefined,
+  }
 )
 
 const emit = defineEmits<{
@@ -117,6 +152,22 @@ watch(
 )
 
 const root = ref<HTMLElement>()
+const glyphHost = ref<HTMLElement>()
+provide(
+  REPOSITORY_SOURCE,
+  computed(() => props.repository ?? null)
+)
+const repositoryFile = computed(() => ({
+  host: '',
+  owner: '',
+  repo: '',
+  ref: props.revision ?? '',
+  path: props.path,
+}))
+function openRepositoryLink(url: string) {
+  const target = parseNodeRepositoryLink(url)
+  if (target) void openNodeRepositoryTarget(GlobalStore.getInstance().app, target, false)
+}
 const code = ref<HTMLElement>()
 let viewer: CodeViewer | undefined
 let stopped = false
@@ -130,7 +181,18 @@ async function draw() {
   if (code.value) viewer = mountCode(code.value, props.text, props.path)
 }
 onMounted(draw)
-watch(() => [props.text, props.path, props.mode, props.change, props.image], draw)
+watch(
+  () => [
+    props.text,
+    props.path,
+    props.mode,
+    props.change,
+    props.image,
+    props.repository,
+    props.revision,
+  ],
+  draw
+)
 
 let lastSelection: FileSelection | null = null
 let selectionDocument: Document | undefined
@@ -164,6 +226,7 @@ function send(action: string) {
 }
 
 function onMenu(e: MouseEvent) {
+  if (e.defaultPrevented) return
   if (root.value && fileSelection(root.value, root.value.ownerDocument.getSelection())) return
   e.preventDefault()
   emit('menu', e, '')
@@ -237,6 +300,10 @@ function onMenu(e: MouseEvent) {
   flex: 0 0 auto;
   color: var(--text-faint);
   font-size: var(--font-ui-smaller);
+}
+.abele-file-view__tools {
+  display: flex;
+  align-items: center;
 }
 .abele-file-view__metadata {
   padding: var(--size-4-2) var(--size-4-3);
