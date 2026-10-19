@@ -4,7 +4,10 @@
        one by one, each with what it was given and what came back. -->
   <TreeItem
     class="abele-chat-run"
-    :class="[`abele-chat-run_${state}`, { 'abele-chat-run_inline-file': inlineFile && !open }]"
+    :class="[
+      `abele-chat-run_${state}`,
+      { 'abele-chat-run_inline-file': fileCalls.length && !open },
+    ]"
     :icon="icon"
     :text="summary"
     collapsible
@@ -14,12 +17,16 @@
     @click="emit('update:open', !open)"
   >
     <template #end>
-      <ChatToolFiles
-        v-if="!open && inlineFile"
-        class="abele-chat-run__inline-file"
-        :message="calls[0]"
-        :resource-opener="resourceOpener"
-      />
+      <span v-if="!open && fileCalls.length" class="abele-chat-run__inline-file">
+        <ChatToolFiles
+          v-for="entry in fileCalls"
+          :key="entry.call.id"
+          :message="entry.call"
+          :paths="entry.paths"
+          compact
+          :resource-opener="resourceOpener"
+        />
+      </span>
       <span class="abele-chat-run__codes">
         <!-- The chat went more than one way from a call inside: opened, the switch is on it. -->
         <span v-if="forks" ref="fork" class="abele-chat-run__fork"
@@ -40,15 +47,6 @@
   </TreeItem>
   <!-- Saved results stay in the conversation when the work's details fold away. -->
   <slot v-if="!open" name="results" />
-  <template v-if="!open && !inlineFile">
-    <ChatToolFiles
-      v-for="call in calls"
-      :key="call.id"
-      class="abele-chat-run__files"
-      :message="call"
-      :resource-opener="resourceOpener"
-    />
-  </template>
   <!-- A node call in the run was refused for want of access: its way through stays in sight
        with the run folded; opened, it is on the call's own line. -->
   <NodeAccessRefusal
@@ -108,9 +106,17 @@ const icon = computed(() =>
   state.value === 'running' ? 'loader' : KIND_ICON[runKind(props.calls)]
 )
 const summary = computed(() => runSummary(props.calls))
-const inlineFile = computed(
-  () => props.calls.length === 1 && toolFilePaths(props.calls[0]).length === 1
-)
+const fileCalls = computed(() => {
+  const seen = new Set<string>()
+  return props.calls.flatMap((call) => {
+    const paths = toolFilePaths(call).filter((path) => {
+      if (seen.has(path)) return false
+      seen.add(path)
+      return true
+    })
+    return paths.length ? [{ call, paths }] : []
+  })
+})
 
 const dot = ref<HTMLElement>()
 watchEffect(() => dot.value && setTooltip(dot.value, STATE_LABEL[state.value]))
@@ -143,6 +149,9 @@ watchEffect(
   animation: abele-chat-run-spin 1.2s linear infinite;
 }
 .abele-chat-run_inline-file > .tree-item-self {
+  flex-wrap: wrap;
+  row-gap: var(--size-2-1);
+
   .tree-item-inner {
     flex: 0 0 auto;
   }
@@ -157,16 +166,20 @@ watchEffect(
   .abele-chat-run__codes {
     flex-shrink: 0;
   }
-}
-.abele-chat-tool-files.abele-chat-run__inline-file {
-  flex-wrap: nowrap;
-  overflow: hidden;
-
-  > .abele-chat-msg__tool-link {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  .tree-item-flair-outer {
+    max-width: 100%;
+    height: auto;
+    min-height: 1lh;
   }
+  .abele-tree-item__end {
+    align-items: flex-start;
+  }
+}
+.abele-chat-run__inline-file {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--size-2-1) var(--size-4-2);
+  min-width: 0;
 }
 @keyframes abele-chat-run-spin {
   to {

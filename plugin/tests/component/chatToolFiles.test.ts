@@ -19,6 +19,32 @@ import { toolSummary } from '@/ai/toolLine'
 vi.mock('@/node/nodeChatPlace', () => ({ openNodeChatResource: vi.fn() }))
 vi.mock('@/ai/openChat', () => ({ openVaultFile: vi.fn() }))
 
+it('deduplicates folded writes by path while retaining the call count', async () => {
+  useVault([])
+  const paths = ['Sample/alpha.md', 'Sample/beta.md', 'Other/alpha.md']
+  const calls = [...paths, ...paths].map((path, i) =>
+    call({ id: `write-${i}`, toolName: 'write', toolParams: { path } })
+  )
+  const open = vi.fn()
+  const wrapper = mount(ChatToolRun, {
+    props: { id: 'writes', calls, open: false, resourceOpener: open },
+  })
+  try {
+    const row = wrapper.get('.tree-item-self')
+    expect(row.get('.abele-tree-item__text').text()).toContain('6')
+    const links = row.findAll('[role="link"]')
+    expect(links.map((link) => link.text())).toEqual(['alpha', 'beta', 'alpha'])
+    expect(links.map((link) => link.attributes('title'))).toEqual(paths)
+    await links[2].trigger('click')
+    expect(open).toHaveBeenCalledExactlyOnceWith(paths[2])
+    expect(wrapper.emitted('update:open')).toBeUndefined()
+    await wrapper.setProps({ open: true })
+    expect(wrapper.findComponent(ChatToolFiles).exists()).toBe(false)
+  } finally {
+    wrapper.unmount()
+  }
+})
+
 const call = (extra: Partial<ChatMessage> = {}): ChatMessage => ({
   id: 'sample-call',
   role: 'tool-call',
@@ -64,7 +90,7 @@ it.each(['read', 'write', 'create', 'Read', 'Write', 'node_read', 'node_write'])
     })
     try {
       const link = wrapper.get('.tree-item-self').get('[role="link"]')
-      expect(link.text()).toBe(path)
+      expect(link.text()).toBe('sample')
       expect(link.attributes('title')).toBe(path)
       await link.trigger('keydown', { key: 'Enter' })
       expect(open).toHaveBeenCalledExactlyOnceWith(path)
@@ -83,7 +109,7 @@ it('keeps a completed node replacement linked when its run folds', () => {
     props: { id: 'replacement', calls: [message], open: false, resourceOpener: vi.fn() },
   })
   try {
-    expect(wrapper.get('[role="link"]').text()).toBe('src/sample.ts')
+    expect(wrapper.get('[role="link"]').text()).toBe('sample.ts')
   } finally {
     wrapper.unmount()
   }
@@ -151,10 +177,7 @@ it('keeps paths outside folded raw details and opens the remote context by keybo
     slots: { default: 'RAW DETAILS' },
   })
   try {
-    expect(wrapper.findAll('[role="link"]').map((a) => a.text())).toEqual([
-      'src/one.ts',
-      'src/two.ts',
-    ])
+    expect(wrapper.findAll('[role="link"]').map((a) => a.text())).toEqual(['one.ts', 'two.ts'])
     await wrapper.findAll('[role="link"]')[1].trigger('keydown', { key: 'Enter' })
     expect(open).toHaveBeenCalledWith('src/two.ts')
     await wrapper.setProps({ open: true })

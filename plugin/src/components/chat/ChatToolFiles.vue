@@ -10,7 +10,7 @@
       :title="path"
       @click.stop="open(path)"
       @keydown.enter.stop="open(path)"
-      >{{ path }}</span
+      >{{ compact ? path.split(/[/\\]/).pop()?.replace(/\.md$/i, '') : path }}</span
     >
   </span>
 </template>
@@ -21,8 +21,13 @@ import { toolFilePaths } from '@/ai/toolFiles'
 import { openVaultFile } from '@/ai/openChat'
 import { Notice } from 'obsidian'
 import { t } from '@/i18n'
-const props = defineProps<{ message: ChatMessage; resourceOpener?: (path: string) => void }>()
-const paths = computed(() => toolFilePaths(props.message))
+const props = defineProps<{
+  message: ChatMessage
+  paths?: string[]
+  compact?: boolean
+  resourceOpener?: (path: string) => void
+}>()
+const paths = computed(() => props.paths ?? toolFilePaths(props.message))
 const unavailable = computed(
   () =>
     !props.resourceOpener &&
@@ -55,9 +60,5 @@ function open(path: string) {
     white-space: normal;
     overflow: visible;
   }
-}
-.abele-chat-tool-files.abele-chat-run__files {
-  display: flex;
-  font-size: var(--font-ui-small);
 }
 </style>
