@@ -11,6 +11,8 @@ import { NODE_FILE_VIEW, NodePathTabSchema, openNodePathTab } from '@/node/nodeP
 import { NodeSuggestModal, type NodeSuggestion } from '@/components/nodeWork/NodeSuggestModal'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { DebuggerService, type DebuggerBinding } from './DebuggerService'
+import { programFiles } from './programFiles'
+import { pickProgram } from '@/helpers/suggesters/RunnablePicker'
 
 const id = z.string().min(1).max(128)
 export const StartResultSchema = z.object({
@@ -117,6 +119,7 @@ export async function registerSources(
       debug_session_id: started.debug_session_id,
     })
   )
+  DebuggerService.instance.trackFolder(presenter, started.debug_session_id, target)
   for (const s of started.sources)
     DebuggerService.instance.registerSource(
       debugIdentity(presenter).registrationId,
@@ -206,7 +209,7 @@ export async function startProgram(
     if (binding.controller.session.status !== 'exited') await binding.controller.command('stop')
     if (binding.controller.session.status !== 'exited')
       throw new Error('The previous program has not stopped; reconnect before restarting')
-    const taken = [...sources, ...carried.map((c) => c.path)]
+    const taken = [...sources, ...service.takenFiles(binding), ...carried.map((c) => c.path)]
     return startProgram(presenter, program, [...new Set(taken)], target, show, carried)
   }
   // Finish admitting the source before the controls become available. A late file admission
@@ -270,6 +273,27 @@ export async function askAndStartProgram(
     }
     const app = GlobalStore.getInstance().app
     const open = openFilesOf(app.workspace, target)
+    let paths: string[] | undefined
+    try {
+      paths = await programFiles(presenter.connection.client, target, open)
+    } catch (error) {
+      // Older nodes may lack filename search. Keep their typed-path picker available.
+      if (!(error instanceof Error) || !/unsupported_method|not.*function/i.test(error.message))
+        throw error
+      console.debug('[debugger] Filename search unavailable; using open files', error)
+    }
+    if (paths) {
+      const selected = await pickProgram(
+        app,
+        paths,
+        open,
+        t('debug.entryPlaceholder'),
+        t('debug.entryEmpty'),
+        t('streamC.6b612edc8f9e8b34')
+      )
+      if (selected) await startProgram(presenter, selected, open, target, show)
+      return
+    }
     const offered = open
       .filter((path) => RUNNABLE.test(path))
       .map((path) => ({

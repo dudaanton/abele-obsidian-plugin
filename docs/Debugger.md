@@ -23,16 +23,20 @@ A node without `debugger.access.v1` support shows an update message instead of t
 ## Availability
 
 This UI uses the gated `debugger.v1` infrastructure. The node must advertise and
-explicitly enable it. *Run a program* in the node chat's menu asks for a JavaScript file of
-the chat's folder (offering the one open from it) and starts it on the node under the debugger:
+explicitly enable it. *Run a program* in the node chat's menu searches the folder's JavaScript
+and TypeScript entry files, offering open files first, and starts the selected file on the node under the debugger:
 the node runs it with its own Node, an empty environment and no shell, and holds it on its first
 line. Its session opens in the view and its file opens in a node tab with the margin, so record
 points and breakpoints go in before the program goes on; other JavaScript files open from the same
 folder take breakpoints too, and so do TypeScript files open from it when a source map of the build
 lists them and is not older than they are (the node maps their lines onto the JavaScript that
-runs). The folder must be one the node may run code in. A node without its JavaScript debugger
-installed (`abele-node debugger install js`) refuses and says so. Attach, restart and source export are
-not offered. An empty session list does not start a process by itself.
+runs). Opening another source file while the session runs asks the node to admit it, then adds
+its breakpoint margin. A refused file explains whether it needs source maps, changed since
+attach, or lies outside the folder. An older node keeps the original files' margins and asks
+for an update in newly opened files. Admitted files travel with Restart, including files with
+no points yet. The folder must be one the node may run code in. A node without its JavaScript debugger
+installed (`abele-node debugger install js`) refuses and says so. An empty session list does not
+start a process by itself.
 
 The session-mode switch changes a bound live agent grant, never the node's default
 policy. Its permissions are exactly Ask and Allow all. Before authoritative live

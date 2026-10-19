@@ -3492,4 +3492,11 @@ export const lv = {
   'debug.outsideTitle': 'Pievienoties programmai ārpus šīs mapes?',
   'debug.outsideMessage':
     '{command} darbojas mapē {path}, nevis atlasītajā mapē. Atkļūdotājs var to apturēt un nolasīt vērtības. Pēc atvienošanas programma turpinās darboties.',
+  'debug.sourceUpdate': 'Atjauniniet mezglu, lai šajā failā iestatītu pārtraukumpunktus',
+  'debug.sourceMap': 'Lai atkļūdotu šo failu, izveidojiet būvējumu ar pirmkoda kartēm',
+  'debug.sourceChanged': 'Fails ir mainīts kopš atkļūdotāja pievienošanas',
+  'debug.sourceOutside': 'Fails atrodas ārpus atkļūdošanas mapes',
+  'debug.sourceUnavailable': 'Failu neizdevās pievienot atkļūdotājam',
+  'debug.entryPlaceholder': 'Meklēt JavaScript vai TypeScript ieejas failu',
+  'debug.entryEmpty': 'Nav atrasts neviens JavaScript vai TypeScript ieejas fails',
 } satisfies TranslationCatalog

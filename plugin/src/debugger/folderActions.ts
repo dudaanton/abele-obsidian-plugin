@@ -148,7 +148,7 @@ export async function addFolderDebugMenu(
           void runFolderDebug(
             target,
             action,
-            program && /\.[cm]?js$/.test(program) ? program : undefined
+            program && /\.[cm]?[jt]s$/.test(program) ? program : undefined
           )
       })
     })

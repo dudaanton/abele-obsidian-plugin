@@ -80,6 +80,29 @@ function fakePresenter() {
 afterEach(() => DebuggerService.instance.destroy())
 
 describe('running a program under the debugger', () => {
+  it('includes a later-admitted file without points in the restarted program', async () => {
+    fakeWorkspace()
+    const { presenter, calls } = fakePresenter()
+    const service = DebuggerService.instance
+    await startProgram(presenter, 'src/page.js', [], target, async () => {})
+    const binding = service.binding(presenter)
+    binding.controller.snapshot = { debug_session_id: 'child-1', incarnation: 'i-child' } as never
+    vi.spyOn(binding.controller, 'current', 'get').mockReturnValue(true)
+    binding.controller.session.status = 'exited'
+    service.registerSource(
+      'reg-a',
+      'chat-a',
+      'sample-later',
+      'src/later.js',
+      'child-1',
+      'i-child',
+      target
+    )
+    await binding.rerun!()
+    expect(calls.filter(([method]) => method === 'debugger.v1.start')[1][1].sources).toContain(
+      'src/later.js'
+    )
+  })
   it('admits the source before offering debugger controls so late admission cannot replace a selected line', async () => {
     const { opened } = fakeWorkspace()
     const { presenter } = fakePresenter()

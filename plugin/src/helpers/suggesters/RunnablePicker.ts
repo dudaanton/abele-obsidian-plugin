@@ -21,12 +21,13 @@ class RunnablePicker<T> extends FuzzySuggestModal<T> {
     private readonly items: T[],
     private readonly title: (item: T) => string,
     private readonly subtitle: (item: T) => string,
-    placeholder: string
+    placeholder: string,
+    empty = 'Nothing to run has that in its name.'
   ) {
     super(app)
     this.setPlaceholder(placeholder)
     // Said in place of Obsidian's bare "No results found.", naming what was looked for.
-    this.emptyStateText = 'Nothing to run has that in its name.'
+    this.emptyStateText = empty
   }
 
   getItems(): T[] {
@@ -67,6 +68,25 @@ class RunnablePicker<T> extends FuzzySuggestModal<T> {
       this.open()
     })
   }
+}
+
+/** Shared fuzzy picker for entries supplied by a remote project. */
+export function pickProgram(
+  app: App,
+  paths: string[],
+  open: string[],
+  placeholder: string,
+  empty: string,
+  openLabel: string
+): Promise<string | null> {
+  return new RunnablePicker(
+    app,
+    paths,
+    (path) => path,
+    (path) => (open.includes(path) ? openLabel : ''),
+    placeholder,
+    empty
+  ).pick()
 }
 
 /** Every command Obsidian knows. Not part of the plugin API, so the reach for it lives here. */

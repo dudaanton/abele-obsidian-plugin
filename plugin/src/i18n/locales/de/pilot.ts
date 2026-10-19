@@ -3525,4 +3525,11 @@ export const de = {
   'debug.outsideTitle': 'Mit einem Programm außerhalb dieses Ordners verbinden?',
   'debug.outsideMessage':
     '{command} läuft in {path}, außerhalb des ausgewählten Ordners. Der Debugger kann es anhalten und seine Werte lesen. Nach dem Trennen läuft es weiter.',
+  'debug.sourceUpdate': 'Aktualisiere den Knoten, um Haltepunkte in dieser Datei zu setzen',
+  'debug.sourceMap': 'Erstelle einen Build mit Source Maps, um diese Datei zu debuggen',
+  'debug.sourceChanged': 'Die Datei wurde seit dem Verbinden des Debuggers geändert',
+  'debug.sourceOutside': 'Die Datei liegt außerhalb des Debug-Ordners',
+  'debug.sourceUnavailable': 'Die Datei konnte nicht zum Debugger hinzugefügt werden',
+  'debug.entryPlaceholder': 'JavaScript- oder TypeScript-Einstiegsdatei suchen',
+  'debug.entryEmpty': 'Keine JavaScript- oder TypeScript-Einstiegsdateien gefunden',
 } satisfies TranslationCatalog

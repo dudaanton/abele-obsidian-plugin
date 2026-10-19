@@ -3551,4 +3551,11 @@ export const ru = {
   'debug.outsideTitle': 'Подключиться к программе вне этой папки?',
   'debug.outsideMessage':
     '{command} работает в {path}, а не в выбранной папке. Отладчик может приостанавливать её и читать значения. После отключения она продолжит работать.',
+  'debug.sourceUpdate': 'Обновите узел, чтобы ставить точки остановки в этом файле',
+  'debug.sourceMap': 'Соберите проект с картами исходного кода для отладки этого файла',
+  'debug.sourceChanged': 'Файл изменился после подключения отладчика',
+  'debug.sourceOutside': 'Файл находится вне папки отладки',
+  'debug.sourceUnavailable': 'Не удалось добавить файл в отладчик',
+  'debug.entryPlaceholder': 'Найти стартовый файл JavaScript или TypeScript',
+  'debug.entryEmpty': 'Стартовые файлы JavaScript или TypeScript не найдены',
 } satisfies TranslationCatalog

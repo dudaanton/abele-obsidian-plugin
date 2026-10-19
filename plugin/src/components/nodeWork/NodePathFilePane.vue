@@ -4,19 +4,27 @@
     <div v-if="model.error.value" role="alert"><NodeErrorText :error="model.error.value" /></div>
     <div v-if="offline" role="status">{{ t('streamB.offlineRetainedVersion.ddf2fd') }}</div>
     <template v-if="model.document.value">
+      <div v-if="admissionReason" role="status">{{ admissionReason }}</div>
       <div v-if="model.document.value.note" role="status">
         {{ presentUiField(model.document.value, 'note') }}
       </div>
       <NodePathDebugFile
-        v-if="debug"
+        v-if="effectiveDebug"
         v-show="model.mode.value === 'file'"
-        :key="JSON.stringify([debug.sourceId, debug.debugSessionId, debug.incarnation, debug.path])"
-        :context="{ ...debug, text: model.document.value.text }"
+        :key="
+          JSON.stringify([
+            effectiveDebug.sourceId,
+            effectiveDebug.debugSessionId,
+            effectiveDebug.incarnation,
+            effectiveDebug.path,
+          ])
+        "
+        :context="{ ...effectiveDebug, text: model.document.value.text }"
         @reveal="revealSource"
         @selection="debugSelection"
       />
       <FileView
-        v-if="!debug || model.mode.value !== 'file'"
+        v-if="!effectiveDebug || model.mode.value !== 'file'"
         :path="model.document.value.path"
         :text="model.document.value.text"
         :image="model.document.value.image"
@@ -38,10 +46,39 @@ import type { NodePathFileModel } from '@/node/NodePathModel'
 import FileView from './FileView.vue'
 import NodePathDebugFile from './NodePathDebugFile.vue'
 import type { DebugSourceContext } from '@/debugger/sourceExtension'
+import { computed, ref, watchEffect } from 'vue'
+import { DebuggerService } from '@/debugger/DebuggerService'
 const props = withDefaults(
   defineProps<{ model: NodePathFileModel; offline?: boolean; debug?: DebugSourceContext }>(),
   { offline: false, debug: undefined }
 )
+const service = DebuggerService.instance
+const admissionReason = ref('')
+const effectiveDebug = computed(() => {
+  void service.sourceRevision.value
+  const doc = props.model.document.value
+  if (!doc) return undefined
+  // Observe this folder's session revision as well as its mapping changes.
+  const binding = service.folderBinding(doc.target)
+  const debug = service.debugFor(doc.target, doc.path)
+  return debug
+    ? { ...debug, registrationId: doc.target.registrationId, path: doc.path, text: doc.text }
+    : binding
+      ? undefined
+      : props.debug
+})
+watchEffect((cleanup) => {
+  const doc = props.model.document.value
+  admissionReason.value = ''
+  if (!doc || effectiveDebug.value || !service.folderBinding(doc.target)) return
+  let cancelled = false
+  cleanup(() => {
+    cancelled = true
+  })
+  void service.admitFile(doc.target, doc.path).then((reason) => {
+    if (!cancelled) admissionReason.value = reason
+  })
+})
 import type { FileSelection } from './fileSelection'
 const emit = defineEmits<{
   reveal: [line: number]

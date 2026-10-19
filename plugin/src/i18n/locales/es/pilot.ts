@@ -3549,4 +3549,11 @@ export const es = {
   'debug.outsideTitle': '¿Conectar con un programa fuera de esta carpeta?',
   'debug.outsideMessage':
     '{command} se ejecuta en {path}, fuera de la carpeta seleccionada. El depurador puede pausarlo y leer sus valores. Al desconectarlo, el programa sigue ejecutándose.',
+  'debug.sourceUpdate': 'Actualiza el nodo para poner puntos de interrupción en este archivo',
+  'debug.sourceMap': 'Compila con mapas de código fuente para depurar este archivo',
+  'debug.sourceChanged': 'El archivo cambió desde que se conectó el depurador',
+  'debug.sourceOutside': 'El archivo está fuera de la carpeta de depuración',
+  'debug.sourceUnavailable': 'No se pudo añadir el archivo al depurador',
+  'debug.entryPlaceholder': 'Buscar un archivo de entrada JavaScript o TypeScript',
+  'debug.entryEmpty': 'No se encontraron archivos de entrada JavaScript o TypeScript',
 } satisfies TranslationCatalog

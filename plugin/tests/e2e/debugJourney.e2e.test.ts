@@ -135,6 +135,8 @@ beforeAll(async () => {
   const state = resolve(dir, 'state')
   mkdirSync(join(repo, 'src'), { recursive: true })
   writeFileSync(join(repo, 'src/journey.cjs'), JS)
+  writeFileSync(join(repo, 'src/later.cjs'), 'module.exports = function sample() { return 7 }\n')
+  writeFileSync(join(repo, 'src/unmapped.ts'), 'export const sample: number = 7\n')
   writeFileSync(
     join(repo, 'src/attached.cjs'),
     'setInterval(() => console.log("sample tick"), 200)\n'
@@ -646,6 +648,62 @@ it('on a phone: breakpoint navigation uncovers the source and highlights its lin
     expect(result).toEqual({ highlighted: true, drawersClosed: true })
   })
 }, 180000)
+
+it.each(['desktop', 'phone'])(
+  'admits a later-opened source and explains an unmapped file on %s',
+  async (device) => {
+    const probe = async () => {
+      openChat()
+      const result = await inAppLong<{
+        supported: boolean
+        margin: boolean
+        refusal: string
+      }>(`(async()=>{${prelude}
+      try {
+        ${RUN('src/journey.cjs')}
+        const binding=api.DebuggerService.instance.active.value;
+        const description=await binding.connection.client.describe();
+        const supported=description.capabilities.capabilities.debugger_v1?.add_sources===true;
+        const open=async path=>{
+          const leaf=app.workspace.getLeaf('tab');
+          await leaf.setViewState({type:'abele-node-file',active:true,state:{kind:'file',target:${JSON.stringify(folder)},path}});
+          await app.workspace.revealLeaf(leaf);app.workspace.setActiveLeaf(leaf,{focus:true});
+          app.workspace.leftSplit.collapse();app.workspace.rightSplit.collapse();
+          return leaf;
+        };
+        const later=await open('src/later.cjs');
+        if(!supported){
+          await until(()=>later.containerEl.textContent.includes('Update the node to set breakpoints'),'old node explanation');
+          await shot('admission-${device}-update-node');
+          return {supported:false,margin:false,refusal:'update node'};
+        }
+        await until(()=>later.containerEl.querySelector('.abele-debug-source__point'),'later source margin');
+        await shot('admission-${device}-later-source');
+        const refused=await open('src/unmapped.ts');
+        await until(()=>refused.containerEl.textContent.includes('Build with source maps'),'unmapped TypeScript explanation');
+        await shot('admission-${device}-unmapped-source');
+        return {supported:true,margin:!!later.containerEl.querySelector('.abele-debug-source__point'),refusal:refused.containerEl.textContent};
+      } finally {
+        const binding=api.DebuggerService.instance.active.value;
+        if(binding?.controller.current&&binding.controller.session.status!=='exited')await binding.controller.command('stop');
+        for(const type of ['abele-node-file','abele-debug-view','abele-trace-run','abele-trace-value'])for(const leaf of app.workspace.getLeavesOfType(type))leaf.detach();
+      }
+    })()`)
+      if (result.supported) {
+        expect(result.margin).toBe(true)
+        expect(result.refusal).toContain('Build with source maps')
+      } else {
+        expect(result.refusal).toBe('update node')
+        console.log(
+          'Source admission unavailable on installed node; verified update-node fallback only'
+        )
+      }
+    }
+    if (device === 'phone') await withEmulatedPhone(probe)
+    else await probe()
+  },
+  180000
+)
 
 it('shows disabled debugger actions with the debugger off on desktop and phone', async () => {
   if (child && child.exitCode === null && child.signalCode === null) {

@@ -3391,4 +3391,11 @@ export const en = {
   'debug.outsideTitle': 'Attach to a program outside this folder?',
   'debug.outsideMessage':
     '{command} runs from {path}, not from the selected folder. The debugger can pause it and read its values. Detaching later leaves it running.',
+  'debug.sourceUpdate': 'Update the node to set breakpoints in this file',
+  'debug.sourceMap': 'Build with source maps to debug this file',
+  'debug.sourceChanged': 'This file changed since the debugger attached',
+  'debug.sourceOutside': 'This file is outside the debug folder',
+  'debug.sourceUnavailable': 'This file could not be admitted to the debugger',
+  'debug.entryPlaceholder': 'Search for a JavaScript or TypeScript entry file',
+  'debug.entryEmpty': 'No JavaScript or TypeScript entry files found',
 } as const
