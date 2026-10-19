@@ -137,6 +137,8 @@ const DIALOGS = [
   'node-question',
   'node-question-input',
   'node-folder-picker',
+  'node-folder-picker-stale',
+  'node-folder-picker-refused',
   'node-delegation-grants',
   'node-delegation-card',
   'node-syntax-sh',
