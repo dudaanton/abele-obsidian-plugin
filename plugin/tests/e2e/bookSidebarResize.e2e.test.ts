@@ -275,7 +275,7 @@ describe.skipIf(!available)('reader navigation split', () => {
         stored: app.loadLocalStorage(${JSON.stringify(WIDTH_KEY)}) }
     })()`)
     expect(r.page).toBeCloseTo(r.width, 0)
-    expect(r.panel).toBeLessThan(r.width)
+    expect(r.panel).toBeCloseTo(r.width, 0)
     expect(r.handleHidden).toBe(true)
     expect(r.tabindex).toBe(-1)
     expect(r.stored).toBe(450)
