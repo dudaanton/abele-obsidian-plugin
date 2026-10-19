@@ -305,30 +305,31 @@ export class NodePathMainView extends ItemView {
           () => {
             const value = revision.value
             repository.value?.dispose()
-            repository.value = value
-              ? new NodeRepositorySource(
-                  connection.client,
-                  {
-                    provider: 'node',
-                    installation: principal.installation,
-                    node: node.id,
-                    project: state.target.projectId,
-                    workspace: state.target.id,
-                  },
-                  {
-                    node: node.label,
-                    project: '',
-                    isCurrent: () =>
-                      lifetime === this.lifetime &&
-                      connection.authorizationGeneration === authority &&
-                      NodeService.getInstance().nodes.value.some(
-                        (current) =>
-                          current.id === node.id && current.expectedNodeId === node.expectedNodeId
-                      ),
-                  },
-                  value
-                )
-              : undefined
+            repository.value =
+              value && principal.installation
+                ? new NodeRepositorySource(
+                    connection.client,
+                    {
+                      provider: 'node',
+                      installation: principal.installation,
+                      node: node.id,
+                      project: state.target.projectId,
+                      workspace: state.target.id,
+                    },
+                    {
+                      node: node.label,
+                      project: '',
+                      isCurrent: () =>
+                        lifetime === this.lifetime &&
+                        connection.authorizationGeneration === authority &&
+                        NodeService.getInstance().nodes.value.some(
+                          (current) =>
+                            current.id === node.id && current.expectedNodeId === node.expectedNodeId
+                        ),
+                    },
+                    value
+                  )
+                : undefined
           }
         )
       )

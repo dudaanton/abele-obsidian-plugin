@@ -9,6 +9,8 @@ const fixture = vi.hoisted(() => ({
   model: undefined as any,
   presenter: undefined as any,
   openChat: vi.fn(async () => {}),
+  installation: 'sample-installation' as string | undefined,
+  root: undefined as any,
 }))
 vi.mock('@/node/nodePathNavigation', async (original) => ({
   ...(await original<typeof import('@/node/nodePathNavigation')>()),
@@ -29,7 +31,10 @@ vi.mock('obsidian', async (original) => {
 })
 vi.mock('vue', async (original) => ({
   ...(await original<typeof import('vue')>()),
-  createApp: () => ({ mount() {}, unmount() {} }),
+  createApp: (root: unknown) => {
+    fixture.root = root
+    return { mount() {}, unmount() {} }
+  },
 }))
 vi.mock('@/node/NodeService', () => ({
   NodeService: {
@@ -42,7 +47,7 @@ vi.mock('@/node/NodeService', () => ({
           onEvent: () => () => {},
           store: {
             transaction: async (read: (state: unknown) => unknown) =>
-              read({ installation_id: 'sample-installation' }),
+              read({ installation_id: fixture.installation }),
           },
         },
       }),
@@ -124,7 +129,36 @@ it('moves a chat tab of an earlier layout to the sidebar chat and closes it', as
 afterEach(async () => {
   for (const view of views.splice(0)) await view.onClose()
   vi.clearAllMocks()
+  fixture.installation = 'sample-installation'
+  fixture.root = undefined
 })
+
+it.each([undefined, '', 'sample-installation'])(
+  'keeps the file readable and binds repository tools only to a present installation: %s',
+  async (installation) => {
+    fixture.installation = installation
+    fixture.connect.mockResolvedValue(undefined)
+    fixture.model = {
+      online: shallowRef(true),
+      hasRetained: () => false,
+      openFile: vi.fn(async () => ({
+        target,
+        path: 'sample.ts',
+        text: 'sample',
+        contentId: 'sample-content',
+        revision: { kind: 'commit', commit: 'a'.repeat(40) },
+      })),
+    }
+    const view = new NodePathMainView({} as WorkspaceLeaf, 'abele-node-file')
+    views.push(view)
+    view.app = { workspace: { requestSaveLayout() {} } } as any
+    await view.setState({ kind: 'file', target, path: 'sample.ts' }, {})
+    await vi.waitFor(() => expect((view as any).file?.document.value?.text).toBe('sample'))
+    const props = fixture.root.render().props
+    if (installation) expect(props.repository.identity.installation).toBe(installation)
+    else expect(props.repository).toBeUndefined()
+  }
+)
 
 it('shows binding failures instead of leaving an admitted tab blank', async () => {
   fixture.model = new Error('Sample node is unavailable')
