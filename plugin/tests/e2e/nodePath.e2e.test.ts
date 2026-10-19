@@ -97,10 +97,9 @@ async function checkCodeGeometry() {
 }
 
 async function checkFileRepositoryTools(shell: 'desktop' | 'phone', registration: string) {
-  const connection = `nodes.connection(${JSON.stringify(registration)}).client.repository`
   try {
     await evalLong(
-      `(async()=>{${prelude}await until(()=>visible('.abele-file-view.abele-code-nav [aria-label="Toggle line blame"]'));const toggle=visible('.abele-file-view [aria-label="Toggle line blame"]');if(toggle.getAttribute('aria-pressed')!=='false')throw Error('Blame must start off');const repository=${connection};window.__fileBlameOriginal=repository.blame;repository.blame=async(...args)=>{await new Promise(resolve=>window.__fileBlameRelease=resolve);return window.__fileBlameOriginal.apply(repository,args)};return 'blame off'})()`
+      `(async()=>{${prelude}await until(()=>visible('.abele-file-view.abele-code-nav [aria-label="Toggle line blame"]'));const toggle=visible('.abele-file-view [aria-label="Toggle line blame"]');if(toggle.getAttribute('aria-pressed')!=='false')throw Error('Blame must start off');const repository=nodes.connection(${JSON.stringify(registration)}).client.repository;window.__fileBlameOriginal=repository.blame;repository.blame=async(...args)=>{await new Promise(resolve=>window.__fileBlameRelease=resolve);return window.__fileBlameOriginal.apply(repository,args)};return 'blame off'})()`
     )
     await capture(shell + '-file-blame-off')
     await evalLong(
@@ -112,11 +111,11 @@ async function checkFileRepositoryTools(shell: 'desktop' | 'phone', registration
     )
     await capture(shell + '-file-blame-on')
     await evalLong(
-      `(async()=>{${prelude}const toggle=visible('.abele-file-view [aria-label="Toggle line blame"]');toggle.click();${connection}.blame=async()=>{throw Error('Sample blame unavailable')};toggle.click();await until(()=>visible('.abele-file-view .abele-github-notice')?.textContent.includes('Sample blame unavailable'));return 'blame error'})()`
+      `(async()=>{${prelude}const toggle=visible('.abele-file-view [aria-label="Toggle line blame"]');toggle.click();nodes.connection(${JSON.stringify(registration)}).client.repository.blame=async()=>{throw Error('Sample blame unavailable')};toggle.click();await until(()=>visible('.abele-file-view .abele-github-notice')?.textContent.includes('Sample blame unavailable'));return 'blame error'})()`
     )
     await capture(shell + '-file-blame-error')
     await evalLong(
-      `(async()=>{${prelude}${connection}.blame=window.__fileBlameOriginal;visible('.abele-file-view .abele-github-notice__retry').click();await until(()=>!visible('.abele-file-view .abele-github-notice')&&visible('.abele-file-view .abele-github-blame-range'));visible('.abele-file-view [aria-label="Toggle line blame"]').click();visible('.abele-file-view').dispatchEvent(new KeyboardEvent('keydown',{key:'f',ctrlKey:true,bubbles:true,cancelable:true}));await until(()=>visible('.abele-file-view .abele-github-find input'));const input=visible('.abele-file-view .abele-github-find input');input.value='value';input.dispatchEvent(new Event('input',{bubbles:true}));await until(()=>visible('.abele-file-view .abele-github-find__match'));if(input.getBoundingClientRect().width<parseFloat(getComputedStyle(input).fontSize)*4)throw Error('Find input is squeezed by its controls');return 'find matches file text'})()`
+      `(async()=>{${prelude}nodes.connection(${JSON.stringify(registration)}).client.repository.blame=window.__fileBlameOriginal;visible('.abele-file-view .abele-github-notice__retry').click();await until(()=>!visible('.abele-file-view .abele-github-notice')&&visible('.abele-file-view .abele-github-blame-range'));visible('.abele-file-view [aria-label="Toggle line blame"]').click();visible('.abele-file-view').dispatchEvent(new KeyboardEvent('keydown',{key:'f',ctrlKey:true,bubbles:true,cancelable:true}));await until(()=>visible('.abele-file-view .abele-github-find input'));const input=visible('.abele-file-view .abele-github-find input');input.value='value';input.dispatchEvent(new Event('input',{bubbles:true}));await until(()=>visible('.abele-file-view .abele-github-find__match'));if(input.getBoundingClientRect().width<parseFloat(getComputedStyle(input).fontSize)*4)throw Error('Find input is squeezed by its controls');return 'find matches file text'})()`
     )
     await capture(shell + '-file-search-open')
     await evalLong(
@@ -124,7 +123,7 @@ async function checkFileRepositoryTools(shell: 'desktop' | 'phone', registration
     )
   } finally {
     await evalLong(
-      `(()=>{${prelude}if(window.__fileBlameOriginal)${connection}.blame=window.__fileBlameOriginal;window.__fileBlameRelease?.();delete window.__fileBlameOriginal;delete window.__fileBlameRelease;return 'restored blame transport'})()`
+      `(()=>{${prelude}if(window.__fileBlameOriginal)nodes.connection(${JSON.stringify(registration)}).client.repository.blame=window.__fileBlameOriginal;window.__fileBlameRelease?.();delete window.__fileBlameOriginal;delete window.__fileBlameRelease;return 'restored blame transport'})()`
     )
   }
 }
