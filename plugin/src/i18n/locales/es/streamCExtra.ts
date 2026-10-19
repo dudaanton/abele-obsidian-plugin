@@ -1,4 +1,5 @@
 export const extra = {
+  'streamC.readerForward': 'Adelante',
   'streamC.approving': 'Aprobando…',
   'streamC.6fd9013400843e8c': 'Falló la solicitud del depurador',
   'streamC.52b7148b81772c48': 'Esta sesión del depurador no tiene un permiso activo de agente',

@@ -1,4 +1,5 @@
 export const extra = {
+  'streamC.readerForward': 'Go forward',
   'streamC.approving': 'Approving…',
   'streamC.6fd9013400843e8c': 'Debugger request failed',
   'streamC.52b7148b81772c48': 'No live agent grant is bound to this debugger session',

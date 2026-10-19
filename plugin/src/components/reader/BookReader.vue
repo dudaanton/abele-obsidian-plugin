@@ -131,6 +131,7 @@
           v-else
           :model="model"
           @back="emit('back')"
+          @forward="emit('forward')"
           @seek="emit('seek', $event)"
           @bookmark="emit('bookmark')"
           @draw="emit('ink', true)"
@@ -235,6 +236,7 @@ const emit = defineEmits<{
   (e: 'go', href: string, fromPanel: boolean): void
   (e: 'seek', fraction: number): void
   (e: 'back'): void
+  (e: 'forward'): void
   (e: 'panel', open: boolean): void
   (e: 'settings', open: boolean): void
   (e: 'footnote-close'): void

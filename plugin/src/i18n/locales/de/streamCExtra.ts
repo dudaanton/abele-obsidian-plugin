@@ -1,4 +1,5 @@
 export const extra = {
+  'streamC.readerForward': 'Vorwärts',
   'streamC.approving': 'Wird genehmigt…',
   'streamC.6fd9013400843e8c': 'Debugger-Anfrage fehlgeschlagen',
   'streamC.52b7148b81772c48': 'Dieser Debugger-Sitzung ist keine aktive Agentenfreigabe zugeordnet',

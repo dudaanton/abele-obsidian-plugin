@@ -37,6 +37,24 @@ beforeEach(() => {
 })
 
 describe('the line under the page', () => {
+  it('shows and forwards both available history actions', async () => {
+    const model = readyModel({ canGoBack: true, canGoForward: true })
+    const view = mount(BookReader, { props: { model } })
+    const icons = view.findAllComponents({ name: 'Icon' })
+    await icons.find((icon) => icon.props('icon') === 'undo-2')!.trigger('click')
+    await icons.find((icon) => icon.props('icon') === 'redo-2')!.trigger('click')
+    expect(view.emitted('back')).toEqual([[]])
+    expect(view.emitted('forward')).toEqual([[]])
+    model.canGoBack = false
+    model.canGoForward = false
+    await flushPromises()
+    expect(
+      view
+        .findAllComponents({ name: 'Icon' })
+        .some((icon) => ['undo-2', 'redo-2'].includes(icon.props('icon')))
+    ).toBe(false)
+  })
+
   it('names the chapter and says how far into the book', () => {
     const view = mount(BookReader, { props: { model: readyModel() } })
     expect(view.find('.abele-book-reader__chapter').text()).toBe('Chapter 2')

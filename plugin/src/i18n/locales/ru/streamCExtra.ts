@@ -1,4 +1,5 @@
 export const extra = {
+  'streamC.readerForward': 'Вперёд',
   'streamC.approving': 'Одобрение…',
   'streamC.6fd9013400843e8c': 'Запрос отладчика не выполнен',
   'streamC.52b7148b81772c48': 'К этой сессии отладчика не привязан действующий доступ агента',

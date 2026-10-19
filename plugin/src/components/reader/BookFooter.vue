@@ -7,6 +7,12 @@
       @click="emit('back')"
     />
     <Icon
+      v-if="model.canGoForward"
+      icon="redo-2"
+      :tooltip="t('streamC.readerForward')"
+      @click="emit('forward')"
+    />
+    <Icon
       v-if="model.kind === 'pdf'"
       icon="pen-line"
       :tooltip="t('streamC.5c70b136b98e494f')"
@@ -96,6 +102,7 @@ import { nextShow, progressText, type ProgressShow } from '@/reader/readingProgr
 const props = defineProps<{ model: BookModel }>()
 const emit = defineEmits<{
   (e: 'back'): void
+  (e: 'forward'): void
   (e: 'seek', fraction: number): void
   (e: 'bookmark'): void
   (e: 'draw'): void

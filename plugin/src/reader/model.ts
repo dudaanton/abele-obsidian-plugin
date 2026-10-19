@@ -97,6 +97,7 @@ export interface BookModel {
   panel: boolean
   /** A link was followed inside the book, and there is a way back. */
   canGoBack: boolean
+  canGoForward: boolean
   footnote: Footnote | null
   settingsOpen: boolean
   /** Which list the side panel shows. */
@@ -150,6 +151,7 @@ export const emptyBookModel = (): BookModel => ({
   progress: null,
   panel: false,
   canGoBack: false,
+  canGoForward: false,
   footnote: null,
   settingsOpen: false,
   panelTab: 'contents',

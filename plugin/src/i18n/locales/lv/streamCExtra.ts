@@ -1,4 +1,5 @@
 export const extra = {
+  'streamC.readerForward': 'Uz priekšu',
   'streamC.approving': 'Apstiprina…',
   'streamC.6fd9013400843e8c': 'Atkļūdotāja pieprasījums neizdevās',
   'streamC.52b7148b81772c48': 'Šai atkļūdotāja sesijai nav piesaistīta aktīva aģenta atļauja',

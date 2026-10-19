@@ -160,6 +160,14 @@ class CursorAutohider {
 class History extends EventTarget {
     #arr = []
     #index = -1
+    constructor(current) {
+        super()
+        this.current = current
+    }
+    capture() {
+        const cfi = this.current?.()
+        if (cfi) this.replaceState(cfi)
+    }
     pushState(x) {
         const last = this.#arr[this.#index]
         if (last === x || last?.fraction && last.fraction === x.fraction) return
@@ -169,11 +177,15 @@ class History extends EventTarget {
     }
     replaceState(x) {
         const index = this.#index
+        // A renderer can report its initial scroll before init pushes the first entry.
+        // Writing slot -1 would make that push look like a duplicate and leave no origin.
+        if (index < 0) return
         this.#arr[index] = x
     }
     back() {
         const index = this.#index
         if (index <= 0) return
+        this.capture()
         const detail = { state: this.#arr[index - 1] }
         this.#index = index - 1
         this.dispatchEvent(new CustomEvent('popstate', { detail }))
@@ -182,6 +194,7 @@ class History extends EventTarget {
     forward() {
         const index = this.#index
         if (index >= this.#arr.length - 1) return
+        this.capture()
         const detail = { state: this.#arr[index + 1] }
         this.#index = index + 1
         this.dispatchEvent(new CustomEvent('popstate', { detail }))
@@ -196,6 +209,7 @@ class History extends EventTarget {
     clear() {
         this.#arr = []
         this.#index = -1
+        this.dispatchEvent(new Event('index-change'))
     }
 }
 
@@ -225,12 +239,16 @@ export class View extends HTMLElement {
         this.hasAttribute('autohide-cursor'))
     isFixedLayout = false
     lastLocation
-    history = new History()
+    #navigating = 0
+    history = new History(() => this.#navigating ? null : this.lastLocation?.cfi)
     constructor() {
         super()
         this.history.addEventListener('popstate', ({ detail }) => {
             const resolved = this.resolveNavigation(detail.state)
-            this.renderer.goTo(resolved)
+            this.#navigating++
+            Promise.resolve(this.renderer.goTo(resolved))
+                .catch(e => console.error(e))
+                .finally(() => this.#navigating--)
         })
     }
     async open(book) {
@@ -339,7 +357,7 @@ export class View extends HTMLElement {
         // ABELE PATCH: preserve the renderer's cause. Re-anchoring after layout is not reading
         // on this device, even when another font/column width changes the visible CFI range.
         this.lastLocation = { ...progress, tocItem, pageItem, cfi, range, reason }
-        if (reason === 'snap' || reason === 'page' || reason === 'scroll')
+        if (!this.#navigating && (reason === 'snap' || reason === 'page' || reason === 'scroll'))
             this.history.replaceState(cfi)
         this.#emit('relocate', this.lastLocation)
     }
@@ -468,6 +486,8 @@ export class View extends HTMLElement {
     }
     async goTo(target) {
         const resolved = this.resolveNavigation(target)
+        this.history.capture()
+        this.#navigating++
         try {
             await this.renderer.goTo(resolved)
             this.history.pushState(target)
@@ -475,14 +495,24 @@ export class View extends HTMLElement {
         } catch(e) {
             console.error(e)
             console.error(`Could not go to ${target}`)
+        } finally {
+            this.#navigating--
         }
     }
     async goToFraction(frac) {
         const [index, anchor] = this.#sectionProgress.getSection(frac)
-        await this.renderer.goTo({ index, anchor })
-        this.history.pushState({ fraction: frac })
+        this.history.capture()
+        this.#navigating++
+        try {
+            await this.renderer.goTo({ index, anchor })
+            this.history.pushState({ fraction: frac })
+        } finally {
+            this.#navigating--
+        }
     }
     async select(target) {
+        this.history.capture()
+        this.#navigating++
         try {
             const obj = await this.resolveNavigation(target)
             await this.renderer.goTo({ ...obj, select: true })
@@ -490,6 +520,8 @@ export class View extends HTMLElement {
         } catch(e) {
             console.error(e)
             console.error(`Could not go to ${target}`)
+        } finally {
+            this.#navigating--
         }
     }
     deselect() {

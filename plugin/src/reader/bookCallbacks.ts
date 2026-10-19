@@ -42,6 +42,7 @@ export function bookCallbacks(a: BookActions): Record<string, unknown> {
     },
     onSeek: (fraction: number): void => void a.reader()?.goToFraction(fraction),
     onBack: (): void => a.reader()?.history.back(),
+    onForward: (): void => a.reader()?.history.forward(),
     onPanel: (open: boolean): void => a.setPanel(open),
     onSettings: (open: boolean): void => {
       model.settingsOpen = open

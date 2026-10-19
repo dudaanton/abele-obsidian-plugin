@@ -579,6 +579,7 @@ export class BookView extends FileView {
       )
       onReaderEvent(reader.history, 'index-change', current, () => {
         this.model.canGoBack = !!this.reader?.history.canGoBack
+        this.model.canGoForward = !!this.reader?.history.canGoForward
       })
       this.reader = reader
       this.opened = opened
@@ -632,8 +633,8 @@ export class BookView extends FileView {
       const words = this.pendingWords
       this.pendingWords = null
       if (words) this.searchWords(words)
-      // The first page of a book is not a place to go back to.
-      this.model.canGoBack = false
+      this.model.canGoBack = reader.history.canGoBack
+      this.model.canGoForward = reader.history.canGoForward
       this.model.status = 'ready'
       await bookPlaces()?.opened(this.key, file.path, {
         title: nameOf(meta?.title),
