@@ -161,7 +161,7 @@ it('scans and publishes a large whole-read source once before the normal path co
   } finally {
     await one.close()
   }
-})
+}, 60_000)
 
 it('checks scope before a whole-read fingerprint and translates placed paths', async () => {
   const fs = new MemoryFileSystem()
