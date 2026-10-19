@@ -14,6 +14,16 @@ const target = (id = 'tree-a') => ({
   id,
 })
 describe('main area node leaves', () => {
+  it('restores a committed diff with its selected base', () => {
+    const stage = { kind: 'committed', base: 'refs/heads/release' }
+    const state = NodePathTabSchema.parse({
+      kind: 'file',
+      target: target(),
+      path: 'sample.ts',
+      stage,
+    })
+    expect(state.kind === 'file' && state.stage).toEqual(stage)
+  })
   it('opens a catalogue target carrying selection recovery metadata without changing its binding', () => {
     const located = {
       ...target(),

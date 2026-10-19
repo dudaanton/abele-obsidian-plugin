@@ -114,6 +114,15 @@ const nodePanel = (() => {
       unwatch: async () => ({ removed: true }),
     },
     repository: {
+      resolve: async () => ({ kind: 'commit', commit: BASE }),
+      blob: async () => ({ content_id: 'sample-file', size: 29, binary: false, requires_larger_load: false, too_large: false }),
+      patch: async () => ({ content_id: 'sample-patch', size: 100, binary: false, requires_larger_load: false, too_large: false }),
+      content: async ({ content_id }) => {
+        const text = content_id === 'sample-patch'
+          ? '@@ -1 +1 @@\\n-export const sample = false\\n+export const sample = true\\n'
+          : 'export const sample = true\\n'
+        return { offset: 0, total: text.length, base64: btoa(text) }
+      },
       worktrees: async ({ project_id }) => page(worktrees.filter((w) => w.project_id === project_id)),
       // A new observation each time, as the node gives, so answers changed by a variant are read.
       observe: async ({ worktree_id }) => ({ revision: { kind: 'working', observation_id: 'sample-observation-' + worktree_id + '-' + ++observations, head: HEAD, observed_at: at }, atomic: false }),

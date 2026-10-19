@@ -35,7 +35,12 @@ export const NodePathTabSchema = z.discriminatedUnion('kind', [
       kind: z.literal('file'),
       target,
       path: z.string().min(1).max(4096),
-      stage: z.enum(['staged', 'unstaged']).optional(),
+      stage: z
+        .union([
+          z.enum(['staged', 'unstaged']),
+          z.object({ kind: z.literal('committed'), base: z.string().min(1).max(4096) }).strict(),
+        ])
+        .optional(),
       debug: NodePathDebugMappingSchema.optional(),
       /** Being edited in this tab. */
       edit: z.boolean().optional(),

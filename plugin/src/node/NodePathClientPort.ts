@@ -31,6 +31,7 @@ import type {
   PathCatalogue,
   PathChange,
   PathDocument,
+  PathFileStage,
   PathBranch,
   PathInspection,
   PathTarget,
@@ -746,7 +747,7 @@ export class NodePathClientPort implements NodePathPort {
   file(
     target: PathTarget,
     path: string,
-    stage?: 'staged' | 'unstaged',
+    stage?: PathFileStage,
     frozen?: RepositoryRevision,
     known?: KnownPathRead
   ): Promise<PathDocument> {
@@ -755,10 +756,11 @@ export class NodePathClientPort implements NodePathPort {
   private async readFile(
     target: PathTarget,
     path: string,
-    stage?: 'staged' | 'unstaged',
+    stage?: PathFileStage,
     frozen?: RepositoryRevision,
     known?: KnownPathRead
   ): Promise<PathDocument> {
+    if (typeof stage === 'object') return this.readCommittedFile(target, path, stage.base)
     if (target.kind === 'workspace') {
       const blob = await this.client.readFile(target.id, path)
       if (blob.binary)
@@ -861,6 +863,77 @@ export class NodePathClientPort implements NodePathPort {
     return {
       ...loaded,
       text: change.kind === 'deleted' ? before : loaded.text,
+      target,
+      path,
+      revision,
+      change,
+    }
+  }
+  private async readCommittedFile(
+    target: PathTarget,
+    path: string,
+    base: string
+  ): Promise<PathDocument> {
+    if (target.kind !== 'worktree' || !base)
+      throw new Error('A committed diff requires a repository base.')
+    const repository = this.client.repository
+    const [from, observed] = await Promise.all([
+      repository.resolve({ worktree_id: target.id, ref: base }),
+      repository.observe({ worktree_id: target.id }),
+    ])
+    const at = observed.revision
+    const head = at.kind === 'commit' ? at.commit : at.head
+    if (!head) throw new Error('The branch has no commits to compare.')
+    const revision = { kind: 'commit' as const, commit: head }
+    let comparisonId = ''
+    const entries = await pathPages(async (cursor) => {
+      const page = await repository.compare({
+        worktree_id: target.id,
+        base: from,
+        head: revision,
+        mode: 'merge-base',
+        cursor,
+      })
+      comparisonId = page.comparison_id
+      return page
+    })
+    const entry = entries.find((entry) => entry.path === path)
+    if (!entry)
+      throw new Error(
+        'This file is no longer changed against the selected base. Refresh the changes.'
+      )
+    const kind = changeKind(entry.status)
+    const loaded =
+      kind === 'deleted'
+        ? { text: '', contentId: null }
+        : await this.gitPreview(target, revision, path)
+    const patch = await repository.patch({
+      worktree_id: target.id,
+      comparison_id: comparisonId,
+      path,
+    })
+    const change: PathChange = { path, kind, before: '', after: '', added: 0, removed: 0 }
+    if (patch.binary || loaded.image) {
+      change.binary = true
+    } else {
+      if (!patch.content_id) throw new UiError(uiMessage('streamBError.8647963b04'))
+      const diff = await readNodeText(
+        (offset) =>
+          repository.content({ worktree_id: target.id, content_id: patch.content_id!, offset }),
+        8 * 1024 * 1024
+      )
+      change.after = loaded.text
+      change.before = reverseNodePatch(loaded.text, diff)
+      change.added = diff
+        .split('\n')
+        .filter((line) => line.startsWith('+') && !line.startsWith('+++')).length
+      change.removed = diff
+        .split('\n')
+        .filter((line) => line.startsWith('-') && !line.startsWith('---')).length
+    }
+    return {
+      ...loaded,
+      text: kind === 'deleted' ? change.before : loaded.text,
       target,
       path,
       revision,

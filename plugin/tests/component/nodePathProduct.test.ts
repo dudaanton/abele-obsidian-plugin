@@ -72,6 +72,15 @@ describe('product node sidebar', () => {
     expect(view.get('.abele-node-place__where').text()).toBe('Sample')
     expect(view.find('.abele-file-tree_stale').exists()).toBe(true)
     expect(view.text()).toContain('sample.ts')
+    model.panelBase.value = 'refs/heads/release'
+    view.getComponent(FileTree).vm.$emit('open', 'committed.ts', 'committed')
+    expect(view.emitted('open-file')?.at(-1)).toEqual([
+      'committed.ts',
+      { kind: 'committed', base: 'refs/heads/release' },
+    ])
+    view.getComponent(FileTree).vm.$emit('open', 'sample.ts', 'staged')
+    expect(view.emitted('open-file')?.at(-1)).toEqual(['sample.ts', 'staged'])
+    model.panelBase.value = ''
     expect(view.text()).toContain('As of Today, 12:00')
     // A copy whose last commit and distance are unknown says nothing of them.
     expect(view.text()).not.toContain('Unknown')

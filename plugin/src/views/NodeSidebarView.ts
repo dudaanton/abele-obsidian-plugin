@@ -5,7 +5,7 @@ import { h, shallowRef, watch, type WatchStopHandle } from 'vue'
 import { z } from 'zod'
 import { NodeService } from '@/node/NodeService'
 import { NodePathService } from '@/node/NodePathService'
-import { NodePathModel } from '@/node/NodePathModel'
+import { NodePathModel, type PathFileStage } from '@/node/NodePathModel'
 import {
   createLocalNodeDiscovery,
   localNodeRegistrationUrl,
@@ -143,7 +143,7 @@ export class NodeSidebarView extends ItemView {
                   )
                 )
             },
-            onOpenFile: (path: string, stage?: 'staged' | 'unstaged') => {
+            onOpenFile: (path: string, stage?: PathFileStage) => {
               const target = selected()
               if (target)
                 nodePathAction(() =>

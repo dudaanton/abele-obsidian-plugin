@@ -49,6 +49,7 @@ export interface PathInspection {
   revision?: RepositoryRevision
   note?: string
 }
+export type PathFileStage = 'staged' | 'unstaged' | { kind: 'committed'; base: string }
 export interface PathDocument {
   target: PathTarget
   path: string
@@ -113,7 +114,7 @@ export interface NodePathPort {
   file(
     target: PathTarget,
     path: string,
-    stage?: 'staged' | 'unstaged',
+    stage?: PathFileStage,
     revision?: RepositoryRevision,
     known?: KnownPathRead
   ): Promise<PathDocument>
@@ -1133,13 +1134,13 @@ export class NodePathModel {
   private seenKey(target: PathTarget, path: string) {
     return JSON.stringify([target.nodeId, target.kind, target.id, path])
   }
-  hasRetained(target: PathTarget, path: string, stage?: 'staged' | 'unstaged'): boolean {
+  hasRetained(target: PathTarget, path: string, stage?: PathFileStage): boolean {
     return this.retained.has(JSON.stringify([pathTargetKey(target), path, stage, undefined]))
   }
   async openFile(
     target: PathTarget,
     path: string,
-    stage?: 'staged' | 'unstaged',
+    stage?: PathFileStage,
     revision?: RepositoryRevision,
     publish: (document: PathDocument) => boolean = () => true
   ): Promise<PathDocument> {
@@ -1290,7 +1291,7 @@ export class NodePathFileModel {
   readonly busy = ref(false)
   readonly error = ref('')
   private generation = 0
-  private stage?: 'staged' | 'unstaged'
+  private stage?: PathFileStage
   constructor(
     readonly pathModel: NodePathModel,
     readonly target: PathTarget
@@ -1298,7 +1299,7 @@ export class NodePathFileModel {
     this.target = Object.freeze({ ...target })
     markRaw(this)
   }
-  async open(path: string, stage?: 'staged' | 'unstaged'): Promise<void> {
+  async open(path: string, stage?: PathFileStage): Promise<void> {
     const generation = ++this.generation
     this.busy.value = true
     try {

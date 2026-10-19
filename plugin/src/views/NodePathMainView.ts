@@ -169,7 +169,7 @@ export class NodePathMainView extends ItemView {
           this.saved.target.registrationId === parsed.target.registrationId &&
           this.saved.target.nodeId === parsed.target.nodeId &&
           this.saved.path === parsed.path &&
-          this.saved.stage === parsed.stage))
+          JSON.stringify(this.saved.stage) === JSON.stringify(parsed.stage)))
     this.saved =
       same && parsed.kind === 'file' && this.editing?.active.value
         ? { ...parsed, edit: true }

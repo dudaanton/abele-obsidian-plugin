@@ -60,6 +60,78 @@ function fake() {
   return { ...f, client, port }
 }
 describe('validated node path reads', () => {
+  it('opens a committed change against the chosen base without reading working changes', async () => {
+    const { port, client, calls } = fake()
+    const { targets } = await port.catalogue()
+    const compare = vi.spyOn(client.repository, 'compare')
+    const blob = client.repository.blob.bind(client.repository)
+    vi.spyOn(client.repository, 'blob').mockImplementation((params) =>
+      blob({
+        ...params,
+        revision: {
+          kind: 'working',
+          head: HEAD,
+          observation_id: 'sample',
+          observed_at: '2025-01-01T00:00:00Z',
+        },
+      })
+    )
+    const result = await port.file(targets[0], 'app.ts', { kind: 'committed', base: 'feature' })
+    expect(compare).toHaveBeenCalledWith(
+      expect.objectContaining({
+        base: { kind: 'commit', commit: BASE },
+        head: { kind: 'commit', commit: HEAD },
+        mode: 'merge-base',
+      })
+    )
+    expect(result.change).toMatchObject({ kind: 'modified', before: 'export const answer = 1\n' })
+    expect(calls.filter((c) => c.method === 'repository.v1.status')).toEqual([])
+  })
+  it.each([
+    ['A', 'added', '', 'new\n', '@@ -0,0 +1 @@\n+new\n'],
+    ['D', 'deleted', 'old\n', '', '@@ -1 +0,0 @@\n-old\n'],
+    [
+      'R100',
+      'renamed',
+      'same\n',
+      'same\n',
+      'similarity index 100%\nrename from old.txt\nrename to new.txt\n',
+    ],
+    ['R90', 'renamed', 'old\n', 'new\n', '@@ -1 +1 @@\n-old\n+new\n'],
+  ])(
+    'reads a committed %s using HEAD and the captured comparison patch',
+    async (status, kind, before, after, patch) => {
+      const { port, client } = fake()
+      const { targets } = await port.catalogue()
+      const compare = client.repository.compare.bind(client.repository)
+      vi.spyOn(client.repository, 'compare').mockImplementation(async (params) => ({
+        ...(await compare(params)),
+        entries: [{ path: 'new.txt', status }],
+      }))
+      const metadata = (content_id: string) => ({
+        content_id,
+        size: 10,
+        binary: false,
+        requires_larger_load: false,
+        too_large: false,
+      })
+      const blob = vi.spyOn(client.repository, 'blob').mockResolvedValue(metadata('file'))
+      vi.spyOn(client.repository, 'patch').mockResolvedValue(metadata('patch'))
+      vi.spyOn(client.repository, 'content').mockImplementation(async (params) => {
+        const text = params.content_id === 'patch' ? patch : after
+        return { offset: 0, total: text.length, base64: btoa(text) }
+      })
+      const result = await port.file(targets[0], 'new.txt', { kind: 'committed', base: 'feature' })
+      expect(result.change).toMatchObject({ kind, before, after })
+      if (kind === 'deleted') expect(blob).not.toHaveBeenCalled()
+      else
+        expect(blob).toHaveBeenCalledWith({
+          worktree_id: targets[0].id,
+          revision: { kind: 'commit', commit: HEAD },
+          path: 'new.txt',
+        })
+    }
+  )
   it.each(['repository_unavailable', 'stale_resource'])(
     'retains a registered repository with catalogue error %s as a removable folder without losing other projects',
     async (code) => {
@@ -785,7 +857,14 @@ describe('a branch as a pull request would see it', () => {
     })
     const divergence = vi.fn(async (params: { base_ref?: string }) =>
       params.base_ref === 'refs/remotes/origin/main'
-        ? { base_ref: params.base_ref, base_commit: BASE, head_commit: HEAD, ahead: 2, behind: 0, reason: 'ok' }
+        ? {
+            base_ref: params.base_ref,
+            base_commit: BASE,
+            head_commit: HEAD,
+            ahead: 2,
+            behind: 0,
+            reason: 'ok',
+          }
         : {
             base_ref: params.base_ref ?? 'refs/remotes/origin/trunk',
             base_commit: BASE,
@@ -802,9 +881,15 @@ describe('a branch as a pull request would see it', () => {
           entries: [
             { name: 'refs/heads/main', commit: HEAD, symbolic: null },
             { name: 'refs/heads/other', commit: BASE, symbolic: null },
-            ...(upstream ? [{ name: 'refs/remotes/origin/main', commit: BASE, symbolic: null }] : []),
+            ...(upstream
+              ? [{ name: 'refs/remotes/origin/main', commit: BASE, symbolic: null }]
+              : []),
             { name: 'refs/remotes/origin/trunk', commit: BASE, symbolic: null },
-            { name: 'refs/remotes/origin/HEAD', commit: BASE, symbolic: 'refs/remotes/origin/trunk' },
+            {
+              name: 'refs/remotes/origin/HEAD',
+              commit: BASE,
+              symbolic: 'refs/remotes/origin/trunk',
+            },
           ],
           default_branch: 'refs/remotes/origin/trunk',
           cursor: null,

@@ -14,6 +14,45 @@ import { NODE_PANEL_FIXTURE } from './helpers/nodePanelFixture'
 targets('desktop')
 const SHOTS = shotDir('abele-node-panel-states')
 
+const committedDiff = (device: string) =>
+  evalAsync<boolean>(`(async () => {
+  const wait = ms => new Promise(r => setTimeout(r, ms))
+  ${NODE_PANEL_FIXTURE}
+  try {
+    const panel = await nodePanel.open('feature')
+    await nodePanel.mode('Changes')
+    const row = panel.querySelector('[data-path="src/sample-committed.ts"]')
+    if (!row) throw Error('Committed file row missing')
+    row.click()
+    let diff
+    for (let i = 0; i < 100; i++) {
+      diff = document.querySelector('.abele-node-main .abele-diff')
+      if (diff?.textContent.includes('export const sample = false') && diff.textContent.includes('export const sample = true')) break
+      await wait(100)
+    }
+    if (!diff) throw Error('Committed diff did not open')
+    await wait(300)
+    const box = diff.getBoundingClientRect()
+    const visible = box.width > 100 && box.height > 20 && box.left >= 0 && box.left < innerWidth
+    require('fs').writeFileSync(${JSON.stringify(SHOTS)} + '/${device}-committed-diff.png', (await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG())
+    return visible && diff.textContent.includes('export const sample = false') && diff.textContent.includes('export const sample = true')
+  } finally {
+    const registrationId = window.__abeleNodePanelFixture?.registration.id
+    for (const leaf of app.workspace.getLeavesOfType('abele-node-file')) {
+      if (leaf.getViewState().state?.target?.registrationId === registrationId) leaf.detach()
+    }
+    await nodePanel.close()
+  }
+})()`)
+
+it('opens the committed group in the existing diff view on desktop', () => {
+  expect(committedDiff('desktop')).toBe(true)
+})
+
+it('opens the committed group in the existing diff view in the phone layout', async () => {
+  expect(await withEmulatedPhone(async () => committedDiff('phone'))).toBe(true)
+})
+
 type States = Record<string, boolean>
 const probe = (device: string) =>
   evalAsync<States>(`(async () => {

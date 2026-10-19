@@ -160,7 +160,14 @@
           @expand="(path) => model.loadFolder(path).catch((error) => model.report(error))"
           @more="(path) => model.loadMore(path).catch((error) => model.report(error))"
           @open="
-            (path, stage) => emit('open-file', path, stage === 'committed' ? undefined : stage)
+            (path, stage) =>
+              emit(
+                'open-file',
+                path,
+                stage === 'committed'
+                  ? { kind: 'committed', base: branch?.state.baseRef ?? model.panelBase.value }
+                  : stage
+              )
           "
           @menu="(event, path) => emit('file-menu', event, path)"
           @stage="(path) => act(() => model!.stage([path]))"
@@ -211,7 +218,7 @@ import { t } from '@/i18n'
 // The node's side panel: one place (a folder and its branch) chosen from a row that opens the
 // search of all of them, and the place's files, changes, history or pull requests under it.
 import { computed, watch } from 'vue'
-import type { NodePathModel } from '@/node/NodePathModel'
+import type { NodePathModel, PathFileStage } from '@/node/NodePathModel'
 import { removeNodePathFolder } from '@/node/NodePathController'
 import NodePanel from './NodePanel.vue'
 import NodePlace from './NodePlace.vue'
@@ -251,7 +258,7 @@ const emit = defineEmits<{
   copy: [text: string]
   'pick-place': []
   'place-menu': [event: MouseEvent]
-  'open-file': [path: string, stage?: 'staged' | 'unstaged']
+  'open-file': [path: string, stage?: PathFileStage]
   'file-menu': [event: MouseEvent, path: string]
   'open-commit': [hash: string]
   'open-pull': [number: number]

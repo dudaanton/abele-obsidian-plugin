@@ -191,6 +191,10 @@ The Node drawer and its main-area file, history, chat and code-editor leaves ret
 registration/node/project IDs, an opaque workspace or worktree target, relative file paths
 and session IDs in the workspace layout. They never store node credentials or claim chat
 permissions. File navigation is bound to the leaf target, not the current drawer selection.
+File leaves also retain their staged/unstaged origin or a committed origin with its full base
+ref in layout state. A committed file reopens as a merge-base comparison against HEAD, using
+the node's captured patch rather than working-tree bytes. Its base stays with the file when
+the drawer changes its comparison.
 Debug source mappings may also retain the requested line number so a source opened from a
 recorded step or breakpoint list reopens with that line highlighted.
 Selected file or comparison text can be quoted into a chat draft with its relative path, line
