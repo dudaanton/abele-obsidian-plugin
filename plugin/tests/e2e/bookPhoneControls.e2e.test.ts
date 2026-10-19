@@ -274,18 +274,39 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
   })
 
   it('swiping across the progress track opens the sidebar without moving the book', async () => {
-    const r = await run<{ error?: string; opened?: boolean[]; unchanged?: boolean[] }>(`
+    const r = await run<{
+      error?: string
+      opened?: boolean[]
+      unchanged?: boolean[]
+      diagnostics?: { seeks: unknown[]; changes: unknown[]; emissions: unknown[] }[]
+    }>(`
       const { leaf, view } = await open(${JSON.stringify(RICH)})
       try {
         await moved(view, () => view.engine.goTo(view.model.toc[0].href))
-        const opened = [], unchanged = []
+        const opened = [], unchanged = [], diagnostics = []
+        const location = () => {
+          const loc = view.engine.lastLocation
+          const index = view.engine.resolveNavigation(loc.cfi).index
+          const start = loc.range.cloneRange(), end = loc.range.cloneRange()
+          start.collapse(true); end.collapse(false)
+          return { cfi: loc.cfi, start: view.engine.getCFI(index, start), end: view.engine.getCFI(index, end), reason: loc.reason }
+        }
         for (const direction of [1, -1]) {
           app.workspace.leftSplit.collapse()
           app.workspace.rightSplit.collapse()
           await wait(400)
           const slider = view.contentEl.querySelector('.abele-book-reader__footer input[type=range]')
           const b = slider.getBoundingClientRect(), y = b.top + b.height / 2
-          const before = view.engine.lastLocation.cfi
+          const before = location(), seeks = [], changes = [], emissions = [], relocations = []
+          const component = slider.__vueParentComponent, emit = component.emit
+          component.emit = function (...args) { emissions.push(args); return emit.apply(this, args) }
+          const goToFraction = view.engine.goToFraction
+          view.engine.goToFraction = function (...args) { seeks.push(args); return goToFraction.apply(this, args) }
+          const change = event => changes.push({ type: event.type, value: slider.value })
+          const relocate = () => relocations.push(location())
+          slider.addEventListener('input', change)
+          slider.addEventListener('change', change)
+          view.engine.addEventListener('relocate', relocate)
           const x0 = b.left + b.width * (direction === 1 ? 0.3 : 0.9)
           await touch('touchStart', [[x0, y]])
           for (let i = 1; i <= 10; i++) {
@@ -294,10 +315,18 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
           }
           await touch('touchEnd'); await wait(1200)
           opened.push(!(direction === 1 ? app.workspace.leftSplit : app.workspace.rightSplit).collapsed)
-          unchanged.push(view.engine.lastLocation.cfi === before)
+          const after = location()
+          component.emit = emit
+          view.engine.goToFraction = goToFraction
+          slider.removeEventListener('input', change)
+          slider.removeEventListener('change', change)
+          view.engine.removeEventListener('relocate', relocate)
+          diagnostics.push({ direction, before, after, seeks, changes, emissions, relocations })
+          // Reflow can change the visible range end without changing the reading position.
+          unchanged.push(after.start === before.start)
           await shoot('footer-sidebar-swipe-' + direction)
         }
-        return { opened, unchanged }
+        return { opened, unchanged, diagnostics }
       } finally {
         app.workspace.leftSplit.collapse()
         app.workspace.rightSplit.collapse()
@@ -305,6 +334,12 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
       }
     `)
     expect(r.error).toBeUndefined()
+    console.log('Sidebar swipe diagnostics', JSON.stringify(r))
+    for (const swipe of r.diagnostics!) {
+      expect(swipe.seeks).toEqual([])
+      expect(swipe.changes).toEqual([])
+      expect(swipe.emissions).toEqual([])
+    }
     expect(r.unchanged).toEqual([true, true])
     expect(r.opened).toEqual([true, true])
   })
