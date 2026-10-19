@@ -10,6 +10,7 @@ export const en = {
   'node.error.access': 'The node refused access. Pair again or check your permissions.',
   'node.error.unknownOutcome':
     'The result is unknown. Refresh and check what happened before trying again.',
+  'node.error.outputLimit': 'The node returned too much output. Narrow the request or use paging.',
   'node.error.limit': 'The node reached a limit. Wait before trying again.',
   'node.error.debugger':
     'The debugger is unavailable. Check the debug configuration and reconnect.',

@@ -15,6 +15,7 @@ it.each([
     'outcome_unknown',
     'The result is unknown. Refresh and check what happened before trying again.',
   ],
+  ['output_limit', 'The node returned too much output. Narrow the request or use paging.'],
   ['rate_limit', 'The node reached a limit. Wait before trying again.'],
   [
     'debugger_profile_unavailable',
@@ -71,6 +72,7 @@ it.each(['en', 'ru', 'lv', 'es', 'de'] as const)(
       'unauthorized',
       'outcome_unknown',
       'rate_limit',
+      'output_limit',
       'debugger_profile_unavailable',
       'offline',
       'pairing_required',

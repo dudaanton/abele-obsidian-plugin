@@ -12,6 +12,8 @@ export const de = {
     'Der Knoten hat den Zugriff verweigert. Erneut koppeln oder Berechtigungen prüfen.',
   'node.error.unknownOutcome':
     'Das Ergebnis ist unbekannt. Vor einem erneuten Versuch aktualisieren und das Ergebnis prüfen.',
+  'node.error.outputLimit':
+    'Der Knoten hat zu viele Daten zurückgegeben. Grenze die Anfrage ein oder verwende Seiten.',
   'node.error.limit': 'Der Knoten hat ein Limit erreicht. Vor einem erneuten Versuch warten.',
   'node.error.debugger':
     'Der Debugger ist nicht verfügbar. Debug-Konfiguration prüfen und erneut verbinden.',

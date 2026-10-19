@@ -11,6 +11,8 @@ export const es = {
   'node.error.access': 'El nodo denegó el acceso. Vuelve a vincularlo o comprueba los permisos.',
   'node.error.unknownOutcome':
     'El resultado es desconocido. Actualiza y comprueba qué ocurrió antes de reintentar.',
+  'node.error.outputLimit':
+    'El nodo devolvió demasiados datos. Acota la solicitud o usa la paginación.',
   'node.error.limit': 'El nodo alcanzó un límite. Espera antes de reintentar.',
   'node.error.debugger':
     'El depurador no está disponible. Comprueba la configuración de depuración y vuelve a conectar.',

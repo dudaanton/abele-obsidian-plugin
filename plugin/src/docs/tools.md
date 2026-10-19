@@ -1239,7 +1239,7 @@ picker, shell, stage, commit, push or delegation is exposed by this toolset.
 | `node_git_status` | Current Git index/worktree status |
 | `node_git_diff` | Explicit staged/unstaged or endpoint comparison; `path` loads its patch |
 | `node_git_branches` | Paginated Git references |
-| `node_git_log` | Commit history, optionally restricted to `path` |
+| `node_git_log` | Commit history in pages of up to 50, optionally restricted to `path`. Call again with only the returned `cursor` for the next page; oversized messages may be marked truncated. |
 | `node_git_blame` | Attribution for `path`, optionally `start` and `count` |
 | `node_worktree_switch` | Select an already scoped worktree inside this chat's current folder |
 

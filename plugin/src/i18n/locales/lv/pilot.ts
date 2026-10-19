@@ -11,6 +11,8 @@ export const lv = {
   'node.error.access': 'Mezgls liedza piekļuvi. Savienojiet pārī vēlreiz vai pārbaudiet atļaujas.',
   'node.error.unknownOutcome':
     'Rezultāts nav zināms. Pirms atkārtota mēģinājuma atsvaidziniet un pārbaudiet, kas notika.',
+  'node.error.outputLimit':
+    'Mezgls atgrieza pārāk daudz datu. Sašauriniet pieprasījumu vai izmantojiet lappuses.',
   'node.error.limit': 'Mezgls sasniedza ierobežojumu. Pirms atkārtota mēģinājuma uzgaidiet.',
   'node.error.debugger':
     'Atkļūdotājs nav pieejams. Pārbaudiet atkļūdošanas iestatījumus un izveidojiet savienojumu vēlreiz.',

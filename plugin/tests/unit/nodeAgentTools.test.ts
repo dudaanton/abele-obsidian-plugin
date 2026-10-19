@@ -210,6 +210,25 @@ describe('Obsidian chat node tools', () => {
         .details
     ).toMatchObject({ state: 'saved', diff: { old: 'old', new: 'new' } })
   })
+  it('reads one bounded history page and continues only when asked', async () => {
+    const { call, repository } = setupGit()
+    const batch = { entries: [], cursor: 'history-next', incomplete: false, omissions: [] }
+    Object.assign(repository, {
+      history: vi
+        .fn()
+        .mockResolvedValueOnce(batch)
+        .mockResolvedValueOnce({ ...batch, cursor: null }),
+    })
+    const first = await call('node_git_log')
+    expect(repository.history).toHaveBeenCalledTimes(1)
+    expect(repository.history).toHaveBeenLastCalledWith(expect.objectContaining({ limit: 50 }))
+    expect(first.details?.cursor).toEqual(expect.any(String))
+    await call('node_git_log', { cursor: first.details!.cursor })
+    expect(repository.history).toHaveBeenCalledTimes(2)
+    expect(repository.history).toHaveBeenLastCalledWith(
+      expect.objectContaining({ limit: 50, cursor: 'history-next' })
+    )
+  })
   it('enumerates Git worktrees without selection or a tab and filters target-only scope', async () => {
     const { session, ledger, call } = setupGit()
     session.overrides.value.nodeScope = [

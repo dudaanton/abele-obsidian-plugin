@@ -200,6 +200,7 @@ type Pending = {
   tool: string
   guard(): void
   text: string
+  next?: () => Promise<AgentToolResult>
   expires: number
 }
 const maxReadBytes = 2 * 1024 * 1024
@@ -221,7 +222,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
     }
     const shown = entry.text.slice(0, end)
     entry.text = entry.text.slice(end)
-    if (!entry.text) return answer(shown)
+    if (!entry.text && !entry.next) return answer(shown)
     while (pending.size >= 16) pending.delete(pending.keys().next().value!)
     const cursor = crypto.randomUUID()
     pending.set(cursor, entry)
@@ -286,7 +287,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
           throw new Error('Node authority host changed; repeat the read')
         entry.guard()
         pending.delete(cursor)
-        return page(entry)
+        return entry.text ? page(entry) : entry.next!()
       }
       const host = await factory()
       const checks: (() => void)[] = []
@@ -764,12 +765,26 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
           }
           case 'node_git_branches':
             return retain(await paged((cursor) => repo.refs({ worktree_id: id, cursor })))
-          case 'node_git_log':
-            return retain(
-              await paged((cursor) =>
-                repo.history({ ...request, cursor, ...(path ? { path } : {}) })
+          case 'node_git_log': {
+            const historyPage = async (cursor?: string): Promise<AgentToolResult> => {
+              const batch = await safe(() =>
+                repo.history({ ...request, cursor, limit: 50, ...(path ? { path } : {}) })
               )
-            )
+              if (cursor && batch.cursor === cursor) throw new Error('Invalid node cursor')
+              guard()
+              const nextCursor = batch.cursor
+              return page({
+                host,
+                session,
+                tool: name,
+                guard,
+                text: JSON.stringify({ ...batch, cursor: null }, null, 2),
+                next: nextCursor ? () => historyPage(nextCursor) : undefined,
+                expires: Date.now() + 600000,
+              })
+            }
+            return historyPage()
+          }
           case 'node_git_blame':
             return retain(
               await paged((cursor) =>

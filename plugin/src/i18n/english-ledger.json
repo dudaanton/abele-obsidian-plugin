@@ -25918,5 +25918,15 @@
       "es",
       "de"
     ]
+  },
+  "node.error.outputLimit": {
+    "englishHash": "181232db1c017e78058262d5b510203a1c08790817146d6690942fe5a2c90946",
+    "context": "Node error explanation and recovery advice; original diagnostic retained in a tooltip",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

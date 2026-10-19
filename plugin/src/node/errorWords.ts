@@ -63,16 +63,10 @@ const groups: readonly [NodeErrorKey, readonly string[]][] = [
       'paired_profile_required',
     ],
   ],
+  ['node.error.outputLimit', ['output_limit']],
   [
     'node.error.limit',
-    [
-      'rate_limit',
-      'rate_limited',
-      'output_limit',
-      'quota_exceeded',
-      'resource_busy',
-      'slow_consumer',
-    ],
+    ['rate_limit', 'rate_limited', 'quota_exceeded', 'resource_busy', 'slow_consumer'],
   ],
   [
     'node.error.debugger',

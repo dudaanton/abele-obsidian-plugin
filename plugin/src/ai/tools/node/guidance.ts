@@ -124,7 +124,8 @@ const NODE_TOOL_DOING: Record<string, string> = {
   node_git_diff:
     'Shows Git changes: staged or unstaged, or between base and ref; with path, that file’s patch.',
   node_git_branches: "Lists a Git folder's branches and tags.",
-  node_git_log: 'Lists Git commits from ref (default the worktree head), optionally for one path.',
+  node_git_log:
+    'Lists up to 50 Git commits from ref (default the worktree head), optionally for one path. For the next page call node_git_log with only the returned cursor. Oversized messages may be marked truncated.',
   node_git_blame: 'Shows who last changed each line of path; start and count narrow it.',
   node_worktree_switch:
     "Makes another worktree of the same Git folder this chat's default place, so later calls may omit node, project and workspace.",
