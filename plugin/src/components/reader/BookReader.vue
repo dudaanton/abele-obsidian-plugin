@@ -401,6 +401,11 @@ watch(
 .is-phone .workspace-leaf-content .view-content.abele-book {
   box-sizing: border-box;
   padding-bottom: var(--view-bottom-spacing, 0);
+  background-color: var(--background-primary);
+}
+
+.is-phone .abele-book-reader__stage {
+  overflow: hidden;
 }
 
 // Keep the book's words from showing through either phone chrome surface.
@@ -660,11 +665,37 @@ body:not(.is-mobile) .abele-book_zen > .abele-book-zen-edge {
   position: fixed;
 }
 
-// Peeked at, the row under the page sits over Obsidian's bar rather than under it.
-.is-phone
-  .abele-book_zen.abele-book_zen-peek
+// Keep the controls above the host bar, but carry their opaque backing all the way through
+// the safe area. Moving only the row up leaves a strip of the full-height zen page exposed.
+.is-phone .abele-book_zen {
+  --abele-book-bottom-fill: var(--safe-area-inset-bottom, 0px);
+
+  &.abele-book_zen-peek {
+    --abele-book-bottom-fill: max(
+      var(--view-bottom-spacing, 0px),
+      var(--safe-area-inset-bottom, 0px)
+    );
+  }
+
   .abele-book-reader__foot:not(.abele-book-reader__foot_top) {
-  bottom: max(0px, calc(var(--view-bottom-spacing, 0px) - var(--safe-area-inset-bottom)));
+    bottom: calc(-1 * var(--safe-area-inset-bottom, 0px));
+    padding-bottom: var(--abele-book-bottom-fill);
+  }
+
+  // Clip paint, not layout: showing chrome must not repaginate the book or move a selection.
+  // A selection bar placed at the top keeps the bottom of the page available.
+  .abele-book-reader__main:has(
+      > .abele-book-reader__foot:not(.abele-book-reader__foot_hidden, .abele-book-reader__foot_top)
+    )
+    .abele-book-reader__stage {
+    clip-path: inset(
+      0 0
+        calc(
+          var(--abele-book-foot, 2.75rem) +
+            var(--abele-book-bottom-fill) - var(--safe-area-inset-bottom, 0px) + var(--border-width)
+        )
+    );
+  }
 }
 
 // E-ink: Obsidian's own header and bar come and go in one step too, over a book in zen mode.
