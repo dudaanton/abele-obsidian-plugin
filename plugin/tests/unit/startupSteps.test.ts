@@ -22,6 +22,25 @@ afterEach(() => {
 })
 
 describe('a startup step', () => {
+  it('records durations for the load probe and clears the previous startup', async () => {
+    startupStep('views', () => {})
+    await startupStepAsync('settings', async () => {})
+    const entries = performance
+      .getEntriesByType('measure')
+      .filter((entry) => entry.name.startsWith('abele:start:'))
+    expect(entries.map((entry) => entry.name)).toEqual([
+      'abele:start:views',
+      'abele:start:settings',
+    ])
+    expect(entries.every((entry) => entry.duration >= 0)).toBe(true)
+    beginStartup()
+    expect(
+      performance
+        .getEntriesByType('measure')
+        .filter((entry) => entry.name.startsWith('abele:start:'))
+    ).toEqual([])
+  })
+
   it('that throws is named, and the steps after it still run', () => {
     const ran: string[] = []
     startupStep('settings', () => {

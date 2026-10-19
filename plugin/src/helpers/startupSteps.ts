@@ -20,11 +20,18 @@ const now = (): number => (typeof performance !== 'undefined' ? performance.now(
 
 /** Resets the clock the steps are timed from; called first thing in `onload`. */
 export function beginStartup(): void {
+  if (typeof performance !== 'undefined') {
+    for (const entry of performance.getEntriesByType('measure')) {
+      if (entry.name.startsWith('abele:start:')) performance.clearMeasures(entry.name)
+    }
+  }
   startedAt = now()
 }
 
 function done(name: string, began: number): void {
   const end = now()
+  if (typeof performance !== 'undefined')
+    performance.measure(`abele:start:${name}`, { start: began, end })
   console.debug(
     `[Abele] start: ${name} ${Math.round(end - began)} ms (at ${Math.round(end - startedAt)} ms)`
   )

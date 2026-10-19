@@ -72,7 +72,7 @@ interface Sample {
 }
 
 /** A sample as the probe takes it: the phases, and the yardstick timed just before them. */
-type Taken = Sample & { yardstickMs: number }
+type Taken = Sample & { yardstickMs: number; steps: Record<string, number> }
 
 type Phase = keyof Sample
 type Build = 'development' | 'production'
@@ -237,6 +237,9 @@ function probeSource(runs: number): string {
         firstFrameMs: t2 - t0,
         settledMs: Math.max(settled, t1) - t0,
         yardstickMs,
+        steps: Object.fromEntries(performance.getEntriesByType('measure')
+          .filter((entry) => entry.name.startsWith('abele:start:') && entry.startTime >= t0)
+          .map((entry) => [entry.name.slice('abele:start:'.length), entry.duration])),
       }
     }
     ;(async () => {
@@ -348,6 +351,15 @@ describe.skipIf(!available)('plugin load time', () => {
         lines.push(
           `    ${p.padEnd(14, '.')} ${best[name][p].toFixed(1).padStart(8)} ms` +
             (before != null ? `   baseline ${before.toFixed(1).padStart(8)} ms` : '')
+        )
+      }
+      const steps = [...new Set(samples.flatMap((sample) => Object.keys(sample.steps)))]
+      for (const step of steps) {
+        const durations = samples.flatMap((sample) =>
+          sample.steps[step] === undefined ? [] : [sample.steps[step]]
+        )
+        lines.push(
+          `    step ${step}: fastest ${fastest(durations).toFixed(1)} ms, median ${median(durations).toFixed(1)} ms`
         )
       }
     }
