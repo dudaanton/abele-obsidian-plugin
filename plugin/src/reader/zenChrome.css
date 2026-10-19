@@ -1,0 +1,7 @@
+/* Obsidian extends the translated phone header's touch area back over the page with ::after.
+   In book zen that page contains text. Leave it touchable while the chrome is hidden; the
+   existing middle tap reveals the header and restores its controls without moving the page. */
+body.is-phone.is-hidden-nav .abele-book_zen:not(.abele-book_zen-peek) > .view-header,
+body.is-phone.is-hidden-nav .abele-book_zen:not(.abele-book_zen-peek) > .view-header::after {
+  pointer-events: none;
+}

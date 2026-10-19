@@ -8,6 +8,7 @@
  * tab comes to the front; while this tab is in front in zen mode, it is hidden again.
  */
 import { watch, type WatchStopHandle } from 'vue'
+import './zenChrome.css'
 import type { BookModel } from './model'
 import {
   type Band,
