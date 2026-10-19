@@ -128,11 +128,12 @@ it('lists folder entries through the node, follows pages, and offers open files 
 })
 
 it('gives an already-open tab its margin when its folder session appears', async () => {
+  const mode = ref('split')
   const wrapper = mount(NodePathFilePane, {
     props: {
       model: {
         document: ref({ target, path: 'lib/helper.ts', text: 'const sample = 1' }),
-        mode: ref('file'),
+        mode,
         busy: ref(false),
         error: ref(''),
       } as never,
@@ -144,6 +145,7 @@ it('gives an already-open tab its margin when its folder session appears', async
   await flushPromises()
   await nextTick()
   expect(wrapper.findComponent({ name: 'NodePathDebugFile' }).exists()).toBe(true)
+  expect(mode.value).toBe('file')
   wrapper.unmount()
 })
 

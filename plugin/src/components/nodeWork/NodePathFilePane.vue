@@ -46,7 +46,7 @@ import type { NodePathFileModel } from '@/node/NodePathModel'
 import FileView from './FileView.vue'
 import NodePathDebugFile from './NodePathDebugFile.vue'
 import type { DebugSourceContext } from '@/debugger/sourceExtension'
-import { computed, ref, watchEffect } from 'vue'
+import { computed, ref, watch, watchEffect } from 'vue'
 import { DebuggerService } from '@/debugger/DebuggerService'
 const props = withDefaults(
   defineProps<{ model: NodePathFileModel; offline?: boolean; debug?: DebugSourceContext }>(),
@@ -67,6 +67,19 @@ const effectiveDebug = computed(() => {
       ? undefined
       : props.debug
 })
+watch(
+  () =>
+    effectiveDebug.value &&
+    JSON.stringify([
+      effectiveDebug.value.debugSessionId,
+      effectiveDebug.value.incarnation,
+      effectiveDebug.value.sourceId,
+    ]),
+  (source) => {
+    if (source) props.model.mode.value = 'file'
+  },
+  { immediate: true }
+)
 watchEffect((cleanup) => {
   const doc = props.model.document.value
   admissionReason.value = ''
