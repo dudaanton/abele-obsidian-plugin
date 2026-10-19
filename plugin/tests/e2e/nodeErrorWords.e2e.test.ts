@@ -28,11 +28,19 @@ const probe = (device: string) =>
         (await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG());
       const tlsWords = line.textContent.includes('Check its address') && !line.textContent.includes('paired_route');
       let otherWords = true;
-      for (const code of ['unauthorized', 'outcome_unknown', 'rate_limit', 'record_too_large', 'debugger_profile_unavailable', 'future_refusal']) {
+      for (const [code, expected] of [
+        ['unauthorized', 'The node refused access. Pair again or check your permissions.'],
+        ['outcome_unknown', 'The result is unknown. Refresh and check what happened before trying again.'],
+        ['rate_limit', 'The node reached a limit. Wait before trying again.'],
+        ['record_too_large', 'The request is too large. Reduce its size and try again.'],
+        ['debugger_profile_unavailable', 'The debugger is unavailable. Check the debug configuration and reconnect.'],
+        ['output_limit', 'The node returned too much output. Narrow the request or use paging.'],
+        ['future_refusal', 'The node could not complete the request. Check the details before trying again. (future_refusal)'],
+      ]) {
         connection.error.value = code;
         await wait(100);
         const current = line.getBoundingClientRect();
-        otherWords &&= line.title === code && !line.textContent.includes(code) &&
+        otherWords &&= line.title === code && line.textContent === expected &&
           current.left >= Math.max(0, root.left) && current.right <= Math.min(innerWidth, root.right) + 1;
       }
       require('fs').writeFileSync(${JSON.stringify(shots)} + '/${device}-unknown-error.png',
