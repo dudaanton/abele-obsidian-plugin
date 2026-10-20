@@ -47,7 +47,7 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
       const card = path => [...root().querySelectorAll('.abele-chat-artifacts__row, .abele-chat-artifacts__image')].find(el => (el.matches('[data-path]') ? el : el.querySelector('[data-path]'))?.getAttribute('data-path') === path)
       const missing = el => el.matches('.abele-chat-artifacts__row_missing, .abele-chat-artifacts__image_missing')
       const heading = el => el.querySelector('.abele-fold-heading__text').textContent.trim() + ' (' + el.querySelector('.abele-fold-heading__count').textContent.trim() + ')'
-      const headings = () => [...root().querySelectorAll('.abele-fold-heading')].map(heading)
+      const headings = () => [...root().querySelectorAll(':scope > section:not(.abele-chat-artifacts__changes) > .abele-list-section-header .abele-fold-heading')].map(heading)
       // What the ⋯ of a row (or a right click on a picture) holds; nativeMenus is off for the run.
       const menuOf = async host => {
         await menusGone()
@@ -175,13 +175,8 @@ describe.skipIf(!available)('one view of a chat’s artifacts', () => {
           card(invalidPath).querySelector('.abele-status-dot')?.getAttribute('aria-label') === 'File missing' &&
           !card(invalidPath).querySelector('img')
         const moved = app.vault.getAbstractFileByPath(created[1]); await app.vault.rename(moved, directory + '/sample-moved.png')
-        await until(() => missing(card(created[1])))
-        observations.missing = (await menuOf(card(created[1]))).some(el => el.textContent.trim() === 'Show in chat')
-        // Execute the source action to dismiss its menu normally; synthetic Escape can also
-        // close the native modal. Reopen the files view for the independent upload-source check.
-        await fromMenu('Show in chat')
-        await until(() => !root(), 'files view closed')
-        await openArtifacts()
+        await until(() => !card(created[1]))
+        observations.missing = !card(created[1]) && session.allMessages.value.some(message => message.toolImagePath === created[1])
         await press(card(upload.path), 'Show in chat')
         await until(() => !root(), 'files view closed')
         const sourceVisible = () => {

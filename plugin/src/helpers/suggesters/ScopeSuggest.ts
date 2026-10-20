@@ -77,7 +77,7 @@ export class ScopeSuggest extends TextInputSuggest<ScopeChoice> {
     } catch (error) {
       if ((error as Error).name !== 'AbortError')
         console.debug('[scope] Group suggestions failed', error)
-      return []
+      sizes = new Map()
     }
     if (lookup.signal.aborted) return []
     for (const [path, size] of sizes)

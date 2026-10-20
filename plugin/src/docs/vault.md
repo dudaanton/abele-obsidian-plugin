@@ -17,6 +17,9 @@ tools and transfers do not expose it. Trusted connections automatically approve 
 executable reviews and linked private attachment questions. Scope, size limits, server
 refusals and held-delete reviews still apply. Automatic actions appear in the connection log.
 
+Stopped local chat turns retain a visible system message in their transcript. Approved tool
+rows retain the arguments actually executed, including content edited during approval.
+
 ## Device-local external-file state foundation
 
 Folder connections retain a device-local `rootIssue` in their connection registry when the

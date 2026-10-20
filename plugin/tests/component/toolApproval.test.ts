@@ -32,6 +32,30 @@ import {
 
 const EXISTING = 'Notes/Existing.md'
 
+it('edits replacement text rather than escaped JSON', async () => {
+  const approveToolCall = vi.fn()
+  vi.spyOn(ChatService.getInstance(), 'activeSession', 'get').mockReturnValue({
+    value: { approveToolCall, getToolMode: () => 'ask', permissionMode: ref('confirm-all') },
+  } as never)
+  const wrapper = approval('edit', {
+    path: EXISTING,
+    old_string: 'Before',
+    new_string: 'After\nSecond line',
+  })
+  await chooseApproval(wrapper, 'Edit before allowing')
+  await nextTick()
+  const editor = wrapper.find('textarea')
+  expect((editor.element as HTMLTextAreaElement).value).toBe('After\nSecond line')
+  await editor.setValue('Revised\nSecond line')
+  await buttonSaying(wrapper, 'Allow as edited')!.find('button').trigger('click')
+  expect(approveToolCall).toHaveBeenCalledWith(
+    { path: EXISTING, old_string: 'Before', new_string: 'Revised\nSecond line' },
+    false,
+    undefined
+  )
+  wrapper.unmount()
+})
+
 let app: FakeApp
 
 beforeEach(() => {

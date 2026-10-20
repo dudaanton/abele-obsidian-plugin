@@ -190,7 +190,7 @@
       <Input
         :model-value="editedArgs"
         as-text-area
-        :placeholder="t('streamB.editArgumentsJson.43eaac')"
+        :placeholder="contentKey ? t('streamB.editContent') : t('streamB.editArgumentsJson.43eaac')"
         @update:model-value="editedArgs = $event"
       />
       <div v-if="parseError" class="abele-tool-approval__parse-error">{{ parseError }}</div>
@@ -275,10 +275,20 @@ const isEditing = ref(false)
 const originalOpen = ref(false)
 const editedArgs = ref(JSON.stringify(props.message.toolParams, null, 2))
 const params = computed(() => props.message.toolParams || {})
+const contentKey = computed(() => {
+  if (props.message.toolName === 'edit') return 'new_string'
+  if (['create', 'write', 'create_script'].includes(props.message.toolName ?? '')) return 'content'
+  if (props.message.toolName === 'eval_js') return 'code'
+  return null
+})
+const editedParams = () =>
+  contentKey.value
+    ? { ...params.value, [contentKey.value]: editedArgs.value }
+    : JSON.parse(editedArgs.value)
 const keyRevision = ref(0)
 const effectiveParams = computed(() => {
   try {
-    return isEditing.value ? JSON.parse(editedArgs.value) : params.value
+    return isEditing.value ? editedParams() : params.value
   } catch {
     return {}
   }
@@ -585,7 +595,7 @@ const approve = () => {
   }
   if (isEditing.value) {
     try {
-      const modified = JSON.parse(editedArgs.value)
+      const modified = editedParams()
       parseError.value = ''
       session.value?.approveToolCall(modified, false, props.message.toolCallId)
     } catch (err: unknown) {
@@ -670,6 +680,14 @@ const stop = () => {
 }
 
 const toggleEdit = () => {
+  if (!isEditing.value) {
+    const content = contentKey.value ? params.value[contentKey.value] : undefined
+    editedArgs.value = contentKey.value
+      ? typeof content === 'string'
+        ? content
+        : JSON.stringify(content ?? '')
+      : JSON.stringify(params.value, null, 2)
+  }
   isEditing.value = !isEditing.value
 }
 </script>

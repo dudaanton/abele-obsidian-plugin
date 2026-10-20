@@ -5,7 +5,6 @@ import { mount, type VueWrapper } from '@vue/test-utils'
 import { defineComponent, h, nextTick, ref, shallowRef } from 'vue'
 import { Menu, type MenuItem } from 'obsidian'
 import ListSectionHeader from '@/components/obsidian/ListSectionHeader.vue'
-import StatusDot from '@/components/obsidian/StatusDot.vue'
 import ChatArtifacts from '@/components/ChatArtifacts.vue'
 import type { ChatSession } from '@/ai/ChatSession'
 import { useVault } from '../helpers/testEnv'
@@ -79,6 +78,57 @@ const menuOf = async (target: ReturnType<VueWrapper['find']>, how: 'more' | 'con
 const item = (items: Awaited<ReturnType<typeof menuOf>>, title: string) =>
   items.find((i) => i.title === title)
 describe('chat artifacts dialog', () => {
+  it('keeps created hidden files visible while they exist on disk', async () => {
+    await app.vault.adapter.write('Notes/.sample-config', 'Sample')
+    session.touched.value.push({ path: 'Notes/.sample-config', at: '2025-01-01' })
+    session.allMessages.value.push({
+      id: 'hidden',
+      role: 'tool-call',
+      content: '',
+      timestamp: 2,
+      toolName: 'create',
+      toolStatus: 'approved',
+      toolParams: { path: 'Notes/.sample-config' },
+      toolResult: 'Created: Notes/.sample-config',
+      toolDiff: { old: '', new: 'Sample' },
+    })
+    mountView()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(view!.text()).toContain('.sample-config')
+    expect(view!.find('.abele-chat-artifacts__changes').text()).toContain('Notes/.sample-config')
+  })
+  it('shows actual changes and drops a missing file created by this chat', async () => {
+    session.touched.value.push({ path: 'Notes/gone.md', at: '2025-01-01' })
+    session.allMessages.value.push({
+      id: 'created',
+      role: 'tool-call',
+      content: '',
+      timestamp: 2,
+      toolName: 'create',
+      toolStatus: 'approved',
+      toolParams: { path: 'Notes/gone.md' },
+      toolResult: 'Created: Notes/gone.md',
+      toolDiff: { old: '', new: 'Gone' },
+    })
+    session.allMessages.value.push({
+      id: 'edited',
+      role: 'tool-call',
+      content: '',
+      timestamp: 3,
+      toolName: 'edit',
+      toolStatus: 'approved',
+      toolParams: { path: 'Notes/sample.md' },
+      toolResult: 'Edited',
+      toolDiff: { old: 'Before', new: 'After' },
+    })
+    mountView()
+    await nextTick()
+    expect(view!.find('.abele-chat-artifacts__changes').text()).toContain('Notes/sample.md')
+    expect(view!.find('.abele-chat-artifacts__changes').text()).not.toContain('Notes/gone.md')
+    expect(
+      view!.findAll('.abele-chat-artifacts__row').some((row) => row.text().includes('gone'))
+    ).toBe(false)
+  })
   it('shows all sections, attachment controls and scripts while execution is disabled', () => {
     mountView()
     expect(headers()).toEqual(['Notes (1)', 'Images (1)', 'Scripts (1)'])
@@ -129,17 +179,17 @@ describe('chat artifacts dialog', () => {
       attachments: ['Pictures/missing.png'],
     })
     await nextTick()
-    expect(headers()).toEqual(['Images (2)'])
+    expect(headers()).toEqual(['Images (1)'])
     const tiles = view!.findAll('.abele-chat-artifacts__image')
-    expect(tiles[1].classes()).toContain('abele-chat-artifacts__image_missing')
-    expect(tiles[1].findComponent(StatusDot).props('label')).toBe('File missing')
+    expect(tiles).toHaveLength(1)
     expect(app.stats.read).toBe(0)
     const items = await menuOf(tiles[0], 'contextmenu')
     expect(item(items, 'Unlink from chat')).toBeUndefined()
     item(items, 'Show in chat')!.handler!()
     expect(view!.emitted('reveal')?.[0]).toEqual(['image'])
   })
-  it('keeps missing links unlinkable and source navigation available', async () => {
+  // The file list now describes files that exist; historical links and source messages stay saved.
+  it('omits missing files without deleting their links or source evidence', async () => {
     const open = vi.spyOn(opening, 'openVaultFile').mockResolvedValue()
     session.touched.value = [{ path: 'Notes/missing.md', at: '2025-01-01' }]
     session.allMessages.value.push({
@@ -154,19 +204,10 @@ describe('chat artifacts dialog', () => {
       toolResult: 'Edited',
     })
     mountView()
-    const missing = view!.findAll('.abele-chat-artifacts__row')[0]
-    expect(missing.classes()).toContain('abele-chat-artifacts__row_missing')
-    expect(missing.findComponent(StatusDot).props()).toMatchObject({
-      tone: 'red',
-      label: 'File missing',
-    })
-    await missing.find('.tree-item-self').trigger('click')
+    expect(view!.findAll('.abele-chat-artifacts__row')).toHaveLength(0)
     expect(open).not.toHaveBeenCalled()
-    const items = await menuOf(missing, 'more')
-    expect(item(items, 'Reveal in explorer')).toBeUndefined()
-    expect(item(items, 'Unlink from chat')!.disabled).toBe(false)
-    item(items, 'Show in chat')!.handler!()
-    expect(view!.emitted('reveal')?.[0]).toEqual(['change'])
+    expect(session.touched.value).toEqual([{ path: 'Notes/missing.md', at: '2025-01-01' }])
+    expect(session.allMessages.value.some((message) => message.id === 'change')).toBe(true)
   })
   it('disables only attachment mutations without a saved indexed chat', async () => {
     const open = vi.spyOn(opening, 'openVaultFile').mockResolvedValue()
@@ -193,11 +234,11 @@ describe('chat artifacts dialog', () => {
     session.touched.value.push({ path: 'Notes/later.md', at: '2025-01-01' })
     mountView()
     expect(on.mock.calls.map((c) => c[0])).toEqual(['create', 'modify', 'rename', 'delete'])
-    expect(view!.find('.abele-chat-artifacts__row_missing').exists()).toBe(true)
+    expect(row('Notes/later.md').exists()).toBe(false)
     const created = await app.vault.create('Notes/later.md', '')
     app.emit('vault', 'create', created)
     await nextTick()
-    expect(view!.find('.abele-chat-artifacts__row_missing').exists()).toBe(false)
+    expect(row('Notes/later.md').exists()).toBe(true)
     view!.unmount()
     view = undefined
     expect(off).toHaveBeenCalledTimes(4)

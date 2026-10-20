@@ -502,7 +502,10 @@ step picture. A single click or tap opens the image viewer; a double click or ta
   only, at the person's scroll position, and never a tab that is not showing — the person
   decides what the agent gets to see. Every screenshot is saved to the attachments folder and
   shown in the chat under the tool call, so the person sees the same picture the agent did.
-- `rm` moves to trash rather than destroying.
+- `mv` creates missing destination parent folders and keeps the moved file in this chat's scope.
+- `rm` moves to trash rather than destroying, including scoped hidden files not indexed by the host.
+- A denied action must not be retried unchanged or worked around; ask the person before trying again.
+  When approval edits the proposed content, the tool result reports the actual arguments executed.
 - **A long answer comes in part.** Any tool answer longer than about six thousand tokens — every
   task in a large vault, a folder of thousands of notes, a long page — is kept whole in the chat
   and you are sent its first part, ending with a note in brackets: how many lines you got of how

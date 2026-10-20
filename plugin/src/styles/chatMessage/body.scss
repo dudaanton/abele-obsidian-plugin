@@ -18,6 +18,14 @@
     padding: var(--size-4-1) var(--size-4-3);
   }
 
+  &_user .abele-chat-msg__body:has(blockquote) {
+    flex: 1;
+
+    blockquote {
+      margin-inline: 0;
+    }
+  }
+
   &_tool-call,
   &_tool-result {
     padding: var(--size-2-1) 0;

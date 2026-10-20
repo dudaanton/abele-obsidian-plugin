@@ -102,6 +102,7 @@
 
       <!-- Node access is counted in the composer's access button; above the messages only what
            is wrong with it. -->
+      <ChatWritePermission v-if="session" :session="session" />
       <AiNodeScopeChips v-if="session" :key="session.id" :session="session" errors-only />
 
       <ChatFindBar
@@ -488,6 +489,7 @@
 </template>
 
 <script setup lang="ts">
+import ChatWritePermission from './chat/ChatWritePermission.vue'
 import { presentUiError, presentUiMessage } from '@/i18n/streamBErrors'
 import { t } from '@/i18n'
 import { streamBAgentDescription } from '@/i18n/streamBLabels'

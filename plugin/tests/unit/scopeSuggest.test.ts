@@ -93,6 +93,16 @@ afterEach(() => {
 })
 
 describe('what the access field offers', () => {
+  it('keeps note and folder suggestions when group lookup fails', async () => {
+    vi.mocked(ScopeResolver.getInstance().groupSizesAsync).mockRejectedValue(
+      new Error('Group lookup unavailable')
+    )
+    expect(
+      (await field().suggest.getSuggestions('alpha')).some(
+        (choice) => choice.entry.path === 'Samples/alpha.md'
+      )
+    ).toBe(true)
+  })
   it('puts the open note first, then folders, groups by size and files, with no chat logs', async () => {
     expect(listed(await field().suggest.getSuggestions(''))).toEqual([
       ['file', 'Samples/open-note.md', 'open note'],

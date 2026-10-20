@@ -1104,6 +1104,11 @@ If the agent cannot see the note, this one chat is given access to it.
 **Images** and **Scripts**, with counts, paths and available dates. It updates while the chat
 runs and includes saved messages from every retained branch, not unsent drafts or queued messages.
 
+The changes section shows saved write diffs from the current branch, grouped by file.
+Successive diffs join only when their contents form an exact chain; edits to separate passages
+stay separate. Files disappear from the list when they no longer exist, while their saved
+links and source messages remain in the chat history. Hidden files remain visible while they exist.
+
 Notes and scripts are the chat’s current links, whether attached by hand or linked by a
 successful write. Click a tree row to open the note or script's code view; this never runs or
 approves code. Its glyph shows created, changed or linked work. **More** or a right click offers
@@ -1120,8 +1125,8 @@ It is also offered for notes and scripts where saved results prove the source, a
 expanded message editor so the conversation is visible.
 
 **Attach current note** and **Attach a note…** in the footer keep the existing attachment choices.
-Only link changes need a saved chat in the history. Missing files remain visible as
-a **File missing** dot, with any source navigation and unlink action still available. Moved images
+Only link changes need a saved chat in the history. Missing files leave this view without changing
+the saved chat. Invalid paths retain a **File missing** dot. Moved images
 are not guessed from filenames. Absolute or parent-traversing paths are unavailable, not
 rewritten to another file. Older chats work with the links and evidence they actually saved;
 no missing links are reconstructed. Generated and edited pictures require a saved-file

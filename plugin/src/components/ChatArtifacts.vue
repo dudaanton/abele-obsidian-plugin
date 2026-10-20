@@ -4,8 +4,26 @@
        its ⋯ (or a right click) holds the rest. -->
   <Modal :title="t('streamB.filesFromThisChat.781223')" size="tall" @close="emit('close')">
     <div class="abele-chat-artifacts">
+      <section v-if="changes.length" class="abele-chat-artifacts__changes">
+        <ListSectionHeader :text="t('streamB.chatChanges')" :count="changes.length" />
+        <Disclosure
+          v-for="(change, index) in changes"
+          :key="index"
+          :model-value="openChanges[index] ?? false"
+          :label="change.movedFrom ? `${change.movedFrom} → ${change.path}` : change.path"
+          @update:model-value="openChanges[index] = $event"
+        >
+          <Diff
+            v-if="change.old !== change.new"
+            :text-left="change.old"
+            :text-right="change.new"
+            :path="change.path"
+          />
+          <TreeItem v-else :text="change.path" icon="file-text" @click="open(change.path)" />
+        </Disclosure>
+      </section>
       <EmptyState
-        v-if="!sections.some((section) => section.items.length)"
+        v-if="!changes.length && !sections.some((section) => section.items.length)"
         icon="boxes"
         :text="t('streamB.nothingFromThisChatYet.28a6ad')"
       />
@@ -112,6 +130,9 @@
 
 <script setup lang="ts">
 import { t } from '@/i18n'
+import Disclosure from './obsidian/Disclosure.vue'
+import Diff from './Diff.vue'
+import { chatChanges } from '@/ai/chatChanges'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { Menu, Notice, setTooltip, type EventRef, type TAbstractFile } from 'obsidian'
 import { streamBTime as formatTimestamp } from '@/i18n/streamBDate'
@@ -125,7 +146,12 @@ import StatusDot from './obsidian/StatusDot.vue'
 import ChatPicture from './ChatPicture.vue'
 import type { ChatSession } from '@/ai/ChatSession'
 import type { ArtifactOrigin, ChatArtifact } from '@/ai/chatArtifacts'
-import { artifactsOf, artifactFile, revealArtifact } from '@/ai/chatArtifactsAdapter'
+import {
+  artifactsOf,
+  artifactFile,
+  revealArtifact,
+  validArtifactPath,
+} from '@/ai/chatArtifactsAdapter'
 import { openVaultFile } from '@/ai/openChat'
 import { detachNote } from '@/ai/chatNoteLinks'
 import { ChatStorage } from '@/ai/ChatStorage'
@@ -149,24 +175,60 @@ watch(
 const { app, chatLinksVersion } = GlobalStore.getInstance()
 const version = ref(0)
 const artifacts = computed(() => artifactsOf(owner))
+const hiddenFiles = ref(new Set<string>())
+const openChanges = ref<Record<number, boolean>>({})
+const changes = computed(() =>
+  chatChanges(owner.messages?.value ?? owner.allMessages.value).filter((change) =>
+    available(change.path)
+  )
+)
+const retained = (items: ChatArtifact[]) =>
+  items.filter((artifact) => !validArtifactPath(artifact.path) || available(artifact.path))
+watch(
+  () => [version.value, artifacts.value] as const,
+  async (_value, _old, onCleanup) => {
+    let stale = false
+    onCleanup(() => {
+      stale = true
+    })
+    const paths = [
+      ...artifacts.value.notes,
+      ...artifacts.value.images,
+      ...artifacts.value.scripts,
+    ].map((artifact) => artifact.path)
+    const found = await Promise.all(
+      paths
+        .filter((path) => validArtifactPath(path) && !artifactFile(path))
+        .map(async (path) => {
+          try {
+            return (await app.vault.adapter.stat(path))?.type === 'file' ? path : null
+          } catch {
+            return null
+          }
+        })
+    )
+    if (!stale) hiddenFiles.value = new Set(found.filter((path): path is string => path !== null))
+  },
+  { immediate: true }
+)
 const sections = computed(() => [
   {
     id: 'notes',
     label: t('streamB.notes.8a7525'),
     icon: 'file-text',
-    items: artifacts.value.notes,
+    items: retained(artifacts.value.notes),
   },
   {
     id: 'images',
     label: t('streamB.images.be7e2f'),
     icon: 'image',
-    items: artifacts.value.images,
+    items: retained(artifacts.value.images),
   },
   {
     id: 'scripts',
     label: t('streamB.scripts.8d0e6b'),
     icon: 'file-code-2',
-    items: artifacts.value.scripts,
+    items: retained(artifacts.value.scripts),
   },
 ])
 const canMutate = computed(() => {
@@ -191,9 +253,9 @@ const canAttachCurrent = computed(() => {
     !owner.touched.value.some((link) => link.path === file.path)
   )
 })
-const available = (path: string) => {
+function available(path: string) {
   void version.value
-  return !!artifactFile(path)
+  return !!artifactFile(path) || hiddenFiles.value.has(path)
 }
 const title = (path: string) => path.split('/').pop()?.replace(/\.md$/, '') || path
 /** What the chat did to a file, as one glyph; the words are its tooltip. */

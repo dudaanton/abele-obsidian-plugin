@@ -5,7 +5,7 @@ import { chatArtifacts } from './chatArtifacts'
 import type { ChatSession } from './ChatSession'
 
 /** Reject absolute/schemed paths and parent traversal before Obsidian strips or rewrites them. */
-function validArtifactPath(path: string): boolean {
+export function validArtifactPath(path: string): boolean {
   const slashPath = path.replace(/\\/g, '/')
   return (
     !!path &&
