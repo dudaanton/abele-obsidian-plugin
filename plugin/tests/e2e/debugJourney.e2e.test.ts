@@ -44,7 +44,7 @@ const shot=async name=>{await wait(300);const image=await require('@electron/rem
 const item=title=>[...document.querySelectorAll('.menu-item')].find(i=>i.querySelector('.menu-item-title')?.textContent.trim()===title);
 const press=el=>{el.click()};
 const marginAt=(line,root)=>{const sel='button.abele-debug-source__point[aria-label^="Stop at line '+line+' "]';if(root)return root.querySelector(sel);return document.querySelector('.workspace-leaf.mod-active '+sel)??[...document.querySelectorAll(sel)].find(b=>b.offsetParent)};
-const recordPoint=async (line,takes,root)=>{
+const recordPoint=async (line,takes,root,options={})=>{
   const mark=await until(()=>marginAt(line,root),'margin of line '+line).catch(()=>{throw Error('no margin on line '+line+': '+JSON.stringify(app.workspace.getLeavesOfType('abele-node-file').map(l=>{const st=l.view.getState();return [st.path,!!st.debug,st.debug?.sourceId,l.containerEl.querySelectorAll('button.abele-debug-source__point').length]}))+' '+debugState())});
   mark.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:40,clientY:200}));
   press(await until(()=>item('Add record point'),'Add record point'));
@@ -58,10 +58,12 @@ const recordPoint=async (line,takes,root)=>{
   const pills=()=>[...document.querySelectorAll('.abele-trace-point .multi-select-pill-content')].map(p=>p.textContent.trim());
   // Says whether the editor was rebuilt under the typing (its input no longer in the page) or kept.
   await until(()=>takes.every(t=>pills().includes(t)),'takes listed').catch(()=>{throw Error('takes not listed: '+JSON.stringify({pills:pills(),editors:document.querySelectorAll('.abele-trace-point').length,inputKept:input.isConnected,typed:input.value,offered:[...document.querySelectorAll('.abele-trace-point__offer')].map(b=>b.textContent.trim())})+' '+debugState())});
+  if(options.when){const field=document.querySelector('.abele-trace-point__code input');field.value=options.when;field.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('.abele-trace-point').scrollIntoView({block:'center'});if(options.shot)await shot(options.shot)}
   press(document.querySelector('.abele-trace-point [aria-label="Keep (Enter)"]'));
   // The first record point of a project asks once where its runs go: the offered folder.
   for(let i=0;i<40;i++){const keep=[...document.querySelectorAll('.modal-container .modal button')].find(b=>b.textContent.trim()==='Keep them here');if(keep){press(keep);break}if(document.querySelector('.abele-breakpoint-mark_record'))break;await wait(50)}
   await until(()=>!document.querySelector('.abele-trace-point'),'point saved');
+  if(options.approve)await options.approve();
   const said=()=>[...document.querySelectorAll('button.abele-debug-source__point')].map(b=>b.getAttribute('aria-label')).filter(l=>l&&!l.startsWith('Stop at line')).join(' | ');
   await until(()=>said().startsWith('Record point ·'),'record point confirmed: '+said(),400).catch(()=>{throw Error('record point not confirmed: '+debugState())});
 };
@@ -377,8 +379,10 @@ it.each(['desktop', 'phone'])(
       press(visible('[aria-label="Remove all breakpoints"]'));
       await until(()=>!binding.controller.knownBreakpoints().length,'all breakpoints removed');
       await shot(${JSON.stringify(name)}+'-breakpoints-empty');
-      await binding.trace.savePoint(sourceId,frame.line,{take:['1'],when:'1 < 2 && "a" < "b"'});
-      await approve('breakpoint','record-point');
+      const debugLeaf=app.workspace.getLeavesOfType('abele-debug-view')[0];
+      const sourceLeaf=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.getState().path==='src/journey.cjs');
+      await app.workspace.revealLeaf(sourceLeaf);app.workspace.leftSplit.collapse();app.workspace.rightSplit.collapse();
+      await recordPoint(frame.line,['1'],undefined,{when:'1 < 2 && "a" < "b"',shot:${JSON.stringify(name)}+'-record-point-editor',approve:async()=>{await app.workspace.revealLeaf(debugLeaf);app.workspace.rightSplit.expand();await approve('breakpoint','record-point')}});
       await until(()=>binding.trace.breakpoints().some(b=>b.kind==='record'&&b.when==='1 < 2 && "a" < "b"'),'conditional record point saved');
       await shot(${JSON.stringify(name)}+'-record-point');
       const watch=visible('.abele-debug-panel__add input');
@@ -646,10 +650,9 @@ it('walks from source through stepping, recording, analysis, a crash, restart an
     await until(()=>visible('.abele-debug-panel_exited'),'restarted program stopped');
     // Attach, detach, then choose the still-running process again from the debugger toolbar.
     await chats.revealSidebar({focus:false});
-    await until(()=>visible('.abele-node-chat [aria-label="More chat actions"]'),'visible chat menu for attach');
-    document.querySelector('.abele-node-chat [aria-label="More chat actions"]').click();
+    press(await until(()=>visible('.abele-node-chat [aria-label="More chat actions"]'),'visible chat menu for attach'));
     press(await until(()=>item('Attach to a running program'),'attach menu'));
-    const pickAttached=async()=>press(await until(()=>[...document.querySelectorAll('.prompt .suggestion-item')].find(e=>e.textContent.includes('attached.cjs')),'waiting synthetic program'));
+    const pickAttached=async()=>press(await until(()=>[...document.querySelectorAll('.prompt .suggestion-item')].find(e=>e.textContent.includes(${JSON.stringify(join(repo, 'src/attached.cjs'))})),'waiting synthetic program'));
     await pickAttached();
     await until(()=>enabled('Detach (Shift+F5): the program runs on'),'attached debugger');
     await control('Detach (Shift+F5): the program runs on');
