@@ -1,0 +1,161 @@
+import type { NodeClient } from '@abele/node-client'
+import { LspDiagnosticsSchema, type LspDiagnostic } from '@abele/node-protocol'
+import { z } from 'zod'
+
+export type LspRoot =
+  | { workspace_id: string; worktree_id?: never }
+  | { worktree_id: string; workspace_id?: never }
+export type LspPosition = { line: number; character: number }
+export type LspLocation = { path: string; range: { start: LspPosition; end: LspPosition } }
+type Client = Pick<NodeClient, 'lsp' | 'describe' | 'onEvent' | 'subscribe'>
+
+/** One visible document. Transport-independent; no persistent settings or automatic installs. */
+export class NodeLspDocument {
+  diagnostics: LspDiagnostic[] = []
+  status: Awaited<ReturnType<Client['lsp']['status']>> = []
+  supported = false
+  loading = false
+  error = ''
+  private version = 0
+  private stopped = false
+  private unsubscribe?: () => unknown
+  private pushes = 0
+  private abort = new AbortController()
+  private admission?: Promise<void>
+  private pending: Promise<void> = Promise.resolve()
+  readonly listeners = new Set<() => void>()
+  constructor(
+    readonly client: Client,
+    readonly root: LspRoot,
+    readonly path: string
+  ) {}
+  private changed() {
+    for (const listener of this.listeners) listener()
+  }
+  private async admit() {
+    const description = await this.client.describe()
+    const parsed = z
+      .object({
+        capabilities: z.object({
+          capabilities: z.object({ lsp_v1: z.object({ status: z.literal('supported') }) }),
+        }),
+      })
+      .safeParse(description)
+    if (this.stopped || !parsed.success) return
+    this.supported = true
+    this.changed()
+    this.unsubscribe = this.client.onEvent((event) => {
+      if (this.stopped) return
+      if (event.type === 'lsp.status') {
+        const parsed = z
+          .object({
+            workspace_id: z.string().optional(),
+            worktree_id: z.string().optional(),
+            message: z.string().max(4096),
+          })
+          .safeParse(event.data)
+        if (
+          parsed.success &&
+          (parsed.data.worktree_id ?? parsed.data.workspace_id) ===
+            (this.root.worktree_id ?? this.root.workspace_id)
+        ) {
+          this.error = parsed.data.message
+          this.changed()
+        }
+        return
+      }
+      if (event.type !== 'lsp.diagnostics') return
+      const parsed = LspDiagnosticsSchema.safeParse(event.data)
+      if (!parsed.success) return
+      const data = parsed.data
+      if (
+        data.path !== this.path ||
+        data.workspace_id !== this.root.workspace_id ||
+        data.worktree_id !== this.root.worktree_id
+      )
+        return
+      ++this.pushes
+      this.diagnostics = data.diagnostics
+      this.changed()
+    })
+    await this.client.subscribe('catalog')
+  }
+  open(text: string): Promise<void> {
+    // Serialize updates so a slow open can never replace a newer version of the draft.
+    this.pending = this.pending.then(async () => {
+      if (this.stopped) return
+      this.loading = true
+      this.error = ''
+      this.changed()
+      try {
+        await (this.admission ??= this.admit())
+        if (!this.supported || this.stopped) return
+        if (!this.version) this.status = await this.client.lsp.status(this.root)
+        if (this.stopped) return
+        const pushes = this.pushes
+        this.diagnostics = []
+        this.changed()
+        await this.client.lsp.open(this.root, this.path, text, ++this.version, this.abort.signal)
+        const diagnostics = await this.client.lsp.diagnostics(
+          this.root,
+          this.path,
+          this.abort.signal
+        )
+        if (!this.stopped && pushes === this.pushes) this.diagnostics = diagnostics
+      } catch (error) {
+        if (!this.stopped) {
+          if (!this.version) {
+            this.admission = undefined
+            this.unsubscribe?.()
+            this.unsubscribe = undefined
+          }
+          console.debug('[node] Language analysis unavailable', error)
+          this.error = error instanceof Error ? error.message : String(error)
+        }
+      } finally {
+        this.loading = false
+        if (!this.stopped) this.changed()
+      }
+    })
+    return this.pending
+  }
+  async refreshStatus(): Promise<void> {
+    if (!this.supported || this.stopped) return
+    this.status = await this.client.lsp.status(this.root)
+    this.changed()
+  }
+  async query(kind: 'definition' | 'references', position: LspPosition): Promise<LspLocation[]> {
+    await this.pending
+    if (!this.supported || this.stopped) return []
+    try {
+      const result = await this.client.lsp[kind](this.root, this.path, position, this.abort.signal)
+      return this.stopped ? [] : result
+    } catch (error) {
+      console.debug('[node] Language navigation unavailable', error)
+      return []
+    }
+  }
+  async hover(position: LspPosition): Promise<string> {
+    await this.pending
+    if (!this.supported || this.stopped) return ''
+    try {
+      const result = await this.client.lsp.hover(this.root, this.path, position, this.abort.signal)
+      return this.stopped ? '' : result.text
+    } catch (error) {
+      console.debug('[node] Language hover unavailable', error)
+      return ''
+    }
+  }
+  async close(): Promise<void> {
+    this.stopped = true
+    this.abort.abort()
+    this.unsubscribe?.()
+    this.listeners.clear()
+    // Await outstanding opens before closing: a late open must not leave a document behind.
+    await this.pending
+    if (this.supported && this.version)
+      await this.client.lsp
+        .close(this.root, this.path)
+        .catch((error) => console.debug('[node] Language document close unavailable', error))
+  }
+}

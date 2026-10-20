@@ -1,5 +1,5 @@
 --- a/packages/channel-client/src/index.ts
 +++ b/packages/channel-client/src/index.ts
-@@
+@@ -276 +276 @@
 -      const ms = /^(project|workspace|review)\./.test(method) ? 30000 : 5000
 +      const ms = method === 'lsp.v1.install' ? 600000 : /^(project|workspace|review)\./.test(method) ? 30000 : 5000
