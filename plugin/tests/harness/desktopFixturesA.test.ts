@@ -121,6 +121,8 @@ it.each([
     i: 0,
     width: 1100,
     height: 850,
+    line: 1,
+    endLine: 1,
     path: 'sample.js',
     files: {},
     saved: {},

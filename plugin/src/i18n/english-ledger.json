@@ -26618,5 +26618,15 @@
       "es",
       "de"
     ]
+  },
+  "node.codeLineUnavailable": {
+    "englishHash": "c8ee0a0af4724b91a69411028746fe49af4cfdf1c229eafca3fc5266187c6785",
+    "context": "Node code link in chat",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }
