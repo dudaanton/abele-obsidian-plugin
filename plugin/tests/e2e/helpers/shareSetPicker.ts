@@ -13,7 +13,7 @@ const pickShareItem = async (box, label, waitForChip = true) => {
   const query = label === 'Whole vault' ? 'Whole vault' : label.replace(/^(Folder|Group|File): /, '');
   const name = query.split('/').pop().replace(/\\.md$/i, '');
   let input;
-  await poll(() => input = box.querySelector('.abele-share-picker input'));
+  await poll(() => (input = box.querySelector('.abele-share-picker input')) && !input.disabled);
   input.focus();
   typeInto(input, query);
   let choice;
