@@ -643,8 +643,8 @@ it('pairs and opens target-bound node files history editor and fake chats in the
       `(async()=>{${prelude}const view=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.contentEl.contains(visible('.abele-file-view'))).view;view.file.mode.value='file';await until(()=>visible('.abele-file-view .cm-line'));return 'whole file'})()`
     )
     await checkCodeGeometry()
-    await checkFileRepositoryTools('phone', registration)
     await checkCodeCitation('phone')
+    await checkFileRepositoryTools('phone', registration)
     await checkFileLineMenu('phone')
     await selectText('.abele-file-view .cm-line')
     await capture('phone-file-selection')
