@@ -58,7 +58,9 @@ export const SHIPPED_TOOL_DESCRIPTIONS: Readonly<Record<string, readonly string[
   ls: [
     'List files and subdirectories in a folder. Only shows items within workspace scope. Use without path to list scope root folders.',
   ],
-  mv: ['Move or rename a file. Source must be in workspace scope.'],
+  mv: [
+    'Move or rename a file. Source must be in workspace scope. Creates missing parent folders; do not create placeholder files.',
+  ],
   open: ['Open a file in the Obsidian editor.'],
   read: [
     'Read the content of a file. Only files within the current workspace scope are accessible.',

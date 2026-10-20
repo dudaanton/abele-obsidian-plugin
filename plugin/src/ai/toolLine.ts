@@ -13,6 +13,8 @@ export { extractResultPath } from './toolFiles'
 
 /** How much of a tool's result the message shows under its details. */
 export const TOOL_RESULT_MAX_LENGTH = 1000
+export const terminalText = (text: string): string =>
+  text.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, 'g'), '')
 
 /** MCP identifiers stay in details; the action line uses the server and action as words. */
 export function readableToolName(name?: string): string {
@@ -90,7 +92,7 @@ export function toolResultText(result: string): string {
     }
     const lines = (item: unknown, depth = 0): string => {
       if (item === null) return 'null'
-      if (typeof item === 'string') return item
+      if (typeof item === 'string') return terminalText(item)
       if (typeof item === 'number' || typeof item === 'boolean') return String(item)
       if (typeof item !== 'object') return ''
       if (depth > 4) return '…'
@@ -100,6 +102,6 @@ export function toolResultText(result: string): string {
     }
     return truncate(lines(value), TOOL_RESULT_MAX_LENGTH)
   } catch {
-    return truncate(result, TOOL_RESULT_MAX_LENGTH)
+    return truncate(terminalText(result), TOOL_RESULT_MAX_LENGTH)
   }
 }

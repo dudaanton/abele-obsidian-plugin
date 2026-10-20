@@ -91,7 +91,7 @@ describe('the kind of work a tool does', () => {
     expect(toolKind('read_note')).toBe('read')
     expect(toolKind('write_file')).toBe('write')
     expect(toolKind('rm')).toBe('delete')
-    expect(toolKind('mv')).toBe('write')
+    expect(toolKind('mv')).toBe('move')
     expect(toolKind('sample_tool')).toBe('other')
     expect(toolKind('delete_note')).toBe('delete')
     expect(toolKind('run_command')).toBe('run')

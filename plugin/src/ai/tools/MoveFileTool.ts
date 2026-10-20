@@ -10,7 +10,8 @@ export function createMoveFileTool(opts?: { skipScope?: boolean }): AgentTool {
   return {
     name: 'mv',
     label: 'Move/Rename File',
-    description: 'Move or rename a file. Source must be in workspace scope.',
+    description:
+      'Move or rename a file. Source must be in workspace scope. Creates missing parent folders; do not create placeholder files.',
     parameters: {
       type: 'object',
       properties: {

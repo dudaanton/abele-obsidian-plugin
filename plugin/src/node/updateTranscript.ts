@@ -1,4 +1,5 @@
 import type { JournalEvent } from '@abele/channel-protocol'
+import { terminalText } from '@/ai/toolLine'
 import {
   providerSessionUpdates,
   sessionUpdatesOf,
@@ -262,7 +263,7 @@ export class UpdateTranscript {
       .filter((c): c is Extract<ToolContent, { type: 'content' }> => c.type === 'content')
       .map((c) => c.text)
       .join('\n')
-    if (status === 'completed' || status === 'failed') m.toolResult = text
+    if (status === 'completed' || status === 'failed') m.toolResult = terminalText(text)
     else if (text) m.content = text
     // A change is shown once it was made; a refused or failed edit did not happen.
     if (status === 'completed' && known.diffs.length)

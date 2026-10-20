@@ -256,7 +256,12 @@ export function createNodePathObsidianActions(): NodePathOwnerActions {
   }
 }
 async function add(captured: NodePathContext, ask: boolean): Promise<void> {
-  const session = await chooseNodePathChat(undefined, true)
+  const { ChatService } = await import('@/ai/ChatService')
+  const chats = ChatService.getInstance()
+  const activeId = chats.activeTabId?.value
+  const active =
+    !ask && activeId ? (chats.getNodeSession(activeId) ?? chats.activeSession?.value) : undefined
+  const session = active ?? (await chooseNodePathChat(undefined, true))
   if (!session) return
   let reference: ObsidianNodeContext = {
     node_id: captured.target.registrationId,
@@ -301,14 +306,11 @@ async function add(captured: NodePathContext, ask: boolean): Promise<void> {
     )
     const draft = session.draft.value
     draft.text = draft.text ? `${draft.text}\n\n${quote}` : quote
-    const { ChatService } = await import('@/ai/ChatService')
-    const chats = ChatService.getInstance()
     chats.switchTab(session.id)
     await chats.revealSidebar({ focus: true })
     return
   }
   if (ask) await askNodeContextInObsidianChat(session, reference, text)
   else await addNodeContextToObsidianChat(session, reference, text)
-  const { ChatService } = await import('@/ai/ChatService')
-  await ChatService.getInstance().revealSidebar({ focus: ask })
+  await chats.revealSidebar({ focus: ask })
 }

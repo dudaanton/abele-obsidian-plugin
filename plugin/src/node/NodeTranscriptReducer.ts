@@ -468,10 +468,14 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
     if (id) promptDiffs[prompt.prompt_id] = agent.pendingDiffs(id)
     if (id && prompt.state !== 'pending') {
       ;(toolPrompts[id] ??= []).push(prompt)
-      if (tool && prompt.choice === 'deny' && tool.toolResult === undefined) {
-        tool.toolStatus = 'rejected'
-        tool.toolExecution = 'not-run'
-      }
+    }
+  }
+  for (const [id, decisions] of Object.entries(toolPrompts)) {
+    const tool = messages.get(id)
+    if (tool && decisions.at(-1)?.choice === 'deny') {
+      tool.toolStatus = 'rejected'
+      tool.toolExecution = 'not-run'
+      tool.toolResult = t('node.actionDeniedByOwner')
     }
   }
   const children: NodeTranscript['children'] = {}

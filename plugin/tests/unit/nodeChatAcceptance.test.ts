@@ -3,6 +3,45 @@ import { agentChoices, nodeProviders, providerLabel } from '@/node/providers'
 import { preferredAgentChoices } from '@/node/agentPreference'
 import { reduceTranscript } from '@/node/NodeTranscriptReducer'
 import type { JournalEvent } from '@abele/channel-protocol'
+it('uses an exact owner denial instead of a later generic approval failure', () => {
+  const prompt = {
+    prompt_id: 'sample-denial',
+    session_id: 'sample-session',
+    run_id: 'sample-run',
+    revision: 1,
+    action_digest: 'a'.repeat(64),
+    kind: 'permission',
+    title: 'Edit sample.txt',
+    tool_use_id: 'sample-edit',
+    tool_name: 'edit',
+    input: { path: 'sample.txt' },
+    expires_at: 1999999999999,
+    choice: 'deny',
+    installation_id: null,
+    delivered: true,
+    state: 'resolved',
+  }
+  const p = reduceTranscript([
+    e(1, 'pi.tool.call', {
+      run_id: 'sample-run',
+      tool_use_id: 'sample-edit',
+      name: 'edit',
+      input: prompt.input,
+    }),
+    e(2, 'prompt.resolved', prompt),
+    e(3, 'pi.tool.result', {
+      run_id: 'sample-run',
+      tool_use_id: 'sample-edit',
+      is_error: true,
+      result: 'Node denied, expired or lost this exact approval',
+    }),
+  ])
+  expect(p.messages.find((m) => m.role === 'tool-call')).toMatchObject({
+    toolStatus: 'rejected',
+    toolExecution: 'not-run',
+    toolResult: 'User rejected this action',
+  })
+})
 
 const e = (seq: number, type: string, data: unknown): JournalEvent => ({
   kind: 'event',

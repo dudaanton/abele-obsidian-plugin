@@ -11,6 +11,7 @@ const f = vi.hoisted(() => ({
   picker: undefined as any,
   items: [] as any[],
   sessions: [] as any[],
+  active: { value: '' },
   revoke: vi.fn(),
   switch: vi.fn(),
   reveal: vi.fn(async () => {}),
@@ -46,6 +47,7 @@ vi.mock('@/ai/ChatService', () => ({
     getInstance: () => ({
       getAllSessions: () => f.sessions,
       tabOrder: { value: [f.node.id] },
+      activeTabId: f.active,
       getNodeSession: () => f.node,
       switchTab: f.switch,
       revealSidebar: f.reveal,
@@ -65,8 +67,26 @@ vi.mock('@/ai/tools/node/owner', () => ({
 
 beforeEach(() => {
   f.picker = undefined
+  f.active.value = ''
 })
 describe('node row scope integration', () => {
+  it('adds selected code directly to the active node chat', async () => {
+    f.active.value = f.node.id
+    await createNodePathObsidianActions().add({
+      target: {
+        registrationId: 'sample-registration',
+        nodeId: 'sample-node',
+        projectId: 'sample-project',
+        kind: 'worktree',
+        id: 'sample-tree',
+      },
+      path: 'src/active.ts',
+      selection: 'const active = true',
+    })
+    expect(f.picker).toBeUndefined()
+    expect(f.node.draft.value.text).toContain('> const active = true')
+    f.node.draft.value.text = 'Existing draft'
+  })
   it('offers node chats when choosing a context destination', async () => {
     void chooseNodePathChat(undefined, true)
     await vi.waitFor(() => expect(f.items.some((i) => i.id === f.node.id)).toBe(true))
