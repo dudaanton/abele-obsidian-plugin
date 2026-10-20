@@ -24,13 +24,15 @@ async function capture(name: string) {
 }
 
 async function checkCodeCitation(shell: 'desktop' | 'phone') {
+  // The desktop editor saves the next working version before the phone phase begins.
+  const expected = shell === 'phone' ? 'value = 4' : 'value = 3'
   const reveal = async (line: number, endLine: number) =>
     evalLong(
       `(async()=>{${prelude}const leaf=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.contentEl.contains(visible('.abele-file-view')));const state={...leaf.view.getState(),line:${line},endLine:${endLine}};await leaf.setViewState({type:'abele-node-file',active:true,state});await app.workspace.revealLeaf(leaf);await until(()=>visible('.abele-file-view .cm-line'));if(leaf.view.file.mode.value!=='file')throw Error('Code citation opened a diff');return 'revealed citation'})()`
     )
   await reveal(1, 1)
   await evalLong(
-    `(async()=>{${prelude}await until(()=>visible('.abele-file-view .abele-github-code__line_target'));if(!visible('.abele-file-view').textContent.includes('value = 3'))throw Error('Working-tree content missing');return 'working line marked'})()`
+    `(async()=>{${prelude}await until(()=>visible('.abele-file-view .abele-github-code__line_target'));if(!visible('.abele-file-view').textContent.includes(${JSON.stringify(expected)}))throw Error('Working-tree content missing');return 'working line marked'})()`
   )
   await capture(shell + '-code-link-range')
   await reveal(99999, 99999)

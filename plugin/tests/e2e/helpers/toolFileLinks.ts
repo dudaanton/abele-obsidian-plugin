@@ -36,7 +36,7 @@ export async function checkToolFileLinks(node: boolean, phone: boolean) {
         else {tab=chats.createTab();session=chats.getSession(tab);await session.addUserNote('Sample file operations');for(const message of messages)session.appendChatMessage(message);session.updateVisibleMessages()}
         await owned.setViewState({type:'abele-ai-sidebar-view',active:true})
         await until(()=>links().length===paths.length)
-        if(node){await until(()=>root().querySelectorAll('a[data-node-resource]').length>=2);const citations=[...root().querySelectorAll('a[data-node-resource]')];for(const path of ['src/sample.ts:3-7','src/other.ts:9']){const link=citations.find(a=>a.getAttribute('data-node-resource')===path);if(!link)throw Error('Code citation missing: '+path);link.click()}await shot('code-citations')}
+        if(node){await until(()=>root().querySelectorAll('a[data-node-resource]').length>=2);const citations=[...root().querySelectorAll('a[data-node-resource]')];for(const path of ['src/sample.ts:3-7','src/other.ts:9']){const link=citations.find(a=>a.getAttribute('data-node-resource')===path);if(!link)throw Error('Code citation missing: '+path);link.click()}citations.find(a=>a.getAttribute('data-node-resource')==='src/sample.ts:3-7').scrollIntoView({block:'center'});await shot('code-citations')}
         const folded=links().map(el=>el.textContent)
         const singleGeometry=()=>singlePaths.map(path=>{
           const el=links().find(el=>el.title===path),row=el?.closest('.tree-item-self'),name=row?.querySelector('.abele-tree-item__text')
