@@ -148,7 +148,10 @@ watch(
     hasBar.value = false
     viewer.mark(range)
     const drawn = viewer
-    unpin = pinIntoView(editorEl.value, () => drawn.targetTop(), LINE_CONTEXT)
+    unpin = pinIntoView(editorEl.value, () => drawn.targetTop(), {
+      ...LINE_CONTEXT,
+      keepVisibleInShortPane: props.keepVisibleInShortPane,
+    })
   }
 )
 onBeforeUnmount(() => {
