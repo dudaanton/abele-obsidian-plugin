@@ -661,6 +661,23 @@ export class NodeRepositorySource implements RepositorySource {
         }),
       1500
     )
+    // Blame lines carry identities and authors only. Read immutable commit metadata without
+    // loading each commit's changed files, and share it across every range of that commit.
+    const commits = [...new Set(page.entries.flatMap((line) => (line.commit ? [line.commit] : [])))]
+    const metadata = new Map<string, CommitSummary>()
+    for (let from = 0; from < commits.length; from += 8) {
+      await Promise.all(
+        commits.slice(from, from + 8).map(async (commit): Promise<void> => {
+          const result = await this.read(() =>
+            this.client.repository.commit({
+              ...this.target,
+              revision: { kind: 'commit', commit },
+            })
+          )
+          metadata.set(commit, summary(result))
+        })
+      )
+    }
     const ranges: BlameRange[] = []
     for (const line of page.entries) {
       const sha = line.commit ?? '',
@@ -671,10 +688,10 @@ export class NodeRepositorySource implements RepositorySource {
         ranges.push({
           start: line.line,
           end: line.line,
-          commit: {
+          commit: metadata.get(sha) ?? {
             sha,
-            author: line.commit ? line.author : 'Uncommitted',
-            message: line.commit ? '' : WORKING_TREE,
+            author: 'Uncommitted',
+            message: WORKING_TREE,
             date: '',
           },
         })

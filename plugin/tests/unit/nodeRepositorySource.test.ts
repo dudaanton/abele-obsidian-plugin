@@ -15,6 +15,55 @@ const fixture = () => {
   }
 }
 describe('node repository source through the validated client contract', () => {
+  it('fills committed blame dates and full messages once per distinct commit', async () => {
+    const { source, client } = fixture()
+    vi.spyOn(client.repository, 'blame').mockResolvedValue({
+      cursor: null,
+      incomplete: false,
+      omissions: [],
+      content_id: 'sample-content',
+      entries: [HEAD, HEAD, BASE, null].map((commit, index) => ({
+        line: index + 1,
+        original_line: index + 1,
+        commit,
+        author: 'Sample author',
+        text: 'sample',
+      })),
+    })
+    const commit = vi
+      .spyOn(client.repository, 'commit')
+      .mockImplementation(async ({ revision }) => {
+        if (revision.kind !== 'commit') throw new Error('Expected an immutable commit')
+        return {
+          commit: revision.commit,
+          parents: [],
+          email: 'sample@example.invalid',
+          author: revision.commit === HEAD ? 'Noah' : 'Ivy',
+          authored_at: revision.commit === HEAD ? '2026-01-08T12:00:00Z' : '2026-01-02T12:00:00Z',
+          subject: 'Sample change',
+          message: 'Sample change\n\nFull fixture details.',
+        }
+      })
+    const ranges = await source.blame(WORKING_TREE, 'sample.ts')
+    expect(ranges[0]).toMatchObject({
+      start: 1,
+      end: 2,
+      commit: {
+        sha: HEAD,
+        author: 'Noah',
+        date: '2026-01-08T12:00:00Z',
+        message: 'Sample change\n\nFull fixture details.',
+      },
+    })
+    expect(ranges[1].commit).toMatchObject({
+      sha: BASE,
+      author: 'Ivy',
+      date: '2026-01-02T12:00:00Z',
+    })
+    expect(ranges[2].commit).toMatchObject({ sha: '', author: 'Uncommitted', date: '' })
+    expect(commit).toHaveBeenCalledTimes(2)
+    source.dispose()
+  })
   it('uses authoritative divergence rather than counting a truncated history page', async () => {
     const f = nodeRepositoryFixture()
     const { NodePathClient } = await import('@abele/node-client')
