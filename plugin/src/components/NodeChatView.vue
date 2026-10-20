@@ -244,6 +244,7 @@
         <Icon
           v-if="$slots.navigation"
           ref="agentPicker"
+          class="abele-node-chat__agent"
           icon="bot"
           :text-right="phone ? undefined : agentName"
           :label="t('streamB.agentStartAChatWithAnother.42d6fb', { v0: String(agentName) })"

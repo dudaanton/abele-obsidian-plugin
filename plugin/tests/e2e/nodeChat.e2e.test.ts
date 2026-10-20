@@ -346,7 +346,7 @@ const showPlace = async (folder, branch) => {
         const presenter = chats.getNodeSession(tab);
         await until(() => model.sessions.value.some(s => s.session.session_id === presenter.reference.sessionId && s.target.id === worktree));
         const root = await until(() => [...document.querySelectorAll('.abele-node-chat')].find(r => r.dataset.sessionId === presenter.reference.sessionId && r.getBoundingClientRect().width > 0));
-        await until(() => root.querySelector('.abele-node-chat__agent')?.textContent.trim() === 'Claude Code');
+        await until(() => root.querySelector('.abele-node-chat__agent')?.getAttribute('aria-label') === 'Agent: Claude Code. Start a chat with another');
         const send = text => { const field = root.querySelector('.abele-node-chat textarea'); field.value = text; field.dispatchEvent(new Event('input', {bubbles:true})); field.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter',shiftKey:true,bubbles:true})) };
         send(${JSON.stringify(i === 0 ? 'edit' : 'deny')});
         await until(() => presenter.projection.value.prompts.some(p => p.state === 'pending'));

@@ -38,6 +38,22 @@ const presenter = () => ({
   interrupt: vi.fn(),
   openResource: vi.fn(),
 })
+it('keeps the agent glyph accessible in the composer when navigation occupies the header', () => {
+  useVault([])
+  const wrapper = mount(NodeChatView, {
+    props: { presenter: presenter() as never },
+    slots: { navigation: 'Sample navigation' },
+    global: { stubs: { Markdown: true } },
+  })
+  try {
+    const picker = wrapper.get('.abele-chat-input__toolbar .abele-node-chat__agent')
+    expect(picker.attributes('aria-label')).toBe('Agent: Claude Code. Start a chat with another')
+    expect(picker.get('[data-icon="bot"]').exists()).toBe(true)
+  } finally {
+    wrapper.unmount()
+  }
+})
+
 it('keeps the agent label and menu chevron inside the shared header button', async () => {
   useVault([])
   const p = presenter()

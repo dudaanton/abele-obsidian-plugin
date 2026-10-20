@@ -56,14 +56,13 @@ it.each(onPhone() ? ['phone'] : ['desktop', 'phone emulation'])(
       }
       await until(()=>text('answer-3')===${JSON.stringify(ANSWERS[2])}, 'The streamed answer');
       const answers=[...root().querySelectorAll('.abele-chat-msg_assistant .abele-markdown')].map(el=>el.textContent.trim());
-      const picker=root().querySelector('.abele-node-chat__agent'),label=picker.querySelector('.abele-obsidian-button__label'),chevron=picker.querySelector('.abele-obsidian-button__trailing-icon');
+      const picker=root().querySelector('.abele-chat-input__toolbar .abele-node-chat__agent'),glyph=picker?.querySelector('.abele-obsidian-icon__icon');
       const pickerFailures=[];
-      if(!label||!chevron)pickerFailures.push('Missing contained label or chevron');
+      if(!glyph||!picker.getAttribute('aria-label')?.startsWith('Agent: '))pickerFailures.push('Missing accessible agent glyph');
       else {
-        const p=picker.getBoundingClientRect(),l=label.getBoundingClientRect(),c=chevron.getBoundingClientRect(),s=getComputedStyle(picker),ls=getComputedStyle(label);
-        if(l.left<p.left+parseFloat(s.paddingLeft)-1||l.right>c.left+1||c.right>p.right-parseFloat(s.paddingRight)+1)pickerFailures.push('Label or chevron escapes the pill');
-        if(label.scrollWidth>label.clientWidth+1&&!(ls.overflow==='hidden'&&ls.textOverflow==='ellipsis'&&ls.whiteSpace==='nowrap'))pickerFailures.push('Clipped label has no ellipsis');
-        if(p.right>root().querySelector('.abele-ai-chat__header-actions').getBoundingClientRect().left+1)pickerFailures.push('Picker overlaps header actions');
+        const p=picker.getBoundingClientRect(),g=glyph.getBoundingClientRect(),bar=picker.closest('.abele-chat-input__toolbar').getBoundingClientRect();
+        if(g.left<p.left-1||g.right>p.right+1)pickerFailures.push('Glyph escapes its control');
+        if(p.left<bar.left-1||p.right>bar.right+1||p.right>innerWidth+1)pickerFailures.push('Picker escapes the composer');
       }
       root().querySelector('.abele-ai-chat__messages').scrollTop=1e6;
       await wait(150);await shot('node-streaming-messages');

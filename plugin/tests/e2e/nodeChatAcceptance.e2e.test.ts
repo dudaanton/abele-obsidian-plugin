@@ -33,7 +33,7 @@ it.each(onPhone() ? ['phone'] : ['desktop', 'phone emulation'])(
           const publish=async trim=>{await store.transaction(s=>{s.events[session]=trim?events.slice(-trim):events.slice();s.cursors[session]=events.length});await p.refresh();await wait(80)};
           const root=()=>document.querySelector('.abele-node-chat');
           await publish();
-          await until(()=>root()?.querySelector('.abele-node-chat__agent')?.textContent.trim()==='pi');
+          await until(()=>root()?.querySelector('.abele-node-chat__agent')?.getAttribute('aria-label')==='Agent: pi. Start a chat with another');
           const emptyCorrect=!root().textContent.includes('Fake (non-executing)')&&root().querySelectorAll('.abele-chat-msg_user,.abele-chat-msg_assistant').length===0;
           const modelPresent=p.live.value.settings.model==='sample/model-a'&&p.live.value.choices.models.length===2&&p.live.value.choices.accounts[0].label==='sample-account';
           await shot('node-chat-empty');
