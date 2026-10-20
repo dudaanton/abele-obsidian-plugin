@@ -78,9 +78,13 @@
           </label>
         </div>
         <Button
-          v-if="pausedAt"
+          v-if="paused || pausedAt"
           class="abele-http-request__paused"
-          :text="t('requests.paused', { location: pausedAt })"
+          quiet
+          wrap
+          :text="
+            pausedAt ? t('requests.paused', { location: pausedAt }) : t('streamC.e159b06187d369a0')
+          "
           :tooltip="t('requests.openPaused')"
           @click="emit('open-debugger')"
         />
@@ -443,6 +447,7 @@ const props = withDefaults(
     recording?: string
     intoRecording?: boolean
     timeoutMs?: number
+    paused?: boolean
     pausedAt?: string
     /** Why a named script cannot run, when it cannot: gone, or not made to run around requests. */
     scriptProblems?: { before?: string; after?: string }
@@ -457,6 +462,7 @@ const props = withDefaults(
     recording: undefined,
     intoRecording: false,
     timeoutMs: 300000,
+    paused: false,
     pausedAt: undefined,
     scriptProblems: () => ({}),
   }
@@ -758,10 +764,6 @@ const statusTone = (status: number) => (status >= 400 ? 'error' : status >= 300 
 }
 .abele-http-request__paused {
   align-self: flex-start;
-  max-width: 100%;
-  height: auto;
-  white-space: normal;
-  overflow-wrap: anywhere;
 }
 
 // The tab already says it is the body; the viewer keeps only its size and lines.

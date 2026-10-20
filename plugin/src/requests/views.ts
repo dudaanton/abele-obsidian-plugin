@@ -374,7 +374,7 @@ export class RequestTab extends ItemView {
               session?.status === 'paused'
                 ? frame
                   ? `${frame.file}:${frame.line}`
-                  : (session.reason ?? '')
+                  : undefined
                 : undefined
             const outcome = entry.outcome
             const checks = outcome?.kind === 'answered' ? outcome.response.checks : undefined
@@ -391,6 +391,7 @@ export class RequestTab extends ItemView {
               intoRecording: model.state.intoRecording,
               timeoutMs: model.timeout(s.id),
               pausedAt,
+              paused: session?.status === 'paused',
               onTimeout: (ms: number): void => model.setTimeout(s.id, ms),
               onOpenDebugger: (): void => {
                 void import('@/debugger/register').then((d) =>

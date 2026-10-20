@@ -34,6 +34,20 @@ const request = (missing?: string): HttpRequest => ({
 const vars = [{ key: 'base', value: 'http://localhost:4000' }]
 
 describe('request script slots', () => {
+  it('offers the paused controls even before the debugger supplies a source location', async () => {
+    const view = mount(RequestView, {
+      props: {
+        request: request(),
+        environment: 'local',
+        vars,
+        paused: true,
+        outcome: { kind: 'sending' },
+      },
+    })
+    expect(view.find('.abele-http-request__paused').text()).toBe('Paused')
+    await view.find('.abele-http-request__paused').trigger('click')
+    expect(view.emitted('open-debugger')).toEqual([[]])
+  })
   it('identifies the request collection inside the phone tab as well as its title', () => {
     const view = mount(RequestView, {
       props: { request: request(), environment: 'local', vars, collection: 'Samples/Orders' },
