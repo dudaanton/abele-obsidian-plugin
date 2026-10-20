@@ -1,5 +1,22 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const de = {
+  'node.lsp.locations': 'Fundstellen: {count}',
+  'node.lsp.noLocations': 'Keine passenden Fundstellen',
+  'node.lsp.count': 'Diagnosen: {count}',
+  'node.lsp.loading': 'Codeanalyse wird geladen…',
+  'node.lsp.error': 'Codeanalyse nicht verfügbar: {message}',
+  'node.lsp.retry': 'Erneut versuchen',
+  'node.lsp.untrusted':
+    'Sprachserver benötigen die Erlaubnis, Projektcode in diesem Ordner auszuführen.',
+  'node.lsp.trust': 'Ordner vertrauen',
+  'node.lsp.missing': 'Sprachserver fehlt. Auf dem Knoten installieren:',
+  'node.lsp.copy': 'Befehl kopieren',
+  'node.lsp.install': 'Gängige Server installieren',
+  'node.lsp.eslintMissing':
+    'ESLint fehlt in diesem Projekt oder ist nicht konfiguriert. Die TypeScript-Analyse bleibt verfügbar.',
+  'node.lsp.noDiagnostics': 'Keine Diagnosen',
+  'node.lsp.references': 'Verwendungen von {name} suchen',
+
   'node.files.directoryDeleteSummary': 'Ordner {path} mit {files} in {folders} löschen?',
   'node.files.directoryMoveSummary':
     'Ordner {path} mit {files} in {folders} nach {destination} verschieben?',

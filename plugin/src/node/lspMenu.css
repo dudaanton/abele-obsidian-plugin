@@ -1,0 +1,7 @@
+.menu .menu-item-title:has(.abele-lsp-menu-message) {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  -webkit-line-clamp: unset;
+  max-width: min(60ch, 80vw);
+}

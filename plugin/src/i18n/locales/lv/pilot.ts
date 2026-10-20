@@ -1,5 +1,21 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const lv = {
+  'node.lsp.locations': 'Vietas kodā: {count}',
+  'node.lsp.noLocations': 'Nav atbilstošu vietu',
+  'node.lsp.count': 'Diagnostika: {count}',
+  'node.lsp.loading': 'Ielādē koda analīzi…',
+  'node.lsp.error': 'Koda analīze nav pieejama: {message}',
+  'node.lsp.retry': 'Mēģināt vēlreiz',
+  'node.lsp.untrusted': 'Valodu serveriem ir vajadzīga atļauja izpildīt projekta kodu šajā mapē.',
+  'node.lsp.trust': 'Uzticēties mapei',
+  'node.lsp.missing': 'Valodas serveris nav instalēts. Instalējiet mezglā:',
+  'node.lsp.copy': 'Kopēt komandu',
+  'node.lsp.install': 'Instalēt populāros serverus',
+  'node.lsp.eslintMissing':
+    'Šajā projektā ESLint nav instalēts vai konfigurēts. TypeScript analīze joprojām ir pieejama.',
+  'node.lsp.noDiagnostics': 'Nav diagnostikas ziņojumu',
+  'node.lsp.references': 'Meklēt {name} lietojumus',
+
   'node.files.directoryDeleteSummary': 'Dzēst mapi {path} ar {files} un {folders}?',
   'node.files.directoryMoveSummary':
     'Pārvietot mapi {path} ar {files} un {folders} uz {destination}?',

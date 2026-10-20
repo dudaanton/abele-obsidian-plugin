@@ -16,7 +16,8 @@ export class NodeLspDocument {
   supported = false
   loading = false
   error = ''
-  private version = 0
+  private opens = 0
+  private text = ''
   private stopped = false
   private unsubscribe?: () => unknown
   private pushes = 0
@@ -81,6 +82,7 @@ export class NodeLspDocument {
     await this.client.subscribe('catalog')
   }
   open(text: string): Promise<void> {
+    this.text = text
     // Serialize updates so a slow open can never replace a newer version of the draft.
     this.pending = this.pending.then(async () => {
       if (this.stopped) return
@@ -90,12 +92,14 @@ export class NodeLspDocument {
       try {
         await (this.admission ??= this.admit())
         if (!this.supported || this.stopped) return
-        if (!this.version) this.status = await this.client.lsp.status(this.root)
+        if (!this.opens) this.status = await this.client.lsp.status(this.root)
         if (this.stopped) return
         const pushes = this.pushes
         this.diagnostics = []
         this.changed()
-        await this.client.lsp.open(this.root, this.path, text, ++this.version, this.abort.signal)
+        ++this.opens
+        // Versions belong to the shared node buffer, including refreshes from other clients.
+        await this.client.lsp.open(this.root, this.path, text, undefined, this.abort.signal)
         const diagnostics = await this.client.lsp.diagnostics(
           this.root,
           this.path,
@@ -104,7 +108,7 @@ export class NodeLspDocument {
         if (!this.stopped && pushes === this.pushes) this.diagnostics = diagnostics
       } catch (error) {
         if (!this.stopped) {
-          if (!this.version) {
+          if (!this.opens) {
             this.admission = undefined
             this.unsubscribe?.()
             this.unsubscribe = undefined
@@ -124,10 +128,22 @@ export class NodeLspDocument {
     this.status = await this.client.lsp.status(this.root)
     this.changed()
   }
+  private synchronize(): Promise<void> {
+    const work = this.pending.then(async () => {
+      if (this.stopped) return
+      ++this.opens
+      await this.client.lsp.open(this.root, this.path, this.text, undefined, this.abort.signal)
+    })
+    // Query failure must not poison the queue used by subsequent edits or close.
+    this.pending = work.catch(() => {})
+    return work
+  }
   async query(kind: 'definition' | 'references', position: LspPosition): Promise<LspLocation[]> {
     await this.pending
     if (!this.supported || this.stopped) return []
     try {
+      await this.synchronize()
+      if (this.stopped) return []
       const result = await this.client.lsp[kind](this.root, this.path, position, this.abort.signal)
       return this.stopped ? [] : result
     } catch (error) {
@@ -139,6 +155,8 @@ export class NodeLspDocument {
     await this.pending
     if (!this.supported || this.stopped) return ''
     try {
+      await this.synchronize()
+      if (this.stopped) return ''
       const result = await this.client.lsp.hover(this.root, this.path, position, this.abort.signal)
       return this.stopped ? '' : result.text
     } catch (error) {
@@ -153,7 +171,7 @@ export class NodeLspDocument {
     this.listeners.clear()
     // Await outstanding opens before closing: a late open must not leave a document behind.
     await this.pending
-    if (this.supported && this.version)
+    if (this.supported && this.opens)
       await this.client.lsp
         .close(this.root, this.path)
         .catch((error) => console.debug('[node] Language document close unavailable', error))

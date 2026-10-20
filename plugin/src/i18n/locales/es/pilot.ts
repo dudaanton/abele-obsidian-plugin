@@ -1,5 +1,22 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const es = {
+  'node.lsp.locations': 'Ubicaciones: {count}',
+  'node.lsp.noLocations': 'No hay ubicaciones coincidentes',
+  'node.lsp.count': 'Diagnósticos: {count}',
+  'node.lsp.loading': 'Cargando análisis de código…',
+  'node.lsp.error': 'Análisis de código no disponible: {message}',
+  'node.lsp.retry': 'Reintentar',
+  'node.lsp.untrusted':
+    'Los servidores de lenguaje necesitan permiso para ejecutar código del proyecto en esta carpeta.',
+  'node.lsp.trust': 'Confiar en la carpeta',
+  'node.lsp.missing': 'Falta el servidor de lenguaje. Instálalo en el nodo:',
+  'node.lsp.copy': 'Copiar comando',
+  'node.lsp.install': 'Instalar servidores populares',
+  'node.lsp.eslintMissing':
+    'ESLint no está instalado o configurado en este proyecto. El análisis de TypeScript sigue disponible.',
+  'node.lsp.noDiagnostics': 'Sin diagnósticos',
+  'node.lsp.references': 'Buscar referencias a {name}',
+
   'node.files.directoryDeleteSummary': '¿Eliminar la carpeta {path} con {files} en {folders}?',
   'node.files.directoryMoveSummary':
     '¿Mover la carpeta {path} con {files} en {folders} a {destination}?',

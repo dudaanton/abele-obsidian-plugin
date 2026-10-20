@@ -1,4 +1,20 @@
 export const en = {
+  'node.lsp.locations': 'Locations: {count}',
+  'node.lsp.noLocations': 'No matching locations',
+  'node.lsp.count': 'Diagnostics: {count}',
+  'node.lsp.loading': 'Loading language analysis…',
+  'node.lsp.error': 'Language analysis unavailable: {message}',
+  'node.lsp.retry': 'Retry',
+  'node.lsp.untrusted': 'Language servers need permission to run project code in this folder.',
+  'node.lsp.trust': 'Trust folder',
+  'node.lsp.missing': 'Language server missing. Install on the node:',
+  'node.lsp.copy': 'Copy command',
+  'node.lsp.install': 'Install popular servers',
+  'node.lsp.eslintMissing':
+    'ESLint is missing or not configured in this project. TypeScript analysis remains available.',
+  'node.lsp.noDiagnostics': 'No diagnostics',
+  'node.lsp.references': 'Find references to {name}',
+
   'node.files.directoryDeleteSummary': 'Delete folder {path} with {files} in {folders}?',
   'node.files.directoryMoveSummary':
     'Move folder {path} with {files} in {folders} to {destination}?',

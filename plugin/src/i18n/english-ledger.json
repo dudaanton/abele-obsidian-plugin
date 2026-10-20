@@ -26858,5 +26858,145 @@
       "es",
       "de"
     ]
+  },
+  "node.lsp.locations": {
+    "englishHash": "7c51cf5278c496fe6f08083e38e367c64915b575d9a96e4c8617be81db0fcfd8",
+    "context": "Node file language analysis, setup and navigation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.lsp.noLocations": {
+    "englishHash": "1072f208b2b750452cd7ffad73b2b48ab51eedf69ee452b8cccfcb5143dd1675",
+    "context": "Node file language analysis, setup and navigation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.lsp.count": {
+    "englishHash": "5023aaaec07ef1d9134645ae9eb10b8f2a199b9441639f9308d1f5fc67de7025",
+    "context": "Node file language analysis, setup and navigation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.lsp.loading": {
+    "englishHash": "a9bfb0e5fe85c2140cf506de7c535491d6d48f57efef124888913935aadb456e",
+    "context": "Node file language analysis, setup and navigation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.lsp.error": {
+    "englishHash": "8d6dc997df098fd0ce9a3b368b0bdc9a43e9188d27c5d0a59011f38f0b42d9e7",
+    "context": "Node file language analysis, setup and navigation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.lsp.retry": {
+    "englishHash": "986142cbeebbf68ea11c46025af7a1c5cc7e491d5c2f50967cf92ab2759f924d",
+    "context": "Node file language analysis, setup and navigation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.lsp.untrusted": {
+    "englishHash": "d11637bbd08c47374c5dbdba78a110a3febd1201ee568c1f0360d591d762b184",
+    "context": "Node file language analysis, setup and navigation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.lsp.trust": {
+    "englishHash": "ea1d5c1349a0157e66d107f33f28e1cb3cd807507150597e8a0ec5b5163d4800",
+    "context": "Node file language analysis, setup and navigation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.lsp.missing": {
+    "englishHash": "91c6ad4b6ba8a40dc4fb68cd3c3209ea3e62a2eaca2875d229114e8387f0ad93",
+    "context": "Node file language analysis, setup and navigation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.lsp.copy": {
+    "englishHash": "3d9e2fc72863ef2bdb02062a6968effad3c5b93abf1899a23d590f56f04d6868",
+    "context": "Node file language analysis, setup and navigation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.lsp.install": {
+    "englishHash": "7e43313939454d1690ff7ce0e8ce3f7f6afbcedc78ca8d45aab74e0fa3e85e73",
+    "context": "Node file language analysis, setup and navigation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.lsp.eslintMissing": {
+    "englishHash": "55a1f98118c0f3821e21f9ea96e7ec25b97d16b292632f1a145c093acaf8ce72",
+    "context": "Node file language analysis, setup and navigation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.lsp.noDiagnostics": {
+    "englishHash": "625b4001ed9e8dd5305a6d6821593c9397a5f84d22469a7662c7a616b738d1b7",
+    "context": "Node file language analysis, setup and navigation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.lsp.references": {
+    "englishHash": "ca5bed6fd7f52a43d2b98c2f42ac898c403283c1c06d7e2b459401ae01346e3a",
+    "context": "Node file language analysis, setup and navigation",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

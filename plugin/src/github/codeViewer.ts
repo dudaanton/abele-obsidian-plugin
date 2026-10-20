@@ -32,6 +32,7 @@ import { lineSelection, type SelectionHooks } from './lineSelection'
 import { scrollParent } from './scrollTo'
 import { codeNavAddon } from './search/navAddon'
 import { blameGutter, type BlameGutter } from './blameGutter'
+import { nodeLspExtension } from '@/node/lspExtension'
 
 export interface Viewer {
   /**
@@ -133,6 +134,7 @@ function mount(
         ...extensions,
         // Go to definition, for a viewer inside a tab that knows its repository.
         codeNavAddon(),
+        nodeLspExtension(),
       ],
     }),
   })

@@ -1,5 +1,22 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const ru = {
+  'node.lsp.locations': 'Места в коде: {count}',
+  'node.lsp.noLocations': 'Совпадений нет',
+  'node.lsp.count': 'Диагностика: {count}',
+  'node.lsp.loading': 'Проверка кода…',
+  'node.lsp.error': 'Проверка кода недоступна: {message}',
+  'node.lsp.retry': 'Повторить',
+  'node.lsp.untrusted':
+    'Для запуска языковых серверов нужно разрешить выполнение кода проекта в этой папке.',
+  'node.lsp.trust': 'Доверять папке',
+  'node.lsp.missing': 'Языковой сервер не установлен. Установите на ноде:',
+  'node.lsp.copy': 'Скопировать команду',
+  'node.lsp.install': 'Установить популярные серверы',
+  'node.lsp.eslintMissing':
+    'В проекте не установлен или не настроен ESLint. Проверка TypeScript остаётся доступной.',
+  'node.lsp.noDiagnostics': 'Замечаний нет',
+  'node.lsp.references': 'Найти использования {name}',
+
   'node.files.directoryDeleteSummary': 'Удалить папку {path}: {files}, {folders}?',
   'node.files.directoryMoveSummary':
     'Переместить папку {path} ({files}, {folders}) в {destination}?',

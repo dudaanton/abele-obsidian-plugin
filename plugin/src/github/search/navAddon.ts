@@ -17,12 +17,17 @@ import { StateEffect, StateField, type Extension } from '@codemirror/state'
 import { Decoration, EditorView, type DecorationSet } from '@codemirror/view'
 import { Menu } from 'obsidian'
 import { isIdentifier } from './definitions'
+import { lspFor, lspNavigation } from '@/node/lspContext'
 
 export interface CodeNav {
   /** The path of the file a viewer inside the tab shows. */
   pathOf(viewerEl: HTMLElement): string
-  goToDefinition(name: string, fromPath: string): void | Promise<void>
-  findReferences(name: string): void
+  goToDefinition(
+    name: string,
+    fromPath: string,
+    position?: { line: number; character: number }
+  ): void | Promise<void>
+  findReferences(name: string, position?: { line: number; character: number }): void
 }
 
 const navs = new WeakMap<Element, CodeNav>()
@@ -41,7 +46,7 @@ const NAV_ROOT = 'abele-code-nav'
 
 export function navFor(el: Element): CodeNav | null {
   const root = el.closest(`.${NAV_ROOT}`)
-  return root ? (navs.get(root) ?? null) : null
+  return lspNavigation(el, root ? (navs.get(root) ?? null) : null)
 }
 
 /** The identifier around a position in a viewer, or null where there is none. */
@@ -113,19 +118,36 @@ function selectedIn(view: EditorView): string {
 }
 
 /** "Go to definition", "Find references" and a copy — of the selection, or else of the name. */
-function navMenu(nav: CodeNav, view: EditorView, name: string): Menu {
+function positionAt(view: EditorView, offset: number) {
+  const line = view.state.doc.lineAt(offset)
+  return { line: line.number - 1, character: offset - line.from }
+}
+function definition(nav: CodeNav, view: EditorView, name: string, offset: number) {
+  return lspFor(view.dom)?.document.supported
+    ? nav.goToDefinition(name, nav.pathOf(view.dom), positionAt(view, offset))
+    : nav.goToDefinition(name, nav.pathOf(view.dom))
+}
+function references(nav: CodeNav, view: EditorView, name: string, offset: number) {
+  if (lspFor(view.dom)?.document.supported) nav.findReferences(name, positionAt(view, offset))
+  else nav.findReferences(name)
+}
+function navMenu(nav: CodeNav, view: EditorView, name: string, offset: number): Menu {
   const menu = new Menu()
   menu.addItem((item) =>
     item
       .setTitle(t('streamB.goToDefinitionOf.14ff5d', { v0: String(name) }))
       .setIcon('locate')
-      .onClick((): void => void nav.goToDefinition(name, nav.pathOf(view.dom)))
+      .onClick((): void => void definition(nav, view, name, offset))
   )
   menu.addItem((item) =>
     item
-      .setTitle(t('debug.referencesTextFallback', { name }))
+      .setTitle(
+        lspFor(view.dom)?.document.supported
+          ? t('node.lsp.references', { name })
+          : t('debug.referencesTextFallback', { name })
+      )
       .setIcon('search')
-      .onClick(() => nav.findReferences(name))
+      .onClick(() => references(nav, view, name, offset))
   )
   const selected = selectedIn(view)
   menu.addItem((item) =>
@@ -151,7 +173,7 @@ export function codeNavAddon(): Extension {
         if (!nav || !word) return false
         e.preventDefault()
         clearLink(view)
-        void nav.goToDefinition(word.text, nav.pathOf(view.dom))
+        void definition(nav, view, word.text, word.from)
         return true
       },
       mousemove(e, view) {
@@ -179,7 +201,7 @@ export function codeNavAddon(): Extension {
         const word = nav && wordUnder(view, e)
         if (!nav || !word) return false
         e.preventDefault()
-        navMenu(nav, view, word.text).showAtMouseEvent(e)
+        navMenu(nav, view, word.text, word.from).showAtMouseEvent(e)
         return true
       },
       touchstart(e, view) {
@@ -197,7 +219,7 @@ export function codeNavAddon(): Extension {
           longPressAt = Date.now()
           // The phone may have begun selecting the word under the finger: the menu is the answer.
           if (selectedIn(view)) view.dom.ownerDocument.getSelection()?.removeAllRanges()
-          navMenu(nav, view, word.text).showAtPosition(start, view.dom.ownerDocument)
+          navMenu(nav, view, word.text, word.from).showAtPosition(start, view.dom.ownerDocument)
         }, LONG_PRESS_MS)
         pressing = { start, cancel: () => win.clearTimeout(timer) }
         return false
