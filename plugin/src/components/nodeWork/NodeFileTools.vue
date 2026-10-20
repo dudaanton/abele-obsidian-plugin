@@ -32,7 +32,8 @@
   />
 </template>
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, toRef, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, ref, toRef, watch } from 'vue'
+import { FILE_NAVIGATION } from '@/node/fileNavigation'
 import type { PaneType } from 'obsidian'
 import { t } from '@/i18n'
 import type { RepositorySource } from '@/repository/source'
@@ -57,7 +58,9 @@ const props = defineProps<{
 }>()
 const finder = ref<InstanceType<typeof GithubFindBar>>()
 const findOpen = ref(false)
+const fileNavigation = inject(FILE_NAVIGATION, undefined)
 const open = (url: string, pane: PaneType | false) => {
+  if (fileNavigation?.(url)) return
   const target = parseNodeRepositoryLink(url)
   if (target) void openNodeRepositoryTarget(GlobalStore.getInstance().app, target, pane)
 }

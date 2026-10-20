@@ -154,6 +154,13 @@ onBeforeUnmount(() => {
     padding: 0 var(--size-2-2);
     font-size: inherit;
     color: var(--text-muted);
+    > .abele-obsidian-button__label {
+      display: flex;
+      align-items: center;
+      gap: var(--size-2-2);
+      width: 100%;
+      min-width: 0;
+    }
   }
   &__author {
     display: inline-flex;
@@ -192,9 +199,6 @@ onBeforeUnmount(() => {
 .is-mobile .abele-github-blame-range {
   width: min(8.75rem, 35cqi);
   max-width: 35cqi;
-}
-.is-mobile .abele-github-blame-range__date {
-  display: none;
 }
 .abele-github-blame-detail-body {
   overflow-wrap: anywhere;

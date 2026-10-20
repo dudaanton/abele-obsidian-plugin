@@ -24,5 +24,11 @@ watch(
   () => props.context.text,
   (text) => extension?.update(text)
 )
+watch(
+  () => props.context.line,
+  (line) => {
+    if (line) extension?.reveal(line)
+  }
+)
 onBeforeUnmount(() => extension?.destroy())
 </script>

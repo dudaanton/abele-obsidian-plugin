@@ -1,4 +1,7 @@
 export const streamC = {
+  'debug.requestsBrowserOnly':
+    'Anfragen werden von einem verbundenen Browser aufgezeichnet. Dieser Knoten erfasst keine HTTP-Anfragen, die das Programm empfängt oder sendet.',
+  'debug.referencesTextFallback': 'Verweise auf {name} suchen (Textsuche als Ersatz)',
   'sync.phone.offline': 'Synchronisierung: Server nicht verfügbar',
   'sync.phone.error': 'Synchronisierung erfordert Aufmerksamkeit',
   'sync.phone.held': 'Synchronisierung: Löschungen zurückgehalten',

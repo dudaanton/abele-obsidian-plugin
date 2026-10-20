@@ -43,6 +43,7 @@ import { mountKit, type KitMount } from '@/components/obsidian/mount'
 
 /** Thin ItemView adapter; every callback is bound to this tab, not the sidebar selection. */
 export class NodePathMainView extends ItemView {
+  private readonly navigationLine = shallowRef<number>()
   private ui?: KitMount
   private stops: WatchStopHandle[] = []
   private file?: NodePathFileModel
@@ -149,6 +150,7 @@ export class NodePathMainView extends ItemView {
   }
   async setState(raw: unknown, result: ViewStateResult): Promise<void> {
     const parsed = NodePathTabSchema.parse(raw)
+    this.navigationLine.value = parsed.kind === 'file' ? parsed.line : undefined
     if (nodePathViewType(parsed) !== this.viewType)
       throw new UiError(uiMessage('streamBMeta.40ea2d02b7'))
     if (parsed.kind === 'editor') {
@@ -387,6 +389,7 @@ export class NodePathMainView extends ItemView {
               })
             : h(NodePathFilePane, {
                 model: file,
+                line: this.navigationLine.value,
                 offline: offline(),
                 debug: this.debugOf(state, file),
                 repository: repository.value,

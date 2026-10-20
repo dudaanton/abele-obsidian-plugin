@@ -1,4 +1,14 @@
 {
+  "debug.referencesTextFallback": {
+    "englishHash": "b299534e1395a3f80ed156f58715e0fdbcbd77c1830274276316785c2454b0ba",
+    "context": "Debugger recording and code navigation fallback",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "debug.requestsBrowserOnly": {
+    "englishHash": "b9cc143ac3c4d86b1a04e06df395e84a548d56ca92489ae2a2110a29c0b4360c",
+    "context": "Debugger recording and code navigation fallback",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
   "sync.phone.offline": {
     "englishHash": "e79ad6d06303428ac0322a963cb6d3169e69e62d414d56a54c9a65c5eb24733e",
     "context": "Sync status and dialog presentation; exchange data and raw diagnostics remain unchanged",

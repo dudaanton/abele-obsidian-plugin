@@ -268,7 +268,7 @@ describe('a long press on a name, where there is no right click', () => {
     }
     expect(menu.items.map((i) => i.title)).toEqual([
       'Go to definition of formatName',
-      'Find references to formatName',
+      'Find references to formatName (text search fallback)',
       'Copy formatName',
     ])
     menu.items[0].handler()

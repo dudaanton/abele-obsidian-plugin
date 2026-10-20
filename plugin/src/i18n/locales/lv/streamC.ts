@@ -1,4 +1,7 @@
 export const streamC = {
+  'debug.requestsBrowserOnly':
+    'Pieprasījumi tiek ierakstīti no pievienota pārlūka. Šis mezgls neieraksta programmas saņemtos vai nosūtītos HTTP pieprasījumus.',
+  'debug.referencesTextFallback': 'Atrast atsauces uz {name} (teksta meklēšana)',
   'sync.phone.offline': 'Sinhronizācija: serveris nav pieejams',
   'sync.phone.error': 'Sinhronizācijai jāpievērš uzmanība',
   'sync.phone.held': 'Sinhronizācija: dzēšana aizturēta',

@@ -151,7 +151,7 @@ const props = withDefaults(
     /** Only supplied for live node observations; frozen searches never follow invalidations. */
     revisionKey?: string
   }>(),
-  { hasChanges: false, request: null, ready: true }
+  { hasChanges: false, request: null, ready: true, revisionKey: undefined }
 )
 
 const emit = defineEmits<{
@@ -230,6 +230,7 @@ const parts = (line: ResultLine) => {
 }
 
 const run = async () => {
+  window.clearTimeout(nameTimer)
   const text = query.value.trim()
   if (!text) return
   if (!props.ready) {
@@ -312,11 +313,14 @@ watch(
   }
 )
 
-// A file name is found as it is typed: the list is one request, made once.
+// Debounce edits and cancel stale work immediately, before the next search starts.
 let nameTimer = 0
-watch([query, scope], () => {
-  if (scope.value !== 'names') return
+watch([query, scope, glob, caseSensitive, wholeWord, regex], () => {
   window.clearTimeout(nameTimer)
+  cancel()
+  results.value = null
+  error.value = ''
+  if (!query.value.trim()) return
   nameTimer = window.setTimeout((): void => void run(), 250)
 })
 

@@ -17,12 +17,21 @@ it('sizes blame against its code pane rather than the window on desktop and phon
   expect(css('GithubCode')).toContain('container-type: inline-size')
 })
 
-it('reserves readable code width and scrolls long lines instead of wrapping under blame', () => {
+it('keeps code wrapping while blame is visible', () => {
   const code = css('GithubCode')
   const content = code.match(/:has\(\.abele-github-blame\) \.cm-content\s*\{([^}]+)\}/)?.[1]
-  expect(content).toContain('min-width: 24ch')
-  expect(content).toContain('white-space: pre')
-  expect(content).toContain('overflow-wrap: normal')
+  expect(content).toContain('min-width: 0')
+  expect(content).toContain('white-space: pre-wrap')
+  expect(content).toContain('overflow-wrap: anywhere')
+})
+
+it('lays out author, date and message across the full blame row', () => {
+  const blame = css('GithubBlameRange')
+  const label = blame.match(/\.abele-github-blame-range__open[^}]+__label\s*\{([^}]+)\}/)?.[1]
+  expect(label).toContain('display: flex')
+  expect(label).toContain('width: 100%')
+  const date = blame.match(/\.is-mobile \.abele-github-blame-range__date\s*\{([^}]+)\}/)?.[1] ?? ''
+  expect(date).not.toContain('display: none')
 })
 
 it('gives find input the remaining column without reserving empty counter space', () => {

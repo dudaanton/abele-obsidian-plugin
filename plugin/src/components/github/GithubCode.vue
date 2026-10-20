@@ -157,10 +157,9 @@ defineExpose({
   container-type: inline-size;
 }
 .abele-github-code:has(.abele-github-blame) .cm-content {
-  // Keep identifiers intact; CodeMirror's scroller handles lines wider than the pane.
-  min-width: 24ch;
-  white-space: pre;
-  overflow-wrap: normal;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   word-break: normal;
 }
 </style>

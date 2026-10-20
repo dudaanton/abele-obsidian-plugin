@@ -40,6 +40,7 @@ export function mountNodePathDebugSource(
     return true
   })
   return {
+    reveal: (line: number) => extension.reveal(line),
     update: (text: string) => extension.update(text),
     destroy: () => {
       stop()

@@ -21,7 +21,7 @@
             effectiveDebug.path,
           ])
         "
-        :context="{ ...effectiveDebug, text: model.document.value.text }"
+        :context="{ ...effectiveDebug, ...(line ? { line } : {}), text: model.document.value.text }"
         @reveal="revealSource"
         @selection="debugSelection"
       />
@@ -34,6 +34,7 @@
         :mode="model.mode.value"
         :repository="repository"
         :revision="revision"
+        :line="line"
         @menu="(event, selection) => emit('menu', event, selection)"
         @ask="emit('ask', $event)"
         @add="emit('add', $event)"
@@ -50,7 +51,11 @@ import type { NodePathFileModel } from '@/node/NodePathModel'
 import FileView from './FileView.vue'
 import NodePathDebugFile from './NodePathDebugFile.vue'
 import type { DebugSourceContext } from '@/debugger/sourceExtension'
-import { computed, ref, watch, watchEffect } from 'vue'
+import { computed, provide, ref, watch, watchEffect } from 'vue'
+import { FILE_NAVIGATION, fileNavigation } from '@/node/fileNavigation'
+import { openNodePathTab } from '@/node/nodePathNavigation'
+import { GlobalStore } from '@/stores/GlobalStore'
+import { Platform } from 'obsidian'
 import { DebuggerService } from '@/debugger/DebuggerService'
 import type { RepositorySource } from '@/repository/source'
 const props = withDefaults(
@@ -60,10 +65,19 @@ const props = withDefaults(
     debug?: DebugSourceContext
     repository?: RepositorySource
     revision?: string
+    line?: number
   }>(),
-  { offline: false, debug: undefined, repository: undefined, revision: undefined }
+  { offline: false, debug: undefined, repository: undefined, revision: undefined, line: undefined }
 )
 const service = DebuggerService.instance
+provide(FILE_NAVIGATION, (url) => {
+  const state = fileNavigation(props.model.target, url)
+  if (!state) return false
+  void openNodePathTab(GlobalStore.getInstance().app.workspace, state, Platform.isMobile).catch(
+    (e) => console.debug('[node] File navigation unavailable', e)
+  )
+  return true
+})
 const admissionReason = ref('')
 const admissionCode = ref('')
 const effectiveDebug = computed(() => {

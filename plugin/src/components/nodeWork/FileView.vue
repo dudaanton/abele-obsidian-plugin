@@ -53,6 +53,7 @@
         :file="repositoryFile"
         :glyph-host="glyphHost"
         plain
+        :range="line ? { start: line, end: line } : undefined"
         @open="openRepositoryLink"
       />
       <!-- The plugin's code viewer: the file's own colours, line numbers, selection, search. -->
@@ -110,6 +111,7 @@ const props = withDefaults(
     layout?: 'unified' | 'split'
     repository?: RepositorySource
     revision?: string
+    line?: number
   }>(),
   {
     change: undefined,
@@ -118,6 +120,7 @@ const props = withDefaults(
     layout: 'unified',
     repository: undefined,
     revision: undefined,
+    line: undefined,
   }
 )
 
@@ -178,7 +181,13 @@ async function draw() {
   if (stopped) return
   viewer?.destroy()
   viewer = undefined
-  if (code.value) viewer = mountCode(code.value, props.text, props.path)
+  if (code.value)
+    viewer = mountCode(
+      code.value,
+      props.text,
+      props.path,
+      props.line ? { start: props.line, end: props.line } : undefined
+    )
 }
 onMounted(draw)
 watch(
@@ -190,6 +199,7 @@ watch(
     props.image,
     props.repository,
     props.revision,
+    props.line,
   ],
   draw
 )

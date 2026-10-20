@@ -123,7 +123,7 @@ function navMenu(nav: CodeNav, view: EditorView, name: string): Menu {
   )
   menu.addItem((item) =>
     item
-      .setTitle(t('streamB.findReferencesTo.7601fd', { v0: String(name) }))
+      .setTitle(t('debug.referencesTextFallback', { name }))
       .setIcon('search')
       .onClick(() => nav.findReferences(name))
   )

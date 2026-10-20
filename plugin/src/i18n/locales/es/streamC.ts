@@ -1,4 +1,7 @@
 export const streamC = {
+  'debug.requestsBrowserOnly':
+    'Las solicitudes se graban desde un navegador conectado. Este nodo no captura las solicitudes HTTP que el programa recibe o envía.',
+  'debug.referencesTextFallback': 'Buscar referencias a {name} (búsqueda de texto alternativa)',
   'sync.phone.offline': 'Sincronización: servidor no disponible',
   'sync.phone.error': 'La sincronización requiere atención',
   'sync.phone.held': 'Sincronización: eliminaciones retenidas',

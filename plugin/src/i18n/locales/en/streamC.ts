@@ -1,4 +1,7 @@
 export const streamC = {
+  'debug.referencesTextFallback': 'Find references to {name} (text search fallback)',
+  'debug.requestsBrowserOnly':
+    'Requests are recorded from a connected browser. HTTP requests served or made by this program are not captured by this node.',
   'sync.phone.offline': 'Sync: the server is unavailable',
   'sync.phone.error': 'Sync needs attention',
   'sync.phone.held': 'Sync: deletions are held back',

@@ -142,12 +142,14 @@ it('opens the real node repository in the shared tab, follows history, compares,
       if(!fileRow)throw Error('Ordinary repository file navigation is missing');fileRow.click();
       await until(()=>document.querySelector('.abele-github-blob')?.textContent.includes('value = 3'));
       document.querySelector('[aria-label="Toggle line blame"]').click();await until(()=>document.querySelector('.abele-github-blame-range')?.textContent.includes('Uncommitted'));
+      await wait(300);{const capture=await require('@electron/remote').getCurrentWebContents().capturePage();require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/blame-desktop.png',capture.toPNG())}
       document.querySelector('[aria-label="Repository actions"]').click();
       await until(()=>[...document.querySelectorAll('.menu-item')].some(el=>el.textContent.trim()==='File history'));
       [...document.querySelectorAll('.menu-item')].find(el=>el.textContent.trim()==='File history').click();await until(()=>document.querySelector('.abele-github-commits')?.textContent.includes('Add sample files'));
       const search=[...document.querySelectorAll('.abele-github-header .abele-obsidian-icon')].find(el=>el.getAttribute('aria-label')?.startsWith('Search the code'));if(!search)throw Error('Search action missing: '+[...document.querySelectorAll('.abele-github-header .abele-obsidian-icon')].map(el=>el.outerHTML).join('|'));search.click();
-      await until(()=>document.querySelector('.abele-github-search input'));const input=document.querySelector('.abele-github-search input');input.value='value';input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
+      await until(()=>document.querySelector('.abele-github-search input'));const input=document.querySelector('.abele-github-search input');input.value='value';input.dispatchEvent(new Event('input',{bubbles:true}));
       await until(()=>document.querySelector('.abele-github-search__results')?.textContent.includes('app.ts'));
+      {const capture=await require('@electron/remote').getCurrentWebContents().capturePage();require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/search-live-desktop.png',capture.toPNG())}
       return JSON.stringify(state);
     })()`)
     )
@@ -266,6 +268,14 @@ it('opens the real node repository in the shared tab, follows history, compares,
         await api.openNodeRepository(${JSON.stringify(registration)},${JSON.stringify(ids.project)},${JSON.stringify(ids.workspace)},{location:{kind:'home'}});
         await until(()=>[...document.querySelectorAll('.abele-github-folder')].some(el=>el.getBoundingClientRect().width));
         await homeFills([...document.querySelectorAll('.abele-github-folder')].find(el=>el.getBoundingClientRect().width),'phone-home.png',false);
+        await api.openNodeRepository(${JSON.stringify(registration)},${JSON.stringify(ids.project)},${JSON.stringify(ids.workspace)},{path:'app.ts'});
+        await until(()=>document.querySelector('[aria-label="Toggle line blame"]'));
+        document.querySelector('[aria-label="Toggle line blame"]').click();await until(()=>document.querySelector('.abele-github-blame-range'));
+        await wait(300);{const capture=await require('@electron/remote').getCurrentWebContents().capturePage();require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/blame-phone.png',capture.toPNG())}
+        const search=[...document.querySelectorAll('.abele-github-header .abele-obsidian-icon')].find(el=>el.getAttribute('aria-label')?.startsWith('Search the code'));search.click();
+        await until(()=>document.querySelector('.abele-github-search input'));const input=document.querySelector('.abele-github-search input');input.value='value';input.dispatchEvent(new Event('input',{bubbles:true}));
+        await until(()=>document.querySelector('.abele-github-search__results')?.textContent.includes('app.ts'));
+        {const capture=await require('@electron/remote').getCurrentWebContents().capturePage();require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/search-live-phone.png',capture.toPNG())}
         // The phone keeps a layout of its own; the tab this probe opened must not stay saved in it.
         for(const leaf of app.workspace.getLeavesOfType('abele-github'))leaf.detach();
         await app.workspace.requestSaveLayout.run();

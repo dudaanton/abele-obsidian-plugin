@@ -13,6 +13,11 @@ import { useVault } from '../helpers/testEnv'
 import { nodeRepositoryLink } from '@/repository/nodeLinks'
 import { openNodeRepositoryTarget } from '@/node/openRepository'
 import { mountCode } from '@/github/codeViewer'
+import { openNodePathTab } from '@/node/nodePathNavigation'
+vi.mock('@/node/nodePathNavigation', async (original) => ({
+  ...(await original<typeof import('@/node/nodePathNavigation')>()),
+  openNodePathTab: vi.fn(async () => {}),
+}))
 vi.mock('@/node/openRepository', () => ({ openNodeRepositoryTarget: vi.fn(async () => {}) }))
 vi.mock('@/github/codeViewer', () => ({
   mountCode: vi.fn(() => ({ destroy: vi.fn(), blame: vi.fn() })),
@@ -49,6 +54,45 @@ function setup(blame = vi.fn().mockResolvedValue([])) {
   return { view, source }
 }
 describe('node file repository tools', () => {
+  it('opens a working definition in the same file surface at the destination line', async () => {
+    useVault([])
+    const { source } = setup()
+    source.navigation.file = (ref, path, line) =>
+      nodeRepositoryLink(source.identity, {
+        kind: 'file',
+        ref,
+        path,
+        lines: { from: line!, to: line! },
+      })
+    const target = {
+      nodeId: 'sample-node',
+      registrationId: 'node',
+      projectId: 'project',
+      kind: 'worktree',
+      id: 'tree',
+    }
+    const view = mount(NodePathFilePane, {
+      props: {
+        model: {
+          target,
+          busy: ref(false),
+          error: ref(''),
+          mode: ref('file'),
+          document: shallowRef({ path: 'sample.ts', text: 'const sample = 1' }),
+        } as never,
+        repository: source,
+        revision: 'working-sample',
+      },
+    })
+    views.push(view)
+    await flushPromises()
+    await navFor(view.get('.abele-file-view').element)!.goToDefinition('sample', 'sample.ts')
+    expect(openNodePathTab).toHaveBeenCalledWith(
+      expect.anything(),
+      { kind: 'file', target, path: 'sample.ts', line: 1 },
+      expect.any(Boolean)
+    )
+  })
   it('destroys the plain viewer when repository tools arrive for unchanged text', async () => {
     const { source } = setup()
     const view = mount(FileView, {
