@@ -153,7 +153,7 @@
         :key="prompt.prompt_id"
         :prompt="prompt"
         :location="[nodeLabel, folder, worktree?.branch].filter(Boolean).join(' · ')"
-        :fake="presenter.provider?.value === 'fake'"
+        :allow-label="!presenter.provider?.value || presenter.provider.value === 'fake'"
         :disabled="offline"
         :answer-state="presenter.answers?.value[prompt.prompt_id]"
         :diffs="presenter.projection.value.promptDiffs?.[prompt.prompt_id]"

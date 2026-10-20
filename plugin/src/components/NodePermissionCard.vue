@@ -100,7 +100,7 @@
           :text="
             isQuestion
               ? t('streamB.answer.b2a3aa')
-              : fake
+              : allowLabel
                 ? t('streamB.allow.e213c1')
                 : t('streamB.approve.6007ac')
           "
@@ -165,7 +165,8 @@ import ResultMark from './obsidian/ResultMark.vue'
 const props = defineProps<{
   prompt: Prompt
   disabled: boolean
-  fake?: boolean
+  /** Unknown or test providers use the generic permission wording. */
+  allowLabel?: boolean
   location?: string
   answerState?: PromptAnswerState
   /** The changes the call it asks about would make, when its agent showed them. */

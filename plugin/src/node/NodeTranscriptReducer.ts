@@ -207,7 +207,9 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
       const input =
         ids[0] ||
         text('input_id') ||
-        [...inputs].findLast(([, state]) => ['accepted', 'queued'].includes(state))?.[0]
+        (event.type === 'turn.started'
+          ? [...inputs].findLast(([, state]) => ['accepted', 'queued'].includes(state))?.[0]
+          : undefined)
       if (input) {
         runInputs.set(currentRun, input)
         inputs.set(input, 'delivered')
@@ -223,8 +225,10 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
           tool.toolExecution = startedTools.has(id) ? 'interrupted' : 'not-run'
           tool.toolStatus = 'rejected'
         }
-        const line = message(`stopped:${event.seq}`, 'system')
-        line.sessionMark = { kind: 'notice', level: 'info', text: t('streamB.nodeStopped') }
+        if (event.type === 'turn.completed') {
+          const line = message(`stopped:${event.seq}`, 'system')
+          line.sessionMark = { kind: 'notice', level: 'info', text: t('streamB.nodeStopped') }
+        }
       }
     }
     if (
