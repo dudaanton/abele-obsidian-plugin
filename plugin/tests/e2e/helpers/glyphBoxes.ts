@@ -11,7 +11,12 @@ export function measureGlyphBoxes(root: Element) {
     native.paddingLeft,
   ].map(parseFloat)
   reference.remove()
-  return [...root.querySelectorAll<HTMLElement>('.clickable-icon')].flatMap((button) => {
+  // A whole row can contain a decorative chevron without being a glyph action itself.
+  return [
+    ...root.querySelectorAll<HTMLElement>(
+      '.abele-obsidian-icon.clickable-icon, .abele-obsidian-button.clickable-icon'
+    ),
+  ].flatMap((button) => {
     const box = button.getBoundingClientRect()
     const style = getComputedStyle(button)
     if (!box.width || !box.height || style.visibility === 'hidden') return []
