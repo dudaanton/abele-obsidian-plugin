@@ -863,18 +863,23 @@ export class DebuggerService {
       const folder = this.folder(binding)
       const sessionId = binding.sessionId
       const snapshot = binding.controller.snapshot
+      const prefix = folder?.location ? `${folder.location.path.replace(/\/+$/, '')}/` : undefined
+      const path =
+        mapped &&
+        (prefix && mapped[1].startsWith(prefix) ? mapped[1].slice(prefix.length) : mapped[1])
       if (
         mapped &&
         folder &&
         sessionId &&
         snapshot &&
-        !/^(?:\/|[a-z]+:)|(?:^|\/)\.\.(?:\/|$)/i.test(mapped[1])
+        path &&
+        !/^(?:\/|[a-z]+:)|(?:^|\/)\.\.(?:\/|$)/i.test(path)
       ) {
         this.registerSource(
           binding.registrationId,
           binding.conversationId,
           mapped[0],
-          mapped[1],
+          path,
           sessionId,
           snapshot.incarnation,
           folder

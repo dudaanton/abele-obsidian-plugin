@@ -8,6 +8,24 @@ import {
 } from '@abele/node-protocol'
 import { DebuggerController, debuggerKey, receiptMessage } from '@/debugger/DebuggerController'
 import { DebuggerBreakpointRequestSchema } from '@abele/node-protocol'
+it.each(['terminated', 'detached', 'failed'] as const)(
+  'keeps known %s status when the transport later disconnects',
+  (lifecycle) => {
+    const { model } = fixture()
+    model.observe({
+      observation: 'current',
+      snapshot: snapshot({
+        lifecycle,
+        execution: 'unknown',
+        threads: [],
+        selected_thread_id: null,
+      }),
+    })
+    model.disconnected()
+    expect(model.session.status).toBe('exited')
+    expect(model.current).toBe(false)
+  }
+)
 it('retains the source identity supplied with a caller frame', async () => {
   const { model, rpc } = fixture()
   rpc.mockResolvedValueOnce({

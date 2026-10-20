@@ -127,9 +127,12 @@ export class DebuggerController {
     return result
   }
   registerSource(sourceId: string, path: string) {
+    const previous = this.sources.get(sourceId)
     this.sources.set(sourceId, path)
-    for (const frame of this.session.frames) if (frame.file === sourceId) frame.file = path
-    for (const b of this.session.breakpoints) if (b.file === sourceId) b.file = path
+    for (const frame of this.session.frames)
+      if (frame.file === sourceId || frame.file === previous) frame.file = path
+    for (const b of this.session.breakpoints)
+      if (b.file === sourceId || b.file === previous) b.file = path
     this.notify()
   }
   clearGrant(reason: string) {
@@ -246,7 +249,11 @@ export class DebuggerController {
   disconnected() {
     ++this.serial
     this.lost = true
-    this.session.status = 'lost'
+    this.session.status = ['terminated', 'detached', 'failed'].includes(
+      this.snapshot?.lifecycle ?? ''
+    )
+      ? 'exited'
+      : 'lost'
     this.expireLocal()
     this.markSubmittedUnknown('Outcome unknown; no action will be replayed')
     this.notify()
@@ -1072,7 +1079,8 @@ export class DebuggerController {
     if (!this.current || generation !== this.serial || this.snapshot?.stop_epoch !== epoch) return
     this.frameHandles = result.data.items.map((f) => f.handle)
     for (const frame of result.data.items)
-      if (frame.source_id && frame.path) this.sources.set(frame.source_id, frame.path)
+      if (frame.source_id && frame.path && !this.sources.has(frame.source_id))
+        this.sources.set(frame.source_id, frame.path)
     this.session.frames = result.data.items.map((f) => ({
       name: f.name,
       file: f.source_id ? (this.path(f.source_id) ?? f.path ?? f.source_id) : (f.path ?? ''),
