@@ -4306,6 +4306,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       )
         throw new UiError(uiMessage('streamB.theSelectionSourceChangedOpenTheLink.cedf06'))
       await this.reconcileSelectionSnapshot(isCurrent)
+      if (isCurrent()) await CommentService.getInstance().inheritNodeScope(this)
     })()
     this.selectionReconciliation = operation
     try {
@@ -4381,6 +4382,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       const result = await ChatStorage.getInstance().loadChat(file)
       // Storage preparation is mandatory, including direct loads and migration saves.
       await this.restoreLoadedChat(file, result)
+      await CommentService.getInstance().inheritNodeScope(this)
     } finally {
       this.restoringAttention = false
     }

@@ -22,6 +22,8 @@ import { acceptRevision, compatibleReplyHistory, type ReplyProposal } from './re
 import { firstQuestion } from './chatText'
 import { baseName, commentLineage, commentName, commentTrail, type TrailStep } from './commentTrail'
 import { type ChatMessage, type ChatMetadata, type CommentAnchor } from './types'
+import { hasNodeScope, NodeScopeEntriesSchema } from './nodeScope'
+import { inheritObsidianChatNodeAccess } from './tools/node/owner'
 
 /**
  * What became of a comment somebody asked to open as a chat.
@@ -1211,6 +1213,61 @@ export class CommentService implements CommentInfoSource {
   /** Exact live presentation lookup; this does not resolve or grant a marker identity. */
   getSessionByFile(path: string): ChatSession | null {
     return this.sessionOnFile(path)
+  }
+
+  /** Fill only an unset child scope. Read ancestors without creating additional writers. */
+  async inheritNodeScope(session: ChatSession): Promise<void> {
+    if (
+      hasNodeScope(session) ||
+      session.isMidTurn ||
+      session.isExecutingTool.value ||
+      session.retrying.value !== null ||
+      session.moving.value
+    )
+      return
+    const own = session.currentChatFile.value
+    const anchor = session.anchor.value
+    const version = session.conversationVersion.value
+    if (!own || !anchor) return
+    const { app } = GlobalStore.getInstance()
+    const seen = new Set([own.path])
+    let path = anchor.note
+    for (let depth = 0; depth < 32 && !seen.has(path); depth++) {
+      seen.add(path)
+      const live = this.sessionOnFile(path)
+      const file = app.vault.getAbstractFileByPath(path)
+      if (!(file instanceof TFile) || file.extension !== 'abchat') return
+      const metadata = live ? undefined : parseChatMetadata(await app.vault.read(file))
+      if (!live && metadata?.type !== 'abele-chat') return
+      const overrides = live?.overrides.value ?? metadata?.overrides
+      if (overrides && Object.hasOwn(overrides, 'nodeScope')) {
+        const parsed = NodeScopeEntriesSchema.safeParse(overrides.nodeScope)
+        if (!parsed.success) return
+        const scope = parsed.data
+        if (!scope.length) return
+        if (
+          session.isDestroyed ||
+          session.currentChatFile.value !== own ||
+          session.anchor.value !== anchor ||
+          session.conversationVersion.value !== version ||
+          hasNodeScope(session) ||
+          session.isExecutingTool.value ||
+          session.retrying.value !== null ||
+          session.isMidTurn ||
+          session.moving.value
+        )
+          return
+        session.overrides.value = { ...session.overrides.value, nodeScope: scope }
+        await session.saveForRelease()
+        const parentIdentity = live?.nodeScopeIdentity ?? metadata?.chatId
+        if (parentIdentity && scope.length)
+          await inheritObsidianChatNodeAccess(session, parentIdentity)
+        return
+      }
+      const parent = live?.anchor.value ?? metadata?.anchor
+      if (!parent) return
+      path = parent.note
+    }
   }
 
   private sessionOnFile(path: string): ChatSession | null {

@@ -14,6 +14,8 @@ import { TFile } from 'obsidian'
 import { CommentService } from '@/ai/CommentService'
 import { ChatService } from '@/ai/ChatService'
 import { ChatStorage } from '@/ai/ChatStorage'
+import { ChatSession } from '@/ai/ChatSession'
+import { NodeScopeLedger } from '@/ai/nodeScope'
 import { parseChatMetadata, serializeChat, serializeMetadata } from '@/ai/ChatLog'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -131,6 +133,94 @@ beforeEach(() => {
   vi.spyOn(ChatService.getInstance(), 'saveTabs').mockImplementation(() => {})
   vi.spyOn(ChatService.getInstance(), 'revealSidebar').mockResolvedValue(undefined)
   vi.spyOn(ChatService.getInstance(), 'sidebarShowing').mockReturnValue(true)
+})
+
+describe('nested node access', () => {
+  const scope = [{ kind: 'node' as const, node_id: 'sample-node', access: 'edit' as const }]
+
+  it('copies live parent scope on creation and preserves later child changes', async () => {
+    const service = CommentService.getInstance()
+    const parent = await show(C1)
+    parent.overrides.value = { nodeScope: scope }
+    const child = (await service.createOnMessage(parent, 'c1a'))!
+    expect(child.overrides.value.nodeScope).toEqual(scope)
+    expect((await metadataOf(path(child.commentId!)))?.overrides?.nodeScope).toEqual(scope)
+    child.overrides.value = { nodeScope: [] }
+    await child.save()
+    expect((await service.load(child.commentId!))!.overrides.value.nodeScope).toEqual([])
+  })
+
+  it('inherits through unopened legacy ancestors and preserves explicit empty scope', async () => {
+    await app.vault.append(
+      file(CHAT)!,
+      serializeMetadata(meta({ overrides: { nodeScope: scope } }))
+    )
+    const child = await show(C2)
+    expect(child.overrides.value.nodeScope).toEqual(scope)
+    child.overrides.value = { nodeScope: [] }
+    await child.save()
+    CommentService.getInstance().destroy()
+    ChatService.getInstance().destroy()
+    expect((await CommentService.getInstance().load(C2))!.overrides.value.nodeScope).toEqual([])
+  })
+
+  it('fills an open unscoped child when its parent gains access', async () => {
+    const child = await show(C2)
+    const parent = await show(C1)
+    parent.overrides.value = { nodeScope: scope }
+    expect((await CommentService.getInstance().load(C2))!.overrides.value.nodeScope).toEqual(scope)
+    expect(child.overrides.value.nodeScope).toEqual(scope)
+  })
+
+  it('inherits approved access on direct chat loads, including promoted discussions', async () => {
+    const parent = await show(C1)
+    parent.overrides.value = { nodeScope: scope }
+    await parent.ensureDelegationParentId()
+    const ledger = () =>
+      new NodeScopeLedger({
+        read: () => app.loadLocalStorage('abele-chat-node-scope-approvals'),
+        write: (value) => app.saveLocalStorage('abele-chat-node-scope-approvals', value),
+      })
+    ledger().approve(parent, { 'sample-node': 'sample-installation' })
+    await app.vault.append(
+      file(path(C2))!,
+      serializeMetadata({ ...(await metadataOf(path(C2)))!, kind: 'chat' })
+    )
+    const child = new ChatSession(ChatService.getInstance())
+    try {
+      await child.load(file(path(C2))!)
+      expect(child.overrides.value.nodeScope).toEqual(scope)
+      expect(ledger().approvedNode(child, 'sample-node', 'sample-installation')).toBe(true)
+    } finally {
+      child.destroy()
+    }
+  })
+
+  it('does not cross a parent’s explicit empty scope to inherit from a grandparent', async () => {
+    await app.vault.append(
+      file(CHAT)!,
+      serializeMetadata(meta({ overrides: { nodeScope: scope } }))
+    )
+    await app.vault.append(
+      file(path(C1))!,
+      serializeMetadata(
+        meta({
+          kind: 'comment',
+          anchor: { note: CHAT, message: 'a1' },
+          overrides: { nodeScope: [] },
+        })
+      )
+    )
+    expect((await show(C2)).overrides.value.nodeScope).toBeUndefined()
+  })
+
+  it('still opens a child when its parent has malformed node scope', async () => {
+    await app.vault.append(
+      file(CHAT)!,
+      serializeMetadata(meta({ overrides: { nodeScope: [{ ...scope[0], node_id: '' }] } }))
+    )
+    expect((await show(C2)).overrides.value.nodeScope).toBeUndefined()
+  })
 })
 
 describe('asking inside a comment', () => {

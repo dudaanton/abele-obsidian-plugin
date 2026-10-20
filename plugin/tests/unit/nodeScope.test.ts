@@ -20,6 +20,20 @@ const chat = (id = 'sample-chat'): NodeScopeChat => ({
 })
 
 describe('device-local node scope', () => {
+  it('inherits only the parent’s approved entries and installation bindings', () => {
+    const ledger = new NodeScopeLedger()
+    const parent = chat('parent')
+    const child = chat('child')
+    ledger.inherit(child, parent.nodeScopeIdentity!)
+    expect(ledger.approvedNode(child, 'sample-node', 'pin:1')).toBe(false)
+    ledger.approve(parent, { 'sample-node': 'pin:1' })
+    ledger.inherit(child, parent.nodeScopeIdentity!)
+    expect(() => ledger.guard(child, target, 'pin:1', 'edit')).not.toThrow()
+    expect(ledger.approvedNode(child, 'sample-node', 'pin:2')).toBe(false)
+    child.overrides.value.nodeScope = [{ ...entry, access: 'read' }]
+    ledger.inherit(child, parent.nodeScopeIdentity!)
+    expect(ledger.approvedNode(child, 'sample-node', 'pin:1')).toBe(false)
+  })
   it('does not trust loaded configuration, full vault access, or another chat', () => {
     const ledger = new NodeScopeLedger()
     const session = chat()

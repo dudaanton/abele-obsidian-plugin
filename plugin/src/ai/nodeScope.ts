@@ -84,7 +84,7 @@ export interface NodeScopeStorage {
   write(value: unknown): void
 }
 
-/** Each exact entry requires its own explicit owner action. Legacy blanket records fail closed. */
+/** Exact entry approvals stay bound to a local installation. Legacy blanket records fail closed. */
 export class NodeScopeLedger {
   private approvals: Record<string, Approval>
   constructor(private readonly storage?: NodeScopeStorage) {
@@ -94,6 +94,17 @@ export class NodeScopeLedger {
   private commit(next: Record<string, Approval>): void {
     this.storage?.write(next)
     this.approvals = next
+  }
+  /** A nested chat receives the same exact, locally approved installation bindings. */
+  inherit(chat: NodeScopeChat, parentIdentity: string): void {
+    const identity = chat.nodeScopeIdentity
+    const parent = this.approvals[parentIdentity]
+    if (!identity || !parent || identity === parentIdentity) return
+    const keys = new Set(nodeScopeEntries(chat).map(nodeScopeKey))
+    const entries = Object.fromEntries(
+      Object.entries(parent.entries).filter(([key]) => keys.has(key))
+    )
+    this.commit({ ...this.approvals, [identity]: { entries, nonce: crypto.randomUUID() } })
   }
   /** Explicit confirmation of the supplied entries; default is the displayed complete configuration. */
   approve(

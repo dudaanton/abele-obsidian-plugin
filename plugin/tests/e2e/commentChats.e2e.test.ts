@@ -31,6 +31,7 @@
  */
 import { describe, it, expect, beforeAll } from 'vitest'
 import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
+import { shotDir } from './helpers/shots'
 
 /** `evalRaw` for a script that resolves to a JSON-serializable value, parsed directly. */
 const evalAsync = <T>(script: string, timeoutMs: number): T =>
@@ -87,6 +88,35 @@ const NOTE = 'Abele comment probe.md'
 const QUOTE = 'the passage the probe asks about'
 const SECOND = 'another passage entirely'
 const BODY = `# Comment probe\n\nA paragraph holding ${QUOTE} and ${SECOND} after it.\n`
+const shots = shotDir('abele-nested-node-scope')
+
+/** Scope is configured locally; this probe never starts a provider or connects a node. */
+const nestedScopeScript = (label: string, create: boolean) => `
+  {
+    const service = window.__abeleTest.CommentService.getInstance()
+    const note = app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)})
+    const text = await app.vault.read(note)
+    const id = [...text.matchAll(/%%c:([a-z0-9,]+)%%/g)][0][1].split(',')[0]
+    const parent = await service.load(id)
+    const scope = [{ kind: 'node', node_id: 'sample-node', access: 'edit' }]
+    let child
+    if (${create}) {
+      parent.overrides.value = { ...parent.overrides.value, nodeScope: scope }
+      await parent.addUserNote('Sample discussion message')
+      child = await service.createOnMessage(parent, parent.allMessages.value.at(-1).id)
+    } else {
+      child = await service.load(parent.messageComments.value.at(-1).id)
+    }
+    if (JSON.stringify(child.overrides.value.nodeScope) !== JSON.stringify(scope))
+      throw new Error('Nested discussion did not retain inherited node scope')
+    await service.showInSidebar(child.commentId)
+    if (!await until(() => [...document.querySelectorAll('.abele-chat-input__scope')].some(el =>
+      shown(el) && el.getAttribute('aria-label')?.includes('sample-node')), 8000))
+      throw new Error('Inherited node scope is missing from the chat access control')
+    const image = await require('@electron/remote').getCurrentWebContents().capturePage()
+    require('fs').writeFileSync(${JSON.stringify(shots)} + '/${label}.png', image.toPNG())
+  }
+`
 
 /** Deletes the probe note and whatever comment files its markers name, if either is there. */
 const cleanupScript = `(async () => {
@@ -100,7 +130,7 @@ const cleanupScript = `(async () => {
       const ids = [...text.matchAll(/%%c:([a-z0-9,]+)%%/g)].flatMap((m) => m[1].split(','))
       for (const id of ids) {
         const file = app.vault.getAbstractFileByPath(service.commentPath(id))
-        if (file) await app.vault.delete(file)
+        if (file) await service.remove(id)
       }
       await app.vault.delete(note)
     }
@@ -247,6 +277,7 @@ const desktopScript = `(async () => {
     last.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await until(() => service.isShown(secondId), 8000)
     report.tabsAfterSecond = chats.getAllSessions().length
+    ${nestedScopeScript('desktop', true)}
   } catch (e) {
     report.error = String((e && e.message) || e)
   }
@@ -296,6 +327,7 @@ const mobileScript = `(async () => {
       report.composerVisible = shown(chat.querySelector('.abele-chat-input__field'))
       report.noteButtonVisible = !!chat.querySelector('.abele-chat-input .lucide-sticky-note')
     }
+    ${nestedScopeScript('phone', false)}
   } catch (e) {
     report.error = String((e && e.message) || e)
   }

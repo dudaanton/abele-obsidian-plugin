@@ -34,6 +34,23 @@ export function revokeNodeScopeApproval(session: ChatSession): void {
 export function reconcileNodeScopeApproval(session: ChatSession): void {
   ownerHost?.ledger.reconcile(session)
 }
+/** Inheritance copies existing local approvals; it never approves another installation. */
+export async function inheritObsidianChatNodeAccess(
+  session: ChatSession,
+  parentIdentity: string
+): Promise<void> {
+  await session.ensureDelegationParentId()
+  const { GlobalStore } = await import('@/stores/GlobalStore')
+  const { app } = GlobalStore.getInstance()
+  const ledger =
+    ownerApp === app && ownerHost
+      ? ownerHost.ledger
+      : new NodeScopeLedger({
+          read: () => app.loadLocalStorage('abele-chat-node-scope-approvals'),
+          write: (value) => app.saveLocalStorage('abele-chat-node-scope-approvals', value),
+        })
+  ledger.inherit(session, parentIdentity)
+}
 export async function revokeObsidianChatNodeApproval(session: ChatSession): Promise<void> {
   revokeNodeScopeApproval(session)
   const { GlobalStore } = await import('@/stores/GlobalStore')

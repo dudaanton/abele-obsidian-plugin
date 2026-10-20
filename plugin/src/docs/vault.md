@@ -1244,7 +1244,11 @@ Chat metadata `overrides.nodeScope` stores remote scope separately from vault pa
 entries identify a whole node, registered project, or exact plain workspace/Git worktree,
 with read/edit access. `overrides.nodeTarget` is this chat's selected remote target, not a
 permission. Both travel with the chat log and its sparse overrides. Whole-node scope includes
-future registered projects. A copied or synced configuration does not authorize itself:
+future registered projects. Message discussions, including discussions nested in other discussions,
+copy the nearest parent's node scope on creation or opening if their own scope is unset.
+An explicit child scope, including an empty one, is retained. Existing device-local approvals
+for the inherited entries are copied to the child's durable identity on that device.
+A copied or synced configuration does not authorize itself:
 owner approvals live only in device-local preferences, bound to durable chat identity,
 exact scope entries, node installation/key and durable local registration authority.
 The local registration authority changes on re-pairing and on removal/recreation; it is retained
