@@ -289,8 +289,10 @@ const SEND_INTO = (shots: string, paused = false) => `
   await until(()=>into.getAttribute('aria-checked')==='true','recording on');
   if(tab().querySelector('.abele-http-request__timeout select').value!=='300000')throw Error('Debugger requests need a five minute default');
   await shot(${JSON.stringify(shots + '-recording')});
+  const requestModel=requests.model(requests.context.value),requestId='Orders/Place order.http';
+  const previousSend=(await requestModel.rpc.history(${JSON.stringify(folder.projectId)},requestId))[0]?.id;
   tab().querySelector('.abele-http-request__send').click();
-  await until(()=>facts().startsWith('201'),'answered',600);
+  await until(()=>facts().startsWith('201')&&requestModel.entry(requestId).history[0]?.id!==previousSend&&!requestModel.state.sending.includes(requestId),'new send answered',600);
   const steps=await until(()=>tab().querySelector('.abele-http-request__steps')?.textContent.trim(),'steps in code',200);
   await shot(${JSON.stringify(shots + '-into-run')});
   ${paused ? PAUSED_SEND(shots) : ''}
