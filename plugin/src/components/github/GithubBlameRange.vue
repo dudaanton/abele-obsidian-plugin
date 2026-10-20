@@ -133,6 +133,8 @@ onBeforeUnmount(() => {
   }
 }
 .abele-github-blame-range {
+  // Contain the button's negative margin without clipping its native hover/focus box.
+  display: flow-root;
   width: max-content;
   height: 1lh;
 
