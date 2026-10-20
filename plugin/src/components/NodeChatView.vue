@@ -120,10 +120,12 @@
           :offline="offline"
           :tool-prompts="presenter.projection.value.toolPrompts"
           :prompt-diffs="presenter.projection.value.promptDiffs"
+          :history-for="presenter.historyState?.bind(presenter)"
           :open-resource="resourceOpener(segment.target)"
           can-reply
           @cancel="presenter.cancelInput($event)"
           @retry="retry"
+          @history-action="historyAction"
           @reply="(to) => chatInput?.quote(to)"
           @show-reply="showReply"
           @open-session="(id) => presenter.openSession?.(id)"
@@ -289,7 +291,7 @@
 </template>
 <script setup lang="ts">
 import NodeErrorText from '@/components/NodeErrorText.vue'
-import { presentUiField } from '@/i18n/streamBErrors'
+import { presentUiField, presentUiError } from '@/i18n/streamBErrors'
 import { streamBCount } from '@/i18n/streamBCounts'
 import { t } from '@/i18n'
 import { computed, nextTick, ref, watch, onUnmounted } from 'vue'
@@ -298,6 +300,9 @@ import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import { nodeQueueView } from '@/node/presentation'
 import { agentChoices, providerLabel, type AgentChoice } from '@/node/providers'
 import { nodeAttachmentText } from '@/node/nodeChatAttachments'
+import type { NodeHistoryAction } from '@/node/NodeChatHistory'
+import NodeChatHistoryDialog from './NodeChatHistoryDialog.vue'
+import { openComponentDialog } from '@/modal/componentDialog'
 import { NodeService } from '@/node/NodeService'
 import { openNodePanel } from '@/node/openSession'
 import { openNodeFiles } from '@/node/openFiles'
@@ -709,6 +714,29 @@ const retry = (messageId: string) => {
     (message) => message.id === failed?.retryInputId && message.role === 'user'
   )
   if (input) void send(input.content)
+}
+const historyAction = (messageId: string, action: NodeHistoryAction) => {
+  const presenter = props.presenter
+  const state = presenter.historyState(messageId)
+  if (!state || state.reason) return
+  if (action === 'rewind' || action === 'edit') {
+    openComponentDialog(
+      () => NodeChatHistoryDialog,
+      {
+        action,
+        initialText: state.input?.content ?? '',
+        readPreview: () => presenter.historyPreview(messageId),
+        restore: (files: Parameters<typeof presenter.restoreHistory>[3], text?: string) =>
+          presenter.restoreHistory(messageId, action, text, files),
+      },
+      { key: `node-history:${presenter.id}` }
+    ).ready.catch((error: unknown) => {
+      presenter.error.value = presentUiError(error)
+    })
+  } else
+    void presenter.restoreHistory(messageId, action).catch((error: unknown) => {
+      presenter.error.value = presentUiError(error)
+    })
 }
 /** An earlier page arriving keeps the words you are reading where they are. */
 let keepFromBottom: number | null = null

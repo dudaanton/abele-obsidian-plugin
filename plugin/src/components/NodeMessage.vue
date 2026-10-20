@@ -5,6 +5,7 @@
   <AiChatMessage
     :message="message"
     :read-only-history="true"
+    :extend-actions="historyState ? addHistoryActions : undefined"
     :can-reply="canReply"
     :compact-tool-details="true"
     :resource-opener="openResource"
@@ -73,6 +74,8 @@
 import NodeErrorText from '@/components/NodeErrorText.vue'
 import NodePermissionCard from '@/components/NodePermissionCard.vue'
 import type { Prompt } from '@abele/node-client'
+import type { Menu } from 'obsidian'
+import type { NodeHistoryAction } from '@/node/NodeChatHistory'
 import { nodeErrorWords } from '@/node/errorWords'
 import { t } from '@/i18n'
 import type { ChatMessage, ChatReplyTo } from '@/ai/types'
@@ -80,7 +83,7 @@ import { toolResultText } from '@/ai/toolLine'
 import type { QueueState } from '@/node/presentation'
 import AiChatMessage from './AiChatMessage.vue'
 import Icon from './obsidian/Icon.vue'
-defineProps<{
+const props = defineProps<{
   message: ChatMessage
   openResource: (path: string) => void
   queueState?: QueueState
@@ -88,6 +91,7 @@ defineProps<{
   canReply?: boolean
   prompts?: Prompt[]
   promptDiffs?: Record<string, { path: string; old: string; new: string }[]>
+  historyState?: { reason: string }
 }>()
 const emit = defineEmits<{
   (e: 'cancel', inputId: string): void
@@ -95,5 +99,26 @@ const emit = defineEmits<{
   (e: 'reply', to: ChatReplyTo): void
   (e: 'show-reply', to: ChatReplyTo): void
   (e: 'open-session', sessionId: string): void
+  (e: 'history-action', messageId: string, action: NodeHistoryAction): void
 }>()
+const addHistoryActions = (menu: Menu) => {
+  const actions: { action: NodeHistoryAction; label: string; icon: string }[] = [
+    { action: 'rewind', label: t('streamB.rewind.26b658'), icon: 'history' },
+    { action: 'branch', label: t('streamB.branchFromHere.35ed21'), icon: 'git-branch' },
+    { action: 'edit', label: t('streamB.edit.464c4f'), icon: 'pencil' },
+    { action: 'retry', label: t('streamB.retry.942087'), icon: 'rotate-cw' },
+  ]
+  for (const item of actions) {
+    if (props.message.role !== 'user' && !['branch', 'retry'].includes(item.action)) continue
+    const reason = props.historyState?.reason
+    menu.addItem((entry) =>
+      entry
+        .setTitle(reason ? `${item.label} · ${reason}` : item.label)
+        .setIcon(item.icon)
+        .setSection('node-history')
+        .setDisabled(!!reason)
+        .onClick(() => emit('history-action', props.message.id, item.action))
+    )
+  }
+}
 </script>

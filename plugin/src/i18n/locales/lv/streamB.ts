@@ -6,6 +6,32 @@ export const streamB = {
   'streamB.stoppedByYou': 'Jūs apturējāt izpildi. Uzdevums var būt nepabeigts.',
   'streamB.writesWithoutAsking': 'Rakstīšana bez jautāšanas · Vienmēr jautāt',
   'streamB.chatChanges': 'Šīs sarunas izmaiņas',
+  'streamB.nodeHistoryFreshPreview': 'Pirms failu atjaunošanas pieprasiet jaunu priekšskatījumu.',
+  'streamB.nodeHistoryCannotRead':
+    'Iepriekšējo sarunu neizdevās nolasīt. Pievienojieties vēlreiz un atkārtojiet ielādi.',
+  'streamB.nodeHistoryUnsupported': 'Šis mezgls vēl nepiedāvā darbības ar čata vēsturi.',
+  'streamB.nodeHistoryOffline': 'Pirms čata vēstures maiņas pievienojieties vēlreiz.',
+  'streamB.nodeHistoryLegacyTarget': 'Vispirms šim čatam izvēlieties konkrētu mapi vai darba koku.',
+  'streamB.nodeHistoryLoadingTarget': 'Čata mape vēl tiek ielādēta.',
+  'streamB.nodeHistoryStopFirst':
+    'Vispirms apturiet aģentu un sagaidiet rindā esošo ziņojumu pabeigšanu.',
+  'streamB.nodeHistoryBusy': 'Darbība ar vēsturi vēl turpinās.',
+  'streamB.nodeHistoryNoCheckpoint': 'Pirms šī ziņojuma nav kontrolpunkta.',
+  'streamB.nodeHistoryEditPrompt': 'Rediģēt šo ziņojumu',
+  'streamB.nodeHistoryEditLimit': 'Jaunajā ziņojumā drīkst būt līdz 32 768 rakstzīmēm.',
+  'streamB.nodeHistoryFilesOff':
+    'Faili paliek nemainīti, līdz ieslēdzat šo iespēju un apstiprināt apakšā.',
+  'streamB.nodeHistoryFileMode': 'Faila atļaujas: {before} → {after}',
+  'streamB.nodeHistoryTruncated':
+    'Šis priekšskatījums ir daļējs. Apstiprinājums atjaunos pilnu faila saturu un atļaujas.',
+  'streamB.nodeHistoryBinary':
+    'Binārs saturs vai teksta priekšskatījums nav pieejams. Izmaiņa ietver faila saturu un atļaujas.',
+  'streamB.nodeHistoryNoReplay':
+    'Šī darbība netiks automātiski atkārtota. Pirms jauna priekšskatījuma pārbaudiet failus.',
+  'streamB.nodeHistoryRefreshPreview': 'Atjaunināt priekšskatījumu',
+  'streamB.nodeHistoryEditSend': 'Nosūtīt rediģēto ziņojumu',
+  'streamB.nodeHistoryRestored': 'Čata vēsture atjaunota. Faili nav mainīti.',
+  'streamB.nodeHistoryFilesRestored': 'Čata vēsture atjaunota ar apstiprinātajām failu izmaiņām.',
   'streamB.nodeStopped': 'Jūs apturējāt',
   'streamB.nodeStartFailed': 'Aģentu neizdevās palaist: {reason}.',
   'streamB.nodeTestAgent': 'Testa aģents',

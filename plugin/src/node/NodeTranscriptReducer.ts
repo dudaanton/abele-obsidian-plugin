@@ -58,6 +58,8 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
   let session: NodeTranscript['session']
   let at = 0
   let currentRun = ''
+  let currentTurn = ''
+  let boundaryTurn = ''
   const toolRuns = new Map<string, string>()
   const startedTools = new Set<string>()
   const completedTools = new Set<string>()
@@ -68,6 +70,7 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
       current = { id, role, content: '', timestamp: at }
       messages.set(id, current)
       messageSequences[id] = sequence
+      if (currentTurn && role !== 'user') current.nodeTurnId = currentTurn
     }
     if (currentRun) messageRuns.set(id, currentRun)
     if (role === 'tool-call' && currentRun) {
@@ -193,6 +196,9 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
     const text = (key: string) => (typeof data[key] === 'string' ? data[key] : '')
     at = Date.parse(event.at)
     currentRun = text('run_id')
+    if (event.type === 'turn.started') boundaryTurn = text('turn_id') || `legacy-turn:${event.seq}`
+    currentTurn = text('turn_id') || boundaryTurn
+    if (event.type === 'turn.completed') boundaryTurn = ''
     touchedTools = []
     if (event.type === 'turn.started' || event.type === 'run.started') {
       turnStarts.set(currentRun, sequence)
@@ -260,6 +266,22 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
         })
       continue
     }
+    // Accepted input evidence also carries delivery state and origin metadata. Process it
+    // independently of the normalized user update, joining both by the canonical input id.
+    if (event.type.startsWith('input.'))
+      inputs.set(text('input_id'), text('state') || event.type.slice(6))
+    if (event.type === 'input.accepted') {
+      const input = message(`input:${text('input_id')}`, 'user')
+      const replied = readAgentReplyText(text('text'))
+      input.content = replied?.content ?? text('text')
+      if (replied) input.replyTo = replied.replyTo
+      const from = data.from_session as { session_id?: unknown; title?: unknown } | undefined
+      if (from && typeof from.session_id === 'string')
+        input.fromSession = {
+          id: from.session_id,
+          title: typeof from.title === 'string' ? from.title : '',
+        }
+    }
     let updates = updatesOf(event)
     if (event.type === 'pi.extension.error' && data.mapped !== true) {
       const extension = text('extension') || text('extension_path') || text('extension_id')
@@ -293,7 +315,7 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
       event.type === 'acp.permission' ? permissionDecision(data, provider, currentRun) : undefined
     if (decided) updates = updates.filter((u) => u.kind !== 'notice')
     for (const update of updates) {
-      agent.apply(update, provider, currentRun, event.seq)
+      agent.apply(update, provider, currentRun, event.seq, currentTurn)
       if (update.kind !== 'tool_call' && update.kind !== 'tool_call_update') continue
       const id = agent.toolId(provider, currentRun, update.tool_call_id)
       if (
@@ -320,6 +342,21 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
       continue
     }
     if (QUIET_RECORDS.has(event.type)) continue
+    if (event.type === 'chat.restored') {
+      live.apply('session.process', { state: 'exited' }, at)
+      const line = message(`history:${event.seq}`, 'system')
+      line.sessionMark = {
+        kind: 'notice',
+        level: 'info',
+        text: t(
+          Array.isArray(data.restored_files) && data.restored_files.length
+            ? 'streamB.nodeHistoryFilesRestored'
+            : 'streamB.nodeHistoryRestored'
+        ),
+      }
+      failed = false
+      continue
+    }
     if (live.apply(event.type, data, at)) continue
     if (event.type.startsWith('input.')) {
       const state = text('state') || event.type.slice(6)

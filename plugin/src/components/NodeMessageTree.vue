@@ -51,6 +51,7 @@
 import type { ChatMessage, ChatReplyTo } from '@/ai/types'
 import type { QueueState } from '@/node/presentation'
 import type { Prompt } from '@abele/node-client'
+import type { NodeHistoryAction } from '@/node/NodeChatHistory'
 import { computed, reactive } from 'vue'
 import { callState, chatBlocks, type ChatBlock } from '@/ai/toolRuns'
 import ChatToolRun from './ChatToolRun.vue'
@@ -67,8 +68,15 @@ const props = withDefaults(
     canReply?: boolean
     toolPrompts?: Record<string, Prompt[]>
     promptDiffs?: Record<string, { path: string; old: string; new: string }[]>
+    historyFor?: (messageId: string) => { reason: string } | undefined
   }>(),
-  { depth: 0, queueStates: () => ({}), toolPrompts: () => ({}), promptDiffs: () => ({}) }
+  {
+    depth: 0,
+    queueStates: () => ({}),
+    toolPrompts: () => ({}),
+    promptDiffs: () => ({}),
+    historyFor: undefined,
+  }
 )
 const emit = defineEmits<{
   (e: 'cancel', inputId: string): void
@@ -77,6 +85,7 @@ const emit = defineEmits<{
   (e: 'show-reply', to: ChatReplyTo): void
   /** Another session on the node, named by a message, opened in its own chat. */
   (e: 'open-session', sessionId: string): void
+  (e: 'history-action', messageId: string, action: NodeHistoryAction): void
 }>()
 const blocks = computed(() => chatBlocks(props.messages))
 /** A run the reader opened or closed stays so; otherwise it is open while it works or waits. */
@@ -92,6 +101,7 @@ const messageProps = (message: ChatMessage) => ({
   canReply: props.canReply && props.depth === 0,
   prompts: props.toolPrompts?.[message.id],
   promptDiffs: props.promptDiffs,
+  historyState: props.depth === 0 ? props.historyFor?.(message.id) : undefined,
 })
 const handlers = {
   cancel: (id: string) => emit('cancel', id),
@@ -99,6 +109,7 @@ const handlers = {
   reply: (to: ChatReplyTo) => emit('reply', to),
   'show-reply': (to: ChatReplyTo) => emit('show-reply', to),
   'open-session': (id: string) => emit('open-session', id),
+  'history-action': (id: string, action: NodeHistoryAction) => emit('history-action', id, action),
 }
 </script>
 <style lang="scss">

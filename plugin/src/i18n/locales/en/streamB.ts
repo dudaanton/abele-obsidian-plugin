@@ -6,6 +6,31 @@ export const streamB = {
   'streamB.stoppedByYou': 'Stopped by you. The task may be unfinished.',
   'streamB.writesWithoutAsking': 'Writes without asking · Ask every time',
   'streamB.chatChanges': 'Changes from this chat',
+  'streamB.nodeHistoryFreshPreview': 'Request a fresh preview before putting files back.',
+  'streamB.nodeHistoryCannotRead':
+    'The earlier conversation could not be read. Reconnect and try loading it again.',
+  'streamB.nodeHistoryUnsupported': 'This node does not offer chat history actions yet.',
+  'streamB.nodeHistoryOffline': 'Reconnect before changing chat history.',
+  'streamB.nodeHistoryLegacyTarget': 'Choose an explicit folder or worktree for this chat first.',
+  'streamB.nodeHistoryLoadingTarget': 'The chat folder is still loading.',
+  'streamB.nodeHistoryStopFirst': 'Stop the agent and wait for queued messages to finish first.',
+  'streamB.nodeHistoryBusy': 'A history action is still in progress.',
+  'streamB.nodeHistoryNoCheckpoint': 'No checkpoint is available before this message.',
+  'streamB.nodeHistoryEditPrompt': 'Edit this message',
+  'streamB.nodeHistoryEditLimit': 'The replacement message must fit within 32,768 characters.',
+  'streamB.nodeHistoryFilesOff':
+    'Files stay as they are unless you turn this on and confirm below.',
+  'streamB.nodeHistoryFileMode': 'File permissions: {before} → {after}',
+  'streamB.nodeHistoryTruncated':
+    'This preview is partial. Confirmation restores the complete file contents and permissions.',
+  'streamB.nodeHistoryBinary':
+    'Binary content or text preview unavailable. File contents and permissions are included in the change.',
+  'streamB.nodeHistoryNoReplay':
+    'This action will not be retried automatically. Inspect the files before requesting a fresh preview.',
+  'streamB.nodeHistoryRefreshPreview': 'Refresh preview',
+  'streamB.nodeHistoryEditSend': 'Send the edited message',
+  'streamB.nodeHistoryRestored': 'Chat history restored. Files unchanged.',
+  'streamB.nodeHistoryFilesRestored': 'Chat history restored with the confirmed file changes.',
   'streamB.nodeStopped': 'Stopped by you',
   'streamB.nodeAttachTextFile': 'Attach a text file from this device',
   'streamB.nodeAttachmentTooLarge':

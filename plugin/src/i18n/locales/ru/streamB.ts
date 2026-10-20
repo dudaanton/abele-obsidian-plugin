@@ -6,6 +6,34 @@ export const streamB = {
   'streamB.stoppedByYou': 'Остановлено вами. Задача может быть не завершена.',
   'streamB.writesWithoutAsking': 'Запись без запроса · Спрашивать каждый раз',
   'streamB.chatChanges': 'Изменения из этого чата',
+  'streamB.nodeHistoryFreshPreview': 'Перед откатом файлов запросите новый предпросмотр.',
+  'streamB.nodeHistoryCannotRead':
+    'Не удалось прочитать начало разговора. Подключитесь снова и повторите загрузку.',
+  'streamB.nodeHistoryUnsupported': 'Этот узел пока не поддерживает действия с историей чата.',
+  'streamB.nodeHistoryOffline': 'Перед изменением истории подключитесь к узлу.',
+  'streamB.nodeHistoryLegacyTarget':
+    'Сначала выберите для этого чата явную папку или рабочее дерево.',
+  'streamB.nodeHistoryLoadingTarget': 'Папка чата ещё загружается.',
+  'streamB.nodeHistoryStopFirst':
+    'Сначала остановите агента и дождитесь завершения сообщений в очереди.',
+  'streamB.nodeHistoryBusy': 'Действие с историей ещё выполняется.',
+  'streamB.nodeHistoryNoCheckpoint': 'Перед этим сообщением нет контрольной точки.',
+  'streamB.nodeHistoryEditPrompt': 'Изменить это сообщение',
+  'streamB.nodeHistoryEditLimit': 'Новое сообщение должно содержать не больше 32 768 символов.',
+  'streamB.nodeHistoryFilesOff':
+    'Файлы останутся как есть, пока вы не включите этот переключатель и не подтвердите действие внизу.',
+  'streamB.nodeHistoryFileMode': 'Права файла: {before} → {after}',
+  'streamB.nodeHistoryTruncated':
+    'Это частичный предпросмотр. Подтверждение восстановит всё содержимое файла и права.',
+  'streamB.nodeHistoryBinary':
+    'Двоичный файл или предпросмотр текста недоступен. Изменение включает содержимое файла и права.',
+  'streamB.nodeHistoryNoReplay':
+    'Действие не повторится автоматически. Проверьте файлы перед новым предпросмотром.',
+  'streamB.nodeHistoryRefreshPreview': 'Обновить предпросмотр',
+  'streamB.nodeHistoryEditSend': 'Отправить изменённое сообщение',
+  'streamB.nodeHistoryRestored': 'История чата восстановлена. Файлы не изменены.',
+  'streamB.nodeHistoryFilesRestored':
+    'История чата восстановлена с подтверждёнными изменениями файлов.',
   'streamB.nodeStopped': 'Остановлено вами',
   'streamB.nodeStartFailed': 'Не удалось запустить агента: {reason}.',
   'streamB.nodeTestAgent': 'Тестовый агент',

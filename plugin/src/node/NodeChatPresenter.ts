@@ -8,6 +8,7 @@ import {
   type SessionCommand,
   PromptSchema,
   NodeEventSchema,
+  SessionSchema,
   TargetChangedRefusalSchema,
   validateParams,
 } from '@abele/node-protocol'
@@ -30,6 +31,9 @@ import { nodeProviders, nodeDebuggerSupported } from './providers'
 import { NodeSessionControl } from './NodeSessionControl'
 import { catchUp, openWindow, readOlder, windowAt } from './sessionWindow'
 import { StableMessages } from './stableMessages'
+import { nodeAdvertisesMethod } from './advertisedMethods'
+import { NodeChatHistory, type NodeHistoryAction, type NodeChatPreview } from './NodeChatHistory'
+import { restoredTranscript } from './restoredTranscript'
 
 import {
   chatMovedNotice,
@@ -80,13 +84,30 @@ const NodeReferenceSchema = z
   .strict()
 
 export class NodeChatPresenter implements ChatPresentationSession {
-  readonly capabilities = {
-    branches: false,
-    rewind: false,
-    editHistory: false,
-    attachments: false,
-    vaultResources: false,
+  get capabilities() {
+    return {
+      branches: this.historySupported.value,
+      rewind: this.historySupported.value,
+      editHistory: this.historySupported.value,
+      attachments: false,
+      vaultResources: false,
+    }
   }
+  readonly historySupported = computed(() => {
+    void this.nodeDescription.value
+    void this.connection.state.value
+    return (
+      this.provider.value === 'pi' &&
+      ['chat.checkpoints', 'chat.preview', 'chat.restore'].every((method) =>
+        nodeAdvertisesMethod(this.connection.client, method)
+      )
+    )
+  })
+  readonly history: NodeChatHistory
+  readonly historyBusy = ref(false)
+  private historyDirty = true
+  private readonly inheritedPrefixes = new Map<string, Promise<JournalEvent[]>>()
+  private readonly restoredPrefixComplete = ref(false)
   readonly projection = ref(reduceTranscript([]))
   readonly messages = computed(() => this.projection.value.messages)
   readonly isStreaming = computed(() => this.projection.value.state === 'running')
@@ -108,7 +129,10 @@ export class NodeChatPresenter implements ChatPresentationSession {
   /** Why the last earlier page could not be read; said on its line, not as the chat's error. */
   readonly olderError = ref('')
   /** There is more of the session before what is shown. */
-  readonly hasOlder = computed(() => (this.older.value[0]?.seq ?? this.firstKept.value) > 1)
+  readonly hasOlder = computed(
+    () =>
+      !this.restoredPrefixComplete.value && (this.older.value[0]?.seq ?? this.firstKept.value) > 1
+  )
   readonly providerReports = ref<ReturnType<typeof nodeProviders>>([])
   readonly nodeDescription = ref<unknown>()
   readonly binding = ref<ChatBinding | null>()
@@ -190,6 +214,11 @@ export class NodeChatPresenter implements ChatPresentationSession {
       report: (error) => this.report(error),
       open: (sessionId) => this.openSession?.(sessionId),
     })
+    this.history = new NodeChatHistory(
+      () => connection.client,
+      reference.sessionId,
+      () => this.historyUnavailable()
+    )
     const expected = connection.client.target.expected_node_id
     if (expected && expected !== reference.nodeId)
       throw new UiError(uiMessage('streamB.nodeTabIdentityDoesNotMatchIts.8a5f7e'))
@@ -204,6 +233,8 @@ export class NodeChatPresenter implements ChatPresentationSession {
     )
     this.stopEvent = connection.client.onEvent((event) => {
       if (event.stream_id === reference.sessionId) {
+        if (['chat.checkpoint', 'chat.restored', 'session.updated'].includes(event.type))
+          this.historyDirty = true
         this.refreshSoon()
         if (LIVE_STATE_EVENTS.has(event.type)) void this.readLive()
         if (event.type === 'session.update' && commandsChanged(event.data)) void this.readCommands()
@@ -263,6 +294,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
       this.nodeDescription.value = description
       this.providerReports.value = nodeProviders(description)
       await this.refreshBinding()
+      this.historyDirty = true
     })().finally(() => {
       if (this.describing?.generation === generation) this.describing = undefined
     })
@@ -359,8 +391,12 @@ export class NodeChatPresenter implements ChatPresentationSession {
           this.visibleHead = Math.max(this.visibleHead, event.seq)
         }
         const visible = [...this.visibleEvents.values()].sort((a, b) => a.seq - b.seq)
+        const active = await restoredTranscript(visible, (source, before) =>
+          this.readPrefix(source, before)
+        )
+        this.restoredPrefixComplete.value = visible.some((event) => event.type === 'chat.restored')
         const hydrated = []
-        for (const event of visible) {
+        for (const event of active) {
           const data = event.data as Record<string, unknown>
           const id = data?.artifact_id
           // A record the node mapped is shown through its updates: nothing to read back.
@@ -371,7 +407,10 @@ export class NodeChatPresenter implements ChatPresentationSession {
           ) {
             if (!artifactData[id] && client.connected && !this.unusableArtifacts.has(id)) {
               try {
-                artifactData[id] = await this.cacheArtifact(id, await this.readArtifact(id))
+                artifactData[id] = await this.cacheArtifact(
+                  id,
+                  await this.readArtifact(id, event.stream_id)
+                )
               } catch (error) {
                 if (error instanceof UnusableArtifactError) this.unusableArtifacts.add(id)
                 this.report(error)
@@ -394,7 +433,13 @@ export class NodeChatPresenter implements ChatPresentationSession {
         if (this.destroyed) return
         this.firstKept.value = visible[0]?.seq ?? firstKept
         const projection = reduceTranscript(hydrated)
-        projection.session ??= this.sessionRecord.value
+        const record = visible.findLast((event) =>
+          ['session.created', 'session.updated'].includes(event.type)
+        )
+        const current = SessionSchema.safeParse(record?.data)
+        projection.session = current.success
+          ? current.data
+          : (this.sessionRecord.value ?? projection.session)
         projection.children = this.stable.children(projection.children)
         this.projection.value = projection
         if (projection.session && this.reference.title !== projection.session.title) {
@@ -418,11 +463,129 @@ export class NodeChatPresenter implements ChatPresentationSession {
                 ? t('streamB.reviewBatch.c6d574')
                 : (entry.params as { text: string }).text,
           }))
+        if (this.historySupported.value && this.historyDirty && client.connected) {
+          this.historyDirty = false
+          try {
+            await this.history.read()
+          } catch (error) {
+            this.historyDirty = true
+            this.report(error)
+          }
+        }
       }
     })().finally(() => {
       this.refreshing = undefined
     })
     return this.refreshing
+  }
+
+  private historyUnavailable(): string {
+    if (!this.historySupported.value) return t('streamB.nodeHistoryUnsupported')
+    if (this.connection.state.value !== 'connected') return t('streamB.nodeHistoryOffline')
+    if (this.binding.value === null) return t('streamB.nodeHistoryLegacyTarget')
+    if (!this.binding.value?.incarnation) return t('streamB.nodeHistoryLoadingTarget')
+    if (
+      this.projection.value.activeRuns.length ||
+      this.projection.value.queuedInputs.length ||
+      this.queued.value.length
+    )
+      return t('streamB.nodeHistoryStopFirst')
+    return ''
+  }
+
+  historyState(messageId: string) {
+    if (!this.historySupported.value) return undefined
+    const receipt = messageId.startsWith('operation:')
+      ? (this.receipts.value[messageId.slice(10)]?.result as { input_id?: string } | undefined)
+      : undefined
+    const id = receipt?.input_id ? `input:${receipt.input_id}` : messageId
+    const messages = this.messages.value
+    let index = messages.findIndex((message) => message.id === id)
+    while (index >= 0 && messages[index].role !== 'user') index--
+    const input = index >= 0 ? messages[index] : undefined
+    const point = this.history.checkpoints.value.find(
+      (checkpoint) => `input:${checkpoint.input_id}` === input?.id
+    )
+    return {
+      input,
+      point,
+      reason:
+        this.historyUnavailable() ||
+        (this.historyBusy.value
+          ? t('streamB.nodeHistoryBusy')
+          : !point
+            ? t('streamB.nodeHistoryNoCheckpoint')
+            : ''),
+    }
+  }
+
+  async historyPreview(messageId: string): Promise<NodeChatPreview> {
+    const state = this.historyState(messageId)
+    if (!state?.point || state.reason)
+      throw new Error(state?.reason || t('streamB.nodeHistoryUnsupported'))
+    return this.history.preview(state.point)
+  }
+
+  async restoreHistory(
+    messageId: string,
+    action: NodeHistoryAction,
+    text?: string,
+    files?: NodeChatPreview
+  ): Promise<void> {
+    const state = this.historyState(messageId)
+    if (!state?.point || state.reason)
+      throw new Error(state?.reason || t('streamB.nodeHistoryUnsupported'))
+    this.historyBusy.value = true
+    try {
+      const result = await this.history.restore(state.point, action, text, files)
+      if (action === 'branch') this.openSession?.(result.session_id)
+      else {
+        this.historyDirty = true
+        await this.subscribe()
+        await this.refresh()
+        await this.readLive()
+        if (action === 'rewind' && !this.draft.value.text)
+          this.draft.value.text = state.input?.content ?? ''
+      }
+    } finally {
+      this.historyBusy.value = false
+    }
+  }
+
+  private readPrefix(session: string, before: number): Promise<JournalEvent[]> {
+    const key = `${session}:${before}`
+    const cached = this.inheritedPrefixes.get(key)
+    if (cached) return cached
+    const pending = (async () => {
+      const events: JournalEvent[] = []
+      while (events.length < before) {
+        const raw = await this.connection.client.request('stream.read', {
+          stream_id: session,
+          after_seq: events.length,
+          limit: Math.min(256, before - events.length),
+        })
+        const page = Array.isArray(raw) ? raw.map((event) => NodeEventSchema.parse(event)) : []
+        const after = events.length
+        if (
+          !page.length ||
+          page.length > before - after ||
+          page.some(
+            (event, index) =>
+              event.seq !== after + index + 1 ||
+              event.stream_id !== session ||
+              event.node_id !== this.reference.nodeId
+          )
+        )
+          throw new Error(t('streamB.nodeHistoryCannotRead'))
+        events.push(...page)
+      }
+      return events
+    })().catch((error: unknown) => {
+      this.inheritedPrefixes.delete(key)
+      throw error
+    })
+    this.inheritedPrefixes.set(key, pending)
+    return pending
   }
 
   /** Persist on the node so its catalog and every device see the same title. */
@@ -932,12 +1095,15 @@ export class NodeChatPresenter implements ChatPresentationSession {
     return data
   }
 
-  private async readArtifact(artifactId: string): Promise<string> {
+  private async readArtifact(
+    artifactId: string,
+    sessionId = this.reference.sessionId
+  ): Promise<string> {
     const parts: Uint8Array[] = []
     let offset = 0
     while (true) {
       const result = (await this.connection.client.request('artifact.read', {
-        session_id: this.reference.sessionId,
+        session_id: sessionId,
         artifact_id: artifactId,
         offset,
         length: 128 * 1024,
@@ -997,5 +1163,6 @@ export class NodeChatPresenter implements ChatPresentationSession {
     this.stopWatch()
     this.stopDraftWatch()
     this.visibleEvents.clear()
+    this.inheritedPrefixes.clear()
   }
 }

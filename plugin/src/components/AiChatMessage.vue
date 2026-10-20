@@ -326,6 +326,7 @@
       "
       :message="message"
       :read-only="readOnlyHistory || !!message.answerCheck"
+      :extra-actions="!!extendActions"
       :can-comment="canComment && !message.answerCheck"
       :can-reply="answerable && !message.answerCheck"
       :expanded="expanded"
@@ -470,6 +471,8 @@ import type { SelectionMenuItem } from '@/scripting/selectionMenuScripts'
 const props = defineProps<{
   message: ChatMessage
   readOnlyHistory?: boolean
+  /** Provider-native actions compose the ordinary message menu without enabling vault edits. */
+  extendActions?: (menu: Menu) => void
   /** Local chats only; node/provider-native sessions cannot be cloned into a vault chat. */
   canClone?: boolean
   /** Its thought is still being written: open until the agent moves on, folded after. */
@@ -630,6 +633,7 @@ function showActions(event: MouseEvent) {
         add(t('streamB.askHere.7b4ec4'), 'message-square', 'direct', () => comments.askHere())
     }
   }
+  props.extendActions?.(menu)
   if (props.readOnlyHistory) return menu.showAtMouseEvent(event)
   if (props.message.role === 'user')
     add(t('streamB.repeat.b6b7a0'), 'repeat', 'message', () =>

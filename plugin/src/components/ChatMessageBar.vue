@@ -49,7 +49,7 @@
         </template>
       </template>
       <Icon
-        v-if="!readOnly || mobile"
+        v-if="!readOnly || mobile || extraActions"
         icon="ellipsis"
         size="xs"
         :label="t('chat.moreActions')"
@@ -85,6 +85,7 @@ import type { ChatMessage } from '@/ai/types'
 const props = defineProps<{
   message: ChatMessage
   readOnly?: boolean
+  extraActions?: boolean
   canComment?: boolean
   /** An answer of the agent the message being written can reply to. */
   canReply?: boolean

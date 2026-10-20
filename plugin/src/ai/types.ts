@@ -696,6 +696,8 @@ export interface ChatMessage {
   /** A successfully saved image, copied from the tool's own result details, never model text. */
   toolImagePath?: string
   toolDiff?: ChatMessageDiff
+  /** Node turn identity; a live provider process may handle many turns. */
+  nodeTurnId?: string
   /** What another agent calls its tool call, in words («Edit src/app.ts»), when it says. */
   toolTitle?: string
   /** The file a tool call works on, as its agent reports it. */

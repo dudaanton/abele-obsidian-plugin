@@ -6,6 +6,36 @@ export const streamB = {
   'streamB.stoppedByYou': 'Von dir gestoppt. Die Aufgabe ist möglicherweise unvollständig.',
   'streamB.writesWithoutAsking': 'Schreiben ohne Nachfrage · Jedes Mal fragen',
   'streamB.chatChanges': 'Änderungen aus diesem Chat',
+  'streamB.nodeHistoryFreshPreview':
+    'Fordere vor dem Zurücksetzen der Dateien eine neue Vorschau an.',
+  'streamB.nodeHistoryCannotRead':
+    'Der frühere Gesprächsverlauf konnte nicht gelesen werden. Verbinde dich erneut und lade ihn noch einmal.',
+  'streamB.nodeHistoryUnsupported':
+    'Dieser Knoten bietet noch keine Aktionen für den Chatverlauf an.',
+  'streamB.nodeHistoryOffline': 'Verbinde dich vor dem Ändern des Chatverlaufs erneut.',
+  'streamB.nodeHistoryLegacyTarget':
+    'Wähle zuerst einen ausdrücklichen Ordner oder Worktree für diesen Chat.',
+  'streamB.nodeHistoryLoadingTarget': 'Der Chatordner wird noch geladen.',
+  'streamB.nodeHistoryStopFirst':
+    'Stoppe zuerst den Agenten und warte auf die Nachrichten in der Warteschlange.',
+  'streamB.nodeHistoryBusy': 'Eine Verlaufsaktion läuft noch.',
+  'streamB.nodeHistoryNoCheckpoint': 'Vor dieser Nachricht ist kein Prüfpunkt verfügbar.',
+  'streamB.nodeHistoryEditPrompt': 'Diese Nachricht bearbeiten',
+  'streamB.nodeHistoryEditLimit': 'Die neue Nachricht darf höchstens 32.768 Zeichen enthalten.',
+  'streamB.nodeHistoryFilesOff':
+    'Dateien bleiben unverändert, bis du dies aktivierst und unten bestätigst.',
+  'streamB.nodeHistoryFileMode': 'Dateirechte: {before} → {after}',
+  'streamB.nodeHistoryTruncated':
+    'Diese Vorschau ist unvollständig. Die Bestätigung stellt den vollständigen Dateiinhalt und die Rechte wieder her.',
+  'streamB.nodeHistoryBinary':
+    'Binärinhalt oder Textvorschau nicht verfügbar. Die Änderung umfasst Dateiinhalt und Rechte.',
+  'streamB.nodeHistoryNoReplay':
+    'Diese Aktion wird nicht automatisch wiederholt. Prüfe die Dateien vor einer neuen Vorschau.',
+  'streamB.nodeHistoryRefreshPreview': 'Vorschau aktualisieren',
+  'streamB.nodeHistoryEditSend': 'Bearbeitete Nachricht senden',
+  'streamB.nodeHistoryRestored': 'Chatverlauf wiederhergestellt. Dateien unverändert.',
+  'streamB.nodeHistoryFilesRestored':
+    'Chatverlauf mit den bestätigten Dateiänderungen wiederhergestellt.',
   'streamB.nodeStopped': 'Von dir gestoppt',
   'streamB.nodeStartFailed': 'Der Agent konnte nicht starten: {reason}.',
   'streamB.nodeTestAgent': 'Testagent',

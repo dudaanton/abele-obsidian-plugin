@@ -6,6 +6,34 @@ export const streamB = {
   'streamB.stoppedByYou': 'Lo has detenido. La tarea puede estar sin terminar.',
   'streamB.writesWithoutAsking': 'Escritura sin preguntar · Preguntar siempre',
   'streamB.chatChanges': 'Cambios de este chat',
+  'streamB.nodeHistoryFreshPreview': 'Solicita una vista previa nueva antes de restaurar archivos.',
+  'streamB.nodeHistoryCannotRead':
+    'No se pudo leer la conversación anterior. Vuelve a conectarte e intenta cargarla de nuevo.',
+  'streamB.nodeHistoryUnsupported': 'Este nodo aún no ofrece acciones del historial del chat.',
+  'streamB.nodeHistoryOffline': 'Vuelve a conectarte antes de cambiar el historial del chat.',
+  'streamB.nodeHistoryLegacyTarget':
+    'Primero elige una carpeta o árbol de trabajo explícito para este chat.',
+  'streamB.nodeHistoryLoadingTarget': 'La carpeta del chat todavía se está cargando.',
+  'streamB.nodeHistoryStopFirst':
+    'Primero detén el agente y espera a que terminen los mensajes en cola.',
+  'streamB.nodeHistoryBusy': 'Hay una acción del historial en curso.',
+  'streamB.nodeHistoryNoCheckpoint': 'No hay un punto de control antes de este mensaje.',
+  'streamB.nodeHistoryEditPrompt': 'Editar este mensaje',
+  'streamB.nodeHistoryEditLimit': 'El mensaje nuevo debe tener como máximo 32.768 caracteres.',
+  'streamB.nodeHistoryFilesOff':
+    'Los archivos se quedan como están hasta que actives esta opción y confirmes abajo.',
+  'streamB.nodeHistoryFileMode': 'Permisos del archivo: {before} → {after}',
+  'streamB.nodeHistoryTruncated':
+    'Esta vista previa es parcial. La confirmación restaura todo el contenido y los permisos del archivo.',
+  'streamB.nodeHistoryBinary':
+    'Contenido binario o vista previa de texto no disponible. El cambio incluye contenido y permisos.',
+  'streamB.nodeHistoryNoReplay':
+    'Esta acción no se repetirá automáticamente. Revisa los archivos antes de pedir una vista previa nueva.',
+  'streamB.nodeHistoryRefreshPreview': 'Actualizar vista previa',
+  'streamB.nodeHistoryEditSend': 'Enviar el mensaje editado',
+  'streamB.nodeHistoryRestored': 'Historial del chat restaurado. Archivos sin cambios.',
+  'streamB.nodeHistoryFilesRestored':
+    'Historial del chat restaurado con los cambios de archivos confirmados.',
   'streamB.nodeStopped': 'Detenido por ti',
   'streamB.nodeStartFailed': 'El agente no pudo iniciarse: {reason}.',
   'streamB.nodeTestAgent': 'Agente de prueba',

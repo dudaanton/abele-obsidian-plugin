@@ -2846,6 +2846,13 @@ local storage. It also uses the latest session or a configured provider when the
 choice. Chosen text attachments are quoted into the node chat draft; sending includes their
 content in the ordinary message, without creating a vault attachment or uploading a device path.
 
+Node chat checkpoints and their file snapshots remain on the node. Rewind, branch, edit and
+retry change conversation context without restoring files. Only the rewind dialog's explicit
+file switch and confirmation send the exact preview identity and ordered file hashes to the
+node. A failed or uncertain restore is never automatically replayed. Restored transcripts
+project immutable journal prefixes, retaining the original events as evidence rather than
+deleting history from device storage. Branches keep the source conversation intact.
+
 ## Zen preferences
 
 Plugin settings store `zen.width` (the shared page width, default 700 pixels) and

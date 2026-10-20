@@ -9,6 +9,7 @@ import {
   type ToolContent,
 } from '@abele/node-protocol'
 import type { ChatMessage } from '@/ai/types'
+import { readAgentReplyText } from '@/ai/replyLinks'
 
 type ProtocolEvent = Parameters<typeof sessionUpdatesOf>[0]
 type Message = (id: string, role: ChatMessage['role']) => ChatMessage
@@ -30,7 +31,8 @@ export function eventProvider(event: Pick<JournalEvent, 'type' | 'actor'>): stri
  * `session.update` beside it, never twice.
  */
 export function updatesOf(event: JournalEvent): SessionUpdate[] {
-  if (event.type === 'session.update') return sessionUpdatesOf(event as ProtocolEvent)
+  if (event.type === 'session.update' || event.type === 'input.accepted')
+    return sessionUpdatesOf(event as ProtocolEvent)
   const data = event.data as Record<string, unknown> | null
   if (!data || typeof data !== 'object' || data.mapped === true) return []
   const actor = event.actor as { kind: string }
@@ -120,7 +122,7 @@ export class UpdateTranscript {
   }
 
   /** Applies one update; `seq` places what the list and plan say in the journal. */
-  apply(update: SessionUpdate, provider: string, run: string, seq: number): void {
+  apply(update: SessionUpdate, provider: string, run: string, seq: number, turn = ''): void {
     switch (update.kind) {
       case 'agent_message_chunk':
       case 'agent_message':
@@ -132,7 +134,10 @@ export class UpdateTranscript {
         return this.tool(update, provider, run)
       case 'plan':
         this.plan = update.entries
-        this.message(JSON.stringify(['plan', run]), 'system').sessionPlan = update.entries
+        this.message(
+          JSON.stringify(turn ? ['plan', run, turn] : ['plan', run]),
+          'system'
+        ).sessionPlan = update.entries
         return
       case 'current_mode_update':
         this.mode = update.mode_id
@@ -171,9 +176,13 @@ export class UpdateTranscript {
         line.sessionMark = { kind: 'notice', level: update.level, text }
         return
       }
-      // The node's own record of the input already shows what was written.
-      case 'user_message':
+      case 'user_message': {
+        const m = this.message(`input:${update.message_id}`, 'user')
+        const replied = readAgentReplyText(update.text)
+        m.content = replied?.content ?? update.text
+        if (replied) m.replyTo = replied.replyTo
         return
+      }
     }
   }
 

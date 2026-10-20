@@ -202,6 +202,7 @@ export class NodeSessionControl {
     const modes = configuration.permission_modes ?? provider?.permission_modes ?? []
     // Claude Code takes its aliases; any other agent offers the models it reported.
     const modelOption = agent?.options.find((o) => o.category === 'model')
+    const accountOption = agent?.options.find((o) => o.id === 'account')
     const offered = modelOption?.options?.map((o) => o.value) ?? []
     const settings: SessionSettings = {
       model:
@@ -238,11 +239,12 @@ export class NodeSessionControl {
         accounts: [...new Set([...(configuration.accounts ?? []), settings.account])].map((a) =>
           choice(
             a,
-            name === 'claude'
-              ? accountLabel(a)
-              : a === 'default'
-                ? t('streamB.nodeDefaultAccount')
-                : a
+            accountOption?.options?.find((o) => o.value === a)?.name ||
+              (name === 'claude'
+                ? accountLabel(a)
+                : a === 'default'
+                  ? t('streamB.nodeDefaultAccount')
+                  : a)
           )
         ),
         bypassAllowed: modes.includes('bypassPermissions'),

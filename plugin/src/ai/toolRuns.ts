@@ -185,7 +185,7 @@ export function chatBlocks(messages: readonly ChatMessage[]): ChatBlock[] {
     const last = out.at(-1)
     if (ownLine(message)) out.push({ kind: 'message', message })
     else if (message.role === 'tool-call') {
-      if (last?.kind === 'run') {
+      if (last?.kind === 'run' && last.calls[0]?.nodeTurnId === message.nodeTurnId) {
         last.calls.push(message)
         last.messages.push(message)
       } else out.push({ kind: 'run', id: message.id, calls: [message], messages: [message] })
