@@ -13,6 +13,26 @@ const chats = T.ChatService.getInstance(), nodes = T.NodeService.getInstance();
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const until = async fn => { for(let i=0;i<300;i++){if(fn())return;await wait(50)}throw Error('Delegation UI did not converge: '+fn.toString()) };`
 
+// The CLI can acknowledge reload before the replacement bundle publishes its test API.
+// Capturing the previous ChatService would wait on an instance that unload then destroys.
+function reloadDelegationPlugin() {
+  evalAsync(
+    `(() => { window.__sampleDelegationPreviousApi = window.__abeleTest; return JSON.stringify(true) })()`
+  )
+  reloadPlugin()
+  evalAsync(`(async () => {
+    for (let i=0;i<300;i++) {
+      if (window.__abeleTest && window.__abeleTest !== window.__sampleDelegationPreviousApi) {
+        delete window.__sampleDelegationPreviousApi;
+        return JSON.stringify(true);
+      }
+      await new Promise(resolve => setTimeout(resolve,50));
+    }
+    delete window.__sampleDelegationPreviousApi;
+    throw Error('Replacement plugin API did not load');
+  })()`)
+}
+
 it('a normal plugin agent delegates through owner UI to both fake providers, survives offline completion and opens the child normally', async () => {
   const cli = process.env.ABELE_NODE_CLI
   if (!cli) throw new Error('Set ABELE_NODE_CLI to a built daemon CLI for delegation acceptance')
@@ -163,6 +183,7 @@ it('a normal plugin agent delegates through owner UI to both fake providers, sur
       try {
         for(provider of ['claude','pi']) {called=false;await session.sendMessage('Delegate sample '+provider+' task');if(session.error.value)throw Error(session.error.value)}
         await session.save(); await connection.refreshDelegations();
+        await until(() => app.loadLocalStorage('abele-agent-tabs')?.tabs?.some(tab => tab.chatFilePath === ${JSON.stringify(path)}));
         const cards=await connection.delegation.cards(session.delegationParentId);
         if(cards.length!==2)throw Error('Expected two child links: '+JSON.stringify(cards));
         const state=await connection.store.transaction(s=>Object.values(s.delegation.tasks).map(t=>({sessionId:t.child.session_id,delegationId:t.child.delegation_id,mailbox:t.child.mailbox_stream_id})));
@@ -188,7 +209,7 @@ it('a normal plugin agent delegates through owner UI to both fake providers, sur
         throw Error('Offline delegated tasks did not complete: ' + JSON.stringify(histories))
       await wait(25)
     }
-    reloadPlugin()
+    reloadDelegationPlugin()
     const result = evalAsync<{
       states: string[]
       results: string[]
@@ -216,7 +237,7 @@ it('a normal plugin agent delegates through owner UI to both fake providers, sur
       return JSON.stringify(child.reference.sessionId)
     })()`)
     expect(opened).toBe(children[0].sessionId)
-    reloadPlugin()
+    reloadDelegationPlugin()
     const once = evalAsync<number[]>(`(async () => {
       ${PRELUDE}
       await until(()=>nodes.connection(${JSON.stringify(registration)}).delegationCards.value[${JSON.stringify(parentId)}]?.length===2);
@@ -226,6 +247,7 @@ it('a normal plugin agent delegates through owner UI to both fake providers, sur
   } finally {
     try {
       evalAsync(`(async () => {
+        delete window.__sampleDelegationPreviousApi;
         ${PRELUDE}
         const fixtureAgent = ${JSON.stringify(agentId)} || chats.getSessionByFile(${JSON.stringify(path)})?.agent.value?.id;
         for(const id of [...chats.tabOrder.value]) {const child=chats.getNodeSession(id),parent=chats.getSession(id);if(child?.reference.registrationId===${JSON.stringify(registration)}||parent?.currentChatFile.value?.path===${JSON.stringify(path)})await chats.closeTab(id)}
