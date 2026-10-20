@@ -385,10 +385,12 @@ export class TokenUi {
         const set = this.itemSets.store.get(row.id)
         if (!set) return row
         const active = set.items.filter((item) => !item.detached)
-        const statuses = active.flatMap(
-          (item) =>
-            this.registry.records().find((record) => record.id === item.recordId)?.status ?? []
-        )
+        const statuses = active.flatMap((item): TokenConnectionRecord['status'][] => {
+          const status = this.registry
+            .records()
+            .find((record) => record.id === item.recordId)?.status
+          return status ? [status] : []
+        })
         const rank: TokenConnectionRecord['status'][] = [
           'error',
           'needs-token',
@@ -762,7 +764,9 @@ export class TokenUi {
       selective?: import('@abele/sync-sdk/core').SelectiveSettings
     }
   ): Promise<void> {
-    const ids = this.itemSets.store.get(id)?.items.flatMap((item) => item.recordId ?? []) ?? [id]
+    const ids = this.itemSets.store
+      .get(id)
+      ?.items.flatMap((item): string[] => (item.recordId ? [item.recordId] : [])) ?? [id]
     if (patch.address !== undefined) {
       await this.connectionChangeGuard(
         undefined,
