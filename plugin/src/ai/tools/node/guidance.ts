@@ -122,7 +122,7 @@ const NODE_TOOL_DOING: Record<string, string> = {
     'Searches the files of a node folder or worktree: mode literal or regex over contents, filename over names; glob narrows paths.',
   node_git_status: "Lists a Git worktree's changed files (index and working tree).",
   node_git_commit:
-    'Commit already staged changes in a scoped Git worktree. Always asks the owner. Pass message, expected_head from node_git_status and a stable operation_id. Preserve the exact arguments and operation_id on uncertain retries. Does not stage files or push.',
+    'Commit already staged changes in a scoped Git worktree of a trusted project. Always asks the owner. Pass message, expected_head from node_git_status and a stable operation_id. Preserve the exact arguments and operation_id on uncertain retries. Does not stage files or push.',
   node_worktree_remove:
     'Remove a clean developer worktree after explicit owner approval. Pass expected_head and expected_observation_id from node_git_status and a stable operation_id; preserve the exact body and ID on uncertain retries. The node refuses dirty, busy or protected worktrees. Does not remove the branch.',
   node_git_diff:

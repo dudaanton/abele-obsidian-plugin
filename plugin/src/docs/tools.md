@@ -1280,7 +1280,8 @@ actions fail explicitly, with no shell fallback. Git tools reject plain folders.
 `node_git_status` includes the observed `revision`; use its `head` and `observation_id` as the
 preconditions for commit and worktree removal. Both operations always ask the owner, even in
 Everything without asking mode, and require edit scope. Commit includes only already staged
-changes; inspect the staged diff first. Worktree removal leaves the branch and refuses unsafe
+changes; inspect the staged diff first. Committing requires a trusted project because Git hooks
+can execute project code. Worktree removal leaves the branch and refuses unsafe
 targets on the node. Keep the same `operation_id` and exact arguments on a retry after uncertainty;
 never invent a replacement action when the first may have completed. No fast-forward integration
 or direct process execution is available through this protocol yet; do not claim checks were run.

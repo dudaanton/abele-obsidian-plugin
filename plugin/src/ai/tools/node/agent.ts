@@ -600,6 +600,13 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
       }
       const connection = admittedConnection(target.node_id, wanted),
         client = connection.client
+      const requireCommitTrust = async () => {
+        const project = await safe(() => client.getProject(target.project_id))
+        if (project.trust !== 'trusted')
+          throw new Error(
+            'Project is untrusted. The owner must trust this folder before committing; Git hooks can execute project code.'
+          )
+      }
       if (NODE_MANAGER_TOOLS.includes(name)) {
         checks.push(host.ledger.guard(session, target, connection.principal(), 'edit'))
         if (!(ctx.interactive && ctx.approved))
@@ -645,6 +652,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
             )
           // Retry only the exact retained action. Its target may already be gone;
           // re-resolving it would prevent recovering the original deletion receipt.
+          if (name === 'node_git_commit') await requireCommitTrust()
           return retain(
             await safe<unknown>(() =>
               name === 'node_git_commit'
@@ -717,6 +725,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
           .parse(params.expected_head)
         if (name === 'node_git_commit') {
           const message = z.string().min(1).max(8192).parse(params.message)
+          await requireCommitTrust()
           const result = await safe(() =>
             repo.git.commit({ worktree_id: id, expected_head, message }, operation)
           )

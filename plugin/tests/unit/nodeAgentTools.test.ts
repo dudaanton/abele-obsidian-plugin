@@ -14,6 +14,23 @@ import { createNodeAgentTools } from '@/ai/tools/node/agent'
 import { digest, hash, project, workspace, setup, setupGit } from '../helpers/nodeAgentFixture'
 
 describe('Obsidian chat node tools', () => {
+  it('requires folder trust before a manager commit can execute project hooks', async () => {
+    const f = setupGit()
+    const commit = vi.fn(async () => ({ state: 'committed', commit: '2'.repeat(40) }))
+    Object.assign(f.repository, { git: { commit } })
+    await expect(
+      f.call(
+        'node_git_commit',
+        {
+          message: 'Fix sample parser',
+          expected_head: '1'.repeat(40),
+          operation_id: 'sample-commit',
+        },
+        true
+      )
+    ).rejects.toThrow(/trust/i)
+    expect(commit).not.toHaveBeenCalled()
+  })
   it('rechecks node approval after awaiting inherited read authority before issuing a request', async () => {
     const f = setupGit()
     f.session.overrides.value.nodeScope = [
@@ -125,6 +142,7 @@ describe('Obsidian chat node tools', () => {
   })
   it('commits staged work only after explicit owner approval, preserving the operation and head', async () => {
     const f = setupGit()
+    f.client.getProject.mockResolvedValue({ ...(await f.client.getProject()), trust: 'trusted' })
     const commit = vi.fn(async () => ({ state: 'committed', commit: '2'.repeat(40) }))
     Object.assign(f.repository, { git: { commit } })
     const args = {
