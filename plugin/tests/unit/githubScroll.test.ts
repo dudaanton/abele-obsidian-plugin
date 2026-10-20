@@ -59,6 +59,13 @@ afterEach(() => {
 const find = () => target
 
 describe('pinning a target into view', () => {
+  it('keeps a short file pane at its top when its linked line is already visible', () => {
+    targetY = 250
+    Object.defineProperty(pane, 'scrollHeight', { get: () => 524, configurable: true })
+    pinIntoView(target, elementTop(find), { context: 96, keepVisibleInShortPane: true })
+    expect(pane.scrollTop).toBe(0)
+    pane.dispatchEvent(new Event('wheel'))
+  })
   it('scrolls the pane that scrolls, not the clipped element inside it', () => {
     expect(scrollParent(target)).toBe(pane)
     pinIntoView(target, elementTop(find))

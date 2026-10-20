@@ -216,7 +216,10 @@ async function draw() {
     viewer = mountCode(code.value, props.text, props.path, linkedRange.value)
     if (props.line) {
       const drawn = viewer
-      unpin = pinIntoView(code.value, () => drawn.targetTop(), LINE_CONTEXT)
+      unpin = pinIntoView(code.value, () => drawn.targetTop(), {
+        ...LINE_CONTEXT,
+        keepVisibleInShortPane: true,
+      })
     }
   }
 }

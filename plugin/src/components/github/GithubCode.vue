@@ -29,6 +29,7 @@ const props = withDefaults(
     path: string
     /** Opt-in workspace editor; ordinary GitHub code/diff views remain read only. */
     editable?: boolean
+    keepVisibleInShortPane?: boolean
     blame?: BlameRange[] | null
     /** The lines the link named. */
     range?: LineRange
@@ -37,7 +38,14 @@ const props = withDefaults(
     /** A line to bring into view when drawn, rather than the first marked one. */
     focus?: { line: number; context: number } | null
   }>(),
-  { range: undefined, selected: null, focus: null, blame: null, editable: false }
+  {
+    range: undefined,
+    selected: null,
+    focus: null,
+    blame: null,
+    editable: false,
+    keepVisibleInShortPane: false,
+  }
 )
 
 const emit = defineEmits<{
@@ -106,9 +114,13 @@ const draw = async (focus: { line: number; context: number } | null) => {
   if (focus) {
     unpin = pinIntoView(editorEl.value, () => drawn.lineTop(focus.line), {
       context: focus.context,
+      keepVisibleInShortPane: props.keepVisibleInShortPane,
     })
   } else if (props.range) {
-    unpin = pinIntoView(editorEl.value, () => drawn.targetTop(), LINE_CONTEXT)
+    unpin = pinIntoView(editorEl.value, () => drawn.targetTop(), {
+      ...LINE_CONTEXT,
+      keepVisibleInShortPane: props.keepVisibleInShortPane,
+    })
   }
 }
 

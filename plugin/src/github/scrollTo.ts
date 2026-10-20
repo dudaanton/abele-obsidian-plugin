@@ -21,6 +21,8 @@
 export type Locate = () => number | null | { estimate: number }
 
 export interface PinOptions {
+  /** Keep a nearly fitting pane whole when the requested line is already visible. */
+  keepVisibleInShortPane?: boolean
   /** Pixels of what comes before the target left visible above it. */
   context?: number
   /** Give up when the target has not appeared in this long. */
@@ -32,6 +34,7 @@ export interface PinOptions {
 }
 
 const DEFAULTS: Required<PinOptions> = {
+  keepVisibleInShortPane: false,
   context: 16,
   waitMs: 10_000,
   stillMs: 700,
@@ -145,7 +148,17 @@ export function pinIntoView(from: Element, locate: Locate, options: PinOptions =
       const padding = context()
       if (placedAt === 0 || Math.abs(offset - padding) > 2) {
         const before = container.scrollTop
-        placeAt(container, top, padding)
+        const range = container.scrollHeight - container.clientHeight
+        const contentTop = offset + before
+        if (
+          o.keepVisibleInShortPane &&
+          range >= 0 &&
+          range < padding &&
+          contentTop >= padding &&
+          contentTop < container.clientHeight
+        )
+          container.scrollTop = 0
+        else placeAt(container, top, padding)
         // At the end of the scroll range the target is as high as it gets: that is still too.
         if (placedAt === 0 || container.scrollTop !== before) stillSince = now
         if (placedAt === 0) placedAt = now

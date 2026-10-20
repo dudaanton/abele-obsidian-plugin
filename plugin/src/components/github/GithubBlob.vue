@@ -103,6 +103,7 @@
       ref="code"
       :text="visibleText"
       :path="file.path"
+      :keep-visible-in-short-pane="source?.identity.provider === 'node'"
       :editable="
         !!editor &&
         editor.filePath.value === file.path &&
