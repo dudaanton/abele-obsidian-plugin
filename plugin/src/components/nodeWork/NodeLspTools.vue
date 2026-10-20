@@ -313,12 +313,14 @@ onBeforeUnmount(() => {
 .abele-lsp-notice {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: var(--size-4-2);
 }
 .abele-lsp-notice > span {
-  flex: 1 1 16em;
+  flex: 1 1 0;
   min-width: 0;
+}
+.abele-lsp-notice > .abele-obsidian-button {
+  flex-shrink: 0;
 }
 .abele-lsp-actions {
   display: flex;

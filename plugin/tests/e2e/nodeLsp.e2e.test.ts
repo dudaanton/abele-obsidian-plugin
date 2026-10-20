@@ -71,8 +71,10 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
             p.target.dispatchEvent(new MouseEvent('mouseleave',{bubbles:true,clientX:0,clientY:0}));
             if (${mobile}) {
               phase = 'long-press';
-              const touch=new Event('touchstart',{bubbles:true});Object.defineProperty(touch,'touches',{value:[{clientX:p.x,clientY:p.y}]});p.target.dispatchEvent(touch);
+              const finger = new Touch({identifier:1,target:p.target,clientX:p.x,clientY:p.y,pageX:p.x+scrollX,pageY:p.y+scrollY});
+              p.target.dispatchEvent(new TouchEvent('touchstart',{bubbles:true,cancelable:true,view:window,touches:[finger],targetTouches:[finger],changedTouches:[finger]}));
               await until(() => [...document.querySelectorAll('.menu-item-title')].some(e=>e.textContent.includes('Go to definition')));
+              p.target.dispatchEvent(new TouchEvent('touchend',{bubbles:true,cancelable:true,view:window,touches:[],targetTouches:[],changedTouches:[finger]}));
               await shot('long-press');
               [...document.querySelectorAll('.menu-item-title')].find(e=>e.textContent.includes('Go to definition')).closest('.menu-item').click();
             } else p.target.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,button:0,metaKey:true,clientX:p.x,clientY:p.y}));
