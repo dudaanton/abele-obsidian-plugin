@@ -26628,5 +26628,45 @@
       "es",
       "de"
     ]
+  },
+  "image.timeLimit.label": {
+    "englishHash": "ade0432621c7ee74ccf0c7db11b3c92f3759850c879a64027a41f95bb70fcb94",
+    "context": "Image generation time limit setting",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "image.timeLimit.unlimited": {
+    "englishHash": "6362c713def573ca9a0c16a72a3649d63eb167ee81c0c4bac52704996a9c4ca9",
+    "context": "Image generation time limit setting",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "image.timeLimit.minutes": {
+    "englishHash": "42a02d9235b5f3af154795e6b568267c802cb54252a83de3745231b22582aa81",
+    "context": "Image generation time limit setting",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "image.timeLimit.error": {
+    "englishHash": "7ab221ebc30ffa15f36d629c9ec94828f29ee18da6d510fb5f584e0937e0e474",
+    "context": "Image generation time limit setting",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }
