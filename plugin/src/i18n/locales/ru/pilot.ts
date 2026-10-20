@@ -3673,4 +3673,6 @@ export const ru = {
   'node.manager.exited': 'Завершено',
   'node.manager.timedOut': 'Достигнут лимит времени',
   'node.manager.denied': 'Отклонено',
+  'node.error.backpressure':
+    'Соединение не успело получить вывод узла. Переподключитесь, чтобы получить оставшиеся события.',
 } satisfies TranslationCatalog

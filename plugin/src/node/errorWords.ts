@@ -65,6 +65,7 @@ const groups: readonly [NodeErrorKey, readonly string[]][] = [
     ],
   ],
   ['node.error.outputLimit', ['output_limit']],
+  ['node.error.backpressure', ['slow_consumer']],
   ['node.error.busy', ['resource_busy']],
   ['node.error.limit', ['rate_limit', 'rate_limited', 'quota_exceeded']],
   [

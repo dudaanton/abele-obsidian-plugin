@@ -3602,4 +3602,6 @@ export const lv = {
   'node.manager.exited': 'Pabeigts',
   'node.manager.timedOut': 'Sasniegts laika ierobežojums',
   'node.manager.denied': 'Noraidīts',
+  'node.error.backpressure':
+    'Savienojums atpalika no mezgla izvades. Izveidojiet savienojumu vēlreiz, lai saņemtu atlikušos notikumus.',
 } satisfies TranslationCatalog

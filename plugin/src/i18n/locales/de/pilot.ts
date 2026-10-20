@@ -3643,4 +3643,6 @@ export const de = {
   'node.manager.exited': 'Beendet',
   'node.manager.timedOut': 'Zeitlimit erreicht',
   'node.manager.denied': 'Abgelehnt',
+  'node.error.backpressure':
+    'Die Verbindung konnte der Knotenausgabe nicht folgen. Verbinden Sie sich erneut, um aufzuholen.',
 } satisfies TranslationCatalog

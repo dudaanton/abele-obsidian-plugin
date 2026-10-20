@@ -3671,4 +3671,6 @@ export const es = {
   'node.manager.exited': 'Finalizado',
   'node.manager.timedOut': 'Se alcanzó el límite de tiempo',
   'node.manager.denied': 'Denegado',
+  'node.error.backpressure':
+    'La conexión no pudo seguir la salida del nodo. Vuelva a conectarse para recibir los eventos pendientes.',
 } satisfies TranslationCatalog

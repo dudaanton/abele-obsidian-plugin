@@ -3502,4 +3502,5 @@ export const en = {
   'node.manager.exited': 'Finished',
   'node.manager.timedOut': 'Time limit reached',
   'node.manager.denied': 'Denied',
+  'node.error.backpressure': "The connection fell behind the node's output. Reconnect to catch up.",
 } as const

@@ -865,7 +865,10 @@ export class NodeChatPresenter implements ChatPresentationSession {
         throw new UiError(uiMessage('streamB.reconnectBeforeStoppingARun.5e2dbd'))
       const current = this.projection.value.prompts.find((p) => p.prompt_id === prompt.prompt_id)
       if (!current || current.state !== 'pending' || current.run_id !== prompt.run_id) return
-      if (['command.v1.run', 'git.v1.integrate'].includes(String(prompt.input?.method))) {
+      if (
+        prompt.input?.method === 'command.v1.run' ||
+        prompt.input?.method === 'git.v1.integrate'
+      ) {
         await cancelOwnerManagerRun(this.connection.client, prompt)
         await this.refresh()
         return
