@@ -435,7 +435,7 @@ export const NODE_ACTIONS: readonly {
 ]
 
 const NODE_EDIT_TOOL = /^node_(write|edit|replace|mv|cp|rm|path_file_operations|propose_edit)$/
-const NODE_WORKTREE_TOOL = /^(list_node_worktrees|node_worktree_switch)$/
+const NODE_WORKTREE_TOOL = /^(list_node_worktrees|node_worktree_switch|node_worktree_remove)$/
 const NODE_DELEGATE_TOOL = /^node_delegat/
 const NODE_DEBUGGER_TOOL = /^(trace_|http_)/
 
@@ -454,6 +454,7 @@ export const LEGACY_NODE_TOOLS: ReadonlySet<string> = new Set([
 
 /** The action a node tool belongs to; one nothing else claims is reading, the safe side. */
 export function nodeAction(name: string): (typeof NODE_ACTIONS)[number]['id'] {
+  if (name === 'node_git_commit') return 'edit'
   if (NODE_EDIT_TOOL.test(name)) return 'edit'
   if (NODE_WORKTREE_TOOL.test(name)) return 'worktrees'
   if (NODE_DELEGATE_TOOL.test(name)) return 'delegate'

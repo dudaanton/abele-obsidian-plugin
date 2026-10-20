@@ -1,4 +1,5 @@
 import type { NodeClient, RepositoryRevision } from '@abele/node-client'
+import { t } from '@/i18n'
 import * as protocol from '@abele/node-protocol'
 import { z } from 'zod'
 import { sha256 } from '@noble/hashes/sha2'
@@ -31,6 +32,7 @@ import {
   resolveNodeTarget,
 } from './guidance'
 export { NODE_EDIT_TOOLS, NODE_FILE_OPERATIONS, NODE_MUTATION_TOOLS } from './guidance'
+export const NODE_MANAGER_TOOLS = ['node_git_commit', 'node_worktree_remove']
 export const NODE_AGENT_TOOL_NAMES = [
   'node_nodes',
   'node_folders',
@@ -45,6 +47,7 @@ export const NODE_AGENT_TOOL_NAMES = [
   'node_git_log',
   'node_git_blame',
   'node_worktree_switch',
+  ...NODE_MANAGER_TOOLS,
 ]
 export interface NodeAgentConnection {
   client: NodeClient
@@ -59,6 +62,10 @@ export interface NodeAgentHost {
   /** Registry aliases are device-local; persisted scope uses the stable daemon ID. */
   nodeId?(id: string): string
   connection(node: string, chat?: NodeScopeChat): NodeAgentConnection
+  childReadGuard?(
+    chat: ChatSession,
+    target: NodeScopeTarget
+  ): Promise<(() => Promise<void>) | undefined>
   /** Trusted operation-ID allocator; production uses random IDs. */
   newOperationId?(tool: string): string
 }
@@ -199,6 +206,7 @@ type Pending = {
   session: ChatSession
   tool: string
   guard(): void
+  readGuard?: () => Promise<void>
   text: string
   next?: () => Promise<AgentToolResult>
   expires: number
@@ -232,7 +240,12 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
   }
   return NODE_AGENT_TOOL_NAMES.map((name) => ({
     name,
-    label: name.replaceAll('_', ' '),
+    label:
+      name === 'node_git_commit'
+        ? t('streamB.commit.82a9c4')
+        : name === 'node_worktree_remove'
+          ? t('streamB.deleteTheWorktree.ca8a5f')
+          : name.replaceAll('_', ' '),
     category: 'Node files',
     description: nodeToolDescription(name),
     parameters: {
@@ -256,6 +269,9 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
             'base',
             'cursor',
             'operation_id',
+            'expected_head',
+            'expected_observation_id',
+            'message',
           ].map((key) => [key, { type: 'string' }])
         ),
         expected_content_id: { type: ['string', 'null'] },
@@ -286,10 +302,12 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
         if ((await factory()) !== entry.host)
           throw new Error('Node authority host changed; repeat the read')
         entry.guard()
+        await entry.readGuard?.()
         pending.delete(cursor)
         return entry.text ? page(entry) : entry.next!()
       }
       const host = await factory()
+      let childReadGuard: (() => Promise<void>) | undefined
       const checks: (() => void)[] = []
       const guard = () => {
         signal?.throwIfAborted()
@@ -300,7 +318,15 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
         const value = typeof result === 'string' ? result : JSON.stringify(result, null, 2)
         if (new TextEncoder().encode(value).length > 4 * 1024 * 1024)
           throw new Error('Result too large; narrow the read')
-        return page({ host, session, tool: name, guard, text: value, expires: Date.now() + 600000 })
+        return page({
+          host,
+          session,
+          tool: name,
+          guard,
+          readGuard: childReadGuard,
+          text: value,
+          expires: Date.now() + 600000,
+        })
       }
       const scopes = nodeScopeEntries(session)
       // Where the call wanted to go, for a refusal the chat can act on.
@@ -350,7 +376,12 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
       }
       const safe = async <T>(work: () => Promise<T>): Promise<T> => {
         guard()
+        if (childReadGuard) {
+          await childReadGuard()
+          guard()
+        }
         const result = await work()
+        if (childReadGuard) await childReadGuard()
         guard()
         return result
       }
@@ -568,8 +599,78 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
       }
       const connection = admittedConnection(target.node_id, wanted),
         client = connection.client
+      if (NODE_MANAGER_TOOLS.includes(name)) {
+        checks.push(host.ledger.guard(session, target, connection.principal(), 'edit'))
+        if (!(ctx.interactive && ctx.approved))
+          throw new Error('Explicit owner approval is required')
+        const operation = z.string().min(1).max(128).parse(params.operation_id)
+        const method =
+          name === 'node_git_commit' ? 'repository.v1.git.commit' : 'repository.v1.worktree.delete'
+        const request = {
+          worktree_id: nodeTargetId(target.target),
+          expected_head: z
+            .string()
+            .regex(/^[a-f0-9]{40,64}$/)
+            .parse(params.expected_head),
+          ...(name === 'node_git_commit'
+            ? { message: z.string().min(1).max(8192).parse(params.message) }
+            : {
+                expected_observation_id: z
+                  .string()
+                  .min(1)
+                  .max(128)
+                  .parse(params.expected_observation_id),
+              }),
+        }
+        const receipt = await safe(
+          () => client.operationResult?.(operation) ?? Promise.resolve(undefined)
+        )
+        const pending = await safe(() =>
+          client.store.transaction((s) =>
+            s.outbox.find((entry) => entry.operation_id === operation)
+          )
+        )
+        const retained = receipt?.request ?? pending
+        if (retained) {
+          if (
+            retained.method !== method ||
+            nodeMutationKey('', name, target, retained.params) !==
+              nodeMutationKey('', name, target, request)
+          )
+            throw new Error('Operation identity belongs to a different manager action')
+          if (receipt)
+            return retain(
+              receipt.error ? { state: 'failed', error: receipt.error } : receipt.result
+            )
+          // Retry only the exact retained action. Its target may already be gone;
+          // re-resolving it would prevent recovering the original deletion receipt.
+          return retain(
+            await safe(() =>
+              name === 'node_git_commit'
+                ? client.repository.git.commit(
+                    protocol.RepositoryGitMethodSchemas['repository.v1.git.commit'].parse(request),
+                    operation
+                  )
+                : client.nodePath.deleteWorktree(
+                    protocol.NodePathMethodSchemas['repository.v1.worktree.delete'].parse(request),
+                    operation
+                  )
+            )
+          )
+        }
+      }
+      const writes =
+        NODE_MUTATION_TOOLS.includes(name) ||
+        NODE_MANAGER_TOOLS.includes(name) ||
+        name === 'node_worktree_switch'
+      const ordinarilyCovered = host.ledger
+        .approvedEntries(session, target.node_id, connection.principal())
+        .some((entry) => coversNodeScope(entry, target, 'read'))
+      if (!writes && !ordinarilyCovered)
+        childReadGuard = await host.childReadGuard?.(session, target)
       // The node is asked about a folder only once this chat may reach it.
       if (
+        !childReadGuard &&
         !host.ledger
           .approvedEntries(session, target.node_id, connection.principal())
           .some((entry) => entry.kind === 'node' || entry.project_id === target.project_id)
@@ -583,7 +684,15 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
       const id = nodeTargetId(target.target),
         git = target.target.kind === 'worktree'
       const access = NODE_MUTATION_TOOLS.includes(name) ? 'edit' : 'read'
-      checks.push(host.ledger.guard(session, target, connection.principal(), access))
+      if (!childReadGuard)
+        checks.push(
+          host.ledger.guard(
+            session,
+            target,
+            connection.principal(),
+            NODE_MANAGER_TOOLS.includes(name) ? 'edit' : access
+          )
+        )
       // This chat's current selection is captured, never read from a human tab.
       const selection = JSON.stringify(session.overrides.value.nodeTarget)
       checks.push(() => {
@@ -592,6 +701,47 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
       })
       await safe(() => validateNodeTarget(client, target, guard))
       const repo = client.repository
+      if (NODE_MANAGER_TOOLS.includes(name)) {
+        const approval = () => {
+          if (!(ctx.interactive && ctx.approved))
+            throw new Error('Explicit owner approval is required')
+        }
+        checks.push(approval)
+        approval()
+        if (!git) throw new Error('This action requires a Git worktree')
+        const operation = z.string().min(1).max(128).parse(params.operation_id)
+        const expected_head = z
+          .string()
+          .regex(/^[a-f0-9]{40,64}$/)
+          .parse(params.expected_head)
+        if (name === 'node_git_commit') {
+          const message = z.string().min(1).max(8192).parse(params.message)
+          const result = await safe(() =>
+            repo.git.commit({ worktree_id: id, expected_head, message }, operation)
+          )
+          console.debug('[Abele node tools] Commit receipt', operation, result.state)
+          return answer(result)
+        }
+        const expected_observation_id = z
+          .string()
+          .min(1)
+          .max(128)
+          .parse(params.expected_observation_id)
+        const row = (
+          await repo.worktrees({ project_id: target.project_id, limit: 256 })
+        ).entries.find((entry) => entry.worktree_id === id)
+        guard()
+        if (!row || row.kind !== 'managed' || row.dirty !== false || row.locked)
+          throw new Error('Only a clean, unlocked managed developer worktree can be removed')
+        const result = await safe(() =>
+          client.nodePath.deleteWorktree(
+            { worktree_id: id, expected_head, expected_observation_id },
+            operation
+          )
+        )
+        console.debug('[Abele node tools] Worktree removal receipt', operation, result.state)
+        return answer(result)
+      }
       const path = pathSchema.parse(text(params, 'path'))
       const revision = async (): Promise<RepositoryRevision> =>
         text(params, 'ref')
@@ -752,16 +902,18 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
               await safe(() => client.describe()),
               'node_path_v2'
             )
-            return retain(
-              await paged((cursor) => {
+            return retain({
+              target,
+              revision: ref,
+              ...(await paged((cursor) => {
                 const enriched = protocol.RepositoryMethodSchemas['repository.v1.status'].safeParse(
                   { ...request, cursor, include_change_details: true }
                 )
                 return repo.status(
                   supported && enriched.success ? enriched.data : { ...request, cursor }
                 )
-              })
-            )
+              })),
+            })
           }
           case 'node_git_branches':
             return retain(await paged((cursor) => repo.refs({ worktree_id: id, cursor })))

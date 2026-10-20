@@ -76,6 +76,31 @@ export async function nodeAgentHost(): Promise<NodeAgentHost> {
   }
   ownerHost = {
     ledger,
+    childReadGuard: async (chat, target) => {
+      if (!chat.delegationParentId) return
+      const registrations = service.registry
+        .list()
+        .filter(
+          (node) =>
+            node.expectedNodeId === target.node_id &&
+            ledger.approvedNode(
+              chat,
+              target.node_id,
+              nodeRegistrationPrincipal(service.registry, node.id)
+            )
+        )
+      if (registrations.length !== 1) return
+      const registration = registrations[0]
+      return service
+        .connection(registration.id)
+        .delegation.childReadGuard(
+          chat.delegationParentId,
+          target.project_id,
+          target.target.kind === 'workspace'
+            ? target.target.workspace_id
+            : target.target.worktree_id
+        )
+    },
     nodeId: (id) => service.registry.list().find((node) => node.id === id)?.expectedNodeId ?? id,
     nodes: () =>
       service.nodes.value.map((node) => ({

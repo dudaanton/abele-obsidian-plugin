@@ -48,6 +48,7 @@ export const DelegationStorageSchema = z
           cancelled: z.boolean().optional(),
           cancelSettled: z.boolean().optional(),
           awaitingResult: z.boolean().optional(),
+          followupMailboxSeq: z.number().int().nonnegative().optional(),
           status: z
             .custom<DelegationStatus>((v) => DelegationStatusSchema.safeParse(v).success)
             .optional(),
@@ -61,6 +62,10 @@ export interface DelegationCard {
   delegationId?: string
   sessionId?: string
   nodeId?: string
+  projectId?: string
+  workspaceId?: string
+  branch?: string
+  activity?: { message?: string; tool?: string; files: string[] }
   title: string
   provider: string
   state: string

@@ -121,6 +121,10 @@ const NODE_TOOL_DOING: Record<string, string> = {
   node_search:
     'Searches the files of a node folder or worktree: mode literal or regex over contents, filename over names; glob narrows paths.',
   node_git_status: "Lists a Git worktree's changed files (index and working tree).",
+  node_git_commit:
+    'Commit already staged changes in a scoped Git worktree. Always asks the owner. Pass message, expected_head from node_git_status and a stable operation_id. Preserve the exact arguments and operation_id on uncertain retries. Does not stage files or push.',
+  node_worktree_remove:
+    'Remove a clean developer worktree after explicit owner approval. Pass expected_head and expected_observation_id from node_git_status and a stable operation_id; preserve the exact body and ID on uncertain retries. The node refuses dirty, busy or protected worktrees. Does not remove the branch.',
   node_git_diff:
     'Shows Git changes: staged or unstaged, or between base and ref; with path, that file’s patch.',
   node_git_branches: "Lists a Git folder's branches and tags.",
@@ -135,5 +139,5 @@ export function nodeToolDescription(name: string): string {
     ? ' Acts at once on the real file; asks first only when the chat permission mode says so. Never retried automatically: after an unknown outcome repeat the call with its operation_id.'
     : ''
   const place = name === 'node_nodes' || name === 'node_folders' ? '' : ` ${PLACE}`
-  return `${NODE_TOOL_DOING[name]}${place}${writes} Long results continue with the same tool and cursor alone. Works only on what this chat was given node access to; without it the result says how the person gives it. No shell, staging, commits or push.`
+  return `${NODE_TOOL_DOING[name]}${place}${writes} Long results continue with the same tool and cursor alone. Works only on what this chat was given node access to; without it the result says how the person gives it. No shell, staging or push. Committing staged changes and removing a developer worktree each require explicit owner approval.`
 }

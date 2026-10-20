@@ -973,13 +973,22 @@ grants, access credentials, send generic node requests or answer child human pro
   the node and require a matching owner grant; fake children require explicit owner fixture
   approval and never execute code. The child gets its own
   managed workspace on the node, but this is **not a filesystem sandbox**.
-- Creation returns `node_id`, `session_id`, `delegation_id`, `state`, not a grant or token.
+- Creation returns `node_id`, `session_id`, `delegation_id`, `state`, `project_id`, `workspace_id`
+  and task `title`, not a grant or token. Use that project and workspace for review tools. A
+  manager with approved node access inherits read-only access to its own child's worktree;
+  writes still require explicit edit scope. The child is already in its managed worktree:
+  tell it to work there, rather than create another worktree.
   Keep the **same task_key and exact arguments** when retrying an uncertain response. Changing
   the body with that key is refused; allocating a new key can create duplicate work.
 - `node_delegation_send` takes `node`, `delegation_id`, `text`. Follow-ups are serialized, not
-  steering; terminal children cannot accept more controller inputs.
+  steering. Use it to send review feedback or continue a finished child in the same session
+  and worktree on nodes supporting resumed delegation. Older nodes may refuse terminal
+  children; explain that limitation without retrying `resource_busy` in a loop or creating
+  another developer automatically.
 - `node_delegation_status` takes `node`, `delegation_id` and reads status plus bounded mailbox
-  reports. A pending human prompt requires the person to open the child chat. A worker's
+  reports, branch and a bounded activity summary. Status and destination reads never ask for
+  approval. A pending human prompt requires the person to open the child chat using its card
+  or the shared Agents overview. A worker's
   informational question does not approve a permission or answer an extension prompt.
 - `node_delegation_cancel` takes `node`, `delegation_id`. Cancellation retains files, branches,
   workspaces and transcript; the receipt does not prove every process has already exited.
@@ -1225,7 +1234,7 @@ or worktree, or after `node_worktree_switch` chose one; a chat that may reach mo
 name one. A Git folder's workspace ID reads its worktree, and a plain folder's workspace ID
 works with the default `worktree` kind. An ID the folder does not have is answered with the
 worktrees the chat may use. Paths are relative to that target, never absolute or `.git` paths. No arbitrary filesystem
-picker, shell, stage, commit, push or delegation is exposed by this toolset.
+picker, shell, stage or push is exposed by this toolset. Delegation has its own owner-approved tools.
 
 | Tool | Purpose |
 | --- | --- |
@@ -1242,6 +1251,8 @@ picker, shell, stage, commit, push or delegation is exposed by this toolset.
 | `node_rm` | Remove one regular file (`path`), never a directory |
 | `node_search` | Bounded literal, regex or filename search with `query`, `glob`, case sensitivity |
 | `node_git_status` | Current Git index/worktree status |
+| `node_git_commit` | Commit already staged changes after owner approval; requires `message`, `expected_head` and stable `operation_id` |
+| `node_worktree_remove` | Remove a clean worktree after owner approval; requires `expected_head`, `expected_observation_id` and stable `operation_id` |
 | `node_git_diff` | Explicit staged/unstaged or endpoint comparison; `path` loads its patch |
 | `node_git_branches` | Paginated Git references |
 | `node_git_log` | Commit history in pages of up to 50, optionally restricted to `path`. Call again with only the returned `cursor` for the next page; oversized messages may be marked truncated. |
@@ -1265,6 +1276,14 @@ a new ordinary edit after a known outcome still reads the current source. A live
 required for new mutation admission.
 New plain-folder search and file lifecycle operations require a compatible node/client; unsupported
 actions fail explicitly, with no shell fallback. Git tools reject plain folders.
+
+`node_git_status` includes the observed `revision`; use its `head` and `observation_id` as the
+preconditions for commit and worktree removal. Both operations always ask the owner, even in
+Everything without asking mode, and require edit scope. Commit includes only already staged
+changes; inspect the staged diff first. Worktree removal leaves the branch and refuses unsafe
+targets on the node. Keep the same `operation_id` and exact arguments on a retry after uncertainty;
+never invent a replacement action when the first may have completed. No fast-forward integration
+or direct process execution is available through this protocol yet; do not claim checks were run.
 
 Switching selection grants nothing and does not move a node-agent session. The switch is
 recorded as a system line in this Obsidian chat. Existing `node_file`, `node_tree`, `node_commits`,

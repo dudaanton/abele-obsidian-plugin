@@ -15,6 +15,17 @@ beforeEach(() => {
   AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS }
 })
 describe('chat node file permissions and persistence', () => {
+  it('reads delegation status and destinations without asking in every permission mode', () => {
+    const session = new ChatSession(ChatService.getInstance())
+    for (const mode of ['confirm-all', 'allow-edit', 'allow-all'] as const) {
+      session.permissionMode.value = mode
+      expect(session.needsApproval('node_delegations')).toBe(false)
+      expect(session.needsApproval('node_delegation_status')).toBe(false)
+      expect(session.needsApproval('node_git_commit')).toBe(true)
+      expect(session.needsApproval('node_worktree_remove')).toBe(true)
+    }
+    session.destroy()
+  })
   it('uses the ordinary edit permission mode, not optional tool Auto modes', () => {
     useVault([])
     const session = new ChatSession(ChatService.getInstance())

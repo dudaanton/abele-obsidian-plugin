@@ -14,6 +14,140 @@ import { createNodeAgentTools } from '@/ai/tools/node/agent'
 import { digest, hash, project, workspace, setup, setupGit } from '../helpers/nodeAgentFixture'
 
 describe('Obsidian chat node tools', () => {
+  it('rechecks node approval after awaiting inherited read authority before issuing a request', async () => {
+    const f = setupGit()
+    f.session.overrides.value.nodeScope = [
+      {
+        kind: 'target',
+        node_id: 'sample-node',
+        project_id: project.project_id,
+        target: { kind: 'worktree', worktree_id: 'other-tree' },
+        access: 'read',
+      },
+    ]
+    f.ledger.approve(f.session, { 'sample-node': 'sample-pin:0' })
+    Object.assign(f.host, {
+      childReadGuard: async () => async () => {
+        f.ledger.revoke(f.session)
+      },
+    })
+    await expect(f.call('node_read', { path: 'sample.txt' })).rejects.toThrow(/revoked|approval/)
+    expect(f.client.getProject).not.toHaveBeenCalled()
+  })
+  it('returns a retained removal receipt after the worktree disappeared without repeating deletion', async () => {
+    const f = setupGit()
+    const remove = vi.fn()
+    Object.assign(f.client, {
+      nodePath: { deleteWorktree: remove },
+      operationResult: async () => ({
+        request: {
+          method: 'repository.v1.worktree.delete',
+          params: {
+            worktree_id: 'sample-tree',
+            expected_head: '1'.repeat(40),
+            expected_observation_id: 'sample-observation',
+          },
+        },
+        result: { state: 'deleted', worktree_id: 'sample-tree' },
+      }),
+    })
+    f.repository.worktrees.mockResolvedValue({
+      entries: [],
+      cursor: null,
+      incomplete: false,
+      omissions: [],
+    })
+    const result = await f.call(
+      'node_worktree_remove',
+      {
+        expected_head: '1'.repeat(40),
+        expected_observation_id: 'sample-observation',
+        operation_id: 'sample-remove',
+      },
+      true
+    )
+    expect(result.content[0].text).toContain('deleted')
+    expect(remove).not.toHaveBeenCalled()
+  })
+  it('reviews an inherited child target read-only and fences its retained bytes on revocation', async () => {
+    const f = setupGit()
+    f.session.overrides.value.nodeScope = [
+      {
+        kind: 'target',
+        node_id: 'sample-node',
+        project_id: project.project_id,
+        target: { kind: 'worktree', worktree_id: 'other-tree' },
+        access: 'edit',
+      },
+    ]
+    f.ledger.approve(f.session, { 'sample-node': 'sample-pin:0' })
+    let revoked = false
+    const childReadGuard = vi.fn(async () => async () => {
+      if (revoked) throw new Error('Child read grant revoked')
+    })
+    Object.assign(f.host, { childReadGuard })
+    expect((await f.call('node_read', { path: 'sample.txt' })).content[0].text).toContain('old')
+    await expect(
+      f.call('node_write', { path: 'sample.txt', text: 'new', expected_content_id: hash }, true)
+    ).rejects.toThrow()
+    f.repository.content.mockImplementationOnce(async () => {
+      revoked = true
+      return ContentChunkSchema.parse({ offset: 0, total: 3, base64: btoa('old') })
+    })
+    await expect(f.call('node_read', { path: 'sample.txt' })).rejects.toThrow(/revoked/)
+  })
+  it('removes only a clean managed developer worktree after approval with exact preconditions', async () => {
+    const f = setupGit()
+    const remove = vi.fn(async () => ({ state: 'deleted', worktree_id: 'sample-tree' }))
+    Object.assign(f.client, { nodePath: { deleteWorktree: remove } })
+    const args = {
+      expected_head: '1'.repeat(40),
+      expected_observation_id: 'sample-observation',
+      operation_id: 'sample-remove',
+    }
+    await expect(f.call('node_worktree_remove', args, true)).rejects.toThrow(/managed|clean/)
+    expect(remove).not.toHaveBeenCalled()
+    const catalogue = await f.repository.worktrees()
+    f.repository.worktrees.mockResolvedValue({
+      ...catalogue,
+      entries: [{ ...catalogue.entries[0], kind: 'managed', dirty: false }],
+    })
+    await expect(f.call('node_worktree_remove', args)).rejects.toThrow(/approval/)
+    await f.call('node_worktree_remove', args, true)
+    expect(remove).toHaveBeenCalledWith(
+      {
+        worktree_id: 'sample-tree',
+        expected_head: '1'.repeat(40),
+        expected_observation_id: 'sample-observation',
+      },
+      'sample-remove'
+    )
+  })
+  it('commits staged work only after explicit owner approval, preserving the operation and head', async () => {
+    const f = setupGit()
+    const commit = vi.fn(async () => ({ state: 'committed', commit: '2'.repeat(40) }))
+    Object.assign(f.repository, { git: { commit } })
+    const args = {
+      message: 'Fix sample parser',
+      expected_head: '1'.repeat(40),
+      operation_id: 'sample-commit',
+    }
+    expect(JSON.parse((await f.call('node_git_status')).content[0].text).revision).toMatchObject({
+      head: '1'.repeat(40),
+      observation_id: 'sample-observation',
+    })
+    await expect(f.call('node_git_commit', args)).rejects.toThrow(/approval/)
+    expect(commit).not.toHaveBeenCalled()
+    await f.call('node_git_commit', args, true)
+    expect(commit).toHaveBeenCalledWith(
+      { worktree_id: 'sample-tree', expected_head: '1'.repeat(40), message: 'Fix sample parser' },
+      'sample-commit'
+    )
+    f.session.overrides.value.nodeScope![0].access = 'read'
+    f.ledger.approve(f.session, { 'sample-node': 'sample-pin:0' })
+    await expect(f.call('node_git_commit', args, true)).rejects.toThrow()
+    expect(commit).toHaveBeenCalledTimes(1)
+  })
   it('reads exact plain-folder content without an open human tab', async () => {
     const { call } = setup()
     const result = await call('node_read', { path: 'sample.txt' })

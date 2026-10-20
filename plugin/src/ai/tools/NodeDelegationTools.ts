@@ -151,7 +151,7 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
     tool(
       'node_delegation_send',
       'Follow up on node task',
-      'Send a serialized follow-up to an active child owned by this parent. Does not steer or answer human permission prompts.',
+      'Send review feedback or continue work in the same child session and worktree owned by this parent, including a finished child on nodes that support resuming delegation. Does not steer or answer human permission prompts. If an older node refuses a finished child, explain the limitation; do not retry resource_busy in a loop or create a replacement developer automatically.',
       {
         type: 'object',
         properties: { node, delegation_id, text: { type: 'string' } },

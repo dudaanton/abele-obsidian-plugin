@@ -21,6 +21,8 @@ import {
   type DelegationCard,
 } from './delegation'
 import { delegatable, nodeProviders, providerAvailable } from './providers'
+import { reduceTranscript } from './NodeTranscriptReducer'
+import { openWindow, catchUp } from './sessionWindow'
 
 function storage(state: NodeClientState) {
   return (state.delegation ??= { grants: {}, tasks: {} })
@@ -40,6 +42,7 @@ export class NodeDelegationController {
   private readonly stoppedParents = new Set<string>()
   private readonly wakeEpochs = new Map<string, number>()
   private readonly targets = new Map<string, ExpectedExecutionTarget | null>()
+  private readonly workspaces = new Map<string, { branch?: string; files: string[] }>()
   constructor(
     readonly client: NodeClient,
     readonly store: NodeClientStore
@@ -147,7 +150,12 @@ export class NodeDelegationController {
         grant_id: grant.grant_id,
         delegation_key: key,
       }
-      local.tasks[key] = { parentId: parent, input, request }
+      local.tasks[key] = {
+        parentId: parent,
+        input,
+        request,
+        awaitingResult: !this.stoppedParents.has(parent),
+      }
       return request
     })
     let child: Awaited<ReturnType<NodeClient['createDelegation']>> | undefined
@@ -187,7 +195,7 @@ export class NodeDelegationController {
       await this.client.subscribeDelegation(child)
       await this.observeTarget(child.delegation_id, child.session_id)
       if (signal?.aborted) throw new Error('Delegation call cancelled')
-      return this.publicChild(child)
+      return { ...this.publicChild(child), project_id: input.project_id, title: input.title }
     } finally {
       try {
         if (signal?.aborted) {
@@ -225,12 +233,14 @@ export class NodeDelegationController {
     session_id: string
     delegation_id: string
     state: string
+    workspace_id?: string | null
   }) {
     return {
       node_id: child.node_id,
       session_id: child.session_id,
       delegation_id: child.delegation_id,
       state: child.state,
+      workspace_id: child.workspace_id ?? null,
     }
   }
   private requireGrant(s: NodeClientState, id: string, parent: string, action: string) {
@@ -253,6 +263,51 @@ export class NodeDelegationController {
       this.requireGrant(s, task.child.grant_id, parent, action)
       return task.child
     })
+  }
+  /** A parent may review its own child's copy; this never grants edit authority. */
+  async childReadGuard(
+    parent: string,
+    project: string,
+    target: string
+  ): Promise<(() => Promise<void>) | undefined> {
+    const children = await this.store.transaction((s) =>
+      Object.values(storage(s).tasks)
+        .filter(
+          (task) =>
+            task.parentId === parent &&
+            task.input.project_id === project &&
+            task.child?.workspace_id
+        )
+        .map((task) => task.child!)
+    )
+    if (!children.length) return
+    let workspace = target
+    if (!children.some((child) => child.workspace_id === target)) {
+      let cursor: string | undefined
+      for (let page = 0; page < 64; page++) {
+        const result = await this.client.repository.worktrees({
+          project_id: project,
+          cursor,
+          limit: 256,
+        })
+        const row = result.entries.find((entry) => entry.worktree_id === target)
+        if (row) {
+          workspace = row.workspace_id ?? ''
+          break
+        }
+        if (!result.cursor || result.cursor === cursor) break
+        cursor = result.cursor
+      }
+    }
+    const child = children.find((child) => child.workspace_id === workspace)
+    if (!child) return
+    await this.owned(parent, child.delegation_id, 'read')
+    // Recheck the node's current grant before using locally retained child identity.
+    await this.client.subscribeDelegation(child)
+    return async () => {
+      const current = await this.owned(parent, child.delegation_id, 'read')
+      if (current.workspace_id !== workspace) throw new Error('Child workspace changed')
+    }
   }
   private async observeTarget(id: string, session: string): Promise<void> {
     if (!supportsExpectedTarget(await this.client.describe())) {
@@ -307,6 +362,10 @@ export class NodeDelegationController {
     const card = canRead ? (await this.cards(parent)).find((c) => c.delegationId === id) : undefined
     return {
       ...this.publicChild(status),
+      project_id: card?.projectId,
+      title: card?.title,
+      branch: card?.branch,
+      activity: card?.activity,
       state: status.state === 'completed' && !delivered ? 'receiving mailbox' : status.state,
       session_head_seq: status.session_head_seq,
       pending_human_prompts: status.pending_human_prompts,
@@ -338,6 +397,17 @@ export class NodeDelegationController {
       })
       throw new Error(chatMovedNotice)
     }
+    // A follow-up starts another turn in the same child. Do not retain the previous
+    // terminal projection or cancellation waiter while its new mailbox catches up.
+    await this.store.transaction((s) => {
+      const task = Object.values(storage(s).tasks).find((t) => t.child?.delegation_id === id)!
+      delete task.status
+      task.child!.state = 'running'
+      task.cancelled = false
+      task.cancelSettled = false
+      task.awaitingResult = !this.stoppedParents.has(parent)
+      task.followupMailboxSeq = status.mailbox_head_seq
+    })
     return result
   }
   async cancel(parent: string, id: string) {
@@ -427,6 +497,32 @@ export class NodeDelegationController {
             }
           })
       )
+      // One sequential read per child keeps the overview within the node's request
+      // budget. A grant with status alone must never subscribe to transcript bytes.
+      for (const child of children) {
+        const canRead = await this.store.transaction(
+          (s) => storage(s).grants[child.grant_id]?.actions.includes('read') === true
+        )
+        if (!canRead) continue
+        try {
+          if (!this.subscribed.has(child.session_id)) {
+            const window = await openWindow(this.client, child.session_id)
+            if (window) await catchUp(this.client, child.session_id, window.head)
+            await this.client.subscribe(child.session_id)
+            this.subscribed.add(child.session_id)
+          }
+          if (child.workspace_id) {
+            const workspace = await this.client.getWorkspace(child.workspace_id)
+            const status = await this.client.workspaceStatus(child.workspace_id, 0, 20)
+            this.workspaces.set(child.workspace_id, {
+              branch: workspace.branch ?? undefined,
+              files: status.entries.map((entry) => entry.path),
+            })
+          }
+        } catch {
+          console.debug('[Abele node] child activity unavailable')
+        }
+      }
     }
   }
   /** Wake only a waiting model, once the result is durably present in its parent card. */
@@ -491,7 +587,12 @@ export class NodeDelegationController {
           for (const event of events) {
             const data = event.data as { delegation_id?: string; state?: string; text?: string }
             if (data.delegation_id !== child?.delegation_id) continue
-            if (event.type === 'delegation.terminal' && data.state) state = data.state
+            if (
+              event.type === 'delegation.terminal' &&
+              data.state &&
+              event.seq > (t.followupMailboxSeq ?? 0)
+            )
+              state = data.state
             if (
               ['delegation.progress', 'delegation.question', 'delegation.result'].includes(
                 event.type
@@ -502,12 +603,37 @@ export class NodeDelegationController {
               reports.push({ seq: event.seq, kind: event.type.slice(11), text: data.text })
           }
           if (child && storage(s).grants[child.grant_id]?.revoked) state = 'grant revoked'
+          const canRead =
+            child &&
+            storage(s).grants[child.grant_id]?.actions.includes('read') &&
+            !storage(s).grants[child.grant_id]?.revoked
+          const transcript = canRead
+            ? reduceTranscript((s.events[child.session_id] ?? []).slice(-400))
+            : undefined
+          const messages = transcript?.messages ?? []
+          const latest = messages.findLast((m) => m.role === 'assistant' && m.content)
+          const tool = messages.findLast(
+            (m) => m.role === 'tool-call' && m.toolResult === undefined
+          )
+          const workspace = child?.workspace_id
+            ? this.workspaces.get(child.workspace_id)
+            : undefined
           return {
             title: t.input.title,
             provider: t.input.provider,
             delegationId: child?.delegation_id,
             sessionId: child?.session_id,
             nodeId: child?.node_id,
+            projectId: t.input.project_id,
+            workspaceId: child?.workspace_id ?? undefined,
+            branch: workspace?.branch,
+            activity: canRead
+              ? {
+                  message: latest?.content.slice(-2000),
+                  tool: tool?.toolName?.slice(0, 256),
+                  files: workspace?.files ?? [],
+                }
+              : undefined,
             state,
             pendingHumanPrompts: ['completed', 'failed', 'cancelled', 'unknown'].includes(state)
               ? 0
