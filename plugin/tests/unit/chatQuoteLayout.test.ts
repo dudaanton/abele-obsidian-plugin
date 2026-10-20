@@ -6,3 +6,10 @@ it('gives a quoted user message the available bubble width and removes browser q
   expect(css).toMatch(/&_user\s+\.abele-chat-msg__body:has\(blockquote\)\s*\{[^}]*flex:\s*1/s)
   expect(css).toMatch(/blockquote\s*\{[^}]*margin-inline:\s*0/s)
 })
+
+it('lets failure summaries wrap inside the chat pane', () => {
+  const component = readFileSync('src/components/ChatToolRun.vue', 'utf8')
+  expect(component).toMatch(
+    /\.abele-chat-run_failed > \.tree-item-self\s*\{[\s\S]*?white-space:\s*normal/
+  )
+})

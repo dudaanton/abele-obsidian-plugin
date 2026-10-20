@@ -108,17 +108,28 @@ export function runKind(calls: readonly ChatMessage[]): ToolKind {
  * The kind still under way is said as going on.
  */
 export function runSummary(calls: readonly ChatMessage[]): string {
-  if (calls.some((call) => call.toolStatus === 'rejected'))
-    return calls
-      .map((call) =>
-        call.toolStatus === 'rejected'
-          ? t(call.toolExecution === 'not-run' ? 'streamB.actionDenied' : 'streamB.actionFailed', {
-              action: readableToolName(call.toolName),
-              reason: truncate(call.toolResult ?? '', 160),
-            })
-          : runSummary([call])
-      )
-      .join(' · ')
+  if (calls.some((call) => call.toolStatus === 'rejected')) {
+    const parts: string[] = []
+    let adjacent: ChatMessage[] = []
+    const flush = () => {
+      if (adjacent.length) parts.push(runSummary(adjacent))
+      adjacent = []
+    }
+    for (const call of calls) {
+      if (call.toolStatus !== 'rejected') adjacent.push(call)
+      else {
+        flush()
+        parts.push(
+          t(call.toolExecution === 'not-run' ? 'streamB.actionDenied' : 'streamB.actionFailed', {
+            action: readableToolName(call.toolName),
+            reason: truncate(call.toolResult ?? '', 160),
+          })
+        )
+      }
+    }
+    flush()
+    return parts.join(' · ')
+  }
   const order: ToolKind[] = []
   const counts = new Map<ToolKind, number>()
   for (const c of calls) {

@@ -13,6 +13,19 @@ it('uses human names for short vault tool identifiers', () => {
 })
 
 let n = 0
+it('keeps adjacent successful actions counted beside a denied action', () => {
+  expect(
+    runSummary([
+      call('edit'),
+      call('create'),
+      call('mv', {
+        toolStatus: 'rejected',
+        toolExecution: 'not-run',
+        toolResult: 'User rejected this action',
+      }),
+    ])
+  ).toMatch(/^Wrote 2 · Denied:/)
+})
 it('does not describe a denied move as a completed write', () => {
   expect(
     runSummary([

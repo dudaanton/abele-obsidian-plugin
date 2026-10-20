@@ -15,7 +15,7 @@ const probe = (screen: string) => `(async () => {
   const root = 'SampleVaultChatLifecycle'
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
   const until = async fn => { for (let i=0; i<100; i++) { if (fn()) return; await wait(50) } throw Error('Sample chat state timed out') }
-  const report = { error: '', shots: [], edited: false, moved: false, hiddenRemoved: false, denied: false, failed: false, stopped: false, permission: false, changes: false, scope: false, quoteWidth: 0 }
+  const report = { error: '', shots: [], edited: false, moved: false, hiddenRemoved: false, denied: false, failed: false, stopped: false, permission: false, changes: false, scope: false, runFits: false, quoteWidth: 0 }
   let session
   const shot = async name => {
     await wait(150)
@@ -74,6 +74,9 @@ const probe = (screen: string) => `(async () => {
     await pending('sample-failed-move', 'mv', { from: root + '/New/Nested/sample.md', to: root + '/New/Nested/sample.md' })
     await session.approveToolCall()
     report.failed = document.querySelector('.abele-ai-chat').textContent.includes('Move file failed:')
+    const run = document.querySelector('.abele-chat-run > .tree-item-self')
+    const edge = document.querySelector('.abele-ai-chat').getBoundingClientRect().right
+    report.runFits = run.scrollWidth <= run.clientWidth + 1 && [...run.querySelectorAll('.abele-tree-item__text')].every(el => el.getBoundingClientRect().right <= edge + 1)
     await shot('failed-action')
     await pending('sample-create-hidden', 'create', { path: root + '/.sample.md', content: 'Hidden sample' })
     await session.approveToolCall()
@@ -141,6 +144,7 @@ describe('vault chat file lifecycle', () => {
         'permission',
         'changes',
         'scope',
+        'runFits',
       ])
         expect(report[key], key).toBe(true)
       expect(report.quoteWidth).toBeGreaterThan(180)

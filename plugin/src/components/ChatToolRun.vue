@@ -181,6 +181,16 @@ watchEffect(
   gap: var(--size-2-1) var(--size-4-2);
   min-width: 0;
 }
+.abele-chat-run_failed > .tree-item-self {
+  .tree-item-inner {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+  .abele-tree-item__text {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
 @keyframes abele-chat-run-spin {
   to {
     transform: rotate(360deg);
