@@ -2877,3 +2877,6 @@ explicitly marks the variable secret; declared secrets stay in memory and are re
 answers and history. Request tabs remember their answer timeout per node, project and request
 in device-local storage (`abele-requests:…:timeout:…`), defaulting to 300 seconds. These timeout
 preferences do not change the project's request files.
+
+Image requests store `ai.imageGenerationTimeLimitMinutes` (0 by default for no fixed limit;
+2, 5, 10 or 30 minutes). AI general settings transfer carries it between devices.

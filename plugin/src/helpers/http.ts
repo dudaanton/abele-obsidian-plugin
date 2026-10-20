@@ -5,7 +5,9 @@ export interface NetworkRequest extends RequestUrlParam {
   /** Values substituted into arbitrary headers, URL or body. Never included in errors. */
   secretValues?: string[]
   maxRedirects?: number
+  /** Zero disables the total deadline; omitted uses the normal network default. */
   timeoutMs?: number
+  signal?: AbortSignal
   maxBytes?: number
 }
 
@@ -131,19 +133,27 @@ export async function requestText(
 export async function request(options: NetworkRequest): Promise<RequestUrlResponse> {
   const carried = checkRequest(options)
   const controller = new AbortController()
+  options.signal?.throwIfAborted()
+  const abort = () => controller.abort(options.signal?.reason)
+  options.signal?.addEventListener('abort', abort, { once: true })
   const ms =
-    Number.isFinite(options.timeoutMs) && options.timeoutMs! > 0
-      ? options.timeoutMs!
+    typeof options.timeoutMs === 'number' &&
+    Number.isFinite(options.timeoutMs) &&
+    options.timeoutMs >= 0
+      ? options.timeoutMs
       : DEFAULT_TIMEOUT_MS
   const values = [...(options.secretValues ?? []), ...carried]
   for (const [name, value] of Object.entries(options.headers ?? {}))
     if (credentialHeader.test(name)) values.push(value, value.replace(/^(Bearer|Basic)\s+/i, ''))
   try {
-    return await withDeadline(
-      sendRequest({ ...options, secretValues: values }, controller.signal),
-      ms,
-      () => controller.abort()
-    )
+    const cancelled = new Promise<never>((_, reject) => {
+      controller.signal.addEventListener('abort', () => reject(new Error('Request aborted')), {
+        once: true,
+      })
+    })
+    const work = sendRequest({ ...options, secretValues: values }, controller.signal)
+    const pending = Promise.race([work, cancelled])
+    return await (ms === 0 ? pending : withDeadline(pending, ms, () => controller.abort()))
   } catch (error) {
     if (!values.some(Boolean)) throw error
     const redact = (text: string) => {
@@ -156,6 +166,8 @@ export async function request(options: NetworkRequest): Promise<RequestUrlRespon
     )
     if (error instanceof Error) safe.name = redact(error.name)
     throw safe
+  } finally {
+    options.signal?.removeEventListener('abort', abort)
   }
 }
 
@@ -167,6 +179,7 @@ async function sendRequest(
     secretValues = [],
     maxRedirects = 5,
     timeoutMs: _timeout,
+    signal: _signal,
     maxBytes = DEFAULT_MAX_BYTES,
     ...params
   } = options

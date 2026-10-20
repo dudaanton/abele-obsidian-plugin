@@ -41,6 +41,12 @@ export const de = {
   'node.error.busy':
     'Dieser Ordner oder Worktree wird verwendet. Stoppen Sie seine Sitzungen vor dem Löschen.',
   'node.codeLineUnavailable': 'Die verlinkten Zeilen existieren in dieser Datei nicht mehr.',
+  'image.timeLimit.label': 'Zeitlimit für die Bilderzeugung',
+  'image.timeLimit.unlimited': 'Kein Limit',
+  'image.timeLimit.minutes': '{minutes} Minuten',
+  'image.timeLimit.error':
+    'Die Bildanfrage hat das Limit von {minutes} Minuten erreicht. Ändern Sie es unter Einstellungen → KI → Modelle → Zeitlimit für die Bilderzeugung.',
+
   'maps.lightAddressExample': 'https://tiles.example.com/{z}/{x}/{y}.png',
   'maps.darkAddressExample': 'https://tiles.example.com/dark/{z}/{x}/{y}.png',
   'node.error.size': 'Die Anfrage ist zu groß. Größe reduzieren und erneut versuchen.',

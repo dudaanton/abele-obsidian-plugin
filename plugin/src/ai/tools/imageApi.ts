@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { keyFor } from '@/secrets/destinations'
 import { clientHeaders } from '../client/clientName'
 import { request as requestUrl } from '@/helpers/http'
@@ -133,7 +134,8 @@ async function callOpenAi(
 
     response = await requestUrl({
       url: endpoint,
-      timeoutMs: 300_000,
+      timeoutMs: imageTimeoutMs(),
+      signal: req.signal,
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -155,7 +157,8 @@ async function callOpenAi(
 
     response = await requestUrl({
       url: endpoint,
-      timeoutMs: 300_000,
+      timeoutMs: imageTimeoutMs(),
+      signal: req.signal,
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -205,7 +208,8 @@ async function callOpenRouter(
 
   const response = await requestUrl({
     url: endpoint,
-    timeoutMs: 300_000,
+    timeoutMs: imageTimeoutMs(),
+    signal: req.signal,
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -242,11 +246,28 @@ async function callOpenRouter(
   }
 }
 
+function imageTimeoutMs(): number {
+  const minutes = AbeleConfig.getInstance().ai.imageGenerationTimeLimitMinutes ?? 0
+  return [2, 5, 10, 30].includes(minutes) ? minutes * 60_000 : 0
+}
+
 /**
  * Generate or edit an image using the configured API.
  * @param req.modelKey — "providerId::modelId", falls back to defaultImageModel
  */
 export async function callImageApi(req: ImageApiRequest): Promise<ImageApiResponse> {
+  const limitMinutes = imageTimeoutMs() / 60_000
+  try {
+    return await performImageRequest(req)
+  } catch (error) {
+    if (error instanceof Error && /^Request timed out after/.test(error.message)) {
+      throw new Error(t('image.timeLimit.error', { minutes: limitMinutes }))
+    }
+    throw error
+  }
+}
+
+async function performImageRequest(req: ImageApiRequest): Promise<ImageApiResponse> {
   const { provider, model } = resolve(req.modelKey)
   const apiKey = await getApiKey(provider)
   req.signal?.throwIfAborted()

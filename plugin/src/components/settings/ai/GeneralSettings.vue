@@ -510,6 +510,20 @@
       </Section>
 
       <Section :title="t('settings.ai.GeneralSettings.image_generation.8f4716e6')">
+        <Setting :name="t('image.timeLimit.label')">
+          <Dropdown
+            :model-value="String(imageGenerationTimeLimitMinutes)"
+            :options="
+              [0, 2, 5, 10, 30].map((minutes) => ({
+                value: String(minutes),
+                display: minutes
+                  ? t('image.timeLimit.minutes', { minutes })
+                  : t('image.timeLimit.unlimited'),
+              }))
+            "
+            @update:model-value="setImageTimeLimit"
+          />
+        </Setting>
         <ProviderSettings
           v-for="(ip, ipIdx) in imageProviders"
           :key="ipIdx"
@@ -857,6 +871,11 @@ const commentAgentOptions = computed(() => [
     .map((agent) => ({ value: agent.id, display: agent.name })),
 ])
 const braveSearchApiKey = ref(config.ai.braveSearchApiKey)
+const imageGenerationTimeLimitMinutes = ref(config.ai.imageGenerationTimeLimitMinutes ?? 0)
+const setImageTimeLimit = (value: string) => {
+  imageGenerationTimeLimitMinutes.value = Number(value) as 0 | 2 | 5 | 10 | 30
+  save()
+}
 const imageProviders = ref(JSON.parse(JSON.stringify(config.ai.imageProviders || [])))
 const defaultImageModel = ref(config.ai.defaultImageModel || '')
 const imgSecretInputs = reactive<Record<string, string>>({})
@@ -960,6 +979,7 @@ const applyFields = () => {
     commentFolder: commentFolder.value,
     skillsFolder: skillsFolder.value.trim().replace(/^\/+|\/+$/g, ''),
     braveSearchApiKey: braveSearchApiKey.value,
+    imageGenerationTimeLimitMinutes: imageGenerationTimeLimitMinutes.value,
     imageProviders: JSON.parse(JSON.stringify(imageProviders.value)),
     defaultImageModel: defaultImageModel.value,
     secrets: JSON.parse(JSON.stringify(secrets.value)),
@@ -983,6 +1003,7 @@ watch(config.version, () => {
   commentAgentId.value = config.ai.commentAgentId ?? ''
   commentFolder.value = config.ai.commentFolder ?? DEFAULT_AI_SETTINGS.commentFolder
   braveSearchApiKey.value = config.ai.braveSearchApiKey
+  imageGenerationTimeLimitMinutes.value = config.ai.imageGenerationTimeLimitMinutes ?? 0
   imageProviders.value = JSON.parse(JSON.stringify(config.ai.imageProviders || []))
   defaultImageModel.value = config.ai.defaultImageModel || ''
   secrets.value = secretRows(config.ai.secrets || [])

@@ -28,7 +28,8 @@ export function createEditImageTool(): AgentTool {
       },
       required: ['source', 'prompt'],
     },
-    execute: async (_id, params, _signal, ctx) => {
+    execute: async (_id, params, signal, ctx) => {
+      signal?.throwIfAborted()
       let rawSource = params.source
       if (typeof rawSource === 'string' && rawSource.startsWith('[')) {
         try {
@@ -51,7 +52,7 @@ export function createEditImageTool(): AgentTool {
 
       const sourceImages = await Promise.all(sources.map((src) => readImageAsDataUrl(src)))
       const modelKey = (params.model as string) || undefined
-      const result = await callImageApi({ prompt, sourceImages, modelKey })
+      const result = await callImageApi({ prompt, sourceImages, modelKey, signal })
 
       if (!result.dataUrl) {
         return {
@@ -59,7 +60,7 @@ export function createEditImageTool(): AgentTool {
         }
       }
 
-      const savedPath = await saveImageToVault(result.dataUrl, undefined, _signal, appOf(ctx))
+      const savedPath = await saveImageToVault(result.dataUrl, undefined, signal, appOf(ctx))
       scope.addFile(savedPath)
       const text = result.text
         ? `${result.text}\n\nEdited image saved: ${savedPath}`

@@ -38,6 +38,12 @@ export const lv = {
     'Sesijas apturētas. Kad apturēšana pabeigta, vēlreiz izvēlieties darba koka dzēšanu.',
   'node.error.busy': 'Šī mape vai darba koks tiek izmantots. Pirms dzēšanas apturiet tā sesijas.',
   'node.codeLineUnavailable': 'Saistītās rindas šajā failā vairs nepastāv.',
+  'image.timeLimit.label': 'Attēlu ģenerēšanas laika ierobežojums',
+  'image.timeLimit.unlimited': 'Bez ierobežojuma',
+  'image.timeLimit.minutes': '{minutes} minūtes',
+  'image.timeLimit.error':
+    'Attēla pieprasījums sasniedza {minutes} minūšu ierobežojumu. Mainiet to sadaļā Iestatījumi → MI → Modeļi → Attēlu ģenerēšanas laika ierobežojums.',
+
   'maps.lightAddressExample': 'https://tiles.example.com/{z}/{x}/{y}.png',
   'maps.darkAddressExample': 'https://tiles.example.com/dark/{z}/{x}/{y}.png',
   'node.error.size': 'Pieprasījums ir pārāk liels. Samaziniet tā izmēru un mēģiniet vēlreiz.',

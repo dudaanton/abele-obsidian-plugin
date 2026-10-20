@@ -276,6 +276,7 @@ export interface AiSettings {
   commentFolder: string
   chatHistory: AiChatHistoryEntry[]
   braveSearchApiKey: string
+  imageGenerationTimeLimitMinutes?: 0 | 2 | 5 | 10 | 30
   imageProviders: ImageProvider[]
   defaultImageModel: string // "providerId::modelId"
   secrets: AiSecret[]
@@ -561,6 +562,7 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   commentFolder: 'AI/Comments',
   chatHistory: [],
   braveSearchApiKey: '',
+  imageGenerationTimeLimitMinutes: 0,
   imageProviders: [],
   defaultImageModel: '',
   secrets: [],

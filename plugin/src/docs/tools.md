@@ -1274,6 +1274,10 @@ recorded as a system line in this Obsidian chat. Existing `node_file`, `node_tre
 Large reads return a chat/tool-bound `cursor` (same tool, cursor alone), expire after ten minutes,
 and recheck scope, principal, selection, conversation and branch before publishing retained bytes.
 
+Image generation and editing have no fixed time limit by default. Settings → AI → Models →
+Image generation time limit can set a 2, 5, 10 or 30 minute limit. Stop cancels waiting;
+the provider may continue processing a request already submitted.
+
 ## Links to node code
 
 When discussing code on a node, cite the relevant lines without waiting for a commit or upload.

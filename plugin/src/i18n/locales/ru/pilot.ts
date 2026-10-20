@@ -50,6 +50,12 @@ export const ru = {
   'node.error.busy':
     'Эта папка или рабочее дерево используется. Перед удалением остановите его сессии.',
   'node.codeLineUnavailable': 'Строки, на которые ведёт ссылка, больше не существуют в этом файле.',
+  'image.timeLimit.label': 'Лимит времени генерации изображений',
+  'image.timeLimit.unlimited': 'Без ограничения',
+  'image.timeLimit.minutes': '{minutes} мин.',
+  'image.timeLimit.error':
+    'Запрос изображения достиг лимита {minutes} мин. Измените его в Настройки → ИИ → Модели → Лимит времени генерации изображений.',
+
   'maps.lightAddressExample': 'https://tiles.example.com/{z}/{x}/{y}.png',
   'maps.darkAddressExample': 'https://tiles.example.com/dark/{z}/{x}/{y}.png',
   'node.error.size': 'Запрос слишком большой. Уменьшите его размер и повторите попытку.',

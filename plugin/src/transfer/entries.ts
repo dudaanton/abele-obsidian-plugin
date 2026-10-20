@@ -171,6 +171,7 @@ export const SECTIONS: Section[] = [
       'auxiliaryModelId',
       'sequentialAuxiliary',
       'requestTimeoutSeconds',
+      'imageGenerationTimeLimitMinutes',
       'backgroundWhileAgents',
       'backgroundAlways',
       'autoRetry',

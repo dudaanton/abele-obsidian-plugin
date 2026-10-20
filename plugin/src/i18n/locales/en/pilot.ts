@@ -39,6 +39,12 @@ export const en = {
     'Sessions stopped. Choose Delete worktree again when they have finished stopping.',
   'node.error.busy': 'This folder or worktree is in use. Stop its sessions before deleting it.',
   'node.codeLineUnavailable': 'The linked lines no longer exist in this file.',
+  'image.timeLimit.label': 'Image generation time limit',
+  'image.timeLimit.unlimited': 'No limit',
+  'image.timeLimit.minutes': '{minutes} minutes',
+  'image.timeLimit.error':
+    'Image request reached the {minutes}-minute limit. Change it in Settings → AI → Models → Image generation time limit.',
+
   'maps.lightAddressExample': 'https://tiles.example.com/{z}/{x}/{y}.png',
   'maps.darkAddressExample': 'https://tiles.example.com/dark/{z}/{x}/{y}.png',
   'node.error.size': 'The request is too large. Reduce its size and try again.',

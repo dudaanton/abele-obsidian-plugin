@@ -304,3 +304,22 @@ it('lists each provider as a row saying whether its key is in and how many model
   // Added from a row of its own at the end of the list.
   expect(row(general, 'Add another provider')).toBeDefined()
 })
+
+it('persists and transfers the image generation limit from the shared setting row', async () => {
+  const config = AbeleConfig.getInstance()
+  const screen = open(GeneralSettings, { page: 'models' })
+  const limit = row(screen, 'Image generation time limit').find('select')
+  expect(limit.element.value).toBe('0')
+  expect(limit.findAll('option').map((option) => option.attributes('value'))).toEqual([
+    '0',
+    '2',
+    '5',
+    '10',
+    '30',
+  ])
+  await limit.setValue('10')
+  expect(config.ai.imageGenerationTimeLimitMinutes).toBe(10)
+  const entry = collectEntries(config.exportSettings()).find((entry) => entry.id === 'ai-general')
+  expect(JSON.stringify(entry)).toContain('imageGenerationTimeLimitMinutes')
+  expect(config.saveSettings).toHaveBeenCalled()
+})
