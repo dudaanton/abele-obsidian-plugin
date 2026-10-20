@@ -14,7 +14,8 @@
       @contextmenu.prevent="showDetails"
     >
       <span class="abele-github-blame-range__author">
-        <span class="abele-github-blame-range__name">{{ authorLabel }}</span>
+        <GithubUser v-if="commit.login" :login="commit.login" :avatar="commit.avatar" />
+        <span v-else class="abele-github-blame-range__name">{{ authorLabel }}</span>
       </span>
       <span class="abele-github-blame-range__date">{{ relativeDate }}</span>
     </Button>
@@ -43,6 +44,7 @@ import { streamBLabel } from '@/i18n/streamBLabels'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { formatDate, splitMessage } from '@/github/format'
 import type { CommitSummary } from '@/repository/model'
+import GithubUser from './GithubUser.vue'
 import Button from '../obsidian/Button.vue'
 import ObsidianModal from '../obsidian/Modal.vue'
 
@@ -160,6 +162,17 @@ onBeforeUnmount(() => {
     min-width: 0;
     white-space: nowrap;
     overflow: hidden;
+    .abele-github-user {
+      min-width: 0;
+      max-width: 14ch;
+    }
+    .abele-github-user__label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .abele-avatar {
+      display: none;
+    }
   }
   &__date {
     flex-shrink: 0;

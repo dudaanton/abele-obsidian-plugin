@@ -27,6 +27,13 @@ it('shows only author and relative date in the row, keeping the full message in 
   expect(wrapper.get('button').attributes('aria-label')).toContain(commit.message)
 })
 
+it('retains the account identity for repository authors with a login', () => {
+  const wrapper = mount(GithubBlameRange, {
+    props: { commit: { ...commit, login: 'sample-login' } },
+  })
+  expect(wrapper.get('.abele-github-blame-range__author').text()).toBe('sample-login')
+})
+
 it('shows the commit in a dialog and opens it from there', async () => {
   const wrapper = mount(GithubBlameRange, {
     props: { commit: commit as never },
