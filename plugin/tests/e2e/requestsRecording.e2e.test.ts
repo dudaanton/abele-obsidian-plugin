@@ -392,24 +392,13 @@ async function pausedRequestScene(phone: boolean) {
   }
 }
 
-// BUG: after adding an ordinary breakpoint beside a record point, the debugger observation
-// becomes lost while the server holds the HTTP request. Keep the pending guarantees visible
-// until session observation is repaired; the ordinary recording journeys above stay required.
-it.fails(
-  'BUG: retains a paused request beyond 30 seconds and shows its late answer',
-  async () => {
-    await pausedRequestScene(false)
-  },
-  240000
-)
+it('retains a paused request beyond 30 seconds and shows its late answer', async () => {
+  await pausedRequestScene(false)
+}, 240000)
 
-it.fails(
-  'BUG: opens the paused debugger from a phone request in one press',
-  async () => {
-    await withEmulatedPhone(() => pausedRequestScene(true))
-  },
-  240000
-)
+it('opens the paused debugger from a phone request in one press', async () => {
+  await withEmulatedPhone(() => pausedRequestScene(true))
+}, 240000)
 
 it('on a phone: the recording said in the drawer, the switch beside Send, the steps of the code', async () => {
   await withEmulatedPhone(async () => {
