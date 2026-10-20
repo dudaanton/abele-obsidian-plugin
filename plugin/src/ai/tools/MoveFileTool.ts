@@ -48,6 +48,7 @@ export function createMoveFileTool(opts?: { skipScope?: boolean }): AgentTool {
       }
       signal?.throwIfAborted()
       await app.fileManager.renameFile(file, safeTo)
+      if (!opts?.skipScope) scopeOf(ctx).addFile(safeTo)
       scopeOf(ctx).invalidate()
       return {
         content: [
