@@ -70,6 +70,13 @@ describe('connection item sets', () => {
         next: null,
       }),
       connection: async () => ({ read_only: false }),
+      previewTokenItem: async () => ({
+        ...item,
+        status: 'active',
+        file_count: 1,
+        total_bytes: 10,
+        files: [],
+      }),
       itemClient: () => ({ deleteItem: remove }),
     } as unknown as ReturnType<TokenUi['client']>)
     await ui.itemSets.shares(id)
@@ -131,9 +138,9 @@ describe('connection item sets', () => {
       await runtime.close()
     }
   })
-  it.fails(
-    'BUG: owner group deletion needs authoritative membership counts and overlap facts',
-    async () => {
+  it.each([false, true])(
+    'uses authoritative group counts and cross-token overlap facts (whole=%s)',
+    async (whole) => {
       const { storage, data } = setup()
       data.delete(TOKEN_REGISTRY_KEY)
       const registry = TokenConnectionRegistry.open(storage),
@@ -150,6 +157,66 @@ describe('connection item sets', () => {
       const group = { kind: 'group', id: 'group-a', path: 'Sample group.md' }
       const fetcher: typeof fetch = async (input) => {
         const path = new URL(String(input)).pathname
+        if (path.endsWith('/connection'))
+          return Response.json({
+            protocol: 2,
+            token_id: 'owner',
+            space_id: 'space-a',
+            scope,
+            status: 'active',
+            read_only: false,
+            limits: { max_file_bytes: 1000, quota_bytes: null },
+          })
+        if (path.endsWith('/preview')) {
+          const preview = {
+            id: 'group-item',
+            scope_id: 'scope-group',
+            scope: group,
+            added_at: '2025-01-01T00:00:00Z',
+            removed_at: null,
+            status: 'active',
+            file_count: 501,
+            total_bytes: 12345,
+            files: [
+              {
+                file_id: 'shared-note',
+                path: 'Notes/Shared.md',
+                bytes: 25,
+                overlap_count: 2,
+                overlaps: [
+                  {
+                    token_id: 'another-token',
+                    item_id: 'other-item',
+                    scope_id: 'other-scope',
+                    scope: { kind: 'group', id: 'group-b', path: 'Groups/Other group.md' },
+                  },
+                ],
+              },
+            ],
+          }
+          return Response.json(
+            whole
+              ? {
+                  token_id: 'issued',
+                  file_count: 601,
+                  total_bytes: 23456,
+                  items: [
+                    preview,
+                    { ...preview, id: 'group-item-2', scope_id: 'scope-group-2' },
+                    {
+                      ...preview,
+                      id: 'detached-item',
+                      status: 'removed',
+                      removed_at: '2025-01-02T00:00:00Z',
+                      file_count: 0,
+                      total_bytes: 0,
+                      files: [],
+                    },
+                  ],
+                }
+              : preview
+          )
+        }
         if (path.endsWith('/manifest')) return Response.json({ items: [], cursor: 0, next: null })
         if (path.endsWith('/tokens'))
           return Response.json({
@@ -178,8 +245,15 @@ describe('connection item sets', () => {
       }
       const ui = new TokenUi(registry, secrets, fetcher)
       await ui.itemSets.shares(id)
-      await vi.waitFor(() => expect(ui.itemSets.deleteFacts('issued', 'group-item')).not.toBe(null))
-      expect(ui.itemSets.deleteFacts('issued', 'group-item')?.canWrite).toBe(true)
+      const itemId = whole ? null : 'group-item'
+      await vi.waitFor(() => expect(ui.itemSets.deleteFacts('issued', itemId)).not.toBe(null))
+      expect(ui.itemSets.deleteFacts('issued', itemId)).toMatchObject({
+        canWrite: true,
+        files: whole ? 601 : 501,
+        bytes: whole ? 23456 : 12345,
+        also: [{ path: 'Notes/Shared.md', group: 'Groups/Other group' }],
+        alsoMore: true,
+      })
     }
   )
   it('retains the baseline of a departed file after its active ledger entry is dropped', async () => {

@@ -33,11 +33,14 @@
     </dl>
     <p
       v-for="one in facts.also ?? []"
-      :key="one.path"
+      :key="one.path + ':' + one.group"
       class="abele-server-delete__also mod-warning"
     >
       {{ one.path.split('/').pop()?.replace(/\.md$/, '') }} is also shared in group {{ one.group }}.
       Deleted here, it leaves the server for that group too.
+    </p>
+    <p v-if="facts.alsoMore" class="abele-server-delete__also mod-warning">
+      More shared files or groups may also be affected.
     </p>
     <p class="abele-server-delete__note">{{ note || t('streamC.ad151a07bc5a6fa5') }}</p>
     <p v-if="facts.unavailableReason" class="abele-server-delete__error" role="alert">
@@ -80,7 +83,7 @@ import { folderSize, serverDeleteFailure, type ServerDeleteFacts } from './serve
 const props = defineProps<{
   name: string
   host: string
-  facts: ServerDeleteFacts & { also?: { path: string; group: string }[] }
+  facts: ServerDeleteFacts & { also?: { path: string; group: string }[]; alsoMore?: boolean }
   remove: () => Promise<void>
   choices?: { value: string; label: string }[]
   choice?: string

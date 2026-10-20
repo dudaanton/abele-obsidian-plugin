@@ -29,6 +29,37 @@ const detached: ConnectionItem = {
   edited: 1,
 }
 describe('shared item screens', () => {
+  it('shows each overlapping group and discloses capped preview details', () => {
+    const wrapper = mount(ServerDeleteModal, {
+      props: {
+        name: 'Sample share',
+        host: 'sync.example',
+        facts: {
+          files: 501,
+          bytes: 12345,
+          access: [],
+          canWrite: true,
+          also: [
+            { path: 'Notes/Sample.md', group: 'First group' },
+            { path: 'Notes/Sample.md', group: 'Other group' },
+          ],
+          alsoMore: true,
+        },
+        remove: async () => {},
+      },
+      global: { stubs: { Modal: { template: '<div><slot /><slot name="footer" /></div>' } } },
+    })
+    try {
+      const warnings = wrapper.findAll('.abele-server-delete__also').map((one) => one.text())
+      expect(warnings).toHaveLength(3)
+      expect(warnings[0]).toContain('also shared in group First group')
+      expect(warnings[1]).toContain('also shared in group Other group')
+      expect(warnings[2]).toContain('More shared files or groups may also be affected')
+      expect(wrapper.get('.abele-server-delete__facts').text()).toContain('501')
+    } finally {
+      wrapper.unmount()
+    }
+  })
   it.each(['settings', 'window'] as const)(
     'does not label an offline set as synced after its first item detaches (%s)',
     async (screen) => {

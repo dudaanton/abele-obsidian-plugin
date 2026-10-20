@@ -9,10 +9,11 @@ import {
   V2ScopeItemsResponseSchema,
   V2AddScopeItemRequestSchema,
   V2RemoveScopeItemResponseSchema,
+  V2_PREVIEW_FILE_LIMIT,
 } from '@abele/sync-sdk/protocol'
 import * as wire from './contract'
 export type ScopeItem = ReturnType<typeof V2ScopeItemSchema.parse>
-import { DEFAULT_SIMPLE_UPLOAD_BYTES } from '@abele/sync-sdk/core'
+import { AccessClient, DEFAULT_SIMPLE_UPLOAD_BYTES } from '@abele/sync-sdk/core'
 import { ShaSchema } from './fileSchemas'
 import {
   UploadBeginRequestSchema,
@@ -107,6 +108,18 @@ export class V2Client {
   /** Owner listing stays behind this port while older item servers lack the route. */
   ownedItems(tokenId: string) {
     return this.itemClient().tokenItems(tokenId)
+  }
+  previewTokenItem(tokenId: string, itemId: string) {
+    return new AccessClient(this.token, {
+      fetch: this.transport,
+      item: this.item,
+    }).previewTokenItem(tokenId, itemId, { limit: V2_PREVIEW_FILE_LIMIT })
+  }
+  previewToken(tokenId: string) {
+    return new AccessClient(this.token, { fetch: this.transport, item: this.item }).previewToken(
+      tokenId,
+      { limit: V2_PREVIEW_FILE_LIMIT }
+    )
   }
   private async request<T>(
     route: string,

@@ -658,52 +658,46 @@ export class TokenItemSets implements ShareSetSource {
   private async loadDeleteFacts(shareId: string, itemId: string | null): Promise<ShareDeleteFacts> {
     const issued = this.issued.get(shareId)
     if (!issued) throw new Error('Share is unavailable')
-    const items = (await this.client(issued.connectionId).ownedItems(shareId)).items
-      .filter(visible)
-      .filter((one) => itemId === null || one.id === itemId)
-    // Group membership requires authoritative server facts, not a path approximation.
-    if (items.some((one) => one.scope.kind === 'group'))
-      throw new Error('Group deletion inventory is unavailable')
-    const files = []
-    let next: string | null = null
-    do {
-      const page = await this.client(issued.connectionId).manifest(next)
-      files.push(
-        ...page.items.filter(
-          (one) =>
-            one.kind !== 'directory' &&
-            items.some((item) =>
-              item.scope.kind === 'folder'
-                ? item.scope.path === '/' || one.path.startsWith(item.scope.path + '/')
-                : one.file_id === item.scope.id
-            )
-        )
-      )
-      next = page.next
-    } while (next !== null)
-    const affected = (await this.client(issued.connectionId).tokens()).items.filter(
-      (token) =>
-        token.revoked_at === null &&
-        (token.id === shareId
-          ? itemId === null
-          : items.some((item) =>
-              item.scope.kind === 'folder'
-                ? item.scope.path === '/' ||
-                  token.scope.path === item.scope.path ||
-                  token.scope.path.startsWith(item.scope.path + '/')
-                : token.scope.kind === 'file' && token.scope.id === item.scope.id
-            ))
-    )
+    const client = this.client(issued.connectionId)
+    const preview =
+      itemId === null
+        ? await client.previewToken(shareId)
+        : await client.previewTokenItem(shareId, itemId)
+    const items =
+      'items' in preview ? preview.items.filter((item) => item.removed_at === null) : [preview]
+    const also = new Map<string, { path: string; group: string }>()
+    const affected = new Map<string, { label: string; scope: string }>()
+    const tokens = (await client.tokens()).items
+    if (itemId === null) affected.set(shareId, { label: issued.share.label, scope: 'Whole share' })
+    let alsoMore = false
+    for (const item of items) {
+      if (item.scope.kind === 'group' && item.files.length < item.file_count) alsoMore = true
+      for (const file of item.files) {
+        if (file.overlap_count > file.overlaps.length) alsoMore = true
+        for (const overlap of file.overlaps) {
+          const token = tokens.find((one) => one.id === overlap.token_id)
+          affected.set(overlap.token_id, {
+            label: token?.label || overlap.scope.path,
+            scope: overlap.scope.path,
+          })
+          if (overlap.scope.kind === 'group') {
+            const group = overlap.scope.path.replace(/\.md$/i, '')
+            also.set(file.file_id + ':' + overlap.scope_id, { path: file.path, group })
+          }
+        }
+      }
+    }
     return {
-      files: files.length,
-      bytes: files.reduce((n, one) => n + ('size' in one ? one.size : 0), 0),
-      access: affected.map((token) => ({
-        label: token.label || token.scope.path,
-        scope: token.scope.path,
-      })),
-      canWrite: !(await this.client(issued.connectionId).connection()).read_only,
+      files: preview.file_count,
+      bytes: preview.total_bytes,
+      access: [...affected.values()],
+      also: [...also.values()],
+      alsoMore,
+      canWrite:
+        items.every((item) => item.status === 'active') && !(await client.connection()).read_only,
     }
   }
+
   async deleteFromServer(shareId: string, itemId: string | null): Promise<void> {
     const issued = this.issued.get(shareId)
     if (!issued) throw new Error('Only the issuer may delete this share from the server')

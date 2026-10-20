@@ -200,6 +200,7 @@ export interface ShareSetSource {
 /** The server's facts for deleting, and the notes that other shared groups hold as well. */
 export interface ShareDeleteFacts extends ServerDeleteFacts {
   also?: { path: string; group: string }[]
+  alsoMore?: boolean
 }
 
 /** Set once the server answers for sets (or by the design stand); null keeps the old screens. */
