@@ -37,7 +37,6 @@
       >
         <template v-if="effectiveDebug && !endLine" #code>
           <NodePathDebugFile
-            embedded
             :key="
               JSON.stringify([
                 effectiveDebug.sourceId,
@@ -46,6 +45,7 @@
                 effectiveDebug.path,
               ])
             "
+            embedded
             :context="{
               ...effectiveDebug,
               ...(line ? { line } : {}),

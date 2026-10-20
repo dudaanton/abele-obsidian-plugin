@@ -352,6 +352,7 @@ const askBlame = async (reread = true): Promise<void> => {
     const ranges = await current.blame(props.file.ref, props.file.path)
     if (request === blameRequest) blameRanges.value = ranges
   } catch (error) {
+    let shown: unknown = error
     // An expired working revision is reread once, then blamed at the fresh one.
     if (
       reread &&
@@ -369,12 +370,12 @@ const askBlame = async (reread = true): Promise<void> => {
         if (request === blameRequest && blaming.value) return askBlame(false)
         return
       } catch (failure) {
-        error = failure
+        shown = failure
       } finally {
         rereading = false
       }
     }
-    if (request === blameRequest) blameError.value = presentUiError(error)
+    if (request === blameRequest) blameError.value = presentUiError(shown)
   } finally {
     if (request === blameRequest) blameBusy.value = false
   }
