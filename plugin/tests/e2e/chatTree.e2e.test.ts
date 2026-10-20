@@ -108,6 +108,8 @@ const probe = (label: string) => `(async () => {
     await shot('move-to')
     ;[...document.querySelectorAll('.suggestion-item')].find(item => item.textContent.includes('Chats (top)')).click()
     await until(() => files.every(file => file.path.slice(0, file.path.lastIndexOf('/')) === service.folders.root.value))
+    // An empty selection queues behind the requested move before fixture files are released.
+    await service.folders.moveMany([], '')
     return { closedTogether: !service.tabOrder.value.includes(second), inherited, dropped: reopened.toolModes.value.web_search === ownMode, moved: true, overflow, width: bounds.width, viewport: innerWidth, pictures: 11 }
   } finally {
     for (const id of created) {
