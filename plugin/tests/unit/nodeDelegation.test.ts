@@ -790,3 +790,29 @@ it('clears the previous turn report when a paused child accepts a follow-up', as
   expect(card.reports).toEqual([])
   f.store.close()
 })
+
+it('recovers a pending owner prompt even when its opening event has left the transcript window', async () => {
+  const f = fixture()
+  const prompt = {
+    kind: 'permission',
+    prompt_id: 'sample-prompt',
+    session_id: 'child',
+    run_id: 'sample-run',
+    revision: 1,
+    action_digest: 'a'.repeat(64),
+    expires_at: Number.MAX_SAFE_INTEGER,
+    state: 'pending',
+    choice: null,
+    installation_id: null,
+    delivered: false,
+    title: 'Run sample checks',
+    tool_name: 'Bash',
+    input: { command: 'npm test' },
+  }
+  Object.assign(f.client, { prompts: vi.fn(async (_session, after) => (after ? [] : [prompt])) })
+  await f.controller.approve({ parent_id: 'parent', project_ids: ['project'], providers: ['pi'] })
+  await f.controller.create('parent', task)
+  await f.controller.restore()
+  expect((await f.controller.cards('parent'))[0].prompts).toEqual([prompt])
+  f.store.close()
+})

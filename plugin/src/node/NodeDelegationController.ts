@@ -1,5 +1,6 @@
 import type {
   NodeClient,
+  Prompt,
   DelegationGrantRequest,
   DelegationCreateRequest,
 } from '@abele/node-client'
@@ -21,7 +22,7 @@ import {
   type DelegationCard,
 } from './delegation'
 import { delegatable, nodeProviders, providerAvailable } from './providers'
-import { promptAnswerStates } from './promptAnswers'
+import { pendingOwnerPrompts, promptAnswerStates } from './promptAnswers'
 import { reduceTranscript } from './NodeTranscriptReducer'
 import { openWindow, catchUp } from './sessionWindow'
 
@@ -39,6 +40,7 @@ async function taskKey(parent: string, key: string): Promise<string> {
 /** Provider-neutral trusted controller. No Obsidian, secrets, generic RPC or prompt answers. */
 export class NodeDelegationController {
   private readonly subscribed = new Set<string>()
+  private readonly pendingPrompts = new Map<string, Prompt[]>()
   private readonly denied = new Set<string>()
   private readonly stoppedParents = new Set<string>()
   private readonly wakeEpochs = new Map<string, number>()
@@ -55,6 +57,7 @@ export class NodeDelegationController {
   /** Server subscriptions belong to a transport, never to this controller's lifetime. */
   connectionChanged() {
     this.subscribed.clear()
+    this.pendingPrompts.clear()
     this.denied.clear()
   }
 
@@ -513,6 +516,20 @@ export class NodeDelegationController {
           (s) => storage(s).grants[child.grant_id]?.actions.includes('read') === true
         )
         if (!canRead) continue
+        const count = await this.store.transaction(
+          (s) => storage(s).tasks[child.delegation_key].status?.pending_human_prompts
+        )
+        if (count === 0) this.pendingPrompts.delete(child.session_id)
+        else if (count && typeof this.client.prompts === 'function') {
+          try {
+            this.pendingPrompts.set(
+              child.session_id,
+              await pendingOwnerPrompts(this.client, child.session_id)
+            )
+          } catch {
+            console.debug('[Abele node] pending child prompts unavailable')
+          }
+        }
         try {
           if (!this.subscribed.has(child.session_id)) {
             const window = await openWindow(this.client, child.session_id)
@@ -640,6 +657,15 @@ export class NodeDelegationController {
           const transcript = canRead
             ? reduceTranscript((s.events[child.session_id] ?? []).slice(-400))
             : undefined
+          const pending = new Map<string, Prompt>(
+            (canRead && child ? (this.pendingPrompts.get(child.session_id) ?? []) : []).map(
+              (prompt) => [prompt.prompt_id, prompt]
+            )
+          )
+          for (const prompt of transcript?.prompts ?? []) {
+            if (prompt.state === 'pending') pending.set(prompt.prompt_id, prompt)
+            else pending.delete(prompt.prompt_id)
+          }
           const messages = transcript?.messages ?? []
           const latest = messages.findLast((m) => m.role === 'assistant' && m.content)
           const tool = messages.findLast(
@@ -666,7 +692,7 @@ export class NodeDelegationController {
               : undefined,
             state,
             reason,
-            prompts: transcript?.prompts.filter((p) => p.state === 'pending') ?? [],
+            prompts: t.status?.pending_human_prompts === 0 ? [] : [...pending.values()],
             promptDiffs: transcript?.promptDiffs,
             answers: child ? promptAnswerStates(s, child.session_id) : {},
             warnings: canRead

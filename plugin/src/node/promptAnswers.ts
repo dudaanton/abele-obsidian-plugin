@@ -138,3 +138,23 @@ export async function cancelOwnerManagerRun(
   const receipt = await client.operationResult(operation)
   if (receipt?.error) throw new Error(receipt.error)
 }
+
+/** Pending prompts can outlive the bounded transcript window. This is an owner read. */
+export async function pendingOwnerPrompts(
+  client: import('@abele/node-client').NodeClient,
+  session: string
+) {
+  const prompts = new Map<string, import('@abele/node-client').Prompt>()
+  let after: string | undefined
+  for (let page = 0; page < 64; page++) {
+    const rows = await client.prompts(session, after, 'pending')
+    if (!rows.length) break
+    for (const prompt of rows) prompts.set(prompt.prompt_id, prompt)
+    const last = rows.at(-1)
+    if (!last) break
+    const next = last.prompt_id
+    if (next === after) break
+    after = next
+  }
+  return [...prompts.values()]
+}

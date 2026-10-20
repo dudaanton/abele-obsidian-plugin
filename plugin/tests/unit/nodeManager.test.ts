@@ -239,3 +239,77 @@ it('does not offer an obsolete approval after a final unknown outcome', async ()
   expect((await f.controller.cards('sample-parent'))[0].prompts).toEqual([])
   f.store.close()
 })
+
+it('recovers a durable command approval beyond the transcript window', async () => {
+  const f = fixture()
+  const prompt = {
+    kind: 'permission',
+    prompt_id: 'sample-prompt',
+    session_id: 'sample-session',
+    run_id: 'sample-run',
+    revision: 1,
+    action_digest: 'a'.repeat(64),
+    expires_at: Number.MAX_SAFE_INTEGER,
+    state: 'pending',
+    choice: null,
+    installation_id: null,
+    delivered: false,
+  }
+  f.client.request.mockResolvedValue(receipt)
+  Object.assign(f.client, { prompts: vi.fn(async (_session, after) => (after ? [] : [prompt])) })
+  await f.controller.mutate(
+    'sample-parent',
+    'command.v1.run',
+    { session_id: 'sample-session', project_id: 'sample-project', command: 'pwd' },
+    'sample-operation'
+  )
+  await f.controller.restore()
+  expect((await f.controller.cards('sample-parent'))[0].prompts).toEqual([prompt])
+  f.store.close()
+})
+
+it('requires the integration capability and preserves rebase conflicts without replay', async () => {
+  const f = fixture()
+  const params = {
+    session_id: 'sample-session',
+    worktree_id: 'sample-target',
+    source_worktree_id: 'sample-source',
+    target_branch: 'main',
+    source_branch: 'work/sample',
+    expected_target_head: 'a'.repeat(40),
+    expected_source_head: 'b'.repeat(40),
+    rebase: true,
+  }
+  await expect(
+    f.controller.mutate('sample-parent', 'git.v1.integrate', params, 'sample-integration')
+  ).rejects.toThrow('unsupported_method')
+  expect(f.client.flush).not.toHaveBeenCalled()
+  Object.assign(f.client, {
+    describe: async () => ({
+      capabilities: { capabilities: { git_integrate_v1: { status: 'supported' } } },
+    }),
+  })
+  const integration = { ...receipt, method: 'git.v1.integrate' }
+  f.client.flush.mockImplementation(async () =>
+    f.store.transaction((s) => {
+      for (const entry of s.outbox)
+        s.results[entry.operation_id] = { result: integration, request: entry }
+      s.outbox = []
+    })
+  )
+  await f.controller.mutate('sample-parent', 'git.v1.integrate', params, 'sample-integration')
+  f.client.request.mockResolvedValue({
+    ...integration,
+    state: 'failed',
+    reason: 'rebase_conflict',
+    conflicting_files: ['src/sample-parser.ts'],
+  })
+  await f.controller.status('sample-parent', 'sample-session', 'sample-run')
+  expect((await f.controller.cards('sample-parent'))[0].run).toMatchObject({
+    state: 'failed',
+    reason: 'rebase_conflict',
+    conflicting_files: ['src/sample-parser.ts'],
+  })
+  expect(f.client.flush).toHaveBeenCalledTimes(1)
+  f.store.close()
+})

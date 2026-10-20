@@ -1,10 +1,10 @@
-import type { NodeClient } from '@abele/node-client'
+import type { Prompt, NodeClient } from '@abele/node-client'
 import { ManagerRunSchema, validateParams, type ManagerRun } from '@abele/node-protocol'
 import { z } from 'zod'
 import type { NodeClientStore } from './NodeClientStore'
 import { openWindow, catchUp } from './sessionWindow'
 import { reduceTranscript } from './NodeTranscriptReducer'
-import { promptAnswerStates } from './promptAnswers'
+import { pendingOwnerPrompts, promptAnswerStates } from './promptAnswers'
 
 function outputTail(value: string, capacity: number): { text: string; truncated: boolean } {
   const chars = Array.from(value)
@@ -41,8 +41,10 @@ export function managerCapability(description: unknown, capability: string): boo
 /** Exact durable operations; owner prompt answers are deliberately a separate UI API. */
 export class NodeManagerController {
   private readonly subscribed = new Set<string>()
+  private readonly pendingPrompts = new Map<string, Prompt[]>()
   connectionChanged() {
     this.subscribed.clear()
+    this.pendingPrompts.clear()
   }
   constructor(
     readonly client: NodeClient,
@@ -149,8 +151,12 @@ export class NodeManagerController {
           await this.client.subscribe(session)
           this.subscribed.add(session)
         }
-        if (reconnect || ['pending_approval', 'running'].includes(entry.run.state))
-          await this.status(entry.parent, session, entry.run.run_id)
+        if (reconnect || ['pending_approval', 'running'].includes(entry.run.state)) {
+          const status = await this.status(entry.parent, session, entry.run.run_id)
+          if (status.state === 'pending_approval')
+            this.pendingPrompts.set(status.run_id, await pendingOwnerPrompts(this.client, session))
+          else this.pendingPrompts.delete(status.run_id)
+        }
       } catch (error) {
         console.debug('[Abele node] manager run refresh unavailable', error)
       }
@@ -186,6 +192,13 @@ export class NodeManagerController {
           }
         }
         const transcript = reduceTranscript(events)
+        const prompts = new Map(
+          (this.pendingPrompts.get(run.run_id) ?? []).map((prompt) => [prompt.prompt_id, prompt])
+        )
+        for (const prompt of transcript.prompts) {
+          if (prompt.state === 'pending') prompts.set(prompt.prompt_id, prompt)
+          else prompts.delete(prompt.prompt_id)
+        }
         return [
           {
             operation,
@@ -198,7 +211,7 @@ export class NodeManagerController {
                       .join(' ')
                   : 'git.v1.integrate',
             run,
-            prompts: transcript.prompts.filter(
+            prompts: [...prompts.values()].filter(
               (p) =>
                 run.state === 'pending_approval' &&
                 p.prompt_id === run.prompt_id &&
