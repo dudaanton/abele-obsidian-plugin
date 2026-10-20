@@ -24,6 +24,11 @@ import { GlobalStore } from '@/stores/GlobalStore'
 
 const OLD_READ =
   'Read the content of a file. Only files within the current workspace scope are accessible.'
+it('continues recognizing the old move default after its guidance improves', () => {
+  expect(
+    pruneToolDescriptions({ mv: 'Move or rename a file. Source must be in workspace scope.' }).kept
+  ).toEqual({})
+})
 
 /** What a settings file saved by an older version holds: every shipped default, verbatim. */
 const everyOldDefault = (): Record<string, string> =>
