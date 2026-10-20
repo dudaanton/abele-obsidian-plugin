@@ -183,6 +183,9 @@ describe('stopping from an approval', () => {
     await session.approveToolCall({ n: 'revised content' })
     expect(JSON.stringify(turns.mock.calls.at(-1)![0].messages)).toContain('revised content')
     expect(JSON.stringify(turns.mock.calls.at(-1)![0].messages)).toContain('edited')
+    expect(session.messages.value.find((message) => message.toolCallId === 'one')?.toolResult).toBe(
+      'done'
+    )
   })
   it('rejects every pending call without tools or another model turn, and stays settled', async () => {
     await askedAbout('one', 'two', 'three')

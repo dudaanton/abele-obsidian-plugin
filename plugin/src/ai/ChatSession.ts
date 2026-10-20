@@ -2432,18 +2432,12 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       isError = true
     }
 
-    if (JSON.stringify(args) !== JSON.stringify(tc.arguments)) {
-      toolResult = {
-        ...toolResult,
-        content: [
-          ...toolResult.content,
-          {
-            type: 'text',
-            text: `The user edited the approved action. Actual arguments executed: ${JSON.stringify(args)}. Describe the actual result, using these values rather than the original proposal.`,
-          },
-        ],
-      }
-    }
+    const modelContent = [...toolResult.content]
+    if (JSON.stringify(args) !== JSON.stringify(tc.arguments))
+      modelContent.push({
+        type: 'text',
+        text: `The user edited the approved action. Actual arguments executed: ${JSON.stringify(args)}. Describe the actual result, using these values rather than the original proposal.`,
+      })
 
     const toolChatMsg = this.allChatMessages.find(
       (m) => m.role === 'tool-call' && m.toolCallId === tc.id
@@ -2474,7 +2468,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       role: 'toolResult',
       toolCallId: tc.id,
       toolName: tc.name,
-      content: toolResult.content,
+      content: modelContent,
       isError,
       timestamp: Date.now(),
       chatMessageId: toolChatMsg?.id,
@@ -3035,7 +3029,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
 
     this.recordRefusal(
       tc,
-      `${reason || 'User rejected this action'}. Do not retry this action unchanged or work around the refusal. Ask the user before attempting it again.`
+      reason || 'User rejected this action',
+      'Do not retry this action unchanged or work around the refusal. Ask the user before attempting it again.'
     )
 
     try {
@@ -3052,7 +3047,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
    * The call at the head of the queue, refused: its bubble says why, the model is told the same,
    * and the queue moves on. Refused by the person or, for them, by an interceptor script.
    */
-  private recordRefusal(tc: ToolCallContent, reasonText: string): void {
+  private recordRefusal(tc: ToolCallContent, reasonText: string, modelGuidance?: string): void {
     const toolChatMsg = this.allChatMessages.find(
       (m) => m.toolCallId === tc.id && m.toolStatus === 'pending'
     )
@@ -3070,7 +3065,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       role: 'toolResult',
       toolCallId: tc.id,
       toolName: tc.name,
-      content: [{ type: 'text', text: reasonText }],
+      content: [
+        { type: 'text', text: modelGuidance ? `${reasonText}. ${modelGuidance}` : reasonText },
+      ],
       isError: true,
       timestamp: Date.now(),
       chatMessageId: toolChatMsg?.id,
