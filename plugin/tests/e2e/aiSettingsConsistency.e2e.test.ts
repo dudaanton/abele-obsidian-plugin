@@ -212,5 +212,6 @@ it.skipIf(!available).each([
     ])
       expect(labels).toContain(label)
   }
-  expect(report.shots).toHaveLength(11)
+  expect(report.shots).toHaveLength(12)
+  expect(report.shots).toContain('image-time-limit')
 })
