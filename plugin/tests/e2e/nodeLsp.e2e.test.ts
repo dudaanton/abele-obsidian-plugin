@@ -21,11 +21,15 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
           `(async () => {
         const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
         let phase = 'start';
-        const until = async predicate => { for (let i=0;i<100;i++) { if(predicate()) return; await wait(50) } await shot('failure-' + phase); throw Error('Language fixture did not settle: ' + phase + ' · ' + document.querySelector('.modal.abele-modal')?.textContent) };
+        const runtimeErrors = [];
+        const onError = event => runtimeErrors.push(String(event.reason ?? event.message));
+        window.addEventListener('unhandledrejection', onError);
+        window.addEventListener('error', onError);
+        const until = async predicate => { for (let i=0;i<100;i++) { if(predicate()) return; await wait(50) } await shot('failure-' + phase); throw Error('Language fixture did not settle: ' + phase + ' · ' + document.querySelector('.modal.abele-modal')?.textContent + ' · runtime: ' + runtimeErrors.join('; ')) };
         const close = async () => { phase += '-close'; const button = document.querySelector('[data-lsp-close]'); if(!button) throw Error('Fixture dismiss action is missing'); button.click(); await until(() => !document.querySelector('.modal.abele-modal')); };
         const shot = async name => require('fs').writeFileSync(${JSON.stringify(shots)} + '/' + ${JSON.stringify(mobile ? 'phone-' : 'desktop-')} + name + '.png', (await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG());
         const results = [];
-        for (const state of ['missing','untrusted','loading','errors','eslint']) {
+        try { for (const state of ['missing','untrusted','loading','errors','eslint']) {
           phase = state + '-viewer';
           await window.__abeleTest.openDialog('node-lsp-' + state);
           await until(() => document.querySelector('.abele-lsp-root .cm-content'));
@@ -86,6 +90,7 @@ it('shows language analysis states and navigation on desktop and a phone-sized s
           await close();
         }
         return JSON.stringify(results);
+        } finally { window.removeEventListener('unhandledrejection', onError); window.removeEventListener('error', onError); }
       })()`,
           90000
         )

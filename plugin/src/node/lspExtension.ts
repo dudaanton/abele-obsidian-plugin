@@ -14,6 +14,7 @@ import {
   ViewPlugin,
 } from '@codemirror/view'
 import type { LspDiagnostic } from '@abele/node-protocol'
+import { Menu } from 'obsidian'
 import { lspFor } from './lspContext'
 import type { LspPosition } from './NodeLspDocument'
 import { lspMenuLabel } from './lspMenu'
@@ -185,12 +186,10 @@ function messageDOM(view: EditorView, text: string) {
 }
 function showMessages(view: EditorView, position: number, text: string) {
   // Native Obsidian menu gives tap users the same messages without a hover dependency.
-  void import('obsidian').then(({ Menu }) => {
-    const menu = new Menu().setUseNativeMenu(false)
-    menu.addItem((item) =>
-      item.setTitle(lspMenuLabel(view.dom.ownerDocument, text)).setDisabled(true)
-    )
-    const coords = view.coordsAtPos(position)
-    if (coords) menu.showAtPosition({ x: coords.left, y: coords.bottom }, view.dom.ownerDocument)
-  })
+  const menu = new Menu().setUseNativeMenu(false)
+  menu.addItem((item) =>
+    item.setTitle(lspMenuLabel(view.dom.ownerDocument, text)).setDisabled(true)
+  )
+  const coords = view.coordsAtPos(position)
+  if (coords) menu.showAtPosition({ x: coords.left, y: coords.bottom }, view.dom.ownerDocument)
 }

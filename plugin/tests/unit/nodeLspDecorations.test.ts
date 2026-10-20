@@ -1,5 +1,5 @@
-import { expect, it } from 'vitest'
-import 'obsidian'
+import { expect, it, vi } from 'vitest'
+import { Menu } from 'obsidian'
 import { EditorView } from '@codemirror/view'
 import { NodeLspDocument } from '@/node/NodeLspDocument'
 import { provideLsp } from '@/node/lspContext'
@@ -43,6 +43,14 @@ it('renders both diagnostic sources, tolerates stale ranges, and clears marks on
       'eslint: Sample lint warning'
     )
     expect(view.dom.querySelector('.abele-lsp-gutter')?.textContent).toContain('●')
+    const show = vi.spyOn(Menu.prototype, 'showAtPosition')
+    vi.spyOn(view, 'coordsAtPos').mockReturnValue({ left: 10, right: 20, top: 20, bottom: 30 })
+    vi.spyOn(view, 'lineBlockAtHeight').mockReturnValue(view.lineBlockAt(0))
+    view.dom
+      .querySelector('.abele-lsp-gutter span[title]')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await vi.waitFor(() => expect(show).toHaveBeenCalled())
+    vi.restoreAllMocks()
     doc.diagnostics = []
     for (const listener of doc.listeners) listener()
     expect(view.dom.querySelectorAll('.abele-lsp-error, .abele-lsp-warning')).toHaveLength(0)
