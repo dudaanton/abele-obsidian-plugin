@@ -402,6 +402,8 @@ export class DebuggerController {
   }
   addProposal(raw: unknown) {
     const p = ProposalSchema.parse(raw)
+    // A click is the owner's approval. Only agent requests belong in approval cards.
+    if (p.actor.kind !== 'agent') return
     const schema =
       DebuggerControlMethodSchemas[
         `debugger.v1.${p.method}` as keyof typeof DebuggerControlMethodSchemas
@@ -469,6 +471,33 @@ export class DebuggerController {
       after = page.next
     } while (after !== '')
     return proposals
+  }
+  private async ownerCommand(method: string, params: Record<string, unknown>) {
+    const generation = this.serial
+    const result = DebuggerReceiptSchema.parse(await this.transport.command(method, params))
+    if (result.outcome !== 'pending' || !this.current || generation !== this.serial) return result
+    const proposals = await this.refreshApprovals()
+    if (!this.current || generation !== this.serial) return result
+    const own = proposals.find(
+      (p) =>
+        p.actor.kind === 'human' &&
+        p.method === method &&
+        p.receipt.operation_id === params.operation_id &&
+        p.params.operation_id === params.operation_id &&
+        p.params.debug_session_id === params.debug_session_id &&
+        p.params.incarnation === params.incarnation &&
+        p.receipt.proposal_hash === result.proposal_hash
+    )
+    if (!own?.receipt.proposal_hash) throw new Error(t('node.error.generic'))
+    console.debug('[debugger] Approving owner control', method)
+    return DebuggerReceiptSchema.parse(
+      await this.rpc('approve', {
+        principal_key: own.principal_key,
+        operation_id: own.receipt.operation_id,
+        proposal_hash: own.receipt.proposal_hash,
+        decision: 'approve',
+      })
+    )
   }
   async decide(id: string, allow: boolean) {
     const a = this.actions.find((a) => a.id === id),
@@ -541,7 +570,7 @@ export class DebuggerController {
           : {}),
       }
       const generation = this.serial
-      const result = DebuggerReceiptSchema.parse(await this.transport.command(method, params))
+      const result = DebuggerReceiptSchema.parse(await this.ownerCommand(method, params))
       if (!this.current || generation !== this.serial) return
       this.observe({ observation: 'current', snapshot: result.snapshot })
       if (result.outcome !== 'completed') this.error = receiptMessage(result.code ?? result.outcome)
@@ -587,7 +616,25 @@ export class DebuggerController {
   }
   /** A breakpoint by the identity a record point shares with it; a condition goes to the owner's
    * approval as any conditional breakpoint does. */
-  setBreakpoint(breakpointId: string, sourceId: string, line: number, condition?: string) {
+  setBreakpoint(
+    breakpointId: string,
+    sourceId: string,
+    line: number,
+    condition?: string,
+    options?: { log_message?: string; enabled?: boolean }
+  ) {
+    if (options?.enabled === false)
+      return this.human(async () => {
+        this.disabledBreakpoints.set(breakpointId, {
+          breakpoint_id: breakpointId,
+          source_id: sourceId,
+          line,
+          ...(condition ? { condition } : {}),
+          ...(options.log_message ? { log_message: options.log_message } : {}),
+        })
+        this.session.breakpoints = this.knownBreakpoints()
+        this.notify()
+      })
     return this.patchBreakpoints(() => ({
       upsert: [
         {
@@ -595,6 +642,7 @@ export class DebuggerController {
           source_id: sourceId,
           line,
           ...(condition ? { condition } : {}),
+          ...(options?.log_message ? { log_message: options.log_message } : {}),
         },
       ],
       remove: [],
@@ -656,7 +704,7 @@ export class DebuggerController {
   setExceptionFilters(filters: string[]) {
     return this.human(async (invocation) => {
       const result = DebuggerReceiptSchema.parse(
-        await this.transport.command('exceptionBreakpoints.set', {
+        await this.ownerCommand('exceptionBreakpoints.set', {
           ...this.precondition(invocation),
           operation_id: crypto.randomUUID(),
           // js-debug names its caught-exception filter "all".
@@ -713,7 +761,7 @@ export class DebuggerController {
       const generation = this.serial
       const patch = change(s)
       const result = DebuggerReceiptSchema.parse(
-        await this.transport.command('breakpoints.patch', {
+        await this.ownerCommand('breakpoints.patch', {
           ...this.precondition(invocation),
           operation_id: crypto.randomUUID(),
           expected_breakpoint_revision: s.breakpoint_revision,
@@ -920,7 +968,7 @@ export class DebuggerController {
         generation = this.serial
       this.inspections.set(operation_id, { handle })
       const result = DebuggerReceiptSchema.parse(
-        await this.transport.command('variables', {
+        await this.ownerCommand('variables', {
           ...this.precondition(invocation),
           operation_id,
           handle,
@@ -937,7 +985,7 @@ export class DebuggerController {
         ...value,
         value:
           result.outcome === 'pending'
-            ? t('debug.approvalPending')
+            ? t('node.error.unknownOutcome')
             : result.outcome === 'completed'
               ? t('streamC.ce9dc7a8bc7d98f2')
               : receiptMessage(result.code ?? result.outcome),
@@ -971,6 +1019,7 @@ export class DebuggerController {
                   handle: z.string(),
                   name: z.string(),
                   source_id: z.string().nullable(),
+                  path: z.string().optional(),
                   line: z.number(),
                 })
                 .loose()
@@ -984,7 +1033,7 @@ export class DebuggerController {
     this.frameHandles = result.data.items.map((f) => f.handle)
     this.session.frames = result.data.items.map((f) => ({
       name: f.name,
-      file: f.source_id ? (this.path(f.source_id) ?? f.source_id) : '',
+      file: f.source_id ? (this.path(f.source_id) ?? f.path ?? f.source_id) : (f.path ?? ''),
       line: f.line,
     }))
     // Held in Node's own code (js-debug's statement, the loader): the program's frame is the one
@@ -1046,7 +1095,7 @@ export class DebuggerController {
         operation_id = crypto.randomUUID()
       this.inspections.set(operation_id, { expression })
       const result = DebuggerReceiptSchema.parse(
-        await this.transport.command('evaluate', {
+        await this.ownerCommand('evaluate', {
           ...this.precondition(invocation),
           operation_id,
           frame_handle,

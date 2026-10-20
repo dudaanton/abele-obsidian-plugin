@@ -65,6 +65,8 @@ export interface CarriedPoint {
   path: string
   line: number
   condition?: string
+  log_message?: string
+  enabled?: boolean
   take?: string[]
   note?: string
 }
@@ -79,6 +81,8 @@ export function carriedPoints(binding: DebuggerBinding): CarriedPoint[] {
         path: b.file,
         line: b.requestedLine,
         ...(b.condition ? { condition: b.condition } : {}),
+        ...(b.log_message ? { log_message: b.log_message } : {}),
+        ...(b.enabled !== undefined ? { enabled: b.enabled } : {}),
         ...(point ? { take: point.take } : {}),
         ...(point?.note ? { note: point.note } : {}),
       },
@@ -243,11 +247,20 @@ export async function startProgram(
       console.debug('[debugger] Point not carried: the node did not take its file', c)
       continue
     }
-    if (c.take && binding.trace)
+    if (c.take && binding.trace) {
+      if (c.enabled === false)
+        await binding.controller.setBreakpoint(crypto.randomUUID(), sourceId, c.line, c.condition, {
+          enabled: false,
+        })
       await binding.trace.savePoint(sourceId, c.line, {
         take: c.take,
         ...(c.condition ? { when: c.condition } : {}),
         ...(c.note ? { note: c.note } : {}),
+      })
+    } else if (c.log_message || c.enabled === false)
+      await binding.controller.setBreakpoint(crypto.randomUUID(), sourceId, c.line, c.condition, {
+        ...(c.log_message ? { log_message: c.log_message } : {}),
+        ...(c.enabled !== undefined ? { enabled: c.enabled } : {}),
       })
     else await binding.controller.setBreakpoint(crypto.randomUUID(), sourceId, c.line, c.condition)
   }

@@ -2,7 +2,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { DebuggerService } from '@/debugger/DebuggerService'
-import { ProgramPicker, defaultProgram, openFilesOf, startProgram } from '@/debugger/startProgram'
+import {
+  ProgramPicker,
+  carriedPoints,
+  defaultProgram,
+  openFilesOf,
+  startProgram,
+} from '@/debugger/startProgram'
 import { NODE_FILE_VIEW } from '@/node/nodePathNavigation'
 import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import type { PathTarget } from '@/node/NodePathModel'
@@ -78,6 +84,31 @@ function fakePresenter() {
 }
 
 afterEach(() => DebuggerService.instance.destroy())
+
+it('carries the log message and disabled state on restart', () => {
+  const binding = {
+    controller: {
+      knownBreakpoints: () => [
+        {
+          file: 'src/sample.js',
+          requestedLine: 8,
+          condition: 'n < 4',
+          log_message: 'sample {n}',
+          enabled: false,
+        },
+      ],
+    },
+  }
+  expect(carriedPoints(binding as never)).toEqual([
+    {
+      path: 'src/sample.js',
+      line: 8,
+      condition: 'n < 4',
+      log_message: 'sample {n}',
+      enabled: false,
+    },
+  ])
+})
 
 describe('running a program under the debugger', () => {
   it('opens the mapped entry source rather than the ignored build file', async () => {
@@ -257,9 +288,12 @@ describe('running a program under the debugger', () => {
         requestedLine: 8,
         state: 'set',
         condition: 'n > 1',
+        log_message: 'sample {n}',
+        enabled: false,
       },
       {
         id: 'b-rec',
+        enabled: false,
         sourceId: 'old-2',
         file: 'src/service.js',
         line: 4,
@@ -288,8 +322,14 @@ describe('running a program under the debugger', () => {
     const starts = calls.filter(([m]) => m === 'debugger.v1.start').map(([, p]) => p)
     // The file a point stands in is taken by the new run even when no tab shows it.
     expect(starts[1].sources).toEqual(['src/service.js'])
-    expect(setBreakpoint).toHaveBeenCalledWith(expect.any(String), 's1', 8, 'n > 1')
+    expect(setBreakpoint).toHaveBeenCalledWith(expect.any(String), 's1', 8, 'n > 1', {
+      log_message: 'sample {n}',
+      enabled: false,
+    })
     expect(savePoint).toHaveBeenCalledWith('s2', 4, { take: ['sum'], note: 'the running total' })
+    expect(setBreakpoint).toHaveBeenCalledWith(expect.any(String), 's2', 4, undefined, {
+      enabled: false,
+    })
   })
 
   it('carries the points only once the new run is held, so they name the state it stopped in', async () => {

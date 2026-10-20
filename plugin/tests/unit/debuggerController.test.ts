@@ -8,6 +8,92 @@ import {
 } from '@abele/node-protocol'
 import { DebuggerController, debuggerKey, receiptMessage } from '@/debugger/DebuggerController'
 import { DebuggerBreakpointRequestSchema } from '@abele/node-protocol'
+it('explains an unmatched owner approval instead of leaving a click waiting for permission', async () => {
+  const { model, command } = fixture()
+  command.mockResolvedValueOnce(receipt('pending'))
+  await expect(model.inspect('sample-scope')).rejects.toThrow(
+    'The node could not complete the request'
+  )
+})
+it('restores a disabled log point without temporarily installing a stopping breakpoint', async () => {
+  const { model, command } = fixture()
+  await model.setBreakpoint('sample-disabled', 'sample-source', 8, 'n < 4', {
+    log_message: 'sample {n}',
+    enabled: false,
+  })
+  expect(command).not.toHaveBeenCalled()
+  expect(model.knownBreakpoints()).toContainEqual(
+    expect.objectContaining({
+      id: 'sample-disabled',
+      log_message: 'sample {n}',
+      condition: 'n < 4',
+      enabled: false,
+    })
+  )
+  await model.setBreakpointEnabled('sample-disabled', true)
+  expect(command).toHaveBeenCalledWith(
+    'breakpoints.patch',
+    expect.objectContaining({
+      upsert: [
+        {
+          breakpoint_id: 'sample-disabled',
+          source_id: 'sample-source',
+          line: 8,
+          condition: 'n < 4',
+          log_message: 'sample {n}',
+        },
+      ],
+    })
+  )
+})
+it.each(['variables', 'evaluate', 'breakpoints.patch', 'exceptionBreakpoints.set'])(
+  'approves only the exact owner-initiated %s proposal without an approval card',
+  async (method) => {
+    const { model, rpc, command, proposal } = fixture()
+    let own: typeof proposal | undefined
+    rpc.mockImplementation(async (name: string, params?: unknown) => {
+      if (name === 'debugger.v1.approvals')
+        return { proposals: own ? [own, proposal] : [], truncated: false, next: null } as never
+      if (name === 'debugger.v1.approve')
+        return receipt((params as any).decision === 'deny' ? 'rejected' : 'completed', {
+          operation_id: (params as any).operation_id,
+          dispatch: 'not_dispatched',
+          code: 'denied',
+        }) as never
+      if (name === 'debugger.v1.history') return { entries: [], truncated_before: 0 } as never
+      return { data: { items: [] } } as never
+    })
+    command.mockImplementationOnce(async (_name, params) => {
+      own = {
+        ...proposal,
+        actor: { kind: 'human', principal_id: 'sample-human' } as never,
+        method,
+        params: params as typeof proposal.params,
+        receipt: receipt('pending', { operation_id: (params as any).operation_id }),
+      }
+      return own.receipt
+    })
+    if (method === 'variables') await model.inspect('sample-scope')
+    if (method === 'evaluate') {
+      ;(model as any).frameHandles = ['sample-frame']
+      await model.watch('sample.count')
+    }
+    if (method === 'breakpoints.patch')
+      await model.setBreakpoint('sample-point', 'sample-source', 7, 'n < 4')
+    if (method === 'exceptionBreakpoints.set') await model.setExceptionFilters(['uncaught'])
+    expect(rpc).toHaveBeenCalledWith('debugger.v1.approve', {
+      principal_key: own!.principal_key,
+      operation_id: own!.receipt.operation_id,
+      proposal_hash: own!.receipt.proposal_hash,
+      decision: 'approve',
+    })
+    expect(model.actions.some((a) => a.id.includes(own!.receipt.operation_id))).toBe(false)
+    expect(rpc).not.toHaveBeenCalledWith(
+      'debugger.v1.approve',
+      expect.objectContaining({ operation_id: proposal.receipt.operation_id, decision: 'approve' })
+    )
+  }
+)
 it.each(['stack', 'scopes'])(
   'ignores a late %s refusal after detach instead of losing the terminal state',
   async (stage) => {
@@ -206,12 +292,14 @@ it('shows a breakpoint another controller enabled instead of hiding it behind lo
   expect(model.knownBreakpoints()[0].enabled).toBe(true)
 })
 
-it('makes pending conditional breakpoint approvals available immediately', async () => {
+it('reports an unmatched conditional breakpoint approval instead of waiting for another click', async () => {
   const { model, command, rpc } = fixture()
   command.mockResolvedValueOnce(receipt('pending'))
-  await model.setBreakpoint('sample-bp', 'sample-source', 7, 'n < 4 && n > 0')
+  await expect(
+    model.setBreakpoint('sample-bp', 'sample-source', 7, 'n < 4 && n > 0')
+  ).rejects.toThrow('The node could not complete the request')
   expect(rpc).toHaveBeenCalledWith('debugger.v1.approvals', expect.anything())
-  expect(model.error).toBe('')
+  expect(model.error).toContain('The node could not complete the request')
 })
 
 it('loads selected frame scopes on pause without retiring pending approvals', async () => {
@@ -385,6 +473,22 @@ it.each([false, true])(
       const params = args[1] as { operation_id: string; depth: number }
       inspectionId = params.operation_id
       rpc.mockImplementation(async (method: string) => {
+        if (method === 'debugger.v1.approvals')
+          return {
+            proposals: completed
+              ? []
+              : [
+                  {
+                    ...proposal,
+                    actor: { kind: 'human', principal_id: 'sample-human' },
+                    method: 'variables',
+                    params,
+                    receipt: receipt('pending', { operation_id: inspectionId }),
+                  },
+                ],
+            truncated: false,
+            next: null,
+          } as never
         if (method === 'debugger.v1.approve') {
           completed = true
           return receipt('completed', { operation_id: inspectionId })
@@ -428,31 +532,16 @@ it.each([false, true])(
           } as never
         return { proposals: [], truncated: false, next: null } as never
       })
-      return receipt(delayed ? 'pending' : 'completed')
+      return receipt(delayed ? 'pending' : 'completed', { operation_id: inspectionId })
     })
     await model.inspect('sample-scope')
     await panel.setProps({ session: { ...model.session } })
     if (delayed) {
-      expect(panel.text()).toContain('Waiting for approval in Debug')
-      expect(model.session.variables[0].value).toBe('Waiting for approval in Debug')
-      expect(model.session.variables[0].children).toBeUndefined()
-      expect(
-        rpc.mock.calls.some(
-          ([method, params]) =>
-            method === 'debugger.v1.approve' && (params as any)?.decision === 'approve'
-        )
-      ).toBe(false)
-      model.addProposal({
-        ...proposal,
-        key: 'sample-inspection',
-        method: 'variables',
-        params: command.mock.calls.at(-1)![1],
-        receipt: receipt('pending', { operation_id: inspectionId }),
-      })
-      await model.decide(JSON.stringify([proposal.principal_key, inspectionId]), true)
-      // The chat approval handler refreshes history after the explicit decision.
-      await model.refreshHistory()
-      await panel.setProps({ session: { ...model.session } })
+      expect(rpc).toHaveBeenCalledWith(
+        'debugger.v1.approve',
+        expect.objectContaining({ operation_id: inspectionId, decision: 'approve' })
+      )
+      expect(model.actions.some((a) => a.id.includes(inspectionId))).toBe(false)
     }
     expect(model.session.variables).toEqual([
       expect.objectContaining({
