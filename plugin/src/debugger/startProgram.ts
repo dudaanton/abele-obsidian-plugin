@@ -312,8 +312,16 @@ export async function askAndStartProgram(
       debugOwnerParams(presenter)
     )
     const launch = (program: string) => {
+      const argumentsKey = (path: string) =>
+        `abele-debug-launch-arguments:${JSON.stringify([target.registrationId, target.nodeId, target.kind, target.id, path])}`
       openComponentDialog(() => ProgramLaunchDialog, {
         program,
+        argumentsFor: (path: string) => {
+          const saved: unknown = app.loadLocalStorage(argumentsKey(path))
+          return typeof saved === 'string' ? saved : ''
+        },
+        rememberArguments: (path: string, text: string) =>
+          app.saveLocalStorage(argumentsKey(path), text),
         launch: (path: string, argv: string[]) => {
           const selected = resolveLaunchTarget(path, targets)
           return startProgram(

@@ -6,6 +6,23 @@ import Disclosure from '@/components/obsidian/Disclosure.vue'
 import { Platform } from 'obsidian'
 
 const modal = { props: ['size'], template: '<div><slot /><slot name="footer" /></div>' }
+it('restores arguments for the selected entry and remembers the successful launch', async () => {
+  const rememberArguments = vi.fn()
+  const w = mount(ProgramLaunchDialog, {
+    props: {
+      program: 'dist/main.js',
+      launch: vi.fn(async () => {}),
+      argumentsFor: () => 'sample --count 3',
+      rememberArguments,
+    },
+    global: { stubs: { Modal: modal } },
+  })
+  expect(w.findAll('input')[1].element.value).toBe('sample --count 3')
+  await w.findAll('button').at(-1)!.trigger('click')
+  await flushPromises()
+  expect(rememberArguments).toHaveBeenCalledWith('dist/main.js', 'sample --count 3')
+  w.unmount()
+})
 function fixture(launch = vi.fn().mockResolvedValue(undefined)) {
   return mount(ProgramLaunchDialog, {
     props: { program: 'dist/main.js', launch },

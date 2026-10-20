@@ -29,7 +29,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { Platform } from 'obsidian'
 import { t } from '@/i18n'
 import Modal from '@/components/obsidian/Modal.vue'
@@ -49,10 +49,15 @@ const DiagnosticsSchema = z.object({
 const props = defineProps<{
   program: string
   launch: (path: string, argv: string[]) => Promise<unknown>
+  argumentsFor?: (path: string) => string
+  rememberArguments?: (path: string, text: string) => void
 }>()
 const emit = defineEmits<{ close: [] }>()
 const path = ref(props.program)
-const argumentsText = ref('')
+const argumentsText = ref(props.argumentsFor?.(props.program) ?? '')
+watch(path, (value) => {
+  argumentsText.value = props.argumentsFor?.(value.trim()) ?? ''
+})
 const busy = ref(false)
 const error = ref('')
 const output = ref('')
@@ -74,6 +79,7 @@ async function run() {
   busy.value = true
   try {
     await props.launch(path.value.trim(), argv)
+    props.rememberArguments?.(path.value.trim(), argumentsText.value)
     emit('close')
   } catch (e) {
     console.debug('[debugger] Program not started', e)
