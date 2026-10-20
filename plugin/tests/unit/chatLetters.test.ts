@@ -25,22 +25,94 @@ describe('chat letters', () => {
     await expect(letters.send('a', 'a', 'Question')).rejects.toThrow('own chat')
     await expect(letters.send('a', 'missing', 'Question')).rejects.toThrow('closed or unknown')
   })
-  it('rejects cycles and concurrent asks to the same target', async () => {
+  it('rejects cycles and queues concurrent asks to the same target without overlap', async () => {
     let finish!: (value: string) => void
-    const b = endpoint(
-      'b',
-      () =>
-        new Promise((resolve) => {
-          finish = resolve
-        })
-    )
+    const receive = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve
+          })
+      )
+      .mockResolvedValue('Queued answer')
+    const b = endpoint('b', receive)
     const letters = new ChatLetters(() => [endpoint('a'), b, endpoint('c')])
     const pending = letters.send('a', 'b', 'Question')
     await expect(letters.send('b', 'a', 'Question')).rejects.toThrow('waiting')
-    await expect(letters.send('c', 'b', 'Question')).rejects.toThrow('busy')
+    const queued = letters.send('c', 'b', 'Question').then(
+      (answer) => ({ answer }),
+      (error) => ({ error })
+    )
+    expect(receive).toHaveBeenCalledTimes(1)
     finish('Done')
     await expect(pending).resolves.toBe('Done')
+    expect(await queued).toEqual({ answer: 'Queued answer' })
+    expect(receive).toHaveBeenCalledTimes(2)
     expect(await letters.send('b', 'a', 'Next')).toBe('Answer')
+  })
+  it('keeps cycle protection for parallel requests from the same caller until each completes', async () => {
+    let firstDone!: (reply: string) => void
+    let secondDone!: (reply: string) => void
+    const receive = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            firstDone = resolve
+          })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            secondDone = resolve
+          })
+      )
+    const letters = new ChatLetters(() => [endpoint('a'), endpoint('b', receive)])
+    const first = letters.send('a', 'b', 'First')
+    const second = letters.send('a', 'b', 'Second').then(
+      (answer) => ({ answer }),
+      (error) => ({ error })
+    )
+    await vi.waitFor(() => expect(firstDone).toBeDefined())
+    firstDone('First reply')
+    await expect(first).resolves.toBe('First reply')
+    await vi.waitFor(() => expect(secondDone).toBeDefined())
+    await expect(letters.send('b', 'a', 'Cycle')).rejects.toThrow('waiting')
+    secondDone('Second reply')
+    expect(await second).toEqual({ answer: 'Second reply' })
+    expect(await letters.send('b', 'a', 'Next')).toBe('Answer')
+  })
+  it('does not let cancellation of a queued request overlap the preceding receiver', async () => {
+    let finish!: (reply: string) => void
+    const receive = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            finish = resolve
+          })
+      )
+      .mockResolvedValue('Next reply')
+    const letters = new ChatLetters(() =>
+      ['a', 'c', 'd'].map((id) => endpoint(id)).concat(endpoint('b', receive))
+    )
+    const first = letters.send('a', 'b', 'First')
+    await vi.waitFor(() => expect(finish).toBeDefined())
+    const controller = new AbortController()
+    const cancelled = letters.send('c', 'b', 'Cancelled', controller.signal)
+    controller.abort()
+    await expect(cancelled).rejects.toThrow('cancelled')
+    const next = letters.send('d', 'b', 'Next').then(
+      (answer) => ({ answer }),
+      (error) => ({ error })
+    )
+    await Promise.resolve()
+    expect(receive).toHaveBeenCalledTimes(1)
+    finish('First reply')
+    await expect(first).resolves.toBe('First reply')
+    expect(await next).toEqual({ answer: 'Next reply' })
+    expect(receive).toHaveBeenCalledTimes(2)
   })
   it('releases reservations on cancellation even if a receiver never settles', async () => {
     const letters = new ChatLetters(() => [

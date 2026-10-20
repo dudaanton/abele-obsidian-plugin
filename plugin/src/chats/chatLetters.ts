@@ -19,15 +19,22 @@ export interface LetterEndpoint extends LetterChat {
 }
 
 export class ChatLetters {
-  private readonly waiting = new Map<string, string>()
-  private readonly receiving = new Set<string>()
+  private readonly waiting = new Map<string, Map<string, number>>()
+  private readonly receiving = new Map<string, Promise<void>>()
 
   constructor(private readonly openChats: () => LetterEndpoint[]) {}
 
   list(caller: string): Omit<LetterEndpoint, 'receive'>[] {
     return this.openChats()
       .filter((chat) => chat.id !== caller)
-      .map(({ receive: _receive, ...chat }) => chat)
+      .map(({ id, title, folder, path, agent, state }) => ({
+        id,
+        title,
+        folder,
+        path,
+        agent,
+        state,
+      }))
   }
 
   async send(
@@ -43,38 +50,52 @@ export class ChatLetters {
     if (!from || !to) throw new Error('The chat is closed or unknown')
     if (!message.trim()) throw new Error('The message is empty')
     const seen = new Set<string>()
-    let next: string | undefined = target
-    while (next && !seen.has(next)) {
+    const pending = [target]
+    while (pending.length) {
+      const next = pending.pop()
+      if (next === undefined) continue
       if (next === caller) throw new Error('The target chat is waiting for this chat')
+      if (seen.has(next)) continue
       seen.add(next)
-      next = this.waiting.get(next)
+      pending.push(...(this.waiting.get(next)?.keys() ?? []))
     }
-    if (this.receiving.has(target))
-      throw new Error('The target chat is busy answering another chat')
-    if (this.waiting.has(caller)) throw new Error('This chat is already waiting for an answer')
     if (signal?.aborted) throw new Error('Message cancelled')
-    this.waiting.set(caller, target)
-    this.receiving.add(target)
+    const targets = this.waiting.get(caller) ?? new Map<string, number>()
+    targets.set(target, (targets.get(target) ?? 0) + 1)
+    this.waiting.set(caller, targets)
+    // The receiver owns its turn until it settles, even if a queued sender stops waiting.
+    const delivery = (this.receiving.get(target) ?? Promise.resolve()).then(() => {
+      if (signal?.aborted) throw new Error('Message cancelled')
+      const open = this.openChats()
+      if (!open.some((chat) => chat.id === caller) || !open.some((chat) => chat.id === target))
+        throw new Error('The chat is closed or unknown')
+      return to.receive(
+        message,
+        { id: from.id, title: from.title, folder: from.folder, path: from.path },
+        signal
+      )
+    })
+    const tail = delivery.then(
+      () => undefined,
+      () => undefined
+    )
+    this.receiving.set(target, tail)
+    void tail.then(() => {
+      if (this.receiving.get(target) === tail) this.receiving.delete(target)
+    })
     let cancel: (() => void) | undefined
     try {
       return await new Promise<string>((resolve, reject) => {
         cancel = () => reject(new Error('Message cancelled'))
         signal?.addEventListener('abort', cancel, { once: true })
-        Promise.resolve()
-          .then(() => {
-            if (signal?.aborted) throw new Error('Message cancelled')
-            return to.receive(
-              message,
-              { id: from.id, title: from.title, folder: from.folder, path: from.path },
-              signal
-            )
-          })
-          .then(resolve, reject)
+        delivery.then(resolve, reject)
       })
     } finally {
       if (cancel) signal?.removeEventListener('abort', cancel)
-      this.waiting.delete(caller)
-      this.receiving.delete(target)
+      const remaining = (targets.get(target) ?? 1) - 1
+      if (remaining) targets.set(target, remaining)
+      else targets.delete(target)
+      if (!targets.size) this.waiting.delete(caller)
     }
   }
 }

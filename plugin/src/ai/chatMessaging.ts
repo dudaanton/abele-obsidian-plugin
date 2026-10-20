@@ -11,6 +11,7 @@ export function openMessagingChats(): LetterEndpoint[] {
     const session = service.getSession(id)
     if (!session || session.isDestroyed || session.kind === 'run') return []
     const path = session.currentChatFile.value?.parent?.path ?? ''
+    const version = session.conversationVersion.value
     return [
       {
         id,
@@ -28,7 +29,11 @@ export function openMessagingChats(): LetterEndpoint[] {
             : session.isMidTurn || session.isExecutingTool.value
               ? 'working'
               : 'idle',
-        receive: (message, from, signal) => session.receiveChatLetter(message, from, signal),
+        receive: async (message, from, signal) => {
+          if (session.conversationVersion.value !== version)
+            throw new Error('The target chat changed before the message was delivered')
+          return session.receiveChatLetter(message, from, signal)
+        },
       } satisfies LetterEndpoint,
     ]
   })

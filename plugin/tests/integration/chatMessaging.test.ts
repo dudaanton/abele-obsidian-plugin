@@ -5,7 +5,7 @@ import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type AiProvider } from '@/ai/types'
 import { createChatMessagingTools } from '@/ai/tools/ChatMessagingTools'
-import { chatMessaging } from '@/ai/chatMessaging'
+import { chatMessaging, openMessagingChats } from '@/ai/chatMessaging'
 import { useVault } from '../helpers/testEnv'
 import { destroyChatsAfterEach } from '../helpers/chatTeardown'
 import type { Message } from '@/ai/client'
@@ -161,6 +161,16 @@ it('registers a read-only listing and an approval-required send tool', () => {
   expect(tools.map((tool) => tool.name)).toEqual(['list_chats', 'send_message_to_chat'])
   expect(DEFAULT_AI_SETTINGS.toolModes.list_chats).toBe('auto')
   expect(DEFAULT_AI_SETTINGS.toolModes.send_message_to_chat).toBe('ask')
+})
+
+it('does not deliver a queued request into a replacement conversation in the same tab', async () => {
+  const service = ChatService.getInstance()
+  const target = service.getSession(service.createTab())!
+  const receiver = openMessagingChats().find((chat) => chat.id === target.id)!
+  await target.reset()
+  await expect(
+    receiver.receive('Queued question', { id: 'source', title: 'Source' })
+  ).rejects.toThrow('changed')
 })
 
 it('recovers a saved reply when reload happens before its tool result is committed', async () => {
