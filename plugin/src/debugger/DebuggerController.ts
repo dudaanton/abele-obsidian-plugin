@@ -953,6 +953,14 @@ export class DebuggerController {
     const s = this.snapshot,
       epoch = s.stop_epoch,
       generation = this.serial
+    const raw = await this.rpc('stack', { ...this.precondition(), thread_id: s.selected_thread_id })
+    if (
+      !this.current ||
+      generation !== this.serial ||
+      this.snapshot?.stop_epoch !== epoch ||
+      this.session.status !== 'paused'
+    )
+      return
     const result = z
       .object({
         data: z
@@ -971,7 +979,7 @@ export class DebuggerController {
           .loose(),
       })
       .loose()
-      .parse(await this.rpc('stack', { ...this.precondition(), thread_id: s.selected_thread_id }))
+      .parse(raw)
     if (!this.current || generation !== this.serial || this.snapshot?.stop_epoch !== epoch) return
     this.frameHandles = result.data.items.map((f) => f.handle)
     this.session.frames = result.data.items.map((f) => ({
@@ -996,6 +1004,14 @@ export class DebuggerController {
     if (!frame_handle) return
     const generation = this.serial,
       epoch = this.snapshot.stop_epoch
+    const raw = await this.rpc('scopes', { ...this.precondition(invocation), frame_handle })
+    if (
+      !this.current ||
+      generation !== this.serial ||
+      this.snapshot?.stop_epoch !== epoch ||
+      this.session.status !== 'paused'
+    )
+      return
     const result = z
       .object({
         data: z
@@ -1005,7 +1021,7 @@ export class DebuggerController {
           .loose(),
       })
       .loose()
-      .parse(await this.rpc('scopes', { ...this.precondition(invocation), frame_handle }))
+      .parse(raw)
     if (!this.current || generation !== this.serial || this.snapshot.stop_epoch !== epoch) return
     this.session.frame = index
     // No implicit getters, formatters or recursion. Scope handles need explicit inspection.

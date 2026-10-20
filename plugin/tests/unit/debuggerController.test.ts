@@ -8,6 +8,42 @@ import {
 } from '@abele/node-protocol'
 import { DebuggerController, debuggerKey, receiptMessage } from '@/debugger/DebuggerController'
 import { DebuggerBreakpointRequestSchema } from '@abele/node-protocol'
+it.each(['stack', 'scopes'])(
+  'ignores a late %s refusal after detach instead of losing the terminal state',
+  async (stage) => {
+    const { model, rpc } = fixture()
+    let complete!: (value: unknown) => void
+    rpc.mockImplementation(async (method: string) => {
+      if (method === 'debugger.v1.' + stage)
+        return new Promise((resolve) => {
+          complete = resolve
+        }) as never
+      if (method === 'debugger.v1.stack')
+        return {
+          data: {
+            items: [
+              { handle: 'sample-frame', name: 'sample', source_id: 'sample-source', line: 7 },
+            ],
+          },
+        } as never
+      return { data: { items: [] } } as never
+    })
+    const pending = model.loadStack()
+    await vi.waitFor(() => expect(complete).toBeTypeOf('function'))
+    model.observe({
+      observation: 'current',
+      snapshot: snapshot({
+        lifecycle: 'detached',
+        execution: 'unknown',
+        stop_epoch: 4,
+        threads: [],
+      }),
+    })
+    complete({ code: 'stale_state' })
+    await expect(pending).resolves.toBeUndefined()
+    expect(model.session.status).toBe('exited')
+  }
+)
 it('explains an unbound breakpoint without adapter jargon', () => {
   const { model } = fixture()
   model.observe({
