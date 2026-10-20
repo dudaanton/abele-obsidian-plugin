@@ -175,7 +175,7 @@ async function fileSearchScenario(shell: 'desktop' | 'phone') {
       await sidebar('Files')
       await evalLong(`(async()=>{${prelude}
         await until(()=>visible('[data-node-project-search]'),'Project content search');visible('[data-node-project-search]').click();
-        await until(()=>visible('.abele-github-search__query'),'Project search field');const input=visible('.abele-github-search__query');input.value='contentNeedle';input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
+        await until(()=>visible('.abele-github-search__query input'),'Project search field');const input=visible('.abele-github-search__query input');input.value='contentNeedle';input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
         await until(()=>visible('.abele-github-search__match'),'Highlighted project matches');
         const search=visible('.abele-github-search');if(!search.textContent.includes(${JSON.stringify(matchesPath)})||!search.querySelector('.abele-github-search__number'))throw Error('Project results lack path or line');
         await until(()=>[...search.querySelectorAll('button')].find(b=>b.textContent.includes('Load more')),'Project search continuation');return 'first project page'})()`)
