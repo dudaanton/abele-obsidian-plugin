@@ -47,7 +47,9 @@ const marginAt=(line,root)=>{const sel='button.abele-debug-source__point[aria-la
 const recordPoint=async (line,takes,root,options={})=>{
   const mark=await until(()=>marginAt(line,root),'margin of line '+line).catch(()=>{throw Error('no margin on line '+line+': '+JSON.stringify(app.workspace.getLeavesOfType('abele-node-file').map(l=>{const st=l.view.getState();return [st.path,!!st.debug,st.debug?.sourceId,l.containerEl.querySelectorAll('button.abele-debug-source__point').length]}))+' '+debugState())});
   mark.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:40,clientY:200}));
-  press(await until(()=>item('Add record point'),'Add record point'));
+  await until(()=>item('Add record point'),'Add record point');
+  if(options.menuShot)await shot(options.menuShot);
+  press(item('Add record point'));
   const input=await until(()=>document.querySelector('.abele-trace-point .multi-select-input'),'point editor');
   for(const t of takes){
     const offered=document.querySelector('.abele-trace-point [aria-label="Take '+t+'"]');
@@ -334,16 +336,10 @@ it.each(['desktop', 'phone'])(
       await shot(${JSON.stringify(name + '-debugger-no-chat')});
       await until(()=>visible('.abele-debug-panel'),'visible folder debugger');
       await until(()=>binding.controller.session.variables.length,'automatic frame scopes');
-      const approve=async (what,label=what)=>{
-        const card=await until(()=>[...document.querySelectorAll('.abele-debug-view .abele-debug-action_asked')].find(c=>c.textContent.toLowerCase().includes(what.toLowerCase())),'inline approval '+what);
-        card.scrollIntoView({block:'center'});
-        await shot(${JSON.stringify(name)}+'-approval-'+label.replace(/[^a-z0-9]+/gi,'-'));
-        press([...card.querySelectorAll('button')].find(b=>b.textContent.trim()==='Allow'));
-        await until(()=>!binding.controller.actions.some(a=>a.status==='asked'&&!a.awaitingResult),'approval completed');
-      };
+      const noOwnerApproval=()=>{if(document.querySelector(".abele-debug-view .abele-debug-action_asked"))throw Error("Owner control requested approval")};
       const scope=await until(()=>visible('.abele-debug-value_row .tree-item-self'),'scope row');
       press(scope);
-      await approve('variables');
+      noOwnerApproval();
       await until(()=>binding.controller.session.variables.some(v=>v.children),'scope values loaded');
       await shot(${JSON.stringify(name)}+'-variables');
       if(!binding.connection.client.channel.channel.welcome.methods.includes('debugger.v1.exceptionBreakpoints.set'))throw Error('Exception filters not exposed');
@@ -368,14 +364,14 @@ it.each(['desktop', 'phone'])(
       condition.value='1 < 2 && "a" < "b"';condition.dispatchEvent(new Event('input',{bubbles:true}));
       await shot(${JSON.stringify(name)}+'-condition');
       press([...condition.closest('.modal').querySelectorAll('button')].find(b=>b.offsetParent&&b.textContent.trim()==='Edit'));
-      await approve('breakpoint');
+      noOwnerApproval();
       await until(()=>binding.controller.snapshot.breakpoints.some(b=>b.condition==='1 < 2 && "a" < "b"'),'condition saved verbatim');
       await bpMenu();press(item('Log message'));
       const logMessage=await until(()=>visible('.modal input[aria-label="Log message"]'),'log message editor');
       logMessage.value='sample {1 < 2 && "a" < "b"}';logMessage.dispatchEvent(new Event('input',{bubbles:true}));
       await shot(${JSON.stringify(name)}+'-log-message');
       press([...logMessage.closest('.modal').querySelectorAll('button')].find(b=>b.offsetParent&&b.textContent.trim()==='Edit'));
-      await approve('breakpoint','log-point');
+      noOwnerApproval();
       await until(()=>binding.controller.snapshot.breakpoints.some(b=>b.log_message==='sample {1 < 2 && "a" < "b"}'),'log message saved verbatim');
       showPoints();
       await shot(${JSON.stringify(name)}+'-log-point');
@@ -390,24 +386,16 @@ it.each(['desktop', 'phone'])(
       const debugLeaf=app.workspace.getLeavesOfType('abele-debug-view')[0];
       const sourceLeaf=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.getState().path==='src/journey.cjs');
       await app.workspace.revealLeaf(sourceLeaf);app.workspace.leftSplit.collapse();app.workspace.rightSplit.collapse();
-      await recordPoint(frame.line,['next'],undefined,{when:'1 < 2 && "a" < "b"',shot:${JSON.stringify(name)}+'-record-point-editor',approve:async()=>{await app.workspace.revealLeaf(debugLeaf);app.workspace.rightSplit.expand();await approve('breakpoint','record-point')}});
+      await recordPoint(frame.line,['next'],undefined,{when:'1 < 2 && "a" < "b"',menuShot:${JSON.stringify(name)}+'-gutter-menu',shot:${JSON.stringify(name)}+'-record-point-editor',approve:async()=>{await app.workspace.revealLeaf(debugLeaf);app.workspace.rightSplit.expand();noOwnerApproval()}});
       await until(()=>binding.trace.breakpoints().some(b=>b.kind==='record'&&b.when==='1 < 2 && "a" < "b"'),'conditional record point saved');
       showPoints();
       await shot(${JSON.stringify(name)}+'-record-point');
       const watch=await until(()=>{const field=visible('.abele-debug-panel__add input');return field&&!field.disabled?field:null},'watch input ready');
-      watch.value='sampleValue_'+'value'.repeat(45);watch.dispatchEvent(new Event('input',{bubbles:true}));
-      watch.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
-      const refused=await until(()=>[...document.querySelectorAll('.abele-debug-view .abele-debug-action_asked')].find(c=>c.textContent.includes('sampleValue_')),'long watch approval');
-      refused.scrollIntoView({block:'center'});
-      await shot(${JSON.stringify(name)}+'-approval-long');
-      press([...refused.querySelectorAll('button')].find(b=>b.textContent.trim()==='Deny'));
-      await until(()=>binding.controller.actions.some(a=>a.status==='denied'),'request denied');
-      await shot(${JSON.stringify(name)}+'-approval-denied');
-      await until(()=>!watch.disabled,'watch input ready after denial');
       watch.value='1 < 2 && "a" < "b"';watch.dispatchEvent(new Event('input',{bubbles:true}));
       watch.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
-      await approve('1 < 2');
+      noOwnerApproval();
       await until(()=>binding.controller.session.watches.some(w=>w.value==='true'),'approved watch value');
+      noOwnerApproval();
       watch.closest('.abele-debug-panel__group').scrollIntoView({block:'center'});
       await shot(${JSON.stringify(name)}+'-watch');
       const snapshot=binding.controller.snapshot;
@@ -508,17 +496,8 @@ it('walks from source through stepping, recording, analysis, a crash, restart an
       await until(()=>enabled('Step over (F10)'),'variable controls ready');
       const row=await until(()=>rowNamed(name),'variable '+name);
       press(row.querySelector(':scope > .tree-item-self'));
-      // Inspection follows the same explicit approval path as other debugger requests.
-      await until(()=>row.querySelector('.abele-debug-value_row')||row.textContent.includes('Waiting for approval in Debug'),'inspection result or approval request');
-      if(!row.querySelector('.abele-debug-value_row')){
-        if(name==='Local')await shot('journey-waiting-approval');
-        await chats.revealSidebar({focus:false});
-        const allow=await until(()=>[...document.querySelectorAll('.abele-debug-action_asked button')].find(b=>b.closest('.abele-debug-action')?.querySelector('.abele-debug-action__what')?.textContent.trim()==='variables'&&b.textContent.trim()==='Allow'&&!b.disabled&&b.offsetParent),'variables approval in chat');
-        if(name==='Local')await shot('journey-chat-approval');
-        press(allow);
-        await app.workspace.revealLeaf(app.workspace.getLeavesOfType('abele-debug-view')[0]);
-      }
-      await until(()=>rowNamed(name)?.querySelector('.abele-debug-value_row'),'approved children of '+name);
+      await until(()=>rowNamed(name)?.querySelector('.abele-debug-value_row'),'owner-inspected children of '+name);
+      if(document.querySelector('.abele-debug-action_asked'))throw Error('Owner inspection asked for approval');
     };
     let source=app.workspace.getLeaf('tab');
     const sourceAt=async(line,name)=>{

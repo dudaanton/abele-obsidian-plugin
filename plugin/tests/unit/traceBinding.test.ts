@@ -9,6 +9,15 @@ function connection(records: boolean, stop: string[] = []) {
   const rpc = vi.fn(async (method: string): Promise<unknown> => {
     if (method === 'debugger.v1.status')
       return debuggerStatus({
+        breakpoints: stop.map((id) => ({
+          breakpoint_id: id,
+          source_id: 'sample-source',
+          line: 4,
+          status: 'verified',
+          resolved_line: 4,
+          resolved_column: null,
+          message: null,
+        })),
         threads: [
           {
             thread_id: 1,

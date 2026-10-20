@@ -113,6 +113,31 @@ function node() {
 }
 
 describe('a run open in its tab', () => {
+  it('searches whole recorded values on the node and ignores late search results', async () => {
+    const n = node(),
+      m = new TraceRunModel(n.rpc, 'project-1', 'run-1', () => {})
+    let resolve!: (value: unknown) => void
+    n.request.mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          resolve = r
+        })
+    )
+    const first = m.search('sample-old')
+    await m.search('')
+    resolve({ hits: [{ step: 't0001', name: 'sample', path: '$.id' }] })
+    await first
+    expect(m.valueMatches).toEqual([])
+    n.request.mockResolvedValueOnce({ hits: [{ step: 't0002', name: 'sample', path: '$.id' }] })
+    await m.search('sample-new')
+    expect(m.valueMatches).toEqual(['t0002'])
+    expect(n.request).toHaveBeenLastCalledWith('trace.v1.find', {
+      project_id: 'project-1',
+      run_id: 'run-1',
+      value: 'sample-new',
+      loose: true,
+    })
+  })
   it('reads every page of steps', async () => {
     const n = node()
     const m = new TraceRunModel(n.rpc, 'project-1', 'run-1', () => {})

@@ -107,7 +107,16 @@ export class TraceSession {
   isRecordStop(snapshot = this.debug.snapshot) {
     const stop = snapshot?.threads.find((t) => t.thread_id === snapshot.selected_thread_id)?.stop
     const hits = stop?.hit_breakpoint_ids ?? []
-    return hits.length > 0 && hits.every((id) => this.points.some((p) => p.breakpoint_id === id))
+    return (
+      hits.length > 0 &&
+      hits.every(
+        (id) =>
+          this.points.some((p) => p.breakpoint_id === id) &&
+          snapshot?.breakpoints?.some(
+            (b) => b.breakpoint_id === id && (b.status === 'verified' || b.status === 'relocated')
+          )
+      )
+    )
   }
 
   /** The panel's and the margin's breakpoints, record points marked as such. */
@@ -159,7 +168,20 @@ export class TraceSession {
         'outcome' in result &&
         result.outcome !== 'completed' &&
         result.outcome !== 'pending'
-      )
+      ) {
+        // Keep the trace registration until removal is confirmed, so a late hit still records.
+        if (!existing) {
+          try {
+            const removed = (await this.debug.removeBreakpoint(id)) as
+              | { outcome?: string }
+              | undefined
+            if (removed?.outcome === 'completed')
+              this.points = await this.rpc.setPoints(session, [], [id])
+          } catch (error) {
+            console.debug('[trace] Unconfirmed record point could not be removed', error)
+          }
+        }
+        this.changed()
         throw new RecordPointSaveError(
           'code' in result && typeof result.code === 'string'
             ? result.code
@@ -167,6 +189,7 @@ export class TraceSession {
               ? result.outcome
               : 'not_completed'
         )
+      }
       pending =
         !!result &&
         typeof result === 'object' &&

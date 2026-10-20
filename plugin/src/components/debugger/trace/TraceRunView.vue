@@ -51,7 +51,7 @@
               :class="{
                 'abele-trace-run__step_on-trail': onTrail.has(row.step.id),
               }"
-              :text="row.step.label"
+              :text="stepLabel(row.step)"
               :active="row.step.id === picked"
               :collapsible="row.children.length > 0"
               :collapsed="folded.has(row.step.id)"
@@ -68,7 +68,7 @@
                 :key="child.id"
                 class="abele-trace-run__step"
                 :class="{ 'abele-trace-run__step_on-trail': onTrail.has(child.id) }"
-                :text="child.label"
+                :text="stepLabel(child)"
                 :active="child.id === picked"
                 @click="openStep(child)"
               >
@@ -125,7 +125,7 @@ import { t } from '@/i18n'
 // their shapes, the full text only when a value is opened whole in its own tab. The filters are
 // glyphs, named in their tooltips: only the code, only the browser, only what failed, only what
 // you marked.
-import { computed, defineComponent, h, reactive, ref, type PropType } from 'vue'
+import { computed, defineComponent, h, reactive, ref, watch, type PropType } from 'vue'
 import { Platform } from 'obsidian'
 import EmptyState from '../../obsidian/EmptyState.vue'
 import Icon from '../../obsidian/Icon.vue'
@@ -141,16 +141,18 @@ const props = withDefaults(
   defineProps<{
     run: TraceRun
     debuggerAvailable?: boolean
+    valueMatches?: string[]
     /** The step shown on the right. */
     picked?: string
     /** A value followed through the run: its trail takes the right side. */
     trail?: Trail
   }>(),
-  { picked: undefined, trail: undefined, debuggerAvailable: false }
+  { picked: undefined, trail: undefined, debuggerAvailable: false, valueMatches: () => [] }
 )
 
 const emit = defineEmits<{
   (e: 'debugger'): void
+  (e: 'search', query: string): void
   (e: 'pick', step: string | undefined): void
   (e: 'reveal', file: string, line: number): void
   (e: 'open-value', step: string, name: string, path?: string): void
@@ -171,7 +173,21 @@ const FILTERS: { id: Filter; icon: string; tooltip: string }[] = [
   { id: 'marked', icon: 'flag', tooltip: t('streamC.c731de9cd8ee89ec') },
 ]
 const query = ref('')
+watch(query, (q, _old, cleanup) => {
+  const timer = window.setTimeout(() => emit('search', q), q.trim() ? 200 : 0)
+  cleanup(() => window.clearTimeout(timer))
+})
 const filter = ref<Filter | null>(null)
+const stepLabel = (s: TraceStep) => {
+  const brief =
+    s.kind === 'probe'
+      ? s.values
+          .filter((v) => !v.masked && !v.failed)
+          .map((v) => `${v.name}: ${v.brief}`)
+          .join(', ')
+      : ''
+  return brief ? `${s.label} · ${brief}` : s.label
+}
 
 function shown(s: TraceStep) {
   const f = filter.value
@@ -182,8 +198,13 @@ function shown(s: TraceStep) {
   const q = query.value.trim().toLowerCase()
   return (
     !q ||
+    props.valueMatches?.includes(s.id) ||
     s.label.toLowerCase().includes(q) ||
-    s.values.some((v) => v.name.toLowerCase().includes(q))
+    [...s.values, ...(s.request ?? []), ...(s.response ?? [])].some(
+      (v) =>
+        v.name.toLowerCase().includes(q) ||
+        (!v.masked && !v.failed && v.brief.toLowerCase().includes(q))
+    )
   )
 }
 

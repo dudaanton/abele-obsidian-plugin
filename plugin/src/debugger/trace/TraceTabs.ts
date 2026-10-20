@@ -179,6 +179,8 @@ export class TraceRunTab extends ItemView {
           },
           ref: (r: unknown) => (this.view.value = r as { back(): void } | null),
           run: model.run,
+          valueMatches: model.valueMatches,
+          onSearch: (query: string) => act(model.search(query)),
           picked: model.picked,
           trail: model.trail,
           onPick: (step: string | undefined) => act(model.pick(step)),

@@ -70,7 +70,10 @@ function writeRun(root: string) {
       point: 'bp-sample',
       place: { file: 'src/sample/parse.ts', line: 18, fn: 'parseContracts' },
       paused_ms: 12,
-      values: [xmlValue, resultValue],
+      values: [
+        xmlValue,
+        blob('result', '{"source":"sample-updated"}', 'json', '{ source: "sample-updated" }'),
+      ],
     },
     {
       id: 't0003',
@@ -203,6 +206,15 @@ const OPEN_RUN =
   () => `await api.openTraceRun({registrationId:${JSON.stringify(registration)},projectId:${JSON.stringify(project)},runId:${JSON.stringify(RUN)}});
   await until(()=>document.querySelectorAll('.abele-trace-run__step').length>=2,'steps listed')`
 
+const SEARCH_VALUES = (device: string) => `
+    const search=document.querySelector('.abele-trace-run input[type="search"]');
+    search.value='sample-service';search.dispatchEvent(new Event('input',{bubbles:true}));
+    await until(()=>document.querySelectorAll('.abele-trace-run__step').length===1,'whole recorded value search');
+    await shot('trace-value-search-${device}');
+    search.value='';search.dispatchEvent(new Event('input',{bubbles:true}));
+    await until(()=>document.querySelectorAll('.abele-trace-run__step').length===3,'cleared value search');
+    await shot('trace-distinct-hits-${device}');`
+
 it('opens a recorded run as a tab of steps, a step with its values by shape, and a value whole', () => {
   connect()
   const seen = evalAsync<{
@@ -222,6 +234,7 @@ it('opens a recorded run as a tab of steps, a step with its values by shape, and
     await shot('trace-requests-empty-desktop');
     document.querySelector('[aria-label="Only the requests"]').click();
     await until(()=>document.querySelectorAll('.abele-trace-run__step').length>=2,'steps restored');
+    ${SEARCH_VALUES('desktop')}
     document.querySelector('.abele-trace-run__step .abele-tree-item__self, .abele-trace-run__step .tree-item-self')?.click();
     await until(()=>document.querySelector('.abele-trace-step'),'step detail');
     if(app.workspace.activeLeaf?.view.getViewType()!=='abele-trace-run')throw Error('Selecting a step left the run');
@@ -249,7 +262,11 @@ it('opens a recorded run as a tab of steps, a step with its values by shape, and
     await shot('2026-10-14-trace-value-desktop');
     return {rows,place,values,wide,narrow,shape:!!document.querySelector('.abele-trace-step'),whole:document.querySelector('.abele-trace-value-tab').textContent.slice(0,200)}
   })()`)
-  expect(seen.rows).toEqual(['Contracts parsed', 'Contracts parsed', 'SampleError: no rows'])
+  expect(seen.rows).toEqual([
+    'Contracts parsed · xmlText: <contracts>, result: { items: 40, source }',
+    'Contracts parsed · xmlText: <contracts>, result: { source: "sample-updated" }',
+    'SampleError: no rows',
+  ])
   expect(seen.place).toContain('parse.ts:18')
   expect(seen.values).toContain('xmlText')
   expect(seen.whole).toContain('Sample contracts run')
@@ -339,6 +356,7 @@ it('reads the run on a phone: the steps whole-screen, a step over them', async (
       await shot('trace-requests-empty-phone');
       document.querySelector('[aria-label="Only the requests"]').click();
       await until(()=>document.querySelectorAll('.abele-trace-run__step').length>=2,'steps restored');
+      ${SEARCH_VALUES('phone')}
       document.querySelector('.abele-trace-run__step .abele-tree-item__self, .abele-trace-run__step .tree-item-self')?.click();
       await until(()=>document.querySelector('.abele-trace-step'),'step detail');
       if(app.workspace.activeLeaf?.view.getViewType()!=='abele-trace-run')throw Error('Selecting a step left the run');

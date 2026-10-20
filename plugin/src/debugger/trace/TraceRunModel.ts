@@ -13,6 +13,8 @@ export class TraceRunModel {
   picked?: string
   trail?: TraceTrail
   error = ''
+  valueMatches: string[] = []
+  private searchGeneration = 0
   private loadedSteps = new Set<string>()
   private timer?: number
   private disposed = false
@@ -60,6 +62,25 @@ export class TraceRunModel {
 
   step(id: string): TraceStep | undefined {
     return this.run?.steps.find((s) => s.id === id)
+  }
+  async search(query: string) {
+    const generation = ++this.searchGeneration
+    this.valueMatches = []
+    this.changed()
+    if (!query.trim()) return
+    try {
+      const hits = await this.rpc.find(this.projectId, this.runId, {
+        value: query.trim(),
+        loose: true,
+      })
+      if (generation !== this.searchGeneration) return
+      this.valueMatches = [...new Set(hits.map((hit) => hit.step))]
+    } catch (error) {
+      if (generation !== this.searchGeneration) return
+      console.debug('[trace] Recorded values could not be searched', error)
+      this.error = error instanceof Error ? error.message : String(error)
+    }
+    this.changed()
   }
 
   /** Picks the last step a record point gave, the way its line's count of hits opens the run. */

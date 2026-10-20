@@ -20,6 +20,49 @@ it('does not list runs with no recorded evidence', async () => {
   s.dispose()
 })
 
+it('retains record registration when cleanup has no confirmed receipt', async () => {
+  const node = fakeNode(),
+    debug = fakeDebugger()
+  vi.mocked(debug.setBreakpoint).mockResolvedValueOnce({
+    outcome: 'outcome_unknown',
+    code: 'dispatch_uncertain',
+  })
+  vi.mocked(debug.removeBreakpoint).mockResolvedValueOnce(undefined)
+  const trace = new TraceSession(node.rpc, debug, () => {})
+  try {
+    await expect(trace.savePoint('sample-source', 8, { take: ['sample'] })).rejects.toThrow()
+    expect(trace.points).toHaveLength(1)
+    expect(node.calls.filter((c) => c.method === 'trace.v1.points.set')).toHaveLength(1)
+  } finally {
+    trace.dispose()
+  }
+})
+
+it('does not hide an unconfirmed record point stop and removes a newly uncertain breakpoint', async () => {
+  const node = fakeNode(),
+    debug = fakeDebugger()
+  vi.mocked(debug.setBreakpoint).mockResolvedValueOnce({
+    outcome: 'outcome_unknown',
+    code: 'dispatch_uncertain',
+  })
+  const trace = new TraceSession(node.rpc, debug, () => {})
+  try {
+    await expect(trace.savePoint('sample-source', 8, { take: ['sample'] })).rejects.toThrow()
+    expect(debug.removeBreakpoint).toHaveBeenCalledWith(expect.any(String))
+    const id = trace.points[0]?.breakpoint_id ?? 'sample-unconfirmed'
+    trace.points = [{ breakpoint_id: id, take: ['sample'] }]
+    expect(
+      trace.isRecordStop({
+        selected_thread_id: 1,
+        breakpoints: [{ breakpoint_id: id, status: 'pending' }],
+        threads: [{ thread_id: 1, stop: { hit_breakpoint_ids: [id] } }],
+      } as never)
+    ).toBe(false)
+  } finally {
+    trace.dispose()
+  }
+})
+
 // TraceSession reads only the session's identity and its project from the snapshot.
 const snapshot = () =>
   ({
@@ -133,6 +176,7 @@ function fakeDebugger(existing: { id: string; line: number; condition?: string }
         known.findIndex((k) => k.id === id),
         1
       )
+      return { outcome: 'completed' }
     }),
   }
   return debug
@@ -282,6 +326,7 @@ describe('a stop on record points', () => {
       ({
         ...snapshot(),
         selected_thread_id: 1,
+        breakpoints: [{ breakpoint_id: 'bp-1', status: 'verified' }],
         threads: [{ thread_id: 1, stop: { hit_breakpoint_ids: hits } }],
       }) as unknown as DebuggerSnapshot
     expect(s.isRecordStop(stopped(['bp-1']))).toBe(true)

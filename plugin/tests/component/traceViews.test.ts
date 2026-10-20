@@ -85,6 +85,34 @@ describe('a record point set up under its line', () => {
 })
 
 describe('a recorded run', () => {
+  it('searches recorded value summaries and distinguishes record hits by their values', async () => {
+    const w = mount(TraceRunView, {
+      props: {
+        run: {
+          ...run,
+          steps: [
+            {
+              ...run.steps[1]!,
+              id: 'sample-one',
+              values: [{ name: 'event', brief: 'sample.created', bytes: 14, format: 'text' }],
+            },
+            {
+              ...run.steps[1]!,
+              id: 'sample-two',
+              values: [{ name: 'event', brief: 'sample.updated', bytes: 14, format: 'text' }],
+            },
+          ],
+        },
+      },
+    })
+    const labels = w.findAll('.abele-trace-run__step > .tree-item-self').map((r) => r.text())
+    expect(labels[0]).toContain('sample.created')
+    expect(labels[1]).toContain('sample.updated')
+    await w.get('input[type="search"]').setValue('sample.updated')
+    expect(w.findAll('.abele-trace-run__step')).toHaveLength(1)
+    expect(w.text()).toContain('sample.updated')
+    w.unmount()
+  })
   it('keeps code under its request in the requests filter even if the request arrives last', async () => {
     const w = mount(TraceRunView, {
       props: {
