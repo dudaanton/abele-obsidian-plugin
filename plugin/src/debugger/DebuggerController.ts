@@ -95,10 +95,16 @@ export class DebuggerController {
   private disabledBreakpoints = new Map<string, DebuggerBreakpointRequest>()
   exceptionFilters: string[] = []
   private breakpointCapabilities = { breakpoint_hit_condition: false, breakpoint_enabled: false }
+  private frameSourcePaths = false
+  private exitCodeSupported = false
   setCapabilities(capabilities: {
     breakpoint_hit_condition?: boolean
     breakpoint_enabled?: boolean
+    frame_source_paths?: boolean
+    exit_code?: boolean
   }) {
+    this.frameSourcePaths = capabilities.frame_source_paths === true
+    this.exitCodeSupported = capabilities.exit_code === true
     this.breakpointCapabilities = {
       breakpoint_hit_condition: capabilities.breakpoint_hit_condition === true,
       breakpoint_enabled: capabilities.breakpoint_enabled === true,
@@ -233,7 +239,7 @@ export class DebuggerController {
     this.session.detached = s.lifecycle === 'detached'
     this.session.seen = formatTimestamp(s.observed_at, { diagnostic: true }).label
     const stop = s.threads.find((t) => t.thread_id === s.selected_thread_id)?.stop
-    this.session.reason = stop?.description ?? stop?.reason
+    this.session.reason = stop?.reason === 'entry' ? 'entry' : (stop?.description ?? stop?.reason)
     this.session.breakpoints = this.knownBreakpoints()
     if (!this.session.frames.length && stop?.location)
       this.session.frames = [
@@ -1067,6 +1073,7 @@ export class DebuggerController {
                   name: z.string(),
                   source_id: z.string().nullable(),
                   path: z.string().optional(),
+                  relative_path: z.string().optional(),
                   line: z.number(),
                 })
                 .loose()
@@ -1078,14 +1085,33 @@ export class DebuggerController {
       .parse(raw)
     if (!this.current || generation !== this.serial || this.snapshot?.stop_epoch !== epoch) return
     this.frameHandles = result.data.items.map((f) => f.handle)
-    for (const frame of result.data.items)
-      if (frame.source_id && frame.path && !this.sources.has(frame.source_id))
-        this.sources.set(frame.source_id, frame.path)
+    for (const frame of result.data.items) {
+      const admitted = this.frameSourcePaths ? frame.relative_path : frame.path
+      if (
+        frame.source_id &&
+        admitted &&
+        (this.frameSourcePaths || !this.sources.has(frame.source_id))
+      )
+        this.sources.set(frame.source_id, admitted)
+    }
     this.session.frames = result.data.items.map((f) => ({
       name: f.name,
-      file: f.source_id ? (this.path(f.source_id) ?? f.path ?? f.source_id) : (f.path ?? ''),
+      file: this.frameSourcePaths
+        ? f.source_id && f.relative_path
+          ? f.relative_path
+          : ''
+        : f.source_id
+          ? (this.path(f.source_id) ?? f.path ?? f.source_id)
+          : (f.path ?? ''),
       line: f.line,
     }))
+    if (
+      this.frameSourcePaths &&
+      this.session.frames.length &&
+      !this.session.frames.some((f) => f.file)
+    )
+      this.error = t('debug.frameSourceUnavailable')
+    else if (this.error === t('debug.frameSourceUnavailable')) this.error = ''
     // Held in Node's own code (js-debug's statement, the loader): the program's frame is the one
     // that matters, so it is the one selected; the Node row stays folded above it.
     this.session.frame = Math.max(
@@ -1097,6 +1123,33 @@ export class DebuggerController {
   }
   selectFrame(index: number) {
     return this.human((invocation) => this.loadScopes(index, invocation))
+  }
+  async refreshExitInfo(): Promise<void> {
+    const snapshot = this.snapshot
+    if (!this.exitCodeSupported || !snapshot || !this.current || this.session.status !== 'exited')
+      return
+    const serial = this.serial
+    const raw = await this.transport.rpc('debugger.v1.exitInfo', {
+      debug_session_id: snapshot.debug_session_id,
+    })
+    const result = z.object({ exit_code: z.number().int().nullable() }).parse(raw)
+    if (
+      serial !== this.serial ||
+      this.snapshot?.incarnation !== snapshot.incarnation ||
+      this.snapshot.debug_session_id !== snapshot.debug_session_id
+    )
+      return
+    this.session.exitCode = result.exit_code ?? undefined
+    this.notify()
+  }
+  get awaitingExitCode(): boolean {
+    return (
+      this.exitCodeSupported &&
+      this.current &&
+      this.session.status === 'exited' &&
+      !this.session.detached &&
+      this.session.exitCode === undefined
+    )
   }
   private async loadScopes(index: number, invocation: Invocation) {
     const frame_handle = invocation.frameHandles[index]

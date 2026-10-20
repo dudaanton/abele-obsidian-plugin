@@ -22,6 +22,40 @@ const session = (status: DebugSession['status']): DebugSession => ({
   mode: 'ask',
   seen: '10:00',
 })
+it('opens a selected caller frame and explains a library without source', async () => {
+  const { shallowRef } = await import('vue')
+  const service = DebuggerService.instance
+  service.destroy()
+  const s = session('paused')
+  s.frames.push({ name: 'library', file: '', line: 1 })
+  const b = {
+    revision: shallowRef(1),
+    refresh: vi.fn(async () => {}),
+    controller: {
+      session: s,
+      current: true,
+      actions: [],
+      selectFrame: vi.fn(async (index: number) => {
+        s.frame = index
+      }),
+    },
+  }
+  service.active.value = b as never
+  const reveal = vi.spyOn(service, 'reveal').mockImplementation(() => {})
+  const w = mount(DebuggerView)
+  try {
+    w.getComponent(DebugPanel).vm.$emit('frame', 0)
+    await flushPromises()
+    expect(reveal).toHaveBeenCalledWith(b, 'sample.ts', 7)
+    w.getComponent(DebugPanel).vm.$emit('frame', 1)
+    await flushPromises()
+    expect(reveal).toHaveBeenCalledWith(b, '', 1)
+  } finally {
+    w.unmount()
+    service.active.value = null
+    reveal.mockRestore()
+  }
+})
 it('keeps refused requests readable in Debug after the decision', async () => {
   const { shallowRef } = await import('vue')
   const service = DebuggerService.instance

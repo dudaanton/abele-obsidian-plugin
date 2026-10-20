@@ -14,6 +14,8 @@ import type { PathTarget } from '@/node/NodePathModel'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { nodeAdvertisesMethod } from '@/node/advertisedMethods'
 import { breakpointCapabilities } from './breakpointCapabilities'
+import { debuggerAcceptanceCapabilities } from '@/node/acceptanceCapabilities'
+import { waitForDebuggerMetadata } from './metadataWait'
 
 export interface SourceAdmission {
   message: string
@@ -49,6 +51,7 @@ export class DebuggerBinding {
   private refreshing?: Promise<void>
   private openingSessionId?: string
   private loadedEpoch?: number
+  private stopExceptionText = false
   private grantGeneration = 0
   constructor(
     readonly connection: NodeConnection,
@@ -146,11 +149,16 @@ export class DebuggerBinding {
       const client = this.connection.client as { describe?: () => Promise<unknown> }
       const description =
         typeof client.describe === 'function' ? await client.describe() : undefined
-      this.controller.setCapabilities(breakpointCapabilities(description))
+      this.stopExceptionText = debuggerAcceptanceCapabilities(description).stop_exception_text
+      this.controller.setCapabilities({
+        ...breakpointCapabilities(description),
+        ...debuggerAcceptanceCapabilities(description),
+      })
       return nodeTraceSupported(description)
     } catch (e) {
       console.debug('[debugger] Run recording support unknown', e)
       this.controller.setCapabilities({})
+      this.stopExceptionText = false
       return false
     }
   }
@@ -202,7 +210,7 @@ export class DebuggerBinding {
       !['terminated', 'detached', 'failed'].includes(this.controller.snapshot.lifecycle)
     ) {
       const waitId = (this.waitId = crypto.randomUUID())
-      const result = await this.connection.client.debugger.wait({
+      const params = {
         debug_session_id: sessionId,
         incarnation,
         after_event_seq: eventSeq,
@@ -223,12 +231,21 @@ export class DebuggerBinding {
           'output',
         ],
         timeout_ms: WAIT_ROUND_MS,
-      })
+      }
+      const result = this.stopExceptionText
+        ? await waitForDebuggerMetadata(this.connection.client, params)
+        : await this.connection.client.debugger.wait(params)
       if (this.waitId === waitId) this.waitId = undefined
       if (abort.signal.aborted || this.disposed) return
       if (result.reason !== 'event' && result.reason !== 'elapsed')
         console.debug('[debugger] Wait ended', result.reason, !!result.snapshot)
-      this.controller.observe(this.connection.client.debugger.current(sessionId))
+      this.controller.observe(
+        this.stopExceptionText
+          ? result.snapshot
+            ? { observation: 'current', snapshot: result.snapshot }
+            : { observation: 'unknown', snapshot: null }
+          : this.connection.client.debugger.current(sessionId)
+      )
       if (result.reason === 'connection_lost' || !result.snapshot) {
         this.controller.disconnected()
         await this.lastRuns()
@@ -255,6 +272,15 @@ export class DebuggerBinding {
     // A read already under way may have started before the program ended: read after it.
     await this.trace?.refresh().catch(() => {})
     await this.trace?.refresh().catch((e) => console.debug('[debugger] Runs unavailable', e))
+    // Native process exit evidence can follow adapter termination. These bounded reads
+    // retrieve diagnostics only; they never infer ownership or send a control again.
+    for (let attempt = 0; attempt < 3 && this.controller.awaitingExitCode; ++attempt) {
+      if (attempt) await new Promise((resolve) => window.setTimeout(resolve, 150))
+      if (this.disposed || this.abort?.signal.aborted) break
+      await this.controller
+        .refreshExitInfo()
+        .catch((e) => console.debug('[debugger] Final exit metadata unavailable', e))
+    }
   }
   refresh(): Promise<void> {
     return (this.refreshing ??= (async () => {
@@ -263,6 +289,9 @@ export class DebuggerBinding {
       await this.controller.refreshApprovals()
       await this.controller.refreshHistory()
       await this.controller.refreshOutput()
+      await this.controller
+        .refreshExitInfo()
+        .catch((e) => console.debug('[debugger] Exit metadata unavailable', e))
       await this.trace?.refresh().catch((e) => console.debug('[debugger] Runs unavailable', e))
       const epoch = this.controller.snapshot?.stop_epoch
       if (

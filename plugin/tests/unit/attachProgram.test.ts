@@ -127,59 +127,75 @@ afterEach(() => {
 
 describe('attaching the debugger to a running program', () => {
   it.each([
-    [false, false],
-    [true, false],
-    [false, true],
-    [true, true],
-  ])('carries breakpoints on reattach, disabled=%s restarted=%s', async (disabled, restarted) => {
-    fakeWorkspace()
-    const { presenter, calls } = fakePresenter([inFolder])
-    const show = vi.fn(async () => {})
-    await attachToProgram(presenter, inFolder, show)
-    const binding = DebuggerService.instance.binding(presenter)
-    binding.controller.observe({
-      observation: 'current',
-      snapshot: debuggerSnapshot({
-        debug_session_id: 'child-9',
-        breakpoints: [
-          {
-            breakpoint_id: 'sample-point',
-            source_id: 's1',
-            line: 5,
-            status: 'verified',
-            resolved_line: 5,
-            resolved_column: null,
-            message: null,
-            enabled: !disabled,
+    [false, false, false],
+    [true, false, false],
+    [false, true, false],
+    [true, true, false],
+    [false, true, true],
+    [true, true, true],
+  ])(
+    'carries breakpoints on reattach, disabled=%s restarted=%s nodeRestore=%s',
+    async (disabled, restarted, nodeRestore) => {
+      fakeWorkspace()
+      const { presenter, calls } = fakePresenter([inFolder])
+      Object.assign(presenter.connection.client, {
+        describe: async () => ({
+          capabilities: {
+            capabilities: {
+              debugger_v1: { status: 'supported', attach_breakpoint_restore: nodeRestore },
+            },
           },
-        ],
-      }),
-    })
-    binding.controller.registerSource('s1', 'src/server.js')
-    binding.controller.session.watches = [{ expression: 'sample.count', value: '7' }]
-    binding.controller.observe({
-      observation: 'current',
-      snapshot: debuggerSnapshot({
-        debug_session_id: 'child-9',
-        lifecycle: 'detached',
-        breakpoints: [],
-        event_seq: 9,
-      }),
-    })
-    const set = vi.spyOn(binding.controller, 'setBreakpoint').mockResolvedValue(undefined)
-    await attachToProgram(presenter, { ...inFolder, pid: restarted ? 4102 : inFolder.pid }, show)
-    expect(binding.controller.session.watches).toEqual([
-      { expression: 'sample.count', stale: true },
-    ])
-    expect(
-      calls.filter(([method]) => method === 'debugger.v1.attachProgram').at(-1)?.[1].sources
-    ).toContain('src/server.js')
-    expect(set).toHaveBeenCalledWith(expect.any(String), 's1', 5, undefined, {
-      enabled: !disabled,
-      log_message: undefined,
-      hit_condition: undefined,
-    })
-  })
+        }),
+      })
+      const show = vi.fn(async () => {})
+      await attachToProgram(presenter, inFolder, show)
+      const binding = DebuggerService.instance.binding(presenter)
+      binding.controller.observe({
+        observation: 'current',
+        snapshot: debuggerSnapshot({
+          debug_session_id: 'child-9',
+          breakpoints: [
+            {
+              breakpoint_id: 'sample-point',
+              source_id: 's1',
+              line: 5,
+              status: 'verified',
+              resolved_line: 5,
+              resolved_column: null,
+              message: null,
+              enabled: !disabled,
+            },
+          ],
+        }),
+      })
+      binding.controller.registerSource('s1', 'src/server.js')
+      binding.controller.session.watches = [{ expression: 'sample.count', value: '7' }]
+      binding.controller.observe({
+        observation: 'current',
+        snapshot: debuggerSnapshot({
+          debug_session_id: 'child-9',
+          lifecycle: 'detached',
+          breakpoints: [],
+          event_seq: 9,
+        }),
+      })
+      const set = vi.spyOn(binding.controller, 'setBreakpoint').mockResolvedValue(undefined)
+      await attachToProgram(presenter, { ...inFolder, pid: restarted ? 4102 : inFolder.pid }, show)
+      expect(binding.controller.session.watches).toEqual([
+        { expression: 'sample.count', stale: true },
+      ])
+      expect(
+        calls.filter(([method]) => method === 'debugger.v1.attachProgram').at(-1)?.[1].sources
+      ).toContain('src/server.js')
+      if (nodeRestore) expect(set).not.toHaveBeenCalled()
+      else
+        expect(set).toHaveBeenCalledWith(expect.any(String), 's1', 5, undefined, {
+          enabled: !disabled,
+          log_message: undefined,
+          hit_condition: undefined,
+        })
+    }
+  )
   it('does not open an ignored built entry and finishes by showing Debug', async () => {
     const { opened } = fakeWorkspace()
     const { presenter } = fakePresenter([inFolder])

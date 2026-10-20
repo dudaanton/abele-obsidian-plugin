@@ -8,6 +8,82 @@ import {
 } from '@abele/node-protocol'
 import { DebuggerController, debuggerKey, receiptMessage } from '@/debugger/DebuggerController'
 import { DebuggerBreakpointRequestSchema } from '@abele/node-protocol'
+it('labels entry pauses separately and retains enriched exception descriptions', () => {
+  const { model } = fixture()
+  const state = snapshot()
+  state.threads[0].stop!.reason = 'entry'
+  model.observe({ observation: 'current', snapshot: state })
+  const w = mount(DebugPanel, { props: { session: model.session } })
+  expect(w.text()).toContain('Paused at start')
+  expect(w.text()).not.toContain('debugger statement')
+  w.unmount()
+  state.event_seq++
+  state.threads[0].stop!.reason = 'exception'
+  state.threads[0].stop!.description = 'SampleError: Missing sample item'
+  model.observe({ observation: 'current', snapshot: state })
+  expect(model.session.reason).toBe('SampleError: Missing sample item')
+})
+it('prefers admitted relative caller paths and never maps unadmitted library frames', async () => {
+  const { model, rpc } = fixture()
+  model.setCapabilities({ frame_source_paths: true })
+  rpc.mockResolvedValueOnce({
+    data: {
+      items: [
+        {
+          handle: 'sample-caller',
+          name: 'caller',
+          source_id: 'caller-source',
+          path: '/sample/build/caller.js',
+          relative_path: 'src/caller.ts',
+          line: 12,
+        },
+        {
+          handle: 'sample-library',
+          name: 'library',
+          source_id: null,
+          path: '/runtime/util.js',
+          line: 1,
+        },
+      ],
+    },
+  } as never)
+  rpc.mockResolvedValueOnce({ data: { items: [] } } as never)
+  await model.loadStack()
+  expect(model.path('caller-source')).toBe('src/caller.ts')
+  expect(model.session.frames[0].file).toBe('src/caller.ts')
+  expect(model.session.frames[1].file).toBe('')
+})
+it('reads additive exit metadata only when supported and fences replaced sessions', async () => {
+  const { model, rpc } = fixture()
+  model.observe({
+    observation: 'current',
+    snapshot: snapshot({ lifecycle: 'terminated', execution: 'unknown' }),
+  })
+  await model.refreshExitInfo()
+  expect(rpc).not.toHaveBeenCalled()
+  model.setCapabilities({ exit_code: true })
+  rpc.mockResolvedValueOnce({ exit_code: 7 } as never)
+  await model.refreshExitInfo()
+  expect(rpc).toHaveBeenCalledWith('debugger.v1.exitInfo', {
+    debug_session_id: model.snapshot!.debug_session_id,
+  })
+  expect(model.session.exitCode).toBe(7)
+  rpc.mockResolvedValueOnce({ exit_code: null } as never)
+  await model.refreshExitInfo()
+  expect(model.session.exitCode).toBeUndefined()
+  let finish!: (value: unknown) => void
+  rpc.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve
+      }) as never
+  )
+  const pending = model.refreshExitInfo()
+  model.disconnected()
+  finish({ exit_code: 19 })
+  await pending
+  expect(model.session.exitCode).toBeUndefined()
+})
 it.each(['terminated', 'detached', 'failed'] as const)(
   'keeps known %s status when the transport later disconnects',
   (lifecycle) => {

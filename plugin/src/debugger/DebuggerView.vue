@@ -42,7 +42,7 @@
         @browser-menu="browserMenu"
         @command="command($event)"
         @mode="run(() => binding!.controller.setMode($event))"
-        @frame="run(() => binding!.controller.selectFrame($event))"
+        @frame="selectFrame"
         @inspect="run(() => binding!.controller.inspect($event))"
         @open-value="openValue"
         @watch="run(() => binding!.controller.watch($event))"
@@ -205,6 +205,16 @@ async function run(work: () => Promise<unknown>) {
   } finally {
     busy.value = false
   }
+}
+function selectFrame(index: number) {
+  const b = binding.value
+  if (!b) return
+  void run(async () => {
+    await b.controller.selectFrame(index)
+    if (binding.value !== b || !b.controller.current) return
+    const frame = b.controller.session.frames[index]
+    if (frame) service.reveal(b, frame.file, frame.line)
+  })
 }
 function command(action: string) {
   const b = binding.value

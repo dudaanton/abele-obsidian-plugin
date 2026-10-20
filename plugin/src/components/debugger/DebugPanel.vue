@@ -468,11 +468,13 @@ const tone = computed(() => tones[props.session.status])
 const stateLabel = computed(() => {
   const s = props.session
   return s.status === 'paused'
-    ? s.reason
-      ? /^paused\b/i.test(s.reason)
-        ? s.reason
-        : t('streamC.4e9fcd27b044c57c', { v1: s.reason })
-      : t('streamC.e159b06187d369a0')
+    ? s.reason === 'entry'
+      ? t('debug.pausedAtStart')
+      : s.reason
+        ? /^paused\b/i.test(s.reason)
+          ? s.reason
+          : t('streamC.4e9fcd27b044c57c', { v1: s.reason })
+        : t('streamC.e159b06187d369a0')
     : s.status === 'running'
       ? t('streamC.f4ccae29e1bb0c20')
       : s.status === 'starting'

@@ -12,6 +12,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { confirmDialog } from '@/components/obsidian/dialogs'
 import { DebuggerService } from './DebuggerService'
 import { restoreBreakpoint } from './restoreBreakpoint'
+import { debuggerAcceptanceCapabilities } from '@/node/acceptanceCapabilities'
 import {
   StartResultSchema,
   chatTarget,
@@ -104,6 +105,9 @@ export async function attachToProgram(
   const carry = (previous?.retainedBreakpoints ?? []).filter(
     (point) => point.file && point.file !== point.sourceId
   )
+  const nodeRestores = debuggerAcceptanceCapabilities(
+    await presenter.connection.client.describe?.()
+  ).attach_breakpoint_restore
   const started = StartResultSchema.parse(
     await presenter.connection.client.request('debugger.v1.attachProgram', {
       operation_id: crypto.randomUUID(),
@@ -154,7 +158,7 @@ export async function attachToProgram(
   await show(started.debug_session_id)
   binding.controller.session.watches = watches
   ++binding.revision.value
-  for (const point of carry) {
+  for (const point of nodeRestores ? [] : carry) {
     const source = started.sources.find((source) => source.path === point.file)
     if (source) await restoreBreakpoint(binding.controller, source.source_id, point)
   }
