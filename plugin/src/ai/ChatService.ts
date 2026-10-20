@@ -37,6 +37,15 @@ import { NodeService } from '@/node/NodeService'
 export const MAX_TABS = 20
 const STORAGE_KEY = 'abele-agent-tabs'
 
+export interface OpenChatInfo {
+  id: string
+  title: string
+  /** Relative to the configured chats directory; empty for an unfiled chat. */
+  folder: string
+  agent: { id: string; name: string } | null
+  state: 'idle' | 'waiting' | 'working' | 'failed'
+}
+
 export interface PendingInput {
   text: string
   tabId?: string
@@ -1311,6 +1320,39 @@ export class ChatService {
 
   getAllSessions(): ChatSession[] {
     return Array.from(this.sessions.values())
+  }
+
+  /** Open conversations, in navigation order. Read-only helper transcripts are excluded. */
+  listOpenChats(): OpenChatInfo[] {
+    const root = AbeleConfig.getInstance()
+      .ai.chatFolder.replace(/\/?\{\{.*$/, '')
+      .replace(/\/$/, '')
+    return this.tabOrder.value.flatMap((id) => {
+      const presentation = this.getPresentation(id)
+      if (!presentation) return []
+      const session = this.sessions.get(id)
+      const path = session?.currentChatFile.value?.path ?? ''
+      const parent = path.slice(0, path.lastIndexOf('/'))
+      const folder = parent.startsWith(`${root}/`) ? parent.slice(root.length + 1) : ''
+      const agent = session?.agent.value
+      const state = session?.commentState.value
+      return [
+        {
+          id,
+          title: presentation.label.value,
+          folder,
+          agent: agent ? { id: agent.id, name: agent.name } : null,
+          state:
+            state === 'pending'
+              ? ('waiting' as const)
+              : state === 'busy' || presentation.isStreaming.value
+                ? ('working' as const)
+                : state === 'error'
+                  ? ('failed' as const)
+                  : ('idle' as const),
+        },
+      ]
+    })
   }
 
   private get occupiedTabCount(): number {
