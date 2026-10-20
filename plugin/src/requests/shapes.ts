@@ -2,6 +2,7 @@
 // the tab draws it, and the environments' secrets held in memory.
 import type { HttpOutcome, HttpPair, HttpResponse } from '@/components/debugger/http/types'
 import type { HttpRpc, SendStatus, WireOutcome } from './wire'
+import { t } from '@/i18n'
 
 /** Secrets of environments, by project and environment: they outlive a closed view. */
 /** A secret held in memory, and the origin it came from: it goes only there. */
@@ -64,8 +65,10 @@ export function sentAtWords(iso: string, now = new Date()) {
   return `${d.getDate()} ${MONTHS[d.getMonth()]} ${time}`
 }
 
-export const reasonOf = (e: unknown) =>
-  e instanceof Error ? e.message : typeof e === 'string' ? e : 'Unknown failure'
+export const reasonOf = (e: unknown) => {
+  const message = e instanceof Error ? e.message : typeof e === 'string' ? e : 'Unknown failure'
+  return message === 'http_request_not_found' ? t('node.error.requestMissing') : message
+}
 
 export function outcomeOf(outcome: WireOutcome, codeSteps?: number): HttpOutcome {
   switch (outcome.state) {
