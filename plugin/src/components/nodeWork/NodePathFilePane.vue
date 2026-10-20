@@ -51,7 +51,7 @@ import type { NodePathFileModel } from '@/node/NodePathModel'
 import FileView from './FileView.vue'
 import NodePathDebugFile from './NodePathDebugFile.vue'
 import type { DebugSourceContext } from '@/debugger/sourceExtension'
-import { computed, provide, ref, watch, watchEffect } from 'vue'
+import { computed, provide, ref, watch } from 'vue'
 import { FILE_NAVIGATION, fileNavigation } from '@/node/fileNavigation'
 import { openNodePathTab } from '@/node/nodePathNavigation'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -107,22 +107,40 @@ watch(
   },
   { immediate: true }
 )
-watchEffect((cleanup) => {
-  const doc = props.model.document.value
-  admissionReason.value = ''
-  admissionCode.value = ''
-  if (!doc?.target || effectiveDebug.value || !service.folderBinding(doc.target)) return
-  let cancelled = false
-  cleanup(() => {
-    cancelled = true
-  })
-  void service.admitFile(doc.target, doc.path).then((reason) => {
-    if (!cancelled) {
-      admissionReason.value = reason.message
-      admissionCode.value = reason.code ?? ''
-    }
-  })
-})
+watch(
+  [
+    () => props.model.document.value,
+    () => effectiveDebug.value?.sourceId,
+    () => {
+      const target = props.model.document.value?.target
+      const binding = target && service.folderBinding(target)
+      return binding
+        ? JSON.stringify([
+            binding.sessionId,
+            binding.controller.snapshot?.incarnation,
+            binding.connection.authorizationGeneration,
+          ])
+        : ''
+    },
+  ],
+  (_value, _previous, cleanup) => {
+    const doc = props.model.document.value
+    admissionReason.value = ''
+    admissionCode.value = ''
+    if (!doc?.target || effectiveDebug.value || !service.folderBinding(doc.target)) return
+    let cancelled = false
+    cleanup(() => {
+      cancelled = true
+    })
+    void service.admitFile(doc.target, doc.path).then((reason) => {
+      if (!cancelled) {
+        admissionReason.value = reason.message
+        admissionCode.value = reason.code ?? ''
+      }
+    })
+  },
+  { immediate: true }
+)
 import type { FileSelection } from './fileSelection'
 const emit = defineEmits<{
   reveal: [line: number]

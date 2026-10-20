@@ -17,6 +17,34 @@ const target = {
   id: 'sample-folder',
 }
 afterEach(() => DebuggerService.instance.destroy())
+it('rechecks a refusal on document changes, without polling it on every debugger update', async () => {
+  const { binding, request } = fixture(true, [
+    { path: 'lib/helper.ts', code: 'debugger_source_changed' },
+  ])
+  const document = ref({ target, path: 'lib/helper.ts', text: 'const sample = 2' })
+  const wrapper = mount(NodePathFilePane, {
+    props: { model: { document, mode: ref('file'), busy: ref(false), error: ref('') } as never },
+    global: { stubs: { FileView: true, NodePathDebugFile: true } },
+  })
+  try {
+    await flushPromises()
+    expect(request).toHaveBeenCalledTimes(1)
+    ++binding.revision.value
+    await flushPromises()
+    expect(request).toHaveBeenCalledTimes(1)
+    request.mockResolvedValueOnce({
+      incarnation: 'sample-incarnation',
+      sources: [{ source_id: 'sample-restored', path: 'lib/helper.ts' }],
+      refused: [],
+    })
+    document.value = { ...document.value, text: 'const sample = 1' }
+    await flushPromises()
+    expect(request).toHaveBeenCalledTimes(2)
+    expect(wrapper.findComponent({ name: 'NodePathDebugFile' }).exists()).toBe(true)
+  } finally {
+    wrapper.unmount()
+  }
+})
 it('explains declaration files before asking the node to admit them', async () => {
   const { service, request } = fixture()
   expect((await service.admitFile(target, 'lib/sample.d.ts')).message).toMatch(
