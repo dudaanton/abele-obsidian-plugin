@@ -59,7 +59,7 @@ it('multi-scope S6: deleting one file item leaves the other item connected', asy
   await owner.syncNow(ownerId)
   expect(owner.read(folder + '/kept.md')).toBe('other item still writes')
 }, 180000)
-it('multi-scope S1–S5, S8, S10: one editable key, retained copies and one uploader', async () => {
+it('multi-scope S1–S6, S8, S10: one editable key, retained copies and one uploader', async () => {
   const s = fixture(),
     owner = s.primary,
     receiver = s.peer!
@@ -147,6 +147,29 @@ it('multi-scope S1–S5, S8, S10: one editable key, retained copies and one uplo
       'for(const close of window.__sampleObservers||[])close();delete window.__sampleObservers;delete window.__sampleCommits;return true'
     )
   }
+  const groupPreview = await owner.long<{ files: number; warnings: string[] }>(
+    'preview group deletion with its overlapping group',
+    `
+    const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(ownerId)}),'share-2');await poll(()=>modal('Share access'));
+    const box=modal('Share access');let row;await poll(()=>row=[...box.querySelectorAll('.setting-item')].find(one=>textOf(one.querySelector('.setting-item-name'))==='Sample item set'));row.click();await poll(()=>modal('Sample item set'));
+    const detail=modal('Sample item set');let item;await poll(()=>item=[...detail.querySelectorAll('.abele-share-detail__item')].find(one=>one.textContent.includes('First group')));icon(item,'more-horizontal');let action;await poll(()=>action=[...settingsDoc().querySelectorAll('.menu-item'),...document.querySelectorAll('.menu-item')].find(one=>textOf(one)==='Delete from the server…'));action.click();let confirmation;
+    await poll(()=>{confirmation=inWindows('.abele-server-delete__facts')?.closest('.modal');return confirmation&&[...confirmation.querySelectorAll('.abele-modal__footer button')].some(one=>one.classList.contains('mod-warning')&&!one.disabled)});
+    const count=[...confirmation.querySelectorAll('dt')].find(one=>textOf(one)==='Files');return {files:Number(textOf(count.nextElementSibling).replace(/[^0-9]/g,'')),warnings:[...confirmation.querySelectorAll('.abele-server-delete__also')].map(one=>textOf(one))}
+  `
+  )
+  expect(groupPreview.files).toBe(2)
+  expect(groupPreview.warnings.some((warning) => warning.includes('Second group'))).toBe(true)
+  const groupShot = await captureSyncScreen(
+    owner,
+    'multi-scope-group-overlap',
+    '.abele-server-delete__facts'
+  )
+  expect(groupShot.over).toEqual([])
+  expect(groupShot.clipped).toEqual([])
+  owner.run(
+    `const box=inWindows('.abele-server-delete__facts').closest('.modal');await press(box,'Cancel');return true`
+  )
+  closeSyncScreens(owner)
   await receiver.long(
     'pause one item',
     `const root=await openSyncTab();connectionRow(root,${JSON.stringify(receiverId)}).click();let row;await poll(()=>row=[...settingsDoc().querySelectorAll('.abele-connection-items__item'),...document.querySelectorAll('.abele-connection-items__item')].find(one=>one.textContent.includes('Collection')));icon(row,'more-horizontal');let action;await poll(()=>action=[...settingsDoc().querySelectorAll('.menu-item'),...document.querySelectorAll('.menu-item')].find(one=>textOf(one)==='Pause on this device'));action.click();await poll(()=>svc.itemSets.items(${JSON.stringify(receiverId)}).some(one=>one.id===${JSON.stringify(folderItem.id)}&&one.state.kind==='paused'));return true`
