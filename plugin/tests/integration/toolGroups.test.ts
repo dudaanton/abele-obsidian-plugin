@@ -209,7 +209,31 @@ describe('tools offered by section', () => {
     const offered = names(session)
     expect(offered).toContain('open_nodes')
     expect(offered).toContain('node_ls')
+    for (const tool of [
+      'node_delegate',
+      'node_delegations',
+      'node_delegation_send',
+      'node_delegation_status',
+      'node_delegation_cancel',
+      'node_command_run',
+      'node_command_status',
+      'node_command_cancel',
+      'node_git_integrate',
+    ]) {
+      expect(offered).toContain(tool)
+    }
     expect(offered.indexOf('node_ls')).toBeGreaterThan(offered.indexOf('open_nodes'))
+  })
+
+  it('withholds delegation and manager tools without node scope even when their modes are enabled', () => {
+    AgentRegistry.getInstance().update(session.agentId.value, { toolDiscovery: 'all-at-once' })
+    session.toolModes.value = {
+      ...session.toolModes.value,
+      node_delegate: 'auto',
+      node_command_run: 'auto',
+    }
+    expect(names(session)).not.toContain('node_delegate')
+    expect(names(session)).not.toContain('node_command_run')
   })
 
   it('starts a delegated run with the sections its parent had open', async () => {

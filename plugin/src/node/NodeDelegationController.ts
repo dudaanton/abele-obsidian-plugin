@@ -1,12 +1,6 @@
-import type {
-  NodeClient,
-  Prompt,
-  DelegationGrantRequest,
-  DelegationCreateRequest,
-} from '@abele/node-client'
+import type { NodeClient, Prompt } from '@abele/node-client'
 import {
   DelegationSchema,
-  DelegationGrantSchema,
   DelegationSendResultSchema,
   type ExpectedExecutionTarget,
 } from '@abele/node-protocol'
@@ -17,10 +11,12 @@ import {
   chatMovedNotice,
 } from './expectedTarget'
 import type { NodeClientStore, NodeClientState } from './NodeClientStore'
+import { ChannelError } from '@abele/channel-protocol'
 import {
   DelegationTaskInputSchema,
   type DelegationTaskInput,
   type DelegationCard,
+  type DelegationRequest,
 } from './delegation'
 import { delegatable, nodeProviders, providerAvailable } from './providers'
 import { pendingOwnerPrompts, promptAnswerStates } from './promptAnswers'
@@ -28,7 +24,7 @@ import { reduceTranscript } from './NodeTranscriptReducer'
 import { openWindow, catchUp } from './sessionWindow'
 
 function storage(state: NodeClientState) {
-  return (state.delegation ??= { grants: {}, tasks: {} })
+  return (state.delegation ??= { tasks: {} })
 }
 async function taskKey(parent: string, key: string): Promise<string> {
   const bytes = new TextEncoder().encode(JSON.stringify([parent, key]))
@@ -79,54 +75,29 @@ export class NodeDelegationController {
     this.stoppedParents.delete(parent)
   }
 
-  /** Owner UI only. These methods are deliberately absent from the model tools. */
-  async approve(params: DelegationGrantRequest) {
-    const grant = await this.client.approveDelegationGrant(params)
-    await this.store.transaction((s) => {
-      storage(s).grants[grant.grant_id] = grant
-    })
-    return grant
-  }
-  async revoke(id: string) {
-    const grant = await this.client.revokeDelegationGrant(id)
-    await this.store.transaction((s) => {
-      storage(s).grants[id] = grant
-    })
-    return grant
-  }
-  grants() {
-    return this.store.transaction((s) => Object.values(storage(s).grants))
-  }
-  async destinations(parent: string) {
-    const grants = (await this.grants()).filter((g) => !g.revoked && g.parent_id === parent)
-    if (!grants.length) return []
+  async destinations(_parent: string) {
     const providers = nodeProviders(await this.client.describe())
       .filter(delegatable)
       .filter(providerAvailable)
-    const allowed = new Set(grants.flatMap((g) => g.project_ids))
-    const projects = new Map<string, { project_id: string; root_path: string }>()
+      .map((p) => p.provider)
+    const projects: { project_id: string; root_path: string }[] = []
     let after: string | undefined
-    while (projects.size < allowed.size) {
+    while (true) {
       const page = await this.client.listProjects(after)
       if (!page.length) break
-      for (const project of page)
-        if (allowed.has(project.project_id))
-          projects.set(project.project_id, {
-            project_id: project.project_id,
-            root_path: project.root_path,
-          })
+      projects.push(...page.map(({ project_id, root_path }) => ({ project_id, root_path })))
       const next = page.at(-1)!.project_id
       if (next === after) throw new Error('Node project pagination did not advance')
       after = next
     }
-    return grants.map((g) => ({
-      project_ids: g.project_ids,
-      projects: g.project_ids.map((id) => projects.get(id) ?? { project_id: id }),
-      providers: g.providers.filter(
-        (p) => providers.some((v) => v.provider === p) && (p !== 'fake' || g.allow_fake)
-      ),
-      actions: g.actions,
-    }))
+    return [
+      {
+        project_ids: projects.map((p) => p.project_id),
+        projects,
+        providers,
+        actions: ['create', 'send', 'status', 'cancel', 'read'],
+      },
+    ]
   }
   async create(parent: string, raw: DelegationTaskInput, signal?: AbortSignal) {
     const input = DelegationTaskInputSchema.parse(raw)
@@ -139,26 +110,12 @@ export class NodeDelegationController {
         if (previous.cancelled) throw new Error('Delegation call cancelled; use a new task key')
         if (JSON.stringify(previous.input) !== JSON.stringify(input))
           throw new Error('idempotency_mismatch: preserve the same task key and body')
-        this.requireGrant(s, previous.request.grant_id, parent, 'create')
         return previous.request
       }
-      const grant = Object.values(local.grants).find(
-        (g) =>
-          !g.revoked &&
-          g.parent_id === parent &&
-          g.actions.includes('create') &&
-          g.providers.includes(input.provider) &&
-          (input.provider !== 'fake' || g.allow_fake) &&
-          (!input.project_id ? input.provider === 'fake' : g.project_ids.includes(input.project_id))
-      )
-      if (!grant)
-        throw new Error(
-          'Owner delegation grant required in Settings → Nodes for this parent, project and provider'
-        )
       const { task_key: _key, ...body } = input
-      const request: DelegationCreateRequest = {
+      const request: DelegationRequest = {
         ...body,
-        grant_id: grant.grant_id,
+        parent_id: parent,
         delegation_key: key,
       }
       local.tasks[key] = {
@@ -197,7 +154,19 @@ export class NodeDelegationController {
       if (signal?.aborted) throw new Error('Delegation call cancelled')
       if (!available) throw new Error('Provider unavailable on this node')
       // Exact retained body even when a prior reply was lost. Node deduplicates the task key.
-      child = await this.client.createDelegation(request)
+      // The legacy SDK type still requires grant_id; send no legacy grant.
+      // Nodes which require it refuse rather than creating hidden authority.
+      try {
+        child = await this.client.createDelegation(
+          request as unknown as Parameters<NodeClient['createDelegation']>[0]
+        )
+      } catch (error) {
+        if (error instanceof ChannelError && error.code === 'invalid_params')
+          throw new Error(
+            'The node and its plugin client need an update to support delegation through chat node access. No separate delegation permission can be configured.'
+          )
+        throw error
+      }
       await this.store.transaction((s) => {
         const task = storage(s).tasks[key]
         if (!task.cancelSettled) task.child = child
@@ -254,24 +223,12 @@ export class NodeDelegationController {
       workspace_id: child.workspace_id ?? null,
     }
   }
-  private requireGrant(s: NodeClientState, id: string, parent: string, action: string) {
-    const grant = storage(s).grants[id]
-    if (
-      !grant ||
-      grant.revoked ||
-      grant.parent_id !== parent ||
-      !grant.actions.some((a) => a === action)
-    )
-      throw new Error('Owner delegation grant required or revoked')
-    return grant
-  }
-  private owned(parent: string, id: string, action: string) {
+  private owned(parent: string, id: string, _action: string) {
     return this.store.transaction((s) => {
       const task = Object.values(storage(s).tasks).find(
         (t) => t.parentId === parent && t.child?.delegation_id === id
       )
       if (!task?.child) throw new Error('Delegation does not belong to this parent chat')
-      this.requireGrant(s, task.child.grant_id, parent, action)
       return task.child
     })
   }
@@ -313,7 +270,7 @@ export class NodeDelegationController {
     const child = children.find((child) => child.workspace_id === workspace)
     if (!child) return
     await this.owned(parent, child.delegation_id, 'read')
-    // Recheck the node's current grant before using locally retained child identity.
+    // Recheck node authority before using locally retained child identity.
     await this.client.subscribeDelegation(child)
     return async () => {
       const current = await this.owned(parent, child.delegation_id, 'read')
@@ -342,12 +299,8 @@ export class NodeDelegationController {
       const task = Object.values(storage(s).tasks).find((t) => t.child?.delegation_id === id)!
       task.status = status
     })
-    // Read rights are separate from status rights. A mailbox request rechecks current
-    // node authority before cached report text is returned to a model.
-    const canRead = await this.store.transaction(
-      (s) => storage(s).grants[status.grant_id]?.actions.includes('read') === true
-    )
-    if (canRead) await this.client.subscribeDelegation(status)
+    const canRead = true
+    await this.client.subscribeDelegation(status)
     const delivered = await this.store.transaction((s) => {
       const cursor = s.cursors[status.mailbox_stream_id] ?? 0
       const events = s.events[status.mailbox_stream_id] ?? []
@@ -445,14 +398,6 @@ export class NodeDelegationController {
         }
       for (const receipt of Object.values(s.results)) {
         const method = receipt.request?.method
-        if (method === 'delegation.grant.create' || method === 'delegation.grant.revoke') {
-          const parsed = DelegationGrantSchema.safeParse(receipt.result)
-          if (parsed.success) {
-            const old = local.grants[parsed.data.grant_id]
-            // Replaying an old approval must not revive a later revocation.
-            if (!old?.revoked) local.grants[parsed.data.grant_id] = parsed.data
-          }
-        }
         if (method === 'delegation.send') {
           const reply = DelegationSendResultSchema.safeParse(receipt.result)
           const params = receipt.request?.params as { delegation_id?: string } | undefined
@@ -492,19 +437,14 @@ export class NodeDelegationController {
           const child = DelegationSchema.safeParse(receipt.result)
           if (child.success) {
             const task = local.tasks[child.data.delegation_key]
-            if (
-              task &&
-              !task.cancelSettled &&
-              task.parentId === child.data.parent_id &&
-              task.request.grant_id === child.data.grant_id
-            )
+            if (task && !task.cancelSettled && task.parentId === child.data.parent_id)
               task.child = child.data
           }
         }
       }
       return {
         children: Object.values(local.tasks).flatMap((t) =>
-          t.child && !t.cancelled && !local.grants[t.child.grant_id]?.revoked ? [t.child] : []
+          t.child && !t.cancelled ? [t.child] : []
         ),
         cancellations: Object.entries(local.tasks).flatMap(([key, t]) =>
           t.child && t.cancelled && !t.cancelSettled ? [{ key, id: t.child.delegation_id }] : []
@@ -547,19 +487,15 @@ export class NodeDelegationController {
               await this.client.subscribeDelegation(c)
               this.subscribed.add(c.mailbox_stream_id)
             } catch {
-              // One revoked grant cannot prevent unrelated mailboxes from recovering.
+              // One refused child cannot prevent unrelated mailboxes from recovering.
               // Retry on the next connection, not on every foreground tick.
               this.denied.add(c.mailbox_stream_id)
             }
           })
       )
       // One sequential read per child keeps the overview within the node's request
-      // budget. A grant with status alone must never subscribe to transcript bytes.
+      // budget.
       for (const child of children) {
-        const canRead = await this.store.transaction(
-          (s) => storage(s).grants[child.grant_id]?.actions.includes('read') === true
-        )
-        if (!canRead) continue
         const count = await this.store.transaction(
           (s) => storage(s).tasks[child.delegation_key].status?.pending_human_prompts
         )
@@ -693,11 +629,7 @@ export class NodeDelegationController {
             )
               reports.push({ seq: event.seq, kind: event.type.slice(11), text: data.text })
           }
-          if (child && storage(s).grants[child.grant_id]?.revoked) state = 'grant revoked'
-          const canRead =
-            child &&
-            storage(s).grants[child.grant_id]?.actions.includes('read') &&
-            !storage(s).grants[child.grant_id]?.revoked
+          const canRead = !!child
           const transcript = canRead
             ? reduceTranscript((s.events[child.session_id] ?? []).slice(-400))
             : undefined

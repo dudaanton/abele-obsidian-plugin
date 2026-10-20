@@ -656,50 +656,9 @@ export const streamB = {
     'cilvēka uzvedne(-es). Atveriet bērna tērzēšanu, lai atbildētu; vecākais aģents nevar tos apstiprināt.',
   'streamB.progress.466482': 'Norise',
   'streamB.workerQuestionInformational.12931f': 'Darba ņēmēja jautājums (informatīvs)',
-  'streamB.nodeDelegationGrants.1272e9': 'Mezglu deleģēšanas piešķīrumi',
-  'streamB.ownerApprovalForThisDeviceAndParent.319721':
-    '· Īpašnieka apstiprinājums tikai šai ierīcei un vecāku tērzēšanai.',
-  'streamB.childrenRunWithTheNodeSUser.8cdc22':
-    'Pakārtotie aģenti darbojas ar mezgla lietotāja kontu savās darbvietās bez failu sistēmas izolācijas. Lietotāja atļauju pieprasījumi un paplašinājumu jautājumi paliek pakārtotā aģenta tērzēšanā. Atļaujas, uzdevumu identitātes un pastkastes nekad netiek pārsūtītas kopā ar iestatījumiem.',
-  'streamB.parentChat.1620e0': 'Vecāku tērzēšana',
-  'streamB.openThePluginChatToAuthorizeThen.e18cb4':
-    'Atveriet spraudņa tērzēšanu, lai to autorizētu, un pēc tam izvēlieties to šeit. Kopētai tērzēšanai ir nepieciešama atsevišķa dotācija.',
-  'streamB.delegationParentChat.463b32': 'Delegācijas vecāku tērzēšana',
-  'streamB.chooseAParentChat.c09df4': 'Izvēlieties vecāku tērzēšanu',
-  'streamB.parentReference.da8e89': 'Vecāka atsauce:',
   'streamB.project.985959': 'Projekts',
-  'streamB.anExplicitRegisteredProjectOnTheNode.b5d07e':
-    'Skaidri reģistrēts projekts mezglā; nav piekļuves aizstājējzīmēm.',
-  'streamB.delegationProject.baacde': 'Delegācijas projekts',
   'streamB.chooseAProject.8ba607': 'Izvēlieties projektu',
-  'streamB.fullDelegationProjectPath.c833d0': 'Pilns deleģēšanas projekta ceļš',
-  'streamB.provider.472590': 'Pakalpojumu sniedzējs',
-  'streamB.onlyProvidersReportedAvailableByThisNode.9de37b':
-    'Var apstiprināt tikai pakalpojumu sniedzējus, par kuriem ir ziņots par pieejamiem šajā mezglā.',
-  'streamB.delegationProvider.303067': 'Deleģēšanas nodrošinātājs',
-  'streamB.chooseAProvider.e1d36c': 'Izvēlieties pakalpojumu sniedzēju',
-  'streamB.allowNonExecutingFakeChildren.58349d':
-    'Atļaut simulētus pakārtotos aģentus bez izpildes',
-  'streamB.explicitFixtureApprovalFakeSessionsDoNot.77d477':
-    'Skaidrs armatūras apstiprinājums. Viltus sesijas neizpilda kodu.',
-  'streamB.allowFakeDelegation.18dbe3': 'Atļaut viltus deleģēšanu',
-  'streamB.approveControllerActions.82e918': 'Apstipriniet kontroliera darbības',
-  'streamB.createTasksSendFollowUpsReadStatus.d2c283':
-    'Izveidojiet uzdevumus, nosūtiet turpinājumus, lasiet statusu/pastkasti un atceliet. Nepiešķir atļaujas-atbildes tiesības.',
-  'streamB.approveDelegationActions.c4bad7': 'Apstiprināt deleģēšanas darbības',
-  'streamB.approveGrant.136382': 'Apstiprināt atļauju',
   'streamB.refresh.0e9161': 'Atsvaidzināt',
-  'streamB.approvedDelegationGrants.bedd70': 'Apstiprinātas deleģēšanas atļaujas',
-  'streamB.grantsOnThisDevice.4c0616': 'Atļaujas šai ierīcei',
-  'streamB.noDelegationGrantsEnrollmentAloneDoesNot.58c8bb':
-    'Nav deleģēšanas atļauju. Tikai reģistrācija aģentu nepilda.',
-  'streamB.revokeGrant.f90e3f': 'Atsaukt atļauju',
-  'streamB.noProjectsFakeOnly.1c6fc2': 'Nav projektu (tikai viltus)',
-  'streamB.explicitApprovalRequired.eebe04': 'Nepieciešams skaidrs apstiprinājums',
-  'streamB.grantApprovedEnableTheNodesToolGroup.261be9':
-    'Atļauja apstiprināta. Lai deleģētu, šajā vecāka aģentā iespējojiet mezglu rīku grupu.',
-  'streamB.grantRevokedActiveDelegationsAreCancelledOn.42cb77':
-    'Atļauja atsaukta. Aktīvās deleģēšanas mezglā tiek atceltas; faili un atšifrējumi tiek saglabāti.',
   'streamB.fileSaveState.5e9528': 'Faila saglabāšanas stāvoklis',
   'streamB.startALocalDraftFromTheLoaded.a1f50f': 'Sāciet lokālo melnrakstu no ielādētā faila',
   'streamB.checkSave.7d4382': 'Pārbaudiet saglabāšanu',

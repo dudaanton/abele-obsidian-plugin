@@ -172,7 +172,7 @@ describe.skipIf(!isObsidianRunning() || !hasTestApi())(
                 await capture('agents-' + agentsState, modal);
               } finally { await escape(); }
             }
-            for (const name of ['chat-artifacts-empty', 'chat-artifacts-long', 'chat-navigation', 'agents-tabs', 'reply-revision', 'reply-versions', 'node-pairing', 'node-pairing-recovery', 'node-pairing-endpoint', 'node-question', 'node-delegation-grants', 'node-files', 'node-edit-conflict', 'node-edit-unknown', 'node-edit-binary', 'node-diffs', 'node-review', 'node-history', 'reply-original', 'github-connection-approval', 'github-agent-access', 'github-connection']) {
+            for (const name of ['chat-artifacts-empty', 'chat-artifacts-long', 'chat-navigation', 'agents-tabs', 'reply-revision', 'reply-versions', 'node-pairing', 'node-pairing-recovery', 'node-pairing-endpoint', 'node-question', 'node-files', 'node-edit-conflict', 'node-edit-unknown', 'node-edit-binary', 'node-diffs', 'node-review', 'node-history', 'reply-original', 'github-connection-approval', 'github-agent-access', 'github-connection']) {
               void api.openDialog(name);
               const modal = await until(() => document.querySelector('.modal.abele-modal, .abele-close-tab'));
               if (!modal) throw Error(name + ' did not mount');

@@ -681,50 +681,9 @@ export const streamB = {
     'menschliche Eingabeaufforderung(en). Öffnen Sie den untergeordneten Chat, um zu antworten. Der übergeordnete Agent kann sie nicht genehmigen.',
   'streamB.progress.466482': 'Fortschritt',
   'streamB.workerQuestionInformational.12931f': 'Arbeitnehmerfrage (informativ)',
-  'streamB.nodeDelegationGrants.1272e9': 'Berechtigungen zur Knotendelegation',
-  'streamB.ownerApprovalForThisDeviceAndParent.319721':
-    '· Nur Besitzergenehmigung für dieses Gerät und Eltern-Chat.',
-  'streamB.childrenRunWithTheNodeSUser.8cdc22':
-    'Untergeordnete Agenten laufen mit dem Benutzerkonto des Knotens in eigenen Arbeitsbereichen ohne Dateisystem-Sandbox. Berechtigungsanfragen an den Benutzer und Fragen von Erweiterungen bleiben im untergeordneten Chat. Berechtigungen, Aufgabenidentitäten und Postfächer werden niemals mit den Einstellungen übertragen.',
-  'streamB.parentChat.1620e0': 'Elternchat',
-  'streamB.openThePluginChatToAuthorizeThen.e18cb4':
-    'Öffnen Sie den Plugin-Chat zur Autorisierung und wählen Sie ihn dann hier aus. Ein kopierter Chat benötigt eine eigene Berechtigung.',
-  'streamB.delegationParentChat.463b32': 'Eltern-Chat der Delegation',
-  'streamB.chooseAParentChat.c09df4': 'Wählen Sie einen Elternchat',
-  'streamB.parentReference.da8e89': 'Elternreferenz:',
   'streamB.project.985959': 'Projekt',
-  'streamB.anExplicitRegisteredProjectOnTheNode.b5d07e':
-    'Ein explizit registriertes Projekt auf dem Knoten; kein Wildcard-Zugriff.',
-  'streamB.delegationProject.baacde': 'Delegationsprojekt',
   'streamB.chooseAProject.8ba607': 'Wählen Sie ein Projekt',
-  'streamB.fullDelegationProjectPath.c833d0': 'Vollständiger Delegationsprojektpfad',
-  'streamB.provider.472590': 'Anbieter',
-  'streamB.onlyProvidersReportedAvailableByThisNode.9de37b':
-    'Nur Anbieter, die von diesem Knoten als verfügbar gemeldet werden, können genehmigt werden.',
-  'streamB.delegationProvider.303067': 'Delegationsanbieter',
-  'streamB.chooseAProvider.e1d36c': 'Wählen Sie einen Anbieter',
-  'streamB.allowNonExecutingFakeChildren.58349d':
-    'Simulierte untergeordnete Agenten ohne Ausführung erlauben',
-  'streamB.explicitFixtureApprovalFakeSessionsDoNot.77d477':
-    'Ausdrückliche Vorrichtungsgenehmigung. Gefälschte Sitzungen führen keinen Code aus.',
-  'streamB.allowFakeDelegation.18dbe3': 'Fake-Delegierung zulassen',
-  'streamB.approveControllerActions.82e918': 'Controller-Aktionen genehmigen',
-  'streamB.createTasksSendFollowUpsReadStatus.d2c283':
-    'Aufgaben erstellen, Follow-ups senden, Status/Mailbox lesen und abbrechen. Gewährt keine Erlaubnis-Antwort-Rechte.',
-  'streamB.approveDelegationActions.c4bad7': 'Delegierungsaktionen genehmigen',
-  'streamB.approveGrant.136382': 'Berechtigung genehmigen',
   'streamB.refresh.0e9161': 'Aktualisieren',
-  'streamB.approvedDelegationGrants.bedd70': 'Genehmigte Delegationsberechtigungen',
-  'streamB.grantsOnThisDevice.4c0616': 'Berechtigungen für dieses Gerät',
-  'streamB.noDelegationGrantsEnrollmentAloneDoesNot.58c8bb':
-    'Keine Delegationsberechtigungen. Die Anmeldung allein berechtigt nicht zur Bevollmächtigung eines Vertreters.',
-  'streamB.revokeGrant.f90e3f': 'Berechtigung widerrufen',
-  'streamB.noProjectsFakeOnly.1c6fc2': 'Keine Projekte (nur Fake)',
-  'streamB.explicitApprovalRequired.eebe04': 'Ausdrückliche Genehmigung erforderlich',
-  'streamB.grantApprovedEnableTheNodesToolGroup.261be9':
-    'Berechtigung genehmigt. Aktivieren Sie die Werkzeuggruppe „Knoten“ in diesem übergeordneten Agenten zum Delegieren.',
-  'streamB.grantRevokedActiveDelegationsAreCancelledOn.42cb77':
-    'Berechtigung widerrufen. Aktive Delegationen werden auf dem Knoten abgebrochen; Dateien und Gesprächsprotokolle bleiben erhalten.',
   'streamB.fileSaveState.5e9528': 'Dateispeicherstatus',
   'streamB.startALocalDraftFromTheLoaded.a1f50f':
     'Starten Sie einen lokalen Entwurf aus der geladenen Datei',

@@ -354,7 +354,7 @@ export const de = {
   'settings.nodes.check': 'Knotenverbindung dieses Geräts prüfen',
   'settings.nodes.open': 'Sitzung öffnen',
   'settings.nodes.openTip': 'Sitzung auswählen oder Projekte und Arbeitsbereiche verwalten',
-  'settings.nodes.more': 'Kopplung, Delegierung, Entfernen',
+  'settings.nodes.more': 'Kopplung, Debugger-Zugriff, Entfernen',
   'settings.nodes.pairTitle': 'Knoten auf einem anderen Computer koppeln',
   'settings.nodes.pairDesc':
     'Ein entfernter Computer oder Server über dessen Einladung. Ein Gerät mit widerrufenem Zugriff wird auf dieselbe Weise erneut gekoppelt.',
@@ -398,7 +398,6 @@ export const de = {
   'settings.nodes.connecting': 'Verbindung wird hergestellt…',
   'settings.nodes.disconnected': 'Nicht verbunden',
   'settings.nodes.repair': 'Koppeln / erneut koppeln',
-  'settings.nodes.delegation': 'Delegierungsberechtigungen',
   'settings.nodes.remove': 'Entfernen',
   'settings.nodes.removed':
     'Verbindung von diesem Gerät entfernt. Knotenverlauf und Daemon-Zugangsdaten bleiben unverändert.',

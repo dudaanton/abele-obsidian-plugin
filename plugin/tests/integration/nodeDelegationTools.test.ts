@@ -1,3 +1,4 @@
+import { ref } from 'vue'
 import { afterEach, expect, it, vi } from 'vitest'
 import { createNodeDelegationTools } from '@/ai/tools/NodeDelegationTools'
 import { NodeService } from '@/node/NodeService'
@@ -8,10 +9,62 @@ import type { ChatSession } from '@/ai/ChatSession'
 import type { NodeClient } from '@abele/node-client'
 vi.mock('@/node/NodeService', () => ({ NodeService: { getInstance: vi.fn() } }))
 afterEach(() => vi.restoreAllMocks())
+it('uses project scope for every child action and rechecks it after connecting', async () => {
+  const owner = {
+    overrides: ref({
+      nodeScope: [
+        { kind: 'project', node_id: 'sample-node', project_id: 'sample-project', access: 'read' },
+      ],
+    }),
+    ensureDelegationParentId: async () => 'sample-parent',
+  } as ChatSession
+  const delegation = {
+    cards: async () => [{ delegationId: 'sample-child', projectId: 'other-project' }],
+    create: vi.fn(),
+    send: vi.fn(),
+    status: vi.fn(),
+    cancel: vi.fn(),
+  }
+  const connect = vi.fn(async () => {})
+  vi.spyOn(NodeService, 'getInstance').mockReturnValue({
+    nodes: { value: [{ id: 'sample-alias', expectedNodeId: 'sample-node' }] },
+    connection: () => ({ connect, delegation, refreshDelegations: async () => {} }),
+  } as never)
+  const tools = createNodeDelegationTools(owner)
+  const args = {
+    node: 'sample-alias',
+    task_key: 'sample-task',
+    project_id: 'other-project',
+    provider: 'pi',
+    title: 'Task',
+    text: 'Work',
+  }
+  await expect(tools[1].execute('create', args)).rejects.toThrow(/node chips/i)
+  for (const tool of tools.slice(2)) {
+    await expect(
+      tool.execute('child', {
+        node: 'sample-alias',
+        delegation_id: 'sample-child',
+        ...(tool.name.endsWith('_send') ? { text: 'Continue' } : {}),
+      })
+    ).rejects.toThrow(/node chips/i)
+  }
+  expect(connect).not.toHaveBeenCalled()
+  connect.mockImplementationOnce(async () => {
+    owner.overrides.value.nodeScope = []
+  })
+  await expect(
+    tools[1].execute('create', { ...args, project_id: 'sample-project' })
+  ).rejects.toThrow(/node chips/i)
+  for (const method of ['create', 'send', 'status', 'cancel'] as const)
+    expect(delegation[method]).not.toHaveBeenCalled()
+})
 it('lists stable IDs and resolves them for all child operations', async () => {
   const delegation = {
-    destinations: vi.fn(async () => [{ providers: ['codex'] }]),
-    cards: vi.fn(async () => []),
+    destinations: vi.fn(async () => [
+      { providers: ['codex'], project_ids: ['project'], projects: [{ project_id: 'project' }] },
+    ]),
+    cards: vi.fn(async () => [{ delegationId: 'child', projectId: 'project' }]),
     create: vi.fn(async () => ({ delegation_id: 'child' })),
     send: vi.fn(async () => ({})),
     status: vi.fn(async () => ({})),
@@ -27,6 +80,12 @@ it('lists stable IDs and resolves them for all child operations', async () => {
   }
   vi.spyOn(NodeService, 'getInstance').mockReturnValue(service as never)
   const tools = createNodeDelegationTools({
+    overrides: ref({
+      nodeScope: [
+        { kind: 'node', node_id: 'stable', access: 'read' },
+        { kind: 'node', node_id: 'registration', access: 'edit' },
+      ],
+    }),
     ensureDelegationParentId: async () => 'parent',
   } as ChatSession)
   const listed = await tools[0].execute('list', {})
@@ -52,7 +111,7 @@ it('lists stable IDs and resolves them for all child operations', async () => {
       })
   }
   for (const action of ['create', 'send', 'status', 'cancel'] as const)
-    expect(delegation[action]).toHaveBeenCalledTimes(2)
+    expect(delegation[action]).toHaveBeenCalledTimes(action === 'status' ? 3 : 2)
   service.nodes.value.push({ id: 'second', expectedNodeId: 'stable', label: 'Other installation' })
   await expect(
     tools[3].execute('ambiguous', { node: 'stable', delegation_id: 'child' })
@@ -60,21 +119,46 @@ it('lists stable IDs and resolves them for all child operations', async () => {
 })
 it('never creates after Stop while connecting, and cancels a child accepted concurrently with Stop', async () => {
   let release!: () => void
-  const gate = new Promise<void>((resolve) => { release = resolve })
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
   const created = vi.fn(async () => ({ delegation_id: 'child' }))
   const cancel = vi.fn(async () => {})
-  const service = { nodes: { value: [] }, connection: () => ({ connect: () => gate, delegation: { create: created, cancel }, refreshDelegations: async () => {} }) }
+  const service = {
+    nodes: { value: [] },
+    connection: () => ({
+      connect: () => gate,
+      delegation: { create: created, cancel },
+      refreshDelegations: async () => {},
+    }),
+  }
   vi.spyOn(NodeService, 'getInstance').mockReturnValue(service as never)
-  const tools = createNodeDelegationTools({ ensureDelegationParentId: async () => 'parent' } as ChatSession)
+  const tools = createNodeDelegationTools({
+    overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'node', access: 'edit' }] }),
+    ensureDelegationParentId: async () => 'parent',
+  } as ChatSession)
   const signal = new AbortController()
-  const pending = tools[1].execute('create', { node: 'node', task_key: 'key', provider: 'pi', title: 'Task', text: 'Work' }, signal.signal)
+  const pending = tools[1].execute(
+    'create',
+    { node: 'node', task_key: 'key', provider: 'pi', title: 'Task', text: 'Work' },
+    signal.signal
+  )
   signal.abort()
   release()
   await expect(pending).rejects.toThrow(/cancelled/)
   expect(created).not.toHaveBeenCalled()
   const racing = new AbortController()
-  created.mockImplementationOnce(async () => { racing.abort(); return { delegation_id: 'child' } })
-  await expect(tools[1].execute('create', { node: 'node', task_key: 'key', provider: 'pi', title: 'Task', text: 'Work' }, racing.signal)).rejects.toThrow(/cancelled/)
+  created.mockImplementationOnce(async () => {
+    racing.abort()
+    return { delegation_id: 'child' }
+  })
+  await expect(
+    tools[1].execute(
+      'create',
+      { node: 'node', task_key: 'key', provider: 'pi', title: 'Task', text: 'Work' },
+      racing.signal
+    )
+  ).rejects.toThrow(/cancelled/)
   expect(cancel).toHaveBeenCalledWith('parent', 'child')
 })
 
@@ -112,7 +196,7 @@ it('offers only bounded controller tools; never publishes grant IDs, credentials
     subscribeDelegation: vi.fn(async () => {}),
   }
   const controller = new NodeDelegationController(client as unknown as NodeClient, store)
-  await controller.approve({ parent_id: 'parent', project_ids: ['project'], providers: ['pi'] })
+
   const service = {
     nodes: { value: [{ id: 'registration', label: 'Sample node' }] },
     connection: () => ({
@@ -129,6 +213,12 @@ it('offers only bounded controller tools; never publishes grant IDs, credentials
   vi.spyOn(NodeService, 'getInstance').mockReturnValue(service as never)
   const tools = createNodeDelegationTools({
     id: 'transient-tab',
+    overrides: ref({
+      nodeScope: [
+        { kind: 'node', node_id: 'stable', access: 'read' },
+        { kind: 'node', node_id: 'registration', access: 'edit' },
+      ],
+    }),
     ensureDelegationParentId: async () => 'parent',
   } as ChatSession)
   expect(tools.map((t) => t.name)).toEqual([
@@ -159,7 +249,7 @@ it('offers only bounded controller tools; never publishes grant IDs, credentials
     )
   ).rejects.toThrow()
   expect(client.createDelegation).toHaveBeenCalledTimes(1)
-  expect(client.approveDelegationGrant).toHaveBeenCalledTimes(1)
+  expect(client.approveDelegationGrant).not.toHaveBeenCalled()
   const unbound = createNodeDelegationTools()
   await expect(unbound[0].execute('script', {}, new AbortController().signal)).rejects.toThrow(
     /parent chat/

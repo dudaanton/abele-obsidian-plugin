@@ -6,7 +6,7 @@ import NodesSettings from '@/components/settings/NodesSettings.vue'
 const f = vi.hoisted(() => ({ nodes: undefined as unknown, chats: undefined as unknown }))
 vi.mock('@/node/NodeService', () => ({ NodeService: { getInstance: () => f.nodes } }))
 vi.mock('@/ai/ChatService', () => ({ ChatService: { getInstance: () => f.chats } }))
-it('owner approval prepares only the chosen parent, not unrelated chats that may have changed on disk', async () => {
+it('node settings has no separate delegation permission menu', async () => {
   const current = {
     id: 'current-tab',
     chatTitle: ref('Sample parent'),
@@ -52,13 +52,13 @@ it('owner approval prepares only the chosen parent, not unrelated chats that may
   try {
     // Delegation is one of the rarer things, in the row's ⋯ menu.
     const show = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
-    await wrapper.get('[aria-label="Pairing, delegation, remove"]').trigger('click')
+    await wrapper.get('[aria-label="Pairing, debugger access, remove"]').trigger('click')
     const menu = show.mock.contexts.at(-1) as Menu
-    menu.items.find((i) => i.title === 'Delegation grants')!.handler!()
+    expect(menu.items.map((i) => i.title)).not.toContain('Delegation grants')
     show.mockRestore()
     await flushPromises()
-    expect(wrapper.find('[data-grants]').exists()).toBe(true)
-    expect(current.ensureDelegationParentId).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('[data-grants]').exists()).toBe(false)
+    expect(current.ensureDelegationParentId).not.toHaveBeenCalled()
     expect(unrelated.ensureDelegationParentId).not.toHaveBeenCalled()
   } finally {
     wrapper.unmount()

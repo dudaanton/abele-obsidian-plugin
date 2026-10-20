@@ -13,6 +13,7 @@ import { chatArtifactsFixture } from './chatArtifactsFixture'
 import TokenUiFixture from './TokenUiFixture.vue'
 import NodeSyntaxFixture from './NodeSyntaxFixture.vue'
 import NodeLspFixture from './NodeLspFixture.vue'
+import { NodeSettingsAccessFixture } from './nodeSettingsAccessFixture'
 import EnvironmentDialog from '@/components/debugger/http/EnvironmentDialog.vue'
 import PullRequestDialog from '@/components/nodeWork/PullRequestDialog.vue'
 import MapBackgroundEditor from '@/components/settings/MapBackgroundEditor.vue'
@@ -45,11 +46,10 @@ import { agentsFixture } from './agentsFixture'
 import { chooseAttentionTab } from '@/agents/AgentsService'
 import NodeFilesDialog from '@/components/NodeFilesDialog.vue'
 import { nodeFilesFixture } from './nodeFilesFixture'
-import NodeDelegationGrantsDialog from '@/components/NodeDelegationGrantsDialog.vue'
 import NodeManagerRunCard from '@/components/NodeManagerRunCard.vue'
 import { nodeManagerFixture } from './nodeManagerFixture'
 import NodeDelegationCard from '@/components/NodeDelegationCard.vue'
-import { nodeDelegationGrantsFixture, nodeDelegationCardFixture } from './nodeDelegationFixture'
+import { nodeDelegationCardFixture } from './nodeDelegationFixture'
 import NodePairingDialog from '@/components/NodePairingDialog.vue'
 import NodePermissionCard from '@/components/NodePermissionCard.vue'
 import { nodePairingFixture } from './nodePairingFixture'
@@ -426,8 +426,20 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
             ),
       })
     ),
-  'node-delegation-grants': () =>
-    mountAlone(NodeDelegationGrantsDialog, nodeDelegationGrantsFixture()),
+  'node-settings-access': () =>
+    mountAlone(
+      defineComponent({
+        emits: ['close'],
+        setup:
+          (_props, { emit }) =>
+          () =>
+            h(
+              Modal,
+              { title: 'Nodes', size: 'tall', onClose: () => emit('close') },
+              { default: () => h(NodeSettingsAccessFixture) }
+            ),
+      })
+    ),
   'node-delegation-card': (options) =>
     mountAlone(
       defineComponent({

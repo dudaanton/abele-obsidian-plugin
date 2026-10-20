@@ -1,3 +1,5 @@
+import { requireDelegationScope } from './node/delegationScope'
+import { nodeScopeEntries } from '../nodeScope'
 import { t } from '@/i18n'
 import { z } from 'zod'
 import type { AgentTool } from '../client'
@@ -87,8 +89,77 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
       const matches = service.nodes.value.filter((n) => n.id === node || n.expectedNodeId === node)
       if (matches.length !== 1) throw new Error('Choose an explicit node registration')
       const connection = service.connection(matches[0].id)
+      const nodeId = matches[0].expectedNodeId ?? matches[0].id
+      if (!nodeScopeEntries(parent).some((entry) => entry.node_id === nodeId))
+        requireDelegationScope(parent, nodeId)
       await connection.connect()
       if (signal?.aborted) throw new Error('Manager call cancelled')
+      const guards: (() => void)[] = []
+      const entries = nodeScopeEntries(parent).filter((entry) => entry.node_id === nodeId)
+      if (entries.some((entry) => entry.kind === 'node')) {
+        guards.push(requireDelegationScope(parent, nodeId))
+      } else {
+        const session = await connection.client.getSession(params.session_id)
+        const binding = await connection.client.nodePath.sessionWorktreeGet({
+          session_id: params.session_id,
+        })
+        const workspace = session.workspace_id
+          ? await connection.client.getWorkspace(session.workspace_id)
+          : undefined
+        guards.push(
+          requireDelegationScope(
+            parent,
+            nodeId,
+            workspace?.project_id ?? binding.project_id,
+            session.workspace_id ?? undefined,
+            binding.target.kind === 'worktree' ? binding.target.worktree_id : undefined
+          )
+        )
+        if (typeof params.project_id === 'string')
+          guards.push(requireDelegationScope(parent, nodeId, params.project_id))
+        for (const worktree of [params.worktree_id, params.source_worktree_id]) {
+          if (typeof worktree !== 'string') continue
+          let found = false
+          for (const project of new Set(
+            entries.flatMap((entry) => (entry.kind !== 'node' ? [entry.project_id] : []))
+          )) {
+            let cursor: string | undefined
+            do {
+              const page = await connection.client.repository.worktrees({
+                project_id: project,
+                cursor,
+                limit: 256,
+              })
+              const row = page.entries.find((row) => row.worktree_id === worktree)
+              if (row) {
+                guards.push(
+                  requireDelegationScope(
+                    parent,
+                    nodeId,
+                    project,
+                    row.workspace_id ?? undefined,
+                    worktree
+                  )
+                )
+                found = true
+                break
+              }
+              if (!page.cursor || page.cursor === cursor) break
+              cursor = page.cursor
+            } while (!found)
+            if (found) break
+          }
+          if (!found)
+            throw new Error(
+              'This worktree is outside this chat’s node access. Add its project using the chat’s node chips.'
+            )
+        }
+      }
+      const guard = () => {
+        if (signal?.aborted) throw new Error('Manager call cancelled')
+        guards.forEach((check) => check())
+      }
+      guard()
       let value: unknown
       if (name === 'node_command_status')
         value = await connection.manager.status(
@@ -109,6 +180,7 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
           operation_id
         )
       }
+      guard()
       await connection.refreshDelegations()
       return { content: [{ type: 'text', text: JSON.stringify(value) }] }
     },

@@ -1,9 +1,48 @@
+import { ref } from 'vue'
 import { afterEach, expect, it, vi } from 'vitest'
 import { createNodeManagerTools } from '@/ai/tools/NodeManagerTools'
 import { NodeService } from '@/node/NodeService'
 import type { ChatSession } from '@/ai/ChatSession'
 vi.mock('@/node/NodeService', () => ({ NodeService: { getInstance: vi.fn() } }))
 afterEach(() => vi.restoreAllMocks())
+it('refuses a command for a project outside the chat node chips', async () => {
+  const mutate = vi.fn()
+  vi.spyOn(NodeService, 'getInstance').mockReturnValue({
+    nodes: { value: [{ id: 'sample-alias', expectedNodeId: 'sample-node' }] },
+    connection: () => ({
+      connect: async () => {},
+      manager: { mutate },
+      client: {
+        getSession: async () => ({ workspace_id: 'sample-workspace' }),
+        getWorkspace: async () => ({ project_id: 'sample-project' }),
+        nodePath: {
+          sessionWorktreeGet: async () => ({
+            project_id: 'sample-project',
+            target: { kind: 'workspace', workspace_id: 'sample-workspace' },
+          }),
+        },
+      },
+    }),
+  } as never)
+  const tool = createNodeManagerTools({
+    overrides: ref({
+      nodeScope: [
+        { kind: 'project', node_id: 'sample-node', project_id: 'sample-project', access: 'read' },
+      ],
+    }),
+    ensureDelegationParentId: async () => 'sample-parent',
+  } as ChatSession)[0]
+  await expect(
+    tool.execute('sample-call', {
+      node: 'sample-alias',
+      session_id: 'sample-session',
+      project_id: 'other-project',
+      argv: ['pwd'],
+      operation_id: 'sample-operation',
+    })
+  ).rejects.toThrow(/node chips/i)
+  expect(mutate).not.toHaveBeenCalled()
+})
 it('routes only fixed manager APIs, binding runs to the executing parent and keeping prompt answers out of tools', async () => {
   const mutate = vi.fn(async () => ({ run_id: 'sample-run', state: 'pending_approval' }))
   const status = vi.fn(async () => ({ run_id: 'sample-run', state: 'exited', exit_code: 0 }))
@@ -18,6 +57,7 @@ it('routes only fixed manager APIs, binding runs to the executing parent and kee
     connection: () => connection,
   } as never)
   const tools = createNodeManagerTools({
+    overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'read' }] }),
     ensureDelegationParentId: async () => 'sample-parent',
   } as ChatSession)
   expect(tools.map((tool) => tool.name)).toEqual([
@@ -68,6 +108,7 @@ it('never enqueues execution after the parent stops while connecting', async () 
     }),
   } as never)
   const tool = createNodeManagerTools({
+    overrides: ref({ nodeScope: [{ kind: 'node', node_id: 'sample-node', access: 'read' }] }),
     ensureDelegationParentId: async () => 'sample-parent',
   } as ChatSession)[0]
   await expect(

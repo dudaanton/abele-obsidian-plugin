@@ -642,49 +642,9 @@ export const streamB = {
     'human prompt(s). Open the child chat to answer; the parent agent cannot approve them.',
   'streamB.progress.466482': 'Progress',
   'streamB.workerQuestionInformational.12931f': 'Worker question (informational)',
-  'streamB.nodeDelegationGrants.1272e9': 'Node delegation grants',
-  'streamB.ownerApprovalForThisDeviceAndParent.319721':
-    '· Owner approval for this device and parent chat only.',
-  'streamB.childrenRunWithTheNodeSUser.8cdc22':
-    "Children run with the node's user account in their own workspaces, not a filesystem sandbox. Human permissions and extension questions stay in the child chat. Grants, task identities and mailboxes never transfer with settings.",
-  'streamB.parentChat.1620e0': 'Parent chat',
-  'streamB.openThePluginChatToAuthorizeThen.e18cb4':
-    'Open the plugin chat to authorize, then choose it here. A copied chat needs its own grant.',
-  'streamB.delegationParentChat.463b32': 'Delegation parent chat',
-  'streamB.chooseAParentChat.c09df4': 'Choose a parent chat',
-  'streamB.parentReference.da8e89': 'Parent reference:',
   'streamB.project.985959': 'Project',
-  'streamB.anExplicitRegisteredProjectOnTheNode.b5d07e':
-    'An explicit registered project on the node; no wildcard access.',
-  'streamB.delegationProject.baacde': 'Delegation project',
   'streamB.chooseAProject.8ba607': 'Choose a project',
-  'streamB.fullDelegationProjectPath.c833d0': 'Full delegation project path',
-  'streamB.provider.472590': 'Provider',
-  'streamB.onlyProvidersReportedAvailableByThisNode.9de37b':
-    'Only providers reported available by this node can be approved.',
-  'streamB.delegationProvider.303067': 'Delegation provider',
-  'streamB.chooseAProvider.e1d36c': 'Choose a provider',
-  'streamB.allowNonExecutingFakeChildren.58349d': 'Allow non-executing fake children',
-  'streamB.explicitFixtureApprovalFakeSessionsDoNot.77d477':
-    'Explicit fixture approval. Fake sessions do not execute code.',
-  'streamB.allowFakeDelegation.18dbe3': 'Allow fake delegation',
-  'streamB.approveControllerActions.82e918': 'Approve controller actions',
-  'streamB.createTasksSendFollowUpsReadStatus.d2c283':
-    'Create tasks, send follow-ups, read status/mailbox and cancel. Does not grant permission-answer rights.',
-  'streamB.approveDelegationActions.c4bad7': 'Approve delegation actions',
-  'streamB.approveGrant.136382': 'Approve grant',
   'streamB.refresh.0e9161': 'Refresh',
-  'streamB.approvedDelegationGrants.bedd70': 'Approved delegation grants',
-  'streamB.grantsOnThisDevice.4c0616': 'Grants on this device',
-  'streamB.noDelegationGrantsEnrollmentAloneDoesNot.58c8bb':
-    'No delegation grants. Enrollment alone does not authorize an agent.',
-  'streamB.revokeGrant.f90e3f': 'Revoke grant',
-  'streamB.noProjectsFakeOnly.1c6fc2': 'No projects (fake only)',
-  'streamB.explicitApprovalRequired.eebe04': 'Explicit approval required',
-  'streamB.grantApprovedEnableTheNodesToolGroup.261be9':
-    'Grant approved. Enable the Nodes tool group in this parent agent to delegate.',
-  'streamB.grantRevokedActiveDelegationsAreCancelledOn.42cb77':
-    'Grant revoked. Active delegations are cancelled on the node; files and transcripts are retained.',
   'streamB.fileSaveState.5e9528': 'File save state',
   'streamB.startALocalDraftFromTheLoaded.a1f50f': 'Start a local draft from the loaded file',
   'streamB.checkSave.7d4382': 'Check save',

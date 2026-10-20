@@ -501,15 +501,15 @@ submission. A successful receipt removes the retained submission without restori
 refusals never enqueue a fresh operation or automatically resend text. Observed node chat targets
 may carry an opaque session-binding `incarnation` in device-local tab layout and presentation
 snapshots; it is neither a path nor a Git revision and grants no authority.
-Optional `delegation` in this same transactional `state` stores owner-approved grant selections
+Optional `delegation` in this same transactional `state` stores delegation task requests
 and stable parent/task identities, the exact create request body, child links and last observed
-status. `awaitingResult` arms parent delivery when creation is reserved. After a follow-up,
+status. Legacy stored delegation grants are ignored without a migration prompt. `awaitingResult` arms parent delivery when creation is reserved. After a follow-up,
 `followupMailboxSeq` records the previous mailbox head so an old terminal event cannot settle
 the new turn. The card's bounded child transcript uses the existing session window; branch
 and changed-file summaries are replaceable in-memory projections. Parent IDs use the existing durable `chatId` metadata identity (allocated with a
-checked chat save before owner approval), never transient tab IDs. Reopening/renaming retains
+checked chat save before delegation), never transient tab IDs. Reopening/renaming retains
 it; the ordinary chat-copy flow creates a new identity and does not copy authority. Only that
-public chat identity is in vault metadata; delegation task keys, grants and mailboxes remain
+public chat identity is in vault metadata; delegation task keys and mailboxes remain
 installation-local/node-side.
 Mailbox journals use independent stream IDs/cursors, not child session cursors. Delegation
 receipts retain their request identity for recovery after a lost response. On startup registered

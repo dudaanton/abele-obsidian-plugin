@@ -663,49 +663,9 @@ export const streamB = {
     'indicaciones humanas. Abra el chat secundario para responder; el agente principal no puede aprobarlos.',
   'streamB.progress.466482': 'Progreso',
   'streamB.workerQuestionInformational.12931f': 'Pregunta del trabajador (informativa)',
-  'streamB.nodeDelegationGrants.1272e9': 'Permisos de delegación de nodos',
-  'streamB.ownerApprovalForThisDeviceAndParent.319721':
-    '· Aprobación del propietario para este dispositivo y chat para padres únicamente.',
-  'streamB.childrenRunWithTheNodeSUser.8cdc22':
-    'Los agentes secundarios se ejecutan con la cuenta de usuario del nodo en sus propios espacios de trabajo, sin aislamiento del sistema de archivos. Las solicitudes de permiso al usuario y las preguntas de las extensiones permanecen en el chat secundario. Los permisos, las identidades de tareas y los buzones nunca se transfieren con la configuración.',
-  'streamB.parentChat.1620e0': 'Chat de padres',
-  'streamB.openThePluginChatToAuthorizeThen.e18cb4':
-    'Abra el chat del complemento para autorizar, luego selecciónelo aquí. Un chat copiado necesita su propia concesión.',
-  'streamB.delegationParentChat.463b32': 'Chat de padres de delegación',
-  'streamB.chooseAParentChat.c09df4': 'Elija un chat para padres',
-  'streamB.parentReference.da8e89': 'Referencia de los padres:',
   'streamB.project.985959': 'Proyecto',
-  'streamB.anExplicitRegisteredProjectOnTheNode.b5d07e':
-    'Un proyecto registrado explícito en el nodo; sin acceso comodín.',
-  'streamB.delegationProject.baacde': 'Proyecto delegación',
   'streamB.chooseAProject.8ba607': 'Elige un proyecto',
-  'streamB.fullDelegationProjectPath.c833d0': 'Ruta completa del proyecto de delegación',
-  'streamB.provider.472590': 'Proveedor',
-  'streamB.onlyProvidersReportedAvailableByThisNode.9de37b':
-    'Sólo se pueden aprobar proveedores reportados como disponibles por este nodo.',
-  'streamB.delegationProvider.303067': 'Proveedor de delegación',
-  'streamB.chooseAProvider.e1d36c': 'Elige un proveedor',
-  'streamB.allowNonExecutingFakeChildren.58349d': 'Permitir hijos falsos no ejecutantes',
-  'streamB.explicitFixtureApprovalFakeSessionsDoNot.77d477':
-    'Aprobación explícita de luminarias. Las sesiones falsas no ejecutan código.',
-  'streamB.allowFakeDelegation.18dbe3': 'Permitir delegación falsa',
-  'streamB.approveControllerActions.82e918': 'Aprobar acciones del controlador',
-  'streamB.createTasksSendFollowUpsReadStatus.d2c283':
-    'Crear tareas, enviar seguimientos, leer estado/buzón y cancelar. No otorga derechos de permiso-respuesta.',
-  'streamB.approveDelegationActions.c4bad7': 'Aprobar acciones de delegación',
-  'streamB.approveGrant.136382': 'Aprobar permiso',
   'streamB.refresh.0e9161': 'Actualizar',
-  'streamB.approvedDelegationGrants.bedd70': 'Ayudas de delegación aprobadas',
-  'streamB.grantsOnThisDevice.4c0616': 'Permisos en este dispositivo',
-  'streamB.noDelegationGrantsEnrollmentAloneDoesNot.58c8bb':
-    'No hay permisos de delegación. La inscripción por sí sola no autoriza a un agente.',
-  'streamB.revokeGrant.f90e3f': 'Revocar concesión',
-  'streamB.noProjectsFakeOnly.1c6fc2': 'No hay proyectos (solo falsos)',
-  'streamB.explicitApprovalRequired.eebe04': 'Se requiere aprobación explícita',
-  'streamB.grantApprovedEnableTheNodesToolGroup.261be9':
-    'Permiso aprobada. Habilite el grupo de herramientas Nodos en este agente principal para delegar.',
-  'streamB.grantRevokedActiveDelegationsAreCancelledOn.42cb77':
-    'Permiso revocado. Las delegaciones activas se cancelan en el nodo; los archivos y las transcripciones se conservan.',
   'streamB.fileSaveState.5e9528': 'Estado de guardado del archivo',
   'streamB.startALocalDraftFromTheLoaded.a1f50f':
     'Iniciar un borrador local desde el archivo cargado',

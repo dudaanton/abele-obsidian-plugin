@@ -959,22 +959,22 @@ own permissions and cannot move them to a similarly named server.
 `node_delegation_cancel`.
 
 A normal plugin agent can assign a bounded task to Claude Code or pi on an AbeleNode.
-The owner must first approve a grant for this device, **this parent chat**, explicit projects
-and providers in Settings → Nodes → Delegation grants. Enrollment is not delegation approval.
-Enable the Nodes tool group in the parent agent separately. Models cannot approve/revoke
-grants, access credentials, send generic node requests or answer child human prompts.
+The chat's node chips are the only delegation access gate: add the node or project there.
+There is no separate delegation permission in Settings. Tool permission modes still apply.
+Models cannot access credentials, send generic node requests or answer child human prompts.
+Nodes using the older grant-backed delegation protocol refuse creation until the node supports
+chat-scoped delegation; do not ask for a grant or create one automatically.
 
-- `node_delegations` lists approved destinations/providers, approved project IDs and full
-  node-side paths, and this parent's retained children. Unapproved projects are not returned.
+- `node_delegations` lists in-scope destinations/providers, project IDs and full
+  node-side paths, and this parent's retained children. Projects outside the chat scope are not returned.
   `node` is the stable node ID also returned by `node_nodes`. All delegation tools also accept
   this device's local registration alias; use that alias to select between installations of one node.
 - `node_delegate` takes `node`, stable `task_key`, `project_id`, `provider`, `title`, `text` and
   optional `base_ref` (HEAD by default). Available Claude Code, pi and Codex providers come from
-  the node and require a matching owner grant; fake children require explicit owner fixture
-  approval and never execute code. The child gets its own
+  the node; fake children are non-executing fixtures. The child gets its own
   managed workspace on the node, but this is **not a filesystem sandbox**.
 - Creation returns `node_id`, `session_id`, `delegation_id`, `state`, `project_id`, `workspace_id`
-  and task `title`, not a grant or token. Use that project and workspace for review tools. A
+  and task `title`, not credentials. Use that project and workspace for review tools. A
   manager with approved node access inherits read-only access to its own child's worktree;
   writes still require explicit edit scope. The child is already in its managed worktree:
   tell it to work there, rather than create another worktree.
@@ -1234,7 +1234,7 @@ or worktree, or after `node_worktree_switch` chose one; a chat that may reach mo
 name one. A Git folder's workspace ID reads its worktree, and a plain folder's workspace ID
 works with the default `worktree` kind. An ID the folder does not have is answered with the
 worktrees the chat may use. Paths are relative to that target, never absolute or `.git` paths. No arbitrary filesystem
-picker, shell, stage or push is exposed by this toolset. Delegation has its own owner-approved tools.
+picker, shell, stage or push is exposed by this toolset. Delegation tools use the same chat node chips.
 
 | Tool | Purpose |
 | --- | --- |

@@ -3,13 +3,9 @@ import { expect, it, vi } from 'vitest'
 import { initializeLocale } from '@/i18n'
 import { english } from '@/i18n/catalogs'
 import { streamBMeta as russian } from '@/i18n/locales/ru/streamBMeta'
-import NodeDelegationGrantsDialog from '@/components/NodeDelegationGrantsDialog.vue'
 import NodeDelegationCard from '@/components/NodeDelegationCard.vue'
-import {
-  nodeDelegationGrantsFixture,
-  nodeDelegationCardFixture,
-} from '@/testing/nodeDelegationFixture'
-const shell = { Modal: { template: '<div><slot /></div>' } }
+import { nodeDelegationCardFixture } from '@/testing/nodeDelegationFixture'
+import { DelegationStorageSchema } from '@/node/delegation'
 it('keeps generated branch identifiers out of the developer card label', () => {
   const wrapper = mount(NodeDelegationCard, {
     props: {
@@ -79,47 +75,10 @@ it('collapses finished reports and keeps pending prompts one press away', async 
     wrapper.unmount()
   }
 })
-it('requires explicit action/fake confirmation, resets it when the selected authority changes, and revokes only through owner UI', async () => {
-  const props = nodeDelegationGrantsFixture()
-  const approve = vi.spyOn(props.controller, 'approve')
-  const revoke = vi.spyOn(props.controller, 'revoke')
-  const wrapper = mount(NodeDelegationGrantsDialog, { props, global: { stubs: shell } })
-  try {
-    await flushPromises()
-    await wrapper.get('[aria-label="Delegation project"]').setValue('sample-project')
-    expect(wrapper.find('.abele-node-path code').text()).toBe(
-      '/workspace/sample-project-with-a-long-name'
-    )
-    await wrapper.get('[aria-label="Delegation provider"]').setValue('pi')
-    const button = () => wrapper.findAll('button').find((b) => b.text() === 'Approve grant')!
-    expect(button().attributes('disabled')).toBeDefined()
-    await wrapper.get('[aria-label="Approve delegation actions"]').trigger('click')
-    expect(button().attributes('disabled')).toBeUndefined()
-    await wrapper.get('[aria-label="Delegation provider"]').setValue('fake')
-    expect(
-      wrapper.get('[aria-label="Approve delegation actions"]').attributes('aria-checked')
-    ).toBe('false')
-    expect(button().attributes('disabled')).toBeDefined()
-    await wrapper.get('[aria-label="Allow fake delegation"]').trigger('click')
-    await wrapper.get('[aria-label="Approve delegation actions"]').trigger('click')
-    await button().trigger('click')
-    await flushPromises()
-    expect(approve).toHaveBeenCalledWith({
-      parent_id: 'sample-parent',
-      project_ids: ['sample-project'],
-      providers: ['fake'],
-      allow_fake: true,
-    })
-    await wrapper
-      .findAll('button')
-      .find((b) => b.text() === 'Revoke grant')!
-      .trigger('click')
-    await flushPromises()
-    expect(revoke).toHaveBeenCalledWith('sample-grant')
-    expect(wrapper.text()).toContain('Revoked')
-  } finally {
-    wrapper.unmount()
-  }
+it('ignores legacy delegation grants without a migration prompt', () => {
+  expect(
+    DelegationStorageSchema.parse({ grants: { obsolete: { revoked: true } }, tasks: {} })
+  ).toEqual({ tasks: {} })
 })
 it('renders one durable result and informational question without vault markup execution; child opens separately', async () => {
   const card = nodeDelegationCardFixture()

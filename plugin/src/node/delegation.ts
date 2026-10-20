@@ -1,18 +1,8 @@
 import type { Prompt } from '@abele/node-client'
 import type { PromptAnswerState } from './promptAnswers'
 import { z } from 'zod'
-import {
-  DelegationSchema,
-  DelegationGrantSchema,
-  DelegationStatusSchema,
-  validateParams,
-} from '@abele/node-protocol'
-import type {
-  Delegation,
-  DelegationGrant,
-  DelegationStatus,
-  DelegationCreateRequest,
-} from '@abele/node-client'
+import { DelegationSchema, DelegationStatusSchema } from '@abele/node-protocol'
+import type { Delegation, DelegationStatus } from '@abele/node-client'
 
 export const DelegationTaskInputSchema = z
   .object({
@@ -25,20 +15,20 @@ export const DelegationTaskInputSchema = z
   })
   .strict()
 export type DelegationTaskInput = z.input<typeof DelegationTaskInputSchema>
-const request = z.custom<DelegationCreateRequest>((value) => {
-  try {
-    validateParams('delegation.create', value)
-    return true
-  } catch {
-    return false
-  }
-})
+const RequestSchema = DelegationTaskInputSchema.omit({ task_key: true })
+  .extend({
+    parent_id: z.string().min(1).max(128).optional(),
+    delegation_key: z.string().min(1).max(128),
+    // Retained requests may contain an old node receipt reference. Never select it.
+    grant_id: z.string().optional(),
+  })
+  .strict()
+export type DelegationRequest = z.input<typeof RequestSchema>
+// Validate retained requests without normalizing their exact retry bodies.
+const request = z.custom<DelegationRequest>((value) => RequestSchema.safeParse(value).success)
 export const DelegationStorageSchema = z
   .object({
-    grants: z.record(
-      z.string(),
-      z.custom<DelegationGrant>((v) => DelegationGrantSchema.safeParse(v).success)
-    ),
+    grants: z.unknown().optional(), // Ignore legacy grants without an approval or migration flow.
     tasks: z.record(
       z.string(),
       z
@@ -61,6 +51,7 @@ export const DelegationStorageSchema = z
     ),
   })
   .strict()
+  .transform(({ tasks }) => ({ tasks }))
 export type DelegationStorage = z.infer<typeof DelegationStorageSchema>
 /** Older nodes allocate opaque branch names; the task title is their human label. */
 export function delegationBranchLabel(branch?: string | null): string | undefined {

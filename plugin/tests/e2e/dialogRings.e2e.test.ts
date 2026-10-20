@@ -322,8 +322,6 @@ const script = `(async () => {
           cuts.push({ screen: 'dialog ' + dialogName, field: '-', by: ['pin recovery did not open'] })
         if (dialogName === 'node-pairing-endpoint' && !modal.querySelector('[aria-label="Owner verified new endpoint"]'))
           cuts.push({ screen: 'dialog ' + dialogName, field: '-', by: ['endpoint recovery did not open'] })
-        if (dialogName === 'node-delegation-grants' && !modal.querySelector('[aria-label="Delegation parent chat"]'))
-          cuts.push({ screen: 'dialog ' + dialogName, field: '-', by: ['delegation grant fields did not open'] })
         if (dialogName === 'node-delegation-card' && !modal.querySelector('[aria-label="Node delegation"]'))
           cuts.push({ screen: 'dialog ' + dialogName, field: '-', by: ['delegation card did not open'] })
         // Node file/code/diff/review/history fixtures each exercise a separate view.

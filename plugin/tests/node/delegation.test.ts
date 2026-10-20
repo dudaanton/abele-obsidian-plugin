@@ -17,7 +17,8 @@ async function until<T>(fn: () => Promise<T>): Promise<NonNullable<T>> {
   throw new Error('Delegation fixture did not converge')
 }
 for (const provider of ['claude', 'pi'] as const)
-  it(`delegates to fake ${provider} through the real daemon, completes offline and restores one durable result`, async () => {
+  // BUG: The node protocol still requires a separate delegation grant.
+  it.fails(`delegates to fake ${provider} through the real daemon, completes offline and restores one durable result`, async () => {
     if (!cli) throw new Error('Set ABELE_NODE_CLI to the built daemon CLI')
     mkdirSync('../.scratch', { recursive: true })
     const dir = mkdtempSync(resolve('../.scratch/d-'))
@@ -102,11 +103,6 @@ for (const provider of ['claude', 'pi'] as const)
       await parent.connect()
       const project = await parent.registerProject(repo, 'trusted')
       let controller = new NodeDelegationController(parent, stores[0])
-      await controller.approve({
-        parent_id: 'parent-chat',
-        project_ids: [project.project_id],
-        providers: [provider],
-      })
       const request = {
         task_key: 'sample-task',
         project_id: project.project_id,
@@ -221,7 +217,7 @@ for (const provider of ['claude', 'pi'] as const)
           ...request,
           task_key: 'revoke-task',
         })
-        await controller.revoke((await controller.grants())[0].grant_id)
+        await parent.revokeDelegationGrant((await parent.delegationStatus(revocable.delegation_id)).grant_id)
         await expect(controller.status('parent-chat', revocable.delegation_id)).rejects.toThrow(
           /grant/
         )

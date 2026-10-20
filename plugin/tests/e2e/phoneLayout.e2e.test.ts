@@ -141,7 +141,6 @@ const DIALOGS = [
   'node-folder-picker-stale',
   'node-folder-picker-refused',
   'node-manager-run',
-  'node-delegation-grants',
   'node-delegation-card',
   'node-syntax-sh',
   'node-syntax-ts',

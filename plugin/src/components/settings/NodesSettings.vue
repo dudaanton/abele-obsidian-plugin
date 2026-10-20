@@ -56,14 +56,6 @@
         @click="chooseTraceNotesFolder"
       />
     </Setting>
-    <NodeDelegationGrantsDialog
-      v-if="grantNode"
-      :label="grantNode.label"
-      :controller="service.connection(grantNode.id).delegation"
-      :parents="parentChats"
-      :initial-parent-id="ChatService.getInstance().activeSession.value?.delegationParentId"
-      @close="grantNode = undefined"
-    />
     <DebuggerGrantsDialog
       v-if="debuggerGrantNode"
       :label="debuggerGrantNode.label"
@@ -136,13 +128,12 @@
 import { nodeErrorWords } from '@/node/errorWords'
 import NodeErrorText from '@/components/NodeErrorText.vue'
 import { useI18n } from '@/i18n/useI18n'
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 import { ChatService } from '@/ai/ChatService'
 import { NodeService } from '@/node/NodeService'
 import { isPairedNode } from '@/node/NodeRegistry'
 import { claimedEnrollment } from '@/node/NodeDeviceKeyStore'
 import NodePairingDialog from '../NodePairingDialog.vue'
-import NodeDelegationGrantsDialog from '../NodeDelegationGrantsDialog.vue'
 import DebuggerGrantsDialog from '@/debugger/DebuggerGrantsDialog.vue'
 import { pickNodeSession } from '@/node/openSession'
 import type { RegisteredNode } from '@/node/NodeRegistry'
@@ -178,35 +169,7 @@ const chooseTraceNotesFolder = async () => {
   const folder = notesFolder(chosen, adapter.getBasePath?.())
   updateTraceNotesFolder(folder.kind === 'vault' && folder.path ? folder.path : chosen)
 }
-const grantNode = ref<RegisteredNode>()
 const debuggerGrantNode = ref<RegisteredNode>()
-const parentChats = computed(() => {
-  const chats = ChatService.getInstance()
-  return chats.tabOrder.value.flatMap((id) => {
-    const parent = chats.getSession(id)
-    return parent?.delegationParentId
-      ? [
-          {
-            id: parent.delegationParentId,
-            title: parent.chatTitle.value || t('settings.nodes.untitledChat'),
-          },
-        ]
-      : []
-  })
-})
-const showGrants = async (node: RegisteredNode) => {
-  try {
-    await service.connection(node.id).connect()
-    const chats = ChatService.getInstance()
-    // Opening owner approval must not rewrite unrelated chats or fail because an
-    // unrelated file changed elsewhere. Choose the parent by activating it first.
-    const parent = chats.activeSession.value
-    if (parent?.currentChatFile.value) await parent.ensureDelegationParentId()
-    grantNode.value = node
-  } catch (error) {
-    report(error)
-  }
-}
 const pairing = ref(false)
 const resumeNodeId = ref<string>()
 const showPairing = (nodeId?: string) => {
@@ -292,12 +255,6 @@ const more = (event: MouseEvent, node: RegisteredNode) => {
         .setIcon('link')
         .onClick(() => showPairing(node.expectedNodeId))
     )
-  menu.addItem((i) =>
-    i
-      .setTitle(t('settings.nodes.delegation'))
-      .setIcon('key-round')
-      .onClick(() => showGrants(node))
-  )
   menu.addSeparator()
   menu.addItem((i) =>
     i

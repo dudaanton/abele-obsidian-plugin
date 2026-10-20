@@ -127,8 +127,6 @@ export const streamBMeta = {
   'streamBMeta.f67ad64441': 'Not accepted: {p0} · {p1}',
   'streamBMeta.1f8e74f453':
     '{p0} human prompt(s). Open the child chat to answer; the parent agent cannot approve them.',
-  'streamBMeta.3f37debec2': '{p0} · Owner approval for this device and parent chat only.',
-  'streamBMeta.a664ea62e3': 'Parent reference: {p0}',
   'streamBMeta.8f3dbdd317': 'Save rejected · {p0}. Your local draft is retained.',
   'streamBMeta.76be2c0593': 'Operation · {p0}',
   'streamBMeta.f6c522a17e': 'Outcome · {p0}',

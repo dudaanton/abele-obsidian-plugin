@@ -344,7 +344,7 @@ export const en = {
   'settings.nodes.check': "Check this device's node connection",
   'settings.nodes.open': 'Open session',
   'settings.nodes.openTip': 'Pick a session or manage projects and workspaces',
-  'settings.nodes.more': 'Pairing, delegation, remove',
+  'settings.nodes.more': 'Pairing, debugger access, remove',
   'settings.nodes.pairTitle': 'Pair a node on another computer',
   'settings.nodes.pairDesc':
     'A remote desktop or a server, by an invitation from it. A device that was revoked pairs again the same way.',
@@ -383,7 +383,6 @@ export const en = {
   'settings.nodes.connecting': 'Connecting…',
   'settings.nodes.disconnected': 'Not connected',
   'settings.nodes.repair': 'Pairing / re-pair',
-  'settings.nodes.delegation': 'Delegation grants',
   'settings.nodes.remove': 'Remove',
   'settings.nodes.removed':
     'Connection removed from this device. Node history and the daemon credential are unchanged.',

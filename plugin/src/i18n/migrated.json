@@ -429,7 +429,6 @@
     "components/ChatsList.vue",
     "components/NodeChatView.vue",
     "components/NodeDelegationCard.vue",
-    "components/NodeDelegationGrantsDialog.vue",
     "components/NodeFileSaveState.vue",
     "components/NodeFilesDialog.vue",
     "components/NodeMessage.vue",

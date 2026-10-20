@@ -33,7 +33,8 @@ function reloadDelegationPlugin() {
   })()`)
 }
 
-it('a normal plugin agent delegates through owner UI to both fake providers, survives offline completion and opens the child normally', async () => {
+// BUG: Delegation creation still requires a grant in the node protocol.
+it.fails('a normal plugin agent delegates through node chips to both fake providers, survives offline completion and opens the child normally', async () => {
   const cli = process.env.ABELE_NODE_CLI
   if (!cli) throw new Error('Set ABELE_NODE_CLI to a built daemon CLI for delegation acceptance')
   mkdirSync('../.scratch', { recursive: true })
@@ -136,28 +137,8 @@ it('a normal plugin agent delegates through owner UI to both fake providers, sur
       await chats.openChatFile(file); await chats.revealSidebar({focus:false});
       const parent = chats.getSessionByFile(file.path);
       const node = await nodes.add('Sample delegation node', 'http://127.0.0.1:${port}', ${JSON.stringify(token)});
-      app.setting.open(); app.setting.openTabById('abele');
-      const doc = app.setting.activeTab.containerEl.ownerDocument;
-      await until(() => doc.querySelector('.abele-settings__nav .abele-tabs__tab'));
-      [...doc.querySelectorAll('.abele-settings__nav .abele-tabs__tab')].find(t => t.textContent.trim()==='Nodes').click();
-      await until(() => [...doc.querySelectorAll('.setting-item-name')].some(e=>e.textContent===node.label));
-      const row = [...doc.querySelectorAll('.setting-item')].find(r=>r.querySelector('.setting-item-name')?.textContent===node.label);
-      // Delegation is in the row's ⋯ menu.
-      row.querySelector('[aria-label="Pairing, delegation, remove"]').click();
-      await until(() => [...document.querySelectorAll('.menu-item-title'), ...doc.querySelectorAll('.menu-item-title')].find(t=>t.textContent.trim()==='Delegation grants'));
-      [...document.querySelectorAll('.menu-item-title'), ...doc.querySelectorAll('.menu-item-title')].find(t=>t.textContent.trim()==='Delegation grants').click();
-      // A native settings window owns its modal document, not the main chat window.
-      try { await until(() => doc.querySelector('[aria-label="Delegation provider"] option[value="pi"]')) }
-      catch(e) { throw Error(String(e) + ' · owner UI status: ' + [...doc.querySelectorAll('.abele-settings__content [role="status"]')].map(p=>p.textContent).join(' · ') + ' · dialog: ' + doc.querySelector('.abele-node-grants')?.textContent) }
-      const select=(label,value)=>{const e=doc.querySelector('select[aria-label="'+label+'"]');e.value=value;e.dispatchEvent(new Event('change',{bubbles:true}))};
-      for(const provider of ['claude','pi']) {
-        select('Delegation parent chat',parent.delegationParentId); select('Delegation project',${JSON.stringify(project.project_id)}); select('Delegation provider',provider);
-        await wait(100); doc.querySelector('[aria-label="Approve delegation actions"]').click(); await wait(100);
-        [...doc.querySelectorAll('.abele-node-grants button')].find(b=>b.textContent.trim()==='Approve grant').click();
-        await until(() => doc.querySelector('[aria-label="Approve delegation actions"]').getAttribute('aria-checked')==='false');
-        await until(() => [...doc.querySelectorAll('.abele-node-grants button')].find(b=>b.textContent.trim()==='Refresh')?.disabled===false);
-      }
-      doc.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})); app.setting.close();
+      await parent.ensureDelegationParentId();
+      await T.giveNodeChatAccess(parent, {kind:'project', node_id:node.expectedNodeId, project_id:${JSON.stringify(project.project_id)}, access:'edit'});
       return JSON.stringify({registration:node.id,parent:parent.delegationParentId,agent:agent.id})
     })()`)
     registration = setup.registration

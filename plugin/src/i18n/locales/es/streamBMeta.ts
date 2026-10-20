@@ -128,9 +128,6 @@ export const streamBMeta = {
   'streamBMeta.f67ad64441': 'No aceptado: {p0} · {p1}',
   'streamBMeta.1f8e74f453':
     'Solicitudes para ti: {p0}. Abre el chat secundario para responder; el agente principal no puede aprobarlas.',
-  'streamBMeta.3f37debec2':
-    '{p0} · Aprobación del propietario solo para este dispositivo y chat principal.',
-  'streamBMeta.a664ea62e3': 'Referencia principal: {p0}',
   'streamBMeta.8f3dbdd317': 'Guardado rechazado · {p0}. Se conserva tu borrador local.',
   'streamBMeta.76be2c0593': 'Operación · {p0}',
   'streamBMeta.f6c522a17e': 'Resultado · {p0}',

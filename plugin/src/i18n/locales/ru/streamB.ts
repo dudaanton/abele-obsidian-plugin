@@ -651,50 +651,9 @@ export const streamB = {
     'Подсказка(и) человека. Откройте детский чат, чтобы ответить; родительский агент не может их утвердить.',
   'streamB.progress.466482': 'Ход выполнения',
   'streamB.workerQuestionInformational.12931f': 'Вопрос работника (информационный)',
-  'streamB.nodeDelegationGrants.1272e9': 'Разрешения на делегирование нод',
-  'streamB.ownerApprovalForThisDeviceAndParent.319721':
-    '· Только одобрение владельца для этого устройства и родительского чата.',
-  'streamB.childrenRunWithTheNodeSUser.8cdc22':
-    'Дочерние агенты работают под учётной записью пользователя ноды в собственных рабочих пространствах, без изоляции файловой системы. Запросы разрешений и вопросы расширений остаются в дочернем чате. Разрешения, идентификаторы задач и почтовые ящики никогда не переносятся с настройками.',
-  'streamB.parentChat.1620e0': 'Родительский чат',
-  'streamB.openThePluginChatToAuthorizeThen.e18cb4':
-    'Откройте чат плагина для авторизации, затем выберите его здесь. Для скопированного чата требуется собственный грант.',
-  'streamB.delegationParentChat.463b32': 'Родительский чат делегирования',
-  'streamB.chooseAParentChat.c09df4': 'Выберите родительский чат',
-  'streamB.parentReference.da8e89': 'Родительская ссылка:',
   'streamB.project.985959': 'Проект',
-  'streamB.anExplicitRegisteredProjectOnTheNode.b5d07e':
-    'Явно зарегистрированный проект на ноде; нет доступа к подстановочным знакам.',
-  'streamB.delegationProject.baacde': 'Проект делегирования',
   'streamB.chooseAProject.8ba607': 'Выберите проект',
-  'streamB.fullDelegationProjectPath.c833d0': 'Полный путь проекта делегирования',
-  'streamB.provider.472590': 'Поставщик',
-  'streamB.onlyProvidersReportedAvailableByThisNode.9de37b':
-    'Только провайдеры, доступность которых подтвердила эта нода, могут быть одобрены.',
-  'streamB.delegationProvider.303067': 'Поставщик делегирования',
-  'streamB.chooseAProvider.e1d36c': 'Выберите провайдера',
-  'streamB.allowNonExecutingFakeChildren.58349d':
-    'Разрешить неисполняемые ложные дочерние элементы',
-  'streamB.explicitFixtureApprovalFakeSessionsDoNot.77d477':
-    'Явное одобрение приспособления. Поддельные сеансы не выполняют код.',
-  'streamB.allowFakeDelegation.18dbe3': 'Разрешить ложное делегирование',
-  'streamB.approveControllerActions.82e918': 'Одобрить действия контроллера',
-  'streamB.createTasksSendFollowUpsReadStatus.d2c283':
-    'Создавайте задачи, отправляйте последующие действия, читайте статус/почтовый ящик и отменяйте их. Не предоставляет права разрешения-ответа.',
-  'streamB.approveDelegationActions.c4bad7': 'Утвердить действия делегирования',
-  'streamB.approveGrant.136382': 'Одобрить разрешение',
   'streamB.refresh.0e9161': 'Обновить',
-  'streamB.approvedDelegationGrants.bedd70': 'Одобренные разрешения на делегирование',
-  'streamB.grantsOnThisDevice.4c0616': 'Разрешения на этом устройстве',
-  'streamB.noDelegationGrantsEnrollmentAloneDoesNot.58c8bb':
-    'Нет разрешения на делегирование. Сама по себе регистрация не авторизует агента.',
-  'streamB.revokeGrant.f90e3f': 'Отозвать разрешение',
-  'streamB.noProjectsFakeOnly.1c6fc2': 'Нет проектов (только фейк)',
-  'streamB.explicitApprovalRequired.eebe04': 'Требуется явное одобрение',
-  'streamB.grantApprovedEnableTheNodesToolGroup.261be9':
-    'Грант одобрен. Включите группу инструментов «Ноды» в этом родительском агенте для делегирования.',
-  'streamB.grantRevokedActiveDelegationsAreCancelledOn.42cb77':
-    'Разрешение отозвано. Активные делегированные задачи отменяются на ноде; файлы и записи разговоров сохраняются.',
   'streamB.fileSaveState.5e9528': 'Состояние сохранения файла',
   'streamB.startALocalDraftFromTheLoaded.a1f50f':
     'Запуск локального черновика из загруженного файла',

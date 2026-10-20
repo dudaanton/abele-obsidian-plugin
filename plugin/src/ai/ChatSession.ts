@@ -1,3 +1,4 @@
+import { NODE_COMMAND_TOOLS } from './tools/NodeManagerTools'
 import { uiErrorMessage, type UiMessage, UiError, uiMessage } from '@/i18n/streamBErrors'
 
 import { t } from '@/i18n'
@@ -1385,17 +1386,29 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       (this.toolModes.value[EDIT_SELECTION_TOOL] ?? 'ask') !== 'off'
     // Node scope is an explicit owner surface, independent of optional feature-tool defaults.
     const sectioned = toolDiscoveryMode(agent) === 'sections'
+    const delegationTools = [
+      'node_delegations',
+      'node_delegate',
+      'node_delegation_send',
+      'node_delegation_status',
+      'node_delegation_cancel',
+      ...NODE_COMMAND_TOOLS,
+    ]
+    const scopeTools = [...NODE_AGENT_TOOL_NAMES, ...delegationTools]
+    const scopeFiltered = this.overrides.value.nodeScope?.length
+      ? filtered
+      : filtered.filter((tool) => !delegationTools.includes(tool.name))
     const withNode = this.overrides.value.nodeScope?.length
       ? [
-          ...filtered,
+          ...scopeFiltered,
           ...allTools.filter(
             (tool) =>
-              NODE_AGENT_TOOL_NAMES.includes(tool.name) &&
+              scopeTools.includes(tool.name) &&
               this.toolModes.value[tool.name] !== 'off' &&
-              !filtered.some((value) => value.name === tool.name)
+              !scopeFiltered.some((value) => value.name === tool.name)
           ),
         ]
-      : filtered
+      : scopeFiltered
     const withSelection = offered ? [...withNode, createEditSelectionTool(this)] : withNode
     if (this.kind === 'comment' && this.anchor.value?.message && this.anchor.value.quote)
       withSelection.push(createReplyRevisionTool(this))

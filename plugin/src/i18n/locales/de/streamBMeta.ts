@@ -129,9 +129,6 @@ export const streamBMeta = {
   'streamBMeta.f67ad64441': 'Nicht angenommen: {p0} · {p1}',
   'streamBMeta.1f8e74f453':
     'Rückfragen an dich: {p0}. Öffne den untergeordneten Chat zum Antworten; der übergeordnete Agent kann sie nicht genehmigen.',
-  'streamBMeta.3f37debec2':
-    '{p0} · Genehmigung des Eigentümers nur für dieses Gerät und den übergeordneten Chat.',
-  'streamBMeta.a664ea62e3': 'Übergeordnete Referenz: {p0}',
   'streamBMeta.8f3dbdd317': 'Speichern abgelehnt · {p0}. Dein lokaler Entwurf bleibt erhalten.',
   'streamBMeta.76be2c0593': 'Vorgang · {p0}',
   'streamBMeta.f6c522a17e': 'Ergebnis · {p0}',

@@ -43,11 +43,7 @@ beforeEach(async () => {
   }
   status = { ...child, session_head_seq: 17, mailbox_head_seq: 2, pending_human_prompts: 0 }
   await store.transaction((s) => {
-    s.delegation = { grants: { grant: {
-      grant_id: 'grant', parent_id: parent, installation_id: 'installation', approved_by: 'installation',
-      project_ids: ['project'], providers: ['pi'], actions: ['create', 'status', 'read', 'cancel'],
-      allow_fake: false, revoked: false, created_at: '2028-01-01T00:00:00Z',
-    } }, tasks: { key: {
+    s.delegation = { tasks: { key: {
       parentId: parent,
       input: { task_key: 'key', project_id: 'project', provider: 'pi', title: 'Sample task', text: 'Work', base_ref: 'HEAD' },
       request: { grant_id: 'grant', delegation_key: 'key', project_id: 'project', provider: 'pi', title: 'Sample task', text: 'Work', base_ref: 'HEAD' },

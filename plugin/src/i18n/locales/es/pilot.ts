@@ -367,7 +367,7 @@ export const es = {
   'settings.nodes.check': 'Comprobar la conexión de este dispositivo con el nodo',
   'settings.nodes.open': 'Abrir sesión',
   'settings.nodes.openTip': 'Elegir una sesión o gestionar proyectos y espacios de trabajo',
-  'settings.nodes.more': 'Emparejamiento, delegación, eliminación',
+  'settings.nodes.more': 'Emparejamiento, acceso al depurador, eliminar',
   'settings.nodes.pairTitle': 'Emparejar un nodo en otro equipo',
   'settings.nodes.pairDesc':
     'Un equipo remoto o servidor, mediante su invitación. Un dispositivo cuyo acceso se revocó se empareja de nuevo de la misma forma.',
@@ -410,7 +410,6 @@ export const es = {
   'settings.nodes.connecting': 'Conectando…',
   'settings.nodes.disconnected': 'Sin conexión',
   'settings.nodes.repair': 'Emparejar / volver a emparejar',
-  'settings.nodes.delegation': 'Permisos de delegación',
   'settings.nodes.remove': 'Eliminar',
   'settings.nodes.removed':
     'Conexión eliminada de este dispositivo. El historial del nodo y la credencial del demonio no han cambiado.',

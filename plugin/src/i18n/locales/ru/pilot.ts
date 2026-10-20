@@ -364,7 +364,7 @@ export const ru = {
   'settings.nodes.check': 'Проверить соединение этого устройства с нодой',
   'settings.nodes.open': 'Открыть сессию',
   'settings.nodes.openTip': 'Выбрать сессию или управлять проектами и рабочими пространствами',
-  'settings.nodes.more': 'Сопряжение, делегирование, удаление',
+  'settings.nodes.more': 'Сопряжение, доступ к отладчику, удаление',
   'settings.nodes.pairTitle': 'Подключить ноду на другом компьютере',
   'settings.nodes.pairDesc':
     'Удалённый компьютер или сервер — по приглашению с него. Устройство с отозванным доступом подключается заново таким же способом.',
@@ -406,7 +406,6 @@ export const ru = {
   'settings.nodes.connecting': 'Подключение…',
   'settings.nodes.disconnected': 'Не подключено',
   'settings.nodes.repair': 'Сопряжение / повторное подключение',
-  'settings.nodes.delegation': 'Разрешения на делегирование',
   'settings.nodes.remove': 'Удалить',
   'settings.nodes.removed':
     'Соединение удалено с этого устройства. История ноды и учётные данные демона не изменены.',

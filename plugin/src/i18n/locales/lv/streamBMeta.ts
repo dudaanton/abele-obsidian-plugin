@@ -127,8 +127,6 @@ export const streamBMeta = {
   'streamBMeta.f67ad64441': 'Nav pieņemts: {p0} · {p1}',
   'streamBMeta.1f8e74f453':
     'Pieprasījumi jums: {p0}. Atveriet apakšsarunu, lai atbildētu; vecākaģents tos nevar apstiprināt.',
-  'streamBMeta.3f37debec2': '{p0} · Īpašnieka apstiprinājums tikai šai ierīcei un vecāksarunai.',
-  'streamBMeta.a664ea62e3': 'Vecāksarunas atsauce: {p0}',
   'streamBMeta.8f3dbdd317': 'Saglabāšana noraidīta · {p0}. Lokālais melnraksts ir saglabāts.',
   'streamBMeta.76be2c0593': 'Darbība · {p0}',
   'streamBMeta.f6c522a17e': 'Rezultāts · {p0}',

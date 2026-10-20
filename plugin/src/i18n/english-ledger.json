@@ -2250,8 +2250,8 @@
     ]
   },
   "settings.nodes.more": {
-    "englishHash": "26dea2735c2710460018da22186d6df366db2006ff860df944aab9d88c4366b9",
-    "context": "Node settings presentation; saved defaults and endpoints remain unchanged",
+    "englishHash": "23c286328d1898c030fe3539c23bc1cce39f0c879a218773930a01a154a25e40",
+    "context": "Node row menu contains pairing, debugger access and removal; delegation uses chat node chips",
     "reviewedLocales": [
       "ru",
       "lv",
@@ -2601,16 +2601,6 @@
   },
   "settings.nodes.repair": {
     "englishHash": "dd0b4599145b7807c8fe5ca63a112e450bc0ad2be560f0cba3c616b2453bc90f",
-    "context": "Node settings presentation; saved defaults and endpoints remain unchanged",
-    "reviewedLocales": [
-      "ru",
-      "lv",
-      "es",
-      "de"
-    ]
-  },
-  "settings.nodes.delegation": {
-    "englishHash": "51e39a326c987fff2200d59d909c81921360d6736c6126f6a3a17b84da3c1dca",
     "context": "Node settings presentation; saved defaults and endpoints remain unchanged",
     "reviewedLocales": [
       "ru",

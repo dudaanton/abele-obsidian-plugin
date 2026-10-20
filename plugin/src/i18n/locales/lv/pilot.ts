@@ -351,7 +351,7 @@ export const lv = {
   'settings.nodes.check': 'Pārbaudīt šīs ierīces savienojumu ar mezglu',
   'settings.nodes.open': 'Atvērt sesiju',
   'settings.nodes.openTip': 'Izvēlēties sesiju vai pārvaldīt projektus un darbvietas',
-  'settings.nodes.more': 'Savienošana pārī, deleģēšana, noņemšana',
+  'settings.nodes.more': 'Savienošana pārī, atkļūdotāja piekļuve, noņemšana',
   'settings.nodes.pairTitle': 'Savienot pārī mezglu citā datorā',
   'settings.nodes.pairDesc':
     'Attāls dators vai serveris, izmantojot tā uzaicinājumu. Ierīci, kurai piekļuve atsaukta, tāpat var savienot pārī no jauna.',
@@ -392,7 +392,6 @@ export const lv = {
   'settings.nodes.connecting': 'Savienojas…',
   'settings.nodes.disconnected': 'Nav savienots',
   'settings.nodes.repair': 'Savienošana pārī / atkārtota savienošana',
-  'settings.nodes.delegation': 'Deleģēšanas atļaujas',
   'settings.nodes.remove': 'Noņemt',
   'settings.nodes.removed':
     'Savienojums noņemts no šīs ierīces. Mezgla vēsture un dēmona akreditācijas dati nav mainīti.',

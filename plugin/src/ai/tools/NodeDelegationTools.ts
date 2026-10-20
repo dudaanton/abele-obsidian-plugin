@@ -1,3 +1,5 @@
+import { requireDelegationScope } from './node/delegationScope'
+import { nodeScopeEntries } from '../nodeScope'
 import { z } from 'zod'
 import type { AgentTool } from '../client'
 import type { ChatSession } from '../ChatSession'
@@ -29,7 +31,7 @@ const result = (value: unknown) => ({
   content: [{ type: 'text' as const, text: JSON.stringify(value) }],
 })
 
-/** Model API is bounded to this chat. Grant/secret/session control APIs are owner UI only. */
+/** Model API is bounded to this chat and its node chips. */
 export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
   const tool = (
     name: string,
@@ -40,7 +42,9 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
       parent: string,
       params: Record<string, unknown>,
       service: NodeService,
-      signal?: AbortSignal
+      signal?: AbortSignal,
+      chat?: ChatSession,
+      guard?: () => void
     ) => Promise<unknown>
   ): AgentTool => ({
     name,
@@ -55,7 +59,74 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
       const service = NodeService.getInstance()
       const parentId = await parent.ensureDelegationParentId()
       checkCancelled(signal)
-      const value = await execute(parentId, params, service, signal)
+      const scope = nodeScopeEntries(parent)
+      const registration =
+        typeof params.node === 'string'
+          ? service.nodes.value.find(
+              (n) => n.id === params.node || n.expectedNodeId === params.node
+            )
+          : undefined
+      const nodeId =
+        registration?.expectedNodeId ??
+        registration?.id ??
+        (name === 'node_delegations' ? '' : Id.parse(params.node))
+      let guard = () => {}
+      if (name !== 'node_delegations') {
+        if (!scope.some((entry) => entry.node_id === nodeId)) requireDelegationScope(parent, nodeId)
+        if (name === 'node_delegate') {
+          guard = requireDelegationScope(parent, nodeId, params.project_id as string | undefined)
+        } else {
+          const cards = await connectionFor(service, Id.parse(params.node)).delegation.cards(
+            parentId
+          )
+          const child = cards.find((card) => card.delegationId === params.delegation_id)
+          if (!child) throw new Error('Delegation does not belong to this parent chat')
+          guard = requireDelegationScope(parent, nodeId, child.projectId, child.workspaceId)
+        }
+      }
+      const value = await execute(parentId, params, service, signal, parent, guard)
+      guard()
+      if (name === 'node_delegations') {
+        const listed = value as {
+          node: string
+          approved?: { project_ids: string[]; projects: { project_id: string }[] }[]
+          children?: { project_id?: string; workspace_id?: string }[]
+        }[]
+        return result(
+          listed
+            .filter((item) => scope.some((entry) => entry.node_id === item.node))
+            .map((item) => ({
+              ...item,
+              approved: item.approved?.map((destination) => ({
+                ...destination,
+                project_ids: destination.project_ids.filter((project) => {
+                  try {
+                    requireDelegationScope(parent, item.node, project)
+                    return true
+                  } catch {
+                    return false
+                  }
+                }),
+                projects: destination.projects.filter((project) => {
+                  try {
+                    requireDelegationScope(parent, item.node, project.project_id)
+                    return true
+                  } catch {
+                    return false
+                  }
+                }),
+              })),
+              children: item.children?.filter((child) => {
+                try {
+                  requireDelegationScope(parent, item.node, child.project_id, child.workspace_id)
+                  return true
+                } catch {
+                  return false
+                }
+              }),
+            }))
+        )
+      }
       if (signal?.aborted && name === 'node_delegate') {
         const child = value as { delegation_id?: string }
         if (child.delegation_id && typeof params.node === 'string')
@@ -71,11 +142,16 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
     tool(
       'node_delegations',
       'Node delegation destinations',
-      'List owner-approved node projects/providers for this parent chat. If empty, ask the owner to approve a grant in Settings → Nodes. No enrollment or approval is automatic.',
+      'List node projects/providers available through this chat’s node chips. Add a missing node or project using those chips.',
       { type: 'object', properties: {} },
-      async (parent, _params, service) => {
+      async (parent, _params, service, _signal, chat) => {
         const destinations = []
         for (const n of service.nodes.value) {
+          if (
+            !chat ||
+            !nodeScopeEntries(chat).some((entry) => entry.node_id === (n.expectedNodeId ?? n.id))
+          )
+            continue
           const connection = service.connection(n.id)
           try {
             await connection.connect()
@@ -86,6 +162,16 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
               const children = []
               for (const card of cards) {
                 if (!card.delegationId) continue
+                try {
+                  requireDelegationScope(
+                    chat,
+                    n.expectedNodeId ?? n.id,
+                    card.projectId,
+                    card.workspaceId
+                  )
+                } catch {
+                  continue
+                }
                 try {
                   children.push(await connection.delegation.status(parent, card.delegationId))
                 } catch {
@@ -113,7 +199,7 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
     tool(
       'node_delegate',
       'Delegate to node',
-      'Assign a bounded task to an owner-approved project and available Claude Code, pi or Codex provider. Returns immediately; the durable mailbox delivers reports even after Obsidian closes. Use a stable task_key and preserve the EXACT body on retries after uncertain outcomes; never allocate a new key to retry. Human permissions appear in the parent delegation card and linked child chat; only the owner answers them. This is not a filesystem sandbox.',
+      'Assign a bounded task to an project in this chat’s node access and available Claude Code, pi or Codex provider. Returns immediately; the durable mailbox delivers reports even after Obsidian closes. Use a stable task_key and preserve the EXACT body on retries after uncertain outcomes; never allocate a new key to retry. Human permissions appear in the parent delegation card and linked child chat; only the owner answers them. This is not a filesystem sandbox.',
       {
         type: 'object',
         properties: {
@@ -131,10 +217,11 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
         },
         required: ['node', 'task_key', 'provider', 'title', 'text'],
       },
-      async (parent, params, service, signal) => {
+      async (parent, params, service, signal, _chat, guard) => {
         const { node, ...input } = Create.parse(params)
         const connection = connectionFor(service, node)
         await connection.connect()
+        guard?.()
         checkCancelled(signal)
         try {
           const child = await connection.delegation.create(parent, input, signal)
@@ -157,10 +244,11 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
         properties: { node, delegation_id, text: { type: 'string' } },
         required: ['node', 'delegation_id', 'text'],
       },
-      async (parent, params, service, signal) => {
+      async (parent, params, service, signal, _chat, guard) => {
         const input = Send.parse(params)
         const connection = connectionFor(service, input.node)
         await connection.connect()
+        guard?.()
         checkCancelled(signal)
         return connection.delegation.send(parent, input.delegation_id, input.text, signal)
       }
@@ -170,10 +258,11 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
       'Read node task status',
       'Read child status and bounded mailbox reports. pending_human_prompts means the owner must answer in the parent card or child chat; mailbox questions cannot approve execution.',
       { type: 'object', properties: { node, delegation_id }, required: ['node', 'delegation_id'] },
-      async (parent, params, service) => {
+      async (parent, params, service, _signal, _chat, guard) => {
         const input = Target.parse(params)
         const connection = connectionFor(service, input.node)
         await connection.connect()
+        guard?.()
         const status = await connection.delegation.status(parent, input.delegation_id)
         await connection.refreshDelegations()
         return status
@@ -184,10 +273,11 @@ export function createNodeDelegationTools(owner?: ChatSession): AgentTool[] {
       'Cancel node task',
       'Cancel a child owned by this parent. Retains workspaces, branches, files and transcript. A cancellation receipt is not proof that every process has exited.',
       { type: 'object', properties: { node, delegation_id }, required: ['node', 'delegation_id'] },
-      async (parent, params, service) => {
+      async (parent, params, service, _signal, _chat, guard) => {
         const input = Target.parse(params)
         const connection = connectionFor(service, input.node)
         await connection.connect()
+        guard?.()
         const result = await connection.delegation.cancel(parent, input.delegation_id)
         await connection.refreshDelegations()
         return result

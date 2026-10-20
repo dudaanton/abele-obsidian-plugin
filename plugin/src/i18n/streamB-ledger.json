@@ -1457,104 +1457,14 @@
   "streamB.workerQuestionInformational.12931f": {
     "englishHash": "83c7509198cc95d8238a2e0f6f556f77ad33b78175f949b8842ad2d0eb22faf8"
   },
-  "streamB.nodeDelegationGrants.1272e9": {
-    "englishHash": "bb0ed6313bd6839a38193a6d45637124fc2ef420c254dc7817b2428f4593c607"
-  },
-  "streamB.ownerApprovalForThisDeviceAndParent.319721": {
-    "englishHash": "2de57b3b0f374daf1970c29be6967919fe68630497f0ba8ee51c71621e175335"
-  },
-  "streamB.childrenRunWithTheNodeSUser.8cdc22": {
-    "englishHash": "e6c92814d7d977f460bbdea2f0fb321ddf7b9ec28ba81d71bfed60b7e1b902c1"
-  },
-  "streamB.parentChat.1620e0": {
-    "englishHash": "ba9a2fc0c89864e61f113d1ad91a2027533e8e54940aae68b20baf44461ede83"
-  },
-  "streamB.openThePluginChatToAuthorizeThen.e18cb4": {
-    "englishHash": "277ea3624207545242b8778bbf552460f1dde0bafe803e297437c85d14e8645a"
-  },
-  "streamB.delegationParentChat.463b32": {
-    "englishHash": "9b979d040c231006533cbda87b6671a400b5c919521b499f25a03facd7488817"
-  },
-  "streamB.chooseAParentChat.c09df4": {
-    "englishHash": "85b5271106b12a9b4d1bea2d0b871b778f6d9440e70d07cc72ae284e1563e74a"
-  },
-  "streamB.parentReference.da8e89": {
-    "englishHash": "c2b4f39d42d02332a6657d5aa61d0a8b05cc38393cae2ca4ba8570b68abd81cb"
-  },
   "streamB.project.985959": {
     "englishHash": "6c6b7df3070f112f2b6d5f2b57cb7bc885e62f52497e4121bb79431d188c7982"
-  },
-  "streamB.anExplicitRegisteredProjectOnTheNode.b5d07e": {
-    "englishHash": "ec93e90d2dfe9d7ffddf06334f79f429c5f862a38bbde2fff691628ff59cae59"
-  },
-  "streamB.delegationProject.baacde": {
-    "englishHash": "7c27d41f4553957ae854217088a24d8b73e507135dd095ef886ac77fb5feb52e"
   },
   "streamB.chooseAProject.8ba607": {
     "englishHash": "b0455651cc121a491f3dfcc0b1c6281d606b9c884294465d4d78740cfd9e8b16"
   },
-  "streamB.fullDelegationProjectPath.c833d0": {
-    "englishHash": "529d159d55714eaf2103e1becc77e4d2edc14195386bc1c67341c8317c9f427a"
-  },
-  "streamB.provider.472590": {
-    "englishHash": "33f9a30399fa52a1648f4bd30220cddb2f45eda8b95b8908bdd06a5d74a1733f"
-  },
-  "streamB.onlyProvidersReportedAvailableByThisNode.9de37b": {
-    "englishHash": "73d41be614e3c27a963eae6a8c8ae43313872ec3a1fc4bdb8635c7850416eec2"
-  },
-  "streamB.delegationProvider.303067": {
-    "englishHash": "f58259bd6075ad89fdc110a781cd9b13fb5a139e3f757cc5f706efdc9378798a"
-  },
-  "streamB.chooseAProvider.e1d36c": {
-    "englishHash": "1bf7b5bd88d04ac241cdaf2a4b997bbec4c5728487d9602d0dc3edd8d425262a"
-  },
-  "streamB.allowNonExecutingFakeChildren.58349d": {
-    "englishHash": "b5be157a7cb52db8369036c91c10eecb63a11ee8e5e8e7a188a303de9102054c"
-  },
-  "streamB.explicitFixtureApprovalFakeSessionsDoNot.77d477": {
-    "englishHash": "0e5f5ee8a2ce98a42218ef2581020fe0a33e31ac2260995b56817be02e490c46"
-  },
-  "streamB.allowFakeDelegation.18dbe3": {
-    "englishHash": "999957354ded461b5cc9478986ecce9b717e439ea9760b5b28ad71cb7a8c56ea"
-  },
-  "streamB.approveControllerActions.82e918": {
-    "englishHash": "584ab5f781d3657b2abb63558b22e9b782df2625c483e6c6bd255b55adf16002"
-  },
-  "streamB.createTasksSendFollowUpsReadStatus.d2c283": {
-    "englishHash": "762519df825d80279d29d4f59bfe24c3a7d32530f10ad5ed78a3cce0251c8779"
-  },
-  "streamB.approveDelegationActions.c4bad7": {
-    "englishHash": "3e7f25da2e29783156aeee8921b313d2a1d10faac5a8b33d508fb80c3183ddab"
-  },
-  "streamB.approveGrant.136382": {
-    "englishHash": "a0d98286be0117dbe33353df53df7e62b6ff87841376fb8eebf07a084591ec34"
-  },
   "streamB.refresh.0e9161": {
     "englishHash": "ec0dd7ff6076fd7aaea3b8abb0b5f2f703c7516d06cbdfef3defe45ab0592689"
-  },
-  "streamB.approvedDelegationGrants.bedd70": {
-    "englishHash": "4ca3effc0ae74782df658114adecf70f36b1e63c06338f2ca290318d5fd00c52"
-  },
-  "streamB.grantsOnThisDevice.4c0616": {
-    "englishHash": "a368412fe1f4d9a9ac14bc2d0afcb080484e18073fa5798d43f43438045fb2d6"
-  },
-  "streamB.noDelegationGrantsEnrollmentAloneDoesNot.58c8bb": {
-    "englishHash": "e9e8c436dfa80998e4b95b62e7b04b21eb32dd23e92c092909b93811110ad165"
-  },
-  "streamB.revokeGrant.f90e3f": {
-    "englishHash": "7f5bc3ff39ec6d03e3114fdda7e9aa0c4528a7842ca7bb789a4011ab3f309580"
-  },
-  "streamB.noProjectsFakeOnly.1c6fc2": {
-    "englishHash": "8c39ad0461ca1bc68be32daa091f4c55948565c80a052bfcc2fc1c5c2c916fb4"
-  },
-  "streamB.explicitApprovalRequired.eebe04": {
-    "englishHash": "d09367357dc396ea9c9a36881ce5b87d3434b05765d8b91a366c6771859df957"
-  },
-  "streamB.grantApprovedEnableTheNodesToolGroup.261be9": {
-    "englishHash": "938cad24bd3cd7cfd7717a4883c863b3a01dee98032cafd7d4025d80dad05d9c"
-  },
-  "streamB.grantRevokedActiveDelegationsAreCancelledOn.42cb77": {
-    "englishHash": "95d0cf69d0a803f3d9ed9195f48ea141397f1d1d8152e83741c4012f345b5ddd"
   },
   "streamB.fileSaveState.5e9528": {
     "englishHash": "a4403cff2d6db79cdf906cf605462860f4030477b1325c69f6a9c9009df18ed3"
