@@ -28,14 +28,14 @@ export function registerDebuggerSelection(plugin: Plugin, viewType: string) {
   )
   plugin.app.workspace.onLayoutReady(async () => {
     const saved: unknown = plugin.app.loadLocalStorage(SELECTION_KEY)
-    if (!saved || typeof saved !== 'object') return
+    if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return
     const workspace = plugin.app.workspace
     const existing = workspace.getLeavesOfType(viewType)[0]
     if (existing && service.active.value) return
     const leaf = existing ?? workspace.getLeftLeaf(false)
     if (!leaf) return
     try {
-      await leaf.setViewState({ type: viewType, active: false, state: saved })
+      await leaf.setViewState({ type: viewType, active: false, state: { ...saved } })
     } catch (error) {
       console.debug('[debugger] Retained selection could not be opened', error)
     }

@@ -74,6 +74,37 @@ it('admits a later-opened file once and retains it for restart', async () => {
   })
   expect(service.takenFiles(binding)).toContain('lib/helper.ts')
 })
+it('retries source admission after switching away during the first answer', async () => {
+  const { service, binding, request } = fixture()
+  service.select(binding)
+  let complete!: (value: unknown) => void
+  request.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        complete = resolve
+      }) as never
+  )
+  const pending = service.admitFile(target, 'lib/helper.ts')
+  const second = service.binding(
+    { kind: 'folder-debug', target, connection: binding.connection },
+    'sample-second'
+  )
+  second.controller.observe({
+    observation: 'current',
+    snapshot: debuggerSnapshot({ debug_session_id: 'sample-second' }),
+  })
+  service.select(second)
+  complete({
+    incarnation: 'sample-incarnation',
+    sources: [{ source_id: 'sample-old-source', path: 'lib/helper.ts' }],
+    refused: [],
+  })
+  await pending
+  service.select(binding)
+  await service.admitFile(target, 'lib/helper.ts')
+  expect(request).toHaveBeenCalledTimes(2)
+  expect(service.debugFor(target, 'lib/helper.ts')?.sourceId).toBe('sample-added')
+})
 it('explains an old node without sending an unsupported RPC', async () => {
   const { service, request } = fixture(false)
   expect((await service.admitFile(target, 'lib/helper.ts')).message).toMatch(/update.*node/i)

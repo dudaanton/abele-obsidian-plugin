@@ -384,11 +384,14 @@ export class DebuggerService {
       binding.connection.client === client &&
       binding.sessionId === sessionId &&
       binding.controller.snapshot?.incarnation === incarnation
+    let retained = false
     const attempt = (async () => {
       try {
         if (!current()) return { message: '' }
-        if (!nodeAdvertisesMethod(client, 'debugger.v1.addSources'))
+        if (!nodeAdvertisesMethod(client, 'debugger.v1.addSources')) {
+          retained = true
           return { message: t('debug.sourceUpdate') }
+        }
         const result = z
           .object({
             incarnation: z.string(),
@@ -415,6 +418,7 @@ export class DebuggerService {
             target
           )
         const refusal = result.refused.find((r) => r.path === path)
+        retained = true
         if (refusal) return sourceRefusal(refusal.code)
         return {
           message: result.sources.some((s) => s.path === path) ? '' : t('debug.sourceUnavailable'),
@@ -426,6 +430,9 @@ export class DebuggerService {
       }
     })()
     this.admissions.set(key, attempt)
+    void attempt.then(() => {
+      if (!retained && this.admissions.get(key) === attempt) this.admissions.delete(key)
+    })
     return attempt
   }
   readonly active = shallowRef<DebuggerBinding | null>(null)
