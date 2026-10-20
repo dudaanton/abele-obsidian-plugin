@@ -65,13 +65,20 @@ export async function nodeTreeAction(action: TreeAction, context: NodePathContex
       return
     await mutations.fileRemove(target, path, file.contentId)
   } else {
+    const renaming = action === 'rename'
     const value = await promptDialog({
-      title: t(action === 'rename' ? 'node.files.rename' : 'node.files.move'),
-      value: path,
-      submitText: t(action === 'rename' ? 'node.files.rename' : 'node.files.move'),
+      title: t(renaming ? 'node.files.rename' : 'node.files.move'),
+      value: renaming ? path.split('/').pop() : path,
+      submitText: t(renaming ? 'node.files.rename' : 'node.files.move'),
+      validate: renaming
+        ? (name) =>
+            /[\\/]/.test(name) || ['.', '..'].includes(name) ? t('node.files.nameOnly') : ''
+        : undefined,
     })
-    if (!value || value === path) return
-    await mutations.fileMove(target, path, value, file.contentId)
+    if (!value) return
+    const destination = renaming && parent ? `${parent}/${value}` : value
+    if (destination === path) return
+    await mutations.fileMove(target, path, destination, file.contentId)
   }
   await model.reloadTarget(target)
 }

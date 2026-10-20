@@ -487,7 +487,12 @@ watch(
   () => props.selected,
   (path) => {
     // Opening a file from elsewhere (the next-change arrows) unfolds the way to it.
-    if (path) [...folded].forEach((f) => path.startsWith(`${f}/`) && folded.delete(f))
+    if (path)
+      [...folded].forEach((folder) => {
+        if (!path.startsWith(`${folder}/`)) return
+        folded.delete(folder)
+        if (knownFolders.has(folder)) emit('expand', folder)
+      })
   }
 )
 const toggle = (id: string) => {

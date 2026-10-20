@@ -1,5 +1,6 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const ru = {
+  'node.files.nameOnly': 'Введите имя файла без папок.',
   'node.files.attachMessage':
     'Показать другие рабочие деревья репозитория и разрешить редактирование файлов в выбранном? Для запуска агентов по-прежнему нужно отдельное разрешение.',
   'node.files.saveLocked': 'Сохранение здесь заблокировано',

@@ -1,5 +1,6 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const lv = {
+  'node.files.nameOnly': 'Ievadiet faila nosaukumu bez mapēm.',
   'node.files.attachMessage':
     'Parādīt pārējos repozitorija darba kokus un atļaut failu rediģēšanu izvēlētajā kokā? Aģentu palaišanai joprojām vajadzīga atsevišķa atļauja.',
   'node.files.saveLocked': 'Saglabāšana šeit ir bloķēta',

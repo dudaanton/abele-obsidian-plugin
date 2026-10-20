@@ -26,6 +26,18 @@ const layout = (view: VueWrapper) => {
 }
 
 describe('FileTree during a background refresh', () => {
+  it('loads a folded folder when a newly created file becomes selected inside it', async () => {
+    const view = mount(FileTree, {
+      props: {
+        entries: [{ path: 'sample-folder', name: 'sample-folder', kind: 'folder' }],
+        changes: [],
+        mode: 'all',
+      },
+    })
+    await view.setProps({ selected: 'sample-folder/new-file.ts' })
+    expect(view.emitted('expand')).toContainEqual(['sample-folder'])
+    view.unmount()
+  })
   it('refreshes filename results after a filesystem operation', async () => {
     let paths = ['sample-old.ts']
     const search = async () => paths.map((path) => ({ path, name: path, kind: 'file' as const }))

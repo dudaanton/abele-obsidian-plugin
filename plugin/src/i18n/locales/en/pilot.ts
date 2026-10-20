@@ -1,4 +1,5 @@
 export const en = {
+  'node.files.nameOnly': 'Enter a file name without folders.',
   'node.files.saveLocked': 'Saving is locked here',
   'node.files.attachMessage':
     'Browse this repository’s other worktrees and allow file editing in the worktree you choose? Agent execution still needs separate approval.',

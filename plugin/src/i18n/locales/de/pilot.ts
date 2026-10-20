@@ -1,5 +1,6 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const de = {
+  'node.files.nameOnly': 'Geben Sie einen Dateinamen ohne Ordner ein.',
   'node.files.attachMessage':
     'Andere Worktrees dieses Repositorys anzeigen und Dateibearbeitung im ausgewählten Worktree erlauben? Agentenausführung erfordert weiterhin eine separate Zustimmung.',
   'node.files.saveLocked': 'Speichern ist hier gesperrt',

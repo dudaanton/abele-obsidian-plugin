@@ -1,5 +1,6 @@
 import type { TranslationCatalog } from '../../catalogs'
 export const es = {
+  'node.files.nameOnly': 'Introduzca un nombre de archivo sin carpetas.',
   'node.files.attachMessage':
     '¿Mostrar los otros árboles de trabajo del repositorio y permitir editar archivos en el que elija? La ejecución de agentes sigue necesitando una aprobación aparte.',
   'node.files.saveLocked': 'Guardar está bloqueado aquí',
