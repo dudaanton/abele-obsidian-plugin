@@ -476,10 +476,10 @@
     "id": "@abele/channel-client@0.0.0",
     "name": "@abele/channel-client",
     "version": "0.0.0",
-    "size": 6855,
-    "unpackedSize": 29993,
-    "shasum": "e86e843259d2983d7edb2cc567875007ed9ca47b",
-    "integrity": "sha512-rIqu3G4xkNTAn4Ki3897anFDuDj4Pu/VpIsmnnNS4Os4tq4kToxtaqYDNYsvUybGsXSmqwwk6vk6tbFtu5ul7Q==",
+    "size": 6876,
+    "unpackedSize": 30084,
+    "shasum": "b9edce8ccb2276ff13474c8f9aff1c1f7ff88d0e",
+    "integrity": "sha512-FHX6IGK4loZ+u1t9wXVdCttH7ZqqwlR+CKTCoA8m58NxNg7xBd+DdEZ88/g6Xqbo3huSkIPOdsWm+EPd2gZjHQ==",
     "filename": "abele-channel-client-0.0.0.tgz",
     "files": [
       {
@@ -489,12 +489,12 @@
       },
       {
         "path": "dist/index.js",
-        "size": 14270,
+        "size": 14309,
         "mode": 420
       },
       {
         "path": "dist/index.js.map",
-        "size": 13363,
+        "size": 13415,
         "mode": 420
       },
       {

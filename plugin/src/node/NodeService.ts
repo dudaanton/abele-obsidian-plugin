@@ -55,7 +55,11 @@ export class NodeConnection {
             new Promise<never>((_, reject) => {
               timer = window.setTimeout(
                 () => reject(new ChannelError('outcome_unknown')),
-                /^(project|workspace|review|repository)\./.test(method) ? 60000 : 10000
+                method === 'lsp.v1.install'
+                  ? 660000
+                  : /^(project|workspace|review|repository)\./.test(method)
+                    ? 60000
+                    : 10000
               )
             }),
           ])
@@ -351,7 +355,7 @@ export class NodeService {
         backgroundAudio: mobileBackground.active,
       })
       await client.connect()
-      const admittedNodeId = await store.transaction((state) => state.node_id!)
+      const admittedNodeId = await store.transaction((state) => state.node_id)
       if (expectedNodeId && admittedNodeId !== expectedNodeId)
         throw new Error('node_identity_mismatch')
       if (!current()) throw new Error('local_discovery_cancelled')
@@ -404,7 +408,7 @@ export class NodeService {
       label,
       url: device.endpoint,
       ...(target.url !== device.endpoint ? { transportUrl: target.url } : {}),
-      expectedNodeId: nodeId!,
+      expectedNodeId: nodeId,
       profile: 'paired-wss-v1',
       installationId: target.installation_id,
       nodeFingerprint: target.node_fingerprint,
@@ -429,7 +433,7 @@ export class NodeService {
     connection.start()
     const enrollment = claimedEnrollment(device)
     if (enrollment) await this.deviceKeys.finishEnrollment(nodeId, enrollment).catch(() => {})
-    return this.nodes.value.find((node) => node.id === id)!
+    return this.nodes.value.find((node) => node.id === id)
   }
 
   /** Invitation secrets stay in device-local IndexedDB for lost-response recovery. */
@@ -463,7 +467,7 @@ export class NodeService {
     }
     this.nodes.value = this.registry.list()
     AgentsService.getInstance().setNodes(this.nodes.value)
-    return this.nodes.value.find((n) => n.id === id)!
+    return this.nodes.value.find((n) => n.id === id)
   }
 
   async deviceFingerprint(nodeId: string): Promise<string> {

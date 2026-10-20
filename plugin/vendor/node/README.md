@@ -33,6 +33,10 @@ fields upstream, in both runtime schemas and declarations. The historical
 `patches/breakpoint-options.patch` must not be reapplied to this revision.
 The plugin sends these fields only when the
 node advertises their capability; hit counts also require adapter support.
+The channel client also carries `patches/lsp-install-deadline.patch`: only explicit
+`lsp.v1.install` requests have a ten-minute deadline so downloads can finish; ordinary
+request deadlines are unchanged. Regenerate only `index.js` and its source map with
+TypeScript 5.9.3, ES2022 and ES modules. Declarations are unchanged.
 Other packages are unmodified. The released channel client now includes the opt-in host
 liveness policy, background ping probes, delayed-deadline receive grace and
 host-injected transport diagnostics previously carried by the local patch.
