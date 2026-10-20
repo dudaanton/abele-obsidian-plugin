@@ -111,10 +111,12 @@ describe('what each node action holds', () => {
   })
 
   it('pins every other action to its own tools', () => {
+    // A manager commit writes the repository, so it needs the edit scope like file writes.
     expect(members('edit')).toEqual(
       [
         'node_cp',
         'node_edit',
+        'node_git_commit',
         'node_mv',
         'node_propose_edit',
         'node_replace',
@@ -122,7 +124,12 @@ describe('what each node action holds', () => {
         'node_write',
       ].sort()
     )
-    expect(members('worktrees')).toEqual(['list_node_worktrees', 'node_worktree_switch'])
+    // Removing a managed worktree sits with the other worktree actions.
+    expect(members('worktrees')).toEqual([
+      'list_node_worktrees',
+      'node_worktree_remove',
+      'node_worktree_switch',
+    ])
     expect(members('delegate')).toEqual(
       [
         'node_delegate',

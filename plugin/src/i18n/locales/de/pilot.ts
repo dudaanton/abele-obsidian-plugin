@@ -3119,6 +3119,8 @@ export const de = {
   'settings.metadata.cc00c9b3261b6896': 'Dateien auf Knoten löschen',
   'settings.metadata.f864b17e206c9949': 'Dateien auf Knoten suchen',
   'settings.metadata.01bce5e752a4e282': 'Arbeitsbaum des Knotens wechseln',
+  'settings.metadata.82a9c46ffa478994': 'Commit',
+  'settings.metadata.ca8a5f3bee55b125': 'Arbeitsbaum löschen…',
   'settings.metadata.6c91d7b86793064a': 'Dateien auf Knoten schreiben',
   'settings.metadata.aa2463736b28728a': 'Notiz zur Ausführung',
   'settings.metadata.f659e2e6ad7c78ad': 'Gespeicherte Anfrage lesen',

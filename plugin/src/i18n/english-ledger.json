@@ -26668,5 +26668,65 @@
       "es",
       "de"
     ]
+  },
+  "node.delegation.activity": {
+    "englishHash": "04f28a58eed321db2ccd82d8d5c9445eb29bf924eb41628cb9e932927076c255",
+    "context": "Node delegation activity card",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.delegation.done": {
+    "englishHash": "677de5e20da9577c14ccf53a8034157de98c674d2eb817b7addaf8625cac52a6",
+    "context": "Node delegation activity card",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.delegation.working": {
+    "englishHash": "0ba35a590ddab2eb8adcec512cefc5a288c2115b0e823fd1a0d70f3bf5727931",
+    "context": "Node delegation activity card",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.delegation.unknown": {
+    "englishHash": "645375f4f21326032ec025629f905b0ec2d06e219f39aa78e8408087f072db48",
+    "context": "Node delegation activity card",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.metadata.82a9c46ffa478994": {
+    "englishHash": "26b30b6d9d0b1a3eb192d1ec3ccc59d83e420e988288582455498017e98e8a87",
+    "context": "Settings tool label for a manager git action",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.metadata.ca8a5f3bee55b125": {
+    "englishHash": "7ca865751cafd9fff611d14563211e68647addefe886d457dda24bfe2f7973e7",
+    "context": "Settings tool label for a manager git action",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

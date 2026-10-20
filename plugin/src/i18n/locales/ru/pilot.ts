@@ -3161,6 +3161,8 @@ export const ru = {
   'settings.metadata.cc00c9b3261b6896': 'Удаление файлов на ноде',
   'settings.metadata.f864b17e206c9949': 'Поиск файлов на ноде',
   'settings.metadata.01bce5e752a4e282': 'Смена рабочего дерева ноды',
+  'settings.metadata.82a9c46ffa478994': 'Коммит',
+  'settings.metadata.ca8a5f3bee55b125': 'Удалить рабочее дерево…',
   'settings.metadata.6c91d7b86793064a': 'Запись файлов на ноде',
   'settings.metadata.aa2463736b28728a': 'Заметка о запуске',
   'settings.metadata.f659e2e6ad7c78ad': 'Прочитать сохранённый запрос',

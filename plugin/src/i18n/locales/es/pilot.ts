@@ -3153,6 +3153,8 @@ export const es = {
   'settings.metadata.cc00c9b3261b6896': 'Eliminar archivos del nodo',
   'settings.metadata.f864b17e206c9949': 'Buscar archivos en el nodo',
   'settings.metadata.01bce5e752a4e282': 'Cambiar árbol de trabajo del nodo',
+  'settings.metadata.82a9c46ffa478994': 'Commit',
+  'settings.metadata.ca8a5f3bee55b125': 'Eliminar el árbol de trabajo…',
   'settings.metadata.6c91d7b86793064a': 'Escribir archivos en el nodo',
   'settings.metadata.aa2463736b28728a': 'Nota sobre una ejecución',
   'settings.metadata.f659e2e6ad7c78ad': 'Leer solicitud guardada',
