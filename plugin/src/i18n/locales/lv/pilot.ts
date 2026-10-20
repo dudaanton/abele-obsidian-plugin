@@ -3514,5 +3514,5 @@ export const lv = {
   'debug.launchFailed': 'Programmu neizdevās palaist: {detail}',
   'debug.launchExitedEarly': 'Programma beidza darbu, pirms atkļūdotājs varēja pievienoties.',
   'debug.launchFailedPlain':
-    'Programmu neizdevās palaist. Papildinformāciju skatiet sadaļā Detaļas.',
+    'Programmu neizdevās palaist. Atveriet sadaļu “Sīkāka informācija”, lai uzzinātu vairāk.',
 } satisfies TranslationCatalog
