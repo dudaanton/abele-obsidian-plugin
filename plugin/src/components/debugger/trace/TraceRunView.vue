@@ -81,7 +81,13 @@
           </template>
           <EmptyState
             v-if="!rows.length"
-            :text="query || filter ? t('streamC.5209d2d7f12c56b7') : t('streamC.92fdf94dd7bb7e27')"
+            :text="
+              filter === 'browser' && !run.steps.some((s) => s.kind === 'http')
+                ? t('debug.requestsBrowserOnly')
+                : query || filter
+                  ? t('streamC.5209d2d7f12c56b7')
+                  : t('streamC.92fdf94dd7bb7e27')
+            "
           />
         </div>
       </div>

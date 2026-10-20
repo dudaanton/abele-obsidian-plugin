@@ -264,6 +264,7 @@
 
 <script setup lang="ts">
 import { nodeErrorWords } from '@/node/errorWords'
+import { formatFrameName } from './stackFormat'
 import { t } from '@/i18n'
 
 import DrawerViewSwitch from '@/components/obsidian/DrawerViewSwitch.vue'
@@ -387,7 +388,9 @@ function openWatch(w: DebugWatch) {
 }
 const stale = computed(() => props.session.status === 'lost')
 const top = computed(() => props.session.frames[props.session.frame] ?? props.session.frames[0])
-const frameName = computed(() => (live.value ? top.value?.name : undefined))
+const frameName = computed(() =>
+  live.value && top.value ? formatFrameName(top.value.name).name : undefined
+)
 const notPaused = computed(() =>
   props.session.status === 'exited'
     ? props.session.attached && props.session.detached

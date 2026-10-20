@@ -13,6 +13,9 @@ export class TraceRunModel {
   trail?: TraceTrail
   error = ''
   private loadedSteps = new Set<string>()
+  private timer?: number
+  private disposed = false
+  private loading = false
   /** A record point whose last hit is to be picked once the steps have come. */
   private wantedPoint?: string
   constructor(
@@ -23,8 +26,13 @@ export class TraceRunModel {
   ) {}
 
   async load() {
+    if (this.disposed || this.loading) return
+    this.loading = true
+    window.clearTimeout(this.timer)
     try {
-      this.wire = await this.rpc.wholeRun(this.projectId, this.runId)
+      const wire = await this.rpc.wholeRun(this.projectId, this.runId)
+      if (this.disposed) return
+      this.wire = wire
       // Reactive, so a shape or a mark filled in later redraws the step that shows it.
       this.run = reactive(runView(this.wire))
       this.loadedSteps.clear()
@@ -36,8 +44,17 @@ export class TraceRunModel {
     } catch (e) {
       this.error = e instanceof Error ? e.message : t('streamC.77490b1334072a11')
       console.debug('[trace] Run unavailable', e)
+    } finally {
+      this.loading = false
+      if (!this.disposed && this.wire?.run.state === 'recording')
+        this.timer = window.setTimeout((): void => void this.load(), 2000)
     }
     this.changed()
+  }
+
+  dispose() {
+    this.disposed = true
+    window.clearTimeout(this.timer)
   }
 
   step(id: string): TraceStep | undefined {

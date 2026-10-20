@@ -1,6 +1,7 @@
 // From what the node answers about runs to what the trace views draw. Pure, so the views'
 // shapes are tested without a node or Obsidian.
 import type { DebugBreakpoint } from '@/components/debugger/types'
+import { formatFrameName } from '@/components/debugger/stackFormat'
 import type {
   ShapeNode,
   TraceRecording,
@@ -34,9 +35,19 @@ export function lengthWords(ms: number | undefined): string {
 const runLength = (r: WireRunSummary, now: number) =>
   lengthWords(r.length_ms ?? (r.state === 'recording' ? now - Date.parse(r.started_at) : undefined))
 
+export const runName = (r: WireRunSummary): string =>
+  r.name === r.started_at.replace('T', ' ').slice(0, 19)
+    ? new Date(r.started_at).toLocaleString()
+    : r.name
+
+const frameName = (raw: string): string => {
+  const { name, receiver } = formatFrameName(raw)
+  return receiver ? `${receiver}.${name}` : name
+}
+
 export const runSummary = (r: WireRunSummary, now = Date.now()): TraceRunSummary => ({
   id: r.id,
-  name: r.name,
+  name: runName(r),
   steps: r.steps,
   length: runLength(r, now),
   ...(r.state === 'cut' ? { cut: true } : {}),
@@ -78,9 +89,11 @@ export const step = (s: WireStep): TraceStep => ({
   id: s.id,
   kind: s.kind,
   at: s.at,
-  label: s.label,
-  ...(s.place ? { place: s.place } : {}),
-  ...(s.stack ? { stack: s.stack } : {}),
+  label: s.place?.fn ? s.label.replace(s.place.fn, frameName(s.place.fn)) : s.label,
+  ...(s.place
+    ? { place: { ...s.place, ...(s.place.fn ? { fn: frameName(s.place.fn) } : {}) } }
+    : {}),
+  ...(s.stack ? { stack: s.stack.map(frameName) } : {}),
   ...(s.paused_ms !== undefined ? { pausedMs: Math.round(s.paused_ms) } : {}),
   ...(s.status !== undefined ? { status: s.status } : {}),
   ...(s.host ? { host: s.host } : {}),
@@ -93,7 +106,7 @@ export const step = (s: WireStep): TraceStep => ({
 
 export const run = (w: WireRun, now = Date.now()): TraceRun => ({
   id: w.run.id,
-  name: w.run.name,
+  name: runName(w.run),
   length: runLength(w.run, now),
   steps: w.steps.map(step),
   ...(w.run.state === 'cut' ? { cut: true } : {}),

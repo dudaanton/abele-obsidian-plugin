@@ -117,7 +117,7 @@ export class TraceSession {
     return this.status ? recording(this.status, now) : undefined
   }
   summaries(now = Date.now()): TraceRunSummary[] {
-    return this.runs.map((r) => runSummary(r, now))
+    return this.runs.filter((r) => r.steps > 0).map((r) => runSummary(r, now))
   }
 
   /** Sets up a record point on a line: the point first, so a hit never comes before what to take,
@@ -152,6 +152,7 @@ export class TraceSession {
     if (!session) return
     this.points = await this.rpc.setPoints(session, [], [id])
     this.changed()
+    await this.refresh()
   }
 
   async removePoint(id: string) {
@@ -160,6 +161,7 @@ export class TraceSession {
     this.points = await this.rpc.setPoints(session, [], [id])
     await this.debug.removeBreakpoint(id)
     this.changed()
+    await this.refresh()
   }
 
   async chooseFolder(folder: string) {

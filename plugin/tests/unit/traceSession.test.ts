@@ -3,6 +3,23 @@ import { TraceSession, type TraceBreakpoints } from '@/debugger/trace/TraceSessi
 import { TraceRpc } from '@/debugger/trace/wire'
 import type { DebuggerSnapshot } from '@abele/node-protocol'
 
+it('refreshes recording state after removing the final point', async () => {
+  const s = new TraceSession(fakeNode().rpc, fakeDebugger(), () => {})
+  await s.savePoint('sample-source', 4, { take: ['sample'] })
+  expect(s.recording()).toBeDefined()
+  await s.removePoint(s.points[0].breakpoint_id)
+  expect(s.recording()).toBeUndefined()
+  s.dispose()
+})
+
+it('does not list runs with no recorded evidence', async () => {
+  const s = new TraceSession(fakeNode().rpc, fakeDebugger(), () => {})
+  await s.refresh()
+  s.runs[0].steps = 0
+  expect(s.summaries()).toEqual([])
+  s.dispose()
+})
+
 // TraceSession reads only the session's identity and its project from the snapshot.
 const snapshot = () =>
   ({

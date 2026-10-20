@@ -2,6 +2,25 @@ import { describe, expect, it } from 'vitest'
 import { decorate, lengthWords, recording, run, runSummary, trail } from '@/debugger/trace/mapping'
 import { nodeTraceSupported, WireRunSchema } from '@/debugger/trace/wire'
 
+it('renders generated names in local time and keeps custom names', () => {
+  const r = { ...wireRun.run, name: '2026-01-02 03:04:05' }
+  expect(runSummary(r).name).toBe(new Date(r.started_at).toLocaleString())
+  expect(runSummary({ ...r, name: 'Sample investigation' }).name).toBe('Sample investigation')
+})
+
+it('cleans receiver previews in recorded locations and stack', () => {
+  const s = {
+    ...wireRun.steps[0],
+    label: 'sample.ts:4 · Timer {.tick',
+    place: { file: 'sample.ts', line: 4, fn: 'Timer {.tick' },
+    stack: ['Timer {.tick'],
+  }
+  const result = run({ ...wireRun, steps: [s] }).steps[0]
+  expect(result.place?.fn).toBe('Timer.tick')
+  expect(result.label).toBe('sample.ts:4 · Timer.tick')
+  expect(result.stack).toEqual(['Timer.tick'])
+})
+
 const wireRun = WireRunSchema.parse({
   run: {
     id: 'run-1',

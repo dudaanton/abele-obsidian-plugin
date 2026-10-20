@@ -2,6 +2,27 @@ import { describe, expect, it, vi } from 'vitest'
 import { TraceRunModel } from '@/debugger/trace/TraceRunModel'
 import { TraceRpc } from '@/debugger/trace/wire'
 
+it('follows recording until it ends and releases its timer', async () => {
+  vi.useFakeTimers()
+  try {
+    const n = node()
+    const data = await n.rpc.wholeRun('project-1', 'run-1')
+    const whole = vi
+      .spyOn(n.rpc, 'wholeRun')
+      .mockResolvedValueOnce({ ...data, run: { ...data.run, state: 'recording' } })
+      .mockResolvedValue(data)
+    const m = new TraceRunModel(n.rpc, 'project-1', 'run-1', () => {})
+    await m.load()
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(whole).toHaveBeenCalledTimes(2)
+    m.dispose()
+    await vi.advanceTimersByTimeAsync(4000)
+    expect(whole).toHaveBeenCalledTimes(2)
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
 const summary = {
   id: 'run-1',
   name: 'Sample run',

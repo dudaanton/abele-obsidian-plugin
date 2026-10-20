@@ -217,6 +217,11 @@ it('opens a recorded run as a tab of steps, a step with its values by shape, and
     ${OPEN_RUN()}
     const rows=[...document.querySelectorAll('.abele-trace-run__steps > .abele-trace-run__step .abele-tree-item__text')].map(e=>e.textContent.trim());
     await shot('2026-10-14-trace-run-desktop');
+    document.querySelector('[aria-label="Only the requests"]').click();
+    await until(()=>document.querySelector('.abele-trace-run').textContent.includes('Requests are recorded from a connected browser'),'request capture explanation');
+    await shot('trace-requests-empty-desktop');
+    document.querySelector('[aria-label="Only the requests"]').click();
+    await until(()=>document.querySelectorAll('.abele-trace-run__step').length>=2,'steps restored');
     document.querySelector('.abele-trace-run__step .abele-tree-item__self, .abele-trace-run__step .tree-item-self')?.click();
     await until(()=>document.querySelector('.abele-trace-step'),'step detail');
     if(app.workspace.activeLeaf?.view.getViewType()!=='abele-trace-run')throw Error('Selecting a step left the run');
@@ -329,6 +334,11 @@ it('reads the run on a phone: the steps whole-screen, a step over them', async (
     }>(`(async()=>{${prelude}
       ${OPEN_RUN()}
       await shot('2026-10-14-trace4-run-phone');
+      document.querySelector('[aria-label="Only the requests"]').click();
+      await until(()=>document.querySelector('.abele-trace-run').textContent.includes('Requests are recorded from a connected browser'),'request capture explanation');
+      await shot('trace-requests-empty-phone');
+      document.querySelector('[aria-label="Only the requests"]').click();
+      await until(()=>document.querySelectorAll('.abele-trace-run__step').length>=2,'steps restored');
       document.querySelector('.abele-trace-run__step .abele-tree-item__self, .abele-trace-run__step .tree-item-self')?.click();
       await until(()=>document.querySelector('.abele-trace-step'),'step detail');
       if(app.workspace.activeLeaf?.view.getViewType()!=='abele-trace-run')throw Error('Selecting a step left the run');

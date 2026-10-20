@@ -23,7 +23,7 @@ import { NodeService } from '@/node/NodeService'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { DebuggerService } from '../DebuggerService'
 import { revealSidebarView } from '@/views/revealSidebarView'
-import { shape, value as valueView } from './mapping'
+import { runName, shape, value as valueView } from './mapping'
 import { TraceRunModel } from './TraceRunModel'
 import { TraceRpc } from './wire'
 export { traceLink } from './note'
@@ -117,6 +117,8 @@ export class TraceRunTab extends ItemView {
     if (this.state && !this.vue) this.start()
   }
   async onClose() {
+    this.model?.dispose()
+    this.model = undefined
     this.vue?.unmount()
     this.vue = undefined
   }
@@ -133,6 +135,7 @@ export class TraceRunTab extends ItemView {
   private start() {
     const state = this.state
     if (!state) return
+    this.model?.dispose()
     this.vue?.unmount()
     this.contentEl.replaceChildren()
     this.contentEl.addClass('abele-trace-run-tab')
@@ -327,7 +330,7 @@ export class TraceValueView extends ItemView {
       const { rpc } = rpcFor(s.registrationId)
       const meta = await rpc.value(s.projectId, s.runId, s.step, s.valueName, 'shape')
       const run = await rpc.run(s.projectId, s.runId, 0, 1)
-      this.model.runName = run.run.name
+      this.model.runName = runName(run.run)
       const step = await rpc.run(s.projectId, s.runId, Math.max(0, Number(s.step.slice(1)) - 1), 1)
       this.model.stepLabel = step.steps[0]?.label ?? s.step
       const v: TraceValue = valueView(meta.value)
