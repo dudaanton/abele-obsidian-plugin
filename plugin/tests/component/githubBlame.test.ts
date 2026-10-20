@@ -79,8 +79,10 @@ describe('line blame in the file view', () => {
     expect(wrapper.findAll('.abele-github-blame-range')).toHaveLength(1)
     const range = wrapper.get('.abele-github-blame-range')
     expect(range.text()).toContain('Sample Author')
-    expect(range.text()).toContain('Sample change')
-    await range.get('button').trigger('click')
+    const button = range.get('button')
+    expect(button.attributes('aria-label')).toContain('Sample change\n\nFull details')
+    expect(range.text()).not.toContain('Sample change')
+    await button.trigger('click')
     expect(wrapper.emitted('open')?.[0]).toEqual([
       `https://github.com/sample-org/sample-repo/commit/${sha}`,
     ])
