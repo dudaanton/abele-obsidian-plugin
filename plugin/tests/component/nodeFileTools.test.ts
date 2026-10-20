@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import FileView from '@/components/nodeWork/FileView.vue'
+import GithubBlob from '@/components/github/GithubBlob.vue'
+import { FILE_NAVIGATION } from '@/node/fileNavigation'
 import GithubCode from '@/components/github/GithubCode.vue'
 import { navFor } from '@/github/search/navAddon'
 import type { RepositorySource } from '@/repository/source'
@@ -69,6 +71,30 @@ function setup(blame = vi.fn().mockResolvedValue([])) {
   return { view, source }
 }
 describe('node file repository tools', () => {
+  it('routes rendered working-file links through the ordinary file navigation binding', async () => {
+    const { source } = setup()
+    const navigate = vi.fn(() => true)
+    const view = mount(FileView, {
+      props: {
+        path: 'sample.ts',
+        text: 'const sample = 1',
+        mode: 'file',
+        repository: source,
+        revision: 'working-sample',
+      },
+      global: { provide: { [FILE_NAVIGATION as symbol]: navigate } },
+    })
+    views.push(view)
+    const url = nodeRepositoryLink(source.identity, {
+      kind: 'file',
+      ref: 'working-sample',
+      path: 'sample.ts',
+      lines: { from: 1, to: 1 },
+    })
+    view.getComponent(GithubBlob).vm.$emit('open', url)
+    await flushPromises()
+    expect(navigate).toHaveBeenCalledWith(url)
+  })
   it('opens a working definition in the same file surface at the destination line', async () => {
     useVault([])
     const { source } = setup()
