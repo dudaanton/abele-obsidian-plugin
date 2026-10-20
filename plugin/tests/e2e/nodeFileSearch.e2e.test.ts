@@ -24,7 +24,7 @@ async function capture(name: string) {
 /** Check the real host command and native keymap, starting with the freshly opened file. */
 async function search(shell: string, entry: string) {
   await evalLong(`(async()=>{${prelude}
-    await until(()=>file()?.textContent.includes('marker'),'The ordinary file');
+    await until(()=>file()?.textContent.includes('sampleMarkerIdentifier'),'The ordinary file');
     const find=file().querySelector('[data-node-find]');if(!find)throw Error('Find button missing on ordinary file');
     find.click();await until(()=>file()?.querySelector('[role=search] input'),'Find button');
     const close=async()=>{file().querySelector('[role=search] input').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await until(()=>!file().querySelector('[role=search]'),'Find closes')};
@@ -38,7 +38,7 @@ async function search(shell: string, entry: string) {
   await evalLong(`(async()=>{${prelude}
     await until(()=>file()?.querySelector('[role=search] input'),'Native find');
     const input=file().querySelector('[role=search] input');if(document.activeElement!==input)throw Error('Find did not focus its input');
-    input.value='marker';input.dispatchEvent(new Event('input',{bubbles:true}));
+    input.value='sampleMarkerIdentifier';input.dispatchEvent(new Event('input',{bubbles:true}));
     await until(()=>file()?.querySelectorAll('.abele-github-find__match').length===2,'Both file matches');
     if(document.body.classList.contains('is-phone')&&input.getBoundingClientRect().width<file().querySelector('[role=search]').getBoundingClientRect().width*.75)throw Error('Find input does not get the phone width');return 'matches'})()`)
   await capture(`${shell}-${entry}-search`)
@@ -66,15 +66,23 @@ async function checkTools(shell: string, entry: string) {
 async function fileSearchScenario(shell: 'desktop' | 'phone') {
   const node = await startPairedNode()
   const project = resolve(node.state, '../sample-project')
+  const matchesPath =
+    'src/a-long-sample-directory/another-long-sample-directory/long-sample-matches.ts'
   const git = (...args: string[]) =>
     promisify(execFile)('/usr/bin/git', ['-c', 'core.hooksPath=/dev/null', ...args], {
       cwd: project,
     })
   try {
     mkdirSync(resolve(project, 'src'))
-    writeFileSync(resolve(project, 'src/sample.ts'), 'export const marker = 1\nmarker\n')
+    mkdirSync(resolve(project, 'src/a-long-sample-directory/another-long-sample-directory'), {
+      recursive: true,
+    })
     writeFileSync(
-      resolve(project, 'src/matches.ts'),
+      resolve(project, 'src/sample.ts'),
+      'export const sampleMarkerIdentifier = 1\nsampleMarkerIdentifier\n'
+    )
+    writeFileSync(
+      resolve(project, matchesPath),
       Array.from({ length: 105 }, (_, i) => `// contentNeedle ${i + 1}`).join('\n') + '\n'
     )
     writeFileSync(
@@ -96,7 +104,7 @@ async function fileSearchScenario(shell: 'desktop' | 'phone') {
     )
     writeFileSync(
       resolve(project, 'src/sample.ts'),
-      'export const marker = 2\nmarker\nsharedValue\n'
+      'export const sampleMarkerIdentifier = 2\nsampleMarkerIdentifier\nsharedValue\n'
     )
     const ids = JSON.parse(
       await evalLong(`(async()=>{${prelude}
@@ -161,7 +169,7 @@ async function fileSearchScenario(shell: 'desktop' | 'phone') {
         const jump=()=>{const row=file().querySelectorAll('.cm-line')[2],range=document.createRange();range.selectNodeContents(row);const box=range.getBoundingClientRect();row.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,cancelable:true,button:0,clientX:box.left+box.width/2,clientY:box.top+box.height/2,metaKey:require('process').platform==='darwin',ctrlKey:require('process').platform!=='darwin'}))};jump();
         await until(()=>file()?.textContent.includes('export const sharedValue'),'Other-file definition');
         const destination=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.contentEl.contains(file()));if(destination===current||app.workspace.getLeavesOfType('abele-node-file').length!==before+1)throw Error('Other-file definition did not get its own tab');if(current.view.getState().path!=='src/sample.ts')throw Error('Definition replaced the source tab');
-        await app.workspace.revealLeaf(current);await until(()=>file()?.textContent.includes('export const marker'),'Return to source');jump();await until(()=>destination.view.contentEl.contains(file()),'Reuse definition tab');if(app.workspace.getLeavesOfType('abele-node-file').length!==before+1)throw Error('Definition opened a duplicate destination');return 'cross-file definition and reuse'})()`)
+        await app.workspace.revealLeaf(current);await until(()=>file()?.textContent.includes('export const sampleMarkerIdentifier'),'Return to source');jump();await until(()=>destination.view.contentEl.contains(file()),'Reuse definition tab');if(app.workspace.getLeavesOfType('abele-node-file').length!==before+1)throw Error('Definition opened a duplicate destination');return 'cross-file definition and reuse'})()`)
       await capture(`${shell}-other-file-definition`)
       await closeFile()
       await sidebar('Files')
@@ -169,7 +177,7 @@ async function fileSearchScenario(shell: 'desktop' | 'phone') {
         await until(()=>visible('[data-node-project-search]'),'Project content search');visible('[data-node-project-search]').click();
         await until(()=>visible('.abele-github-search__query'),'Project search field');const input=visible('.abele-github-search__query');input.value='contentNeedle';input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
         await until(()=>visible('.abele-github-search__match'),'Highlighted project matches');
-        const search=visible('.abele-github-search');if(!search.textContent.includes('src/matches.ts')||!search.querySelector('.abele-github-search__number'))throw Error('Project results lack path or line');
+        const search=visible('.abele-github-search');if(!search.textContent.includes(${JSON.stringify(matchesPath)})||!search.querySelector('.abele-github-search__number'))throw Error('Project results lack path or line');
         await until(()=>[...search.querySelectorAll('button')].find(b=>b.textContent.includes('Load more')),'Project search continuation');return 'first project page'})()`)
       await capture(`${shell}-project-content-page`)
       await evalLong(`(async()=>{${prelude}
@@ -195,7 +203,7 @@ async function fileSearchScenario(shell: 'desktop' | 'phone') {
       )
       for (const label of ['Source', 'Lines']) {
         await evalLong(
-          `(async()=>{${prelude}await chats.revealSidebar({focus:false});await until(()=>chat(),'Chat');const link=[...chat().querySelectorAll('a')].find(a=>a.textContent===${JSON.stringify(label)});if(!link)throw Error('Chat source link missing');link.click();await until(()=>file()?.textContent.includes('marker'),'Chat file opens');return 'clicked chat link'})()`
+          `(async()=>{${prelude}await chats.revealSidebar({focus:false});await until(()=>chat(),'Chat');const link=[...chat().querySelectorAll('a')].find(a=>a.textContent===${JSON.stringify(label)});if(!link)throw Error('Chat source link missing');link.click();await until(()=>file()?.textContent.includes('sampleMarkerIdentifier'),'Chat file opens');return 'clicked chat link'})()`
         )
         await search(shell, label.toLowerCase())
         await checkTools(shell, label.toLowerCase())
