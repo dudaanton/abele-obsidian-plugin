@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest'
-import { openNodeChat } from '@/node/nodePathNavigation'
+import { openNodeChat, openNodePathTab } from '@/node/nodePathNavigation'
 
 const f = vi.hoisted(() => ({
   draft: { value: { text: '' } },
@@ -16,6 +16,28 @@ vi.mock('@/ai/ChatService', () => ({
     }),
   },
 }))
+it('closes the phone file drawer before revealing a newly created chat', async () => {
+  const collapse = vi.fn()
+  f.open.mockImplementationOnce(async () => {})
+  await openNodePathTab(
+    { leftSplit: { collapse } } as never,
+    {
+      kind: 'chat',
+      sessionId: 'sample-new-chat',
+      title: 'New chat',
+      target: {
+        registrationId: 'sample-registration',
+        nodeId: 'sample-node',
+        projectId: 'sample-project',
+        kind: 'worktree',
+        id: 'sample-tree',
+      },
+    },
+    true
+  )
+  expect(collapse).toHaveBeenCalledOnce()
+  expect(collapse.mock.invocationCallOrder[0]).toBeLessThan(f.open.mock.invocationCallOrder[0])
+})
 
 it('shows the selected code draft while the remote session is still loading', async () => {
   let loaded!: () => void

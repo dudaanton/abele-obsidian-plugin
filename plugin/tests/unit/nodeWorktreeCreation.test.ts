@@ -1,6 +1,13 @@
 import { expect, it, vi } from 'vitest'
 import { waitForWorktreeJob, worktreeDisplayPath } from '@/node/worktreePresentation'
 
+it('uses the branch for encoded managed folder names without decoding ordinary paths', () => {
+  expect(
+    worktreeDisplayPath('/sample/project.worktrees/topic%2Fdemo', 'refs/heads/topic/demo')
+  ).toBe('topic/demo')
+  expect(worktreeDisplayPath('/sample/literal%20folder', null)).toBe('/sample/literal%20folder')
+})
+
 it('follows a creation job until it completes instead of requiring a folder refresh', async () => {
   const read = vi
     .fn()

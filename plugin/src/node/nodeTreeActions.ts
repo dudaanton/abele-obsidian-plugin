@@ -5,7 +5,7 @@ import { confirmDialog, promptDialog } from '@/components/obsidian/dialogs'
 import { NodeService } from './NodeService'
 import { NodePathService } from './NodePathService'
 import { NodePathMutations } from './NodePathMutations'
-import { openNodePathTab } from './nodePathNavigation'
+import { openNodePathTab, updateNodeFileTabs } from './nodePathNavigation'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { Platform } from 'obsidian'
 import type { NodePathContext } from './NodePathOwnerActions'
@@ -101,6 +101,7 @@ export async function nodeTreeAction(action: TreeAction, context: NodePathContex
       return
     if (directory) await mutations.fileRemove(target, path, file.contentId, true)
     else await mutations.fileRemove(target, path, file.contentId)
+    await updateNodeFileTabs(GlobalStore.getInstance().app.workspace, target, path)
   } else {
     const renaming = action === 'rename'
     const value = await promptDialog({
@@ -130,6 +131,7 @@ export async function nodeTreeAction(action: TreeAction, context: NodePathContex
         return
       await mutations.fileMove(target, path, destination, file.contentId, true)
     } else await mutations.fileMove(target, path, destination, file.contentId)
+    await updateNodeFileTabs(GlobalStore.getInstance().app.workspace, target, path, destination)
   }
   await model.reloadTarget(target)
 }

@@ -107,6 +107,45 @@ export const editedFileTab = (state: NodePathTabState): NodePathTabState =>
   state.kind === 'editor'
     ? { kind: 'file', target: state.target, path: state.path, edit: true }
     : state
+/** A confirmed file operation also moves the tabs that refer to that exact folder. */
+export async function updateNodeFileTabs(
+  workspace: Workspace,
+  target: PathTarget,
+  path: string,
+  destination?: string
+): Promise<void> {
+  for (const type of [NODE_FILE_VIEW, NODE_EDITOR_VIEW]) {
+    for (const leaf of workspace.getLeavesOfType(type)) {
+      const view = leaf.getViewState()
+      if (view.type !== type) continue
+      const parsed = NodePathTabSchema.safeParse(view.state)
+      if (!parsed.success || !['file', 'editor'].includes(parsed.data.kind)) continue
+      const state = parsed.data
+      if (!('path' in state)) continue
+      if (state.kind === 'file' && typeof state.stage === 'object') continue
+      const old = state.target
+      if (
+        old.registrationId !== target.registrationId ||
+        old.nodeId !== target.nodeId ||
+        old.projectId !== target.projectId ||
+        old.kind !== target.kind ||
+        old.id !== target.id ||
+        (state.path !== path && !state.path.startsWith(`${path}/`))
+      )
+        continue
+      if (destination === undefined) leaf.detach()
+      else
+        await leaf.setViewState({
+          ...view,
+          state: {
+            ...state,
+            path: destination + state.path.slice(path.length),
+            ...(state.kind === 'file' ? { debug: undefined } : {}),
+          },
+        })
+    }
+  }
+}
 export async function openNodePathTab(
   workspace: Workspace,
   raw: NodePathTabState,
@@ -115,7 +154,10 @@ export async function openNodePathTab(
 ): Promise<void> {
   const state = editedFileTab(NodePathTabSchema.parse(raw))
   // A chat is a chat: a tab of the chat in the sidebar, like every other one, never a pane.
-  if (state.kind === 'chat') return openNodeChat(state, initialText)
+  if (state.kind === 'chat') {
+    if (mobile) workspace.leftSplit.collapse()
+    return openNodeChat(state, initialText)
+  }
   const type = nodePathViewType(state)
   const key = nodePathTabKey(state)
   const existing = workspace.getLeavesOfType(type).find((leaf) => {

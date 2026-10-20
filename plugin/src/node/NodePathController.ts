@@ -3,6 +3,7 @@ import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import { addFolderDebugMenu } from '@/debugger/folderActions'
 import { t } from '@/i18n'
 import { Menu, Notice, Platform } from 'obsidian'
+import { ChannelError } from '@abele/channel-protocol'
 import type { WorktreeEntry } from '@abele/node-protocol'
 import { NodeSuggestModal } from '@/components/nodeWork/NodeSuggestModal'
 import { confirmDialog } from '@/components/obsidian/dialogs'
@@ -29,7 +30,7 @@ import type { NodePathModel, PathTarget } from './NodePathModel'
 import { showNodePairingDialog } from './NodePairingDialogHost'
 import { h } from 'vue'
 import { shortRef } from './presentation'
-import { worktreeDisplayPath } from './worktreePresentation'
+import { worktreeDisplayPath, waitForWorktreeJob } from './worktreePresentation'
 import { copyIcon, copyKind } from '@/components/nodeWork/codes'
 import type { FolderSummary } from '@/components/nodeWork/types'
 import { nodePathMenuPosition as position } from './nodePathMenuPosition'
@@ -343,6 +344,11 @@ function rowMenu(
               const reservation = await new NodePathMutations(connection.client).removeManaged(
                 selected.workspace_id
               )
+              const job = await waitForWorktreeJob(() =>
+                connection.client.getJob(reservation.job_id)
+              )
+              if (job.state === 'failed' || job.state === 'needs_attention')
+                throw new ChannelError(job.error ?? 'workspace_remove_failed')
               new Notice(
                 t('streamB.deletionAcceptedRefreshToCheckJob.de2efa', {
                   v0: String(reservation.job_id),
@@ -529,7 +535,7 @@ async function nodeItems(
             if (
               await confirmDialog({
                 title: t('streamB.disconnectNode.c336da'),
-                message: t('streamB.removeThisDeviceSSavedConnectionThis.40e1d5'),
+                message: t('node.disconnectTokenNotice'),
                 confirmText: t('streamB.disconnect.acfc5b'),
               })
             )

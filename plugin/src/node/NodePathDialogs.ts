@@ -95,7 +95,11 @@ export async function openNodeFolderPicker(
       throw new Error(first.omissions.join(' · ') || t('streamB.incompleteDirectoryListing.fcb072'))
     const value = { ...first, entries }
     if (!closed && epoch === listingEpoch)
-      listings.value = { ...listings.value, [normalize(first.path)]: value }
+      listings.value = {
+        ...listings.value,
+        [normalize(first.path)]: value,
+        ...(path ? { [normalize(path)]: value } : {}),
+      }
     return value
   }
   const stopConnection = watch(

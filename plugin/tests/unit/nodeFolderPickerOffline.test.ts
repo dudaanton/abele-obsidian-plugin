@@ -63,6 +63,26 @@ const supportedDescription = {
   node_id: 'sample-node',
   capabilities: { capabilities: { node_path_v2: { status: 'supported' } } },
 }
+it('caches a canonical directory reply under the symlink path that was requested', async () => {
+  const fixture = pickerFixture()
+  fixture.directories.mockImplementation(async (args) => ({
+    path: args?.path === '/sample/link' ? '/sample/real' : '/sample',
+    directory_id: 'sample-directory',
+    entries: [],
+    cursor: null,
+    incomplete: false,
+    omissions: [],
+  }))
+  await openNodeFolderPicker(fixture.model as never, fixture.connection as never)
+  const input = document.querySelector('input') as HTMLInputElement
+  input.value = '/sample/link/'
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+  await flushPromises()
+  expect(document.querySelector('[role="alert"]')).toBeNull()
+  expect(
+    fixture.directories.mock.calls.filter(([args]) => args?.path === '/sample/link')
+  ).toHaveLength(1)
+})
 function pickerFixture(describe: () => Promise<unknown> = async () => supportedDescription) {
   const directories = vi.fn(async (_args?: { path?: string; cursor?: string }) => ({
     path: '/sample',

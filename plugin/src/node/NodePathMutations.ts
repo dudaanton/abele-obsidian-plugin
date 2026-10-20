@@ -28,6 +28,7 @@ export class NodePathMutations {
         Pick<
           NodeClient,
           | 'removeWorkspace'
+          | 'getJob'
           | 'flush'
           | 'operationResult'
           | 'repository'
@@ -289,7 +290,11 @@ export class NodePathMutations {
       if (!receipt) throw new UiError(uiMessage('streamBError.a0a1c7d80c'))
       if (receipt.error)
         throw new UiError(uiMessage('streamBError.fcff0cdbbc', { v0: String(receipt.error) }))
-      return WorkspaceJobResultSchema.parse(receipt.result)
+      const reservation = WorkspaceJobResultSchema.parse(receipt.result)
+      // Acceptance is not completion: a busy removal job did not remove the worktree.
+      // A later explicit Delete may start a new job; uncertain jobs keep their receipt.
+      const job = await this.client.getJob?.(reservation.job_id)
+      if (!(job?.state === 'failed' && job.error === 'resource_busy')) return reservation
     }
     if (!this.client.removeWorkspace) throw new UiError(uiMessage('streamBError.96b7c749ee'))
     return this.client.removeWorkspace(workspaceId)
