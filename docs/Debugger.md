@@ -24,9 +24,12 @@ A node without `debugger.access.v1` support shows an update message instead of t
 
 This UI uses the gated `debugger.v1` infrastructure. The node must advertise and
 explicitly enable it. *Run a program* in the node chat's menu searches the folder's JavaScript
-and TypeScript entry files, offering open files first, and starts the selected file on the node under the debugger:
-the node runs it with its own Node, an empty environment and no shell, and holds it on its first
-line. Its session opens in the view and its file opens in a node tab with the margin, so record
+and TypeScript entry files, with package scripts and built entries before searchable source aliases,
+and starts the selected file on the node under the debugger.
+The node runs it with its own Node, an empty environment and no shell. On supporting nodes,
+**Stop at start** defaults off; turn it on to hold the first line. Older nodes retain their startup
+hold. Arguments are remembered separately for each program and folder. Its session opens in the
+view and its file opens in a node tab with the margin, so record
 points and breakpoints go in before the program goes on; other JavaScript files open from the same
 folder take breakpoints too, and so do TypeScript files open from it when a source map of the build
 lists them and is not older than they are (the node maps their lines onto the JavaScript that
@@ -37,6 +40,12 @@ for an update in newly opened files. Admitted files travel with Restart, includi
 no points yet. The folder must be one the node may run code in. A node without its JavaScript debugger
 installed (`abele-node debugger install js`) refuses and says so. An empty session list does not
 start a process by itself.
+
+Supporting nodes provide admitted caller-frame paths and enriched exception text. Selecting a
+caller opens its source; runtime and library frames without admitted source say so. Exit codes
+appear when the node has observed them; an unknown code is never treated as success. Restart
+installs carried points before releasing an entry hold. A supporting node restores attachment
+breakpoints itself, including disabled state; the plugin does not overwrite them with an older copy.
 
 The session-mode switch changes a bound live agent grant, never the node's default
 policy. Its permissions are exactly Ask and Allow all. Before authoritative live

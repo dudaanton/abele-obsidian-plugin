@@ -189,6 +189,13 @@ guards. Credential retirement clears them. No persistent private-source cache is
 
 ## Node path views (device-local)
 
+Disconnecting a device revokes its own node credential before removing the local registration
+when the node advertises device disconnection. Other devices are unaffected. An older or
+unreachable node offers explicitly disclosed local removal instead; its credential remains on
+the node. A failed revocation request or lost acknowledgement keeps the local registration,
+without automatically enrolling a replacement credential. Reloading or closing a socket does
+not revoke credentials or detach debugger sessions.
+
 Chat tool records retain explicit provider file locations and the resolved node/project/target
 of node file calls. These are presentation references, not access grants. Folded calls keep
 their file paths visible; opening a node path uses its remote place, never vault resolution.

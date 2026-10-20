@@ -1,5 +1,24 @@
 import { expect, it, vi } from 'vitest'
 import { disconnectNodeDevice } from '@/node/disconnectNodeDevice'
+it('allows explicitly disclosed local removal when an offline node cannot describe support', async () => {
+  const remove = vi.fn(),
+    request = vi.fn()
+  await disconnectNodeDevice(
+    {
+      describe: async () => {
+        throw Error('offline')
+      },
+      request,
+    },
+    async (revokes) => {
+      expect(revokes).toBe(false)
+      return true
+    },
+    remove
+  )
+  expect(request).not.toHaveBeenCalled()
+  expect(remove).toHaveBeenCalledOnce()
+})
 it.each([true, false])(
   'revokes only supported devices before removing their registration: %s',
   async (supported) => {

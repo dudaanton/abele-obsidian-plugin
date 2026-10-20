@@ -10,7 +10,12 @@ export async function disconnectNodeDevice(
   confirm: (revokes: boolean) => Promise<boolean>,
   remove: () => void
 ): Promise<void> {
-  const supported = deviceDisconnectSupported(await client.describe())
+  let supported = false
+  try {
+    supported = deviceDisconnectSupported(await client.describe())
+  } catch (error) {
+    console.debug('[Abele node] Revocation support unavailable; offering local removal', error)
+  }
   if (!(await confirm(supported))) return
   if (supported) {
     console.debug('[Abele node] Revoking this device before disconnect')
