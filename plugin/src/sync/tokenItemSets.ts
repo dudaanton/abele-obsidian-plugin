@@ -1,4 +1,4 @@
-import { triggerRef } from 'vue'
+import { shallowReactive, triggerRef } from 'vue'
 import { encodeAccessToken, type V2AccessToken } from '@abele/sync-sdk/protocol'
 import {
   ConnectionSets,
@@ -35,7 +35,7 @@ export class TokenItemSets implements ShareSetSource {
   readonly store: ConnectionSets
   private readonly capabilities = new Map<string, boolean>()
   private readonly pending = new Map<string, Promise<boolean>>()
-  private readonly choiceCache = new Map<string, ShareItem[]>()
+  private readonly choiceCache = shallowReactive(new Map<string, ShareItem[]>())
   private readonly issued = new Map<string, { connectionId: string; share: IssuedShare }>()
   private readonly facts = new Map<string, ShareDeleteFacts>()
   private readonly factsPending = new Set<string>()

@@ -13,6 +13,7 @@ import { AttachmentConsent } from '@/sync/attachmentConsent'
 import { reviewSourceSchema } from '@/sync/reviewState'
 import { RetainedShareCopies } from '@/sync/retainedShareCopies'
 import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
+import { computed } from 'vue'
 
 const folder = (id: string, path: string): SetItem => ({ id, kind: 'folder', scopeId: id, path })
 function setup() {
@@ -27,6 +28,28 @@ function setup() {
 }
 
 describe('connection item sets', () => {
+  it('updates an already mounted choice consumer after the server inventory arrives', async () => {
+    const { storage, data } = setup()
+    data.delete(TOKEN_REGISTRY_KEY)
+    const registry = TokenConnectionRegistry.open(storage)
+    const ui = new TokenUi(
+      registry,
+      { get: () => null, set: () => {}, remove: () => {} },
+      async () => {
+        throw new Error('Use the inventory port')
+      }
+    )
+    vi.spyOn(ui, 'choices').mockResolvedValue([
+      { kind: 'folder', id: 'flowers', path: 'Garden/Flowers' },
+    ])
+    vi.spyOn(ui.itemSets, 'client').mockReturnValue({
+      tokens: async () => ({ items: [] }),
+    } as unknown as ReturnType<TokenUi['client']>)
+    const choices = computed(() => ui.itemSets.choices('sample'))
+    expect(choices.value).toEqual([])
+    await ui.itemSets.shares('sample')
+    expect(choices.value).toEqual([{ kind: 'folder', id: 'flowers', path: 'Garden/Flowers' }])
+  })
   it('keeps confirmed deletion facts until the confirmation has finished closing', async () => {
     const { storage, data } = setup()
     data.delete(TOKEN_REGISTRY_KEY)

@@ -5,6 +5,16 @@
     :data-share-picker-mode="phone ? 'inline' : 'native'"
     :data-platform-phone="Platform.isPhone"
     :data-platform-mobile="Platform.isMobile"
+    :data-source-count="choices.length"
+    :data-source-paths="JSON.stringify(choices.slice(0, 10).map((item) => item.path))"
+    :data-source-matches="
+      JSON.stringify(
+        choices
+          .filter((item) => item.path.toLowerCase().includes(query.toLowerCase()))
+          .slice(0, 10)
+          .map((item) => item.path)
+      )
+    "
   >
     <div v-if="modelValue.length" class="abele-share-picker__picked">
       <div

@@ -24,6 +24,9 @@ it('captures the Share sheet HTML, rendering flags and typed query during a pick
     sharePickerMode: 'inline',
     platformPhone: 'false',
     platformMobile: 'true',
+    sourceCount: '1',
+    sourcePaths: JSON.stringify(['Garden/Flowers']),
+    sourceMatches: JSON.stringify(['Garden/Flowers']),
   })
   const input = document.createElement('input')
   input.value = 'Garden/Flowers'
@@ -57,6 +60,7 @@ it('captures the Share sheet HTML, rendering flags and typed query during a pick
         },
         query: 'Garden/Flowers',
         inlineRows: 1,
+        source: { count: 1, firstPaths: ['Garden/Flowers'], matchingPaths: ['Garden/Flowers'] },
       },
     ])
   } finally {

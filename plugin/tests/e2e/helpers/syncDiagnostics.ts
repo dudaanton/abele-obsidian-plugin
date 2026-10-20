@@ -20,7 +20,8 @@ const syncSnapshot = () => {
    const picker=box.querySelector('.abele-share-picker');
    return {sheetHtml:box.outerHTML,mode:picker.dataset.sharePickerMode||null,
     flags:{appMobile:!!app.isMobile,bodyMobile:doc.body.classList.contains('is-mobile'),bodyPhone:doc.body.classList.contains('is-phone'),platformMobile:picker.dataset.platformMobile??null,platformPhone:picker.dataset.platformPhone??null},
-    query:picker.querySelector('input')?.value||'',inlineRows:picker.querySelectorAll('.abele-share-picker__results .suggestion-item').length};
+    query:picker.querySelector('input')?.value||'',inlineRows:picker.querySelectorAll('.abele-share-picker__results .suggestion-item').length,
+    source:{count:Number(picker.dataset.sourceCount||0),firstPaths:JSON.parse(picker.dataset.sourcePaths||'[]'),matchingPaths:JSON.parse(picker.dataset.sourceMatches||'[]')}};
   })),
   webViewLoad:{timeOrigin:performance.timeOrigin,loadId:window.__abelePhoneLoadIdentity?.loadId||null},
   tokenHostReady:!!host,
