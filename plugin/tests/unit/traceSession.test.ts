@@ -139,6 +139,18 @@ function fakeDebugger(existing: { id: string; line: number; condition?: string }
 }
 
 describe('setting up a record point', () => {
+  it('replaces an adapter log point when converting it to a record point with the same condition', async () => {
+    const node = fakeNode(),
+      debug = fakeDebugger([{ id: 'sample-log', line: 4, condition: 'n > 0' }])
+    Object.assign(debug.known[0], { kind: 'log', logMessage: 'value {n}' })
+    const trace = new TraceSession(node.rpc, debug, () => {})
+    try {
+      await trace.savePoint('sample-source', 4, { take: ['n'], when: 'n > 0' })
+      expect(debug.setBreakpoint).toHaveBeenCalledWith('sample-log', 'sample-source', 4, 'n > 0')
+    } finally {
+      trace.dispose()
+    }
+  })
   it('does not claim that an uncertain breakpoint save made no change', async () => {
     const node = fakeNode(),
       debug = fakeDebugger()

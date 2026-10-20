@@ -146,7 +146,7 @@ export class TraceSession {
       []
     )
     let pending = false
-    if (!existing || (existing.condition ?? '') !== (edit.when ?? '')) {
+    if (!existing || existing.kind === 'log' || (existing.condition ?? '') !== (edit.when ?? '')) {
       const result = await this.debug.setBreakpoint(
         id,
         sourceId,
