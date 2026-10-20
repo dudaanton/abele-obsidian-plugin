@@ -37,5 +37,11 @@
   },
   "repository.switchTab": {
     "englishHash": "3e7bc191d6ad13c764e61866bca5ab7dec32118c42d147a584c4013ac4305e19"
+  },
+  "repository.loadMoreResults": {
+    "englishHash": "8a3197f9c9dac2366f2e75a931e97b594a68f237fd361c164ed2c183371e37e3"
+  },
+  "repository.searchOmitted": {
+    "englishHash": "b06418ee71aa4ecf72990994a76ff81be1c8c2697cd746087d7410ef61c4df6a"
   }
 }
