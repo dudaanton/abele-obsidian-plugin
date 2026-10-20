@@ -354,6 +354,7 @@ it.each(['desktop', 'phone'])(
       visible('[aria-label="Caught exceptions"]').scrollIntoView({block:'center'});
       await shot(${JSON.stringify(name)}+'-exceptions');
       const frame=binding.controller.session.frames[binding.controller.session.frame],sourceId=api.DebuggerService.instance.debugFor(target,'src/journey.cjs').sourceId;
+      const showPoints=()=>[...document.querySelectorAll('.abele-debug-panel__group')].find(g=>g.querySelector(':scope > .tree-item-self .abele-tree-item__text')?.textContent==='Breakpoints').scrollIntoView({block:'center'});
       await binding.controller.setBreakpoint('sample-controls',sourceId,frame.line);
       const bpMenu=async()=>{
         const row=await until(()=>[...document.querySelectorAll('.abele-debug-panel .tree-item-self')].find(r=>r.querySelector('.abele-tree-item__text')?.textContent===frame.file.split('/').pop()+':'+frame.line),'breakpoint row');
@@ -376,18 +377,22 @@ it.each(['desktop', 'phone'])(
       press([...logMessage.closest('.modal').querySelectorAll('button')].find(b=>b.offsetParent&&b.textContent.trim()==='Edit'));
       await approve('breakpoint','log-point');
       await until(()=>binding.controller.snapshot.breakpoints.some(b=>b.log_message==='sample {1 < 2 && "a" < "b"}'),'log message saved verbatim');
+      showPoints();
       await shot(${JSON.stringify(name)}+'-log-point');
       await bpMenu();press(item('Disable breakpoint'));
       await until(()=>binding.controller.knownBreakpoints().some(b=>b.id==='sample-controls'&&!b.enabled),'disabled breakpoint');
-      await shot(${JSON.stringify(name)}+'-disabled');
+      showPoints();
+      await shot(${JSON.stringify(name)}+'-breakpoint-disabled');
       press(visible('[aria-label="Remove all breakpoints"]'));
       await until(()=>!binding.controller.knownBreakpoints().length,'all breakpoints removed');
+      showPoints();
       await shot(${JSON.stringify(name)}+'-breakpoints-empty');
       const debugLeaf=app.workspace.getLeavesOfType('abele-debug-view')[0];
       const sourceLeaf=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.getState().path==='src/journey.cjs');
       await app.workspace.revealLeaf(sourceLeaf);app.workspace.leftSplit.collapse();app.workspace.rightSplit.collapse();
       await recordPoint(frame.line,['next'],undefined,{when:'1 < 2 && "a" < "b"',shot:${JSON.stringify(name)}+'-record-point-editor',approve:async()=>{await app.workspace.revealLeaf(debugLeaf);app.workspace.rightSplit.expand();await approve('breakpoint','record-point')}});
       await until(()=>binding.trace.breakpoints().some(b=>b.kind==='record'&&b.when==='1 < 2 && "a" < "b"'),'conditional record point saved');
+      showPoints();
       await shot(${JSON.stringify(name)}+'-record-point');
       const watch=await until(()=>{const field=visible('.abele-debug-panel__add input');return field&&!field.disabled?field:null},'watch input ready');
       watch.value='sampleValue_'+'value'.repeat(45);watch.dispatchEvent(new Event('input',{bubbles:true}));
