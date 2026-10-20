@@ -253,6 +253,7 @@ it('shows direction, status and duration of program requests', () => {
       },
     },
   })
+  expect(w.find('.abele-trace-glyph[aria-label="Incoming, 200"]').exists()).toBe(true)
   expect(w.text()).toContain('localhost:4000')
   expect(w.text()).toContain('Incoming')
   expect(w.text()).toContain('Outgoing')
