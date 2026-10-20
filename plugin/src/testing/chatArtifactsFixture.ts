@@ -24,6 +24,7 @@ export async function chatArtifactsFixture(state: 'empty' | 'populated' | 'long'
     await app.vault.createBinary(`${root}/Images/${suffix}.png`, png.buffer)
   }
   return defineComponent({
+    inheritAttrs: false,
     emits: ['close'],
     setup(_, { emit }) {
       const config = AbeleConfig.getInstance()
