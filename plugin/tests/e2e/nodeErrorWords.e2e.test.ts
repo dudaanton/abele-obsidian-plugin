@@ -26,7 +26,7 @@ const probe = (device: string) =>
       const root = line.closest('.abele-node-chat').getBoundingClientRect();
       require('fs').writeFileSync(${JSON.stringify(shots)} + '/${device}-tls-error.png',
         (await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG());
-      const tlsWords = line.textContent.includes('Check its address') && !line.textContent.includes('paired_route');
+      const tlsWords = line.textContent.includes('Check its address') && line.textContent.includes('paired_route_tls_or_unreachable');
       let otherWords = true;
       for (const [code, expected] of [
         ['unauthorized', 'The node refused access. Pair again or check your permissions.'],
@@ -40,7 +40,7 @@ const probe = (device: string) =>
         connection.error.value = code;
         await wait(100);
         const current = line.getBoundingClientRect();
-        otherWords &&= line.title === code && line.textContent === expected &&
+        otherWords &&= line.title === code && line.textContent === (expected.includes(code) ? expected : expected + ' (' + code + ')') &&
           current.left >= Math.max(0, root.left) && current.right <= Math.min(innerWidth, root.right) + 1;
       }
       require('fs').writeFileSync(${JSON.stringify(shots)} + '/${device}-unknown-error.png',

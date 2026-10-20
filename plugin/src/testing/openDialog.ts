@@ -20,7 +20,16 @@ import MapFormulaCreate from '@/components/mapBase/MapFormulaCreate.vue'
 import ProgramLaunchDialog from '@/debugger/ProgramLaunchDialog.vue'
 
 export interface DialogFixtureOptions {
-  delegationState?: 'working' | 'done' | 'failed' | 'empty'
+  managerRunState?: 'pending_approval' | 'running' | 'exited' | 'failed' | 'outcome_unknown'
+  delegationState?:
+    | 'working'
+    | 'done'
+    | 'failed'
+    | 'empty'
+    | 'paused'
+    | 'warning'
+    | 'prompt'
+    | 'answering'
   /** Inspect all synthetic recipient-row variants, without inheriting ambient rights. */
   recipientRows?: boolean
   agentsState?: import('./agentsFixture').AgentsFixtureState
@@ -36,6 +45,8 @@ import { chooseAttentionTab } from '@/agents/AgentsService'
 import NodeFilesDialog from '@/components/NodeFilesDialog.vue'
 import { nodeFilesFixture } from './nodeFilesFixture'
 import NodeDelegationGrantsDialog from '@/components/NodeDelegationGrantsDialog.vue'
+import NodeManagerRunCard from '@/components/NodeManagerRunCard.vue'
+import { nodeManagerFixture } from './nodeManagerFixture'
 import NodeDelegationCard from '@/components/NodeDelegationCard.vue'
 import { nodeDelegationGrantsFixture, nodeDelegationCardFixture } from './nodeDelegationFixture'
 import NodePairingDialog from '@/components/NodePairingDialog.vue'
@@ -396,6 +407,23 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
   'node-folder-picker': () => void nodeFolderPickerFixture(),
   'node-folder-picker-stale': () => void nodeFolderPickerFixture(true),
   'node-folder-picker-refused': () => void nodeFolderPickerFixture(false, true),
+  'node-manager-run': (options) =>
+    mountAlone(
+      defineComponent({
+        emits: ['close'],
+        setup:
+          (_props, { emit }) =>
+          () =>
+            h(
+              Modal,
+              { title: 'Manager command', size: 'tall', onClose: () => emit('close') },
+              {
+                default: () =>
+                  h(NodeManagerRunCard, { card: nodeManagerFixture(options?.managerRunState) }),
+              }
+            ),
+      })
+    ),
   'node-delegation-grants': () =>
     mountAlone(NodeDelegationGrantsDialog, nodeDelegationGrantsFixture()),
   'node-delegation-card': (options) =>

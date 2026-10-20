@@ -9,7 +9,7 @@ const shots = shotDir('abele-node-manager')
 
 async function closeFixture() {
   await evalLong(`(async () => {
-    const card=document.querySelector('.abele-node-delegation,.abele-agents');
+    const card=document.querySelector('.abele-node-delegation,.abele-node-manager-run,.abele-agents');
     const close=[...(card?.closest('.modal-container')?.querySelectorAll('.modal-header-button,.modal-close-button')??[])].find(el=>el.getBoundingClientRect().width);
     if(close)close.click();
     else document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}));
@@ -22,7 +22,16 @@ async function closeFixture() {
 }
 
 async function inspectCards(label: string) {
-  for (const state of ['working', 'done', 'failed', 'empty']) {
+  for (const state of [
+    'working',
+    'done',
+    'failed',
+    'empty',
+    'paused',
+    'warning',
+    'prompt',
+    'answering',
+  ]) {
     try {
       await evalLong(
         `window.__abeleTest.openDialog('node-delegation-card', {delegationState:${JSON.stringify(state)}})`
@@ -31,14 +40,41 @@ async function inspectCards(label: string) {
         await evalLong(`(async () => {
         for (let i=0;i<100&&!document.querySelector('.abele-node-delegation');i++) await new Promise(r=>setTimeout(r,50));
         const card=document.querySelector('.abele-node-delegation'), details=card.querySelector('details');
-        return JSON.stringify({overflow:card.scrollWidth>card.clientWidth+1,open:details.open,prompt:!!card.querySelector('[data-pending-prompts]'),text:card.textContent})
+        return JSON.stringify({overflow:card.scrollWidth>card.clientWidth+1,open:details.open,prompt:!!card.querySelector('[data-pending-prompts],.abele-tool-approval'),text:card.textContent})
       })()`)
       ) as { overflow: boolean; open: boolean; prompt: boolean; text: string }
       expect(report.overflow).toBe(false)
-      expect(report.open).toBe(state === 'working' || state === 'empty')
-      expect(report.prompt).toBe(state === 'working')
+      expect(report.open).toBe(
+        state === 'working' || state === 'empty' || state === 'prompt' || state === 'answering'
+      )
+      expect(report.prompt).toBe(state === 'working' || state === 'prompt' || state === 'answering')
+      if (state === 'paused') expect(report.text).toContain('Paused; can continue')
+      if (state === 'warning') expect(report.text).toContain('Sample cleanup warning')
+      if (state === 'prompt')
+        expect(report.text).toContain('npm test -- tests/sample-parser.test.ts')
       expect(report.text).toContain('work/sample-parser-boundaries')
       columnShot(`${shots}/${label}-${state}.png`)
+    } finally {
+      await closeFixture()
+    }
+  }
+  for (const state of ['pending_approval', 'running', 'exited', 'failed', 'outcome_unknown']) {
+    try {
+      await evalLong(
+        `window.__abeleTest.openDialog('node-manager-run', {managerRunState:${JSON.stringify(state)}})`
+      )
+      const report = JSON.parse(
+        await evalLong(`(async () => {
+        for(let i=0;i<100&&!document.querySelector('.abele-node-manager-run');i++) await new Promise(r=>setTimeout(r,50));
+        const root=document.querySelector('.abele-node-manager-run');
+        return JSON.stringify({overflow:root.scrollWidth>root.clientWidth+1,text:root.textContent,approval:!!root.querySelector('.abele-tool-approval')});
+      })()`)
+      ) as { overflow: boolean; text: string; approval: boolean }
+      expect(report.overflow).toBe(false)
+      expect(report.approval).toBe(state === 'pending_approval')
+      if (state === 'failed') expect(report.text).toContain('src/sample-parser.ts')
+      if (state === 'outcome_unknown') expect(report.text).toContain('The result is unknown')
+      columnShot(`${shots}/${label}-command-${state}.png`)
     } finally {
       await closeFixture()
     }

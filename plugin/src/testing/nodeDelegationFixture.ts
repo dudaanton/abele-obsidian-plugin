@@ -55,7 +55,7 @@ export function nodeDelegationGrantsFixture() {
   }
 }
 export function nodeDelegationCardFixture(
-  state?: 'working' | 'done' | 'failed' | 'empty'
+  state?: 'working' | 'done' | 'failed' | 'empty' | 'paused' | 'warning' | 'prompt' | 'answering'
 ): DelegationCard {
   const card: DelegationCard = {
     delegationId: 'sample-delegation',
@@ -78,17 +78,52 @@ export function nodeDelegationCardFixture(
       },
     ],
   }
+  if (state === 'paused') {
+    card.state = 'stopped'
+    card.reason = 'time_limit'
+  }
+  if (state === 'warning')
+    card.warnings = ['sample-extension: session_shutdown: Sample cleanup warning']
+  if (state === 'prompt' || state === 'answering')
+    card.prompts = [
+      {
+        kind: 'permission',
+        prompt_id: 'sample-prompt',
+        session_id: 'sample-child',
+        run_id: 'sample-run',
+        revision: 1,
+        action_digest: 'a'.repeat(64),
+        expires_at: Number.MAX_SAFE_INTEGER,
+        state: 'pending',
+        choice: null,
+        installation_id: null,
+        delivered: false,
+        tool_name: 'Bash',
+        title: 'Run sample checks',
+        input: {
+          command: 'npm test -- tests/sample-parser.test.ts',
+          cwd: '/workspace/sample-project/work/sample-parser',
+        },
+      },
+    ]
+  if (state === 'answering')
+    card.answers = { 'sample-prompt': { choice: 'allow', state: 'pending' } }
   if (!state) return card
   card.branch = 'work/sample-parser-boundaries'
-  card.pendingHumanPrompts = state === 'working' ? 2 : 0
+  card.pendingHumanPrompts =
+    state === 'working' ? 2 : state === 'prompt' || state === 'answering' ? 1 : 0
   card.state =
-    state === 'done'
-      ? 'completed'
-      : state === 'empty'
-        ? 'outcome unknown'
-        : state === 'failed'
-          ? 'failed'
-          : 'running'
+    state === 'paused'
+      ? 'stopped'
+      : state === 'warning'
+        ? 'completed'
+        : state === 'done'
+          ? 'completed'
+          : state === 'empty'
+            ? 'outcome unknown'
+            : state === 'failed'
+              ? 'failed'
+              : 'running'
   card.activity =
     state === 'empty'
       ? undefined
