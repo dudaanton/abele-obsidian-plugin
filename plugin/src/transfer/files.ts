@@ -13,6 +13,10 @@ import { TFile, type App } from 'obsidian'
 import type { EntryStatus, PlannedEntry } from './entries'
 import type { TransferEntry, TransferFile } from './types'
 import { noteLocalScriptWrite } from '@/scripting/ScriptTrust'
+import { AbeleConfig } from '@/services/AbeleConfig'
+
+const chatsRoot = () =>
+  (AbeleConfig.getInstance().ai?.chatFolder ?? '').replace(/\/?\{\{.*$/, '').replace(/\/$/, '')
 
 const SKILL_TYPE = 'abele-skill'
 const PROMPT_TYPE = 'abele-prompt'
@@ -21,8 +25,30 @@ const noteType = (app: App, file: TFile): unknown =>
   app.metadataCache.getFileCache(file)?.frontmatter?.type
 
 /** Everything in the vault that a transfer can carry as a file. */
-export async function collectFiles(app: App, scriptsFolder: string): Promise<TransferEntry[]> {
+export async function collectFiles(
+  app: App,
+  scriptsFolder: string,
+  chatFolder = chatsRoot()
+): Promise<TransferEntry[]> {
   const entries: TransferEntry[] = []
+  for (const file of app.vault.getFiles()) {
+    if (
+      !chatFolder ||
+      !file.path.startsWith(`${chatFolder}/`) ||
+      file.name !== '_folder.abeleaccess'
+    )
+      continue
+    entries.push({
+      section: 'chat-folder-access',
+      id: file.path.slice(chatFolder.length + 1),
+      label: file.parent?.name ?? file.name,
+      data: {
+        path: file.path.slice(chatFolder.length + 1),
+        base: chatFolder,
+        content: await app.vault.cachedRead(file),
+      } satisfies TransferFile,
+    })
+  }
 
   if (scriptsFolder) {
     const prefix = `${scriptsFolder}/`
@@ -66,8 +92,20 @@ export async function collectFiles(app: App, scriptsFolder: string): Promise<Tra
  * A script follows this vault's scripts folder; only when there is none does it fall back to
  * the folder it came from, which at least keeps the transfer from being lost.
  */
-export function targetPath(entry: TransferEntry, scriptsFolder: string): string {
+export function targetPath(
+  entry: TransferEntry,
+  scriptsFolder: string,
+  chatFolder = chatsRoot()
+): string {
   const file = entry.data as TransferFile
+  if (entry.section === 'chat-folder-access') {
+    if (
+      file.path.split('/').some((part) => !part || part === '.' || part === '..') ||
+      !file.path.endsWith('/_folder.abeleaccess')
+    )
+      throw new Error('Invalid chat folder access path')
+    return `${chatFolder || file.base}/${file.path}`
+  }
   if (entry.section !== 'script-files') return file.path
 
   const folder = scriptsFolder || file.base || ''

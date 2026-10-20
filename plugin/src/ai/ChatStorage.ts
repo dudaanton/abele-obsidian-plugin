@@ -655,7 +655,8 @@ export class ChatStorage {
     snapshot: ChatSnapshot,
     plan: ChatWritePlan,
     existingFile?: TFile,
-    matchesRevision?: (snapshot: ParsedChat) => boolean
+    matchesRevision?: (snapshot: ParsedChat) => boolean,
+    newDirectory?: string
   ): Promise<TFile | null> {
     if (existingFile)
       return this.withDiscussionFile(existingFile, async () => {
@@ -673,14 +674,15 @@ export class ChatStorage {
           throw new UiError(uiMessage('streamBError.0550ea75bd'))
         return this.savePreparedChat(snapshot, plan, existingFile, prepared.content)
       })
-    return this.savePreparedChat(snapshot, plan)
+    return this.savePreparedChat(snapshot, plan, undefined, undefined, newDirectory)
   }
 
   private async savePreparedChat(
     snapshot: ChatSnapshot,
     plan: ChatWritePlan,
     existingFile?: TFile,
-    verifiedContent?: string
+    verifiedContent?: string,
+    newDirectory?: string
   ): Promise<TFile | null> {
     const { app } = GlobalStore.getInstance()
     let { metadata } = snapshot
@@ -775,7 +777,10 @@ export class ChatStorage {
 
     let content = plan.kind === 'rewrite' ? plan.content : serializeChat(snapshot)
     const title = metadata.title || `Chat ${dayjs().format('YYYY-MM-DD HH-mm')}`
-    const desiredPath = this.resolveChatPath(title)
+    const defaultPath = this.resolveChatPath(title)
+    const desiredPath = newDirectory
+      ? `${newDirectory}/${defaultPath.slice(defaultPath.lastIndexOf('/') + 1)}`
+      : defaultPath
 
     // Ensure parent folder exists
     const folder = desiredPath.substring(0, desiredPath.lastIndexOf('/'))
@@ -1008,7 +1013,9 @@ export class ChatStorage {
   async renameChat(file: TFile, newTitle: string): Promise<TFile | null> {
     const { app } = GlobalStore.getInstance()
     const oldPath = file.path
-    const newPath = this.resolveChatPath(newTitle)
+    const proposed = this.resolveChatPath(newTitle)
+    const prefix = oldPath.includes('/') ? oldPath.slice(0, oldPath.lastIndexOf('/') + 1) : ''
+    const newPath = `${prefix}${proposed.slice(proposed.lastIndexOf('/') + 1)}`
 
     // Same path — nothing to do
     if (oldPath === newPath) return null

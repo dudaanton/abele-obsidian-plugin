@@ -686,8 +686,25 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     set: (value) => this.setOverride('permissionMode', value),
   })
   public readonly toolModes = computed<Record<string, ToolMode>>({
-    get: () => this.overrides.value.toolModes ?? this.agent.value?.toolModes ?? {},
+    get: () => this.folderToolAccess.value.modes,
     set: (value) => this.setOverride('toolModes', value),
+  })
+
+  public readonly folderToolAccess = computed(() =>
+    this.chatService.folders.accessFor(
+      this.chatService.folderLocation(this),
+      this.overrides.value.toolModes ?? this.agent.value?.toolModes ?? {}
+    )
+  )
+  public readonly ownToolModes = computed(
+    () => this.overrides.value.toolModes ?? this.agent.value?.toolModes ?? {}
+  )
+  public readonly folderToolFloor = computed(() => {
+    const modes = this.chatService.folders.accessFor(
+      this.chatService.folderLocation(this),
+      {}
+    ).modes
+    return Object.keys(modes).length ? modes : undefined
   })
   public readonly customSystemPrompt = ref('')
   public readonly customSystemPromptNotePath = ref('')
@@ -3011,7 +3028,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     } else {
       if (alwaysAllow) {
         const key = tc.permissionKey ?? tc.name
-        this.toolModes.value = { ...this.toolModes.value, [key]: 'auto' }
+        this.toolModes.value = { ...this.ownToolModes.value, [key]: 'auto' }
       }
       this.updateChatMessage(
         (m) => m.toolCallId === tc.id && m.toolStatus === 'pending',
@@ -4190,6 +4207,25 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       messages: this.allChatMessages,
       internalMessages: this.allInternalMessages,
     }
+  }
+
+  /** Explicit folder creation persists even an empty chat, before its first turn. */
+  async createInDirectory(directory: string): Promise<void> {
+    if (this.currentChatFile.value) return
+    const snapshot = this.snapshot()
+    const plan = this.log.plan(snapshot)
+    const file = await ChatStorage.getInstance().saveChat(
+      snapshot,
+      plan,
+      undefined,
+      undefined,
+      directory
+    )
+    if (!file) throw new Error(t('chatTree.createFailed'))
+    this.commentIdentity = snapshot.metadata.commentId
+    this.log.commit(snapshot, plan)
+    this.currentChatFile.value = file
+    this.chatService.saveTabs()
   }
 
   private async writeNow(): Promise<void> {

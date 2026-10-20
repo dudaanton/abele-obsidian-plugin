@@ -15,6 +15,7 @@ export const TRANSFER_SECTIONS = [
   'script-files',
   'skill-notes',
   'prompt-notes',
+  'chat-folder-access',
   'links',
   'header-buttons',
   'automations',
@@ -37,12 +38,18 @@ export const TRANSFER_SECTIONS = [
 export type SectionId = (typeof TRANSFER_SECTIONS)[number]
 
 /** The sections whose entries are files in the vault rather than settings. */
-export const FILE_SECTIONS = ['script-files', 'skill-notes', 'prompt-notes'] as const
+export const FILE_SECTIONS = [
+  'script-files',
+  'skill-notes',
+  'prompt-notes',
+  'chat-folder-access',
+] as const
 
 export const FILE_SECTION_LABELS: Record<(typeof FILE_SECTIONS)[number], string> = {
   'script-files': 'Scripts',
   'skill-notes': 'Skills',
   'prompt-notes': 'Prompt notes',
+  'chat-folder-access': 'Chat folder access',
 }
 
 export const isFileSection = (section: SectionId): boolean =>

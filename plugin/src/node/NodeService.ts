@@ -528,6 +528,15 @@ export class NodeService {
     return connection
   }
 
+  /** Cached child sessions only; navigation never opens a connection to discover them. */
+  chatChildren(parentId: string): Array<{ registrationId: string; sessionId: string }> {
+    return [...this.connections].flatMap(([registrationId, connection]) =>
+      (connection.delegationCards.value[parentId] ?? []).flatMap((card) =>
+        card.sessionId ? [{ registrationId, sessionId: card.sessionId }] : []
+      )
+    )
+  }
+
   /** Restore durable mailboxes even when no node or parent chat tab is open. */
   resumeDelegations(): void {
     for (const node of this.nodes.value) {

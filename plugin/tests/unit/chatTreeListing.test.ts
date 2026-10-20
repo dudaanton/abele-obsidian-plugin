@@ -40,3 +40,20 @@ it('lists only open chats in presentation order, with folder, agent and live sta
   await service.closeTab(first)
   expect(service.listOpenChats().map((chat) => chat.id)).toEqual([second])
 })
+
+it('closes a parent and all its nested discussions without restoring files', async () => {
+  const parentId = service.createTab()
+  const childId = service.createTab()
+  const parent = service.getSession(parentId)!
+  const child = service.getSession(childId)!
+  parent.currentChatFile.value = app.vault.getAbstractFileByPath(
+    'AI/Chats/Projects/sample.abchat'
+  ) as TFile
+  child.anchor.value = { note: parent.currentChatFile.value.path, quote: 'Sample passage' }
+  vi.spyOn(parent, 'saveForRelease').mockResolvedValue()
+  vi.spyOn(child, 'saveForRelease').mockResolvedValue()
+  await service.closeTab(parentId)
+  expect(service.getSession(parentId)).toBeNull()
+  expect(service.getSession(childId)).toBeNull()
+  expect(app.vault.getAbstractFileByPath('AI/Chats/Projects/sample.abchat')).toBeTruthy()
+})

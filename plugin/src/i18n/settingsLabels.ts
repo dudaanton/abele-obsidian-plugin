@@ -15,6 +15,7 @@ const metadata = new Map<string, MessageKey>(
 metadata.set('GitHub', 'settings.GithubSettings.git_hosting.a3002011')
 metadata.set('GitHub connections', 'settings.git.repositoryConnections')
 metadata.set('GitHub tabs', 'settings.metadata.b9227122bad532e6')
+metadata.set('Chat folder access', 'chatTree.transferLabel')
 const blockSections = new Set<string>(
   SECTIONS.filter((section) => section.kind === 'block').map((section) => section.id)
 )

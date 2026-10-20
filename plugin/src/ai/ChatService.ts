@@ -32,6 +32,9 @@ import {
 } from './ChatPresentationSession'
 import { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import { NodeService } from '@/node/NodeService'
+import { ChatFolders } from '@/chats/ChatFolders'
+import { ChatTreeModel } from '@/chats/ChatTreeModel'
+import { chatTreeSource } from '@/chats/chatTree'
 
 /** How many chats the sidebar holds open at once. */
 export const MAX_TABS = 20
@@ -71,6 +74,14 @@ interface FileOpenRequest {
 }
 
 export class ChatService {
+  private chatTree?: ChatTreeModel
+  get tree(): ChatTreeModel {
+    return (this.chatTree ??= new ChatTreeModel(this))
+  }
+  private chatFolders?: ChatFolders
+  get folders(): ChatFolders {
+    return (this.chatFolders ??= new ChatFolders(GlobalStore.getInstance().app, this))
+  }
   private static instance: ChatService | null = null
 
   private sessions = new Map<string, ChatSession>()
@@ -159,6 +170,7 @@ export class ChatService {
    * searches every chat. The chat component that opens it sets it back.
    */
   public readonly historyRequest = ref(false)
+  public readonly treeRequest = ref(0)
 
   /** The same for the find bar of the chat in front — the command that finds in it. */
   public readonly findRequest = ref(false)
@@ -696,7 +708,31 @@ export class ChatService {
     )
   }
 
-  async closeTab(tabId: string): Promise<void> {
+  childTabs(tabId: string): string[] {
+    const session = this.sessions.get(tabId)
+    const path = session?.currentChatFile.value?.path
+    const nodes = session?.delegationParentId
+      ? NodeService.getInstance()
+          .chatChildren(session.delegationParentId)
+          .map((child) => `node:${child.registrationId}:${child.sessionId}`)
+      : []
+    return this.tabOrder.value.filter(
+      (id) =>
+        id !== tabId &&
+        ((path &&
+          (this.sessions.get(id)?.anchor.value?.note === path ||
+            this.runTabs.get(id)?.parentChat === path)) ||
+          nodes.includes(id))
+    )
+  }
+
+  async closeTab(tabId: string, visited = new Set<string>()): Promise<void> {
+    if (visited.has(tabId)) return
+    visited.add(tabId)
+    const parentPath = this.sessions.get(tabId)?.currentChatFile.value?.path
+    if (parentPath) {
+      for (const id of this.childTabs(tabId)) await this.closeTab(id, visited)
+    }
     if (this.runTabs.has(tabId)) {
       this.closeRunTab(tabId)
       return
@@ -732,6 +768,11 @@ export class ChatService {
 
   /** The chats whose tabs were closed, the latest last: what Cmd+Shift+T brings back. */
   private readonly closedTabs: string[] = []
+
+  followChatMoves(moved: Map<string, string>): void {
+    for (let index = 0; index < this.closedTabs.length; index++)
+      this.closedTabs[index] = moved.get(this.closedTabs[index]) ?? this.closedTabs[index]
+  }
 
   private rememberClosed(session: ChatSession): void {
     const path = session.currentChatFile.value?.path
@@ -1322,6 +1363,21 @@ export class ChatService {
     return Array.from(this.sessions.values())
   }
 
+  /** A discussion follows the chat it belongs to, before its own file is moved too. */
+  folderLocation(session: ChatSession): string {
+    let location = session.currentChatFile.value?.path ?? ''
+    const seen = new Set<string>()
+    let current: ChatSession | null = session
+    while (current && !seen.has(current.id)) {
+      seen.add(current.id)
+      const parent = current.anchor.value?.note
+      if (!parent?.endsWith('.abchat')) break
+      location = parent
+      current = this.getSessionByFile(parent)
+    }
+    return location
+  }
+
   /** Open conversations, in navigation order. Read-only helper transcripts are excluded. */
   listOpenChats(): OpenChatInfo[] {
     const root = AbeleConfig.getInstance()
@@ -1330,18 +1386,31 @@ export class ChatService {
     return this.tabOrder.value.flatMap((id) => {
       const presentation = this.getPresentation(id)
       if (!presentation) return []
-      const session = this.sessions.get(id)
-      const path = session?.currentChatFile.value?.path ?? ''
+      const session = this.getSession(id)
+      const path = session ? this.folderLocation(session) : ''
       const parent = path.slice(0, path.lastIndexOf('/'))
       const folder = parent.startsWith(`${root}/`) ? parent.slice(root.length + 1) : ''
       const agent = session?.agent.value
-      const state = session?.commentState.value
+      const node = this.nodeSessions.get(id)
+      const state =
+        (session?.pendingQuestions.value || session?.pendingToolCalls.value.length
+          ? 'pending'
+          : session?.commentState.value) ??
+        (node?.projection.value.prompts.some((prompt) => prompt.state === 'pending')
+          ? 'pending'
+          : node?.error.value
+            ? 'error'
+            : undefined)
       return [
         {
           id,
           title: presentation.label.value,
           folder,
-          agent: agent ? { id: agent.id, name: agent.name } : null,
+          agent: agent
+            ? { id: agent.id, name: agent.name }
+            : node?.provider.value
+              ? { id: node.provider.value, name: node.provider.value }
+              : null,
           state:
             state === 'pending'
               ? ('waiting' as const)
@@ -1580,6 +1649,9 @@ export class ChatService {
   // ── Cleanup ───────────────────────────────────────────────────
 
   destroy(): void {
+    this.chatTree?.destroy()
+    if (chatTreeSource.value === this.chatTree) chatTreeSource.value = null
+    this.chatFolders?.destroy()
     this.disposed = true
     this.restoreGeneration++
     this.continueRestore?.()

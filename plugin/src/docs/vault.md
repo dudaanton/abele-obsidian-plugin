@@ -1224,6 +1224,18 @@ another asks first. The folder choice is saved with AI general settings and trav
 
 ## Chats
 
+Chats may be placed in real folders under the configured chat directory. Existing files remain
+where they are until explicitly moved. Moving a parent also moves its nested discussions;
+helper transcripts retain their parent reference. Closing a parent closes its nested chat
+presentations without restoring any files.
+
+Each folder may contain `_folder.abeleaccess`, a JSON object mapping tool permission keys to
+`off`, `ask`, or `auto`. Folder modes apply to all descendants and only raise the chat's resolved
+agent/default modes. They are resolved at use time, never copied into chat overrides; leaving a
+folder removes its contribution. These vault files sync normally and travel in the settings
+transfer's **Chat folder access** section, relative to the receiving chat directory. A folder
+can be deleted only when it contains no chats, child folders, or other files.
+
 An explicitly cut local branch carries `pendingBranchCut` in metadata until its first new
 record is appended. That record carries `branchCutAfter`, referencing its parent assistant
 or completed tool-call message ID. These optional fields survive log writes and compaction;
