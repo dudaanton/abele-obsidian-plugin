@@ -67,10 +67,10 @@
     "id": "@abele/node-protocol@0.0.0",
     "name": "@abele/node-protocol",
     "version": "0.0.0",
-    "size": 123393,
-    "unpackedSize": 1269986,
-    "shasum": "8b5a45b9b796f889f66bb066cbee125aaf208737",
-    "integrity": "sha512-o8IcXrrBpA0GOVyqm4SWAaZEJ7tdds5x9g3IRLSQ4yzyGAuy/f3xICRWjd5cVygvtIhoG9Ev1onPww0rmII7wg==",
+    "size": 125732,
+    "unpackedSize": 1289377,
+    "shasum": "34eeb44efad142e95a80f0cab2dc088ceb0bd093",
+    "integrity": "sha512-9zQ1Gd3AmDFQOCdCFNNZe3ZfzunW45hxiz+7PscUi8JMzzkgmcIrI9htX5gWRx97JH722ISSRiGWimcvQ/cBnw==",
     "filename": "abele-node-protocol-0.0.0.tgz",
     "files": [
       {
@@ -165,17 +165,17 @@
       },
       {
         "path": "dist/delegation.d.ts",
-        "size": 16814,
+        "size": 17932,
         "mode": 420
       },
       {
         "path": "dist/delegation.js",
-        "size": 4235,
+        "size": 4534,
         "mode": 420
       },
       {
         "path": "dist/delegation.js.map",
-        "size": 4685,
+        "size": 5018,
         "mode": 420
       },
       {
@@ -210,17 +210,17 @@
       },
       {
         "path": "dist/index.d.ts",
-        "size": 2101,
+        "size": 2131,
         "mode": 420
       },
       {
         "path": "dist/index.js",
-        "size": 1136,
+        "size": 1166,
         "mode": 420
       },
       {
         "path": "dist/index.js.map",
-        "size": 942,
+        "size": 963,
         "mode": 420
       },
       {
@@ -251,6 +251,21 @@
       {
         "path": "dist/lsp.js.map",
         "size": 4946,
+        "mode": 420
+      },
+      {
+        "path": "dist/manager.d.ts",
+        "size": 6659,
+        "mode": 420
+      },
+      {
+        "path": "dist/manager.js",
+        "size": 2646,
+        "mode": 420
+      },
+      {
+        "path": "dist/manager.js.map",
+        "size": 3263,
         "mode": 420
       },
       {
@@ -305,12 +320,12 @@
       },
       {
         "path": "dist/pi-updates.js",
-        "size": 12593,
+        "size": 12732,
         "mode": 420
       },
       {
         "path": "dist/pi-updates.js.map",
-        "size": 12827,
+        "size": 12957,
         "mode": 420
       },
       {
@@ -375,17 +390,17 @@
       },
       {
         "path": "dist/schemas.d.ts",
-        "size": 112863,
+        "size": 117333,
         "mode": 420
       },
       {
         "path": "dist/schemas.js",
-        "size": 13206,
+        "size": 13359,
         "mode": 420
       },
       {
         "path": "dist/schemas.js.map",
-        "size": 13143,
+        "size": 13243,
         "mode": 420
       },
       {
@@ -454,7 +469,7 @@
         "mode": 420
       }
     ],
-    "entryCount": 76,
+    "entryCount": 79,
     "bundled": []
   },
   {
@@ -495,10 +510,10 @@
     "id": "@abele/node-client@0.0.0",
     "name": "@abele/node-client",
     "version": "0.0.0",
-    "size": 48848,
-    "unpackedSize": 270325,
-    "shasum": "7019753d1e83dcbad7ba62f9207841528a3143ac",
-    "integrity": "sha512-iPP+s3p7lZt86s506JH4ylQnp/R3JLc1zsUAIep/g8PNDr3CO4EijH2dP9v+sqUtr2ipmMkmxazEa35U+S8rvA==",
+    "size": 48773,
+    "unpackedSize": 270126,
+    "shasum": "3b62cf0120afe1004d83d49886436999f6698f42",
+    "integrity": "sha512-QGv8fqEdIhIwFUybXqfguOShj3vZckh9p+WoF096CoRZIKAwux7gPwDN0SO1qDXwiqT92lSfemcPMGMeky2sIg==",
     "filename": "abele-node-client-0.0.0.tgz",
     "files": [
       {
@@ -598,12 +613,12 @@
       },
       {
         "path": "dist/paired.js",
-        "size": 14719,
+        "size": 14546,
         "mode": 420
       },
       {
         "path": "dist/paired.js.map",
-        "size": 11681,
+        "size": 11655,
         "mode": 420
       },
       {

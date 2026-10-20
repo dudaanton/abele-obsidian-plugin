@@ -1,7 +1,7 @@
 # Node browser packages
 
 **Temporary, unreleased vendor.** These four exact `0.0.0` npm tarballs contain the built browser
-packages of AbeleNode revision `ca2d0295a020a89cd642985cac5b19293568aa36`: pi chat
+packages of AbeleNode revision `19fc651d5f2021cd7610d22c1d781b2938ef072f` (v0.4.37): durable approved manager command/integration APIs, resumable delegation deadlines, retained reports after extension warnings, and pi chat
 checkpoints and online-only preview-bound restores, canonical user messages and turn identities,
 model/account catalogs, and the shared session
 transcript (`session.update`, modelled on ACP, with `sessionUpdatesOf` and the Claude, pi and ACP
