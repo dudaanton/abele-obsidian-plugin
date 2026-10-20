@@ -33,8 +33,8 @@
           <span class="abele-file-view__path"
             >{{ change.from ? `${change.from} → ` : '' }}{{ path }}</span
           >
-          <span v-if="change.when" class="abele-file-view__when">{{ change.when }}</span>
           <span ref="glyphHost" class="abele-file-view__tools" />
+          <span v-if="change.when" class="abele-file-view__when">{{ change.when }}</span>
         </span>
       </template>
     </Diff>

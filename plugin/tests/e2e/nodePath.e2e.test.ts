@@ -127,7 +127,7 @@ async function checkFileSearch(shell: 'desktop' | 'phone', entry = 'panel') {
   )
   // Native input goes through the host keymap, unlike dispatchEvent on our component root.
   await evalLong(
-    `(()=>{const web=require("@electron/remote").getCurrentWebContents();web.sendInputEvent({type:"keyDown",keyCode:"F",modifiers:["meta"]});web.sendInputEvent({type:"keyUp",keyCode:"F",modifiers:["meta"]});return "pressed find"})()`
+    `(()=>{const web=require("@electron/remote").getCurrentWebContents(),modifiers=require("process").platform==="darwin"?["meta"]:["control"];web.sendInputEvent({type:"keyDown",keyCode:"F",modifiers});web.sendInputEvent({type:"keyUp",keyCode:"F",modifiers});return "pressed find"})()`
   )
   await evalLong(
     `(async()=>{${prelude}await until(()=>visible(".abele-file-view .abele-github-find input"));const input=visible(".abele-file-view .abele-github-find input");if(document.activeElement!==input)throw Error("Native find did not focus the field");input.value="value";input.dispatchEvent(new Event("input",{bubbles:true}));await until(()=>visible(".abele-file-view .abele-github-find__match"));return "native find matches"})()`
