@@ -885,7 +885,7 @@ export class CommentService implements CommentInfoSource {
           // state alone; only an explicit new action may attempt another write.
           session.kind = previousKind
           session.chatTitle.value = previousTitle
-          session.bindAgent(previousAgentId)
+          session.bindAgent(previousAgentId, { keepNodeScope: true })
           session.restoreOverrides(previousOverrides)
           throw new Error(
             'The expansion could not be confirmed. Check the saved conversation before retrying.',
@@ -896,7 +896,7 @@ export class CommentService implements CommentInfoSource {
           if (recovered.unchanged) {
             session.kind = previousKind
             session.chatTitle.value = previousTitle
-            session.bindAgent(previousAgentId)
+            session.bindAgent(previousAgentId, { keepNodeScope: true })
             session.restoreOverrides(previousOverrides)
           }
           throw e
