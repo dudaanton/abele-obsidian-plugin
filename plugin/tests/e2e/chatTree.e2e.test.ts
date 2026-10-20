@@ -86,7 +86,7 @@ const probe = (label: string) => `(async () => {
     document.querySelector('.abele-chat-tree__folder [aria-label="' + folder + ': more"]').click()
     await until(() => document.querySelector('.menu'))
     await shot('folder-menu')
-    [...document.querySelectorAll('.menu-item')].find(item => item.textContent.includes('Access…')).click()
+    ;[...document.querySelectorAll('.menu-item')].find(item => item.textContent.includes('Access…')).click()
     await until(() => document.querySelector('.abele-folder-access'))
     await shot('folder-access')
     const modal = document.querySelector('.abele-folder-access')

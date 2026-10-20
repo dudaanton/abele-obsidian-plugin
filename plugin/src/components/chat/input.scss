@@ -209,6 +209,7 @@ body.is-mobile .abele-chat-input__textarea {
 // first and last glyphs' ink line up with the text above.
 .abele-chat-input__toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--size-4-2);
@@ -218,13 +219,19 @@ body.is-mobile .abele-chat-input__textarea {
 .abele-chat-input__toolbar-left,
 .abele-chat-input__toolbar-right {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--size-2-1);
   min-width: 0;
+  max-width: 100%;
 
   > .abele-obsidian-icon {
     flex-shrink: 0;
   }
+}
+
+.abele-chat-input__toolbar-right {
+  margin-inline-start: auto;
 }
 
 .abele-chat-input__tokens {
