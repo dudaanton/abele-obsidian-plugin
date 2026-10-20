@@ -444,6 +444,7 @@ it('shows incoming and outgoing program requests with correlated code on desktop
       children: number
       overflow: number
     }>(`(async()=>{${prelude}
+      for(const leaf of app.workspace.getLeavesOfType('abele-trace-run').concat(app.workspace.getLeavesOfType('abele-trace-value')))leaf.detach();
       // Older fixture daemons omit the additive HTTP metadata on read. Supply those two
       // recorded fixture fields at the transport boundary to exercise the newer wire contract.
       const client=nodes.connection(${JSON.stringify(registration)}).client,request=client.request;
