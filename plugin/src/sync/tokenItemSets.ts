@@ -652,6 +652,9 @@ export class TokenItemSets implements ShareSetSource {
     }
     return this.facts.get(key) ?? null
   }
+  closeDeletePreview(shareId: string): void {
+    for (const key of this.facts.keys()) if (key.startsWith(shareId + ':')) this.facts.delete(key)
+  }
   private async loadDeleteFacts(shareId: string, itemId: string | null): Promise<ShareDeleteFacts> {
     const issued = this.issued.get(shareId)
     if (!issued) throw new Error('Share is unavailable')

@@ -193,6 +193,7 @@ export interface ShareSetSource {
   removeCopy: (connectionId: string, itemId: string) => Promise<void>
   /** What deleting one item of a share, or the whole share when `itemId` is null, would take. */
   deleteFacts: (shareId: string, itemId: string | null) => ShareDeleteFacts | null
+  closeDeletePreview?: (shareId: string) => void
   deleteFromServer: (shareId: string, itemId: string | null) => Promise<void>
 }
 

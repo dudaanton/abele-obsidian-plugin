@@ -7,6 +7,8 @@ import SyncSettings from '@/components/settings/SyncSettings.vue'
 import ConnectionWindow from '@/components/sync/ConnectionWindow.vue'
 import TokenDialogs from '@/components/sync/TokenDialogs.vue'
 import ShareDialog from '@/components/sync/ShareDialog.vue'
+import ShareDetail from '@/components/sync/ShareDetail.vue'
+import ServerDeleteModal from '@/components/sync/ServerDeleteModal.vue'
 import { tokenUiFixture } from '@/testing/tokenUiFixture'
 import ShareSetsFixture from '@/testing/ShareSetsFixture.vue'
 import {
@@ -27,6 +29,55 @@ const detached: ConnectionItem = {
   edited: 1,
 }
 describe('shared item screens', () => {
+  it('invalidates a failed deletion preview when its confirmation closes', async () => {
+    const item = { id: 'file-a', kind: 'file' as const, path: 'Sample.md' }
+    const closeDeletePreview = vi.fn()
+    const source = {
+      choices: () => [],
+      shares: async () => [
+        {
+          id: 'share-a',
+          label: 'Sample share',
+          readOnly: false,
+          createdAt: '2025-01-01T00:00:00Z',
+          revokedAt: null,
+          items: [item],
+        },
+      ],
+      deleteFacts: () => ({
+        files: 0,
+        bytes: 0,
+        access: [],
+        canWrite: false,
+        unavailableReason: 'Unavailable',
+      }),
+      closeDeletePreview,
+    } as unknown as ShareSetSource
+    const wrapper = mount(ShareDialog, {
+      props: { source, host: 'sync.example' },
+      global: {
+        stubs: {
+          Modal: { template: '<div><slot /><slot name="footer" /></div>' },
+          Search: true,
+          ShareDetail: true,
+          ServerDeleteModal: true,
+        },
+      },
+    })
+    try {
+      await flushPromises()
+      wrapper.vm.open('share-a')
+      await wrapper.vm.$nextTick()
+      wrapper.getComponent(ShareDetail).vm.$emit('delete', item)
+      await wrapper.vm.$nextTick()
+      wrapper.getComponent(ServerDeleteModal).vm.$emit('close')
+      await wrapper.vm.$nextTick()
+      expect(closeDeletePreview).toHaveBeenCalledWith('share-a')
+      expect(wrapper.findComponent(ServerDeleteModal).exists()).toBe(false)
+    } finally {
+      wrapper.unmount()
+    }
+  })
   it('prevents duplicate local removal while the first request is pending', async () => {
     let finish!: () => void
     const wait = new Promise<void>((resolve) => {

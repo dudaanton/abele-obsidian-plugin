@@ -82,7 +82,7 @@
     :remove="(item) => source.remove(connectionId, openedShare!.id, item.id).then(reload)"
     :revoke="() => source.revoke(connectionId, openedShare!.id).then(reload)"
     @close="opened = null"
-    @delete="(item) => (deleting = { item: item?.id ?? null })"
+    @delete="(item) => openDeletePreview(item?.id ?? null)"
   />
   <ServerDeleteModal
     v-if="deleting && openedShare && deleteFacts"
@@ -94,9 +94,9 @@
     :choice="deleting.item ?? ALL"
     :note="deleteNote"
     :remove="() => source.deleteFromServer(openedShare!.id, deleting!.item).then(reload)"
-    @choose="(value) => (deleting = { item: value === ALL ? null : value })"
-    @close="deleting = null"
-    @done="deleting = null"
+    @choose="(value) => openDeletePreview(value === ALL ? null : value)"
+    @close="closeDeletePreview"
+    @done="closeDeletePreview"
   />
 </template>
 
@@ -202,8 +202,19 @@ async function run(action: () => Promise<void>) {
     busy.value = false
   }
 }
+function closeDeletePreview() {
+  if (openedShare.value) props.source.closeDeletePreview?.(openedShare.value.id)
+  deleting.value = null
+}
+function openDeletePreview(item: string | null) {
+  closeDeletePreview()
+  deleting.value = { item }
+}
 function close() {
-  if (!busy.value) emit('close')
+  if (!busy.value) {
+    closeDeletePreview()
+    emit('close')
+  }
 }
 async function reload() {
   shares.value = await props.source.shares(props.connectionId)
