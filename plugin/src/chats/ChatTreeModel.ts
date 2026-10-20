@@ -114,7 +114,7 @@ export class ChatTreeModel implements ChatTreeSource {
         cached.size !== file.stat.size ||
         (cached.open && !open)
       ) {
-        const content = await app.vault.cachedRead(file)
+        const content = await ChatStorage.getInstance().readNavigationFile(file, true)
         const metadata = parseChatMetadata(content)
         const parsed =
           content.includes('"subAgentRun"') || metadata?.kind === 'comment'

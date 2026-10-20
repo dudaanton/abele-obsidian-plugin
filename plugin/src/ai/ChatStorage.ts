@@ -75,6 +75,19 @@ interface DiscussionObservation {
 }
 
 export class ChatStorage {
+  /** Content access for the navigation's chat metadata and folder policy files. */
+  readNavigationFile(file: TFile, cached = false): Promise<string> {
+    const vault = GlobalStore.getInstance().app.vault
+    return cached ? vault.cachedRead(file) : vault.read(file)
+  }
+
+  async writeFolderAccess(path: string, content: string): Promise<void> {
+    const vault = GlobalStore.getInstance().app.vault
+    const file = vault.getAbstractFileByPath(path)
+    if (file instanceof TFile) await vault.modify(file, content)
+    else await vault.create(path, content)
+  }
+
   private static instance: ChatStorage | null = null
 
   static getInstance(): ChatStorage {

@@ -94,7 +94,7 @@ describe('saved-key request destinations', () => {
     expect(needsSecretApproval('fetch', { ...req, body: '${abele_key:missing}' })).toBe(true)
   })
   it('auto mode and interceptor policies cannot suppress an unconfirmed key question', async () => {
-    const session = new ChatSession('sample-session', ChatService.getInstance())
+    const session = new ChatSession(ChatService.getInstance(), 'sample-session')
     session.permissionMode.value = 'allow-all'
     session.toolModes.value = { fetch: 'auto' }
     expect(session.needsApproval('fetch', req)).toBe(true)

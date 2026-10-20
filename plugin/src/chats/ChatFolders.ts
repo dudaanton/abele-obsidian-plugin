@@ -93,7 +93,7 @@ export class ChatFolders {
     for (const file of this.app.vault.getFiles()) {
       if (!file.path.startsWith(`${this.root.value}/`) || file.name !== ACCESS_FILE) continue
       try {
-        const data: unknown = JSON.parse(await this.app.vault.read(file))
+        const data: unknown = JSON.parse(await ChatStorage.getInstance().readNavigationFile(file))
         if (!data || typeof data !== 'object' || Array.isArray(data)) continue
         access[this.folderOf(file.path)] = Object.fromEntries(
           Object.entries(data).filter(([, value]) =>
@@ -153,9 +153,7 @@ export class ChatFolders {
     if (!(this.app.vault.getAbstractFileByPath(this.path(folder)) instanceof TFolder))
       throw new Error(t('chatTree.folderMissing'))
     const content = JSON.stringify({ ...this.access.value[folder], ...modes })
-    const file = this.app.vault.getAbstractFileByPath(path)
-    if (file instanceof TFile) await this.app.vault.modify(file, content)
-    else await this.app.vault.create(path, content)
+    await ChatStorage.getInstance().writeFolderAccess(path, content)
     await this.reload()
   }
 
@@ -283,7 +281,7 @@ export class ChatFolders {
     }
     const seenRuns = new Set<string>()
     for (const file of files) {
-      const content = await this.app.vault.read(file)
+      const content = await ChatStorage.getInstance().readNavigationFile(file)
       if (!content.includes('"subAgentRun"')) continue
       for (const message of parseChat(content).messages) {
         const id = message.subAgentRun?.runId
