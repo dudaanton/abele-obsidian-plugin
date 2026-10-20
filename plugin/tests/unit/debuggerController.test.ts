@@ -27,6 +27,88 @@ it('accepts a fresh output snapshot without reporting missing earlier output', a
   await model.refreshOutput()
   expect(model.error).toBe('')
 })
+it('rebases an unchanged breakpoint intent once after a proven non-dispatched stale-state rejection', async () => {
+  const { model, command } = fixture()
+  command.mockResolvedValueOnce(
+    receipt('rejected', {
+      acceptance: 'rejected',
+      dispatch: 'not_dispatched',
+      code: 'stale_state',
+      snapshot: snapshot({ state_revision: 5, event_seq: 9 }),
+    })
+  )
+  command.mockImplementationOnce(async (_method, raw) => {
+    const params = raw as { upsert: { breakpoint_id: string; source_id: string; line: number }[] }
+    return receipt('completed', {
+      snapshot: snapshot({
+        state_revision: 6,
+        breakpoint_revision: 3,
+        event_seq: 10,
+        breakpoints: params.upsert.map((point) => ({
+          ...point,
+          status: 'verified',
+          resolved_line: point.line,
+          resolved_column: null,
+          message: null,
+        })),
+      }),
+    })
+  })
+  await model.toggleBreakpoint('sample-source', 7)
+  expect(command).toHaveBeenCalledTimes(2)
+  const first = command.mock.calls[0][1] as Record<string, unknown>
+  const second = command.mock.calls[1][1] as Record<string, unknown>
+  expect(second).toMatchObject({
+    expected_state_revision: 5,
+    expected_breakpoint_revision: 2,
+    upsert: first.upsert,
+    remove: first.remove,
+  })
+  expect(second.operation_id).not.toBe(first.operation_id)
+  expect(model.session.breakpoints).toContainEqual(
+    expect.objectContaining({ line: 7, state: 'set' })
+  )
+  expect(model.error).toBe('')
+})
+it.each(['possible', 'dispatched', 'incarnation', 'breakpoints'] as const)(
+  'does not rebase a breakpoint after %s evidence',
+  async (kind) => {
+    const { model, command } = fixture()
+    const newer = snapshot({
+      state_revision: 5,
+      event_seq: 9,
+      ...(kind === 'incarnation' ? { incarnation: 'sample-new-incarnation' } : {}),
+      ...(kind === 'breakpoints' ? { breakpoint_revision: 3 } : {}),
+    })
+    command.mockResolvedValueOnce(
+      receipt(kind === 'possible' ? 'outcome_unknown' : 'rejected', {
+        dispatch:
+          kind === 'possible'
+            ? 'possible'
+            : kind === 'dispatched'
+              ? 'dispatched'
+              : 'not_dispatched',
+        code: 'stale_state',
+        snapshot: newer,
+      })
+    )
+    await model.toggleBreakpoint('sample-source', 7)
+    expect(command).toHaveBeenCalledTimes(1)
+  }
+)
+it('bounds stale-state breakpoint rebasing to one additional attempt', async () => {
+  const { model, command } = fixture()
+  command.mockResolvedValue(
+    receipt('rejected', {
+      dispatch: 'not_dispatched',
+      code: 'stale_state',
+      snapshot: snapshot({ state_revision: 5, event_seq: 9 }),
+    })
+  )
+  await model.toggleBreakpoint('sample-source', 7)
+  expect(command).toHaveBeenCalledTimes(2)
+  expect(model.error).toBe('stale_state')
+})
 
 it('keeps adapter telemetry out of program output while retaining stdout and stderr', async () => {
   const { model, rpc } = fixture()

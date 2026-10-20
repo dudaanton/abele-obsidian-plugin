@@ -66,7 +66,7 @@ const empty = (): DebugSession => ({
 })
 
 /** Shared-control presentation, independent of Obsidian and provider authority.
- * No command outbox, automatic expression inspection or effect retry. */
+ * No command outbox, automatic expression inspection or uncertain effect retry. */
 export class DebuggerController {
   session = empty()
   actions: DebugAction[] = []
@@ -587,25 +587,60 @@ export class DebuggerController {
     change: (s: DebuggerSnapshot) => {
       upsert: { breakpoint_id: string; source_id: string; line: number; condition?: string }[]
       remove: string[]
-    }
-  ) {
+    },
+    allowRebase = true
+  ): Promise<void> {
     return this.human(async () => {
       // Earlier queued clicks may have confirmed a new set while this click waited.
       const invocation = this.invocation()
       const s = invocation.snapshot
       const generation = this.serial
+      const patch = change(s)
       const result = DebuggerReceiptSchema.parse(
         await this.transport.command('breakpoints.patch', {
           ...this.precondition(invocation),
           operation_id: crypto.randomUUID(),
           expected_breakpoint_revision: s.breakpoint_revision,
-          ...change(s),
+          ...patch,
         })
       )
       if (!this.current || generation !== this.serial) return
+      const rebase =
+        allowRebase &&
+        result.outcome === 'rejected' &&
+        result.dispatch === 'not_dispatched' &&
+        result.code === 'stale_state' &&
+        result.snapshot.debug_session_id === s.debug_session_id &&
+        result.snapshot.incarnation === s.incarnation &&
+        result.snapshot.target.target_id === s.target.target_id &&
+        result.snapshot.breakpoint_revision === s.breakpoint_revision &&
+        result.snapshot.state_revision > s.state_revision
       this.observe({ observation: 'current', snapshot: result.snapshot })
+      if (rebase)
+        return {
+          patch,
+          sessionId: s.debug_session_id,
+          incarnation: s.incarnation,
+          targetId: s.target.target_id,
+          breakpointRevision: s.breakpoint_revision,
+        }
       if (result.outcome !== 'completed') this.error = receiptMessage(result.code ?? result.outcome)
       this.notify()
+    }).then((rebase) => {
+      if (!rebase) return
+      const current = this.snapshot
+      if (
+        !this.current ||
+        !current ||
+        current.debug_session_id !== rebase.sessionId ||
+        current.incarnation !== rebase.incarnation ||
+        current.target.target_id !== rebase.targetId ||
+        current.breakpoint_revision !== rebase.breakpointRevision
+      )
+        return
+      // A rejected, non-dispatched patch had no effect. Keep its exact intent, retire fresh
+      // proposals again, and rebase only its state fence once; never retry uncertain effects.
+      return this.patchBreakpoints(() => rebase.patch, false)
     })
   }
   async refreshHistory() {
