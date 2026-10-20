@@ -1,5 +1,5 @@
 <template>
-  <Modal title="Share access" size="tall" phone-sheet @close="emit('close')">
+  <Modal title="Share access" size="tall" phone-sheet :can-close="() => !busy" @close="close">
     <Section
       desc="Give someone folders, groups and single notes with one token, or connect another device of yours to the whole vault. What a token opens can change later."
     >
@@ -70,7 +70,7 @@
     </Section>
     <p v-if="error" class="abele-token-dialog__error" role="alert">{{ error }}</p>
     <template #footer>
-      <Button text="Close" tooltip="Close this window" @click="emit('close')" />
+      <Button text="Close" tooltip="Close this window" :disabled="busy" @click="close" />
     </template>
   </Modal>
   <ShareDetail
@@ -201,6 +201,9 @@ async function run(action: () => Promise<void>) {
   } finally {
     busy.value = false
   }
+}
+function close() {
+  if (!busy.value) emit('close')
 }
 async function reload() {
   shares.value = await props.source.shares(props.connectionId)

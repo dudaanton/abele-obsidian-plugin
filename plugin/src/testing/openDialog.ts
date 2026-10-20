@@ -12,6 +12,7 @@ import { reviewScript } from '@/scripting/reviewScript'
 import { chatArtifactsFixture } from './chatArtifactsFixture'
 import { chatTreeFixture, chatFolderAccessFixture } from './chatTreeFixture'
 import TokenUiFixture from './TokenUiFixture.vue'
+import ShareSetsFixture from './ShareSetsFixture.vue'
 import NodeSyntaxFixture from './NodeSyntaxFixture.vue'
 import NodeLspFixture from './NodeLspFixture.vue'
 import { NodeSettingsAccessFixture } from './nodeSettingsAccessFixture'
@@ -786,6 +787,12 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
   'sync-connections': () => mountAlone(TokenUiFixture, { screen: 'connections' }),
   'sync-empty': () => mountAlone(TokenUiFixture, { screen: 'empty' }),
   'sync-share': () => mountAlone(TokenUiFixture, { screen: 'share' }),
+  'sync-set-empty': () => mountAlone(ShareSetsFixture, { screen: 'empty' }),
+  'sync-set-long': () => mountAlone(ShareSetsFixture, { screen: 'long' }),
+  'sync-set-readonly': () => mountAlone(ShareSetsFixture, { screen: 'readonly' }),
+  'sync-set-removed': () => mountAlone(ShareSetsFixture, { screen: 'removed' }),
+  'sync-set-delete': () => mountAlone(ShareSetsFixture, { screen: 'delete' }),
+  'sync-set-states': () => mountAlone(ShareSetsFixture, { screen: 'states' }),
   'sync-share-token': () => mountAlone(TokenUiFixture, { screen: 'share-token' }),
   'sync-review': () => mountAlone(TokenUiFixture, { screen: 'review' }),
   'sync-attachment': () => mountAlone(TokenUiFixture, { screen: 'attachment' }),

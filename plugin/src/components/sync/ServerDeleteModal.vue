@@ -9,6 +9,7 @@
     <Setting v-if="choices?.length" name="What to delete">
       <Dropdown
         :model-value="choice ?? ''"
+        :disabled="busy"
         :options="choices.map((one) => ({ value: one.value, display: one.label }))"
         @update:model-value="emit('choose', $event)"
       />

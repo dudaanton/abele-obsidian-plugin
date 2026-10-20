@@ -1,5 +1,5 @@
 <template>
-  <Modal :title="share.label" size="tall" phone-sheet @close="emit('close')">
+  <Modal :title="share.label" size="tall" phone-sheet :can-close="() => !busy" @close="close">
     <div class="abele-share-detail">
       <!-- Whether it works, whether it may change things, since when: one quiet line. -->
       <div class="abele-share-detail__state">
@@ -82,7 +82,7 @@
         tooltip="Close this access; what they have stays with them"
         @click="revoking = true"
       />
-      <Button text="Close" tooltip="Close this window" @click="emit('close')" />
+      <Button text="Close" tooltip="Close this window" :disabled="busy" @click="close" />
     </template>
   </Modal>
 </template>
@@ -140,6 +140,9 @@ async function run(action: () => Promise<void>) {
   } finally {
     busy.value = false
   }
+}
+function close() {
+  if (!busy.value) emit('close')
 }
 async function addItems(items: ShareItem[]) {
   if (items.length) await props.add(items)

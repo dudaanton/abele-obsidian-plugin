@@ -57,6 +57,7 @@ function close() {
   if (!busy.value) emit('close')
 }
 async function confirm() {
+  if (busy.value || files.value <= edited.value) return
   busy.value = true
   failure.value = ''
   try {

@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { describe, expect, it, vi } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
+import Button from '@/components/obsidian/Button.vue'
 import ConnectionItems from '@/components/sync/ConnectionItems.vue'
 import RemoveCopyModal from '@/components/sync/RemoveCopyModal.vue'
 import SyncSettings from '@/components/settings/SyncSettings.vue'
@@ -7,6 +8,7 @@ import ConnectionWindow from '@/components/sync/ConnectionWindow.vue'
 import TokenDialogs from '@/components/sync/TokenDialogs.vue'
 import ShareDialog from '@/components/sync/ShareDialog.vue'
 import { tokenUiFixture } from '@/testing/tokenUiFixture'
+import ShareSetsFixture from '@/testing/ShareSetsFixture.vue'
 import {
   coveredBy,
   setTitle,
@@ -25,6 +27,46 @@ const detached: ConnectionItem = {
   edited: 1,
 }
 describe('shared item screens', () => {
+  it('prevents duplicate local removal while the first request is pending', async () => {
+    let finish!: () => void
+    const wait = new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    const remove = vi.fn(() => wait)
+    const wrapper = mount(RemoveCopyModal, {
+      props: { item: detached, remove },
+      global: { stubs: { Modal: { template: '<div><slot /><slot name="footer" /></div>' } } },
+    })
+    try {
+      const button = wrapper.findAllComponents(Button).find((one) => one.props('warning'))!
+      button.vm.$emit('click')
+      button.vm.$emit('click')
+      expect(remove).toHaveBeenCalledOnce()
+    } finally {
+      finish()
+      await flushPromises()
+      wrapper.unmount()
+    }
+  })
+  it.each(['empty', 'long', 'readonly', 'removed', 'delete', 'states'] as const)(
+    'mounts the synthetic %s screenshot state using the actual components',
+    (screen) => {
+      const wrapper = mount(ShareSetsFixture, {
+        props: { screen },
+        global: {
+          stubs: {
+            Modal: { template: '<main><slot /><slot name="footer" /></main>' },
+            Search: true,
+          },
+        },
+      })
+      try {
+        expect(wrapper.text().length).toBeGreaterThan(30)
+      } finally {
+        wrapper.unmount()
+      }
+    }
+  )
   it.each([false, true])(
     'gates the new Share dialog on server capability %s',
     async (supported) => {
