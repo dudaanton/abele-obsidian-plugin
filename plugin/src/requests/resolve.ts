@@ -60,6 +60,12 @@ export function outgoing(doc: RequestDoc, vars: Record<string, string>): Outgoin
     doc.body?.text && doc.method !== 'GET' && doc.method !== 'HEAD'
       ? fill(doc.body.text, vars)
       : undefined
+  if (
+    body !== undefined &&
+    doc.body?.format === 'json' &&
+    !Object.keys(headers).some((key) => key.toLowerCase() === 'content-type')
+  )
+    headers['Content-Type'] = 'application/json'
   return {
     method: doc.method,
     url: addressOf(doc, vars),

@@ -16,7 +16,7 @@ request may optionally go.
   address and Send; the resolved address under them; Params, Headers, Body, Scripts, Checks as
   folds; the answer beside (wide) or under (narrow, phone) with Body, Headers, Checks, History.
 - **The environment dialog** from the environment row's menu: plain values written into the
-  project's file, values kept in memory only, and *Say the step* (`X-Abele-Step`).
+  project's file, values kept in memory only, and _Say the step_ (`X-Abele-Step`).
 
 `src/requests/` holds it: `wire.ts` (the `http.v1` methods over the generic node request),
 `resolve.ts` (variables, the query, checks, curl; pure), `RequestsModel.ts` (one project's state
@@ -62,6 +62,9 @@ replaces it with `••••` in what it keeps and what it answers.
 
 ## Values kept in memory
 
+Values returned by a request script are ordinary environment values unless their names are
+explicitly marked secret in the environment. Declare tokens secret before running the script.
+
 A value marked secret in an environment is never written. One typed in the dialog is bound to the
 environment's own `base` origin; one a script takes from an answer, to the origin of that answer;
 one with no origin is bound where a person first sends it. A request to another origin does not
@@ -70,10 +73,16 @@ forgotten when the plugin unloads.
 
 ## Into a recording
 
+Each request tab has a device-local answer timeout, from 30 to 300 seconds, defaulting to
+300 seconds so a breakpoint inspection can finish before the answer arrives. The node's maximum
+is five minutes; after a timeout the outcome remains unknown and the request is never replayed.
+While the same project's debugger is paused, the tab names the paused location and opens the
+debugger in one press. On a phone a completed send scrolls its answer into view; JSON values wrap.
+
 When `DebuggerService` has a binding for the same node and project whose trace says it is
 recording, the tab shows a switch beside Send. On, the send carries the debugger session id: the
 node puts every step taken while the request is out under it, by time, and writes the request as
-an `http` step at the time it went. The answer's *N steps in code* opens that run on the
+an `http` step at the time it went. The answer's _N steps in code_ opens that run on the
 request's step.
 
 ## Import
@@ -84,7 +93,7 @@ request, and Postman (v2.x), Insomnia (v4) and Bruno collection exports; what on
 skipped with its reason; `importInto` makes each a request under a name not yet taken and adds the values the
 source names to the environment in use where it lacks them. A credential written out (an
 `Authorization` or cookie header, `-u`, a Bruno bearer token) is never imported: it is left out and
-named. Offered as the command *Import requests from the clipboard*, after which the view unfolds the
+named. Offered as the command _Import requests from the clipboard_, after which the view unfolds the
 collection and brings the new rows into sight, and the agent tool `http_import`, whose answer
 lists what was skipped and why; an import screen needs the designer first.
 

@@ -194,34 +194,70 @@ was closed. Results are detached, read-only snapshots, not setters.
 ```js
 // @name Reader shelf
 const v = view({ title: 'Reader shelf' })
-let items = [], busy = false, again = false, query = ''
-const card = (b) => new Card({
-  title: b.title || b.path.split('/').pop(),
-  subtitle: b.author || 'Author unavailable',
-  description: b.progress === null ? 'No saved position' :
-    (b.finished ? 'Finished' : Math.round(b.progress * 100) + '% read') +
-    (b.currentPage ? ` · ${b.pageUnit === 'locations' ? 'Location' : 'Page'} ${b.currentPage} of ${b.pageCount}` : ''),
-  actions: [new Button({ text: b.position && !b.finished ? 'Continue' : 'Read',
-    onClick: () => books.open(b.path) })],
-})
+let items = [],
+  busy = false,
+  again = false,
+  query = ''
+const card = (b) =>
+  new Card({
+    title: b.title || b.path.split('/').pop(),
+    subtitle: b.author || 'Author unavailable',
+    description:
+      b.progress === null
+        ? 'No saved position'
+        : (b.finished ? 'Finished' : Math.round(b.progress * 100) + '% read') +
+          (b.currentPage
+            ? ` · ${b.pageUnit === 'locations' ? 'Location' : 'Page'} ${b.currentPage} of ${b.pageCount}`
+            : ''),
+    actions: [
+      new Button({
+        text: b.position && !b.finished ? 'Continue' : 'Read',
+        onClick: () => books.open(b.path),
+      }),
+    ],
+  })
 function draw() {
-  const reading = items.filter(b => b.progress !== null && !b.finished)
+  const reading = items.filter((b) => b.progress !== null && !b.finished)
   const latest = [...reading].sort((a, b) => (b.lastOpenedAt || 0) - (a.lastOpenedAt || 0))[0]
-  const visible = items.filter(b => (b.title || b.path).toLowerCase().includes(query) ||
-    (b.author || '').toLowerCase().includes(query))
-  v.body = [new Text(`${items.length} files · ${reading.length} reading · ${items.filter(b => b.finished).length} finished`),
-    new Search({ placeholder: 'Search title, author or path', value: query,
-      onChange: value => { query = String(value).toLowerCase(); draw() } }),
+  const visible = items.filter(
+    (b) =>
+      (b.title || b.path).toLowerCase().includes(query) ||
+      (b.author || '').toLowerCase().includes(query)
+  )
+  v.body = [
+    new Text(
+      `${items.length} files · ${reading.length} reading · ${items.filter((b) => b.finished).length} finished`
+    ),
+    new Search({
+      placeholder: 'Search title, author or path',
+      value: query,
+      onChange: (value) => {
+        query = String(value).toLowerCase()
+        draw()
+      },
+    }),
     ...(latest ? [new Text('Continue reading'), card(latest)] : []),
-    new Grid(visible.map(card)), new Button({ text: 'Refresh', onClick: refresh })]
+    new Grid(visible.map(card)),
+    new Button({ text: 'Refresh', onClick: refresh }),
+  ]
 }
 async function refresh() {
-  if (busy) { again = true; return }
+  if (busy) {
+    again = true
+    return
+  }
   busy = true
-  try { do { again = false; const next = await books.list()
-    if (v.signal.aborted) return
-    items = next; draw()
-  } while (again) } finally { busy = false }
+  try {
+    do {
+      again = false
+      const next = await books.list()
+      if (v.signal.aborted) return
+      items = next
+      draw()
+    } while (again)
+  } finally {
+    busy = false
+  }
 }
 books.onChange(() => v.run(refresh), { signal: v.signal })
 v.on('focus', () => v.run(refresh))
@@ -339,9 +375,10 @@ answer. Only such a script can be named: a request's file lives in a node projec
 can write. It reads `params.request` (`method`, `url`, `headers`, `body`; keys still as
 `${abele_key:name}`), `params.vars`, `params.environment` and, after the send, `params.response`
 (`status`, `ms`, `headers`, `body`, keys blanked). It may return `{ request: { url?, method?,
-headers?, body? } }` before the send and `{ vars: { name: value } }` either way. A value the
-environment keeps plainly is written into its file; any other is held in memory and is put only
-into requests to the origin the answer came from. A send an agent makes never asks to confirm a
+headers?, body? } }` before the send and `{ vars: { name: value } }` either way. Returned values
+are written into the environment file unless their names are explicitly marked secret there.
+Declare tokens secret before sending: those values stay in memory and are put only into
+requests to the origin the answer came from. A send an agent makes never asks to confirm a
 script, so an unconfirmed one fails it.
 
 ## Lint rules

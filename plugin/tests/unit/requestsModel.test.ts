@@ -10,6 +10,69 @@ import { doc, fakeNode, ports } from '../helpers/requestsFakeNode'
 beforeEach(() => forgetRequestSecrets())
 
 describe('the requests of a project', () => {
+  it('keeps an answer to a request edited during sending in history rather than under the new address', async () => {
+    const node = fakeNode()
+    const id = 'Samples/Create sample.http'
+    const model = new RequestsModel(node.rpc, 'project-1', ports())
+    await model.load()
+    await model.open(id)
+    const status = node.rpc.status.bind(node.rpc)
+    let release!: () => void
+    let entered!: () => void
+    const reading = new Promise<void>((resolve) => {
+      entered = resolve
+    })
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    vi.spyOn(node.rpc, 'status').mockImplementation(async (...args) => {
+      entered()
+      await gate
+      return status(...args)
+    })
+    const sending = model.send(id, { interactive: true })
+    await reading
+    model.change(id, doc({ url: 'https://example.test/changed' }))
+    release()
+    await sending
+    expect(model.entry(id).outcome).toBeUndefined()
+    expect(model.entry(id).history).toHaveLength(1)
+    await model.flush(id)
+  })
+  it('uses a five minute wait by default and remembers a per-request timeout', async () => {
+    const node = fakeNode()
+    const p = ports()
+    const id = 'Samples/Create sample.http'
+    const model = new RequestsModel(node.rpc, 'project-1', p)
+    await model.load()
+    await model.send(id, { interactive: true })
+    expect(node.sent[0]?.timeout_ms).toBe(300000)
+    model.setTimeout(id, 60000)
+    await model.send(id, { interactive: true })
+    expect(node.sent[1]?.timeout_ms).toBe(60000)
+    expect(new RequestsModel(node.rpc, 'project-1', p).timeout(id)).toBe(60000)
+    expect(() => model.setTimeout(id, 300001)).toThrow()
+  })
+  it('starts an environment without an invented address', async () => {
+    const node = fakeNode()
+    const model = new RequestsModel(node.rpc, 'project-1', ports())
+    await model.createEnvironment('empty')
+    expect(model.state.env?.vars).toEqual([])
+  })
+  it('updates the sidebar immediately and clears an answer after an edit', async () => {
+    const node = fakeNode()
+    const model = new RequestsModel(node.rpc, 'project-1', ports())
+    const id = 'Samples/Create sample.http'
+    await model.load()
+    await model.send(id, { interactive: true })
+    model.change(id, doc({ method: 'PUT', url: 'https://example.test/other' }))
+    expect(model.state.collections[0]?.requests[0]).toMatchObject({
+      method: 'PUT',
+      url: 'https://example.test/other',
+    })
+    expect(model.entry(id).outcome).toBeUndefined()
+    await model.flush(id)
+  })
   it('creates an environment using the offered server address', async () => {
     const node = fakeNode()
     const model = new RequestsModel(node.rpc, 'project-1', ports())
@@ -117,7 +180,10 @@ describe('the requests of a project', () => {
       environment: 'local',
       method: 'POST',
       url: 'http://localhost:4000/samples',
-      headers: [{ key: 'Authorization', value: 'Bearer key-value-1' }],
+      headers: [
+        { key: 'Authorization', value: 'Bearer key-value-1' },
+        { key: 'Content-Type', value: 'application/json' },
+      ],
       body: '{"qty":2}',
     })
     expect(node.sent[0]!.secrets).toEqual(expect.arrayContaining(['key-value-1', 'tok-old']))
@@ -179,12 +245,12 @@ describe('the requests of a project', () => {
     expect(node.sent[0]!.headers).toContainEqual({ key: 'X-Signed', value: 'yes' })
     // The script never sees a key's value: keys go in after it.
     expect(JSON.stringify(run.mock.calls[0])).not.toContain('key-value-1')
-    expect(model.secrets()).toEqual({ token: 'tok-from-answer', newer: 'n-1' })
-    // A secret is not written; a variable the environment did not have stays in memory too.
+    expect(model.secrets()).toEqual({ token: 'tok-from-answer' })
+    // Declared secrets stay in memory; undeclared script values are ordinary values.
     expect(node.envs.get('local')!.vars).toEqual([
       { key: 'base', value: 'http://localhost:4000' },
       { key: 'token', secret: true },
-      { key: 'newer', secret: true },
+      { key: 'newer', value: 'n-1' },
     ])
     await model.send('Samples/Create sample.http', { interactive: false })
     expect(node.sent[1]!.secrets).toContain('tok-from-answer')

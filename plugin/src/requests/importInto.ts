@@ -13,6 +13,7 @@ export interface ImportOutcome {
   /** Values added to the environment, by name. */
   vars: string[]
   leftOut: string[]
+  warnings?: string[]
 }
 
 export async function importInto(
@@ -54,6 +55,7 @@ export async function importInto(
     skipped: imported.skipped ?? [],
     vars: added,
     leftOut: imported.leftOut,
+    ...(imported.warnings?.length ? { warnings: imported.warnings } : {}),
   }
 }
 
@@ -70,6 +72,7 @@ export function importWords(o: ImportOutcome, environment?: string): string {
     o.leftOut.length
       ? `Left out, as they carried credentials: ${o.leftOut.join(', ')}. Put them back as saved keys, \${abele_key:name}.`
       : '',
+    ...(o.warnings ?? []),
   ]
     .filter(Boolean)
     .join(' ')

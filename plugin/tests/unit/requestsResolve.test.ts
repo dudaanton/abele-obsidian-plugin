@@ -11,6 +11,15 @@ import {
 } from '@/requests/resolve'
 import type { RequestDoc, EnvironmentDoc } from '@/requests/wire'
 
+it('adds JSON Content-Type unless the user supplied an active one', () => {
+  const request = doc({ headers: [] })
+  expect(outgoing(request, {}).headers).toEqual({ 'Content-Type': 'application/json' })
+  request.headers = [{ key: 'content-type', value: 'application/custom' }]
+  expect(outgoing(request, {}).headers).toEqual({ 'content-type': 'application/custom' })
+  request.headers[0]!.off = true
+  expect(outgoing(request, {}).headers).toEqual({ 'Content-Type': 'application/json' })
+})
+
 const doc = (over: Partial<RequestDoc> = {}): RequestDoc => ({
   name: 'Create sample',
   method: 'POST',
@@ -52,7 +61,11 @@ describe('a saved request made ready to go', () => {
     expect(out).toEqual({
       method: 'POST',
       url: 'http://localhost:4000/samples/7?q=a%20b%26red&sig=${abele_key:sample-key}',
-      headers: { Authorization: 'Bearer ${abele_key:sample-key}', 'X-Token': 'tok-123' },
+      headers: {
+        Authorization: 'Bearer ${abele_key:sample-key}',
+        'X-Token': 'tok-123',
+        'Content-Type': 'application/json',
+      },
       body: '{"tag":"red"}',
     })
     expect(keyNamesOf(doc())).toEqual(['sample-key'])

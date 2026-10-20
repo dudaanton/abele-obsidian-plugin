@@ -16,14 +16,21 @@ export function importHttp(text: string): Imported {
   const lines = text.replace(/\r\n?/g, '\n').split('\n')
   const vars: EnvVar[] = []
   const leftOut: string[] = []
+  const warnings: string[] = []
   const blocks: { title: string; lines: string[] }[] = [{ title: '', lines: [] }]
   for (const line of lines) {
     const fileVar = /^@([\w.-]+)\s*=\s*(.*)$/.exec(line.trim())
-    if (fileVar && blocks.length === 1 && !blocks[0]!.lines.some((l) => l.trim())) {
+    if (fileVar) {
       const [, key, value] = fileVar
+      if (/\{\{[^}]+\.response\./.test(value!)) {
+        warnings.push(`${key}: response variables need an after-script; the chain was not imported`)
+        continue
+      }
       vars.push(
         SECRET_NAME.test(key!) ? { key: key!, secret: true } : { key: key!, value: value!.trim() }
       )
+      if (SECRET_NAME.test(key!))
+        warnings.push(`${key}: enter this secret in the environment before sending`)
       continue
     }
     const sep = /^###(.*)$/.exec(line)
@@ -37,7 +44,7 @@ export function importHttp(text: string): Imported {
       const l = b.lines[at]!.trim()
       if (!l) continue
       const meta = /^(?:#|\/\/)\s*@name\s+(.+)$/.exec(l)
-      if (meta) name = meta[1]!.trim()
+      if (meta) name ||= meta[1]!.trim()
       else if (!/^(#|\/\/)/.test(l)) break
     }
     const line = b.lines[at]?.trim()
@@ -78,5 +85,11 @@ export function importHttp(text: string): Imported {
       },
     ]
   })
-  return { collection: 'Imported', requests, vars, leftOut }
+  return {
+    collection: 'Imported',
+    requests,
+    vars,
+    leftOut,
+    ...(warnings.length ? { warnings } : {}),
+  }
 }

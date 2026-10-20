@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { detectFormat, importRequests } from '@/requests/importers'
 
+it('reports response variables instead of importing unresolved expressions', () => {
+  const result = importRequests(
+    '@itemId = {{create.response.body.$.id}}\n### Create item\n# @name create\nPOST https://example.test/items\n\n{}\n### Read item\nGET https://example.test/items/{{itemId}}'
+  )
+  expect(result.vars).toEqual([])
+  expect(result.warnings?.join(' ')).toMatch(/itemId.*response variable/i)
+  expect(result.requests[0]?.doc.name).toBe('Create item')
+})
+
 describe('importing requests from other clients', () => {
   it('reads a .http file of several requests with its variables', () => {
     const text = [

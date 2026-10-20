@@ -59,6 +59,7 @@ export class RequestsModel {
     sending: string[]
     /** Sends go into the recording while one goes on. */
     intoRecording: boolean
+    timeouts: Record<string, number>
     entries: Record<string, RequestEntry>
   }>({
     loading: false,
@@ -68,6 +69,7 @@ export class RequestsModel {
     environments: [],
     sending: [],
     intoRecording: true,
+    timeouts: {},
     entries: {},
   })
   private readonly saves = new Map<string, { timer: number; work?: Promise<void> }>()
@@ -87,6 +89,18 @@ export class RequestsModel {
 
   entry(id: string): RequestEntry {
     return (this.state.entries[id] ??= { history: [], runs: new Map() })
+  }
+
+  timeout(id: string): number {
+    const stored = this.state.timeouts[id] ?? Number(this.ports.prefs.get(`timeout:${id}`))
+    return Number.isInteger(stored) && stored >= 1000 && stored <= 300000 ? stored : 300000
+  }
+
+  setTimeout(id: string, ms: number) {
+    if (!Number.isInteger(ms) || ms < 1000 || ms > 300000)
+      throw new Error('Choose a wait between 1 and 300 seconds')
+    this.state.timeouts[id] = ms
+    this.ports.prefs.set(`timeout:${id}`, String(ms))
   }
 
   // ── The list and the environment ──
@@ -126,10 +140,10 @@ export class RequestsModel {
     this.ports.prefs.set('environment', name)
   }
 
-  async createEnvironment(name: string, base = 'http://localhost:3000') {
+  async createEnvironment(name: string, base?: string) {
     const env = await this.rpc.saveEnvironment(this.projectId, {
       name,
-      vars: [{ key: 'base', value: base }],
+      vars: base ? [{ key: 'base', value: base }] : [],
     })
     this.state.environments = [...new Set([...this.state.environments, env.name])].sort()
     await this.selectEnvironment(env.name)
@@ -190,14 +204,14 @@ export class RequestsModel {
     }
   }
 
-  private async readHistory(id: string) {
+  private async readHistory(id: string, restore = true) {
     const entry = this.entry(id)
     const selection = this.answerReads.get(id)
     const sends = await this.rpc.history(this.projectId, id)
     if (this.answerReads.get(id) !== selection) return
     entry.history = sends.map((s) => this.sendView(id, s))
     // A request opened later shows its last answer, as it was left.
-    if (!entry.outcome && sends[0]) await this.showSend(id, sends[0].id).catch(() => {})
+    if (restore && !entry.outcome && sends[0]) await this.showSend(id, sends[0].id).catch(() => {})
   }
 
   private sendView(id: string, s: SendSummary): HttpSend {
@@ -216,7 +230,18 @@ export class RequestsModel {
 
   /** Edits are written once typing settles; the tab shows them at once. */
   change(id: string, doc: RequestDoc) {
-    this.entry(id).doc = doc
+    const entry = this.entry(id)
+    if (JSON.stringify(entry.doc) !== JSON.stringify(doc) && !this.state.sending.includes(id)) {
+      this.answerReads.set(id, Symbol())
+      entry.outcome = undefined
+      entry.shown = undefined
+      entry.compare = undefined
+    }
+    entry.doc = doc
+    for (const collection of this.state.collections) {
+      const row = collection.requests.find((r) => r.id === id)
+      if (row) Object.assign(row, { name: doc.name, method: doc.method, url: doc.url })
+    }
     const pending = this.saves.get(id)
     if (pending) window.clearTimeout(pending.timer)
     const save = { timer: 0 } as { timer: number; work?: Promise<void> }
@@ -380,6 +405,7 @@ export class RequestsModel {
         requestId: id,
         ...(environment ? { environment } : {}),
         method: keyed.out.method,
+        timeoutMs: this.timeout(id),
         url: keyed.out.url,
         headers: Object.entries(keyed.out.headers).map(([key, value]) => ({ key, value })),
         ...(keyed.out.body !== undefined ? { body: keyed.out.body } : {}),
@@ -436,8 +462,8 @@ export class RequestsModel {
           runId: status.send.run.run_id,
           step: status.send.run.step,
         })
-      entry.outcome = outcome
-      await Promise.all([this.readHistory(id), this.refreshList()]).catch((e) =>
+      entry.outcome = JSON.stringify(entry.doc) === JSON.stringify(doc) ? outcome : undefined
+      await Promise.all([this.readHistory(id, false), this.refreshList()]).catch((e) =>
         console.debug('[requests] History not read again', e)
       )
       return outcome
@@ -449,8 +475,7 @@ export class RequestsModel {
     }
   }
 
-  /** Values a script hands back: a secret of the environment, or one it does not have, stays in
-   * memory; a plain one the environment keeps is written. */
+  /** Only values explicitly declared secret stay in memory. */
   private async keepVars(values: Record<string, string>, origin: string | undefined) {
     const env = this.state.env
     if (!env || !this.state.environment) return
@@ -461,8 +486,7 @@ export class RequestsModel {
       const known = vars.find((v) => v.key === key)
       // A token from an answer goes back only where it came from.
       if (!known) {
-        vars.push({ key, secret: true })
-        this.held.set(env.name, key, value, origin)
+        vars.push({ key, value })
         changed = true
       } else if (known.secret) this.held.set(env.name, key, value, origin)
       else if (known.value !== value) {
