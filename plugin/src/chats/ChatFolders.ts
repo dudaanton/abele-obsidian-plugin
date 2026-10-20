@@ -6,7 +6,7 @@ import type { ChatService } from '@/ai/ChatService'
 import type { ToolMode } from '@/ai/types'
 import { withFolderAccess, type ChatTreeFolder } from './chatTree'
 import { ChatStorage } from '@/ai/ChatStorage'
-import { parseChatMetadata, serializeMetadata } from '@/ai/ChatLog'
+import { parseChat, parseChatMetadata, serializeMetadata } from '@/ai/ChatLog'
 import { CommentService } from '@/ai/CommentService'
 import { RunStorage } from '@/ai/RunStorage'
 import { renameDelegationIdentity } from '@/ai/delegationIdentity'
@@ -57,7 +57,11 @@ export class ChatFolders {
     for (const event of ['create', 'delete', 'rename'] as const)
       this.events.push(
         app.vault.on(event as 'create', (file) => {
-          if (file.path === this.root.value || file.path.startsWith(`${this.root.value}/`))
+          if (
+            file.path === this.root.value ||
+            file.path.startsWith(`${this.root.value}/`) ||
+            (file instanceof TFile && file.extension === 'abchat')
+          )
             void this.reload()
         })
       )
@@ -65,6 +69,7 @@ export class ChatFolders {
       app.vault.on('modify', (file) => {
         if (file.name === ACCESS_FILE && file.path.startsWith(`${this.root.value}/`))
           void this.reload()
+        else if (file instanceof TFile && file.extension === 'abchat') this.revision.value++
       })
     )
     void this.reload()
@@ -274,6 +279,21 @@ export class ChatFolders {
       if (run && moved.has(run.parentChat)) {
         run.parentChat = moved.get(run.parentChat)!
         await RunStorage.getInstance().save(run)
+      }
+    }
+    const seenRuns = new Set<string>()
+    for (const file of files) {
+      const content = await this.app.vault.read(file)
+      if (!content.includes('"subAgentRun"')) continue
+      for (const message of parseChat(content).messages) {
+        const id = message.subAgentRun?.runId
+        if (!id || seenRuns.has(id)) continue
+        seenRuns.add(id)
+        const run = await RunStorage.getInstance().load(id)
+        if (run && moved.has(run.parentChat)) {
+          run.parentChat = moved.get(run.parentChat)!
+          await RunStorage.getInstance().save(run)
+        }
       }
     }
     this.service.followChatMoves(moved)

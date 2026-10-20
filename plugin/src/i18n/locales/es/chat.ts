@@ -1,4 +1,5 @@
 export const chat = {
+  'chatTree.missing': 'Esta conversación ya no está disponible.',
   'chatTree.transferLabel': 'Acceso de carpetas de chats',
   'chatTree.invalidFolder': 'Invalid folder name',
   'chatTree.configureFolder': 'Configure a chats folder first',

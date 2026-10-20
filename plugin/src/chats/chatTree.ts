@@ -1,4 +1,4 @@
-import { shallowRef } from 'vue'
+import { inject, shallowRef, type InjectionKey, type ShallowRef } from 'vue'
 import type { ToolMode } from '@/ai/types'
 
 /**
@@ -38,12 +38,14 @@ export interface ChatTreeFolder {
   /** Tools this folder raises for its chats above the default, by permission key. */
   access?: Record<string, ToolMode>
   children: ChatTreeEntry[]
+  canDelete?: boolean
 }
 
 export type ChatTreeEntry = ChatTreeFolder | ChatTreeChat
 
 /** What drives the tree: the plugin's chat service, or a prototype's made-up chats. */
 export interface ChatTreeSource {
+  refresh?(): Promise<void>
   /** The whole tree, folders first; reactive. */
   readonly root: { readonly value: ChatTreeEntry[] }
   readonly activeId: { readonly value: string | null }
@@ -63,6 +65,9 @@ export interface ChatTreeSource {
 
 /** Set by whatever shows chats as a tree; the chat's tab strip stays while it is null. */
 export const chatTreeSource = shallowRef<ChatTreeSource | null>(null)
+export const CHAT_TREE_SOURCE: InjectionKey<ShallowRef<ChatTreeSource | null>> =
+  Symbol('chat-tree-source')
+export const useChatTreeSource = () => inject(CHAT_TREE_SOURCE, chatTreeSource)
 
 /** Every chat in the tree, nested ones included, depth first. */
 export function chatsOf(entries: readonly ChatTreeEntry[]): ChatTreeChat[] {

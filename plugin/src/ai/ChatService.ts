@@ -63,9 +63,16 @@ export interface PendingInput {
   conversationVersion?: number
 }
 
+interface ClosedNodeChat {
+  reference: Extract<ChatReference, { kind: 'node-session' }>
+  at: number
+}
 interface TabsState {
   tabs: Array<ChatReference | { kind?: undefined; chatFilePath: string | null }>
   activeIndex: number
+  closedNodes?: ClosedNodeChat[]
+  nodeParents?: Record<string, string>
+  closedRuns?: string[]
 }
 
 interface FileOpenRequest {
@@ -119,6 +126,9 @@ export class ChatService {
 
   public readonly activeTabId = ref<string | null>(null)
   public readonly tabOrder = ref<string[]>([])
+  public readonly closedNodeChats = shallowRef<ClosedNodeChat[]>([])
+  public readonly nodeParentPaths = shallowRef<Record<string, string>>({})
+  public readonly closedRunIds = ref<string[]>([])
 
   public readonly activeSession = computed<ChatSession | null>(() =>
     this.activeTabId.value ? (this.sessions.get(this.activeTabId.value) ?? null) : null
@@ -232,6 +242,9 @@ export class ChatService {
     this.loadingFiles.clear()
     const { app } = GlobalStore.getInstance()
     const state = ChatService.loadTabsState(app)
+    this.closedNodeChats.value = state?.closedNodes ?? []
+    this.nodeParentPaths.value = state?.nodeParents ?? {}
+    this.closedRunIds.value = state?.closedRuns ?? []
     if (!state) {
       if (this.sessions.size === 0) this.mutatePresentation(() => this.createTabNow())
       return
@@ -383,6 +396,18 @@ export class ChatService {
           return this.getPresentation(id)?.reference ?? { kind: 'local-chat', chatFilePath: null }
         }),
       activeIndex: this.activeTabId.value ? this.tabOrder.value.indexOf(this.activeTabId.value) : 0,
+      ...(this.closedNodeChats.value.length
+        ? {
+            closedNodes: this.closedNodeChats.value.map((chat) => ({
+              ...chat,
+              reference: { ...chat.reference },
+            })),
+          }
+        : {}),
+      ...(Object.keys(this.nodeParentPaths.value).length
+        ? { nodeParents: { ...this.nodeParentPaths.value } }
+        : {}),
+      ...(this.closedRunIds.value.length ? { closedRuns: [...this.closedRunIds.value] } : {}),
     }
     GlobalStore.getInstance().app.saveLocalStorage(STORAGE_KEY, state)
   }
@@ -721,7 +746,8 @@ export class ChatService {
         id !== tabId &&
         ((path &&
           (this.sessions.get(id)?.anchor.value?.note === path ||
-            this.runTabs.get(id)?.parentChat === path)) ||
+            this.runTabs.get(id)?.parentChat === path ||
+            this.nodeParentPaths.value[id] === path)) ||
           nodes.includes(id))
     )
   }
@@ -733,19 +759,36 @@ export class ChatService {
     if (parentPath) {
       for (const id of this.childTabs(tabId)) await this.closeTab(id, visited)
     }
-    if (this.runTabs.has(tabId)) {
-      this.closeRunTab(tabId)
+    if (tabId.startsWith('run:')) {
+      if (!this.closedRunIds.value.includes(tabId))
+        this.closedRunIds.value = [...this.closedRunIds.value, tabId]
+      if (this.runTabs.has(tabId)) this.closeRunTab(tabId)
+      this.saveTabs()
       return
     }
 
     const node = this.nodeSessions.get(tabId)
     if (node) {
+      const parent = this.tabOrder.value.find((id) => this.childTabs(id).includes(tabId))
+      const path = parent && this.getSession(parent)?.currentChatFile.value?.path
+      if (path) this.nodeParentPaths.value = { ...this.nodeParentPaths.value, [tabId]: path }
+      this.closedNodeChats.value = [
+        ...this.closedNodeChats.value.filter(
+          (chat) => `node:${chat.reference.registrationId}:${chat.reference.sessionId}` !== tabId
+        ),
+        {
+          reference: { ...node.reference, title: node.label.value },
+          at: node.messages.value.at(-1)?.timestamp ?? 0,
+        },
+      ]
       node.destroy()
       this.dropTab(tabId)
       return
     }
     const session = this.sessions.get(tabId)
     if (!session) return
+    for (const message of session.allMessages.value)
+      if (message.subAgentRun) await this.closeTab(`run:${message.subAgentRun.runId}`, visited)
 
     // A comment being read here is not this tab's to end: it belongs to a note, and its
     // session goes on writing the same file and painting its marker. The × hands it back.
@@ -772,6 +815,9 @@ export class ChatService {
   followChatMoves(moved: Map<string, string>): void {
     for (let index = 0; index < this.closedTabs.length; index++)
       this.closedTabs[index] = moved.get(this.closedTabs[index]) ?? this.closedTabs[index]
+    this.nodeParentPaths.value = Object.fromEntries(
+      Object.entries(this.nodeParentPaths.value).map(([id, path]) => [id, moved.get(path) ?? path])
+    )
   }
 
   private rememberClosed(session: ChatSession): void {
@@ -1067,6 +1113,9 @@ export class ChatService {
         )
       )
       this.nodeSessions.set(id, presenter)
+      this.closedNodeChats.value = this.closedNodeChats.value.filter(
+        (chat) => `node:${chat.reference.registrationId}:${chat.reference.sessionId}` !== id
+      )
       this.tabOrder.value = [...this.tabOrder.value, id]
       this.activeTabId.value = id
       this.saveTabs()
@@ -1108,8 +1157,10 @@ export class ChatService {
     return (
       this.presentations.apply(intent, () => {
         this.runTabs.set(tabId, run)
+        this.closedRunIds.value = this.closedRunIds.value.filter((id) => id !== tabId)
         this.tabOrder.value = [...this.tabOrder.value, tabId]
         this.activeTabId.value = tabId
+        this.saveTabs()
         return true
       }) ?? false
     )
@@ -1366,6 +1417,7 @@ export class ChatService {
   /** A discussion follows the chat it belongs to, before its own file is moved too. */
   folderLocation(session: ChatSession): string {
     let location = session.currentChatFile.value?.path ?? ''
+    if (this.folders.folderOf(location)) return location
     const seen = new Set<string>()
     let current: ChatSession | null = session
     while (current && !seen.has(current.id)) {
@@ -1373,7 +1425,9 @@ export class ChatService {
       const parent = current.anchor.value?.note
       if (!parent?.endsWith('.abchat')) break
       location = parent
-      current = this.getSessionByFile(parent)
+      if (this.folders.folderOf(location)) return location
+      current =
+        this.getSessionByFile(parent) ?? CommentService.getInstance().getSessionByFile(parent)
     }
     return location
   }
@@ -1387,7 +1441,14 @@ export class ChatService {
       const presentation = this.getPresentation(id)
       if (!presentation) return []
       const session = this.getSession(id)
-      const path = session ? this.folderLocation(session) : ''
+      const parentSession = !session
+        ? this.getAllSessions().find((chat) => this.childTabs(chat.id).includes(id))
+        : null
+      const path = session
+        ? this.folderLocation(session)
+        : parentSession
+          ? this.folderLocation(parentSession)
+          : (this.nodeParentPaths.value[id] ?? '')
       const parent = path.slice(0, path.lastIndexOf('/'))
       const folder = parent.startsWith(`${root}/`) ? parent.slice(root.length + 1) : ''
       const agent = session?.agent.value

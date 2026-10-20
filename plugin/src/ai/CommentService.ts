@@ -554,6 +554,29 @@ export class CommentService implements CommentInfoSource {
    * The file and the session of a new comment, whatever it is anchored to. `agentId` names the
    * agent that answers it; without one it is the comment agent, which is what a note gets.
    */
+  private async discussionDirectory(anchor: CommentAnchor): Promise<string> {
+    const chats = ChatService.getInstance()
+    const { app } = GlobalStore.getInstance()
+    const seen = new Set<string>()
+    let path = anchor.note
+    while (path.endsWith('.abchat') && !seen.has(path)) {
+      seen.add(path)
+      const folder = chats.folders.folderOf(path)
+      if (folder) return chats.folders.path(folder)
+      const live = this.sessionOnFile(path)
+      if (live?.anchor.value?.note) {
+        path = live.anchor.value.note
+        continue
+      }
+      const file = app.vault.getAbstractFileByPath(path)
+      if (!(file instanceof TFile)) break
+      const parent = parseChatMetadata(await app.vault.cachedRead(file))?.anchor?.note
+      if (!parent) break
+      path = parent
+    }
+    return this.folder()
+  }
+
   private async startComment(
     id: string,
     anchor: CommentAnchor,
@@ -570,6 +593,8 @@ export class CommentService implements CommentInfoSource {
       (agentId && registry.get(agentId)) ||
       registry.get(config.commentAgentId ?? '') ||
       registry.defaultAgent()
+    const directory = await this.discussionDirectory(anchor)
+    const path = `${directory}/${id}.abchat`
 
     const metadata: ChatMetadata = {
       type: 'abele-chat',
@@ -580,12 +605,12 @@ export class CommentService implements CommentInfoSource {
       modelId: agent?.modelId || config.activeModelId,
       created: dayjs().format('YYYY-MM-DD'),
       commentId: id,
-      commentLocation: `${this.folder()}/${id}.abchat`,
+      commentLocation: path,
     }
 
-    await ChatStorage.getInstance().ensureFolder(this.folder())
+    await ChatStorage.getInstance().ensureFolder(directory)
     const file = await app.vault.create(
-      this.commentPath(id),
+      path,
       serializeChat({ metadata, messages: [], internalMessages: [] })
     )
 
@@ -982,8 +1007,7 @@ export class CommentService implements CommentInfoSource {
   /**
    * Rewrites `anchor.note` in every comment that pointed at `oldPath`.
    *
-   * Renames are rare and comments are one flat folder, so reading each one's metadata is
-   * cheaper to write and to trust than an index that has to be kept correct.
+   * A discussion can live in a chat folder; the storage inventory also finds those files.
    */
   async handleRename(oldPath: string, newPath: string): Promise<void> {
     // Every comment file is about to be read anyway; an id written off earlier deserves
@@ -992,9 +1016,11 @@ export class CommentService implements CommentInfoSource {
 
     const { app } = GlobalStore.getInstance()
     const folder = app.vault.getAbstractFileByPath(this.folder())
-    if (!(folder instanceof TFolder)) return
-
-    for (const child of folder.children) {
+    const files = new Set([
+      ...(folder instanceof TFolder ? folder.children : []),
+      ...(await ChatStorage.getInstance().discussionFiles()),
+    ])
+    for (const child of files) {
       if (!(child instanceof TFile) || child.extension !== 'abchat') continue
 
       // Either condition, not just the anchor: a comment can write to a note it is not

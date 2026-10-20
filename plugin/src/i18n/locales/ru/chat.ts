@@ -1,4 +1,5 @@
 export const chat = {
+  'chatTree.missing': 'Этот разговор больше недоступен.',
   'chatTree.transferLabel': 'Доступ папок чатов',
   'chatTree.invalidFolder': 'Недопустимое название папки',
   'chatTree.configureFolder': 'Сначала укажите папку чатов',

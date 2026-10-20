@@ -1236,6 +1236,17 @@ folder removes its contribution. These vault files sync normally and travel in t
 transfer's **Chat folder access** section, relative to the receiving chat directory. A folder
 can be deleted only when it contains no chats, child folders, or other files.
 
+The existing device-local chat layout also retains closed node-session references, their
+local parent-chat paths, and closed helper-run IDs. These are presentation state, never a
+command to restore files or restart execution. Helper transcripts stay in their existing
+sidecars; their parent references follow a moved chat.
+
+New message discussions are created beside a parent already filed in a chat folder. Existing
+discussions stay in place until a move. The tree discovers closed discussions through the
+discussion inventory, including files outside the chat directory; it does not add margin-only
+discussions to the ordinary chat-history index. Untitled discussions use their first question
+as a display name.
+
 An explicitly cut local branch carries `pendingBranchCut` in metadata until its first new
 record is appended. That record carries `branchCutAfter`, referencing its parent assistant
 or completed tool-call message ID. These optional fields survive log writes and compaction;
@@ -2908,7 +2919,6 @@ preferences do not change the project's request files.
 
 Image requests store `ai.imageGenerationTimeLimitMinutes` (0 by default for no fixed limit;
 2, 5, 10 or 30 minutes). AI general settings transfer carries it between devices.
-
 
 Manager command and integration operations also stay in the installation-local node
 client store. They retain the parent chat identity, exact request and operation ID,

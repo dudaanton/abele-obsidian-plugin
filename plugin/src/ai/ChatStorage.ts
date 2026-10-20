@@ -622,6 +622,14 @@ export class ChatStorage {
     }
   }
 
+  /** Discussion files may be filed alongside their parent chats. */
+  async discussionFiles(): Promise<TFile[]> {
+    await this.refreshDiscussionIndex(true)
+    return [...this.discussionPaths.values()]
+      .filter((entry) => entry.discussion)
+      .map((entry) => entry.file)
+  }
+
   /** Rebuild from all chat files, not history: unopened and nested discussions count too. */
   async selectionIdentityIndex(): Promise<{ path: string; chatId?: string }[]> {
     const { app } = GlobalStore.getInstance()
@@ -898,7 +906,7 @@ export class ChatStorage {
         // Only the metadata is needed here, and in a log that is one line out of thousands.
         const content = await app.vault.read(file)
         const metadata = parseChatMetadata(content)
-        if (metadata?.type !== 'abele-chat') continue
+        if (metadata?.type !== 'abele-chat' || metadata.kind === 'comment') continue
         const times = messageTimes(content)
         config.ai.chatHistory.push({
           path: file.path,
@@ -1209,6 +1217,7 @@ export class ChatStorage {
       const file = app.vault.getAbstractFileByPath(entry.path)
       if (!(file instanceof TFile)) continue
       const metadata = parseChatMetadata(await app.vault.read(file))
+      if (isDiscussion(metadata)) continue // Its anchor and touched links have one writer.
       if (!metadata?.touched?.length) continue
       const touched = ChatStorage.renamedNotes(metadata.touched, oldPath, newPath)
       if (JSON.stringify(touched) === JSON.stringify(metadata.touched)) continue

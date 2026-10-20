@@ -1,4 +1,5 @@
 export const chat = {
+  'chatTree.missing': 'Šī saruna vairs nav pieejama.',
   'chatTree.transferLabel': 'Sarunu mapju piekļuve',
   'chatTree.invalidFolder': 'Invalid folder name',
   'chatTree.configureFolder': 'Configure a chats folder first',

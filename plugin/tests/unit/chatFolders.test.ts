@@ -8,6 +8,8 @@ import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
 import type { FakeApp } from '../helpers/fakeVault'
 import { parseChatMetadata, serializeChat } from '@/ai/ChatLog'
+import { CommentService } from '@/ai/CommentService'
+import { chatsOf } from '@/chats/chatTree'
 
 let service: ChatService
 let folders: ChatFolders
@@ -49,10 +51,13 @@ beforeEach(() => {
   AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS, enabled: true, agents: [] }
   service = ChatService.getInstance()
   folders = service.folders
+  Object.assign(app.workspace, { iterateAllLeaves: vi.fn() })
 })
 afterEach(() => {
   folders?.destroy()
   service.destroy()
+  CommentService.getInstance().destroy()
+  vi.restoreAllMocks()
 })
 
 it('creates nested real folders and refuses traversal or deleting a nonempty folder', async () => {
@@ -102,6 +107,16 @@ it('moves a closed parent and its closed discussion together without opening tab
   expect(service.tabOrder.value).toEqual([])
 })
 
+it('keeps moved discussions attached when their source chat is renamed later', async () => {
+  await folders.create('', 'Projects')
+  await folders.moveMany(['AI/Chats/sample.abchat', 'AI/Chats/reply.abchat'], 'Projects')
+  const parent = app.vault.getAbstractFileByPath('AI/Chats/Projects/sample.abchat') as TFile
+  await app.fileManager.renameFile(parent, 'AI/Chats/Projects/renamed.abchat')
+  await CommentService.getInstance().handleRename('AI/Chats/Projects/sample.abchat', parent.path)
+  const reply = app.vault.getAbstractFileByPath('AI/Chats/Projects/reply.abchat') as TFile
+  expect(parseChatMetadata(await app.vault.read(reply))?.anchor?.note).toBe(parent.path)
+})
+
 it('creates a blank chat directly in a folder and applies access to its first turn', async () => {
   await folders.create('', 'Projects')
   await folders.setAccess('Projects', { web_search: 'auto' })
@@ -114,6 +129,29 @@ it('creates a blank chat directly in a folder and applies access to its first tu
   await service.closeTab(id)
   expect(await service.reopenClosedTab()).toBe(true)
   expect(service.activeSession.value?.toolModes.value.web_search).toBe('auto')
+})
+
+it('creates a new discussion beside its filed parent and retains it after closing', async () => {
+  await folders.create('', 'Projects')
+  await folders.setAccess('Projects', { web_search: 'auto' })
+  const id = service.createTab()
+  const parent = service.getSession(id)!
+  await parent.createInDirectory(folders.path('Projects'))
+  await parent.addUserNote('Sample question')
+  vi.spyOn(service, 'revealSidebar').mockResolvedValue()
+  const child = await CommentService.getInstance().createOnMessage(
+    parent,
+    parent.messages.value[0].id
+  )
+  expect(child?.currentChatFile.value?.path).toContain('AI/Chats/Projects/')
+  expect(child?.toolModes.value.web_search).toBe('auto')
+  const childPath = child!.currentChatFile.value!.path
+  await service.closeTab(child!.id)
+  await service.tree.refresh()
+  expect(chatsOf(service.tree.root.value).find((chat) => chat.id === childPath)).toMatchObject({
+    open: false,
+    nested: 'discussion',
+  })
 })
 
 it('renames folders without losing closed-chat reopen history or inherited access', async () => {
