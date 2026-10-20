@@ -85,6 +85,24 @@ function fakePresenter() {
 
 afterEach(() => DebuggerService.instance.destroy())
 
+it.each([true, false])('sends stop-at-start only to supporting nodes: %s', async (supported) => {
+  fakeWorkspace()
+  const { presenter, calls } = fakePresenter()
+  Object.assign(presenter.connection.client, {
+    describe: async () => ({
+      capabilities: {
+        capabilities: { debugger_v1: { status: 'supported', launch_stop_on_entry: supported } },
+      },
+    }),
+  })
+  await startProgram(presenter, 'src/page.js', [], target, async () => {}, [], [], {
+    stopOnEntry: false,
+  })
+  const params = calls.find(([method]) => method === 'debugger.v1.start')![1]
+  if (supported) expect(params.stop_on_entry).toBe(false)
+  else expect(params).not.toHaveProperty('stop_on_entry')
+})
+
 it('carries the log message and disabled state on restart', () => {
   const binding = {
     controller: {

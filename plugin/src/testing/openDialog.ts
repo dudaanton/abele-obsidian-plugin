@@ -187,6 +187,7 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
   'debugger-launch': () =>
     mountAlone(ProgramLaunchDialog, {
       program: 'dist/main.js',
+      stopOnEntrySupported: true,
       launch: async () => {
         throw Object.assign(new Error('debugger_startup_handoff_lost'), {
           details: { stderr: 'Error: Cannot find module sample-module\n    at dist/main.js:1:1' },

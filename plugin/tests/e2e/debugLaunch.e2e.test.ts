@@ -18,6 +18,15 @@ async function probe(device: string) {
       try {
         const modal = [...document.querySelectorAll('.modal.abele-modal')].at(-1);
         const inputs = modal.querySelectorAll('input');
+        const stopAtStart = modal.querySelector('[role="checkbox"][aria-label="Stop at start"]');
+        if (!stopAtStart || stopAtStart.getAttribute('aria-checked') !== 'false') throw Error('Stop at start must default off');
+        if (state === 'ready') {
+          stopAtStart.click();
+          await wait(100);
+          if (stopAtStart.getAttribute('aria-checked') !== 'true') throw Error('Stop at start did not enable');
+          require('fs').writeFileSync(${JSON.stringify(shots)}+'/'+${JSON.stringify(device)}+'-stop-at-start.png', (await require('@electron/remote').getCurrentWebContents().capturePage()).toPNG());
+          stopAtStart.click();
+        }
         const set = (el, value) => { el.value = value; el.dispatchEvent(new Event('input', {bubbles:true})); };
         if (state === 'empty') set(inputs[0], '');
         if (state === 'long') {

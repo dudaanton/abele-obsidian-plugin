@@ -6,6 +6,22 @@ import Disclosure from '@/components/obsidian/Disclosure.vue'
 import { Platform } from 'obsidian'
 
 const modal = { props: ['size'], template: '<div><slot /><slot name="footer" /></div>' }
+it('offers supported stop-at-start default off and sends the explicit choice', async () => {
+  const launch = vi.fn(async () => {})
+  const w = mount(ProgramLaunchDialog, {
+    props: { program: 'dist/main.js', launch, stopOnEntrySupported: true },
+    global: { stubs: { Modal: modal } },
+  })
+  expect(w.get('[role="checkbox"]').attributes('aria-checked')).toBe('false')
+  await w.findAll('button').at(-1)!.trigger('click')
+  await flushPromises()
+  expect(launch).toHaveBeenCalledWith('dist/main.js', [], false)
+  await w.get('[role="checkbox"]').trigger('click')
+  await w.findAll('button').at(-1)!.trigger('click')
+  await flushPromises()
+  expect(launch).toHaveBeenLastCalledWith('dist/main.js', [], true)
+  w.unmount()
+})
 it('restores arguments for the selected entry and remembers the successful launch', async () => {
   const rememberArguments = vi.fn()
   const w = mount(ProgramLaunchDialog, {
@@ -18,6 +34,7 @@ it('restores arguments for the selected entry and remembers the successful launc
     global: { stubs: { Modal: modal } },
   })
   expect(w.findAll('input')[1].element.value).toBe('sample --count 3')
+  expect(w.find('[role="checkbox"]').exists()).toBe(false)
   await w.findAll('button').at(-1)!.trigger('click')
   await flushPromises()
   expect(rememberArguments).toHaveBeenCalledWith('dist/main.js', 'sample --count 3')

@@ -240,6 +240,9 @@ const RUN = (program: string, shots = '', via = 'Run a program') => `
   field.value=${JSON.stringify(program)};field.dispatchEvent(new Event('input',{bubbles:true}));
   ${shots ? `await shot(${JSON.stringify(shots + '-picker')});` : ''}
   press(await until(()=>[...document.querySelectorAll('.modal-container .prompt .suggestion-item')].find(r=>r.querySelector('.suggestion-title')?.textContent.trim()===${JSON.stringify(program)}),'the program offered'));
+  await until(()=>document.querySelector('.modal.abele-modal'),'launch options');
+  const stopAtStart=document.querySelector('.modal.abele-modal [role="checkbox"][aria-label="Stop at start"]');
+  if(stopAtStart?.getAttribute('aria-checked')==='false') press(stopAtStart);
   press(await until(()=>[...document.querySelectorAll('.modal.abele-modal button')].find(el=>el.textContent.trim()==='Run a program'),'launch options confirmation'));
   await until(()=>{const b=api.DebuggerService.instance.active.value;return b?.sessionId&&b.sessionId!==previousSession},'new debug session',600);
   await until(()=>{const c=api.DebuggerService.instance.active.value?.controller;return c?.session.status==='paused'&&c.session.frames.some(f=>f.file)},'paused program stack ready',600);

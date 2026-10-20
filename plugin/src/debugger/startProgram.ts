@@ -5,6 +5,7 @@ import { t } from '@/i18n'
 import { Notice, Platform, type Workspace } from 'obsidian'
 import { watch } from 'vue'
 import { z } from 'zod'
+import { debuggerAcceptanceCapabilities } from '@/node/acceptanceCapabilities'
 import { debugIdentity, debugOwnerParams, debugTarget, type DebugOwner } from './owner'
 import type { PathTarget } from '@/node/NodePathModel'
 import { NODE_FILE_VIEW, NodePathTabSchema, openNodePathTab } from '@/node/nodePathNavigation'
@@ -195,16 +196,20 @@ export async function startProgram(
   show: (sessionId: string) => Promise<void>,
   carry: CarriedPoint[] = [],
   argv: string[] = [],
-  options: { npmScript?: string; source?: string } = {}
+  options: { npmScript?: string; source?: string; stopOnEntry?: boolean } = {}
 ) {
   argv = [...argv]
   const client = presenter.connection.client
+  const supportsStop =
+    options.stopOnEntry !== undefined &&
+    debuggerAcceptanceCapabilities(await client.describe?.()).launch_stop_on_entry
   const started = StartResultSchema.parse(
     await client.request('debugger.v1.start', {
       operation_id: crypto.randomUUID(),
       ...debugOwnerParams(presenter),
       program,
       argv,
+      ...(supportsStop ? { stop_on_entry: carry.length ? true : options.stopOnEntry } : {}),
       ...(options.npmScript ? { npm_script: options.npmScript } : {}),
       sources: sources.filter((s) => s !== program),
     })
@@ -272,6 +277,14 @@ export async function startProgram(
       })
     else await binding.controller.setBreakpoint(crypto.randomUUID(), sourceId, c.line, c.condition)
   }
+  if (
+    supportsStop &&
+    options.stopOnEntry === false &&
+    carry.length &&
+    binding.controller.session.status === 'paused' &&
+    binding.controller.snapshot?.threads.some((t) => t.stop?.reason === 'entry')
+  )
+    await binding.controller.command('continue')
   return sessionId
 }
 
@@ -315,18 +328,22 @@ export async function askAndStartProgram(
       presenter.connection.client,
       debugOwnerParams(presenter)
     )
+    const supportsStop = debuggerAcceptanceCapabilities(
+      await presenter.connection.client.describe?.()
+    ).launch_stop_on_entry
     const launch = (program: string) => {
       const argumentsKey = (path: string) =>
         `abele-debug-launch-arguments:${JSON.stringify([target.registrationId, target.nodeId, target.kind, target.id, path])}`
       openComponentDialog(() => ProgramLaunchDialog, {
         program,
+        stopOnEntrySupported: supportsStop,
         argumentsFor: (path: string) => {
           const saved: unknown = app.loadLocalStorage(argumentsKey(path))
           return typeof saved === 'string' ? saved : ''
         },
         rememberArguments: (path: string, text: string) =>
           app.saveLocalStorage(argumentsKey(path), text),
-        launch: (path: string, argv: string[]) => {
+        launch: (path: string, argv: string[], stopOnEntry?: boolean) => {
           const selected = resolveLaunchTarget(path, targets)
           return startProgram(
             presenter,
@@ -336,7 +353,7 @@ export async function askAndStartProgram(
             show,
             [],
             argv,
-            { npmScript: selected.npm_script, source: selected.sources[0] }
+            { npmScript: selected.npm_script, source: selected.sources[0], stopOnEntry }
           )
         },
       })

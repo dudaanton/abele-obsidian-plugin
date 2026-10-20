@@ -13,6 +13,14 @@
       <Setting :name="t('debug.launchArgs')" :desc="t('debug.launchArgsHint')">
         <Input v-model="argumentsText" :disabled="busy" :aria-label="t('debug.launchArgs')" />
       </Setting>
+      <Setting v-if="stopOnEntrySupported" :name="t('debug.stopAtStart')">
+        <Checkbox
+          :is-enabled="stopAtStart"
+          :disabled="busy"
+          :aria-label="t('debug.stopAtStart')"
+          @toggle="stopAtStart = !stopAtStart"
+        />
+      </Setting>
       <div v-if="error" role="alert" class="mod-warning">
         <p>{{ error }}</p>
         <p v-if="output" class="abele-debug-launch__error">{{ output }}</p>
@@ -38,6 +46,7 @@ import Setting from '@/components/obsidian/Setting.vue'
 import Input from '@/components/obsidian/Input.vue'
 import Button from '@/components/obsidian/Button.vue'
 import Disclosure from '@/components/obsidian/Disclosure.vue'
+import Checkbox from '@/components/obsidian/Checkbox.vue'
 import { parseLaunchArguments } from './launchArguments'
 import { z } from 'zod'
 
@@ -48,12 +57,14 @@ const DiagnosticsSchema = z.object({
 
 const props = defineProps<{
   program: string
-  launch: (path: string, argv: string[]) => Promise<unknown>
+  launch: (path: string, argv: string[], stopOnEntry?: boolean) => Promise<unknown>
+  stopOnEntrySupported?: boolean
   argumentsFor?: (path: string) => string
   rememberArguments?: (path: string, text: string) => void
 }>()
 const emit = defineEmits<{ close: [] }>()
 const path = ref(props.program)
+const stopAtStart = ref(false)
 const argumentsText = ref(props.argumentsFor?.(props.program) ?? '')
 watch(path, (value) => {
   argumentsText.value = props.argumentsFor?.(value.trim()) ?? ''
@@ -78,7 +89,8 @@ async function run() {
   }
   busy.value = true
   try {
-    await props.launch(path.value.trim(), argv)
+    if (props.stopOnEntrySupported) await props.launch(path.value.trim(), argv, stopAtStart.value)
+    else await props.launch(path.value.trim(), argv)
     props.rememberArguments?.(path.value.trim(), argumentsText.value)
     emit('close')
   } catch (e) {
