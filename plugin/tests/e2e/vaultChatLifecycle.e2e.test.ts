@@ -15,6 +15,14 @@ const probe = (screen: string) => `(async () => {
   const root = 'SampleVaultChatLifecycle'
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
   const until = async (fn, stage = 'chat') => { for (let i=0; i<100; i++) { if (fn()) return; await wait(50) } throw Error('Sample state timed out: ' + stage) }
+  const closeModal = async () => {
+    const modal = [...document.querySelectorAll('.modal')].reverse().find(el => el.getBoundingClientRect().width)
+    if (!modal) return
+    const close = [...modal.closest('.modal-container').querySelectorAll('.modal-header-button, .modal-close-button')].find(el => el.getBoundingClientRect().width)
+    if (!close) throw Error('Sample modal has no visible native close control')
+    close.click()
+    await until(() => !modal.isConnected, 'modal closed')
+  }
   const report = { error: '', shots: [], edited: false, moved: false, hiddenRemoved: false, denied: false, failed: false, stopped: false, permission: false, changes: false, scope: false, runFits: false, quoteWidth: 0 }
   let session
   const shot = async name => {
@@ -100,7 +108,7 @@ const probe = (screen: string) => `(async () => {
     await until(() => document.querySelector('.abele-chat-artifacts'))
     report.changes = !!document.querySelector('.abele-chat-artifacts__changes')
     await shot('files')
-    document.querySelector('.modal-close-button')?.click()
+    await closeModal()
     await until(() => !document.querySelector('.abele-chat-artifacts'), 'files closed')
     session.scopeResolver.setFullVaultAccess(false)
     document.querySelector('.abele-ai-chat__overflow .abele-obsidian-icon').click()
@@ -119,7 +127,7 @@ const probe = (screen: string) => `(async () => {
     await shot('error')
   }
   finally {
-    document.querySelector('.modal-close-button')?.click()
+    await closeModal()
     if (session) { session.abort(); await chats.deleteChat(session.id) }
     if (prior) chats.activeTabId.value = prior
     const folder = app.vault.getAbstractFileByPath(root)
