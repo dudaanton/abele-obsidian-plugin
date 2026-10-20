@@ -1236,6 +1236,17 @@ export class NodePathClientPort implements NodePathPort {
             ? RepositoryChangeBatchSchema.safeParse(event.data)
             : null
         if (batch?.success && batch.data.worktree_id === target.id) follow(batch.data)
+        else if (
+          streaming &&
+          target.kind === 'worktree' &&
+          record(event.data).worktree_id === target.id
+        ) {
+          console.debug(
+            '[Abele] node path: unreadable repository batch; rereading the files',
+            batch && !batch.success ? batch.error : undefined
+          )
+          notify()
+        }
         return
       }
       if (event.type === 'workspace.files_changed') {
@@ -1244,6 +1255,17 @@ export class NodePathClientPort implements NodePathPort {
             ? WorkspaceChangeBatchSchema.safeParse(event.data)
             : null
         if (batch?.success && batch.data.workspace_id === target.id) follow(batch.data)
+        else if (
+          streaming &&
+          target.kind === 'workspace' &&
+          record(event.data).workspace_id === target.id
+        ) {
+          console.debug(
+            '[Abele] node path: unreadable workspace batch; rereading the files',
+            batch && !batch.success ? batch.error : undefined
+          )
+          notify()
+        }
         return
       }
       if (

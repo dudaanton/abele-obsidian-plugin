@@ -72,6 +72,8 @@ it('keeps an opened folder, its rows and the scroll of the file tree through nod
       const node=await nodes.add('Sample tree node','http://127.0.0.1:${ready.port}',${JSON.stringify(enrolled.token)});
       window.__sampleTreeNode=node.id;
       const client=nodes.connection(node.id).client,project=await client.registerProject(${JSON.stringify(projectPath)},'trusted');
+      window.__sampleTreeEvents=[];
+      window.__sampleTreeStop=client.onEvent(event=>{if(event.type.startsWith('repository.')){window.__sampleTreeEvents.push({type:event.type,data:event.data});if(window.__sampleTreeEvents.length>12)window.__sampleTreeEvents.shift()}});
       const catalogue=await client.repository.worktrees({project_id:project.project_id});
       const workspace=catalogue.entries.find(w=>w.kind==='root');
       // The folder as a whole opens in the node panel, whose Files mode is its whole file tree.
@@ -98,7 +100,12 @@ it('keeps an opened folder, its rows and the scroll of the file tree through nod
     writeFileSync(resolve(projectPath, 'src/sample-99.ts'), 'export const value = 99\n')
     const state = JSON.parse(
       await evalLong(`(async()=>{${prelude}
-      await until(()=>row('src/sample-99.ts'));
+      try { await until(()=>row('src/sample-99.ts')); } catch(error) {
+        const connection=nodes.connection(window.__sampleTreeNode),model=api.NodePathService.getInstance().model(window.__sampleTreeNode),target=model.current.value;
+        const {revision}=await connection.client.repository.observe({worktree_id:target.id});
+        const direct=await connection.client.repository.tree({worktree_id:target.id,revision,path:'src'});
+        throw Error(String(error)+' '+JSON.stringify({capabilities:model.capabilities.value,error:model.error.value,events:window.__sampleTreeEvents,directHasFile:direct.entries.some(e=>e.path==='src/sample-99.ts'),visibleRows:[...tree().querySelectorAll('[data-path]')].map(e=>e.dataset.path)}));
+      }
       await wait(2500);
       const body=tree().querySelector('.abele-file-tree__body');
       return JSON.stringify({
@@ -115,7 +122,7 @@ it('keeps an opened folder, its rows and the scroll of the file tree through nod
   } finally {
     try {
       await evalLong(
-        `(async()=>{const id=window.__sampleTreeNode;for(const leaf of app.workspace.getLeavesOfType('abele-node-sidebar'))leaf.detach();if(id)window.__abeleTest.NodeService.getInstance().remove(id);delete window.__sampleTreeNode;delete window.__sampleTreeScroll;delete window.__sampleTreeRow;delete window.__sampleTreeBody;return 'restored'})()`
+        `(async()=>{const id=window.__sampleTreeNode;window.__sampleTreeStop?.();for(const leaf of app.workspace.getLeavesOfType('abele-node-sidebar'))leaf.detach();if(id)window.__abeleTest.NodeService.getInstance().remove(id);delete window.__sampleTreeNode;delete window.__sampleTreeScroll;delete window.__sampleTreeRow;delete window.__sampleTreeBody;delete window.__sampleTreeEvents;delete window.__sampleTreeStop;return 'restored'})()`
       )
     } finally {
       if (child?.exitCode === null) {

@@ -158,6 +158,23 @@ describe('the path sidebar port on the change stream', () => {
     expect(changed.mock.calls.at(-1)).toEqual([{ entries: [], git: true }])
     stop()
   })
+  it('rereads when a same-target batch cannot be decoded instead of losing its invalidation', async () => {
+    const { notify, changed, event, stop } = await start()
+    const invalid = {
+      worktree_id: identity.workspace,
+      stream_id: 'stream-fixture',
+      revision: 1,
+      complete: true,
+      entries: [{ change: 'unknown' }],
+      git: null,
+    }
+    event('repository.changed', { ...invalid, worktree_id: 'another-worktree' })
+    expect(notify).not.toHaveBeenCalled()
+    event('repository.changed', invalid)
+    expect(notify).toHaveBeenCalledOnce()
+    expect(changed).not.toHaveBeenCalled()
+    stop()
+  })
   it('renews its lease without reading the files again', async () => {
     const { batch, calls, notify, stop } = await start()
     batch(1, { complete: true, entries: [], git: null })
