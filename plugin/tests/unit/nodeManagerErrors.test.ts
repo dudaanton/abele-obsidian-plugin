@@ -15,3 +15,10 @@ it('keeps the exact refusal code visible beside its explanation', async () => {
   expect(nodeErrorDetails('resource_busy')).toContain('resource_busy')
   expect(nodeErrorDetails('slow_consumer')).toContain('slow_consumer')
 })
+
+it('uses the primary refusal code instead of a limit code mentioned later in its explanation', async () => {
+  const { nodeErrorDetails } = await import('@/node/errorWords')
+  const message = 'Node request refused: unsafe_path (rate_limit is not configured)'
+  expect(nodeErrorDetails(message)).toContain(message)
+  expect(nodeErrorDetails(message)).not.toContain('The node reached a limit')
+})
