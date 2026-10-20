@@ -9,8 +9,8 @@ export const es = {
   'node.files.gitStatusUnavailable': 'Estado de Git no disponible',
   'node.files.gitRecoveryWarning':
     'El contenido sin confirmar o sin seguimiento no se puede recuperar de Git.',
-  'node.files.fileCount': { one: '{count} archivo', other: '{count} archivos' },
-  'node.files.folderCount': { one: '{count} carpeta', other: '{count} carpetas' },
+  'node.files.fileCount': { one: '{count} archivo', many: '{count} archivos', other: '{count} archivos' },
+  'node.files.folderCount': { one: '{count} carpeta', many: '{count} carpetas', other: '{count} carpetas' },
   'node.files.renameAction': 'Renombrar',
   'node.files.moveAction': 'Mover',
   'node.files.directoryConfirm':
