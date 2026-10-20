@@ -47,6 +47,16 @@ async function search(shell: string, entry: string) {
   )
 }
 
+async function checkTools(shell: string, entry: string) {
+  await evalLong(`(async()=>{${prelude}
+        file().querySelector('[aria-label="Toggle line blame"]').click();await until(()=>file()?.querySelector('.abele-github-blame-range'),'Line blame');return 'blame'})()`)
+  await capture(`${shell}-${entry}-blame`)
+  await evalLong(`(async()=>{${prelude}
+        file().querySelector('[aria-label="Toggle line blame"]').click();
+        const leaf=app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.contentEl.contains(file()));const row=file().querySelectorAll('.cm-line')[1],range=document.createRange();range.selectNodeContents(row);const box=range.getBoundingClientRect();row.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:box.left+box.width/2,clientY:box.top+box.height/2}));
+        await until(()=>[...document.querySelectorAll('.menu-item')].find(el=>el.textContent.includes('Go to definition of')),'Definition menu');[...document.querySelectorAll('.menu-item')].find(el=>el.textContent.includes('Go to definition of')).click();await until(()=>file()?.querySelector('.abele-github-code__line_target')&&leaf.view.getState().line===1&&!leaf.view.getState().endLine,'Definition destination');return 'definition'})()`)
+}
+
 async function fileSearchScenario(shell: 'desktop' | 'phone') {
   const node = await startPairedNode()
   const project = resolve(node.state, '../sample-project')
@@ -113,19 +123,13 @@ async function fileSearchScenario(shell: 'desktop' | 'phone') {
         if(when&&tools.getBoundingClientRect().top>=when.getBoundingClientRect().bottom)throw Error('Search controls add a separate comparison header row');return 'compact comparison controls'})()`)
       await capture(`${shell}-initial-comparison`)
       await search(shell, 'changes')
-      // The same file controls also retain attribution and real definition navigation.
-      await evalLong(`(async()=>{${prelude}
-        file().querySelector('[aria-label="Toggle line blame"]').click();await until(()=>file()?.querySelector('.abele-github-blame-range'),'Line blame');return 'blame'})()`)
-      await capture(`${shell}-blame`)
-      await evalLong(`(async()=>{${prelude}
-        file().querySelector('[aria-label="Toggle line blame"]').click();
-        const row=file().querySelectorAll('.cm-line')[1],range=document.createRange();range.selectNodeContents(row);const box=range.getBoundingClientRect();row.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:box.left+box.width/2,clientY:box.top+box.height/2}));
-        await until(()=>[...document.querySelectorAll('.menu-item')].find(el=>el.textContent.includes('Go to definition of')),'Definition menu');[...document.querySelectorAll('.menu-item')].find(el=>el.textContent.includes('Go to definition of')).click();await until(()=>file()?.querySelector('.abele-github-code__line_target'),'Definition destination');return 'definition'})()`)
+      await checkTools(shell, 'changes')
       await closeFile()
       await sidebar('Files')
       await evalLong(`(async()=>{${prelude}
         await until(()=>visible('.abele-file-tree'),'File tree');let tree=visible('.abele-file-tree');await until(()=>[...tree.querySelectorAll('.tree-item-self')].find(r=>r.querySelector('.abele-tree-item__text')?.textContent==='src'),'Source folder');const folder=[...tree.querySelectorAll('.tree-item-self')].find(r=>r.querySelector('.abele-tree-item__text')?.textContent==='src');if(folder.getAttribute('aria-expanded')==='false')folder.click();await until(()=>[...tree.querySelectorAll('.tree-item-self')].find(r=>r.querySelector('.abele-tree-item__text')?.textContent==='sample.ts'),'File row');[...tree.querySelectorAll('.tree-item-self')].find(r=>r.querySelector('.abele-tree-item__text')?.textContent==='sample.ts').click();return 'clicked tree file'})()`)
       await search(shell, 'tree')
+      await checkTools(shell, 'tree')
       await closeFile()
       await node.open(ids.session, 'Source links')
       await evalLong(
@@ -136,6 +140,7 @@ async function fileSearchScenario(shell: 'desktop' | 'phone') {
           `(async()=>{${prelude}await chats.revealSidebar({focus:false});await until(()=>chat(),'Chat');const link=[...chat().querySelectorAll('a')].find(a=>a.textContent===${JSON.stringify(label)});if(!link)throw Error('Chat source link missing');link.click();await until(()=>file()?.textContent.includes('marker'),'Chat file opens');return 'clicked chat link'})()`
         )
         await search(shell, label.toLowerCase())
+        await checkTools(shell, label.toLowerCase())
         await closeFile()
       }
     }
