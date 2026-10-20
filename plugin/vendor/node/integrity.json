@@ -67,10 +67,10 @@
     "id": "@abele/node-protocol@0.0.0",
     "name": "@abele/node-protocol",
     "version": "0.0.0",
-    "size": 122377,
-    "unpackedSize": 1256450,
-    "shasum": "13f0c7651c55cafa11231b93fbbe49a3d1153f90",
-    "integrity": "sha512-Njr+RYShAdMJxxBfug0Fug/I65CXg3PwIldDkoGgXWYE8P/isE4tEuABFsuRSF817C6zviq5ALYnqAVCkQegMA==",
+    "size": 123393,
+    "unpackedSize": 1269986,
+    "shasum": "8b5a45b9b796f889f66bb066cbee125aaf208737",
+    "integrity": "sha512-o8IcXrrBpA0GOVyqm4SWAaZEJ7tdds5x9g3IRLSQ4yzyGAuy/f3xICRWjd5cVygvtIhoG9Ev1onPww0rmII7wg==",
     "filename": "abele-node-protocol-0.0.0.tgz",
     "files": [
       {
@@ -135,32 +135,32 @@
       },
       {
         "path": "dist/debugger-control.d.ts",
-        "size": 52382,
+        "size": 57136,
         "mode": 420
       },
       {
         "path": "dist/debugger-control.js",
-        "size": 8911,
+        "size": 9415,
         "mode": 420
       },
       {
         "path": "dist/debugger-control.js.map",
-        "size": 8433,
+        "size": 9029,
         "mode": 420
       },
       {
         "path": "dist/debugger.d.ts",
-        "size": 160204,
+        "size": 160605,
         "mode": 420
       },
       {
         "path": "dist/debugger.js",
-        "size": 15937,
+        "size": 16166,
         "mode": 420
       },
       {
         "path": "dist/debugger.js.map",
-        "size": 17683,
+        "size": 18053,
         "mode": 420
       },
       {
@@ -255,17 +255,17 @@
       },
       {
         "path": "dist/node-path.d.ts",
-        "size": 38479,
+        "size": 41027,
         "mode": 420
       },
       {
         "path": "dist/node-path.js",
-        "size": 7199,
+        "size": 7780,
         "mode": 420
       },
       {
         "path": "dist/node-path.js.map",
-        "size": 7926,
+        "size": 8617,
         "mode": 420
       },
       {
@@ -375,17 +375,17 @@
       },
       {
         "path": "dist/schemas.d.ts",
-        "size": 111310,
+        "size": 112863,
         "mode": 420
       },
       {
         "path": "dist/schemas.js",
-        "size": 13075,
+        "size": 13206,
         "mode": 420
       },
       {
         "path": "dist/schemas.js.map",
-        "size": 13036,
+        "size": 13143,
         "mode": 420
       },
       {
@@ -420,17 +420,17 @@
       },
       {
         "path": "dist/trace.d.ts",
-        "size": 36396,
+        "size": 37206,
         "mode": 420
       },
       {
         "path": "dist/trace.js",
-        "size": 8056,
+        "size": 8170,
         "mode": 420
       },
       {
         "path": "dist/trace.js.map",
-        "size": 10276,
+        "size": 10423,
         "mode": 420
       },
       {
@@ -495,10 +495,10 @@
     "id": "@abele/node-client@0.0.0",
     "name": "@abele/node-client",
     "version": "0.0.0",
-    "size": 48361,
-    "unpackedSize": 267459,
-    "shasum": "695f8c89eceb9253da86c42e54753ff6e25520c7",
-    "integrity": "sha512-yl03tMS3PdE28KJVdWbasHGX75m99gV0HL+5gJcWNvLX7388PjfA906C73hyOvlcOWY4M37eugMWWZGxlzEOkQ==",
+    "size": 48848,
+    "unpackedSize": 270325,
+    "shasum": "7019753d1e83dcbad7ba62f9207841528a3143ac",
+    "integrity": "sha512-iPP+s3p7lZt86s506JH4ylQnp/R3JLc1zsUAIep/g8PNDr3CO4EijH2dP9v+sqUtr2ipmMkmxazEa35U+S8rvA==",
     "filename": "abele-node-client-0.0.0.tgz",
     "files": [
       {
@@ -518,17 +518,17 @@
       },
       {
         "path": "dist/debugger.d.ts",
-        "size": 25321,
+        "size": 26295,
         "mode": 420
       },
       {
         "path": "dist/debugger.js",
-        "size": 10993,
+        "size": 11388,
         "mode": 420
       },
       {
         "path": "dist/debugger.js.map",
-        "size": 9001,
+        "size": 9277,
         "mode": 420
       },
       {
@@ -578,17 +578,17 @@
       },
       {
         "path": "dist/node-path.d.ts",
-        "size": 6940,
+        "size": 7243,
         "mode": 420
       },
       {
         "path": "dist/node-path.js",
-        "size": 4277,
+        "size": 4500,
         "mode": 420
       },
       {
         "path": "dist/node-path.js.map",
-        "size": 4113,
+        "size": 4312,
         "mode": 420
       },
       {
@@ -598,12 +598,12 @@
       },
       {
         "path": "dist/paired.js",
-        "size": 14454,
+        "size": 14719,
         "mode": 420
       },
       {
         "path": "dist/paired.js.map",
-        "size": 11557,
+        "size": 11681,
         "mode": 420
       },
       {
@@ -653,7 +653,7 @@
       },
       {
         "path": "dist/trace.d.ts",
-        "size": 5159,
+        "size": 5266,
         "mode": 420
       },
       {

@@ -1,7 +1,7 @@
 # Node browser packages
 
 **Temporary, unreleased vendor.** These four exact `0.0.0` npm tarballs contain the built browser
-packages of AbeleNode revision `42099a14332e476396e73a28bd59596a37f16a63` (unreleased): pi chat
+packages of AbeleNode revision `ca2d0295a020a89cd642985cac5b19293568aa36`: pi chat
 checkpoints and online-only preview-bound restores, canonical user messages and turn identities,
 model/account catalogs, and the shared session
 transcript (`session.update`, modelled on ACP, with `sessionUpdatesOf` and the Claude, pi and ACP
@@ -20,18 +20,18 @@ delegation mailboxes, versioned repository reads and the gated `debugger.v1` hum
 client. Capability checks still determine adapter availability. They are kept in the
 repository so `npm ci` and the plugin build work in a clean clone without a sibling
 checkout, workspace link, daemon or private registry. `integrity.json` records npm's
-SHA-512 integrity and the packaged file list. This revision includes the bounded
-post-authentication welcome fix and folder-owner contracts upstream; the historical
-patches in `patches/` are no longer applied.
+SHA-512 integrity and the packaged file list. This revision includes folder-owner
+contracts upstream, but still needs `patches/paired-welcome.patch`: authentication
+records keep the smaller authentication bound, while the authenticated welcome uses
+the normal record bound. Apply that source patch before packaging; regenerate only
+`paired.js` and its source map with TypeScript 5.9.3, ES2022 and ES modules. Public
+declarations are unchanged. The historical folder-owner patch is no longer applied.
 The plugin negotiates this extension with a read-only folder session listing,
 since this node revision does not advertise the protocol minor in its description.
-The protocol also carries the optional breakpoint `hit_condition` and `enabled`
-fields from upstream `eb1a38a`, via `patches/breakpoint-options.patch` against the
-packaged `dist/` files. This adds the runtime schema fields and their generated
-declaration shapes without changing other contracts. The debugger JavaScript source
-map retains the original mappings with two unmapped lines inserted immediately
-before `log_message`. Apply this payload patch after the source patches and build
-above when reproducing these tarballs. The plugin sends these fields only when the
+The protocol now includes the optional breakpoint `hit_condition` and `enabled`
+fields upstream, in both runtime schemas and declarations. The historical
+`patches/breakpoint-options.patch` must not be reapplied to this revision.
+The plugin sends these fields only when the
 node advertises their capability; hit counts also require adapter support.
 Other packages are unmodified. The released channel client now includes the opt-in host
 liveness policy, background ping probes, delayed-deadline receive grace and

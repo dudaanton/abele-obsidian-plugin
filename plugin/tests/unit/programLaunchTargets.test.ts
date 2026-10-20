@@ -2,11 +2,11 @@ import { expect, it, vi } from 'vitest'
 import { programLaunchTargets, resolveLaunchTarget } from '@/debugger/programLaunchTargets'
 import { DebuggerControlMethodSchemas, DebuggerStartSchema } from '@abele/node-protocol'
 
-it.fails('BUG: the pinned node protocol still lacks launch target discovery', () => {
+it('exposes launch target discovery in the vendored node protocol', () => {
   expect(DebuggerControlMethodSchemas).toHaveProperty('debugger.v1.launchTargets')
 })
 
-it.fails('BUG: the pinned node protocol cannot launch a package script', () => {
+it('admits package-script launches in the vendored node protocol', () => {
   expect(
     DebuggerStartSchema.safeParse({
       operation_id: 'sample-operation',
