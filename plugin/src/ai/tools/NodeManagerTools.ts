@@ -16,12 +16,12 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
     name,
     label: t(
       name === 'node_command_run'
-        ? 'node.manager.run'
+        ? 'settings.metadata.nodeManagerRun'
         : name === 'node_command_status'
-          ? 'node.manager.status'
+          ? 'settings.metadata.nodeManagerStatus'
           : name === 'node_command_cancel'
-            ? 'node.manager.cancel'
-            : 'node.manager.integrate'
+            ? 'settings.metadata.nodeManagerCancel'
+            : 'settings.metadata.nodeManagerIntegrate'
     ),
     category: 'Nodes',
     description:

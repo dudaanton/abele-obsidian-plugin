@@ -132,6 +132,10 @@ describe('what each node action holds', () => {
     ])
     expect(members('delegate')).toEqual(
       [
+        'node_command_run',
+        'node_command_status',
+        'node_command_cancel',
+        'node_git_integrate',
         'node_delegate',
         'node_delegation_cancel',
         'node_delegation_send',

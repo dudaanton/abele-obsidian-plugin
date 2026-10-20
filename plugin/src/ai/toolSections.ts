@@ -439,7 +439,7 @@ export const NODE_ACTIONS: readonly {
 
 const NODE_EDIT_TOOL = /^node_(write|edit|replace|mv|cp|rm|path_file_operations|propose_edit)$/
 const NODE_WORKTREE_TOOL = /^(list_node_worktrees|node_worktree_switch|node_worktree_remove)$/
-const NODE_DELEGATE_TOOL = /^node_delegat/
+const NODE_DELEGATE_TOOL = /^node_(delegat|command_(run|status|cancel)$|git_integrate$)/
 const NODE_DEBUGGER_TOOL = /^(trace_|http_)/
 
 /**
