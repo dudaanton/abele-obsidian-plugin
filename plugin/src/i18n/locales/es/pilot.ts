@@ -17,6 +17,10 @@ export const es = {
   'node.lsp.noDiagnostics': 'Sin diagnósticos',
   'node.lsp.references': 'Buscar referencias a {name}',
 
+  'debug.stopAtStart': 'Detener al inicio',
+  'debug.pausedAtStart': 'En pausa al inicio',
+  'node.disconnectRevokeNotice':
+    '¿Desconectar este dispositivo y revocar su clave en el nodo? Los demás dispositivos seguirán conectados.',
   'node.actionDeniedByOwner': 'El usuario rechazó esta acción',
   'streamB.runSummary.move.done': 'Movido',
   'streamB.runSummary.move.running': 'Moviendo',

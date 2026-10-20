@@ -16,6 +16,10 @@ export const lv = {
   'node.lsp.noDiagnostics': 'Nav diagnostikas ziņojumu',
   'node.lsp.references': 'Meklēt {name} lietojumus',
 
+  'debug.stopAtStart': 'Apturēt sākumā',
+  'debug.pausedAtStart': 'Apturēts sākumā',
+  'node.disconnectRevokeNotice':
+    'Atvienot šo ierīci un atsaukt tās atslēgu mezglā? Citas ierīces paliks savienotas.',
   'node.actionDeniedByOwner': 'Lietotājs noraidīja šo darbību',
   'streamB.runSummary.move.done': 'Pārvietots',
   'streamB.runSummary.move.running': 'Pārvieto',

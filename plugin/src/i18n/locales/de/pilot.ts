@@ -17,6 +17,10 @@ export const de = {
   'node.lsp.noDiagnostics': 'Keine Diagnosen',
   'node.lsp.references': 'Verwendungen von {name} suchen',
 
+  'debug.stopAtStart': 'Beim Start anhalten',
+  'debug.pausedAtStart': 'Beim Start angehalten',
+  'node.disconnectRevokeNotice':
+    'Dieses Gerät trennen und seinen Schlüssel auf dem Knoten widerrufen? Andere Geräte bleiben verbunden.',
   'node.actionDeniedByOwner': 'Der Benutzer hat diese Aktion abgelehnt',
   'streamB.runSummary.move.done': 'Verschoben',
   'streamB.runSummary.move.running': 'Verschieben',

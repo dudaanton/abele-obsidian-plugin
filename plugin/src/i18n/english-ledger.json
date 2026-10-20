@@ -27068,5 +27068,35 @@
       "es",
       "de"
     ]
+  },
+  "debug.stopAtStart": {
+    "englishHash": "31e74eea01c8899dc3186c76303d93238fb33fd5a8cb0ed91dc81b11b809a983",
+    "context": "Node debugger startup and device revocation controls",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "debug.pausedAtStart": {
+    "englishHash": "4c5c9816eb368dfacda989bbeedd5e2a736a7eb441ebaae48da2ab1a861c61a1",
+    "context": "Node debugger startup and device revocation controls",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.disconnectRevokeNotice": {
+    "englishHash": "fc1340b60693ea1f0e4b5e77c2ea5f849a42b00fa32bc141d031e634170dbe3a",
+    "context": "Node debugger startup and device revocation controls",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

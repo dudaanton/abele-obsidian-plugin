@@ -17,6 +17,10 @@ export const ru = {
   'node.lsp.noDiagnostics': 'Замечаний нет',
   'node.lsp.references': 'Найти использования {name}',
 
+  'debug.stopAtStart': 'Остановиться при запуске',
+  'debug.pausedAtStart': 'Остановлено при запуске',
+  'node.disconnectRevokeNotice':
+    'Отключить это устройство и отозвать его ключ на ноде? Остальные устройства останутся подключёнными.',
   'node.actionDeniedByOwner': 'Пользователь отклонил действие',
   'streamB.runSummary.move.done': 'Перемещено',
   'streamB.runSummary.move.running': 'Перемещение',

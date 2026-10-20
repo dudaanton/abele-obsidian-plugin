@@ -15,6 +15,10 @@ export const en = {
   'node.lsp.noDiagnostics': 'No diagnostics',
   'node.lsp.references': 'Find references to {name}',
 
+  'debug.stopAtStart': 'Stop at start',
+  'debug.pausedAtStart': 'Paused at start',
+  'node.disconnectRevokeNotice':
+    'Disconnect this device and revoke its key on the node? Other devices stay connected.',
   'node.actionDeniedByOwner': 'User rejected this action',
   'streamB.runSummary.move.done': 'Moved',
   'streamB.runSummary.move.running': 'Moving',
