@@ -465,7 +465,7 @@ export async function removeNodePathFolder(
     return
   const connection = NodeService.getInstance().connection(model.registrationId)
   await connection.client.removeProject(projectId)
-  const wasSelected = model.current.value?.projectId === projectId
+  const wasSelected = model.currentFolder.value?.id === projectId
   if (wasSelected) model.selected.value = ''
   await model.refresh()
   const next = model.targets.value[0]
@@ -762,7 +762,7 @@ export function pickNodePathPlace(model: NodePathModel, openChat: (id: string) =
       note: [where, chat.when].filter(Boolean).join(' · '),
     }))
   const items = model.folders.value.flatMap((folder) =>
-    folder.git
+    folder.git && !folder.missing
       ? folder.copies.flatMap((copy) => [
           {
             id: copy.id,

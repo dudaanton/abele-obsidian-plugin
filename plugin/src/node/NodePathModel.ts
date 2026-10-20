@@ -220,7 +220,9 @@ export class NodePathModel {
   readonly entries = computed(() => this.inspection.value?.entries ?? [])
   readonly changes = computed(() => this.inspection.value?.changes ?? [])
   readonly currentFolder = computed(() =>
-    this.folders.value.find((f) => f.id === this.current.value?.projectId)
+    this.folders.value.find(
+      (f) => f.id === this.current.value?.projectId || (f.missing && f.id === this.selected.value)
+    )
   )
   readonly currentCopy = computed(() =>
     this.currentFolder.value?.copies.find((c) => c.id === this.selected.value)
@@ -666,7 +668,12 @@ export class NodePathModel {
           : undefined
       for (const target of removed) this.discardTarget(target)
       // Retire the old selection before opening any independently matched replacement.
-      if (removedSelected) this.selected.value = ''
+      if (removedSelected)
+        this.selected.value = catalogue.folders.some(
+          (f) => f.id === selected?.projectId && f.missing
+        )
+          ? selected.projectId
+          : ''
       this.sessions.value = catalogue.sessions
       this.capabilities.value = catalogue.capabilities
       this.folders.value = catalogue.folders
@@ -689,6 +696,14 @@ export class NodePathModel {
     }
   }
   async select(id: string): Promise<void> {
+    if (this.folders.value.some((folder) => folder.id === id && folder.missing)) {
+      ++this.selectionGeneration
+      this.stopWatch?.()
+      this.stopWatch = undefined
+      this.selected.value = id
+      this.report(new ChannelError('repository_unavailable'))
+      return
+    }
     return this.selectTarget(this.target(id))
   }
   async selectTarget(target: PathTarget, copy?: CopySummary): Promise<void> {

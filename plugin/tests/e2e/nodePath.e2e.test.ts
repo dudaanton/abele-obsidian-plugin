@@ -589,7 +589,7 @@ it('pairs and opens target-bound node files history editor and fake chats in the
     )
     await capture('phone-changes')
     await evalLong(
-      `(async()=>{${prelude}const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});await model.select(model.targets.value.find(t=>t.projectId===${JSON.stringify(removedProject)}).id);await until(()=>visible('.abele-node-panel [role="alert"]')?.textContent.includes('no longer available'));if(visible('.abele-node-panel')?.textContent.includes('choose it again'))throw Error('Unavailable folder asks for reselection');return 'phone unavailable folder'})()`
+      `(async()=>{${prelude}const model=api.NodePathService.getInstance().model(${JSON.stringify(registration)});await model.select(${JSON.stringify(removedProject)});await until(()=>visible('.abele-node-panel [role="alert"]')?.textContent.includes('no longer available'));if(visible('.abele-node-panel')?.textContent.includes('choose it again'))throw Error('Unavailable folder asks for reselection');return 'phone unavailable folder'})()`
     )
     await capture('phone-folder-unavailable')
     await evalLong(

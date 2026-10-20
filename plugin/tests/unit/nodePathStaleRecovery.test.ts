@@ -296,6 +296,24 @@ it('shows an unavailable registered folder without retrying stale reads or watch
   expect(nodeErrorWords(model.error.value)).not.toContain('choose')
   model.destroy()
 })
+it('selects an unavailable registered folder without a workspace identity after reload', async () => {
+  const { model, port } = fixture()
+  port.catalogue.mockResolvedValue({
+    folders: [{ ...rootFolder, missing: true, copies: [] }],
+    targets: [],
+    sessions: [],
+    capabilities: [],
+  } as never)
+  await model.refresh()
+  await model.select(rootFolder.id)
+  expect(model.current.value).toBeUndefined()
+  expect(model.currentFolder.value?.id).toBe(rootFolder.id)
+  expect(model.unavailable.value).toBe(true)
+  expect(model.error.value).toBe('repository_unavailable')
+  expect(port.inspect).not.toHaveBeenCalled()
+  expect(port.watch).not.toHaveBeenCalled()
+  model.destroy()
+})
 it('rebinds a restored root selection to the unique current identity and reads it afresh', async () => {
   const { model, port } = fixture()
   model.folders.value = [rootFolder]
