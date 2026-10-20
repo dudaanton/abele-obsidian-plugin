@@ -68,31 +68,29 @@ describe('validated node path reads', () => {
     client.describe.mockResolvedValue({
       capabilities: { capabilities: { node_path_v2: { status: 'supported' } } },
     })
-    const worktrees = vi
-      .spyOn(client.repository, 'worktrees')
-      .mockResolvedValue({
-        entries: [
-          {
-            worktree_id: 'sample-external',
-            project_id: project.project_id,
-            workspace_id: null,
-            kind: 'external',
-            path_label: 'repo-topic',
-            identity: { canonical_path: '/sample/repo-topic', fingerprint: 'a'.repeat(64) },
-            branch: 'refs/heads/topic',
-            detached: false,
-            head: HEAD,
-            availability: 'available',
-            locked: false,
-            prunable: false,
-            dirty: false,
-            listed: true,
-          },
-        ],
-        cursor: null,
-        incomplete: false,
-        omissions: [],
-      })
+    const worktrees = vi.spyOn(client.repository, 'worktrees').mockResolvedValue({
+      entries: [
+        {
+          worktree_id: 'sample-external',
+          project_id: project.project_id,
+          workspace_id: null,
+          kind: 'external',
+          path_label: 'repo-topic',
+          identity: { canonical_path: '/sample/repo-topic', fingerprint: 'a'.repeat(64) },
+          branch: 'refs/heads/topic',
+          detached: false,
+          head: HEAD,
+          availability: 'available',
+          locked: false,
+          prunable: false,
+          dirty: false,
+          listed: true,
+        },
+      ],
+      cursor: null,
+      incomplete: false,
+      omissions: [],
+    })
     const catalogue = await port.catalogue()
     expect(worktrees).toHaveBeenCalledWith(expect.objectContaining({ include_identity: true }))
     expect(catalogue.folders[0].copies[0].path).toBe('repo-topic')

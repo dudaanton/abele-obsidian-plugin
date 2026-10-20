@@ -19,8 +19,16 @@ const probe = (device: string) =>
     const state = window.__abeleNodePanelFixture
     const client = state.nodes.connection(state.registration.id).client
     client.channel = { channel: { welcome: { methods: ['repository.v1.write', 'repository.v1.file.mkdir', 'repository.v1.file.directory', 'repository.v1.file.move', 'repository.v1.file.remove'] } } }
-    client.nodePath.fileDirectory = async () => ({ content_id: 'b'.repeat(64), entries: [{ path: '', kind: 'directory', content_id: null }, { path: 'nested', kind: 'directory', content_id: null }, { path: 'nested/sample-long-file-name.ts', kind: 'file', content_id: 'a'.repeat(64) }] })
+    client.nodePath.fileDirectory = async () => ({ content_id: 'b'.repeat(64), entries: [{ path: '', kind: 'directory', content_id: null }, { path: 'nested', kind: 'directory', content_id: null }, { path: 'nested/sample-long-file-name.ts', kind: 'file', content_id: 'a'.repeat(64) }, ...Array.from({length: 30}, (_, i) => ({ path: 'nested/sample-long-file-name-' + i + '.ts', kind: 'file', content_id: 'a'.repeat(64) }))] })
     client.repository.editingStatus = async () => ({ enabled: true })
+    const worktrees = client.repository.worktrees
+    client.repository.worktrees = async params => {
+      if (!params.include_identity) throw Error('New node worktree identities were not requested')
+      const page = await worktrees(params)
+      return { ...page, entries: page.entries.map(row => ({ ...row, identity: { canonical_path: '/sample/worktrees/' + row.worktree_id, fingerprint: 'a'.repeat(64) } })) }
+    }
+    await state.model.refresh()
+    if (state.model.current.value.location?.path !== '/sample/worktrees/' + state.model.current.value.id) throw Error('Canonical worktree location was discarded')
     let fits = true
     for (const [name, suffix] of [['New file…', 'new-file'], ['New folder…', 'new-folder'], ['Rename…', 'rename'], ['Move…', 'move'], ['Delete…', 'delete']]) {
       await app.workspace.revealLeaf(state.leaf)
@@ -43,8 +51,10 @@ const probe = (device: string) =>
         [...modal.querySelectorAll('button')].find(button => button.textContent.trim() === 'Rename').click()
         await until(() => modal.textContent.includes('Enter a file name without folders.'))
       }
+      await until(() => modal.closest('.modal-container').getAnimations({ subtree: true }).every(animation => animation.playState !== 'running'))
       const box = modal.getBoundingClientRect()
       fits = fits && box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight
+      if (!fits) throw Error('Dialog outside viewport: ' + device + '-' + suffix + ' ' + JSON.stringify(box.toJSON()))
       require('fs').writeFileSync(${JSON.stringify(SHOTS)} + '/' + device + '-' + suffix + '.png', (await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG())
       const cancel = [...modal.querySelectorAll('button')].find(button => button.textContent.trim() === 'Cancel')
       if (!cancel) throw Error('File action has no Cancel')
@@ -72,15 +82,17 @@ const probe = (device: string) =>
       }
       await until(() => modal.textContent.includes('nested/sample-long-file-name.ts'))
       await wait(200)
+      await until(() => modal.closest('.modal-container').getAnimations({ subtree: true }).every(animation => animation.playState !== 'running'))
       const box = modal.getBoundingClientRect()
       fits = fits && box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight
+      if (!fits) throw Error('Dialog outside viewport: ' + device + '-' + suffix + ' ' + JSON.stringify(box.toJSON()))
       if ([...modal.querySelectorAll('button')].some(button => button.textContent.includes("…") || button.textContent.includes("..."))) throw Error('Folder action button contains an ellipsis')
       require('fs').writeFileSync(${JSON.stringify(SHOTS)} + '/' + device + '-' + suffix + '.png', (await require('@electron/remote').getCurrentWindow().webContents.capturePage()).toPNG())
       ;[...modal.querySelectorAll('button')].find(button => button.textContent.trim() === 'Cancel').click()
       await until(() => !document.querySelector('.modal.abele-modal'))
     }
     const view = state.leaf.view
-    state.nodes.nodes.value = state.nodes.nodes.value.filter(node => node.id !== state.registration.id)
+    state.nodes.nodes.value = []
     view.registrationId.value = ''
     view.local.value = { nodeName: 'Sample local node', nodeId: 'sample-local', endpoint: 'ws://127.0.0.1:1234/channel', nodeVersion: '0.4.36' }
     view.localPhase.value = 'found'
