@@ -210,8 +210,16 @@ function selectFrame(index: number) {
   const b = binding.value
   if (!b) return
   void run(async () => {
+    const epoch = b.controller.snapshot?.stop_epoch
+    const incarnation = b.controller.snapshot?.incarnation
     await b.controller.selectFrame(index)
-    if (binding.value !== b || !b.controller.current) return
+    if (
+      binding.value !== b ||
+      !b.controller.current ||
+      b.controller.snapshot?.stop_epoch !== epoch ||
+      b.controller.snapshot?.incarnation !== incarnation
+    )
+      return
     const frame = b.controller.session.frames[index]
     if (frame) service.reveal(b, frame.file, frame.line)
   })

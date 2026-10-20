@@ -50,6 +50,13 @@ it('opens a selected caller frame and explains a library without source', async 
     w.getComponent(DebugPanel).vm.$emit('frame', 1)
     await flushPromises()
     expect(reveal).toHaveBeenCalledWith(b, '', 1)
+    reveal.mockClear()
+    b.controller.selectFrame.mockImplementationOnce(async () => {
+      Object.assign(b.controller, { snapshot: { stop_epoch: 2, incarnation: 'sample-new-stop' } })
+    })
+    w.getComponent(DebugPanel).vm.$emit('frame', 0)
+    await flushPromises()
+    expect(reveal).not.toHaveBeenCalled()
   } finally {
     w.unmount()
     service.active.value = null
