@@ -3,6 +3,7 @@ import ChatArtifacts from '@/components/ChatArtifacts.vue'
 import type { ChatSession } from '@/ai/ChatSession'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { createVaultResource, removeVaultDirectory } from '@/helpers/vaultUtils'
 
 /** Disposable synthetic resources exercise wrapping and source navigation. */
 export async function chatArtifactsFixture(state: 'empty' | 'populated' | 'long') {
@@ -13,15 +14,15 @@ export async function chatArtifactsFixture(state: 'empty' | 'populated' | 'long'
     await app.vault.createFolder(root)
     for (const folder of ['Notes', 'Scripts', 'Images'])
       await app.vault.createFolder(`${root}/${folder}`)
-    await app.vault.create(`${root}/Notes/${suffix}.md`, 'Sample note')
-    await app.vault.create(`${root}/Scripts/${suffix}.js`, '// Sample script')
+    await createVaultResource(app, `${root}/Notes/${suffix}.md`, 'Sample note')
+    await createVaultResource(app, `${root}/Scripts/${suffix}.js`, '// Sample script')
     const png = Uint8Array.from(
       atob(
         'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aY1cAAAAASUVORK5CYII='
       ),
       (char) => char.charCodeAt(0)
     )
-    await app.vault.createBinary(`${root}/Images/${suffix}.png`, png.buffer)
+    await createVaultResource(app, `${root}/Images/${suffix}.png`, png.buffer)
   }
   return defineComponent({
     inheritAttrs: false,
@@ -34,9 +35,9 @@ export async function chatArtifactsFixture(state: 'empty' | 'populated' | 'long'
         config.ai.scriptsFolder = folder
         const owned = app.vault.getAbstractFileByPath(root)
         if (owned)
-          void app.vault.adapter
-            .rmdir(root, true)
-            .catch((error) => console.error('Could not remove artifact fixture', error))
+          void removeVaultDirectory(app, root).catch((error) =>
+            console.error('Could not remove artifact fixture', error)
+          )
       })
       const session = {
         id: 'sample-artifacts',

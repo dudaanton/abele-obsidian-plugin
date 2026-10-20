@@ -19,9 +19,9 @@ export const en = {
   'node.files.gitLock': 'Git worktree lock',
   'node.localRunning': 'AbeleNode is running on this computer',
   'node.files.nameOnly': 'Enter a file name without folders.',
-  'node.files.saveLocked': 'Saving is locked here',
   'node.files.attachMessage':
     'Browse this repository’s other worktrees and allow file editing in the worktree you choose? Agent execution still needs separate approval.',
+  'node.files.saveLocked': 'Saving is locked here',
   'node.files.newFile': 'New file…',
   'node.files.newFolder': 'New folder…',
   'node.files.rename': 'Rename…',
@@ -37,6 +37,7 @@ export const en = {
   'node.files.stopSessions': 'Stop these sessions',
   'node.files.sessionsStopped':
     'Sessions stopped. Choose Delete worktree again when they have finished stopping.',
+  'node.error.busy': 'This folder or worktree is in use. Stop its sessions before deleting it.',
   'maps.lightAddressExample': 'https://tiles.example.com/{z}/{x}/{y}.png',
   'maps.darkAddressExample': 'https://tiles.example.com/dark/{z}/{x}/{y}.png',
   'node.error.size': 'The request is too large. Reduce its size and try again.',
@@ -50,7 +51,6 @@ export const en = {
     'The result is unknown. Refresh and check what happened before trying again.',
   'node.error.outputLimit': 'The node returned too much output. Narrow the request or use paging.',
   'node.error.limit': 'The node reached a limit. Wait before trying again.',
-  'node.error.busy': 'This folder or worktree is in use. Stop its sessions before deleting it.',
   'node.error.debugger':
     'The debugger is unavailable. Check the debug configuration and reconnect.',
   'node.error.generic':

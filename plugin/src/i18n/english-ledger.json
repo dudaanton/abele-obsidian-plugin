@@ -26308,5 +26308,315 @@
       "es",
       "de"
     ]
+  },
+  "node.files.directoryDeleteSummary": {
+    "englishHash": "98fa4af24fc33ae34179b308288d20baa002d3c509817bf2c9385286f40b98c6",
+    "context": "Node file and folder operations",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.files.directoryMoveSummary": {
+    "englishHash": "0fb33fc0496219f754d61540b324fa77320adaa7d3bc003d95f4767cad23c19d",
+    "context": "Node file and folder operations",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.files.showFiles": {
+    "englishHash": "6bc96cb4c32228484154e8bb97acd44e19f54a939e35943b5993fada53b936f7",
+    "context": "Node file and folder operations",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.files.uncommitted": {
+    "englishHash": "1dc2eb419f1dc54c17eb01fbb29ad8e64ca3ac8500f75c8d95b9d0bfa3e66c7d",
+    "context": "Node file and folder operations",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.files.untracked": {
+    "englishHash": "69e4dd8c26ec67a8b34ed519a8b6cad0046023c5baa592ecf399d22d139765d3",
+    "context": "Node file and folder operations",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.files.gitStatusUnavailable": {
+    "englishHash": "2a4e170f69f0339b10e47324d81044a3649034256e75aa5ba0d9d193637fd2dc",
+    "context": "Node file and folder operations",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.files.gitRecoveryWarning": {
+    "englishHash": "f2457006e715177841eb6746423b479d2753cff4cffe2f1bcc8aa3fa7507d8e9",
+    "context": "Node file and folder operations",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.files.fileCount": {
+    "englishHash": "d981898d246da72697d34d4261eeab6415a7cac5566bef47ff67beab4e5d51e7",
+    "context": "Node file and folder operations",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.files.folderCount": {
+    "englishHash": "65d763082cf226390e63a61e6f3bb30b8d088267d7b4f6663dfaff071065e0a2",
+    "context": "Node file and folder operations",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.files.renameAction": {
+    "englishHash": "344f07db961022486530f9930b5ab92e417bb3cb67d7dc370feaee46900f3e67",
+    "context": "Node file and folder operations",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.files.moveAction": {
+    "englishHash": "b4706d6fd38088cedd756d70acd60aeee0d87c4dd128e69ec1435eb0b04ca046",
+    "context": "Node file and folder operations",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.files.directoryConfirm": {
+    "englishHash": "d985a8d21a7a6402a4ebfa85b8b2df3083f3c5263bcf089a64d5e29942e4f65a",
+    "context": "Node file and folder operations",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.files.directoryMoveConfirm": {
+    "englishHash": "37ea42cf40795e3e723846887859f57205c7559af5a19993d8a3a81d209b1873",
+    "context": "Node file and folder operations",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.files.gitLock": {
+    "englishHash": "c425ba70a5ed7979aaba7d8175268a10435351b1a67c66f030989efae111ab4d",
+    "context": "Node file and folder operations",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.localRunning": {
+    "englishHash": "81081355d3a3a5f2b61de6dc6b3a3f80075407aa10a3134230ba4e9541bc034e",
+    "context": "Node file and folder operations",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.files.nameOnly": {
+    "englishHash": "1ac713c4b4ace628ec70bc9bef46c2c45b199bac0c6eeefb180f719edb90c3e6",
+    "context": "Node file and folder operations",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.files.saveLocked": {
+    "englishHash": "ca4245cb85cb28cf94f0da47000a6a7b83b9404c7e46d0e48cda67184748d51c",
+    "context": "Node file and folder operations",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.files.attachMessage": {
+    "englishHash": "b8b58e69db6fe2394f3ee5d847c47a7d42f0014323b7d5702c0e1e01435ba51e",
+    "context": "Node file and folder operations",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.files.newFile": {
+    "englishHash": "4495f04ca2ee032d8a2eb3a0104d215bc75116151c75a7d07230eb835200fb46",
+    "context": "Node file and folder operations",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.files.newFolder": {
+    "englishHash": "eb62bcc55893d1fdd02491eb1cb2cffb57047deaf91d34925c4d486347c0bad4",
+    "context": "Node file and folder operations",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.files.rename": {
+    "englishHash": "28667e1b7f718963a9aeccfb2d379374cc49a718a86018019bbdd73948650123",
+    "context": "Node file and folder operations",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.files.move": {
+    "englishHash": "7ef97d13257e19cea996bca532193e67f7f6a6ecfa8e76e51b2d3bf4082e9026",
+    "context": "Node file and folder operations",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.files.delete": {
+    "englishHash": "d896df9e4bb85d56119b77262d9c3399e3879520c92923ff456bdda6a728b51d",
+    "context": "Node file and folder operations",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.files.deleteConfirm": {
+    "englishHash": "898fbf5cb95294f45145c3a0890b936291b47b375b306f0e18eee44749c6eb5c",
+    "context": "Node file and folder operations",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.files.allowEditing": {
+    "englishHash": "d8029a9410a8f601306edfd102abfcce3316be2c04e815abdaf921c3a7e71de7",
+    "context": "Node file and folder operations",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.files.worktreeBusyTitle": {
+    "englishHash": "81188f59511ed3fd44b101a67e4c55cdae1446dd14008a9038852fcd4c60e460",
+    "context": "Node file and folder operations",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.files.worktreeBusy": {
+    "englishHash": "9049e321e72a7863aef0cbf73927026db0c438e6f25db58f9f409c5608bef4ff",
+    "context": "Node file and folder operations",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.files.unknownHolder": {
+    "englishHash": "7dcaaa6fab7e24e57680a36b171fddb0e30d309affba9f8c2ea020e77936570d",
+    "context": "Node file and folder operations",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.files.stopSessions": {
+    "englishHash": "c4878bb33bfba15a5010399704cab494aba66ccf1554c0d44488c8d7d5e1e132",
+    "context": "Node file and folder operations",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.files.sessionsStopped": {
+    "englishHash": "b880cfefc4052343c5404a6382478a43c324fd4a5fde879ca13658dea76e7e70",
+    "context": "Node file and folder operations",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "node.error.busy": {
+    "englishHash": "06e027fa7a9a062f010767d3cc258ef4f66193e4548b186256a4786aac7e9027",
+    "context": "Node file and folder operations",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

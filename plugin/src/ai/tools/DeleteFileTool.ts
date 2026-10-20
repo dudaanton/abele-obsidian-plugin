@@ -2,6 +2,7 @@ import type { AgentTool } from '../client'
 import { appOf } from '../toolContext'
 import { scopeOf } from '../toolContext'
 import { TFile } from 'obsidian'
+import { trashUnindexedFile } from '@/helpers/vaultUtils'
 
 export function createDeleteFileTool(opts?: { skipScope?: boolean }): AgentTool {
   return {
@@ -31,11 +32,7 @@ export function createDeleteFileTool(opts?: { skipScope?: boolean }): AgentTool 
       const app = appOf(ctx)
       const file = app.vault.getAbstractFileByPath(path)
       if (file instanceof TFile) await app.fileManager.trashFile(file)
-      else {
-        const stat = await app.vault.adapter.stat(path)
-        if (stat?.type !== 'file') throw new Error(`File not found: ${path}`)
-        if (!(await app.vault.adapter.trashSystem(path))) await app.vault.adapter.trashLocal(path)
-      }
+      else await trashUnindexedFile(app, path)
       scopeOf(ctx).invalidate()
       return { content: [{ type: 'text', text: `Deleted: ${path}` }] }
     },

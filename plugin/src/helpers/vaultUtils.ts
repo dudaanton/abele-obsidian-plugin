@@ -2,6 +2,29 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { App, Editor, MarkdownView, TFile, WorkspaceLeaf } from 'obsidian'
 import { cleanFileName } from './pathsHelpers'
 
+/** Include files that Obsidian does not index, such as hidden workspace files. */
+export async function storedFileExists(app: App, path: string): Promise<boolean> {
+  return (await app.vault.adapter.stat(path))?.type === 'file'
+}
+
+export async function trashUnindexedFile(app: App, path: string): Promise<void> {
+  if (!(await storedFileExists(app, path))) throw new Error(`File not found: ${path}`)
+  if (!(await app.vault.adapter.trashSystem(path))) await app.vault.adapter.trashLocal(path)
+}
+
+export async function createVaultResource(
+  app: App,
+  path: string,
+  content: string | ArrayBuffer
+): Promise<void> {
+  if (typeof content === 'string') await app.vault.create(path, content)
+  else await app.vault.createBinary(path, content)
+}
+
+export async function removeVaultDirectory(app: App, path: string): Promise<void> {
+  await app.vault.adapter.rmdir(path, true)
+}
+
 export const getFileByPathOrName = (pathOrName: string): TFile | null => {
   const app = GlobalStore.getInstance().app
   let file = app.vault.getFileByPath(pathOrName)

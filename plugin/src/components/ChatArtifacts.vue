@@ -140,6 +140,7 @@
 </template>
 
 <script setup lang="ts">
+import { storedFileExists } from '@/helpers/vaultUtils'
 import { t } from '@/i18n'
 import Diff from './Diff.vue'
 import { chatChanges } from '@/ai/chatChanges'
@@ -211,7 +212,7 @@ watch(
         .filter((path) => validArtifactPath(path) && !artifactFile(path))
         .map(async (path) => {
           try {
-            return (await app.vault.adapter.stat(path))?.type === 'file' ? path : null
+            return (await storedFileExists(app, path)) ? path : null
           } catch {
             return null
           }

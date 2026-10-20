@@ -1316,7 +1316,7 @@ export class NodePathFileModel {
     this.target = Object.freeze({ ...target })
     markRaw(this)
     this.stopRefresh = watch(
-      () => pathModel.fileRefresh.value[pathTargetKey(this.target)],
+      () => pathModel.fileRefresh?.value[pathTargetKey(this.target)],
       () => {
         const doc = this.document.value
         if (!doc || doc.revision?.kind === 'commit' || typeof this.stage === 'object') return

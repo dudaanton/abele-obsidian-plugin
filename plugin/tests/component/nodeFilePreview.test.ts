@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import FileView from '@/components/nodeWork/FileView.vue'
 import HistoryView from '@/components/nodeWork/HistoryView.vue'
+import SelectionBar from '@/components/obsidian/SelectionBar.vue'
 
 vi.mock('@/github/codeViewer', () => ({ mountCode: vi.fn(() => ({ destroy: vi.fn() })) }))
 afterEach(() => vi.restoreAllMocks())
@@ -16,7 +17,7 @@ const binary = {
   removed: 0,
 }
 describe('node binary and image presentation', () => {
-  it('passes selected lines to the file context menu instead of quoting the whole file', async () => {
+  it('passes selected lines through the selection action instead of quoting the whole file', async () => {
     const view = mount(FileView, {
       props: {
         path: 'sample.ts',
@@ -41,11 +42,17 @@ describe('node binary and image presentation', () => {
     selection.addRange(range)
     document.dispatchEvent(new Event('selectionchange'))
     await line.trigger('contextmenu')
-    expect(view.emitted('menu')?.[0]?.[1]).toBe('changed')
-    expect(view.emitted('menu')?.[0]?.[2]).toMatchObject({ from: 2, to: 2, text: 'changed' })
+    expect(view.emitted('menu')).toBeUndefined()
+    view.getComponent(SelectionBar).vm.$emit('pick', 'add', { from: 2, to: 2, text: 'changed' })
+    expect(view.emitted('add')?.[0]?.[0]).toMatchObject({
+      from: 2,
+      to: 2,
+      text: 'changed',
+      side: 'after',
+    })
     selection.removeAllRanges()
     await view.trigger('contextmenu')
-    expect(view.emitted('menu')?.[1]?.[1]).toBe('')
+    expect(view.emitted('menu')?.[0]?.[1]).toBe('')
     view.unmount()
   })
   it('redraws only the commit file whose contents arrived, not every file of the commit', async () => {

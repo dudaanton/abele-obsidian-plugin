@@ -197,7 +197,8 @@ it.each(['file', 'history', 'editor', 'chat'])(
       sessions: shallowRef([]),
       copy: () => undefined,
     }
-    const view = new NodePathMainView({} as WorkspaceLeaf, `abele-node-${kind}`)
+    const leaf = { setViewState: vi.fn(async () => {}), detach: vi.fn() }
+    const view = new NodePathMainView(leaf as unknown as WorkspaceLeaf, `abele-node-${kind}`)
     views.push(view)
     view.app = { workspace: {} } as any
     let settled = false
@@ -212,6 +213,15 @@ it.each(['file', 'history', 'editor', 'chat'])(
     })
     for (let i = 0; i < 10; i++) await Promise.resolve()
     expect(settled).toBe(true)
+    if (kind === 'editor')
+      await vi.waitFor(() =>
+        expect(leaf.setViewState).toHaveBeenCalledWith(
+          expect.objectContaining({
+            type: 'abele-node-file',
+            state: expect.objectContaining({ edit: true, path: 'sample.ts' }),
+          })
+        )
+      )
   }
 )
 

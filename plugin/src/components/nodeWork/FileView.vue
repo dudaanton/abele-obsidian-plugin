@@ -240,8 +240,9 @@ function onMenu(e: MouseEvent) {
   const selection = root.value
     ? fileSelection(root.value, root.value.ownerDocument.getSelection())
     : null
+  if (selection) return
   e.preventDefault()
-  emit('menu', e, selection?.text ?? '', selection ?? undefined)
+  emit('menu', e, '', undefined)
 }
 </script>
 
