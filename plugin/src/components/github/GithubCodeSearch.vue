@@ -109,6 +109,7 @@
       <Button
         v-if="results.next"
         :text="t('repository.loadMoreResults')"
+        :tooltip="t('repository.loadMoreResults')"
         :loading="loadingMore"
         :disabled="loadingMore"
         @click="more"
