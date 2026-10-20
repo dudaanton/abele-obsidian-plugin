@@ -10,6 +10,10 @@ const SHOTS = shotDir('chat-tree')
 const probe = (label: string) => `(async () => {
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
   const until = async fn => { for (let i = 0; i < 150; i++) { const value = fn(); if (value) return value; await wait(50) } throw Error('Chat tree did not appear: ' + fn.toString()) }
+  const clickAt = el => {
+    const r = el.getBoundingClientRect()
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }))
+  }
   const service = window.__abeleTest.ChatService.getInstance()
   const prior = service.activeTabId.value
   const folder = 'Synthetic navigation sample'
@@ -83,7 +87,7 @@ const probe = (label: string) => `(async () => {
     const searchAgain = document.querySelector('.abele-chat-tree input[type="search"]')
     searchAgain.value = ''; searchAgain.dispatchEvent(new Event('input', { bubbles: true }))
     await wait(100)
-    document.querySelector('.abele-chat-tree__folder [aria-label="' + folder + ': more"]').click()
+    clickAt(document.querySelector('.abele-chat-tree__folder [aria-label="' + folder + ': more"]'))
     await until(() => document.querySelector('.menu'))
     await shot('folder-menu')
     ;[...document.querySelectorAll('.menu-item')].find(item => item.textContent.includes('Access…')).click()
@@ -99,7 +103,7 @@ const probe = (label: string) => `(async () => {
     if (!document.querySelector('.abele-chat-tree')) current().click()
     const row = await until(() => document.querySelector('[data-chat="' + reopened.id + '"]'))
     const more = row.querySelector('[aria-label="Sample navigation chat: more"]')
-    if (more) more.click()
+    if (more) clickAt(more)
     else {
       const r = row.getBoundingClientRect()
       row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }))
