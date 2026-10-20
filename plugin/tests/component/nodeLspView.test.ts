@@ -8,13 +8,54 @@ import GithubBlob from '@/components/github/GithubBlob.vue'
 import NodeLspTools from '@/components/nodeWork/NodeLspTools.vue'
 import { NodeService } from '@/node/NodeService'
 import { REPOSITORY_SOURCE } from '@/repository/context'
-import { computed } from 'vue'
+import { computed, ref, nextTick } from 'vue'
 import { Menu } from 'obsidian'
+import NodePathEditorPane from '@/components/nodeWork/NodePathEditorPane.vue'
+import GithubCode from '@/components/github/GithubCode.vue'
+import NodeFileTools from '@/components/nodeWork/NodeFileTools.vue'
 vi.mock('@/node/advertisedMethods', () => ({ nodeAdvertisesMethod: () => true }))
 enableAutoUnmount(afterEach)
 afterEach(() => vi.restoreAllMocks())
 
 describe('node language diagnostics in the shared file viewer', () => {
+  it('analyzes and searches the displayed text when a locked editor retains a different draft', async () => {
+    const model = {
+      filePath: ref('sample.ts'),
+      editing: ref(false),
+      draftText: ref('retained draft'),
+      document: ref({ text: 'visible disk text' }),
+      saving: ref(false),
+      draft: ref(undefined),
+    }
+    const view = mount(NodePathEditorPane, {
+      props: {
+        model: model as never,
+        locked: true,
+        target: {
+          nodeId: 'sample-node',
+          registrationId: 'sample-registration',
+          projectId: 'sample-project',
+          kind: 'workspace',
+          id: 'sample-workspace',
+        },
+      },
+      global: {
+        stubs: {
+          NodeLspTools: true,
+          NodeFileTools: true,
+          GithubCode: true,
+          NodeFileSaveState: true,
+        },
+      },
+    })
+    expect(view.getComponent(GithubCode).props('text')).toBe('visible disk text')
+    expect(view.getComponent(NodeLspTools).props('text')).toBe('visible disk text')
+    expect(view.getComponent(NodeFileTools).props('text')).toBe('visible disk text')
+    model.editing.value = true
+    await nextTick()
+    expect(view.getComponent(NodeLspTools).props('text')).toBe('retained draft')
+    expect(view.getComponent(NodeFileTools).props('text')).toBe('retained draft')
+  })
   it('anchors the diagnostics list to its header button for pointer and keyboard activation', async () => {
     const show = vi.spyOn(Menu.prototype, 'showAtPosition')
     const view = mount(NodeLspFixture, { props: { state: 'errors' }, attachTo: document.body })
