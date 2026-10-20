@@ -268,6 +268,17 @@ export class TokenEngineRuntime
   private readonly serverPaths?: ServerFolderPaths
   private readonly localFs: FileSystem
   constructor(private readonly options: TokenEngineOptions) {
+    const item = options.item
+    if (item) {
+      const fetcher = options.fetch
+      options.fetch = (input, init) => {
+        const headers = new Headers(
+          init?.headers ?? (input instanceof Request ? input.headers : undefined)
+        )
+        headers.set('abele-scope-item', item)
+        return fetcher(input, { ...init, headers })
+      }
+    }
     this.progress = new TransferProgress(
       (one) => {
         if (!this.pendingFolders.size) options.progress?.(one)

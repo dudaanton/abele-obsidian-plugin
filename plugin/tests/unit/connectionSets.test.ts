@@ -27,6 +27,54 @@ function setup() {
 }
 
 describe('connection item sets', () => {
+  it('keeps the selected item on direct rename confirmation requests', async () => {
+    const scope = { kind: 'folder' as const, id: 'folder-a', path: 'Shared' }
+    const state = new MemoryStateStore(),
+      metadata = new MemoryStateStore()
+    const fetcher: typeof fetch = async (input, init) => {
+      expect(new Headers(init?.headers).get('abele-scope-item')).toBe('item-a')
+      const path = new URL(String(input)).pathname
+      if (path === '/v2/connection')
+        return Response.json({
+          protocol: 2,
+          token_id: 'token-a',
+          space_id: 'space-a',
+          scope: { ...scope, path: 'Renamed' },
+          status: 'active',
+          limits: { max_file_bytes: 1000, quota_bytes: null },
+        })
+      if (path === '/v2/manifest' || path === '/v2/changes')
+        return Response.json({ items: [], cursor: 1, next: null })
+      throw new Error('Unexpected route: ' + path)
+    }
+    const runtime = new TokenEngineRuntime({
+      id: 'record-a',
+      encoded: encodeAccessToken({
+        v: 2,
+        address: 'https://sync.example',
+        key: 'a'.repeat(43),
+        items: [{ id: 'item-a', kind: 'folder', scope_id: scope.id, path: scope.path }],
+      }),
+      item: 'item-a',
+      rootIssue: { kind: 'server-renamed', from: 'Shared', to: 'Renamed' },
+      fetch: fetcher,
+      fs: new MemoryFileSystem(),
+      state,
+      reviews: {
+        executables: new ExecutableReview(metadata),
+        attachments: new AttachmentConsent(metadata),
+        close: () => {},
+      },
+      changed: () => {},
+      failed: () => {},
+      covers: async () => false,
+    })
+    try {
+      await runtime.followServerRoot()
+    } finally {
+      await runtime.close()
+    }
+  })
   it.fails(
     'BUG: owner group deletion needs authoritative membership counts and overlap facts',
     async () => {
