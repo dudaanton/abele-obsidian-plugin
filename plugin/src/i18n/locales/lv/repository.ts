@@ -1,4 +1,7 @@
 export const repository = {
+  'repository.loadMoreResults': 'Ielādēt vairāk rezultātu',
+  'repository.searchOmitted':
+    'Daži faili vai atbilstības tika izlaistas, jo mezgls sasniedza meklēšanas ierobežojumu vai nevarēja tos nolasīt. Sašauriniet meklēšanu, lai redzētu vairāk.',
   'repository.find': 'Meklēt šajā cilnē',
   'repository.case': 'Ņemt vērā reģistru',
   'repository.check': 'Ko pārbaudīt',

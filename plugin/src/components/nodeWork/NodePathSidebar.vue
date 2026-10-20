@@ -284,12 +284,13 @@ const git = computed(
 )
 const codeSearch = computed<Pick<TabCode, 'search' | 'refLabel'> | undefined>(() => {
   const model = props.model,
-    target = model?.current.value
-  if (!model || !target || !model.port.searchCode) return
+    target = model?.current.value,
+    port = model?.port
+  if (!model || !target || !port?.searchCode) return
+  const search = port.searchCode.bind(port)
   return {
     refLabel: () => model.currentCopy.value?.branch ?? model.currentFolder.value?.name ?? '',
-    search: (scope, query, glob, _onStage, signal) =>
-      model.port.searchCode(target, scope, query, glob, signal),
+    search: (scope, query, glob, _onStage, signal) => search(target, scope, query, glob, signal),
   }
 })
 const openSearchResult = async (url: string) => {

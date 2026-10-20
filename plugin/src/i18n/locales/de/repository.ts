@@ -1,4 +1,7 @@
 export const repository = {
+  'repository.loadMoreResults': 'Weitere Ergebnisse laden',
+  'repository.searchOmitted':
+    'Einige Dateien oder Treffer wurden ausgelassen, weil der Knoten eine Suchgrenze erreicht hat oder sie nicht lesen konnte. Grenze die Suche ein, um mehr Ergebnisse zu sehen.',
   'repository.find': 'In diesem Tab suchen',
   'repository.case': 'Groß-/Kleinschreibung beachten',
   'repository.check': 'Was zu prüfen ist',
